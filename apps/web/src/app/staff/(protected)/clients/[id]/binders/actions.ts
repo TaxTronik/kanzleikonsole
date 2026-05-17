@@ -1,0 +1,151 @@
+'use server';
+
+import { z } from 'zod';
+import { revalidatePath } from 'next/cache';
+import type { Prisma } from '@prisma/client';
+import { staffAuth } from '@/server/auth/staff';
+import { withTenantContext } from '@taxtronik/db';
+import { evidenceService } from '@/server/container';
+import { assertClientInTenant } from '@/server/db/assert-tenant';
+
+export interface ActionResult { ok: boolean; error?: string; }
+
+const StatusEnum = z.enum(['PREPARED', 'WITH_CLIENT', 'RETURNED', 'COMPLETED']);
+
+const CreateSchema = z.object({
+  clientId: z.string().uuid(),
+  label: z.string().min(1).max(200),
+  contents: z.string().max(4000).optional().or(z.literal('')),
+  expectedReturnAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal('')),
+});
+
+export async function createBinderAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const session = await staffAuth();
+  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
+  const parsed = CreateSchema.safeParse({
+    clientId: formData.get('clientId'),
+    label: formData.get('label'),
+    contents: formData.get('contents') ?? '',
+    expectedReturnAt: formData.get('expectedReturnAt') ?? '',
+  });
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
+  const { tenantId, staffId } = session.user;
+
+  try {
+    await withTenantContext(
+      { tenantId, actorId: staffId, actorType: 'STAFF' },
+      async (tx) => {
+        // Q-5: clientId Tenant-Sanity
+        await assertClientInTenant(tx, parsed.data.clientId);
+        const b = await tx.pendingBinder.create({
+          data: {
+            tenantId,
+            clientId: parsed.data.clientId,
+            label: parsed.data.label.trim(),
+            contents: parsed.data.contents?.trim() || null,
+            expectedReturnAt: parsed.data.expectedReturnAt
+              ? new Date(parsed.data.expectedReturnAt)
+              : null,
+            createdByStaff: staffId,
+          },
+        });
+        await evidenceService.record(tx, {
+          tenantId, actorType: 'STAFF', actorId: staffId,
+          action: 'pending_binder.create',
+          resourceType: 'pending_binder',
+          resourceId: b.id,
+          after: { clientId: parsed.data.clientId, label: parsed.data.label },
+        });
+      },
+    );
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+  revalidatePath(`/staff/clients/${parsed.data.clientId}`);
+  return { ok: true };
+}
+
+export async function updateBinderStatusAction(input: {
+  id: string;
+  status: 'PREPARED' | 'WITH_CLIENT' | 'RETURNED' | 'COMPLETED';
+}): Promise<ActionResult> {
+  const session = await staffAuth();
+  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
+  const parsed = z.object({
+    id: z.string().uuid(),
+    status: StatusEnum,
+  }).safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  const { tenantId, staffId } = session.user;
+
+  try {
+    await withTenantContext(
+      { tenantId, actorId: staffId, actorType: 'STAFF' },
+      async (tx) => {
+        const before = await tx.pendingBinder.findUnique({
+          where: { id: parsed.data.id },
+          select: { status: true, clientId: true },
+        });
+        if (!before) throw new Error('Pendelordner nicht gefunden.');
+
+        const now = new Date();
+        const data: Prisma.PendingBinderUpdateInput = { status: parsed.data.status };
+        if (parsed.data.status === 'WITH_CLIENT') data.sentAt = now;
+        if (parsed.data.status === 'RETURNED') data.returnedAt = now;
+        if (parsed.data.status === 'COMPLETED') data.completedAt = now;
+
+        await tx.pendingBinder.update({
+          where: { id: parsed.data.id },
+          data,
+        });
+        await evidenceService.record(tx, {
+          tenantId, actorType: 'STAFF', actorId: staffId,
+          action: 'pending_binder.status_change',
+          resourceType: 'pending_binder',
+          resourceId: parsed.data.id,
+          before: { status: before.status },
+          after: { status: parsed.data.status },
+        });
+      },
+    );
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+  revalidatePath('/staff/clients', 'layout');
+  return { ok: true };
+}
+
+export async function deleteBinderAction(input: { id: string }): Promise<ActionResult> {
+  const session = await staffAuth();
+  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
+  const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  const { tenantId, staffId } = session.user;
+
+  try {
+    await withTenantContext(
+      { tenantId, actorId: staffId, actorType: 'STAFF' },
+      async (tx) => {
+        const b = await tx.pendingBinder.findUnique({
+          where: { id: parsed.data.id },
+          select: { label: true },
+        });
+        await tx.pendingBinder.delete({ where: { id: parsed.data.id } });
+        await evidenceService.record(tx, {
+          tenantId, actorType: 'STAFF', actorId: staffId,
+          action: 'pending_binder.delete',
+          resourceType: 'pending_binder',
+          resourceId: parsed.data.id,
+          before: { label: b?.label ?? null },
+        });
+      },
+    );
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+  revalidatePath('/staff/clients', 'layout');
+  return { ok: true };
+}

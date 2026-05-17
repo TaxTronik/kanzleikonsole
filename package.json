@@ -1,0 +1,44 @@
+{
+  "name": "taxtronik",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Kanzlei- und Mandanten-Dashboard für deutsche Steuerberater",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "packageManager": "pnpm@11.1.2",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "db:generate": "pnpm --filter @taxtronik/db generate",
+    "db:migrate": "pnpm --filter @taxtronik/db migrate:dev",
+    "db:migrate:deploy": "pnpm --filter @taxtronik/db migrate:deploy",
+    "db:studio": "pnpm --filter @taxtronik/db studio",
+    "db:seed": "pnpm --filter @taxtronik/db seed",
+    "verify:chain": "pnpm --filter @taxtronik/evidence verify",
+    "verify:schema-drift": "pnpm --filter @taxtronik/db verify:schema-drift",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md}\"",
+    "guard:datev": "sh scripts/check-no-real-datev.sh"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "eslint": "^9.16.0",
+    "prettier": "^3.4.0",
+    "turbo": "^2.3.0",
+    "typescript": "^5.7.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "esbuild",
+      "prisma",
+      "sharp",
+      "unrs-resolver"
+    ]
+  }
+}

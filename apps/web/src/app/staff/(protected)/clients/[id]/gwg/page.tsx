@@ -1,0 +1,315 @@
+import { staffAuth } from '@/server/auth/staff';
+import { withTenantContext } from '@taxtronik/db';
+import { redirect, notFound } from 'next/navigation';
+import Link from 'next/link';
+import { ArrowLeft, ShieldCheck, AlertTriangle, FileCheck } from 'lucide-react';
+import { DEFAULT_FACTORS } from '@/server/gwg/risk-score';
+import {
+  openCheckAction,
+  verifyCheckAction,
+  rejectCheckAction,
+} from './actions';
+import { RiskAssessmentForm } from './risk-assessment-form';
+import { AddBeneficialOwnerForm } from './add-owner-form';
+import { AddIdDocumentForm } from './add-id-doc-form';
+import { InviteSection } from './invite-section';
+
+const statusLabels: Record<string, string> = {
+  DRAFT: 'Entwurf',
+  IN_REVIEW: 'In Prüfung',
+  VERIFIED: 'Verifiziert',
+  REJECTED: 'Abgelehnt',
+  EXPIRED: 'Abgelaufen',
+};
+
+const idTypeLabels: Record<string, string> = {
+  PERSONALAUSWEIS: 'Personalausweis',
+  REISEPASS: 'Reisepass',
+  HANDELSREGISTERAUSZUG: 'Handelsregisterauszug',
+  GESELLSCHAFTSVERTRAG: 'Gesellschaftsvertrag',
+  VOLLMACHT: 'Vollmacht',
+  TRANSPARENZREGISTER_AUSZUG: 'Transparenzregister-Auszug',
+  SONSTIGES: 'Sonstiges',
+};
+
+export default async function GwgPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const session = await staffAuth();
+  if (!session?.user) redirect('/staff/login');
+
+  const { id: clientId } = await params;
+  const { tenantId, staffId } = session.user;
+
+  const data = await withTenantContext(
+    { tenantId, actorId: staffId, actorType: 'STAFF' },
+    async (tx) => {
+      const client = await tx.client.findUnique({ where: { id: clientId } });
+      if (!client) return null;
+      const [check, clientDocuments, invites, contacts] = await Promise.all([
+        tx.gwgCheck.findFirst({
+          where: { clientId },
+          orderBy: { createdAt: 'desc' },
+          include: {
+            beneficialOwners: { orderBy: { createdAt: 'asc' } },
+            idDocuments: { orderBy: { createdAt: 'asc' }, include: { document: true } },
+          },
+        }),
+        tx.document.findMany({
+          where: { clientId },
+          select: { id: true, title: true },
+          orderBy: { createdAt: 'desc' },
+        }),
+        tx.gwgOnboardingInvite.findMany({
+          where: { clientId },
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+        }),
+        tx.clientContact.findMany({
+          where: { clientId, active: true },
+          select: { fullName: true, email: true },
+          orderBy: { fullName: 'asc' },
+        }),
+      ]);
+      return { client, check, clientDocuments, invites, contacts };
+    },
+  );
+
+  if (!data) notFound();
+  const { client, check, clientDocuments, invites, contacts } = data;
+
+  return (
+    <div className="p-8 max-w-4xl">
+      <div className="flex items-start gap-4 mb-6">
+        <Link href={`/staff/clients/${client.id}`} className="text-gray-400 hover:text-gray-600 mt-1">
+          <ArrowLeft className="h-5 w-5" />
+        </Link>
+        <div className="flex-1">
+          <div className="flex items-center gap-3 mb-1">
+            <h1 className="text-2xl font-bold text-gray-900">GwG-Prüfung</h1>
+            {check && (
+              <span className={
+                check.status === 'VERIFIED' ? 'badge-green'
+                : check.status === 'REJECTED' || check.status === 'EXPIRED' ? 'badge-red'
+                : 'badge-yellow'
+              }>
+                {statusLabels[check.status]}
+              </span>
+            )}
+          </div>
+          <p className="text-gray-500 text-sm">{client.name}</p>
+        </div>
+      </div>
+
+      <div className="mb-6">
+        <InviteSection
+          clientId={client.id}
+          clientName={client.name}
+          contacts={contacts}
+          invites={invites.map((i) => ({
+            id: i.id,
+            inviteName: i.inviteName,
+            inviteEmail: i.inviteEmail,
+            status: i.status,
+            createdAt: i.createdAt.toISOString(),
+            expiresAt: i.expiresAt.toISOString(),
+            submittedAt: i.submittedAt?.toISOString() ?? null,
+          }))}
+        />
+      </div>
+
+      {!check ? (
+        <div className="card p-8 text-center">
+          <ShieldCheck className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+          <h2 className="text-lg font-semibold text-gray-900 mb-2">
+            Noch keine GwG-Prüfung
+          </h2>
+          <p className="text-sm text-gray-500 mb-6">
+            Sie können die Prüfung selbst starten — oder den Mandanten oben per Einladung
+            einladen, die Stammdaten und Ausweise selbst hochzuladen.
+          </p>
+          <form action={openCheckAction}>
+            <input type="hidden" name="clientId" value={client.id} />
+            <button type="submit" className="btn-primary">
+              Prüfung manuell starten
+            </button>
+          </form>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {/* Status-Banner */}
+          {check.status === 'VERIFIED' && check.validUntil && (
+            <div className="rounded-md bg-green-50 p-4 border border-green-200">
+              <div className="flex items-start gap-3">
+                <ShieldCheck className="h-5 w-5 text-green-600 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-green-900">
+                    Mandant ist verifiziert.
+                  </p>
+                  <p className="text-xs text-green-700 mt-1">
+                    Risiko: <strong>{check.riskLevel}</strong> ·
+                    Gültig bis {new Intl.DateTimeFormat('de-DE').format(check.validUntil)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          {check.status === 'REJECTED' && (
+            <div className="rounded-md bg-red-50 p-4 border border-red-200">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-red-900">Prüfung abgelehnt.</p>
+                  {check.rejectedReason && (
+                    <p className="text-xs text-red-700 mt-1">
+                      Begründung: {check.rejectedReason}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Schritt 1: Risikobewertung */}
+          <section className="card p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-1">
+              1. Risikobewertung
+            </h2>
+            <p className="text-sm text-gray-500 mb-4">
+              Antworten basierend auf Branche, Sitz, PEP-Status und Geschäftsmodell.
+            </p>
+            <RiskAssessmentForm
+              checkId={check.id}
+              clientId={client.id}
+              factors={DEFAULT_FACTORS}
+              currentAnswers={(check.riskAnswers as Record<string, number>) ?? {}}
+              currentScore={check.riskScore ?? null}
+              currentLevel={check.riskLevel ?? null}
+              disabled={check.status === 'VERIFIED' || check.status === 'REJECTED'}
+            />
+          </section>
+
+          {/* Schritt 2: Wirtschaftlich Berechtigte */}
+          <section className="card p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-1">
+              2. Wirtschaftlich Berechtigte
+            </h2>
+            <p className="text-sm text-gray-500 mb-4">
+              Personen mit ≥ 25 % Anteil oder vergleichbarer Kontrolle (§ 3 GwG).
+            </p>
+
+            {check.beneficialOwners.length > 0 && (
+              <ul className="divide-y divide-gray-100 mb-4 border border-gray-200 rounded-md">
+                {check.beneficialOwners.map((o) => (
+                  <li key={o.id} className="px-4 py-3 flex items-center justify-between">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-gray-900">{o.fullName}</span>
+                        {o.isPep && <span className="badge-red">PEP</span>}
+                      </div>
+                      <p className="text-xs text-gray-500">
+                        {o.ownershipPct ? `${Number(o.ownershipPct).toFixed(2)} % · ` : ''}
+                        {o.nationality ?? ''}
+                        {o.residence ? ` · ${o.residence}` : ''}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {check.status !== 'VERIFIED' && check.status !== 'REJECTED' && (
+              <AddBeneficialOwnerForm checkId={check.id} clientId={client.id} />
+            )}
+          </section>
+
+          {/* Schritt 3: Identitätsdokumente */}
+          <section className="card p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-1">
+              3. Identitätsdokumente
+            </h2>
+            <p className="text-sm text-gray-500 mb-4">
+              Personalausweise / Handelsregisterauszüge / Transparenzregister-Auszüge
+              (laden Sie Dokumente erst hoch und ordnen Sie sie hier zu).
+            </p>
+
+            {check.idDocuments.length > 0 && (
+              <ul className="divide-y divide-gray-100 mb-4 border border-gray-200 rounded-md">
+                {check.idDocuments.map((d) => (
+                  <li key={d.id} className="px-4 py-3">
+                    <div className="flex items-center gap-2 mb-1">
+                      <FileCheck className="h-4 w-4 text-green-600" />
+                      <span className="font-medium text-gray-900">
+                        {idTypeLabels[d.type] ?? d.type}
+                      </span>
+                      {d.expiryDate && d.expiryDate < new Date() && (
+                        <span className="badge-red">abgelaufen</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500 ml-6">
+                      {d.ownerName}
+                      {d.number ? ` · Nr. ${d.number}` : ''}
+                      {d.expiryDate ? ` · gültig bis ${new Intl.DateTimeFormat('de-DE').format(d.expiryDate)}` : ''}
+                    </p>
+                    {d.document && (
+                      <p className="text-xs text-brand-700 ml-6 mt-1">
+                        <a href={`/api/staff/documents/${d.document.id}/download`} className="hover:underline">
+                          {d.document.title} öffnen
+                        </a>
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {check.status !== 'VERIFIED' && check.status !== 'REJECTED' && (
+              <AddIdDocumentForm
+                checkId={check.id}
+                clientId={client.id}
+                clientDocuments={clientDocuments}
+              />
+            )}
+          </section>
+
+          {/* Schritt 4: Verifikation oder Ablehnung */}
+          {check.status === 'IN_REVIEW' && (
+            <section className="card p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-3">
+                4. Entscheidung
+              </h2>
+              <div className="flex gap-3">
+                <form action={verifyCheckAction}>
+                  <input type="hidden" name="checkId" value={check.id} />
+                  <input type="hidden" name="clientId" value={client.id} />
+                  <button type="submit" className="btn-primary">
+                    <ShieldCheck className="h-4 w-4" />
+                    Verifizieren und Mandant aktivieren
+                  </button>
+                </form>
+                <form action={rejectCheckAction} className="flex-1 flex gap-2">
+                  <input type="hidden" name="checkId" value={check.id} />
+                  <input type="hidden" name="clientId" value={client.id} />
+                  <input
+                    name="reason"
+                    type="text"
+                    className="input flex-1"
+                    placeholder="Ablehnungsgrund (Pflicht)"
+                    required
+                    minLength={1}
+                    maxLength={2000}
+                  />
+                  <button type="submit" className="btn-secondary text-red-700 border-red-300 hover:bg-red-50">
+                    Ablehnen
+                  </button>
+                </form>
+              </div>
+            </section>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

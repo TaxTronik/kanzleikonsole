@@ -1,0 +1,257 @@
+'use client';
+
+import { useEffect, useState, useRef, useCallback } from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { Bell, CheckCheck } from 'lucide-react';
+import {
+  markNotificationReadAction,
+  markAllNotificationsReadAction,
+} from '@/app/staff/(protected)/notifications/actions';
+
+const POLL_INTERVAL_MS = 30_000;
+
+interface NotificationItem {
+  id: string;
+  kind: string;
+  title: string;
+  body: string | null;
+  href: string | null;
+  createdAt: string;
+  readAt: string | null;
+}
+
+interface RecentResponse {
+  items: NotificationItem[];
+  unread: number;
+}
+
+interface Props {
+  initialUnread: number;
+}
+
+const dtFmt = new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' });
+
+function relativeTime(iso: string, now: number): string {
+  const t = Date.parse(iso);
+  const diff = now - t;
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 1) return 'gerade eben';
+  if (mins < 60) return `vor ${mins} Min.`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `vor ${hrs} Std.`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `vor ${days} Tag${days === 1 ? '' : 'en'}`;
+  return dtFmt.format(new Date(t));
+}
+
+export function NotificationsBell({ initialUnread }: Props) {
+  const [unread, setUnread] = useState(initialUnread);
+  const [items, setItems] = useState<NotificationItem[] | null>(null);
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const visibleRef = useRef(true);
+  const pathname = usePathname();
+  const now = Date.now();
+
+  const refreshCount = useCallback(async () => {
+    try {
+      const res = await fetch('/api/staff/notifications/count', { cache: 'no-store' });
+      if (!res.ok) return;
+      const data = (await res.json()) as { unread: number };
+      setUnread(data.unread);
+    } catch {
+      // silent
+    }
+  }, []);
+
+  const refreshRecent = useCallback(async () => {
+    try {
+      const res = await fetch('/api/staff/notifications/recent', { cache: 'no-store' });
+      if (!res.ok) return;
+      const data = (await res.json()) as RecentResponse;
+      setItems(data.items);
+      setUnread(data.unread);
+    } catch {
+      // silent
+    }
+  }, []);
+
+  useEffect(() => {
+    function onVisibility() {
+      visibleRef.current = !document.hidden;
+      if (!document.hidden) refreshCount();
+    }
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [refreshCount]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (visibleRef.current) refreshCount();
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [refreshCount]);
+
+  useEffect(() => {
+    refreshCount();
+    setOpen(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
+  // Klick außerhalb schließt das Dropdown
+  useEffect(() => {
+    if (!open) return;
+    function onClick(e: MouseEvent) {
+      if (!containerRef.current) return;
+      if (!containerRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('mousedown', onClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (next) refreshRecent();
+  }
+
+  async function handleItemClick(n: NotificationItem) {
+    if (!n.readAt) {
+      const fd = new FormData();
+      fd.append('id', n.id);
+      await markNotificationReadAction(fd);
+      setItems((prev) =>
+        prev ? prev.map((p) => (p.id === n.id ? { ...p, readAt: new Date().toISOString() } : p)) : prev,
+      );
+      setUnread((u) => Math.max(0, u - 1));
+    }
+  }
+
+  async function handleMarkAllRead() {
+    await markAllNotificationsReadAction();
+    setItems((prev) =>
+      prev ? prev.map((p) => (p.readAt ? p : { ...p, readAt: new Date().toISOString() })) : prev,
+    );
+    setUnread(0);
+  }
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        onClick={toggle}
+        className="relative p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"
+        aria-label={unread > 0 ? `${unread} ungelesene Benachrichtigungen` : 'Benachrichtigungen'}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <Bell className="h-5 w-5" />
+        {unread > 0 && (
+          <span className="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+            {unread > 99 ? '99+' : unread}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 mt-2 w-96 max-w-[calc(100vw-2rem)] z-30 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden"
+        >
+          <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+            <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">
+              Benachrichtigungen
+              {unread > 0 && (
+                <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">({unread} neu)</span>
+              )}
+            </h3>
+            {unread > 0 && (
+              <button
+                type="button"
+                onClick={handleMarkAllRead}
+                className="text-xs text-brand-700 dark:text-brand-500 hover:underline inline-flex items-center gap-1"
+              >
+                <CheckCheck className="h-3 w-3" />
+                Alle gelesen
+              </button>
+            )}
+          </div>
+
+          <div className="max-h-96 overflow-y-auto">
+            {items === null ? (
+              <p className="px-4 py-8 text-sm text-gray-400 text-center">Lade…</p>
+            ) : items.length === 0 ? (
+              <p className="px-4 py-8 text-sm text-gray-400 text-center">Keine Benachrichtigungen.</p>
+            ) : (
+              <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+                {items.map((n) => {
+                  const inner = (
+                    <div className="flex items-start gap-2 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800">
+                      {!n.readAt && (
+                        <span className="mt-1.5 inline-block w-2 h-2 rounded-full bg-brand-600 shrink-0" />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p
+                          className={
+                            n.readAt
+                              ? 'text-sm text-gray-700 dark:text-gray-300 truncate'
+                              : 'text-sm font-medium text-gray-900 dark:text-gray-100 truncate'
+                          }
+                        >
+                          {n.title}
+                        </p>
+                        {n.body && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2">{n.body}</p>
+                        )}
+                        <p className="text-[10px] text-gray-400 mt-0.5">{relativeTime(n.createdAt, now)}</p>
+                      </div>
+                    </div>
+                  );
+                  return n.href ? (
+                    <li key={n.id}>
+                      <Link
+                        href={n.href}
+                        onClick={() => handleItemClick(n)}
+                        className="block"
+                      >
+                        {inner}
+                      </Link>
+                    </li>
+                  ) : (
+                    <li key={n.id}>
+                      <button
+                        type="button"
+                        onClick={() => handleItemClick(n)}
+                        className="w-full text-left"
+                      >
+                        {inner}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+
+          <div className="border-t border-gray-200 dark:border-gray-700 px-4 py-2 text-center">
+            <Link
+              href="/staff/notifications"
+              onClick={() => setOpen(false)}
+              className="text-xs text-brand-700 dark:text-brand-500 hover:underline"
+            >
+              Alle Benachrichtigungen anzeigen →
+            </Link>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

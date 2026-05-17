@@ -1,0 +1,290 @@
+// =============================================================================
+// executeWorkflowStep
+//
+// Stößt einen Workflow-Schritt an, abhängig von seinem `kind`. Wird vom
+// "Anstoßen"-Button auf der Workflow-Detail-Seite gerufen. Nebeneffekte je
+// nach Typ:
+//
+//   TASK             → markiert das Item sofort als done.
+//   DOCUMENT_UPLOAD  → no-op (Erledigung passiert beim Upload, separat).
+//   CLIENT_REQUEST   → erzeugt eine Anforderung mit Vorgabe-Inhalt.
+//                      Item bleibt offen, bis die Anforderung geschlossen
+//                      wird (DB-Trigger setzt dann doneAt).
+//   CLIENT_FORM      → erzeugt FormSubmission + verlinkte Anforderung.
+//                      Item bleibt offen, bis Mandant Submission abschickt.
+//   CLIENT_EMAIL     → schickt E-Mail an alle aktiven Portal-Kontakte und
+//                      markiert das Item sofort als done.
+//   N8N_TRIGGER      → nur n8nEvent feuern, dann done.
+//
+// Zusätzlich: wenn `n8nEvent` gesetzt ist, wird IMMER ein Webhook gefeuert
+// (egal welcher Kind). So kann eine Kanzlei z. B. einen `TASK`-Schritt
+// trotzdem für eine externe Automation nutzen.
+// =============================================================================
+
+import { withTenantContext } from '@taxtronik/db';
+import { evidenceService } from '@/server/container';
+import { emitN8nEvent } from '@/server/n8n/emit';
+import { renderTemplate } from '@/server/mail/dispatch';
+import { sendMail } from '@/server/mail/send';
+
+export interface ExecuteResult {
+  ok: boolean;
+  error?: string;
+  /** Was an Folge-Artefakten erzeugt wurde, für UI-Feedback */
+  createdRequestId?: string;
+  createdSubmissionId?: string;
+  /** True wenn das Item nach dem Run als erledigt markiert wurde */
+  itemMarkedDone?: boolean;
+}
+
+export interface ExecuteOpts {
+  tenantId: string;
+  staffId: string;
+  itemId: string;
+}
+
+export async function executeWorkflowStep(opts: ExecuteOpts): Promise<ExecuteResult> {
+  const { tenantId, staffId, itemId } = opts;
+  const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
+
+  return withTenantContext(ctx, async (tx) => {
+    const item = await tx.workflowItem.findUnique({
+      where: { id: itemId },
+      include: { instance: { select: { clientId: true, name: true } } },
+    });
+    if (!item) return { ok: false, error: 'Workflow-Schritt nicht gefunden.' };
+    if (item.doneAt) return { ok: false, error: 'Schritt ist bereits erledigt.' };
+    if (item.startedAt && item.kind !== 'TASK') {
+      return { ok: false, error: 'Schritt wurde bereits angestoßen.' };
+    }
+
+    const clientId = item.instance.clientId;
+    const config = (item.config as Record<string, unknown>) ?? {};
+    const result: ExecuteResult = { ok: true };
+
+    switch (item.kind) {
+      case 'TASK':
+        await tx.workflowItem.update({
+          where: { id: itemId },
+          data: { doneAt: new Date(), doneByStaff: staffId },
+        });
+        result.itemMarkedDone = true;
+        break;
+
+      case 'DOCUMENT_UPLOAD':
+        // Erledigung läuft über den Upload-Flow — wir markieren das Item
+        // hier nur als „angestoßen" (UI öffnet daraufhin den Upload-Dialog).
+        await tx.workflowItem.update({
+          where: { id: itemId },
+          data: { startedAt: new Date() },
+        });
+        break;
+
+      case 'CLIENT_REQUEST': {
+        // Vorlage hat Vorrang. Inline-Werte greifen nur, wenn keine
+        // Vorlage gewählt ist oder die referenzierte Vorlage gelöscht wurde.
+        const requestTemplateId = typeof config['requestTemplateId'] === 'string' ? config['requestTemplateId'] : null;
+        let title = String(config['requestTitle'] ?? item.title);
+        let description = String(config['requestDescription'] ?? item.description ?? '');
+        let priority = (config['priority'] as 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT') ?? 'NORMAL';
+        let dueAfterDays = typeof config['dueAfterDays'] === 'number' ? config['dueAfterDays'] : null;
+        let formSubmissionId: string | null = null;
+
+        if (requestTemplateId) {
+          const tpl = await tx.requestTemplate.findUnique({ where: { id: requestTemplateId } });
+          if (tpl) {
+            title = tpl.title;
+            description = tpl.description;
+            priority = tpl.priority;
+            if (tpl.dueAfterDays != null) dueAfterDays = tpl.dueAfterDays;
+            // Wenn die RequestTemplate ein Formular hat, legen wir die
+            // Submission gleich an.
+            if (tpl.formTemplateId) {
+              const sub = await tx.formSubmission.create({
+                data: {
+                  tenantId,
+                  templateId: tpl.formTemplateId,
+                  clientId,
+                  name: title,
+                  workflowItemId: itemId,
+                  createdByStaff: staffId,
+                },
+              });
+              formSubmissionId = sub.id;
+              result.createdSubmissionId = sub.id;
+            }
+          }
+        }
+
+        const dueAt = dueAfterDays != null
+          ? new Date(Date.now() + dueAfterDays * 24 * 60 * 60 * 1000)
+          : null;
+
+        const req = await tx.request.create({
+          data: {
+            tenantId,
+            clientId,
+            title,
+            description,
+            priority,
+            dueAt,
+            workflowItemId: itemId,
+            formSubmissionId,
+            createdByStaff: staffId,
+          },
+        });
+        await tx.workflowItem.update({
+          where: { id: itemId },
+          data: { startedAt: new Date() },
+        });
+        result.createdRequestId = req.id;
+        break;
+      }
+
+      case 'CLIENT_FORM': {
+        const formTemplateId = String(config['formTemplateId'] ?? '');
+        if (!formTemplateId) return { ok: false, error: 'Schritt enthält keine Formular-Vorlage.' };
+        const tpl = await tx.formTemplate.findUnique({ where: { id: formTemplateId } });
+        if (!tpl) return { ok: false, error: 'Formular-Vorlage nicht gefunden.' };
+        if (!tpl.active) return { ok: false, error: 'Formular-Vorlage ist deaktiviert.' };
+
+        const sub = await tx.formSubmission.create({
+          data: {
+            tenantId,
+            templateId: formTemplateId,
+            clientId,
+            name: tpl.name,
+            workflowItemId: itemId,
+            createdByStaff: staffId,
+          },
+        });
+        const req = await tx.request.create({
+          data: {
+            tenantId,
+            clientId,
+            title: String(config['requestTitle'] ?? `Formular: ${tpl.name}`),
+            description: String(config['requestDescription'] ?? ''),
+            priority: 'NORMAL',
+            formSubmissionId: sub.id,
+            workflowItemId: itemId,
+            createdByStaff: staffId,
+          },
+        });
+        await tx.workflowItem.update({
+          where: { id: itemId },
+          data: { startedAt: new Date() },
+        });
+        result.createdRequestId = req.id;
+        result.createdSubmissionId = sub.id;
+        break;
+      }
+
+      case 'CLIENT_EMAIL': {
+        const emailTemplateId = typeof config['emailTemplateId'] === 'string' ? config['emailTemplateId'] : null;
+        let subjectTpl = String(config['subject'] ?? item.title);
+        let bodyTpl = String(config['bodyMd'] ?? '');
+        if (emailTemplateId) {
+          const tpl = await tx.emailTemplate.findUnique({ where: { id: emailTemplateId } });
+          if (tpl) {
+            subjectTpl = tpl.subject;
+            bodyTpl = tpl.bodyMd;
+          }
+        }
+        const client = await tx.client.findUnique({ where: { id: clientId }, select: { name: true } });
+        const contacts = await tx.clientContact.findMany({
+          where: { clientId, active: true, notificationsEnabled: true, email: { not: '' } },
+          select: { email: true, fullName: true },
+        });
+        if (contacts.length === 0) {
+          return { ok: false, error: 'Mandant hat keinen aktiven Portal-Kontakt mit E-Mail-Opt-in.' };
+        }
+        // Pro Kontakt mit eigenen Vars rendern (contact.fullName ist
+        // empfänger-spezifisch, alles andere identisch)
+        await Promise.allSettled(
+          contacts.map((c) => {
+            const vars = {
+              contact: { fullName: c.fullName, email: c.email },
+              client: { name: client?.name ?? '' },
+              step: { title: item.title },
+            };
+            return sendMail({
+              to: c.email,
+              subject: renderTemplate(subjectTpl, vars),
+              text: renderTemplate(bodyTpl, vars),
+              html: markdownToInlineHtml(renderTemplate(bodyTpl, vars)),
+              tenantId,
+            });
+          }),
+        );
+        await tx.workflowItem.update({
+          where: { id: itemId },
+          data: { doneAt: new Date(), doneByStaff: staffId },
+        });
+        result.itemMarkedDone = true;
+        break;
+      }
+
+      case 'N8N_TRIGGER':
+        // n8nEvent wird unten geFEUERT — Item ist sofort erledigt.
+        await tx.workflowItem.update({
+          where: { id: itemId },
+          data: { doneAt: new Date(), doneByStaff: staffId },
+        });
+        result.itemMarkedDone = true;
+        break;
+    }
+
+    // n8n-Event feuern (für alle Kinds — wenn gesetzt).
+    // F8: item.n8nEvent ist beim Save via Regex auf [a-z0-9._-]{1,41} begrenzt.
+    // `workflow.step.${...}` ist dadurch im WorkflowStepN8nEvent-Template-Type
+    // — kein unsafe-Cast mehr nötig.
+    if (item.n8nEvent) {
+      emitN8nEvent(
+        `workflow.step.${item.n8nEvent}`,
+        {
+          tenantId,
+          itemId,
+          clientId,
+          kind: item.kind,
+          title: item.title,
+          createdRequestId: result.createdRequestId,
+          createdSubmissionId: result.createdSubmissionId,
+        },
+        { tenantId },
+      );
+    }
+
+    await evidenceService.record(tx, {
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
+      action: 'workflow.item.execute',
+      resourceType: 'workflow_item',
+      resourceId: itemId,
+      after: {
+        kind: item.kind,
+        markedDone: result.itemMarkedDone ?? false,
+        createdRequestId: result.createdRequestId ?? null,
+        createdSubmissionId: result.createdSubmissionId ?? null,
+        n8nEvent: item.n8nEvent ?? null,
+      },
+    });
+
+    return result;
+  });
+}
+
+/**
+ * Minimaler Markdown→HTML-Mapper für E-Mail-Versand. Macht nur Zeilenumbrüche
+ * + Absätze; keine ausgefeilte Markdown-Library, weil n8n / unsere Vorlagen
+ * meist Plaintext sind.
+ */
+function markdownToInlineHtml(md: string): string {
+  const esc = md
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  const paragraphs = esc.split(/\n\n+/).map((p) => `<p>${p.replace(/\n/g, '<br>')}</p>`);
+  return `<!doctype html><html><body>${paragraphs.join('')}</body></html>`;
+}
+

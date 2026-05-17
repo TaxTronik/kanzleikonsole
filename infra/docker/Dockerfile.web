@@ -1,0 +1,130 @@
+# =============================================================================
+# Multi-Stage Dockerfile für apps/web (Next.js standalone)
+#
+# Build: docker build -f infra/docker/Dockerfile.web -t taxtronik/web:latest .
+#   (vom Repo-Root!)
+# =============================================================================
+
+FROM node:22-alpine AS deps
+RUN apk add --no-cache libc6-compat openssl
+WORKDIR /repo
+# pnpm 11 — Lockfile-Format ab Round 11 enthält settings.injectWorkspacePackages,
+# das pnpm 10 unter --frozen-lockfile ablehnt.
+RUN corepack enable && corepack prepare pnpm@11.1.2 --activate
+
+# pnpm-Workspace zuerst kopieren — bessere Cache-Nutzung.
+# .npmrc ist Pflicht: enthält node-linker=hoisted und shamefully-hoist=true,
+# ohne die pnpm seinen Standard-Symlink-Tree baut, in dem apps/web die
+# transitiv eingezogenen Pakete (@aws-sdk/client-s3, @prisma/client, bullmq, jose)
+# nicht auflösen kann. Turbopack-Build scheitert sonst mit „Module not found".
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
+COPY apps/web/package.json ./apps/web/
+COPY packages/config/package.json ./packages/config/
+COPY packages/crypto/package.json ./packages/crypto/
+COPY packages/db/package.json ./packages/db/
+COPY packages/evidence/package.json ./packages/evidence/
+COPY packages/http-utils/package.json ./packages/http-utils/
+COPY packages/n8n-shared/package.json ./packages/n8n-shared/
+COPY packages/rss/package.json ./packages/rss/
+COPY packages/storage/package.json ./packages/storage/
+COPY packages/tax/package.json ./packages/tax/
+
+# pnpm 11 blockt Build-Scripts per Default und verlangt interaktive Approval.
+# In CI/Docker kommen wir da nur mit `--ignore-scripts` raus. Die wirklich
+# notwendigen postinstall-Hooks (Prisma-Engine-Binary, sharp libvips, esbuild)
+# werden im Builder-Stage explizit nachgeholt.
+# --no-frozen-lockfile temporär: wir haben gerade neue direkte Deps
+# (@aws-sdk/client-s3, @prisma/client, bullmq, jose, react-resizable) zu
+# apps/web hinzugefügt, die der Lockfile noch nicht als direkte Refs hat.
+# Sie sind alle bereits transitive Deps, daher kein zusätzlicher Download.
+# Sobald lokal `pnpm install` einmal lief und der Lockfile committet ist,
+# kann dieser Flag wieder auf --frozen-lockfile zurück.
+RUN pnpm install --frozen-lockfile --ignore-scripts \
+      --filter @taxtronik/web... --filter @taxtronik/web
+
+# ----- Builder ---------------------------------------------------------------
+FROM node:22-alpine AS builder
+RUN apk add --no-cache libc6-compat openssl
+WORKDIR /repo
+RUN corepack enable && corepack prepare pnpm@11.1.2 --activate
+
+COPY --from=deps /repo/node_modules ./node_modules
+COPY --from=deps /repo/apps/web/node_modules ./apps/web/node_modules
+COPY --from=deps /repo/packages ./packages
+COPY . .
+
+# Postinstall-Hooks nachholen, die in deps-Stage übersprungen wurden.
+# rebuild läuft ohne Approval-Check (nur install hat ihn).
+RUN pnpm rebuild -r --filter @taxtronik/web... --filter @taxtronik/web \
+      @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver \
+    || true
+
+# Build-Time-Dummies für ENV-Validierung (@taxtronik/config wirft beim
+# Modul-Load, wenn die ENV-Vars fehlen — Next.js evaluiert Server-Components
+# während des Page-Data-Collection-Schritts). Im Runtime-Container überschreibt
+# docker-compose alle Werte mit den echten aus der .env.
+ENV NEXT_TELEMETRY_DISABLED=1 \
+    DATABASE_URL=postgresql://build:build@build/build \
+    DATABASE_APP_URL=postgresql://build:build@build/build \
+    REDIS_URL=redis://build:6379 \
+    AUTH_SECRET=build-time-dummy-not-used-at-runtime-padding-padding \
+    NEXTAUTH_URL=https://build.local \
+    NEXTAUTH_TRUST_HOST=true \
+    N8N_HMAC_SECRET=build-time-hmac-secret-padding-padding-padding-padding \
+    STAFF_COOKIE_DOMAIN=staff.build.local \
+    PORTAL_COOKIE_DOMAIN=portal.build.local \
+    S3_ENDPOINT=https://build.local \
+    S3_ACCESS_KEY=build \
+    S3_SECRET_KEY=build \
+    SMTP_HOST=build.local \
+    SMTP_PORT=587 \
+    SMTP_FROM=build@build.local
+
+# pnpm 11 löst bei JEDEM Aufruf (auch `pnpm exec`) einen impliziten
+# Deps-Status-Check aus, der wieder den ERR_PNPM_IGNORED_BUILDS produziert
+# und nicht über Konfiguration abschaltbar ist. Lösung: pnpm komplett
+# umgehen und die Build-Binaries direkt mit node aufrufen. Das funktioniert,
+# weil die node_modules-Struktur korrekt installiert ist — wir brauchen
+# nur kein pnpm-Wrapper-Tool drumherum.
+RUN cd packages/db && \
+    PRISMA=$(find /repo -path "*/prisma/build/index.js" -not -path "*/cache/*" 2>/dev/null | head -1) && \
+    test -n "$PRISMA" && node "$PRISMA" generate
+
+# Safety-Net: leeres public/ anlegen, damit COPY in der runner-Stage
+# nicht knallt, falls keine statischen Assets im Repo liegen.
+RUN mkdir -p apps/web/public
+
+RUN cd apps/web && \
+    NEXT=$(find /repo -path "*/next/dist/bin/next" -not -path "*/cache/*" 2>/dev/null | head -1) && \
+    test -n "$NEXT" && node "$NEXT" build
+
+# ----- Runtime ---------------------------------------------------------------
+FROM node:22-alpine AS runner
+# T-3: wget für den HEALTHCHECK. node:alpine bringt es nicht standardmäßig
+# mit; ~270 KB Overhead sind gegenüber dem Operability-Gewinn vernachlässigbar.
+RUN apk add --no-cache openssl wget
+WORKDIR /app
+
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    PORT=3000
+
+# Standalone-Output enthält dank `outputFileTracingRoot` in next.config.mjs
+# alle Workspace-Dateien + getracten node_modules (inkl. Prisma-Engine).
+# Die Verzeichnisstruktur unter standalone/ spiegelt /repo wider.
+COPY --from=builder /repo/apps/web/.next/standalone ./
+COPY --from=builder /repo/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder /repo/apps/web/public ./apps/web/public
+
+EXPOSE 3000
+USER node
+
+# T-3: HEALTHCHECK über den /api/health-Endpoint. Erkennt hängende
+# Next.js-Prozesse (Prisma-Pool-Exhaust, deadlocked Server-Action) — Docker
+# restartet dann automatisch, statt den Container in "running but unresponsive"
+# zu belassen. start-period großzügig, weil Next.js + Prisma einige Sekunden
+# zum initial-bind brauchen.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+  CMD wget --quiet --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1
+
+CMD ["node", "apps/web/server.js"]

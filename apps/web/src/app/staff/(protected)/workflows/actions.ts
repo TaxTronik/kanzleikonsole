@@ -1,0 +1,236 @@
+'use server';
+
+import { z } from 'zod';
+import { revalidatePath } from 'next/cache';
+import { staffAuth } from '@/server/auth/staff';
+import { isStaffAdmin } from '@/server/auth/rbac';
+import { withTenantContext } from '@taxtronik/db';
+import { evidenceService } from '@/server/container';
+import { parseStepConfig } from '@/server/workflows/step-config';
+import { startInstanceAction } from '../clients/[id]/workflows/actions';
+
+export interface ActionResult {
+  ok: boolean;
+  error?: string;
+  id?: string;
+}
+
+const CreateSchema = z.object({
+  name: z.string().min(2).max(100),
+  description: z.string().max(500).optional(),
+});
+
+export async function createTemplateAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const session = await staffAuth();
+  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
+  // F4: Workflow-Templates sind Tenant-weite Konfiguration (n8n-Events,
+  // CLIENT_EMAIL/REQUEST/FORM-Steps). Konsistent zu email-templates,
+  // request-templates, state-machines etc. — ADMIN/PARTNER-only.
+  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
+  const parsed = CreateSchema.safeParse({
+    name: formData.get('name'),
+    description: formData.get('description') ?? '',
+  });
+  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+
+  const { tenantId, staffId } = session.user;
+  let id: string;
+  try {
+    id = await withTenantContext(
+      { tenantId, actorId: staffId, actorType: 'STAFF' },
+      async (tx) => {
+        // S7: expliziter tenantId-Filter zusätzlich zur RLS — Defense in Depth
+        // und liest sich klarer als „RLS macht den Rest".
+        const dup = await tx.workflowTemplate.findFirst({ where: { tenantId, name: parsed.data.name } });
+        if (dup) throw new Error('Vorlage mit diesem Namen existiert bereits.');
+        const t = await tx.workflowTemplate.create({
+          data: {
+            tenantId,
+            name: parsed.data.name,
+            description: parsed.data.description?.trim() || null,
+            createdByStaff: staffId,
+          },
+        });
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'workflow.template.create',
+          resourceType: 'workflow_template',
+          resourceId: t.id,
+          after: { name: t.name },
+        });
+        return t.id;
+      },
+    );
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+  revalidatePath('/staff/workflows/templates');
+  return { ok: true, id };
+}
+
+export async function setTemplateActiveAction(input: { id: string; active: boolean }): Promise<ActionResult> {
+  const session = await staffAuth();
+  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
+  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
+  const parsed = z.object({ id: z.string().uuid(), active: z.boolean() }).safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  const { tenantId, staffId } = session.user;
+  await withTenantContext(
+    { tenantId, actorId: staffId, actorType: 'STAFF' },
+    (tx) => tx.workflowTemplate.update({ where: { id: parsed.data.id }, data: { active: parsed.data.active } }),
+  );
+  revalidatePath('/staff/workflows/templates');
+  return { ok: true };
+}
+
+export async function deleteTemplateAction(input: { id: string }): Promise<ActionResult> {
+  const session = await staffAuth();
+  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
+  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
+  const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  const { tenantId, staffId } = session.user;
+
+  try {
+    await withTenantContext(
+      { tenantId, actorId: staffId, actorType: 'STAFF' },
+      async (tx) => {
+        const tpl = await tx.workflowTemplate.findUnique({
+          where: { id: parsed.data.id },
+          include: { _count: { select: { instances: true } } },
+        });
+        if (!tpl) throw new Error('Vorlage nicht gefunden.');
+        if (tpl._count.instances > 0) {
+          throw new Error(
+            `Vorlage hat ${tpl._count.instances} Instanz${tpl._count.instances === 1 ? '' : 'en'} (laufend oder abgeschlossen). Bitte stattdessen deaktivieren.`,
+          );
+        }
+        // Schritte werden via onDelete: Cascade mitgelöscht.
+        await tx.workflowTemplate.delete({ where: { id: parsed.data.id } });
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'workflow.template.delete',
+          resourceType: 'workflow_template',
+          resourceId: parsed.data.id,
+          before: { name: tpl.name },
+        });
+      },
+    );
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+  revalidatePath('/staff/workflows/templates');
+  return { ok: true };
+}
+
+// ----------------------------------------------------------------------------
+// Step-Verwaltung (vom Detail-Editor aufgerufen)
+// ----------------------------------------------------------------------------
+
+const StepKindSchema = z.enum([
+  'TASK', 'DOCUMENT_UPLOAD', 'CLIENT_REQUEST', 'CLIENT_FORM', 'CLIENT_EMAIL', 'N8N_TRIGGER',
+]);
+
+const SaveStepsSchema = z.object({
+  templateId: z.string().uuid(),
+  description: z.string().max(500).nullable(),
+  defaultSkillId: z.string().uuid().nullable(),
+  steps: z.array(
+    z.object({
+      title: z.string().min(1).max(200),
+      description: z.string().max(1000).optional(),
+      dueAfterDays: z.number().int().min(0).max(365).nullable(),
+      skillId: z.string().uuid().nullable(),
+      kind: StepKindSchema.default('TASK'),
+      config: z.unknown().optional(),
+      // F8: strikte Validierung. Wird via emitN8nEvent als URL-Path-Segment
+      // an n8n geschickt — `?`, `#`, `/` würden die URL-Semantik ändern
+      // (Query, Fragment, Path-Traversal).
+      // L-7: zusätzlich kein Punkt erlaubt — sonst entstehen Sub-Hierarchien
+      // wie `workflow.step.foo.bar.baz`, die in n8n als verschachtelte
+      // Path-Segment-Trigger missrouten könnten. Erlaubt: lowercase + digits + _ -
+      n8nEvent: z
+        .string()
+        .regex(/^[a-z][a-z0-9_-]{0,40}$/, 'Nur Kleinbuchstaben, Ziffern, _- erlaubt (Start: Buchstabe, max. 41 Zeichen)')
+        .nullable()
+        .optional(),
+    }),
+  ).min(1),
+});
+
+export async function saveTemplateAction(input: z.infer<typeof SaveStepsSchema>): Promise<ActionResult> {
+  const session = await staffAuth();
+  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
+  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
+  const parsed = SaveStepsSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  const { tenantId, staffId } = session.user;
+
+  await withTenantContext(
+    { tenantId, actorId: staffId, actorType: 'STAFF' },
+    async (tx) => {
+      await tx.workflowTemplate.update({
+        where: { id: parsed.data.templateId },
+        data: {
+          description: parsed.data.description,
+          defaultSkillId: parsed.data.defaultSkillId,
+        },
+      });
+      // Steps komplett neu schreiben — einfacher als Diff
+      await tx.workflowStep.deleteMany({ where: { templateId: parsed.data.templateId } });
+      for (let i = 0; i < parsed.data.steps.length; i++) {
+        const s = parsed.data.steps[i]!;
+        const kind = s.kind ?? 'TASK';
+        const configResult = parseStepConfig(kind, s.config);
+        if (!configResult.ok) {
+          throw new Error(`Schritt „${s.title}" (${kind}): ${configResult.error}`);
+        }
+        await tx.workflowStep.create({
+          data: {
+            templateId: parsed.data.templateId,
+            position: i,
+            title: s.title,
+            description: s.description?.trim() || null,
+            dueAfterDays: s.dueAfterDays,
+            skillId: s.skillId,
+            kind,
+            config: configResult.value as object,
+            n8nEvent: (s.n8nEvent ?? '').trim() || null,
+          },
+        });
+      }
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'workflow.template.update',
+        resourceType: 'workflow_template',
+        resourceId: parsed.data.templateId,
+        after: { stepCount: parsed.data.steps.length },
+      });
+    },
+  );
+  revalidatePath('/staff/workflows/templates');
+  revalidatePath(`/staff/workflows/templates/${parsed.data.templateId}`);
+  return { ok: true };
+}
+
+// ----------------------------------------------------------------------------
+// Quick-Start: Workflow direkt aus der Vorlagen-Liste für einen Mandanten starten
+// ----------------------------------------------------------------------------
+
+export async function quickStartWorkflowAction(input: {
+  templateId: string;
+  clientId: string;
+}): Promise<ActionResult & { redirectTo?: string }> {
+  const r = await startInstanceAction(input);
+  if (!r.ok) return r;
+  return { ok: true, redirectTo: `/staff/clients/${input.clientId}/workflows` };
+}

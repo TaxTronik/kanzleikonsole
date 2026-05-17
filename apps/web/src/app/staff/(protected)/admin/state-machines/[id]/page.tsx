@@ -1,0 +1,91 @@
+import { redirect, notFound } from 'next/navigation';
+import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
+import { staffAuth } from '@/server/auth/staff';
+import { isStaffAdmin } from '@/server/auth/rbac';
+import { withTenantContext } from '@taxtronik/db';
+import { MachineEditor } from './editor';
+import { MachineMetaForm } from './meta-form';
+
+export default async function StateMachineEditPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const session = await staffAuth();
+  if (!session?.user) redirect('/staff/login');
+  if (!isStaffAdmin(session)) {
+    redirect('/staff/dashboard');
+  }
+  const { id } = await params;
+  const { tenantId, staffId } = session.user;
+
+  const data = await withTenantContext(
+    { tenantId, actorId: staffId, actorType: 'STAFF' },
+    async (tx) => {
+      const machine = await tx.stateMachine.findUnique({
+        where: { id },
+        include: {
+          states: { orderBy: { position: 'asc' } },
+          transitions: true,
+        },
+      });
+      if (!machine) return null;
+      return machine;
+    },
+  );
+  if (!data) notFound();
+
+  const statesByKey = new Map(data.states.map((s) => [s.id, s.key]));
+  const transitions = data.transitions.map((t) => ({
+    fromKey: statesByKey.get(t.fromStateId)!,
+    toKey: statesByKey.get(t.toStateId)!,
+    label: t.label,
+    conditionNote: t.conditionNote,
+  }));
+
+  return (
+    <div className="p-8 max-w-4xl">
+      <Link
+        href="/staff/admin/state-machines"
+        className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 mb-3"
+      >
+        <ArrowLeft className="h-3 w-3" />
+        Status-Maschinen
+      </Link>
+      <h1 className="text-2xl font-bold text-gray-900 mb-1">{data.name}</h1>
+      <p className="text-gray-500 text-sm mb-6">
+        <code className="font-mono text-xs">{data.slug}</code>
+        {data.appliesTo ? ` · gilt für ${data.appliesTo}` : ''}
+      </p>
+
+      <MachineMetaForm
+        machineId={data.id}
+        initial={{
+          name: data.name,
+          description: data.description ?? '',
+          appliesTo: data.appliesTo ?? '',
+          active: data.active,
+        }}
+      />
+
+      <MachineEditor
+        machineId={data.id}
+        initialStates={data.states.map((s) => ({
+          id: s.id,
+          key: s.key,
+          label: s.label,
+          color: s.color ?? '',
+          isInitial: s.isInitial,
+          isTerminal: s.isTerminal,
+        }))}
+        initialTransitions={transitions.map((t) => ({
+          fromKey: t.fromKey,
+          toKey: t.toKey,
+          label: t.label,
+          conditionNote: t.conditionNote ?? '',
+        }))}
+      />
+    </div>
+  );
+}

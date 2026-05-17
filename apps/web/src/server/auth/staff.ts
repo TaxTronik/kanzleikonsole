@@ -1,0 +1,338 @@
+import NextAuth, { type NextAuthConfig, type Session } from 'next-auth';
+import Credentials from 'next-auth/providers/credentials';
+import { compare } from 'bcryptjs';
+import { env } from '@taxtronik/config';
+import { decryptTotpSecret, verifyTotpCode } from './totp';
+import { recordFailedLogin, resetFailedLogin } from './lockout';
+import { isTokenRevoked } from './revocation';
+import { consumeTotpCode } from './totp-replay';
+import { prismaOwner } from '@/server/db/prisma-owner';
+import { log } from '@/server/logger';
+import { getClientIp, checkIpOrGlobalLimit } from '@/server/rate-limit';
+
+// Narrower Session-Typ für das Staff-Surface — Felder, die staff-spezifisch
+// sind (staffId, roles), sind hier verpflichtend. Module-Augmentation für
+// Session.user liegt zentral in src/types/next-auth.d.ts.
+export type StaffSession = Session & {
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    fullName: string;
+    tenantId: string;
+    staffId: string;
+    roles: string[];
+  };
+};
+
+interface StaffTokenPayload {
+  staffId: string;
+  tenantId: string;
+  fullName: string;
+  roles: string[];
+}
+
+function isStaffTokenPayload(t: unknown): t is StaffTokenPayload {
+  if (!t || typeof t !== 'object') return false;
+  const o = t as Record<string, unknown>;
+  return (
+    typeof o['staffId'] === 'string' &&
+    typeof o['tenantId'] === 'string' &&
+    typeof o['fullName'] === 'string' &&
+    Array.isArray(o['roles']) &&
+    o['roles'].every((r) => typeof r === 'string')
+  );
+}
+
+/**
+ * Fire-and-forget DB-Update, das im Hintergrund läuft. Fehler werden geloggt
+ * (Q6) — schluckt sie nicht stillschweigend, aber blockiert auch den
+ * Login-Flow nicht. Backoff/Retry ist hier bewusst nicht implementiert: bei
+ * persistentem DB-Ausfall hilft Retry nicht, und der Login-Pfad muss schnell
+ * antworten.
+ */
+function fireAndForget(label: string, p: Promise<unknown>): void {
+  p.catch((err: unknown) => {
+    log.warn({ label, err: (err as Error).message }, 'staff-auth: fire-and-forget failed');
+  });
+}
+
+const staffConfig: NextAuthConfig = {
+  basePath: '/api/auth/staff',
+  // S9: in Produktion explizit per env opt-in. Dev: implizit true für Komfort.
+  trustHost: env.NEXTAUTH_TRUST_HOST ?? (env.NODE_ENV !== 'production'),
+  secret: env.AUTH_SECRET,
+
+  providers: [
+    Credentials({
+      credentials: {
+        email: { label: 'E-Mail', type: 'email' },
+        password: { label: 'Passwort', type: 'password' },
+        totpCode: { label: 'TOTP-Code', type: 'text' },
+        tenantSlug: { label: 'Kanzlei', type: 'text' },
+      },
+      async authorize(credentials, request) {
+        const email = credentials?.email as string | undefined;
+        const password = credentials?.password as string | undefined;
+        const totpCode = (credentials?.totpCode as string | undefined) ?? '';
+        const tenantSlug = (credentials?.tenantSlug as string | undefined) ?? 'default';
+
+        // L-4: IP für IP-basierten Distinct-Lockout extrahieren. Wenn die
+        // Request-Headers fehlen (z. B. Test-Pfad), bleibt es null und der
+        // Lockout fällt automatisch auf den count-basierten Fallback zurück.
+        const ip = (() => {
+          try {
+            return request?.headers ? getClientIp(request.headers) : null;
+          } catch {
+            return null;
+          }
+        })();
+
+        if (!email || !password) return null;
+
+        // K1+N3: Pre-bcrypt-IP-Rate-Limit am NextAuth-callback. Per-IP eng,
+        // bei null-IP weiter globaler Sturm-Bucket (kein Per-Account-DoS).
+        // Hintergrund siehe docs/compliance/tenancy-model.md.
+        const rl = await checkIpOrGlobalLimit(
+          'staff-authorize',
+          ip,
+          { max: 10, windowSec: 600 },
+          { max: 200, windowSec: 600 },
+        );
+        if (!rl.ok) {
+          log.warn({ ip, bucket: ip ? 'per-ip' : 'global' }, 'staff-auth: authorize-rate-limit hit');
+          return null;
+        }
+
+        // Tenant via Owner-Verbindung laden (kein RLS-Kontext nötig)
+        const tenant = await prismaOwner.tenant.findFirst({
+          where: { slug: tenantSlug },
+        });
+        if (!tenant) return null;
+
+        // Mitarbeiter laden
+        const staffUser = await prismaOwner.staffUser.findFirst({
+          where: { tenantId: tenant.id, email },
+          include: { roles: true },
+        });
+        if (!staffUser || !staffUser.active) return null;
+
+        // Konto gesperrt?
+        if (staffUser.lockedUntil && staffUser.lockedUntil > new Date()) return null;
+
+        // Passwort prüfen
+        const passwordOk = await compare(password, staffUser.passwordHash);
+        if (!passwordOk) {
+          // Account-gebundener Lockout (S2): IP-RL allein hilft nicht gegen
+          // verteilte Brute-Force. Fehler werden geloggt, nicht geschluckt.
+          fireAndForget('recordFailedLogin', recordFailedLogin(prismaOwner, staffUser.id, ip));
+          return null;
+        }
+
+        // TOTP ist Pflicht — ohne Enrollment kein Login
+        if (!staffUser.totpSecretEnc || !staffUser.totpEnrolledAt) return null;
+
+        // TOTP-Code prüfen
+        if (!totpCode) return null;
+        const secret = decryptTotpSecret(staffUser.totpSecretEnc, tenant.id, env.AUTH_SECRET);
+        const totpValid = verifyTotpCode(totpCode, secret);
+
+        // V-1: Backup-Code-Recovery. Wenn TOTP nicht matched, prüfen wir gegen
+        // die hashedTotpBackupCodes (8 one-time-use codes aus dem Enrollment).
+        // bcrypt-compare ist teuer (12 rounds × 8 codes = ~1s im Worst Case),
+        // aber das ist der Recovery-Pfad — Latenz ist hier akzeptabel.
+        // totpBackupCodes ist im Schema Json? — wir holen die String-Liste raus.
+        const backupCodes: string[] = Array.isArray(staffUser.totpBackupCodes)
+          ? (staffUser.totpBackupCodes as unknown[]).filter((x): x is string => typeof x === 'string')
+          : [];
+        let usedBackupIndex = -1;
+        if (!totpValid && backupCodes.length > 0) {
+          for (let i = 0; i < backupCodes.length; i++) {
+            const hashed = backupCodes[i]!;
+            // eslint-disable-next-line no-await-in-loop
+            if (await compare(totpCode, hashed)) {
+              usedBackupIndex = i;
+              break;
+            }
+          }
+        }
+
+        if (!totpValid && usedBackupIndex < 0) {
+          fireAndForget('recordFailedLogin (TOTP)', recordFailedLogin(prismaOwner, staffUser.id, ip));
+          return null;
+        }
+
+        if (totpValid) {
+          // H5: Replay-Schutz. Auch wenn der Code mathematisch gültig ist, darf
+          // er pro (staffId, code) nur einmal akzeptiert werden. Fail-closed bei
+          // Redis-Ausfall (kein Redis → kein TOTP-Login).
+          const fresh = await consumeTotpCode(staffUser.id, totpCode);
+          if (fresh === null) {
+            log.warn({ staffId: staffUser.id }, 'staff-auth: TOTP-Replay-Store nicht erreichbar — Login abgewiesen');
+            return null;
+          }
+          if (!fresh) {
+            fireAndForget('recordFailedLogin (TOTP replay)', recordFailedLogin(prismaOwner, staffUser.id, ip));
+            return null;
+          }
+        } else {
+          // V-1/W-3: Backup-Code one-time-use atomar konsumieren. Vorher:
+          //   filter() + fireAndForget()
+          // hatte zwei Probleme:
+          //  - fire-and-forget: schlägt das Update transient fehl, bleibt der
+          //    benutzte Code im Array und kann ein zweites Mal akzeptiert
+          //    werden — one-time-Garantie weg.
+          //  - Read-Modify-Write race: zwei parallele Logins mit Codes A und B
+          //    lesen denselben Initial-Array, schreiben jeweils ihren
+          //    gefilterten Array zurück — letzter Writer gewinnt, einer der
+          //    Codes „kommt zurück".
+          // Fix: SELECT FOR UPDATE + Re-Check innerhalb $transaction, dann
+          // UPDATE. await — keine Background-Promise.
+          const usedHash = backupCodes[usedBackupIndex]!;
+          const consumed = await prismaOwner.$transaction(async (tx) => {
+            const rows = await tx.$queryRaw<{ totp_backup_codes: unknown }[]>`
+              SELECT totp_backup_codes FROM staff_user
+              WHERE id = ${staffUser.id}::uuid
+              FOR UPDATE
+            `;
+            const current: string[] = Array.isArray(rows[0]?.totp_backup_codes)
+              ? (rows[0]!.totp_backup_codes as unknown[]).filter(
+                  (x): x is string => typeof x === 'string',
+                )
+              : [];
+            const idx = current.indexOf(usedHash);
+            if (idx < 0) {
+              // Anderer Login hat denselben Code zwischenzeitlich konsumiert.
+              return false;
+            }
+            const remaining = current.filter((_, i) => i !== idx);
+            await tx.staffUser.update({
+              where: { id: staffUser.id },
+              data: { totpBackupCodes: remaining },
+            });
+            return remaining.length;
+          });
+          if (consumed === false) {
+            log.warn(
+              { staffId: staffUser.id },
+              'staff-auth: TOTP-Backup-Code Race verloren — Login abgewiesen',
+            );
+            fireAndForget('recordFailedLogin (backup race)', recordFailedLogin(prismaOwner, staffUser.id, ip));
+            return null;
+          }
+          log.warn(
+            { staffId: staffUser.id, remainingBackupCodes: consumed },
+            'staff-auth: TOTP-Backup-Code verwendet (Recovery-Pfad)',
+          );
+        }
+
+        // Erfolg → Counter resetten + Last-Login schreiben (fire-and-forget mit Log)
+        fireAndForget('resetFailedLogin', resetFailedLogin(prismaOwner, staffUser.id));
+        fireAndForget(
+          'lastLoginAt update',
+          prismaOwner.staffUser.update({
+            where: { id: staffUser.id },
+            data: { lastLoginAt: new Date() },
+          }),
+        );
+
+        return {
+          id: staffUser.id,
+          email: staffUser.email,
+          name: staffUser.fullName,
+          staffId: staffUser.id,
+          tenantId: tenant.id,
+          fullName: staffUser.fullName,
+          roles: staffUser.roles.map((r) => r.role as string),
+        };
+      },
+    }),
+  ],
+
+  // W-1: explizite Session-TTL. Auth.js-Default ist 30 Tage — die Doku
+  // (revocation.ts, S11) geht aber von 24 h aus. Ohne maxAge wäre der
+  // Revocation-Worst-Case 30 Tage statt einem Tag, was die Compliance-
+  // Aussage „Logout = Sessions sofort invalidiert (max. 24h-Restzeit)"
+  // bricht. updateAge: jedes Mal, wenn das Token innerhalb von 4 h vor
+  // seinem Ablauf benutzt wird, wird es serverseitig erneuert.
+  session: {
+    strategy: 'jwt',
+    maxAge: 24 * 60 * 60,
+    updateAge: 4 * 60 * 60,
+  },
+
+  cookies: {
+    sessionToken: {
+      name: '__taxtronik_staff_session',
+      options: {
+        httpOnly: true,
+        secure: env.NODE_ENV === 'production',
+        sameSite: 'lax' as const,
+        path: '/',
+        // Optional: Subdomain-Trennung (siehe docs/operations/subdomain-trennung.md)
+        ...(env.STAFF_COOKIE_DOMAIN ? { domain: env.STAFF_COOKIE_DOMAIN } : {}),
+      },
+    },
+  },
+
+  callbacks: {
+    jwt({ token, user }) {
+      if (user) {
+        const u = user as StaffTokenPayload;
+        token.staffId = u.staffId;
+        token.tenantId = u.tenantId;
+        token.fullName = u.fullName;
+        token.roles = u.roles;
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      // Runtime-Check statt blindem Cast (Q9): wenn das Token nicht die
+      // erwartete Form hat (JWT-Manipulation, Schema-Drift nach Update,
+      // Sessions vor Code-Change), liefern wir die Default-Session ohne
+      // Staff-Felder zurück. Aufrufer sehen dann nur das anonyme Session-
+      // Schema und werden von der Middleware/Action zum Login geschickt.
+      if (!isStaffTokenPayload(token)) return session;
+
+      // S11: Revocation-Check. `token.iat` (Sekunden seit Epoch) wird von
+      // NextAuth automatisch gesetzt; revokeAllSessions schreibt einen
+      // ms-Timestamp pro Account. Tokens davor sind ungültig.
+      const tokenIat = (token as { iat?: number }).iat;
+      if (await isTokenRevoked('staff', token.staffId, tokenIat)) {
+        // Keine Staff-Felder schreiben → staffAuth-Wrapper liefert null.
+        return session;
+      }
+
+      session.user.staffId = token.staffId;
+      session.user.tenantId = token.tenantId;
+      session.user.fullName = token.fullName;
+      session.user.roles = token.roles;
+      return session;
+    },
+  },
+
+  pages: {
+    signIn: '/staff/login',
+  },
+};
+
+const _staff = NextAuth(staffConfig);
+
+// Explizite typeof-Annotationen verhindern den TS-Inferenz-Pfad zu
+// .pnpm/@auth+core/... (TS4023 in pnpm-Workspaces). Siehe portal.ts.
+export const staffHandlers: typeof _staff.handlers = _staff.handlers;
+export const staffSignIn: typeof _staff.signIn = _staff.signIn;
+export const staffSignOut: typeof _staff.signOut = _staff.signOut;
+
+// Wrapper, der auf das narrower StaffSession-Typ castet. Aufrufer können
+// `session.user.staffId` / `roles` ohne `?` benutzen, weil im staff-Surface
+// die Credentials-Provider-`authorize` diese Felder garantiert. Zusätzlich:
+// wenn der Revocation-Check im session-Callback die Staff-Felder nicht
+// gesetzt hat (S11), liefern wir null statt einer halb-leeren Session.
+export const staffAuth = async (): Promise<StaffSession | null> => {
+  const raw = await _staff.auth();
+  if (!raw?.user) return null;
+  const u = raw.user as { staffId?: string };
+  if (!u.staffId) return null;
+  return raw as StaffSession;
+};

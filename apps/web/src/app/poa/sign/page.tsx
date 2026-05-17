@@ -1,0 +1,71 @@
+import { loadPoaForSigning } from '@/app/staff/(protected)/poa/actions';
+import { renderMarkdown } from '@/lib/markdown';
+import { SignFlow } from './sign-flow';
+
+export default async function PoaSignPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ token?: string }>;
+}) {
+  const sp = await searchParams;
+  const token = sp.token ?? '';
+  const result = await loadPoaForSigning(token);
+
+  if (!result.ok) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950 p-4">
+        <div className="card p-8 max-w-md w-full text-center">
+          <div className="text-3xl font-bold text-brand-700 mb-1">TaxTronik</div>
+          <p className="text-sm text-gray-500 mb-6">Vollmacht-Unterschrift</p>
+          <div className="rounded-md bg-red-50 p-4 text-sm text-red-700">
+            {result.error}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const { poa, tenantName } = result;
+  const html = renderMarkdown(poa.scope);
+
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 py-12 px-4">
+      <div className="max-w-3xl mx-auto">
+        <div className="text-center mb-8">
+          <div className="text-3xl font-bold text-brand-700 mb-1">TaxTronik</div>
+          <p className="text-sm text-gray-500">{tenantName} — Vollmacht zur elektronischen Unterschrift</p>
+        </div>
+
+        <div className="card p-8 mb-6">
+          <h1 className="text-2xl font-bold text-gray-900 mb-1">{poa.subject}</h1>
+          <p className="text-sm text-gray-500 mb-6">
+            Unterzeichner: {poa.signerName} ({poa.signerEmail})
+          </p>
+
+          <div className="grid grid-cols-2 gap-4 mb-6">
+            <div className="bg-gray-50 rounded-md p-3">
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Gültig ab</p>
+              <p className="text-sm font-medium">{new Intl.DateTimeFormat('de-DE').format(poa.validFrom)}</p>
+            </div>
+            <div className="bg-gray-50 rounded-md p-3">
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Gültig bis</p>
+              <p className="text-sm font-medium">
+                {poa.validUntil ? new Intl.DateTimeFormat('de-DE').format(poa.validUntil) : 'unbefristet'}
+              </p>
+            </div>
+          </div>
+
+          <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-3">
+            Vollmachtsumfang
+          </h2>
+          <div
+            className="prose prose-sm max-w-none [&_h1]:text-xl [&_h1]:font-bold [&_h2]:text-lg [&_h2]:font-semibold [&_p]:my-3 [&_ul]:list-disc [&_ul]:ml-6 mb-6"
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+        </div>
+
+        <SignFlow token={token} signerEmail={poa.signerEmail} />
+      </div>
+    </div>
+  );
+}

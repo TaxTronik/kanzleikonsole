@@ -1,0 +1,145 @@
+# =============================================================================
+# Beispiel-NGINX-Konfiguration für taxtronik
+#
+# Annahmen:
+#   - taxtronik-app läuft auf 127.0.0.1:3000 (Default seit P-4)
+#   - TLS-Zertifikat in /etc/letsencrypt/live/<domain>/...
+#   - Single-Host-Setup (kein Multi-Subdomain) — für Subdomain-Trennung siehe
+#     docs/operations/subdomain-trennung.md
+#
+# Diese Datei beantwortet die Findings aus dem Pen-Test-Skelett:
+#  - H-2: korrektes X-Forwarded-For (Client-supplied Header wird gestrippt)
+#  - R-2: NEXTAUTH_TRUST_HOST + Host-Header-Filterung
+#  - K-2: HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy
+#  - V-2: Rate-Limit auf /api/health gegen DoS-Polling
+# =============================================================================
+
+upstream taxtronik_app {
+    server 127.0.0.1:3000;
+    keepalive 32;
+}
+
+# -----------------------------------------------------------------------------
+# Rate-Limit-Zones — vor dem virtual host definiert.
+# -----------------------------------------------------------------------------
+limit_req_zone $binary_remote_addr zone=taxtronik_health:1m rate=20r/s;
+limit_req_zone $binary_remote_addr zone=taxtronik_login:1m rate=5r/s;
+limit_req_zone $binary_remote_addr zone=taxtronik_api:10m rate=50r/s;
+
+# -----------------------------------------------------------------------------
+# HTTP → HTTPS-Redirect
+# -----------------------------------------------------------------------------
+server {
+    listen 80;
+    listen [::]:80;
+    server_name kanzlei.example.com;
+
+    # ACME-Challenge für Let's Encrypt durchlassen
+    location /.well-known/acme-challenge/ {
+        root /var/www/letsencrypt;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# -----------------------------------------------------------------------------
+# Haupt-Vhost (HTTPS)
+# -----------------------------------------------------------------------------
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name kanzlei.example.com;
+
+    # ---- TLS ----
+    ssl_certificate     /etc/letsencrypt/live/kanzlei.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/kanzlei.example.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+    # OCSP-Stapling
+    ssl_stapling on;
+    ssl_stapling_verify on;
+    resolver 1.1.1.1 9.9.9.9 valid=60s;
+
+    # ---- Body-Limit (matched MAX_UPLOAD_BYTES = 100 MB in storage/service.ts) ----
+    client_max_body_size 100M;
+    # Vorab-Buffer für Form-Submits klein halten, damit kleine Requests
+    # nicht auf die Disk gehen.
+    client_body_buffer_size 16k;
+
+    # ---- H-2/R-2: X-Forwarded-For sauber befüllen ----
+    # client-supplied XFF-Header IGNORIEREN — Node-App liest x-forwarded-for
+    # via getClientIp und vertraut dem nur wenn TRUST_PROXY_REQUIRED=true.
+    # NGINX überschreibt den Header und hängt nur $remote_addr an.
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Real-IP       $remote_addr;
+    # Host-Header gegen Smuggling/Spoofing pinnen (sonst NEXTAUTH-Callback
+    # könnte auf gefälschten Host umgelenkt werden, S-9).
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    # Body-Streaming
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+
+    # ---- Security-Header (vom Reverse-Proxy gesetzt) ----
+    # HSTS: 1 Jahr, includeSubdomains, preload-fähig
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+    # Frame-Embedding: SAMEORIGIN statt DENY — der eigene Dokument-Viewer
+    # bettet Preview-Streams (PDF/Bild) per same-origin <iframe> ein. DENY
+    # würde das (zusätzlich zur App-CSP) hart blockieren. Cross-Origin-
+    # Framing (echter Clickjacking-Vektor) bleibt verboten. Muss zur
+    # App-Policy passen (next.config.mjs: frame-ancestors 'self').
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    # MIME-Sniffing ablehnen (B-Doku M-2)
+    add_header X-Content-Type-Options "nosniff" always;
+    # Referrer minimal halten
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    # Permissions-Policy (FLoC, Geolocation, Camera, USB blocken)
+    add_header Permissions-Policy "geolocation=(), microphone=(), camera=(), usb=()" always;
+    # CSP wird von Next.js selbst gesetzt (in app/layout via Headers) —
+    # NICHT hier doppelt setzen, sonst Konflikt.
+
+    # ---- V-2: Rate-Limit auf /api/health gegen DoS-Polling ----
+    location = /api/health {
+        limit_req zone=taxtronik_health burst=10 nodelay;
+        proxy_pass http://taxtronik_app;
+    }
+
+    # ---- Login-Endpoints stärker raten ----
+    location ~ ^/api/auth/(staff|portal)/callback/ {
+        limit_req zone=taxtronik_login burst=10 nodelay;
+        proxy_pass http://taxtronik_app;
+    }
+
+    # ---- Allgemeine API-Endpoints ----
+    location /api/ {
+        limit_req zone=taxtronik_api burst=20 nodelay;
+        proxy_pass http://taxtronik_app;
+        # WebSocket / SSE support (Notification-Stream falls genutzt)
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 300s;
+    }
+
+    # ---- Statische Assets: hohe Cache-Lebenszeit ----
+    location /_next/static/ {
+        proxy_pass http://taxtronik_app;
+        proxy_cache_valid 200 1y;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
+    # ---- Alles andere → App ----
+    location / {
+        proxy_pass http://taxtronik_app;
+        proxy_read_timeout 60s;
+    }
+
+    # ---- Server-Identification raus ----
+    server_tokens off;
+}

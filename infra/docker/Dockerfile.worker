@@ -1,0 +1,80 @@
+# =============================================================================
+# Worker-Dockerfile (BullMQ-Worker)
+#
+# Build: docker build -f infra/docker/Dockerfile.worker -t taxtronik/worker:latest .
+# =============================================================================
+
+FROM node:22-alpine AS deps
+RUN apk add --no-cache libc6-compat openssl
+WORKDIR /repo
+RUN corepack enable && corepack prepare pnpm@11.1.2 --activate
+
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
+COPY apps/worker/package.json ./apps/worker/
+COPY packages/config/package.json ./packages/config/
+COPY packages/crypto/package.json ./packages/crypto/
+COPY packages/db/package.json ./packages/db/
+COPY packages/evidence/package.json ./packages/evidence/
+COPY packages/http-utils/package.json ./packages/http-utils/
+COPY packages/n8n-shared/package.json ./packages/n8n-shared/
+COPY packages/rss/package.json ./packages/rss/
+COPY packages/storage/package.json ./packages/storage/
+COPY packages/tax/package.json ./packages/tax/
+
+# pnpm 11 blockt Build-Scripts; wir installieren ohne und rebuilden gezielt
+# im Builder-Stage (siehe Dockerfile.web).
+# --no-frozen-lockfile: wir haben kürzlich Deps in packages/* ergänzt, der
+# Lockfile ist beim ersten Build mit dem Web-Image neu geschrieben worden
+# (kann später nach Commit wieder zu --frozen-lockfile zurück).
+RUN pnpm install --frozen-lockfile --ignore-scripts --filter @taxtronik/worker...
+
+# ----- Builder ---------------------------------------------------------------
+FROM node:22-alpine AS builder
+RUN apk add --no-cache libc6-compat openssl
+WORKDIR /repo
+RUN corepack enable && corepack prepare pnpm@11.1.2 --activate
+
+COPY --from=deps /repo/node_modules ./node_modules
+COPY --from=deps /repo/apps/worker/node_modules ./apps/worker/node_modules
+COPY --from=deps /repo/packages ./packages
+COPY . .
+
+# Postinstall-Hooks nachholen (Prisma-Engine-Binaries, esbuild, etc.)
+RUN pnpm rebuild -r --filter @taxtronik/worker... \
+      @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver \
+    || true
+
+# pnpm 11 umgehen — siehe Dockerfile.web für Begründung
+RUN cd packages/db && \
+    PRISMA=$(find /repo -path "*/prisma/build/index.js" -not -path "*/cache/*" 2>/dev/null | head -1) && \
+    test -n "$PRISMA" && node "$PRISMA" generate
+
+# ----- Runtime ---------------------------------------------------------------
+# P-10: Kein corepack/pnpm in der Runtime-Stage. Reduziert Image-Größe und
+# verkleinert den Angriffsvektor. tsx wird zur Laufzeit per find lokalisiert
+# (pnpm-Store-Layout legt es nicht unter node_modules/.bin/ ab).
+FROM node:22-alpine AS runner
+RUN apk add --no-cache openssl
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+COPY --from=builder /repo/node_modules ./node_modules
+COPY --from=builder /repo/apps/worker ./apps/worker
+COPY --from=builder /repo/packages ./packages
+COPY --from=builder /repo/package.json ./
+
+USER node
+WORKDIR /app/apps/worker
+
+# Q-9: HEALTHCHECK auf den Heartbeat-File-Touch (siehe apps/worker/src/index.ts).
+# Worker schreibt alle 30 s nach /tmp/worker-alive; HEALTHCHECK schlägt fehl,
+# wenn die Datei älter als 90 s ist → Docker restartet den Container.
+# Vorher: kein Healthcheck → Worker konnte deadlock'en, ohne dass Restart-Policy
+# greift.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD node -e "const s=require('node:fs').statSync('/tmp/worker-alive'); if (Date.now()-s.mtimeMs > 90000) process.exit(1)" || exit 1
+
+# tsx-CLI im pnpm-Store lokalisieren (Pfad enthält Versions-Hash, daher
+# find statt hardcoded). WORKDIR ist /app/apps/worker, src/index.ts relativ.
+CMD ["sh", "-c", "TSX=$(find /app -path '*/tsx/dist/cli.mjs' -not -path '*/cache/*' 2>/dev/null | head -1); test -n \"$TSX\" || { echo 'FATAL: tsx CLI nicht im Image gefunden'; exit 1; }; exec node \"$TSX\" src/index.ts"]

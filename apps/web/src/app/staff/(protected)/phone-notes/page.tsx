@@ -1,0 +1,119 @@
+import { staffAuth } from '@/server/auth/staff';
+import { withTenantContext } from '@taxtronik/db';
+import { redirect } from 'next/navigation';
+import { Phone } from 'lucide-react';
+import { NewPhoneNoteForm } from './new-form';
+import { PhoneNotesList } from '@/app/staff/(protected)/clients/[id]/phone-notes-list';
+
+export default async function PhoneNotesPage() {
+  const session = await staffAuth();
+  if (!session?.user) redirect('/staff/login');
+
+  const { tenantId, staffId } = session.user;
+
+  const [notes, clients, staff, callerHistory] = await withTenantContext(
+    { tenantId, actorId: staffId, actorType: 'STAFF' },
+    async (tx) =>
+      Promise.all([
+        tx.phoneNote.findMany({
+          orderBy: [
+            { doneAt: { sort: 'asc', nulls: 'first' } },
+            { readAt: 'asc' },
+            { createdAt: 'desc' },
+          ],
+          include: { client: { select: { id: true, name: true } } },
+          take: 100,
+        }),
+        tx.client.findMany({
+          orderBy: { name: 'asc' },
+          select: { id: true, name: true },
+        }),
+        tx.staffUser.findMany({
+          where: { active: true },
+          orderBy: { fullName: 'asc' },
+          select: { id: true, fullName: true },
+        }),
+        tx.phoneNote.findMany({
+          orderBy: { createdAt: 'desc' },
+          select: { callerName: true, callerPhone: true, clientId: true },
+          take: 500,
+        }),
+      ]),
+  );
+
+  const callerMap = new Map<string, { name: string; phone: string | null; clientId: string | null }>();
+  for (const c of callerHistory) {
+    const key = c.callerName.trim().toLowerCase();
+    if (!key) continue;
+    if (callerMap.has(key)) continue;
+    callerMap.set(key, { name: c.callerName.trim(), phone: c.callerPhone, clientId: c.clientId });
+  }
+  const callers = Array.from(callerMap.values()).slice(0, 100);
+
+  const openCount = notes.filter((n) => !n.doneAt).length;
+  const unreadCount = notes.filter((n) => !n.readAt && !n.doneAt).length;
+
+  return (
+    <div className="p-8">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">Telefonzettel</h1>
+        <p className="text-gray-500 dark:text-gray-400 text-sm">
+          Anrufe protokollieren, übertragen oder in Wiedervorlage überführen.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2">
+          <div className="mb-3 flex items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
+            <span className="font-medium text-gray-900 dark:text-gray-100">
+              {openCount} offen
+            </span>
+            {unreadCount > 0 && (
+              <span className="text-yellow-700 dark:text-yellow-400">
+                · {unreadCount} ungelesen
+              </span>
+            )}
+          </div>
+
+          {notes.length === 0 ? (
+            <div className="card px-6 py-16 text-center">
+              <Phone className="h-12 w-12 text-gray-200 dark:text-gray-700 mx-auto mb-3" />
+              <p className="text-sm text-gray-400">Noch keine Telefonnotizen.</p>
+            </div>
+          ) : (
+            <div className="card overflow-hidden">
+              <PhoneNotesList
+                currentStaffId={staffId}
+                staffOptions={staff}
+                notes={notes.map((n) => ({
+                  id: n.id,
+                  subject: n.subject,
+                  callerName: n.callerName,
+                  callerPhone: n.callerPhone,
+                  body: n.body,
+                  forwardToStaff: n.forwardToStaff,
+                  doneAt: n.doneAt ? n.doneAt.toISOString() : null,
+                  readAt: n.readAt ? n.readAt.toISOString() : null,
+                  createdAt: n.createdAt.toISOString(),
+                  takenByStaff: n.takenByStaff,
+                  clientId: n.clientId,
+                  client: n.client,
+                }))}
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="card p-6 h-fit lg:sticky lg:top-6">
+          <h2 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-4">Neue Notiz</h2>
+          <NewPhoneNoteForm
+            clients={clients}
+            staff={staff}
+            currentStaffId={staffId}
+            callers={callers}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}

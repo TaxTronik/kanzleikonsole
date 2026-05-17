@@ -1,0 +1,21 @@
+# Shell-Scripts und der dc-Wrapper MÜSSEN LF behalten — sonst scheitert
+# der Linux-Server mit „bad interpreter: /usr/bin/env bash^M".
+dc                text eol=lf
+*.sh              text eol=lf
+infra/scripts/*   text eol=lf
+
+# Normale Quelltexte: LF im Repo, lokale Working-Copy nach Plattform.
+*.ts              text
+*.tsx             text
+*.js              text
+*.mjs             text
+*.json            text
+*.yml             text eol=lf
+*.yaml            text eol=lf
+*.md              text
+
+# Binär — nie anfassen.
+*.png             binary
+*.jpg             binary
+*.pdf             binary
+*.ico             binary

@@ -1,0 +1,84 @@
+{
+  "name": "01 — Request Reminder (täglich)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            { "field": "cronExpression", "expression": "0 9 * * 1-5" }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Werktags 09:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.TAXTRONIK_API_URL }}/api/n8n/overdue-requests",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "fetch-overdue",
+      "name": "Fetch überfällige Requests",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300],
+      "credentials": {
+        "httpHeaderAuth": { "id": "taxtronik-hmac", "name": "Taxtronik HMAC Auth" }
+      }
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "requests",
+        "options": {}
+      },
+      "id": "split-requests",
+      "name": "Pro Request iterieren",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.SMTP_FROM }}",
+        "toEmail": "={{ $json.signerEmail }}",
+        "subject": "Erinnerung: {{ $json.title }}",
+        "text": "Hallo {{ $json.contactName }},\n\nfolgende Anforderung Ihrer Kanzlei ist seit {{ $json.daysOverdue }} Tag(en) offen:\n\n  {{ $json.title }}\n\nBitte loggen Sie sich im Mandantenportal ein, um zu antworten:\n  {{ $env.TAXTRONIK_API_URL }}/portal/requests/{{ $json.id }}\n\nFreundliche Grüße\nIhre Kanzlei",
+        "options": {}
+      },
+      "id": "send-reminder-mail",
+      "name": "Reminder-Mail senden",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [900, 300],
+      "credentials": {
+        "smtp": { "id": "smtp-credential", "name": "Kanzlei SMTP" }
+      }
+    }
+  ],
+  "connections": {
+    "Werktags 09:00": {
+      "main": [[{ "node": "Fetch überfällige Requests", "type": "main", "index": 0 }]]
+    },
+    "Fetch überfällige Requests": {
+      "main": [[{ "node": "Pro Request iterieren", "type": "main", "index": 0 }]]
+    },
+    "Pro Request iterieren": {
+      "main": [[{ "node": "Reminder-Mail senden", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": true
+  },
+  "versionId": "1.0",
+  "meta": {
+    "instanceId": "taxtronik-default"
+  }
+}

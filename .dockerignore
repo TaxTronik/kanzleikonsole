@@ -1,0 +1,64 @@
+# =============================================================================
+# .dockerignore — schließt sensible Werkstatt-Dateien aus dem Build-Kontext aus.
+#
+# X-1: Beide Dockerfiles (Dockerfile.web, Dockerfile.worker) machen `COPY . .`
+# im Builder-Stage. Ohne dieses File würden .env, .admin-credentials.txt,
+# licensing-private-*.pem etc. in die Builder-Layer kopiert. Multi-Stage-
+# Runtime kopiert davon nichts weiter, aber:
+#   - Build-Cache (lokal + Registry-pushed) enthält die Layer-Inhalte
+#   - BuildKit-Cache-Mounts / CI-Reuse legen Builder-Layer offen
+#   - `docker history` zeigt Layer-Größen und Diffs
+# Konservativ alles ausschließen, was nicht ins Image MUSS.
+# =============================================================================
+
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build-Output
+.next
+.turbo
+dist
+build
+out
+*.tsbuildinfo
+
+# Secrets & lokale Konfiguration
+.env
+.env.*
+.admin-credentials.txt
+licensing-private-*.pem
+infra/scripts/seaweedfs-s3.generated.json
+
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Test-Output
+coverage
+.nyc_output
+playwright-report
+test-results
+
+# Editor / OS
+.vscode
+.idea
+*.swp
+.DS_Store
+
+# Git / Docker selbst
+.git
+.gitignore
+.dockerignore
+Dockerfile
+docker-compose*.yml
+
+# Demo- und Dev-Material — Build braucht keine Excel-Mocks
+DEMODATEN
+.VSCodeCounter
+
+# CI- / lokale Notes
+install.log
+.claude

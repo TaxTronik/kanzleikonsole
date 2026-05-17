@@ -1,0 +1,57 @@
+node_modules/
+.pnpm-store/
+
+# Build-Output
+.next/
+.turbo/
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# ENV — niemals committen, nur .env.example
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Editoren
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Tests / Coverage
+coverage/
+.nyc_output/
+
+# Prisma
+packages/db/prisma/migrations/_temp/
+
+# Docker volumes (lokale dev)
+infra/compose/.volumes/
+
+# Setup-gerenderte Config-Dateien (enthalten Secrets aus .env)
+infra/scripts/seaweedfs-s3.generated.json
+
+# S-4: Lizenz-Private-Keys (siehe scripts/license-keygen.ts).
+licensing-private-*.pem
+
+# U-3: Seed-generierte Admin-Credentials.
+.admin-credentials.txt
+
+# Lokale Brainstorming-/Backlog-Notizen (privat, nicht commiten).
+IDEAS.md
+
+# Demo-/Mock-Datensätze (lokal, nicht commiten — können personenbezogene
+# Daten in DATEV-/Addison-Mustern enthalten).
+DEMODATEN/
+
+# Playwright
+playwright-report/
+test-results/

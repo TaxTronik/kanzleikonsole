@@ -1,0 +1,20 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# pnpm 11: Workspace-Pakete in dependents per echtes Link-Hardlink statt
+# Symlink injizieren. Der Wert steht im Lockfile; muss hier gespiegelt werden,
+# sonst meldet `pnpm install --frozen-lockfile` einen Config-Mismatch.
+injectWorkspacePackages: true
+
+# pnpm 11: Build-Scripts (postinstall etc.) sind per Default deaktiviert.
+# Hier explizit die Pakete listen, deren Build-Hooks wir laufen lassen wollen.
+# Alles andere bleibt geblockt — Supply-Chain-Härtung gegen bösartige
+# postinstall-Scripts in transitiven Deps.
+onlyBuiltDependencies:
+  - "@prisma/client"
+  - "@prisma/engines"
+  - prisma
+  - esbuild
+  - sharp
+  - unrs-resolver

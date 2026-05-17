@@ -1,0 +1,215 @@
+import { redirect, notFound } from 'next/navigation';
+import Link from 'next/link';
+import { ArrowLeft, Send, CheckCircle2, X, FileCode } from 'lucide-react';
+import { staffAuth } from '@/server/auth/staff';
+import { withTenantContext } from '@taxtronik/db';
+import { markSentAction, markPaidAction, cancelInvoiceAction } from '../actions';
+
+const statusLabels: Record<string, string> = {
+  DRAFT: 'Entwurf',
+  SENT: 'Versendet',
+  PAID: 'Bezahlt',
+  OVERDUE: 'Überfällig',
+  CANCELLED: 'Storniert',
+};
+
+const formatLabels: Record<string, string> = {
+  PDF: 'PDF',
+  XRECHNUNG: 'XRechnung (XML)',
+  ZUGFERD: 'ZUGFeRD (Hybrid PDF/A-3)',
+};
+
+export default async function InvoiceDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const session = await staffAuth();
+  if (!session?.user) redirect('/staff/login');
+
+  const { id } = await params;
+  const { tenantId, staffId } = session.user;
+
+  const inv = await withTenantContext(
+    { tenantId, actorId: staffId, actorType: 'STAFF' },
+    (tx) =>
+      tx.invoice.findUnique({
+        where: { id },
+        include: {
+          client: true,
+          positions: { orderBy: { position: 'asc' } },
+          document: true,
+        },
+      }),
+  );
+
+  if (!inv) notFound();
+
+  return (
+    <div className="p-8 max-w-4xl">
+      <div className="flex items-start gap-4 mb-6">
+        <Link href="/staff/invoices" className="text-gray-400 hover:text-gray-600 mt-1">
+          <ArrowLeft className="h-5 w-5" />
+        </Link>
+        <div className="flex-1">
+          <div className="flex items-center gap-3 mb-1">
+            <h1 className="text-2xl font-bold text-gray-900">
+              Rechnung {inv.number}
+            </h1>
+            {inv.status === 'DRAFT' && <span className="badge-gray">{statusLabels[inv.status]}</span>}
+            {inv.status === 'SENT' && <span className="badge-yellow">{statusLabels[inv.status]}</span>}
+            {inv.status === 'PAID' && <span className="badge-green">{statusLabels[inv.status]}</span>}
+            {inv.status === 'OVERDUE' && <span className="badge-red">{statusLabels[inv.status]}</span>}
+            {inv.status === 'CANCELLED' && <span className="badge-gray">{statusLabels[inv.status]}</span>}
+          </div>
+          <p className="text-gray-500 text-sm">
+            an{' '}
+            <Link href={`/staff/clients/${inv.client.id}`} className="hover:underline">
+              {inv.client.name}
+            </Link>
+            {' · '}
+            {formatLabels[inv.format]}
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4 mb-6">
+        <KV label="Betreff" value={inv.subject} />
+        <KV
+          label="Rechnungsdatum"
+          value={new Intl.DateTimeFormat('de-DE').format(inv.issueDate)}
+        />
+        <KV
+          label="Fällig"
+          value={new Intl.DateTimeFormat('de-DE').format(inv.dueDate)}
+        />
+      </div>
+
+      <div className="card overflow-hidden mb-6">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50 border-b border-gray-200">
+              <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Pos</th>
+              <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Beschreibung</th>
+              <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Menge</th>
+              <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Einzelpreis</th>
+              <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Netto</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {inv.positions.map((p) => (
+              <tr key={p.id}>
+                <td className="px-6 py-3 text-gray-500">{p.position}</td>
+                <td className="px-6 py-3 text-gray-900">{p.description}</td>
+                <td className="px-6 py-3 text-right font-mono tabular-nums text-gray-600">
+                  {Number(p.quantity).toLocaleString('de-DE')} {p.unit}
+                </td>
+                <td className="px-6 py-3 text-right font-mono tabular-nums">
+                  {fmtEUR(p.unitPrice)}
+                </td>
+                <td className="px-6 py-3 text-right font-mono tabular-nums">
+                  {fmtEUR(p.netAmount)}
+                </td>
+              </tr>
+            ))}
+            <tr className="bg-gray-50">
+              <td colSpan={4} className="px-6 py-3 text-right text-gray-700">Netto</td>
+              <td className="px-6 py-3 text-right font-mono tabular-nums">{fmtEUR(inv.netAmount)}</td>
+            </tr>
+            <tr className="bg-gray-50">
+              <td colSpan={4} className="px-6 py-3 text-right text-gray-700">
+                USt ({Number(inv.vatRate)} %)
+              </td>
+              <td className="px-6 py-3 text-right font-mono tabular-nums">{fmtEUR(inv.vatAmount)}</td>
+            </tr>
+            <tr className="bg-gray-100 font-bold">
+              <td colSpan={4} className="px-6 py-3 text-right text-gray-900">Brutto</td>
+              <td className="px-6 py-3 text-right font-mono tabular-nums text-gray-900">{fmtEUR(inv.totalAmount)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {inv.notes && (
+        <div className="card p-6 mb-6">
+          <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Notizen</h3>
+          <p className="text-sm text-gray-700 whitespace-pre-wrap">{inv.notes}</p>
+        </div>
+      )}
+
+      {inv.document && (
+        <div className="card p-4 mb-6 flex items-center justify-between">
+          <span className="text-sm text-gray-700">PDF: {inv.document.title}</span>
+          <a
+            href={`/api/staff/documents/${inv.document.id}/download`}
+            className="text-sm text-brand-700 hover:underline"
+          >
+            Öffnen
+          </a>
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        <a
+          href={`/api/staff/invoices/${inv.id}/xrechnung`}
+          className="btn-secondary"
+          title="XRechnung 3.0 (XML) herunterladen"
+        >
+          <FileCode className="h-4 w-4" />
+          XRechnung (XML)
+        </a>
+        <a
+          href={`/api/staff/invoices/${inv.id}/zugferd`}
+          className="btn-secondary"
+          title="ZUGFeRD/Factur-X PDF (mit eingebetteter XRechnung-XML) herunterladen"
+        >
+          <FileCode className="h-4 w-4" />
+          ZUGFeRD (PDF)
+        </a>
+        {inv.status === 'DRAFT' && (
+          <form action={markSentAction}>
+            <input type="hidden" name="invoiceId" value={inv.id} />
+            <button type="submit" className="btn-primary">
+              <Send className="h-4 w-4" />
+              Als versendet markieren
+            </button>
+          </form>
+        )}
+        {(inv.status === 'SENT' || inv.status === 'OVERDUE') && (
+          <form action={markPaidAction}>
+            <input type="hidden" name="invoiceId" value={inv.id} />
+            <button type="submit" className="btn-primary">
+              <CheckCircle2 className="h-4 w-4" />
+              Als bezahlt markieren
+            </button>
+          </form>
+        )}
+        {inv.status !== 'CANCELLED' && inv.status !== 'PAID' && (
+          <form action={cancelInvoiceAction}>
+            <input type="hidden" name="invoiceId" value={inv.id} />
+            <button type="submit" className="btn-secondary text-red-700 border-red-300 hover:bg-red-50">
+              <X className="h-4 w-4" />
+              Stornieren
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function KV({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="card p-4">
+      <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">{label}</p>
+      <p className="text-sm font-medium text-gray-900">{value}</p>
+    </div>
+  );
+}
+
+function fmtEUR(n: { toString(): string }): string {
+  return new Intl.NumberFormat('de-DE', {
+    style: 'currency',
+    currency: 'EUR',
+  }).format(Number(n.toString()));
+}

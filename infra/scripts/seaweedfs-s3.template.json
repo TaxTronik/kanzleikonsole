@@ -1,0 +1,32 @@
+{
+  "identities": [
+    {
+      "name": "taxtronik",
+      "credentials": [
+        {
+          "accessKey": "__S3_ACCESS_KEY__",
+          "secretKey": "__S3_SECRET_KEY__"
+        }
+      ],
+      "actions": [
+        "Admin",
+        "Read",
+        "Write",
+        "List",
+        "Tagging",
+        "GetBucketAcl",
+        "PutBucketAcl",
+        "GetObjectAcl",
+        "PutObjectAcl",
+        "GetObjectRetention",
+        "PutObjectRetention",
+        "GetObjectLegalHold",
+        "PutObjectLegalHold",
+        "GetBucketObjectLockConfiguration",
+        "PutBucketObjectLockConfiguration",
+        "GetBucketVersioning",
+        "PutBucketVersioning"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+# =============================================================================
+# Dev-Override — fügt Hilfsdienste für lokale Entwicklung hinzu:
+#   - Mailhog  (SMTP-Catcher, Web-UI auf http://localhost:8025)
+#   - n8n      (Workflow-Engine, UI auf http://localhost:5678)
+#
+# Verwendung:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#
+# Defaults sind so gesetzt, dass `docker compose up` ohne weitere Konfiguration
+# läuft. Für produktiven Einsatz wechselt man auf docker-compose.app.yml und
+# pflegt eigene Secrets in der .env.
+# =============================================================================
+
+# P-11: Hardening-Anchor — siehe docker-compose.yml. Compose merged Anchors
+# pro File; daher hier nochmal definieren.
+x-hardening: &hardening
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
+services:
+  mailhog:
+    <<: *hardening
+    image: mailhog/mailhog:latest
+    container_name: taxtronik-mailhog
+    restart: unless-stopped
+    ports:
+      # P-4: Dev-Tools an localhost binden — Mailhog hat keine Auth.
+      - "127.0.0.1:1025:1025"   # SMTP
+      - "127.0.0.1:8025:8025"   # Web-UI
+
+  n8n:
+    <<: *hardening
+    image: n8nio/n8n:latest
+    container_name: taxtronik-n8n
+    restart: unless-stopped
+    # n8n läuft als node-User; braucht CHOWN für /home/node/.n8n.
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+    environment:
+      N8N_HOST: localhost
+      N8N_PORT: 5678
+      N8N_PROTOCOL: http
+      WEBHOOK_URL: http://localhost:5678/
+      GENERIC_TIMEZONE: Europe/Berlin
+      # Im Dev erreicht n8n die App vom Host aus (Container-Bridge bietet
+      # `host.docker.internal` auf Docker Desktop). Für produktives Setup wird
+      # `app` als Service-Name in docker-compose.app.yml referenziert.
+      TAXTRONIK_API_URL: http://host.docker.internal:3000
+      N8N_HMAC_SECRET: ${N8N_HMAC_SECRET:-dev-only-hmac-secret-min-32-chars-long-xxx}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-dev-only-n8n-encryption-key-xxxxxxxx}
+      # SQLite-Default — keine Postgres-Konfiguration nötig. Für Production
+      # nutzt docker-compose.app.yml einen separaten n8n-DB-User in Postgres.
+      DB_TYPE: sqlite
+      N8N_SECURE_COOKIE: 'false'
+      N8N_DIAGNOSTICS_ENABLED: 'false'
+    ports:
+      # P-4: n8n-UI hat zwar Login, aber für Dev reicht 127.0.0.1.
+      - "127.0.0.1:5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ../n8n/workflows:/workflows:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  n8n_data:

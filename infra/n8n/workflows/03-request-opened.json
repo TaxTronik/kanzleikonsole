@@ -1,0 +1,77 @@
+{
+  "name": "03 — Request Opened (Webhook von App)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "request.opened",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "webhook",
+      "name": "Webhook von taxtronik",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "request-opened-handler"
+    },
+    {
+      "parameters": {
+        "jsCode": "// HMAC-Signatur prüfen — Header x-taxtronik-signature gegen body verifizieren\nimport crypto from 'crypto';\nconst secret = $env.N8N_HMAC_SECRET;\nconst body = $input.item.json.body || JSON.stringify($input.item.json);\nconst sig = $input.item.json.headers?.['x-taxtronik-signature'] || '';\nconst expected = 'sha256=' + crypto.createHmac('sha256', secret).update(typeof body === 'string' ? body : JSON.stringify(body)).digest('hex');\nif (sig !== expected) {\n  throw new Error('HMAC-Signatur ungültig');\n}\nreturn $input.item;"
+      },
+      "id": "verify-hmac",
+      "name": "HMAC verifizieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.TAXTRONIK_API_URL }}/api/n8n/request-detail/{{ $json.body.payload.requestId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "fetch-detail",
+      "name": "Request-Details holen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300],
+      "credentials": {
+        "httpHeaderAuth": { "id": "taxtronik-hmac", "name": "Taxtronik HMAC Auth" }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.SMTP_FROM }}",
+        "toEmail": "={{ $json.contactEmail }}",
+        "subject": "Neue Anforderung Ihrer Kanzlei: {{ $json.title }}",
+        "text": "Hallo {{ $json.contactName }},\n\nIhre Kanzlei hat eine neue Anforderung an Sie gesendet:\n\n  {{ $json.title }}\n\n{{ $json.description }}\n\n{{ $json.dueAt ? 'Bitte bis spätestens ' + $json.dueAt + ' beantworten.\\n\\n' : '' }}Antworten Sie bequem im Mandantenportal:\n  {{ $env.TAXTRONIK_API_URL }}/portal/requests/{{ $json.id }}\n\nFreundliche Grüße\nIhre Kanzlei",
+        "options": {}
+      },
+      "id": "send-notify",
+      "name": "Benachrichtigung an Mandant",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [900, 300],
+      "credentials": {
+        "smtp": { "id": "smtp-credential", "name": "Kanzlei SMTP" }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook von taxtronik": {
+      "main": [[{ "node": "HMAC verifizieren", "type": "main", "index": 0 }]]
+    },
+    "HMAC verifizieren": {
+      "main": [[{ "node": "Request-Details holen", "type": "main", "index": 0 }]]
+    },
+    "Request-Details holen": {
+      "main": [[{ "node": "Benachrichtigung an Mandant", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "1.0"
+}

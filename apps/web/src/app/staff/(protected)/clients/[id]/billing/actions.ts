@@ -1,0 +1,219 @@
+'use server';
+
+import { z } from 'zod';
+import { redirect } from 'next/navigation';
+import { revalidatePath } from 'next/cache';
+import { staffAuth } from '@/server/auth/staff';
+import { withTenantContext } from '@taxtronik/db';
+import { evidenceService } from '@/server/container';
+
+const CreateSchema = z.object({
+  clientId: z.string().uuid(),
+  number: z.string().min(1).max(50),
+  subject: z.string().min(1).max(500),
+  issueDate: z.string().date(),
+  dueDate: z.string().date(),
+  vatRate: z.coerce.number().min(0).max(99).default(19),
+  format: z.enum(['PDF', 'XRECHNUNG', 'ZUGFERD']).default('XRECHNUNG'),
+  hourlyRate: z.coerce.number().min(0).max(10000).default(120),
+  // Welche Strategie:
+  //   - 'one-line': eine Position „Beratungsstunden Q3 2025" mit Σ Minuten
+  //   - 'per-entry': jeder Time-Entry wird zu einer Position
+  strategy: z.enum(['one-line', 'per-entry']).default('one-line'),
+  // ID-Filter: nur diese Time-Entries einschließen (sonst alle nicht-abgerechneten billable für diesen Mandanten)
+  entryIds: z.array(z.string().uuid()).optional(),
+  notes: z.string().max(5000).optional().or(z.literal('')),
+});
+
+export interface CreateResult {
+  ok: boolean;
+  error?: string;
+  invoiceId?: string;
+}
+
+export async function createInvoiceFromTimeEntriesAction(input: z.infer<typeof CreateSchema>): Promise<CreateResult> {
+  const session = await staffAuth();
+  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
+
+  const parsed = CreateSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues.map((i) => i.message).join('; ') };
+  }
+  const data = parsed.data;
+  const { tenantId, staffId } = session.user;
+
+  let invoiceId: string;
+  try {
+    invoiceId = await withTenantContext(
+      { tenantId, actorId: staffId, actorType: 'STAFF' },
+      async (tx) => {
+        // 1. Sammle abrechenbare, nicht abgerechnete TimeEntries
+        const where = {
+          tenantId,
+          clientId: data.clientId,
+          billable: true,
+          invoiceId: null,
+          endedAt: { not: null }, // nur abgeschlossene Timer
+          ...(data.entryIds ? { id: { in: data.entryIds } } : {}),
+        };
+        const entries = await tx.timeEntry.findMany({
+          where,
+          orderBy: { startedAt: 'asc' },
+        });
+        if (entries.length === 0) {
+          throw new Error('Keine abrechenbaren Stunden für diesen Mandanten.');
+        }
+
+        // 2. Stundenwerte berechnen
+        const entriesWithMinutes = entries.map((e) => {
+          const end = e.endedAt!;
+          const minutes = Math.max(0, Math.floor((end.getTime() - e.startedAt.getTime()) / 60_000));
+          const hours = minutes / 60;
+          // Stundensatz: pro-entry-Override > Default-Rate
+          const rate = e.hourlyRate ? Number(e.hourlyRate.toString()) : data.hourlyRate;
+          return { entry: e, minutes, hours, rate, net: round2(hours * rate) };
+        });
+
+        const totalNet = round2(entriesWithMinutes.reduce((s, x) => s + x.net, 0));
+        const vatAmount = round2((totalNet * data.vatRate) / 100);
+        const totalGross = round2(totalNet + vatAmount);
+
+        // 3. Positionen je nach Strategie
+        let positions: Array<{
+          position: number;
+          description: string;
+          quantity: number;
+          unit: string;
+          unitPrice: number;
+          netAmount: number;
+        }>;
+
+        if (data.strategy === 'one-line') {
+          const totalHours = round2(entriesWithMinutes.reduce((s, x) => s + x.hours, 0));
+          const avgRate = totalHours > 0 ? round2(totalNet / totalHours) : data.hourlyRate;
+          positions = [
+            {
+              position: 1,
+              description: data.subject,
+              quantity: totalHours,
+              unit: 'Stunde',
+              unitPrice: avgRate,
+              netAmount: totalNet,
+            },
+          ];
+        } else {
+          positions = entriesWithMinutes.map((x, i) => ({
+            position: i + 1,
+            description: `${formatDateShort(x.entry.startedAt)} — ${x.entry.description}`,
+            quantity: round2(x.hours),
+            unit: 'Stunde',
+            unitPrice: x.rate,
+            netAmount: x.net,
+          }));
+        }
+
+        // 4. Rechnung anlegen
+        const inv = await tx.invoice.create({
+          data: {
+            tenantId,
+            clientId: data.clientId,
+            number: data.number,
+            subject: data.subject,
+            issueDate: new Date(data.issueDate),
+            dueDate: new Date(data.dueDate),
+            status: 'DRAFT',
+            format: data.format,
+            netAmount: totalNet,
+            vatAmount,
+            totalAmount: totalGross,
+            vatRate: data.vatRate,
+            notes: data.notes || null,
+            createdByStaff: staffId,
+            positions: { create: positions },
+          },
+        });
+
+        // 5. TimeEntries verlinken
+        await tx.timeEntry.updateMany({
+          where: { id: { in: entries.map((e) => e.id) } },
+          data: { invoiceId: inv.id },
+        });
+
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'invoice.create.from_time',
+          resourceType: 'invoice',
+          resourceId: inv.id,
+          after: {
+            number: data.number,
+            clientId: data.clientId,
+            timeEntryCount: entries.length,
+            totalAmount: totalGross,
+            strategy: data.strategy,
+          },
+        });
+
+        return inv.id;
+      },
+    );
+  } catch (e) {
+    const msg = (e as Error).message;
+    if (msg.includes('GwG-Schranke') || msg.includes('nicht aktiv')) {
+      return { ok: false, error: 'Mandant ist nicht aktiv (GwG-Prüfung ausstehend).' };
+    }
+    if (msg.includes('Unique')) {
+      return { ok: false, error: 'Rechnungsnummer existiert bereits.' };
+    }
+    return { ok: false, error: msg };
+  }
+
+  revalidatePath(`/staff/clients/${data.clientId}`);
+  revalidatePath('/staff/invoices');
+  return { ok: true, invoiceId };
+}
+
+/**
+ * Variante als Form-Action (für direkten POST aus dem UI).
+ * Nutzt 'one-line' und alle nicht-abgerechneten Stunden.
+ */
+export async function billAllPendingHoursAction(formData: FormData): Promise<void> {
+  const session = await staffAuth();
+  if (!session?.user) return;
+
+  const clientId = formData.get('clientId');
+  const hourlyRate = Number(formData.get('hourlyRate') ?? 120);
+  const subject = String(formData.get('subject') ?? 'Beratungsstunden');
+  const number = String(formData.get('number') ?? '');
+  const issueDate = String(formData.get('issueDate') ?? '');
+  const dueDate = String(formData.get('dueDate') ?? '');
+
+  if (typeof clientId !== 'string' || !number || !issueDate || !dueDate) {
+    throw new Error('Pflichtfelder fehlen.');
+  }
+
+  const r = await createInvoiceFromTimeEntriesAction({
+    clientId,
+    number,
+    subject,
+    issueDate,
+    dueDate,
+    vatRate: Number(formData.get('vatRate') ?? 19),
+    format: 'XRECHNUNG',
+    hourlyRate,
+    strategy: (formData.get('strategy') as 'one-line' | 'per-entry') ?? 'one-line',
+    notes: String(formData.get('notes') ?? ''),
+  });
+
+  if (!r.ok || !r.invoiceId) throw new Error(r.error ?? 'Rechnungsanlage fehlgeschlagen.');
+  redirect(`/staff/invoices/${r.invoiceId}`);
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+function formatDateShort(d: Date): string {
+  return new Intl.DateTimeFormat('de-DE').format(d);
+}

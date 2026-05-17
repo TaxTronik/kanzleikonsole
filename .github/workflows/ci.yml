@@ -1,0 +1,127 @@
+# =============================================================================
+# CI — Typecheck + Lint + Tests
+#
+# Tests umfassen explizit:
+#   - canonical-json + Hash-Chain (kritisch für Audit-Compliance, ohne DB)
+#   - Tax-Engine (Werktagsverschiebung, Feiertage, Fristen)
+#
+# DB-gebundene Tests (RLS-Cross-Tenant) laufen in einem separaten Job mit
+# Postgres-Service-Container.
+# =============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ----------------------------------------------------------------------
+  # Job 1: Statische Checks + Unit-Tests (kein DB-Zugriff)
+  # ----------------------------------------------------------------------
+  static:
+    name: Typecheck + Unit-Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fail-Fast VOR Install: keine echten DATEV-Berater/Mandantennummern
+      # im Quellcode/Doku (§ 203 StGB / DSGVO). Reiner grep, keine Deps.
+      - name: Guard — keine echten DATEV-Nummern
+        run: sh scripts/check-no-real-datev.sh
+
+      # Keine version-Pin hier — action-setup liest pnpm aus dem
+      # packageManager-Feld der package.json (sonst ERR_PNPM_BAD_PM_VERSION).
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        # pnpm 11 blockt postinstall-Scripts und exitet mit 1. --ignore-scripts
+        # umgeht das; die nötigen native Builds holen wir gezielt per rebuild.
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build-Scripts gezielt nachholen
+        run: pnpm rebuild -r @prisma/client @prisma/engines esbuild prisma || true
+
+      - name: Generate Prisma client
+        run: pnpm --filter @taxtronik/db exec prisma generate
+        env:
+          DATABASE_URL: postgres://x/x
+
+      - name: Typecheck (alle Workspaces)
+        run: pnpm -r typecheck
+
+      - name: Unit-Tests evidence (canonical-json + Hash-Chain)
+        run: pnpm --filter @taxtronik/evidence test
+
+      - name: Unit-Tests web (Tax-Engine)
+        run: pnpm --filter @taxtronik/web test
+
+  # ----------------------------------------------------------------------
+  # Job 2: DB-gebundene Tests (RLS-Cross-Tenant)
+  # ----------------------------------------------------------------------
+  db-tests:
+    name: RLS- + Chain-Verifikations-Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: taxtronik
+          POSTGRES_PASSWORD: taxtronik
+          POSTGRES_DB: taxtronik
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U taxtronik"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:5432/taxtronik
+      DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@localhost:5432/taxtronik
+    steps:
+      - uses: actions/checkout@v4
+
+      # Keine version-Pin hier — action-setup liest pnpm aus dem
+      # packageManager-Feld der package.json (sonst ERR_PNPM_BAD_PM_VERSION).
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build-Scripts gezielt nachholen
+        run: pnpm rebuild -r @prisma/client @prisma/engines esbuild prisma || true
+
+      - name: Generate Prisma client
+        run: pnpm --filter @taxtronik/db exec prisma generate
+
+      - name: Bootstrap Postgres (Roles + Extensions)
+        run: |
+          PGPASSWORD=taxtronik psql -h localhost -U taxtronik -d taxtronik \
+            -v ON_ERROR_STOP=1 -f packages/db/prisma/init/01_bootstrap.sql
+
+      - name: Apply migrations
+        run: pnpm --filter @taxtronik/db exec prisma migrate deploy
+
+      - name: Vitest — RLS-Cross-Tenant
+        run: pnpm --filter @taxtronik/db test
+
+      - name: verify:chain CLI smoke-test (nur Genesis-Pfad, leere Tenants)
+        run: pnpm verify:chain

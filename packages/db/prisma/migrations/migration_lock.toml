@@ -1,0 +1,2 @@
+# Wird von Prisma verwaltet. Nicht manuell ändern, außer der DB-Provider wechselt.
+provider = "postgresql"

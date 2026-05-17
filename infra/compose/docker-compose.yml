@@ -1,0 +1,205 @@
+# =============================================================================
+# taxtronik — Basis-Stack
+#
+# Definiert die Infrastruktur-Services (Postgres, Redis, SeaweedFS, ClamAV).
+# Die App und der Worker laufen lokal via `pnpm dev` (Iteration 1) bzw. werden
+# über Override-Files dazugeschaltet (siehe docker-compose.app.yml).
+#
+# Object-Store: SeaweedFS mit S3-API + Object-Lock COMPLIANCE-Mode für GoBD-
+# konforme Aufbewahrung (10 Jahre). MinIO wurde 2025 abgelöst, weil die
+# Community-Version Compliance-Features schrittweise entfernt hat und auf
+# AGPL gewechselt ist.
+#
+# Dev-Komfort (Mailhog, n8n) liegt in docker-compose.dev.yml.
+#
+# P-4: Alle Infra-Ports werden explizit an 127.0.0.1 gebunden. Docker-Compose-
+# Default ist 0.0.0.0 — auf Hosts mit öffentlicher IP ohne sauberes Firewall-
+# Frontend wären Postgres/Redis/SeaweedFS-Admin direkt am Internet erreichbar
+# (SeaweedFS-Master/Filer haben gar keine Authentication). Defense in Depth:
+# zwischen Containern reicht das interne docker-Netzwerk; Host-Mappings nur
+# noch für Dev-Werkzeuge (psql, redis-cli, pgAdmin gegen localhost).
+# =============================================================================
+
+# =============================================================================
+# P-11: YAML-Anchor mit Linux-Kernel-Hardening, das für jeden Service gilt:
+#  - no-new-privileges: setuid-Binaries dürfen sich nicht eskalieren
+#  - cap_drop: ALL — wir erlauben gezielt nur die wirklich benötigten Caps
+#    via cap_add pro Service (Default für die meisten ist: nichts)
+# read_only: true ist nicht überall möglich (Postgres-Daten, Redis-AOF, n8n-
+# Workflows brauchen schreibbares FS) — wird pro Service entschieden.
+# =============================================================================
+x-hardening: &hardening
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
+services:
+  postgres:
+    <<: *hardening
+    image: postgres:18-alpine
+    container_name: taxtronik-postgres
+    restart: unless-stopped
+    # Postgres braucht CHOWN/SETUID/SETGID nur in seinem initdb-Pfad; das
+    # offizielle Image wechselt mit gosu auf den postgres-User. CHOWN/SETUID/
+    # SETGID + FOWNER für das Daten-Volume.
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - FOWNER
+      - DAC_OVERRIDE
+    environment:
+      POSTGRES_USER: taxtronik
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD nicht gesetzt — bitte ./scripts/setup.sh ausführen}
+      POSTGRES_DB: taxtronik
+      # Werden vom Init-Skript zum Anlegen der Anwendungs-Rollen verwendet
+      TAXTRONIK_APP_PASSWORD: ${TAXTRONIK_APP_PASSWORD:?TAXTRONIK_APP_PASSWORD nicht gesetzt}
+      N8N_DB_PASSWORD: ${N8N_DB_PASSWORD:-n8n}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      # Postgres 18+ erwartet den Mount auf /var/lib/postgresql (nicht
+      # mehr /var/lib/postgresql/data wie bei 16/17). PG legt darunter
+      # selbst major-version-spezifische Subdirectories an, damit
+      # pg_upgrade über Versionssprünge hinweg funktioniert.
+      - postgres_data:/var/lib/postgresql
+      - ../scripts/postgres-init.sh:/docker-entrypoint-initdb.d/01-init.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taxtronik -d taxtronik"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    <<: *hardening
+    image: redis:7-alpine
+    container_name: taxtronik-redis
+    restart: unless-stopped
+    # Redis 7 unter dem redis-User; benötigt SETUID/SETGID für den
+    # gosu-Drop und CHOWN für das AOF-Volume.
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      # Host-Port 6380 statt 6379, weil oft schon ein System-Redis-Daemon
+      # auf 6379 läuft. Container-intern bleibt 6379, daher REDIS_URL
+      # innerhalb des Compose-Netzes unverändert: redis://redis:6379
+      - "127.0.0.1:6380:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # SeaweedFS — S3-kompatibler Object-Store mit Object-Lock COMPLIANCE.
+  # Single-Node-Server bündelt Master + Volume + Filer + S3-Gateway. Für
+  # produktive Skalierung können diese in separate Services aufgeteilt werden;
+  # für die Kanzlei-Größe (10–500 Mitarbeiter) reicht der Single-Node-Setup.
+  seaweedfs:
+    <<: *hardening
+    image: chrislusf/seaweedfs:latest
+    container_name: taxtronik-seaweedfs
+    restart: unless-stopped
+    # SeaweedFS-Image macht beim Start einen su-exec von root nach
+    # unprivileged User. Dafür braucht es SETUID + SETGID, sonst kommt
+    # „setgroups: Operation not permitted" beim Container-Start.
+    # CHOWN + DAC_OVERRIDE für das /data-Volume.
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - SETUID
+      - SETGID
+      - FOWNER
+      - FSETID
+    command:
+      - "server"
+      - "-dir=/data"
+      - "-master.volumeSizeLimitMB=2048"
+      - "-volume.max=0"
+      - "-s3"
+      - "-s3.config=/etc/seaweedfs/s3.json"
+      - "-s3.port=8333"
+      - "-master.port=9333"
+      - "-volume.port=8080"
+      - "-filer"
+      - "-filer.port=8888"
+      - "-metricsPort=9091"
+    ports:
+      # P-4: SeaweedFS-Admin-UIs haben keine Authentication. NICHT 0.0.0.0.
+      - "127.0.0.1:8333:8333"    # S3-API
+      - "127.0.0.1:9333:9333"    # Master UI / API
+      - "127.0.0.1:8888:8888"    # Filer UI
+    volumes:
+      - seaweed_data:/data
+      # Wird vom Setup-Skript aus seaweedfs-s3.template.json gerendert
+      - ../scripts/seaweedfs-s3.generated.json:/etc/seaweedfs/s3.json:ro
+    healthcheck:
+      # localhost → ::1 wäre IPv6, SeaweedFS bindet nur IPv4 → "Connection refused".
+      # Daher 127.0.0.1 explizit.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9333/cluster/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # Einmal-Init-Container: legt Buckets mit Object-Lock COMPLIANCE an.
+  # Läuft via amazon/aws-cli, weil SeaweedFS keine `mc`-Variante hat — die
+  # AWS-CLI spricht den S3-Standard nativ.
+  seaweedfs-init:
+    <<: *hardening
+    image: amazon/aws-cli:latest
+    container_name: taxtronik-seaweedfs-init
+    depends_on:
+      seaweedfs:
+        condition: service_healthy
+    environment:
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:?S3_SECRET_KEY nicht gesetzt}
+      AWS_DEFAULT_REGION: us-east-1
+      S3_ENDPOINT: http://seaweedfs:8333
+      # Browser-Origin für CORS auf den quarantine-Bucket. Komma-getrennt
+      # für Multi-Surface-Deploys (staff. + portal. Subdomain).
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      APP_PUBLIC_ORIGIN: ${APP_PUBLIC_ORIGIN:-}
+    volumes:
+      - ../scripts/init-storage.sh:/init-storage.sh:ro
+    entrypoint: ["/bin/sh", "/init-storage.sh"]
+    restart: "no"
+
+  clamav:
+    <<: *hardening
+    image: clamav/clamav:stable
+    container_name: taxtronik-clamav
+    restart: unless-stopped
+    # ClamAV läuft als unprivileged user, braucht CHOWN für sein Daten-Volume.
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+    ports:
+      - "127.0.0.1:3310:3310"
+    volumes:
+      - clamav_data:/var/lib/clamav
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/clamdcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s   # ClamAV braucht beim Erststart lange für DB-Download
+
+volumes:
+  postgres_data:
+  redis_data:
+  seaweed_data:
+  clamav_data:
+
+networks:
+  default:
+    name: taxtronik

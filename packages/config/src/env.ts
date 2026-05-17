@@ -1,0 +1,243 @@
+// =============================================================================
+// taxtronik — ENV-Schema (Zod-validiert)
+//
+// Wird beim ersten Import dieses Moduls geladen und validiert. Bei Fehlern:
+// Crash beim Start mit klarer Fehlermeldung. Niemals stillschweigend
+// Defaults für Secrets verwenden.
+//
+// Alle App-Komponenten (Next.js, Worker, CLI) importieren `env` aus diesem
+// Modul. So gibt es nur EINE Stelle, an der ENV gelesen wird.
+// =============================================================================
+
+import { z } from 'zod';
+
+const NodeEnv = z.enum(['development', 'test', 'production']);
+
+const PostgresUrl = z
+  .string()
+  .url()
+  .refine((u) => u.startsWith('postgres://') || u.startsWith('postgresql://'), {
+    message: 'DATABASE_URL muss mit postgres:// oder postgresql:// beginnen',
+  });
+
+const RedisUrl = z
+  .string()
+  .url()
+  .refine((u) => u.startsWith('redis://') || u.startsWith('rediss://'), {
+    message: 'REDIS_URL muss mit redis:// oder rediss:// beginnen',
+  });
+
+const Secret32 = z.string().min(32, 'Secret muss mindestens 32 Zeichen lang sein');
+
+const envSchema = z.object({
+  NODE_ENV: NodeEnv.default('development'),
+
+  // --- Postgres -------------------------------------------------------------
+  DATABASE_URL: PostgresUrl,
+  DATABASE_APP_URL: PostgresUrl.optional(),
+
+  // --- Redis ----------------------------------------------------------------
+  REDIS_URL: RedisUrl,
+
+  // --- Auth.js --------------------------------------------------------------
+  AUTH_SECRET: Secret32,
+  NEXTAUTH_URL: z.string().url(),
+  // Public-URL der Mandanten-Subdomain. Alle an Mandanten versendeten Links
+  // (Magic-Link, GwG-Onboarding, Portal-Formular) müssen auf diese Domain
+  // zeigen, nicht auf die Staff-Domain in NEXTAUTH_URL — sonst landet der
+  // Mandant auf der falschen Subdomain und das Portal-Cookie greift nicht.
+  // Wenn leer: Fallback auf NEXTAUTH_URL (Single-Host-Deploys).
+  PORTAL_PUBLIC_URL: z.preprocess(
+    (v) => (v === '' || v === undefined ? undefined : v),
+    z.string().url().optional(),
+  ),
+  // Auth.js v5: vertraue dem Host-Header (für Reverse-Proxy-Setups Pflicht).
+  // In Produktion MUSS der Reverse-Proxy `X-Forwarded-Host` filtern, sonst
+  // ist Host-Header-Smuggling für Callback-URLs theoretisch möglich (S9).
+  // Default true in dev für Komfort, in production explizit opt-in.
+  NEXTAUTH_TRUST_HOST: z
+    .preprocess(
+      (v) => (v === '' || v === undefined ? undefined : v),
+      z.union([z.literal('true'), z.literal('false')]).transform((s) => s === 'true').optional(),
+    )
+    .optional(),
+  // R-3 / H-2: Wenn `true`, vertraut die App den XFF/Real-IP/CF-Connecting-IP-
+  // Headern. Sonst (Default) ignoriert getClientIp die Headers in Production
+  // komplett — kein Spoofing möglich. Opt-in über die .env.
+  TRUST_PROXY_REQUIRED: z
+    .preprocess(
+      (v) => (v === '' || v === undefined ? undefined : v),
+      z.union([z.literal('true'), z.literal('false')]).optional(),
+    )
+    .transform((s) => s === 'true'),
+
+  // --- Object-Store / S3 -----------------------------------------------------------
+  // Ausschließlich interner Endpoint (App/Worker ↔ SeaweedFS, Docker-Netz):
+  // http://seaweedfs:8333. Der Object-Store ist NIE öffentlich erreichbar —
+  // Uploads/Downloads werden von der App selbst gestreamt (§ 203 StGB,
+  // minimale Angriffsfläche on-prem).
+  S3_ENDPOINT: z.string().url(),
+  S3_REGION: z.string().default('us-east-1'),
+  S3_ACCESS_KEY: z.string().min(1),
+  S3_SECRET_KEY: z.string().min(1),
+  S3_BUCKET_GOBD: z.string().default('gobd'),
+  // B-1: Eigener Bucket mit kürzerer Retention für GwG-Beweisdokumente
+  // (Ausweis-Scans, Transparenzregister etc.) — § 8 Abs. 4 GwG schreibt
+  // 5 Jahre Höchstaufbewahrung vor und verlangt unverzügliche Vernichtung
+  // danach. Der `gobd`-Bucket mit Object-Lock-COMPLIANCE und 10 Jahren
+  // wäre für GwG-Daten ein DSGVO-/GwG-Verstoß (zu lang, nicht löschbar).
+  S3_BUCKET_GWG: z.string().default('gwg'),
+  S3_BUCKET_GENERAL: z.string().default('general'),
+  S3_BUCKET_STAFF_PRIVATE: z.string().default('staff-private'),
+  S3_BUCKET_QUARANTINE: z.string().default('quarantine'),
+
+  // --- ClamAV ---------------------------------------------------------------
+  CLAMAV_HOST: z.string().default('localhost'),
+  CLAMAV_PORT: z.coerce.number().int().positive().default(3310),
+
+  // --- SMTP -----------------------------------------------------------------
+  SMTP_HOST: z.string(),
+  SMTP_PORT: z.coerce.number().int().positive(),
+  SMTP_USER: z.string().optional().default(''),
+  SMTP_PASSWORD: z.string().optional().default(''),
+  SMTP_FROM: z.string(),
+
+  // --- n8n ------------------------------------------------------------------
+  N8N_WEBHOOK_BASE_URL: z.preprocess((v) => v === '' ? undefined : v, z.string().url().optional()),
+  N8N_HMAC_SECRET: z.string().optional(),
+
+  // --- RFC-3161-Zeitstempel -------------------------------------------------
+  // Leer = lokaler Self-Timestamp (MVP).
+  TIMESTAMP_AUTHORITY_URL: z.preprocess((v) => v === '' ? undefined : v, z.string().url().optional()),
+
+  // --- Lizenzschlüssel ------------------------------------------------------
+  LICENSE_KEY: z.string().optional(),
+  LICENSE_PUBLIC_KEY: z.string().optional(),
+
+  // --- Optional: Cookie-Domain pro Surface (Subdomain-Trennung) -------------
+  // Wenn gesetzt: Cookie wird für die Domain (statt host-only) ausgestellt.
+  // Beispiel: STAFF_COOKIE_DOMAIN=staff.kanzlei.example.de
+  //           PORTAL_COOKIE_DOMAIN=portal.kanzlei.example.de
+  // Achtung: NICHT die übergeordnete Domain (.kanzlei.example.de) eintragen,
+  // sonst werden beide Cookies an beide Subdomains geschickt → kein Schutz.
+  STAFF_COOKIE_DOMAIN: z.string().optional(),
+  PORTAL_COOKIE_DOMAIN: z.string().optional(),
+});
+
+export type Env = z.infer<typeof envSchema>;
+
+/**
+ * Exportiert für Unit-Tests (Audit Round 15): die Dev-Default-Denylist und
+ * Cross-Field-Validierung dürfen nicht ungetestet bleiben. Test-Code ruft
+ * `parseEnvFrom(env)` mit einer kontrollierten Pseudo-ENV statt globalem
+ * `process.env`.
+ */
+export function parseEnvFrom(source: NodeJS.ProcessEnv): Env {
+  const original = process.env;
+  process.env = source;
+  try {
+    return parseEnv();
+  } finally {
+    process.env = original;
+  }
+}
+
+function parseEnv(): Env {
+  const parsed = envSchema.safeParse(process.env);
+
+  if (!parsed.success) {
+    const issues = parsed.error.issues
+      .map((i) => `  - ${i.path.join('.')}: ${i.message}`)
+      .join('\n');
+    // Niemals partielle/fehlerhafte ENV booten lassen.
+    // eslint-disable-next-line no-console
+    console.error(`[config] ENV-Validierung fehlgeschlagen:\n${issues}`);
+    throw new Error('ENV-Validierung fehlgeschlagen — siehe Konsole.');
+  }
+
+  // Cross-Field-Konsistenz
+  if (parsed.data.NODE_ENV === 'production') {
+    if (!parsed.data.DATABASE_APP_URL) {
+      throw new Error(
+        '[config] DATABASE_APP_URL ist in Produktion Pflicht (RLS-Backstop). Owner-Verbindung darf nicht von der App genutzt werden.',
+      );
+    }
+    if (!parsed.data.N8N_HMAC_SECRET || parsed.data.N8N_HMAC_SECRET.length < 32) {
+      throw new Error(
+        '[config] N8N_HMAC_SECRET ist in Produktion Pflicht (mind. 32 Zeichen).',
+      );
+    }
+    // Audit Round 14, Finding 7: Bekannte Dev-Defaults dürfen niemals
+    // produktiv eingesetzt werden. Wer das .env-Template direkt übernimmt
+    // oder vergisst, beim Setup neue Secrets generieren zu lassen, würde
+    // sonst eine vorhersagbare Schlüssel-Material-Wurzel haben.
+    // N8N_ENCRYPTION_KEY ist nicht im Zod-Schema (wird nur an den n8n-
+    // Container durchgereicht), wir prüfen die Rohwerte aus process.env.
+    const DEV_DEFAULT_DENYLIST: Array<{ key: string; value: string }> = [
+      { key: 'AUTH_SECRET', value: 'taxtronik-dev-auth-secret-change-in-production-please' },
+      { key: 'AUTH_SECRET', value: 'changeme' },
+      { key: 'AUTH_SECRET', value: 'secret' },
+      { key: 'N8N_HMAC_SECRET', value: 'dev-only-hmac-secret-min-32-chars-long-xxx' },
+      { key: 'N8N_ENCRYPTION_KEY', value: 'dev-only-n8n-encryption-key-xxxxxxxx' },
+    ];
+    for (const { key, value } of DEV_DEFAULT_DENYLIST) {
+      const actual = (parsed.data as Record<string, unknown>)[key] ?? process.env[key];
+      if (actual === value) {
+        throw new Error(
+          `[config] ${key} ist auf einen bekannten Dev-Default-Wert gesetzt. ` +
+            `Bitte ein zufälliges Secret generieren (siehe scripts/setup.sh) und in .env eintragen.`,
+        );
+      }
+    }
+    // Heuristik: zu kurze AUTH_SECRETs sind auch verdächtig (das Zod-Schema
+    // erlaubt min(32), aber 32 ASCII-Zeichen sind nicht zwingend 32 Bytes
+    // Entropie — z. B. Passwortmanager-Default „password1234password1234…").
+    // Wir matchen einfache Wiederholungsmuster.
+    const authSecret = parsed.data.AUTH_SECRET;
+    if (/^(.)\1{8,}/.test(authSecret) || /^(password|secret|admin|test)/i.test(authSecret)) {
+      throw new Error(
+        '[config] AUTH_SECRET wirkt wie ein Wörterbuch- oder Wiederholungs-Wert. ' +
+          'Bitte mit `openssl rand -base64 32` oder via scripts/setup.sh neu generieren.',
+      );
+    }
+    if (parsed.data.NEXTAUTH_TRUST_HOST === undefined) {
+      throw new Error(
+        '[config] NEXTAUTH_TRUST_HOST muss in Produktion explizit gesetzt sein (true/false). ' +
+          'Setze `true` nur, wenn der Reverse-Proxy `X-Forwarded-Host` filtert/setzt — sonst Host-Header-Smuggling möglich (S9).',
+      );
+    }
+    // S12: Cookie-Isolation. Path-Scoping ist technisch nicht möglich (NextAuth
+    // teilt /api/auth/* mit beiden Surfaces). Subdomain-Trennung ist der
+    // einzige wirksame Hebel. Warnen (nicht failen — manche Single-Host-Deploys
+    // sind bewusst).
+    const staffDom = parsed.data.STAFF_COOKIE_DOMAIN;
+    const portalDom = parsed.data.PORTAL_COOKIE_DOMAIN;
+    if (!staffDom || !portalDom) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[config] WARNUNG: STAFF_COOKIE_DOMAIN/PORTAL_COOKIE_DOMAIN nicht gesetzt — Staff- und Portal-Surface teilen sich denselben Hostname. ' +
+          'Empfohlen für Multi-Standort-Kanzleien: Subdomain-Trennung (z. B. staff.example.de / portal.example.de). ' +
+          'Siehe docs/adr/0010-session-strategie-und-cookie-scope.md.',
+      );
+    } else if (staffDom === portalDom) {
+      throw new Error(
+        '[config] STAFF_COOKIE_DOMAIN und PORTAL_COOKIE_DOMAIN müssen unterschiedliche Subdomains sein, sonst greift die Cookie-Trennung nicht (S12).',
+      );
+    }
+  }
+
+  return parsed.data;
+}
+
+export const env: Env = parseEnv();
+
+/**
+ * Public-Basis-URL für alle an MANDANTEN versendeten Links (Magic-Link,
+ * GwG-Onboarding, Portal-Formular). Zeigt auf die Mandanten-Subdomain,
+ * damit Portal-Cookies auf der richtigen Domain landen. Fällt auf
+ * NEXTAUTH_URL zurück, wenn keine getrennte Portal-Domain konfiguriert
+ * ist (Single-Host-Deploy). Trailing-Slash wird entfernt.
+ */
+export const portalBaseUrl: string = (
+  env.PORTAL_PUBLIC_URL ?? env.NEXTAUTH_URL
+).replace(/\/$/, '');

@@ -1,0 +1,126 @@
+'use server';
+
+import { z } from 'zod';
+import { revalidatePath } from 'next/cache';
+import { staffAuth } from '@/server/auth/staff';
+import { withTenantContext } from '@taxtronik/db';
+import type { TaxScheduleKind } from '@prisma/client';
+import { evidenceService } from '@/server/container';
+import { materializeTaxDeadlines } from '@/server/tax-deadlines/materialize';
+import { assertClientInTenant } from '@/server/db/assert-tenant';
+
+const ALL_KINDS: TaxScheduleKind[] = [
+  'USTA_MONATLICH', 'USTA_QUARTAL', 'USTA_JAEHRLICH',
+  'LSTA_MONATLICH', 'LSTA_QUARTAL', 'LSTA_JAEHRLICH',
+  'EST_VZ', 'KST_VZ', 'GEWST_VZ',
+  'EST_ERKLAERUNG', 'KST_ERKLAERUNG', 'GEWST_ERKLAERUNG',
+];
+
+export async function saveScheduleConfigAction(formData: FormData): Promise<void> {
+  const session = await staffAuth();
+  if (!session?.user) throw new Error('Nicht eingeloggt.');
+
+  const clientId = z.string().uuid().parse(formData.get('clientId'));
+  const { tenantId, staffId } = session.user;
+
+  // Pro Kind die drei Felder einsammeln
+  const updates = ALL_KINDS.map((kind) => ({
+    kind,
+    active: formData.get(`active.${kind}`) === 'on',
+    hasDauerfrist: formData.get(`dauerfrist.${kind}`) === 'on',
+    reminderDaysBefore: clampInt(formData.get(`reminder.${kind}`), 0, 90, 10),
+  }));
+
+  await withTenantContext(
+    { tenantId, actorId: staffId, actorType: 'STAFF' },
+    async (tx) => {
+      // R-2: clientId Tenant-Sanity vor allen taxScheduleConfig-Mutationen.
+      await assertClientInTenant(tx, clientId);
+      // Bestehende laden für Diff
+      const existing = await tx.taxScheduleConfig.findMany({ where: { clientId } });
+      const byKind = new Map(existing.map((c) => [c.kind, c]));
+
+      for (const u of updates) {
+        const old = byKind.get(u.kind);
+
+        if (!u.active) {
+          // Inaktiv: Wenn Eintrag existiert → auf active=false setzen UND
+          // alle noch nicht erledigten Termine wegputzen, damit der Kalender
+          // sauber ist. Erledigte Termine bleiben (Audit-relevant).
+          if (old && old.active) {
+            const removed = await tx.taxDeadline.deleteMany({
+              where: {
+                clientId,
+                kind: u.kind,
+                status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS', 'OVERDUE'] },
+              },
+            });
+            await tx.taxScheduleConfig.update({
+              where: { id: old.id },
+              data: { active: false },
+            });
+            await evidenceService.record(tx, {
+              tenantId,
+              actorType: 'STAFF',
+              actorId: staffId,
+              action: 'tax_schedule.deactivate',
+              resourceType: 'tax_schedule_config',
+              resourceId: old.id,
+              before: { active: true },
+              after: { active: false, removedDeadlines: removed.count },
+            });
+          }
+          continue;
+        }
+
+        // Aktiv: Upsert
+        if (old) {
+          await tx.taxScheduleConfig.update({
+            where: { id: old.id },
+            data: {
+              active: true,
+              hasDauerfrist: u.hasDauerfrist,
+              reminderDaysBefore: u.reminderDaysBefore,
+            },
+          });
+        } else {
+          const created = await tx.taxScheduleConfig.create({
+            data: {
+              tenantId,
+              clientId,
+              kind: u.kind,
+              active: true,
+              hasDauerfrist: u.hasDauerfrist,
+              reminderDaysBefore: u.reminderDaysBefore,
+              createdByStaff: staffId,
+            },
+          });
+          await evidenceService.record(tx, {
+            tenantId,
+            actorType: 'STAFF',
+            actorId: staffId,
+            action: 'tax_schedule.create',
+            resourceType: 'tax_schedule_config',
+            resourceId: created.id,
+            after: { kind: u.kind, hasDauerfrist: u.hasDauerfrist, reminderDaysBefore: u.reminderDaysBefore },
+          });
+        }
+      }
+    },
+  );
+
+  // Direkt materialisieren, damit die neuen aktiven Termine sofort sichtbar sind
+  await materializeTaxDeadlines(
+    { tenantId, actorId: staffId, actorType: 'STAFF' },
+    { systemStaffId: staffId },
+  );
+
+  revalidatePath(`/staff/clients/${clientId}/tax-schedule`);
+  revalidatePath('/staff/tax-deadlines');
+}
+
+function clampInt(v: FormDataEntryValue | null, min: number, max: number, fallback: number): number {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(n)));
+}
