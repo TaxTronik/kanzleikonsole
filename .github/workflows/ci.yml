@@ -89,8 +89,8 @@ jobs:
           --health-timeout 3s
           --health-retries 10
     env:
-      DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:5432/taxtronik
-      DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@localhost:5432/taxtronik
+      DATABASE_URL: postgresql://taxtronik:taxtronik@postgres:5432/taxtronik
+      DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@postgres:5432/taxtronik
     steps:
       - uses: actions/checkout@v4
 
@@ -119,7 +119,7 @@ jobs:
 
       - name: Bootstrap Postgres (Roles + Extensions)
         run: |
-          PGPASSWORD=taxtronik psql -h localhost -U taxtronik -d taxtronik \
+          PGPASSWORD=taxtronik psql -h postgres -U taxtronik -d taxtronik \
             -v ON_ERROR_STOP=1 -f packages/db/prisma/init/01_bootstrap.sql
 
       - name: Apply migrations
