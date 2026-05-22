@@ -112,6 +112,11 @@ jobs:
       - name: Generate Prisma client
         run: pnpm --filter @taxtronik/db exec prisma generate
 
+      # psql ist im self-hosted Runner-Image (catthehacker/act) nicht
+      # vorinstalliert — anders als auf GitHubs gehostetem ubuntu-latest.
+      - name: psql-Client installieren
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
       - name: Bootstrap Postgres (Roles + Extensions)
         run: |
           PGPASSWORD=taxtronik psql -h localhost -U taxtronik -d taxtronik \
