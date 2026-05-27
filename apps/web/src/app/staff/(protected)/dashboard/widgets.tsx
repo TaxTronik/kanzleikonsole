@@ -67,7 +67,7 @@ export async function renderWidget(type: WidgetType, ctx: RenderCtx): Promise<Re
   switch (type) {
     case 'kpi_clients':         return kpi(ctx, Users, 'Mandanten', '/staff/clients', (t) => t.client.count());
     case 'kpi_open_requests':   return kpi(ctx, Inbox, 'Offene Anforderungen', '/staff/requests?status=OPEN', (t) => t.request.count({ where: { status: { in: ['OPEN', 'IN_PROGRESS'] } } }), 'yellow');
-    case 'kpi_documents':       return kpi(ctx, FileText, 'Dokumente', '/staff/documents', (t) => t.document.count());
+    case 'kpi_documents':       return kpi(ctx, FileText, 'Dokumente', '/staff/documents', (t) => t.document.count({ where: { deletedAt: null } }));
     case 'kpi_unread_notes':    return kpi(ctx, Phone, 'Offene Telefonzettel', '/staff/phone-notes', (t) => t.phoneNote.count({ where: { doneAt: null } }), 'yellow');
     case 'kpi_pending_change_requests':
       return kpi(ctx, IdCard, 'Offene Stammdaten-Anträge', '/staff/dashboard', (t) => t.clientMasterChangeRequest.count({ where: { status: 'PENDING' } }), 'yellow');
@@ -168,10 +168,42 @@ async function RecentActivity({ tx }: RenderCtx): Promise<React.ReactNode> {
     tx.auditLog.findMany({
       orderBy: { occurredAt: 'desc' },
       take: 25,
-      select: { id: true, occurredAt: true, action: true, actorType: true, resourceType: true },
+      select: {
+        id: true, occurredAt: true, action: true,
+        actorType: true, actorId: true, resourceType: true,
+      },
     }),
     tx.auditLog.count(),
   ]);
+  // Actor-Namen in einem Rutsch auflösen (Staff/Mandant). actorId ist
+  // text/null — UUIDs werden zu Namen gemappt, alles andere bleibt leer.
+  type AuditRow = { actorType: string; actorId: string | null };
+  const staffIds = [
+    ...new Set(
+      (items as AuditRow[])
+        .filter((i) => i.actorType === 'STAFF' && i.actorId)
+        .map((i) => i.actorId as string),
+    ),
+  ];
+  const contactIds = [
+    ...new Set(
+      (items as AuditRow[])
+        .filter((i) => i.actorType === 'CLIENT_CONTACT' && i.actorId)
+        .map((i) => i.actorId as string),
+    ),
+  ];
+  const [staffRows, contactRows] = await Promise.all([
+    staffIds.length ? tx.staffUser.findMany({ where: { id: { in: staffIds } }, select: { id: true, fullName: true } }) : Promise.resolve([]),
+    contactIds.length ? tx.clientContact.findMany({ where: { id: { in: contactIds } }, select: { id: true, fullName: true } }) : Promise.resolve([]),
+  ]);
+  const nameById = new Map<string, string>();
+  for (const s of staffRows) nameById.set(s.id, s.fullName);
+  for (const c of contactRows) nameById.set(c.id, c.fullName);
+  const actorLabel = (a: { actorType: string; actorId: string | null }): string => {
+    const role = a.actorType === 'STAFF' ? 'Mitarbeiter' : a.actorType === 'CLIENT_CONTACT' ? 'Mandant' : 'System';
+    const name = a.actorId ? nameById.get(a.actorId) : undefined;
+    return name ? `${role} · ${name}` : role;
+  };
   return (
     <ListShell
       icon={Activity}
@@ -180,13 +212,13 @@ async function RecentActivity({ tx }: RenderCtx): Promise<React.ReactNode> {
       emptyText="Noch keine Aktivitäten."
       footer={`Audit-Kette: ${total} Einträge — alle hash-versiegelt`}
     >
-      {items.map((a: { id: bigint; occurredAt: Date; action: string; actorType: string; resourceType: string }) => (
+      {items.map((a: { id: bigint; occurredAt: Date; action: string; actorType: string; actorId: string | null; resourceType: string }) => (
         <li key={String(a.id)} className="px-5 py-2.5">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-gray-900 truncate">{actionLabel(a.action)}</p>
               <p className="text-xs text-gray-500 truncate">
-                {a.actorType === 'STAFF' ? 'Mitarbeiter' : a.actorType === 'CLIENT_CONTACT' ? 'Mandant' : 'System'}
+                {actorLabel(a)}
                 {' · '}
                 {resourceLabel(a.resourceType)}
               </p>

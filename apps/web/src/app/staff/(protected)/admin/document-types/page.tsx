@@ -17,7 +17,9 @@ export default async function DocumentTypesPage() {
     (tx) =>
       tx.documentType.findMany({
         orderBy: [{ builtin: 'desc' }, { sortOrder: 'asc' }, { name: 'asc' }],
-        include: { _count: { select: { documents: true } } },
+        // Nur aktive Dokumente zählen — soft-gelöschte sind aus Sicht der
+        // Verwaltung „weg" (Aufbewahrung läuft im Object-Store separat).
+        include: { _count: { select: { documents: { where: { deletedAt: null } } } } },
       }),
   );
 

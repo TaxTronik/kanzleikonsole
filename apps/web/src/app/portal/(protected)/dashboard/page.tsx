@@ -17,7 +17,8 @@ export default async function PortalDashboardPage() {
         tx.request.count({
           where: { clientId, status: { in: ['OPEN', 'IN_PROGRESS'] } },
         }),
-        tx.document.count({ where: { clientId } }),
+        // Portal-Sicht: nur freigegebene & nicht soft-gelöschte Dokumente.
+        tx.document.count({ where: { clientId, deletedAt: null, sharedWithClientAt: { not: null } } }),
         tx.request.findMany({
           where: { clientId },
           orderBy: { createdAt: 'desc' },

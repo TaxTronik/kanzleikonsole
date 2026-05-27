@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     async (tx) => {
       const list = await tx.client.findMany({
         orderBy: { name: 'asc' },
-        include: { _count: { select: { documents: true, invoices: true, requests: true } } },
+        include: { _count: { select: { documents: { where: { deletedAt: null } }, invoices: true, requests: true } } },
       });
       await evidenceService.record(tx, {
         tenantId,

@@ -65,6 +65,12 @@ export interface NavItem {
    * neben dem spezifischen Eintrag mit).
    */
   exact?: boolean;
+  /**
+   * Zusätzliche Pfad-Präfixe, unter denen dieser Nav-Eintrag aktiv bleibt
+   * (z. B. „Kalender" soll auch auf der „Nur Steuertermine"-Unterseite
+   * /staff/tax-deadlines aktiv bleiben — die liegt nicht unter /calendar).
+   */
+  altPaths?: string[];
 }
 
 interface Props {
@@ -74,6 +80,14 @@ interface Props {
 export function SidebarNav({ items }: Props) {
   const pathname = usePathname();
 
+  // Hilfsfunktion: matcht item.href oder einen seiner altPaths gegen pathname.
+  const matches = (i: NavItem): boolean => {
+    if (pathname === i.href || pathname.startsWith(i.href + '/')) return true;
+    return (i.altPaths ?? []).some(
+      (p) => pathname === p || pathname.startsWith(p + '/'),
+    );
+  };
+
   // Längsten Prefix-Match über alle Items dieser Liste finden. So leuchtet
   // bei `/staff/workflows/templates` nur die Template-Zeile, nicht zusätzlich
   // die übergeordnete „Workflows"-Zeile.
@@ -81,7 +95,7 @@ export function SidebarNav({ items }: Props) {
     const candidates = items
       .filter((i) => !i.exact)
       .filter((i) => i.href !== '/staff/dashboard' && i.href !== '/portal/dashboard')
-      .filter((i) => pathname === i.href || pathname.startsWith(i.href + '/'));
+      .filter(matches);
     if (candidates.length === 0) return null;
     candidates.sort((a, b) => b.href.length - a.href.length);
     return candidates[0]!.href;

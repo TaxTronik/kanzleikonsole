@@ -310,6 +310,13 @@ function PageHeader({ view, scope }: { view: 'month' | 'list'; scope: 'mine' | '
   return (
     <div className="flex items-end justify-between mb-6">
       <div>
+        <Link
+          href="/staff/calendar"
+          className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-brand-700 mb-1"
+        >
+          <ChevronLeft className="h-3 w-3" />
+          Zurück zum Kanzleikalender
+        </Link>
         <h1 className="text-2xl font-bold text-gray-900 mb-1 flex items-center gap-2">
           <CalendarDays className="h-6 w-6 text-brand-600" />
           Steuertermine

@@ -25,7 +25,7 @@ const allNavItems: NavConfig[] = [
   { href: '/staff/clients', label: 'Mandanten', icon: 'Users' },
   { href: '/staff/requests', label: 'Anforderungen', icon: 'Inbox' },
   { href: '/staff/workflows', label: 'Workflows', icon: 'Workflow', exact: true, moduleKey: 'workflows' },
-  { href: '/staff/calendar', label: 'Kanzleikalender', icon: 'CalendarDays', moduleKey: 'taxNotices' },
+  { href: '/staff/calendar', label: 'Kanzleikalender', icon: 'CalendarDays', moduleKey: 'taxNotices', altPaths: ['/staff/tax-deadlines'] },
   { href: '/staff/invoices', label: 'Rechnungen', icon: 'Receipt', moduleKey: 'invoices' },
   { href: '/staff/poa', label: 'Vollmachten', icon: 'ScrollText', moduleKey: 'poa' },
   { href: '/staff/documents', label: 'Dokumente', icon: 'FileText' },
