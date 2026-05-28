@@ -21,8 +21,8 @@
     "migrate:deploy": "prisma migrate deploy",
     "migrate:dev": "prisma migrate dev",
     "studio": "prisma studio",
-    "seed": "tsx --env-file=../../.env seeds/dev.ts",
-    "verify:schema-drift": "tsx --env-file=../../.env scripts/verify-drift.ts"
+    "seed": "tsx --env-file-if-exists=../../.env seeds/dev.ts",
+    "verify:schema-drift": "tsx --env-file-if-exists=../../.env scripts/verify-drift.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
