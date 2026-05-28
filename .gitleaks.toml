@@ -1,0 +1,25 @@
+# =============================================================================
+# gitleaks — Secret-Scan-Konfiguration
+#
+# Erbt die Default-Rules und blendet kalibrierte False-Positives aus:
+# - .env.example: Platzhalter, keine echten Secrets
+# - S3-Client-Aufrufe: gitleaks deutet den Variablennamen S3_ACCESS_KEY
+#   selbst als Secret, der Inhalt kommt jedoch aus process.env
+# - docs/operations/lizenz.md: gestumpfter Beispiel-JWT
+# =============================================================================
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "taxtronik-spezifische False-Positives"
+
+paths = [
+  '''(^|/)\.env\.example$''',
+  '''(^|/)docs/operations/lizenz\.md$''',
+]
+
+regexes = [
+  # S3-Client-Konstruktor: Variablen-Reference, kein hartkodiertes Secret.
+  '''secretAccessKey:\s*env\.S3_SECRET_KEY''',
+]
