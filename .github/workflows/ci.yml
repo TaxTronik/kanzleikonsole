@@ -73,6 +73,7 @@ jobs:
   db:
     name: Migrations, RLS, Drift
     runs-on: ubuntu-latest
+    needs: quality
     timeout-minutes: 20
     services:
       postgres:
@@ -111,8 +112,22 @@ jobs:
       - name: Generate Prisma client
         run: pnpm --filter @taxtronik/db exec prisma generate
 
+      - name: Install PostgreSQL client
+        run: |
+          if ! command -v psql >/dev/null 2>&1; then
+            if command -v sudo >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y postgresql-client
+            else
+              apt-get update
+              apt-get install -y postgresql-client
+            fi
+          fi
+
       - name: Create shadow database
-        run: PGPASSWORD=taxtronik createdb -h localhost -U taxtronik taxtronik_shadow
+        run: |
+          PGPASSWORD=taxtronik psql -h localhost -U taxtronik -d postgres \
+            -v ON_ERROR_STOP=1 -c "CREATE DATABASE taxtronik_shadow"
 
       - name: Bootstrap roles and extensions
         run: |
@@ -134,7 +149,31 @@ jobs:
   e2e-smoke:
     name: Browser Smoke
     runs-on: ubuntu-latest
+    needs: db
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: taxtronik
+          POSTGRES_PASSWORD: taxtronik
+          POSTGRES_DB: taxtronik
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U taxtronik"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -153,6 +192,24 @@ jobs:
 
       - name: Generate Prisma client
         run: pnpm --filter @taxtronik/db exec prisma generate
+
+      - name: Install PostgreSQL client
+        run: |
+          if ! command -v psql >/dev/null 2>&1; then
+            if command -v sudo >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y postgresql-client
+            else
+              apt-get update
+              apt-get install -y postgresql-client
+            fi
+          fi
+
+      - name: Bootstrap database
+        run: |
+          PGPASSWORD=taxtronik psql -h localhost -U taxtronik -d taxtronik \
+            -v ON_ERROR_STOP=1 -f packages/db/prisma/init/01_bootstrap.sql
+          pnpm --filter @taxtronik/db exec prisma migrate deploy
 
       - name: Build web app
         run: pnpm --filter @taxtronik/web build
@@ -181,7 +238,7 @@ jobs:
 
       - name: Upload Playwright report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
           name: playwright-report
           path: apps/e2e/playwright-report/

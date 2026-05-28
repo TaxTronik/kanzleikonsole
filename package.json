@@ -28,6 +28,7 @@
     "guard:datev": "sh scripts/check-no-real-datev.sh"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.5",
     "@eslint/js": "^10.0.1",
     "@types/node": "^25.9.1",
     "dotenv": "^17.4.2",
