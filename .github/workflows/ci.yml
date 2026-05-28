@@ -90,9 +90,9 @@ jobs:
           --health-timeout 3s
           --health-retries 10
     env:
-      DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:5432/taxtronik?schema=public
-      DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@localhost:5432/taxtronik?schema=public
-      SHADOW_DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:5432/taxtronik_shadow?schema=public
+      DATABASE_URL: postgresql://taxtronik:taxtronik@postgres:5432/taxtronik?schema=public
+      DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@postgres:5432/taxtronik?schema=public
+      SHADOW_DATABASE_URL: postgresql://taxtronik:taxtronik@postgres:5432/taxtronik_shadow?schema=public
     steps:
       - uses: actions/checkout@v4
 
@@ -126,12 +126,12 @@ jobs:
 
       - name: Create shadow database
         run: |
-          PGPASSWORD=taxtronik psql -h localhost -U taxtronik -d postgres \
+          PGPASSWORD=taxtronik psql -h postgres -U taxtronik -d postgres \
             -v ON_ERROR_STOP=1 -c "CREATE DATABASE taxtronik_shadow"
 
       - name: Bootstrap roles and extensions
         run: |
-          PGPASSWORD=taxtronik psql -h localhost -U taxtronik -d taxtronik \
+          PGPASSWORD=taxtronik psql -h postgres -U taxtronik -d taxtronik \
             -v ON_ERROR_STOP=1 -f packages/db/prisma/init/01_bootstrap.sql
 
       - name: Apply migrations
@@ -174,6 +174,10 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+    env:
+      DATABASE_URL: postgresql://taxtronik:taxtronik@postgres:5432/taxtronik?schema=public
+      DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@postgres:5432/taxtronik?schema=public
+      REDIS_URL: redis://redis:6379
     steps:
       - uses: actions/checkout@v4
 
@@ -207,7 +211,7 @@ jobs:
 
       - name: Bootstrap database
         run: |
-          PGPASSWORD=taxtronik psql -h localhost -U taxtronik -d taxtronik \
+          PGPASSWORD=taxtronik psql -h postgres -U taxtronik -d taxtronik \
             -v ON_ERROR_STOP=1 -f packages/db/prisma/init/01_bootstrap.sql
           pnpm --filter @taxtronik/db exec prisma migrate deploy
 
