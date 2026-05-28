@@ -48,8 +48,10 @@ if (!shadowUrl) {
 
 // 1. Shadow-DB resetten + Migrationen applien.
 // migrate deploy ist non-destructive, aber wir wollen einen sauberen Stand —
-// also vorher resetten. `migrate reset --force --skip-seed --skip-generate`
-// dropt das Schema und re-applied alle Migrationen.
+// also vorher resetten. `migrate reset --force` dropt das Schema und
+// re-applied alle Migrationen. Prisma 7 hat --skip-seed/--skip-generate
+// entfernt; das Seed-Opt-out läuft jetzt darüber, dass prisma.config.ts den
+// seed-Eintrag nur setzt, wenn PRISMA_DRIFT_CHECK ≠ '1' ist.
 function run(cmd: string, args: string[], extraEnv: Record<string, string> = {}): boolean {
   const result = spawnSync(cmd, args, {
     cwd: pkgRoot,
@@ -62,8 +64,9 @@ function run(cmd: string, args: string[], extraEnv: Record<string, string> = {})
 
 console.log('[verify:schema-drift] Resette Shadow-DB + applye Migrationen ...');
 if (
-  !run('npx', ['prisma', 'migrate', 'reset', '--force', '--skip-seed', '--skip-generate'], {
+  !run('npx', ['prisma', 'migrate', 'reset', '--force'], {
     DATABASE_URL: shadowUrl,
+    PRISMA_DRIFT_CHECK: '1',
   })
 ) {
   console.error('[verify:schema-drift] migrate reset auf Shadow-DB fehlgeschlagen.');
@@ -89,7 +92,7 @@ const diffResult = spawnSync(
     stdio: ['ignore', 'pipe', 'pipe'],
     shell: process.platform === 'win32',
     encoding: 'utf-8',
-    env: { ...process.env, DATABASE_URL: shadowUrl },
+    env: { ...process.env, DATABASE_URL: shadowUrl, PRISMA_DRIFT_CHECK: '1' },
   },
 );
 
