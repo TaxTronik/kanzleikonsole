@@ -19,6 +19,10 @@ paths = [
   '''(^|/)docs/operations/lizenz\.md$''',
 ]
 
+# regexTarget = "line" prüft gegen die volle Quellzeile (Default wäre nur der
+# extrahierte Secret-Wert — env.S3_SECRET_KEY allein hätte zu wenig Kontext,
+# weil derselbe Bezeichner auch echte Treffer maskieren könnte).
+regexTarget = "line"
 regexes = [
   # S3-Client-Konstruktor: Variablen-Reference, kein hartkodiertes Secret.
   '''secretAccessKey:\s*env\.S3_SECRET_KEY''',
