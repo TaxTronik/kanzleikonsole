@@ -5,18 +5,17 @@
 // zusammen produzieren würden. Siehe ADR 0012.
 //
 // Vorgehen:
-//   1. Shadow-DB resetten + alle Migrationen via `prisma migrate deploy` applien
-//   2. `prisma migrate diff --from-schema-datasource <shadow>
-//                          --to-schema-datamodel ./prisma/schema.prisma`
+//   1. Shadow-DB resetten + alle Migrationen via `prisma migrate reset` applien
+//   2. `prisma migrate diff --from-config-datasource --to-schema schema.prisma`
 //   3. Wenn Output nicht leer → exit 1 mit Diff im Log.
 //
-// Warum `--from-schema-datasource` statt `--from-migrations`?
+// Warum `--from-config-datasource` statt `--from-migrations`?
 // Prisma's `--from-migrations` parsed die SQL-Migrationen und baut intern
 // einen Datamodel-Zustand auf, der `CREATE EXTENSION` nicht als Teil des
 // Schema-States erkennt — dadurch entsteht Phantom-Drift bei den Extensions
-// citext/pg_trgm/pgcrypto. Mit `--from-schema-datasource` introspectiert
-// Prisma die Live-DB (in unserem Fall die frisch migrierte Shadow-DB) und
-// erkennt die Extensions korrekt.
+// citext/pg_trgm/pgcrypto. Mit `--from-config-datasource` introspectiert
+// Prisma die Live-DB (in unserem Fall die frisch migrierte Shadow-DB,
+// DATABASE_URL = SHADOW_DATABASE_URL) und erkennt die Extensions korrekt.
 // =============================================================================
 
 import { spawnSync } from 'node:child_process';
@@ -73,7 +72,11 @@ if (
   process.exit(1);
 }
 
-// 2. Diff von der frisch migrierten Shadow-DB zum aktuellen schema.prisma
+// 2. Diff von der frisch migrierten Shadow-DB zum aktuellen schema.prisma.
+// Prisma 7: --from-schema-datasource ist weg, stattdessen
+// --from-config-datasource (ohne Pfad, liest die Datasource aus
+// prisma.config.ts — DATABASE_URL injizieren wir per Env).
+// --to-schema-datamodel wurde zu --to-schema.
 console.log('[verify:schema-drift] Berechne Diff Shadow-DB → schema.prisma ...');
 const diffResult = spawnSync(
   'npx',
@@ -81,9 +84,8 @@ const diffResult = spawnSync(
     'prisma',
     'migrate',
     'diff',
-    '--from-schema-datasource',
-    schemaFile,
-    '--to-schema-datamodel',
+    '--from-config-datasource',
+    '--to-schema',
     schemaFile,
     '--exit-code',
   ],
