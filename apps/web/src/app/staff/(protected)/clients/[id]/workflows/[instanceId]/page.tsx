@@ -1,4 +1,4 @@
-// =============================================================================
+﻿// =============================================================================
 // /staff/clients/[id]/workflows/[instanceId] — Workflow-Instanz-Detail
 //
 // Zeigt alle Schritte mit Status, Erledigt-Datum, Bearbeiter und Notizen.
@@ -101,7 +101,7 @@ export default async function WorkflowInstanceDetail({
     <div className="p-8 max-w-4xl">
       <Link
         href={`/staff/clients/${clientId}/workflows`}
-        className="text-sm text-gray-500 hover:text-gray-900 inline-flex items-center gap-1 mb-4"
+        className="back-link"
       >
         <ArrowLeft className="h-4 w-4" /> Zurück zu Workflows
       </Link>
@@ -109,11 +109,11 @@ export default async function WorkflowInstanceDetail({
       <div className="card p-6 mb-6">
         <div className="flex items-start justify-between gap-4 mb-3">
           <div className="flex-1 min-w-0">
-            <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-1 flex items-center gap-2">
+            <h1 className="text-xl font-bold text-primary mb-1 flex items-center gap-2">
               <Workflow className="h-5 w-5 text-brand-600" />
               {inst.name}
             </h1>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
+            <p className="text-sm text-secondary">
               Mandant: <Link href={`/staff/clients/${clientId}`} className="hover:underline">{inst.client.name}</Link>
               {' · '}
               Vorlage: <Link href={`/staff/workflows/templates/${inst.template.id}`} className="hover:underline">{inst.template.name}</Link>
@@ -131,28 +131,28 @@ export default async function WorkflowInstanceDetail({
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-4 text-xs text-gray-600 dark:text-gray-400">
+        <div className="grid grid-cols-3 gap-4 text-xs text-secondary">
           <div className="inline-flex items-center gap-1.5">
-            <Clock className="h-3.5 w-3.5 text-gray-400" />
-            Gestartet: <strong className="text-gray-800 dark:text-gray-200">{dateTimeFmt.format(inst.startedAt)}</strong>
+            <Clock className="h-3.5 w-3.5 text-disabled" />
+            Gestartet: <strong className="text-primary">{dateTimeFmt.format(inst.startedAt)}</strong>
           </div>
           <div className="inline-flex items-center gap-1.5">
-            <UserIcon className="h-3.5 w-3.5 text-gray-400" />
-            Von: <strong className="text-gray-800 dark:text-gray-200">{staffName.get(inst.startedByStaff) ?? '—'}</strong>
+            <UserIcon className="h-3.5 w-3.5 text-disabled" />
+            Von: <strong className="text-primary">{staffName.get(inst.startedByStaff) ?? '—'}</strong>
           </div>
           {inst.completedAt && (
             <div className="inline-flex items-center gap-1.5">
               <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-              Erledigt: <strong className="text-gray-800 dark:text-gray-200">{dateTimeFmt.format(inst.completedAt)}</strong>
+              Erledigt: <strong className="text-primary">{dateTimeFmt.format(inst.completedAt)}</strong>
             </div>
           )}
         </div>
 
         <div className="mt-3 flex items-center gap-3">
-          <div className="h-2 flex-1 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+          <div className="h-2 flex-1 rounded-full bg-gray-100 overflow-hidden">
             <div className="h-full bg-brand-600" style={{ width: `${pct}%` }} />
           </div>
-          <span className="text-xs text-gray-500 shrink-0">{doneCount} / {total} erledigt</span>
+          <span className="text-xs text-muted shrink-0">{doneCount} / {total} erledigt</span>
         </div>
 
         {inst.notes && (
@@ -177,19 +177,19 @@ export default async function WorkflowInstanceDetail({
                       <CheckCircle2 className="h-3.5 w-3.5" />
                     </div>
                   ) : (
-                    <div className="w-6 h-6 rounded-full border-2 border-gray-300 dark:border-gray-600 flex items-center justify-center text-xs text-gray-500">
+                    <div className="w-6 h-6 rounded-full border-2 border-strong flex items-center justify-center text-xs text-muted">
                       {idx + 1}
                     </div>
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <KindIcon className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                    <span className={done ? 'text-sm text-gray-500 dark:text-gray-400 line-through' : 'text-sm font-medium text-gray-900 dark:text-gray-100'}>
+                    <KindIcon className="h-3.5 w-3.5 text-disabled shrink-0" />
+                    <span className={done ? 'text-sm text-muted line-through' : 'text-sm font-medium text-primary'}>
                       {it.title}
                     </span>
                     {it.kind !== 'TASK' && (
-                      <span className="text-[10px] font-medium uppercase tracking-wide text-gray-500 bg-gray-100 dark:bg-gray-800 rounded px-1.5 py-0.5">
+                      <span className="text-[10px] font-medium uppercase tracking-wide text-muted bg-gray-100 rounded px-1.5 py-0.5">
                         {KIND_LABEL[it.kind]}
                       </span>
                     )}
@@ -202,13 +202,13 @@ export default async function WorkflowInstanceDetail({
                     )}
                   </div>
                   {it.description && (
-                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 whitespace-pre-wrap">{it.description}</p>
+                    <p className="text-xs text-secondary mt-1 whitespace-pre-wrap">{it.description}</p>
                   )}
 
                   {/* Verlauf-Zeile */}
-                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-gray-500 dark:text-gray-400">
+                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted">
                     {it.assigneeStaffId && (
-                      <span>Zuständig: <strong className="text-gray-700 dark:text-gray-300">{staffName.get(it.assigneeStaffId) ?? '—'}</strong></span>
+                      <span>Zuständig: <strong className="text-secondary">{staffName.get(it.assigneeStaffId) ?? '—'}</strong></span>
                     )}
                     {it.startedAt && !done && (
                       <span>Angestoßen {dateTimeFmt.format(it.startedAt)}</span>
@@ -221,7 +221,7 @@ export default async function WorkflowInstanceDetail({
                       </span>
                     )}
                     {!it.doneAt && !it.startedAt && (
-                      <span className="inline-flex items-center gap-1 text-gray-400">
+                      <span className="inline-flex items-center gap-1 text-disabled">
                         <Circle className="h-3 w-3" /> Offen
                       </span>
                     )}
@@ -238,7 +238,7 @@ export default async function WorkflowInstanceDetail({
                         >
                           <Inbox className="h-3 w-3" />
                           {r.title}
-                          {r.closedAt && <span className="text-gray-400">(geschlossen {dateTimeFmt.format(r.closedAt)})</span>}
+                          {r.closedAt && <span className="text-disabled">(geschlossen {dateTimeFmt.format(r.closedAt)})</span>}
                           <ExternalLink className="h-2.5 w-2.5" />
                         </Link>
                       ))}
@@ -247,7 +247,7 @@ export default async function WorkflowInstanceDetail({
                   {it.triggeredSubmissions.length > 0 && (
                     <div className="mt-2 text-xs">
                       {it.triggeredSubmissions.map((s) => (
-                        <span key={s.id} className="inline-flex items-center gap-1 text-gray-600 dark:text-gray-400 mr-3">
+                        <span key={s.id} className="inline-flex items-center gap-1 text-secondary mr-3">
                           <FileText className="h-3 w-3" />
                           Formular „{s.name}"
                           {s.submittedAt && <span className="text-emerald-700 dark:text-emerald-400">(ausgefüllt {dateTimeFmt.format(s.submittedAt)})</span>}
@@ -257,8 +257,8 @@ export default async function WorkflowInstanceDetail({
                   )}
 
                   {it.notes && (
-                    <div className="mt-2 rounded-md bg-gray-50 dark:bg-gray-900/40 border border-gray-100 dark:border-gray-800 p-2">
-                      <p className="text-xs text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{it.notes}</p>
+                    <div className="mt-2 rounded-md bg-surface-raised border border-subtle p-2">
+                      <p className="text-xs text-secondary whitespace-pre-wrap">{it.notes}</p>
                     </div>
                   )}
                 </div>

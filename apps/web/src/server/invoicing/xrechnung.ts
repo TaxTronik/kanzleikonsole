@@ -23,7 +23,6 @@
 
 import { create } from 'xmlbuilder2';
 import type { XMLBuilder } from 'xmlbuilder2/lib/interfaces';
-import type { Decimal } from '@prisma/client/runtime/library';
 import type { SellerInfo } from '@/server/settings/tenant-settings';
 
 export interface XRechnungInvoice {
@@ -65,7 +64,7 @@ function fmtDate(d: Date): string {
   return `${y}${m}${day}`;
 }
 
-function fmtAmount(n: number | Decimal | { toString(): string }): string {
+function fmtAmount(n: number | { toString(): string }): string {
   return Number(n.toString()).toFixed(2);
 }
 

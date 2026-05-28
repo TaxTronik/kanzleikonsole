@@ -4,7 +4,7 @@ export default defineConfig({
   test: {
     // Sequenziell — RLS-Tests dürfen nicht parallel laufen (teilen eine DB).
     pool: 'forks',
-    poolOptions: { forks: { singleFork: true } },
+    forks: { singleFork: true },
     timeout: 30_000,
   },
 });

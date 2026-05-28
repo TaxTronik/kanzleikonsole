@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition, useMemo } from 'react';
 import { Save, ArrowLeft, ArrowRight, AlertCircle } from 'lucide-react';
@@ -175,7 +175,7 @@ export function PlanWizard({
 
       {step === 1 && (
         <div className="card p-6 space-y-4">
-          <h2 className="text-sm font-medium text-gray-900">Schritt 1: Eckdaten</h2>
+          <h2 className="text-sm font-medium text-primary">Schritt 1: Eckdaten</h2>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label">Name der Planung</label>
@@ -217,12 +217,12 @@ export function PlanWizard({
               ))}
             </select>
             {selectedBase && (
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-muted mt-1">
                 Erlöse {eurFmt.format(selectedBase.revenue ?? 0)} · Ergebnis {eurFmt.format(selectedBase.result ?? 0)}
               </p>
             )}
             {!selectedBase && (
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-muted mt-1">
                 Ohne Basis startest du in Schritt 2 mit Null-Werten.
               </p>
             )}
@@ -230,7 +230,7 @@ export function PlanWizard({
 
           {selectedBase && (
             <div className="rounded-md bg-brand-50/40 border border-brand-200 p-3 space-y-3">
-              <p className="text-xs text-gray-700">
+              <p className="text-xs text-secondary">
                 Werte aus der Basis übernehmen und optional prozentual anpassen
                 — Steuern werden automatisch grob geschätzt:
               </p>
@@ -244,13 +244,13 @@ export function PlanWizard({
                       'text-xs py-1 px-2.5 rounded-md border ' +
                       (lastAppliedPct === pct
                         ? 'bg-brand-600 text-white border-brand-600'
-                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50')
+                        : 'bg-surface text-secondary border-strong hover:bg-gray-50')
                     }
                   >
                     {pct > 0 ? `+${pct} %` : pct < 0 ? `${pct} %` : 'Basis'}
                   </button>
                 ))}
-                <span className="text-xs text-gray-400 mx-1">oder</span>
+                <span className="text-xs text-disabled mx-1">oder</span>
                 <div className="flex items-center gap-1">
                   <input
                     type="text"
@@ -260,12 +260,12 @@ export function PlanWizard({
                     placeholder="z. B. 7,5"
                     className="input text-xs py-1 w-20 font-mono"
                   />
-                  <span className="text-xs text-gray-500">%</span>
+                  <span className="text-xs text-muted">%</span>
                   <button
                     type="button"
                     onClick={applyCustomPct}
                     disabled={!customPct.trim()}
-                    className="text-xs py-1 px-2.5 rounded-md bg-white border border-gray-300 hover:bg-gray-50 disabled:opacity-40"
+                    className="text-xs py-1 px-2.5 rounded-md bg-surface border border-strong hover:bg-gray-50 disabled:opacity-40"
                   >
                     Anwenden
                   </button>
@@ -275,7 +275,7 @@ export function PlanWizard({
               {/* Live-Preview: was haben die Buttons gerade gemacht? */}
               {lastAppliedPct !== null && (
                 <div className="border-t border-brand-200 pt-2 mt-2">
-                  <p className="text-xs text-gray-500 mb-1.5">
+                  <p className="text-xs text-muted mb-1.5">
                     Vorbelegung übernommen
                     {lastAppliedPct !== 0 ? ` (${lastAppliedPct > 0 ? '+' : ''}${lastAppliedPct} %)` : ''}:
                   </p>
@@ -308,14 +308,14 @@ export function PlanWizard({
 
       {step === 2 && (
         <div className="card p-6 space-y-4">
-          <h2 className="text-sm font-medium text-gray-900">Schritt 2: Achsen anpassen</h2>
-          <p className="text-xs text-gray-500">
+          <h2 className="text-sm font-medium text-primary">Schritt 2: Achsen anpassen</h2>
+          <p className="text-xs text-muted">
             Jahreswerte pro Position. Steuern sind grob geschätzt — bei Bedarf
             mit deinem Steuerberater präzisieren.
           </p>
 
           <div>
-            <p className="text-xs font-medium text-gray-700 uppercase mb-1.5">Erträge</p>
+            <p className="text-xs font-medium text-secondary uppercase mb-1.5">Erträge</p>
             <div className="space-y-2">
               {REVENUE_AXES.map((a) => (
                 <AxisRow key={a} axis={a} line={lines[a]} onChange={(p) => setAxis(a, p)} />
@@ -324,7 +324,7 @@ export function PlanWizard({
           </div>
 
           <div>
-            <p className="text-xs font-medium text-gray-700 uppercase mb-1.5">Aufwendungen</p>
+            <p className="text-xs font-medium text-secondary uppercase mb-1.5">Aufwendungen</p>
             <div className="space-y-2">
               {COST_AXES.map((a) => (
                 <AxisRow key={a} axis={a} line={lines[a]} onChange={(p) => setAxis(a, p)} />
@@ -333,14 +333,14 @@ export function PlanWizard({
           </div>
 
           <div>
-            <p className="text-xs font-medium text-gray-700 uppercase mb-1.5">Steuern</p>
+            <p className="text-xs font-medium text-secondary uppercase mb-1.5">Steuern</p>
             <AxisRow axis="TAXES" line={lines.TAXES} onChange={(p) => setAxis('TAXES', p)} />
-            <p className="text-xs text-gray-400 mt-1">
+            <p className="text-xs text-disabled mt-1">
               Tipp: GewSt + KSt + SolZ liegen bei GmbHs in München (Hebesatz 490 %) zusammen meist bei ca. 31 % vom Gewinn vor Steuern.
             </p>
           </div>
 
-          <div className="border-t border-gray-200 pt-3 mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+          <div className="border-t border-default pt-3 mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
             <Total label="Erträge" value={totals.revenue} />
             <Total label="Aufwendungen" value={totals.costs} />
             <Total label="Ergebnis vor Steuern" value={totals.resultBeforeTax} accent />
@@ -361,7 +361,7 @@ export function PlanWizard({
 
       {step === 3 && (
         <div className="card p-6 space-y-4">
-          <h2 className="text-sm font-medium text-gray-900">Schritt 3: Speichern</h2>
+          <h2 className="text-sm font-medium text-primary">Schritt 3: Speichern</h2>
           <div>
             <label className="label">Anmerkungen / Annahmen (optional, Markdown)</label>
             <textarea
@@ -412,7 +412,7 @@ export function PlanWizard({
               Die Planrechnung ist ein <strong>eigener Entwurf</strong> und ersetzt keine fachliche Beratung. Insbesondere die Steuer­schätzung ist ein grober Pauschalwert — Ihre Kanzlei kann das deutlich präziser rechnen.
             </span>
           </div>
-          {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+          {error && <div className="alert-error-sm">{error}</div>}
           <div className="flex justify-between">
             <button type="button" onClick={() => setStep(2)} disabled={isPending} className="btn-secondary">
               <ArrowLeft className="h-4 w-4" />
@@ -440,7 +440,7 @@ function AxisRow({
 }) {
   return (
     <div className="grid grid-cols-[1fr_180px_2fr] gap-2 items-center">
-      <label className="text-sm text-gray-700">{AXIS_LABELS[axis]}</label>
+      <label className="text-sm text-secondary">{AXIS_LABELS[axis]}</label>
       <div className="relative">
         <input
           type="number"
@@ -448,7 +448,7 @@ function AxisRow({
           onChange={(e) => onChange({ amount: Number(e.target.value) || 0 })}
           className="input pr-8 text-sm font-mono"
         />
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500">€</span>
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted">€</span>
       </div>
       <input
         type="text"
@@ -464,12 +464,12 @@ function AxisRow({
 
 function Preview({ label, v, accent }: { label: string; v: number; accent?: boolean }) {
   return (
-    <div className="bg-white rounded px-2 py-1 border border-gray-200">
-      <p className="text-[10px] text-gray-500 uppercase tracking-wide">{label}</p>
+    <div className="bg-surface rounded px-2 py-1 border border-default">
+      <p className="text-[10px] text-muted uppercase tracking-wide">{label}</p>
       <p
         className={
           'text-xs font-mono tabular-nums ' +
-          (accent && v < 0 ? 'text-red-700' : accent && v > 0 ? 'text-emerald-700' : 'text-gray-900')
+          (accent && v < 0 ? 'text-red-700' : accent && v > 0 ? 'text-emerald-700' : 'text-primary')
         }
       >
         {eurFmt.format(v)}
@@ -481,11 +481,11 @@ function Preview({ label, v, accent }: { label: string; v: number; accent?: bool
 function Total({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
   return (
     <div>
-      <p className="text-xs text-gray-500">{label}</p>
+      <p className="text-xs text-muted">{label}</p>
       <p
         className={
           'text-lg font-bold font-mono ' +
-          (accent && value < 0 ? 'text-red-700' : accent && value > 0 ? 'text-emerald-700' : 'text-gray-900')
+          (accent && value < 0 ? 'text-red-700' : accent && value > 0 ? 'text-emerald-700' : 'text-primary')
         }
       >
         {eurFmt.format(value)}

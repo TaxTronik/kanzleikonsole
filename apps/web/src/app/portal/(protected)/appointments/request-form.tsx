@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useActionState, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -48,9 +48,9 @@ export function AppointmentRequestForm({
 
   return (
     <div className="card overflow-hidden">
-      <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
-        <h2 className="text-sm font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
-          <CalendarPlus className="h-4 w-4 text-gray-400" />
+      <div className="px-6 py-4 border-b border-default flex items-center justify-between">
+        <h2 className="text-sm font-medium text-primary flex items-center gap-2">
+          <CalendarPlus className="h-4 w-4 text-disabled" />
           Neuen Termin anfragen
         </h2>
         {!open && (
@@ -87,7 +87,7 @@ export function AppointmentRequestForm({
                 <option key={s.id} value={s.id}>{s.fullName}</option>
               ))}
             </select>
-            <p className="text-[11px] text-gray-500 mt-1">
+            <p className="text-[11px] text-muted mt-1">
               Ohne Auswahl entscheidet die Kanzlei, wer den Termin übernimmt.
             </p>
           </div>
@@ -97,17 +97,17 @@ export function AppointmentRequestForm({
             {Array.from({ length: slotCount }).map((_, i) => (
               <div
                 key={i}
-                className="rounded-md border border-gray-200 dark:border-gray-700 p-3 space-y-2 bg-gray-50/40 dark:bg-gray-900/30"
+                className="rounded-md border border-default p-3 space-y-2 bg-gray-50/40 dark:bg-gray-900/30"
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                  <span className="text-xs font-medium text-secondary">
                     Wunsch {i + 1}
                   </span>
                   {i > 0 && (
                     <button
                       type="button"
                       onClick={() => setSlotCount((c) => Math.max(1, c - 1))}
-                      className="text-gray-400 hover:text-red-700 p-1"
+                      className="text-disabled hover:text-red-700 p-1"
                       title="Diesen Wunsch entfernen"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -116,7 +116,7 @@ export function AppointmentRequestForm({
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div>
-                    <label className="text-[11px] text-gray-500 block mb-1">Beginn</label>
+                    <label className="text-[11px] text-muted block mb-1">Beginn</label>
                     <DateTimePicker
                       name={`slot${i}_starts`}
                       defaultValue={defaultStartFor(i)}
@@ -125,7 +125,7 @@ export function AppointmentRequestForm({
                     />
                   </div>
                   <div>
-                    <label className="text-[11px] text-gray-500 block mb-1">Ende</label>
+                    <label className="text-[11px] text-muted block mb-1">Ende</label>
                     <DateTimePicker
                       name={`slot${i}_ends`}
                       defaultValue={defaultEndFor(i)}

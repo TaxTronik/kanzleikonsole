@@ -1,4 +1,4 @@
-// =============================================================================
+﻿// =============================================================================
 // /staff/clients/onboarding/[id] — Wizard-Schritte 2 bis n
 //
 // Schritt wird über ?step= gewählt. Bestimmte Schritte verlinken auf
@@ -100,17 +100,17 @@ export default async function OnboardingStepPage({
     <div className="p-8 max-w-3xl">
       <Link
         href={`/staff/clients/${client.id}`}
-        className="text-sm text-gray-500 hover:text-gray-900 inline-flex items-center gap-1 mb-4"
+        className="back-link"
       >
         <ArrowLeft className="h-4 w-4" /> Zur Mandantenakte
       </Link>
 
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1 flex items-center gap-2">
+        <h1 className="page-title">
           <Wand2 className="h-6 w-6 text-brand-600" />
           Onboarding: {client.name}
         </h1>
-        <p className="text-gray-500 dark:text-gray-400 text-sm">
+        <p className="text-muted text-sm">
           Restliche Schritte zum vollständigen Erstkontakt.
         </p>
       </div>
@@ -159,8 +159,8 @@ export default async function OnboardingStepPage({
 function ContactStep({ clientId, contactName, contactEmail }: { clientId: string; contactName: string; contactEmail: string }) {
   return (
     <div className="card p-6">
-      <h2 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-1">Ansprechpartner + Portal-Zugang</h2>
-      <p className="text-xs text-gray-500 mb-4">
+      <h2 className="text-sm font-medium text-primary mb-1">Ansprechpartner + Portal-Zugang</h2>
+      <p className="text-xs text-muted mb-4">
         Mindestens ein Ansprechpartner ermöglicht später Portal-Login, Anforderungen und Magic-Link-Mails.
       </p>
       <form action={onboardingAddContactAction} className="space-y-4">
@@ -184,10 +184,10 @@ function ContactStep({ clientId, contactName, contactEmail }: { clientId: string
           </div>
         </div>
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" name="sendPortalInvite" defaultChecked className="h-4 w-4 rounded border-gray-300 text-brand-600" />
+          <input type="checkbox" name="sendPortalInvite" defaultChecked className="h-4 w-4 rounded border-strong text-brand-600" />
           Magic-Link für Portal-Zugang jetzt versenden
         </label>
-        <div className="flex justify-end gap-2 pt-3 border-t border-gray-100 dark:border-gray-800">
+        <div className="flex justify-end gap-2 pt-3 border-t border-subtle">
           <SkipButton clientId={clientId} next="gwg" label="Überspringen" />
           <button type="submit" className="btn-primary text-sm">Anlegen &amp; weiter</button>
         </div>
@@ -209,11 +209,11 @@ function GwgStep({
 }) {
   return (
     <div className="card p-6">
-      <h2 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-1 flex items-center gap-2">
+      <h2 className="text-sm font-medium text-primary mb-1 flex items-center gap-2">
         <ShieldCheck className="h-4 w-4 text-brand-600" />
         GwG-Onboarding starten
       </h2>
-      <p className="text-xs text-gray-500 mb-4">
+      <p className="text-xs text-muted mb-4">
         Der Mandant erhält per Mail einen Link zum Self-Service-GwG-Formular. Erst nach
         verifizierter Identitätsprüfung wird der Mandant intern auf <em>aktiv</em> geschaltet.
       </p>
@@ -236,7 +236,7 @@ function GwgStep({
             <input id="inviteEmail" name="inviteEmail" type="email" required maxLength={255} defaultValue={defaultEmail} className="input" />
           </div>
         </div>
-        <div className="flex justify-end gap-2 pt-3 border-t border-gray-100 dark:border-gray-800">
+        <div className="flex justify-end gap-2 pt-3 border-t border-subtle">
           {existingInvite && (
             <SkipButton clientId={clientId} next="poa" label="Bereits gesendet — weiter" />
           )}
@@ -252,11 +252,11 @@ function GwgStep({
 function PoaStep({ clientId, poaCount, nextStep }: { clientId: string; poaCount: number; nextStep: string }) {
   return (
     <div className="card p-6">
-      <h2 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-1 flex items-center gap-2">
+      <h2 className="text-sm font-medium text-primary mb-1 flex items-center gap-2">
         <ScrollText className="h-4 w-4 text-brand-600" />
         Vollmacht erstellen
       </h2>
-      <p className="text-xs text-gray-500 mb-4">
+      <p className="text-xs text-muted mb-4">
         Optional. Die Vollmacht wird im Vollmachten-Modul angelegt und signiert — der Wizard
         wartet hier nicht auf eine Unterschrift.
       </p>
@@ -265,7 +265,7 @@ function PoaStep({ clientId, poaCount, nextStep }: { clientId: string; poaCount:
           <Check className="h-3 w-3" /> {poaCount} Vollmacht{poaCount === 1 ? '' : 'en'} angelegt.
         </div>
       ) : null}
-      <div className="flex justify-end gap-2 pt-3 border-t border-gray-100 dark:border-gray-800">
+      <div className="flex justify-end gap-2 pt-3 border-t border-subtle">
         <SkipButton clientId={clientId} next={nextStep} label={poaCount > 0 ? 'Weiter' : 'Überspringen'} />
         <Link
           href={`/staff/poa/new?clientId=${clientId}&from=onboarding`}
@@ -282,11 +282,11 @@ function PoaStep({ clientId, poaCount, nextStep }: { clientId: string; poaCount:
 function FirstRequestStep({ clientId, requestCount }: { clientId: string; requestCount: number }) {
   return (
     <div className="card p-6">
-      <h2 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-1 flex items-center gap-2">
+      <h2 className="text-sm font-medium text-primary mb-1 flex items-center gap-2">
         <Inbox className="h-4 w-4 text-brand-600" />
         Erste Anforderung
       </h2>
-      <p className="text-xs text-gray-500 mb-4">
+      <p className="text-xs text-muted mb-4">
         Z. B. Eröffnungsbilanz-Belege, Verträge oder Zugangsdaten. Anforderung erscheint
         im Portal des Mandanten.
       </p>
@@ -295,7 +295,7 @@ function FirstRequestStep({ clientId, requestCount }: { clientId: string; reques
           <Check className="h-3 w-3" /> {requestCount} Anforderung{requestCount === 1 ? '' : 'en'} angelegt.
         </div>
       ) : null}
-      <div className="flex justify-end gap-2 pt-3 border-t border-gray-100 dark:border-gray-800">
+      <div className="flex justify-end gap-2 pt-3 border-t border-subtle">
         <SkipButton clientId={clientId} next="done" label={requestCount > 0 ? 'Weiter' : 'Überspringen'} />
         <Link
           href={`/staff/clients/${clientId}/requests/new?from=onboarding`}
@@ -318,34 +318,34 @@ function DoneStep({
 }) {
   return (
     <div className="card p-6">
-      <h2 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-1 flex items-center gap-2">
+      <h2 className="text-sm font-medium text-primary mb-1 flex items-center gap-2">
         <Check className="h-4 w-4 text-emerald-600" />
         Onboarding abschließen
       </h2>
-      <p className="text-xs text-gray-500 mb-4">
+      <p className="text-xs text-muted mb-4">
         Übersicht der angelegten Daten. Du kannst jederzeit zurück zu einem Schritt navigieren.
       </p>
 
       <ul className="text-sm space-y-2 mb-6">
         <li className="flex items-center justify-between">
           <span>Ansprechpartner</span>
-          <span className="text-gray-700 dark:text-gray-300">{summary.contactCount}</span>
+          <span className="text-secondary">{summary.contactCount}</span>
         </li>
         <li className="flex items-center justify-between">
           <span>GwG-Einladung versendet</span>
-          <span className="text-gray-700 dark:text-gray-300">{summary.hasGwgInvite ? 'Ja' : 'Nein'}</span>
+          <span className="text-secondary">{summary.hasGwgInvite ? 'Ja' : 'Nein'}</span>
         </li>
         <li className="flex items-center justify-between">
           <span>Vollmachten angelegt</span>
-          <span className="text-gray-700 dark:text-gray-300">{summary.poaCount}</span>
+          <span className="text-secondary">{summary.poaCount}</span>
         </li>
         <li className="flex items-center justify-between">
           <span>Anforderungen angelegt</span>
-          <span className="text-gray-700 dark:text-gray-300">{summary.requestCount}</span>
+          <span className="text-secondary">{summary.requestCount}</span>
         </li>
         <li className="flex items-center justify-between">
           <span>Mandant intern aktiv</span>
-          <span className="text-gray-700 dark:text-gray-300">
+          <span className="text-secondary">
             {summary.allowActive ? 'Ja' : 'Nein (wartet auf GwG-Verifikation)'}
           </span>
         </li>
@@ -360,7 +360,7 @@ function DoneStep({
 
       <form action={onboardingCompleteAction}>
         <input type="hidden" name="clientId" value={clientId} />
-        <div className="flex justify-end pt-3 border-t border-gray-100 dark:border-gray-800">
+        <div className="flex justify-end pt-3 border-t border-subtle">
           <button type="submit" className="btn-primary text-sm">
             Onboarding abschließen &amp; zur Mandantenakte
           </button>

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -116,10 +116,10 @@ export function SidebarNav({ items }: Props) {
             className={
               active
                 ? 'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium bg-brand-50 text-brand-700 transition-colors'
-                : 'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 transition-colors'
+                : 'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-secondary hover:bg-gray-100 hover:text-primary transition-colors'
             }
           >
-            <Icon className={active ? 'h-4 w-4 text-brand-700' : 'h-4 w-4 text-gray-500'} />
+            <Icon className={active ? 'h-4 w-4 text-brand-700' : 'h-4 w-4 text-muted'} />
             {item.label}
           </Link>
         );

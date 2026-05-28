@@ -1,4 +1,4 @@
-import { redirect, notFound } from 'next/navigation';
+﻿import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
@@ -46,7 +46,7 @@ export default async function StaffClientBwaDashboardPage({
     <div className="p-8 max-w-6xl">
       <Link
         href={`/staff/clients/${clientId}/bwa`}
-        className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 mb-3"
+        className="inline-flex items-center gap-1 text-sm text-muted hover:text-primary mb-3"
       >
         <ArrowLeft className="h-3 w-3" />
         BWA-Import

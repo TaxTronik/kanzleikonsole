@@ -13,6 +13,9 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "e2e": "pnpm --filter @taxtronik/e2e e2e",
+    "e2e:ui": "pnpm --filter @taxtronik/e2e e2e:ui",
+    "e2e:headed": "pnpm --filter @taxtronik/e2e e2e:headed",
     "db:generate": "pnpm --filter @taxtronik/db generate",
     "db:migrate": "pnpm --filter @taxtronik/db migrate:dev",
     "db:migrate:deploy": "pnpm --filter @taxtronik/db migrate:deploy",
@@ -25,11 +28,14 @@
     "guard:datev": "sh scripts/check-no-real-datev.sh"
   },
   "devDependencies": {
-    "@types/node": "^22.10.0",
-    "eslint": "^9.16.0",
-    "prettier": "^3.4.0",
-    "turbo": "^2.3.0",
-    "typescript": "^5.7.0"
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^25.9.1",
+    "dotenv": "^17.4.2",
+    "eslint": "^10.4.0",
+    "prettier": "^3.8.3",
+    "turbo": "^2.9.14",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.60.0"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

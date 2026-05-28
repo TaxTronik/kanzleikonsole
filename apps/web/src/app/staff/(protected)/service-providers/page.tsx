@@ -1,4 +1,4 @@
-import { redirect } from 'next/navigation';
+﻿import { redirect } from 'next/navigation';
 import { Building2, Trash2 } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
@@ -19,8 +19,8 @@ export default async function ServiceProvidersPage() {
   return (
     <div className="p-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 mb-1">Dienstleisterverzeichnis</h1>
-        <p className="text-gray-500 text-sm">
+        <h1 className="text-2xl font-bold text-primary mb-1">Dienstleisterverzeichnis</h1>
+        <p className="text-muted text-sm">
           § 11 GwG · DSGVO Art. 28 — Dienstleister mit Zugriff auf personenbezogene Daten.
         </p>
       </div>
@@ -29,20 +29,20 @@ export default async function ServiceProvidersPage() {
         <div className="lg:col-span-2 card overflow-hidden">
           {providers.length === 0 ? (
             <div className="px-6 py-16 text-center">
-              <Building2 className="h-12 w-12 text-gray-200 mx-auto mb-3" />
-              <p className="text-sm text-gray-400">Noch keine Dienstleister erfasst.</p>
+              <Building2 className="h-12 w-12 text-disabled mx-auto mb-3" />
+              <p className="text-sm text-disabled">Noch keine Dienstleister erfasst.</p>
             </div>
           ) : (
-            <ul className="divide-y divide-gray-100">
+            <ul className="divide-y divide-border-subtle">
               {providers.map((p) => (
                 <li key={p.id} className="px-6 py-4 flex items-start justify-between">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="font-medium text-gray-900">{p.name}</span>
+                      <span className="font-medium text-primary">{p.name}</span>
                       <span className="badge-gray">{p.category}</span>
                       {p.hasDataAccess && <span className="badge-yellow">Datenzugriff</span>}
                     </div>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-muted">
                       {p.contactEmail ?? 'kein Kontakt'}
                       {p.contractFromDate
                         ? ` · Vertrag seit ${new Intl.DateTimeFormat('de-DE').format(p.contractFromDate)}`
@@ -52,14 +52,14 @@ export default async function ServiceProvidersPage() {
                         : ''}
                     </p>
                     {p.notes && (
-                      <p className="text-xs text-gray-600 mt-2 whitespace-pre-wrap">{p.notes}</p>
+                      <p className="text-xs text-secondary mt-2 whitespace-pre-wrap">{p.notes}</p>
                     )}
                   </div>
                   <form action={deleteServiceProviderAction}>
                     <input type="hidden" name="id" value={p.id} />
                     <button
                       type="submit"
-                      className="text-gray-400 hover:text-red-600 p-2"
+                      className="text-disabled hover:text-red-600 p-2"
                       title="Löschen"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -72,7 +72,7 @@ export default async function ServiceProvidersPage() {
         </div>
 
         <div className="card p-6 h-fit">
-          <h2 className="text-sm font-medium text-gray-900 mb-4">Neuer Dienstleister</h2>
+          <h2 className="text-sm font-medium text-primary mb-4">Neuer Dienstleister</h2>
           <NewProviderForm />
         </div>
       </div>

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition, useEffect } from 'react';
 import { createPortal } from 'react-dom';
@@ -42,7 +42,7 @@ export function QuickStartButton({
 
   const modal = open ? (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"
+      className="modal-overlay"
       onClick={() => setOpen(false)}
     >
           <div
@@ -50,10 +50,10 @@ export function QuickStartButton({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+              <h2 className="text-sm font-semibold text-primary">
                 „{templateName}" starten
               </h2>
-              <button type="button" onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-700">
+              <button type="button" onClick={() => setOpen(false)} className="text-disabled hover:text-secondary">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -79,11 +79,11 @@ export function QuickStartButton({
               </select>
             </div>
             {error && (
-              <div className="rounded-md bg-red-50 dark:bg-red-900/20 text-xs text-red-700 dark:text-red-300 p-2">
+              <div className="alert-error-sm text-xs p-2">
                 {error}
               </div>
             )}
-            <div className="flex items-center justify-end gap-2 pt-2">
+            <div className="form-actions">
               <button type="button" onClick={() => setOpen(false)} className="btn-secondary text-sm">
                 Abbrechen
               </button>

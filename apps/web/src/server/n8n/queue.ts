@@ -17,10 +17,7 @@ export interface N8nDeliverJob {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
-  var __taxtronik_n8n_queue:
-    | { conn: IORedis; queue: Queue<N8nDeliverJob> }
-    | undefined;
+  var __taxtronik_n8n_queue: { conn: IORedis; queue: Queue<N8nDeliverJob> } | undefined;
 }
 
 function init(): { conn: IORedis; queue: Queue<N8nDeliverJob> } {
@@ -32,9 +29,17 @@ function init(): { conn: IORedis; queue: Queue<N8nDeliverJob> } {
   return { conn, queue };
 }
 
-const handle = globalThis.__taxtronik_n8n_queue ?? init();
-if (env.NODE_ENV !== 'production') {
-  globalThis.__taxtronik_n8n_queue = handle;
+function getHandle(): { conn: IORedis; queue: Queue<N8nDeliverJob> } {
+  const existing = globalThis.__taxtronik_n8n_queue;
+  if (existing) return existing;
+
+  const handle = init();
+  if (env.NODE_ENV !== 'production') {
+    globalThis.__taxtronik_n8n_queue = handle;
+  }
+  return handle;
 }
 
-export const n8nDeliverQueue = handle.queue;
+export function getN8nDeliverQueue(): Queue<N8nDeliverJob> {
+  return getHandle().queue;
+}

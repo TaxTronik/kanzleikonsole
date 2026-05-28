@@ -1,4 +1,4 @@
-import { redirect } from 'next/navigation';
+﻿import { redirect } from 'next/navigation';
 import { CheckCircle2, Clock, XCircle } from 'lucide-react';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
@@ -36,8 +36,8 @@ export default async function PortalStammdatenPage() {
 
   return (
     <div className="p-8 max-w-3xl">
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">Stammdaten</h1>
-      <p className="text-gray-500 text-sm mb-6">
+      <h1 className="text-2xl font-bold text-primary mb-1">Stammdaten</h1>
+      <p className="text-muted text-sm mb-6">
         Hier können Sie Änderungen an Ihren Stammdaten vorschlagen. Jede
         Änderung wird von Ihrer Kanzlei geprüft und nach Bestätigung
         übernommen.
@@ -80,7 +80,7 @@ export default async function PortalStammdatenPage() {
 
       {requests.length > 0 && (
         <div className="mt-8">
-          <h2 className="text-sm font-medium text-gray-900 mb-3">Verlauf</h2>
+          <h2 className="text-sm font-medium text-primary mb-3">Verlauf</h2>
           <ul className="space-y-2">
             {requests.map((r) => (
               <li key={r.id} className="card p-3 text-sm">
@@ -88,20 +88,20 @@ export default async function PortalStammdatenPage() {
                   <StatusIcon status={r.status} />
                   <div className="flex-1">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium text-gray-900">
+                      <span className="font-medium text-primary">
                         {statusLabel(r.status)}
                       </span>
-                      <span className="text-xs text-gray-400">
+                      <span className="text-xs text-disabled">
                         {new Intl.DateTimeFormat('de-DE', {
                           dateStyle: 'short',
                         }).format(r.createdAt)}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-500 mt-0.5">
+                    <p className="text-xs text-muted mt-0.5">
                       {summarize(r.fields)}
                     </p>
                     {r.decisionNote && (
-                      <p className="text-xs text-gray-700 mt-1 italic">
+                      <p className="text-xs text-secondary mt-1 italic">
                         „{r.decisionNote}"
                       </p>
                     )}
@@ -119,7 +119,7 @@ export default async function PortalStammdatenPage() {
 function StatusIcon({ status }: { status: string }) {
   if (status === 'APPROVED') return <CheckCircle2 className="h-4 w-4 text-emerald-700 mt-0.5" />;
   if (status === 'REJECTED') return <XCircle className="h-4 w-4 text-red-700 mt-0.5" />;
-  return <Clock className="h-4 w-4 text-gray-400 mt-0.5" />;
+  return <Clock className="h-4 w-4 text-disabled mt-0.5" />;
 }
 
 function statusLabel(s: string): string {

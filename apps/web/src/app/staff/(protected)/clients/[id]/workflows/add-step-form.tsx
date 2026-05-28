@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
@@ -85,11 +85,11 @@ export function AddStepForm({
 
   if (!open) {
     return (
-      <div className="px-4 py-2 border-t border-gray-100 dark:border-gray-800">
+      <div className="px-4 py-2 border-t border-subtle">
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="text-xs text-gray-500 hover:text-brand-700 dark:hover:text-brand-300 inline-flex items-center gap-1"
+          className="text-xs text-muted hover:text-brand-700 dark:hover:text-brand-300 inline-flex items-center gap-1"
         >
           <Plus className="h-3 w-3" />
           Schritt hinzufügen
@@ -99,7 +99,7 @@ export function AddStepForm({
   }
 
   return (
-    <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/30 space-y-3">
+    <div className="px-4 py-3 border-t border-subtle bg-gray-50/50 dark:bg-gray-900/30 space-y-3">
       <input
         type="text"
         value={title}
@@ -120,7 +120,7 @@ export function AddStepForm({
 
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Schritt-Typ</label>
+          <label className="block text-xs text-muted mb-1">Schritt-Typ</label>
           <select
             value={kind}
             onChange={(e) => changeKind(e.target.value as StepKind)}
@@ -130,10 +130,10 @@ export function AddStepForm({
               <option key={k} value={k}>{KIND_LABELS[k]}</option>
             ))}
           </select>
-          <p className="text-[10px] text-gray-400 mt-1 leading-snug">{KIND_DESCRIPTIONS[kind]}</p>
+          <p className="text-[10px] text-disabled mt-1 leading-snug">{KIND_DESCRIPTIONS[kind]}</p>
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Bearbeiter</label>
+          <label className="block text-xs text-muted mb-1">Bearbeiter</label>
           <select
             value={assigneeStaffId}
             onChange={(e) => setAssigneeStaffId(e.target.value)}
@@ -159,7 +159,7 @@ export function AddStepForm({
 
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Fälligkeit (optional)</label>
+          <label className="block text-xs text-muted mb-1">Fälligkeit (optional)</label>
           <input
             type="date"
             value={dueDate}
@@ -168,8 +168,8 @@ export function AddStepForm({
           />
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">
-            n8n-Event <span className="text-gray-400">(optional)</span>
+          <label className="block text-xs text-muted mb-1">
+            n8n-Event <span className="text-disabled">(optional)</span>
           </label>
           <input
             type="text"
@@ -183,10 +183,10 @@ export function AddStepForm({
       </div>
 
       {error && (
-        <div className="rounded-md bg-red-50 dark:bg-red-900/20 text-xs text-red-700 dark:text-red-300 p-2">{error}</div>
+        <div className="alert-error-sm text-xs p-2">{error}</div>
       )}
       <div className="flex items-center justify-end gap-2 pt-1">
-        <button type="button" onClick={reset} className="text-xs text-gray-500 hover:underline">
+        <button type="button" onClick={reset} className="text-xs text-muted hover:underline">
           Abbrechen
         </button>
         <button
@@ -225,7 +225,7 @@ function KindFields({
     case 'DOCUMENT_UPLOAD':
       return (
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Erwartete Dokumenten-Klasse</label>
+          <label className="block text-xs text-muted mb-1">Erwartete Dokumenten-Klasse</label>
           <select
             value={String(config['expectedClassification'] ?? 'GENERAL')}
             onChange={(e) => setCfg('expectedClassification', e.target.value)}

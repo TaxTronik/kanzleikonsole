@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
@@ -96,7 +96,6 @@ export function NotificationsBell({ initialUnread }: Props) {
   useEffect(() => {
     refreshCount();
     setOpen(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
   // Klick außerhalb schließt das Dropdown
@@ -148,7 +147,7 @@ export function NotificationsBell({ initialUnread }: Props) {
       <button
         type="button"
         onClick={toggle}
-        className="relative p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"
+        className="relative p-2 text-muted hover:text-primary hover:bg-gray-100 rounded-md transition-colors"
         aria-label={unread > 0 ? `${unread} ungelesene Benachrichtigungen` : 'Benachrichtigungen'}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -164,13 +163,13 @@ export function NotificationsBell({ initialUnread }: Props) {
       {open && (
         <div
           role="menu"
-          className="absolute right-0 mt-2 w-96 max-w-[calc(100vw-2rem)] z-30 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden"
+          className="absolute right-0 mt-2 w-96 max-w-[calc(100vw-2rem)] z-30 rounded-lg shadow-lg border border-default bg-surface overflow-hidden"
         >
-          <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-            <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">
+          <div className="px-4 py-3 border-b border-default flex items-center justify-between">
+            <h3 className="text-sm font-medium text-primary">
               Benachrichtigungen
               {unread > 0 && (
-                <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">({unread} neu)</span>
+                <span className="ml-2 text-xs text-muted">({unread} neu)</span>
               )}
             </h3>
             {unread > 0 && (
@@ -187,14 +186,14 @@ export function NotificationsBell({ initialUnread }: Props) {
 
           <div className="max-h-96 overflow-y-auto">
             {items === null ? (
-              <p className="px-4 py-8 text-sm text-gray-400 text-center">Lade…</p>
+              <p className="px-4 py-8 text-sm text-disabled text-center">Lade…</p>
             ) : items.length === 0 ? (
-              <p className="px-4 py-8 text-sm text-gray-400 text-center">Keine Benachrichtigungen.</p>
+              <p className="px-4 py-8 text-sm text-disabled text-center">Keine Benachrichtigungen.</p>
             ) : (
-              <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+              <ul className="divide-y divide-border-subtle">
                 {items.map((n) => {
                   const inner = (
-                    <div className="flex items-start gap-2 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800">
+                    <div className="flex items-start gap-2 px-4 py-3 hover:bg-gray-50">
                       {!n.readAt && (
                         <span className="mt-1.5 inline-block w-2 h-2 rounded-full bg-brand-600 shrink-0" />
                       )}
@@ -202,16 +201,16 @@ export function NotificationsBell({ initialUnread }: Props) {
                         <p
                           className={
                             n.readAt
-                              ? 'text-sm text-gray-700 dark:text-gray-300 truncate'
-                              : 'text-sm font-medium text-gray-900 dark:text-gray-100 truncate'
+                              ? 'text-sm text-secondary truncate'
+                              : 'text-sm font-medium text-primary truncate'
                           }
                         >
                           {n.title}
                         </p>
                         {n.body && (
-                          <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2">{n.body}</p>
+                          <p className="text-xs text-muted line-clamp-2">{n.body}</p>
                         )}
-                        <p className="text-[10px] text-gray-400 mt-0.5">{relativeTime(n.createdAt, now)}</p>
+                        <p className="text-[10px] text-disabled mt-0.5">{relativeTime(n.createdAt, now)}</p>
                       </div>
                     </div>
                   );
@@ -241,13 +240,13 @@ export function NotificationsBell({ initialUnread }: Props) {
             )}
           </div>
 
-          <div className="border-t border-gray-200 dark:border-gray-700 px-4 py-2 text-center">
+          <div className="border-t border-default px-4 py-2 text-center">
             <Link
               href="/staff/notifications"
               onClick={() => setOpen(false)}
               className="text-xs text-brand-700 dark:text-brand-500 hover:underline"
             >
-              Alle Benachrichtigungen anzeigen →
+              Alle Benachrichtigungen anzeigen â†’
             </Link>
           </div>
         </div>

@@ -1,10 +1,11 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Trash2 } from 'lucide-react';
 import { createInvoiceAction } from '../actions';
 
+import { fmtEUR } from '@/lib/fmt';
 interface Position {
   description: string;
   quantity: number;
@@ -186,7 +187,7 @@ export function NewInvoiceForm({ clients, suggestedNumber }: Props) {
 
       <div className="card p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-medium text-gray-900">Positionen</h3>
+          <h3 className="text-sm font-medium text-primary">Positionen</h3>
           <button type="button" onClick={addPosition} className="btn-secondary text-xs py-1.5">
             <Plus className="h-3.5 w-3.5" />
             Position
@@ -227,7 +228,7 @@ export function NewInvoiceForm({ clients, suggestedNumber }: Props) {
                 />
               </div>
               <div className="col-span-2">
-                <label className="label">Einzelpreis €</label>
+                <label className="label">Einzelpreis â‚¬</label>
                 <input
                   type="number"
                   step="0.01"
@@ -241,7 +242,7 @@ export function NewInvoiceForm({ clients, suggestedNumber }: Props) {
                 <button
                   type="button"
                   onClick={() => removePosition(i)}
-                  className="text-gray-400 hover:text-red-600 p-2"
+                  className="text-disabled hover:text-red-600 p-2"
                   disabled={positions.length === 1}
                 >
                   <Trash2 className="h-4 w-4" />
@@ -251,13 +252,13 @@ export function NewInvoiceForm({ clients, suggestedNumber }: Props) {
           ))}
         </div>
 
-        <div className="mt-6 pt-4 border-t border-gray-200 grid grid-cols-2 gap-2 text-sm">
-          <div className="text-right text-gray-600">Netto:</div>
+        <div className="mt-6 pt-4 border-t border-default grid grid-cols-2 gap-2 text-sm">
+          <div className="text-right text-secondary">Netto:</div>
           <div className="font-mono tabular-nums text-right">{fmtEUR(netTotal)}</div>
-          <div className="text-right text-gray-600">USt ({vatRate} %):</div>
+          <div className="text-right text-secondary">USt ({vatRate} %):</div>
           <div className="font-mono tabular-nums text-right">{fmtEUR(vatTotal)}</div>
-          <div className="text-right text-gray-900 font-bold">Brutto:</div>
-          <div className="font-mono tabular-nums text-right text-gray-900 font-bold">{fmtEUR(grandTotal)}</div>
+          <div className="text-right text-primary font-bold">Brutto:</div>
+          <div className="font-mono tabular-nums text-right text-primary font-bold">{fmtEUR(grandTotal)}</div>
         </div>
       </div>
 
@@ -274,7 +275,7 @@ export function NewInvoiceForm({ clients, suggestedNumber }: Props) {
       </div>
 
       {error && (
-        <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>
+        <div className="alert-error-sm">{error}</div>
       )}
 
       <div className="flex gap-2">
@@ -286,6 +287,3 @@ export function NewInvoiceForm({ clients, suggestedNumber }: Props) {
   );
 }
 
-function fmtEUR(n: number): string {
-  return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(n);
-}

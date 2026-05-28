@@ -1,11 +1,10 @@
-'use client';
+﻿'use client';
 
 import { useMemo, useState, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  Folder, FileText, FileImage, FileSpreadsheet, File as FileIcon,
-  Lock, Users, Building2, ChevronRight, Search, FolderPlus,
+  Folder, FileText, ChevronRight, Search, FolderPlus,
   Download, RotateCcw, Trash2, Pencil, FolderInput, Tag, X, CornerLeftUp, Check,
   Share2, EyeOff,
 } from 'lucide-react';
@@ -25,50 +24,20 @@ import {
   moveFolderAction,
   setDocumentFolderAction,
 } from '@/app/staff/(protected)/documents/folder-actions';
+import {
+  TIER_BADGE,
+  descendants,
+  fileIcon,
+  fmtBytes,
+  fmtDate,
+  navIcon,
+  type Crumb,
+  type Entry,
+  type FolderNode,
+} from '@/components/document-browser-utils';
 
-export interface Crumb { label: string; href: string }
-export type Entry =
-  | { kind: 'nav'; id: string; name: string; href: string; icon: 'kind' | 'internal' | 'client' }
-  | { kind: 'folder'; id: string; name: string; href: string; icon: 'folder' }
-  | {
-      kind: 'file'; id: string; name: string; mimeType: string; typeName: string;
-      typeId: string | null; tier: 'NONE' | 'GWG' | 'GOBD';
-      sizeBytes: number; createdAt: string; deletedAt: string | null;
-      shared: boolean;
-    };
-interface FolderNode { id: string; name: string; parentId: string | null }
+export type { Crumb, Entry };
 type Sel = { kind: 'file' | 'folder'; id: string };
-
-function fmtBytes(b: number) {
-  if (b < 1024) return `${b} B`;
-  if (b < 1048576) return `${(b / 1024).toFixed(1)} KB`;
-  if (b < 1073741824) return `${(b / 1048576).toFixed(1)} MB`;
-  return `${(b / 1073741824).toFixed(2)} GB`;
-}
-const fmtDate = (iso: string) =>
-  new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium' }).format(new Date(iso));
-function fileIcon(m: string) {
-  if (m.startsWith('image/')) return FileImage;
-  if (m.includes('spreadsheet') || m.includes('excel') || m.includes('csv')) return FileSpreadsheet;
-  if (m === 'application/pdf' || m.startsWith('text/')) return FileText;
-  return FileIcon;
-}
-const navIcon = (i: 'kind' | 'internal' | 'client') =>
-  i === 'internal' ? Lock : i === 'client' ? Building2 : Users;
-const TIER_BADGE = { GWG: 'GwG·5J', GOBD: 'GoBD·10J' } as const;
-
-/** Nachfahren (inkl. self) — Cycle-Schutz beim Ordner-Verschieben. */
-function descendants(all: FolderNode[], root: string): Set<string> {
-  const byParent = new Map<string | null, FolderNode[]>();
-  for (const f of all) byParent.set(f.parentId, [...(byParent.get(f.parentId) ?? []), f]);
-  const acc = new Set([root]);
-  const st = [root];
-  while (st.length) {
-    const c = st.pop()!;
-    for (const k of byParent.get(c) ?? []) if (!acc.has(k.id)) { acc.add(k.id); st.push(k.id); }
-  }
-  return acc;
-}
 
 export function DocumentBrowser({
   crumbs, entries, scope, folders, currentFolderId, deleted, q, toggleDeletedHref,
@@ -292,12 +261,12 @@ export function DocumentBrowser({
         </div>
       )}
       {/* Breadcrumb (Ordner-Crumbs sind Drop-Ziele) */}
-      <nav className="flex items-center flex-wrap gap-1 text-sm text-gray-500 mb-4">
+      <nav className="flex items-center flex-wrap gap-1 text-sm text-muted mb-4">
         {crumbs.map((c, i) => (
           <span key={c.href} className="flex items-center gap-1">
-            {i > 0 && <ChevronRight className="h-3.5 w-3.5 text-gray-300" />}
+            {i > 0 && <ChevronRight className="h-3.5 w-3.5 text-disabled" />}
             {i === crumbs.length - 1 ? (
-              <span className="font-semibold text-gray-900">{c.label}</span>
+              <span className="font-semibold text-primary">{c.label}</span>
             ) : (
               <Link href={c.href} className="hover:text-brand-700 hover:underline">{c.label}</Link>
             )}
@@ -309,7 +278,7 @@ export function DocumentBrowser({
       <div className="flex flex-wrap items-center gap-3 mb-4">
         {sel.length > 0 ? (
           <>
-            <span className="text-sm font-medium text-gray-700">{sel.length} ausgewählt</span>
+            <span className="text-sm font-medium text-secondary">{sel.length} ausgewählt</span>
             <button type="button" onClick={() => setMoveOpen(true)} disabled={busy} className="btn-secondary text-xs py-1.5">
               <FolderInput className="h-4 w-4" /> Verschieben
             </button>
@@ -381,14 +350,14 @@ export function DocumentBrowser({
                 <Trash2 className="h-4 w-4" /> Löschen
               </button>
             )}
-            <button type="button" onClick={clearSel} className="text-xs text-gray-500 hover:text-gray-700">
+            <button type="button" onClick={clearSel} className="text-xs text-muted hover:text-secondary">
               Aufheben
             </button>
           </>
         ) : (
           <>
             <form onSubmit={applySearch} className="relative flex-1 min-w-[220px]">
-              <Search className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <Search className="h-4 w-4 text-disabled absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -401,7 +370,7 @@ export function DocumentBrowser({
                 {toggleDeletedHref && (
                   <Link
                     href={toggleDeletedHref}
-                    className={`text-xs px-3 py-1.5 rounded ${deleted ? 'bg-brand-50 text-brand-700' : 'text-gray-500 hover:text-gray-700'}`}
+                    className={`text-xs px-3 py-1.5 rounded ${deleted ? 'bg-brand-50 text-brand-700' : 'text-muted hover:text-secondary'}`}
                   >
                     {deleted ? 'Gelöschte (an)' : 'Gelöschte zeigen'}
                   </Link>
@@ -430,7 +399,7 @@ export function DocumentBrowser({
           onDragLeave={() => setDropTarget(null)}
           onDrop={(e) => { setDropTarget(null); onDropInto(null, e.dataTransfer.getData('text/plain')); }}
           className={`mb-2 flex items-center gap-2 rounded-md border border-dashed px-3 py-1.5 text-xs ${
-            dropTarget === 'root' ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-gray-200 text-gray-400'
+            dropTarget === 'root' ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-default text-disabled'
           }`}
         >
           <CornerLeftUp className="h-3.5 w-3.5" />
@@ -441,11 +410,11 @@ export function DocumentBrowser({
       {/* Liste */}
       {entries.length === 0 ? (
         <div className="card px-6 py-16 text-center">
-          <Folder className="h-12 w-12 text-gray-200 mx-auto mb-3" />
-          <p className="text-sm text-gray-400">{deleted ? 'Keine gelöschten Dokumente hier.' : 'Dieser Ordner ist leer.'}</p>
+          <Folder className="h-12 w-12 text-disabled mx-auto mb-3" />
+          <p className="text-sm text-disabled">{deleted ? 'Keine gelöschten Dokumente hier.' : 'Dieser Ordner ist leer.'}</p>
         </div>
       ) : (
-        <div className="card overflow-hidden divide-y divide-gray-100">
+        <div className="card overflow-hidden divide-y divide-border-subtle">
           {entries.map((e) => {
             const sk = e.kind !== 'nav';
             const selectedRow = sk && isSel(e.kind as 'file' | 'folder', e.id);
@@ -496,7 +465,7 @@ export function DocumentBrowser({
                 {e.kind === 'nav' || e.kind === 'folder' ? (
                   <Link href={e.href} className="flex items-center gap-3 flex-1 min-w-0">
                     <Icon className="h-5 w-5 text-brand-600 shrink-0" />
-                    <span className="font-medium text-gray-900 truncate">{e.name}</span>
+                    <span className="font-medium text-primary truncate">{e.name}</span>
                   </Link>
                 ) : (
                   <button
@@ -505,10 +474,10 @@ export function DocumentBrowser({
                     className="flex items-center gap-3 flex-1 min-w-0 text-left"
                     title="Vorschau öffnen"
                   >
-                    <Icon className="h-5 w-5 text-gray-400 shrink-0" />
+                    <Icon className="h-5 w-5 text-disabled shrink-0" />
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium text-gray-900 truncate hover:underline">{e.name}</span>
+                        <span className="font-medium text-primary truncate hover:underline">{e.name}</span>
                         {e.tier !== 'NONE' && (
                           <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
                             e.tier === 'GOBD' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-amber-50 text-amber-700 border-amber-200'
@@ -521,7 +490,7 @@ export function DocumentBrowser({
                             className={`text-[10px] px-1.5 py-0.5 rounded border inline-flex items-center gap-0.5 ${
                               e.shared
                                 ? 'bg-green-50 text-green-700 border-green-200'
-                                : 'bg-gray-50 text-gray-500 border-gray-200'
+                                : 'bg-gray-50 text-muted border-default'
                             }`}
                           >
                             {e.shared ? <Share2 className="h-2.5 w-2.5" /> : <EyeOff className="h-2.5 w-2.5" />}
@@ -529,7 +498,7 @@ export function DocumentBrowser({
                           </span>
                         )}
                       </div>
-                      <div className="text-xs text-gray-400 truncate">
+                      <div className="text-xs text-disabled truncate">
                         {e.typeName || '—'} · {fmtBytes(e.sizeBytes)} ·{' '}
                         {e.deletedAt ? `gelöscht ${fmtDate(e.deletedAt)}` : fmtDate(e.createdAt)}
                       </div>
@@ -538,11 +507,11 @@ export function DocumentBrowser({
                 )}
                 {e.kind === 'file' && (
                   <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100">
-                    <a href={`/api/staff/documents/${e.id}/download`} className="text-gray-400 hover:text-gray-900 p-1.5 inline-flex items-center" title="Herunterladen">
+                    <a href={`/api/staff/documents/${e.id}/download`} className="text-disabled hover:text-primary p-1.5 inline-flex items-center" title="Herunterladen">
                       <Download className="h-4 w-4" />
                     </a>
                     {e.deletedAt ? (
-                      <button type="button" disabled={busy} title="Wiederherstellen" onClick={() => restore(e.id)} className="text-gray-400 hover:text-brand-700 p-1.5">
+                      <button type="button" disabled={busy} title="Wiederherstellen" onClick={() => restore(e.id)} className="icon-btn">
                         <RotateCcw className="h-4 w-4" />
                       </button>
                     ) : (
@@ -553,18 +522,18 @@ export function DocumentBrowser({
                             disabled={busy}
                             title={e.shared ? 'Freigabe für Mandant zurückziehen' : 'Für Mandant freigeben'}
                             onClick={() => toggleShare(e.id, !e.shared)}
-                            className={`p-1.5 ${e.shared ? 'text-green-600 hover:text-green-700' : 'text-gray-400 hover:text-brand-700'}`}
+                            className={`p-1.5 ${e.shared ? 'text-green-600 hover:text-green-700' : 'text-disabled hover:text-brand-700'}`}
                           >
                             {e.shared ? <Share2 className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
                           </button>
                         )}
-                        <button type="button" title="Typ ändern" onClick={() => setRetagDoc(e)} className="text-gray-400 hover:text-brand-700 p-1.5">
+                        <button type="button" title="Typ ändern" onClick={() => setRetagDoc(e)} className="icon-btn">
                           <Tag className="h-4 w-4" />
                         </button>
-                        <button type="button" title="Verschieben" onClick={() => { toggle('file', e.id, false); setMoveOpen(true); }} className="text-gray-400 hover:text-brand-700 p-1.5">
+                        <button type="button" title="Verschieben" onClick={() => { toggle('file', e.id, false); setMoveOpen(true); }} className="icon-btn">
                           <FolderInput className="h-4 w-4" />
                         </button>
-                        <button type="button" title="Löschen" disabled={busy} onClick={() => softDelete(e.id, e.name)} className="text-gray-400 hover:text-red-600 p-1.5">
+                        <button type="button" title="Löschen" disabled={busy} onClick={() => softDelete(e.id, e.name)} className="text-disabled hover:text-red-600 p-1.5">
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </>
@@ -575,7 +544,7 @@ export function DocumentBrowser({
                   <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100">
                     <a
                       href={dlUrl([], [e.id])}
-                      className="text-gray-400 hover:text-gray-900 p-1.5 inline-flex items-center"
+                      className="text-disabled hover:text-primary p-1.5 inline-flex items-center"
                       title="Ordner als ZIP herunterladen"
                     >
                       <Download className="h-4 w-4" />
@@ -685,13 +654,13 @@ function BulkRetagDialog({
   return (
     <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <div className="w-full max-w-md card p-6 relative" onClick={(e) => e.stopPropagation()}>
-        <button type="button" onClick={onClose} className="absolute top-3 right-3 text-gray-400 hover:text-gray-600">
+        <button type="button" onClick={onClose} className="modal-close">
           <X className="h-5 w-5" />
         </button>
-        <h2 className="text-base font-semibold text-gray-900 mb-1">
+        <h2 className="text-base font-semibold text-primary mb-1">
           Typ ändern — {fileIds.length} Dokument(e)
         </h2>
-        <p className="text-xs text-gray-500 mb-3">
+        <p className="text-xs text-muted mb-3">
           Herabstufungen (GoBD/GwG → schwächer) werden serverseitig je Datei
           abgelehnt und am Ende zusammengefasst.
         </p>
@@ -739,7 +708,7 @@ function MenuItem({
     <button
       type="button"
       onClick={onClick}
-      className={`flex w-full items-center gap-2 px-3 py-1.5 hover:bg-gray-50 ${danger ? 'text-red-600 hover:bg-red-50' : 'text-gray-700'}`}
+      className={`flex w-full items-center gap-2 px-3 py-1.5 hover:bg-gray-50 ${danger ? 'text-red-600 hover:bg-red-50' : 'text-secondary'}`}
     >
       <Icon className="h-3.5 w-3.5" /> {label}
     </button>
@@ -779,7 +748,7 @@ function MoveTargetDialog({
           className={`flex items-center gap-1 rounded px-2 py-1.5 text-sm ${
             dis ? 'opacity-40 cursor-not-allowed'
             : target === f.id ? 'bg-brand-50 text-brand-700 cursor-pointer'
-            : 'hover:bg-gray-50 text-gray-700 cursor-pointer'
+            : 'hover:bg-gray-50 text-secondary cursor-pointer'
           }`}
           style={{ paddingLeft: `${depth * 16 + 8}px` }}
           onClick={() => !dis && setTarget(f.id)}
@@ -787,7 +756,7 @@ function MoveTargetDialog({
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); setExpanded((x) => ({ ...x, [f.id]: !x[f.id] })); }}
-            className={kids.length ? 'text-gray-400' : 'invisible'}
+            className={kids.length ? 'text-disabled' : 'invisible'}
           >
             <ChevronRight className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-90' : ''}`} />
           </button>
@@ -803,24 +772,24 @@ function MoveTargetDialog({
   return (
     <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <div className="w-full max-w-md card p-6 relative" onClick={(e) => e.stopPropagation()}>
-        <button type="button" onClick={onClose} className="absolute top-3 right-3 text-gray-400 hover:text-gray-600">
+        <button type="button" onClick={onClose} className="modal-close">
           <X className="h-5 w-5" />
         </button>
-        <h2 className="text-base font-semibold text-gray-900 mb-3">Verschieben nach…</h2>
-        <div className="border border-gray-200 rounded-md max-h-72 overflow-auto p-1">
+        <h2 className="text-base font-semibold text-primary mb-3">Verschieben nach…</h2>
+        <div className="border border-default rounded-md max-h-72 overflow-auto p-1">
           <div
             className={`flex items-center gap-2 rounded px-2 py-1.5 text-sm cursor-pointer ${
-              target === null ? 'bg-brand-50 text-brand-700' : 'hover:bg-gray-50 text-gray-700'
+              target === null ? 'bg-brand-50 text-brand-700' : 'hover:bg-gray-50 text-secondary'
             }`}
             onClick={() => setTarget(null)}
           >
-            <Folder className="h-4 w-4 text-gray-300" />
+            <Folder className="h-4 w-4 text-disabled" />
             <span className="flex-1">— Wurzel (ohne Ordner) —</span>
             {target === null && <Check className="h-3.5 w-3.5" />}
           </div>
           {(childrenOf.get(null) ?? []).map((f) => row(f, 0))}
           {folders.length === 0 && (
-            <p className="px-2 py-3 text-xs text-gray-400">Keine Ordner in diesem Bereich.</p>
+            <p className="px-2 py-3 text-xs text-disabled">Keine Ordner in diesem Bereich.</p>
           )}
         </div>
         <div className="flex gap-2 mt-4">

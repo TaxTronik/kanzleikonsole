@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useActionState, useState, useTransition } from 'react';
 import { CheckCircle2, AlertCircle, ShieldCheck, ExternalLink, Send } from 'lucide-react';
@@ -71,7 +71,7 @@ export function TsaForm({ initial, providers, envFallback }: Props) {
               className={
                 providerId === ''
                   ? 'cursor-pointer rounded-md border-2 border-brand-600 bg-brand-50 dark:bg-brand-900/30 p-3'
-                  : 'cursor-pointer rounded-md border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/40 p-3'
+                  : 'cursor-pointer rounded-md border border-default hover:bg-gray-50 p-3'
               }
             >
               <div className="flex items-start gap-2">
@@ -84,10 +84,10 @@ export function TsaForm({ initial, providers, envFallback }: Props) {
                   className="mt-1"
                 />
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                  <div className="text-sm font-medium text-primary">
                     Lokaler Self-Timestamp
                   </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                  <div className="text-xs text-muted">
                     Kein externer Dienst — Server-Uhrzeit als Stempel. Nur für Dev/Test.
                   </div>
                 </div>
@@ -99,7 +99,7 @@ export function TsaForm({ initial, providers, envFallback }: Props) {
                 className={
                   providerId === p.id
                     ? 'cursor-pointer rounded-md border-2 border-brand-600 bg-brand-50 dark:bg-brand-900/30 p-3'
-                    : 'cursor-pointer rounded-md border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/40 p-3'
+                    : 'cursor-pointer rounded-md border border-default hover:bg-gray-50 p-3'
                 }
               >
                 <div className="flex items-start gap-2">
@@ -112,7 +112,7 @@ export function TsaForm({ initial, providers, envFallback }: Props) {
                     className="mt-1"
                   />
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100 flex items-center gap-1.5 flex-wrap">
+                    <div className="text-sm font-medium text-primary flex items-center gap-1.5 flex-wrap">
                       {p.label}
                       {p.qualified && (
                         <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/40 rounded px-1 py-0.5">
@@ -123,17 +123,17 @@ export function TsaForm({ initial, providers, envFallback }: Props) {
                       <span
                         className={
                           p.cost === 'free'
-                            ? 'text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 rounded px-1 py-0.5'
+                            ? 'text-[10px] font-medium uppercase tracking-wide text-muted bg-gray-100 rounded px-1 py-0.5'
                             : 'text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/40 rounded px-1 py-0.5'
                         }
                       >
                         {p.cost === 'free' ? 'kostenlos' : 'kostenpflichtig'}
                       </span>
-                      <span className="text-[10px] text-gray-400">{p.jurisdiction}</span>
+                      <span className="text-[10px] text-disabled">{p.jurisdiction}</span>
                     </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400">{p.hint}</div>
+                    <div className="text-xs text-muted">{p.hint}</div>
                     {p.id !== 'custom' && (
-                      <div className="text-[10px] text-gray-400 dark:text-gray-500 font-mono mt-0.5 truncate">
+                      <div className="text-[10px] text-disabled font-mono mt-0.5 truncate">
                         {p.url}
                       </div>
                     )}
@@ -157,7 +157,7 @@ export function TsaForm({ initial, providers, envFallback }: Props) {
               onChange={(e) => setCustomUrl(e.target.value)}
               required={isCustom}
             />
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-muted mt-1">
               Vollständige URL des RFC-3161-Endpoints (POST mit Content-Type{' '}
               <code>application/timestamp-query</code>).
             </p>
@@ -172,13 +172,13 @@ export function TsaForm({ initial, providers, envFallback }: Props) {
             {isSaving ? 'Speichere…' : 'Speichern'}
           </button>
           {saveState?.ok && (
-            <span className="inline-flex items-center gap-1 text-sm text-emerald-700 dark:text-emerald-400">
+            <span className="trend-up">
               <CheckCircle2 className="h-4 w-4" />
               Gespeichert.
             </span>
           )}
           {saveState && !saveState.ok && (
-            <span className="inline-flex items-center gap-1 text-sm text-red-700 dark:text-red-400">
+            <span className="trend-down">
               <AlertCircle className="h-4 w-4" />
               {saveState.error}
             </span>
@@ -187,16 +187,16 @@ export function TsaForm({ initial, providers, envFallback }: Props) {
       </form>
 
       {/* Test-Roundtrip */}
-      <div className="rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 p-4 space-y-2">
-        <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+      <div className="rounded-md border border-default bg-surface-raised p-4 space-y-2">
+        <div className="text-sm font-medium text-primary">
           Verbindung testen
         </div>
-        <p className="text-xs text-gray-500 dark:text-gray-400">
+        <p className="text-xs text-muted">
           Schickt eine echte TimeStampReq (mit zufälligem Hash) an den ausgewählten
           Server und prüft, ob ein granted Response zurückkommt.
         </p>
         {resolvedUrl && (
-          <p className="text-xs text-gray-500 font-mono break-all">{resolvedUrl}</p>
+          <p className="text-xs text-muted font-mono break-all">{resolvedUrl}</p>
         )}
         <div className="flex items-center gap-2">
           <button
@@ -209,13 +209,13 @@ export function TsaForm({ initial, providers, envFallback }: Props) {
             {isTesting ? 'Sende…' : 'Test senden'}
           </button>
           {testResult?.ok && (
-            <span className="inline-flex items-center gap-1 text-sm text-emerald-700 dark:text-emerald-400">
+            <span className="trend-up">
               <CheckCircle2 className="h-4 w-4" />
               {testResult.error}
             </span>
           )}
           {testResult && !testResult.ok && (
-            <span className="inline-flex items-center gap-1 text-sm text-red-700 dark:text-red-400">
+            <span className="trend-down">
               <AlertCircle className="h-4 w-4" />
               {testResult.error}
             </span>
@@ -223,7 +223,7 @@ export function TsaForm({ initial, providers, envFallback }: Props) {
         </div>
       </div>
 
-      <p className="text-xs text-gray-500 dark:text-gray-400">
+      <p className="text-xs text-muted">
         Hintergrund: Die Audit-Hash-Chain wird täglich versiegelt. Mit einem
         externen RFC-3161-Stempel bestätigt eine unabhängige Stelle, dass der
         Tages-Spitzen-Hash zu einem bestimmten Zeitpunkt existierte — Voraussetzung

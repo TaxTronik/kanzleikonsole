@@ -183,7 +183,7 @@ export async function GET(
         doc.invoiceAttachments[0]?.number ?? '',
         doc.invoiceAttachments[0]?.totalAmount?.toString().replace('.', ',') ?? '',
         fileName,
-        v.sha256.toString('hex'),
+        Buffer.from(v.sha256).toString('hex'),
       ]
         .map((v) => escapeCsvCell(String(v)))
         .join(';'),

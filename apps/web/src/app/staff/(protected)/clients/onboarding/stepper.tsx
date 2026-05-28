@@ -1,4 +1,4 @@
-import { Check } from 'lucide-react';
+﻿import { Check } from 'lucide-react';
 import type { StepDef, StepKey } from './steps';
 
 export interface StepperItemState {
@@ -27,7 +27,7 @@ export function Stepper({
           ? 'inline-flex items-center gap-1 rounded-full px-3 py-1.5 bg-brand-600 text-white font-medium'
           : done
             ? 'inline-flex items-center gap-1 rounded-full px-3 py-1.5 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200'
-            : 'inline-flex items-center gap-1 rounded-full px-3 py-1.5 bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400';
+            : 'inline-flex items-center gap-1 rounded-full px-3 py-1.5 bg-gray-100 text-muted';
         return (
           <li key={s.key} className="flex items-center">
             <span className={cls}>
@@ -41,7 +41,7 @@ export function Stepper({
               {s.label}
               {!s.required && !current && <span className="text-[10px] opacity-70">(optional)</span>}
             </span>
-            {i < steps.length - 1 && <span className="mx-1 text-gray-300">›</span>}
+            {i < steps.length - 1 && <span className="mx-1 text-disabled">›</span>}
           </li>
         );
       })}

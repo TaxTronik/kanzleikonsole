@@ -1,9 +1,10 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { createInvoiceFromTimeEntriesAction } from './actions';
 
+import { fmtEUR } from '@/lib/fmt';
 interface Props {
   clientId: string;
   suggestedNumber: string;
@@ -31,8 +32,6 @@ export function BillingForm({ clientId, suggestedNumber, totalHours }: Props) {
   const previewVat = useMemo(() => (previewNet * vatRate) / 100, [previewNet, vatRate]);
   const previewGross = previewNet + previewVat;
 
-  const fmtEUR = (n: number) =>
-    new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(n);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -126,10 +125,10 @@ export function BillingForm({ clientId, suggestedNumber, totalHours }: Props) {
           value={strategy}
           onChange={(e) => setStrategy(e.target.value as typeof strategy)}
         >
-          <option value="one-line">Eine Sammelposition (Σ Stunden × Satz)</option>
+          <option value="one-line">Eine Sammelposition (Î£ Stunden × Satz)</option>
           <option value="per-entry">Eine Position pro Time-Entry (Detail-Aufstellung)</option>
         </select>
-        <p className="text-xs text-gray-500 mt-1">
+        <p className="text-xs text-muted mt-1">
           „per-entry" liefert eine detaillierte Aufschlüsselung — empfehlenswert bei
           gemischten Tätigkeiten.
         </p>
@@ -148,15 +147,15 @@ export function BillingForm({ clientId, suggestedNumber, totalHours }: Props) {
       </div>
 
       <div className="rounded-md bg-gray-50 p-4 grid grid-cols-2 gap-2 text-sm">
-        <div className="text-right text-gray-600">Netto:</div>
+        <div className="text-right text-secondary">Netto:</div>
         <div className="font-mono tabular-nums text-right">{fmtEUR(previewNet)}</div>
-        <div className="text-right text-gray-600">USt ({vatRate} %):</div>
+        <div className="text-right text-secondary">USt ({vatRate} %):</div>
         <div className="font-mono tabular-nums text-right">{fmtEUR(previewVat)}</div>
-        <div className="text-right text-gray-900 font-bold">Brutto:</div>
-        <div className="font-mono tabular-nums text-right text-gray-900 font-bold">{fmtEUR(previewGross)}</div>
+        <div className="text-right text-primary font-bold">Brutto:</div>
+        <div className="font-mono tabular-nums text-right text-primary font-bold">{fmtEUR(previewGross)}</div>
       </div>
 
-      {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {error && <div className="alert-error-sm">{error}</div>}
 
       <button type="submit" className="btn-primary" disabled={isPending}>
         {isPending ? 'Erstellt…' : 'Rechnung erstellen & Stunden verlinken'}

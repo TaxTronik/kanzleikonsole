@@ -1,4 +1,4 @@
-import { redirect, notFound } from 'next/navigation';
+﻿import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Download, UserX } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
@@ -60,37 +60,37 @@ export default async function DsgvoDetailPage({
   return (
     <div className="p-8 max-w-3xl">
       <div className="flex items-start gap-4 mb-6">
-        <Link href="/staff/admin/dsgvo" className="text-gray-400 hover:text-gray-600 mt-1">
+        <Link href="/staff/admin/dsgvo" className="text-disabled hover:text-secondary mt-1">
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-1">
-            <h1 className="text-2xl font-bold text-gray-900">{typeLabels[req.type]}</h1>
+            <h1 className="text-2xl font-bold text-primary">{typeLabels[req.type]}</h1>
             {req.status === 'RECEIVED' && <span className="badge-yellow">{statusLabels[req.status]}</span>}
             {req.status === 'IN_PROGRESS' && <span className="badge-yellow">{statusLabels[req.status]}</span>}
             {req.status === 'COMPLETED' && <span className="badge-green">{statusLabels[req.status]}</span>}
             {req.status === 'REJECTED' && <span className="badge-gray">{statusLabels[req.status]}</span>}
           </div>
-          <p className="text-gray-500 text-sm">
+          <p className="text-muted text-sm">
             {subjectLabels[req.subjectType]} · {req.subjectName} ({req.subjectEmail})
           </p>
         </div>
       </div>
 
       <div className="card p-6 mb-6">
-        <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Beschreibung</h2>
-        <p className="text-sm text-gray-800 whitespace-pre-wrap">{req.description}</p>
+        <h2 className="text-xs font-medium text-muted uppercase tracking-wide mb-2">Beschreibung</h2>
+        <p className="text-sm text-primary whitespace-pre-wrap">{req.description}</p>
 
-        <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-gray-200 text-sm">
+        <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-default text-sm">
           <div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Frist</p>
-            <p className="text-gray-900">
+            <p className="eyebrow">Frist</p>
+            <p className="text-primary">
               {req.dueDate ? new Intl.DateTimeFormat('de-DE').format(req.dueDate) : '—'}
             </p>
           </div>
           <div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Eingegangen</p>
-            <p className="text-gray-900">
+            <p className="eyebrow">Eingegangen</p>
+            <p className="text-primary">
               {new Intl.DateTimeFormat('de-DE').format(req.createdAt)}
             </p>
           </div>
@@ -136,7 +136,7 @@ export default async function DsgvoDetailPage({
       {/* Status-Update */}
       {req.status !== 'COMPLETED' && req.status !== 'REJECTED' && (
         <div className="card p-6">
-          <h2 className="text-sm font-medium text-gray-900 mb-3">Bearbeitung</h2>
+          <h2 className="text-sm font-medium text-primary mb-3">Bearbeitung</h2>
           <form action={updateStatusAction} className="space-y-3">
             <input type="hidden" name="requestId" value={req.id} />
             <div>
@@ -166,10 +166,10 @@ export default async function DsgvoDetailPage({
 
       {req.status === 'COMPLETED' && req.notes && (
         <div className="card p-6">
-          <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+          <h2 className="text-xs font-medium text-muted uppercase tracking-wide mb-2">
             Erledigung — Notizen
           </h2>
-          <p className="text-sm text-gray-700 whitespace-pre-wrap">{req.notes}</p>
+          <p className="text-sm text-secondary whitespace-pre-wrap">{req.notes}</p>
         </div>
       )}
     </div>

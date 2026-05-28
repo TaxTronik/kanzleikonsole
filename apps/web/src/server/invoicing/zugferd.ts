@@ -27,6 +27,7 @@ import {
 import type { XRechnungInvoice, XRechnungBuyer } from './xrechnung';
 import type { SellerInfo } from '@/server/settings/tenant-settings';
 
+import { fmtEUR } from '@/lib/fmt';
 // re-export für External Imports
 export type { XRechnungInvoice, XRechnungBuyer };
 
@@ -45,13 +46,6 @@ const FONT_SIZE_NORMAL = 9;
 const FONT_SIZE_SMALL = 8;
 const FONT_SIZE_TITLE = 16;
 const FONT_SIZE_HEADING = 11;
-
-function fmtEUR(n: number): string {
-  return new Intl.NumberFormat('de-DE', {
-    style: 'currency',
-    currency: 'EUR',
-  }).format(n);
-}
 
 function fmtNum(n: number): string {
   return new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 }).format(n);
@@ -167,7 +161,6 @@ export async function generateZugferdPdf(
   if (seller.vatId) {
     drawText(ctx, 'USt-ID Verkäufer', rightCol, yRight, { size: FONT_SIZE_SMALL, color: rgb(0.5, 0.5, 0.5) });
     drawText(ctx, seller.vatId, rightCol + 100, yRight, { size: FONT_SIZE_SMALL });
-    yRight -= 14;
   }
 
   // Titel

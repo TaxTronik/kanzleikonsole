@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useActionState } from 'react';
 import { requestMagicLinkAction, type RequestLinkResult } from './actions';
@@ -14,7 +14,7 @@ export default function PortalLoginPage() {
         <div className="card p-8">
           <div className="text-center mb-8">
             <div className="text-3xl font-bold text-brand-700 mb-1">TaxTronik</div>
-            <p className="text-sm text-gray-500">Mandantenportal</p>
+            <p className="text-sm text-muted">Mandantenportal</p>
           </div>
 
           {state?.ok ? (
@@ -23,13 +23,13 @@ export default function PortalLoginPage() {
                 Wenn ein Konto mit dieser E-Mail-Adresse existiert, wurde ein
                 Login-Link verschickt. Bitte prüfen Sie Ihren Posteingang.
               </div>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-muted">
                 Der Link ist 30 Minuten gültig und kann nur einmal verwendet werden.
               </p>
             </div>
           ) : (
             <form action={formAction} className="space-y-4">
-              <p className="text-sm text-gray-600 text-center mb-2">
+              <p className="text-sm text-secondary text-center mb-2">
                 Wir senden Ihnen einen Login-Link per E-Mail.
               </p>
 
@@ -48,7 +48,7 @@ export default function PortalLoginPage() {
               </div>
 
               {state?.error && (
-                <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{state.error}</div>
+                <div className="alert-error-sm">{state.error}</div>
               )}
 
               <button type="submit" className="btn-primary w-full" disabled={isPending}>

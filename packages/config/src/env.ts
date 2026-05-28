@@ -150,7 +150,6 @@ function parseEnv(): Env {
       .map((i) => `  - ${i.path.join('.')}: ${i.message}`)
       .join('\n');
     // Niemals partielle/fehlerhafte ENV booten lassen.
-    // eslint-disable-next-line no-console
     console.error(`[config] ENV-Validierung fehlgeschlagen:\n${issues}`);
     throw new Error('ENV-Validierung fehlgeschlagen — siehe Konsole.');
   }
@@ -213,7 +212,6 @@ function parseEnv(): Env {
     const staffDom = parsed.data.STAFF_COOKIE_DOMAIN;
     const portalDom = parsed.data.PORTAL_COOKIE_DOMAIN;
     if (!staffDom || !portalDom) {
-      // eslint-disable-next-line no-console
       console.warn(
         '[config] WARNUNG: STAFF_COOKIE_DOMAIN/PORTAL_COOKIE_DOMAIN nicht gesetzt — Staff- und Portal-Surface teilen sich denselben Hostname. ' +
           'Empfohlen für Multi-Standort-Kanzleien: Subdomain-Trennung (z. B. staff.example.de / portal.example.de). ' +

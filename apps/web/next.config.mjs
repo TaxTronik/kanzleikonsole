@@ -4,8 +4,15 @@
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// Single Source of Truth: ENVs aus der Repo-Root-.env laden. Verhindert Drift
+// zwischen Workspace-.env-Dateien (Next.js würde sonst nur apps/web/.env
+// kennen). `override: false` lässt im Process bereits gesetzte Werte (CI,
+// Container) Vorrang behalten.
+dotenv.config({ path: path.join(__dirname, '../../.env'), override: false });
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {

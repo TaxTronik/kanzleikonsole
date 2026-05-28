@@ -171,7 +171,7 @@ export function linearSeasonalProjection(
     personnelCost: projectAxis('personnelCost'),
     taxes,
     resultAfterTax: result && taxes ? subtractRange(result, taxes) : null,
-    basis: `YTD ${ytd.periodKey} (${ytdMonths}/12 Monate)`,
+    basis: `Lfd. Jahr ${ytd.periodKey} (${ytdMonths}/12 Monate)`,
   };
 }
 

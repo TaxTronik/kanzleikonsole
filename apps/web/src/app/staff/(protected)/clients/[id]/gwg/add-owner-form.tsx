@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useActionState, useRef, useEffect } from 'react';
 import { addBeneficialOwnerAction, type ActionResult } from './actions';
@@ -21,8 +21,8 @@ export function AddBeneficialOwnerForm({
   }, [state]);
 
   return (
-    <form ref={formRef} action={formAction} className="space-y-3 p-4 border border-dashed border-gray-300 rounded-md">
-      <p className="text-xs text-gray-500 uppercase tracking-wide">Person hinzufügen</p>
+    <form ref={formRef} action={formAction} className="space-y-3 p-4 border border-dashed border-strong rounded-md">
+      <p className="text-xs text-muted uppercase tracking-wide">Person hinzufügen</p>
       <input type="hidden" name="checkId" value={checkId} />
       <input type="hidden" name="clientId" value={clientId} />
 
@@ -67,13 +67,13 @@ export function AddBeneficialOwnerForm({
         </div>
       </div>
 
-      <label className="flex items-center gap-2 text-sm text-gray-700">
+      <label className="flex items-center gap-2 text-sm text-secondary">
         <input type="checkbox" name="isPep" value="1" />
         Politisch exponierte Person (PEP)
       </label>
 
       {state?.error && (
-        <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{state.error}</div>
+        <div className="alert-error-sm">{state.error}</div>
       )}
 
       <button type="submit" className="btn-primary text-sm" disabled={isPending}>

@@ -1,4 +1,4 @@
-// =============================================================================
+﻿// =============================================================================
 // /staff/clients/:id/change-requests
 //
 // Stammdaten-Änderungsanfragen des Mandanten genehmigen oder ablehnen.
@@ -63,18 +63,18 @@ export default async function ClientChangeRequestsPage({
     <div className="p-8 max-w-4xl">
       <Link
         href={`/staff/clients/${client.id}`}
-        className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 mb-3"
+        className="back-link mb-3"
       >
         <ArrowLeft className="h-3 w-3" />
         Mandant
       </Link>
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">
+      <h1 className="text-2xl font-bold text-primary mb-1">
         Stammdaten-Änderungen
       </h1>
-      <p className="text-gray-500 text-sm mb-6">{client.name}</p>
+      <p className="text-muted text-sm mb-6">{client.name}</p>
 
       {requests.length === 0 ? (
-        <div className="card p-8 text-center text-sm text-gray-500">
+        <div className="card p-8 text-center text-sm text-muted">
           Keine Änderungsanfragen vorhanden.
         </div>
       ) : (
@@ -94,26 +94,26 @@ export default async function ClientChangeRequestsPage({
                   <div>
                     <div className="flex items-center gap-2 mb-1">
                       <StatusBadge status={r.status} />
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-muted">
                         {new Intl.DateTimeFormat('de-DE', {
                           dateStyle: 'short',
                           timeStyle: 'short',
                         }).format(r.createdAt)}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-700">
+                    <p className="text-sm text-secondary">
                       {r.contact.fullName}{' '}
-                      <span className="text-xs text-gray-400">({r.contact.email})</span>
+                      <span className="text-xs text-disabled">({r.contact.email})</span>
                     </p>
                     {r.note && (
-                      <p className="text-xs text-gray-600 italic mt-1">„{r.note}"</p>
+                      <p className="text-xs text-secondary italic mt-1">„{r.note}"</p>
                     )}
                   </div>
                 </div>
 
-                <table className="w-full text-sm border-t border-gray-100">
+                <table className="w-full text-sm border-t border-subtle">
                   <thead>
-                    <tr className="text-xs text-gray-500">
+                    <tr className="text-xs text-muted">
                       <th className="text-left py-1 font-normal">Feld</th>
                       <th className="text-left py-1 font-normal">Bisher</th>
                       <th className="text-left py-1 font-normal">Neu</th>
@@ -122,9 +122,9 @@ export default async function ClientChangeRequestsPage({
                   <tbody>
                     {rows.map((row) => (
                       <tr key={row.key} className="border-t border-gray-50">
-                        <td className="py-1 text-gray-600">{row.label}</td>
-                        <td className="py-1 text-gray-400">{row.before || '—'}</td>
-                        <td className="py-1 font-medium text-gray-900">{row.after}</td>
+                        <td className="py-1 text-secondary">{row.label}</td>
+                        <td className="py-1 text-disabled">{row.before || '—'}</td>
+                        <td className="py-1 font-medium text-primary">{row.after}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -134,7 +134,7 @@ export default async function ClientChangeRequestsPage({
                   <ChangeRequestRow requestId={r.id} clientId={client.id} />
                 )}
                 {r.status !== 'PENDING' && r.decisionNote && (
-                  <p className="text-xs text-gray-700 italic mt-3 border-t pt-2 border-gray-100">
+                  <p className="text-xs text-secondary italic mt-3 border-t pt-2 border-subtle">
                     Entscheidung: „{r.decisionNote}"
                   </p>
                 )}
@@ -169,5 +169,5 @@ function StatusBadge({ status }: { status: string }) {
       </span>
     );
   }
-  return <span className="text-xs text-gray-500">{status}</span>;
+  return <span className="text-xs text-muted">{status}</span>;
 }

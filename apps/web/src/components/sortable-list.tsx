@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 /**
  * Schlanke Sortable-Liste mit Pointer-Events (funktioniert mit Maus + Touch).
@@ -89,7 +89,7 @@ export function SortableList({ count, onReorder, renderItem, className }: Props)
         const handle: DragHandleProps = {
           onPointerDown: (e) => startDrag(i, e),
           className:
-            'text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 cursor-grab active:cursor-grabbing touch-none p-1',
+            'text-disabled hover:text-secondary cursor-grab active:cursor-grabbing touch-none p-1',
           title: 'Ziehen zum Verschieben',
           role: 'button',
           'aria-label': 'Element verschieben',

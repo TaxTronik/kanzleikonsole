@@ -1,6 +1,7 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
+import { slugify as slugifyLib } from '@/lib/slugify';
 import { Plus, Trash2 } from 'lucide-react';
 import { saveFormTemplateAction } from '../actions';
 import { SortableList, DragHandle } from '@/components/sortable-list';
@@ -52,14 +53,7 @@ function emptyField(): FieldDraft {
 }
 
 function slugify(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 60);
+  return slugifyLib(s, { maxLength: 60 });
 }
 
 function parseOptions(text: string): Array<{ value: string; label: string }> {
@@ -196,7 +190,7 @@ export function FormEditor({
               <div className="flex-1 space-y-3">
                 <div className="grid grid-cols-3 gap-3">
                   <div className="col-span-2">
-                    <label className="block text-xs text-gray-500 mb-1">Bezeichnung</label>
+                    <label className="block text-xs text-muted mb-1">Bezeichnung</label>
                     <input
                       type="text"
                       placeholder={f.type === 'INFO_TEXT' ? 'Hinweistext (wird angezeigt)' : 'z. B. Familienstand'}
@@ -207,7 +201,7 @@ export function FormEditor({
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">Typ</label>
+                    <label className="block text-xs text-muted mb-1">Typ</label>
                     <select value={f.type} onChange={(e) => update(i, { type: e.target.value as FieldType })} className="input">
                       {Object.entries(TYPE_LABELS).map(([v, l]) => (
                         <option key={v} value={v}>{l}</option>
@@ -218,8 +212,8 @@ export function FormEditor({
                 {f.type !== 'INFO_TEXT' && (
                   <div className="grid grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">
-                        Schlüssel <span className="text-gray-400 font-normal">(autom.)</span>
+                      <label className="block text-xs text-muted mb-1">
+                        Schlüssel <span className="text-disabled font-normal">(autom.)</span>
                       </label>
                       <input
                         type="text"
@@ -231,7 +225,7 @@ export function FormEditor({
                       />
                     </div>
                     <div className="col-span-2">
-                      <label className="block text-xs text-gray-500 mb-1">Hilfetext</label>
+                      <label className="block text-xs text-muted mb-1">Hilfetext</label>
                       <input
                         type="text"
                         value={f.helpText}
@@ -244,8 +238,8 @@ export function FormEditor({
                 )}
                 {(f.type === 'SELECT' || f.type === 'MULTISELECT') && (
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">
-                      Optionen <span className="text-gray-400 font-normal">(eine pro Zeile, Format „wert" oder „wert=Anzeige")</span>
+                    <label className="block text-xs text-muted mb-1">
+                      Optionen <span className="text-disabled font-normal">(eine pro Zeile, Format „wert" oder „wert=Anzeige")</span>
                     </label>
                     <textarea
                       value={f.options}
@@ -260,7 +254,7 @@ export function FormEditor({
                 {(f.type === 'NUMBER' || f.type === 'MONEY' || f.type === 'DATE') && (
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">Min</label>
+                      <label className="block text-xs text-muted mb-1">Min</label>
                       <input
                         type="text"
                         value={f.minValue}
@@ -269,7 +263,7 @@ export function FormEditor({
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">Max</label>
+                      <label className="block text-xs text-muted mb-1">Max</label>
                       <input
                         type="text"
                         value={f.maxValue}
@@ -285,13 +279,13 @@ export function FormEditor({
                       type="checkbox"
                       checked={f.required}
                       onChange={(e) => update(i, { required: e.target.checked })}
-                      className="rounded border-gray-300 text-brand-600"
+                      className="rounded border-strong text-brand-600"
                     />
                     <span>Pflichtfeld</span>
                   </label>
                 )}
               </div>
-              <button type="button" onClick={() => remove(i)} className="text-gray-400 hover:text-red-700 p-1" title="Feld entfernen">
+              <button type="button" onClick={() => remove(i)} className="text-disabled hover:text-red-700 p-1" title="Feld entfernen">
                 <Trash2 className="h-4 w-4" />
               </button>
             </div>
@@ -313,7 +307,7 @@ export function FormEditor({
           </span>
         )}
       </div>
-      {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {error && <div className="alert-error-sm">{error}</div>}
     </div>
   );
 }

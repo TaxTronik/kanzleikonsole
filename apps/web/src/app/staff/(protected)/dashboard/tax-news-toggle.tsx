@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import { Bell, BellOff, RefreshCw } from 'lucide-react';
@@ -44,7 +44,7 @@ export function TaxNewsToggle({
       }
       const errs = r.errors ?? [];
       if (errs.length > 0 && (r.inserted ?? 0) === 0) {
-        setError(errs.join(' · '));
+        setError(errs.join(' Â· '));
       } else {
         setInfo(
           `${r.inserted ?? 0}/${r.fetched ?? 0} neu${
@@ -73,7 +73,7 @@ export function TaxNewsToggle({
           type="button"
           onClick={refetch}
           disabled={isPending}
-          className="text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 p-1"
+          className="text-disabled hover:text-primary p-1"
           title="Feeds jetzt aktualisieren (bis zu 20 s)"
         >
           <RefreshCw className={'h-3.5 w-3.5 ' + (isPending ? 'animate-spin' : '')} />
@@ -87,7 +87,7 @@ export function TaxNewsToggle({
           'inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-colors ' +
           (on
             ? 'bg-brand-100 text-brand-700 hover:bg-brand-200 dark:bg-brand-900/40 dark:text-brand-100'
-            : 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400')
+            : 'bg-gray-100 text-muted hover:bg-gray-200')
         }
         title={
           on

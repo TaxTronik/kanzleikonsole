@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useActionState, useState, useTransition } from 'react';
 import {
@@ -133,11 +133,11 @@ export function N8nForm({ initial, envHints }: Props) {
 
       {/* Outbound — Webhook + HMAC */}
       <form action={saveAction} className="space-y-4">
-        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2">
-          <Send className="h-4 w-4 text-gray-400" />
+        <h3 className="text-sm font-semibold text-primary inline-flex items-center gap-2">
+          <Send className="h-4 w-4 text-disabled" />
           Outbound — App → n8n (Webhook)
         </h3>
-        <p className="text-xs text-gray-500 dark:text-gray-400">
+        <p className="text-xs text-muted">
           Die App schickt Events (z. B. <code>request.opened</code>, <code>gwg.expired</code>) als
           POST an <code>&lt;Webhook-URL&gt;/&lt;event-name&gt;</code> mit HMAC-Signatur im Header.
         </p>
@@ -153,7 +153,7 @@ export function N8nForm({ initial, envHints }: Props) {
             onChange={(e) => setWebhookBaseUrl(e.target.value)}
             placeholder="http://localhost:5678/webhook"
           />
-          <p className="text-xs text-gray-500 mt-1">
+          <p className="text-xs text-muted mt-1">
             Endpoint der n8n-Webhook-Knoten — typisch <code>{`{n8n-host}/webhook`}</code>.
           </p>
         </div>
@@ -167,11 +167,11 @@ export function N8nForm({ initial, envHints }: Props) {
             className="input"
             value={hmacSecret}
             onChange={(e) => { setHmacSecret(e.target.value); if (e.target.value) setKeepHmac(false); }}
-            placeholder={hasStoredHmac && keepHmac ? '••••••••' : 'zufälliger String, mind. 32 Zeichen'}
+            placeholder={hasStoredHmac && keepHmac ? '⬢⬢⬢⬢⬢⬢⬢⬢' : 'zufälliger String, mind. 32 Zeichen'}
             autoComplete="new-password"
           />
           {hasStoredHmac && (
-            <label className="mt-1 inline-flex items-center gap-1.5 text-xs text-gray-500">
+            <label className="mt-1 inline-flex items-center gap-1.5 text-xs text-muted">
               <input
                 type="checkbox"
                 checked={keepHmac}
@@ -180,17 +180,17 @@ export function N8nForm({ initial, envHints }: Props) {
               Gespeichertes Secret beibehalten
             </label>
           )}
-          <p className="text-xs text-gray-500 mt-1">
+          <p className="text-xs text-muted mt-1">
             Identisch zur ENV-Variable <code>N8N_HMAC_SECRET</code> in den n8n-Workflows.
           </p>
         </div>
 
         {/* Inbound — n8n-API */}
-        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2 pt-2 border-t border-gray-200 dark:border-gray-800 mt-4 w-full">
-          <Plug className="h-4 w-4 text-gray-400" />
+        <h3 className="text-sm font-semibold text-primary inline-flex items-center gap-2 pt-2 border-t border-default mt-4 w-full">
+          <Plug className="h-4 w-4 text-disabled" />
           REST-API — Workflows verwalten
         </h3>
-        <p className="text-xs text-gray-500 dark:text-gray-400">
+        <p className="text-xs text-muted">
           Wird benutzt, um Workflows aus der App heraus zu listen, zu importieren und zu
           aktivieren. API-Key in der n8n-UI unter <em>Settings → API</em> erzeugen.
         </p>
@@ -217,11 +217,11 @@ export function N8nForm({ initial, envHints }: Props) {
             className="input"
             value={apiKey}
             onChange={(e) => { setApiKey(e.target.value); if (e.target.value) setKeepApiKey(false); }}
-            placeholder={hasStoredApiKey && keepApiKey ? '••••••••' : 'n8n-API-Key (lang)'}
+            placeholder={hasStoredApiKey && keepApiKey ? '⬢⬢⬢⬢⬢⬢⬢⬢' : 'n8n-API-Key (lang)'}
             autoComplete="new-password"
           />
           {hasStoredApiKey && (
-            <label className="mt-1 inline-flex items-center gap-1.5 text-xs text-gray-500">
+            <label className="mt-1 inline-flex items-center gap-1.5 text-xs text-muted">
               <input
                 type="checkbox"
                 checked={keepApiKey}
@@ -237,13 +237,13 @@ export function N8nForm({ initial, envHints }: Props) {
             {isSaving ? 'Speichere…' : 'Speichern'}
           </button>
           {saveState?.ok && (
-            <span className="inline-flex items-center gap-1 text-sm text-emerald-700 dark:text-emerald-400">
+            <span className="trend-up">
               <CheckCircle2 className="h-4 w-4" />
               Gespeichert.
             </span>
           )}
           {saveState && !saveState.ok && (
-            <span className="inline-flex items-center gap-1 text-sm text-red-700 dark:text-red-400">
+            <span className="trend-down">
               <AlertCircle className="h-4 w-4" />
               {saveState.error}
             </span>
@@ -252,8 +252,8 @@ export function N8nForm({ initial, envHints }: Props) {
       </form>
 
       {/* Test-Buttons */}
-      <div className="rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 p-4 space-y-3">
-        <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Diagnose</div>
+      <div className="rounded-md border border-default bg-surface-raised p-4 space-y-3">
+        <div className="text-sm font-medium text-primary">Diagnose</div>
 
         <div className="flex flex-wrap items-center gap-3">
           <button
@@ -266,23 +266,23 @@ export function N8nForm({ initial, envHints }: Props) {
             Webhook-Ping
           </button>
           {pingResult?.ok && (
-            <span className="inline-flex items-center gap-1 text-sm text-emerald-700 dark:text-emerald-400">
+            <span className="trend-up">
               <CheckCircle2 className="h-4 w-4" /> {pingResult.message}
             </span>
           )}
           {pingResult && !pingResult.ok && (
-            <span className="inline-flex items-center gap-1 text-sm text-red-700 dark:text-red-400">
+            <span className="trend-down">
               <AlertCircle className="h-4 w-4" /> {pingResult.error}
             </span>
           )}
         </div>
-        <p className="text-xs text-gray-500 dark:text-gray-400 -mt-2 pl-1">
+        <p className="text-xs text-muted -mt-2 pl-1">
           Sendet ein <code>taxtronik.ping</code>-Event an{' '}
           <code>{webhookBaseUrl.replace(/\/$/, '') || '…'}/taxtronik.ping</code>. n8n muss dafür
           einen Webhook-Knoten mit Pfad <code>taxtronik.ping</code> haben (HTTP 200 = OK).
         </p>
 
-        <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-gray-200 dark:border-gray-800">
+        <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-default">
           <button
             type="button"
             onClick={onApiTest}
@@ -293,12 +293,12 @@ export function N8nForm({ initial, envHints }: Props) {
             API-Test
           </button>
           {apiResult?.ok && (
-            <span className="inline-flex items-center gap-1 text-sm text-emerald-700 dark:text-emerald-400">
+            <span className="trend-up">
               <CheckCircle2 className="h-4 w-4" /> {apiResult.message}
             </span>
           )}
           {apiResult && !apiResult.ok && (
-            <span className="inline-flex items-center gap-1 text-sm text-red-700 dark:text-red-400">
+            <span className="trend-down">
               <AlertCircle className="h-4 w-4" /> {apiResult.error}
             </span>
           )}
@@ -307,10 +307,10 @@ export function N8nForm({ initial, envHints }: Props) {
 
       {/* Workflows-Verwaltung — nur nach Speichern verfügbar */}
       {hasInitial && initial?.apiBaseUrl && initial?.apiKey && (
-        <div className="rounded-md border border-gray-200 dark:border-gray-800 p-4 space-y-3">
+        <div className="rounded-md border border-default p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2">
-              <Workflow className="h-4 w-4 text-gray-400" />
+            <h3 className="text-sm font-semibold text-primary inline-flex items-center gap-2">
+              <Workflow className="h-4 w-4 text-disabled" />
               Workflows
             </h3>
             <div className="flex items-center gap-2">
@@ -348,26 +348,26 @@ export function N8nForm({ initial, envHints }: Props) {
           )}
 
           {workflows && workflows.length === 0 && (
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted">
               Keine Workflows in dieser n8n-Instanz. Klicken Sie auf „Mitgelieferte importieren".
             </p>
           )}
           {workflows && workflows.length > 0 && (
-            <ul className="divide-y divide-gray-100 dark:divide-gray-800 text-sm">
+            <ul className="divide-y divide-border-subtle text-sm">
               {workflows.map((w) => (
                 <li key={w.id} className="py-2 flex items-center justify-between gap-2">
-                  <span className="text-gray-900 dark:text-gray-100 truncate">{w.name}</span>
+                  <span className="text-primary truncate">{w.name}</span>
                   <span className="flex items-center gap-2 shrink-0">
                     {w.active ? (
                       <span className="text-[10px] font-semibold uppercase text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/40 rounded px-1.5 py-0.5">
                         aktiv
                       </span>
                     ) : (
-                      <span className="text-[10px] font-semibold uppercase text-gray-500 bg-gray-100 dark:bg-gray-800 rounded px-1.5 py-0.5">
+                      <span className="text-[10px] font-semibold uppercase text-muted bg-gray-100 rounded px-1.5 py-0.5">
                         inaktiv
                       </span>
                     )}
-                    <span className="text-[10px] text-gray-400">
+                    <span className="text-[10px] text-disabled">
                       {dateFmt.format(new Date(w.updatedAt))}
                     </span>
                   </span>
@@ -376,7 +376,7 @@ export function N8nForm({ initial, envHints }: Props) {
             </ul>
           )}
 
-          <p className="text-xs text-gray-500 dark:text-gray-400 pt-2 border-t border-gray-200 dark:border-gray-800">
+          <p className="text-xs text-muted pt-2 border-t border-default">
             „Mitgelieferte importieren" lädt die Workflow-JSONs aus
             <code className="ml-1">infra/n8n/workflows/</code> in n8n hoch und aktiviert sie.
             Bestehende Workflows mit identischem Namen werden übersprungen.
@@ -385,11 +385,11 @@ export function N8nForm({ initial, envHints }: Props) {
       )}
 
       {hasInitial && (
-        <div className="border-t border-gray-200 dark:border-gray-800 pt-4">
+        <div className="border-t border-default pt-4">
           <button
             type="button"
             onClick={onReset}
-            className="text-xs text-gray-500 hover:text-red-700 dark:hover:text-red-400 inline-flex items-center gap-1.5"
+            className="text-xs text-muted hover:text-red-700 dark:hover:text-red-400 inline-flex items-center gap-1.5"
           >
             <RefreshCw className="h-3 w-3" />
             Konfiguration zurücksetzen (wieder ENV-Fallback verwenden)

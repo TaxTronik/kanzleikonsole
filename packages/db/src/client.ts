@@ -6,9 +6,9 @@
 // =============================================================================
 
 import { PrismaClient } from '@prisma/client';
+import { createPostgresAdapter, optionalDatabaseUrl } from './prisma-adapter';
 
 declare global {
-  // eslint-disable-next-line no-var
   var __taxtronikPrisma: PrismaClient | undefined;
 }
 
@@ -16,7 +16,7 @@ function buildClient(): PrismaClient {
   const datasourceUrl = process.env['DATABASE_APP_URL'] ?? process.env['DATABASE_URL'];
 
   return new PrismaClient({
-    datasourceUrl,
+    adapter: createPostgresAdapter(optionalDatabaseUrl(datasourceUrl)),
     log:
       process.env['NODE_ENV'] === 'development'
         ? [{ emit: 'event', level: 'query' }, 'warn', 'error']

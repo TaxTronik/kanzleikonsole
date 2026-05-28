@@ -1,4 +1,4 @@
-import { redirect, notFound } from 'next/navigation';
+﻿import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
@@ -48,13 +48,13 @@ export default async function StateMachineEditPage({
     <div className="p-8 max-w-4xl">
       <Link
         href="/staff/admin/state-machines"
-        className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 mb-3"
+        className="back-link mb-3"
       >
         <ArrowLeft className="h-3 w-3" />
         Status-Maschinen
       </Link>
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">{data.name}</h1>
-      <p className="text-gray-500 text-sm mb-6">
+      <h1 className="text-2xl font-bold text-primary mb-1">{data.name}</h1>
+      <p className="text-muted text-sm mb-6">
         <code className="font-mono text-xs">{data.slug}</code>
         {data.appliesTo ? ` · gilt für ${data.appliesTo}` : ''}
       </p>

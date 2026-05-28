@@ -28,6 +28,7 @@ import { GetObjectCommand, ListObjectsV2Command, S3Client } from '@aws-sdk/clien
 import type { Readable } from 'node:stream';
 import { PrismaClient } from '@prisma/client';
 import { env } from '@taxtronik/config';
+import { createPostgresAdapter } from '@taxtronik/db/prisma-adapter';
 import { prismaOwner } from '@/server/db/prisma-owner';
 
 const BACKUP_BUCKET = process.env['S3_BUCKET_BACKUPS'] ?? 'backups';
@@ -156,7 +157,7 @@ async function getExpectedSha(key: string): Promise<string | null> {
 
 async function targetIsEmpty(targetUrl: string): Promise<boolean> {
   // Ein „leeres" Ziel hat noch keine `_prisma_migrations`-Tabelle.
-  const probe = new PrismaClient({ datasourceUrl: targetUrl });
+  const probe = new PrismaClient({ adapter: createPostgresAdapter(targetUrl) });
   try {
     const rows = await probe.$queryRaw<{ exists: boolean }[]>`
       SELECT to_regclass('public._prisma_migrations') IS NOT NULL AS exists
@@ -202,7 +203,7 @@ async function runPgRestore(filePath: string, targetUrl: string): Promise<void> 
 }
 
 async function smokeTest(targetUrl: string): Promise<void> {
-  const probe = new PrismaClient({ datasourceUrl: targetUrl });
+  const probe = new PrismaClient({ adapter: createPostgresAdapter(targetUrl) });
   try {
     const tenants = await probe.tenant.count();
     const audits = await probe.auditLog.count();

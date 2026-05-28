@@ -127,7 +127,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  // eslint-disable-next-line no-console
   console.error('verify:chain fehlgeschlagen:', err);
   process.exit(2);
 });

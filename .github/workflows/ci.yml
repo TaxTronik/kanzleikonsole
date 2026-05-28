@@ -1,43 +1,43 @@
-# =============================================================================
-# CI — Typecheck + Lint + Tests
-#
-# Tests umfassen explizit:
-#   - canonical-json + Hash-Chain (kritisch für Audit-Compliance, ohne DB)
-#   - Tax-Engine (Werktagsverschiebung, Feiertage, Fristen)
-#
-# DB-gebundene Tests (RLS-Cross-Tenant) laufen in einem separaten Job mit
-# Postgres-Service-Container.
-# =============================================================================
-
-name: CI
+name: Quality
 
 on:
   push:
     branches: [main, develop]
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  NODE_ENV: test
+  DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:5432/taxtronik?schema=public
+  DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@localhost:5432/taxtronik?schema=public
+  REDIS_URL: redis://localhost:6379
+  AUTH_SECRET: ci-auth-secret-with-at-least-thirty-two-chars
+  NEXTAUTH_URL: http://localhost:3000
+  NEXTAUTH_TRUST_HOST: 'false'
+  TRUST_PROXY_REQUIRED: 'false'
+  S3_ENDPOINT: http://localhost:8333
+  S3_REGION: us-east-1
+  S3_ACCESS_KEY: ci
+  S3_SECRET_KEY: ci-secret
+  SMTP_HOST: localhost
+  SMTP_PORT: '1025'
+  SMTP_FROM: ci@example.test
+  N8N_HMAC_SECRET: ci-hmac-secret-with-at-least-thirty-two-chars
+
 jobs:
-  # ----------------------------------------------------------------------
-  # Job 1: Statische Checks + Unit-Tests (kein DB-Zugriff)
-  # ----------------------------------------------------------------------
-  static:
-    name: Typecheck + Unit-Tests
+  quality:
+    name: Lint, Typecheck, Unit Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
-      # Fail-Fast VOR Install: keine echten DATEV-Berater/Mandantennummern
-      # im Quellcode/Doku (§ 203 StGB / DSGVO). Reiner grep, keine Deps.
-      - name: Guard — keine echten DATEV-Nummern
-        run: sh scripts/check-no-real-datev.sh
-
-      # Keine version-Pin hier — action-setup liest pnpm aus dem
-      # packageManager-Feld der package.json (sonst ERR_PNPM_BAD_PM_VERSION).
       - uses: pnpm/action-setup@v4
 
       - uses: actions/setup-node@v4
@@ -46,34 +46,34 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        # pnpm 11 blockt postinstall-Scripts und exitet mit 1. --ignore-scripts
-        # umgeht das; die nötigen native Builds holen wir gezielt per rebuild.
         run: pnpm install --frozen-lockfile --ignore-scripts
 
-      - name: Build-Scripts gezielt nachholen
-        run: pnpm rebuild -r @prisma/client @prisma/engines esbuild prisma || true
+      - name: Rebuild approved native packages
+        run: pnpm rebuild -r @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver || true
 
       - name: Generate Prisma client
         run: pnpm --filter @taxtronik/db exec prisma generate
-        env:
-          DATABASE_URL: postgres://x/x
 
-      - name: Typecheck (alle Workspaces)
-        run: pnpm -r typecheck
+      - name: Guard real DATEV identifiers
+        run: sh scripts/check-no-real-datev.sh
 
-      - name: Unit-Tests evidence (canonical-json + Hash-Chain)
-        run: pnpm --filter @taxtronik/evidence test
+      - name: Lint
+        run: pnpm lint
 
-      - name: Unit-Tests web (Tax-Engine)
-        run: pnpm --filter @taxtronik/web test
+      - name: Typecheck
+        run: pnpm typecheck
 
-  # ----------------------------------------------------------------------
-  # Job 2: DB-gebundene Tests (RLS-Cross-Tenant)
-  # ----------------------------------------------------------------------
-  db-tests:
-    name: RLS- + Chain-Verifikations-Tests
+      - name: Unit tests without external services
+        run: |
+          pnpm --filter @taxtronik/config test
+          pnpm --filter @taxtronik/evidence test
+          pnpm --filter @taxtronik/tax test
+          pnpm --filter @taxtronik/web test
+
+  db:
+    name: Migrations, RLS, Drift
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:18
@@ -89,13 +89,12 @@ jobs:
           --health-timeout 3s
           --health-retries 10
     env:
-      DATABASE_URL: postgresql://taxtronik:taxtronik@postgres:5432/taxtronik
-      DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@postgres:5432/taxtronik
+      DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:5432/taxtronik?schema=public
+      DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@localhost:5432/taxtronik?schema=public
+      SHADOW_DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:5432/taxtronik_shadow?schema=public
     steps:
       - uses: actions/checkout@v4
 
-      # Keine version-Pin hier — action-setup liest pnpm aus dem
-      # packageManager-Feld der package.json (sonst ERR_PNPM_BAD_PM_VERSION).
       - uses: pnpm/action-setup@v4
 
       - uses: actions/setup-node@v4
@@ -106,27 +105,84 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
 
-      - name: Build-Scripts gezielt nachholen
-        run: pnpm rebuild -r @prisma/client @prisma/engines esbuild prisma || true
+      - name: Rebuild approved native packages
+        run: pnpm rebuild -r @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver || true
 
       - name: Generate Prisma client
         run: pnpm --filter @taxtronik/db exec prisma generate
 
-      # psql ist im self-hosted Runner-Image (catthehacker/act) nicht
-      # vorinstalliert — anders als auf GitHubs gehostetem ubuntu-latest.
-      - name: psql-Client installieren
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Create shadow database
+        run: PGPASSWORD=taxtronik createdb -h localhost -U taxtronik taxtronik_shadow
 
-      - name: Bootstrap Postgres (Roles + Extensions)
+      - name: Bootstrap roles and extensions
         run: |
-          PGPASSWORD=taxtronik psql -h postgres -U taxtronik -d taxtronik \
+          PGPASSWORD=taxtronik psql -h localhost -U taxtronik -d taxtronik \
             -v ON_ERROR_STOP=1 -f packages/db/prisma/init/01_bootstrap.sql
 
       - name: Apply migrations
         run: pnpm --filter @taxtronik/db exec prisma migrate deploy
 
-      - name: Vitest — RLS-Cross-Tenant
+      - name: RLS tests
         run: pnpm --filter @taxtronik/db test
 
-      - name: verify:chain CLI smoke-test (nur Genesis-Pfad, leere Tenants)
+      - name: Schema drift check
+        run: pnpm verify:schema-drift
+
+      - name: Evidence chain CLI
         run: pnpm verify:chain
+
+  e2e-smoke:
+    name: Browser Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Rebuild approved native packages
+        run: pnpm rebuild -r @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver || true
+
+      - name: Generate Prisma client
+        run: pnpm --filter @taxtronik/db exec prisma generate
+
+      - name: Build web app
+        run: pnpm --filter @taxtronik/web build
+
+      - name: Install Playwright browser
+        run: pnpm --filter @taxtronik/e2e exec playwright install chromium --with-deps
+
+      - name: Start web app
+        run: |
+          pnpm --filter @taxtronik/web start > web.log 2>&1 &
+          echo $! > web.pid
+
+          for i in {1..60}; do
+            status="$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/api/health || true)"
+            if [ "$status" = "200" ] || [ "$status" = "503" ]; then
+              exit 0
+            fi
+            sleep 2
+          done
+
+          cat web.log
+          exit 1
+
+      - name: Run smoke E2E
+        run: pnpm --filter @taxtronik/e2e exec playwright test tests/01-smoke.spec.ts
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/e2e/playwright-report/
+          if-no-files-found: ignore

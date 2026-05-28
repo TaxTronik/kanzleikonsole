@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition, useEffect } from 'react';
 import { createPortal } from 'react-dom';
@@ -147,13 +147,13 @@ export function DocumentUploadButton({
         <button
           type="button"
           onClick={close}
-          className="absolute top-3 right-3 text-gray-400 hover:text-gray-600"
+          className="modal-close"
           aria-label="Schließen"
         >
           <X className="h-5 w-5" />
         </button>
 
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Dokument hochladen</h2>
+        <h2 className="text-lg font-semibold text-primary mb-4">Dokument hochladen</h2>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -209,11 +209,11 @@ export function DocumentUploadButton({
           </div>
 
           {error && (
-            <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>
+            <div className="alert-error-sm">{error}</div>
           )}
 
           {progress !== 'idle' && (
-            <div className="rounded-md bg-blue-50 p-3 text-sm text-blue-700">
+            <div className="alert-info-sm">
               {progress === 'presign' && 'Hochladevorbereitung…'}
               {progress === 'upload' && 'Datei wird hochgeladen…'}
               {progress === 'commit' && 'Virus-Scan & Verarbeitung…'}

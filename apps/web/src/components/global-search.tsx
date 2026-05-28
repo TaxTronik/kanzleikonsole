@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -30,7 +30,7 @@ export function GlobalSearch() {
   const [loading, setLoading] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
 
-  // Cmd-K / Ctrl-K → Focus
+  // Cmd-K / Ctrl-K â†’ Focus
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -46,7 +46,7 @@ export function GlobalSearch() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Click-outside → schließen
+  // Click-outside â†’ schließen
   useEffect(() => {
     function onClick(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
@@ -116,9 +116,9 @@ export function GlobalSearch() {
     <div ref={containerRef} className="relative w-full max-w-md">
       <div className="relative">
         {loading ? (
-          <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 animate-spin" />
+          <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-disabled animate-spin" />
         ) : (
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-disabled" />
         )}
         <input
           ref={inputRef}
@@ -131,17 +131,17 @@ export function GlobalSearch() {
           onFocus={() => setOpen(true)}
           onKeyDown={handleKeyDown}
           placeholder="Mandanten, Anforderungen, Wissen…  (Strg+K)"
-          className="w-full pl-9 pr-12 py-2 text-sm border border-gray-200 rounded-md bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+          className="w-full pl-9 pr-12 py-2 text-sm border border-default rounded-md bg-gray-50 focus:bg-surface focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
         />
-        <kbd className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 bg-white border border-gray-200 rounded px-1.5 py-0.5 hidden md:block">
-          ⌘K
+        <kbd className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-disabled bg-surface border border-default rounded px-1.5 py-0.5 hidden md:block">
+          âŒ˜K
         </kbd>
       </div>
 
       {open && query.trim().length >= 2 && (
-        <div className="absolute left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-96 overflow-y-auto z-50">
+        <div className="absolute left-0 right-0 mt-1 bg-surface border border-default rounded-md shadow-lg max-h-96 overflow-y-auto z-50">
           {results.length === 0 && !loading ? (
-            <p className="px-4 py-3 text-sm text-gray-400 text-center">Keine Treffer.</p>
+            <p className="px-4 py-3 text-sm text-disabled text-center">Keine Treffer.</p>
           ) : (
             <ul>
               {results.map((r, i) => {
@@ -158,11 +158,11 @@ export function GlobalSearch() {
                           : 'w-full text-left px-4 py-2.5 hover:bg-gray-50 flex items-center gap-3'
                       }
                     >
-                      <Icon className="h-4 w-4 text-gray-500 shrink-0" />
+                      <Icon className="h-4 w-4 text-muted shrink-0" />
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-gray-900 truncate">{r.title}</p>
+                        <p className="item-title">{r.title}</p>
                         {r.subtitle && (
-                          <p className="text-xs text-gray-500 truncate">{r.subtitle}</p>
+                          <p className="text-xs text-muted truncate">{r.subtitle}</p>
                         )}
                       </div>
                     </button>

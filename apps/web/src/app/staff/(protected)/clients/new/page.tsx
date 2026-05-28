@@ -1,4 +1,4 @@
-import { staffAuth } from '@/server/auth/staff';
+﻿import { staffAuth } from '@/server/auth/staff';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
@@ -11,10 +11,10 @@ export default async function NewClientPage() {
   return (
     <div className="p-8 max-w-2xl">
       <div className="flex items-center gap-3 mb-8">
-        <Link href="/staff/clients" className="text-gray-400 hover:text-gray-600">
+        <Link href="/staff/clients" className="text-disabled hover:text-secondary">
           <ArrowLeft className="h-5 w-5" />
         </Link>
-        <h1 className="text-2xl font-bold text-gray-900">Mandant anlegen</h1>
+        <h1 className="text-2xl font-bold text-primary">Mandant anlegen</h1>
       </div>
 
       <div className="card p-6">
@@ -52,8 +52,8 @@ export default async function NewClientPage() {
             />
           </div>
 
-          <fieldset className="border border-gray-200 rounded-md p-4 space-y-3">
-            <legend className="text-xs font-medium text-gray-500 uppercase tracking-wide px-2">
+          <fieldset className="border border-default rounded-md p-4 space-y-3">
+            <legend className="text-xs font-medium text-muted uppercase tracking-wide px-2">
               Rechnungsadresse (für XRechnung)
             </legend>
             <div className="grid grid-cols-3 gap-3">
@@ -90,12 +90,10 @@ export default async function NewClientPage() {
             </div>
           </fieldset>
 
-          <div className="rounded-md bg-yellow-50 p-4">
-            <p className="text-sm text-yellow-800">
-              <strong>Hinweis:</strong> Der Mandant wird zunächst mit dem Status{' '}
-              <em>GwG ausstehend</em> angelegt. Er kann erst aktiviert werden, wenn die
-              GwG-Prüfung abgeschlossen ist (Iteration 4).
-            </p>
+          <div className="alert-warning">
+            <strong>Hinweis:</strong> Der Mandant wird zunächst mit dem Status{' '}
+            <em>GwG ausstehend</em> angelegt. Er kann erst aktiviert werden, wenn die
+            GwG-Prüfung abgeschlossen ist.
           </div>
 
           <div className="flex gap-3 pt-2">

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition, useRef, useEffect } from 'react';
 import { Tags } from 'lucide-react';
@@ -75,7 +75,7 @@ export function SetRolesForm({
               className={
                 has
                   ? 'px-2 py-0.5 rounded text-[10px] font-medium bg-brand-600 text-white'
-                  : 'px-2 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  : 'px-2 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-secondary hover:bg-gray-200'
               }
               title={disabled ? 'Eigene Rollen können nicht geändert werden' : ''}
             >
@@ -149,20 +149,20 @@ export function SetSkillsForm({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="text-xs text-gray-500 hover:text-gray-900 p-1"
+        className="text-xs text-muted hover:text-primary p-1"
         title="Tätigkeiten zuordnen"
         aria-label="Tätigkeiten zuordnen"
       >
         <Tags className="h-4 w-4" />
       </button>
       {open && (
-        <div className="absolute right-0 mt-2 w-72 z-20 rounded-lg shadow-lg border border-gray-200 bg-white">
-          <div className="px-3 py-2 border-b border-gray-200 text-xs font-medium text-gray-700">
+        <div className="absolute right-0 mt-2 w-72 z-20 rounded-lg shadow-lg border border-default bg-surface">
+          <div className="px-3 py-2 border-b border-default text-xs font-medium text-secondary">
             Tätigkeiten
           </div>
           <div className="max-h-72 overflow-y-auto p-2 space-y-1">
             {allSkills.length === 0 ? (
-              <p className="px-2 py-3 text-xs text-gray-400">
+              <p className="px-2 py-3 text-xs text-disabled">
                 Noch keine Bereiche definiert.
               </p>
             ) : (
@@ -175,18 +175,18 @@ export function SetSkillsForm({
                     type="checkbox"
                     checked={selected.has(s.id)}
                     onChange={() => toggle(s.id)}
-                    className="rounded border-gray-300 text-brand-600"
+                    className="rounded border-strong text-brand-600"
                   />
-                  <span className="text-gray-900">{s.label}</span>
+                  <span className="text-primary">{s.label}</span>
                 </label>
               ))
             )}
           </div>
-          <div className="px-3 py-2 border-t border-gray-200 flex justify-end gap-2">
+          <div className="px-3 py-2 border-t border-default flex justify-end gap-2">
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="text-xs text-gray-500 hover:underline"
+              className="text-xs text-muted hover:underline"
             >
               Abbrechen
             </button>

@@ -1,4 +1,4 @@
-import { redirect } from 'next/navigation';
+﻿import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { BookOpen, Plus } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
@@ -44,8 +44,8 @@ export default async function KnowledgePage({
     <div className="p-8">
       <div className="flex items-end justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-1">Wissensdatenbank</h1>
-          <p className="text-gray-500 text-sm">
+          <h1 className="text-2xl font-bold text-primary mb-1">Wissensdatenbank</h1>
+          <p className="text-muted text-sm">
             Interne Anleitungen, Vorlagen und Verfahrensbeschreibungen.
           </p>
         </div>
@@ -68,24 +68,24 @@ export default async function KnowledgePage({
 
       {searchHits ? (
         <div className="card overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-sm font-medium text-gray-900">
+          <div className="px-6 py-4 border-b border-default">
+            <h2 className="text-sm font-medium text-primary">
               {searchHits.length} Treffer für „{query}"
             </h2>
           </div>
           {searchHits.length === 0 ? (
-            <p className="px-6 py-10 text-sm text-gray-400 text-center">Nichts gefunden.</p>
+            <p className="px-6 py-10 text-sm text-disabled text-center">Nichts gefunden.</p>
           ) : (
-            <ul className="divide-y divide-gray-100">
+            <ul className="divide-y divide-border-subtle">
               {searchHits.map((h) => (
                 <li key={h.id} className="px-6 py-4">
                   <Link href={`/staff/knowledge/${h.id}`} className="block hover:bg-gray-50 -mx-6 px-6">
-                    <p className="font-medium text-gray-900">{h.title}</p>
+                    <p className="font-medium text-primary">{h.title}</p>
                     {h.categoryName && (
-                      <p className="text-xs text-gray-500 mb-2">{h.categoryName}</p>
+                      <p className="text-xs text-muted mb-2">{h.categoryName}</p>
                     )}
                     <p
-                      className="text-sm text-gray-600 [&_mark]:bg-yellow-200 [&_mark]:px-0.5"
+                      className="text-sm text-secondary [&_mark]:bg-yellow-200 [&_mark]:px-0.5"
                       dangerouslySetInnerHTML={{ __html: h.snippet }}
                     />
                   </Link>
@@ -98,7 +98,7 @@ export default async function KnowledgePage({
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Kategorien */}
           <aside className="card p-4 h-fit">
-            <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">
+            <h2 className="text-xs font-medium text-muted uppercase tracking-wide mb-3">
               Kategorien
             </h2>
             <ul className="space-y-1">
@@ -108,7 +108,7 @@ export default async function KnowledgePage({
                   className={
                     !catFilter
                       ? 'block px-3 py-2 text-sm rounded-md bg-brand-50 text-brand-700 font-medium'
-                      : 'block px-3 py-2 text-sm rounded-md hover:bg-gray-100 text-gray-700'
+                      : 'block px-3 py-2 text-sm rounded-md hover:bg-gray-100 text-secondary'
                   }
                 >
                   Alle Artikel
@@ -121,16 +121,16 @@ export default async function KnowledgePage({
                     className={
                       catFilter === c.id
                         ? 'flex items-center justify-between px-3 py-2 text-sm rounded-md bg-brand-50 text-brand-700 font-medium'
-                        : 'flex items-center justify-between px-3 py-2 text-sm rounded-md hover:bg-gray-100 text-gray-700'
+                        : 'flex items-center justify-between px-3 py-2 text-sm rounded-md hover:bg-gray-100 text-secondary'
                     }
                   >
                     <span>{c.name}</span>
-                    <span className="text-xs text-gray-400">{c._count.articles}</span>
+                    <span className="text-xs text-disabled">{c._count.articles}</span>
                   </Link>
                 </li>
               ))}
               {categories.length === 0 && (
-                <li className="text-sm text-gray-400 px-3 py-2">Noch keine Kategorien</li>
+                <li className="text-sm text-disabled px-3 py-2">Noch keine Kategorien</li>
               )}
             </ul>
             <Link
@@ -145,19 +145,19 @@ export default async function KnowledgePage({
           <div className="lg:col-span-3 card overflow-hidden">
             {articles.length === 0 ? (
               <div className="px-6 py-16 text-center">
-                <BookOpen className="h-12 w-12 text-gray-200 mx-auto mb-3" />
-                <p className="text-sm text-gray-400">Noch keine Artikel.</p>
+                <BookOpen className="h-12 w-12 text-disabled mx-auto mb-3" />
+                <p className="text-sm text-disabled">Noch keine Artikel.</p>
               </div>
             ) : (
-              <ul className="divide-y divide-gray-100">
+              <ul className="divide-y divide-border-subtle">
                 {articles.map((a) => (
                   <li key={a.id} className="px-6 py-4 hover:bg-gray-50">
                     <Link href={`/staff/knowledge/${a.id}`} className="block">
                       <div className="flex items-center gap-2 mb-1">
-                        <p className="font-medium text-gray-900">{a.title}</p>
+                        <p className="font-medium text-primary">{a.title}</p>
                         {!a.published && <span className="badge-gray">Entwurf</span>}
                       </div>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-muted">
                         {a.category?.name ?? 'Ohne Kategorie'}
                         {' · '}
                         Aktualisiert {new Intl.DateTimeFormat('de-DE').format(a.updatedAt)}

@@ -1,10 +1,15 @@
-'use client';
+﻿'use client';
 
 import { useActionState, useState } from 'react';
 import { saveBrandingAction, type ActionResult } from './actions';
 import type { BrandingInfo } from '@/server/settings/branding';
 
 const MAX_LOGO_BYTES = 200 * 1024; // 200 KB nach base64
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+
+function safeHexColor(value: string): string {
+  return HEX_COLOR_RE.test(value) ? value : '#2563eb';
+}
 
 export function BrandingForm({ initial }: { initial: BrandingInfo }) {
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
@@ -21,8 +26,8 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
     setLogoError(null);
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp'].includes(file.type)) {
-      setLogoError('Nur PNG, JPG, SVG oder WebP erlaubt.');
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      setLogoError('Nur PNG, JPG oder WebP erlaubt.');
       return;
     }
     if (file.size > MAX_LOGO_BYTES) {
@@ -36,6 +41,8 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
     };
     reader.readAsDataURL(file);
   }
+
+  const previewAccent = safeHexColor(accent);
 
   return (
     <form action={formAction} className="space-y-4">
@@ -51,7 +58,7 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
         />
-        <p className="text-xs text-gray-500 mt-1">Erscheint oben in der Sidebar statt „taxtronik"</p>
+        <p className="text-xs text-muted mt-1">Erscheint oben in der Sidebar statt „taxtronik"</p>
       </div>
 
       <div>
@@ -73,12 +80,12 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
         <div className="flex items-center gap-3">
           <input
             id="accentColor"
-            name="accentColor"
             type="color"
-            className="h-10 w-16 rounded border border-gray-200 cursor-pointer"
-            value={accent}
+            className="h-10 w-16 rounded border border-default cursor-pointer"
+            value={previewAccent}
             onChange={(e) => setAccent(e.target.value)}
           />
+          <input type="hidden" name="accentColor" value={accent} />
           <input
             type="text"
             className="input font-mono"
@@ -89,24 +96,23 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
             required
           />
         </div>
-        <p className="text-xs text-gray-500 mt-1">Hex-Format, z. B. #2563eb (Standard)</p>
+        <p className="text-xs text-muted mt-1">Hex-Format, z. B. #2563eb (Standard)</p>
       </div>
 
       <div>
-        <label className="label" htmlFor="logoFile">Logo (PNG/JPG/SVG, max. 200 KB)</label>
+        <label className="label" htmlFor="logoFile">Logo (PNG/JPG/WebP, max. 200 KB)</label>
         <input
           id="logoFile"
           type="file"
-          accept="image/png,image/jpeg,image/svg+xml,image/webp"
+          accept="image/png,image/jpeg,image/webp"
           onChange={onLogoFileChange}
-          className="block text-sm text-gray-700"
+          className="block text-sm text-secondary"
         />
         <input type="hidden" name="logoDataUrl" value={logo ?? ''} />
         {logoError && <p className="text-xs text-red-700 mt-1">{logoError}</p>}
         {logo && (
           <div className="mt-2 flex items-center gap-3">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={logo} alt="Logo-Vorschau" className="h-12 max-w-[200px] object-contain border border-gray-200 rounded" />
+            <img src={logo} alt="Logo-Vorschau" className="h-12 max-w-[200px] object-contain border border-default rounded" />
             <button
               type="button"
               onClick={() => setLogo(null)}
@@ -118,24 +124,23 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
         )}
       </div>
 
-      <div className="rounded-md p-4 border border-gray-200" style={{ backgroundColor: accent + '15' }}>
-        <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Vorschau</p>
+      <div className="rounded-md p-4 border border-default" style={{ backgroundColor: `${previewAccent}15` }}>
+        <p className="text-xs text-muted uppercase tracking-wide mb-2">Vorschau</p>
         <div className="flex items-center gap-3">
           {logo ? (
-            // eslint-disable-next-line @next/next/no-img-element
             <img src={logo} alt={displayName} className="h-9 object-contain" />
           ) : (
-            <span className="text-xl font-bold" style={{ color: accent }}>{displayName}</span>
+            <span className="text-xl font-bold" style={{ color: previewAccent }}>{displayName}</span>
           )}
-          {subtitle && <span className="text-sm text-gray-500">{subtitle}</span>}
+          {subtitle && <span className="text-sm text-muted">{subtitle}</span>}
         </div>
       </div>
 
       {state?.error && (
-        <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{state.error}</div>
+        <div className="alert-error-sm">{state.error}</div>
       )}
       {state?.ok && (
-        <div className="rounded-md bg-green-50 p-3 text-sm text-green-700">
+        <div className="alert-success-sm">
           Gespeichert. Die Änderung wird beim nächsten Pageload sichtbar.
         </div>
       )}

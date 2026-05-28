@@ -6,6 +6,7 @@ import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { commitDocumentFromBytes } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
+import { prismaBytes } from '@/server/db/prisma-bytes';
 
 export interface ActionResult {
   ok: boolean;
@@ -81,7 +82,7 @@ export async function saveTaxFilingAction(
             versionNo: 1,
             storageBucket: stored.targetBucket,
             storageKey: stored.targetKey,
-            sha256: stored.sha256,
+            sha256: prismaBytes(stored.sha256),
             sizeBytes: stored.sizeBytes,
             immutable: stored.immutable,
             scanStatus: 'CLEAN',
@@ -265,4 +266,3 @@ export async function deleteTaxFilingAction(input: {
   revalidatePath(`/staff/clients/${parsed.data.clientId}/notices`);
   return { ok: true };
 }
-

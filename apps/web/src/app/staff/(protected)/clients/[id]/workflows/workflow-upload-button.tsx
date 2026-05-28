@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition, useEffect } from 'react';
 import { createPortal } from 'react-dom';
@@ -125,24 +125,24 @@ export function WorkflowUploadButton({
   }
 
   const modal = open ? (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4" onClick={close}>
+    <div className="modal-overlay" onClick={close}>
       <div className="w-full max-w-lg card p-5 relative" onClick={(e) => e.stopPropagation()}>
         <button
           type="button"
           onClick={close}
-          className="absolute top-3 right-3 text-gray-400 hover:text-gray-600"
+          className="modal-close"
           aria-label="Schließen"
           disabled={isPending}
         >
           <X className="h-5 w-5" />
         </button>
 
-        <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1">
+        <h2 className="text-base font-semibold text-primary mb-1">
           Dokumente hochladen
         </h2>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+        <p className="text-xs text-muted mb-4">
           Workflow-Schritt „{itemTitle}" · Klasse{' '}
-          <span className="font-medium text-gray-700 dark:text-gray-300">{classLabel}</span>
+          <span className="font-medium text-secondary">{classLabel}</span>
           {expectedClassification.startsWith('GOBD_') && (
             <span className="block text-[10px] text-amber-700 dark:text-amber-400 mt-0.5">
               Object-Lock COMPLIANCE — 10 Jahre unveränderbar
@@ -161,21 +161,21 @@ export function WorkflowUploadButton({
               onChange={(e) => onFilesPicked(e.target.files)}
               disabled={isPending}
             />
-            <p className="text-[10px] text-gray-500 mt-1">
+            <p className="text-[10px] text-muted mt-1">
               Mehrfach-Auswahl möglich. Pro Datei entsteht ein eigenes Dokument.
             </p>
           </div>
 
           {jobs.length > 0 && (
-            <ul className="divide-y divide-gray-100 dark:divide-gray-800 max-h-60 overflow-y-auto">
+            <ul className="divide-y divide-border-subtle max-h-60 overflow-y-auto">
               {jobs.map((j) => (
                 <li key={j.id} className="py-2 flex items-center justify-between gap-3 text-xs">
-                  <span className="truncate flex-1 text-gray-700 dark:text-gray-300">
+                  <span className="truncate flex-1 text-secondary">
                     {j.file.name}
-                    <span className="text-gray-400 ml-2">({(j.file.size / 1024).toFixed(0)} KB)</span>
+                    <span className="text-disabled ml-2">({(j.file.size / 1024).toFixed(0)} KB)</span>
                   </span>
                   <span className="shrink-0">
-                    {j.status === 'pending' && <span className="text-gray-400">wartet</span>}
+                    {j.status === 'pending' && <span className="text-disabled">wartet</span>}
                     {j.status === 'presign' && <span className="text-blue-600">vorbereiten…</span>}
                     {j.status === 'upload' && <span className="text-blue-600">hochladen…</span>}
                     {j.status === 'commit' && <span className="text-blue-600">prüfen…</span>}

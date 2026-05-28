@@ -1,4 +1,4 @@
-import { staffAuth } from '@/server/auth/staff';
+﻿import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
@@ -155,8 +155,8 @@ export default async function ClientsPage({
     <div className="p-8">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Mandanten</h1>
-          <p className="text-gray-500 mt-1">{totalCount.toLocaleString('de-DE')} Treffer</p>
+          <h1 className="text-2xl font-bold text-primary">Mandanten</h1>
+          <p className="text-muted mt-1">{totalCount.toLocaleString('de-DE')} Treffer</p>
         </div>
         <div className="flex gap-2">
           <a
@@ -181,7 +181,7 @@ export default async function ClientsPage({
       <form action="/staff/clients" method="get" className="card p-4 mb-4 space-y-3">
         <div className="flex gap-3 items-end flex-wrap">
           <div className="flex-1 min-w-[240px] relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-disabled" />
             <input
               type="search"
               name="q"
@@ -213,13 +213,13 @@ export default async function ClientsPage({
           </select>
         </div>
         <div className="flex items-center justify-between gap-3">
-          <label className="flex items-center gap-2 text-sm text-gray-700">
+          <label className="flex items-center gap-2 text-sm text-secondary">
             <input
               type="checkbox"
               name="mine"
               value="1"
               defaultChecked={mine}
-              className="rounded border-gray-300 text-brand-600"
+              className="rounded border-strong text-brand-600"
             />
             Nur meine Mandanten
           </label>
@@ -234,11 +234,11 @@ export default async function ClientsPage({
 
       {clients.length === 0 ? (
         <div className="card p-12 text-center">
-          <User className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-sm font-medium text-gray-900 mb-1">
+          <User className="h-12 w-12 text-disabled mx-auto mb-4" />
+          <h3 className="text-sm font-medium text-primary mb-1">
             {sp.q || sp.status || mine ? 'Keine Treffer' : 'Noch keine Mandanten'}
           </h3>
-          <p className="text-sm text-gray-500 mb-4">
+          <p className="text-sm text-muted mb-4">
             {sp.q || sp.status || mine
               ? 'Filter anpassen oder zurücksetzen.'
               : 'Lege den ersten Mandanten an, um zu beginnen.'}
@@ -253,23 +253,23 @@ export default async function ClientsPage({
         <div className="card overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-200 bg-gray-50">
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Name</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Typ</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">DATEV-Nr.</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Addison-Nr.</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Onboarding</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Dokumente</th>
+              <tr className="border-b border-default bg-gray-50">
+                <th className="th">Name</th>
+                <th className="th">Typ</th>
+                <th className="th">DATEV-Nr.</th>
+                <th className="th">Addison-Nr.</th>
+                <th className="th">Status</th>
+                <th className="th">Onboarding</th>
+                <th className="th">Dokumente</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-border-subtle">
               {clients.map((client) => (
                 <tr key={client.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-6 py-3">
                     <Link
                       href={`/staff/clients/${client.id}`}
-                      className="font-medium text-gray-900 hover:text-brand-600 inline-flex items-center gap-2"
+                      className="font-medium text-primary hover:text-brand-600 inline-flex items-center gap-2"
                     >
                       {client.priority && (
                         <span
@@ -278,7 +278,7 @@ export default async function ClientsPage({
                               ? 'inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
                               : client.priority === 'B'
                                 ? 'inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
-                                : 'inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                                : 'inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold bg-gray-100 text-secondary'
                           }
                           title={`Priorität ${client.priority}`}
                         >
@@ -288,9 +288,9 @@ export default async function ClientsPage({
                       {client.name}
                     </Link>
                   </td>
-                  <td className="px-6 py-3 text-gray-600">{kindLabels[client.kind] ?? client.kind}</td>
-                  <td className="px-6 py-3 text-gray-600 font-mono text-xs">{client.datevNo ?? '—'}</td>
-                  <td className="px-6 py-3 text-gray-600 font-mono text-xs">{client.addisonNo ?? '—'}</td>
+                  <td className="px-6 py-3 text-secondary">{kindLabels[client.kind] ?? client.kind}</td>
+                  <td className="px-6 py-3 text-secondary font-mono text-xs">{client.datevNo ?? '—'}</td>
+                  <td className="px-6 py-3 text-secondary font-mono text-xs">{client.addisonNo ?? '—'}</td>
                   <td className="px-6 py-3">
                     {client.allowActive ? (
                       <span className="badge-green">Aktiv</span>
@@ -333,7 +333,7 @@ export default async function ClientsPage({
                       );
                     })()}
                   </td>
-                  <td className="px-6 py-3 text-gray-600">{client._count.documents}</td>
+                  <td className="px-6 py-3 text-secondary">{client._count.documents}</td>
                 </tr>
               ))}
             </tbody>

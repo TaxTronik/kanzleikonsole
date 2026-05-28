@@ -1,4 +1,4 @@
-import { staffAuth } from '@/server/auth/staff';
+﻿import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { redirect } from 'next/navigation';
 import { Phone } from 'lucide-react';
@@ -56,16 +56,16 @@ export default async function PhoneNotesPage() {
   return (
     <div className="p-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">Telefonzettel</h1>
-        <p className="text-gray-500 dark:text-gray-400 text-sm">
+        <h1 className="text-2xl font-bold text-primary mb-1">Telefonzettel</h1>
+        <p className="text-muted text-sm">
           Anrufe protokollieren, übertragen oder in Wiedervorlage überführen.
         </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
-          <div className="mb-3 flex items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
-            <span className="font-medium text-gray-900 dark:text-gray-100">
+          <div className="mb-3 flex items-center gap-3 text-sm text-secondary dark:text-disabled">
+            <span className="font-medium text-primary">
               {openCount} offen
             </span>
             {unreadCount > 0 && (
@@ -77,8 +77,8 @@ export default async function PhoneNotesPage() {
 
           {notes.length === 0 ? (
             <div className="card px-6 py-16 text-center">
-              <Phone className="h-12 w-12 text-gray-200 dark:text-gray-700 mx-auto mb-3" />
-              <p className="text-sm text-gray-400">Noch keine Telefonnotizen.</p>
+              <Phone className="h-12 w-12 text-disabled dark:text-secondary mx-auto mb-3" />
+              <p className="text-sm text-disabled">Noch keine Telefonnotizen.</p>
             </div>
           ) : (
             <div className="card overflow-hidden">
@@ -105,7 +105,7 @@ export default async function PhoneNotesPage() {
         </div>
 
         <div className="card p-6 h-fit lg:sticky lg:top-6">
-          <h2 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-4">Neue Notiz</h2>
+          <h2 className="text-sm font-medium text-primary mb-4">Neue Notiz</h2>
           <NewPhoneNoteForm
             clients={clients}
             staff={staff}

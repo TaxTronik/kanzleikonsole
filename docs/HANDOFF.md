@@ -110,6 +110,12 @@ Datei: `packages/db/src/__tests__/rls-cross-tenant.test.ts` (Vitest).
 
 Pflicht in CI.
 
+## Iteration 2+
+
+Folge dem Plan unter `~/.claude/plans/hey-claude-ich-will-zazzy-noodle.md`,
+Sektion „MVP-Iterationen". Nicht überspringen — jede Iteration baut auf der
+vorigen Foundation auf.
+
 ## Wichtige Regeln (siehe auch Memories in `~/.claude/projects/e--taxtronik/memory/`)
 
 1. **n8n statt Eigencode** für Kommunikation/Reminder/Cron, wo immer möglich.

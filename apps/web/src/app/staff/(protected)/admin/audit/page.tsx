@@ -1,4 +1,4 @@
-// =============================================================================
+﻿// =============================================================================
 // /staff/admin/audit — Audit-Log-Viewer
 //
 // Cursor-basierte Pagination (höchste id zuerst, älter via cursor).
@@ -112,8 +112,8 @@ export default async function AuditLogPage({
     <div className="p-8">
       <div className="flex items-end justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-1">Audit-Log</h1>
-          <p className="text-gray-500 text-sm">
+          <h1 className="text-2xl font-bold text-primary mb-1">Audit-Log</h1>
+          <p className="text-muted text-sm">
             Hash-verkettete Aufzeichnung aller compliance-relevanten Operationen.
           </p>
         </div>
@@ -169,7 +169,7 @@ export default async function AuditLogPage({
                 )}
               </>
             ) : (
-              <p className="text-sm text-gray-700">Verifikation fehlgeschlagen.</p>
+              <p className="text-sm text-secondary">Verifikation fehlgeschlagen.</p>
             )}
           </div>
         </div>
@@ -222,45 +222,45 @@ export default async function AuditLogPage({
 
       {/* Tabelle */}
       <div className="card overflow-hidden">
-        <div className="px-6 py-3 border-b border-gray-200 flex items-center justify-between text-xs text-gray-500">
+        <div className="px-6 py-3 border-b border-default flex items-center justify-between text-xs text-muted">
           <span>{totalCount.toLocaleString('de-DE')} Treffer · zeige {visibleEntries.length}</span>
         </div>
         {visibleEntries.length === 0 ? (
-          <p className="px-6 py-16 text-sm text-gray-400 text-center">Keine Einträge.</p>
+          <p className="px-6 py-16 text-sm text-disabled text-center">Keine Einträge.</p>
         ) : (
           <table className="w-full text-xs">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left px-6 py-2 text-xs font-medium text-gray-500 uppercase tracking-wide">ID</th>
-                <th className="text-left px-6 py-2 text-xs font-medium text-gray-500 uppercase tracking-wide">Zeit</th>
-                <th className="text-left px-6 py-2 text-xs font-medium text-gray-500 uppercase tracking-wide">Akteur</th>
-                <th className="text-left px-6 py-2 text-xs font-medium text-gray-500 uppercase tracking-wide">Action</th>
-                <th className="text-left px-6 py-2 text-xs font-medium text-gray-500 uppercase tracking-wide">Ressource</th>
-                <th className="text-left px-6 py-2 text-xs font-medium text-gray-500 uppercase tracking-wide">Hash</th>
+              <tr className="bg-gray-50 border-b border-default">
+                <th className="text-left px-6 py-2 text-xs font-medium text-muted uppercase tracking-wide">ID</th>
+                <th className="text-left px-6 py-2 text-xs font-medium text-muted uppercase tracking-wide">Zeit</th>
+                <th className="text-left px-6 py-2 text-xs font-medium text-muted uppercase tracking-wide">Akteur</th>
+                <th className="text-left px-6 py-2 text-xs font-medium text-muted uppercase tracking-wide">Action</th>
+                <th className="text-left px-6 py-2 text-xs font-medium text-muted uppercase tracking-wide">Ressource</th>
+                <th className="text-left px-6 py-2 text-xs font-medium text-muted uppercase tracking-wide">Hash</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-border-subtle">
               {visibleEntries.map((e) => (
                 <tr key={String(e.id)} className="hover:bg-gray-50">
-                  <td className="px-6 py-2 font-mono text-gray-500">
+                  <td className="px-6 py-2 font-mono text-muted">
                     <Link href={`/staff/admin/audit/${e.id}`} className="hover:underline text-brand-700">
                       {String(e.id)}
                     </Link>
                   </td>
-                  <td className="px-6 py-2 text-gray-700 whitespace-nowrap">
+                  <td className="px-6 py-2 text-secondary whitespace-nowrap">
                     {new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'medium' }).format(e.occurredAt)}
                   </td>
-                  <td className="px-6 py-2 text-gray-700 whitespace-nowrap">
+                  <td className="px-6 py-2 text-secondary whitespace-nowrap">
                     {actorTypeLabels[e.actorType] ?? e.actorType}
                   </td>
-                  <td className="px-6 py-2 font-mono text-gray-900 whitespace-nowrap">{e.action}</td>
-                  <td className="px-6 py-2 text-gray-700 font-mono whitespace-nowrap">
+                  <td className="px-6 py-2 font-mono text-primary whitespace-nowrap">{e.action}</td>
+                  <td className="px-6 py-2 text-secondary font-mono whitespace-nowrap">
                     {e.resourceType}
                     {e.resourceId && (
-                      <span className="text-gray-400">:{e.resourceId.slice(0, 8)}</span>
+                      <span className="text-disabled">:{e.resourceId.slice(0, 8)}</span>
                     )}
                   </td>
-                  <td className="px-6 py-2 text-gray-400 font-mono">
+                  <td className="px-6 py-2 text-disabled font-mono">
                     {Buffer.from(e.thisHash).toString('hex').slice(0, 12)}…
                   </td>
                 </tr>
@@ -269,7 +269,7 @@ export default async function AuditLogPage({
           </table>
         )}
         {/* Pagination-Footer */}
-        <div className="px-6 py-3 border-t border-gray-200 flex items-center justify-between text-xs text-gray-500">
+        <div className="card-footer">
           {sp.cursor ? (
             <Link
               href={`/staff/admin/audit${baseQs.toString() ? '?' + baseQs.toString() : ''}`}
@@ -290,7 +290,7 @@ export default async function AuditLogPage({
               <ChevronRight className="h-3 w-3" />
             </Link>
           ) : (
-            <span className="text-gray-400">Ende der Liste</span>
+            <span className="text-disabled">Ende der Liste</span>
           )}
         </div>
       </div>

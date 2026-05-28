@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { createPortal } from 'react-dom';
@@ -59,7 +59,7 @@ export function MoveDialog({
       <div key={f.id}>
         <div
           className={`flex items-center gap-1 rounded px-2 py-1.5 text-sm cursor-pointer ${
-            isTarget ? 'bg-brand-50 text-brand-700' : 'hover:bg-gray-50 text-gray-700'
+            isTarget ? 'bg-brand-50 text-brand-700' : 'hover:bg-gray-50 text-secondary'
           }`}
           style={{ paddingLeft: `${depth * 16 + 8}px` }}
           onClick={() => setTarget(f.id)}
@@ -70,7 +70,7 @@ export function MoveDialog({
               e.stopPropagation();
               setExpanded((x) => ({ ...x, [f.id]: !x[f.id] }));
             }}
-            className={kids.length ? 'text-gray-400' : 'invisible'}
+            className={kids.length ? 'text-disabled' : 'invisible'}
           >
             {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
           </button>
@@ -87,25 +87,25 @@ export function MoveDialog({
     <Portal>
       <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
         <div className="w-full max-w-md card p-6 relative" onClick={(e) => e.stopPropagation()}>
-          <button type="button" onClick={onClose} className="absolute top-3 right-3 text-gray-400 hover:text-gray-600">
+          <button type="button" onClick={onClose} className="modal-close">
             <X className="h-5 w-5" />
           </button>
-          <h2 className="text-base font-semibold text-gray-900 mb-1">Verschieben</h2>
-          <p className="text-xs text-gray-500 mb-3 truncate">„{documentTitle}"</p>
-          <div className="border border-gray-200 rounded-md max-h-72 overflow-auto p-1">
+          <h2 className="text-base font-semibold text-primary mb-1">Verschieben</h2>
+          <p className="text-xs text-muted mb-3 truncate">„{documentTitle}"</p>
+          <div className="border border-default rounded-md max-h-72 overflow-auto p-1">
             <div
               className={`flex items-center gap-2 rounded px-2 py-1.5 text-sm cursor-pointer ${
-                target === null ? 'bg-brand-50 text-brand-700' : 'hover:bg-gray-50 text-gray-700'
+                target === null ? 'bg-brand-50 text-brand-700' : 'hover:bg-gray-50 text-secondary'
               }`}
               onClick={() => setTarget(null)}
             >
-              <Folder className="h-4 w-4 text-gray-300" />
+              <Folder className="h-4 w-4 text-disabled" />
               <span className="flex-1">— Ohne Ordner (Wurzel) —</span>
               {target === null && <Check className="h-3.5 w-3.5" />}
             </div>
             {(childrenOf.get(null) ?? []).map((f) => row(f, 0))}
             {folders.length === 0 && (
-              <p className="px-2 py-3 text-xs text-gray-400">
+              <p className="px-2 py-3 text-xs text-disabled">
                 Noch keine Ordner in diesem Bereich.
               </p>
             )}
@@ -190,14 +190,14 @@ export function RetagDialog({
     <Portal>
       <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
         <div className="w-full max-w-md card p-6 relative" onClick={(e) => e.stopPropagation()}>
-          <button type="button" onClick={onClose} className="absolute top-3 right-3 text-gray-400 hover:text-gray-600">
+          <button type="button" onClick={onClose} className="modal-close">
             <X className="h-5 w-5" />
           </button>
-          <h2 className="text-base font-semibold text-gray-900 mb-1">Typ ändern</h2>
-          <p className="text-xs text-gray-500 mb-3 truncate">„{documentTitle}"</p>
+          <h2 className="text-base font-semibold text-primary mb-1">Typ ändern</h2>
+          <p className="text-xs text-muted mb-3 truncate">„{documentTitle}"</p>
           <div className="space-y-1 mb-3 max-h-64 overflow-auto">
             {types.length === 0 && (
-              <p className="px-2 py-2 text-xs text-gray-400">Lädt Typen…</p>
+              <p className="px-2 py-2 text-xs text-disabled">Lädt Typen…</p>
             )}
             {types.map((t) => {
               const down = tierRank(t.tier) < curRank;
@@ -206,7 +206,7 @@ export function RetagDialog({
                   key={t.id}
                   className={`flex items-center gap-2 rounded px-2 py-1.5 text-sm ${
                     down ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:bg-gray-50'
-                  } ${sel === t.id ? 'bg-brand-50 text-brand-700' : 'text-gray-700'}`}
+                  } ${sel === t.id ? 'bg-brand-50 text-brand-700' : 'text-secondary'}`}
                 >
                   <input
                     type="radio"
@@ -217,8 +217,8 @@ export function RetagDialog({
                     onChange={() => setSel(t.id)}
                   />
                   <span className="flex-1">{t.name}</span>
-                  <span className="text-xs text-gray-400">{tierShort(t.tier)}</span>
-                  {t.id === currentTypeId && <span className="text-xs text-gray-400">aktuell</span>}
+                  <span className="text-xs text-disabled">{tierShort(t.tier)}</span>
+                  {t.id === currentTypeId && <span className="text-xs text-disabled">aktuell</span>}
                   {down && <span className="text-xs text-red-500">gesperrt</span>}
                 </label>
               );

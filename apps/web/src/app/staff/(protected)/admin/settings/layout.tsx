@@ -1,4 +1,4 @@
-import Link from 'next/link';
+﻿import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
@@ -17,15 +17,15 @@ export default async function SettingsLayout({ children }: { children: React.Rea
       <div className="flex items-start gap-4 mb-6">
         <Link
           href="/staff/admin"
-          className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 mt-1"
+          className="text-disabled hover:text-secondary mt-1"
         >
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">
+          <h1 className="text-2xl font-bold text-primary mb-1">
             Einstellungen
           </h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm">
+          <p className="text-muted text-sm">
             Grundkonfiguration der Kanzlei — Erscheinungsbild, Module, E-Mail-Versand, Integrationen.
           </p>
         </div>

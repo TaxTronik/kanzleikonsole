@@ -137,6 +137,7 @@ function toDosDateTime(d: Date): { date: number; time: number } {
  */
 export function sanitizeZipFileName(name: string, maxLen = 100): string {
   const cleaned = name
+    // eslint-disable-next-line no-control-regex
     .replace(/[\x00-\x1f<>:"/\\|?*]/g, '_')
     .replace(/\s+/g, ' ')
     .trim();

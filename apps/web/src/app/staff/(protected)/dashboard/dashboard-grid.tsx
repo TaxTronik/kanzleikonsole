@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useRef, useEffect, type ReactNode } from 'react';
 import {
@@ -140,7 +140,7 @@ export function DashboardGrid({
         </button>
       </div>
 
-      {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {error && <div className="alert-error-sm">{error}</div>}
 
       {editMode && <AddWidgetBar widgets={widgets} onAdd={add} />}
 
@@ -166,7 +166,7 @@ export function DashboardGrid({
                     type="button"
                     onClick={() => remove(w.id)}
                     onMouseDown={(e) => e.stopPropagation()}
-                    className="widget-remove absolute -top-2 -right-2 z-10 bg-white border border-gray-200 rounded-full p-1 shadow-sm text-gray-400 hover:text-red-700"
+                    className="widget-remove absolute -top-2 -right-2 z-10 bg-surface border border-default rounded-full p-1 shadow-sm text-disabled hover:text-red-700"
                     title="Widget entfernen"
                   >
                     <X className="h-3 w-3" />
@@ -180,7 +180,7 @@ export function DashboardGrid({
       </div>
 
       {visible.length === 0 && (
-        <div className="card p-12 text-center text-sm text-gray-500">
+        <div className="card p-12 text-center text-sm text-muted">
           Kein Widget aktiv. Klicke auf „Anpassen" und füge Widgets hinzu.
         </div>
       )}
@@ -201,10 +201,10 @@ function AddWidgetBar({
   const available = WIDGETS.filter((w) => !usedTypes.has(w.type));
   return (
     <div className="card p-3">
-      <p className="text-xs font-medium text-gray-700 mb-2">
+      <p className="text-xs font-medium text-secondary mb-2">
         Widget hinzufügen
         {available.length === 0 && (
-          <span className="ml-2 font-normal text-gray-500">
+          <span className="ml-2 font-normal text-muted">
             — alle bereits auf dem Dashboard
           </span>
         )}

@@ -1,4 +1,4 @@
-import { redirect } from 'next/navigation';
+﻿import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Plus, GitBranch } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
@@ -29,13 +29,13 @@ export default async function StateMachinesIndexPage() {
     <div className="p-8 max-w-4xl">
       <Link
         href="/staff/admin"
-        className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 mb-3"
+        className="back-link mb-3"
       >
         <ArrowLeft className="h-3 w-3" />
         Administration
       </Link>
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">Status-Maschinen</h1>
-      <p className="text-gray-500 text-sm mb-6">
+      <h1 className="text-2xl font-bold text-primary mb-1">Status-Maschinen</h1>
+      <p className="text-muted text-sm mb-6">
         Eigene Zustandsautomaten — z. B. „Mandanten-Onboarding-Phase",
         „Steuererklärungs-Bearbeitungsstand". Wird in einer späteren
         Iteration an Ressourcen gebunden.
@@ -51,15 +51,15 @@ export default async function StateMachinesIndexPage() {
                     <GitBranch className="h-4 w-4 text-brand-600" />
                     <Link
                       href={`/staff/admin/state-machines/${m.id}`}
-                      className="font-medium text-gray-900 hover:underline"
+                      className="font-medium text-primary hover:underline"
                     >
                       {m.name}
                     </Link>
-                    <code className="text-xs text-gray-500 font-mono">{m.slug}</code>
+                    <code className="text-xs text-muted font-mono">{m.slug}</code>
                     {!m.active && <span className="badge-yellow">deaktiviert</span>}
                   </div>
-                  {m.description && <p className="text-xs text-gray-500 mt-1">{m.description}</p>}
-                  <p className="text-xs text-gray-400 mt-1">
+                  {m.description && <p className="text-xs text-muted mt-1">{m.description}</p>}
+                  <p className="text-xs text-disabled mt-1">
                     {m._count.states} Zustände, {m._count.transitions} Übergänge
                     {m.appliesTo ? ` · gilt für ${m.appliesTo}` : ''}
                   </p>
@@ -75,13 +75,13 @@ export default async function StateMachinesIndexPage() {
           ))}
         </ul>
       ) : (
-        <div className="card p-8 text-center text-sm text-gray-500 mb-6">
+        <div className="card p-8 text-center text-sm text-muted mb-6">
           Noch keine Status-Maschinen.
         </div>
       )}
 
       <div className="card p-6 border-brand-300">
-        <h2 className="text-sm font-medium text-gray-900 mb-3 flex items-center gap-2">
+        <h2 className="text-sm font-medium text-primary mb-3 flex items-center gap-2">
           <Plus className="h-4 w-4" />
           Neue Status-Maschine
         </h2>

@@ -1,4 +1,4 @@
-import { redirect, notFound } from 'next/navigation';
+﻿import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Send, X, ShieldCheck } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
@@ -41,19 +41,19 @@ export default async function PoaDetailPage({
   return (
     <div className="p-8 max-w-3xl">
       <div className="flex items-start gap-4 mb-6">
-        <Link href="/staff/poa" className="text-gray-400 hover:text-gray-600 mt-1">
+        <Link href="/staff/poa" className="text-disabled hover:text-secondary mt-1">
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-1">
-            <h1 className="text-2xl font-bold text-gray-900">{poa.subject}</h1>
+            <h1 className="text-2xl font-bold text-primary">{poa.subject}</h1>
             {poa.status === 'DRAFT' && <span className="badge-gray">{statusLabels[poa.status]}</span>}
             {poa.status === 'SENT' && <span className="badge-yellow">{statusLabels[poa.status]}</span>}
             {poa.status === 'SIGNED' && <span className="badge-green">{statusLabels[poa.status]}</span>}
             {poa.status === 'REVOKED' && <span className="badge-red">{statusLabels[poa.status]}</span>}
             {poa.status === 'EXPIRED' && <span className="badge-red">{statusLabels[poa.status]}</span>}
           </div>
-          <p className="text-gray-500 text-sm">
+          <p className="text-muted text-sm">
             <Link href={`/staff/clients/${poa.client.id}`} className="hover:underline">
               {poa.client.name}
             </Link>
@@ -94,21 +94,21 @@ export default async function PoaDetailPage({
 
       <div className="grid grid-cols-2 gap-4 mb-6">
         <div className="card p-4">
-          <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Gültig ab</p>
-          <p className="text-sm font-medium text-gray-900">
+          <p className="eyebrow">Gültig ab</p>
+          <p className="text-sm font-medium text-primary">
             {new Intl.DateTimeFormat('de-DE').format(poa.validFrom)}
           </p>
         </div>
         <div className="card p-4">
-          <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Gültig bis</p>
-          <p className="text-sm font-medium text-gray-900">
+          <p className="eyebrow">Gültig bis</p>
+          <p className="text-sm font-medium text-primary">
             {poa.validUntil ? new Intl.DateTimeFormat('de-DE').format(poa.validUntil) : 'unbefristet'}
           </p>
         </div>
       </div>
 
       <div className="card p-6 mb-6">
-        <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">
+        <h2 className="text-xs font-medium text-muted uppercase tracking-wide mb-3">
           Vollmachtsumfang
         </h2>
         <div

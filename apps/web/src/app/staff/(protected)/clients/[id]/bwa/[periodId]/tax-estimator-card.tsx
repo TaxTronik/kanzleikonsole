@@ -1,9 +1,10 @@
-'use client';
+﻿'use client';
 
 import { useState, useMemo } from 'react';
 import { Calculator } from 'lucide-react';
 import { estimateTaxes, type LegalForm } from '@/server/bwa/tax-estimator';
 
+import { fmtEURRound } from '@/lib/fmt';
 interface Props {
   result: number;
   revenue: number | null;
@@ -36,10 +37,6 @@ export function TaxEstimatorCard({
     [legalForm, hebesatz, result, revenue, inputVat, vatPaid],
   );
 
-  const fmtEUR = (n: number | null) =>
-    n === null
-      ? '—'
-      : new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n);
 
   return (
     <div className="card p-6 mb-6">
@@ -50,9 +47,9 @@ export function TaxEstimatorCard({
       >
         <div className="flex items-center gap-2">
           <Calculator className="h-4 w-4 text-brand-600" />
-          <h2 className="text-sm font-medium text-gray-900">Steuerschätzung (Beta)</h2>
+          <h2 className="text-sm font-medium text-primary">Steuerschätzung (Beta)</h2>
         </div>
-        <span className="text-xs text-gray-500">
+        <span className="text-xs text-muted">
           {show ? 'Schließen ▴' : 'Öffnen ▾'}
         </span>
       </button>
@@ -92,35 +89,35 @@ export function TaxEstimatorCard({
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-md border border-gray-200">
+          <div className="overflow-hidden rounded-md border border-default">
             <table className="w-full text-sm">
-              <tbody className="divide-y divide-gray-100">
-                <Row label="Gewerbesteuer-Bemessung" value={fmtEUR(est.gewerbesteuerBemessung)} muted />
+              <tbody className="divide-y divide-border-subtle">
+                <Row label="Gewerbesteuer-Bemessung" value={fmtEURRound(est.gewerbesteuerBemessung)} muted />
                 {est.gewerbesteuerFreibetrag > 0 && (
-                  <Row label="abzgl. Freibetrag" value={`-${fmtEUR(est.gewerbesteuerFreibetrag)}`} muted />
+                  <Row label="abzgl. Freibetrag" value={`-${fmtEURRound(est.gewerbesteuerFreibetrag)}`} muted />
                 )}
-                <Row label="Gewerbesteuer" value={fmtEUR(est.gewerbesteuer)} bold />
+                <Row label="Gewerbesteuer" value={fmtEURRound(est.gewerbesteuer)} bold />
                 {est.koerperschaftsteuer !== null && (
                   <>
-                    <Row label="Körperschaftsteuer (15 %)" value={fmtEUR(est.koerperschaftsteuer)} />
-                    <Row label="Solidaritätszuschlag (5,5 %)" value={fmtEUR(est.solidaritaetszuschlag)} />
+                    <Row label="Körperschaftsteuer (15 %)" value={fmtEURRound(est.koerperschaftsteuer)} />
+                    <Row label="Solidaritätszuschlag (5,5 %)" value={fmtEURRound(est.solidaritaetszuschlag)} />
                   </>
                 )}
                 {est.einkommensteuerSchaetzung !== null && (
-                  <Row label="Einkommensteuer (Single, vereinfacht)" value={fmtEUR(est.einkommensteuerSchaetzung)} />
+                  <Row label="Einkommensteuer (Single, vereinfacht)" value={fmtEURRound(est.einkommensteuerSchaetzung)} />
                 )}
                 {est.ustZahllast !== null && (
-                  <Row label="USt-Zahllast (Jahr, vereinfacht)" value={fmtEUR(est.ustZahllast)} />
+                  <Row label="USt-Zahllast (Jahr, vereinfacht)" value={fmtEURRound(est.ustZahllast)} />
                 )}
                 {est.ustOffenerSaldo !== null && (
-                  <Row label="… davon noch offen" value={fmtEUR(est.ustOffenerSaldo)} muted />
+                  <Row label="… davon noch offen" value={fmtEURRound(est.ustOffenerSaldo)} muted />
                 )}
-                <Row label="Gesamt" value={fmtEUR(est.gesamt)} bold highlight />
+                <Row label="Gesamt" value={fmtEURRound(est.gesamt)} bold highlight />
               </tbody>
             </table>
           </div>
 
-          <ul className="text-xs text-gray-500 space-y-1">
+          <ul className="text-xs text-muted space-y-1">
             {est.disclaimers.map((d, i) => (
               <li key={i}>· {d}</li>
             ))}
@@ -151,8 +148,8 @@ function Row({
     : '';
   return (
     <tr className={cls}>
-      <td className={`px-4 py-2 ${muted ? 'text-gray-500' : 'text-gray-700'}`}>{label}</td>
-      <td className={`px-4 py-2 text-right font-mono tabular-nums ${bold ? 'font-bold text-gray-900' : muted ? 'text-gray-500' : 'text-gray-900'}`}>
+      <td className={`px-4 py-2 ${muted ? 'text-muted' : 'text-secondary'}`}>{label}</td>
+      <td className={`px-4 py-2 text-right font-mono tabular-nums ${bold ? 'font-bold text-primary' : muted ? 'text-muted' : 'text-primary'}`}>
         {value}
       </td>
     </tr>

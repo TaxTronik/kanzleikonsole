@@ -1,4 +1,4 @@
-import { redirect, notFound } from 'next/navigation';
+﻿import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
@@ -7,6 +7,7 @@ import { computeBwaKpis } from '@/server/bwa/addison-parser';
 import type { LegalForm } from '@/server/bwa/tax-estimator';
 import { TaxEstimatorCard } from './tax-estimator-card';
 
+import { fmtEUR } from '@/lib/fmt';
 export default async function BwaPeriodDetailPage({
   params,
 }: {
@@ -36,20 +37,18 @@ export default async function BwaPeriodDetailPage({
   const period = data;
   const kpis = computeBwaKpis(period.positions);
 
-  const fmtEUR = (n: number | null) =>
-    n === null ? '—' : new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(n);
   const fmtPct = (n: number | null) =>
     n === null ? '—' : `${(n * 100).toFixed(1)} %`;
 
   return (
     <div className="p-8 max-w-4xl">
       <div className="flex items-start gap-4 mb-6">
-        <Link href={`/staff/clients/${clientId}/bwa`} className="text-gray-400 hover:text-gray-600 mt-1">
+        <Link href={`/staff/clients/${clientId}/bwa`} className="text-disabled hover:text-secondary mt-1">
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-1">{period.periodKey}</h1>
-          <p className="text-gray-500 text-sm">
+          <h1 className="text-2xl font-bold text-primary mb-1">{period.periodKey}</h1>
+          <p className="text-muted text-sm">
             {period.client.name}
             {' · '}
             {new Intl.DateTimeFormat('de-DE').format(period.fromDate)} –{' '}
@@ -91,29 +90,29 @@ export default async function BwaPeriodDetailPage({
       )}
 
       <div className="card overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h2 className="text-sm font-medium text-gray-900">
+        <div className="px-6 py-4 border-b border-default">
+          <h2 className="text-sm font-medium text-primary">
             Alle Positionen ({period.positions.length})
           </h2>
         </div>
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-200">
-              <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Nr.</th>
-              <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Bezeichnung</th>
-              <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Betrag</th>
-              <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Anteil</th>
+            <tr className="bg-gray-50 border-b border-default">
+              <th className="th">Nr.</th>
+              <th className="th">Bezeichnung</th>
+              <th className="th th-right">Betrag</th>
+              <th className="th th-right">Anteil</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-border-subtle">
             {period.positions.map((p) => (
               <tr key={p.id} className="hover:bg-gray-50">
-                <td className="px-6 py-2 text-gray-500 font-mono">{p.number}</td>
-                <td className="px-6 py-2 text-gray-900">{p.label}</td>
+                <td className="px-6 py-2 text-muted font-mono">{p.number}</td>
+                <td className="px-6 py-2 text-primary">{p.label}</td>
                 <td className="px-6 py-2 text-right font-mono tabular-nums">
                   {new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(Number(p.amount.toString()))}
                 </td>
-                <td className="px-6 py-2 text-right text-gray-500 font-mono tabular-nums">
+                <td className="px-6 py-2 text-right text-muted font-mono tabular-nums">
                   {p.sharePct === null ? '—' : `${Number(p.sharePct.toString()).toFixed(1)} %`}
                 </td>
               </tr>
@@ -135,10 +134,10 @@ function KpiCard({
   highlight?: 'green' | 'red';
 }) {
   const valueClass =
-    highlight === 'red' ? 'text-red-700' : highlight === 'green' ? 'text-green-700' : 'text-gray-900';
+    highlight === 'red' ? 'text-red-700' : highlight === 'green' ? 'text-green-700' : 'text-primary';
   return (
     <div className="card p-4">
-      <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">{label}</p>
+      <p className="eyebrow">{label}</p>
       <p className={`text-xl font-bold ${valueClass}`}>{value}</p>
     </div>
   );

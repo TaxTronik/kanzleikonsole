@@ -1,6 +1,7 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
+import { slugify as slugifyLib } from '@/lib/slugify';
 import { Plus, Trash2, Save, X } from 'lucide-react';
 import { saveFieldDefAction, deleteFieldDefAction } from './actions';
 
@@ -49,15 +50,9 @@ function emptyDraft(): FieldDef & { id: '' } {
   };
 }
 
+// Lokale Wrapper: Identifier dürfen nicht mit Zahl/Symbol beginnen → Prefix "f"
 function slugify(s: string): string {
-  return s.toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .replace(/^[^a-z]/, 'f$&')
-    .slice(0, 50);
+  return slugifyLib(s, { maxLength: 50, ensureLetterStart: 'f' });
 }
 
 export function CustomFieldsEditor({ initial }: { initial: FieldDef[] }) {
@@ -122,7 +117,7 @@ export function CustomFieldsEditor({ initial }: { initial: FieldDef[] }) {
   return (
     <div className="space-y-4">
       {fields.length === 0 ? (
-        <div className="card p-8 text-center text-sm text-gray-500">
+        <div className="card p-8 text-center text-sm text-muted">
           Noch keine Custom-Felder definiert.
         </div>
       ) : (
@@ -132,19 +127,19 @@ export function CustomFieldsEditor({ initial }: { initial: FieldDef[] }) {
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium text-gray-900">{f.label}</span>
-                    <code className="text-xs text-gray-500 font-mono">{f.key}</code>
+                    <span className="font-medium text-primary">{f.label}</span>
+                    <code className="text-xs text-muted font-mono">{f.key}</code>
                     <span className="badge-gray">{TYPE_LABELS[f.type]}</span>
                     {!f.active && <span className="badge-yellow">deaktiviert</span>}
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-muted mt-1">
                     Gilt für:{' '}
                     {f.appliesTo.length === 0
                       ? 'alle Mandantentypen'
                       : f.appliesTo.map((k) => KIND_LABELS[k]).join(', ')}
                   </p>
                   {f.helpText && (
-                    <p className="text-xs text-gray-400 mt-1 italic">{f.helpText}</p>
+                    <p className="text-xs text-disabled mt-1 italic">{f.helpText}</p>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
@@ -158,7 +153,7 @@ export function CustomFieldsEditor({ initial }: { initial: FieldDef[] }) {
                   <button
                     type="button"
                     onClick={() => remove(f.id)}
-                    className="text-gray-400 hover:text-red-700 p-1"
+                    className="text-disabled hover:text-red-700 p-1"
                     title="Feld löschen"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -212,7 +207,7 @@ function FieldForm({
 
   return (
     <div className="card p-6 space-y-4 border-brand-300">
-      <h2 className="text-sm font-medium text-gray-900">
+      <h2 className="text-sm font-medium text-primary">
         {isNew ? 'Neues Feld' : `Feld bearbeiten: ${draft.label}`}
       </h2>
 
@@ -231,7 +226,7 @@ function FieldForm({
         <div>
           <label className="label">
             Schlüssel{' '}
-            <span className="text-xs text-gray-400 font-normal">
+            <span className="text-xs text-disabled font-normal">
               {isNew ? '(autom. aus Bezeichnung)' : '(unveränderlich)'}
             </span>
           </label>
@@ -261,7 +256,7 @@ function FieldForm({
             ))}
           </select>
           {!isNew && (
-            <p className="text-xs text-gray-400 mt-1">Typ ist nach Anlage fest.</p>
+            <p className="text-xs text-disabled mt-1">Typ ist nach Anlage fest.</p>
           )}
         </div>
         <div>
@@ -271,7 +266,7 @@ function FieldForm({
               type="checkbox"
               checked={draft.active}
               onChange={(e) => set('active', e.target.checked)}
-              className="rounded border-gray-300 text-brand-600"
+              className="rounded border-strong text-brand-600"
             />
             <span>Aktiv (sichtbar am Mandanten)</span>
           </label>
@@ -291,7 +286,7 @@ function FieldForm({
 
       <div>
         <label className="label">Gültig für Mandantentyp</label>
-        <p className="text-xs text-gray-500 mb-2">
+        <p className="text-xs text-muted mb-2">
           Keine Auswahl = gilt für alle Typen.
         </p>
         <div className="flex gap-3 flex-wrap">
@@ -306,7 +301,7 @@ function FieldForm({
                     if (e.target.checked) set('appliesTo', [...draft.appliesTo, k]);
                     else set('appliesTo', draft.appliesTo.filter((x) => x !== k));
                   }}
-                  className="rounded border-gray-300 text-brand-600"
+                  className="rounded border-strong text-brand-600"
                 />
                 <span>{KIND_LABELS[k]}</span>
               </label>
@@ -319,7 +314,7 @@ function FieldForm({
         <div>
           <label className="label">
             Optionen{' '}
-            <span className="text-xs text-gray-400 font-normal">
+            <span className="text-xs text-disabled font-normal">
               (eine pro Zeile, Format „wert" oder „wert=Anzeige")
             </span>
           </label>
@@ -334,7 +329,7 @@ function FieldForm({
         </div>
       )}
 
-      {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {error && <div className="alert-error-sm">{error}</div>}
 
       <div className="flex items-center gap-2">
         <button

@@ -1,4 +1,4 @@
-// =============================================================================
+﻿// =============================================================================
 // /staff/admin/skills — Tätigkeitsbereiche / Skills (FiBu, Lohn, …)
 //
 // Skill-Katalog der Kanzlei. System-Skills sind vorbelegt und können nicht
@@ -45,15 +45,15 @@ export default async function SkillsAdminPage() {
   return (
     <div className="p-8 max-w-4xl">
       <div className="flex items-start gap-4 mb-6">
-        <Link href="/staff/admin" className="text-gray-400 hover:text-gray-600 mt-1">
+        <Link href="/staff/admin" className="text-disabled hover:text-secondary mt-1">
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-1 flex items-center gap-2">
+          <h1 className="page-title">
             <Tags className="h-6 w-6 text-brand-600" />
             Tätigkeitsbereiche
           </h1>
-          <p className="text-gray-500 text-sm">
+          <p className="text-muted text-sm">
             Skills wie Finanzbuchhaltung, Lohnabrechnung, Jahresabschluss. Mitarbeiter
             werden in der Benutzer-Verwaltung diesen Bereichen zugeordnet.
           </p>
@@ -61,7 +61,7 @@ export default async function SkillsAdminPage() {
       </div>
 
       <details className="card p-6 mb-6">
-        <summary className="cursor-pointer text-sm font-medium text-gray-900">
+        <summary className="cursor-pointer text-sm font-medium text-primary">
           + Eigenen Tätigkeitsbereich anlegen
         </summary>
         <div className="mt-4">
@@ -72,16 +72,16 @@ export default async function SkillsAdminPage() {
       <div className="card overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-200">
-              <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Bereich</th>
-              <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Kürzel</th>
-              <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Farbe</th>
-              <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Mitarbeiter</th>
-              <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Typ</th>
+            <tr className="bg-gray-50 border-b border-default">
+              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Bereich</th>
+              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Kürzel</th>
+              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Farbe</th>
+              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Mitarbeiter</th>
+              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Typ</th>
               <th className="text-right px-6 py-3"></th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-border-subtle">
             {skills.map((s) => (
               <SkillRow
                 key={s.id}
@@ -98,7 +98,7 @@ export default async function SkillsAdminPage() {
         </table>
       </div>
 
-      <p className="text-xs text-gray-400 mt-4">
+      <p className="text-xs text-disabled mt-4">
         System-Bereiche sind vorbelegt (FiBu, Lohn, Jahresabschluss, Steuer, Beratung)
         und können nur umbenannt werden, aber nicht gelöscht.
       </p>

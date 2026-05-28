@@ -1,4 +1,4 @@
-// =============================================================================
+﻿// =============================================================================
 // /staff/workflows/stats — Workflow-Auswertungen
 //
 // Pro Vorlage:
@@ -92,73 +92,73 @@ export default async function WorkflowStatsPage() {
     <div className="p-8 max-w-6xl">
       <Link
         href="/staff/workflows"
-        className="text-sm text-gray-500 hover:text-gray-900 inline-flex items-center gap-1 mb-4"
+        className="back-link"
       >
         <ArrowLeft className="h-4 w-4" /> Zurück zu Workflows
       </Link>
 
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1 flex items-center gap-2">
+        <h1 className="page-title">
           <Workflow className="h-6 w-6 text-brand-600" />
           Workflow-Auswertungen
         </h1>
-        <p className="text-gray-500 dark:text-gray-400 text-sm">
+        <p className="text-muted text-sm">
           Durchschnittliche Durchlaufzeit pro Vorlage und der Schritt mit der
           längsten durchschnittlichen Bearbeitungszeit (Engpass).
         </p>
       </div>
 
       {rows.length === 0 ? (
-        <div className="card p-10 text-center text-sm text-gray-400">
+        <div className="card p-10 text-center text-sm text-disabled">
           Noch keine Workflow-Vorlagen.
         </div>
       ) : (
         <div className="card overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-800">
+            <thead className="bg-gray-50 border-b border-default">
               <tr>
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Vorlage</th>
-                <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase">Laufend</th>
-                <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase">Abgeschlossen</th>
-                <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase">Abgebrochen</th>
-                <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase">
+                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Vorlage</th>
+                <th className="text-right px-6 py-3 text-xs font-medium text-muted uppercase">Laufend</th>
+                <th className="text-right px-6 py-3 text-xs font-medium text-muted uppercase">Abgeschlossen</th>
+                <th className="text-right px-6 py-3 text-xs font-medium text-muted uppercase">Abgebrochen</th>
+                <th className="text-right px-6 py-3 text-xs font-medium text-muted uppercase">
                   <Clock className="h-3 w-3 inline mr-1" />
                   Ø Durchlaufzeit
                 </th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">
+                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
                   <AlertTriangle className="h-3 w-3 inline mr-1" />
                   Engpass-Schritt
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+            <tbody className="divide-y divide-border-subtle">
               {rows.map((r) => (
                 <tr key={r.id} className={r.active ? '' : 'opacity-60'}>
                   <td className="px-6 py-3">
                     <Link
                       href={`/staff/workflows/templates/${r.id}`}
-                      className="font-medium text-gray-900 dark:text-gray-100 hover:underline"
+                      className="font-medium text-primary hover:underline"
                     >
                       {r.name}
                     </Link>
                   </td>
-                  <td className="px-6 py-3 text-right text-gray-700 dark:text-gray-300">{r.activeCount}</td>
-                  <td className="px-6 py-3 text-right text-gray-700 dark:text-gray-300">{r.completed}</td>
-                  <td className="px-6 py-3 text-right text-gray-700 dark:text-gray-300">{r.cancelled}</td>
-                  <td className="px-6 py-3 text-right text-gray-700 dark:text-gray-300">
+                  <td className="px-6 py-3 text-right text-secondary">{r.activeCount}</td>
+                  <td className="px-6 py-3 text-right text-secondary">{r.completed}</td>
+                  <td className="px-6 py-3 text-right text-secondary">{r.cancelled}</td>
+                  <td className="px-6 py-3 text-right text-secondary">
                     {r.avgDays != null ? `${dayFmt.format(r.avgDays)} Tage` : '—'}
                   </td>
                   <td className="px-6 py-3 text-xs">
                     {r.bottleneck ? (
                       <span>
-                        <span className="text-gray-500">#{r.bottleneck.pos + 1}</span>{' '}
-                        <span className="text-gray-900 dark:text-gray-100">{r.bottleneck.title}</span>
-                        <span className="text-gray-400 ml-1">
+                        <span className="text-muted">#{r.bottleneck.pos + 1}</span>{' '}
+                        <span className="text-primary">{r.bottleneck.title}</span>
+                        <span className="text-disabled ml-1">
                           Ø {dayFmt.format(r.bottleneck.avgDays)} T
                         </span>
                       </span>
                     ) : (
-                      <span className="text-gray-400">— keine Daten</span>
+                      <span className="text-disabled">— keine Daten</span>
                     )}
                   </td>
                 </tr>
@@ -168,7 +168,7 @@ export default async function WorkflowStatsPage() {
         </div>
       )}
 
-      <p className="text-xs text-gray-500 mt-4">
+      <p className="text-xs text-muted mt-4">
         Durchlaufzeit zählt nur abgeschlossene Instanzen (Start → COMPLETED).
         Engpass-Analyse nur erledigte Items pro Position über alle Instanzen einer Vorlage.
       </p>

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import { Plus, Users } from 'lucide-react';
@@ -65,7 +65,7 @@ export function StartWorkflowForm({
         Workflow starten
       </button>
       {open && (
-        <div className="absolute right-0 mt-2 w-96 z-20 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
+        <div className="absolute right-0 mt-2 w-96 z-20 rounded-lg shadow-lg border border-default bg-surface p-4 space-y-3">
           <div>
             <label className="label">Vorlage</label>
             <select
@@ -85,13 +85,13 @@ export function StartWorkflowForm({
           {staffOptions.length > 0 && (
             <div>
               <label className="label inline-flex items-center gap-1">
-                <Users className="h-3 w-3 text-gray-400" />
-                Team <span className="text-gray-400 font-normal">(optional, ich bin immer dabei)</span>
+                <Users className="h-3 w-3 text-disabled" />
+                Team <span className="text-disabled font-normal">(optional, ich bin immer dabei)</span>
               </label>
-              <ul className="space-y-0.5 max-h-40 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded p-1">
+              <ul className="space-y-0.5 max-h-40 overflow-y-auto border border-default rounded p-1">
                 {staffOptions.map((s) => (
                   <li key={s.id}>
-                    <label className="flex items-center gap-2 px-2 py-1 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/60 rounded cursor-pointer">
+                    <label className="flex items-center gap-2 px-2 py-1 text-sm hover:bg-gray-50 rounded cursor-pointer">
                       <input
                         type="checkbox"
                         checked={memberIds.has(s.id)}
@@ -107,7 +107,7 @@ export function StartWorkflowForm({
 
           {error && <p className="text-xs text-red-700">{error}</p>}
           <div className="flex justify-end gap-2">
-            <button type="button" onClick={() => setOpen(false)} className="text-xs text-gray-500 hover:underline">
+            <button type="button" onClick={() => setOpen(false)} className="text-xs text-muted hover:underline">
               Abbrechen
             </button>
             <button type="button" onClick={submit} disabled={isPending} className="btn-primary text-xs">

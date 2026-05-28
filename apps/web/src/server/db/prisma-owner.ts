@@ -15,16 +15,16 @@
 // =============================================================================
 
 import { PrismaClient } from '@prisma/client';
+import { createPostgresAdapter, requireDatabaseUrl } from '@taxtronik/db/prisma-adapter';
 
 declare global {
-  // eslint-disable-next-line no-var
   var __taxtronik_prisma_owner: PrismaClient | undefined;
 }
 
 export const prismaOwner: PrismaClient =
   globalThis.__taxtronik_prisma_owner ??
   new PrismaClient({
-    datasourceUrl: process.env['DATABASE_URL'],
+    adapter: createPostgresAdapter(requireDatabaseUrl(process.env['DATABASE_URL'], 'DATABASE_URL')),
   });
 
 if (process.env['NODE_ENV'] !== 'production') {

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
@@ -11,6 +11,7 @@ import {
   deleteTaxFilingAction,
 } from './actions';
 
+import { fmtEUR } from '@/lib/fmt';
 const KIND_KEYS = [
   'USTA', 'UST_JAHR', 'EST', 'KST', 'GEWST_MESSBESCHEID', 'GEWST',
   'LSTA', 'FESTSTELLUNG', 'ZERLEGUNG', 'SONSTIGE',
@@ -48,11 +49,6 @@ interface Filing {
 }
 
 const dateFmt = new Intl.DateTimeFormat('de-DE');
-const eurFmt = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
-
-function fmtEur(v: number | null): string {
-  return v === null ? '—' : eurFmt.format(v);
-}
 
 export function FilingsSection({
   clientId,
@@ -90,12 +86,12 @@ export function FilingsSection({
 
   return (
     <div className="card overflow-hidden mb-6">
-      <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
+      <div className="px-5 py-3 border-b border-default flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-medium text-gray-900">
+          <h2 className="text-sm font-medium text-primary">
             Steuererklärungen / Vor-Bescheide
           </h2>
-          <p className="text-xs text-gray-500 mt-0.5">
+          <p className="text-xs text-muted mt-0.5">
             Was wir in DATEV/Addison übermittelt haben — optional dem Mandant vorab im Portal freigeben.
           </p>
         </div>
@@ -121,32 +117,32 @@ export function FilingsSection({
       )}
 
       {filings.length === 0 ? (
-        <p className="px-5 py-8 text-sm text-gray-400 text-center">
+        <p className="px-5 py-8 text-sm text-disabled text-center">
           Noch keine Erklärungen erfasst.
         </p>
       ) : (
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-200">
-              <th className="text-left px-4 py-2 text-xs font-medium text-gray-500 uppercase">Erklärung</th>
-              <th className="text-left px-4 py-2 text-xs font-medium text-gray-500 uppercase">Eingereicht</th>
-              <th className="text-left px-4 py-2 text-xs font-medium text-gray-500 uppercase">Erwartet (festges.)</th>
-              <th className="text-left px-4 py-2 text-xs font-medium text-gray-500 uppercase">Saldo</th>
-              <th className="text-left px-4 py-2 text-xs font-medium text-gray-500 uppercase">Portal</th>
+            <tr className="bg-gray-50 border-b border-default">
+              <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">Erklärung</th>
+              <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">Eingereicht</th>
+              <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">Erwartet (festges.)</th>
+              <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">Saldo</th>
+              <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">Portal</th>
               <th></th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-border-subtle">
             {filings.map((f) => {
               const saldo = f.expectedRefund ?? (f.expectedPay !== null ? -f.expectedPay : null);
               const busy = busyId === f.id && isPending;
               return (
                 <tr key={f.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3">
-                    <div className="font-medium text-gray-900">
+                    <div className="font-medium text-primary">
                       {KIND_LABELS[f.kind as Kind] ?? f.kind}
                     </div>
-                    <div className="text-xs text-gray-500">{f.period}</div>
+                    <div className="text-xs text-muted">{f.period}</div>
                     {f.document && (
                       <Link
                         href={`/api/staff/documents/${f.document.id}/download`}
@@ -157,14 +153,14 @@ export function FilingsSection({
                       </Link>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-gray-700">
+                  <td className="px-4 py-3 text-secondary">
                     {f.filingDate ? dateFmt.format(f.filingDate) : '—'}
                   </td>
-                  <td className="px-4 py-3 text-gray-900 font-medium">
-                    {fmtEur(f.expectedAssessed)}
+                  <td className="px-4 py-3 text-primary font-medium">
+                    {fmtEUR(f.expectedAssessed)}
                   </td>
                   <td className={'px-4 py-3 font-medium ' + (saldo !== null && saldo < 0 ? 'text-red-700' : 'text-emerald-700')}>
-                    {saldo !== null ? fmtEur(saldo) : '—'}
+                    {saldo !== null ? fmtEUR(saldo) : '—'}
                     {f.matchedNoticeId && (
                       <Link href={`/staff/clients/${clientId}/notices`} className="block text-xs text-brand-700 hover:underline mt-1 inline-flex items-center gap-1">
                         <ArrowRight className="h-3 w-3" /> Bescheid erfasst
@@ -188,7 +184,7 @@ export function FilingsSection({
                         type="button"
                         onClick={() => toggleShare(f, true)}
                         disabled={busy}
-                        className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900"
+                        className="inline-flex items-center gap-1 text-xs text-muted hover:text-primary"
                       >
                         <EyeOff className="h-3.5 w-3.5" />
                         Privat
@@ -200,7 +196,7 @@ export function FilingsSection({
                       type="button"
                       onClick={() => setEditing(f)}
                       disabled={busy}
-                      className="text-gray-400 hover:text-gray-900 p-1"
+                      className="text-disabled hover:text-primary p-1"
                       title="Bearbeiten"
                     >
                       <Pencil className="h-4 w-4" />
@@ -209,7 +205,7 @@ export function FilingsSection({
                       type="button"
                       onClick={() => remove(f)}
                       disabled={busy}
-                      className="text-gray-400 hover:text-red-700 p-1"
+                      className="text-disabled hover:text-red-700 p-1"
                       title="Löschen"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -295,7 +291,7 @@ function FilingForm({
   }
 
   return (
-    <div className="px-5 py-4 border-b border-gray-200 bg-brand-50/30 space-y-3">
+    <div className="px-5 py-4 border-b border-default bg-brand-50/30 space-y-3">
       <div className="grid grid-cols-3 gap-3">
         <div>
           <label className="label">Steuerart</label>
@@ -372,13 +368,13 @@ function FilingForm({
           className="text-sm"
         />
         {initial?.document && !pdfFile && (
-          <p className="text-xs text-gray-500 mt-1">
+          <p className="text-xs text-muted mt-1">
             Aktuell: {initial.document.title} — neue Datei wählen, um zu ersetzen.
           </p>
         )}
       </div>
 
-      {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {error && <div className="alert-error-sm">{error}</div>}
 
       <div className="flex items-center gap-2">
         <button type="button" onClick={save} disabled={isPending} className="btn-primary">
@@ -397,7 +393,7 @@ function FilingForm({
 function Money({ label, v, set }: { label: string; v: string; set: (s: string) => void }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-gray-700 mb-1">{label}</label>
+      <label className="label-sm">{label}</label>
       <div className="relative">
         <input
           type="number"
@@ -406,7 +402,7 @@ function Money({ label, v, set }: { label: string; v: string; set: (s: string) =
           onChange={(e) => set(e.target.value)}
           className="input pr-8 text-sm"
         />
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500">€</span>
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted">€</span>
       </div>
     </div>
   );

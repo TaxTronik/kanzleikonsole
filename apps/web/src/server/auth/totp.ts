@@ -4,7 +4,7 @@ import {
   createDecipheriv,
   randomBytes,
 } from 'node:crypto';
-import { authenticator } from 'otplib';
+import { generateSecret, generateURI, verifySync } from 'otplib';
 
 // IV (12 Byte) || AuthTag (16 Byte) || Ciphertext
 const IV_LEN = 12;
@@ -53,7 +53,7 @@ export function decryptTotpSecret(
 }
 
 export function generateTotpSecret(): string {
-  return authenticator.generateSecret(20);
+  return generateSecret({ length: 20 });
 }
 
 export function buildTotpUri(
@@ -61,12 +61,12 @@ export function buildTotpUri(
   secret: string,
   issuer = 'taxtronik',
 ): string {
-  return authenticator.keyuri(email, issuer, secret);
+  return generateURI({ issuer, label: email, secret });
 }
 
 export function verifyTotpCode(code: string, secret: string): boolean {
   try {
-    return authenticator.verify({ token: code, secret });
+    return verifySync({ token: code, secret }).valid;
   } catch {
     return false;
   }

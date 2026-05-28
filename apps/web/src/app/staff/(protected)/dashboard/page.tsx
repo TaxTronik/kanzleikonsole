@@ -1,4 +1,4 @@
-import { staffAuth } from '@/server/auth/staff';
+﻿import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { redirect } from 'next/navigation';
@@ -35,8 +35,8 @@ export default async function DashboardPage() {
   return (
     <div className="p-8">
       <div className="mb-4">
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-500 mt-1">Willkommen, {session.user.fullName}</p>
+        <h1 className="text-2xl font-bold text-primary">Dashboard</h1>
+        <p className="text-muted mt-1">Willkommen, {session.user.fullName}</p>
       </div>
 
       <DashboardGrid initialLayout={layout} initialRendered={rendered} />

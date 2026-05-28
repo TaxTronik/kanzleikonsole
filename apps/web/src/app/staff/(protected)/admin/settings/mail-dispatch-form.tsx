@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useActionState } from 'react';
 import { saveMailDispatchAction, type ActionResult } from './actions';
@@ -21,13 +21,13 @@ export function MailDispatchForm({ initial }: { initial: MailDispatchConfig }) {
             name="mode"
             value="APP"
             defaultChecked={initial.mode === 'APP'}
-            className="mt-1 h-4 w-4 text-brand-600 border-gray-300 focus:ring-brand-500"
+            className="mt-1 h-4 w-4 text-brand-600 border-strong focus:ring-brand-500"
           />
           <div>
-            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-              Nur App-eigener Versand <span className="text-xs text-gray-500">(Default)</span>
+            <p className="text-sm font-medium text-primary">
+              Nur App-eigener Versand <span className="text-xs text-muted">(Default)</span>
             </p>
-            <p className="text-xs text-gray-600 dark:text-gray-400">
+            <p className="text-xs text-secondary dark:text-disabled">
               Alle Mails werden direkt über das SMTP-Modul mit den
               EmailTemplate-Vorlagen verschickt. n8n bleibt deaktiviert.
               Empfohlen für Kanzleien ohne externe Workflow-Engine.
@@ -41,13 +41,13 @@ export function MailDispatchForm({ initial }: { initial: MailDispatchConfig }) {
             name="mode"
             value="BOTH"
             defaultChecked={initial.mode === 'BOTH'}
-            className="mt-1 h-4 w-4 text-brand-600 border-gray-300 focus:ring-brand-500"
+            className="mt-1 h-4 w-4 text-brand-600 border-strong focus:ring-brand-500"
           />
           <div>
-            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+            <p className="text-sm font-medium text-primary">
               App + n8n-Event parallel
             </p>
-            <p className="text-xs text-gray-600 dark:text-gray-400">
+            <p className="text-xs text-secondary dark:text-disabled">
               Die App verschickt die Mail wie oben — zusätzlich wird ein
               signierter Webhook an n8n geschickt, damit dort weitere
               Aktionen folgen können (Slack-Ping ans Team, CRM-Sync, externe

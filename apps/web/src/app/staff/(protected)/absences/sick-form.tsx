@@ -31,10 +31,10 @@ export function SickForm() {
         <textarea id="sick-notes" name="notes" rows={2} className="input" maxLength={1000} />
       </div>
       {state?.error && (
-        <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{state.error}</div>
+        <div className="alert-error-sm">{state.error}</div>
       )}
       {state?.ok && (
-        <div className="rounded-md bg-green-50 p-3 text-sm text-green-700">Eingetragen.</div>
+        <div className="alert-success-sm">Eingetragen.</div>
       )}
       <button type="submit" className="btn-primary w-full" disabled={isPending}>
         {isPending ? 'Speichert…' : 'Krankmeldung speichern'}

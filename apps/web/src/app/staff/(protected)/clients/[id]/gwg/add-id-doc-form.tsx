@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useActionState, useRef, useEffect } from 'react';
 import { addIdDocumentAction, type ActionResult } from './actions';
@@ -31,8 +31,8 @@ export function AddIdDocumentForm({ checkId, clientId, clientDocuments }: Props)
   }, [state]);
 
   return (
-    <form ref={formRef} action={formAction} className="space-y-3 p-4 border border-dashed border-gray-300 rounded-md">
-      <p className="text-xs text-gray-500 uppercase tracking-wide">Identitätsdokument hinzufügen</p>
+    <form ref={formRef} action={formAction} className="space-y-3 p-4 border border-dashed border-strong rounded-md">
+      <p className="text-xs text-muted uppercase tracking-wide">Identitätsdokument hinzufügen</p>
       <input type="hidden" name="checkId" value={checkId} />
       <input type="hidden" name="clientId" value={clientId} />
 
@@ -84,7 +84,7 @@ export function AddIdDocumentForm({ checkId, clientId, clientDocuments }: Props)
       )}
 
       {state?.error && (
-        <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{state.error}</div>
+        <div className="alert-error-sm">{state.error}</div>
       )}
 
       <button type="submit" className="btn-primary text-sm" disabled={isPending}>

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
@@ -52,7 +52,7 @@ export function AcknowledgeButton({
       className={
         done
           ? 'text-emerald-600 hover:text-emerald-700 inline-flex items-center gap-1'
-          : 'text-gray-400 hover:text-emerald-600 inline-flex items-center gap-1'
+          : 'text-disabled hover:text-emerald-600 inline-flex items-center gap-1'
       }
     >
       {done ? <CheckCircle2 className={iconSize} /> : <Circle className={iconSize} />}

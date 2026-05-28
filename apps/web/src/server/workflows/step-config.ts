@@ -71,7 +71,7 @@ export const ClientEmailConfig = z
   );
 export const N8nTriggerConfig = z
   .object({
-    payload: z.record(z.unknown()).optional(),
+    payload: z.record(z.string(), z.unknown()).optional(),
   })
   .strict();
 

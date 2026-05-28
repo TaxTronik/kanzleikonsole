@@ -1,4 +1,4 @@
-import { staffAuth } from '@/server/auth/staff';
+﻿import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
@@ -27,17 +27,17 @@ import { buildClientTimeline, type TimelineEvent } from '@/server/timeline/build
 const ICON_MAP: Record<TimelineEvent['kind'], { icon: typeof FileText; tone: string }> = {
   document_uploaded:        { icon: FileText,        tone: 'text-blue-600 bg-blue-50' },
   request_opened:           { icon: Inbox,           tone: 'text-yellow-700 bg-yellow-50' },
-  request_closed:           { icon: CheckCircle2,    tone: 'text-gray-600 bg-gray-100' },
+  request_closed:           { icon: CheckCircle2,    tone: 'text-secondary bg-gray-100' },
   request_response_staff:   { icon: MessageSquare,   tone: 'text-brand-700 bg-brand-50' },
   request_response_client:  { icon: MessageSquare,   tone: 'text-emerald-700 bg-emerald-50' },
   phone_note:               { icon: Phone,           tone: 'text-purple-700 bg-purple-50' },
-  invoice_created:          { icon: Receipt,         tone: 'text-gray-700 bg-gray-100' },
+  invoice_created:          { icon: Receipt,         tone: 'text-secondary bg-gray-100' },
   invoice_sent:             { icon: Send,            tone: 'text-blue-700 bg-blue-50' },
   invoice_paid:             { icon: CreditCard,      tone: 'text-emerald-700 bg-emerald-50' },
   gwg_created:              { icon: Shield,          tone: 'text-yellow-700 bg-yellow-50' },
   gwg_verified:             { icon: ShieldCheck,     tone: 'text-emerald-700 bg-emerald-50' },
   gwg_rejected:             { icon: ShieldAlert,     tone: 'text-red-700 bg-red-50' },
-  poa_created:              { icon: ScrollText,      tone: 'text-gray-700 bg-gray-100' },
+  poa_created:              { icon: ScrollText,      tone: 'text-secondary bg-gray-100' },
   poa_signed:               { icon: PenLine,         tone: 'text-emerald-700 bg-emerald-50' },
   poa_revoked:              { icon: Ban,             tone: 'text-red-700 bg-red-50' },
   tax_notice_received:      { icon: FileWarning,     tone: 'text-amber-700 bg-amber-50' },
@@ -117,31 +117,31 @@ export default async function ClientTimelinePage({
     <div className="p-8 max-w-4xl">
       <Link
         href={`/staff/clients/${id}`}
-        className="text-sm text-gray-500 hover:text-gray-900 inline-flex items-center gap-1 mb-4"
+        className="back-link"
       >
         <ArrowLeft className="h-4 w-4" /> Zurück zum Mandanten
       </Link>
 
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 mb-1">Aktivitätsstrom</h1>
-        <p className="text-gray-500 text-sm">
+        <h1 className="text-2xl font-bold text-primary mb-1">Aktivitätsstrom</h1>
+        <p className="text-muted text-sm">
           {client.name}
-          {client.datevNo && <span className="ml-2 text-gray-400">DATEV-Nr. {client.datevNo}</span>}
+          {client.datevNo && <span className="ml-2 text-disabled">DATEV-Nr. {client.datevNo}</span>}
         </p>
       </div>
 
       {events.length === 0 ? (
         <div className="card p-10 text-center">
-          <p className="text-sm text-gray-400">Noch keine Ereignisse erfasst.</p>
+          <p className="text-sm text-disabled">Noch keine Ereignisse erfasst.</p>
         </div>
       ) : (
         <div className="space-y-8">
           {Array.from(grouped.entries()).map(([day, list]) => (
             <section key={day}>
-              <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+              <h2 className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">
                 {dayFormatter.format(new Date(day + 'T12:00:00.000Z'))}
               </h2>
-              <ol className="relative border-l border-gray-200 ml-4 space-y-4">
+              <ol className="relative border-l border-default ml-4 space-y-4">
                 {list.map((e) => {
                   const { icon: Icon, tone } = ICON_MAP[e.kind];
                   return (
@@ -155,20 +155,20 @@ export default async function ClientTimelinePage({
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0 flex-1">
                             {e.href ? (
-                              <Link href={e.href} className="text-sm font-medium text-gray-900 hover:underline">
+                              <Link href={e.href} className="text-sm font-medium text-primary hover:underline">
                                 {e.title}
                               </Link>
                             ) : (
-                              <p className="text-sm font-medium text-gray-900">{e.title}</p>
+                              <p className="text-sm font-medium text-primary">{e.title}</p>
                             )}
                             {e.detail && (
-                              <p className="text-xs text-gray-500 mt-0.5 break-words">{e.detail}</p>
+                              <p className="text-xs text-muted mt-0.5 break-words">{e.detail}</p>
                             )}
                           </div>
                           <time
                             dateTime={e.occurredAt.toISOString()}
                             title={dtFormatter.format(e.occurredAt)}
-                            className="text-xs text-gray-400 whitespace-nowrap"
+                            className="text-xs text-disabled whitespace-nowrap"
                           >
                             {formatRelative(e.occurredAt, now)}
                           </time>

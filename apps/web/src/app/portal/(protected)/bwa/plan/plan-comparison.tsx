@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
@@ -91,7 +91,7 @@ export function PlanListWithCompare({
 
   if (plans.length === 0) {
     return (
-      <div className="card p-8 text-center text-sm text-gray-400">
+      <div className="card p-8 text-center text-sm text-disabled">
         Noch keine eigene Planung erstellt.
       </div>
     );
@@ -100,7 +100,7 @@ export function PlanListWithCompare({
   return (
     <div className="space-y-4">
       <div className="card overflow-hidden">
-        <div className="px-5 py-2 border-b border-gray-200 bg-gray-50 text-xs text-gray-500 flex items-center justify-between">
+        <div className="px-5 py-2 border-b border-default bg-gray-50 text-xs text-muted flex items-center justify-between">
           <span>
             {plans.length} Planung{plans.length === 1 ? '' : 'en'}
             {selectedIds.length > 0 && ` · ${selectedIds.length} zum Vergleichen ausgewählt`}
@@ -115,27 +115,27 @@ export function PlanListWithCompare({
             </button>
           )}
         </div>
-        <ul className="divide-y divide-gray-100">
+        <ul className="divide-y divide-border-subtle">
           {plans.map((p) => (
             <li key={p.id} className="flex items-center gap-3 px-5 py-3">
               <input
                 type="checkbox"
                 checked={selectedIds.includes(p.id)}
                 onChange={() => toggle(p.id)}
-                className="rounded border-gray-300 text-brand-600 shrink-0"
+                className="rounded border-strong text-brand-600 shrink-0"
                 aria-label={`${p.name} zum Vergleich auswählen`}
               />
               <Link
                 href={`${linkPrefix}/${p.id}`}
-                className="flex-1 flex items-center justify-between gap-3 rounded-md px-2 py-1 -mx-2 hover:bg-gray-50 dark:hover:bg-gray-800"
+                className="flex-1 flex items-center justify-between gap-3 rounded-md px-2 py-1 -mx-2 hover:bg-gray-50"
               >
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2 flex-wrap">
+                  <p className="text-sm font-medium text-primary flex items-center gap-2 flex-wrap">
                     <span>{p.name}</span>
-                    <span className="text-xs text-gray-500 font-normal">· {p.year}</span>
+                    <span className="text-xs text-muted font-normal">· {p.year}</span>
                     <ActorBadge createdByType={p.createdByType} updatedByType={p.updatedByType} />
                   </p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-muted">
                     Erg. nach Steuern: {eurFmt.format(totals(p).resultAfterTax)} ·
                     zuletzt geändert {dateFmt.format(p.updatedAt)}
                   </p>
@@ -154,19 +154,19 @@ export function PlanListWithCompare({
       {selected.length >= 1 && (
         <>
           {selected.length === 1 && !projection && (
-            <p className="text-xs text-gray-500 text-center">
+            <p className="text-xs text-muted text-center">
               Wählen Sie mindestens eine weitere Planung zum Vergleichen.
             </p>
           )}
           {(selected.length >= 2 || (selected.length === 1 && projection)) && (
             <>
               {projection && (
-                <label className="flex items-center gap-2 text-xs text-gray-700">
+                <label className="flex items-center gap-2 text-xs text-secondary">
                   <input
                     type="checkbox"
                     checked={includeProjection}
                     onChange={(e) => setIncludeProjection(e.target.checked)}
-                    className="rounded border-gray-300 text-brand-600"
+                    className="rounded border-strong text-brand-600"
                   />
                   Hochrechnung {projection.year} als zusätzliche Spalte
                 </label>
@@ -239,9 +239,9 @@ function ComparisonTable({
 
   return (
     <div className="card overflow-hidden">
-      <div className="px-5 py-3 border-b border-gray-200">
-        <h3 className="text-sm font-medium text-gray-900">Szenario-Vergleich</h3>
-        <p className="text-xs text-gray-500 mt-0.5">
+      <div className="px-5 py-3 border-b border-default">
+        <h3 className="text-sm font-medium text-primary">Szenario-Vergleich</h3>
+        <p className="text-xs text-muted mt-0.5">
           {plans.length} Planung{plans.length === 1 ? '' : 'en'}
           {projection ? ` + Hochrechnung ${projection.year}` : ''} nebeneinander
           {plans.length > 1 && plans[0]!.year !== plans[plans.length - 1]!.year
@@ -253,18 +253,18 @@ function ComparisonTable({
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-200">
-              <th className="text-left px-4 py-2 text-xs font-medium text-gray-500 uppercase">
+            <tr className="bg-gray-50 border-b border-default">
+              <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">
                 Position
               </th>
               {cols.map((c, i) =>
                 c.kind === 'plan' ? (
                   <th
                     key={`p-${c.plan.id}`}
-                    className="text-right px-4 py-2 text-xs font-medium text-gray-700"
+                    className="text-right px-4 py-2 text-xs font-medium text-secondary"
                   >
                     <div>{c.plan.name}</div>
-                    <div className="text-[10px] text-gray-400 font-normal">{c.plan.year}</div>
+                    <div className="text-[10px] text-disabled font-normal">{c.plan.year}</div>
                   </th>
                 ) : (
                   <th
@@ -272,7 +272,7 @@ function ComparisonTable({
                     className="text-right px-4 py-2 text-xs font-medium text-brand-700 dark:text-brand-100 bg-brand-50/40 dark:bg-brand-900/30"
                   >
                     <div>Hochrechnung</div>
-                    <div className="text-[10px] text-gray-500 dark:text-gray-400 font-normal">
+                    <div className="text-[10px] text-muted font-normal">
                       {c.year} · {projection!.basis}
                     </div>
                   </th>
@@ -280,15 +280,15 @@ function ComparisonTable({
               )}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-border-subtle">
             {ORDER.map((axis) => (
               <tr key={axis}>
-                <td className="px-4 py-1.5 text-gray-700">{AXIS_LABELS[axis]}</td>
+                <td className="px-4 py-1.5 text-secondary">{AXIS_LABELS[axis]}</td>
                 {cols.map((c, i) =>
                   c.kind === 'plan' ? (
                     <td
                       key={`p-${c.plan.id}-${axis}`}
-                      className="px-4 py-1.5 text-right font-mono tabular-nums text-gray-900"
+                      className="px-4 py-1.5 text-right font-mono tabular-nums text-primary"
                     >
                       {eurFmt.format(cellPlan(axis, c.plan))}
                     </td>
@@ -304,7 +304,7 @@ function ComparisonTable({
               </tr>
             ))}
           </tbody>
-          <tfoot className="border-t-2 border-gray-200">
+          <tfoot className="border-t-2 border-default">
             {[
               { label: 'Erträge', key: 'revenue' as const, accent: false },
               { label: 'Aufwendungen', key: 'costs' as const, accent: false },
@@ -314,7 +314,7 @@ function ComparisonTable({
               <tr key={row.key}>
                 <td
                   className={
-                    (row.semibold ? 'px-4 py-2 text-gray-900 font-semibold' : 'px-4 py-1.5 text-gray-700 font-medium')
+                    (row.semibold ? 'px-4 py-2 text-primary font-semibold' : 'px-4 py-1.5 text-secondary font-medium')
                   }
                 >
                   {row.label}
@@ -329,7 +329,7 @@ function ComparisonTable({
                       ? 'text-red-700 dark:text-red-300'
                       : row.accent && v > 0
                       ? 'text-emerald-700 dark:text-emerald-300'
-                      : 'text-gray-900 dark:text-gray-100';
+                      : 'text-primary';
                   return (
                     <td
                       key={`tot-${i}-${row.key}`}

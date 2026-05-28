@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
@@ -88,9 +88,9 @@ export function PhoneNotesList({
   return (
     <div>
       {open_items.length === 0 && done_items.length === 0 ? (
-        <p className="px-6 py-8 text-sm text-gray-400 text-center">Keine Telefonzettel.</p>
+        <p className="px-6 py-8 text-sm text-disabled text-center">Keine Telefonzettel.</p>
       ) : (
-        <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+        <ul className="divide-y divide-border-subtle">
           {open_items.map((p) => (
             <PhoneNoteRow
               key={p.id}
@@ -112,16 +112,16 @@ export function PhoneNotesList({
       )}
 
       {done_items.length > 0 && (
-        <details className="border-t border-gray-200 dark:border-gray-800">
-          <summary className="px-6 py-2 text-xs text-gray-500 cursor-pointer">
+        <details className="border-t border-default">
+          <summary className="px-6 py-2 text-xs text-muted cursor-pointer">
             {done_items.length} erledigt
           </summary>
-          <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+          <ul className="divide-y divide-border-subtle">
             {done_items.map((p) => (
               <li key={p.id} className="px-6 py-2 flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-sm text-gray-600 dark:text-gray-400 line-through truncate">{p.subject}</p>
-                  <p className="text-[11px] text-gray-400">
+                  <p className="text-sm text-secondary line-through truncate">{p.subject}</p>
+                  <p className="text-[11px] text-disabled">
                     {p.callerName} · erledigt {p.doneAt ? dateTimeFmt.format(new Date(p.doneAt)) : ''}
                   </p>
                 </div>
@@ -129,7 +129,7 @@ export function PhoneNotesList({
                   type="button"
                   onClick={() => undoDone(p.id)}
                   disabled={isMutating}
-                  className="text-gray-400 hover:text-gray-700 p-1 shrink-0"
+                  className="text-disabled hover:text-secondary p-1 shrink-0"
                   title="Auf offen zurücksetzen"
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
@@ -181,17 +181,17 @@ function PhoneNoteRow({
           type="button"
           onClick={onMarkDone}
           disabled={isMutating}
-          className="mt-0.5 w-5 h-5 rounded border-2 border-gray-300 hover:border-emerald-600 hover:bg-emerald-50 flex items-center justify-center text-transparent hover:text-emerald-600 dark:border-gray-600 dark:hover:border-emerald-500 dark:hover:bg-emerald-900/20 shrink-0"
+          className="mt-0.5 w-5 h-5 rounded border-2 border-strong hover:border-emerald-600 hover:bg-emerald-50 flex items-center justify-center text-transparent hover:text-emerald-600 dark:hover:border-emerald-500 dark:hover:bg-emerald-900/20 shrink-0"
           title="Als erledigt markieren"
         >
           <Check className="h-3 w-3" />
         </button>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{note.subject}</p>
+            <p className="text-sm font-medium text-primary">{note.subject}</p>
             {!note.readAt && <span className="badge-yellow text-[10px]">ungelesen</span>}
           </div>
-          <p className="text-xs text-gray-500 flex flex-wrap items-center gap-x-2">
+          <p className="text-xs text-muted flex flex-wrap items-center gap-x-2">
             <span>
               {note.callerName}
               {note.callerPhone && ` · ${note.callerPhone}`}
@@ -207,10 +207,10 @@ function PhoneNoteRow({
             )}
             {forwarded_to && <span>· an {forwarded_to}</span>}
           </p>
-          <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 whitespace-pre-wrap line-clamp-3">
+          <p className="text-xs text-secondary mt-1 whitespace-pre-wrap line-clamp-3">
             {note.body}
           </p>
-          <p className="text-[10px] text-gray-400 mt-0.5">
+          <p className="text-[10px] text-disabled mt-0.5">
             {dateTimeFmt.format(new Date(note.createdAt))}
           </p>
 
@@ -219,19 +219,19 @@ function PhoneNoteRow({
               type="button"
               onClick={onForwardOpen}
               disabled={isMutating}
-              className="text-[11px] text-gray-500 hover:text-brand-700 inline-flex items-center gap-1"
+              className="text-[11px] text-muted hover:text-brand-700 inline-flex items-center gap-1"
             >
               <UserPlus className="h-3 w-3" />
               Übertragen
             </button>
             {note.clientId && (
               <>
-                <span className="text-gray-300">·</span>
+                <span className="text-disabled">·</span>
                 <button
                   type="button"
                   onClick={onReminderOpen}
                   disabled={isMutating}
-                  className="text-[11px] text-gray-500 hover:text-brand-700 inline-flex items-center gap-1"
+                  className="text-[11px] text-muted hover:text-brand-700 inline-flex items-center gap-1"
                 >
                   <CalendarClock className="h-3 w-3" />
                   Wiedervorlage
@@ -241,7 +241,7 @@ function PhoneNoteRow({
           </div>
 
           {activePanel === 'forward' && (
-            <div className="mt-2 p-2 rounded bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-800 flex items-center gap-2">
+            <div className="mt-2 p-2 rounded bg-surface-raised border border-default flex items-center gap-2">
               <select
                 className="input text-xs flex-1"
                 defaultValue=""
@@ -260,7 +260,7 @@ function PhoneNoteRow({
               <button
                 type="button"
                 onClick={onClosePanel}
-                className="text-gray-400 hover:text-gray-700 p-1"
+                className="text-disabled hover:text-secondary p-1"
                 title="Abbrechen"
               >
                 <X className="h-3.5 w-3.5" />
@@ -275,7 +275,7 @@ function PhoneNoteRow({
                 const fd = new FormData(e.currentTarget);
                 onToReminder(String(fd.get('dueDate') ?? ''), String(fd.get('assignee') ?? ''));
               }}
-              className="mt-2 p-2 rounded bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-800 grid grid-cols-3 gap-2"
+              className="mt-2 p-2 rounded bg-surface-raised border border-default grid grid-cols-3 gap-2"
             >
               <input
                 type="date"
@@ -301,7 +301,7 @@ function PhoneNoteRow({
                 <button
                   type="button"
                   onClick={onClosePanel}
-                  className="text-gray-400 hover:text-gray-700 p-1"
+                  className="text-disabled hover:text-secondary p-1"
                   title="Abbrechen"
                 >
                   <X className="h-3.5 w-3.5" />

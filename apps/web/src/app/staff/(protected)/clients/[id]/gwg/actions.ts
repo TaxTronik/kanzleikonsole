@@ -17,6 +17,18 @@ export interface ActionResult {
   error?: string;
 }
 
+/**
+ * Erwartete (nicht-fatale) Validierungsfehler innerhalb einer Action, die der
+ * User SEHEN soll, statt als 500 zu crashen. Server-Wrapper-Logik fängt diesen
+ * Typ ab und mappt ihn auf `ActionResult.error`.
+ */
+class GwgUserError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'GwgUserError';
+  }
+}
+
 const OpenSchema = z.object({ clientId: z.string().uuid() });
 
 export async function openCheckAction(formData: FormData): Promise<void> {
@@ -253,54 +265,58 @@ const VerifySchema = z.object({
   clientId: z.string().uuid(),
 });
 
-export async function verifyCheckAction(formData: FormData): Promise<void> {
+export async function verifyCheckAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   const session = await staffAuth();
-  if (!session?.user) throw new Error('Nicht eingeloggt.');
+  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
   // F5: GwG-Verifikation ist die zentrale Compliance-Entscheidung
   // („Mandantenkonto scharfschalten"). Berufsrechtlich Berufsträger-Aufgabe
   // (Steuerberater). Minimum: ADMIN/PARTNER. Defense in Depth via
   // clientResponsibility.role === 'BERUFSTRAEGER' im withTenantContext-Block.
   if (!isStaffAdmin(session)) {
-    throw new Error('Nur ADMIN/PARTNER darf eine GwG-Prüfung verifizieren.');
+    return { ok: false, error: 'Nur ADMIN/PARTNER darf eine GwG-Prüfung verifizieren.' };
   }
 
   const parsed = VerifySchema.safeParse({
     checkId: formData.get('checkId'),
     clientId: formData.get('clientId'),
   });
-  if (!parsed.success) throw new Error('Validierungsfehler.');
+  if (!parsed.success) return { ok: false, error: 'Validierungsfehler — ungültige IDs.' };
 
   const { tenantId, staffId } = session.user;
   const { checkId, clientId } = parsed.data;
 
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
-      // F5: zusätzliche Prüfung — der entscheidende Staff muss als
-      // BERUFSTRAEGER für diesen Mandanten zugeordnet sein. ADMIN/PARTNER
-      // alleine reicht nicht; das Berufsrecht knüpft die Verifikation an
-      // die fachliche Verantwortung.
-      const isBerufstraeger = await tx.clientResponsibility.findFirst({
-        where: { clientId, staffId, role: 'BERUFSTRAEGER' },
-        select: { id: true },
-      });
-      if (!isBerufstraeger) {
-        throw new Error(
-          'Nur der für diesen Mandanten zugeordnete Berufsträger darf die GwG-Prüfung verifizieren.',
-        );
-      }
+  try {
+    await withTenantContext(
+      { tenantId, actorId: staffId, actorType: 'STAFF' },
+      async (tx) => {
+        // F5: zusätzliche Prüfung — der entscheidende Staff muss als
+        // BERUFSTRAEGER für diesen Mandanten zugeordnet sein. ADMIN/PARTNER
+        // alleine reicht nicht; das Berufsrecht knüpft die Verifikation an
+        // die fachliche Verantwortung.
+        const isBerufstraeger = await tx.clientResponsibility.findFirst({
+          where: { clientId, staffId, role: 'BERUFSTRAEGER' },
+          select: { id: true },
+        });
+        if (!isBerufstraeger) {
+          throw new GwgUserError(
+            'Nur der für diesen Mandanten zugeordnete Berufsträger darf die GwG-Prüfung verifizieren.',
+          );
+        }
 
-      const check = await tx.gwgCheck.findFirst({
-        where: { id: checkId, clientId },
-        include: { idDocuments: true, beneficialOwners: true },
-      });
-      if (!check) throw new Error('GwG-Check nicht gefunden.');
-      if (check.riskScore === null || check.riskLevel === null) {
-        throw new Error('Bitte zuerst Risikobewertung durchführen.');
-      }
-      if (check.idDocuments.length === 0) {
-        throw new Error('Mindestens ein Identitätsdokument erforderlich.');
-      }
+        const check = await tx.gwgCheck.findFirst({
+          where: { id: checkId, clientId },
+          include: { idDocuments: true, beneficialOwners: true },
+        });
+        if (!check) throw new GwgUserError('GwG-Check nicht gefunden.');
+        if (check.riskScore === null || check.riskLevel === null) {
+          throw new GwgUserError('Bitte zuerst Risikobewertung durchführen.');
+        }
+        if (check.idDocuments.length === 0) {
+          throw new GwgUserError('Mindestens ein Identitätsdokument erforderlich.');
+        }
 
       const validForDays = check.riskLevel === 'HIGH' ? 365 : 365 * 3;
       const validUntil = new Date(Date.now() + validForDays * 24 * 60 * 60 * 1000);
@@ -337,23 +353,29 @@ export async function verifyCheckAction(formData: FormData): Promise<void> {
     },
   );
 
-  // Begrüßungs-Mail an alle Mandanten-Kontakte mit Mail-Opt-in
-  void notifyClientContacts({
-    tenantId,
-    clientId,
-    slug: 'gwg-activated',
-    vars: {
-      portalUrl: `${portalBaseUrl}/portal/dashboard`,
-    },
-    n8nEvent: 'client.created',
-    n8nPayload: { tenantId, clientId, gwgVerified: true },
-    fallback: {
-      subject: 'Willkommen — Ihre Mandantschaft ist nun aktiv',
-      bodyMd: 'Sehr geehrte/r {{contact.fullName}},\n\nIhre Mandantschaft ist jetzt vollständig eingerichtet. Loggen Sie sich gerne in Ihr Mandantenportal ein:\n\n{{portalUrl}}',
-    },
-  });
-  revalidatePath(`/staff/clients/${clientId}`);
-  revalidatePath(`/staff/clients/${clientId}/gwg`);
+    // Begrüßungs-Mail an alle Mandanten-Kontakte mit Mail-Opt-in
+    void notifyClientContacts({
+      tenantId,
+      clientId,
+      slug: 'gwg-activated',
+      vars: {
+        portalUrl: `${portalBaseUrl}/portal/dashboard`,
+      },
+      n8nEvent: 'client.created',
+      n8nPayload: { tenantId, clientId, gwgVerified: true },
+      fallback: {
+        subject: 'Willkommen — Ihre Mandantschaft ist nun aktiv',
+        bodyMd:
+          'Sehr geehrte/r {{contact.fullName}},\n\nIhre Mandantschaft ist jetzt vollständig eingerichtet. Loggen Sie sich gerne in Ihr Mandantenportal ein:\n\n{{portalUrl}}',
+      },
+    });
+    revalidatePath(`/staff/clients/${clientId}`);
+    revalidatePath(`/staff/clients/${clientId}/gwg`);
+    return { ok: true };
+  } catch (e) {
+    if (e instanceof GwgUserError) return { ok: false, error: e.message };
+    throw e;
+  }
 }
 
 const RejectSchema = z.object({
@@ -362,16 +384,19 @@ const RejectSchema = z.object({
   reason: z.string().min(1).max(2000),
 });
 
-export async function rejectCheckAction(formData: FormData): Promise<void> {
+export async function rejectCheckAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   const session = await staffAuth();
-  if (!session?.user) throw new Error('Nicht eingeloggt.');
+  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
 
   const parsed = RejectSchema.safeParse({
     checkId: formData.get('checkId'),
     clientId: formData.get('clientId'),
     reason: formData.get('reason'),
   });
-  if (!parsed.success) throw new Error('Begründung erforderlich.');
+  if (!parsed.success) return { ok: false, error: 'Begründung erforderlich.' };
 
   const { tenantId, staffId } = session.user;
   const { checkId, clientId, reason } = parsed.data;
@@ -383,7 +408,6 @@ export async function rejectCheckAction(formData: FormData): Promise<void> {
         where: { id: checkId },
         data: { status: 'REJECTED', rejectedReason: reason },
       });
-      // Mandant deaktivieren falls war aktiv
       await tx.client.updateMany({
         where: { id: clientId, allowActive: true },
         data: { allowActive: false },
@@ -403,4 +427,5 @@ export async function rejectCheckAction(formData: FormData): Promise<void> {
   emitN8nEvent('gwg.expired', { tenantId, clientId, reason: 'rejected' });
   revalidatePath(`/staff/clients/${clientId}`);
   revalidatePath(`/staff/clients/${clientId}/gwg`);
+  return { ok: true };
 }

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import { submitMasterChangeAction } from './actions';
@@ -118,7 +118,7 @@ export function StammdatenForm({
         />
       </div>
 
-      {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {error && <div className="alert-error-sm">{error}</div>}
       {success && (
         <div className="rounded-md bg-emerald-50 p-3 text-sm text-emerald-800">
           Ihre Änderung wurde an die Kanzlei übermittelt. Sie erhalten eine
@@ -135,7 +135,7 @@ export function StammdatenForm({
         {isPending ? 'Sendet…' : 'Änderung einreichen'}
       </button>
       {disabled && (
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-muted">
           Bestehende Anfrage wird gerade von Ihrer Kanzlei geprüft.
         </p>
       )}

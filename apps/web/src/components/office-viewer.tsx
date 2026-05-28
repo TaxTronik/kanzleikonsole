@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
@@ -78,7 +78,6 @@ export function OfficeViewer({
           setActiveSheet(0);
         }
       } catch (e) {
-        // eslint-disable-next-line no-console
         console.error('[OfficeViewer]', e);
         if (!cancelled) setError((e as Error).message);
       } finally {
@@ -100,8 +99,8 @@ export function OfficeViewer({
         </div>
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm">
-            <Loader2 className="h-6 w-6 text-gray-400 animate-spin" />
-            <span className="ml-2 text-sm text-gray-600">Lade Word-Vorschau…</span>
+            <Loader2 className="h-6 w-6 text-disabled animate-spin" />
+            <span className="ml-2 text-sm text-secondary">Lade Word-Vorschau…</span>
           </div>
         )}
         {error && !loading && (
@@ -116,7 +115,7 @@ export function OfficeViewer({
   // XLSX: erst Loader, dann Sheets
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center text-gray-500">
+      <div className="h-full flex items-center justify-center text-muted">
         <Loader2 className="h-6 w-6 animate-spin" />
         <span className="ml-2 text-sm">Lade Excel-Vorschau…</span>
       </div>
@@ -134,7 +133,7 @@ export function OfficeViewer({
   return (
     <div className="h-full flex flex-col bg-white">
       {sheets.length > 1 && (
-        <div className="flex gap-0 border-b border-gray-200 bg-gray-50 px-2 overflow-x-auto">
+        <div className="flex gap-0 border-b border-default bg-gray-50 px-2 overflow-x-auto">
           {sheets.map((s, i) => (
             <button
               key={s.name + i}
@@ -143,7 +142,7 @@ export function OfficeViewer({
               className={
                 i === activeSheet
                   ? 'px-3 py-1.5 text-xs font-medium border-b-2 border-brand-600 text-brand-700 -mb-px'
-                  : 'px-3 py-1.5 text-xs text-gray-600 hover:text-gray-900 border-b-2 border-transparent -mb-px'
+                  : 'px-3 py-1.5 text-xs text-secondary hover:text-primary border-b-2 border-transparent -mb-px'
               }
             >
               {s.name}
@@ -161,14 +160,14 @@ export function OfficeViewer({
 interface XlsxSheet { name: string; rows: string[][]; }
 
 function XlsxTable({ rows }: { rows: string[][] }) {
-  if (rows.length === 0) return <p className="text-sm text-gray-400">Leere Tabelle.</p>;
+  if (rows.length === 0) return <p className="text-sm text-disabled">Leere Tabelle.</p>;
   const [head, ...body] = rows;
   return (
     <table className="text-xs border-collapse">
       <thead className="bg-gray-100 sticky top-0">
         <tr>
           {head!.map((c, i) => (
-            <th key={i} className="border border-gray-200 px-2 py-1 text-left font-medium text-gray-700 whitespace-nowrap">
+            <th key={i} className="border border-default px-2 py-1 text-left font-medium text-secondary whitespace-nowrap">
               {c}
             </th>
           ))}
@@ -180,7 +179,7 @@ function XlsxTable({ rows }: { rows: string[][] }) {
             {row.map((c, ci) => (
               <td
                 key={ci}
-                className="border border-gray-100 px-2 py-1 text-gray-800 whitespace-nowrap max-w-[24rem] overflow-hidden text-ellipsis"
+                className="border border-subtle px-2 py-1 text-primary whitespace-nowrap max-w-[24rem] overflow-hidden text-ellipsis"
                 title={c}
               >
                 {c}

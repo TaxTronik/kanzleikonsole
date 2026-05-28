@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
@@ -66,8 +66,8 @@ export function RiskAssessmentForm({
       {currentScore !== null && currentLevel !== null && (
         <div className="rounded-md bg-gray-50 p-4 flex items-center justify-between">
           <div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide">Risikobewertung</p>
-            <p className="text-sm text-gray-700">
+            <p className="text-xs text-muted uppercase tracking-wide">Risikobewertung</p>
+            <p className="text-sm text-secondary">
               Score: <strong>{currentScore}</strong>
             </p>
           </div>
@@ -82,7 +82,7 @@ export function RiskAssessmentForm({
       )}
 
       {error && (
-        <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>
+        <div className="alert-error-sm">{error}</div>
       )}
 
       {!disabled && (

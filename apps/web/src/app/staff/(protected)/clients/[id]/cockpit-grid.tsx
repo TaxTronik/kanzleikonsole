@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react';
-import type { ClientBlockKey, ClientGridItem } from '@/server/settings/client-layout';
+import type { ClientBlockKey, ClientGridItem } from '@/server/settings/client-layout-shared';
 
 /**
  * Read-only Cockpit-Grid für die Mandantendetail-Seite. Rendert die Blöcke

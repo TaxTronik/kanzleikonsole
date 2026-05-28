@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition, useEffect } from 'react';
 import { createPortal } from 'react-dom';
@@ -43,18 +43,18 @@ export function PauseWorkflowButton({
   }
 
   const modal = open ? (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4" onClick={() => setOpen(false)}>
+    <div className="modal-overlay" onClick={() => setOpen(false)}>
       <div className="card w-full max-w-md p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5">
+          <h2 className="text-sm font-semibold text-primary inline-flex items-center gap-1.5">
             <Pause className="h-4 w-4 text-amber-600" />
             Workflow pausieren
           </h2>
-          <button type="button" onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-700">
+          <button type="button" onClick={() => setOpen(false)} className="text-disabled hover:text-secondary">
             <X className="h-4 w-4" />
           </button>
         </div>
-        <p className="text-xs text-gray-600 dark:text-gray-400">
+        <p className="text-xs text-secondary">
           <strong>{instanceName}</strong> wird angehalten. Offene Schritte bleiben sichtbar,
           werden aber nicht mehr in den „Mein Tag"-Listen geführt.
         </p>
@@ -67,7 +67,7 @@ export function PauseWorkflowButton({
             min={new Date().toISOString().slice(0, 10)}
             className="input text-sm"
           />
-          <p className="text-[10px] text-gray-500 mt-1">
+          <p className="text-[10px] text-muted mt-1">
             Wenn gesetzt, wird der Workflow ab diesem Tag automatisch wieder aktiv.
             Leer = unbefristet pausiert, muss manuell fortgesetzt werden.
           </p>
@@ -84,11 +84,11 @@ export function PauseWorkflowButton({
           />
         </div>
         {error && (
-          <div className="rounded-md bg-red-50 dark:bg-red-900/20 text-xs text-red-700 dark:text-red-300 p-2">
+          <div className="alert-error-sm text-xs p-2">
             {error}
           </div>
         )}
-        <div className="flex items-center justify-end gap-2 pt-2">
+        <div className="form-actions">
           <button type="button" onClick={() => setOpen(false)} className="btn-secondary text-sm">
             Abbrechen
           </button>
@@ -172,7 +172,7 @@ export function RestoreWorkflowButton({ instanceId }: { instanceId: string }) {
       type="button"
       onClick={go}
       disabled={isPending}
-      className="text-xs text-gray-500 hover:text-emerald-700 dark:hover:text-emerald-400 inline-flex items-center gap-1"
+      className="text-xs text-muted hover:text-emerald-700 dark:hover:text-emerald-400 inline-flex items-center gap-1"
       title="Aus Papierkorb wiederherstellen"
     >
       <RotateCcw className="h-3 w-3" />

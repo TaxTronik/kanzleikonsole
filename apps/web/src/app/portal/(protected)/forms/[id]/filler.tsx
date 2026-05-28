@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import { FileText, Upload, X } from 'lucide-react';
@@ -117,7 +117,7 @@ export function PortalFormFiller({
       {fields.map((f) => {
         if (f.type === 'INFO_TEXT') {
           return (
-            <div key={f.id} className="card p-4 bg-gray-50 text-sm text-gray-700 whitespace-pre-wrap">
+            <div key={f.id} className="card p-4 bg-gray-50 text-sm text-secondary whitespace-pre-wrap">
               {f.label}
             </div>
           );
@@ -125,20 +125,20 @@ export function PortalFormFiller({
         const v = answers[f.key] ?? null;
         return (
           <div key={f.id} className="card p-4">
-            <label className="block text-sm font-medium text-gray-900 mb-1">
+            <label className="block text-sm font-medium text-primary mb-1">
               {f.label}
               {f.required && <span className="text-red-700 ml-1">*</span>}
             </label>
-            {f.helpText && <p className="text-xs text-gray-500 mb-2">{f.helpText}</p>}
+            {f.helpText && <p className="text-xs text-muted mb-2">{f.helpText}</p>}
             {renderField(f, v, (next) => setVal(f.key, next), submitted, submissionId)}
           </div>
         );
       })}
 
-      {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {error && <div className="alert-error-sm">{error}</div>}
 
       {!submitted && (
-        <div className="flex items-center gap-3 sticky bottom-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-3 shadow-lg">
+        <div className="flex items-center gap-3 sticky bottom-4 bg-surface border border-default rounded-lg p-3 shadow-lg">
           <button type="button" onClick={saveDraft} disabled={isPending} className="btn-secondary">
             {isPending ? 'Speichert…' : 'Entwurf speichern'}
           </button>
@@ -217,7 +217,7 @@ function renderField(
             disabled={disabled}
             className="input pr-10"
           />
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">€</span>
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted">€</span>
         </div>
       );
     case 'DATE':
@@ -262,7 +262,7 @@ function renderField(
                     else set(arr.filter((x) => x !== o.value));
                   }}
                   disabled={disabled}
-                  className="rounded border-gray-300 text-brand-600"
+                  className="rounded border-strong text-brand-600"
                 />
                 <span>{o.label}</span>
               </label>
@@ -279,7 +279,7 @@ function renderField(
             checked={Boolean(v)}
             onChange={(e) => set(e.target.checked)}
             disabled={disabled}
-            className="rounded border-gray-300 text-brand-600"
+            className="rounded border-strong text-brand-600"
           />
           <span>Ja</span>
         </label>
@@ -363,7 +363,7 @@ function FileUploadField({
           <button
             type="button"
             onClick={() => set(null)}
-            className="text-gray-400 hover:text-red-700 p-1"
+            className="text-disabled hover:text-red-700 p-1"
             title="Datei entfernen"
           >
             <X className="h-4 w-4" />
@@ -390,7 +390,7 @@ function FileUploadField({
         />
       </label>
       {uploadError && <div className="text-xs text-red-700">{uploadError}</div>}
-      <p className="text-xs text-gray-500">Max. 10 MB.</p>
+      <p className="text-xs text-muted">Max. 10 MB.</p>
     </div>
   );
 }

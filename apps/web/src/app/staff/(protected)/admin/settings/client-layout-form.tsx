@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -17,7 +17,7 @@ import {
   type ClientBlockKey,
   type ClientGridItem,
   type ClientLayoutConfig,
-} from '@/server/settings/client-layout';
+} from '@/server/settings/client-layout-shared';
 
 const ICONS: Record<ClientBlockKey, typeof CalendarDays> = {
   contacts: Users,
@@ -120,9 +120,9 @@ export function ClientLayoutForm({ initial }: { initial: ClientLayoutConfig }) {
   return (
     <div className="space-y-3">
       <div className="flex items-start justify-between gap-2">
-        <p className="text-xs text-gray-500 flex-1">
+        <p className="text-xs text-muted flex-1">
           Tenant-globales Layout für das Mandanten-Cockpit (Block-Bereich auf
-          <code className="mx-1 px-1 rounded bg-gray-100 dark:bg-gray-800">/staff/clients/:id</code>).
+          <code className="mx-1 px-1 rounded bg-gray-100">/staff/clients/:id</code>).
           Anpassungen gelten für alle Mitarbeiter. Deaktivierte Module erscheinen
           nicht — die Position bleibt aber gespeichert.
         </p>
@@ -153,7 +153,7 @@ export function ClientLayoutForm({ initial }: { initial: ClientLayoutConfig }) {
 
       {editMode && available.length > 0 && (
         <div className="card p-3">
-          <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">
+          <p className="text-xs font-medium text-secondary mb-2">
             Block hinzufügen
           </p>
           <div className="flex flex-wrap gap-2">
@@ -192,7 +192,7 @@ export function ClientLayoutForm({ initial }: { initial: ClientLayoutConfig }) {
                 <div
                   key={it.id}
                   className={
-                    'relative card flex items-center justify-center text-sm text-gray-600 dark:text-gray-300 ' +
+                    'relative card flex items-center justify-center text-sm text-secondary ' +
                     (editMode ? 'ring-2 ring-brand-300 rounded-xl' : '')
                   }
                 >
@@ -201,18 +201,18 @@ export function ClientLayoutForm({ initial }: { initial: ClientLayoutConfig }) {
                       type="button"
                       onClick={() => remove(it.id)}
                       onMouseDown={(e) => e.stopPropagation()}
-                      className="block-remove absolute -top-2 -right-2 z-10 bg-white border border-gray-200 rounded-full p-1 shadow-sm text-gray-400 hover:text-red-700"
+                      className="block-remove absolute -top-2 -right-2 z-10 bg-surface border border-default rounded-full p-1 shadow-sm text-disabled hover:text-red-700"
                       title="Block entfernen"
                     >
                       <X className="h-3 w-3" />
                     </button>
                   )}
                   <div className="flex flex-col items-center gap-2 px-4 text-center">
-                    <Icon className="h-6 w-6 text-gray-400" />
-                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                    <Icon className="h-6 w-6 text-disabled" />
+                    <span className="font-medium text-primary">
                       {CLIENT_BLOCK_LABELS[it.id]}
                     </span>
-                    <span className="text-[10px] text-gray-400 font-mono">
+                    <span className="text-[10px] text-disabled font-mono">
                       {it.w} × {it.h}
                     </span>
                   </div>
@@ -224,7 +224,7 @@ export function ClientLayoutForm({ initial }: { initial: ClientLayoutConfig }) {
       </div>
 
       {items.length === 0 && (
-        <div className="card p-8 text-center text-sm text-gray-500">
+        <div className="card p-8 text-center text-sm text-muted">
           Kein Block aktiv. Klicke auf „Anpassen" und füge Blöcke hinzu.
         </div>
       )}

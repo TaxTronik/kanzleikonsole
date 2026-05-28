@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useTransition } from 'react';
 import { useRouter } from 'next/navigation';
@@ -26,7 +26,7 @@ export function CancelRequestButton({ id }: { id: string }) {
       type="button"
       onClick={cancel}
       disabled={isPending}
-      className="text-gray-400 hover:text-red-700 p-1 shrink-0"
+      className="text-disabled hover:text-red-700 p-1 shrink-0"
       title="Anfrage zurücknehmen"
     >
       <X className="h-3.5 w-3.5" />

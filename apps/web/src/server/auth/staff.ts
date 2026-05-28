@@ -149,7 +149,6 @@ const staffConfig: NextAuthConfig = {
         if (!totpValid && backupCodes.length > 0) {
           for (let i = 0; i < backupCodes.length; i++) {
             const hashed = backupCodes[i]!;
-            // eslint-disable-next-line no-await-in-loop
             if (await compare(totpCode, hashed)) {
               usedBackupIndex = i;
               break;

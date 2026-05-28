@@ -1,4 +1,4 @@
-// =============================================================================
+﻿// =============================================================================
 // /portal/login/verify — Server-Component
 //
 // Der Magic-Link-Token wird NICHT mehr beim GET-Render konsumiert (das ist
@@ -31,7 +31,7 @@ export default async function VerifyMagicLinkPage({ searchParams }: PageProps) {
   if (!token) {
     return (
       <Shell>
-        <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">
+        <div className="alert-error-sm">
           {params.status === 'invalid'
             ? 'Der Link ist ungültig, abgelaufen oder wurde bereits verwendet.'
             : 'Kein Token in der URL.'}
@@ -45,7 +45,7 @@ export default async function VerifyMagicLinkPage({ searchParams }: PageProps) {
 
   return (
     <Shell>
-      <p className="text-sm text-gray-600">
+      <p className="text-sm text-secondary">
         Klicken Sie auf <strong>Anmelden</strong>, um sich in das
         Mandantenportal einzuloggen. Der Link ist einmalig gültig.
       </p>
@@ -56,7 +56,7 @@ export default async function VerifyMagicLinkPage({ searchParams }: PageProps) {
           Anmelden
         </button>
       </form>
-      <Link href="/portal/login" className="text-xs text-gray-400 hover:underline">
+      <Link href="/portal/login" className="text-xs text-disabled hover:underline">
         Neuen Link anfordern
       </Link>
     </Shell>
@@ -65,11 +65,11 @@ export default async function VerifyMagicLinkPage({ searchParams }: PageProps) {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950">
+    <div className="min-h-screen flex items-center justify-center bg-surface-page">
       <div className="w-full max-w-md">
         <div className="card p-8 text-center">
           <div className="text-3xl font-bold text-brand-700 mb-1">TaxTronik</div>
-          <p className="text-sm text-gray-500 mb-6">Mandantenportal</p>
+          <p className="text-sm text-muted mb-6">Mandantenportal</p>
           <div className="space-y-3">{children}</div>
         </div>
       </div>

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import { updateSkillAction, deleteSkillAction } from './actions';
@@ -51,7 +51,7 @@ export function SkillRow(p: Props) {
           <SkillBadge label={p.label} color={p.color} />
         )}
       </td>
-      <td className="px-6 py-3 font-mono text-xs text-gray-500">{p.slug}</td>
+      <td className="px-6 py-3 font-mono text-xs text-muted">{p.slug}</td>
       <td className="px-6 py-3">
         {editing ? (
           <select
@@ -64,10 +64,10 @@ export function SkillRow(p: Props) {
             ))}
           </select>
         ) : (
-          <span className="text-xs text-gray-500">{p.colorHint}</span>
+          <span className="text-xs text-muted">{p.colorHint}</span>
         )}
       </td>
-      <td className="px-6 py-3 text-gray-700">{p.assignments}</td>
+      <td className="px-6 py-3 text-secondary">{p.assignments}</td>
       <td className="px-6 py-3">
         {p.isSystem ? (
           <span className="badge-gray">System</span>
@@ -90,7 +90,7 @@ export function SkillRow(p: Props) {
               <button
                 type="button"
                 onClick={() => { setEditing(false); setLabel(p.label); setColor(p.color ?? ''); }}
-                className="text-xs text-gray-500 hover:underline"
+                className="text-xs text-muted hover:underline"
               >
                 Abbrechen
               </button>
@@ -100,7 +100,7 @@ export function SkillRow(p: Props) {
               <button
                 type="button"
                 onClick={() => setEditing(true)}
-                className="text-xs text-gray-600 hover:underline"
+                className="text-xs text-secondary hover:underline"
               >
                 Bearbeiten
               </button>

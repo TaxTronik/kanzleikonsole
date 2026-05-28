@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition, useEffect } from 'react';
 import { createPortal } from 'react-dom';
@@ -60,22 +60,22 @@ export function TeamEditorButton({
   }
 
   const modal = open ? (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4" onClick={() => setOpen(false)}>
+    <div className="modal-overlay" onClick={() => setOpen(false)}>
       <div className="card w-full max-w-md p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5">
+          <h2 className="text-sm font-semibold text-primary inline-flex items-center gap-1.5">
             <Users className="h-4 w-4 text-brand-600" />
             Team bearbeiten
           </h2>
-          <button type="button" onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-700">
+          <button type="button" onClick={() => setOpen(false)} className="text-disabled hover:text-secondary">
             <X className="h-4 w-4" />
           </button>
         </div>
-        <p className="text-xs text-gray-600 dark:text-gray-400">
+        <p className="text-xs text-secondary">
           Wählen Sie die Mitarbeiter, die am Workflow beteiligt sind. Die Übergabe einzelner Schritte
           bleibt davon unberührt. Der Starter ist immer Mitglied.
         </p>
-        <ul className="space-y-1 max-h-64 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-md p-2">
+        <ul className="space-y-1 max-h-64 overflow-y-auto border border-default rounded-md p-2">
           {staffOptions.map((s) => {
             const checked = selected.has(s.id);
             const isStarter = s.id === startedByStaff;
@@ -84,8 +84,8 @@ export function TeamEditorButton({
                 <label
                   className={
                     isStarter
-                      ? 'flex items-center gap-2 px-2 py-1.5 rounded text-sm text-gray-500 dark:text-gray-400 cursor-not-allowed'
-                      : 'flex items-center gap-2 px-2 py-1.5 rounded text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/60'
+                      ? 'flex items-center gap-2 px-2 py-1.5 rounded text-sm text-muted cursor-not-allowed'
+                      : 'flex items-center gap-2 px-2 py-1.5 rounded text-sm cursor-pointer hover:bg-gray-50'
                   }
                 >
                   <input
@@ -96,7 +96,7 @@ export function TeamEditorButton({
                   />
                   <span className="flex-1">{s.fullName}</span>
                   {isStarter && (
-                    <span className="text-[10px] uppercase text-gray-400 bg-gray-100 dark:bg-gray-800 rounded px-1.5 py-0.5">
+                    <span className="text-[10px] uppercase text-disabled bg-gray-100 rounded px-1.5 py-0.5">
                       Starter
                     </span>
                   )}
@@ -106,9 +106,9 @@ export function TeamEditorButton({
           })}
         </ul>
         {error && (
-          <div className="rounded-md bg-red-50 dark:bg-red-900/20 text-xs text-red-700 dark:text-red-300 p-2">{error}</div>
+          <div className="alert-error-sm text-xs p-2">{error}</div>
         )}
-        <div className="flex items-center justify-end gap-2 pt-2">
+        <div className="form-actions">
           <button type="button" onClick={() => setOpen(false)} className="btn-secondary text-sm">Abbrechen</button>
           <button type="button" onClick={save} disabled={isPending} className="btn-primary text-sm">
             {isPending ? 'Speichere…' : `${selected.size} Mitglied${selected.size === 1 ? '' : 'er'} speichern`}
@@ -123,7 +123,7 @@ export function TeamEditorButton({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="text-xs text-gray-500 hover:text-brand-700 dark:hover:text-brand-300 inline-flex items-center gap-1"
+        className="text-xs text-muted hover:text-brand-700 dark:hover:text-brand-300 inline-flex items-center gap-1"
         title="Team bearbeiten"
       >
         <Users className="h-3 w-3" />

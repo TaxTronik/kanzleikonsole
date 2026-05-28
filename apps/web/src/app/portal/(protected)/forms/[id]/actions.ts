@@ -7,6 +7,7 @@ import { withTenantContext } from '@taxtronik/db';
 import type { Prisma } from '@prisma/client';
 import { commitDocumentFromBytes } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
+import { prismaBytes } from '@/server/db/prisma-bytes';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { checkRateLimit, checkPortalWriteLimit } from '@/server/rate-limit';
 import { assertPortalFeature } from '@/server/settings/portal-features';
@@ -238,7 +239,7 @@ export async function uploadFormFileAction(input: {
             versionNo: 1,
             storageBucket: stored.targetBucket,
             storageKey: stored.targetKey,
-            sha256: stored.sha256,
+            sha256: prismaBytes(stored.sha256),
             sizeBytes: stored.sizeBytes,
             immutable: stored.immutable,
             scanStatus: 'CLEAN',

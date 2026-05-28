@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { staffAuth } from '@/server/auth/staff';
 import { commitDocumentFromBytes, MAX_UPLOAD_BYTES } from '@taxtronik/storage';
 import { withTenantContext } from '@taxtronik/db';
+import { prismaBytes } from '@/server/db/prisma-bytes';
 import { evidenceService } from '@/server/container';
 
 const Schema = z.object({
@@ -87,7 +88,7 @@ export async function POST(
           versionNo: nextVersionNo,
           storageBucket: commit.targetBucket,
           storageKey: commit.targetKey,
-          sha256: commit.sha256,
+          sha256: prismaBytes(commit.sha256),
           sizeBytes: commit.sizeBytes,
           immutable: commit.immutable,
           scanStatus: 'CLEAN',

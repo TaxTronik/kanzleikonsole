@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import { Send, Copy, Check, X } from 'lucide-react';
@@ -97,13 +97,13 @@ export function InviteSection({
 
   return (
     <div className="card overflow-hidden">
-      <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+      <div className="px-6 py-4 border-b border-default flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-medium text-gray-900 flex items-center gap-2">
+          <h2 className="text-sm font-medium text-primary flex items-center gap-2">
             <Send className="h-4 w-4 text-brand-600" />
             Mandant zur GwG-Identifizierung einladen
           </h2>
-          <p className="text-xs text-gray-500 mt-0.5">
+          <p className="text-xs text-muted mt-0.5">
             Mandant füllt Stammdaten + Ausweis-Fotos selbst aus, ohne Login.
           </p>
         </div>
@@ -113,19 +113,19 @@ export function InviteSection({
       </div>
 
       {open && (
-        <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 space-y-3">
+        <div className="px-6 py-4 border-b border-default bg-gray-50 space-y-3">
           {contacts.length > 0 && (
             <div>
-              <p className="text-xs text-gray-500 mb-2">Bekannte Ansprechpartner:</p>
+              <p className="text-xs text-muted mb-2">Bekannte Ansprechpartner:</p>
               <div className="flex flex-wrap gap-2">
                 {contacts.map((c) => (
                   <button
                     key={c.email}
                     type="button"
                     onClick={() => pickContact(c)}
-                    className="text-xs px-2 py-1 rounded bg-white border border-gray-200 hover:bg-gray-100"
+                    className="text-xs px-2 py-1 rounded bg-surface border border-default hover:bg-gray-100"
                   >
-                    {c.fullName} <span className="text-gray-400">· {c.email}</span>
+                    {c.fullName} <span className="text-disabled">· {c.email}</span>
                   </button>
                 ))}
               </div>
@@ -147,10 +147,10 @@ export function InviteSection({
               />
             </div>
           </div>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted">
             Mandant: <strong>{clientName}</strong> · Einladung gilt 14 Tage.
           </p>
-          {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+          {error && <div className="alert-error-sm">{error}</div>}
           {createdLink && (
             <div className="rounded-md bg-green-50 p-3 space-y-2">
               <p className="text-sm text-green-800">
@@ -161,7 +161,7 @@ export function InviteSection({
                 <input
                   readOnly
                   value={createdLink}
-                  className="input text-xs font-mono bg-white"
+                  className="input text-xs font-mono bg-surface"
                   onFocus={(e) => e.currentTarget.select()}
                 />
                 <button type="button" onClick={copyLink} className="btn-secondary text-xs">
@@ -180,12 +180,12 @@ export function InviteSection({
       )}
 
       {invites.length === 0 ? null : (
-        <div className="divide-y divide-gray-100">
+        <div className="divide-y divide-border-subtle">
           {activeInvites.map((i) => (
             <div key={i.id} className="px-6 py-3 flex items-center justify-between text-sm">
               <div>
-                <p className="font-medium text-gray-900">{i.inviteName}</p>
-                <p className="text-xs text-gray-500">
+                <p className="font-medium text-primary">{i.inviteName}</p>
+                <p className="text-xs text-muted">
                   {i.inviteEmail} · gültig bis {dateFmt.format(new Date(i.expiresAt))}
                 </p>
               </div>
@@ -205,7 +205,7 @@ export function InviteSection({
             </div>
           ))}
           {otherInvites.length > 0 && (
-            <details className="px-6 py-3 text-xs text-gray-500">
+            <details className="px-6 py-3 text-xs text-muted">
               <summary className="cursor-pointer">{otherInvites.length} ältere Einladungen</summary>
               <ul className="mt-2 space-y-1">
                 {otherInvites.map((i) => (

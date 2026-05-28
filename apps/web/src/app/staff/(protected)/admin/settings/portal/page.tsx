@@ -14,7 +14,7 @@ export default async function PortalSettingsPage() {
     <div className="space-y-6">
       <SectionCard
         title="Mandantenportal"
-        description="Steuert granular, was der Mandant im Portal tun darf. Diese Einstellungen gelten zusätzlich zu den Tenant-weiten Modul-Toggles."
+        description="Steuert granular, was der Mandant im Portal tun darf. Diese Einstellungen gelten zusätzlich zu den kanzleiweiten Modul-Schaltern."
       >
         <PortalFeaturesForm initial={features} />
       </SectionCard>

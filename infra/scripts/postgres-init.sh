@@ -36,16 +36,14 @@ psql -v ON_ERROR_STOP=1 \
 
   -- Eingeschränkte Application-Role (RLS-Backstop). Passwort via psql-Variable
   -- (siehe P-1): format(..., %L) macht das SQL-quoting + escape sicher.
-  DO $$
-  DECLARE
-    v_pw text := :'pw';
-  BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'taxtronik_app') THEN
-      EXECUTE format('CREATE ROLE taxtronik_app LOGIN PASSWORD %L', v_pw);
-    ELSE
-      EXECUTE format('ALTER ROLE taxtronik_app WITH PASSWORD %L', v_pw);
-    END IF;
-  END $$;
+  -- psql-Variablen werden NICHT in $$-quoted PL/pgSQL-Blöcke interpoliert,
+  -- daher Idempotenz hier über \gexec auf zwei SELECT-Zweige.
+  SELECT format('CREATE ROLE taxtronik_app LOGIN PASSWORD %L', :'pw')
+  WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'taxtronik_app')
+  \gexec
+  SELECT format('ALTER ROLE taxtronik_app WITH PASSWORD %L', :'pw')
+  WHERE EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'taxtronik_app')
+  \gexec
 
   -- Default-GRANTs für künftig angelegte Tabellen
   ALTER DEFAULT PRIVILEGES IN SCHEMA public
@@ -62,16 +60,12 @@ if [[ -n "${N8N_DB_PASSWORD:-}" ]]; then
   psql -v ON_ERROR_STOP=1 \
        -v pw="$N8N_DB_PASSWORD" \
        --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-'EOSQL'
-    DO $$
-    DECLARE
-      v_pw text := :'pw';
-    BEGIN
-      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'n8n') THEN
-        EXECUTE format('CREATE ROLE n8n LOGIN PASSWORD %L', v_pw);
-      ELSE
-        EXECUTE format('ALTER ROLE n8n WITH PASSWORD %L', v_pw);
-      END IF;
-    END $$;
+    SELECT format('CREATE ROLE n8n LOGIN PASSWORD %L', :'pw')
+    WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'n8n')
+    \gexec
+    SELECT format('ALTER ROLE n8n WITH PASSWORD %L', :'pw')
+    WHERE EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'n8n')
+    \gexec
 EOSQL
 
   # CREATE DATABASE muss außerhalb einer Transaktion laufen

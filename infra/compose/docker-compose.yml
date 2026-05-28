@@ -132,9 +132,11 @@ services:
       - "-metricsPort=9091"
     ports:
       # P-4: SeaweedFS-Admin-UIs haben keine Authentication. NICHT 0.0.0.0.
-      - "127.0.0.1:8333:8333"    # S3-API
-      - "127.0.0.1:9333:9333"    # Master UI / API
-      - "127.0.0.1:8888:8888"    # Filer UI
+      # Host-Ports überschreibbar, weil Windows den 9000er-Bereich reserviert
+      # (Hyper-V/WSL: 9167–9766 sind blockiert) — Default bleibt für Linux.
+      - "127.0.0.1:${SEAWEED_S3_PORT:-8333}:8333"        # S3-API
+      - "127.0.0.1:${SEAWEED_MASTER_PORT:-9333}:9333"    # Master UI / API
+      - "127.0.0.1:${SEAWEED_FILER_PORT:-8888}:8888"     # Filer UI
     volumes:
       - seaweed_data:/data
       # Wird vom Setup-Skript aus seaweedfs-s3.template.json gerendert

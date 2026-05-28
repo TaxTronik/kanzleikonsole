@@ -1,4 +1,4 @@
-// =============================================================================
+﻿// =============================================================================
 // /portal/forms/[id] — Mandant füllt Formular aus
 // =============================================================================
 
@@ -33,13 +33,13 @@ export default async function PortalFormFillerPage({ params }: { params: Promise
 
   return (
     <div className="p-8 max-w-3xl">
-      <Link href="/portal/forms" className="text-sm text-gray-500 hover:text-gray-900 inline-flex items-center gap-1 mb-4">
+      <Link href="/portal/forms" className="back-link">
         <ArrowLeft className="h-4 w-4" /> Zurück
       </Link>
 
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">{sub.name}</h1>
+      <h1 className="text-2xl font-bold text-primary mb-1">{sub.name}</h1>
       {sub.template.description && (
-        <p className="text-gray-500 text-sm mb-4">{sub.template.description}</p>
+        <p className="text-muted text-sm mb-4">{sub.template.description}</p>
       )}
 
       {sub.template.introMd && (
@@ -49,7 +49,7 @@ export default async function PortalFormFillerPage({ params }: { params: Promise
         // (`p`, `br`, `strong`, `em`, `ul`, `li`, `a`). Sicher für
         // dangerouslySetInnerHTML in genau diesem Trust-Boundary-Kontext.
         <div
-          className="card p-4 mb-6 text-sm text-gray-700 prose prose-sm max-w-none"
+          className="card p-4 mb-6 text-sm text-secondary prose prose-sm max-w-none"
           dangerouslySetInnerHTML={{ __html: renderSafeMarkdown(sub.template.introMd) }}
         />
       )}

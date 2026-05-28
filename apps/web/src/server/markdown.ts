@@ -47,7 +47,6 @@ const SENT_SCHEME_SEP = '';
 export function escapeMarkdownVariable(s: string): string {
   // 1) Private-Use-Area strippen (U+E000–U+F8FF). Diese Codepoints sind
   //    für interne Sentinels reserviert.
-  // eslint-disable-next-line no-misleading-character-class
   const clean = s.replace(/[-]/g, '');
   // 2) Markdown-Trigger-Zeichen backslash-escapen.
   const backslashed = clean.replace(/[\\*_[\]]/g, (c) => `\\${c}`);
@@ -59,7 +58,6 @@ export function renderSafeMarkdown(md: string): string {
   // Defense-in-Depth: auch hier private-use raus (falls ein Aufrufer den
   // Renderer direkt mit potenziell unsicherem Input füttert — escape sollte
   // davor laufen, aber wir verlassen uns nicht darauf).
-  // eslint-disable-next-line no-misleading-character-class
   const scrubbed = md.replace(/[-]/g, '');
   const escaped = scrubbed
     .replace(/&/g, '&amp;')

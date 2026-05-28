@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition, useEffect } from 'react';
 import { createPortal } from 'react-dom';
@@ -35,7 +35,7 @@ export function CancelWorkflowButton({ instanceId, instanceName, variant = 'comp
 
   const modal = open ? (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"
+      className="modal-overlay"
       onClick={() => setOpen(false)}
     >
       <div
@@ -43,15 +43,15 @@ export function CancelWorkflowButton({ instanceId, instanceName, variant = 'comp
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5">
+          <h2 className="text-sm font-semibold text-primary inline-flex items-center gap-1.5">
             <Ban className="h-4 w-4 text-red-600" />
             Workflow abbrechen
           </h2>
-          <button type="button" onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-700">
+          <button type="button" onClick={() => setOpen(false)} className="text-disabled hover:text-secondary">
             <X className="h-4 w-4" />
           </button>
         </div>
-        <p className="text-xs text-gray-600 dark:text-gray-400">
+        <p className="text-xs text-secondary">
           Sind Sie sicher, dass Sie <strong>{instanceName}</strong> abbrechen wollen? Bereits
           erledigte Schritte bleiben in der Historie. Offene Schritte werden nicht mehr
           ausgeführt. Der Vorgang ist nicht rückgängig zu machen.
@@ -68,11 +68,11 @@ export function CancelWorkflowButton({ instanceId, instanceName, variant = 'comp
           />
         </div>
         {error && (
-          <div className="rounded-md bg-red-50 dark:bg-red-900/20 text-xs text-red-700 dark:text-red-300 p-2">
+          <div className="alert-error-sm text-xs p-2">
             {error}
           </div>
         )}
-        <div className="flex items-center justify-end gap-2 pt-2">
+        <div className="form-actions">
           <button type="button" onClick={() => setOpen(false)} className="btn-secondary text-sm">
             Behalten
           </button>
@@ -98,7 +98,7 @@ export function CancelWorkflowButton({ instanceId, instanceName, variant = 'comp
         className={
           variant === 'full'
             ? 'btn-secondary text-xs inline-flex items-center gap-1 text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
-            : 'text-xs text-gray-400 hover:text-red-700 dark:hover:text-red-400 inline-flex items-center gap-1'
+            : 'text-xs text-disabled hover:text-red-700 dark:hover:text-red-400 inline-flex items-center gap-1'
         }
         title="Workflow abbrechen"
       >

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
@@ -141,7 +141,7 @@ export function ExternalInvoiceForm({
           className="input"
         />
         {file && (
-          <p className="text-xs text-gray-500 mt-1 inline-flex items-center gap-1">
+          <p className="text-xs text-muted mt-1 inline-flex items-center gap-1">
             <FileText className="h-3.5 w-3.5" />
             {file.name} · {(file.size / 1024).toFixed(0)} KB
           </p>
@@ -153,7 +153,7 @@ export function ExternalInvoiceForm({
         <textarea id="notes" name="notes" rows={2} maxLength={1000} className="input" />
       </div>
 
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-muted">
         Die PDF wird mit Object-Lock COMPLIANCE (10 Jahre, GoBD) abgelegt und
         landet im Mandanten-Portal unter „Rechnungen". Zusätzlich erhält der
         Mandant eine Mail mit der PDF als Anhang — der Begleittext kommt aus
@@ -161,7 +161,7 @@ export function ExternalInvoiceForm({
       </p>
 
       {error && (
-        <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>
+        <div className="alert-error-sm">{error}</div>
       )}
 
       <div className="flex justify-end gap-2 pt-2">

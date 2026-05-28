@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useActionState, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
@@ -90,9 +90,9 @@ export function HandoversBlock({
 
   return (
     <div className="card overflow-hidden">
-      <div className="px-6 py-3 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
-        <h2 className="text-sm font-medium text-gray-900 dark:text-gray-100 inline-flex items-center gap-2">
-          <Inbox className="h-4 w-4 text-gray-400" />
+      <div className="card-header">
+        <h2 className="text-sm font-medium text-primary inline-flex items-center gap-2">
+          <Inbox className="h-4 w-4 text-disabled" />
           Anlieferungen ({active.length})
         </h2>
         <button
@@ -108,7 +108,7 @@ export function HandoversBlock({
       {open && (
         <form
           action={formAction}
-          className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/30 space-y-2"
+          className="p-4 border-b border-default bg-gray-50/50 dark:bg-gray-900/30 space-y-2"
         >
           <input type="hidden" name="clientId" value={clientId} />
           <input
@@ -144,32 +144,32 @@ export function HandoversBlock({
       )}
 
       {active.length === 0 ? (
-        <p className="px-6 py-6 text-sm text-gray-400 text-center">Keine offenen Anlieferungen.</p>
+        <p className="px-6 py-6 text-sm text-disabled text-center">Keine offenen Anlieferungen.</p>
       ) : (
-        <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+        <ul className="divide-y divide-border-subtle">
           {active.map((h) => {
             const next = NEXT_STATUS[h.status];
             return (
               <li key={h.id} className="px-6 py-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100 inline-flex items-center gap-2">
+                    <p className="text-sm font-medium text-primary inline-flex items-center gap-2">
                       {h.label}
                       <span className={`${STATUS_BADGE[h.status]} text-[10px]`}>
                         {STATUS_LABELS[h.status]}
                       </span>
                     </p>
                     {h.contents && (
-                      <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 whitespace-pre-wrap">{h.contents}</p>
+                      <p className="text-xs text-secondary mt-1 whitespace-pre-wrap">{h.contents}</p>
                     )}
-                    <p className="text-[11px] text-gray-500 mt-1 flex flex-wrap gap-x-3">
+                    <p className="text-[11px] text-muted mt-1 flex flex-wrap gap-x-3">
                       <span>eingegangen {dateFmt.format(new Date(h.receivedAt))}</span>
                       {h.startedAt && <span>bearbeitet seit {dateFmt.format(new Date(h.startedAt))}</span>}
                       {h.readyAt && (
                         <span className="inline-flex items-center gap-1 text-emerald-700">
                           <Mail className="h-3 w-3" />
                           abholbereit {dateFmt.format(new Date(h.readyAt))}
-                          {h.notifiedContactEmail && <span className="text-gray-400">· {h.notifiedContactEmail}</span>}
+                          {h.notifiedContactEmail && <span className="text-disabled">· {h.notifiedContactEmail}</span>}
                         </span>
                       )}
                     </p>
@@ -191,7 +191,7 @@ export function HandoversBlock({
                       type="button"
                       onClick={() => remove(h.id)}
                       disabled={isMutating}
-                      className="text-gray-400 hover:text-red-700 p-1"
+                      className="text-disabled hover:text-red-700 p-1"
                       title="Löschen"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -205,13 +205,13 @@ export function HandoversBlock({
       )}
 
       {done.length > 0 && (
-        <details className="border-t border-gray-200 dark:border-gray-800">
-          <summary className="px-6 py-2 text-xs text-gray-500 cursor-pointer">
+        <details className="border-t border-default">
+          <summary className="px-6 py-2 text-xs text-muted cursor-pointer">
             {done.length} abgeholt
           </summary>
-          <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+          <ul className="divide-y divide-border-subtle">
             {done.map((h) => (
-              <li key={h.id} className="px-6 py-2 text-sm text-gray-500 flex justify-between gap-2">
+              <li key={h.id} className="px-6 py-2 text-sm text-muted flex justify-between gap-2">
                 <span className="truncate">{h.label}</span>
                 {h.pickedUpAt && <span className="text-xs">{dateFmt.format(new Date(h.pickedUpAt))}</span>}
               </li>

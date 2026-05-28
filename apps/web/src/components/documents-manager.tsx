@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useMemo, useState, useTransition } from 'react';
 import { createPortal } from 'react-dom';
@@ -20,12 +20,14 @@ import {
   renameFolderAction,
   deleteFolderAction,
 } from '@/app/staff/(protected)/documents/folder-actions';
+import {
+  descendants,
+  fmtBytes,
+  fmtDate,
+  type FolderNode,
+} from '@/components/document-browser-utils';
 
-export interface FolderNode {
-  id: string;
-  name: string;
-  parentId: string | null;
-}
+export type { FolderNode };
 export interface ManagedDoc {
   id: string;
   title: string;
@@ -49,36 +51,6 @@ const CLASS_LABELS: Record<string, string> = {
   STAFF_PRIVATE: 'Intern',
   GENERAL: 'Allgemein',
 };
-
-function formatBytes(b: number): string {
-  if (b < 1024) return `${b} B`;
-  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
-  if (b < 1024 * 1024 * 1024) return `${(b / 1024 / 1024).toFixed(1)} MB`;
-  return `${(b / 1024 / 1024 / 1024).toFixed(2)} GB`;
-}
-const fmtDate = (iso: string) =>
-  new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium' }).format(new Date(iso));
-
-/** Nachfahren (inkl. self) eines Ordners — für Move-Zielfilter & Zähler. */
-function descendantIds(all: FolderNode[], rootId: string): Set<string> {
-  const byParent = new Map<string | null, FolderNode[]>();
-  for (const f of all) {
-    const k = f.parentId;
-    byParent.set(k, [...(byParent.get(k) ?? []), f]);
-  }
-  const acc = new Set<string>([rootId]);
-  const stack = [rootId];
-  while (stack.length) {
-    const cur = stack.pop()!;
-    for (const c of byParent.get(cur) ?? []) {
-      if (!acc.has(c.id)) {
-        acc.add(c.id);
-        stack.push(c.id);
-      }
-    }
-  }
-  return acc;
-}
 
 export function DocumentsManager({
   clientId,
@@ -119,7 +91,7 @@ export function DocumentsManager({
   const countIn = (fid: string | 'all' | 'none') => {
     if (fid === 'all') return active.length;
     if (fid === 'none') return active.filter((d) => !d.folderId).length;
-    const ids = descendantIds(folders, fid);
+    const ids = descendants(folders, fid);
     return active.filter((d) => d.folderId && ids.has(d.folderId)).length;
   };
 
@@ -131,7 +103,7 @@ export function DocumentsManager({
         : sel === 'none'
           ? base.filter((d) => !d.folderId)
           : (() => {
-              const ids = descendantIds(folders, sel);
+              const ids = descendants(folders, sel);
               return base.filter((d) => d.folderId && ids.has(d.folderId));
             })();
     const needle = q.trim().toLowerCase();
@@ -149,7 +121,7 @@ export function DocumentsManager({
         <div key={f.id}>
           <div
             className={`flex items-center gap-1 rounded px-2 py-1 text-sm cursor-pointer group ${
-              isSel ? 'bg-brand-50 text-brand-700' : 'hover:bg-gray-50 text-gray-700'
+              isSel ? 'bg-brand-50 text-brand-700' : 'hover:bg-gray-50 text-secondary'
             }`}
             style={{ paddingLeft: `${depth * 14 + 8}px` }}
             onClick={() => setSel(f.id)}
@@ -160,13 +132,13 @@ export function DocumentsManager({
                 e.stopPropagation();
                 setExpanded((x) => ({ ...x, [f.id]: !x[f.id] }));
               }}
-              className={hasKids ? 'text-gray-400' : 'invisible'}
+              className={hasKids ? 'text-disabled' : 'invisible'}
             >
               {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
             </button>
             {isSel ? <FolderOpen className="h-4 w-4 shrink-0" /> : <Folder className="h-4 w-4 shrink-0" />}
             <span className="truncate flex-1">{f.name}</span>
-            <span className="text-xs text-gray-400">{countIn(f.id) || ''}</span>
+            <span className="text-xs text-disabled">{countIn(f.id) || ''}</span>
             <span className="hidden group-hover:flex items-center gap-0.5">
               <button
                 type="button"
@@ -175,7 +147,7 @@ export function DocumentsManager({
                   e.stopPropagation();
                   promptCreate(f.id);
                 }}
-                className="text-gray-400 hover:text-brand-700"
+                className="text-disabled hover:text-brand-700"
               >
                 <FolderPlus className="h-3.5 w-3.5" />
               </button>
@@ -186,7 +158,7 @@ export function DocumentsManager({
                   e.stopPropagation();
                   setRenaming(f);
                 }}
-                className="text-gray-400 hover:text-brand-700"
+                className="text-disabled hover:text-brand-700"
               >
                 <Pencil className="h-3.5 w-3.5" />
               </button>
@@ -210,7 +182,7 @@ export function DocumentsManager({
                     });
                   }
                 }}
-                className="text-gray-400 hover:text-red-600"
+                className="text-disabled hover:text-red-600"
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -239,41 +211,41 @@ export function DocumentsManager({
       {/* ---- Ordnerbaum ---- */}
       <div className="card p-2 self-start">
         <div className="flex items-center justify-between px-2 py-1.5 mb-1">
-          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+          <span className="text-xs font-semibold text-muted uppercase tracking-wide">
             Ordner
           </span>
           <button
             type="button"
             title="Ordner anlegen"
             onClick={() => promptCreate(null)}
-            className="text-gray-400 hover:text-brand-700"
+            className="text-disabled hover:text-brand-700"
           >
             <FolderPlus className="h-4 w-4" />
           </button>
         </div>
         <div
           className={`flex items-center gap-1.5 rounded px-2 py-1 text-sm cursor-pointer ${
-            sel === 'all' ? 'bg-brand-50 text-brand-700' : 'hover:bg-gray-50 text-gray-700'
+            sel === 'all' ? 'bg-brand-50 text-brand-700' : 'hover:bg-gray-50 text-secondary'
           }`}
           onClick={() => setSel('all')}
         >
           <FileText className="h-4 w-4" />
           <span className="flex-1">Alle</span>
-          <span className="text-xs text-gray-400">{active.length || ''}</span>
+          <span className="text-xs text-disabled">{active.length || ''}</span>
         </div>
         <div
           className={`flex items-center gap-1.5 rounded px-2 py-1 text-sm cursor-pointer ${
-            sel === 'none' ? 'bg-brand-50 text-brand-700' : 'hover:bg-gray-50 text-gray-700'
+            sel === 'none' ? 'bg-brand-50 text-brand-700' : 'hover:bg-gray-50 text-secondary'
           }`}
           onClick={() => setSel('none')}
         >
-          <Folder className="h-4 w-4 text-gray-300" />
+          <Folder className="h-4 w-4 text-disabled" />
           <span className="flex-1">Ohne Ordner</span>
-          <span className="text-xs text-gray-400">{countIn('none') || ''}</span>
+          <span className="text-xs text-disabled">{countIn('none') || ''}</span>
         </div>
-        <div className="mt-1 border-t border-gray-100 pt-1">
+        <div className="mt-1 border-t border-subtle pt-1">
           {folders.length === 0 ? (
-            <p className="px-2 py-3 text-xs text-gray-400">
+            <p className="px-2 py-3 text-xs text-disabled">
               Noch keine Ordner. Oben „+" für den ersten Ordner.
             </p>
           ) : (
@@ -286,7 +258,7 @@ export function DocumentsManager({
       <div>
         <div className="flex flex-wrap items-center gap-3 mb-3">
           <div className="relative flex-1 min-w-[200px]">
-            <Search className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="h-4 w-4 text-disabled absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
@@ -298,7 +270,7 @@ export function DocumentsManager({
             type="button"
             onClick={() => setShowDeleted((v) => !v)}
             className={`text-xs px-3 py-1.5 rounded ${
-              showDeleted ? 'bg-brand-50 text-brand-700' : 'text-gray-500 hover:text-gray-700'
+              showDeleted ? 'bg-brand-50 text-brand-700' : 'text-muted hover:text-secondary'
             }`}
           >
             {showDeleted ? `Gelöscht (${deleted.length})` : `Gelöschte anzeigen (${deleted.length})`}
@@ -317,26 +289,26 @@ export function DocumentsManager({
         <div className="card overflow-hidden">
           {shown.length === 0 ? (
             <div className="px-6 py-14 text-center">
-              <FileText className="h-10 w-10 text-gray-200 mx-auto mb-2" />
-              <p className="text-sm text-gray-400">
+              <FileText className="h-10 w-10 text-disabled mx-auto mb-2" />
+              <p className="text-sm text-disabled">
                 {showDeleted ? 'Keine gelöschten Dokumente.' : 'Keine Dokumente in dieser Auswahl.'}
               </p>
             </div>
           ) : (
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="text-left px-5 py-2.5 text-xs font-medium text-gray-500 uppercase">Titel</th>
-                  <th className="text-left px-5 py-2.5 text-xs font-medium text-gray-500 uppercase">Klassifikation</th>
-                  <th className="text-left px-5 py-2.5 text-xs font-medium text-gray-500 uppercase">Größe</th>
-                  <th className="text-left px-5 py-2.5 text-xs font-medium text-gray-500 uppercase">Datum</th>
+                <tr className="bg-gray-50 border-b border-default">
+                  <th className="text-left px-5 py-2.5 text-xs font-medium text-muted uppercase">Titel</th>
+                  <th className="text-left px-5 py-2.5 text-xs font-medium text-muted uppercase">Klassifikation</th>
+                  <th className="text-left px-5 py-2.5 text-xs font-medium text-muted uppercase">Größe</th>
+                  <th className="text-left px-5 py-2.5 text-xs font-medium text-muted uppercase">Datum</th>
                   <th className="px-5 py-2.5" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-border-subtle">
                 {shown.map((d) => (
                   <tr key={d.id} className="hover:bg-gray-50">
-                    <td className="px-5 py-3 font-medium text-gray-900">
+                    <td className="px-5 py-3 font-medium text-primary">
                       <button
                         type="button"
                         onClick={() => setPreviewDoc({ id: d.id, name: d.title })}
@@ -346,7 +318,7 @@ export function DocumentsManager({
                         {d.title}
                       </button>
                     </td>
-                    <td className="px-5 py-3 text-gray-600">
+                    <td className="px-5 py-3 text-secondary">
                       <span className="inline-flex items-center gap-1.5">
                         {d.typeName || CLASS_LABELS[d.classification] || d.classification}
                         {!d.deletedAt && (
@@ -354,7 +326,7 @@ export function DocumentsManager({
                             className={`text-[10px] px-1.5 py-0.5 rounded border inline-flex items-center gap-0.5 ${
                               d.shared
                                 ? 'bg-green-50 text-green-700 border-green-200'
-                                : 'bg-gray-50 text-gray-500 border-gray-200'
+                                : 'bg-gray-50 text-muted border-default'
                             }`}
                           >
                             {d.shared ? <Share2 className="h-2.5 w-2.5" /> : <EyeOff className="h-2.5 w-2.5" />}
@@ -363,8 +335,8 @@ export function DocumentsManager({
                         )}
                       </span>
                     </td>
-                    <td className="px-5 py-3 text-gray-600">{formatBytes(d.sizeBytes)}</td>
-                    <td className="px-5 py-3 text-gray-600">{fmtDate(d.createdAt)}</td>
+                    <td className="px-5 py-3 text-secondary">{fmtBytes(d.sizeBytes)}</td>
+                    <td className="px-5 py-3 text-secondary">{fmtDate(d.createdAt)}</td>
                     <td className="px-5 py-3 text-right whitespace-nowrap">
                       {!d.deletedAt && (
                         <>
@@ -378,7 +350,7 @@ export function DocumentsManager({
                                 if (!r.ok) alert(r.error); else router.refresh();
                               })
                             }
-                            className={`p-1.5 ${d.shared ? 'text-green-600 hover:text-green-700' : 'text-gray-400 hover:text-brand-700'}`}
+                            className={`p-1.5 ${d.shared ? 'text-green-600 hover:text-green-700' : 'text-disabled hover:text-brand-700'}`}
                           >
                             {d.shared ? <Share2 className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
                           </button>
@@ -386,7 +358,7 @@ export function DocumentsManager({
                             type="button"
                             title="Typ ändern"
                             onClick={() => setRetagDoc(d)}
-                            className="text-gray-400 hover:text-brand-700 p-1.5"
+                            className="icon-btn"
                           >
                             <Tag className="h-4 w-4" />
                           </button>
@@ -394,7 +366,7 @@ export function DocumentsManager({
                             type="button"
                             title="In Ordner verschieben"
                             onClick={() => setMoveDoc(d)}
-                            className="text-gray-400 hover:text-brand-700 p-1.5"
+                            className="icon-btn"
                           >
                             <FolderInput className="h-4 w-4" />
                           </button>
@@ -402,7 +374,7 @@ export function DocumentsManager({
                       )}
                       <a
                         href={`/api/staff/documents/${d.id}/download`}
-                        className="text-gray-400 hover:text-gray-900 p-1.5 inline-flex items-center"
+                        className="text-disabled hover:text-primary p-1.5 inline-flex items-center"
                         title="Herunterladen"
                       >
                         <Download className="h-4 w-4" />
@@ -419,7 +391,7 @@ export function DocumentsManager({
                               else router.refresh();
                             })
                           }
-                          className="text-gray-400 hover:text-brand-700 p-1.5"
+                          className="icon-btn"
                         >
                           <RotateCcw className="h-4 w-4" />
                         </button>
@@ -428,7 +400,7 @@ export function DocumentsManager({
                           type="button"
                           title="Löschen"
                           onClick={() => setConfirmDelDoc(d)}
-                          className="text-gray-400 hover:text-red-600 p-1.5"
+                          className="text-disabled hover:text-red-600 p-1.5"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
@@ -440,7 +412,7 @@ export function DocumentsManager({
             </table>
           )}
         </div>
-        <p className="mt-2 text-xs text-gray-400">
+        <p className="mt-2 text-xs text-disabled">
           {scopeLabel} · Klassifikation (GoBD/GwG) und Aufbewahrung sind
           unabhängig von der Ordnerablage. Löschen blendet nur aus — die Datei
           bleibt revisionssicher aufbewahrt.
@@ -519,10 +491,10 @@ function RenameModal({
   const modal = (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <div className="w-full max-w-sm card p-6 relative" onClick={(e) => e.stopPropagation()}>
-        <button type="button" onClick={onClose} className="absolute top-3 right-3 text-gray-400 hover:text-gray-600">
+        <button type="button" onClick={onClose} className="modal-close">
           <X className="h-5 w-5" />
         </button>
-        <h2 className="text-base font-semibold text-gray-900 mb-3">Ordner umbenennen</h2>
+        <h2 className="text-base font-semibold text-primary mb-3">Ordner umbenennen</h2>
         <input
           autoFocus
           value={name}
@@ -573,11 +545,11 @@ function DeleteDocModal({
   const modal = (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <div className="w-full max-w-md card p-6 relative" onClick={(e) => e.stopPropagation()}>
-        <button type="button" onClick={onClose} className="absolute top-3 right-3 text-gray-400 hover:text-gray-600">
+        <button type="button" onClick={onClose} className="modal-close">
           <X className="h-5 w-5" />
         </button>
-        <h2 className="text-lg font-semibold text-gray-900 mb-2">Dokument löschen</h2>
-        <p className="text-sm text-gray-600 mb-3">„{doc.title}" wird aus den Listen ausgeblendet.</p>
+        <h2 className="text-lg font-semibold text-primary mb-2">Dokument löschen</h2>
+        <p className="text-sm text-secondary mb-3">„{doc.title}" wird aus den Listen ausgeblendet.</p>
         <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 mb-4">
           Die Datei bleibt im revisionssicheren Object-Store und wird
           <strong> gesetzlich weiter aufbewahrt</strong>

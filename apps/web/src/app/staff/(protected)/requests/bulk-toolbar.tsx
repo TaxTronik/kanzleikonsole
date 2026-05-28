@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -72,20 +72,20 @@ export function BulkToolbar({ closableIds }: Props) {
   if (selected.size === 0 && closableIds.length === 0) return null;
 
   return (
-    <div className="sticky bottom-0 z-10 bg-white border-t border-gray-200 px-6 py-3 flex items-center justify-between text-sm">
+    <div className="sticky bottom-0 z-10 bg-surface border-t border-default px-6 py-3 flex items-center justify-between text-sm">
       <div className="flex items-center gap-3">
         {selected.size > 0 ? (
           <>
             <CheckSquare className="h-4 w-4 text-brand-600" />
-            <span className="font-medium text-gray-900">{selected.size} ausgewählt</span>
-            <button type="button" onClick={clearSelection} className="text-gray-500 hover:text-gray-900 flex items-center gap-1 text-xs">
+            <span className="font-medium text-primary">{selected.size} ausgewählt</span>
+            <button type="button" onClick={clearSelection} className="text-muted hover:text-primary flex items-center gap-1 text-xs">
               <X className="h-3 w-3" />
               Auswahl aufheben
             </button>
           </>
         ) : (
           <>
-            <Square className="h-4 w-4 text-gray-400" />
+            <Square className="h-4 w-4 text-disabled" />
             <button type="button" onClick={selectAll} className="text-brand-700 hover:underline text-xs">
               Alle {closableIds.length} schließbaren auswählen
             </button>

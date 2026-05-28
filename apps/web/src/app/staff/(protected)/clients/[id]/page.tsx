@@ -1,4 +1,4 @@
-import { staffAuth } from '@/server/auth/staff';
+﻿import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
@@ -28,7 +28,7 @@ const eurFmt = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EU
 
 function formatCustomValue(type: string, value: unknown): React.ReactNode {
   if (value === null || value === undefined || value === '') {
-    return <span className="text-gray-400 font-normal">—</span>;
+    return <span className="text-disabled font-normal">—</span>;
   }
   if (type === 'CHECKBOX') return value ? 'Ja' : 'Nein';
   if (type === 'MONEY' && typeof value === 'number') return eurFmt.format(value);
@@ -69,11 +69,6 @@ export default async function ClientDetailPage({
       const c = await tx.client.findUnique({
         where: { id },
         include: {
-          documents: {
-            where: { deletedAt: null },
-            orderBy: { createdAt: 'desc' },
-            include: { versions: { orderBy: { versionNo: 'desc' }, take: 1 } },
-          },
           documentFolders: {
             select: { id: true, name: true, parentId: true },
             orderBy: { name: 'asc' },
@@ -97,7 +92,7 @@ export default async function ClientDetailPage({
         },
       });
       if (!c) return null;
-      const [phoneNotes, taxDeadlines, pendingChangeRequests, customDefs, customValues, staffList, workflowInstances, reminders, binders, upcomingAppointments, pendingAppointmentRequests, handovers, managerDocs] = await Promise.all([
+      const [phoneNotes, taxDeadlines, pendingChangeRequests, customDefs, customValues, staffList, workflowInstances, reminders, binders, upcomingAppointments, pendingAppointmentRequests, handovers, managerDocs, datevDoc] = await Promise.all([
         tx.phoneNote.findMany({
           where: { clientId: id },
           orderBy: [{ doneAt: { sort: 'asc', nulls: 'first' } }, { createdAt: 'desc' }],
@@ -190,13 +185,37 @@ export default async function ClientDetailPage({
             },
           },
         }),
+        tx.document.findFirst({
+          where: {
+            clientId: id,
+            deletedAt: null,
+            classification: { in: ['GOBD_INVOICE', 'GOBD_CONTRACT', 'GOBD_TAX'] },
+          },
+          select: { id: true },
+        }),
       ]);
-      return { client: c, phoneNotes, taxDeadlines, pendingChangeRequests, customDefs, customValues, staffList, workflowInstances, reminders, binders, upcomingAppointments, pendingAppointmentRequests, handovers, managerDocs };
+      return {
+        client: c,
+        phoneNotes,
+        taxDeadlines,
+        pendingChangeRequests,
+        customDefs,
+        customValues,
+        staffList,
+        workflowInstances,
+        reminders,
+        binders,
+        upcomingAppointments,
+        pendingAppointmentRequests,
+        handovers,
+        managerDocs,
+        hasDatevDocs: datevDoc !== null,
+      };
     },
   );
 
   if (!data) notFound();
-  const { client, phoneNotes, taxDeadlines, pendingChangeRequests, customDefs, customValues, staffList, workflowInstances, reminders, binders, upcomingAppointments, pendingAppointmentRequests, handovers, managerDocs } = data;
+  const { client, phoneNotes, taxDeadlines, pendingChangeRequests, customDefs, customValues, staffList, workflowInstances, reminders, binders, upcomingAppointments, pendingAppointmentRequests, handovers, managerDocs, hasDatevDocs } = data;
   const staffNameById = new Map(staffList.map((s) => [s.id, s.fullName]));
 
   const customDefsForKind = customDefs.filter(
@@ -219,51 +238,43 @@ export default async function ClientDetailPage({
     URGENT: 'Dringend',
   };
 
-  const classificationLabels: Record<string, string> = {
-    GOBD_INVOICE: 'GoBD Rechnung',
-    GOBD_CONTRACT: 'GoBD Vertrag',
-    GOBD_TAX: 'GoBD Steuer',
-    GWG_EVIDENCE: 'GwG Nachweis',
-    PERSONNEL: 'Personal',
-    STAFF_PRIVATE: 'Intern',
-    GENERAL: 'Allgemein',
-  };
-
   return (
     <div className="p-8">
       <div className="flex items-start gap-4 mb-8">
-        <Link href="/staff/clients" className="text-gray-400 hover:text-gray-600 mt-1">
+        <Link href="/staff/clients" className="text-disabled hover:text-secondary mt-1">
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-1">
-            <h1 className="text-2xl font-bold text-gray-900">{client.name}</h1>
+            <h1 className="text-2xl font-bold text-primary">{client.name}</h1>
             {client.allowActive ? (
               <span className="badge-green">Aktiv</span>
             ) : (
               <span className="badge-yellow">GwG ausstehend</span>
             )}
           </div>
-          <p className="text-gray-500 text-sm">
+          <p className="text-muted text-sm">
             {kindLabels[client.kind] ?? client.kind}
             {client.datevNo ? ` · DATEV ${client.datevNo}` : ''}
             {client.addisonNo ? ` · Addison ${client.addisonNo}` : ''}
           </p>
           {(() => {
-            const berufstraeger = client.responsibilities.find((r) => r.role === 'BERUFSTRAEGER');
+            const berufstraeger = client.responsibilities.filter((r) => r.role === 'BERUFSTRAEGER');
             const bearbeiter = client.responsibilities.filter((r) => r.role === 'HAUPTBEARBEITER');
-            if (!berufstraeger && bearbeiter.length === 0) return null;
+            if (berufstraeger.length === 0 && bearbeiter.length === 0) return null;
             return (
-              <div className="text-xs text-gray-500 mt-1 space-y-0.5">
-                {berufstraeger && (
+              <div className="text-xs text-muted mt-1 space-y-0.5">
+                {berufstraeger.length > 0 && (
                   <p>
-                    <span className="font-medium text-gray-700">Berufsträger:</span>{' '}
-                    {berufstraeger.staff.fullName}
+                    <span className="font-medium text-secondary">
+                      {berufstraeger.length === 1 ? 'Berufsträger:' : 'Berufsträger:'}
+                    </span>{' '}
+                    {berufstraeger.map((r) => r.staff.fullName).join(', ')}
                   </p>
                 )}
                 {bearbeiter.length > 0 && (
                   <p>
-                    <span className="font-medium text-gray-700">Bearbeiter:</span>{' '}
+                    <span className="font-medium text-secondary">Bearbeiter:</span>{' '}
                     {bearbeiter.map((r) => r.staff.fullName).join(', ')}
                   </p>
                 )}
@@ -398,9 +409,9 @@ export default async function ClientDetailPage({
 
             return (
               <div key="upcoming" className="card overflow-hidden">
-                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-                  <h2 className="text-sm font-medium text-gray-900 flex items-center gap-2">
-                    <CalendarDays className="h-4 w-4 text-gray-400" />
+                <div className="flex items-center justify-between px-6 py-4 border-b border-default">
+                  <h2 className="text-sm font-medium text-primary flex items-center gap-2">
+                    <CalendarDays className="h-4 w-4 text-disabled" />
                     Anstehende Termine
                     {requestRows.length > 0 && (
                       <span className="badge-yellow text-[10px]">
@@ -413,11 +424,11 @@ export default async function ClientDetailPage({
                   </Link>
                 </div>
                 {requestRows.length > 0 && (
-                  <div className="border-b border-gray-200 dark:border-gray-800 bg-amber-50/40 dark:bg-amber-900/10">
+                  <div className="border-b border-default bg-amber-50/40 dark:bg-amber-900/10">
                     <p className="px-6 pt-3 text-[11px] uppercase tracking-wide font-medium text-amber-700 dark:text-amber-300">
                       Offene Anfragen vom Mandanten
                     </p>
-                    <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+                    <ul className="divide-y divide-border-subtle">
                       {requestRows.map((r) => (
                         <RequestDecision
                           key={r.id}
@@ -430,9 +441,9 @@ export default async function ClientDetailPage({
                   </div>
                 )}
                 {rows.length === 0 ? (
-                  <p className="px-6 py-8 text-sm text-gray-400 text-center">Keine anstehenden Termine.</p>
+                  <p className="px-6 py-8 text-sm text-disabled text-center">Keine anstehenden Termine.</p>
                 ) : (
-                  <ul className="divide-y divide-gray-100">
+                  <ul className="divide-y divide-border-subtle">
                     {rows.map((r) => {
                       const dateFmt = new Intl.DateTimeFormat('de-DE');
                       const dateTimeFmt = new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' });
@@ -442,17 +453,17 @@ export default async function ClientDetailPage({
                         return (
                           <li key={`tax-${r.id}`} className="px-6 py-3 flex items-center justify-between gap-3">
                             <div className="min-w-0 flex-1">
-                              <p className="text-sm font-medium text-gray-900 truncate inline-flex items-center gap-2">
+                              <p className="text-sm font-medium text-primary truncate inline-flex items-center gap-2">
                                 {r.title}
-                                <span className="badge-gray text-[10px]">Steuertermin</span>
+                                <span className="badge-purple text-[10px]">Steuertermin</span>
                               </p>
-                              <p className="text-xs text-gray-500">{r.sub}</p>
+                              <p className="text-xs text-muted">{r.sub}</p>
                             </div>
                             <div className="text-right shrink-0">
-                              <p className={r.overdue ? 'text-sm text-red-700 font-medium' : 'text-sm text-gray-900'}>
+                              <p className={r.overdue ? 'text-sm text-red-700 font-medium' : 'text-sm text-primary'}>
                                 {dateFmt.format(r.date)}
                               </p>
-                              <p className="text-xs text-gray-500">
+                              <p className="text-xs text-muted">
                                 {r.overdue ? `${-daysLeft} Tage überfällig` : `noch ${daysLeft} Tage`}
                               </p>
                             </div>
@@ -462,15 +473,15 @@ export default async function ClientDetailPage({
                       return (
                         <li key={`appt-${r.id}`} className="px-6 py-3 flex items-start justify-between gap-3">
                           <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium text-gray-900 truncate inline-flex items-center gap-2">
+                            <p className="text-sm font-medium text-primary truncate inline-flex items-center gap-2">
                               {r.title}
                               {r.status === 'CONFIRMED' && <span className="badge-green text-[10px]">bestätigt</span>}
                             </p>
-                            <p className="text-xs text-gray-500">{r.sub}</p>
+                            <p className="text-xs text-muted">{r.sub}</p>
                           </div>
                           <div className="text-right shrink-0">
-                            <p className="text-sm text-gray-900">{dateTimeFmt.format(r.date)}</p>
-                            <p className="text-xs text-gray-500">– {timeFmt.format(r.endsAt)}</p>
+                            <p className="text-sm text-primary">{dateTimeFmt.format(r.date)}</p>
+                            <p className="text-xs text-muted">– {timeFmt.format(r.endsAt)}</p>
                           </div>
                         </li>
                       );
@@ -482,21 +493,21 @@ export default async function ClientDetailPage({
           })(),
           workflows: !modules.workflows ? null : (
             <div key="workflows" className="card overflow-hidden">
-              <div className="px-6 py-3 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
-                <h2 className="text-sm font-medium text-gray-900 dark:text-gray-100">Aktive Workflows</h2>
+              <div className="card-header">
+                <h2 className="text-sm font-medium text-primary">Aktive Workflows</h2>
                 <Link href={`/staff/clients/${client.id}/workflows`} className="text-xs text-brand-700 hover:underline">
                   Alle ansehen →
                 </Link>
               </div>
               {workflowInstances.length === 0 ? (
-                <p className="px-6 py-6 text-sm text-gray-400 text-center">
+                <p className="px-6 py-6 text-sm text-disabled text-center">
                   Keine laufenden Workflows.{' '}
                   <Link href={`/staff/clients/${client.id}/workflows`} className="text-brand-700 hover:underline">
                     Workflow starten →
                   </Link>
                 </p>
               ) : (
-                <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+                <ul className="divide-y divide-border-subtle">
                   {workflowInstances.map((inst) => {
                     const total = inst.items.length;
                     const done = inst.items.filter((it) => it.doneAt).length;
@@ -508,21 +519,21 @@ export default async function ClientDetailPage({
                       <li key={inst.id}>
                         <Link
                           href={`/staff/clients/${client.id}/workflows/${inst.id}`}
-                          className="block px-6 py-3 hover:bg-gray-50 dark:hover:bg-gray-900/40"
+                          className="block px-6 py-3 hover:bg-gray-50"
                         >
                           <div className="flex items-center justify-between gap-3">
                             <div className="min-w-0 flex-1">
-                              <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate inline-flex items-center gap-2">
+                              <p className="text-sm font-medium text-primary truncate inline-flex items-center gap-2">
                                 {inst.name}
                                 {overdue && <span className="badge-red text-[10px]">überfällig</span>}
                               </p>
-                              <p className="text-[11px] text-gray-500">
+                              <p className="text-[11px] text-muted">
                                 gestartet am {dateFmt.format(inst.startedAt)}
                               </p>
                             </div>
                             <div className="shrink-0 text-right">
-                              <span className="text-[11px] text-gray-500">{done}/{total}</span>
-                              <div className="mt-0.5 h-1 w-20 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                              <span className="text-[11px] text-muted">{done}/{total}</span>
+                              <div className="mt-0.5 h-1 w-20 rounded-full bg-gray-100 overflow-hidden">
                                 <div className="h-full bg-brand-600" style={{ width: `${pct}%` }} />
                               </div>
                             </div>
@@ -626,25 +637,25 @@ export default async function ClientDetailPage({
           ),
           master_data: (
             <div key="master_data" className="card p-6">
-              <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-4">Stammdaten</h2>
+              <h2 className="text-sm font-medium text-muted uppercase tracking-wide mb-4">Stammdaten</h2>
               <dl className="space-y-3 text-sm">
                 <div className="flex justify-between">
-                  <dt className="text-gray-500">Typ</dt>
-                  <dd className="text-gray-900 font-medium">{kindLabels[client.kind]}</dd>
+                  <dt className="text-muted">Typ</dt>
+                  <dd className="text-primary font-medium">{kindLabels[client.kind]}</dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-gray-500">DATEV-Nr.</dt>
-                  <dd className="text-gray-900 font-medium">{client.datevNo ?? '—'}</dd>
+                  <dt className="text-muted">DATEV-Nr.</dt>
+                  <dd className="text-primary font-medium">{client.datevNo ?? '—'}</dd>
                 </div>
                 {client.addisonNo && (
                   <div className="flex justify-between">
-                    <dt className="text-gray-500">Addison-Nr.</dt>
-                    <dd className="text-gray-900 font-medium">{client.addisonNo}</dd>
+                    <dt className="text-muted">Addison-Nr.</dt>
+                    <dd className="text-primary font-medium">{client.addisonNo}</dd>
                   </div>
                 )}
                 <div className="flex justify-between">
-                  <dt className="text-gray-500">Angelegt</dt>
-                  <dd className="text-gray-900 font-medium">
+                  <dt className="text-muted">Angelegt</dt>
+                  <dd className="text-primary font-medium">
                     {new Intl.DateTimeFormat('de-DE').format(client.createdAt)}
                   </dd>
                 </div>
@@ -653,14 +664,14 @@ export default async function ClientDetailPage({
           ),
           custom_fields: customDefsForKind.length === 0 ? null : (
             <div key="custom_fields" className="card p-6">
-              <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-4">
+              <h2 className="text-sm font-medium text-muted uppercase tracking-wide mb-4">
                 Custom-Felder
               </h2>
               <dl className="space-y-3 text-sm">
                 {customDefsForKind.map((d) => (
                   <div key={d.id} className="flex justify-between gap-3">
-                    <dt className="text-gray-500">{d.label}</dt>
-                    <dd className="text-gray-900 font-medium text-right break-words">
+                    <dt className="text-muted">{d.label}</dt>
+                    <dd className="text-primary font-medium text-right break-words">
                       {formatCustomValue(d.type, customValuesById.get(d.id))}
                     </dd>
                   </div>
@@ -671,7 +682,7 @@ export default async function ClientDetailPage({
           gwg_status: (
             <div key="gwg_status" className="card p-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wide">GwG-Status</h2>
+                <h2 className="text-sm font-medium text-muted uppercase tracking-wide">GwG-Status</h2>
                 <Link href={`/staff/clients/${client.id}/gwg`} className="text-xs text-brand-700 hover:underline">
                   Prüfung öffnen →
                 </Link>
@@ -680,7 +691,7 @@ export default async function ClientDetailPage({
                 const latest = client.gwgChecks[0];
                 if (!latest) {
                   return (
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-secondary">
                       Noch keine Prüfung. Erst nach Verifikation kann der Mandant aktiv werden.
                     </p>
                   );
@@ -699,7 +710,7 @@ export default async function ClientDetailPage({
                       {latest.riskLevel === 'LOW' && <span className="badge-green">Risiko: LOW</span>}
                     </div>
                     {latest.validUntil && (
-                      <p className={isExpiring ? 'text-xs text-yellow-700' : 'text-xs text-gray-500'}>
+                      <p className={isExpiring ? 'text-xs text-yellow-700' : 'text-xs text-muted'}>
                         Gültig bis {new Intl.DateTimeFormat('de-DE').format(latest.validUntil)}
                         {isExpiring && ' · läuft bald aus'}
                       </p>
@@ -711,8 +722,8 @@ export default async function ClientDetailPage({
           ),
           requests: (
             <div key="requests" className="card overflow-hidden">
-              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-                <h2 className="text-sm font-medium text-gray-900">Anforderungen</h2>
+              <div className="flex items-center justify-between px-6 py-4 border-b border-default">
+                <h2 className="text-sm font-medium text-primary">Anforderungen</h2>
                 {client.allowActive && (
                   <Link href={`/staff/clients/${client.id}/requests/new`} className="btn-primary text-xs py-1.5">
                     <Plus className="h-3.5 w-3.5" />
@@ -722,26 +733,26 @@ export default async function ClientDetailPage({
               </div>
               {client.requests.length === 0 ? (
                 <div className="px-6 py-10 text-center">
-                  <Inbox className="h-10 w-10 text-gray-200 mx-auto mb-3" />
-                  <p className="text-sm text-gray-400">Noch keine Anforderungen.</p>
+                  <Inbox className="h-10 w-10 text-disabled mx-auto mb-3" />
+                  <p className="text-sm text-disabled">Noch keine Anforderungen.</p>
                 </div>
               ) : (
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Titel</th>
-                      <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
-                      <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Priorität</th>
-                      <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Fällig</th>
-                      <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Letzte Antwort</th>
+                    <tr className="bg-gray-50 border-b border-default">
+                      <th className="th">Titel</th>
+                      <th className="th">Status</th>
+                      <th className="th">Priorität</th>
+                      <th className="th">Fällig</th>
+                      <th className="th">Letzte Antwort</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-border-subtle">
                     {client.requests.map((req) => {
                       const last = req.responses[0];
                       return (
                         <tr key={req.id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 font-medium text-gray-900">
+                          <td className="px-6 py-4 font-medium text-primary">
                             <Link href={`/staff/requests/${req.id}`} className="hover:underline">
                               {req.title}
                             </Link>
@@ -753,16 +764,16 @@ export default async function ClientDetailPage({
                             {req.status === 'CLOSED' && <span className="badge-gray">{statusLabels[req.status]}</span>}
                             {req.status === 'CANCELLED' && <span className="badge-gray">{statusLabels[req.status]}</span>}
                           </td>
-                          <td className="px-6 py-4 text-gray-600">
+                          <td className="px-6 py-4 text-secondary">
                             {req.priority === 'URGENT' && <span className="badge-red">{priorityLabels[req.priority]}</span>}
                             {req.priority === 'HIGH' && <span className="badge-yellow">{priorityLabels[req.priority]}</span>}
                             {req.priority === 'NORMAL' && priorityLabels[req.priority]}
-                            {req.priority === 'LOW' && <span className="text-gray-400">{priorityLabels[req.priority]}</span>}
+                            {req.priority === 'LOW' && <span className="text-disabled">{priorityLabels[req.priority]}</span>}
                           </td>
-                          <td className="px-6 py-4 text-gray-600">
+                          <td className="px-6 py-4 text-secondary">
                             {req.dueAt ? new Intl.DateTimeFormat('de-DE').format(req.dueAt) : '—'}
                           </td>
-                          <td className="px-6 py-4 text-gray-600">
+                          <td className="px-6 py-4 text-secondary">
                             {last ? new Intl.DateTimeFormat('de-DE').format(last.createdAt) : '—'}
                           </td>
                         </tr>
@@ -776,10 +787,8 @@ export default async function ClientDetailPage({
           documents: (
             <div key="documents">
               <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-medium text-gray-900">Dokumente</h2>
-                {client.documents.some((d) =>
-                  ['GOBD_INVOICE', 'GOBD_CONTRACT', 'GOBD_TAX'].includes(d.classification),
-                ) && (
+                <h2 className="text-sm font-medium text-primary">Dokumente</h2>
+                {hasDatevDocs && (
                   <a
                     href={`/api/staff/clients/${client.id}/datev-belege-export`}
                     className="btn-secondary text-xs"

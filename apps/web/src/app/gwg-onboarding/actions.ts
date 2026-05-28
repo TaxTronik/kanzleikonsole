@@ -5,6 +5,7 @@ import { headers } from 'next/headers';
 import { commitDocumentFromBytes, MAX_UPLOAD_BYTES } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
 import { withSystemContext } from '@taxtronik/db';
+import { prismaBytes } from '@/server/db/prisma-bytes';
 import {
   hashInviteToken,
   prismaOwner,
@@ -151,7 +152,7 @@ export async function uploadIdImageAction(input: {
           versionNo: 1,
           storageBucket: stored.targetBucket,
           storageKey: stored.targetKey,
-          sha256: stored.sha256,
+          sha256: prismaBytes(stored.sha256),
           sizeBytes: stored.sizeBytes,
           immutable: stored.immutable,
           scanStatus: 'CLEAN',

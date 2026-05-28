@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useActionState, useRef, useEffect } from 'react';
 import { createUserAction, type ActionResult } from './actions';
@@ -29,7 +29,7 @@ export function CreateUserForm() {
       <div>
         <label className="label" htmlFor="user-password">Initial-Passwort</label>
         <input id="user-password" name="password" type="text" className="input font-mono" required minLength={12} maxLength={200} />
-        <p className="text-xs text-gray-500 mt-1">
+        <p className="text-xs text-muted mt-1">
           Mindestens 12 Zeichen. Mitarbeiter wird beim ersten Login zur TOTP-Einrichtung
           aufgefordert. Übermitteln Sie das Passwort über einen sicheren Kanal.
         </p>
@@ -43,16 +43,16 @@ export function CreateUserForm() {
           <input type="checkbox" name="role.ADMIN" />
           <span>Rolle: Admin</span>
         </label>
-        <span className="text-xs text-gray-500">
+        <span className="text-xs text-muted">
           (EMPLOYEE wird automatisch vergeben.)
         </span>
       </div>
 
       {state?.error && (
-        <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{state.error}</div>
+        <div className="alert-error-sm">{state.error}</div>
       )}
       {state?.ok && (
-        <div className="rounded-md bg-green-50 p-3 text-sm text-green-700">Benutzer angelegt.</div>
+        <div className="alert-success-sm">Benutzer angelegt.</div>
       )}
 
       <button type="submit" className="btn-primary" disabled={isPending}>

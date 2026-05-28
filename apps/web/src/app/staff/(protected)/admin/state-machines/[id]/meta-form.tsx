@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import { Trash2 } from 'lucide-react';
@@ -54,7 +54,7 @@ export function MachineMetaForm({
 
   return (
     <div className="card p-6 mb-6 space-y-3">
-      <h2 className="text-sm font-medium text-gray-900">Stammdaten</h2>
+      <h2 className="text-sm font-medium text-primary">Stammdaten</h2>
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="label">Name</label>
@@ -92,11 +92,11 @@ export function MachineMetaForm({
           type="checkbox"
           checked={active}
           onChange={(e) => setActive(e.target.checked)}
-          className="rounded border-gray-300 text-brand-600"
+          className="rounded border-strong text-brand-600"
         />
         <span>Aktiv</span>
       </label>
-      {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {error && <div className="alert-error-sm">{error}</div>}
       <div className="flex items-center gap-2">
         <button type="button" onClick={save} disabled={isPending} className="btn-primary">
           {isPending ? 'Speichert…' : 'Stammdaten speichern'}
@@ -105,7 +105,7 @@ export function MachineMetaForm({
           type="button"
           onClick={remove}
           disabled={isPending}
-          className="text-gray-400 hover:text-red-700 p-2 ml-auto"
+          className="text-disabled hover:text-red-700 p-2 ml-auto"
           title="Status-Maschine löschen"
         >
           <Trash2 className="h-4 w-4" />

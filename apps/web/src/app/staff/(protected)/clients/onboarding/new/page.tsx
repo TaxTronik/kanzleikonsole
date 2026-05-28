@@ -1,4 +1,4 @@
-// =============================================================================
+﻿// =============================================================================
 // /staff/clients/onboarding/new — Schritt 1: Stammdaten
 // =============================================================================
 
@@ -23,17 +23,17 @@ export default async function OnboardingStartPage() {
     <div className="p-8 max-w-3xl">
       <Link
         href="/staff/clients"
-        className="text-sm text-gray-500 hover:text-gray-900 inline-flex items-center gap-1 mb-4"
+        className="back-link"
       >
         <ArrowLeft className="h-4 w-4" /> Zurück zur Mandantenliste
       </Link>
 
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1 flex items-center gap-2">
+        <h1 className="page-title">
           <Wand2 className="h-6 w-6 text-brand-600" />
           Neuer Mandant — Onboarding
         </h1>
-        <p className="text-gray-500 dark:text-gray-400 text-sm">
+        <p className="text-muted text-sm">
           Geführter Erstkontakt vom Stammdaten-Eintrag bis zum Portal-Zugang.
         </p>
       </div>
@@ -41,7 +41,7 @@ export default async function OnboardingStartPage() {
       <Stepper steps={steps} currentKey="master_data" doneKeys={new Set()} />
 
       <div className="card p-6">
-        <h2 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-4">Stammdaten</h2>
+        <h2 className="text-sm font-medium text-primary mb-4">Stammdaten</h2>
         <form action={createOnboardingClientAction} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
@@ -90,7 +90,7 @@ export default async function OnboardingStartPage() {
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 pt-3 border-t border-gray-100 dark:border-gray-800">
+          <div className="flex justify-end gap-2 pt-3 border-t border-subtle">
             <Link href="/staff/clients" className="btn-secondary text-sm">
               Abbrechen
             </Link>
@@ -101,7 +101,7 @@ export default async function OnboardingStartPage() {
         </form>
       </div>
 
-      <p className="text-xs text-gray-500 mt-4">
+      <p className="text-xs text-muted mt-4">
         Pflichtfelder: Name + Typ. Alle anderen Felder können später ergänzt werden.
       </p>
     </div>

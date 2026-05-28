@@ -10,16 +10,7 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
-import type { TaxScheduleKind } from '@prisma/client';
-import { SCHEDULE_LABELS } from '@taxtronik/tax';
-import { saveScheduleConfigAction } from './actions';
-
-const ALL_KINDS: TaxScheduleKind[] = [
-  'USTA_MONATLICH', 'USTA_QUARTAL', 'USTA_JAEHRLICH',
-  'LSTA_MONATLICH', 'LSTA_QUARTAL', 'LSTA_JAEHRLICH',
-  'EST_VZ', 'KST_VZ', 'GEWST_VZ',
-  'EST_ERKLAERUNG', 'KST_ERKLAERUNG', 'GEWST_ERKLAERUNG',
-];
+import { TaxScheduleForm, type ScheduleConfigDto } from './tax-schedule-form';
 
 export default async function ClientTaxSchedulePage({
   params,
@@ -33,31 +24,40 @@ export default async function ClientTaxSchedulePage({
 
   const data = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) =>
-      Promise.all([
-        tx.client.findUnique({ where: { id: clientId }, select: { id: true, name: true, allowActive: true } }),
-        tx.taxScheduleConfig.findMany({ where: { clientId } }),
-      ]),
+    async (tx) => {
+      const client = await tx.client.findUnique({
+        where: { id: clientId },
+        select: { id: true, name: true, allowActive: true },
+      });
+      const configs = await tx.taxScheduleConfig.findMany({ where: { clientId } });
+      return { client, configs };
+    },
   );
 
-  const [client, configs] = data;
-  if (!client) notFound();
-
-  const byKind = new Map(configs.map((c) => [c.kind, c]));
+  if (!data.client) notFound();
+  const { client, configs } = data;
+  const configDtos: ScheduleConfigDto[] = configs.map((c) => ({
+    kind: c.kind,
+    active: c.active,
+    hasDauerfrist: c.hasDauerfrist,
+    reminderDaysBefore: c.reminderDaysBefore,
+  }));
 
   return (
     <div className="p-8 max-w-3xl">
       <Link
         href={`/staff/clients/${clientId}`}
-        className="text-sm text-gray-500 hover:text-gray-900 inline-flex items-center gap-1 mb-4"
+        className="back-link"
       >
         <ArrowLeft className="h-4 w-4" /> Zurück
       </Link>
 
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 mb-1">Steuertermin-Konfiguration</h1>
-        <p className="text-gray-500 text-sm">{client.name}</p>
-        <p className="text-xs text-gray-500 mt-2">
+        <h1 className="text-2xl font-bold text-primary mb-1">
+          Steuertermin-Konfiguration
+        </h1>
+        <p className="text-muted text-sm">{client.name}</p>
+        <p className="text-xs text-muted mt-2">
           Beim Deaktivieren einer Termin-Art werden alle noch offenen
           Termine dieser Art aus dem Kalender entfernt. Bereits erledigte
           Termine bleiben aus Audit-Gründen erhalten.
@@ -65,72 +65,14 @@ export default async function ClientTaxSchedulePage({
       </div>
 
       {!client.allowActive && (
-        <div className="card p-4 mb-6 border-yellow-200 bg-yellow-50">
-          <p className="text-xs text-yellow-800">
+        <div className="card p-4 mb-6 border-yellow-200 bg-yellow-50 dark:border-yellow-900/60 dark:bg-yellow-950/30">
+          <p className="text-xs text-yellow-800 dark:text-yellow-200">
             Mandant ist nicht GwG-freigeschaltet — Termine werden nicht materialisiert.
           </p>
         </div>
       )}
 
-      <form action={saveScheduleConfigAction} className="space-y-3">
-        <input type="hidden" name="clientId" value={clientId} />
-        <div className="card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Aktiv</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Termin</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Dauerfrist</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Reminder (Tage)</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {ALL_KINDS.map((kind) => {
-                const cfg = byKind.get(kind);
-                const usesDauerfrist = kind.startsWith('USTA_') || kind.startsWith('LSTA_');
-                return (
-                  <tr key={kind}>
-                    <td className="px-4 py-3">
-                      <input
-                        type="checkbox"
-                        name={`active.${kind}`}
-                        defaultChecked={cfg?.active ?? false}
-                        className="rounded border-gray-300 text-brand-600"
-                      />
-                    </td>
-                    <td className="px-4 py-3 font-medium text-gray-900">{SCHEDULE_LABELS[kind]}</td>
-                    <td className="px-4 py-3">
-                      {usesDauerfrist ? (
-                        <input
-                          type="checkbox"
-                          name={`dauerfrist.${kind}`}
-                          defaultChecked={cfg?.hasDauerfrist ?? false}
-                          className="rounded border-gray-300 text-brand-600"
-                        />
-                      ) : (
-                        <span className="text-gray-300">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <input
-                        type="number"
-                        name={`reminder.${kind}`}
-                        defaultValue={cfg?.reminderDaysBefore ?? 10}
-                        min={0}
-                        max={90}
-                        className="input w-20 text-center"
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        <div className="flex justify-end">
-          <button type="submit" className="btn-primary">Speichern</button>
-        </div>
-      </form>
+      <TaxScheduleForm clientId={clientId} configs={configDtos} />
     </div>
   );
 }

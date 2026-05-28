@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useActionState, useRef, useEffect, useState, useId } from 'react';
 import { createPhoneNoteAction, type ActionResult } from './actions';
@@ -68,7 +68,7 @@ export function NewPhoneNoteForm({ clients, staff, currentStaffId, callers }: Pr
           onChange={(e) => onCallerNameChange(e.target.value)}
         />
         {callers.length > 0 && (
-          <p className="text-xs text-gray-400 mt-1">
+          <p className="text-xs text-disabled mt-1">
             Tipp: bekannte Anrufer werden vorgeschlagen, Nummer + Mandant werden übernommen.
           </p>
         )}
@@ -143,10 +143,10 @@ export function NewPhoneNoteForm({ clients, staff, currentStaffId, callers }: Pr
       </div>
 
       {state?.error && (
-        <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{state.error}</div>
+        <div className="alert-error-sm">{state.error}</div>
       )}
       {state?.ok && (
-        <div className="rounded-md bg-green-50 p-3 text-sm text-green-700">
+        <div className="alert-success-sm">
           Notiz angelegt.
         </div>
       )}

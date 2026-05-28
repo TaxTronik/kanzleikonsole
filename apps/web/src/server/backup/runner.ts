@@ -23,6 +23,7 @@ import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import type { PrismaClient } from '@prisma/client';
 import { env } from '@taxtronik/config';
+import { prismaBytes } from '@/server/db/prisma-bytes';
 import { prismaOwner as ownerSingleton } from '@/server/db/prisma-owner';
 
 const BACKUP_BUCKET = process.env['S3_BUCKET_BACKUPS'] ?? 'backups';
@@ -208,7 +209,7 @@ export async function runBackup(): Promise<BackupResult> {
           sizeBytes: BigInt(sizeBytes),
           bucket: BACKUP_BUCKET,
           key,
-          sha256: sha,
+          sha256: prismaBytes(sha),
         },
       }),
     ),

@@ -74,7 +74,7 @@ export function NewMachineForm() {
           className="input text-sm"
         />
       </div>
-      {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {error && <div className="alert-error-sm">{error}</div>}
       <button type="button" onClick={submit} disabled={isPending} className="btn-primary">
         {isPending ? 'Legt an…' : 'Anlegen'}
       </button>

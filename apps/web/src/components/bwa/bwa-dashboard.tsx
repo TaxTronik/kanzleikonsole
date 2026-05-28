@@ -1,4 +1,4 @@
-// =============================================================================
+﻿// =============================================================================
 // BwaDashboard — Server-Component, gemeinsam genutzt von Portal- und
 // Staff-BWA-Seite. Erwartet als Eingabe bereits geladene Daten + den
 // linkPrefix für Plan-Links + einen optionalen „neuer Plan"-Pfad.
@@ -25,13 +25,12 @@ import {
 } from '@/app/portal/(protected)/bwa/plan/plan-comparison';
 import { PlanVsProjection } from '@/app/portal/(protected)/bwa/plan/plan-vs-projection';
 
-const fmtEUR = (n: number | null) =>
-  n === null ? '—' : new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n);
+import { fmtEURRound } from '@/lib/fmt';
 const fmtPct = (n: number | null) =>
   n === null ? '—' : `${n.toFixed(1)} %`;
 const fmtRange = (r: ProjectionRange | null) => {
   if (!r) return '—';
-  return `${fmtEUR(r.low)} – ${fmtEUR(r.high)}`;
+  return `${fmtEURRound(r.low)} – ${fmtEURRound(r.high)}`;
 };
 
 export interface BwaPeriodInput {
@@ -176,24 +175,24 @@ export function BwaDashboard({
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 mb-1">{title}</h1>
-        {subtitle && <p className="text-gray-500 text-sm">{subtitle}</p>}
+        <h1 className="text-2xl font-bold text-primary mb-1">{title}</h1>
+        {subtitle && <p className="text-muted text-sm">{subtitle}</p>}
       </div>
 
       {periods.length === 0 ? (
         <div className="card p-16 text-center">
-          <BarChart3 className="h-12 w-12 text-gray-200 mx-auto mb-3" />
-          <p className="text-sm text-gray-400">Noch keine Auswertungen verfügbar.</p>
+          <BarChart3 className="h-12 w-12 text-disabled mx-auto mb-3" />
+          <p className="text-sm text-disabled">Noch keine Auswertungen verfügbar.</p>
         </div>
       ) : (
         <>
           {liquidity && (
             <section>
-              <h2 className="text-lg font-semibold text-gray-900 mb-1 flex items-center gap-2">
+              <h2 className="text-lg font-semibold text-primary mb-1 flex items-center gap-2">
                 Liquiditäts-Indikatoren
-                <span className="text-xs text-gray-400 font-normal">· Basis: {latest!.periodKey}</span>
+                <span className="text-xs text-disabled font-normal">· Basis: {latest!.periodKey}</span>
               </h2>
-              <p className="text-xs text-gray-500 mb-3">
+              <p className="text-xs text-muted mb-3">
                 Aus PNL-Werten abgeleitete Indikatoren — keine Bilanz-Kennzahlen. Sie ersetzen keine fachliche Liquiditätsplanung.
               </p>
               {liquidity.warning && (
@@ -206,14 +205,14 @@ export function BwaDashboard({
               )}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <KpiBox
-                  label="Operativer Cashflow (Proxy)"
-                  value={fmtEUR(liquidity.cashflowProxy)}
+                  label="Operativer Cashflow (Näherung)"
+                  value={fmtEURRound(liquidity.cashflowProxy)}
                   hint={`Ergebnis + Abschreibungen · ${liquidity.monthsCovered}/12 Monate`}
                   accent={liquidity.cashflowProxy !== null && liquidity.cashflowProxy < 0 ? 'negative' : undefined}
                 />
                 <KpiBox
                   label="Cashflow / Monat"
-                  value={fmtEUR(liquidity.cashflowMonthly)}
+                  value={fmtEURRound(liquidity.cashflowMonthly)}
                   accent={liquidity.cashflowMonthly !== null && liquidity.cashflowMonthly < 0 ? 'negative' : undefined}
                 />
                 <KpiBox label="Marge" value={fmtPct(liquidity.marginPct)} trend={liquidity.marginTrend} />
@@ -224,10 +223,10 @@ export function BwaDashboard({
 
           {(projection.linear || projection.trend) && (
             <section>
-              <h2 className="text-lg font-semibold text-gray-900 mb-1">
+              <h2 className="text-lg font-semibold text-primary mb-1">
                 Jahres-Hochrechnung {projection.targetYear}
               </h2>
-              <p className="text-xs text-gray-500 mb-3 flex items-start gap-2">
+              <p className="text-xs text-muted mb-3 flex items-start gap-2">
                 <Info className="h-3.5 w-3.5 mt-0.5 shrink-0 text-brand-600" />
                 Zwei Modelle nebeneinander, jeweils mit Spannweite — eine BWA ist <strong>kein Abschluss</strong>.
               </p>
@@ -250,8 +249,8 @@ export function BwaDashboard({
           <section>
             <div className="flex items-center justify-between mb-3">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">Planrechnung</h2>
-                <p className="text-xs text-gray-500">
+                <h2 className="text-lg font-semibold text-primary">Planrechnung</h2>
+                <p className="text-xs text-muted">
                   Beliebig viele Versionen pro Jahr. Plan-Spalten lassen sich vergleichen und chronologisch ordnen.
                 </p>
               </div>
@@ -297,7 +296,7 @@ function KpiBox({
   trendInvert?: boolean;
 }) {
   let TrendIcon: typeof TrendingUp | null = null;
-  let trendCls = 'text-gray-400';
+  let trendCls = 'text-disabled';
   if (trend === 'up') {
     TrendIcon = TrendingUp;
     trendCls = trendInvert ? 'text-red-600' : 'text-emerald-600';
@@ -309,19 +308,19 @@ function KpiBox({
   }
   return (
     <div className="card p-4">
-      <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">{label}</p>
+      <p className="eyebrow">{label}</p>
       <div className="flex items-baseline gap-2">
         <p
           className={
             'text-xl font-bold ' +
-            (accent === 'negative' ? 'text-red-700' : accent === 'positive' ? 'text-emerald-700' : 'text-gray-900')
+            (accent === 'negative' ? 'text-red-700' : accent === 'positive' ? 'text-emerald-700' : 'text-primary')
           }
         >
           {value}
         </p>
         {TrendIcon && <TrendIcon className={`h-4 w-4 ${trendCls}`} />}
       </div>
-      {hint && <p className="text-xs text-gray-400 mt-1">{hint}</p>}
+      {hint && <p className="text-xs text-disabled mt-1">{hint}</p>}
     </div>
   );
 }
@@ -330,20 +329,20 @@ function ProjectionCard({ p, title }: { p: YearProjection | null; title: string 
   if (!p) {
     return (
       <div className="card p-4 opacity-60">
-        <h3 className="text-sm font-medium text-gray-900">{title}</h3>
-        <p className="text-xs text-gray-400 mt-2">Nicht genügend Daten für diese Hochrechnung.</p>
+        <h3 className="text-sm font-medium text-primary">{title}</h3>
+        <p className="text-xs text-disabled mt-2">Nicht genügend Daten für diese Hochrechnung.</p>
       </div>
     );
   }
   return (
     <div className="card p-4">
       <div className="flex items-start justify-between mb-3">
-        <h3 className="text-sm font-medium text-gray-900">{title}</h3>
-        <span className="text-xs text-gray-400">{p.basis}</span>
+        <h3 className="text-sm font-medium text-primary">{title}</h3>
+        <span className="text-xs text-disabled">{p.basis}</span>
       </div>
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-xs text-gray-500">
+          <tr className="text-xs text-muted">
             <th className="text-left py-1 font-normal">KPI</th>
             <th className="text-right py-1 font-normal">Erwartung</th>
             <th className="text-right py-1 font-normal">Spanne</th>
@@ -358,7 +357,7 @@ function ProjectionCard({ p, title }: { p: YearProjection | null; title: string 
           <ProjectionRow label="Ergebnis nach Steuern" v={p.resultAfterTax} accent strong />
         </tbody>
       </table>
-      <p className="text-[10px] text-gray-400 mt-2">
+      <p className="text-[10px] text-disabled mt-2">
         Steuern als Pauschale 25–35 % auf positives Ergebnis vor Steuern.
       </p>
     </div>
@@ -381,15 +380,15 @@ function ProjectionRow({
       ? 'text-red-700'
       : accent && v && v.estimate > 0
       ? 'text-emerald-700'
-      : 'text-gray-900';
+      : 'text-primary';
   const weightCls = strong ? 'font-semibold' : '';
   return (
-    <tr className={strong ? 'border-t border-gray-200' : ''}>
-      <td className={'py-1.5 text-gray-700 ' + weightCls}>{label}</td>
+    <tr className={strong ? 'border-t border-default' : ''}>
+      <td className={'py-1.5 text-secondary ' + weightCls}>{label}</td>
       <td className={'py-1.5 text-right font-mono tabular-nums ' + colorCls + ' ' + weightCls}>
-        {fmtEUR(v?.estimate ?? null)}
+        {fmtEURRound(v?.estimate ?? null)}
       </td>
-      <td className="py-1.5 text-right text-xs text-gray-500 font-mono tabular-nums">{fmtRange(v)}</td>
+      <td className="py-1.5 text-right text-xs text-muted font-mono tabular-nums">{fmtRange(v)}</td>
     </tr>
   );
 }
@@ -403,30 +402,30 @@ function HistorySection({
 }) {
   return (
     <section>
-      <h2 className="text-lg font-semibold text-gray-900 mb-3">{title}</h2>
+      <h2 className="text-lg font-semibold text-primary mb-3">{title}</h2>
       <div className="card overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-200">
-              <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Periode</th>
-              <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Erlöse</th>
-              <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Kosten</th>
-              <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Ergebnis</th>
-              <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Marge</th>
+            <tr className="bg-gray-50 border-b border-default">
+              <th className="th">Periode</th>
+              <th className="th th-right">Erlöse</th>
+              <th className="th th-right">Kosten</th>
+              <th className="th th-right">Ergebnis</th>
+              <th className="th th-right">Marge</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-border-subtle">
             {periods.slice(0, 8).map((p) => {
               const k = computeBwaKpis(p.positions);
               return (
                 <tr key={p.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-3 font-medium text-gray-900">{p.periodKey}</td>
-                  <td className="px-6 py-3 text-right font-mono tabular-nums">{fmtEUR(k.revenue)}</td>
-                  <td className="px-6 py-3 text-right font-mono tabular-nums">{fmtEUR(k.costs)}</td>
-                  <td className={`px-6 py-3 text-right font-mono tabular-nums ${k.result !== null && k.result < 0 ? 'text-red-700' : 'text-gray-900'}`}>
-                    {fmtEUR(k.result)}
+                  <td className="px-6 py-3 font-medium text-primary">{p.periodKey}</td>
+                  <td className="td-num">{fmtEURRound(k.revenue)}</td>
+                  <td className="td-num">{fmtEURRound(k.costs)}</td>
+                  <td className={`px-6 py-3 text-right font-mono tabular-nums ${k.result !== null && k.result < 0 ? 'text-red-700' : 'text-primary'}`}>
+                    {fmtEURRound(k.result)}
                   </td>
-                  <td className="px-6 py-3 text-right font-mono tabular-nums">
+                  <td className="td-num">
                     {k.resultMargin === null ? '—' : `${(k.resultMargin * 100).toFixed(1)} %`}
                   </td>
                 </tr>

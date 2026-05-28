@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useActionState, useRef, useEffect } from 'react';
 import { createServiceProviderAction, type ActionResult } from './actions';
@@ -62,7 +62,7 @@ export function NewProviderForm() {
         </div>
       </div>
 
-      <label className="flex items-center gap-2 text-sm text-gray-700">
+      <label className="flex items-center gap-2 text-sm text-secondary">
         <input type="checkbox" name="hasDataAccess" value="1" />
         Hat Zugriff auf personenbezogene Daten (DSGVO Art. 28)
       </label>
@@ -73,10 +73,10 @@ export function NewProviderForm() {
       </div>
 
       {state?.error && (
-        <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{state.error}</div>
+        <div className="alert-error-sm">{state.error}</div>
       )}
       {state?.ok && (
-        <div className="rounded-md bg-green-50 p-3 text-sm text-green-700">
+        <div className="alert-success-sm">
           Dienstleister angelegt.
         </div>
       )}

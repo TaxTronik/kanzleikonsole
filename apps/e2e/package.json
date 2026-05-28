@@ -4,16 +4,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "playwright test",
-    "test:ui": "playwright test --ui",
-    "test:headed": "playwright test --headed",
+    "test": "node -e \"console.log('E2E nicht im Standard-pnpm-test enthalten. Browser-Download (~250 MB) und laufender Stack (Postgres/Redis/SeaweedFS/ClamAV) sind Voraussetzung. Starten: pnpm e2e (vom Repo-Root) oder pnpm --filter @taxtronik/e2e e2e. Siehe apps/e2e/README.md.')\"",
+    "e2e": "playwright install chromium --with-deps && playwright test",
+    "e2e:ui": "playwright install chromium --with-deps && playwright test --ui",
+    "e2e:headed": "playwright install chromium --with-deps && playwright test --headed",
     "report": "playwright show-report",
     "install:browsers": "playwright install chromium"
   },
   "devDependencies": {
-    "@playwright/test": "^1.49.0",
-    "@types/node": "^22.10.0",
-    "otplib": "^12.0.1",
-    "typescript": "^5.7.0"
+    "@playwright/test": "^1.60.0",
+    "@types/node": "^25.9.1",
+    "otplib": "^13.4.0",
+    "typescript": "^6.0.3"
   }
 }

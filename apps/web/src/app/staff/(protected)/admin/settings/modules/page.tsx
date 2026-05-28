@@ -20,14 +20,14 @@ export default async function ModulesSettingsPage() {
     <div className="space-y-6">
       <SectionCard
         title="Module"
-        description="Welche Bereiche der App nutzt Ihre Kanzlei? Deaktivierte Module verschwinden aus der Sidebar und sind für Mitarbeiter und Mandanten unsichtbar."
+        description="Welche Bereiche der App nutzt Ihre Kanzlei? Deaktivierte Module verschwinden aus der Seitenleiste und sind für Mitarbeiter und Mandanten unsichtbar."
       >
         <ModulesForm initial={modules} />
       </SectionCard>
 
       <SectionCard
         title="Mandanten-Cockpit Layout"
-        description="In welcher Reihenfolge sollen die Karten oben im Mandanten-Cockpit angezeigt werden? Drag-and-Drop sortiert pro Tenant — alle Kanzlei-Mitarbeiter sehen dieselbe Reihenfolge."
+        description="In welcher Reihenfolge sollen die Karten oben im Mandanten-Cockpit angezeigt werden? Drag-and-Drop sortiert pro Kanzlei — alle Mitarbeiter sehen dieselbe Reihenfolge."
       >
         <ClientLayoutForm initial={layout} />
       </SectionCard>

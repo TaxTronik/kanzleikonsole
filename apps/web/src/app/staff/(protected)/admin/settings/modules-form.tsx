@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useActionState } from 'react';
 import { saveModulesAction, type ActionResult } from './actions';
@@ -46,19 +46,19 @@ export function ModulesForm({ initial }: { initial: ModuleConfig }) {
               type="checkbox"
               name={`enabled.${m.key}`}
               defaultChecked={initial[m.key] as boolean}
-              className="mt-1 rounded border-gray-300 text-brand-600"
+              className="mt-1 rounded border-strong text-brand-600"
             />
             <div>
-              <div className="text-sm font-medium text-gray-900">{m.label}</div>
-              <div className="text-xs text-gray-500">{m.description}</div>
+              <div className="text-sm font-medium text-primary">{m.label}</div>
+              <div className="text-xs text-muted">{m.description}</div>
             </div>
           </label>
         ))}
       </div>
 
-      <div className="border-t border-gray-200 pt-5">
-        <label className="block text-sm font-medium text-gray-900 mb-1">Vollmachten-Modus</label>
-        <p className="text-xs text-gray-500 mb-3">
+      <div className="border-t border-default pt-5">
+        <label className="block text-sm font-medium text-primary mb-1">Vollmachten-Modus</label>
+        <p className="text-xs text-muted mb-3">
           Welcher Workflow soll für Vollmachten verwendet werden?
         </p>
         <div className="space-y-2">
@@ -72,17 +72,17 @@ export function ModulesForm({ initial }: { initial: ModuleConfig }) {
                 className="mt-1 text-brand-600"
               />
               <div>
-                <div className="text-sm font-medium text-gray-900">{m.label}</div>
-                <div className="text-xs text-gray-500">{m.description}</div>
+                <div className="text-sm font-medium text-primary">{m.label}</div>
+                <div className="text-xs text-muted">{m.description}</div>
               </div>
             </label>
           ))}
         </div>
       </div>
 
-      <div className="border-t border-gray-200 pt-5">
-        <label className="block text-sm font-medium text-gray-900 mb-1">
-          Vollmachten-PDF-Begleittext <span className="text-xs font-normal text-gray-500">(nur bei „PDF-Template")</span>
+      <div className="border-t border-default pt-5">
+        <label className="block text-sm font-medium text-primary mb-1">
+          Vollmachten-PDF-Begleittext <span className="text-xs font-normal text-muted">(nur bei „PDF-Template")</span>
         </label>
         <input
           name="poaPdfSubject"
@@ -100,14 +100,14 @@ export function ModulesForm({ initial }: { initial: ModuleConfig }) {
           defaultValue={initial.poaPdfTemplate?.bodyMd ?? ''}
           className="input"
         />
-        <p className="text-xs text-gray-500 mt-1">
+        <p className="text-xs text-muted mt-1">
           Markdown. Platzhalter: <code>{'{name}'}</code>, <code>{'{client}'}</code>.
         </p>
       </div>
 
-      <div className="border-t border-gray-200 pt-5">
-        <label className="block text-sm font-medium text-gray-900 mb-1">Rechnungs-Modus</label>
-        <p className="text-xs text-gray-500 mb-3">
+      <div className="border-t border-default pt-5">
+        <label className="block text-sm font-medium text-primary mb-1">Rechnungs-Modus</label>
+        <p className="text-xs text-muted mb-3">
           Wie sollen Rechnungen verarbeitet werden? Bei zentraler DATEV-Abrechnung
           oder externer Fakturierung „Aus" oder „PDF-Template" wählen.
         </p>
@@ -122,8 +122,8 @@ export function ModulesForm({ initial }: { initial: ModuleConfig }) {
                 className="mt-1 text-brand-600"
               />
               <div>
-                <div className="text-sm font-medium text-gray-900">{m.label}</div>
-                <div className="text-xs text-gray-500">{m.description}</div>
+                <div className="text-sm font-medium text-primary">{m.label}</div>
+                <div className="text-xs text-muted">{m.description}</div>
               </div>
             </label>
           ))}
@@ -131,8 +131,8 @@ export function ModulesForm({ initial }: { initial: ModuleConfig }) {
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-900 mb-1">
-          Rechnungs-PDF-Begleittext <span className="text-xs font-normal text-gray-500">(nur bei „PDF-Template")</span>
+        <label className="block text-sm font-medium text-primary mb-1">
+          Rechnungs-PDF-Begleittext <span className="text-xs font-normal text-muted">(nur bei „PDF-Template")</span>
         </label>
         <input
           name="invoicePdfSubject"
@@ -150,16 +150,16 @@ export function ModulesForm({ initial }: { initial: ModuleConfig }) {
           defaultValue={initial.invoicePdfTemplate?.bodyMd ?? ''}
           className="input"
         />
-        <p className="text-xs text-gray-500 mt-1">
+        <p className="text-xs text-muted mt-1">
           Markdown. Platzhalter: <code>{'{name}'}</code>, <code>{'{client}'}</code>, <code>{'{number}'}</code>, <code>{'{amount}'}</code>.
         </p>
       </div>
 
       {state?.error && (
-        <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{state.error}</div>
+        <div className="alert-error-sm">{state.error}</div>
       )}
       {state?.ok && (
-        <div className="rounded-md bg-green-50 p-3 text-sm text-green-700">
+        <div className="alert-success-sm">
           Module-Konfiguration gespeichert. Wird beim nächsten Pageload sichtbar.
         </div>
       )}

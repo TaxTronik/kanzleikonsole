@@ -37,9 +37,16 @@ Die Workflows rufen folgende App-Endpunkte auf — siehe
 
 - `GET /api/n8n/overdue-requests` — JSON-Liste überfälliger Requests
 - `GET /api/n8n/expiring-gwg-checks?withinDays=30` — JSON-Liste bald ablaufender GwG-Checks
-- `GET /api/n8n/request-detail/<id>` — Detail eines Requests inkl. Mandant + Kontakt
+- `GET /api/n8n/request-detail/<id>?tenantId=<tenantId>` — Detail eines Requests inkl. Mandant + Kontakt
 
-Alle Endpunkte erwarten Header `x-taxtronik-signature: sha256=<hex(hmac(method+path+body, N8N_HMAC_SECRET))>`.
+App/Worker -> n8n: ausgehende Webhooks werden mit
+`x-taxtronik-signature: sha256=<hex(hmac(event + "\n" + timestamp + "\n" + nonce + "\n" + body, N8N_HMAC_SECRET))>`
+signiert. Die Header `x-taxtronik-event`, `x-taxtronik-timestamp` und
+`x-taxtronik-nonce` sind Teil der Signatur.
+
+n8n -> App: API-Aufrufe an `/api/n8n/*` erwarten
+`x-taxtronik-signature: sha256=<hex(hmac(method + " " + pathAndSearch + "\n" + timestamp + "\n" + body, N8N_HMAC_SECRET))>`
+plus `x-taxtronik-timestamp`.
 
 ## Versionierung
 

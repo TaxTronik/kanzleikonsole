@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
@@ -188,7 +188,7 @@ export function TemplateEditor({
                   {/* Kind-Picker */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">Schritt-Typ</label>
+                      <label className="block text-xs text-muted mb-1">Schritt-Typ</label>
                       <select
                         value={s.kind}
                         onChange={(e) => changeKind(i, e.target.value as StepKind)}
@@ -198,10 +198,10 @@ export function TemplateEditor({
                           <option key={k} value={k}>{KIND_LABELS[k]}</option>
                         ))}
                       </select>
-                      <p className="text-xs text-gray-500 mt-1 leading-snug">{KIND_DESCRIPTIONS[s.kind]}</p>
+                      <p className="text-xs text-muted mt-1 leading-snug">{KIND_DESCRIPTIONS[s.kind]}</p>
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">Empfohlene Tätigkeit</label>
+                      <label className="block text-xs text-muted mb-1">Empfohlene Tätigkeit</label>
                       <select
                         value={s.skillId}
                         onChange={(e) => update(i, { skillId: e.target.value })}
@@ -227,7 +227,7 @@ export function TemplateEditor({
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">Fällig nach (Tage ab Start)</label>
+                      <label className="block text-xs text-muted mb-1">Fällig nach (Tage ab Start)</label>
                       <input
                         type="number"
                         min={0}
@@ -243,8 +243,8 @@ export function TemplateEditor({
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">
-                        n8n-Event <span className="text-gray-400 font-normal">(optional)</span>
+                      <label className="block text-xs text-muted mb-1">
+                        n8n-Event <span className="text-disabled font-normal">(optional)</span>
                       </label>
                       <input
                         type="text"
@@ -254,7 +254,7 @@ export function TemplateEditor({
                         maxLength={100}
                         className="input"
                       />
-                      <p className="text-[10px] text-gray-400 mt-1">
+                      <p className="text-[10px] text-disabled mt-1">
                         Wird beim Ausführen als <code>workflow.step.&lt;event&gt;</code> an n8n geschickt.
                       </p>
                     </div>
@@ -263,7 +263,7 @@ export function TemplateEditor({
                 <button
                   type="button"
                   onClick={() => remove(i)}
-                  className="text-gray-400 hover:text-red-700 p-1"
+                  className="text-disabled hover:text-red-700 p-1"
                   title="Schritt entfernen"
                 >
                   <Trash2 className="h-4 w-4" />
@@ -288,7 +288,7 @@ export function TemplateEditor({
           </span>
         )}
       </div>
-      {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {error && <div className="alert-error-sm">{error}</div>}
     </div>
   );
 }
@@ -320,7 +320,7 @@ function KindConfigFields({
     case 'DOCUMENT_UPLOAD':
       return (
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Erwartete Dokumenten-Klasse</label>
+          <label className="block text-xs text-muted mb-1">Erwartete Dokumenten-Klasse</label>
           <select
             value={String(cfg['expectedClassification'] ?? 'GENERAL')}
             onChange={(e) => setConfig(index, 'expectedClassification', e.target.value)}
@@ -330,7 +330,7 @@ function KindConfigFields({
               <option key={c} value={c}>{c}</option>
             ))}
           </select>
-          <p className="text-[10px] text-gray-400 mt-1">
+          <p className="text-[10px] text-disabled mt-1">
             GOBD_*-Klassen landen im Object-Lock-Bucket mit 10-Jahres-Aufbewahrung.
           </p>
         </div>
@@ -342,8 +342,8 @@ function KindConfigFields({
       return (
         <div className="space-y-2 rounded-md border border-amber-200 dark:border-amber-900/40 bg-amber-50/30 dark:bg-amber-900/10 p-3">
           <div>
-            <label className="block text-xs text-gray-500 mb-1">
-              Anforderungs-Vorlage <span className="text-gray-400">(optional)</span>
+            <label className="block text-xs text-muted mb-1">
+              Anforderungs-Vorlage <span className="text-disabled">(optional)</span>
             </label>
             <select
               value={requestTemplateId}
@@ -357,7 +357,7 @@ function KindConfigFields({
                 </option>
               ))}
             </select>
-            <p className="text-[10px] text-gray-400 mt-1">
+            <p className="text-[10px] text-disabled mt-1">
               Wenn eine Vorlage gewählt ist, werden Titel/Beschreibung/Priorität zur
               Laufzeit aus der Vorlage gelesen — die Felder unten dienen nur als Fallback.
             </p>
@@ -442,8 +442,8 @@ function KindConfigFields({
       return (
         <div className="space-y-2 rounded-md border border-blue-200 dark:border-blue-900/40 bg-blue-50/30 dark:bg-blue-900/10 p-3">
           <div>
-            <label className="block text-xs text-gray-500 mb-1">
-              E-Mail-Vorlage <span className="text-gray-400">(optional)</span>
+            <label className="block text-xs text-muted mb-1">
+              E-Mail-Vorlage <span className="text-disabled">(optional)</span>
             </label>
             <select
               value={emailTemplateId}
@@ -457,7 +457,7 @@ function KindConfigFields({
                 </option>
               ))}
             </select>
-            <p className="text-[10px] text-gray-400 mt-1">
+            <p className="text-[10px] text-disabled mt-1">
               Vorlagen werden zur Laufzeit gelesen — Änderungen in der Vorlage gelten sofort
               für alle Workflows. Verwalten unter <em>Admin → E-Mail-Vorlagen</em>.
             </p>

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition, useEffect } from 'react';
 import { createPortal } from 'react-dom';
@@ -41,7 +41,7 @@ export function DeleteWorkflowButton({ instanceId, instanceName }: Props) {
 
   const modal = open ? (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"
+      className="modal-overlay"
       onClick={() => setOpen(false)}
     >
       <div
@@ -53,15 +53,15 @@ export function DeleteWorkflowButton({ instanceId, instanceName }: Props) {
             <AlertTriangle className="h-4 w-4" />
             Endgültig löschen
           </h2>
-          <button type="button" onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-700">
+          <button type="button" onClick={() => setOpen(false)} className="text-disabled hover:text-secondary">
             <X className="h-4 w-4" />
           </button>
         </div>
-        <p className="text-xs text-gray-700 dark:text-gray-300">
+        <p className="text-xs text-secondary">
           Diese Aktion entfernt <strong>{instanceName}</strong> samt allen Schritten und Notizen
           unwiderruflich. Der Audit-Trail bleibt erhalten, aber die Items selbst sind weg.
         </p>
-        <p className="text-xs text-gray-500 dark:text-gray-400">
+        <p className="text-xs text-muted">
           Geben Sie zur Bestätigung den Workflow-Namen exakt ein:
         </p>
         <input
@@ -73,11 +73,11 @@ export function DeleteWorkflowButton({ instanceId, instanceName }: Props) {
           autoFocus
         />
         {error && (
-          <div className="rounded-md bg-red-50 dark:bg-red-900/20 text-xs text-red-700 dark:text-red-300 p-2">
+          <div className="alert-error-sm text-xs p-2">
             {error}
           </div>
         )}
-        <div className="flex items-center justify-end gap-2 pt-2">
+        <div className="form-actions">
           <button type="button" onClick={() => setOpen(false)} className="btn-secondary text-sm">
             Behalten
           </button>
@@ -100,7 +100,7 @@ export function DeleteWorkflowButton({ instanceId, instanceName }: Props) {
       <button
         type="button"
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen(true); }}
-        className="text-xs text-gray-400 hover:text-red-700 dark:hover:text-red-400 inline-flex items-center gap-1"
+        className="text-xs text-disabled hover:text-red-700 dark:hover:text-red-400 inline-flex items-center gap-1"
         title="Endgültig löschen"
       >
         <Trash2 className="h-3 w-3" />

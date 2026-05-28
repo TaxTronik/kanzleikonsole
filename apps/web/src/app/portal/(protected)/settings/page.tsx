@@ -1,4 +1,4 @@
-// =============================================================================
+﻿// =============================================================================
 // /portal/settings — Portal-Einstellungen für Mandanten-Kontakte
 //
 // Aktuell ein Setting: E-Mail-Benachrichtigungen ein/aus. Anforderungen
@@ -29,21 +29,21 @@ export default async function PortalSettingsPage() {
 
   return (
     <div className="p-8 max-w-2xl">
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">Einstellungen</h1>
-      <p className="text-gray-500 text-sm mb-6">
+      <h1 className="text-2xl font-bold text-primary mb-1">Einstellungen</h1>
+      <p className="text-muted text-sm mb-6">
         {contact.fullName} · {contact.email}
       </p>
 
       <div className="card p-6">
-        <h2 className="text-sm font-medium text-gray-900 mb-1 flex items-center gap-2">
+        <h2 className="text-sm font-medium text-primary mb-1 flex items-center gap-2">
           {contact.notificationsEnabled ? (
             <Bell className="h-4 w-4 text-brand-600" />
           ) : (
-            <BellOff className="h-4 w-4 text-gray-400" />
+            <BellOff className="h-4 w-4 text-disabled" />
           )}
           E-Mail-Benachrichtigungen
         </h2>
-        <p className="text-xs text-gray-500 mb-4">
+        <p className="text-xs text-muted mb-4">
           Wenn ausgeschaltet, erhalten Sie keine Mails mehr für neue Anforderungen,
           Erinnerungen oder Bescheid-Eingänge. Alle Inhalte bleiben weiterhin
           im Portal sichtbar.
@@ -55,9 +55,9 @@ export default async function PortalSettingsPage() {
                 type="checkbox"
                 name="enabled"
                 defaultChecked={contact.notificationsEnabled}
-                className="rounded border-gray-300 text-brand-600"
+                className="rounded border-strong text-brand-600"
               />
-              <span className="text-gray-900">Benachrichtigungen per E-Mail erhalten</span>
+              <span className="text-primary">Benachrichtigungen per E-Mail erhalten</span>
             </label>
             <button type="submit" className="btn-primary">Speichern</button>
           </div>

@@ -1,4 +1,4 @@
-import Link from 'next/link';
+﻿import Link from 'next/link';
 import type { LegalLinks } from '@/server/settings/legal';
 
 /**
@@ -11,13 +11,13 @@ export function LegalFooter({ links }: { links: LegalLinks }) {
   const has = Boolean(links.impressumUrl || links.privacyUrl);
   if (!has) return null;
   return (
-    <footer className="mt-6 text-center text-xs text-gray-500 dark:text-gray-400 space-x-4">
+    <footer className="mt-6 text-center text-xs text-muted space-x-4">
       {links.impressumUrl && (
         <Link
           href={links.impressumUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="hover:text-gray-900 dark:hover:text-gray-100 hover:underline"
+          className="hover:text-primary hover:underline"
         >
           Impressum
         </Link>
@@ -27,7 +27,7 @@ export function LegalFooter({ links }: { links: LegalLinks }) {
           href={links.privacyUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="hover:text-gray-900 dark:hover:text-gray-100 hover:underline"
+          className="hover:text-primary hover:underline"
         >
           Datenschutz
         </Link>

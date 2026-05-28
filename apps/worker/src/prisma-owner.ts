@@ -10,7 +10,8 @@
 // =============================================================================
 
 import { PrismaClient } from '@prisma/client';
+import { createPostgresAdapter, requireDatabaseUrl } from '@taxtronik/db/prisma-adapter';
 
 export const prismaOwner = new PrismaClient({
-  datasourceUrl: process.env['DATABASE_URL'],
+  adapter: createPostgresAdapter(requireDatabaseUrl(process.env['DATABASE_URL'], 'DATABASE_URL')),
 });

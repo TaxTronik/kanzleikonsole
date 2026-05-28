@@ -10,16 +10,28 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
+import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import { withTenantContext } from '../tenant-context';
+
+const hasDatabase = Boolean(process.env['DATABASE_URL'] && process.env['DATABASE_APP_URL']);
+
+if (process.env['CI'] === 'true' && !hasDatabase) {
+  throw new Error(
+    'Cross-Tenant-RLS-Tests brauchen DATABASE_URL und DATABASE_APP_URL in CI. ' +
+      'DATABASE_APP_URL muss die App-Role verwenden, nicht den Owner.',
+  );
+}
+
+const describeWithDatabase = hasDatabase ? describe : describe.skip;
 
 // Owner-Client für Test-Setup (BYPASSRLS)
 const owner = new PrismaClient({
-  datasourceUrl: process.env['DATABASE_URL'],
+  adapter: createPostgresAdapter(optionalDatabaseUrl(process.env['DATABASE_URL'])),
 });
 
 // App-Client für RLS-Tests (taxtronik_app mit RLS)
 const appClient = new PrismaClient({
-  datasourceUrl: process.env['DATABASE_APP_URL'] ?? process.env['DATABASE_URL'],
+  adapter: createPostgresAdapter(optionalDatabaseUrl(process.env['DATABASE_APP_URL'])),
 });
 
 // Globale Test-IDs, damit afterAll aufräumen kann
@@ -167,7 +179,7 @@ afterAll(async () => {
   await appClient.$disconnect();
 });
 
-describe('Cross-Tenant RLS', () => {
+describeWithDatabase('Cross-Tenant RLS', () => {
   it('Test 1: Tenant A darf Mandant von B nicht sehen', async () => {
     const clients = await withTenantContext(
       { tenantId: tenantAId, actorId: null, actorType: 'SYSTEM' },

@@ -1,6 +1,7 @@
 'use server';
 
 import { z } from 'zod';
+import { slugify as slugifyLib } from '@/lib/slugify';
 import { revalidatePath } from 'next/cache';
 import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
@@ -10,13 +11,7 @@ import { evidenceService } from '@/server/container';
 export interface ActionResult { ok: boolean; error?: string; }
 
 function slugify(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 60);
+  return slugifyLib(s, { separator: '-', maxLength: 60 });
 }
 
 const SaveSchema = z.object({

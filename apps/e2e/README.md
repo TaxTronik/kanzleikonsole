@@ -2,6 +2,20 @@
 
 End-to-End-Tests gegen die laufende App.
 
+## Wichtig: NICHT Teil von `pnpm test`
+
+E2E ist bewusst aus dem Standard-`pnpm test` ausgeklammert:
+
+1. **Browser-Download** (~250 MB Chromium beim Erst-Lauf) ist zu schwer für jeden
+   CI-Test-Lauf.
+2. **Externe Voraussetzungen** — die Tests setzen den voll laufenden Stack
+   (App + Postgres + Redis + SeaweedFS + ClamAV) und einen geseedeten Tenant
+   voraus. Das ist kein Unit-Test-Setup.
+
+Das `test`-Skript in `apps/e2e/package.json` ist deshalb ein No-Op, der nur
+einen Hinweis druckt. Echter Lauf via `pnpm e2e` (Root) oder
+`pnpm --filter @taxtronik/e2e e2e`.
+
 ## Voraussetzungen
 
 - Dev-Stack läuft auf <http://localhost:3000> (`pnpm dev` im Repo-Root)
@@ -9,22 +23,24 @@ End-to-End-Tests gegen die laufende App.
 
 ## Setup
 
+Browser-Install passiert automatisch beim ersten `pnpm e2e`-Aufruf
+(`playwright install chromium --with-deps`). Manuell:
+
 ```bash
-pnpm install
 pnpm --filter @taxtronik/e2e install:browsers
 ```
 
 ## Tests ausführen
 
 ```bash
-# Smoke-Tests (kein Login erforderlich)
-pnpm --filter @taxtronik/e2e test
+# Vom Repo-Root:
+pnpm e2e            # Headless, alle Specs
+pnpm e2e:ui         # Interaktiv (Playwright-UI)
 
-# Mit UI (interaktiv)
-pnpm --filter @taxtronik/e2e test:ui
-
-# Headed (Browser sichtbar)
-pnpm --filter @taxtronik/e2e test:headed
+# Oder direkt im Workspace:
+pnpm --filter @taxtronik/e2e e2e
+pnpm --filter @taxtronik/e2e e2e:ui
+pnpm --filter @taxtronik/e2e e2e:headed
 ```
 
 ## Auth-Tests

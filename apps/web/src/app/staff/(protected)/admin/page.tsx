@@ -1,4 +1,4 @@
-import { redirect } from 'next/navigation';
+﻿import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import {
   ShieldCheck,
@@ -60,8 +60,8 @@ export default async function AdminPage() {
   return (
     <div className="p-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 mb-1">Administration</h1>
-        <p className="text-gray-500 text-sm">
+        <h1 className="text-2xl font-bold text-primary mb-1">Administration</h1>
+        <p className="text-muted text-sm">
           Compliance-Status, Backup, Updates, DSGVO, Lizenz.
         </p>
       </div>
@@ -73,14 +73,14 @@ export default async function AdminPage() {
       {!setup.allDone && (
         <div className="card p-5 mb-6 border-l-4 border-l-yellow-500 dark:border-l-yellow-400">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+            <h2 className="text-sm font-semibold text-primary">
               Erste Schritte zur Inbetriebnahme
             </h2>
-            <span className="text-xs text-gray-500 dark:text-gray-400">
+            <span className="text-xs text-muted">
               {setup.doneCount} / {setup.totalCount} erledigt
             </span>
           </div>
-          <div className="mb-3 h-1.5 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+          <div className="mb-3 h-1.5 rounded-full bg-gray-100 overflow-hidden">
             <div
               className="h-full bg-yellow-500 dark:bg-yellow-400 transition-all"
               style={{ width: `${(setup.doneCount / setup.totalCount) * 100}%` }}
@@ -91,28 +91,28 @@ export default async function AdminPage() {
               <li key={item.key}>
                 <Link
                   href={item.href}
-                  className="flex items-start gap-2 px-2 py-1.5 -mx-2 rounded hover:bg-gray-50 dark:hover:bg-gray-800/60 group"
+                  className="flex items-start gap-2 px-2 py-1.5 -mx-2 rounded hover:bg-gray-50 group"
                 >
                   {item.done ? (
                     <CheckCircle2 className="h-4 w-4 mt-0.5 text-emerald-600 shrink-0" />
                   ) : (
-                    <Circle className="h-4 w-4 mt-0.5 text-gray-300 dark:text-gray-600 shrink-0" />
+                    <Circle className="h-4 w-4 mt-0.5 text-disabled dark:text-secondary shrink-0" />
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span
                         className={
                           item.done
-                            ? 'text-sm text-gray-500 dark:text-gray-500 line-through'
-                            : 'text-sm font-medium text-gray-900 dark:text-gray-100'
+                            ? 'text-sm text-muted line-through'
+                            : 'text-sm font-medium text-primary'
                         }
                       >
                         {item.label}
                       </span>
-                      {!item.done && <ArrowRight className="h-3.5 w-3.5 text-gray-300 group-hover:text-gray-500" />}
+                      {!item.done && <ArrowRight className="h-3.5 w-3.5 text-disabled group-hover:text-muted" />}
                     </div>
                     {!item.done && item.hint && (
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{item.hint}</p>
+                      <p className="text-xs text-muted">{item.hint}</p>
                     )}
                   </div>
                 </Link>
@@ -128,14 +128,14 @@ export default async function AdminPage() {
           <div className="flex items-start gap-3 mb-3">
             <ShieldCheck className={chainResult?.ok ? 'h-5 w-5 text-green-600' : 'h-5 w-5 text-red-600'} />
             <div className="flex-1">
-              <h2 className="text-sm font-medium text-gray-900">Audit-Hash-Chain</h2>
+              <h2 className="text-sm font-medium text-primary">Audit-Hash-Chain</h2>
               {chainResult ? (
                 chainResult.ok ? (
                   <>
                     <p className="text-xs text-green-700 mt-1">
                       Intakt — {chainResult.checked} Einträge geprüft
                     </p>
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-muted mt-1">
                       {chainResult.sealsChecked} Tagesversiegelungen geprüft
                       {chainResult.sealBreaks.length > 0 ? `, ${chainResult.sealBreaks.length} mit TSA-Problem` : ''}
                     </p>
@@ -144,19 +144,19 @@ export default async function AdminPage() {
                   <>
                     <p className="text-xs text-red-700 mt-1">⚠ Hash-Chain gebrochen!</p>
                     {chainResult.firstBreak && (
-                      <p className="text-xs text-gray-500 mt-1">
+                      <p className="text-xs text-muted mt-1">
                         Bei Audit-ID {String(chainResult.firstBreak.auditId)}
                       </p>
                     )}
                   </>
                 )
               ) : (
-                <p className="text-xs text-gray-500 mt-1">Verifikation fehlgeschlagen.</p>
+                <p className="text-xs text-muted mt-1">Verifikation fehlgeschlagen.</p>
               )}
             </div>
           </div>
-          <p className="text-xs text-gray-400">
-            CLI: <code className="text-gray-600">pnpm verify:chain</code>
+          <p className="text-xs text-disabled">
+            CLI: <code className="text-secondary">pnpm verify:chain</code>
           </p>
         </div>
 
@@ -169,21 +169,21 @@ export default async function AdminPage() {
                   ? 'h-5 w-5 text-green-600'
                   : lastBackup?.status === 'FAILED'
                   ? 'h-5 w-5 text-red-600'
-                  : 'h-5 w-5 text-gray-400'
+                  : 'h-5 w-5 text-disabled'
               }
             />
             <div className="flex-1">
-              <h2 className="text-sm font-medium text-gray-900">Letztes Backup</h2>
+              <h2 className="text-sm font-medium text-primary">Letztes Backup</h2>
               {lastBackup ? (
                 <>
-                  <p className="text-xs text-gray-700 mt-1">
+                  <p className="text-xs text-secondary mt-1">
                     {new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' }).format(
                       lastBackup.startedAt,
                     )}{' '}
                     — {lastBackup.status}
                   </p>
                   {lastBackup.sizeBytes && (
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-muted mt-1">
                       {fmtBytes(Number(lastBackup.sizeBytes))} → {lastBackup.bucket}
                     </p>
                   )}
@@ -199,8 +199,8 @@ export default async function AdminPage() {
               )}
             </div>
           </div>
-          <p className="text-xs text-gray-400">
-            CLI: <code className="text-gray-600">pnpm --filter @taxtronik/web backup:run</code>
+          <p className="text-xs text-disabled">
+            CLI: <code className="text-secondary">pnpm --filter @taxtronik/web backup:run</code>
           </p>
         </div>
 
@@ -215,8 +215,8 @@ export default async function AdminPage() {
               }
             />
             <div className="flex-1">
-              <h2 className="text-sm font-medium text-gray-900">Versionen / Updates</h2>
-              <p className="text-xs text-gray-700 mt-1">
+              <h2 className="text-sm font-medium text-primary">Versionen / Updates</h2>
+              <p className="text-xs text-secondary mt-1">
                 Installiert: <strong>{APP_VERSION}</strong>
               </p>
               {updateCheck.ok ? (
@@ -228,7 +228,7 @@ export default async function AdminPage() {
                   <p className="text-xs text-green-700 mt-1">Aktuell auf dem neuesten Stand.</p>
                 )
               ) : (
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-muted mt-1">
                   {updateCheck.warning ?? updateCheck.error ?? 'Update-Server nicht konfiguriert.'}
                 </p>
               )}
@@ -241,8 +241,8 @@ export default async function AdminPage() {
           <div className="flex items-start gap-3 mb-3">
             <Shield className={openDsgvoCount > 0 ? 'h-5 w-5 text-yellow-600' : 'h-5 w-5 text-green-600'} />
             <div className="flex-1">
-              <h2 className="text-sm font-medium text-gray-900">Offene DSGVO-Anfragen</h2>
-              <p className="text-xs text-gray-700 mt-1">{openDsgvoCount} Anfragen in Bearbeitung</p>
+              <h2 className="text-sm font-medium text-primary">Offene DSGVO-Anfragen</h2>
+              <p className="text-xs text-secondary mt-1">{openDsgvoCount} Anfragen in Bearbeitung</p>
               <Link
                 href="/staff/admin/dsgvo"
                 className="inline-block mt-2 text-xs text-brand-700 hover:underline"
@@ -267,7 +267,7 @@ export default async function AdminPage() {
       </div>
 
       <div className="card p-6">
-        <h2 className="text-sm font-medium text-gray-900 mb-3">Quick-Links</h2>
+        <h2 className="text-sm font-medium text-primary mb-3">Quick-Links</h2>
         <ul className="space-y-2 text-sm">
           <li>
             <Link href="/staff/admin/settings" className="text-brand-700 hover:underline">
@@ -334,11 +334,11 @@ function SmallKpi({
   return (
     <div className="card p-4">
       <div className="flex items-center gap-2 mb-1">
-        <Icon className="h-4 w-4 text-gray-400" />
-        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{label}</p>
+        <Icon className="h-4 w-4 text-disabled" />
+        <p className="text-xs font-medium text-muted uppercase tracking-wide">{label}</p>
       </div>
-      <p className="text-2xl font-bold text-gray-900">{value}</p>
-      {subtitle && <p className="text-xs text-gray-500">{subtitle}</p>}
+      <p className="text-2xl font-bold text-primary">{value}</p>
+      {subtitle && <p className="text-xs text-muted">{subtitle}</p>}
     </div>
   );
 }

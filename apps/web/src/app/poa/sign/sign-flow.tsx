@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import { ShieldCheck } from 'lucide-react';
@@ -52,10 +52,10 @@ export function SignFlow({ token, signerEmail }: Props) {
     return (
       <div className="card p-8 text-center">
         <ShieldCheck className="h-12 w-12 text-green-600 mx-auto mb-3" />
-        <h2 className="text-lg font-semibold text-gray-900 mb-2">
+        <h2 className="text-lg font-semibold text-primary mb-2">
           Vollmacht unterschrieben
         </h2>
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-secondary">
           Vielen Dank. Ihre Kanzlei wurde benachrichtigt.
           Sie können dieses Fenster nun schließen.
         </p>
@@ -66,15 +66,15 @@ export function SignFlow({ token, signerEmail }: Props) {
   if (stage === 'consent') {
     return (
       <div className="card p-6">
-        <h2 className="text-sm font-medium text-gray-900 mb-3">Elektronische Unterschrift</h2>
-        <p className="text-sm text-gray-600 mb-4">
+        <h2 className="text-sm font-medium text-primary mb-3">Elektronische Unterschrift</h2>
+        <p className="text-sm text-secondary mb-4">
           Mit Klick auf „Bestätigungscode anfordern" senden wir Ihnen einen 6-stelligen
           Code an <strong>{signerEmail}</strong>. Mit Eingabe des Codes unterzeichnen Sie
           die Vollmacht elektronisch (eIDAS-konforme fortgeschrittene elektronische
           Signatur via Magic-Link + OTP).
         </p>
 
-        <label className="flex items-start gap-2 text-sm text-gray-700 mb-4">
+        <label className="flex items-start gap-2 text-sm text-secondary mb-4">
           <input
             type="checkbox"
             checked={agreed}
@@ -106,8 +106,8 @@ export function SignFlow({ token, signerEmail }: Props) {
   // stage === 'otp-sent'
   return (
     <div className="card p-6">
-      <h2 className="text-sm font-medium text-gray-900 mb-3">Bestätigungscode eingeben</h2>
-      <p className="text-sm text-gray-600 mb-4">
+      <h2 className="text-sm font-medium text-primary mb-3">Bestätigungscode eingeben</h2>
+      <p className="text-sm text-secondary mb-4">
         Wir haben einen 6-stelligen Code an <strong>{signerEmail}</strong> gesendet.
         Geben Sie den Code unten ein, um die Vollmacht zu unterzeichnen.
       </p>

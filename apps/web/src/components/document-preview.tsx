@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -9,10 +9,10 @@ type ApiPrefix = '/api/staff' | '/api/portal';
 
 /**
  * Steuerbares Vorschau-Modal. Render-Pfad je MIME:
- *  - image/*                          → <img>
- *  - application/pdf                  → <iframe>
- *  - …wordprocessingml/…spreadsheetml → Office-Inline-Viewer
- *  - sonst                            → Download-Fallback
+ *  - image/*                          â†’ <img>
+ *  - application/pdf                  â†’ <iframe>
+ *  - …wordprocessingml/…spreadsheetml â†’ Office-Inline-Viewer
+ *  - sonst                            â†’ Download-Fallback
  */
 export function DocumentPreviewModal({
   documentId,
@@ -71,17 +71,17 @@ export function DocumentPreviewModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-5xl h-[90vh] bg-white dark:bg-gray-900 rounded-lg shadow-xl flex flex-col"
+        className="w-full max-w-5xl h-[90vh] bg-surface rounded-lg shadow-xl flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 dark:border-gray-800">
-          <h2 className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate flex-1">
+        <div className="flex items-center justify-between px-6 py-3 border-b border-default">
+          <h2 className="text-sm font-medium text-primary truncate flex-1">
             {documentTitle}
           </h2>
           <div className="flex items-center gap-2">
             <a
               href={`${apiPrefix}/documents/${documentId}/download`}
-              className="text-gray-500 hover:text-gray-900 dark:hover:text-gray-100 p-2"
+              className="text-muted hover:text-primary p-2"
               title="Herunterladen"
             >
               <Download className="h-4 w-4" />
@@ -89,7 +89,7 @@ export function DocumentPreviewModal({
             <button
               type="button"
               onClick={onClose}
-              className="text-gray-500 hover:text-gray-900 dark:hover:text-gray-100 p-2"
+              className="text-muted hover:text-primary p-2"
               title="Schließen (Esc)"
             >
               <X className="h-4 w-4" />
@@ -100,7 +100,7 @@ export function DocumentPreviewModal({
         <div className="flex-1 overflow-hidden bg-gray-100 dark:bg-gray-950">
           {loading && (
             <div className="h-full flex items-center justify-center">
-              <Loader2 className="h-6 w-6 text-gray-400 animate-spin" />
+              <Loader2 className="h-6 w-6 text-disabled animate-spin" />
             </div>
           )}
           {error && (
@@ -111,14 +111,13 @@ export function DocumentPreviewModal({
           {url && !loading && !error && (
             <>
               {isImage ? (
-                // eslint-disable-next-line @next/next/no-img-element
                 <img src={url} alt={documentTitle} className="w-full h-full object-contain bg-white" />
               ) : isPdf ? (
                 <iframe src={url} className="w-full h-full border-0" title={documentTitle} />
               ) : officeKind ? (
                 <OfficeViewer url={url} kind={officeKind} />
               ) : (
-                <div className="h-full flex flex-col items-center justify-center gap-3 text-gray-500 dark:text-gray-400">
+                <div className="h-full flex flex-col items-center justify-center gap-3 text-muted">
                   <p className="text-sm">Keine Inline-Vorschau für {mimeType ?? 'diesen Dateityp'}.</p>
                   <a href={`${apiPrefix}/documents/${documentId}/download`} className="btn-primary">
                     <Download className="h-4 w-4" />
@@ -152,7 +151,7 @@ export function DocumentPreviewButton({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="text-gray-400 hover:text-brand-700 dark:hover:text-brand-300 p-1"
+        className="text-disabled hover:text-brand-700 dark:hover:text-brand-300 p-1"
         title="Vorschau"
       >
         <Eye className="h-4 w-4" />

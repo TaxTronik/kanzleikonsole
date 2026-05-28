@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 
@@ -64,7 +64,7 @@ export function ArticleEditor({ action, categories, initial }: Props) {
         </div>
         {showPreview ? (
           <div className="input min-h-[400px] bg-gray-50 whitespace-pre-wrap font-mono text-sm">
-            {body || <span className="text-gray-400">Vorschau (Roh-Markdown)…</span>}
+            {body || <span className="text-disabled">Vorschau (Roh-Markdown)…</span>}
           </div>
         ) : (
           <textarea
@@ -86,7 +86,7 @@ export function ArticleEditor({ action, categories, initial }: Props) {
         )}
       </div>
 
-      <label className="flex items-center gap-2 text-sm text-gray-700">
+      <label className="flex items-center gap-2 text-sm text-secondary">
         <input
           type="checkbox"
           name="published"

@@ -13,7 +13,6 @@ import IORedis from 'ioredis';
 import { env } from '@taxtronik/config';
 
 declare global {
-  // eslint-disable-next-line no-var
   var __taxtronik_redis: IORedis | null | undefined;
 }
 
@@ -25,16 +24,16 @@ function init(): IORedis | null {
       // ihre eigene fail-Strategie (open/closed) anwenden.
       maxRetriesPerRequest: 1,
       enableOfflineQueue: false,
-      lazyConnect: false,
+      lazyConnect: true,
+    });
+    r.on('error', () => {
+      // Caller loggen den fachlichen Fehler inklusive Fail-Open/Closed-Entscheid.
+      // Der Listener verhindert unhandled error events beim Build oder bei Redis-Downtime.
     });
     return r;
   } catch {
     return null;
   }
-}
-
-if (globalThis.__taxtronik_redis === undefined) {
-  globalThis.__taxtronik_redis = init();
 }
 
 /**
@@ -43,5 +42,8 @@ if (globalThis.__taxtronik_redis === undefined) {
  * fail-open vs fail-closed.
  */
 export function getRedis(): IORedis | null {
+  if (globalThis.__taxtronik_redis === undefined) {
+    globalThis.__taxtronik_redis = init();
+  }
   return globalThis.__taxtronik_redis ?? null;
 }

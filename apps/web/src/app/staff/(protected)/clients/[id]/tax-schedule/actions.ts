@@ -16,11 +16,22 @@ const ALL_KINDS: TaxScheduleKind[] = [
   'EST_ERKLAERUNG', 'KST_ERKLAERUNG', 'GEWST_ERKLAERUNG',
 ];
 
-export async function saveScheduleConfigAction(formData: FormData): Promise<void> {
-  const session = await staffAuth();
-  if (!session?.user) throw new Error('Nicht eingeloggt.');
+export interface ActionResult {
+  ok: boolean;
+  error?: string;
+  savedAt?: string;
+}
 
-  const clientId = z.string().uuid().parse(formData.get('clientId'));
+export async function saveScheduleConfigAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const session = await staffAuth();
+  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
+
+  const parsed = z.string().uuid().safeParse(formData.get('clientId'));
+  if (!parsed.success) return { ok: false, error: 'Ungültige Mandanten-ID.' };
+  const clientId = parsed.data;
   const { tenantId, staffId } = session.user;
 
   // Pro Kind die drei Felder einsammeln
@@ -117,6 +128,7 @@ export async function saveScheduleConfigAction(formData: FormData): Promise<void
 
   revalidatePath(`/staff/clients/${clientId}/tax-schedule`);
   revalidatePath('/staff/tax-deadlines');
+  return { ok: true, savedAt: new Date().toISOString() };
 }
 
 function clampInt(v: FormDataEntryValue | null, min: number, max: number, fallback: number): number {

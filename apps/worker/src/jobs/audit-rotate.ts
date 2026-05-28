@@ -55,6 +55,10 @@ const ARCHIVE_BUCKET = process.env['S3_BUCKET_GOBD'] ?? 'gobd';
 // § 147 AO: 10 Jahre ab Schluss des Kalenderjahres — siehe gobdRetentionUntil
 // im @taxtronik/storage-Paket. Audit-Archive ist GoBD-pflichtig.
 
+function prismaBytes(value: Buffer | Uint8Array): Uint8Array<ArrayBuffer> {
+  return new Uint8Array(value);
+}
+
 export const auditRotateWorker = new Worker<ChecksJob>(
   'audit-rotate',
   async (job) => {
@@ -194,13 +198,13 @@ export const auditRotateWorker = new Worker<ChecksJob>(
           fromOccurredAt: ser.fromOccurredAt,
           toOccurredAt: ser.toOccurredAt,
           entryCount: ser.entryCount,
-          firstPrevHash: ser.firstPrevHash,
-          lastThisHash: ser.lastThisHash,
-          fileSha256: ser.fileSha256,
+          firstPrevHash: prismaBytes(ser.firstPrevHash),
+          lastThisHash: prismaBytes(ser.lastThisHash),
+          fileSha256: prismaBytes(ser.fileSha256),
           fileSizeBytes: BigInt(ser.ndjson.length),
           storageBucket: ARCHIVE_BUCKET,
           storageKey,
-          tsaResponseBlob,
+          tsaResponseBlob: tsaResponseBlob ? prismaBytes(tsaResponseBlob) : null,
           mode: MODE,
         },
       });

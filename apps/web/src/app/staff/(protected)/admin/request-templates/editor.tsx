@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import { Plus, Trash2, Save, X, FileText, Pencil } from 'lucide-react';
@@ -71,7 +71,7 @@ export function RequestTemplateEditor({
   return (
     <div className="space-y-4">
       {initial.length === 0 ? (
-        <div className="card p-8 text-center text-sm text-gray-500">
+        <div className="card p-8 text-center text-sm text-muted">
           Noch keine Vorlagen definiert.
         </div>
       ) : (
@@ -81,11 +81,11 @@ export function RequestTemplateEditor({
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium text-gray-900">{t.name}</span>
+                    <span className="font-medium text-primary">{t.name}</span>
                     {t.category && <span className="badge-gray">{t.category}</span>}
                     <span className="badge-gray text-xs">{PRIORITY_LABELS[t.priority]}</span>
                     {t.dueAfterDays !== null && (
-                      <span className="text-xs text-gray-500">fällig +{t.dueAfterDays} Tage</span>
+                      <span className="text-xs text-muted">fällig +{t.dueAfterDays} Tage</span>
                     )}
                     {t.formTemplateName && (
                       <span className="inline-flex items-center gap-1 text-xs text-brand-700">
@@ -95,7 +95,7 @@ export function RequestTemplateEditor({
                     )}
                     {!t.active && <span className="badge-yellow">deaktiviert</span>}
                   </div>
-                  <p className="text-xs text-gray-500 mt-1 truncate">{t.title}</p>
+                  <p className="text-xs text-muted mt-1 truncate">{t.title}</p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <button
@@ -109,7 +109,7 @@ export function RequestTemplateEditor({
                   <button
                     type="button"
                     onClick={() => remove(t.id)}
-                    className="text-gray-400 hover:text-red-700 p-1"
+                    className="text-disabled hover:text-red-700 p-1"
                     title="Löschen"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -141,8 +141,8 @@ export function RequestTemplateEditor({
         />
       )}
 
-      {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
-      {isPending && <p className="text-xs text-gray-500">Verarbeite…</p>}
+      {error && <div className="alert-error-sm">{error}</div>}
+      {isPending && <p className="text-xs text-muted">Verarbeite…</p>}
     </div>
   );
 }
@@ -195,7 +195,7 @@ function Form({
 
   return (
     <div className="card p-6 space-y-4 border-brand-300">
-      <h2 className="text-sm font-medium text-gray-900">
+      <h2 className="text-sm font-medium text-primary">
         {isNew ? 'Neue Vorlage' : `Bearbeiten: ${draft.name}`}
       </h2>
 
@@ -280,7 +280,7 @@ function Form({
               type="checkbox"
               checked={t.active}
               onChange={(e) => set('active', e.target.checked)}
-              className="rounded border-gray-300 text-brand-600"
+              className="rounded border-strong text-brand-600"
             />
             <span>Aktiv</span>
           </label>
@@ -299,13 +299,13 @@ function Form({
             <option key={f.id} value={f.id}>{f.name}</option>
           ))}
         </select>
-        <p className="text-xs text-gray-500 mt-1">
+        <p className="text-xs text-muted mt-1">
           Wenn gesetzt: beim Erstellen der Anforderung wird automatisch eine
           Formular-Submission angelegt und mitgeschickt.
         </p>
       </div>
 
-      {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {error && <div className="alert-error-sm">{error}</div>}
 
       <div className="flex items-center gap-2">
         <button type="button" onClick={save} disabled={isPending} className="btn-primary">

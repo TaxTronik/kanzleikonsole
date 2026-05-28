@@ -31,10 +31,10 @@ export function VacationForm() {
         <textarea id="vac-reason" name="reason" rows={2} className="input" maxLength={1000} />
       </div>
       {state?.error && (
-        <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{state.error}</div>
+        <div className="alert-error-sm">{state.error}</div>
       )}
       {state?.ok && (
-        <div className="rounded-md bg-green-50 p-3 text-sm text-green-700">Antrag gestellt.</div>
+        <div className="alert-success-sm">Antrag gestellt.</div>
       )}
       <button type="submit" className="btn-primary w-full" disabled={isPending}>
         {isPending ? 'Sendet…' : 'Antrag stellen'}

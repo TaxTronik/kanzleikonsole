@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
@@ -69,20 +69,20 @@ export function RequestDecision({
     <li className="px-5 py-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{request.subject}</p>
-          <p className="text-xs text-gray-500">
+          <p className="text-sm font-medium text-primary">{request.subject}</p>
+          <p className="text-xs text-muted">
             {request.clientName}
             {request.contactName && ` · ${request.contactName}`}
-            <span className="ml-2 text-gray-400">{dateTimeFmt.format(new Date(request.createdAt))}</span>
+            <span className="ml-2 text-disabled">{dateTimeFmt.format(new Date(request.createdAt))}</span>
           </p>
           {request.notes && (
-            <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 whitespace-pre-wrap line-clamp-3">{request.notes}</p>
+            <p className="text-xs text-secondary dark:text-disabled mt-1 whitespace-pre-wrap line-clamp-3">{request.notes}</p>
           )}
           <ul className="mt-2 space-y-1">
             {request.slots.map((s, i) => (
               <li key={i} className="text-xs flex items-center gap-2">
-                <Calendar className="h-3 w-3 text-gray-400" />
-                <span className="text-gray-700 dark:text-gray-300">
+                <Calendar className="h-3 w-3 text-disabled" />
+                <span className="text-secondary">
                   {dateTimeFmt.format(new Date(s.startsAt))} – {dateTimeFmt.format(new Date(s.endsAt))}
                 </span>
               </li>

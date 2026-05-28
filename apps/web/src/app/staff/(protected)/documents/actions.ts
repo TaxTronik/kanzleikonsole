@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
+import { prismaBytes } from '@/server/db/prisma-bytes';
 import {
   fetchObjectBytes,
   commitBytesWithTier,
@@ -296,7 +297,7 @@ export async function retagDocumentAction(
               storageBucket: commit.targetBucket,
               storageKey: commit.targetKey,
               immutable: commit.immutable,
-              sha256: commit.sha256,
+              sha256: prismaBytes(commit.sha256),
               sizeBytes: commit.sizeBytes,
             },
           });

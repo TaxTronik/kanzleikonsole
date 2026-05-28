@@ -1,4 +1,4 @@
-// =============================================================================
+﻿// =============================================================================
 // Server Component — Cursor-basierte Pagination-Footer
 //
 // Erwartet: aktuelle Filter-QueryString + Cursor (für "ältere") + ob es eine
@@ -29,7 +29,7 @@ export function Pagination({
   if (nextCursor) nextQs.set('cursor', nextCursor);
 
   return (
-    <div className="px-6 py-3 border-t border-gray-200 flex items-center justify-between text-xs text-gray-500">
+    <div className="card-footer">
       <span>
         {totalCount.toLocaleString('de-DE')} Treffer · zeige {shownCount}
       </span>
@@ -52,7 +52,7 @@ export function Pagination({
             <ChevronRight className="h-3 w-3" />
           </Link>
         ) : (
-          <span className="text-gray-400">Ende</span>
+          <span className="text-disabled">Ende</span>
         )}
       </div>
     </div>

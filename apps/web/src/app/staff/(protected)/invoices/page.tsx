@@ -1,4 +1,4 @@
-import Link from 'next/link';
+﻿import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Receipt, Plus, FileDown } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
@@ -6,6 +6,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { Pagination } from '@/components/pagination';
 import type { Prisma, InvoiceStatus } from '@prisma/client';
 
+import { fmtEUR } from '@/lib/fmt';
 const PAGE_SIZE = 50;
 const statusLabels: Record<string, string> = {
   DRAFT: 'Entwurf',
@@ -66,8 +67,8 @@ export default async function InvoicesPage({
     <div className="p-8">
       <div className="flex items-end justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-1">Rechnungen</h1>
-          <p className="text-gray-500 text-sm">
+          <h1 className="text-2xl font-bold text-primary mb-1">Rechnungen</h1>
+          <p className="text-muted text-sm">
             B2B: Pflicht XRechnung/ZUGFeRD ab 2025.
           </p>
         </div>
@@ -86,7 +87,7 @@ export default async function InvoicesPage({
         </div>
       </div>
 
-      <div className="border-b border-gray-200 mb-4">
+      <div className="border-b border-default mb-4">
         <nav className="-mb-px flex gap-6">
           {tabs.map((t) => {
             const active = (filterStatus ?? '') === t.key;
@@ -98,7 +99,7 @@ export default async function InvoicesPage({
                 className={
                   active
                     ? 'border-b-2 border-brand-600 text-brand-700 px-1 py-2 text-sm font-medium'
-                    : 'border-b-2 border-transparent text-gray-500 hover:text-gray-700 px-1 py-2 text-sm font-medium'
+                    : 'border-b-2 border-transparent text-muted hover:text-secondary px-1 py-2 text-sm font-medium'
                 }
               >
                 {t.label}
@@ -111,38 +112,38 @@ export default async function InvoicesPage({
       <div className="card overflow-hidden">
         {visible.length === 0 ? (
           <div className="px-6 py-16 text-center">
-            <Receipt className="h-12 w-12 text-gray-200 mx-auto mb-3" />
-            <p className="text-sm text-gray-400">Keine Rechnungen gefunden.</p>
+            <Receipt className="h-12 w-12 text-disabled mx-auto mb-3" />
+            <p className="text-sm text-disabled">Keine Rechnungen gefunden.</p>
           </div>
         ) : (
           <>
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Nr.</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Mandant</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Datum</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Fällig</th>
-                <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Brutto</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
+              <tr className="bg-gray-50 border-b border-default">
+                <th className="th">Nr.</th>
+                <th className="th">Mandant</th>
+                <th className="th">Datum</th>
+                <th className="th">Fällig</th>
+                <th className="th th-right">Brutto</th>
+                <th className="th">Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-border-subtle">
               {visible.map((i) => {
                 const overdue =
                   i.status === 'SENT' && i.dueDate < new Date();
                 return (
                   <tr key={i.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 font-medium text-gray-900">
+                    <td className="px-6 py-4 font-medium text-primary">
                       <Link href={`/staff/invoices/${i.id}`} className="hover:underline">
                         {i.number}
                       </Link>
                     </td>
-                    <td className="px-6 py-4 text-gray-700">{i.client.name}</td>
-                    <td className="px-6 py-4 text-gray-600">
+                    <td className="px-6 py-4 text-secondary">{i.client.name}</td>
+                    <td className="px-6 py-4 text-secondary">
                       {new Intl.DateTimeFormat('de-DE').format(i.issueDate)}
                     </td>
-                    <td className={overdue ? 'px-6 py-4 text-red-700' : 'px-6 py-4 text-gray-600'}>
+                    <td className={overdue ? 'px-6 py-4 text-red-700' : 'px-6 py-4 text-secondary'}>
                       {new Intl.DateTimeFormat('de-DE').format(i.dueDate)}
                     </td>
                     <td className="px-6 py-4 text-right font-mono tabular-nums">
@@ -175,9 +176,3 @@ export default async function InvoicesPage({
   );
 }
 
-function fmtEUR(n: { toString(): string }): string {
-  return new Intl.NumberFormat('de-DE', {
-    style: 'currency',
-    currency: 'EUR',
-  }).format(Number(n.toString()));
-}

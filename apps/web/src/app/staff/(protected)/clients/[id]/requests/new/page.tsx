@@ -1,4 +1,4 @@
-import { redirect, notFound } from 'next/navigation';
+﻿import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
@@ -43,13 +43,13 @@ export default async function NewRequestPage({
       <div className="flex items-start gap-4 mb-8">
         <Link
           href={`/staff/clients/${client.id}`}
-          className="text-gray-400 hover:text-gray-600 mt-1"
+          className="text-disabled hover:text-secondary mt-1"
         >
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-1">Neue Anforderung</h1>
-          <p className="text-gray-500 text-sm">an {client.name}</p>
+          <h1 className="text-2xl font-bold text-primary mb-1">Neue Anforderung</h1>
+          <p className="text-muted text-sm">an {client.name}</p>
         </div>
       </div>
 

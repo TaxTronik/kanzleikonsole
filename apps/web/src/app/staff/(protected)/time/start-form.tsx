@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useActionState } from 'react';
 import { Play } from 'lucide-react';
@@ -41,13 +41,13 @@ export function StartTimerForm({ clients }: Props) {
         </select>
       </div>
 
-      <label className="flex items-center gap-2 text-sm text-gray-700">
+      <label className="flex items-center gap-2 text-sm text-secondary">
         <input type="checkbox" name="billable" value="1" defaultChecked />
         Abrechenbar
       </label>
 
       {state?.error && (
-        <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{state.error}</div>
+        <div className="alert-error-sm">{state.error}</div>
       )}
 
       <button type="submit" className="btn-primary w-full" disabled={isPending}>

@@ -17,15 +17,15 @@
 // =============================================================================
 
 import { PrismaClient } from '@prisma/client';
+import { createPostgresAdapter, requireDatabaseUrl } from './prisma-adapter';
 
 declare global {
-  // eslint-disable-next-line no-var
   var __taxtronikPrismaOwner: PrismaClient | undefined;
 }
 
 function buildOwnerClient(): PrismaClient {
   return new PrismaClient({
-    datasourceUrl: process.env['DATABASE_URL'],
+    adapter: createPostgresAdapter(requireDatabaseUrl(process.env['DATABASE_URL'], 'DATABASE_URL')),
     log:
       process.env['NODE_ENV'] === 'development'
         ? ['warn', 'error']

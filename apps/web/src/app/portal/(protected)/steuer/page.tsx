@@ -1,9 +1,10 @@
-import { redirect } from 'next/navigation';
+﻿import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { FileText, Info, CheckCircle2, AlertCircle } from 'lucide-react';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 
+import { fmtEUR } from '@/lib/fmt';
 // Statuse, ab denen wir den Bescheid dem Mandant zeigen — vorher
 // (NEU) ist er noch nicht von der Kanzlei geprüft, daher zurückhalten.
 const VISIBLE_NOTICE_STATUSES = new Set([
@@ -32,13 +33,6 @@ const KIND_LABELS: Record<string, string> = {
 };
 
 const dateFmt = new Intl.DateTimeFormat('de-DE');
-const eurFmt = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
-
-function fmtEur(v: { toString(): string } | null): string {
-  if (v === null) return '—';
-  const n = Number(v.toString());
-  return Number.isFinite(n) ? eurFmt.format(n) : '—';
-}
 
 export default async function PortalSteuerPage() {
   const session = await portalAuth();
@@ -73,8 +67,8 @@ export default async function PortalSteuerPage() {
 
   return (
     <div className="p-8 max-w-4xl">
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">Steuererklärungen</h1>
-      <p className="text-gray-500 text-sm mb-6">
+      <h1 className="text-2xl font-bold text-primary mb-1">Steuererklärungen</h1>
+      <p className="text-muted text-sm mb-6">
         Was Ihre Kanzlei für Sie übermittelt hat. Die endgültigen Bescheide
         kommen vom Finanzamt — die hier angegebenen Beträge sind die in
         DATEV/Addison vorgerechneten Werte.
@@ -82,8 +76,8 @@ export default async function PortalSteuerPage() {
 
       {filings.length === 0 ? (
         <div className="card p-10 text-center">
-          <Info className="h-10 w-10 text-gray-200 mx-auto mb-3" />
-          <p className="text-sm text-gray-400">
+          <Info className="h-10 w-10 text-disabled mx-auto mb-3" />
+          <p className="text-sm text-disabled">
             Aktuell sind keine Erklärungen freigegeben.
           </p>
         </div>
@@ -97,11 +91,11 @@ export default async function PortalSteuerPage() {
               <li key={f.id} className="card p-5">
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div>
-                    <h2 className="text-lg font-medium text-gray-900">
+                    <h2 className="text-lg font-medium text-primary">
                       {KIND_LABELS[f.kind] ?? f.kind} {f.period}
                     </h2>
                     {f.filingDate && (
-                      <p className="text-xs text-gray-500 mt-0.5">
+                      <p className="text-xs text-muted mt-0.5">
                         Eingereicht am {dateFmt.format(f.filingDate)}
                       </p>
                     )}
@@ -120,28 +114,28 @@ export default async function PortalSteuerPage() {
                 </div>
 
                 <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm mb-3">
-                  <KV label="Festgesetzte Steuer" value={fmtEur(f.expectedAssessed)} />
-                  <KV label="Bisherige Vorauszahlungen" value={fmtEur(f.expectedPrepaid)} />
+                  <KV label="Festgesetzte Steuer" value={fmtEUR(f.expectedAssessed)} />
+                  <KV label="Bisherige Vorauszahlungen" value={fmtEUR(f.expectedPrepaid)} />
                   <KV
                     label="Erwartete Erstattung"
-                    value={fmtEur(f.expectedRefund)}
+                    value={fmtEUR(f.expectedRefund)}
                     accent={f.expectedRefund ? 'positive' : undefined}
                   />
                   <KV
                     label="Erwartete Nachzahlung"
-                    value={fmtEur(f.expectedPay)}
+                    value={fmtEUR(f.expectedPay)}
                     accent={f.expectedPay ? 'negative' : undefined}
                   />
                 </dl>
 
                 {saldo !== null && (
                   <div className={'text-sm font-medium ' + (saldo >= 0 ? 'text-emerald-700' : 'text-red-700')}>
-                    Saldo: {fmtEur({ toString: () => String(saldo) })}
+                    Saldo: {fmtEUR({ toString: () => String(saldo) })}
                   </div>
                 )}
 
                 {f.clientNote && (
-                  <div className="mt-3 text-sm text-gray-700 whitespace-pre-wrap border-t border-gray-100 pt-3">
+                  <div className="mt-3 text-sm text-secondary whitespace-pre-wrap border-t border-subtle pt-3">
                     {f.clientNote}
                   </div>
                 )}
@@ -151,7 +145,7 @@ export default async function PortalSteuerPage() {
                   const expectedAssessedNum = f.expectedAssessed ? Number(f.expectedAssessed.toString()) : null;
                   if (!notice) {
                     return (
-                      <p className="mt-3 text-xs text-gray-400">
+                      <p className="mt-3 text-xs text-disabled">
                         Diese Werte basieren auf der Berechnung Ihrer Kanzlei und sind nicht
                         rechtsverbindlich. Der endgültige Bescheid des Finanzamts steht noch aus.
                       </p>
@@ -159,7 +153,7 @@ export default async function PortalSteuerPage() {
                   }
                   if (!VISIBLE_NOTICE_STATUSES.has(notice.status)) {
                     return (
-                      <div className="mt-3 text-xs text-gray-500 border-t border-gray-100 pt-3 flex items-center gap-1.5">
+                      <div className="mt-3 text-xs text-muted border-t border-subtle pt-3 flex items-center gap-1.5">
                         <Info className="h-3.5 w-3.5 text-brand-600" />
                         Bescheid liegt vor und wird von Ihrer Kanzlei geprüft.
                       </div>
@@ -197,22 +191,22 @@ export default async function PortalSteuerPage() {
                         )}
                       </div>
                       <dl className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
-                        <KV label="Festgesetzte Steuer (Ist)" value={fmtEur(notice.assessedAmount)} />
+                        <KV label="Festgesetzte Steuer (Ist)" value={fmtEUR(notice.assessedAmount)} />
                         <KV
                           label="Erstattung"
-                          value={fmtEur(notice.refundAmount)}
+                          value={fmtEUR(notice.refundAmount)}
                           accent={notice.refundAmount ? 'positive' : undefined}
                         />
                         <KV
                           label="Nachzahlung"
-                          value={fmtEur(notice.payAmount)}
+                          value={fmtEUR(notice.payAmount)}
                           accent={notice.payAmount ? 'negative' : undefined}
                         />
                       </dl>
                       {delta !== null && Math.abs(delta) >= 0.01 && (
                         <p className={'mt-2 text-xs ' + (delta > 0 ? 'text-red-700' : 'text-emerald-700')}>
                           Abweichung zur Erklärung: {delta > 0 ? '+' : ''}
-                          {fmtEur({ toString: () => String(delta) })}
+                          {fmtEUR({ toString: () => String(delta) })}
                           {delta > 0 ? ' höher als geschätzt' : ' niedriger als geschätzt'}
                         </p>
                       )}
@@ -245,11 +239,11 @@ function KV({
 }) {
   return (
     <div>
-      <dt className="text-xs text-gray-500">{label}</dt>
+      <dt className="text-xs text-muted">{label}</dt>
       <dd
         className={
           'font-medium ' +
-          (accent === 'positive' ? 'text-emerald-700' : accent === 'negative' ? 'text-red-700' : 'text-gray-900')
+          (accent === 'positive' ? 'text-emerald-700' : accent === 'negative' ? 'text-red-700' : 'text-primary')
         }
       >
         {value}

@@ -1,4 +1,4 @@
-// =============================================================================
+﻿// =============================================================================
 // /staff/workflows/[id] — Vorlagen-Editor
 //
 // Lädt die Vorlage mit Schritten und reicht sie an die Client-Component
@@ -58,13 +58,13 @@ export default async function TemplateEditorPage({
     <div className="p-8 max-w-4xl">
       <Link
         href="/staff/workflows/templates"
-        className="text-sm text-gray-500 hover:text-gray-900 inline-flex items-center gap-1 mb-4"
+        className="back-link"
       >
         <ArrowLeft className="h-4 w-4" /> Zurück zu Vorlagen
       </Link>
 
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">{template.name}</h1>
-      <p className="text-gray-500 text-sm mb-6">
+      <h1 className="text-2xl font-bold text-primary mb-1">{template.name}</h1>
+      <p className="text-muted text-sm mb-6">
         Schritte definieren und speichern. Beim Start einer Instanz pro Mandant
         werden die Schritte als ToDo-Liste erzeugt.
       </p>

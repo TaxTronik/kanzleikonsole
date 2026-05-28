@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useTransition } from 'react';
 import { X } from 'lucide-react';
@@ -18,7 +18,7 @@ export function BookmarkRemoveButton({ id }: { id: string }) {
       type="button"
       onClick={remove}
       disabled={isPending}
-      className="text-gray-400 hover:text-red-700 dark:hover:text-red-300 p-1"
+      className="text-disabled hover:text-red-700 dark:hover:text-red-300 p-1"
       title="Lesezeichen entfernen"
     >
       <X className="h-3 w-3" />

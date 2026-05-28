@@ -22,6 +22,7 @@ import bcrypt from 'bcryptjs';
 import { randomBytes } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { createPostgresAdapter, requireDatabaseUrl } from '../src/prisma-adapter';
 
 if (process.env['NODE_ENV'] === 'production') {
   console.error('[seed] FATAL: Dev-Seed darf NICHT in Produktion laufen.');
@@ -32,7 +33,7 @@ if (process.env['NODE_ENV'] === 'production') {
 }
 
 const prisma = new PrismaClient({
-  datasourceUrl: process.env['DATABASE_URL'],
+  adapter: createPostgresAdapter(requireDatabaseUrl(process.env['DATABASE_URL'], 'DATABASE_URL')),
 });
 
 function generateAdminPassword(): string {
@@ -58,6 +59,13 @@ async function main() {
     },
   });
   console.log(`[seed] Tenant: ${tenant.name} (${tenant.id})`);
+
+  // 1b. Default-Dokumenttypen (7 builtin: GoBD x3, GwG, Personal, Intern, Allgemein).
+  // Die Migration 20260706000000_iter55 seedet diese nur für Tenants, die zum
+  // Migrationszeitpunkt existieren — nachträglich angelegte Tenants (Seed,
+  // Onboarding-UI) brauchen den Sync hier. Idempotent über
+  // (tenant_id, classification_key)-Eindeutigkeit.
+  await ensureDefaultDocumentTypes(tenant.id);
 
   // 2. Admin-Mitarbeiter — Passwort entweder aus ENV oder frisch generiert.
   // Kein hartcodiertes Default mehr (U-3). Wir schreiben das frisch erzeugte
@@ -196,6 +204,49 @@ async function main() {
   console.log('  Mitarbeiter-Login: admin@taxtronik.local / dev-password-123');
   console.log('  Portal-Login (Magic-Link): mandant@taxtronik.local');
   console.log('  → Magic-Link-Mail landet in MailHog (http://localhost:8025).');
+}
+
+/**
+ * Stellt sicher, dass die 7 Default-Dokumenttypen für einen Tenant existieren.
+ * Idempotent — ergänzt nur fehlende Einträge, fasst vorhandene nicht an
+ * (auch wenn der Anwender Name/Sort manuell überschrieben hat).
+ */
+async function ensureDefaultDocumentTypes(tenantId: string): Promise<void> {
+  const defaults: Array<{
+    name: string;
+    tier: 'NONE' | 'GWG' | 'GOBD';
+    classificationKey: string;
+    sortOrder: number;
+  }> = [
+    { name: 'GoBD Rechnung', tier: 'GOBD', classificationKey: 'GOBD_INVOICE', sortOrder: 10 },
+    { name: 'GoBD Vertrag',  tier: 'GOBD', classificationKey: 'GOBD_CONTRACT', sortOrder: 20 },
+    { name: 'GoBD Steuer',   tier: 'GOBD', classificationKey: 'GOBD_TAX',      sortOrder: 30 },
+    { name: 'GwG Nachweis',  tier: 'GWG',  classificationKey: 'GWG_EVIDENCE',  sortOrder: 40 },
+    { name: 'Personal',      tier: 'NONE', classificationKey: 'PERSONNEL',     sortOrder: 50 },
+    { name: 'Intern',        tier: 'NONE', classificationKey: 'STAFF_PRIVATE', sortOrder: 60 },
+    { name: 'Allgemein',     tier: 'NONE', classificationKey: 'GENERAL',       sortOrder: 70 },
+  ];
+  const existing = await prisma.documentType.findMany({
+    where: { tenantId },
+    select: { classificationKey: true },
+  });
+  const have = new Set(existing.map((d) => d.classificationKey));
+  const missing = defaults.filter((d) => !have.has(d.classificationKey));
+  if (missing.length === 0) {
+    console.log('[seed] Dokumenttypen: bereits vorhanden.');
+    return;
+  }
+  await prisma.documentType.createMany({
+    data: missing.map((d) => ({
+      tenantId,
+      name: d.name,
+      tier: d.tier,
+      builtin: true,
+      classificationKey: d.classificationKey,
+      sortOrder: d.sortOrder,
+    })),
+  });
+  console.log(`[seed] Dokumenttypen: ${missing.length} ergänzt.`);
 }
 
 main()

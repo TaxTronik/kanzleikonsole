@@ -1,15 +1,14 @@
-/* react-grid-layout — Drag/Resize-Visualisierung (muss vor @tailwind stehen) */
+﻿/* react-grid-layout â€” Drag/Resize-Visualisierung (muss vor @tailwind stehen) */
 @import 'react-grid-layout/css/styles.css';
 @import 'react-resizable/css/styles.css';
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../../tailwind.config.ts";
 
 /*
  * Dashboard-Grid-Tuning: Resize-Handles sind per Default opacity 0 und
- * erscheinen erst beim Hover des Grid-Items — im Edit-Mode wollen wir sie
- * dauerhaft sichtbar haben und auffälliger (größer + Brand-Farbe).
+ * erscheinen erst beim Hover des Grid-Items â€” im Edit-Mode wollen wir sie
+ * dauerhaft sichtbar haben und auffÃ¤lliger (grÃ¶ÃŸer + Brand-Farbe).
  */
 .dashboard-edit .react-grid-item > .react-resizable-handle {
   opacity: 1;
@@ -37,12 +36,12 @@
 }
 
 /*
- * Im Dashboard-Grid: kein Hover-Translate auf Cards (würde durch
+ * Im Dashboard-Grid: kein Hover-Translate auf Cards (wÃ¼rde durch
  * benachbarte Items clippen). Hover-Shadow + Border-Highlight bleiben.
  *
  * `.widget-shell` ist der Wrapper-Div in dashboard-grid.tsx um jedes
- * Card. Wrapper bleibt overflow:visible damit der Card-Shadow nach außen
- * ragen kann, die Card selbst übernimmt das Content-Clipping.
+ * Card. Wrapper bleibt overflow:visible damit der Card-Shadow nach auÃŸen
+ * ragen kann, die Card selbst Ã¼bernimmt das Content-Clipping.
  */
 .widget-shell {
   overflow: visible;
@@ -55,8 +54,8 @@
 }
 
 /*
- * Schlanke, dezente Scrollbar — opt-in via .scrollbar-thin.
- * Nicht über die App global biegen, damit OS-typische Bedienelemente
+ * Schlanke, dezente Scrollbar â€” opt-in via .scrollbar-thin.
+ * Nicht Ã¼ber die App global biegen, damit OS-typische Bedienelemente
  * (z. B. Mandantenliste) ihren gewohnten Look behalten.
  */
 .scrollbar-thin {
@@ -94,11 +93,11 @@
 
 @layer base {
   /*
-   * Brand-Farb-Variablen — Default = Tailwind blue-600-Skala.
-   * Werden vom Layout pro Tenant via inline-Style überschrieben (siehe
+   * Brand-Farb-Variablen â€” Default = Tailwind blue-600-Skala.
+   * Werden vom Layout pro Tenant via inline-Style Ã¼berschrieben (siehe
    * server/settings/branding.ts und apps/web/src/lib/brand-palette.ts).
    * Format: jeweils "R G B" als Whitespace-separierte Komponenten,
-   * damit Tailwind sie in `rgb(var(...) / <alpha-value>)` einfügen kann.
+   * damit Tailwind sie in `rgb(var(...) / <alpha-value>)` einfÃ¼gen kann.
    */
   :root {
     --brand-50: 239 246 255;   /* #eff6ff */
@@ -107,6 +106,60 @@
     --brand-600: 37 99 235;    /* #2563eb */
     --brand-700: 29 78 216;    /* #1d4ed8 */
     --brand-900: 30 58 138;    /* #1e3a8a */
+
+    /*
+     * Semantic Color Tokens â€” Single Source of Truth fÃ¼r HintergrÃ¼nde,
+     * Borders, Texte. Komponenten nutzen `bg-surface`, `text-primary` etc.
+     * statt direkter gray-Stufen + dark:-Varianten. Light- und Dark-Werte
+     * sind in derselben Datei zusammengefÃ¼hrt; eine Mode-Umschaltung Ã¤ndert
+     * NUR diese Variablen, die Komponenten-Klassen sind dieselben.
+     *
+     * Helligkeits-Treppe (Light â†’ Dark):
+     *   page    â€“ unterster BG (App-Hintergrund hinter den Karten)
+     *   card    â€“ Karte / Panel â€” hebt sich klar von page ab
+     *   raised  â€“ Header-Bars in Karten, Hover, elevated rows
+     *   sunken  â€“ noch dunkler als page; selten gebraucht (z. B. Inputs im
+     *             Dark, damit sie auf Card lesbar bleiben)
+     *
+     * Format wie bei brand: "R G B" fÃ¼r rgb(var(...) / <alpha>)-Pattern.
+     */
+    --surface-page:     249 250 251;  /* gray-50  */
+    --surface-card:     255 255 255;  /* white    */
+    --surface-raised:   243 244 246;  /* gray-100 */
+    --surface-sunken:   229 231 235;  /* gray-200 */
+
+    --border-default:   229 231 235;  /* gray-200 */
+    --border-strong:    209 213 219;  /* gray-300 */
+    --border-subtle:    243 244 246;  /* gray-100 */
+
+    --text-primary:      17  24  39;  /* gray-900 */
+    --text-secondary:    75  85  99;  /* gray-600 */
+    --text-muted:       107 114 128;  /* gray-500 */
+    --text-disabled:    156 163 175;  /* gray-400 */
+    --text-on-brand:    255 255 255;  /* white    */
+  }
+
+  .dark {
+    /*
+     * Dark-Mode-Werte fÃ¼r dieselben Tokens. Beachte: Card ist HELLER als
+     * Page (umgekehrte Logik zum Light), damit Karten sich abheben. Die
+     * Stufung ist groÃŸzÃ¼gig â€” gray-950 â†’ gray-800 â†’ gray-700 â€” damit kein
+     * "verschmilzt-mit-Hintergrund"-Eindruck mehr entsteht.
+     */
+    --surface-page:      3   7  18;   /* gray-950 */
+    --surface-card:     31  41  55;   /* gray-800 */
+    --surface-raised:   55  65  81;   /* gray-700 */
+    --surface-sunken:   17  24  39;   /* gray-900 */
+
+    --border-default:   55  65  81;   /* gray-700 */
+    --border-strong:    75  85  99;   /* gray-600 */
+    --border-subtle:    55  65  81;   /* gray-700, mit Alpha im Pattern */
+
+    --text-primary:    243 244 246;   /* gray-100 */
+    --text-secondary:  209 213 219;   /* gray-300 */
+    --text-muted:      156 163 175;   /* gray-400 */
+    --text-disabled:   107 114 128;   /* gray-500 */
+    --text-on-brand:   255 255 255;   /* white    */
   }
 
   html {
@@ -115,12 +168,74 @@
   }
 
   body {
-    @apply bg-gray-50 text-gray-900;
+    background-color: rgb(var(--surface-page));
+    color: rgb(var(--text-primary));
   }
+}
 
-  /* Darkmode — wenn .dark am <html> gesetzt ist (Tailwind class-mode) */
-  .dark body {
-    @apply bg-gray-950 text-gray-100;
+/*
+ * Tailwind-Default-Gray-Skala theme-aware machen.
+ *
+ * Statt einen .dark-Override-Layer zu pflegen (1000+ Zeilen Mapping-Hack mit
+ * Magic Numbers), Ã¼bersteuern wir die Default-`--color-gray-*`-Tokens, die
+ * Tailwind v4 fÃ¼r `bg-gray-X`, `text-gray-X`, `border-gray-X`, `divide-gray-X`
+ * benutzt. Diese verweisen jetzt auf unsere semantischen CSS-Variablen, die
+ * im :root (Light) bzw. .dark (Dark) unterschiedlich gesetzt sind.
+ *
+ * Bewusst NICHT Ã¼bersteuert: `--color-white`, `--color-gray-800/900/950`.
+ *   - white: Buttons mit `text-white` sollen immer weiÃŸ bleiben.
+ *   - gray-800/900/950: das sind explizit "dunkle" Werte, die oft als
+ *     `dark:bg-gray-800` etc. verwendet werden â€” sollen unverÃ¤ndert bleiben.
+ *
+ * Card-/Panel-HintergrÃ¼nde sollen NICHT `bg-white` benutzen, sondern die
+ * `.card`-Component-Klasse (oder direkt `bg-surface` Ã¼ber den utilities-Block
+ * unten). bg-white bleibt fÃ¼r genuine white surfaces.
+ */
+@theme {
+  /* gray-50/100 â†’ surface-raised: deckt Tabellen-Header, Hover-States und
+   * Page-BGs ab. Heller als Card, im Dark gut sichtbar abgesetzt. Im Light
+   * ist der Unterschied zur Tailwind-Default (gray-50: #f9fafb â†’ gray-100:
+   * #f3f4f6) so klein, dass er nicht ins Auge fÃ¤llt. */
+  --color-gray-50:  rgb(var(--surface-raised));
+  --color-gray-100: rgb(var(--surface-raised));
+  --color-gray-200: rgb(var(--border-default));   /* Borders + light dividers */
+  --color-gray-300: rgb(var(--border-strong));    /* stÃ¤rkere Borders */
+  --color-gray-400: rgb(var(--text-disabled));
+  --color-gray-500: rgb(var(--text-muted));
+  --color-gray-600: rgb(var(--text-secondary));
+  --color-gray-700: rgb(var(--text-secondary));
+}
+
+/*
+ * Semantische Utility-Klassen â€” alternativer Direkt-Zugriff fÃ¼r
+ * Komponenten, die explizit token-aware geschrieben werden.
+ * (Wird parallel zur @theme-Mappings oben gepflegt â€” `bg-surface-raised`
+ * ist sprechender als `bg-gray-100`.)
+ */
+@layer utilities {
+  .bg-surface         { background-color: rgb(var(--surface-card)); }
+  .bg-surface-page    { background-color: rgb(var(--surface-page)); }
+  .bg-surface-raised  { background-color: rgb(var(--surface-raised)); }
+  .bg-surface-sunken  { background-color: rgb(var(--surface-sunken)); }
+
+  .border-default     { border-color: rgb(var(--border-default)); }
+  .border-strong      { border-color: rgb(var(--border-strong)); }
+  .border-subtle      { border-color: rgb(var(--border-subtle) / 0.25); }
+
+  .text-primary       { color: rgb(var(--text-primary)); }
+  .text-secondary     { color: rgb(var(--text-secondary)); }
+  .text-muted         { color: rgb(var(--text-muted)); }
+  .text-disabled      { color: rgb(var(--text-disabled)); }
+
+  /* divide-color fÃ¼r unsere custom border-tokens. Muss exakt Tailwind v4's
+   * `.divide-y > :not(:last-child)`-Selektor matchen, sonst greift border-color
+   * nicht und fÃ¤llt auf currentColor zurÃ¼ck (im Dark = text-primary, fast
+   * weiÃŸ â†’ "dicker heller Strich"-Bug). */
+  .divide-border-default > :not(:last-child) {
+    border-color: rgb(var(--border-default));
+  }
+  .divide-border-subtle > :not(:last-child) {
+    border-color: rgb(var(--border-subtle) / 0.25);
   }
 }
 
@@ -129,79 +244,272 @@
     @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:pointer-events-none disabled:opacity-50;
   }
   .btn-primary {
-    @apply btn bg-brand-600 text-white hover:bg-brand-700;
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:pointer-events-none disabled:opacity-50 bg-brand-600 text-white hover:bg-brand-700;
   }
+  /*
+   * .btn-secondary / .input / .label / .card: Token-Werte werden direkt als
+   * CSS-Properties gesetzt, nicht Ã¼ber @apply auf eigene Utility-Klassen.
+   * In Tailwind v4 erkennt @apply Custom-Klassen aus @layer utilities nicht
+   * zuverlÃ¤ssig (Cross-Layer-AuflÃ¶sung). Direktes CSS umgeht das.
+   */
   .btn-secondary {
-    @apply btn bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700 dark:hover:bg-gray-700;
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:pointer-events-none disabled:opacity-50 border;
+    background-color: rgb(var(--surface-card));
+    color: rgb(var(--text-secondary));
+    border-color: rgb(var(--border-strong));
+  }
+  .btn-secondary:hover {
+    background-color: rgb(var(--surface-raised));
   }
   .input {
-    @apply w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100 dark:placeholder:text-gray-500;
+    @apply w-full rounded-md border px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500;
+    background-color: rgb(var(--surface-card));
+    border-color: rgb(var(--border-strong));
+    color: rgb(var(--text-primary));
+  }
+  .input::placeholder {
+    color: rgb(var(--text-muted));
   }
   .label {
-    @apply block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1;
+    @apply block text-sm font-medium mb-1;
+    color: rgb(var(--text-secondary));
   }
   .card {
-    @apply rounded-lg border border-gray-200 bg-white shadow-sm dark:bg-gray-900 dark:border-gray-800;
+    @apply rounded-lg border shadow-sm dark:shadow-none;
+    background-color: rgb(var(--surface-card));
+    border-color: rgb(var(--border-default));
   }
   .badge {
     @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
   }
   .badge-green {
-    @apply badge bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300;
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300;
   }
   .badge-yellow {
-    @apply badge bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300;
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300;
   }
   .badge-red {
-    @apply badge bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300;
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300;
   }
+  .badge-brand {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-brand-100 text-brand-900 dark:bg-brand-700 dark:text-brand-50;
+  }
+  .badge-purple {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-purple-100 text-purple-900 dark:bg-purple-700 dark:text-purple-50;
+  }
+
+  /*
+   * .badge-gray bewusst MIT festen Farben (statt @apply dark:*). Grund:
+   * `@apply` und nachstehende `color:`-Property in derselben Regel überschreiben
+   * sich gegenseitig je nach Layer-Order — das hatte die Pille im Dark grau-auf-
+   * grau gerendert. Explizite `.dark .badge-gray`-Regel hat klare Cascade.
+   *
+   * Dark-BG = gray-600 (heller als Card gray-800) → Pille pop't, Text gray-100
+   * fast weiß → maximaler Kontrast.
+   */
   .badge-gray {
-    @apply badge bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300;
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+    background-color: rgb(243 244 246);  /* gray-100 */
+    color: rgb(55 65 81);                /* gray-700 */
+  }
+
+  /*
+   * Tabellen-Header-Zelle — wiederkehrendes Pattern in ~140 Tabellen quer
+   * durch die App. `.th` ist der Default; `.th-right` flippt die Ausrichtung
+   * (override). Padding-Override per utility-class möglich (`.th px-4 py-2`).
+   */
+  .th {
+    @apply text-left px-6 py-3 text-xs font-medium uppercase tracking-wide;
+    color: rgb(var(--text-muted));
+  }
+  .th-right { @apply text-right; }
+
+  /*
+   * Page-Titel und Back-Link — Standard-Header oben auf jeder Detail-Seite.
+   */
+  .page-title {
+    @apply text-2xl font-bold mb-1 flex items-center gap-2;
+    color: rgb(var(--text-primary));
+  }
+  .back-link {
+    @apply text-sm inline-flex items-center gap-1 mb-4 transition-colors;
+    color: rgb(var(--text-muted));
+  }
+  .back-link:hover { color: rgb(var(--text-primary)); }
+
+  /*
+   * Modal-Overlay — z-[100], voll abdeckend, klick-außen-schließt.
+   */
+  .modal-overlay {
+    @apply fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4;
+  }
+
+  /*
+   * Card-Sub-Header / -Footer — Inhalts-Header/-Footer innerhalb einer Card.
+   * Höhe und Padding ggf. mit utility-override anpassen.
+   */
+  .card-header {
+    @apply px-6 py-3 flex items-center justify-between border-b;
+    border-color: rgb(var(--border-default));
+  }
+  .card-footer {
+    @apply px-6 py-3 flex items-center justify-between text-xs border-t;
+    color: rgb(var(--text-muted));
+    border-color: rgb(var(--border-default));
+  }
+
+  /*
+   * Alert-Boxen — semantische Status-Hinweise. Border + bg sind so abgestimmt,
+   * dass sie in beiden Modi gleich gut lesbar sind.
+   */
+  .alert-info {
+    @apply rounded-md border border-blue-200 dark:border-blue-900/60 bg-blue-50 dark:bg-blue-900/20 px-4 py-3 text-sm text-blue-900 dark:text-blue-200;
+  }
+  .alert-error {
+    @apply rounded-md bg-red-50 dark:bg-red-900/20 text-sm text-red-700 dark:text-red-300 px-4 py-3;
+  }
+  .alert-warning {
+    @apply rounded-md bg-yellow-50 dark:bg-yellow-900/20 text-sm text-yellow-800 dark:text-yellow-200 px-4 py-3;
+  }
+  .alert-success {
+    @apply rounded-md bg-emerald-50 dark:bg-emerald-900/20 text-sm text-emerald-800 dark:text-emerald-200 px-4 py-3;
+  }
+
+  /*
+   * Trend-Indikator (z. B. Up/Down im KPI-Dashboard).
+   */
+  .trend-up {
+    @apply inline-flex items-center gap-1 text-sm text-emerald-700 dark:text-emerald-400;
+  }
+  .trend-down {
+    @apply inline-flex items-center gap-1 text-sm text-red-700 dark:text-red-400;
+  }
+
+  /*
+   * Toggle-Group (Segmented Control) — 2–3 Buttons in einer rounded-Box,
+   * z. B. Monat/Liste-Switcher oder Scope-Filter.
+   */
+  .toggle-group {
+    @apply inline-flex rounded-md border overflow-hidden text-xs;
+    border-color: rgb(var(--border-default));
+  }
+
+  /*
+   * Kompakte Alert-Boxen für Inline-Form-Feedback (Server-Action-Result).
+   * Andere Padding-Logik als .alert-*: hier `p-3` statt `px-4 py-3`.
+   */
+  .alert-error-sm {
+    @apply rounded-md bg-red-50 dark:bg-red-900/20 p-3 text-sm text-red-700 dark:text-red-300;
+  }
+  .alert-success-sm {
+    @apply rounded-md bg-green-50 dark:bg-green-900/20 p-3 text-sm text-green-700 dark:text-green-300;
+  }
+  .alert-info-sm {
+    @apply rounded-md bg-blue-50 dark:bg-blue-900/20 p-3 text-sm text-blue-700 dark:text-blue-300;
+  }
+
+  /*
+   * Eyebrow — kleines Section-Label oben über einem Inhalt (uppercase,
+   * tracking-wide, muted).
+   */
+  .eyebrow {
+    @apply text-xs uppercase tracking-wide mb-1;
+    color: rgb(var(--text-muted));
+  }
+
+  /*
+   * Item-Title — typische Listen-Zeile-Überschrift (z. B. Activity-Stream,
+   * Dashboard-Widgets).
+   */
+  .item-title {
+    @apply text-sm font-medium truncate;
+    color: rgb(var(--text-primary));
+  }
+
+  /*
+   * Tabellenzelle für Geldbeträge / Zahlen — rechtsbündig, monospace,
+   * tabular-nums (Spaltenausrichtung über Reihen).
+   */
+  .td-num {
+    @apply px-6 py-3 text-right font-mono tabular-nums;
+  }
+
+  /*
+   * Kompaktes Form-Label (text-xs statt text-sm). Sinnvoll in dichten
+   * Inline-Editor-Bereichen.
+   */
+  .label-sm {
+    @apply block text-xs font-medium mb-1;
+    color: rgb(var(--text-secondary));
+  }
+
+  /*
+   * Modal-Schließen-Button (X-Icon, oben rechts).
+   */
+  .modal-close {
+    @apply absolute top-3 right-3 transition-colors;
+    color: rgb(var(--text-disabled));
+  }
+  .modal-close:hover { color: rgb(var(--text-secondary)); }
+
+  /*
+   * Icon-Action-Button — kleines Icon mit Brand-Hover-Akzent (z. B.
+   * Löschen, Bearbeiten in Listenzeilen).
+   */
+  .icon-btn {
+    @apply p-1.5 transition-colors;
+    color: rgb(var(--text-disabled));
+  }
+  .icon-btn:hover { color: rgb(var(--brand-700)); }
+
+  /*
+   * Form-Action-Row — Buttons rechts am Form-Ende (z. B. "Abbrechen / Speichern").
+   */
+  .form-actions {
+    @apply flex items-center justify-end gap-2 pt-2;
+  }
+
+  /*
+   * Kalender-Pills — Steuertermine und Termine als kompakte Marker in den
+   * Tagesfeldern. Vier Varianten, sortiert nach semantischer Bedeutung.
+   * Bewusst SOLIDE Farben im Dark statt Alpha-Tints: Alpha auf grauem Card-BG
+   * verschlechtert Lightness-Kontrast und macht "blau auf blau" matschig.
+   */
+  .cal-pill {
+    @apply block px-1.5 py-0.5 rounded text-xs truncate transition-colors;
+  }
+  .cal-pill-pending {
+    @apply bg-brand-100 text-brand-900 hover:bg-brand-50 dark:bg-brand-700 dark:text-brand-50 dark:hover:bg-brand-600;
+  }
+  .cal-pill-overdue {
+    @apply bg-red-100 text-red-900 hover:bg-red-50 dark:bg-red-700 dark:text-red-50 dark:hover:bg-red-600;
+  }
+  .cal-pill-done {
+    @apply bg-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600;
+    color: rgb(var(--text-secondary));
+  }
+  .cal-pill-appointment {
+    @apply bg-emerald-100 text-emerald-900 hover:bg-emerald-50 dark:bg-emerald-700 dark:text-emerald-50 dark:hover:bg-emerald-600;
   }
 }
 
 /*
- * Darkmode-Globale-Overrides — pragmatischer Re-Mapping-Layer.
- *
- * Statt jede Page einzeln mit `dark:`-Variants zu pflegen, biegen wir die
- * häufigsten Tailwind-Utilities im `.dark`-Kontext auf sinnvolle Pendants um.
- * Keine reine Tailwind-Lehre, aber ein effektiver „alle Seiten zugleich"-
- * Ansatz. Specificity (.dark .x) > (.x), daher wirken die Overrides
- * unabhängig von der Reihenfolge in der Klassen-Liste.
+ * Brand- und Status-Farben im Darkmode: diese Sets sind im Light absichtlich
+ * sehr hell (-50/-100-Stufen) und mÃ¼ssen fÃ¼r den Dark-Mode auf "tinted dark"
+ * umgemappt werden. Im Gegensatz zu den Gray-Werten lassen sie sich nicht
+ * sinnvoll als Token darstellen, weil sie semantisch (Status, Brand) belegt
+ * sind â€” bewusst hier hartkodiert.
  */
-.dark .bg-white         { background-color: rgb(17 24 39); }       /* gray-900 */
-.dark .bg-gray-50       { background-color: rgb(31 41 55); }       /* gray-800 */
-.dark .bg-gray-100      { background-color: rgb(31 41 55); }       /* gray-800 */
-.dark .bg-gray-200      { background-color: rgb(55 65 81); }       /* gray-700 */
-.dark .hover\:bg-gray-50:hover  { background-color: rgb(31 41 55); }
-.dark .hover\:bg-gray-100:hover { background-color: rgb(55 65 81); }
-
-.dark .text-gray-900    { color: rgb(243 244 246); }                /* gray-100 */
-.dark .text-gray-800    { color: rgb(229 231 235); }                /* gray-200 */
-.dark .text-gray-700    { color: rgb(209 213 219); }                /* gray-300 */
-.dark .text-gray-600    { color: rgb(156 163 175); }                /* gray-400 */
-.dark .text-gray-500    { color: rgb(156 163 175); }                /* gray-400 */
-.dark .text-gray-400    { color: rgb(107 114 128); }                /* gray-500 */
-.dark .text-gray-300    { color: rgb(75 85 99); }                   /* gray-600 */
-
-.dark .hover\:text-gray-900:hover { color: rgb(243 244 246); }
-.dark .hover\:text-gray-700:hover { color: rgb(209 213 219); }
-.dark .hover\:text-gray-600:hover { color: rgb(156 163 175); }
-
-.dark .border-gray-100  { border-color: rgb(31 41 55); }            /* gray-800 */
-.dark .border-gray-200  { border-color: rgb(31 41 55); }            /* gray-800 */
-.dark .border-gray-300  { border-color: rgb(55 65 81); }            /* gray-700 */
-.dark .divide-gray-100 > :not([hidden]) ~ :not([hidden]) { border-color: rgb(31 41 55); }
-.dark .divide-gray-200 > :not([hidden]) ~ :not([hidden]) { border-color: rgb(31 41 55); }
-
-.dark .ring-white       { --tw-ring-color: rgb(17 24 39); }
-.dark .placeholder\:text-gray-400::placeholder { color: rgb(107 114 128); }
-
-/* Akzent-Hintergründe (Brand-50/100 sind hell) — im Darkmode dezenter */
 .dark .bg-brand-50      { background-color: rgb(var(--brand-900) / 0.18); }
 .dark .bg-brand-100     { background-color: rgb(var(--brand-700) / 0.30); }
 
-/* Status-Badge-Hintergründe sollen im Dark dezenter sein als im Light */
+/* .badge-gray im Dark: gray-600 BG (deutlich heller als Card gray-800),
+ * gray-100 Text (fast weiß) — maximaler Kontrast für Status-/Kategorie-Pills. */
+.dark .badge-gray {
+  background-color: rgb(75 85 99);   /* gray-600 */
+  color: rgb(243 244 246);            /* gray-100 */
+}
+
 .dark .bg-yellow-50     { background-color: rgb(120 53 15 / 0.30); }
 .dark .bg-yellow-100    { background-color: rgb(120 53 15 / 0.40); }
 .dark .text-yellow-700  { color: rgb(252 211 77); }
@@ -231,19 +539,19 @@
 .dark .border-amber-200  { border-color: rgb(120 53 15 / 0.50); }
 
 /* =============================================================================
- * UI-Mode "modern" — opt-in via .ui-modern am <html> (siehe ui-mode-toggle).
+ * UI-Mode "modern" â€” opt-in via .ui-modern am <html> (siehe ui-mode-toggle).
  *
  * Bewusst sparsame Schicht: weichere Schatten, sanftes Lift-on-Hover an
  * Cards, leichter Gradient an Primary-Buttons, Backdrop-Blur an Sidebar/
- * Topbar. Greift nur dort, wo es spürbar Mehrwert liefert; alle Layouts
- * funktionieren ohne den Modus unverändert.
+ * Topbar. Greift nur dort, wo es spÃ¼rbar Mehrwert liefert; alle Layouts
+ * funktionieren ohne den Modus unverÃ¤ndert.
  *
  * `prefers-reduced-motion: reduce` schaltet animierte Effekte stumm.
  * `@media (max-resolution: 1dppx) and (max-width: 1280px)` wird NICHT
- * automatisch ausgewertet — die Entscheidung Klassik vs. Modern liegt
- * beim Nutzer (RDS-Sitzungen melden meist falsche Auflösungen).
+ * automatisch ausgewertet â€” die Entscheidung Klassik vs. Modern liegt
+ * beim Nutzer (RDS-Sitzungen melden meist falsche AuflÃ¶sungen).
  * ============================================================================= */
-/* Hintergrund-Verlauf am Body — der erste deutliche Unterschied */
+/* Hintergrund-Verlauf am Body â€” der erste deutliche Unterschied */
 .ui-modern body {
   background-image:
     radial-gradient(at 12% 8%, rgb(var(--brand-100) / 0.55) 0px, transparent 50%),
@@ -252,14 +560,16 @@
   background-attachment: fixed;
 }
 .ui-modern.dark body {
+  /* Gradient deutlich gedÃ¤mpft: die Brand-Tints im Dark sollen nur eine
+   * Ahnung von Farbtemperatur geben, nicht den Page-BG aufhellen. */
   background-image:
-    radial-gradient(at 12% 8%, rgb(var(--brand-900) / 0.35) 0px, transparent 50%),
-    radial-gradient(at 88% 0%, rgb(var(--brand-700) / 0.20) 0px, transparent 45%),
-    radial-gradient(at 0% 92%, rgb(var(--brand-900) / 0.30) 0px, transparent 50%);
+    radial-gradient(at 12% 8%, rgb(var(--brand-900) / 0.12) 0px, transparent 45%),
+    radial-gradient(at 88% 0%, rgb(var(--brand-700) / 0.07) 0px, transparent 40%),
+    radial-gradient(at 0% 92%, rgb(var(--brand-900) / 0.10) 0px, transparent 45%);
   background-attachment: fixed;
 }
 
-/* Cards: deutlich größere Rundung, weiche Multi-Layer-Schatten, Lift-on-Hover */
+/* Cards: deutlich grÃ¶ÃŸere Rundung, weiche Multi-Layer-Schatten, Lift-on-Hover */
 .ui-modern .card {
   transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
   border-radius: 1rem !important;
@@ -292,7 +602,7 @@
     0 6px 14px rgb(0 0 0 / 0.40);
 }
 
-/* Primary-Button: kräftiger Gradient + Scale-Effekt */
+/* Primary-Button: krÃ¤ftiger Gradient + Scale-Effekt */
 .ui-modern .btn-primary {
   background-image: linear-gradient(135deg,
     rgb(var(--brand-500)) 0%,
@@ -325,7 +635,7 @@
   border-right-color: rgb(55 65 81 / 0.35) !important;
 }
 
-/* Topbar: ebenfalls als Glas — gilt für staff- und portal-Layout (sticky top-0) */
+/* Topbar: ebenfalls als Glas â€” gilt fÃ¼r staff- und portal-Layout (sticky top-0) */
 .ui-modern main .sticky {
   backdrop-filter: blur(12px) saturate(150%);
   -webkit-backdrop-filter: blur(12px) saturate(150%);
@@ -344,7 +654,7 @@
   box-shadow: 0 0 0 4px rgb(var(--brand-500) / 0.18);
 }
 
-/* Brand-100 Tönung in Modern dezenter rückwärts — sonst zu kontrastreich */
+/* Brand-100 TÃ¶nung in Modern dezenter rÃ¼ckwÃ¤rts â€” sonst zu kontrastreich */
 .ui-modern .bg-brand-100 {
   background-color: rgb(var(--brand-100) / 0.85);
 }
@@ -361,7 +671,7 @@
   }
 }
 
-/* Mobile-Sidebar — versteckt auf <md, slide-in via .sidebar-open am body */
+/* Mobile-Sidebar â€” versteckt auf <md, slide-in via .sidebar-open am body */
 @media (max-width: 767px) {
   aside.app-sidebar {
     position: fixed;

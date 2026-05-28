@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useActionState, useEffect, useRef, useState, useId } from 'react';
 import Link from 'next/link';
@@ -64,9 +64,9 @@ export function QuickPhoneNote({
 
   return (
     <>
-      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-        <h2 className="text-sm font-medium text-gray-900 flex items-center gap-2">
-          <Phone className="h-4 w-4 text-gray-400" />
+      <div className="flex items-center justify-between px-6 py-4 border-b border-default">
+        <h2 className="text-sm font-medium text-primary flex items-center gap-2">
+          <Phone className="h-4 w-4 text-disabled" />
           Telefonzettel
         </h2>
         <div className="flex items-center gap-3">
@@ -90,7 +90,7 @@ export function QuickPhoneNote({
         <form
           ref={formRef}
           action={formAction}
-          className="border-b border-gray-200 bg-gray-50/60 px-6 py-4 space-y-3"
+          className="border-b border-default bg-gray-50/60 px-6 py-4 space-y-3"
         >
           <input type="hidden" name="clientId" value={clientId} />
           <datalist id={datalistId}>
@@ -100,11 +100,11 @@ export function QuickPhoneNote({
           </datalist>
 
           <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-gray-900">Neuer Telefonzettel</p>
+            <p className="text-sm font-medium text-primary">Neuer Telefonzettel</p>
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="text-gray-400 hover:text-gray-900 p-1"
+              className="text-disabled hover:text-primary p-1"
               aria-label="Schließen"
             >
               <X className="h-3.5 w-3.5" />

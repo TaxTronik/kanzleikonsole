@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useActionState, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -54,14 +54,14 @@ export function NewAppointmentDialog({
       </button>
 
       {open && mounted && createPortal(
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
-              <h2 className="text-sm font-medium text-gray-900 dark:text-gray-100">Neuer Termin</h2>
+        <div className="modal-overlay">
+          <div className="bg-surface rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="px-5 py-3 border-b border-default flex items-center justify-between">
+              <h2 className="text-sm font-medium text-primary">Neuer Termin</h2>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="text-gray-400 hover:text-gray-900"
+                className="text-disabled hover:text-primary"
                 aria-label="Schließen"
               >
                 <X className="h-4 w-4" />

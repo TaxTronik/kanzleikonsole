@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
@@ -150,7 +150,7 @@ export function PlanEditor({
           <div className="space-y-2">
             {ALL_AXES.map((a) => (
               <div key={a} className="grid grid-cols-[1fr_180px_2fr] gap-2 items-center">
-                <label className="text-sm text-gray-700">{AXIS_LABELS[a]}</label>
+                <label className="text-sm text-secondary">{AXIS_LABELS[a]}</label>
                 <div className="relative">
                   <input
                     type="number"
@@ -158,7 +158,7 @@ export function PlanEditor({
                     onChange={(e) => setAxis(a, { amount: Number(e.target.value) || 0 })}
                     className="input pr-8 text-sm font-mono"
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500">€</span>
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted">â‚¬</span>
                 </div>
                 <input
                   type="text"
@@ -173,7 +173,7 @@ export function PlanEditor({
           </div>
         </div>
 
-        <div className="border-t border-gray-200 pt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+        <div className="border-t border-default pt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
           <Total label="Erträge" value={totals.revenue} />
           <Total label="Aufwendungen" value={totals.costs} />
           <Total label="Ergebnis vor Steuern" value={totals.resultBeforeTax} accent />
@@ -191,14 +191,14 @@ export function PlanEditor({
           />
         </div>
 
-        {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+        {error && <div className="alert-error-sm">{error}</div>}
 
         <div className="flex items-center gap-3">
           <button type="button" onClick={save} disabled={isPending} className="btn-primary">
             <Save className="h-4 w-4" />
             {isPending ? 'Speichert…' : 'Speichern'}
           </button>
-          <button type="button" onClick={remove} disabled={isPending} className="text-gray-400 hover:text-red-700 p-2 ml-auto" title="Planung löschen">
+          <button type="button" onClick={remove} disabled={isPending} className="text-disabled hover:text-red-700 p-2 ml-auto" title="Planung löschen">
             <Trash2 className="h-4 w-4" />
           </button>
           {savedAt && (
@@ -215,11 +215,11 @@ export function PlanEditor({
 function Total({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
   return (
     <div>
-      <p className="text-xs text-gray-500">{label}</p>
+      <p className="text-xs text-muted">{label}</p>
       <p
         className={
           'text-lg font-bold font-mono ' +
-          (accent && value < 0 ? 'text-red-700' : accent && value > 0 ? 'text-emerald-700' : 'text-gray-900')
+          (accent && value < 0 ? 'text-red-700' : accent && value > 0 ? 'text-emerald-700' : 'text-primary')
         }
       >
         {eurFmt.format(value)}

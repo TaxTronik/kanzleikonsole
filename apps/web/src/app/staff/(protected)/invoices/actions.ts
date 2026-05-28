@@ -8,6 +8,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { commitDocumentFromBytes } from '@taxtronik/storage';
+import { prismaBytes } from '@/server/db/prisma-bytes';
 import { sendTemplateMail } from '@/server/mail/dispatch';
 
 const PositionSchema = z.object({
@@ -354,7 +355,7 @@ export async function uploadExternalInvoiceAction(input: z.infer<typeof UploadEx
             versionNo: 1,
             storageBucket: stored.targetBucket,
             storageKey: stored.targetKey,
-            sha256: stored.sha256,
+            sha256: prismaBytes(stored.sha256),
             sizeBytes: stored.sizeBytes,
             immutable: stored.immutable,
             scanStatus: 'CLEAN',

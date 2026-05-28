@@ -4,231 +4,209 @@
 
 <h1 align="center">TaxTronik</h1>
 
-<p align="center">Kanzlei- und Mandanten-Dashboard für deutsche Steuerberater. On-Premise-Software pro Kanzlei.</p>
+<p align="center">Kanzlei- und Mandanten-Dashboard fuer deutsche Steuerberater. On-Premise pro Kanzlei.</p>
 
-## Was es kann (Endausbau)
+## Ueberblick
 
-- **Kanzlei-Dashboard**: Mitarbeiter (Zeiterfassung, Urlaub, Krankmeldung, Telefonzettel, eigene Ablage), Mandanten-CRM, Wissensdatenbank, Kanzleileitungs-Auswertungen, GwG-Compliance-Modul mit systemischer Schranke, Schulungsnachweise.
-- **Mandanten-Portal**: Stammdaten, VZ-Soll mit Erinnerungen, Steuerschätzung (GewSt/USt/KSt/ESt) auf laufender BWA-Basis mit Szenarien, Unternehmenskennzahlen, Bescheide, Vollmachten mit Signatur, Rechnungen, Anforderungs-Upload.
+TaxTronik verbindet Kanzlei-Workflows, Mandantenportal, Dokumentenablage,
+Compliance und Hintergrund-Jobs in einem lokalen Deploy. Die Software ist auf
+steuerliche Berufsgeheimnisse und revisionsnahe Anforderungen ausgelegt:
+Postgres-RLS, App-Level-Tenant-Filter, TOTP fuer Mitarbeiter, Magic-Link fuer
+Mandanten, S3-kompatibler Object-Store ohne oeffentliche Direktlinks, ClamAV,
+Audit-Hash-Chain und optionale RFC-3161-Zeitstempel.
 
-Vollständige Architektur: [docs/architecture.md](docs/architecture.md).
+Vollstaendige Architektur: [docs/architecture.md](docs/architecture.md)
 
 ## Tech-Stack
 
 | Schicht | Wahl |
 |---|---|
-| Frontend / API | Next.js 16 (App Router, Turbopack) + TypeScript + shadcn/ui + Tailwind |
-| Auth | Auth.js v5 — Mitarbeiter mit Pwd+TOTP-Pflicht, Mandanten mit Magic-Link |
-| DB | Postgres 18 + Prisma + Row-Level Security |
-| Storage | SeaweedFS (S3-API, Object-Lock COMPLIANCE für GoBD) + ClamAV-Virus-Scan — **nur Docker-intern, nie öffentlich**; die App streamt Up-/Downloads selbst |
-| Workflows | n8n als Engine für Kommunikation/Reminder/Cron |
-| Lokale Jobs | BullMQ-Worker (Virus-Scan, PDF, Hash-Versiegelung, BWA) |
-| Deployment | Docker-Compose, On-Premise pro Kanzlei |
+| Web/App | Next.js 16 App Router, React 19, TypeScript |
+| Auth | Auth.js v5, Mitarbeiter mit Passwort + TOTP, Mandanten mit Magic-Link |
+| Datenbank | Postgres 18, Prisma, Row-Level Security |
+| Storage | SeaweedFS S3-API, Object-Lock, ClamAV-Scan vor Commit |
+| Jobs | BullMQ Worker, Redis |
+| Workflows | n8n fuer Reminder, Kommunikation und Cron-Automation |
+| Deploy | Docker Compose, On-Premise, Reverse Proxy davor |
 
-## Inbetriebnahme in einem Befehl
+## Entwicklung
 
-Voraussetzungen: **Docker Desktop installiert und gestartet**, sowie **Node.js 22.13+** mit **pnpm 11+** (Projekt pinnt `pnpm@11.1.2` via `packageManager` — am einfachsten `corepack enable`).
+Voraussetzungen:
 
-**Windows (PowerShell):**
+- Docker Desktop oder Docker Engine
+- Node.js >= 22.13
+- Corepack/pnpm 11: `corepack enable`
 
-```powershell
-.\scripts\setup.ps1
-```
-
-**Linux / macOS / Git-Bash:**
+Einmaliges Setup:
 
 ```bash
 ./scripts/setup.sh
 ```
 
-Das Skript erledigt automatisch:
-
-1. Prüft Docker und pnpm.
-2. Legt `.env` aus `.env.example` an und füllt zufällige Secrets (`AUTH_SECRET`, `N8N_HMAC_SECRET`, `N8N_ENCRYPTION_KEY`).
-3. Fährt den Compose-Stack hoch: Postgres, Redis, SeaweedFS, ClamAV, Mailhog, n8n.
-4. Wartet, bis Postgres healthy ist.
-5. Installiert Node-Pakete.
-6. Wendet Prisma-Migrationen an (Schema, RLS-Policies, Audit-Trigger).
-7. Spielt einen Demo-Seed ein (Admin-Login + ein Beispiel-Mandant).
-8. Legt Object-Store-Buckets an: `gobd` mit Object-Lock COMPLIANCE (10 Jahre, GoBD), `general`, `staff-private` (versioniert), `quarantine` (30-Tage-Lifecycle), `backups` (90-Tage-Lifecycle).
-
-Anschließend Dev-Server starten:
-
-```bash
-pnpm --filter @taxtronik/web dev      # App auf http://localhost:3000
-pnpm --filter @taxtronik/worker dev   # Hintergrund-Jobs
-```
-
-Login: <http://localhost:3000/staff/login>. Demo-Zugang siehe Seed-Output.
-
-Hilfsdienste während der Entwicklung:
-
-| Dienst              | URL                                  |
-|---------------------|--------------------------------------|
-| SeaweedFS-Master    | <http://localhost:9333>              |
-| SeaweedFS-Filer-UI  | <http://localhost:8888>              |
-| Mailhog (SMTP-UI)   | <http://localhost:8025>              |
-| n8n (Workflows)     | <http://localhost:5678>              |
-
-### Reset & weitere Optionen
+Windows PowerShell:
 
 ```powershell
-.\scripts\setup.ps1 -Reset        # alles löschen, dann neu (inkl. DB-Volumes)
-.\scripts\setup.ps1 -SkipSeed     # ohne Demo-Daten
+.\scripts\setup.ps1
 ```
+
+Das Setup erzeugt `.env`, generiert Secrets, startet Postgres/Redis/SeaweedFS/
+ClamAV/Mailhog/n8n, installiert Pakete, migriert die DB, legt Buckets an und
+seedet Demo-Daten.
+
+Danach starten:
+
+```bash
+pnpm --filter @taxtronik/web dev
+pnpm --filter @taxtronik/worker dev
+```
+
+App: <http://localhost:3000/staff/login>
+
+Der Dev-Seed erzeugt `admin@taxtronik.local`; das einmalige Passwort steht in
+der Seed-Ausgabe und in `packages/db/.admin-credentials.txt`. Beim ersten Login
+wird TOTP eingerichtet. Danach die Credentials-Datei loeschen.
+
+Nuetzliche lokale Dienste:
+
+| Dienst | URL |
+|---|---|
+| Mailhog | <http://localhost:8025> |
+| n8n | <http://localhost:5678> |
+| SeaweedFS Master | <http://localhost:9333> |
+| SeaweedFS Filer | <http://localhost:8888> |
+
+Reset:
 
 ```bash
 ./scripts/setup.sh --reset
 ./scripts/setup.sh --skip-seed
 ```
 
-### Was muss ich nach dem Setup noch tun?
+PowerShell:
 
-Auf <http://localhost:3000/staff/admin> blendet sich oben eine **Setup-Checkliste** ein, solange noch Punkte offen sind (Erscheinungsbild, Bundesland, Kanzlei-Stammdaten, SMTP, Portal-Kontakte). Jeder Punkt verlinkt direkt zur passenden Einstellungsseite. Wenn alle erledigt sind, verschwindet die Karte automatisch.
-
-Wichtige Stellen unter **Einstellungen**:
-
-- **E-Mail-Versand**: SMTP-Daten der Kanzlei (Gmail/M365/IONOS/Strato/Telekom-Presets), Test-Mail-Button. Wenn nichts gepflegt ist, läuft Mailversand über die ENV-Vorgabe (im Dev: Mailhog).
-- **Zeitstempel (TSA)**: Auswahl zwischen 7 vordefinierten RFC-3161-Anbietern (FreeTSA, DigiCert, Sectigo, GlobalSign, Apple, D-Trust eIDAS, Swisscom eIDAS) oder eigener URL. Mit Test-Roundtrip.
-- **Integrationen**: Live-Status aller externen Dienste (Postgres, Object-Store, Redis, ClamAV, n8n, TSA).
-
-## Quickstart für Entwickler (manuell)
-
-Wenn Sie das Setup-Skript nicht nutzen möchten:
-
-```bash
-pnpm install
-cp .env.example .env
-# AUTH_SECRET füllen, z. B. `openssl rand -base64 32`
-docker compose -f infra/compose/docker-compose.yml -f infra/compose/docker-compose.dev.yml up -d
-pnpm --filter @taxtronik/db prisma migrate deploy
-pnpm --filter @taxtronik/db run seed
-pnpm --filter @taxtronik/web dev
+```powershell
+.\scripts\setup.ps1 -Reset
+.\scripts\setup.ps1 -SkipSeed
 ```
 
-App läuft auf <http://localhost:3000>. SeaweedFS-Master auf <http://localhost:9333>.
+## Produktivbetrieb
 
-## Produktiv-Deployment (On-Premise)
+Produktiv laeuft der Stack ueber den Compose-Wrapper [dc](dc). Der Wrapper
+setzt immer die richtigen Compose-Dateien, nutzt die Root-`.env` und rendert vor
+jedem Compose-Aufruf die SeaweedFS-S3-Konfiguration.
 
-Der Stack läuft über den `dc`-Wrapper (kapselt die Compose-Dateien +
-`--env-file`, rendert die SeaweedFS-S3-Config). `app`/`worker` nutzen ein
-**vorgebautes Image** `taxtronik/{web,worker}:${TAXTRONIK_VERSION:-dev}` —
-es gibt **kein** `build:` in der Compose, das Image wird per `docker build`
-erzeugt.
+Im Normalfall gibt es nur drei Befehle:
 
-> **Image-Tag:** Compose zieht den Tag aus `TAXTRONIK_VERSION` in der `.env`.
-> Produktiv ist das `latest` (`TAXTRONIK_VERSION=latest`), **nicht** `dev`.
-> Immer den Tag bauen, den die `.env` auflöst — sonst läuft der alte
-> Container weiter (`docker ps` zeigt das tatsächliche Image).
+```bash
+./scripts/deploy.sh   # aktueller Checkout: Infra, Build, Migration, Restart, Health-Smoke
+./scripts/update.sh   # git ff-only, Backup, Build, Migration, Restart, Health-Smoke
+./scripts/backup.sh   # manuelles Postgres-Backup in den S3-Backup-Bucket
+```
 
-### Voraussetzung: `.env`
+`update.sh` macht bewusst kein `git reset --hard`. Wenn lokale Aenderungen oder
+ein nicht-fast-forward Stand existieren, bricht das Skript ab.
 
-Pflichtwerte für ein produktives Multi-Domain-Setup (Kanzlei- + Mandanten-
-Subdomain). Fehlende/falsche Werte → kein Mail-Versand bzw. Mandanten-Domain
-landet in der Mitarbeiter-Ansicht:
+Wichtige `.env`-Werte fuer ein Multi-Domain-Deploy:
 
 ```ini
+NODE_ENV=production
 TAXTRONIK_VERSION=latest
+
 NEXTAUTH_URL=https://kanzlei.example.de
-PORTAL_PUBLIC_URL=https://mandanten.example.de        # Host-Routing /portal
+PORTAL_PUBLIC_URL=https://mandanten.example.de
 STAFF_COOKIE_DOMAIN=kanzlei.example.de
 PORTAL_COOKIE_DOMAIN=mandanten.example.de
-SMTP_HOST=mail.example.de                              # exakter Hostname!
+NEXTAUTH_TRUST_HOST=true
+TRUST_PROXY_REQUIRED=true
+
+POSTGRES_PASSWORD=...
+TAXTRONIK_APP_PASSWORD=...
+AUTH_SECRET=...
+N8N_HMAC_SECRET=...
+N8N_ENCRYPTION_KEY=...
+S3_SECRET_KEY=...
+
+SMTP_HOST=mail.example.de
 SMTP_PORT=587
 SMTP_USER=...
 SMTP_PASSWORD=...
-SMTP_FROM=TaxTronik <noreply@example.de>
-POSTGRES_PASSWORD=...   AUTH_SECRET=...   # + restliche Secrets aus .env.example
+SMTP_FROM="TaxTronik <noreply@example.de>"
 ```
 
-### Update-Ablauf (Reihenfolge zwingend)
+Reverse Proxy und TLS liegen vor der App. Die Compose-Ports sind auf localhost
+gebunden; der Object-Store bleibt intern. Beispiel:
+[infra/nginx/taxtronik.conf.example](infra/nginx/taxtronik.conf.example)
+
+Weitere Operator-Kommandos:
 
 ```bash
-# 1. Code holen
-git fetch origin && git reset --hard origin/main
-chmod +x dc                                   # nur falls nötig
-
-# 2. DB-Migrationen ZUERST — bevor das neue Image hochkommt. Sonst fragt
-#    der neue Code Spalten/Tabellen ab, die noch fehlen → 500 auf allen
-#    betroffenen Seiten. Prisma-CLI direkt aufrufen (umgeht den pnpm-11-
-#    Wrapper, der auf dem Server bricht). migrate deploy ist idempotent.
-export DATABASE_URL="postgresql://taxtronik:$(grep -E '^POSTGRES_PASSWORD=' .env|cut -d= -f2-)@127.0.0.1:5432/taxtronik?schema=public"
-node "$(find node_modules -path '*/prisma/build/index.js' -not -path '*/cache/*'|head -1)" \
-  migrate deploy --schema packages/db/prisma/schema.prisma
-
-# 3. Images neu bauen (Build-Context = Repo-Root, KEIN --build-arg).
-#    --no-cache, damit Code-Änderungen sicher greifen. Worker mitbauen:
-#    packages/evidence + packages/storage laufen auch im Worker.
-docker build --no-cache -f infra/docker/Dockerfile.web    -t taxtronik/web:latest    .
-docker build --no-cache -f infra/docker/Dockerfile.worker -t taxtronik/worker:latest .
-
-# 4. Container mit neuem Image neu erzeugen
-./dc up -d --force-recreate --no-deps app worker
-
-# 5. Verifikation
-docker ps --filter name=taxtronik-app --format '{{.Image}} | {{.Status}}'
-curl -s http://127.0.0.1:${APP_BIND_PORT:-3001}/api/health
-curl -sI https://mandanten.example.de/ | grep -i location   # → /portal/login
+./dc ps
+./dc logs app --tail 80
+./dc logs worker --tail 80
+./dc --infra up -d
+./dc down
 ```
 
-Weitere `dc`-Befehle: `./dc ps`, `./dc logs app --tail 40`,
-`./dc --infra up -d` (nur Postgres/Redis/SeaweedFS/ClamAV), `./dc down`.
+## Qualitaetssicherung
 
-**Wichtig:** Ein bloßes `./dc up -d` startet nur den **alten** Container neu —
-Code-Änderungen brauchen immer `docker build` (Schritt 3) **plus**
-`--force-recreate`. Migration ohne neues Image ist unkritisch (neue Spalten
-stören das alte Image nicht); neues Image ohne Migration **nicht**.
+```bash
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm e2e
+pnpm verify:schema-drift
+pnpm verify:chain
+```
 
-Reverse-Proxy + TLS (NGINX + acme.sh o. ä.) stellt die Kanzlei-IT; der
-Object-Store ist **nie** öffentlich erreichbar (App proxied Up-/Downloads).
-Beispiel-NGINX: [infra/nginx/taxtronik.conf.example](infra/nginx/taxtronik.conf.example).
+Hinweise:
+
+- E2E-Login-Tests brauchen `E2E_TOTP_SECRET`.
+- RLS-Cross-Tenant-Tests skippen lokal ohne DB-URLs, schlagen in CI aber fehl,
+  wenn `DATABASE_URL` oder `DATABASE_APP_URL` fehlt.
+- `pnpm verify:chain` prueft die Audit-Hash-Chain.
 
 ## Projektstruktur
 
-```
+```text
 apps/
-  web/      Next.js (UI + API + Server Actions)
-  worker/   BullMQ-Worker (Virus-Scan, PDF, Hash-Versiegelung, BWA)
+  web/       Next.js UI, API-Routen, Server Actions, Backup/Restore
+  worker/    BullMQ Worker fuer Scan, Reminder, Audit, n8n-Outbox
+  e2e/       Playwright-Tests
+
 packages/
-  db/         Prisma-Schema, Migrationen, RLS-Helper
-  core/       Domain-Typen, Zod-Schemas, Errors
-  auth/       Auth.js-Konfig, RBAC-Policies
-  evidence/   Hash-Chain + RFC-3161-Adapter (Manipulationsevidenz)
-  storage/    S3-Client, Object-Lock, ClamAV
-  jobs/       BullMQ-Queues + Schedules
-  pdf/        PDF-Pipeline (react-pdf + Playwright)
-  mail/       Nodemailer + react-email-Templates
-  importers/  Excel-/CSV-/PDF-Importer für DATEV/Transparenzregister-Daten
-  ui/         shadcn/ui-Komponenten + Tailwind-Preset
-  config/     ENV-Schema (Zod), Tenant-Settings-Reader
+  config/      ENV-Schema und zentrale Runtime-Konfiguration
+  crypto/      Kryptografie-Helfer
+  db/          Prisma-Schema, Migrationen, RLS/Tenant-Kontext
+  evidence/    Audit-Hash-Chain, Archive, Verify-CLI
+  http-utils/  Safe Fetch, SSRF-Guards, Netzwerk-Utilities
+  n8n-shared/  HMAC-Signatur fuer App/Worker -> n8n
+  rss/         RSS-Fetching und Parser
+  storage/     S3/SeaweedFS-Client, Retention, Scan-Pipeline
+  tax/         Steuertermine und fachliche Rechenlogik
+
 infra/
-  compose/    docker-compose.yml + Overrides
-  n8n/        Versionierte Workflow-Exports (JSON)
-  scripts/    init-storage.sh, postgres-init.sql, etc.
+  compose/  Docker-Compose Basis, Dev- und App-Overrides
+  docker/   Dockerfiles fuer Web und Worker
+  n8n/      Versionierte Workflow-Exports
+  nginx/    Reverse-Proxy-Beispiel
+  scripts/  Postgres-/Storage-Init
+
 docs/
-  architecture.md
-  adr/        Architecture Decision Records
-  compliance/ GoBD, DSGVO, GwG
+  adr/          Architecture Decision Records
+  compliance/   DSGVO, GoBD, GwG, eIDAS
+  operations/   Betrieb, Disaster Recovery, Subdomains
 ```
 
 ## Compliance
 
-Diese Software ist für regulatorisch sensible Daten gebaut:
+TaxTronik ist fuer regulatorisch sensible Kanzleidaten gebaut:
 
-- **§ 203 StGB Steuergeheimnis** — RLS in Postgres + App-Level-Filter, doppelte Verteidigung. Object-Store ist nie öffentlich erreichbar (rein Docker-intern); Up-/Downloads laufen ausschließlich same-origin durch die App — minimale Angriffsfläche statt presigned-direct.
-- **GoBD** — Object-Lock-Storage, hash-verkettetes Audit-Log, RFC-3161-Tagesversiegelung, 10-Jahre-Retention.
-- **DSGVO** — DE-Hosting, AVV/DPA, Lösch-/Auskunftskonzept (Iter. 7).
-- **GwG** — Systemische Schranke (DB-Trigger + App-Guard) verhindert Mandantenanlage ohne verifizierten GwG-Check.
-- **eIDAS** — Vollmachten via Signatur-Adapter (MVP: fortgeschrittene Signatur via OTP, QES-Plug-in optional).
+- Berufsgeheimnis / Mandantentrennung: Postgres-RLS plus App-Level-Filter.
+- GoBD: Object-Lock, Audit-Hash-Chain, Tagesversiegelung, Retention.
+- DSGVO: Loesch-/Auskunftskonzepte, Portal-/Staff-Trennung, minimale
+  oeffentliche Angriffsfläche.
+- GwG: Verifizierungs-Workflows und systemische Schranken.
+- eIDAS: Signatur- und Zeitstempel-Adapter.
 
-Vor Produktivstart **extern Pen-Test** durchführen lassen.
-
-## Verifikation der Manipulationsevidenz
-
-Wirtschaftsprüfer/Revisoren können die Hash-Chain unabhängig nachrechnen:
-
-```bash
-pnpm verify:chain
-```
-
-Liefert OK bei intakter Kette, sonst Bericht des ersten Bruchs mit Datum/Eintrag-ID.
+Vor Produktivstart sollte ein externer Penetrationstest und ein Restore-Test
+aus einem echten Backup erfolgen.

@@ -1,4 +1,4 @@
-import { redirect } from 'next/navigation';
+﻿import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
@@ -31,12 +31,12 @@ export default async function InvoiceCategoriesPage() {
 
   return (
     <div className="p-8 max-w-4xl">
-      <Link href="/staff/admin" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 mb-3">
+      <Link href="/staff/admin" className="back-link mb-3">
         <ArrowLeft className="h-3 w-3" />
         Administration
       </Link>
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">Rechnungstypen</h1>
-      <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">
+      <h1 className="text-2xl font-bold text-primary mb-1">Rechnungstypen</h1>
+      <p className="text-muted text-sm mb-6">
         Im EXTERNAL-Rechnungsmodus wählst du beim Hochladen einer Rechnung
         einen Typ aus. Jeder Typ kann eine eigene E-Mail-Vorlage referenzieren
         — so wird der Mandant je nach Anlass (Honorar / Mahnung / Beratung …)

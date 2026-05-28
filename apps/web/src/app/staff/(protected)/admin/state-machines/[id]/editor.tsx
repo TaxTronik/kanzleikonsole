@@ -1,6 +1,7 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
+import { slugify as slugifyLib } from '@/lib/slugify';
 import { Plus, Trash2, ArrowRight } from 'lucide-react';
 import { SortableList, DragHandle } from '@/components/sortable-list';
 import { saveMachineDefinitionAction } from '../actions';
@@ -22,15 +23,9 @@ interface TransitionDraft {
 
 const COLORS = ['', 'blue', 'emerald', 'amber', 'red', 'purple', 'pink', 'gray'];
 
+// State-IDs müssen mit Buchstabe beginnen → Prefix "s"
 function slugify(s: string): string {
-  return s.toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .replace(/^[^a-z]/, 's$&')
-    .slice(0, 40);
+  return slugifyLib(s, { maxLength: 40, ensureLetterStart: 's' });
 }
 
 export function MachineEditor({
@@ -138,14 +133,14 @@ export function MachineEditor({
       {/* States */}
       <div className="card p-6">
         <div className="flex items-start justify-between mb-3">
-          <h2 className="text-sm font-medium text-gray-900">Zustände</h2>
+          <h2 className="text-sm font-medium text-primary">Zustände</h2>
           <button type="button" onClick={addState} className="btn-secondary text-xs py-1">
             <Plus className="h-3.5 w-3.5" />
             Zustand
           </button>
         </div>
         {states.length === 0 ? (
-          <p className="text-sm text-gray-500 italic">Noch keine Zustände definiert.</p>
+          <p className="text-sm text-muted italic">Noch keine Zustände definiert.</p>
         ) : (
           <SortableList
             count={states.length}
@@ -153,7 +148,7 @@ export function MachineEditor({
             renderItem={(i, handle) => {
               const s = states[i]!;
               return (
-                <div className="flex items-start gap-2 p-3 border border-gray-200 rounded-md bg-white">
+                <div className="flex items-start gap-2 p-3 border border-default rounded-md bg-surface">
                   <DragHandle handle={handle} />
                   <div className="flex-1 grid grid-cols-12 gap-2">
                     <input
@@ -204,7 +199,7 @@ export function MachineEditor({
                   <button
                     type="button"
                     onClick={() => removeState(i)}
-                    className="text-gray-400 hover:text-red-700 p-1"
+                    className="text-disabled hover:text-red-700 p-1"
                     title="Zustand entfernen"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -220,8 +215,8 @@ export function MachineEditor({
       <div className="card p-6">
         <div className="flex items-start justify-between mb-3">
           <div>
-            <h2 className="text-sm font-medium text-gray-900">Übergänge</h2>
-            <p className="text-xs text-gray-500">Welche Zustandswechsel sind erlaubt und wann?</p>
+            <h2 className="text-sm font-medium text-primary">Übergänge</h2>
+            <p className="text-xs text-muted">Welche Zustandswechsel sind erlaubt und wann?</p>
           </div>
           <button
             type="button"
@@ -234,11 +229,11 @@ export function MachineEditor({
           </button>
         </div>
         {transitions.length === 0 ? (
-          <p className="text-sm text-gray-500 italic">Noch keine Übergänge definiert.</p>
+          <p className="text-sm text-muted italic">Noch keine Übergänge definiert.</p>
         ) : (
           <ul className="space-y-2">
             {transitions.map((t, i) => (
-              <li key={i} className="p-3 border border-gray-200 rounded-md bg-white">
+              <li key={i} className="p-3 border border-default rounded-md bg-surface">
                 <div className="grid grid-cols-12 gap-2 items-center">
                   <select
                     value={t.fromKey}
@@ -249,7 +244,7 @@ export function MachineEditor({
                       <option key={s.key || `idx-${i}`} value={s.key}>{s.label || s.key}</option>
                     ))}
                   </select>
-                  <div className="col-span-1 text-center text-gray-400">
+                  <div className="col-span-1 text-center text-disabled">
                     <ArrowRight className="h-4 w-4 mx-auto" />
                   </div>
                   <select
@@ -272,7 +267,7 @@ export function MachineEditor({
                   <button
                     type="button"
                     onClick={() => removeTransition(i)}
-                    className="text-gray-400 hover:text-red-700 p-1 col-span-1"
+                    className="text-disabled hover:text-red-700 p-1 col-span-1"
                     title="Übergang entfernen"
                   >
                     <Trash2 className="h-4 w-4 mx-auto" />
@@ -292,7 +287,7 @@ export function MachineEditor({
         )}
       </div>
 
-      {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {error && <div className="alert-error-sm">{error}</div>}
 
       <div className="flex items-center gap-3">
         <button type="button" onClick={save} disabled={isPending} className="btn-primary">

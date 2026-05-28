@@ -1,4 +1,4 @@
-// =============================================================================
+﻿// =============================================================================
 // /staff/calendar — Kanzleikalender
 //
 // Zeigt im Monatsraster:
@@ -11,6 +11,7 @@
 // =============================================================================
 
 import { redirect } from 'next/navigation';
+import { parseMonth, shortKind } from '@/lib/tax-calendar';
 import Link from 'next/link';
 import { CalendarDays, ChevronLeft, ChevronRight, Inbox, AlertTriangle } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
@@ -25,26 +26,6 @@ const timeFmt = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-d
 
 interface Search {
   month?: string;
-}
-
-function parseMonth(s: string | undefined): { year: number; month0: number } {
-  if (s && /^\d{4}-\d{2}$/.test(s)) {
-    const [y, m] = s.split('-').map(Number);
-    return { year: y!, month0: (m ?? 1) - 1 };
-  }
-  const now = new Date();
-  return { year: now.getUTCFullYear(), month0: now.getUTCMonth() };
-}
-
-function shortKind(k: string): string {
-  const m: Record<string, string> = {
-    USTA_MONATLICH: 'USt-VA', USTA_QUARTAL: 'USt-VA',
-    USTA_JAEHRLICH: 'USt-Jahr', LSTA_MONATLICH: 'LSt',
-    LSTA_QUARTAL: 'LSt', LSTA_JAEHRLICH: 'LSt-Jahr',
-    EST_VZ: 'ESt-VZ', KST_VZ: 'KSt-VZ', GEWST_VZ: 'GewSt-VZ',
-    EST_ERKLAERUNG: 'ESt-Erkl.', KST_ERKLAERUNG: 'KSt-Erkl.', GEWST_ERKLAERUNG: 'GewSt-Erkl.',
-  };
-  return m[k] ?? k;
 }
 
 export default async function CalendarPage({
@@ -171,11 +152,11 @@ export default async function CalendarPage({
     <div className="p-8 max-w-7xl">
       <div className="flex items-end justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1 flex items-center gap-2">
+          <h1 className="page-title">
             <CalendarDays className="h-6 w-6 text-brand-600" />
             Kanzleikalender
           </h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm">
+          <p className="text-muted text-sm">
             Steuertermine und Termine — alle Mandanten der Kanzlei.
           </p>
         </div>
@@ -193,13 +174,13 @@ export default async function CalendarPage({
 
       {requestRows.length > 0 && (
         <div className="card overflow-hidden mb-6">
-          <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-800 flex items-center gap-2">
+          <div className="px-5 py-3 border-b border-default flex items-center gap-2">
             <Inbox className="h-4 w-4 text-amber-600" />
-            <h2 className="text-sm font-medium text-gray-900 dark:text-gray-100">
+            <h2 className="text-sm font-medium text-primary">
               Offene Terminanfragen ({requestRows.length})
             </h2>
           </div>
-          <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+          <ul className="divide-y divide-border-subtle">
             {requestRows.map((r) => (
               <RequestDecision
                 key={r.id}
@@ -220,7 +201,7 @@ export default async function CalendarPage({
           >
             <ChevronLeft className="h-4 w-4" />
           </Link>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 min-w-[220px] text-center">
+          <h2 className="text-lg font-semibold text-primary min-w-[220px] text-center">
             {monthFmt.format(new Date(Date.UTC(year, month0, 15)))}
           </h2>
           <Link
@@ -239,14 +220,14 @@ export default async function CalendarPage({
       </div>
 
       <div className="card p-2">
-        <div className="grid grid-cols-7 gap-px text-center text-xs font-medium text-gray-500 uppercase tracking-wide pb-2 border-b border-gray-200 dark:border-gray-700">
+        <div className="grid grid-cols-7 gap-px text-center text-xs font-medium text-muted uppercase tracking-wide pb-2 border-b border-default">
           {[0, 1, 2, 3, 4, 5, 6].map((i) => (
             <div key={i} className="py-2">
               {weekdayFmt.format(new Date(Date.UTC(2026, 0, 5 + i)))}
             </div>
           ))}
         </div>
-        <div className="grid grid-cols-7 gap-px bg-gray-100 dark:bg-gray-800 mt-px">
+        <div className="grid grid-cols-7 gap-px mt-px" style={{ backgroundColor: 'rgb(var(--border-default))' }}>
           {cells.map((cell, i) => {
             const k = cell.date.toISOString().slice(0, 10);
             const dlGroups = deadlineByDay.get(k);
@@ -259,34 +240,34 @@ export default async function CalendarPage({
                 key={i}
                 className={
                   cell.inMonth
-                    ? 'bg-white dark:bg-gray-900 min-h-[120px] p-1.5 flex flex-col gap-1 text-xs'
-                    : 'bg-gray-50 dark:bg-gray-800/40 min-h-[120px] p-1.5 flex flex-col gap-1 text-xs text-gray-400'
+                    ? 'bg-surface min-h-[120px] p-1.5 flex flex-col gap-1 text-xs'
+                    : 'bg-surface-page min-h-[120px] p-1.5 flex flex-col gap-1 text-xs text-disabled'
                 }
               >
-                <div className={isToday ? 'self-start font-bold text-brand-700 bg-brand-50 dark:bg-brand-900/40 dark:text-brand-200 px-1.5 py-0.5 rounded' : 'self-start text-gray-700 dark:text-gray-300'}>
+                <div className={isToday ? 'self-start font-bold text-brand-700 bg-brand-50 dark:bg-brand-900/40 dark:text-brand-200 px-1.5 py-0.5 rounded' : 'self-start text-secondary'}>
                   {cell.date.getUTCDate()}
                 </div>
                 {appts.slice(0, 3).map((a) => (
                   <Link
                     key={a.id}
                     href={a.client ? `/staff/clients/${a.client.id}` : '#'}
-                    className="block px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 truncate hover:bg-emerald-100"
+                    className="cal-pill cal-pill-appointment"
                     title={`${timeFmt.format(a.startsAt)} – ${timeFmt.format(a.endsAt)}: ${a.title}${a.client ? ' · ' + a.client.name : ''}`}
                   >
                     <span className="font-medium">{timeFmt.format(a.startsAt)}</span>
                     {a.client && (
-                      <span className="text-gray-900 dark:text-gray-100"> · {a.client.name}</span>
+                      <span> · {a.client.name}</span>
                     )}
-                    <span className="text-gray-600 dark:text-gray-400"> · {a.title}</span>
+                    <span className="opacity-70"> · {a.title}</span>
                   </Link>
                 ))}
                 {dlArr.slice(0, 3).map((g) => {
                   const allDone = g.open === 0;
                   const cls = g.overdue
-                    ? 'block px-1.5 py-0.5 rounded bg-red-50 text-red-800 truncate hover:bg-red-100'
+                    ? 'cal-pill cal-pill-overdue'
                     : allDone
-                      ? 'block px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 truncate hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300'
-                      : 'block px-1.5 py-0.5 rounded bg-brand-50 dark:bg-brand-900/30 text-brand-800 dark:text-brand-200 truncate hover:bg-brand-100';
+                      ? 'cal-pill cal-pill-done'
+                      : 'cal-pill cal-pill-pending';
                   return (
                     <Link
                       key={`${g.kind}-${g.period}`}
@@ -295,12 +276,12 @@ export default async function CalendarPage({
                       title={`${SCHEDULE_LABELS[g.kind as keyof typeof SCHEDULE_LABELS]} ${g.period} — ${g.open}/${g.total} offen`}
                     >
                       <span className="font-medium">{shortKind(g.kind)}</span>
-                      <span className="text-gray-600 dark:text-gray-400"> · {g.open}/{g.total}</span>
+                      <span className="opacity-70"> · {g.open}/{g.total}</span>
                     </Link>
                   );
                 })}
                 {(appts.length > 3 || dlArr.length > 3) && (
-                  <div className="text-[10px] text-gray-500">
+                  <div className="text-[10px] text-muted">
                     +{Math.max(0, appts.length - 3) + Math.max(0, dlArr.length - 3)} weitere
                   </div>
                 )}

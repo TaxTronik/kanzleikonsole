@@ -1,4 +1,4 @@
-// =============================================================================
+﻿// =============================================================================
 // /staff/reports — Auswertungs-Dashboard
 //
 // Zeigt aggregierte KPIs über Anforderungen, Zeit, Rechnungen, Mandanten.
@@ -12,6 +12,7 @@ import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import type { Prisma } from '@prisma/client';
 
+import { fmtEURRound } from '@/lib/fmt';
 async function loadReports(tx: Prisma.TransactionClient) {
   const now = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -142,10 +143,6 @@ export default async function ReportsPage() {
     loadReports,
   );
 
-  const fmtEUR = (n: number | null) =>
-    n === null
-      ? '—'
-      : new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n);
   const fmtMin = (m: number) => {
     const h = Math.floor(m / 60);
     const mm = Math.round(m % 60);
@@ -172,8 +169,8 @@ export default async function ReportsPage() {
   return (
     <div className="p-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 mb-1">Auswertungen</h1>
-        <p className="text-gray-500 text-sm">
+        <h1 className="text-2xl font-bold text-primary mb-1">Auswertungen</h1>
+        <p className="text-muted text-sm">
           Kanzlei-KPIs aus Anforderungen, Zeiterfassung und Rechnungswesen.
         </p>
       </div>
@@ -195,8 +192,8 @@ export default async function ReportsPage() {
         />
         <Kpi
           icon={Receipt}
-          label="Umsatz YTD (netto)"
-          value={fmtEUR(ytdNet)}
+          label="Umsatz lfd. Jahr (netto)"
+          value={fmtEURRound(ytdNet)}
           subtitle={`${data.invoicesYTD._count._all} Rechnungen`}
         />
         <Kpi
@@ -210,7 +207,7 @@ export default async function ReportsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
         {/* Anforderungs-Status */}
         <div className="card p-6">
-          <h2 className="text-sm font-medium text-gray-900 mb-4">Anforderungs-Status</h2>
+          <h2 className="text-sm font-medium text-primary mb-4">Anforderungs-Status</h2>
           <div className="space-y-2">
             {(['OPEN', 'IN_PROGRESS', 'RESPONDED', 'CLOSED', 'CANCELLED'] as const).map((s) => {
               const count = requestStatusMap.get(s) ?? 0;
@@ -224,7 +221,7 @@ export default async function ReportsPage() {
               };
               return (
                 <div key={s}>
-                  <div className="flex justify-between text-xs text-gray-600 mb-1">
+                  <div className="flex justify-between text-xs text-secondary mb-1">
                     <span>{labels[s]}</span>
                     <span className="font-mono">{count}</span>
                   </div>
@@ -254,17 +251,17 @@ export default async function ReportsPage() {
 
         {/* Top Mandanten nach Stunden */}
         <div className="card p-6">
-          <h2 className="text-sm font-medium text-gray-900 mb-4">Top-Mandanten — Stunden (90 Tage)</h2>
+          <h2 className="text-sm font-medium text-primary mb-4">Top-Mandanten — Stunden (90 Tage)</h2>
           {data.topClientsByHours.length === 0 ? (
-            <p className="text-sm text-gray-400">Keine Daten.</p>
+            <p className="text-sm text-disabled">Keine Daten.</p>
           ) : (
             <ul className="space-y-2">
               {data.topClientsByHours.map((c) => (
                 <li key={c.client_id} className="flex justify-between text-sm">
-                  <Link href={`/staff/clients/${c.client_id}`} className="text-gray-700 hover:underline truncate">
+                  <Link href={`/staff/clients/${c.client_id}`} className="text-secondary hover:underline truncate">
                     {c.name}
                   </Link>
-                  <span className="font-mono text-gray-900">{fmtMin(c.minutes)}</span>
+                  <span className="font-mono text-primary">{fmtMin(c.minutes)}</span>
                 </li>
               ))}
             </ul>
@@ -273,17 +270,17 @@ export default async function ReportsPage() {
 
         {/* Top Mandanten nach Umsatz */}
         <div className="card p-6">
-          <h2 className="text-sm font-medium text-gray-900 mb-4">Top-Mandanten — Umsatz (YTD)</h2>
+          <h2 className="text-sm font-medium text-primary mb-4">Top-Mandanten — Umsatz im lfd. Jahr</h2>
           {data.topClientsByRevenue.length === 0 ? (
-            <p className="text-sm text-gray-400">Keine Daten.</p>
+            <p className="text-sm text-disabled">Keine Daten.</p>
           ) : (
             <ul className="space-y-2">
               {data.topClientsByRevenue.map((c) => (
                 <li key={c.client_id} className="flex justify-between text-sm">
-                  <Link href={`/staff/clients/${c.client_id}`} className="text-gray-700 hover:underline truncate">
+                  <Link href={`/staff/clients/${c.client_id}`} className="text-secondary hover:underline truncate">
                     {c.name}
                   </Link>
-                  <span className="font-mono text-gray-900">{fmtEUR(c.revenue)}</span>
+                  <span className="font-mono text-primary">{fmtEURRound(c.revenue)}</span>
                 </li>
               ))}
             </ul>
@@ -294,9 +291,9 @@ export default async function ReportsPage() {
       {/* Rechnungs-Übersicht */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="card p-6 lg:col-span-2">
-          <h2 className="text-sm font-medium text-gray-900 mb-4">Rechnungen — Status</h2>
+          <h2 className="text-sm font-medium text-primary mb-4">Rechnungen — Status</h2>
           <table className="w-full text-sm">
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-border-subtle">
               {(['DRAFT', 'SENT', 'PAID', 'OVERDUE', 'CANCELLED'] as const).map((s) => {
                 const i = invoiceMap.get(s);
                 const count = i?._count._all ?? 0;
@@ -310,9 +307,9 @@ export default async function ReportsPage() {
                 };
                 return (
                   <tr key={s}>
-                    <td className="py-2 text-gray-700">{labels[s]}</td>
-                    <td className="py-2 text-right text-gray-500 w-20">{count}</td>
-                    <td className="py-2 text-right font-mono w-32">{fmtEUR(sum)}</td>
+                    <td className="py-2 text-secondary">{labels[s]}</td>
+                    <td className="py-2 text-right text-muted w-20">{count}</td>
+                    <td className="py-2 text-right font-mono w-32">{fmtEURRound(sum)}</td>
                   </tr>
                 );
               })}
@@ -321,13 +318,13 @@ export default async function ReportsPage() {
         </div>
 
         <div className="card p-6">
-          <h2 className="text-sm font-medium text-gray-900 mb-4">Forderungen</h2>
-          <p className="text-xs text-gray-500 mb-1">Offene Beträge (versendet)</p>
-          <p className="text-2xl font-bold text-gray-900 mb-3">{fmtEUR(openInvoiceTotal)}</p>
+          <h2 className="text-sm font-medium text-primary mb-4">Forderungen</h2>
+          <p className="text-xs text-muted mb-1">Offene Beträge (versendet)</p>
+          <p className="text-2xl font-bold text-primary mb-3">{fmtEURRound(openInvoiceTotal)}</p>
           {overdueInvoices && (overdueInvoices._count._all ?? 0) > 0 && (
             <p className="text-sm text-red-700 flex items-center gap-2 mt-3">
               <AlertCircle className="h-4 w-4" />
-              {overdueInvoices._count._all} überfällig: {fmtEUR(Number(overdueInvoices._sum.totalAmount ?? 0))}
+              {overdueInvoices._count._all} überfällig: {fmtEURRound(Number(overdueInvoices._sum.totalAmount ?? 0))}
             </p>
           )}
         </div>
@@ -352,11 +349,11 @@ function Kpi({
   return (
     <div className="card p-5">
       <div className="flex items-center gap-2 mb-2">
-        <Icon className={accent === 'yellow' ? 'h-4 w-4 text-yellow-600' : 'h-4 w-4 text-gray-400'} />
-        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{label}</p>
+        <Icon className={accent === 'yellow' ? 'h-4 w-4 text-yellow-600' : 'h-4 w-4 text-disabled'} />
+        <p className="text-xs font-medium text-muted uppercase tracking-wide">{label}</p>
       </div>
-      <p className="text-2xl font-bold text-gray-900">{value}</p>
-      {subtitle && <p className="text-xs text-gray-500 mt-1">{subtitle}</p>}
+      <p className="text-2xl font-bold text-primary">{value}</p>
+      {subtitle && <p className="text-xs text-muted mt-1">{subtitle}</p>}
     </div>
   );
 }

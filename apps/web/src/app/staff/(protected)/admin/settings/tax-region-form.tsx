@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useActionState } from 'react';
 import { saveTaxRegionAction, type ActionResult } from './actions';
@@ -25,17 +25,17 @@ export function TaxRegionForm({ initial }: { initial: GermanRegion | null }) {
             <option key={code} value={code}>{label}</option>
           ))}
         </select>
-        <p className="text-xs text-gray-500 mt-1">
+        <p className="text-xs text-muted mt-1">
           Beispiel: bei „Nordrhein-Westfalen" werden Fronleichnam und
           Allerheiligen als Feiertage berücksichtigt — Fälligkeiten verschieben
           sich auf den nächsten Werktag.
         </p>
       </div>
       {state?.error && (
-        <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{state.error}</div>
+        <div className="alert-error-sm">{state.error}</div>
       )}
       {state?.ok && (
-        <div className="rounded-md bg-green-50 p-3 text-sm text-green-700">
+        <div className="alert-success-sm">
           Gespeichert. Bestehende Termine werden bei der nächsten Materialisierung neu berechnet.
         </div>
       )}

@@ -1,4 +1,4 @@
-import { redirect } from 'next/navigation';
+﻿import { redirect } from 'next/navigation';
 import { Plane, Thermometer, Check, X } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
@@ -55,8 +55,8 @@ export default async function AbsencesPage() {
     <div className="p-8">
       <div className="flex items-end justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-1">Abwesenheiten</h1>
-          <p className="text-gray-500 text-sm">
+          <h1 className="text-2xl font-bold text-primary mb-1">Abwesenheiten</h1>
+          <p className="text-muted text-sm">
             Urlaub beantragen oder Krankheit melden.
           </p>
         </div>
@@ -68,7 +68,7 @@ export default async function AbsencesPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         {/* Urlaub */}
         <div className="card p-6 h-fit">
-          <h2 className="text-sm font-medium text-gray-900 mb-3 flex items-center gap-2">
+          <h2 className="text-sm font-medium text-primary mb-3 flex items-center gap-2">
             <Plane className="h-4 w-4 text-brand-600" />
             Urlaub beantragen
           </h2>
@@ -77,7 +77,7 @@ export default async function AbsencesPage() {
 
         {/* Krankmeldung */}
         <div className="card p-6 h-fit">
-          <h2 className="text-sm font-medium text-gray-900 mb-3 flex items-center gap-2">
+          <h2 className="text-sm font-medium text-primary mb-3 flex items-center gap-2">
             <Thermometer className="h-4 w-4 text-red-600" />
             Krankmeldung
           </h2>
@@ -88,18 +88,18 @@ export default async function AbsencesPage() {
       {/* Admin: ausstehende Anträge */}
       {isAdmin && allPendingVacations.length > 0 && (
         <div className="card overflow-hidden mb-6 border-yellow-200">
-          <div className="px-6 py-4 border-b border-gray-200 bg-yellow-50">
+          <div className="px-6 py-4 border-b border-default bg-yellow-50">
             <h2 className="text-sm font-medium text-yellow-900">
               {allPendingVacations.length} Urlaubsanträge zur Entscheidung
             </h2>
           </div>
-          <ul className="divide-y divide-gray-100">
+          <ul className="divide-y divide-border-subtle">
             {allPendingVacations.map((v) => (
               <li key={v.id} className="px-6 py-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium text-gray-900">{v.staff.fullName}</p>
-                    <p className="text-xs text-gray-500">
+                    <p className="font-medium text-primary">{v.staff.fullName}</p>
+                    <p className="text-xs text-muted">
                       {new Intl.DateTimeFormat('de-DE').format(v.startDate)}
                       {' – '}
                       {new Intl.DateTimeFormat('de-DE').format(v.endDate)}
@@ -107,7 +107,7 @@ export default async function AbsencesPage() {
                       {v.workdays} Werktage
                     </p>
                     {v.reason && (
-                      <p className="text-sm text-gray-600 mt-1">{v.reason}</p>
+                      <p className="text-sm text-secondary mt-1">{v.reason}</p>
                     )}
                   </div>
                   <div className="flex gap-2">
@@ -139,18 +139,18 @@ export default async function AbsencesPage() {
 
       {/* Eigene Urlaubsanträge */}
       <div className="card overflow-hidden mb-6">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h2 className="text-sm font-medium text-gray-900">Meine Urlaubsanträge</h2>
+        <div className="px-6 py-4 border-b border-default">
+          <h2 className="text-sm font-medium text-primary">Meine Urlaubsanträge</h2>
         </div>
         {myVacations.length === 0 ? (
-          <p className="px-6 py-10 text-sm text-gray-400 text-center">Noch keine Anträge.</p>
+          <p className="px-6 py-10 text-sm text-disabled text-center">Noch keine Anträge.</p>
         ) : (
-          <ul className="divide-y divide-gray-100">
+          <ul className="divide-y divide-border-subtle">
             {myVacations.map((v) => (
               <li key={v.id} className="px-6 py-3 flex items-center justify-between">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="font-medium text-gray-900">
+                    <span className="font-medium text-primary">
                       {new Intl.DateTimeFormat('de-DE').format(v.startDate)}
                       {' – '}
                       {new Intl.DateTimeFormat('de-DE').format(v.endDate)}
@@ -160,7 +160,7 @@ export default async function AbsencesPage() {
                     {v.status === 'REJECTED' && <span className="badge-red">{statusLabels[v.status]}</span>}
                     {v.status === 'CANCELLED' && <span className="badge-gray">{statusLabels[v.status]}</span>}
                   </div>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-muted">
                     {v.workdays} Werktage
                     {v.decidedBy && staffById.get(v.decidedBy) ? ` · entschieden von ${staffById.get(v.decidedBy)}` : ''}
                     {v.decisionNote ? ` · ${v.decisionNote}` : ''}
@@ -182,20 +182,20 @@ export default async function AbsencesPage() {
 
       {/* Eigene Krankmeldungen */}
       <div className="card overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h2 className="text-sm font-medium text-gray-900">Meine Krankmeldungen</h2>
+        <div className="px-6 py-4 border-b border-default">
+          <h2 className="text-sm font-medium text-primary">Meine Krankmeldungen</h2>
         </div>
         {mySick.length === 0 ? (
-          <p className="px-6 py-10 text-sm text-gray-400 text-center">Keine Einträge.</p>
+          <p className="px-6 py-10 text-sm text-disabled text-center">Keine Einträge.</p>
         ) : (
-          <ul className="divide-y divide-gray-100">
+          <ul className="divide-y divide-border-subtle">
             {mySick.map((s) => (
               <li key={s.id} className="px-6 py-3">
-                <p className="text-sm text-gray-900">
+                <p className="text-sm text-primary">
                   {new Intl.DateTimeFormat('de-DE').format(s.startDate)}
                   {s.endDate ? ` – ${new Intl.DateTimeFormat('de-DE').format(s.endDate)}` : ' (offen)'}
                 </p>
-                {s.notes && <p className="text-xs text-gray-500 mt-1">{s.notes}</p>}
+                {s.notes && <p className="text-xs text-muted mt-1">{s.notes}</p>}
               </li>
             ))}
           </ul>

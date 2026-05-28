@@ -13,6 +13,20 @@ import { fetchRssFeed, type FetchedRssItem } from '@taxtronik/rss';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
+import { withWorkerTenantContext } from '../tenant-context';
+
+const RSS_FETCH_CONCURRENCY = 5;
+const DB_BATCH_SIZE = 250;
+
+function itemKey(source: string, guid: string): string {
+  return `${source}\u0000${guid}`;
+}
+
+function chunks<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
 
 export const taxNewsFetchWorker = new Worker<ChecksJob>(
   'tax-news-fetch',
@@ -26,87 +40,135 @@ export const taxNewsFetchWorker = new Worker<ChecksJob>(
 
     const errors: string[] = [];
     const all: FetchedRssItem[] = [];
-    for (const f of activeFeeds) {
-      try {
-        const items = await fetchRssFeed(f.url);
-        all.push(...items);
-      } catch (e) {
-        errors.push(`${f.url}: ${(e as Error).message}`);
-      }
+    for (const batch of chunks(activeFeeds, RSS_FETCH_CONCURRENCY)) {
+      const results = await Promise.allSettled(batch.map((f) => fetchRssFeed(f.url)));
+      results.forEach((result, index) => {
+        const feed = batch[index]!;
+        if (result.status === 'fulfilled') {
+          all.push(...result.value);
+        } else {
+          errors.push(`${feed.url}: ${(result.reason as Error).message}`);
+        }
+      });
     }
 
-    const newItems: Array<{ id: string; source: string; title: string; link: string }> = [];
-    for (const item of all) {
+    const uniqueFetched = Array.from(
+      new Map(all.map((item) => [itemKey(item.source, item.guid), item])).values(),
+    );
+
+    const existingKeys = new Set<string>();
+    for (const batch of chunks(uniqueFetched, DB_BATCH_SIZE)) {
+      const existing = await prismaOwner.taxNewsItem.findMany({
+        where: {
+          OR: batch.map((item) => ({ source: item.source, guid: item.guid })),
+        },
+        select: { source: true, guid: true },
+      });
+      for (const item of existing) existingKeys.add(itemKey(item.source, item.guid));
+    }
+
+    const toInsert = uniqueFetched.filter((item) => !existingKeys.has(itemKey(item.source, item.guid)));
+    let inserted = 0;
+    for (const batch of chunks(toInsert, DB_BATCH_SIZE)) {
       try {
-        const created = await prismaOwner.taxNewsItem.create({
-          data: {
+        const result = await prismaOwner.taxNewsItem.createMany({
+          data: batch.map((item) => ({
             source: item.source,
             guid: item.guid,
             title: item.title,
             summary: item.summary,
             link: item.link,
             publishedAt: item.publishedAt,
-          },
+          })),
+          skipDuplicates: true,
         });
-        newItems.push({ id: created.id, source: created.source, title: created.title, link: created.link });
+        inserted += result.count;
       } catch (e) {
-        if ((e as { code?: string }).code !== 'P2002') {
-          errors.push(`Insert: ${(e as Error).message}`);
-        }
+        errors.push(`Insert: ${(e as Error).message}`);
       }
     }
 
     if (errors.length > 0) log.warn({ errors }, 'tax-news-fetch: partial errors');
 
-    if (newItems.length === 0) {
+    if (toInsert.length === 0) {
       log.info({ feeds: activeFeeds.length, fetched: all.length }, 'tax-news-fetch: no new items');
       return { feeds: activeFeeds.length, fetched: all.length, inserted: 0 };
     }
 
+    const newItems: Array<{ id: string; source: string; title: string; link: string }> = [];
+    for (const batch of chunks(toInsert, DB_BATCH_SIZE)) {
+      const rows = await prismaOwner.taxNewsItem.findMany({
+        where: {
+          OR: batch.map((item) => ({ source: item.source, guid: item.guid })),
+        },
+        select: { id: true, source: true, title: true, link: true },
+      });
+      newItems.push(...rows);
+    }
+
     // Pro neuem Item: jeder Staff, der diese URL aktiv abonniert hat UND
     // taxNewsNotify=true gesetzt hat, bekommt eine Notification.
+    const sources = Array.from(new Set(newItems.map((item) => item.source)));
+    const subscribers = await prismaOwner.rssFeed.findMany({
+      where: {
+        url: { in: sources },
+        active: true,
+        staff: { active: true, taxNewsNotify: true },
+      },
+      select: { tenantId: true, staffId: true, name: true, url: true },
+    });
+
+    const subscribersBySource = new Map<string, typeof subscribers>();
+    for (const sub of subscribers) {
+      subscribersBySource.set(sub.url, [...(subscribersBySource.get(sub.url) ?? []), sub]);
+    }
+
+    const existingNotifications = await prismaOwner.notification.findMany({
+      where: {
+        kind: 'TAX_NEWS_NEW',
+        resourceType: 'tax_news_item',
+        resourceId: { in: newItems.map((item) => item.id) },
+      },
+      select: { staffId: true, resourceId: true },
+    });
+    const existingNotificationKeys = new Set(
+      existingNotifications.map((n) => `${n.staffId ?? ''}\u0000${n.resourceId ?? ''}`),
+    );
+
+    const notificationRows = newItems.flatMap((item) =>
+      (subscribersBySource.get(item.source) ?? [])
+        .filter((sub) => !existingNotificationKeys.has(`${sub.staffId}\u0000${item.id}`))
+        .map((sub) => ({
+          tenantId: sub.tenantId,
+          staffId: sub.staffId,
+          kind: 'TAX_NEWS_NEW' as const,
+          title: `${sub.name}: ${item.title}`,
+          body: null,
+          href: '/staff/dashboard',
+          resourceType: 'tax_news_item',
+          resourceId: item.id,
+        })),
+    );
+
     let notifications = 0;
-    for (const item of newItems) {
-      const subscribers = await prismaOwner.rssFeed.findMany({
-        where: {
-          url: item.source,
-          active: true,
-          staff: { active: true, taxNewsNotify: true },
-        },
-        select: { tenantId: true, staffId: true, name: true },
+    const notificationsByTenant = new Map<string, typeof notificationRows>();
+    for (const row of notificationRows) {
+      notificationsByTenant.set(row.tenantId, [...(notificationsByTenant.get(row.tenantId) ?? []), row]);
+    }
+    for (const [tenantId, rows] of notificationsByTenant) {
+      await withWorkerTenantContext(tenantId, async (tx) => {
+        for (const batch of chunks(rows, DB_BATCH_SIZE)) {
+          const result = await tx.notification.createMany({ data: batch });
+          notifications += result.count;
+        }
       });
-      for (const sub of subscribers) {
-        const exists = await prismaOwner.notification.findFirst({
-          where: {
-            tenantId: sub.tenantId,
-            staffId: sub.staffId,
-            kind: 'TAX_NEWS_NEW',
-            resourceType: 'tax_news_item',
-            resourceId: item.id,
-          },
-        });
-        if (exists) continue;
-        await prismaOwner.notification.create({
-          data: {
-            tenantId: sub.tenantId,
-            staffId: sub.staffId,
-            kind: 'TAX_NEWS_NEW',
-            title: `${sub.name}: ${item.title}`,
-            body: null,
-            href: '/staff/dashboard',
-            resourceType: 'tax_news_item',
-            resourceId: item.id,
-          },
-        });
-        notifications++;
-      }
     }
 
     log.info(
-      { feeds: activeFeeds.length, fetched: all.length, inserted: newItems.length, notifications },
+      { feeds: activeFeeds.length, fetched: all.length, inserted, notifications },
       'tax-news-fetch: done',
     );
-    return { feeds: activeFeeds.length, fetched: all.length, inserted: newItems.length, notifications };
+    return { feeds: activeFeeds.length, fetched: all.length, inserted, notifications };
   },
   { connection, concurrency: 1 },
 );

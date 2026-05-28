@@ -1,4 +1,4 @@
-import { redirect } from 'next/navigation';
+﻿import { redirect } from 'next/navigation';
 import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { LogOut } from 'lucide-react';
@@ -75,23 +75,22 @@ export default async function StaffLayout({ children }: { children: React.ReactN
       if (it.moduleKey === 'invoices') return modules.invoiceMode !== 'OFF';
       return modules[it.moduleKey];
     })
-    .map((it) => ({ href: it.href, label: it.label, icon: it.icon, exact: it.exact }));
+    .map((it) => ({ href: it.href, label: it.label, icon: it.icon, exact: it.exact, altPaths: it.altPaths }));
 
   const adminNavItems: NavItem[] = allAdminNavItems
     .filter((it) => !it.moduleKey || modules[it.moduleKey])
-    .map((it) => ({ href: it.href, label: it.label, icon: it.icon, exact: it.exact }));
+    .map((it) => ({ href: it.href, label: it.label, icon: it.icon, exact: it.exact, altPaths: it.altPaths }));
 
   return (
     <div
-      className="flex h-screen bg-gray-50 dark:bg-gray-950"
+      className="flex h-screen bg-surface-page"
       style={brandPaletteStyle(branding.accentColor)}
     >
       {/* Sidebar */}
-      <aside className="app-sidebar w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col">
+      <aside className="app-sidebar w-64 bg-white dark:bg-gray-900 border-r border-default flex flex-col">
         {/* Logo */}
-        <div className="h-16 flex flex-col justify-center px-4 border-b border-gray-200 dark:border-gray-800 min-w-0">
+        <div className="h-16 flex flex-col justify-center px-4 border-b border-default min-w-0">
           {branding.logoDataUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={branding.logoDataUrl}
               alt={branding.displayName}
@@ -107,7 +106,7 @@ export default async function StaffLayout({ children }: { children: React.ReactN
             </span>
           )}
           {branding.subtitle && (
-            <span className="text-xs text-gray-500 truncate">{branding.subtitle}</span>
+            <span className="text-xs text-muted truncate">{branding.subtitle}</span>
           )}
         </div>
 
@@ -116,8 +115,8 @@ export default async function StaffLayout({ children }: { children: React.ReactN
           <SidebarNav items={navItems} />
 
           {isAdmin && (
-            <div className="pt-3 mt-3 border-t border-gray-200 dark:border-gray-800">
-              <p className="px-3 text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">
+            <div className="pt-3 mt-3 border-t border-default">
+              <p className="px-3 text-xs font-medium text-disabled uppercase tracking-wide mb-1">
                 Administration
               </p>
               <SidebarNav items={adminNavItems} />
@@ -126,16 +125,16 @@ export default async function StaffLayout({ children }: { children: React.ReactN
         </nav>
 
         {/* User Info + Logout */}
-        <div className="p-4 border-t border-gray-200 dark:border-gray-800">
+        <div className="p-4 border-t border-default">
           <div className="flex items-center gap-3 mb-3">
             <div className="h-8 w-8 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 text-sm font-semibold">
               {session.user.fullName?.[0]?.toUpperCase() ?? '?'}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+              <p className="item-title">
                 {session.user.fullName}
               </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{session.user.email}</p>
+              <p className="text-xs text-muted truncate">{session.user.email}</p>
             </div>
           </div>
           <form
@@ -147,7 +146,7 @@ export default async function StaffLayout({ children }: { children: React.ReactN
           >
             <button
               type="submit"
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-secondary hover:text-primary hover:bg-gray-100 rounded-md transition-colors"
             >
               <LogOut className="h-4 w-4" />
               Abmelden
@@ -159,7 +158,7 @@ export default async function StaffLayout({ children }: { children: React.ReactN
       {/* Hauptinhalt */}
       <main className="flex-1 overflow-auto">
         {/* Header mit Hamburger (mobile) + globaler Suche + Notifications + Theme */}
-        <div className="h-14 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-4 md:px-6 flex items-center gap-3 justify-between sticky top-0 z-20">
+        <div className="h-14 bg-white dark:bg-gray-900 border-b border-default px-4 md:px-6 flex items-center gap-3 justify-between sticky top-0 z-20">
           <div className="flex items-center gap-3 flex-1 min-w-0">
             <MobileSidebarToggle />
             <GlobalSearch />

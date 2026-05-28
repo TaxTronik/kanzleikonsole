@@ -1,6 +1,7 @@
 'use server';
 
 import { z } from 'zod';
+import { slugify as slugifyLib } from '@/lib/slugify';
 import { randomBytes } from 'node:crypto';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
@@ -11,15 +12,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 
 function slugify(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/ä/g, 'ae')
-    .replace(/ö/g, 'oe')
-    .replace(/ü/g, 'ue')
-    .replace(/ß/g, 'ss')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80) || 'eintrag';
+  return slugifyLib(s, { separator: '-', maxLength: 80 }) || 'eintrag';
 }
 
 const CategorySchema = z.object({

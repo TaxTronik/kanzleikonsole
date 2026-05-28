@@ -1,4 +1,4 @@
-// =============================================================================
+﻿// =============================================================================
 // /portal/forms — Mandant sieht offene Formulare
 // =============================================================================
 
@@ -36,25 +36,25 @@ export default async function PortalFormsPage() {
 
   return (
     <div className="p-8 max-w-3xl">
-      <h1 className="text-2xl font-bold text-gray-900 mb-1 flex items-center gap-2">
+      <h1 className="page-title">
         <ClipboardList className="h-6 w-6 text-brand-600" />
         Formulare
       </h1>
-      <p className="text-gray-500 text-sm mb-6">
+      <p className="text-muted text-sm mb-6">
         Anfragen Ihrer Steuerkanzlei. Bitte ausfüllen und absenden.
       </p>
 
       {open.length > 0 && (
         <section className="mb-8">
-          <h2 className="text-sm font-semibold text-gray-900 mb-3">Offene Formulare ({open.length})</h2>
-          <ul className="card divide-y divide-gray-100">
+          <h2 className="text-sm font-semibold text-primary mb-3">Offene Formulare ({open.length})</h2>
+          <ul className="card divide-y divide-border-subtle">
             {open.map((s) => (
               <li key={s.id} className="px-6 py-4 flex items-center justify-between">
                 <div>
-                  <Link href={`/portal/forms/${s.id}`} className="font-medium text-gray-900 hover:underline">
+                  <Link href={`/portal/forms/${s.id}`} className="font-medium text-primary hover:underline">
                     {s.name}
                   </Link>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-muted">
                     Versendet {dateFmt.format(s.createdAt)}
                     {s.status === 'DRAFT' && ' · Entwurf gespeichert'}
                   </p>
@@ -70,22 +70,22 @@ export default async function PortalFormsPage() {
 
       {done.length === 0 && open.length === 0 ? (
         <div className="card p-10 text-center">
-          <p className="text-sm text-gray-400">Aktuell keine offenen Formulare.</p>
+          <p className="text-sm text-disabled">Aktuell keine offenen Formulare.</p>
         </div>
       ) : null}
 
       {done.length > 0 && (
         <details>
-          <summary className="cursor-pointer text-sm text-gray-700">
+          <summary className="cursor-pointer text-sm text-secondary">
             {done.length} abgeschlossene{done.length === 1 ? 's' : ''} Formular{done.length === 1 ? '' : 'e'}
           </summary>
-          <ul className="card divide-y divide-gray-100 mt-3">
+          <ul className="card divide-y divide-border-subtle mt-3">
             {done.map((s) => (
               <li key={s.id} className="px-6 py-3 flex items-center justify-between text-sm">
-                <Link href={`/portal/forms/${s.id}`} className="text-gray-700 hover:underline">
+                <Link href={`/portal/forms/${s.id}`} className="text-secondary hover:underline">
                   {s.name}
                 </Link>
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-muted">
                   {STATUS_LABELS[s.status]}
                   {s.submittedAt && ` · ${dateFmt.format(s.submittedAt)}`}
                 </span>

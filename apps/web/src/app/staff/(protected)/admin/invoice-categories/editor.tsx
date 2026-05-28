@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import { Plus, Trash2, Pencil, Receipt, Lock } from 'lucide-react';
@@ -56,7 +56,7 @@ export function InvoiceCategoryEditor({
   return (
     <div className="space-y-4">
       {initial.length === 0 ? (
-        <div className="card p-8 text-center text-sm text-gray-500">
+        <div className="card p-8 text-center text-sm text-muted">
           Noch keine Rechnungstypen — leg den ersten an.
         </div>
       ) : (
@@ -66,9 +66,9 @@ export function InvoiceCategoryEditor({
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <Receipt className="h-3.5 w-3.5 text-gray-400" />
-                    <span className="font-medium text-gray-900 dark:text-gray-100">{t.name}</span>
-                    <code className="text-[10px] text-gray-400 font-mono">{t.slug}</code>
+                    <Receipt className="h-3.5 w-3.5 text-disabled" />
+                    <span className="font-medium text-primary">{t.name}</span>
+                    <code className="text-[10px] text-disabled font-mono">{t.slug}</code>
                     {t.emailTemplateSlug && (
                       <span className="badge-gray text-[10px] inline-flex items-center gap-1">
                         <Lock className="h-2.5 w-2.5" />
@@ -82,7 +82,7 @@ export function InvoiceCategoryEditor({
                   <button
                     type="button"
                     onClick={() => setEditing(t)}
-                    className="text-gray-500 hover:text-brand-700 p-1"
+                    className="text-muted hover:text-brand-700 p-1"
                     title="Bearbeiten"
                   >
                     <Pencil className="h-4 w-4" />
@@ -91,7 +91,7 @@ export function InvoiceCategoryEditor({
                     type="button"
                     onClick={() => remove(t.id)}
                     disabled={isPending}
-                    className="text-gray-400 hover:text-red-700 p-1"
+                    className="text-disabled hover:text-red-700 p-1"
                     title="Löschen"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -116,7 +116,7 @@ export function InvoiceCategoryEditor({
 
       {editing && (
         <div className="card p-5 space-y-4 border-2 border-brand-200 dark:border-brand-900/60">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+          <h3 className="text-sm font-semibold text-primary">
             {editing.id ? 'Typ bearbeiten' : 'Neuer Rechnungstyp'}
           </h3>
 
@@ -134,7 +134,7 @@ export function InvoiceCategoryEditor({
             </div>
             <div>
               <label className="label">
-                Slug <span className="text-xs font-normal text-gray-500">(optional, sonst aus Name)</span>
+                Slug <span className="text-xs font-normal text-muted">(optional, sonst aus Name)</span>
               </label>
               <input
                 type="text"
@@ -159,7 +159,7 @@ export function InvoiceCategoryEditor({
                 <option key={t.slug} value={t.slug}>{t.name} ({t.slug})</option>
               ))}
             </select>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-muted mt-1">
               Pro Rechnungstyp eine eigene Mail-Vorlage. Ohne Auswahl wird das
               allgemeine Rechnungs-Template aus den Einstellungen verwendet.
             </p>
@@ -170,7 +170,7 @@ export function InvoiceCategoryEditor({
               type="checkbox"
               checked={editing.active}
               onChange={(e) => setEditing({ ...editing, active: e.target.checked })}
-              className="rounded border-gray-300 text-brand-600"
+              className="rounded border-strong text-brand-600"
             />
             Aktiv (wählbar im Rechnungs-Formular)
           </label>

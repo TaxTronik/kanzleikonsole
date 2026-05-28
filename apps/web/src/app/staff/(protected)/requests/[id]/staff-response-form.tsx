@@ -39,7 +39,7 @@ export function StaffResponseForm({ requestId }: { requestId: string }) {
         minLength={1}
         maxLength={5000}
       />
-      {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {error && <div className="alert-error-sm">{error}</div>}
       <button type="submit" className="btn-primary" disabled={isPending}>
         {isPending ? 'Sendet…' : 'Antwort senden'}
       </button>

@@ -1,4 +1,4 @@
-import { KeyRound, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
+﻿import { KeyRound, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
 import type { LicenseInfo } from '@/server/license/verify';
 
 const dateFmt = new Intl.DateTimeFormat('de-DE');
@@ -18,14 +18,14 @@ export function LicenseCard({ info }: { info: LicenseInfo }) {
             {info.kanzleiName ? `Lizenz — ${info.kanzleiName}` : 'Lizenz'}
           </h2>
           {info.plan && (
-            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-white/60 dark:bg-gray-900/60 text-gray-700 dark:text-gray-200">
+            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-white/60 dark:bg-gray-900/60 text-secondary">
               {info.plan}
             </span>
           )}
         </div>
         <p className={`text-xs mt-1 ${tone.message}`}>{info.message}</p>
         {info.validUntil && (
-          <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+          <p className="text-xs text-secondary mt-1">
             Gültig bis {dateFmt.format(info.validUntil)}
             {typeof info.daysRemaining === 'number' && info.daysRemaining >= 0 &&
               ` (noch ${info.daysRemaining} Tage)`}
@@ -34,7 +34,7 @@ export function LicenseCard({ info }: { info: LicenseInfo }) {
           </p>
         )}
         {(info.maxStaff != null || info.maxClients != null) && (
-          <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+          <p className="text-xs text-secondary mt-0.5">
             Limit:
             {info.maxStaff != null && ` ${info.maxStaff} Mitarbeiter`}
             {info.maxStaff != null && info.maxClients != null && ' ·'}
@@ -42,7 +42,7 @@ export function LicenseCard({ info }: { info: LicenseInfo }) {
           </p>
         )}
         {info.status === 'UNCONFIGURED' && (
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+          <p className="text-xs text-muted mt-2">
             Lizenz konfigurieren via <code>LICENSE_KEY</code> + <code>LICENSE_PUBLIC_KEY</code> in der .env.
           </p>
         )}
@@ -77,10 +77,10 @@ function toneFor(s: LicenseInfo['status']) {
     case 'UNCONFIGURED':
     default:
       return {
-        container: 'border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900/40',
-        icon: 'text-gray-500',
-        title: 'text-gray-900 dark:text-gray-100',
-        message: 'text-gray-600 dark:text-gray-400',
+        container: 'border-default bg-surface-raised',
+        icon: 'text-muted',
+        title: 'text-primary',
+        message: 'text-secondary',
       };
   }
 }

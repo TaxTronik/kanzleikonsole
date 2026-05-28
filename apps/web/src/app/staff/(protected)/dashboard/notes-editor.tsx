@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import { Plus, Trash2, Pencil, Check, X } from 'lucide-react';
@@ -80,7 +80,7 @@ export function NotesEditor({ initial }: { initial: Note[] }) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-5 py-2 border-b border-gray-200 dark:border-gray-800 shrink-0">
+      <div className="px-5 py-2 border-b border-default shrink-0">
         {adding ? (
           <div className="space-y-1.5">
             <textarea
@@ -132,11 +132,11 @@ export function NotesEditor({ initial }: { initial: Note[] }) {
       )}
 
       {notes.length === 0 ? (
-        <div className="px-5 py-8 text-sm text-gray-400 text-center flex-1">
+        <div className="px-5 py-8 text-sm text-disabled text-center flex-1">
           Noch keine Notizen.
         </div>
       ) : (
-        <ul className="divide-y divide-gray-100 dark:divide-gray-800 overflow-y-auto scrollbar-thin flex-1 min-h-0">
+        <ul className="divide-y divide-border-subtle overflow-y-auto scrollbar-thin flex-1 min-h-0">
           {notes.map((n) => (
             <li key={n.id} className="px-5 py-2.5">
               {editingId === n.id ? (
@@ -175,16 +175,16 @@ export function NotesEditor({ initial }: { initial: Note[] }) {
                 </div>
               ) : (
                 <div className="group">
-                  <p className="text-sm text-gray-900 dark:text-gray-100 whitespace-pre-wrap break-words">
+                  <p className="text-sm text-primary whitespace-pre-wrap break-words">
                     {n.body}
                   </p>
                   <div className="flex items-center justify-between gap-2 mt-1">
-                    <span className="text-[10px] text-gray-400">{dateFmt.format(n.updatedAt)}</span>
+                    <span className="text-[10px] text-disabled">{dateFmt.format(n.updatedAt)}</span>
                     <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
                         type="button"
                         onClick={() => startEdit(n)}
-                        className="text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 p-1"
+                        className="text-disabled hover:text-primary p-1"
                         title="Bearbeiten"
                       >
                         <Pencil className="h-3 w-3" />
@@ -192,7 +192,7 @@ export function NotesEditor({ initial }: { initial: Note[] }) {
                       <button
                         type="button"
                         onClick={() => remove(n.id)}
-                        className="text-gray-400 hover:text-red-700 dark:hover:text-red-300 p-1"
+                        className="text-disabled hover:text-red-700 dark:hover:text-red-300 p-1"
                         title="Löschen"
                       >
                         <Trash2 className="h-3 w-3" />

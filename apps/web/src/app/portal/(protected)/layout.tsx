@@ -1,4 +1,4 @@
-import { redirect } from 'next/navigation';
+﻿import { redirect } from 'next/navigation';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 import { LogOut } from 'lucide-react';
@@ -71,13 +71,12 @@ export default async function PortalLayout({ children }: { children: React.React
 
   return (
     <div
-      className="flex h-screen bg-gray-50 dark:bg-gray-950"
+      className="flex h-screen bg-surface-page"
       style={brandPaletteStyle(branding.accentColor)}
     >
-      <aside className="app-sidebar w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col">
-        <div className="h-16 flex flex-col justify-center px-6 border-b border-gray-200 dark:border-gray-800">
+      <aside className="app-sidebar w-64 bg-white dark:bg-gray-900 border-r border-default flex flex-col">
+        <div className="h-16 flex flex-col justify-center px-6 border-b border-default">
           {branding.logoDataUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={branding.logoDataUrl}
               alt={branding.displayName}
@@ -89,31 +88,31 @@ export default async function PortalLayout({ children }: { children: React.React
             </span>
           )}
           {branding.subtitle && (
-            <span className="text-xs text-gray-500 truncate">{branding.subtitle}</span>
+            <span className="text-xs text-muted truncate">{branding.subtitle}</span>
           )}
         </div>
 
-        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-800">
-          <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Mandant</p>
-          <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{client?.name ?? '—'}</p>
+        <div className="px-6 py-4 border-b border-default">
+          <p className="eyebrow">Mandant</p>
+          <p className="item-title">{client?.name ?? '—'}</p>
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-1">
           <SidebarNav items={navItems} />
         </nav>
 
-        <div className="p-4 border-t border-gray-200 dark:border-gray-800">
+        <div className="p-4 border-t border-default">
           <div className="flex items-center gap-3 mb-3">
             <div className="h-8 w-8 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 text-sm font-semibold">
               {session.user.fullName?.[0]?.toUpperCase() ?? '?'}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{session.user.fullName}</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{session.user.email}</p>
+              <p className="item-title">{session.user.fullName}</p>
+              <p className="text-xs text-muted truncate">{session.user.email}</p>
             </div>
           </div>
           <div className="flex items-center justify-between mb-2 px-1">
-            <span className="text-xs text-gray-500 dark:text-gray-400">Darstellung</span>
+            <span className="text-xs text-muted">Darstellung</span>
             <div className="flex items-center gap-0.5">
               <UiModeToggle />
               <ThemeToggle />
@@ -128,7 +127,7 @@ export default async function PortalLayout({ children }: { children: React.React
           >
             <button
               type="submit"
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-secondary hover:text-primary hover:bg-gray-100 rounded-md transition-colors"
             >
               <LogOut className="h-4 w-4" />
               Abmelden
@@ -138,10 +137,10 @@ export default async function PortalLayout({ children }: { children: React.React
       </aside>
 
       <main className="flex-1 overflow-auto">
-        <div className="h-14 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-4 flex items-center justify-between sticky top-0 z-20">
+        <div className="h-14 bg-white dark:bg-gray-900 border-b border-default px-4 flex items-center justify-between sticky top-0 z-20">
           <div className="flex items-center gap-3 md:invisible">
             <MobileSidebarToggle />
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{branding.displayName}</span>
+            <span className="text-sm font-medium text-secondary">{branding.displayName}</span>
           </div>
           <div className="flex items-center gap-1">
             <UiModeToggle />

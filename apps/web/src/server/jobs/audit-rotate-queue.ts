@@ -17,10 +17,7 @@ interface AuditRotateJob {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
-  var __taxtronik_audit_rotate_queue:
-    | { conn: IORedis; queue: Queue<AuditRotateJob> }
-    | undefined;
+  var __taxtronik_audit_rotate_queue: { conn: IORedis; queue: Queue<AuditRotateJob> } | undefined;
 }
 
 function init(): { conn: IORedis; queue: Queue<AuditRotateJob> } {
@@ -32,9 +29,17 @@ function init(): { conn: IORedis; queue: Queue<AuditRotateJob> } {
   return { conn, queue };
 }
 
-const handle = globalThis.__taxtronik_audit_rotate_queue ?? init();
-if (env.NODE_ENV !== 'production') {
-  globalThis.__taxtronik_audit_rotate_queue = handle;
+function getHandle(): { conn: IORedis; queue: Queue<AuditRotateJob> } {
+  const existing = globalThis.__taxtronik_audit_rotate_queue;
+  if (existing) return existing;
+
+  const handle = init();
+  if (env.NODE_ENV !== 'production') {
+    globalThis.__taxtronik_audit_rotate_queue = handle;
+  }
+  return handle;
 }
 
-export const auditRotateQueue = handle.queue;
+export function getAuditRotateQueue(): Queue<AuditRotateJob> {
+  return getHandle().queue;
+}

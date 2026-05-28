@@ -54,4 +54,10 @@ DEMODATEN/
 
 # Playwright
 playwright-report/
+**/playwright-report/
 test-results/
+**/test-results/
+
+# IDE-/Agent-Spuren — lokale Caches, gehören nicht ins Repo
+.claude/
+.VSCodeCounter/

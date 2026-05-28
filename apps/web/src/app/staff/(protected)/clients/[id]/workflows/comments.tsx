@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
@@ -44,7 +44,7 @@ export function WorkflowItemComments({
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="text-[11px] text-gray-400 hover:text-brand-700 dark:hover:text-brand-300 inline-flex items-center gap-1"
+          className="text-[11px] text-disabled hover:text-brand-700 dark:hover:text-brand-300 inline-flex items-center gap-1"
         >
           <MessageSquare className="h-3 w-3" />
           Kommentar hinzufügen
@@ -53,11 +53,11 @@ export function WorkflowItemComments({
       {(open || initial.length > 0) && (
         <div className="space-y-2">
           {initial.length > 0 && (
-            <ul className="space-y-1.5 text-xs border-l-2 border-gray-200 dark:border-gray-700 pl-3">
+            <ul className="space-y-1.5 text-xs border-l-2 border-default pl-3">
               {initial.map((c) => (
                 <li key={c.id}>
-                  <div className="text-gray-900 dark:text-gray-100 whitespace-pre-wrap">{c.body}</div>
-                  <div className="text-[10px] text-gray-400 mt-0.5">
+                  <div className="text-primary whitespace-pre-wrap">{c.body}</div>
+                  <div className="text-[10px] text-disabled mt-0.5">
                     {c.authorName} · {dateTimeFmt.format(new Date(c.createdAt))}
                   </div>
                 </li>
@@ -81,7 +81,7 @@ export function WorkflowItemComments({
               onClick={submit}
               disabled={isPending || !body.trim()}
               className="btn-secondary text-xs inline-flex items-center gap-1 shrink-0"
-              title="Kommentar speichern (⌘+Enter)"
+              title="Kommentar speichern (âŒ˜+Enter)"
             >
               <Send className="h-3 w-3" />
               {isPending ? 'Lädt…' : 'Senden'}

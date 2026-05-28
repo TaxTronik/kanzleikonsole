@@ -1,4 +1,4 @@
-// =============================================================================
+﻿// =============================================================================
 // /staff/admin/audit/[id] — Audit-Log-Eintrag Detail
 //
 // Zeigt:
@@ -93,12 +93,12 @@ export default async function AuditEntryPage({
   return (
     <div className="p-8 max-w-4xl">
       <div className="flex items-start gap-4 mb-6">
-        <Link href="/staff/admin/audit" className="text-gray-400 hover:text-gray-600 mt-1">
+        <Link href="/staff/admin/audit" className="text-disabled hover:text-secondary mt-1">
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-1 flex-wrap">
-            <h1 className="text-2xl font-bold text-gray-900">Audit-Eintrag #{String(entry.id)}</h1>
+            <h1 className="text-2xl font-bold text-primary">Audit-Eintrag #{String(entry.id)}</h1>
             {intact ? (
               <span className="badge-green flex items-center gap-1">
                 <ShieldCheck className="h-3 w-3" />
@@ -111,7 +111,7 @@ export default async function AuditEntryPage({
               </span>
             )}
           </div>
-          <p className="text-gray-500 text-sm font-mono">
+          <p className="text-muted text-sm font-mono">
             {entry.action} · {entry.resourceType}
             {entry.resourceId ? `:${entry.resourceId}` : ''}
           </p>
@@ -144,8 +144,8 @@ export default async function AuditEntryPage({
       <div className="card p-6 mb-6">
         <dl className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm">
           <div>
-            <dt className="text-xs text-gray-500 uppercase tracking-wide">Zeitpunkt</dt>
-            <dd className="text-gray-900 font-mono">
+            <dt className="text-xs text-muted uppercase tracking-wide">Zeitpunkt</dt>
+            <dd className="text-primary font-mono">
               {new Intl.DateTimeFormat('de-DE', {
                 dateStyle: 'short',
                 timeStyle: 'medium',
@@ -153,39 +153,39 @@ export default async function AuditEntryPage({
             </dd>
           </div>
           <div>
-            <dt className="text-xs text-gray-500 uppercase tracking-wide">Akteur</dt>
-            <dd className="text-gray-900">
+            <dt className="text-xs text-muted uppercase tracking-wide">Akteur</dt>
+            <dd className="text-primary">
               {actorTypeLabels[entry.actorType] ?? entry.actorType}
               {entry.actorId && (
-                <span className="text-gray-500 font-mono ml-2 text-xs">{entry.actorId.slice(0, 12)}…</span>
+                <span className="text-muted font-mono ml-2 text-xs">{entry.actorId.slice(0, 12)}…</span>
               )}
             </dd>
           </div>
           <div className="col-span-2">
-            <dt className="text-xs text-gray-500 uppercase tracking-wide">Quelle</dt>
-            <dd className="text-gray-700 text-xs">
+            <dt className="text-xs text-muted uppercase tracking-wide">Quelle</dt>
+            <dd className="text-secondary text-xs">
               {entry.ip && <span className="font-mono">IP: {entry.ip}</span>}
               {entry.ip && entry.userAgent && ' · '}
               {entry.userAgent && <span className="font-mono break-all">{entry.userAgent}</span>}
-              {!entry.ip && !entry.userAgent && <span className="text-gray-400">—</span>}
+              {!entry.ip && !entry.userAgent && <span className="text-disabled">—</span>}
             </dd>
           </div>
           <div className="col-span-2">
-            <dt className="text-xs text-gray-500 uppercase tracking-wide">Hash-Chain</dt>
+            <dt className="text-xs text-muted uppercase tracking-wide">Hash-Chain</dt>
             <dd className="text-xs font-mono space-y-1 mt-1">
               <p>
-                <span className="text-gray-500">prev:</span>{' '}
-                <span className="text-gray-700">{Buffer.from(entry.prevHash).toString('hex')}</span>
+                <span className="text-muted">prev:</span>{' '}
+                <span className="text-secondary">{Buffer.from(entry.prevHash).toString('hex')}</span>
               </p>
               <p>
-                <span className="text-gray-500">this:</span>{' '}
+                <span className="text-muted">this:</span>{' '}
                 <span className={intact ? 'text-green-700' : 'text-red-700'}>
                   {Buffer.from(entry.thisHash).toString('hex')}
                 </span>
               </p>
               {!intact && (
                 <p>
-                  <span className="text-gray-500">computed:</span>{' '}
+                  <span className="text-muted">computed:</span>{' '}
                   <span className="text-yellow-700">{computed.toString('hex')}</span>
                 </p>
               )}
@@ -196,15 +196,15 @@ export default async function AuditEntryPage({
 
       {/* Diff */}
       <div className="card overflow-hidden">
-        <div className="px-6 py-3 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-sm font-medium text-gray-900">Änderungs-Diff</h2>
+        <div className="card-header">
+          <h2 className="text-sm font-medium text-primary">Änderungs-Diff</h2>
           <div className="flex gap-2 text-xs">
             <span className="badge-red">- vorher</span>
             <span className="badge-green">+ nachher</span>
           </div>
         </div>
         {diffLines.length === 0 ? (
-          <p className="px-6 py-10 text-sm text-gray-400 text-center">
+          <p className="px-6 py-10 text-sm text-disabled text-center">
             Keine vorher/nachher-Daten.
           </p>
         ) : (
@@ -217,10 +217,10 @@ export default async function AuditEntryPage({
                     ? 'bg-green-50 text-green-900'
                     : l.kind === 'del'
                       ? 'bg-red-50 text-red-900'
-                      : 'text-gray-700'
+                      : 'text-secondary'
                 }
               >
-                <span className="inline-block w-5 text-gray-400 select-none">
+                <span className="inline-block w-5 text-disabled select-none">
                   {l.kind === 'add' ? '+' : l.kind === 'del' ? '-' : ' '}
                 </span>
                 {l.text}

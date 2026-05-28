@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import { decideChangeRequestAction } from './actions';
@@ -32,7 +32,7 @@ export function ChangeRequestRow({
   }
 
   return (
-    <div className="border-t border-gray-100 pt-3 mt-3 space-y-2">
+    <div className="border-t border-subtle pt-3 mt-3 space-y-2">
       <input
         type="text"
         value={note}

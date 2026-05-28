@@ -29,6 +29,7 @@ import {
   type ProtectionTier,
 } from '@taxtronik/storage';
 import { withTenantContext } from '@taxtronik/db';
+import { prismaBytes } from '@/server/db/prisma-bytes';
 import { carrierClassification } from '@/server/storage/document-type';
 import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
@@ -206,7 +207,7 @@ export async function POST(req: NextRequest) {
           versionNo: 1,
           storageBucket: commit.targetBucket,
           storageKey: commit.targetKey,
-          sha256: commit.sha256,
+          sha256: prismaBytes(commit.sha256),
           sizeBytes: commit.sizeBytes,
           immutable: commit.immutable,
           scanStatus: 'CLEAN',

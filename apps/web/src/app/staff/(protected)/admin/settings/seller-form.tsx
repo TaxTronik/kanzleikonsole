@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useActionState } from 'react';
 import { saveSellerInfoAction, type ActionResult } from './actions';
@@ -71,8 +71,8 @@ export function SellerForm({ initial }: { initial: SellerInfo }) {
         </div>
       </div>
 
-      <fieldset className="border border-gray-200 rounded-md p-4 space-y-3">
-        <legend className="text-xs font-medium text-gray-500 uppercase tracking-wide px-2">
+      <fieldset className="border border-default rounded-md p-4 space-y-3">
+        <legend className="text-xs font-medium text-muted uppercase tracking-wide px-2">
           Bankverbindung (für XRechnung)
         </legend>
         <div>
@@ -95,10 +95,10 @@ export function SellerForm({ initial }: { initial: SellerInfo }) {
       </fieldset>
 
       {state?.error && (
-        <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{state.error}</div>
+        <div className="alert-error-sm">{state.error}</div>
       )}
       {state?.ok && (
-        <div className="rounded-md bg-green-50 p-3 text-sm text-green-700">
+        <div className="alert-success-sm">
           Gespeichert.
         </div>
       )}

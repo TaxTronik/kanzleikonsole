@@ -78,9 +78,9 @@ export function NewVersionForm({ documentId }: Props) {
           maxLength={500}
         />
       </div>
-      {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {error && <div className="alert-error-sm">{error}</div>}
       {progress !== 'idle' && (
-        <div className="rounded-md bg-blue-50 p-3 text-sm text-blue-700">
+        <div className="alert-info-sm">
           {progress === 'presign' && 'Hochladevorbereitung…'}
           {progress === 'upload' && 'Datei wird hochgeladen…'}
           {progress === 'commit' && 'Virus-Scan & Verarbeitung…'}

@@ -9,7 +9,7 @@
 // =============================================================================
 
 import { type Page, expect } from '@playwright/test';
-import { authenticator } from 'otplib';
+import { generateSync } from 'otplib';
 
 export const ADMIN_EMAIL = process.env['E2E_ADMIN_EMAIL'] ?? 'admin@taxtronik.local';
 export const ADMIN_PASSWORD = process.env['E2E_ADMIN_PASSWORD'] ?? 'dev-password-123';
@@ -35,7 +35,7 @@ export async function loginAsAdmin(page: Page): Promise<void> {
 
     await page.getByRole('button', { name: /QR-Code gescannt/ }).click();
 
-    const code = authenticator.generate(secret.trim());
+    const code = generateSync({ secret: secret.trim() });
     await page.getByLabel('Bestätigungs-Code').fill(code);
     await page.getByRole('button', { name: /Bestätigen/ }).click();
   }
@@ -47,7 +47,7 @@ export async function loginAsAdmin(page: Page): Promise<void> {
       'TOTP-Secret unbekannt. Setze E2E_TOTP_SECRET=… oder lass den Admin im UI neu enrollen.',
     );
   }
-  const code = authenticator.generate(secret);
+  const code = generateSync({ secret });
   await page.getByLabel('TOTP-Code').fill(code);
   await page.getByRole('button', { name: /Anmelden/ }).click();
 

@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./client": "./src/client.ts",
+    "./prisma-adapter": "./src/prisma-adapter.ts",
     "./tenant-context": "./src/tenant-context.ts"
   },
   "scripts": {
@@ -20,18 +21,21 @@
     "migrate:deploy": "prisma migrate deploy",
     "migrate:dev": "prisma migrate dev",
     "studio": "prisma studio",
-    "seed": "tsx seeds/dev.ts",
-    "verify:schema-drift": "tsx scripts/verify-drift.ts"
+    "seed": "tsx --env-file=../../.env seeds/dev.ts",
+    "verify:schema-drift": "tsx --env-file=../../.env scripts/verify-drift.ts"
   },
   "dependencies": {
-    "@prisma/client": "^5.22.0"
+    "@prisma/adapter-pg": "^7.8.0",
+    "@prisma/client": "^7.8.0",
+    "pg": "^8.21.0"
   },
   "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
-    "bcryptjs": "^2.4.3",
-    "prisma": "^5.22.0",
-    "tsx": "^4.19.0",
-    "typescript": "^5.7.0",
-    "vitest": "^2.1.0"
+    "@types/pg": "^8.20.0",
+    "bcryptjs": "^3.0.3",
+    "prisma": "^7.8.0",
+    "tsx": "^4.22.3",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.14",
+    "vitest": "^4.1.7"
   }
 }

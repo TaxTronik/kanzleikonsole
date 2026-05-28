@@ -7,6 +7,12 @@ import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 
+export interface ActionResult {
+  ok: boolean;
+  error?: string;
+  savedAt?: string;
+}
+
 // ----------------------------------------------------------------------------
 // Sektion 1: Verwaltungsdaten — frei änderbar, kein GwG-Trigger
 // ----------------------------------------------------------------------------
@@ -26,9 +32,12 @@ function emptyToNull(v: unknown): string | null {
   return t === '' ? null : t;
 }
 
-export async function saveAdminFieldsAction(formData: FormData): Promise<void> {
+export async function saveAdminFieldsAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   const session = await staffAuth();
-  if (!session?.user) throw new Error('Nicht eingeloggt.');
+  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
   const parsed = AdminSchema.safeParse({
     clientId: formData.get('clientId'),
     datevNo: formData.get('datevNo'),
@@ -37,7 +46,7 @@ export async function saveAdminFieldsAction(formData: FormData): Promise<void> {
     priority: formData.get('priority'),
     internalNotes: formData.get('internalNotes'),
   });
-  if (!parsed.success) throw new Error('Validierungsfehler.');
+  if (!parsed.success) return { ok: false, error: 'Validierungsfehler — bitte Eingaben prüfen.' };
   const { tenantId, staffId } = session.user;
   const { clientId } = parsed.data;
 
@@ -75,6 +84,7 @@ export async function saveAdminFieldsAction(formData: FormData): Promise<void> {
 
   revalidatePath(`/staff/clients/${clientId}`);
   revalidatePath(`/staff/clients/${clientId}/edit`);
+  return { ok: true, savedAt: new Date().toISOString() };
 }
 
 // ----------------------------------------------------------------------------
@@ -94,9 +104,12 @@ const GwgSchema = z.object({
   countryIso: z.string().length(2).optional().nullable().or(z.literal('')),
 });
 
-export async function saveGwgFieldsAction(formData: FormData): Promise<void> {
+export async function saveGwgFieldsAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   const session = await staffAuth();
-  if (!session?.user) throw new Error('Nicht eingeloggt.');
+  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
   const parsed = GwgSchema.safeParse({
     clientId: formData.get('clientId'),
     name: formData.get('name'),
@@ -107,7 +120,7 @@ export async function saveGwgFieldsAction(formData: FormData): Promise<void> {
     city: formData.get('city'),
     countryIso: formData.get('countryIso'),
   });
-  if (!parsed.success) throw new Error('Validierungsfehler.');
+  if (!parsed.success) return { ok: false, error: 'Validierungsfehler — bitte Eingaben prüfen.' };
   const { tenantId, staffId } = session.user;
   const { clientId } = parsed.data;
 
@@ -167,6 +180,7 @@ export async function saveGwgFieldsAction(formData: FormData): Promise<void> {
   revalidatePath(`/staff/clients/${clientId}`);
   revalidatePath(`/staff/clients/${clientId}/edit`);
   revalidatePath(`/staff/clients/${clientId}/gwg`);
+  return { ok: true, savedAt: new Date().toISOString() };
 }
 
 // ----------------------------------------------------------------------------
@@ -175,40 +189,63 @@ export async function saveGwgFieldsAction(formData: FormData): Promise<void> {
 
 const RespSchema = z.object({
   clientId: z.string().uuid(),
-  berufstraegerId: z.string().uuid().optional().or(z.literal('')),
+  berufstraegerIds: z.array(z.string().uuid()),
   hauptbearbeiterIds: z.array(z.string().uuid()),
 });
 
-export async function setResponsibilitiesAction(formData: FormData): Promise<void> {
+export async function setResponsibilitiesAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   const session = await staffAuth();
-  if (!session?.user) throw new Error('Nicht eingeloggt.');
+  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
   // Berufsträger-Zuordnung bestimmt GwG-Verantwortung — nur ADMIN/PARTNER.
   if (!isStaffAdmin(session)) {
-    throw new Error('Nur ADMIN/PARTNER darf Bearbeiter-Zuordnungen ändern.');
+    return { ok: false, error: 'Nur ADMIN/PARTNER darf Bearbeiter-Zuordnungen ändern.' };
   }
-  const ids = formData.getAll('hauptbearbeiterIds').map((v) => String(v));
+  const berufstraegerIds = formData.getAll('berufstraegerIds').map((v) => String(v));
+  const hauptIds = formData.getAll('hauptbearbeiterIds').map((v) => String(v));
   const parsed = RespSchema.safeParse({
     clientId: formData.get('clientId'),
-    berufstraegerId: formData.get('berufstraegerId') ?? '',
-    hauptbearbeiterIds: ids,
+    berufstraegerIds,
+    hauptbearbeiterIds: hauptIds,
   });
-  if (!parsed.success) throw new Error('Validierungsfehler.');
+  if (!parsed.success) return { ok: false, error: 'Validierungsfehler — bitte Eingaben prüfen.' };
   const { tenantId, staffId: actorId } = session.user;
-  const { clientId, berufstraegerId, hauptbearbeiterIds } = parsed.data;
+  const { clientId, berufstraegerIds: berufIds, hauptbearbeiterIds } = parsed.data;
+
+  // Praxis-Check: mind. ein Berufsträger erforderlich (sonst kein GwG-Verifier
+  // mehr). Wenn alle Berufsträger entfernt werden sollen → explizit ablehnen,
+  // damit kein Mandant in einen broken state läuft.
+  if (berufIds.length === 0) {
+    return {
+      ok: false,
+      error: 'Mindestens ein Berufsträger muss zugeordnet sein.',
+    };
+  }
 
   await withTenantContext(
     { tenantId, actorId, actorType: 'STAFF' },
     async (tx) => {
       const before = await tx.clientResponsibility.findMany({ where: { clientId } });
 
-      // 1. Berufsträger neu setzen — nur 1 erlaubt
-      const oldBerufstraeger = before.find((b) => b.role === 'BERUFSTRAEGER');
-      if (oldBerufstraeger && oldBerufstraeger.staffId !== berufstraegerId) {
-        await tx.clientResponsibility.delete({ where: { id: oldBerufstraeger.id } });
+      // 1. Berufsträger — Diff. Mehrere möglich (Gesellschafter-Konstellationen,
+      //    fachlich geteilte Mandate). Schema-unique ist (clientId, staffId, role),
+      //    also pro Staff genau 1 Eintrag — beliebig viele Staffs.
+      const oldBeruf = before.filter((b) => b.role === 'BERUFSTRAEGER').map((b) => b.staffId);
+      const oldBerufSet = new Set(oldBeruf);
+      const newBerufSet = new Set(berufIds);
+      const berufToRemove = oldBeruf.filter((id) => !newBerufSet.has(id));
+      const berufToAdd = berufIds.filter((id) => !oldBerufSet.has(id));
+
+      if (berufToRemove.length > 0) {
+        await tx.clientResponsibility.deleteMany({
+          where: { clientId, role: 'BERUFSTRAEGER', staffId: { in: berufToRemove } },
+        });
       }
-      if (berufstraegerId && (!oldBerufstraeger || oldBerufstraeger.staffId !== berufstraegerId)) {
+      for (const sid of berufToAdd) {
         await tx.clientResponsibility.create({
-          data: { tenantId, clientId, staffId: berufstraegerId, role: 'BERUFSTRAEGER' },
+          data: { tenantId, clientId, staffId: sid, role: 'BERUFSTRAEGER' },
         });
       }
 
@@ -231,7 +268,7 @@ export async function setResponsibilitiesAction(formData: FormData): Promise<voi
       }
 
       const changed =
-        (oldBerufstraeger?.staffId ?? '') !== (berufstraegerId ?? '') ||
+        berufToAdd.length > 0 || berufToRemove.length > 0 ||
         toAdd.length > 0 || toRemove.length > 0;
       if (changed) {
         await evidenceService.record(tx, {
@@ -242,11 +279,11 @@ export async function setResponsibilitiesAction(formData: FormData): Promise<voi
           resourceType: 'client',
           resourceId: clientId,
           before: {
-            berufstraegerId: oldBerufstraeger?.staffId ?? null,
+            berufstraegerIds: oldBeruf,
             hauptbearbeiterIds: oldHaupt,
           },
           after: {
-            berufstraegerId: berufstraegerId || null,
+            berufstraegerIds: berufIds,
             hauptbearbeiterIds,
           },
         });
@@ -256,4 +293,5 @@ export async function setResponsibilitiesAction(formData: FormData): Promise<voi
 
   revalidatePath(`/staff/clients/${clientId}`);
   revalidatePath(`/staff/clients/${clientId}/edit`);
+  return { ok: true, savedAt: new Date().toISOString() };
 }

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import { Plus, Trash2, Save, X, Mail, Pencil, Lock } from 'lucide-react';
@@ -55,7 +55,7 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
   return (
     <div className="space-y-4">
       {initial.length === 0 ? (
-        <div className="card p-8 text-center text-sm text-gray-500">
+        <div className="card p-8 text-center text-sm text-muted">
           Noch keine E-Mail-Vorlagen definiert.
         </div>
       ) : (
@@ -68,9 +68,9 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
                     {t.slug ? (
                       <Lock className="h-3.5 w-3.5 text-amber-600" />
                     ) : (
-                      <Mail className="h-3.5 w-3.5 text-gray-400" />
+                      <Mail className="h-3.5 w-3.5 text-disabled" />
                     )}
-                    <span className="font-medium text-gray-900 dark:text-gray-100">{t.name}</span>
+                    <span className="font-medium text-primary">{t.name}</span>
                     {t.slug && (
                       <span className="badge-yellow text-[10px]" title="System-Vorlage — nicht löschbar, Texte editierbar">
                         System · {t.slug}
@@ -79,10 +79,10 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
                     {t.category && <span className="badge-gray text-xs">{t.category}</span>}
                     {!t.active && <span className="badge-yellow">deaktiviert</span>}
                   </div>
-                  <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 truncate">
+                  <p className="text-xs text-secondary dark:text-disabled mt-1 truncate">
                     <strong>Betreff:</strong> {t.subject}
                   </p>
-                  <p className="text-[11px] text-gray-500 dark:text-gray-500 mt-1 line-clamp-2 whitespace-pre-wrap">
+                  <p className="text-[11px] text-muted mt-1 line-clamp-2 whitespace-pre-wrap">
                     {t.bodyMd}
                   </p>
                 </div>
@@ -90,7 +90,7 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
                   <button
                     type="button"
                     onClick={() => setEditing(t)}
-                    className="text-gray-500 hover:text-brand-700 p-1"
+                    className="text-muted hover:text-brand-700 p-1"
                     title="Bearbeiten"
                   >
                     <Pencil className="h-4 w-4" />
@@ -100,7 +100,7 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
                       type="button"
                       onClick={() => remove(t.id, t.slug)}
                       disabled={isPending}
-                      className="text-gray-400 hover:text-red-700 p-1"
+                      className="text-disabled hover:text-red-700 p-1"
                       title="Löschen"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -126,7 +126,7 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
 
       {editing && (
         <div className="card p-5 space-y-4 border-2 border-brand-200 dark:border-brand-900/60">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+          <h3 className="text-sm font-semibold text-primary">
             {editing.id ? 'Vorlage bearbeiten' : 'Neue Vorlage'}
           </h3>
 
@@ -177,7 +177,7 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
               maxLength={10_000}
               placeholder={'Sehr geehrte Damen und Herren,\n\nbitte reichen Sie uns die Belege für …\n\nMit freundlichen Grüßen\nIhre Kanzlei'}
             />
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-muted mt-1">
               Platzhalter: <code>{'{{client.name}}'}</code> wird zur Laufzeit durch den Mandantennamen ersetzt.
             </p>
           </div>
@@ -191,7 +191,7 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
             <span>Aktiv (in Vorlagen-Auswahl sichtbar)</span>
           </label>
 
-          {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+          {error && <div className="alert-error-sm">{error}</div>}
 
           <div className="flex items-center gap-2">
             <button type="button" onClick={save} disabled={isPending} className="btn-primary inline-flex items-center gap-1.5">

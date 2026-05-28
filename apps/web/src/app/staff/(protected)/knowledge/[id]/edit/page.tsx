@@ -1,4 +1,4 @@
-import { redirect, notFound } from 'next/navigation';
+﻿import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
@@ -31,10 +31,10 @@ export default async function EditArticlePage({
   return (
     <div className="p-8 max-w-3xl">
       <div className="flex items-start gap-4 mb-6">
-        <Link href={`/staff/knowledge/${article.id}`} className="text-gray-400 hover:text-gray-600 mt-1">
+        <Link href={`/staff/knowledge/${article.id}`} className="text-disabled hover:text-secondary mt-1">
           <ArrowLeft className="h-5 w-5" />
         </Link>
-        <h1 className="text-2xl font-bold text-gray-900">Bearbeiten</h1>
+        <h1 className="text-2xl font-bold text-primary">Bearbeiten</h1>
       </div>
 
       <ArticleEditor

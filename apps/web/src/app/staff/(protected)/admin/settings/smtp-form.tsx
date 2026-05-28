@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useActionState, useState, useTransition } from 'react';
 import { Send, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
@@ -96,7 +96,7 @@ export function SmtpForm({ initial, envFallback, defaultTestTo }: Props) {
       <form action={saveAction} className="space-y-4">
         {/* Anbieter-Presets */}
         <div>
-          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">
+          <div className="text-xs text-muted mb-1.5">
             Anbieter-Schnellwahl
           </div>
           <div className="flex flex-wrap gap-2">
@@ -105,7 +105,7 @@ export function SmtpForm({ initial, envFallback, defaultTestTo }: Props) {
                 key={p.label}
                 type="button"
                 onClick={() => applyPreset(p)}
-                className="text-xs px-2 py-1 rounded border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
+                className="text-xs px-2 py-1 rounded border border-default hover:bg-gray-100 text-secondary"
               >
                 {p.label}
               </button>
@@ -179,11 +179,11 @@ export function SmtpForm({ initial, envFallback, defaultTestTo }: Props) {
                 setPassword(e.target.value);
                 if (e.target.value) setKeepPassword(false);
               }}
-              placeholder={hasInitialPassword && keepPassword ? '••••••••' : ''}
+              placeholder={hasInitialPassword && keepPassword ? '⬢⬢⬢⬢⬢⬢⬢⬢' : ''}
               autoComplete="new-password"
             />
             {hasInitialPassword && (
-              <label className="mt-1 inline-flex items-center gap-1.5 text-xs text-gray-500">
+              <label className="mt-1 inline-flex items-center gap-1.5 text-xs text-muted">
                 <input
                   type="checkbox"
                   name="keepPassword"
@@ -236,13 +236,13 @@ export function SmtpForm({ initial, envFallback, defaultTestTo }: Props) {
             {isSaving ? 'Speichere…' : 'Speichern'}
           </button>
           {saveState?.ok && (
-            <span className="inline-flex items-center gap-1 text-sm text-emerald-700 dark:text-emerald-400">
+            <span className="trend-up">
               <CheckCircle2 className="h-4 w-4" />
               Gespeichert.
             </span>
           )}
           {saveState && !saveState.ok && (
-            <span className="inline-flex items-center gap-1 text-sm text-red-700 dark:text-red-400">
+            <span className="trend-down">
               <AlertCircle className="h-4 w-4" />
               {saveState.error}
             </span>
@@ -253,12 +253,12 @@ export function SmtpForm({ initial, envFallback, defaultTestTo }: Props) {
       {/* Test-Versand */}
       <form
         onSubmit={onTest}
-        className="rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 p-4 space-y-2"
+        className="rounded-md border border-default bg-surface-raised p-4 space-y-2"
       >
-        <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+        <div className="text-sm font-medium text-primary">
           Test-Mail senden
         </div>
-        <p className="text-xs text-gray-500 dark:text-gray-400">
+        <p className="text-xs text-muted">
           Schickt eine Test-Mail mit den aktuellen Eingaben (ohne zu speichern). So
           prüfen Sie Server und Anmeldedaten, bevor Sie übernehmen.
         </p>
@@ -285,13 +285,13 @@ export function SmtpForm({ initial, envFallback, defaultTestTo }: Props) {
           </button>
         </div>
         {testResult?.ok && (
-          <div className="inline-flex items-center gap-1 text-sm text-emerald-700 dark:text-emerald-400">
+          <div className="trend-up">
             <CheckCircle2 className="h-4 w-4" />
             Test-Mail verschickt — bitte Posteingang prüfen.
           </div>
         )}
         {testResult && !testResult.ok && (
-          <div className="inline-flex items-center gap-1 text-sm text-red-700 dark:text-red-400">
+          <div className="trend-down">
             <AlertCircle className="h-4 w-4" />
             {testResult.error}
           </div>
@@ -299,12 +299,12 @@ export function SmtpForm({ initial, envFallback, defaultTestTo }: Props) {
       </form>
 
       {initial && (
-        <div className="border-t border-gray-200 dark:border-gray-800 pt-4">
+        <div className="border-t border-default pt-4">
           <button
             type="button"
             onClick={onReset}
             disabled={isResetting}
-            className="text-xs text-gray-500 hover:text-red-700 dark:hover:text-red-400 inline-flex items-center gap-1.5"
+            className="text-xs text-muted hover:text-red-700 dark:hover:text-red-400 inline-flex items-center gap-1.5"
           >
             <RefreshCw className="h-3 w-3" />
             Kanzlei-Konfiguration zurücksetzen (wieder ENV-Fallback verwenden)

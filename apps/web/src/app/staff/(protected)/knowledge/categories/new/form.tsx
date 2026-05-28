@@ -37,7 +37,7 @@ export function CategoryForm({ categories }: { categories: Array<{ id: string; n
       </div>
 
       {state?.error && (
-        <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{state.error}</div>
+        <div className="alert-error-sm">{state.error}</div>
       )}
 
       <button type="submit" className="btn-primary" disabled={isPending}>

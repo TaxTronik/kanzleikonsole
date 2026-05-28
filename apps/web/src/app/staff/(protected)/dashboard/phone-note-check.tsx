@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useTransition, useState } from 'react';
 import { Check } from 'lucide-react';
@@ -33,7 +33,7 @@ export function PhoneNoteRow({
         type="button"
         onClick={mark}
         disabled={isPending}
-        className="shrink-0 mt-0.5 w-5 h-5 rounded border-2 border-gray-300 hover:border-emerald-600 hover:bg-emerald-50 flex items-center justify-center text-transparent hover:text-emerald-600 dark:border-gray-600 dark:hover:border-emerald-500 dark:hover:bg-emerald-900/20"
+        className="shrink-0 mt-0.5 w-5 h-5 rounded border-2 border-strong hover:border-emerald-600 hover:bg-emerald-50 flex items-center justify-center text-transparent hover:text-emerald-600 dark:hover:border-emerald-500 dark:hover:bg-emerald-900/20"
         title="Als erledigt markieren"
         aria-label="Als erledigt markieren"
       >

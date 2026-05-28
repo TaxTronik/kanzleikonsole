@@ -1,4 +1,4 @@
-import { redirect } from 'next/navigation';
+﻿import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
@@ -53,14 +53,14 @@ export default async function NewInvoicePage() {
   return (
     <div className="p-8 max-w-4xl">
       <div className="flex items-start gap-4 mb-6">
-        <Link href="/staff/invoices" className="text-gray-400 hover:text-gray-600 mt-1">
+        <Link href="/staff/invoices" className="text-disabled hover:text-secondary mt-1">
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-1">
+          <h1 className="text-2xl font-bold text-primary mb-1">
             {isExternal ? 'PDF-Rechnung hochladen' : 'Neue Rechnung'}
           </h1>
-          <p className="text-gray-500 text-sm">
+          <p className="text-muted text-sm">
             {isExternal
               ? 'Rechnung kommt aus zentraler Rechnungssoftware — hier nur PDF + Empfänger.'
               : 'Nur aktive Mandanten (GwG-verifiziert) können Rechnungen empfangen.'}
@@ -69,7 +69,7 @@ export default async function NewInvoicePage() {
       </div>
 
       {clients.length === 0 ? (
-        <div className="card p-8 text-center text-sm text-gray-500">
+        <div className="card p-8 text-center text-sm text-muted">
           Keine aktiven Mandanten vorhanden. Bitte zuerst GwG-Prüfung abschließen.
         </div>
       ) : isExternal ? (

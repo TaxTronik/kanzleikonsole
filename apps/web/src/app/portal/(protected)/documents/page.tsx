@@ -1,4 +1,4 @@
-import { redirect } from 'next/navigation';
+﻿import { redirect } from 'next/navigation';
 import { FileText } from 'lucide-react';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
@@ -40,33 +40,33 @@ export default async function PortalDocumentsPage() {
 
   return (
     <div className="p-8">
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">Dokumente</h1>
-      <p className="text-gray-500 text-sm mb-6">
+      <h1 className="text-2xl font-bold text-primary mb-1">Dokumente</h1>
+      <p className="text-muted text-sm mb-6">
         Dokumente, die zwischen Ihnen und Ihrer Kanzlei ausgetauscht wurden.
       </p>
 
       <div className="card overflow-hidden">
         {documents.length === 0 ? (
           <div className="px-6 py-16 text-center">
-            <FileText className="h-12 w-12 text-gray-200 mx-auto mb-3" />
-            <p className="text-sm text-gray-400">Noch keine Dokumente.</p>
+            <FileText className="h-12 w-12 text-disabled mx-auto mb-3" />
+            <p className="text-sm text-disabled">Noch keine Dokumente.</p>
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Titel</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Typ</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Größe</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Datum</th>
+              <tr className="bg-gray-50 border-b border-default">
+                <th className="th">Titel</th>
+                <th className="th">Typ</th>
+                <th className="th">Größe</th>
+                <th className="th">Datum</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-border-subtle">
               {documents.map((d) => {
                 const v = d.versions[0];
                 return (
                   <tr key={d.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 font-medium text-gray-900">
+                    <td className="px-6 py-4 font-medium text-primary">
                       <div className="flex items-center gap-2">
                         <DocumentPreviewButton
                           documentId={d.id}
@@ -81,13 +81,13 @@ export default async function PortalDocumentsPage() {
                         </a>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-gray-600">
+                    <td className="px-6 py-4 text-secondary">
                       {classificationLabels[d.classification] ?? d.classification}
                     </td>
-                    <td className="px-6 py-4 text-gray-600">
+                    <td className="px-6 py-4 text-secondary">
                       {v ? formatBytes(Number(v.sizeBytes)) : '—'}
                     </td>
-                    <td className="px-6 py-4 text-gray-600">
+                    <td className="px-6 py-4 text-secondary">
                       {new Intl.DateTimeFormat('de-DE').format(d.createdAt)}
                     </td>
                   </tr>

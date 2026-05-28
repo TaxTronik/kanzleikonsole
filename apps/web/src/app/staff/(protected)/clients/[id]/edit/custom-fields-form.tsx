@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import { saveCustomFieldValuesAction } from '../../../admin/custom-fields/actions';
@@ -62,13 +62,13 @@ export function CustomFieldsForm({
 
   return (
     <div className="card p-6">
-      <h2 className="text-sm font-medium text-gray-900 mb-4">Custom-Felder</h2>
+      <h2 className="text-sm font-medium text-primary mb-4">Custom-Felder</h2>
       <div className="grid grid-cols-2 gap-4">
         {defs.map((d) => (
           <div key={d.id} className={d.type === 'TEXTAREA' ? 'col-span-2' : undefined}>
-            <label className="block text-xs font-medium text-gray-700 mb-1">{d.label}</label>
+            <label className="label-sm">{d.label}</label>
             {renderInput(d, values[d.id] ?? null, (v) => setVal(d.id, v))}
-            {d.helpText && <p className="text-xs text-gray-400 mt-1">{d.helpText}</p>}
+            {d.helpText && <p className="text-xs text-disabled mt-1">{d.helpText}</p>}
           </div>
         ))}
       </div>
@@ -118,7 +118,7 @@ function renderInput(d: FieldDef, v: Value, set: (v: Value) => void): React.Reac
             onChange={(e) => set(e.target.value === '' ? null : Number(e.target.value))}
             className="input pr-10"
           />
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">€</span>
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted">€</span>
         </div>
       );
     case 'DATE':
@@ -150,7 +150,7 @@ function renderInput(d: FieldDef, v: Value, set: (v: Value) => void): React.Reac
             type="checkbox"
             checked={Boolean(v)}
             onChange={(e) => set(e.target.checked)}
-            className="rounded border-gray-300 text-brand-600"
+            className="rounded border-strong text-brand-600"
           />
           <span>Ja</span>
         </label>

@@ -1,4 +1,4 @@
-// =============================================================================
+﻿// =============================================================================
 // /staff/absences/calendar — Wandkalender für Urlaub + Krankheit
 //
 // Pro Mitarbeiter eine Zeile, pro Tag eine Zelle. Genehmigte Urlaubstage und
@@ -112,16 +112,16 @@ export default async function AbsencesCalendarPage({
     <div className="p-8 max-w-full">
       <div className="flex items-end justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-1 flex items-center gap-2">
+          <h1 className="page-title">
             <Plane className="h-6 w-6 text-brand-600" />
             Abwesenheits-Kalender
           </h1>
-          <p className="text-gray-500 text-sm">
+          <p className="text-muted text-sm">
             {fullDateFmt.format(start)} – {fullDateFmt.format(end)} · alle Mitarbeiter
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="inline-flex rounded-md border border-gray-200 overflow-hidden text-xs">
+          <div className="toggle-group">
             {[4, 8, 12].map((w) => (
               <Link
                 key={w}
@@ -129,7 +129,7 @@ export default async function AbsencesCalendarPage({
                 className={
                   w === weeks
                     ? 'px-3 py-1.5 bg-brand-600 text-white'
-                    : 'px-3 py-1.5 text-gray-700 hover:bg-gray-50'
+                    : 'px-3 py-1.5 text-secondary hover:bg-gray-50'
                 }
               >
                 {w} Wochen
@@ -146,22 +146,22 @@ export default async function AbsencesCalendarPage({
         <table className="text-xs border-separate border-spacing-0">
           <thead>
             <tr>
-              <th className="sticky left-0 z-10 bg-white border-b border-r border-gray-200 px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+              <th className="sticky left-0 z-10 bg-surface border-b border-r border-default px-3 py-2 text-left text-xs font-medium text-muted uppercase">
                 Mitarbeiter
               </th>
               {days.map((d, i) => (
                 <th
                   key={i}
                   className={
-                    'border-b border-gray-200 w-7 min-w-[28px] text-center font-normal ' +
+                    'border-b border-default w-7 min-w-[28px] text-center font-normal ' +
                     (monthBoundaries[i] ? 'border-l-2 border-l-gray-300' : '')
                   }
                 >
-                  <div className="text-[10px] text-gray-400 leading-none pt-1">
+                  <div className="text-[10px] text-disabled leading-none pt-1">
                     {monthBoundaries[i] ? monthFmt.format(d) : ''}
                   </div>
-                  <div className="text-[10px] text-gray-500 leading-none">{weekdayFmt.format(d).slice(0, 2)}</div>
-                  <div className={isWeekend(d) ? 'text-gray-400' : 'text-gray-700'}>{dayFmt.format(d)}</div>
+                  <div className="text-[10px] text-muted leading-none">{weekdayFmt.format(d).slice(0, 2)}</div>
+                  <div className={isWeekend(d) ? 'text-disabled' : 'text-secondary'}>{dayFmt.format(d)}</div>
                 </th>
               ))}
             </tr>
@@ -169,7 +169,7 @@ export default async function AbsencesCalendarPage({
           <tbody>
             {staffList.map((s) => (
               <tr key={s.id}>
-                <td className="sticky left-0 z-10 bg-white border-r border-gray-100 px-3 py-1 text-sm whitespace-nowrap">
+                <td className="sticky left-0 z-10 bg-surface border-r border-subtle px-3 py-1 text-sm whitespace-nowrap">
                   {s.fullName}
                 </td>
                 {days.map((d, i) => {
@@ -190,7 +190,7 @@ export default async function AbsencesCalendarPage({
                     <td
                       key={i}
                       className={
-                        'border-b border-gray-100 h-6 text-center ' +
+                        'border-b border-subtle h-6 text-center ' +
                         cls +
                         (monthBoundaries[i] ? ' border-l-2 border-l-gray-300' : '')
                       }
@@ -208,7 +208,7 @@ export default async function AbsencesCalendarPage({
         </table>
       </div>
 
-      <div className="mt-4 flex items-center gap-4 text-xs text-gray-600">
+      <div className="mt-4 flex items-center gap-4 text-xs text-secondary">
         <span className="inline-flex items-center gap-1.5">
           <span className="inline-block w-3 h-3 rounded bg-emerald-200" /> Urlaub (genehmigt)
         </span>
@@ -216,7 +216,7 @@ export default async function AbsencesCalendarPage({
           <span className="inline-block w-3 h-3 rounded bg-red-200" /> Krank
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block w-3 h-3 rounded bg-gray-50 border border-gray-200" /> Wochenende
+          <span className="inline-block w-3 h-3 rounded bg-gray-50 border border-default" /> Wochenende
         </span>
       </div>
     </div>

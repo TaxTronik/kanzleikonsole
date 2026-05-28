@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
@@ -130,7 +130,7 @@ export function WorkflowItemRow(p: Props) {
         className={
           done
             ? 'mt-0.5 w-5 h-5 rounded border-2 border-emerald-600 bg-emerald-600 text-white flex items-center justify-center shrink-0'
-            : 'mt-0.5 w-5 h-5 rounded border-2 border-gray-300 hover:border-brand-600 shrink-0 disabled:cursor-not-allowed disabled:opacity-50'
+            : 'mt-0.5 w-5 h-5 rounded border-2 border-strong hover:border-brand-600 shrink-0 disabled:cursor-not-allowed disabled:opacity-50'
         }
         aria-label={done ? 'Erledigt — klicken zum Zurücksetzen' : 'Als erledigt markieren'}
         title={isTaskLike ? 'Manuelle Aufgabe — direkt abhaken' : done ? 'Erledigt — zum Zurücksetzen klicken' : 'Diese Art Schritt wird über den Button rechts angestoßen'}
@@ -140,12 +140,12 @@ export function WorkflowItemRow(p: Props) {
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <KindIcon className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-          <p className={done ? 'text-sm text-gray-400 line-through' : 'text-sm font-medium text-gray-900'}>
+          <KindIcon className="h-3.5 w-3.5 text-disabled shrink-0" />
+          <p className={done ? 'text-sm text-disabled line-through' : 'text-sm font-medium text-primary'}>
             {p.title}
           </p>
           {!isTaskLike && (
-            <span className="text-[10px] font-medium uppercase tracking-wide text-gray-500 bg-gray-100 dark:bg-gray-800 rounded px-1.5 py-0.5">
+            <span className="text-[10px] font-medium uppercase tracking-wide text-muted bg-gray-100 rounded px-1.5 py-0.5">
               {KIND_LABEL[p.kind]}
             </span>
           )}
@@ -164,7 +164,7 @@ export function WorkflowItemRow(p: Props) {
               onChange={(e) => saveDue(e.target.value)}
               onBlur={() => setEditingDue(false)}
               autoFocus
-              className="text-xs border border-gray-200 dark:border-gray-700 rounded px-1.5 py-0.5 bg-white dark:bg-gray-900"
+              className="text-xs border border-default rounded px-1.5 py-0.5 bg-surface"
             />
           ) : (
             <button
@@ -173,7 +173,7 @@ export function WorkflowItemRow(p: Props) {
               className={
                 overdue
                   ? 'text-xs text-red-700 font-medium hover:underline cursor-pointer'
-                  : 'text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:underline cursor-pointer'
+                  : 'text-xs text-muted hover:text-secondary hover:underline cursor-pointer'
               }
               title="Klicken, um Frist zu ändern"
             >
@@ -182,7 +182,7 @@ export function WorkflowItemRow(p: Props) {
           )}
         </div>
         {p.description && !done && (
-          <p className="text-xs text-gray-500 mt-1">{p.description}</p>
+          <p className="text-xs text-muted mt-1">{p.description}</p>
         )}
         {waitsForExternal && (
           <p className="text-xs text-amber-700 dark:text-amber-400 mt-1 inline-flex items-center gap-1">
@@ -198,20 +198,20 @@ export function WorkflowItemRow(p: Props) {
         {error && <p className="text-xs text-red-700 mt-1">{error}</p>}
         {p.documents.length > 0 && (
           <div className="mt-2 space-y-1">
-            <p className="text-[10px] uppercase tracking-wide text-gray-400">
+            <p className="text-[10px] uppercase tracking-wide text-disabled">
               Hochgeladene Dateien ({p.documents.length})
             </p>
             <ul className="space-y-0.5">
               {p.documents.map((d) => (
                 <li key={d.id} className="flex items-center gap-2 text-xs">
-                  <FileText className="h-3 w-3 text-gray-400 shrink-0" />
+                  <FileText className="h-3 w-3 text-disabled shrink-0" />
                   <Link
                     href={`/staff/documents/${d.id}`}
                     className="text-brand-700 dark:text-brand-300 hover:underline truncate flex-1"
                   >
                     {d.title}
                   </Link>
-                  <span className="text-[10px] text-gray-400 shrink-0">
+                  <span className="text-[10px] text-disabled shrink-0">
                     {new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(d.createdAt))}
                   </span>
                 </li>
@@ -254,11 +254,11 @@ export function WorkflowItemRow(p: Props) {
             buttonLabel={p.documents.length === 0 ? 'Hochladen' : 'Weitere Datei'}
           />
         )}
-        <User className="h-3.5 w-3.5 text-gray-400" />
+        <User className="h-3.5 w-3.5 text-disabled" />
         <select
           value={assignee}
           onChange={(e) => changeAssignee(e.target.value)}
-          className="text-xs border border-gray-200 rounded px-2 py-1 bg-white dark:bg-gray-900 dark:border-gray-700"
+          className="text-xs border border-default rounded px-2 py-1 bg-surface"
           disabled={isPending}
         >
           <option value="">— niemand —</option>

@@ -9,10 +9,19 @@
 // Direkter `prisma.xy.findMany()`-Aufruf ohne Context wird durch RLS blockiert
 // (App-Role sieht NICHTS). Das ist Absicht — Defense in Depth gegen vergessene
 // Tenant-Filter.
+//
+// TX-Serializer: Der tx-Client wird per Proxy serialisiert. Hintergrund:
+// `prisma.$transaction()` hält genau eine pg-Connection. Mit dem
+// driver-adapter `@prisma/adapter-pg` (Prisma 7) gehen Queries direkt an den
+// pg.Client — und pg.Client erlaubt nur eine Query in-flight pro Connection
+// (Deprecation-Warning ab pg@8, Error ab pg@9). Code wie
+// `Promise.all([tx.a.findMany(), tx.b.findMany()])` würde sonst spammen.
+// Der Proxy reiht alle Calls in eine Promise-Chain ein, läuft also sequenziell
+// — was sie unter dem alten Query-Engine ohnehin taten, nur stillschweigend.
 // =============================================================================
 
 import type { Prisma } from '@prisma/client';
-import { prisma, type PrismaClient } from './client';
+import { prisma } from './client';
 
 export type ActorType = 'STAFF' | 'CLIENT_CONTACT' | 'SYSTEM';
 
@@ -22,7 +31,7 @@ export interface TenantContext {
   actorType: ActorType;
 }
 
-export type TxClient = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
+export type TxClient = Prisma.TransactionClient;
 
 /**
  * Führt einen Callback mit gesetztem Tenant-Kontext aus.
@@ -38,11 +47,50 @@ export type TxClient = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '
  * });
  * ```
  */
+function serializeTx<T extends object>(tx: T): T {
+  let chain: Promise<unknown> = Promise.resolve();
+  const enqueue = <R>(work: () => R | Promise<R>): Promise<R> => {
+    const next = chain.then(work, work);
+    chain = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    return next as Promise<R>;
+  };
+  const modelCache = new WeakMap<object, unknown>();
+  const wrapModel = (model: object) => {
+    const cached = modelCache.get(model);
+    if (cached) return cached;
+    const proxy = new Proxy(model, {
+      get(target, prop, recv) {
+        const val = Reflect.get(target, prop, recv);
+        if (typeof val !== 'function') return val;
+        return (...args: unknown[]) =>
+          enqueue(() => (val as (...a: unknown[]) => unknown).apply(target, args));
+      },
+    });
+    modelCache.set(model, proxy);
+    return proxy;
+  };
+  return new Proxy(tx, {
+    get(target, prop, recv) {
+      const val = Reflect.get(target, prop, recv);
+      if (typeof val === 'function') {
+        return (...args: unknown[]) =>
+          enqueue(() => (val as (...a: unknown[]) => unknown).apply(target, args));
+      }
+      if (typeof val === 'object' && val !== null) return wrapModel(val);
+      return val;
+    },
+  }) as T;
+}
+
 export async function withTenantContext<T>(
   ctx: TenantContext,
   fn: (tx: TxClient) => Promise<T>,
 ): Promise<T> {
-  return prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (rawTx) => {
+    const tx = serializeTx(rawTx);
     await tx.$queryRaw`
       SELECT
         set_config('app.current_tenant_id', ${ctx.tenantId}, true),
@@ -68,6 +116,6 @@ export async function withSystemContext<T>(
  * Type-Guard, damit Code nicht versehentlich an Funktionen ohne Context-Wrapper
  * geht. Wird von ESLint-Custom-Rule (später) ausgewertet.
  */
-export function assertTenantContext(_: Prisma.TransactionClient): asserts _ is TxClient {
+export function assertTenantContext(_: Prisma.TransactionClient): void {
   // No-op zur Laufzeit — dient nur der Typ-Anreicherung in der Aufrufkette.
 }

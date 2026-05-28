@@ -1,4 +1,4 @@
-import { staffAuth } from '@/server/auth/staff';
+﻿import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
@@ -142,8 +142,8 @@ export default async function RequestsOverviewPage({
     <div className="p-8">
       <div className="flex items-end justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-1">Anforderungen</h1>
-          <p className="text-gray-500 text-sm">
+          <h1 className="text-2xl font-bold text-primary mb-1">Anforderungen</h1>
+          <p className="text-muted text-sm">
             Alle laufenden Anforderungen an Mandanten.
           </p>
         </div>
@@ -157,7 +157,7 @@ export default async function RequestsOverviewPage({
       </div>
 
       {/* Status-Tabs */}
-      <div className="border-b border-gray-200 mb-4">
+      <div className="border-b border-default mb-4">
         <nav className="-mb-px flex gap-6">
           {tabs.map((t) => {
             const active = (filterStatus ?? '') === t.key;
@@ -168,7 +168,7 @@ export default async function RequestsOverviewPage({
                 className={
                   active
                     ? 'border-b-2 border-brand-600 text-brand-700 px-1 py-2 text-sm font-medium'
-                    : 'border-b-2 border-transparent text-gray-500 hover:text-gray-700 px-1 py-2 text-sm font-medium'
+                    : 'border-b-2 border-transparent text-muted hover:text-secondary px-1 py-2 text-sm font-medium'
                 }
               >
                 {t.label}
@@ -183,7 +183,7 @@ export default async function RequestsOverviewPage({
         {filterStatus && <input type="hidden" name="status" value={filterStatus} />}
         <div className="flex gap-3 items-end flex-wrap">
           <div className="flex-1 min-w-[240px] relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-disabled" />
             <input
               type="search"
               name="q"
@@ -205,13 +205,13 @@ export default async function RequestsOverviewPage({
           </select>
         </div>
         <div className="flex items-center justify-between gap-3">
-          <label className="flex items-center gap-2 text-sm text-gray-700">
+          <label className="flex items-center gap-2 text-sm text-secondary">
             <input
               type="checkbox"
               name="mine"
               value="1"
               defaultChecked={mine}
-              className="rounded border-gray-300 text-brand-600"
+              className="rounded border-strong text-brand-600"
             />
             Nur meine Mandanten
           </label>
@@ -229,25 +229,25 @@ export default async function RequestsOverviewPage({
       <div className="card overflow-hidden">
         {requests.length === 0 ? (
           <div className="px-6 py-16 text-center">
-            <Inbox className="h-12 w-12 text-gray-200 mx-auto mb-3" />
-            <p className="text-sm text-gray-400">Keine Anforderungen gefunden.</p>
+            <Inbox className="h-12 w-12 text-disabled mx-auto mb-3" />
+            <p className="text-sm text-disabled">Keine Anforderungen gefunden.</p>
           </div>
         ) : (
           <>
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
+                <tr className="bg-gray-50 border-b border-default">
                   <th className="px-3 py-3 w-8"></th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Mandant</th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">DATEV / Addison</th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Titel</th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Priorität</th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Antw.</th>
-                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Fällig</th>
+                  <th className="th">Mandant</th>
+                  <th className="th">DATEV / Addison</th>
+                  <th className="th">Titel</th>
+                  <th className="th">Status</th>
+                  <th className="th">Priorität</th>
+                  <th className="th">Antw.</th>
+                  <th className="th">Fällig</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-border-subtle">
                 {requests.map((r) => {
                   const closable = r.status !== 'CLOSED' && r.status !== 'CANCELLED';
                   return (
@@ -257,21 +257,21 @@ export default async function RequestsOverviewPage({
                           <input
                             type="checkbox"
                             data-bulk-id={r.id}
-                            className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                            className="rounded border-strong text-brand-600 focus:ring-brand-500"
                             aria-label="Auswählen"
                           />
                         )}
                       </td>
                       <td className="px-6 py-3">
-                        <Link href={`/staff/clients/${r.client.id}`} className="text-gray-700 hover:underline">
+                        <Link href={`/staff/clients/${r.client.id}`} className="text-secondary hover:underline">
                           {r.client.name}
                         </Link>
                       </td>
-                      <td className="px-6 py-3 text-xs font-mono text-gray-500">
+                      <td className="px-6 py-3 text-xs font-mono text-muted">
                         {r.client.datevNo ?? '—'}
                         {r.client.addisonNo ? ` / ${r.client.addisonNo}` : ''}
                       </td>
-                      <td className="px-6 py-3 font-medium text-gray-900">
+                      <td className="px-6 py-3 font-medium text-primary">
                         <Link href={`/staff/requests/${r.id}`} className="hover:underline">
                           {r.title}
                         </Link>
@@ -286,11 +286,11 @@ export default async function RequestsOverviewPage({
                       <td className="px-6 py-3">
                         {r.priority === 'URGENT' && <span className="badge-red">{priorityLabels[r.priority]}</span>}
                         {r.priority === 'HIGH' && <span className="badge-yellow">{priorityLabels[r.priority]}</span>}
-                        {r.priority === 'NORMAL' && <span className="text-gray-600">{priorityLabels[r.priority]}</span>}
-                        {r.priority === 'LOW' && <span className="text-gray-400">{priorityLabels[r.priority]}</span>}
+                        {r.priority === 'NORMAL' && <span className="text-secondary">{priorityLabels[r.priority]}</span>}
+                        {r.priority === 'LOW' && <span className="text-disabled">{priorityLabels[r.priority]}</span>}
                       </td>
-                      <td className="px-6 py-3 text-gray-600">{r._count.responses}</td>
-                      <td className="px-6 py-3 text-gray-600">
+                      <td className="px-6 py-3 text-secondary">{r._count.responses}</td>
+                      <td className="px-6 py-3 text-secondary">
                         {r.dueAt ? new Intl.DateTimeFormat('de-DE').format(r.dueAt) : '—'}
                       </td>
                     </tr>

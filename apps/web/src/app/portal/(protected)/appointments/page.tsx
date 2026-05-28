@@ -1,4 +1,4 @@
-// =============================================================================
+﻿// =============================================================================
 // /portal/appointments — Mandanten-Terminanfragen
 //
 // Mandant sieht NUR seine eigenen Termine und Anfragen — keine Einsicht in
@@ -71,11 +71,11 @@ export default async function PortalAppointmentsPage() {
   return (
     <div className="p-8 max-w-4xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1 flex items-center gap-2">
+        <h1 className="page-title">
           <CalendarDays className="h-6 w-6 text-brand-600" />
           Termine
         </h1>
-        <p className="text-gray-500 dark:text-gray-400 text-sm">
+        <p className="text-muted text-sm">
           Hier sehen Sie Ihre vereinbarten Termine und können neue anfragen.
         </p>
       </div>
@@ -87,27 +87,27 @@ export default async function PortalAppointmentsPage() {
       )}
 
       <div className="card overflow-hidden mb-6">
-        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-800">
-          <h2 className="text-sm font-medium text-gray-900 dark:text-gray-100">Bestätigte Termine</h2>
+        <div className="px-6 py-4 border-b border-default">
+          <h2 className="text-sm font-medium text-primary">Bestätigte Termine</h2>
         </div>
         {data.appointments.length === 0 ? (
-          <p className="px-6 py-8 text-sm text-gray-400 text-center">Aktuell keine Termine.</p>
+          <p className="px-6 py-8 text-sm text-disabled text-center">Aktuell keine Termine.</p>
         ) : (
-          <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+          <ul className="divide-y divide-border-subtle">
             {data.appointments.map((a) => {
               const past = a.endsAt.getTime() < Date.now();
               return (
                 <li key={a.id} className={'px-6 py-3 ' + (past ? 'opacity-60' : '')}>
-                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{a.title}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">
+                  <p className="text-sm font-medium text-primary">{a.title}</p>
+                  <p className="text-xs text-muted mt-0.5">
                     {dateTimeFmt.format(a.startsAt)} – {dateTimeFmt.format(a.endsAt)}
                   </p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-muted">
                     Bearbeiter: {a.owner.fullName}
                     {a.location && <span className="ml-2">· {a.location}</span>}
                   </p>
                   {a.notes && (
-                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 whitespace-pre-wrap">{a.notes}</p>
+                    <p className="text-xs text-secondary dark:text-disabled mt-1 whitespace-pre-wrap">{a.notes}</p>
                   )}
                 </li>
               );
@@ -117,20 +117,20 @@ export default async function PortalAppointmentsPage() {
       </div>
 
       <div className="card overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-800">
-          <h2 className="text-sm font-medium text-gray-900 dark:text-gray-100">Meine Anfragen</h2>
+        <div className="px-6 py-4 border-b border-default">
+          <h2 className="text-sm font-medium text-primary">Meine Anfragen</h2>
         </div>
         {data.requests.length === 0 ? (
-          <p className="px-6 py-8 text-sm text-gray-400 text-center">Noch keine Anfragen.</p>
+          <p className="px-6 py-8 text-sm text-disabled text-center">Noch keine Anfragen.</p>
         ) : (
-          <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+          <ul className="divide-y divide-border-subtle">
             {data.requests.map((r) => {
               const slots = (r.proposedSlots as Array<{ startsAt: string; endsAt: string }>) ?? [];
               return (
                 <li key={r.id} className="px-6 py-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-medium text-primary flex items-center gap-2 flex-wrap">
                         {r.subject}
                         {r.status === 'PENDING' && (
                           <span className="badge-yellow text-[10px] inline-flex items-center gap-1">
@@ -151,11 +151,11 @@ export default async function PortalAppointmentsPage() {
                           <span className="badge-gray text-[10px]">{STATUS_LABELS[r.status]}</span>
                         )}
                       </p>
-                      <p className="text-[11px] text-gray-400 mt-0.5">
+                      <p className="text-[11px] text-disabled mt-0.5">
                         {dateFmt.format(r.createdAt)}
                         {r.preferredStaff && ` · Wunsch: ${r.preferredStaff.fullName}`}
                       </p>
-                      <ul className="mt-1 text-xs text-gray-600 dark:text-gray-400 space-y-0.5">
+                      <ul className="mt-1 text-xs text-secondary dark:text-disabled space-y-0.5">
                         {slots.map((s, i) => (
                           <li key={i}>
                             {dateTimeFmt.format(new Date(s.startsAt))} – {dateTimeFmt.format(new Date(s.endsAt))}

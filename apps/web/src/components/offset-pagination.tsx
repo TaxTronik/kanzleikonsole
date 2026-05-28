@@ -1,4 +1,4 @@
-// =============================================================================
+﻿// =============================================================================
 // Offset-basierte Pagination (Seitenzahlen). Wird genutzt, wo die
 // Sortierreihenfolge variabel ist und Cursor-Pagination unpraktisch wäre.
 // =============================================================================
@@ -32,7 +32,7 @@ export function OffsetPagination({ basePath, baseQs, page, pageSize, totalCount 
   const end = Math.min(safe * pageSize, totalCount);
 
   return (
-    <div className="px-6 py-3 border-t border-gray-200 flex items-center justify-between text-xs text-gray-500">
+    <div className="card-footer">
       <span>
         {totalCount === 0
           ? '0 Treffer'
@@ -45,7 +45,7 @@ export function OffsetPagination({ basePath, baseQs, page, pageSize, totalCount 
             Zurück
           </Link>
         ) : (
-          <span className="text-gray-400 inline-flex items-center gap-1">
+          <span className="text-disabled inline-flex items-center gap-1">
             <ChevronLeft className="h-3 w-3" />
             Zurück
           </span>
@@ -59,7 +59,7 @@ export function OffsetPagination({ basePath, baseQs, page, pageSize, totalCount 
             <ChevronRight className="h-3 w-3" />
           </Link>
         ) : (
-          <span className="text-gray-400 inline-flex items-center gap-1">
+          <span className="text-disabled inline-flex items-center gap-1">
             Weiter
             <ChevronRight className="h-3 w-3" />
           </span>

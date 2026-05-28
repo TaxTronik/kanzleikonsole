@@ -18,7 +18,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// HMAC-Signatur prüfen — Header x-taxtronik-signature gegen body verifizieren\nimport crypto from 'crypto';\nconst secret = $env.N8N_HMAC_SECRET;\nconst body = $input.item.json.body || JSON.stringify($input.item.json);\nconst sig = $input.item.json.headers?.['x-taxtronik-signature'] || '';\nconst expected = 'sha256=' + crypto.createHmac('sha256', secret).update(typeof body === 'string' ? body : JSON.stringify(body)).digest('hex');\nif (sig !== expected) {\n  throw new Error('HMAC-Signatur ungültig');\n}\nreturn $input.item;"
+        "jsCode": "// HMAC-Signatur pruefen: App/Worker signieren event\\ntimestamp\\nnonce\\nbody.\nimport crypto from 'crypto';\nconst secret = $env.N8N_HMAC_SECRET;\nconst headers = $input.item.json.headers || {};\nconst body = typeof $input.item.json.body === 'string'\n  ? $input.item.json.body\n  : JSON.stringify($input.item.json.body ?? {});\nconst sig = headers['x-taxtronik-signature'] || headers['X-Taxtronik-Signature'] || '';\nconst ts = headers['x-taxtronik-timestamp'] || headers['X-Taxtronik-Timestamp'] || '';\nconst event = headers['x-taxtronik-event'] || headers['X-Taxtronik-Event'] || '';\nconst nonce = headers['x-taxtronik-nonce'] || headers['X-Taxtronik-Nonce'] || '';\nif (!sig || !ts || !event || !nonce) {\n  throw new Error('HMAC-Header fehlen');\n}\nconst tsNumber = Number(ts);\nif (!Number.isFinite(tsNumber) || Math.abs(Date.now() - tsNumber) > 5 * 60 * 1000) {\n  throw new Error('HMAC-Timestamp ungueltig');\n}\nconst expected = 'sha256=' + crypto.createHmac('sha256', secret).update(`${event}\\n${ts}\\n${nonce}\\n${body}`).digest('hex');\nif (sig !== expected) {\n  throw new Error('HMAC-Signatur ungueltig');\n}\nreturn $input.item;"
       },
       "id": "verify-hmac",
       "name": "HMAC verifizieren",
@@ -28,7 +28,7 @@
     },
     {
       "parameters": {
-        "url": "={{ $env.TAXTRONIK_API_URL }}/api/n8n/request-detail/{{ $json.body.payload.requestId }}",
+        "url": "={{ $env.TAXTRONIK_API_URL + '/api/n8n/request-detail/' + $json.body.payload.requestId + '?tenantId=' + ($json.body.tenantId || $json.body.payload.tenantId) }}",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "options": {}

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import { createPoaAction } from '../actions';
@@ -149,7 +149,7 @@ export function NewPoaForm({ clients }: { clients: Client[] }) {
 
       <div className="flex gap-2">
         <button type="submit" className="btn-primary">Anlegen</button>
-        <p className="text-xs text-gray-500 self-center">
+        <p className="text-xs text-muted self-center">
           Nach Anlegen können Sie die Vollmacht zur Unterschrift senden.
         </p>
       </div>

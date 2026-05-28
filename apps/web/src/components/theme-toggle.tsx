@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import { Sun, Moon, Monitor } from 'lucide-react';
@@ -78,7 +78,7 @@ export function ThemeToggle() {
       onClick={cycle}
       title={title}
       aria-label={title}
-      className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"
+      className="p-2 text-muted hover:text-primary hover:bg-gray-100 rounded-md transition-colors"
     >
       <Icon className="h-5 w-5" />
     </button>

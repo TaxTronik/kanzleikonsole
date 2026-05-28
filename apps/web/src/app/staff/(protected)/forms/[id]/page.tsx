@@ -1,4 +1,4 @@
-// =============================================================================
+﻿// =============================================================================
 // /staff/forms/[id] — Formular-Editor
 // =============================================================================
 
@@ -27,11 +27,11 @@ export default async function FormEditorPage({ params }: { params: Promise<{ id:
 
   return (
     <div className="p-8 max-w-4xl">
-      <Link href="/staff/forms" className="text-sm text-gray-500 hover:text-gray-900 inline-flex items-center gap-1 mb-4">
+      <Link href="/staff/forms" className="back-link">
         <ArrowLeft className="h-4 w-4" /> Zurück zu Vorlagen
       </Link>
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">{tpl.name}</h1>
-      <p className="text-gray-500 text-sm mb-6">
+      <h1 className="text-2xl font-bold text-primary mb-1">{tpl.name}</h1>
+      <p className="text-muted text-sm mb-6">
         Felder definieren und speichern. Bei Versand pro Mandant wird das Formular
         im Portal mit den hier definierten Feldern angezeigt.
       </p>

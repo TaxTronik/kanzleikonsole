@@ -1,4 +1,4 @@
-import { redirect, notFound } from 'next/navigation';
+﻿import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, FileText, Lock, Shield } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
@@ -68,12 +68,12 @@ export default async function DocumentDetailPage({
   return (
     <div className="p-8 max-w-4xl">
       <div className="flex items-start gap-4 mb-6">
-        <Link href="/staff/documents" className="text-gray-400 hover:text-gray-600 mt-1">
+        <Link href="/staff/documents" className="text-disabled hover:text-secondary mt-1">
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 mb-1 flex-wrap">
-            <h1 className="text-2xl font-bold text-gray-900 truncate">{doc.title}</h1>
+            <h1 className="text-2xl font-bold text-primary truncate">{doc.title}</h1>
             {isGobd && (
               <span className="badge-yellow flex items-center gap-1">
                 <Lock className="h-3 w-3" />
@@ -87,7 +87,7 @@ export default async function DocumentDetailPage({
               size="md"
             />
           </div>
-          <p className="text-gray-500 text-sm">
+          <p className="text-muted text-sm">
             {classificationLabels[doc.classification] ?? doc.classification}
             {doc.client && (
               <>
@@ -111,18 +111,18 @@ export default async function DocumentDetailPage({
 
       {/* Versions-Historie */}
       <div className="card overflow-hidden mb-6">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h2 className="text-sm font-medium text-gray-900">Versionen</h2>
+        <div className="px-6 py-4 border-b border-default">
+          <h2 className="text-sm font-medium text-primary">Versionen</h2>
         </div>
-        <ul className="divide-y divide-gray-100">
+        <ul className="divide-y divide-border-subtle">
           {doc.versions.map((v, idx) => {
             const isLatest = idx === 0;
             return (
               <li key={v.id} className="px-6 py-3 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
-                  <FileText className="h-4 w-4 text-gray-400 shrink-0" />
+                  <FileText className="h-4 w-4 text-disabled shrink-0" />
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-900">
+                    <p className="text-sm font-medium text-primary">
                       v{v.versionNo}
                       {isLatest && <span className="ml-2 badge-green text-[10px]">aktuell</span>}
                       {v.scanStatus === 'INFECTED' && (
@@ -132,7 +132,7 @@ export default async function DocumentDetailPage({
                         <span className="ml-2 badge-yellow text-[10px]">scannt…</span>
                       )}
                     </p>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-muted">
                       {new Intl.DateTimeFormat('de-DE', {
                         dateStyle: 'short',
                         timeStyle: 'short',
@@ -165,8 +165,8 @@ export default async function DocumentDetailPage({
 
       {/* Neue Version */}
       <div className="card p-6">
-        <h2 className="text-sm font-medium text-gray-900 mb-3">Neue Version hochladen</h2>
-        <p className="text-xs text-gray-500 mb-4">
+        <h2 className="text-sm font-medium text-primary mb-3">Neue Version hochladen</h2>
+        <p className="text-xs text-muted mb-4">
           {isGobd ? (
             <>
               <Shield className="h-3 w-3 inline mr-1" />

@@ -1,4 +1,4 @@
-// =============================================================================
+﻿// =============================================================================
 // /staff/workflows — Aktive Workflow-Vorgänge (global)
 //
 // Zeigt alle ACTIVE WorkflowInstanzen aller Mandanten. Filter:
@@ -107,11 +107,11 @@ export default async function ActiveWorkflowsPage({
   return (
     <div className="p-8 max-w-5xl">
       <div className="mb-3">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1 flex items-center gap-2">
+        <h1 className="page-title">
           <Workflow className="h-6 w-6 text-brand-600" />
           Workflows
         </h1>
-        <p className="text-gray-500 dark:text-gray-400 text-sm">
+        <p className="text-muted text-sm">
           Laufende Vorgänge über alle Mandanten. Detail-Sicht pro Mandant via Klick auf den Namen.
         </p>
       </div>
@@ -143,7 +143,7 @@ export default async function ActiveWorkflowsPage({
             </select>
             <button type="submit" className="btn-secondary text-xs">Filtern</button>
             {clientFilterId && (
-              <Link href={filterLink(filter)} className="text-xs text-gray-500 hover:underline ml-1">
+              <Link href={filterLink(filter)} className="text-xs text-muted hover:underline ml-1">
                 ×
               </Link>
             )}
@@ -153,8 +153,8 @@ export default async function ActiveWorkflowsPage({
 
       {instances.length === 0 ? (
         <div className="card p-10 text-center">
-          <Workflow className="h-10 w-10 text-gray-200 dark:text-gray-700 mx-auto mb-3" />
-          <p className="text-sm text-gray-400 mb-3">
+          <Workflow className="h-10 w-10 text-disabled dark:text-secondary mx-auto mb-3" />
+          <p className="text-sm text-disabled mb-3">
             {filter === 'all' && !clientFilterId
               ? 'Keine laufenden Workflows.'
               : 'Keine Treffer für den gewählten Filter.'}
@@ -179,15 +179,15 @@ export default async function ActiveWorkflowsPage({
               <Link
                 key={inst.id}
                 href={`/staff/clients/${inst.client.id}/workflows`}
-                className="card p-4 block hover:bg-gray-50 dark:hover:bg-gray-900/40"
+                className="card p-4 block hover:bg-gray-50"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <Workflow className="h-3.5 w-3.5 text-gray-400" />
-                      <span className="font-medium text-gray-900 dark:text-gray-100">{inst.name}</span>
-                      <span className="text-sm text-gray-500 dark:text-gray-400">·</span>
-                      <span className="text-sm text-gray-700 dark:text-gray-300">{inst.client.name}</span>
+                      <Workflow className="h-3.5 w-3.5 text-disabled" />
+                      <span className="font-medium text-primary">{inst.name}</span>
+                      <span className="text-sm text-muted">·</span>
+                      <span className="text-sm text-secondary">{inst.client.name}</span>
                       {overdue && (
                         <span className="badge-red text-[10px] inline-flex items-center gap-0.5">
                           <AlertCircle className="h-2.5 w-2.5" />
@@ -195,24 +195,24 @@ export default async function ActiveWorkflowsPage({
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    <p className="text-xs text-muted mt-1">
                       gestartet am {dateFmt.format(inst.startedAt)} von {startedByName}
                     </p>
                     {nextItem && (
-                      <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                      <p className="text-xs text-secondary mt-1">
                         Nächster Schritt: <span className="font-medium">{nextItem.title}</span>
                         {nextItem.assigneeStaffId && (
-                          <span className="text-gray-500"> — zugewiesen an {staffName.get(nextItem.assigneeStaffId) ?? '—'}</span>
+                          <span className="text-muted"> — zugewiesen an {staffName.get(nextItem.assigneeStaffId) ?? '—'}</span>
                         )}
                         {nextItem.dueDate && (
-                          <span className="text-gray-500"> — fällig {dateFmt.format(nextItem.dueDate)}</span>
+                          <span className="text-muted"> — fällig {dateFmt.format(nextItem.dueDate)}</span>
                         )}
                       </p>
                     )}
                   </div>
-                  <div className="text-right text-xs text-gray-500 shrink-0 min-w-[6rem]">
+                  <div className="text-right text-xs text-muted shrink-0 min-w-[6rem]">
                     {doneItems} / {total} erledigt
-                    <div className="mt-1 h-1.5 w-24 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                    <div className="mt-1 h-1.5 w-24 rounded-full bg-gray-100 overflow-hidden">
                       <div
                         className="h-full bg-brand-600"
                         style={{ width: `${pct}%` }}
@@ -244,7 +244,7 @@ function FilterPill({
       className={
         active
           ? 'inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-brand-600 text-white'
-          : 'inline-flex items-center px-3 py-1 rounded-full text-xs text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700'
+          : 'inline-flex items-center px-3 py-1 rounded-full text-xs text-secondary bg-gray-100 hover:bg-gray-200'
       }
     >
       {label}
@@ -266,15 +266,15 @@ function KpiCard({
   tone?: 'red';
 }) {
   const accent = tone === 'red'
-    ? highlight ? 'text-red-700 dark:text-red-400' : 'text-gray-400'
-    : highlight ? 'text-brand-700 dark:text-brand-300' : 'text-gray-400';
+    ? highlight ? 'text-red-700 dark:text-red-400' : 'text-disabled'
+    : highlight ? 'text-brand-700 dark:text-brand-300' : 'text-disabled';
   return (
     <div className="card p-4">
       <div className="flex items-center gap-2 mb-1">
         <Icon className={`h-4 w-4 ${accent}`} />
-        <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wide truncate">{label}</p>
+        <p className="text-[11px] font-medium text-muted uppercase tracking-wide truncate">{label}</p>
       </div>
-      <p className={`text-2xl font-bold ${tone === 'red' && highlight ? 'text-red-700 dark:text-red-400' : 'text-gray-900 dark:text-gray-100'}`}>
+      <p className={`text-2xl font-bold ${tone === 'red' && highlight ? 'text-red-700 dark:text-red-400' : 'text-primary'}`}>
         {value}
       </p>
     </div>

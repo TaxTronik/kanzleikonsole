@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
@@ -80,13 +80,13 @@ export function PlanVsProjection({
     <section className="mb-8">
       <div className="flex items-end justify-between gap-3 mb-3">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">Plan vs. Hochrechnung</h2>
-          <p className="text-xs text-gray-500">
+          <h2 className="text-lg font-semibold text-primary">Plan vs. Hochrechnung</h2>
+          <p className="text-xs text-muted">
             Wo stehen Sie aktuell gegenüber Ihrer Planung? Basis: {projectionLabel}
           </p>
         </div>
         <div>
-          <label className="text-xs text-gray-500 block mb-1">Planung</label>
+          <label className="text-xs text-muted block mb-1">Planung</label>
           <select
             value={planId}
             onChange={(e) => setPlanId(e.target.value)}
@@ -103,29 +103,29 @@ export function PlanVsProjection({
       </div>
 
       {!plan ? (
-        <div className="card p-6 text-center text-sm text-gray-400">
+        <div className="card p-6 text-center text-sm text-disabled">
           Bitte eine Planung auswählen.
         </div>
       ) : (
         <div className="card overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left px-4 py-2 text-xs font-medium text-gray-500 uppercase">Position</th>
-                <th className="text-right px-4 py-2 text-xs font-medium text-gray-500 uppercase">Plan</th>
-                <th className="text-right px-4 py-2 text-xs font-medium text-gray-500 uppercase">Hochrechnung</th>
-                <th className="text-right px-4 py-2 text-xs font-medium text-gray-500 uppercase">Δ absolut</th>
-                <th className="text-right px-4 py-2 text-xs font-medium text-gray-500 uppercase">Δ %</th>
+              <tr className="bg-gray-50 border-b border-default">
+                <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">Position</th>
+                <th className="text-right px-4 py-2 text-xs font-medium text-muted uppercase">Plan</th>
+                <th className="text-right px-4 py-2 text-xs font-medium text-muted uppercase">Hochrechnung</th>
+                <th className="text-right px-4 py-2 text-xs font-medium text-muted uppercase">Î” absolut</th>
+                <th className="text-right px-4 py-2 text-xs font-medium text-muted uppercase">Î” %</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-border-subtle">
               {rows.map((r) => (
                 <Row key={r.label} {...r} />
               ))}
             </tbody>
           </table>
           {selectedPlan && (
-            <div className="px-4 py-2 border-t border-gray-200 text-xs text-gray-500">
+            <div className="px-4 py-2 border-t border-default text-xs text-muted">
               <Link href={`${linkPrefix}/${selectedPlan.id}`} className="text-brand-700 hover:underline">
                 Planung „{selectedPlan.name}" bearbeiten →
               </Link>
@@ -154,7 +154,7 @@ function Row({
   const deltaPct = delta !== null && plan !== null && plan !== 0 ? (delta / Math.abs(plan)) * 100 : null;
 
   let Trend: typeof TrendingUp | null = null;
-  let trendCls = 'text-gray-400';
+  let trendCls = 'text-disabled';
   if (delta !== null) {
     const positive = invertDirection ? delta < 0 : delta > 0;
     if (Math.abs(delta) < 1) {
@@ -171,31 +171,31 @@ function Row({
   const valCls = (v: number | null) =>
     'px-4 py-2 text-right font-mono tabular-nums ' +
     (v === null
-      ? 'text-gray-400'
+      ? 'text-disabled'
       : accent && v < 0
       ? 'text-red-700 font-semibold'
       : accent && v > 0
       ? 'text-emerald-700 font-semibold'
-      : 'text-gray-900');
+      : 'text-primary');
 
   return (
     <tr>
-      <td className="px-4 py-2 text-gray-700">{label}</td>
+      <td className="px-4 py-2 text-secondary">{label}</td>
       <td className={valCls(plan)}>{plan === null ? '—' : eurFmt.format(plan)}</td>
       <td className={valCls(actual)}>{actual === null ? '—' : eurFmt.format(actual)}</td>
       <td className="px-4 py-2 text-right font-mono tabular-nums">
         {delta === null ? (
-          <span className="text-gray-400">—</span>
+          <span className="text-disabled">—</span>
         ) : (
           <span className="inline-flex items-center gap-1 justify-end">
             {Trend && <Trend className={`h-3.5 w-3.5 ${trendCls}`} />}
-            <span className={trendCls + (Trend === Minus ? ' text-gray-500' : '')}>
+            <span className={trendCls + (Trend === Minus ? ' text-muted' : '')}>
               {delta > 0 ? '+' : ''}{eurFmt.format(delta)}
             </span>
           </span>
         )}
       </td>
-      <td className="px-4 py-2 text-right font-mono tabular-nums text-xs text-gray-500">
+      <td className="px-4 py-2 text-right font-mono tabular-nums text-xs text-muted">
         {deltaPct === null
           ? '—'
           : `${deltaPct > 0 ? '+' : ''}${deltaPct.toFixed(1)} %`}

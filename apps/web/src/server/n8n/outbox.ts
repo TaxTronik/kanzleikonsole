@@ -16,17 +16,17 @@
 // =============================================================================
 
 import { prismaOwner } from '@/server/db/prisma-owner';
-import { n8nDeliverQueue } from './queue';
+import { getN8nDeliverQueue } from './queue';
 import type { N8nEventName } from './emit';
 import { log } from '@/server/logger';
 import { isAllowedN8nEvent } from '@taxtronik/n8n-shared';
 
 const RETRY_BACKOFF_MS = [
-  60_000,         // 1 min
-  5 * 60_000,     // 5 min
-  30 * 60_000,    // 30 min
-  2 * 60 * 60_000,// 2 h
-  6 * 60 * 60_000,// 6 h
+  60_000, // 1 min
+  5 * 60_000, // 5 min
+  30 * 60_000, // 30 min
+  2 * 60 * 60_000, // 2 h
+  6 * 60 * 60_000, // 6 h
 ];
 
 // S6/Konsolidierung Round 12: Whitelist + Workflow-Step-Regex sind jetzt
@@ -42,7 +42,7 @@ export async function enqueueN8nEvent(
     log.error({ component: 'n8n-outbox', event }, 'event not in whitelist — refusing to enqueue');
     return;
   }
-  let outboxId: string | null = null;
+  let outboxId: string;
   try {
     const row = await prismaOwner.n8nOutbox.create({
       data: {
@@ -59,7 +59,7 @@ export async function enqueueN8nEvent(
   }
 
   try {
-    await n8nDeliverQueue.add(
+    await getN8nDeliverQueue().add(
       'deliver',
       { outboxId },
       {
@@ -71,7 +71,7 @@ export async function enqueueN8nEvent(
         attempts: RETRY_BACKOFF_MS.length + 1,
         backoff: { type: 'exponential', delay: 60_000 },
         removeOnComplete: { age: 24 * 60 * 60 }, // 1 Tag aufheben
-        removeOnFail: false,                      // FAILED-Jobs für Ops behalten
+        removeOnFail: false, // FAILED-Jobs für Ops behalten
       },
     );
   } catch (err) {

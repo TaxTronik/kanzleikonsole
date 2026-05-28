@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition, useRef } from 'react';
 import { useRouter } from 'next/navigation';
@@ -84,13 +84,13 @@ export function PortalResponseForm({ requestId }: { requestId: string }) {
 
       <div>
         {file ? (
-          <div className="flex items-center gap-2 text-sm text-gray-700 bg-gray-50 px-3 py-2 rounded-md">
-            <Paperclip className="h-4 w-4 text-gray-400" />
+          <div className="flex items-center gap-2 text-sm text-secondary bg-gray-50 px-3 py-2 rounded-md">
+            <Paperclip className="h-4 w-4 text-disabled" />
             <span className="flex-1 truncate">{file.name}</span>
             <button
               type="button"
               onClick={() => setFile(null)}
-              className="text-gray-400 hover:text-gray-600"
+              className="text-disabled hover:text-secondary"
             >
               <X className="h-4 w-4" />
             </button>
@@ -108,10 +108,10 @@ export function PortalResponseForm({ requestId }: { requestId: string }) {
         )}
       </div>
 
-      {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {error && <div className="alert-error-sm">{error}</div>}
 
       {progress !== 'idle' && (
-        <div className="rounded-md bg-blue-50 p-3 text-sm text-blue-700">
+        <div className="alert-info-sm">
           {progress === 'upload' && 'Datei wird hochgeladen…'}
           {progress === 'commit' && 'Virus-Scan läuft…'}
           {progress === 'response' && 'Antwort wird gespeichert…'}

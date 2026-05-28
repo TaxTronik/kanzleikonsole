@@ -1,4 +1,4 @@
-import { redirect } from 'next/navigation';
+﻿import { redirect } from 'next/navigation';
 import {
   Database,
   HardDrive,
@@ -127,27 +127,27 @@ export default async function IntegrationsSettingsPage() {
         title="Integrationen"
         description="Status der externen Dienste. Diese Werte sind ENV-gepflegt (docker-compose.yml / .env) und können hier nur eingesehen werden."
       >
-        <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+        <ul className="divide-y divide-border-subtle">
           {rows.map((r) => {
             const Icon = r.icon;
             const skipped = 'skipped' in r.status;
             const ok = !skipped && (r.status as ServiceStatus).ok;
             return (
               <li key={r.label} className="py-3 flex items-start gap-3">
-                <Icon className={ok ? 'h-5 w-5 mt-0.5 text-emerald-600' : skipped ? 'h-5 w-5 mt-0.5 text-gray-400' : 'h-5 w-5 mt-0.5 text-red-600'} />
+                <Icon className={ok ? 'h-5 w-5 mt-0.5 text-emerald-600' : skipped ? 'h-5 w-5 mt-0.5 text-disabled' : 'h-5 w-5 mt-0.5 text-red-600'} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{r.label}</p>
+                    <p className="text-sm font-medium text-primary">{r.label}</p>
                     {ok ? (
                       <span className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400">
                         <CheckCircle2 className="h-3.5 w-3.5" />
                         Erreichbar
                         {(r.status as ServiceStatus).latencyMs != null && (
-                          <span className="text-gray-400 ml-1">({(r.status as ServiceStatus).latencyMs} ms)</span>
+                          <span className="text-disabled ml-1">({(r.status as ServiceStatus).latencyMs} ms)</span>
                         )}
                       </span>
                     ) : skipped ? (
-                      <span className="inline-flex items-center gap-1 text-xs text-gray-400">
+                      <span className="inline-flex items-center gap-1 text-xs text-disabled">
                         <Loader2 className="h-3.5 w-3.5" />
                         Nicht konfiguriert
                       </span>
@@ -158,11 +158,11 @@ export default async function IntegrationsSettingsPage() {
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 font-mono mt-0.5 truncate">
+                  <p className="text-xs text-muted font-mono mt-0.5 truncate">
                     {r.endpoint}
                   </p>
                   {r.hint && (
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{r.hint}</p>
+                    <p className="text-xs text-muted mt-0.5">{r.hint}</p>
                   )}
                   {!ok && !skipped && (r.status as ServiceStatus).error && (
                     <p className="text-xs text-red-700 dark:text-red-400 mt-0.5">
@@ -170,7 +170,7 @@ export default async function IntegrationsSettingsPage() {
                     </p>
                   )}
                   {skipped && (
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    <p className="text-xs text-muted mt-0.5">
                       {(r.status as { skipped: true; reason: string }).reason}
                     </p>
                   )}
@@ -201,8 +201,8 @@ export default async function IntegrationsSettingsPage() {
 function KvRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <>
-      <dt className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">{label}</dt>
-      <dd className={mono ? 'font-mono text-xs text-gray-800 dark:text-gray-200 break-all' : 'text-gray-800 dark:text-gray-200'}>
+      <dt className="text-xs uppercase tracking-wide text-muted">{label}</dt>
+      <dd className={mono ? 'font-mono text-xs text-primary break-all' : 'text-primary'}>
         {value}
       </dd>
     </>

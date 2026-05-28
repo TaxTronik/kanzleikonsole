@@ -1,4 +1,4 @@
-// =============================================================================
+﻿// =============================================================================
 // /staff/tax-deadlines — Steuertermin-Übersicht
 //
 // Zwei Ansichten via ?view=:
@@ -12,6 +12,7 @@
 // =============================================================================
 
 import { redirect } from 'next/navigation';
+import { parseMonth, shortKind } from '@/lib/tax-calendar';
 import Link from 'next/link';
 import { CalendarDays, AlertTriangle, ListChecks, ChevronLeft, ChevronRight } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
@@ -38,15 +39,7 @@ interface Search {
   view?: 'month' | 'list';
   scope?: 'mine' | 'all';
   month?: string; // YYYY-MM
-}
-
-function parseMonth(s: string | undefined): { year: number; month0: number } {
-  if (s && /^\d{4}-\d{2}$/.test(s)) {
-    const [y, m] = s.split('-').map(Number);
-    return { year: y!, month0: (m ?? 1) - 1 };
-  }
-  const now = new Date();
-  return { year: now.getUTCFullYear(), month0: now.getUTCMonth() };
+  q?: string;     // Mandantenname / DATEV-Nr / Addison-Nr (Substring, case-insensitive)
 }
 
 export default async function TaxDeadlinesPage({
@@ -59,22 +52,30 @@ export default async function TaxDeadlinesPage({
   const sp = await searchParams;
   const view = sp.view === 'list' ? 'list' : 'month';
   const scope = sp.scope === 'mine' ? 'mine' : 'all';
+  const q = (sp.q ?? '').trim();
   const { year, month0 } = parseMonth(sp.month);
 
   const { tenantId, staffId } = session.user;
 
-  // Bei "scope=mine": Client-IDs vorab filtern
-  const clientFilter: Prisma.TaxDeadlineWhereInput = {};
+  // Client-Filter aufbauen — scope + Volltext-Suche kombinierbar.
+  const clientWhere: Prisma.ClientWhereInput = {};
   if (scope === 'mine') {
-    clientFilter.client = {
-      responsibilities: { some: { staffId } },
-    };
+    clientWhere.responsibilities = { some: { staffId } };
   }
+  if (q) {
+    clientWhere.OR = [
+      { name: { contains: q, mode: 'insensitive' } },
+      { datevNo: { contains: q, mode: 'insensitive' } },
+      { addisonNo: { contains: q, mode: 'insensitive' } },
+    ];
+  }
+  const clientFilter: Prisma.TaxDeadlineWhereInput =
+    Object.keys(clientWhere).length > 0 ? { client: clientWhere } : {};
 
   if (view === 'month') {
-    return renderMonth(tenantId, staffId, year, month0, scope, clientFilter);
+    return renderMonth(tenantId, staffId, year, month0, scope, q, clientFilter);
   }
-  return renderList(tenantId, staffId, scope, clientFilter);
+  return renderList(tenantId, staffId, scope, q, clientFilter);
 }
 
 async function renderMonth(
@@ -83,6 +84,7 @@ async function renderMonth(
   year: number,
   month0: number,
   scope: 'mine' | 'all',
+  q: string,
   clientFilter: Prisma.TaxDeadlineWhereInput,
 ) {
   // Monatsanfang/-ende UTC
@@ -154,21 +156,21 @@ async function renderMonth(
 
   return (
     <div className="p-8 max-w-7xl">
-      <PageHeader view="month" scope={scope} />
+      <PageHeader view="month" scope={scope} q={q} />
 
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Link
-            href={qs({ view: 'month', scope, month: prevMonthQs })}
+            href={qs({ view: 'month', scope, month: prevMonthQs, q })}
             className="btn-secondary text-xs px-2 py-1"
           >
             <ChevronLeft className="h-4 w-4" />
           </Link>
-          <h2 className="text-lg font-semibold text-gray-900 min-w-[200px] text-center">
+          <h2 className="text-lg font-semibold text-primary min-w-[200px] text-center">
             {monthFmt.format(new Date(Date.UTC(year, month0, 15)))}
           </h2>
           <Link
-            href={qs({ view: 'month', scope, month: nextMonthQs })}
+            href={qs({ view: 'month', scope, month: nextMonthQs, q })}
             className="btn-secondary text-xs px-2 py-1"
           >
             <ChevronRight className="h-4 w-4" />
@@ -179,6 +181,7 @@ async function renderMonth(
             view: 'month',
             scope,
             month: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`,
+            q,
           })}
           className="btn-secondary text-xs"
         >
@@ -187,14 +190,14 @@ async function renderMonth(
       </div>
 
       <div className="card p-2">
-        <div className="grid grid-cols-7 gap-px text-center text-xs font-medium text-gray-500 uppercase tracking-wide pb-2 border-b border-gray-200">
+        <div className="grid grid-cols-7 gap-px text-center text-xs font-medium text-muted uppercase tracking-wide pb-2 border-b border-default">
           {[0, 1, 2, 3, 4, 5, 6].map((i) => (
             <div key={i} className="py-2">
               {weekdayFmt.format(new Date(Date.UTC(2026, 0, 5 + i)))}
             </div>
           ))}
         </div>
-        <div className="grid grid-cols-7 gap-px bg-gray-100 mt-px">
+        <div className="grid grid-cols-7 gap-px mt-px" style={{ backgroundColor: 'rgb(var(--border-default))' }}>
           {cells.map((cell, i) => {
             const k = cell.date.toISOString().slice(0, 10);
             const groups = byDay.get(k);
@@ -206,34 +209,34 @@ async function renderMonth(
                 key={i}
                 className={
                   cell.inMonth
-                    ? 'bg-white min-h-[110px] p-1.5 flex flex-col gap-1 text-xs'
-                    : 'bg-gray-50 min-h-[110px] p-1.5 flex flex-col gap-1 text-xs text-gray-400'
+                    ? 'bg-surface min-h-[110px] p-1.5 flex flex-col gap-1 text-xs'
+                    : 'bg-surface-page min-h-[110px] p-1.5 flex flex-col gap-1 text-xs text-disabled'
                 }
               >
-                <div className={isToday ? 'self-start font-bold text-brand-700 bg-brand-50 px-1.5 py-0.5 rounded' : 'self-start text-gray-700'}>
+                <div className={isToday ? 'self-start font-bold text-brand-700 bg-brand-50 px-1.5 py-0.5 rounded' : 'self-start text-secondary'}>
                   {cell.date.getUTCDate()}
                 </div>
                 {groupArr.slice(0, 4).map((g) => {
                   const allDone = g.open === 0;
                   const cls = g.overdue
-                    ? 'block px-1.5 py-0.5 rounded bg-red-50 text-red-800 truncate hover:bg-red-100'
+                    ? 'cal-pill cal-pill-overdue'
                     : allDone
-                      ? 'block px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 truncate hover:bg-emerald-100'
-                      : 'block px-1.5 py-0.5 rounded bg-brand-50 text-brand-800 truncate hover:bg-brand-100';
+                      ? 'cal-pill cal-pill-appointment'
+                      : 'cal-pill cal-pill-pending';
                   return (
                     <Link
                       key={`${g.kind}-${g.period}`}
-                      href={`/staff/tax-deadlines/group?kind=${g.kind}&period=${encodeURIComponent(g.period)}&scope=${scope}`}
+                      href={`/staff/tax-deadlines/group?kind=${g.kind}&period=${encodeURIComponent(g.period)}&scope=${scope}${q ? `&q=${encodeURIComponent(q)}` : ''}`}
                       className={cls}
                       title={`${SCHEDULE_LABELS[g.kind as keyof typeof SCHEDULE_LABELS]} ${g.period} — ${g.open}/${g.total} offen`}
                     >
                       <span className="font-medium">{shortKind(g.kind)}</span>
-                      <span className="text-gray-600"> · {g.open}/{g.total}</span>
+                      <span className="opacity-70"> · {g.open}/{g.total}</span>
                     </Link>
                   );
                 })}
                 {groupArr.length > 4 && (
-                  <div className="text-[10px] text-gray-500">+{groupArr.length - 4} weitere</div>
+                  <div className="text-[10px] text-muted">+{groupArr.length - 4} weitere</div>
                 )}
               </div>
             );
@@ -248,6 +251,7 @@ async function renderList(
   tenantId: string,
   staffId: string,
   scope: 'mine' | 'all',
+  q: string,
   clientFilter: Prisma.TaxDeadlineWhereInput,
 ) {
   const [overdue, upcoming, done] = await withTenantContext(
@@ -274,7 +278,7 @@ async function renderList(
 
   return (
     <div className="p-8 max-w-6xl">
-      <PageHeader view="list" scope={scope} />
+      <PageHeader view="list" scope={scope} q={q} />
 
       <div className="grid grid-cols-3 gap-4 mb-6">
         <Stat label="Überfällig" value={overdue.length} accent="red" />
@@ -293,10 +297,10 @@ async function renderList(
       )}
 
       <section>
-        <h2 className="text-sm font-semibold text-gray-900 mb-3">Anstehend</h2>
+        <h2 className="text-sm font-semibold text-primary mb-3">Anstehend</h2>
         {upcoming.length === 0 ? (
           <div className="card p-10 text-center">
-            <p className="text-sm text-gray-400">Keine anstehenden Termine.</p>
+            <p className="text-sm text-disabled">Keine anstehenden Termine.</p>
           </div>
         ) : (
           <DeadlineTable rows={upcoming} />
@@ -306,55 +310,88 @@ async function renderList(
   );
 }
 
-function PageHeader({ view, scope }: { view: 'month' | 'list'; scope: 'mine' | 'all' }) {
+function PageHeader({
+  view,
+  scope,
+  q,
+}: {
+  view: 'month' | 'list';
+  scope: 'mine' | 'all';
+  q: string;
+}) {
   return (
-    <div className="flex items-end justify-between mb-6">
-      <div>
-        <Link
-          href="/staff/calendar"
-          className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-brand-700 mb-1"
-        >
-          <ChevronLeft className="h-3 w-3" />
-          Zurück zum Kanzleikalender
-        </Link>
-        <h1 className="text-2xl font-bold text-gray-900 mb-1 flex items-center gap-2">
-          <CalendarDays className="h-6 w-6 text-brand-600" />
-          Steuertermine
-        </h1>
-        <p className="text-gray-500 text-sm">
-          {scope === 'mine' ? 'Nur meine Mandanten.' : 'Alle Mandanten der Kanzlei.'}
-        </p>
-      </div>
-      <div className="flex items-center gap-2">
-        <div className="inline-flex rounded-md border border-gray-200 overflow-hidden text-xs">
-          <ScopeLink active={scope === 'all'} scope="all" view={view} label="Alle Mandanten" />
-          <ScopeLink active={scope === 'mine'} scope="mine" view={view} label="Meine Mandanten" />
+    <div className="mb-6">
+      <div className="flex items-end justify-between mb-3">
+        <div>
+          <Link
+            href="/staff/calendar"
+            className="inline-flex items-center gap-1 text-xs text-muted hover:text-brand-700 mb-1"
+          >
+            <ChevronLeft className="h-3 w-3" />
+            Zurück zum Kanzleikalender
+          </Link>
+          <h1 className="page-title">
+            <CalendarDays className="h-6 w-6 text-brand-600" />
+            Steuertermine
+          </h1>
+          <p className="text-muted text-sm">
+            {scope === 'mine' ? 'Nur meine Mandanten.' : 'Alle Mandanten der Kanzlei.'}
+            {q && <span> · Suche: <strong className="text-primary">{q}</strong></span>}
+          </p>
         </div>
-        <div className="inline-flex rounded-md border border-gray-200 overflow-hidden text-xs">
-          <ViewLink active={view === 'month'} view="month" scope={scope} label="Monat" />
-          <ViewLink active={view === 'list'} view="list" scope={scope} label="Liste" />
+        <div className="flex items-center gap-2">
+          <div className="toggle-group">
+            <ScopeLink active={scope === 'all'} scope="all" view={view} q={q} label="Alle Mandanten" />
+            <ScopeLink active={scope === 'mine'} scope="mine" view={view} q={q} label="Meine Mandanten" />
+          </div>
+          <div className="toggle-group">
+            <ViewLink active={view === 'month'} view="month" scope={scope} q={q} label="Monat" />
+            <ViewLink active={view === 'list'} view="list" scope={scope} q={q} label="Liste" />
+          </div>
+          <form action={rematerializeAction}>
+            <button type="submit" className="btn-secondary text-xs">
+              <ListChecks className="h-4 w-4" />
+              Neu berechnen
+            </button>
+          </form>
         </div>
-        <form action={rematerializeAction}>
-          <button type="submit" className="btn-secondary text-xs">
-            <ListChecks className="h-4 w-4" />
-            Neu berechnen
-          </button>
-        </form>
       </div>
+      <form
+        method="get"
+        action="/staff/tax-deadlines"
+        className="flex items-center gap-2"
+      >
+        <input type="hidden" name="view" value={view} />
+        <input type="hidden" name="scope" value={scope} />
+        <input
+          type="search"
+          name="q"
+          defaultValue={q}
+          placeholder="Mandant suchen — Name, DATEV-Nr. oder Addison-Nr."
+          className="input flex-1 text-sm"
+          maxLength={120}
+        />
+        <button type="submit" className="btn-secondary text-xs">Filtern</button>
+        {q && (
+          <Link href={qs({ view, scope })} className="btn-secondary text-xs">
+            Zurücksetzen
+          </Link>
+        )}
+      </form>
     </div>
   );
 }
 
 function ScopeLink({
-  active, scope, view, label,
-}: { active: boolean; scope: 'all' | 'mine'; view: 'month' | 'list'; label: string }) {
+  active, scope, view, q, label,
+}: { active: boolean; scope: 'all' | 'mine'; view: 'month' | 'list'; q: string; label: string }) {
   return (
     <Link
-      href={qs({ scope, view })}
+      href={qs({ scope, view, q })}
       className={
         active
           ? 'px-3 py-1.5 bg-brand-600 text-white'
-          : 'px-3 py-1.5 text-gray-700 hover:bg-gray-50'
+          : 'px-3 py-1.5 text-secondary hover:bg-gray-50'
       }
     >
       {label}
@@ -363,15 +400,15 @@ function ScopeLink({
 }
 
 function ViewLink({
-  active, view, scope, label,
-}: { active: boolean; view: 'month' | 'list'; scope: 'all' | 'mine'; label: string }) {
+  active, view, scope, q, label,
+}: { active: boolean; view: 'month' | 'list'; scope: 'all' | 'mine'; q: string; label: string }) {
   return (
     <Link
-      href={qs({ view, scope })}
+      href={qs({ view, scope, q })}
       className={
         active
           ? 'px-3 py-1.5 bg-brand-600 text-white'
-          : 'px-3 py-1.5 text-gray-700 hover:bg-gray-50'
+          : 'px-3 py-1.5 text-secondary hover:bg-gray-50'
       }
     >
       {label}
@@ -379,21 +416,22 @@ function ViewLink({
   );
 }
 
-function qs(p: { view?: string; scope?: string; month?: string }): string {
+function qs(p: { view?: string; scope?: string; month?: string; q?: string }): string {
   const sp = new URLSearchParams();
   if (p.view) sp.set('view', p.view);
   if (p.scope) sp.set('scope', p.scope);
   if (p.month) sp.set('month', p.month);
+  if (p.q) sp.set('q', p.q);
   const s = sp.toString();
   return s ? `/staff/tax-deadlines?${s}` : '/staff/tax-deadlines';
 }
 
 function Stat({ label, value, accent }: { label: string; value: number; accent?: 'red' | 'emerald' }) {
   const tone =
-    accent === 'red' ? 'text-red-700' : accent === 'emerald' ? 'text-emerald-700' : 'text-gray-900';
+    accent === 'red' ? 'text-red-700' : accent === 'emerald' ? 'text-emerald-700' : 'text-primary';
   return (
     <div className="card p-4">
-      <p className="text-xs text-gray-500 uppercase tracking-wide">{label}</p>
+      <p className="text-xs text-muted uppercase tracking-wide">{label}</p>
       <p className={`text-3xl font-bold mt-1 ${tone}`}>{value}</p>
     </div>
   );
@@ -416,28 +454,28 @@ function DeadlineTable({
     <div className="card overflow-hidden">
       <table className="w-full text-sm">
         <thead>
-          <tr className="bg-gray-50 border-b border-gray-200">
-            <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Mandant</th>
-            <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Art</th>
-            <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Periode</th>
-            <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Fällig</th>
-            <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
+          <tr className="bg-gray-50 border-b border-default">
+            <th className="th">Mandant</th>
+            <th className="th">Art</th>
+            <th className="th">Periode</th>
+            <th className="th">Fällig</th>
+            <th className="th">Status</th>
             <th className="text-right px-6 py-3"></th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-100">
+        <tbody className="divide-y divide-border-subtle">
           {rows.map((d) => (
             <tr key={d.id} className="hover:bg-gray-50">
               <td className="px-6 py-3">
-                <Link href={`/staff/clients/${d.client.id}`} className="text-gray-700 hover:underline">
+                <Link href={`/staff/clients/${d.client.id}`} className="text-secondary hover:underline">
                   {d.client.name}
                 </Link>
               </td>
-              <td className="px-6 py-3 font-medium text-gray-900">
+              <td className="px-6 py-3 font-medium text-primary">
                 {SCHEDULE_LABELS[d.kind as keyof typeof SCHEDULE_LABELS] ?? d.kind}
               </td>
-              <td className="px-6 py-3 text-gray-600">{d.period}</td>
-              <td className="px-6 py-3 text-gray-700">{dateFmt.format(d.dueDate)}</td>
+              <td className="px-6 py-3 text-secondary">{d.period}</td>
+              <td className="px-6 py-3 text-secondary">{dateFmt.format(d.dueDate)}</td>
               <td className="px-6 py-3">
                 {d.status === 'OVERDUE' && <span className="badge-red">{STATUS_LABELS[d.status]}</span>}
                 {d.status === 'REMINDED' && <span className="badge-yellow">{STATUS_LABELS[d.status]}</span>}
@@ -454,7 +492,7 @@ function DeadlineTable({
                   )}
                   <form action={markDeadlineDoneAction} className="inline">
                     <input type="hidden" name="id" value={d.id} />
-                    <button type="submit" className="text-xs text-gray-500 hover:text-emerald-700">
+                    <button type="submit" className="text-xs text-muted hover:text-emerald-700">
                       ✓ Erledigt
                     </button>
                   </form>
@@ -468,13 +506,3 @@ function DeadlineTable({
   );
 }
 
-function shortKind(k: string): string {
-  const m: Record<string, string> = {
-    USTA_MONATLICH: 'USt-VA', USTA_QUARTAL: 'USt-VA',
-    USTA_JAEHRLICH: 'USt-Jahr', LSTA_MONATLICH: 'LSt',
-    LSTA_QUARTAL: 'LSt', LSTA_JAEHRLICH: 'LSt-Jahr',
-    EST_VZ: 'ESt-VZ', KST_VZ: 'KSt-VZ', GEWST_VZ: 'GewSt-VZ',
-    EST_ERKLAERUNG: 'ESt-Erkl.', KST_ERKLAERUNG: 'KSt-Erkl.', GEWST_ERKLAERUNG: 'GewSt-Erkl.',
-  };
-  return m[k] ?? k;
-}

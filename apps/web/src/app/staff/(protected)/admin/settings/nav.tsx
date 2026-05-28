@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -48,13 +48,13 @@ export function SettingsNav() {
             className={
               active
                 ? 'flex items-start gap-3 px-3 py-2.5 rounded-md bg-brand-50 dark:bg-brand-900/30 text-brand-800 dark:text-brand-200 border-l-2 border-brand-600'
-                : 'flex items-start gap-3 px-3 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800/60 text-gray-700 dark:text-gray-300 border-l-2 border-transparent'
+                : 'flex items-start gap-3 px-3 py-2.5 rounded-md hover:bg-gray-100 text-secondary border-l-2 border-transparent'
             }
           >
-            <Icon className={active ? 'h-4 w-4 mt-0.5 text-brand-700 dark:text-brand-300 shrink-0' : 'h-4 w-4 mt-0.5 text-gray-400 shrink-0'} />
+            <Icon className={active ? 'h-4 w-4 mt-0.5 text-brand-700 dark:text-brand-300 shrink-0' : 'h-4 w-4 mt-0.5 text-disabled shrink-0'} />
             <div className="min-w-0">
               <div className="text-sm font-medium">{s.label}</div>
-              <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{s.description}</div>
+              <div className="text-xs text-muted truncate">{s.description}</div>
             </div>
           </Link>
         );

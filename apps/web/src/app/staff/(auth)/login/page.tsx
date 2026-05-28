@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -114,7 +114,7 @@ export default function StaffLoginPage() {
           {/* Logo */}
           <div className="text-center mb-8">
             <div className="text-3xl font-bold text-brand-700 mb-1">TaxTronik</div>
-            <p className="text-sm text-gray-500">Mitarbeiter-Login</p>
+            <p className="text-sm text-muted">Mitarbeiter-Login</p>
           </div>
 
           {/* Step: Passwort */}
@@ -146,7 +146,7 @@ export default function StaffLoginPage() {
                 />
               </div>
               {error && (
-                <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>
+                <div className="alert-error-sm">{error}</div>
               )}
               <button type="submit" className="btn-primary w-full" disabled={isPending}>
                 {isPending ? 'Wird geprüft…' : 'Weiter'}
@@ -178,7 +178,7 @@ export default function StaffLoginPage() {
               <input type="hidden" name="email" value={email} />
               <input type="hidden" name="password" value={password} />
               <input type="hidden" name="tenantSlug" value={tenantSlug} />
-              <p className="text-sm text-gray-600 text-center mb-4">
+              <p className="text-sm text-secondary text-center mb-4">
                 Gib den 6-stelligen Code aus deiner Authenticator-App ein.
               </p>
               <div>
@@ -197,7 +197,7 @@ export default function StaffLoginPage() {
                 />
               </div>
               {error && (
-                <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>
+                <div className="alert-error-sm">{error}</div>
               )}
               <button type="submit" className="btn-primary w-full" disabled={isPending}>
                 {isPending ? 'Wird geprüft…' : 'Anmelden'}
@@ -216,10 +216,10 @@ export default function StaffLoginPage() {
           {step === 'setup' && (
             <div className="space-y-4">
               <div className="text-center">
-                <p className="text-sm font-medium text-gray-900 mb-1">
+                <p className="text-sm font-medium text-primary mb-1">
                   Zwei-Faktor-Authentifizierung einrichten
                 </p>
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-muted">
                   Scanne den QR-Code mit einer Authenticator-App (z.&nbsp;B. Google Authenticator, Authy).
                 </p>
               </div>
@@ -229,8 +229,7 @@ export default function StaffLoginPage() {
                   TOTP-Secret im Klartext bekommen, faktisch durch CSP geblockt
                   und Setup-Flow kaputt. Jetzt: lokal via npm `qrcode`. */}
               <div className="flex justify-center my-4">
-                <div className="border border-gray-200 rounded-lg p-3 bg-white">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                <div className="border border-default rounded-lg p-3 bg-surface">
                   <img
                     src={setupQrDataUrl}
                     alt="TOTP QR-Code"
@@ -241,8 +240,8 @@ export default function StaffLoginPage() {
               </div>
 
               <div className="bg-gray-50 rounded-md p-3 text-center">
-                <p className="text-xs text-gray-500 mb-1">Oder Secret manuell eingeben:</p>
-                <code className="text-sm font-mono text-gray-800 break-all">{setupSecret}</code>
+                <p className="text-xs text-muted mb-1">Oder Secret manuell eingeben:</p>
+                <code className="text-sm font-mono text-primary break-all">{setupSecret}</code>
               </div>
 
               <button
@@ -258,7 +257,7 @@ export default function StaffLoginPage() {
           {/* Step: Setup-Bestätigung */}
           {step === 'setup-confirm' && (
             <form onSubmit={handleSetupConfirm} className="space-y-4">
-              <p className="text-sm text-gray-600 text-center">
+              <p className="text-sm text-secondary text-center">
                 Gib den 6-stelligen Code aus deiner Authenticator-App ein, um die Einrichtung zu bestätigen.
               </p>
               <div>
@@ -277,7 +276,7 @@ export default function StaffLoginPage() {
                 />
               </div>
               {error && (
-                <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>
+                <div className="alert-error-sm">{error}</div>
               )}
               <button type="submit" className="btn-primary w-full" disabled={isPending}>
                 {isPending ? 'Wird bestätigt…' : 'Bestätigen und anmelden'}
@@ -296,10 +295,10 @@ export default function StaffLoginPage() {
           {step === 'backup-codes' && (
             <div className="space-y-4">
               <div className="text-center">
-                <p className="text-sm font-medium text-gray-900 mb-1">
+                <p className="text-sm font-medium text-primary mb-1">
                   Recovery-Codes
                 </p>
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-muted">
                   Falls dein Authenticator-Gerät verloren geht, kannst du dich
                   mit einem dieser Codes einmalig anmelden.
                 </p>
@@ -312,8 +311,8 @@ export default function StaffLoginPage() {
               <div className="rounded-md bg-gray-50 p-4 font-mono text-sm grid grid-cols-2 gap-2">
                 {backupCodes.map((c, i) => (
                   <div key={i} className="flex items-center gap-2">
-                    <span className="text-xs text-gray-400 w-6 text-right">{(i + 1).toString().padStart(2, '0')}.</span>
-                    <span className="text-gray-900">{c}</span>
+                    <span className="text-xs text-disabled w-6 text-right">{(i + 1).toString().padStart(2, '0')}.</span>
+                    <span className="text-primary">{c}</span>
                   </div>
                 ))}
               </div>

@@ -1,4 +1,4 @@
-import Link from 'next/link';
+﻿import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Shield, Plus, AlertTriangle } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
@@ -43,8 +43,8 @@ export default async function DsgvoPage() {
     <div className="p-8">
       <div className="flex items-end justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-1">DSGVO-Anfragen</h1>
-          <p className="text-gray-500 text-sm">
+          <h1 className="text-2xl font-bold text-primary mb-1">DSGVO-Anfragen</h1>
+          <p className="text-muted text-sm">
             Auskunft, Berichtigung, Löschung und weitere Betroffenenrechte (Art. 15–21).
           </p>
         </div>
@@ -57,33 +57,33 @@ export default async function DsgvoPage() {
       <div className="card overflow-hidden">
         {requests.length === 0 ? (
           <div className="px-6 py-16 text-center">
-            <Shield className="h-12 w-12 text-gray-200 mx-auto mb-3" />
-            <p className="text-sm text-gray-400">Keine DSGVO-Anfragen vorhanden.</p>
+            <Shield className="h-12 w-12 text-disabled mx-auto mb-3" />
+            <p className="text-sm text-disabled">Keine DSGVO-Anfragen vorhanden.</p>
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Typ</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Betroffene Person</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Frist</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Eingegangen</th>
+              <tr className="bg-gray-50 border-b border-default">
+                <th className="th">Typ</th>
+                <th className="th">Betroffene Person</th>
+                <th className="th">Status</th>
+                <th className="th">Frist</th>
+                <th className="th">Eingegangen</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-border-subtle">
               {requests.map((r) => {
                 const overdue = r.dueDate && r.dueDate < new Date() && r.status !== 'COMPLETED' && r.status !== 'REJECTED';
                 return (
                   <tr key={r.id} className="hover:bg-gray-50">
                     <td className="px-6 py-3">
-                      <Link href={`/staff/admin/dsgvo/${r.id}`} className="font-medium text-gray-900 hover:underline">
+                      <Link href={`/staff/admin/dsgvo/${r.id}`} className="font-medium text-primary hover:underline">
                         {typeLabels[r.type]}
                       </Link>
                     </td>
                     <td className="px-6 py-3">
-                      <p className="text-gray-900">{r.subjectName}</p>
-                      <p className="text-xs text-gray-500">{r.subjectEmail}</p>
+                      <p className="text-primary">{r.subjectName}</p>
+                      <p className="text-xs text-muted">{r.subjectEmail}</p>
                     </td>
                     <td className="px-6 py-3">
                       {r.status === 'RECEIVED' && <span className="badge-yellow">{statusLabels[r.status]}</span>}
@@ -91,13 +91,13 @@ export default async function DsgvoPage() {
                       {r.status === 'COMPLETED' && <span className="badge-green">{statusLabels[r.status]}</span>}
                       {r.status === 'REJECTED' && <span className="badge-gray">{statusLabels[r.status]}</span>}
                     </td>
-                    <td className={overdue ? 'px-6 py-3 text-red-700' : 'px-6 py-3 text-gray-600'}>
+                    <td className={overdue ? 'px-6 py-3 text-red-700' : 'px-6 py-3 text-secondary'}>
                       <div className="flex items-center gap-1">
                         {overdue && <AlertTriangle className="h-3.5 w-3.5" />}
                         {r.dueDate ? new Intl.DateTimeFormat('de-DE').format(r.dueDate) : '—'}
                       </div>
                     </td>
-                    <td className="px-6 py-3 text-gray-600">
+                    <td className="px-6 py-3 text-secondary">
                       {new Intl.DateTimeFormat('de-DE').format(r.createdAt)}
                     </td>
                   </tr>

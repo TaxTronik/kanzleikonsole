@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
@@ -38,7 +38,7 @@ export function MobileSidebarToggle() {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="md:hidden p-2 -ml-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-md"
+        className="md:hidden p-2 -ml-2 text-muted hover:text-primary hover:bg-gray-100 rounded-md"
         aria-label={open ? 'Menü schließen' : 'Menü öffnen'}
       >
         {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}

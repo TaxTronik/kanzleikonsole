@@ -1,4 +1,4 @@
-import { staffAuth } from '@/server/auth/staff';
+﻿import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
@@ -47,13 +47,13 @@ export default async function RequestDetailPage({
       <div className="flex items-start gap-4 mb-6">
         <Link
           href={`/staff/clients/${reqRow.client.id}`}
-          className="text-gray-400 hover:text-gray-600 mt-1"
+          className="text-disabled hover:text-secondary mt-1"
         >
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-1">
-            <h1 className="text-2xl font-bold text-gray-900">{reqRow.title}</h1>
+            <h1 className="text-2xl font-bold text-primary">{reqRow.title}</h1>
             <span className={
               reqRow.status === 'CLOSED' ? 'badge-gray'
               : reqRow.status === 'RESPONDED' ? 'badge-green'
@@ -62,7 +62,7 @@ export default async function RequestDetailPage({
               {statusLabels[reqRow.status]}
             </span>
           </div>
-          <p className="text-gray-500 text-sm">
+          <p className="text-muted text-sm">
             an {reqRow.client.name}
             {reqRow.dueAt ? ` · fällig ${new Intl.DateTimeFormat('de-DE').format(reqRow.dueAt)}` : ''}
           </p>
@@ -70,19 +70,19 @@ export default async function RequestDetailPage({
       </div>
 
       <div className="card p-6 mb-6">
-        <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-2">Beschreibung</h2>
-        <p className="text-sm text-gray-800 whitespace-pre-wrap">{reqRow.description}</p>
+        <h2 className="text-sm font-medium text-muted uppercase tracking-wide mb-2">Beschreibung</h2>
+        <p className="text-sm text-primary whitespace-pre-wrap">{reqRow.description}</p>
       </div>
 
       <div className="card overflow-hidden mb-6">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h2 className="text-sm font-medium text-gray-900">
+        <div className="px-6 py-4 border-b border-default">
+          <h2 className="text-sm font-medium text-primary">
             Konversation ({reqRow.responses.length})
           </h2>
         </div>
-        <div className="divide-y divide-gray-100">
+        <div className="divide-y divide-border-subtle">
           {reqRow.responses.length === 0 ? (
-            <div className="px-6 py-10 text-center text-sm text-gray-400">
+            <div className="px-6 py-10 text-center text-sm text-disabled">
               Noch keine Antworten.
             </div>
           ) : (
@@ -92,16 +92,16 @@ export default async function RequestDetailPage({
                   <span className={r.authorType === 'STAFF' ? 'badge-gray' : 'badge-green'}>
                     {r.authorType === 'STAFF' ? 'Mitarbeiter' : 'Mandant'}
                   </span>
-                  <span className="text-xs text-gray-400">
+                  <span className="text-xs text-disabled">
                     {new Intl.DateTimeFormat('de-DE', {
                       dateStyle: 'short',
                       timeStyle: 'short',
                     }).format(r.createdAt)}
                   </span>
                 </div>
-                <p className="text-sm text-gray-800 whitespace-pre-wrap">{r.message}</p>
+                <p className="text-sm text-primary whitespace-pre-wrap">{r.message}</p>
                 {r.document && (
-                  <p className="mt-2 text-xs text-gray-500">
+                  <p className="mt-2 text-xs text-muted">
                     Dokument: {r.document.title}
                   </p>
                 )}
@@ -114,7 +114,7 @@ export default async function RequestDetailPage({
       {reqRow.status !== 'CLOSED' && reqRow.status !== 'CANCELLED' && (
         <>
           <div className="card p-6 mb-4">
-            <h2 className="text-sm font-medium text-gray-900 mb-3">Antworten</h2>
+            <h2 className="text-sm font-medium text-primary mb-3">Antworten</h2>
             <StaffResponseForm requestId={reqRow.id} />
           </div>
 

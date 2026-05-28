@@ -1,4 +1,4 @@
-import { redirect } from 'next/navigation';
+﻿import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
@@ -15,10 +15,10 @@ export default async function NewDsgvoRequestPage() {
   return (
     <div className="p-8 max-w-2xl">
       <div className="flex items-start gap-4 mb-6">
-        <Link href="/staff/admin/dsgvo" className="text-gray-400 hover:text-gray-600 mt-1">
+        <Link href="/staff/admin/dsgvo" className="text-disabled hover:text-secondary mt-1">
           <ArrowLeft className="h-5 w-5" />
         </Link>
-        <h1 className="text-2xl font-bold text-gray-900">Neue DSGVO-Anfrage</h1>
+        <h1 className="text-2xl font-bold text-primary">Neue DSGVO-Anfrage</h1>
       </div>
 
       <form action={createDsgvoRequestAction} className="card p-6 space-y-4">
@@ -93,7 +93,7 @@ export default async function NewDsgvoRequestPage() {
           />
         </div>
 
-        <div className="text-xs text-gray-500 bg-gray-50 rounded-md p-3">
+        <div className="text-xs text-muted bg-gray-50 rounded-md p-3">
           <strong>Frist:</strong> Antwort innerhalb 1 Monat (Art. 12 DSGVO),
           verlängerbar auf 3 Monate bei komplexen Anfragen (mit Begründung).
         </div>

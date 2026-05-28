@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useActionState } from 'react';
 import { saveLegalAction, type ActionResult } from './actions';
@@ -38,7 +38,7 @@ export function LegalForm({ initial }: { initial: LegalLinks }) {
         />
       </div>
 
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-muted">
         Beide Links werden im Footer der Login-Seiten (Mitarbeiter + Mandantenportal)
         angezeigt — Pflicht nach Telemediengesetz und DSGVO. In angemeldeten
         Sitzungen werden die Links nicht prominent angezeigt.

@@ -1,4 +1,4 @@
-// =============================================================================
+﻿// =============================================================================
 // /staff/tax-deadlines/group?kind=...&period=... — Mandanten-Liste pro Termin
 //
 // Zeigt für eine konkrete (kind, period)-Gruppe alle Mandanten und ob sie
@@ -37,7 +37,7 @@ const dateFmt = new Intl.DateTimeFormat('de-DE');
 export default async function TaxDeadlineGroupPage({
   searchParams,
 }: {
-  searchParams: Promise<{ kind?: string; period?: string; scope?: string }>;
+  searchParams: Promise<{ kind?: string; period?: string; scope?: string; q?: string }>;
 }) {
   const session = await staffAuth();
   if (!session?.user) redirect('/staff/login');
@@ -48,12 +48,25 @@ export default async function TaxDeadlineGroupPage({
   const kind = sp.kind as TaxScheduleKind;
   const period = sp.period;
   const scope = sp.scope === 'mine' ? 'mine' : 'all';
+  const q = (sp.q ?? '').trim();
 
   const { tenantId, staffId } = session.user;
 
-  const where: Prisma.TaxDeadlineWhereInput = { kind, period };
+  // Client-Filter aufbauen: scope + Volltext-Suche kombinierbar.
+  const clientWhere: Prisma.ClientWhereInput = {};
   if (scope === 'mine') {
-    where.client = { responsibilities: { some: { staffId } } };
+    clientWhere.responsibilities = { some: { staffId } };
+  }
+  if (q) {
+    clientWhere.OR = [
+      { name: { contains: q, mode: 'insensitive' } },
+      { datevNo: { contains: q, mode: 'insensitive' } },
+      { addisonNo: { contains: q, mode: 'insensitive' } },
+    ];
+  }
+  const where: Prisma.TaxDeadlineWhereInput = { kind, period };
+  if (Object.keys(clientWhere).length > 0) {
+    where.client = clientWhere;
   }
 
   const deadlines = await withTenantContext(
@@ -84,24 +97,53 @@ export default async function TaxDeadlineGroupPage({
     <div className="p-8 max-w-5xl">
       <Link
         href={`/staff/tax-deadlines?scope=${scope}`}
-        className="text-sm text-gray-500 hover:text-gray-900 inline-flex items-center gap-1 mb-4"
+        className="back-link"
       >
         <ArrowLeft className="h-4 w-4" /> Zurück zum Kalender
       </Link>
 
-      <div className="flex items-end justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-1 flex items-center gap-2">
-            <CalendarDays className="h-6 w-6 text-brand-600" />
-            {SCHEDULE_LABELS[kind]}
-          </h1>
-          <p className="text-gray-500 text-sm">
-            Periode {period}
-            {dueDate && ` · fällig am ${dateFmt.format(dueDate)}`}
-            {' · '}
-            {deadlines.length} Mandanten
-          </p>
+      <div className="mb-6">
+        <div className="flex items-end justify-between mb-3">
+          <div>
+            <h1 className="page-title">
+              <CalendarDays className="h-6 w-6 text-brand-600" />
+              {SCHEDULE_LABELS[kind]}
+            </h1>
+            <p className="text-muted text-sm">
+              Periode {period}
+              {dueDate && ` · fällig am ${dateFmt.format(dueDate)}`}
+              {' · '}
+              {deadlines.length} Mandanten
+              {q && <span> · Suche: <strong className="text-primary">{q}</strong></span>}
+            </p>
+          </div>
         </div>
+        <form
+          method="get"
+          action="/staff/tax-deadlines/group"
+          className="flex items-center gap-2"
+        >
+          <input type="hidden" name="kind" value={kind} />
+          <input type="hidden" name="period" value={period} />
+          <input type="hidden" name="scope" value={scope} />
+          <input
+            type="search"
+            name="q"
+            defaultValue={q}
+            placeholder="Mandant in dieser Gruppe filtern — Name, DATEV-Nr. oder Addison-Nr."
+            className="input flex-1 text-sm"
+            maxLength={120}
+          />
+          <button type="submit" className="btn-secondary text-xs">Filtern</button>
+          {q && (
+            <Link
+              href={`/staff/tax-deadlines/group?kind=${kind}&period=${encodeURIComponent(period)}&scope=${scope}`}
+              className="btn-secondary text-xs"
+            >
+              Zurücksetzen
+            </Link>
+          )}
+        </form>
       </div>
 
       {groups['OVERDUE']!.length > 0 && (
@@ -131,25 +173,25 @@ function Section({
   if (rows.length === 0) {
     return (
       <section className="mb-6">
-        <h2 className={`text-sm font-semibold mb-3 ${accent === 'red' ? 'text-red-700' : accent === 'emerald' ? 'text-emerald-700' : 'text-gray-900'}`}>
-          {title} <span className="text-gray-400 font-normal">(0)</span>
+        <h2 className={`text-sm font-semibold mb-3 ${accent === 'red' ? 'text-red-700' : accent === 'emerald' ? 'text-emerald-700' : 'text-primary'}`}>
+          {title} <span className="text-disabled font-normal">(0)</span>
         </h2>
-        <div className="card p-6 text-center text-sm text-gray-400">Keine Einträge.</div>
+        <div className="card p-6 text-center text-sm text-disabled">Keine Einträge.</div>
       </section>
     );
   }
   return (
     <section className="mb-6">
-      <h2 className={`text-sm font-semibold mb-3 ${accent === 'red' ? 'text-red-700' : accent === 'emerald' ? 'text-emerald-700' : 'text-gray-900'}`}>
-        {title} <span className="text-gray-400 font-normal">({rows.length})</span>
+      <h2 className={`text-sm font-semibold mb-3 ${accent === 'red' ? 'text-red-700' : accent === 'emerald' ? 'text-emerald-700' : 'text-primary'}`}>
+        {title} <span className="text-disabled font-normal">({rows.length})</span>
       </h2>
       <div className="card overflow-hidden">
         <table className="w-full text-sm">
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-border-subtle">
             {rows.map((d) => (
               <tr key={d.id} className="hover:bg-gray-50">
                 <td className="px-6 py-3">
-                  <Link href={`/staff/clients/${d.client.id}`} className="text-gray-900 font-medium hover:underline">
+                  <Link href={`/staff/clients/${d.client.id}`} className="text-primary font-medium hover:underline">
                     {d.client.name}
                   </Link>
                 </td>
@@ -162,7 +204,7 @@ function Section({
                   {d.status === 'DONE' && <span className="badge-green">{STATUS_LABELS[d.status]}</span>}
                   {d.status === 'SKIPPED' && <span className="badge-gray">{STATUS_LABELS[d.status]}</span>}
                 </td>
-                <td className="px-6 py-3 text-xs text-gray-500">
+                <td className="px-6 py-3 text-xs text-muted">
                   {d.completedAt ? `am ${dateFmt.format(d.completedAt)}` : ''}
                 </td>
                 <td className="px-6 py-3 text-right">
@@ -175,7 +217,7 @@ function Section({
                     {d.status !== 'DONE' && d.status !== 'SKIPPED' && (
                       <form action={markDeadlineDoneAction} className="inline">
                         <input type="hidden" name="id" value={d.id} />
-                        <button type="submit" className="text-xs text-gray-500 hover:text-emerald-700">
+                        <button type="submit" className="text-xs text-muted hover:text-emerald-700">
                           ✓ Erledigt
                         </button>
                       </form>

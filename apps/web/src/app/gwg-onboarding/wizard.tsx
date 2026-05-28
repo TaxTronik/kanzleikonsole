@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import { Plus, Trash2, Upload, Check, ArrowLeft, ArrowRight, Loader } from 'lucide-react';
@@ -198,8 +198,8 @@ export function OnboardingWizard({
         <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-4">
           <Check className="h-8 w-8 text-emerald-700" />
         </div>
-        <h2 className="text-xl font-bold text-gray-900 mb-2">Vielen Dank!</h2>
-        <p className="text-sm text-gray-600">
+        <h2 className="text-xl font-bold text-primary mb-2">Vielen Dank!</h2>
+        <p className="text-sm text-secondary">
           Ihre Angaben wurden an die Steuerkanzlei übermittelt. Sie können dieses
           Fenster nun schließen.
         </p>
@@ -222,12 +222,12 @@ export function OnboardingWizard({
                     ? 'w-8 h-8 rounded-full bg-emerald-600 text-white text-sm font-bold flex items-center justify-center'
                     : current
                       ? 'w-8 h-8 rounded-full bg-brand-600 text-white text-sm font-bold flex items-center justify-center'
-                      : 'w-8 h-8 rounded-full bg-gray-200 text-gray-500 text-sm font-bold flex items-center justify-center'
+                      : 'w-8 h-8 rounded-full bg-gray-200 text-muted text-sm font-bold flex items-center justify-center'
                 }
               >
                 {done ? <Check className="h-4 w-4" /> : i + 1}
               </div>
-              <span className={current ? 'ml-2 text-sm font-medium text-gray-900' : 'ml-2 text-sm text-gray-500'}>
+              <span className={current ? 'ml-2 text-sm font-medium text-primary' : 'ml-2 text-sm text-muted'}>
                 {s.label}
               </span>
               {i < STEPS.length - 1 && <div className="flex-1 h-px bg-gray-200 mx-3" />}
@@ -239,8 +239,8 @@ export function OnboardingWizard({
       {/* Schritt 0: Stammdaten */}
       {step === 0 && (
         <div className="card p-6 space-y-4">
-          <h2 className="text-lg font-semibold text-gray-900">Stammdaten</h2>
-          <p className="text-sm text-gray-500">
+          <h2 className="text-lg font-semibold text-primary">Stammdaten</h2>
+          <p className="text-sm text-muted">
             Bitte prüfen und ergänzen Sie die Daten Ihres Unternehmens.
           </p>
           <Field label="Firma / Name" value={companyName} onChange={setCompanyName} required />
@@ -260,8 +260,8 @@ export function OnboardingWizard({
       {step === 1 && (
         <div className="space-y-4">
           <div className="card p-6">
-            <h2 className="text-lg font-semibold text-gray-900">Wirtschaftlich Berechtigte</h2>
-            <p className="text-sm text-gray-500 mt-1">
+            <h2 className="text-lg font-semibold text-primary">Wirtschaftlich Berechtigte</h2>
+            <p className="text-sm text-muted mt-1">
               Bitte erfassen Sie alle Personen, die direkt oder indirekt mehr als 25 %
               der Anteile halten oder Kontrolle ausüben. Pro Person bitte den
               Personalausweis (Vorder- und Rückseite) hochladen.
@@ -286,8 +286,8 @@ export function OnboardingWizard({
       {/* Schritt 2: Sonstige Dokumente */}
       {step === 2 && (
         <div className="card p-6 space-y-4">
-          <h2 className="text-lg font-semibold text-gray-900">Sonstige Dokumente (optional)</h2>
-          <p className="text-sm text-gray-500">
+          <h2 className="text-lg font-semibold text-primary">Sonstige Dokumente (optional)</h2>
+          <p className="text-sm text-muted">
             Falls Sie schon einen Handelsregisterauszug oder andere relevante Unterlagen
             haben, können Sie diese hier hochladen. Wenn nicht: kein Problem — die
             Kanzlei besorgt HR-Auszug und Transparenzregister-Auszug selbst.
@@ -312,10 +312,10 @@ export function OnboardingWizard({
             )}
           </div>
           {extraDocs.length > 0 && (
-            <ul className="divide-y divide-gray-100 border border-gray-200 rounded">
+            <ul className="divide-y divide-border-subtle border border-default rounded">
               {extraDocs.map((d, i) => (
                 <li key={i} className="px-3 py-2 text-sm flex items-center justify-between">
-                  <span className="text-gray-700">{d.fileName}</span>
+                  <span className="text-secondary">{d.fileName}</span>
                   <span className="text-xs text-emerald-700">✓ hochgeladen</span>
                 </li>
               ))}
@@ -327,7 +327,7 @@ export function OnboardingWizard({
       {/* Schritt 3: Übermitteln */}
       {step === 3 && (
         <div className="card p-6 space-y-4">
-          <h2 className="text-lg font-semibold text-gray-900">Zusammenfassung</h2>
+          <h2 className="text-lg font-semibold text-primary">Zusammenfassung</h2>
           <dl className="space-y-2 text-sm">
             <SummaryRow label="Firma" value={companyName} />
             <SummaryRow label="Adresse" value={`${street}, ${postalCode} ${city}, ${countryIso}`} />
@@ -335,7 +335,7 @@ export function OnboardingWizard({
             <SummaryRow label="Wirtschaftlich Berechtigte" value={`${owners.length} Person${owners.length === 1 ? '' : 'en'}`} />
             <SummaryRow label="Sonstige Dokumente" value={`${extraDocs.length} hochgeladen`} />
           </dl>
-          {submitError && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{submitError}</div>}
+          {submitError && <div className="alert-error-sm">{submitError}</div>}
           <button type="button" onClick={submit} disabled={isPending} className="btn-primary w-full">
             {isPending ? (
               <><Loader className="h-4 w-4 animate-spin" /> Wird übermittelt…</>
@@ -343,7 +343,7 @@ export function OnboardingWizard({
               'Jetzt übermitteln'
             )}
           </button>
-          <p className="text-xs text-gray-500 text-center">
+          <p className="text-xs text-muted text-center">
             Mit dem Klick übermitteln Sie Ihre Angaben verschlüsselt an Ihre Steuerkanzlei.
           </p>
         </div>
@@ -410,8 +410,8 @@ function Field({
 function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between gap-4">
-      <dt className="text-gray-500">{label}</dt>
-      <dd className="text-gray-900 font-medium text-right">{value}</dd>
+      <dt className="text-muted">{label}</dt>
+      <dd className="text-primary font-medium text-right">{value}</dd>
     </div>
   );
 }
@@ -428,9 +428,9 @@ function OwnerCard({
   return (
     <div className="card p-6 space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-900">Person {index + 1}</h3>
+        <h3 className="text-sm font-semibold text-primary">Person {index + 1}</h3>
         {onRemove && (
-          <button type="button" onClick={onRemove} className="text-gray-400 hover:text-red-700 text-xs inline-flex items-center gap-1">
+          <button type="button" onClick={onRemove} className="text-disabled hover:text-red-700 text-xs inline-flex items-center gap-1">
             <Trash2 className="h-3 w-3" /> entfernen
           </button>
         )}
@@ -475,7 +475,7 @@ function IdUploadField({
 }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-900 mb-1">
+      <label className="block text-sm font-medium text-primary mb-1">
         {label} <span className="text-red-700">*</span>
       </label>
       {file ? (
@@ -500,7 +500,7 @@ function IdUploadField({
           />
         </label>
       )}
-      <p className="text-xs text-gray-500 mt-1">JPG / PNG / PDF, max. 10 MB</p>
+      <p className="text-xs text-muted mt-1">JPG / PNG / PDF, max. 10 MB</p>
     </div>
   );
 }

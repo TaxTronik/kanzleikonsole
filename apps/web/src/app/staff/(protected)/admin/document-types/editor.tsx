@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import { Plus, Trash2, Pencil, Lock, ShieldCheck, Shield, FileText } from 'lucide-react';
@@ -31,7 +31,7 @@ function TierBadge({ tier }: { tier: Tier }) {
       ? 'bg-red-50 text-red-700 border-red-200'
       : tier === 'GWG'
         ? 'bg-amber-50 text-amber-700 border-amber-200'
-        : 'bg-gray-50 text-gray-600 border-gray-200';
+        : 'bg-gray-50 text-secondary border-default';
   const Icon = tier === 'NONE' ? Shield : ShieldCheck;
   return (
     <span className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs ${cls}`}>
@@ -87,23 +87,23 @@ export function DocumentTypeEditor({ initial }: { initial: DocType[] }) {
 
   return (
     <div className="space-y-4">
-      {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {error && <div className="alert-error-sm">{error}</div>}
 
       <div className="card overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-200">
-              <th className="text-left px-5 py-2.5 text-xs font-medium text-gray-500 uppercase">Typ</th>
-              <th className="text-left px-5 py-2.5 text-xs font-medium text-gray-500 uppercase">Schutzstufe</th>
-              <th className="text-left px-5 py-2.5 text-xs font-medium text-gray-500 uppercase">Dokumente</th>
-              <th className="text-left px-5 py-2.5 text-xs font-medium text-gray-500 uppercase">Status</th>
+            <tr className="bg-gray-50 border-b border-default">
+              <th className="text-left px-5 py-2.5 text-xs font-medium text-muted uppercase">Typ</th>
+              <th className="text-left px-5 py-2.5 text-xs font-medium text-muted uppercase">Schutzstufe</th>
+              <th className="text-left px-5 py-2.5 text-xs font-medium text-muted uppercase">Dokumente</th>
+              <th className="text-left px-5 py-2.5 text-xs font-medium text-muted uppercase">Status</th>
               <th className="px-5 py-2.5" />
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-border-subtle">
             {initial.map((t) => (
               <tr key={t.id} className="hover:bg-gray-50">
-                <td className="px-5 py-3 font-medium text-gray-900">
+                <td className="px-5 py-3 font-medium text-primary">
                   {editId === t.id ? (
                     <input
                       autoFocus
@@ -114,15 +114,15 @@ export function DocumentTypeEditor({ initial }: { initial: DocType[] }) {
                     />
                   ) : (
                     <span className="inline-flex items-center gap-1.5">
-                      {t.builtin && <Lock className="h-3.5 w-3.5 text-gray-300" />}
+                      {t.builtin && <Lock className="h-3.5 w-3.5 text-disabled" />}
                       {t.name}
                     </span>
                   )}
                 </td>
                 <td className="px-5 py-3"><TierBadge tier={t.tier} /></td>
-                <td className="px-5 py-3 text-gray-500">
+                <td className="px-5 py-3 text-muted">
                   <span className="inline-flex items-center gap-1">
-                    <FileText className="h-3.5 w-3.5 text-gray-300" />
+                    <FileText className="h-3.5 w-3.5 text-disabled" />
                     {t.docCount}
                   </span>
                 </td>
@@ -135,7 +135,7 @@ export function DocumentTypeEditor({ initial }: { initial: DocType[] }) {
                 </td>
                 <td className="px-5 py-3 text-right whitespace-nowrap">
                   {t.builtin ? (
-                    <span className="text-xs text-gray-400">Kern-Typ (fix)</span>
+                    <span className="text-xs text-disabled">Kern-Typ (fix)</span>
                   ) : editId === t.id ? (
                     <>
                       <button
@@ -161,7 +161,7 @@ export function DocumentTypeEditor({ initial }: { initial: DocType[] }) {
                         title={t.active ? 'Deaktivieren' : 'Aktivieren'}
                         disabled={isPending}
                         onClick={() => saveEdit(t, !t.active)}
-                        className="text-xs text-gray-500 hover:text-gray-900 mr-2"
+                        className="text-xs text-muted hover:text-primary mr-2"
                       >
                         {t.active ? 'Deaktivieren' : 'Aktivieren'}
                       </button>
@@ -172,7 +172,7 @@ export function DocumentTypeEditor({ initial }: { initial: DocType[] }) {
                           setEditId(t.id);
                           setEditName(t.name);
                         }}
-                        className="text-gray-400 hover:text-brand-700 p-1"
+                        className="text-disabled hover:text-brand-700 p-1"
                       >
                         <Pencil className="h-4 w-4" />
                       </button>
@@ -180,7 +180,7 @@ export function DocumentTypeEditor({ initial }: { initial: DocType[] }) {
                         type="button"
                         title="Löschen"
                         onClick={() => remove(t)}
-                        className="text-gray-400 hover:text-red-600 p-1"
+                        className="text-disabled hover:text-red-600 p-1"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -222,7 +222,7 @@ export function DocumentTypeEditor({ initial }: { initial: DocType[] }) {
               </select>
             </div>
           </div>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted">
             Die Schutzstufe lässt sich nach Anlage nicht mehr ändern (sonst
             müssten alle bereits abgelegten Dokumente dieses Typs umkopiert
             werden). Für eine andere Stufe einen neuen Typ anlegen.

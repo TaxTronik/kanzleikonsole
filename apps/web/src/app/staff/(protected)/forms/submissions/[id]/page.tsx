@@ -1,4 +1,4 @@
-// =============================================================================
+﻿// =============================================================================
 // /staff/forms/submissions/[id] — Antwort einer Form-Submission ansehen
 // =============================================================================
 
@@ -22,7 +22,7 @@ const moneyFmt = new Intl.NumberFormat('de-DE', { style: 'currency', currency: '
 
 function renderValue(type: FormFieldType, value: unknown, fieldOptions: unknown): React.ReactNode {
   if (value === null || value === undefined || value === '') {
-    return <span className="text-gray-400">—</span>;
+    return <span className="text-disabled">—</span>;
   }
   if (type === 'CHECKBOX') {
     return value ? '✓ Ja' : 'Nein';
@@ -35,7 +35,7 @@ function renderValue(type: FormFieldType, value: unknown, fieldOptions: unknown)
     if (!Number.isNaN(d.getTime())) return new Intl.DateTimeFormat('de-DE').format(d);
   }
   if (type === 'MULTISELECT' && Array.isArray(value)) {
-    if (value.length === 0) return <span className="text-gray-400">—</span>;
+    if (value.length === 0) return <span className="text-disabled">—</span>;
     return value.map((v) => labelForOption(fieldOptions, v)).join(', ');
   }
   if (type === 'SELECT' && typeof value === 'string') {
@@ -97,13 +97,13 @@ export default async function SubmissionDetailPage({ params }: { params: Promise
 
   return (
     <div className="p-8 max-w-3xl">
-      <Link href={`/staff/clients/${sub.client.id}/forms`} className="text-sm text-gray-500 hover:text-gray-900 inline-flex items-center gap-1 mb-4">
+      <Link href={`/staff/clients/${sub.client.id}/forms`} className="back-link">
         <ArrowLeft className="h-4 w-4" /> Zurück
       </Link>
 
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 mb-1">{sub.name}</h1>
-        <p className="text-gray-500 text-sm">
+        <h1 className="text-2xl font-bold text-primary mb-1">{sub.name}</h1>
+        <p className="text-muted text-sm">
           {sub.client.name} · versendet {dateFmt.format(sub.createdAt)}
           {sub.submittedAt && ` · eingegangen ${dateFmt.format(sub.submittedAt)}`}
         </p>
@@ -116,19 +116,19 @@ export default async function SubmissionDetailPage({ params }: { params: Promise
       </div>
 
       <div className="card overflow-hidden">
-        <dl className="divide-y divide-gray-100">
+        <dl className="divide-y divide-border-subtle">
           {sub.template.fields.map((f) => {
             if (f.type === 'INFO_TEXT') {
               return (
                 <div key={f.id} className="px-6 py-3 bg-gray-50">
-                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{f.label}</p>
+                  <p className="text-sm text-secondary whitespace-pre-wrap">{f.label}</p>
                 </div>
               );
             }
             return (
               <div key={f.id} className="grid grid-cols-3 px-6 py-3 gap-4">
-                <dt className="text-sm text-gray-500">{f.label}</dt>
-                <dd className="col-span-2 text-sm text-gray-900">
+                <dt className="text-sm text-muted">{f.label}</dt>
+                <dd className="col-span-2 text-sm text-primary">
                   {renderValue(f.type, answers[f.key], f.options)}
                 </dd>
               </div>
@@ -145,8 +145,8 @@ export default async function SubmissionDetailPage({ params }: { params: Promise
 
       {sub.status === 'REVIEWED' && sub.reviewNotes && (
         <div className="card p-4 mt-6">
-          <p className="text-xs text-gray-500 uppercase mb-1">Prüfnotiz</p>
-          <p className="text-sm text-gray-700 whitespace-pre-wrap">{sub.reviewNotes}</p>
+          <p className="text-xs text-muted uppercase mb-1">Prüfnotiz</p>
+          <p className="text-sm text-secondary whitespace-pre-wrap">{sub.reviewNotes}</p>
         </div>
       )}
     </div>

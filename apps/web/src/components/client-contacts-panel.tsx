@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useActionState, useState, useRef, useEffect, useTransition } from 'react';
 import { Mail, Phone, UserX, Pencil, Plus, X } from 'lucide-react';
@@ -41,12 +41,12 @@ export function ClientContactsPanel({ clientId, contacts }: Props) {
 
   return (
     <div className="card overflow-hidden mb-6">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-default">
         <div>
-          <h2 className="text-sm font-medium text-gray-900">
+          <h2 className="text-sm font-medium text-primary">
             Ansprechpartner ({contacts.length})
           </h2>
-          <p className="text-xs text-gray-500 mt-0.5">
+          <p className="text-xs text-muted mt-0.5">
             Kontaktpersonen beim Mandanten. Per E-Mail bekommen sie Portal-Zugang und Benachrichtigungen.
           </p>
         </div>
@@ -61,7 +61,7 @@ export function ClientContactsPanel({ clientId, contacts }: Props) {
       </div>
 
       {showForm && (
-        <div className="px-5 py-4 border-b border-gray-200 bg-gray-50/60">
+        <div className="px-5 py-4 border-b border-default bg-gray-50/60">
           <form ref={formRef} action={formAction} className="space-y-3">
             <input type="hidden" name="clientId" value={clientId} />
             <div className="grid grid-cols-2 gap-3">
@@ -82,12 +82,12 @@ export function ClientContactsPanel({ clientId, contacts }: Props) {
                 <input id="contact-phone" name="phone" type="tel" className="input" maxLength={50} />
               </div>
             </div>
-            <label className="flex items-center gap-2 text-sm text-gray-700">
+            <label className="flex items-center gap-2 text-sm text-secondary">
               <input type="checkbox" name="sendInvite" value="1" defaultChecked />
               Login-Link per E-Mail senden
             </label>
             {state?.error && (
-              <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{state.error}</div>
+              <div className="alert-error-sm">{state.error}</div>
             )}
             <button type="submit" className="btn-primary text-sm" disabled={isPending}>
               {isPending ? 'Speichert…' : 'Anlegen'}
@@ -98,11 +98,11 @@ export function ClientContactsPanel({ clientId, contacts }: Props) {
 
       {contacts.length === 0 ? (
         <div className="px-6 py-8 text-center">
-          <Mail className="h-8 w-8 text-gray-200 mx-auto mb-2" />
-          <p className="text-sm text-gray-400">Noch kein Ansprechpartner hinterlegt.</p>
+          <Mail className="h-8 w-8 text-disabled mx-auto mb-2" />
+          <p className="text-sm text-disabled">Noch kein Ansprechpartner hinterlegt.</p>
         </div>
       ) : (
-        <ul className="divide-y divide-gray-100">
+        <ul className="divide-y divide-border-subtle">
           {contacts.map((c) =>
             editingId === c.id ? (
               <EditRow
@@ -139,21 +139,21 @@ function ContactRow({
     <li className="px-5 py-3 flex items-center justify-between gap-3">
       <div className="min-w-0 flex-1 grid grid-cols-3 gap-4 items-center">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-gray-900 truncate">{contact.fullName}</p>
-          {contact.role && <p className="text-xs text-gray-500 truncate">{contact.role}</p>}
+          <p className="item-title">{contact.fullName}</p>
+          {contact.role && <p className="text-xs text-muted truncate">{contact.role}</p>}
         </div>
-        <div className="min-w-0 flex items-center gap-1.5 text-xs text-gray-600">
-          <Mail className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+        <div className="min-w-0 flex items-center gap-1.5 text-xs text-secondary">
+          <Mail className="h-3.5 w-3.5 text-disabled shrink-0" />
           <a href={`mailto:${contact.email}`} className="truncate hover:underline">{contact.email}</a>
         </div>
-        <div className="min-w-0 flex items-center gap-1.5 text-xs text-gray-600">
+        <div className="min-w-0 flex items-center gap-1.5 text-xs text-secondary">
           {contact.phone ? (
             <>
-              <Phone className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+              <Phone className="h-3.5 w-3.5 text-disabled shrink-0" />
               <a href={`tel:${contact.phone}`} className="truncate hover:underline">{contact.phone}</a>
             </>
           ) : (
-            <span className="text-gray-400">—</span>
+            <span className="text-disabled">—</span>
           )}
         </div>
       </div>
@@ -161,7 +161,7 @@ function ContactRow({
         <button
           type="button"
           onClick={onEdit}
-          className="text-gray-400 hover:text-gray-900 p-1.5"
+          className="text-disabled hover:text-primary p-1.5"
           title="Bearbeiten"
         >
           <Pencil className="h-4 w-4" />
@@ -169,7 +169,7 @@ function ContactRow({
         <form action={deactivateContactAction}>
           <input type="hidden" name="contactId" value={contact.id} />
           <input type="hidden" name="clientId" value={clientId} />
-          <button type="submit" className="text-gray-400 hover:text-red-600 p-1.5" title="Deaktivieren">
+          <button type="submit" className="text-disabled hover:text-red-600 p-1.5" title="Deaktivieren">
             <UserX className="h-4 w-4" />
           </button>
         </form>
@@ -248,7 +248,7 @@ function EditRow({
           maxLength={50}
         />
       </div>
-      <p className="text-xs text-gray-500 mb-2">
+      <p className="text-xs text-muted mb-2">
         Die E-Mail ist die Portal-Login-Identität — eine Änderung wirkt sich auf
         künftige Magic-Link-Anmeldungen aus.
       </p>

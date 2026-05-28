@@ -68,10 +68,10 @@ export function CreateSkillForm() {
       </div>
 
       {state?.error && (
-        <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{state.error}</div>
+        <div className="alert-error-sm">{state.error}</div>
       )}
       {state?.ok && (
-        <div className="rounded-md bg-green-50 p-3 text-sm text-green-700">Tätigkeitsbereich angelegt.</div>
+        <div className="alert-success-sm">Tätigkeitsbereich angelegt.</div>
       )}
 
       <button type="submit" className="btn-primary" disabled={isPending}>

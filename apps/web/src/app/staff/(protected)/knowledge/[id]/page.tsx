@@ -1,4 +1,4 @@
-import { redirect, notFound } from 'next/navigation';
+﻿import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Pencil, Trash2 } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
@@ -41,15 +41,15 @@ export default async function KbArticlePage({
   return (
     <div className="p-8 max-w-3xl">
       <div className="flex items-start gap-4 mb-6">
-        <Link href="/staff/knowledge" className="text-gray-400 hover:text-gray-600 mt-1">
+        <Link href="/staff/knowledge" className="text-disabled hover:text-secondary mt-1">
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-1">
-            <h1 className="text-2xl font-bold text-gray-900">{article.title}</h1>
+            <h1 className="text-2xl font-bold text-primary">{article.title}</h1>
             {!article.published && <span className="badge-gray">Entwurf</span>}
           </div>
-          <p className="text-gray-500 text-sm">
+          <p className="text-muted text-sm">
             {article.category?.name ?? 'Ohne Kategorie'}
             {' · '}
             Aktualisiert {new Intl.DateTimeFormat('de-DE').format(article.updatedAt)}
@@ -79,7 +79,7 @@ export default async function KbArticlePage({
       </div>
 
       <article
-        className="card p-8 prose prose-sm max-w-none [&_h1]:text-2xl [&_h1]:font-bold [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:mt-6 [&_h2]:mb-2 [&_h3]:text-lg [&_h3]:font-semibold [&_p]:my-3 [&_ul]:list-disc [&_ul]:ml-6 [&_ol]:list-decimal [&_ol]:ml-6 [&_li]:my-1 [&_a]:text-brand-700 [&_a:hover]:underline [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_pre]:bg-gray-100 [&_pre]:p-3 [&_pre]:rounded [&_pre]:overflow-x-auto [&_blockquote]:border-l-4 [&_blockquote]:border-gray-300 [&_blockquote]:pl-4 [&_blockquote]:text-gray-600"
+        className="card p-8 prose prose-sm max-w-none [&_h1]:text-2xl [&_h1]:font-bold [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:mt-6 [&_h2]:mb-2 [&_h3]:text-lg [&_h3]:font-semibold [&_p]:my-3 [&_ul]:list-disc [&_ul]:ml-6 [&_ol]:list-decimal [&_ol]:ml-6 [&_li]:my-1 [&_a]:text-brand-700 [&_a:hover]:underline [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_pre]:bg-gray-100 [&_pre]:p-3 [&_pre]:rounded [&_pre]:overflow-x-auto [&_blockquote]:border-l-4 [&_blockquote]:border-strong [&_blockquote]:pl-4 [&_blockquote]:text-secondary"
         dangerouslySetInnerHTML={{ __html: html }}
       />
     </div>

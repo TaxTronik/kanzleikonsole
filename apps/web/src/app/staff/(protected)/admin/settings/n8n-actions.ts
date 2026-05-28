@@ -223,7 +223,7 @@ export async function importWorkflowsAction(): Promise<ActionResult> {
   let files: string[];
   try {
     files = (await readdir(workflowsDir)).filter((f) => f.endsWith('.json'));
-  } catch (e) {
+  } catch {
     return { ok: false, error: `Workflow-Verzeichnis nicht gefunden: ${workflowsDir}` };
   }
   if (files.length === 0) {

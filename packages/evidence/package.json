@@ -16,17 +16,18 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "test": "vitest run",
-    "verify": "tsx src/cli/verify.ts"
+    "verify": "tsx --env-file=../../.env src/cli/verify.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1045.0",
-    "@prisma/client": "5.22.0",
+    "@aws-sdk/client-s3": "^3.1053.0",
+    "@prisma/client": "7.8.0",
     "@taxtronik/db": "workspace:*",
     "@taxtronik/http-utils": "workspace:*"
   },
   "devDependencies": {
-    "tsx": "^4.19.0",
-    "typescript": "^5.7.0",
-    "vitest": "^2.1.0"
+    "tsx": "^4.22.3",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.14",
+    "vitest": "^4.1.7"
   }
 }

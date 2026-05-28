@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import { Plus } from 'lucide-react';
@@ -47,7 +47,7 @@ export function SendFormButton({ clientId, templates }: { clientId: string; temp
         <Plus className="h-4 w-4" /> Formular senden
       </button>
       {open && (
-        <div className="absolute right-0 mt-2 w-80 z-20 rounded-lg shadow-lg border border-gray-200 bg-white p-4 space-y-3">
+        <div className="absolute right-0 mt-2 w-80 z-20 rounded-lg shadow-lg border border-default bg-surface p-4 space-y-3">
           <select value={tplId} onChange={(e) => setTplId(e.target.value)} className="input">
             <option value="">— Vorlage wählen —</option>
             {templates.map((t) => (
@@ -58,7 +58,7 @@ export function SendFormButton({ clientId, templates }: { clientId: string; temp
           </select>
           {error && <p className="text-xs text-red-700">{error}</p>}
           <div className="flex justify-end gap-2">
-            <button type="button" onClick={() => setOpen(false)} className="text-xs text-gray-500 hover:underline">
+            <button type="button" onClick={() => setOpen(false)} className="text-xs text-muted hover:underline">
               Abbrechen
             </button>
             <button type="button" onClick={submit} disabled={isPending} className="btn-primary text-xs">

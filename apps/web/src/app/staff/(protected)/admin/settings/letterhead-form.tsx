@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useActionState } from 'react';
 import { saveLetterheadAction, type ActionResult } from './actions';
@@ -64,7 +64,7 @@ export function LetterheadForm({ initial }: { initial: LetterheadConfig }) {
         />
       </div>
 
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-muted">
         Wird in ausgehende PDFs eingebunden (Vollmachten, Rechnungen, Bescheinigungen).
         Logo + Akzentfarbe oben in den Erscheinungsbild-Settings.
       </p>

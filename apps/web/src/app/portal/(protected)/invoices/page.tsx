@@ -1,9 +1,10 @@
-import { redirect } from 'next/navigation';
+﻿import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { Receipt } from 'lucide-react';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 
+import { fmtEUR } from '@/lib/fmt';
 const statusLabels: Record<string, string> = {
   DRAFT: 'Entwurf',
   SENT: 'Offen',
@@ -31,41 +32,41 @@ export default async function PortalInvoicesPage() {
 
   return (
     <div className="p-8">
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">Rechnungen</h1>
-      <p className="text-gray-500 text-sm mb-6">
+      <h1 className="text-2xl font-bold text-primary mb-1">Rechnungen</h1>
+      <p className="text-muted text-sm mb-6">
         Rechnungen Ihrer Kanzlei.
       </p>
 
       <div className="card overflow-hidden">
         {invoices.length === 0 ? (
           <div className="px-6 py-16 text-center">
-            <Receipt className="h-12 w-12 text-gray-200 mx-auto mb-3" />
-            <p className="text-sm text-gray-400">Keine Rechnungen vorhanden.</p>
+            <Receipt className="h-12 w-12 text-disabled mx-auto mb-3" />
+            <p className="text-sm text-disabled">Keine Rechnungen vorhanden.</p>
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Nr.</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Betreff</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Datum</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Fällig</th>
-                <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Brutto</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">PDF</th>
+              <tr className="bg-gray-50 border-b border-default">
+                <th className="th">Nr.</th>
+                <th className="th">Betreff</th>
+                <th className="th">Datum</th>
+                <th className="th">Fällig</th>
+                <th className="th th-right">Brutto</th>
+                <th className="th">Status</th>
+                <th className="th">PDF</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-border-subtle">
               {invoices.map((i) => {
                 const overdue = i.status === 'SENT' && i.dueDate < new Date();
                 return (
                   <tr key={i.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 font-medium text-gray-900">{i.number}</td>
-                    <td className="px-6 py-4 text-gray-700">{i.subject}</td>
-                    <td className="px-6 py-4 text-gray-600">
+                    <td className="px-6 py-4 font-medium text-primary">{i.number}</td>
+                    <td className="px-6 py-4 text-secondary">{i.subject}</td>
+                    <td className="px-6 py-4 text-secondary">
                       {new Intl.DateTimeFormat('de-DE').format(i.issueDate)}
                     </td>
-                    <td className={overdue ? 'px-6 py-4 text-red-700' : 'px-6 py-4 text-gray-600'}>
+                    <td className={overdue ? 'px-6 py-4 text-red-700' : 'px-6 py-4 text-secondary'}>
                       {new Intl.DateTimeFormat('de-DE').format(i.dueDate)}
                     </td>
                     <td className="px-6 py-4 text-right font-mono tabular-nums">
@@ -86,7 +87,7 @@ export default async function PortalInvoicesPage() {
                           Öffnen
                         </Link>
                       ) : (
-                        <span className="text-gray-400 text-xs">—</span>
+                        <span className="text-disabled text-xs">—</span>
                       )}
                     </td>
                   </tr>
@@ -100,6 +101,3 @@ export default async function PortalInvoicesPage() {
   );
 }
 
-function fmtEUR(n: { toString(): string }): string {
-  return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(Number(n.toString()));
-}

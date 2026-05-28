@@ -1,4 +1,4 @@
-// =============================================================================
+﻿// =============================================================================
 // /staff/clients/[id]/workflows — Mandanten-Workflows
 //
 // Listet aktive + erledigte Workflow-Instanzen für diesen Mandanten.
@@ -123,18 +123,18 @@ export default async function ClientWorkflowsPage({
     <div className="p-8 max-w-5xl">
       <Link
         href={`/staff/clients/${clientId}`}
-        className="text-sm text-gray-500 hover:text-gray-900 inline-flex items-center gap-1 mb-4"
+        className="back-link"
       >
         <ArrowLeft className="h-4 w-4" /> Zurück
       </Link>
 
       <div className="flex items-end justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-1 flex items-center gap-2">
+          <h1 className="page-title">
             <Workflow className="h-6 w-6 text-brand-600" />
             Workflows
           </h1>
-          <p className="text-gray-500 text-sm">{client.name}</p>
+          <p className="text-muted text-sm">{client.name}</p>
         </div>
         <StartWorkflowForm clientId={clientId} templates={templates} staffOptions={staffList} />
       </div>
@@ -146,7 +146,7 @@ export default async function ClientWorkflowsPage({
           className={
             filter === 'all'
               ? 'inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-brand-600 text-white'
-              : 'inline-flex items-center px-3 py-1 rounded-full text-xs text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700'
+              : 'inline-flex items-center px-3 py-1 rounded-full text-xs text-secondary bg-gray-100 hover:bg-gray-200'
           }
         >
           Alle Workflows
@@ -156,7 +156,7 @@ export default async function ClientWorkflowsPage({
           className={
             filter === 'mine'
               ? 'inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-brand-600 text-white'
-              : 'inline-flex items-center px-3 py-1 rounded-full text-xs text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700'
+              : 'inline-flex items-center px-3 py-1 rounded-full text-xs text-secondary bg-gray-100 hover:bg-gray-200'
           }
         >
           Nur meine
@@ -165,7 +165,7 @@ export default async function ClientWorkflowsPage({
 
       {active.length === 0 ? (
         <div className="card p-10 text-center mb-6">
-          <p className="text-sm text-gray-400">Kein laufender Workflow.</p>
+          <p className="text-sm text-disabled">Kein laufender Workflow.</p>
         </div>
       ) : (
         <div className="space-y-6 mb-8">
@@ -184,12 +184,12 @@ export default async function ClientWorkflowsPage({
             const team = staffList.filter((s) => involvedIds.has(s.id));
             return (
               <div key={inst.id} className={`card overflow-hidden ${inst.status === 'PAUSED' ? 'opacity-80' : ''}`}>
-                <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between gap-3">
+                <div className="px-6 py-4 border-b border-default flex items-center justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <Link
                         href={`/staff/clients/${clientId}/workflows/${inst.id}`}
-                        className="text-sm font-semibold text-gray-900 dark:text-gray-100 hover:underline"
+                        className="text-sm font-semibold text-primary hover:underline"
                       >
                         {inst.name}
                       </Link>
@@ -199,11 +199,11 @@ export default async function ClientWorkflowsPage({
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-muted">
                       gestartet am {dateFmt.format(inst.startedAt)} · {doneCount}/{total} erledigt
                     </p>
                     <div className="mt-1.5 flex items-center gap-1 flex-wrap">
-                      <span className="text-[10px] uppercase tracking-wide text-gray-400 mr-1">Team:</span>
+                      <span className="text-[10px] uppercase tracking-wide text-disabled mr-1">Team:</span>
                       {team.map((s) => {
                         const initials = s.fullName.split(/\s+/).slice(0, 2).map((p) => p[0]).join('').toUpperCase();
                         return (
@@ -242,7 +242,7 @@ export default async function ClientWorkflowsPage({
                   </div>
                 </div>
                 <div className="px-2 py-2">
-                  <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+                  <ul className="divide-y divide-border-subtle">
                     {inst.items.map((it) => (
                       <WorkflowItemRow
                         key={it.id}
@@ -291,23 +291,23 @@ export default async function ClientWorkflowsPage({
 
       {done.length > 0 && (
         <details className="card overflow-hidden">
-          <summary className="px-6 py-4 border-b border-gray-200 dark:border-gray-800 cursor-pointer text-sm text-gray-700 dark:text-gray-300 flex items-center gap-2">
+          <summary className="px-6 py-4 border-b border-default cursor-pointer text-sm text-secondary flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4 text-emerald-600" />
             {done.length} abgeschlossene{done.length === 1 ? 'r' : ''} / abgebrochene Workflow{done.length === 1 ? '' : 's'} — Archiv
           </summary>
-          <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+          <ul className="divide-y divide-border-subtle">
             {done.map((inst) => {
               const totalI = inst.items.length;
               const doneI = inst.items.filter((it) => it.doneAt).length;
               const cancelled = inst.status === 'CANCELLED';
               return (
-                <li key={inst.id} className="flex items-center justify-between gap-3 px-6 py-3 hover:bg-gray-50 dark:hover:bg-gray-900/40">
+                <li key={inst.id} className="flex items-center justify-between gap-3 px-6 py-3 hover:bg-gray-50">
                   <Link
                     href={`/staff/clients/${clientId}/workflows/${inst.id}`}
                     className="flex-1 min-w-0 -my-3 py-3"
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <span className="text-sm text-gray-900 dark:text-gray-100 truncate inline-flex items-center gap-2">
+                      <span className="text-sm text-primary truncate inline-flex items-center gap-2">
                         {inst.name}
                         {cancelled && (
                           <span className="text-[10px] font-medium uppercase tracking-wide text-red-700 dark:text-red-400 bg-red-100 dark:bg-red-900/40 rounded px-1.5 py-0.5">
@@ -315,7 +315,7 @@ export default async function ClientWorkflowsPage({
                           </span>
                         )}
                       </span>
-                      <span className="text-xs text-gray-400 shrink-0">
+                      <span className="text-xs text-disabled shrink-0">
                         {doneI}/{totalI} · {inst.completedAt ? dateFmt.format(inst.completedAt) : '—'}
                       </span>
                     </div>
