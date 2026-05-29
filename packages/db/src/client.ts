@@ -13,6 +13,18 @@ declare global {
 }
 
 function buildClient(): PrismaClient {
+  // Fail-closed RLS-Backstop: In Produktion MUSS die App über DATABASE_APP_URL
+  // (eingeschränkte Role, RLS greift) verbinden. Der Owner `taxtronik` hat
+  // BYPASSRLS — ein stiller Fallback auf DATABASE_URL würde die komplette
+  // Mandantentrennung aushebeln (§ 203 StGB). @taxtronik/config validiert das
+  // zwar beim Boot, aber client.ts liest process.env direkt und darf sich
+  // nicht auf die Import-Reihenfolge verlassen. Daher hier nochmal hart.
+  if (process.env['NODE_ENV'] === 'production' && !process.env['DATABASE_APP_URL']) {
+    throw new Error(
+      '[db] DATABASE_APP_URL ist in Produktion Pflicht. Kein Fallback auf die ' +
+        'Owner-Verbindung (BYPASSRLS) — das würde die RLS-Mandantentrennung aushebeln.',
+    );
+  }
   const datasourceUrl = process.env['DATABASE_APP_URL'] ?? process.env['DATABASE_URL'];
 
   return new PrismaClient({
