@@ -12,7 +12,7 @@ import {
   decryptTotpSecret,
   verifyTotpCode,
 } from '@/server/auth/totp';
-import { staffSignIn } from '@/server/auth/staff';
+import { staffSignIn, DEV_SKIP_TOTP } from '@/server/auth/staff';
 import { recordFailedLogin, resetFailedLogin } from '@/server/auth/lockout';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { checkIpOrGlobalLimit, resetRateLimit, getClientIp } from '@/server/rate-limit';
@@ -51,6 +51,8 @@ export interface CheckPasswordResult {
    * passt zur CSP `img-src 'self' data: blob:`.
    */
   setupQrDataUrl?: string;
+  /** DEV-ONLY: TOTP übersprungen → UI loggt direkt ein (siehe DEV_SKIP_TOTP). */
+  devSkip?: boolean;
   error?: string;
 }
 
@@ -118,6 +120,11 @@ export async function checkPasswordAction(
   // Erfolg → Counter zurücksetzen (IP-RL + Account-Counter)
   await resetRateLimit(`staff-pw:${ip}`);
   resetFailedLogin(prismaOwner, staffUser.id).catch(() => void 0);
+
+  // DEV-ONLY: TOTP überspringen → UI loggt direkt ein (ohne Code/Setup).
+  if (DEV_SKIP_TOTP) {
+    return { ok: true, devSkip: true };
+  }
 
   // TOTP bereits eingerichtet?
   if (staffUser.totpEnrolledAt && staffUser.totpSecretEnc) {

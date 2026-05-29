@@ -10,6 +10,13 @@ import { prismaOwner } from '@/server/db/prisma-owner';
 import { log } from '@/server/logger';
 import { getClientIp, checkIpOrGlobalLimit } from '@/server/rate-limit';
 
+// DEV-ONLY: TOTP-Bypass für lokale Entwicklung. DOPPELT gegated — greift nur,
+// wenn NODE_ENV ≠ production UND DEV_SKIP_TOTP=true. In Produktion ist
+// env.NODE_ENV === 'production', der Wert also immer false → der Bypass-Zweig
+// in authorize() ist dort strukturell toter Code. Siehe .env.example.
+export const DEV_SKIP_TOTP =
+  env.NODE_ENV !== 'production' && process.env['DEV_SKIP_TOTP'] === 'true';
+
 // Narrower Session-Typ für das Staff-Surface — Felder, die staff-spezifisch
 // sind (staffId, roles), sind hier verpflichtend. Module-Augmentation für
 // Session.user liegt zentral in src/types/next-auth.d.ts.
@@ -127,6 +134,25 @@ const staffConfig: NextAuthConfig = {
           // verteilte Brute-Force. Fehler werden geloggt, nicht geschluckt.
           fireAndForget('recordFailedLogin', recordFailedLogin(prismaOwner, staffUser.id, ip));
           return null;
+        }
+
+        // DEV-ONLY: TOTP komplett überspringen (Login nur mit Passwort).
+        // Doppelt gegated über DEV_SKIP_TOTP — in Produktion nie aktiv.
+        if (DEV_SKIP_TOTP) {
+          log.warn(
+            { staffId: staffUser.id },
+            'staff-auth: DEV_SKIP_TOTP aktiv — TOTP übersprungen (NUR Dev!)',
+          );
+          fireAndForget('resetFailedLogin', resetFailedLogin(prismaOwner, staffUser.id));
+          return {
+            id: staffUser.id,
+            email: staffUser.email,
+            name: staffUser.fullName,
+            staffId: staffUser.id,
+            tenantId: tenant.id,
+            fullName: staffUser.fullName,
+            roles: staffUser.roles.map((r) => r.role as string),
+          };
         }
 
         // TOTP ist Pflicht — ohne Enrollment kein Login

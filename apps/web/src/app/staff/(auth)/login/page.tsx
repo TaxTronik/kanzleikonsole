@@ -55,6 +55,17 @@ export default function StaffLoginPage() {
         setError(result.error ?? 'Fehler bei der Anmeldung.');
         return;
       }
+      // DEV-ONLY: TOTP übersprungen → direkt einloggen (ohne Code/Setup).
+      if (result.devSkip) {
+        const fd = new FormData();
+        fd.set('email', email);
+        fd.set('password', password);
+        fd.set('tenantSlug', tenantSlug);
+        const login = await loginAction(fd);
+        if (login.error) setError(login.error);
+        else if (login.ok) window.location.href = returnTo;
+        return;
+      }
       if (result.totpRequired) {
         setStep('totp');
       } else if (result.totpSetupRequired) {
