@@ -10,8 +10,11 @@ import { CalendarDays, Check, Clock } from 'lucide-react';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 import { readPortalFeatures } from '@/server/settings/portal-features';
+import { portalBaseUrl } from '@taxtronik/config';
 import { AppointmentRequestForm } from './request-form';
 import { CancelRequestButton } from './cancel-request-button';
+import { IcalSubscribe } from './ical-subscribe';
+import { signIcalToken } from '@/server/ical/feed';
 import { fmtDateMedium, fmtDateTimeMedium } from '@/lib/fmt';
 
 
@@ -78,6 +81,8 @@ export default async function PortalAppointmentsPage() {
           Hier sehen Sie Ihre vereinbarten Termine und können neue anfragen.
         </p>
       </div>
+
+      <IcalSubscribe url={`${portalBaseUrl}/api/portal/ical/${signIcalToken(contactId)}`} />
 
       {features.appointmentRequests && (
         <div className="mb-6">
