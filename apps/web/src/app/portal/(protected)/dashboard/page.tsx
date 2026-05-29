@@ -1,6 +1,6 @@
 ﻿import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { Inbox, FileText, Clock } from 'lucide-react';
+import { Inbox, FileText, Clock, ClipboardList, CheckCircle2 } from 'lucide-react';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 import { fmtDateShort } from '@/lib/fmt';
@@ -11,22 +11,38 @@ export default async function PortalDashboardPage() {
 
   const { tenantId, contactId, clientId } = session.user;
 
-  const [openRequestCount, documentCount, recentRequests] = await withTenantContext(
-    { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' },
-    async (tx) =>
-      Promise.all([
-        tx.request.count({
-          where: { clientId, status: { in: ['OPEN', 'IN_PROGRESS'] } },
-        }),
-        // Portal-Sicht: nur freigegebene & nicht soft-gelöschte Dokumente.
-        tx.document.count({ where: { clientId, deletedAt: null, sharedWithClientAt: { not: null } } }),
-        tx.request.findMany({
-          where: { clientId },
-          orderBy: { createdAt: 'desc' },
-          take: 5,
-        }),
-      ]),
-  );
+  const [openRequestCount, documentCount, recentRequests, todoRequests, todoForms] =
+    await withTenantContext(
+      { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' },
+      async (tx) =>
+        Promise.all([
+          tx.request.count({
+            where: { clientId, status: { in: ['OPEN', 'IN_PROGRESS'] } },
+          }),
+          // Portal-Sicht: nur freigegebene & nicht soft-gelöschte Dokumente.
+          tx.document.count({ where: { clientId, deletedAt: null, sharedWithClientAt: { not: null } } }),
+          tx.request.findMany({
+            where: { clientId },
+            orderBy: { createdAt: 'desc' },
+            take: 5,
+          }),
+          // „Das brauchen wir von Ihnen": offene Anforderungen + offene Formulare.
+          tx.request.findMany({
+            where: { clientId, status: { in: ['OPEN', 'IN_PROGRESS'] } },
+            select: { id: true, title: true, dueAt: true },
+            orderBy: [{ dueAt: { sort: 'asc', nulls: 'last' } }, { createdAt: 'desc' }],
+            take: 10,
+          }),
+          tx.formSubmission.findMany({
+            where: { clientId, status: { in: ['PENDING', 'DRAFT'] } },
+            select: { id: true, template: { select: { name: true } } },
+            orderBy: { createdAt: 'desc' },
+            take: 10,
+          }),
+        ]),
+    );
+
+  const todoCount = todoRequests.length + todoForms.length;
 
   return (
     <div className="p-8">
@@ -36,6 +52,46 @@ export default async function PortalDashboardPage() {
       <p className="text-muted text-sm mb-8">
         Übersicht über offene Anforderungen Ihrer Kanzlei.
       </p>
+
+      {/* Das brauchen wir von Ihnen — alle offenen To-Dos gebündelt */}
+      <div className="card overflow-hidden mb-8">
+        <div className="px-6 py-4 border-b border-default flex items-center gap-2">
+          <ClipboardList className="h-4 w-4 text-brand-600" />
+          <h2 className="text-sm font-medium text-primary">Das brauchen wir von Ihnen</h2>
+          {todoCount > 0 && (
+            <span className="badge-yellow ml-auto">{todoCount} offen</span>
+          )}
+        </div>
+        {todoCount === 0 ? (
+          <div className="px-6 py-10 text-center">
+            <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
+            <p className="text-sm text-muted">Aktuell ist nichts offen — vielen Dank!</p>
+          </div>
+        ) : (
+          <ul className="divide-y divide-border-subtle">
+            {todoRequests.map((r) => (
+              <li key={`req-${r.id}`} className="px-6 py-3 flex items-center justify-between gap-3">
+                <Link href={`/portal/requests/${r.id}`} className="flex items-center gap-3 min-w-0 hover:underline">
+                  <Inbox className="h-4 w-4 text-yellow-600 shrink-0" />
+                  <span className="text-sm text-primary truncate">{r.title}</span>
+                </Link>
+                <span className="text-xs text-muted shrink-0">
+                  {r.dueAt ? `fällig ${fmtDateShort(r.dueAt)}` : 'Anforderung'}
+                </span>
+              </li>
+            ))}
+            {todoForms.map((f) => (
+              <li key={`form-${f.id}`} className="px-6 py-3 flex items-center justify-between gap-3">
+                <Link href={`/portal/forms/${f.id}`} className="flex items-center gap-3 min-w-0 hover:underline">
+                  <ClipboardList className="h-4 w-4 text-brand-600 shrink-0" />
+                  <span className="text-sm text-primary truncate">{f.template.name}</span>
+                </Link>
+                <span className="text-xs text-muted shrink-0">Formular ausfüllen</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
       <div className="grid grid-cols-3 gap-4 mb-8">
         <KpiCard
