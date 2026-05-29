@@ -6,8 +6,8 @@ import { withTenantContext } from '@taxtronik/db';
 import { PlanEditor } from '@/app/portal/(protected)/bwa/plan/[id]/editor';
 import { ActorBadge } from '@/app/portal/(protected)/bwa/plan/plan-comparison';
 import { updateStaffPlanAction, deleteStaffPlanAction } from '../actions';
+import { fmtDateTimeShort } from '@/lib/fmt';
 
-const dateFmt = new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' });
 
 export default async function StaffPlanDetailPage({
   params,
@@ -67,11 +67,11 @@ export default async function StaffPlanDetailPage({
         }
       />
       <div className="text-xs text-secondary">
-        Erstellt von <strong>{plan.createdByName}</strong> am {dateFmt.format(plan.createdAt)}
+        Erstellt von <strong>{plan.createdByName}</strong> am {fmtDateTimeShort(plan.createdAt)}
         {plan.updatedBy && plan.updatedBy !== plan.createdBy && (
           <>
             {' · '}
-            zuletzt geändert von <strong>{plan.updatedByName}</strong> am {dateFmt.format(plan.updatedAt)}
+            zuletzt geändert von <strong>{plan.updatedByName}</strong> am {fmtDateTimeShort(plan.updatedAt)}
           </>
         )}
       </div>

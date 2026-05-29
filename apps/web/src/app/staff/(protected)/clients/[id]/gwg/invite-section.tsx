@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { Send, Copy, Check, X } from 'lucide-react';
 import { sendInviteAction, cancelInviteAction } from './invite-actions';
+import { fmtDateTimeShort } from '@/lib/fmt';
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: 'Versendet',
@@ -12,7 +13,6 @@ const STATUS_LABELS: Record<string, string> = {
   CANCELLED: 'Abgebrochen',
 };
 
-const dateFmt = new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' });
 
 interface Contact {
   fullName: string;
@@ -186,7 +186,7 @@ export function InviteSection({
               <div>
                 <p className="font-medium text-primary">{i.inviteName}</p>
                 <p className="text-xs text-muted">
-                  {i.inviteEmail} · gültig bis {dateFmt.format(new Date(i.expiresAt))}
+                  {i.inviteEmail} · gültig bis {fmtDateTimeShort(new Date(i.expiresAt))}
                 </p>
               </div>
               <div className="flex items-center gap-3">
@@ -213,7 +213,7 @@ export function InviteSection({
                     <span>{i.inviteName} · {i.inviteEmail}</span>
                     <span>
                       {STATUS_LABELS[i.status]}
-                      {i.submittedAt && ` · ${dateFmt.format(new Date(i.submittedAt))}`}
+                      {i.submittedAt && ` · ${fmtDateTimeShort(new Date(i.submittedAt))}`}
                     </span>
                   </li>
                 ))}

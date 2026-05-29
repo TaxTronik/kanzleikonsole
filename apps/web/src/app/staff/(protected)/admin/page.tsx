@@ -20,6 +20,7 @@ import { checkForUpdates, type CheckResult } from '@/server/update/manifest';
 import { getLicenseInfo } from '@/server/license/state';
 import { getSetupStatus } from '@/server/setup/status';
 import { LicenseCard } from './license-card';
+import { fmtDateTimeShort } from '@/lib/fmt';
 
 const APP_VERSION = process.env['APP_VERSION'] ?? 'dev';
 
@@ -177,9 +178,7 @@ export default async function AdminPage() {
               {lastBackup ? (
                 <>
                   <p className="text-xs text-secondary mt-1">
-                    {new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' }).format(
-                      lastBackup.startedAt,
-                    )}{' '}
+                    {fmtDateTimeShort(lastBackup.startedAt,)}{' '}
                     — {lastBackup.status}
                   </p>
                   {lastBackup.sizeBytes && (

@@ -15,6 +15,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { generateDeadlines, SCHEDULE_LABELS } from '@taxtronik/tax';
 import { readTaxRegion } from '@/server/settings/tax-region';
+import { fmtDateShort } from '@/lib/fmt';
 
 export interface MaterializeStats {
   configsScanned: number;
@@ -109,7 +110,7 @@ export async function materializeTaxDeadlines(
       );
       if (remindFrom > now) continue;
 
-      const dueLabel = new Intl.DateTimeFormat('de-DE').format(dl.dueDate);
+      const dueLabel = fmtDateShort(dl.dueDate);
       const kindLabel = SCHEDULE_LABELS[dl.kind];
       const req = await tx.request.create({
         data: {

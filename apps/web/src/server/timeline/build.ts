@@ -13,6 +13,7 @@
 import type { Prisma } from '@prisma/client';
 import type { TenantContext } from '@taxtronik/db';
 import { withTenantContext } from '@taxtronik/db';
+import { fmtEUR } from '@/lib/fmt';
 
 type TxClient = Prisma.TransactionClient;
 
@@ -459,5 +460,5 @@ function truncate(s: string, n: number): string {
 function formatEur(d: { toString(): string }): string {
   const n = Number(d.toString());
   if (!Number.isFinite(n)) return '—';
-  return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(n);
+  return fmtEUR(n);
 }

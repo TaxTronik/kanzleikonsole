@@ -25,8 +25,8 @@ import {
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { SkillBadge } from '@/components/skill-badge';
+import { fmtDateTimeShort } from '@/lib/fmt';
 
-const dateTimeFmt = new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' });
 
 const KIND_LABEL: Record<string, string> = {
   TASK: 'Aufgabe',
@@ -134,7 +134,7 @@ export default async function WorkflowInstanceDetail({
         <div className="grid grid-cols-3 gap-4 text-xs text-secondary">
           <div className="inline-flex items-center gap-1.5">
             <Clock className="h-3.5 w-3.5 text-disabled" />
-            Gestartet: <strong className="text-primary">{dateTimeFmt.format(inst.startedAt)}</strong>
+            Gestartet: <strong className="text-primary">{fmtDateTimeShort(inst.startedAt)}</strong>
           </div>
           <div className="inline-flex items-center gap-1.5">
             <UserIcon className="h-3.5 w-3.5 text-disabled" />
@@ -143,7 +143,7 @@ export default async function WorkflowInstanceDetail({
           {inst.completedAt && (
             <div className="inline-flex items-center gap-1.5">
               <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-              Erledigt: <strong className="text-primary">{dateTimeFmt.format(inst.completedAt)}</strong>
+              Erledigt: <strong className="text-primary">{fmtDateTimeShort(inst.completedAt)}</strong>
             </div>
           )}
         </div>
@@ -211,12 +211,12 @@ export default async function WorkflowInstanceDetail({
                       <span>Zuständig: <strong className="text-secondary">{staffName.get(it.assigneeStaffId) ?? '—'}</strong></span>
                     )}
                     {it.startedAt && !done && (
-                      <span>Angestoßen {dateTimeFmt.format(it.startedAt)}</span>
+                      <span>Angestoßen {fmtDateTimeShort(it.startedAt)}</span>
                     )}
                     {it.doneAt && (
                       <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
                         <CheckCircle2 className="h-3 w-3" />
-                        Erledigt {dateTimeFmt.format(it.doneAt)}
+                        Erledigt {fmtDateTimeShort(it.doneAt)}
                         {it.doneByStaff && <span>· {staffName.get(it.doneByStaff) ?? '—'}</span>}
                       </span>
                     )}
@@ -238,7 +238,7 @@ export default async function WorkflowInstanceDetail({
                         >
                           <Inbox className="h-3 w-3" />
                           {r.title}
-                          {r.closedAt && <span className="text-disabled">(geschlossen {dateTimeFmt.format(r.closedAt)})</span>}
+                          {r.closedAt && <span className="text-disabled">(geschlossen {fmtDateTimeShort(r.closedAt)})</span>}
                           <ExternalLink className="h-2.5 w-2.5" />
                         </Link>
                       ))}
@@ -250,7 +250,7 @@ export default async function WorkflowInstanceDetail({
                         <span key={s.id} className="inline-flex items-center gap-1 text-secondary mr-3">
                           <FileText className="h-3 w-3" />
                           Formular „{s.name}"
-                          {s.submittedAt && <span className="text-emerald-700 dark:text-emerald-400">(ausgefüllt {dateTimeFmt.format(s.submittedAt)})</span>}
+                          {s.submittedAt && <span className="text-emerald-700 dark:text-emerald-400">(ausgefüllt {fmtDateTimeShort(s.submittedAt)})</span>}
                         </span>
                       ))}
                     </div>

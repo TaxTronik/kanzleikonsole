@@ -12,11 +12,10 @@ import Link from 'next/link';
 import { Plane } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
+import { fmtDateMedium, fmtWeekdayShort } from '@/lib/fmt';
 
 const dayFmt = new Intl.DateTimeFormat('de-DE', { day: '2-digit' });
 const monthFmt = new Intl.DateTimeFormat('de-DE', { month: 'short' });
-const weekdayFmt = new Intl.DateTimeFormat('de-DE', { weekday: 'short' });
-const fullDateFmt = new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium' });
 
 function startOfDayUTC(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
@@ -117,7 +116,7 @@ export default async function AbsencesCalendarPage({
             Abwesenheits-Kalender
           </h1>
           <p className="text-muted text-sm">
-            {fullDateFmt.format(start)} – {fullDateFmt.format(end)} · alle Mitarbeiter
+            {fmtDateMedium(start)} – {fmtDateMedium(end)} · alle Mitarbeiter
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -160,7 +159,7 @@ export default async function AbsencesCalendarPage({
                   <div className="text-[10px] text-disabled leading-none pt-1">
                     {monthBoundaries[i] ? monthFmt.format(d) : ''}
                   </div>
-                  <div className="text-[10px] text-muted leading-none">{weekdayFmt.format(d).slice(0, 2)}</div>
+                  <div className="text-[10px] text-muted leading-none">{fmtWeekdayShort(d).slice(0, 2)}</div>
                   <div className={isWeekend(d) ? 'text-disabled' : 'text-secondary'}>{dayFmt.format(d)}</div>
                 </th>
               ))}
@@ -194,7 +193,7 @@ export default async function AbsencesCalendarPage({
                         cls +
                         (monthBoundaries[i] ? ' border-l-2 border-l-gray-300' : '')
                       }
-                      title={title ? `${s.fullName} · ${fullDateFmt.format(d)} · ${title}` : ''}
+                      title={title ? `${s.fullName} · ${fmtDateMedium(d)} · ${title}` : ''}
                     >
                       {cell === 'U' && <span className="text-[10px] text-emerald-900 font-medium">U</span>}
                       {cell === 'K' && <span className="text-[10px] text-red-900 font-medium">K</span>}

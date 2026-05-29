@@ -17,6 +17,7 @@ import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { canonicalJson } from '@taxtronik/evidence';
+import { fmtDateTimeSeconds } from '@/lib/fmt';
 
 const actorTypeLabels: Record<string, string> = {
   STAFF: 'Mitarbeiter',
@@ -146,10 +147,7 @@ export default async function AuditEntryPage({
           <div>
             <dt className="text-xs text-muted uppercase tracking-wide">Zeitpunkt</dt>
             <dd className="text-primary font-mono">
-              {new Intl.DateTimeFormat('de-DE', {
-                dateStyle: 'short',
-                timeStyle: 'medium',
-              }).format(entry.occurredAt)}
+              {fmtDateTimeSeconds(entry.occurredAt)}
             </dd>
           </div>
           <div>

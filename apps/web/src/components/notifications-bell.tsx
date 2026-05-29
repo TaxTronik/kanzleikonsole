@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Bell, CheckCheck } from 'lucide-react';
+import { fmtDateTimeShort } from '@/lib/fmt';
 import {
   markNotificationReadAction,
   markAllNotificationsReadAction,
@@ -30,7 +31,6 @@ interface Props {
   initialUnread: number;
 }
 
-const dtFmt = new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' });
 
 function relativeTime(iso: string, now: number): string {
   const t = Date.parse(iso);
@@ -42,7 +42,7 @@ function relativeTime(iso: string, now: number): string {
   if (hrs < 24) return `vor ${hrs} Std.`;
   const days = Math.floor(hrs / 24);
   if (days < 7) return `vor ${days} Tag${days === 1 ? '' : 'en'}`;
-  return dtFmt.format(new Date(t));
+  return fmtDateTimeShort(new Date(t));
 }
 
 export function NotificationsBell({ initialUnread }: Props) {

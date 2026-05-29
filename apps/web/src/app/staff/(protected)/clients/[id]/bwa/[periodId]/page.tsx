@@ -7,7 +7,7 @@ import { computeBwaKpis } from '@/server/bwa/addison-parser';
 import type { LegalForm } from '@/server/bwa/tax-estimator';
 import { TaxEstimatorCard } from './tax-estimator-card';
 
-import { fmtEUR } from '@/lib/fmt';
+import { fmtDateShort, fmtEUR } from '@/lib/fmt';
 export default async function BwaPeriodDetailPage({
   params,
 }: {
@@ -51,8 +51,8 @@ export default async function BwaPeriodDetailPage({
           <p className="text-muted text-sm">
             {period.client.name}
             {' · '}
-            {new Intl.DateTimeFormat('de-DE').format(period.fromDate)} –{' '}
-            {new Intl.DateTimeFormat('de-DE').format(period.toDate)}
+            {fmtDateShort(period.fromDate)} –{' '}
+            {fmtDateShort(period.toDate)}
             {' · '}
             {period.source}
             {period.sourceRef ? ` (${period.sourceRef})` : ''}
@@ -110,7 +110,7 @@ export default async function BwaPeriodDetailPage({
                 <td className="px-6 py-2 text-muted font-mono">{p.number}</td>
                 <td className="px-6 py-2 text-primary">{p.label}</td>
                 <td className="px-6 py-2 text-right font-mono tabular-nums">
-                  {new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(Number(p.amount.toString()))}
+                  {fmtEUR(Number(p.amount.toString()))}
                 </td>
                 <td className="px-6 py-2 text-right text-muted font-mono tabular-nums">
                   {p.sharePct === null ? '—' : `${Number(p.sharePct.toString()).toFixed(1)} %`}

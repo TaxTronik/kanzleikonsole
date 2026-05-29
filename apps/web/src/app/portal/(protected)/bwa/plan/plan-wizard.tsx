@@ -2,6 +2,7 @@
 
 import { useState, useTransition, useMemo } from 'react';
 import { Save, ArrowLeft, ArrowRight, AlertCircle } from 'lucide-react';
+import { fmtEURRound } from '@/lib/fmt';
 
 export type PlanAxis =
   | 'REVENUE' | 'PERSONNEL' | 'OTHER_COSTS' | 'DEPRECIATION' | 'MATERIAL' | 'OTHER_INCOME' | 'TAXES';
@@ -49,7 +50,6 @@ const ALL_AXES: Axis[] = [
 const REVENUE_AXES: Axis[] = ['REVENUE', 'OTHER_INCOME'];
 const COST_AXES: Axis[] = ['PERSONNEL', 'OTHER_COSTS', 'DEPRECIATION', 'MATERIAL'];
 
-const eurFmt = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
 
 interface LineState { amount: number; note: string }
 
@@ -218,7 +218,7 @@ export function PlanWizard({
             </select>
             {selectedBase && (
               <p className="text-xs text-muted mt-1">
-                Erlöse {eurFmt.format(selectedBase.revenue ?? 0)} · Ergebnis {eurFmt.format(selectedBase.result ?? 0)}
+                Erlöse {fmtEURRound(selectedBase.revenue ?? 0)} · Ergebnis {fmtEURRound(selectedBase.result ?? 0)}
               </p>
             )}
             {!selectedBase && (
@@ -472,7 +472,7 @@ function Preview({ label, v, accent }: { label: string; v: number; accent?: bool
           (accent && v < 0 ? 'text-red-700' : accent && v > 0 ? 'text-emerald-700' : 'text-primary')
         }
       >
-        {eurFmt.format(v)}
+        {fmtEURRound(v)}
       </p>
     </div>
   );
@@ -488,7 +488,7 @@ function Total({ label, value, accent }: { label: string; value: number; accent?
           (accent && value < 0 ? 'text-red-700' : accent && value > 0 ? 'text-emerald-700' : 'text-primary')
         }
       >
-        {eurFmt.format(value)}
+        {fmtEURRound(value)}
       </p>
     </div>
   );

@@ -23,6 +23,7 @@ import {
   ListChecks,
 } from 'lucide-react';
 import { buildClientTimeline, type TimelineEvent } from '@/server/timeline/build';
+import { fmtDateTimeMedium } from '@/lib/fmt';
 
 const ICON_MAP: Record<TimelineEvent['kind'], { icon: typeof FileText; tone: string }> = {
   document_uploaded:        { icon: FileText,        tone: 'text-blue-600 bg-blue-50' },
@@ -45,10 +46,6 @@ const ICON_MAP: Record<TimelineEvent['kind'], { icon: typeof FileText; tone: str
   workflow_item_done:       { icon: ListChecks,      tone: 'text-emerald-700 bg-emerald-50' },
 };
 
-const dtFormatter = new Intl.DateTimeFormat('de-DE', {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-});
 
 function formatRelative(d: Date, now: Date): string {
   const diff = now.getTime() - d.getTime();
@@ -59,7 +56,7 @@ function formatRelative(d: Date, now: Date): string {
   if (hrs < 24) return `vor ${hrs} Std.`;
   const days = Math.floor(hrs / 24);
   if (days < 7) return `vor ${days} Tag${days === 1 ? '' : 'en'}`;
-  return dtFormatter.format(d);
+  return fmtDateTimeMedium(d);
 }
 
 function groupByDay(events: TimelineEvent[]): Map<string, TimelineEvent[]> {
@@ -167,7 +164,7 @@ export default async function ClientTimelinePage({
                           </div>
                           <time
                             dateTime={e.occurredAt.toISOString()}
-                            title={dtFormatter.format(e.occurredAt)}
+                            title={fmtDateTimeMedium(e.occurredAt)}
                             className="text-xs text-disabled whitespace-nowrap"
                           >
                             {formatRelative(e.occurredAt, now)}

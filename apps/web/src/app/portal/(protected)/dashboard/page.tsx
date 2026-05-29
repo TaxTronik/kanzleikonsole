@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { Inbox, FileText, Clock } from 'lucide-react';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
+import { fmtDateShort } from '@/lib/fmt';
 
 export default async function PortalDashboardPage() {
   const session = await portalAuth();
@@ -75,7 +76,7 @@ export default async function PortalDashboardPage() {
                 </Link>
                 <p className="text-xs text-muted mt-1">
                   {r.status === 'OPEN' || r.status === 'IN_PROGRESS' ? 'Offen' : 'Erledigt'}
-                  {r.dueAt ? ` · fällig ${new Intl.DateTimeFormat('de-DE').format(r.dueAt)}` : ''}
+                  {r.dueAt ? ` · fällig ${fmtDateShort(r.dueAt)}` : ''}
                 </p>
               </li>
             ))}

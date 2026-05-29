@@ -4,8 +4,8 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { CheckCircle2, Circle } from 'lucide-react';
 import { acknowledgeDocumentAction } from './acknowledge-actions';
+import { fmtDateTimeShort } from '@/lib/fmt';
 
-const dateTimeFmt = new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' });
 
 export function AcknowledgeButton({
   documentId,
@@ -37,7 +37,7 @@ export function AcknowledgeButton({
   }
 
   const tooltip = done && doneAt
-    ? `Empfang bestätigt am ${dateTimeFmt.format(new Date(doneAt))}${acknowledgedByName ? ' von ' + acknowledgedByName : ''}`
+    ? `Empfang bestätigt am ${fmtDateTimeShort(new Date(doneAt))}${acknowledgedByName ? ' von ' + acknowledgedByName : ''}`
     : 'Empfang bestätigen';
 
   const iconSize = size === 'md' ? 'h-5 w-5' : 'h-4 w-4';

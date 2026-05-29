@@ -27,7 +27,7 @@ import {
 import type { XRechnungInvoice, XRechnungBuyer } from './xrechnung';
 import type { SellerInfo } from '@/server/settings/tenant-settings';
 
-import { fmtEUR } from '@/lib/fmt';
+import { fmtDateShort, fmtEUR } from '@/lib/fmt';
 // re-export für External Imports
 export type { XRechnungInvoice, XRechnungBuyer };
 
@@ -52,7 +52,7 @@ function fmtNum(n: number): string {
 }
 
 function fmtDate(d: Date): string {
-  return new Intl.DateTimeFormat('de-DE').format(d);
+  return fmtDateShort(d);
 }
 
 function newPageIfNeeded(ctx: PageContext, neededHeight: number): void {

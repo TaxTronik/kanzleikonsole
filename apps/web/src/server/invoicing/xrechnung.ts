@@ -24,6 +24,7 @@
 import { create } from 'xmlbuilder2';
 import type { XMLBuilder } from 'xmlbuilder2/lib/interfaces';
 import type { SellerInfo } from '@/server/settings/tenant-settings';
+import { fmtDateShort } from '@/lib/fmt';
 
 export interface XRechnungInvoice {
   number: string;
@@ -265,7 +266,7 @@ export function generateXRechnungCii(
   const terms = settle.ele(RAM, 'ram:SpecifiedTradePaymentTerms');
   terms
     .ele(RAM, 'ram:Description')
-    .txt(`Zahlbar bis ${new Intl.DateTimeFormat('de-DE').format(invoice.dueDate)}`);
+    .txt(`Zahlbar bis ${fmtDateShort(invoice.dueDate)}`);
   dateTime(terms.ele(RAM, 'ram:DueDateDateTime'), RAM, invoice.dueDate);
 
   // Summen

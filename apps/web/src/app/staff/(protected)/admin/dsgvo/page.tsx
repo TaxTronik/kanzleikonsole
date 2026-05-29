@@ -4,6 +4,7 @@ import { Shield, Plus, AlertTriangle } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
+import { fmtDateShort } from '@/lib/fmt';
 
 const typeLabels: Record<string, string> = {
   ACCESS: 'Auskunft (Art. 15)',
@@ -94,11 +95,11 @@ export default async function DsgvoPage() {
                     <td className={overdue ? 'px-6 py-3 text-red-700' : 'px-6 py-3 text-secondary'}>
                       <div className="flex items-center gap-1">
                         {overdue && <AlertTriangle className="h-3.5 w-3.5" />}
-                        {r.dueDate ? new Intl.DateTimeFormat('de-DE').format(r.dueDate) : '—'}
+                        {r.dueDate ? fmtDateShort(r.dueDate) : '—'}
                       </div>
                     </td>
                     <td className="px-6 py-3 text-secondary">
-                      {new Intl.DateTimeFormat('de-DE').format(r.createdAt)}
+                      {fmtDateShort(r.createdAt)}
                     </td>
                   </tr>
                 );

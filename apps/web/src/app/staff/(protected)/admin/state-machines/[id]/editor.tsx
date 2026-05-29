@@ -5,6 +5,7 @@ import { slugify as slugifyLib } from '@/lib/slugify';
 import { Plus, Trash2, ArrowRight } from 'lucide-react';
 import { SortableList, DragHandle } from '@/components/sortable-list';
 import { saveMachineDefinitionAction } from '../actions';
+import { fmtTimeMedium } from '@/lib/fmt';
 
 interface StateDraft {
   id: string | null;
@@ -295,7 +296,7 @@ export function MachineEditor({
         </button>
         {savedAt && (
           <span className="text-xs text-emerald-700">
-            Gespeichert {new Intl.DateTimeFormat('de-DE', { timeStyle: 'medium' }).format(new Date(savedAt))}
+            Gespeichert {fmtTimeMedium(new Date(savedAt))}
           </span>
         )}
       </div>

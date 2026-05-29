@@ -12,8 +12,8 @@ import { Inbox, CheckCircle2, Clock } from 'lucide-react';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 import { readPortalFeatures } from '@/server/settings/portal-features';
+import { fmtDateShort } from '@/lib/fmt';
 
-const dateFmt = new Intl.DateTimeFormat('de-DE');
 
 const STATUS_LABELS = {
   RECEIVED: 'Eingegangen',
@@ -72,7 +72,7 @@ export default async function PortalHandoversPage() {
                   <p className="text-xs text-secondary dark:text-disabled mt-1 whitespace-pre-wrap">{h.contents}</p>
                 )}
                 <p className="text-xs text-emerald-700 mt-1">
-                  {h.readyAt ? `seit ${dateFmt.format(h.readyAt)}` : ''}
+                  {h.readyAt ? `seit ${fmtDateShort(h.readyAt)}` : ''}
                 </p>
               </li>
             ))}
@@ -99,7 +99,7 @@ export default async function PortalHandoversPage() {
                   <p className="text-xs text-secondary dark:text-disabled mt-1 whitespace-pre-wrap">{h.contents}</p>
                 )}
                 <p className="text-xs text-muted mt-1">
-                  abgegeben am {dateFmt.format(h.receivedAt)}
+                  abgegeben am {fmtDateShort(h.receivedAt)}
                 </p>
               </li>
             ))}
@@ -123,7 +123,7 @@ export default async function PortalHandoversPage() {
             {pickedUp.map((h) => (
               <li key={h.id} className="px-6 py-2 text-sm text-muted flex justify-between">
                 <span className="truncate">{h.label}</span>
-                {h.pickedUpAt && <span className="text-xs">{dateFmt.format(h.pickedUpAt)}</span>}
+                {h.pickedUpAt && <span className="text-xs">{fmtDateShort(h.pickedUpAt)}</span>}
               </li>
             ))}
           </ul>

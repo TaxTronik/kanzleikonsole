@@ -3,6 +3,7 @@
 import { useActionState, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { CalendarClock, Check, Plus, Trash2 } from 'lucide-react';
+import { fmtDateShort } from '@/lib/fmt';
 import {
   createReminderAction,
   markReminderDoneAction,
@@ -10,7 +11,6 @@ import {
   type ActionResult,
 } from './actions';
 
-const dateFmt = new Intl.DateTimeFormat('de-DE');
 
 interface Reminder {
   id: string;
@@ -148,7 +148,7 @@ export function RemindersBlock({
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-primary">{r.subject}</p>
                   <p className={overdue ? 'text-xs text-red-700 font-medium' : 'text-xs text-muted'}>
-                    fällig {dateFmt.format(due)}
+                    fällig {fmtDateShort(due)}
                     {overdue && ' · überfällig'}
                     {r.assigneeName && <span className="ml-2 text-disabled">· {r.assigneeName}</span>}
                   </p>
@@ -179,7 +179,7 @@ export function RemindersBlock({
           <ul className="divide-y divide-border-subtle">
             {done_items.map((r) => (
               <li key={r.id} className="px-6 py-2 text-sm text-muted line-through">
-                {r.subject} · {dateFmt.format(new Date(r.dueDate))}
+                {r.subject} · {fmtDateShort(new Date(r.dueDate))}
               </li>
             ))}
           </ul>

@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
+import { fmtDateTimeShort, fmtEURRound } from '@/lib/fmt';
 
 type Axis =
   | 'REVENUE' | 'PERSONNEL' | 'OTHER_COSTS' | 'DEPRECIATION' | 'MATERIAL' | 'OTHER_INCOME' | 'TAXES';
@@ -17,8 +18,6 @@ const AXIS_LABELS: Record<Axis, string> = {
 };
 const ORDER: Axis[] = ['REVENUE', 'OTHER_INCOME', 'PERSONNEL', 'MATERIAL', 'DEPRECIATION', 'OTHER_COSTS', 'TAXES'];
 
-const eurFmt = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
-const dateFmt = new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' });
 
 export interface PlanForCompare {
   id: string;
@@ -136,8 +135,8 @@ export function PlanListWithCompare({
                     <ActorBadge createdByType={p.createdByType} updatedByType={p.updatedByType} />
                   </p>
                   <p className="text-xs text-muted">
-                    Erg. nach Steuern: {eurFmt.format(totals(p).resultAfterTax)} ·
-                    zuletzt geändert {dateFmt.format(p.updatedAt)}
+                    Erg. nach Steuern: {fmtEURRound(totals(p).resultAfterTax)} ·
+                    zuletzt geändert {fmtDateTimeShort(p.updatedAt)}
                   </p>
                 </div>
                 {p.status === 'FINAL' ? (
@@ -290,14 +289,14 @@ function ComparisonTable({
                       key={`p-${c.plan.id}-${axis}`}
                       className="px-4 py-1.5 text-right font-mono tabular-nums text-primary"
                     >
-                      {eurFmt.format(cellPlan(axis, c.plan))}
+                      {fmtEURRound(cellPlan(axis, c.plan))}
                     </td>
                   ) : (
                     <td
                       key={`pr-${i}-${axis}`}
                       className="px-4 py-1.5 text-right font-mono tabular-nums text-brand-900 dark:text-brand-100 bg-brand-50/30 dark:bg-brand-900/25"
                     >
-                      {eurFmt.format(cellProjection(axis))}
+                      {fmtEURRound(cellProjection(axis))}
                     </td>
                   ),
                 )}
@@ -341,7 +340,7 @@ function ComparisonTable({
                         (c.kind === 'projection' ? ' bg-brand-50/30 dark:bg-brand-900/25' : '')
                       }
                     >
-                      {eurFmt.format(v)}
+                      {fmtEURRound(v)}
                     </td>
                   );
                 })}

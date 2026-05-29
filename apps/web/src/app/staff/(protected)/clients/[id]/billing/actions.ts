@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
+import { fmtDateShort } from '@/lib/fmt';
 
 const CreateSchema = z.object({
   clientId: z.string().uuid(),
@@ -215,5 +216,5 @@ function round2(n: number): number {
 }
 
 function formatDateShort(d: Date): string {
-  return new Intl.DateTimeFormat('de-DE').format(d);
+  return fmtDateShort(d);
 }

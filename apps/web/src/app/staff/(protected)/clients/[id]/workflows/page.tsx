@@ -22,8 +22,8 @@ import {
 import { AddStepForm } from './add-step-form';
 import { autoResumePausedWorkflows } from './actions';
 import { TeamEditorButton } from './team-editor';
+import { fmtDateShort } from '@/lib/fmt';
 
-const dateFmt = new Intl.DateTimeFormat('de-DE');
 
 export default async function ClientWorkflowsPage({
   params,
@@ -195,12 +195,12 @@ export default async function ClientWorkflowsPage({
                       </Link>
                       {inst.status === 'PAUSED' && (
                         <span className="text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/40 rounded px-1.5 py-0.5">
-                          pausiert{inst.pausedUntil ? ` bis ${dateFmt.format(inst.pausedUntil)}` : ''}
+                          pausiert{inst.pausedUntil ? ` bis ${fmtDateShort(inst.pausedUntil)}` : ''}
                         </span>
                       )}
                     </div>
                     <p className="text-xs text-muted">
-                      gestartet am {dateFmt.format(inst.startedAt)} · {doneCount}/{total} erledigt
+                      gestartet am {fmtDateShort(inst.startedAt)} · {doneCount}/{total} erledigt
                     </p>
                     <div className="mt-1.5 flex items-center gap-1 flex-wrap">
                       <span className="text-[10px] uppercase tracking-wide text-disabled mr-1">Team:</span>
@@ -316,7 +316,7 @@ export default async function ClientWorkflowsPage({
                         )}
                       </span>
                       <span className="text-xs text-disabled shrink-0">
-                        {doneI}/{totalI} · {inst.completedAt ? dateFmt.format(inst.completedAt) : '—'}
+                        {doneI}/{totalI} · {inst.completedAt ? fmtDateShort(inst.completedAt) : '—'}
                       </span>
                     </div>
                   </Link>

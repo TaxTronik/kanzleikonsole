@@ -4,6 +4,7 @@ import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { StartTimerForm } from './start-form';
 import { stopTimerAction, deleteTimeEntryAction } from './actions';
+import { fmtTimeShort } from '@/lib/fmt';
 
 export default async function TimeTrackingPage() {
   const session = await staffAuth();
@@ -134,7 +135,7 @@ export default async function TimeTrackingPage() {
 }
 
 function fmtTime(d: Date): string {
-  return new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit' }).format(d);
+  return fmtTimeShort(d);
 }
 
 function formatMinutes(m: number): string {

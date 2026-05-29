@@ -8,6 +8,7 @@ import { toggleItemDoneAction, setItemAssigneeAction, setItemDueDateAction, exec
 import { WorkflowUploadButton } from './workflow-upload-button';
 import { WorkflowItemComments } from './comments';
 import { HandoverButton } from './handover-button';
+import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
 
 type StepKind =
   | 'TASK'
@@ -58,7 +59,6 @@ interface Props {
   documents: { id: string; title: string; createdAt: string }[];
 }
 
-const dateFmt = new Intl.DateTimeFormat('de-DE');
 
 export function WorkflowItemRow(p: Props) {
   const [done, setDone] = useState(Boolean(p.doneAt));
@@ -177,7 +177,7 @@ export function WorkflowItemRow(p: Props) {
               }
               title="Klicken, um Frist zu ändern"
             >
-              {dueDateObj ? `fällig ${dateFmt.format(dueDateObj)}` : '+ Frist setzen'}
+              {dueDateObj ? `fällig ${fmtDateShort(dueDateObj)}` : '+ Frist setzen'}
             </button>
           )}
         </div>
@@ -212,7 +212,7 @@ export function WorkflowItemRow(p: Props) {
                     {d.title}
                   </Link>
                   <span className="text-[10px] text-disabled shrink-0">
-                    {new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(d.createdAt))}
+                    {fmtDateTimeShort(new Date(d.createdAt))}
                   </span>
                 </li>
               ))}

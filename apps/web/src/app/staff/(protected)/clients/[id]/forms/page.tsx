@@ -8,6 +8,7 @@ import { ArrowLeft, ClipboardList } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { SendFormButton } from './send-form';
+import { fmtDateTimeShort } from '@/lib/fmt';
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: 'Ausstehend',
@@ -16,7 +17,6 @@ const STATUS_LABELS: Record<string, string> = {
   REVIEWED: 'Geprüft',
 };
 
-const dateFmt = new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' });
 
 export default async function ClientFormsPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await staffAuth();
@@ -86,9 +86,9 @@ export default async function ClientFormsPage({ params }: { params: Promise<{ id
               {submissions.map((s) => (
                 <tr key={s.id} className="hover:bg-gray-50">
                   <td className="px-6 py-3 font-medium text-primary">{s.name}</td>
-                  <td className="px-6 py-3 text-secondary">{dateFmt.format(s.createdAt)}</td>
+                  <td className="px-6 py-3 text-secondary">{fmtDateTimeShort(s.createdAt)}</td>
                   <td className="px-6 py-3 text-secondary">
-                    {s.submittedAt ? dateFmt.format(s.submittedAt) : '—'}
+                    {s.submittedAt ? fmtDateTimeShort(s.submittedAt) : '—'}
                   </td>
                   <td className="px-6 py-3">
                     {s.status === 'PENDING' && <span className="badge-yellow">{STATUS_LABELS[s.status]}</span>}

@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Check, RotateCcw, UserPlus, CalendarClock, X, Building2 } from 'lucide-react';
+import { fmtDateTimeShort } from '@/lib/fmt';
 import {
   markPhoneNoteDoneAction,
   undoPhoneNoteDoneAction,
@@ -11,7 +12,6 @@ import {
   phoneNoteToReminderAction,
 } from '@/app/staff/(protected)/phone-notes/actions';
 
-const dateTimeFmt = new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' });
 
 export interface PhoneNoteItem {
   id: string;
@@ -122,7 +122,7 @@ export function PhoneNotesList({
                 <div className="min-w-0">
                   <p className="text-sm text-secondary line-through truncate">{p.subject}</p>
                   <p className="text-[11px] text-disabled">
-                    {p.callerName} · erledigt {p.doneAt ? dateTimeFmt.format(new Date(p.doneAt)) : ''}
+                    {p.callerName} · erledigt {p.doneAt ? fmtDateTimeShort(new Date(p.doneAt)) : ''}
                   </p>
                 </div>
                 <button
@@ -211,7 +211,7 @@ function PhoneNoteRow({
             {note.body}
           </p>
           <p className="text-[10px] text-disabled mt-0.5">
-            {dateTimeFmt.format(new Date(note.createdAt))}
+            {fmtDateTimeShort(new Date(note.createdAt))}
           </p>
 
           <div className="flex items-center gap-2 mt-2">

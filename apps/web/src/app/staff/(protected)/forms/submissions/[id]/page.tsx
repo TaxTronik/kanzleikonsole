@@ -9,6 +9,7 @@ import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import type { FormFieldType } from '@prisma/client';
 import { ReviewForm } from './review-form';
+import { fmtDateShort, fmtDateTimeMedium, fmtEUR } from '@/lib/fmt';
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: 'Ausstehend',
@@ -17,8 +18,6 @@ const STATUS_LABELS: Record<string, string> = {
   REVIEWED: 'Geprüft',
 };
 
-const dateFmt = new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
-const moneyFmt = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
 
 function renderValue(type: FormFieldType, value: unknown, fieldOptions: unknown): React.ReactNode {
   if (value === null || value === undefined || value === '') {
@@ -28,11 +27,11 @@ function renderValue(type: FormFieldType, value: unknown, fieldOptions: unknown)
     return value ? '✓ Ja' : 'Nein';
   }
   if (type === 'MONEY' && typeof value === 'number') {
-    return moneyFmt.format(value);
+    return fmtEUR(value);
   }
   if (type === 'DATE' && typeof value === 'string') {
     const d = new Date(value);
-    if (!Number.isNaN(d.getTime())) return new Intl.DateTimeFormat('de-DE').format(d);
+    if (!Number.isNaN(d.getTime())) return fmtDateShort(d);
   }
   if (type === 'MULTISELECT' && Array.isArray(value)) {
     if (value.length === 0) return <span className="text-disabled">—</span>;
@@ -104,8 +103,8 @@ export default async function SubmissionDetailPage({ params }: { params: Promise
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-primary mb-1">{sub.name}</h1>
         <p className="text-muted text-sm">
-          {sub.client.name} · versendet {dateFmt.format(sub.createdAt)}
-          {sub.submittedAt && ` · eingegangen ${dateFmt.format(sub.submittedAt)}`}
+          {sub.client.name} · versendet {fmtDateTimeMedium(sub.createdAt)}
+          {sub.submittedAt && ` · eingegangen ${fmtDateTimeMedium(sub.submittedAt)}`}
         </p>
         <div className="mt-2">
           {sub.status === 'PENDING' && <span className="badge-yellow">{STATUS_LABELS[sub.status]}</span>}

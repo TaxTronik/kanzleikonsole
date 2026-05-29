@@ -5,6 +5,7 @@ import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { deleteArticleAction } from '../actions';
 import { renderMarkdown } from '@/lib/markdown';
+import { fmtDateShort } from '@/lib/fmt';
 
 export default async function KbArticlePage({
   params,
@@ -52,7 +53,7 @@ export default async function KbArticlePage({
           <p className="text-muted text-sm">
             {article.category?.name ?? 'Ohne Kategorie'}
             {' · '}
-            Aktualisiert {new Intl.DateTimeFormat('de-DE').format(article.updatedAt)}
+            Aktualisiert {fmtDateShort(article.updatedAt)}
             {' · '}
             {article.viewCount} Aufrufe
           </p>

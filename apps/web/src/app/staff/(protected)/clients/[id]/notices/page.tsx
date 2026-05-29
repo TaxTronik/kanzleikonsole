@@ -12,7 +12,7 @@ import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { FilingsSection } from './filings/filings-section';
 
-import { fmtEUR } from '@/lib/fmt';
+import { fmtDateShort, fmtEUR } from '@/lib/fmt';
 const KIND_LABELS: Record<string, string> = {
   USTA: 'USt-Voranmeldung',
   UST_JAHR: 'USt-Jahresbescheid',
@@ -35,7 +35,6 @@ const STATUS_LABELS: Record<string, string> = {
   RECHTSKRAEFTIG: 'Rechtskräftig',
 };
 
-const dateFmt = new Intl.DateTimeFormat('de-DE');
 
 function diff(actual: { toString(): string } | null, expected: { toString(): string } | null) {
   if (actual === null || expected === null) return null;
@@ -192,7 +191,7 @@ export default async function ClientNoticesPage({
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-secondary">{dateFmt.format(n.noticeDate)}</td>
+                    <td className="px-4 py-3 text-secondary">{fmtDateShort(n.noticeDate)}</td>
                     <td className="px-4 py-3 font-mono text-primary">{fmtEUR(n.assessedAmount)}</td>
                     <td className="px-4 py-3 font-mono text-secondary">{fmtEUR(n.expectedAmount)}</td>
                     <td className="px-4 py-3 font-mono">
@@ -210,7 +209,7 @@ export default async function ClientNoticesPage({
                       {showDeadline && n.appealDeadline ? (
                         <div className="flex flex-col">
                           <span className={deadlineDays !== null && deadlineDays <= 7 ? 'text-red-700 font-medium' : 'text-secondary'}>
-                            {dateFmt.format(n.appealDeadline)}
+                            {fmtDateShort(n.appealDeadline)}
                           </span>
                           {deadlineDays !== null && (
                             <span className="text-xs text-muted">

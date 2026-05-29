@@ -14,6 +14,7 @@ import { withTenantContext } from '@taxtronik/db';
 import type { Prisma, TaxScheduleKind } from '@prisma/client';
 import { SCHEDULE_LABELS } from '@taxtronik/tax';
 import { markDeadlineDoneAction } from '../actions';
+import { fmtDateShort } from '@/lib/fmt';
 
 const STATUS_LABELS: Record<string, string> = {
   PLANNED: 'Geplant',
@@ -32,7 +33,6 @@ const VALID_KINDS: TaxScheduleKind[] = [
   'EST_ERKLAERUNG', 'KST_ERKLAERUNG', 'GEWST_ERKLAERUNG',
 ];
 
-const dateFmt = new Intl.DateTimeFormat('de-DE');
 
 export default async function TaxDeadlineGroupPage({
   searchParams,
@@ -111,7 +111,7 @@ export default async function TaxDeadlineGroupPage({
             </h1>
             <p className="text-muted text-sm">
               Periode {period}
-              {dueDate && ` · fällig am ${dateFmt.format(dueDate)}`}
+              {dueDate && ` · fällig am ${fmtDateShort(dueDate)}`}
               {' · '}
               {deadlines.length} Mandanten
               {q && <span> · Suche: <strong className="text-primary">{q}</strong></span>}
@@ -205,7 +205,7 @@ function Section({
                   {d.status === 'SKIPPED' && <span className="badge-gray">{STATUS_LABELS[d.status]}</span>}
                 </td>
                 <td className="px-6 py-3 text-xs text-muted">
-                  {d.completedAt ? `am ${dateFmt.format(d.completedAt)}` : ''}
+                  {d.completedAt ? `am ${fmtDateShort(d.completedAt)}` : ''}
                 </td>
                 <td className="px-6 py-3 text-right">
                   <div className="flex items-center justify-end gap-2">

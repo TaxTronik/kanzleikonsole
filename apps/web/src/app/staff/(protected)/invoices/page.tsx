@@ -6,7 +6,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { Pagination } from '@/components/pagination';
 import type { Prisma, InvoiceStatus } from '@prisma/client';
 
-import { fmtEUR } from '@/lib/fmt';
+import { fmtDateShort, fmtEUR } from '@/lib/fmt';
 const PAGE_SIZE = 50;
 const statusLabels: Record<string, string> = {
   DRAFT: 'Entwurf',
@@ -141,10 +141,10 @@ export default async function InvoicesPage({
                     </td>
                     <td className="px-6 py-4 text-secondary">{i.client.name}</td>
                     <td className="px-6 py-4 text-secondary">
-                      {new Intl.DateTimeFormat('de-DE').format(i.issueDate)}
+                      {fmtDateShort(i.issueDate)}
                     </td>
                     <td className={overdue ? 'px-6 py-4 text-red-700' : 'px-6 py-4 text-secondary'}>
-                      {new Intl.DateTimeFormat('de-DE').format(i.dueDate)}
+                      {fmtDateShort(i.dueDate)}
                     </td>
                     <td className="px-6 py-4 text-right font-mono tabular-nums">
                       {fmtEUR(i.totalAmount)}

@@ -4,7 +4,7 @@ import { FileText, Info, CheckCircle2, AlertCircle } from 'lucide-react';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 
-import { fmtEUR } from '@/lib/fmt';
+import { fmtDateShort, fmtEUR } from '@/lib/fmt';
 // Statuse, ab denen wir den Bescheid dem Mandant zeigen — vorher
 // (NEU) ist er noch nicht von der Kanzlei geprüft, daher zurückhalten.
 const VISIBLE_NOTICE_STATUSES = new Set([
@@ -32,7 +32,6 @@ const KIND_LABELS: Record<string, string> = {
   SONSTIGE: 'Sonstige',
 };
 
-const dateFmt = new Intl.DateTimeFormat('de-DE');
 
 export default async function PortalSteuerPage() {
   const session = await portalAuth();
@@ -96,7 +95,7 @@ export default async function PortalSteuerPage() {
                     </h2>
                     {f.filingDate && (
                       <p className="text-xs text-muted mt-0.5">
-                        Eingereicht am {dateFmt.format(f.filingDate)}
+                        Eingereicht am {fmtDateShort(f.filingDate)}
                       </p>
                     )}
                   </div>
@@ -173,7 +172,7 @@ export default async function PortalSteuerPage() {
                             Bescheid vom Finanzamt eingegangen
                           </p>
                           <p className="text-xs text-emerald-800 mt-0.5">
-                            Bescheid-Datum: {dateFmt.format(notice.noticeDate)}
+                            Bescheid-Datum: {fmtDateShort(notice.noticeDate)}
                             {' · '}
                             Status: {NOTICE_STATUS_LABELS[notice.status] ?? notice.status}
                           </p>
@@ -213,7 +212,7 @@ export default async function PortalSteuerPage() {
                       {notice.appealDeadline && ['GEPRUEFT', 'EINSPRUCH'].includes(notice.status) && (
                         <p className="mt-2 text-xs text-amber-700 flex items-center gap-1">
                           <AlertCircle className="h-3 w-3" />
-                          Einspruchsfrist bis {dateFmt.format(notice.appealDeadline)}
+                          Einspruchsfrist bis {fmtDateShort(notice.appealDeadline)}
                         </p>
                       )}
                     </div>

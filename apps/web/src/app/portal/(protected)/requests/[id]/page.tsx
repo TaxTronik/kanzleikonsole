@@ -4,6 +4,7 @@ import { ArrowLeft, ClipboardList, CheckCircle2 } from 'lucide-react';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 import { PortalResponseForm } from './response-form';
+import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
 
 const statusLabels: Record<string, string> = {
   OPEN: 'Offen',
@@ -64,7 +65,7 @@ export default async function PortalRequestDetailPage({
           </div>
           {reqRow.dueAt && (
             <p className="text-sm text-muted">
-              fällig {new Intl.DateTimeFormat('de-DE').format(reqRow.dueAt)}
+              fällig {fmtDateShort(reqRow.dueAt)}
             </p>
           )}
         </div>
@@ -95,7 +96,7 @@ export default async function PortalRequestDetailPage({
                 </p>
                 {reqRow.formSubmission.submittedAt ? (
                   <p className="text-xs text-emerald-700 mt-1">
-                    Abgesendet am {new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' }).format(reqRow.formSubmission.submittedAt)}
+                    Abgesendet am {fmtDateTimeShort(reqRow.formSubmission.submittedAt)}
                   </p>
                 ) : (
                   <p className="text-xs text-brand-700 mt-1">
@@ -127,10 +128,7 @@ export default async function PortalRequestDetailPage({
                     {r.authorType === 'STAFF' ? 'Kanzlei' : 'Sie'}
                   </span>
                   <span className="text-xs text-disabled">
-                    {new Intl.DateTimeFormat('de-DE', {
-                      dateStyle: 'short',
-                      timeStyle: 'short',
-                    }).format(r.createdAt)}
+                    {fmtDateTimeShort(r.createdAt)}
                   </span>
                 </div>
                 <p className="text-sm text-primary whitespace-pre-wrap">{r.message}</p>

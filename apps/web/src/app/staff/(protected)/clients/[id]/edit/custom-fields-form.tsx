@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { saveCustomFieldValuesAction } from '../../../admin/custom-fields/actions';
+import { fmtTimeMedium } from '@/lib/fmt';
 
 type FieldType =
   | 'TEXT' | 'TEXTAREA' | 'NUMBER' | 'MONEY' | 'DATE' | 'SELECT' | 'CHECKBOX' | 'URL';
@@ -76,7 +77,7 @@ export function CustomFieldsForm({
       <div className="flex items-center gap-3 justify-end mt-4">
         {savedAt && (
           <span className="text-xs text-emerald-700">
-            Gespeichert {new Intl.DateTimeFormat('de-DE', { timeStyle: 'medium' }).format(new Date(savedAt))}
+            Gespeichert {fmtTimeMedium(new Date(savedAt))}
           </span>
         )}
         <button type="button" onClick={save} disabled={isPending} className="btn-primary">

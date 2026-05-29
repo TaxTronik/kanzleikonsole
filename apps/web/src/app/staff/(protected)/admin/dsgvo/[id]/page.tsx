@@ -6,6 +6,7 @@ import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { updateStatusAction, anonymizeContactAction } from '../actions';
 import { ExportContactButton } from './export-button';
+import { fmtDateShort } from '@/lib/fmt';
 
 const typeLabels: Record<string, string> = {
   ACCESS: 'Auskunft (Art. 15)',
@@ -85,13 +86,13 @@ export default async function DsgvoDetailPage({
           <div>
             <p className="eyebrow">Frist</p>
             <p className="text-primary">
-              {req.dueDate ? new Intl.DateTimeFormat('de-DE').format(req.dueDate) : '—'}
+              {req.dueDate ? fmtDateShort(req.dueDate) : '—'}
             </p>
           </div>
           <div>
             <p className="eyebrow">Eingegangen</p>
             <p className="text-primary">
-              {new Intl.DateTimeFormat('de-DE').format(req.createdAt)}
+              {fmtDateShort(req.createdAt)}
             </p>
           </div>
         </div>

@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { MessageSquare, Send } from 'lucide-react';
 import { addItemCommentAction } from './actions';
+import { fmtDateTimeShort } from '@/lib/fmt';
 
 interface Comment {
   id: string;
@@ -12,7 +13,6 @@ interface Comment {
   createdAt: string; // ISO
 }
 
-const dateTimeFmt = new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' });
 
 export function WorkflowItemComments({
   itemId,
@@ -58,7 +58,7 @@ export function WorkflowItemComments({
                 <li key={c.id}>
                   <div className="text-primary whitespace-pre-wrap">{c.body}</div>
                   <div className="text-[10px] text-disabled mt-0.5">
-                    {c.authorName} · {dateTimeFmt.format(new Date(c.createdAt))}
+                    {c.authorName} · {fmtDateTimeShort(new Date(c.createdAt))}
                   </div>
                 </li>
               ))}

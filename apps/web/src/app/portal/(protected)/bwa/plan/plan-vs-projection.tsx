@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import type { PlanForCompare } from './plan-comparison';
+import { fmtEURRound } from '@/lib/fmt';
 
 interface ProjectedKpis {
   revenue: number | null;
@@ -14,7 +15,6 @@ interface ProjectedKpis {
   resultAfterTax: number | null;
 }
 
-const eurFmt = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
 
 function plannedTotals(p: PlanForCompare) {
   const get = (axis: string) => p.lines.find((l) => l.axis === axis)?.amount ?? 0;
@@ -181,8 +181,8 @@ function Row({
   return (
     <tr>
       <td className="px-4 py-2 text-secondary">{label}</td>
-      <td className={valCls(plan)}>{plan === null ? '—' : eurFmt.format(plan)}</td>
-      <td className={valCls(actual)}>{actual === null ? '—' : eurFmt.format(actual)}</td>
+      <td className={valCls(plan)}>{plan === null ? '—' : fmtEURRound(plan)}</td>
+      <td className={valCls(actual)}>{actual === null ? '—' : fmtEURRound(actual)}</td>
       <td className="px-4 py-2 text-right font-mono tabular-nums">
         {delta === null ? (
           <span className="text-disabled">—</span>
@@ -190,7 +190,7 @@ function Row({
           <span className="inline-flex items-center gap-1 justify-end">
             {Trend && <Trend className={`h-3.5 w-3.5 ${trendCls}`} />}
             <span className={trendCls + (Trend === Minus ? ' text-muted' : '')}>
-              {delta > 0 ? '+' : ''}{eurFmt.format(delta)}
+              {delta > 0 ? '+' : ''}{fmtEURRound(delta)}
             </span>
           </span>
         )}

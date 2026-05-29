@@ -11,7 +11,7 @@ import {
   deleteTaxFilingAction,
 } from './actions';
 
-import { fmtEUR } from '@/lib/fmt';
+import { fmtDateShort, fmtEUR } from '@/lib/fmt';
 const KIND_KEYS = [
   'USTA', 'UST_JAHR', 'EST', 'KST', 'GEWST_MESSBESCHEID', 'GEWST',
   'LSTA', 'FESTSTELLUNG', 'ZERLEGUNG', 'SONSTIGE',
@@ -48,7 +48,6 @@ interface Filing {
   matchedNoticeId: string | null;
 }
 
-const dateFmt = new Intl.DateTimeFormat('de-DE');
 
 export function FilingsSection({
   clientId,
@@ -154,7 +153,7 @@ export function FilingsSection({
                     )}
                   </td>
                   <td className="px-4 py-3 text-secondary">
-                    {f.filingDate ? dateFmt.format(f.filingDate) : '—'}
+                    {f.filingDate ? fmtDateShort(f.filingDate) : '—'}
                   </td>
                   <td className="px-4 py-3 text-primary font-medium">
                     {fmtEUR(f.expectedAssessed)}
@@ -174,7 +173,7 @@ export function FilingsSection({
                         onClick={() => toggleShare(f, false)}
                         disabled={busy}
                         className="inline-flex items-center gap-1 text-xs text-emerald-700 hover:underline"
-                        title={`Freigegeben am ${f.sharedAt ? dateFmt.format(f.sharedAt) : '—'}`}
+                        title={`Freigegeben am ${f.sharedAt ? fmtDateShort(f.sharedAt) : '—'}`}
                       >
                         <Eye className="h-3.5 w-3.5" />
                         Sichtbar

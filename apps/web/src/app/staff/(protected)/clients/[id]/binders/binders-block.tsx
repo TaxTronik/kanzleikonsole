@@ -3,6 +3,7 @@
 import { useActionState, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { FolderInput, Plus, Trash2, ArrowRight, Check } from 'lucide-react';
+import { fmtDateShort } from '@/lib/fmt';
 import {
   createBinderAction,
   updateBinderStatusAction,
@@ -10,7 +11,6 @@ import {
   type ActionResult,
 } from './actions';
 
-const dateFmt = new Intl.DateTimeFormat('de-DE');
 
 type BinderStatus = 'PREPARED' | 'WITH_CLIENT' | 'RETURNED' | 'COMPLETED';
 
@@ -173,13 +173,13 @@ export function BindersBlock({
                       <p className="text-xs text-secondary mt-1 whitespace-pre-wrap">{b.contents}</p>
                     )}
                     <p className="text-[11px] text-muted mt-1 flex flex-wrap gap-x-3">
-                      {b.sentAt && <span>ausgegeben {dateFmt.format(new Date(b.sentAt))}</span>}
+                      {b.sentAt && <span>ausgegeben {fmtDateShort(new Date(b.sentAt))}</span>}
                       {due && (
                         <span className={overdue ? 'text-red-700 font-medium' : ''}>
-                          erwartet {dateFmt.format(due)}
+                          erwartet {fmtDateShort(due)}
                         </span>
                       )}
-                      {b.returnedAt && <span>zurück {dateFmt.format(new Date(b.returnedAt))}</span>}
+                      {b.returnedAt && <span>zurück {fmtDateShort(new Date(b.returnedAt))}</span>}
                     </p>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
@@ -221,7 +221,7 @@ export function BindersBlock({
             {completed.map((b) => (
               <li key={b.id} className="px-6 py-2 text-sm text-muted flex justify-between gap-2">
                 <span className="truncate">{b.label}</span>
-                {b.returnedAt && <span className="text-xs">{dateFmt.format(new Date(b.returnedAt))}</span>}
+                {b.returnedAt && <span className="text-xs">{fmtDateShort(new Date(b.returnedAt))}</span>}
               </li>
             ))}
           </ul>

@@ -5,6 +5,7 @@ import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { sendForSignatureAction, revokePoaAction } from '../actions';
 import { renderMarkdown } from '@/lib/markdown';
+import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
 
 const statusLabels: Record<string, string> = {
   DRAFT: 'Entwurf',
@@ -70,7 +71,7 @@ export default async function PoaDetailPage({
             <div className="flex-1">
               <p className="text-sm font-medium text-green-900">
                 Elektronisch unterschrieben am{' '}
-                {poa.signedAt && new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' }).format(poa.signedAt)}
+                {poa.signedAt && fmtDateTimeShort(poa.signedAt)}
               </p>
               <p className="text-xs text-green-700 mt-1">
                 Verfahren: Magic-Link + 6-stelliger E-Mail-OTP (eIDAS AES)
@@ -96,13 +97,13 @@ export default async function PoaDetailPage({
         <div className="card p-4">
           <p className="eyebrow">Gültig ab</p>
           <p className="text-sm font-medium text-primary">
-            {new Intl.DateTimeFormat('de-DE').format(poa.validFrom)}
+            {fmtDateShort(poa.validFrom)}
           </p>
         </div>
         <div className="card p-4">
           <p className="eyebrow">Gültig bis</p>
           <p className="text-sm font-medium text-primary">
-            {poa.validUntil ? new Intl.DateTimeFormat('de-DE').format(poa.validUntil) : 'unbefristet'}
+            {poa.validUntil ? fmtDateShort(poa.validUntil) : 'unbefristet'}
           </p>
         </div>
       </div>

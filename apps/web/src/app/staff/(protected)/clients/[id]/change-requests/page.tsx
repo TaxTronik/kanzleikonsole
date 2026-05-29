@@ -13,6 +13,7 @@ import { ArrowLeft, CheckCircle2, Clock, XCircle } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { ChangeRequestRow } from './row';
+import { fmtDateTimeShort } from '@/lib/fmt';
 
 const FIELD_LABELS: Record<string, string> = {
   name: 'Name',
@@ -95,10 +96,7 @@ export default async function ClientChangeRequestsPage({
                     <div className="flex items-center gap-2 mb-1">
                       <StatusBadge status={r.status} />
                       <span className="text-xs text-muted">
-                        {new Intl.DateTimeFormat('de-DE', {
-                          dateStyle: 'short',
-                          timeStyle: 'short',
-                        }).format(r.createdAt)}
+                        {fmtDateTimeShort(r.createdAt)}
                       </span>
                     </div>
                     <p className="text-sm text-secondary">

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { closeRequestAction } from '../../clients/[id]/requests/actions';
 import { StaffResponseForm } from './staff-response-form';
+import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
 
 const statusLabels: Record<string, string> = {
   OPEN: 'Offen',
@@ -64,7 +65,7 @@ export default async function RequestDetailPage({
           </div>
           <p className="text-muted text-sm">
             an {reqRow.client.name}
-            {reqRow.dueAt ? ` · fällig ${new Intl.DateTimeFormat('de-DE').format(reqRow.dueAt)}` : ''}
+            {reqRow.dueAt ? ` · fällig ${fmtDateShort(reqRow.dueAt)}` : ''}
           </p>
         </div>
       </div>
@@ -93,10 +94,7 @@ export default async function RequestDetailPage({
                     {r.authorType === 'STAFF' ? 'Mitarbeiter' : 'Mandant'}
                   </span>
                   <span className="text-xs text-disabled">
-                    {new Intl.DateTimeFormat('de-DE', {
-                      dateStyle: 'short',
-                      timeStyle: 'short',
-                    }).format(r.createdAt)}
+                    {fmtDateTimeShort(r.createdAt)}
                   </span>
                 </div>
                 <p className="text-sm text-primary whitespace-pre-wrap">{r.message}</p>

@@ -4,6 +4,7 @@ import { Bell, Check } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { markNotificationReadAction, markAllNotificationsReadAction } from './actions';
+import { fmtDateTimeShort } from '@/lib/fmt';
 
 const kindLabels: Record<string, string> = {
   REQUEST_RESPONDED: 'Anforderung beantwortet',
@@ -87,10 +88,7 @@ export default async function NotificationsPage() {
                       <p className="text-sm text-secondary mt-1">{n.body}</p>
                     )}
                     <p className="text-xs text-disabled mt-1">
-                      {new Intl.DateTimeFormat('de-DE', {
-                        dateStyle: 'short',
-                        timeStyle: 'short',
-                      }).format(n.createdAt)}
+                      {fmtDateTimeShort(n.createdAt)}
                       {n.href && (
                         <>
                           {' · '}

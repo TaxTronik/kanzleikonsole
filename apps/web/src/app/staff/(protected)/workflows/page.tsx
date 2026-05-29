@@ -15,13 +15,13 @@ import Link from 'next/link';
 import { Workflow, Activity, User as UserIcon, AlertCircle, Plus } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
+import { fmtDateShort } from '@/lib/fmt';
 
 interface SearchParams {
   filter?: string;
   clientId?: string;
 }
 
-const dateFmt = new Intl.DateTimeFormat('de-DE');
 
 export default async function ActiveWorkflowsPage({
   searchParams,
@@ -196,7 +196,7 @@ export default async function ActiveWorkflowsPage({
                       )}
                     </div>
                     <p className="text-xs text-muted mt-1">
-                      gestartet am {dateFmt.format(inst.startedAt)} von {startedByName}
+                      gestartet am {fmtDateShort(inst.startedAt)} von {startedByName}
                     </p>
                     {nextItem && (
                       <p className="text-xs text-secondary mt-1">
@@ -205,7 +205,7 @@ export default async function ActiveWorkflowsPage({
                           <span className="text-muted"> — zugewiesen an {staffName.get(nextItem.assigneeStaffId) ?? '—'}</span>
                         )}
                         {nextItem.dueDate && (
-                          <span className="text-muted"> — fällig {dateFmt.format(nextItem.dueDate)}</span>
+                          <span className="text-muted"> — fällig {fmtDateShort(nextItem.dueDate)}</span>
                         )}
                       </p>
                     )}

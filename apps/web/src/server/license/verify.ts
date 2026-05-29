@@ -27,6 +27,7 @@
 // =============================================================================
 
 import { jwtVerify, importSPKI, type JWTPayload } from 'jose';
+import { fmtDateShort } from '@/lib/fmt';
 
 export type LicenseStatus = 'VALID' | 'EXPIRED' | 'INVALID' | 'UNCONFIGURED';
 
@@ -166,5 +167,5 @@ async function decodeExpiredToken(
 }
 
 function dateOnly(d: Date): string {
-  return new Intl.DateTimeFormat('de-DE').format(d);
+  return fmtDateShort(d);
 }

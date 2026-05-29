@@ -12,9 +12,8 @@ import { withTenantContext } from '@taxtronik/db';
 import { readPortalFeatures } from '@/server/settings/portal-features';
 import { AppointmentRequestForm } from './request-form';
 import { CancelRequestButton } from './cancel-request-button';
+import { fmtDateMedium, fmtDateTimeMedium } from '@/lib/fmt';
 
-const dateTimeFmt = new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
-const dateFmt = new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium' });
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: 'Wird geprüft',
@@ -100,7 +99,7 @@ export default async function PortalAppointmentsPage() {
                 <li key={a.id} className={'px-6 py-3 ' + (past ? 'opacity-60' : '')}>
                   <p className="text-sm font-medium text-primary">{a.title}</p>
                   <p className="text-xs text-muted mt-0.5">
-                    {dateTimeFmt.format(a.startsAt)} – {dateTimeFmt.format(a.endsAt)}
+                    {fmtDateTimeMedium(a.startsAt)} – {fmtDateTimeMedium(a.endsAt)}
                   </p>
                   <p className="text-xs text-muted">
                     Bearbeiter: {a.owner.fullName}
@@ -152,19 +151,19 @@ export default async function PortalAppointmentsPage() {
                         )}
                       </p>
                       <p className="text-[11px] text-disabled mt-0.5">
-                        {dateFmt.format(r.createdAt)}
+                        {fmtDateMedium(r.createdAt)}
                         {r.preferredStaff && ` · Wunsch: ${r.preferredStaff.fullName}`}
                       </p>
                       <ul className="mt-1 text-xs text-secondary dark:text-disabled space-y-0.5">
                         {slots.map((s, i) => (
                           <li key={i}>
-                            {dateTimeFmt.format(new Date(s.startsAt))} – {dateTimeFmt.format(new Date(s.endsAt))}
+                            {fmtDateTimeMedium(new Date(s.startsAt))} – {fmtDateTimeMedium(new Date(s.endsAt))}
                           </li>
                         ))}
                       </ul>
                       {r.status === 'ACCEPTED' && r.acceptedSlot && (
                         <p className="text-xs text-emerald-700 mt-1">
-                          Bestätigt für: {dateTimeFmt.format(new Date((r.acceptedSlot as { startsAt: string }).startsAt))}
+                          Bestätigt für: {fmtDateTimeMedium(new Date((r.acceptedSlot as { startsAt: string }).startsAt))}
                         </p>
                       )}
                       {r.status === 'REJECTED' && r.rejectionReason && (

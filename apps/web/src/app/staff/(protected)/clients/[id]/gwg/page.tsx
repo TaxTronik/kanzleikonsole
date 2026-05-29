@@ -10,6 +10,7 @@ import { AddBeneficialOwnerForm } from './add-owner-form';
 import { AddIdDocumentForm } from './add-id-doc-form';
 import { InviteSection } from './invite-section';
 import { GwgDecisionForms } from './decision-forms';
+import { fmtDateShort } from '@/lib/fmt';
 
 const statusLabels: Record<string, string> = {
   DRAFT: 'Entwurf',
@@ -147,7 +148,7 @@ export default async function GwgPage({
                   </p>
                   <p className="text-xs text-green-700 mt-1">
                     Risiko: <strong>{check.riskLevel}</strong> ·
-                    Gültig bis {new Intl.DateTimeFormat('de-DE').format(check.validUntil)}
+                    Gültig bis {fmtDateShort(check.validUntil)}
                   </p>
                 </div>
               </div>
@@ -248,7 +249,7 @@ export default async function GwgPage({
                     <p className="text-xs text-muted ml-6">
                       {d.ownerName}
                       {d.number ? ` · Nr. ${d.number}` : ''}
-                      {d.expiryDate ? ` · gültig bis ${new Intl.DateTimeFormat('de-DE').format(d.expiryDate)}` : ''}
+                      {d.expiryDate ? ` · gültig bis ${fmtDateShort(d.expiryDate)}` : ''}
                     </p>
                     {d.document && (
                       <p className="text-xs text-brand-700 ml-6 mt-1">

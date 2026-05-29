@@ -4,6 +4,7 @@ import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { NewProviderForm } from './new-form';
 import { deleteServiceProviderAction } from './actions';
+import { fmtDateShort } from '@/lib/fmt';
 
 export default async function ServiceProvidersPage() {
   const session = await staffAuth();
@@ -45,10 +46,10 @@ export default async function ServiceProvidersPage() {
                     <p className="text-xs text-muted">
                       {p.contactEmail ?? 'kein Kontakt'}
                       {p.contractFromDate
-                        ? ` · Vertrag seit ${new Intl.DateTimeFormat('de-DE').format(p.contractFromDate)}`
+                        ? ` · Vertrag seit ${fmtDateShort(p.contractFromDate)}`
                         : ''}
                       {p.contractToDate
-                        ? ` · bis ${new Intl.DateTimeFormat('de-DE').format(p.contractToDate)}`
+                        ? ` · bis ${fmtDateShort(p.contractToDate)}`
                         : ''}
                     </p>
                     {p.notes && (

@@ -7,7 +7,7 @@ import { computeBwaKpis } from '@/server/bwa/addison-parser';
 import { BwaImportForm } from './import-form';
 import { deleteBwaPeriodAction } from './actions';
 
-import { fmtEURRound } from '@/lib/fmt';
+import { fmtDateShort, fmtEURRound } from '@/lib/fmt';
 export default async function ClientBwaPage({
   params,
 }: {
@@ -120,7 +120,7 @@ export default async function ClientBwaPage({
                           {p.name} <span className="text-xs text-muted font-normal">· {p.year}</span>
                         </p>
                         <p className="text-xs text-muted">
-                          {p.createdByType === 'CLIENT_CONTACT' ? 'vom Mandant' : 'von der Kanzlei'} · zuletzt geändert {new Intl.DateTimeFormat('de-DE').format(p.updatedAt)}
+                          {p.createdByType === 'CLIENT_CONTACT' ? 'vom Mandant' : 'von der Kanzlei'} · zuletzt geändert {fmtDateShort(p.updatedAt)}
                         </p>
                       </Link>
                       {p.status === 'FINAL' ? (

@@ -19,10 +19,8 @@ import { withTenantContext } from '@taxtronik/db';
 import { SCHEDULE_LABELS } from '@taxtronik/tax';
 import { NewAppointmentDialog } from './new-appointment-dialog';
 import { RequestDecision, type RequestRow } from './request-decision';
+import { fmtMonthYear, fmtTimeShort, fmtWeekdayShort } from '@/lib/fmt';
 
-const monthFmt = new Intl.DateTimeFormat('de-DE', { month: 'long', year: 'numeric' });
-const weekdayFmt = new Intl.DateTimeFormat('de-DE', { weekday: 'short' });
-const timeFmt = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit' });
 
 interface Search {
   month?: string;
@@ -202,7 +200,7 @@ export default async function CalendarPage({
             <ChevronLeft className="h-4 w-4" />
           </Link>
           <h2 className="text-lg font-semibold text-primary min-w-[220px] text-center">
-            {monthFmt.format(new Date(Date.UTC(year, month0, 15)))}
+            {fmtMonthYear(new Date(Date.UTC(year, month0, 15)))}
           </h2>
           <Link
             href={`/staff/calendar?month=${nextMonthQs}`}
@@ -223,7 +221,7 @@ export default async function CalendarPage({
         <div className="grid grid-cols-7 gap-px text-center text-xs font-medium text-muted uppercase tracking-wide pb-2 border-b border-default">
           {[0, 1, 2, 3, 4, 5, 6].map((i) => (
             <div key={i} className="py-2">
-              {weekdayFmt.format(new Date(Date.UTC(2026, 0, 5 + i)))}
+              {fmtWeekdayShort(new Date(Date.UTC(2026, 0, 5 + i)))}
             </div>
           ))}
         </div>
@@ -252,9 +250,9 @@ export default async function CalendarPage({
                     key={a.id}
                     href={a.client ? `/staff/clients/${a.client.id}` : '#'}
                     className="cal-pill cal-pill-appointment"
-                    title={`${timeFmt.format(a.startsAt)} – ${timeFmt.format(a.endsAt)}: ${a.title}${a.client ? ' · ' + a.client.name : ''}`}
+                    title={`${fmtTimeShort(a.startsAt)} – ${fmtTimeShort(a.endsAt)}: ${a.title}${a.client ? ' · ' + a.client.name : ''}`}
                   >
-                    <span className="font-medium">{timeFmt.format(a.startsAt)}</span>
+                    <span className="font-medium">{fmtTimeShort(a.startsAt)}</span>
                     {a.client && (
                       <span> · {a.client.name}</span>
                     )}

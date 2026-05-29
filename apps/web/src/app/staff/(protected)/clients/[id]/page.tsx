@@ -16,6 +16,7 @@ import { RemindersBlock } from './reminders/reminders-block';
 import { BindersBlock } from './binders/binders-block';
 import { HandoversBlock } from './handovers/handovers-block';
 import { PhoneNotesList } from './phone-notes-list';
+import { fmtDateShort, fmtDateTimeShort, fmtEUR, fmtTimeShort } from '@/lib/fmt';
 
 const kindLabels: Record<string, string> = {
   NATPERS: 'Natürliche Person',
@@ -24,14 +25,13 @@ const kindLabels: Record<string, string> = {
 };
 
 const dateFmt = new Intl.DateTimeFormat('de-DE');
-const eurFmt = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
 
 function formatCustomValue(type: string, value: unknown): React.ReactNode {
   if (value === null || value === undefined || value === '') {
     return <span className="text-disabled font-normal">—</span>;
   }
   if (type === 'CHECKBOX') return value ? 'Ja' : 'Nein';
-  if (type === 'MONEY' && typeof value === 'number') return eurFmt.format(value);
+  if (type === 'MONEY' && typeof value === 'number') return fmtEUR(value);
   if (type === 'NUMBER' && typeof value === 'number') return value.toLocaleString('de-DE');
   if (type === 'DATE' && typeof value === 'string') {
     const d = new Date(value);
@@ -446,8 +446,6 @@ export default async function ClientDetailPage({
                   <ul className="divide-y divide-border-subtle">
                     {rows.map((r) => {
                       const dateFmt = new Intl.DateTimeFormat('de-DE');
-                      const dateTimeFmt = new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' });
-                      const timeFmt = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit' });
                       if (r.kind === 'tax') {
                         const daysLeft = Math.ceil((r.date.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
                         return (
@@ -480,8 +478,8 @@ export default async function ClientDetailPage({
                             <p className="text-xs text-muted">{r.sub}</p>
                           </div>
                           <div className="text-right shrink-0">
-                            <p className="text-sm text-primary">{dateTimeFmt.format(r.date)}</p>
-                            <p className="text-xs text-muted">– {timeFmt.format(r.endsAt)}</p>
+                            <p className="text-sm text-primary">{fmtDateTimeShort(r.date)}</p>
+                            <p className="text-xs text-muted">– {fmtTimeShort(r.endsAt)}</p>
                           </div>
                         </li>
                       );
@@ -656,7 +654,7 @@ export default async function ClientDetailPage({
                 <div className="flex justify-between">
                   <dt className="text-muted">Angelegt</dt>
                   <dd className="text-primary font-medium">
-                    {new Intl.DateTimeFormat('de-DE').format(client.createdAt)}
+                    {fmtDateShort(client.createdAt)}
                   </dd>
                 </div>
               </dl>
@@ -711,7 +709,7 @@ export default async function ClientDetailPage({
                     </div>
                     {latest.validUntil && (
                       <p className={isExpiring ? 'text-xs text-yellow-700' : 'text-xs text-muted'}>
-                        Gültig bis {new Intl.DateTimeFormat('de-DE').format(latest.validUntil)}
+                        Gültig bis {fmtDateShort(latest.validUntil)}
                         {isExpiring && ' · läuft bald aus'}
                       </p>
                     )}
@@ -771,10 +769,10 @@ export default async function ClientDetailPage({
                             {req.priority === 'LOW' && <span className="text-disabled">{priorityLabels[req.priority]}</span>}
                           </td>
                           <td className="px-6 py-4 text-secondary">
-                            {req.dueAt ? new Intl.DateTimeFormat('de-DE').format(req.dueAt) : '—'}
+                            {req.dueAt ? fmtDateShort(req.dueAt) : '—'}
                           </td>
                           <td className="px-6 py-4 text-secondary">
-                            {last ? new Intl.DateTimeFormat('de-DE').format(last.createdAt) : '—'}
+                            {last ? fmtDateShort(last.createdAt) : '—'}
                           </td>
                         </tr>
                       );

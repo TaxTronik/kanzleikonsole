@@ -5,7 +5,7 @@ import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { markSentAction, markPaidAction, cancelInvoiceAction } from '../actions';
 
-import { fmtEUR } from '@/lib/fmt';
+import { fmtDateShort, fmtEUR } from '@/lib/fmt';
 const statusLabels: Record<string, string> = {
   DRAFT: 'Entwurf',
   SENT: 'Versendet',
@@ -78,11 +78,11 @@ export default async function InvoiceDetailPage({
         <KV label="Betreff" value={inv.subject} />
         <KV
           label="Rechnungsdatum"
-          value={new Intl.DateTimeFormat('de-DE').format(inv.issueDate)}
+          value={fmtDateShort(inv.issueDate)}
         />
         <KV
           label="Fällig"
-          value={new Intl.DateTimeFormat('de-DE').format(inv.dueDate)}
+          value={fmtDateShort(inv.dueDate)}
         />
       </div>
 

@@ -5,6 +5,7 @@ import { slugify as slugifyLib } from '@/lib/slugify';
 import { Plus, Trash2 } from 'lucide-react';
 import { saveFormTemplateAction } from '../actions';
 import { SortableList, DragHandle } from '@/components/sortable-list';
+import { fmtTimeMedium } from '@/lib/fmt';
 
 type FieldType =
   | 'TEXT' | 'TEXTAREA' | 'NUMBER' | 'MONEY' | 'DATE' | 'EMAIL' | 'PHONE'
@@ -303,7 +304,7 @@ export function FormEditor({
         </button>
         {savedAt && (
           <span className="text-xs text-emerald-700">
-            Gespeichert um {new Intl.DateTimeFormat('de-DE', { timeStyle: 'medium' }).format(new Date(savedAt))}
+            Gespeichert um {fmtTimeMedium(new Date(savedAt))}
           </span>
         )}
       </div>

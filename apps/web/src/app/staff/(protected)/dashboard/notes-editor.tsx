@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { Plus, Trash2, Pencil, Check, X } from 'lucide-react';
 import { addNoteAction, updateNoteAction, deleteNoteAction } from './note-actions';
+import { fmtDateTimeShort } from '@/lib/fmt';
 
 interface Note {
   id: string;
@@ -10,7 +11,6 @@ interface Note {
   updatedAt: Date;
 }
 
-const dateFmt = new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' });
 
 export function NotesEditor({ initial }: { initial: Note[] }) {
   const [notes, setNotes] = useState<Note[]>(initial);
@@ -179,7 +179,7 @@ export function NotesEditor({ initial }: { initial: Note[] }) {
                     {n.body}
                   </p>
                   <div className="flex items-center justify-between gap-2 mt-1">
-                    <span className="text-[10px] text-disabled">{dateFmt.format(n.updatedAt)}</span>
+                    <span className="text-[10px] text-disabled">{fmtDateTimeShort(n.updatedAt)}</span>
                     <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
                         type="button"

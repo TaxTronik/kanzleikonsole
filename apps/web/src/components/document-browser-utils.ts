@@ -1,3 +1,4 @@
+import { fmtDateMedium } from '@/lib/fmt';
 import {
   Building2,
   File as FileIcon,
@@ -33,7 +34,7 @@ export function fmtBytes(b: number): string {
 }
 
 export const fmtDate = (iso: string): string =>
-  new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium' }).format(new Date(iso));
+  fmtDateMedium(new Date(iso));
 
 export function fileIcon(mimeType: string): LucideIcon {
   if (mimeType.startsWith('image/')) return FileImage;

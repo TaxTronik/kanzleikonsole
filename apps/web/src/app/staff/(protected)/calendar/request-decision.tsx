@@ -4,8 +4,8 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, X, Calendar } from 'lucide-react';
 import { acceptAppointmentRequestAction, rejectAppointmentRequestAction } from './actions';
+import { fmtDateTimeShort } from '@/lib/fmt';
 
-const dateTimeFmt = new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' });
 
 interface StaffOption { id: string; fullName: string; }
 
@@ -73,7 +73,7 @@ export function RequestDecision({
           <p className="text-xs text-muted">
             {request.clientName}
             {request.contactName && ` · ${request.contactName}`}
-            <span className="ml-2 text-disabled">{dateTimeFmt.format(new Date(request.createdAt))}</span>
+            <span className="ml-2 text-disabled">{fmtDateTimeShort(new Date(request.createdAt))}</span>
           </p>
           {request.notes && (
             <p className="text-xs text-secondary dark:text-disabled mt-1 whitespace-pre-wrap line-clamp-3">{request.notes}</p>
@@ -83,7 +83,7 @@ export function RequestDecision({
               <li key={i} className="text-xs flex items-center gap-2">
                 <Calendar className="h-3 w-3 text-disabled" />
                 <span className="text-secondary">
-                  {dateTimeFmt.format(new Date(s.startsAt))} – {dateTimeFmt.format(new Date(s.endsAt))}
+                  {fmtDateTimeShort(new Date(s.startsAt))} – {fmtDateTimeShort(new Date(s.endsAt))}
                 </span>
               </li>
             ))}
@@ -125,7 +125,7 @@ export function RequestDecision({
               >
                 {request.slots.map((s, i) => (
                   <option key={i} value={i}>
-                    {dateTimeFmt.format(new Date(s.startsAt))}
+                    {fmtDateTimeShort(new Date(s.startsAt))}
                   </option>
                 ))}
               </select>

@@ -1,6 +1,7 @@
 ﻿import { loadPoaForSigning } from '@/app/staff/(protected)/poa/actions';
 import { renderMarkdown } from '@/lib/markdown';
 import { SignFlow } from './sign-flow';
+import { fmtDateShort } from '@/lib/fmt';
 
 export default async function PoaSignPage({
   searchParams,
@@ -45,12 +46,12 @@ export default async function PoaSignPage({
           <div className="grid grid-cols-2 gap-4 mb-6">
             <div className="bg-gray-50 rounded-md p-3">
               <p className="eyebrow">Gültig ab</p>
-              <p className="text-sm font-medium">{new Intl.DateTimeFormat('de-DE').format(poa.validFrom)}</p>
+              <p className="text-sm font-medium">{fmtDateShort(poa.validFrom)}</p>
             </div>
             <div className="bg-gray-50 rounded-md p-3">
               <p className="eyebrow">Gültig bis</p>
               <p className="text-sm font-medium">
-                {poa.validUntil ? new Intl.DateTimeFormat('de-DE').format(poa.validUntil) : 'unbefristet'}
+                {poa.validUntil ? fmtDateShort(poa.validUntil) : 'unbefristet'}
               </p>
             </div>
           </div>

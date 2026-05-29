@@ -5,6 +5,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { VacationForm } from './vacation-form';
 import { SickForm } from './sick-form';
 import { decideVacationAction, cancelVacationAction } from './actions';
+import { fmtDateShort } from '@/lib/fmt';
 
 const statusLabels: Record<string, string> = {
   PENDING: 'Ausstehend',
@@ -100,9 +101,9 @@ export default async function AbsencesPage() {
                   <div className="min-w-0 flex-1">
                     <p className="font-medium text-primary">{v.staff.fullName}</p>
                     <p className="text-xs text-muted">
-                      {new Intl.DateTimeFormat('de-DE').format(v.startDate)}
+                      {fmtDateShort(v.startDate)}
                       {' – '}
-                      {new Intl.DateTimeFormat('de-DE').format(v.endDate)}
+                      {fmtDateShort(v.endDate)}
                       {' · '}
                       {v.workdays} Werktage
                     </p>
@@ -151,9 +152,9 @@ export default async function AbsencesPage() {
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <span className="font-medium text-primary">
-                      {new Intl.DateTimeFormat('de-DE').format(v.startDate)}
+                      {fmtDateShort(v.startDate)}
                       {' – '}
-                      {new Intl.DateTimeFormat('de-DE').format(v.endDate)}
+                      {fmtDateShort(v.endDate)}
                     </span>
                     {v.status === 'PENDING' && <span className="badge-yellow">{statusLabels[v.status]}</span>}
                     {v.status === 'APPROVED' && <span className="badge-green">{statusLabels[v.status]}</span>}
@@ -192,8 +193,8 @@ export default async function AbsencesPage() {
             {mySick.map((s) => (
               <li key={s.id} className="px-6 py-3">
                 <p className="text-sm text-primary">
-                  {new Intl.DateTimeFormat('de-DE').format(s.startDate)}
-                  {s.endDate ? ` – ${new Intl.DateTimeFormat('de-DE').format(s.endDate)}` : ' (offen)'}
+                  {fmtDateShort(s.startDate)}
+                  {s.endDate ? ` – ${fmtDateShort(s.endDate)}` : ' (offen)'}
                 </p>
                 {s.notes && <p className="text-xs text-muted mt-1">{s.notes}</p>}
               </li>

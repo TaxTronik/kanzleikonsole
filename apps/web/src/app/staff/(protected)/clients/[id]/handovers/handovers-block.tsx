@@ -3,6 +3,7 @@
 import { useActionState, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Inbox, Plus, Trash2, ArrowRight, Check, Mail } from 'lucide-react';
+import { fmtDateShort } from '@/lib/fmt';
 import {
   createHandoverAction,
   updateHandoverStatusAction,
@@ -10,7 +11,6 @@ import {
   type ActionResult,
 } from './actions';
 
-const dateFmt = new Intl.DateTimeFormat('de-DE');
 
 type HandoverStatus = 'RECEIVED' | 'IN_PROGRESS' | 'READY' | 'PICKED_UP';
 
@@ -163,12 +163,12 @@ export function HandoversBlock({
                       <p className="text-xs text-secondary mt-1 whitespace-pre-wrap">{h.contents}</p>
                     )}
                     <p className="text-[11px] text-muted mt-1 flex flex-wrap gap-x-3">
-                      <span>eingegangen {dateFmt.format(new Date(h.receivedAt))}</span>
-                      {h.startedAt && <span>bearbeitet seit {dateFmt.format(new Date(h.startedAt))}</span>}
+                      <span>eingegangen {fmtDateShort(new Date(h.receivedAt))}</span>
+                      {h.startedAt && <span>bearbeitet seit {fmtDateShort(new Date(h.startedAt))}</span>}
                       {h.readyAt && (
                         <span className="inline-flex items-center gap-1 text-emerald-700">
                           <Mail className="h-3 w-3" />
-                          abholbereit {dateFmt.format(new Date(h.readyAt))}
+                          abholbereit {fmtDateShort(new Date(h.readyAt))}
                           {h.notifiedContactEmail && <span className="text-disabled">· {h.notifiedContactEmail}</span>}
                         </span>
                       )}
@@ -213,7 +213,7 @@ export function HandoversBlock({
             {done.map((h) => (
               <li key={h.id} className="px-6 py-2 text-sm text-muted flex justify-between gap-2">
                 <span className="truncate">{h.label}</span>
-                {h.pickedUpAt && <span className="text-xs">{dateFmt.format(new Date(h.pickedUpAt))}</span>}
+                {h.pickedUpAt && <span className="text-xs">{fmtDateShort(new Date(h.pickedUpAt))}</span>}
               </li>
             ))}
           </ul>

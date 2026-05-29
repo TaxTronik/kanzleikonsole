@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { ScrollText, Plus } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
+import { fmtDateShort } from '@/lib/fmt';
 
 const statusLabels: Record<string, string> = {
   DRAFT: 'Entwurf',
@@ -83,8 +84,8 @@ export default async function PoaListPage() {
                   </td>
                   <td className="px-6 py-4 text-secondary">
                     {p.signedAt
-                      ? `unterz. ${new Intl.DateTimeFormat('de-DE').format(p.signedAt)}`
-                      : new Intl.DateTimeFormat('de-DE').format(p.createdAt)}
+                      ? `unterz. ${fmtDateShort(p.signedAt)}`
+                      : fmtDateShort(p.createdAt)}
                   </td>
                 </tr>
               ))}

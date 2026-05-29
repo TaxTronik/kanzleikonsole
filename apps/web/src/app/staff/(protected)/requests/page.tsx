@@ -6,6 +6,7 @@ import { Inbox, FileDown, Search } from 'lucide-react';
 import { OffsetPagination } from '@/components/offset-pagination';
 import { BulkToolbar } from './bulk-toolbar';
 import type { Prisma, RequestStatus } from '@prisma/client';
+import { fmtDateShort } from '@/lib/fmt';
 
 const PAGE_SIZE = 50;
 const statusLabels: Record<string, string> = {
@@ -291,7 +292,7 @@ export default async function RequestsOverviewPage({
                       </td>
                       <td className="px-6 py-3 text-secondary">{r._count.responses}</td>
                       <td className="px-6 py-3 text-secondary">
-                        {r.dueAt ? new Intl.DateTimeFormat('de-DE').format(r.dueAt) : '—'}
+                        {r.dueAt ? fmtDateShort(r.dueAt) : '—'}
                       </td>
                     </tr>
                   );

@@ -1,3 +1,4 @@
+import { fmtDateTimeSeconds } from '@/lib/fmt';
 // =============================================================================
 // CSV-Export-Helper (RFC 4180, deutsche Locale: Komma-Dezimal + Semikolon-Sep)
 //
@@ -21,7 +22,7 @@ export function escapeCsvCell(v: string | number | null | undefined | Date | big
   if (v === null || v === undefined) return '';
   let s: string;
   if (v instanceof Date) {
-    s = new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'medium' }).format(v);
+    s = fmtDateTimeSeconds(v);
   } else if (typeof v === 'bigint') {
     s = String(v);
   } else if (typeof v === 'number') {

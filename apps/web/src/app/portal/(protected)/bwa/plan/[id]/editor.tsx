@@ -3,6 +3,7 @@
 import { useState, useTransition, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Save, Trash2 } from 'lucide-react';
+import { fmtEURRound, fmtTimeMedium } from '@/lib/fmt';
 
 export type PlanAxis =
   | 'REVENUE' | 'PERSONNEL' | 'OTHER_COSTS' | 'DEPRECIATION' | 'MATERIAL' | 'OTHER_INCOME' | 'TAXES';
@@ -32,7 +33,6 @@ const AXIS_LABELS: Record<Axis, string> = {
 const ALL_AXES: Axis[] = [
   'REVENUE', 'OTHER_INCOME', 'PERSONNEL', 'MATERIAL', 'DEPRECIATION', 'OTHER_COSTS', 'TAXES',
 ];
-const eurFmt = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
 
 interface Line {
   axis: Axis;
@@ -203,7 +203,7 @@ export function PlanEditor({
           </button>
           {savedAt && (
             <span className="text-xs text-emerald-700">
-              Gespeichert {new Intl.DateTimeFormat('de-DE', { timeStyle: 'medium' }).format(new Date(savedAt))}
+              Gespeichert {fmtTimeMedium(new Date(savedAt))}
             </span>
           )}
         </div>
@@ -222,7 +222,7 @@ function Total({ label, value, accent }: { label: string; value: number; accent?
           (accent && value < 0 ? 'text-red-700' : accent && value > 0 ? 'text-emerald-700' : 'text-primary')
         }
       >
-        {eurFmt.format(value)}
+        {fmtEURRound(value)}
       </p>
     </div>
   );

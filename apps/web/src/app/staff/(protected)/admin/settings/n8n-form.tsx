@@ -20,6 +20,7 @@ import {
   type ActionResult,
 } from './n8n-actions';
 import type { N8nConfig } from '@/server/settings/n8n';
+import { fmtDateTimeShort } from '@/lib/fmt';
 
 interface Props {
   initial: N8nConfig | null;
@@ -29,7 +30,6 @@ interface Props {
   };
 }
 
-const dateFmt = new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' });
 
 interface WorkflowRow {
   id: string;
@@ -368,7 +368,7 @@ export function N8nForm({ initial, envHints }: Props) {
                       </span>
                     )}
                     <span className="text-[10px] text-disabled">
-                      {dateFmt.format(new Date(w.updatedAt))}
+                      {fmtDateTimeShort(new Date(w.updatedAt))}
                     </span>
                   </span>
                 </li>

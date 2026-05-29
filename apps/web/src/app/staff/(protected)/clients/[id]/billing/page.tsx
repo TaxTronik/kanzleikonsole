@@ -4,6 +4,7 @@ import { ArrowLeft, Clock } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { BillingForm } from './billing-form';
+import { fmtDateShort } from '@/lib/fmt';
 
 export default async function ClientBillingPage({
   params,
@@ -127,7 +128,7 @@ export default async function ClientBillingPage({
                   return (
                     <tr key={e.id} className="hover:bg-gray-50">
                       <td className="px-6 py-2 text-secondary whitespace-nowrap">
-                        {new Intl.DateTimeFormat('de-DE').format(e.startedAt)}
+                        {fmtDateShort(e.startedAt)}
                       </td>
                       <td className="px-6 py-2 text-primary truncate max-w-md">{e.description}</td>
                       <td className="px-6 py-2 text-secondary">{e.staff.fullName}</td>

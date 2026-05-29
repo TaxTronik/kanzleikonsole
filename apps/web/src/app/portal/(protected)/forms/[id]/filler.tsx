@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { FileText, Upload, X } from 'lucide-react';
 import type { FormFieldType } from '@prisma/client';
+import { fmtTimeMedium } from '@/lib/fmt';
 import {
   saveSubmissionDraftAction,
   submitSubmissionAction,
@@ -147,7 +148,7 @@ export function PortalFormFiller({
           </button>
           {savedAt && (
             <span className="text-xs text-emerald-700">
-              Gespeichert um {new Intl.DateTimeFormat('de-DE', { timeStyle: 'medium' }).format(new Date(savedAt))}
+              Gespeichert um {fmtTimeMedium(new Date(savedAt))}
             </span>
           )}
         </div>

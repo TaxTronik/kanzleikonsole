@@ -20,6 +20,7 @@ import { withTenantContext } from '@taxtronik/db';
 import type { Prisma } from '@prisma/client';
 import { SCHEDULE_LABELS } from '@taxtronik/tax';
 import { rematerializeAction, markDeadlineDoneAction } from './actions';
+import { fmtDateShort, fmtMonthYear, fmtWeekdayShort } from '@/lib/fmt';
 
 const STATUS_LABELS: Record<string, string> = {
   PLANNED: 'Geplant',
@@ -31,9 +32,6 @@ const STATUS_LABELS: Record<string, string> = {
   SKIPPED: 'Übersprungen',
 };
 
-const dateFmt = new Intl.DateTimeFormat('de-DE');
-const monthFmt = new Intl.DateTimeFormat('de-DE', { month: 'long', year: 'numeric' });
-const weekdayFmt = new Intl.DateTimeFormat('de-DE', { weekday: 'short' });
 
 interface Search {
   view?: 'month' | 'list';
@@ -167,7 +165,7 @@ async function renderMonth(
             <ChevronLeft className="h-4 w-4" />
           </Link>
           <h2 className="text-lg font-semibold text-primary min-w-[200px] text-center">
-            {monthFmt.format(new Date(Date.UTC(year, month0, 15)))}
+            {fmtMonthYear(new Date(Date.UTC(year, month0, 15)))}
           </h2>
           <Link
             href={qs({ view: 'month', scope, month: nextMonthQs, q })}
@@ -193,7 +191,7 @@ async function renderMonth(
         <div className="grid grid-cols-7 gap-px text-center text-xs font-medium text-muted uppercase tracking-wide pb-2 border-b border-default">
           {[0, 1, 2, 3, 4, 5, 6].map((i) => (
             <div key={i} className="py-2">
-              {weekdayFmt.format(new Date(Date.UTC(2026, 0, 5 + i)))}
+              {fmtWeekdayShort(new Date(Date.UTC(2026, 0, 5 + i)))}
             </div>
           ))}
         </div>
@@ -475,7 +473,7 @@ function DeadlineTable({
                 {SCHEDULE_LABELS[d.kind as keyof typeof SCHEDULE_LABELS] ?? d.kind}
               </td>
               <td className="px-6 py-3 text-secondary">{d.period}</td>
-              <td className="px-6 py-3 text-secondary">{dateFmt.format(d.dueDate)}</td>
+              <td className="px-6 py-3 text-secondary">{fmtDateShort(d.dueDate)}</td>
               <td className="px-6 py-3">
                 {d.status === 'OVERDUE' && <span className="badge-red">{STATUS_LABELS[d.status]}</span>}
                 {d.status === 'REMINDED' && <span className="badge-yellow">{STATUS_LABELS[d.status]}</span>}

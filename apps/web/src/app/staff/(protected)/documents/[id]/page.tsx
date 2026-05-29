@@ -6,6 +6,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { DocumentPreviewButton } from '@/components/document-preview';
 import { AcknowledgeButton } from '../acknowledge-button';
 import { NewVersionForm } from './new-version-form';
+import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
 
 const classificationLabels: Record<string, string> = {
   GOBD_INVOICE: 'GoBD Rechnung',
@@ -102,7 +103,7 @@ export default async function DocumentDetailPage({
             {doc.retentionUntil && (
               <>
                 {' · '}
-                Aufbewahrung bis {new Intl.DateTimeFormat('de-DE').format(doc.retentionUntil)}
+                Aufbewahrung bis {fmtDateShort(doc.retentionUntil)}
               </>
             )}
           </p>
@@ -133,10 +134,7 @@ export default async function DocumentDetailPage({
                       )}
                     </p>
                     <p className="text-xs text-muted">
-                      {new Intl.DateTimeFormat('de-DE', {
-                        dateStyle: 'short',
-                        timeStyle: 'short',
-                      }).format(v.createdAt)}
+                      {fmtDateTimeShort(v.createdAt)}
                       {' · '}
                       {fmtBytes(Number(v.sizeBytes))}
                       {' · '}

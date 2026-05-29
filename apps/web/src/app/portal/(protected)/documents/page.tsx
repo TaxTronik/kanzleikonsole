@@ -3,6 +3,7 @@ import { FileText } from 'lucide-react';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 import { DocumentPreviewButton } from '@/components/document-preview';
+import { fmtDateShort } from '@/lib/fmt';
 
 const classificationLabels: Record<string, string> = {
   GOBD_INVOICE: 'Rechnung',
@@ -88,7 +89,7 @@ export default async function PortalDocumentsPage() {
                       {v ? formatBytes(Number(v.sizeBytes)) : '—'}
                     </td>
                     <td className="px-6 py-4 text-secondary">
-                      {new Intl.DateTimeFormat('de-DE').format(d.createdAt)}
+                      {fmtDateShort(d.createdAt)}
                     </td>
                   </tr>
                 );

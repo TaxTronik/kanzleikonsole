@@ -14,6 +14,7 @@ import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import type { Prisma } from '@prisma/client';
+import { fmtDateTimeSeconds } from '@/lib/fmt';
 
 const PAGE_SIZE = 50;
 
@@ -161,9 +162,7 @@ export default async function AuditLogPage({
                 {chainResult.firstBreak && (
                   <p className="text-xs text-red-700 mt-1 font-mono">
                     Erster Bruch bei Audit-ID {String(chainResult.firstBreak.auditId)} (
-                    {new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'medium' }).format(
-                      chainResult.firstBreak.occurredAt,
-                    )}
+                    {fmtDateTimeSeconds(chainResult.firstBreak.occurredAt,)}
                     )
                   </p>
                 )}
@@ -248,7 +247,7 @@ export default async function AuditLogPage({
                     </Link>
                   </td>
                   <td className="px-6 py-2 text-secondary whitespace-nowrap">
-                    {new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'medium' }).format(e.occurredAt)}
+                    {fmtDateTimeSeconds(e.occurredAt)}
                   </td>
                   <td className="px-6 py-2 text-secondary whitespace-nowrap">
                     {actorTypeLabels[e.actorType] ?? e.actorType}

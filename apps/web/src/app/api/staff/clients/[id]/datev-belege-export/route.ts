@@ -20,6 +20,7 @@ import { fetchObjectBytes } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
 import { buildZip, sanitizeZipFileName, ZipTooLargeError, type ZipEntry } from '@/server/export/zip';
 import { escapeCsvCell } from '@/server/export/csv';
+import { fmtDateShort } from '@/lib/fmt';
 
 const QuerySchema = z.object({
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -159,7 +160,7 @@ export async function GET(
       indexRows.push(
         [
           seq,
-          new Intl.DateTimeFormat('de-DE').format(doc.createdAt),
+          fmtDateShort(doc.createdAt),
           classificationLabels[doc.classification] ?? doc.classification,
           doc.title,
           doc.invoiceAttachments[0]?.number ?? '',
@@ -177,7 +178,7 @@ export async function GET(
     indexRows.push(
       [
         seq,
-        new Intl.DateTimeFormat('de-DE').format(doc.createdAt),
+        fmtDateShort(doc.createdAt),
         classificationLabels[doc.classification] ?? doc.classification,
         doc.title,
         doc.invoiceAttachments[0]?.number ?? '',

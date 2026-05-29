@@ -1,7 +1,7 @@
 ﻿import { KeyRound, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
 import type { LicenseInfo } from '@/server/license/verify';
+import { fmtDateShort } from '@/lib/fmt';
 
-const dateFmt = new Intl.DateTimeFormat('de-DE');
 
 export function LicenseCard({ info }: { info: LicenseInfo }) {
   const tone = toneFor(info.status);
@@ -26,7 +26,7 @@ export function LicenseCard({ info }: { info: LicenseInfo }) {
         <p className={`text-xs mt-1 ${tone.message}`}>{info.message}</p>
         {info.validUntil && (
           <p className="text-xs text-secondary mt-1">
-            Gültig bis {dateFmt.format(info.validUntil)}
+            Gültig bis {fmtDateShort(info.validUntil)}
             {typeof info.daysRemaining === 'number' && info.daysRemaining >= 0 &&
               ` (noch ${info.daysRemaining} Tage)`}
             {typeof info.daysRemaining === 'number' && info.daysRemaining < 0 &&

@@ -4,6 +4,7 @@ import { BookOpen, Plus } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { searchArticles, type SearchHit } from './actions';
+import { fmtDateShort } from '@/lib/fmt';
 
 export default async function KnowledgePage({
   searchParams,
@@ -160,7 +161,7 @@ export default async function KnowledgePage({
                       <p className="text-xs text-muted">
                         {a.category?.name ?? 'Ohne Kategorie'}
                         {' · '}
-                        Aktualisiert {new Intl.DateTimeFormat('de-DE').format(a.updatedAt)}
+                        Aktualisiert {fmtDateShort(a.updatedAt)}
                       </p>
                     </Link>
                   </li>

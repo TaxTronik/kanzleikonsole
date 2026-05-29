@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react';
 import { Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { updateMachineMetaAction, deleteMachineAction } from '../actions';
+import { fmtTimeMedium } from '@/lib/fmt';
 
 export function MachineMetaForm({
   machineId,
@@ -112,7 +113,7 @@ export function MachineMetaForm({
         </button>
         {savedAt && (
           <span className="text-xs text-emerald-700">
-            Gespeichert {new Intl.DateTimeFormat('de-DE', { timeStyle: 'medium' }).format(new Date(savedAt))}
+            Gespeichert {fmtTimeMedium(new Date(savedAt))}
           </span>
         )}
       </div>

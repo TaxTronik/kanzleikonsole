@@ -9,8 +9,8 @@ import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { triggerAuditRotateAction } from './actions';
+import { fmtDateTimeShort } from '@/lib/fmt';
 
-const dateFmt = new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' });
 
 export default async function AuditArchivePage() {
   const session = await staffAuth();
@@ -111,9 +111,9 @@ export default async function AuditArchivePage() {
                   </td>
                   <td className="px-6 py-3 text-secondary">{a.entryCount.toLocaleString('de-DE')}</td>
                   <td className="px-6 py-3 text-xs text-secondary">
-                    {dateFmt.format(a.fromOccurredAt)}
+                    {fmtDateTimeShort(a.fromOccurredAt)}
                     <br />
-                    <span className="text-disabled">bis</span> {dateFmt.format(a.toOccurredAt)}
+                    <span className="text-disabled">bis</span> {fmtDateTimeShort(a.toOccurredAt)}
                   </td>
                   <td className="px-6 py-3 text-secondary text-xs">
                     {(Number(a.fileSizeBytes) / 1024).toFixed(1)} KB

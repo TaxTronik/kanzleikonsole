@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { saveTemplateAction } from '../../actions';
 import { SortableList, DragHandle } from '@/components/sortable-list';
+import { fmtTimeMedium } from '@/lib/fmt';
 import {
   DOCUMENT_CLASSIFICATIONS,
   KIND_LABELS,
@@ -284,7 +285,7 @@ export function TemplateEditor({
         </button>
         {savedAt && (
           <span className="text-xs text-emerald-700">
-            Gespeichert um {new Intl.DateTimeFormat('de-DE', { timeStyle: 'medium' }).format(new Date(savedAt))}
+            Gespeichert um {fmtTimeMedium(new Date(savedAt))}
           </span>
         )}
       </div>
