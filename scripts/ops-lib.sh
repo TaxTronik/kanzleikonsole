@@ -91,7 +91,12 @@ prisma_cli() {
 }
 
 owner_database_url_for_host() {
-  printf 'postgresql://taxtronik:%s@127.0.0.1:5432/taxtronik?schema=public' "$POSTGRES_PASSWORD"
+  # Migrationen laufen vom Host gegen den publizierten Postgres-Port. Host/Port
+  # sind übersteuerbar (POSTGRES_HOST/POSTGRES_PORT in .env), falls die Compose
+  # den Port nur auf einem bestimmten Interface oder abweichend published.
+  local host="${POSTGRES_HOST:-127.0.0.1}"
+  local port="${POSTGRES_PORT:-5432}"
+  printf 'postgresql://taxtronik:%s@%s:%s/taxtronik?schema=public' "$POSTGRES_PASSWORD" "$host" "$port"
 }
 
 run_migrations() {
@@ -123,7 +128,10 @@ smoke_health() {
   url="http://127.0.0.1:$(app_port)/api/health"
   info "Health-Smoke: $url"
   for _ in {1..30}; do
-    status="$(curl -fsS "$url" 2>/dev/null | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>{try{console.log(JSON.parse(s).status||'')}catch{process.exit(1)}})" 2>/dev/null || true)"
+    # KEIN curl -f: der Health-Endpoint liefert bei 'degraded' bewusst HTTP 503
+    # mit JSON-Body. Mit -f würde curl den 503-Body verwerfen und 'degraded'
+    # (App läuft, eine Abhängigkeit flackert) wäre nie als Erfolg erkennbar.
+    status="$(curl -sS "$url" 2>/dev/null | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>{try{console.log(JSON.parse(s).status||'')}catch{process.exit(1)}})" 2>/dev/null || true)"
     if [[ "$status" == "ok" || "$status" == "degraded" ]]; then
       echo "Health: $status"
       return 0

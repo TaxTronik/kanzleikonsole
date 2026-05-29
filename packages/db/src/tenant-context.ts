@@ -85,6 +85,14 @@ function serializeTx<T extends object>(tx: T): T {
   }) as T;
 }
 
+// Der serializeTx-Proxy reiht alle Queries einer Transaktion strikt
+// sequenziell (siehe Kopfkommentar). Vormals parallele Promise.all-Aufrufe
+// laufen damit nacheinander — die Summe kann den Prisma-Default von 5 s für
+// interaktive Transaktionen reißen (P2028), z. B. auf Dashboards mit vielen
+// Aggregationen unter Last. Daher großzügigeres Limit; maxWait bleibt knapp,
+// damit ein erschöpfter Pool schnell sichtbar wird statt lange zu blockieren.
+const TX_OPTIONS = { timeout: 15_000, maxWait: 5_000 } as const;
+
 export async function withTenantContext<T>(
   ctx: TenantContext,
   fn: (tx: TxClient) => Promise<T>,
@@ -98,7 +106,7 @@ export async function withTenantContext<T>(
         set_config('app.current_actor_type', ${ctx.actorType}, true)
     `;
     return fn(tx);
-  });
+  }, TX_OPTIONS);
 }
 
 /**
