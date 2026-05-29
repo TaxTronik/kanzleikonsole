@@ -15,7 +15,7 @@
 import { lookup } from 'node:dns/promises';
 import type { LookupAddress } from 'node:dns';
 import { isIP } from 'node:net';
-import { Agent } from 'undici';
+import { Agent, fetch as undiciFetch } from 'undici';
 
 // IPv4 reserved/private ranges (CIDR)
 function isPrivateIPv4(ip: string): boolean {
@@ -199,18 +199,24 @@ export async function safeFetch(url: string, init?: RequestInit): Promise<Respon
       },
     },
   });
-  // Cast über `unknown`, weil undici-Agent und Node-eingebauter Dispatcher-
-  // Type leicht voneinander abweichen (FormData-Generics).
   // Defaults VOR ...init, damit Caller sie explizit überschreiben können.
   const merged = {
     redirect: 'error' as const,
     signal: init?.signal ?? AbortSignal.timeout(SAFE_FETCH_DEFAULT_TIMEOUT_MS),
     ...init,
     dispatcher: agent,
-  } as unknown as RequestInit;
+  };
   let response: Response;
   try {
-    response = await fetch(url, merged);
+    // WICHTIG: undicis EIGENES fetch, NICHT Node's globales fetch. Ein Agent aus
+    // dem undici-Paket ist nicht mit dem Node-internen undici-Dispatcher
+    // kompatibel — auf Node 24 wirft das `UND_ERR_INVALID_ARG: invalid
+    // onRequestStart method` (Handler-API-Versatz). Mit undicis fetch stammen
+    // Agent UND fetch aus derselben undici-Version → versions-unabhängig stabil.
+    response = (await undiciFetch(
+      url,
+      merged as unknown as Parameters<typeof undiciFetch>[1],
+    )) as unknown as Response;
   } catch (err) {
     agent.close().catch(() => void 0);
     throw err;
