@@ -18,6 +18,12 @@
 // `Promise.all([tx.a.findMany(), tx.b.findMany()])` würde sonst spammen.
 // Der Proxy reiht alle Calls in eine Promise-Chain ein, läuft also sequenziell
 // — was sie unter dem alten Query-Engine ohnehin taten, nur stillschweigend.
+//
+// Hinweis: Eine ZWEITE, tiefere Serialisierungs-Schicht sitzt im Driver-Adapter
+// (prisma-adapter.ts). Sie ist nötig, weil Prisma 7s JS-Interpreter die
+// Relations-Subqueries EINES `findUnique`/`findMany` mit `include` intern
+// parallel feuert — unterhalb dieses Proxys. Beide Schichten zusammen halten
+// die eine Tx-Connection garantiert single-flight (pg@9-fest).
 // =============================================================================
 
 import type { Prisma } from '@prisma/client';
