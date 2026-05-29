@@ -36,6 +36,15 @@
 }
 
 /*
+ * Erster Paint: Grid-Item-Transition AUS, damit die Widgets sofort an ihren
+ * gespeicherten Positionen stehen statt von links „auszufahren". Nach dem Mount
+ * entfernt dashboard-grid.tsx die Klasse → Drag/Resize animieren wieder.
+ */
+.dashboard-grid-initial .react-grid-item {
+  transition: none !important;
+}
+
+/*
  * Im Dashboard-Grid: kein Hover-Translate auf Cards (würde durch
  * benachbarte Items clippen). Hover-Shadow + Border-Highlight bleiben.
  *

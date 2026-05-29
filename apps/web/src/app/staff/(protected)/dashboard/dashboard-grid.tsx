@@ -40,6 +40,11 @@ export function DashboardGrid({
   const [editMode, setEditMode] = useState(false);
   const [widgets, setWidgets] = useState<LayoutWidget[]>(initialLayout.widgets);
   const [error, setError] = useState<string | null>(null);
+  // settled=false beim ersten Paint → CSS unterdrückt die Grid-Item-Transition,
+  // sodass die Widgets SOFORT an ihren gespeicherten Positionen erscheinen statt
+  // von links „auszufahren". Nach zwei Frames (Position committet) auf true →
+  // Drag/Resize animieren danach wieder normal.
+  const [settled, setSettled] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { width, containerRef, mounted } = useContainerWidth();
 
@@ -50,6 +55,12 @@ export function DashboardGrid({
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    const id = requestAnimationFrame(() => requestAnimationFrame(() => setSettled(true)));
+    return () => cancelAnimationFrame(id);
+  }, [mounted]);
 
   function persist(next: LayoutWidget[]) {
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -144,7 +155,12 @@ export function DashboardGrid({
 
       {editMode && <AddWidgetBar widgets={widgets} onAdd={add} />}
 
-      <div ref={containerRef} className={editMode ? 'dashboard-edit relative' : 'relative'}>
+      <div
+        ref={containerRef}
+        className={
+          (editMode ? 'dashboard-edit relative' : 'relative') + (settled ? '' : ' dashboard-grid-initial')
+        }
+      >
         {mounted && (
           <GridLayout
             width={width}
