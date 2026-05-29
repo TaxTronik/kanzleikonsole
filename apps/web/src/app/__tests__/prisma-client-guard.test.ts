@@ -41,6 +41,8 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   'packages/db/seeds/dev.ts',
   // RLS-Integrationstest konstruiert bewusst Owner- + App-Client.
   'packages/db/src/__tests__/rls-cross-tenant.test.ts',
+  // GwG-Schranken-Test konstruiert einen Owner-Client fürs Setup.
+  'packages/db/src/__tests__/gwg-allow-active.test.ts',
   // Owner-Singleton für System-/Worker-Jobs (laufen via withSystemContext).
   'apps/web/src/server/db/prisma-owner.ts',
   'apps/worker/src/prisma-owner.ts',
