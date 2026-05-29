@@ -25,11 +25,13 @@ export default async function ClientTaxSchedulePage({
   const data = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
-      const client = await tx.client.findUnique({
-        where: { id: clientId },
-        select: { id: true, name: true, allowActive: true },
-      });
-      const configs = await tx.taxScheduleConfig.findMany({ where: { clientId } });
+      const [client, configs] = await Promise.all([
+        tx.client.findUnique({
+          where: { id: clientId },
+          select: { id: true, name: true, allowActive: true },
+        }),
+        tx.taxScheduleConfig.findMany({ where: { clientId } }),
+      ]);
       return { client, configs };
     },
   );

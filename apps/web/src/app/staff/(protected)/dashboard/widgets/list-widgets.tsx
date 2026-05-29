@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { SCHEDULE_LABELS } from '@taxtronik/tax';
 import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
+import { GWG_EXPIRY_WINDOW_MS } from '@/lib/consts';
 import { actionLabel, resourceLabel } from '@/server/audit/labels';
 import { PhoneNoteRow } from '../phone-note-check';
 import { ListShell, NOTICE_KIND_LABELS, type RenderCtx } from './_shared';
@@ -141,7 +142,7 @@ export async function UpcomingRequests({ tx }: RenderCtx): Promise<React.ReactNo
 // --- GwG läuft bald aus -------------------------------------------------------
 
 export async function GwgExpiring({ tx }: RenderCtx): Promise<React.ReactNode> {
-  const cutoff = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+  const cutoff = new Date(Date.now() + GWG_EXPIRY_WINDOW_MS);
   const checks = await tx.gwgCheck.findMany({
     where: { status: 'VERIFIED', validUntil: { lte: cutoff } },
     orderBy: { validUntil: 'asc' },

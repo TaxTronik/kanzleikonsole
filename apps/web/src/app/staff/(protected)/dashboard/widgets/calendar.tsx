@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { CalendarDays } from 'lucide-react';
 import { SCHEDULE_LABELS } from '@taxtronik/tax';
 import { fmtDateShort, fmtTimeShort } from '@/lib/fmt';
+import { CALENDAR_PAST_MS } from '@/lib/consts';
 import { ListShell, type RenderCtx } from './_shared';
 
 export async function CalendarWidget({ tx }: RenderCtx): Promise<React.ReactNode> {
@@ -30,7 +31,7 @@ export async function CalendarWidget({ tx }: RenderCtx): Promise<React.ReactNode
     tx.taxDeadline.findMany({
       where: {
         status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS', 'OVERDUE'] },
-        dueDate: { gte: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000), lte: horizon },
+        dueDate: { gte: new Date(Date.now() - CALENDAR_PAST_MS), lte: horizon },
       },
       orderBy: { dueDate: 'asc' },
       take: 20,
