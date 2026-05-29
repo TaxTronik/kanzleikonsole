@@ -246,7 +246,7 @@ export function NotificationsBell({ initialUnread }: Props) {
               onClick={() => setOpen(false)}
               className="text-xs text-brand-700 dark:text-brand-500 hover:underline"
             >
-              Alle Benachrichtigungen anzeigen â†’
+              Alle Benachrichtigungen anzeigen →
             </Link>
           </div>
         </div>

@@ -1,6 +1,6 @@
 ﻿// Generisches Skill-Badge mit Tailwind-Color-Tönung. `color` ist ein
 // kurzer Tailwind-Color-Suffix wie 'blue', 'amber', 'emerald'. Wenn null
-// oder unbekannt â†’ neutrales gray-Badge.
+// oder unbekannt → neutrales gray-Badge.
 
 const TONE_MAP: Record<string, string> = {
   blue:    'bg-blue-100 text-blue-800',

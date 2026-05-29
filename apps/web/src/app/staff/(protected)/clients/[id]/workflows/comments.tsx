@@ -81,7 +81,7 @@ export function WorkflowItemComments({
               onClick={submit}
               disabled={isPending || !body.trim()}
               className="btn-secondary text-xs inline-flex items-center gap-1 shrink-0"
-              title="Kommentar speichern (âŒ˜+Enter)"
+              title="Kommentar speichern (⌘+Enter)"
             >
               <Send className="h-3 w-3" />
               {isPending ? 'Lädt…' : 'Senden'}

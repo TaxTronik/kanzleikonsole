@@ -158,7 +158,7 @@ export function PlanEditor({
                     onChange={(e) => setAxis(a, { amount: Number(e.target.value) || 0 })}
                     className="input pr-8 text-sm font-mono"
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted">â‚¬</span>
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted">€</span>
                 </div>
                 <input
                   type="text"

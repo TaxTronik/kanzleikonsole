@@ -228,7 +228,7 @@ export function NewInvoiceForm({ clients, suggestedNumber }: Props) {
                 />
               </div>
               <div className="col-span-2">
-                <label className="label">Einzelpreis â‚¬</label>
+                <label className="label">Einzelpreis €</label>
                 <input
                   type="number"
                   step="0.01"

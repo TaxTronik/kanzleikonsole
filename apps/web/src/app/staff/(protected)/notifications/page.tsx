@@ -96,7 +96,7 @@ export default async function NotificationsPage() {
                         <>
                           {' · '}
                           <Link href={n.href} className="text-brand-700 hover:underline">
-                            öffnen â†’
+                            öffnen →
                           </Link>
                         </>
                       )}

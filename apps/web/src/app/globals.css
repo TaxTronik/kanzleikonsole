@@ -1,4 +1,4 @@
-﻿/* react-grid-layout â€” Drag/Resize-Visualisierung (muss vor @tailwind stehen) */
+﻿/* react-grid-layout — Drag/Resize-Visualisierung (muss vor @tailwind stehen) */
 @import 'react-grid-layout/css/styles.css';
 @import 'react-resizable/css/styles.css';
 
@@ -7,8 +7,8 @@
 
 /*
  * Dashboard-Grid-Tuning: Resize-Handles sind per Default opacity 0 und
- * erscheinen erst beim Hover des Grid-Items â€” im Edit-Mode wollen wir sie
- * dauerhaft sichtbar haben und auffÃ¤lliger (grÃ¶ÃŸer + Brand-Farbe).
+ * erscheinen erst beim Hover des Grid-Items — im Edit-Mode wollen wir sie
+ * dauerhaft sichtbar haben und auffälliger (größer + Brand-Farbe).
  */
 .dashboard-edit .react-grid-item > .react-resizable-handle {
   opacity: 1;
@@ -36,12 +36,12 @@
 }
 
 /*
- * Im Dashboard-Grid: kein Hover-Translate auf Cards (wÃ¼rde durch
+ * Im Dashboard-Grid: kein Hover-Translate auf Cards (würde durch
  * benachbarte Items clippen). Hover-Shadow + Border-Highlight bleiben.
  *
  * `.widget-shell` ist der Wrapper-Div in dashboard-grid.tsx um jedes
- * Card. Wrapper bleibt overflow:visible damit der Card-Shadow nach auÃŸen
- * ragen kann, die Card selbst Ã¼bernimmt das Content-Clipping.
+ * Card. Wrapper bleibt overflow:visible damit der Card-Shadow nach außen
+ * ragen kann, die Card selbst übernimmt das Content-Clipping.
  */
 .widget-shell {
   overflow: visible;
@@ -54,8 +54,8 @@
 }
 
 /*
- * Schlanke, dezente Scrollbar â€” opt-in via .scrollbar-thin.
- * Nicht Ã¼ber die App global biegen, damit OS-typische Bedienelemente
+ * Schlanke, dezente Scrollbar — opt-in via .scrollbar-thin.
+ * Nicht über die App global biegen, damit OS-typische Bedienelemente
  * (z. B. Mandantenliste) ihren gewohnten Look behalten.
  */
 .scrollbar-thin {
@@ -93,11 +93,11 @@
 
 @layer base {
   /*
-   * Brand-Farb-Variablen â€” Default = Tailwind blue-600-Skala.
-   * Werden vom Layout pro Tenant via inline-Style Ã¼berschrieben (siehe
+   * Brand-Farb-Variablen — Default = Tailwind blue-600-Skala.
+   * Werden vom Layout pro Tenant via inline-Style überschrieben (siehe
    * server/settings/branding.ts und apps/web/src/lib/brand-palette.ts).
    * Format: jeweils "R G B" als Whitespace-separierte Komponenten,
-   * damit Tailwind sie in `rgb(var(...) / <alpha-value>)` einfÃ¼gen kann.
+   * damit Tailwind sie in `rgb(var(...) / <alpha-value>)` einfügen kann.
    */
   :root {
     --brand-50: 239 246 255;   /* #eff6ff */
@@ -108,20 +108,20 @@
     --brand-900: 30 58 138;    /* #1e3a8a */
 
     /*
-     * Semantic Color Tokens â€” Single Source of Truth fÃ¼r HintergrÃ¼nde,
+     * Semantic Color Tokens — Single Source of Truth für Hintergründe,
      * Borders, Texte. Komponenten nutzen `bg-surface`, `text-primary` etc.
      * statt direkter gray-Stufen + dark:-Varianten. Light- und Dark-Werte
-     * sind in derselben Datei zusammengefÃ¼hrt; eine Mode-Umschaltung Ã¤ndert
+     * sind in derselben Datei zusammengeführt; eine Mode-Umschaltung ändert
      * NUR diese Variablen, die Komponenten-Klassen sind dieselben.
      *
-     * Helligkeits-Treppe (Light â†’ Dark):
-     *   page    â€“ unterster BG (App-Hintergrund hinter den Karten)
-     *   card    â€“ Karte / Panel â€” hebt sich klar von page ab
-     *   raised  â€“ Header-Bars in Karten, Hover, elevated rows
-     *   sunken  â€“ noch dunkler als page; selten gebraucht (z. B. Inputs im
+     * Helligkeits-Treppe (Light → Dark):
+     *   page    – unterster BG (App-Hintergrund hinter den Karten)
+     *   card    – Karte / Panel — hebt sich klar von page ab
+     *   raised  – Header-Bars in Karten, Hover, elevated rows
+     *   sunken  – noch dunkler als page; selten gebraucht (z. B. Inputs im
      *             Dark, damit sie auf Card lesbar bleiben)
      *
-     * Format wie bei brand: "R G B" fÃ¼r rgb(var(...) / <alpha>)-Pattern.
+     * Format wie bei brand: "R G B" für rgb(var(...) / <alpha>)-Pattern.
      */
     --surface-page:     249 250 251;  /* gray-50  */
     --surface-card:     255 255 255;  /* white    */
@@ -141,9 +141,9 @@
 
   .dark {
     /*
-     * Dark-Mode-Werte fÃ¼r dieselben Tokens. Beachte: Card ist HELLER als
+     * Dark-Mode-Werte für dieselben Tokens. Beachte: Card ist HELLER als
      * Page (umgekehrte Logik zum Light), damit Karten sich abheben. Die
-     * Stufung ist groÃŸzÃ¼gig â€” gray-950 â†’ gray-800 â†’ gray-700 â€” damit kein
+     * Stufung ist großzügig — gray-950 → gray-800 → gray-700 — damit kein
      * "verschmilzt-mit-Hintergrund"-Eindruck mehr entsteht.
      */
     --surface-page:      3   7  18;   /* gray-950 */
@@ -177,29 +177,29 @@
  * Tailwind-Default-Gray-Skala theme-aware machen.
  *
  * Statt einen .dark-Override-Layer zu pflegen (1000+ Zeilen Mapping-Hack mit
- * Magic Numbers), Ã¼bersteuern wir die Default-`--color-gray-*`-Tokens, die
- * Tailwind v4 fÃ¼r `bg-gray-X`, `text-gray-X`, `border-gray-X`, `divide-gray-X`
+ * Magic Numbers), übersteuern wir die Default-`--color-gray-*`-Tokens, die
+ * Tailwind v4 für `bg-gray-X`, `text-gray-X`, `border-gray-X`, `divide-gray-X`
  * benutzt. Diese verweisen jetzt auf unsere semantischen CSS-Variablen, die
  * im :root (Light) bzw. .dark (Dark) unterschiedlich gesetzt sind.
  *
- * Bewusst NICHT Ã¼bersteuert: `--color-white`, `--color-gray-800/900/950`.
- *   - white: Buttons mit `text-white` sollen immer weiÃŸ bleiben.
+ * Bewusst NICHT übersteuert: `--color-white`, `--color-gray-800/900/950`.
+ *   - white: Buttons mit `text-white` sollen immer weiß bleiben.
  *   - gray-800/900/950: das sind explizit "dunkle" Werte, die oft als
- *     `dark:bg-gray-800` etc. verwendet werden â€” sollen unverÃ¤ndert bleiben.
+ *     `dark:bg-gray-800` etc. verwendet werden — sollen unverändert bleiben.
  *
- * Card-/Panel-HintergrÃ¼nde sollen NICHT `bg-white` benutzen, sondern die
- * `.card`-Component-Klasse (oder direkt `bg-surface` Ã¼ber den utilities-Block
- * unten). bg-white bleibt fÃ¼r genuine white surfaces.
+ * Card-/Panel-Hintergründe sollen NICHT `bg-white` benutzen, sondern die
+ * `.card`-Component-Klasse (oder direkt `bg-surface` über den utilities-Block
+ * unten). bg-white bleibt für genuine white surfaces.
  */
 @theme {
-  /* gray-50/100 â†’ surface-raised: deckt Tabellen-Header, Hover-States und
+  /* gray-50/100 → surface-raised: deckt Tabellen-Header, Hover-States und
    * Page-BGs ab. Heller als Card, im Dark gut sichtbar abgesetzt. Im Light
-   * ist der Unterschied zur Tailwind-Default (gray-50: #f9fafb â†’ gray-100:
-   * #f3f4f6) so klein, dass er nicht ins Auge fÃ¤llt. */
+   * ist der Unterschied zur Tailwind-Default (gray-50: #f9fafb → gray-100:
+   * #f3f4f6) so klein, dass er nicht ins Auge fällt. */
   --color-gray-50:  rgb(var(--surface-raised));
   --color-gray-100: rgb(var(--surface-raised));
   --color-gray-200: rgb(var(--border-default));   /* Borders + light dividers */
-  --color-gray-300: rgb(var(--border-strong));    /* stÃ¤rkere Borders */
+  --color-gray-300: rgb(var(--border-strong));    /* stärkere Borders */
   --color-gray-400: rgb(var(--text-disabled));
   --color-gray-500: rgb(var(--text-muted));
   --color-gray-600: rgb(var(--text-secondary));
@@ -207,9 +207,9 @@
 }
 
 /*
- * Semantische Utility-Klassen â€” alternativer Direkt-Zugriff fÃ¼r
+ * Semantische Utility-Klassen — alternativer Direkt-Zugriff für
  * Komponenten, die explizit token-aware geschrieben werden.
- * (Wird parallel zur @theme-Mappings oben gepflegt â€” `bg-surface-raised`
+ * (Wird parallel zur @theme-Mappings oben gepflegt — `bg-surface-raised`
  * ist sprechender als `bg-gray-100`.)
  */
 @layer utilities {
@@ -227,10 +227,10 @@
   .text-muted         { color: rgb(var(--text-muted)); }
   .text-disabled      { color: rgb(var(--text-disabled)); }
 
-  /* divide-color fÃ¼r unsere custom border-tokens. Muss exakt Tailwind v4's
+  /* divide-color für unsere custom border-tokens. Muss exakt Tailwind v4's
    * `.divide-y > :not(:last-child)`-Selektor matchen, sonst greift border-color
-   * nicht und fÃ¤llt auf currentColor zurÃ¼ck (im Dark = text-primary, fast
-   * weiÃŸ â†’ "dicker heller Strich"-Bug). */
+   * nicht und fällt auf currentColor zurück (im Dark = text-primary, fast
+   * weiß → "dicker heller Strich"-Bug). */
   .divide-border-default > :not(:last-child) {
     border-color: rgb(var(--border-default));
   }
@@ -248,9 +248,9 @@
   }
   /*
    * .btn-secondary / .input / .label / .card: Token-Werte werden direkt als
-   * CSS-Properties gesetzt, nicht Ã¼ber @apply auf eigene Utility-Klassen.
+   * CSS-Properties gesetzt, nicht über @apply auf eigene Utility-Klassen.
    * In Tailwind v4 erkennt @apply Custom-Klassen aus @layer utilities nicht
-   * zuverlÃ¤ssig (Cross-Layer-AuflÃ¶sung). Direktes CSS umgeht das.
+   * zuverlässig (Cross-Layer-Auflösung). Direktes CSS umgeht das.
    */
   .btn-secondary {
     @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:pointer-events-none disabled:opacity-50 border;
@@ -495,10 +495,10 @@
 
 /*
  * Brand- und Status-Farben im Darkmode: diese Sets sind im Light absichtlich
- * sehr hell (-50/-100-Stufen) und mÃ¼ssen fÃ¼r den Dark-Mode auf "tinted dark"
+ * sehr hell (-50/-100-Stufen) und müssen für den Dark-Mode auf "tinted dark"
  * umgemappt werden. Im Gegensatz zu den Gray-Werten lassen sie sich nicht
  * sinnvoll als Token darstellen, weil sie semantisch (Status, Brand) belegt
- * sind â€” bewusst hier hartkodiert.
+ * sind — bewusst hier hartkodiert.
  */
 .dark .bg-brand-50      { background-color: rgb(var(--brand-900) / 0.18); }
 .dark .bg-brand-100     { background-color: rgb(var(--brand-700) / 0.30); }
@@ -539,17 +539,17 @@
 .dark .border-amber-200  { border-color: rgb(120 53 15 / 0.50); }
 
 /* =============================================================================
- * UI-Mode "modern" â€” opt-in via .ui-modern am <html> (siehe ui-mode-toggle).
+ * UI-Mode "modern" — opt-in via .ui-modern am <html> (siehe ui-mode-toggle).
  *
  * Bewusst sparsame Schicht: weichere Schatten, sanftes Lift-on-Hover an
  * Cards, leichter Gradient an Primary-Buttons, Backdrop-Blur an Sidebar/
- * Topbar. Greift nur dort, wo es spÃ¼rbar Mehrwert liefert; alle Layouts
- * funktionieren ohne den Modus unverÃ¤ndert.
+ * Topbar. Greift nur dort, wo es spürbar Mehrwert liefert; alle Layouts
+ * funktionieren ohne den Modus unverändert.
  *
  * `prefers-reduced-motion: reduce` schaltet animierte Effekte stumm.
  * `@media (max-resolution: 1dppx) and (max-width: 1280px)` wird NICHT
- * automatisch ausgewertet â€” die Entscheidung Klassik vs. Modern liegt
- * beim Nutzer (RDS-Sitzungen melden meist falsche AuflÃ¶sungen).
+ * automatisch ausgewertet — die Entscheidung Klassik vs. Modern liegt
+ * beim Nutzer (RDS-Sitzungen melden meist falsche Auflösungen).
  * ============================================================================= */
 /* Modern-Mode-Token-Skala — eine Quelle für Radien/Schatten/Ring, damit der
  * Look kohärent ist und sich an EINER Stelle justieren lässt. */
@@ -583,7 +583,7 @@
   background-attachment: fixed;
 }
 .ui-modern.dark body {
-  /* Gradient deutlich gedÃ¤mpft: die Brand-Tints im Dark sollen nur eine
+  /* Gradient deutlich gedämpft: die Brand-Tints im Dark sollen nur eine
    * Ahnung von Farbtemperatur geben, nicht den Page-BG aufhellen. */
   background-image:
     radial-gradient(at 12% 8%, rgb(var(--brand-900) / 0.12) 0px, transparent 45%),
@@ -592,7 +592,7 @@
   background-attachment: fixed;
 }
 
-/* Cards: deutlich grÃ¶ÃŸere Rundung, weiche Multi-Layer-Schatten, Lift-on-Hover */
+/* Cards: deutlich größere Rundung, weiche Multi-Layer-Schatten, Lift-on-Hover */
 .ui-modern .card {
   transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
   border-radius: var(--m-radius-card) !important;
@@ -617,7 +617,7 @@
   box-shadow: var(--m-shadow-card-hover);
 }
 
-/* Primary-Button: krÃ¤ftiger Gradient + Scale-Effekt */
+/* Primary-Button: kräftiger Gradient + Scale-Effekt */
 .ui-modern .btn-primary {
   background-image: linear-gradient(135deg,
     rgb(var(--brand-500)) 0%,
@@ -650,7 +650,7 @@
   border-right-color: rgb(55 65 81 / 0.35) !important;
 }
 
-/* Topbar: ebenfalls als Glas â€” gilt fÃ¼r staff- und portal-Layout (sticky top-0) */
+/* Topbar: ebenfalls als Glas — gilt für staff- und portal-Layout (sticky top-0) */
 .ui-modern main .sticky {
   backdrop-filter: blur(12px) saturate(150%);
   -webkit-backdrop-filter: blur(12px) saturate(150%);
@@ -687,7 +687,7 @@
   transform: translateY(0);
 }
 
-/* Brand-100 TÃ¶nung in Modern dezenter rÃ¼ckwÃ¤rts â€” sonst zu kontrastreich */
+/* Brand-100 Tönung in Modern dezenter rückwärts — sonst zu kontrastreich */
 .ui-modern .bg-brand-100 {
   background-color: rgb(var(--brand-100) / 0.85);
 }
@@ -706,7 +706,7 @@
   }
 }
 
-/* Mobile-Sidebar â€” versteckt auf <md, slide-in via .sidebar-open am body */
+/* Mobile-Sidebar — versteckt auf <md, slide-in via .sidebar-open am body */
 @media (max-width: 767px) {
   aside.app-sidebar {
     position: fixed;

@@ -9,10 +9,10 @@ type ApiPrefix = '/api/staff' | '/api/portal';
 
 /**
  * Steuerbares Vorschau-Modal. Render-Pfad je MIME:
- *  - image/*                          â†’ <img>
- *  - application/pdf                  â†’ <iframe>
- *  - …wordprocessingml/…spreadsheetml â†’ Office-Inline-Viewer
- *  - sonst                            â†’ Download-Fallback
+ *  - image/*                          → <img>
+ *  - application/pdf                  → <iframe>
+ *  - …wordprocessingml/…spreadsheetml → Office-Inline-Viewer
+ *  - sonst                            → Download-Fallback
  */
 export function DocumentPreviewModal({
   documentId,
