@@ -40,10 +40,15 @@ export function DashboardGrid({
   const [editMode, setEditMode] = useState(false);
   const [widgets, setWidgets] = useState<LayoutWidget[]>(initialLayout.widgets);
   const [error, setError] = useState<string | null>(null);
-  // settled=false beim ersten Paint → CSS unterdrückt die Grid-Item-Transition,
-  // sodass die Widgets SOFORT an ihren gespeicherten Positionen erscheinen statt
-  // von links „auszufahren". Nach zwei Frames (Position committet) auf true →
-  // Drag/Resize animieren danach wieder normal.
+  // settled=false beim ersten Paint → der Grid bleibt per Inline-Style
+  // `visibility:hidden` UNSICHTBAR (Layout-Dimensionen bleiben erhalten, die
+  // Breitenmessung stimmt also weiter) und die CSS-Klasse unterdrückt zusätzlich
+  // die Item-Transition. So „fahren" die Widgets nicht von links aus, sondern
+  // erscheinen nach zwei Frames (Position committet) sofort an ihrer Position.
+  // Der Inline-Style ist timing-unabhängig von der CSS-Injektion (in Turbopack-
+  // Dev wird CSS per JS injiziert → bei Hard-Reload kann RGLs eigenes
+  // `transition`-CSS sonst einen Frame vor der Suppression-Klasse ankommen).
+  // Danach auf true → Drag/Resize animieren wieder normal.
   const [settled, setSettled] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { width, containerRef, mounted } = useContainerWidth();
@@ -160,6 +165,7 @@ export function DashboardGrid({
         className={
           (editMode ? 'dashboard-edit relative' : 'relative') + (settled ? '' : ' dashboard-grid-initial')
         }
+        style={settled ? undefined : { visibility: 'hidden' }}
       >
         {mounted && (
           <GridLayout
