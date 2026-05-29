@@ -1,10 +1,13 @@
 // =============================================================================
 // GET /api/staff/documents/[id]/preview-url
 //
-// Liefert eine kurzlebige presigned-GET-URL (5 min) für die Inline-Anzeige
-// im Browser. Im Gegensatz zu `/download` setzt diese URL kein
-// Content-Disposition: attachment, sondern inline (so dass der Browser den
-// PDF-Viewer benutzt).
+// Liefert die Bytes für die Inline-Anzeige im Browser — app-proxied, NICHT
+// presigned-direct (Variante B: der Object-Store ist nie ein eigener Browser-
+// Origin). Zwei Modi:
+//   - ?stream=1 → Bytes werden durch die App gestreamt (iframe/PDF-Viewer-src)
+//   - sonst     → JSON-Metadata; `url` zeigt auf diese Route mit ?stream=1
+// Im Gegensatz zu `/download` setzt der Stream Content-Disposition: inline
+// (PDF-Viewer statt Download) — aber nur für MIME-Typen der Inline-Whitelist.
 // =============================================================================
 
 import { NextResponse, type NextRequest } from 'next/server';
