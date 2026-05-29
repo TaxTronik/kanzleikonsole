@@ -551,7 +551,30 @@
  * automatisch ausgewertet â€” die Entscheidung Klassik vs. Modern liegt
  * beim Nutzer (RDS-Sitzungen melden meist falsche AuflÃ¶sungen).
  * ============================================================================= */
-/* Hintergrund-Verlauf am Body â€” der erste deutliche Unterschied */
+/* Modern-Mode-Token-Skala — eine Quelle für Radien/Schatten/Ring, damit der
+ * Look kohärent ist und sich an EINER Stelle justieren lässt. */
+.ui-modern {
+  --m-radius-input: 0.625rem;
+  --m-radius-btn: 0.625rem;
+  --m-radius-card: 1rem;
+  --m-shadow-card:
+    0 1px 2px rgb(15 23 42 / 0.04),
+    0 4px 12px rgb(15 23 42 / 0.06);
+  --m-shadow-card-hover:
+    0 2px 6px rgb(15 23 42 / 0.07),
+    0 12px 28px rgb(15 23 42 / 0.12);
+  --m-ring: 0 0 0 4px rgb(var(--brand-500) / 0.16);
+}
+.ui-modern.dark {
+  --m-shadow-card:
+    0 1px 2px rgb(0 0 0 / 0.40),
+    0 4px 12px rgb(0 0 0 / 0.30);
+  --m-shadow-card-hover:
+    0 2px 6px rgb(0 0 0 / 0.45),
+    0 12px 28px rgb(0 0 0 / 0.42);
+}
+
+/* Hintergrund-Verlauf am Body — der erste deutliche Unterschied */
 .ui-modern body {
   background-image:
     radial-gradient(at 12% 8%, rgb(var(--brand-100) / 0.55) 0px, transparent 50%),
@@ -572,34 +595,26 @@
 /* Cards: deutlich grÃ¶ÃŸere Rundung, weiche Multi-Layer-Schatten, Lift-on-Hover */
 .ui-modern .card {
   transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
-  border-radius: 1rem !important;
+  border-radius: var(--m-radius-card) !important;
   border-color: rgb(203 213 225 / 0.85) !important;
   background-color: rgb(255 255 255 / 0.95) !important;
   backdrop-filter: blur(12px) saturate(140%);
   -webkit-backdrop-filter: blur(12px) saturate(140%);
-  box-shadow:
-    0 1px 2px rgb(15 23 42 / 0.05),
-    0 3px 8px rgb(15 23 42 / 0.06);
+  box-shadow: var(--m-shadow-card);
 }
 .ui-modern .card:hover {
   transform: translateY(-2px);
   border-color: rgb(148 163 184 / 0.95) !important;
-  box-shadow:
-    0 2px 4px rgb(15 23 42 / 0.08),
-    0 6px 14px rgb(15 23 42 / 0.10);
+  box-shadow: var(--m-shadow-card-hover);
 }
 .ui-modern.dark .card {
   background-color: rgb(17 24 39 / 0.85) !important;
   border-color: rgb(75 85 99 / 0.75) !important;
-  box-shadow:
-    0 1px 2px rgb(0 0 0 / 0.40),
-    0 3px 8px rgb(0 0 0 / 0.30);
+  box-shadow: var(--m-shadow-card);
 }
 .ui-modern.dark .card:hover {
   border-color: rgb(107 114 128 / 0.95) !important;
-  box-shadow:
-    0 2px 4px rgb(0 0 0 / 0.45),
-    0 6px 14px rgb(0 0 0 / 0.40);
+  box-shadow: var(--m-shadow-card-hover);
 }
 
 /* Primary-Button: krÃ¤ftiger Gradient + Scale-Effekt */
@@ -648,10 +663,28 @@
 /* Inputs: weicher Focus-Ring */
 .ui-modern .input {
   transition: box-shadow 0.15s ease, border-color 0.15s ease;
-  border-radius: 0.625rem;
+  border-radius: var(--m-radius-input);
 }
 .ui-modern .input:focus {
-  box-shadow: 0 0 0 4px rgb(var(--brand-500) / 0.18);
+  box-shadow: var(--m-ring);
+}
+
+/* Buttons: konsistente Rundung; Secondary bekommt denselben sanften Lift wie
+ * Primary (vorher nur Primary animiert → wirkte inkonsistent). */
+.ui-modern .btn,
+.ui-modern .btn-primary,
+.ui-modern .btn-secondary {
+  border-radius: var(--m-radius-btn);
+}
+.ui-modern .btn-secondary {
+  transition: transform 0.15s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.ui-modern .btn-secondary:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--m-shadow-card);
+}
+.ui-modern .btn-secondary:active {
+  transform: translateY(0);
 }
 
 /* Brand-100 TÃ¶nung in Modern dezenter rÃ¼ckwÃ¤rts â€” sonst zu kontrastreich */
@@ -662,11 +695,13 @@
 @media (prefers-reduced-motion: reduce) {
   .ui-modern .card,
   .ui-modern .btn-primary,
+  .ui-modern .btn-secondary,
   .ui-modern .input {
     transition: none;
   }
   .ui-modern .card:hover,
-  .ui-modern .btn-primary:hover {
+  .ui-modern .btn-primary:hover,
+  .ui-modern .btn-secondary:hover {
     transform: none;
   }
 }
