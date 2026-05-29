@@ -17,6 +17,7 @@ import { taxNewsFetchWorker } from './jobs/tax-news-fetch';
 import { remindersDailyWorker } from './jobs/reminders-daily';
 import { n8nDeliverWorker, n8nOutboxReconcileWorker } from './jobs/n8n-deliver';
 import { magicLinkCleanupWorker } from './jobs/magic-link-cleanup';
+import { dsgvoRetentionWorker } from './jobs/dsgvo-retention';
 import { setupSchedules } from './scheduler';
 import { connection } from './queues';
 import { log } from './logger';
@@ -65,6 +66,7 @@ async function main() {
         'n8n-deliver',
         'n8n-outbox-reconcile',
         'magic-link-cleanup',
+        'dsgvo-retention',
       ],
     },
     'worker: ready',
@@ -88,6 +90,7 @@ async function shutdown(reason: string) {
       n8nDeliverWorker.close(),
       n8nOutboxReconcileWorker.close(),
       magicLinkCleanupWorker.close(),
+      dsgvoRetentionWorker.close(),
     ]);
     await connection.quit();
     log.info('worker: shutdown complete');

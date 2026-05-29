@@ -22,6 +22,7 @@ import {
   remindersDailyQueue,
   n8nOutboxReconcileQueue,
   magicLinkCleanupQueue,
+  dsgvoRetentionQueue,
 } from './queues';
 import { log } from './logger';
 
@@ -83,6 +84,13 @@ export async function setupSchedules(): Promise<void> {
     { pattern: '30 3 * * *' },
     { name: 'magic-link-cleanup', data: {} },
   );
+  // DSGVO-Retention täglich 04:00 UTC — löscht Notifications (>1J), Phone-Notes
+  // (>3J) und nullt client_contact.lastLoginAt (>2J). Siehe dsgvo-konzept.md 2.2.
+  await dsgvoRetentionQueue.upsertJobScheduler(
+    'daily-dsgvo-retention',
+    { pattern: '0 4 * * *' },
+    { name: 'dsgvo-retention', data: {} },
+  );
 
   log.info(
     {
@@ -97,6 +105,7 @@ export async function setupSchedules(): Promise<void> {
         'reminders-daily @ 06:45 UTC daily',
         'n8n-outbox-reconcile @ every 5 min',
         'magic-link-cleanup @ 03:30 UTC daily',
+        'dsgvo-retention @ 04:00 UTC daily',
       ],
     },
     'scheduler: registered',

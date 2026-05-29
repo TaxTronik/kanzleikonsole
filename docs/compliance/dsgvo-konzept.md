@@ -125,15 +125,25 @@ erforderlich, falls Bestandsdaten existieren).
 
 | Datenklasse | Max. Aufbewahrung | Trigger |
 |---|---|---|
-| `client_contact.lastLoginAt` | 2 Jahre nach letztem Login | Worker (TODO) |
+| `client_contact.lastLoginAt` | 2 Jahre nach letztem Login | Worker `dsgvo-retention` (täglich 04:00 UTC) — Feld wird genullt |
 | Inactive `staff_user` (deaktiviert) | 6 Jahre nach Deaktivierung | manuell durch Admin |
-| `phone_note` | 3 Jahre | Worker (TODO) |
+| `phone_note` | 3 Jahre | Worker `dsgvo-retention` (täglich 04:00 UTC) |
 | Anforderungen + Antworten ohne GoBD-Bezug | 6 Jahre | Worker (TODO) |
-| Notifications | 1 Jahr nach Erstellung | Worker (TODO) |
+| Notifications | 1 Jahr nach Erstellung | Worker `dsgvo-retention` (täglich 04:00 UTC) |
 | `magic_link` (verbrauchte oder abgelaufene) | 30 Tage | direkt nach Verbrauch |
 
-> Stand 2026-05-11: Die mit „TODO" markierten Worker sind noch nicht
-> implementiert. Manuelle Löschung über DSGVO-Anfrage funktioniert.
+> Stand 2026-05-29: Der Worker `dsgvo-retention`
+> ([apps/worker/src/jobs/dsgvo-retention.ts](../../apps/worker/src/jobs/dsgvo-retention.ts))
+> setzt Notifications-, Phone-Note- und lastLoginAt-Retention automatisch durch.
+>
+> Offen: **Anforderungen/Antworten (6 Jahre)** werden noch NICHT automatisch
+> gelöscht. Blocker: (a) die Abgrenzung „ohne GoBD-Bezug" muss fachlich
+> festgelegt werden (Vorschlag: ein Request gilt als GoBD-bezogen, sobald eine
+> Antwort ein Dokument mit `documentType.tier = GOBD` bzw. `classification`
+> `GOBD_*` referenziert → 10 statt 6 Jahre); (b) `tax_deadline.request_id` und
+> `form_submission.request_id` sind lose Referenzen ohne Cascade — sie müssten
+> beim Löschen genullt werden, um keine verwaisten Verweise zu hinterlassen.
+> Bis dahin: manuelle Löschung über DSGVO-Anfrage.
 
 ---
 
