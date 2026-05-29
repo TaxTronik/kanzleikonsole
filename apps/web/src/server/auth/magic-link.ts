@@ -14,6 +14,8 @@ import { createHash, randomBytes, randomInt } from 'node:crypto';
 import { sendTemplateMail } from '@/server/mail/dispatch';
 import { env, portalBaseUrl } from '@taxtronik/config';
 import { prismaOwner } from '@/server/db/prisma-owner';
+import { withTenantContext } from '@taxtronik/db';
+import { notify } from '@/server/notifications/service';
 import { log } from '@/server/logger';
 import { checkRateLimit } from '@/server/rate-limit';
 
@@ -116,7 +118,7 @@ export async function requestMagicLink(input: {
   // simultaner SMTP-Störung könnte daraus den Account-Existenz-Status ableiten.
   // Jetzt: SMTP-Fehler immer schlucken + strukturiert loggen. Token bleibt
   // in der DB, der User bekommt halt keinen Link — Resend-Pfad ist gangbar.
-  // Operations sieht den Fehler im Log + Notification (siehe TODO).
+  // Operations sieht den Fehler im Log UND als In-App-Notification (unten).
   try {
     await sendTemplateMail({
       tenantId: contact.tenantId,
@@ -140,6 +142,31 @@ export async function requestMagicLink(input: {
       { err: (e as Error).message, email: contact.email },
       'magic-link: SMTP-Versand fehlgeschlagen — Token bleibt gültig, Resend möglich',
     );
+    // In-App-Notification an die Kanzlei: der Kontakt hat seinen Login-Link
+    // NICHT erhalten — Staff kann nachfassen / erneut senden. Best-effort in
+    // eigenem try/catch: ein Notification-Fehler darf weder den Flow brechen
+    // noch die Anti-Enumeration-Garantie (immer ok:true) verletzen.
+    // Idempotent pro Kontakt (resourceId) — wiederholte Fehler spammen nicht.
+    try {
+      await withTenantContext(
+        { tenantId: contact.tenantId, actorId: null, actorType: 'SYSTEM' },
+        (tx) =>
+          notify(tx, {
+            tenantId: contact.tenantId,
+            staffId: null,
+            kind: 'SYSTEM_MAIL_FAILED',
+            title: 'Login-Link konnte nicht versendet werden',
+            body: `Der Magic-Link an ${contact.email} wurde nicht zugestellt (SMTP-Fehler). Bitte Mailserver prüfen oder den Link erneut senden.`,
+            resourceType: 'client_contact',
+            resourceId: contact.id,
+          }),
+      );
+    } catch (notifyErr) {
+      log.error(
+        { err: (notifyErr as Error).message, email: contact.email },
+        'magic-link: Notification über SMTP-Fehler konnte nicht angelegt werden',
+      );
+    }
   }
 
   return { ok: true };

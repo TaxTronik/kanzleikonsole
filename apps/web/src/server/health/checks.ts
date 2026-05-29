@@ -12,7 +12,7 @@ import { env } from '@taxtronik/config';
 import { S3Client, ListBucketsCommand } from '@aws-sdk/client-s3';
 import { Rfc3161HttpAdapter, resolveTsaUrl } from '@taxtronik/evidence';
 import { randomBytes } from 'node:crypto';
-import { assertPublicHost, safeFetch } from '@/server/http/ssrf-guard';
+import { safeFetch } from '@/server/http/ssrf-guard';
 
 export interface ServiceStatus {
   ok: boolean;
@@ -197,13 +197,11 @@ export async function checkTsaForTenant(tenantId: string): Promise<TsaCheck> {
 async function roundtripTsa(url: string, source: 'tenant' | 'env'): Promise<TsaCheck> {
   const start = Date.now();
   try {
-    // S1: SSRF-Re-Check vor dem Roundtrip — DB-konfigurierte URL.
-    // R1-TODO: Rfc3161HttpAdapter macht intern noch eigenes fetch — der
-    // DNS-Lookup hier und im Adapter sind zwei separate Auflösungen
-    // (TOCTOU bleibt klein, aber nicht null). Fix erfordert, dass der
-    // Adapter eine custom-fetch-Function akzeptiert. Niedriges Risiko
-    // (Admin-only URL, eigene TSA-Endpoints), für spätere Iteration.
-    await assertPublicHost(url);
+    // SSRF: kein separater Pre-Check mehr nötig — Rfc3161HttpAdapter geht über
+    // safeFetch, das die (DB-konfigurierte) TSA-URL genau EINMAL auflöst, jede
+    // IP gegen die Block-Listen prüft und die Connection auf die geprüfte
+    // Adresse pinnt. Ein vorgelagertes assertPublicHost hätte nur einen zweiten,
+    // unabhängigen DNS-Lookup erzeugt (TOCTOU-Fenster) ohne Schutzgewinn.
     const adapter = new Rfc3161HttpAdapter(url, 5_000);
     await adapter.timestamp(randomBytes(32));
     return { ok: true, latencyMs: Date.now() - start, url, source };
