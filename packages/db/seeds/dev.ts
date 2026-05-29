@@ -224,7 +224,8 @@ async function main() {
   }
 
   console.log('\n[seed] Fertig.');
-  console.log('  Mitarbeiter-Login: admin@taxtronik.local / dev-password-123');
+  console.log(`  Mitarbeiter-Login: admin@taxtronik.local / ${adminPassword}`);
+  console.log('  (Passwort auch in packages/db/.admin-credentials.txt)');
   console.log('  Portal-Login (Magic-Link): mandant@taxtronik.local');
   console.log('  → Magic-Link-Mail landet in MailHog (http://localhost:8025).');
 }
