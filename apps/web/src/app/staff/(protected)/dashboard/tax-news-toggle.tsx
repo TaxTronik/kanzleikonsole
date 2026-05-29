@@ -44,7 +44,7 @@ export function TaxNewsToggle({
       }
       const errs = r.errors ?? [];
       if (errs.length > 0 && (r.inserted ?? 0) === 0) {
-        setError(errs.join(' Â· '));
+        setError(errs.join(' · '));
       } else {
         setInfo(
           `${r.inserted ?? 0}/${r.fetched ?? 0} neu${
@@ -86,7 +86,7 @@ export function TaxNewsToggle({
         className={
           'inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-colors ' +
           (on
-            ? 'bg-brand-100 text-brand-700 hover:bg-brand-200 dark:bg-brand-900/40 dark:text-brand-100'
+            ? 'bg-brand-100 text-brand-900 hover:bg-brand-200 dark:bg-brand-700 dark:text-brand-50 dark:hover:bg-brand-600'
             : 'bg-gray-100 text-muted hover:bg-gray-200')
         }
         title={
