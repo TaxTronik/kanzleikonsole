@@ -7,6 +7,7 @@ import { OffsetPagination } from '@/components/offset-pagination';
 import type { Prisma } from '@prisma/client';
 import { computeOnboardingStatus, type OnboardingStatus } from '@/server/onboarding/status';
 import { RecentClients } from '@/components/recent-clients';
+import { SavedViews } from '@/components/saved-views';
 
 const PAGE_SIZE = 50;
 
@@ -178,7 +179,8 @@ export default async function ClientsPage({
         </div>
       </div>
 
-      <div className="mb-4">
+      <div className="mb-4 space-y-2">
+        <SavedViews />
         <RecentClients />
       </div>
 

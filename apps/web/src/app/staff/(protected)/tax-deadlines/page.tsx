@@ -14,6 +14,7 @@
 import { redirect } from 'next/navigation';
 import { parseMonth, shortKind } from '@/lib/tax-calendar';
 import Link from 'next/link';
+import { SavedViews } from '@/components/saved-views';
 import { CalendarDays, AlertTriangle, ListChecks, ChevronLeft, ChevronRight } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
@@ -376,6 +377,9 @@ function PageHeader({
           </Link>
         )}
       </form>
+      <div className="mt-3">
+        <SavedViews />
+      </div>
     </div>
   );
 }

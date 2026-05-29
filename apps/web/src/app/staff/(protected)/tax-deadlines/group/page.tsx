@@ -8,12 +8,12 @@
 
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, CalendarDays } from 'lucide-react';
+import { ArrowLeft, CalendarDays, CheckCheck } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import type { Prisma, TaxScheduleKind } from '@prisma/client';
 import { SCHEDULE_LABELS } from '@taxtronik/tax';
-import { markDeadlineDoneAction } from '../actions';
+import { markDeadlineDoneAction, markDeadlinesDoneAction } from '../actions';
 import { fmtDateShort } from '@/lib/fmt';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -146,10 +146,20 @@ export default async function TaxDeadlineGroupPage({
         </form>
       </div>
 
-      {groups['OVERDUE']!.length > 0 && (
-        <Section title="Überfällig" rows={groups['OVERDUE']!} accent="red" />
-      )}
-      <Section title="Offen / In Bearbeitung" rows={groups['OPEN']!} />
+      <form action={markDeadlinesDoneAction}>
+        {groups['OVERDUE']!.length + groups['OPEN']!.length > 0 && (
+          <div className="flex items-center justify-end mb-3">
+            <button type="submit" className="btn-secondary text-xs">
+              <CheckCheck className="h-4 w-4" />
+              Ausgewählte als erledigt markieren
+            </button>
+          </div>
+        )}
+        {groups['OVERDUE']!.length > 0 && (
+          <Section title="Überfällig" rows={groups['OVERDUE']!} accent="red" selectable />
+        )}
+        <Section title="Offen / In Bearbeitung" rows={groups['OPEN']!} selectable />
+      </form>
       {groups['DONE']!.length > 0 && (
         <Section title="Erledigt" rows={groups['DONE']!} accent="emerald" />
       )}
@@ -158,7 +168,7 @@ export default async function TaxDeadlineGroupPage({
 }
 
 function Section({
-  title, rows, accent,
+  title, rows, accent, selectable,
 }: {
   title: string;
   rows: Array<{
@@ -169,6 +179,7 @@ function Section({
     client: { id: string; name: string };
   }>;
   accent?: 'red' | 'emerald';
+  selectable?: boolean;
 }) {
   if (rows.length === 0) {
     return (
@@ -190,6 +201,17 @@ function Section({
           <tbody className="divide-y divide-border-subtle">
             {rows.map((d) => (
               <tr key={d.id} className="hover:bg-gray-50">
+                {selectable && (
+                  <td className="pl-6 py-3 w-8">
+                    <input
+                      type="checkbox"
+                      name="ids"
+                      value={d.id}
+                      aria-label={`${d.client.name} auswählen`}
+                      className="h-4 w-4 rounded border-default text-brand-600 focus:ring-brand-500"
+                    />
+                  </td>
+                )}
                 <td className="px-6 py-3">
                   <Link href={`/staff/clients/${d.client.id}`} className="text-primary font-medium hover:underline">
                     {d.client.name}
@@ -214,7 +236,7 @@ function Section({
                         Anforderung
                       </Link>
                     )}
-                    {d.status !== 'DONE' && d.status !== 'SKIPPED' && (
+                    {!selectable && d.status !== 'DONE' && d.status !== 'SKIPPED' && (
                       <form action={markDeadlineDoneAction} className="inline">
                         <input type="hidden" name="id" value={d.id} />
                         <button type="submit" className="text-xs text-muted hover:text-emerald-700">
