@@ -1,11 +1,11 @@
-﻿'use client';
+'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Loader2, Users, Inbox, FileText, BookOpen, Receipt } from 'lucide-react';
+import { Search, Loader2, Users, Inbox, FileText, BookOpen, Receipt, ArrowRight } from 'lucide-react';
 
 interface SearchResult {
-  type: 'client' | 'request' | 'document' | 'kb_article' | 'invoice';
+  type: 'client' | 'request' | 'document' | 'kb_article' | 'invoice' | 'nav';
   id: string;
   title: string;
   subtitle?: string;
@@ -18,9 +18,10 @@ const ICON: Record<SearchResult['type'], React.ComponentType<{ className?: strin
   document: FileText,
   kb_article: BookOpen,
   invoice: Receipt,
+  nav: ArrowRight,
 };
 
-export function GlobalSearch() {
+export function GlobalSearch({ navItems = [] }: { navItems?: { label: string; href: string }[] }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -30,7 +31,22 @@ export function GlobalSearch() {
   const [loading, setLoading] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
 
-  // Cmd-K / Ctrl-K â†’ Focus
+  // Nav-Kommandos (Sprung zu Seiten) — rein clientseitig aus der gefilterten
+  // Navigation des Layouts. Schon ab 1 Zeichen, damit „re“ → Rechnungen sofort
+  // trifft, während die Volltext-Suche (API) erst ab 2 Zeichen feuert.
+  const navMatches = useMemo<SearchResult[]>(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    return navItems
+      .filter((n) => n.label.toLowerCase().includes(q))
+      .slice(0, 6)
+      .map((n) => ({ type: 'nav' as const, id: `nav:${n.href}`, title: n.label, subtitle: 'Seite öffnen', href: n.href }));
+  }, [query, navItems]);
+
+  // Gemeinsame Trefferliste: Nav-Kommandos zuerst, dann Datensätze.
+  const items = useMemo(() => [...navMatches, ...results], [navMatches, results]);
+
+  // Cmd+K / Ctrl+K → Fokus
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -46,7 +62,7 @@ export function GlobalSearch() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Click-outside â†’ schließen
+  // Click-outside → schließen
   useEffect(() => {
     function onClick(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
@@ -57,7 +73,7 @@ export function GlobalSearch() {
     return () => window.removeEventListener('mousedown', onClick);
   }, []);
 
-  // Debounced search
+  // Debounced search (API erst ab 2 Zeichen)
   useEffect(() => {
     const q = query.trim();
     if (q.length < 2) {
@@ -75,10 +91,7 @@ export function GlobalSearch() {
           return;
         }
         const data = (await res.json()) as { results: SearchResult[] };
-        if (!cancelled) {
-          setResults(data.results);
-          setActiveIdx(0);
-        }
+        if (!cancelled) setResults(data.results);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -89,15 +102,20 @@ export function GlobalSearch() {
     };
   }, [query]);
 
+  // activeIdx zurücksetzen, wenn sich die Trefferliste ändert
+  useEffect(() => {
+    setActiveIdx(0);
+  }, [items.length]);
+
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setActiveIdx((i) => Math.min(i + 1, results.length - 1));
+      setActiveIdx((i) => Math.min(i + 1, items.length - 1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       setActiveIdx((i) => Math.max(i - 1, 0));
     } else if (e.key === 'Enter') {
-      const r = results[activeIdx];
+      const r = items[activeIdx];
       if (r) {
         e.preventDefault();
         navigate(r);
@@ -111,6 +129,8 @@ export function GlobalSearch() {
     setResults([]);
     router.push(r.href);
   }
+
+  const showPanel = open && query.trim().length >= 1;
 
   return (
     <div ref={containerRef} className="relative w-full max-w-md">
@@ -130,21 +150,21 @@ export function GlobalSearch() {
           }}
           onFocus={() => setOpen(true)}
           onKeyDown={handleKeyDown}
-          placeholder="Mandanten, Anforderungen, Wissen…  (Strg+K)"
+          placeholder="Mandanten, Anforderungen, Seiten…  (Strg+K)"
           className="w-full pl-9 pr-12 py-2 text-sm border border-default rounded-md bg-gray-50 focus:bg-surface focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
         />
         <kbd className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-disabled bg-surface border border-default rounded px-1.5 py-0.5 hidden md:block">
-          âŒ˜K
+          ⌘K
         </kbd>
       </div>
 
-      {open && query.trim().length >= 2 && (
+      {showPanel && (
         <div className="absolute left-0 right-0 mt-1 bg-surface border border-default rounded-md shadow-lg max-h-96 overflow-y-auto z-50">
-          {results.length === 0 && !loading ? (
+          {items.length === 0 && !loading ? (
             <p className="px-4 py-3 text-sm text-disabled text-center">Keine Treffer.</p>
           ) : (
             <ul>
-              {results.map((r, i) => {
+              {items.map((r, i) => {
                 const Icon = ICON[r.type];
                 return (
                   <li key={`${r.type}-${r.id}`}>
@@ -161,9 +181,7 @@ export function GlobalSearch() {
                       <Icon className="h-4 w-4 text-muted shrink-0" />
                       <div className="min-w-0 flex-1">
                         <p className="item-title">{r.title}</p>
-                        {r.subtitle && (
-                          <p className="text-xs text-muted truncate">{r.subtitle}</p>
-                        )}
+                        {r.subtitle && <p className="text-xs text-muted truncate">{r.subtitle}</p>}
                       </div>
                     </button>
                   </li>

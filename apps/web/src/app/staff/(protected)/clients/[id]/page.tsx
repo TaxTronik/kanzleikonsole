@@ -17,6 +17,7 @@ import { BindersBlock } from './binders/binders-block';
 import { HandoversBlock } from './handovers/handovers-block';
 import { PhoneNotesList } from './phone-notes-list';
 import { fmtDateShort, fmtDateTimeShort, fmtEUR, fmtTimeShort } from '@/lib/fmt';
+import { RecordClientVisit } from '@/components/recent-clients';
 
 const kindLabels: Record<string, string> = {
   NATPERS: 'Natürliche Person',
@@ -238,6 +239,7 @@ export default async function ClientDetailPage({
 
   return (
     <div className="p-8">
+      <RecordClientVisit id={client.id} name={client.name} />
       <div className="flex items-start gap-4 mb-8">
         <Link href="/staff/clients" className="text-disabled hover:text-secondary mt-1">
           <ArrowLeft className="h-5 w-5" />

@@ -161,7 +161,12 @@ export default async function StaffLayout({ children }: { children: React.ReactN
         <div className="h-14 bg-white dark:bg-gray-900 border-b border-default px-4 md:px-6 flex items-center gap-3 justify-between sticky top-0 z-20">
           <div className="flex items-center gap-3 flex-1 min-w-0">
             <MobileSidebarToggle />
-            <GlobalSearch />
+            <GlobalSearch
+              navItems={[...navItems, ...(isAdmin ? adminNavItems : [])].map((it) => ({
+                label: it.label,
+                href: it.href,
+              }))}
+            />
           </div>
           <div className="flex items-center gap-1">
             <UiModeToggle />

@@ -46,10 +46,11 @@ export async function GET(req: NextRequest) {
             OR: [
               { name: { contains: q, mode: 'insensitive' } },
               { datevNo: { contains: q, mode: 'insensitive' } },
+              { addisonNo: { contains: q, mode: 'insensitive' } },
               { vatId: { contains: q, mode: 'insensitive' } },
             ],
           },
-          select: { id: true, name: true, datevNo: true },
+          select: { id: true, name: true, datevNo: true, addisonNo: true },
           take: 5,
           orderBy: { name: 'asc' },
         }),
@@ -105,11 +106,15 @@ export async function GET(req: NextRequest) {
 
       const out: SearchResult[] = [];
       for (const c of clients) {
+        const idParts = [
+          c.datevNo ? `DATEV ${c.datevNo}` : null,
+          c.addisonNo ? `Addison ${c.addisonNo}` : null,
+        ].filter(Boolean);
         out.push({
           type: 'client',
           id: c.id,
           title: c.name,
-          subtitle: c.datevNo ? `DATEV ${c.datevNo}` : 'Mandant',
+          subtitle: idParts.length > 0 ? idParts.join(' · ') : 'Mandant',
           href: `/staff/clients/${c.id}`,
         });
       }
