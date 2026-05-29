@@ -25,7 +25,10 @@ const SCAN_DIRS = ['apps', 'packages'];
 const SKIP_DIRS = new Set([
   'node_modules', '.next', '.turbo', 'dist', 'build', 'out', 'coverage', '.git',
 ]);
-const NEEDLE = 'new PrismaClient';
+// Toleriert beliebigen Whitespace (`new  PrismaClient`, Zeilenumbruch) zwischen
+// `new` und `PrismaClient`, damit ungewöhnliche Formatierung den Guard nicht
+// aushebelt.
+const NEEDLE = /\bnew\s+PrismaClient\b/;
 // Dieser Guard erwähnt NEEDLE in Kommentaren/Meldungen, instanziiert aber
 // keinen Client — sich selbst nicht als Treffer werten.
 const SELF = 'apps/web/src/app/__tests__/prisma-client-guard.test.ts';
@@ -75,7 +78,7 @@ describe('PrismaClient-Guard — keine ungeprüften DB-Clients', () => {
     const offenders: string[] = [];
     for (const file of files) {
       const content = readFileSync(file, 'utf-8');
-      if (!content.includes(NEEDLE)) continue;
+      if (!NEEDLE.test(content)) continue;
       const rel = relative(REPO_ROOT, file).split(sep).join('/');
       if (rel === SELF) continue;
       if (!ALLOWED_PRISMA_CLIENT_FILES.has(rel)) offenders.push(rel);
@@ -95,7 +98,7 @@ describe('PrismaClient-Guard — keine ungeprüften DB-Clients', () => {
     for (const rel of ALLOWED_PRISMA_CLIENT_FILES) {
       try {
         const content = readFileSync(resolve(REPO_ROOT, rel), 'utf-8');
-        if (!content.includes(NEEDLE)) stale.push(rel);
+        if (!NEEDLE.test(content)) stale.push(rel);
       } catch {
         stale.push(rel);
       }
