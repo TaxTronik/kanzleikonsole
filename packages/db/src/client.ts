@@ -12,20 +12,36 @@ declare global {
   var __taxtronikPrisma: PrismaClient | undefined;
 }
 
-function buildClient(): PrismaClient {
-  // Fail-closed RLS-Backstop: In Produktion MUSS die App über DATABASE_APP_URL
-  // (eingeschränkte Role, RLS greift) verbinden. Der Owner `taxtronik` hat
-  // BYPASSRLS — ein stiller Fallback auf DATABASE_URL würde die komplette
-  // Mandantentrennung aushebeln (§ 203 StGB). @taxtronik/config validiert das
-  // zwar beim Boot, aber client.ts liest process.env direkt und darf sich
-  // nicht auf die Import-Reihenfolge verlassen. Daher hier nochmal hart.
-  if (process.env['NODE_ENV'] === 'production' && !process.env['DATABASE_APP_URL']) {
+/** Minimaler ENV-Ausschnitt, den die Datasource-Auswahl braucht. */
+export interface AppDatasourceEnv {
+  NODE_ENV?: string | undefined;
+  DATABASE_APP_URL?: string | undefined;
+  DATABASE_URL?: string | undefined;
+}
+
+/**
+ * Wählt die Datasource-URL für den App-Prisma-Client (Request-Pfad).
+ *
+ * Fail-closed RLS-Backstop: In Produktion MUSS die App über DATABASE_APP_URL
+ * (eingeschränkte Role, RLS greift) verbinden. Der Owner `taxtronik` hat
+ * BYPASSRLS — ein stiller Fallback auf DATABASE_URL würde die komplette
+ * Mandantentrennung aushebeln (§ 203 StGB). @taxtronik/config validiert das
+ * zwar beim Boot, aber client.ts liest process.env direkt und darf sich nicht
+ * auf die Import-Reihenfolge verlassen — daher hier nochmal hart und als reine,
+ * testbare Funktion (siehe client-fail-closed.test.ts).
+ */
+export function resolveAppDatasourceUrl(env: AppDatasourceEnv): string | undefined {
+  if (env.NODE_ENV === 'production' && !env.DATABASE_APP_URL) {
     throw new Error(
       '[db] DATABASE_APP_URL ist in Produktion Pflicht. Kein Fallback auf die ' +
         'Owner-Verbindung (BYPASSRLS) — das würde die RLS-Mandantentrennung aushebeln.',
     );
   }
-  const datasourceUrl = process.env['DATABASE_APP_URL'] ?? process.env['DATABASE_URL'];
+  return env.DATABASE_APP_URL ?? env.DATABASE_URL;
+}
+
+function buildClient(): PrismaClient {
+  const datasourceUrl = resolveAppDatasourceUrl(process.env);
 
   return new PrismaClient({
     adapter: createPostgresAdapter(optionalDatabaseUrl(datasourceUrl)),
