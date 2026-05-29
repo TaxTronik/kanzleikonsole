@@ -13,6 +13,9 @@ import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
+import { env } from '@taxtronik/config';
+import { signAuditToken, AUDIT_TOKEN_TTL_DAYS } from '@/server/audit-access/token';
+import { CopyField } from '@/components/copy-field';
 import type { Prisma } from '@prisma/client';
 import { fmtDateTimeSeconds } from '@/lib/fmt';
 
@@ -125,6 +128,21 @@ export default async function AuditLogPage({
           <FileDown className="h-4 w-4" />
           CSV exportieren
         </a>
+      </div>
+
+      {/* Prüfer-Self-Service: zeitlich begrenzter read-only Verifikations-Link */}
+      <div className="card p-4 mb-6">
+        <h2 className="text-sm font-medium text-primary mb-1">Prüfer-Link (read-only)</h2>
+        <p className="text-xs text-muted mb-3">
+          Geben Sie diesen Link an einen Wirtschaftsprüfer weiter — er rechnet die Hash-Chain
+          und die TSA-Versiegelungen nach, OHNE Zugriff auf Mandantendaten. Gültig {AUDIT_TOKEN_TTL_DAYS} Tage.
+        </p>
+        <CopyField
+          value={`${env.NEXTAUTH_URL.replace(/\/$/, '')}/audit-verify/${signAuditToken(
+            tenantId,
+            Date.now() + AUDIT_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000,
+          )}`}
+        />
       </div>
 
       {/* Hash-Chain-Status */}
