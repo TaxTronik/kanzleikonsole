@@ -328,6 +328,33 @@ const staffConfig: NextAuthConfig = {
         return session;
       }
 
+      // Härtung: Die Session MUSS zu einem existierenden, aktiven Staff-User
+      // gehören, dessen Tenant mit dem Token übereinstimmt. Verhindert
+      // „Geister-Sessions" — ein JWT aus einem früheren DB-Stand (z. B. nach
+      // Re-Seed/Reset) trägt eine Tenant-/User-ID, die nicht mehr existiert.
+      // Ohne diese Prüfung würde die App eine solche Session stillschweigend
+      // akzeptieren und überall einen leeren, kaputten Zustand zeigen, statt
+      // zum Login zu zwingen.
+      try {
+        const u = await prismaOwner.staffUser.findUnique({
+          where: { id: token.staffId },
+          select: { active: true, tenantId: true },
+        });
+        if (!u || !u.active || u.tenantId !== token.tenantId) {
+          log.warn(
+            { staffId: token.staffId, tokenTenant: token.tenantId },
+            'staff-auth: Session ohne gültigen User/Tenant — invalidiert (Re-Login erzwungen)',
+          );
+          return session; // keine Staff-Felder → staffAuth liefert null
+        }
+      } catch (err) {
+        // Transienter DB-Fehler darf nicht alle ausloggen — loggen, durchlassen.
+        log.warn(
+          { err: (err as Error).message },
+          'staff-auth: Session-Existenzprüfung fehlgeschlagen — durchgelassen',
+        );
+      }
+
       session.user.staffId = token.staffId;
       session.user.tenantId = token.tenantId;
       session.user.fullName = token.fullName;
