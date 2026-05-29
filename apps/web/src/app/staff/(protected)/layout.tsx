@@ -1,4 +1,5 @@
 ﻿import { redirect } from 'next/navigation';
+import { cookies } from 'next/headers';
 import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { LogOut } from 'lucide-react';
@@ -57,7 +58,14 @@ const allAdminNavItems: AdminNavConfig[] = [
 export default async function StaffLayout({ children }: { children: React.ReactNode }) {
   const session = await staffAuth();
   if (!session?.user) {
-    redirect('/staff/login');
+    // Liegt ein (ungültiges/Geister-)Session-Cookie vor, aber staffAuth lieferte
+    // null? Dann das tote Cookie aktiv löschen (force-logout), statt es bei jedem
+    // Request erneut abzuweisen — sonst kann sich ein Browser darauf verklemmen.
+    // Kein Cookie → direkt zum Login (kein unnötiger Umweg).
+    const hasSessionCookie = (await cookies())
+      .getAll()
+      .some((c) => c.name.startsWith('__taxtronik_staff_session'));
+    redirect(hasSessionCookie ? '/api/staff/force-logout' : '/staff/login');
   }
 
   const isAdmin = isStaffAdmin(session);
