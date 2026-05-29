@@ -190,6 +190,7 @@ const ModulesSchema = z.object({
   handovers: z.boolean(),
   appointments: z.boolean(),
   rssReader: z.boolean(),
+  inboundMail: z.boolean(),
   poaMode: z.enum(['OFF', 'MARKDOWN_OTP', 'PDF_TEMPLATE']),
   poaPdfSubject: z.string().max(200).optional(),
   poaPdfBodyMd: z.string().max(5000).optional(),
@@ -219,6 +220,7 @@ export async function saveModulesAction(
     handovers: formData.get('enabled.handovers') === 'on',
     appointments: formData.get('enabled.appointments') === 'on',
     rssReader: formData.get('enabled.rssReader') === 'on',
+    inboundMail: formData.get('enabled.inboundMail') === 'on',
     poaMode: formData.get('poaMode'),
     poaPdfSubject: formData.get('poaPdfSubject') ?? '',
     poaPdfBodyMd: formData.get('poaPdfBodyMd') ?? '',
@@ -243,6 +245,7 @@ export async function saveModulesAction(
     handovers: parsed.data.handovers,
     appointments: parsed.data.appointments,
     rssReader: parsed.data.rssReader,
+    inboundMail: parsed.data.inboundMail,
     poaMode: parsed.data.poaMode,
     poaPdfTemplate:
       parsed.data.poaMode === 'PDF_TEMPLATE'

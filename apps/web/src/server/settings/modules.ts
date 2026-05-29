@@ -30,6 +30,7 @@ export interface ModuleConfig {
   handovers: boolean;    // Anlieferungen (Mandant → Kanzlei)
   appointments: boolean; // Kanzleikalender-Termine + Portal-Anfragen
   rssReader: boolean;    // RSS-Reader-Widget
+  inboundMail: boolean;  // E-Mail-Antworten von Mandanten → Anforderungs-Antwort (via n8n)
 
   // Vollmachten-Modus
   poaMode: PoaMode;
@@ -62,6 +63,8 @@ export const DEFAULT_MODULES: ModuleConfig = {
   handovers: true,
   appointments: true,
   rssReader: true,
+  // Opt-in: erfordert eine n8n-Inbound-Mail-Strecke + dedizierte Mailbox.
+  inboundMail: false,
   poaMode: 'MARKDOWN_OTP',
   poaPdfTemplate: null,
   // Default: EXTERNAL (PDF-Upload aus zentraler Rechnungssoftware) — der
@@ -118,7 +121,8 @@ export type BooleanModuleKey =
   | 'binders'
   | 'handovers'
   | 'appointments'
-  | 'rssReader';
+  | 'rssReader'
+  | 'inboundMail';
 
 export async function assertModuleEnabled(
   ctx: TenantContext,

@@ -17,6 +17,7 @@ const MODULES: Array<{ key: keyof ModuleConfig; label: string; description: stri
   { key: 'handovers', label: 'Anlieferungen', description: 'Vom Mandanten gebrachte Unterlagen tracken (Eingang → bearbeiten → abholbereit)' },
   { key: 'appointments', label: 'Termine (Kanzleikalender)', description: 'Termine im Kanzleikalender + Mandanten-Anfragen im Portal' },
   { key: 'rssReader', label: 'RSS-Reader', description: 'Dashboard-Widget mit eigenen RSS-Feeds (BMF, BFH, weitere)' },
+  { key: 'inboundMail', label: 'E-Mail-Antworten (Inbound)', description: 'Mandanten-Antworten per E-Mail landen automatisch als Anforderungs-Antwort (erfordert n8n-Inbound-Strecke)' },
 ];
 
 const POA_MODES: Array<{ value: 'OFF' | 'MARKDOWN_OTP' | 'PDF_TEMPLATE'; label: string; description: string }> = [
