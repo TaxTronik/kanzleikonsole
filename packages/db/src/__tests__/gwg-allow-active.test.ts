@@ -112,6 +112,16 @@ describeWithDatabase('GwG-Schranke: allow_active erfordert verifizierten gwg_che
     await expect(activate(id)).resolves.toBeTruthy();
   });
 
+  it('INSERT mit allow_active=true ohne Check: vom INSERT-Trigger blockiert (iter57)', async () => {
+    // Defense-in-Depth: nicht nur der UPDATE-Pfad, auch ein direktes Anlegen
+    // mit allow_active=true muss an der GwG-Schranke scheitern.
+    await expect(
+      owner.client.create({
+        data: { tenantId, kind: 'JURPERS', name: 'Insert aktiv ohne Check', allowActive: true },
+      }),
+    ).rejects.toThrow();
+  });
+
   it('Deaktivierung (allow_active=false) ist immer erlaubt — Trigger feuert nur auf TRUE', async () => {
     const id = await makeClient('Deaktivieren');
     await makeGwgCheck(id, 'VERIFIED', null);

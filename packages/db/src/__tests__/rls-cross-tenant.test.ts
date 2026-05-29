@@ -82,11 +82,14 @@ beforeAll(async () => {
   staffBId = staffB.id;
 
   // Je einen Mandanten pro Tenant
+  // allowActive bewusst false: RLS-Isolation hängt nicht daran, und der
+  // GwG-INSERT-Trigger (iter57) blockt allowActive=true ohne verifizierten
+  // gwg_check. Die Tenant-Trennung wird unabhängig vom Aktivstatus geprüft.
   const clientA = await owner.client.create({
-    data: { tenantId: tenantAId, kind: 'JURPERS', name: 'Mandant von A', allowActive: true },
+    data: { tenantId: tenantAId, kind: 'JURPERS', name: 'Mandant von A', allowActive: false },
   });
   const clientB = await owner.client.create({
-    data: { tenantId: tenantBId, kind: 'JURPERS', name: 'Mandant von B', allowActive: true },
+    data: { tenantId: tenantBId, kind: 'JURPERS', name: 'Mandant von B', allowActive: false },
   });
   clientAId = clientA.id;
   clientBId = clientB.id;

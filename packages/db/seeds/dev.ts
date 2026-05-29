@@ -127,21 +127,44 @@ async function main() {
     create: { staffUserId: admin.id, role: 'ADMIN' },
   });
 
-  // 3. Testmandant (allow_active=true für Entwicklung, damit Dokumente hochladbar)
+  // 3. Testmandant. Aktivierung (allow_active=true) erfordert einen
+  //    verifizierten gwg_check — sowohl der INSERT- als auch der UPDATE-Trigger
+  //    (iter4_gwg + iter57) erzwingen das. Daher: erst inaktiv anlegen, dann
+  //    GwG-Check verifizieren, dann aktivieren — wie der echte Onboarding-Flow.
   const client = await prisma.client.upsert({
     where: {
       tenantId_datevNo: { tenantId: tenant.id, datevNo: '10001' },
     },
-    update: { name: 'Mustermann GmbH', allowActive: true },
+    update: { name: 'Mustermann GmbH' },
     create: {
       tenantId: tenant.id,
       kind: 'JURPERS',
       name: 'Mustermann GmbH',
       datevNo: '10001',
-      allowActive: true,
+      allowActive: false,
     },
   });
-  console.log(`[seed] Testmandant: ${client.name} (${client.id})`);
+
+  // Verifizierten, unbefristeten GwG-Check sicherstellen (idempotent).
+  const existingCheck = await prisma.gwgCheck.findFirst({
+    where: { clientId: client.id, status: 'VERIFIED' },
+  });
+  if (!existingCheck) {
+    await prisma.gwgCheck.create({
+      data: {
+        tenantId: tenant.id,
+        clientId: client.id,
+        status: 'VERIFIED',
+        verifiedAt: new Date(),
+        verifiedBy: admin.id,
+        validUntil: null,
+      },
+    });
+  }
+
+  // Jetzt aktivieren (UPDATE-Trigger ist durch den Check erfüllt).
+  await prisma.client.update({ where: { id: client.id }, data: { allowActive: true } });
+  console.log(`[seed] Testmandant: ${client.name} (${client.id}) — GwG-verifiziert + aktiv`);
 
   // 3b. Admin als Hauptbearbeiter zuordnen — damit „Meine Mandanten"-Filter
   // in Mandantenliste/Anforderungen/Steuerterminen sofort Treffer hat.
