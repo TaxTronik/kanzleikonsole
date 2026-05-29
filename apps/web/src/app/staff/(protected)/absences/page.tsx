@@ -1,10 +1,12 @@
 ﻿import { redirect } from 'next/navigation';
-import { Plane, Thermometer, Check, X } from 'lucide-react';
+import Link from 'next/link';
+import { Plane, Thermometer, Check, X, Inbox, UserCheck } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { VacationForm } from './vacation-form';
 import { SickForm } from './sick-form';
 import { decideVacationAction, cancelVacationAction } from './actions';
+import { loadAbsenceCoverage } from '@/server/absences/coverage';
 import { fmtDateShort } from '@/lib/fmt';
 
 const statusLabels: Record<string, string> = {
@@ -21,10 +23,10 @@ export default async function AbsencesPage() {
   const { tenantId, staffId, roles } = session.user;
   const isAdmin = roles?.includes('ADMIN') || roles?.includes('PARTNER');
 
-  const [myVacations, allPendingVacations, mySick, staff] = await withTenantContext(
+  const { myVacations, allPendingVacations, mySick, staff, coverage } = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) =>
-      Promise.all([
+    async (tx) => {
+      const [myVacations, allPendingVacations, mySick, staff] = await Promise.all([
         tx.vacationRequest.findMany({
           where: { staffId },
           orderBy: { startDate: 'desc' },
@@ -47,7 +49,10 @@ export default async function AbsencesPage() {
           where: { active: true },
           select: { id: true, fullName: true },
         }),
-      ]),
+      ]);
+      const coverage = await loadAbsenceCoverage(tx, staffId);
+      return { myVacations, allPendingVacations, mySick, staff, coverage };
+    },
   );
 
   const staffById = new Map(staff.map((s) => [s.id, s.fullName]));
@@ -65,6 +70,52 @@ export default async function AbsencesPage() {
           Wandkalender
         </a>
       </div>
+
+      {/* Vertretung: heute abwesende Kolleg:innen + deren offene Vorgänge */}
+      {coverage.length > 0 && (
+        <div className="card overflow-hidden mb-6">
+          <div className="px-6 py-4 border-b border-default flex items-center gap-2">
+            <UserCheck className="h-4 w-4 text-brand-600" />
+            <h2 className="text-sm font-medium text-primary">Vertretung — heute abwesend</h2>
+          </div>
+          <ul className="divide-y divide-border-subtle">
+            {coverage.map((c) => (
+              <li key={c.staffId} className="px-6 py-4">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <p className="font-medium text-primary">
+                    {c.fullName}
+                    <span className="ml-2 text-xs font-normal text-muted">
+                      {c.kind === 'vacation' ? 'Urlaub' : 'krank'}
+                      {c.until ? ` bis ${fmtDateShort(c.until)}` : ''}
+                    </span>
+                  </p>
+                  <span className="inline-flex items-center gap-1 text-xs text-muted">
+                    <Inbox className="h-3.5 w-3.5" />
+                    {c.requests.length} offen
+                  </span>
+                </div>
+                {c.requests.length === 0 ? (
+                  <p className="text-xs text-disabled">Keine offenen Anforderungen bei betreuten Mandanten.</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {c.requests.slice(0, 8).map((r) => (
+                      <li key={r.id} className="text-sm flex items-center justify-between gap-3">
+                        <Link href={`/staff/requests/${r.id}`} className="text-secondary hover:text-primary hover:underline truncate">
+                          {r.title} <span className="text-muted">· {r.clientName}</span>
+                        </Link>
+                        {r.dueAt && <span className="text-xs text-muted shrink-0">fällig {fmtDateShort(r.dueAt)}</span>}
+                      </li>
+                    ))}
+                    {c.requests.length > 8 && (
+                      <li className="text-xs text-disabled">+ {c.requests.length - 8} weitere</li>
+                    )}
+                  </ul>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         {/* Urlaub */}
