@@ -24,8 +24,6 @@ const kindLabels: Record<string, string> = {
   PERSGES: 'Personengesellschaft',
 };
 
-const dateFmt = new Intl.DateTimeFormat('de-DE');
-
 function formatCustomValue(type: string, value: unknown): React.ReactNode {
   if (value === null || value === undefined || value === '') {
     return <span className="text-disabled font-normal">—</span>;
@@ -35,7 +33,7 @@ function formatCustomValue(type: string, value: unknown): React.ReactNode {
   if (type === 'NUMBER' && typeof value === 'number') return value.toLocaleString('de-DE');
   if (type === 'DATE' && typeof value === 'string') {
     const d = new Date(value);
-    return Number.isNaN(d.getTime()) ? value : dateFmt.format(d);
+    return Number.isNaN(d.getTime()) ? value : fmtDateShort(d);
   }
   if (type === 'URL' && typeof value === 'string') {
     return (
@@ -445,7 +443,6 @@ export default async function ClientDetailPage({
                 ) : (
                   <ul className="divide-y divide-border-subtle">
                     {rows.map((r) => {
-                      const dateFmt = new Intl.DateTimeFormat('de-DE');
                       if (r.kind === 'tax') {
                         const daysLeft = Math.ceil((r.date.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
                         return (
@@ -459,7 +456,7 @@ export default async function ClientDetailPage({
                             </div>
                             <div className="text-right shrink-0">
                               <p className={r.overdue ? 'text-sm text-red-700 font-medium' : 'text-sm text-primary'}>
-                                {dateFmt.format(r.date)}
+                                {fmtDateShort(r.date)}
                               </p>
                               <p className="text-xs text-muted">
                                 {r.overdue ? `${-daysLeft} Tage überfällig` : `noch ${daysLeft} Tage`}
@@ -526,7 +523,7 @@ export default async function ClientDetailPage({
                                 {overdue && <span className="badge-red text-[10px]">überfällig</span>}
                               </p>
                               <p className="text-[11px] text-muted">
-                                gestartet am {dateFmt.format(inst.startedAt)}
+                                gestartet am {fmtDateShort(inst.startedAt)}
                               </p>
                             </div>
                             <div className="shrink-0 text-right">

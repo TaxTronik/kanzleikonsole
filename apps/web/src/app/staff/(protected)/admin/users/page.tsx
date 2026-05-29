@@ -13,6 +13,7 @@ import { ArrowLeft, UserPlus, ShieldCheck } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
+import { fmtDateNumeric } from '@/lib/fmt';
 import { CreateUserForm } from './create-form';
 import { ToggleActiveForm, SetRolesForm, SetSkillsForm } from './row-forms';
 import { SkillBadge } from '@/components/skill-badge';
@@ -136,7 +137,7 @@ export default async function UsersAdminPage() {
                   </td>
                   <td className="px-6 py-3 text-xs text-muted">
                     {u.lastLoginAt
-                      ? new Intl.DateTimeFormat('de-DE', { dateStyle: 'short' }).format(u.lastLoginAt)
+                      ? fmtDateNumeric(u.lastLoginAt)
                       : '—'}
                   </td>
                   <td className="px-6 py-3">

@@ -27,7 +27,7 @@ import {
 import type { XRechnungInvoice, XRechnungBuyer } from './xrechnung';
 import type { SellerInfo } from '@/server/settings/tenant-settings';
 
-import { fmtDateShort, fmtEUR } from '@/lib/fmt';
+import { fmtDateShort, fmtDecimal, fmtEUR } from '@/lib/fmt';
 // re-export für External Imports
 export type { XRechnungInvoice, XRechnungBuyer };
 
@@ -48,7 +48,7 @@ const FONT_SIZE_TITLE = 16;
 const FONT_SIZE_HEADING = 11;
 
 function fmtNum(n: number): string {
-  return new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 }).format(n);
+  return fmtDecimal(n);
 }
 
 function fmtDate(d: Date): string {

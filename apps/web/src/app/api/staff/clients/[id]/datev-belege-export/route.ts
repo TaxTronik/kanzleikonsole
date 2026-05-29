@@ -20,7 +20,7 @@ import { fetchObjectBytes } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
 import { buildZip, sanitizeZipFileName, ZipTooLargeError, type ZipEntry } from '@/server/export/zip';
 import { escapeCsvCell } from '@/server/export/csv';
-import { fmtDateShort } from '@/lib/fmt';
+import { fmtDateShort, fmtDateTimeLong } from '@/lib/fmt';
 
 const QuerySchema = z.object({
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -198,7 +198,7 @@ export async function GET(
   const manifest = [
     `Mandant: ${client.name}`,
     `DATEV-Nr.: ${client.datevNo ?? '—'}`,
-    `Export erstellt: ${new Intl.DateTimeFormat('de-DE', { dateStyle: 'long', timeStyle: 'medium' }).format(new Date())}`,
+    `Export erstellt: ${fmtDateTimeLong(new Date())}`,
     `Erstellt von: ${session.user.fullName ?? session.user.email}`,
     `Zeitraum: ${parsedQs.data.from ?? '*'} bis ${parsedQs.data.to ?? '*'}`,
     `Anzahl Belege: ${fileEntries.length} (von ${docs.length} insgesamt)`,

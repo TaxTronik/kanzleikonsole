@@ -62,6 +62,21 @@ export function fmtNumber(n: number | null | undefined): string {
   return numberFormatter.format(n);
 }
 
+// Dezimalzahl mit konfigurierbarer Nachkommastellen-Obergrenze. Formatter
+// werden pro Stellenzahl gecacht (selten viele verschiedene Werte).
+const decimalFormatters = new Map<number, Intl.NumberFormat>();
+
+/** Dezimalzahl, deutsche Schreibweise, max. `maxFractionDigits` Nachkommastellen. */
+export function fmtDecimal(n: number | null | undefined, maxFractionDigits = 2): string {
+  if (n === null || n === undefined || !Number.isFinite(n)) return '—';
+  let f = decimalFormatters.get(maxFractionDigits);
+  if (!f) {
+    f = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: maxFractionDigits });
+    decimalFormatters.set(maxFractionDigits, f);
+  }
+  return f.format(n);
+}
+
 const percentFormatter = new Intl.NumberFormat(LOCALE, {
   style: 'percent',
   maximumFractionDigits: 1,
@@ -76,22 +91,31 @@ export function fmtPercent(n: number | null | undefined): string {
 // --- Datum / Zeit --------------------------------------------------------------
 
 const dateShortFormatter = new Intl.DateTimeFormat(LOCALE);
+const dateNumericFormatter = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'short' });
 const dateMediumFormatter = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'medium' });
 const dateLongFormatter = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'long' });
+const dateWeekdayLongFormatter = new Intl.DateTimeFormat(LOCALE, { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
 const timeShortFormatter = new Intl.DateTimeFormat(LOCALE, { hour: '2-digit', minute: '2-digit' });
 const timeMediumFormatter = new Intl.DateTimeFormat(LOCALE, { timeStyle: 'medium' });
 const dateTimeShortFormatter = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'short', timeStyle: 'short' });
 const dateTimeMediumFormatter = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'medium', timeStyle: 'short' });
+const dateTimeLongFormatter = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'long', timeStyle: 'medium' });
 const dateTimeSecondsFormatter = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'short', timeStyle: 'medium' });
 const weekdayShortFormatter = new Intl.DateTimeFormat(LOCALE, { weekday: 'short' });
+const dayFormatter = new Intl.DateTimeFormat(LOCALE, { day: '2-digit' });
+const monthShortFormatter = new Intl.DateTimeFormat(LOCALE, { month: 'short' });
 const monthYearFormatter = new Intl.DateTimeFormat(LOCALE, { month: 'long', year: 'numeric' });
 
-/** `12.05.2026` */
+/** `12.5.2026` (numerisch, ohne Null-Padding) */
 export function fmtDateShort(d: Date): string { return dateShortFormatter.format(d); }
+/** `12.05.26` (numerisch, zweistellig gepaddet, 2-stelliges Jahr) */
+export function fmtDateNumeric(d: Date): string { return dateNumericFormatter.format(d); }
 /** `12. Mai 2026` */
 export function fmtDateMedium(d: Date): string { return dateMediumFormatter.format(d); }
 /** `12. Mai 2026` (Long-Variante, ähnlich Medium im de-DE) */
 export function fmtDateLong(d: Date): string { return dateLongFormatter.format(d); }
+/** `Montag, 12. Mai 2026` */
+export function fmtDateWeekdayLong(d: Date): string { return dateWeekdayLongFormatter.format(d); }
 
 /** `14:35` */
 export function fmtTimeShort(d: Date): string { return timeShortFormatter.format(d); }
@@ -102,11 +126,17 @@ export function fmtTimeMedium(d: Date): string { return timeMediumFormatter.form
 export function fmtDateTimeShort(d: Date): string { return dateTimeShortFormatter.format(d); }
 /** `12. Mai 2026, 14:35` */
 export function fmtDateTimeMedium(d: Date): string { return dateTimeMediumFormatter.format(d); }
+/** `12. Mai 2026 um 14:35:21` */
+export function fmtDateTimeLong(d: Date): string { return dateTimeLongFormatter.format(d); }
 /** `12.05.26, 14:35:21` */
 export function fmtDateTimeSeconds(d: Date): string { return dateTimeSecondsFormatter.format(d); }
 
 /** `Mo`, `Di`, … */
 export function fmtWeekdayShort(d: Date): string { return weekdayShortFormatter.format(d); }
+/** `12` (Tag, zweistellig) */
+export function fmtDay(d: Date): string { return dayFormatter.format(d); }
+/** `Mai` (Monat, Kurzform) */
+export function fmtMonthShort(d: Date): string { return monthShortFormatter.format(d); }
 /** `Mai 2026` */
 export function fmtMonthYear(d: Date): string { return monthYearFormatter.format(d); }
 

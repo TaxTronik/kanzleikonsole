@@ -4,7 +4,7 @@ import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 import { readPortalFeatures } from '@/server/settings/portal-features';
 import { StammdatenForm } from './form';
-import { fmtDateTimeShort } from '@/lib/fmt';
+import { fmtDateNumeric, fmtDateTimeShort } from '@/lib/fmt';
 
 export default async function PortalStammdatenPage() {
   const session = await portalAuth();
@@ -90,9 +90,7 @@ export default async function PortalStammdatenPage() {
                         {statusLabel(r.status)}
                       </span>
                       <span className="text-xs text-disabled">
-                        {new Intl.DateTimeFormat('de-DE', {
-                          dateStyle: 'short',
-                        }).format(r.createdAt)}
+                        {fmtDateNumeric(r.createdAt)}
                       </span>
                     </div>
                     <p className="text-xs text-muted mt-0.5">

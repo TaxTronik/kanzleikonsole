@@ -12,8 +12,7 @@ import Link from 'next/link';
 import { ArrowLeft, Workflow, Clock, AlertTriangle } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
-
-const dayFmt = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1 });
+import { fmtDecimal } from '@/lib/fmt';
 
 export default async function WorkflowStatsPage() {
   const session = await staffAuth();
@@ -146,7 +145,7 @@ export default async function WorkflowStatsPage() {
                   <td className="px-6 py-3 text-right text-secondary">{r.completed}</td>
                   <td className="px-6 py-3 text-right text-secondary">{r.cancelled}</td>
                   <td className="px-6 py-3 text-right text-secondary">
-                    {r.avgDays != null ? `${dayFmt.format(r.avgDays)} Tage` : '—'}
+                    {r.avgDays != null ? `${fmtDecimal(r.avgDays, 1)} Tage` : '—'}
                   </td>
                   <td className="px-6 py-3 text-xs">
                     {r.bottleneck ? (
@@ -154,7 +153,7 @@ export default async function WorkflowStatsPage() {
                         <span className="text-muted">#{r.bottleneck.pos + 1}</span>{' '}
                         <span className="text-primary">{r.bottleneck.title}</span>
                         <span className="text-disabled ml-1">
-                          Ø {dayFmt.format(r.bottleneck.avgDays)} T
+                          Ø {fmtDecimal(r.bottleneck.avgDays, 1)} T
                         </span>
                       </span>
                     ) : (

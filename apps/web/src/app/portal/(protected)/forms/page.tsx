@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { ClipboardList } from 'lucide-react';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
+import { fmtDateNumeric } from '@/lib/fmt';
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: 'Offen',
@@ -14,8 +15,6 @@ const STATUS_LABELS: Record<string, string> = {
   SUBMITTED: 'Übermittelt',
   REVIEWED: 'Geprüft',
 };
-
-const dateFmt = new Intl.DateTimeFormat('de-DE', { dateStyle: 'short' });
 
 export default async function PortalFormsPage() {
   const session = await portalAuth();
@@ -55,7 +54,7 @@ export default async function PortalFormsPage() {
                     {s.name}
                   </Link>
                   <p className="text-xs text-muted">
-                    Versendet {dateFmt.format(s.createdAt)}
+                    Versendet {fmtDateNumeric(s.createdAt)}
                     {s.status === 'DRAFT' && ' · Entwurf gespeichert'}
                   </p>
                 </div>
@@ -87,7 +86,7 @@ export default async function PortalFormsPage() {
                 </Link>
                 <span className="text-xs text-muted">
                   {STATUS_LABELS[s.status]}
-                  {s.submittedAt && ` · ${dateFmt.format(s.submittedAt)}`}
+                  {s.submittedAt && ` · ${fmtDateNumeric(s.submittedAt)}`}
                 </span>
               </li>
             ))}

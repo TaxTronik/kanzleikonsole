@@ -12,10 +12,7 @@ import Link from 'next/link';
 import { Plane } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
-import { fmtDateMedium, fmtWeekdayShort } from '@/lib/fmt';
-
-const dayFmt = new Intl.DateTimeFormat('de-DE', { day: '2-digit' });
-const monthFmt = new Intl.DateTimeFormat('de-DE', { month: 'short' });
+import { fmtDateMedium, fmtDay, fmtMonthShort, fmtWeekdayShort } from '@/lib/fmt';
 
 function startOfDayUTC(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
@@ -157,10 +154,10 @@ export default async function AbsencesCalendarPage({
                   }
                 >
                   <div className="text-[10px] text-disabled leading-none pt-1">
-                    {monthBoundaries[i] ? monthFmt.format(d) : ''}
+                    {monthBoundaries[i] ? fmtMonthShort(d) : ''}
                   </div>
                   <div className="text-[10px] text-muted leading-none">{fmtWeekdayShort(d).slice(0, 2)}</div>
-                  <div className={isWeekend(d) ? 'text-disabled' : 'text-secondary'}>{dayFmt.format(d)}</div>
+                  <div className={isWeekend(d) ? 'text-disabled' : 'text-secondary'}>{fmtDay(d)}</div>
                 </th>
               ))}
             </tr>

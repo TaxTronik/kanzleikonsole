@@ -23,7 +23,7 @@ import {
   ListChecks,
 } from 'lucide-react';
 import { buildClientTimeline, type TimelineEvent } from '@/server/timeline/build';
-import { fmtDateTimeMedium } from '@/lib/fmt';
+import { fmtDateTimeMedium, fmtDateWeekdayLong } from '@/lib/fmt';
 
 const ICON_MAP: Record<TimelineEvent['kind'], { icon: typeof FileText; tone: string }> = {
   document_uploaded:        { icon: FileText,        tone: 'text-blue-600 bg-blue-50' },
@@ -70,12 +70,6 @@ function groupByDay(events: TimelineEvent[]): Map<string, TimelineEvent[]> {
   return groups;
 }
 
-const dayFormatter = new Intl.DateTimeFormat('de-DE', {
-  weekday: 'long',
-  day: '2-digit',
-  month: 'long',
-  year: 'numeric',
-});
 
 export default async function ClientTimelinePage({
   params,
@@ -136,7 +130,7 @@ export default async function ClientTimelinePage({
           {Array.from(grouped.entries()).map(([day, list]) => (
             <section key={day}>
               <h2 className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">
-                {dayFormatter.format(new Date(day + 'T12:00:00.000Z'))}
+                {fmtDateWeekdayLong(new Date(day + 'T12:00:00.000Z'))}
               </h2>
               <ol className="relative border-l border-default ml-4 space-y-4">
                 {list.map((e) => {
