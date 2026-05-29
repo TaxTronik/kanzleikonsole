@@ -23,6 +23,7 @@ import {
   n8nOutboxReconcileQueue,
   magicLinkCleanupQueue,
   dsgvoRetentionQueue,
+  poaExpiryQueue,
 } from './queues';
 import { log } from './logger';
 
@@ -91,6 +92,12 @@ export async function setupSchedules(): Promise<void> {
     { pattern: '0 4 * * *' },
     { name: 'dsgvo-retention', data: {} },
   );
+  // Vollmachten-Ablauf täglich 06:20 UTC (nach gwg-expiry/invoice-overdue).
+  await poaExpiryQueue.upsertJobScheduler(
+    'daily-poa-expiry',
+    { pattern: '20 6 * * *' },
+    { name: 'poa-expiry-check', data: {} },
+  );
 
   log.info(
     {
@@ -106,6 +113,7 @@ export async function setupSchedules(): Promise<void> {
         'n8n-outbox-reconcile @ every 5 min',
         'magic-link-cleanup @ 03:30 UTC daily',
         'dsgvo-retention @ 04:00 UTC daily',
+        'poa-expiry-check @ 06:20 UTC daily',
       ],
     },
     'scheduler: registered',

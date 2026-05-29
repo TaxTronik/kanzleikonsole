@@ -9,7 +9,10 @@ import { fmtDateTimeShort } from '@/lib/fmt';
 const kindLabels: Record<string, string> = {
   REQUEST_RESPONDED: 'Anforderung beantwortet',
   POA_SIGNED: 'Vollmacht unterschrieben',
+  POA_EXPIRY_SOON: 'Vollmacht läuft bald aus',
+  POA_EXPIRED: 'Vollmacht abgelaufen',
   GWG_EXPIRY_SOON: 'GwG läuft bald aus',
+  SYSTEM_MAIL_FAILED: 'Mailversand fehlgeschlagen',
   INVOICE_OVERDUE: 'Rechnung überfällig',
   PHONE_NOTE_FORWARDED: 'Telefonzettel weitergeleitet',
   VACATION_DECISION: 'Urlaubsentscheidung',

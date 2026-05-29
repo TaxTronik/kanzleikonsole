@@ -53,6 +53,7 @@ export const n8nDeliverQueue = new Queue<N8nDeliverJob, void, string>('n8n-deliv
 export const n8nOutboxReconcileQueue = new Queue<Record<string, never>, void, string>('n8n-outbox-reconcile', { connection });
 export const magicLinkCleanupQueue = new Queue<ChecksJob, void, string>('magic-link-cleanup', { connection });
 export const dsgvoRetentionQueue = new Queue<ChecksJob, void, string>('dsgvo-retention', { connection });
+export const poaExpiryQueue = new Queue<ChecksJob, void, string>('poa-expiry-check', { connection });
 
 export const virusScanEvents = new QueueEvents('virus-scan', { connection });
 export const evidenceSealEvents = new QueueEvents('evidence-seal', { connection });

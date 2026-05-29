@@ -16,11 +16,11 @@
 // =============================================================================
 
 import { Worker } from 'bullmq';
-import { Prisma, type NotificationKind } from '@prisma/client';
+import { type NotificationKind } from '@prisma/client';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
-import { withWorkerTenantContext } from '../tenant-context';
+import { upsertNotification } from '../notify';
 
 
 const WARN_DAYS_STAGE1 = 90;
@@ -294,64 +294,4 @@ function idDocTypeLabel(type: string): string {
 
 function dateFmt(d: Date): string {
   return new Intl.DateTimeFormat('de-DE').format(d);
-}
-
-// U-1: Notify-Helper läuft jetzt in einer withWorkerTenantContext-Transaktion.
-// Vorher: findFirst-then-create auf prismaOwner ohne TX → Race bei parallelen
-// Triggern (Scheduler-Tick + manueller Admin-Trigger) + kein RLS-/Audit-Context.
-// Wir machen die Find/Update/Create-Folge atomar pro Tenant; bei P2002 vom
-// Daily-Dedupe-Index (falls Kind dort gelistet) interpretieren wir das als
-// „heute bereits geschrieben". Symmetrisch zum Q-2/P-8-Pattern.
-async function upsertNotification(
-  tenantId: string,
-  staffId: string,
-  data: {
-    kind: NotificationKind;
-    title: string;
-    body: string;
-    href: string;
-    resourceType: string;
-    resourceId: string;
-  },
-) {
-  try {
-    await withWorkerTenantContext(tenantId, async (tx) => {
-      const existing = await tx.notification.findFirst({
-        where: {
-          tenantId,
-          staffId,
-          kind: data.kind,
-          resourceType: data.resourceType,
-          resourceId: data.resourceId,
-          readAt: null,
-        },
-      });
-      if (existing) {
-        await tx.notification.update({
-          where: { id: existing.id },
-          data: { title: data.title, body: data.body, href: data.href, createdAt: new Date() },
-        });
-        return;
-      }
-      await tx.notification.create({
-        data: {
-          tenantId,
-          staffId,
-          kind: data.kind,
-          title: data.title,
-          body: data.body,
-          href: data.href,
-          resourceType: data.resourceType,
-          resourceId: data.resourceId,
-        },
-      });
-    });
-  } catch (err) {
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-      // Idempotenz-Index (Q-2 erweitert) hat eine parallele Notification bereits
-      // persistiert. Kein Fehler — wir wollten genau das gleiche schreiben.
-      return;
-    }
-    throw err;
-  }
 }
