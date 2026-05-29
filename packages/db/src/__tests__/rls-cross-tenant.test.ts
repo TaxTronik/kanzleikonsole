@@ -81,10 +81,11 @@ beforeAll(async () => {
   staffAId = staffA.id;
   staffBId = staffB.id;
 
-  // Je einen Mandanten pro Tenant
-  // allowActive bewusst false: RLS-Isolation hängt nicht daran, und der
-  // GwG-INSERT-Trigger (iter57) blockt allowActive=true ohne verifizierten
-  // gwg_check. Die Tenant-Trennung wird unabhängig vom Aktivstatus geprüft.
+  // Je einen Mandanten pro Tenant — über den echten Onboarding-Flow aktiviert:
+  // 1) inaktiv anlegen (iter57-INSERT-Trigger verbietet allow_active=true ohne
+  //    verifizierten gwg_check), 2) VERIFIED gwg_check anlegen, 3) aktivieren.
+  // Aktiv MUSS sein, weil die GwG-Schranke (init/iter2/iter5) Dokument-,
+  // Anforderungs- und Rechnungsanlage für inaktive Mandanten blockt.
   const clientA = await owner.client.create({
     data: { tenantId: tenantAId, kind: 'JURPERS', name: 'Mandant von A', allowActive: false },
   });
@@ -93,6 +94,15 @@ beforeAll(async () => {
   });
   clientAId = clientA.id;
   clientBId = clientB.id;
+
+  await owner.gwgCheck.create({
+    data: { tenantId: tenantAId, clientId: clientAId, status: 'VERIFIED', validUntil: null },
+  });
+  await owner.gwgCheck.create({
+    data: { tenantId: tenantBId, clientId: clientBId, status: 'VERIFIED', validUntil: null },
+  });
+  await owner.client.update({ where: { id: clientAId }, data: { allowActive: true } });
+  await owner.client.update({ where: { id: clientBId }, data: { allowActive: true } });
 
   // Je ein Dokument
   const docA = await owner.document.create({
