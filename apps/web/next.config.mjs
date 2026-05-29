@@ -98,7 +98,14 @@ const nextConfig = {
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
-          { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
+          // HSTS NUR in Produktion. Auf dem Dev-HTTP-localhost würde der Header
+          // den Browser zwingen, localhost dauerhaft auf HTTPS umzubiegen
+          // (Chrome cached HSTS hart, inkl. preload) → der HTTP-Dev-Server wird
+          // unerreichbar („kommt nicht rein"). Produktiv läuft die App hinter
+          // einem HTTPS-Reverse-Proxy, dort ist HSTS korrekt.
+          ...(isDev
+            ? []
+            : [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }]),
           { key: 'Content-Security-Policy', value: csp },
         ],
       },
