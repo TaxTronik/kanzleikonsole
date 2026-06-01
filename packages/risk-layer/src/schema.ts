@@ -1,71 +1,91 @@
 // =============================================================================
-// Zod-Schemas der §4-Engine-Responses.
+// Zod-Schemas der §4-Engine-Responses (echte Engine, v1.0.0 / Katalog 0.3.0).
 //
-// Bewusst PERMISSIV: Die Engine-internen Sub-Strukturen (karten/risiken/
-// semantik/summary) sind noch nicht feldgenau fixiert. Wir validieren das
-// Envelope hart (textHash, katalogVersion, spans) und reichen den Rest
-// unverändert in `rawResult` durch (Audit/Replay, schema-evolutionssicher).
-// Unbekannte Felder werden von z.object NICHT abgelehnt, nur aus der typisierten
-// Sicht gestrippt — der Rohwert bleibt über rawResult erhalten.
+// `/v1/analyse` liefert die Marking-Substanz in `karten[]` (deterministische
+// Katalog-Treffer) und `risiken[]` (Trigger-/Semantik-Kandidaten); `spans[]`
+// sind nur die positionierten Highlights mit `ref` auf eine Karte/ein Risiko.
+// Wir mappen daher karten + risiken (sie tragen start/end + alle Felder).
 //
-// Enum-Werte kommen aus der Engine in deutschem Klartext (klein); die
-// Normalisierung auf die TaxTronik-Domänen-Enums (UPPERCASE) passiert in
-// mapping.ts, nicht hier — Schema validiert nur die Form.
+// Bewusst PERMISSIV (catchall): die Engine-Antwort ist sehr reich (Gesetzestext,
+// Quellen, Audit …) — alles bleibt unverändert in `rawResult` erhalten; hier
+// validieren wir nur die Felder, die wir auf RiskMarking abbilden. Feldnamen
+// sind snake_case wie von der Engine geliefert.
 // =============================================================================
 
 import { z } from 'zod';
 
-/**
- * Eine positionsbehaftete Markierung aus der Engine. Quelle der Wahrheit für
- * `RiskMarking`: jeder Treffer (deterministisch ODER semantisch/LLM) trägt
- * Start/Ende im Text und seine Provenienz (`herkunft`).
- */
-export const EngineMarkingSchema = z.object({
-  start: z.number().int().nonnegative(),
-  end: z.number().int().nonnegative(),
-  matchedText: z.string(),
-  herkunft: z.string(),
-  begriffId: z.string().nullish(),
-  begriff: z.string(),
-  normAnker: z.array(z.string()).default([]),
-  // Norm-Kaskaden [{glieder, verknuepfung, hinweis}] — 1:1 als JSON durchgereicht.
-  normketten: z.unknown().nullish(),
-  // Governance-Matrix (optional — nur angereicherte Treffer tragen sie).
-  governanceTyp: z.string().nullish(),
-  schadensintensitaet: z.string().nullish(),
-  wahrscheinlichkeit: z.string().nullish(),
-  kaskadenreichweite: z.number().int().nullish(),
-});
-export type EngineMarking = z.infer<typeof EngineMarkingSchema>;
+/** Norm-Referenz {zitat, ids?}. */
+const NormRefSchema = z.object({ zitat: z.string() }).catchall(z.unknown());
+
+/** Herkunfts-Objekt der Engine (Schicht/Methode). Nur `schicht` brauchen wir. */
+const HerkunftSchema = z
+  .object({ schicht: z.union([z.string(), z.number()]).nullish() })
+  .catchall(z.unknown())
+  .nullish();
+
+/** Katalog-Karte: deterministischer Treffer mit voller Subsumtionsbasis. */
+export const KarteSchema = z
+  .object({
+    start: z.number().int().nonnegative(),
+    end: z.number().int().nonnegative(),
+    matched_text: z.string().default(''),
+    begriff: z.string().default(''),
+    begriff_id: z.string().nullish(),
+    norm_anker: z.array(NormRefSchema).default([]),
+    normketten: z.unknown().nullish(),
+    governance_typ: z.string().nullish(),
+    schadensintensitaet: z.string().nullish(),
+    wahrscheinlichkeit: z.string().nullish(),
+    kaskadenreichweite: z.number().int().nullish(),
+    via: z.string().nullish(),
+    herkunft: HerkunftSchema,
+  })
+  .catchall(z.unknown());
+export type Karte = z.infer<typeof KarteSchema>;
+
+/** Risiko-Kandidat (Trigger/Semantik). `titel` ist der Begriff/die Norm. */
+export const RisikoSchema = z
+  .object({
+    start: z.number().int().nonnegative(),
+    end: z.number().int().nonnegative(),
+    matched_text: z.string().default(''),
+    titel: z.string().default(''),
+    norm_anker: z.array(NormRefSchema).default([]),
+    norm_vorschlag: z.array(NormRefSchema).default([]),
+    governance_typ: z.string().nullish(),
+    schadensintensitaet: z.string().nullish(),
+    wahrscheinlichkeit: z.string().nullish(),
+    kaskadenreichweite: z.number().int().nullish(),
+    quelle: z.string().nullish(),
+    via: z.string().nullish(),
+    herkunft: HerkunftSchema,
+  })
+  .catchall(z.unknown());
+export type Risiko = z.infer<typeof RisikoSchema>;
 
 /**
- * `POST /v1/analyse`. `spans` ist die flache Liste aller positionsbehafteten
- * Markierungen. `karten`/`risiken`/`semantik`/`summary` sind Aggregat- bzw.
- * Vorschlags-Sichten — lose validiert, in rawResult erhalten, von einer
- * späteren UI auswertbar.
+ * `POST /v1/analyse`. snake_case wie geliefert; spans/semantik/summary/audit
+ * bleiben via catchall im rawResult erhalten (von einer späteren UI nutzbar).
  */
-export const AnalyseResponseSchema = z.object({
-  textHash: z.string().min(1),
-  katalogVersion: z.string().min(1),
-  // Im Contract-Envelope nicht garantiert — Fallback, damit die Persistenz
-  // (engineVersion NOT NULL) nie an einem fehlenden Feld scheitert.
-  engineVersion: z.string().default('unbekannt'),
-  spans: z.array(EngineMarkingSchema).default([]),
-  karten: z.unknown().nullish(),
-  risiken: z.unknown().nullish(),
-  semantik: z.unknown().nullish(),
-  summary: z.unknown().nullish(),
-});
+export const AnalyseResponseSchema = z
+  .object({
+    text_hash: z.string().min(1),
+    katalog_version: z.string().default('unbekannt'),
+    engineVersion: z.string().default('unbekannt'),
+    karten: z.array(KarteSchema).default([]),
+    risiken: z.array(RisikoSchema).default([]),
+  })
+  .catchall(z.unknown());
 export type AnalyseResponse = z.infer<typeof AnalyseResponseSchema>;
 
 /** `POST /v1/katalog/definiere` → angelegter Berater-Begriff. */
 export const KatalogDefiniereResponseSchema = z.object({
   begriffId: z.string().min(1),
-  scope: z.string(),
+  scope: z.string().default('tenant'),
 });
 export type KatalogDefiniereResponse = z.infer<typeof KatalogDefiniereResponseSchema>;
 
-/** `GET /v1/katalog` → Version + Begriffe (Extra-Felder bleiben via catchall erhalten). */
+/** `GET /v1/katalog` → Version + Begriffe (Extra-Felder via catchall erhalten). */
 export const KatalogResponseSchema = z.object({
   version: z.string(),
   begriffe: z
@@ -75,14 +95,11 @@ export const KatalogResponseSchema = z.object({
 export type KatalogResponse = z.infer<typeof KatalogResponseSchema>;
 
 /**
- * Normgraph-Responses (`/v1/normgraph/aufloesen`, `/v1/normgraph/suche`) und
- * `POST /v1/embedding/suche`: die Graph-/Vorschlags-Form ist offen — wir geben
- * das geparste JSON als Record durch (Felder bleiben erhalten), ohne es zu
- * verengen. Die TCMS-Sicht, die das auswertet, kommt später.
+ * Normgraph-/Embedding-Responses: Form offen → als Record durchgereicht.
  */
 export const OpaqueObjectSchema = z.object({}).catchall(z.unknown());
 export type OpaqueObject = z.infer<typeof OpaqueObjectSchema>;
 
-/** `GET /v1/health`. */
-export const HealthResponseSchema = z.object({ status: z.string() }).catchall(z.unknown());
+/** `GET /v1/health`. Die Engine liefert `{ok, engineVersion, katalogVersion, …}`. */
+export const HealthResponseSchema = z.object({}).catchall(z.unknown());
 export type HealthResponse = z.infer<typeof HealthResponseSchema>;

@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { RiskLayerClient, RiskLayerHttpError } from '../index';
 
 const config = { url: 'http://risk-layer:8000', token: 'x'.repeat(32) };
-const analysePayload = { textHash: 'h', katalogVersion: 'k', engineVersion: 'e', spans: [] };
+const analysePayload = { text_hash: 'h', katalog_version: 'k', engineVersion: 'e', karten: [], risiken: [] };
 
 function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {

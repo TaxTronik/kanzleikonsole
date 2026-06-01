@@ -29,7 +29,8 @@ export type {
 
 export type {
   AnalyseResponse,
-  EngineMarking,
+  Karte,
+  Risiko,
   HealthResponse,
   KatalogResponse,
   KatalogDefiniereResponse,
