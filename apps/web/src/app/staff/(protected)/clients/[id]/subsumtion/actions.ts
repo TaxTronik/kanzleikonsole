@@ -202,8 +202,10 @@ export async function delegateAction(
 const ResearchSchema = z.object({
   clientId: z.string().uuid(),
   analysisId: z.string().uuid(),
-  markingId: z.string().uuid(),
-  includeSachverhalt: z.boolean(),
+  // markingId optional: gesetzt = Recherche zu einer Markierung; null = ganzer Fall.
+  markingId: z.string().uuid().nullable().optional(),
+  // Kein / Auszug (nur mit Markierung sinnvoll) / ganzer Sachverhalt.
+  sachverhalt: z.enum(['none', 'excerpt', 'full']),
   snippets: z.array(z.string().max(4000)).max(20).optional(),
   prompt: z.string().max(8000).nullable().optional(),
 });

@@ -148,12 +148,15 @@ export function MarkingPanel(props: {
   );
 }
 
-function ResearchComposer(props: {
-  clientId: string; analysisId: string; markingId: string;
+export function ResearchComposer(props: {
+  clientId: string; analysisId: string; markingId?: string | null;
   pending: boolean; start: (cb: () => void) => void;
   onDone: (r: { ok: boolean; error?: string }) => void;
 }) {
-  const [includeSachverhalt, setInclude] = useState(false);
+  // Markierungs-Composer: Kein / Auszug / Ganzer Sachverhalt (Default: kein).
+  // Fall-Composer (ohne Markierung): Kein / Ganzer Sachverhalt (Default: ganz).
+  const isCase = !props.markingId;
+  const [sachverhalt, setSachverhalt] = useState<'none' | 'excerpt' | 'full'>(isCase ? 'full' : 'none');
   const [snippet, setSnippet] = useState('');
   const [prompt, setPrompt] = useState('');
   const [preview, setPreview] = useState<{ text: string; hits: number } | null>(null);
@@ -162,8 +165,8 @@ function ResearchComposer(props: {
   const baseInput = () => ({
     clientId: props.clientId,
     analysisId: props.analysisId,
-    markingId: props.markingId,
-    includeSachverhalt,
+    markingId: props.markingId ?? null,
+    sachverhalt,
     snippets: snippet.trim() ? [snippet.trim()] : [],
     prompt: prompt.trim() || null,
   });
@@ -187,12 +190,21 @@ function ResearchComposer(props: {
   return (
     <div className="rounded-md border border-default p-2 space-y-2 bg-gray-50/50 dark:bg-gray-900/30">
       <p className="text-xs font-medium text-secondary inline-flex items-center gap-1">
-        <Webhook className="h-3.5 w-3.5" /> Rechercheauftrag an n8n (anonymisiert)
+        <Webhook className="h-3.5 w-3.5" /> {isCase ? 'Ganzen Fall an n8n/KI (anonymisiert)' : 'Rechercheauftrag an n8n (anonymisiert)'}
       </p>
-      <label className="flex items-center gap-1.5 text-xs">
-        <input type="checkbox" checked={includeSachverhalt} onChange={(e) => setInclude(e.target.checked)} />
-        Sachverhalt-Auszug (um die Fundstelle) einbeziehen
+      <label className="block text-xs">
+        <span className="text-muted">Sachverhalt</span>
+        <select value={sachverhalt} onChange={(e) => setSachverhalt(e.target.value as 'none' | 'excerpt' | 'full')} className="mt-0.5 w-full rounded border border-default bg-surface px-2 py-1">
+          <option value="none">Kein Sachverhalt (nur Rechtsfrage/Prompt)</option>
+          {!isCase && <option value="excerpt">Auszug um die Fundstelle</option>}
+          <option value="full">Ganzer Sachverhalt</option>
+        </select>
       </label>
+      {sachverhalt === 'full' && (
+        <p className="text-[11px] text-amber-700 dark:text-amber-300">
+          Der gesamte Sachverhalt wird anonymisiert — bitte die Vorschau besonders sorgfältig prüfen.
+        </p>
+      )}
       <textarea value={snippet} onChange={(e) => setSnippet(e.target.value)} rows={2} placeholder="Textbaustein (optional)" className="w-full rounded border border-default bg-surface px-2 py-1 text-xs" />
       <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={2} placeholder="Prompt / Recherche-Auftrag an n8n …" className="w-full rounded border border-default bg-surface px-2 py-1 text-xs" />
 

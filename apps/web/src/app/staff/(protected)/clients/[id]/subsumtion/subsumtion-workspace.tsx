@@ -3,13 +3,13 @@
 import { useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Sparkles, Upload, Loader2, FileDown, FolderOpen, ClipboardList, ScrollText } from 'lucide-react';
+import { Sparkles, Upload, Loader2, FileDown, FolderOpen, ClipboardList, ScrollText, Webhook } from 'lucide-react';
 import { analyzeAction, importDocTextAction, importClientDocAction, requestLlmAction } from './actions';
 import { DisclaimerBanner } from './disclaimer-banner';
 import { StatsBar } from './stats-bar';
 import { HerkunftLegende } from './herkunft-legende';
 import { AnnotatedDocument } from './annotated-document';
-import { MarkingPanel } from './marking-panel';
+import { MarkingPanel, ResearchComposer } from './marking-panel';
 import { NewMarkingPanel } from './new-marking-panel';
 import { ResearchResultsBlock } from './research-results-block';
 import { type AnalysisDTO, type ResearchResultDTO, type MarkingDTO, FILTER_KEYS, type FilterKey, isVisible } from './_ui';
@@ -40,6 +40,7 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
   const [editMode, setEditMode] = useState(false);
   const [filters, setFilters] = useState<Set<FilterKey>>(() => new Set(FILTER_KEYS));
   const [manualSel, setManualSel] = useState<{ start: number; end: number; text: string } | null>(null);
+  const [showCaseResearch, setShowCaseResearch] = useState(false);
 
   const markings = initial?.markings ?? [];
   const visibleMarkings = useMemo(() => markings.filter((m) => isVisible(m, filters)), [markings, filters]);
@@ -186,7 +187,23 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
         <Link href={`/staff/clients/${clientId}`} className="btn-secondary text-xs"><FolderOpen className="h-3.5 w-3.5" /> Aktenregal</Link>
         <Link href={`/staff/clients/${clientId}/reminders`} className="btn-secondary text-xs"><ClipboardList className="h-3.5 w-3.5" /> Aufgaben</Link>
         <Link href={`/staff/clients/${clientId}/timeline`} className="btn-secondary text-xs"><ScrollText className="h-3.5 w-3.5" /> Audit-Log</Link>
+        <button type="button" onClick={() => setShowCaseResearch((v) => !v)} className="btn-secondary text-xs ml-auto">
+          <Webhook className="h-3.5 w-3.5" /> Ganzer Fall an KI
+        </button>
       </div>
+
+      {showCaseResearch && (
+        <div className="max-w-xl">
+          <ResearchComposer
+            clientId={clientId}
+            analysisId={initial.id}
+            markingId={null}
+            pending={pending}
+            start={start}
+            onDone={(r) => { flash(r, 'Anonymisierter Auftrag (ganzer Fall) an n8n gesendet.'); if (r.ok) setShowCaseResearch(false); }}
+          />
+        </div>
+      )}
 
       <HerkunftLegende />
 

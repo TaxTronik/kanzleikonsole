@@ -16,9 +16,13 @@ import { prismaOwner } from '@/server/db/prisma-owner';
 import { enqueueN8nEvent } from '@/server/n8n/outbox';
 import { anonymize, deanonymize } from './anonymize';
 
+export type SachverhaltMode = 'none' | 'excerpt' | 'full';
+
 export interface ResearchInput {
-  markingId: string;
-  includeSachverhalt: boolean;
+  analysisId: string;
+  /** Per-Markierung (Rechtsfrage + Auszug) ODER null = ganzer Fall. */
+  markingId?: string | null;
+  sachverhalt: SachverhaltMode;
   snippets?: string[];
   prompt?: string | null;
 }
@@ -37,16 +41,15 @@ function excerpt(text: string, start: number, end: number, pad = 500): string {
   return (a > 0 ? '… ' : '') + text.slice(a, b).trim() + (b < text.length ? ' …' : '');
 }
 
-/** Lädt Marking + Mandant/Kontakte und baut den ROHEN (sensiblen) Auftragstext. */
+/** Lädt Analyse (+ optional Markierung) + Mandant/Kontakte und baut den ROHEN
+ *  (sensiblen) Auftragstext. Unterstützt per-Markierung und ganzen Fall. */
 async function buildRaw(tx: TxClient, tenantId: string, input: ResearchInput) {
-  const marking = await tx.riskMarking.findUnique({
-    where: { id: input.markingId },
-    include: {
-      analysis: { select: { id: true, clientId: true, sourceText: true, katalogVersion: true } },
-    },
+  const analysis = await tx.riskAnalysis.findFirst({
+    where: { id: input.analysisId, tenantId },
+    select: { id: true, clientId: true, sourceText: true, katalogVersion: true },
   });
-  if (!marking) throw new Error('Markierung nicht gefunden.');
-  const clientId = marking.analysis.clientId;
+  if (!analysis) throw new Error('Analyse nicht gefunden.');
+  const clientId = analysis.clientId;
   if (!clientId) throw new Error('Recherche erfordert einen Mandantenbezug der Analyse.');
 
   const client = await tx.client.findFirst({
@@ -59,30 +62,51 @@ async function buildRaw(tx: TxClient, tenantId: string, input: ResearchInput) {
     select: { fullName: true, email: true, phone: true },
   });
 
-  const parts: string[] = [`Rechtsfrage: ${marking.begriff}`];
-  if (marking.normAnker.length > 0) parts.push(`Normanker: ${marking.normAnker.join(', ')}`);
-  if (marking.governanceTyp) parts.push(`Governance-Typ: ${marking.governanceTyp}`);
-  if (input.includeSachverhalt) {
-    parts.push('Sachverhalt-Auszug:\n' + excerpt(marking.analysis.sourceText, marking.start, marking.end));
+  let marking: { id: string; begriff: string; normAnker: string[]; governanceTyp: string | null; start: number; end: number } | null = null;
+  if (input.markingId) {
+    marking = await tx.riskMarking.findFirst({
+      where: { id: input.markingId, analysisId: analysis.id },
+      select: { id: true, begriff: true, normAnker: true, governanceTyp: true, start: true, end: true },
+    });
+    if (!marking) throw new Error('Markierung nicht gefunden.');
+  }
+
+  const parts: string[] = [];
+  if (marking) {
+    parts.push(`Rechtsfrage: ${marking.begriff}`);
+    if (marking.normAnker.length > 0) parts.push(`Normanker: ${marking.normAnker.join(', ')}`);
+    if (marking.governanceTyp) parts.push(`Governance-Typ: ${marking.governanceTyp}`);
+  }
+  if (input.sachverhalt === 'full') {
+    parts.push('Sachverhalt:\n' + analysis.sourceText);
+  } else if (input.sachverhalt === 'excerpt' && marking) {
+    parts.push('Sachverhalt-Auszug:\n' + excerpt(analysis.sourceText, marking.start, marking.end));
   }
   for (const s of input.snippets ?? []) if (s.trim()) parts.push(s.trim());
   if (input.prompt && input.prompt.trim()) parts.push('Auftrag: ' + input.prompt.trim());
 
-  return { marking, client, contacts, rawText: parts.join('\n\n') };
+  return {
+    analysis,
+    marking,
+    client,
+    contacts,
+    rawText: parts.join('\n\n'),
+    rechtsfrage: marking ? marking.begriff : 'Recherche zum Sachverhalt',
+    normAnker: marking?.normAnker ?? [],
+    governanceTyp: marking?.governanceTyp ?? null,
+  };
 }
 
 /** Baut + anonymisiert den Auftrag, OHNE zu persistieren/senden (Vorschau). */
 export async function previewResearch(ctx: TenantContext, input: ResearchInput): Promise<ResearchPreview> {
   return withTenantContext(ctx, async (tx) => {
-    const { marking, client, contacts, rawText } = await buildRaw(tx, ctx.tenantId, input);
+    const { client, contacts, rawText, rechtsfrage, normAnker, governanceTyp } = await buildRaw(
+      tx,
+      ctx.tenantId,
+      input,
+    );
     const anon = anonymize(rawText, { client, contacts });
-    return {
-      rechtsfrage: marking.begriff,
-      normAnker: marking.normAnker,
-      governanceTyp: marking.governanceTyp,
-      anonymizedText: anon.text,
-      heuristicHits: anon.heuristicHits,
-    };
+    return { rechtsfrage, normAnker, governanceTyp, anonymizedText: anon.text, heuristicHits: anon.heuristicHits };
   });
 }
 
@@ -97,7 +121,8 @@ export async function sendResearchToN8n(
   input: ResearchInput & { finalText: string },
 ): Promise<{ requestId: string; sentText: string }> {
   const prepared = await withTenantContext(ctx, async (tx) => {
-    const { marking, client, contacts, rawText } = await buildRaw(tx, ctx.tenantId, input);
+    const { analysis, marking, client, contacts, rawText, rechtsfrage, normAnker, governanceTyp } =
+      await buildRaw(tx, ctx.tenantId, input);
 
     // Mapping aus dem ROH-Text (deckt die ursprünglichen Platzhalter für die
     // De-Anonymisierung der Antwort) + Sicherheits-Pass über den finalen Text
@@ -107,23 +132,23 @@ export async function sendResearchToN8n(
     const mapping = { ...baseMapping, ...safe.mapping };
 
     const payload = {
-      rechtsfrage: marking.begriff,
-      normAnker: marking.normAnker,
-      governanceTyp: marking.governanceTyp,
+      rechtsfrage,
+      normAnker,
+      governanceTyp,
       anonymizedText: safe.text,
-      katalogVersion: marking.analysis.katalogVersion,
+      katalogVersion: analysis.katalogVersion,
     };
 
     const req = await tx.riskResearchRequest.create({
       data: {
         tenantId: ctx.tenantId,
-        analysisId: marking.analysis.id,
-        markingId: marking.id,
+        analysisId: analysis.id,
+        markingId: marking?.id ?? null,
         prompt: input.prompt?.trim() || null,
-        includeSachverhalt: input.includeSachverhalt,
+        includeSachverhalt: input.sachverhalt !== 'none',
         anonymizedPayload: payload as object,
         mapping: mapping as object,
-        createdById: ctx.actorId ?? marking.analysis.id, // actorId ist für STAFF gesetzt
+        createdById: ctx.actorId ?? analysis.id, // actorId ist für STAFF gesetzt
       },
       select: { id: true },
     });
