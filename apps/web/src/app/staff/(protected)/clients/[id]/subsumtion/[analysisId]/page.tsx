@@ -55,6 +55,7 @@ export default async function AnalysisPage({
       <SubsumtionWorkspace
         clientId={id}
         staffOptions={staffOptions}
+        clientDocuments={[]}
         engineConfigured={engineConfigured}
         initial={dto}
       />

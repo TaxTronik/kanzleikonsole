@@ -2,13 +2,17 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
+import { headers } from 'next/headers';
 import {
   requireSubsumtionAccess,
   ForbiddenError,
   toActionError,
   type ActionErrorResult,
 } from '@/server/auth/rbac';
-import type { TenantContext } from '@taxtronik/db';
+import { withTenantContext, type TenantContext } from '@taxtronik/db';
+import { fetchObjectBytes } from '@taxtronik/storage';
+import { evidenceService } from '@/server/container';
+import { getClientIp } from '@/server/rate-limit';
 import { readModules } from '@/server/settings/modules';
 import { isRiskLayerConfigured } from '@taxtronik/risk-layer';
 import {
@@ -204,6 +208,53 @@ export async function pushDefinitionAction(
     revalidatePath(`/staff/clients/${parsed.clientId}/subsumtion/${parsed.analysisId}`);
     return { ok: true, begriffId: res.begriffId };
   } catch (e) {
+    return toActionError(e);
+  }
+}
+
+const ImportDocSchema = z.object({ clientId: z.string().uuid(), documentId: z.string().uuid() });
+
+/** Holt ein vorhandenes Mandanten-Dokument aus dem Object-Store (SeaweedFS) und
+ *  extrahiert den Text. Der Zugriff wird wie ein Download auditiert. */
+export async function importClientDocAction(
+  input: z.infer<typeof ImportDocSchema>,
+): Promise<OkActionResult<{ text: string }>> {
+  try {
+    const parsed = ImportDocSchema.parse(input);
+    const { ctx, staffId } = await guard(parsed.clientId);
+    const h = await headers();
+    const ip = getClientIp(h);
+    const userAgent = h.get('user-agent');
+
+    const doc = await withTenantContext(ctx, async (tx) => {
+      // Defense in Depth: expliziter Tenant-/Client-Filter zusätzlich zu RLS.
+      const d = await tx.document.findFirst({
+        where: { id: parsed.documentId, clientId: parsed.clientId, tenantId: ctx.tenantId, deletedAt: null },
+        include: { versions: { orderBy: { versionNo: 'desc' }, take: 1 } },
+      });
+      const v = d?.versions[0];
+      if (!d || !v) return null;
+      await evidenceService.record(tx, {
+        tenantId: ctx.tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'document.text_extract',
+        resourceType: 'document',
+        resourceId: d.id,
+        ip,
+        userAgent,
+      });
+      return { mimeType: d.mimeType, bucket: v.storageBucket, key: v.storageKey };
+    });
+    if (!doc) return { ok: false, error: 'Dokument nicht gefunden.' };
+
+    // App-proxied: Bytes intern aus SeaweedFS holen (Store nie öffentlich).
+    const bytes = await fetchObjectBytes(doc.bucket, doc.key);
+    const text = await extractText(bytes, doc.mimeType || 'application/octet-stream');
+    if (!text.trim()) return { ok: false, error: 'Das Dokument enthält keinen extrahierbaren Text.' };
+    return { ok: true, text };
+  } catch (e) {
+    if (e instanceof UnsupportedDocumentTypeError) return { ok: false, error: e.message };
     return toActionError(e);
   }
 }

@@ -1,11 +1,19 @@
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { guardSubsumtionPage } from '../_guard';
+import { listExtractableDocuments } from '@/server/risk';
 import { SubsumtionWorkspace } from '../subsumtion-workspace';
 
 export default async function NewSubsumtionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { staffOptions, engineConfigured } = await guardSubsumtionPage(id);
+  const { ctx, staffOptions, engineConfigured } = await guardSubsumtionPage(id);
+  const docs = await listExtractableDocuments(ctx, id);
+  const clientDocuments = docs.map((d) => ({
+    id: d.id,
+    title: d.title,
+    mimeType: d.mimeType,
+    typeName: d.documentType?.name ?? '',
+  }));
 
   return (
     <div className="p-8 max-w-5xl">
@@ -18,6 +26,7 @@ export default async function NewSubsumtionPage({ params }: { params: Promise<{ 
       <SubsumtionWorkspace
         clientId={id}
         staffOptions={staffOptions}
+        clientDocuments={clientDocuments}
         engineConfigured={engineConfigured}
         initial={null}
       />

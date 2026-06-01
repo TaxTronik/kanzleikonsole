@@ -3,11 +3,12 @@
 import { useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Sparkles, Wand2, Upload, Loader2, Trash2, Send, BookPlus, Save, Plus, X,
+  Sparkles, Wand2, Upload, Loader2, Trash2, Send, BookPlus, Save, Plus, X, FileDown,
 } from 'lucide-react';
 import {
   analyzeAction, requestLlmAction, addManualMarkingAction, updateMarkingAction,
   deleteMarkingAction, delegateAction, pushDefinitionAction, importDocTextAction,
+  importClientDocAction,
 } from './actions';
 
 // --- Typen (serialisiert von der Server-Component) ---------------------------
@@ -43,6 +44,7 @@ export interface AnalysisDTO {
 interface Props {
   clientId: string;
   staffOptions: Array<{ id: string; fullName: string }>;
+  clientDocuments: Array<{ id: string; title: string; mimeType: string; typeName: string }>;
   engineConfigured: boolean;
   initial: AnalysisDTO | null;
 }
@@ -99,7 +101,7 @@ function buildSegments(text: string, markings: MarkingDTO[]): Segment[] {
 
 // =============================================================================
 
-export function SubsumtionWorkspace({ clientId, staffOptions, engineConfigured, initial }: Props) {
+export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, engineConfigured, initial }: Props) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -108,6 +110,7 @@ export function SubsumtionWorkspace({ clientId, staffOptions, engineConfigured, 
   // Compose-Modus (neue Subsumtion)
   const [text, setText] = useState(initial?.sourceText ?? '');
   const [title, setTitle] = useState(initial?.title ?? '');
+  const [docId, setDocId] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Review-Modus
@@ -151,6 +154,17 @@ export function SubsumtionWorkspace({ clientId, staffOptions, engineConfigured, 
       if (!r.ok) { setError(r.error); return; }
       setText((prev) => (prev.trim() ? prev + '\n\n' + r.text : r.text));
       setInfo('Text aus Dokument übernommen.');
+    });
+  }
+
+  function importExisting() {
+    if (!docId) return;
+    setError(null); setInfo(null);
+    start(async () => {
+      const r = await importClientDocAction({ clientId, documentId: docId });
+      if (!r.ok) { setError(r.error); return; }
+      setText((prev) => (prev.trim() ? prev + '\n\n' + r.text : r.text));
+      setInfo('Text aus Mandanten-Dokument übernommen.');
     });
   }
 
@@ -224,6 +238,26 @@ export function SubsumtionWorkspace({ clientId, staffOptions, engineConfigured, 
           <input ref={fileRef} type="file" accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" onChange={onFile} className="hidden" />
           <span className="text-xs text-muted ml-auto">{text.length} Zeichen</span>
         </div>
+        {clientDocuments.length > 0 && (
+          <div className="flex items-center gap-2">
+            <select
+              value={docId}
+              onChange={(e) => setDocId(e.target.value)}
+              className="rounded-md border border-default bg-surface px-2 py-1.5 text-sm max-w-[60%] truncate"
+            >
+              <option value="">Aus Mandanten-Dokument (SeaweedFS) wählen …</option>
+              {clientDocuments.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.title}{d.typeName ? ` (${d.typeName})` : ''}
+                </option>
+              ))}
+            </select>
+            <button type="button" onClick={importExisting} disabled={pending || !docId} className="btn-secondary text-sm">
+              <FileDown className="h-4 w-4" />
+              Übernehmen
+            </button>
+          </div>
+        )}
       </div>
     );
   }

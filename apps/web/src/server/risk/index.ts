@@ -31,6 +31,6 @@ export type {
   RiskStatus,
 } from './markings';
 
-export { listAnalyses, loadAnalysis } from './queries';
+export { listAnalyses, loadAnalysis, listExtractableDocuments } from './queries';
 
 export { extractText, UnsupportedDocumentTypeError } from './extract-text';
