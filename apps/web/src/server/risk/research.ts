@@ -132,7 +132,12 @@ export async function sendResearchToN8n(
     // rechtsfrage geht als eigenes Feld raus → ebenfalls anonymisieren. Bei BERATER-
     // Markierungen ist begriff Freitext und kann Mandantenbezug enthalten (§203).
     const safeRechtsfrage = anonymize(rechtsfrage, { client, contacts });
-    const mapping = { ...baseMapping, ...safe.mapping, ...safeRechtsfrage.mapping };
+    // Reihenfolge = Priorität (späteres gewinnt). `safe` (der gesendete
+    // anonymizedText) MUSS gewinnen: die n8n-Antwort echo't dessen Platzhalter,
+    // also muss deren De-Anonymisierung aus safe.mapping kommen. Heuristik-
+    // Platzhalter ([BETRAG_1]…) sind pro Text nummeriert und könnten sonst auf
+    // das Original der rechtsfrage statt des gesendeten Texts zurückfallen.
+    const mapping = { ...baseMapping, ...safeRechtsfrage.mapping, ...safe.mapping };
 
     const payload = {
       rechtsfrage: safeRechtsfrage.text,
