@@ -38,7 +38,6 @@ export function NewMarkingPanel(props: {
         analysisId: props.analysisId,
         start: sel.start,
         end: sel.end,
-        matchedText: sel.text,
         begriff: begriff.trim(),
         farbe,
         label: label.trim() || null,

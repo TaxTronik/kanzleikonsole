@@ -39,7 +39,6 @@ export interface AddManualMarkingInput {
   analysisId: string;
   start: number;
   end: number;
-  matchedText: string;
   begriff: string;
   normAnker?: string[];
   farbe?: string | null;
@@ -47,19 +46,39 @@ export interface AddManualMarkingInput {
   notiz?: string | null;
 }
 
+export class InvalidMarkingRangeError extends Error {
+  constructor() {
+    super('Die Markierung liegt außerhalb des Sachverhalts.');
+    this.name = 'InvalidMarkingRangeError';
+  }
+}
+
 /** Legt eine berater-gesetzte Markierung an (Herkunft BERATER). */
 export async function addManualMarking(
   ctx: TenantContext,
   input: AddManualMarkingInput,
 ): Promise<{ markingId: string }> {
-  const marking = await withTenantContext(ctx, (tx) =>
-    tx.riskMarking.create({
+  const marking = await withTenantContext(ctx, async (tx) => {
+    // matchedText + Offsets NICHT vom Client übernehmen, sondern aus dem
+    // gespeicherten Sachverhalt ableiten — die Markierung muss den analysierten
+    // Text 1:1 abbilden (TCMS-/Audit-Treue), und die Offsets müssen im Text liegen.
+    const analysis = await tx.riskAnalysis.findUnique({
+      where: { id: input.analysisId },
+      select: { sourceText: true },
+    });
+    if (!analysis) throw new Error('Analyse nicht gefunden.');
+    const len = analysis.sourceText.length;
+    if (!Number.isInteger(input.start) || !Number.isInteger(input.end)) throw new InvalidMarkingRangeError();
+    if (input.start < 0 || input.end > len || input.end <= input.start) throw new InvalidMarkingRangeError();
+    const matchedText = analysis.sourceText.slice(input.start, input.end);
+
+    return tx.riskMarking.create({
       data: {
         tenantId: ctx.tenantId,
         analysisId: input.analysisId,
         start: input.start,
         end: input.end,
-        matchedText: input.matchedText,
+        matchedText,
         herkunft: 'BERATER',
         engineStatus: 'berater',
         begriff: input.begriff,
@@ -70,8 +89,8 @@ export async function addManualMarking(
         status: 'OFFEN',
       },
       select: { id: true },
-    }),
-  );
+    });
+  });
   return { markingId: marking.id };
 }
 

@@ -179,7 +179,8 @@ const ManualMarkingSchema = z.object({
   analysisId: z.string().uuid(),
   start: z.number().int().nonnegative(),
   end: z.number().int().nonnegative(),
-  matchedText: z.string().min(1),
+  // matchedText wird serverseitig aus dem Sachverhalt abgeleitet (Audit-Treue) —
+  // NICHT vom Client übernommen.
   begriff: z.string().min(1).max(200),
   farbe: z.string().max(20).nullable().optional(),
   label: z.string().max(100).nullable().optional(),
