@@ -98,6 +98,10 @@ const ManualMarkingSchema = z.object({
   end: z.number().int().nonnegative(),
   matchedText: z.string().min(1),
   begriff: z.string().min(1).max(200),
+  farbe: z.string().max(20).nullable().optional(),
+  label: z.string().max(100).nullable().optional(),
+  notiz: z.string().max(4000).nullable().optional(),
+  normAnker: z.array(z.string().max(200)).max(50).optional(),
 });
 
 export async function addManualMarkingAction(
@@ -127,6 +131,8 @@ const UpdateMarkingSchema = z.object({
   status: z.enum(['OFFEN', 'IN_PRUEFUNG', 'KONTROLLIERT', 'AKZEPTIERT']).optional(),
   notiz: z.string().max(4000).nullable().optional(),
   verantwortlichId: z.string().uuid().nullable().optional(),
+  farbe: z.string().max(20).nullable().optional(),
+  label: z.string().max(100).nullable().optional(),
 });
 
 export async function updateMarkingAction(

@@ -1146,10 +1146,20 @@ model RiskMarking {
   end                 Int
   matchedText         String          @map("matched_text")
   herkunft            RiskHerkunft
+  // Detektionsstatus der Engine (treffer/luecke/kandidat/unknown_risiko); für
+  // berater-gesetzte Markierungen `berater`. Treibt die Statistik-Leiste + Filter
+  // (zählbar nach Berater-Edits, anders als die statische Engine-summary). Freier
+  // Text, damit neue Engine-Status nicht an einem Enum scheitern.
+  engineStatus        String?         @map("engine_status")
+  // Aus `ist_streitig` der Engine: die Stelle ist fachlich umstritten.
+  streitig            Boolean         @default(false)
   begriffId           String?         @map("begriff_id")
   begriff             String
   normAnker           String[]        @map("norm_anker")
   normketten          Json?
+  // Nur Berater-Markierungen: frei gewählte Highlight-Farbe (Swatch) + Kategorie.
+  farbe               String?
+  label               String?
   governanceTyp       GovernanceTyp?  @map("governance_typ")
   schadensintensitaet RiskStufe?      @map("schadensintensitaet")
   wahrscheinlichkeit  RiskWk?         @map("wahrscheinlichkeit")

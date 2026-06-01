@@ -63,6 +63,8 @@ export async function saveAnalysis(
             schadensintensitaet: m.schadensintensitaet,
             wahrscheinlichkeit: m.wahrscheinlichkeit,
             kaskadenreichweite: m.kaskadenreichweite,
+            engineStatus: m.engineStatus,
+            streitig: m.streitig,
           })),
         },
       },

@@ -21,6 +21,8 @@ export interface UpdateMarkingInput {
   status?: RiskStatus;
   notiz?: string | null;
   verantwortlichId?: string | null;
+  farbe?: string | null;
+  label?: string | null;
 }
 
 export async function updateMarking(
@@ -40,6 +42,9 @@ export interface AddManualMarkingInput {
   matchedText: string;
   begriff: string;
   normAnker?: string[];
+  farbe?: string | null;
+  label?: string | null;
+  notiz?: string | null;
 }
 
 /** Legt eine berater-gesetzte Markierung an (Herkunft BERATER). */
@@ -56,8 +61,12 @@ export async function addManualMarking(
         end: input.end,
         matchedText: input.matchedText,
         herkunft: 'BERATER',
+        engineStatus: 'berater',
         begriff: input.begriff,
         normAnker: input.normAnker ?? [],
+        farbe: input.farbe ?? null,
+        label: input.label ?? null,
+        notiz: input.notiz ?? null,
         status: 'OFFEN',
       },
       select: { id: true },

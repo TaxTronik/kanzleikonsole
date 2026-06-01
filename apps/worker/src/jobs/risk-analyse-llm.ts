@@ -59,6 +59,8 @@ export const riskAnalyseLlmWorker = new Worker<RiskAnalyseLlmJob, void, string>(
             schadensintensitaet: m.schadensintensitaet,
             wahrscheinlichkeit: m.wahrscheinlichkeit,
             kaskadenreichweite: m.kaskadenreichweite,
+            engineStatus: m.engineStatus,
+            streitig: m.streitig,
           })),
         });
       }

@@ -31,6 +31,10 @@ export interface RiskMarkingInput {
   schadensintensitaet: RiskStufe | null;
   wahrscheinlichkeit: RiskWk | null;
   kaskadenreichweite: number | null;
+  /** Detektionsstatus der Engine (treffer/luecke/kandidat/unknown_risiko). */
+  engineStatus: string | null;
+  /** Fachlich umstrittene Stelle (aus ist_streitig). */
+  streitig: boolean;
 }
 
 /** Ergebnis eines Analyse-Laufs, fertig für `saveAnalysis`. */
@@ -114,6 +118,8 @@ function mapKarte(k: Karte): RiskMarkingInput {
     schadensintensitaet: lookup(STUFE, k.schadensintensitaet),
     wahrscheinlichkeit: lookup(WK, k.wahrscheinlichkeit),
     kaskadenreichweite: k.kaskadenreichweite ?? null,
+    engineStatus: k.status ?? null,
+    streitig: k.ist_streitig ?? false,
   };
 }
 
@@ -133,6 +139,8 @@ function mapRisiko(r: Risiko): RiskMarkingInput {
     schadensintensitaet: lookup(STUFE, r.schadensintensitaet),
     wahrscheinlichkeit: lookup(WK, r.wahrscheinlichkeit),
     kaskadenreichweite: r.kaskadenreichweite ?? null,
+    engineStatus: r.status ?? null,
+    streitig: r.ist_streitig ?? false,
   };
 }
 

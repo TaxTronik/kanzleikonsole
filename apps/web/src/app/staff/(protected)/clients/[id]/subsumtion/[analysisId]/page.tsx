@@ -3,7 +3,8 @@ import { notFound } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { guardSubsumtionPage } from '../_guard';
 import { loadAnalysis } from '@/server/risk';
-import { SubsumtionWorkspace, type AnalysisDTO, type MarkingDTO } from '../subsumtion-workspace';
+import { SubsumtionWorkspace } from '../subsumtion-workspace';
+import type { AnalysisDTO, MarkingDTO } from '../_ui';
 
 export default async function AnalysisPage({
   params,
@@ -20,6 +21,7 @@ export default async function AnalysisPage({
     id: analysis.id,
     sourceText: analysis.sourceText,
     title: analysis.title,
+    textHash: analysis.textHash,
     llmEnrichedAt: analysis.llmEnrichedAt ? analysis.llmEnrichedAt.toISOString() : null,
     markings: analysis.markings.map(
       (m): MarkingDTO => ({
@@ -28,6 +30,8 @@ export default async function AnalysisPage({
         end: m.end,
         matchedText: m.matchedText,
         herkunft: m.herkunft,
+        engineStatus: m.engineStatus,
+        streitig: m.streitig,
         begriffId: m.begriffId,
         begriff: m.begriff,
         normAnker: m.normAnker,
@@ -40,6 +44,8 @@ export default async function AnalysisPage({
         status: m.status,
         notiz: m.notiz,
         verantwortlichId: m.verantwortlichId,
+        farbe: m.farbe,
+        label: m.label,
       }),
     ),
   };

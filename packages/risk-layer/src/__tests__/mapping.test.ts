@@ -13,6 +13,8 @@ const real = {
       matched_text: 'Kasse wurde nicht ordnungsgemäß',
       begriff: 'Mängel der Buchführung / Kassenführung',
       begriff_id: 'ao_kasse',
+      status: 'treffer',
+      ist_streitig: true,
       governance_typ: 'FF',
       schadensintensitaet: 'hoch',
       kaskadenreichweite: 2,
@@ -41,6 +43,7 @@ const real = {
       end: 43,
       matched_text: 'geführt',
       titel: '§ 8 HGB',
+      status: 'unknown_risiko',
       governance_typ: null,
       schadensintensitaet: 'mittel',
       quelle: 'trigger',
@@ -86,6 +89,15 @@ describe('mapAnalyse (echte Engine-Form)', () => {
     expect(k.normketten).toEqual([
       { glieder: ['§ 146 AO', '§ 158 AO'], verknuepfung: '→', hinweis: 'Ordnungsmangel' },
     ]);
+  });
+
+  it('übernimmt engineStatus + streitig', () => {
+    const r = mapAnalyse(real);
+    const at = (s: number) => r.markings.find((m) => m.start === s)!;
+    expect(at(4).engineStatus).toBe('treffer');
+    expect(at(4).streitig).toBe(true);
+    expect(at(36).engineStatus).toBe('unknown_risiko');
+    expect(at(79).streitig).toBe(false);
   });
 
   it('Risiko nutzt titel als Begriff und norm_vorschlag als Anker', () => {
