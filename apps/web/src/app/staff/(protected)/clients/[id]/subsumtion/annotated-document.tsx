@@ -107,7 +107,9 @@ export function AnnotatedDocument(props: {
               style={underlineStyle(seg.marking)}
               className={
                 (editMode ? '' : 'cursor-pointer ') +
-                (seg.marking.id === selectedId ? 'bg-brand-100 dark:bg-brand-900/40 rounded-sm' : '')
+                (seg.marking.id === selectedId
+                  ? 'rounded-sm ring-2 ring-brand-500 bg-brand-500/15 font-medium'
+                  : '')
               }
               title={`${seg.marking.begriff}${seg.marking.label ? ' · ' + seg.marking.label : ''}`}
             >
