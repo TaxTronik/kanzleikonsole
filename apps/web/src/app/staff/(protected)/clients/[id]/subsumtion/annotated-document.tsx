@@ -1,11 +1,20 @@
 'use client';
 
-import { useRef } from 'react';
 import { Pencil, Check } from 'lucide-react';
 import {
   type MarkingDTO, FILTER_KEYS, FILTER_LABEL, type FilterKey,
   buildSegments, underlineStyle,
 } from './_ui';
+
+// Absoluter Zeichen-Offset eines Selektions-Endpunkts: der Textknoten sitzt in
+// einem Segment-<span> mit data-start (= sein Startindex im Quelltext); der
+// Offset innerhalb des Knotens kommt dazu.
+function resolveOffset(node: Node | null, offset: number): number | null {
+  let el: HTMLElement | null = node?.nodeType === Node.TEXT_NODE ? node.parentElement : (node as HTMLElement | null);
+  while (el && el.dataset?.['start'] === undefined) el = el.parentElement;
+  if (!el) return null;
+  return Number(el.dataset['start']) + offset;
+}
 
 export function AnnotatedDocument(props: {
   sourceText: string;
@@ -22,17 +31,22 @@ export function AnnotatedDocument(props: {
   onManualSelect: (sel: { start: number; end: number; text: string } | null) => void;
 }) {
   const { sourceText, visibleMarkings, filters, editMode, selectedId } = props;
-  const taRef = useRef<HTMLTextAreaElement>(null);
   const segments = buildSegments(sourceText, visibleMarkings);
 
   function captureSelection() {
-    const ta = taRef.current;
-    if (!ta) return;
-    const start = ta.selectionStart;
-    const end = ta.selectionEnd;
+    if (!editMode) return;
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) { props.onManualSelect(null); return; }
+    const a = resolveOffset(sel.anchorNode, sel.anchorOffset);
+    const f = resolveOffset(sel.focusNode, sel.focusOffset);
+    if (a == null || f == null) return;
+    const start = Math.min(a, f);
+    const end = Math.max(a, f);
     if (end > start) props.onManualSelect({ start, end, text: sourceText.slice(start, end) });
-    else props.onManualSelect(null);
   }
+
+  // Laufender Offset, damit jedes Segment-<span> sein data-start trägt.
+  let cursor = 0;
 
   return (
     <div className="card p-4">
@@ -61,44 +75,47 @@ export function AnnotatedDocument(props: {
         </button>
       </div>
 
-      {editMode ? (
-        <div className="space-y-2">
-          <div className="rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-xs text-amber-900 dark:text-amber-100">
-            <strong>Edit-Modus aktiv.</strong> Textstelle markieren → rechts Begriff, Farbe, Label,
-            Notiz und (optional) Norm wählen und speichern.
-          </div>
-          <textarea
-            ref={taRef}
-            readOnly
-            value={sourceText}
-            onMouseUp={captureSelection}
-            onKeyUp={captureSelection}
-            rows={20}
-            className="w-full rounded-md border border-default bg-surface px-3 py-2 text-sm font-mono leading-relaxed"
-          />
-        </div>
-      ) : (
-        <div className="whitespace-pre-wrap text-sm leading-loose">
-          {segments.map((seg, i) =>
-            seg.marking ? (
-              <span
-                key={i}
-                onClick={() => props.onSelectMarking(seg.marking!.id)}
-                style={underlineStyle(seg.marking)}
-                className={
-                  'cursor-pointer ' +
-                  (seg.marking.id === selectedId ? 'bg-brand-100 dark:bg-brand-900/40 rounded-sm' : '')
-                }
-                title={`${seg.marking.begriff}${seg.marking.label ? ' · ' + seg.marking.label : ''}`}
-              >
+      {editMode && (
+        <p className="mb-2 text-xs text-amber-800 dark:text-amber-200">
+          Textstelle <strong>markieren</strong> (mit der Maus ziehen) → rechts Begriff, Farbe, Label
+          und (optional) Norm setzen und speichern. Die Hervorhebungen bleiben sichtbar.
+        </p>
+      )}
+
+      <div
+        onMouseUp={captureSelection}
+        className={
+          'whitespace-pre-wrap text-sm leading-loose ' +
+          (editMode ? 'cursor-text rounded-md ring-1 ring-amber-300 dark:ring-amber-700 p-2' : '')
+        }
+      >
+        {segments.map((seg, i) => {
+          const segStart = cursor;
+          cursor += seg.text.length;
+          if (!seg.marking) {
+            return (
+              <span key={i} data-start={segStart}>
                 {seg.text}
               </span>
-            ) : (
-              <span key={i}>{seg.text}</span>
-            ),
-          )}
-        </div>
-      )}
+            );
+          }
+          return (
+            <span
+              key={i}
+              data-start={segStart}
+              onClick={() => !editMode && props.onSelectMarking(seg.marking!.id)}
+              style={underlineStyle(seg.marking)}
+              className={
+                (editMode ? '' : 'cursor-pointer ') +
+                (seg.marking.id === selectedId ? 'bg-brand-100 dark:bg-brand-900/40 rounded-sm' : '')
+              }
+              title={`${seg.marking.begriff}${seg.marking.label ? ' · ' + seg.marking.label : ''}`}
+            >
+              {seg.text}
+            </span>
+          );
+        })}
+      </div>
     </div>
   );
 }

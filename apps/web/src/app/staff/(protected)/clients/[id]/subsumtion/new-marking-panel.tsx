@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus, Check } from 'lucide-react';
 import { addManualMarkingAction } from './actions';
 
@@ -19,6 +19,13 @@ export function NewMarkingPanel(props: {
   const [label, setLabel] = useState('');
   const [notiz, setNotiz] = useState('');
   const [norm, setNorm] = useState('');
+
+  // Begriff automatisch mit dem markierten Text vorbefüllen — kein Pflicht-Tippen.
+  const selStart = props.selection?.start;
+  const selEnd = props.selection?.end;
+  useEffect(() => {
+    if (props.selection) setBegriff(props.selection.text.trim().replace(/\s+/g, ' '));
+  }, [selStart, selEnd]);
 
   function submit() {
     const sel = props.selection;
@@ -60,7 +67,7 @@ export function NewMarkingPanel(props: {
       </div>
 
       <label className="block text-xs">
-        <span className="text-muted">Begriff</span>
+        <span className="text-muted">Begriff <span className="text-disabled">(vorbefüllt mit dem markierten Text — anpassbar)</span></span>
         <input value={begriff} onChange={(e) => setBegriff(e.target.value)} placeholder="Begriff der markierten Stelle" className="mt-0.5 w-full rounded border border-default bg-surface px-2 py-1" />
       </label>
 
