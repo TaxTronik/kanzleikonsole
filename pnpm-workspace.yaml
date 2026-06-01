@@ -21,6 +21,10 @@ overrides:
   postcss: "^8.5.15"
   tmp: "^0.2.6"
   uuid: "^11.1.1"
+  # node-tar: nur transitiv via unpdf>canvas>@mapbox/node-pre-gyp (Install-Tool,
+  # Build ohnehin geblockt). 6.x ist EOL/unpatched — Fix nur im 7.5.x-Zweig
+  # (GHSA-9ppj-qmqm-q256 u. a.). Force auf den gepatchten Zweig.
+  tar: ">=7.5.11"
 
 # pnpm 11: Workspace-Pakete in dependents per echtes Link-Hardlink statt
 # Symlink injizieren. Der Wert steht im Lockfile; muss hier gespiegelt werden,
