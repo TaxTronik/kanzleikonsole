@@ -36,6 +36,7 @@
     "ioredis": "^5.11.0",
     "jose": "^6.2.3",
     "lucide-react": "^1.16.0",
+    "mammoth": "^1.8.0",
     "next": "^16.2.6",
     "next-auth": "5.0.0-beta.31",
     "nodemailer": "^8.0.9",
@@ -49,6 +50,7 @@
     "react-dom": "^19.2.6",
     "react-grid-layout": "^2.2.3",
     "react-resizable": "^4.0.1",
+    "unpdf": "^0.12.1",
     "xmlbuilder2": "^4.0.3",
     "zod": "^4.4.3"
   },

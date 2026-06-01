@@ -40,6 +40,14 @@ export interface N8nDeliverJob {
   outboxId: string;
 }
 
+export interface RiskAnalyseLlmJob {
+  tenantId: string;
+  analysisId: string;
+  /** Der bereits analysierte Sachverhalt — die Engine ist zustandslos. */
+  sourceText: string;
+  optionen?: Record<string, unknown>;
+}
+
 export const virusScanQueue = new Queue<VirusScanJob, void, string>('virus-scan', { connection });
 export const evidenceSealQueue = new Queue<EvidenceSealJob, void, string>('evidence-seal', { connection });
 export const gwgExpiryQueue = new Queue<ChecksJob, void, string>('gwg-expiry-check', { connection });
@@ -54,6 +62,7 @@ export const n8nOutboxReconcileQueue = new Queue<Record<string, never>, void, st
 export const magicLinkCleanupQueue = new Queue<ChecksJob, void, string>('magic-link-cleanup', { connection });
 export const dsgvoRetentionQueue = new Queue<ChecksJob, void, string>('dsgvo-retention', { connection });
 export const poaExpiryQueue = new Queue<ChecksJob, void, string>('poa-expiry-check', { connection });
+export const riskAnalyseLlmQueue = new Queue<RiskAnalyseLlmJob, void, string>('risk-analyse-llm', { connection });
 
 export const virusScanEvents = new QueueEvents('virus-scan', { connection });
 export const evidenceSealEvents = new QueueEvents('evidence-seal', { connection });

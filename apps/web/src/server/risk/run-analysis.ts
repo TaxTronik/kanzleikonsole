@@ -21,6 +21,7 @@ export interface RunAnalysisInput {
   text: string;
   /** StaffUser, der die Analyse auslöst. */
   staffId: string;
+  title?: string | null;
   clientId?: string | null;
   documentId?: string | null;
   optionen?: Record<string, unknown>;
@@ -42,6 +43,8 @@ async function run(
   const result = await c.analyse({ text: input.text, mitLLM, optionen: input.optionen });
   const saved = await saveAnalysis(ctx, {
     result,
+    sourceText: input.text,
+    title: input.title ?? null,
     clientId: input.clientId ?? null,
     documentId: input.documentId ?? null,
     createdById: input.staffId,

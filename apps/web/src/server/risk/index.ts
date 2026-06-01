@@ -23,3 +23,14 @@ export type {
   PushDefinitionResult,
   DefineCapableClient,
 } from './catalog-feedback';
+
+export { updateMarking, addManualMarking, deleteMarking } from './markings';
+export type {
+  UpdateMarkingInput,
+  AddManualMarkingInput,
+  RiskStatus,
+} from './markings';
+
+export { listAnalyses, loadAnalysis } from './queries';
+
+export { extractText, UnsupportedDocumentTypeError } from './extract-text';

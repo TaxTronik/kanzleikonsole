@@ -1108,11 +1108,18 @@ model RiskAnalysis {
   tenantId       String        @map("tenant_id") @db.Uuid
   clientId       String?       @map("client_id") @db.Uuid
   documentId     String?       @map("document_id") @db.Uuid
+  // Der analysierte Sachverhalt im Klartext. Nötig, um eine gespeicherte
+  // Analyse WIEDER mit dem Highlight-Overlay (Zeichen-Offsets) zu öffnen und um
+  // die LLM-Phase 2 zu fahren. Mandanten-Arbeitsprodukt, RLS-geschützt.
+  sourceText     String        @map("source_text")
+  title          String?
   textHash       String        @map("text_hash")
   katalogVersion String        @map("katalog_version")
   engineVersion  String        @map("engine_version")
   createdById    String        @map("created_by_id") @db.Uuid
   rawResult      Json          @map("raw_result")
+  // Gesetzt, sobald die asynchrone LLM-Phase die Analyse angereichert hat.
+  llmEnrichedAt  DateTime?     @map("llm_enriched_at") @db.Timestamptz(6)
   createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   client         Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "risk_analysis_client_fk")

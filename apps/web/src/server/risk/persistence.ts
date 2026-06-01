@@ -12,6 +12,10 @@ import type { RiskAnalysisResult } from '@taxtronik/risk-layer';
 
 export interface SaveAnalysisInput {
   result: RiskAnalysisResult;
+  /** Der analysierte Sachverhalt im Klartext (für Wieder-Öffnen + LLM-Phase). */
+  sourceText: string;
+  /** Optionale Bezeichnung der Subsumtion. */
+  title?: string | null;
   /** Optionaler Mandantenbezug (Pflicht erst für die Delegation). */
   clientId?: string | null;
   /** Optionaler Dokumentbezug (SeaweedFS-Dokument). */
@@ -35,6 +39,8 @@ export async function saveAnalysis(
         tenantId: ctx.tenantId,
         clientId: input.clientId ?? null,
         documentId: input.documentId ?? null,
+        sourceText: input.sourceText,
+        title: input.title ?? null,
         textHash: input.result.textHash,
         katalogVersion: input.result.katalogVersion,
         engineVersion: input.result.engineVersion,

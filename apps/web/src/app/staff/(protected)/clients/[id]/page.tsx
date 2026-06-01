@@ -1,4 +1,5 @@
 ﻿import { staffAuth } from '@/server/auth/staff';
+import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
@@ -217,6 +218,14 @@ export default async function ClientDetailPage({
   const { client, phoneNotes, taxDeadlines, pendingChangeRequests, customDefs, customValues, staffList, workflowInstances, reminders, binders, upcomingAppointments, pendingAppointmentRequests, handovers, managerDocs, hasDatevDocs } = data;
   const staffNameById = new Map(staffList.map((s) => [s.id, s.fullName]));
 
+  // Subsumtion/TCMS: Admin/Partner ODER dem Mandanten zugeordneter
+  // Berufsträger/Hauptbearbeiter (+ aktives Modul) sehen die Nav-Pill.
+  const canSubsumtion =
+    isStaffAdmin(session) ||
+    client.responsibilities.some(
+      (r) => r.staff.id === staffId && (r.role === 'BERUFSTRAEGER' || r.role === 'HAUPTBEARBEITER'),
+    );
+
   const customDefsForKind = customDefs.filter(
     (d) => d.appliesTo.length === 0 || d.appliesTo.includes(client.kind),
   );
@@ -334,6 +343,9 @@ export default async function ClientDetailPage({
           <Link href={`/staff/clients/${client.id}/bwa`} className="btn-secondary text-xs py-1">BWA & Auswertungen</Link>
         )}
         <Link href={`/staff/clients/${client.id}/gwg`} className="btn-secondary text-xs py-1">GwG-Prüfung</Link>
+        {modules.risk && canSubsumtion && (
+          <Link href={`/staff/clients/${client.id}/subsumtion`} className="btn-secondary text-xs py-1">Subsumtion / TCMS</Link>
+        )}
         {modules.taxNotices && (
           <>
             <Link href={`/staff/clients/${client.id}/tax-schedule`} className="btn-secondary text-xs py-1">Steuertermine</Link>

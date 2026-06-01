@@ -16,6 +16,9 @@
 // =============================================================================
 
 import { Prisma } from '@prisma/client';
+// Subpath statt Barrel: vermeidet, dass owner-client (verlangt DATABASE_URL beim
+// Import) in reine Unit-Tests gezogen wird, die rbac.ts transitiv importieren.
+import { withTenantContext } from '@taxtronik/db/tenant-context';
 import { staffAuth, type StaffSession } from './staff';
 import { log } from '@/server/logger';
 
@@ -53,6 +56,32 @@ export async function requireStaffSession(): Promise<StaffSession> {
 export async function requireStaffAdmin(): Promise<StaffSession> {
   const session = await requireStaffSession();
   if (!isStaffAdmin(session)) throw new ForbiddenError();
+  return session;
+}
+
+/**
+ * Subsumtions-Workspace-Zugang: global ADMIN/PARTNER ODER der dem Mandanten
+ * zugeordnete Berufsträger/Hauptbearbeiter (ClientResponsibility). Es gibt keine
+ * eigene Rolle „Berater" — die fachliche Verantwortung pro Mandant ist der Hebel.
+ * Wirft `ForbiddenError`, sonst liefert es die Session.
+ */
+export async function requireSubsumtionAccess(clientId: string): Promise<StaffSession> {
+  const session = await requireStaffSession();
+  if (isStaffAdmin(session)) return session;
+  const { tenantId, staffId } = session.user;
+  const responsible = await withTenantContext(
+    { tenantId, actorId: staffId, actorType: 'STAFF' },
+    (tx) =>
+      tx.clientResponsibility.findFirst({
+        where: { clientId, staffId, role: { in: ['BERUFSTRAEGER', 'HAUPTBEARBEITER'] } },
+        select: { id: true },
+      }),
+  );
+  if (!responsible) {
+    throw new ForbiddenError(
+      'Nur Admin/Partner oder der zuständige Berufsträger/Hauptbearbeiter dieses Mandanten.',
+    );
+  }
   return session;
 }
 

@@ -19,6 +19,7 @@ import { n8nDeliverWorker, n8nOutboxReconcileWorker } from './jobs/n8n-deliver';
 import { magicLinkCleanupWorker } from './jobs/magic-link-cleanup';
 import { dsgvoRetentionWorker } from './jobs/dsgvo-retention';
 import { poaExpiryWorker } from './jobs/poa-expiry-check';
+import { riskAnalyseLlmWorker } from './jobs/risk-analyse-llm';
 import { setupSchedules } from './scheduler';
 import { connection } from './queues';
 import { log } from './logger';
@@ -69,6 +70,7 @@ async function main() {
         'magic-link-cleanup',
         'dsgvo-retention',
         'poa-expiry-check',
+        'risk-analyse-llm',
       ],
     },
     'worker: ready',
@@ -94,6 +96,7 @@ async function shutdown(reason: string) {
       magicLinkCleanupWorker.close(),
       dsgvoRetentionWorker.close(),
       poaExpiryWorker.close(),
+      riskAnalyseLlmWorker.close(),
     ]);
     await connection.quit();
     log.info('worker: shutdown complete');
