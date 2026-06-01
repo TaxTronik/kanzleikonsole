@@ -41,6 +41,18 @@ export interface AnalysisDTO {
   markings: MarkingDTO[];
 }
 
+export interface ResearchResultDTO {
+  id: string;
+  title: string | null;
+  body: string;
+  status: 'NEU' | 'ZUGEORDNET' | 'VERWORFEN';
+  markingId: string | null;
+  source: string | null;
+  receivedAt: string;
+  /** Heuristische Markierungs-Vorschläge (nur für NEU). */
+  suggestions: Array<{ markingId: string; begriff: string; score: number; reason: string }>;
+}
+
 export const HERKUNFT_LABEL: Record<Herkunft, string> = {
   WOERTLICH: 'wörtlich',
   MUSTER: 'Muster',

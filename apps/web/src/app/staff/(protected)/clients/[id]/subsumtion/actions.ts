@@ -24,7 +24,11 @@ import {
   pushDefinitionToCatalog,
   extractText,
   UnsupportedDocumentTypeError,
+  previewResearch,
+  sendResearchToN8n,
+  assignResultToMarking,
   type RiskStatus,
+  type ResearchPreview,
 } from '@/server/risk';
 import { enqueueRiskAnalyseLlm } from '@/server/jobs/risk-analyse-queue';
 
@@ -188,6 +192,64 @@ export async function delegateAction(
     });
     revalidatePath(`/staff/clients/${parsed.clientId}/subsumtion/${parsed.analysisId}`);
     return { ok: true, reminderId: res.reminderId };
+  } catch (e) {
+    return toActionError(e);
+  }
+}
+
+// --- Rechercheauftrag an n8n (anonymisiert) ---------------------------------
+
+const ResearchSchema = z.object({
+  clientId: z.string().uuid(),
+  analysisId: z.string().uuid(),
+  markingId: z.string().uuid(),
+  includeSachverhalt: z.boolean(),
+  snippets: z.array(z.string().max(4000)).max(20).optional(),
+  prompt: z.string().max(8000).nullable().optional(),
+});
+
+/** Baut + anonymisiert den Auftrag und gibt die Vorschau zurück (kein Senden). */
+export async function previewResearchAction(
+  input: z.infer<typeof ResearchSchema>,
+): Promise<OkActionResult<ResearchPreview>> {
+  try {
+    const parsed = ResearchSchema.parse(input);
+    const { ctx } = await guard(parsed.clientId);
+    const preview = await previewResearch(ctx, parsed);
+    return { ok: true, ...preview };
+  } catch (e) {
+    return toActionError(e);
+  }
+}
+
+const SendResearchSchema = ResearchSchema.extend({ finalText: z.string().min(1).max(40_000) });
+
+/** Sendet den (geprüften) anonymisierten Auftrag an n8n. */
+export async function sendResearchAction(
+  input: z.infer<typeof SendResearchSchema>,
+): Promise<OkActionResult<{ requestId: string }>> {
+  try {
+    const parsed = SendResearchSchema.parse(input);
+    const { ctx } = await guard(parsed.clientId);
+    const res = await sendResearchToN8n(ctx, parsed);
+    revalidatePath(`/staff/clients/${parsed.clientId}/subsumtion/${parsed.analysisId}`);
+    return { ok: true, requestId: res.requestId };
+  } catch (e) {
+    return toActionError(e);
+  }
+}
+
+export async function assignResultAction(input: {
+  clientId: string;
+  analysisId: string;
+  resultId: string;
+  markingId: string | null;
+}): Promise<OkActionResult> {
+  try {
+    const { ctx } = await guard(input.clientId);
+    await assignResultToMarking(ctx, input.resultId, input.markingId);
+    revalidatePath(`/staff/clients/${input.clientId}/subsumtion/${input.analysisId}`);
+    return { ok: true };
   } catch (e) {
     return toActionError(e);
   }

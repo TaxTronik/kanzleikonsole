@@ -28,6 +28,7 @@ export const STATIC_EVENT_WHITELIST = new Set<string>([
   'invoice.due',
   'staff.locked',
   'staff.vacation_requested',
+  'risk.research_requested',
   'taxtronik.ping',
 ]);
 

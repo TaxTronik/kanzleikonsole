@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Save, Send, BookPlus, Trash2, AlertTriangle } from 'lucide-react';
+import { X, Save, Send, BookPlus, Trash2, AlertTriangle, Webhook, Eye, Loader2 } from 'lucide-react';
 import {
   updateMarkingAction, deleteMarkingAction, delegateAction, pushDefinitionAction,
+  previewResearchAction, sendResearchAction,
 } from './actions';
 import {
   type MarkingDTO, GOV_LABEL, STATUS_LABEL, HERKUNFT_LABEL, ENGINE_STATUS_LABEL, herkunftBadge,
@@ -37,6 +38,7 @@ export function MarkingPanel(props: {
 
   const [showDelegate, setShowDelegate] = useState(false);
   const [showDefine, setShowDefine] = useState(false);
+  const [showResearch, setShowResearch] = useState(false);
 
   function save() {
     start(async () => {
@@ -124,18 +126,91 @@ export function MarkingPanel(props: {
 
       <div className="flex flex-wrap gap-2">
         <button type="button" onClick={save} disabled={pending} className="btn-primary text-xs"><Save className="h-3.5 w-3.5" /> Speichern</button>
-        <button type="button" onClick={() => setShowDelegate((v) => !v)} className="btn-secondary text-xs"><Send className="h-3.5 w-3.5" /> Delegieren</button>
+        <button type="button" onClick={() => setShowDelegate((v) => !v)} className="btn-secondary text-xs"><Send className="h-3.5 w-3.5" /> Zuweisen</button>
+        <button type="button" onClick={() => setShowResearch((v) => !v)} className="btn-secondary text-xs"><Webhook className="h-3.5 w-3.5" /> An n8n</button>
         <button type="button" onClick={() => setShowDefine((v) => !v)} disabled={!engineConfigured} className="btn-secondary text-xs"><BookPlus className="h-3.5 w-3.5" /> Definieren</button>
         <button type="button" onClick={remove} disabled={pending} className="text-red-700 hover:text-red-800 text-xs inline-flex items-center gap-1"><Trash2 className="h-3.5 w-3.5" /> Löschen</button>
       </div>
 
       {showDelegate && (
         <DelegateForm clientId={clientId} analysisId={analysisId} markingId={m.id} staffOptions={staffOptions} pending={pending} start={start}
-          onDone={(r) => { flash(r, 'Recherche delegiert — Wiedervorlage angelegt.'); if (r.ok) { setShowDelegate(false); onChanged(); } }} />
+          onDone={(r) => { flash(r, 'An Mitarbeiter zugewiesen — Wiedervorlage angelegt.'); if (r.ok) { setShowDelegate(false); onChanged(); } }} />
+      )}
+      {showResearch && (
+        <ResearchComposer clientId={clientId} analysisId={analysisId} markingId={m.id} pending={pending} start={start}
+          onDone={(r) => { flash(r, 'Anonymisierter Auftrag an n8n gesendet.'); if (r.ok) setShowResearch(false); }} />
       )}
       {showDefine && (
         <DefineForm clientId={clientId} analysisId={analysisId} markingId={m.id} begriff={m.begriff} normAnker={m.normAnker} pending={pending} start={start}
           onDone={(r) => { flash(r, 'Definition an den Katalog übergeben.'); if (r.ok) { setShowDefine(false); onChanged(); } }} />
+      )}
+    </div>
+  );
+}
+
+function ResearchComposer(props: {
+  clientId: string; analysisId: string; markingId: string;
+  pending: boolean; start: (cb: () => void) => void;
+  onDone: (r: { ok: boolean; error?: string }) => void;
+}) {
+  const [includeSachverhalt, setInclude] = useState(false);
+  const [snippet, setSnippet] = useState('');
+  const [prompt, setPrompt] = useState('');
+  const [preview, setPreview] = useState<{ text: string; hits: number } | null>(null);
+  const [finalText, setFinalText] = useState('');
+
+  const baseInput = () => ({
+    clientId: props.clientId,
+    analysisId: props.analysisId,
+    markingId: props.markingId,
+    includeSachverhalt,
+    snippets: snippet.trim() ? [snippet.trim()] : [],
+    prompt: prompt.trim() || null,
+  });
+
+  function doPreview() {
+    props.start(async () => {
+      const r = await previewResearchAction(baseInput());
+      if (!r.ok) { props.onDone(r); return; }
+      setPreview({ text: r.anonymizedText, hits: r.heuristicHits.length });
+      setFinalText(r.anonymizedText);
+    });
+  }
+  function doSend() {
+    props.start(async () => {
+      const r = await sendResearchAction({ ...baseInput(), finalText });
+      props.onDone(r.ok ? { ok: true } : r);
+      if (r.ok) setPreview(null);
+    });
+  }
+
+  return (
+    <div className="rounded-md border border-default p-2 space-y-2 bg-gray-50/50 dark:bg-gray-900/30">
+      <p className="text-xs font-medium text-secondary inline-flex items-center gap-1">
+        <Webhook className="h-3.5 w-3.5" /> Rechercheauftrag an n8n (anonymisiert)
+      </p>
+      <label className="flex items-center gap-1.5 text-xs">
+        <input type="checkbox" checked={includeSachverhalt} onChange={(e) => setInclude(e.target.checked)} />
+        Sachverhalt-Auszug (um die Fundstelle) einbeziehen
+      </label>
+      <textarea value={snippet} onChange={(e) => setSnippet(e.target.value)} rows={2} placeholder="Textbaustein (optional)" className="w-full rounded border border-default bg-surface px-2 py-1 text-xs" />
+      <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={2} placeholder="Prompt / Recherche-Auftrag an n8n …" className="w-full rounded border border-default bg-surface px-2 py-1 text-xs" />
+
+      {!preview ? (
+        <button type="button" onClick={doPreview} disabled={props.pending} className="btn-secondary text-xs w-full justify-center">
+          {props.pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />} Anonymisierte Vorschau
+        </button>
+      ) : (
+        <div className="space-y-1.5">
+          <p className="text-[11px] text-amber-700 dark:text-amber-300">
+            Vorschau — exakt das geht an n8n. {preview.hits > 0 ? `${preview.hits} heuristische Schwärzung(en) — bitte prüfen.` : 'Editierbar.'}
+          </p>
+          <textarea value={finalText} onChange={(e) => setFinalText(e.target.value)} rows={8} className="w-full rounded border border-default bg-surface px-2 py-1 text-xs font-mono" />
+          <div className="flex gap-2">
+            <button type="button" onClick={doSend} disabled={props.pending || !finalText.trim()} className="btn-primary text-xs flex-1 justify-center"><Send className="h-3.5 w-3.5" /> An n8n senden</button>
+            <button type="button" onClick={() => setPreview(null)} className="btn-secondary text-xs">Zurück</button>
+          </div>
+        </div>
       )}
     </div>
   );

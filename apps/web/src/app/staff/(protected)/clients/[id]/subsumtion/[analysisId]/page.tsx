@@ -2,9 +2,9 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { guardSubsumtionPage } from '../_guard';
-import { loadAnalysis } from '@/server/risk';
+import { loadAnalysis, loadResearchResults, suggestMarkingsForResult } from '@/server/risk';
 import { SubsumtionWorkspace } from '../subsumtion-workspace';
-import type { AnalysisDTO, MarkingDTO } from '../_ui';
+import type { AnalysisDTO, MarkingDTO, ResearchResultDTO } from '../_ui';
 
 export default async function AnalysisPage({
   params,
@@ -16,6 +16,22 @@ export default async function AnalysisPage({
 
   const analysis = await loadAnalysis(ctx, analysisId);
   if (!analysis || analysis.clientId !== id) notFound();
+
+  // Rechercheergebnisse + (für NEU) heuristische Zuordnungs-Vorschläge.
+  const rawResults = await loadResearchResults(ctx, analysisId);
+  const researchResults: ResearchResultDTO[] = [];
+  for (const r of rawResults) {
+    researchResults.push({
+      id: r.id,
+      title: r.title,
+      body: r.body,
+      status: r.status,
+      markingId: r.markingId,
+      source: r.source,
+      receivedAt: r.receivedAt.toISOString(),
+      suggestions: r.status === 'NEU' ? await suggestMarkingsForResult(ctx, r.id) : [],
+    });
+  }
 
   const dto: AnalysisDTO = {
     id: analysis.id,
@@ -62,6 +78,7 @@ export default async function AnalysisPage({
         clientId={id}
         staffOptions={staffOptions}
         clientDocuments={[]}
+        researchResults={researchResults}
         engineConfigured={engineConfigured}
         initial={dto}
       />

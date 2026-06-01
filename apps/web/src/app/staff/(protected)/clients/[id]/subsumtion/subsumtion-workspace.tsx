@@ -11,17 +11,19 @@ import { HerkunftLegende } from './herkunft-legende';
 import { AnnotatedDocument } from './annotated-document';
 import { MarkingPanel } from './marking-panel';
 import { NewMarkingPanel } from './new-marking-panel';
-import { type AnalysisDTO, FILTER_KEYS, type FilterKey, isVisible } from './_ui';
+import { ResearchResultsBlock } from './research-results-block';
+import { type AnalysisDTO, type ResearchResultDTO, type MarkingDTO, FILTER_KEYS, type FilterKey, isVisible } from './_ui';
 
 interface Props {
   clientId: string;
   staffOptions: Array<{ id: string; fullName: string }>;
   clientDocuments: Array<{ id: string; title: string; mimeType: string; typeName: string }>;
+  researchResults?: ResearchResultDTO[];
   engineConfigured: boolean;
   initial: AnalysisDTO | null;
 }
 
-export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, engineConfigured, initial }: Props) {
+export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, researchResults = [], engineConfigured, initial }: Props) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +45,10 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, e
   const visibleMarkings = useMemo(() => markings.filter((m) => isVisible(m, filters)), [markings, filters]);
   const selected = markings.find((m) => m.id === selectedId) ?? null;
   const ownCount = markings.filter((m) => m.herkunft === 'BERATER').length;
+  const markingsById = useMemo(
+    () => Object.fromEntries(markings.map((m) => [m.id, m])) as Record<string, MarkingDTO>,
+    [markings],
+  );
 
   function flash(r: { ok: boolean; error?: string }, okMsg?: string) {
     if (!r.ok) { setError(r.error ?? 'Fehler.'); setInfo(null); }
@@ -235,6 +241,16 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, e
           )}
         </div>
       </div>
+
+      <ResearchResultsBlock
+        clientId={clientId}
+        analysisId={initial.id}
+        results={researchResults}
+        markingsById={markingsById}
+        pending={pending}
+        start={start}
+        onFlash={flash}
+      />
     </div>
   );
 }

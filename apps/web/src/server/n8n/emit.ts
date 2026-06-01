@@ -36,6 +36,7 @@ export type StaticN8nEventName =
   // n8n-Workflows, die auf staff.locked als „Account ausgesperrt"-Alarm
   // hören, hätten sonst beim Urlaubsantrag ausgelöst.
   | 'staff.vacation_requested'
+  | 'risk.research_requested'
   | 'taxtronik.ping';
 
 /**

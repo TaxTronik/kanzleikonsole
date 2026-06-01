@@ -48,6 +48,29 @@ export async function listExtractableDocuments(ctx: TenantContext, clientId: str
   );
 }
 
+/** Rechercheergebnisse (von n8n) zu einer Analyse — zugeordnet oder NEU. */
+export async function loadResearchResults(ctx: TenantContext, analysisId: string) {
+  return withTenantContext(ctx, (tx) =>
+    tx.riskResearchResult.findMany({
+      where: {
+        status: { not: 'VERWORFEN' },
+        OR: [{ request: { analysisId } }, { marking: { analysisId } }],
+      },
+      orderBy: { receivedAt: 'desc' },
+      take: 100,
+      select: {
+        id: true,
+        title: true,
+        body: true,
+        status: true,
+        markingId: true,
+        source: true,
+        receivedAt: true,
+      },
+    }),
+  );
+}
+
 /** Eine Subsumtion samt Sachverhalt + allen Markierungen, oder null. */
 export async function loadAnalysis(ctx: TenantContext, analysisId: string) {
   return withTenantContext(ctx, (tx) =>

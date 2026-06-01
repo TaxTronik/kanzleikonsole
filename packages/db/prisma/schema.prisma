@@ -66,6 +66,8 @@ model Tenant {
   requestTemplates           RequestTemplate[]
   riskAnalyses               RiskAnalysis[]
   riskMarkings               RiskMarking[]
+  riskResearchRequests       RiskResearchRequest[]
+  riskResearchResults        RiskResearchResult[]
   rssFeeds                   RssFeed[]
   serviceProviders           ServiceProvider[]
   staffBookmarks             StaffBookmark[]
@@ -1104,27 +1106,28 @@ model RequestResponse {
 /// `createdById` ist — wie request.created_by_staff — eine reine Mitarbeiter-
 /// UUID ohne FK (Mitarbeiter werden deaktiviert, nicht gelöscht).
 model RiskAnalysis {
-  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId       String        @map("tenant_id") @db.Uuid
-  clientId       String?       @map("client_id") @db.Uuid
-  documentId     String?       @map("document_id") @db.Uuid
+  id               String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String                @map("tenant_id") @db.Uuid
+  clientId         String?               @map("client_id") @db.Uuid
+  documentId       String?               @map("document_id") @db.Uuid
   // Der analysierte Sachverhalt im Klartext. Nötig, um eine gespeicherte
   // Analyse WIEDER mit dem Highlight-Overlay (Zeichen-Offsets) zu öffnen und um
   // die LLM-Phase 2 zu fahren. Mandanten-Arbeitsprodukt, RLS-geschützt.
-  sourceText     String        @map("source_text")
-  title          String?
-  textHash       String        @map("text_hash")
-  katalogVersion String        @map("katalog_version")
-  engineVersion  String        @map("engine_version")
-  createdById    String        @map("created_by_id") @db.Uuid
-  rawResult      Json          @map("raw_result")
+  sourceText       String                @map("source_text")
+  title            String?
+  textHash         String                @map("text_hash")
+  katalogVersion   String                @map("katalog_version")
+  engineVersion    String                @map("engine_version")
+  createdById      String                @map("created_by_id") @db.Uuid
+  rawResult        Json                  @map("raw_result")
   // Gesetzt, sobald die asynchrone LLM-Phase die Analyse angereichert hat.
-  llmEnrichedAt  DateTime?     @map("llm_enriched_at") @db.Timestamptz(6)
-  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  client         Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "risk_analysis_client_fk")
-  document       Document?     @relation(fields: [documentId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "risk_analysis_document_fk")
-  markings       RiskMarking[]
+  llmEnrichedAt    DateTime?             @map("llm_enriched_at") @db.Timestamptz(6)
+  createdAt        DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant           Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client           Client?               @relation(fields: [clientId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "risk_analysis_client_fk")
+  document         Document?             @relation(fields: [documentId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "risk_analysis_document_fk")
+  markings         RiskMarking[]
+  researchRequests RiskResearchRequest[]
 
   @@index([tenantId, clientId])
   @@index([tenantId, documentId])
@@ -1139,48 +1142,99 @@ model RiskAnalysis {
 /// (ClientReminder, NICHT mandantengerichteter Request) — kein eigener
 /// Aufgaben-Store. `verantwortlichId` ist eine reine Mitarbeiter-UUID (kein FK).
 model RiskMarking {
-  id                  String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId            String          @map("tenant_id") @db.Uuid
-  analysisId          String          @map("analysis_id") @db.Uuid
+  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId            String                @map("tenant_id") @db.Uuid
+  analysisId          String                @map("analysis_id") @db.Uuid
   start               Int
   end                 Int
-  matchedText         String          @map("matched_text")
+  matchedText         String                @map("matched_text")
   herkunft            RiskHerkunft
   // Detektionsstatus der Engine (treffer/luecke/kandidat/unknown_risiko); für
   // berater-gesetzte Markierungen `berater`. Treibt die Statistik-Leiste + Filter
   // (zählbar nach Berater-Edits, anders als die statische Engine-summary). Freier
   // Text, damit neue Engine-Status nicht an einem Enum scheitern.
-  engineStatus        String?         @map("engine_status")
+  engineStatus        String?               @map("engine_status")
   // Aus `ist_streitig` der Engine: die Stelle ist fachlich umstritten.
-  streitig            Boolean         @default(false)
-  begriffId           String?         @map("begriff_id")
+  streitig            Boolean               @default(false)
+  begriffId           String?               @map("begriff_id")
   begriff             String
-  normAnker           String[]        @map("norm_anker")
+  normAnker           String[]              @map("norm_anker")
   normketten          Json?
   // Nur Berater-Markierungen: frei gewählte Highlight-Farbe (Swatch) + Kategorie.
   farbe               String?
   label               String?
-  governanceTyp       GovernanceTyp?  @map("governance_typ")
-  schadensintensitaet RiskStufe?      @map("schadensintensitaet")
-  wahrscheinlichkeit  RiskWk?         @map("wahrscheinlichkeit")
-  kaskadenreichweite  Int?            @map("kaskadenreichweite")
+  governanceTyp       GovernanceTyp?        @map("governance_typ")
+  schadensintensitaet RiskStufe?            @map("schadensintensitaet")
+  wahrscheinlichkeit  RiskWk?               @map("wahrscheinlichkeit")
+  kaskadenreichweite  Int?                  @map("kaskadenreichweite")
   kontrolle           String?
-  verantwortlichId    String?         @map("verantwortlich_id") @db.Uuid
-  status              RiskStatus      @default(OFFEN)
+  verantwortlichId    String?               @map("verantwortlich_id") @db.Uuid
+  status              RiskStatus            @default(OFFEN)
   notiz               String?
-  reminderId          String?         @map("reminder_id") @db.Uuid
-  createdAt           DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt           DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
-  tenant              Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  analysis            RiskAnalysis    @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  reminderId          String?               @map("reminder_id") @db.Uuid
+  createdAt           DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant              Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  analysis            RiskAnalysis          @relation(fields: [analysisId], references: [id], onDelete: Cascade)
   // Delegation = interne Wiedervorlage (NICHT mandantengerichteter Request —
   // der wäre im Portal sichtbar). assignee/„an" liegt auf verantwortlichId.
-  reminder            ClientReminder? @relation(fields: [reminderId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "risk_marking_reminder_fk")
+  reminder            ClientReminder?       @relation(fields: [reminderId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "risk_marking_reminder_fk")
+  researchRequests    RiskResearchRequest[]
+  researchResults     RiskResearchResult[]
 
   @@index([tenantId, analysisId])
   @@index([tenantId, status])
   @@index([tenantId, reminderId])
   @@map("risk_marking")
+}
+
+/// Ein an n8n relayter Rechercheauftrag zu einer Markierung. Der ausgehende
+/// Payload ist ANONYMISIERT (§ 203 StGB) — `mapping` (Platzhalter→Original) wird
+/// NIE an n8n gesendet, dient nur der De-Anonymisierung der Antwort und ist
+/// daher sensibel (RLS-geschützt). Korrelation über die id (opaker Token).
+model RiskResearchRequest {
+  id                 String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String                @map("tenant_id") @db.Uuid
+  analysisId         String                @map("analysis_id") @db.Uuid
+  markingId          String?               @map("marking_id") @db.Uuid
+  prompt             String?
+  includeSachverhalt Boolean               @default(false) @map("include_sachverhalt")
+  anonymizedPayload  Json                  @map("anonymized_payload")
+  mapping            Json                  @map("mapping")
+  status             ResearchRequestStatus @default(SENT)
+  createdById        String                @map("created_by_id") @db.Uuid
+  createdAt          DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant             Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  analysis           RiskAnalysis          @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  marking            RiskMarking?          @relation(fields: [markingId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "risk_research_request_marking_fk")
+  results            RiskResearchResult[]
+
+  @@index([tenantId, analysisId])
+  @@index([tenantId, markingId])
+  @@map("risk_research_request")
+}
+
+/// Eine von n8n zurückgelieferte Recherche-Antwort. Landet in der Ablage
+/// „Rechercheergebnisse"; via Korrelation (researchRequestId) automatisch einer
+/// Markierung zugeordnet, sonst heuristisch vorgeschlagen. `body` ist bereits
+/// de-anonymisiert (Platzhalter→Original aus dem mapping des Requests).
+model RiskResearchResult {
+  id                String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String               @map("tenant_id") @db.Uuid
+  researchRequestId String?              @map("research_request_id") @db.Uuid
+  markingId         String?              @map("marking_id") @db.Uuid
+  title             String?
+  body              String
+  source            String?
+  status            ResearchResultStatus @default(NEU)
+  receivedAt        DateTime             @default(now()) @map("received_at") @db.Timestamptz(6)
+  tenant            Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  request           RiskResearchRequest? @relation(fields: [researchRequestId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "risk_research_result_request_fk")
+  marking           RiskMarking?         @relation(fields: [markingId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "risk_research_result_marking_fk")
+
+  @@index([tenantId, status])
+  @@index([tenantId, markingId])
+  @@map("risk_research_result")
 }
 
 model PhoneNote {
@@ -2120,6 +2174,22 @@ enum RiskStatus {
   AKZEPTIERT
 
   @@map("risk_status")
+}
+
+enum ResearchRequestStatus {
+  SENT
+  ANSWERED
+  FAILED
+
+  @@map("research_request_status")
+}
+
+enum ResearchResultStatus {
+  NEU
+  ZUGEORDNET
+  VERWORFEN
+
+  @@map("research_result_status")
 }
 
 enum TaxScheduleKind {

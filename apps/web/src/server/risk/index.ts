@@ -31,6 +31,15 @@ export type {
   RiskStatus,
 } from './markings';
 
-export { listAnalyses, loadAnalysis, listExtractableDocuments } from './queries';
+export { listAnalyses, loadAnalysis, listExtractableDocuments, loadResearchResults } from './queries';
 
 export { extractText, UnsupportedDocumentTypeError } from './extract-text';
+
+export { anonymize, deanonymize } from './anonymize';
+export type { AnonymizeClient, AnonymizeContact, AnonymizeResult } from './anonymize';
+
+export {
+  previewResearch, sendResearchToN8n, receiveResearchResult,
+  suggestMarkingsForResult, assignResultToMarking,
+} from './research';
+export type { ResearchInput, ResearchPreview, InboundResult, MarkingSuggestion } from './research';
