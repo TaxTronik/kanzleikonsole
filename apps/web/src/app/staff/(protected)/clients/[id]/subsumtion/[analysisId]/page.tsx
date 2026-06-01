@@ -17,11 +17,11 @@ export default async function AnalysisPage({
   const analysis = await loadAnalysis(ctx, analysisId);
   if (!analysis || analysis.clientId !== id) notFound();
 
-  // Rechercheergebnisse + (für NEU) heuristische Zuordnungs-Vorschläge.
+  // Rechercheergebnisse + (für NEU) heuristische Zuordnungs-Vorschläge. Die
+  // Vorschläge je NEU-Ergebnis parallel laden (sonst N serielle Queries).
   const rawResults = await loadResearchResults(ctx, analysisId);
-  const researchResults: ResearchResultDTO[] = [];
-  for (const r of rawResults) {
-    researchResults.push({
+  const researchResults: ResearchResultDTO[] = await Promise.all(
+    rawResults.map(async (r) => ({
       id: r.id,
       title: r.title,
       body: r.body,
@@ -30,8 +30,8 @@ export default async function AnalysisPage({
       source: r.source,
       receivedAt: r.receivedAt.toISOString(),
       suggestions: r.status === 'NEU' ? await suggestMarkingsForResult(ctx, r.id) : [],
-    });
-  }
+    })),
+  );
 
   const dto: AnalysisDTO = {
     id: analysis.id,

@@ -97,7 +97,7 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
     if (!initial) return;
     setError(null);
     start(async () => {
-      const r = await requestLlmAction({ clientId, analysisId: initial.id, sourceText: initial.sourceText });
+      const r = await requestLlmAction({ clientId, analysisId: initial.id });
       flash(r, 'KI-Vertiefung gestartet — Markierungen erscheinen in Kürze (Seite neu laden).');
     });
   }

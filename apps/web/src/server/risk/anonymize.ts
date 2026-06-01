@@ -120,8 +120,13 @@ export function anonymize(
 
   repl.sort((a, b) => b.original.length - a.original.length);
   let out = text;
+  // Unicode-bewusste Wortgrenzen (\p{L}\p{N}, u-Flag): ein Original wird nur als
+  // GANZES Token ersetzt, nicht als Teilstück. Sonst würde z. B. eine kurze Stadt
+  // („Au", „Hof") jedes Vorkommen in „auch"/„Hofladen" zerschießen.
+  const TOKEN = '[\\p{L}\\p{N}]';
   for (const r of repl) {
-    out = out.replace(new RegExp(escapeRegExp(r.original), r.ci ? 'gi' : 'g'), r.placeholder);
+    const pattern = `(?<!${TOKEN})(?:${escapeRegExp(r.original)})(?!${TOKEN})`;
+    out = out.replace(new RegExp(pattern, r.ci ? 'giu' : 'gu'), r.placeholder);
   }
 
   // --- Stufe 2: heuristisch ------------------------------------------------

@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { headers } from 'next/headers';
 import {
   requireSubsumtionAccess,
+  requireStaffSession,
   ForbiddenError,
   toActionError,
   type ActionErrorResult,
@@ -36,14 +37,84 @@ import { enqueueRiskAnalyseLlm } from '@/server/jobs/risk-analyse-queue';
 
 type OkActionResult<T = unknown> = ({ ok: true } & T) | ActionErrorResult;
 
-// Gemeinsamer Guard: Zugang (Admin/Partner oder zuständig) + aktives Modul.
+interface GuardResult {
+  ctx: TenantContext;
+  staffId: string;
+  /** Der tatsächliche Mandant der Ressource (NICHT der Payload-clientId). */
+  clientId: string;
+}
+
+async function requireRiskModule(ctx: TenantContext): Promise<void> {
+  const modules = await readModules(ctx);
+  if (!modules.risk) throw new ForbiddenError('Das Subsumtions-Modul ist für diese Kanzlei deaktiviert.');
+}
+
+// Gemeinsamer Guard: Zugang (Admin/Partner oder zuständig für DIESEN Mandanten) +
+// aktives Modul. Nur für Aktionen, deren Subjekt der clientId selbst ist (z. B.
+// „neue Analyse anlegen") — die clientId IST hier das autorisierte Ziel.
 async function guard(clientId: string): Promise<{ ctx: TenantContext; staffId: string }> {
   const session = await requireSubsumtionAccess(clientId);
   const { tenantId, staffId } = session.user;
   const ctx: TenantContext = { tenantId, actorId: staffId, actorType: 'STAFF' };
-  const modules = await readModules(ctx);
-  if (!modules.risk) throw new ForbiddenError('Das Subsumtions-Modul ist für diese Kanzlei deaktiviert.');
+  await requireRiskModule(ctx);
   return { ctx, staffId };
+}
+
+// Session + Tenant-Kontext OHNE per-Mandant-Prüfung — Basis für die Ressourcen-
+// Guards (die den Mandanten erst aus der Ressource ableiten).
+async function sessionCtx(): Promise<{ ctx: TenantContext; staffId: string }> {
+  const session = await requireStaffSession();
+  const { tenantId, staffId } = session.user;
+  const ctx: TenantContext = { tenantId, actorId: staffId, actorType: 'STAFF' };
+  await requireRiskModule(ctx);
+  return { ctx, staffId };
+}
+
+// Autorisiert über die ECHTE clientId der Analyse — nicht über einen vom Client
+// gelieferten clientId. Verhindert IDOR (Zugriff auf fremde Mandanten desselben
+// Tenants durch Spoofing der Payload-clientId).
+async function guardAnalysis(analysisId: string): Promise<GuardResult> {
+  const { ctx, staffId } = await sessionCtx();
+  const analysis = await withTenantContext(ctx, (tx) =>
+    tx.riskAnalysis.findUnique({ where: { id: analysisId }, select: { clientId: true } }),
+  );
+  if (!analysis?.clientId) throw new ForbiddenError('Analyse nicht gefunden oder ohne Mandantenbezug.');
+  await requireSubsumtionAccess(analysis.clientId);
+  return { ctx, staffId, clientId: analysis.clientId };
+}
+
+// Wie guardAnalysis, aber ausgehend von einer Markierung (leitet Analyse +
+// Mandant ab). Liefert auch die analysisId für revalidatePath.
+async function guardMarking(markingId: string): Promise<GuardResult & { analysisId: string }> {
+  const { ctx, staffId } = await sessionCtx();
+  const marking = await withTenantContext(ctx, (tx) =>
+    tx.riskMarking.findUnique({
+      where: { id: markingId },
+      select: { analysis: { select: { id: true, clientId: true } } },
+    }),
+  );
+  const clientId = marking?.analysis.clientId;
+  if (!clientId) throw new ForbiddenError('Markierung nicht gefunden oder ohne Mandantenbezug.');
+  await requireSubsumtionAccess(clientId);
+  return { ctx, staffId, clientId, analysisId: marking!.analysis.id };
+}
+
+// Ausgehend von einem Rechercheergebnis (über Request bzw. Markierung → Analyse).
+async function guardResult(resultId: string): Promise<GuardResult & { analysisId: string | null }> {
+  const { ctx, staffId } = await sessionCtx();
+  const result = await withTenantContext(ctx, (tx) =>
+    tx.riskResearchResult.findUnique({
+      where: { id: resultId },
+      select: {
+        request: { select: { analysis: { select: { id: true, clientId: true } } } },
+        marking: { select: { analysis: { select: { id: true, clientId: true } } } },
+      },
+    }),
+  );
+  const analysis = result?.request?.analysis ?? result?.marking?.analysis ?? null;
+  if (!analysis?.clientId) throw new ForbiddenError('Ergebnis nicht gefunden oder ohne Mandantenbezug.');
+  await requireSubsumtionAccess(analysis.clientId);
+  return { ctx, staffId, clientId: analysis.clientId, analysisId: analysis.id };
 }
 
 function requireEngine(): void {
@@ -81,15 +152,21 @@ export async function analyzeAction(
 export async function requestLlmAction(input: {
   clientId: string;
   analysisId: string;
-  sourceText: string;
 }): Promise<OkActionResult> {
   try {
-    const { ctx } = await guard(input.clientId);
+    const { ctx } = await guardAnalysis(input.analysisId);
     requireEngine();
+    // sourceText NICHT vom Client übernehmen — aus der gespeicherten Analyse
+    // laden (Offsets der LLM-Markierungen müssen zum gespeicherten Text passen;
+    // Determinismus/Audit; keine Manipulation des analysierten Texts).
+    const analysis = await withTenantContext(ctx, (tx) =>
+      tx.riskAnalysis.findUnique({ where: { id: input.analysisId }, select: { sourceText: true } }),
+    );
+    if (!analysis) return { ok: false, error: 'Analyse nicht gefunden.' };
     await enqueueRiskAnalyseLlm({
       tenantId: ctx.tenantId,
       analysisId: input.analysisId,
-      sourceText: input.sourceText,
+      sourceText: analysis.sourceText,
     });
     return { ok: true };
   } catch (e) {
@@ -116,9 +193,9 @@ export async function addManualMarkingAction(
   try {
     const parsed = ManualMarkingSchema.parse(input);
     if (parsed.end <= parsed.start) return { ok: false, error: 'Ungültige Markierung.' };
-    const { ctx } = await guard(parsed.clientId);
+    const { ctx, clientId } = await guardAnalysis(parsed.analysisId);
     const res = await addManualMarking(ctx, parsed);
-    revalidatePath(`/staff/clients/${parsed.clientId}/subsumtion/${parsed.analysisId}`);
+    revalidatePath(`/staff/clients/${clientId}/subsumtion/${parsed.analysisId}`);
     return { ok: true, markingId: res.markingId };
   } catch (e) {
     return toActionError(e);
@@ -145,8 +222,10 @@ export async function updateMarkingAction(
   input: z.infer<typeof UpdateMarkingSchema>,
 ): Promise<OkActionResult> {
   try {
-    const { clientId, analysisId, markingId, ...fields } = UpdateMarkingSchema.parse(input);
-    const { ctx } = await guard(clientId);
+    // clientId/analysisId aus dem Payload nur Routing — Autorisierung + echte IDs
+    // kommen aus guardMarking; sie dürfen NICHT als Markierungsfelder durchsickern.
+    const { markingId, clientId: _c, analysisId: _a, ...fields } = UpdateMarkingSchema.parse(input);
+    const { ctx, clientId, analysisId } = await guardMarking(markingId);
     await updateMarking(ctx, markingId, fields as { status?: RiskStatus });
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId}`);
     return { ok: true };
@@ -161,9 +240,9 @@ export async function deleteMarkingAction(input: {
   markingId: string;
 }): Promise<OkActionResult> {
   try {
-    const { ctx } = await guard(input.clientId);
+    const { ctx, clientId, analysisId } = await guardMarking(input.markingId);
     await deleteMarking(ctx, input.markingId);
-    revalidatePath(`/staff/clients/${input.clientId}/subsumtion/${input.analysisId}`);
+    revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId}`);
     return { ok: true };
   } catch (e) {
     return toActionError(e);
@@ -184,7 +263,7 @@ export async function delegateAction(
 ): Promise<OkActionResult<{ reminderId: string }>> {
   try {
     const parsed = DelegateSchema.parse(input);
-    const { ctx, staffId } = await guard(parsed.clientId);
+    const { ctx, staffId, clientId, analysisId } = await guardMarking(parsed.markingId);
     const res = await delegateMarking(ctx, {
       markingId: parsed.markingId,
       createdByStaffId: staffId,
@@ -192,7 +271,7 @@ export async function delegateAction(
       dueDate: parsed.dueDate ? new Date(parsed.dueDate) : undefined,
       notes: parsed.notes,
     });
-    revalidatePath(`/staff/clients/${parsed.clientId}/subsumtion/${parsed.analysisId}`);
+    revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId}`);
     return { ok: true, reminderId: res.reminderId };
   } catch (e) {
     return toActionError(e);
@@ -218,7 +297,7 @@ export async function previewResearchAction(
 ): Promise<OkActionResult<ResearchPreview>> {
   try {
     const parsed = ResearchSchema.parse(input);
-    const { ctx } = await guard(parsed.clientId);
+    const { ctx } = await guardAnalysis(parsed.analysisId);
     const preview = await previewResearch(ctx, parsed);
     return { ok: true, ...preview };
   } catch (e) {
@@ -234,9 +313,9 @@ export async function sendResearchAction(
 ): Promise<OkActionResult<{ requestId: string }>> {
   try {
     const parsed = SendResearchSchema.parse(input);
-    const { ctx } = await guard(parsed.clientId);
+    const { ctx, clientId } = await guardAnalysis(parsed.analysisId);
     const res = await sendResearchToN8n(ctx, parsed);
-    revalidatePath(`/staff/clients/${parsed.clientId}/subsumtion/${parsed.analysisId}`);
+    revalidatePath(`/staff/clients/${clientId}/subsumtion/${parsed.analysisId}`);
     return { ok: true, requestId: res.requestId };
   } catch (e) {
     return toActionError(e);
@@ -250,9 +329,19 @@ export async function assignResultAction(input: {
   markingId: string | null;
 }): Promise<OkActionResult> {
   try {
-    const { ctx } = await guard(input.clientId);
+    const { ctx, clientId, analysisId } = await guardResult(input.resultId);
+    // Ziel-Markierung (falls gesetzt) muss zur SELBEN Analyse gehören — sonst
+    // ließe sich ein Ergebnis quer auf eine fremde Markierung verlinken.
+    if (input.markingId) {
+      const target = await withTenantContext(ctx, (tx) =>
+        tx.riskMarking.findUnique({ where: { id: input.markingId! }, select: { analysisId: true } }),
+      );
+      if (!target || target.analysisId !== analysisId) {
+        return { ok: false, error: 'Markierung gehört nicht zu dieser Analyse.' };
+      }
+    }
     await assignResultToMarking(ctx, input.resultId, input.markingId);
-    revalidatePath(`/staff/clients/${input.clientId}/subsumtion/${input.analysisId}`);
+    revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId ?? ''}`);
     return { ok: true };
   } catch (e) {
     return toActionError(e);
@@ -295,10 +384,10 @@ export async function pushDefinitionAction(
 ): Promise<OkActionResult<{ begriffId: string }>> {
   try {
     const parsed = PushDefinitionSchema.parse(input);
-    const { ctx } = await guard(parsed.clientId);
+    const { ctx, clientId, analysisId } = await guardMarking(parsed.markingId);
     requireEngine();
     const res = await pushDefinitionToCatalog(ctx, parsed);
-    revalidatePath(`/staff/clients/${parsed.clientId}/subsumtion/${parsed.analysisId}`);
+    revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId}`);
     return { ok: true, begriffId: res.begriffId };
   } catch (e) {
     return toActionError(e);

@@ -129,10 +129,13 @@ export async function sendResearchToN8n(
     // (fängt vom Berater wieder eingefügte bekannte Entitäten).
     const baseMapping = anonymize(rawText, { client, contacts }).mapping;
     const safe = anonymize(input.finalText, { client, contacts });
-    const mapping = { ...baseMapping, ...safe.mapping };
+    // rechtsfrage geht als eigenes Feld raus → ebenfalls anonymisieren. Bei BERATER-
+    // Markierungen ist begriff Freitext und kann Mandantenbezug enthalten (§203).
+    const safeRechtsfrage = anonymize(rechtsfrage, { client, contacts });
+    const mapping = { ...baseMapping, ...safe.mapping, ...safeRechtsfrage.mapping };
 
     const payload = {
-      rechtsfrage,
+      rechtsfrage: safeRechtsfrage.text,
       normAnker,
       governanceTyp,
       anonymizedText: safe.text,

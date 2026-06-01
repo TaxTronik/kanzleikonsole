@@ -18,8 +18,8 @@
 // DATABASE_URL = Owner-Rolle (BYPASSRLS) → tenant-übergreifend, wie der Seed.
 // =============================================================================
 
-import { PrismaClient, Prisma } from '@prisma/client';
-import { createPostgresAdapter, requireDatabaseUrl } from '../src/prisma-adapter';
+import { Prisma } from '@prisma/client';
+import { prismaOwner } from '../src/owner-client';
 
 interface NormRef {
   zitat: string;
@@ -89,9 +89,8 @@ function entriesFromRaw(raw: unknown): RawEntry[] {
 
 async function main() {
   const dry = process.argv.includes('--dry');
-  const prisma = new PrismaClient({
-    adapter: createPostgresAdapter(requireDatabaseUrl(process.env['DATABASE_URL'], 'DATABASE_URL')),
-  });
+  // Geteilter Owner-Client (BYPASSRLS) — tenant-übergreifend wie der Seed.
+  const prisma = prismaOwner;
 
   let analyses = 0;
   let scannedMarkings = 0;

@@ -63,4 +63,17 @@ describe('anonymize (§ 203)', () => {
     expect(empty.text).toBe('Allgemeine Rechtsfrage zu § 8c KStG.');
     expect(empty.heuristicHits).toEqual([]);
   });
+
+  it('ersetzt kurze Orte/Nummern nur als ganzes Token (keine Teilstück-Treffer)', () => {
+    // Kurzer Ortsname „Au" darf „auch"/„Hofladen" NICHT zerschießen; die Zahl
+    // „548211" nicht innerhalb einer längeren Zahl matchen.
+    const shortClient = { name: 'X', datevNo: '548211', city: 'Au' };
+    const r = anonymize('In Au gibt es auch einen Hofladen; Beleg 5482110000 sowie 548211.', {
+      client: shortClient,
+      contacts: [],
+    });
+    expect(r.text).toContain('[ORT] gibt es auch einen Hofladen'); // „Au“ ersetzt, „auch“ intakt
+    expect(r.text).toContain('Beleg 5482110000'); // längere Zahl NICHT angefasst
+    expect(r.text).toContain('[DATEV_NR].'); // freistehende 548211 ersetzt
+  });
 });
