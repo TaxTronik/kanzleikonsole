@@ -1,1 +1,1 @@
-﻿export { env, portalBaseUrl, type Env } from './env';
+﻿export { env, portalBaseUrl, riskLayerConfig, type Env } from './env';

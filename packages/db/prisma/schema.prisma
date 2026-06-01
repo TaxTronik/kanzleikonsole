@@ -64,6 +64,8 @@ model Tenant {
   poas                       PowerOfAttorney[]
   requests                   Request[]
   requestTemplates           RequestTemplate[]
+  riskAnalyses               RiskAnalysis[]
+  riskMarkings               RiskMarking[]
   rssFeeds                   RssFeed[]
   serviceProviders           ServiceProvider[]
   staffBookmarks             StaffBookmark[]
@@ -205,20 +207,20 @@ model GwgCheck {
 }
 
 model GwgIdDocument {
-  id            String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  gwgCheckId    String            @map("gwg_check_id") @db.Uuid
-  type          GwgIdDocumentType
-  ownerName     String            @map("owner_name")
-  documentId    String?           @map("document_id") @db.Uuid
-  number        String?
-  issuedBy      String?           @map("issued_by")
-  issueDate     DateTime?         @map("issue_date") @db.Date
-  expiryDate    DateTime?         @map("expiry_date") @db.Date
-  verifiedAt    DateTime?         @map("verified_at")
-  notes         String?
-  createdAt     DateTime          @default(now()) @map("created_at")
-  document      Document?         @relation(fields: [documentId], references: [id])
-  check         GwgCheck          @relation(fields: [gwgCheckId], references: [id], onDelete: Cascade)
+  id             String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gwgCheckId     String            @map("gwg_check_id") @db.Uuid
+  type           GwgIdDocumentType
+  ownerName      String            @map("owner_name")
+  documentId     String?           @map("document_id") @db.Uuid
+  number         String?
+  issuedBy       String?           @map("issued_by")
+  issueDate      DateTime?         @map("issue_date") @db.Date
+  expiryDate     DateTime?         @map("expiry_date") @db.Date
+  verifiedAt     DateTime?         @map("verified_at")
+  notes          String?
+  createdAt      DateTime          @default(now()) @map("created_at")
+  document       Document?         @relation(fields: [documentId], references: [id])
+  check          GwgCheck          @relation(fields: [gwgCheckId], references: [id], onDelete: Cascade)
   linkedRequests Request[]
 
   @@index([gwgCheckId])
@@ -710,6 +712,7 @@ model Client {
   phoneNotes           PhoneNote[]
   poas                 PowerOfAttorney[]
   requests             Request[]
+  riskAnalyses         RiskAnalysis[]
   taxDeadlines         TaxDeadline[]
   taxFilings           TaxFiling[]
   taxNotices           TaxNotice[]
@@ -726,20 +729,21 @@ model Client {
 /// am fälligen Tag als Reminder im Dashboard. Klassiker des Steuerberater-
 /// Tagesgeschäfts.
 model ClientReminder {
-  id              String    @id(map: "client_reminder_pk") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId        String    @map("tenant_id") @db.Uuid
-  clientId        String    @map("client_id") @db.Uuid
-  dueDate         DateTime  @map("due_date") @db.Date
+  id              String        @id(map: "client_reminder_pk") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String        @map("tenant_id") @db.Uuid
+  clientId        String        @map("client_id") @db.Uuid
+  dueDate         DateTime      @map("due_date") @db.Date
   subject         String
   notes           String?
-  createdByStaff  String    @map("created_by_staff") @db.Uuid
-  assigneeStaffId String?   @map("assignee_staff_id") @db.Uuid
-  doneAt          DateTime? @map("done_at") @db.Timestamptz(6)
-  doneByStaff     String?   @map("done_by_staff") @db.Uuid
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  client          Client    @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_reminder_client_fk")
-  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_reminder_tenant_fk")
+  createdByStaff  String        @map("created_by_staff") @db.Uuid
+  assigneeStaffId String?       @map("assignee_staff_id") @db.Uuid
+  doneAt          DateTime?     @map("done_at") @db.Timestamptz(6)
+  doneByStaff     String?       @map("done_by_staff") @db.Uuid
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  client          Client        @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_reminder_client_fk")
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_reminder_tenant_fk")
+  riskMarkings    RiskMarking[]
 
   @@index([assigneeStaffId, doneAt], map: "client_reminder_assignee_idx")
   @@index([tenantId, dueDate, doneAt], map: "client_reminder_due_idx")
@@ -872,6 +876,7 @@ model Document {
   gwgIdDocuments      GwgIdDocument[]
   invoiceAttachments  Invoice[]
   requestResponses    RequestResponse[]
+  riskAnalyses        RiskAnalysis[]
   sickLeaves          SickLeave[]
   taxFilings          TaxFiling[]
   taxNotices          TaxNotice[]
@@ -997,34 +1002,34 @@ model AuditLog {
 }
 
 model Request {
-  id                   String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId             String            @map("tenant_id") @db.Uuid
-  clientId             String            @map("client_id") @db.Uuid
-  title                String
-  description          String
-  priority             RequestPriority   @default(NORMAL)
-  status               RequestStatus     @default(OPEN)
-  dueAt                DateTime?         @map("due_at")
-  createdByStaff       String            @map("created_by_staff") @db.Uuid
-  closedAt             DateTime?         @map("closed_at")
-  closedByStaff        String?           @map("closed_by_staff") @db.Uuid
-  createdAt            DateTime          @default(now()) @map("created_at")
-  updatedAt            DateTime          @updatedAt @map("updated_at")
-  formSubmissionId     String?           @map("form_submission_id") @db.Uuid
-  workflowItemId       String?           @map("workflow_item_id") @db.Uuid
+  id                    String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId              String            @map("tenant_id") @db.Uuid
+  clientId              String            @map("client_id") @db.Uuid
+  title                 String
+  description           String
+  priority              RequestPriority   @default(NORMAL)
+  status                RequestStatus     @default(OPEN)
+  dueAt                 DateTime?         @map("due_at")
+  createdByStaff        String            @map("created_by_staff") @db.Uuid
+  closedAt              DateTime?         @map("closed_at")
+  closedByStaff         String?           @map("closed_by_staff") @db.Uuid
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+  formSubmissionId      String?           @map("form_submission_id") @db.Uuid
+  workflowItemId        String?           @map("workflow_item_id") @db.Uuid
   // U-5: Auto-Requests aus gwg-expiry-check verlinken sauber auf das ID-
   // Dokument, dessen Erneuerung sie anstoßen. Vorher musste der Worker mit
   // einer Titel-Substring-Heuristik (`contains: ownerName`) entscheiden, ob
   // bereits ein offener Auto-Request existiert — zwei BeneficialOwners mit
   // ähnlichen Namen („Müller" / „Müller-Schmidt") fielen unter denselben
   // Match und der zweite Request wurde nie angelegt.
-  linkedGwgIdDocumentId String?          @map("linked_gwg_id_document_id") @db.Uuid
-  client               Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  formSubmission       FormSubmission?   @relation(fields: [formSubmissionId], references: [id], onUpdate: NoAction, map: "request_form_submission_fk")
-  tenant               Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  workflowItem         WorkflowItem?     @relation(fields: [workflowItemId], references: [id], onUpdate: NoAction, map: "request_workflow_item_fk")
-  linkedGwgIdDocument  GwgIdDocument?    @relation(fields: [linkedGwgIdDocumentId], references: [id], onUpdate: NoAction, map: "request_gwg_id_doc_fk")
-  responses            RequestResponse[]
+  linkedGwgIdDocumentId String?           @map("linked_gwg_id_document_id") @db.Uuid
+  client                Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  formSubmission        FormSubmission?   @relation(fields: [formSubmissionId], references: [id], onUpdate: NoAction, map: "request_form_submission_fk")
+  tenant                Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  workflowItem          WorkflowItem?     @relation(fields: [workflowItemId], references: [id], onUpdate: NoAction, map: "request_workflow_item_fk")
+  linkedGwgIdDocument   GwgIdDocument?    @relation(fields: [linkedGwgIdDocumentId], references: [id], onUpdate: NoAction, map: "request_gwg_id_doc_fk")
+  responses             RequestResponse[]
 
   @@index([tenantId, clientId])
   @@index([tenantId, status])
@@ -1090,6 +1095,75 @@ model RequestResponse {
 
   @@index([requestId])
   @@map("request_response")
+}
+
+/// Ein Analyse-Lauf der Risk-Layer-Engine (§4, TCMS) über einen Text/ein
+/// Dokument. Tenant-scoped (RLS). `rawResult` hält das vollständige Engine-JSON
+/// für Audit/Replay (kein Re-Inferieren nötig); die TCMS-/Graph-relevanten
+/// Felder (Normketten, Governance) liegen erstklassig pro RiskMarking.
+/// `createdById` ist — wie request.created_by_staff — eine reine Mitarbeiter-
+/// UUID ohne FK (Mitarbeiter werden deaktiviert, nicht gelöscht).
+model RiskAnalysis {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String        @map("tenant_id") @db.Uuid
+  clientId       String?       @map("client_id") @db.Uuid
+  documentId     String?       @map("document_id") @db.Uuid
+  textHash       String        @map("text_hash")
+  katalogVersion String        @map("katalog_version")
+  engineVersion  String        @map("engine_version")
+  createdById    String        @map("created_by_id") @db.Uuid
+  rawResult      Json          @map("raw_result")
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client         Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "risk_analysis_client_fk")
+  document       Document?     @relation(fields: [documentId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "risk_analysis_document_fk")
+  markings       RiskMarking[]
+
+  @@index([tenantId, clientId])
+  @@index([tenantId, documentId])
+  @@index([tenantId, createdAt])
+  @@map("risk_analysis")
+}
+
+/// Eine erkannte ODER berater-gesetzte Stelle im analysierten Text. Trägt
+/// Verortung, Provenienz (Vertrauensstufe), die erstklassigen TCMS-Felder
+/// (normAnker/normketten + Governance-Matrix) und den Bearbeitungs-Status.
+/// Delegation („Recherche") verweist auf eine interne Wiedervorlage
+/// (ClientReminder, NICHT mandantengerichteter Request) — kein eigener
+/// Aufgaben-Store. `verantwortlichId` ist eine reine Mitarbeiter-UUID (kein FK).
+model RiskMarking {
+  id                  String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId            String          @map("tenant_id") @db.Uuid
+  analysisId          String          @map("analysis_id") @db.Uuid
+  start               Int
+  end                 Int
+  matchedText         String          @map("matched_text")
+  herkunft            RiskHerkunft
+  begriffId           String?         @map("begriff_id")
+  begriff             String
+  normAnker           String[]        @map("norm_anker")
+  normketten          Json?
+  governanceTyp       GovernanceTyp?  @map("governance_typ")
+  schadensintensitaet RiskStufe?      @map("schadensintensitaet")
+  wahrscheinlichkeit  RiskWk?         @map("wahrscheinlichkeit")
+  kaskadenreichweite  Int?            @map("kaskadenreichweite")
+  kontrolle           String?
+  verantwortlichId    String?         @map("verantwortlich_id") @db.Uuid
+  status              RiskStatus      @default(OFFEN)
+  notiz               String?
+  reminderId          String?         @map("reminder_id") @db.Uuid
+  createdAt           DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant              Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  analysis            RiskAnalysis    @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  // Delegation = interne Wiedervorlage (NICHT mandantengerichteter Request —
+  // der wäre im Portal sichtbar). assignee/„an" liegt auf verantwortlichId.
+  reminder            ClientReminder? @relation(fields: [reminderId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "risk_marking_reminder_fk")
+
+  @@index([tenantId, analysisId])
+  @@index([tenantId, status])
+  @@index([tenantId, reminderId])
+  @@map("risk_marking")
 }
 
 model PhoneNote {
@@ -1483,29 +1557,29 @@ model FormSubmission {
 }
 
 model GwgOnboardingInvite {
-  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId         String          @map("tenant_id") @db.Uuid
-  clientId         String          @map("client_id") @db.Uuid
-  inviteEmail      String          @map("invite_email") @db.Citext
-  inviteName       String          @map("invite_name")
-  tokenHash        String          @map("token_hash")
-  expiresAt        DateTime        @map("expires_at")
-  status           GwgInviteStatus @default(PENDING)
-  submittedAt      DateTime?       @map("submitted_at")
-  submittedIp      String?         @map("submitted_ip") @db.Inet
-  submittedUa      String?         @map("submitted_ua")
-  gwgCheckId       String?         @map("gwg_check_id") @db.Uuid
+  id                  String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId            String          @map("tenant_id") @db.Uuid
+  clientId            String          @map("client_id") @db.Uuid
+  inviteEmail         String          @map("invite_email") @db.Citext
+  inviteName          String          @map("invite_name")
+  tokenHash           String          @map("token_hash")
+  expiresAt           DateTime        @map("expires_at")
+  status              GwgInviteStatus @default(PENDING)
+  submittedAt         DateTime?       @map("submitted_at")
+  submittedIp         String?         @map("submitted_ip") @db.Inet
+  submittedUa         String?         @map("submitted_ua")
+  gwgCheckId          String?         @map("gwg_check_id") @db.Uuid
   // H-1: Liste der via diesem Invite hochgeladenen document.id-UUIDs.
   // Beim submit prüfen wir, dass alle referenzierten Doc-IDs hier vorkommen
   // (verhindert Cross-Tenant-Verlinkung über erratene UUIDs).
-  uploadedDocumentIds Json         @default("[]") @map("uploaded_document_ids")
-  createdByStaff   String          @map("created_by_staff") @db.Uuid
-  cancelledByStaff String?         @map("cancelled_by_staff") @db.Uuid
-  cancelledAt      DateTime?       @map("cancelled_at")
-  createdAt        DateTime        @default(now()) @map("created_at")
-  updatedAt        DateTime        @updatedAt @map("updated_at")
-  client           Client          @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "gwg_invite_client_fkey")
-  tenant           Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "gwg_invite_tenant_fkey")
+  uploadedDocumentIds Json            @default("[]") @map("uploaded_document_ids")
+  createdByStaff      String          @map("created_by_staff") @db.Uuid
+  cancelledByStaff    String?         @map("cancelled_by_staff") @db.Uuid
+  cancelledAt         DateTime?       @map("cancelled_at")
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
+  client              Client          @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "gwg_invite_client_fkey")
+  tenant              Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "gwg_invite_tenant_fkey")
 
   @@index([tenantId, clientId, status], map: "gwg_invite_tenant_id_client_id_status_idx")
   @@index([tokenHash], map: "gwg_invite_token_hash_idx")
@@ -1975,6 +2049,60 @@ enum RequestResponseAuthor {
   CLIENT_CONTACT
 
   @@map("request_response_author")
+}
+
+// --- Risk-Layer / TCMS (§4) -------------------------------------------------
+
+/// Provenienz/Vertrauensstufe einer Markierung (welche Engine-Schicht bzw.
+/// Berater sie gesetzt hat).
+enum RiskHerkunft {
+  WOERTLICH
+  MUSTER
+  TRIGGER
+  EMBEDDING
+  LLM
+  BERATER
+
+  @@map("risk_herkunft")
+}
+
+/// Governance-Matrix-Typ: Festsetzungs- (FP), Feststellungs- (FF) oder
+/// Informations-relevant (IN). Vom Berater pro Marking zuschneidbar (TCMS).
+enum GovernanceTyp {
+  FP
+  FF
+  IN
+
+  @@map("governance_typ")
+}
+
+/// Schadensintensität.
+enum RiskStufe {
+  NIEDRIG
+  MITTEL
+  HOCH
+
+  @@map("risk_stufe")
+}
+
+/// Eintrittswahrscheinlichkeit.
+enum RiskWk {
+  SELTEN
+  MOEGLICH
+  WAHRSCHEINLICH
+  HAEUFIG
+
+  @@map("risk_wk")
+}
+
+/// Bearbeitungsstatus einer Markierung.
+enum RiskStatus {
+  OFFEN
+  IN_PRUEFUNG
+  KONTROLLIERT
+  AKZEPTIERT
+
+  @@map("risk_status")
 }
 
 enum TaxScheduleKind {

@@ -106,6 +106,15 @@ const envSchema = z.object({
   N8N_WEBHOOK_BASE_URL: z.preprocess((v) => v === '' ? undefined : v, z.string().url().optional()),
   N8N_HMAC_SECRET: z.string().optional(),
 
+  // --- Risk-Layer (TCMS-Engine, §4) -----------------------------------------
+  // Netzinterne, mandantendatenführende Analyse-Engine. Beide Werte optional:
+  // ist die Engine nicht deployt, bleibt das Risk-Modul schlicht inaktiv
+  // (riskLayerConfig === null → der Client wirft RiskLayerNotConfiguredError).
+  // RISK_LAYER_URL zeigt auf den internen Compose-Host (z. B. http://risk-layer:8000),
+  // der Hostname MUSS dann in INTERNAL_FETCH_HOSTS stehen (safeFetch-Allowlist).
+  RISK_LAYER_URL: z.preprocess((v) => v === '' ? undefined : v, z.string().url().optional()),
+  RISK_LAYER_TOKEN: z.preprocess((v) => v === '' ? undefined : v, Secret32.optional()),
+
   // --- RFC-3161-Zeitstempel -------------------------------------------------
   // Leer = lokaler Self-Timestamp (MVP).
   TIMESTAMP_AUTHORITY_URL: z.preprocess((v) => v === '' ? undefined : v, z.string().url().optional()),
@@ -239,3 +248,16 @@ export const env: Env = parseEnv();
 export const portalBaseUrl: string = (
   env.PORTAL_PUBLIC_URL ?? env.NEXTAUTH_URL
 ).replace(/\/$/, '');
+
+/**
+ * Konfiguration der Risk-Layer-Engine (§4) oder `null`, wenn nicht deployt.
+ * `null` ist ein gültiger Zustand: die Engine ist opt-in — ohne sie bleibt das
+ * Risk-/TCMS-Modul inaktiv. Der `@taxtronik/risk-layer`-Client liest diesen
+ * Wert und wirft bei `null` eine klare `RiskLayerNotConfiguredError`, statt
+ * stillschweigend gegen eine undefinierte URL zu fetchen. Trailing-Slash der
+ * URL wird entfernt (der Client hängt `/v1/...`-Pfade an).
+ */
+export const riskLayerConfig: { url: string; token: string } | null =
+  env.RISK_LAYER_URL && env.RISK_LAYER_TOKEN
+    ? { url: env.RISK_LAYER_URL.replace(/\/$/, ''), token: env.RISK_LAYER_TOKEN }
+    : null;

@@ -34,6 +34,7 @@ const nextConfig = {
     '@taxtronik/evidence',
     '@taxtronik/http-utils',
     '@taxtronik/n8n-shared',
+    '@taxtronik/risk-layer',
     '@taxtronik/rss',
     '@taxtronik/storage',
     '@taxtronik/tax',

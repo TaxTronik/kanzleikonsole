@@ -24,6 +24,7 @@
     "@taxtronik/evidence": "workspace:*",
     "@taxtronik/http-utils": "workspace:*",
     "@taxtronik/n8n-shared": "workspace:*",
+    "@taxtronik/risk-layer": "workspace:*",
     "@taxtronik/rss": "workspace:*",
     "@taxtronik/storage": "workspace:*",
     "@taxtronik/tax": "workspace:*",
