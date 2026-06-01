@@ -209,7 +209,11 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
           onManualSelect={setManualSel}
         />
 
-        <div>
+        {/* Sticky: Panel bleibt beim Scrollen sichtbar — Klick auf eine Markierung
+            weit unten muss nicht zurück nach oben gescrollt werden. self-start
+            verhindert das Grid-Stretching (sonst greift sticky nicht); bei langem
+            Panel scrollt es intern. */}
+        <div className="lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
           {editMode ? (
             <NewMarkingPanel
               clientId={clientId}
