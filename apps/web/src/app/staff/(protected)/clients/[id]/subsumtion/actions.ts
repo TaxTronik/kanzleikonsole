@@ -27,8 +27,10 @@ import {
   previewResearch,
   sendResearchToN8n,
   assignResultToMarking,
+  resolveNorm,
   type RiskStatus,
   type ResearchPreview,
+  type ResolvedNorm,
 } from '@/server/risk';
 import { enqueueRiskAnalyseLlm } from '@/server/jobs/risk-analyse-queue';
 
@@ -252,6 +254,27 @@ export async function assignResultAction(input: {
     await assignResultToMarking(ctx, input.resultId, input.markingId);
     revalidatePath(`/staff/clients/${input.clientId}/subsumtion/${input.analysisId}`);
     return { ok: true };
+  } catch (e) {
+    return toActionError(e);
+  }
+}
+
+const ResolveNormSchema = z.object({
+  clientId: z.string().uuid(),
+  // Engine-Norm-ID, z. B. "norm:KStG:8" oder granular "norm:UStG:2:abs2:nr2".
+  normId: z.string().min(1).max(200),
+});
+
+/** Lädt den Gesetzestext zu einer Norm-ID (für das Norm-Expandable im Panel). */
+export async function resolveNormAction(
+  input: z.infer<typeof ResolveNormSchema>,
+): Promise<OkActionResult<{ norm: ResolvedNorm }>> {
+  try {
+    const parsed = ResolveNormSchema.parse(input);
+    await guard(parsed.clientId);
+    requireEngine();
+    const norm = await resolveNorm(parsed.normId);
+    return { ok: true, norm };
   } catch (e) {
     return toActionError(e);
   }

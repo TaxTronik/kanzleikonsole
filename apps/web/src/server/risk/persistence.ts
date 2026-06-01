@@ -57,6 +57,8 @@ export async function saveAnalysis(
             begriffId: m.begriffId,
             begriff: m.begriff,
             normAnker: m.normAnker,
+            // normRefs optional: leer → SQL NULL (UI fällt auf normAnker-Zitate zurück).
+            normRefs: m.normRefs.length > 0 ? (m.normRefs as object) : undefined,
             // normketten optional: undefined → SQL NULL (kein Json-null nötig).
             normketten: m.normketten === null ? undefined : (m.normketten as object),
             governanceTyp: m.governanceTyp,

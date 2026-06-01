@@ -108,6 +108,29 @@ describe('mapAnalyse (echte Engine-Form)', () => {
     expect(ri.normAnker).toEqual(['§ 8 HGB', '§ 23 HGB']);
   });
 
+  it('normRefs normalisiert beide Engine-Varianten (id-String vs. ids[]) inkl. Titel', () => {
+    const r = mapAnalyse({
+      ...real,
+      risiken: [
+        {
+          ...real.risiken[0],
+          norm_vorschlag: [{ zitat: '§ 8 KStG', id: 'norm:KStG:8', titel: 'Ermittlung des Einkommens' }],
+        },
+      ],
+    });
+    // Karte: ids[] → erste ID; Eintrag ohne ID → id null.
+    const k = r.markings.find((m) => m.start === 4)!;
+    expect(k.normRefs).toEqual([
+      { zitat: '§ 146 AO', id: 'norm:AO:146', titel: null },
+      { zitat: '§ 158 AO', id: null, titel: null },
+    ]);
+    // Risiko: singular id + titel durchgereicht.
+    const ri = r.markings.find((m) => m.start === 36)!;
+    expect(ri.normRefs).toEqual([
+      { zitat: '§ 8 KStG', id: 'norm:KStG:8', titel: 'Ermittlung des Einkommens' },
+    ]);
+  });
+
   it('rawResult bleibt unverändert; leere Antwort → keine Markierungen', () => {
     expect(mapAnalyse(real).rawResult).toBe(real);
     const empty = mapAnalyse({ text_hash: 'h' });

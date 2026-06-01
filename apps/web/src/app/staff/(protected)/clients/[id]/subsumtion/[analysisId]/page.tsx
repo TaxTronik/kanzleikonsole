@@ -4,7 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { guardSubsumtionPage } from '../_guard';
 import { loadAnalysis, loadResearchResults, suggestMarkingsForResult } from '@/server/risk';
 import { SubsumtionWorkspace } from '../subsumtion-workspace';
-import type { AnalysisDTO, MarkingDTO, ResearchResultDTO } from '../_ui';
+import type { AnalysisDTO, MarkingDTO, NormRefDTO, ResearchResultDTO } from '../_ui';
 
 export default async function AnalysisPage({
   params,
@@ -51,6 +51,7 @@ export default async function AnalysisPage({
         begriffId: m.begriffId,
         begriff: m.begriff,
         normAnker: m.normAnker,
+        normRefs: Array.isArray(m.normRefs) ? (m.normRefs as unknown as NormRefDTO[]) : null,
         normketten: m.normketten ?? null,
         governanceTyp: m.governanceTyp,
         schadensintensitaet: m.schadensintensitaet,

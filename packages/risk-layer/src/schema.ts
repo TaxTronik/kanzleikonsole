@@ -14,8 +14,21 @@
 
 import { z } from 'zod';
 
-/** Norm-Referenz {zitat, ids?}. */
-const NormRefSchema = z.object({ zitat: z.string() }).catchall(z.unknown());
+/**
+ * Norm-Referenz. Die Engine liefert zwei Varianten:
+ *  - Karten:  { zitat, ids: ["norm:UStG:2:abs2:nr2"] }      (granular, plural)
+ *  - Risiken: { zitat, id: "norm:KStG:8", titel, text:"" }  (singular + Titel)
+ * Beide tragen die stabile Norm-ID, mit der `/v1/normgraph/aufloesen` den
+ * Gesetzestext liefert. `text` ist in der Analyse-Antwort leer (lazy via aufloesen).
+ */
+const NormRefSchema = z
+  .object({
+    zitat: z.string(),
+    id: z.string().nullish(),
+    ids: z.array(z.string()).nullish(),
+    titel: z.string().nullish(),
+  })
+  .catchall(z.unknown());
 
 /** Herkunfts-Objekt der Engine (Schicht/Methode). Nur `schicht` brauchen wir. */
 const HerkunftSchema = z

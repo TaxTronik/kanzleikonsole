@@ -17,6 +17,17 @@ export type GovernanceTyp = 'FP' | 'FF' | 'IN';
 export type RiskStufe = 'NIEDRIG' | 'MITTEL' | 'HOCH';
 export type RiskWk = 'SELTEN' | 'MOEGLICH' | 'WAHRSCHEINLICH' | 'HAEUFIG';
 
+/**
+ * Norm-Referenz, flach normalisiert über beide Engine-Varianten (Karte `ids[]`
+ * vs. Risiko `id`). `id` ist der Schlüssel für `/v1/normgraph/aufloesen` (lädt den
+ * Gesetzestext on demand); `titel` ist die Norm-Überschrift, sofern mitgeliefert.
+ */
+export interface NormRef {
+  zitat: string;
+  id: string | null;
+  titel: string | null;
+}
+
 /** Eine zur Persistenz fertige Markierung (vor Berater-Bearbeitung). */
 export interface RiskMarkingInput {
   start: number;
@@ -26,6 +37,8 @@ export interface RiskMarkingInput {
   begriffId: string | null;
   begriff: string;
   normAnker: string[];
+  /** Norm-Referenzen mit stabiler ID + Titel (für das Norm-Expandable). */
+  normRefs: NormRef[];
   normketten: unknown | null;
   governanceTyp: GovernanceTyp | null;
   schadensintensitaet: RiskStufe | null;
@@ -100,11 +113,20 @@ function deriveHerkunft(opts: {
   return opts.fallback;
 }
 
-function zitate(refs: Array<{ zitat: string }>): string[] {
-  return refs.map((r) => r.zitat).filter((z) => z.length > 0);
+/**
+ * Normalisiert die beiden Engine-Varianten (`id` vs. `ids[]`) auf flache
+ * NormRefs. Leere/zitatlose Einträge fallen raus.
+ */
+function toNormRefs(
+  refs: Array<{ zitat: string; id?: string | null; ids?: string[] | null; titel?: string | null }>,
+): NormRef[] {
+  return refs
+    .filter((r) => r.zitat && r.zitat.length > 0)
+    .map((r) => ({ zitat: r.zitat, id: r.id ?? r.ids?.[0] ?? null, titel: r.titel ?? null }));
 }
 
 function mapKarte(k: Karte): RiskMarkingInput {
+  const refs = toNormRefs(k.norm_anker);
   return {
     start: k.start,
     end: k.end,
@@ -112,7 +134,8 @@ function mapKarte(k: Karte): RiskMarkingInput {
     herkunft: deriveHerkunft({ via: k.via, schicht: k.herkunft?.schicht, fallback: 'MUSTER' }),
     begriffId: k.begriff_id ?? null,
     begriff: k.begriff || k.matched_text,
-    normAnker: zitate(k.norm_anker),
+    normAnker: refs.map((r) => r.zitat),
+    normRefs: refs,
     normketten: k.normketten ?? null,
     governanceTyp: lookup(GOVERNANCE, k.governance_typ),
     schadensintensitaet: lookup(STUFE, k.schadensintensitaet),
@@ -126,6 +149,7 @@ function mapKarte(k: Karte): RiskMarkingInput {
 function mapRisiko(r: Risiko): RiskMarkingInput {
   // Risiken tragen oft (noch) keinen festen Normanker, aber Vorschläge.
   const anker = r.norm_anker.length > 0 ? r.norm_anker : r.norm_vorschlag;
+  const refs = toNormRefs(anker);
   return {
     start: r.start,
     end: r.end,
@@ -133,7 +157,8 @@ function mapRisiko(r: Risiko): RiskMarkingInput {
     herkunft: deriveHerkunft({ via: r.via, schicht: r.herkunft?.schicht, quelle: r.quelle, fallback: 'TRIGGER' }),
     begriffId: null,
     begriff: r.titel || r.matched_text,
-    normAnker: zitate(anker),
+    normAnker: refs.map((rf) => rf.zitat),
+    normRefs: refs,
     normketten: null,
     governanceTyp: lookup(GOVERNANCE, r.governance_typ),
     schadensintensitaet: lookup(STUFE, r.schadensintensitaet),

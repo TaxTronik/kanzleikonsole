@@ -8,6 +8,13 @@ export type RiskStufe = 'NIEDRIG' | 'MITTEL' | 'HOCH';
 export type RiskWk = 'SELTEN' | 'MOEGLICH' | 'WAHRSCHEINLICH' | 'HAEUFIG';
 export type RiskStatus = 'OFFEN' | 'IN_PRUEFUNG' | 'KONTROLLIERT' | 'AKZEPTIERT';
 
+/** Norm-Referenz mit stabiler Engine-ID (für das Gesetzestext-Expandable). */
+export interface NormRefDTO {
+  zitat: string;
+  id: string | null;
+  titel: string | null;
+}
+
 export interface MarkingDTO {
   id: string;
   start: number;
@@ -19,6 +26,7 @@ export interface MarkingDTO {
   begriffId: string | null;
   begriff: string;
   normAnker: string[];
+  normRefs: NormRefDTO[] | null;
   normketten: unknown;
   governanceTyp: GovernanceTyp | null;
   schadensintensitaet: RiskStufe | null;

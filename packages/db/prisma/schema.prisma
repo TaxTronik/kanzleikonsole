@@ -1159,6 +1159,10 @@ model RiskMarking {
   begriffId           String?               @map("begriff_id")
   begriff             String
   normAnker           String[]              @map("norm_anker")
+  // Norm-Referenzen mit stabiler Engine-ID + Titel ([{zitat,id,titel}]). Die ID
+  // löst über /v1/normgraph/aufloesen den Gesetzestext auf (Norm-Expandable im UI).
+  // normAnker (Zitate) bleibt für Anzeige-Fallback + Recherche-Heuristik bestehen.
+  normRefs            Json?                 @map("norm_refs")
   normketten          Json?
   // Nur Berater-Markierungen: frei gewählte Highlight-Farbe (Swatch) + Kategorie.
   farbe               String?

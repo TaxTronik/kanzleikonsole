@@ -1,14 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Save, Send, BookPlus, Trash2, AlertTriangle, Webhook, Eye, Loader2 } from 'lucide-react';
+import { X, Save, Send, BookPlus, Trash2, AlertTriangle, Webhook, Eye, Loader2, ChevronRight, Scale } from 'lucide-react';
 import {
   updateMarkingAction, deleteMarkingAction, delegateAction, pushDefinitionAction,
-  previewResearchAction, sendResearchAction,
+  previewResearchAction, sendResearchAction, resolveNormAction,
 } from './actions';
 import {
-  type MarkingDTO, GOV_LABEL, STATUS_LABEL, HERKUNFT_LABEL, ENGINE_STATUS_LABEL, herkunftBadge,
+  type MarkingDTO, type NormRefDTO, GOV_LABEL, STATUS_LABEL, HERKUNFT_LABEL, ENGINE_STATUS_LABEL, herkunftBadge,
 } from './_ui';
+import type { ResolvedNorm } from '@/server/risk';
 
 type Flash = (r: { ok: boolean; error?: string }, ok?: string) => void;
 
@@ -87,9 +88,7 @@ export function MarkingPanel(props: {
           <AlertTriangle className="h-3.5 w-3.5" /> Fachlich umstrittene Stelle (Streit).
         </p>
       )}
-      {m.normAnker.length > 0 && (
-        <p className="text-xs text-secondary"><span className="text-muted">Normanker:</span> {m.normAnker.join(', ')}</p>
-      )}
+      <NormRefList clientId={clientId} refs={m.normRefs} fallback={m.normAnker} />
       {m.normketten != null && Array.isArray(m.normketten) && m.normketten.length > 0 && (
         <details className="text-xs">
           <summary className="cursor-pointer text-muted">Normketten (Kaskade)</summary>
@@ -225,6 +224,113 @@ export function ResearchComposer(props: {
         </div>
       )}
     </div>
+  );
+}
+
+// --- Rechtsnormen (Gesetzestext-Expandable) ---------------------------------
+
+/** "norm:UStG:2:abs2:nr2" → "§ 2 Abs. 2 Nr. 2 UStG" (nur Anzeige). */
+function formatNormId(id: string): string {
+  const parts = id.split(':');
+  if (parts[0] !== 'norm' || parts.length < 3) return id;
+  const law = parts[1];
+  const para = parts[2];
+  const rest = parts.slice(3).map((seg) => {
+    const abs = /^abs(\d+[a-z]?)$/i.exec(seg);
+    if (abs) return `Abs. ${abs[1]}`;
+    const nr = /^nr(\d+[a-z]?)$/i.exec(seg);
+    if (nr) return `Nr. ${nr[1]}`;
+    const s = /^s(\d+)$/i.exec(seg);
+    if (s) return `Satz ${s[1]}`;
+    return seg;
+  });
+  return `§ ${para}${rest.length ? ' ' + rest.join(' ') : ''} ${law}`;
+}
+
+/** ISO-Datum "1976-08-31" → "31.08.1976" (ohne TZ-Verschiebung). */
+function formatIsoDate(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : iso;
+}
+
+/** Absatz-Marker "(1)" auf eigene Zeilen brechen — bessere Lesbarkeit. */
+function formatGesetzestext(text: string): string {
+  return text.replace(/\((\d+[a-z]?)\)\s*/g, '\n($1) ').trim();
+}
+
+function NormRefList({ clientId, refs, fallback }: { clientId: string; refs: NormRefDTO[] | null; fallback: string[] }) {
+  // Manuelle/alte Markierungen ohne strukturierte Refs: reine Zitat-Anzeige.
+  if (!refs || refs.length === 0) {
+    if (fallback.length === 0) return null;
+    return <p className="text-xs text-secondary"><span className="text-muted">Normanker:</span> {fallback.join(', ')}</p>;
+  }
+  return (
+    <div className="space-y-1">
+      <p className="text-[11px] text-muted inline-flex items-center gap-1"><Scale className="h-3 w-3" /> Rechtsnormen</p>
+      <ul className="space-y-1">
+        {refs.map((r, i) => <NormRefRow key={(r.id ?? r.zitat) + i} clientId={clientId} refItem={r} />)}
+      </ul>
+    </div>
+  );
+}
+
+function NormRefRow({ clientId, refItem }: { clientId: string; refItem: NormRefDTO }) {
+  const [open, setOpen] = useState(false);
+  const [norm, setNorm] = useState<ResolvedNorm | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const canResolve = !!refItem.id;
+
+  function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (next && canResolve && !norm && !loading) {
+      setLoading(true); setErr(null);
+      resolveNormAction({ clientId, normId: refItem.id! })
+        .then((r) => { if (r.ok) setNorm(r.norm); else setErr(r.error); })
+        .catch(() => setErr('Norm konnte nicht geladen werden.'))
+        .finally(() => setLoading(false));
+    }
+  }
+
+  return (
+    <li className="rounded border border-default/60 bg-surface">
+      <button
+        type="button"
+        onClick={canResolve ? toggle : undefined}
+        disabled={!canResolve}
+        className={'w-full flex items-start gap-1.5 px-2 py-1 text-left text-xs ' + (canResolve ? 'hover:bg-gray-50 dark:hover:bg-gray-900/40' : 'cursor-default')}
+        title={canResolve ? 'Gesetzestext anzeigen' : 'Keine Norm-ID — nicht auflösbar'}
+      >
+        {canResolve
+          ? <ChevronRight className={'h-3.5 w-3.5 shrink-0 mt-0.5 text-disabled transition-transform ' + (open ? 'rotate-90' : '')} />
+          : <span className="w-3.5 shrink-0" />}
+        <span className="font-medium text-secondary">{refItem.zitat}</span>
+        {refItem.titel && <span className="text-muted truncate">— {refItem.titel}</span>}
+      </button>
+      {open && canResolve && (
+        <div className="px-2 pb-2 pt-0.5 text-xs">
+          {loading && <span className="text-muted inline-flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> lädt …</span>}
+          {err && <span className="text-red-700 dark:text-red-300">{err}</span>}
+          {norm && !loading && !norm.gefunden && <span className="text-muted">Im Normkorpus nicht gefunden.</span>}
+          {norm && norm.gefunden && (
+            <div className="space-y-1">
+              <p className="text-[11px] text-muted">
+                {[norm.titel, norm.law, norm.gueltigAb ? `gültig ab ${formatIsoDate(norm.gueltigAb)}` : null].filter(Boolean).join(' · ')}
+              </p>
+              <div className="max-h-72 overflow-auto rounded bg-gray-50 dark:bg-gray-900 p-2 text-[11px] leading-relaxed whitespace-pre-wrap">
+                {formatGesetzestext(norm.text)}
+              </div>
+              {norm.verweistAuf.length > 0 && (
+                <p className="text-[11px] text-muted">
+                  <span className="text-disabled">Verweist auf:</span> {norm.verweistAuf.map(formatNormId).join(' · ')}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </li>
   );
 }
 

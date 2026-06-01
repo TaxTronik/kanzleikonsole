@@ -21,6 +21,7 @@ export { mapAnalyse, RiskMappingError } from './mapping';
 export type {
   RiskAnalysisResult,
   RiskMarkingInput,
+  NormRef,
   RiskHerkunft,
   GovernanceTyp,
   RiskStufe,

@@ -24,6 +24,9 @@ export type {
   DefineCapableClient,
 } from './catalog-feedback';
 
+export { resolveNorm } from './resolve-norm';
+export type { ResolvedNorm, NormResolveClient } from './resolve-norm';
+
 export { updateMarking, addManualMarking, deleteMarking } from './markings';
 export type {
   UpdateMarkingInput,

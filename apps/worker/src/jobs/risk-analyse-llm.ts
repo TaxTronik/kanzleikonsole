@@ -54,6 +54,7 @@ export const riskAnalyseLlmWorker = new Worker<RiskAnalyseLlmJob, void, string>(
             begriffId: m.begriffId,
             begriff: m.begriff,
             normAnker: m.normAnker,
+            normRefs: m.normRefs.length > 0 ? (m.normRefs as object) : undefined,
             normketten: m.normketten === null ? undefined : (m.normketten as object),
             governanceTyp: m.governanceTyp,
             schadensintensitaet: m.schadensintensitaet,
