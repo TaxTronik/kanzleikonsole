@@ -198,14 +198,14 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
       return next;
     });
   }
-  function saveFormat(doc: unknown) {
-    if (!initial) return;
-    setError(null); setInfo(null);
-    start(async () => {
-      const r = await reformatAnalysisAction({ clientId, analysisId: initial.id, doc });
-      flash(r, 'Formatierung gespeichert.');
-      if (r.ok) refresh();
-    });
+  // Auto-Save der Formatierung (on-the-fly, vom Editor debounced aufgerufen).
+  // Still: kein Toast/Refresh — der Editor hält den Stand schon; Status zeigt die
+  // Fläche selbst. Nur bei Fehler wird der Fehlerbanner gesetzt.
+  async function saveFormat(doc: unknown): Promise<{ ok: boolean; error?: string }> {
+    if (!initial) return { ok: false, error: 'Keine Analyse.' };
+    const r = await reformatAnalysisAction({ clientId, analysisId: initial.id, doc });
+    if (!r.ok) setError(r.error ?? 'Formatierung konnte nicht gespeichert werden.');
+    return r;
   }
   function archive() {
     if (!initial) return;
@@ -358,7 +358,6 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
           selectedId={selectedId}
           onSelectMarking={selectMarking}
           onSelectionForMarking={selectForMarking}
-          saving={pending}
           onSaveFormat={saveFormat}
         />
 

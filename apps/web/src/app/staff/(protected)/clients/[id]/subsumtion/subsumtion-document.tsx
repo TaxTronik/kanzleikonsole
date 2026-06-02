@@ -62,15 +62,25 @@ const MarkDecorations = Extension.create({
   },
 });
 
+function hexToRgba(hex: string, alpha: number): string {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 function markStyle(m: MarkingDTO, selected: boolean): string {
   const color = m.streitig ? '#ef4444' : herkunftColor(m.herkunft);
-  // cursor:pointer → über einer (unterstrichenen) Markierung zeigt die Maus die
-  // „Hand" statt des Text-Cursors; signalisiert „anklickbar zum Prüfen".
-  let s =
+  // Hintergrund-Tönung in der Herkunftsfarbe ZUSÄTZLICH zur Unterstreichung →
+  // deutlich sichtbar; ausgewählt = kräftiger Indigo-Hintergrund. cursor:pointer
+  // signalisiert „anklickbar zum Prüfen".
+  const bg = selected ? 'rgba(99, 102, 241, 0.24)' : hexToRgba(color, 0.16);
+  return (
     `text-decoration: underline; text-decoration-color:${color}; text-decoration-thickness:2px;` +
-    `text-underline-offset:2px; text-decoration-style:${m.streitig ? 'wavy' : 'solid'}; cursor:pointer;`;
-  if (selected) s += 'background: rgba(99,102,241,0.16); border-radius:2px;';
-  return s;
+    `text-underline-offset:2px; text-decoration-style:${m.streitig ? 'wavy' : 'solid'}; cursor:pointer;` +
+    `background:${bg}; border-radius:2px;`
+  );
 }
 
 /** Position der schwebenden Formatier-Leiste relativ zur Editor-Box (über bzw.
@@ -117,9 +127,9 @@ interface Props {
   onSelectionForMarking?: (sel: ManualSelection | null) => void;
   // Compose-Streaming (Analyse-Button / Zähler):
   onTextChange?: (plainText: string) => void;
-  // Formatierung speichern (Review):
-  saving?: boolean;
-  onSaveFormat?: (doc: unknown) => void;
+  // Formatierung automatisch speichern (Review, on-the-fly, debounced). Liefert
+  // das Ergebnis für die Speicher-Status-Anzeige zurück.
+  onSaveFormat?: (doc: unknown) => Promise<{ ok: boolean; error?: string }>;
 }
 
 export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(function SubsumtionDocument(
@@ -131,14 +141,19 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(fu
     visibleMarkings = [], filters, selectedId = null,
   } = props;
 
-  const [dirty, setDirty] = useState(false);
   const [textChanged, setTextChanged] = useState(false);
+  const [saveState, setSaveState] = useState<'idle' | 'dirty' | 'saving' | 'saved' | 'error'>('idle');
   const rangesRef = useRef<TextRange[]>([]);
   // Schwebende Formatier-Leiste (Review): erscheint über/unter der Auswahl.
   const [flyover, setFlyover] = useState<{ top: number; left: number; placement: 'above' | 'below' } | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   // true, solange mit der Maus gezogen wird → Leiste erst nach dem Loslassen.
   const draggingRef = useRef(false);
+
+  // Auto-Save (Formatierung on-the-fly, debounced).
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savingRef = useRef(false);
+  const pendingDocRef = useRef<unknown>(null);
 
   // Aktuelle Auswahl-Callbacks/Markierungen für die Editor-Closures (ohne Editor-Neubau).
   const ctxRef = useRef({
@@ -147,6 +162,7 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(fu
     sourceText: sourceText ?? '',
     onSelectMarking: props.onSelectMarking,
     onSelectionForMarking: props.onSelectionForMarking,
+    onSaveFormat: props.onSaveFormat,
   });
   ctxRef.current.analyzed = analyzed;
   ctxRef.current.canEdit = canEdit;
@@ -154,6 +170,34 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(fu
   ctxRef.current.sourceText = sourceText ?? '';
   ctxRef.current.onSelectMarking = props.onSelectMarking;
   ctxRef.current.onSelectionForMarking = props.onSelectionForMarking;
+  ctxRef.current.onSaveFormat = props.onSaveFormat;
+
+  // Debounce-Logik in Refs (immer frisch), damit die stabile onUpdate-Closure sie
+  // ohne Stale-Capture aufrufen kann.
+  const flushRef = useRef<() => void>(() => {});
+  const scheduleRef = useRef<(doc: unknown, changed: boolean) => void>(() => {});
+  flushRef.current = async () => {
+    if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; }
+    if (savingRef.current) return; // läuft schon → der nächste Lauf holt's nach
+    const doc = pendingDocRef.current;
+    const save = ctxRef.current.onSaveFormat;
+    if (doc == null || !save) return;
+    pendingDocRef.current = null;
+    savingRef.current = true;
+    setSaveState('saving');
+    const ok = await save(doc).then((r) => r.ok).catch(() => false);
+    savingRef.current = false;
+    setSaveState(ok ? 'saved' : 'error');
+    if (ok && pendingDocRef.current != null) flushRef.current(); // zwischenzeitliche Änderung
+  };
+  scheduleRef.current = (doc, changed) => {
+    if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; }
+    // Nur Formatierung auto-speichern; Textänderung → Warnung, KEIN Save (Offsets).
+    if (changed || !ctxRef.current.canEdit) return;
+    pendingDocRef.current = doc;
+    setSaveState('dirty');
+    saveTimer.current = setTimeout(() => flushRef.current(), 1000);
+  };
 
   const editor = useEditor({
     extensions: [...baseEditorExtensions, MarkDecorations],
@@ -166,14 +210,18 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(fu
           'tt-content text-sm leading-relaxed focus:outline-none px-3 py-2 ' +
           (analyzed ? 'min-h-[12rem]' : 'min-h-[18rem] max-h-[60vh] overflow-y-auto'),
       },
+      // Editor verlassen → ausstehende Formatierung sofort speichern (statt Debounce).
+      handleDOMEvents: { blur: () => { flushRef.current(); return false; } },
     },
     onUpdate: ({ editor }) => {
       const { text, ranges } = docToText(editor.state.doc);
       rangesRef.current = ranges;
       props.onTextChange?.(text);
       if (ctxRef.current.analyzed) {
-        setDirty(true);
-        setTextChanged(text !== ctxRef.current.sourceText);
+        const changed = text !== ctxRef.current.sourceText;
+        setTextChanged(changed);
+        // Formatierung on-the-fly speichern (debounced).
+        scheduleRef.current(editor.getJSON(), changed);
       }
     },
     onSelectionUpdate: ({ editor }) => {
@@ -277,11 +325,8 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(fu
     props.onTextChange?.(docToText(editor.state.doc).text);
   }
 
-  function save() {
-    if (!editor) return;
-    setDirty(false);
-    props.onSaveFormat?.(editor.getJSON());
-  }
+  // Beim Unmount (z. B. Wegnavigieren) ausstehende Formatierung noch sichern.
+  useEffect(() => () => { if (pendingDocRef.current != null) flushRef.current(); }, []);
 
   // Tiptap rendert NUR client-seitig (immediatelyRender:false → editor ist auf dem
   // Server und im ersten Client-Render null). Bis dahin ein stabiler Platzhalter,
@@ -364,22 +409,22 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(fu
           {textChanged ? (
             <p className="text-xs text-amber-800 dark:text-amber-200">
               Der Text weicht vom analysierten Sachverhalt ab — inhaltliche Änderungen verschieben die
-              Markierungen. Für geänderten Text bitte eine <strong>neue Analyse</strong> anlegen; nur
-              Formatierung wird gespeichert.
+              Markierungen. Für geänderten Text bitte eine <strong>neue Analyse</strong> anlegen; reine
+              Formatierung wird automatisch gespeichert.
             </p>
           ) : (
-            <span className="text-xs text-muted">Formatierung ändern? Markierungen bleiben verankert.</span>
+            <span className="ml-auto text-xs text-muted inline-flex items-center gap-1">
+              {saveState === 'saving' ? (
+                <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Speichert …</>
+              ) : saveState === 'saved' ? (
+                <><Check className="h-3.5 w-3.5 text-emerald-600" /> Formatierung gespeichert</>
+              ) : saveState === 'error' ? (
+                <span className="text-red-600">Speichern fehlgeschlagen — wird erneut versucht</span>
+              ) : (
+                'Formatierung wird automatisch gespeichert.'
+              )}
+            </span>
           )}
-          <button
-            type="button"
-            onClick={save}
-            disabled={props.saving || !dirty || textChanged}
-            className="ml-auto btn-secondary text-xs"
-            title={textChanged ? 'Textänderung kann nicht als Formatierung gespeichert werden' : 'Formatierung speichern'}
-          >
-            {props.saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-            Formatierung speichern
-          </button>
         </div>
       )}
     </div>
