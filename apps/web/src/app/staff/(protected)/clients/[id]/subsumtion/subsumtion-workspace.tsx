@@ -78,6 +78,8 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
       const r = await importDocTextAction(fd);
       if (!r.ok) { setError(r.error); return; }
       setText((prev) => (prev.trim() ? prev + '\n\n' + r.text : r.text));
+      // Titel-Vorschlag nur übernehmen, wenn noch keiner gesetzt ist.
+      if (r.suggestedTitle && !title.trim()) setTitle(r.suggestedTitle);
       setInfo('Text aus Dokument übernommen.');
     });
   }
@@ -88,6 +90,7 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
       const r = await importClientDocAction({ clientId, documentId: docId });
       if (!r.ok) { setError(r.error); return; }
       setText((prev) => (prev.trim() ? prev + '\n\n' + r.text : r.text));
+      if (r.suggestedTitle && !title.trim()) setTitle(r.suggestedTitle);
       setInfo('Text aus Mandanten-Dokument übernommen.');
     });
   }

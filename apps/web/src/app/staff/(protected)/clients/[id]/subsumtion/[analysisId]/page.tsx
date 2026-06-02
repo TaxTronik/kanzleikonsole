@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { guardSubsumtionPage } from '../_guard';
 import { loadAnalysis, loadResearchResults, suggestMarkingsForResult } from '@/server/risk';
 import { SubsumtionWorkspace } from '../subsumtion-workspace';
+import { EditableAnalysisTitle } from '../editable-title';
 import type { AnalysisDTO, MarkingDTO, NormRefDTO, ResearchResultDTO } from '../_ui';
 
 export default async function AnalysisPage({
@@ -70,10 +71,10 @@ export default async function AnalysisPage({
   return (
     <div className="p-8 max-w-6xl">
       <div className="flex items-center gap-3 mb-6">
-        <Link href={`/staff/clients/${id}/subsumtion`} className="text-disabled hover:text-secondary">
+        <Link href={`/staff/clients/${id}/subsumtion`} className="text-disabled hover:text-secondary shrink-0">
           <ArrowLeft className="h-5 w-5" />
         </Link>
-        <h1 className="text-2xl font-bold text-primary">{analysis.title || 'Subsumtion'}</h1>
+        <EditableAnalysisTitle clientId={id} analysisId={analysisId} initialTitle={analysis.title} />
       </div>
       <SubsumtionWorkspace
         clientId={id}

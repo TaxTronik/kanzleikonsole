@@ -1,0 +1,91 @@
+{
+  "name": "04 — Risk-Research (Subsumtion → n8n → zurück)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "risk.research_requested",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "webhook",
+      "name": "Webhook von taxtronik",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "risk-research-handler"
+    },
+    {
+      "parameters": {
+        "jsCode": "// HMAC-Signatur pruefen: App/Worker signieren event\\ntimestamp\\nnonce\\nbody.\nimport crypto from 'crypto';\nconst secret = $env.N8N_HMAC_SECRET;\nconst headers = $input.item.json.headers || {};\nconst body = typeof $input.item.json.body === 'string'\n  ? $input.item.json.body\n  : JSON.stringify($input.item.json.body ?? {});\nconst sig = headers['x-taxtronik-signature'] || headers['X-Taxtronik-Signature'] || '';\nconst ts = headers['x-taxtronik-timestamp'] || headers['X-Taxtronik-Timestamp'] || '';\nconst event = headers['x-taxtronik-event'] || headers['X-Taxtronik-Event'] || '';\nconst nonce = headers['x-taxtronik-nonce'] || headers['X-Taxtronik-Nonce'] || '';\nif (!sig || !ts || !event || !nonce) {\n  throw new Error('HMAC-Header fehlen');\n}\nconst tsNumber = Number(ts);\nif (!Number.isFinite(tsNumber) || Math.abs(Date.now() - tsNumber) > 5 * 60 * 1000) {\n  throw new Error('HMAC-Timestamp ungueltig');\n}\nconst expected = 'sha256=' + crypto.createHmac('sha256', secret).update(`${event}\\n${ts}\\n${nonce}\\n${body}`).digest('hex');\nif (sig !== expected) {\n  throw new Error('HMAC-Signatur ungueltig');\n}\nreturn $input.item;"
+      },
+      "id": "verify-hmac",
+      "name": "HMAC verifizieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// >>> HIER die eigentliche Recherche einsetzen (LLM / Websuche / interne KB). <<<\n// Eingang: $json.body.payload = { researchRequestId, rechtsfrage, normAnker,\n//   governanceTyp, anonymizedText, katalogVersion }. Der Payload ist BEREITS\n// anonymisiert (Mandantendaten durch Platzhalter ersetzt) — keine Klartextdaten.\n// Ausgang muss { researchRequestId, title, body, source } liefern; researchRequestId\n// MUSS unveraendert zurueck (Korrelations-Token fuer die automatische Zuordnung).\nconst p = ($json.body && $json.body.payload) || {};\nconst titel = ('Recherche: ' + (p.rechtsfrage || '')).slice(0, 200);\nconst ergebnis = 'TODO: Recherche-Ergebnis hier erzeugen. Rechtsfrage: ' + (p.rechtsfrage || '') + ' | Normanker: ' + ((p.normAnker || []).join(', ')) + ' | Governance: ' + (p.governanceTyp || '-');\nreturn { json: { researchRequestId: p.researchRequestId, title: titel, body: ergebnis, source: 'n8n' } };"
+      },
+      "id": "recherche",
+      "name": "Recherche (Platzhalter)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Inbound-Signatur fuer den Rueckruf an /api/n8n/research-result.\n// Format (siehe verify.ts): sha256=hex(hmac(\"POST <path>\" + \"\\n\" + ts + \"\\n\" + body)).\n// Die Signatur dient gleichzeitig als Replay-Nonce — pro Aufruf neu.\nimport crypto from 'crypto';\nconst secret = $env.N8N_HMAC_SECRET;\nconst result = { researchRequestId: $json.researchRequestId, title: $json.title, body: $json.body, source: $json.source || 'n8n' };\nconst bodyStr = JSON.stringify(result);\nconst ts = String(Date.now());\nconst payload = 'POST /api/n8n/research-result' + '\\n' + ts + '\\n' + bodyStr;\nconst sig = 'sha256=' + crypto.createHmac('sha256', secret).update(payload).digest('hex');\nreturn { json: { bodyStr, ts, sig } };"
+      },
+      "id": "sign-callback",
+      "name": "Rueckruf signieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.TAXTRONIK_API_URL + '/api/n8n/research-result' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "content-type", "value": "application/json" },
+            { "name": "x-taxtronik-signature", "value": "={{ $json.sig }}" },
+            { "name": "x-taxtronik-timestamp", "value": "={{ $json.ts }}" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.bodyStr }}",
+        "options": {}
+      },
+      "id": "post-result",
+      "name": "Ergebnis an taxtronik",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 300]
+    }
+  ],
+  "connections": {
+    "Webhook von taxtronik": {
+      "main": [[{ "node": "HMAC verifizieren", "type": "main", "index": 0 }]]
+    },
+    "HMAC verifizieren": {
+      "main": [[{ "node": "Recherche (Platzhalter)", "type": "main", "index": 0 }]]
+    },
+    "Recherche (Platzhalter)": {
+      "main": [[{ "node": "Rueckruf signieren", "type": "main", "index": 0 }]]
+    },
+    "Rueckruf signieren": {
+      "main": [[{ "node": "Ergebnis an taxtronik", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "1.0"
+}

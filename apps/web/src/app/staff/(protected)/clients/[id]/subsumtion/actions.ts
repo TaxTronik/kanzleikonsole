@@ -149,6 +149,31 @@ export async function analyzeAction(
   }
 }
 
+const UpdateAnalysisSchema = z.object({
+  clientId: z.string().uuid(),
+  analysisId: z.string().uuid(),
+  title: z.string().max(200).nullable(),
+});
+
+/** Ändert den Titel/die Bezeichnung einer Subsumtion (auch im Review-Modus). */
+export async function updateAnalysisAction(
+  input: z.infer<typeof UpdateAnalysisSchema>,
+): Promise<OkActionResult<{ title: string | null }>> {
+  try {
+    const parsed = UpdateAnalysisSchema.parse(input);
+    const { ctx, clientId } = await guardAnalysis(parsed.analysisId);
+    const title = parsed.title?.trim() || null;
+    await withTenantContext(ctx, (tx) =>
+      tx.riskAnalysis.update({ where: { id: parsed.analysisId }, data: { title } }),
+    );
+    revalidatePath(`/staff/clients/${clientId}/subsumtion/${parsed.analysisId}`);
+    revalidatePath(`/staff/clients/${clientId}/subsumtion`);
+    return { ok: true, title };
+  } catch (e) {
+    return toActionError(e);
+  }
+}
+
 export async function requestLlmAction(input: {
   clientId: string;
   analysisId: string;
@@ -401,7 +426,7 @@ const ImportDocSchema = z.object({ clientId: z.string().uuid(), documentId: z.st
  *  extrahiert den Text. Der Zugriff wird wie ein Download auditiert. */
 export async function importClientDocAction(
   input: z.infer<typeof ImportDocSchema>,
-): Promise<OkActionResult<{ text: string }>> {
+): Promise<OkActionResult<{ text: string; suggestedTitle: string | null }>> {
   try {
     const parsed = ImportDocSchema.parse(input);
     const { ctx, staffId } = await guard(parsed.clientId);
@@ -427,7 +452,7 @@ export async function importClientDocAction(
         ip,
         userAgent,
       });
-      return { mimeType: d.mimeType, bucket: v.storageBucket, key: v.storageKey };
+      return { mimeType: d.mimeType, bucket: v.storageBucket, key: v.storageKey, title: d.title };
     });
     if (!doc) return { ok: false, error: 'Dokument nicht gefunden.' };
 
@@ -435,7 +460,7 @@ export async function importClientDocAction(
     const bytes = await fetchObjectBytes(doc.bucket, doc.key);
     const text = await extractText(bytes, doc.mimeType || 'application/octet-stream');
     if (!text.trim()) return { ok: false, error: 'Das Dokument enthält keinen extrahierbaren Text.' };
-    return { ok: true, text };
+    return { ok: true, text, suggestedTitle: doc.title?.trim() || null };
   } catch (e) {
     if (e instanceof UnsupportedDocumentTypeError) return { ok: false, error: e.message };
     return toActionError(e);
@@ -443,7 +468,9 @@ export async function importClientDocAction(
 }
 
 /** Extrahiert Text aus einem hochgeladenen Dokument (PDF/DOCX/Text). */
-export async function importDocTextAction(formData: FormData): Promise<OkActionResult<{ text: string }>> {
+export async function importDocTextAction(
+  formData: FormData,
+): Promise<OkActionResult<{ text: string; suggestedTitle: string | null }>> {
   try {
     const clientId = String(formData.get('clientId') ?? '');
     await guard(clientId);
@@ -452,7 +479,9 @@ export async function importDocTextAction(formData: FormData): Promise<OkActionR
     const bytes = Buffer.from(await file.arrayBuffer());
     const text = await extractText(bytes, file.type || 'application/octet-stream');
     if (!text.trim()) return { ok: false, error: 'Das Dokument enthält keinen extrahierbaren Text.' };
-    return { ok: true, text };
+    // Dateiname ohne Endung als Titel-Vorschlag (Pfadanteile/Extension entfernt).
+    const base = (file.name || '').replace(/\.[^.]+$/, '').replace(/[\\/]/g, ' ').trim();
+    return { ok: true, text, suggestedTitle: base || null };
   } catch (e) {
     if (e instanceof UnsupportedDocumentTypeError) return { ok: false, error: e.message };
     return toActionError(e);

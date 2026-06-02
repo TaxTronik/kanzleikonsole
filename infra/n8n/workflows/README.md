@@ -29,6 +29,7 @@ anpassen.
 | `01-request-reminder.json` | Cron Mo–Fr 09:00 | Erinnerungs-Mail an Mandanten für überfällige Anforderungen |
 | `02-gwg-expiry-check.json` | Cron täglich 08:00 | Warn-Mail an GwG-Beauftragten für GwG-Prüfungen, die in <30 Tagen ablaufen |
 | `03-request-opened.json` | Webhook `request.opened` | Sendet Benachrichtigungs-Mail an Mandanten, wenn die App eine neue Anforderung anlegt |
+| `04-risk-research.json` | Webhook `risk.research_requested` | Empfängt einen (anonymisierten) Rechercheauftrag aus dem Subsumtions-Workspace, **Platzhalter** für die eigentliche Recherche (LLM/Websuche/KB), und postet das Ergebnis zurück an `/api/n8n/research-result`. Die `researchRequestId` MUSS unverändert zurück (Korrelations-Token für die automatische Zuordnung zur Markierung). |
 
 ## API-Endpunkte (von der App bereitgestellt)
 
@@ -38,6 +39,9 @@ Die Workflows rufen folgende App-Endpunkte auf — siehe
 - `GET /api/n8n/overdue-requests` — JSON-Liste überfälliger Requests
 - `GET /api/n8n/expiring-gwg-checks?withinDays=30` — JSON-Liste bald ablaufender GwG-Checks
 - `GET /api/n8n/request-detail/<id>?tenantId=<tenantId>` — Detail eines Requests inkl. Mandant + Kontakt
+- `POST /api/n8n/research-result` — Rechercheergebnis zurückmelden. Body
+  `{ researchRequestId, title, body, source }`. Korrelation über
+  `researchRequestId` → automatische Zuordnung + De-Anonymisierung der Antwort.
 
 App/Worker -> n8n: ausgehende Webhooks werden mit
 `x-taxtronik-signature: sha256=<hex(hmac(event + "\n" + timestamp + "\n" + nonce + "\n" + body, N8N_HMAC_SECRET))>`
