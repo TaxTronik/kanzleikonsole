@@ -11,42 +11,12 @@
 // =============================================================================
 
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
+import type { ReportMarking, ReportToken, ReportModel } from './report-types';
 
-export interface ReportMarking {
-  nr: number;
-  /** Der tatsächlich markierte Textausschnitt (Fundstelle im Sachverhalt). */
-  fundstelle: string;
-  begriff: string;
-  herkunftLabel: string;
-  herkunftColor: string; // #rrggbb
-  engineStatusLabel: string | null;
-  streitig: boolean;
-  normAnker: string[];
-  governanceLabel: string | null;
-  schadenLabel: string | null;
-  wahrscheinlichkeitLabel: string | null;
-  statusLabel: string;
-  kontrolle: string | null;
-  notiz: string | null;
-}
-
-/** Token-Strom des annotierten Sachverhalts: Textstücke + Marker-Nummern. */
-export type ReportToken =
-  | { kind: 'text'; text: string; color: string | null; streitig: boolean }
-  | { kind: 'marker'; nr: number; color: string };
-
-export interface ReportModel {
-  title: string;
-  clientName: string | null;
-  createdAt: Date;
-  textHash: string;
-  katalogVersion: string;
-  engineVersion: string;
-  llmEnriched: boolean;
-  tokens: ReportToken[];
-  markings: ReportMarking[];
-  counts: { gesamt: number; eigen: number };
-}
+// Typen + Disclaimer leben DB-frei in report-types (die Renderer hängen nur daran);
+// hier re-exportiert, damit die bestehende Import-Fläche stabil bleibt.
+export { DISCLAIMER } from './report-types';
+export type { ReportMarking, ReportToken, ReportModel } from './report-types';
 
 const HERKUNFT_LABEL: Record<string, string> = {
   WOERTLICH: 'wörtlich', MUSTER: 'Muster', TRIGGER: 'Trigger',
@@ -124,7 +94,11 @@ function buildTokens(text: string, marks: PositionedMarking[]): ReportToken[] {
   return tokens;
 }
 
-export async function buildReportModel(ctx: TenantContext, analysisId: string): Promise<ReportModel | null> {
+export async function buildReportModel(
+  ctx: TenantContext,
+  analysisId: string,
+  opts?: { markingIds?: string[] },
+): Promise<ReportModel | null> {
   return withTenantContext(ctx, async (tx) => {
     const a = await tx.riskAnalysis.findUnique({
       where: { id: analysisId },
@@ -135,8 +109,15 @@ export async function buildReportModel(ctx: TenantContext, analysisId: string): 
     });
     if (!a) return null;
 
+    // Optionale Auswahl: nur diese Markierungen exportieren. Die Nr. wird INNERHALB
+    // der Auswahl neu vergeben (saubere Zuordnung Text ↔ Tabelle); nicht gewählte
+    // Stellen erscheinen im Sachverhalt als normaler Text. Unbekannte IDs werden
+    // ignoriert (Schnittmenge); leere/fehlende Auswahl → alle.
+    const sel = opts?.markingIds && opts.markingIds.length > 0 ? new Set(opts.markingIds) : null;
+    const chosen = sel ? a.markings.filter((m) => sel.has(m.id)) : a.markings;
+
     // Deterministische Reihenfolge (Position) → laufende Nr. für Text + Tabelle.
-    const ordered = [...a.markings].sort((m1, m2) => m1.start - m2.start || m1.end - m2.end || m1.id.localeCompare(m2.id));
+    const ordered = [...chosen].sort((m1, m2) => m1.start - m2.start || m1.end - m2.end || m1.id.localeCompare(m2.id));
 
     const markings: ReportMarking[] = ordered.map((m, i) => ({
       nr: i + 1,
@@ -177,14 +158,10 @@ export async function buildReportModel(ctx: TenantContext, analysisId: string): 
       tokens,
       markings,
       counts: {
-        gesamt: a.markings.length,
-        eigen: a.markings.filter((m) => m.herkunft === 'BERATER').length,
+        // Anzahl der EXPORTIERTEN Markierungen (Auswahl), nicht der gesamten Analyse.
+        gesamt: chosen.length,
+        eigen: chosen.filter((m) => m.herkunft === 'BERATER').length,
       },
     };
   });
 }
-
-export const DISCLAIMER =
-  'Das System lenkt Aufmerksamkeit, es übernimmt keine Subsumtion. Markierungen sind Hinweise auf ' +
-  'definitions- und subsumtionsbedürftige Stellen — keine Rechtsfolgenbestimmung. Die Bewertung ' +
-  'schuldet der Berufsträger höchstpersönlich (§§ 33, 57 StBerG).';

@@ -6,7 +6,7 @@
 // =============================================================================
 
 import PDFDocument from 'pdfkit';
-import { DISCLAIMER, type ReportModel } from './report-model';
+import { DISCLAIMER, type ReportModel, type ReportToken } from './report-types';
 
 function toBuffer(doc: PDFKit.PDFDocument): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -15,6 +15,55 @@ function toBuffer(doc: PDFKit.PDFDocument): Promise<Buffer> {
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
   });
+}
+
+// Annotierten Sachverhalt selbst Wort für Wort setzen (KEIN pdfkit-`continued`):
+// dessen Inline-Fluss verrutscht, sobald Tokens Zeilenumbrüche (Absätze) tragen —
+// daher die überlappenden Stellen. Hier deterministisch: Wörter messen, bei
+// Zeilenende umbrechen, Markierungen farbig + Marker [n] inline, \n = Umbruch,
+// \n\n = Leerzeile.
+function drawAnnotated(
+  doc: PDFKit.PDFDocument,
+  tokens: ReportToken[],
+  geom: { left: number; right: number; bottom: number; fontSize: number },
+): void {
+  const { left, right, bottom, fontSize } = geom;
+  doc.fontSize(fontSize).font('Helvetica');
+  const lineHeight = doc.currentLineHeight() + 2;
+  const spaceW = doc.widthOfString(' ');
+  const ctx = { x: left, y: doc.y };
+
+  const newline = (n = 1) => { ctx.x = left; ctx.y += lineHeight * n; };
+  const ensure = () => {
+    if (ctx.y + lineHeight > bottom) { doc.addPage(); ctx.y = doc.page.margins.top; ctx.x = left; }
+  };
+  const piece = (s: string, color: string, bold: boolean) => {
+    doc.font(bold ? 'Helvetica-Bold' : 'Helvetica');
+    const w = doc.widthOfString(s);
+    if (ctx.x + w > right && ctx.x > left) newline(); // Zeilenumbruch vor zu breitem Wort
+    ensure();
+    doc.fillColor(color).text(s, ctx.x, ctx.y, { lineBreak: false });
+    ctx.x += w;
+  };
+
+  for (const tok of tokens) {
+    if (tok.kind === 'marker') {
+      piece(`[${tok.nr}]`, tok.color, true);
+      continue;
+    }
+    const color = tok.color ?? '#111111';
+    const lines = tok.text.split('\n');
+    for (let li = 0; li < lines.length; li++) {
+      if (li > 0) newline(); // jedes \n = Umbruch (\n\n → Leerzeile)
+      const words = lines[li]!.split(' ');
+      for (let wi = 0; wi < words.length; wi++) {
+        if (wi > 0) ctx.x += spaceW; // Leerzeichen zwischen den Wörtern
+        if (words[wi]) piece(words[wi]!, color, false);
+      }
+    }
+  }
+  doc.x = left;
+  doc.y = ctx.y + lineHeight;
 }
 
 function metaLine(model: ReportModel): string {
@@ -56,18 +105,7 @@ export async function renderPdf(model: ReportModel): Promise<Buffer> {
     .text('Markierte Stellen sind farbig und mit [Nr.] nummeriert — dieselbe Nr. steht in der Tabelle „Markierungen".', { width: contentWidth });
   doc.moveDown(0.3);
 
-  doc.fontSize(10);
-  const toks = model.tokens;
-  for (let i = 0; i < toks.length; i++) {
-    const tok = toks[i]!;
-    const cont = i < toks.length - 1;
-    if (tok.kind === 'marker') {
-      doc.font('Helvetica-Bold').fillColor(tok.color).text(`[${tok.nr}]`, { width: contentWidth, continued: cont });
-      doc.font('Helvetica');
-    } else {
-      doc.font('Helvetica').fillColor(tok.color ?? '#111111').text(tok.text, { width: contentWidth, continued: cont });
-    }
-  }
+  drawAnnotated(doc, model.tokens, { left, right, bottom, fontSize: 10 });
   doc.fillColor('#111111');
   doc.moveDown(1);
 

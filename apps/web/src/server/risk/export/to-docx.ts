@@ -6,7 +6,7 @@ import {
   Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType,
   Table, TableRow, TableCell, WidthType, BorderStyle, UnderlineType,
 } from 'docx';
-import { DISCLAIMER, type ReportModel, type ReportToken } from './report-model';
+import { DISCLAIMER, type ReportModel, type ReportToken } from './report-types';
 
 const hex = (c: string) => c.replace('#', '');
 

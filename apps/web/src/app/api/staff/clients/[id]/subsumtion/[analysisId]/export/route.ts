@@ -50,7 +50,14 @@ export async function GET(
     throw e;
   }
 
-  const model = await buildReportModel(ctx, analysisId);
+  // Optionale Auswahl: nur diese Markierungen exportieren (`?marks=id1,id2`).
+  // Fremde/ungültige IDs filtert buildReportModel via Schnittmenge weg (RLS-scoped).
+  const marksParam = req.nextUrl.searchParams.get('marks');
+  const markingIds = marksParam
+    ? marksParam.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 1000)
+    : undefined;
+
+  const model = await buildReportModel(ctx, analysisId, markingIds ? { markingIds } : undefined);
   if (!model) return NextResponse.json({ error: 'not found' }, { status: 404 });
 
   const format = req.nextUrl.searchParams.get('format') === 'pdf' ? 'pdf' : 'docx';

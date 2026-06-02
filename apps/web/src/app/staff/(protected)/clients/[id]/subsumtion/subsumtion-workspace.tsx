@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Sparkles, Upload, Loader2, FileDown, FolderOpen, ClipboardList, ScrollText, Webhook, FileText, FileType, Archive, Lock } from 'lucide-react';
+import { Sparkles, Upload, Loader2, FileDown, FolderOpen, ClipboardList, ScrollText, Webhook, Archive, Lock } from 'lucide-react';
 import { analyzeAction, importDocTextAction, importClientDocAction, requestLlmAction, archiveAnalysisAction, reformatAnalysisAction } from './actions';
 import { DisclaimerBanner } from './disclaimer-banner';
 import { StatsBar } from './stats-bar';
@@ -11,6 +11,7 @@ import { HerkunftLegende } from './herkunft-legende';
 import { SubsumtionDocument, type SubsumtionDocumentHandle, type ManualSelection } from './subsumtion-document';
 import { MarkingPanel, ResearchComposer } from './marking-panel';
 import { NewMarkingPanel } from './new-marking-panel';
+import { ExportPanel } from './export-panel';
 import { ResearchResultsBlock } from './research-results-block';
 import { type AnalysisDTO, type ResearchResultDTO, type MarkingDTO, FILTER_KEYS, type FilterKey, isVisible } from './_ui';
 
@@ -223,12 +224,7 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
         <Link href={`/staff/clients/${clientId}`} className="btn-secondary text-xs"><FolderOpen className="h-3.5 w-3.5" /> Aktenregal</Link>
         <Link href={`/staff/clients/${clientId}/reminders`} className="btn-secondary text-xs"><ClipboardList className="h-3.5 w-3.5" /> Aufgaben</Link>
         <Link href={`/staff/clients/${clientId}/timeline`} className="btn-secondary text-xs"><ScrollText className="h-3.5 w-3.5" /> Audit-Log</Link>
-        <a href={`/api/staff/clients/${clientId}/subsumtion/${initial.id}/export?format=docx`} className="btn-secondary text-xs" title="Als Word-Dokument exportieren">
-          <FileText className="h-3.5 w-3.5" /> DOCX
-        </a>
-        <a href={`/api/staff/clients/${clientId}/subsumtion/${initial.id}/export?format=pdf`} className="btn-secondary text-xs" title="Als PDF exportieren">
-          <FileType className="h-3.5 w-3.5" /> PDF
-        </a>
+        <ExportPanel clientId={clientId} analysisId={initial.id} markings={markings} />
         {initial.archivedAt ? (
           <span className="badge-gray text-xs inline-flex items-center gap-1 ml-auto" title="Revisionssicher archiviert (Object-Lock)">
             <Lock className="h-3.5 w-3.5" /> Archiviert {new Date(initial.archivedAt).toLocaleDateString('de-DE')}
