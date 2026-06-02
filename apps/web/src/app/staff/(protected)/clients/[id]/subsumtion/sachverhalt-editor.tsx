@@ -10,8 +10,8 @@
 
 import { forwardRef, useImperativeHandle, useCallback } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
 import { docToText } from './doc-text';
+import { baseEditorExtensions } from './editor-extensions';
 import { FormatToolbar } from './editor-toolbar';
 
 export interface SachverhaltEditorHandle {
@@ -39,7 +39,7 @@ export const SachverhaltEditor = forwardRef<SachverhaltEditorHandle, Props>(func
   ref,
 ) {
   const editor = useEditor({
-    extensions: [StarterKit],
+    extensions: baseEditorExtensions,
     content: initialText ? textToHtml(initialText) : '<p></p>',
     immediatelyRender: false, // SSR (Next App Router): erst client-seitig rendern.
     editorProps: {

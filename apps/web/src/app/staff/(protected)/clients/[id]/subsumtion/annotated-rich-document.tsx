@@ -17,10 +17,10 @@
 import { useEffect, useRef } from 'react';
 import { Pencil, Check, Type, Loader2, X } from 'lucide-react';
 import { useEditor, EditorContent, Extension } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { docToText, plainRangeToPm, pmPosToPlain, type TextRange } from './doc-text';
+import { baseEditorExtensions } from './editor-extensions';
 import { FormatToolbar } from './editor-toolbar';
 import { type MarkingDTO, FILTER_KEYS, FILTER_LABEL, type FilterKey, herkunftColor } from './_ui';
 
@@ -91,7 +91,7 @@ export function AnnotatedRichDocument(props: {
   clickRef.current.onSelect = props.onSelectMarking;
 
   const editor = useEditor({
-    extensions: [StarterKit, MarkDecorations],
+    extensions: [...baseEditorExtensions, MarkDecorations],
     content: (sourceDoc as object) ?? '<p></p>',
     editable: false,
     immediatelyRender: false,
