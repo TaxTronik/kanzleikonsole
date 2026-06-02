@@ -178,10 +178,15 @@ export function ResearchComposer(props: {
     return () => { active = false; };
   }, [props.clientId]);
 
+  // Jede Änderung der Eingaben macht eine bestehende Vorschau ungültig → schließen
+  // (sonst zeigte/sendete die Box veralteten Text, z. B. den SV nach Toggle auf „nur Prompt").
+  function resetPreview() { setPreview(null); setFinalText(''); }
+
   function applyTemplate(id: string) {
     setSelectedTpl(id);
     const t = templates.find((x) => x.id === id);
     if (t) setPrompt(t.body);
+    resetPreview();
   }
   function saveTemplate() {
     if (!tplTitle.trim() || !prompt.trim()) return;
@@ -244,7 +249,7 @@ export function ResearchComposer(props: {
 
         <label className="block text-xs">
           <span className="text-muted">Sachverhalt</span>
-          <select value={sachverhalt} onChange={(e) => setSachverhalt(e.target.value as 'none' | 'excerpt' | 'full')} className={'mt-0.5 ' + field}>
+          <select value={sachverhalt} onChange={(e) => { setSachverhalt(e.target.value as 'none' | 'excerpt' | 'full'); resetPreview(); }} className={'mt-0.5 ' + field}>
             <option value="none">Kein Sachverhalt (nur Rechtsfrage/Prompt)</option>
             {!isCase && <option value="excerpt">Auszug um die Fundstelle</option>}
             <option value="full">Ganzer Sachverhalt</option>
@@ -256,7 +261,7 @@ export function ResearchComposer(props: {
           </p>
         )}
 
-        <textarea value={snippet} onChange={(e) => setSnippet(e.target.value)} rows={3} placeholder="Textbaustein (optional)" className={field} />
+        <textarea value={snippet} onChange={(e) => { setSnippet(e.target.value); resetPreview(); }} rows={3} placeholder="Textbaustein (optional)" className={field} />
 
         {/* Prompt-Vorlagen + Prompt */}
         <div className="space-y-1.5">
@@ -280,7 +285,7 @@ export function ResearchComposer(props: {
           )}
           <textarea
             value={prompt}
-            onChange={(e) => { setPrompt(e.target.value); setSelectedTpl(''); }}
+            onChange={(e) => { setPrompt(e.target.value); setSelectedTpl(''); resetPreview(); }}
             rows={5}
             placeholder="Prompt / Recherche-Auftrag an n8n …"
             className={field}
