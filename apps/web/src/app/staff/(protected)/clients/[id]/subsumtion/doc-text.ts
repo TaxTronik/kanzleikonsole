@@ -49,6 +49,40 @@ export function docToText(doc: PMNode): DocText {
   return { text: ctx.text, ranges: ctx.ranges };
 }
 
+// -----------------------------------------------------------------------------
+// Server-Variante: NUR der Plaintext aus dem Tiptap-JSON — OHNE ProseMirror-
+// Schema/DOM, damit sie in einer Server-Action läuft. Muss bitgenau dieselbe
+// Ausgabe liefern wie docToText(node).text (gleicher Separator-Regelsatz:
+// text = Inhalt, hardBreak = \n, jeder andere Knoten = Block mit \n\n davor,
+// idempotent). Damit lässt sich serverseitig zuverlässig „nur Formatierung
+// geändert" von „Textinhalt geändert" unterscheiden.
+// -----------------------------------------------------------------------------
+interface JsonNode {
+  type?: string;
+  text?: string;
+  content?: JsonNode[];
+}
+
+export function jsonDocToText(json: unknown): string {
+  let text = '';
+  const visit = (node: JsonNode): void => {
+    for (const child of node.content ?? []) {
+      if (child.type === 'text' && typeof child.text === 'string') {
+        text += child.text;
+      } else if (child.type === 'hardBreak') {
+        text += '\n';
+      } else if (child.type && child.type !== 'text') {
+        // jeder andere Knoten ist ein Block (StarterKit hat außer hardBreak keine
+        // Inline-Atome) → wie docToText: Leerzeile davor (idempotent), dann rein.
+        if (text.length > 0 && !text.endsWith('\n\n')) text += '\n\n';
+        visit(child);
+      }
+    }
+  };
+  if (json && typeof json === 'object') visit(json as JsonNode);
+  return text;
+}
+
 /** Markierungs-[start,end] (Plaintext-Offsets) → ProseMirror-Bereiche. */
 export function plainRangeToPm(
   ranges: TextRange[],

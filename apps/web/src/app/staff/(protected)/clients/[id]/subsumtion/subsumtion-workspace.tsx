@@ -4,7 +4,7 @@ import { useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Sparkles, Upload, Loader2, FileDown, FolderOpen, ClipboardList, ScrollText, Webhook, FileText, FileType, Archive, Lock } from 'lucide-react';
-import { analyzeAction, importDocTextAction, importClientDocAction, requestLlmAction, archiveAnalysisAction } from './actions';
+import { analyzeAction, importDocTextAction, importClientDocAction, requestLlmAction, archiveAnalysisAction, reformatAnalysisAction } from './actions';
 import { DisclaimerBanner } from './disclaimer-banner';
 import { StatsBar } from './stats-bar';
 import { HerkunftLegende } from './herkunft-legende';
@@ -47,6 +47,7 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
   // Review-Modus
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
+  const [formatEdit, setFormatEdit] = useState(false);
   const [filters, setFilters] = useState<Set<FilterKey>>(() => new Set(FILTER_KEYS));
   const [manualSel, setManualSel] = useState<{ start: number; end: number; text: string } | null>(null);
   const [showCaseResearch, setShowCaseResearch] = useState(false);
@@ -123,6 +124,15 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
       const next = new Set(prev);
       if (next.has(k)) next.delete(k); else next.add(k);
       return next;
+    });
+  }
+  function saveFormat(doc: unknown) {
+    if (!initial) return;
+    setError(null); setInfo(null);
+    start(async () => {
+      const r = await reformatAnalysisAction({ clientId, analysisId: initial.id, doc });
+      flash(r, 'Formatierung gespeichert.');
+      if (r.ok) { setFormatEdit(false); refresh(); }
     });
   }
   function archive() {
@@ -263,7 +273,8 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-4">
         {initial.sourceDoc && !editMode ? (
           // Formatierte Ansicht (Rich-Doc + Markierungs-Decorations). Fürs eigene
-          // Markieren wechselt „Eigene Markierung" in die Plaintext-Ansicht.
+          // Markieren wechselt „Eigene Markierung" in die Plaintext-Ansicht;
+          // „Formatierung" macht denselben Editor editierbar (nur Format).
           <AnnotatedRichDocument
             sourceDoc={initial.sourceDoc}
             totalCount={markings.length}
@@ -275,6 +286,11 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
             onToggleEdit={() => setEditMode(true)}
             selectedId={selectedId}
             onSelectMarking={(id) => { setSelectedId(id); setEditMode(false); }}
+            editable={formatEdit && !initial.archivedAt}
+            saving={pending}
+            onStartFormatEdit={() => { setFormatEdit(true); setSelectedId(null); }}
+            onCancelFormatEdit={() => setFormatEdit(false)}
+            onSaveFormat={saveFormat}
           />
         ) : (
           <AnnotatedDocument

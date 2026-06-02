@@ -30,11 +30,13 @@ import {
   assignResultToMarking,
   resolveNorm,
   archiveAnalysis,
+  reformatSourceDoc,
   type RiskStatus,
   type ResearchPreview,
   type ResolvedNorm,
 } from '@/server/risk';
 import { enqueueRiskAnalyseLlm } from '@/server/jobs/risk-analyse-queue';
+import { jsonDocToText } from './doc-text';
 
 type OkActionResult<T = unknown> = ({ ok: true } & T) | ActionErrorResult;
 
@@ -176,6 +178,45 @@ export async function updateAnalysisAction(
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${parsed.analysisId}`);
     revalidatePath(`/staff/clients/${clientId}/subsumtion`);
     return { ok: true, title };
+  } catch (e) {
+    return toActionError(e);
+  }
+}
+
+const ReformatSchema = z.object({
+  clientId: z.string().uuid(),
+  analysisId: z.string().uuid(),
+  // Formatierter Sachverhalt (Tiptap/ProseMirror-JSON).
+  doc: z.unknown(),
+});
+
+/** Speichert die Formatierung des Sachverhalts (sourceDoc), OHNE den
+ *  analysierten Text zu ändern. Nur-Format-Edits halten die Markierungen
+ *  verankert; eine inhaltliche Textänderung wird abgelehnt (Offsets). */
+export async function reformatAnalysisAction(
+  input: z.infer<typeof ReformatSchema>,
+): Promise<OkActionResult> {
+  try {
+    const parsed = ReformatSchema.parse(input);
+    const { ctx, staffId, clientId } = await guardAnalysis(parsed.analysisId);
+    // Plaintext über DIESELBE Serialisierung wie beim Anlegen/Review berechnen,
+    // damit der Vergleich gegen den gespeicherten sourceText deckungsgleich ist.
+    const newText = jsonDocToText(parsed.doc);
+    const res = await reformatSourceDoc(ctx, {
+      analysisId: parsed.analysisId,
+      doc: parsed.doc,
+      newText,
+      actorId: staffId,
+    });
+    if (res.changed === 'text') {
+      return {
+        ok: false,
+        error:
+          'Der Textinhalt wurde geändert — in diesem Modus sind nur Formatierungen erlaubt. Für inhaltliche Änderungen bitte eine neue Analyse anlegen.',
+      };
+    }
+    revalidatePath(`/staff/clients/${clientId}/subsumtion/${parsed.analysisId}`);
+    return { ok: true };
   } catch (e) {
     return toActionError(e);
   }

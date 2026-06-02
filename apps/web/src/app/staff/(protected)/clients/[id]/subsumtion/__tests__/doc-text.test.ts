@@ -1,5 +1,43 @@
 import { describe, it, expect } from 'vitest';
-import { plainRangeToPm, pmPosToPlain, type TextRange } from '../doc-text';
+import { plainRangeToPm, pmPosToPlain, jsonDocToText, type TextRange } from '../doc-text';
+
+// Tiptap-JSON-Bausteine.
+const p = (...content: unknown[]) => ({ type: 'paragraph', ...(content.length ? { content } : {}) });
+const t = (text: string, ...marks: string[]) =>
+  marks.length ? { type: 'text', text, marks: marks.map((type) => ({ type })) } : { type: 'text', text };
+const h2 = (text: string) => ({ type: 'heading', attrs: { level: 2 }, content: [t(text)] });
+const li = (text: string) => ({ type: 'listItem', content: [p(t(text))] });
+const doc = (...content: unknown[]) => ({ type: 'doc', content });
+
+describe('jsonDocToText (Server-Serialisierung, muss docToText spiegeln)', () => {
+  it('ein Absatz → reiner Text', () => {
+    expect(jsonDocToText(doc(p(t('Hallo'))))).toBe('Hallo');
+  });
+  it('zwei Absätze → Leerzeile dazwischen', () => {
+    expect(jsonDocToText(doc(p(t('Hallo')), p(t('Welt'))))).toBe('Hallo\n\nWelt');
+  });
+  it('Überschrift + Absatz → wie Blöcke getrennt', () => {
+    expect(jsonDocToText(doc(h2('Titel'), p(t('Text'))))).toBe('Titel\n\nText');
+  });
+  it('hardBreak → einfacher Umbruch', () => {
+    expect(jsonDocToText(doc(p(t('A'), { type: 'hardBreak' }, t('B'))))).toBe('A\nB');
+  });
+  it('Formatierung (marks) ändert den Text NICHT', () => {
+    expect(jsonDocToText(doc(p(t('Sehr '), t('wichtig', 'bold'))))).toBe('Sehr wichtig');
+    // bit-identisch zum unformatierten Pendant → Format-Edit gilt als „nur Format".
+    expect(jsonDocToText(doc(p(t('Sehr '), t('wichtig', 'bold'))))).toBe(jsonDocToText(doc(p(t('Sehr wichtig')))));
+  });
+  it('leerer Absatz am Ende erzeugt denselben Separator wie docToText', () => {
+    expect(jsonDocToText(doc(p(t('A')), p()))).toBe('A\n\n');
+  });
+  it('Liste → Punkte als Blöcke getrennt', () => {
+    expect(jsonDocToText(doc({ type: 'bulletList', content: [li('A'), li('B')] }))).toBe('A\n\nB');
+  });
+  it('robuste Eingaben (null/leer) → leerer String', () => {
+    expect(jsonDocToText(null)).toBe('');
+    expect(jsonDocToText(doc())).toBe('');
+  });
+});
 
 // Zwei Textläufe in zwei Absätzen:
 //   Absatz 1 "Hallo" → PM [1,6],  Plaintext [0,5]

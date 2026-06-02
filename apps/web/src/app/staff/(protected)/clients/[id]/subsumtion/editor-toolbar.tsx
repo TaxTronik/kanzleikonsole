@@ -1,0 +1,80 @@
+'use client';
+
+// =============================================================================
+// Gemeinsame Format-Toolbar (Tiptap v3) — genutzt vom Sachverhalt-Editor
+// (Compose) und vom formatierten Review (Formatierung bearbeiten). v3 rendert
+// nicht pro Transaktion neu → reaktive Button-Zustände via useEditorState.
+// =============================================================================
+
+import { useEditorState, type Editor } from '@tiptap/react';
+import { Bold, Italic, Heading2, Heading3, List, ListOrdered, Undo2, Redo2, AlignJustify } from 'lucide-react';
+
+function Btn({
+  active,
+  disabled,
+  onClick,
+  title,
+  children,
+}: {
+  active?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      disabled={disabled}
+      onMouseDown={(e) => e.preventDefault()} // Fokus im Editor halten
+      onClick={onClick}
+      className={
+        'rounded p-1.5 text-secondary hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 ' +
+        (active ? 'bg-brand-100 text-brand-700 dark:bg-brand-500/20' : '')
+      }
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Formatier-Buttons für einen Tiptap-Editor. `onReflow` (optional) blendet den
+ *  „Absätze zusammenführen"-Button ein — nur im Compose sinnvoll, da er den
+ *  Plaintext verändert (im Review-Format-Modus darf der Text unverändert bleiben). */
+export function FormatToolbar({ editor, onReflow }: { editor: Editor; onReflow?: () => void }) {
+  const s = useEditorState({
+    editor,
+    selector: ({ editor }) => ({
+      bold: editor.isActive('bold'),
+      italic: editor.isActive('italic'),
+      h2: editor.isActive('heading', { level: 2 }),
+      h3: editor.isActive('heading', { level: 3 }),
+      bullet: editor.isActive('bulletList'),
+      ordered: editor.isActive('orderedList'),
+      canUndo: editor.can().undo(),
+      canRedo: editor.can().redo(),
+    }),
+  });
+
+  return (
+    <div className="flex items-center gap-0.5 border-b border-default p-1 flex-wrap">
+      <Btn active={s?.bold} onClick={() => editor.chain().focus().toggleBold().run()} title="Fett"><Bold className="h-4 w-4" /></Btn>
+      <Btn active={s?.italic} onClick={() => editor.chain().focus().toggleItalic().run()} title="Kursiv"><Italic className="h-4 w-4" /></Btn>
+      <span className="mx-1 h-5 w-px bg-border-subtle" />
+      <Btn active={s?.h2} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} title="Überschrift"><Heading2 className="h-4 w-4" /></Btn>
+      <Btn active={s?.h3} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} title="Unter-Überschrift"><Heading3 className="h-4 w-4" /></Btn>
+      <Btn active={s?.bullet} onClick={() => editor.chain().focus().toggleBulletList().run()} title="Aufzählung"><List className="h-4 w-4" /></Btn>
+      <Btn active={s?.ordered} onClick={() => editor.chain().focus().toggleOrderedList().run()} title="Nummerierte Liste"><ListOrdered className="h-4 w-4" /></Btn>
+      {onReflow && (
+        <>
+          <span className="mx-1 h-5 w-px bg-border-subtle" />
+          <Btn onClick={onReflow} title="Absätze zusammenführen — harte Zeilenumbrüche zu Fließtext glätten (gegen Import-Fragmentierung)"><AlignJustify className="h-4 w-4" /></Btn>
+        </>
+      )}
+      <span className="ml-auto" />
+      <Btn disabled={!s?.canUndo} onClick={() => editor.chain().focus().undo().run()} title="Rückgängig"><Undo2 className="h-4 w-4" /></Btn>
+      <Btn disabled={!s?.canRedo} onClick={() => editor.chain().focus().redo().run()} title="Wiederholen"><Redo2 className="h-4 w-4" /></Btn>
+    </div>
+  );
+}
