@@ -21,6 +21,35 @@ import { log } from '../logger';
 const markingKey = (m: { start: number; end: number; herkunft: string; begriff: string }) =>
   `${m.start}:${m.end}:${m.herkunft}:${m.begriff}`;
 
+// Warmlauf von Schicht 2: der llama-server wird bei Bedarf gestartet (idempotent)
+// und bis zur Bereitschaft gepollt. Der Job blockiert solange (Worker-Concurrency 1
+// → das Modell lädt einmal, Folgeläufe finden es bereit).
+const LLM_WARMUP_MAX_MS = 180_000;
+const LLM_POLL_MS = 4_000;
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+type LlmReady = 'ready' | 'no-capability' | 'timeout';
+
+async function ensureLlmReady(
+  client: RiskLayerClient,
+  meta: { analysisId: string; tenantId: string },
+): Promise<LlmReady> {
+  const status = await client.llmStatus();
+  if (status.verfuegbar) return 'ready';
+  // Kein Binary in der Engine → nicht startbar; sinnloser Retry vermieden.
+  if (status.binary_vorhanden === false) return 'no-capability';
+
+  await client.llmStart(); // idempotent, non-blocking
+  log.info(meta, 'risk-analyse-llm: llama-server gestartet, warte auf Bereitschaft');
+  const deadline = Date.now() + LLM_WARMUP_MAX_MS;
+  while (Date.now() < deadline) {
+    await sleep(LLM_POLL_MS);
+    const s = await client.llmStatus();
+    if (s.verfuegbar) return 'ready';
+  }
+  return 'timeout';
+}
+
 // record() braucht nur den Tx (der TimestampPort dient dem Versiegeln, nicht dem
 // Schreiben). Audit bleibt in TaxTronik — die Engine führt keins.
 const evidence = new EvidenceService(new LocalTimestampAdapter());
@@ -31,6 +60,18 @@ export const riskAnalyseLlmWorker = new Worker<RiskAnalyseLlmJob, void, string>(
     const { tenantId, analysisId, sourceText, optionen } = job.data;
 
     const client = new RiskLayerClient();
+
+    // Schicht 2 bei Bedarf hochfahren + auf Bereitschaft warten (auto, on-demand).
+    const ready = await ensureLlmReady(client, { analysisId, tenantId });
+    if (ready === 'no-capability') {
+      log.warn({ analysisId, tenantId }, 'risk-analyse-llm: kein LLM-Binary in der Engine — Anreicherung übersprungen');
+      return; // Job sauber abschließen (kein sinnvoller Retry).
+    }
+    if (ready === 'timeout') {
+      // Warmlauf zu langsam → werfen, BullMQ-Retry pollt beim nächsten Versuch erneut.
+      throw new Error('risk-analyse-llm: llama-server nicht rechtzeitig bereit (Warmlauf-Timeout)');
+    }
+
     const result = await client.analyse({ text: sourceText, mitLLM: true, optionen });
 
     await withWorkerTenantContext(tenantId, async (tx) => {

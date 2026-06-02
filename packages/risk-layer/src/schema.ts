@@ -120,3 +120,40 @@ export type OpaqueObject = z.infer<typeof OpaqueObjectSchema>;
 /** `GET /v1/health`. Die Engine liefert `{ok, engineVersion, katalogVersion, …}`. */
 export const HealthResponseSchema = z.object({}).catchall(z.unknown());
 export type HealthResponse = z.infer<typeof HealthResponseSchema>;
+
+/**
+ * Queue-Auslastung des llama-server (Schicht 2). Zwei Quellen:
+ *  - /slots:   { quelle:"slots", slots_gesamt, aktiv, frei, slots:[{id,aktiv}] }
+ *  - /metrics: { quelle:"metrics", aktiv, wartend }
+ * Permissiv (catchall) — wir lesen nur die Auslastungszahlen.
+ */
+export const LlmQueueSchema = z
+  .object({
+    quelle: z.string().nullish(),
+    slots_gesamt: z.number().nullish(),
+    aktiv: z.number().nullish(),
+    frei: z.number().nullish(),
+    wartend: z.number().nullish(),
+  })
+  .catchall(z.unknown());
+
+/** `GET /v1/llm/status` — Status + Queue des llama-server. `queue` = null, wenn
+ *  der Server nicht läuft oder weder /slots noch /metrics exponiert. */
+export const LlmStatusResponseSchema = z
+  .object({
+    url: z.string().nullish(),
+    verfuegbar: z.boolean().default(false),
+    queue: LlmQueueSchema.nullable().default(null),
+    modell_geladen: z.boolean().nullish(),
+    binary_vorhanden: z.boolean().nullish(),
+    von_uns_gestartet: z.boolean().nullish(),
+    engineVersion: z.string().nullish(),
+  })
+  .catchall(z.unknown());
+export type LlmStatusResponse = z.infer<typeof LlmStatusResponseSchema>;
+
+/** `POST /v1/llm/start` — idempotent, non-blocking (Bereitschaft via status pollen). */
+export const LlmStartResponseSchema = z
+  .object({ ok: z.boolean().default(true), hinweis: z.string().nullish() })
+  .catchall(z.unknown());
+export type LlmStartResponse = z.infer<typeof LlmStartResponseSchema>;

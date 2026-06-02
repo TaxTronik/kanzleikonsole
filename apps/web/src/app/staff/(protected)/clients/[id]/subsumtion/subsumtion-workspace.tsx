@@ -1,10 +1,11 @@
 'use client';
 
-import { useMemo, useRef, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Sparkles, Upload, Loader2, FileDown, FolderOpen, ClipboardList, ScrollText, Webhook, Archive, Lock } from 'lucide-react';
-import { analyzeAction, importDocTextAction, importClientDocAction, requestLlmAction, archiveAnalysisAction, reformatAnalysisAction } from './actions';
+import { analyzeAction, importDocTextAction, importClientDocAction, requestLlmAction, archiveAnalysisAction, reformatAnalysisAction, llmStatusAction } from './actions';
+import type { LlmStatusDTO } from '@/server/risk/llm';
 import { DisclaimerBanner } from './disclaimer-banner';
 import { StatsBar } from './stats-bar';
 import { HerkunftLegende } from './herkunft-legende';
@@ -48,6 +49,24 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
   const [filters, setFilters] = useState<Set<FilterKey>>(() => new Set(FILTER_KEYS));
   const [manualSel, setManualSel] = useState<ManualSelection | null>(null);
   const [showCaseResearch, setShowCaseResearch] = useState(false);
+
+  // LLM-Status (Schicht 2): einmal beim Mount holen; nach „LLM dazuschalten"
+  // engmaschig pollen, damit „lädt → verfügbar" sichtbar wird.
+  const [llm, setLlm] = useState<LlmStatusDTO | null>(null);
+  const [pollLlm, setPollLlm] = useState(false);
+  const enriched = initial?.llmEnrichedAt ?? null;
+  useEffect(() => {
+    if (!engineConfigured || enriched) { setLlm(null); return; }
+    let active = true;
+    const tick = async () => {
+      const r = await llmStatusAction({ clientId });
+      if (active && r.ok) setLlm(r.status);
+    };
+    tick();
+    if (!pollLlm) return () => { active = false; };
+    const iv = setInterval(tick, 5000);
+    return () => { active = false; clearInterval(iv); };
+  }, [clientId, engineConfigured, enriched, pollLlm]);
 
   // Cursor in einer Markierung → inspizieren; Auswahl (Ziehen) → eigene Markierung.
   function selectMarking(id: string | null) { setSelectedId(id); if (id) setManualSel(null); }
@@ -115,9 +134,10 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
   function requestLlm() {
     if (!initial) return;
     setError(null);
+    setPollLlm(true); // Status nun engmaschig pollen (Warmlauf sichtbar machen)
     start(async () => {
       const r = await requestLlmAction({ clientId, analysisId: initial.id });
-      flash(r, 'KI-Vertiefung gestartet — Markierungen erscheinen in Kürze (Seite neu laden).');
+      flash(r, 'KI-Vertiefung gestartet — der Server fährt bei Bedarf hoch; sobald „KI verfügbar" steht und der Lauf fertig ist, die Seite neu laden.');
     });
   }
   function toggleFilter(k: FilterKey) {
@@ -216,6 +236,7 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
         engineConfigured={engineConfigured}
         pending={pending}
         onRequestLlm={requestLlm}
+        llmStatus={llm}
       />
 
       {/* Toolbar — bestehende TaxTronik-Features verlinkt */}

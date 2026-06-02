@@ -18,10 +18,14 @@ import {
   HealthResponseSchema,
   KatalogDefiniereResponseSchema,
   KatalogResponseSchema,
+  LlmStartResponseSchema,
+  LlmStatusResponseSchema,
   OpaqueObjectSchema,
   type HealthResponse,
   type KatalogDefiniereResponse,
   type KatalogResponse,
+  type LlmStartResponse,
+  type LlmStatusResponse,
   type OpaqueObject,
 } from './schema';
 import {
@@ -169,6 +173,24 @@ export class RiskLayerClient {
   async health(): Promise<HealthResponse> {
     const raw = await this.request('GET', '/v1/health', { retry: NO_RETRY });
     return HealthResponseSchema.parse(raw);
+  }
+
+  // --- LLM-Steuerung (Schicht 2) --------------------------------------------
+
+  /** `GET /v1/llm/status` — Verfügbarkeit + Queue-Auslastung des llama-server.
+   *  Idempotent/billig → retrybar. So entscheidet TaxTronik: jetzt mitLLM senden
+   *  oder auf Bereitschaft warten. */
+  async llmStatus(): Promise<LlmStatusResponse> {
+    const raw = await this.request('GET', '/v1/llm/status', { retry: FAST_RETRY });
+    return LlmStatusResponseSchema.parse(raw);
+  }
+
+  /** `POST /v1/llm/start` — startet den llama-server (idempotent, non-blocking).
+   *  KEIN Request-Input (Modell/Binary aus der Engine-Config → kein Injection-
+   *  Vektor); Bereitschaft anschließend über `llmStatus().verfuegbar` pollen. */
+  async llmStart(): Promise<LlmStartResponse> {
+    const raw = await this.request('POST', '/v1/llm/start', { retry: FAST_RETRY });
+    return LlmStartResponseSchema.parse(raw);
   }
 
   // --- intern ---------------------------------------------------------------

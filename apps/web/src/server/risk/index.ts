@@ -27,6 +27,9 @@ export type {
 export { resolveNorm } from './resolve-norm';
 export type { ResolvedNorm, NormResolveClient } from './resolve-norm';
 
+export { getLlmStatus } from './llm';
+export type { LlmStatusDTO, LlmStatusClient } from './llm';
+
 export { archiveAnalysis, AlreadyArchivedError } from './archive';
 
 export { reformatSourceDoc } from './reformat';

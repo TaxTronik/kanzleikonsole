@@ -31,9 +31,11 @@ import {
   resolveNorm,
   archiveAnalysis,
   reformatSourceDoc,
+  getLlmStatus,
   type RiskStatus,
   type ResearchPreview,
   type ResolvedNorm,
+  type LlmStatusDTO,
 } from '@/server/risk';
 import { enqueueRiskAnalyseLlm } from '@/server/jobs/risk-analyse-queue';
 import { jsonDocToText } from './doc-text';
@@ -234,6 +236,21 @@ export async function archiveAnalysisAction(input: {
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${input.analysisId}`);
     revalidatePath(`/staff/clients/${clientId}/subsumtion`);
     return { ok: true, archiveKey: res.key };
+  } catch (e) {
+    return toActionError(e);
+  }
+}
+
+/** Liest den LLM-Status (Schicht 2) für die Anzeige im Workspace (verfügbar/lädt
+ *  + Queue). Reiner Lese-Zugriff; der Start passiert on-demand im Worker. */
+export async function llmStatusAction(input: {
+  clientId: string;
+}): Promise<OkActionResult<{ status: LlmStatusDTO }>> {
+  try {
+    await guard(input.clientId);
+    requireEngine();
+    const status = await getLlmStatus();
+    return { ok: true, status };
   } catch (e) {
     return toActionError(e);
   }

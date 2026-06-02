@@ -35,6 +35,8 @@ export type {
   HealthResponse,
   KatalogResponse,
   KatalogDefiniereResponse,
+  LlmStatusResponse,
+  LlmStartResponse,
   OpaqueObject,
 } from './schema';
 

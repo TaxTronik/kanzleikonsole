@@ -66,4 +66,48 @@ describe('RiskLayerClient', () => {
     expect(k.begriffe[0]).toMatchObject({ id: 'b1', begriff: 'Test', extra: 1 });
     expect(fetchImpl.mock.calls[0]![0]).toBe('http://risk-layer:8000/v1/katalog');
   });
+
+  it('llmStatus liest Verfügbarkeit + Queue (/slots) am richtigen Pfad', async () => {
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) =>
+      jsonResponse({
+        url: 'http://127.0.0.1:8080', verfuegbar: true, modell_geladen: true,
+        binary_vorhanden: true, von_uns_gestartet: true, engineVersion: '1.0.0',
+        queue: { quelle: 'slots', slots_gesamt: 4, aktiv: 1, frei: 3, slots: [{ id: 0, aktiv: true }] },
+      }),
+    );
+    const client = new RiskLayerClient({ config, fetchImpl });
+
+    const s = await client.llmStatus();
+    expect(s.verfuegbar).toBe(true);
+    expect(s.queue).toMatchObject({ quelle: 'slots', slots_gesamt: 4, aktiv: 1, frei: 3 });
+    const [url, init] = fetchImpl.mock.calls[0]!;
+    expect(url).toBe('http://risk-layer:8000/v1/llm/status');
+    expect(init!.method).toBe('GET');
+    expect((init!.headers as Record<string, string>).authorization).toBe(`Bearer ${config.token}`);
+  });
+
+  it('llmStatus verkraftet einen nicht laufenden Server (queue=null, verfuegbar default false)', async () => {
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) =>
+      jsonResponse({ url: null, queue: null, binary_vorhanden: true, modell_geladen: false, von_uns_gestartet: false }),
+    );
+    const client = new RiskLayerClient({ config, fetchImpl });
+
+    const s = await client.llmStatus();
+    expect(s.verfuegbar).toBe(false);
+    expect(s.queue).toBeNull();
+  });
+
+  it('llmStart postet ohne Body an /v1/llm/start und parst die Antwort', async () => {
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) =>
+      jsonResponse({ ok: true, hinweis: 'läuft bereits' }),
+    );
+    const client = new RiskLayerClient({ config, fetchImpl });
+
+    const r = await client.llmStart();
+    expect(r).toMatchObject({ ok: true, hinweis: 'läuft bereits' });
+    const [url, init] = fetchImpl.mock.calls[0]!;
+    expect(url).toBe('http://risk-layer:8000/v1/llm/start');
+    expect(init!.method).toBe('POST');
+    expect(init!.body).toBeUndefined(); // kein Request-Input (kein Injection-Vektor)
+  });
 });
