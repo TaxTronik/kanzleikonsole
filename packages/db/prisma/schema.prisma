@@ -1119,7 +1119,10 @@ model RiskAnalysis {
   katalogVersion   String                @map("katalog_version")
   engineVersion    String                @map("engine_version")
   createdById      String                @map("created_by_id") @db.Uuid
-  rawResult        Json                  @map("raw_result")
+  // Engine-rawResult liegt im Object-Store (SeaweedFS, gzip) — reines Audit/
+  // Replay-Kaltarchiv, zur Laufzeit ungelesen. Nur die Referenz bleibt in PG.
+  rawResultBucket  String?               @map("raw_result_bucket")
+  rawResultKey     String?               @map("raw_result_key")
   // Gesetzt, sobald die asynchrone LLM-Phase die Analyse angereichert hat.
   llmEnrichedAt    DateTime?             @map("llm_enriched_at") @db.Timestamptz(6)
   createdAt        DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)

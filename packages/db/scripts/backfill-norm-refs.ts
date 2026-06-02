@@ -16,6 +16,11 @@
 //   --dry  zeigt nur, was geändert würde (kein Schreibzugriff).
 //
 // DATABASE_URL = Owner-Rolle (BYPASSRLS) → tenant-übergreifend, wie der Seed.
+//
+// HISTORISCH/erledigt: Seit iter65/66 liegt `rawResult` NICHT mehr in Postgres,
+// sondern gzip in SeaweedFS (raw_result_bucket/raw_result_key). Dieses Skript
+// hat seinen Zweck erfüllt; ein Re-Run müsste rawResult erst aus dem Object-
+// Store holen (fetchRawResult, apps/web/src/server/risk/raw-store.ts).
 // =============================================================================
 
 import { Prisma } from '@prisma/client';

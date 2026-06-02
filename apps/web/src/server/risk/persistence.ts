@@ -7,11 +7,12 @@
 // (§4) — das ist hier die datenführende Seite.
 // =============================================================================
 
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import type { RiskAnalysisResult } from '@taxtronik/risk-layer';
 import { evidenceService } from '@/server/container';
 import { log } from '@/server/logger';
+import { storeRawResult } from './raw-store';
 
 export interface SaveAnalysisInput {
   result: RiskAnalysisResult;
@@ -49,9 +50,16 @@ export async function saveAnalysis(
     );
   }
 
+  // ID vorab erzeugen → rawResult VOR der Transaktion in SeaweedFS ablegen (gzip),
+  // damit die DB-Transaktion nicht während des Object-Store-Calls offen bleibt.
+  // Scheitert der Upload, brechen wir ab, bevor die DB berührt wird.
+  const analysisId = randomUUID();
+  const raw = await storeRawResult(ctx.tenantId, analysisId, input.result.rawResult);
+
   return withTenantContext(ctx, async (tx) => {
     const analysis = await tx.riskAnalysis.create({
       data: {
+        id: analysisId,
         tenantId: ctx.tenantId,
         clientId: input.clientId ?? null,
         documentId: input.documentId ?? null,
@@ -62,8 +70,9 @@ export async function saveAnalysis(
         katalogVersion: input.result.katalogVersion,
         engineVersion: input.result.engineVersion,
         createdById: input.createdById,
-        // Json-Felder: `as object` wie im Rest der Codebase (vgl. settings/modules).
-        rawResult: input.result.rawResult as object,
+        // rawResult liegt im Object-Store — nur die Referenz hier.
+        rawResultBucket: raw.bucket,
+        rawResultKey: raw.key,
         markings: {
           create: input.result.markings.map((m) => ({
             tenantId: ctx.tenantId,

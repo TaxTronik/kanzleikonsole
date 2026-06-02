@@ -56,7 +56,8 @@ export interface RiskAnalysisResult {
   katalogVersion: string;
   engineVersion: string;
   markings: RiskMarkingInput[];
-  /** Unveränderter Engine-Output für Audit/Replay (→ RiskAnalysis.rawResult). */
+  /** Unveränderter Engine-Output für Audit/Replay (App legt ihn gzip im Object-
+   *  Store ab, nicht in Postgres — Referenz auf RiskAnalysis.rawResultKey). */
   rawResult: unknown;
 }
 

@@ -242,6 +242,25 @@ export async function fetchObjectBytes(bucket: string, storageKey: string): Prom
   return Buffer.concat(chunks);
 }
 
+/**
+ * Direkter Bytes-Upload OHNE Virus-Scan/Dokument-Semantik — für intern erzeugte,
+ * regenerierbare Blobs (z. B. komprimierter Engine-rawResult). NICHT für
+ * Mandanten-Uploads (die laufen über commitDocument* inkl. ClamAV-Scan).
+ */
+export async function putObjectBytes(
+  bucket: string,
+  storageKey: string,
+  bytes: Buffer,
+  contentType = 'application/octet-stream',
+): Promise<void> {
+  if (bytes.length > MAX_UPLOAD_BYTES) {
+    throw new Error(`TOO_LARGE: Objekt (${bytes.length} B) überschreitet das Limit.`);
+  }
+  await s3.send(
+    new PutObjectCommand({ Bucket: bucket, Key: storageKey, Body: bytes, ContentType: contentType }),
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Geteilter Kern: Bytes scannen, hashen, in den Ziel-Bucket schreiben.
 // Wird sowohl von commitDocument (Quarantäne-Pfad) als auch von

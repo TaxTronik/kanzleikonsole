@@ -9,6 +9,7 @@ export {
 } from './client';
 export {
   fetchObjectBytes,
+  putObjectBytes,
   commitDocument,
   commitDocumentFromBytes,
   commitBytesWithTier,
