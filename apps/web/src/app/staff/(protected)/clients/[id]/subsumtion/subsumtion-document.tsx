@@ -19,7 +19,7 @@
 
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Check, Loader2, Lock } from 'lucide-react';
-import { useEditor, EditorContent, Extension } from '@tiptap/react';
+import { useEditor, EditorContent, Extension, type Editor } from '@tiptap/react';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { docToText, plainRangeToPm, pmPosToPlain, type TextRange } from './doc-text';
@@ -73,6 +73,21 @@ function markStyle(m: MarkingDTO, selected: boolean): string {
   return s;
 }
 
+/** Position der schwebenden Formatier-Leiste relativ zur Editor-Box (über bzw.
+ *  — falls oben kein Platz — unter der Auswahl, horizontal zentriert). */
+function flyoverFor(editor: Editor, box: DOMRect, from: number, to: number) {
+  const a = editor.view.coordsAtPos(from);
+  const b = editor.view.coordsAtPos(to);
+  const selTop = Math.min(a.top, b.top);
+  const selBottom = Math.max(a.bottom, b.bottom);
+  const above = selTop - box.top > 44;
+  return {
+    top: above ? selTop - box.top - 8 : selBottom - box.top + 8,
+    left: Math.max(72, Math.min(box.width - 72, (a.left + b.left) / 2 - box.left)),
+    placement: above ? ('above' as const) : ('below' as const),
+  };
+}
+
 /** Plain text → HTML (Absätze aus Leerzeilen, <br> für einzelne Umbrüche). */
 function textToHtml(text: string): string {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -122,6 +137,8 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(fu
   // Schwebende Formatier-Leiste (Review): erscheint über/unter der Auswahl.
   const [flyover, setFlyover] = useState<{ top: number; left: number; placement: 'above' | 'below' } | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
+  // true, solange mit der Maus gezogen wird → Leiste erst nach dem Loslassen.
+  const draggingRef = useRef(false);
 
   // Aktuelle Auswahl-Callbacks/Markierungen für die Editor-Closures (ohne Editor-Neubau).
   const ctxRef = useRef({
@@ -173,19 +190,10 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(fu
         if (s != null && e != null && e > s) {
           c.onSelectionForMarking?.({ start: s, end: e, text: c.sourceText.slice(s, e) });
           c.onSelectMarking?.(null);
+          // Bei Maus-Auswahl erst nach dem Loslassen (mouseup-Handler) zeigen —
+          // während des Ziehens ausgeblendet. Tastatur-Auswahl (kein Drag) sofort.
           const box = boxRef.current?.getBoundingClientRect();
-          if (box) {
-            const a = editor.view.coordsAtPos(from);
-            const b = editor.view.coordsAtPos(to);
-            const selTop = Math.min(a.top, b.top);
-            const selBottom = Math.max(a.bottom, b.bottom);
-            const above = selTop - box.top > 44;
-            setFlyover({
-              top: above ? selTop - box.top - 8 : selBottom - box.top + 8,
-              left: Math.max(72, Math.min(box.width - 72, (a.left + b.left) / 2 - box.left)),
-              placement: above ? 'above' : 'below',
-            });
-          }
+          setFlyover(box && !draggingRef.current ? flyoverFor(editor, box, from, to) : null);
           return;
         }
       }
@@ -238,6 +246,27 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(fu
     }
     editor.view.dispatch(editor.state.tr.setMeta(markKey, DecorationSet.create(editor.state.doc, decos)));
   }, [editor, visibleMarkings, selectedId]);
+
+  // Flyover-Leiste erst beim Loslassen der Maus zeigen: während des Ziehens
+  // (mousedown im Editor … mouseup irgendwo) bleibt sie aus; am Ende wird sie für
+  // die fertige Auswahl gesetzt. mouseup am document, da der Zug außerhalb enden kann.
+  useEffect(() => {
+    if (!editor || !analyzed) return;
+    const dom = editor.view.dom;
+    const onDown = () => { draggingRef.current = true; setFlyover(null); };
+    const onUp = () => {
+      draggingRef.current = false;
+      const { from, to, empty } = editor.state.selection;
+      const box = boxRef.current?.getBoundingClientRect();
+      if (!empty && canEdit && box) setFlyover(flyoverFor(editor, box, from, to));
+    };
+    dom.addEventListener('mousedown', onDown);
+    document.addEventListener('mouseup', onUp);
+    return () => {
+      dom.removeEventListener('mousedown', onDown);
+      document.removeEventListener('mouseup', onUp);
+    };
+  }, [editor, analyzed, canEdit]);
 
   /** Einzelne (harte) Zeilenumbrüche → Leerzeichen; Absätze (\n\n) bleiben. Gegen
    *  Import-Fragmentierung — nur im Compose (verändert den Plaintext). */
