@@ -45,6 +45,8 @@ export interface AnalysisDTO {
   sourceText: string;
   title: string | null;
   textHash: string;
+  /** Formatierter Sachverhalt (Tiptap-JSON) oder null (Alt-Analyse → Plaintext). */
+  sourceDoc: unknown;
   llmEnrichedAt: string | null;
   archivedAt: string | null;
   markings: MarkingDTO[];

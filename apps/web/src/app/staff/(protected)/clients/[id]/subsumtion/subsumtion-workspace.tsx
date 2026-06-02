@@ -9,6 +9,7 @@ import { DisclaimerBanner } from './disclaimer-banner';
 import { StatsBar } from './stats-bar';
 import { HerkunftLegende } from './herkunft-legende';
 import { AnnotatedDocument } from './annotated-document';
+import { AnnotatedRichDocument } from './annotated-rich-document';
 import { MarkingPanel, ResearchComposer } from './marking-panel';
 import { NewMarkingPanel } from './new-marking-panel';
 import { SachverhaltEditor, type SachverhaltEditorHandle } from './sachverhalt-editor';
@@ -69,7 +70,12 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
   function analyze() {
     setError(null); setInfo(null);
     start(async () => {
-      const r = await analyzeAction({ clientId, text, title: title.trim() || undefined });
+      const r = await analyzeAction({
+        clientId,
+        text,
+        title: title.trim() || undefined,
+        doc: editorRef.current?.getDoc() ?? undefined,
+      });
       if (!r.ok) { setError(r.error); return; }
       router.push(`/staff/clients/${clientId}/subsumtion/${r.analysisId}`);
     });
@@ -255,20 +261,37 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
       {info && <div className="text-sm text-emerald-700 dark:text-emerald-300">{info}</div>}
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-4">
-        <AnnotatedDocument
-          sourceText={initial.sourceText}
-          totalCount={markings.length}
-          ownCount={ownCount}
-          textHash={initial.textHash}
-          visibleMarkings={visibleMarkings}
-          filters={filters}
-          onToggleFilter={toggleFilter}
-          editMode={editMode}
-          onToggleEdit={() => setEditMode((v) => !v)}
-          selectedId={selectedId}
-          onSelectMarking={(id) => { setSelectedId(id); setEditMode(false); }}
-          onManualSelect={setManualSel}
-        />
+        {initial.sourceDoc && !editMode ? (
+          // Formatierte Ansicht (Rich-Doc + Markierungs-Decorations). Fürs eigene
+          // Markieren wechselt „Eigene Markierung" in die Plaintext-Ansicht.
+          <AnnotatedRichDocument
+            sourceDoc={initial.sourceDoc}
+            totalCount={markings.length}
+            ownCount={ownCount}
+            textHash={initial.textHash}
+            visibleMarkings={visibleMarkings}
+            filters={filters}
+            onToggleFilter={toggleFilter}
+            onToggleEdit={() => setEditMode(true)}
+            selectedId={selectedId}
+            onSelectMarking={(id) => { setSelectedId(id); setEditMode(false); }}
+          />
+        ) : (
+          <AnnotatedDocument
+            sourceText={initial.sourceText}
+            totalCount={markings.length}
+            ownCount={ownCount}
+            textHash={initial.textHash}
+            visibleMarkings={visibleMarkings}
+            filters={filters}
+            onToggleFilter={toggleFilter}
+            editMode={editMode}
+            onToggleEdit={() => setEditMode((v) => !v)}
+            selectedId={selectedId}
+            onSelectMarking={(id) => { setSelectedId(id); setEditMode(false); }}
+            onManualSelect={setManualSel}
+          />
+        )}
 
         {/* Sticky: Panel bleibt beim Scrollen sichtbar — Klick auf eine Markierung
             weit unten muss nicht zurück nach oben gescrollt werden. self-start

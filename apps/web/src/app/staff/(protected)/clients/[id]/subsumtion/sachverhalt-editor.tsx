@@ -12,14 +12,15 @@ import { forwardRef, useImperativeHandle, useCallback } from 'react';
 import { useEditor, useEditorState, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Bold, Italic, Heading2, Heading3, List, ListOrdered, Undo2, Redo2, AlignJustify } from 'lucide-react';
+import { docToText } from './doc-text';
 
 export interface SachverhaltEditorHandle {
   setText: (text: string) => void;
   getText: () => string;
+  /** Formatierter Inhalt als Tiptap/ProseMirror-JSON (für sourceDoc). */
+  getDoc: () => unknown;
   focus: () => void;
 }
-
-const BLOCK_SEP = '\n\n';
 
 /** Plain text → HTML (Absätze aus Leerzeilen, <br> für einzelne Umbrüche). */
 function textToHtml(text: string): string {
@@ -46,7 +47,9 @@ export const SachverhaltEditor = forwardRef<SachverhaltEditorHandle, Props>(func
         class: 'tt-content min-h-[18rem] max-h-[60vh] overflow-y-auto px-3 py-2 text-sm leading-relaxed focus:outline-none',
       },
     },
-    onUpdate: ({ editor }) => onChange(editor.getText({ blockSeparator: BLOCK_SEP })),
+    // Plaintext über die GEMEINSAME Serialisierung (deckungsgleich mit dem
+    // Review-Mapping) — nicht über getText.
+    onUpdate: ({ editor }) => onChange(docToText(editor.state.doc).text),
   });
 
   useImperativeHandle(
@@ -54,9 +57,10 @@ export const SachverhaltEditor = forwardRef<SachverhaltEditorHandle, Props>(func
     () => ({
       setText: (text: string) => {
         editor?.commands.setContent(textToHtml(text));
-        if (editor) onChange(editor.getText({ blockSeparator: BLOCK_SEP }));
+        if (editor) onChange(docToText(editor.state.doc).text);
       },
-      getText: () => editor?.getText({ blockSeparator: BLOCK_SEP }) ?? '',
+      getText: () => (editor ? docToText(editor.state.doc).text : ''),
+      getDoc: () => editor?.getJSON() ?? null,
       focus: () => editor?.commands.focus(),
     }),
     [editor, onChange],
@@ -85,10 +89,10 @@ export const SachverhaltEditor = forwardRef<SachverhaltEditorHandle, Props>(func
    *  mit Undo (Ctrl+Z) revidierbar. Gegen Import-Fragmentierung. */
   const reflow = useCallback(() => {
     if (!editor) return;
-    const t = editor.getText({ blockSeparator: BLOCK_SEP });
+    const t = docToText(editor.state.doc).text;
     const joined = t.replace(/([^\n])\n([^\n])/g, '$1 $2');
     editor.commands.setContent(textToHtml(joined));
-    onChange(editor.getText({ blockSeparator: BLOCK_SEP }));
+    onChange(docToText(editor.state.doc).text);
   }, [editor, onChange]);
 
   if (!editor) {

@@ -39,6 +39,7 @@ export default async function AnalysisPage({
     sourceText: analysis.sourceText,
     title: analysis.title,
     textHash: analysis.textHash,
+    sourceDoc: analysis.sourceDoc ?? null,
     llmEnrichedAt: analysis.llmEnrichedAt ? analysis.llmEnrichedAt.toISOString() : null,
     archivedAt: analysis.archivedAt ? analysis.archivedAt.toISOString() : null,
     markings: analysis.markings.map(

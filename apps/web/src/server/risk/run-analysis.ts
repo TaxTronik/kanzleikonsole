@@ -24,6 +24,8 @@ export interface RunAnalysisInput {
   title?: string | null;
   clientId?: string | null;
   documentId?: string | null;
+  /** Formatierter Sachverhalt (Tiptap-JSON); `text` ist dessen Serialisierung. */
+  sourceDoc?: unknown;
   optionen?: Record<string, unknown>;
 }
 
@@ -44,6 +46,7 @@ async function run(
   const saved = await saveAnalysis(ctx, {
     result,
     sourceText: input.text,
+    sourceDoc: input.sourceDoc,
     title: input.title ?? null,
     clientId: input.clientId ?? null,
     documentId: input.documentId ?? null,

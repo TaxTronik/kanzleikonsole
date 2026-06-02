@@ -130,6 +130,9 @@ const AnalyzeSchema = z.object({
   clientId: z.string().uuid(),
   text: z.string().min(1, 'Bitte einen Sachverhalt eingeben.').max(200_000),
   title: z.string().max(200).optional(),
+  // Formatierter Sachverhalt (Tiptap/ProseMirror-JSON) — optional; wird als
+  // sourceDoc gespeichert. text ist die daraus abgeleitete Plaintext-Serialisierung.
+  doc: z.unknown().optional(),
 });
 
 export async function analyzeAction(
@@ -144,6 +147,7 @@ export async function analyzeAction(
       title: parsed.title?.trim() || null,
       clientId: parsed.clientId,
       staffId,
+      sourceDoc: parsed.doc,
     });
     revalidatePath(`/staff/clients/${parsed.clientId}/subsumtion`);
     return { ok: true, analysisId: res.analysisId, markingCount: res.markingCount };

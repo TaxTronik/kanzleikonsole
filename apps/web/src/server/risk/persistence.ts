@@ -18,6 +18,8 @@ export interface SaveAnalysisInput {
   result: RiskAnalysisResult;
   /** Der analysierte Sachverhalt im Klartext (für Wieder-Öffnen + LLM-Phase). */
   sourceText: string;
+  /** Formatierter Sachverhalt (Tiptap-JSON); sourceText ist dessen Serialisierung. */
+  sourceDoc?: unknown;
   /** Optionale Bezeichnung der Subsumtion. */
   title?: string | null;
   /** Optionaler Mandantenbezug (Pflicht erst für die Delegation). */
@@ -64,6 +66,8 @@ export async function saveAnalysis(
         clientId: input.clientId ?? null,
         documentId: input.documentId ?? null,
         sourceText: input.sourceText,
+        // Rich-Doc optional (Tiptap-JSON); undefined → SQL NULL.
+        sourceDoc: input.sourceDoc != null ? (input.sourceDoc as object) : undefined,
         title: input.title ?? null,
         // Unser eigener Hash ist der maßgebliche (rekonstruierbar aus sourceText).
         textHash: contentHash,

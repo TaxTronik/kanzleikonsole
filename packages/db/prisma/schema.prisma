@@ -1114,6 +1114,10 @@ model RiskAnalysis {
   // Analyse WIEDER mit dem Highlight-Overlay (Zeichen-Offsets) zu öffnen und um
   // die LLM-Phase 2 zu fahren. Mandanten-Arbeitsprodukt, RLS-geschützt.
   sourceText       String                @map("source_text")
+  // Formatierter Sachverhalt als Tiptap/ProseMirror-JSON. sourceText ist die
+  // daraus abgeleitete Plaintext-Serialisierung (Engine/Offsets/Hash). null =
+  // Alt-Analyse ohne Rich-Doc (Review fällt auf Plaintext-Ansicht zurück).
+  sourceDoc        Json?                 @map("source_doc")
   title            String?
   textHash         String                @map("text_hash")
   katalogVersion   String                @map("katalog_version")
