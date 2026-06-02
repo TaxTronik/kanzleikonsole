@@ -13,9 +13,8 @@
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import type { ReportMarking, ReportToken, ReportModel } from './report-types';
 
-// Typen + Disclaimer leben DB-frei in report-types (die Renderer hängen nur daran);
-// hier re-exportiert, damit die bestehende Import-Fläche stabil bleibt.
-export { DISCLAIMER } from './report-types';
+// Typen leben DB-frei in report-types (die Renderer hängen nur daran); hier
+// re-exportiert, damit die bestehende Import-Fläche stabil bleibt.
 export type { ReportMarking, ReportToken, ReportModel } from './report-types';
 
 const HERKUNFT_LABEL: Record<string, string> = {

@@ -3,10 +3,10 @@
 // =============================================================================
 
 import {
-  Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType,
+  Document, Packer, Paragraph, TextRun, HeadingLevel,
   Table, TableRow, TableCell, WidthType, BorderStyle, UnderlineType,
 } from 'docx';
-import { DISCLAIMER, type ReportModel, type ReportToken } from './report-types';
+import { type ReportModel, type ReportToken } from './report-types';
 
 const hex = (c: string) => c.replace('#', '');
 
@@ -111,12 +111,7 @@ function markingsTable(model: ReportModel): Table {
 export async function renderDocx(model: ReportModel): Promise<Buffer> {
   const children: (Paragraph | Table)[] = [
     new Paragraph({ text: model.title, heading: HeadingLevel.HEADING_1 }),
-    new Paragraph({ children: [new TextRun({ text: meta(model), size: 18, color: '666666' })], spacing: { after: 200 } }),
-    new Paragraph({
-      children: [new TextRun({ text: DISCLAIMER, italics: true, size: 18, color: '8A6D00' })],
-      spacing: { after: 240 },
-      alignment: AlignmentType.JUSTIFIED,
-    }),
+    new Paragraph({ children: [new TextRun({ text: meta(model), size: 18, color: '666666' })], spacing: { after: 240 } }),
     new Paragraph({ text: 'Sachverhalt', heading: HeadingLevel.HEADING_2 }),
     new Paragraph({
       children: [new TextRun({ text: 'Markierte Stellen sind unterstrichen und mit [Nr.] nummeriert — dieselbe Nr. findet sich in der Tabelle „Markierungen".', size: 16, color: '888888', italics: true })],

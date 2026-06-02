@@ -6,7 +6,7 @@
 // =============================================================================
 
 import PDFDocument from 'pdfkit';
-import { DISCLAIMER, type ReportModel, type ReportToken } from './report-types';
+import { type ReportModel, type ReportToken } from './report-types';
 
 function toBuffer(doc: PDFKit.PDFDocument): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -92,11 +92,7 @@ export async function renderPdf(model: ReportModel): Promise<Buffer> {
   doc.font('Helvetica-Bold').fontSize(18).fillColor('#111111').text(model.title, { width: contentWidth });
   doc.moveDown(0.3);
   doc.font('Helvetica').fontSize(8).fillColor('#666666').text(metaLine(model), { width: contentWidth });
-  doc.moveDown(0.6);
-
-  // --- Disclaimer ---
-  doc.font('Helvetica-Oblique').fontSize(8.5).fillColor('#8A6D00').text(DISCLAIMER, { width: contentWidth, align: 'justify' });
-  doc.moveDown(0.8);
+  doc.moveDown(0.9);
 
   // --- Sachverhalt (annotiert: markierte Stellen farbig + Marker [n]) ---
   doc.font('Helvetica-Bold').fontSize(13).fillColor('#111111').text('Sachverhalt');

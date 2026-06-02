@@ -39,8 +39,3 @@ export interface ReportModel {
   markings: ReportMarking[];
   counts: { gesamt: number; eigen: number };
 }
-
-export const DISCLAIMER =
-  'Das System lenkt Aufmerksamkeit, es übernimmt keine Subsumtion. Markierungen sind Hinweise auf ' +
-  'definitions- und subsumtionsbedürftige Stellen — keine Rechtsfolgenbestimmung. Die Bewertung ' +
-  'schuldet der Berufsträger höchstpersönlich (§§ 33, 57 StBerG).';
