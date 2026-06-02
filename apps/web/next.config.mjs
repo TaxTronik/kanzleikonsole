@@ -40,6 +40,10 @@ const nextConfig = {
     '@taxtronik/tax',
   ],
 
+  // pdfkit lädt seine Standard-Font-Metriken (.afm) zur Laufzeit aus
+  // node_modules — darf NICHT gebündelt werden, sonst fehlen die Fonts.
+  serverExternalPackages: ['pdfkit'],
+
   // Reaktivität strenger.
   reactStrictMode: true,
 

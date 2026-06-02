@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Sparkles, Upload, Loader2, FileDown, FolderOpen, ClipboardList, ScrollText, Webhook } from 'lucide-react';
+import { Sparkles, Upload, Loader2, FileDown, FolderOpen, ClipboardList, ScrollText, Webhook, FileText, FileType } from 'lucide-react';
 import { analyzeAction, importDocTextAction, importClientDocAction, requestLlmAction } from './actions';
 import { DisclaimerBanner } from './disclaimer-banner';
 import { StatsBar } from './stats-bar';
@@ -190,6 +190,12 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
         <Link href={`/staff/clients/${clientId}`} className="btn-secondary text-xs"><FolderOpen className="h-3.5 w-3.5" /> Aktenregal</Link>
         <Link href={`/staff/clients/${clientId}/reminders`} className="btn-secondary text-xs"><ClipboardList className="h-3.5 w-3.5" /> Aufgaben</Link>
         <Link href={`/staff/clients/${clientId}/timeline`} className="btn-secondary text-xs"><ScrollText className="h-3.5 w-3.5" /> Audit-Log</Link>
+        <a href={`/api/staff/clients/${clientId}/subsumtion/${initial.id}/export?format=docx`} className="btn-secondary text-xs" title="Als Word-Dokument exportieren">
+          <FileText className="h-3.5 w-3.5" /> DOCX
+        </a>
+        <a href={`/api/staff/clients/${clientId}/subsumtion/${initial.id}/export?format=pdf`} className="btn-secondary text-xs" title="Als PDF exportieren">
+          <FileType className="h-3.5 w-3.5" /> PDF
+        </a>
         <button type="button" onClick={() => setShowCaseResearch((v) => !v)} className="btn-secondary text-xs ml-auto">
           <Webhook className="h-3.5 w-3.5" /> Ganzer Fall an KI
         </button>
