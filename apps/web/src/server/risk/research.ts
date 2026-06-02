@@ -16,6 +16,7 @@ import { prismaOwner } from '@/server/db/prisma-owner';
 import { enqueueN8nEvent } from '@/server/n8n/outbox';
 import { evidenceService } from '@/server/container';
 import { anonymize, deanonymize } from './anonymize';
+import { reflowProse } from './reflow';
 
 export type SachverhaltMode = 'none' | 'excerpt' | 'full';
 
@@ -79,9 +80,9 @@ async function buildRaw(tx: TxClient, tenantId: string, input: ResearchInput) {
     if (marking.governanceTyp) parts.push(`Governance-Typ: ${marking.governanceTyp}`);
   }
   if (input.sachverhalt === 'full') {
-    parts.push('Sachverhalt:\n' + analysis.sourceText);
+    parts.push('Sachverhalt:\n' + reflowProse(analysis.sourceText));
   } else if (input.sachverhalt === 'excerpt' && marking) {
-    parts.push('Sachverhalt-Auszug:\n' + excerpt(analysis.sourceText, marking.start, marking.end));
+    parts.push('Sachverhalt-Auszug:\n' + reflowProse(excerpt(analysis.sourceText, marking.start, marking.end)));
   }
   for (const s of input.snippets ?? []) if (s.trim()) parts.push(s.trim());
   if (input.prompt && input.prompt.trim()) parts.push('Auftrag: ' + input.prompt.trim());
