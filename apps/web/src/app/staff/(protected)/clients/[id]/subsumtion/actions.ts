@@ -242,15 +242,28 @@ export async function archiveAnalysisAction(input: {
 }
 
 /** Liest den LLM-Status (Schicht 2) für die Anzeige im Workspace (verfügbar/lädt
- *  + Queue). Reiner Lese-Zugriff; der Start passiert on-demand im Worker. */
+ *  + Queue) UND — falls analysisId gesetzt — ob die LLM-Phase fertig ist
+ *  (`enrichedAt`). Der Engine-Status ist best-effort (Fehler ⇒ null), damit die
+ *  Fertig-Erkennung (reiner DB-Read) auch bei wackliger Engine funktioniert. */
 export async function llmStatusAction(input: {
   clientId: string;
-}): Promise<OkActionResult<{ status: LlmStatusDTO }>> {
+  analysisId?: string;
+}): Promise<OkActionResult<{ status: LlmStatusDTO | null; enrichedAt: string | null }>> {
   try {
-    await guard(input.clientId);
-    requireEngine();
-    const status = await getLlmStatus();
-    return { ok: true, status };
+    const { ctx } = await guard(input.clientId);
+    let status: LlmStatusDTO | null = null;
+    try { status = await getLlmStatus(); } catch { status = null; }
+    let enrichedAt: string | null = null;
+    if (input.analysisId) {
+      const a = await withTenantContext(ctx, (tx) =>
+        tx.riskAnalysis.findFirst({
+          where: { id: input.analysisId, clientId: input.clientId },
+          select: { llmEnrichedAt: true },
+        }),
+      );
+      enrichedAt = a?.llmEnrichedAt ? a.llmEnrichedAt.toISOString() : null;
+    }
+    return { ok: true, status, enrichedAt };
   } catch (e) {
     return toActionError(e);
   }

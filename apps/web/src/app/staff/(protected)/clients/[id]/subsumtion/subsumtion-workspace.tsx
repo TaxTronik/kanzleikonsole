@@ -16,6 +16,26 @@ import { ExportPanel } from './export-panel';
 import { ResearchResultsBlock } from './research-results-block';
 import { type AnalysisDTO, type ResearchResultDTO, type MarkingDTO, FILTER_KEYS, type FilterKey, isVisible } from './_ui';
 
+/** Skeleton im Panel, während die LLM-Phase läuft — statt eines harten Reloads:
+ *  „lade, du kannst weiterarbeiten". Die fertigen Markierungen kommen automatisch. */
+function LlmDeepeningCard({ status }: { status: LlmStatusDTO | null }) {
+  const label = status?.verfuegbar ? 'KI analysiert den Sachverhalt …' : 'KI-Modell wird geladen …';
+  return (
+    <div className="card p-4 space-y-3">
+      <div className="flex items-center gap-2 text-sm text-primary">
+        <Loader2 className="h-4 w-4 animate-spin text-brand-600" />
+        <span>{label}</span>
+      </div>
+      <p className="text-xs text-muted">Neue KI-Markierungen erscheinen automatisch — du kannst in der Zwischenzeit weiterarbeiten.</p>
+      <div className="space-y-2 animate-pulse" aria-hidden>
+        <div className="h-3 rounded bg-gray-200 dark:bg-gray-700 w-3/4" />
+        <div className="h-3 rounded bg-gray-200 dark:bg-gray-700 w-1/2" />
+        <div className="h-3 rounded bg-gray-200 dark:bg-gray-700 w-2/3" />
+      </div>
+    </div>
+  );
+}
+
 interface Props {
   clientId: string;
   staffOptions: Array<{ id: string; fullName: string }>;
@@ -51,22 +71,39 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
   const [showCaseResearch, setShowCaseResearch] = useState(false);
 
   // LLM-Status (Schicht 2): einmal beim Mount holen; nach „LLM dazuschalten"
-  // engmaschig pollen, damit „lädt → verfügbar" sichtbar wird.
+  // engmaschig pollen. Ist der Lauf fertig (llmEnrichedAt gesetzt), WEICH
+  // aktualisieren (router.refresh — der Editor/Cursor/Scroll bleibt erhalten) und
+  // die neuen KI-Markierungen hervorheben. Kein harter Reload.
   const [llm, setLlm] = useState<LlmStatusDTO | null>(null);
   const [pollLlm, setPollLlm] = useState(false);
   const enriched = initial?.llmEnrichedAt ?? null;
+  const pollDeadlineRef = useRef(0);
+  const highlightLlmRef = useRef(false);
+  const prevEnrichedRef = useRef<string | null>(enriched);
+
   useEffect(() => {
     if (!engineConfigured || enriched) { setLlm(null); return; }
     let active = true;
     const tick = async () => {
-      const r = await llmStatusAction({ clientId });
-      if (active && r.ok) setLlm(r.status);
+      if (pollLlm && Date.now() > pollDeadlineRef.current) {
+        setPollLlm(false);
+        setInfo('Die KI-Vertiefung läuft im Hintergrund weiter — die Markierungen erscheinen beim nächsten Öffnen.');
+        return;
+      }
+      const r = await llmStatusAction({ clientId, analysisId: initial?.id });
+      if (!active || !r.ok) return;
+      setLlm(r.status);
+      if (r.enrichedAt) {
+        highlightLlmRef.current = true;
+        setPollLlm(false);
+        router.refresh(); // weich: Editor/Selektion/Scroll bleiben erhalten
+      }
     };
     tick();
     if (!pollLlm) return () => { active = false; };
     const iv = setInterval(tick, 5000);
     return () => { active = false; clearInterval(iv); };
-  }, [clientId, engineConfigured, enriched, pollLlm]);
+  }, [clientId, engineConfigured, enriched, pollLlm, initial?.id, router]);
 
   // Cursor in einer Markierung → inspizieren; Auswahl (Ziehen) → eigene Markierung.
   function selectMarking(id: string | null) { setSelectedId(id); if (id) setManualSel(null); }
@@ -80,6 +117,19 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
     () => Object.fromEntries(markings.map((m) => [m.id, m])) as Record<string, MarkingDTO>,
     [markings],
   );
+
+  // Nach der weichen Aktualisierung (LLM-Lauf fertig): neue KI-Markierungen
+  // (LLM/Heuristik) melden + die erste hervorheben — aber NUR, wenn der Bearbeiter
+  // gerade nichts offen hat (Auswahl/eigene Markierung), um nicht zu stören.
+  useEffect(() => {
+    const was = prevEnrichedRef.current;
+    prevEnrichedRef.current = enriched;
+    if (!highlightLlmRef.current || was || !enriched) return;
+    highlightLlmRef.current = false;
+    const llmMarks = markings.filter((m) => m.herkunft === 'LLM' || m.herkunft === 'EMBEDDING');
+    setInfo(llmMarks.length > 0 ? `${llmMarks.length} neue KI-Markierung(en) hinzugefügt.` : 'KI-Vertiefung abgeschlossen.');
+    if (llmMarks.length > 0 && !manualSel && !selectedId) setSelectedId(llmMarks[0]!.id);
+  }, [enriched, markings, manualSel, selectedId]);
 
   function flash(r: { ok: boolean; error?: string }, okMsg?: string) {
     if (!r.ok) { setError(r.error ?? 'Fehler.'); setInfo(null); }
@@ -134,10 +184,11 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
   function requestLlm() {
     if (!initial) return;
     setError(null);
+    pollDeadlineRef.current = Date.now() + 10 * 60_000; // Warmlauf + Lauf abdecken
     setPollLlm(true); // Status nun engmaschig pollen (Warmlauf sichtbar machen)
     start(async () => {
       const r = await requestLlmAction({ clientId, analysisId: initial.id });
-      flash(r, 'KI-Vertiefung gestartet — der Server fährt bei Bedarf hoch; sobald „KI verfügbar" steht und der Lauf fertig ist, die Seite neu laden.');
+      flash(r, 'KI-Vertiefung gestartet — der Server fährt bei Bedarf hoch; die neuen Markierungen erscheinen hier automatisch, sobald der Lauf fertig ist.');
     });
   }
   function toggleFilter(k: FilterKey) {
@@ -338,6 +389,8 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
               onClose={() => setSelectedId(null)}
               flash={flash}
             />
+          ) : pollLlm && !enriched ? (
+            <LlmDeepeningCard status={llm} />
           ) : (
             <div className="card p-4 text-sm text-muted">
               <strong>Klicken</strong> Sie eine Markierung im Text an, um sie zu bewerten, zu delegieren
