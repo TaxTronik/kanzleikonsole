@@ -11,6 +11,7 @@ import { HerkunftLegende } from './herkunft-legende';
 import { AnnotatedDocument } from './annotated-document';
 import { MarkingPanel, ResearchComposer } from './marking-panel';
 import { NewMarkingPanel } from './new-marking-panel';
+import { SachverhaltEditor, type SachverhaltEditorHandle } from './sachverhalt-editor';
 import { ResearchResultsBlock } from './research-results-block';
 import { type AnalysisDTO, type ResearchResultDTO, type MarkingDTO, FILTER_KEYS, type FilterKey, isVisible } from './_ui';
 
@@ -34,6 +35,13 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
   const [title, setTitle] = useState(initial?.title ?? '');
   const [docId, setDocId] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
+  const editorRef = useRef<SachverhaltEditorHandle>(null);
+
+  // Importierten Text in den Editor schieben (an vorhandenen Text anhängen).
+  function appendToEditor(imported: string) {
+    const cur = editorRef.current?.getText() ?? '';
+    editorRef.current?.setText(cur.trim() ? cur + '\n\n' + imported : imported);
+  }
 
   // Review-Modus
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -77,7 +85,7 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
       fd.set('file', file);
       const r = await importDocTextAction(fd);
       if (!r.ok) { setError(r.error); return; }
-      setText((prev) => (prev.trim() ? prev + '\n\n' + r.text : r.text));
+      appendToEditor(r.text);
       // Titel-Vorschlag nur übernehmen, wenn noch keiner gesetzt ist.
       if (r.suggestedTitle && !title.trim()) setTitle(r.suggestedTitle);
       setInfo('Text aus Dokument übernommen.');
@@ -89,7 +97,7 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
     start(async () => {
       const r = await importClientDocAction({ clientId, documentId: docId });
       if (!r.ok) { setError(r.error); return; }
-      setText((prev) => (prev.trim() ? prev + '\n\n' + r.text : r.text));
+      appendToEditor(r.text);
       if (r.suggestedTitle && !title.trim()) setTitle(r.suggestedTitle);
       setInfo('Text aus Mandanten-Dokument übernommen.');
     });
@@ -143,13 +151,12 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
           placeholder="Bezeichnung (optional), z. B. „Umstrukturierung M-Gruppe“"
           className="w-full rounded-md border border-default bg-surface px-3 py-2 text-sm"
         />
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Sachverhalt hier eingeben oder aus einem Dokument importieren …"
-          rows={18}
-          className="w-full rounded-md border border-default bg-surface px-3 py-2 text-sm font-mono leading-relaxed"
-        />
+        <p className="text-xs text-muted">
+          Sachverhalt erfassen oder aus einem Dokument importieren — formatieren, bei
+          fragmentierten Importen „Absätze zusammenführen" nutzen. Beim Analysieren zählt
+          der reine Text.
+        </p>
+        <SachverhaltEditor ref={editorRef} initialText="" onChange={setText} />
         <div className="flex items-center gap-2 flex-wrap">
           <button type="button" onClick={analyze} disabled={pending || !engineConfigured || !text.trim()} className="btn-primary text-sm">
             {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
