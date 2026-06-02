@@ -6,83 +6,87 @@ import {
   Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType,
   Table, TableRow, TableCell, WidthType, BorderStyle, UnderlineType,
 } from 'docx';
-import { DISCLAIMER, type ReportModel, type ReportSegment } from './report-model';
+import { DISCLAIMER, type ReportModel, type ReportToken } from './report-model';
 
 const hex = (c: string) => c.replace('#', '');
 
 function meta(model: ReportModel): string {
-  const parts = [
+  return [
     model.clientName ? `Mandant: ${model.clientName}` : null,
     `Erstellt: ${model.createdAt.toLocaleDateString('de-DE')}`,
     `Markierungen: ${model.counts.gesamt} (davon ${model.counts.eigen} eigene)`,
     `Katalog ${model.katalogVersion} · Engine ${model.engineVersion}`,
     model.llmEnriched ? 'KI-vertieft' : null,
     `Hash ${model.textHash.slice(0, 16)}…`,
-  ].filter(Boolean);
-  return parts.join('  ·  ');
+  ]
+    .filter(Boolean)
+    .join('  ·  ');
 }
 
-/** Annotierte Segmente → Absätze (markierte Stellen farbig unterstrichen). */
-function sachverhaltParagraphs(segments: ReportSegment[]): Paragraph[] {
+/** Token-Strom → Absätze: markierte Stellen farbig unterstrichen, Marker „[n]". */
+function sachverhaltParagraphs(tokens: ReportToken[]): Paragraph[] {
   const paragraphs: Paragraph[] = [];
   let runs: TextRun[] = [];
-  for (const seg of segments) {
-    const lines = seg.text.split('\n');
+  const flush = () => { paragraphs.push(new Paragraph({ children: runs, spacing: { after: 120 } })); runs = []; };
+
+  for (const tok of tokens) {
+    if (tok.kind === 'marker') {
+      runs.push(new TextRun({ text: `[${tok.nr}]`, superScript: true, bold: true, color: hex(tok.color) }));
+      continue;
+    }
+    const lines = tok.text.split('\n');
     for (let i = 0; i < lines.length; i++) {
-      if (i > 0) {
-        paragraphs.push(new Paragraph({ children: runs, spacing: { after: 120 } }));
-        runs = [];
-      }
+      if (i > 0) flush();
       const t = lines[i]!;
       if (t.length === 0) continue;
       runs.push(
         new TextRun({
           text: t,
-          underline: seg.color
-            ? { type: seg.streitig ? UnderlineType.WAVE : UnderlineType.SINGLE, color: hex(seg.color) }
+          underline: tok.color
+            ? { type: tok.streitig ? UnderlineType.WAVE : UnderlineType.SINGLE, color: hex(tok.color) }
             : undefined,
         }),
       );
     }
   }
-  paragraphs.push(new Paragraph({ children: runs, spacing: { after: 120 } }));
+  flush();
   return paragraphs;
 }
 
 function cell(lines: string[], opts: { header?: boolean; color?: string } = {}): TableCell {
   return new TableCell({
-    margins: { top: 60, bottom: 60, left: 90, right: 90 },
+    margins: { top: 50, bottom: 50, left: 80, right: 80 },
     children: lines.map(
       (l) =>
         new Paragraph({
-          children: [new TextRun({ text: l, bold: opts.header, size: 18, color: opts.color ? hex(opts.color) : undefined })],
+          children: [new TextRun({ text: l, bold: opts.header, size: 17, color: opts.color ? hex(opts.color) : undefined })],
         }),
     ),
   });
 }
 
 function markingsTable(model: ReportModel): Table {
-  const header = new TableRow({
-    tableHeader: true,
-    children: ['Begriff', 'Herkunft · Status', 'Normanker', 'Governance · Risiko', 'Notiz · Kontrolle'].map((h) =>
-      cell([h], { header: true }),
-    ),
-  });
+  const headers = ['Nr.', 'Fundstelle (markierter Text)', 'Begriff · Norm', 'Herkunft · Status', 'Governance · Risiko', 'Notiz · Maßnahme'];
+  const header = new TableRow({ tableHeader: true, children: headers.map((h) => cell([h], { header: true })) });
 
   const rows = model.markings.map((m) => {
-    const begriff = [m.begriff + (m.streitig ? '  ⚠ streitig' : '')];
-    if (m.engineStatusLabel) begriff.push(m.engineStatusLabel);
-    const herkunft = [m.herkunftLabel, m.statusLabel];
-    const norm = m.normAnker.length ? m.normAnker : ['—'];
-    const gov = [m.governanceLabel ?? '—'];
-    const risiko = [m.schadenLabel, m.wahrscheinlichkeitLabel].filter(Boolean) as string[];
-    const govRisiko = risiko.length ? [...gov, 'Risiko: ' + risiko.join(' / ')] : gov;
+    const begriffLines = [m.begriff + (m.streitig ? '  ⚠ streitig' : '')];
+    if (m.engineStatusLabel) begriffLines.push(m.engineStatusLabel);
+    const normJoined = m.normAnker.join(', ');
+    if (normJoined && normJoined !== m.begriff) begriffLines.push('Norm: ' + normJoined);
+
+    const risiko = [m.schadenLabel, m.wahrscheinlichkeitLabel].filter(Boolean).join(' / ');
+    const govRisiko = [m.governanceLabel ?? '—'];
+    if (risiko) govRisiko.push('Risiko: ' + risiko);
+
     const notiz = [m.notiz, m.kontrolle ? 'Maßnahme: ' + m.kontrolle : null].filter(Boolean) as string[];
+
     return new TableRow({
       children: [
-        cell(begriff, { color: m.herkunftColor }),
-        cell(herkunft),
-        cell(norm),
+        cell([String(m.nr)], { color: m.herkunftColor }),
+        cell([m.fundstelle || '—']),
+        cell(begriffLines),
+        cell([m.herkunftLabel, m.statusLabel]),
         cell(govRisiko),
         cell(notiz.length ? notiz : ['—']),
       ],
@@ -91,7 +95,7 @@ function markingsTable(model: ReportModel): Table {
 
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
-    columnWidths: [2400, 1600, 1800, 1800, 2000],
+    columnWidths: [520, 2700, 1900, 1300, 1500, 1100],
     borders: {
       top: { style: BorderStyle.SINGLE, size: 2, color: 'CCCCCC' },
       bottom: { style: BorderStyle.SINGLE, size: 2, color: 'CCCCCC' },
@@ -114,7 +118,11 @@ export async function renderDocx(model: ReportModel): Promise<Buffer> {
       alignment: AlignmentType.JUSTIFIED,
     }),
     new Paragraph({ text: 'Sachverhalt', heading: HeadingLevel.HEADING_2 }),
-    ...sachverhaltParagraphs(model.segments),
+    new Paragraph({
+      children: [new TextRun({ text: 'Markierte Stellen sind unterstrichen und mit [Nr.] nummeriert — dieselbe Nr. findet sich in der Tabelle „Markierungen".', size: 16, color: '888888', italics: true })],
+      spacing: { after: 120 },
+    }),
+    ...sachverhaltParagraphs(model.tokens),
     new Paragraph({ text: 'Markierungen', heading: HeadingLevel.HEADING_2, spacing: { before: 240 } }),
   ];
   if (model.markings.length > 0) {

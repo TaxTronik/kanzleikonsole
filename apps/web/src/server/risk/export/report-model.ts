@@ -4,11 +4,18 @@
 // Format-neutral: lädt die Analyse + Markierungen tenant-scoped und baut ein
 // strukturiertes Modell. Die Renderer (to-docx, to-pdf) hängen NUR an diesem
 // Modell — kein DB-/Format-Wissen doppelt.
+//
+// Zuordnung Text ↔ Tabelle: jede Markierung bekommt eine laufende Nr. (nach
+// Position). Im Sachverhalt erscheint hinter der markierten Stelle ein Marker
+// „[n]"; die Tabelle führt dieselbe Nr. + die Fundstelle (markierter Ausschnitt).
 // =============================================================================
 
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 
 export interface ReportMarking {
+  nr: number;
+  /** Der tatsächlich markierte Textausschnitt (Fundstelle im Sachverhalt). */
+  fundstelle: string;
   begriff: string;
   herkunftLabel: string;
   herkunftColor: string; // #rrggbb
@@ -21,16 +28,12 @@ export interface ReportMarking {
   statusLabel: string;
   kontrolle: string | null;
   notiz: string | null;
-  start: number;
-  end: number;
 }
 
-export interface ReportSegment {
-  text: string;
-  /** Gesetzt → Stelle ist markiert (Farbe/Streit der überdeckenden Markierung). */
-  color: string | null;
-  streitig: boolean;
-}
+/** Token-Strom des annotierten Sachverhalts: Textstücke + Marker-Nummern. */
+export type ReportToken =
+  | { kind: 'text'; text: string; color: string | null; streitig: boolean }
+  | { kind: 'marker'; nr: number; color: string };
 
 export interface ReportModel {
   title: string;
@@ -40,10 +43,8 @@ export interface ReportModel {
   katalogVersion: string;
   engineVersion: string;
   llmEnriched: boolean;
-  sourceText: string;
-  segments: ReportSegment[];
+  tokens: ReportToken[];
   markings: ReportMarking[];
-  /** Zähler nach engineStatus/Herkunft für die Kopfzeile. */
   counts: { gesamt: number; eigen: number };
 }
 
@@ -69,35 +70,58 @@ const ENGINE_STATUS_LABEL: Record<string, string> = {
   treffer: 'Treffer', luecke: 'Lücke', kandidat: 'Kandidat',
   unknown_risiko: 'Unknown-Risiko', berater: 'Berater-Definition',
 };
-
 const STREIT_COLOR = '#ef4444';
+const FALLBACK_COLOR = '#6b7280';
 
-/** Text + Markierungen → nicht überlappende Segmente (kleinste überdeckende gewinnt). */
-function buildSegments(
-  text: string,
-  markings: Array<{ start: number; end: number; color: string; streitig: boolean }>,
-): ReportSegment[] {
-  if (markings.length === 0) return [{ text, color: null, streitig: false }];
+interface PositionedMarking {
+  nr: number;
+  start: number;
+  end: number;
+  color: string;
+  streitig: boolean;
+}
+
+/**
+ * Text + positionierte Markierungen → Token-Strom. Zwischen den Grenzen das
+ * Textstück (Farbe = kleinste überdeckende Markierung); am Ende jeder Markierung
+ * deren Marker „[nr]". Mehrere an derselben Stelle endende Markierungen: alle.
+ */
+function buildTokens(text: string, marks: PositionedMarking[]): ReportToken[] {
+  if (marks.length === 0) return [{ kind: 'text', text, color: null, streitig: false }];
+
+  const clamp = (n: number) => Math.max(0, Math.min(text.length, n));
+  const endsAt = new Map<number, PositionedMarking[]>();
   const bounds = new Set<number>([0, text.length]);
-  for (const m of markings) {
-    bounds.add(Math.max(0, Math.min(text.length, m.start)));
-    bounds.add(Math.max(0, Math.min(text.length, m.end)));
+  for (const m of marks) {
+    bounds.add(clamp(m.start));
+    const e = clamp(m.end);
+    bounds.add(e);
+    (endsAt.get(e) ?? endsAt.set(e, []).get(e)!).push(m);
   }
   const points = [...bounds].sort((a, b) => a - b);
-  const segs: ReportSegment[] = [];
+
+  const tokens: ReportToken[] = [];
   for (let i = 0; i < points.length - 1; i++) {
     const a = points[i]!;
     const b = points[i + 1]!;
-    if (b <= a) continue;
-    let top: { start: number; end: number; color: string; streitig: boolean } | null = null;
-    for (const m of markings) {
-      if (m.start <= a && m.end >= b) {
-        if (!top || m.end - m.start < top.end - top.start) top = m;
+    if (b > a) {
+      let top: PositionedMarking | null = null;
+      for (const m of marks) {
+        if (clamp(m.start) <= a && clamp(m.end) >= b) {
+          if (!top || m.end - m.start < top.end - top.start) top = m;
+        }
+      }
+      tokens.push({ kind: 'text', text: text.slice(a, b), color: top ? top.color : null, streitig: top?.streitig ?? false });
+    }
+    // Marker für alle Markierungen, die an Punkt b enden.
+    const ending = endsAt.get(b);
+    if (ending) {
+      for (const m of [...ending].sort((x, y) => x.nr - y.nr)) {
+        tokens.push({ kind: 'marker', nr: m.nr, color: m.color });
       }
     }
-    segs.push({ text: text.slice(a, b), color: top ? top.color : null, streitig: top?.streitig ?? false });
   }
-  return segs;
+  return tokens;
 }
 
 export async function buildReportModel(ctx: TenantContext, analysisId: string): Promise<ReportModel | null> {
@@ -105,16 +129,21 @@ export async function buildReportModel(ctx: TenantContext, analysisId: string): 
     const a = await tx.riskAnalysis.findUnique({
       where: { id: analysisId },
       include: {
-        markings: { orderBy: { start: 'asc' } },
+        markings: true,
         client: { select: { name: true } },
       },
     });
     if (!a) return null;
 
-    const markings: ReportMarking[] = a.markings.map((m) => ({
+    // Deterministische Reihenfolge (Position) → laufende Nr. für Text + Tabelle.
+    const ordered = [...a.markings].sort((m1, m2) => m1.start - m2.start || m1.end - m2.end || m1.id.localeCompare(m2.id));
+
+    const markings: ReportMarking[] = ordered.map((m, i) => ({
+      nr: i + 1,
+      fundstelle: m.matchedText,
       begriff: m.begriff,
       herkunftLabel: HERKUNFT_LABEL[m.herkunft] ?? m.herkunft,
-      herkunftColor: HERKUNFT_COLOR[m.herkunft] ?? '#6b7280',
+      herkunftColor: HERKUNFT_COLOR[m.herkunft] ?? FALLBACK_COLOR,
       engineStatusLabel: m.engineStatus ? (ENGINE_STATUS_LABEL[m.engineStatus] ?? m.engineStatus) : null,
       streitig: m.streitig,
       normAnker: m.normAnker,
@@ -124,16 +153,15 @@ export async function buildReportModel(ctx: TenantContext, analysisId: string): 
       statusLabel: STATUS_LABEL[m.status] ?? m.status,
       kontrolle: m.kontrolle,
       notiz: m.notiz,
-      start: m.start,
-      end: m.end,
     }));
 
-    const segments = buildSegments(
+    const tokens = buildTokens(
       a.sourceText,
-      a.markings.map((m) => ({
+      ordered.map((m, i) => ({
+        nr: i + 1,
         start: m.start,
         end: m.end,
-        color: m.streitig ? STREIT_COLOR : (HERKUNFT_COLOR[m.herkunft] ?? '#6b7280'),
+        color: m.streitig ? STREIT_COLOR : (HERKUNFT_COLOR[m.herkunft] ?? FALLBACK_COLOR),
         streitig: m.streitig,
       })),
     );
@@ -146,8 +174,7 @@ export async function buildReportModel(ctx: TenantContext, analysisId: string): 
       katalogVersion: a.katalogVersion,
       engineVersion: a.engineVersion,
       llmEnriched: a.llmEnrichedAt != null,
-      sourceText: a.sourceText,
-      segments,
+      tokens,
       markings,
       counts: {
         gesamt: a.markings.length,

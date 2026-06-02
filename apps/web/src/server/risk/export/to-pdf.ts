@@ -49,15 +49,24 @@ export async function renderPdf(model: ReportModel): Promise<Buffer> {
   doc.font('Helvetica-Oblique').fontSize(8.5).fillColor('#8A6D00').text(DISCLAIMER, { width: contentWidth, align: 'justify' });
   doc.moveDown(0.8);
 
-  // --- Sachverhalt (annotiert: markierte Stellen farbig) ---
+  // --- Sachverhalt (annotiert: markierte Stellen farbig + Marker [n]) ---
   doc.font('Helvetica-Bold').fontSize(13).fillColor('#111111').text('Sachverhalt');
+  doc.moveDown(0.2);
+  doc.font('Helvetica-Oblique').fontSize(8).fillColor('#888888')
+    .text('Markierte Stellen sind farbig und mit [Nr.] nummeriert — dieselbe Nr. steht in der Tabelle „Markierungen".', { width: contentWidth });
   doc.moveDown(0.3);
-  doc.font('Helvetica').fontSize(10);
-  const segs = model.segments;
-  for (let i = 0; i < segs.length; i++) {
-    const seg = segs[i]!;
-    doc.fillColor(seg.color ?? '#111111');
-    doc.text(seg.text, { width: contentWidth, continued: i < segs.length - 1 });
+
+  doc.fontSize(10);
+  const toks = model.tokens;
+  for (let i = 0; i < toks.length; i++) {
+    const tok = toks[i]!;
+    const cont = i < toks.length - 1;
+    if (tok.kind === 'marker') {
+      doc.font('Helvetica-Bold').fillColor(tok.color).text(`[${tok.nr}]`, { width: contentWidth, continued: cont });
+      doc.font('Helvetica');
+    } else {
+      doc.font('Helvetica').fillColor(tok.color ?? '#111111').text(tok.text, { width: contentWidth, continued: cont });
+    }
   }
   doc.fillColor('#111111');
   doc.moveDown(1);
@@ -68,64 +77,72 @@ export async function renderPdf(model: ReportModel): Promise<Buffer> {
 
   if (model.markings.length === 0) {
     doc.font('Helvetica-Oblique').fontSize(10).fillColor('#666666').text('Keine Markierungen.');
-  } else {
-    const cols = [
-      { title: 'Begriff', w: 0.26 },
-      { title: 'Herkunft · Status', w: 0.16 },
-      { title: 'Normanker', w: 0.18 },
-      { title: 'Governance · Risiko', w: 0.2 },
-      { title: 'Notiz · Kontrolle', w: 0.2 },
-    ].map((c) => ({ ...c, width: c.w * contentWidth }));
-    const xs: number[] = [];
-    let acc = left;
-    for (const c of cols) { xs.push(acc); acc += c.width; }
-    const pad = 4;
+    doc.end();
+    return done;
+  }
 
-    const drawHeader = (y: number): number => {
-      doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#111111');
-      let h = 0;
-      cols.forEach((c, i) => {
-        const ch = doc.heightOfString(c.title, { width: c.width - 2 * pad });
-        doc.text(c.title, xs[i]! + pad, y + pad, { width: c.width - 2 * pad });
-        h = Math.max(h, ch);
-      });
-      const rowH = h + 2 * pad;
-      doc.moveTo(left, y + rowH).lineTo(right, y + rowH).strokeColor('#999999').stroke();
-      return y + rowH;
-    };
+  const cols = [
+    { title: 'Nr.', w: 0.05 },
+    { title: 'Fundstelle (markierter Text)', w: 0.29 },
+    { title: 'Begriff · Norm', w: 0.2 },
+    { title: 'Herkunft · Status', w: 0.12 },
+    { title: 'Governance · Risiko', w: 0.17 },
+    { title: 'Notiz · Maßnahme', w: 0.17 },
+  ].map((c) => ({ ...c, width: c.w * contentWidth }));
+  const xs: number[] = [];
+  let acc = left;
+  for (const c of cols) { xs.push(acc); acc += c.width; }
+  const pad = 4;
 
-    let y = drawHeader(doc.y);
+  const drawHeader = (y: number): number => {
+    doc.font('Helvetica-Bold').fontSize(8).fillColor('#111111');
+    let h = 0;
+    cols.forEach((c, i) => {
+      h = Math.max(h, doc.heightOfString(c.title, { width: c.width - 2 * pad }));
+      doc.text(c.title, xs[i]! + pad, y + pad, { width: c.width - 2 * pad });
+    });
+    const rowH = h + 2 * pad;
+    doc.moveTo(left, y + rowH).lineTo(right, y + rowH).strokeColor('#999999').stroke();
+    return y + rowH;
+  };
 
-    for (const m of model.markings) {
-      const cells = [
-        m.begriff + (m.streitig ? '  ⚠ streitig' : '') + (m.engineStatusLabel ? `\n${m.engineStatusLabel}` : ''),
-        `${m.herkunftLabel}\n${m.statusLabel}`,
-        m.normAnker.length ? m.normAnker.join(', ') : '—',
-        [m.governanceLabel ?? '—', [m.schadenLabel, m.wahrscheinlichkeitLabel].filter(Boolean).join(' / ')]
-          .filter((s) => s && s.length)
-          .join('\n'),
-        [m.notiz, m.kontrolle ? 'Maßnahme: ' + m.kontrolle : null].filter(Boolean).join('\n') || '—',
-      ];
-      doc.font('Helvetica').fontSize(8.5);
-      const heights = cells.map((t, i) => doc.heightOfString(t, { width: cols[i]!.width - 2 * pad }));
-      const rowH = Math.max(...heights) + 2 * pad;
+  let y = drawHeader(doc.y);
 
-      // Seitenumbruch?
-      if (y + rowH > bottom) {
-        doc.addPage();
-        y = drawHeader(doc.page.margins.top);
-        doc.font('Helvetica').fontSize(8.5);
-      }
+  for (const m of model.markings) {
+    const normJoined = m.normAnker.join(', ');
+    const begriffNorm =
+      m.begriff +
+      (m.streitig ? '  ⚠ streitig' : '') +
+      (m.engineStatusLabel ? `\n${m.engineStatusLabel}` : '') +
+      (normJoined && normJoined !== m.begriff ? `\nNorm: ${normJoined}` : '');
+    const risiko = [m.schadenLabel, m.wahrscheinlichkeitLabel].filter(Boolean).join(' / ');
+    const cells = [
+      String(m.nr),
+      m.fundstelle || '—',
+      begriffNorm,
+      `${m.herkunftLabel}\n${m.statusLabel}`,
+      (m.governanceLabel ?? '—') + (risiko ? `\nRisiko: ${risiko}` : ''),
+      [m.notiz, m.kontrolle ? 'Maßnahme: ' + m.kontrolle : null].filter(Boolean).join('\n') || '—',
+    ];
 
-      cells.forEach((t, i) => {
-        // Begriff-Spalte: farbiger Akzent (Herkunft).
-        doc.fillColor(i === 0 ? m.herkunftColor : '#222222');
-        doc.text(t, xs[i]! + pad, y + pad, { width: cols[i]!.width - 2 * pad });
-      });
-      doc.fillColor('#222222');
-      doc.moveTo(left, y + rowH).lineTo(right, y + rowH).strokeColor('#DDDDDD').stroke();
-      y += rowH;
+    doc.font('Helvetica').fontSize(8);
+    const heights = cells.map((t, i) => doc.heightOfString(t, { width: cols[i]!.width - 2 * pad }));
+    const rowH = Math.max(...heights) + 2 * pad;
+
+    if (y + rowH > bottom) {
+      doc.addPage();
+      y = drawHeader(doc.page.margins.top);
+      doc.font('Helvetica').fontSize(8);
     }
+
+    cells.forEach((t, i) => {
+      doc.fillColor(i === 0 ? m.herkunftColor : '#222222');
+      doc.font(i === 0 ? 'Helvetica-Bold' : 'Helvetica');
+      doc.text(t, xs[i]! + pad, y + pad, { width: cols[i]!.width - 2 * pad });
+    });
+    doc.font('Helvetica').fillColor('#222222');
+    doc.moveTo(left, y + rowH).lineTo(right, y + rowH).strokeColor('#DDDDDD').stroke();
+    y += rowH;
   }
 
   doc.end();
