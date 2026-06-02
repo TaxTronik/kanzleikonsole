@@ -14,6 +14,7 @@
 import { withTenantContext, withSystemContext, type TenantContext, type TxClient } from '@taxtronik/db';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { enqueueN8nEvent } from '@/server/n8n/outbox';
+import { evidenceService } from '@/server/container';
 import { anonymize, deanonymize } from './anonymize';
 
 export type SachverhaltMode = 'none' | 'excerpt' | 'full';
@@ -160,6 +161,26 @@ export async function sendResearchToN8n(
       },
       select: { id: true },
     });
+
+    // Audit: WAS gesendet wurde (Metadaten) — NICHT der anonymisierte Volltext
+    // und NIE das mapping (Datenminimierung; das mapping ist bereits RLS-geschützt
+    // am Request gespeichert).
+    await evidenceService.record(tx, {
+      tenantId: ctx.tenantId,
+      actorType: 'STAFF',
+      actorId: ctx.actorId,
+      action: 'risk.research.sent',
+      resourceType: 'risk_research_request',
+      resourceId: req.id,
+      after: {
+        analysisId: analysis.id,
+        markingId: marking?.id ?? null,
+        sachverhalt: input.sachverhalt,
+        normAnker,
+        governanceTyp,
+      },
+    });
+
     return { requestId: req.id, payload, sentText: safe.text };
   });
 
@@ -217,7 +238,7 @@ export async function receiveResearchResult(input: InboundResult): Promise<{ res
         data: { status: 'ANSWERED' },
       });
     }
-    return tx.riskResearchResult.create({
+    const created = await tx.riskResearchResult.create({
       data: {
         tenantId,
         researchRequestId: input.researchRequestId ?? null,
@@ -229,6 +250,22 @@ export async function receiveResearchResult(input: InboundResult): Promise<{ res
       },
       select: { id: true },
     });
+    // Inbound von n8n — kein User. SYSTEM-Akteur in unserer Chain.
+    await evidenceService.record(tx, {
+      tenantId,
+      actorType: 'SYSTEM',
+      actorId: null,
+      action: 'risk.research.received',
+      resourceType: 'risk_research_result',
+      resourceId: created.id,
+      after: {
+        researchRequestId: input.researchRequestId ?? null,
+        markingId,
+        source: input.source ?? 'n8n',
+        autoAssigned: markingId != null,
+      },
+    });
+    return created;
   });
   return { resultId: result.id };
 }
@@ -301,10 +338,19 @@ export async function assignResultToMarking(
   resultId: string,
   markingId: string | null,
 ): Promise<void> {
-  await withTenantContext(ctx, (tx) =>
-    tx.riskResearchResult.update({
+  await withTenantContext(ctx, async (tx) => {
+    await tx.riskResearchResult.update({
       where: { id: resultId },
       data: { markingId, status: markingId ? 'ZUGEORDNET' : 'VERWORFEN' },
-    }),
-  );
+    });
+    await evidenceService.record(tx, {
+      tenantId: ctx.tenantId,
+      actorType: 'STAFF',
+      actorId: ctx.actorId,
+      action: markingId ? 'risk.research.assigned' : 'risk.research.discarded',
+      resourceType: 'risk_research_result',
+      resourceId: resultId,
+      after: { markingId: markingId ?? null },
+    });
+  });
 }

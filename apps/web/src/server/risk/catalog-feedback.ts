@@ -10,6 +10,7 @@
 
 import { RiskLayerClient } from '@taxtronik/risk-layer';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
+import { evidenceService } from '@/server/container';
 
 /** Minimaler Client-Vertrag für DI/Tests. */
 export type DefineCapableClient = Pick<RiskLayerClient, 'katalogDefiniere'>;
@@ -44,12 +45,21 @@ export async function pushDefinitionToCatalog(
   // Den neu angelegten Katalog-Begriff an die Markierung zurückbinden. Die
   // Provenienz (herkunft) bleibt unverändert — sie beschreibt, WIE die Stelle
   // erkannt wurde, nicht wer den Begriff kuratiert hat.
-  await withTenantContext(ctx, (tx) =>
-    tx.riskMarking.update({
+  await withTenantContext(ctx, async (tx) => {
+    await tx.riskMarking.update({
       where: { id: input.markingId },
       data: { begriffId: res.begriffId },
-    }),
-  );
+    });
+    await evidenceService.record(tx, {
+      tenantId: ctx.tenantId,
+      actorType: 'STAFF',
+      actorId: ctx.actorId,
+      action: 'risk.catalog.defined',
+      resourceType: 'risk_marking',
+      resourceId: input.markingId,
+      after: { begriff: input.begriff, begriffId: res.begriffId, scope: res.scope },
+    });
+  });
 
   return res;
 }

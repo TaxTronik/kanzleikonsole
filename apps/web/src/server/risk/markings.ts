@@ -4,10 +4,15 @@
 // Berater-Bearbeitung der vom Engine erkannten Stellen: Governance-Matrix,
 // Status, Notiz, Verantwortlichkeit setzen; eigene (BERATER-)Markierungen
 // anlegen; Markierungen löschen.
+//
+// Jede Mutation wird im SELBEN Tx in der TaxTronik-Hash-Chain (audit_log)
+// verankert — die Bewertung schuldet der Berufsträger höchstpersönlich, also
+// muss sie manipulationsevident protokolliert sein. Die Engine führt KEIN Audit.
 // =============================================================================
 
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import type { GovernanceTyp, RiskStufe, RiskWk } from '@taxtronik/risk-layer';
+import { evidenceService } from '@/server/container';
 
 export type RiskStatus = 'OFFEN' | 'IN_PRUEFUNG' | 'KONTROLLIERT' | 'AKZEPTIERT';
 
@@ -25,14 +30,43 @@ export interface UpdateMarkingInput {
   label?: string | null;
 }
 
+const DECISION_SELECT = {
+  analysisId: true,
+  begriff: true,
+  governanceTyp: true,
+  schadensintensitaet: true,
+  wahrscheinlichkeit: true,
+  kaskadenreichweite: true,
+  kontrolle: true,
+  status: true,
+  notiz: true,
+  verantwortlichId: true,
+  farbe: true,
+  label: true,
+} as const;
+
 export async function updateMarking(
   ctx: TenantContext,
   markingId: string,
   fields: UpdateMarkingInput,
 ): Promise<void> {
-  await withTenantContext(ctx, (tx) =>
-    tx.riskMarking.update({ where: { id: markingId }, data: fields }),
-  );
+  await withTenantContext(ctx, async (tx) => {
+    const before = await tx.riskMarking.findUnique({ where: { id: markingId }, select: DECISION_SELECT });
+    if (!before) throw new Error('Markierung nicht gefunden.');
+    await tx.riskMarking.update({ where: { id: markingId }, data: fields });
+    // undefined = unverändert → für den after-Snapshot herausfiltern.
+    const changed = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined));
+    await evidenceService.record(tx, {
+      tenantId: ctx.tenantId,
+      actorType: 'STAFF',
+      actorId: ctx.actorId,
+      action: 'risk.marking.decided',
+      resourceType: 'risk_marking',
+      resourceId: markingId,
+      before,
+      after: { ...before, ...changed },
+    });
+  });
 }
 
 export interface AddManualMarkingInput {
@@ -72,7 +106,7 @@ export async function addManualMarking(
     if (input.start < 0 || input.end > len || input.end <= input.start) throw new InvalidMarkingRangeError();
     const matchedText = analysis.sourceText.slice(input.start, input.end);
 
-    return tx.riskMarking.create({
+    const created = await tx.riskMarking.create({
       data: {
         tenantId: ctx.tenantId,
         analysisId: input.analysisId,
@@ -90,10 +124,45 @@ export async function addManualMarking(
       },
       select: { id: true },
     });
+
+    await evidenceService.record(tx, {
+      tenantId: ctx.tenantId,
+      actorType: 'STAFF',
+      actorId: ctx.actorId,
+      action: 'risk.marking.created',
+      resourceType: 'risk_marking',
+      resourceId: created.id,
+      after: {
+        analysisId: input.analysisId,
+        herkunft: 'BERATER',
+        begriff: input.begriff,
+        matchedText,
+        start: input.start,
+        end: input.end,
+        normAnker: input.normAnker ?? [],
+      },
+    });
+    return created;
   });
   return { markingId: marking.id };
 }
 
 export async function deleteMarking(ctx: TenantContext, markingId: string): Promise<void> {
-  await withTenantContext(ctx, (tx) => tx.riskMarking.delete({ where: { id: markingId } }));
+  await withTenantContext(ctx, async (tx) => {
+    const before = await tx.riskMarking.findUnique({
+      where: { id: markingId },
+      select: { analysisId: true, herkunft: true, begriff: true, start: true, end: true },
+    });
+    if (!before) throw new Error('Markierung nicht gefunden.');
+    await tx.riskMarking.delete({ where: { id: markingId } });
+    await evidenceService.record(tx, {
+      tenantId: ctx.tenantId,
+      actorType: 'STAFF',
+      actorId: ctx.actorId,
+      action: 'risk.marking.deleted',
+      resourceType: 'risk_marking',
+      resourceId: markingId,
+      before,
+    });
+  });
 }

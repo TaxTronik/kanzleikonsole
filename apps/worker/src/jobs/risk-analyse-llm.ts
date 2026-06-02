@@ -13,12 +13,17 @@
 
 import { Worker } from 'bullmq';
 import { RiskLayerClient } from '@taxtronik/risk-layer';
+import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { connection, type RiskAnalyseLlmJob } from '../queues';
 import { withWorkerTenantContext } from '../tenant-context';
 import { log } from '../logger';
 
 const markingKey = (m: { start: number; end: number; herkunft: string; begriff: string }) =>
   `${m.start}:${m.end}:${m.herkunft}:${m.begriff}`;
+
+// record() braucht nur den Tx (der TimestampPort dient dem Versiegeln, nicht dem
+// Schreiben). Audit bleibt in TaxTronik — die Engine führt keins.
+const evidence = new EvidenceService(new LocalTimestampAdapter());
 
 export const riskAnalyseLlmWorker = new Worker<RiskAnalyseLlmJob, void, string>(
   'risk-analyse-llm',
@@ -69,6 +74,16 @@ export const riskAnalyseLlmWorker = new Worker<RiskAnalyseLlmJob, void, string>(
       await tx.riskAnalysis.update({
         where: { id: analysisId },
         data: { llmEnrichedAt: new Date() },
+      });
+
+      await evidence.record(tx, {
+        tenantId,
+        actorType: 'SYSTEM',
+        actorId: null,
+        action: 'risk.analysis.llm_enriched',
+        resourceType: 'risk_analysis',
+        resourceId: analysisId,
+        after: { added: fresh.length, total: result.markings.length, engineVersion: result.engineVersion },
       });
 
       log.info(

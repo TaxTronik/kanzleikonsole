@@ -10,6 +10,7 @@
 // =============================================================================
 
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
+import { evidenceService } from '@/server/container';
 import { buildDelegationNotes } from './delegate-notes';
 
 const DEFAULT_DUE_DAYS = 14;
@@ -68,6 +69,22 @@ export async function delegateMarking(
         reminderId: reminder.id,
         verantwortlichId: input.assigneeStaffId,
         status: 'IN_PRUEFUNG',
+      },
+    });
+
+    await evidenceService.record(tx, {
+      tenantId: ctx.tenantId,
+      actorType: 'STAFF',
+      actorId: input.createdByStaffId,
+      action: 'risk.marking.delegated',
+      resourceType: 'risk_marking',
+      resourceId: marking.id,
+      after: {
+        begriff: marking.begriff,
+        reminderId: reminder.id,
+        assigneeStaffId: input.assigneeStaffId,
+        dueDate: dueDate.toISOString(),
+        analysisId: marking.analysis.id,
       },
     });
 
