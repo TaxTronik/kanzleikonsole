@@ -45,7 +45,9 @@ function getHandle(): { conn: IORedis; queue: Queue<RiskAnalyseLlmJob> } {
 /** Reiht die LLM-Anreicherung einer Analyse ein. Idempotent über jobId. */
 export async function enqueueRiskAnalyseLlm(job: RiskAnalyseLlmJob): Promise<void> {
   await getHandle().queue.add('enrich', job, {
-    jobId: `risk-llm:${job.analysisId}`,
+    // BullMQ verbietet ':' in Custom-Job-IDs (':' ist ihr interner Key-Separator)
+    // — daher '-'. Idempotenz pro Analyse bleibt (analysisId ist eindeutig).
+    jobId: `risk-llm-${job.analysisId}`,
     attempts: 2,
     backoff: { type: 'exponential', delay: 5_000 },
     removeOnComplete: 100,
