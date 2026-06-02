@@ -321,13 +321,14 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
       )}
 
       {showCaseResearch && (
-        <div className="max-w-xl">
+        <div>
           <ResearchComposer
             clientId={clientId}
             analysisId={initial.id}
             markingId={null}
             pending={pending}
             start={start}
+            onClose={() => setShowCaseResearch(false)}
             onDone={(r) => { flash(r, 'Anonymisierter Auftrag (ganzer Fall) an n8n gesendet.'); if (r.ok) setShowCaseResearch(false); }}
           />
         </div>

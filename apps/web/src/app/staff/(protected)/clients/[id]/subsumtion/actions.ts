@@ -32,10 +32,14 @@ import {
   archiveAnalysis,
   reformatSourceDoc,
   getLlmStatus,
+  listPromptTemplates,
+  createPromptTemplate,
+  deletePromptTemplate,
   type RiskStatus,
   type ResearchPreview,
   type ResolvedNorm,
   type LlmStatusDTO,
+  type PromptTemplateDTO,
 } from '@/server/risk';
 import { enqueueRiskAnalyseLlm } from '@/server/jobs/risk-analyse-queue';
 import { jsonDocToText } from './doc-text';
@@ -421,6 +425,55 @@ export async function previewResearchAction(
     const { ctx } = await guardAnalysis(parsed.analysisId);
     const preview = await previewResearch(ctx, parsed);
     return { ok: true, ...preview };
+  } catch (e) {
+    return toActionError(e);
+  }
+}
+
+// --- Prompt-Vorlagen (kanzleiweit) ------------------------------------------
+
+/** Listet die kanzleiweiten Prompt-Vorlagen (für den Composer-Auswahl). */
+export async function listPromptTemplatesAction(input: {
+  clientId: string;
+}): Promise<OkActionResult<{ templates: PromptTemplateDTO[] }>> {
+  try {
+    const { ctx } = await guard(input.clientId);
+    const templates = await listPromptTemplates(ctx);
+    return { ok: true, templates };
+  } catch (e) {
+    return toActionError(e);
+  }
+}
+
+const CreatePromptTemplateSchema = z.object({
+  clientId: z.string().uuid(),
+  title: z.string().min(1, 'Bitte einen Titel angeben.').max(120),
+  body: z.string().min(1, 'Bitte einen Prompt-Text angeben.').max(8000),
+});
+
+/** Legt eine neue kanzleiweite Prompt-Vorlage an. */
+export async function createPromptTemplateAction(
+  input: z.infer<typeof CreatePromptTemplateSchema>,
+): Promise<OkActionResult<{ template: PromptTemplateDTO }>> {
+  try {
+    const parsed = CreatePromptTemplateSchema.parse(input);
+    const { ctx } = await guard(parsed.clientId);
+    const template = await createPromptTemplate(ctx, { title: parsed.title.trim(), body: parsed.body.trim() });
+    return { ok: true, template };
+  } catch (e) {
+    return toActionError(e);
+  }
+}
+
+/** Löscht eine Prompt-Vorlage. */
+export async function deletePromptTemplateAction(input: {
+  clientId: string;
+  id: string;
+}): Promise<OkActionResult> {
+  try {
+    const { ctx } = await guard(input.clientId);
+    await deletePromptTemplate(ctx, input.id);
+    return { ok: true };
   } catch (e) {
     return toActionError(e);
   }

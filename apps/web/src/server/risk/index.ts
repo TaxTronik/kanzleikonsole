@@ -30,6 +30,9 @@ export type { ResolvedNorm, NormResolveClient } from './resolve-norm';
 export { getLlmStatus } from './llm';
 export type { LlmStatusDTO, LlmStatusClient } from './llm';
 
+export { listPromptTemplates, createPromptTemplate, deletePromptTemplate } from './prompt-templates';
+export type { PromptTemplateDTO } from './prompt-templates';
+
 export { archiveAnalysis, AlreadyArchivedError } from './archive';
 
 export { reformatSourceDoc } from './reformat';

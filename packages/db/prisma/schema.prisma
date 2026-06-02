@@ -68,6 +68,7 @@ model Tenant {
   riskMarkings               RiskMarking[]
   riskResearchRequests       RiskResearchRequest[]
   riskResearchResults        RiskResearchResult[]
+  riskPromptTemplates        RiskPromptTemplate[]
   rssFeeds                   RssFeed[]
   serviceProviders           ServiceProvider[]
   staffBookmarks             StaffBookmark[]
@@ -1252,6 +1253,22 @@ model RiskResearchResult {
   @@index([tenantId, status])
   @@index([tenantId, markingId])
   @@map("risk_research_result")
+}
+
+/// Wiederverwendbare Prompt-Vorlage für Recherche-Aufträge (kanzleiweit). Wird im
+/// Composer ausgewählt und füllt das Prompt-Feld. `createdById` ist — wie bei
+/// RiskAnalysis — eine reine Mitarbeiter-UUID ohne FK.
+model RiskPromptTemplate {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  title       String
+  body        String
+  createdById String?  @map("created_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, title])
+  @@map("risk_prompt_template")
 }
 
 model PhoneNote {

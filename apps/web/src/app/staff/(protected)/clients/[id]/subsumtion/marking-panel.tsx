@@ -1,15 +1,16 @@
 'use client';
 
-import { useState } from 'react';
-import { X, Save, Send, BookPlus, Trash2, AlertTriangle, Webhook, Eye, Loader2, ChevronRight, Scale } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { X, Save, Send, BookPlus, BookmarkPlus, Trash2, AlertTriangle, Webhook, Eye, Loader2, ChevronRight, Scale } from 'lucide-react';
 import {
   updateMarkingAction, deleteMarkingAction, delegateAction, pushDefinitionAction,
   previewResearchAction, sendResearchAction, resolveNormAction,
+  listPromptTemplatesAction, createPromptTemplateAction, deletePromptTemplateAction,
 } from './actions';
 import {
   type MarkingDTO, type NormRefDTO, GOV_LABEL, STATUS_LABEL, HERKUNFT_LABEL, ENGINE_STATUS_LABEL, herkunftBadge,
 } from './_ui';
-import type { ResolvedNorm } from '@/server/risk';
+import type { ResolvedNorm, PromptTemplateDTO } from '@/server/risk';
 
 type Flash = (r: { ok: boolean; error?: string }, ok?: string) => void;
 
@@ -137,6 +138,7 @@ export function MarkingPanel(props: {
       )}
       {showResearch && (
         <ResearchComposer clientId={clientId} analysisId={analysisId} markingId={m.id} pending={pending} start={start}
+          onClose={() => setShowResearch(false)}
           onDone={(r) => { flash(r, 'Anonymisierter Auftrag an n8n gesendet.'); if (r.ok) setShowResearch(false); }} />
       )}
       {showDefine && (
@@ -151,6 +153,7 @@ export function ResearchComposer(props: {
   clientId: string; analysisId: string; markingId?: string | null;
   pending: boolean; start: (cb: () => void) => void;
   onDone: (r: { ok: boolean; error?: string }) => void;
+  onClose: () => void;
 }) {
   // Markierungs-Composer: Kein / Auszug / Ganzer Sachverhalt (Default: kein).
   // Fall-Composer (ohne Markierung): Kein / Ganzer Sachverhalt (Default: ganz).
@@ -160,6 +163,46 @@ export function ResearchComposer(props: {
   const [prompt, setPrompt] = useState('');
   const [preview, setPreview] = useState<{ text: string; hits: number } | null>(null);
   const [finalText, setFinalText] = useState('');
+
+  // Prompt-Vorlagen (kanzleiweit)
+  const [templates, setTemplates] = useState<PromptTemplateDTO[]>([]);
+  const [selectedTpl, setSelectedTpl] = useState('');
+  const [showSave, setShowSave] = useState(false);
+  const [tplTitle, setTplTitle] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    listPromptTemplatesAction({ clientId: props.clientId }).then((r) => {
+      if (active && r.ok) setTemplates(r.templates);
+    });
+    return () => { active = false; };
+  }, [props.clientId]);
+
+  function applyTemplate(id: string) {
+    setSelectedTpl(id);
+    const t = templates.find((x) => x.id === id);
+    if (t) setPrompt(t.body);
+  }
+  function saveTemplate() {
+    if (!tplTitle.trim() || !prompt.trim()) return;
+    props.start(async () => {
+      const r = await createPromptTemplateAction({ clientId: props.clientId, title: tplTitle.trim(), body: prompt.trim() });
+      if (!r.ok) { props.onDone(r); return; }
+      setTemplates((prev) => [...prev, r.template].sort((a, b) => a.title.localeCompare(b.title)));
+      setSelectedTpl(r.template.id);
+      setShowSave(false); setTplTitle('');
+    });
+  }
+  function deleteTemplate() {
+    if (!selectedTpl || !window.confirm('Diese Prompt-Vorlage löschen?')) return;
+    const id = selectedTpl;
+    props.start(async () => {
+      const r = await deletePromptTemplateAction({ clientId: props.clientId, id });
+      if (!r.ok) { props.onDone(r); return; }
+      setTemplates((prev) => prev.filter((x) => x.id !== id));
+      setSelectedTpl('');
+    });
+  }
 
   const baseInput = () => ({
     clientId: props.clientId,
@@ -186,43 +229,81 @@ export function ResearchComposer(props: {
     });
   }
 
-  return (
-    <div className="rounded-md border border-default p-2 space-y-2 bg-gray-50/50 dark:bg-gray-900/30">
-      <p className="text-xs font-medium text-secondary inline-flex items-center gap-1">
-        <Webhook className="h-3.5 w-3.5" /> {isCase ? 'Ganzen Fall an n8n/KI (anonymisiert)' : 'Rechercheauftrag an n8n (anonymisiert)'}
-      </p>
-      <label className="block text-xs">
-        <span className="text-muted">Sachverhalt</span>
-        <select value={sachverhalt} onChange={(e) => setSachverhalt(e.target.value as 'none' | 'excerpt' | 'full')} className="mt-0.5 w-full rounded border border-default bg-surface px-2 py-1">
-          <option value="none">Kein Sachverhalt (nur Rechtsfrage/Prompt)</option>
-          {!isCase && <option value="excerpt">Auszug um die Fundstelle</option>}
-          <option value="full">Ganzer Sachverhalt</option>
-        </select>
-      </label>
-      {sachverhalt === 'full' && (
-        <p className="text-[11px] text-amber-700 dark:text-amber-300">
-          Der gesamte Sachverhalt wird anonymisiert — bitte die Vorschau besonders sorgfältig prüfen.
-        </p>
-      )}
-      <textarea value={snippet} onChange={(e) => setSnippet(e.target.value)} rows={2} placeholder="Textbaustein (optional)" className="w-full rounded border border-default bg-surface px-2 py-1 text-xs" />
-      <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={2} placeholder="Prompt / Recherche-Auftrag an n8n …" className="w-full rounded border border-default bg-surface px-2 py-1 text-xs" />
+  const field = 'w-full rounded border border-default bg-surface px-3 py-2 text-sm';
 
-      {!preview ? (
-        <button type="button" onClick={doPreview} disabled={props.pending} className="btn-secondary text-xs w-full justify-center">
-          {props.pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />} Anonymisierte Vorschau
-        </button>
-      ) : (
-        <div className="space-y-1.5">
-          <p className="text-[11px] text-amber-700 dark:text-amber-300">
-            Vorschau — exakt das geht an n8n. {preview.hits > 0 ? `${preview.hits} heuristische Schwärzung(en) — bitte prüfen.` : 'Editierbar.'}
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
+      <div className="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto card p-5 space-y-3 shadow-xl">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-medium text-primary inline-flex items-center gap-1">
+            <Webhook className="h-4 w-4" /> {isCase ? 'Ganzen Fall an n8n/KI (anonymisiert)' : 'Rechercheauftrag an n8n (anonymisiert)'}
           </p>
-          <textarea value={finalText} onChange={(e) => setFinalText(e.target.value)} rows={8} className="w-full rounded border border-default bg-surface px-2 py-1 text-xs font-mono" />
-          <div className="flex gap-2">
-            <button type="button" onClick={doSend} disabled={props.pending || !finalText.trim()} className="btn-primary text-xs flex-1 justify-center"><Send className="h-3.5 w-3.5" /> An n8n senden</button>
-            <button type="button" onClick={() => setPreview(null)} className="btn-secondary text-xs">Zurück</button>
-          </div>
+          <button type="button" onClick={props.onClose} className="text-disabled hover:text-secondary" title="Schließen"><X className="h-4 w-4" /></button>
         </div>
-      )}
+
+        <label className="block text-xs">
+          <span className="text-muted">Sachverhalt</span>
+          <select value={sachverhalt} onChange={(e) => setSachverhalt(e.target.value as 'none' | 'excerpt' | 'full')} className={'mt-0.5 ' + field}>
+            <option value="none">Kein Sachverhalt (nur Rechtsfrage/Prompt)</option>
+            {!isCase && <option value="excerpt">Auszug um die Fundstelle</option>}
+            <option value="full">Ganzer Sachverhalt</option>
+          </select>
+        </label>
+        {sachverhalt === 'full' && (
+          <p className="text-xs text-amber-700 dark:text-amber-300">
+            Der gesamte Sachverhalt wird anonymisiert — bitte die Vorschau besonders sorgfältig prüfen.
+          </p>
+        )}
+
+        <textarea value={snippet} onChange={(e) => setSnippet(e.target.value)} rows={3} placeholder="Textbaustein (optional)" className={field} />
+
+        {/* Prompt-Vorlagen + Prompt */}
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2">
+            <select value={selectedTpl} onChange={(e) => applyTemplate(e.target.value)} className={'flex-1 ' + field} title="Gespeicherte Prompt-Vorlage wählen">
+              <option value="">— Prompt-Vorlage wählen —</option>
+              {templates.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
+            </select>
+            {selectedTpl && (
+              <button type="button" onClick={deleteTemplate} disabled={props.pending} className="text-red-600 hover:text-red-700 p-1.5" title="Gewählte Vorlage löschen"><Trash2 className="h-4 w-4" /></button>
+            )}
+            <button type="button" onClick={() => setShowSave((s) => !s)} disabled={!prompt.trim()} className="btn-secondary text-xs whitespace-nowrap" title="Aktuellen Prompt als kanzleiweite Vorlage speichern">
+              <BookmarkPlus className="h-3.5 w-3.5" /> Als Vorlage
+            </button>
+          </div>
+          {showSave && (
+            <div className="flex items-center gap-2">
+              <input value={tplTitle} onChange={(e) => setTplTitle(e.target.value)} placeholder="Titel der Vorlage (z. B. „Verrechnungspreis-Angemessenheit“)" className={'flex-1 ' + field} />
+              <button type="button" onClick={saveTemplate} disabled={props.pending || !tplTitle.trim() || !prompt.trim()} className="btn-primary text-xs whitespace-nowrap"><Save className="h-3.5 w-3.5" /> Speichern</button>
+            </div>
+          )}
+          <textarea
+            value={prompt}
+            onChange={(e) => { setPrompt(e.target.value); setSelectedTpl(''); }}
+            rows={5}
+            placeholder="Prompt / Recherche-Auftrag an n8n …"
+            className={field}
+          />
+        </div>
+
+        {!preview ? (
+          <button type="button" onClick={doPreview} disabled={props.pending} className="btn-secondary text-sm w-full justify-center">
+            {props.pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />} Anonymisierte Vorschau
+          </button>
+        ) : (
+          <div className="space-y-1.5">
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              Vorschau — exakt das geht an n8n. {preview.hits > 0 ? `${preview.hits} heuristische Schwärzung(en) — bitte prüfen.` : 'Editierbar.'}
+            </p>
+            <textarea value={finalText} onChange={(e) => setFinalText(e.target.value)} rows={14} className={field + ' font-mono'} />
+            <div className="flex gap-2">
+              <button type="button" onClick={doSend} disabled={props.pending || !finalText.trim()} className="btn-primary text-sm flex-1 justify-center"><Send className="h-4 w-4" /> An n8n senden</button>
+              <button type="button" onClick={() => setPreview(null)} className="btn-secondary text-sm">Zurück zum Bearbeiten</button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
