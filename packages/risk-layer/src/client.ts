@@ -35,9 +35,11 @@ import {
   type RetryOptions,
 } from './resilience';
 
-// Timeouts: schnell (deterministisch) vs. LLM-Pfad (15–30 s + Puffer).
+// Timeouts: schnell (deterministisch) vs. LLM-Pfad. Letzterer läuft asynchron im
+// Worker (kein synchroner Warter) → großzügig: ein großes Modell (z. B. 14B) kann
+// auf einem langen Sachverhalt mehrere Minuten brauchen. 45 s war zu knapp.
 const FAST_TIMEOUT_MS = 10_000;
-const LLM_TIMEOUT_MS = 45_000;
+const LLM_TIMEOUT_MS = 300_000;
 
 // Retry-Profile: idempotente/billige Calls dürfen wiederholen; teure (LLM) und
 // schreibende (definiere) NICHT.
