@@ -35,7 +35,8 @@ export type TimelineEventKind =
   | 'poa_revoked'
   | 'tax_notice_received'
   | 'tax_deadline_completed'
-  | 'workflow_item_done';
+  | 'workflow_item_done'
+  | 'risk_analysis_created';
 
 export interface TimelineEvent {
   id: string;
@@ -61,7 +62,7 @@ export async function buildClientTimeline(
   const beforeFilter = before ? { lt: before } : undefined;
 
   return withTenantContext(ctx, async (tx) => {
-    const [docs, requests, responses, phoneNotes, invoices, gwgChecks, poas, taxNotices, taxDeadlines, workflowItems] =
+    const [docs, requests, responses, phoneNotes, invoices, gwgChecks, poas, taxNotices, taxDeadlines, workflowItems, riskAnalyses] =
       await Promise.all([
         tx.document.findMany({
           where: { clientId, ...(beforeFilter ? { createdAt: beforeFilter } : {}) },
@@ -175,6 +176,19 @@ export async function buildClientTimeline(
             title: true,
             doneAt: true,
             instance: { select: { id: true, name: true } },
+          },
+        }),
+        tx.riskAnalysis.findMany({
+          where: { clientId, ...(beforeFilter ? { createdAt: beforeFilter } : {}) },
+          orderBy: { createdAt: 'desc' },
+          take: limit,
+          select: {
+            id: true,
+            title: true,
+            textHash: true,
+            katalogVersion: true,
+            createdAt: true,
+            _count: { select: { markings: true } },
           },
         }),
       ]);
@@ -369,6 +383,19 @@ export async function buildClientTimeline(
         title: `Workflow-Schritt erledigt: ${wi.title}`,
         detail: wi.instance?.name ?? undefined,
         href: `/staff/clients/${clientId}/workflows`,
+      });
+    }
+
+    for (const a of riskAnalyses) {
+      events.push({
+        id: `ra:${a.id}`,
+        occurredAt: a.createdAt,
+        kind: 'risk_analysis_created',
+        title: `Subsumtion analysiert: ${a.title ?? 'Ohne Titel'}`,
+        // Voller Evidenz-Hash (sha256 des Sachverhalts) — rekonstruierbar +
+        // in der Hash-Chain (audit_log) verankert.
+        detail: `${a._count.markings} Markierungen · Katalog ${a.katalogVersion} · Hash ${a.textHash}`,
+        href: `/staff/clients/${clientId}/subsumtion/${a.id}`,
       });
     }
 

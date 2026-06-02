@@ -17,7 +17,7 @@ function meta(model: ReportModel): string {
     `Markierungen: ${model.counts.gesamt} (davon ${model.counts.eigen} eigene)`,
     `Katalog ${model.katalogVersion} · Engine ${model.engineVersion}`,
     model.llmEnriched ? 'KI-vertieft' : null,
-    `Hash ${model.textHash.slice(0, 16)}…`,
+    `SHA-256: ${model.textHash}`,
   ]
     .filter(Boolean)
     .join('  ·  ');
