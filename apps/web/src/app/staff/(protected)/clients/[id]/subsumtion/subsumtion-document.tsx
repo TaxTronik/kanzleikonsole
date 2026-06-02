@@ -119,6 +119,9 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(fu
   const [dirty, setDirty] = useState(false);
   const [textChanged, setTextChanged] = useState(false);
   const rangesRef = useRef<TextRange[]>([]);
+  // Schwebende Formatier-Leiste (Review): erscheint über/unter der Auswahl.
+  const [flyover, setFlyover] = useState<{ top: number; left: number; placement: 'above' | 'below' } | null>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
 
   // Aktuelle Auswahl-Callbacks/Markierungen für die Editor-Closures (ohne Editor-Neubau).
   const ctxRef = useRef({
@@ -162,18 +165,33 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(fu
       const ranges = rangesRef.current.length ? rangesRef.current : docToText(editor.state.doc).ranges;
       const { from, to, empty } = editor.state.selection;
 
-      // Ziehen (nicht-leere Auswahl) + bearbeitbar → eigene Markierung anlegen.
+      // Ziehen (nicht-leere Auswahl) + bearbeitbar → eigene Markierung anlegen +
+      // schwebende Formatier-Leiste über der Auswahl.
       if (!empty && c.canEdit) {
         const s = pmPosToPlain(ranges, from);
         const e = pmPosToPlain(ranges, to);
         if (s != null && e != null && e > s) {
           c.onSelectionForMarking?.({ start: s, end: e, text: c.sourceText.slice(s, e) });
           c.onSelectMarking?.(null);
+          const box = boxRef.current?.getBoundingClientRect();
+          if (box) {
+            const a = editor.view.coordsAtPos(from);
+            const b = editor.view.coordsAtPos(to);
+            const selTop = Math.min(a.top, b.top);
+            const selBottom = Math.max(a.bottom, b.bottom);
+            const above = selTop - box.top > 44;
+            setFlyover({
+              top: above ? selTop - box.top - 8 : selBottom - box.top + 8,
+              left: Math.max(72, Math.min(box.width - 72, (a.left + b.left) / 2 - box.left)),
+              placement: above ? 'above' : 'below',
+            });
+          }
           return;
         }
       }
 
       // Cursor → kleinste überdeckende Markierung inspizieren (oder nichts).
+      setFlyover(null);
       c.onSelectionForMarking?.(null);
       const plain = pmPosToPlain(ranges, from);
       let best: MarkingDTO | null = null;
@@ -237,12 +255,28 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(fu
   }
 
   const editorBox = (
-    <div className="rounded-md border border-default bg-surface">
-      {editor && <FormatToolbar editor={editor} onReflow={!analyzed && canEdit ? reflow : undefined} />}
+    <div ref={boxRef} className="relative rounded-md border border-default bg-surface">
+      {/* Compose: feste Leiste (beim Schreiben immer sichtbar). Review: keine feste
+          Leiste — die schwebende erscheint bei Auswahl (siehe unten). */}
+      {editor && !analyzed && <FormatToolbar editor={editor} onReflow={canEdit ? reflow : undefined} />}
       {editor ? (
         <EditorContent editor={editor} />
       ) : (
         <div className="p-3 text-sm text-muted">Editor lädt …</div>
+      )}
+      {editor && analyzed && canEdit && flyover && (
+        <div
+          className="absolute z-20"
+          style={{
+            top: flyover.top,
+            left: flyover.left,
+            transform: flyover.placement === 'above' ? 'translate(-50%, -100%)' : 'translate(-50%, 0)',
+          }}
+        >
+          <div className="rounded-md border border-default bg-surface shadow-lg">
+            <FormatToolbar editor={editor} bordered={false} />
+          </div>
+        </div>
       )}
     </div>
   );
@@ -277,7 +311,7 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(fu
 
       {canEdit ? (
         <p className="mb-2 text-xs text-muted">
-          <strong>Klicken</strong> = Markierung prüfen · <strong>Ziehen</strong> = eigene Markierung · Toolbar = formatieren.
+          <strong>Klicken</strong> = Markierung prüfen · <strong>Auswählen</strong> = formatieren (Leiste erscheint) & eigene Markierung.
         </p>
       ) : (
         <p className="mb-2 text-xs text-muted inline-flex items-center gap-1">

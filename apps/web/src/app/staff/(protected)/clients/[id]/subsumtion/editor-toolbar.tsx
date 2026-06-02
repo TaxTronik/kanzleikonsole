@@ -30,8 +30,10 @@ function Btn({
       onMouseDown={(e) => e.preventDefault()} // Fokus im Editor halten
       onClick={onClick}
       className={
-        'rounded p-1.5 text-secondary hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 ' +
-        (active ? 'bg-brand-100 text-brand-700 dark:bg-brand-500/20' : '')
+        'rounded p-1.5 disabled:opacity-40 ' +
+        (active
+          ? 'bg-brand-600 text-white hover:bg-brand-600 dark:bg-brand-500'
+          : 'text-secondary hover:bg-gray-100 dark:hover:bg-gray-800')
       }
     >
       {children}
@@ -41,8 +43,9 @@ function Btn({
 
 /** Formatier-Buttons für einen Tiptap-Editor. `onReflow` (optional) blendet den
  *  „Absätze zusammenführen"-Button ein — nur im Compose sinnvoll, da er den
- *  Plaintext verändert (im Review-Format-Modus darf der Text unverändert bleiben). */
-export function FormatToolbar({ editor, onReflow }: { editor: Editor; onReflow?: () => void }) {
+ *  Plaintext verändert (im Review-Format-Modus darf der Text unverändert bleiben).
+ *  `bordered={false}` lässt den unteren Rand weg (für die schwebende Flyover-Leiste). */
+export function FormatToolbar({ editor, onReflow, bordered = true }: { editor: Editor; onReflow?: () => void; bordered?: boolean }) {
   const s = useEditorState({
     editor,
     selector: ({ editor }) => ({
@@ -58,7 +61,7 @@ export function FormatToolbar({ editor, onReflow }: { editor: Editor; onReflow?:
   });
 
   return (
-    <div className="flex items-center gap-0.5 border-b border-default p-1 flex-wrap">
+    <div className={'flex items-center gap-0.5 p-1 flex-wrap' + (bordered ? ' border-b border-default' : '')}>
       <Btn active={s?.bold} onClick={() => editor.chain().focus().toggleBold().run()} title="Fett"><Bold className="h-4 w-4" /></Btn>
       <Btn active={s?.italic} onClick={() => editor.chain().focus().toggleItalic().run()} title="Kursiv"><Italic className="h-4 w-4" /></Btn>
       <span className="mx-1 h-5 w-px bg-border-subtle" />
