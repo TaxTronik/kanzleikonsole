@@ -11,7 +11,7 @@
 // dem Paket, persistiert wird über den Worker-Owner-Client + tenant-context.
 // =============================================================================
 
-import { Worker } from 'bullmq';
+import { Worker, UnrecoverableError } from 'bullmq';
 import { RiskLayerClient } from '@taxtronik/risk-layer';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { connection, type RiskAnalyseLlmJob } from '../queues';
@@ -72,7 +72,20 @@ export const riskAnalyseLlmWorker = new Worker<RiskAnalyseLlmJob, void, string>(
       throw new Error('risk-analyse-llm: llama-server nicht rechtzeitig bereit (Warmlauf-Timeout)');
     }
 
-    const result = await client.analyse({ text: sourceText, mitLLM: true, optionen });
+    let result;
+    try {
+      result = await client.analyse({ text: sourceText, mitLLM: true, optionen });
+    } catch (e) {
+      const name = (e as { name?: string } | null)?.name;
+      if (name === 'TimeoutError' || name === 'AbortError') {
+        // Analyse-Timeout NICHT automatisch retryen: der abgebrochene Request belegt
+        // u. U. noch einen llama-Slot (Engine bricht ihn beim Client-Abbruch nicht ab);
+        // ein paralleler Retry ergäbe „2 aktiv" + doppelte GPU-Last. Re-Trigger erfolgt
+        // manuell (Button) — der alte Job wird beim Enqueue geräumt.
+        throw new UnrecoverableError('LLM-Analyse-Timeout — kein automatischer Retry (Slot-Doppelbelegung vermeiden).');
+      }
+      throw e; // andere (transiente) Fehler dürfen im Rahmen von attempts retryen
+    }
 
     await withWorkerTenantContext(tenantId, async (tx) => {
       const analysis = await tx.riskAnalysis.findUnique({
