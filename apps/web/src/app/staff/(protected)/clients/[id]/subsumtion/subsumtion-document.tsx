@@ -64,9 +64,11 @@ const MarkDecorations = Extension.create({
 
 function markStyle(m: MarkingDTO, selected: boolean): string {
   const color = m.streitig ? '#ef4444' : herkunftColor(m.herkunft);
+  // cursor:pointer → über einer (unterstrichenen) Markierung zeigt die Maus die
+  // „Hand" statt des Text-Cursors; signalisiert „anklickbar zum Prüfen".
   let s =
     `text-decoration: underline; text-decoration-color:${color}; text-decoration-thickness:2px;` +
-    `text-underline-offset:2px; text-decoration-style:${m.streitig ? 'wavy' : 'solid'};`;
+    `text-underline-offset:2px; text-decoration-style:${m.streitig ? 'wavy' : 'solid'}; cursor:pointer;`;
   if (selected) s += 'background: rgba(99,102,241,0.16); border-radius:2px;';
   return s;
 }
