@@ -8,11 +8,9 @@ import { analyzeAction, importDocTextAction, importClientDocAction, requestLlmAc
 import { DisclaimerBanner } from './disclaimer-banner';
 import { StatsBar } from './stats-bar';
 import { HerkunftLegende } from './herkunft-legende';
-import { AnnotatedDocument } from './annotated-document';
-import { AnnotatedRichDocument } from './annotated-rich-document';
+import { SubsumtionDocument, type SubsumtionDocumentHandle, type ManualSelection } from './subsumtion-document';
 import { MarkingPanel, ResearchComposer } from './marking-panel';
 import { NewMarkingPanel } from './new-marking-panel';
-import { SachverhaltEditor, type SachverhaltEditorHandle } from './sachverhalt-editor';
 import { ResearchResultsBlock } from './research-results-block';
 import { type AnalysisDTO, type ResearchResultDTO, type MarkingDTO, FILTER_KEYS, type FilterKey, isVisible } from './_ui';
 
@@ -36,7 +34,7 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
   const [title, setTitle] = useState(initial?.title ?? '');
   const [docId, setDocId] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
-  const editorRef = useRef<SachverhaltEditorHandle>(null);
+  const editorRef = useRef<SubsumtionDocumentHandle>(null);
 
   // Importierten Text in den Editor schieben (an vorhandenen Text anhängen).
   function appendToEditor(imported: string) {
@@ -44,13 +42,15 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
     editorRef.current?.setText(cur.trim() ? cur + '\n\n' + imported : imported);
   }
 
-  // Review-Modus
+  // Review: das Panel folgt der Auswahl im Dokument (keine Modi).
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [editMode, setEditMode] = useState(false);
-  const [formatEdit, setFormatEdit] = useState(false);
   const [filters, setFilters] = useState<Set<FilterKey>>(() => new Set(FILTER_KEYS));
-  const [manualSel, setManualSel] = useState<{ start: number; end: number; text: string } | null>(null);
+  const [manualSel, setManualSel] = useState<ManualSelection | null>(null);
   const [showCaseResearch, setShowCaseResearch] = useState(false);
+
+  // Cursor in einer Markierung → inspizieren; Auswahl (Ziehen) → eigene Markierung.
+  function selectMarking(id: string | null) { setSelectedId(id); if (id) setManualSel(null); }
+  function selectForMarking(sel: ManualSelection | null) { setManualSel(sel); if (sel) setSelectedId(null); }
 
   const markings = initial?.markings ?? [];
   const visibleMarkings = useMemo(() => markings.filter((m) => isVisible(m, filters)), [markings, filters]);
@@ -132,7 +132,7 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
     start(async () => {
       const r = await reformatAnalysisAction({ clientId, analysisId: initial.id, doc });
       flash(r, 'Formatierung gespeichert.');
-      if (r.ok) { setFormatEdit(false); refresh(); }
+      if (r.ok) refresh();
     });
   }
   function archive() {
@@ -172,7 +172,7 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
           fragmentierten Importen „Absätze zusammenführen" nutzen. Beim Analysieren zählt
           der reine Text.
         </p>
-        <SachverhaltEditor ref={editorRef} initialText="" onChange={setText} />
+        <SubsumtionDocument ref={editorRef} analyzed={false} canEdit initialDoc={null} initialText="" onTextChange={setText} />
         <div className="flex items-center gap-2 flex-wrap">
           <button type="button" onClick={analyze} disabled={pending || !engineConfigured || !text.trim()} className="btn-primary text-sm">
             {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
@@ -271,51 +271,34 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
       {info && <div className="text-sm text-emerald-700 dark:text-emerald-300">{info}</div>}
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-4">
-        {initial.sourceDoc && !editMode ? (
-          // Formatierte Ansicht (Rich-Doc + Markierungs-Decorations). Fürs eigene
-          // Markieren wechselt „Eigene Markierung" in die Plaintext-Ansicht;
-          // „Formatierung" macht denselben Editor editierbar (nur Format).
-          <AnnotatedRichDocument
-            sourceDoc={initial.sourceDoc}
-            totalCount={markings.length}
-            ownCount={ownCount}
-            textHash={initial.textHash}
-            visibleMarkings={visibleMarkings}
-            filters={filters}
-            onToggleFilter={toggleFilter}
-            onToggleEdit={() => setEditMode(true)}
-            selectedId={selectedId}
-            onSelectMarking={(id) => { setSelectedId(id); setEditMode(false); }}
-            editable={formatEdit && !initial.archivedAt}
-            saving={pending}
-            canEdit={!initial.archivedAt}
-            onStartFormatEdit={() => { setFormatEdit(true); setSelectedId(null); }}
-            onCancelFormatEdit={() => setFormatEdit(false)}
-            onSaveFormat={saveFormat}
-          />
-        ) : (
-          <AnnotatedDocument
-            sourceText={initial.sourceText}
-            totalCount={markings.length}
-            ownCount={ownCount}
-            textHash={initial.textHash}
-            visibleMarkings={visibleMarkings}
-            filters={filters}
-            onToggleFilter={toggleFilter}
-            editMode={editMode}
-            onToggleEdit={() => setEditMode((v) => !v)}
-            selectedId={selectedId}
-            onSelectMarking={(id) => { setSelectedId(id); setEditMode(false); }}
-            onManualSelect={setManualSel}
-          />
-        )}
+        {/* EINE Fläche: immer formatiert + editierbar. Klicken = Markierung prüfen,
+            Ziehen = eigene Markierung, Toolbar = formatieren. Alt-Analysen ohne
+            sourceDoc werden aus dem Plaintext geseedet (offsets bleiben gleich). */}
+        <SubsumtionDocument
+          analyzed
+          canEdit={!initial.archivedAt}
+          initialDoc={initial.sourceDoc ?? null}
+          initialText={initial.sourceText}
+          sourceText={initial.sourceText}
+          textHash={initial.textHash}
+          totalCount={markings.length}
+          ownCount={ownCount}
+          visibleMarkings={visibleMarkings}
+          filters={filters}
+          onToggleFilter={toggleFilter}
+          selectedId={selectedId}
+          onSelectMarking={selectMarking}
+          onSelectionForMarking={selectForMarking}
+          saving={pending}
+          onSaveFormat={saveFormat}
+        />
 
         {/* Sticky: Panel bleibt beim Scrollen sichtbar — Klick auf eine Markierung
             weit unten muss nicht zurück nach oben gescrollt werden. self-start
             verhindert das Grid-Stretching (sonst greift sticky nicht); bei langem
             Panel scrollt es intern. */}
         <div className="lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
-          {editMode ? (
+          {manualSel ? (
             <NewMarkingPanel
               clientId={clientId}
               analysisId={initial.id}
@@ -340,8 +323,9 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
             />
           ) : (
             <div className="card p-4 text-sm text-muted">
-              Eine Markierung im Text anklicken, um sie zu bewerten, zu delegieren oder zu definieren.
-              Oder den <strong>Edit-Modus</strong> aktivieren, um eigene Stellen zu markieren.
+              <strong>Klicken</strong> Sie eine Markierung im Text an, um sie zu bewerten, zu delegieren
+              oder zu definieren — oder <strong>ziehen</strong> Sie über eine Stelle, um eine eigene
+              Markierung zu setzen.
             </div>
           )}
         </div>

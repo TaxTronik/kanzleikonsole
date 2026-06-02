@@ -1,7 +1,5 @@
 // Gemeinsame Typen + Label-/Farb-Maps für den Subsumtions-Workspace.
 
-import type { CSSProperties } from 'react';
-
 export type Herkunft = 'WOERTLICH' | 'MUSTER' | 'TRIGGER' | 'EMBEDDING' | 'LLM' | 'BERATER';
 export type GovernanceTyp = 'FP' | 'FF' | 'IN';
 export type RiskStufe = 'NIEDRIG' | 'MITTEL' | 'HOCH';
@@ -135,18 +133,6 @@ const HERKUNFT_COLOR: Record<Herkunft, string> = {
   BERATER: '#14b8a6', // teal
 };
 
-/** Inline-Style für die Unterstreichung einer Markierung. */
-export function underlineStyle(m: MarkingDTO): CSSProperties {
-  const color = m.streitig ? '#ef4444' : (m.farbe && m.herkunft === 'BERATER' ? m.farbe : HERKUNFT_COLOR[m.herkunft]);
-  return {
-    textDecorationLine: 'underline',
-    textDecorationThickness: '2px',
-    textUnderlineOffset: '2px',
-    textDecorationColor: color,
-    textDecorationStyle: m.streitig ? 'wavy' : 'solid',
-  };
-}
-
 /** Punktfarbe (Hex) je Herkunft — für Legende/Chips. */
 export function herkunftColor(h: Herkunft): string {
   return HERKUNFT_COLOR[h];
@@ -165,32 +151,3 @@ export function herkunftBadge(h: Herkunft): string {
   return map[h] ?? 'badge-gray';
 }
 
-export interface Segment {
-  text: string;
-  marking: MarkingDTO | null;
-}
-
-/** Text + Markierungen → klickbare Segmente (kleinste überdeckende gewinnt). */
-export function buildSegments(text: string, markings: MarkingDTO[]): Segment[] {
-  if (markings.length === 0) return [{ text, marking: null }];
-  const bounds = new Set<number>([0, text.length]);
-  for (const m of markings) {
-    bounds.add(Math.max(0, Math.min(text.length, m.start)));
-    bounds.add(Math.max(0, Math.min(text.length, m.end)));
-  }
-  const points = [...bounds].sort((a, b) => a - b);
-  const segs: Segment[] = [];
-  for (let i = 0; i < points.length - 1; i++) {
-    const a = points[i]!;
-    const b = points[i + 1]!;
-    if (b <= a) continue;
-    let top: MarkingDTO | null = null;
-    for (const m of markings) {
-      if (m.start <= a && m.end >= b) {
-        if (!top || m.end - m.start < top.end - top.start) top = m;
-      }
-    }
-    segs.push({ text: text.slice(a, b), marking: top });
-  }
-  return segs;
-}

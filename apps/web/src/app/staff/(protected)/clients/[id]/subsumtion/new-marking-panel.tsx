@@ -61,7 +61,7 @@ export function NewMarkingPanel(props: {
             <span className="text-muted text-xs">({props.selection.start}–{props.selection.end})</span>
           </div>
         ) : (
-          <p className="text-xs text-disabled">Im Edit-Modus eine Textstelle markieren …</p>
+          <p className="text-xs text-disabled">Im Dokument über eine Textstelle ziehen …</p>
         )}
       </div>
 
