@@ -254,17 +254,26 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(fu
     props.onSaveFormat?.(editor.getJSON());
   }
 
+  // Tiptap rendert NUR client-seitig (immediatelyRender:false → editor ist auf dem
+  // Server und im ersten Client-Render null). Bis dahin ein stabiler Platzhalter,
+  // der auf beiden Seiten identisch ist — sonst weichen die Editor-/Folge-Knoten
+  // bei der Hydration ab. Erst wenn der Editor existiert (nach mount), bauen wir
+  // die volle Fläche auf.
+  if (!editor) {
+    return (
+      <div className={analyzed ? 'card p-4 text-sm text-muted' : 'rounded-md border border-default bg-surface p-3 text-sm text-muted'}>
+        Editor lädt …
+      </div>
+    );
+  }
+
   const editorBox = (
     <div ref={boxRef} className="relative rounded-md border border-default bg-surface">
       {/* Compose: feste Leiste (beim Schreiben immer sichtbar). Review: keine feste
           Leiste — die schwebende erscheint bei Auswahl (siehe unten). */}
-      {editor && !analyzed && <FormatToolbar editor={editor} onReflow={canEdit ? reflow : undefined} />}
-      {editor ? (
-        <EditorContent editor={editor} />
-      ) : (
-        <div className="p-3 text-sm text-muted">Editor lädt …</div>
-      )}
-      {editor && analyzed && canEdit && flyover && (
+      {!analyzed && <FormatToolbar editor={editor} onReflow={canEdit ? reflow : undefined} />}
+      <EditorContent editor={editor} />
+      {analyzed && canEdit && flyover && (
         <div
           className="absolute z-20"
           style={{
