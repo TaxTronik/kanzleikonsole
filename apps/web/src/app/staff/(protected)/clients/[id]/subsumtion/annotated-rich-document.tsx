@@ -71,6 +71,8 @@ export function AnnotatedRichDocument(props: {
   // Formatierung bearbeiten:
   editable: boolean;
   saving: boolean;
+  /** false = archiviert/schreibgeschützt → keine Bearbeiten-Buttons. */
+  canEdit: boolean;
   onStartFormatEdit: () => void;
   onCancelFormatEdit: () => void;
   onSaveFormat: (doc: unknown) => void;
@@ -174,7 +176,7 @@ export function AnnotatedRichDocument(props: {
               {props.saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Formatierung speichern
             </button>
           </span>
-        ) : (
+        ) : props.canEdit ? (
           <span className="ml-auto inline-flex items-center gap-2">
             <button type="button" onClick={props.onStartFormatEdit} className="text-xs btn-secondary" title="Formatierung bearbeiten — Markierungen bleiben erhalten">
               <Type className="h-3.5 w-3.5" /> Formatierung
@@ -183,7 +185,7 @@ export function AnnotatedRichDocument(props: {
               <Pencil className="h-3.5 w-3.5" /> Eigene Markierung
             </button>
           </span>
-        )}
+        ) : null}
       </div>
 
       {editor && editable ? (

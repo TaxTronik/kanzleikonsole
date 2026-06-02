@@ -288,6 +288,7 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
             onSelectMarking={(id) => { setSelectedId(id); setEditMode(false); }}
             editable={formatEdit && !initial.archivedAt}
             saving={pending}
+            canEdit={!initial.archivedAt}
             onStartFormatEdit={() => { setFormatEdit(true); setSelectedId(null); }}
             onCancelFormatEdit={() => setFormatEdit(false)}
             onSaveFormat={saveFormat}
