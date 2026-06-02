@@ -22,6 +22,7 @@ import {
   CalendarCheck,
   ListChecks,
   Fingerprint,
+  Lock,
 } from 'lucide-react';
 import { buildClientTimeline, type TimelineEvent } from '@/server/timeline/build';
 import { fmtDateTimeMedium, fmtDateWeekdayLong } from '@/lib/fmt';
@@ -46,6 +47,7 @@ const ICON_MAP: Record<TimelineEvent['kind'], { icon: typeof FileText; tone: str
   tax_deadline_completed:   { icon: CalendarCheck,   tone: 'text-emerald-700 bg-emerald-50' },
   workflow_item_done:       { icon: ListChecks,      tone: 'text-emerald-700 bg-emerald-50' },
   risk_analysis_created:    { icon: Fingerprint,     tone: 'text-indigo-700 bg-indigo-50' },
+  risk_analysis_archived:   { icon: Lock,            tone: 'text-secondary bg-gray-100' },
 };
 
 

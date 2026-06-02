@@ -27,6 +27,8 @@ export type {
 export { resolveNorm } from './resolve-norm';
 export type { ResolvedNorm, NormResolveClient } from './resolve-norm';
 
+export { archiveAnalysis, AlreadyArchivedError } from './archive';
+
 export { updateMarking, addManualMarking, deleteMarking } from './markings';
 export type {
   UpdateMarkingInput,

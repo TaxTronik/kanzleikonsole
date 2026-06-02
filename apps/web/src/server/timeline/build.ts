@@ -36,7 +36,8 @@ export type TimelineEventKind =
   | 'tax_notice_received'
   | 'tax_deadline_completed'
   | 'workflow_item_done'
-  | 'risk_analysis_created';
+  | 'risk_analysis_created'
+  | 'risk_analysis_archived';
 
 export interface TimelineEvent {
   id: string;
@@ -188,6 +189,7 @@ export async function buildClientTimeline(
             textHash: true,
             katalogVersion: true,
             createdAt: true,
+            archivedAt: true,
             _count: { select: { markings: true } },
           },
         }),
@@ -397,6 +399,16 @@ export async function buildClientTimeline(
         detail: `${a._count.markings} Markierungen · Katalog ${a.katalogVersion} · Hash ${a.textHash}`,
         href: `/staff/clients/${clientId}/subsumtion/${a.id}`,
       });
+      if (a.archivedAt) {
+        events.push({
+          id: `ra-arch:${a.id}`,
+          occurredAt: a.archivedAt,
+          kind: 'risk_analysis_archived',
+          title: `Subsumtion revisionssicher archiviert: ${a.title ?? 'Ohne Titel'}`,
+          detail: `GoBD-Snapshot (Object-Lock) · Hash ${a.textHash}`,
+          href: `/staff/clients/${clientId}/subsumtion/${a.id}`,
+        });
+      }
     }
 
     events.sort((a, b) => b.occurredAt.getTime() - a.occurredAt.getTime());

@@ -3,8 +3,8 @@
 import { useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Sparkles, Upload, Loader2, FileDown, FolderOpen, ClipboardList, ScrollText, Webhook, FileText, FileType } from 'lucide-react';
-import { analyzeAction, importDocTextAction, importClientDocAction, requestLlmAction } from './actions';
+import { Sparkles, Upload, Loader2, FileDown, FolderOpen, ClipboardList, ScrollText, Webhook, FileText, FileType, Archive, Lock } from 'lucide-react';
+import { analyzeAction, importDocTextAction, importClientDocAction, requestLlmAction, archiveAnalysisAction } from './actions';
 import { DisclaimerBanner } from './disclaimer-banner';
 import { StatsBar } from './stats-bar';
 import { HerkunftLegende } from './herkunft-legende';
@@ -111,6 +111,16 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
       return next;
     });
   }
+  function archive() {
+    if (!initial) return;
+    if (!window.confirm('Subsumtion revisionssicher archivieren? Danach ist sie schreibgeschützt (GoBD-Snapshot, Object-Lock).')) return;
+    setError(null);
+    start(async () => {
+      const r = await archiveAnalysisAction({ clientId, analysisId: initial.id });
+      flash(r, 'Subsumtion revisionssicher archiviert (schreibgeschützt).');
+      if (r.ok) refresh();
+    });
+  }
 
   // ---------------------------------------------------------------------------
   // COMPOSE-MODUS (neue Subsumtion)
@@ -196,10 +206,28 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
         <a href={`/api/staff/clients/${clientId}/subsumtion/${initial.id}/export?format=pdf`} className="btn-secondary text-xs" title="Als PDF exportieren">
           <FileType className="h-3.5 w-3.5" /> PDF
         </a>
-        <button type="button" onClick={() => setShowCaseResearch((v) => !v)} className="btn-secondary text-xs ml-auto">
-          <Webhook className="h-3.5 w-3.5" /> Ganzer Fall an KI
-        </button>
+        {initial.archivedAt ? (
+          <span className="badge-gray text-xs inline-flex items-center gap-1 ml-auto" title="Revisionssicher archiviert (Object-Lock)">
+            <Lock className="h-3.5 w-3.5" /> Archiviert {new Date(initial.archivedAt).toLocaleDateString('de-DE')}
+          </span>
+        ) : (
+          <>
+            <button type="button" onClick={archive} disabled={pending} className="btn-secondary text-xs ml-auto" title="Revisionssicher archivieren (GoBD, schreibgeschützt)">
+              <Archive className="h-3.5 w-3.5" /> Archivieren
+            </button>
+            <button type="button" onClick={() => setShowCaseResearch((v) => !v)} className="btn-secondary text-xs">
+              <Webhook className="h-3.5 w-3.5" /> Ganzer Fall an KI
+            </button>
+          </>
+        )}
       </div>
+
+      {initial.archivedAt && (
+        <div className="rounded-md border border-default bg-gray-50 dark:bg-gray-900/40 px-3 py-2 text-xs text-secondary inline-flex items-center gap-2">
+          <Lock className="h-3.5 w-3.5 text-disabled shrink-0" />
+          Diese Subsumtion ist <strong>revisionssicher archiviert</strong> (GoBD-Snapshot, Object-Lock) und <strong>schreibgeschützt</strong> — Markierungen/Bewertungen lassen sich nicht mehr ändern. Ansicht + Export bleiben verfügbar.
+        </div>
+      )}
 
       {showCaseResearch && (
         <div className="max-w-xl">

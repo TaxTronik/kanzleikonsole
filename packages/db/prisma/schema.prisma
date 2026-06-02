@@ -1123,6 +1123,12 @@ model RiskAnalysis {
   // Replay-Kaltarchiv, zur Laufzeit ungelesen. Nur die Referenz bleibt in PG.
   rawResultBucket  String?               @map("raw_result_bucket")
   rawResultKey     String?               @map("raw_result_key")
+  // Revisionssichere Archivierung (GoBD/§147 AO): self-contained Snapshot
+  // (Sachverhalt + Markierungen + Hash) gzip im GoBD-Bucket (Object-Lock).
+  // Archivierte Analysen sind schreibgeschützt (Mutationen abgelehnt).
+  archivedAt       DateTime?             @map("archived_at") @db.Timestamptz(6)
+  archiveBucket    String?               @map("archive_bucket")
+  archiveKey       String?               @map("archive_key")
   // Gesetzt, sobald die asynchrone LLM-Phase die Analyse angereichert hat.
   llmEnrichedAt    DateTime?             @map("llm_enriched_at") @db.Timestamptz(6)
   createdAt        DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)

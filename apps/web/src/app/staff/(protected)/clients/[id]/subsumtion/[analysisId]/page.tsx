@@ -40,6 +40,7 @@ export default async function AnalysisPage({
     title: analysis.title,
     textHash: analysis.textHash,
     llmEnrichedAt: analysis.llmEnrichedAt ? analysis.llmEnrichedAt.toISOString() : null,
+    archivedAt: analysis.archivedAt ? analysis.archivedAt.toISOString() : null,
     markings: analysis.markings.map(
       (m): MarkingDTO => ({
         id: m.id,

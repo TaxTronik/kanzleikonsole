@@ -46,6 +46,7 @@ export interface AnalysisDTO {
   title: string | null;
   textHash: string;
   llmEnrichedAt: string | null;
+  archivedAt: string | null;
   markings: MarkingDTO[];
 }
 

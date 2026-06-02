@@ -29,6 +29,7 @@ import {
   sendResearchToN8n,
   assignResultToMarking,
   resolveNorm,
+  archiveAnalysis,
   type RiskStatus,
   type ResearchPreview,
   type ResolvedNorm,
@@ -76,9 +77,10 @@ async function sessionCtx(): Promise<{ ctx: TenantContext; staffId: string }> {
 async function guardAnalysis(analysisId: string): Promise<GuardResult> {
   const { ctx, staffId } = await sessionCtx();
   const analysis = await withTenantContext(ctx, (tx) =>
-    tx.riskAnalysis.findUnique({ where: { id: analysisId }, select: { clientId: true } }),
+    tx.riskAnalysis.findUnique({ where: { id: analysisId }, select: { clientId: true, archivedAt: true } }),
   );
   if (!analysis?.clientId) throw new ForbiddenError('Analyse nicht gefunden oder ohne Mandantenbezug.');
+  if (analysis.archivedAt) throw new ForbiddenError('Diese Subsumtion ist archiviert (schreibgeschützt).');
   await requireSubsumtionAccess(analysis.clientId);
   return { ctx, staffId, clientId: analysis.clientId };
 }
@@ -90,11 +92,12 @@ async function guardMarking(markingId: string): Promise<GuardResult & { analysis
   const marking = await withTenantContext(ctx, (tx) =>
     tx.riskMarking.findUnique({
       where: { id: markingId },
-      select: { analysis: { select: { id: true, clientId: true } } },
+      select: { analysis: { select: { id: true, clientId: true, archivedAt: true } } },
     }),
   );
   const clientId = marking?.analysis.clientId;
   if (!clientId) throw new ForbiddenError('Markierung nicht gefunden oder ohne Mandantenbezug.');
+  if (marking!.analysis.archivedAt) throw new ForbiddenError('Diese Subsumtion ist archiviert (schreibgeschützt).');
   await requireSubsumtionAccess(clientId);
   return { ctx, staffId, clientId, analysisId: marking!.analysis.id };
 }
@@ -169,6 +172,23 @@ export async function updateAnalysisAction(
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${parsed.analysisId}`);
     revalidatePath(`/staff/clients/${clientId}/subsumtion`);
     return { ok: true, title };
+  } catch (e) {
+    return toActionError(e);
+  }
+}
+
+/** Archiviert eine Subsumtion revisionssicher (GoBD-Snapshot, schreibgeschützt). */
+export async function archiveAnalysisAction(input: {
+  clientId: string;
+  analysisId: string;
+}): Promise<OkActionResult<{ archiveKey: string }>> {
+  try {
+    // guardAnalysis wirft, wenn bereits archiviert → kein Re-Archivieren.
+    const { ctx, clientId } = await guardAnalysis(input.analysisId);
+    const res = await archiveAnalysis(ctx, input.analysisId);
+    revalidatePath(`/staff/clients/${clientId}/subsumtion/${input.analysisId}`);
+    revalidatePath(`/staff/clients/${clientId}/subsumtion`);
+    return { ok: true, archiveKey: res.key };
   } catch (e) {
     return toActionError(e);
   }

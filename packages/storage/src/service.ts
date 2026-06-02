@@ -243,21 +243,33 @@ export async function fetchObjectBytes(bucket: string, storageKey: string): Prom
 }
 
 /**
- * Direkter Bytes-Upload OHNE Virus-Scan/Dokument-Semantik — für intern erzeugte,
- * regenerierbare Blobs (z. B. komprimierter Engine-rawResult). NICHT für
- * Mandanten-Uploads (die laufen über commitDocument* inkl. ClamAV-Scan).
+ * Direkter Bytes-Upload OHNE Virus-Scan/Dokument-Semantik — für intern erzeugte
+ * Blobs (z. B. gzip-rawResult, Subsumtions-Archiv). NICHT für Mandanten-Uploads
+ * (die laufen über commitDocument* inkl. ClamAV-Scan).
+ *
+ * `retainUntil` setzt Object-Lock COMPLIANCE (revisionssicher bis zu dem Datum) —
+ * der Ziel-Bucket MUSS Object-Lock-fähig sein (GoBD/GwG-Buckets sind es).
  */
 export async function putObjectBytes(
   bucket: string,
   storageKey: string,
   bytes: Buffer,
-  contentType = 'application/octet-stream',
+  opts: { contentType?: string; retainUntil?: Date | null } = {},
 ): Promise<void> {
   if (bytes.length > MAX_UPLOAD_BYTES) {
     throw new Error(`TOO_LARGE: Objekt (${bytes.length} B) überschreitet das Limit.`);
   }
   await s3.send(
-    new PutObjectCommand({ Bucket: bucket, Key: storageKey, Body: bytes, ContentType: contentType }),
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: storageKey,
+      Body: bytes,
+      ContentLength: bytes.length,
+      ContentType: opts.contentType ?? 'application/octet-stream',
+      ...(opts.retainUntil
+        ? { ObjectLockMode: 'COMPLIANCE' as const, ObjectLockRetainUntilDate: opts.retainUntil }
+        : {}),
+    }),
   );
 }
 
