@@ -11,15 +11,10 @@ function queueText(q: LlmStatusDTO['queue']): string | null {
   return null;
 }
 
-/** Live-Status von Schicht 2 (verfügbar / lädt / nicht installiert) + Queue. */
-function LlmIndicator({ s }: { s: LlmStatusDTO }) {
-  if (s.binaryVorhanden === false) {
-    return (
-      <span className="text-xs text-muted inline-flex items-center gap-1" title="In der Engine ist kein LLM-Binary konfiguriert">
-        <span className="h-2 w-2 rounded-full bg-gray-400" /> KI nicht installiert
-      </span>
-    );
-  }
+/** Live-Status von Schicht 2 + Queue. „lädt" NUR, wenn der Server tatsächlich
+ *  hochfährt (von uns gestartet bzw. gerade angestoßen) — nicht schon, wenn er
+ *  bloß bereit, aber aus ist (dann „KI aus"). */
+function LlmIndicator({ s, starting }: { s: LlmStatusDTO; starting: boolean }) {
   const q = queueText(s.queue);
   if (s.verfuegbar) {
     return (
@@ -28,9 +23,24 @@ function LlmIndicator({ s }: { s: LlmStatusDTO }) {
       </span>
     );
   }
+  if (s.binaryVorhanden === false) {
+    return (
+      <span className="text-xs text-muted inline-flex items-center gap-1" title="In der Engine ist kein LLM-Binary konfiguriert">
+        <span className="h-2 w-2 rounded-full bg-gray-400" /> KI nicht installiert
+      </span>
+    );
+  }
+  if (starting || s.vonUnsGestartet) {
+    return (
+      <span className="text-xs text-amber-600 inline-flex items-center gap-1" title="LLM-Server startet / lädt das Modell">
+        <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" /> KI lädt …{q ? <span className="text-muted"> · {q}</span> : null}
+      </span>
+    );
+  }
+  // Binary vorhanden, aber Server läuft nicht und wurde nicht angestoßen.
   return (
-    <span className="text-xs text-amber-600 inline-flex items-center gap-1" title="LLM-Server lädt / startet">
-      <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" /> KI lädt …{q ? <span className="text-muted"> · {q}</span> : null}
+    <span className="text-xs text-muted inline-flex items-center gap-1" title="Der LLM-Server läuft nicht — „LLM dazuschalten“ startet ihn bei Bedarf.">
+      <span className="h-2 w-2 rounded-full bg-gray-400" /> KI aus
     </span>
   );
 }
@@ -57,6 +67,7 @@ export function StatsBar({
   pending,
   onRequestLlm,
   llmStatus,
+  llmStarting,
 }: {
   markings: MarkingDTO[];
   llmEnrichedAt: string | null;
@@ -64,6 +75,7 @@ export function StatsBar({
   pending: boolean;
   onRequestLlm: () => void;
   llmStatus?: LlmStatusDTO | null;
+  llmStarting?: boolean;
 }) {
   const count = (fn: (m: MarkingDTO) => boolean) => markings.filter(fn).length;
   const treffer = count((m) => m.engineStatus === 'treffer');
@@ -93,7 +105,7 @@ export function StatsBar({
             {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
             LLM dazuschalten +
           </button>
-          {engineConfigured && llmStatus ? <LlmIndicator s={llmStatus} /> : null}
+          {engineConfigured && llmStatus ? <LlmIndicator s={llmStatus} starting={!!llmStarting} /> : null}
         </div>
       )}
 

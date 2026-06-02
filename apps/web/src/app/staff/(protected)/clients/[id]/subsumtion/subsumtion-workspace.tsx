@@ -288,6 +288,7 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
         pending={pending}
         onRequestLlm={requestLlm}
         llmStatus={llm}
+        llmStarting={pollLlm}
       />
 
       {/* Toolbar — bestehende TaxTronik-Features verlinkt */}
