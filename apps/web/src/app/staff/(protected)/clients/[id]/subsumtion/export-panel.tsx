@@ -2,14 +2,25 @@
 
 // =============================================================================
 // Export-Auswahl: welche Markierungen in DOCX/PDF übernommen werden. Standard =
-// alle. Die laufende Nr. (Position) entspricht der im Export; nicht gewählte
-// Stellen erscheinen im Sachverhalt als normaler Text. Die Download-Links hängen
-// die Auswahl als `?marks=` an (entfällt, wenn alle gewählt sind → ganzer Bericht).
+// alle. Gruppen-Schalter (je Herkunft) nehmen ganze Gruppen rein/raus (z. B.
+// „alle heuristischen Treffer raus"); die Einzelliste darunter erlaubt das
+// Feintuning. Die laufende Nr. entspricht der im Export; nicht gewählte Stellen
+// erscheinen im Sachverhalt als normaler Text. Die Download-Links hängen die
+// Auswahl als `?marks=` an (entfällt, wenn alle gewählt sind → ganzer Bericht).
 // =============================================================================
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { FileDown, FileText, FileType, ChevronDown } from 'lucide-react';
-import { type MarkingDTO, herkunftColor } from './_ui';
+import { type MarkingDTO, type Herkunft, HERKUNFT_LABEL, herkunftColor } from './_ui';
+
+const HERKUNFT_ORDER: Herkunft[] = ['WOERTLICH', 'MUSTER', 'TRIGGER', 'LLM', 'EMBEDDING', 'BERATER'];
+
+/** Checkbox mit Misch-Zustand (teilweise gewählt = indeterminate). */
+function TriCheckbox({ checked, indeterminate, onChange }: { checked: boolean; indeterminate: boolean; onChange: () => void }) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (ref.current) ref.current.indeterminate = indeterminate; }, [indeterminate]);
+  return <input ref={ref} type="checkbox" checked={checked} onChange={onChange} />;
+}
 
 export function ExportPanel({
   clientId,
@@ -27,6 +38,17 @@ export function ExportPanel({
   const [open, setOpen] = useState(false);
   const [sel, setSel] = useState<Set<string>>(() => new Set(ordered.map((m) => m.id)));
 
+  // Herkunfts-Gruppen (nur vorhandene), in stabiler Reihenfolge.
+  const groups = useMemo(() => {
+    const byH = new Map<Herkunft, string[]>();
+    for (const m of ordered) {
+      const arr = byH.get(m.herkunft) ?? [];
+      arr.push(m.id);
+      byH.set(m.herkunft, arr);
+    }
+    return HERKUNFT_ORDER.filter((h) => byH.has(h)).map((h) => ({ herkunft: h, ids: byH.get(h)! }));
+  }, [ordered]);
+
   const allIds = ordered.map((m) => m.id);
   const allSelected = sel.size === allIds.length && allIds.every((id) => sel.has(id));
   const none = sel.size === 0;
@@ -35,6 +57,14 @@ export function ExportPanel({
     setSel((prev) => {
       const n = new Set(prev);
       if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  }
+  function toggleGroup(ids: string[]) {
+    setSel((prev) => {
+      const n = new Set(prev);
+      if (ids.every((id) => n.has(id))) ids.forEach((id) => n.delete(id));
+      else ids.forEach((id) => n.add(id));
       return n;
     });
   }
@@ -63,6 +93,24 @@ export function ExportPanel({
               </div>
             </div>
 
+            {groups.length > 1 && (
+              <div className="rounded border border-default px-2 py-1.5">
+                <p className="text-[10px] uppercase tracking-wide text-muted mb-1">Gruppen (Herkunft)</p>
+                <div className="flex flex-wrap gap-x-3 gap-y-1">
+                  {groups.map((g) => {
+                    const cnt = g.ids.filter((id) => sel.has(id)).length;
+                    return (
+                      <label key={g.herkunft} className="inline-flex items-center gap-1 text-xs cursor-pointer">
+                        <TriCheckbox checked={cnt === g.ids.length} indeterminate={cnt > 0 && cnt < g.ids.length} onChange={() => toggleGroup(g.ids)} />
+                        <span style={{ color: herkunftColor(g.herkunft) }}>{HERKUNFT_LABEL[g.herkunft]}</span>
+                        <span className="text-disabled">{cnt}/{g.ids.length}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {ordered.length === 0 ? (
               <p className="text-xs text-muted">Keine Markierungen vorhanden — der reine Sachverhalt wird exportiert.</p>
             ) : (
@@ -73,7 +121,8 @@ export function ExportPanel({
                     <span className="font-mono text-[10px] mt-0.5" style={{ color: m.streitig ? '#ef4444' : herkunftColor(m.herkunft) }}>[{i + 1}]</span>
                     <span className="min-w-0">
                       <span className="font-medium text-secondary">{m.begriff}</span>
-                      {m.matchedText ? <span className="text-muted"> — „{m.matchedText.length > 60 ? m.matchedText.slice(0, 60) + '…' : m.matchedText}"</span> : null}
+                      <span className="text-disabled"> · {HERKUNFT_LABEL[m.herkunft]}</span>
+                      {m.matchedText ? <span className="text-muted"> — „{m.matchedText.length > 52 ? m.matchedText.slice(0, 52) + '…' : m.matchedText}"</span> : null}
                     </span>
                   </label>
                 ))}
