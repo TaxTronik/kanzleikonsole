@@ -95,7 +95,10 @@ export const remindersDailyWorker = new Worker<ChecksJob>(
           tenantId,
           appealDeadline: { not: null, gte: today },
           appealFiledAt: null,
-          status: { notIn: ['EINSPRUCH_EINGELEGT', 'ARCHIVIERT'] as never },
+          // Nur erinnern, solange noch handelbar: kein Einspruch eingelegt und
+          // nicht abgeschlossen. (Kein `as never` — die echten Enum-Werte werden
+          // jetzt typgeprüft.)
+          status: { notIn: ['EINSPRUCH', 'ABGEHOLFEN', 'ZURUECKGEWIESEN', 'RECHTSKRAEFTIG'] },
         },
         select: {
           id: true, kind: true, period: true, appealDeadline: true,
