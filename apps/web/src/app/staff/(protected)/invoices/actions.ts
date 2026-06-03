@@ -3,13 +3,16 @@
 import { z } from 'zod';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { commitDocumentFromBytes } from '@taxtronik/storage';
 import { prismaBytes } from '@/server/db/prisma-bytes';
 import { sendTemplateMail } from '@/server/mail/dispatch';
+import { toActionError } from '@/server/auth/rbac';
+import { staffActionGuard, withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
+
+export type { ActionResult };
 
 const PositionSchema = z.object({
   description: z.string().min(1).max(500),
@@ -30,11 +33,6 @@ const CreateSchema = z.object({
   positions: z.array(PositionSchema).min(1),
 });
 
-export interface ActionResult {
-  ok: boolean;
-  error?: string;
-}
-
 export async function createInvoiceAction(input: {
   clientId: string;
   number: string;
@@ -46,15 +44,14 @@ export async function createInvoiceAction(input: {
   format: 'PDF' | 'XRECHNUNG' | 'ZUGFERD';
   positions: Array<{ description: string; quantity: number; unitPrice: number; unit: string }>;
 }): Promise<ActionResult & { invoiceId?: string }> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
+  const g = await staffActionGuard();
+  if (!g.ok) return g;
+  const { tenantId, staffId, ctx } = g;
 
   const parsed = CreateSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues.map((i) => i.message).join('; ') };
   }
-
-  const { tenantId, staffId } = session.user;
   const data = parsed.data;
 
   // Beträge berechnen
@@ -72,47 +69,44 @@ export async function createInvoiceAction(input: {
 
   let invoiceId: string;
   try {
-    invoiceId = await withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
-      async (tx) => {
-        const inv = await tx.invoice.create({
-          data: {
-            tenantId,
-            clientId: data.clientId,
-            number: data.number,
-            subject: data.subject,
-            issueDate: new Date(data.issueDate),
-            dueDate: new Date(data.dueDate),
-            status: 'DRAFT',
-            format: data.format,
-            netAmount: netTotal,
-            vatAmount: vatTotal,
-            totalAmount: grandTotal,
-            vatRate: data.vatRate,
-            notes: data.notes || null,
-            createdByStaff: staffId,
-            positions: { create: positionsWithNet },
-          },
-        });
-
-        await evidenceService.record(tx, {
+    invoiceId = await withTenantContext(ctx, async (tx) => {
+      const inv = await tx.invoice.create({
+        data: {
           tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
-          action: 'invoice.create',
-          resourceType: 'invoice',
-          resourceId: inv.id,
-          after: {
-            number: data.number,
-            clientId: data.clientId,
-            totalAmount: grandTotal,
-            format: data.format,
-          },
-        });
+          clientId: data.clientId,
+          number: data.number,
+          subject: data.subject,
+          issueDate: new Date(data.issueDate),
+          dueDate: new Date(data.dueDate),
+          status: 'DRAFT',
+          format: data.format,
+          netAmount: netTotal,
+          vatAmount: vatTotal,
+          totalAmount: grandTotal,
+          vatRate: data.vatRate,
+          notes: data.notes || null,
+          createdByStaff: staffId,
+          positions: { create: positionsWithNet },
+        },
+      });
 
-        return inv.id;
-      },
-    );
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'invoice.create',
+        resourceType: 'invoice',
+        resourceId: inv.id,
+        after: {
+          number: data.number,
+          clientId: data.clientId,
+          totalAmount: grandTotal,
+          format: data.format,
+        },
+      });
+
+      return inv.id;
+    });
   } catch (e) {
     const msg = (e as Error).message;
     if (msg.includes('GwG-Schranke') || msg.includes('nicht aktiv')) {
@@ -121,7 +115,7 @@ export async function createInvoiceAction(input: {
     if (msg.includes('Unique')) {
       return { ok: false, error: 'Rechnungsnummer existiert bereits.' };
     }
-    return { ok: false, error: msg };
+    return toActionError(e);
   }
 
   return { ok: true, invoiceId };
@@ -132,30 +126,27 @@ const StatusSchema = z.object({
 });
 
 export async function markSentAction(formData: FormData): Promise<void> {
-  const session = await staffAuth();
-  if (!session?.user) return;
+  const g = await staffActionGuard();
+  if (!g.ok) return;
+  const { tenantId, staffId, ctx } = g;
   const parsed = StatusSchema.safeParse({ invoiceId: formData.get('invoiceId') });
   if (!parsed.success) return;
-  const { tenantId, staffId } = session.user;
 
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
-      const updated = await tx.invoice.update({
-        where: { id: parsed.data.invoiceId },
-        data: { status: 'SENT', sentAt: new Date() },
-      });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'invoice.send',
-        resourceType: 'invoice',
-        resourceId: updated.id,
-        after: { number: updated.number, sentAt: updated.sentAt },
-      });
-    },
-  );
+  await withTenantContext(ctx, async (tx) => {
+    const updated = await tx.invoice.update({
+      where: { id: parsed.data.invoiceId },
+      data: { status: 'SENT', sentAt: new Date() },
+    });
+    await evidenceService.record(tx, {
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
+      action: 'invoice.send',
+      resourceType: 'invoice',
+      resourceId: updated.id,
+      after: { number: updated.number, sentAt: updated.sentAt },
+    });
+  });
 
   emitN8nEvent('invoice.due', { tenantId, invoiceId: parsed.data.invoiceId });
   revalidatePath('/staff/invoices');
@@ -163,15 +154,11 @@ export async function markSentAction(formData: FormData): Promise<void> {
 }
 
 export async function markPaidAction(formData: FormData): Promise<void> {
-  const session = await staffAuth();
-  if (!session?.user) return;
   const parsed = StatusSchema.safeParse({ invoiceId: formData.get('invoiceId') });
   if (!parsed.success) return;
-  const { tenantId, staffId } = session.user;
 
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
+  await withStaff(
+    async (tx, { tenantId, staffId }) => {
       const updated = await tx.invoice.update({
         where: { id: parsed.data.invoiceId },
         data: { status: 'PAID', paidAt: new Date() },
@@ -186,22 +173,16 @@ export async function markPaidAction(formData: FormData): Promise<void> {
         after: { number: updated.number, paidAt: updated.paidAt },
       });
     },
+    { revalidate: ['/staff/invoices', `/staff/invoices/${parsed.data.invoiceId}`] },
   );
-
-  revalidatePath('/staff/invoices');
-  revalidatePath(`/staff/invoices/${parsed.data.invoiceId}`);
 }
 
 export async function cancelInvoiceAction(formData: FormData): Promise<void> {
-  const session = await staffAuth();
-  if (!session?.user) return;
   const parsed = StatusSchema.safeParse({ invoiceId: formData.get('invoiceId') });
   if (!parsed.success) return;
-  const { tenantId, staffId } = session.user;
 
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
+  await withStaff(
+    async (tx, { tenantId, staffId }) => {
       const updated = await tx.invoice.update({
         where: { id: parsed.data.invoiceId },
         data: { status: 'CANCELLED' },
@@ -216,17 +197,16 @@ export async function cancelInvoiceAction(formData: FormData): Promise<void> {
         after: { number: updated.number },
       });
     },
+    { revalidate: ['/staff/invoices', `/staff/invoices/${parsed.data.invoiceId}`] },
   );
-
-  revalidatePath('/staff/invoices');
-  revalidatePath(`/staff/invoices/${parsed.data.invoiceId}`);
 }
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-// Formular-Helper für create-Page (transformiert FormData inkl. Position-Repeater)
+// Formular-Helper für create-Page (transformiert FormData inkl. Position-Repeater).
+// Delegiert an createInvoiceAction (dort sitzt das Auth-Gate).
 export async function createInvoiceFromFormAction(formData: FormData): Promise<void> {
   const positions: Array<{ description: string; quantity: number; unitPrice: number; unit: string }> = [];
   for (let i = 0; i < 50; i++) {
@@ -255,11 +235,11 @@ export async function createInvoiceFromFormAction(formData: FormData): Promise<v
   if (!r.ok || !r.invoiceId) {
     // Fehler werden nicht gefangen — Browser zeigt Server-Action-Fehler;
     // bessere UX kommt im Client-Component-Wrapper.
-    throw new Error(r.error ?? 'Rechnungsanlage fehlgeschlagen.');
+    throw new ActionError(r.error ?? 'Rechnungsanlage fehlgeschlagen.');
   }
 
   revalidatePath('/staff/invoices');
-  redirect(`/staff/invoices/${r.invoiceId}`);
+  redirect(`/staff/invoices/${r.invoiceId}`); // wirft (never) — NACH der delegierten Action
 }
 
 // ----------------------------------------------------------------------------
@@ -289,14 +269,15 @@ export async function uploadExternalInvoiceAction(input: z.infer<typeof UploadEx
   error?: string;
   id?: string;
 }> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
+  const g = await staffActionGuard();
+  if (!g.ok) return g;
+  const { tenantId, staffId, ctx } = g;
+
   const parsed = UploadExternalSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
   }
   const data = parsed.data;
-  const { tenantId, staffId } = session.user;
 
   const pdfBytes = Buffer.from(data.pdf.base64, 'base64');
   if (pdfBytes.length === 0) return { ok: false, error: 'PDF-Daten leer.' };
@@ -320,96 +301,93 @@ export async function uploadExternalInvoiceAction(input: z.infer<typeof UploadEx
   let mailTemplateSlug: string | null = null;
   let clientName = '';
   try {
-    invoiceId = await withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
-      async (tx) => {
-        const cat = data.categoryId
-          ? await tx.invoiceCategory.findUnique({
-              where: { id: data.categoryId },
-              select: { id: true, emailTemplateSlug: true, name: true },
-            })
-          : null;
-        mailTemplateSlug = cat?.emailTemplateSlug ?? null;
+    invoiceId = await withTenantContext(ctx, async (tx) => {
+      const cat = data.categoryId
+        ? await tx.invoiceCategory.findUnique({
+            where: { id: data.categoryId },
+            select: { id: true, emailTemplateSlug: true, name: true },
+          })
+        : null;
+      mailTemplateSlug = cat?.emailTemplateSlug ?? null;
 
-        const cli = await tx.client.findUnique({
-          where: { id: data.clientId },
-          select: { name: true, contacts: { where: { active: true, notificationsEnabled: true }, select: { email: true, fullName: true } } },
-        });
-        if (!cli) throw new Error('Mandant nicht gefunden.');
-        clientName = cli.name;
-        recipients = cli.contacts;
+      const cli = await tx.client.findUnique({
+        where: { id: data.clientId },
+        select: { name: true, contacts: { where: { active: true, notificationsEnabled: true }, select: { email: true, fullName: true } } },
+      });
+      if (!cli) throw new ActionError('Mandant nicht gefunden.');
+      clientName = cli.name;
+      recipients = cli.contacts;
 
-        const doc = await tx.document.create({
-          data: {
-            tenantId,
-            clientId: data.clientId,
-            title: `Rechnung ${data.number}: ${data.subject}`,
-            classification: 'GOBD_INVOICE',
-            // P-3: Magic-Bytes statt Client-Header — siehe M-2.
-            mimeType: stored.detectedMime ?? data.pdf.mimeType ?? 'application/pdf',
-          },
-        });
-        await tx.documentVersion.create({
-          data: {
-            documentId: doc.id,
-            versionNo: 1,
-            storageBucket: stored.targetBucket,
-            storageKey: stored.targetKey,
-            sha256: prismaBytes(stored.sha256),
-            sizeBytes: stored.sizeBytes,
-            immutable: stored.immutable,
-            scanStatus: 'CLEAN',
-            scanCompletedAt: new Date(),
-            createdById: staffId,
-          },
-        });
-
-        const inv = await tx.invoice.create({
-          data: {
-            tenantId,
-            clientId: data.clientId,
-            categoryId: data.categoryId ?? null,
-            number: data.number,
-            subject: data.subject,
-            issueDate: new Date(data.issueDate),
-            dueDate: new Date(data.dueDate),
-            status: 'SENT',
-            format: 'PDF',
-            netAmount: data.totalAmount,  // EXTERNAL: kein USt-Split, Brutto=Netto pro Pos
-            vatAmount: 0,
-            totalAmount: data.totalAmount,
-            vatRate: 0,
-            notes: data.notes ?? null,
-            documentId: doc.id,
-            createdByStaff: staffId,
-            sentAt: new Date(),
-          },
-        });
-
-        await evidenceService.record(tx, {
+      const doc = await tx.document.create({
+        data: {
           tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
-          action: 'invoice.upload',
-          resourceType: 'invoice',
-          resourceId: inv.id,
-          after: {
-            clientId: data.clientId,
-            number: data.number,
-            totalAmount: data.totalAmount,
-            categoryId: data.categoryId ?? null,
-            documentId: doc.id,
-          },
-        });
+          clientId: data.clientId,
+          title: `Rechnung ${data.number}: ${data.subject}`,
+          classification: 'GOBD_INVOICE',
+          // P-3: Magic-Bytes statt Client-Header — siehe M-2.
+          mimeType: stored.detectedMime ?? data.pdf.mimeType ?? 'application/pdf',
+        },
+      });
+      await tx.documentVersion.create({
+        data: {
+          documentId: doc.id,
+          versionNo: 1,
+          storageBucket: stored.targetBucket,
+          storageKey: stored.targetKey,
+          sha256: prismaBytes(stored.sha256),
+          sizeBytes: stored.sizeBytes,
+          immutable: stored.immutable,
+          scanStatus: 'CLEAN',
+          scanCompletedAt: new Date(),
+          createdById: staffId,
+        },
+      });
 
-        return inv.id;
-      },
-    );
+      const inv = await tx.invoice.create({
+        data: {
+          tenantId,
+          clientId: data.clientId,
+          categoryId: data.categoryId ?? null,
+          number: data.number,
+          subject: data.subject,
+          issueDate: new Date(data.issueDate),
+          dueDate: new Date(data.dueDate),
+          status: 'SENT',
+          format: 'PDF',
+          netAmount: data.totalAmount,  // EXTERNAL: kein USt-Split, Brutto=Netto pro Pos
+          vatAmount: 0,
+          totalAmount: data.totalAmount,
+          vatRate: 0,
+          notes: data.notes ?? null,
+          documentId: doc.id,
+          createdByStaff: staffId,
+          sentAt: new Date(),
+        },
+      });
+
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'invoice.upload',
+        resourceType: 'invoice',
+        resourceId: inv.id,
+        after: {
+          clientId: data.clientId,
+          number: data.number,
+          totalAmount: data.totalAmount,
+          categoryId: data.categoryId ?? null,
+          documentId: doc.id,
+        },
+      });
+
+      return inv.id;
+    });
   } catch (e) {
     if ((e as { code?: string }).code === 'P2002') {
       return { ok: false, error: 'Rechnungsnummer bereits vergeben.' };
     }
-    return { ok: false, error: (e as Error).message };
+    return toActionError(e);
   }
 
   // 3) Mail mit PDF-Anhang an aktive Kontakte mit Opt-in

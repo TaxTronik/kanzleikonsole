@@ -3,12 +3,12 @@
 import { z } from 'zod';
 import { redirect } from 'next/navigation';
 import { portalBaseUrl } from '@taxtronik/config';
-import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { requestMagicLink } from '@/server/auth/magic-link';
 import { sendTemplateMail } from '@/server/mail/dispatch';
 import { generateInviteToken, INVITE_TTL_DAYS } from '@/server/gwg-onboarding/service';
+import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
 
 export interface WizardResult { ok: boolean; error?: string; }
 
@@ -26,8 +26,9 @@ const ContactSchema = z.object({
 });
 
 export async function onboardingAddContactAction(formData: FormData) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const g = await staffActionGuard();
+  if (!g.ok) redirect('/staff/login'); // redirect wirft (never) — außerhalb try/catch
+  const { tenantId, staffId, ctx } = g;
 
   const parsed = ContactSchema.safeParse({
     clientId: formData.get('clientId'),
@@ -38,59 +39,55 @@ export async function onboardingAddContactAction(formData: FormData) {
     sendPortalInvite: formData.get('sendPortalInvite') ?? '',
   });
   if (!parsed.success) {
-    throw new Error(parsed.error.issues.map((i) => i.message).join(', '));
+    throw new ActionError(parsed.error.issues.map((i) => i.message).join(', '));
   }
 
-  const { tenantId, staffId } = session.user;
   const sendInvite = parsed.data.sendPortalInvite === 'on' || parsed.data.sendPortalInvite === '1';
 
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
-      const existing = await tx.clientContact.findFirst({
-        where: { tenantId, email: parsed.data.email.toLowerCase() },
-      });
-      if (existing) {
-        if (existing.clientId !== parsed.data.clientId) {
-          throw new Error('E-Mail ist bereits einem anderen Mandanten zugeordnet.');
-        }
-        await tx.clientContact.update({
-          where: { id: existing.id },
-          data: {
-            fullName: parsed.data.fullName,
-            phone: parsed.data.phone?.trim() || null,
-            role: parsed.data.role?.trim() || null,
-            active: true,
-          },
-        });
-        await evidenceService.record(tx, {
-          tenantId, actorType: 'STAFF', actorId: staffId,
-          action: 'client_contact.update',
-          resourceType: 'client_contact',
-          resourceId: existing.id,
-          after: { onboarding: true },
-        });
-      } else {
-        const c = await tx.clientContact.create({
-          data: {
-            tenantId,
-            clientId: parsed.data.clientId,
-            email: parsed.data.email.toLowerCase(),
-            fullName: parsed.data.fullName,
-            phone: parsed.data.phone?.trim() || null,
-            role: parsed.data.role?.trim() || null,
-          },
-        });
-        await evidenceService.record(tx, {
-          tenantId, actorType: 'STAFF', actorId: staffId,
-          action: 'client_contact.create',
-          resourceType: 'client_contact',
-          resourceId: c.id,
-          after: { email: parsed.data.email, onboarding: true },
-        });
+  await withTenantContext(ctx, async (tx) => {
+    const existing = await tx.clientContact.findFirst({
+      where: { tenantId, email: parsed.data.email.toLowerCase() },
+    });
+    if (existing) {
+      if (existing.clientId !== parsed.data.clientId) {
+        throw new ActionError('E-Mail ist bereits einem anderen Mandanten zugeordnet.');
       }
-    },
-  );
+      await tx.clientContact.update({
+        where: { id: existing.id },
+        data: {
+          fullName: parsed.data.fullName,
+          phone: parsed.data.phone?.trim() || null,
+          role: parsed.data.role?.trim() || null,
+          active: true,
+        },
+      });
+      await evidenceService.record(tx, {
+        tenantId, actorType: 'STAFF', actorId: staffId,
+        action: 'client_contact.update',
+        resourceType: 'client_contact',
+        resourceId: existing.id,
+        after: { onboarding: true },
+      });
+    } else {
+      const c = await tx.clientContact.create({
+        data: {
+          tenantId,
+          clientId: parsed.data.clientId,
+          email: parsed.data.email.toLowerCase(),
+          fullName: parsed.data.fullName,
+          phone: parsed.data.phone?.trim() || null,
+          role: parsed.data.role?.trim() || null,
+        },
+      });
+      await evidenceService.record(tx, {
+        tenantId, actorType: 'STAFF', actorId: staffId,
+        action: 'client_contact.create',
+        resourceType: 'client_contact',
+        resourceId: c.id,
+        after: { email: parsed.data.email, onboarding: true },
+      });
+    }
+  });
 
   if (sendInvite) {
     try {
@@ -114,8 +111,9 @@ const GwgSchema = z.object({
 });
 
 export async function onboardingSendGwgAction(formData: FormData) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const g = await staffActionGuard();
+  if (!g.ok) redirect('/staff/login'); // redirect wirft (never) — außerhalb try/catch
+  const { tenantId, staffId, ctx } = g;
 
   const parsed = GwgSchema.safeParse({
     clientId: formData.get('clientId'),
@@ -123,41 +121,37 @@ export async function onboardingSendGwgAction(formData: FormData) {
     inviteEmail: formData.get('inviteEmail'),
   });
   if (!parsed.success) {
-    throw new Error(parsed.error.issues.map((i) => i.message).join(', '));
+    throw new ActionError(parsed.error.issues.map((i) => i.message).join(', '));
   }
 
-  const { tenantId, staffId } = session.user;
   const { raw, hash } = generateInviteToken();
   const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
 
-  const inviteId = await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
-      const inv = await tx.gwgOnboardingInvite.create({
-        data: {
-          tenantId,
-          clientId: parsed.data.clientId,
-          inviteName: parsed.data.inviteName,
-          inviteEmail: parsed.data.inviteEmail,
-          tokenHash: hash,
-          expiresAt,
-          createdByStaff: staffId,
-        },
-      });
-      await evidenceService.record(tx, {
-        tenantId, actorType: 'STAFF', actorId: staffId,
-        action: 'gwg.onboarding.invite',
-        resourceType: 'gwg_onboarding_invite',
-        resourceId: inv.id,
-        after: {
-          inviteEmail: parsed.data.inviteEmail,
-          expiresAt: expiresAt.toISOString(),
-          onboarding: true,
-        },
-      });
-      return inv.id;
-    },
-  );
+  const inviteId = await withTenantContext(ctx, async (tx) => {
+    const inv = await tx.gwgOnboardingInvite.create({
+      data: {
+        tenantId,
+        clientId: parsed.data.clientId,
+        inviteName: parsed.data.inviteName,
+        inviteEmail: parsed.data.inviteEmail,
+        tokenHash: hash,
+        expiresAt,
+        createdByStaff: staffId,
+      },
+    });
+    await evidenceService.record(tx, {
+      tenantId, actorType: 'STAFF', actorId: staffId,
+      action: 'gwg.onboarding.invite',
+      resourceType: 'gwg_onboarding_invite',
+      resourceId: inv.id,
+      after: {
+        inviteEmail: parsed.data.inviteEmail,
+        expiresAt: expiresAt.toISOString(),
+        onboarding: true,
+      },
+    });
+    return inv.id;
+  });
 
   const link = `${portalBaseUrl}/gwg-onboarding?token=${encodeURIComponent(raw)}`;
   void sendTemplateMail({
@@ -195,15 +189,15 @@ export async function onboardingSendGwgAction(formData: FormData) {
 // ---------------------------------------------------------------------------
 
 export async function onboardingSkipAction(formData: FormData) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const g = await staffActionGuard();
+  if (!g.ok) redirect('/staff/login'); // redirect wirft (never)
   const clientId = formData.get('clientId');
   const next = formData.get('next');
   if (typeof clientId !== 'string' || typeof next !== 'string') {
-    throw new Error('Ungültige Parameter.');
+    throw new ActionError('Ungültige Parameter.');
   }
   if (!/^[a-f0-9-]{36}$/.test(clientId) || !/^[a-z_]+$/.test(next)) {
-    throw new Error('Ungültige Parameter.');
+    throw new ActionError('Ungültige Parameter.');
   }
   redirect(`/staff/clients/onboarding/${clientId}?step=${next}`);
 }
@@ -213,25 +207,22 @@ export async function onboardingSkipAction(formData: FormData) {
 // ---------------------------------------------------------------------------
 
 export async function onboardingCompleteAction(formData: FormData) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const g = await staffActionGuard();
+  if (!g.ok) redirect('/staff/login'); // redirect wirft (never) — außerhalb try/catch
+  const { tenantId, staffId, ctx } = g;
   const clientId = formData.get('clientId');
   if (typeof clientId !== 'string' || !/^[a-f0-9-]{36}$/.test(clientId)) {
-    throw new Error('Ungültige Parameter.');
+    throw new ActionError('Ungültige Parameter.');
   }
-  const { tenantId, staffId } = session.user;
 
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
-      await evidenceService.record(tx, {
-        tenantId, actorType: 'STAFF', actorId: staffId,
-        action: 'client.onboarding.complete',
-        resourceType: 'client',
-        resourceId: clientId,
-      });
-    },
-  );
+  await withTenantContext(ctx, async (tx) => {
+    await evidenceService.record(tx, {
+      tenantId, actorType: 'STAFF', actorId: staffId,
+      action: 'client.onboarding.complete',
+      resourceType: 'client',
+      resourceId: clientId,
+    });
+  });
 
   redirect(`/staff/clients/${clientId}`);
 }

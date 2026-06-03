@@ -2,7 +2,6 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { prismaBytes } from '@/server/db/prisma-bytes';
@@ -13,6 +12,8 @@ import {
   type ProtectionTier,
 } from '@taxtronik/storage';
 import { carrierClassification } from '@/server/storage/document-type';
+import { toActionError } from '@/server/auth/rbac';
+import { staffActionGuard, withStaff, ActionError } from '@/server/actions/staff-action';
 
 export interface DocActionResult {
   ok: boolean;
@@ -53,45 +54,36 @@ const DeleteSchema = z.object({
 export async function softDeleteDocumentAction(
   input: z.infer<typeof DeleteSchema>,
 ): Promise<DocActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
   const parsed = DeleteSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { tenantId, staffId } = session.user;
   const { documentId } = parsed.data;
   const reason = parsed.data.reason?.trim() || null;
 
-  try {
-    await withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
-      async (tx) => {
-        // Defense in Depth: expliziter Tenant-Filter zusätzlich zu RLS.
-        const doc = await tx.document.findFirst({
-          where: { id: documentId, tenantId, deletedAt: null },
-          select: { id: true, title: true, classification: true },
-        });
-        if (!doc) throw new Error('Dokument nicht gefunden oder bereits gelöscht.');
-        await tx.document.update({
-          where: { id: documentId },
-          data: { deletedAt: new Date(), deletedByStaff: staffId, deleteReason: reason },
-        });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
-          action: 'document.delete',
-          resourceType: 'document',
-          resourceId: documentId,
-          before: { title: doc.title, classification: doc.classification, deleted: false },
-          after: { deleted: true, reason },
-        });
-      },
-    );
-  } catch (e) {
-    return { ok: false, error: (e as Error).message };
-  }
-  revalidatePath('/staff/documents');
-  return { ok: true };
+  return withStaff(
+    async (tx, { tenantId, staffId }) => {
+      // Defense in Depth: expliziter Tenant-Filter zusätzlich zu RLS.
+      const doc = await tx.document.findFirst({
+        where: { id: documentId, tenantId, deletedAt: null },
+        select: { id: true, title: true, classification: true },
+      });
+      if (!doc) throw new ActionError('Dokument nicht gefunden oder bereits gelöscht.');
+      await tx.document.update({
+        where: { id: documentId },
+        data: { deletedAt: new Date(), deletedByStaff: staffId, deleteReason: reason },
+      });
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'document.delete',
+        resourceType: 'document',
+        resourceId: documentId,
+        before: { title: doc.title, classification: doc.classification, deleted: false },
+        after: { deleted: true, reason },
+      });
+    },
+    { revalidate: '/staff/documents' },
+  );
 }
 
 const RestoreSchema = z.object({ documentId: z.string().uuid() });
@@ -99,43 +91,34 @@ const RestoreSchema = z.object({ documentId: z.string().uuid() });
 export async function restoreDocumentAction(
   input: z.infer<typeof RestoreSchema>,
 ): Promise<DocActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
   const parsed = RestoreSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { tenantId, staffId } = session.user;
   const { documentId } = parsed.data;
 
-  try {
-    await withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
-      async (tx) => {
-        const doc = await tx.document.findFirst({
-          where: { id: documentId, tenantId, deletedAt: { not: null } },
-          select: { id: true, title: true },
-        });
-        if (!doc) throw new Error('Dokument nicht gefunden oder nicht gelöscht.');
-        await tx.document.update({
-          where: { id: documentId },
-          data: { deletedAt: null, deletedByStaff: null, deleteReason: null },
-        });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
-          action: 'document.restore',
-          resourceType: 'document',
-          resourceId: documentId,
-          before: { deleted: true },
-          after: { title: doc.title, deleted: false },
-        });
-      },
-    );
-  } catch (e) {
-    return { ok: false, error: (e as Error).message };
-  }
-  revalidatePath('/staff/documents');
-  return { ok: true };
+  return withStaff(
+    async (tx, { tenantId, staffId }) => {
+      const doc = await tx.document.findFirst({
+        where: { id: documentId, tenantId, deletedAt: { not: null } },
+        select: { id: true, title: true },
+      });
+      if (!doc) throw new ActionError('Dokument nicht gefunden oder nicht gelöscht.');
+      await tx.document.update({
+        where: { id: documentId },
+        data: { deletedAt: null, deletedByStaff: null, deleteReason: null },
+      });
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'document.restore',
+        resourceType: 'document',
+        resourceId: documentId,
+        before: { deleted: true },
+        after: { title: doc.title, deleted: false },
+      });
+    },
+    { revalidate: '/staff/documents' },
+  );
 }
 
 const RetagSchema = z
@@ -153,11 +136,13 @@ const RetagSchema = z
 export async function retagDocumentAction(
   input: z.infer<typeof RetagSchema>,
 ): Promise<DocActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
+  // Mehrstufig (DB-Tx ↔ Storage ↔ DB-Tx) + Sonderfehler (INFECTED/SCAN) →
+  // nur das Gate zentralisieren, die Tx-Choreografie bleibt manuell.
+  const g = await staffActionGuard();
+  if (!g.ok) return g;
+  const { tenantId, staffId } = g;
   const parsed = RetagSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { tenantId, staffId } = session.user;
   const { documentId } = parsed.data;
 
   // 1. Dokument + aktuellen Typ + neueste Version laden, parallel das
@@ -177,65 +162,62 @@ export async function retagDocumentAction(
       }
     | null = null;
   try {
-    ctx = await withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
-      async (tx) => {
-        const d = await tx.document.findFirst({
-          where: { id: documentId, tenantId, deletedAt: null },
-          select: {
-            classification: true,
-            documentTypeId: true,
-            clientId: true,
-            documentType: { select: { tier: true } },
-            versions: {
-              orderBy: { versionNo: 'desc' },
-              take: 1,
-              select: { id: true, storageBucket: true, storageKey: true },
-            },
+    ctx = await withTenantContext(g.ctx, async (tx) => {
+      const d = await tx.document.findFirst({
+        where: { id: documentId, tenantId, deletedAt: null },
+        select: {
+          classification: true,
+          documentTypeId: true,
+          clientId: true,
+          documentType: { select: { tier: true } },
+          versions: {
+            orderBy: { versionNo: 'desc' },
+            take: 1,
+            select: { id: true, storageBucket: true, storageKey: true },
           },
+        },
+      });
+      if (!d || !d.versions[0]) return null;
+
+      let newTier: ProtectionTier;
+      let newTypeId: string | null;
+      let newClassification: string;
+      if (parsed.data.documentTypeId) {
+        const t = await tx.documentType.findFirst({
+          where: { id: parsed.data.documentTypeId, tenantId, active: true },
+          select: { id: true, tier: true, classificationKey: true },
         });
-        if (!d || !d.versions[0]) return null;
+        if (!t) throw new ActionError('Datei-Typ nicht gefunden.');
+        newTier = t.tier as ProtectionTier;
+        newTypeId = t.id;
+        newClassification = carrierClassification(t.tier as ProtectionTier, t.classificationKey);
+      } else {
+        const cls = parsed.data.classification!;
+        const builtin = await tx.documentType.findFirst({
+          where: { tenantId, classificationKey: cls },
+          select: { id: true },
+        });
+        newTier = classificationToTier(cls);
+        newTypeId = builtin?.id ?? null;
+        newClassification = cls;
+      }
 
-        let newTier: ProtectionTier;
-        let newTypeId: string | null;
-        let newClassification: string;
-        if (parsed.data.documentTypeId) {
-          const t = await tx.documentType.findFirst({
-            where: { id: parsed.data.documentTypeId, tenantId, active: true },
-            select: { id: true, tier: true, classificationKey: true },
-          });
-          if (!t) throw new Error('Datei-Typ nicht gefunden.');
-          newTier = t.tier as ProtectionTier;
-          newTypeId = t.id;
-          newClassification = carrierClassification(t.tier as ProtectionTier, t.classificationKey);
-        } else {
-          const cls = parsed.data.classification!;
-          const builtin = await tx.documentType.findFirst({
-            where: { tenantId, classificationKey: cls },
-            select: { id: true },
-          });
-          newTier = classificationToTier(cls);
-          newTypeId = builtin?.id ?? null;
-          newClassification = cls;
-        }
-
-        return {
-          oldTier: (d.documentType?.tier as ProtectionTier | undefined) ??
-            classificationToTier(d.classification),
-          oldTypeId: d.documentTypeId,
-          oldClassification: d.classification,
-          clientId: d.clientId,
-          versionId: d.versions[0].id,
-          bucket: d.versions[0].storageBucket,
-          key: d.versions[0].storageKey,
-          newTier,
-          newTypeId,
-          newClassification,
-        };
-      },
-    );
+      return {
+        oldTier: (d.documentType?.tier as ProtectionTier | undefined) ??
+          classificationToTier(d.classification),
+        oldTypeId: d.documentTypeId,
+        oldClassification: d.classification,
+        clientId: d.clientId,
+        versionId: d.versions[0].id,
+        bucket: d.versions[0].storageBucket,
+        key: d.versions[0].storageKey,
+        newTier,
+        newTypeId,
+        newClassification,
+      };
+    });
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return toActionError(e);
   }
   if (!ctx) return { ok: false, error: 'Dokument oder Version nicht gefunden.' };
 
@@ -257,28 +239,25 @@ export async function retagDocumentAction(
   try {
     if (newR === oldR) {
       // Gleiche Stufe → reine Metadatenänderung (Bucket/Lock bleiben).
-      await withTenantContext(
-        { tenantId, actorId: staffId, actorType: 'STAFF' },
-        async (tx) => {
-          await tx.document.update({
-            where: { id: documentId },
-            data: {
-              classification: ctx!.newClassification as never,
-              documentTypeId: ctx!.newTypeId,
-            },
-          });
-          await evidenceService.record(tx, {
-            tenantId,
-            actorType: 'STAFF',
-            actorId: staffId,
-            action: 'document.retag',
-            resourceType: 'document',
-            resourceId: documentId,
-            before: { classification: ctx!.oldClassification, tier: ctx!.oldTier },
-            after: { classification: ctx!.newClassification, tier: ctx!.newTier, reStored: false },
-          });
-        },
-      );
+      await withTenantContext(g.ctx, async (tx) => {
+        await tx.document.update({
+          where: { id: documentId },
+          data: {
+            classification: ctx!.newClassification as never,
+            documentTypeId: ctx!.newTypeId,
+          },
+        });
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'document.retag',
+          resourceType: 'document',
+          resourceId: documentId,
+          before: { classification: ctx!.oldClassification, tier: ctx!.oldTier },
+          after: { classification: ctx!.newClassification, tier: ctx!.newTier, reStored: false },
+        });
+      });
     } else {
       // Höherstufung → Re-Store: Bytes holen und tier-getrieben mit
       // Object-Lock + Retention neu schreiben. Storage AUSSERHALB der DB-Tx.
@@ -288,44 +267,41 @@ export async function retagDocumentAction(
         tier: ctx.newTier,
         tenantId,
       });
-      await withTenantContext(
-        { tenantId, actorId: staffId, actorType: 'STAFF' },
-        async (tx) => {
-          await tx.documentVersion.update({
-            where: { id: ctx!.versionId },
-            data: {
-              storageBucket: commit.targetBucket,
-              storageKey: commit.targetKey,
-              immutable: commit.immutable,
-              sha256: prismaBytes(commit.sha256),
-              sizeBytes: commit.sizeBytes,
-            },
-          });
-          await tx.document.update({
-            where: { id: documentId },
-            data: {
-              classification: ctx!.newClassification as never,
-              documentTypeId: ctx!.newTypeId,
-              retentionUntil: commit.retentionUntil,
-            },
-          });
-          await evidenceService.record(tx, {
-            tenantId,
-            actorType: 'STAFF',
-            actorId: staffId,
-            action: 'document.retag',
-            resourceType: 'document',
-            resourceId: documentId,
-            before: { classification: ctx!.oldClassification, tier: ctx!.oldTier },
-            after: {
-              classification: ctx!.newClassification,
-              tier: ctx!.newTier,
-              reStored: true,
-              storageBucket: commit.targetBucket,
-            },
-          });
-        },
-      );
+      await withTenantContext(g.ctx, async (tx) => {
+        await tx.documentVersion.update({
+          where: { id: ctx!.versionId },
+          data: {
+            storageBucket: commit.targetBucket,
+            storageKey: commit.targetKey,
+            immutable: commit.immutable,
+            sha256: prismaBytes(commit.sha256),
+            sizeBytes: commit.sizeBytes,
+          },
+        });
+        await tx.document.update({
+          where: { id: documentId },
+          data: {
+            classification: ctx!.newClassification as never,
+            documentTypeId: ctx!.newTypeId,
+            retentionUntil: commit.retentionUntil,
+          },
+        });
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'document.retag',
+          resourceType: 'document',
+          resourceId: documentId,
+          before: { classification: ctx!.oldClassification, tier: ctx!.oldTier },
+          after: {
+            classification: ctx!.newClassification,
+            tier: ctx!.newTier,
+            reStored: true,
+            storageBucket: commit.targetBucket,
+          },
+        });
+      });
     }
   } catch (e) {
     const msg = (e as Error).message;
@@ -335,7 +311,7 @@ export async function retagDocumentAction(
     if (msg.startsWith('SCAN_ERROR')) {
       return { ok: false, error: 'Virus-Scan fehlgeschlagen — Retag abgebrochen.' };
     }
-    return { ok: false, error: msg };
+    return toActionError(e);
   }
 
   revalidatePath('/staff/documents');
@@ -357,49 +333,41 @@ const ShareSchema = z.object({
 export async function setDocumentShareAction(
   input: z.infer<typeof ShareSchema>,
 ): Promise<DocActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
   const parsed = ShareSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { tenantId, staffId } = session.user;
   const { documentId, share } = parsed.data;
 
-  try {
-    const clientId = await withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
-      async (tx) => {
-        const d = await tx.document.findFirst({
-          where: { id: documentId, tenantId, deletedAt: null },
-          select: { clientId: true, sharedWithClientAt: true },
-        });
-        if (!d) throw new Error('Dokument nicht gefunden.');
-        if (!d.clientId) {
-          throw new Error('Nur Mandanten-Dokumente können freigegeben werden.');
-        }
-        await tx.document.update({
-          where: { id: documentId },
-          data: {
-            sharedWithClientAt: share ? new Date() : null,
-            sharedByStaff: share ? staffId : null,
-          },
-        });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
-          action: share ? 'document.share' : 'document.unshare',
-          resourceType: 'document',
-          resourceId: documentId,
-          before: { shared: d.sharedWithClientAt != null },
-          after: { shared: share },
-        });
-        return d.clientId;
+  const r = await withStaff(async (tx, { tenantId, staffId }) => {
+    const d = await tx.document.findFirst({
+      where: { id: documentId, tenantId, deletedAt: null },
+      select: { clientId: true, sharedWithClientAt: true },
+    });
+    if (!d) throw new ActionError('Dokument nicht gefunden.');
+    if (!d.clientId) {
+      throw new ActionError('Nur Mandanten-Dokumente können freigegeben werden.');
+    }
+    await tx.document.update({
+      where: { id: documentId },
+      data: {
+        sharedWithClientAt: share ? new Date() : null,
+        sharedByStaff: share ? staffId : null,
       },
-    );
-    revalidatePath('/staff/documents');
-    if (clientId) revalidatePath(`/staff/clients/${clientId}`);
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: (e as Error).message };
-  }
+    });
+    await evidenceService.record(tx, {
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
+      action: share ? 'document.share' : 'document.unshare',
+      resourceType: 'document',
+      resourceId: documentId,
+      before: { shared: d.sharedWithClientAt != null },
+      after: { shared: share },
+    });
+    return { clientId: d.clientId };
+  });
+
+  if (!r.ok) return r;
+  revalidatePath('/staff/documents');
+  if (r.clientId) revalidatePath(`/staff/clients/${r.clientId}`);
+  return { ok: true };
 }

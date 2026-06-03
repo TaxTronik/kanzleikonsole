@@ -3,20 +3,17 @@
 import { z } from 'zod';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { staffAuth } from '@/server/auth/staff';
-import { isStaffAdmin } from '@/server/auth/rbac';
+import { isStaffAdmin, toActionError } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { revokeAllSessions } from '@/server/auth/revocation';
+import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
 
-type StaffAuthResult = Awaited<ReturnType<typeof staffAuth>>;
+export interface ActionResult { ok: boolean; error?: string; }
 
-function requireAdmin(session: StaffAuthResult): asserts session is NonNullable<StaffAuthResult> {
-  if (!session?.user) throw new Error('Nicht eingeloggt.');
-  if (!isStaffAdmin(session)) {
-    throw new Error('Nur ADMIN/PARTNER darf DSGVO-Anträge bearbeiten.');
-  }
-}
+// DSGVO-Anträge sind eine Compliance-Hoheit (Art. 12 ff.) — durchweg
+// ADMIN/PARTNER. Eigene, präzisere Meldung als das Standard-Gate.
+const DSGVO_ADMIN_MSG = 'Nur ADMIN/PARTNER darf DSGVO-Anträge bearbeiten.';
 
 const CreateSchema = z.object({
   type: z.enum(['ACCESS', 'RECTIFICATION', 'ERASURE', 'RESTRICTION', 'PORTABILITY', 'OBJECTION']),
@@ -27,11 +24,11 @@ const CreateSchema = z.object({
   description: z.string().min(1).max(5000),
 });
 
-export interface ActionResult { ok: boolean; error?: string; }
-
 export async function createDsgvoRequestAction(formData: FormData): Promise<void> {
-  const session = await staffAuth();
-  requireAdmin(session);
+  const g = await staffActionGuard();
+  if (!g.ok) throw new ActionError(g.error);
+  const { tenantId, staffId, ctx, session } = g;
+  if (!isStaffAdmin(session)) throw new ActionError(DSGVO_ADMIN_MSG);
 
   const parsed = CreateSchema.safeParse({
     type: formData.get('type'),
@@ -41,49 +38,45 @@ export async function createDsgvoRequestAction(formData: FormData): Promise<void
     subjectName: formData.get('subjectName'),
     description: formData.get('description'),
   });
-  if (!parsed.success) throw new Error('Validierungsfehler.');
+  if (!parsed.success) throw new ActionError('Validierungsfehler.');
 
-  const { tenantId, staffId } = session.user;
   const data = parsed.data;
   // Frist nach DSGVO: 1 Monat
   const dueDate = new Date();
   dueDate.setMonth(dueDate.getMonth() + 1);
 
-  const id = await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
-      const req = await tx.dsgvoRequest.create({
-        data: {
-          tenantId,
-          type: data.type,
-          subjectType: data.subjectType,
-          subjectRefId: data.subjectRefId || null,
-          subjectEmail: data.subjectEmail.toLowerCase(),
-          subjectName: data.subjectName,
-          description: data.description,
-          dueDate,
-          createdByStaff: staffId,
-        },
-      });
-      await evidenceService.record(tx, {
+  const id = await withTenantContext(ctx, async (tx) => {
+    const req = await tx.dsgvoRequest.create({
+      data: {
         tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'dsgvo.request.create',
-        resourceType: 'dsgvo_request',
-        resourceId: req.id,
-        after: {
-          type: data.type,
-          subjectType: data.subjectType,
-          subjectEmail: data.subjectEmail,
-        },
-      });
-      return req.id;
-    },
-  );
+        type: data.type,
+        subjectType: data.subjectType,
+        subjectRefId: data.subjectRefId || null,
+        subjectEmail: data.subjectEmail.toLowerCase(),
+        subjectName: data.subjectName,
+        description: data.description,
+        dueDate,
+        createdByStaff: staffId,
+      },
+    });
+    await evidenceService.record(tx, {
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
+      action: 'dsgvo.request.create',
+      resourceType: 'dsgvo_request',
+      resourceId: req.id,
+      after: {
+        type: data.type,
+        subjectType: data.subjectType,
+        subjectEmail: data.subjectEmail,
+      },
+    });
+    return req.id;
+  });
 
   revalidatePath('/staff/admin/dsgvo');
-  redirect(`/staff/admin/dsgvo/${id}`);
+  redirect(`/staff/admin/dsgvo/${id}`); // wirft (never) — NACH der Tx
 }
 
 const UpdateStatusSchema = z.object({
@@ -93,44 +86,42 @@ const UpdateStatusSchema = z.object({
 });
 
 export async function updateStatusAction(formData: FormData): Promise<void> {
-  const session = await staffAuth();
-  requireAdmin(session);
+  const g = await staffActionGuard();
+  if (!g.ok) throw new ActionError(g.error);
+  const { tenantId, staffId, ctx, session } = g;
+  if (!isStaffAdmin(session)) throw new ActionError(DSGVO_ADMIN_MSG);
+
   const parsed = UpdateStatusSchema.safeParse({
     requestId: formData.get('requestId'),
     status: formData.get('status'),
     notes: formData.get('notes') ?? '',
   });
   if (!parsed.success) return;
-
-  const { tenantId, staffId } = session.user;
   const data = parsed.data;
 
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
-      const before = await tx.dsgvoRequest.findUnique({ where: { id: data.requestId } });
-      if (!before) return;
-      const updated = await tx.dsgvoRequest.update({
-        where: { id: data.requestId },
-        data: {
-          status: data.status,
-          notes: data.notes || before.notes,
-          completedAt: data.status === 'COMPLETED' || data.status === 'REJECTED' ? new Date() : null,
-          completedByStaff: data.status === 'COMPLETED' || data.status === 'REJECTED' ? staffId : null,
-        },
-      });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: `dsgvo.request.${data.status.toLowerCase()}`,
-        resourceType: 'dsgvo_request',
-        resourceId: updated.id,
-        before: { status: before.status },
-        after: { status: updated.status },
-      });
-    },
-  );
+  await withTenantContext(ctx, async (tx) => {
+    const before = await tx.dsgvoRequest.findUnique({ where: { id: data.requestId } });
+    if (!before) return;
+    const updated = await tx.dsgvoRequest.update({
+      where: { id: data.requestId },
+      data: {
+        status: data.status,
+        notes: data.notes || before.notes,
+        completedAt: data.status === 'COMPLETED' || data.status === 'REJECTED' ? new Date() : null,
+        completedByStaff: data.status === 'COMPLETED' || data.status === 'REJECTED' ? staffId : null,
+      },
+    });
+    await evidenceService.record(tx, {
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
+      action: `dsgvo.request.${data.status.toLowerCase()}`,
+      resourceType: 'dsgvo_request',
+      resourceId: updated.id,
+      before: { status: before.status },
+      after: { status: updated.status },
+    });
+  });
 
   revalidatePath(`/staff/admin/dsgvo/${data.requestId}`);
   revalidatePath('/staff/admin/dsgvo');
@@ -145,102 +136,97 @@ export async function exportContactDataAction(contactId: string): Promise<{
   error?: string;
   data?: unknown;
 }> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
-
-  const { tenantId, staffId } = session.user;
+  const g = await staffActionGuard({ requireAdmin: true });
+  if (!g.ok) return g;
+  const { tenantId, staffId, ctx } = g;
 
   try {
-    const data = await withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
-      async (tx) => {
-        const contact = await tx.clientContact.findUnique({
-          where: { id: contactId },
-          include: { client: { select: { id: true, name: true } } },
-        });
-        if (!contact) throw new Error('Kontakt nicht gefunden.');
+    const data = await withTenantContext(ctx, async (tx) => {
+      const contact = await tx.clientContact.findUnique({
+        where: { id: contactId },
+        include: { client: { select: { id: true, name: true } } },
+      });
+      if (!contact) throw new ActionError('Kontakt nicht gefunden.');
 
-        // Alle Vorgänge dieser Person sammeln
-        const responses = await tx.requestResponse.findMany({
-          where: { authorType: 'CLIENT_CONTACT', authorId: contactId },
-          select: {
-            id: true,
-            requestId: true,
-            message: true,
-            createdAt: true,
-            request: { select: { title: true } },
-          },
-        });
-        // N-7: Auskunftsanspruch nach Art. 15 DSGVO bezieht sich auf
-        // personenbezogene Daten DES ANTRAGSTELLERS — nicht auf alle Dokumente
-        // seines Mandanten. Bei einem Mandanten mit mehreren Kontakten bekäme
-        // sonst jeder Kontakt im Export Metadaten von Dokumenten anderer
-        // Personen.
-        //
-        // Wir filtern auf Dokumente, die im Audit-Trail eine Aktion DIESES
-        // Kontakts haben (Upload via Portal, Antwort mit Anhang etc.) — das
-        // ist die einzige zuverlässige Verknüpfung „Kontakt ↔ Dokument" im
-        // Schema (Document.ownerStaffId zeigt auf Staff, nicht Contact).
-        const auditDocs = await tx.auditLog.findMany({
-          where: {
-            tenantId,
-            actorType: 'CLIENT_CONTACT',
-            actorId: contactId,
-            resourceType: 'document',
-          },
-          select: { resourceId: true },
-          distinct: ['resourceId'],
-        });
-        const docIds = auditDocs
-          .map((a) => a.resourceId)
-          .filter((id): id is string => typeof id === 'string');
-        const documents = docIds.length
-          ? await tx.document.findMany({
-              where: { id: { in: docIds } },
-              select: { id: true, title: true, classification: true, createdAt: true },
-            })
-          : [];
-        const magicLinks = await tx.magicLink.count({
-          where: { tenantId, email: contact.email },
-        });
-
-        await evidenceService.record(tx, {
+      // Alle Vorgänge dieser Person sammeln
+      const responses = await tx.requestResponse.findMany({
+        where: { authorType: 'CLIENT_CONTACT', authorId: contactId },
+        select: {
+          id: true,
+          requestId: true,
+          message: true,
+          createdAt: true,
+          request: { select: { title: true } },
+        },
+      });
+      // N-7: Auskunftsanspruch nach Art. 15 DSGVO bezieht sich auf
+      // personenbezogene Daten DES ANTRAGSTELLERS — nicht auf alle Dokumente
+      // seines Mandanten. Bei einem Mandanten mit mehreren Kontakten bekäme
+      // sonst jeder Kontakt im Export Metadaten von Dokumenten anderer
+      // Personen.
+      //
+      // Wir filtern auf Dokumente, die im Audit-Trail eine Aktion DIESES
+      // Kontakts haben (Upload via Portal, Antwort mit Anhang etc.) — das
+      // ist die einzige zuverlässige Verknüpfung „Kontakt ↔ Dokument" im
+      // Schema (Document.ownerStaffId zeigt auf Staff, nicht Contact).
+      const auditDocs = await tx.auditLog.findMany({
+        where: {
           tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
-          action: 'dsgvo.export.contact',
-          resourceType: 'client_contact',
-          resourceId: contactId,
-          after: { exportedFor: contact.email },
-        });
+          actorType: 'CLIENT_CONTACT',
+          actorId: contactId,
+          resourceType: 'document',
+        },
+        select: { resourceId: true },
+        distinct: ['resourceId'],
+      });
+      const docIds = auditDocs
+        .map((a) => a.resourceId)
+        .filter((id): id is string => typeof id === 'string');
+      const documents = docIds.length
+        ? await tx.document.findMany({
+            where: { id: { in: docIds } },
+            select: { id: true, title: true, classification: true, createdAt: true },
+          })
+        : [];
+      const magicLinks = await tx.magicLink.count({
+        where: { tenantId, email: contact.email },
+      });
 
-        return {
-          contact: {
-            id: contact.id,
-            email: contact.email,
-            fullName: contact.fullName,
-            client: contact.client.name,
-            createdAt: contact.createdAt,
-            lastLoginAt: contact.lastLoginAt,
-            active: contact.active,
-          },
-          interactions: {
-            requestResponses: responses,
-            // N-7: umbenannt — diese Dokumente sind ausschließlich solche, die
-            // dem Antragsteller über das Audit-Log direkt zugeordnet sind
-            // (Upload, Antwort etc.). NICHT alle Dokumente des Mandanten.
-            documentsActedOnByContact: documents,
-            magicLinkRequests: magicLinks,
-          },
-          exportedAt: new Date().toISOString(),
-          exportedBy: staffId,
-        };
-      },
-    );
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'dsgvo.export.contact',
+        resourceType: 'client_contact',
+        resourceId: contactId,
+        after: { exportedFor: contact.email },
+      });
+
+      return {
+        contact: {
+          id: contact.id,
+          email: contact.email,
+          fullName: contact.fullName,
+          client: contact.client.name,
+          createdAt: contact.createdAt,
+          lastLoginAt: contact.lastLoginAt,
+          active: contact.active,
+        },
+        interactions: {
+          requestResponses: responses,
+          // N-7: umbenannt — diese Dokumente sind ausschließlich solche, die
+          // dem Antragsteller über das Audit-Log direkt zugeordnet sind
+          // (Upload, Antwort etc.). NICHT alle Dokumente des Mandanten.
+          documentsActedOnByContact: documents,
+          magicLinkRequests: magicLinks,
+        },
+        exportedAt: new Date().toISOString(),
+        exportedBy: staffId,
+      };
+    });
     return { ok: true, data };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return toActionError(e);
   }
 }
 
@@ -253,8 +239,11 @@ export async function exportContactDataAction(contactId: string): Promise<{
  * Lösch-Pflicht greift nur, soweit keine gesetzliche Aufbewahrungspflicht besteht.
  */
 export async function anonymizeContactAction(formData: FormData): Promise<void> {
-  const session = await staffAuth();
-  requireAdmin(session);
+  const g = await staffActionGuard();
+  if (!g.ok) throw new ActionError(g.error);
+  const { tenantId, staffId, ctx, session } = g;
+  if (!isStaffAdmin(session)) throw new ActionError(DSGVO_ADMIN_MSG);
+
   const contactIdRaw = formData.get('contactId');
   // NEW5: Input via Zod statt nur typeof — Prisma akzeptiert sonst beliebige
   // Strings für UUID-Spalten und wirft erst zur Laufzeit.
@@ -262,42 +251,38 @@ export async function anonymizeContactAction(formData: FormData): Promise<void> 
   if (!parsed.success) return;
   const { contactId } = parsed.data;
 
-  const { tenantId, staffId } = session.user;
   const anonymizedAt = new Date().toISOString();
   // NEW5: randomUUID statt Date.now() — bei zwei Anonymisierungen in derselben
   // Millisekunde würde Unique-Constraint (tenant_id, email) sonst kollidieren.
   const anonymousEmail = `anonymized-${crypto.randomUUID()}@taxtronik.local`;
 
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
-      const before = await tx.clientContact.findUnique({ where: { id: contactId } });
-      if (!before) return;
-      await tx.clientContact.update({
-        where: { id: contactId },
-        data: {
-          email: anonymousEmail,
-          fullName: 'Anonymisiert',
-          active: false,
-        },
-      });
-      // Magic-Links der Person ungültig machen (consumed)
-      await tx.magicLink.updateMany({
-        where: { tenantId, email: before.email, consumedAt: null },
-        data: { consumedAt: new Date() },
-      });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'dsgvo.anonymize.contact',
-        resourceType: 'client_contact',
-        resourceId: contactId,
-        before: { email: before.email, fullName: before.fullName },
-        after: { email: anonymousEmail, fullName: 'Anonymisiert', anonymizedAt },
-      });
-    },
-  );
+  await withTenantContext(ctx, async (tx) => {
+    const before = await tx.clientContact.findUnique({ where: { id: contactId } });
+    if (!before) return;
+    await tx.clientContact.update({
+      where: { id: contactId },
+      data: {
+        email: anonymousEmail,
+        fullName: 'Anonymisiert',
+        active: false,
+      },
+    });
+    // Magic-Links der Person ungültig machen (consumed)
+    await tx.magicLink.updateMany({
+      where: { tenantId, email: before.email, consumedAt: null },
+      data: { consumedAt: new Date() },
+    });
+    await evidenceService.record(tx, {
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
+      action: 'dsgvo.anonymize.contact',
+      resourceType: 'client_contact',
+      resourceId: contactId,
+      before: { email: before.email, fullName: before.fullName },
+      after: { email: anonymousEmail, fullName: 'Anonymisiert', anonymizedAt },
+    });
+  });
 
   // N-2: Art. 17 ("Recht auf Löschung") — alle aktiven Portal-Sessions der Person
   // sofort revoken. Sonst bliebe der JWT-Cookie bis 24 h gültig und der

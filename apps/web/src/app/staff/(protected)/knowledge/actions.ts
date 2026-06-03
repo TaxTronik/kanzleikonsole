@@ -6,10 +6,11 @@ import { randomBytes } from 'node:crypto';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { Prisma } from '@prisma/client';
-import { staffAuth } from '@/server/auth/staff';
-import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
+import { staffActionGuard, withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
+
+export type { ActionResult };
 
 function slugify(s: string): string {
   return slugifyLib(s, { separator: '-', maxLength: 80 }) || 'eintrag';
@@ -20,30 +21,21 @@ const CategorySchema = z.object({
   parentId: z.string().uuid().optional().or(z.literal('')),
 });
 
-export interface ActionResult { ok: boolean; error?: string; }
-
 export async function createCategoryAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-  // Kategorien sind Wissensstruktur — Pflege via ADMIN/PARTNER, Artikel können
-  // alle Mitarbeiter schreiben.
-  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
-
   const parsed = CategorySchema.safeParse({
     name: formData.get('name'),
     parentId: formData.get('parentId') ?? '',
   });
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-
-  const { tenantId, staffId } = session.user;
   const slug = slugify(parsed.data.name);
 
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
+  // Kategorien sind Wissensstruktur — Pflege via ADMIN/PARTNER, Artikel können
+  // alle Mitarbeiter schreiben.
+  return withStaff(
+    async (tx, { tenantId, staffId }) => {
       // Q-4: parentId muss zum Tenant gehören. RLS filtert Lesepfade, aber
       // der FK akzeptiert jede UUID, die im DB-Cluster existiert — sonst kann
       // ein UI-Bug (oder ein direkter API-Call mit fremder parentId) eine
@@ -54,7 +46,7 @@ export async function createCategoryAction(
           where: { id: parsed.data.parentId },
           select: { id: true },
         });
-        if (!parent) throw new Error('Übergeordnete Kategorie nicht in diesem Tenant.');
+        if (!parent) throw new ActionError('Übergeordnete Kategorie nicht in diesem Tenant.');
       }
       const cat = await tx.kbCategory.create({
         data: {
@@ -74,10 +66,8 @@ export async function createCategoryAction(
         after: { name: parsed.data.name, slug },
       });
     },
+    { requireAdmin: true, revalidate: '/staff/knowledge' },
   );
-
-  revalidatePath('/staff/knowledge');
-  return { ok: true };
 }
 
 const ArticleSchema = z.object({
@@ -88,8 +78,9 @@ const ArticleSchema = z.object({
 });
 
 export async function createArticleAction(formData: FormData): Promise<void> {
-  const session = await staffAuth();
-  if (!session?.user) return;
+  const g = await staffActionGuard();
+  if (!g.ok) return;
+  const { tenantId, staffId, ctx } = g;
 
   const parsed = ArticleSchema.safeParse({
     title: formData.get('title'),
@@ -97,9 +88,8 @@ export async function createArticleAction(formData: FormData): Promise<void> {
     categoryId: formData.get('categoryId') ?? '',
     published: formData.get('published') ?? undefined,
   });
-  if (!parsed.success) throw new Error('Validierungsfehler.');
+  if (!parsed.success) throw new ActionError('Validierungsfehler.');
 
-  const { tenantId, staffId } = session.user;
   const baseSlug = slugify(parsed.data.title);
   let slug = baseSlug;
 
@@ -107,63 +97,61 @@ export async function createArticleAction(formData: FormData): Promise<void> {
   // sequenzielle findUnique-Roundtrips + Race-Lücke zwischen findUnique und
   // create (zwei parallele Creates für denselben Title konnten denselben
   // Suffix picken und einer crashte ungefangen).
-  const id = await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
-      // categoryId Tenant-Sanity, falls gesetzt (symmetrisch zu Q-4).
-      if (parsed.data.categoryId) {
-        const cat = await tx.kbCategory.findFirst({
-          where: { id: parsed.data.categoryId },
-          select: { id: true },
-        });
-        if (!cat) throw new Error('Kategorie nicht in diesem Tenant.');
-      }
-      for (let attempt = 0; attempt < 5; attempt++) {
-        try {
-          const article = await tx.kbArticle.create({
-            data: {
-              tenantId,
-              title: parsed.data.title,
-              slug,
-              body: parsed.data.body,
-              categoryId: parsed.data.categoryId || null,
-              published: !!parsed.data.published,
-              authorId: staffId,
-            },
-          });
-          await evidenceService.record(tx, {
+  const id = await withTenantContext(ctx, async (tx) => {
+    // categoryId Tenant-Sanity, falls gesetzt (symmetrisch zu Q-4).
+    if (parsed.data.categoryId) {
+      const cat = await tx.kbCategory.findFirst({
+        where: { id: parsed.data.categoryId },
+        select: { id: true },
+      });
+      if (!cat) throw new ActionError('Kategorie nicht in diesem Tenant.');
+    }
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        const article = await tx.kbArticle.create({
+          data: {
             tenantId,
-            actorType: 'STAFF',
-            actorId: staffId,
-            action: 'kb.article.create',
-            resourceType: 'kb_article',
-            resourceId: article.id,
-            after: { title: parsed.data.title, slug, published: !!parsed.data.published },
-          });
-          return article.id;
-        } catch (err) {
-          // P2002 = unique-Constraint. Slug ist hier der einzige unique-Index
-          // mit user-input, also kein Mehrdeutigkeits-Problem.
-          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-            slug = `${baseSlug}-${randomBytes(2).toString('hex')}`;
-            continue;
-          }
-          throw err;
+            title: parsed.data.title,
+            slug,
+            body: parsed.data.body,
+            categoryId: parsed.data.categoryId || null,
+            published: !!parsed.data.published,
+            authorId: staffId,
+          },
+        });
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'kb.article.create',
+          resourceType: 'kb_article',
+          resourceId: article.id,
+          after: { title: parsed.data.title, slug, published: !!parsed.data.published },
+        });
+        return article.id;
+      } catch (err) {
+        // P2002 = unique-Constraint. Slug ist hier der einzige unique-Index
+        // mit user-input, also kein Mehrdeutigkeits-Problem.
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+          slug = `${baseSlug}-${randomBytes(2).toString('hex')}`;
+          continue;
         }
+        throw err;
       }
-      throw new Error('Slug konnte nach mehreren Versuchen nicht eindeutig gemacht werden.');
-    },
-  );
+    }
+    throw new ActionError('Slug konnte nach mehreren Versuchen nicht eindeutig gemacht werden.');
+  });
 
   revalidatePath('/staff/knowledge');
-  redirect(`/staff/knowledge/${id}`);
+  redirect(`/staff/knowledge/${id}`); // wirft (never) — NACH der Tx
 }
 
 const UpdateArticleSchema = ArticleSchema.extend({ id: z.string().uuid() });
 
 export async function updateArticleAction(formData: FormData): Promise<void> {
-  const session = await staffAuth();
-  if (!session?.user) return;
+  const g = await staffActionGuard();
+  if (!g.ok) return;
+  const { tenantId, staffId, ctx } = g;
 
   const parsed = UpdateArticleSchema.safeParse({
     id: formData.get('id'),
@@ -172,74 +160,64 @@ export async function updateArticleAction(formData: FormData): Promise<void> {
     categoryId: formData.get('categoryId') ?? '',
     published: formData.get('published') ?? undefined,
   });
-  if (!parsed.success) throw new Error('Validierungsfehler.');
-
-  const { tenantId, staffId } = session.user;
+  if (!parsed.success) throw new ActionError('Validierungsfehler.');
   const data = parsed.data;
 
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
-      const before = await tx.kbArticle.findUnique({ where: { id: data.id } });
-      if (!before) return;
-      const updated = await tx.kbArticle.update({
-        where: { id: data.id },
-        data: {
-          title: data.title,
-          body: data.body,
-          categoryId: data.categoryId || null,
-          published: !!data.published,
-        },
-      });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'kb.article.update',
-        resourceType: 'kb_article',
-        resourceId: updated.id,
-        before: { title: before.title, published: before.published },
-        after: { title: updated.title, published: updated.published },
-      });
-    },
-  );
+  await withTenantContext(ctx, async (tx) => {
+    const before = await tx.kbArticle.findUnique({ where: { id: data.id } });
+    if (!before) return;
+    const updated = await tx.kbArticle.update({
+      where: { id: data.id },
+      data: {
+        title: data.title,
+        body: data.body,
+        categoryId: data.categoryId || null,
+        published: !!data.published,
+      },
+    });
+    await evidenceService.record(tx, {
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
+      action: 'kb.article.update',
+      resourceType: 'kb_article',
+      resourceId: updated.id,
+      before: { title: before.title, published: before.published },
+      after: { title: updated.title, published: updated.published },
+    });
+  });
 
   revalidatePath('/staff/knowledge');
   revalidatePath(`/staff/knowledge/${data.id}`);
-  redirect(`/staff/knowledge/${data.id}`);
+  redirect(`/staff/knowledge/${data.id}`); // wirft (never) — NACH der Tx
 }
 
 export async function deleteArticleAction(formData: FormData): Promise<void> {
-  const session = await staffAuth();
-  if (!session?.user) return;
-  if (!isStaffAdmin(session)) return;
+  const g = await staffActionGuard({ requireAdmin: true });
+  if (!g.ok) return;
+  const { tenantId, staffId, ctx } = g;
   // S2: UUID-Validation.
   const parsed = z.object({ id: z.string().uuid() }).safeParse({ id: formData.get('id') });
   if (!parsed.success) return;
   const { id } = parsed.data;
 
-  const { tenantId, staffId } = session.user;
-
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
-      const before = await tx.kbArticle.findUnique({ where: { id } });
-      if (!before) return;
-      await tx.kbArticle.delete({ where: { id } });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'kb.article.delete',
-        resourceType: 'kb_article',
-        resourceId: id,
-        before: { title: before.title },
-      });
-    },
-  );
+  await withTenantContext(ctx, async (tx) => {
+    const before = await tx.kbArticle.findUnique({ where: { id } });
+    if (!before) return;
+    await tx.kbArticle.delete({ where: { id } });
+    await evidenceService.record(tx, {
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
+      action: 'kb.article.delete',
+      resourceType: 'kb_article',
+      resourceId: id,
+      before: { title: before.title },
+    });
+  });
 
   revalidatePath('/staff/knowledge');
-  redirect('/staff/knowledge');
+  redirect('/staff/knowledge'); // wirft (never) — NACH der Tx
 }
 
 export interface SearchHit {
@@ -278,46 +256,41 @@ function sanitizeSearchSnippet(raw: string): string {
  * Query wird per `plainto_tsquery` aus User-Input erzeugt (sicher gegen TS-Syntax-Injection).
  */
 export async function searchArticles(query: string): Promise<SearchHit[]> {
-  const session = await staffAuth();
-  if (!session?.user) return [];
+  const g = await staffActionGuard();
+  if (!g.ok) return [];
   const q = query.trim();
   if (!q) return [];
 
-  const { tenantId, staffId } = session.user;
-
-  return withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
-      const rows = await tx.$queryRaw<
-        Array<{ id: string; title: string; slug: string; snippet: string; rank: number; category_name: string | null }>
-      >`
-        SELECT
-          a.id,
-          a.title,
-          a.slug,
-          ts_headline(
-            'german',
-            a.body,
-            plainto_tsquery('german', ${q}),
-            'StartSel=<mark>, StopSel=</mark>, MaxFragments=2, MaxWords=20, MinWords=8'
-          ) AS snippet,
-          ts_rank(a.search_vec, plainto_tsquery('german', ${q})) AS rank,
-          c.name AS category_name
-        FROM kb_article a
-        LEFT JOIN kb_category c ON c.id = a.category_id
-        WHERE a.published = TRUE
-          AND a.search_vec @@ plainto_tsquery('german', ${q})
-        ORDER BY rank DESC
-        LIMIT 30
-      `;
-      return rows.map((r) => ({
-        id: r.id,
-        title: r.title,
-        slug: r.slug,
-        snippet: sanitizeSearchSnippet(r.snippet),
-        rank: r.rank,
-        categoryName: r.category_name,
-      }));
-    },
-  );
+  return withTenantContext(g.ctx, async (tx) => {
+    const rows = await tx.$queryRaw<
+      Array<{ id: string; title: string; slug: string; snippet: string; rank: number; category_name: string | null }>
+    >`
+      SELECT
+        a.id,
+        a.title,
+        a.slug,
+        ts_headline(
+          'german',
+          a.body,
+          plainto_tsquery('german', ${q}),
+          'StartSel=<mark>, StopSel=</mark>, MaxFragments=2, MaxWords=20, MinWords=8'
+        ) AS snippet,
+        ts_rank(a.search_vec, plainto_tsquery('german', ${q})) AS rank,
+        c.name AS category_name
+      FROM kb_article a
+      LEFT JOIN kb_category c ON c.id = a.category_id
+      WHERE a.published = TRUE
+        AND a.search_vec @@ plainto_tsquery('german', ${q})
+      ORDER BY rank DESC
+      LIMIT 30
+    `;
+    return rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      slug: r.slug,
+      snippet: sanitizeSearchSnippet(r.snippet),
+      rank: r.rank,
+      categoryName: r.category_name,
+    }));
+  });
 }

@@ -4,15 +4,15 @@ import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto
 import { z } from 'zod';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { sendTemplateMail } from '@/server/mail/dispatch';
 import { portalBaseUrl } from '@taxtronik/config';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { checkRateLimit, checkIpOrGlobalLimit, getClientIp } from '@/server/rate-limit';
-import { isStaffAdmin } from '@/server/auth/rbac';
+import { isStaffAdmin, toActionError } from '@/server/auth/rbac';
 import { headers } from 'next/headers';
+import { staffActionGuard, withStaff, ActionError } from '@/server/actions/staff-action';
 
 const SIGNING_TOKEN_TTL_HOURS = 72;
 
@@ -34,8 +34,9 @@ const CreateSchema = z.object({
 export interface ActionResult { ok: boolean; error?: string; }
 
 export async function createPoaAction(formData: FormData): Promise<void> {
-  const session = await staffAuth();
-  if (!session?.user) return;
+  const g = await staffActionGuard();
+  if (!g.ok) return; // void: still abbrechen (Seite ist ohnehin auth-gated)
+  const { tenantId, staffId, ctx, session } = g;
 
   // R-4: Vollmachtserteilung ist berufsrechtlich eine Erklärung des
   // Steuerberaters (§§ 3 ff. StBerG) — der Berufsträger trägt die Haftung.
@@ -43,7 +44,7 @@ export async function createPoaAction(formData: FormData): Promise<void> {
   // können. ADMIN/PARTNER (in der Praxis: Kanzleileitung + Partner =
   // Berufsträger) als Gate. Für 4-Augen-Workflow später separater Schritt.
   if (!isStaffAdmin(session)) {
-    throw new Error('Vollmachten dürfen nur von ADMIN/PARTNER (Berufsträger) angelegt werden.');
+    throw new ActionError('Vollmachten dürfen nur von ADMIN/PARTNER (Berufsträger) angelegt werden.');
   }
 
   const parsed = CreateSchema.safeParse({
@@ -56,14 +57,11 @@ export async function createPoaAction(formData: FormData): Promise<void> {
     validFrom: formData.get('validFrom'),
     validUntil: formData.get('validUntil') ?? '',
   });
-  if (!parsed.success) throw new Error('Validierungsfehler.');
+  if (!parsed.success) throw new ActionError('Validierungsfehler.');
 
-  const { tenantId, staffId } = session.user;
   const data = parsed.data;
 
-  const id = await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
+  const id = await withTenantContext(ctx, async (tx) => {
       const poa = await tx.powerOfAttorney.create({
         data: {
           tenantId,
@@ -99,13 +97,13 @@ export async function createPoaAction(formData: FormData): Promise<void> {
 const SendSchema = z.object({ poaId: z.string().uuid() });
 
 export async function sendForSignatureAction(formData: FormData): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
+  const g = await staffActionGuard();
+  if (!g.ok) return g;
+  const { tenantId, staffId, ctx } = g;
 
   const parsed = SendSchema.safeParse({ poaId: formData.get('poaId') });
   if (!parsed.success) return { ok: false, error: 'Ungültig.' };
 
-  const { tenantId, staffId } = session.user;
   const { poaId } = parsed.data;
 
   // Token im Klartext, Hash in DB
@@ -113,15 +111,15 @@ export async function sendForSignatureAction(formData: FormData): Promise<Action
   const tokenHash = hashToken(rawToken);
   const expiresAt = new Date(Date.now() + SIGNING_TOKEN_TTL_HOURS * 60 * 60 * 1000);
 
-  const sent = await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
+  let sent: { poa: Awaited<ReturnType<typeof prismaOwner.powerOfAttorney.update>>; tenantName: string };
+  try {
+    sent = await withTenantContext(ctx, async (tx) => {
       const before = await tx.powerOfAttorney.findUnique({ where: { id: poaId } });
-      if (!before) throw new Error('Vollmacht nicht gefunden.');
-      if (before.status === 'SIGNED') throw new Error('Bereits unterschrieben.');
+      if (!before) throw new ActionError('Vollmacht nicht gefunden.');
+      if (before.status === 'SIGNED') throw new ActionError('Bereits unterschrieben.');
 
       const tenant = await tx.tenant.findUnique({ where: { id: tenantId } });
-      if (!tenant) throw new Error('Mandant fehlt.');
+      if (!tenant) throw new ActionError('Mandant fehlt.');
 
       const updated = await tx.powerOfAttorney.update({
         where: { id: poaId },
@@ -146,8 +144,10 @@ export async function sendForSignatureAction(formData: FormData): Promise<Action
       });
 
       return { poa: updated, tenantName: tenant.name };
-    },
-  );
+    });
+  } catch (e) {
+    return toActionError(e);
+  }
 
   const link = `${portalBaseUrl}/poa/sign?token=${encodeURIComponent(rawToken)}`;
   await sendTemplateMail({
@@ -178,19 +178,14 @@ const RevokeSchema = z.object({
 });
 
 export async function revokePoaAction(formData: FormData): Promise<void> {
-  const session = await staffAuth();
-  if (!session?.user) return;
   const parsed = RevokeSchema.safeParse({
     poaId: formData.get('poaId'),
     reason: formData.get('reason'),
   });
   if (!parsed.success) return;
 
-  const { tenantId, staffId } = session.user;
-
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
+  await withStaff(
+    async (tx, { tenantId, staffId }) => {
       const updated = await tx.powerOfAttorney.update({
         where: { id: parsed.data.poaId },
         data: {
@@ -212,10 +207,8 @@ export async function revokePoaAction(formData: FormData): Promise<void> {
         after: { reason: parsed.data.reason },
       });
     },
+    { revalidate: ['/staff/poa', `/staff/poa/${parsed.data.poaId}`] },
   );
-
-  revalidatePath('/staff/poa');
-  revalidatePath(`/staff/poa/${parsed.data.poaId}`);
 }
 
 // ----- Public sign-flow (kein Auth) ------------------------------------------
