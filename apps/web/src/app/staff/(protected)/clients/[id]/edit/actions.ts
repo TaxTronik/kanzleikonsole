@@ -2,10 +2,10 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { staffAuth } from '@/server/auth/staff';
-import { isStaffAdmin } from '@/server/auth/rbac';
+import { isStaffAdmin, toActionError } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
+import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
 
 export interface ActionResult {
   ok: boolean;
@@ -38,8 +38,10 @@ export async function saveAdminFieldsAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
+  const g = await staffActionGuard();
+  if (!g.ok) return g;
+  const { tenantId, staffId, ctx, session } = g;
+
   const parsed = AdminSchema.safeParse({
     clientId: formData.get('clientId'),
     datevNo: formData.get('datevNo'),
@@ -50,19 +52,17 @@ export async function saveAdminFieldsAction(
     vertraulich: formData.get('vertraulich') === 'on',
   });
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler — bitte Eingaben prüfen.' };
-  const { tenantId, staffId } = session.user;
   const { clientId } = parsed.data;
   // Die Vertraulich-Markierung ist eine Zugriffssteuerung → nur Admin/Partner.
   const isAdmin = isStaffAdmin(session);
 
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
+  try {
+    await withTenantContext(ctx, async (tx) => {
       const before = await tx.client.findUnique({
         where: { id: clientId },
         select: { datevNo: true, addisonNo: true, invoiceEmail: true, priority: true, internalNotes: true, vertraulich: true },
       });
-      if (!before) throw new Error('Mandant nicht gefunden.');
+      if (!before) throw new ActionError('Mandant nicht gefunden.');
 
       const prio = parsed.data.priority;
       const after = {
@@ -87,8 +87,10 @@ export async function saveAdminFieldsAction(
         before,
         after,
       });
-    },
-  );
+    });
+  } catch (e) {
+    return toActionError(e);
+  }
 
   revalidatePath(`/staff/clients/${clientId}`);
   revalidatePath(`/staff/clients/${clientId}/edit`);
@@ -116,8 +118,10 @@ export async function saveGwgFieldsAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
+  const g = await staffActionGuard();
+  if (!g.ok) return g;
+  const { tenantId, staffId, ctx } = g;
+
   const parsed = GwgSchema.safeParse({
     clientId: formData.get('clientId'),
     name: formData.get('name'),
@@ -129,12 +133,10 @@ export async function saveGwgFieldsAction(
     countryIso: formData.get('countryIso'),
   });
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler — bitte Eingaben prüfen.' };
-  const { tenantId, staffId } = session.user;
   const { clientId } = parsed.data;
 
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
+  try {
+    await withTenantContext(ctx, async (tx) => {
       const before = await tx.client.findUnique({
         where: { id: clientId },
         select: {
@@ -142,7 +144,7 @@ export async function saveGwgFieldsAction(
           street: true, postalCode: true, city: true, countryIso: true,
         },
       });
-      if (!before) throw new Error('Mandant nicht gefunden.');
+      if (!before) throw new ActionError('Mandant nicht gefunden.');
 
       const after = {
         name: parsed.data.name.trim(),
@@ -182,8 +184,10 @@ export async function saveGwgFieldsAction(
         before,
         after: { ...after, _changedFields: changed, _gwgReverificationTriggered: gwgReset },
       });
-    },
-  );
+    });
+  } catch (e) {
+    return toActionError(e);
+  }
 
   revalidatePath(`/staff/clients/${clientId}`);
   revalidatePath(`/staff/clients/${clientId}/edit`);
@@ -205,9 +209,11 @@ export async function setResponsibilitiesAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-  // Berufsträger-Zuordnung bestimmt GwG-Verantwortung — nur ADMIN/PARTNER.
+  const g = await staffActionGuard();
+  if (!g.ok) return g;
+  const { tenantId, staffId: actorId, ctx, session } = g;
+  // Berufsträger-Zuordnung bestimmt GwG-Verantwortung — nur ADMIN/PARTNER
+  // (eigene, präzisere Meldung als der Standard-Gate).
   if (!isStaffAdmin(session)) {
     return { ok: false, error: 'Nur ADMIN/PARTNER darf Bearbeiter-Zuordnungen ändern.' };
   }
@@ -219,22 +225,17 @@ export async function setResponsibilitiesAction(
     hauptbearbeiterIds: hauptIds,
   });
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler — bitte Eingaben prüfen.' };
-  const { tenantId, staffId: actorId } = session.user;
   const { clientId, berufstraegerIds: berufIds, hauptbearbeiterIds } = parsed.data;
 
   // Praxis-Check: mind. ein Berufsträger erforderlich (sonst kein GwG-Verifier
   // mehr). Wenn alle Berufsträger entfernt werden sollen → explizit ablehnen,
   // damit kein Mandant in einen broken state läuft.
   if (berufIds.length === 0) {
-    return {
-      ok: false,
-      error: 'Mindestens ein Berufsträger muss zugeordnet sein.',
-    };
+    return { ok: false, error: 'Mindestens ein Berufsträger muss zugeordnet sein.' };
   }
 
-  await withTenantContext(
-    { tenantId, actorId, actorType: 'STAFF' },
-    async (tx) => {
+  try {
+    await withTenantContext(ctx, async (tx) => {
       const before = await tx.clientResponsibility.findMany({ where: { clientId } });
 
       // 1. Berufsträger — Diff. Mehrere möglich (Gesellschafter-Konstellationen,
@@ -286,18 +287,14 @@ export async function setResponsibilitiesAction(
           action: 'client.responsibilities.update',
           resourceType: 'client',
           resourceId: clientId,
-          before: {
-            berufstraegerIds: oldBeruf,
-            hauptbearbeiterIds: oldHaupt,
-          },
-          after: {
-            berufstraegerIds: berufIds,
-            hauptbearbeiterIds,
-          },
+          before: { berufstraegerIds: oldBeruf, hauptbearbeiterIds: oldHaupt },
+          after: { berufstraegerIds: berufIds, hauptbearbeiterIds },
         });
       }
-    },
-  );
+    });
+  } catch (e) {
+    return toActionError(e);
+  }
 
   revalidatePath(`/staff/clients/${clientId}`);
   revalidatePath(`/staff/clients/${clientId}/edit`);

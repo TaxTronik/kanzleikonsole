@@ -3,10 +3,11 @@
 import { z } from 'zod';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { fmtDateShort } from '@/lib/fmt';
+import { toActionError } from '@/server/auth/rbac';
+import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
 
 const CreateSchema = z.object({
   clientId: z.string().uuid(),
@@ -33,132 +34,126 @@ export interface CreateResult {
 }
 
 export async function createInvoiceFromTimeEntriesAction(input: z.infer<typeof CreateSchema>): Promise<CreateResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
+  const g = await staffActionGuard();
+  if (!g.ok) return g;
+  const { tenantId, staffId, ctx } = g;
 
   const parsed = CreateSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues.map((i) => i.message).join('; ') };
   }
   const data = parsed.data;
-  const { tenantId, staffId } = session.user;
 
   let invoiceId: string;
   try {
-    invoiceId = await withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
-      async (tx) => {
-        // 1. Sammle abrechenbare, nicht abgerechnete TimeEntries
-        const where = {
+    invoiceId = await withTenantContext(ctx, async (tx) => {
+      // 1. Sammle abrechenbare, nicht abgerechnete TimeEntries
+      const where = {
+        tenantId,
+        clientId: data.clientId,
+        billable: true,
+        invoiceId: null,
+        endedAt: { not: null }, // nur abgeschlossene Timer
+        ...(data.entryIds ? { id: { in: data.entryIds } } : {}),
+      };
+      const entries = await tx.timeEntry.findMany({ where, orderBy: { startedAt: 'asc' } });
+      if (entries.length === 0) {
+        throw new ActionError('Keine abrechenbaren Stunden für diesen Mandanten.');
+      }
+
+      // 2. Stundenwerte berechnen
+      const entriesWithMinutes = entries.map((e) => {
+        const end = e.endedAt!;
+        const minutes = Math.max(0, Math.floor((end.getTime() - e.startedAt.getTime()) / 60_000));
+        const hours = minutes / 60;
+        // Stundensatz: pro-entry-Override > Default-Rate
+        const rate = e.hourlyRate ? Number(e.hourlyRate.toString()) : data.hourlyRate;
+        return { entry: e, minutes, hours, rate, net: round2(hours * rate) };
+      });
+
+      const totalNet = round2(entriesWithMinutes.reduce((s, x) => s + x.net, 0));
+      const vatAmount = round2((totalNet * data.vatRate) / 100);
+      const totalGross = round2(totalNet + vatAmount);
+
+      // 3. Positionen je nach Strategie
+      let positions: Array<{
+        position: number;
+        description: string;
+        quantity: number;
+        unit: string;
+        unitPrice: number;
+        netAmount: number;
+      }>;
+
+      if (data.strategy === 'one-line') {
+        const totalHours = round2(entriesWithMinutes.reduce((s, x) => s + x.hours, 0));
+        const avgRate = totalHours > 0 ? round2(totalNet / totalHours) : data.hourlyRate;
+        positions = [
+          {
+            position: 1,
+            description: data.subject,
+            quantity: totalHours,
+            unit: 'Stunde',
+            unitPrice: avgRate,
+            netAmount: totalNet,
+          },
+        ];
+      } else {
+        positions = entriesWithMinutes.map((x, i) => ({
+          position: i + 1,
+          description: `${formatDateShort(x.entry.startedAt)} — ${x.entry.description}`,
+          quantity: round2(x.hours),
+          unit: 'Stunde',
+          unitPrice: x.rate,
+          netAmount: x.net,
+        }));
+      }
+
+      // 4. Rechnung anlegen
+      const inv = await tx.invoice.create({
+        data: {
           tenantId,
           clientId: data.clientId,
-          billable: true,
-          invoiceId: null,
-          endedAt: { not: null }, // nur abgeschlossene Timer
-          ...(data.entryIds ? { id: { in: data.entryIds } } : {}),
-        };
-        const entries = await tx.timeEntry.findMany({
-          where,
-          orderBy: { startedAt: 'asc' },
-        });
-        if (entries.length === 0) {
-          throw new Error('Keine abrechenbaren Stunden für diesen Mandanten.');
-        }
+          number: data.number,
+          subject: data.subject,
+          issueDate: new Date(data.issueDate),
+          dueDate: new Date(data.dueDate),
+          status: 'DRAFT',
+          format: data.format,
+          netAmount: totalNet,
+          vatAmount,
+          totalAmount: totalGross,
+          vatRate: data.vatRate,
+          notes: data.notes || null,
+          createdByStaff: staffId,
+          positions: { create: positions },
+        },
+      });
 
-        // 2. Stundenwerte berechnen
-        const entriesWithMinutes = entries.map((e) => {
-          const end = e.endedAt!;
-          const minutes = Math.max(0, Math.floor((end.getTime() - e.startedAt.getTime()) / 60_000));
-          const hours = minutes / 60;
-          // Stundensatz: pro-entry-Override > Default-Rate
-          const rate = e.hourlyRate ? Number(e.hourlyRate.toString()) : data.hourlyRate;
-          return { entry: e, minutes, hours, rate, net: round2(hours * rate) };
-        });
+      // 5. TimeEntries verlinken
+      await tx.timeEntry.updateMany({
+        where: { id: { in: entries.map((e) => e.id) } },
+        data: { invoiceId: inv.id },
+      });
 
-        const totalNet = round2(entriesWithMinutes.reduce((s, x) => s + x.net, 0));
-        const vatAmount = round2((totalNet * data.vatRate) / 100);
-        const totalGross = round2(totalNet + vatAmount);
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'invoice.create.from_time',
+        resourceType: 'invoice',
+        resourceId: inv.id,
+        after: {
+          number: data.number,
+          clientId: data.clientId,
+          timeEntryCount: entries.length,
+          totalAmount: totalGross,
+          strategy: data.strategy,
+        },
+      });
 
-        // 3. Positionen je nach Strategie
-        let positions: Array<{
-          position: number;
-          description: string;
-          quantity: number;
-          unit: string;
-          unitPrice: number;
-          netAmount: number;
-        }>;
-
-        if (data.strategy === 'one-line') {
-          const totalHours = round2(entriesWithMinutes.reduce((s, x) => s + x.hours, 0));
-          const avgRate = totalHours > 0 ? round2(totalNet / totalHours) : data.hourlyRate;
-          positions = [
-            {
-              position: 1,
-              description: data.subject,
-              quantity: totalHours,
-              unit: 'Stunde',
-              unitPrice: avgRate,
-              netAmount: totalNet,
-            },
-          ];
-        } else {
-          positions = entriesWithMinutes.map((x, i) => ({
-            position: i + 1,
-            description: `${formatDateShort(x.entry.startedAt)} — ${x.entry.description}`,
-            quantity: round2(x.hours),
-            unit: 'Stunde',
-            unitPrice: x.rate,
-            netAmount: x.net,
-          }));
-        }
-
-        // 4. Rechnung anlegen
-        const inv = await tx.invoice.create({
-          data: {
-            tenantId,
-            clientId: data.clientId,
-            number: data.number,
-            subject: data.subject,
-            issueDate: new Date(data.issueDate),
-            dueDate: new Date(data.dueDate),
-            status: 'DRAFT',
-            format: data.format,
-            netAmount: totalNet,
-            vatAmount,
-            totalAmount: totalGross,
-            vatRate: data.vatRate,
-            notes: data.notes || null,
-            createdByStaff: staffId,
-            positions: { create: positions },
-          },
-        });
-
-        // 5. TimeEntries verlinken
-        await tx.timeEntry.updateMany({
-          where: { id: { in: entries.map((e) => e.id) } },
-          data: { invoiceId: inv.id },
-        });
-
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
-          action: 'invoice.create.from_time',
-          resourceType: 'invoice',
-          resourceId: inv.id,
-          after: {
-            number: data.number,
-            clientId: data.clientId,
-            timeEntryCount: entries.length,
-            totalAmount: totalGross,
-            strategy: data.strategy,
-          },
-        });
-
-        return inv.id;
-      },
-    );
+      return inv.id;
+    });
   } catch (e) {
     const msg = (e as Error).message;
     if (msg.includes('GwG-Schranke') || msg.includes('nicht aktiv')) {
@@ -167,7 +162,7 @@ export async function createInvoiceFromTimeEntriesAction(input: z.infer<typeof C
     if (msg.includes('Unique')) {
       return { ok: false, error: 'Rechnungsnummer existiert bereits.' };
     }
-    return { ok: false, error: msg };
+    return toActionError(e);
   }
 
   revalidatePath(`/staff/clients/${data.clientId}`);
@@ -180,8 +175,8 @@ export async function createInvoiceFromTimeEntriesAction(input: z.infer<typeof C
  * Nutzt 'one-line' und alle nicht-abgerechneten Stunden.
  */
 export async function billAllPendingHoursAction(formData: FormData): Promise<void> {
-  const session = await staffAuth();
-  if (!session?.user) return;
+  const g = await staffActionGuard();
+  if (!g.ok) return; // void-Action: still abbrechen (die delegierte Action prüft erneut)
 
   const clientId = formData.get('clientId');
   const hourlyRate = Number(formData.get('hourlyRate') ?? 120);

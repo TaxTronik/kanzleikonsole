@@ -2,15 +2,14 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { commitDocumentFromBytes } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
 import { prismaBytes } from '@/server/db/prisma-bytes';
+import { toActionError } from '@/server/auth/rbac';
+import { staffActionGuard, withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
 
-export interface ActionResult {
-  ok: boolean;
-  error?: string;
+export interface ActionResult extends BaseActionResult {
   id?: string;
 }
 
@@ -44,11 +43,12 @@ const SaveSchema = z.object({
 export async function saveTaxFilingAction(
   input: z.infer<typeof SaveSchema>,
 ): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
+  const g = await staffActionGuard();
+  if (!g.ok) return g;
+  const { tenantId, staffId, ctx } = g;
+
   const parsed = SaveSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
-  const { tenantId, staffId } = session.user;
   const data = parsed.data;
 
   // PDF optional vorab ablegen (vor TX, ClamAV-Scan etc.)
@@ -58,121 +58,103 @@ export async function saveTaxFilingAction(
     if (fileData.length > 10 * 1024 * 1024) {
       return { ok: false, error: 'PDF zu groß (max. 10 MB).' };
     }
-    const stored = await commitDocumentFromBytes({
-      fileData,
-      classification: 'GOBD_TAX',
-      tenantId,
+    const stored = await commitDocumentFromBytes({ fileData, classification: 'GOBD_TAX', tenantId });
+    documentId = await withTenantContext(ctx, async (tx) => {
+      const doc = await tx.document.create({
+        data: {
+          tenantId,
+          clientId: data.clientId,
+          title: data.pdf!.fileName,
+          classification: 'GOBD_TAX',
+          // P-3: Magic-Bytes statt Client-Header — siehe M-2.
+          mimeType: stored.detectedMime ?? data.pdf!.mimeType,
+        },
+      });
+      await tx.documentVersion.create({
+        data: {
+          documentId: doc.id,
+          versionNo: 1,
+          storageBucket: stored.targetBucket,
+          storageKey: stored.targetKey,
+          sha256: prismaBytes(stored.sha256),
+          sizeBytes: stored.sizeBytes,
+          immutable: stored.immutable,
+          scanStatus: 'CLEAN',
+          scanCompletedAt: new Date(),
+          createdById: staffId,
+        },
+      });
+      return doc.id;
     });
-    documentId = await withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
-      async (tx) => {
-        const doc = await tx.document.create({
-          data: {
-            tenantId,
-            clientId: data.clientId,
-            title: data.pdf!.fileName,
-            classification: 'GOBD_TAX',
-            // P-3: Magic-Bytes statt Client-Header — siehe M-2.
-            mimeType: stored.detectedMime ?? data.pdf!.mimeType,
-          },
-        });
-        await tx.documentVersion.create({
-          data: {
-            documentId: doc.id,
-            versionNo: 1,
-            storageBucket: stored.targetBucket,
-            storageKey: stored.targetKey,
-            sha256: prismaBytes(stored.sha256),
-            sizeBytes: stored.sizeBytes,
-            immutable: stored.immutable,
-            scanStatus: 'CLEAN',
-            scanCompletedAt: new Date(),
-            createdById: staffId,
-          },
-        });
-        return doc.id;
-      },
-    );
   }
 
   let resultId: string;
   try {
-    resultId = await withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
-      async (tx) => {
-        const baseData = {
-          kind: data.kind,
-          period: data.period,
-          filingDate: data.filingDate ? new Date(data.filingDate) : null,
-          expectedAssessed: data.expectedAssessed,
-          expectedPrepaid: data.expectedPrepaid,
-          expectedRefund: data.expectedRefund,
-          expectedPay: data.expectedPay,
-          clientNote: data.clientNote?.trim() || null,
-          internalNote: data.internalNote?.trim() || null,
-        };
+    resultId = await withTenantContext(ctx, async (tx) => {
+      const baseData = {
+        kind: data.kind,
+        period: data.period,
+        filingDate: data.filingDate ? new Date(data.filingDate) : null,
+        expectedAssessed: data.expectedAssessed,
+        expectedPrepaid: data.expectedPrepaid,
+        expectedRefund: data.expectedRefund,
+        expectedPay: data.expectedPay,
+        clientNote: data.clientNote?.trim() || null,
+        internalNote: data.internalNote?.trim() || null,
+      };
 
-        if (data.filingId) {
-          const before = await tx.taxFiling.findUnique({ where: { id: data.filingId } });
-          if (!before) throw new Error('Erklärung nicht gefunden.');
-          await tx.taxFiling.update({
-            where: { id: data.filingId },
-            data: {
-              ...baseData,
-              ...(documentId ? { documentId } : {}),
-            },
-          });
-          await evidenceService.record(tx, {
-            tenantId,
-            actorType: 'STAFF',
-            actorId: staffId,
-            action: 'tax_filing.update',
-            resourceType: 'tax_filing',
-            resourceId: data.filingId,
-            before,
-            after: baseData,
-          });
-          return data.filingId;
-        }
-
-        // Auf vorhandene Erklärung für (client, kind, period) prüfen
-        const existing = await tx.taxFiling.findUnique({
-          where: {
-            tenantId_clientId_kind_period: {
-              tenantId,
-              clientId: data.clientId,
-              kind: data.kind,
-              period: data.period,
-            },
-          },
-        });
-        if (existing) {
-          throw new Error('Es gibt bereits eine Erklärung für diesen Zeitraum.');
-        }
-
-        const created = await tx.taxFiling.create({
-          data: {
-            tenantId,
-            clientId: data.clientId,
-            ...baseData,
-            documentId: documentId ?? null,
-            createdByStaff: staffId,
-          },
+      if (data.filingId) {
+        const before = await tx.taxFiling.findUnique({ where: { id: data.filingId } });
+        if (!before) throw new ActionError('Erklärung nicht gefunden.');
+        await tx.taxFiling.update({
+          where: { id: data.filingId },
+          data: { ...baseData, ...(documentId ? { documentId } : {}) },
         });
         await evidenceService.record(tx, {
           tenantId,
           actorType: 'STAFF',
           actorId: staffId,
-          action: 'tax_filing.create',
+          action: 'tax_filing.update',
           resourceType: 'tax_filing',
-          resourceId: created.id,
-          after: { ...baseData, clientId: data.clientId },
+          resourceId: data.filingId,
+          before,
+          after: baseData,
         });
-        return created.id;
-      },
-    );
+        return data.filingId;
+      }
+
+      // Auf vorhandene Erklärung für (client, kind, period) prüfen
+      const existing = await tx.taxFiling.findUnique({
+        where: {
+          tenantId_clientId_kind_period: { tenantId, clientId: data.clientId, kind: data.kind, period: data.period },
+        },
+      });
+      if (existing) {
+        throw new ActionError('Es gibt bereits eine Erklärung für diesen Zeitraum.');
+      }
+
+      const created = await tx.taxFiling.create({
+        data: {
+          tenantId,
+          clientId: data.clientId,
+          ...baseData,
+          documentId: documentId ?? null,
+          createdByStaff: staffId,
+        },
+      });
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'tax_filing.create',
+        resourceType: 'tax_filing',
+        resourceId: created.id,
+        after: { ...baseData, clientId: data.clientId },
+      });
+      return created.id;
+    });
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return toActionError(e);
   }
 
   revalidatePath(`/staff/clients/${data.clientId}/notices`);
@@ -188,81 +170,59 @@ const ShareSchema = z.object({
 export async function shareTaxFilingAction(
   input: z.infer<typeof ShareSchema>,
 ): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
   const parsed = ShareSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { tenantId, staffId } = session.user;
   const { filingId, clientId, share } = parsed.data;
 
-  try {
-    await withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
-      async (tx) => {
-        const filing = await tx.taxFiling.findUnique({ where: { id: filingId } });
-        if (!filing) throw new Error('Erklärung nicht gefunden.');
-        if (filing.clientId !== clientId) throw new Error('Mandant stimmt nicht.');
+  return withStaff(
+    async (tx, { tenantId, staffId }) => {
+      const filing = await tx.taxFiling.findUnique({ where: { id: filingId } });
+      if (!filing) throw new ActionError('Erklärung nicht gefunden.');
+      if (filing.clientId !== clientId) throw new ActionError('Mandant stimmt nicht.');
 
-        await tx.taxFiling.update({
-          where: { id: filingId },
-          data: share
-            ? { sharedWithClient: true, sharedAt: new Date(), sharedBy: staffId }
-            : { sharedWithClient: false },
-        });
+      await tx.taxFiling.update({
+        where: { id: filingId },
+        data: share
+          ? { sharedWithClient: true, sharedAt: new Date(), sharedBy: staffId }
+          : { sharedWithClient: false },
+      });
 
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
-          action: share ? 'tax_filing.share' : 'tax_filing.unshare',
-          resourceType: 'tax_filing',
-          resourceId: filingId,
-          after: { kind: filing.kind, period: filing.period },
-        });
-
-      },
-    );
-  } catch (e) {
-    return { ok: false, error: (e as Error).message };
-  }
-  revalidatePath(`/staff/clients/${clientId}/notices`);
-  revalidatePath('/portal/dashboard');
-  revalidatePath('/portal/steuer');
-  return { ok: true };
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: share ? 'tax_filing.share' : 'tax_filing.unshare',
+        resourceType: 'tax_filing',
+        resourceId: filingId,
+        after: { kind: filing.kind, period: filing.period },
+      });
+    },
+    { revalidate: [`/staff/clients/${clientId}/notices`, '/portal/dashboard', '/portal/steuer'] },
+  );
 }
 
 export async function deleteTaxFilingAction(input: {
   filingId: string;
   clientId: string;
 }): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-  const parsed = z
-    .object({ filingId: z.string().uuid(), clientId: z.string().uuid() })
-    .safeParse(input);
+  const parsed = z.object({ filingId: z.string().uuid(), clientId: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { tenantId, staffId } = session.user;
-  try {
-    await withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
-      async (tx) => {
-        const filing = await tx.taxFiling.findUnique({ where: { id: parsed.data.filingId } });
-        if (!filing) throw new Error('Erklärung nicht gefunden.');
-        await tx.taxFiling.delete({ where: { id: parsed.data.filingId } });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
-          action: 'tax_filing.delete',
-          resourceType: 'tax_filing',
-          resourceId: parsed.data.filingId,
-          before: { kind: filing.kind, period: filing.period },
-        });
-      },
-    );
-  } catch (e) {
-    return { ok: false, error: (e as Error).message };
-  }
-  revalidatePath(`/staff/clients/${parsed.data.clientId}/notices`);
-  return { ok: true };
+
+  return withStaff(
+    async (tx, { tenantId, staffId }) => {
+      const filing = await tx.taxFiling.findUnique({ where: { id: parsed.data.filingId } });
+      if (!filing) throw new ActionError('Erklärung nicht gefunden.');
+      await tx.taxFiling.delete({ where: { id: parsed.data.filingId } });
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'tax_filing.delete',
+        resourceType: 'tax_filing',
+        resourceId: parsed.data.filingId,
+        before: { kind: filing.kind, period: filing.period },
+      });
+    },
+    { revalidate: `/staff/clients/${parsed.data.clientId}/notices` },
+  );
 }
