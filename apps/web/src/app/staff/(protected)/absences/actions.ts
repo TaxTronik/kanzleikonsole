@@ -2,11 +2,13 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { staffAuth } from '@/server/auth/staff';
-import { isStaffAdmin } from '@/server/auth/rbac';
+import { isStaffAdmin, toActionError } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
+import { staffActionGuard, withStaff, type ActionResult } from '@/server/actions/staff-action';
+
+export type { ActionResult };
 
 function countWorkdays(start: Date, end: Date): number {
   let n = 0;
@@ -25,14 +27,13 @@ const VacationRequestSchema = z.object({
   reason: z.string().max(1000).optional().or(z.literal('')),
 });
 
-export interface ActionResult { ok: boolean; error?: string; }
-
 export async function createVacationRequestAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
+  const g = await staffActionGuard();
+  if (!g.ok) return g;
+  const { tenantId, staffId, ctx } = g;
 
   const parsed = VacationRequestSchema.safeParse({
     startDate: formData.get('startDate'),
@@ -46,11 +47,10 @@ export async function createVacationRequestAction(
   if (endDate < startDate) return { ok: false, error: 'Enddatum muss nach Startdatum liegen.' };
 
   const workdays = countWorkdays(startDate, endDate);
-  const { tenantId, staffId } = session.user;
 
-  const id = await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
+  let id: string;
+  try {
+    id = await withTenantContext(ctx, async (tx) => {
       const req = await tx.vacationRequest.create({
         data: {
           tenantId,
@@ -71,8 +71,10 @@ export async function createVacationRequestAction(
         after: { startDate: parsed.data.startDate, endDate: parsed.data.endDate, workdays },
       });
       return req.id;
-    },
-  );
+    });
+  } catch (e) {
+    return toActionError(e);
+  }
 
   // R-5: dediziertes Event. Vorher als staff.locked → n8n-Workflows mit
   // „Account-gesperrt"-Reflex (Slack-Alert etc.) wären hier fälschlich
@@ -94,11 +96,7 @@ const DecideSchema = z.object({
 });
 
 export async function decideVacationAction(formData: FormData): Promise<void> {
-  const session = await staffAuth();
-  if (!session?.user) return;
   // Nur ADMIN/PARTNER darf fremde Urlaubsanträge entscheiden.
-  if (!isStaffAdmin(session)) return;
-
   const parsed = DecideSchema.safeParse({
     requestId: formData.get('requestId'),
     approve: formData.get('approve') ?? undefined,
@@ -106,12 +104,10 @@ export async function decideVacationAction(formData: FormData): Promise<void> {
   });
   if (!parsed.success) return;
 
-  const { tenantId, staffId } = session.user;
   const status = parsed.data.approve ? 'APPROVED' : 'REJECTED';
 
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
+  await withStaff(
+    async (tx, { tenantId, staffId }) => {
       const before = await tx.vacationRequest.findUnique({ where: { id: parsed.data.requestId } });
       if (!before) return;
       // 4-Augen-Prinzip (N7): ein ADMIN/PARTNER darf seinen eigenen
@@ -138,24 +134,18 @@ export async function decideVacationAction(formData: FormData): Promise<void> {
         after: { status: updated.status },
       });
     },
+    { requireAdmin: true, revalidate: '/staff/absences' },
   );
-
-  revalidatePath('/staff/absences');
 }
 
 export async function cancelVacationAction(formData: FormData): Promise<void> {
-  const session = await staffAuth();
-  if (!session?.user) return;
   // F6: UUID-Validation.
   const parsed = z.object({ requestId: z.string().uuid() }).safeParse({ requestId: formData.get('requestId') });
   if (!parsed.success) return;
   const { requestId: id } = parsed.data;
 
-  const { tenantId, staffId } = session.user;
-
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
+  await withStaff(
+    async (tx, { tenantId, staffId, session }) => {
       // N10: expliziter Tenant-Filter zusätzlich zur RLS — Defense in Depth.
       // Schützt auch dann, wenn RLS-Policy versehentlich gelockert wird, und
       // verhindert dass ein Bug im Tenant-Kontext fremde Mandanten-Daten
@@ -180,9 +170,8 @@ export async function cancelVacationAction(formData: FormData): Promise<void> {
         after: { status: 'CANCELLED' },
       });
     },
+    { revalidate: '/staff/absences' },
   );
-
-  revalidatePath('/staff/absences');
 }
 
 const SickLeaveSchema = z.object({
@@ -195,9 +184,6 @@ export async function createSickLeaveAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-
   const parsed = SickLeaveSchema.safeParse({
     startDate: formData.get('startDate'),
     endDate: formData.get('endDate') ?? '',
@@ -205,11 +191,8 @@ export async function createSickLeaveAction(
   });
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const { tenantId, staffId } = session.user;
-
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
+  return withStaff(
+    async (tx, { tenantId, staffId }) => {
       const sick = await tx.sickLeave.create({
         data: {
           tenantId,
@@ -229,8 +212,6 @@ export async function createSickLeaveAction(
         after: { startDate: parsed.data.startDate, endDate: parsed.data.endDate || null },
       });
     },
+    { revalidate: '/staff/absences' },
   );
-
-  revalidatePath('/staff/absences');
-  return { ok: true };
 }

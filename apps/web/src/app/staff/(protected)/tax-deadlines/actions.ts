@@ -2,22 +2,17 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { staffAuth } from '@/server/auth/staff';
-import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { materializeTaxDeadlines } from '@/server/tax-deadlines/materialize';
+import { staffActionGuard, withStaff, ActionError } from '@/server/actions/staff-action';
 
 export async function markDeadlineDoneAction(formData: FormData): Promise<void> {
-  const session = await staffAuth();
-  if (!session?.user) throw new Error('Nicht eingeloggt.');
   const id = z.string().uuid().parse(formData.get('id'));
-  const { tenantId, staffId } = session.user;
 
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
+  await withStaff(
+    async (tx, { tenantId, staffId }) => {
       const before = await tx.taxDeadline.findUnique({ where: { id } });
-      if (!before) throw new Error('Termin nicht gefunden.');
+      if (!before) throw new ActionError('Termin nicht gefunden.');
       await tx.taxDeadline.update({
         where: { id },
         data: { status: 'DONE', completedAt: new Date(), completedByStaff: staffId },
@@ -33,23 +28,18 @@ export async function markDeadlineDoneAction(formData: FormData): Promise<void> 
         after: { status: 'DONE' },
       });
     },
+    { revalidate: '/staff/tax-deadlines' },
   );
-
-  revalidatePath('/staff/tax-deadlines');
 }
 
 export async function markDeadlinesDoneAction(formData: FormData): Promise<void> {
-  const session = await staffAuth();
-  if (!session?.user) throw new Error('Nicht eingeloggt.');
   const ids = z
     .array(z.string().uuid())
     .parse(formData.getAll('ids').map((v) => String(v)));
   if (ids.length === 0) return;
-  const { tenantId, staffId } = session.user;
 
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
+  await withStaff(
+    async (tx, { tenantId, staffId }) => {
       // Nur offene Termine schließen — bereits erledigte/übersprungene nicht
       // anfassen (kein doppelter Audit-Eintrag, idempotent bei Mehrfachklick).
       const toClose = await tx.taxDeadline.findMany({
@@ -74,20 +64,15 @@ export async function markDeadlinesDoneAction(formData: FormData): Promise<void>
         });
       }
     },
+    { revalidate: '/staff/tax-deadlines' },
   );
-
-  revalidatePath('/staff/tax-deadlines');
 }
 
 export async function rematerializeAction(): Promise<void> {
-  const session = await staffAuth();
-  if (!session?.user) throw new Error('Nicht eingeloggt.');
-  const { tenantId, staffId } = session.user;
+  const g = await staffActionGuard();
+  if (!g.ok) return;
 
-  await materializeTaxDeadlines(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    { systemStaffId: staffId },
-  );
+  await materializeTaxDeadlines(g.ctx, { systemStaffId: g.staffId });
 
   revalidatePath('/staff/tax-deadlines');
 }

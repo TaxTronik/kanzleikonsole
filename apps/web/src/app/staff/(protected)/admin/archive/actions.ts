@@ -1,26 +1,22 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { staffAuth } from '@/server/auth/staff';
-import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { getAuditRotateQueue } from '@/server/jobs/audit-rotate-queue';
+import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
 
 export async function triggerAuditRotateAction(): Promise<void> {
-  const session = await staffAuth();
-  if (!session?.user) throw new Error('Nicht eingeloggt.');
-  if (!isStaffAdmin(session)) {
-    throw new Error('Nur ADMIN/PARTNER.');
-  }
-  const { tenantId, staffId } = session.user;
+  const g = await staffActionGuard({ requireAdmin: true });
+  if (!g.ok) throw new ActionError(g.error);
+  const { tenantId, staffId, ctx } = g;
 
   // BullMQ-Job direkt einreihen — der Worker rotiert nur diesen Tenant.
   // Connection ist modulweiter Singleton (siehe audit-rotate-queue.ts), kein
   // per-Click-Connect/Disconnect mehr.
   await getAuditRotateQueue().add('audit-rotate', { tenantId });
 
-  await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, async (tx) => {
+  await withTenantContext(ctx, async (tx) => {
     await evidenceService.record(tx, {
       tenantId,
       actorType: 'STAFF',

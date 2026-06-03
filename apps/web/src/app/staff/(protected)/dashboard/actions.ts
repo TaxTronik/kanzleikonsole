@@ -1,16 +1,11 @@
 'use server';
 
 import { z } from 'zod';
-import { revalidatePath } from 'next/cache';
 import { Prisma } from '@prisma/client';
-import { staffAuth } from '@/server/auth/staff';
-import { withTenantContext } from '@taxtronik/db';
 import { WIDGET_BY_TYPE, type DashboardLayout } from '@/server/dashboard/widgets';
+import { withStaff, type ActionResult } from '@/server/actions/staff-action';
 
-export interface ActionResult {
-  ok: boolean;
-  error?: string;
-}
+export type { ActionResult };
 
 const LayoutSchema = z.object({
   version: z.literal(2),
@@ -29,8 +24,6 @@ const LayoutSchema = z.object({
 });
 
 export async function saveDashboardLayoutAction(layout: DashboardLayout): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
   const parsed = LayoutSchema.safeParse(layout);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
@@ -40,32 +33,25 @@ export async function saveDashboardLayoutAction(layout: DashboardLayout): Promis
     widgets: parsed.data.widgets.filter((w) => w.type in WIDGET_BY_TYPE) as DashboardLayout['widgets'],
   };
 
-  const { tenantId, staffId } = session.user;
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    (tx) =>
-      tx.staffUser.update({
+  return withStaff(
+    async (tx, { staffId }) => {
+      await tx.staffUser.update({
         where: { id: staffId },
         data: { dashboardLayout: cleaned as unknown as Prisma.InputJsonValue },
-      }),
+      });
+    },
+    { revalidate: '/staff/dashboard' },
   );
-
-  revalidatePath('/staff/dashboard');
-  return { ok: true };
 }
 
 export async function resetDashboardLayoutAction(): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-  const { tenantId, staffId } = session.user;
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    (tx) =>
-      tx.staffUser.update({
+  return withStaff(
+    async (tx, { staffId }) => {
+      await tx.staffUser.update({
         where: { id: staffId },
         data: { dashboardLayout: Prisma.JsonNull },
-      }),
+      });
+    },
+    { revalidate: '/staff/dashboard' },
   );
-  revalidatePath('/staff/dashboard');
-  return { ok: true };
 }

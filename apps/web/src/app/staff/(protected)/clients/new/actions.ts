@@ -1,11 +1,11 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { z } from 'zod';
+import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
 
 const createClientSchema = z.object({
   name: z.string().min(1, 'Name ist Pflichtfeld'),
@@ -20,14 +20,13 @@ const createClientSchema = z.object({
 });
 
 export async function createClientAction(formData: FormData) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const g = await staffActionGuard();
+  if (!g.ok) redirect('/staff/login'); // redirect wirft (never) — bleibt außerhalb try/catch
+  const { tenantId, staffId, ctx, session } = g;
   // Mandanten-Anlage berührt Stammdaten + GwG-Schranke (allow_active) — nur ADMIN/PARTNER.
   if (!isStaffAdmin(session)) {
-    throw new Error('Nur ADMIN/PARTNER darf neue Mandanten anlegen.');
+    throw new ActionError('Nur ADMIN/PARTNER darf neue Mandanten anlegen.');
   }
-
-  const { tenantId, staffId } = session.user;
 
   const parsed = createClientSchema.safeParse({
     name: formData.get('name'),
@@ -42,43 +41,40 @@ export async function createClientAction(formData: FormData) {
   });
 
   if (!parsed.success) {
-    throw new Error(parsed.error.issues.map((i) => i.message).join(', '));
+    throw new ActionError(parsed.error.issues.map((i) => i.message).join(', '));
   }
 
   const { name, kind, datevNo, street, postalCode, city, countryIso, vatId, invoiceEmail } = parsed.data;
 
-  const clientId = await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
-      const client = await tx.client.create({
-        data: {
-          tenantId,
-          name,
-          kind,
-          datevNo: datevNo ?? null,
-          allowActive: false,
-          street: street || null,
-          postalCode: postalCode || null,
-          city: city || null,
-          countryIso: countryIso || null,
-          vatId: vatId || null,
-          invoiceEmail: invoiceEmail || null,
-        },
-      });
-
-      await evidenceService.record(tx, {
+  const clientId = await withTenantContext(ctx, async (tx) => {
+    const client = await tx.client.create({
+      data: {
         tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'client.created',
-        resourceType: 'client',
-        resourceId: client.id,
-        after: { name, kind, datevNo: datevNo ?? null, hasAddress: !!(street && city) },
-      });
+        name,
+        kind,
+        datevNo: datevNo ?? null,
+        allowActive: false,
+        street: street || null,
+        postalCode: postalCode || null,
+        city: city || null,
+        countryIso: countryIso || null,
+        vatId: vatId || null,
+        invoiceEmail: invoiceEmail || null,
+      },
+    });
 
-      return client.id;
-    },
-  );
+    await evidenceService.record(tx, {
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
+      action: 'client.created',
+      resourceType: 'client',
+      resourceId: client.id,
+      after: { name, kind, datevNo: datevNo ?? null, hasAddress: !!(street && city) },
+    });
+
+    return client.id;
+  });
 
   redirect(`/staff/clients/${clientId}`);
 }
