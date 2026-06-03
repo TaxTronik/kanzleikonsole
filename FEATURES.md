@@ -1,7 +1,33 @@
 # taxtronik — Funktionsumfang
 
-Stand: 2026-05-14. Sortiert nach Modul. Die mit ⚙ markierten Module sind pro
-Kanzlei in den Einstellungen ein- bzw. ausschaltbar.
+Stand: 2026-06-03. Die mit ⚙ markierten Module sind pro Kanzlei in den
+Einstellungen ein- bzw. ausschaltbar.
+
+## Überblick
+
+**Mandanten & Akte** — Mandanten-CRM · Onboarding-Wizard · GwG-Compliance ·
+Anforderungen · Dokumente (Datei-Manager) · Kanzleikalender ⚙ · Bescheide &
+Steuererklärungen ⚙ · Telefonzettel ⚙ · Wiedervorlagen · Pendelordner
+
+**Beratung & Auswertung** — BWA, Hochrechnung & Planung ⚙ ·
+Subsumtions-Workspace / TCMS ⚙ · Wissensdatenbank ⚙
+
+**Abrechnung & Vertretung** — Rechnungen ⚙ · Vollmachten ⚙ · Zeiterfassung ⚙
+
+**Prozesse & Vorlagen** — Workflow-Vorlagen · Form-Builder ·
+Status-Maschinen-Builder · Anforderungs-Vorlagen · Custom-Felder
+
+**Mitarbeiter & Kanzlei** — Dashboard-Widget-Builder · RSS-Reader ·
+Abwesenheiten · Benutzer-Verwaltung · Tätigkeitsbereiche/Skills ·
+Kanzlei-Einstellungen
+
+**Mandanten-Portal** — Login · Anforderungen · Formulare · Dokumente ·
+Stammdaten-Self-Service · Steuererklärungen · Termine · Auswertungen ·
+Rechnungen · GwG-Onboarding
+
+**Querschnitt** — Globale Suche · Benachrichtigungen · DSGVO · Compliance &
+Audit · Backups & DR · Update-Mechanik & Lizenz · UI (Dark/Modern) ·
+Sicherheit · Architektur
 
 ---
 
@@ -597,6 +623,101 @@ Aus PNL-Werten abgeleitete Frühwarn-Indikatoren — keine Bilanzkennzahlen
 - Migrationen Iter. 26 (`20260608…_iter26_bwa_plan`) und
   Iter. 27 (`20260609…_iter27_bwa_plan_updated_by`)
 
+## Subsumtions-Workspace / TCMS ⚙
+
+Zwischenlayer für ein Tax Compliance Management System. Eine eigenständige,
+**on-prem** Analyse-Engine (drei Schichten: wörtlich/Muster/Trigger
+deterministisch, Embedding semantisch, optional LLM) wird als **zustandsloser**
+`/v1/*`-Dienst angesprochen — taxtronik ist die datenführende, mandanten- und
+identitätstragende Hülle und persistiert alles tenant-scoped (RLS). Die
+LLM-Schicht läuft netzintern ohne offenen Port; Mandantendaten verlassen die
+Kanzlei nicht.
+
+### Zugang & Aktivierung
+
+- Modul `risk` pro Tenant **plus** konfigurierte Engine (URL + Bearer-Token) —
+  beides nötig, sonst ist die Subsumtion nicht sichtbar
+- Zugang: global ADMIN/PARTNER **oder** dem Mandanten zugeordneter
+  Berufsträger/Hauptbearbeiter (`ClientResponsibility`)
+- Jede Server-Action autorisiert über die **echte** Ressource (Analyse/
+  Markierung), nicht über eine vom Client gelieferte `clientId` (kein IDOR)
+
+### Sachverhalt erfassen
+
+- **Eine Fläche**: formatierter, editierbarer Text (Tiptap) mit darüber
+  liegendem Markierungs-Overlay — kein Moduswechsel
+- Import aus **PDF/DOCX** (Server-Extraktion via `unpdf`/`mammoth`) oder aus
+  einem vorhandenen Mandanten-Dokument (app-proxied aus SeaweedFS, Zugriff als
+  Download auditiert)
+- Stabile Zeichen-Offsets + `textHash` — Voraussetzung für reproduzierbares
+  Overlay und Audit; nur Formatierung speicherbar, inhaltliche Textänderung
+  hält die Offsets (sonst neue Analyse)
+
+### Analyse — zweiphasig
+
+- **Schnell/deterministisch** (synchron in der Server-Action): wörtliche,
+  Muster- und Trigger-Treffer mit Normankern/Normketten
+- **KI-Vertiefung** (asynchroner Worker `risk-analyse-llm`): zusätzliche
+  EMBEDDING/LLM-Markierungen; der llama-server wird **on-demand** hochgefahren
+  und bis zur Bereitschaft gepollt. UI bleibt nutzbar (Skeleton + Auto-Select
+  der neuen Markierungen), ein **fehlgeschlagener Lauf** wird sichtbar gemacht
+  mit „Erneut versuchen" statt endlosem „lädt"
+- **„Neu analysieren"**: nicht-destruktiver Merge — nur neue Markierungen
+  werden ergänzt, die Berater-Bewertungen bleiben erhalten
+
+### Markieren & Entscheiden (Governance-Matrix)
+
+- Engine-Markierungen farbcodiert nach **Herkunft** (wörtlich · Muster ·
+  Trigger · Heuristik · LLM · Berater), fachlich umstrittene Stellen
+  gestrichelt; überlappende Markierungen werden mehrschichtig (Tracks)
+  dargestellt, Hover hebt die zusammengehörige Spanne hervor
+- Pro Markierung: Begriff, **Fundstelle** (markierter Text), Herkunft,
+  Engine-Status, Normanker, Normketten (Kaskade) und **Rechtsnormen mit
+  ausklappbarem Gesetzestext** (`/v1/normgraph` löst die Norm-ID auf)
+- **Governance-Matrix**: FP/FF/IN, Schadensintensität, Wahrscheinlichkeit,
+  Kaskadenreichweite, Kontrolle/Maßnahme, Prüf-Status, Verantwortlich, Notiz,
+  Label/Kategorie, Farbe
+- **Eigene Markierung** (Textselektion → Herkunft BERATER) mit Farbe, Label
+  und Normanker; Offsets/markierter Text werden serverseitig abgeleitet
+- **Audit**: jede Mutation hängt im selben Transaktion in der TaxTronik-
+  Hash-Chain — die Engine führt **kein** Audit
+
+### Delegation & Recherche
+
+- **An Mitarbeiter zuweisen** → erzeugt eine Wiedervorlage (`ClientReminder`)
+  mit Kontext-Ankern (Begriff/Norm/Analyse), setzt Verantwortlichkeit + Status
+  „In Prüfung"; der/die Zuständige muss aktiver Mitarbeiter des Tenants sein
+- **Rechercheauftrag an n8n — anonymisiert (§ 203 StGB)**: der Berater wählt,
+  was mitgeht (kein/Auszug/ganzer Sachverhalt · Textbausteine · freier Prompt);
+  deterministische Schwärzung der bekannten Stammdaten + heuristische Treffer
+  (Firma, IBAN, Steuernummer, Betrag, Datum, **E-Mail**) in einer
+  hervorgehobenen, **editierbaren Vorschau**; das Platzhalter→Original-Mapping
+  verlässt die Kanzlei nie (RLS-geschützt gespeichert)
+- **Kanzleiweite, selbst anlegbare Prompt-Vorlagen**
+- **Rechercheergebnisse-Ablage**: signierter n8n-Inbound (HMAC + Replay-Nonce);
+  per Korrelations-Token automatische Zuordnung zur Ursprungs-Markierung +
+  De-Anonymisierung, sonst heuristischer Zuordnungs-Vorschlag (Normanker-/
+  Begriff-Overlap)
+
+### Export, Katalog & Archiv
+
+- Bericht als **DOCX/PDF**; Auswahl, welche Markierungen übernommen werden
+  (gruppiert nach Herkunft ab-/zuwählbar)
+- **Begriff in den Katalog definieren** (`/v1/katalog/definiere`) — Engine
+  bleibt kanonische Katalog-Quelle (keine lokale Katalog-Tabelle)
+- Revisionssichere **Archivierung** (GoBD-Snapshot, Object-Lock,
+  schreibgeschützt)
+
+### Datenmodell & Integration
+
+- `risk_analysis` + `risk_marking` (Normanker/Normketten/Governance als
+  erstklassige Spalten), `risk_research_request`/`risk_research_result`
+  (sensibles Mapping RLS-geschützt), `risk_prompt_template` — alle tenant-scoped
+  mit RLS-Policy (USING + WITH CHECK)
+- Paket `@taxtronik/risk-layer` als reiner Transport (Schema/Mapping/Resilienz
+  mit Circuit-Breaker + `safeFetch`); App-Geschäftslogik in
+  `apps/web/src/server/risk/`
+
 ## Wissensdatenbank ⚙
 
 - Artikel + Kategorien
@@ -739,7 +860,7 @@ Aus PNL-Werten abgeleitete Frühwarn-Indikatoren — keine Bilanzkennzahlen
   Portal) verlinkt (Pflicht nach Telemediengesetz / DSGVO); in
   angemeldeten Sitzungen bewusst nicht prominent angezeigt
 - Modul-Aktivierung pro Tenant (BWA / Wissen / Zeiterfassung /
-  Telefonzettel / Steuertermine + Bescheide)
+  Telefonzettel / Steuertermine + Bescheide / Subsumtion-TCMS)
 - Vollmachten-Modus (`MARKDOWN_OTP` / `PDF_TEMPLATE` / `OFF`)
 - Rechnungs-Modus (`IN_APP` / `EXTERNAL` / `OFF`)
 - PDF-Begleittext-Templates für beide Modi (Markdown mit Platzhaltern)
@@ -789,13 +910,16 @@ Aus PNL-Werten abgeleitete Frühwarn-Indikatoren — keine Bilanzkennzahlen
 - Pro Request: Prisma-Middleware setzt `app.current_tenant_id` /
   `app.current_actor_id` / `app.current_actor_type` via `SET LOCAL`
 - Doppelte Verteidigung: App-Filter + RLS-Policy + DB-Trigger
-- BullMQ-Worker für Hintergrund-Jobs (9 Workers):
+- BullMQ-Worker für Hintergrund-Jobs (15 Workers):
   `virus-scan`, `evidence-seal`, `gwg-expiry-check`,
   `invoice-overdue-check`, `audit-verify-check`,
   `tax-deadline-materialize`, `audit-rotate`, `tax-news-fetch`
   (05:30 UTC, holt alle aktiven RSS-Feeds aus `rss_feed`),
   `reminders-daily` (06:45 UTC, schickt Notifications für
-  Einspruchsfristen, fällige Wiedervorlagen, überfällige Pendelordner)
+  Einspruchsfristen, fällige Wiedervorlagen, überfällige Pendelordner),
+  `n8n-deliver` + `n8n-outbox-reconcile` (HMAC-signierter Outbox-Versand),
+  `magic-link-cleanup`, `dsgvo-retention`, `poa-expiry-check`,
+  `risk-analyse-llm` (on-demand LLM-Vertiefung der Subsumtion)
 - n8n als Workflow-Engine für Mail-Versand und Eskalationen (signierte
   HMAC-Webhooks, n8n liest via `/api/n8n/*` mit Token,
   respektiert Portal-Notification-Setting per `notifiableContacts`-Array)
@@ -807,7 +931,9 @@ Aus PNL-Werten abgeleitete Frühwarn-Indikatoren — keine Bilanzkennzahlen
   `@taxtronik/crypto` (AES-256-GCM Secret-Box mit HKDF-domain-getrenntem Key),
   `@taxtronik/http-utils` (SSRF-Guard + DNS-pinning-safeFetch via undici),
   `@taxtronik/rss` (Parser + Streaming-Body-Cap),
-  `@taxtronik/n8n-shared` (Event-Whitelist + HMAC-Sign mit Replay-Nonce)
+  `@taxtronik/n8n-shared` (Event-Whitelist + HMAC-Sign mit Replay-Nonce),
+  `@taxtronik/risk-layer` (zustandsloser §4-Engine-Client: Schema/Mapping/
+  Resilienz mit Circuit-Breaker, reiner Transport)
 - **GitHub-Actions-CI** (`.github/workflows/ci.yml`): Static-Job
   (Typecheck + Unit-Tests) + db-tests-Job (RLS-Cross-Tenant +
   verify:chain mit Postgres-Service-Container)
@@ -851,6 +977,12 @@ Aus PNL-Werten abgeleitete Frühwarn-Indikatoren — keine Bilanzkennzahlen
   SMTP mit `requireTLS` + `minVersion TLSv1.2`, `from`/`to`/`subject`/
   `replyTo` durch CRLF-Stripping, Markdown-Renderer escapt user-supplied
   Variablen vor `{{var}}`-Substitution
+- **§ 203-Anonymisierung vor jedem Egress**: Rechercheaufträge aus der
+  Subsumtion werden vor dem n8n-Relay deterministisch (bekannte Stammdaten) +
+  heuristisch (Firma/IBAN/Steuernummer/Betrag/Datum/E-Mail) geschwärzt,
+  editierbare Vorschau, das Platzhalter→Original-Mapping bleibt RLS-lokal;
+  signierter n8n-Inbound (HMAC + Timestamp-Fenster + Redis-Replay-Nonce,
+  fail-closed)
 - **Container-Hardening**: `cap_drop: ALL` + `no-new-privileges` + `read_only`-
   Root-FS auf App/Worker mit `tmpfs:/tmp`, alle Infra-Ports an `127.0.0.1`,
   App/n8n hinter Reverse-Proxy (NGINX-Beispiel-Konfig in `infra/nginx/`)
