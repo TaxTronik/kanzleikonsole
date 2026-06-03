@@ -19,6 +19,7 @@ import { Prisma } from '@prisma/client';
 // Subpath statt Barrel: vermeidet, dass owner-client (verlangt DATABASE_URL beim
 // Import) in reine Unit-Tests gezogen wird, die rbac.ts transitiv importieren.
 import { withTenantContext } from '@taxtronik/db/tenant-context';
+import { readAccessPolicyTx, decideClientAccess } from '@/server/settings/access-policy';
 import { staffAuth, type StaffSession } from './staff';
 import { log } from '@/server/logger';
 
@@ -60,29 +61,60 @@ export async function requireStaffAdmin(): Promise<StaffSession> {
 }
 
 /**
- * Subsumtions-Workspace-Zugang: global ADMIN/PARTNER ODER der dem Mandanten
- * zugeordnete Berufsträger/Hauptbearbeiter (ClientResponsibility). Es gibt keine
- * eigene Rolle „Berater" — die fachliche Verantwortung pro Mandant ist der Hebel.
- * Wirft `ForbiddenError`, sonst liefert es die Session.
+ * Zentrale Mandanten-Zugriffsprüfung (alle Module). Entkoppelt „zuarbeiten" von
+ * „verantwortlich sein": im OPEN-Modell (Default) darf jeder aktive Mitarbeiter
+ * an jedem nicht-vertraulichen Mandanten arbeiten; `ClientResponsibility` ist nur
+ * noch Zuständigkeit/Filter. Existiert der Mandant nicht (oder anderer Tenant via
+ * RLS) → kein Zugriff.
  */
-export async function requireSubsumtionAccess(clientId: string): Promise<StaffSession> {
-  const session = await requireStaffSession();
-  if (isStaffAdmin(session)) return session;
+export async function canAccessClient(session: StaffSession, clientId: string): Promise<boolean> {
+  if (isStaffAdmin(session)) return true;
   const { tenantId, staffId } = session.user;
-  const responsible = await withTenantContext(
+  return withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
-    (tx) =>
-      tx.clientResponsibility.findFirst({
-        where: { clientId, staffId, role: { in: ['BERUFSTRAEGER', 'HAUPTBEARBEITER'] } },
-        select: { id: true },
-      }),
+    async (tx) => {
+      const policy = await readAccessPolicyTx(tx, tenantId);
+      const client = await tx.client.findUnique({
+        where: { id: clientId },
+        select: { vertraulich: true },
+      });
+      if (!client) return false;
+      // Responsibility nur abfragen, wenn sie überhaupt entscheiden kann
+      // (RESTRICTED oder vertraulicher Mandant) — spart im OPEN-Normalfall eine Query.
+      const needResponsibility = policy.clientAccessMode === 'RESTRICTED' || client.vertraulich;
+      const isResponsible = needResponsibility
+        ? (await tx.clientResponsibility.findFirst({
+            where: { clientId, staffId, role: { in: ['BERUFSTRAEGER', 'HAUPTBEARBEITER'] } },
+            select: { id: true },
+          })) !== null
+        : false;
+      return decideClientAccess({
+        isAdmin: false,
+        mode: policy.clientAccessMode,
+        vertraulich: client.vertraulich,
+        isResponsible,
+      });
+    },
   );
-  if (!responsible) {
-    throw new ForbiddenError(
-      'Nur Admin/Partner oder der zuständige Berufsträger/Hauptbearbeiter dieses Mandanten.',
-    );
+}
+
+/** Wirft `ForbiddenError`, wenn kein Zugriff auf den Mandanten besteht. */
+export async function requireClientAccess(clientId: string): Promise<StaffSession> {
+  const session = await requireStaffSession();
+  if (!(await canAccessClient(session, clientId))) {
+    throw new ForbiddenError('Kein Zugriff auf diesen Mandanten.');
   }
   return session;
+}
+
+/**
+ * Subsumtions-Workspace-Zugang. Nutzt jetzt die zentrale `canAccessClient`-Policy
+ * (OPEN-Default + Vertraulich-Ventil) statt einer eigenen Responsibility-Prüfung —
+ * damit Mitarbeiter mandantenübergreifend mitarbeiten können. Name bleibt für die
+ * bestehenden Call-Sites.
+ */
+export async function requireSubsumtionAccess(clientId: string): Promise<StaffSession> {
+  return requireClientAccess(clientId);
 }
 
 export interface ActionErrorResult {

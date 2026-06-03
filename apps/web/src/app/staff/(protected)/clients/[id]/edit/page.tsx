@@ -13,6 +13,7 @@ import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, AlertTriangle } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
+import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { CustomFieldsForm } from './custom-fields-form';
 import { AdminFieldsForm, ResponsibilitiesForm, GwgFieldsForm } from './stammdaten-forms';
@@ -56,6 +57,7 @@ export default async function ClientEditPage({ params }: { params: Promise<{ id:
   );
   if (!data) notFound();
   const { client, staff, customDefs, customValues } = data;
+  const isAdmin = isStaffAdmin(session);
 
   const customDefsForKind = customDefs.filter(
     (d) => d.appliesTo.length === 0 || d.appliesTo.includes(client.kind),
@@ -112,6 +114,28 @@ export default async function ClientEditPage({ params }: { params: Promise<{ id:
             className="input w-full font-mono text-sm"
             placeholder="Markdown — Hintergrundinformationen, Hinweise zum Mandanten, persönliche Eigenheiten…"
           />
+        </div>
+        <div className="mt-4 border-t border-default pt-4">
+          <label className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              name="vertraulich"
+              defaultChecked={client.vertraulich}
+              disabled={!isAdmin}
+              className="mt-1 rounded border-strong text-brand-600 disabled:opacity-50"
+            />
+            <div>
+              <div className="text-sm font-medium text-primary">Vertraulicher Mandant</div>
+              <div className="text-xs text-muted">
+                Im offenen Zugriffsmodell bleibt dieser Mandant trotzdem auf Admin/Partner
+                und die zugeordneten Berufsträger/Hauptbearbeiter beschränkt (Konflikt-/
+                Geheimhaltungsfälle).
+                {!isAdmin && (
+                  <span className="block text-disabled mt-0.5">Nur Admin/Partner kann das ändern.</span>
+                )}
+              </div>
+            </div>
+          </label>
         </div>
       </AdminFieldsForm>
 

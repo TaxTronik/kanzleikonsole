@@ -24,6 +24,8 @@ const AdminSchema = z.object({
   invoiceEmail: z.string().email().max(255).optional().nullable().or(z.literal('')),
   priority: z.enum(['A', 'B', 'C']).nullable().optional().or(z.literal('')),
   internalNotes: z.string().max(10_000).optional().nullable(),
+  // Zugriffs-Ventil (vertraulicher Mandant). Wird nur von Admin/Partner übernommen.
+  vertraulich: z.boolean().optional(),
 });
 
 function emptyToNull(v: unknown): string | null {
@@ -45,17 +47,20 @@ export async function saveAdminFieldsAction(
     invoiceEmail: formData.get('invoiceEmail'),
     priority: formData.get('priority'),
     internalNotes: formData.get('internalNotes'),
+    vertraulich: formData.get('vertraulich') === 'on',
   });
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler — bitte Eingaben prüfen.' };
   const { tenantId, staffId } = session.user;
   const { clientId } = parsed.data;
+  // Die Vertraulich-Markierung ist eine Zugriffssteuerung → nur Admin/Partner.
+  const isAdmin = isStaffAdmin(session);
 
   await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
       const before = await tx.client.findUnique({
         where: { id: clientId },
-        select: { datevNo: true, addisonNo: true, invoiceEmail: true, priority: true, internalNotes: true },
+        select: { datevNo: true, addisonNo: true, invoiceEmail: true, priority: true, internalNotes: true, vertraulich: true },
       });
       if (!before) throw new Error('Mandant nicht gefunden.');
 
@@ -66,6 +71,9 @@ export async function saveAdminFieldsAction(
         invoiceEmail: emptyToNull(parsed.data.invoiceEmail),
         priority: prio === 'A' || prio === 'B' || prio === 'C' ? prio : null,
         internalNotes: emptyToNull(parsed.data.internalNotes),
+        // Nicht-Admins können das Flag nicht ändern → Bestand behalten (die
+        // Checkbox ist für sie ohnehin deaktiviert und sendet nichts).
+        vertraulich: isAdmin ? (parsed.data.vertraulich ?? false) : before.vertraulich,
       };
 
       await tx.client.update({ where: { id: clientId }, data: after });

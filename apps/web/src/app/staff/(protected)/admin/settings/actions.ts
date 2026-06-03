@@ -8,6 +8,7 @@ import { assertPublicHost } from '@/server/http/ssrf-guard';
 import { writeSellerInfo, type SellerInfo } from '@/server/settings/tenant-settings';
 import { writeBranding, type BrandingInfo } from '@/server/settings/branding';
 import { writeModules, type ModuleConfig } from '@/server/settings/modules';
+import { writeAccessPolicy, type ClientAccessMode } from '@/server/settings/access-policy';
 import { writeTaxRegion } from '@/server/settings/tax-region';
 import type { GermanRegion } from '@taxtronik/tax';
 import { withTenantContext } from '@taxtronik/db';
@@ -283,6 +284,46 @@ export async function saveModulesAction(
 
   revalidatePath('/staff/admin/settings');
   revalidatePath('/staff', 'layout');
+  return { ok: true };
+}
+
+// ----------------------------------------------------------------------------
+// Zugriffsmodell (OPEN / RESTRICTED) — wie weit Mitarbeiter mandantenübergreifend arbeiten
+// ----------------------------------------------------------------------------
+
+const AccessPolicySchema = z.object({
+  clientAccessMode: z.enum(['OPEN', 'RESTRICTED']),
+});
+
+export async function saveAccessPolicyAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const session = await staffAuth();
+  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
+  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
+
+  const parsed = AccessPolicySchema.safeParse({ clientAccessMode: formData.get('clientAccessMode') });
+  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+
+  const { tenantId, staffId } = session.user;
+  const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
+  const cfg = { clientAccessMode: parsed.data.clientAccessMode as ClientAccessMode };
+  await writeAccessPolicy(ctx, cfg);
+
+  await withTenantContext(ctx, async (tx) => {
+    await evidenceService.record(tx, {
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
+      action: 'tenant.settings.access_policy.update',
+      resourceType: 'tenant_setting',
+      resourceId: 'access',
+      after: cfg,
+    });
+  });
+
+  revalidatePath('/staff/admin/settings/modules');
   return { ok: true };
 }
 

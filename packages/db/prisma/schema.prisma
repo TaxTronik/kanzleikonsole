@@ -694,6 +694,12 @@ model Client {
   addisonNo            String?                     @map("addison_no")
   priority             ClientPriority?             @map("priority")
   internalNotes        String?                     @map("internal_notes")
+  // Zugriffs-Ventil: im OPEN-Zugriffsmodell (Default) dürfen alle aktiven
+  // Mitarbeiter an jedem Mandanten arbeiten. Ein als `vertraulich` markierter
+  // Mandant bleibt aber auf Admin/Partner + die zugeordneten Berufsträger/
+  // Hauptbearbeiter beschränkt (Konflikt-/Geheimhaltungsfälle). Nur Admin/Partner
+  // setzt das Flag. Siehe canAccessClient (rbac.ts) + access-policy.ts.
+  vertraulich          Boolean                     @default(false) @map("vertraulich")
   appointments         Appointment[]
   appointmentRequests  AppointmentRequest[]
   bwaPeriods           BwaPeriod[]
