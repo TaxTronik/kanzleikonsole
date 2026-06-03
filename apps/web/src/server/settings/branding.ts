@@ -6,6 +6,7 @@
 // statt "taxtronik" zeigt Sub-Brand, Akzent-Farbe als CSS-Variable).
 // =============================================================================
 
+import { cache } from 'react';
 import type { TenantContext } from '@taxtronik/db';
 import { withTenantContext } from '@taxtronik/db';
 
@@ -31,7 +32,17 @@ export const DEFAULT_BRANDING: BrandingInfo = {
 
 const KEY_BRANDING = 'branding';
 
-export async function readBranding(ctx: TenantContext): Promise<BrandingInfo> {
+// Wird im Layout gerendert (Sidebar-Logo/Akzentfarbe). cache() request-scoped
+// auf Primitiven (s. modules.ts — Objekt-ctx würde per Referenz nicht greifen).
+const readBrandingCached = cache(
+  (
+    tenantId: string,
+    actorId: TenantContext['actorId'],
+    actorType: TenantContext['actorType'],
+  ): Promise<BrandingInfo> => readBrandingByCtx({ tenantId, actorId, actorType }),
+);
+
+function readBrandingByCtx(ctx: TenantContext): Promise<BrandingInfo> {
   return withTenantContext(ctx, async (tx) => {
     const row = await tx.tenantSetting.findUnique({
       where: { tenantId_key: { tenantId: ctx.tenantId, key: KEY_BRANDING } },
@@ -49,6 +60,10 @@ export async function readBranding(ctx: TenantContext): Promise<BrandingInfo> {
       ...value,
     };
   });
+}
+
+export function readBranding(ctx: TenantContext): Promise<BrandingInfo> {
+  return readBrandingCached(ctx.tenantId, ctx.actorId, ctx.actorType);
 }
 
 export async function writeBranding(ctx: TenantContext, info: BrandingInfo): Promise<void> {

@@ -10,6 +10,7 @@
 //   5. JWT-Session wird gesetzt (Cookie __taxtronik_portal_session, path=/portal).
 // =============================================================================
 
+import { cache } from 'react';
 import NextAuth, { type NextAuthConfig, type Session } from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import { env } from '@taxtronik/config';
@@ -149,10 +150,13 @@ export const portalSignOut: typeof _portal.signOut = _portal.signOut;
 
 // Härtet die Wrapper-Semantik (analog staffAuth): wenn der session-Callback
 // wegen Revocation die contactId nicht gesetzt hat, returnt der Wrapper null.
-export const portalAuth = async (): Promise<PortalSession | null> => {
+// React cache(): request-scoped Dedup (analog staffAuth) — Portal-Layout + Pages
+// rufen portalAuth mehrfach pro Request; cache() spart die redundanten
+// Redis-/DB-Round-Trips ohne Cross-Request-Risiko.
+export const portalAuth = cache(async (): Promise<PortalSession | null> => {
   const raw = await _portal.auth();
   if (!raw?.user) return null;
   const u = raw.user as { contactId?: string };
   if (!u.contactId) return null;
   return raw as PortalSession;
-};
+});

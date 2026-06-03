@@ -16,6 +16,7 @@
 // ohne reine Unit-Tests zu beschweren.
 // =============================================================================
 
+import { cache } from 'react';
 import { withTenantContext } from '@taxtronik/db/tenant-context';
 import type { TenantContext, TxClient } from '@taxtronik/db';
 
@@ -59,8 +60,20 @@ export async function readAccessPolicyTx(tx: TxClient, tenantId: string): Promis
   return { clientAccessMode: value.clientAccessMode === 'RESTRICTED' ? 'RESTRICTED' : 'OPEN' };
 }
 
-export async function readAccessPolicy(ctx: TenantContext): Promise<AccessPolicy> {
-  return withTenantContext(ctx, (tx) => readAccessPolicyTx(tx, ctx.tenantId));
+// Standalone-Variante (eigene Tx) — wird im Zugriffs-Gate pro Request u. U.
+// mehrfach gerufen. cache() request-scoped auf Primitiven (s. modules.ts).
+// readAccessPolicyTx (auf bestehender Tx, ein Round-Trip) bleibt ungecacht.
+const readAccessPolicyCached = cache(
+  (
+    tenantId: string,
+    actorId: TenantContext['actorId'],
+    actorType: TenantContext['actorType'],
+  ): Promise<AccessPolicy> =>
+    withTenantContext({ tenantId, actorId, actorType }, (tx) => readAccessPolicyTx(tx, tenantId)),
+);
+
+export function readAccessPolicy(ctx: TenantContext): Promise<AccessPolicy> {
+  return readAccessPolicyCached(ctx.tenantId, ctx.actorId, ctx.actorType);
 }
 
 export async function writeAccessPolicy(ctx: TenantContext, cfg: AccessPolicy): Promise<void> {

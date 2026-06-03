@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import NextAuth, { type NextAuthConfig, type Session } from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import { compare } from 'bcryptjs';
@@ -381,10 +382,15 @@ export const staffSignOut: typeof _staff.signOut = _staff.signOut;
 // die Credentials-Provider-`authorize` diese Felder garantiert. Zusätzlich:
 // wenn der Revocation-Check im session-Callback die Staff-Felder nicht
 // gesetzt hat (S11), liefern wir null statt einer halb-leeren Session.
-export const staffAuth = async (): Promise<StaffSession | null> => {
+// React cache(): dedupliziert pro Request. staffAuth wird im (protected)/layout
+// UND in jeder Page darunter (bei verschachtelten Layouts sogar 3×) aufgerufen;
+// jeder Aufruf triggert sonst den Session-Callback = 1 Redis-Revocation-Check +
+// 1 DB-findUnique (Ghost-Session-Härtung). cache() ist request-scoped (nie über
+// Requests/User hinweg) → null Staleness-/Leak-Risiko, redundante Round-Trips weg.
+export const staffAuth = cache(async (): Promise<StaffSession | null> => {
   const raw = await _staff.auth();
   if (!raw?.user) return null;
   const u = raw.user as { staffId?: string };
   if (!u.staffId) return null;
   return raw as StaffSession;
-};
+});

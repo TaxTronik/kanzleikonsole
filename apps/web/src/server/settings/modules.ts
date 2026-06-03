@@ -10,6 +10,7 @@
 //   - PoaMode steuert das Vollmachten-Subsystem
 // =============================================================================
 
+import { cache } from 'react';
 import type { TenantContext } from '@taxtronik/db';
 import { withTenantContext } from '@taxtronik/db';
 
@@ -79,7 +80,19 @@ export const DEFAULT_MODULES: ModuleConfig = {
 
 const KEY_MODULES = 'modules';
 
-export async function readModules(ctx: TenantContext): Promise<ModuleConfig> {
+// Layout UND Page laden readModules pro Request (Sidebar + Modul-Gate). cache()
+// dedupliziert request-scoped — aber auf PRIMITIVEN (tenantId/actorId/actorType),
+// nicht auf dem ctx-Objekt: Layout und Page bauen separate ctx-Instanzen, und
+// cache() vergleicht Objekt-Argumente per Referenz (würde sonst nie greifen).
+const readModulesCached = cache(
+  (
+    tenantId: string,
+    actorId: TenantContext['actorId'],
+    actorType: TenantContext['actorType'],
+  ): Promise<ModuleConfig> => readModulesByCtx({ tenantId, actorId, actorType }),
+);
+
+function readModulesByCtx(ctx: TenantContext): Promise<ModuleConfig> {
   return withTenantContext(ctx, async (tx) => {
     const row = await tx.tenantSetting.findUnique({
       where: { tenantId_key: { tenantId: ctx.tenantId, key: KEY_MODULES } },
@@ -88,6 +101,10 @@ export async function readModules(ctx: TenantContext): Promise<ModuleConfig> {
     const value = row.value as Partial<ModuleConfig>;
     return { ...DEFAULT_MODULES, ...value };
   });
+}
+
+export function readModules(ctx: TenantContext): Promise<ModuleConfig> {
+  return readModulesCached(ctx.tenantId, ctx.actorId, ctx.actorType);
 }
 
 export async function writeModules(ctx: TenantContext, cfg: ModuleConfig): Promise<void> {
