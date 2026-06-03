@@ -74,6 +74,56 @@ function groupByDay(events: TimelineEvent[]): Map<string, TimelineEvent[]> {
   return groups;
 }
 
+/** Ein einzelnes Timeline-Ereignis (Icon-Punkt + Karte). Aus der Seite
+ *  herausgezogen — flacht die tiefe Map-Verschachtelung deutlich ab. */
+function TimelineEntry({ event, now }: { event: TimelineEvent; now: Date }) {
+  const { icon: Icon, tone } = ICON_MAP[event.kind];
+  return (
+    <li className="ml-6">
+      <span className={`absolute -left-3 flex h-6 w-6 items-center justify-center rounded-full ring-4 ring-white ${tone}`}>
+        <Icon className="h-3.5 w-3.5" />
+      </span>
+      <div className="card px-4 py-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            {event.href ? (
+              <Link href={event.href} className="text-sm font-medium text-primary hover:underline">
+                {event.title}
+              </Link>
+            ) : (
+              <p className="text-sm font-medium text-primary">{event.title}</p>
+            )}
+            {event.detail && <p className="text-xs text-muted mt-0.5 break-words">{event.detail}</p>}
+          </div>
+          <time
+            dateTime={event.occurredAt.toISOString()}
+            title={fmtDateTimeMedium(event.occurredAt)}
+            className="text-xs text-disabled whitespace-nowrap"
+          >
+            {formatRelative(event.occurredAt, now)}
+          </time>
+        </div>
+      </div>
+    </li>
+  );
+}
+
+/** Ein Tages-Block (Datums-Überschrift + Ereignisliste). */
+function TimelineDay({ day, events, now }: { day: string; events: TimelineEvent[]; now: Date }) {
+  return (
+    <section>
+      <h2 className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">
+        {fmtDateWeekdayLong(new Date(day + 'T12:00:00.000Z'))}
+      </h2>
+      <ol className="relative border-l border-default ml-4 space-y-4">
+        {events.map((e) => (
+          <TimelineEntry key={e.id} event={e} now={now} />
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 
 export default async function ClientTimelinePage({
   params,
@@ -132,48 +182,7 @@ export default async function ClientTimelinePage({
       ) : (
         <div className="space-y-8">
           {Array.from(grouped.entries()).map(([day, list]) => (
-            <section key={day}>
-              <h2 className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">
-                {fmtDateWeekdayLong(new Date(day + 'T12:00:00.000Z'))}
-              </h2>
-              <ol className="relative border-l border-default ml-4 space-y-4">
-                {list.map((e) => {
-                  const { icon: Icon, tone } = ICON_MAP[e.kind];
-                  return (
-                    <li key={e.id} className="ml-6">
-                      <span
-                        className={`absolute -left-3 flex h-6 w-6 items-center justify-center rounded-full ring-4 ring-white ${tone}`}
-                      >
-                        <Icon className="h-3.5 w-3.5" />
-                      </span>
-                      <div className="card px-4 py-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0 flex-1">
-                            {e.href ? (
-                              <Link href={e.href} className="text-sm font-medium text-primary hover:underline">
-                                {e.title}
-                              </Link>
-                            ) : (
-                              <p className="text-sm font-medium text-primary">{e.title}</p>
-                            )}
-                            {e.detail && (
-                              <p className="text-xs text-muted mt-0.5 break-words">{e.detail}</p>
-                            )}
-                          </div>
-                          <time
-                            dateTime={e.occurredAt.toISOString()}
-                            title={fmtDateTimeMedium(e.occurredAt)}
-                            className="text-xs text-disabled whitespace-nowrap"
-                          >
-                            {formatRelative(e.occurredAt, now)}
-                          </time>
-                        </div>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ol>
-            </section>
+            <TimelineDay key={day} day={day} events={list} now={now} />
           ))}
 
           {events.length === limit && (
