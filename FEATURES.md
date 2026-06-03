@@ -48,7 +48,9 @@ Sicherheit · Architektur
   vor dem Namen, im Edit-Formular pflegbar, in der Liste sichtbar
 - Stammdaten-Bearbeitung in zwei Sektionen
   - **Verwaltung** (frei änderbar): DATEV-Nr, Addison-Nr, Rechnungs-E-Mail,
-    Priorität A/B/C, **interne Akten-Notiz** (Markdown, nur Kanzlei sieht es)
+    Priorität A/B/C, **interne Akten-Notiz** (Markdown, nur Kanzlei sieht es),
+    **Vertraulich-Flag** (Admin/Partner-only; schirmt den Mandanten auch im
+    offenen Zugriffsmodell auf Zugeordnete ab)
   - **GwG-relevant** (Name, Rechtsform, Adresse, USt-ID) — Änderung setzt
     bestehenden VERIFIED-GwG-Check auf IN_REVIEW zurück
 - Bearbeiter-Zuordnung mit zwei Rollen
@@ -861,6 +863,11 @@ Kanzlei nicht.
   angemeldeten Sitzungen bewusst nicht prominent angezeigt
 - Modul-Aktivierung pro Tenant (BWA / Wissen / Zeiterfassung /
   Telefonzettel / Steuertermine + Bescheide / Subsumtion-TCMS)
+- **Zugriffsmodell** (`OPEN` / `RESTRICTED`) — `OPEN` (Default): jeder aktive
+  Mitarbeiter darf mandantenübergreifend arbeiten (Audit-Log trägt die
+  Nachvollziehbarkeit); `RESTRICTED`: nur Admin/Partner + zugeordnete
+  Berufsträger/Hauptbearbeiter. Pro Mandant „vertraulich"-Flag als Ventil
+  (auch im OPEN-Modus auf Zugeordnete beschränkt), nur Admin/Partner setzt es
 - Vollmachten-Modus (`MARKDOWN_OTP` / `PDF_TEMPLATE` / `OFF`)
 - Rechnungs-Modus (`IN_APP` / `EXTERNAL` / `OFF`)
 - PDF-Begleittext-Templates für beide Modi (Markdown mit Platzhaltern)
