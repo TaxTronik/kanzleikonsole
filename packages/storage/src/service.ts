@@ -5,7 +5,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { createHash } from 'node:crypto';
 import { createConnection } from 'node:net';
-import type { Readable } from 'node:stream';
+import { Readable } from 'node:stream';
 import { env } from '@taxtronik/config';
 import {
   s3,
@@ -240,6 +240,32 @@ export async function fetchObjectBytes(bucket: string, storageKey: string): Prom
     chunks.push(buf);
   }
   return Buffer.concat(chunks);
+}
+
+export interface ObjectStream {
+  body: ReadableStream<Uint8Array>;
+  contentLength: number | null;
+  contentType: string | null;
+}
+
+/**
+ * Streaming-Pendant zu fetchObjectBytes: reicht den S3-Body als Web-
+ * ReadableStream durch — O(1)-Speicher statt die ganze Datei in einen Buffer zu
+ * sammeln. Für Download-/Preview-Routen, die direkt in die HTTP-Response streamen
+ * (App-proxied; der Object-Store bleibt intern, nie öffentlich).
+ *
+ * Größen-Cap vorab über ContentLength. Anders als fetchObjectBytes wird NICHT
+ * pro Chunk nachgedeckelt — die Quelle ist der interne, vertrauenswürdige
+ * Object-Store; der Cap ist DoS-Vorsorge, kein Schutz vor manipuliertem Upstream.
+ */
+export async function streamObject(bucket: string, storageKey: string): Promise<ObjectStream> {
+  const result = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: storageKey }));
+  const contentLength = typeof result.ContentLength === 'number' ? result.ContentLength : null;
+  if (contentLength !== null && contentLength > MAX_UPLOAD_BYTES) {
+    throw new Error(`TOO_LARGE: Objekt (${contentLength} B) überschreitet das Limit.`);
+  }
+  const body = Readable.toWeb(result.Body as Readable) as ReadableStream<Uint8Array>;
+  return { body, contentLength, contentType: result.ContentType ?? null };
 }
 
 /**

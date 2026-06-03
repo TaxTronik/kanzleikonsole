@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { getClientIp } from '@/server/rate-limit';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
-import { fetchObjectBytes } from '@taxtronik/storage';
+import { streamObject } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
 import { previewContentType, previewDisposition } from '@/server/storage/preview-mime';
 
@@ -54,16 +54,14 @@ export async function GET(
   // Object-Store bleibt intern: ?stream=1 streamt Bytes inline, sonst
   // JSON-Metadata mit `url` auf diese Route mit ?stream=1.
   if (req.nextUrl.searchParams.get('stream') === '1') {
-    const bytes = await fetchObjectBytes(doc.bucket, doc.key);
-    return new NextResponse(new Uint8Array(bytes), {
-      status: 200,
-      headers: {
-        'content-type': previewContentType(doc.mimeType),
-        'content-disposition': previewDisposition(doc.mimeType, doc.title),
-        'content-length': String(bytes.length),
-        'cache-control': 'private, no-store',
-      },
-    });
+    const obj = await streamObject(doc.bucket, doc.key);
+    const headers: Record<string, string> = {
+      'content-type': previewContentType(doc.mimeType),
+      'content-disposition': previewDisposition(doc.mimeType, doc.title),
+      'cache-control': 'private, no-store',
+    };
+    if (obj.contentLength !== null) headers['content-length'] = String(obj.contentLength);
+    return new NextResponse(obj.body, { status: 200, headers });
   }
 
   const url = `${req.nextUrl.pathname}?stream=1`;

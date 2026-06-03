@@ -9,7 +9,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { getClientIp } from '@/server/rate-limit';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
-import { fetchObjectBytes, sanitizeFilenameForHeader } from '@taxtronik/storage';
+import { fetchObjectBytes, streamObject, sanitizeFilenameForHeader } from '@taxtronik/storage';
 import { filenameWithExtension } from '@/server/storage/preview-mime';
 import { buildZip, sanitizeZipFileName, ZipTooLargeError, type ZipEntry } from '@/server/export/zip';
 import { evidenceService } from '@/server/container';
@@ -120,22 +120,20 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
 
-  // Genau eine lose Datei, keine Ordner → unkomprimiert ausliefern.
+  // Genau eine lose Datei, keine Ordner → unkomprimiert durchstreamen (O(1)).
   if (usableLoose.length === 1 && usableFolder.length === 0 && folderIds.length === 0) {
     const d = usableLoose[0]!;
     const v = d.versions[0]!;
-    const bytes = await fetchObjectBytes(v.storageBucket, v.storageKey);
-    return new NextResponse(new Uint8Array(bytes), {
-      status: 200,
-      headers: {
-        'content-type': d.mimeType || 'application/octet-stream',
-        'content-disposition': `attachment; filename="${sanitizeFilenameForHeader(
-          filenameWithExtension(d.title, d.mimeType),
-        )}"`,
-        'content-length': String(bytes.length),
-        'cache-control': 'private, no-store',
-      },
-    });
+    const obj = await streamObject(v.storageBucket, v.storageKey);
+    const headers: Record<string, string> = {
+      'content-type': d.mimeType || 'application/octet-stream',
+      'content-disposition': `attachment; filename="${sanitizeFilenameForHeader(
+        filenameWithExtension(d.title, d.mimeType),
+      )}"`,
+      'cache-control': 'private, no-store',
+    };
+    if (obj.contentLength !== null) headers['content-length'] = String(obj.contentLength);
+    return new NextResponse(obj.body, { status: 200, headers });
   }
 
   // ZIP. Dubletten je Verzeichnis durchnummerieren.

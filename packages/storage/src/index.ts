@@ -9,6 +9,7 @@ export {
 } from './client';
 export {
   fetchObjectBytes,
+  streamObject,
   putObjectBytes,
   commitDocument,
   commitDocumentFromBytes,
@@ -20,5 +21,6 @@ export {
   MAX_UPLOAD_BYTES,
   type CommitDocumentInput,
   type CommitDocumentResult,
+  type ObjectStream,
   type ScanResult,
 } from './service';

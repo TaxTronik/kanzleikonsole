@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { getClientIp } from '@/server/rate-limit';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
-import { fetchObjectBytes, sanitizeFilenameForHeader } from '@taxtronik/storage';
+import { streamObject, sanitizeFilenameForHeader } from '@taxtronik/storage';
 import { filenameWithExtension } from '@/server/storage/preview-mime';
 import { evidenceService } from '@/server/container';
 
@@ -54,15 +54,13 @@ export async function GET(
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
 
-  // App-proxied Download — Object-Store bleibt intern.
-  const bytes = await fetchObjectBytes(doc.bucket, doc.key);
-  return new NextResponse(new Uint8Array(bytes), {
-    status: 200,
-    headers: {
-      'content-type': doc.mimeType || 'application/octet-stream',
-      'content-disposition': `attachment; filename="${sanitizeFilenameForHeader(filenameWithExtension(doc.title, doc.mimeType))}"`,
-      'content-length': String(bytes.length),
-      'cache-control': 'private, no-store',
-    },
-  });
+  // App-proxied Download — Object-Store bleibt intern, direkt durchstreamen (O(1)).
+  const obj = await streamObject(doc.bucket, doc.key);
+  const headers: Record<string, string> = {
+    'content-type': doc.mimeType || 'application/octet-stream',
+    'content-disposition': `attachment; filename="${sanitizeFilenameForHeader(filenameWithExtension(doc.title, doc.mimeType))}"`,
+    'cache-control': 'private, no-store',
+  };
+  if (obj.contentLength !== null) headers['content-length'] = String(obj.contentLength);
+  return new NextResponse(obj.body, { status: 200, headers });
 }
