@@ -6,8 +6,6 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { randomBytes } from 'node:crypto';
-import { staffAuth } from '@/server/auth/staff';
-import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { assertPublicHost } from '@/server/http/ssrf-guard';
@@ -15,7 +13,7 @@ import { writeTaxRegion } from '@/server/settings/tax-region';
 import { writeTsaConfig, type TsaConfig } from '@/server/settings/tsa';
 import { Rfc3161HttpAdapter, getTsaProvider } from '@taxtronik/evidence';
 import type { GermanRegion } from '@taxtronik/tax';
-import type { ActionResult } from '@/server/actions/staff-action';
+import { staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
 
 // ----------------------------------------------------------------------------
 // Bundesland (für Steuertermin-Feiertage)
@@ -34,9 +32,8 @@ export async function saveTaxRegionAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
+  const g = await staffActionGuard({ requireAdmin: true });
+  if (!g.ok) return g;
   const parsed = TaxRegionSchema.safeParse({ region: formData.get('region') ?? '' });
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
@@ -44,8 +41,7 @@ export async function saveTaxRegionAction(
   const region: GermanRegion | null =
     raw && (VALID_REGIONS as readonly string[]).includes(raw) ? (raw as GermanRegion) : null;
 
-  const { tenantId, staffId } = session.user;
-  const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
+  const { tenantId, staffId, ctx } = g;
   await writeTaxRegion(ctx, region);
 
   await withTenantContext(ctx, async (tx) => {
@@ -84,9 +80,8 @@ export async function saveTsaAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
+  const g = await staffActionGuard({ requireAdmin: true });
+  if (!g.ok) return g;
   const parsed = TsaSchema.safeParse({
     providerId: formData.get('providerId') ?? '',
     customUrl: formData.get('customUrl') ?? '',
@@ -107,8 +102,7 @@ export async function saveTsaAction(
     }
   }
 
-  const { tenantId, staffId } = session.user;
-  const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
+  const { tenantId, staffId, ctx } = g;
   const cfg: TsaConfig = {
     providerId: parsed.data.providerId,
     customUrl: parsed.data.customUrl ?? '',
@@ -136,9 +130,8 @@ export async function testTsaAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
+  const g = await staffActionGuard({ requireAdmin: true });
+  if (!g.ok) return g;
   const parsed = TsaSchema.safeParse({
     providerId: formData.get('providerId') ?? '',
     customUrl: formData.get('customUrl') ?? '',

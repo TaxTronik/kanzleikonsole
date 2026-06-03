@@ -1,13 +1,9 @@
 'use server';
 
 import { z } from 'zod';
-import { revalidatePath } from 'next/cache';
-import { staffAuth } from '@/server/auth/staff';
-import { withTenantContext } from '@taxtronik/db';
+import { withStaff, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
 
-export interface ActionResult {
-  ok: boolean;
-  error?: string;
+export interface ActionResult extends BaseActionResult {
   bookmarked?: boolean;
 }
 
@@ -45,16 +41,12 @@ const ToggleSchema = z.object({
  * Sonst neu anlegen.
  */
 export async function toggleBookmarkAction(input: z.infer<typeof ToggleSchema>): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
   const parsed = ToggleSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { tenantId, staffId } = session.user;
   const { resourceType, resourceId, label, href } = parsed.data;
 
-  const result = await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
+  return withStaff(
+    async (tx, { tenantId, staffId }) => {
       const existing = await tx.staffBookmark.findUnique({
         where: { staffId_resourceType_resourceId: { staffId, resourceType, resourceId } },
       });
@@ -74,27 +66,20 @@ export async function toggleBookmarkAction(input: z.infer<typeof ToggleSchema>):
       });
       return { bookmarked: true };
     },
+    { revalidate: '/staff/dashboard' },
   );
-
-  revalidatePath('/staff/dashboard');
-  return { ok: true, ...result };
 }
 
 export async function removeBookmarkAction(input: { id: string }): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { tenantId, staffId } = session.user;
 
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    (tx) =>
-      tx.staffBookmark.deleteMany({
+  return withStaff(
+    async (tx, { staffId }) => {
+      await tx.staffBookmark.deleteMany({
         where: { id: parsed.data.id, staffId },
-      }),
+      });
+    },
+    { revalidate: '/staff/dashboard' },
   );
-
-  revalidatePath('/staff/dashboard');
-  return { ok: true };
 }

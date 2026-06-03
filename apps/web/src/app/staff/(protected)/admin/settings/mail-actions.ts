@@ -5,14 +5,12 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { staffAuth } from '@/server/auth/staff';
-import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { readSmtpConfig, writeSmtpConfig, deleteSmtpConfig, type SmtpConfig } from '@/server/settings/smtp';
 import { sendTestMail } from '@/server/mail/send';
 import { writeMailDispatch, type MailDispatchConfig } from '@/server/settings/mail-dispatch';
-import type { ActionResult } from '@/server/actions/staff-action';
+import { staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
 
 const SmtpSchema = z.object({
   host: z.string().min(1).max(255),
@@ -34,9 +32,9 @@ export async function saveSmtpAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
+  const g = await staffActionGuard({ requireAdmin: true });
+  if (!g.ok) return g;
+  const { tenantId, staffId, ctx } = g;
   const parsed = SmtpSchema.safeParse({
     host: formData.get('host'),
     port: formData.get('port'),
@@ -50,9 +48,6 @@ export async function saveSmtpAction(
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ') };
   }
-
-  const { tenantId, staffId } = session.user;
-  const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
 
   let password = parsed.data.password ?? '';
   if (parsed.data.keepPassword) {
@@ -97,11 +92,9 @@ export async function saveSmtpAction(
 }
 
 export async function resetSmtpAction(): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
-  const { tenantId, staffId } = session.user;
-  const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
+  const g = await staffActionGuard({ requireAdmin: true });
+  if (!g.ok) return g;
+  const { tenantId, staffId, ctx } = g;
   await deleteSmtpConfig(ctx);
   await withTenantContext(ctx, async (tx) => {
     await evidenceService.record(tx, {
@@ -123,9 +116,9 @@ export async function sendTestMailAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
+  const g = await staffActionGuard({ requireAdmin: true });
+  if (!g.ok) return g;
+  const { ctx } = g;
   const parsed = TestMailSchema.safeParse({
     host: formData.get('host'),
     port: formData.get('port'),
@@ -140,9 +133,6 @@ export async function sendTestMailAction(
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues.map((i) => i.message).join('; ') };
   }
-
-  const { tenantId, staffId } = session.user;
-  const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
 
   let password = parsed.data.password ?? '';
   if (parsed.data.keepPassword) {
@@ -180,16 +170,14 @@ export async function saveMailDispatchAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
+  const g = await staffActionGuard({ requireAdmin: true });
+  if (!g.ok) return g;
+  const { tenantId, staffId, ctx } = g;
   const parsed = MailDispatchSchema.safeParse({
     mode: formData.get('mode'),
   });
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const { tenantId, staffId } = session.user;
-  const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
   const cfg: MailDispatchConfig = parsed.data;
   await writeMailDispatch(ctx, cfg);
 

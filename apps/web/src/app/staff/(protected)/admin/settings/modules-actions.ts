@@ -6,15 +6,13 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { staffAuth } from '@/server/auth/staff';
-import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
+import { staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
 import { writeModules, type ModuleConfig } from '@/server/settings/modules';
 import { writeAccessPolicy, type ClientAccessMode } from '@/server/settings/access-policy';
 import { writeClientLayout, ALL_CLIENT_BLOCKS, DEFAULT_CLIENT_LAYOUT, type ClientBlockKey, type ClientGridItem } from '@/server/settings/client-layout';
 import { writePortalFeatures, type PortalFeatures } from '@/server/settings/portal-features';
-import type { ActionResult } from '@/server/actions/staff-action';
 
 // ----------------------------------------------------------------------------
 // Module + Vollmachten-Modus
@@ -47,9 +45,8 @@ export async function saveModulesAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
+  const g = await staffActionGuard({ requireAdmin: true });
+  if (!g.ok) return g;
 
   const parsed = ModulesSchema.safeParse({
     bwa: formData.get('enabled.bwa') === 'on',
@@ -75,8 +72,7 @@ export async function saveModulesAction(
   });
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const { tenantId, staffId } = session.user;
-  const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
+  const { tenantId, staffId, ctx } = g;
   const cfg: ModuleConfig = {
     bwa: parsed.data.bwa,
     knowledge: parsed.data.knowledge,
@@ -141,15 +137,13 @@ export async function saveAccessPolicyAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
+  const g = await staffActionGuard({ requireAdmin: true });
+  if (!g.ok) return g;
 
   const parsed = AccessPolicySchema.safeParse({ clientAccessMode: formData.get('clientAccessMode') });
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const { tenantId, staffId } = session.user;
-  const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
+  const { tenantId, staffId, ctx } = g;
   const cfg = { clientAccessMode: parsed.data.clientAccessMode as ClientAccessMode };
   await writeAccessPolicy(ctx, cfg);
 
@@ -188,14 +182,12 @@ const ClientLayoutSchema = z.object({
 });
 
 export async function saveClientLayoutAction(input: { items: ClientGridItem[] }): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
+  const g = await staffActionGuard({ requireAdmin: true });
+  if (!g.ok) return g;
   const parsed = ClientLayoutSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const { tenantId, staffId } = session.user;
-  const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
+  const { tenantId, staffId, ctx } = g;
   await writeClientLayout(ctx, { items: parsed.data.items });
 
   await withTenantContext(ctx, async (tx) => {
@@ -215,11 +207,9 @@ export async function saveClientLayoutAction(input: { items: ClientGridItem[] })
 }
 
 export async function resetClientLayoutAction(): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
-  const { tenantId, staffId } = session.user;
-  const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
+  const g = await staffActionGuard({ requireAdmin: true });
+  if (!g.ok) return g;
+  const { tenantId, staffId, ctx } = g;
   await writeClientLayout(ctx, DEFAULT_CLIENT_LAYOUT);
 
   await withTenantContext(ctx, async (tx) => {
@@ -255,9 +245,8 @@ export async function savePortalFeaturesAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
+  const g = await staffActionGuard({ requireAdmin: true });
+  if (!g.ok) return g;
   const parsed = PortalFeaturesSchema.safeParse({
     appointmentRequests: formData.get('appointmentRequests') === 'on',
     bwaView: formData.get('bwaView') === 'on',
@@ -268,8 +257,7 @@ export async function savePortalFeaturesAction(
   });
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const { tenantId, staffId } = session.user;
-  const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
+  const { tenantId, staffId, ctx } = g;
   const cfg: PortalFeatures = parsed.data;
   await writePortalFeatures(ctx, cfg);
 

@@ -4,10 +4,9 @@ import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { staffAuth } from '@/server/auth/staff';
-import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
+import { staffActionGuard } from '@/server/actions/staff-action';
 import {
   readN8nConfig,
   writeN8nConfig,
@@ -44,13 +43,13 @@ function parseN8nForm(formData: FormData) {
   });
 }
 
+// Lokaler Gate-Wrapper über den zentralen staffActionGuard — hält die bestehenden
+// Aufrufstellen (auth.tenantId/auth.staffId) stabil, zentralisiert aber die
+// Auth-Zeremonie. Der Authz-Struktur-Guardrail erkennt staffActionGuard im Body.
 async function requireAdmin() {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false as const, error: 'Nicht eingeloggt.' };
-  if (!isStaffAdmin(session)) {
-    return { ok: false as const, error: 'Nur ADMIN/PARTNER.' };
-  }
-  return { ok: true as const, tenantId: session.user.tenantId, staffId: session.user.staffId };
+  const g = await staffActionGuard({ requireAdmin: true });
+  if (!g.ok) return { ok: false as const, error: g.error };
+  return { ok: true as const, tenantId: g.tenantId, staffId: g.staffId };
 }
 
 export async function saveN8nAction(

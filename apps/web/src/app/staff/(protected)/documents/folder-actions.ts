@@ -2,9 +2,9 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
+import { staffActionGuard } from '@/server/actions/staff-action';
 
 export interface FolderActionResult {
   ok: boolean;
@@ -31,19 +31,19 @@ const CreateSchema = z.object({
 export async function createFolderAction(
   input: z.infer<typeof CreateSchema>,
 ): Promise<FolderActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
+  const g = await staffActionGuard();
+  if (!g.ok) return g;
   const parsed = CreateSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
   }
-  const { tenantId, staffId } = session.user;
+  const { tenantId, staffId, ctx } = g;
   const { parentId } = parsed.data;
   const name = parsed.data.name.trim();
 
   try {
     const id = await withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
+      ctx,
       async (tx) => {
         // clientId aus dem Parent ableiten (ein Unterordner liegt zwingend
         // im selben Bereich wie sein Parent) — sonst der übergebene Wert.
@@ -86,19 +86,19 @@ const RenameSchema = z.object({ folderId: z.string().uuid(), name: NAME });
 export async function renameFolderAction(
   input: z.infer<typeof RenameSchema>,
 ): Promise<FolderActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
+  const g = await staffActionGuard();
+  if (!g.ok) return g;
   const parsed = RenameSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
   }
-  const { tenantId, staffId } = session.user;
+  const { tenantId, staffId, ctx } = g;
   const { folderId } = parsed.data;
   const name = parsed.data.name.trim();
 
   try {
     const clientId = await withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
+      ctx,
       async (tx) => {
         const f = await tx.documentFolder.findFirst({
           where: { id: folderId, tenantId },
@@ -135,16 +135,16 @@ const DeleteSchema = z.object({ folderId: z.string().uuid() });
 export async function deleteFolderAction(
   input: z.infer<typeof DeleteSchema>,
 ): Promise<FolderActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
+  const g = await staffActionGuard();
+  if (!g.ok) return g;
   const parsed = DeleteSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { tenantId, staffId } = session.user;
+  const { tenantId, staffId, ctx } = g;
   const { folderId } = parsed.data;
 
   try {
     const clientId = await withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
+      ctx,
       async (tx) => {
         const f = await tx.documentFolder.findFirst({
           where: { id: folderId, tenantId },
@@ -192,17 +192,17 @@ const MoveSchema = z.object({
 export async function moveFolderAction(
   input: z.infer<typeof MoveSchema>,
 ): Promise<FolderActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
+  const g = await staffActionGuard();
+  if (!g.ok) return g;
   const parsed = MoveSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { tenantId, staffId } = session.user;
+  const { tenantId, staffId, ctx } = g;
   const { folderId, newParentId } = parsed.data;
   if (folderId === newParentId) return { ok: false, error: 'Ordner kann nicht in sich selbst.' };
 
   try {
     const clientId = await withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
+      ctx,
       async (tx) => {
         const f = await tx.documentFolder.findFirst({
           where: { id: folderId, tenantId },
@@ -271,16 +271,16 @@ const SetDocSchema = z.object({
 export async function setDocumentFolderAction(
   input: z.infer<typeof SetDocSchema>,
 ): Promise<FolderActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
+  const g = await staffActionGuard();
+  if (!g.ok) return g;
   const parsed = SetDocSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { tenantId, staffId } = session.user;
+  const { tenantId, staffId, ctx } = g;
   const { documentId, folderId } = parsed.data;
 
   try {
     const clientId = await withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
+      ctx,
       async (tx) => {
         const doc = await tx.document.findFirst({
           where: { id: documentId, tenantId, deletedAt: null },

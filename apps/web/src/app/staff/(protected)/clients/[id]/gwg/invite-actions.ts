@@ -3,12 +3,13 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { portalBaseUrl } from '@taxtronik/config';
-import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { sendTemplateMail } from '@/server/mail/dispatch';
 import { generateInviteToken, INVITE_TTL_DAYS } from '@/server/gwg-onboarding/service';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
+import { toActionError } from '@/server/auth/rbac';
+import { staffActionGuard, withStaff, ActionError } from '@/server/actions/staff-action';
 
 export interface InviteResult {
   ok: boolean;
@@ -27,11 +28,11 @@ export async function sendInviteAction(input: {
   inviteName: string;
   inviteEmail: string;
 }): Promise<InviteResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
+  const g = await staffActionGuard();
+  if (!g.ok) return g;
+  const { tenantId, staffId, ctx } = g;
   const parsed = SendSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { tenantId, staffId } = session.user;
   const { clientId, inviteName, inviteEmail } = parsed.data;
 
   const { raw, hash } = generateInviteToken();
@@ -39,37 +40,34 @@ export async function sendInviteAction(input: {
 
   let inviteId: string;
   try {
-    inviteId = await withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
-      async (tx) => {
-        // U-6: clientId Tenant-Sanity — letzte unverschlossene Stelle aus
-        // R-2 / S-6-Sammelfund.
-        await assertClientInTenant(tx, clientId);
-        const inv = await tx.gwgOnboardingInvite.create({
-          data: {
-            tenantId,
-            clientId,
-            inviteName,
-            inviteEmail,
-            tokenHash: hash,
-            expiresAt,
-            createdByStaff: staffId,
-          },
-        });
-        await evidenceService.record(tx, {
+    inviteId = await withTenantContext(ctx, async (tx) => {
+      // U-6: clientId Tenant-Sanity — letzte unverschlossene Stelle aus
+      // R-2 / S-6-Sammelfund.
+      await assertClientInTenant(tx, clientId);
+      const inv = await tx.gwgOnboardingInvite.create({
+        data: {
           tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
-          action: 'gwg.onboarding.invite',
-          resourceType: 'gwg_onboarding_invite',
-          resourceId: inv.id,
-          after: { inviteName, inviteEmail, expiresAt: expiresAt.toISOString() },
-        });
-        return inv.id;
-      },
-    );
+          clientId,
+          inviteName,
+          inviteEmail,
+          tokenHash: hash,
+          expiresAt,
+          createdByStaff: staffId,
+        },
+      });
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'gwg.onboarding.invite',
+        resourceType: 'gwg_onboarding_invite',
+        resourceId: inv.id,
+        after: { inviteName, inviteEmail, expiresAt: expiresAt.toISOString() },
+      });
+      return inv.id;
+    });
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return toActionError(e);
   }
 
   const link = `${portalBaseUrl}/gwg-onboarding?token=${encodeURIComponent(raw)}`;
@@ -100,42 +98,36 @@ export async function sendInviteAction(input: {
 }
 
 export async function cancelInviteAction(input: { id: string }): Promise<InviteResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { tenantId, staffId } = session.user;
 
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
-      const inv = await tx.gwgOnboardingInvite.findUnique({ where: { id: parsed.data.id } });
-      if (!inv) return;
-      if (inv.status === 'SUBMITTED') throw new Error('Bereits abgeschickt — kann nicht zurückgezogen werden.');
-      await tx.gwgOnboardingInvite.update({
-        where: { id: parsed.data.id },
-        data: {
-          status: 'CANCELLED',
-          cancelledAt: new Date(),
-          cancelledByStaff: staffId,
-          // Token-Hash entwerten, damit der Link sofort tot ist
-          tokenHash: '',
-        },
-      });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'gwg.onboarding.cancel',
-        resourceType: 'gwg_onboarding_invite',
-        resourceId: parsed.data.id,
-        before: { status: inv.status },
-        after: { status: 'CANCELLED' },
-      });
-    },
-  );
+  const r = await withStaff(async (tx, { tenantId, staffId }) => {
+    const inv = await tx.gwgOnboardingInvite.findUnique({ where: { id: parsed.data.id } });
+    if (!inv) return;
+    if (inv.status === 'SUBMITTED') throw new ActionError('Bereits abgeschickt — kann nicht zurückgezogen werden.');
+    await tx.gwgOnboardingInvite.update({
+      where: { id: parsed.data.id },
+      data: {
+        status: 'CANCELLED',
+        cancelledAt: new Date(),
+        cancelledByStaff: staffId,
+        // Token-Hash entwerten, damit der Link sofort tot ist
+        tokenHash: '',
+      },
+    });
+    await evidenceService.record(tx, {
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
+      action: 'gwg.onboarding.cancel',
+      resourceType: 'gwg_onboarding_invite',
+      resourceId: parsed.data.id,
+      before: { status: inv.status },
+      after: { status: 'CANCELLED' },
+    });
+  });
 
   // Wir kennen die clientId hier nur via DB — revalidatePath generisch
-  revalidatePath('/staff/clients', 'layout');
-  return { ok: true };
+  if (r.ok) revalidatePath('/staff/clients', 'layout');
+  return r;
 }

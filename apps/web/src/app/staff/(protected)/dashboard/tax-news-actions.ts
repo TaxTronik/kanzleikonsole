@@ -2,27 +2,18 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { staffAuth } from '@/server/auth/staff';
-import { isStaffAdmin } from '@/server/auth/rbac';
-import { withTenantContext } from '@taxtronik/db';
+import { toActionError } from '@/server/auth/rbac';
 import { evidenceService } from '@/server/container';
+import { staffActionGuard, withStaff, type ActionResult } from '@/server/actions/staff-action';
 
-export interface ActionResult {
-  ok: boolean;
-  error?: string;
-}
+export type { ActionResult };
 
 export async function toggleTaxNewsNotifyAction(input: { enabled: boolean }): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
   const parsed = z.object({ enabled: z.boolean() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const { tenantId, staffId } = session.user;
-
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
+  return withStaff(
+    async (tx, { tenantId, staffId }) => {
       await tx.staffUser.update({
         where: { id: staffId },
         data: { taxNewsNotify: parsed.data.enabled },
@@ -37,10 +28,8 @@ export async function toggleTaxNewsNotifyAction(input: { enabled: boolean }): Pr
         after: { taxNewsNotify: parsed.data.enabled },
       });
     },
+    { revalidate: '/staff/dashboard' },
   );
-
-  revalidatePath('/staff/dashboard');
-  return { ok: true };
 }
 
 /**
@@ -50,11 +39,8 @@ export async function toggleTaxNewsNotifyAction(input: { enabled: boolean }): Pr
 export async function triggerTaxNewsFetchAction(): Promise<
   ActionResult & { inserted?: number; fetched?: number; errors?: string[] }
 > {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-  if (!isStaffAdmin(session)) {
-    return { ok: false, error: 'Nur ADMIN/PARTNER.' };
-  }
+  const g = await staffActionGuard({ requireAdmin: true });
+  if (!g.ok) return g;
   try {
     const mod = await import('@/server/tax-news/fetcher');
     const result = await mod.fetchAndPersistTaxNews();
@@ -66,7 +52,6 @@ export async function triggerTaxNewsFetchAction(): Promise<
       errors: result.errors,
     };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return toActionError(e);
   }
 }
-

@@ -5,15 +5,13 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { staffAuth } from '@/server/auth/staff';
-import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { writeSellerInfo, type SellerInfo } from '@/server/settings/tenant-settings';
 import { writeBranding, type BrandingInfo } from '@/server/settings/branding';
 import { writeLetterhead, type LetterheadConfig } from '@/server/settings/letterhead';
 import { writeLegal, type LegalLinks } from '@/server/settings/legal';
-import type { ActionResult } from '@/server/actions/staff-action';
+import { staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
 
 const SellerSchema = z.object({
   name: z.string().min(1).max(200),
@@ -34,9 +32,8 @@ export async function saveSellerInfoAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
+  const g = await staffActionGuard({ requireAdmin: true });
+  if (!g.ok) return g;
 
   const parsed = SellerSchema.safeParse({
     name: formData.get('name'),
@@ -54,8 +51,7 @@ export async function saveSellerInfoAction(
   });
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const { tenantId, staffId } = session.user;
-  const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
+  const { tenantId, staffId, ctx } = g;
   const info: SellerInfo = {
     name: parsed.data.name,
     street: parsed.data.street || null,
@@ -108,9 +104,8 @@ export async function saveBrandingAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
+  const g = await staffActionGuard({ requireAdmin: true });
+  if (!g.ok) return g;
 
   const parsed = BrandingSchema.safeParse({
     displayName: formData.get('displayName'),
@@ -127,8 +122,7 @@ export async function saveBrandingAction(
     return { ok: false, error: 'Ungültiges Logo-Format.' };
   }
 
-  const { tenantId, staffId } = session.user;
-  const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
+  const { tenantId, staffId, ctx } = g;
   const info: BrandingInfo = {
     displayName: parsed.data.displayName,
     accentColor: parsed.data.accentColor,
@@ -172,9 +166,8 @@ export async function saveLetterheadAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
+  const g = await staffActionGuard({ requireAdmin: true });
+  if (!g.ok) return g;
   const parsed = LetterheadSchema.safeParse({
     organisationName: formData.get('organisationName'),
     addressLines: formData.get('addressLines'),
@@ -183,8 +176,7 @@ export async function saveLetterheadAction(
   });
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const { tenantId, staffId } = session.user;
-  const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
+  const { tenantId, staffId, ctx } = g;
   const cfg: LetterheadConfig = parsed.data;
   await writeLetterhead(ctx, cfg);
 
@@ -217,9 +209,8 @@ export async function saveLegalAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
+  const g = await staffActionGuard({ requireAdmin: true });
+  if (!g.ok) return g;
   const parsed = LegalSchema.safeParse({
     impressumUrl: formData.get('impressumUrl') ?? '',
     privacyUrl: formData.get('privacyUrl') ?? '',
@@ -228,8 +219,7 @@ export async function saveLegalAction(
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
   }
 
-  const { tenantId, staffId } = session.user;
-  const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
+  const { tenantId, staffId, ctx } = g;
   const cfg: LegalLinks = parsed.data;
   await writeLegal(ctx, cfg);
 
