@@ -92,6 +92,24 @@ function serializeAdapterFactory<T extends object>(factory: T): T {
   }) as T;
 }
 
+/**
+ * Pool-Obergrenze. Ohne `max` nutzt der pg-Pool seinen Default (~10). Da jede
+ * Anfrage eine Connection für die volle interaktive Transaktion (≤15 s) hält,
+ * kann das unter Staff-Concurrency + Worker zu Pool-Erschöpfung führen. Über
+ * DATABASE_CONNECTION_LIMIT pro Deployment explizit setzbar (App typischerweise
+ * höher als Worker; bei sehr hoher Concurrency PgBouncer davor). Ungesetzt →
+ * pg-Default (verhaltensneutral).
+ */
+function poolMaxFromEnv(): number | undefined {
+  const raw = process.env['DATABASE_CONNECTION_LIMIT'];
+  if (!raw) return undefined;
+  const n = Number.parseInt(raw, 10);
+  return Number.isInteger(n) && n > 0 ? n : undefined;
+}
+
 export function createPostgresAdapter(connectionString: string): PrismaPg {
-  return serializeAdapterFactory(new PrismaPg({ connectionString }));
+  const max = poolMaxFromEnv();
+  return serializeAdapterFactory(
+    new PrismaPg({ connectionString, ...(max !== undefined ? { max } : {}) }),
+  );
 }
