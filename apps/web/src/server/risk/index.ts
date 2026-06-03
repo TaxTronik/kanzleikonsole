@@ -38,6 +38,9 @@ export { archiveAnalysis, AlreadyArchivedError } from './archive';
 export { reformatSourceDoc } from './reformat';
 export type { ReformatInput, ReformatResult } from './reformat';
 
+export { reanalyzeAnalysis } from './reanalyze';
+export type { ReanalyzeResult, ReanalyzeClient } from './reanalyze';
+
 export { updateMarking, addManualMarking, deleteMarking } from './markings';
 export type {
   UpdateMarkingInput,

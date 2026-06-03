@@ -13,6 +13,7 @@ import type { RiskAnalysisResult } from '@taxtronik/risk-layer';
 import { evidenceService } from '@/server/container';
 import { log } from '@/server/logger';
 import { storeRawResult } from './raw-store';
+import { markingCreateFields } from './marking-data';
 
 export interface SaveAnalysisInput {
   result: RiskAnalysisResult;
@@ -78,26 +79,7 @@ export async function saveAnalysis(
         rawResultBucket: raw.bucket,
         rawResultKey: raw.key,
         markings: {
-          create: input.result.markings.map((m) => ({
-            tenantId: ctx.tenantId,
-            start: m.start,
-            end: m.end,
-            matchedText: m.matchedText,
-            herkunft: m.herkunft,
-            begriffId: m.begriffId,
-            begriff: m.begriff,
-            normAnker: m.normAnker,
-            // normRefs optional: leer → SQL NULL (UI fällt auf normAnker-Zitate zurück).
-            normRefs: m.normRefs.length > 0 ? (m.normRefs as object) : undefined,
-            // normketten optional: undefined → SQL NULL (kein Json-null nötig).
-            normketten: m.normketten === null ? undefined : (m.normketten as object),
-            governanceTyp: m.governanceTyp,
-            schadensintensitaet: m.schadensintensitaet,
-            wahrscheinlichkeit: m.wahrscheinlichkeit,
-            kaskadenreichweite: m.kaskadenreichweite,
-            engineStatus: m.engineStatus,
-            streitig: m.streitig,
-          })),
+          create: input.result.markings.map((m) => ({ tenantId: ctx.tenantId, ...markingCreateFields(m) })),
         },
       },
       select: { id: true, _count: { select: { markings: true } } },

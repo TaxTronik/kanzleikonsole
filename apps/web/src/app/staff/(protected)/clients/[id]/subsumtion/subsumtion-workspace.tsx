@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Sparkles, Upload, Loader2, FileDown, FolderOpen, ClipboardList, ScrollText, Webhook, Archive, Lock } from 'lucide-react';
-import { analyzeAction, importDocTextAction, importClientDocAction, requestLlmAction, archiveAnalysisAction, reformatAnalysisAction, llmStatusAction } from './actions';
+import { Sparkles, Upload, Loader2, FileDown, FolderOpen, ClipboardList, ScrollText, Webhook, Archive, Lock, RefreshCw } from 'lucide-react';
+import { analyzeAction, importDocTextAction, importClientDocAction, requestLlmAction, archiveAnalysisAction, reformatAnalysisAction, llmStatusAction, reanalyzeAction } from './actions';
 import type { LlmStatusDTO } from '@/server/risk/llm';
 import { DisclaimerBanner } from './disclaimer-banner';
 import { StatsBar } from './stats-bar';
@@ -211,6 +211,20 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
     if (!r.ok) setError(r.error ?? 'Formatierung konnte nicht gespeichert werden.');
     return r;
   }
+  function reanalyze() {
+    if (!initial) return;
+    setError(null); setInfo(null);
+    start(async () => {
+      const r = await reanalyzeAction({ clientId, analysisId: initial.id });
+      if (!r.ok) { setError(r.error); return; }
+      setInfo(
+        r.added > 0
+          ? `Neu analysiert — ${r.added} neue Markierung(en) ergänzt (deine Bewertungen bleiben).`
+          : 'Neu analysiert — keine neuen Markierungen (Stand unverändert).',
+      );
+      refresh();
+    });
+  }
   function archive() {
     if (!initial) return;
     if (!window.confirm('Subsumtion revisionssicher archivieren? Danach ist sie schreibgeschützt (GoBD-Snapshot, Object-Lock).')) return;
@@ -308,7 +322,10 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
           </span>
         ) : (
           <>
-            <button type="button" onClick={archive} disabled={pending} className="btn-secondary text-xs ml-auto" title="Revisionssicher archivieren (GoBD, schreibgeschützt)">
+            <button type="button" onClick={reanalyze} disabled={pending || !engineConfigured} className="btn-secondary text-xs ml-auto" title="Engine erneut (deterministisch) laufen lassen — ergänzt nur neue Markierungen, deine Bewertungen bleiben">
+              {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Neu analysieren
+            </button>
+            <button type="button" onClick={archive} disabled={pending} className="btn-secondary text-xs" title="Revisionssicher archivieren (GoBD, schreibgeschützt)">
               <Archive className="h-3.5 w-3.5" /> Archivieren
             </button>
             <button type="button" onClick={() => setShowCaseResearch((v) => !v)} className="btn-secondary text-xs">

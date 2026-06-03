@@ -31,6 +31,7 @@ import {
   resolveNorm,
   archiveAnalysis,
   reformatSourceDoc,
+  reanalyzeAnalysis,
   getLlmStatus,
   listPromptTemplates,
   createPromptTemplate,
@@ -268,6 +269,23 @@ export async function llmStatusAction(input: {
       enrichedAt = a?.llmEnrichedAt ? a.llmEnrichedAt.toISOString() : null;
     }
     return { ok: true, status, enrichedAt };
+  } catch (e) {
+    return toActionError(e);
+  }
+}
+
+/** Lässt die Engine erneut (deterministisch) laufen und ergänzt NUR neue
+ *  Markierungen (zusammenführend, nicht-destruktiv — Bewertungen bleiben). */
+export async function reanalyzeAction(input: {
+  clientId: string;
+  analysisId: string;
+}): Promise<OkActionResult<{ added: number; total: number }>> {
+  try {
+    const { ctx, clientId } = await guardAnalysis(input.analysisId);
+    requireEngine();
+    const res = await reanalyzeAnalysis(ctx, input.analysisId);
+    revalidatePath(`/staff/clients/${clientId}/subsumtion/${input.analysisId}`);
+    return { ok: true, added: res.added, total: res.total };
   } catch (e) {
     return toActionError(e);
   }
