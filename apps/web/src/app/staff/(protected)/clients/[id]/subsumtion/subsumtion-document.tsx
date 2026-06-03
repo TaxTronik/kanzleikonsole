@@ -25,7 +25,8 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { docToText, plainRangeToPm, pmPosToPlain, type TextRange } from './doc-text';
 import { baseEditorExtensions } from './editor-extensions';
 import { FormatToolbar } from './editor-toolbar';
-import { type MarkingDTO, FILTER_KEYS, FILTER_LABEL, type FilterKey, herkunftColor } from './_ui';
+import { buildSegments, segmentStyle } from './marking-style';
+import { type MarkingDTO, FILTER_KEYS, FILTER_LABEL, type FilterKey } from './_ui';
 
 export interface SubsumtionDocumentHandle {
   setText: (text: string) => void;
@@ -62,54 +63,6 @@ const MarkDecorations = Extension.create({
   },
 });
 
-function hexToRgba(hex: string, alpha: number): string {
-  const h = hex.replace('#', '');
-  const r = parseInt(h.slice(0, 2), 16);
-  const g = parseInt(h.slice(2, 4), 16);
-  const b = parseInt(h.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
-/**
- * Spur-Zuweisung für DURCHGEHENDE Linien: jede Markierung bekommt EINE Spur über
- * ihre ganze Spanne. Sortierung start↑, end↓ + Greedy auf die flachste freie Spur
- * → umschließende/größere Markierungen liegen oben (Spur 0, direkt unter dem
- * Text), verschachtelte darunter. So bleibt die Spanne sichtbar UND die
- * Verschachtelung erkennbar.
- */
-function assignTracks(marks: MarkingDTO[]): Map<string, number> {
-  const sorted = [...marks].sort((a, b) => a.start - b.start || b.end - a.end || a.id.localeCompare(b.id));
-  const trackEnds: number[] = [];
-  const tracks = new Map<string, number>();
-  for (const m of sorted) {
-    let t = 0;
-    while (t < trackEnds.length && trackEnds[t]! > m.start) t++;
-    trackEnds[t] = m.end;
-    tracks.set(m.id, t);
-  }
-  return tracks;
-}
-
-/**
- * Markierung als durchgehende Unterstreichung an ihrer Spur (text-underline-
- * offset, immer UNTER der Grundlinie). Streitig = gestrichelt + rot. Ausgewählt =
- * Indigo-Tönung. Hover = die ganze Spanne in der eigenen Farbe kräftiger getönt
- * (zeigt, was zusammengehört — auch bei Kreuzungs-Überlappungen).
- */
-function markStyle(m: MarkingDTO, selected: boolean, track: number, hovered: boolean): string {
-  const color = m.streitig ? '#ef4444' : herkunftColor(m.herkunft);
-  const off = 2 + Math.min(track, 2) * 2.5; // px unter der Grundlinie je Spur (max 3 sichtbar)
-  const fill = selected
-    ? 'rgba(99, 102, 241, 0.22)'
-    : hovered
-      ? hexToRgba(color, 0.30)
-      : hexToRgba(color, 0.10);
-  return (
-    `text-decoration-line: underline; text-decoration-color:${color}; text-decoration-thickness:2px;` +
-    `text-decoration-style:${m.streitig ? 'dashed' : 'solid'}; text-underline-offset:${off}px;` +
-    `background:${fill}; cursor:pointer;`
-  );
-}
 
 /** Position der schwebenden Formatier-Leiste relativ zur Editor-Box (über bzw.
  *  — falls oben kein Platz — unter der Auswahl, horizontal zentriert). */
@@ -317,14 +270,13 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(fu
     if (!editor) return;
     const { ranges } = docToText(editor.state.doc);
     rangesRef.current = ranges;
-    // Durchgehende Linie je Markierung an ihrer Spur (Container oben). Eine
-    // Inline-Decoration über die ganze Spanne — wo sich Markierungen überlappen,
-    // nestet ProseMirror die Spans → die Linien liegen sichtbar untereinander.
-    const tracks = assignTracks(visibleMarkings);
+    // Disjunkte Segmente (an jeder Markierungsgrenze) → keine überlappenden
+    // Decorations → ProseMirror verschmilzt keine Styles. Pro Segment EINE
+    // Decoration mit mehreren Linien-Layern + einer Füllung (siehe marking-style).
     const decos: Decoration[] = [];
-    for (const m of visibleMarkings) {
-      const style = markStyle(m, m.id === selectedId, tracks.get(m.id) ?? 0, m.id === hoveredId);
-      for (const { from, to } of plainRangeToPm(ranges, m.start, m.end)) {
+    for (const seg of buildSegments(visibleMarkings)) {
+      const style = segmentStyle(seg.covering, selectedId, hoveredId);
+      for (const { from, to } of plainRangeToPm(ranges, seg.start, seg.end)) {
         decos.push(Decoration.inline(from, to, { style }));
       }
     }
