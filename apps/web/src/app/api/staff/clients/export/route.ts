@@ -5,6 +5,10 @@ import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { toCsv, csvResponse, type CsvColumn } from '@/server/export/csv';
 
+// Harte Obergrenze (wie audit/export): deckelt Speicher UND den synchronen
+// CSV-String-Aufbau (Event-Loop-Block) auf monoton wachsenden Tabellen.
+const MAX_ROWS = 10_000;
+
 export async function GET(req: NextRequest) {
   const session = await staffAuth();
   if (!session?.user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
@@ -15,6 +19,7 @@ export async function GET(req: NextRequest) {
     async (tx) => {
       const list = await tx.client.findMany({
         orderBy: { name: 'asc' },
+        take: MAX_ROWS,
         include: { _count: { select: { documents: { where: { deletedAt: null } }, invoices: true, requests: true } } },
       });
       await evidenceService.record(tx, {
