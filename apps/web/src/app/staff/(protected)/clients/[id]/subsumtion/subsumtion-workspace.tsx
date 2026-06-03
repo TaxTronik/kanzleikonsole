@@ -80,9 +80,20 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
   const pollDeadlineRef = useRef(0);
   const highlightLlmRef = useRef(false);
   const prevEnrichedRef = useRef<string | null>(enriched);
+  // Stand von llmEnrichedAt beim Start eines KI-Laufs — Fertig = Wert hat sich
+  // geändert (deckt Erstlauf null→Zeit UND Re-Run alt→neu ab).
+  const llmBaselineRef = useRef<string | null>(null);
+
+  function beginLlmRun() {
+    llmBaselineRef.current = enriched;
+    pollDeadlineRef.current = Date.now() + 10 * 60_000;
+    setPollLlm(true);
+  }
 
   useEffect(() => {
-    if (!engineConfigured || enriched) { setLlm(null); return; }
+    if (!engineConfigured) { setLlm(null); return; }
+    // Bereits vertieft und KEIN aktiver (Re-)Lauf → kein Polling nötig.
+    if (enriched && !pollLlm) { setLlm(null); return; }
     let active = true;
     const tick = async () => {
       if (pollLlm && Date.now() > pollDeadlineRef.current) {
@@ -93,7 +104,7 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
       const r = await llmStatusAction({ clientId, analysisId: initial?.id });
       if (!active || !r.ok) return;
       setLlm(r.status);
-      if (r.enrichedAt) {
+      if (pollLlm && r.enrichedAt && r.enrichedAt !== llmBaselineRef.current) {
         highlightLlmRef.current = true;
         setPollLlm(false);
         router.refresh(); // weich: Editor/Selektion/Scroll bleiben erhalten
@@ -124,7 +135,8 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
   useEffect(() => {
     const was = prevEnrichedRef.current;
     prevEnrichedRef.current = enriched;
-    if (!highlightLlmRef.current || was || !enriched) return;
+    // Nur beim tatsächlichen Wechsel von llmEnrichedAt (Erstlauf ODER Re-Run).
+    if (!highlightLlmRef.current || !enriched || was === enriched) return;
     highlightLlmRef.current = false;
     const llmMarks = markings.filter((m) => m.herkunft === 'LLM' || m.herkunft === 'EMBEDDING');
     setInfo(
@@ -188,8 +200,7 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
   function requestLlm() {
     if (!initial) return;
     setError(null);
-    pollDeadlineRef.current = Date.now() + 10 * 60_000; // Warmlauf + Lauf abdecken
-    setPollLlm(true); // Status nun engmaschig pollen (Warmlauf sichtbar machen)
+    beginLlmRun(); // Status engmaschig pollen + Fertig-Erkennung scharf stellen
     start(async () => {
       const r = await requestLlmAction({ clientId, analysisId: initial.id });
       flash(r, 'KI-Vertiefung gestartet — der Server fährt bei Bedarf hoch; die neuen Markierungen erscheinen hier automatisch, sobald der Lauf fertig ist.');
@@ -214,15 +225,17 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
   function reanalyze() {
     if (!initial) return;
     setError(null); setInfo(null);
+    beginLlmRun(); // KI-Phase wird serverseitig mit angestoßen → Skeleton/Polling an
     start(async () => {
       const r = await reanalyzeAction({ clientId, analysisId: initial.id });
-      if (!r.ok) { setError(r.error); return; }
+      if (!r.ok) { setError(r.error); setPollLlm(false); return; }
       setInfo(
-        r.added > 0
-          ? `Neu analysiert — ${r.added} neue Markierung(en) ergänzt (deine Bewertungen bleiben).`
-          : 'Neu analysiert — keine neuen Markierungen (Stand unverändert).',
+        (r.added > 0
+          ? `Neu analysiert — ${r.added} neue Markierung(en) ergänzt`
+          : 'Neu analysiert — keine neuen deterministischen Markierungen')
+        + '; KI-Vertiefung läuft … (Bewertungen bleiben).',
       );
-      refresh();
+      refresh(); // deterministische Ergänzungen sofort zeigen; KI folgt automatisch
     });
   }
   function archive() {
@@ -411,7 +424,7 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
               onClose={() => setSelectedId(null)}
               flash={flash}
             />
-          ) : pollLlm && !enriched ? (
+          ) : pollLlm ? (
             <LlmDeepeningCard status={llm} />
           ) : (
             <div className="card p-4 text-sm text-muted">

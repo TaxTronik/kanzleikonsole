@@ -275,7 +275,8 @@ export async function llmStatusAction(input: {
 }
 
 /** Lässt die Engine erneut (deterministisch) laufen und ergänzt NUR neue
- *  Markierungen (zusammenführend, nicht-destruktiv — Bewertungen bleiben). */
+ *  Markierungen (zusammenführend, nicht-destruktiv — Bewertungen bleiben); stößt
+ *  anschließend die KI-Phase (mitLLM) async im Worker an. */
 export async function reanalyzeAction(input: {
   clientId: string;
   analysisId: string;
@@ -284,6 +285,18 @@ export async function reanalyzeAction(input: {
     const { ctx, clientId } = await guardAnalysis(input.analysisId);
     requireEngine();
     const res = await reanalyzeAnalysis(ctx, input.analysisId);
+    // KI-Phase ebenfalls anstoßen (async). sourceText aus der gespeicherten
+    // Analyse (NICHT vom Client) — Offsets müssen passen.
+    const analysis = await withTenantContext(ctx, (tx) =>
+      tx.riskAnalysis.findUnique({ where: { id: input.analysisId }, select: { sourceText: true } }),
+    );
+    if (analysis) {
+      await enqueueRiskAnalyseLlm({
+        tenantId: ctx.tenantId,
+        analysisId: input.analysisId,
+        sourceText: analysis.sourceText,
+      });
+    }
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${input.analysisId}`);
     return { ok: true, added: res.added, total: res.total };
   } catch (e) {
