@@ -3,11 +3,14 @@ import { getClientIp } from '@/server/rate-limit';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
-import { toCsv, csvResponse, truncationNote, type CsvColumn } from '@/server/export/csv';
-
-// Harte Obergrenze (wie audit/export): deckelt Speicher UND den synchronen
-// CSV-String-Aufbau (Event-Loop-Block) — Rechnungen wachsen über Jahre monoton.
-const MAX_ROWS = 10_000;
+import {
+  toCsv,
+  csvResponse,
+  truncationNote,
+  applyRowCap,
+  MAX_EXPORT_ROWS,
+  type CsvColumn,
+} from '@/server/export/csv';
 
 export async function GET(req: NextRequest) {
   const session = await staffAuth();
@@ -26,11 +29,10 @@ export async function GET(req: NextRequest) {
             ? { status: status as 'DRAFT' | 'SENT' | 'PAID' | 'OVERDUE' | 'CANCELLED' }
             : undefined,
         orderBy: [{ issueDate: 'desc' }],
-        take: MAX_ROWS + 1, // +1 zur Trunkierungs-Erkennung
+        take: MAX_EXPORT_ROWS + 1, // +1 zur Trunkierungs-Erkennung
         include: { client: { select: { name: true, datevNo: true } } },
       });
-      const truncated = list.length > MAX_ROWS;
-      const out = truncated ? list.slice(0, MAX_ROWS) : list;
+      const { rows: out, truncated } = applyRowCap(list);
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',
@@ -64,7 +66,7 @@ export async function GET(req: NextRequest) {
 
   return csvResponse(
     `rechnungen-${new Date().toISOString().slice(0, 10)}`,
-    toCsv(rows, cols, truncated ? { truncatedNote: truncationNote(MAX_ROWS) } : undefined),
+    toCsv(rows, cols, truncated ? { truncatedNote: truncationNote(MAX_EXPORT_ROWS) } : undefined),
     { truncated },
   );
 }

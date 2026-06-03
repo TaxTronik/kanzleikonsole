@@ -12,6 +12,22 @@ export interface CsvColumn<T> {
   accessor: (row: T) => string | number | null | undefined | Date | bigint;
 }
 
+// Einheitliche Export-Obergrenze (vorher 4× pro Route dupliziert). Deckelt
+// Speicher + synchronen CSV-Aufbau (Event-Loop-Block) auf monoton wachsenden
+// Tabellen. Die Routen lesen MAX_EXPORT_ROWS + 1 und übergeben das Ergebnis an
+// applyRowCap — so wird Trunkierung ohne Extra-count() erkannt.
+export const MAX_EXPORT_ROWS = 10_000;
+
+/**
+ * Trunkierungs-Erkennung: die Route liest `maxRows + 1` Zeilen. Sind mehr als
+ * `maxRows` zurückgekommen, existieren weitere → auf `maxRows` trimmen und
+ * `truncated` melden.
+ */
+export function applyRowCap<T>(rows: T[], maxRows: number = MAX_EXPORT_ROWS): { rows: T[]; truncated: boolean } {
+  const truncated = rows.length > maxRows;
+  return { rows: truncated ? rows.slice(0, maxRows) : rows, truncated };
+}
+
 // Zeichen, mit denen Excel/LibreOffice eine Zelle als Formel interpretieren
 // (CSV-Injection). Wenn ein Wert mit einem dieser Zeichen beginnt, prefixen
 // wir mit einem Apostroph — das wird beim Öffnen ausgeblendet, neutralisiert

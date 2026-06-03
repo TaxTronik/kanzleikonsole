@@ -105,7 +105,12 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
   const stored = await commitBytesWithTier({ fileData: Buffer.from(pdfBytes), tier: 'GOBD', tenantId: ctx.tenantId });
 
   // 5. Document + Version anlegen + verknüpfen (Tx). Race-sicher: hat ein
-  //    parallel laufender Aufruf inzwischen verknüpft, dessen Bytes nehmen.
+  //    paralleler Erst-Download inzwischen verknüpft, nehmen wir dessen Bytes —
+  //    es entsteht KEIN zweites Document. Die in S3 bereits abgelegten Bytes des
+  //    Verlierers bleiben dann verwaist (selten: nur bei exakt gleichzeitigem
+  //    Erst-Download eines nie archivierten Belegs; mit dem markSent-Hook quasi
+  //    nie). Aufräumen ist NICHT möglich — GOBD-Tier liegt unter Object-Lock
+  //    COMPLIANCE und ist bis Fristablauf unlöschbar. Bewusst akzeptiert.
   const result = await withTenantContext(ctx, async (tx) => {
     const fresh = await tx.invoice.findFirst({
       where: { id: invoiceId, tenantId: ctx.tenantId },

@@ -4,10 +4,15 @@ import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
-import { toCsv, csvResponse, truncationNote, type CsvColumn } from '@/server/export/csv';
+import {
+  toCsv,
+  csvResponse,
+  truncationNote,
+  applyRowCap,
+  MAX_EXPORT_ROWS,
+  type CsvColumn,
+} from '@/server/export/csv';
 import type { Prisma } from '@prisma/client';
-
-const MAX_ROWS = 10_000;
 
 export async function GET(req: NextRequest) {
   const session = await staffAuth();
@@ -44,10 +49,9 @@ export async function GET(req: NextRequest) {
       const list = await tx.auditLog.findMany({
         where,
         orderBy: { id: 'desc' },
-        take: MAX_ROWS + 1,
+        take: MAX_EXPORT_ROWS + 1,
       });
-      const truncated = list.length > MAX_ROWS;
-      const out = truncated ? list.slice(0, MAX_ROWS) : list;
+      const { rows: out, truncated } = applyRowCap(list);
 
       // Audit den Export selbst — inkl. Trunkierungs-Flag (Compliance: ein
       // still gekürzter Prüfer-Export muss im Audit-Trail erkennbar sein).
@@ -88,7 +92,7 @@ export async function GET(req: NextRequest) {
 
   return csvResponse(
     `audit-${new Date().toISOString().slice(0, 10)}`,
-    toCsv(rows, cols, truncated ? { truncatedNote: truncationNote(MAX_ROWS) } : undefined),
+    toCsv(rows, cols, truncated ? { truncatedNote: truncationNote(MAX_EXPORT_ROWS) } : undefined),
     { truncated },
   );
 }
