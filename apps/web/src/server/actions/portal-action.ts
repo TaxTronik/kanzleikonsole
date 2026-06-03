@@ -21,6 +21,8 @@ import type { ActionResult } from './types';
 
 // Domänen-Fehler mit UI-tauglicher Message — im withPortalContext-Callback werfen.
 export { ActionError };
+// Einheitliches Ergebnis (eine Import-Quelle für Portal-Actions).
+export type { ActionResult } from './types';
 
 export interface PortalCtx {
   session: PortalSession;

@@ -3,13 +3,13 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import type { Prisma } from '@prisma/client';
-import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { notify } from '@/server/notifications/service';
 import { assertPortalFeature } from '@/server/settings/portal-features';
 import { checkRateLimit } from '@/server/rate-limit';
-import { withPortalContext, ActionError } from '@/server/actions/portal-action';
+import { toActionError } from '@/server/auth/rbac';
+import { portalActionGuard, withPortalContext, ActionError } from '@/server/actions/portal-action';
 
 export interface ActionResult { ok: boolean; error?: string; id?: string; }
 
@@ -29,13 +29,12 @@ export async function createAppointmentRequestAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const session = await portalAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
+  const g = await portalActionGuard();
+  if (!g.ok) return g;
+  const { tenantId, contactId, clientId, ctx } = g;
+
   try {
-    await assertPortalFeature(
-      { tenantId: session.user.tenantId, actorId: session.user.contactId, actorType: 'CLIENT_CONTACT' },
-      'appointmentRequests',
-    );
+    await assertPortalFeature(ctx, 'appointmentRequests');
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
@@ -43,7 +42,7 @@ export async function createAppointmentRequestAction(
   // NEW4: Rate-Limit gegen Notification-Spam. resourceId pro Anfrage neu —
   // Idempotenz-Filter im Notification-Service greift nicht. Hier deshalb
   // pro contactId begrenzen (5 Anfragen/h).
-  const rl = await checkRateLimit(`portal-appt:${session.user.contactId}`, {
+  const rl = await checkRateLimit(`portal-appt:${contactId}`, {
     max: 5,
     windowSec: 60 * 60,
   });
@@ -86,12 +85,10 @@ export async function createAppointmentRequestAction(
     }
   }
 
-  const { tenantId, contactId, clientId } = session.user;
-
   let createdId = '';
   try {
     await withTenantContext(
-      { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' },
+      ctx,
       async (tx) => {
         const req = await tx.appointmentRequest.create({
           data: {
@@ -156,7 +153,7 @@ export async function createAppointmentRequestAction(
       },
     );
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return toActionError(e);
   }
   revalidatePath('/portal/appointments');
   revalidatePath('/staff/calendar');

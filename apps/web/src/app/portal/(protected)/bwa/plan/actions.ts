@@ -3,17 +3,12 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { assertPortalFeature } from '@/server/settings/portal-features';
 import { checkPortalWriteLimit } from '@/server/rate-limit';
-
-export interface ActionResult {
-  ok: boolean;
-  error?: string;
-  id?: string;
-}
+import { toActionError } from '@/server/auth/rbac';
+import { portalActionGuard, withPortalContext, ActionError, type ActionResult } from '@/server/actions/portal-action';
 
 const AXES = [
   'REVENUE', 'PERSONNEL', 'OTHER_COSTS', 'DEPRECIATION', 'MATERIAL', 'OTHER_INCOME', 'TAXES',
@@ -36,21 +31,19 @@ const CreateSchema = z.object({
 });
 
 export async function createPlanAction(input: z.infer<typeof CreateSchema>): Promise<ActionResult> {
-  const session = await portalAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
+  const g = await portalActionGuard();
+  if (!g.ok) return g;
+  const { tenantId, contactId, clientId, ctx } = g;
+
   // S4: Portal-Schreib-Backstop.
-  const rl = await checkPortalWriteLimit(session.user.contactId);
+  const rl = await checkPortalWriteLimit(contactId);
   if (!rl.ok) {
     return { ok: false, error: `Zu viele Aktionen. Bitte ${Math.ceil(rl.retryAfter / 60)} Min. warten.` };
   }
   const parsed = CreateSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { tenantId, contactId, clientId } = session.user;
   try {
-    await assertPortalFeature(
-      { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' },
-      'bwaPlanning',
-    );
+    await assertPortalFeature(ctx, 'bwaPlanning');
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
@@ -65,57 +58,50 @@ export async function createPlanAction(input: z.infer<typeof CreateSchema>): Pro
 
   let id: string;
   try {
-    id = await withTenantContext(
-      { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' },
-      async (tx) => {
-        // M-1: basePeriodId-Sanity-Check. RLS filtert beim Lesen, FK greift
-        // nur auf Existenz — Cross-Tenant-Verlinkung wäre sonst möglich.
-        if (parsed.data.basePeriodId) {
-          const p = await tx.bwaPeriod.findFirst({
-            where: { id: parsed.data.basePeriodId, clientId },
-            select: { id: true },
-          });
-          if (!p) throw new Error('BWA-Periode nicht gefunden.');
-        }
-        const plan = await tx.bwaPlan.create({
-          data: {
-            tenantId,
-            clientId,
-            name: parsed.data.name,
-            year: parsed.data.year,
-            basePeriodId: parsed.data.basePeriodId ?? null,
-            notes: parsed.data.notes ?? null,
-            status: parsed.data.status,
-            createdBy: contactId,
-            createdByType: 'CLIENT_CONTACT',
-            updatedBy: contactId,
-            updatedByType: 'CLIENT_CONTACT',
-            lines: {
-              create: lines.map((l) => ({
-                axis: l.axis,
-                amount: l.amount,
-                note: l.note ?? null,
-              })),
-            },
-          },
+    id = await withTenantContext(ctx, async (tx) => {
+      // M-1: basePeriodId-Sanity-Check. RLS filtert beim Lesen, FK greift
+      // nur auf Existenz — Cross-Tenant-Verlinkung wäre sonst möglich.
+      if (parsed.data.basePeriodId) {
+        const p = await tx.bwaPeriod.findFirst({
+          where: { id: parsed.data.basePeriodId, clientId },
+          select: { id: true },
         });
-        await evidenceService.record(tx, {
+        if (!p) throw new ActionError('BWA-Periode nicht gefunden.');
+      }
+      const plan = await tx.bwaPlan.create({
+        data: {
           tenantId,
-          actorType: 'CLIENT_CONTACT',
-          actorId: contactId,
-          action: 'bwa_plan.create',
-          resourceType: 'bwa_plan',
-          resourceId: plan.id,
-          after: { name: parsed.data.name, year: parsed.data.year, lineCount: lines.length },
-        });
-        return plan.id;
-      },
-    );
+          clientId,
+          name: parsed.data.name,
+          year: parsed.data.year,
+          basePeriodId: parsed.data.basePeriodId ?? null,
+          notes: parsed.data.notes ?? null,
+          status: parsed.data.status,
+          createdBy: contactId,
+          createdByType: 'CLIENT_CONTACT',
+          updatedBy: contactId,
+          updatedByType: 'CLIENT_CONTACT',
+          lines: {
+            create: lines.map((l) => ({ axis: l.axis, amount: l.amount, note: l.note ?? null })),
+          },
+        },
+      });
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'CLIENT_CONTACT',
+        actorId: contactId,
+        action: 'bwa_plan.create',
+        resourceType: 'bwa_plan',
+        resourceId: plan.id,
+        after: { name: parsed.data.name, year: parsed.data.year, lineCount: lines.length },
+      });
+      return plan.id;
+    });
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return toActionError(e);
   }
   revalidatePath('/portal/bwa');
-  redirect(`/portal/bwa/plan/${id}`);
+  redirect(`/portal/bwa/plan/${id}`); // wirft (never) — bewusst NACH dem try/catch
 }
 
 const UpdateSchema = z.object({
@@ -133,55 +119,53 @@ const UpdateSchema = z.object({
 });
 
 export async function updatePlanAction(input: z.infer<typeof UpdateSchema>): Promise<ActionResult> {
-  const session = await portalAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
+  const g = await portalActionGuard();
+  if (!g.ok) return g;
+  const { tenantId, contactId, clientId, ctx } = g;
+
   // S4: Portal-Schreib-Backstop.
-  const rl = await checkPortalWriteLimit(session.user.contactId);
+  const rl = await checkPortalWriteLimit(contactId);
   if (!rl.ok) {
     return { ok: false, error: `Zu viele Aktionen. Bitte ${Math.ceil(rl.retryAfter / 60)} Min. warten.` };
   }
   const parsed = UpdateSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { tenantId, contactId, clientId } = session.user;
   const { planId } = parsed.data;
 
   try {
-    await withTenantContext(
-      { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' },
-      async (tx) => {
-        const plan = await tx.bwaPlan.findUnique({ where: { id: planId } });
-        if (!plan) throw new Error('Plan nicht gefunden.');
-        if (plan.clientId !== clientId) throw new Error('Kein Zugriff.');
+    await withTenantContext(ctx, async (tx) => {
+      const plan = await tx.bwaPlan.findUnique({ where: { id: planId } });
+      if (!plan) throw new ActionError('Plan nicht gefunden.');
+      if (plan.clientId !== clientId) throw new ActionError('Kein Zugriff.');
 
-        await tx.bwaPlan.update({
-          where: { id: planId },
-          data: {
-            name: parsed.data.name,
-            notes: parsed.data.notes ?? null,
-            status: parsed.data.status,
-            updatedBy: contactId,
-            updatedByType: 'CLIENT_CONTACT',
-          },
+      await tx.bwaPlan.update({
+        where: { id: planId },
+        data: {
+          name: parsed.data.name,
+          notes: parsed.data.notes ?? null,
+          status: parsed.data.status,
+          updatedBy: contactId,
+          updatedByType: 'CLIENT_CONTACT',
+        },
+      });
+      await tx.bwaPlanLine.deleteMany({ where: { planId } });
+      for (const l of parsed.data.lines) {
+        await tx.bwaPlanLine.create({
+          data: { planId, axis: l.axis, amount: l.amount, note: l.note ?? null },
         });
-        await tx.bwaPlanLine.deleteMany({ where: { planId } });
-        for (const l of parsed.data.lines) {
-          await tx.bwaPlanLine.create({
-            data: { planId, axis: l.axis, amount: l.amount, note: l.note ?? null },
-          });
-        }
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'CLIENT_CONTACT',
-          actorId: contactId,
-          action: 'bwa_plan.update',
-          resourceType: 'bwa_plan',
-          resourceId: planId,
-          after: { name: parsed.data.name, status: parsed.data.status, lineCount: parsed.data.lines.length },
-        });
-      },
-    );
+      }
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'CLIENT_CONTACT',
+        actorId: contactId,
+        action: 'bwa_plan.update',
+        resourceType: 'bwa_plan',
+        resourceId: planId,
+        after: { name: parsed.data.name, status: parsed.data.status, lineCount: parsed.data.lines.length },
+      });
+    });
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return toActionError(e);
   }
   revalidatePath(`/portal/bwa/plan/${planId}`);
   revalidatePath('/portal/bwa');
@@ -189,34 +173,25 @@ export async function updatePlanAction(input: z.infer<typeof UpdateSchema>): Pro
 }
 
 export async function deletePlanAction(input: { planId: string }): Promise<ActionResult> {
-  const session = await portalAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
   const parsed = z.object({ planId: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { tenantId, contactId, clientId } = session.user;
 
-  try {
-    await withTenantContext(
-      { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' },
-      async (tx) => {
-        const plan = await tx.bwaPlan.findUnique({ where: { id: parsed.data.planId } });
-        if (!plan) throw new Error('Plan nicht gefunden.');
-        if (plan.clientId !== clientId) throw new Error('Kein Zugriff.');
-        await tx.bwaPlan.delete({ where: { id: parsed.data.planId } });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'CLIENT_CONTACT',
-          actorId: contactId,
-          action: 'bwa_plan.delete',
-          resourceType: 'bwa_plan',
-          resourceId: parsed.data.planId,
-          before: { name: plan.name, year: plan.year },
-        });
-      },
-    );
-  } catch (e) {
-    return { ok: false, error: (e as Error).message };
-  }
-  revalidatePath('/portal/bwa');
-  return { ok: true };
+  return withPortalContext(
+    async (tx, { tenantId, contactId, clientId }) => {
+      const plan = await tx.bwaPlan.findUnique({ where: { id: parsed.data.planId } });
+      if (!plan) throw new ActionError('Plan nicht gefunden.');
+      if (plan.clientId !== clientId) throw new ActionError('Kein Zugriff.');
+      await tx.bwaPlan.delete({ where: { id: parsed.data.planId } });
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'CLIENT_CONTACT',
+        actorId: contactId,
+        action: 'bwa_plan.delete',
+        resourceType: 'bwa_plan',
+        resourceId: parsed.data.planId,
+        before: { name: plan.name, year: plan.year },
+      });
+    },
+    { revalidate: '/portal/bwa' },
+  );
 }
