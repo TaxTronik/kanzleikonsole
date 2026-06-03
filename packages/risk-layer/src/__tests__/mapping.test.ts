@@ -138,4 +138,69 @@ describe('mapAnalyse (echte Engine-Form)', () => {
     expect(empty.katalogVersion).toBe('unbekannt');
     expect(empty.engineVersion).toBe('unbekannt');
   });
+
+  // Echte Engine: die LLM-Schicht trägt schicht:"2" ABER methode:"llm"/quelle:
+  // "llm". Früher wurde schicht "2" → EMBEDDING gemappt → LLM-Treffer landeten
+  // als „Heuristik". methode/quelle müssen Vorrang haben.
+  it('mappt die LLM-Schicht (schicht "2" + methode "llm") als LLM, nicht als Heuristik', () => {
+    const r = mapAnalyse({
+      text_hash: 'h',
+      risiken: [
+        {
+          start: 0,
+          end: 20,
+          matched_text: 'künstliche Gestaltung',
+          titel: 'künstliche Gestaltung',
+          status: 'unknown_risiko',
+          quelle: 'llm',
+          herkunft: { schicht: '2', methode: 'llm', interpretation: true },
+          ist_streitig: true,
+          streit_signal: 'streitig',
+        },
+      ],
+    });
+    expect(r.markings[0]!.herkunft).toBe('LLM');
+    expect(r.markings[0]!.streitig).toBe(true);
+  });
+
+  // Streit wird auch erkannt, wenn nur das textuelle streit_signal gesetzt ist
+  // (ohne ist_streitig) — sonst „strittig hinterlegt, aber nicht getoggelt".
+  it('erkennt Streit über streit_signal allein (ohne ist_streitig)', () => {
+    const r = mapAnalyse({
+      text_hash: 'h',
+      risiken: [
+        {
+          start: 0,
+          end: 10,
+          matched_text: 'X',
+          titel: 'X',
+          status: 'unknown_risiko',
+          quelle: 'trigger',
+          herkunft: { schicht: '1.5' },
+          streit_signal: 'umstritten',
+        },
+      ],
+    });
+    expect(r.markings[0]!.streitig).toBe(true);
+    expect(r.markings[0]!.herkunft).toBe('TRIGGER');
+  });
+
+  it('leeres streit_signal ohne ist_streitig → nicht streitig', () => {
+    const r = mapAnalyse({
+      text_hash: 'h',
+      risiken: [
+        {
+          start: 0,
+          end: 5,
+          matched_text: 'Y',
+          titel: 'Y',
+          status: 'unknown_risiko',
+          quelle: 'trigger',
+          herkunft: { schicht: '1.5' },
+          streit_signal: '',
+        },
+      ],
+    });
+    expect(r.markings[0]!.streitig).toBe(false);
+  });
 });

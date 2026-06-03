@@ -30,9 +30,18 @@ const NormRefSchema = z
   })
   .catchall(z.unknown());
 
-/** Herkunfts-Objekt der Engine (Schicht/Methode). Nur `schicht` brauchen wir. */
+/**
+ * Herkunfts-Objekt der Engine (Detektionsschicht + Methode). `methode` ist das
+ * verlässlichste Provenienz-Signal: die LLM-Schicht trägt `schicht:"2"` ABER
+ * `methode:"llm"` — ohne `methode` würde Schicht 2 fälschlich als Embedding/
+ * Heuristik gemappt. `interpretation:true` markiert Modell-/Heuristik-Stellen.
+ */
 const HerkunftSchema = z
-  .object({ schicht: z.union([z.string(), z.number()]).nullish() })
+  .object({
+    schicht: z.union([z.string(), z.number()]).nullish(),
+    methode: z.string().nullish(),
+    interpretation: z.boolean().nullish(),
+  })
   .catchall(z.unknown())
   .nullish();
 
@@ -46,6 +55,9 @@ export const KarteSchema = z
     begriff_id: z.string().nullish(),
     status: z.string().nullish(),
     ist_streitig: z.boolean().nullish(),
+    // Textuelles Streitsignal ("streitig"/"umstritten"/"fraglich" …); ergänzt
+    // ist_streitig — manche Stellen tragen nur das Signal.
+    streit_signal: z.string().nullish(),
     norm_anker: z.array(NormRefSchema).default([]),
     normketten: z.unknown().nullish(),
     governance_typ: z.string().nullish(),
@@ -67,6 +79,7 @@ export const RisikoSchema = z
     titel: z.string().default(''),
     status: z.string().nullish(),
     ist_streitig: z.boolean().nullish(),
+    streit_signal: z.string().nullish(),
     norm_anker: z.array(NormRefSchema).default([]),
     norm_vorschlag: z.array(NormRefSchema).default([]),
     governance_typ: z.string().nullish(),

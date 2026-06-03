@@ -86,32 +86,61 @@ function lookup<T>(table: Record<string, T>, raw: string | null | undefined): T 
 }
 
 /**
- * Leitet die Vertrauensstufe aus `via` (primär) bzw. der `schicht` ab. Wirft
- * NICHT — eine unbekannte Provenienz fällt auf `fallback` zurück (eine einzelne
- * Markierung darf den ganzen Lauf nicht scheitern lassen).
+ * Leitet die Vertrauensstufe ab. Reihenfolge der Signalstärke:
+ *   1. `methode`/`quelle` (explizit von der Engine) — am verlässlichsten,
+ *   2. `via` (nur Karten tragen es),
+ *   3. `schicht` als Fallback NUR für deterministische Schichten.
+ *
+ * Wichtig: Die LLM-Schicht trägt `schicht:"2"`, aber `methode:"llm"`/`quelle:
+ * "llm"`. Würde man (wie früher) `schicht "2" → EMBEDDING` zuerst auswerten,
+ * landeten LLM-Treffer fälschlich als „Heuristik". Daher `methode`/`quelle`
+ * VOR der Schicht. Wirft NICHT — unbekannte Provenienz fällt auf `fallback`.
  */
 function deriveHerkunft(opts: {
   via?: string | null;
   schicht?: string | number | null;
   quelle?: string | null;
+  methode?: string | null;
   fallback: RiskHerkunft;
 }): RiskHerkunft {
+  const m = (opts.methode ?? '').toString().toLowerCase();
+  const q = (opts.quelle ?? '').toString().toLowerCase();
   const v = (opts.via ?? '').toString().toLowerCase();
+
+  // 1. Explizite Methode/Quelle — stärkstes Signal.
+  if (m.includes('llm') || q === 'llm') return 'LLM';
+  if (m.includes('embedding') || m.includes('semant') || q === 'embedding' || q === 'semantik')
+    return 'EMBEDDING';
+
+  // 2. via (Karten).
   if (v.includes('wörtlich') || v.includes('woertlich') || v.includes('woert')) return 'WOERTLICH';
   if (v.includes('muster')) return 'MUSTER';
   if (v.includes('trigger')) return 'TRIGGER';
-  if (v.includes('embedding') || v.includes('semantik') || v.includes('semantisch') || v.includes('vektor'))
-    return 'EMBEDDING';
+  if (v.includes('embedding') || v.includes('semant') || v.includes('vektor')) return 'EMBEDDING';
   if (v.includes('llm') || v.includes('modell') || v === 'ki') return 'LLM';
 
+  // quelle der Risiken: trigger/streit sind deterministische Hinweis-Schichten.
+  if (q === 'trigger' || q === 'streit') return 'TRIGGER';
+
+  // 3. schicht-Fallback. 1 = wörtlich, 1.5 = trigger. 2/3 nur, wenn KEINE
+  // explizite Methode vorlag (oben sonst schon abgefangen) — konservativ.
   const s = (opts.schicht ?? '').toString().toLowerCase();
   if (s.startsWith('1.5')) return 'TRIGGER';
-  if (s.startsWith('2')) return 'EMBEDDING';
-  if (s.startsWith('3')) return 'LLM';
   if (s.startsWith('1')) return 'WOERTLICH';
+  if (s.startsWith('3')) return 'LLM';
+  if (s.startsWith('2')) return 'EMBEDDING';
 
-  if ((opts.quelle ?? '').toString().toLowerCase() === 'trigger') return 'TRIGGER';
   return opts.fallback;
+}
+
+/**
+ * Eine Stelle ist streitig, wenn die Engine das Boolean setzt ODER ein
+ * textuelles Streitsignal liefert ("streitig"/"umstritten"/"fraglich" …).
+ * Beide Felder werden befüllt; manche Stellen tragen nur das Signal — ohne
+ * dieses würden sie nicht über „Streit" markiert.
+ */
+function isStreitig(x: { ist_streitig?: boolean | null; streit_signal?: string | null }): boolean {
+  return x.ist_streitig === true || (typeof x.streit_signal === 'string' && x.streit_signal.trim() !== '');
 }
 
 /**
@@ -132,7 +161,7 @@ function mapKarte(k: Karte): RiskMarkingInput {
     start: k.start,
     end: k.end,
     matchedText: k.matched_text,
-    herkunft: deriveHerkunft({ via: k.via, schicht: k.herkunft?.schicht, fallback: 'MUSTER' }),
+    herkunft: deriveHerkunft({ via: k.via, schicht: k.herkunft?.schicht, methode: k.herkunft?.methode, fallback: 'MUSTER' }),
     begriffId: k.begriff_id ?? null,
     begriff: k.begriff || k.matched_text,
     normAnker: refs.map((r) => r.zitat),
@@ -143,7 +172,7 @@ function mapKarte(k: Karte): RiskMarkingInput {
     wahrscheinlichkeit: lookup(WK, k.wahrscheinlichkeit),
     kaskadenreichweite: k.kaskadenreichweite ?? null,
     engineStatus: k.status ?? null,
-    streitig: k.ist_streitig ?? false,
+    streitig: isStreitig(k),
   };
 }
 
@@ -155,7 +184,7 @@ function mapRisiko(r: Risiko): RiskMarkingInput {
     start: r.start,
     end: r.end,
     matchedText: r.matched_text,
-    herkunft: deriveHerkunft({ via: r.via, schicht: r.herkunft?.schicht, quelle: r.quelle, fallback: 'TRIGGER' }),
+    herkunft: deriveHerkunft({ via: r.via, schicht: r.herkunft?.schicht, methode: r.herkunft?.methode, quelle: r.quelle, fallback: 'TRIGGER' }),
     begriffId: null,
     begriff: r.titel || r.matched_text,
     normAnker: refs.map((rf) => rf.zitat),
@@ -166,7 +195,7 @@ function mapRisiko(r: Risiko): RiskMarkingInput {
     wahrscheinlichkeit: lookup(WK, r.wahrscheinlichkeit),
     kaskadenreichweite: r.kaskadenreichweite ?? null,
     engineStatus: r.status ?? null,
-    streitig: r.ist_streitig ?? false,
+    streitig: isStreitig(r),
   };
 }
 
