@@ -71,39 +71,20 @@ function hexToRgba(hex: string, alpha: number): string {
 }
 
 /**
- * Spuren-Zuweisung (Intervall-Färbung): überlappende Markierungen bekommen
- * unterschiedliche „Lanes", sodass ihre Unterstreichungen vertikal gestapelt —
- * statt übereinander — liegen. Greedy: jede Markierung in die erste Lane, deren
- * letzte Markierung vor ihrem Start endet.
+ * Eine Markierungs-Linie an `depth` (lokale Stapelposition im Segment): immer
+ * UNTER der Grundlinie (text-underline-offset, kein Durchstreichen). depth 0 =
+ * direkt unter dem Text, jede weitere darunter → die Anzahl Linien unter einem
+ * Wort = wie oft es erfasst ist. Streitig = gestrichelt + rot. Ausgewählt =
+ * Indigo-Tönung.
  */
-function assignLanes(marks: MarkingDTO[]): Map<string, number> {
-  const sorted = [...marks].sort((a, b) => a.start - b.start || a.end - b.end);
-  const laneEnds: number[] = [];
-  const lanes = new Map<string, number>();
-  for (const m of sorted) {
-    let lane = 0;
-    while (lane < laneEnds.length && laneEnds[lane]! > m.start) lane++;
-    laneEnds[lane] = m.end;
-    lanes.set(m.id, lane);
-  }
-  return lanes;
-}
-
-/**
- * Markierung als Unterstreichung mit lane-abhängigem text-underline-offset
- * (immer UNTER der Grundlinie — kein Durchstreichen) + leichte Hintergrund-
- * Tönung. Überlappungen → gestapelte Linien. Streitig = gestrichelt + rot.
- * Ausgewählt = Indigo-Tönung + dünner Rahmen.
- */
-function markStyle(m: MarkingDTO, selected: boolean, lane: number): string {
+function markStyle(m: MarkingDTO, selected: boolean, depth: number): string {
   const color = m.streitig ? '#ef4444' : herkunftColor(m.herkunft);
-  const off = 2 + Math.min(lane, 2) * 2.5; // px unter der Grundlinie je Lane (max 3 Spuren)
-  const fill = selected ? 'rgba(99, 102, 241, 0.20)' : hexToRgba(color, 0.10);
+  const off = 2 + Math.min(depth, 2) * 2.5; // px unter der Grundlinie je Ebene (max 3 sichtbar)
+  const fill = selected ? 'rgba(99, 102, 241, 0.22)' : hexToRgba(color, 0.10);
   return (
     `text-decoration-line: underline; text-decoration-color:${color}; text-decoration-thickness:2px;` +
     `text-decoration-style:${m.streitig ? 'dashed' : 'solid'}; text-underline-offset:${off}px;` +
-    `background:${fill}; border-radius:2px; cursor:pointer;` +
-    (selected ? `box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.55);` : '')
+    `background:${fill}; cursor:pointer;`
   );
 }
 
@@ -311,13 +292,25 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(fu
     if (!editor) return;
     const { ranges } = docToText(editor.state.doc);
     rangesRef.current = ranges;
-    const lanes = assignLanes(visibleMarkings);
+    // Segmente uniformer Überdeckung: an jeder Markierungsgrenze schneiden. Pro
+    // Segment die überdeckenden Markierungen lokal von der Grundlinie weg stapeln
+    // → die Anzahl der Linien unter einem Wort zeigt, wie oft es erfasst ist.
+    const bounds = new Set<number>();
+    for (const m of visibleMarkings) { bounds.add(m.start); bounds.add(m.end); }
+    const points = [...bounds].sort((x, y) => x - y);
     const decos: Decoration[] = [];
-    for (const m of visibleMarkings) {
-      const style = markStyle(m, m.id === selectedId, lanes.get(m.id) ?? 0);
-      for (const { from, to } of plainRangeToPm(ranges, m.start, m.end)) {
-        decos.push(Decoration.inline(from, to, { style }));
-      }
+    for (let i = 0; i < points.length - 1; i++) {
+      const a = points[i]!, b = points[i + 1]!;
+      if (b <= a) continue;
+      const covering = visibleMarkings
+        .filter((m) => m.start <= a && m.end >= b)
+        .sort((x, y) => x.start - y.start || x.end - y.end || x.id.localeCompare(y.id));
+      if (covering.length === 0) continue;
+      const pmRanges = plainRangeToPm(ranges, a, b);
+      covering.forEach((m, depth) => {
+        const style = markStyle(m, m.id === selectedId, depth);
+        for (const { from, to } of pmRanges) decos.push(Decoration.inline(from, to, { style }));
+      });
     }
     editor.view.dispatch(editor.state.tr.setMeta(markKey, DecorationSet.create(editor.state.doc, decos)));
   }, [editor, visibleMarkings, selectedId]);
