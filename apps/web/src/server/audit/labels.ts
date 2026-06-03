@@ -255,6 +255,20 @@ export const ACTION_LABELS: Record<string, string> = {
   // Tax-News-Opt-in
   'staff.tax_news.opt_in': 'BMF/BFH-Benachrichtigungen aktiviert',
   'staff.tax_news.opt_out': 'BMF/BFH-Benachrichtigungen deaktiviert',
+
+  // Risk-Layer / Subsumtion (TCMS)
+  'risk.analysis.created': 'Subsumtion angelegt',
+  'risk.analysis.reanalyzed': 'Subsumtion neu analysiert',
+  'risk.analysis.reformatted': 'Subsumtion neu formatiert',
+  'risk.analysis.llm_enriched': 'Subsumtion mit KI vertieft',
+  'risk.analysis.archived': 'Subsumtion archiviert',
+  'risk.marking.created': 'Markierung erstellt',
+  'risk.marking.decided': 'Markierung bewertet',
+  'risk.marking.delegated': 'Recherche delegiert',
+  'risk.marking.deleted': 'Markierung gelöscht',
+  'risk.catalog.defined': 'Katalog-Begriff definiert',
+  'risk.research.sent': 'Rechercheauftrag gesendet',
+  'risk.research.received': 'Rechercheergebnis empfangen',
 };
 
 export const RESOURCE_TYPE_LABELS: Record<string, string> = {
@@ -302,6 +316,10 @@ export const RESOURCE_TYPE_LABELS: Record<string, string> = {
   appointment_request: 'Terminanfrage',
   client_handover: 'Anlieferung',
   invoice_category: 'Rechnungstyp',
+  risk_analysis: 'Subsumtion',
+  risk_marking: 'Markierung',
+  risk_research_request: 'Rechercheauftrag',
+  risk_research_result: 'Rechercheergebnis',
 };
 
 export function actionLabel(action: string): string {
