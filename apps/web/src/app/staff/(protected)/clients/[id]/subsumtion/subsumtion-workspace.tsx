@@ -127,7 +127,11 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
     if (!highlightLlmRef.current || was || !enriched) return;
     highlightLlmRef.current = false;
     const llmMarks = markings.filter((m) => m.herkunft === 'LLM' || m.herkunft === 'EMBEDDING');
-    setInfo(llmMarks.length > 0 ? `${llmMarks.length} neue KI-Markierung(en) hinzugefügt.` : 'KI-Vertiefung abgeschlossen.');
+    setInfo(
+      llmMarks.length > 0
+        ? `${llmMarks.length} neue KI-Markierung(en) hinzugefügt.`
+        : 'KI-Vertiefung abgeschlossen — die Engine hat keine zusätzlichen Markierungen geliefert (über die deterministischen hinaus).',
+    );
     if (llmMarks.length > 0 && !manualSel && !selectedId) setSelectedId(llmMarks[0]!.id);
   }, [enriched, markings, manualSel, selectedId]);
 
