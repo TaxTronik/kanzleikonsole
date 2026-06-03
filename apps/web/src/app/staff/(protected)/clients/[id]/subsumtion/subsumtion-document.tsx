@@ -71,16 +71,39 @@ function hexToRgba(hex: string, alpha: number): string {
 }
 
 /**
- * Eine Markierungs-Linie an `depth` (lokale Stapelposition im Segment): immer
- * UNTER der Grundlinie (text-underline-offset, kein Durchstreichen). depth 0 =
- * direkt unter dem Text, jede weitere darunter → die Anzahl Linien unter einem
- * Wort = wie oft es erfasst ist. Streitig = gestrichelt + rot. Ausgewählt =
- * Indigo-Tönung.
+ * Spur-Zuweisung für DURCHGEHENDE Linien: jede Markierung bekommt EINE Spur über
+ * ihre ganze Spanne. Sortierung start↑, end↓ + Greedy auf die flachste freie Spur
+ * → umschließende/größere Markierungen liegen oben (Spur 0, direkt unter dem
+ * Text), verschachtelte darunter. So bleibt die Spanne sichtbar UND die
+ * Verschachtelung erkennbar.
  */
-function markStyle(m: MarkingDTO, selected: boolean, depth: number): string {
+function assignTracks(marks: MarkingDTO[]): Map<string, number> {
+  const sorted = [...marks].sort((a, b) => a.start - b.start || b.end - a.end || a.id.localeCompare(b.id));
+  const trackEnds: number[] = [];
+  const tracks = new Map<string, number>();
+  for (const m of sorted) {
+    let t = 0;
+    while (t < trackEnds.length && trackEnds[t]! > m.start) t++;
+    trackEnds[t] = m.end;
+    tracks.set(m.id, t);
+  }
+  return tracks;
+}
+
+/**
+ * Markierung als durchgehende Unterstreichung an ihrer Spur (text-underline-
+ * offset, immer UNTER der Grundlinie). Streitig = gestrichelt + rot. Ausgewählt =
+ * Indigo-Tönung. Hover = die ganze Spanne in der eigenen Farbe kräftiger getönt
+ * (zeigt, was zusammengehört — auch bei Kreuzungs-Überlappungen).
+ */
+function markStyle(m: MarkingDTO, selected: boolean, track: number, hovered: boolean): string {
   const color = m.streitig ? '#ef4444' : herkunftColor(m.herkunft);
-  const off = 2 + Math.min(depth, 2) * 2.5; // px unter der Grundlinie je Ebene (max 3 sichtbar)
-  const fill = selected ? 'rgba(99, 102, 241, 0.22)' : hexToRgba(color, 0.10);
+  const off = 2 + Math.min(track, 2) * 2.5; // px unter der Grundlinie je Spur (max 3 sichtbar)
+  const fill = selected
+    ? 'rgba(99, 102, 241, 0.22)'
+    : hovered
+      ? hexToRgba(color, 0.30)
+      : hexToRgba(color, 0.10);
   return (
     `text-decoration-line: underline; text-decoration-color:${color}; text-decoration-thickness:2px;` +
     `text-decoration-style:${m.streitig ? 'dashed' : 'solid'}; text-underline-offset:${off}px;` +
@@ -151,6 +174,8 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(fu
   const rangesRef = useRef<TextRange[]>([]);
   // Schwebende Formatier-Leiste (Review): erscheint über/unter der Auswahl.
   const [flyover, setFlyover] = useState<{ top: number; left: number; placement: 'above' | 'below' } | null>(null);
+  // Markierung unter der Maus → ihre ganze Spanne wird hervorgehoben.
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   // true, solange mit der Maus gezogen wird → Leiste erst nach dem Loslassen.
   const draggingRef = useRef(false);
@@ -292,28 +317,19 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(fu
     if (!editor) return;
     const { ranges } = docToText(editor.state.doc);
     rangesRef.current = ranges;
-    // Segmente uniformer Überdeckung: an jeder Markierungsgrenze schneiden. Pro
-    // Segment die überdeckenden Markierungen lokal von der Grundlinie weg stapeln
-    // → die Anzahl der Linien unter einem Wort zeigt, wie oft es erfasst ist.
-    const bounds = new Set<number>();
-    for (const m of visibleMarkings) { bounds.add(m.start); bounds.add(m.end); }
-    const points = [...bounds].sort((x, y) => x - y);
+    // Durchgehende Linie je Markierung an ihrer Spur (Container oben). Eine
+    // Inline-Decoration über die ganze Spanne — wo sich Markierungen überlappen,
+    // nestet ProseMirror die Spans → die Linien liegen sichtbar untereinander.
+    const tracks = assignTracks(visibleMarkings);
     const decos: Decoration[] = [];
-    for (let i = 0; i < points.length - 1; i++) {
-      const a = points[i]!, b = points[i + 1]!;
-      if (b <= a) continue;
-      const covering = visibleMarkings
-        .filter((m) => m.start <= a && m.end >= b)
-        .sort((x, y) => x.start - y.start || x.end - y.end || x.id.localeCompare(y.id));
-      if (covering.length === 0) continue;
-      const pmRanges = plainRangeToPm(ranges, a, b);
-      covering.forEach((m, depth) => {
-        const style = markStyle(m, m.id === selectedId, depth);
-        for (const { from, to } of pmRanges) decos.push(Decoration.inline(from, to, { style }));
-      });
+    for (const m of visibleMarkings) {
+      const style = markStyle(m, m.id === selectedId, tracks.get(m.id) ?? 0, m.id === hoveredId);
+      for (const { from, to } of plainRangeToPm(ranges, m.start, m.end)) {
+        decos.push(Decoration.inline(from, to, { style }));
+      }
     }
     editor.view.dispatch(editor.state.tr.setMeta(markKey, DecorationSet.create(editor.state.doc, decos)));
-  }, [editor, visibleMarkings, selectedId]);
+  }, [editor, visibleMarkings, selectedId, hoveredId]);
 
   // Flyover-Leiste erst beim Loslassen der Maus zeigen: während des Ziehens
   // (mousedown im Editor … mouseup irgendwo) bleibt sie aus; am Ende wird sie für
@@ -335,6 +351,43 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(fu
       document.removeEventListener('mouseup', onUp);
     };
   }, [editor, analyzed, canEdit]);
+
+  // Hover über einer Markierung → ihre ganze Spanne hervorheben (kleinste
+  // überdeckende; rAF-gedrosselt, setHoveredId nur bei Wechsel → re-rendert die
+  // Decorations nicht bei jedem Pixel).
+  useEffect(() => {
+    if (!editor || !analyzed) return;
+    const dom = editor.view.dom;
+    let ticking = false;
+    const update = (x: number, y: number) => {
+      const pos = editor.view.posAtCoords({ left: x, top: y });
+      let id: string | null = null;
+      if (pos) {
+        const plain = pmPosToPlain(rangesRef.current, pos.pos);
+        if (plain != null) {
+          let best: MarkingDTO | null = null;
+          for (const m of ctxRef.current.markings) {
+            if (m.start <= plain && m.end >= plain && (!best || m.end - m.start < best.end - best.start)) best = m;
+          }
+          id = best?.id ?? null;
+        }
+      }
+      setHoveredId((cur) => (cur === id ? cur : id));
+    };
+    const onMove = (e: MouseEvent) => {
+      const x = e.clientX, y = e.clientY;
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => { ticking = false; update(x, y); });
+    };
+    const onLeave = () => setHoveredId(null);
+    dom.addEventListener('mousemove', onMove);
+    dom.addEventListener('mouseleave', onLeave);
+    return () => {
+      dom.removeEventListener('mousemove', onMove);
+      dom.removeEventListener('mouseleave', onLeave);
+    };
+  }, [editor, analyzed]);
 
   /** Einzelne (harte) Zeilenumbrüche → Leerzeichen; Absätze (\n\n) bleiben. Gegen
    *  Import-Fragmentierung — nur im Compose (verändert den Plaintext). */
