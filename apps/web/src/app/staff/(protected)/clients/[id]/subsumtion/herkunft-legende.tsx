@@ -8,6 +8,8 @@ export function HerkunftLegende() {
       <span className="badge-yellow text-[10px]">Interpretation</span> vom LLM/Heuristik als
       definitionsbedürftig erkannt (zu prüfen) ·{' '}
       <span className="badge-purple text-[10px]">Berater</span> eigene Definition.{' '}
+      <span className="text-muted">Überlappende Markierungen liegen als gestapelte Linien untereinander;
+        <span className="not-italic"> gestrichelt = streitig</span>.</span>{' '}
       <span className="italic text-muted">
         Das System wertet nicht — es kennzeichnet, woher ein Hinweis stammt.
       </span>

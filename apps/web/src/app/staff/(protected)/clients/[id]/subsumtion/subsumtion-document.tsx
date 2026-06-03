@@ -70,16 +70,44 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-function markStyle(m: MarkingDTO, selected: boolean): string {
+/**
+ * Spuren-Zuweisung (Intervall-Färbung): überlappende Markierungen bekommen
+ * unterschiedliche „Lanes", sodass ihre Unterstreichungen vertikal gestapelt —
+ * statt übereinander — liegen. Greedy: jede Markierung in die erste Lane, deren
+ * letzte Markierung vor ihrem Start endet.
+ */
+function assignLanes(marks: MarkingDTO[]): Map<string, number> {
+  const sorted = [...marks].sort((a, b) => a.start - b.start || a.end - b.end);
+  const laneEnds: number[] = [];
+  const lanes = new Map<string, number>();
+  for (const m of sorted) {
+    let lane = 0;
+    while (lane < laneEnds.length && laneEnds[lane]! > m.start) lane++;
+    laneEnds[lane] = m.end;
+    lanes.set(m.id, lane);
+  }
+  return lanes;
+}
+
+/**
+ * Markierung als gestapelte Unterstreichung (Gradient-Linie an ihrer Lane) +
+ * leichte Hintergrund-Tönung. Überlappungen ergeben so parallele Linien.
+ * Streitig = gestrichelt + rot. Ausgewählt = Indigo-Tönung + dünner Rahmen.
+ */
+function markStyle(m: MarkingDTO, selected: boolean, lane: number): string {
   const color = m.streitig ? '#ef4444' : herkunftColor(m.herkunft);
-  // Hintergrund-Tönung in der Herkunftsfarbe ZUSÄTZLICH zur Unterstreichung →
-  // deutlich sichtbar; ausgewählt = kräftiger Indigo-Hintergrund. cursor:pointer
-  // signalisiert „anklickbar zum Prüfen".
-  const bg = selected ? 'rgba(99, 102, 241, 0.24)' : hexToRgba(color, 0.16);
+  const offset = 1 + Math.min(lane, 2) * 3; // px über der Grundlinie je Lane (max 3 Spuren)
+  const line = m.streitig
+    ? `repeating-linear-gradient(to right, ${color} 0 4px, transparent 4px 7px)` // gestrichelt
+    : `linear-gradient(${color}, ${color})`; // durchgezogen
+  const fill = selected ? 'rgba(99, 102, 241, 0.20)' : hexToRgba(color, 0.10);
   return (
-    `text-decoration: underline; text-decoration-color:${color}; text-decoration-thickness:2px;` +
-    `text-underline-offset:2px; text-decoration-style:${m.streitig ? 'wavy' : 'solid'}; cursor:pointer;` +
-    `background:${bg}; border-radius:2px;`
+    `background-image: ${line}, linear-gradient(${fill}, ${fill});` +
+    `background-repeat: no-repeat, no-repeat;` +
+    `background-size: 100% 2px, 100% 100%;` +
+    `background-position: 0 calc(100% - ${offset}px), 0 0;` +
+    `border-radius:2px; cursor:pointer;` +
+    (selected ? `box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.55);` : '')
   );
 }
 
@@ -207,8 +235,9 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(fu
     editorProps: {
       attributes: {
         class:
-          'tt-content text-sm leading-relaxed focus:outline-none px-3 py-2 ' +
-          (analyzed ? 'min-h-[12rem]' : 'min-h-[18rem] max-h-[60vh] overflow-y-auto'),
+          'tt-content text-sm focus:outline-none px-3 py-2 ' +
+          // Review: luftigere Zeilen → Platz für die gestapelten Unterstreichungs-Spuren.
+          (analyzed ? 'leading-loose min-h-[12rem]' : 'leading-relaxed min-h-[18rem] max-h-[60vh] overflow-y-auto'),
       },
       // Editor verlassen → ausstehende Formatierung sofort speichern (statt Debounce).
       handleDOMEvents: { blur: () => { flushRef.current(); return false; } },
@@ -286,10 +315,12 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(fu
     if (!editor) return;
     const { ranges } = docToText(editor.state.doc);
     rangesRef.current = ranges;
+    const lanes = assignLanes(visibleMarkings);
     const decos: Decoration[] = [];
     for (const m of visibleMarkings) {
+      const style = markStyle(m, m.id === selectedId, lanes.get(m.id) ?? 0);
       for (const { from, to } of plainRangeToPm(ranges, m.start, m.end)) {
-        decos.push(Decoration.inline(from, to, { style: markStyle(m, m.id === selectedId) }));
+        decos.push(Decoration.inline(from, to, { style }));
       }
     }
     editor.view.dispatch(editor.state.tr.setMeta(markKey, DecorationSet.create(editor.state.doc, decos)));
