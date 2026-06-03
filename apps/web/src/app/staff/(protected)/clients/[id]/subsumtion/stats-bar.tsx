@@ -98,12 +98,12 @@ export function StatsBar({
           <button
             type="button"
             onClick={onRequestLlm}
-            disabled={pending || !engineConfigured}
+            disabled={pending || !engineConfigured || llmStarting}
             className="btn-secondary text-xs"
             title="LLM-Schicht asynchron dazuschalten (startet den Server bei Bedarf selbst)"
           >
-            {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
-            LLM dazuschalten +
+            {(pending || llmStarting) ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
+            {llmStarting ? 'Vertiefung läuft …' : 'LLM dazuschalten +'}
           </button>
           {engineConfigured && llmStatus ? <LlmIndicator s={llmStatus} starting={!!llmStarting} /> : null}
         </div>

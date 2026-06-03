@@ -112,8 +112,6 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
 
   useEffect(() => {
     if (!engineConfigured) { setLlm(null); return; }
-    // Bereits vertieft und KEIN aktiver (Re-)Lauf → kein Polling nötig.
-    if (enriched && !pollLlm) { setLlm(null); return; }
     let active = true;
     const tick = async () => {
       if (pollLlm && Date.now() > pollDeadlineRef.current) {
@@ -124,6 +122,13 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
       const r = await llmStatusAction({ clientId, analysisId: initial?.id });
       if (!active || !r.ok) return;
       setLlm(r.status);
+      // Läuft serverseitig ein Job (z. B. nach einem Page-Reload — der Client-
+      // State ist dann weg, der Job-Zustand aber bekannt)? → „läuft"-Polling
+      // wieder aufnehmen, damit Statusanzeige + Trigger-Sperre erneut greifen.
+      if (!pollLlm && r.jobRunning) {
+        beginLlmRun();
+        return;
+      }
       if (pollLlm && r.enrichedAt && r.enrichedAt !== llmBaselineRef.current) {
         highlightLlmRef.current = true;
         setPollLlm(false);
@@ -136,6 +141,8 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
       }
     };
     tick();
+    // Ohne aktiven Lauf: nur der eine Mount-Tick (erkennt einen ggf. laufenden
+    // Job) — kein 5-s-Intervall.
     if (!pollLlm) return () => { active = false; };
     const iv = setInterval(tick, 5000);
     return () => { active = false; clearInterval(iv); };
@@ -397,8 +404,8 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
           </span>
         ) : (
           <>
-            <button type="button" onClick={reanalyze} disabled={pending || !engineConfigured} className="btn-secondary text-xs ml-auto" title="Engine erneut (deterministisch) laufen lassen — ergänzt nur neue Markierungen, deine Bewertungen bleiben">
-              {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Neu analysieren
+            <button type="button" onClick={reanalyze} disabled={pending || !engineConfigured || pollLlm} className="btn-secondary text-xs ml-auto" title="Engine erneut (deterministisch) laufen lassen — ergänzt nur neue Markierungen, deine Bewertungen bleiben">
+              {(pending || pollLlm) ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Neu analysieren
             </button>
             <button type="button" onClick={archive} disabled={pending} className="btn-secondary text-xs" title="Revisionssicher archivieren (GoBD, schreibgeschützt)">
               <Archive className="h-3.5 w-3.5" /> Archivieren
@@ -435,6 +442,16 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
 
       {error && <div className="alert-error-sm">{error}</div>}
       {info && <div className="text-sm text-emerald-700 dark:text-emerald-300">{info}</div>}
+      {pollLlm && !llmFailed && (
+        <div className="rounded-md border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/20 px-3 py-2 text-sm text-purple-800 dark:text-purple-200 inline-flex items-center gap-2">
+          <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+          <span>
+            <strong>KI-Vertiefung läuft …</strong> im Hintergrund (~15–30 s) — die neuen
+            Markierungen erscheinen automatisch, sobald der Lauf fertig ist. Du kannst
+            weiterarbeiten.
+          </span>
+        </div>
+      )}
       {llmFailed && (
         <div className="alert-error-sm flex items-start justify-between gap-3">
           <span className="inline-flex items-start gap-1.5">
@@ -445,7 +462,7 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
             <button
               type="button"
               onClick={() => { setLlmFailed(null); requestLlm(); }}
-              disabled={pending || !engineConfigured || !!initial.archivedAt}
+              disabled={pending || !engineConfigured || !!initial.archivedAt || pollLlm}
               className="btn-secondary text-xs"
             >
               <RefreshCw className="h-3.5 w-3.5" /> Erneut versuchen

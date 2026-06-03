@@ -250,15 +250,19 @@ export async function archiveAnalysisAction(input: {
  *  + Queue) UND — falls analysisId gesetzt — ob die LLM-Phase fertig ist
  *  (`enrichedAt`). Der Engine-Status ist best-effort (Fehler ⇒ null), damit die
  *  Fertig-Erkennung (reiner DB-Read) auch bei wackliger Engine funktioniert. */
+// BullMQ-Zustände, die einen laufenden/wartenden LLM-Job bedeuten (= „läuft").
+const LLM_JOB_RUNNING_STATES = new Set(['active', 'waiting', 'delayed', 'waiting-children', 'prioritized']);
+
 export async function llmStatusAction(input: {
   clientId: string;
   analysisId?: string;
-}): Promise<OkActionResult<{ status: LlmStatusDTO | null; enrichedAt: string | null; jobFailed: boolean; jobError: string | null }>> {
+}): Promise<OkActionResult<{ status: LlmStatusDTO | null; enrichedAt: string | null; jobRunning: boolean; jobFailed: boolean; jobError: string | null }>> {
   try {
     const { ctx } = await guard(input.clientId);
     let status: LlmStatusDTO | null = null;
     try { status = await getLlmStatus(); } catch { status = null; }
     let enrichedAt: string | null = null;
+    let jobRunning = false;
     let jobFailed = false;
     let jobError: string | null = null;
     if (input.analysisId) {
@@ -269,19 +273,23 @@ export async function llmStatusAction(input: {
         }),
       );
       enrichedAt = a?.llmEnrichedAt ? a.llmEnrichedAt.toISOString() : null;
-      // Final fehlgeschlagener Worker-Job → die UI soll „lädt" beenden und Retry
-      // anbieten (sonst poll't sie bis zum 10-Min-Deadline ins Leere). Best-effort.
+      // BullMQ-Jobzustand abfragen: `jobRunning` lässt die UI „läuft …" zeigen +
+      // den Trigger sperren — auch nach einem Page-Reload (Client-State ist dann
+      // weg, der Job-Zustand aber serverseitig bekannt). `failed` beendet „lädt"
+      // und bietet Retry an. Best-effort (Queue down ⇒ kein Signal).
       if (a) {
         try {
           const jobState = await getRiskAnalyseJobState(input.analysisId);
           if (jobState?.state === 'failed') {
             jobFailed = true;
             jobError = jobState.failedReason;
+          } else if (jobState && LLM_JOB_RUNNING_STATES.has(jobState.state)) {
+            jobRunning = true;
           }
-        } catch { /* Queue nicht erreichbar → kein Fehlsignal, normaler Poll-Lauf */ }
+        } catch { /* Queue nicht erreichbar → kein Signal, normaler Poll-Lauf */ }
       }
     }
-    return { ok: true, status, enrichedAt, jobFailed, jobError };
+    return { ok: true, status, enrichedAt, jobRunning, jobFailed, jobError };
   } catch (e) {
     return toActionError(e);
   }
