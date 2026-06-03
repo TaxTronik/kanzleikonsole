@@ -13,6 +13,7 @@ import { SubsumtionDocument, type SubsumtionDocumentHandle, type ManualSelection
 import { MarkingPanel, ResearchComposer } from './marking-panel';
 import { NewMarkingPanel } from './new-marking-panel';
 import { ExportPanel } from './export-panel';
+import { MarkingList } from './marking-list';
 import { ResearchResultsBlock } from './research-results-block';
 import { type AnalysisDTO, type ResearchResultDTO, type MarkingDTO, FILTER_KEYS, type FilterKey, isVisible } from './_ui';
 
@@ -77,6 +78,14 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [expanded]);
+  // Erfolgs-/Info-Meldungen blenden sich nach kurzer Zeit selbst aus (Toast-
+  // Verhalten); Fehler bleiben stehen, bis sie durch die nächste Aktion ersetzt
+  // werden. Einheitliches Feedback-Muster.
+  useEffect(() => {
+    if (!info) return;
+    const t = setTimeout(() => setInfo(null), 4500);
+    return () => clearTimeout(t);
+  }, [info]);
 
   // LLM-Status (Schicht 2): einmal beim Mount holen; nach „LLM dazuschalten"
   // engmaschig pollen. Ist der Lauf fertig (llmEnrichedAt gesetzt), WEICH
@@ -144,6 +153,43 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
     () => Object.fromEntries(markings.map((m) => [m.id, m])) as Record<string, MarkingDTO>,
     [markings],
   );
+  // Sichtbare Markierungen in Lese-Reihenfolge (für Liste + Alt+↑/↓-Stepping).
+  const orderedVisible = useMemo(
+    () => [...visibleMarkings].sort((a, b) => a.start - b.start || a.end - b.end || a.id.localeCompare(b.id)),
+    [visibleMarkings],
+  );
+
+  // Auswahl aus der Liste/Navigation: markieren + im Dokument in den Sichtbereich
+  // scrollen (revealMarking setzt den Cursor → onSelectionUpdate wählt sie ohnehin).
+  function selectAndReveal(id: string) {
+    setSelectedId(id);
+    setManualSel(null);
+    const m = markingsById[id];
+    if (m) editorRef.current?.revealMarking(m.start);
+  }
+  function stepMarking(dir: 1 | -1) {
+    if (orderedVisible.length === 0) return;
+    const idx = orderedVisible.findIndex((m) => m.id === selectedId);
+    const next =
+      idx === -1
+        ? dir === 1 ? orderedVisible[0] : orderedVisible[orderedVisible.length - 1]
+        : orderedVisible[(idx + dir + orderedVisible.length) % orderedVisible.length];
+    if (next) selectAndReveal(next.id);
+  }
+
+  // Alt+↑/↓ steppt durch die Markierungen (Alt verhindert Konflikt mit der
+  // Texteingabe im Editor). Ref hält die frische Closure → Listener bindet einmal.
+  const stepRef = useRef(stepMarking);
+  stepRef.current = stepMarking;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.altKey) return;
+      if (e.key === 'ArrowDown') { e.preventDefault(); stepRef.current(1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); stepRef.current(-1); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   // Nach der weichen Aktualisierung (LLM-Lauf fertig): neue KI-Markierungen
   // (LLM/Heuristik) melden + die erste hervorheben — aber NUR, wenn der Bearbeiter
@@ -422,6 +468,7 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
             Ziehen = eigene Markierung, Toolbar = formatieren. Alt-Analysen ohne
             sourceDoc werden aus dem Plaintext geseedet (offsets bleiben gleich). */}
         <SubsumtionDocument
+          ref={editorRef}
           analyzed
           canEdit={!initial.archivedAt}
           initialDoc={initial.sourceDoc ?? null}
@@ -445,7 +492,14 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
             weit unten muss nicht zurück nach oben gescrollt werden. self-start
             verhindert das Grid-Stretching (sonst greift sticky nicht); bei langem
             Panel scrollt es intern. */}
-        <div className="lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
+        <div className="lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto space-y-3">
+          <MarkingList
+            markings={orderedVisible}
+            selectedId={selectedId}
+            onSelect={selectAndReveal}
+            onPrev={() => stepMarking(-1)}
+            onNext={() => stepMarking(1)}
+          />
           {manualSel ? (
             <NewMarkingPanel
               clientId={clientId}

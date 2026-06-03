@@ -20,7 +20,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Check, Loader2, Lock, ZoomIn, ZoomOut, Maximize2, Minimize2 } from 'lucide-react';
 import { useEditor, EditorContent, Extension, type Editor } from '@tiptap/react';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { docToText, plainRangeToPm, pmPosToPlain, type TextRange } from './doc-text';
 import { baseEditorExtensions } from './editor-extensions';
@@ -33,6 +33,9 @@ export interface SubsumtionDocumentHandle {
   getText: () => string;
   getDoc: () => unknown;
   focus: () => void;
+  /** Cursor an den Anfang einer Markierung setzen + in den Sichtbereich scrollen
+   *  (für die Navigation aus der Markierungsliste). Wählt sie dadurch aus. */
+  revealMarking: (start: number) => void;
 }
 
 export interface ManualSelection {
@@ -269,6 +272,17 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(fu
       getText: () => (editor ? docToText(editor.state.doc).text : ''),
       getDoc: () => editor?.getJSON() ?? null,
       focus: () => editor?.commands.focus(),
+      revealMarking: (start: number) => {
+        if (!editor) return;
+        const ranges = rangesRef.current.length ? rangesRef.current : docToText(editor.state.doc).ranges;
+        const mapped = plainRangeToPm(ranges, start, start);
+        const pos = mapped[0]?.from;
+        if (pos == null) return;
+        const sel = TextSelection.create(editor.state.doc, pos);
+        // Cursor setzen (→ onSelectionUpdate wählt die Markierung) + hinscrollen.
+        editor.view.dispatch(editor.state.tr.setSelection(sel).scrollIntoView());
+        editor.view.focus();
+      },
     }),
     [editor, props],
   );
@@ -304,8 +318,12 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(fu
     const decos: Decoration[] = [];
     for (const seg of buildSegments(visibleMarkings)) {
       const style = segmentStyle(seg.covering, selectedId, hoveredId);
+      // a11y: die überdeckenden Begriffe als Label (Screenreader; Spans sind sonst
+      // nur visuell). role=mark kennzeichnet hervorgehobenen Text.
+      const label = seg.covering.map((c) => c.m.begriff).filter(Boolean).join(', ');
+      const attrs = label ? { style, role: 'mark', 'aria-label': `Markierung: ${label}` } : { style };
       for (const { from, to } of plainRangeToPm(ranges, seg.start, seg.end)) {
-        decos.push(Decoration.inline(from, to, { style }));
+        decos.push(Decoration.inline(from, to, attrs));
       }
     }
     editor.view.dispatch(editor.state.tr.setMeta(markKey, DecorationSet.create(editor.state.doc, decos)));

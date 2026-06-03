@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { X, Save, Send, BookPlus, BookmarkPlus, Trash2, AlertTriangle, Webhook, Eye, Loader2, ChevronRight, Scale } from 'lucide-react';
 import {
   updateMarkingAction, deleteMarkingAction, delegateAction, pushDefinitionAction,
@@ -13,6 +13,42 @@ import {
 import type { ResolvedNorm, PromptTemplateDTO } from '@/server/risk';
 
 type Flash = (r: { ok: boolean; error?: string }, ok?: string) => void;
+
+/** Modal-A11y: Esc schließt, Tab bleibt im Dialog gefangen, Initial-Fokus aufs
+ *  erste Element, beim Schließen kehrt der Fokus zum Auslöser zurück. */
+function useDialogA11y(onClose: () => void) {
+  const ref = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    const node = ref.current;
+    const prevFocus = document.activeElement as HTMLElement | null;
+    const focusables = () =>
+      node
+        ? Array.from(
+            node.querySelectorAll<HTMLElement>(
+              'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])',
+            ),
+          ).filter((el) => el.offsetParent !== null)
+        : [];
+    focusables()[0]?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.preventDefault(); closeRef.current(); return; }
+      if (e.key !== 'Tab') return;
+      const f = focusables();
+      if (f.length === 0) return;
+      const first = f[0]!, last = f[f.length - 1]!;
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      prevFocus?.focus?.();
+    };
+  }, []);
+  return ref;
+}
 
 export function MarkingPanel(props: {
   clientId: string;
@@ -247,11 +283,18 @@ export function ResearchComposer(props: {
   }
 
   const field = 'w-full rounded border border-default bg-surface px-3 py-2 text-sm';
+  const dialogRef = useDialogA11y(props.onClose);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
-      <div className="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto card p-5 space-y-3 shadow-xl">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={isCase ? 'Ganzen Fall an n8n senden' : 'Rechercheauftrag an n8n'}
+        className="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto card p-5 space-y-3 shadow-xl"
+      >
         <div className="flex items-center justify-between gap-2">
           <p className="text-sm font-medium text-primary inline-flex items-center gap-1">
             <Webhook className="h-4 w-4" /> {isCase ? 'Ganzen Fall an n8n/KI (anonymisiert)' : 'Rechercheauftrag an n8n (anonymisiert)'}
