@@ -17,6 +17,7 @@ import { enqueueN8nEvent } from '@/server/n8n/outbox';
 import { evidenceService } from '@/server/container';
 import { anonymize, deanonymize } from './anonymize';
 import { reflowProse } from './reflow';
+import { scoreMarkingSuggestions, type MarkingSuggestion } from './suggest';
 
 export type SachverhaltMode = 'none' | 'excerpt' | 'full';
 
@@ -273,25 +274,12 @@ export async function receiveResearchResult(input: InboundResult): Promise<{ res
 
 // --- Intelligente Zuordnung (für die Ablage-UI) ------------------------------
 
-/** §-Zitate aus einem Text extrahieren (für die Normanker-Heuristik). */
-function extractNormRefs(text: string): string[] {
-  const out = new Set<string>();
-  const re = /§+\s?\d+[a-z]?(?:\s?Abs\.?\s?\d+)?(?:\s?(?:S\.|Satz)\s?\d+)?\s?[A-ZÄÖÜ][A-Za-zÄÖÜ]{1,6}/g;
-  for (const m of text.matchAll(re)) out.add(m[0].replace(/\s+/g, ' ').trim());
-  return [...out];
-}
-
-export interface MarkingSuggestion {
-  markingId: string;
-  begriff: string;
-  score: number;
-  reason: string;
-}
-
 /**
  * Schlägt offene/fragliche Markierungen für ein (noch nicht zugeordnetes)
- * Ergebnis vor. Stärkstes Signal: gemeinsame Normanker (§-Zitate); zusätzlich
- * Begriff-Überlappung.
+ * Ergebnis vor. Lädt Ergebnis + offene Markierungen der Ursprungs-Analyse und
+ * scort in-memory (reine Logik in ./suggest). Hinweis: die Subsumtions-SEITE
+ * scort direkt mit ihren bereits geladenen Markierungen (kein N+1) — diese
+ * DB-Variante bleibt für Einzel-Aufrufe ohne vorhandene Markierungen.
  */
 export async function suggestMarkingsForResult(
   ctx: TenantContext,
@@ -303,33 +291,15 @@ export async function suggestMarkingsForResult(
       select: { body: true, title: true, request: { select: { analysisId: true } } },
     });
     if (!result) return [];
-    const text = `${result.title ?? ''}\n${result.body}`.toLowerCase();
-    const refs = extractNormRefs(`${result.title ?? ''}\n${result.body}`).map((r) => r.toLowerCase());
-
     const markings = await tx.riskMarking.findMany({
       where: {
         status: { in: ['OFFEN', 'IN_PRUEFUNG'] },
         ...(result.request?.analysisId ? { analysisId: result.request.analysisId } : {}),
       },
-      select: { id: true, begriff: true, normAnker: true, engineStatus: true },
+      select: { id: true, begriff: true, normAnker: true, status: true },
       take: 200,
     });
-
-    const scored: MarkingSuggestion[] = [];
-    for (const m of markings) {
-      const ankerLower = m.normAnker.map((a) => a.toLowerCase());
-      const normOverlap = ankerLower.filter((a) => refs.some((r) => r.includes(a) || a.includes(r))).length;
-      const begriffHit = m.begriff && text.includes(m.begriff.toLowerCase()) ? 1 : 0;
-      const score = normOverlap * 3 + begriffHit * 2;
-      if (score > 0) {
-        const reasons: string[] = [];
-        if (normOverlap > 0) reasons.push(`${normOverlap} gemeinsame Normanker`);
-        if (begriffHit) reasons.push('Begriff erwähnt');
-        scored.push({ markingId: m.id, begriff: m.begriff, score, reason: reasons.join(' · ') });
-      }
-    }
-    scored.sort((a, b) => b.score - a.score);
-    return scored.slice(0, 3);
+    return scoreMarkingSuggestions(result, markings);
   });
 }
 

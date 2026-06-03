@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { guardSubsumtionPage } from '../_guard';
-import { loadAnalysis, loadResearchResults, suggestMarkingsForResult } from '@/server/risk';
+import { loadAnalysis, loadResearchResults, scoreMarkingSuggestions } from '@/server/risk';
 import { SubsumtionWorkspace } from '../subsumtion-workspace';
 import { EditableAnalysisTitle } from '../editable-title';
 import type { AnalysisDTO, MarkingDTO, NormRefDTO, ResearchResultDTO } from '../_ui';
@@ -19,20 +19,22 @@ export default async function AnalysisPage({
   if (!analysis || analysis.clientId !== id) notFound();
 
   // Rechercheergebnisse + (für NEU) heuristische Zuordnungs-Vorschläge. Die
-  // Vorschläge je NEU-Ergebnis parallel laden (sonst N serielle Queries).
+  // Markierungen sind über `analysis` bereits geladen → in-memory scoren (kein
+  // N+1: vorher 2 Queries je NEU-Ergebnis).
   const rawResults = await loadResearchResults(ctx, analysisId);
-  const researchResults: ResearchResultDTO[] = await Promise.all(
-    rawResults.map(async (r) => ({
-      id: r.id,
-      title: r.title,
-      body: r.body,
-      status: r.status,
-      markingId: r.markingId,
-      source: r.source,
-      receivedAt: r.receivedAt.toISOString(),
-      suggestions: r.status === 'NEU' ? await suggestMarkingsForResult(ctx, r.id) : [],
-    })),
-  );
+  const openMarkings = analysis.markings
+    .filter((m) => m.status === 'OFFEN' || m.status === 'IN_PRUEFUNG')
+    .map((m) => ({ id: m.id, begriff: m.begriff, normAnker: m.normAnker, status: m.status }));
+  const researchResults: ResearchResultDTO[] = rawResults.map((r) => ({
+    id: r.id,
+    title: r.title,
+    body: r.body,
+    status: r.status,
+    markingId: r.markingId,
+    source: r.source,
+    receivedAt: r.receivedAt.toISOString(),
+    suggestions: r.status === 'NEU' ? scoreMarkingSuggestions(r, openMarkings) : [],
+  }));
 
   const dto: AnalysisDTO = {
     id: analysis.id,

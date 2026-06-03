@@ -59,4 +59,7 @@ export {
   previewResearch, sendResearchToN8n, receiveResearchResult,
   suggestMarkingsForResult, assignResultToMarking,
 } from './research';
-export type { ResearchInput, ResearchPreview, InboundResult, MarkingSuggestion } from './research';
+export type { ResearchInput, ResearchPreview, InboundResult } from './research';
+
+export { scoreMarkingSuggestions, extractNormRefs } from './suggest';
+export type { MarkingSuggestion, ScoreableMarking } from './suggest';
