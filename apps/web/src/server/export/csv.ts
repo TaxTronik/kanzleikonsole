@@ -44,24 +44,41 @@ export function escapeCsvCell(v: string | number | null | undefined | Date | big
   return s;
 }
 
-export function toCsv<T>(rows: T[], columns: CsvColumn<T>[]): string {
+export function toCsv<T>(
+  rows: T[],
+  columns: CsvColumn<T>[],
+  opts?: { truncatedNote?: string },
+): string {
   const lines: string[] = [];
   lines.push(columns.map((c) => escapeCsvCell(c.label)).join(';'));
   for (const row of rows) {
     lines.push(columns.map((c) => escapeCsvCell(c.accessor(row))).join(';'));
   }
+  // Trunkierungs-Hinweis SICHTBAR in der Datei (kritisch für Audit-/Prüfer-
+  // Exporte: ein vollständig aussehender, aber stillschweigend gekürzter Export
+  // ist gefährlicher als ein erkennbar unvollständiger). Leerzeile + Einzel-
+  // zellen-Hinweiszeile am Ende — bleibt valides CSV (ein Feld, keine Trenner).
+  if (opts?.truncatedNote) {
+    lines.push('');
+    lines.push(escapeCsvCell(opts.truncatedNote));
+  }
   // CRLF + UTF-8-BOM für Excel
   return '﻿' + lines.join('\r\n');
 }
 
-export function csvResponse(filename: string, csv: string): Response {
+/** Einheitlicher, sichtbarer Trunkierungs-Hinweis für gekürzte Exporte. */
+export function truncationNote(maxRows: number): string {
+  return `EXPORT UNVOLLSTÄNDIG: auf ${maxRows.toLocaleString('de-DE')} Zeilen begrenzt — es existieren weitere Zeilen. Bitte den Abruf weiter eingrenzen (z. B. Zeitraum/Status).`;
+}
+
+export function csvResponse(filename: string, csv: string, opts?: { truncated?: boolean }): Response {
   const safe = filename.replace(/[^A-Za-z0-9_-]/g, '_');
-  return new Response(csv, {
-    status: 200,
-    headers: {
-      'Content-Type': 'text/csv; charset=utf-8',
-      'Content-Disposition': `attachment; filename="${safe}.csv"`,
-      'Cache-Control': 'no-store',
-    },
-  });
+  const headers: Record<string, string> = {
+    'Content-Type': 'text/csv; charset=utf-8',
+    'Content-Disposition': `attachment; filename="${safe}.csv"`,
+    'Cache-Control': 'no-store',
+  };
+  // Maschinen-/UI-Signal zusätzlich zum sichtbaren In-Datei-Hinweis.
+  if (opts?.truncated) headers['X-Export-Truncated'] = 'true';
+  return new Response(csv, { status: 200, headers });
 }

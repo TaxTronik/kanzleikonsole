@@ -3,7 +3,7 @@ import { getClientIp } from '@/server/rate-limit';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
-import { toCsv, csvResponse, type CsvColumn } from '@/server/export/csv';
+import { toCsv, csvResponse, truncationNote, type CsvColumn } from '@/server/export/csv';
 
 // Harte Obergrenze (wie audit/export): deckelt Speicher UND den synchronen
 // CSV-String-Aufbau (Event-Loop-Block) — Anforderungen wachsen über Jahre monoton.
@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const status = sp.get('status');
 
-  const rows = await withTenantContext(
+  const { rows, truncated } = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
       const list = await tx.request.findMany({
@@ -26,23 +26,25 @@ export async function GET(req: NextRequest) {
             ? { status: status as 'OPEN' | 'IN_PROGRESS' | 'RESPONDED' | 'CLOSED' | 'CANCELLED' }
             : undefined,
         orderBy: [{ status: 'asc' }, { dueAt: 'asc' }, { createdAt: 'desc' }],
-        take: MAX_ROWS,
+        take: MAX_ROWS + 1, // +1 zur Trunkierungs-Erkennung
         include: {
           client: { select: { name: true, datevNo: true } },
           _count: { select: { responses: true } },
         },
       });
+      const truncated = list.length > MAX_ROWS;
+      const out = truncated ? list.slice(0, MAX_ROWS) : list;
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',
         actorId: staffId,
         action: 'requests.export.csv',
         resourceType: 'request',
-        after: { rows: list.length, status: status ?? 'all' },
+        after: { rows: out.length, truncated, status: status ?? 'all' },
         ip: getClientIp(req.headers),
         userAgent: req.headers.get('user-agent'),
       });
-      return list;
+      return { rows: out, truncated };
     },
   );
 
@@ -58,5 +60,9 @@ export async function GET(req: NextRequest) {
     { key: 'closedAt', label: 'Geschlossen', accessor: (r) => r.closedAt },
   ];
 
-  return csvResponse(`anforderungen-${new Date().toISOString().slice(0, 10)}`, toCsv(rows, cols));
+  return csvResponse(
+    `anforderungen-${new Date().toISOString().slice(0, 10)}`,
+    toCsv(rows, cols, truncated ? { truncatedNote: truncationNote(MAX_ROWS) } : undefined),
+    { truncated },
+  );
 }

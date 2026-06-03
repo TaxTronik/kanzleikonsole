@@ -4,7 +4,7 @@ import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
-import { toCsv, csvResponse, type CsvColumn } from '@/server/export/csv';
+import { toCsv, csvResponse, truncationNote, type CsvColumn } from '@/server/export/csv';
 import type { Prisma } from '@prisma/client';
 
 const MAX_ROWS = 10_000;
@@ -37,27 +37,31 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const rows = await withTenantContext(
+  const { rows, truncated } = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
+      // +1 lesen, um Trunkierung zu ERKENNEN (kein Extra-count nötig).
       const list = await tx.auditLog.findMany({
         where,
         orderBy: { id: 'desc' },
-        take: MAX_ROWS,
+        take: MAX_ROWS + 1,
       });
+      const truncated = list.length > MAX_ROWS;
+      const out = truncated ? list.slice(0, MAX_ROWS) : list;
 
-      // Audit den Export selbst
+      // Audit den Export selbst — inkl. Trunkierungs-Flag (Compliance: ein
+      // still gekürzter Prüfer-Export muss im Audit-Trail erkennbar sein).
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',
         actorId: staffId,
         action: 'audit.export.csv',
         resourceType: 'audit_log',
-        after: { rows: list.length, filters: Object.fromEntries(sp.entries()) },
+        after: { rows: out.length, truncated, filters: Object.fromEntries(sp.entries()) },
         ip: getClientIp(req.headers),
         userAgent: req.headers.get('user-agent'),
       });
-      return list;
+      return { rows: out, truncated };
     },
   );
 
@@ -82,5 +86,9 @@ export async function GET(req: NextRequest) {
     },
   ];
 
-  return csvResponse(`audit-${new Date().toISOString().slice(0, 10)}`, toCsv(rows, cols));
+  return csvResponse(
+    `audit-${new Date().toISOString().slice(0, 10)}`,
+    toCsv(rows, cols, truncated ? { truncatedNote: truncationNote(MAX_ROWS) } : undefined),
+    { truncated },
+  );
 }

@@ -3,7 +3,7 @@ import { getClientIp } from '@/server/rate-limit';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
-import { toCsv, csvResponse, type CsvColumn } from '@/server/export/csv';
+import { toCsv, csvResponse, truncationNote, type CsvColumn } from '@/server/export/csv';
 
 // Harte Obergrenze (wie audit/export): deckelt Speicher UND den synchronen
 // CSV-String-Aufbau (Event-Loop-Block) auf monoton wachsenden Tabellen.
@@ -14,25 +14,27 @@ export async function GET(req: NextRequest) {
   if (!session?.user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const { tenantId, staffId } = session.user;
 
-  const rows = await withTenantContext(
+  const { rows, truncated } = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
       const list = await tx.client.findMany({
         orderBy: { name: 'asc' },
-        take: MAX_ROWS,
+        take: MAX_ROWS + 1, // +1 zur Trunkierungs-Erkennung
         include: { _count: { select: { documents: { where: { deletedAt: null } }, invoices: true, requests: true } } },
       });
+      const truncated = list.length > MAX_ROWS;
+      const out = truncated ? list.slice(0, MAX_ROWS) : list;
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',
         actorId: staffId,
         action: 'clients.export.csv',
         resourceType: 'client',
-        after: { rows: list.length },
+        after: { rows: out.length, truncated },
         ip: getClientIp(req.headers),
         userAgent: req.headers.get('user-agent'),
       });
-      return list;
+      return { rows: out, truncated };
     },
   );
 
@@ -54,5 +56,9 @@ export async function GET(req: NextRequest) {
     { key: 'requests', label: 'Anforderungen', accessor: (r) => r._count.requests },
   ];
 
-  return csvResponse(`mandanten-${new Date().toISOString().slice(0, 10)}`, toCsv(rows, cols));
+  return csvResponse(
+    `mandanten-${new Date().toISOString().slice(0, 10)}`,
+    toCsv(rows, cols, truncated ? { truncatedNote: truncationNote(MAX_ROWS) } : undefined),
+    { truncated },
+  );
 }
