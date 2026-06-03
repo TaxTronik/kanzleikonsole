@@ -49,6 +49,14 @@ export async function delegateMarking(
       throw new Error('Delegation erfordert einen Mandantenbezug der Analyse.');
     }
 
+    // „an" MUSS ein aktiver Mitarbeiter DIESES Tenants sein — sonst entstünde eine
+    // hängende Zuweisung an eine fremde/ungültige Staff-ID (RLS + expliziter Filter).
+    const assignee = await tx.staffUser.findFirst({
+      where: { id: input.assigneeStaffId, tenantId: ctx.tenantId, active: true },
+      select: { id: true },
+    });
+    if (!assignee) throw new Error('Zuständige:r Mitarbeiter:in nicht gefunden oder inaktiv.');
+
     const dueDate = input.dueDate ?? new Date(Date.now() + DEFAULT_DUE_DAYS * 86_400_000);
     const reminder = await tx.clientReminder.create({
       data: {

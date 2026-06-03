@@ -53,6 +53,15 @@ export async function updateMarking(
   await withTenantContext(ctx, async (tx) => {
     const before = await tx.riskMarking.findUnique({ where: { id: markingId }, select: DECISION_SELECT });
     if (!before) throw new Error('Markierung nicht gefunden.');
+    // Verantwortliche:r muss aktiver Mitarbeiter DIESES Tenants sein (keine
+    // hängende Zuweisung an fremde/ungültige Staff-IDs).
+    if (fields.verantwortlichId) {
+      const ok = await tx.staffUser.findFirst({
+        where: { id: fields.verantwortlichId, tenantId: ctx.tenantId, active: true },
+        select: { id: true },
+      });
+      if (!ok) throw new Error('Verantwortliche:r nicht gefunden oder inaktiv.');
+    }
     await tx.riskMarking.update({ where: { id: markingId }, data: fields });
     // undefined = unverändert → für den after-Snapshot herausfiltern.
     const changed = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined));
