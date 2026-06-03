@@ -34,7 +34,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ results: [] });
   }
   const q = parsed.data.q.trim();
-  const ilike = `%${q.replace(/[%_\\]/g, (m) => `\\${m}`)}%`;
+  // %/_/\ sind LIKE-Metazeichen → escapen, damit Suchbegriffe wie „50%" oder
+  // „kunde_1" WÖRTLICH matchen (Postgres-Default-Escape ist \). Gilt für die rohe
+  // KB-ILIKE UND die Prisma-`contains`-Filter — sonst asymmetrisch (rohes „%"
+  // würde im contains alles matchen, parametrisiert → kein SQLi, aber falsch).
+  const likeTerm = q.replace(/[%_\\]/g, (m) => `\\${m}`);
+  const ilike = `%${likeTerm}%`;
   const { tenantId, staffId } = session.user;
 
   const results = await withTenantContext(
@@ -44,10 +49,10 @@ export async function GET(req: NextRequest) {
         tx.client.findMany({
           where: {
             OR: [
-              { name: { contains: q, mode: 'insensitive' } },
-              { datevNo: { contains: q, mode: 'insensitive' } },
-              { addisonNo: { contains: q, mode: 'insensitive' } },
-              { vatId: { contains: q, mode: 'insensitive' } },
+              { name: { contains: likeTerm, mode: 'insensitive' } },
+              { datevNo: { contains: likeTerm, mode: 'insensitive' } },
+              { addisonNo: { contains: likeTerm, mode: 'insensitive' } },
+              { vatId: { contains: likeTerm, mode: 'insensitive' } },
             ],
           },
           select: { id: true, name: true, datevNo: true, addisonNo: true },
@@ -57,8 +62,8 @@ export async function GET(req: NextRequest) {
         tx.request.findMany({
           where: {
             OR: [
-              { title: { contains: q, mode: 'insensitive' } },
-              { description: { contains: q, mode: 'insensitive' } },
+              { title: { contains: likeTerm, mode: 'insensitive' } },
+              { description: { contains: likeTerm, mode: 'insensitive' } },
             ],
           },
           select: { id: true, title: true, status: true, client: { select: { name: true } } },
@@ -66,7 +71,7 @@ export async function GET(req: NextRequest) {
           orderBy: { createdAt: 'desc' },
         }),
         tx.document.findMany({
-          where: { title: { contains: q, mode: 'insensitive' }, deletedAt: null },
+          where: { title: { contains: likeTerm, mode: 'insensitive' }, deletedAt: null },
           select: { id: true, title: true, classification: true, client: { select: { name: true } } },
           take: 5,
           orderBy: { createdAt: 'desc' },
@@ -74,8 +79,8 @@ export async function GET(req: NextRequest) {
         tx.invoice.findMany({
           where: {
             OR: [
-              { number: { contains: q, mode: 'insensitive' } },
-              { subject: { contains: q, mode: 'insensitive' } },
+              { number: { contains: likeTerm, mode: 'insensitive' } },
+              { subject: { contains: likeTerm, mode: 'insensitive' } },
             ],
           },
           select: {

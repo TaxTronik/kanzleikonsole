@@ -24,7 +24,9 @@ export default [
   {
     files: ['**/*.{ts,tsx}'],
     rules: {
-      '@typescript-eslint/no-explicit-any': 'off',
+      // Guardrail für künftige Beiträge: `any` ist erlaubt, wird aber sichtbar
+      // markiert (aktuell 0× im src) — hält die Typ-Disziplin, ohne den Build zu brechen.
+      '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-unused-vars': [
         'warn',
         {
