@@ -105,6 +105,11 @@ const envSchema = z.object({
   // --- n8n ------------------------------------------------------------------
   N8N_WEBHOOK_BASE_URL: z.preprocess((v) => v === '' ? undefined : v, z.string().url().optional()),
   N8N_HMAC_SECRET: z.string().optional(),
+  // Liefer-Modus für ausgehende Webhooks. Default leitet sich aus NODE_ENV ab
+  // (siehe `n8nDeliveryMode`): dev → 'test' (nur n8n-Test-Hooks, trifft NIE die
+  // Produktiv-Workflows — sicheres Debugging), prod → 'production'. 'log' = nicht
+  // senden, nur die signierte Anfrage ins Log (Offline-Dev ohne laufendes n8n).
+  N8N_DELIVERY_MODE: z.enum(['production', 'test', 'log']).optional(),
 
   // --- Risk-Layer (TCMS-Engine, §4) -----------------------------------------
   // Netzinterne, mandantendatenführende Analyse-Engine. Beide Werte optional:
@@ -261,3 +266,13 @@ export const riskLayerConfig: { url: string; token: string } | null =
   env.RISK_LAYER_URL && env.RISK_LAYER_TOKEN
     ? { url: env.RISK_LAYER_URL.replace(/\/$/, ''), token: env.RISK_LAYER_TOKEN }
     : null;
+
+/**
+ * Auflösung des n8n-Liefer-Modus mit SICHEREM Default aus NODE_ENV: im Dev wird
+ * ausschließlich gegen n8n-Test-Hooks geliefert (kein versehentliches Auslösen der
+ * Produktiv-Workflows / realer Mails), in Produktion regulär. Explizit per
+ * `N8N_DELIVERY_MODE` überschreibbar. 'log' = Dry-Run (nur ins Log, kein Versand).
+ */
+export type N8nDeliveryMode = 'production' | 'test' | 'log';
+export const n8nDeliveryMode: N8nDeliveryMode =
+  env.N8N_DELIVERY_MODE ?? (env.NODE_ENV === 'production' ? 'production' : 'test');

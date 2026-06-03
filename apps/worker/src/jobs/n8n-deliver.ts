@@ -13,7 +13,7 @@
 // =============================================================================
 
 import { Worker, Queue } from 'bullmq';
-import { env } from '@taxtronik/config';
+import { env, n8nDeliveryMode } from '@taxtronik/config';
 import { isAllowedN8nEvent, signOutboundN8n } from '@taxtronik/n8n-shared';
 // M-7: shared crypto — keine Duplikation mehr von secret-box.
 import { decryptSecret, looksEncrypted } from '@taxtronik/crypto';
@@ -101,11 +101,16 @@ async function deliver(outboxId: string): Promise<void> {
     return;
   }
 
+  // n8n-Liefer-Modus (siehe config.n8nDeliveryMode): im Dev nur gegen Test-Hooks
+  // — die Produktiv-Workflows (echte Mails/Eskalationen) werden NIE getroffen.
+  // Test-Hook = trailing /webhook → /webhook-test (n8n „Listen for test event").
+  const base = cfg.webhookBaseUrl.replace(/\/$/, '');
+  const targetBase = n8nDeliveryMode === 'test' ? base.replace(/\/webhook$/, '/webhook-test') : base;
   // N7: row.event ist whitelisted (isAllowedEvent), aber ein direkter DB-
   // Manipulator könnte exotische Zeichen einschleusen — Defense in Depth via
   // encodeURIComponent. `.`/`-`/`_` bleiben dabei unverändert (RFC 3986
   // unreserved), Subpath-Trennung kann der Wert damit garantiert nicht mehr.
-  const url = `${cfg.webhookBaseUrl.replace(/\/$/, '')}/${encodeURIComponent(row.event)}`;
+  const url = `${targetBase}/${encodeURIComponent(row.event)}`;
 
   const body = JSON.stringify({
     event: row.event,
@@ -114,6 +119,21 @@ async function deliver(outboxId: string): Promise<void> {
     tenantId: row.tenantId,
   });
   const { signature, timestamp, nonce } = signOutboundN8n(row.event, body, cfg.hmacSecret);
+
+  // Dry-Run (Offline-Dev ohne laufendes n8n): die fertig signierte Anfrage nur
+  // protokollieren, nicht senden, und die Reihe als erledigt markieren (kein
+  // Retry-Stau). Analog zum Magic-Link-im-Log-Muster.
+  if (n8nDeliveryMode === 'log') {
+    log.info(
+      { outboxId, event: row.event, url, signature, timestamp, nonce, body },
+      'n8n-deliver: DRY-RUN (N8N_DELIVERY_MODE=log) — nicht gesendet, nur protokolliert',
+    );
+    await prismaOwner.n8nOutbox.update({
+      where: { id: outboxId },
+      data: { status: 'DELIVERED', deliveredAt: new Date(), lastError: 'log-only (N8N_DELIVERY_MODE=log)' },
+    });
+    return;
+  }
 
   const ctrl = new AbortController();
   const to = setTimeout(() => ctrl.abort(), 15_000);
