@@ -69,6 +69,14 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
   const [filters, setFilters] = useState<Set<FilterKey>>(() => new Set(FILTER_KEYS));
   const [manualSel, setManualSel] = useState<ManualSelection | null>(null);
   const [showCaseResearch, setShowCaseResearch] = useState(false);
+  // Vollbild der Subsumtions-Fläche (Dokument + Panel als Overlay). Esc verlässt es.
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setExpanded(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [expanded]);
 
   // LLM-Status (Schicht 2): einmal beim Mount holen; nach „LLM dazuschalten"
   // engmaschig pollen. Ist der Lauf fertig (llmEnrichedAt gesetzt), WEICH
@@ -403,7 +411,13 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-4">
+      <div
+        className={
+          expanded
+            ? 'fixed inset-0 z-40 overflow-auto bg-surface-page p-4 grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-4'
+            : 'grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-4'
+        }
+      >
         {/* EINE Fläche: immer formatiert + editierbar. Klicken = Markierung prüfen,
             Ziehen = eigene Markierung, Toolbar = formatieren. Alt-Analysen ohne
             sourceDoc werden aus dem Plaintext geseedet (offsets bleiben gleich). */}
@@ -423,6 +437,8 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
           onSelectMarking={selectMarking}
           onSelectionForMarking={selectForMarking}
           onSaveFormat={saveFormat}
+          expanded={expanded}
+          onToggleExpand={() => setExpanded((v) => !v)}
         />
 
         {/* Sticky: Panel bleibt beim Scrollen sichtbar — Klick auf eine Markierung

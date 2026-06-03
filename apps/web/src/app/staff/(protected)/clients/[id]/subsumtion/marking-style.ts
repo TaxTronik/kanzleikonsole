@@ -13,11 +13,16 @@
 
 import { type MarkingDTO, herkunftColor } from './_ui';
 
-// Geometrie der gestapelten Linien (px).
+// Geometrie der gestapelten Linien (px, getunt bei text-sm/14px).
 export const LINE_PAD = 9; // verlängert die Span-Unterkante nach unten (Platz für Linien)
 const LINE_BASE = 2; // erste Spur px unter der Grundlinie
 const LINE_GAP = 2.5; // Abstand je weiterer Spur
 const MAX_TRACK = 2; // ab hier teilen sich tiefere Spuren die unterste Linie
+
+// Zoom-fähige Länge: skaliert mit der CSS-Variable `--tt-zoom` (auf der Editor-
+// Box gesetzt). Bei var=1 pixelgenau wie zuvor; beim Zoomen wandern Linien +
+// Füllung mit der vergrößerten Schrift mit — ohne Decoration-Neuaufbau.
+const z = (px: number) => `calc(${px}px * var(--tt-zoom, 1))`;
 
 export function hexToRgba(hex: string, alpha: number): string {
   const h = hex.replace('#', '');
@@ -55,7 +60,7 @@ function lineLayer(m: MarkingDTO, track: number): { image: string; size: string;
   const image = m.streitig
     ? `repeating-linear-gradient(to right, ${color} 0 4px, transparent 4px 7px)` // gestrichelt
     : `linear-gradient(${color}, ${color})`; // durchgezogen
-  return { image, size: '100% 2px', pos: `0 calc(100% - ${LINE_PAD - off}px)` };
+  return { image, size: `100% ${z(2)}`, pos: `0 calc(100% - ${z(LINE_PAD - off)})` };
 }
 
 export interface CoveringMark {
@@ -93,11 +98,11 @@ export function segmentStyle(
         : null;
   if (fill) {
     images.push(`linear-gradient(${fill}, ${fill})`);
-    sizes.push(`100% calc(100% - ${LINE_PAD}px)`); // nur über dem Text, nicht in der Linien-Zone
+    sizes.push(`100% calc(100% - ${z(LINE_PAD)})`); // nur über dem Text, nicht in der Linien-Zone
     positions.push('0 0');
   }
   return (
-    `padding-bottom:${LINE_PAD}px; cursor:pointer;` +
+    `padding-bottom:${z(LINE_PAD)}; cursor:pointer;` +
     // clone: jede umbrochene Zeile bekommt Linien + Füllung voll (Default „slice"
     // zeichnet Padding/Hintergrund nur an den echten Element-Enden).
     `-webkit-box-decoration-break:clone; box-decoration-break:clone;` +

@@ -48,21 +48,22 @@ describe('segmentStyle', () => {
 
   it('einzelne Markierung: eine Linie + Füllung, unter der Grundlinie, geklont', () => {
     const s = segmentStyle([{ m: outer, track: 0 }], null, null);
-    expect(s).toContain('padding-bottom:9px');
+    // Geometrie zoom-fähig (CSS-Var --tt-zoom; bei var=1 == 9px).
+    expect(s).toContain('padding-bottom:calc(9px * var(--tt-zoom, 1))');
     expect(s).toContain('box-decoration-break:clone');
     // Spur-0-Linie 2px unter der Grundlinie → calc(100% - 7px). KEINE Durchstreichung.
-    expect(s).toContain('0 calc(100% - 7px)');
+    expect(s).toContain('0 calc(100% - calc(7px * var(--tt-zoom, 1)))');
     // genau ZWEI Layer (1 Linie + 1 Füllung).
     expect(s.match(/linear-gradient/g)!.length).toBe(2);
     // dezente Füllung in Markierungsfarbe, nur über dem Text.
     expect(s).toContain(hexToRgba('#f59e0b', 0.08));
-    expect(s).toContain('100% calc(100% - 9px)');
+    expect(s).toContain('100% calc(100% - calc(9px * var(--tt-zoom, 1)))');
   });
 
   it('Überlappung: zwei gestapelte Linien, Container näher am Text', () => {
     const s = segmentStyle([{ m: outer, track: 0 }, { m: inner, track: 1 }], null, null);
-    expect(s).toContain('0 calc(100% - 7px)'); // Spur 0 (outer) bei +2px
-    expect(s).toContain('0 calc(100% - 4.5px)'); // Spur 1 (inner) bei +4.5px → tiefer
+    expect(s).toContain('0 calc(100% - calc(7px * var(--tt-zoom, 1)))'); // Spur 0 (outer) bei +2px
+    expect(s).toContain('0 calc(100% - calc(4.5px * var(--tt-zoom, 1)))'); // Spur 1 (inner) bei +4.5px → tiefer
     // drei Layer: zwei Linien + eine Füllung.
     expect(s.match(/linear-gradient/g)!.length).toBe(3);
   });

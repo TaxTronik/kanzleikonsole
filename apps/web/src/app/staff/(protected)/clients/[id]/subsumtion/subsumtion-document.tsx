@@ -18,7 +18,7 @@
 // =============================================================================
 
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { Check, Loader2, Lock } from 'lucide-react';
+import { Check, Loader2, Lock, ZoomIn, ZoomOut, Maximize2, Minimize2 } from 'lucide-react';
 import { useEditor, EditorContent, Extension, type Editor } from '@tiptap/react';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
@@ -40,6 +40,13 @@ export interface ManualSelection {
   end: number;
   text: string;
 }
+
+// Zoom der Lesefläche (Schriftgröße + Markierungs-Geometrie skalieren gemeinsam
+// über die CSS-Var --tt-zoom). Diskrete Schritte, geklemmt.
+const ZOOM_MIN = 0.85;
+const ZOOM_MAX = 2;
+const ZOOM_STEP = 0.15;
+const clampZoom = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 100) / 100));
 
 const markKey = new PluginKey('riskMarks');
 
@@ -111,6 +118,10 @@ interface Props {
   // Formatierung automatisch speichern (Review, on-the-fly, debounced). Liefert
   // das Ergebnis für die Speicher-Status-Anzeige zurück.
   onSaveFormat?: (doc: unknown) => Promise<{ ok: boolean; error?: string }>;
+  // Vollbild: Status + Umschalter. Das Layout-Overlay liegt im Workspace (er
+  // besitzt Dokument + Panel); hier nur der Button im Kopf.
+  expanded?: boolean;
+  onToggleExpand?: () => void;
 }
 
 export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(function SubsumtionDocument(
@@ -129,6 +140,8 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(fu
   const [flyover, setFlyover] = useState<{ top: number; left: number; placement: 'above' | 'below' } | null>(null);
   // Markierung unter der Maus → ihre ganze Spanne wird hervorgehoben.
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  // Zoom der Lesefläche (1 = 100%).
+  const [zoom, setZoom] = useState(1);
   const boxRef = useRef<HTMLDivElement>(null);
   // true, solange mit der Maus gezogen wird → Leiste erst nach dem Loslassen.
   const draggingRef = useRef(false);
@@ -263,6 +276,21 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(fu
   useEffect(() => {
     editor?.setEditable(canEdit);
   }, [editor, canEdit]);
+
+  // Zoom auf das Editor-DOM legen: Schriftgröße + CSS-Var --tt-zoom (treibt die
+  // Markierungs-Geometrie in marking-style; beide skalieren gemeinsam). Bei 1
+  // zurücksetzen → die text-sm-Klasse + Default-Geometrie greifen wieder.
+  useEffect(() => {
+    if (!editor) return;
+    const dom = editor.view.dom as HTMLElement;
+    if (zoom === 1) {
+      dom.style.removeProperty('--tt-zoom');
+      dom.style.removeProperty('font-size');
+    } else {
+      dom.style.setProperty('--tt-zoom', String(zoom));
+      dom.style.fontSize = `calc(0.875rem * ${zoom})`;
+    }
+  }, [editor, zoom]);
 
   // Decorations neu berechnen, wenn sich Markierungen/Auswahl ändern; bei
   // Format-Edits dazwischen wandern sie über tr.mapping korrekt mit.
@@ -399,10 +427,53 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(fu
         <h2 className="text-sm font-medium text-primary">
           Annotiertes Dokument <span className="text-muted font-normal">(formatiert)</span>
         </h2>
-        <p className="text-xs text-muted">
-          {props.totalCount ?? 0} Markierungen · {props.ownCount ?? 0} eigene
-          {props.textHash ? <> · Hash {props.textHash.slice(0, 12)}…</> : null}
-        </p>
+        <div className="flex items-center gap-3 flex-wrap">
+          <p className="text-xs text-muted">
+            {props.totalCount ?? 0} Markierungen · {props.ownCount ?? 0} eigene
+            {props.textHash ? <> · Hash {props.textHash.slice(0, 12)}…</> : null}
+          </p>
+          {/* Zoom (Schrift + Markierungen skalieren gemeinsam) */}
+          <div className="inline-flex items-center rounded-md border border-default">
+            <button
+              type="button"
+              onClick={() => setZoom((z) => clampZoom(z - ZOOM_STEP))}
+              disabled={zoom <= ZOOM_MIN}
+              className="p-1 text-disabled hover:text-secondary disabled:opacity-40"
+              title="Verkleinern"
+            >
+              <ZoomOut className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setZoom(1)}
+              className="px-1 w-10 text-center text-[11px] tabular-nums text-secondary hover:text-primary"
+              title="Zoom zurücksetzen"
+            >
+              {Math.round(zoom * 100)}%
+            </button>
+            <button
+              type="button"
+              onClick={() => setZoom((z) => clampZoom(z + ZOOM_STEP))}
+              disabled={zoom >= ZOOM_MAX}
+              className="p-1 text-disabled hover:text-secondary disabled:opacity-40"
+              title="Vergrößern"
+            >
+              <ZoomIn className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          {/* Vollbild */}
+          {props.onToggleExpand && (
+            <button
+              type="button"
+              onClick={props.onToggleExpand}
+              className="btn-secondary text-xs"
+              title={props.expanded ? 'Vollbild verlassen (Esc)' : 'Vollbild'}
+            >
+              {props.expanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+              {props.expanded ? 'Verlassen' : 'Vollbild'}
+            </button>
+          )}
+        </div>
       </div>
 
       {filters && props.onToggleFilter && (
