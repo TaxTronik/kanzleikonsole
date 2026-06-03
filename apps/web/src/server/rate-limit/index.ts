@@ -74,6 +74,23 @@ function failedRedisResult(
   return { ok: true, remaining: cfgMax, retryAfter: 0 };
 }
 
+// Atomares INCR + (self-healing) EXPIRE in EINEM Round-Trip. Behebt zwei
+// Schwächen des früheren INCR → separates EXPIRE(nur bei count===1) → TTL:
+//   - Perf: 1 statt 2–3 sequenzielle Redis-RTs (läuft vor jedem bcrypt).
+//   - Robustheit: scheiterte das separate EXPIRE nach erfolgreichem INCR
+//     (Crash/Hiccup), blieb der Key OHNE TTL → der Bucket lief hoch und sperrte
+//     die IP DAUERHAFT (kein Reset). Das Skript setzt die TTL immer, wenn sie
+//     fehlt (TTL < 0 = -1 kein Ablauf), heilt also auch verwaiste Keys.
+const INCR_EXPIRE_LUA = `
+local count = redis.call('INCR', KEYS[1])
+local ttl = redis.call('TTL', KEYS[1])
+if ttl < 0 then
+  redis.call('EXPIRE', KEYS[1], ARGV[1])
+  ttl = tonumber(ARGV[1])
+end
+return {count, ttl}
+`;
+
 export async function checkRateLimit(
   key: string,
   cfg: RateLimitConfig,
@@ -85,13 +102,11 @@ export async function checkRateLimit(
 
   const fullKey = `rl:${key}`;
   try {
-    const count = await r.incr(fullKey);
-    if (count === 1) {
-      await r.expire(fullKey, cfg.windowSec);
-    }
+    const res = (await r.eval(INCR_EXPIRE_LUA, 1, fullKey, String(cfg.windowSec))) as [number, number];
+    const count = Number(res[0]);
+    const ttl = Number(res[1]);
     const remaining = Math.max(0, cfg.max - count);
     if (count > cfg.max) {
-      const ttl = await r.ttl(fullKey);
       return { ok: false, remaining: 0, retryAfter: Math.max(1, ttl) };
     }
     return { ok: true, remaining, retryAfter: 0 };
