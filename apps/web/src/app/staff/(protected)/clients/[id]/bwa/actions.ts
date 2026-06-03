@@ -2,11 +2,12 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { parseAddisonBwaCsv, parseAddisonBwaCompactCsv } from '@/server/bwa/addison-parser';
 import { parseDatevBwaXlsx } from '@/server/bwa/datev-parser';
+import { toActionError } from '@/server/auth/rbac';
+import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
 
 export interface ImportResult {
   ok: boolean;
@@ -27,14 +28,13 @@ export async function importAddisonCsvAction(input: {
   fileName: string;
   csv: string;
 }): Promise<ImportResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
+  const g = await staffActionGuard();
+  if (!g.ok) return g;
+  const { tenantId, staffId, ctx } = g;
 
   const parsed = ImportSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-
   const { clientId, fileName, csv } = parsed.data;
-  const { tenantId, staffId } = session.user;
 
   // Auto-Detect: Langform (a*.csv) beginnt mit `Nummer;…`; Kompaktform (s*.csv)
   // beginnt mit einer Mandantennummer + Titel-Zeile.
@@ -48,12 +48,11 @@ export async function importAddisonCsvAction(input: {
   let imported = 0;
   let skipped = 0;
 
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
+  try {
+    await withTenantContext(ctx, async (tx) => {
       // Sicherheits-Check: Mandant existiert in diesem Tenant
       const client = await tx.client.findUnique({ where: { id: clientId } });
-      if (!client) throw new Error('Mandant nicht gefunden.');
+      if (!client) throw new ActionError('Mandant nicht gefunden.');
 
       for (const period of result.periods) {
         // Existiert die Periode bereits? → Skip (idempotenter Re-Import nicht überschreibend)
@@ -92,18 +91,14 @@ export async function importAddisonCsvAction(input: {
           action: 'bwa.import',
           resourceType: 'bwa_period',
           resourceId: bp.id,
-          after: {
-            clientId,
-            periodKey: period.periodKey,
-            source: 'ADDISON',
-            fileName,
-            positionCount: period.positions.length,
-          },
+          after: { clientId, periodKey: period.periodKey, source: 'ADDISON', fileName, positionCount: period.positions.length },
         });
         imported++;
       }
-    },
-  );
+    });
+  } catch (e) {
+    return toActionError(e);
+  }
 
   revalidatePath(`/staff/clients/${clientId}/bwa`);
   return { ok: true, imported, skipped, warnings: result.warnings };
@@ -121,14 +116,13 @@ export async function importDatevXlsxAction(input: {
   fileName: string;
   xlsxBase64: string;
 }): Promise<ImportResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
+  const g = await staffActionGuard();
+  if (!g.ok) return g;
+  const { tenantId, staffId, ctx } = g;
 
   const parsed = DatevImportSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-
   const { clientId, fileName, xlsxBase64 } = parsed.data;
-  const { tenantId, staffId } = session.user;
 
   let buffer: Buffer;
   try {
@@ -148,11 +142,10 @@ export async function importDatevXlsxAction(input: {
   let imported = 0;
   let skipped = 0;
 
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
+  try {
+    await withTenantContext(ctx, async (tx) => {
       const client = await tx.client.findUnique({ where: { id: clientId } });
-      if (!client) throw new Error('Mandant nicht gefunden.');
+      if (!client) throw new ActionError('Mandant nicht gefunden.');
 
       for (const period of result.periods) {
         const existing = await tx.bwaPeriod.findFirst({
@@ -190,18 +183,14 @@ export async function importDatevXlsxAction(input: {
           action: 'bwa.import',
           resourceType: 'bwa_period',
           resourceId: bp.id,
-          after: {
-            clientId,
-            periodKey: period.periodKey,
-            source: 'DATEV',
-            fileName,
-            positionCount: period.positions.length,
-          },
+          after: { clientId, periodKey: period.periodKey, source: 'DATEV', fileName, positionCount: period.positions.length },
         });
         imported++;
       }
-    },
-  );
+    });
+  } catch (e) {
+    return toActionError(e);
+  }
 
   revalidatePath(`/staff/clients/${clientId}/bwa`);
   return { ok: true, imported, skipped, warnings: result.warnings };
@@ -213,35 +202,32 @@ const DeleteSchema = z.object({
 });
 
 export async function deleteBwaPeriodAction(formData: FormData): Promise<void> {
-  const session = await staffAuth();
-  if (!session?.user) return;
+  const g = await staffActionGuard();
+  if (!g.ok) return; // void-Action: bei fehlender Auth still abbrechen
+  const { tenantId, staffId, ctx } = g;
+
   const parsed = DeleteSchema.safeParse({
     periodId: formData.get('periodId'),
     clientId: formData.get('clientId'),
   });
   if (!parsed.success) return;
 
-  const { tenantId, staffId } = session.user;
-
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
-      const before = await tx.bwaPeriod.findFirst({
-        where: { id: parsed.data.periodId, clientId: parsed.data.clientId },
-      });
-      if (!before) return;
-      await tx.bwaPeriod.delete({ where: { id: before.id } });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'bwa.delete',
-        resourceType: 'bwa_period',
-        resourceId: before.id,
-        before: { periodKey: before.periodKey, source: before.source },
-      });
-    },
-  );
+  await withTenantContext(ctx, async (tx) => {
+    const before = await tx.bwaPeriod.findFirst({
+      where: { id: parsed.data.periodId, clientId: parsed.data.clientId },
+    });
+    if (!before) return;
+    await tx.bwaPeriod.delete({ where: { id: before.id } });
+    await evidenceService.record(tx, {
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
+      action: 'bwa.delete',
+      resourceType: 'bwa_period',
+      resourceId: before.id,
+      before: { periodKey: before.periodKey, source: before.source },
+    });
+  });
 
   revalidatePath(`/staff/clients/${parsed.data.clientId}/bwa`);
 }

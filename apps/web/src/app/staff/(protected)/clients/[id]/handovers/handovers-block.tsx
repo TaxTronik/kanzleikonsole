@@ -8,8 +8,8 @@ import {
   createHandoverAction,
   updateHandoverStatusAction,
   deleteHandoverAction,
-  type ActionResult,
 } from './actions';
+import type { ActionResult } from '@/server/actions/staff-action';
 
 
 type HandoverStatus = 'RECEIVED' | 'IN_PROGRESS' | 'READY' | 'PICKED_UP';
