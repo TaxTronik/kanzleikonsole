@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { X, Save, Send, BookPlus, BookmarkPlus, Trash2, AlertTriangle, Webhook, Eye, Loader2, ChevronRight, Scale, Search, Undo2 } from 'lucide-react';
+import { X, Save, Send, BookPlus, BookmarkPlus, Trash2, AlertTriangle, Webhook, Eye, Loader2, ChevronRight, Scale, Search, Undo2, Library } from 'lucide-react';
 import {
   updateMarkingAction, deleteMarkingAction, delegateAction, pushDefinitionAction,
   previewResearchAction, sendResearchAction, resolveNormAction,
-  searchNormAction, addBeraterNormAction, setNormVerworfenAction, removeBeraterNormAction,
+  searchNormAction, addBeraterNormAction, setNormVerworfenAction, removeBeraterNormAction, kuratiereKatalogNormAction,
   listPromptTemplatesAction, createPromptTemplateAction, deletePromptTemplateAction,
 } from './actions';
 import {
@@ -138,7 +138,7 @@ export function MarkingPanel(props: {
           <AlertTriangle className="h-3.5 w-3.5" /> Fachlich umstrittene Stelle (Streit).
         </p>
       )}
-      <NormRefList clientId={clientId} markingId={m.id} refs={m.normRefs} fallback={m.normAnker}
+      <NormRefList clientId={clientId} markingId={m.id} katalogId={m.begriffId} refs={m.normRefs} fallback={m.normAnker}
         pending={pending} start={start} flash={flash} onChanged={onChanged} />
       {m.normketten != null && Array.isArray(m.normketten) && m.normketten.length > 0 && (
         <details className="text-xs">
@@ -404,9 +404,9 @@ function formatGesetzestext(text: string): string {
 /** Die Engine-Norm ist NICHT verbindlich: der Berater ergänzt eigene Normen und
  *  verwirft Engine-Vorschläge (soft). Effektive Liste = nicht verworfene Einträge. */
 function NormRefList({
-  clientId, markingId, refs, fallback, pending, start, flash, onChanged,
+  clientId, markingId, katalogId, refs, fallback, pending, start, flash, onChanged,
 }: {
-  clientId: string; markingId: string; refs: NormRefDTO[] | null; fallback: string[];
+  clientId: string; markingId: string; katalogId: string | null; refs: NormRefDTO[] | null; fallback: string[];
   pending: boolean; start: (cb: () => void) => void; flash: Flash; onChanged: () => void;
 }) {
   // Strukturierte Refs sind die Quelle der Wahrheit; Altdaten/manuelle Markierungen
@@ -425,7 +425,7 @@ function NormRefList({
       {list.length > 0 && (
         <ul className="space-y-1">
           {list.map((r, i) => (
-            <NormRefRow key={(r.id ?? r.zitat) + ':' + i} clientId={clientId} markingId={markingId} index={i}
+            <NormRefRow key={(r.id ?? r.zitat) + ':' + i} clientId={clientId} markingId={markingId} katalogId={katalogId} index={i}
               refItem={r} pending={pending} start={start} flash={flash} onChanged={onChanged} />
           ))}
         </ul>
@@ -444,12 +444,13 @@ function NormRefList({
 }
 
 function NormRefRow({
-  clientId, markingId, index, refItem, pending, start, flash, onChanged,
+  clientId, markingId, katalogId, index, refItem, pending, start, flash, onChanged,
 }: {
-  clientId: string; markingId: string; index: number; refItem: NormRefDTO;
+  clientId: string; markingId: string; katalogId: string | null; index: number; refItem: NormRefDTO;
   pending: boolean; start: (cb: () => void) => void; flash: Flash; onChanged: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [showKat, setShowKat] = useState(false);
   const [norm, setNorm] = useState<ResolvedNorm | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -503,6 +504,13 @@ function NormRefRow({
           {isBerater && <span className="badge-purple text-[10px] shrink-0">eigene</span>}
         </button>
         <div className="ml-auto flex items-center gap-1 pr-1.5 shrink-0">
+          {katalogId && (
+            <button type="button" onClick={() => setShowKat((v) => !v)} disabled={pending}
+              title="Katalogweit kuratieren — wirkt auf künftige Analysen dieses Begriffs"
+              className={'text-[11px] inline-flex items-center gap-0.5 disabled:opacity-50 ' + (showKat ? 'text-brand' : 'text-muted hover:text-brand')}>
+              <Library className="h-3 w-3" /> Katalog
+            </button>
+          )}
           {isBerater ? (
             <button type="button" onClick={removeOwn} disabled={pending} title="Eigene Norm entfernen"
               className="text-disabled hover:text-red-600 disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" /></button>
@@ -537,7 +545,55 @@ function NormRefRow({
           )}
         </div>
       )}
+      {showKat && katalogId && (
+        <KatalogPromote markingId={markingId} norm={refItem.zitat} pending={pending} start={start} flash={flash}
+          onClose={() => setShowKat(false)} />
+      )}
     </li>
+  );
+}
+
+/** Katalogweite Promotion (geschichtet): kuratiert eine Norm der Begriffs-Karte
+ *  dauerhaft — wirkt auf künftige Analysen. Engine-Call + Audit in TaxTronik. */
+function KatalogPromote({
+  markingId, norm, pending, start, flash, onClose,
+}: {
+  markingId: string; norm: string; pending: boolean;
+  start: (cb: () => void) => void; flash: Flash; onClose: () => void;
+}) {
+  const [scope, setScope] = useState<'geteilt' | 'personal'>('geteilt');
+  function run(aktion: 'verwerfen' | 'ergaenzen' | 'zuruecksetzen') {
+    start(async () => {
+      const r = await kuratiereKatalogNormAction({ markingId, norm, aktion, scope });
+      flash(
+        r,
+        aktion === 'verwerfen' ? 'Katalogweit verworfen.'
+          : aktion === 'ergaenzen' ? 'In den Katalog aufgenommen.'
+          : 'Katalog-Kuratierung zurückgesetzt.',
+      );
+      if (r.ok) onClose();
+    });
+  }
+  return (
+    <div className="px-2 pb-2 pt-1 mt-0.5 border-t border-default/40 space-y-1.5">
+      <p className="text-[11px] text-muted">
+        Katalogweit für diesen Begriff — wirkt auf <strong>künftige</strong> Analysen, nicht rückwirkend.
+      </p>
+      <div className="flex items-center gap-3 text-[11px]">
+        <span className="text-muted">Reichweite:</span>
+        <label className="inline-flex items-center gap-1 cursor-pointer">
+          <input type="radio" name={'kat-scope-' + markingId + norm} checked={scope === 'geteilt'} onChange={() => setScope('geteilt')} /> geteilt (Kanzlei)
+        </label>
+        <label className="inline-flex items-center gap-1 cursor-pointer">
+          <input type="radio" name={'kat-scope-' + markingId + norm} checked={scope === 'personal'} onChange={() => setScope('personal')} /> persönlich
+        </label>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <button type="button" onClick={() => run('verwerfen')} disabled={pending} className="btn-secondary text-[11px]">verwerfen</button>
+        <button type="button" onClick={() => run('ergaenzen')} disabled={pending} className="btn-secondary text-[11px]">ergänzen</button>
+        <button type="button" onClick={() => run('zuruecksetzen')} disabled={pending} className="text-[11px] text-muted hover:underline disabled:opacity-50">zurücksetzen</button>
+      </div>
+    </div>
   );
 }
 

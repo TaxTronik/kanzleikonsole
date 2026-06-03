@@ -33,6 +33,7 @@ import {
   addBeraterNorm,
   setNormVerworfen,
   removeBeraterNorm,
+  kuratiereKatalogNorm,
   archiveAnalysis,
   reformatSourceDoc,
   reanalyzeAnalysis,
@@ -687,6 +688,36 @@ export async function removeBeraterNormAction(
     const { ctx, clientId, analysisId } = await guardMarking(parsed.markingId);
     await removeBeraterNorm(ctx, parsed.markingId, { index: parsed.index, zitat: parsed.zitat });
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId}`);
+    return { ok: true };
+  } catch (e) {
+    return toActionError(e);
+  }
+}
+
+const KuratiereKatalogNormSchema = z.object({
+  markingId: z.string().uuid(),
+  norm: z.string().trim().min(1).max(200),
+  aktion: z.enum(['verwerfen', 'ergaenzen', 'zuruecksetzen']),
+  scope: z.enum(['personal', 'geteilt']),
+});
+
+/** Promotion (geschichtet): kuratiert eine Norm der Begriffs-Karte KATALOGWEIT —
+ *  wirkt auf künftige Analysen. Engine-Call + Audit in TaxTronik (guardMarking-
+ *  staffId = autor; nur Karten mit echtem begriffId). */
+export async function kuratiereKatalogNormAction(
+  input: z.infer<typeof KuratiereKatalogNormSchema>,
+): Promise<OkActionResult> {
+  try {
+    const parsed = KuratiereKatalogNormSchema.parse(input);
+    const { ctx, staffId } = await guardMarking(parsed.markingId);
+    requireEngine();
+    await kuratiereKatalogNorm(ctx, {
+      markingId: parsed.markingId,
+      norm: parsed.norm,
+      aktion: parsed.aktion,
+      scope: parsed.scope,
+      autor: staffId,
+    });
     return { ok: true };
   } catch (e) {
     return toActionError(e);

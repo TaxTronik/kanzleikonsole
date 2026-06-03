@@ -118,17 +118,45 @@ describe('mapAnalyse (echte Engine-Form)', () => {
         },
       ],
     });
-    // Karte: ids[] → erste ID; Eintrag ohne ID → id null.
+    // Karte: ids[] → erste ID; Eintrag ohne ID → id null. Unkuratiert → ENGINE/aktiv.
     const k = r.markings.find((m) => m.start === 4)!;
     expect(k.normRefs).toEqual([
-      { zitat: '§ 146 AO', id: 'norm:AO:146', titel: null },
-      { zitat: '§ 158 AO', id: null, titel: null },
+      { zitat: '§ 146 AO', id: 'norm:AO:146', titel: null, quelle: 'ENGINE', verworfen: false },
+      { zitat: '§ 158 AO', id: null, titel: null, quelle: 'ENGINE', verworfen: false },
     ]);
     // Risiko: singular id + titel durchgereicht.
     const ri = r.markings.find((m) => m.start === 36)!;
     expect(ri.normRefs).toEqual([
-      { zitat: '§ 8 KStG', id: 'norm:KStG:8', titel: 'Ermittlung des Einkommens' },
+      { zitat: '§ 8 KStG', id: 'norm:KStG:8', titel: 'Ermittlung des Einkommens', quelle: 'ENGINE', verworfen: false },
     ]);
+  });
+
+  // Engine spiegelt die Katalog-Kuratierung im norm_anker zurück: quelle
+  // "katalog"/"berater" + verworfen. Wir übersetzen auf ENGINE/BERATER und nehmen
+  // verworfene Vorschläge aus dem effektiven normAnker (Recherche/Export) heraus.
+  it('mappt Katalog-Provenienz (quelle/verworfen) und filtert verworfene aus normAnker', () => {
+    const r = mapAnalyse({
+      text_hash: 'h',
+      karten: [
+        {
+          start: 0, end: 5, matched_text: 'Schätzung', begriff: 'Schätzung', begriff_id: 'ao_schaetzung',
+          status: 'treffer', via: 'muster', herkunft: { schicht: '1b' },
+          norm_anker: [
+            { zitat: '§ 162 AO', ids: ['norm:AO:162'], quelle: 'katalog', verworfen: true },
+            { zitat: '§ 90 AO', ids: ['norm:AO:90'], quelle: 'berater', verworfen: false },
+            { zitat: '§ 158 AO', ids: ['norm:AO:158'], quelle: 'katalog', verworfen: false },
+          ],
+        },
+      ],
+    });
+    const k = r.markings[0]!;
+    expect(k.normRefs).toEqual([
+      { zitat: '§ 162 AO', id: 'norm:AO:162', titel: null, quelle: 'ENGINE', verworfen: true },
+      { zitat: '§ 90 AO', id: 'norm:AO:90', titel: null, quelle: 'BERATER', verworfen: false },
+      { zitat: '§ 158 AO', id: 'norm:AO:158', titel: null, quelle: 'ENGINE', verworfen: false },
+    ]);
+    // verworfenes § 162 AO fliegt aus dem effektiven normAnker.
+    expect(k.normAnker).toEqual(['§ 90 AO', '§ 158 AO']);
   });
 
   it('rawResult bleibt unverändert; leere Antwort → keine Markierungen', () => {

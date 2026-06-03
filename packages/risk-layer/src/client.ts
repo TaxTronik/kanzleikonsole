@@ -17,12 +17,14 @@ import {
   AnalyseResponseSchema,
   HealthResponseSchema,
   KatalogDefiniereResponseSchema,
+  KatalogKuratiereResponseSchema,
   KatalogResponseSchema,
   LlmStartResponseSchema,
   LlmStatusResponseSchema,
   OpaqueObjectSchema,
   type HealthResponse,
   type KatalogDefiniereResponse,
+  type KatalogKuratiereResponse,
   type KatalogResponse,
   type LlmStartResponse,
   type LlmStatusResponse,
@@ -53,6 +55,9 @@ export interface ZweiphasenAnalyseInput {
   /** false (Default) = schnell/deterministisch; true = LLM-Schicht (langsam). */
   mitLLM?: boolean;
   optionen?: Record<string, unknown>;
+  /** Berater-Kennung (StaffUser-ID) — damit personal-scoped Katalog-Kuratierung
+   *  greift. Kein Mandantendatum; interner Host. */
+  nutzer?: string;
 }
 
 /** HTTP-Fehler der Engine (non-2xx). Trägt den Status für Retry-Entscheidungen. */
@@ -106,8 +111,10 @@ export class RiskLayerClient {
    */
   async analyse(input: ZweiphasenAnalyseInput): Promise<RiskAnalysisResult> {
     const mitLLM = input.mitLLM ?? false;
+    const body: Record<string, unknown> = { text: input.text, mitLLM, optionen: input.optionen ?? {} };
+    if (input.nutzer) body.nutzer = input.nutzer;
     const raw = await this.request('POST', '/v1/analyse', {
-      body: { text: input.text, mitLLM, optionen: input.optionen ?? {} },
+      body,
       timeoutMs: mitLLM ? LLM_TIMEOUT_MS : FAST_TIMEOUT_MS,
       retry: mitLLM ? NO_RETRY : FAST_RETRY,
     });
@@ -136,6 +143,31 @@ export class RiskLayerClient {
       retry: NO_RETRY,
     });
     return KatalogDefiniereResponseSchema.parse(raw);
+  }
+
+  /**
+   * `POST /v1/katalog/norm_kuratieren` — katalogweite Norm-Kuratierung einer
+   * Begriffs-Karte (verwerfen/ergaenzen/zuruecksetzen). Begriff-scoped, kein
+   * Falltext (§203). Idempotent, aber schreibend → KEIN Auto-Retry.
+   */
+  async katalogNormKuratieren(input: {
+    katalogId: string;
+    norm: string;
+    aktion: 'verwerfen' | 'ergaenzen' | 'zuruecksetzen';
+    scope: 'personal' | 'geteilt';
+    autor: string;
+  }): Promise<KatalogKuratiereResponse> {
+    const raw = await this.request('POST', '/v1/katalog/norm_kuratieren', {
+      body: {
+        katalog_id: input.katalogId,
+        norm: input.norm,
+        aktion: input.aktion,
+        scope: input.scope,
+        autor: input.autor,
+      },
+      retry: NO_RETRY,
+    });
+    return KatalogKuratiereResponseSchema.parse(raw);
   }
 
   // --- Normgraph (Cross-Reference) ------------------------------------------

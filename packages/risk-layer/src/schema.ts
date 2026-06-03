@@ -27,6 +27,11 @@ const NormRefSchema = z
     id: z.string().nullish(),
     ids: z.array(z.string()).nullish(),
     titel: z.string().nullish(),
+    // Katalog-Kuratierung, von der Engine zurückgespiegelt: quelle "katalog"
+    // (Standardvorschlag) vs. "berater" (katalogweit ergänzt); verworfen = vom
+    // Berater abgelehnter Vorschlag. Fehlt bei unkuratiertem Katalog.
+    quelle: z.string().nullish(),
+    verworfen: z.boolean().nullish(),
   })
   .catchall(z.unknown());
 
@@ -114,6 +119,20 @@ export const KatalogDefiniereResponseSchema = z.object({
   scope: z.string().default('tenant'),
 });
 export type KatalogDefiniereResponse = z.infer<typeof KatalogDefiniereResponseSchema>;
+
+/** `POST /v1/katalog/norm_kuratieren` → katalogweite Norm-Kuratierung (Begriffs-
+ *  Karten). `ok:false` trägt `fehler`. Permissiv (catchall) — wir lesen ok/fehler. */
+export const KatalogKuratiereResponseSchema = z
+  .object({
+    ok: z.boolean().default(false),
+    katalog_id: z.string().nullish(),
+    norm: z.string().nullish(),
+    aktion: z.string().nullish(),
+    scope: z.string().nullish(),
+    fehler: z.string().nullish(),
+  })
+  .catchall(z.unknown());
+export type KatalogKuratiereResponse = z.infer<typeof KatalogKuratiereResponseSchema>;
 
 /** `GET /v1/katalog` → Version + Begriffe (Extra-Felder via catchall erhalten). */
 export const KatalogResponseSchema = z.object({

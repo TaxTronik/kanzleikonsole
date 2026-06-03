@@ -26,6 +26,11 @@ export interface NormRef {
   zitat: string;
   id: string | null;
   titel: string | null;
+  /** Provenienz der Katalog-Kuratierung: ENGINE = Standardvorschlag, BERATER =
+   *  katalogweit ergänzt. (Engine-Vokabular „katalog"/„berater" → hier übersetzt.) */
+  quelle: 'ENGINE' | 'BERATER';
+  /** Vom Berater katalogweit verworfener Vorschlag (zählt nicht zur effektiven Liste). */
+  verworfen: boolean;
 }
 
 /** Eine zur Persistenz fertige Markierung (vor Berater-Bearbeitung). */
@@ -148,11 +153,21 @@ function isStreitig(x: { ist_streitig?: boolean | null; streit_signal?: string |
  * NormRefs. Leere/zitatlose Einträge fallen raus.
  */
 function toNormRefs(
-  refs: Array<{ zitat: string; id?: string | null; ids?: string[] | null; titel?: string | null }>,
+  refs: Array<{
+    zitat: string; id?: string | null; ids?: string[] | null; titel?: string | null;
+    quelle?: string | null; verworfen?: boolean | null;
+  }>,
 ): NormRef[] {
   return refs
     .filter((r) => r.zitat && r.zitat.length > 0)
-    .map((r) => ({ zitat: r.zitat, id: r.id ?? r.ids?.[0] ?? null, titel: r.titel ?? null }));
+    .map((r) => ({
+      zitat: r.zitat,
+      id: r.id ?? r.ids?.[0] ?? null,
+      titel: r.titel ?? null,
+      // Engine-Vokabular → TaxTronik-Provenienz (alles außer "berater" = ENGINE).
+      quelle: r.quelle === 'berater' ? 'BERATER' : 'ENGINE',
+      verworfen: r.verworfen === true,
+    }));
 }
 
 function mapKarte(k: Karte): RiskMarkingInput {
@@ -164,7 +179,9 @@ function mapKarte(k: Karte): RiskMarkingInput {
     herkunft: deriveHerkunft({ via: k.via, schicht: k.herkunft?.schicht, methode: k.herkunft?.methode, fallback: 'MUSTER' }),
     begriffId: k.begriff_id ?? null,
     begriff: k.begriff || k.matched_text,
-    normAnker: refs.map((r) => r.zitat),
+    // Effektive Liste (katalogweit verworfene Vorschläge ausgenommen) — treibt
+    // Recherche-Heuristik + Export; volle Provenienz steckt in normRefs.
+    normAnker: refs.filter((r) => !r.verworfen).map((r) => r.zitat),
     normRefs: refs,
     normketten: k.normketten ?? null,
     governanceTyp: lookup(GOVERNANCE, k.governance_typ),
@@ -187,7 +204,7 @@ function mapRisiko(r: Risiko): RiskMarkingInput {
     herkunft: deriveHerkunft({ via: r.via, schicht: r.herkunft?.schicht, methode: r.herkunft?.methode, quelle: r.quelle, fallback: 'TRIGGER' }),
     begriffId: null,
     begriff: r.titel || r.matched_text,
-    normAnker: refs.map((rf) => rf.zitat),
+    normAnker: refs.filter((rf) => !rf.verworfen).map((rf) => rf.zitat),
     normRefs: refs,
     normketten: null,
     governanceTyp: lookup(GOVERNANCE, r.governance_typ),

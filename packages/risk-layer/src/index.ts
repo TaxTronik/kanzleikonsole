@@ -35,6 +35,7 @@ export type {
   HealthResponse,
   KatalogResponse,
   KatalogDefiniereResponse,
+  KatalogKuratiereResponse,
   LlmStatusResponse,
   LlmStartResponse,
   OpaqueObject,

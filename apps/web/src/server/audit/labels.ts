@@ -286,6 +286,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'risk.marking.delegated': 'Recherche delegiert',
   'risk.marking.deleted': 'Markierung gelöscht',
   'risk.catalog.defined': 'Katalog-Begriff definiert',
+  'risk.catalog.norm_curated': 'Katalog-Norm kuratiert',
   'risk.research.sent': 'Rechercheauftrag gesendet',
   'risk.research.received': 'Rechercheergebnis empfangen',
   'risk.research.assigned': 'Rechercheergebnis zugeordnet',
