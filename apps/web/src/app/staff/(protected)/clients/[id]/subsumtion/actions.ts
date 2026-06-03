@@ -42,7 +42,7 @@ import {
   type LlmStatusDTO,
   type PromptTemplateDTO,
 } from '@/server/risk';
-import { enqueueRiskAnalyseLlm } from '@/server/jobs/risk-analyse-queue';
+import { enqueueRiskAnalyseLlm, getRiskAnalyseJobState } from '@/server/jobs/risk-analyse-queue';
 import { jsonDocToText } from './doc-text';
 
 type OkActionResult<T = unknown> = ({ ok: true } & T) | ActionErrorResult;
@@ -253,12 +253,14 @@ export async function archiveAnalysisAction(input: {
 export async function llmStatusAction(input: {
   clientId: string;
   analysisId?: string;
-}): Promise<OkActionResult<{ status: LlmStatusDTO | null; enrichedAt: string | null }>> {
+}): Promise<OkActionResult<{ status: LlmStatusDTO | null; enrichedAt: string | null; jobFailed: boolean; jobError: string | null }>> {
   try {
     const { ctx } = await guard(input.clientId);
     let status: LlmStatusDTO | null = null;
     try { status = await getLlmStatus(); } catch { status = null; }
     let enrichedAt: string | null = null;
+    let jobFailed = false;
+    let jobError: string | null = null;
     if (input.analysisId) {
       const a = await withTenantContext(ctx, (tx) =>
         tx.riskAnalysis.findFirst({
@@ -267,8 +269,19 @@ export async function llmStatusAction(input: {
         }),
       );
       enrichedAt = a?.llmEnrichedAt ? a.llmEnrichedAt.toISOString() : null;
+      // Final fehlgeschlagener Worker-Job → die UI soll „lädt" beenden und Retry
+      // anbieten (sonst poll't sie bis zum 10-Min-Deadline ins Leere). Best-effort.
+      if (a) {
+        try {
+          const jobState = await getRiskAnalyseJobState(input.analysisId);
+          if (jobState?.state === 'failed') {
+            jobFailed = true;
+            jobError = jobState.failedReason;
+          }
+        } catch { /* Queue nicht erreichbar → kein Fehlsignal, normaler Poll-Lauf */ }
+      }
     }
-    return { ok: true, status, enrichedAt };
+    return { ok: true, status, enrichedAt, jobFailed, jobError };
   } catch (e) {
     return toActionError(e);
   }

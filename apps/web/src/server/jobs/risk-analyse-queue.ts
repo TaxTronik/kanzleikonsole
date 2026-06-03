@@ -60,3 +60,20 @@ export async function enqueueRiskAnalyseLlm(job: RiskAnalyseLlmJob): Promise<voi
     removeOnFail: 200,
   });
 }
+
+/**
+ * Liest den BullMQ-Zustand des LLM-Jobs einer Analyse (für die Web-Anzeige).
+ * Der Poller erkennt sonst nur `llmEnrichedAt` (= Erfolg) und der Engine-Status,
+ * NICHT einen final fehlgeschlagenen Job — die UI zeigte dann endlos „lädt".
+ * `removeOnFail: 200` hält gescheiterte Jobs vor, sie sind also abfragbar.
+ * Liefert `null`, wenn kein Job (mehr) existiert.
+ */
+export async function getRiskAnalyseJobState(
+  analysisId: string,
+): Promise<{ state: string; failedReason: string | null } | null> {
+  const { queue } = getHandle();
+  const job = await queue.getJob(`risk-llm-${analysisId}`);
+  if (!job) return null;
+  const state = await job.getState();
+  return { state, failedReason: job.failedReason ?? null };
+}

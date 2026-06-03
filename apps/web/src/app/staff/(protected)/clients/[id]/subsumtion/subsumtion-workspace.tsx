@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Sparkles, Upload, Loader2, FileDown, FolderOpen, ClipboardList, ScrollText, Webhook, Archive, Lock, RefreshCw } from 'lucide-react';
+import { Sparkles, Upload, Loader2, FileDown, FolderOpen, ClipboardList, ScrollText, Webhook, Archive, Lock, RefreshCw, X, AlertTriangle } from 'lucide-react';
 import { analyzeAction, importDocTextAction, importClientDocAction, requestLlmAction, archiveAnalysisAction, reformatAnalysisAction, llmStatusAction, reanalyzeAction } from './actions';
 import type { LlmStatusDTO } from '@/server/risk/llm';
 import { DisclaimerBanner } from './disclaimer-banner';
@@ -76,6 +76,8 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
   // die neuen KI-Markierungen hervorheben. Kein harter Reload.
   const [llm, setLlm] = useState<LlmStatusDTO | null>(null);
   const [pollLlm, setPollLlm] = useState(false);
+  // Final fehlgeschlagener KI-Lauf (Worker-Job). Beendet das „lädt" und bietet Retry.
+  const [llmFailed, setLlmFailed] = useState<string | null>(null);
   const enriched = initial?.llmEnrichedAt ?? null;
   const pollDeadlineRef = useRef(0);
   const highlightLlmRef = useRef(false);
@@ -87,6 +89,7 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
   function beginLlmRun() {
     llmBaselineRef.current = enriched;
     pollDeadlineRef.current = Date.now() + 10 * 60_000;
+    setLlmFailed(null);
     setPollLlm(true);
   }
 
@@ -108,6 +111,11 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
         highlightLlmRef.current = true;
         setPollLlm(false);
         router.refresh(); // weich: Editor/Selektion/Scroll bleiben erhalten
+      } else if (pollLlm && r.jobFailed) {
+        // Job endgültig gescheitert → „lädt" beenden, Retry anbieten (nicht bis zum
+        // 10-Min-Deadline weiterpollen).
+        setPollLlm(false);
+        setLlmFailed(r.jobError || 'Die KI-Vertiefung ist fehlgeschlagen.');
       }
     };
     tick();
@@ -373,6 +381,27 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
 
       {error && <div className="alert-error-sm">{error}</div>}
       {info && <div className="text-sm text-emerald-700 dark:text-emerald-300">{info}</div>}
+      {llmFailed && (
+        <div className="alert-error-sm flex items-start justify-between gap-3">
+          <span className="inline-flex items-start gap-1.5">
+            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+            <span><strong>KI-Vertiefung fehlgeschlagen.</strong> {llmFailed}</span>
+          </span>
+          <span className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => { setLlmFailed(null); requestLlm(); }}
+              disabled={pending || !engineConfigured || !!initial.archivedAt}
+              className="btn-secondary text-xs"
+            >
+              <RefreshCw className="h-3.5 w-3.5" /> Erneut versuchen
+            </button>
+            <button type="button" onClick={() => setLlmFailed(null)} className="text-disabled hover:text-secondary" title="Schließen">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </span>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-4">
         {/* EINE Fläche: immer formatiert + editierbar. Klicken = Markierung prüfen,
