@@ -10,6 +10,7 @@ export {
 export {
   fetchObjectBytes,
   streamObject,
+  deleteObject,
   putObjectBytes,
   commitDocument,
   commitDocumentFromBytes,

@@ -242,6 +242,16 @@ export async function fetchObjectBytes(bucket: string, storageKey: string): Prom
   return Buffer.concat(chunks);
 }
 
+/**
+ * Löscht ein Objekt aus dem Store. Bei Object-Lock-COMPLIANCE-Buckets (GOBD/GWG)
+ * gelingt das NUR, wenn das Retain-Until bereits abgelaufen ist — davor verweigert
+ * S3 die Löschung (by design, revisionssicher). Für die GwG-Pflichtlöschung nach
+ * Fristablauf (§ 8 Abs. 4) bzw. allgemeine Lifecycle-Bereinigung.
+ */
+export async function deleteObject(bucket: string, storageKey: string): Promise<void> {
+  await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: storageKey }));
+}
+
 export interface ObjectStream {
   body: ReadableStream<Uint8Array>;
   contentLength: number | null;

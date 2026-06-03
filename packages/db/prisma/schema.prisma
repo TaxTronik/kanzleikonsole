@@ -703,6 +703,11 @@ model Client {
   // Hauptbearbeiter beschränkt (Konflikt-/Geheimhaltungsfälle). Nur Admin/Partner
   // setzt das Flag. Siehe canAccessClient (rbac.ts) + access-policy.ts.
   vertraulich          Boolean                     @default(false) @map("vertraulich")
+  // Mandatsende (GwG § 8 Abs. 4): die 5-Jahres-Aufbewahrungsfrist für GwG-Belege
+  // beginnt mit dem Schluss des Kalenderjahres, in dem die Geschäftsbeziehung
+  // endet. Gesetzt = Mandat beendet, startet die Löschuhr. Siehe server/gwg/
+  // retention.ts + die GwG-Lösch-Review-Queue.
+  mandateEndedAt       DateTime?                   @map("mandate_ended_at") @db.Timestamptz(6)
   appointments         Appointment[]
   appointmentRequests  AppointmentRequest[]
   bwaPeriods           BwaPeriod[]
