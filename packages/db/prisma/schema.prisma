@@ -396,6 +396,9 @@ model Invoice {
   @@index([tenantId, clientId])
   @@index([tenantId, dueDate])
   @@index([tenantId, categoryId], map: "invoice_tenant_category_idx")
+  // iter71: pg_trgm-GIN für die globale Suche (Rechnungsnr. + Betreff)
+  @@index([number(ops: raw("gin_trgm_ops"))], type: Gin, map: "invoice_number_trgm_idx")
+  @@index([subject(ops: raw("gin_trgm_ops"))], type: Gin, map: "invoice_subject_trgm_idx")
   @@map("invoice")
 }
 
@@ -731,6 +734,11 @@ model Client {
   @@unique([tenantId, datevNo])
   @@index([tenantId])
   @@index([tenantId, priority], map: "client_tenant_priority_idx")
+  // iter71: pg_trgm-GIN für die globale Suche (ILIKE '%q%' index-gestützt)
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "client_name_trgm_idx")
+  @@index([datevNo(ops: raw("gin_trgm_ops"))], type: Gin, map: "client_datev_no_trgm_idx")
+  @@index([addisonNo(ops: raw("gin_trgm_ops"))], type: Gin, map: "client_addison_no_trgm_idx")
+  @@index([vatId(ops: raw("gin_trgm_ops"))], type: Gin, map: "client_vat_id_trgm_idx")
   @@map("client")
 }
 
@@ -897,6 +905,8 @@ model Document {
   @@index([tenantId, documentTypeId])
   @@index([clientId, sharedWithClientAt])
   @@index([workflowItemId], map: "document_workflow_item_idx")
+  // iter71: pg_trgm-GIN für die globale Suche (Dokument-Titel)
+  @@index([title(ops: raw("gin_trgm_ops"))], type: Gin, map: "document_title_trgm_idx")
   @@map("document")
 }
 
@@ -1045,6 +1055,9 @@ model Request {
   @@index([tenantId, dueAt])
   @@index([workflowItemId], map: "request_workflow_item_idx")
   @@index([linkedGwgIdDocumentId], map: "request_gwg_id_doc_idx")
+  // iter71: pg_trgm-GIN für die globale Suche
+  @@index([title(ops: raw("gin_trgm_ops"))], type: Gin, map: "request_title_trgm_idx")
+  @@index([description(ops: raw("gin_trgm_ops"))], type: Gin, map: "request_description_trgm_idx")
   @@map("request")
 }
 
