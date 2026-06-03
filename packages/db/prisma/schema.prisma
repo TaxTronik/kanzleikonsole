@@ -764,6 +764,9 @@ model ClientReminder {
 
   @@index([assigneeStaffId, doneAt], map: "client_reminder_assignee_idx")
   @@index([tenantId, dueDate, doneAt], map: "client_reminder_due_idx")
+  // iter72: deckt die Mandanten-Detailseite (where clientId, order doneAt,dueDate)
+  // — bisher kein clientId-führender Index → Scan aller Tenant-Wiedervorlagen.
+  @@index([clientId, doneAt, dueDate], map: "client_reminder_client_idx")
   @@map("client_reminder")
 }
 
