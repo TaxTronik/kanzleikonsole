@@ -218,6 +218,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'invoice_category.update': 'Rechnungstyp geändert',
   'invoice_category.delete': 'Rechnungstyp gelöscht',
   'invoice.upload': 'Externe Rechnung hochgeladen',
+  'invoice.archive.zugferd': 'ZUGFeRD-Archiv erzeugt',
   'email_template.create': 'E-Mail-Vorlage angelegt',
   'email_template.update': 'E-Mail-Vorlage geändert',
   'email_template.delete': 'E-Mail-Vorlage gelöscht',

@@ -10,6 +10,7 @@ import { commitDocumentFromBytes } from '@taxtronik/storage';
 import { prismaBytes } from '@/server/db/prisma-bytes';
 import { sendTemplateMail } from '@/server/mail/dispatch';
 import { toActionError } from '@/server/auth/rbac';
+import { ensureZugferdArchive } from '@/server/invoicing/archive';
 import { staffActionGuard, withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
 
 export type { ActionResult };
@@ -147,6 +148,17 @@ export async function markSentAction(formData: FormData): Promise<void> {
       after: { number: updated.number, sentAt: updated.sentAt },
     });
   });
+
+  // Option B: ZUGFeRD-Archiv schon beim Ausstellen festschreiben → byte-stabile
+  // GoBD-Kopie ab Ausstellung, keine CPU-Wiederholung bei späteren Downloads.
+  // Best-effort: schlägt es fehl (Adresse unvollständig, Storage-Hiccup, oder
+  // EXTERNAL/PDF-Rechnung), blockiert das den Versand NICHT — der Download
+  // generiert dann nach. Der Status ist bereits gesetzt + auditiert.
+  try {
+    await ensureZugferdArchive(ctx, parsed.data.invoiceId);
+  } catch {
+    /* bewusst geschluckt — Archiv ist optional zum Versandzeitpunkt */
+  }
 
   emitN8nEvent('invoice.due', { tenantId, invoiceId: parsed.data.invoiceId });
   revalidatePath('/staff/invoices');
