@@ -435,7 +435,7 @@ function NormRefList({
           onDone={() => { setShowAdd(false); onChanged(); }} onCancel={() => setShowAdd(false)} />
       ) : (
         <button type="button" onClick={() => setShowAdd(true)} disabled={pending}
-          className="text-xs text-brand inline-flex items-center gap-1 hover:underline">
+          className="w-full inline-flex items-center justify-center gap-1.5 text-xs text-brand rounded border border-dashed border-default py-1.5 hover:bg-gray-50 dark:hover:bg-gray-900/40 disabled:opacity-50">
           <BookPlus className="h-3.5 w-3.5" /> Eigene Norm ergänzen
         </button>
       )}
@@ -503,23 +503,28 @@ function NormRefRow({
           {refItem.titel && <span className="text-muted truncate">— {refItem.titel}</span>}
           {isBerater && <span className="badge-purple text-[10px] shrink-0">eigene</span>}
         </button>
-        <div className="ml-auto flex items-center gap-1 pr-1.5 shrink-0">
-          {katalogId && (
-            <button type="button" onClick={() => setShowKat((v) => !v)} disabled={pending}
-              title="Katalogweit kuratieren — wirkt auf künftige Analysen dieses Begriffs"
-              className={'text-[11px] inline-flex items-center gap-0.5 disabled:opacity-50 ' + (showKat ? 'text-brand' : 'text-muted hover:text-brand')}>
-              <Library className="h-3 w-3" /> Katalog
-            </button>
-          )}
+        <div className="ml-auto flex items-center gap-1.5 pr-1.5 shrink-0">
+          {/* Per-Fall-Aktion (nur diese Analyse) — zuerst, direkt an der Norm. */}
           {isBerater ? (
             <button type="button" onClick={removeOwn} disabled={pending} title="Eigene Norm entfernen"
               className="text-disabled hover:text-red-600 disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" /></button>
           ) : verworfen ? (
-            <button type="button" onClick={() => setVerworfen(false)} disabled={pending} title="Vorschlag zurückholen"
+            <button type="button" onClick={() => setVerworfen(false)} disabled={pending} title="Vorschlag für diesen Fall zurückholen"
               className="text-[11px] text-brand hover:underline disabled:opacity-50 inline-flex items-center gap-0.5"><Undo2 className="h-3 w-3" /> zurückholen</button>
           ) : (
-            <button type="button" onClick={() => setVerworfen(true)} disabled={pending} title="Engine-Vorschlag verwerfen"
+            <button type="button" onClick={() => setVerworfen(true)} disabled={pending} title="Engine-Vorschlag nur für diesen Fall verwerfen"
               className="text-[11px] text-muted hover:text-red-600 disabled:opacity-50">verwerfen</button>
+          )}
+          {/* Katalog-Promotion (kanzleiweit/künftig) — durch Trenner klar abgesetzt. */}
+          {katalogId && (
+            <>
+              <span className="h-4 w-px bg-gray-300 dark:bg-gray-700 shrink-0" aria-hidden="true" />
+              <button type="button" onClick={() => setShowKat((v) => !v)} disabled={pending}
+                title="Katalogweit kuratieren — wirkt auf künftige Analysen dieses Begriffs"
+                className={'text-[11px] inline-flex items-center gap-0.5 rounded px-1 py-0.5 disabled:opacity-50 ' + (showKat ? 'text-brand bg-gray-100 dark:bg-gray-800' : 'text-muted hover:text-brand hover:bg-gray-50 dark:hover:bg-gray-900/40')}>
+                <Library className="h-3 w-3" /> Katalog
+              </button>
+            </>
           )}
         </div>
       </div>
