@@ -1,7 +1,8 @@
 ﻿'use client';
 
 import { useActionState, useRef, useEffect } from 'react';
-import { createUserAction, type ActionResult } from './actions';
+import { createUserAction } from './actions';
+import type { ActionResult } from '@/server/actions/staff-action';
 
 export function CreateUserForm() {
   const ref = useRef<HTMLFormElement>(null);

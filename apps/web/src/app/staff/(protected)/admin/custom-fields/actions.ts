@@ -1,17 +1,11 @@
 'use server';
 
 import { z } from 'zod';
-import { revalidatePath } from 'next/cache';
 import type { Prisma } from '@prisma/client';
-import { staffAuth } from '@/server/auth/staff';
-import { isStaffAdmin } from '@/server/auth/rbac';
-import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
+import { withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
 
-export interface ActionResult {
-  ok: boolean;
-  error?: string;
-}
+const REVALIDATE = '/staff/admin/custom-fields';
 
 const FIELD_TYPES = [
   'TEXT', 'TEXTAREA', 'NUMBER', 'MONEY', 'DATE', 'SELECT', 'CHECKBOX', 'URL',
@@ -35,126 +29,106 @@ const SaveSchema = z.object({
 export async function saveFieldDefAction(
   input: z.infer<typeof SaveSchema>,
 ): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
-
   const parsed = SaveSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
-  const { tenantId, staffId } = session.user;
   const data = parsed.data;
 
-  if ((data.type === 'SELECT') && (!data.options || data.options.length === 0)) {
+  if (data.type === 'SELECT' && (!data.options || data.options.length === 0)) {
     return { ok: false, error: 'SELECT braucht mindestens eine Option.' };
   }
 
-  try {
-    await withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
-      async (tx) => {
-        if (data.id) {
-          // UPDATE — Typ bleibt fest, key auch (vermeidet Daten-Drift)
-          const before = await tx.clientCustomFieldDef.findUnique({
-            where: { id: data.id },
-            select: { label: true, type: true, helpText: true, appliesTo: true, options: true, active: true },
-          });
-          if (!before) throw new Error('Feld nicht gefunden.');
-          await tx.clientCustomFieldDef.update({
-            where: { id: data.id },
-            data: {
-              label: data.label,
-              helpText: data.helpText,
-              appliesTo: data.appliesTo,
-              options: (data.options ?? null) as Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue,
-              active: data.active,
-            },
-          });
-          await evidenceService.record(tx, {
-            tenantId,
-            actorType: 'STAFF',
-            actorId: staffId,
-            action: 'client_custom_field.update',
-            resourceType: 'client_custom_field_def',
-            resourceId: data.id,
-            before,
-            after: { label: data.label, helpText: data.helpText, appliesTo: data.appliesTo, options: data.options, active: data.active },
-          });
-        } else {
-          const dup = await tx.clientCustomFieldDef.findFirst({ where: { key: data.key } });
-          if (dup) throw new Error('Schlüssel bereits vergeben.');
-          const last = await tx.clientCustomFieldDef.findFirst({
-            orderBy: { position: 'desc' },
-            select: { position: true },
-          });
-          const created = await tx.clientCustomFieldDef.create({
-            data: {
-              tenantId,
-              key: data.key,
-              label: data.label,
-              type: data.type,
-              helpText: data.helpText,
-              appliesTo: data.appliesTo,
-              options: (data.options ?? null) as Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue,
-              active: data.active,
-              position: (last?.position ?? 0) + 10,
-            },
-          });
-          await evidenceService.record(tx, {
-            tenantId,
-            actorType: 'STAFF',
-            actorId: staffId,
-            action: 'client_custom_field.create',
-            resourceType: 'client_custom_field_def',
-            resourceId: created.id,
-            after: {
-              key: data.key, label: data.label, type: data.type,
-              appliesTo: data.appliesTo, options: data.options,
-            },
-          });
-        }
-      },
-    );
-  } catch (e) {
-    return { ok: false, error: (e as Error).message };
-  }
-  revalidatePath('/staff/admin/custom-fields');
-  return { ok: true };
-}
-
-export async function deleteFieldDefAction(input: { id: string }): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
-  const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { tenantId, staffId } = session.user;
-  try {
-    await withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
-      async (tx) => {
-        const def = await tx.clientCustomFieldDef.findUnique({ where: { id: parsed.data.id } });
-        if (!def) throw new Error('Feld nicht gefunden.');
-        await tx.clientCustomFieldDef.delete({ where: { id: parsed.data.id } });
+  return withStaff(
+    async (tx, { tenantId, staffId }) => {
+      if (data.id) {
+        // UPDATE — Typ bleibt fest, key auch (vermeidet Daten-Drift)
+        const before = await tx.clientCustomFieldDef.findUnique({
+          where: { id: data.id },
+          select: { label: true, type: true, helpText: true, appliesTo: true, options: true, active: true },
+        });
+        if (!before) throw new ActionError('Feld nicht gefunden.');
+        await tx.clientCustomFieldDef.update({
+          where: { id: data.id },
+          data: {
+            label: data.label,
+            helpText: data.helpText,
+            appliesTo: data.appliesTo,
+            options: (data.options ?? null) as Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue,
+            active: data.active,
+          },
+        });
         await evidenceService.record(tx, {
           tenantId,
           actorType: 'STAFF',
           actorId: staffId,
-          action: 'client_custom_field.delete',
+          action: 'client_custom_field.update',
           resourceType: 'client_custom_field_def',
-          resourceId: parsed.data.id,
-          before: { key: def.key, label: def.label, type: def.type },
+          resourceId: data.id,
+          before,
+          after: { label: data.label, helpText: data.helpText, appliesTo: data.appliesTo, options: data.options, active: data.active },
         });
-      },
-    );
-  } catch (e) {
-    return { ok: false, error: (e as Error).message };
-  }
-  revalidatePath('/staff/admin/custom-fields');
-  return { ok: true };
+      } else {
+        const dup = await tx.clientCustomFieldDef.findFirst({ where: { key: data.key } });
+        if (dup) throw new ActionError('Schlüssel bereits vergeben.');
+        const last = await tx.clientCustomFieldDef.findFirst({
+          orderBy: { position: 'desc' },
+          select: { position: true },
+        });
+        const created = await tx.clientCustomFieldDef.create({
+          data: {
+            tenantId,
+            key: data.key,
+            label: data.label,
+            type: data.type,
+            helpText: data.helpText,
+            appliesTo: data.appliesTo,
+            options: (data.options ?? null) as Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue,
+            active: data.active,
+            position: (last?.position ?? 0) + 10,
+          },
+        });
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'client_custom_field.create',
+          resourceType: 'client_custom_field_def',
+          resourceId: created.id,
+          after: {
+            key: data.key, label: data.label, type: data.type,
+            appliesTo: data.appliesTo, options: data.options,
+          },
+        });
+      }
+    },
+    { requireAdmin: true, revalidate: REVALIDATE },
+  );
+}
+
+export async function deleteFieldDefAction(input: { id: string }): Promise<ActionResult> {
+  const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+
+  return withStaff(
+    async (tx, { tenantId, staffId }) => {
+      const def = await tx.clientCustomFieldDef.findUnique({ where: { id: parsed.data.id } });
+      if (!def) throw new ActionError('Feld nicht gefunden.');
+      await tx.clientCustomFieldDef.delete({ where: { id: parsed.data.id } });
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'client_custom_field.delete',
+        resourceType: 'client_custom_field_def',
+        resourceId: parsed.data.id,
+        before: { key: def.key, label: def.label, type: def.type },
+      });
+    },
+    { requireAdmin: true, revalidate: REVALIDATE },
+  );
 }
 
 // ---------------------------------------------------------------------------
-// Werte speichern (vom Mandanten-Detail aus aufgerufen)
+// Werte speichern (vom Mandanten-Detail aus aufgerufen) — kein Admin-Zwang.
 // ---------------------------------------------------------------------------
 
 const SaveValuesSchema = z.object({
@@ -165,82 +139,67 @@ const SaveValuesSchema = z.object({
 export async function saveCustomFieldValuesAction(
   input: z.infer<typeof SaveValuesSchema>,
 ): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
   const parsed = SaveValuesSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { tenantId, staffId } = session.user;
   const { clientId, values } = parsed.data;
 
-  try {
-    await withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
-      async (tx) => {
-        const client = await tx.client.findUnique({
-          where: { id: clientId },
-          select: { kind: true },
+  return withStaff(
+    async (tx, { tenantId, staffId }) => {
+      const client = await tx.client.findUnique({
+        where: { id: clientId },
+        select: { kind: true },
+      });
+      if (!client) throw new ActionError('Mandant nicht gefunden.');
+
+      const defs = await tx.clientCustomFieldDef.findMany({ where: { active: true } });
+      const before = await tx.clientCustomFieldValue.findMany({ where: { clientId } });
+      const beforeMap = new Map(before.map((b) => [b.fieldId, b.value]));
+
+      // Q-3: Audit-Vorher und -Nachher konsequent nach def.key indizieren.
+      // Vorher: before kam aus beforeMap (fieldId-keyed), after war ein
+      // direkter Spiegel von `values` — der Auditor konnte sich nicht darauf
+      // verlassen, dass keys gleich sind, und Audit-Trails waren mit UUIDs
+      // statt menschenlesbaren Field-Keys gespickt. Jetzt: beide Seiten
+      // nutzen def.key, gefiltert auf die Felder, die zur Client-Kind
+      // tatsächlich gehören und im aktuellen Request berührt werden.
+      const auditBefore: Record<string, unknown> = {};
+      const auditAfter: Record<string, unknown> = {};
+
+      for (const def of defs) {
+        const applies = def.appliesTo.length === 0 || def.appliesTo.includes(client.kind);
+        if (!applies) continue;
+        if (!(def.id in values)) continue;
+        const raw = values[def.id];
+        const normalized = normalizeValue(def.type, raw, { options: def.options });
+        await tx.clientCustomFieldValue.upsert({
+          where: { clientId_fieldId: { clientId, fieldId: def.id } },
+          create: {
+            tenantId, clientId, fieldId: def.id,
+            value: normalized as Prisma.InputJsonValue,
+            updatedBy: staffId,
+          },
+          update: {
+            value: normalized as Prisma.InputJsonValue,
+            updatedBy: staffId,
+          },
         });
-        if (!client) throw new Error('Mandant nicht gefunden.');
+        auditBefore[def.key] = beforeMap.get(def.id) ?? null;
+        auditAfter[def.key] = normalized;
+      }
 
-        const defs = await tx.clientCustomFieldDef.findMany({
-          where: { active: true },
-        });
-        const before = await tx.clientCustomFieldValue.findMany({
-          where: { clientId },
-        });
-        const beforeMap = new Map(before.map((b) => [b.fieldId, b.value]));
-
-        // Q-3: Audit-Vorher und -Nachher konsequent nach def.key indizieren.
-        // Vorher: before kam aus beforeMap (fieldId-keyed), after war ein
-        // direkter Spiegel von `values` — der Auditor konnte sich nicht darauf
-        // verlassen, dass keys gleich sind, und Audit-Trails waren mit UUIDs
-        // statt menschenlesbaren Field-Keys gespickt. Jetzt: beide Seiten
-        // nutzen def.key, gefiltert auf die Felder, die zur Client-Kind
-        // tatsächlich gehören und im aktuellen Request berührt werden.
-        const auditBefore: Record<string, unknown> = {};
-        const auditAfter: Record<string, unknown> = {};
-
-        for (const def of defs) {
-          const applies = def.appliesTo.length === 0 || def.appliesTo.includes(client.kind);
-          if (!applies) continue;
-          if (!(def.id in values)) continue;
-          const raw = values[def.id];
-          const normalized = normalizeValue(def.type, raw, { options: def.options });
-          await tx.clientCustomFieldValue.upsert({
-            where: { clientId_fieldId: { clientId, fieldId: def.id } },
-            create: {
-              tenantId, clientId, fieldId: def.id,
-              value: normalized as Prisma.InputJsonValue,
-              updatedBy: staffId,
-            },
-            update: {
-              value: normalized as Prisma.InputJsonValue,
-              updatedBy: staffId,
-            },
-          });
-          auditBefore[def.key] = beforeMap.get(def.id) ?? null;
-          auditAfter[def.key] = normalized;
-        }
-
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
-          action: 'client_custom_field.values.update',
-          resourceType: 'client',
-          resourceId: clientId,
-          before: auditBefore,
-          after: auditAfter,
-        });
-      },
-    );
-  } catch (e) {
-    return { ok: false, error: (e as Error).message };
-  }
-
-  revalidatePath(`/staff/clients/${clientId}`);
-  revalidatePath(`/staff/clients/${clientId}/edit`);
-  return { ok: true };
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'client_custom_field.values.update',
+        resourceType: 'client',
+        resourceId: clientId,
+        before: auditBefore,
+        after: auditAfter,
+      });
+    },
+    { revalidate: [`/staff/clients/${clientId}`, `/staff/clients/${clientId}/edit`] },
+  );
 }
 
 // Q-7: typsicheres Normalisieren je Field-Typ. Vorher fiel alles außer

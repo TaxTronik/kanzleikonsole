@@ -3,18 +3,14 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { hash } from 'bcryptjs';
-import { staffAuth } from '@/server/auth/staff';
-import { isStaffAdmin } from '@/server/auth/rbac';
 import { revokeAllSessions } from '@/server/auth/revocation';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { seedDefaultRssFeeds } from '@/server/rss/defaults';
+import { toActionError } from '@/server/auth/rbac';
+import { staffActionGuard, ActionError, type ActionResult } from '@/server/actions/staff-action';
 
-export interface ActionResult {
-  ok: boolean;
-  error?: string;
-}
-
+const LIST = '/staff/admin/users';
 const ROLE_VALUES = ['EMPLOYEE', 'PARTNER', 'ADMIN'] as const;
 
 // ----------------------------------------------------------------------------
@@ -33,9 +29,10 @@ export async function createUserAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
+  // Gate ZUERST — vor dem teuren bcrypt-Hash (kein unautorisiertes Hashing).
+  const g = await staffActionGuard({ requireAdmin: true });
+  if (!g.ok) return g;
+  const { tenantId, staffId, ctx } = g;
 
   const parsed = CreateSchema.safeParse({
     fullName: formData.get('fullName'),
@@ -48,7 +45,6 @@ export async function createUserAction(
     return { ok: false, error: parsed.error.issues.map((i) => i.message).join('; ') };
   }
 
-  const { tenantId, staffId } = session.user;
   const passwordHash = await hash(parsed.data.password, 12);
 
   const roles: Array<'EMPLOYEE' | 'PARTNER' | 'ADMIN'> = ['EMPLOYEE'];
@@ -56,44 +52,41 @@ export async function createUserAction(
   if (parsed.data.admin) roles.push('ADMIN');
 
   try {
-    await withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
-      async (tx) => {
-        const existing = await tx.staffUser.findFirst({
-          where: { email: parsed.data.email },
-          select: { id: true },
-        });
-        if (existing) throw new Error('E-Mail bereits vergeben.');
+    await withTenantContext(ctx, async (tx) => {
+      const existing = await tx.staffUser.findFirst({
+        where: { email: parsed.data.email },
+        select: { id: true },
+      });
+      if (existing) throw new ActionError('E-Mail bereits vergeben.');
 
-        const created = await tx.staffUser.create({
-          data: {
-            tenantId,
-            email: parsed.data.email,
-            fullName: parsed.data.fullName,
-            passwordHash,
-            active: true,
-            roles: { create: roles.map((r) => ({ role: r })) },
-          },
-        });
-
-        await evidenceService.record(tx, {
+      const created = await tx.staffUser.create({
+        data: {
           tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
-          action: 'staff.create',
-          resourceType: 'staff_user',
-          resourceId: created.id,
-          after: { fullName: parsed.data.fullName, email: parsed.data.email, roles },
-        });
+          email: parsed.data.email,
+          fullName: parsed.data.fullName,
+          passwordHash,
+          active: true,
+          roles: { create: roles.map((r) => ({ role: r })) },
+        },
+      });
 
-        await seedDefaultRssFeeds(tx, tenantId, created.id);
-      },
-    );
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'staff.create',
+        resourceType: 'staff_user',
+        resourceId: created.id,
+        after: { fullName: parsed.data.fullName, email: parsed.data.email, roles },
+      });
+
+      await seedDefaultRssFeeds(tx, tenantId, created.id);
+    });
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return toActionError(e);
   }
 
-  revalidatePath('/staff/admin/users');
+  revalidatePath(LIST);
   return { ok: true };
 }
 
@@ -102,25 +95,23 @@ export async function createUserAction(
 // ----------------------------------------------------------------------------
 
 export async function setActiveAction(input: { userId: string; active: boolean }): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
+  const g = await staffActionGuard({ requireAdmin: true });
+  if (!g.ok) return g;
+  const { tenantId, staffId, ctx } = g;
 
   const parsed = z.object({ userId: z.string().uuid(), active: z.boolean() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  if (parsed.data.userId === session.user.staffId) {
+  if (parsed.data.userId === staffId) {
     return { ok: false, error: 'Eigenen Account nicht deaktivieren.' };
   }
 
-  const { tenantId, staffId } = session.user;
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
+  try {
+    await withTenantContext(ctx, async (tx) => {
       const before = await tx.staffUser.findUnique({
         where: { id: parsed.data.userId },
         select: { active: true },
       });
-      if (!before) throw new Error('Benutzer nicht gefunden.');
+      if (!before) throw new ActionError('Benutzer nicht gefunden.');
       await tx.staffUser.update({
         where: { id: parsed.data.userId },
         data: { active: parsed.data.active },
@@ -135,13 +126,15 @@ export async function setActiveAction(input: { userId: string; active: boolean }
         before: { active: before.active },
         after: { active: parsed.data.active },
       });
-    },
-  );
+    });
+  } catch (e) {
+    return toActionError(e);
+  }
   // S11: Deaktivierung sofort wirksam — alle Sessions des Users revoken.
   if (!parsed.data.active) {
     await revokeAllSessions('staff', parsed.data.userId);
   }
-  revalidatePath('/staff/admin/users');
+  revalidatePath(LIST);
   return { ok: true };
 }
 
@@ -150,25 +143,20 @@ export async function setActiveAction(input: { userId: string; active: boolean }
 // ----------------------------------------------------------------------------
 
 export async function setRolesAction(input: { userId: string; roles: string[] }): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
+  const g = await staffActionGuard({ requireAdmin: true });
+  if (!g.ok) return g;
+  const { tenantId, staffId, ctx } = g;
 
   const parsed = z
-    .object({
-      userId: z.string().uuid(),
-      roles: z.array(z.enum(ROLE_VALUES)),
-    })
+    .object({ userId: z.string().uuid(), roles: z.array(z.enum(ROLE_VALUES)) })
     .safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  if (parsed.data.userId === session.user.staffId) {
+  if (parsed.data.userId === staffId) {
     return { ok: false, error: 'Eigene Rollen nicht ändern.' };
   }
 
-  const { tenantId, staffId } = session.user;
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
+  try {
+    await withTenantContext(ctx, async (tx) => {
       const before = await tx.staffRole.findMany({ where: { staffUserId: parsed.data.userId } });
       const beforeRoles = before.map((b) => b.role);
       const newSet = new Set(parsed.data.roles);
@@ -196,11 +184,13 @@ export async function setRolesAction(input: { userId: string; roles: string[] })
           after: { roles: parsed.data.roles },
         });
       }
-    },
-  );
+    });
+  } catch (e) {
+    return toActionError(e);
+  }
   // S11: Rollen-Entzug muss sofort wirksam werden (z. B. ADMIN-Bit zurückgenommen).
   // Tokens im Umlauf hätten sonst noch die alten Claims bis zu 24h.
   await revokeAllSessions('staff', parsed.data.userId);
-  revalidatePath('/staff/admin/users');
+  revalidatePath(LIST);
   return { ok: true };
 }
