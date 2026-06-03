@@ -300,3 +300,64 @@ export async function setResponsibilitiesAction(
   revalidatePath(`/staff/clients/${clientId}/edit`);
   return { ok: true, savedAt: new Date().toISOString() };
 }
+
+// ----------------------------------------------------------------------------
+// Mandatsende (GwG § 8 Abs. 4): startet/stoppt die Lösch-Uhr für GwG-Belege.
+// Berufsrechtlich/compliance-relevant → ADMIN/PARTNER, eigene Meldung.
+// ----------------------------------------------------------------------------
+
+const MandateEndSchema = z.object({
+  clientId: z.string().uuid(),
+  ended: z.boolean(),
+});
+
+export async function setMandateEndAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const g = await staffActionGuard();
+  if (!g.ok) return g;
+  const { tenantId, staffId, ctx, session } = g;
+  if (!isStaffAdmin(session)) {
+    return { ok: false, error: 'Nur ADMIN/PARTNER darf das Mandatsende setzen.' };
+  }
+
+  const parsed = MandateEndSchema.safeParse({
+    clientId: formData.get('clientId'),
+    ended: formData.get('ended') === 'on' || formData.get('ended') === '1',
+  });
+  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  const { clientId, ended } = parsed.data;
+
+  try {
+    await withTenantContext(ctx, async (tx) => {
+      const before = await tx.client.findUnique({
+        where: { id: clientId },
+        select: { mandateEndedAt: true },
+      });
+      if (!before) throw new ActionError('Mandant nicht gefunden.');
+      // Setzen = jetzt (Mandatsende-Datum); Zurücknehmen = null. Ein bereits
+      // gesetztes Datum NICHT überschreiben (die Frist soll am ursprünglichen
+      // Ende hängen), wenn erneut „beendet" geklickt wird.
+      const next = ended ? (before.mandateEndedAt ?? new Date()) : null;
+      await tx.client.update({ where: { id: clientId }, data: { mandateEndedAt: next } });
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: ended ? 'client.mandate.end' : 'client.mandate.reopen',
+        resourceType: 'client',
+        resourceId: clientId,
+        before: { mandateEndedAt: before.mandateEndedAt?.toISOString() ?? null },
+        after: { mandateEndedAt: next?.toISOString() ?? null },
+      });
+    });
+  } catch (e) {
+    return toActionError(e);
+  }
+
+  revalidatePath(`/staff/clients/${clientId}`);
+  revalidatePath(`/staff/clients/${clientId}/edit`);
+  revalidatePath('/staff/admin/gwg-retention');
+  return { ok: true, savedAt: new Date().toISOString() };
+}

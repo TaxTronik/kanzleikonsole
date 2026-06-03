@@ -13,6 +13,8 @@ export const ACTION_LABELS: Record<string, string> = {
   'client.update.administrative': 'Mandanten-Verwaltungsdaten geändert',
   'client.update.gwg_relevant': 'GwG-relevante Stammdaten geändert',
   'client.responsibilities.update': 'Bearbeiter-Zuordnung aktualisiert',
+  'client.mandate.end': 'Mandat beendet (GwG-Löschuhr gestartet)',
+  'client.mandate.reopen': 'Mandat wieder aufgenommen',
   'client.belege.export': 'DATEV-Belege exportiert',
   'client.onboarding.complete': 'Onboarding abgeschlossen',
 
@@ -79,6 +81,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'gwg.id_document.add': 'Ausweisdokument erfasst',
   'gwg.check.verify': 'GwG-Prüfung verifiziert',
   'gwg.check.reject': 'GwG-Prüfung abgelehnt',
+  'gwg.evidence.destroy': 'GwG-Beleg vernichtet (§ 8 Abs. 4)',
 
   // Rechnungen
   'invoice.create': 'Rechnung erstellt',
