@@ -90,23 +90,19 @@ function assignLanes(marks: MarkingDTO[]): Map<string, number> {
 }
 
 /**
- * Markierung als gestapelte Unterstreichung (Gradient-Linie an ihrer Lane) +
- * leichte Hintergrund-Tönung. Überlappungen ergeben so parallele Linien.
- * Streitig = gestrichelt + rot. Ausgewählt = Indigo-Tönung + dünner Rahmen.
+ * Markierung als Unterstreichung mit lane-abhängigem text-underline-offset
+ * (immer UNTER der Grundlinie — kein Durchstreichen) + leichte Hintergrund-
+ * Tönung. Überlappungen → gestapelte Linien. Streitig = gestrichelt + rot.
+ * Ausgewählt = Indigo-Tönung + dünner Rahmen.
  */
 function markStyle(m: MarkingDTO, selected: boolean, lane: number): string {
   const color = m.streitig ? '#ef4444' : herkunftColor(m.herkunft);
-  const offset = 1 + Math.min(lane, 2) * 3; // px über der Grundlinie je Lane (max 3 Spuren)
-  const line = m.streitig
-    ? `repeating-linear-gradient(to right, ${color} 0 4px, transparent 4px 7px)` // gestrichelt
-    : `linear-gradient(${color}, ${color})`; // durchgezogen
+  const off = 2 + Math.min(lane, 2) * 2.5; // px unter der Grundlinie je Lane (max 3 Spuren)
   const fill = selected ? 'rgba(99, 102, 241, 0.20)' : hexToRgba(color, 0.10);
   return (
-    `background-image: ${line}, linear-gradient(${fill}, ${fill});` +
-    `background-repeat: no-repeat, no-repeat;` +
-    `background-size: 100% 2px, 100% 100%;` +
-    `background-position: 0 calc(100% - ${offset}px), 0 0;` +
-    `border-radius:2px; cursor:pointer;` +
+    `text-decoration-line: underline; text-decoration-color:${color}; text-decoration-thickness:2px;` +
+    `text-decoration-style:${m.streitig ? 'dashed' : 'solid'}; text-underline-offset:${off}px;` +
+    `background:${fill}; border-radius:2px; cursor:pointer;` +
     (selected ? `box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.55);` : '')
   );
 }
