@@ -29,6 +29,10 @@ import {
   sendResearchToN8n,
   assignResultToMarking,
   resolveNorm,
+  searchNorm,
+  addBeraterNorm,
+  setNormVerworfen,
+  removeBeraterNorm,
   archiveAnalysis,
   reformatSourceDoc,
   reanalyzeAnalysis,
@@ -39,6 +43,7 @@ import {
   type RiskStatus,
   type ResearchPreview,
   type ResolvedNorm,
+  type NormHit,
   type LlmStatusDTO,
   type PromptTemplateDTO,
 } from '@/server/risk';
@@ -596,6 +601,93 @@ export async function resolveNormAction(
     requireEngine();
     const norm = await resolveNorm(parsed.normId);
     return { ok: true, norm };
+  } catch (e) {
+    return toActionError(e);
+  }
+}
+
+// --- Rechtsnorm-Kuratierung (Engine-Norm ist nicht verbindlich) ---------------
+
+const SearchNormSchema = z.object({
+  clientId: z.string().uuid(),
+  query: z.string().trim().min(2).max(200),
+});
+
+/** Sucht im Normgraph nach einer Norm (für „eigene Norm" mit stabiler ID/Titel). */
+export async function searchNormAction(
+  input: z.infer<typeof SearchNormSchema>,
+): Promise<OkActionResult<{ hits: NormHit[] }>> {
+  try {
+    const parsed = SearchNormSchema.parse(input);
+    await guard(parsed.clientId);
+    requireEngine();
+    const hits = await searchNorm(parsed.query);
+    return { ok: true, hits };
+  } catch (e) {
+    return toActionError(e);
+  }
+}
+
+const AddNormSchema = z.object({
+  markingId: z.string().uuid(),
+  zitat: z.string().trim().min(1).max(200),
+  normId: z.string().trim().min(1).max(200).nullish(),
+  titel: z.string().trim().max(400).nullish(),
+});
+
+/** Ergänzt eine berater-eigene Rechtsnorm an einer Markierung. */
+export async function addBeraterNormAction(
+  input: z.infer<typeof AddNormSchema>,
+): Promise<OkActionResult> {
+  try {
+    const parsed = AddNormSchema.parse(input);
+    const { ctx, clientId, analysisId } = await guardMarking(parsed.markingId);
+    await addBeraterNorm(ctx, parsed.markingId, { zitat: parsed.zitat, id: parsed.normId ?? null, titel: parsed.titel ?? null });
+    revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId}`);
+    return { ok: true };
+  } catch (e) {
+    return toActionError(e);
+  }
+}
+
+const VerwerfNormSchema = z.object({
+  markingId: z.string().uuid(),
+  index: z.number().int().nonnegative(),
+  zitat: z.string().max(200),
+  verworfen: z.boolean(),
+});
+
+/** Verwirft einen Engine-Norm-Vorschlag (oder holt ihn zurück) — soft, auditiert. */
+export async function setNormVerworfenAction(
+  input: z.infer<typeof VerwerfNormSchema>,
+): Promise<OkActionResult> {
+  try {
+    const parsed = VerwerfNormSchema.parse(input);
+    const { ctx, clientId, analysisId } = await guardMarking(parsed.markingId);
+    await setNormVerworfen(ctx, parsed.markingId, { index: parsed.index, zitat: parsed.zitat }, parsed.verworfen);
+    revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId}`);
+    return { ok: true };
+  } catch (e) {
+    return toActionError(e);
+  }
+}
+
+const RemoveNormSchema = z.object({
+  markingId: z.string().uuid(),
+  index: z.number().int().nonnegative(),
+  zitat: z.string().max(200),
+});
+
+/** Entfernt eine berater-eigene Norm (Engine-Vorschläge werden nur verworfen). */
+export async function removeBeraterNormAction(
+  input: z.infer<typeof RemoveNormSchema>,
+): Promise<OkActionResult> {
+  try {
+    const parsed = RemoveNormSchema.parse(input);
+    const { ctx, clientId, analysisId } = await guardMarking(parsed.markingId);
+    await removeBeraterNorm(ctx, parsed.markingId, { index: parsed.index, zitat: parsed.zitat });
+    revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId}`);
+    return { ok: true };
   } catch (e) {
     return toActionError(e);
   }

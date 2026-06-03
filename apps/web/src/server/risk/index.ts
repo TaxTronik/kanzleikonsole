@@ -24,8 +24,15 @@ export type {
   DefineCapableClient,
 } from './catalog-feedback';
 
-export { resolveNorm } from './resolve-norm';
-export type { ResolvedNorm, NormResolveClient } from './resolve-norm';
+export { resolveNorm, searchNorm } from './resolve-norm';
+export type { ResolvedNorm, NormResolveClient, NormHit, NormSearchClient } from './resolve-norm';
+
+export {
+  addBeraterNorm, setNormVerworfen, removeBeraterNorm,
+  readNormRefs, effectiveAnker, applyAddBerater, applyVerworfen, applyRemoveBerater,
+  NormListChangedError, InvalidNormError,
+} from './norms';
+export type { CuratedNormRef, NormQuelle, NormTarget } from './norms';
 
 export { getLlmStatus } from './llm';
 export type { LlmStatusDTO, LlmStatusClient } from './llm';

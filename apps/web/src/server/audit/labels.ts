@@ -282,6 +282,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'risk.analysis.archived': 'Subsumtion archiviert',
   'risk.marking.created': 'Markierung erstellt',
   'risk.marking.decided': 'Markierung bewertet',
+  'risk.marking.norms_curated': 'Rechtsnormen kuratiert',
   'risk.marking.delegated': 'Recherche delegiert',
   'risk.marking.deleted': 'Markierung gelöscht',
   'risk.catalog.defined': 'Katalog-Begriff definiert',

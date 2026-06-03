@@ -6,11 +6,17 @@ export type RiskStufe = 'NIEDRIG' | 'MITTEL' | 'HOCH';
 export type RiskWk = 'SELTEN' | 'MOEGLICH' | 'WAHRSCHEINLICH' | 'HAEUFIG';
 export type RiskStatus = 'OFFEN' | 'IN_PRUEFUNG' | 'KONTROLLIERT' | 'AKZEPTIERT';
 
-/** Norm-Referenz mit stabiler Engine-ID (für das Gesetzestext-Expandable). */
+/** Norm-Referenz mit stabiler Engine-ID (für das Gesetzestext-Expandable). Die
+ *  Engine-Norm ist NICHT verbindlich: der Berater kann eigene Normen ergänzen
+ *  (`quelle:'BERATER'`) und Engine-Vorschläge verwerfen (`verworfen:true`, soft —
+ *  bleibt zur Provenienz erhalten, zählt aber nicht zur effektiven Normliste).
+ *  Fehlende `quelle` = Engine-Vorschlag (Abwärtskompatibilität mit Altdaten). */
 export interface NormRefDTO {
   zitat: string;
   id: string | null;
   titel: string | null;
+  quelle?: 'ENGINE' | 'BERATER';
+  verworfen?: boolean;
 }
 
 export interface MarkingDTO {

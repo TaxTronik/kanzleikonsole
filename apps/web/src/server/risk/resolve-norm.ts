@@ -69,3 +69,34 @@ export async function resolveNorm(
   }
   return resolved;
 }
+
+/** Minimaler Client-Vertrag für die Normsuche (DI/Tests). */
+export type NormSearchClient = Pick<RiskLayerClient, 'normgraphSuche'>;
+
+/** Ein Normgraph-Suchtreffer: stabile ID + Zitat + Titel. */
+export interface NormHit {
+  id: string;
+  zitat: string;
+  titel: string | null;
+}
+
+/**
+ * Sucht Normen im Normgraph (`GET /v1/normgraph/suche?q=`) — für „eigene Norm
+ * ergänzen": der Berater kann ein Freitext-Zitat über die Engine zu einer
+ * stabilen Norm-ID + Titel auflösen, damit der Gesetzestext aufklappbar wird.
+ * Öffentliches Recht, keine Mandantendaten. Permissiv: kaputte Treffer fallen raus.
+ */
+export async function searchNorm(query: string, client?: NormSearchClient): Promise<NormHit[]> {
+  const c = client ?? new RiskLayerClient();
+  const raw = (await c.normgraphSuche(query)) as { treffer?: unknown };
+  if (!Array.isArray(raw.treffer)) return [];
+  return raw.treffer
+    .map((t) => t as Record<string, unknown>)
+    .filter((t) => typeof t.id === 'string' && typeof t.zitat === 'string')
+    .map((t) => ({
+      id: t.id as string,
+      zitat: t.zitat as string,
+      titel: typeof t.titel === 'string' && t.titel.length > 0 ? (t.titel as string) : null,
+    }))
+    .slice(0, 12);
+}
