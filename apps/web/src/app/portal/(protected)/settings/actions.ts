@@ -1,24 +1,18 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
-import { portalAuth } from '@/server/auth/portal';
-import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
+import { withPortalContext, ActionError } from '@/server/actions/portal-action';
 
 export async function saveNotificationSettingAction(formData: FormData): Promise<void> {
-  const session = await portalAuth();
-  if (!session?.user) throw new Error('Nicht eingeloggt.');
-  const { tenantId, contactId } = session.user;
   const enabled = formData.get('enabled') === 'on';
 
-  await withTenantContext(
-    { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' },
-    async (tx) => {
+  await withPortalContext(
+    async (tx, { tenantId, contactId }) => {
       const before = await tx.clientContact.findUnique({
         where: { id: contactId },
         select: { notificationsEnabled: true },
       });
-      if (!before) throw new Error('Kontakt nicht gefunden.');
+      if (!before) throw new ActionError('Kontakt nicht gefunden.');
       if (before.notificationsEnabled === enabled) return;
 
       await tx.clientContact.update({
@@ -36,7 +30,6 @@ export async function saveNotificationSettingAction(formData: FormData): Promise
         after: { notificationsEnabled: enabled },
       });
     },
+    { revalidate: '/portal/settings' },
   );
-
-  revalidatePath('/portal/settings');
 }
