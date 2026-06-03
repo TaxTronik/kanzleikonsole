@@ -337,7 +337,10 @@ const ManualMarkingSchema = z.object({
   // matchedText wird serverseitig aus dem Sachverhalt abgeleitet (Audit-Treue) —
   // NICHT vom Client übernommen.
   begriff: z.string().min(1).max(200),
-  farbe: z.string().max(20).nullable().optional(),
+  // Strikt Hex (#rrggbb) — die UI sendet feste Swatches; verhindert, dass ein
+  // beliebiger String gespeichert wird (Daten-Integrität + Defense gegen ein
+  // späteres CSS-Interpolieren der Farbe).
+  farbe: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Ungültige Farbe.').nullable().optional(),
   label: z.string().max(100).nullable().optional(),
   notiz: z.string().max(4000).nullable().optional(),
   normAnker: z.array(z.string().max(200)).max(50).optional(),
@@ -370,7 +373,10 @@ const UpdateMarkingSchema = z.object({
   status: z.enum(['OFFEN', 'IN_PRUEFUNG', 'KONTROLLIERT', 'AKZEPTIERT']).optional(),
   notiz: z.string().max(4000).nullable().optional(),
   verantwortlichId: z.string().uuid().nullable().optional(),
-  farbe: z.string().max(20).nullable().optional(),
+  // Strikt Hex (#rrggbb) — die UI sendet feste Swatches; verhindert, dass ein
+  // beliebiger String gespeichert wird (Daten-Integrität + Defense gegen ein
+  // späteres CSS-Interpolieren der Farbe).
+  farbe: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Ungültige Farbe.').nullable().optional(),
   label: z.string().max(100).nullable().optional(),
 });
 

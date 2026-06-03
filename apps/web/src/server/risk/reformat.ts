@@ -53,6 +53,9 @@ export async function reformatSourceDoc(
 
     const beforeHash = docHash(analysis.sourceDoc);
     const afterHash = docHash(input.doc);
+    // Identisches Doc (z. B. Format-Änderung + Rückgängig) → kein Write/Audit.
+    // Hält die Hash-Chain frei von No-Op-„reformatted"-Einträgen aus dem Auto-Save.
+    if (beforeHash === afterHash) return { changed: 'format' };
 
     await tx.riskAnalysis.update({
       where: { id: input.analysisId },
