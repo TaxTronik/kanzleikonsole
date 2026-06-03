@@ -8,8 +8,8 @@ import {
   createBinderAction,
   updateBinderStatusAction,
   deleteBinderAction,
-  type ActionResult,
 } from './actions';
+import type { ActionResult } from '@/server/actions/staff-action';
 
 
 type BinderStatus = 'PREPARED' | 'WITH_CLIENT' | 'RETURNED' | 'COMPLETED';

@@ -3,10 +3,10 @@
 import { z } from 'zod';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
+import { staffActionGuard } from '@/server/actions/staff-action';
 
 const KIND_VALUES = [
   'USTA', 'UST_JAHR', 'EST', 'KST',
@@ -35,8 +35,10 @@ function parseDecimal(s: string | null | undefined): string | undefined {
 }
 
 export async function createNoticeAction(formData: FormData): Promise<void> {
-  const session = await staffAuth();
-  if (!session?.user) throw new Error('Nicht eingeloggt.');
+  // void/throw-Form-Action: Gate liefert die Fehlermeldung als Wurf (Vertrag bleibt).
+  const g = await staffActionGuard();
+  if (!g.ok) throw new Error(g.error);
+  const { tenantId, staffId, ctx } = g;
 
   const parsed = Schema.safeParse({
     clientId: formData.get('clientId'),
@@ -53,14 +55,13 @@ export async function createNoticeAction(formData: FormData): Promise<void> {
   if (!parsed.success) throw new Error('Validierungsfehler.');
 
   const d = parsed.data;
-  const { tenantId, staffId } = session.user;
   const noticeDate = new Date(d.noticeDate + 'T00:00:00.000Z');
   // Bekanntgabefiktion 3 Tage + 1 Monat = +33 Tage. Trigger setzt das gleiche
   // im DB-Default — wir berechnen es trotzdem App-seitig für Kohärenz.
   const appealDeadline = new Date(noticeDate.getTime() + 33 * 24 * 60 * 60 * 1000);
 
   await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
+    ctx,
     async (tx) => {
       // Q-5: clientId muss im aktuellen Tenant existieren — sonst kann ein
       // UI-Bug / direkter API-Call eine fremde clientId persistieren.

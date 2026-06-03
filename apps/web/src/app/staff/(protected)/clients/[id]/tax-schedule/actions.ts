@@ -2,12 +2,12 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import type { TaxScheduleKind } from '@prisma/client';
 import { evidenceService } from '@/server/container';
 import { materializeTaxDeadlines } from '@/server/tax-deadlines/materialize';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
+import { staffActionGuard } from '@/server/actions/staff-action';
 
 const ALL_KINDS: TaxScheduleKind[] = [
   'USTA_MONATLICH', 'USTA_QUARTAL', 'USTA_JAEHRLICH',
@@ -26,13 +26,13 @@ export async function saveScheduleConfigAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
+  const g = await staffActionGuard();
+  if (!g.ok) return g;
+  const { tenantId, staffId, ctx } = g;
 
   const parsed = z.string().uuid().safeParse(formData.get('clientId'));
   if (!parsed.success) return { ok: false, error: 'Ungültige Mandanten-ID.' };
   const clientId = parsed.data;
-  const { tenantId, staffId } = session.user;
 
   // Pro Kind die drei Felder einsammeln
   const updates = ALL_KINDS.map((kind) => ({
@@ -43,7 +43,7 @@ export async function saveScheduleConfigAction(
   }));
 
   await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
+    ctx,
     async (tx) => {
       // R-2: clientId Tenant-Sanity vor allen taxScheduleConfig-Mutationen.
       await assertClientInTenant(tx, clientId);
@@ -122,7 +122,7 @@ export async function saveScheduleConfigAction(
 
   // Direkt materialisieren, damit die neuen aktiven Termine sofort sichtbar sind
   await materializeTaxDeadlines(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
+    ctx,
     { systemStaffId: staffId },
   );
 

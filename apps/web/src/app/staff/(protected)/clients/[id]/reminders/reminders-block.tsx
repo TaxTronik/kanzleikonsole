@@ -8,8 +8,8 @@ import {
   createReminderAction,
   markReminderDoneAction,
   deleteReminderAction,
-  type ActionResult,
 } from './actions';
+import type { ActionResult } from '@/server/actions/staff-action';
 
 
 interface Reminder {
