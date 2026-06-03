@@ -1,18 +1,11 @@
 'use server';
 
 import { z } from 'zod';
-import { revalidatePath } from 'next/cache';
-import { staffAuth } from '@/server/auth/staff';
-import { isStaffAdmin } from '@/server/auth/rbac';
-import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { assertStaffInTenant } from '@/server/db/assert-tenant';
+import { withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
 
-export interface ActionResult {
-  ok: boolean;
-  error?: string;
-}
-
+const REVALIDATE = '/staff/admin/skills';
 const SLUG_RE = /^[A-Z0-9_]+$/;
 const COLOR_VALUES = ['blue', 'amber', 'emerald', 'purple', 'pink', 'red', 'yellow', 'gray'] as const;
 
@@ -26,55 +19,34 @@ export async function createSkillAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
-
   const parsed = CreateSchema.safeParse({
     slug: formData.get('slug'),
     label: formData.get('label'),
     color: formData.get('color') ?? '',
   });
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues.map((i) => i.message).join('; ') };
-  }
-  const color = parsed.data.color && (COLOR_VALUES as readonly string[]).includes(parsed.data.color)
-    ? parsed.data.color
-    : null;
+  if (!parsed.success) return { ok: false, error: parsed.error.issues.map((i) => i.message).join('; ') };
+  const color =
+    parsed.data.color && (COLOR_VALUES as readonly string[]).includes(parsed.data.color) ? parsed.data.color : null;
 
-  const { tenantId, staffId } = session.user;
-  try {
-    await withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
-      async (tx) => {
-        const dup = await tx.staffSkill.findFirst({ where: { slug: parsed.data.slug } });
-        if (dup) throw new Error('Kürzel bereits vergeben.');
-        const created = await tx.staffSkill.create({
-          data: {
-            tenantId,
-            slug: parsed.data.slug,
-            label: parsed.data.label,
-            color,
-            isSystem: false,
-          },
-        });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
-          action: 'staff_skill.create',
-          resourceType: 'staff_skill',
-          resourceId: created.id,
-          after: { slug: parsed.data.slug, label: parsed.data.label, color },
-        });
-      },
-    );
-  } catch (e) {
-    return { ok: false, error: (e as Error).message };
-  }
-
-  revalidatePath('/staff/admin/skills');
-  return { ok: true };
+  return withStaff(
+    async (tx, { tenantId, staffId }) => {
+      const dup = await tx.staffSkill.findFirst({ where: { slug: parsed.data.slug } });
+      if (dup) throw new ActionError('Kürzel bereits vergeben.');
+      const created = await tx.staffSkill.create({
+        data: { tenantId, slug: parsed.data.slug, label: parsed.data.label, color, isSystem: false },
+      });
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'staff_skill.create',
+        resourceType: 'staff_skill',
+        resourceId: created.id,
+        after: { slug: parsed.data.slug, label: parsed.data.label, color },
+      });
+    },
+    { requireAdmin: true, revalidate: REVALIDATE },
+  );
 }
 
 export async function updateSkillAction(input: {
@@ -82,28 +54,18 @@ export async function updateSkillAction(input: {
   label: string;
   color: string | null;
 }): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
-
   const parsed = z
-    .object({
-      id: z.string().uuid(),
-      label: z.string().min(2).max(100),
-      color: z.enum(COLOR_VALUES).nullable(),
-    })
+    .object({ id: z.string().uuid(), label: z.string().min(2).max(100), color: z.enum(COLOR_VALUES).nullable() })
     .safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const { tenantId, staffId } = session.user;
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
+  return withStaff(
+    async (tx, { tenantId, staffId }) => {
       const before = await tx.staffSkill.findUnique({
         where: { id: parsed.data.id },
         select: { label: true, color: true },
       });
-      if (!before) throw new Error('Skill nicht gefunden.');
+      if (!before) throw new ActionError('Skill nicht gefunden.');
       await tx.staffSkill.update({
         where: { id: parsed.data.id },
         data: { label: parsed.data.label, color: parsed.data.color },
@@ -119,44 +81,32 @@ export async function updateSkillAction(input: {
         after: { label: parsed.data.label, color: parsed.data.color },
       });
     },
+    { requireAdmin: true, revalidate: REVALIDATE },
   );
-  revalidatePath('/staff/admin/skills');
-  return { ok: true };
 }
 
 export async function deleteSkillAction(input: { id: string }): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
-
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const { tenantId, staffId } = session.user;
-  try {
-    await withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
-      async (tx) => {
-        const skill = await tx.staffSkill.findUnique({ where: { id: parsed.data.id } });
-        if (!skill) throw new Error('Skill nicht gefunden.');
-        if (skill.isSystem) throw new Error('System-Bereiche können nicht gelöscht werden.');
-        await tx.staffSkill.delete({ where: { id: parsed.data.id } });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
-          action: 'staff_skill.delete',
-          resourceType: 'staff_skill',
-          resourceId: parsed.data.id,
-          before: { slug: skill.slug, label: skill.label },
-        });
-      },
-    );
-  } catch (e) {
-    return { ok: false, error: (e as Error).message };
-  }
-  revalidatePath('/staff/admin/skills');
-  return { ok: true };
+  return withStaff(
+    async (tx, { tenantId, staffId }) => {
+      const skill = await tx.staffSkill.findUnique({ where: { id: parsed.data.id } });
+      if (!skill) throw new ActionError('Skill nicht gefunden.');
+      if (skill.isSystem) throw new ActionError('System-Bereiche können nicht gelöscht werden.');
+      await tx.staffSkill.delete({ where: { id: parsed.data.id } });
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'staff_skill.delete',
+        resourceType: 'staff_skill',
+        resourceId: parsed.data.id,
+        before: { slug: skill.slug, label: skill.label },
+      });
+    },
+    { requireAdmin: true, revalidate: REVALIDATE },
+  );
 }
 
 // ----------------------------------------------------------------------------
@@ -167,40 +117,24 @@ export async function setStaffSkillsAction(input: {
   staffId: string;
   skillIds: string[];
 }): Promise<ActionResult> {
-  const session = await staffAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
-  if (!isStaffAdmin(session)) return { ok: false, error: 'Nur ADMIN/PARTNER.' };
-
   const parsed = z
-    .object({
-      staffId: z.string().uuid(),
-      skillIds: z.array(z.string().uuid()),
-    })
+    .object({ staffId: z.string().uuid(), skillIds: z.array(z.string().uuid()) })
     .safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const { tenantId, staffId: actorId } = session.user;
-  await withTenantContext(
-    { tenantId, actorId, actorType: 'STAFF' },
-    async (tx) => {
-      // S-6: staffId + jede skillId müssen im aktuellen Tenant existieren.
-      // RLS schützt Reads, FK prüft nur Cluster-weite Existenz — ohne diese
-      // Checks könnte ein UI-Bug oder direkter Action-Call eine fremde
-      // staffId/skillId verknüpfen. Symmetrisch zum R-2-Pattern.
+  return withStaff(
+    async (tx, { tenantId, staffId: actorId }) => {
+      // S-6: staffId + jede skillId müssen im aktuellen Tenant existieren. RLS
+      // schützt Reads, FK prüft nur Cluster-weite Existenz — ohne diese Checks
+      // könnte ein UI-Bug oder direkter Action-Call eine fremde staffId/skillId
+      // verknüpfen. Symmetrisch zum R-2-Pattern.
       await assertStaffInTenant(tx, parsed.data.staffId);
       for (const sid of parsed.data.skillIds) {
-        const skill = await tx.staffSkill.findFirst({
-          where: { id: sid },
-          select: { id: true },
-        });
-        if (!skill) {
-          throw new Error('SKILL_NOT_FOUND: skillId nicht in diesem Tenant.');
-        }
+        const skill = await tx.staffSkill.findFirst({ where: { id: sid }, select: { id: true } });
+        if (!skill) throw new ActionError('Unbekannter Tätigkeitsbereich.');
       }
 
-      const before = await tx.staffSkillAssignment.findMany({
-        where: { staffId: parsed.data.staffId },
-      });
+      const before = await tx.staffSkillAssignment.findMany({ where: { staffId: parsed.data.staffId } });
       const beforeIds = new Set(before.map((b) => b.skillId));
       const afterIds = new Set(parsed.data.skillIds);
       const toAdd = parsed.data.skillIds.filter((id) => !beforeIds.has(id));
@@ -212,9 +146,7 @@ export async function setStaffSkillsAction(input: {
         });
       }
       for (const sid of toAdd) {
-        await tx.staffSkillAssignment.create({
-          data: { staffId: parsed.data.staffId, skillId: sid },
-        });
+        await tx.staffSkillAssignment.create({ data: { staffId: parsed.data.staffId, skillId: sid } });
       }
       if (toAdd.length > 0 || toRemove.length > 0) {
         await evidenceService.record(tx, {
@@ -229,7 +161,6 @@ export async function setStaffSkillsAction(input: {
         });
       }
     },
+    { requireAdmin: true, revalidate: '/staff/admin/users' },
   );
-  revalidatePath('/staff/admin/users');
-  return { ok: true };
 }

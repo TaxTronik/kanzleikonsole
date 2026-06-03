@@ -1,7 +1,8 @@
 'use client';
 
 import { useActionState, useRef, useEffect } from 'react';
-import { createSkillAction, type ActionResult } from './actions';
+import { createSkillAction } from './actions';
+import type { ActionResult } from '@/server/actions/staff-action';
 
 const COLOR_OPTIONS: Array<{ value: string; label: string }> = [
   { value: '', label: '— Keine —' },
