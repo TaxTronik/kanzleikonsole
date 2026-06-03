@@ -16,7 +16,7 @@ import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { CustomFieldsForm } from './custom-fields-form';
-import { AdminFieldsForm, ResponsibilitiesForm, GwgFieldsForm } from './stammdaten-forms';
+import { AdminFieldsForm, ResponsibilitiesForm, GwgFieldsForm, MandateForm } from './stammdaten-forms';
 
 const KIND_LABELS: Record<string, string> = {
   NATPERS: 'Natürliche Person',
@@ -248,6 +248,13 @@ export default async function ClientEditPage({ params }: { params: Promise<{ id:
           <Field label="Land (ISO 2)" name="countryIso" defaultValue={client.countryIso ?? 'DE'} />
         </div>
       </GwgFieldsForm>
+
+      {isAdmin && (
+        <MandateForm
+          clientId={client.id}
+          mandateEndedAt={client.mandateEndedAt ? client.mandateEndedAt.toISOString() : null}
+        />
+      )}
     </div>
   );
 }

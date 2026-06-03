@@ -6,6 +6,7 @@ import {
   saveAdminFieldsAction,
   saveGwgFieldsAction,
   setResponsibilitiesAction,
+  setMandateEndAction,
   type ActionResult,
 } from './actions';
 
@@ -107,6 +108,53 @@ export function ResponsibilitiesForm({
       )}
       <div className="flex justify-end mt-4">
         <SaveButton isPending={isPending} label="Zuordnung speichern" />
+      </div>
+    </form>
+  );
+}
+
+/**
+ * Mandatsende — startet/stoppt die GwG-Lösch-Uhr (§ 8 Abs. 4). Reversibel
+ * (wieder aufnehmen löscht das Datum), daher kein harter Confirm.
+ */
+export function MandateForm({
+  clientId,
+  mandateEndedAt,
+}: {
+  clientId: string;
+  mandateEndedAt: string | null;
+}) {
+  const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
+    setMandateEndAction,
+    null,
+  );
+  useRefreshOnSuccess(state);
+  const ended = mandateEndedAt != null;
+
+  return (
+    <form action={formAction} className="card p-6 mb-6 border-amber-200">
+      <h2 className="text-sm font-medium text-primary mb-1">Mandatsende (GwG-Aufbewahrung)</h2>
+      <p className="text-xs text-muted mb-4">
+        Markiert das Ende der Geschäftsbeziehung und startet die 5-Jahres-Lösch-Uhr
+        (§ 8 Abs. 4 GwG) für die GwG-Belege. Nach Fristablauf erscheinen sie unter
+        Admin → GwG-Pflichtlöschung zur bestätigten Vernichtung.
+      </p>
+      <input type="hidden" name="clientId" value={clientId} />
+      <input type="hidden" name="ended" value={ended ? '0' : '1'} />
+      <p className="text-sm">
+        {ended ? (
+          <>
+            Mandat beendet seit{' '}
+            <strong>{new Date(mandateEndedAt!).toLocaleDateString('de-DE')}</strong>.
+          </>
+        ) : (
+          <span className="text-muted">Mandat ist aktiv.</span>
+        )}
+      </p>
+      {state?.error && <p className="alert-error-sm mt-4">{state.error}</p>}
+      {state?.ok && <p className="alert-success-sm mt-4">Gespeichert.</p>}
+      <div className="flex justify-end mt-4">
+        <SaveButton isPending={isPending} label={ended ? 'Mandat wieder aufnehmen' : 'Mandat beenden'} />
       </div>
     </form>
   );

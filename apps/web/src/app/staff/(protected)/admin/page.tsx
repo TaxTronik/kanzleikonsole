@@ -19,6 +19,7 @@ import { evidenceService } from '@/server/container';
 import { checkForUpdates, type CheckResult } from '@/server/update/manifest';
 import { getLicenseInfo } from '@/server/license/state';
 import { getSetupStatus } from '@/server/setup/status';
+import { findDueGwgDeletionDocs } from '@/server/gwg/retention';
 import { LicenseCard } from './license-card';
 import { fmtDateTimeShort } from '@/lib/fmt';
 
@@ -35,19 +36,21 @@ export default async function AdminPage() {
 
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
 
-  const [chainResult, lastBackup, openDsgvoCount, providerCount, contactCount] = await withTenantContext(
-    ctx,
-    async (tx) =>
-      Promise.all([
-        evidenceService.verifyChain(tx, tenantId).catch(() => null),
-        tx.backupRecord.findFirst({
-          orderBy: { startedAt: 'desc' },
-        }),
-        tx.dsgvoRequest.count({ where: { status: { in: ['RECEIVED', 'IN_PROGRESS'] } } }),
-        tx.serviceProvider.count(),
-        tx.clientContact.count({ where: { active: true } }),
-      ]),
-  );
+  const [chainResult, lastBackup, openDsgvoCount, providerCount, contactCount, gwgDueCount] =
+    await withTenantContext(
+      ctx,
+      async (tx) =>
+        Promise.all([
+          evidenceService.verifyChain(tx, tenantId).catch(() => null),
+          tx.backupRecord.findFirst({
+            orderBy: { startedAt: 'desc' },
+          }),
+          tx.dsgvoRequest.count({ where: { status: { in: ['RECEIVED', 'IN_PROGRESS'] } } }),
+          tx.serviceProvider.count(),
+          tx.clientContact.count({ where: { active: true } }),
+          findDueGwgDeletionDocs(tx).then((d) => d.length),
+        ]),
+    );
 
   const setup = await getSetupStatus(ctx);
 
@@ -277,6 +280,16 @@ export default async function AdminPage() {
             <Link href="/staff/admin/dsgvo" className="text-brand-700 hover:underline">
               → DSGVO-Anfragen
             </Link>
+          </li>
+          <li>
+            <Link href="/staff/admin/gwg-retention" className="text-brand-700 hover:underline">
+              → GwG-Pflichtlöschung (§ 8 Abs. 4)
+            </Link>
+            {gwgDueCount > 0 && (
+              <span className="ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                {gwgDueCount} löschreif
+              </span>
+            )}
           </li>
           <li>
             <Link href="/staff/service-providers" className="text-brand-700 hover:underline">
