@@ -27,6 +27,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'document.move_folder': 'Dokument in Ordner verschoben',
   'document.share': 'Dokument für Mandant freigegeben',
   'document.unshare': 'Mandanten-Freigabe zurückgezogen',
+  'document.text_extract': 'Dokumenttext extrahiert',
 
   // Dokument-Ablage (Ordner + Typen)
   'document_folder.create': 'Ordner angelegt',
@@ -40,6 +41,7 @@ export const ACTION_LABELS: Record<string, string> = {
   // Anforderungen
   'request.create': 'Anforderung erstellt',
   'request.response': 'Antwort gesendet',
+  'request.response.inbound_mail': 'Antwort per E-Mail eingegangen',
   'request.close': 'Anforderung geschlossen',
 
   // Telefonzettel
@@ -70,7 +72,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'client_contact.update': 'Ansprechpartner aktualisiert',
   'client_contact.deactivate': 'Ansprechpartner deaktiviert',
 
-  // GwG
+  // GwG-Prüfung
   'gwg.check.open': 'GwG-Prüfung gestartet',
   'gwg.check.assess': 'GwG-Risikobewertung',
   'gwg.owner.add': 'Wirtschaftlich Berechtigter erfasst',
@@ -111,6 +113,8 @@ export const ACTION_LABELS: Record<string, string> = {
 
   // Abwesenheiten
   'vacation.request': 'Urlaubsantrag',
+  'vacation.approve': 'Urlaubsantrag genehmigt',
+  'vacation.reject': 'Urlaubsantrag abgelehnt',
   'vacation.cancel': 'Urlaubsantrag zurückgezogen',
   'sick.create': 'Krankmeldung',
 
@@ -130,6 +134,10 @@ export const ACTION_LABELS: Record<string, string> = {
 
   // DSGVO
   'dsgvo.request.create': 'DSGVO-Anfrage erstellt',
+  'dsgvo.request.received': 'DSGVO-Anfrage eingegangen',
+  'dsgvo.request.in_progress': 'DSGVO-Anfrage in Bearbeitung',
+  'dsgvo.request.completed': 'DSGVO-Anfrage abgeschlossen',
+  'dsgvo.request.rejected': 'DSGVO-Anfrage abgelehnt',
   'dsgvo.export.contact': 'DSGVO-Datenauskunft',
   'dsgvo.anonymize.contact': 'DSGVO-Anonymisierung',
 
@@ -158,6 +166,8 @@ export const ACTION_LABELS: Record<string, string> = {
 
   // Mitarbeiter
   'staff.create': 'Mitarbeiter angelegt',
+  'staff.activate': 'Mitarbeiter aktiviert',
+  'staff.deactivate': 'Mitarbeiter deaktiviert',
   'staff.roles.update': 'Mitarbeiter-Rollen geändert',
   'staff.skills.update': 'Mitarbeiter-Tätigkeiten geändert',
   'staff_skill.create': 'Tätigkeit angelegt',
@@ -166,6 +176,7 @@ export const ACTION_LABELS: Record<string, string> = {
 
   // Tenant-Einstellungen (weitere)
   'tenant.settings.modules.update': 'Module geändert',
+  'tenant.settings.access_policy.update': 'Zugriffsmodell geändert',
   'tenant.settings.tax_region.update': 'Steuer-Region geändert',
   'tenant.settings.smtp.update': 'SMTP-Einstellungen geändert',
   'tenant.settings.smtp.reset': 'SMTP-Einstellungen zurückgesetzt',
@@ -182,6 +193,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'workflow.instance.auto_resume': 'Workflow automatisch fortgesetzt',
   'workflow.item.add': 'Workflow-Schritt hinzugefügt',
   'workflow.item.handover': 'Workflow-Schritt übergeben',
+  'workflow.item.comment': 'Workflow-Schritt kommentiert',
   'workflow.instance.members_update': 'Workflow-Team geändert',
   'document.acknowledge': 'Dokument-Empfang bestätigt',
   'document.unacknowledge': 'Empfangsbestätigung zurückgenommen',
@@ -213,6 +225,8 @@ export const ACTION_LABELS: Record<string, string> = {
   // GwG-Onboarding (Mandanten-Selbstidentifizierung)
   'gwg.onboarding.invite': 'GwG-Onboarding eingeladen',
   'gwg.onboarding.cancel': 'GwG-Onboarding abgebrochen',
+  'gwg.onboarding.upload.id': 'GwG-Onboarding: Ausweis hochgeladen',
+  'gwg.onboarding.upload.extra': 'GwG-Onboarding: Zusatzdokument hochgeladen',
   'gwg.onboarding.submit': 'GwG-Onboarding eingereicht',
 
   // Stammdaten-Änderungsanträge (Mandanten-Self-Service)
@@ -269,6 +283,8 @@ export const ACTION_LABELS: Record<string, string> = {
   'risk.catalog.defined': 'Katalog-Begriff definiert',
   'risk.research.sent': 'Rechercheauftrag gesendet',
   'risk.research.received': 'Rechercheergebnis empfangen',
+  'risk.research.assigned': 'Rechercheergebnis zugeordnet',
+  'risk.research.discarded': 'Rechercheergebnis verworfen',
 };
 
 export const RESOURCE_TYPE_LABELS: Record<string, string> = {
