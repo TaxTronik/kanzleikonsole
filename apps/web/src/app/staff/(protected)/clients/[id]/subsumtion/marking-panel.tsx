@@ -28,6 +28,12 @@ export function MarkingPanel(props: {
 }) {
   const { clientId, analysisId, marking: m, staffOptions, engineConfigured, pending, start, onChanged, onClose, flash } = props;
 
+  // Tatsächlich markierter Text (Fundstelle) — Whitespace geglättet, gekappt.
+  // Nur zeigen, wenn er sich vom Begriff unterscheidet (sonst redundant, z. B. wörtlich).
+  const fundstelle = m.matchedText.replace(/\s+/g, ' ').trim();
+  const showFundstelle = fundstelle.length > 0 && fundstelle !== m.begriff.trim();
+  const fundstelleShort = fundstelle.length > 220 ? fundstelle.slice(0, 220) + '…' : fundstelle;
+
   const [gov, setGov] = useState(m.governanceTyp ?? '');
   const [intens, setIntens] = useState(m.schadensintensitaet ?? '');
   const [wk, setWk] = useState(m.wahrscheinlichkeit ?? '');
@@ -75,7 +81,13 @@ export function MarkingPanel(props: {
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="font-medium text-primary break-words">{m.begriff}</p>
-          <p className="text-xs text-muted mt-0.5 flex items-center gap-1 flex-wrap">
+          {showFundstelle && (
+            <p className="text-xs text-secondary mt-1 break-words" title={fundstelle.length > 220 ? fundstelle : undefined}>
+              <span className="text-muted">markiert: </span>
+              <span className="italic">„{fundstelleShort}"</span>
+            </p>
+          )}
+          <p className="text-xs text-muted mt-1 flex items-center gap-1 flex-wrap">
             <span className={herkunftBadge(m.herkunft) + ' text-[10px]'}>{HERKUNFT_LABEL[m.herkunft]}</span>
             {m.engineStatus && <span className="badge-gray text-[10px]">{ENGINE_STATUS_LABEL[m.engineStatus] ?? m.engineStatus}</span>}
             <span>Zeichen {m.start}–{m.end}</span>
