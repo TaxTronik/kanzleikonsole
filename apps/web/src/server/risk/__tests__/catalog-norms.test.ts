@@ -17,7 +17,7 @@ vi.mock('@/server/container', () => ({ evidenceService: { record: h.record } }))
 // der echte Client wird hier injiziert, new RiskLayerClient() nie erreicht.
 vi.mock('@taxtronik/risk-layer', () => ({ RiskLayerClient: class {} }));
 
-import { kuratiereKatalogNorm, NotACatalogMarkingError, CatalogCurationFailedError } from '../catalog-norms';
+import { kuratiereKatalogNorm, NotACatalogMarkingError } from '../catalog-norms';
 
 type Ctx = Parameters<typeof kuratiereKatalogNorm>[0];
 type Client = Parameters<typeof kuratiereKatalogNorm>[2];
