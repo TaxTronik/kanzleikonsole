@@ -58,6 +58,24 @@ describe('anonymize (§ 203)', () => {
     expect(restored).toContain('50.000 €');
   });
 
+  it('schwärzt E-Mails Dritter heuristisch (eigener [EMAIL_n], kollidiert nicht mit Kontakt-Mail)', () => {
+    const sv =
+      'Rückfrage an Erika Beispiel (erika@example.test); CC ging an die Gegenseite ' +
+      'kanzlei@gegner.example und an buchhaltung@lieferant.example.';
+    const res = anonymize(sv, { client, contacts });
+    // Kontakt-Mail deterministisch (= [EMAIL_1]), Dritt-Mails heuristisch danach.
+    expect(res.text).toContain('[EMAIL_1]');
+    expect(res.text).not.toContain('kanzlei@gegner.example');
+    expect(res.text).not.toContain('buchhaltung@lieferant.example');
+    // Dritt-Mails sind als unsichere Treffer markiert (Vorschau hebt sie hervor).
+    expect(res.heuristicHits.some((h) => /^\[EMAIL_\d+\]$/.test(h))).toBe(true);
+    // Round-Trip stellt ALLE drei Mails wieder her (kein Platzhalter-Clash).
+    const restored = deanonymize(res.text, res.mapping);
+    expect(restored).toContain('erika@example.test');
+    expect(restored).toContain('kanzlei@gegner.example');
+    expect(restored).toContain('buchhaltung@lieferant.example');
+  });
+
   it('leerer/irrelevanter Text bleibt unverändert', () => {
     const empty = anonymize('Allgemeine Rechtsfrage zu § 8c KStG.', { client, contacts });
     expect(empty.text).toBe('Allgemeine Rechtsfrage zu § 8c KStG.');

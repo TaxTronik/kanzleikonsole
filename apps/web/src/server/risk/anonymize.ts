@@ -48,6 +48,11 @@ const FIRMA_SUFFIX = 'GmbH|gGmbH|AG|KGaA|KG|OHG|GbR|UG|mbH|SE';
 
 // Heuristik-Muster: [Regex, Kategorie].
 const HEURISTICS: Array<[RegExp, string]> = [
+  // E-Mail-Adressen Dritter (Lieferanten, Gegenseite, Behörden). Kontakt-Mails
+  // sind oben bereits deterministisch ersetzt — hier bleibt nur, was NICHT in den
+  // Stammdaten steht. E-Mail ist eindeutige PII (§ 203): präzises Muster, kaum
+  // Falsch-Positive. Teilt sich den [EMAIL_n]-Namensraum mit Stufe 1 (s. u.).
+  [/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, 'EMAIL'],
   // Bindestrich-Firmen wie „M-GmbH", „T-GmbH".
   [new RegExp(`\\b[A-ZÄÖÜ][\\wÄÖÜäöüß]*-(?:${FIRMA_SUFFIX})\\b`, 'g'), 'FIRMA'],
   // Mehrwort-Firmen wie „Mustermann GmbH", „Müller & Co. KG".
@@ -131,6 +136,10 @@ export function anonymize(
 
   // --- Stufe 2: heuristisch ------------------------------------------------
   const heurCount: Record<string, number> = {};
+  // Heuristische E-Mails setzen die deterministische [EMAIL_n]-Nummerierung fort,
+  // sonst kollidierten die Platzhalter (zwei verschiedene Originale unter einem
+  // Schlüssel → kaputter De-Anonymisierungs-Round-Trip).
+  heurCount['EMAIL'] = emailN;
   const heurUsed = new Map<string, string>();
   for (const [re, cat] of HEURISTICS) {
     out = out.replace(re, (m) => {
