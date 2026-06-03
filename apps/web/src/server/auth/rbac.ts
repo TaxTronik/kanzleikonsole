@@ -37,6 +37,19 @@ export class ForbiddenError extends Error {
   }
 }
 
+/**
+ * Bewusst UI-taugliche Domänen-Fehlermeldung (z. B. „Name bereits vergeben.").
+ * `toActionError` reicht die Message durch — im Gegensatz zu unerwarteten Fehlern,
+ * die generisch ersetzt werden (kein Leak von Internals). Ersetzt das frühere
+ * `throw new Error(...)` + `return (e as Error).message`-Muster.
+ */
+export class ActionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ActionError';
+  }
+}
+
 export function isStaffAdmin(session: StaffSession | null | undefined): boolean {
   if (!session?.user?.roles) return false;
   return session.user.roles.some((r) => r === 'ADMIN' || r === 'PARTNER');
@@ -135,7 +148,7 @@ export interface ActionErrorResult {
  * und P2003 (FK) bekommen menschenlesbare Meldungen.
  */
 export function toActionError(e: unknown): ActionErrorResult {
-  if (e instanceof UnauthorizedError || e instanceof ForbiddenError) {
+  if (e instanceof UnauthorizedError || e instanceof ForbiddenError || e instanceof ActionError) {
     return { ok: false, error: e.message };
   }
   if (e instanceof Prisma.PrismaClientKnownRequestError) {

@@ -34,9 +34,10 @@ const ALLOWLIST_FNS = new Set([
   'staff/(protected)/poa/actions.ts::requestSigningOtpAction',
 ]);
 
-// Bekannte Autorisierungs-Primitive (Session/Tenant/Ownership).
+// Bekannte Autorisierungs-Primitive (Session/Tenant/Ownership) inkl. der
+// zentralen Staff-Helfer (staffActionGuard/withStaff kapseln staffAuth + Admin).
 const PRIMITIVE =
-  /\b(staffAuth|portalAuth|requireStaffSession|requireStaffAdmin|requireClientAccess|requireSubsumtionAccess|canAccessClient)\b/;
+  /\b(staffAuth|portalAuth|requireStaffSession|requireStaffAdmin|requireClientAccess|requireSubsumtionAccess|canAccessClient|staffActionGuard|withStaff)\b/;
 
 // Delegation: ruft die Action eine ANDERE *Action auf, ist die Autorisierung dort
 // garantiert (jene Action wird von diesem Guardrail selbst geprüft → Transitivität).
