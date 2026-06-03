@@ -38,6 +38,24 @@ export function ExportPanel({
   const [open, setOpen] = useState(false);
   const [sel, setSel] = useState<Set<string>>(() => new Set(ordered.map((m) => m.id)));
 
+  // Die Markierungsmenge ändert sich zur Laufzeit (z. B. „Neu analysieren" hängt
+  // welche an) — der useState-Initializer läuft aber nur einmal. Ohne Abgleich
+  // bliebe `sel` veraltet und neue Markierungen wären stillschweigend abgewählt,
+  // also im Export verschwiegen. Darum synchronisieren: NEUE Markierungen
+  // standardmäßig auswählen (Default = ganzer Bericht), die bisherige Wahl bei
+  // bekannten erhalten, entfernte rauswerfen.
+  const prevIds = useRef<Set<string>>(new Set(ordered.map((m) => m.id)));
+  useEffect(() => {
+    setSel((prev) => {
+      const next = new Set<string>();
+      for (const m of ordered) {
+        if (!prevIds.current.has(m.id) || prev.has(m.id)) next.add(m.id);
+      }
+      return next;
+    });
+    prevIds.current = new Set(ordered.map((m) => m.id));
+  }, [ordered]);
+
   // Herkunfts-Gruppen (nur vorhandene), in stabiler Reihenfolge.
   const groups = useMemo(() => {
     const byH = new Map<Herkunft, string[]>();

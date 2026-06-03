@@ -412,7 +412,12 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
             />
           ) : selected ? (
             <MarkingPanel
-              key={selected.id}
+              // Das Panel leitet sein Formular einmalig aus `marking` ab. „Zuweisen"
+              // (Delegation) ändert status/verantwortlichId aber serverseitig hinter
+              // dem offenen Panel — diese Felder in den Key aufnehmen, damit das Panel
+              // nach dem Refresh neu mountet und den Server-Stand übernimmt (sonst
+              // würde ein späteres „Speichern" die Zuweisung überschreiben).
+              key={`${selected.id}:${selected.status}:${selected.verantwortlichId ?? ''}`}
               clientId={clientId}
               analysisId={initial.id}
               marking={selected}

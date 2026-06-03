@@ -54,7 +54,7 @@ export function MarkingPanel(props: {
         clientId, analysisId, markingId: m.id,
         governanceTyp: (gov || null) as 'FP' | 'FF' | 'IN' | null,
         schadensintensitaet: (intens || null) as 'NIEDRIG' | 'MITTEL' | 'HOCH' | null,
-        wahrscheinlichkeit: (wk || null) as never,
+        wahrscheinlichkeit: (wk || null) as 'SELTEN' | 'MOEGLICH' | 'WAHRSCHEINLICH' | 'HAEUFIG' | null,
         kaskadenreichweite: kask.trim() === '' ? null : Number(kask),
         kontrolle: kontrolle.trim() || null,
         status,
