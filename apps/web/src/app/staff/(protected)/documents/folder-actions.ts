@@ -4,7 +4,8 @@ import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
-import { staffActionGuard } from '@/server/actions/staff-action';
+import { toActionError } from '@/server/auth/rbac';
+import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
 
 export interface FolderActionResult {
   ok: boolean;
@@ -53,7 +54,7 @@ export async function createFolderAction(
             where: { id: parentId, tenantId },
             select: { clientId: true },
           });
-          if (!parent) throw new Error('Übergeordneter Ordner nicht gefunden.');
+          if (!parent) throw new ActionError('Übergeordneter Ordner nicht gefunden.');
           clientId = parent.clientId;
         }
         const folder = await tx.documentFolder.create({
@@ -74,7 +75,7 @@ export async function createFolderAction(
     revalidate(parsed.data.clientId);
     return { ok: true, folderId: id };
   } catch (e) {
-    return { ok: false, error: friendly(e) };
+    return mapFolderError(e);
   }
 }
 
@@ -104,7 +105,7 @@ export async function renameFolderAction(
           where: { id: folderId, tenantId },
           select: { name: true, clientId: true },
         });
-        if (!f) throw new Error('Ordner nicht gefunden.');
+        if (!f) throw new ActionError('Ordner nicht gefunden.');
         await tx.documentFolder.update({ where: { id: folderId }, data: { name } });
         await evidenceService.record(tx, {
           tenantId,
@@ -122,7 +123,7 @@ export async function renameFolderAction(
     revalidate(clientId);
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: friendly(e) };
+    return mapFolderError(e);
   }
 }
 
@@ -150,7 +151,7 @@ export async function deleteFolderAction(
           where: { id: folderId, tenantId },
           select: { name: true, parentId: true, clientId: true },
         });
-        if (!f) throw new Error('Ordner nicht gefunden.');
+        if (!f) throw new ActionError('Ordner nicht gefunden.');
         // Inhalte in den Parent reparentieren — Dokumente bleiben erhalten.
         await tx.document.updateMany({
           where: { folderId, tenantId },
@@ -177,7 +178,7 @@ export async function deleteFolderAction(
     revalidate(clientId);
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: friendly(e) };
+    return mapFolderError(e);
   }
 }
 
@@ -208,16 +209,16 @@ export async function moveFolderAction(
           where: { id: folderId, tenantId },
           select: { clientId: true, parentId: true },
         });
-        if (!f) throw new Error('Ordner nicht gefunden.');
+        if (!f) throw new ActionError('Ordner nicht gefunden.');
 
         if (newParentId) {
           const np = await tx.documentFolder.findFirst({
             where: { id: newParentId, tenantId },
             select: { clientId: true },
           });
-          if (!np) throw new Error('Zielordner nicht gefunden.');
+          if (!np) throw new ActionError('Zielordner nicht gefunden.');
           if (np.clientId !== f.clientId) {
-            throw new Error('Verschieben über Mandanten-/Bereichsgrenzen nicht erlaubt.');
+            throw new ActionError('Verschieben über Mandanten-/Bereichsgrenzen nicht erlaubt.');
           }
           // Zyklus verhindern: von newParent nach oben laufen; trifft man
           // folderId, läge der Ordner in seinem eigenen Teilbaum.
@@ -225,7 +226,7 @@ export async function moveFolderAction(
           let guard = 0;
           while (cursor && guard++ < 1000) {
             if (cursor === folderId) {
-              throw new Error('Zielordner liegt im eigenen Unterbaum.');
+              throw new ActionError('Zielordner liegt im eigenen Unterbaum.');
             }
             const up: { parentId: string | null } | null =
               await tx.documentFolder.findFirst({
@@ -256,7 +257,7 @@ export async function moveFolderAction(
     revalidate(clientId);
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: friendly(e) };
+    return mapFolderError(e);
   }
 }
 
@@ -286,17 +287,17 @@ export async function setDocumentFolderAction(
           where: { id: documentId, tenantId, deletedAt: null },
           select: { clientId: true, folderId: true },
         });
-        if (!doc) throw new Error('Dokument nicht gefunden.');
+        if (!doc) throw new ActionError('Dokument nicht gefunden.');
         if (folderId) {
           const folder = await tx.documentFolder.findFirst({
             where: { id: folderId, tenantId },
             select: { clientId: true },
           });
-          if (!folder) throw new Error('Ordner nicht gefunden.');
+          if (!folder) throw new ActionError('Ordner nicht gefunden.');
           // Ein Ordner gehört zu einem Mandanten (oder kanzlei-intern).
           // Ein Dokument darf nur in einen Ordner desselben Bereichs.
           if ((folder.clientId ?? null) !== (doc.clientId ?? null)) {
-            throw new Error('Ordner gehört zu einem anderen Mandanten/Bereich.');
+            throw new ActionError('Ordner gehört zu einem anderen Mandanten/Bereich.');
           }
         }
         await tx.document.update({
@@ -319,15 +320,19 @@ export async function setDocumentFolderAction(
     revalidate(clientId);
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: friendly(e) };
+    return mapFolderError(e);
   }
 }
 
-function friendly(e: unknown): string {
-  const msg = (e as Error).message ?? 'Fehler.';
-  // Unique-Index-Verletzung → verständliche Meldung.
-  if (msg.includes('document_folder_level_name_uniq') || msg.includes('Unique constraint')) {
-    return 'Auf dieser Ebene gibt es bereits einen Ordner mit diesem Namen.';
+function mapFolderError(e: unknown): FolderActionResult {
+  // Unique-Index-Verletzung (gleicher Ordnername auf einer Ebene) → verständliche
+  // Meldung. P2002-Code ODER der konkrete Constraint-/Prisma-Text.
+  const code = (e as { code?: string }).code;
+  const msg = (e as Error)?.message ?? '';
+  if (code === 'P2002' || msg.includes('document_folder_level_name_uniq') || msg.includes('Unique constraint')) {
+    return { ok: false, error: 'Auf dieser Ebene gibt es bereits einen Ordner mit diesem Namen.' };
   }
-  return msg;
+  // Domänen-Fehler (ActionError) reicht toActionError UI-sicher durch; alles
+  // andere wird generisch — kein Leak roher Prisma-Internals mehr.
+  return toActionError(e);
 }

@@ -26,14 +26,14 @@ export async function bulkCloseRequestsAction(input: { ids: string[] }): Promise
   const parsed = BulkSchema.safeParse(input);
   if (!parsed.success) return { ok: false, affected: 0, error: 'Validierungsfehler.' };
 
-  const affected = await withTenantContext(ctx, async (tx) => {
+  const closedIds = await withTenantContext(ctx, async (tx) => {
     const before = await tx.request.findMany({
       where: { id: { in: parsed.data.ids }, status: { notIn: ['CLOSED', 'CANCELLED'] } },
       select: { id: true, status: true, title: true },
     });
-    if (before.length === 0) return 0;
+    if (before.length === 0) return [] as string[];
 
-    const result = await tx.request.updateMany({
+    await tx.request.updateMany({
       where: { id: { in: before.map((b) => b.id) } },
       data: { status: 'CLOSED', closedAt: new Date(), closedByStaff: staffId },
     });
@@ -52,13 +52,16 @@ export async function bulkCloseRequestsAction(input: { ids: string[] }): Promise
       });
     }
 
-    return result.count;
+    return before.map((b) => b.id);
   });
 
-  // n8n-Events fire-and-forget pro ID
-  for (const id of parsed.data.ids) {
+  // n8n-Events fire-and-forget — NUR über die tatsächlich geschlossenen Requests.
+  // Über die rohe Eingabe (parsed.data.ids) zu feuern würde request.closed auch
+  // für bereits geschlossene, nicht existierende oder RLS-gefilterte IDs auslösen
+  // → spurious, client-wirksame Downstream-Notifications.
+  for (const id of closedIds) {
     emitN8nEvent('request.closed', { tenantId, requestId: id });
   }
   revalidatePath('/staff/requests');
-  return { ok: true, affected };
+  return { ok: true, affected: closedIds.length };
 }
