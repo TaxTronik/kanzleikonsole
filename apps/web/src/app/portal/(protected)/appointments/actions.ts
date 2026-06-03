@@ -9,6 +9,7 @@ import { evidenceService } from '@/server/container';
 import { notify } from '@/server/notifications/service';
 import { assertPortalFeature } from '@/server/settings/portal-features';
 import { checkRateLimit } from '@/server/rate-limit';
+import { withPortalContext, ActionError } from '@/server/actions/portal-action';
 
 export interface ActionResult { ok: boolean; error?: string; id?: string; }
 
@@ -163,40 +164,30 @@ export async function createAppointmentRequestAction(
 }
 
 export async function cancelAppointmentRequestAction(input: { id: string }): Promise<ActionResult> {
-  const session = await portalAuth();
-  if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { tenantId, contactId, clientId } = session.user;
 
-  try {
-    await withTenantContext(
-      { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' },
-      async (tx) => {
-        const req = await tx.appointmentRequest.findUnique({
-          where: { id: parsed.data.id },
-          select: { clientId: true, status: true },
-        });
-        if (!req) throw new Error('Anfrage nicht gefunden.');
-        if (req.clientId !== clientId) throw new Error('Keine Berechtigung.');
-        if (req.status !== 'PENDING') throw new Error('Anfrage ist nicht mehr offen.');
+  return withPortalContext(
+    async (tx, { tenantId, contactId, clientId }) => {
+      const req = await tx.appointmentRequest.findUnique({
+        where: { id: parsed.data.id },
+        select: { clientId: true, status: true },
+      });
+      if (!req) throw new ActionError('Anfrage nicht gefunden.');
+      if (req.clientId !== clientId) throw new ActionError('Keine Berechtigung.');
+      if (req.status !== 'PENDING') throw new ActionError('Anfrage ist nicht mehr offen.');
 
-        await tx.appointmentRequest.update({
-          where: { id: parsed.data.id },
-          data: { status: 'CANCELLED', decidedAt: new Date() },
-        });
-        await evidenceService.record(tx, {
-          tenantId, actorType: 'CLIENT_CONTACT', actorId: contactId,
-          action: 'appointment_request.cancel',
-          resourceType: 'appointment_request',
-          resourceId: parsed.data.id,
-        });
-      },
-    );
-  } catch (e) {
-    return { ok: false, error: (e as Error).message };
-  }
-  revalidatePath('/portal/appointments');
-  revalidatePath('/staff/calendar');
-  return { ok: true };
+      await tx.appointmentRequest.update({
+        where: { id: parsed.data.id },
+        data: { status: 'CANCELLED', decidedAt: new Date() },
+      });
+      await evidenceService.record(tx, {
+        tenantId, actorType: 'CLIENT_CONTACT', actorId: contactId,
+        action: 'appointment_request.cancel',
+        resourceType: 'appointment_request',
+        resourceId: parsed.data.id,
+      });
+    },
+    { revalidate: ['/portal/appointments', '/staff/calendar'] },
+  );
 }

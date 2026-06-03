@@ -22,17 +22,16 @@ import type { TenantContext, TxClient } from '@taxtronik/db';
 import { staffAuth, type StaffSession } from '@/server/auth/staff';
 import { isStaffAdmin, toActionError, ActionError, type ActionErrorResult } from '@/server/auth/rbac';
 import { decideStaffGuard } from './staff-action-policy';
+import type { ActionResult } from './types';
 
 // Domänen-Fehler mit UI-tauglicher Message — innerhalb eines withStaff-Callbacks
 // werfen, um eine konkrete Meldung an den Client zu geben (statt generisch).
 export { ActionError };
 export { decideStaffGuard };
 
-/** Einheitliches Action-Ergebnis (vorher 81× lokal neu definiert). */
-export interface ActionResult {
-  ok: boolean;
-  error?: string;
-}
+// Einheitliches Action-Ergebnis liegt neutral in ./types — hier re-exportiert,
+// damit der bestehende Import-Pfad '@/server/actions/staff-action' stabil bleibt.
+export type { ActionResult } from './types';
 
 export interface StaffCtx {
   session: StaffSession;
