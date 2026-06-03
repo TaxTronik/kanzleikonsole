@@ -7,9 +7,9 @@ import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { notify } from '@/server/notifications/service';
 import { toActionError } from '@/server/auth/rbac';
-import { staffActionGuard, withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
+import { staffActionGuard, withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
 
-export type { ActionResult };
+export type ActionResult = BaseActionResult;
 
 const CreateSchema = z.object({
   callerName: z.string().min(1).max(200),

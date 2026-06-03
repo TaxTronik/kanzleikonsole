@@ -2,9 +2,9 @@
 
 import { z } from 'zod';
 import { evidenceService } from '@/server/container';
-import { withStaff, type ActionResult } from '@/server/actions/staff-action';
+import { withStaff, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
 
-export type { ActionResult };
+export type ActionResult = BaseActionResult;
 
 const Schema = z.object({
   name: z.string().min(1).max(200),

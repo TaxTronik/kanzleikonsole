@@ -3,9 +3,9 @@
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { WIDGET_BY_TYPE, type DashboardLayout } from '@/server/dashboard/widgets';
-import { withStaff, type ActionResult } from '@/server/actions/staff-action';
+import { withStaff, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
 
-export type { ActionResult };
+export type ActionResult = BaseActionResult;
 
 const LayoutSchema = z.object({
   version: z.literal(2),

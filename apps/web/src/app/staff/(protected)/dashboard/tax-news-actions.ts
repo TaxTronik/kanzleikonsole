@@ -4,9 +4,9 @@ import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { toActionError } from '@/server/auth/rbac';
 import { evidenceService } from '@/server/container';
-import { staffActionGuard, withStaff, type ActionResult } from '@/server/actions/staff-action';
+import { staffActionGuard, withStaff, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
 
-export type { ActionResult };
+export type ActionResult = BaseActionResult;
 
 export async function toggleTaxNewsNotifyAction(input: { enabled: boolean }): Promise<ActionResult> {
   const parsed = z.object({ enabled: z.boolean() }).safeParse(input);

@@ -11,9 +11,9 @@ import { prismaBytes } from '@/server/db/prisma-bytes';
 import { sendTemplateMail } from '@/server/mail/dispatch';
 import { toActionError } from '@/server/auth/rbac';
 import { ensureZugferdArchive } from '@/server/invoicing/archive';
-import { staffActionGuard, withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
+import { staffActionGuard, withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
 
-export type { ActionResult };
+export type ActionResult = BaseActionResult;
 
 const PositionSchema = z.object({
   description: z.string().min(1).max(500),

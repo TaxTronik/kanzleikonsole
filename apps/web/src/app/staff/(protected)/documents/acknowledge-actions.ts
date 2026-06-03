@@ -3,9 +3,9 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { evidenceService } from '@/server/container';
-import { withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
+import { withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
 
-export type { ActionResult };
+export type ActionResult = BaseActionResult;
 
 /**
  * „Empfangsbestätigung" eines Dokuments. Markiert nur, wer wann gesehen hat —

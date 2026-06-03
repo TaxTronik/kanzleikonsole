@@ -7,9 +7,9 @@ import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { seedDefaultRssFeeds } from '@/server/rss/defaults';
 import { assertPublicHost } from '@/server/http/ssrf-guard';
-import { staffActionGuard, withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
+import { staffActionGuard, withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
 
-export type { ActionResult };
+export type ActionResult = BaseActionResult;
 
 const UrlSchema = z
   .string()

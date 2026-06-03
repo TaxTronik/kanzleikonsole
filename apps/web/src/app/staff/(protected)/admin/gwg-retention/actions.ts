@@ -6,9 +6,9 @@ import { withTenantContext } from '@taxtronik/db';
 import { deleteObject } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
 import { isGwgDeletionDue } from '@/server/gwg/retention';
-import { staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
+import { staffActionGuard, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
 
-export type { ActionResult };
+export type ActionResult = BaseActionResult;
 
 /**
  * Bestätigte GwG-Pflichtvernichtung (§ 8 Abs. 4) eines löschreifen Beweis-

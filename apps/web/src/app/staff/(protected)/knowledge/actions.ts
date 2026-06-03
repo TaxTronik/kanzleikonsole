@@ -8,9 +8,9 @@ import { revalidatePath } from 'next/cache';
 import { Prisma } from '@prisma/client';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
-import { staffActionGuard, withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
+import { staffActionGuard, withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
 
-export type { ActionResult };
+export type ActionResult = BaseActionResult;
 
 function slugify(s: string): string {
   return slugifyLib(s, { separator: '-', maxLength: 80 }) || 'eintrag';

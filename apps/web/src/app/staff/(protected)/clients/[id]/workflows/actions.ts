@@ -7,10 +7,10 @@ import { evidenceService } from '@/server/container';
 import { executeWorkflowStep, type ExecuteResult } from '@/server/workflows/execute-step';
 import { parseStepConfig } from '@/server/workflows/step-config';
 import { assertStaffInTenant } from '@/server/db/assert-tenant';
-import { staffActionGuard, withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
+import { staffActionGuard, withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
 
 // Einheitliches Action-Ergebnis aus der zentralen Quelle.
-export type { ActionResult };
+export type ActionResult = BaseActionResult;
 
 export async function startInstanceAction(input: {
   clientId: string;

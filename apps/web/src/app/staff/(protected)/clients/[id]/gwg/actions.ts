@@ -10,11 +10,11 @@ import { computeRiskScore } from '@/server/gwg/risk-score';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { notifyClientContacts } from '@/server/mail/dispatch';
 import { portalBaseUrl } from '@taxtronik/config';
-import { staffActionGuard, withStaff, ActionError } from '@/server/actions/staff-action';
+import { staffActionGuard, withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
 
 // Einheitliches Action-Ergebnis aus der zentralen Quelle — der bestehende
 // Import-Pfad './actions' bleibt für die Form-Komponenten stabil.
-export type { ActionResult } from '@/server/actions/staff-action';
+export type ActionResult = BaseActionResult;
 
 const OpenSchema = z.object({ clientId: z.string().uuid() });
 
