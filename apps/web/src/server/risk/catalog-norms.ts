@@ -19,6 +19,36 @@ export type NormKuratierScope = 'personal' | 'geteilt';
 
 /** Minimaler Client-Vertrag für DI/Tests. */
 export type KatalogKuratierClient = Pick<RiskLayerClient, 'katalogNormKuratieren'>;
+export type KatalogReadClient = Pick<RiskLayerClient, 'katalogKuratierungBegriff'>;
+
+/** Aufbereitete Begriffs-Sicht des Katalog-Zustands (für das Panel-Overlay). */
+export interface KatalogKuratierungView {
+  katalogId: string;
+  /** Katalogweit verworfene Norm-IDs. */
+  verworfen: string[];
+  /** Katalogweit ergänzte Normen. */
+  ergaenzt: { zitat: string; id: string | null }[];
+}
+
+/**
+ * Liest den katalogweiten Kuratierungszustand EINES Begriffs (verworfene/ergänzte
+ * Normen) — zum Überlagern der Norm-Anzeige. Read-only, KEIN Audit, kein DB-Zugriff
+ * (die Engine scoped per `nutzer`; Tenant = Engine-Deployment). Best-effort: der
+ * Aufrufer toleriert Fehler (Endpoint evtl. noch nicht live → kein Overlay).
+ */
+export async function readKatalogKuratierung(
+  katalogId: string,
+  nutzer: string,
+  client?: KatalogReadClient,
+): Promise<KatalogKuratierungView> {
+  const c = client ?? new RiskLayerClient();
+  const res = await c.katalogKuratierungBegriff({ katalogId, nutzer });
+  return {
+    katalogId,
+    verworfen: res.verworfen,
+    ergaenzt: res.ergaenzt.map((e) => ({ zitat: e.zitat, id: e.id ?? null })),
+  };
+}
 
 export class NotACatalogMarkingError extends Error {
   constructor() {

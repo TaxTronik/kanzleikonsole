@@ -98,6 +98,39 @@ export const ENGINE_STATUS_LABEL: Record<string, string> = {
   berater: 'Berater-Definition',
 };
 
+// --- Katalog-Overlay (katalogweiter Kuratierungszustand eines Begriffs) -------
+// Read-Seite (GET /v1/katalog/kuratierung): überlagert die Norm-Liste, damit der
+// Berater katalogweit-kuratierte Normen von per-Fall-Edits unterscheiden kann.
+
+export interface KatalogOverlay {
+  /** Katalogweit verworfene Norm-IDs. */
+  verworfen: Set<string>;
+  ergaenztIds: Set<string>;
+  ergaenztZitate: Set<string>;
+}
+
+export function buildKatalogOverlay(view: {
+  verworfen: string[];
+  ergaenzt: Array<{ zitat: string; id: string | null }>;
+}): KatalogOverlay {
+  return {
+    verworfen: new Set(view.verworfen),
+    ergaenztIds: new Set(view.ergaenzt.map((e) => e.id).filter((x): x is string => !!x)),
+    ergaenztZitate: new Set(view.ergaenzt.map((e) => e.zitat)),
+  };
+}
+
+/** Katalogweiter Status einer Norm: verworfen / ergaenzt / null (kein Eintrag). */
+export function katalogStatus(
+  ref: { id: string | null; zitat: string },
+  overlay: KatalogOverlay | null,
+): 'verworfen' | 'ergaenzt' | null {
+  if (!overlay) return null;
+  if (ref.id && overlay.verworfen.has(ref.id)) return 'verworfen';
+  if ((ref.id && overlay.ergaenztIds.has(ref.id)) || overlay.ergaenztZitate.has(ref.zitat)) return 'ergaenzt';
+  return null;
+}
+
 /** Anzeige-Filter: 6 Herkünfte + Streit. */
 export const FILTER_KEYS = [
   'WOERTLICH',

@@ -18,6 +18,8 @@ import {
   HealthResponseSchema,
   KatalogDefiniereResponseSchema,
   KatalogKuratiereResponseSchema,
+  KatalogKuratierungBegriffSchema,
+  KatalogKuratierungListeSchema,
   KatalogResponseSchema,
   LlmStartResponseSchema,
   LlmStatusResponseSchema,
@@ -25,6 +27,8 @@ import {
   type HealthResponse,
   type KatalogDefiniereResponse,
   type KatalogKuratiereResponse,
+  type KatalogKuratierungBegriff,
+  type KatalogKuratierungListe,
   type KatalogResponse,
   type LlmStartResponse,
   type LlmStatusResponse,
@@ -168,6 +172,27 @@ export class RiskLayerClient {
       retry: NO_RETRY,
     });
     return KatalogKuratiereResponseSchema.parse(raw);
+  }
+
+  /**
+   * `GET /v1/katalog/kuratierung?katalog_id=&nutzer=` — aufbereitete Sicht eines
+   * Begriffs (verworfene Norm-IDs + ergänzte Normen) zum Überlagern der Anzeige.
+   * Read-only/idempotent → retrybar.
+   */
+  async katalogKuratierungBegriff(input: { katalogId: string; nutzer?: string }): Promise<KatalogKuratierungBegriff> {
+    const query: Record<string, string> = { katalog_id: input.katalogId };
+    if (input.nutzer) query.nutzer = input.nutzer;
+    const raw = await this.request('GET', '/v1/katalog/kuratierung', { query, retry: FAST_RETRY });
+    return KatalogKuratierungBegriffSchema.parse(raw);
+  }
+
+  /** `GET /v1/katalog/kuratierung?nutzer=` — ALLE Kuratierungen (Review), scope-
+   *  gefiltert. Ohne `katalog_id`. Read-only/idempotent → retrybar. */
+  async katalogKuratierungAlle(input: { nutzer?: string } = {}): Promise<KatalogKuratierungListe> {
+    const query: Record<string, string> = {};
+    if (input.nutzer) query.nutzer = input.nutzer;
+    const raw = await this.request('GET', '/v1/katalog/kuratierung', { query, retry: FAST_RETRY });
+    return KatalogKuratierungListeSchema.parse(raw);
   }
 
   // --- Normgraph (Cross-Reference) ------------------------------------------

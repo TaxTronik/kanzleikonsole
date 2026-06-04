@@ -1,15 +1,17 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { X, Save, Send, BookPlus, BookmarkPlus, Trash2, AlertTriangle, Webhook, Eye, Loader2, ChevronRight, Scale, Search, Undo2, Library } from 'lucide-react';
 import {
   updateMarkingAction, deleteMarkingAction, delegateAction, pushDefinitionAction,
   previewResearchAction, sendResearchAction, resolveNormAction,
-  searchNormAction, addBeraterNormAction, setNormVerworfenAction, removeBeraterNormAction, kuratiereKatalogNormAction,
+  searchNormAction, addBeraterNormAction, setNormVerworfenAction, removeBeraterNormAction,
+  kuratiereKatalogNormAction, katalogKuratierungAction,
   listPromptTemplatesAction, createPromptTemplateAction, deletePromptTemplateAction,
 } from './actions';
 import {
-  type MarkingDTO, type NormRefDTO, GOV_LABEL, STATUS_LABEL, HERKUNFT_LABEL, ENGINE_STATUS_LABEL, herkunftBadge,
+  type MarkingDTO, type NormRefDTO, type KatalogOverlay, GOV_LABEL, STATUS_LABEL, HERKUNFT_LABEL, ENGINE_STATUS_LABEL,
+  herkunftBadge, buildKatalogOverlay, katalogStatus,
 } from './_ui';
 import type { ResolvedNorm, NormHit, PromptTemplateDTO } from '@/server/risk';
 
@@ -417,6 +419,18 @@ function NormRefList({
     : fallback.map((z) => ({ zitat: z, id: null, titel: null, quelle: 'ENGINE' as const, verworfen: false }));
   const [showAdd, setShowAdd] = useState(false);
 
+  // Katalog-Overlay (GET /v1/katalog/kuratierung): best-effort: zeigt, welche
+  // Normen katalogweit (kanzlei) kuratiert sind — getrennt vom per-Fall-Zustand.
+  // Scheitert der Call (Endpoint noch nicht live), bleibt das Overlay einfach leer.
+  const [overlay, setOverlay] = useState<KatalogOverlay | null>(null);
+  const fetchOverlay = useCallback(() => {
+    if (!katalogId) { setOverlay(null); return; }
+    katalogKuratierungAction({ clientId, katalogId })
+      .then((r) => { if (r.ok) setOverlay(buildKatalogOverlay(r)); })
+      .catch(() => { /* best-effort — kein Overlay */ });
+  }, [clientId, katalogId]);
+  useEffect(() => { fetchOverlay(); }, [fetchOverlay]);
+
   return (
     <div className="space-y-1">
       <p className="text-[11px] text-muted inline-flex items-center gap-1">
@@ -426,7 +440,8 @@ function NormRefList({
         <ul className="space-y-1">
           {list.map((r, i) => (
             <NormRefRow key={(r.id ?? r.zitat) + ':' + i} clientId={clientId} markingId={markingId} katalogId={katalogId} index={i}
-              refItem={r} pending={pending} start={start} flash={flash} onChanged={onChanged} />
+              refItem={r} kat={katalogStatus(r, overlay)} pending={pending} start={start} flash={flash}
+              onChanged={onChanged} onKatalogChanged={fetchOverlay} />
           ))}
         </ul>
       )}
@@ -444,10 +459,11 @@ function NormRefList({
 }
 
 function NormRefRow({
-  clientId, markingId, katalogId, index, refItem, pending, start, flash, onChanged,
+  clientId, markingId, katalogId, index, refItem, kat, pending, start, flash, onChanged, onKatalogChanged,
 }: {
   clientId: string; markingId: string; katalogId: string | null; index: number; refItem: NormRefDTO;
-  pending: boolean; start: (cb: () => void) => void; flash: Flash; onChanged: () => void;
+  kat: 'verworfen' | 'ergaenzt' | null;
+  pending: boolean; start: (cb: () => void) => void; flash: Flash; onChanged: () => void; onKatalogChanged: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [showKat, setShowKat] = useState(false);
@@ -502,6 +518,12 @@ function NormRefRow({
           <span className={'font-medium ' + (verworfen ? 'line-through text-disabled' : 'text-secondary')}>{refItem.zitat}</span>
           {refItem.titel && <span className="text-muted truncate">— {refItem.titel}</span>}
           {isBerater && <span className="badge-purple text-[10px] shrink-0">eigene</span>}
+          {kat && (
+            <span className={'inline-flex items-center gap-0.5 text-[10px] shrink-0 ' + (kat === 'verworfen' ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400')}
+              title={kat === 'verworfen' ? 'Katalogweit verworfen (Kanzlei-Regel)' : 'Katalogweit ergänzt (Kanzlei-Regel)'}>
+              <Library className="h-2.5 w-2.5" /> Katalog: {kat === 'verworfen' ? 'verworfen' : 'ergänzt'}
+            </span>
+          )}
         </button>
         <div className="ml-auto flex items-center gap-1.5 pr-1.5 shrink-0">
           {/* Per-Fall-Aktion (nur diese Analyse) — zuerst, direkt an der Norm. */}
@@ -552,7 +574,7 @@ function NormRefRow({
       )}
       {showKat && katalogId && (
         <KatalogPromote markingId={markingId} norm={refItem.zitat} pending={pending} start={start} flash={flash}
-          onClose={() => setShowKat(false)} />
+          onChanged={onKatalogChanged} onClose={() => setShowKat(false)} />
       )}
     </li>
   );
@@ -561,10 +583,10 @@ function NormRefRow({
 /** Katalogweite Promotion (geschichtet): kuratiert eine Norm der Begriffs-Karte
  *  dauerhaft — wirkt auf künftige Analysen. Engine-Call + Audit in TaxTronik. */
 function KatalogPromote({
-  markingId, norm, pending, start, flash, onClose,
+  markingId, norm, pending, start, flash, onChanged, onClose,
 }: {
   markingId: string; norm: string; pending: boolean;
-  start: (cb: () => void) => void; flash: Flash; onClose: () => void;
+  start: (cb: () => void) => void; flash: Flash; onChanged: () => void; onClose: () => void;
 }) {
   const [scope, setScope] = useState<'geteilt' | 'personal'>('geteilt');
   function run(aktion: 'verwerfen' | 'ergaenzen' | 'zuruecksetzen') {
@@ -576,7 +598,7 @@ function KatalogPromote({
           : aktion === 'ergaenzen' ? 'In den Katalog aufgenommen.'
           : 'Katalog-Kuratierung zurückgesetzt.',
       );
-      if (r.ok) onClose();
+      if (r.ok) { onChanged(); onClose(); }
     });
   }
   return (

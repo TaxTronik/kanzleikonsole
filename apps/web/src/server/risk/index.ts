@@ -34,9 +34,10 @@ export {
 } from './norms';
 export type { CuratedNormRef, NormQuelle, NormTarget } from './norms';
 
-export { kuratiereKatalogNorm, NotACatalogMarkingError, CatalogCurationFailedError } from './catalog-norms';
+export { kuratiereKatalogNorm, readKatalogKuratierung, NotACatalogMarkingError, CatalogCurationFailedError } from './catalog-norms';
 export type {
-  KuratiereKatalogNormInput, NormKuratierAktion, NormKuratierScope, KatalogKuratierClient,
+  KuratiereKatalogNormInput, NormKuratierAktion, NormKuratierScope,
+  KatalogKuratierClient, KatalogReadClient, KatalogKuratierungView,
 } from './catalog-norms';
 
 export { getLlmStatus } from './llm';

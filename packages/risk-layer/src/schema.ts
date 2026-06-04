@@ -120,6 +120,42 @@ export const KatalogDefiniereResponseSchema = z.object({
 });
 export type KatalogDefiniereResponse = z.infer<typeof KatalogDefiniereResponseSchema>;
 
+/** `GET /v1/katalog/kuratierung?katalog_id=&nutzer=` — aufbereitete Sicht EINES
+ *  Begriffs (zum Überlagern der Norm-Anzeige im Panel). */
+export const KatalogKuratierungBegriffSchema = z
+  .object({
+    katalog_id: z.string().nullish(),
+    verworfen: z.array(z.string()).default([]),
+    ergaenzt: z
+      .array(z.object({ zitat: z.string(), id: z.string().nullish() }).catchall(z.unknown()))
+      .default([]),
+  })
+  .catchall(z.unknown());
+export type KatalogKuratierungBegriff = z.infer<typeof KatalogKuratierungBegriffSchema>;
+
+/** `GET /v1/katalog/kuratierung?nutzer=` — ALLE Kuratierungen (Review/Governance),
+ *  scope-gefiltert (geteilt + persönliche des Nutzers). */
+export const KatalogKuratierungListeSchema = z
+  .object({
+    kuratierungen: z
+      .array(
+        z
+          .object({
+            katalog_id: z.string(),
+            norm_zitat: z.string().nullish(),
+            norm_id: z.string().nullish(),
+            aktion: z.string(),
+            scope: z.string().nullish(),
+            autor: z.string().nullish(),
+            eingetragen_am: z.string().nullish(),
+          })
+          .catchall(z.unknown()),
+      )
+      .default([]),
+  })
+  .catchall(z.unknown());
+export type KatalogKuratierungListe = z.infer<typeof KatalogKuratierungListeSchema>;
+
 /** `POST /v1/katalog/norm_kuratieren` → katalogweite Norm-Kuratierung (Begriffs-
  *  Karten). `ok:false` trägt `fehler`. Permissiv (catchall) — wir lesen ok/fehler. */
 export const KatalogKuratiereResponseSchema = z

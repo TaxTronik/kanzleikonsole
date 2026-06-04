@@ -36,6 +36,8 @@ export type {
   KatalogResponse,
   KatalogDefiniereResponse,
   KatalogKuratiereResponse,
+  KatalogKuratierungBegriff,
+  KatalogKuratierungListe,
   LlmStatusResponse,
   LlmStartResponse,
   OpaqueObject,

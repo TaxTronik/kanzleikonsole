@@ -34,6 +34,7 @@ import {
   setNormVerworfen,
   removeBeraterNorm,
   kuratiereKatalogNorm,
+  readKatalogKuratierung,
   archiveAnalysis,
   reformatSourceDoc,
   reanalyzeAnalysis,
@@ -719,6 +720,28 @@ export async function kuratiereKatalogNormAction(
       autor: staffId,
     });
     return { ok: true };
+  } catch (e) {
+    return toActionError(e);
+  }
+}
+
+const KatalogKuratierungSchema = z.object({
+  clientId: z.string().uuid(),
+  katalogId: z.string().min(1).max(200),
+});
+
+/** Liest den katalogweiten Kuratierungszustand eines Begriffs (zum Überlagern der
+ *  Norm-Anzeige) — verworfene Norm-IDs + ergänzte Normen, scope-gefiltert für den
+ *  anfragenden Berater. */
+export async function katalogKuratierungAction(
+  input: z.infer<typeof KatalogKuratierungSchema>,
+): Promise<OkActionResult<{ verworfen: string[]; ergaenzt: { zitat: string; id: string | null }[] }>> {
+  try {
+    const parsed = KatalogKuratierungSchema.parse(input);
+    const { staffId } = await guard(parsed.clientId);
+    requireEngine();
+    const view = await readKatalogKuratierung(parsed.katalogId, staffId);
+    return { ok: true, verworfen: view.verworfen, ergaenzt: view.ergaenzt };
   } catch (e) {
     return toActionError(e);
   }
