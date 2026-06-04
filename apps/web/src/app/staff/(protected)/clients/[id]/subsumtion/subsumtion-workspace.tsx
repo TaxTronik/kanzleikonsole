@@ -442,13 +442,19 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
 
       {error && <div className="alert-error-sm">{error}</div>}
       {info && <div className="text-sm text-emerald-700 dark:text-emerald-300">{info}</div>}
+      {/* Flying Pill: fixed → immer sichtbar, egal ob ein Marking-Panel offen ist
+          oder wie weit gescrollt wurde (auch über dem Vollbild-Dokument, z-50). */}
       {pollLlm && !llmFailed && (
-        <div className="rounded-md border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/20 px-3 py-2 text-sm text-purple-800 dark:text-purple-200 inline-flex items-center gap-2">
+        <div
+          className="fixed bottom-6 right-6 z-50 inline-flex items-center gap-2 rounded-full border border-purple-300 dark:border-purple-700 bg-purple-50/95 dark:bg-purple-900/90 px-4 py-2 text-sm text-purple-800 dark:text-purple-100 shadow-lg backdrop-blur"
+          role="status"
+          aria-live="polite"
+          title="Die neuen Markierungen erscheinen automatisch, sobald der Lauf fertig ist. Du kannst weiterarbeiten."
+        >
           <Loader2 className="h-4 w-4 animate-spin shrink-0" />
           <span>
-            <strong>KI-Vertiefung läuft …</strong> im Hintergrund (~15–30 s) — die neuen
-            Markierungen erscheinen automatisch, sobald der Lauf fertig ist. Du kannst
-            weiterarbeiten.
+            <strong>KI-Vertiefung läuft …</strong>{' '}
+            <span className="font-normal text-purple-600 dark:text-purple-300">~15–30 s, im Hintergrund</span>
           </span>
         </div>
       )}
