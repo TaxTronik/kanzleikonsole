@@ -608,6 +608,33 @@ export async function resolveNormAction(
   }
 }
 
+const ResolveByZitatSchema = z.object({
+  clientId: z.string().uuid(),
+  zitat: z.string().trim().min(1).max(200),
+});
+
+/** Löst ein freies Norm-Zitat (z. B. einer eigenen Markierung ohne Engine-ID) über
+ *  den Normgraph auf → Gesetzestext, damit auch frei eingetippte Normen aufklappbar
+ *  sind. Bevorzugt den exakten Zitat-Treffer, sonst den besten. `norm:null` = nichts
+ *  gefunden. `matchedZitat` zeigt an, falls die Engine auf eine gröbere Norm fiel. */
+export async function resolveNormByZitatAction(
+  input: z.infer<typeof ResolveByZitatSchema>,
+): Promise<OkActionResult<{ norm: ResolvedNorm | null; matchedZitat: string | null }>> {
+  try {
+    const parsed = ResolveByZitatSchema.parse(input);
+    await guard(parsed.clientId);
+    requireEngine();
+    const hits = await searchNorm(parsed.zitat);
+    const lc = (s: string) => s.trim().toLowerCase();
+    const hit = hits.find((h) => lc(h.zitat) === lc(parsed.zitat)) ?? hits[0] ?? null;
+    if (!hit) return { ok: true, norm: null, matchedZitat: null };
+    const norm = await resolveNorm(hit.id);
+    return { ok: true, norm, matchedZitat: hit.zitat };
+  } catch (e) {
+    return toActionError(e);
+  }
+}
+
 // --- Rechtsnorm-Kuratierung (Engine-Norm ist nicht verbindlich) ---------------
 
 const SearchNormSchema = z.object({

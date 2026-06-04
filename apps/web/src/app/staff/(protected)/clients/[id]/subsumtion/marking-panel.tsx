@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { X, Save, Send, BookPlus, BookmarkPlus, Trash2, AlertTriangle, Webhook, Eye, Loader2, ChevronRight, Scale, Search, Undo2, Library } from 'lucide-react';
 import {
   updateMarkingAction, deleteMarkingAction, delegateAction, pushDefinitionAction,
-  previewResearchAction, sendResearchAction, resolveNormAction,
+  previewResearchAction, sendResearchAction, resolveNormAction, resolveNormByZitatAction,
   searchNormAction, addBeraterNormAction, setNormVerworfenAction, removeBeraterNormAction,
   kuratiereKatalogNormAction, katalogKuratierungAction,
   listPromptTemplatesAction, createPromptTemplateAction, deletePromptTemplateAction,
@@ -141,7 +141,7 @@ export function MarkingPanel(props: {
         </p>
       )}
       <NormRefList clientId={clientId} markingId={m.id} katalogId={m.begriffId} refs={m.normRefs} fallback={m.normAnker}
-        pending={pending} start={start} flash={flash} onChanged={onChanged} />
+        engineConfigured={engineConfigured} pending={pending} start={start} flash={flash} onChanged={onChanged} />
       {m.normketten != null && Array.isArray(m.normketten) && m.normketten.length > 0 && (
         <details className="text-xs">
           <summary className="cursor-pointer text-muted">Normketten (Kaskade)</summary>
@@ -406,10 +406,10 @@ function formatGesetzestext(text: string): string {
 /** Die Engine-Norm ist NICHT verbindlich: der Berater ergänzt eigene Normen und
  *  verwirft Engine-Vorschläge (soft). Effektive Liste = nicht verworfene Einträge. */
 function NormRefList({
-  clientId, markingId, katalogId, refs, fallback, pending, start, flash, onChanged,
+  clientId, markingId, katalogId, refs, fallback, engineConfigured, pending, start, flash, onChanged,
 }: {
   clientId: string; markingId: string; katalogId: string | null; refs: NormRefDTO[] | null; fallback: string[];
-  pending: boolean; start: (cb: () => void) => void; flash: Flash; onChanged: () => void;
+  engineConfigured: boolean; pending: boolean; start: (cb: () => void) => void; flash: Flash; onChanged: () => void;
 }) {
   // Strukturierte Refs sind die Quelle der Wahrheit; Altdaten/manuelle Markierungen
   // mit nur flachem normAnker werden in dieselbe Reihenfolge synthetisiert, die der
@@ -440,7 +440,7 @@ function NormRefList({
         <ul className="space-y-1">
           {list.map((r, i) => (
             <NormRefRow key={(r.id ?? r.zitat) + ':' + i} clientId={clientId} markingId={markingId} katalogId={katalogId} index={i}
-              refItem={r} kat={katalogStatus(r, overlay)} pending={pending} start={start} flash={flash}
+              refItem={r} kat={katalogStatus(r, overlay)} engineConfigured={engineConfigured} pending={pending} start={start} flash={flash}
               onChanged={onChanged} onKatalogChanged={fetchOverlay} />
           ))}
         </ul>
@@ -459,18 +459,21 @@ function NormRefList({
 }
 
 function NormRefRow({
-  clientId, markingId, katalogId, index, refItem, kat, pending, start, flash, onChanged, onKatalogChanged,
+  clientId, markingId, katalogId, index, refItem, kat, engineConfigured, pending, start, flash, onChanged, onKatalogChanged,
 }: {
   clientId: string; markingId: string; katalogId: string | null; index: number; refItem: NormRefDTO;
-  kat: 'verworfen' | 'ergaenzt' | null;
+  kat: 'verworfen' | 'ergaenzt' | null; engineConfigured: boolean;
   pending: boolean; start: (cb: () => void) => void; flash: Flash; onChanged: () => void; onKatalogChanged: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [showKat, setShowKat] = useState(false);
   const [norm, setNorm] = useState<ResolvedNorm | null>(null);
+  const [matched, setMatched] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const canResolve = !!refItem.id;
+  // Mit ID direkt auflösbar; ohne ID (z. B. frei eingetippte eigene Norm) über das
+  // Zitat, sofern die Engine verfügbar ist.
+  const canResolve = !!refItem.id || engineConfigured;
   const isBerater = refItem.quelle === 'BERATER';
   const verworfen = refItem.verworfen === true;
 
@@ -479,8 +482,16 @@ function NormRefRow({
     setOpen(next);
     if (next && canResolve && !norm && !loading) {
       setLoading(true); setErr(null);
-      resolveNormAction({ clientId, normId: refItem.id! })
-        .then((r) => { if (r.ok) setNorm(r.norm); else setErr(r.error); })
+      const req = refItem.id
+        ? resolveNormAction({ clientId, normId: refItem.id })
+        : resolveNormByZitatAction({ clientId, zitat: refItem.zitat });
+      req
+        .then((r) => {
+          if (!r.ok) { setErr(r.error); return; }
+          if (!r.norm) { setErr('Zu diesem Zitat wurde im Normkorpus keine Norm gefunden.'); return; }
+          setNorm(r.norm);
+          if ('matchedZitat' in r && r.matchedZitat && r.matchedZitat !== refItem.zitat) setMatched(r.matchedZitat);
+        })
         .catch(() => setErr('Norm konnte nicht geladen werden.'))
         .finally(() => setLoading(false));
     }
@@ -554,6 +565,7 @@ function NormRefRow({
         <div className="px-2 pb-2 pt-0.5 text-xs">
           {loading && <span className="text-muted inline-flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> lädt …</span>}
           {err && <span className="text-red-700 dark:text-red-300">{err}</span>}
+          {matched && !loading && !err && <p className="text-[11px] text-amber-600 dark:text-amber-400 mb-1">aufgelöst als „{matched}" (Normgraph).</p>}
           {norm && !loading && !norm.gefunden && <span className="text-muted">Im Normkorpus nicht gefunden.</span>}
           {norm && norm.gefunden && (
             <div className="space-y-1">
