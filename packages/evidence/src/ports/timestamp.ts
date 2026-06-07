@@ -20,6 +20,15 @@ export interface TimestampResult {
 
 export interface TimestampPort {
   /**
+   * Adapter-Modus — vom Verify-Report IMMER ausgewiesen (Audit-Transparenz).
+   *   'local'   = Self-Timestamp, keine externe Wahrheitsquelle (nur Dev/Test).
+   *   'rfc3161' = echte externe TSA mit kryptografisch prüfbarer Antwort.
+   * Eine app, die die App-Uhr speichert und „TSA-Zeit" nennt, ist eine Audit-
+   * Falle; deshalb muss der Modus jederzeit sichtbar sein.
+   */
+  readonly mode: 'local' | 'rfc3161';
+
+  /**
    * Liefert einen Zeitstempel über die übergebenen Bytes (typischerweise
    * der Tages-Spitzen-Hash der Audit-Chain).
    */
@@ -40,6 +49,8 @@ export interface TimestampPort {
 // (es wird nur die Anwesenheit eines Zeitstempels geprüft).
 // -----------------------------------------------------------------------------
 export class LocalTimestampAdapter implements TimestampPort {
+  readonly mode = 'local' as const;
+
   async timestamp(_payload: Uint8Array): Promise<TimestampResult> {
     return {
       timestampedAt: new Date().toISOString(),
@@ -67,6 +78,8 @@ export class LocalTimestampAdapter implements TimestampPort {
 // und vertragsgetestet werden kann.
 // -----------------------------------------------------------------------------
 export class Rfc3161StubAdapter implements TimestampPort {
+  readonly mode = 'rfc3161' as const;
+
   constructor(private readonly tsaUrl: string) {}
 
   async timestamp(_payload: Uint8Array): Promise<TimestampResult> {

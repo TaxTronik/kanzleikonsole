@@ -52,17 +52,29 @@ async function main() {
   const port = tsaUrl ? new Rfc3161HttpAdapter(tsaUrl) : new LocalTimestampAdapter();
   const evidence = new EvidenceService(port);
 
+  // Produktivmodus → externe TSA verpflichtend (Self-Timestamp = harter Fail).
+  const requireExternalTsa =
+    process.env['NODE_ENV'] === 'production' ||
+    process.env['EVIDENCE_REQUIRE_TSA'] === 'true';
+
   const tenants = await prisma.tenant.findMany({ select: { id: true, name: true, slug: true } });
 
   let allOk = true;
   for (const t of tenants) {
     process.stdout.write(`\n=== Tenant ${t.slug} (${t.name}) ===\n`);
-    const result = await evidence.verifyChain(prisma, t.id);
+    const result = await evidence.verifyChain(prisma, t.id, { requireExternalTsa });
+    // Adapter-Modus IMMER ausweisen — die App-Uhr darf nie als „TSA-Zeit" durchgehen.
+    process.stdout.write(
+      `  TSA-Modus             : ${result.tsaMode === 'rfc3161' ? 'rfc3161 (externe TSA)' : 'local (Self-Timestamp — kein Drittnachweis)'}\n`,
+    );
     process.stdout.write(`  Audit-Einträge geprüft: ${result.checked}\n`);
     process.stdout.write(`  Tages-Stempel geprüft : ${result.sealsChecked}\n`);
 
     if (!result.ok) {
       allOk = false;
+      for (const pb of result.policyBreaks) {
+        process.stdout.write(`  ✗ POLICY: ${pb}\n`);
+      }
       if (result.firstBreak) {
         process.stdout.write(`  ✗ HASH-CHAIN-BRUCH bei Audit-ID ${result.firstBreak.auditId}\n`);
         process.stdout.write(`    Zeitpunkt:  ${result.firstBreak.occurredAt.toISOString()}\n`);

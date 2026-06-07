@@ -57,6 +57,20 @@ export interface VerificationResult {
   };
   sealsChecked: number;
   sealBreaks: Array<{ sealDate: Date; reason: string }>;
+  /** Welcher Zeitstempel-Adapter geprüft hat — IMMER ausgewiesen (Audit-Transparenz). */
+  tsaMode: 'local' | 'rfc3161';
+  /** Policy-Verstöße (z. B. Self-Timestamp im Produktivmodus). */
+  policyBreaks: string[];
+}
+
+export interface VerifyChainOptions {
+  /**
+   * Wenn true UND der Adapter im 'local'-Modus läuft → harter Fail: ein
+   * Self-Timestamp ist im Produktivbetrieb kein gerichtsfester Drittnachweis.
+   * Default false (Lib bleibt umgebungsfrei); die Verify-Werkzeuge (CLI, täglicher
+   * Worker-Check) setzen es aus NODE_ENV/EVIDENCE_REQUIRE_TSA.
+   */
+  requireExternalTsa?: boolean;
 }
 
 export class EvidenceService {
@@ -212,13 +226,48 @@ export class EvidenceService {
    * Rechnet die Hash-Chain für einen Tenant nach und prüft alle Tages-Stempel.
    * Wird von der CLI (`pnpm verify:chain`) und vom Admin-UI aufgerufen.
    */
-  async verifyChain(tx: Tx, tenantId: string): Promise<VerificationResult> {
+  async verifyChain(
+    tx: Tx,
+    tenantId: string,
+    opts: VerifyChainOptions = {},
+  ): Promise<VerificationResult> {
     const result: VerificationResult = {
       ok: true,
       checked: 0,
       sealsChecked: 0,
       sealBreaks: [],
+      tsaMode: this.timestampPort.mode,
+      policyBreaks: [],
     };
+
+    // Policy: Self-Timestamp im Produktivmodus ist kein Drittnachweis → harter Fail.
+    // (Der Modus wird oben unabhängig davon IMMER im Report ausgewiesen.)
+    if (opts.requireExternalTsa && this.timestampPort.mode === 'local') {
+      result.ok = false;
+      result.policyBreaks.push(
+        'Self-Timestamp (LocalTimestampAdapter) im Produktivmodus unzulässig — ' +
+          'externe RFC-3161-TSA erforderlich (TIMESTAMP_AUTHORITY_URL setzen).',
+      );
+    }
+
+    // Seals VORAB laden — ihre top_audit_id steuert, welchen rekonstruierten
+    // Ketten-Hash wir während des Walks festhalten müssen (Punkt 2: der TSA-
+    // Imprint wird gegen DIESEN Wert geprüft, nie gegen die gespeicherte Spalte).
+    const seals = await tx.$queryRaw<
+      Array<{
+        seal_date: Date;
+        top_audit_id: bigint;
+        top_hash: Buffer;
+        tsa_response_blob: Buffer | null;
+      }>
+    >`
+      SELECT seal_date, top_audit_id, top_hash, tsa_response_blob
+      FROM audit_seal
+      WHERE tenant_id = ${tenantId}::uuid
+      ORDER BY seal_date ASC
+    `;
+    const sealTopIds = new Set<bigint>(seals.map((s) => s.top_audit_id));
+    const recomputedTops = new Map<bigint, Buffer>();
 
     // 1. Audit-Chain durchgehen.
     const rows = await tx.$queryRaw<
@@ -281,37 +330,56 @@ export class EvidenceService {
         return result;
       }
 
+      // Den AUS DER KETTE REKONSTRUIERTEN Spitzen-Hash dieses Eintrags festhalten,
+      // falls er versiegelt wurde — er (nicht die DB-Spalte) ist der Prüfwert unten.
+      if (sealTopIds.has(r.id)) recomputedTops.set(r.id, computed);
+
       expectedPrev = Buffer.from(r.this_hash);
       result.checked++;
     }
 
-    // 2. Tages-Stempel verifizieren.
-    const seals = await tx.$queryRaw<
-      Array<{
-        seal_date: Date;
-        top_hash: Buffer;
-        tsa_response_blob: Buffer | null;
-      }>
-    >`
-      SELECT seal_date, top_hash, tsa_response_blob
-      FROM audit_seal
-      WHERE tenant_id = ${tenantId}::uuid
-      ORDER BY seal_date ASC
-    `;
-
+    // 2. Tages-Stempel verifizieren — gegen den REKONSTRUIERTEN Ketten-Hash.
+    //    NIE gegen audit_seal.top_hash (gespeicherte Spalte): das wäre DB-gegen-DB
+    //    und ließe einen Angreifer, der die History konsistent umschreibt, passieren.
+    //    Der Prüfwert kommt ausschließlich aus dem SHA-256-Walk oben.
     for (const s of seals) {
+      result.sealsChecked++;
+      const recomputed = recomputedTops.get(s.top_audit_id);
+      if (!recomputed) {
+        // Der versiegelte Spitzen-Eintrag existiert nicht mehr in der rekonstruierten
+        // Kette (gelöscht/abgeschnitten) — der Stempel hängt in der Luft.
+        result.ok = false;
+        result.sealBreaks.push({
+          sealDate: s.seal_date,
+          reason: `versiegelter Spitzen-Eintrag (audit_id ${s.top_audit_id}) fehlt in der rekonstruierten Kette`,
+        });
+        continue;
+      }
+      // Spalten-Integrität: gespeicherter top_hash MUSS dem rekonstruierten Hash
+      // entsprechen. Fängt DB-Manipulation auch dann, wenn ein lokaler Adapter
+      // keinen kryptografischen verify() leistet (verify() gibt dort immer true).
+      if (!recomputed.equals(Buffer.from(s.top_hash))) {
+        result.ok = false;
+        result.sealBreaks.push({
+          sealDate: s.seal_date,
+          reason: 'gespeicherter top_hash weicht vom rekonstruierten Ketten-Hash ab (DB-Manipulationsverdacht)',
+        });
+        continue;
+      }
+      // TSA-Bindung: der messageImprint im Token muss an den rekonstruierten Hash
+      // binden. Schlägt fehl, sobald die History umgeschrieben wurde (Token trägt
+      // den alten Imprint, die Kette rechnet jetzt einen anderen Spitzen-Hash).
       const sealOk = await this.timestampPort.verify(
-        Buffer.from(s.top_hash),
+        recomputed,
         s.tsa_response_blob ? Buffer.from(s.tsa_response_blob) : null,
       );
       if (!sealOk) {
         result.ok = false;
         result.sealBreaks.push({
           sealDate: s.seal_date,
-          reason: 'TSA-Verifikation fehlgeschlagen',
+          reason: 'TSA-Verifikation gegen rekonstruierten Ketten-Spitzen-Hash fehlgeschlagen',
         });
       }
-      result.sealsChecked++;
     }
 
     return result;

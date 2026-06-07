@@ -13,7 +13,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { verifyTimestampResponse } from '../ports/rfc3161-verify';
+import { verifyTimestampResponse, extractTsaMeta } from '../ports/rfc3161-verify';
 import { GLOBALSIGN_ROOT_R6_PEM } from '../ports/globalsign-roots';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -49,5 +49,25 @@ describe('RFC-3161 Krypto-Verify (echtes GlobalSign-Response)', () => {
     tampered[i] = (tampered[i] ?? 0) ^ 0xff;
     const r = await verifyTimestampResponse(payload, tampered, [GLOBALSIGN_ROOT_R6_PEM]);
     expect(r.valid).toBe(false);
+  });
+
+  // Fall 6 (Abnahme): kaputtes/abgeschnittenes ASN.1 → sauberer FAIL mit Grund,
+  // KEIN Crash, KEIN silent-true.
+  it('abgeschnittenes Blob → sauberer FAIL mit Grund, kein Throw', async () => {
+    const truncated = resp.slice(0, Math.floor(resp.length / 2));
+    const r = await verifyTimestampResponse(payload, truncated, [GLOBALSIGN_ROOT_R6_PEM]);
+    expect(r.valid).toBe(false);
+    expect(r.signatureValid).toBe(false);
+    expect(r.reason).toBeTruthy();
+    // extractTsaMeta darf bei Müll niemals werfen, sondern null liefern.
+    expect(extractTsaMeta(truncated)).toBeNull();
+  });
+
+  it('Müll-Bytes (kein ASN.1) → sauberer FAIL, kein Throw', async () => {
+    const garbage = new Uint8Array([0xff, 0x00, 0x13, 0x37, 0x42]);
+    const r = await verifyTimestampResponse(payload, garbage, [GLOBALSIGN_ROOT_R6_PEM]);
+    expect(r.valid).toBe(false);
+    expect(r.reason).toBeTruthy();
+    expect(extractTsaMeta(garbage)).toBeNull();
   });
 });

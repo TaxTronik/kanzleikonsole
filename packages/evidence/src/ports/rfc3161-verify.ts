@@ -33,8 +33,12 @@ setEngine(
 );
 
 const SHA256_OID = '2.16.840.1.101.3.4.2.1';
+const SHA1_OID = '1.3.14.3.2.26';
 const EKU_TIMESTAMPING = '1.3.6.1.5.5.7.3.8';
 const EXT_EKU_OID = '2.5.29.37';
+// ESS (RFC 5035 / 2634): bindet die Signatur an EIN bestimmtes Signer-Cert (per Hash).
+const ID_AA_SIGNING_CERT = '1.2.840.113549.1.9.16.2.12'; // SigningCertificate (SHA-1)
+const ID_AA_SIGNING_CERT_V2 = '1.2.840.113549.1.9.16.2.47'; // SigningCertificateV2
 
 export interface TsVerifyResult {
   /** voller kryptografischer Beweis: Signatur + Kette → Trust-Anchor + EKU. */
@@ -43,6 +47,13 @@ export interface TsVerifyResult {
   signatureValid: boolean;
   /** Cert-Kette validiert bis zu einem hinterlegten Trust-Anchor (as-of genTime). */
   chainTrusted: boolean;
+  /**
+   * Alles AUSSER der Trust-Anchor-Verankerung: Signatur + messageImprint-Bindung
+   * + kritische EKU + ESS. true bei einem voll wohlgeformten, an unsere Daten
+   * gebundenen TSA-Token, dessen Root nur (noch) nicht hinterlegt ist. Basis für
+   * den No-Regress-Fallback des Adapters — strenger als signatureValid allein.
+   */
+  cryptoOk: boolean;
   reason?: string;
   genTime?: Date;
   serialHex?: string;
@@ -63,9 +74,85 @@ function eqBytes(a: Uint8Array, b: Uint8Array): boolean {
   return a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 }
 
+/**
+ * Inhalt einer OCTET STRING — robust gegen die KONSTRUIERTE (chunked) Kodierung.
+ * CMS-eContent darf primitiv ODER konstruiert sein (RFC 5652 / BER): GlobalSign
+ * liefert primitiv, pkijs/andere Stacks chunked. Beide tragen dieselben Bytes;
+ * der Verifier darf an dieser Variante nicht scheitern (sonst false-negative).
+ */
+function octetStringBytes(os: asn1js.OctetString): Uint8Array {
+  const anyOs = os as unknown as {
+    idBlock?: { isConstructed?: boolean };
+    valueBlock: {
+      value?: Array<{ valueBlock: { valueHexView: Uint8Array } }>;
+      valueHexView: Uint8Array;
+    };
+  };
+  const vb = anyOs.valueBlock;
+  // NUR bei konstruierter Kodierung die Kindblöcke zusammenfügen. Die Unterscheidung
+  // MUSS über idBlock.isConstructed laufen — asn1js befüllt `value` auch bei
+  // primitiven OCTET STRINGs, sodass eine Längen-Prüfung allein primitiv für
+  // konstruiert hielte und falsche Bytes läse.
+  if (anyOs.idBlock?.isConstructed && Array.isArray(vb.value) && vb.value.length > 0) {
+    const parts = vb.value.map((c) => new Uint8Array(c.valueBlock.valueHexView));
+    const total = parts.reduce((n, p) => n + p.length, 0);
+    const out = new Uint8Array(total);
+    let off = 0;
+    for (const p of parts) {
+      out.set(p, off);
+      off += p.length;
+    }
+    return out;
+  }
+  return new Uint8Array(vb.valueHexView);
+}
+
+/**
+ * ESS-Bindung (RFC 3161 §2.4.1 + RFC 5035): das Token MUSS ein signiertes
+ * SigningCertificate(V2)-Attribut tragen, dessen certHash auf den TATSÄCHLICHEN
+ * Signer-Cert passt. Ohne das könnte ein Angreifer ein anderes (kollidierendes)
+ * Cert in die SignedData-Zertifikatsmenge schmuggeln. OpenSSL `ts -verify`
+ * erzwingt das ebenfalls — wir bleiben so streng wie die unabhängige Referenz.
+ */
+function checkEssSigningCert(signedData: SignedData, signerCert: Certificate): { ok: boolean; reason?: string } {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const attrs = ((signedData.signerInfos?.[0]?.signedAttrs?.attributes ?? []) as Array<{ type: string; values: any[] }>);
+  const v2 = attrs.find((a) => a.type === ID_AA_SIGNING_CERT_V2);
+  const v1 = attrs.find((a) => a.type === ID_AA_SIGNING_CERT);
+  const attr = v2 ?? v1;
+  if (!attr) return { ok: false, reason: 'Kein ESS signingCertificate(V2)-Attribut (RFC 3161 §2.4.1)' };
+  const isV2 = attr === v2;
+  // SigningCertificate[V2] ::= SEQ { certs SEQ OF ESSCertID[V2], policies OPTIONAL }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const essCert: any = (attr.values?.[0] as any)?.valueBlock?.value?.[0]?.valueBlock?.value?.[0];
+  if (!essCert) return { ok: false, reason: 'ESS-Attribut ohne ESSCertID' };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fields = (essCert.valueBlock?.value ?? []) as any[];
+  let hashOid = isV2 ? SHA256_OID : SHA1_OID; // V2-Default sha256, V1 = sha1
+  let certHashBlock = fields[0];
+  if (isV2 && fields[0]?.idBlock?.tagNumber === 16) {
+    // ESSCertIDv2 mit explizitem hashAlgorithm (AlgorithmIdentifier SEQUENCE).
+    hashOid = fields[0].valueBlock?.value?.[0]?.valueBlock?.toString?.() ?? hashOid;
+    certHashBlock = fields[1];
+  }
+  const essHash: Uint8Array | undefined = certHashBlock?.valueBlock?.valueHexView;
+  if (!essHash || essHash.length === 0) return { ok: false, reason: 'ESS-Attribut ohne certHash' };
+  const algo = hashOid === SHA1_OID ? 'sha1' : 'sha256';
+  const certDer = Buffer.from(signerCert.toSchema().toBER(false));
+  const computed = Uint8Array.from(createHash(algo).update(certDer).digest());
+  if (!eqBytes(new Uint8Array(essHash), computed)) {
+    return { ok: false, reason: 'ESS certHash bindet nicht an den Signer-Cert (Cert-Substitution?)' };
+  }
+  return { ok: true };
+}
+
 function hasTimestampingEku(cert: Certificate): boolean {
   const ext = (cert.extensions ?? []).find((e) => e.extnID === EXT_EKU_OID);
-  const purposes = (ext?.parsedValue as { keyPurposes?: string[] } | undefined)?.keyPurposes;
+  // RFC 3161 §2.3: Das EKU-Extension MUSS vorhanden UND als kritisch markiert
+  // sein. Ein Cert mit nicht-kritischer (oder fehlender) timeStamping-EKU darf
+  // NICHT als TSA-Signer akzeptiert werden — sonst genügte irgendein Server-Cert.
+  if (!ext || ext.critical !== true) return false;
+  const purposes = (ext.parsedValue as { keyPurposes?: string[] } | undefined)?.keyPurposes;
   return Array.isArray(purposes) && purposes.includes(EKU_TIMESTAMPING);
 }
 
@@ -87,7 +174,10 @@ function parseTimestampToken(responseBytes: Uint8Array): ParsedToken {
   const signedData = new SignedData({ schema: tsResp.timeStampToken.content });
   const eContent = signedData.encapContentInfo.eContent;
   if (!eContent) throw new Error('Kein eContent (TSTInfo)');
-  const tstInfo = new TSTInfo({ schema: asn1js.fromBER(ab(eContent.valueBlock.valueHexView)).result });
+  const eBytes = octetStringBytes(eContent);
+  const eBer = asn1js.fromBER(ab(eBytes));
+  if (eBer.offset === -1) throw new Error('TSTInfo: ASN.1-Parsing fehlgeschlagen');
+  const tstInfo = new TSTInfo({ schema: eBer.result });
   return {
     signedData,
     tstInfo,
@@ -115,17 +205,17 @@ export async function verifyTimestampResponse(
   try {
     token = parseTimestampToken(responseBytes);
   } catch (e) {
-    return { valid: false, signatureValid: false, chainTrusted: false, reason: (e as Error).message };
+    return { valid: false, signatureValid: false, chainTrusted: false, cryptoOk: false, reason: (e as Error).message };
   }
   const { signedData, tstInfo, genTime, serialHex } = token;
 
   // 2. messageImprint == sha256(payload) (explizit; pkijs prüft es zusätzlich).
   if (tstInfo.messageImprint.hashAlgorithm.algorithmId !== SHA256_OID) {
-    return { valid: false, signatureValid: false, chainTrusted: false, reason: 'messageImprint-Hash ist nicht SHA-256', genTime, serialHex };
+    return { valid: false, signatureValid: false, chainTrusted: false, cryptoOk: false, reason: 'messageImprint-Hash ist nicht SHA-256', genTime, serialHex };
   }
   const expected = Uint8Array.from(createHash('sha256').update(payload).digest());
   if (!eqBytes(tstInfo.messageImprint.hashedMessage.valueBlock.valueHexView, expected)) {
-    return { valid: false, signatureValid: false, chainTrusted: false, reason: 'messageImprint bindet nicht an payload (Token gehört zu anderen Daten)', genTime, serialHex };
+    return { valid: false, signatureValid: false, chainTrusted: false, cryptoOk: false, reason: 'messageImprint bindet nicht an payload (Token gehört zu anderen Daten)', genTime, serialHex };
   }
 
   // 3. CMS-Signatur (checkChain:false isoliert die Signatur von der Vertrauenskette).
@@ -138,10 +228,10 @@ export async function verifyTimestampResponse(
     signatureValid = sig.signatureVerified === true;
     signerCert = sig.signerCertificate ?? undefined;
   } catch (e) {
-    return { valid: false, signatureValid: false, chainTrusted: false, reason: 'Signatur-/TSTInfo-Verifikation fehlgeschlagen: ' + (e as Error).message, genTime, serialHex };
+    return { valid: false, signatureValid: false, chainTrusted: false, cryptoOk: false, reason: 'Signatur-/TSTInfo-Verifikation fehlgeschlagen: ' + (e as Error).message, genTime, serialHex };
   }
   if (!signatureValid) {
-    return { valid: false, signatureValid: false, chainTrusted: false, reason: 'CMS-Signatur ungültig oder messageImprint bindet nicht', genTime, serialHex };
+    return { valid: false, signatureValid: false, chainTrusted: false, cryptoOk: false, reason: 'CMS-Signatur ungültig oder messageImprint bindet nicht', genTime, serialHex };
   }
 
   // 4. Cert-Kette bis zu einem VERTRAUTEN Root, AS-OF genTime.
@@ -157,16 +247,25 @@ export async function verifyTimestampResponse(
     }
   }
 
-  // 5. EKU id-kp-timeStamping auf dem Signer-Cert.
+  // 5. EKU id-kp-timeStamping (kritisch) auf dem Signer-Cert.
   const ekuOk = !!signerCert && hasTimestampingEku(signerCert);
 
-  const valid = signatureValid && chainTrusted && ekuOk;
+  // 6. ESS-Bindung: signiertes SigningCertificate(V2) muss auf den Signer-Cert passen.
+  const ess = signerCert
+    ? checkEssSigningCert(signedData, signerCert)
+    : { ok: false, reason: 'kein Signer-Cert für ESS-Bindung' };
+
+  // cryptoOk = alles außer Trust-Anchor (Signatur + Imprint + EKU + ESS).
+  const cryptoOk = signatureValid && ekuOk && ess.ok;
+  const valid = cryptoOk && chainTrusted;
   const reason = valid
     ? undefined
-    : !chainTrusted
-      ? 'Kette nicht zu einem hinterlegten Trust-Anchor'
-      : !ekuOk
-        ? 'Signer-Cert ohne EKU timeStamping'
-        : undefined;
-  return { valid, signatureValid, chainTrusted, reason, genTime, serialHex };
+    : !ekuOk
+      ? 'Signer-Cert ohne kritische EKU id-kp-timeStamping (RFC 3161 §2.3)'
+      : !ess.ok
+        ? ess.reason
+        : !chainTrusted
+          ? 'Kette nicht zu einem hinterlegten Trust-Anchor'
+          : undefined;
+  return { valid, signatureValid, chainTrusted, cryptoOk, reason, genTime, serialHex };
 }

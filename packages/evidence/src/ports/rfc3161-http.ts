@@ -129,6 +129,8 @@ const PKI_STATUS_LABELS: Record<number, string> = {
 };
 
 export class Rfc3161HttpAdapter implements TimestampPort {
+  readonly mode = 'rfc3161' as const;
+
   constructor(
     private readonly tsaUrl: string,
     private readonly timeoutMs = 10_000,
@@ -189,12 +191,12 @@ export class Rfc3161HttpAdapter implements TimestampPort {
     // R6) AS-OF genTime, EKU timeStamping. Das rohe Blob bleibt zusätzlich extern
     // prüfbar (openssl ts -verify). Revocation (OCSP/CRL) ist noch nicht abgedeckt.
     const r = await verifyTimestampResponse(payload, response, this.trustedRoots);
-    if (r.valid) return true; // voller kryptografischer Beweis
-    // KEIN Regress: Signatur gültig + messageImprint an payload gebunden, aber die
-    // Kette führt nicht zu einem hinterlegten Trust-Anchor (z. B. ein anderer TSA-
-    // Anbieter, dessen Root nicht im Store ist). Das ist KEINE Manipulation → noch
-    // akzeptieren (weiterhin stärker als der frühere reine PKIStatus-Check). Ein
-    // manipuliertes/fremdes Blob scheitert dagegen bereits an signatureValid.
-    return r.signatureValid;
+    if (r.valid) return true; // voller kryptografischer Beweis (inkl. Trust-Anchor)
+    // KEIN Regress, aber NICHT lax: cryptoOk verlangt Signatur + messageImprint-
+    // Bindung + kritische EKU + ESS — relaxiert NUR die Trust-Anchor-Verankerung
+    // (z. B. ein anderer TSA-Anbieter, dessen Root nicht hinterlegt ist). Ein
+    // manipuliertes/fremdes Blob, eine kaputte EKU oder fehlende ESS-Bindung
+    // scheitern bereits hier (anders als beim früheren reinen signatureValid).
+    return r.cryptoOk;
   }
 }
