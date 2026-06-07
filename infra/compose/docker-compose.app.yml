@@ -178,9 +178,10 @@ services:
       - sh
       - -c
       - >-
+        cd /app/packages/db;
         PRISMA=$$(find /app/node_modules -path '*/prisma/build/index.js' -not -path '*/cache/*' 2>/dev/null | head -1);
         test -n "$$PRISMA" || { echo 'FATAL: prisma CLI nicht im Image gefunden'; exit 1; };
-        exec node "$$PRISMA" migrate deploy --schema /app/packages/db/prisma/schema.prisma
+        exec node "$$PRISMA" migrate deploy
 
   n8n:
     <<: *hardening

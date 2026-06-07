@@ -11,8 +11,13 @@
 # Konservativ alles ausschließen, was nicht ins Image MUSS.
 # =============================================================================
 
-# Dependencies
+# Dependencies. `**/node_modules` ist Pflicht: ein blankes `node_modules` matcht
+# nur die Repo-Root. Ohne `**` zieht `COPY . .` im Builder die VERSCHACHTELTEN
+# Host-node_modules (packages/*/node_modules, Windows-Symlinks) über die im
+# deps-Stage installierten Linux-node_modules → Prisma-Resolution bricht
+# (Cannot find module 'prisma/config' / @prisma/client).
 node_modules
+**/node_modules
 .pnpm-store
 
 # Build-Output
