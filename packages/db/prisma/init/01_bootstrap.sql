@@ -7,7 +7,7 @@
 -- scheitert `prisma migrate deploy` mit „role taxtronik_app does not exist".
 --
 -- Diese Datei legt Rolle + Extensions idempotent an. Passwort ist fix
--- `taxtronik_app` und MUSS zur DATABASE_APP_URL in .github/workflows/ci.yml
+-- `taxtronik_app` und MUSS zur DATABASE_APP_URL in .forgejo/workflows/ci.yml
 -- passen (postgresql://taxtronik_app:taxtronik_app@localhost:5432/taxtronik).
 --
 -- NICHT für Produktion — dort macht infra/scripts/postgres-init.sh das mit
