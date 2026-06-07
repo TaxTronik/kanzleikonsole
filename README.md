@@ -4,18 +4,18 @@
 
 <h1 align="center">TaxTronik</h1>
 
-<p align="center">Kanzlei- und Mandanten-Dashboard fuer deutsche Steuerberater. On-Premise pro Kanzlei.</p>
+<p align="center">Kanzlei- und Mandanten-Dashboard für deutsche Steuerberater. On-Premise pro Kanzlei.</p>
 
-## Ueberblick
+## Überblick
 
 TaxTronik verbindet Kanzlei-Workflows, Mandantenportal, Dokumentenablage,
 Compliance und Hintergrund-Jobs in einem lokalen Deploy. Die Software ist auf
 steuerliche Berufsgeheimnisse und revisionsnahe Anforderungen ausgelegt:
-Postgres-RLS, App-Level-Tenant-Filter, TOTP fuer Mitarbeiter, Magic-Link fuer
-Mandanten, S3-kompatibler Object-Store ohne oeffentliche Direktlinks, ClamAV,
+Postgres-RLS, App-Level-Tenant-Filter, TOTP für Mitarbeiter, Magic-Link für
+Mandanten, S3-kompatibler Object-Store ohne öffentliche Direktlinks, ClamAV,
 Audit-Hash-Chain und optionale RFC-3161-Zeitstempel.
 
-Vollstaendige Architektur: [docs/architecture.md](docs/architecture.md)
+Vollständige Architektur: [docs/architecture.md](docs/architecture.md)
 
 ## Tech-Stack
 
@@ -26,7 +26,7 @@ Vollstaendige Architektur: [docs/architecture.md](docs/architecture.md)
 | Datenbank | Postgres 18, Prisma, Row-Level Security |
 | Storage | SeaweedFS S3-API, Object-Lock, ClamAV-Scan vor Commit |
 | Jobs | BullMQ Worker, Redis |
-| Workflows | n8n fuer Reminder, Kommunikation und Cron-Automation |
+| Workflows | n8n für Reminder, Kommunikation und Cron-Automation |
 | Deploy | Docker Compose, On-Premise, Reverse Proxy davor |
 
 ## Entwicklung
@@ -64,9 +64,9 @@ App: <http://localhost:3000/staff/login>
 
 Der Dev-Seed erzeugt `admin@taxtronik.local`; das einmalige Passwort steht in
 der Seed-Ausgabe und in `packages/db/.admin-credentials.txt`. Beim ersten Login
-wird TOTP eingerichtet. Danach die Credentials-Datei loeschen.
+wird TOTP eingerichtet. Danach die Credentials-Datei löschen.
 
-Nuetzliche lokale Dienste:
+Nützliche lokale Dienste:
 
 | Dienst | URL |
 |---|---|
@@ -91,7 +91,7 @@ PowerShell:
 
 ## Produktivbetrieb
 
-Produktiv laeuft der Stack ueber den Compose-Wrapper [dc](dc). Der Wrapper
+Produktiv läuft der Stack über den Compose-Wrapper [dc](dc). Der Wrapper
 setzt immer die richtigen Compose-Dateien, nutzt die Root-`.env` und rendert vor
 jedem Compose-Aufruf die SeaweedFS-S3-Konfiguration.
 
@@ -103,10 +103,10 @@ Im Normalfall gibt es nur drei Befehle:
 ./scripts/backup.sh   # manuelles Postgres-Backup in den S3-Backup-Bucket
 ```
 
-`update.sh` macht bewusst kein `git reset --hard`. Wenn lokale Aenderungen oder
+`update.sh` macht bewusst kein `git reset --hard`. Wenn lokale Änderungen oder
 ein nicht-fast-forward Stand existieren, bricht das Skript ab.
 
-Wichtige `.env`-Werte fuer ein Multi-Domain-Deploy:
+Wichtige `.env`-Werte für ein Multi-Domain-Deploy:
 
 ```ini
 NODE_ENV=production
@@ -147,7 +147,7 @@ Weitere Operator-Kommandos:
 ./dc down
 ```
 
-## Qualitaetssicherung
+## Qualitätssicherung
 
 ```bash
 pnpm lint
@@ -163,14 +163,14 @@ Hinweise:
 - E2E-Login-Tests brauchen `E2E_TOTP_SECRET`.
 - RLS-Cross-Tenant-Tests skippen lokal ohne DB-URLs, schlagen in CI aber fehl,
   wenn `DATABASE_URL` oder `DATABASE_APP_URL` fehlt.
-- `pnpm verify:chain` prueft die Audit-Hash-Chain.
+- `pnpm verify:chain` prüft die Audit-Hash-Chain.
 
 ## Projektstruktur
 
 ```text
 apps/
   web/       Next.js UI, API-Routen, Server Actions, Backup/Restore
-  worker/    BullMQ Worker fuer Scan, Reminder, Audit, n8n-Outbox
+  worker/    BullMQ Worker für Scan, Reminder, Audit, n8n-Outbox
   e2e/       Playwright-Tests
 
 packages/
@@ -179,14 +179,14 @@ packages/
   db/          Prisma-Schema, Migrationen, RLS/Tenant-Kontext
   evidence/    Audit-Hash-Chain, Archive, Verify-CLI
   http-utils/  Safe Fetch, SSRF-Guards, Netzwerk-Utilities
-  n8n-shared/  HMAC-Signatur fuer App/Worker -> n8n
+  n8n-shared/  HMAC-Signatur für App/Worker -> n8n
   rss/         RSS-Fetching und Parser
   storage/     S3/SeaweedFS-Client, Retention, Scan-Pipeline
   tax/         Steuertermine und fachliche Rechenlogik
 
 infra/
   compose/  Docker-Compose Basis, Dev- und App-Overrides
-  docker/   Dockerfiles fuer Web und Worker
+  docker/   Dockerfiles für Web und Worker
   n8n/      Versionierte Workflow-Exports
   nginx/    Reverse-Proxy-Beispiel
   scripts/  Postgres-/Storage-Init
@@ -199,12 +199,12 @@ docs/
 
 ## Compliance
 
-TaxTronik ist fuer regulatorisch sensible Kanzleidaten gebaut:
+TaxTronik ist für regulatorisch sensible Kanzleidaten gebaut:
 
 - Berufsgeheimnis / Mandantentrennung: Postgres-RLS plus App-Level-Filter.
 - GoBD: Object-Lock, Audit-Hash-Chain, Tagesversiegelung, Retention.
-- DSGVO: Loesch-/Auskunftskonzepte, Portal-/Staff-Trennung, minimale
-  oeffentliche Angriffsfläche.
+- DSGVO: Lösch-/Auskunftskonzepte, Portal-/Staff-Trennung, minimale
+  öffentliche Angriffsfläche.
 - GwG: Verifizierungs-Workflows und systemische Schranken.
 - eIDAS: Signatur- und Zeitstempel-Adapter.
 

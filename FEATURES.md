@@ -941,9 +941,12 @@ Kanzlei nicht.
   `@taxtronik/n8n-shared` (Event-Whitelist + HMAC-Sign mit Replay-Nonce),
   `@taxtronik/risk-layer` (zustandsloser §4-Engine-Client: Schema/Mapping/
   Resilienz mit Circuit-Breaker, reiner Transport)
-- **GitHub-Actions-CI** (`.github/workflows/ci.yml`): Static-Job
-  (Typecheck + Unit-Tests) + db-tests-Job (RLS-Cross-Tenant +
-  verify:chain mit Postgres-Service-Container)
+- **Forgejo-Actions-CI** (`.forgejo/workflows/`, self-hosted Runner): `ci.yml`
+  (Quality: Lint/Typecheck/Unit · DB: Migrationen/RLS/Drift/verify:chain mit
+  Postgres-Service · Browser-Smoke via Playwright), `security.yml` (pnpm-audit +
+  gitleaks-Secret-Scan, wöchentlicher Cron), `build-images.yml` (Web-/Worker-
+  Image-Build, build-only); GitHub-Mirror läuft ohne Actions, `dependabot.yml`
+  liegt ebenfalls unter `.forgejo/`
 - React-Grid-Layout v2 als einzige UI-Library außerhalb shadcn/ui-Stack
   (Dashboard-Widget-Grid mit Reflow)
 - Sortable-List-Komponente eigenständig (Pointer-Events, ~80 Zeilen)
@@ -958,11 +961,17 @@ Kanzlei nicht.
 ## Sicherheit & Compliance
 
 - **GoBD-konformer Audit-Log**: Hash-Chain pro Tenant, täglicher RFC-3161-
-  TSA-Stempel (`evidence-seal` 02:30 UTC), tägliche Verifikation
+  TSA-Stempel (`evidence-seal` 02:30 UTC; Default-TSA **GlobalSign** kostenlos/EU,
+  pro Tenant umstellbar, D-Trust für eIDAS-qualifiziert), tägliche Verifikation
   (`audit-verify-check` 02:45 UTC) mit `SYSTEM_AUDIT_BREAK`-Notification an
   ADMIN/PARTNER bei Bruch, wöchentliche NDJSON-Auslagerung mit Object-Lock-
-  Versiegelung; `pnpm verify:chain` rehasht jeden Eintrag, validiert TSA-
-  Stempel und rekonstruiert die Kette aus DB+Archiv
+  Versiegelung; `pnpm verify:chain` rehasht jeden Eintrag, rekonstruiert die
+  Kette aus DB+Archiv und prüft den TSA-Stempel **voll kryptografisch**:
+  CMS-Signatur, messageImprint an den _rekonstruierten_ Ketten-Spitzen-Hash
+  gebunden (nicht an die DB-Spalte → tötet den DB-gegen-DB-Angriff), Cert-Kette
+  bis zum eingebetteten GlobalSign-Root R6 _as-of_ genTime, kritische EKU
+  timeStamping + ESS-SigningCertificate-Bindung; Adapter-Modus wird im Report
+  ausgewiesen, Self-Timestamp im Produktivmodus = harter Fail
 - **Aufbewahrungs-Buckets nach Recht getrennt**: `gobd` (10 J. § 147 AO),
   `gwg` (5 J. § 8 Abs. 4 GwG, separate Höchstfrist), `general` /
   `staff-private` (kein Object-Lock); Retain-Until-Logik nach Kalenderjahres-
