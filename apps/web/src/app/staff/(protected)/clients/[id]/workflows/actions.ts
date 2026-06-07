@@ -6,63 +6,100 @@ import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { executeWorkflowStep, type ExecuteResult } from '@/server/workflows/execute-step';
 import { parseStepConfig } from '@/server/workflows/step-config';
-import { assertStaffInTenant } from '@/server/db/assert-tenant';
+import { assertClientInTenant, assertStaffInTenant } from '@/server/db/assert-tenant';
 import { staffActionGuard, withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
 
 // Einheitliches Action-Ergebnis aus der zentralen Quelle.
 export type ActionResult = BaseActionResult;
 
+// Startet eine Workflow-Instanz — entweder aus einer Vorlage (Schritte werden
+// kopiert) ODER als „eigener Workflow" (einmalig, ohne Vorlage: freier Name,
+// keine Schritte → der/die Bearbeiter:in fügt Schritte ad-hoc via AddStepForm
+// hinzu). Genau eines von beidem (Vorlage XOR Name) muss da sein.
 export async function startInstanceAction(input: {
   clientId: string;
-  templateId: string;
+  templateId?: string;
+  name?: string;
   memberIds?: string[];
+  analysisId?: string;
 }) {
   const parsed = z
     .object({
       clientId: z.string().uuid(),
-      templateId: z.string().uuid(),
+      templateId: z.string().uuid().optional(),
+      name: z.string().trim().min(1).max(200).optional(),
       memberIds: z.array(z.string().uuid()).max(50).optional(),
+      analysisId: z.string().uuid().nullable().optional(),
+    })
+    .refine((d) => Boolean(d.templateId) || Boolean(d.name), {
+      message: 'Vorlage wählen oder einen Namen für den eigenen Workflow angeben.',
     })
     .safeParse(input);
-  if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
+  if (!parsed.success) {
+    return { ok: false as const, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
+  }
 
   return withStaff(
     async (tx, { tenantId, staffId }) => {
-      const tpl = await tx.workflowTemplate.findUnique({
-        where: { id: parsed.data.templateId },
-        include: { steps: { orderBy: { position: 'asc' } } },
-      });
-      if (!tpl) throw new ActionError('Vorlage nicht gefunden.');
-      if (!tpl.active) throw new ActionError('Vorlage ist deaktiviert.');
-      if (tpl.steps.length === 0) throw new ActionError('Vorlage hat keine Schritte.');
+      // Tenant-Sanity: clientId + (optional) analysisId müssen zu diesem Tenant
+      // gehören. FK/RLS sind der Backstop; hier ein klarer Fehler statt FK-Bruch.
+      await assertClientInTenant(tx, parsed.data.clientId);
+      if (parsed.data.analysisId) {
+        const a = await tx.riskAnalysis.findFirst({
+          where: { id: parsed.data.analysisId },
+          select: { id: true },
+        });
+        if (!a) throw new ActionError('Sachverhalt nicht gefunden oder nicht in diesem Tenant.');
+      }
 
       const startedAt = new Date();
+
+      // Vorlage laden (nur im Vorlagen-Modus). Bei „eigener Workflow" bleibt tpl null.
+      const tpl = parsed.data.templateId
+        ? await tx.workflowTemplate.findUnique({
+            where: { id: parsed.data.templateId },
+            include: { steps: { orderBy: { position: 'asc' } } },
+          })
+        : null;
+      if (parsed.data.templateId) {
+        if (!tpl) throw new ActionError('Vorlage nicht gefunden.');
+        if (!tpl.active) throw new ActionError('Vorlage ist deaktiviert.');
+        if (tpl.steps.length === 0) throw new ActionError('Vorlage hat keine Schritte.');
+      }
+
+      const name = tpl ? tpl.name : (parsed.data.name ?? 'Eigener Workflow');
+      const stepCount = tpl ? tpl.steps.length : 0;
+      // Items nur im Vorlagen-Modus aus den Schritten erzeugen; eigener Workflow
+      // startet leer (Schritte folgen ad-hoc).
+      const items = tpl
+        ? tpl.steps.map((s) => ({
+            position: s.position,
+            title: s.title,
+            description: s.description,
+            skillId: s.skillId,
+            kind: s.kind,
+            config: s.config as object,
+            n8nEvent: s.n8nEvent,
+            // Default-Assignee: der Starter des Workflows. Kann pro Item
+            // nachträglich geändert werden (Skill-Auswahl im Item-Row).
+            assigneeStaffId: staffId,
+            dueDate:
+              s.dueAfterDays != null
+                ? new Date(startedAt.getTime() + s.dueAfterDays * 24 * 60 * 60 * 1000)
+                : null,
+          }))
+        : undefined;
+
       const inst = await tx.workflowInstance.create({
         data: {
           tenantId,
           clientId: parsed.data.clientId,
-          templateId: tpl.id,
-          name: tpl.name,
+          analysisId: parsed.data.analysisId ?? null,
+          templateId: tpl?.id ?? null,
+          name,
           startedByStaff: staffId,
           startedAt,
-          items: {
-            create: tpl.steps.map((s) => ({
-              position: s.position,
-              title: s.title,
-              description: s.description,
-              skillId: s.skillId,
-              kind: s.kind,
-              config: s.config as object,
-              n8nEvent: s.n8nEvent,
-              // Default-Assignee: der Starter des Workflows. Kann pro Item
-              // nachträglich geändert werden (Skill-Auswahl im Item-Row).
-              assigneeStaffId: staffId,
-              dueDate:
-                s.dueAfterDays != null
-                  ? new Date(startedAt.getTime() + s.dueAfterDays * 24 * 60 * 60 * 1000)
-                  : null,
-            })),
-          },
+          ...(items ? { items: { create: items } } : {}),
         },
       });
       // Mitglieder aufnehmen — immer mindestens der Starter selbst
@@ -84,14 +121,22 @@ export async function startInstanceAction(input: {
         resourceType: 'workflow_instance',
         resourceId: inst.id,
         after: {
-          name: tpl.name,
+          name,
           clientId: parsed.data.clientId,
-          stepCount: tpl.steps.length,
+          stepCount,
           memberCount: memberSet.size,
+          fromTemplate: tpl != null,
         },
       });
     },
-    { revalidate: `/staff/clients/${parsed.data.clientId}/workflows` },
+    {
+      revalidate: parsed.data.analysisId
+        ? [
+            `/staff/clients/${parsed.data.clientId}/workflows`,
+            `/staff/clients/${parsed.data.clientId}/subsumtion/${parsed.data.analysisId}`,
+          ]
+        : `/staff/clients/${parsed.data.clientId}/workflows`,
+    },
   );
 }
 

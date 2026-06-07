@@ -15,6 +15,7 @@ import { withTenantContext, withSystemContext, type TenantContext, type TxClient
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { enqueueN8nEvent } from '@/server/n8n/outbox';
 import { evidenceService } from '@/server/container';
+import { notify } from '@/server/notifications/service';
 import { anonymize, deanonymize } from './anonymize';
 import { reflowProse } from './reflow';
 import { scoreMarkingSuggestions, type MarkingSuggestion } from './suggest';
@@ -216,17 +217,28 @@ export async function receiveResearchResult(input: InboundResult): Promise<{ res
   let tenantId = input.tenantId ?? null;
   let markingId: string | null = null;
   let body = input.body;
+  // Notify-on-arrival: Empfänger + Sprungziel (nur im Korrelationsfall bekannt).
+  let recipientStaffId: string | null = null;
+  let hrefClientId: string | null = null;
+  let hrefAnalysisId: string | null = null;
 
   // Cross-Tenant-Lookup (wir kennen den Tenant noch nicht) → owner/BYPASSRLS.
   if (input.researchRequestId) {
     const req = await prismaOwner.riskResearchRequest.findUnique({
       where: { id: input.researchRequestId },
-      select: { tenantId: true, markingId: true, mapping: true },
+      select: {
+        tenantId: true, markingId: true, mapping: true,
+        createdById: true, analysisId: true,
+        analysis: { select: { clientId: true } },
+      },
     });
     if (req) {
       tenantId = req.tenantId;
       markingId = req.markingId;
       body = deanonymize(input.body, (req.mapping as Record<string, string>) ?? {});
+      recipientStaffId = req.createdById;
+      hrefAnalysisId = req.analysisId;
+      hrefClientId = req.analysis?.clientId ?? null;
     }
   }
 
@@ -266,6 +278,21 @@ export async function receiveResearchResult(input: InboundResult): Promise<{ res
         source: input.source ?? 'n8n',
         autoAssigned: markingId != null,
       },
+    });
+
+    // Notify-on-arrival: Auftraggeber:in (oder alle, wenn unbekannt). Reuse
+    // REQUEST_RESPONDED — der Titel macht den Recherche-Kontext klar.
+    await notify(tx, {
+      tenantId,
+      staffId: recipientStaffId,
+      kind: 'REQUEST_RESPONDED',
+      title: `Rechercheergebnis eingegangen${input.title ? ': ' + input.title : ''}`,
+      body: input.source ? `Quelle: ${input.source}` : null,
+      href: hrefClientId && hrefAnalysisId
+        ? `/staff/clients/${hrefClientId}/subsumtion/${hrefAnalysisId}`
+        : null,
+      resourceType: 'risk_research_result',
+      resourceId: created.id,
     });
     return created;
   });

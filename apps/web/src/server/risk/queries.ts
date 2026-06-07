@@ -71,6 +71,30 @@ export async function loadResearchResults(ctx: TenantContext, analysisId: string
   );
 }
 
+/** Gesendete Rechercheaufträge (Outbound an n8n) zu einer Analyse — für den
+ *  Recherche-Hub. Lädt NICHT `mapping`/`anonymizedPayload` (sensibel/unnötig);
+ *  `marking.begriff` als lesbares Label, `_count.results` für „N Antworten". */
+export async function loadResearchRequests(ctx: TenantContext, analysisId: string) {
+  return withTenantContext(ctx, (tx) =>
+    tx.riskResearchRequest.findMany({
+      where: { analysisId },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      select: {
+        id: true,
+        markingId: true,
+        prompt: true,
+        includeSachverhalt: true,
+        status: true,
+        createdAt: true,
+        createdById: true,
+        marking: { select: { begriff: true } },
+        _count: { select: { results: true } },
+      },
+    }),
+  );
+}
+
 /** Eine Subsumtion samt Sachverhalt + allen Markierungen, oder null. */
 export async function loadAnalysis(ctx: TenantContext, analysisId: string) {
   return withTenantContext(ctx, (tx) =>

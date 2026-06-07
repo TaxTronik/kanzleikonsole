@@ -58,12 +58,15 @@ export function DocumentsManager({
   documents,
   scopeLabel,
   canUpload = true,
+  analysisId,
 }: {
   clientId: string | null;
   folders: FolderNode[];
   documents: ManagedDoc[];
   scopeLabel: string;
   canUpload?: boolean;
+  /** Sachverhalts-Bezug — Uploads aus dem Aktenregal-Tab setzen analysis_id. */
+  analysisId?: string;
 }) {
   const router = useRouter();
   const [sel, setSel] = useState<string | 'all' | 'none'>('all');
@@ -279,6 +282,7 @@ export function DocumentsManager({
             <DocumentUploadButton
               clientId={clientId ?? undefined}
               folderId={typeof sel === 'string' && sel !== 'all' && sel !== 'none' ? sel : undefined}
+              analysisId={analysisId}
               defaultClassification={clientId ? 'GOBD_INVOICE' : 'GENERAL'}
               buttonLabel="Hochladen"
               buttonClassName="btn-primary text-xs py-1.5"

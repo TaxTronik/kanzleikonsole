@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useTransition } from 'react';
 import { Plus, Users } from 'lucide-react';
@@ -12,20 +12,28 @@ interface Template {
 
 interface StaffOption { id: string; fullName: string; }
 
+// Sentinel für „eigener Workflow (einmalig)" — kein Vorlagen-UUID.
+const BLANK = '__blank__';
+
 export function StartWorkflowForm({
   clientId,
   templates,
   staffOptions = [],
+  analysisId,
 }: {
   clientId: string;
   templates: Template[];
   staffOptions?: StaffOption[];
+  analysisId?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const [templateId, setTemplateId] = useState('');
+  const [choice, setChoice] = useState('');
+  const [name, setName] = useState('');
   const [memberIds, setMemberIds] = useState<Set<string>>(new Set());
   const [isPending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+
+  const isBlank = choice === BLANK;
 
   function toggleMember(id: string) {
     setMemberIds((s) => {
@@ -38,24 +46,18 @@ export function StartWorkflowForm({
 
   function submit() {
     setError(null);
-    if (!templateId) { setError('Vorlage wählen.'); return; }
+    if (!choice) { setError('„Eigener Workflow" oder eine Vorlage wählen.'); return; }
+    if (isBlank && !name.trim()) { setError('Bitte einen Namen für den Workflow angeben.'); return; }
     start(async () => {
       const r = await startInstanceAction({
         clientId,
-        templateId,
         memberIds: Array.from(memberIds),
+        ...(analysisId ? { analysisId } : {}),
+        ...(isBlank ? { name: name.trim() } : { templateId: choice }),
       });
       if (!r.ok) { setError(r.error ?? 'Fehler.'); return; }
-      setOpen(false); setTemplateId(''); setMemberIds(new Set());
+      setOpen(false); setChoice(''); setName(''); setMemberIds(new Set());
     });
-  }
-
-  if (templates.length === 0) {
-    return (
-      <a href="/staff/workflows/templates" className="btn-secondary text-xs">
-        Vorlagen anlegen →
-      </a>
-    );
   }
 
   return (
@@ -67,20 +69,48 @@ export function StartWorkflowForm({
       {open && (
         <div className="absolute right-0 mt-2 w-96 z-20 rounded-lg shadow-lg border border-default bg-surface p-4 space-y-3">
           <div>
-            <label className="label">Vorlage</label>
+            <label className="label">Workflow</label>
             <select
-              value={templateId}
-              onChange={(e) => setTemplateId(e.target.value)}
+              value={choice}
+              onChange={(e) => { setChoice(e.target.value); setError(null); }}
               className="input"
             >
-              <option value="">— Vorlage wählen —</option>
-              {templates.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name} ({t._count.steps} Schritte)
-                </option>
-              ))}
+              <option value="">— wählen —</option>
+              <option value={BLANK}>Eigener Workflow (einmalig) …</option>
+              {templates.length > 0 && (
+                <optgroup label="Aus Vorlage">
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} ({t._count.steps} Schritte)
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
+            {templates.length === 0 && (
+              <p className="text-xs text-muted mt-1">
+                Keine Vorlagen vorhanden — als <strong>eigener Workflow</strong> starten und die Schritte
+                danach hinzufügen.{' '}
+                <a href="/staff/workflows/templates" className="text-brand hover:underline">Vorlagen anlegen →</a>
+              </p>
+            )}
           </div>
+
+          {isBlank && (
+            <div>
+              <label className="label">Name des Workflows</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                maxLength={200}
+                placeholder="z. B. Klärung Kassenführung"
+                className="input"
+                autoFocus
+              />
+              <p className="text-xs text-muted mt-1">Leerer Workflow — Schritte fügst du anschließend hinzu.</p>
+            </div>
+          )}
 
           {staffOptions.length > 0 && (
             <div>

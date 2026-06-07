@@ -56,6 +56,7 @@ const FieldsSchema = z
     clientId: z.string().uuid().optional(),
     folderId: z.string().uuid().optional(),
     workflowItemId: z.string().uuid().optional(),
+    analysisId: z.string().uuid().optional(),
   })
   .refine((d) => d.classification || d.documentTypeId, {
     message: 'classification oder documentTypeId erforderlich',
@@ -90,6 +91,7 @@ export async function POST(req: NextRequest) {
     clientId: form.get('clientId') ?? undefined,
     folderId: form.get('folderId') ?? undefined,
     workflowItemId: form.get('workflowItemId') ?? undefined,
+    analysisId: form.get('analysisId') ?? undefined,
   });
   if (!parsed.success) {
     return NextResponse.json(
@@ -99,7 +101,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { tenantId, staffId } = session.user;
-  const { title, mimeType, clientId, folderId, workflowItemId } = parsed.data;
+  const { title, mimeType, clientId, folderId, workflowItemId, analysisId } = parsed.data;
 
   // Typ → Schutzstufe + Carrier-Klassifikation + finale documentTypeId
   // auflösen (vor dem Storage-Commit, weil die Stufe Bucket/Lock bestimmt).
@@ -172,6 +174,14 @@ export async function POST(req: NextRequest) {
           throw new Error('CLIENT_NOT_FOUND: clientId nicht in diesem Tenant.');
         }
       }
+      // Tenant-Sanity für analysisId (analog clientId — der FK prüft nur Existenz,
+      // unter RLS sieht findFirst nur Analysen DIESES Tenants).
+      if (analysisId) {
+        const a = await tx.riskAnalysis.findFirst({ where: { id: analysisId }, select: { id: true } });
+        if (!a) {
+          throw new Error('ANALYSIS_NOT_FOUND: analysisId nicht in diesem Tenant.');
+        }
+      }
       // Ordner muss zum Tenant gehören und im selben Bereich liegen wie das
       // Dokument (Mandant ↔ Mandant, bzw. beide kanzlei-intern). Sonst
       // ignorieren (Dokument landet ohne Ordner) statt hart abzubrechen.
@@ -198,6 +208,7 @@ export async function POST(req: NextRequest) {
           mimeType: effectiveMime,
           retentionUntil: commit.retentionUntil,
           workflowItemId: workflowItemId ?? null,
+          analysisId: analysisId ?? null,
           folderId: effectiveFolderId,
         },
       });

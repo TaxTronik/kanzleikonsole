@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Sparkles, Upload, Loader2, FileDown, FolderOpen, ClipboardList, ScrollText, Webhook, Archive, Lock, RefreshCw, X, AlertTriangle } from 'lucide-react';
+import { Sparkles, Upload, Loader2, FileDown, FolderOpen, ClipboardList, Webhook, Archive, Lock, RefreshCw, X, AlertTriangle } from 'lucide-react';
 import { analyzeAction, importDocTextAction, importClientDocAction, requestLlmAction, archiveAnalysisAction, reformatAnalysisAction, llmStatusAction, reanalyzeAction } from './actions';
 import type { LlmStatusDTO } from '@/server/risk/llm';
 import { DisclaimerBanner } from './disclaimer-banner';
@@ -14,8 +14,8 @@ import { MarkingPanel, ResearchComposer } from './marking-panel';
 import { NewMarkingPanel } from './new-marking-panel';
 import { ExportPanel } from './export-panel';
 import { MarkingList } from './marking-list';
-import { ResearchResultsBlock } from './research-results-block';
-import { type AnalysisDTO, type ResearchResultDTO, type MarkingDTO, FILTER_KEYS, type FilterKey, isVisible } from './_ui';
+import { ResearchView } from './research-view';
+import { type AnalysisDTO, type ResearchResultDTO, type ResearchRequestDTO, type MarkingDTO, FILTER_KEYS, type FilterKey, isVisible } from './_ui';
 
 /** Skeleton im Panel, während die LLM-Phase läuft — statt eines harten Reloads:
  *  „lade, du kannst weiterarbeiten". Die fertigen Markierungen kommen automatisch. */
@@ -42,11 +42,16 @@ interface Props {
   staffOptions: Array<{ id: string; fullName: string }>;
   clientDocuments: Array<{ id: string; title: string; mimeType: string; typeName: string }>;
   researchResults?: ResearchResultDTO[];
+  researchRequests?: ResearchRequestDTO[];
+  /** Server-gerenderter Inhalt des „Aufgaben"-Tabs (Workflows dieses Sachverhalts). */
+  aufgaben?: ReactNode;
+  /** Server-gerenderter Inhalt des „Aktenregal"-Tabs (Dokumente dieses Sachverhalts). */
+  aktenregal?: ReactNode;
   engineConfigured: boolean;
   initial: AnalysisDTO | null;
 }
 
-export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, researchResults = [], engineConfigured, initial }: Props) {
+export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, researchResults = [], researchRequests = [], aufgaben, aktenregal, engineConfigured, initial }: Props) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -70,6 +75,7 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
   const [filters, setFilters] = useState<Set<FilterKey>>(() => new Set(FILTER_KEYS));
   const [manualSel, setManualSel] = useState<ManualSelection | null>(null);
   const [showCaseResearch, setShowCaseResearch] = useState(false);
+  const [view, setView] = useState<'subsumtion' | 'recherche' | 'aufgaben' | 'aktenregal'>('subsumtion');
   // Vollbild der Subsumtions-Fläche (Dokument + Panel als Overlay). Esc verlässt es.
   const [expanded, setExpanded] = useState(false);
   useEffect(() => {
@@ -156,6 +162,7 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
   const visibleMarkings = useMemo(() => markings.filter((m) => isVisible(m, filters)), [markings, filters]);
   const selected = markings.find((m) => m.id === selectedId) ?? null;
   const ownCount = markings.filter((m) => m.herkunft === 'BERATER').length;
+  const newResultCount = researchResults.filter((r) => r.status === 'NEU').length;
   const markingsById = useMemo(
     () => Object.fromEntries(markings.map((m) => [m.id, m])) as Record<string, MarkingDTO>,
     [markings],
@@ -391,12 +398,70 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
         llmStarting={pollLlm}
       />
 
+      {/* View-Umschalter: Subsumtion ⇆ Recherche-Hub */}
+      <div className="inline-flex rounded-md border border-default overflow-hidden text-xs">
+        <button
+          type="button"
+          onClick={() => setView('subsumtion')}
+          className={view === 'subsumtion' ? 'px-3 py-1.5 bg-brand-600 text-white font-medium' : 'px-3 py-1.5 text-secondary hover:bg-gray-50 dark:hover:bg-gray-800'}
+        >
+          Subsumtion
+        </button>
+        <button
+          type="button"
+          onClick={() => setView('recherche')}
+          className={'inline-flex items-center gap-1.5 ' + (view === 'recherche' ? 'px-3 py-1.5 bg-brand-600 text-white font-medium' : 'px-3 py-1.5 text-secondary hover:bg-gray-50 dark:hover:bg-gray-800')}
+        >
+          <Webhook className="h-3.5 w-3.5" /> Recherche
+          {newResultCount > 0 && <span className="badge-yellow text-[10px]">{newResultCount}</span>}
+        </button>
+        <button
+          type="button"
+          onClick={() => setView('aufgaben')}
+          className={'inline-flex items-center gap-1.5 ' + (view === 'aufgaben' ? 'px-3 py-1.5 bg-brand-600 text-white font-medium' : 'px-3 py-1.5 text-secondary hover:bg-gray-50 dark:hover:bg-gray-800')}
+        >
+          <ClipboardList className="h-3.5 w-3.5" /> Aufgaben
+        </button>
+        <button
+          type="button"
+          onClick={() => setView('aktenregal')}
+          className={'inline-flex items-center gap-1.5 ' + (view === 'aktenregal' ? 'px-3 py-1.5 bg-brand-600 text-white font-medium' : 'px-3 py-1.5 text-secondary hover:bg-gray-50 dark:hover:bg-gray-800')}
+        >
+          <FolderOpen className="h-3.5 w-3.5" /> Aktenregal
+        </button>
+      </div>
+
+      {error && <div className="alert-error-sm">{error}</div>}
+      {info && <div className="text-sm text-emerald-700 dark:text-emerald-300">{info}</div>}
+
+      {/* Beide Ansichten bleiben gemountet (CSS-Umschaltung statt Unmount) — sonst
+          würde der Tiptap-Editor beim Wechsel neu mounten (Flackern, Scroll-/
+          Auswahl-Verlust, evtl. verwaiste Overlays). So ist der Wechsel instant. */}
+      <div className={view === 'recherche' ? undefined : 'hidden'}>
+        <ResearchView
+          clientId={clientId}
+          analysisId={initial.id}
+          requests={researchRequests}
+          results={researchResults}
+          markingsById={markingsById}
+          staffOptions={staffOptions}
+          engineConfigured={engineConfigured}
+          pending={pending}
+          start={start}
+          onFlash={flash}
+          onSelectMarking={(id) => { setView('subsumtion'); selectAndReveal(id); }}
+        />
+      </div>
+
+      <div className={view === 'aufgaben' ? '' : 'hidden'}>{aufgaben}</div>
+
+      <div className={view === 'aktenregal' ? '' : 'hidden'}>{aktenregal}</div>
+
+      <div className={view === 'subsumtion' ? 'space-y-3' : 'hidden'}>
+
       {/* Toolbar — bestehende TaxTronik-Features verlinkt */}
       <div className="flex items-center gap-2 flex-wrap">
         <Link href={`/staff/clients/${clientId}/subsumtion/new`} className="btn-secondary text-xs">‹ Neue Analyse</Link>
-        <Link href={`/staff/clients/${clientId}`} className="btn-secondary text-xs"><FolderOpen className="h-3.5 w-3.5" /> Aktenregal</Link>
-        <Link href={`/staff/clients/${clientId}/reminders`} className="btn-secondary text-xs"><ClipboardList className="h-3.5 w-3.5" /> Aufgaben</Link>
-        <Link href={`/staff/clients/${clientId}/timeline`} className="btn-secondary text-xs"><ScrollText className="h-3.5 w-3.5" /> Audit-Log</Link>
         <ExportPanel clientId={clientId} analysisId={initial.id} markings={markings} />
         {initial.archivedAt ? (
           <span className="badge-gray text-xs inline-flex items-center gap-1 ml-auto" title="Revisionssicher archiviert (Object-Lock)">
@@ -440,8 +505,6 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
 
       <HerkunftLegende />
 
-      {error && <div className="alert-error-sm">{error}</div>}
-      {info && <div className="text-sm text-emerald-700 dark:text-emerald-300">{info}</div>}
       {/* Flying Pill: fixed → immer sichtbar, egal ob ein Marking-Panel offen ist
           oder wie weit gescrollt wurde (auch über dem Vollbild-Dokument, z-50). */}
       {pollLlm && !llmFailed && (
@@ -562,16 +625,7 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
           )}
         </div>
       </div>
-
-      <ResearchResultsBlock
-        clientId={clientId}
-        analysisId={initial.id}
-        results={researchResults}
-        markingsById={markingsById}
-        pending={pending}
-        start={start}
-        onFlash={flash}
-      />
+      </div>
     </div>
   );
 }

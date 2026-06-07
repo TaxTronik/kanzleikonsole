@@ -33,6 +33,7 @@ const ModulesSchema = z.object({
   rssReader: z.boolean(),
   inboundMail: z.boolean(),
   risk: z.boolean(),
+  signalEngine: z.boolean(),
   poaMode: z.enum(['OFF', 'MARKDOWN_OTP', 'PDF_TEMPLATE']),
   poaPdfSubject: z.string().max(200).optional(),
   poaPdfBodyMd: z.string().max(5000).optional(),
@@ -63,6 +64,7 @@ export async function saveModulesAction(
     rssReader: formData.get('enabled.rssReader') === 'on',
     inboundMail: formData.get('enabled.inboundMail') === 'on',
     risk: formData.get('enabled.risk') === 'on',
+    signalEngine: formData.get('enabled.signalEngine') === 'on',
     poaMode: formData.get('poaMode'),
     poaPdfSubject: formData.get('poaPdfSubject') ?? '',
     poaPdfBodyMd: formData.get('poaPdfBodyMd') ?? '',
@@ -88,6 +90,7 @@ export async function saveModulesAction(
     rssReader: parsed.data.rssReader,
     inboundMail: parsed.data.inboundMail,
     risk: parsed.data.risk,
+    signalEngine: parsed.data.signalEngine,
     poaMode: parsed.data.poaMode,
     poaPdfTemplate:
       parsed.data.poaMode === 'PDF_TEMPLATE'

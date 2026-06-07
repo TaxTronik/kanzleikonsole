@@ -115,8 +115,14 @@ export default async function WorkflowInstanceDetail({
             </h1>
             <p className="text-sm text-secondary">
               Mandant: <Link href={`/staff/clients/${clientId}`} className="hover:underline">{inst.client.name}</Link>
-              {' · '}
-              Vorlage: <Link href={`/staff/workflows/templates/${inst.template.id}`} className="hover:underline">{inst.template.name}</Link>
+              {inst.template ? (
+                <>
+                  {' · '}
+                  Vorlage: <Link href={`/staff/workflows/templates/${inst.template.id}`} className="hover:underline">{inst.template.name}</Link>
+                </>
+              ) : (
+                <> · <span className="text-disabled">Eigener Workflow</span></>
+              )}
             </p>
           </div>
           <div className="shrink-0 text-right">

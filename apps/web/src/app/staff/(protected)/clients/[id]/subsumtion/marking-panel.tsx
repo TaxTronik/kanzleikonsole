@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Save, Send, BookPlus, BookmarkPlus, Trash2, AlertTriangle, Webhook, Eye, Loader2, ChevronRight, Scale, Search, Undo2, Library } from 'lucide-react';
 import {
   updateMarkingAction, deleteMarkingAction, delegateAction, pushDefinitionAction,
@@ -215,6 +216,8 @@ export function ResearchComposer(props: {
   const [prompt, setPrompt] = useState('');
   const [preview, setPreview] = useState<{ text: string; hits: number } | null>(null);
   const [finalText, setFinalText] = useState('');
+  // Portal-SSR-Guard: das Modal rendert in document.body (Client-only).
+  const [mounted, setMounted] = useState(false);
 
   // Prompt-Vorlagen (kanzleiweit)
   const [templates, setTemplates] = useState<PromptTemplateDTO[]>([]);
@@ -229,6 +232,8 @@ export function ResearchComposer(props: {
     });
     return () => { active = false; };
   }, [props.clientId]);
+
+  useEffect(() => { setMounted(true); }, []);
 
   // Jede Änderung der Eingaben macht eine bestehende Vorschau ungültig → schließen
   // (sonst zeigte/sendete die Box veralteten Text, z. B. den SV nach Toggle auf „nur Prompt").
@@ -289,7 +294,7 @@ export function ResearchComposer(props: {
   const field = 'w-full rounded border border-default bg-surface px-3 py-2 text-sm';
   const dialogRef = useDialogA11y(props.onClose);
 
-  return (
+  const modal = (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={props.onClose} />
       <div
@@ -370,6 +375,10 @@ export function ResearchComposer(props: {
       </div>
     </div>
   );
+  // In ein Body-Portal rendern, damit das fixed-Overlay den ECHTEN Viewport
+  // abdeckt — nicht einen transformierten/contained Vorfahren (sonst verrutscht
+  // das Modal und der Backdrop deckt die Sidebar nicht). Muster: DocumentUploadButton.
+  return mounted ? createPortal(modal, document.body) : null;
 }
 
 // --- Rechtsnormen (Gesetzestext-Expandable) ---------------------------------

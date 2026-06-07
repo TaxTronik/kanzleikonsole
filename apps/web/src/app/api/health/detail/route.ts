@@ -16,7 +16,10 @@ import {
   checkRedis,
   checkObjectStore,
   checkClamAV,
+  checkSignalEngine,
+  type ServiceStatus,
 } from '@/server/health/checks';
+import { readModules } from '@/server/settings/modules';
 
 export async function GET() {
   const session = await staffAuth();
@@ -26,19 +29,27 @@ export async function GET() {
   if (!isStaffAdmin(session)) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
+  const { tenantId, staffId } = session.user;
 
-  const [postgres, redis, objectStore, clamav] = await Promise.all([
+  const [postgres, redis, objectStore, clamav, modules, signalRaw] = await Promise.all([
     checkPostgres(),
     checkRedis(),
     checkObjectStore(),
     checkClamAV(),
+    readModules({ tenantId, actorId: staffId, actorType: 'STAFF' }),
+    checkSignalEngine(),
   ]);
 
-  const allOk = postgres.ok && redis.ok && objectStore.ok && clamav.ok;
+  const services: Record<string, ServiceStatus> = { postgres, redis, objectStore, clamav };
+  // Signal-Engine nur aufnehmen, wenn das Modul aktiv UND die Engine konfiguriert
+  // ist (signalRaw === null → nicht konfiguriert → auslassen, kein Degraded).
+  if (modules.signalEngine && signalRaw) services.signalEngine = signalRaw;
+
+  const allOk = Object.values(services).every((s) => s.ok);
   return NextResponse.json(
     {
       status: allOk ? 'ok' : 'degraded',
-      services: { postgres, redis, objectStore, clamav },
+      services,
       timestamp: new Date().toISOString(),
     },
     { status: allOk ? 200 : 503 },

@@ -2,12 +2,13 @@
 
 import { useActionState, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { CalendarClock, Check, Plus, Trash2 } from 'lucide-react';
+import { CalendarClock, Check, Plus, Trash2, Send } from 'lucide-react';
 import { fmtDateShort } from '@/lib/fmt';
 import {
   createReminderAction,
   markReminderDoneAction,
   deleteReminderAction,
+  submitResearchResultAction,
 } from './actions';
 import type { ActionResult } from '@/server/actions/staff-action';
 
@@ -19,6 +20,9 @@ interface Reminder {
   notes: string | null;
   doneAt: string | null;
   assigneeName: string | null;
+  /** Markierungs-ID, falls diese Wiedervorlage eine Risiko-Recherche-Delegation
+   *  ist (→ „Ergebnis einreichen"-Affordance). Sonst null. */
+  researchMarkingId: string | null;
 }
 
 interface StaffOption { id: string; fullName: string; }
@@ -41,11 +45,21 @@ export function RemindersBlock({
   );
   const [isMutating, startMut] = useTransition();
   const [open, setOpen] = useState(false);
+  const [submitFor, setSubmitFor] = useState<string | null>(null);
+  const [resultBody, setResultBody] = useState('');
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   function markDone(id: string) {
     startMut(async () => {
       await markReminderDoneAction({ id });
       router.refresh();
+    });
+  }
+  function submitResult(reminderId: string) {
+    startMut(async () => {
+      const res = await submitResearchResultAction({ reminderId, clientId, body: resultBody });
+      if (res.ok) { setSubmitFor(null); setResultBody(''); setSubmitError(null); router.refresh(); }
+      else setSubmitError(res.error ?? 'Konnte nicht eingereicht werden.');
     });
   }
   function remove(id: string) {
@@ -154,6 +168,51 @@ export function RemindersBlock({
                   </p>
                   {r.notes && (
                     <p className="text-xs text-secondary mt-1 whitespace-pre-wrap">{r.notes}</p>
+                  )}
+                  {r.researchMarkingId && (
+                    submitFor === r.id ? (
+                      <div className="mt-2 space-y-1.5">
+                        <textarea
+                          value={resultBody}
+                          onChange={(e) => setResultBody(e.target.value)}
+                          rows={4}
+                          maxLength={100_000}
+                          placeholder="Dein Rechercheergebnis (Fundstellen, Einschätzung) …"
+                          className="input text-sm w-full"
+                          autoFocus
+                        />
+                        {submitError && <p className="text-xs text-red-700">{submitError}</p>}
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => submitResult(r.id)}
+                            disabled={isMutating || !resultBody.trim()}
+                            className="btn-primary text-xs"
+                          >
+                            <Send className="h-3 w-3" /> Ergebnis einreichen
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setSubmitFor(null); setResultBody(''); setSubmitError(null); }}
+                            disabled={isMutating}
+                            className="btn-secondary text-xs"
+                          >
+                            Abbrechen
+                          </button>
+                        </div>
+                        <p className="text-[11px] text-muted">
+                          Wird der Markierung im Recherche-Hub zugeordnet und erledigt diese Wiedervorlage.
+                        </p>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => { setSubmitFor(r.id); setResultBody(''); setSubmitError(null); }}
+                        className="mt-1.5 text-xs text-brand-600 hover:underline inline-flex items-center gap-1"
+                      >
+                        <Send className="h-3 w-3" /> Ergebnis einreichen
+                      </button>
+                    )
                   )}
                 </div>
                 <button

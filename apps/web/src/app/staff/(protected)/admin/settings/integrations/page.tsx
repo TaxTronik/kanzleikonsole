@@ -5,13 +5,14 @@ import {
   Zap,
   ShieldCheck,
   Workflow,
+  RadioTower,
   Clock,
   AlertCircle,
   CheckCircle2,
   Loader2,
 } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
-import { env } from '@taxtronik/config';
+import { env, riskLayerConfig } from '@taxtronik/config';
 import { getSmtpStatus } from '@/server/settings/smtp';
 import {
   checkPostgres,
@@ -20,8 +21,10 @@ import {
   checkClamAV,
   checkN8nForTenant,
   checkTsaForTenant,
+  checkSignalEngine,
   type ServiceStatus,
 } from '@/server/health/checks';
+import { readModules } from '@/server/settings/modules';
 import { SectionCard } from '../section-card';
 
 interface Row {
@@ -43,7 +46,7 @@ export default async function IntegrationsSettingsPage() {
   if (!session?.user) redirect('/staff/login');
   const { tenantId, staffId } = session.user;
 
-  const [pg, redis, objectStore, clamav, n8n, tsa, smtp] = await Promise.all([
+  const [pg, redis, objectStore, clamav, n8n, tsa, smtp, modules, signalEngine] = await Promise.all([
     checkPostgres(),
     checkRedis(),
     checkObjectStore(),
@@ -51,6 +54,8 @@ export default async function IntegrationsSettingsPage() {
     checkN8nForTenant(tenantId),
     checkTsaForTenant(tenantId),
     getSmtpStatus({ tenantId, actorId: staffId, actorType: 'STAFF' }),
+    readModules({ tenantId, actorId: staffId, actorType: 'STAFF' }),
+    checkSignalEngine(),
   ]);
 
   // S3-Endpoint hostname-only zur Anzeige
@@ -120,6 +125,24 @@ export default async function IntegrationsSettingsPage() {
           : 'RFC-3161 für die Audit-Hash-Chain. Für Produktivbetrieb wird ein externer Stempel (z. B. D-Trust) empfohlen.',
     },
   ];
+
+  // Signal-Engine nur zeigen, wenn das Modul für diese Kanzlei aktiv ist
+  // (Merker 2026-06-07): Modul an + Engine konfiguriert → echter Bearer-Ping;
+  // Modul an, aber nicht konfiguriert → „nicht konfiguriert"-Hinweis.
+  if (modules.signalEngine) {
+    rows.push({
+      icon: RadioTower,
+      label: 'Signal-Engine',
+      endpoint: riskLayerConfig
+        ? new URL(riskLayerConfig.url).host
+        : '— nicht konfiguriert —',
+      status: signalEngine ?? {
+        skipped: true,
+        reason: 'Modul aktiv, aber keine Engine konfiguriert — RISK_LAYER_URL/-TOKEN in der Server-.env setzen.',
+      },
+      hint: 'Netzinterne Engine für externe Signale (Rechtsänderungen, Fristen, Anomalien). Bearer-Liveness-Ping auf /v1/health — nutzt dieselbe Engine wie der Subsumtions-Layer (RISK_LAYER_*).',
+    });
+  }
 
   return (
     <div className="space-y-6">

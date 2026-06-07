@@ -11,6 +11,7 @@ import { CockpitGrid } from './cockpit-grid';
 import { RequestDecision, type RequestRow } from '@/app/staff/(protected)/calendar/request-decision';
 import { SCHEDULE_LABELS } from '@taxtronik/tax';
 import { DocumentsManager } from '@/components/documents-manager';
+import { toManagedDoc } from '@/server/documents/managed-docs';
 import { ClientContactsPanel } from '@/components/client-contacts-panel';
 import { QuickPhoneNote } from './quick-phone-note';
 import { RemindersBlock } from './reminders/reminders-block';
@@ -133,6 +134,7 @@ export default async function ClientDetailPage({
           where: { clientId: id },
           orderBy: [{ doneAt: 'asc' }, { dueDate: 'asc' }],
           take: 50,
+          include: { riskMarkings: { select: { id: true }, take: 1 } },
         }),
         tx.pendingBinder.findMany({
           where: { clientId: id },
@@ -568,6 +570,7 @@ export default async function ClientDetailPage({
                 notes: r.notes,
                 doneAt: r.doneAt ? r.doneAt.toISOString() : null,
                 assigneeName: r.assigneeStaffId ? (staffNameById.get(r.assigneeStaffId) ?? null) : null,
+                researchMarkingId: r.riskMarkings[0]?.id ?? null,
               }))}
             />
           ),
@@ -818,28 +821,7 @@ export default async function ClientDetailPage({
                 canUpload={client.allowActive}
                 scopeLabel={client.name}
                 folders={client.documentFolders}
-                documents={managerDocs.map((d) => {
-                  const tier: 'NONE' | 'GWG' | 'GOBD' =
-                    d.documentType?.tier ??
-                    (['GOBD_INVOICE', 'GOBD_CONTRACT', 'GOBD_TAX'].includes(d.classification)
-                      ? 'GOBD'
-                      : d.classification === 'GWG_EVIDENCE'
-                        ? 'GWG'
-                        : 'NONE');
-                  return {
-                    id: d.id,
-                    title: d.title,
-                    classification: d.classification,
-                    typeName: d.documentType?.name ?? '',
-                    typeId: d.documentTypeId,
-                    tier,
-                    sizeBytes: d.versions[0] ? Number(d.versions[0].sizeBytes) : 0,
-                    createdAt: d.createdAt.toISOString(),
-                    folderId: d.folderId,
-                    deletedAt: d.deletedAt ? d.deletedAt.toISOString() : null,
-                    shared: d.sharedWithClientAt != null,
-                  };
-                })}
+                documents={managerDocs.map(toManagedDoc)}
               />
             </div>
           ),

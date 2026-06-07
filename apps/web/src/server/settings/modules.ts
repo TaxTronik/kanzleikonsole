@@ -33,6 +33,7 @@ export interface ModuleConfig {
   rssReader: boolean;    // RSS-Reader-Widget
   inboundMail: boolean;  // E-Mail-Antworten von Mandanten → Anforderungs-Antwort (via n8n)
   risk: boolean;         // Subsumtions-Workspace / TCMS (braucht zusätzlich die Risk-Engine)
+  signalEngine: boolean; // Signal-Engine-Integration (externe Signale; braucht zusätzlich signalEngineConfig)
 
   // Vollmachten-Modus
   poaMode: PoaMode;
@@ -69,6 +70,8 @@ export const DEFAULT_MODULES: ModuleConfig = {
   inboundMail: false,
   // Opt-in: erfordert zusätzlich die deployte Risk-Engine (riskLayerConfig).
   risk: false,
+  // Opt-in: erfordert zusätzlich die deployte Signal-Engine (signalEngineConfig).
+  signalEngine: false,
   poaMode: 'MARKDOWN_OTP',
   poaPdfTemplate: null,
   // Default: EXTERNAL (PDF-Upload aus zentraler Rechnungssoftware) — der
@@ -143,7 +146,8 @@ export type BooleanModuleKey =
   | 'appointments'
   | 'rssReader'
   | 'inboundMail'
-  | 'risk';
+  | 'risk'
+  | 'signalEngine';
 
 export async function assertModuleEnabled(
   ctx: TenantContext,

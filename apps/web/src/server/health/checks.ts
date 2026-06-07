@@ -8,7 +8,7 @@
 
 import { prisma, withTenantContext } from '@taxtronik/db';
 import { createConnection } from 'node:net';
-import { env } from '@taxtronik/config';
+import { env, riskLayerConfig } from '@taxtronik/config';
 import { S3Client, ListBucketsCommand } from '@aws-sdk/client-s3';
 import { Rfc3161HttpAdapter, resolveTsaUrl } from '@taxtronik/evidence';
 import { randomBytes } from 'node:crypto';
@@ -134,6 +134,34 @@ async function checkN8nUrl(rawUrl: string | null): Promise<ServiceStatus> {
     // kein TOCTOU-Fenster zwischen Check und Verbindung.
     // M-6: redirect:'error' verhindert 302 zu internen Adressen.
     const res = await safeFetch(url.toString(), { signal: ctrl.signal, redirect: 'error' });
+    clearTimeout(to);
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+    return { ok: true, latencyMs: Date.now() - start };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+/**
+ * Signal-Engine (optionales Modul): Bearer-authentifizierter Liveness-Ping auf
+ * den internen Engine-Host (`GET /v1/health`, wie der Risk-Layer). Gibt `null`
+ * zurück, wenn die Engine nicht konfiguriert ist (riskLayerConfig === null);
+ * der Aufrufer entscheidet dann, ob die Zeile als „nicht konfiguriert" erscheint.
+ */
+export async function checkSignalEngine(): Promise<ServiceStatus | null> {
+  if (!riskLayerConfig) return null;
+  const start = Date.now();
+  try {
+    const url = new URL('/v1/health', riskLayerConfig.url);
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 3000);
+    // safeFetch macht assertPublicHost + DNS-Pinning in einem Schritt (der interne
+    // Host muss in INTERNAL_FETCH_HOSTS stehen); redirect:'error' gegen 302→intern.
+    const res = await safeFetch(url.toString(), {
+      headers: { Authorization: `Bearer ${riskLayerConfig.token}` },
+      signal: ctrl.signal,
+      redirect: 'error',
+    });
     clearTimeout(to);
     if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
     return { ok: true, latencyMs: Date.now() - start };

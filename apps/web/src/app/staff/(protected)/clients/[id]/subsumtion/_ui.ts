@@ -68,6 +68,21 @@ export interface ResearchResultDTO {
   suggestions: Array<{ markingId: string; begriff: string; score: number; reason: string }>;
 }
 
+/** Ein gesendeter Rechercheauftrag (Outbound an n8n) — für den Recherche-Hub. */
+export interface ResearchRequestDTO {
+  id: string;
+  markingId: string | null;
+  /** Begriff der Markierung (lesbares Label) oder null = ganzer Fall. */
+  begriff: string | null;
+  prompt: string | null;
+  includeSachverhalt: boolean;
+  status: 'SENT' | 'ANSWERED' | 'FAILED';
+  createdAt: string;
+  createdById: string;
+  /** Anzahl bisher zurückgekommener Ergebnisse. */
+  resultCount: number;
+}
+
 export const HERKUNFT_LABEL: Record<Herkunft, string> = {
   WOERTLICH: 'wörtlich',
   MUSTER: 'Muster',

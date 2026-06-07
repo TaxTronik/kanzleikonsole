@@ -19,6 +19,7 @@ const MODULES: Array<{ key: keyof ModuleConfig; label: string; description: stri
   { key: 'rssReader', label: 'RSS-Reader', description: 'Dashboard-Widget mit eigenen RSS-Feeds (BMF, BFH, weitere)' },
   { key: 'inboundMail', label: 'E-Mail-Antworten (Inbound)', description: 'Mandanten-Antworten per E-Mail landen automatisch als Anforderungs-Antwort (erfordert n8n-Inbound-Strecke)' },
   { key: 'risk', label: 'Subsumtion / TCMS', description: 'Subsumtions-Workspace: Sachverhalt analysieren, markieren, entscheiden, delegieren (erfordert die deployte Risk-Engine)' },
+  { key: 'signalEngine', label: 'Signal-Engine', description: 'Netzinterne Engine für externe Signale (Rechtsänderungen, Fristen, Anomalien). Zeigt Status unter Einstellungen → Integrationen (erfordert die deployte Signal-Engine)' },
 ];
 
 const POA_MODES: Array<{ value: 'OFF' | 'MARKDOWN_OTP' | 'PDF_TEMPLATE'; label: string; description: string }> = [

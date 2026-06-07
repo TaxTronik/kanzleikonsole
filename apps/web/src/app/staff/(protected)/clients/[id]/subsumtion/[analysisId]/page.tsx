@@ -2,10 +2,16 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { guardSubsumtionPage } from '../_guard';
-import { loadAnalysis, loadResearchResults, scoreMarkingSuggestions } from '@/server/risk';
+import { loadAnalysis, loadResearchResults, loadResearchRequests, scoreMarkingSuggestions } from '@/server/risk';
+import { loadClientWorkflows } from '@/server/workflows/queries';
 import { SubsumtionWorkspace } from '../subsumtion-workspace';
 import { EditableAnalysisTitle } from '../editable-title';
-import type { AnalysisDTO, MarkingDTO, NormRefDTO, ResearchResultDTO } from '../_ui';
+import { WorkflowSection } from '../../workflows/workflow-section';
+import { StartWorkflowForm } from '../../workflows/start-form';
+import { withTenantContext } from '@taxtronik/db';
+import { loadAnalysisDocuments } from '@/server/documents/managed-docs';
+import { DocumentsManager } from '@/components/documents-manager';
+import type { AnalysisDTO, MarkingDTO, NormRefDTO, ResearchResultDTO, ResearchRequestDTO } from '../_ui';
 
 export default async function AnalysisPage({
   params,
@@ -18,10 +24,21 @@ export default async function AnalysisPage({
   const analysis = await loadAnalysis(ctx, analysisId);
   if (!analysis || analysis.clientId !== id) notFound();
 
-  // Rechercheergebnisse + (für NEU) heuristische Zuordnungs-Vorschläge. Die
-  // Markierungen sind über `analysis` bereits geladen → in-memory scoren (kein
-  // N+1: vorher 2 Queries je NEU-Ergebnis).
-  const rawResults = await loadResearchResults(ctx, analysisId);
+  // Alle weiteren Lesezugriffe sind voneinander unabhängig (brauchen nur
+  // analysisId/clientId) → EIN paralleler Batch statt fünf sequenzieller
+  // Round-Trips. Das In-Memory-Scoring der Recherche-Vorschläge nutzt danach die
+  // schon mit `analysis` geladenen Markierungen (kein N+1).
+  const [rawResults, rawRequests, wf, aktenregalDocs, clientInfo] = await Promise.all([
+    loadResearchResults(ctx, analysisId),
+    loadResearchRequests(ctx, analysisId),
+    loadClientWorkflows(ctx, { clientId: id, analysisId }),
+    loadAnalysisDocuments(ctx, analysisId),
+    withTenantContext(ctx, (tx) =>
+      tx.client.findUnique({ where: { id }, select: { allowActive: true, name: true } }),
+    ),
+  ]);
+
+  // Rechercheergebnisse + (für NEU) heuristische Zuordnungs-Vorschläge.
   const openMarkings = analysis.markings
     .filter((m) => m.status === 'OFFEN' || m.status === 'IN_PRUEFUNG')
     .map((m) => ({ id: m.id, begriff: m.begriff, normAnker: m.normAnker, status: m.status }));
@@ -35,6 +52,54 @@ export default async function AnalysisPage({
     receivedAt: r.receivedAt.toISOString(),
     suggestions: r.status === 'NEU' ? scoreMarkingSuggestions(r, openMarkings) : [],
   }));
+
+  // Outbound: gesendete Rechercheaufträge (für den Recherche-Hub).
+  const researchRequests: ResearchRequestDTO[] = rawRequests.map((r) => ({
+    id: r.id,
+    markingId: r.markingId,
+    begriff: r.marking?.begriff ?? null,
+    prompt: r.prompt,
+    includeSachverhalt: r.includeSachverhalt,
+    status: r.status,
+    createdAt: r.createdAt.toISOString(),
+    createdById: r.createdById,
+    resultCount: r._count.results,
+  }));
+
+  // Aufgaben-Tab: Workflows dieses Sachverhalts — exakt die WorkflowSection des
+  // Builders (kein Doppel-Code), gescopt per analysisId. Als fertiger Server-Slot.
+  const aufgaben = (
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <p className="text-sm text-muted max-w-xl">
+          Workflows zu diesem Sachverhalt — bauen + ausführen wie im Workflow-Builder, aber nur für diese Analyse.
+        </p>
+        <StartWorkflowForm clientId={id} templates={wf.templates} staffOptions={wf.staffList} analysisId={analysisId} />
+      </div>
+      <WorkflowSection
+        clientId={id}
+        instances={wf.instances}
+        staffList={wf.staffList}
+        formTemplates={wf.formTemplates}
+        requestTemplates={wf.requestTemplates}
+        emailTemplates={wf.emailTemplates}
+        emptyHint="Noch kein Workflow zu diesem Sachverhalt — oben einen starten (Vorlage oder eigener Workflow)."
+      />
+    </div>
+  );
+
+  // Aktenregal-Tab: Dokumente dieses Sachverhalts — reuse DocumentsManager,
+  // gescopt per analysisId (Uploads setzen analysis_id; GwG-Gate wie am Mandanten).
+  const aktenregal = (
+    <DocumentsManager
+      clientId={id}
+      analysisId={analysisId}
+      canUpload={clientInfo?.allowActive ?? false}
+      scopeLabel={analysis.title ?? clientInfo?.name ?? 'Sachverhalt'}
+      folders={[]}
+      documents={aktenregalDocs}
+    />
+  );
 
   const dto: AnalysisDTO = {
     id: analysis.id,
@@ -85,6 +150,9 @@ export default async function AnalysisPage({
         staffOptions={staffOptions}
         clientDocuments={[]}
         researchResults={researchResults}
+        researchRequests={researchRequests}
+        aufgaben={aufgaben}
+        aktenregal={aktenregal}
         engineConfigured={engineConfigured}
         initial={dto}
       />

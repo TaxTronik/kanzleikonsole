@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { evidenceService } from '@/server/container';
+import { notify } from '@/server/notifications/service';
 import { assertClientInTenant, assertStaffInTenant } from '@/server/db/assert-tenant';
 import { withStaff, type ActionResult } from '@/server/actions/staff-action';
 
@@ -75,6 +76,86 @@ export async function markReminderDoneAction(input: { id: string }): Promise<Act
   });
   if (r.ok) {
     revalidatePath('/staff/clients', 'layout');
+    revalidatePath('/staff/dashboard');
+  }
+  return r;
+}
+
+// Mitarbeiter-Rücklauf: der/die Zugewiesene reicht das Recherche-Ergebnis direkt
+// an der Delegations-Wiedervorlage ein → wird als RiskResearchResult der
+// delegierten Markierung zugeordnet (Quelle=Mitarbeiter), landet im Recherche-Hub,
+// und die Wiedervorlage gilt damit als erledigt (Aufgabe erfüllt).
+const SubmitResearchResultSchema = z.object({
+  reminderId: z.string().uuid(),
+  clientId: z.string().uuid(),
+  body: z.string().min(1, 'Bitte ein Ergebnis eingeben.').max(100_000),
+});
+
+export async function submitResearchResultAction(input: {
+  reminderId: string;
+  clientId: string;
+  body: string;
+}): Promise<ActionResult> {
+  const parsed = SubmitResearchResultSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
+
+  const r = await withStaff(async (tx, { tenantId, staffId }) => {
+    await assertClientInTenant(tx, parsed.data.clientId);
+    const reminder = await tx.clientReminder.findUnique({
+      where: { id: parsed.data.reminderId },
+      select: {
+        id: true, clientId: true, createdByStaff: true,
+        riskMarkings: { select: { id: true, analysisId: true }, take: 1 },
+      },
+    });
+    if (!reminder || reminder.clientId !== parsed.data.clientId) throw new Error('Wiedervorlage nicht gefunden.');
+    const markingId = reminder.riskMarkings[0]?.id ?? null;
+    const analysisId = reminder.riskMarkings[0]?.analysisId ?? null;
+    if (!markingId) throw new Error('Diese Wiedervorlage ist kein Rechercheauftrag.');
+
+    const me = await tx.staffUser.findUnique({ where: { id: staffId }, select: { fullName: true } });
+    const result = await tx.riskResearchResult.create({
+      data: {
+        tenantId,
+        markingId,
+        title: 'Ergebnis (Mitarbeiter)',
+        body: parsed.data.body.trim(),
+        source: `Mitarbeiter: ${me?.fullName ?? 'unbekannt'}`,
+        status: 'ZUGEORDNET',
+      },
+      select: { id: true },
+    });
+
+    // Eingereicht = Aufgabe erfüllt → Wiedervorlage erledigen.
+    await tx.clientReminder.update({
+      where: { id: reminder.id },
+      data: { doneAt: new Date(), doneByStaff: staffId },
+    });
+
+    await evidenceService.record(tx, {
+      tenantId, actorType: 'STAFF', actorId: staffId,
+      action: 'risk.research.submitted',
+      resourceType: 'risk_research_result',
+      resourceId: result.id,
+      after: { markingId, reminderId: reminder.id, source: 'Mitarbeiter' },
+    });
+
+    // Notify-on-arrival: der/die Delegierende wird informiert (nicht bei
+    // Selbst-Zuweisung). Reuse REQUEST_RESPONDED (kein eigener Kind).
+    if (reminder.createdByStaff && reminder.createdByStaff !== staffId) {
+      await notify(tx, {
+        tenantId,
+        staffId: reminder.createdByStaff,
+        kind: 'REQUEST_RESPONDED',
+        title: `Rechercheergebnis eingereicht: ${me?.fullName ?? 'Mitarbeiter'}`,
+        href: analysisId ? `/staff/clients/${parsed.data.clientId}/subsumtion/${analysisId}` : null,
+        resourceType: 'risk_research_result',
+        resourceId: result.id,
+      });
+    }
+  });
+  if (r.ok) {
+    revalidatePath(`/staff/clients/${parsed.data.clientId}`);
     revalidatePath('/staff/dashboard');
   }
   return r;

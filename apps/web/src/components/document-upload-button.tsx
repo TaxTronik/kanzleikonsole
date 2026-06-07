@@ -8,6 +8,8 @@ import { Upload, X } from 'lucide-react';
 interface Props {
   clientId?: string;
   folderId?: string;
+  /** Optionaler Sachverhalts-Bezug — der Upload setzt analysis_id (Aktenregal-Tab). */
+  analysisId?: string;
   defaultClassification?: string;
   buttonLabel?: string;
   buttonClassName?: string;
@@ -29,6 +31,7 @@ const TIER_HINT: Record<DocType['tier'], string> = {
 export function DocumentUploadButton({
   clientId,
   folderId,
+  analysisId,
   defaultClassification = 'GENERAL',
   buttonLabel = 'Hochladen',
   buttonClassName = 'btn-primary text-xs py-1.5',
@@ -114,6 +117,7 @@ export function DocumentUploadButton({
         fd.set('mimeType', file.type || 'application/octet-stream');
         if (clientId) fd.set('clientId', clientId);
         if (folderId) fd.set('folderId', folderId);
+        if (analysisId) fd.set('analysisId', analysisId);
 
         setProgress('commit');
         const commitRes = await fetch('/api/staff/documents/commit', {

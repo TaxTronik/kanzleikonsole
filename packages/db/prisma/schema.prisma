@@ -864,6 +864,9 @@ model Document {
   createdAt           DateTime               @default(now()) @map("created_at")
   updatedAt           DateTime               @updatedAt @map("updated_at")
   workflowItemId      String?                @map("workflow_item_id") @db.Uuid
+  // Optionaler Sachverhalts-Bezug (Aktenregal-Tab): Dokument gehört zu genau
+  // dieser RiskAnalysis. Analog workflowItemId. SET NULL bei Analyse-Löschung.
+  analysisId          String?                @map("analysis_id") @db.Uuid
   acknowledgedAt      DateTime?              @map("acknowledged_at") @db.Timestamptz(6)
   acknowledgedByStaff String?                @map("acknowledged_by_staff") @db.Uuid
   // Soft-Delete: GoBD/GwG-Objekte liegen unter Object-Lock COMPLIANCE und sind
@@ -897,11 +900,12 @@ model Document {
   client              Client?                @relation(fields: [clientId], references: [id])
   tenant              Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   workflowItem        WorkflowItem?          @relation(fields: [workflowItemId], references: [id], onUpdate: NoAction, map: "document_workflow_item_fk")
+  analysis            RiskAnalysis?          @relation("AnalysisAttachedDocs", fields: [analysisId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "document_analysis_fk")
   versions            DocumentVersion[]
   gwgIdDocuments      GwgIdDocument[]
   invoiceAttachments  Invoice[]
   requestResponses    RequestResponse[]
-  riskAnalyses        RiskAnalysis[]
+  riskAnalyses        RiskAnalysis[]         @relation("AnalysisSourceDoc")
   sickLeaves          SickLeave[]
   taxFilings          TaxFiling[]
   taxNotices          TaxNotice[]
@@ -913,6 +917,7 @@ model Document {
   @@index([tenantId, documentTypeId])
   @@index([clientId, sharedWithClientAt])
   @@index([workflowItemId], map: "document_workflow_item_idx")
+  @@index([tenantId, analysisId])
   // iter71: pg_trgm-GIN für die globale Suche (Dokument-Titel)
   @@index([title(ops: raw("gin_trgm_ops"))], type: Gin, map: "document_title_trgm_idx")
   @@map("document")
@@ -1166,9 +1171,11 @@ model RiskAnalysis {
   createdAt        DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
   tenant           Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   client           Client?               @relation(fields: [clientId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "risk_analysis_client_fk")
-  document         Document?             @relation(fields: [documentId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "risk_analysis_document_fk")
-  markings         RiskMarking[]
-  researchRequests RiskResearchRequest[]
+  document         Document?             @relation("AnalysisSourceDoc", fields: [documentId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "risk_analysis_document_fk")
+  markings          RiskMarking[]
+  researchRequests  RiskResearchRequest[]
+  workflowInstances WorkflowInstance[]
+  documents         Document[]            @relation("AnalysisAttachedDocs")
 
   @@index([tenantId, clientId])
   @@index([tenantId, documentId])
@@ -1533,7 +1540,10 @@ model WorkflowInstance {
   id             String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId       String                   @map("tenant_id") @db.Uuid
   clientId       String                   @map("client_id") @db.Uuid
-  templateId     String                   @map("template_id") @db.Uuid
+  // Nullable: ein „eigener Workflow (einmalig)" wird OHNE Vorlage gestartet
+  // (Name frei, Schritte ad-hoc via AddStepForm) — nur templatebasierte Instanzen
+  // tragen eine templateId.
+  templateId     String?                  @map("template_id") @db.Uuid
   name           String
   status         WorkflowInstanceStatus   @default(ACTIVE)
   startedAt      DateTime                 @default(now()) @map("started_at")
@@ -1541,14 +1551,19 @@ model WorkflowInstance {
   startedByStaff String                   @map("started_by_staff") @db.Uuid
   notes          String?
   pausedUntil    DateTime?                @map("paused_until") @db.Timestamptz(6)
+  // Optionaler Sachverhalts-Bezug: ein aus dem Subsumtions-Tab gestarteter
+  // Workflow gehört zu genau dieser Analyse (SET NULL überlebt Analyse-Löschung).
+  analysisId     String?                  @map("analysis_id") @db.Uuid
   client         Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "workflow_instance_client_fkey")
-  template       WorkflowTemplate         @relation(fields: [templateId], references: [id], onUpdate: NoAction, map: "workflow_instance_template_fkey")
+  template       WorkflowTemplate?        @relation(fields: [templateId], references: [id], onUpdate: NoAction, map: "workflow_instance_template_fkey")
   tenant         Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "workflow_instance_tenant_fkey")
+  analysis       RiskAnalysis?            @relation(fields: [analysisId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "workflow_instance_analysis_fk")
   members        WorkflowInstanceMember[]
   items          WorkflowItem[]
 
   @@index([tenantId, clientId, status])
   @@index([tenantId, status, startedAt])
+  @@index([tenantId, analysisId])
   @@map("workflow_instance")
 }
 
