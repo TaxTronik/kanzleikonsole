@@ -42,9 +42,18 @@ export function gobdRetentionUntil(now: Date = new Date()): Date {
  * Wir setzen Object-Lock-Retain-Until daher auf 5 Jahre + 1 Tag (Jahresende
  * basierte Berechnung wäre für GwG-Akten weniger relevant — Frist beginnt
  * mit Ende der Geschäftsbeziehung, nicht mit Erstellungsjahr; das ist eine
- * Operations-Sache, nicht Object-Lock-Sache). Zusätzlich: nach Mandanten-
- * Ende muss die Kanzlei einen Lifecycle-Job laufen lassen, der Object-Lock
- * abschaltet und Dateien tatsächlich löscht.
+ * Operations-Sache, nicht Object-Lock-Sache).
+ *
+ * Object-Lock-Modus je Stufe (Review F2 — siehe lockModeForTier): GwG-Belege werden
+ * im Modus GOVERNANCE geschrieben, GOBD in COMPLIANCE. Hintergrund: COMPLIANCE lässt
+ * sich vor Ablauf von NIEMANDEM (auch nicht root) verkürzen oder abschalten — damit
+ * wäre die von § 8 Abs. 4 Satz 4 GwG geforderte UNVERZÜGLICHE Vernichtung nach Ende
+ * der Geschäftsbeziehung technisch nicht erfüllbar (Konflikt mit DSGVO Art. 5 Abs. 1
+ * lit. e). GOVERNANCE erlaubt die privilegierte Frühlöschung (s3:BypassGovernance-
+ * Retention), GoBD bleibt voll unveränderbar.
+ * NOCH OFFEN (Ops): die eigentliche Frühlöschung nach Beziehungsende ist ein
+ * Lifecycle-Schritt (Löschen MIT BypassGovernanceRetention); zudem SeaweedFS'
+ * Object-Lock-Emulation gegen reales S3-GOVERNANCE-Verhalten prüfen.
  */
 export function gwgRetentionUntil(now: Date = new Date()): Date {
   const startYear = now.getUTCFullYear();
@@ -55,6 +64,20 @@ function retentionForTier(tier: ProtectionTier): Date | null {
   if (tier === 'GOBD') return gobdRetentionUntil();
   if (tier === 'GWG') return gwgRetentionUntil();
   return null;
+}
+
+/**
+ * Object-Lock-Modus je Schutzstufe (Review F2):
+ *  - GWG  → GOVERNANCE: § 8 Abs. 4 Satz 4 GwG verlangt die UNVERZÜGLICHE
+ *    Vernichtung nach Ende der Geschäftsbeziehung. COMPLIANCE würde das technisch
+ *    verhindern (vor Ablauf von niemandem löschbar). GOVERNANCE erlaubt die
+ *    privilegierte Frühlöschung (s3:BypassGovernanceRetention) — für alle ohne
+ *    dieses Recht bleibt die fristgebundene Unveränderbarkeit erhalten.
+ *  - GOBD → COMPLIANCE: 10 Jahre echte, von niemandem aufhebbare Unveränderbarkeit
+ *    (GoBD / § 147 AO), keine Frühlöschung vorgesehen.
+ */
+function lockModeForTier(tier: ProtectionTier): 'GOVERNANCE' | 'COMPLIANCE' {
+  return tier === 'GWG' ? 'GOVERNANCE' : 'COMPLIANCE';
 }
 
 // ---------------------------------------------------------------------------
@@ -353,7 +376,7 @@ async function scanHashAndUpload(
       ContentLength: fileData.length,
       ...(locked && retentionUntil
         ? {
-            ObjectLockMode: 'COMPLIANCE' as const,
+            ObjectLockMode: lockModeForTier(tier),
             ObjectLockRetainUntilDate: retentionUntil,
           }
         : {}),

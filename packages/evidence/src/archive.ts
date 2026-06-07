@@ -19,6 +19,7 @@
 
 import { createHash } from 'node:crypto';
 import { canonicalJson } from './canonical-json';
+import { eventHash } from './chain';
 
 export interface ArchiveAuditRow {
   id: bigint | number;
@@ -141,31 +142,23 @@ export interface ChainCheckResult {
 }
 
 /**
- * Berechnet den Event-Hash so wie EvidenceService.append es tut:
- *   SHA-256(prev_hash || canonicalJson({tenantId, occurredAt, actorType,
- *           actorId, action, resourceType, resourceId, before, after}))
- *
- * U-4: Bewusst eine exakte Spiegelung der Berechnung in service.ts:98-117.
- * Falls sich dort das Hash-Format ändert, MUSS hier mit-aktualisiert werden.
- * Felder `ip` und `userAgent` sind im Audit-Log gespeichert, fließen aber
- * NICHT in den Hash ein (forensisches Beiwerk, kein Beweisstück).
+ * Berechnet den Event-Hash über `eventHash` aus chain.ts — DIESELBE Funktion, die
+ * EvidenceService.record und der Live-Verify nutzen. Damit ist eine Drift zwischen
+ * Record- und Verify-Berechnung ausgeschlossen (Review F1/A2). `ip`/`userAgent`
+ * fließen nicht in den Hash ein (forensisches Beiwerk, kein Beweisstück).
  */
 function computeRowHash(prevHash: Buffer, r: ParsedArchiveRow): Buffer {
-  const canonical = {
+  return eventHash(prevHash, {
     tenantId: r.tenantId,
-    occurredAt: r.occurredAt.toISOString(),
+    occurredAt: r.occurredAt,
     actorType: r.actorType,
     actorId: r.actorId,
     action: r.action,
     resourceType: r.resourceType,
     resourceId: r.resourceId,
-    before: r.before ?? null,
-    after: r.after ?? null,
-  };
-  return createHash('sha256')
-    .update(prevHash)
-    .update(Buffer.from(canonicalJson(canonical), 'utf8'))
-    .digest();
+    before: r.before,
+    after: r.after,
+  });
 }
 
 export function verifyArchiveChain(

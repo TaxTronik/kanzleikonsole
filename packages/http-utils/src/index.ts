@@ -35,6 +35,20 @@ function isPrivateIPv4(ip: string): boolean {
   return false;
 }
 
+/**
+ * F4: Hex-kodierten v4-mapped-Suffix (zwei 16-Bit-Gruppen nach "::ffff:") in
+ * dotted IPv4 wandeln: Rest "7f00:1" → "127.0.0.1". null, wenn die Form nicht
+ * passt (der Aufrufer behandelt das fail-closed).
+ */
+function v4MappedHexToDotted(rest: string): string | null {
+  const parts = rest.split(':');
+  if (parts.length !== 2) return null;
+  if (!/^[0-9a-f]{1,4}$/.test(parts[0]!) || !/^[0-9a-f]{1,4}$/.test(parts[1]!)) return null;
+  const hi = parseInt(parts[0]!, 16);
+  const lo = parseInt(parts[1]!, 16);
+  return `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+}
+
 function isPrivateIPv6(ip: string): boolean {
   const v = ip.toLowerCase();
   if (v === '::1' || v === '::') return true;
@@ -45,8 +59,15 @@ function isPrivateIPv6(ip: string): boolean {
   if (v.startsWith('64:ff9b:')) return true;
   if (v.startsWith('2002:')) return true;
   if (v.startsWith('::ffff:')) {
-    const v4 = v.replace('::ffff:', '');
-    if (isIP(v4) === 4) return isPrivateIPv4(v4);
+    const rest = v.slice('::ffff:'.length);
+    // Dotted-Form: ::ffff:127.0.0.1
+    if (isIP(rest) === 4) return isPrivateIPv4(rest);
+    // F4: Hex-Form ::ffff:7f00:1 — die letzten 32 Bit als IPv4 interpretieren.
+    const v4 = v4MappedHexToDotted(rest);
+    if (v4) return isPrivateIPv4(v4);
+    // Nicht parsebare v4-mapped-Form → FAIL-CLOSED (als privat behandeln), statt
+    // sie als „öffentlich" durchzulassen (sonst Loopback-/Private-Bypass).
+    return true;
   }
   return false;
 }

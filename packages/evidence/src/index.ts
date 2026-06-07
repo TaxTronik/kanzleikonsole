@@ -4,6 +4,7 @@
 
 export { EvidenceService, type AuditEventInput, type RecordedEvent } from './service';
 export { canonicalJson } from './canonical-json';
+export { eventHash, chainValue, type ChainEvent } from './chain';
 export {
   serializeArchive,
   parseArchive,

@@ -19,7 +19,7 @@
 
 import { createHash } from 'node:crypto';
 import type { PrismaClient, AuditActorType } from '@prisma/client';
-import { canonicalJson } from './canonical-json';
+import { eventHash, chainValue } from './chain';
 import type { TimestampPort } from './ports/timestamp';
 
 type Tx = Pick<PrismaClient, '$queryRaw' | '$queryRawUnsafe' | '$executeRaw'>;
@@ -95,28 +95,28 @@ export class EvidenceService {
     `;
     const prevHash = prevRows[0]?.this_hash ?? genesisHash(event.tenantId);
 
-    // 3. Kanonisches Event-Objekt für die Hash-Berechnung.
+    // 3. Event-Hash über die EINE zentrale Funktion (chain.ts) — dieselbe nutzen
+    //    der Live-Verify (unten) UND der Offline-Archiv-Verifier (archive.ts),
+    //    daher ist eine Drift zwischen Record- und Verify-Berechnung ausgeschlossen
+    //    (Review F1/A2). chainValue normalisiert before/after auf den jsonb-
+    //    Roundtrip → Record == Verify auch für Decimal/Buffer/falsy; GENAU diese
+    //    normalisierte Form wird unten als jsonb gespeichert.
     const occurredAt = new Date();
-    const canonical = {
+    const beforeN = chainValue(event.before);
+    const afterN = chainValue(event.after);
+    const thisHash = eventHash(prevHash, {
       tenantId: event.tenantId,
-      occurredAt: occurredAt.toISOString(),
+      occurredAt,
       actorType: event.actorType,
       actorId: event.actorId,
       action: event.action,
       resourceType: event.resourceType,
       resourceId: event.resourceId ?? null,
-      before: event.before ?? null,
-      after: event.after ?? null,
-    };
-    const canonicalBytes = Buffer.from(canonicalJson(canonical), 'utf8');
+      before: event.before,
+      after: event.after,
+    });
 
-    // 4. SHA-256(prev_hash || canonical).
-    const thisHash = createHash('sha256')
-      .update(prevHash)
-      .update(canonicalBytes)
-      .digest();
-
-    // 5. INSERT.
+    // 4. INSERT.
     const inserted = await tx.$queryRaw<{ id: bigint; occurred_at: Date }[]>`
       INSERT INTO audit_log (
         tenant_id, occurred_at, actor_type, actor_id, action,
@@ -130,8 +130,8 @@ export class EvidenceService {
         ${event.action},
         ${event.resourceType},
         ${event.resourceId ?? null},
-        ${event.before ? JSON.stringify(event.before) : null}::jsonb,
-        ${event.after ? JSON.stringify(event.after) : null}::jsonb,
+        ${beforeN === null ? null : JSON.stringify(beforeN)}::jsonb,
+        ${afterN === null ? null : JSON.stringify(afterN)}::jsonb,
         ${event.ip ?? null}::inet,
         ${event.userAgent ?? null},
         ${prevHash},
@@ -258,21 +258,17 @@ export class EvidenceService {
         return result;
       }
 
-      const canonical = {
+      const computed = eventHash(expectedPrev, {
         tenantId,
-        occurredAt: r.occurred_at.toISOString(),
+        occurredAt: r.occurred_at,
         actorType: r.actor_type,
         actorId: r.actor_id,
         action: r.action,
         resourceType: r.resource_type,
         resourceId: r.resource_id,
-        before: r.before ?? null,
-        after: r.after ?? null,
-      };
-      const computed = createHash('sha256')
-        .update(expectedPrev)
-        .update(Buffer.from(canonicalJson(canonical), 'utf8'))
-        .digest();
+        before: r.before,
+        after: r.after,
+      });
 
       if (!computed.equals(Buffer.from(r.this_hash))) {
         result.ok = false;

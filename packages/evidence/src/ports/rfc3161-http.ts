@@ -25,6 +25,8 @@
 import { createHash } from 'node:crypto';
 import { safeFetch } from '@taxtronik/http-utils';
 import type { TimestampPort, TimestampResult } from './timestamp';
+import { verifyTimestampResponse, extractTsaMeta } from './rfc3161-verify';
+import { DEFAULT_TSA_TRUSTED_ROOTS } from './globalsign-roots';
 
 // OID 2.16.840.1.101.3.4.2.1 (SHA-256) in DER
 const SHA256_OID_DER = new Uint8Array([
@@ -127,7 +129,12 @@ const PKI_STATUS_LABELS: Record<number, string> = {
 };
 
 export class Rfc3161HttpAdapter implements TimestampPort {
-  constructor(private readonly tsaUrl: string, private readonly timeoutMs = 10_000) {}
+  constructor(
+    private readonly tsaUrl: string,
+    private readonly timeoutMs = 10_000,
+    /** Out-of-band-Trust-Anchors für die Cert-Kette (Default: GlobalSign R6). */
+    private readonly trustedRoots: readonly string[] = DEFAULT_TSA_TRUSTED_ROOTS,
+  ) {}
 
   async timestamp(payload: Uint8Array): Promise<TimestampResult> {
     const hash = new Uint8Array(createHash('sha256').update(payload).digest());
@@ -164,22 +171,30 @@ export class Rfc3161HttpAdapter implements TimestampPort {
       const label = PKI_STATUS_LABELS[status] ?? String(status);
       throw new Error(`TSA PKIStatus ${status} (${label}) @ ${this.tsaUrl}`);
     }
+    // A3: echte TSA-Zeit (genTime) + Seriennummer aus dem TSTInfo lesen; Fallback
+    // auf die App-Uhr nur, falls das Token (unerwartet) nicht parsebar ist.
+    const meta = extractTsaMeta(tsp);
     return {
-      timestampedAt: new Date().toISOString(),
+      timestampedAt: (meta?.genTime ?? new Date()).toISOString(),
       tsaRequestBlob: tsr,
       tsaResponseBlob: tsp,
-      // Seriennummer steckt im CMS-SignedData → kryptografisches Parsing nötig.
-      // Wird in einer späteren Iteration ergänzt; das rohe Blob ist archiviert.
-      tsaSerial: null,
+      tsaSerial: meta?.serialHex ?? null,
     };
   }
 
-  async verify(_payload: Uint8Array, response: Uint8Array | null): Promise<boolean> {
+  async verify(payload: Uint8Array, response: Uint8Array | null): Promise<boolean> {
     if (!response) return false;
-    // MVP: nur Status prüfen. Kryptografische Verifikation gegen Payload-Hash
-    // wäre die nächste Stufe (TSTInfo aus dem CMS-SignedData parsen und
-    // messageImprint vergleichen).
-    const status = parsePkiStatus(response);
-    return status === 0 || status === 1;
+    // Kryptografische Verifikation (Review A3): messageImprint == sha256(payload),
+    // CMS-Signatur, Cert-Kette bis zum hinterlegten Trust-Anchor (Default: GlobalSign
+    // R6) AS-OF genTime, EKU timeStamping. Das rohe Blob bleibt zusätzlich extern
+    // prüfbar (openssl ts -verify). Revocation (OCSP/CRL) ist noch nicht abgedeckt.
+    const r = await verifyTimestampResponse(payload, response, this.trustedRoots);
+    if (r.valid) return true; // voller kryptografischer Beweis
+    // KEIN Regress: Signatur gültig + messageImprint an payload gebunden, aber die
+    // Kette führt nicht zu einem hinterlegten Trust-Anchor (z. B. ein anderer TSA-
+    // Anbieter, dessen Root nicht im Store ist). Das ist KEINE Manipulation → noch
+    // akzeptieren (weiterhin stärker als der frühere reine PKIStatus-Check). Ein
+    // manipuliertes/fremdes Blob scheitert dagegen bereits an signatureValid.
+    return r.signatureValid;
   }
 }

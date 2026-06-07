@@ -51,7 +51,7 @@ export const TSA_PROVIDERS: TsaProvider[] = [
     cost: 'free',
     jurisdiction: 'BE',
     qualified: false,
-    hint: 'Kostenlos, in der EU ansässig. Nicht eIDAS-qualifiziert.',
+    hint: 'Standard-Anbieter: kostenlos, in der EU ansässig. Antworten werden kryptografisch gegen den eingebetteten Root „GlobalSign Root CA - R6" geprüft. Nicht eIDAS-qualifiziert — für qualifizierte Stempel D-Trust wählen.',
   },
   {
     id: 'apple',

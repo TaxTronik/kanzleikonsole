@@ -28,6 +28,9 @@ export function TsaForm({ initial, providers, envFallback }: Props) {
   );
 
   const selected = providers.find((p) => p.id === providerId);
+  const envProvider = envFallback
+    ? providers.find((p) => p.url === envFallback)
+    : undefined;
   const isCustom = providerId === 'custom';
   const resolvedUrl = !providerId
     ? null
@@ -50,8 +53,9 @@ export function TsaForm({ initial, providers, envFallback }: Props) {
     <div className="space-y-6">
       {!initial.providerId && envFallback && (
         <div className="rounded-md border border-blue-200 dark:border-blue-900/60 bg-blue-50 dark:bg-blue-900/20 px-4 py-3 text-xs text-blue-900 dark:text-blue-200">
-          Aktuell aktiv: <strong>ENV-Vorgabe</strong> ({envFallback}). Sobald Sie hier
-          einen Anbieter auswählen und speichern, wird stattdessen dieser benutzt.
+          Aktuell aktiv: <strong>ENV-Vorgabe</strong>
+          {envProvider ? <> — {envProvider.label}</> : null} ({envFallback}). Sobald Sie
+          hier einen Anbieter auswählen und speichern, wird stattdessen dieser benutzt.
         </div>
       )}
       {!initial.providerId && !envFallback && (

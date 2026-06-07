@@ -50,30 +50,35 @@ export async function requestMagicLink(input: {
   // zweite Mail wird stillschweigend nicht versendet. Im Staff-UI sollte die
   // Schaltfläche nach dem ersten Klick deshalb mind. 60 s disabled bleiben.
   const emailKey = input.email.toLowerCase();
+
+  // M-4/F5: Anti-Enumeration + Anti-Timing. JEDER „stille Erfolg" (Throttle,
+  // Tenant unbekannt, Contact unbekannt) bekommt dieselbe Latenz wie der echte
+  // Pfad (DB-Write + SMTP ~250-500 ms) — sonst lässt sich per Stoppuhr
+  // enumerieren. randomInt (kryptographisch) statt Math.random, dessen Verteilung
+  // sonst versehentlich für etwas Sicherheitsrelevantes wiederverwendet werden könnte.
+  const antiTimingDelay = () =>
+    new Promise<void>((resolve) => setTimeout(resolve, 250 + randomInt(0, 250)));
+
   const rl = await checkRateLimit(`magic-link-issue:${input.tenantId}:${emailKey}`, {
     max: 1,
     windowSec: 60,
   });
   if (!rl.ok) {
+    await antiTimingDelay();
     return { ok: true };
   }
 
   const tenant = await prismaOwner.tenant.findUnique({ where: { id: input.tenantId } });
-  if (!tenant) return { ok: true };
+  if (!tenant) {
+    await antiTimingDelay();
+    return { ok: true };
+  }
 
   const contact = await prismaOwner.clientContact.findFirst({
     where: { tenantId: input.tenantId, email: input.email.toLowerCase(), active: true },
   });
   if (!contact) {
-    // M-4: Anti-Enumeration UND Anti-Timing-Side-Channel. Bei existierender
-    // E-Mail folgt nun DB-Write + SMTP-Send (~100-500ms); bei nicht-existierender
-    // E-Mail sollten wir eine vergleichbare Latenz simulieren, sonst lässt sich
-    // mit Stoppuhr enumerieren. Wir warten zufällig 250-500ms (typische Range
-    // für DB+SMTP in On-Prem-Setups). crypto.randomInt statt Math.random —
-    // Math.random ist nicht kryptographisch und die Verteilung könnte später
-    // versehentlich für etwas Sicherheitsrelevantes wiederverwendet werden.
-    const dummyDelay = 250 + randomInt(0, 250);
-    await new Promise((resolve) => setTimeout(resolve, dummyDelay));
+    await antiTimingDelay();
     return { ok: true };
   }
 

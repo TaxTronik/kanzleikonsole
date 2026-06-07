@@ -50,7 +50,11 @@ export class LocalTimestampAdapter implements TimestampPort {
   }
 
   async verify(_payload: Uint8Array, _response: Uint8Array | null): Promise<boolean> {
-    // Lokaler Stub kann nicht gegen externe Wahrheit prüfen.
+    // A3: Self-Timestamp ohne externe Quelle → es GIBT keine unabhängige Wahrheit,
+    // gegen die geprüft werden könnte; verify() gibt daher immer true zurück. Folge:
+    // ohne gesetzte TIMESTAMP_AUTHORITY_URL ist der Seal-Check in `verify:chain`
+    // gegenstandslos (nur die SHA-256-Kette trägt dann). Vor Produktivstart durch
+    // eine echte TSA + kryptografischen verify() ersetzen (siehe Klassen-Header).
     return true;
   }
 }

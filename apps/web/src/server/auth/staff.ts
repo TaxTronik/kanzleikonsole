@@ -336,10 +336,16 @@ const staffConfig: NextAuthConfig = {
       // Ohne diese Prüfung würde die App eine solche Session stillschweigend
       // akzeptieren und überall einen leeren, kaputten Zustand zeigen, statt
       // zum Login zu zwingen.
+      // F3: Rollen aus DIESEM frischen DB-Stand übernehmen (nicht aus dem bis zu
+      // 24 h alten JWT). Der Roundtrip ist für die Ghost-Session-Prüfung ohnehin
+      // bezahlt → eine Rollen-Reduktion (z. B. ADMIN entzogen) wirkt sofort, ohne
+      // auf revokeAllSessions oder den JWT-Ablauf zu warten. Bleibt null bei
+      // transientem DB-Fehler → Fallback auf token.roles (stale, aber kein Logout).
+      let freshRoles: string[] | null = null;
       try {
         const u = await prismaOwner.staffUser.findUnique({
           where: { id: token.staffId },
-          select: { active: true, tenantId: true },
+          select: { active: true, tenantId: true, roles: { select: { role: true } } },
         });
         if (!u || !u.active || u.tenantId !== token.tenantId) {
           log.warn(
@@ -348,6 +354,7 @@ const staffConfig: NextAuthConfig = {
           );
           return session; // keine Staff-Felder → staffAuth liefert null
         }
+        freshRoles = u.roles.map((r) => r.role as string);
       } catch (err) {
         // Transienter DB-Fehler darf nicht alle ausloggen — loggen, durchlassen.
         log.warn(
@@ -359,7 +366,7 @@ const staffConfig: NextAuthConfig = {
       session.user.staffId = token.staffId;
       session.user.tenantId = token.tenantId;
       session.user.fullName = token.fullName;
-      session.user.roles = token.roles;
+      session.user.roles = freshRoles ?? token.roles;
       return session;
     },
   },
