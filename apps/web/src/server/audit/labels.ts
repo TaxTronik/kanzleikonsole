@@ -289,6 +289,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'risk.catalog.norm_curated': 'Katalog-Norm kuratiert',
   'risk.research.sent': 'Rechercheauftrag gesendet',
   'risk.research.received': 'Rechercheergebnis empfangen',
+  'risk.research.submitted': 'Rechercheergebnis eingereicht',
   'risk.research.assigned': 'Rechercheergebnis zugeordnet',
   'risk.research.discarded': 'Rechercheergebnis verworfen',
 };
