@@ -16,7 +16,10 @@ x-hardening: &hardening
 services:
   app:
     <<: *hardening
-    image: taxtronik/web:${TAXTRONIK_VERSION:-dev}
+    # Image-Prefix parametrisiert: Default `taxtronik` (lokaler Build via
+    # deploy.sh). Für Registry-Pull in der .env setzen, z. B.
+    # TAXTRONIK_IMAGE_PREFIX=git.kanzlei.de/rey → git.kanzlei.de/rey/web:<version>.
+    image: ${TAXTRONIK_IMAGE_PREFIX:-taxtronik}/web:${TAXTRONIK_VERSION:-dev}
     container_name: taxtronik-app
     restart: unless-stopped
     # Next.js läuft als node-User; keine zusätzlichen Caps nötig (Port 3000
@@ -35,6 +38,9 @@ services:
         condition: service_healthy
       clamav:
         condition: service_healthy
+      # Schema muss aktuell sein, bevor die App startet (one-shot, s. u.).
+      migrate:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://taxtronik:${POSTGRES_PASSWORD}@postgres:5432/taxtronik?schema=public
@@ -96,7 +102,7 @@ services:
 
   worker:
     <<: *hardening
-    image: taxtronik/worker:${TAXTRONIK_VERSION:-dev}
+    image: ${TAXTRONIK_IMAGE_PREFIX:-taxtronik}/worker:${TAXTRONIK_VERSION:-dev}
     container_name: taxtronik-worker
     restart: unless-stopped
     read_only: true
@@ -111,6 +117,8 @@ services:
         condition: service_healthy
       clamav:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: production
       LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -147,9 +155,36 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-taxtronik <noreply@taxtronik.local>}
 
+  # ===========================================================================
+  # Einmal-Migration: wendet Prisma-Migrationen an, BEVOR app/worker starten
+  # (depends_on: service_completed_successfully). Nutzt das Worker-Image wieder
+  # — es enthält Prisma-CLI (volle node_modules) + die Migrationen (packages/db)
+  # → kein eigenes Image nötig, und die Zielmaschine braucht für Migrationen
+  # weder Node noch den Quellcode. Idempotent (migrate deploy = no-op, wenn
+  # bereits aktuell). Rollen/Extensions legt der Postgres-Init-Container an.
+  # ===========================================================================
+  migrate:
+    <<: *hardening
+    image: ${TAXTRONIK_IMAGE_PREFIX:-taxtronik}/worker:${TAXTRONIK_VERSION:-dev}
+    container_name: taxtronik-migrate
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Migrationen brauchen DDL → Owner-Rolle (taxtronik), nicht die App-Rolle.
+      DATABASE_URL: postgresql://taxtronik:${POSTGRES_PASSWORD}@postgres:5432/taxtronik?schema=public
+    command:
+      - sh
+      - -c
+      - >-
+        PRISMA=$$(find /app/node_modules -path '*/prisma/build/index.js' -not -path '*/cache/*' 2>/dev/null | head -1);
+        test -n "$$PRISMA" || { echo 'FATAL: prisma CLI nicht im Image gefunden'; exit 1; };
+        exec node "$$PRISMA" migrate deploy --schema /app/packages/db/prisma/schema.prisma
+
   n8n:
     <<: *hardening
-    image: n8nio/n8n:latest
+    image: n8nio/n8n:latest@sha256:1872cce3548bf4dcfe5aceaf3d9293f4499635823fbdea0ee726bd222d2e44b8
     container_name: taxtronik-n8n
     restart: unless-stopped
     cap_add:

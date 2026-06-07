@@ -37,7 +37,9 @@ x-hardening: &hardening
 services:
   postgres:
     <<: *hardening
-    image: postgres:18-alpine
+    # Pin per Digest (Reproduzierbarkeit/Audit). Tag bleibt als Klartext-Hinweis.
+    # Neu auflösen: docker buildx imagetools inspect postgres:18-alpine --format '{{.Manifest.Digest}}'
+    image: postgres:18-alpine@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
     container_name: taxtronik-postgres
     restart: unless-stopped
     # Postgres braucht CHOWN/SETUID/SETGID nur in seinem initdb-Pfad; das
@@ -73,7 +75,7 @@ services:
 
   redis:
     <<: *hardening
-    image: redis:7-alpine
+    image: redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
     container_name: taxtronik-redis
     restart: unless-stopped
     # Redis 7 unter dem redis-User; benötigt SETUID/SETGID für den
@@ -103,7 +105,7 @@ services:
   # für die Kanzlei-Größe (10–500 Mitarbeiter) reicht der Single-Node-Setup.
   seaweedfs:
     <<: *hardening
-    image: chrislusf/seaweedfs:latest
+    image: chrislusf/seaweedfs:latest@sha256:e14ad400e28c811fe8426dc08abf248ec722b9f017713290a9b84a54557f45c2
     container_name: taxtronik-seaweedfs
     restart: unless-stopped
     # SeaweedFS-Image macht beim Start einen su-exec von root nach
@@ -155,7 +157,7 @@ services:
   # AWS-CLI spricht den S3-Standard nativ.
   seaweedfs-init:
     <<: *hardening
-    image: amazon/aws-cli:latest
+    image: amazon/aws-cli:latest@sha256:c95ab0642137f55a12b95b6956dd03cefdbd73e760e0e7b870afc9b47f9c8150
     container_name: taxtronik-seaweedfs-init
     depends_on:
       seaweedfs:
@@ -176,7 +178,7 @@ services:
 
   clamav:
     <<: *hardening
-    image: clamav/clamav:stable
+    image: clamav/clamav:stable@sha256:d4000290254603e7ee45d4904425c7d98c015af727f402756198fe41a31e7777
     container_name: taxtronik-clamav
     restart: unless-stopped
     # ClamAV läuft als unprivileged user, braucht CHOWN für sein Daten-Volume.

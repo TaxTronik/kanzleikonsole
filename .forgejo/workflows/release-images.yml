@@ -1,0 +1,95 @@
+# =============================================================================
+# Release-Images — baut + pusht taxtronik/web + taxtronik/worker in die
+# (Forgejo-)Container-Registry. Damit ziehen Installationen fertige, versionierte
+# Images statt sie auf der Zielmaschine zu bauen.
+#
+# Liegt unter .forgejo/workflows/ → läuft NUR auf Forgejo (GitHub ignoriert den
+# Ordner; der GitHub-Mirror führt das also nicht aus).
+#
+# Auslöser: Git-Tag `vX.Y.Z` pushen, oder manuell (workflow_dispatch).
+#
+# ----------------------------------------------------------------------------
+# WAS DU IN FORGEJO EINMALIG EINRICHTEN MUSST:
+#   1. Actions aktivieren:  Repo → Settings → Actions → Enable.
+#   2. Einen Runner registrieren, der DOCKER bauen kann — entweder ein Runner
+#      mit Zugriff auf den Host-Docker-Socket, oder Docker-in-Docker. Label muss
+#      zu `runs-on` unten passen (Default hier: ubuntu-latest, wie eure ci.yml).
+#   3. Container-Registry: Forgejo hat eine eingebaute (<host>/<owner>/<image>).
+#      Nichts zu installieren — nur Push-Rechte (siehe 5).
+#   4. Repo-Variable REGISTRY setzen (Settings → Actions → Variables):
+#        REGISTRY = git.deine-domain.de        (Host eurer Forgejo-Instanz)
+#   5. Auth: standardmäßig nutzt der Workflow den automatischen Actions-Token
+#      (secrets.GITHUB_TOKEN). Wenn der Push mit 401/403 scheitert, hat euer
+#      Forgejo dem Auto-Token kein `write:package` gegeben → dann ein
+#      Personal Access Token mit Scope `write:package` anlegen und als
+#      Repo-Secrets REGISTRY_USER + REGISTRY_TOKEN hinterlegen (der Workflow
+#      nimmt die automatisch, falls gesetzt).
+#
+# Danach in der Ziel-.env der Installation:
+#   TAXTRONIK_IMAGE_PREFIX=git.deine-domain.de/<owner>
+#   TAXTRONIK_VERSION=1.4.0
+# → `docker compose ... pull && up -d` zieht git.deine-domain.de/<owner>/web:1.4.0
+# =============================================================================
+name: Release Images
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (z. B. 1.4.0)'
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version + Prefix bestimmen
+        id: meta
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            V="${{ inputs.version }}"
+          else
+            V="${GITHUB_REF_NAME#v}"   # vom Tag refs/tags/v1.4.0 → 1.4.0
+          fi
+          OWNER="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
+          echo "version=$V"                         >> "$GITHUB_OUTPUT"
+          echo "prefix=${{ vars.REGISTRY }}/$OWNER" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Registry-Login
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ vars.REGISTRY }}
+          # Auto-Token, falls REGISTRY_TOKEN nicht gesetzt ist.
+          username: ${{ secrets.REGISTRY_USER || github.actor }}
+          password: ${{ secrets.REGISTRY_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: web — bauen + pushen
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/Dockerfile.web
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.prefix }}/web:${{ steps.meta.outputs.version }}
+            ${{ steps.meta.outputs.prefix }}/web:latest
+
+      - name: worker — bauen + pushen
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/Dockerfile.worker
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.prefix }}/worker:${{ steps.meta.outputs.version }}
+            ${{ steps.meta.outputs.prefix }}/worker:latest
