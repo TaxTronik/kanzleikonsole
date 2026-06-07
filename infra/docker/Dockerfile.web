@@ -3,66 +3,26 @@
 #
 # Build: docker build -f infra/docker/Dockerfile.web -t taxtronik/web:latest .
 #   (vom Repo-Root!)
+#
+# WICHTIG (gelernt 2026-06-07): im Builder ZUERST die Quelle kopieren, DANN
+# `pnpm install` — so entstehen die Workspace-Symlinks gegen VORHANDENE Quellen.
+# Der frühere „deps-first" (nur package.json kopieren, installieren, dann Quelle
+# nachkopieren) erzeugte Symlinks auf quell-lose Pakete; im Builder fand Turbopack
+# dann @taxtronik/* (und transitiv zod) nicht („Module not found"). .npmrc liefert
+# node-linker=hoisted + shamefully-hoist=true für die flache Auflösung.
 # =============================================================================
 
-FROM node:22-alpine AS deps
+FROM node:22-alpine AS builder
 RUN apk add --no-cache libc6-compat openssl
 WORKDIR /repo
 # pnpm 11 — Lockfile-Format ab Round 11 enthält settings.injectWorkspacePackages,
 # das pnpm 10 unter --frozen-lockfile ablehnt.
 RUN corepack enable && corepack prepare pnpm@11.1.2 --activate
 
-# pnpm-Workspace zuerst kopieren — bessere Cache-Nutzung.
-# .npmrc ist Pflicht: enthält node-linker=hoisted und shamefully-hoist=true,
-# ohne die pnpm seinen Standard-Symlink-Tree baut, in dem apps/web die
-# transitiv eingezogenen Pakete (@aws-sdk/client-s3, @prisma/client, bullmq, jose)
-# nicht auflösen kann. Turbopack-Build scheitert sonst mit „Module not found".
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
-COPY apps/web/package.json ./apps/web/
-COPY packages/config/package.json ./packages/config/
-COPY packages/crypto/package.json ./packages/crypto/
-COPY packages/db/package.json ./packages/db/
-COPY packages/evidence/package.json ./packages/evidence/
-COPY packages/http-utils/package.json ./packages/http-utils/
-COPY packages/n8n-shared/package.json ./packages/n8n-shared/
-COPY packages/rss/package.json ./packages/rss/
-COPY packages/storage/package.json ./packages/storage/
-COPY packages/tax/package.json ./packages/tax/
-
-# pnpm 11 blockt Build-Scripts per Default und verlangt interaktive Approval.
-# In CI/Docker kommen wir da nur mit `--ignore-scripts` raus. Die wirklich
-# notwendigen postinstall-Hooks (Prisma-Engine-Binary, sharp libvips, esbuild)
-# werden im Builder-Stage explizit nachgeholt.
-# --no-frozen-lockfile temporär: wir haben gerade neue direkte Deps
-# (@aws-sdk/client-s3, @prisma/client, bullmq, jose, react-resizable) zu
-# apps/web hinzugefügt, die der Lockfile noch nicht als direkte Refs hat.
-# Sie sind alle bereits transitive Deps, daher kein zusätzlicher Download.
-# Sobald lokal `pnpm install` einmal lief und der Lockfile committet ist,
-# kann dieser Flag wieder auf --frozen-lockfile zurück.
-RUN pnpm install --frozen-lockfile --ignore-scripts \
-      --filter @taxtronik/web... --filter @taxtronik/web --filter @taxtronik/db
-
-# ----- Builder ---------------------------------------------------------------
-FROM node:22-alpine AS builder
-RUN apk add --no-cache libc6-compat openssl
-WORKDIR /repo
-RUN corepack enable && corepack prepare pnpm@11.1.2 --activate
-
-COPY --from=deps /repo/node_modules ./node_modules
-COPY --from=deps /repo/apps/web/node_modules ./apps/web/node_modules
-COPY --from=deps /repo/packages ./packages
-COPY . .
-
-# Postinstall-Hooks nachholen, die in deps-Stage übersprungen wurden.
-# rebuild läuft ohne Approval-Check (nur install hat ihn).
-RUN pnpm rebuild -r --filter @taxtronik/web... --filter @taxtronik/web \
-      @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver \
-    || true
-
-# Build-Time-Dummies für ENV-Validierung (@taxtronik/config wirft beim
-# Modul-Load, wenn die ENV-Vars fehlen — Next.js evaluiert Server-Components
-# während des Page-Data-Collection-Schritts). Im Runtime-Container überschreibt
-# docker-compose alle Werte mit den echten aus der .env.
+# Build-Time-Dummies für ENV-Validierung (@taxtronik/config wirft beim Modul-Load,
+# wenn ENV-Vars fehlen — Next evaluiert Server-Components bei der Page-Data-
+# Collection; prisma generate wertet datasource.url=env('DATABASE_URL') aus).
+# Im Runtime-Container überschreibt docker-compose alle Werte mit den echten.
 ENV NEXT_TELEMETRY_DISABLED=1 \
     DATABASE_URL=postgresql://build:build@build/build \
     DATABASE_APP_URL=postgresql://build:build@build/build \
@@ -80,21 +40,29 @@ ENV NEXT_TELEMETRY_DISABLED=1 \
     SMTP_PORT=587 \
     SMTP_FROM=build@build.local
 
-# pnpm 11 löst bei JEDEM Aufruf (auch `pnpm exec`) einen impliziten
-# Deps-Status-Check aus, der wieder den ERR_PNPM_IGNORED_BUILDS produziert
-# und nicht über Konfiguration abschaltbar ist. Lösung: pnpm komplett
-# umgehen und die Build-Binaries direkt mit node aufrufen. Das funktioniert,
-# weil die node_modules-Struktur korrekt installiert ist — wir brauchen
-# nur kein pnpm-Wrapper-Tool drumherum.
-# cd packages/db: @prisma/client (Generate-Ziel) + prisma/config (für die
-# prisma.config.ts) sind dank `--filter @taxtronik/db` von dort auflösbar. Die
-# Builder-ENV oben setzt bereits ein Dummy-DATABASE_URL für den Config-Load.
+# Quelle zuerst (node_modules via .dockerignore ausgeschlossen), dann install.
+COPY . .
+
+# pnpm 11 blockt Build-Scripts (interaktive Approval) → --ignore-scripts; die
+# nötigen postinstall-Hooks (Prisma-Engine, sharp libvips, esbuild) holt rebuild
+# nach. --filter @taxtronik/db, damit dessen devDep prisma (+ transitiv dotenv)
+# für prisma generate/migrate von packages/db auflösbar ist.
+RUN pnpm install --frozen-lockfile --ignore-scripts \
+      --filter @taxtronik/web... --filter @taxtronik/web --filter @taxtronik/db
+
+RUN pnpm rebuild -r --filter @taxtronik/web... --filter @taxtronik/web \
+      @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver \
+    || true
+
+# pnpm 11 löst bei JEDEM Aufruf einen impliziten Deps-Status-Check aus
+# (ERR_PNPM_IGNORED_BUILDS, nicht abschaltbar) → pnpm umgehen, Binaries direkt mit
+# node. cd packages/db: @prisma/client (Generate-Ziel) + prisma/config (für die
+# prisma.config.ts) sind dort auflösbar; ENV-Dummy-DATABASE_URL fürs Config-Load.
 RUN cd packages/db && \
     PRISMA=$(find /repo -path "*/prisma/build/index.js" -not -path "*/cache/*" 2>/dev/null | head -1) && \
     test -n "$PRISMA" && node "$PRISMA" generate
 
-# Safety-Net: leeres public/ anlegen, damit COPY in der runner-Stage
-# nicht knallt, falls keine statischen Assets im Repo liegen.
+# Safety-Net: leeres public/ anlegen, damit COPY in der runner-Stage nicht knallt.
 RUN mkdir -p apps/web/public
 
 RUN cd apps/web && \

@@ -1,4 +1,4 @@
-#requires -version 5.1
+﻿#requires -version 5.1
 # =============================================================================
 # TaxTronik — Ein-Klick-Start für Windows.
 #
@@ -78,9 +78,23 @@ function Set-EnvVal($key,$value){
   $enc = New-Object System.Text.UTF8Encoding($false)   # UTF-8 OHNE BOM (sonst bricht die 1. Zeile)
   [System.IO.File]::WriteAllLines($EnvFile, [string[]]$lines, $enc)
 }
+# Bekannte Dev-Default-Werte (Spiegel der Denylist in packages/config/src/env.ts).
+# Im Container läuft NODE_ENV=production → das Prod-Gate LEHNT solche Werte ab.
+# Daher ersetzen, nicht nur leere Felder füllen (sonst bootet app/worker nicht).
+$DevDefaults = @{
+  'AUTH_SECRET'        = @('taxtronik-dev-auth-secret-change-in-production-please','changeme','secret')
+  'N8N_HMAC_SECRET'    = @('dev-only-hmac-secret-min-32-chars-long-xxx')
+  'N8N_ENCRYPTION_KEY' = @('dev-only-n8n-encryption-key-xxxxxxxx')
+}
+function Test-WeakSecret($key,$val){
+  if (-not $val) { return $true }
+  if ($DevDefaults.ContainsKey($key) -and ($DevDefaults[$key] -contains $val)) { return $true }
+  if ($key -eq 'AUTH_SECRET' -and ($val -match '^(password|secret|admin|test)' -or $val -match '^(.)\1{8,}')) { return $true }
+  return $false
+}
 function Ensure-Secret($key,$bytes){
   $m = Read-EnvMap
-  if (-not (Get-EnvVal $m $key)) { Set-EnvVal $key (New-Secret $bytes); Ok "$key generiert." }
+  if (Test-WeakSecret $key (Get-EnvVal $m $key)) { Set-EnvVal $key (New-Secret $bytes); Ok "$key generiert/ersetzt." }
 }
 
 # --- 1. Docker ---------------------------------------------------------------
@@ -142,6 +156,14 @@ if ($Build -or -not (Image-Exists $webImg) -or -not (Image-Exists $workerImg)) {
 }
 
 # --- 5. Stack hochfahren -----------------------------------------------------
+# SeaweedFS-Host-Ports: Windows (Hyper-V/WSL) reserviert oft 8333/9333 → freie
+# Defaults setzen, falls in der .env nicht überschrieben. Nur für Host-Zugriff;
+# die App nutzt seaweedfs:8333 intern (Container-Netz), unabhängig davon.
+$m = Read-EnvMap
+if (-not (Get-EnvVal $m 'SEAWEED_S3_PORT'))     { $env:SEAWEED_S3_PORT     = '38333' }
+if (-not (Get-EnvVal $m 'SEAWEED_MASTER_PORT')) { $env:SEAWEED_MASTER_PORT = '39333' }
+if (-not (Get-EnvVal $m 'SEAWEED_FILER_PORT'))  { $env:SEAWEED_FILER_PORT  = '38888' }
+
 Info "Stack starten (Infra + App + Worker + n8n; Migrationen via migrate-Service)"
 if ((Run-Docker compose --env-file '.env' -f $Base -f $App up -d) -ne 0) { Die "docker compose up fehlgeschlagen." }
 Ok "Container laufen."

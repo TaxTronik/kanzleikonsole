@@ -2,55 +2,33 @@
 # Worker-Dockerfile (BullMQ-Worker)
 #
 # Build: docker build -f infra/docker/Dockerfile.worker -t taxtronik/worker:latest .
+#
+# Wie Dockerfile.web: im Builder ZUERST die Quelle kopieren, DANN installieren —
+# so entstehen die pnpm-Workspace-Symlinks gegen vorhandene Quellen (deps-first
+# erzeugt Symlinks auf quell-lose Pakete; siehe Dockerfile.web).
 # =============================================================================
 
-FROM node:22-alpine AS deps
-RUN apk add --no-cache libc6-compat openssl
-WORKDIR /repo
-RUN corepack enable && corepack prepare pnpm@11.1.2 --activate
-
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
-COPY apps/worker/package.json ./apps/worker/
-COPY packages/config/package.json ./packages/config/
-COPY packages/crypto/package.json ./packages/crypto/
-COPY packages/db/package.json ./packages/db/
-COPY packages/evidence/package.json ./packages/evidence/
-COPY packages/http-utils/package.json ./packages/http-utils/
-COPY packages/n8n-shared/package.json ./packages/n8n-shared/
-COPY packages/rss/package.json ./packages/rss/
-COPY packages/storage/package.json ./packages/storage/
-COPY packages/tax/package.json ./packages/tax/
-
-# pnpm 11 blockt Build-Scripts; wir installieren ohne und rebuilden gezielt
-# im Builder-Stage (siehe Dockerfile.web).
-# --no-frozen-lockfile: wir haben kürzlich Deps in packages/* ergänzt, der
-# Lockfile ist beim ersten Build mit dem Web-Image neu geschrieben worden
-# (kann später nach Commit wieder zu --frozen-lockfile zurück).
-# `--filter @taxtronik/db` zusätzlich, damit dessen devDep `prisma` (+ transitiv
-# dotenv via @prisma/config) installiert UND von packages/db auflösbar ist — der
-# Migrate-Service lädt prisma.config.ts (P7: datasource.url ist dort Pflicht).
-RUN pnpm install --frozen-lockfile --ignore-scripts --filter @taxtronik/worker... --filter @taxtronik/db
-
-# ----- Builder ---------------------------------------------------------------
 FROM node:22-alpine AS builder
 RUN apk add --no-cache libc6-compat openssl
 WORKDIR /repo
 RUN corepack enable && corepack prepare pnpm@11.1.2 --activate
 
-COPY --from=deps /repo/node_modules ./node_modules
-COPY --from=deps /repo/apps/worker/node_modules ./apps/worker/node_modules
-COPY --from=deps /repo/packages ./packages
+# Quelle zuerst (node_modules via .dockerignore ausgeschlossen), dann install.
 COPY . .
 
-# Postinstall-Hooks nachholen (Prisma-Engine-Binaries, esbuild, etc.)
+# --ignore-scripts (pnpm 11 blockt Build-Scripts) → postinstall-Hooks holt rebuild
+# nach. `--filter @taxtronik/db`, damit dessen devDep prisma (+ transitiv dotenv)
+# für den Migrate-Service (prisma.config.ts) von packages/db auflösbar ist.
+RUN pnpm install --frozen-lockfile --ignore-scripts --filter @taxtronik/worker... --filter @taxtronik/db
+
 RUN pnpm rebuild -r --filter @taxtronik/worker... \
       @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver \
     || true
 
-# pnpm 11 umgehen — siehe Dockerfile.web. cd packages/db: dort sind @prisma/client
-# (Generate-Ziel) UND — dank `--filter @taxtronik/db` im deps-Stage — prisma +
-# prisma/config (für prisma.config.ts) auflösbar. Dummy-DATABASE_URL, weil der
-# Config-Load datasource.url=env('DATABASE_URL') auswertet (generate verbindet nicht).
+# pnpm 11 umgehen — siehe Dockerfile.web. cd packages/db: @prisma/client
+# (Generate-Ziel) + prisma/config (für prisma.config.ts) dort auflösbar.
+# Dummy-DATABASE_URL, weil der Config-Load datasource.url=env('DATABASE_URL')
+# auswertet (generate verbindet nicht).
 RUN cd packages/db && \
     PRISMA=$(find /repo -path "*/prisma/build/index.js" -not -path "*/cache/*" 2>/dev/null | head -1) && \
     test -n "$PRISMA" && \
