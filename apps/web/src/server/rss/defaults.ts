@@ -1,7 +1,8 @@
 // =============================================================================
 // Default-RSS-Feeds, die bei der Anlage eines neuen Mitarbeiters automatisch
-// angelegt werden. Identisch zu den Defaults aus iter36_rss_feeds-Migration —
-// dort wurden sie für bestehende Staff geseedet.
+// angelegt werden. Ursprung: iter36_rss_feeds-Migration (dort für bestehende
+// Staff geseedet). Der BMF-Feed wurde später vom Aktuelles- auf den Steuern-
+// Feed umgestellt — bestehende Staff übernehmen ihn via „Defaults wiederherstellen".
 // =============================================================================
 
 import type { Prisma, PrismaClient } from '@prisma/client';
@@ -9,7 +10,7 @@ import type { Prisma, PrismaClient } from '@prisma/client';
 export const DEFAULT_RSS_FEEDS: Array<{ name: string; url: string; color: string; sortOrder: number }> = [
   {
     name: 'BMF',
-    url: 'https://www.bundesfinanzministerium.de/SiteGlobals/Functions/RSSFeed/DE/Aktuelles/RSSAktuelles.xml',
+    url: 'https://www.bundesfinanzministerium.de/SiteGlobals/Functions/RSSFeed/DE/Steuern/RSSSteuern.xml',
     color: 'blue',
     sortOrder: 10,
   },
