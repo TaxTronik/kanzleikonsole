@@ -15,6 +15,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'client.responsibilities.update': 'Bearbeiter-Zuordnung aktualisiert',
   'client.mandate.end': 'Mandat beendet (GwG-Löschuhr gestartet)',
   'client.mandate.reopen': 'Mandat wieder aufgenommen',
+  'client.anonymize': 'Mandant anonymisiert (DSGVO Art. 17)',
   'client.belege.export': 'DATEV-Belege exportiert',
   'client.onboarding.complete': 'Onboarding abgeschlossen',
 

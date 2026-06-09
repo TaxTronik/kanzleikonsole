@@ -142,6 +142,7 @@ erforderlich, falls Bestandsdaten existieren).
 | Notifications | 1 Jahr nach Erstellung | Worker `dsgvo-retention` (täglich 04:00 UTC) |
 | `magic_link` (verbrauchte oder abgelaufene) | 30 Tage | direkt nach Verbrauch |
 | GwG-Belege + GwG-Aufzeichnungen beendeter Mandate | Mandatsende-Jahresende + 5 Jahre (§ 8 (4) GwG) | Review-Queue `/staff/admin/gwg-retention` — Vernichtung wird vom Berufsträger bestätigt (kein Auto-Delete); Worker `gwg-expiry-check` schickt täglich eine idempotente `GWG_DELETION_DUE`-Notification an ADMIN/PARTNER, sobald Einträge löschreif sind. Details in [gwg.md](./gwg.md) |
+| Mandanten-Stammdaten natürlicher Personen (`client`, `kind = NATPERS`) beendeter Mandate | Mandatsende-Jahresende + **10 Jahre** (längste Frist gewinnt: GoBD 10 J. § 147 AO > GwG 5 J. § 8 (4)) | Review-Queue `/staff/admin/dsgvo-retention` — Anonymisierung wird vom Berufsträger bestätigt (kein Auto-Anonymisieren). Name/Adresse/USt-ID/Notizen/DATEV-Addison-Nr. werden genullt, Custom-Feld-Werte gelöscht, verknüpfte `client_contact`s mit-anonymisiert. Skelett-Datensatz mit Vernichtungsvermerk (`client.anonymized_at`) bleibt. Vorbedingung: GwG-Belege/-Aufzeichnungen des Mandanten sind bereits vernichtet (GwG-Queue). Fristlogik: [`apps/web/src/server/dsgvo/client-retention.ts`](../../apps/web/src/server/dsgvo/client-retention.ts) |
 
 > Stand 2026-05-29: Der Worker `dsgvo-retention`
 > ([apps/worker/src/jobs/dsgvo-retention.ts](../../apps/worker/src/jobs/dsgvo-retention.ts))
@@ -235,6 +236,31 @@ Daraus folgt für die DSGVO-Löschung:
 - Verknüpfte Daten (z. B. Vollmacht-Signaturen, Anforderungen) bleiben
   erhalten — die Person ist aber nicht mehr identifizierbar
 - Audit-Log-Einträge: `actor_id` bleibt (UUID, kein Klartext-Bezug)
+
+**Mandanten-Anonymisierung nach Fristablauf** (Klasse „Mandant", `client`):
+
+- Gilt für natürliche Personen (`kind = NATPERS`) — bei juristischen
+  Personen/Personengesellschaften sind die Firmen-Stammdaten keine
+  personenbezogenen Daten; deren Ansprechpartner bleiben über die
+  Contact-Anonymisierung oben einzeln anonymisierbar
+- Trigger: Mandatsende + Ablauf ALLER Aufbewahrungsfristen (längste gewinnt:
+  GoBD 10 J. ab Jahresende > GwG 5 J., siehe § 2.2) — vorher hat die
+  Aufbewahrungspflicht Vorrang (Art. 17 (3) b)
+- Review-Queue `/staff/admin/dsgvo-retention` (ADMIN/PARTNER), Bestätigung
+  durch den Berufsträger mit Zwei-Schritt-Dialog — kein Auto-Anonymisieren
+- `confirmClientAnonymizationAction` setzt: `name` → „Anonymisiert";
+  `street`/`postalCode`/`city`/`countryIso`/`vatId`/`invoiceEmail`/
+  `internalNotes`/`datevNo`/`addisonNo` → null; `allowActive` → false;
+  Custom-Feld-Werte (`client_custom_field_value`) werden gelöscht;
+  verknüpfte `client_contact`s werden mit-anonymisiert (geteilte Logik,
+  inkl. Magic-Link-Invalidierung + Session-Revocation)
+- Skelett-Datensatz bleibt: `id`, `kind`, `mandateEndedAt` und
+  `anonymizedAt` als Vernichtungsvermerk (Nachweis, DASS anonymisiert wurde)
+- Vorbedingung: GwG-Belege/-Aufzeichnungen des Mandanten sind bereits über
+  die GwG-Queue vernichtet (eigene Vernichtungs-Semantik + Nachweise)
+- Audit-Event `client.anonymize` — bewusst nur Zähler, keine Personendaten
+  (die Hash-Chain ist insert-only; nach Fristablauf werden keine
+  Personendaten erneut hineingeschrieben)
 
 ### 4.4 Einschränkung der Verarbeitung (Art. 18)
 
@@ -332,6 +358,7 @@ individuell durchgeführt mit Vorlagen aus dem Bereich „Steuerberater
 | Rechnung erstellen | `invoice`, `invoice_position` | `invoice.create` |
 | DSGVO-Auskunft | (read) | `dsgvo.export.contact` |
 | DSGVO-Anonymisierung | `client_contact` (Felder anonymisiert) | `dsgvo.anonymize.contact` |
+| Mandant anonymisiert (Art. 17, nach Fristablauf) | `client` (Stammdaten genullt + `anonymized_at`), `client_custom_field_value` gelöscht, `client_contact` anonymisiert | `client.anonymize` |
 | Mandant deaktiviert (GwG abgelaufen) | `client.allowActive = false` | `gwg.expired` (Worker) |
 | GwG-Datei-Beleg vernichtet (§ 8 (4)) | `document` + `document_version` gelöscht, Bytes vernichtet | `gwg.evidence.destroy` |
 | GwG-Aufzeichnungen vernichtet (§ 8 (4)) | `gwg_beneficial_owner` gelöscht, `gwg_id_document` genullt, `gwg_check` anonymisiert + `destroyedAt` | `gwg.check.destroy` |

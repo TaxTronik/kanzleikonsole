@@ -718,6 +718,13 @@ model Client {
   // endet. Gesetzt = Mandat beendet, startet die Löschuhr. Siehe server/gwg/
   // retention.ts + die GwG-Lösch-Review-Queue.
   mandateEndedAt       DateTime?                   @map("mandate_ended_at") @db.Timestamptz(6)
+  // DSGVO Art. 17: Vernichtungsvermerk der Mandanten-Anonymisierung (Pendant zu
+  // gwg_check.destroyed_at). Gesetzt = die personenbezogenen Stammdaten der
+  // natürlichen Person wurden nach Ablauf ALLER Aufbewahrungsfristen (GoBD 10 J.,
+  // GwG 5 J. — ab Jahresende des Mandatsendes, die längste gewinnt) anonymisiert;
+  // der Datensatz ist nur noch ein Skelett. Siehe server/dsgvo/client-retention.ts
+  // + die Review-Queue /staff/admin/dsgvo-retention.
+  anonymizedAt         DateTime?                   @map("anonymized_at")
   appointments         Appointment[]
   appointmentRequests  AppointmentRequest[]
   bwaPeriods           BwaPeriod[]

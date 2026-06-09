@@ -20,6 +20,7 @@ import { checkForUpdates, type CheckResult } from '@/server/update/manifest';
 import { getLicenseInfo } from '@/server/license/state';
 import { getSetupStatus } from '@/server/setup/status';
 import { findDueGwgDeletionDocs } from '@/server/gwg/retention';
+import { findDueClientAnonymizations } from '@/server/dsgvo/client-retention';
 import { LicenseCard } from './license-card';
 import { fmtDateTimeShort } from '@/lib/fmt';
 
@@ -36,7 +37,7 @@ export default async function AdminPage() {
 
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
 
-  const [chainResult, lastBackup, openDsgvoCount, providerCount, contactCount, gwgDueCount] =
+  const [chainResult, lastBackup, openDsgvoCount, providerCount, contactCount, gwgDueCount, anonDueCount] =
     await withTenantContext(
       ctx,
       async (tx) =>
@@ -49,6 +50,7 @@ export default async function AdminPage() {
           tx.serviceProvider.count(),
           tx.clientContact.count({ where: { active: true } }),
           findDueGwgDeletionDocs(tx).then((d) => d.length),
+          findDueClientAnonymizations(tx).then((d) => d.length),
         ]),
     );
 
@@ -288,6 +290,16 @@ export default async function AdminPage() {
             {gwgDueCount > 0 && (
               <span className="ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
                 {gwgDueCount} löschreif
+              </span>
+            )}
+          </li>
+          <li>
+            <Link href="/staff/admin/dsgvo-retention" className="text-brand-700 hover:underline">
+              → DSGVO-Anonymisierung Mandanten (Art. 17)
+            </Link>
+            {anonDueCount > 0 && (
+              <span className="ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                {anonDueCount} fällig
               </span>
             )}
           </li>

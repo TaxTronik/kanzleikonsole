@@ -7,6 +7,7 @@ import { isStaffAdmin, toActionError } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { revokeAllSessions } from '@/server/auth/revocation';
+import { anonymizeContactInTx } from '@/server/dsgvo/anonymize-contact';
 import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
 
 export interface ActionResult { ok: boolean; error?: string; }
@@ -333,38 +334,12 @@ export async function anonymizeContactAction(formData: FormData): Promise<void> 
   if (!parsed.success) return;
   const { contactId } = parsed.data;
 
-  const anonymizedAt = new Date().toISOString();
-  // NEW5: randomUUID statt Date.now() — bei zwei Anonymisierungen in derselben
-  // Millisekunde würde Unique-Constraint (tenant_id, email) sonst kollidieren.
-  const anonymousEmail = `anonymized-${crypto.randomUUID()}@taxtronik.local`;
-
-  await withTenantContext(ctx, async (tx) => {
-    const before = await tx.clientContact.findUnique({ where: { id: contactId } });
-    if (!before) return;
-    await tx.clientContact.update({
-      where: { id: contactId },
-      data: {
-        email: anonymousEmail,
-        fullName: 'Anonymisiert',
-        active: false,
-      },
-    });
-    // Magic-Links der Person ungültig machen (consumed)
-    await tx.magicLink.updateMany({
-      where: { tenantId, email: before.email, consumedAt: null },
-      data: { consumedAt: new Date() },
-    });
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
-      action: 'dsgvo.anonymize.contact',
-      resourceType: 'client_contact',
-      resourceId: contactId,
-      before: { email: before.email, fullName: before.fullName },
-      after: { email: anonymousEmail, fullName: 'Anonymisiert', anonymizedAt },
-    });
-  });
+  // Geteilte Anonymisierungs-Logik (auch von der Mandanten-Anonymisierung in
+  // admin/dsgvo-retention genutzt). personalDataInAudit: auf Betroffenen-Antrag
+  // dokumentiert das Audit-Log, wessen Daten anonymisiert wurden (Art. 5 Abs. 2).
+  await withTenantContext(ctx, (tx) =>
+    anonymizeContactInTx(tx, { tenantId, staffId, contactId, personalDataInAudit: true }),
+  );
 
   // N-2: Art. 17 ("Recht auf Löschung") — alle aktiven Portal-Sessions der Person
   // sofort revoken. Sonst bliebe der JWT-Cookie bis 24 h gültig und der
