@@ -35,7 +35,8 @@ export async function GET(
     async (tx) => {
       // Audit 4: expliziter Tenant-Filter zusätzlich zu RLS — Defense in Depth.
       const d = await tx.document.findFirst({
-        where: { id, tenantId },
+        // deletedAt: null — soft-gelöschte Dokumente nicht mehr per URL anzeigbar.
+        where: { id, tenantId, deletedAt: null },
         include: { versions: { orderBy: { versionNo: 'desc' }, take: 1 } },
       });
       if (!d || !d.versions[0]) return null;

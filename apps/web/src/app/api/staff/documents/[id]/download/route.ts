@@ -27,7 +27,9 @@ export async function GET(
       // weiteren Filter sofort Cross-Tenant-Reads zulassen. `findFirst`
       // mit `tenantId` schließt das.
       const d = await tx.document.findFirst({
-        where: { id, tenantId },
+        // deletedAt: null — soft-gelöschte Dokumente sind nicht mehr abrufbar
+        // (auch nicht per direkter URL). Wiederherstellung läuft separat.
+        where: { id, tenantId, deletedAt: null },
         include: {
           versions: {
             orderBy: { versionNo: 'desc' },

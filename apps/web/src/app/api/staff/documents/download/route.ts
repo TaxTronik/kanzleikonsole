@@ -11,7 +11,7 @@ import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { fetchObjectBytes, streamObject, sanitizeFilenameForHeader } from '@taxtronik/storage';
 import { filenameWithExtension } from '@/server/storage/preview-mime';
-import { buildZip, sanitizeZipFileName, ZipTooLargeError, type ZipEntry } from '@/server/export/zip';
+import { buildZip, sanitizeZipFileName, ZipTooLargeError, ZIP_MAX_TOTAL_BYTES, type ZipEntry } from '@/server/export/zip';
 import { evidenceService } from '@/server/container';
 
 export async function GET(req: NextRequest) {
@@ -44,12 +44,12 @@ export async function GET(req: NextRequest) {
         versions: {
           orderBy: { versionNo: 'desc' as const },
           take: 1,
-          select: { storageBucket: true, storageKey: true },
+          select: { storageBucket: true, storageKey: true, sizeBytes: true },
         },
       };
 
       const looseDocs = ids.length
-        ? await tx.document.findMany({ where: { id: { in: ids }, tenantId }, select: sel })
+        ? await tx.document.findMany({ where: { id: { in: ids }, tenantId, deletedAt: null }, select: sel })
         : [];
 
       let folderDocs: { doc: (typeof looseDocs)[number]; path: string }[] = [];
@@ -134,6 +134,18 @@ export async function GET(req: NextRequest) {
     };
     if (obj.contentLength !== null) headers['content-length'] = String(obj.contentLength);
     return new NextResponse(obj.body, { status: 200, headers });
+  }
+
+  // DoS-Mitigation: Gesamt-Größe AUS DER DB summieren und cappen, BEVOR auch nur
+  // ein Objekt geladen wird. Vorher holte die Route erst alle Bytes in den RAM und
+  // buildZip cappte danach — der Speicher war da längst belegt. (Voller Streaming-
+  // ZIP / Async-Export-Job für sehr große Sammlungen: siehe Backlog.)
+  let totalBytes = 0n;
+  for (const d of usableLoose) totalBytes += d.versions[0]!.sizeBytes;
+  for (const x of usableFolder) totalBytes += x.doc.versions[0]!.sizeBytes;
+  if (totalBytes > BigInt(ZIP_MAX_TOTAL_BYTES)) {
+    const e = new ZipTooLargeError(Number(totalBytes), ZIP_MAX_TOTAL_BYTES);
+    return NextResponse.json({ error: 'zip_too_large', message: e.message }, { status: 413 });
   }
 
   // ZIP. Dubletten je Verzeichnis durchnummerieren.

@@ -16,6 +16,8 @@ import Credentials from 'next-auth/providers/credentials';
 import { env } from '@taxtronik/config';
 import { verifyMagicLink } from './magic-link';
 import { isTokenRevoked } from './revocation';
+import { prismaOwner } from '@/server/db/prisma-owner';
+import { log } from '@/server/logger';
 
 interface PortalTokenPayload {
   contactId: string;
@@ -122,6 +124,33 @@ const portalConfig: NextAuthConfig = {
       const tokenIat = (token as { iat?: number }).iat;
       if (await isTokenRevoked('portal', token.contactId, tokenIat)) {
         return session;
+      }
+
+      // Härtung (analog staff.ts): die Session MUSS zu einem existierenden,
+      // AKTIVEN Kontakt gehören, dessen Tenant + Mandant mit dem Token
+      // übereinstimmen. Der Login (verifyMagicLink) prüft `active: true` —
+      // ohne laufende Revalidierung könnte ein deaktivierter Kontakt bis zum
+      // JWT-Ablauf (24 h) bzw. bis zur Revocation weiterarbeiten. prismaOwner
+      // (BYPASSRLS) ist nötig, weil der Callback außerhalb eines Tenant-Kontexts
+      // läuft; die Tenant/Mandant-Gleichheit wird gegen das Token erzwungen.
+      // Transienter DB-Fehler → durchlassen (kein Massen-Logout).
+      try {
+        const c = await prismaOwner.clientContact.findUnique({
+          where: { id: token.contactId },
+          select: { active: true, tenantId: true, clientId: true },
+        });
+        if (!c || !c.active || c.tenantId !== token.tenantId || c.clientId !== token.clientId) {
+          log.warn(
+            { contactId: token.contactId, tokenTenant: token.tenantId },
+            'portal-auth: Session ohne gültigen/aktiven Kontakt — invalidiert (Re-Login erzwungen)',
+          );
+          return session; // keine Portal-Felder → portalAuth liefert null
+        }
+      } catch (err) {
+        log.warn(
+          { err: (err as Error).message },
+          'portal-auth: Session-Existenzprüfung fehlgeschlagen — durchgelassen',
+        );
       }
 
       session.user.contactId = token.contactId;

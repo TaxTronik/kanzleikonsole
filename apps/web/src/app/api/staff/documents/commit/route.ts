@@ -68,6 +68,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
+  // DoS-Mitigation: ehrlich deklarierte Über-Größe ablehnen, BEVOR req.formData()
+  // den gesamten Body in den RAM puffert (+1 MB Marge für Multipart-Framing +
+  // Metadatenfelder). Lügt der Client über Content-Length oder nutzt chunked-
+  // Encoding, greift weiter unten der file.size-Check (dann ist gepuffert) —
+  // voller Schutz wäre ein Streaming-Multipart-Parser (siehe Backlog).
+  const declaredLen = Number(req.headers.get('content-length') ?? 0);
+  if (Number.isFinite(declaredLen) && declaredLen > MAX_UPLOAD_BYTES + 1024 * 1024) {
+    return NextResponse.json({ error: 'TOO_LARGE' }, { status: 413 });
+  }
+
   let form: FormData;
   try {
     form = await req.formData();
@@ -180,6 +190,26 @@ export async function POST(req: NextRequest) {
         const a = await tx.riskAnalysis.findFirst({ where: { id: analysisId }, select: { id: true } });
         if (!a) {
           throw new Error('ANALYSIS_NOT_FOUND: analysisId nicht in diesem Tenant.');
+        }
+      }
+      // HIGH: Tenant-/Mandanten-Sanity für workflowItemId. Der FK prüft nur
+      // Existenz (workflow_item.id), nicht Tenant/Mandant — und workflow_item
+      // trägt selbst keine tenant_id. Ohne diesen Check ließe sich mit bekannter
+      // UUID ein Dokument an einen fremden Workflow-Schritt hängen, innerhalb
+      // desselben Tenants auch mandantenübergreifend. Über die instance-Relation
+      // (trägt tenantId + clientId) scopen und Mandanten-Gleichheit erzwingen.
+      if (workflowItemId) {
+        const wi = await tx.workflowItem.findFirst({
+          where: { id: workflowItemId, instance: { tenantId } },
+          select: { instance: { select: { clientId: true } } },
+        });
+        if (!wi) {
+          throw new Error('WORKFLOW_ITEM_NOT_FOUND: workflowItemId nicht in diesem Tenant.');
+        }
+        if ((wi.instance.clientId ?? null) !== (clientId ?? null)) {
+          throw new Error(
+            'WORKFLOW_ITEM_CLIENT_MISMATCH: Workflow-Schritt gehört zu einem anderen Mandanten.',
+          );
         }
       }
       // Ordner muss zum Tenant gehören und im selben Bereich liegen wie das
