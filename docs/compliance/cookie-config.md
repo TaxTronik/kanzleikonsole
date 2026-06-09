@@ -1,6 +1,6 @@
 # Cookie-Konfiguration der Auth-Surfaces
 
-Stand: 2026-05-14 (Round 13)
+Stand: 2026-06-10 (Cookie-Präfix-Härtung)
 
 Übersicht aller von taxtronik gesetzten Cookies — für Datenschutz-Auditoren
 und Pen-Tester. Jeder Cookie ist mit Flags, Lebenszeit und Inhalt
@@ -12,8 +12,18 @@ dokumentiert.
 
 | Name | Surface | HttpOnly | Secure | SameSite | Path | Domain | Max-Age | Inhalt |
 |---|---|---|---|---|---|---|---|---|
-| `__taxtronik_staff_session` | Staff (`/staff/*`, `/api/staff/*`) | ✓ | nur in Production | `lax` | `/` | optional `STAFF_COOKIE_DOMAIN` (sonst implizit Host) | 24 h (W-1) | JWT mit `staffId`, `tenantId`, `fullName`, `roles[]`, `iat` |
-| `__taxtronik_portal_session` | Portal (`/portal/*`, `/api/portal/*`) | ✓ | nur in Production | `lax` | `/` | optional `PORTAL_COOKIE_DOMAIN` (sonst implizit Host) | 24 h (W-1) | JWT mit `contactId`, `tenantId`, `clientId`, `fullName`, `iat` |
+| `__Host-taxtronik_staff_session` ¹ | Staff (`/staff/*`, `/api/staff/*`) | ✓ | nur in Production | `lax` | `/` | optional `STAFF_COOKIE_DOMAIN` (sonst implizit Host) | 24 h (W-1) | JWT mit `staffId`, `tenantId`, `fullName`, `roles[]`, `iat` |
+| `__Host-taxtronik_portal_session` ¹ | Portal (`/portal/*`, `/api/portal/*`) | ✓ | nur in Production | `lax` | `/` | optional `PORTAL_COOKIE_DOMAIN` (sonst implizit Host) | 24 h (W-1) | JWT mit `contactId`, `tenantId`, `clientId`, `fullName`, `iat` |
+
+¹ **Cookie-Präfix-Logik** (`apps/web/src/server/auth/session-cookie.ts`): In
+Production ohne konfigurierte Cookie-Domain (Default, host-only) heißen die
+Cookies `__Host-taxtronik_*_session` — Browser erzwingen damit Secure +
+`Path=/` + **kein** Domain-Attribut, das Cookie kann also nicht von Subdomains
+oder unsicheren Kontexten überschrieben werden. Ist `STAFF_COOKIE_DOMAIN` /
+`PORTAL_COOKIE_DOMAIN` gesetzt (Subdomain-Trennung), lauten die Namen
+`__Secure-taxtronik_*_session` (`__Host-` wäre mit Domain-Attribut ungültig).
+Nur im Dev (HTTP, Browser lehnen Präfix-Cookies ab) bleibt der unpräfixte
+Name `__taxtronik_*_session`.
 
 **Cookie-Domain-Trennung**: Wenn `STAFF_COOKIE_DOMAIN`/`PORTAL_COOKIE_DOMAIN`
 explizit gesetzt sind (z. B. Subdomain-Setup `staff.kanzlei.de` /
@@ -64,8 +74,8 @@ curl -i -X POST https://kanzlei.example.com/api/auth/staff/callback/credentials 
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "email=admin@kanzlei.de&password=...&totpCode=..."
 
-# Erwartet:
-# Set-Cookie: __taxtronik_staff_session=eyJ...; Path=/; HttpOnly; Secure; SameSite=Lax
+# Erwartet (ohne STAFF_COOKIE_DOMAIN; mit gesetzter Domain stattdessen __Secure-…):
+# Set-Cookie: __Host-taxtronik_staff_session=eyJ...; Path=/; HttpOnly; Secure; SameSite=Lax
 ```
 
 In Browser-DevTools → Application → Cookies sollten **nur** die zwei

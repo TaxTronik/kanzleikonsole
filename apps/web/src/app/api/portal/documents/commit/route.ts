@@ -1,9 +1,11 @@
 // App-proxied Upload (kein presigned-direct): Browser POSTet multipart,
 // die App streamt intern zu SeaweedFS. Object-Store nie öffentlich.
 import { NextResponse, type NextRequest } from 'next/server';
+import { portalBaseUrl } from '@taxtronik/config';
 import { getClientIp, checkPortalWriteLimit } from '@/server/rate-limit';
 import { z } from 'zod';
 import { portalAuth } from '@/server/auth/portal';
+import { assertSameOrigin } from '@/server/http/assert-same-origin';
 import { commitDocumentFromBytes, MAX_UPLOAD_BYTES } from '@taxtronik/storage';
 import { withTenantContext } from '@taxtronik/db';
 import {
@@ -20,6 +22,12 @@ const Schema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  // CSRF-Defense-in-Depth (zusätzlich zu SameSite=lax): Cross-Origin-POSTs
+  // ablehnen, bevor irgendetwas gepuffert oder authentifiziert wird.
+  // Portal-Surface → Mandanten-Domain (portalBaseUrl, Fallback NEXTAUTH_URL).
+  const csrf = assertSameOrigin(req, portalBaseUrl);
+  if (csrf) return csrf;
+
   const session = await portalAuth();
   if (!session?.user) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });

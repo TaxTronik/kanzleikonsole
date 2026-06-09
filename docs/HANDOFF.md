@@ -49,7 +49,10 @@ Datei: `apps/web/src/server/auth/staff.ts`
 - `bcrypt`-Vergleich für Passwort (12 Rounds).
 - TOTP-Pflicht: nach erstem Login `totp_secret_enc` setzen, Folgelogins erfordern TOTP-Code.
 - Session: JWT-Strategy (keine Session-Tabelle nötig).
-- Cookie-Name `__taxtronik_staff_session`, `path: '/staff'`.
+- Cookie-Name aus `session-cookie.ts`: in Production `__Host-taxtronik_staff_session`
+  (ohne `STAFF_COOKIE_DOMAIN`; mit gesetzter Domain `__Secure-taxtronik_staff_session`,
+  da `__Host-` kein Domain-Attribut erlaubt), im Dev (HTTP) `__taxtronik_staff_session`;
+  `path: '/'`.
 - TOTP-Secret-Verschlüsselung: AES-256-GCM mit per-Tenant-abgeleitetem Key (z. B. HKDF aus
   `AUTH_SECRET` + `tenant_id`).
 

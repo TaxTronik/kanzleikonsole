@@ -82,3 +82,60 @@ export async function findDueGwgDeletionDocs(tx: TxClient, now: Date = new Date(
   }
   return out;
 }
+
+export interface GwgCheckDeletionItem {
+  checkId: string;
+  clientId: string;
+  clientName: string;
+  status: string;
+  mandateEndedAt: Date;
+  deletionDeadline: Date;
+  /** Noch nicht vernichtete GWG_EVIDENCE-Dateien des Mandanten — die DB-
+   *  Vernichtung ist erst zulässig, wenn die Datei-Belege weg sind. */
+  openEvidenceDocs: number;
+}
+
+/**
+ * § 8 Abs. 4 S. 4 GwG verlangt die Vernichtung der AUFZEICHNUNGEN — nicht nur
+ * der Datei-Belege. Liefert die GwG-Prüfungen (Aggregate: Check + wirtschaftlich
+ * Berechtigte + Ausweisdokumente), deren Löschfrist abgelaufen ist und die noch
+ * nicht vernichtet wurden (destroyedAt = null). Eigener Queue-Eintrag neben den
+ * Datei-Belegen: erfasst auch Checks, deren Dateien bereits vernichtet sind
+ * (der Datei-Confirm löscht das Document — der Check blieb vorher unbegrenzt).
+ */
+export async function findDueGwgCheckDeletions(tx: TxClient, now: Date = new Date()): Promise<GwgCheckDeletionItem[]> {
+  const cutoff = new Date(Date.UTC(now.getUTCFullYear() - GWG_RETENTION_YEARS, 0, 1));
+  const clients = await tx.client.findMany({
+    where: { mandateEndedAt: { lt: cutoff }, gwgChecks: { some: { destroyedAt: null } } },
+    select: {
+      id: true,
+      name: true,
+      mandateEndedAt: true,
+      gwgChecks: {
+        where: { destroyedAt: null },
+        select: { id: true, status: true },
+      },
+      _count: {
+        select: { documents: { where: { classification: 'GWG_EVIDENCE', deletedAt: null } } },
+      },
+    },
+  });
+
+  const out: GwgCheckDeletionItem[] = [];
+  for (const c of clients) {
+    if (!c.mandateEndedAt || !isGwgDeletionDue(c.mandateEndedAt, now)) continue;
+    const deadline = gwgDeletionDeadline(c.mandateEndedAt);
+    for (const check of c.gwgChecks) {
+      out.push({
+        checkId: check.id,
+        clientId: c.id,
+        clientName: c.name,
+        status: check.status,
+        mandateEndedAt: c.mandateEndedAt,
+        deletionDeadline: deadline,
+        openEvidenceDocs: c._count.documents,
+      });
+    }
+  }
+  return out;
+}

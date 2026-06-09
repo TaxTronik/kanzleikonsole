@@ -14,14 +14,18 @@
 // =============================================================================
 
 import { NextResponse, type NextRequest } from 'next/server';
+// Cookie-Namen zentral (inkl. __Host-/__Secure-Präfix-Logik in Production) —
+// session-cookie.ts ist bewusst dependency-frei (kein Config-/Zod-Import im
+// Proxy-Bundle).
+import {
+  STAFF_SESSION_COOKIE,
+  PORTAL_SESSION_COOKIE,
+} from '@/server/auth/session-cookie';
 
 const STAFF_PATH_PREFIX = '/staff';
 const PORTAL_PATH_PREFIX = '/portal';
 const STAFF_LOGIN_PATH = '/staff/login';
 const PORTAL_LOGIN_PATH = '/portal/login';
-
-const STAFF_SESSION_COOKIE = '__taxtronik_staff_session';
-const PORTAL_SESSION_COOKIE = '__taxtronik_portal_session';
 
 // Host→Surface (Multi-Domain-Deploy). PORTAL_PUBLIC_URL = Mandanten-Domain,
 // NEXTAUTH_URL = Kanzlei/Staff-Domain. Wird einmal beim Worker-Start aus den

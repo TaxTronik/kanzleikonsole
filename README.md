@@ -106,6 +106,13 @@ Im Normalfall gibt es nur drei Befehle:
 `update.sh` macht bewusst kein `git reset --hard`. Wenn lokale Änderungen oder
 ein nicht-fast-forward Stand existieren, bricht das Skript ab.
 
+Hinweis zum nächsten Update: Durch die Umstellung der Session-Cookie-Namen auf
+`__Host-`/`__Secure-`-Präfixe werden einmalig alle aktiven Sessions invalidiert
+(Re-Login nötig), und Betreiber mit einer früher kopierten nginx-Config sollten
+dort die duplizierten Security-`add_header`-Zeilen entfernen (siehe
+`infra/nginx/taxtronik.conf.example` — sonst überschreibt nginx die
+token-spezifische `no-referrer`-Referrer-Policy der App).
+
 Wichtige `.env`-Werte für ein Multi-Domain-Deploy:
 
 ```ini
@@ -160,6 +167,10 @@ pnpm verify:chain
 
 Hinweise:
 
+- `pnpm test` läuft via Turborepo über alle Workspaces mit Test-Skript —
+  neben der Web-App auch die Worker-Jobs (`apps/worker/src/jobs/__tests__`)
+  und die Packages (u. a. `tax`, `evidence`, `db`, `crypto`, `http-utils`,
+  `rss`, `n8n-shared`), inkl. Auth-Suiten für TOTP, Magic-Link und Lockout.
 - E2E-Login-Tests brauchen `E2E_TOTP_SECRET`.
 - RLS-Cross-Tenant-Tests skippen lokal ohne DB-URLs, schlagen in CI aber fehl,
   wenn `DATABASE_URL` oder `DATABASE_APP_URL` fehlt.

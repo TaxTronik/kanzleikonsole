@@ -2,7 +2,12 @@
 // @taxtronik/evidence — Public API
 // =============================================================================
 
-export { EvidenceService, type AuditEventInput, type RecordedEvent } from './service';
+export { EvidenceService, type AuditEventInput, type RecordedEvent, type VerificationResult } from './service';
+export {
+  AUDIT_VERIFY_RESULT_SETTING_KEY,
+  toPersistedVerifyResult,
+  type PersistedVerifyResult,
+} from './verify-status';
 export { canonicalJson } from './canonical-json';
 export { eventHash, chainValue, type ChainEvent } from './chain';
 export {

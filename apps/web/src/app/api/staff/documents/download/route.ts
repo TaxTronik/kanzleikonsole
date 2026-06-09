@@ -11,7 +11,15 @@ import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { fetchObjectBytes, streamObject, sanitizeFilenameForHeader } from '@taxtronik/storage';
 import { filenameWithExtension } from '@/server/storage/preview-mime';
-import { buildZip, sanitizeZipFileName, ZipTooLargeError, ZIP_MAX_TOTAL_BYTES, type ZipEntry } from '@/server/export/zip';
+import {
+  acquireZipBuildSlot,
+  buildZip,
+  sanitizeZipFileName,
+  ZipBusyError,
+  ZipTooLargeError,
+  ZIP_MAX_TOTAL_BYTES,
+  type ZipEntry,
+} from '@/server/export/zip';
 import { evidenceService } from '@/server/container';
 
 export async function GET(req: NextRequest) {
@@ -164,36 +172,51 @@ export async function GET(req: NextRequest) {
   // Befund 15: Machbarkeit steht fest → jetzt auditieren, dann ausliefern.
   await recordDownloadAudits([...usableLoose, ...usableFolder.map((x) => x.doc)]);
 
-  // ZIP. Dubletten je Verzeichnis durchnummerieren.
-  const seen = new Map<string, number>();
-  const entries: ZipEntry[] = [];
-  const addEntry = async (
-    prefix: string,
-    d: { title: string; mimeType: string; versions: { storageBucket: string; storageKey: string }[] },
-  ) => {
-    const v = d.versions[0]!;
-    const bytes = await fetchObjectBytes(v.storageBucket, v.storageKey);
-    let leaf = sanitizeZipFileName(filenameWithExtension(d.title, d.mimeType));
-    const key = `${prefix}/${leaf}`;
-    const n = seen.get(key) ?? 0;
-    seen.set(key, n + 1);
-    if (n > 0) {
-      const dot = leaf.lastIndexOf('.');
-      leaf = dot > 0 ? `${leaf.slice(0, dot)}_${n}${leaf.slice(dot)}` : `${leaf}_${n}`;
-    }
-    entries.push({ name: prefix ? `${prefix}/${leaf}` : leaf, data: bytes });
-  };
-  for (const d of usableLoose) await addEntry('', d);
-  for (const x of usableFolder) await addEntry(x.path, x.doc);
-
-  let zip: Buffer;
+  // P-6: Build-Slot — max. 2 parallele ZIP-Builds pro Instanz (RAM-Schutz),
+  // umfasst Bytes-Laden UND buildZip (siehe server/export/zip.ts).
+  let releaseZipSlot: () => void;
   try {
-    zip = buildZip(entries);
+    releaseZipSlot = await acquireZipBuildSlot();
   } catch (e) {
-    if (e instanceof ZipTooLargeError) {
-      return NextResponse.json({ error: 'zip_too_large', message: e.message }, { status: 413 });
+    if (e instanceof ZipBusyError) {
+      return NextResponse.json({ error: 'zip_busy', message: e.message }, { status: 429 });
     }
     throw e;
+  }
+  let zip: Buffer;
+  try {
+    // ZIP. Dubletten je Verzeichnis durchnummerieren.
+    const seen = new Map<string, number>();
+    const entries: ZipEntry[] = [];
+    const addEntry = async (
+      prefix: string,
+      d: { title: string; mimeType: string; versions: { storageBucket: string; storageKey: string }[] },
+    ) => {
+      const v = d.versions[0]!;
+      const bytes = await fetchObjectBytes(v.storageBucket, v.storageKey);
+      let leaf = sanitizeZipFileName(filenameWithExtension(d.title, d.mimeType));
+      const key = `${prefix}/${leaf}`;
+      const n = seen.get(key) ?? 0;
+      seen.set(key, n + 1);
+      if (n > 0) {
+        const dot = leaf.lastIndexOf('.');
+        leaf = dot > 0 ? `${leaf.slice(0, dot)}_${n}${leaf.slice(dot)}` : `${leaf}_${n}`;
+      }
+      entries.push({ name: prefix ? `${prefix}/${leaf}` : leaf, data: bytes });
+    };
+    for (const d of usableLoose) await addEntry('', d);
+    for (const x of usableFolder) await addEntry(x.path, x.doc);
+
+    try {
+      zip = buildZip(entries);
+    } catch (e) {
+      if (e instanceof ZipTooLargeError) {
+        return NextResponse.json({ error: 'zip_too_large', message: e.message }, { status: 413 });
+      }
+      throw e;
+    }
+  } finally {
+    releaseZipSlot();
   }
 
   const stamp = new Date().toISOString().slice(0, 10);

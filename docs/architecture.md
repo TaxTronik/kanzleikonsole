@@ -23,11 +23,14 @@ Plan (mit Iterationen, Entities, Risiken) liegt unter
                 │                            ▼
         ┌───────┴────────────────────────────────────────┐
         │  worker (Node + BullMQ)                        │
-        │  - Virus-Scan (asynchron)                      │
-        │  - PDF-Generierung                             │
         │  - Hash-Chain-Versiegelung (täglich, RFC-3161) │
-        │  - BWA-Auswertung                              │
+        │  - Chain-Verify + Audit-Archiv-Rotation        │
+        │  - Fristen-/Ablauf-Checks (GwG, PoA, Termine)  │
+        │  - Reminder, RSS, DSGVO-Retention, n8n-Outbox  │
         └────────────────────────────────────────────────┘
+
+        (Virus-Scan läuft SYNCHRON beim Upload-Commit in der App —
+        packages/storage — nicht als Worker-Job.)
 ```
 
 ## Kern-Prinzipien
@@ -49,7 +52,8 @@ Plan (mit Iterationen, Entities, Risiken) liegt unter
    in der App (zu kritisch für externe Workflow-Engine).
 
 5. **Externe Integrationen erst nach Process-Proof** — DATEV/Transparenz­register/
-   ELSTER kommen NICHT im MVP. Stattdessen manueller Excel-/PDF-Import.
+   ELSTER kommen NICHT im MVP. Stattdessen manueller Import (BWA als
+   XLSX/CSV, Belege als PDF/Scan-Upload).
 
 6. **GwG-Schranke systemisch** — DB-Trigger (`enforce_client_active_for_document`)
    plus App-Guard verhindern Mandantenanlage und alle client-bezogenen
@@ -65,19 +69,22 @@ Siehe README.md für die vollständige Folder-Übersicht.
 | Anforderung | Wo umgesetzt |
 |---|---|
 | § 203 StGB Steuergeheimnis | RLS-Policies in `packages/db/prisma/migrations/.../migration.sql`; `withTenantContext` in `packages/db/src/tenant-context.ts` |
-| GoBD Unveränderlichkeit | SeaweedFS Object-Lock (Bucket `gobd`, COMPLIANCE-Mode, 10 Jahre Default-Retention); `document_version.immutable` mit DB-Trigger; `audit_log` insert-only mit Trigger |
+| GoBD Unveränderlichkeit | SeaweedFS Object-Lock (Bucket `gobd`, COMPLIANCE-Mode, 10 Jahre; Bucket `gwg`, GOVERNANCE-Mode, 5 Jahre — § 8 Abs. 4 GwG); `document_version.immutable` mit DB-Trigger; `audit_log` insert-only mit Trigger |
 | GoBD Nachvollziehbarkeit | Hash-verkettetes `audit_log` (`packages/evidence/src/service.ts`) |
-| GoBD Aufbewahrungsfrist | `document.retention_until` plus Object-Lock-Default-Retention im `gobd`-Bucket |
+| GoBD Aufbewahrungsfrist | `document.retention_until` plus Object-Lock-Retention pro Schutzstufe |
 | DSGVO Datensparsamkeit | RLS verhindert "Vergessens-Bug"; explizites Audit nur compliance-relevanter Operationen |
-| GwG Identifizierungspflicht | Iter. 4: `gwg_check`-Tabelle, Excel-Import für Transparenzregister |
-| GwG Risikoanalyse | Iter. 4: `gwg_risk_score`, regelbasierte Engine, Gewichtungen pro Kanzlei |
+| GwG Identifizierungspflicht | `gwg_check`-Tabelle + GwG-Onboarding-Wizard (Selbst-Identifizierung des Mandanten); Transparenzregister-Auszug als Dokumenttyp `TRANSPARENZREGISTER_AUSZUG` manuell ablegbar (kein Excel-Import, kein Registerabruf) |
+| GwG Risikoanalyse | `gwg_risk_score`, regelbasierte Engine, Gewichtungen pro Kanzlei |
 | GwG Vorgangs-Block | DB-Trigger auf `client.allow_active = false` plus App-Guard |
-| eIDAS Vollmachten | Iter. 5: `EidasSignaturePort` mit OTP-Adapter (MVP) und QES-Plug-in (später) |
+| GwG Vernichtungspflicht (§ 8 Abs. 4) | Review-Queue `/staff/admin/gwg-retention` für Datei-Belege + DB-Aufzeichnungen, tägliche `GWG_DELETION_DUE`-Notification (siehe `docs/compliance/gwg.md`) |
+| eIDAS Vollmachten | Magic-Link + E-Mail-OTP (fortgeschrittene Signatur, ADR-0009); ein `EidasSignaturePort` für QES ist geplant, nicht implementiert |
 
 ## Querverweise
 
 - ADR 0001: Monorepo-Setup
 - ADR 0002: RLS und App-Level-Tenancy
 - ADR 0003: Zwei Auth-Surfaces
-- ADR 0004 (folgt): n8n-Integration
-- ADR 0005 (folgt): Update-Mechanik mit signiertem Manifest
+- ADR 0004: Evidence-Chain mit RFC-3161
+- ADR 0005: Storage (SeaweedFS, Object-Lock, ClamAV) — inkl. Addendum
+  `gwg`-Bucket + app-proxied Uploads
+- Vollständige Liste: [docs/adr/README.md](adr/README.md)

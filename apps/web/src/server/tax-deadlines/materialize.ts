@@ -8,8 +8,11 @@
 //     der atomare Request-Block damit trivially atomar);
 //   - evidenceService aus dem Container für den Audit-Trail.
 //
-// Ist als Worker-Job vorgesehen (täglich), kann aber auch ad-hoc aufgerufen
-// werden (Server-Action „Termine neu berechnen" für einen Mandanten).
+// Verwendung: ad-hoc nach dem Speichern einer Schedule-Config (per-Client-
+// Server-Action clients/[id]/tax-schedule). Die TENANT-weite Neuberechnung
+// („Neu berechnen" auf /staff/tax-deadlines) läuft NICHT mehr hierüber,
+// sondern als BullMQ-Job (P-4 — siehe server/jobs/tax-deadline-materialize-
+// queue.ts und apps/worker/src/jobs/tax-deadline-materialize.ts).
 // =============================================================================
 
 import type { TenantContext } from '@taxtronik/db';

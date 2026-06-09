@@ -24,21 +24,20 @@ import { ListShell, NOTICE_KIND_LABELS, type RenderCtx } from './_shared';
 // --- Recent Activity ----------------------------------------------------------
 
 export async function RecentActivity({ tx }: RenderCtx): Promise<React.ReactNode> {
-  const [items, total] = await Promise.all([
-    tx.auditLog.findMany({
-      orderBy: { occurredAt: 'desc' },
-      take: 25,
-      select: {
-        id: true,
-        occurredAt: true,
-        action: true,
-        actorType: true,
-        actorId: true,
-        resourceType: true,
-      },
-    }),
-    tx.auditLog.count(),
-  ]);
+  // P-5: kein auditLog.count() mehr — das war ein COUNT(*) über den KOMPLETTEN
+  // Log bei jedem Dashboard-Render, nur für eine dekorative Fußzeile.
+  const items = await tx.auditLog.findMany({
+    orderBy: { occurredAt: 'desc' },
+    take: 25,
+    select: {
+      id: true,
+      occurredAt: true,
+      action: true,
+      actorType: true,
+      actorId: true,
+      resourceType: true,
+    },
+  });
 
   type AuditRow = { actorType: string; actorId: string | null };
   const staffIds = [
@@ -79,7 +78,7 @@ export async function RecentActivity({ tx }: RenderCtx): Promise<React.ReactNode
       title="Letzte Aktivitäten"
       isEmpty={items.length === 0}
       emptyText="Noch keine Aktivitäten."
-      footer={`Audit-Kette: ${total} Einträge — alle hash-versiegelt`}
+      footer="Audit-Kette: alle Einträge hash-versiegelt"
     >
       {items.map(
         (a: {

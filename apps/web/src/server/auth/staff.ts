@@ -4,8 +4,11 @@ import Credentials from 'next-auth/providers/credentials';
 import { compare } from 'bcryptjs';
 import { env } from '@taxtronik/config';
 import { decryptTotpSecret, verifyTotpCode } from './totp';
-import { recordFailedLogin, resetFailedLogin } from './lockout';
+import { resetFailedLogin } from './lockout';
+import { recordFailedLoginAudited, auditIp } from './login-audit';
 import { isTokenRevoked } from './revocation';
+import { STAFF_SESSION_COOKIE } from './session-cookie';
+import { evidenceService } from '@/server/container';
 import { consumeTotpCode } from './totp-replay';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { log } from '@/server/logger';
@@ -124,7 +127,17 @@ const staffConfig: NextAuthConfig = {
         if (!passwordOk) {
           // Account-gebundener Lockout (S2): IP-RL allein hilft nicht gegen
           // verteilte Brute-Force. Fehler werden geloggt, nicht geschluckt.
-          fireAndForget('recordFailedLogin', recordFailedLogin(prismaOwner, staffUser.id, ip));
+          // RF-12: zählt UND schreibt auth.login.failure(/.lockout) in die Chain.
+          fireAndForget(
+            'recordFailedLogin',
+            recordFailedLoginAudited({
+              tenantId: tenant.id,
+              staffUserId: staffUser.id,
+              email: staffUser.email,
+              ip,
+              reason: 'password',
+            }),
+          );
           return null;
         }
 
@@ -136,6 +149,19 @@ const staffConfig: NextAuthConfig = {
             'staff-auth: DEV_SKIP_TOTP aktiv — TOTP übersprungen (NUR Dev!)',
           );
           fireAndForget('resetFailedLogin', resetFailedLogin(prismaOwner, staffUser.id));
+          // RF-12: auch der Dev-Login landet in der Chain (method markiert ihn).
+          await prismaOwner.$transaction((tx) =>
+            evidenceService.record(tx, {
+              tenantId: tenant.id,
+              actorType: 'STAFF',
+              actorId: staffUser.id,
+              action: 'auth.login.success',
+              resourceType: 'staff_user',
+              resourceId: staffUser.id,
+              after: { email: staffUser.email, method: 'dev_skip_totp' },
+              ip: auditIp(ip),
+            }),
+          );
           return {
             id: staffUser.id,
             email: staffUser.email,
@@ -175,7 +201,16 @@ const staffConfig: NextAuthConfig = {
         }
 
         if (!totpValid && usedBackupIndex < 0) {
-          fireAndForget('recordFailedLogin (TOTP)', recordFailedLogin(prismaOwner, staffUser.id, ip));
+          fireAndForget(
+            'recordFailedLogin (TOTP)',
+            recordFailedLoginAudited({
+              tenantId: tenant.id,
+              staffUserId: staffUser.id,
+              email: staffUser.email,
+              ip,
+              reason: 'totp',
+            }),
+          );
           return null;
         }
 
@@ -189,7 +224,16 @@ const staffConfig: NextAuthConfig = {
             return null;
           }
           if (!fresh) {
-            fireAndForget('recordFailedLogin (TOTP replay)', recordFailedLogin(prismaOwner, staffUser.id, ip));
+            fireAndForget(
+              'recordFailedLogin (TOTP replay)',
+              recordFailedLoginAudited({
+                tenantId: tenant.id,
+                staffUserId: staffUser.id,
+                email: staffUser.email,
+                ip,
+                reason: 'totp_replay',
+              }),
+            );
             return null;
           }
         } else {
@@ -227,6 +271,18 @@ const staffConfig: NextAuthConfig = {
               where: { id: staffUser.id },
               data: { totpBackupCodes: remaining },
             });
+            // RF-12: One-Time-Verbrauch eines Backup-Codes ist sicherheits-
+            // relevant (umgeht TOTP) → in DERSELBEN Tx in die Audit-Chain.
+            await evidenceService.record(tx, {
+              tenantId: tenant.id,
+              actorType: 'STAFF',
+              actorId: staffUser.id,
+              action: 'auth.backup_code.consume',
+              resourceType: 'staff_user',
+              resourceId: staffUser.id,
+              after: { email: staffUser.email, remainingBackupCodes: remaining.length },
+              ip: auditIp(ip),
+            });
             return remaining.length;
           });
           if (consumed === false) {
@@ -234,7 +290,16 @@ const staffConfig: NextAuthConfig = {
               { staffId: staffUser.id },
               'staff-auth: TOTP-Backup-Code Race verloren — Login abgewiesen',
             );
-            fireAndForget('recordFailedLogin (backup race)', recordFailedLogin(prismaOwner, staffUser.id, ip));
+            fireAndForget(
+              'recordFailedLogin (backup race)',
+              recordFailedLoginAudited({
+                tenantId: tenant.id,
+                staffUserId: staffUser.id,
+                email: staffUser.email,
+                ip,
+                reason: 'backup_code_race',
+              }),
+            );
             return null;
           }
           log.warn(
@@ -243,15 +308,27 @@ const staffConfig: NextAuthConfig = {
           );
         }
 
-        // Erfolg → Counter resetten + Last-Login schreiben (fire-and-forget mit Log)
+        // Erfolg → Counter resetten (fire-and-forget mit Log) + Last-Login
+        // schreiben. RF-12: der Login-Erfolg gehört in die Audit-Hash-Chain
+        // (auth.login.success) — in DERSELBEN Tx wie der lastLoginAt-Write
+        // (Record-Muster wie überall) und deshalb awaited statt fire-and-forget.
         fireAndForget('resetFailedLogin', resetFailedLogin(prismaOwner, staffUser.id));
-        fireAndForget(
-          'lastLoginAt update',
-          prismaOwner.staffUser.update({
+        await prismaOwner.$transaction(async (tx) => {
+          await tx.staffUser.update({
             where: { id: staffUser.id },
             data: { lastLoginAt: new Date() },
-          }),
-        );
+          });
+          await evidenceService.record(tx, {
+            tenantId: tenant.id,
+            actorType: 'STAFF',
+            actorId: staffUser.id,
+            action: 'auth.login.success',
+            resourceType: 'staff_user',
+            resourceId: staffUser.id,
+            after: { email: staffUser.email, method: totpValid ? 'totp' : 'backup_code' },
+            ip: auditIp(ip),
+          });
+        });
 
         return {
           id: staffUser.id,
@@ -280,7 +357,11 @@ const staffConfig: NextAuthConfig = {
 
   cookies: {
     sessionToken: {
-      name: '__taxtronik_staff_session',
+      // Härtung: __Host- (ohne Cookie-Domain) bzw. __Secure- (mit Domain) in
+      // Production — Name zentral in session-cookie.ts (auch proxy.ts liest
+      // ihn). Die Optionen hier MÜSSEN zur Präfix-Wahl passen: secure (prod),
+      // path '/', domain NUR wenn STAFF_COOKIE_DOMAIN gesetzt (sonst __Host-).
+      name: STAFF_SESSION_COOKIE,
       options: {
         httpOnly: true,
         secure: env.NODE_ENV === 'production',

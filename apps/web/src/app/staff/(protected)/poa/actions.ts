@@ -213,6 +213,13 @@ export async function revokePoaAction(formData: FormData): Promise<void> {
 
 // ----- Public sign-flow (kein Auth) ------------------------------------------
 
+// Anti-Enumeration (N5): einheitliche Fehlermeldung über alle
+// Lebenszyklus-Phasen hinweg. Token-Hashes sind 32 Byte, Brute-Force
+// praktisch ausgeschlossen — aber Defense in Depth gegen
+// Information-Disclosure. Modul-Scope, damit auch der Rate-Limit-Pfad
+// dieselbe Meldung liefert (kein Token-Probing-Orakel).
+const GENERIC_TOKEN_ERROR = 'Link ungültig oder abgelaufen. Bitte fordern Sie einen neuen Link an.';
+
 export async function loadPoaForSigning(rawToken: string): Promise<
   | {
       ok: true;
@@ -231,14 +238,23 @@ export async function loadPoaForSigning(rawToken: string): Promise<
   | { ok: false; error: string }
 > {
   if (!rawToken) return { ok: false, error: 'Kein Token in der URL.' };
+
+  // Rate-Limit für den unauthentifizierten Token-Lookup (analog
+  // gwg-onboarding/page.tsx): die Funktion ist via /poa/sign UND als Server-
+  // Action direkt erreichbar — pro IP 30 Validierungen / 10 min. Bei
+  // Überschreitung DIESELBE generische Meldung wie bei ungültigem Token.
+  const loadIp = getClientIp(await headers());
+  const loadRl = await checkIpOrGlobalLimit(
+    'poa-load',
+    loadIp,
+    { max: 30, windowSec: 600 },
+    { max: 200, windowSec: 600 },
+  );
+  if (!loadRl.ok) return { ok: false, error: GENERIC_TOKEN_ERROR };
+
   const tokenHash = hashToken(rawToken);
 
   const owner = prismaOwner;
-  // Anti-Enumeration (N5): einheitliche Fehlermeldung über alle
-  // Lebenszyklus-Phasen hinweg. Token-Hashes sind 32 Byte, Brute-Force
-  // praktisch ausgeschlossen — aber Defense in Depth gegen
-  // Information-Disclosure.
-  const GENERIC_TOKEN_ERROR = 'Link ungültig oder abgelaufen. Bitte fordern Sie einen neuen Link an.';
 
   try {
     const poa = await owner.powerOfAttorney.findFirst({

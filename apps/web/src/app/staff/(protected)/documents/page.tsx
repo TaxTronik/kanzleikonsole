@@ -22,6 +22,11 @@ interface Search {
 const isKind = (s: string | undefined): s is ClientKind =>
   s === 'NATPERS' || s === 'JURPERS' || s === 'PERSGES';
 
+// P-3: Lade-Cap pro Ordner-/Such-Ansicht — vorher wurden ALLE Treffer geladen
+// und als Client-Props serialisiert; bei Erreichen zeigt der Explorer einen
+// Truncation-Hinweis (truncated/totalCount).
+const DOCS_CAP = 1000;
+
 export default async function DocumentsPage({
   searchParams,
 }: {
@@ -120,6 +125,13 @@ export default async function DocumentsPage({
   const data = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
+      const docWhere = {
+        tenantId,
+        clientId: scopeClientId,
+        folderId: folderId ?? null,
+        deletedAt: deleted ? { not: null } : null,
+        ...(q ? { title: { contains: q, mode: 'insensitive' as const } } : {}),
+      };
       const [clientRow, folders, docs] = await Promise.all([
         scopeClientId
           ? tx.client.findFirst({
@@ -133,14 +145,9 @@ export default async function DocumentsPage({
           orderBy: { name: 'asc' },
         }),
         tx.document.findMany({
-          where: {
-            tenantId,
-            clientId: scopeClientId,
-            folderId: folderId ?? null,
-            deletedAt: deleted ? { not: null } : null,
-            ...(q ? { title: { contains: q, mode: 'insensitive' } } : {}),
-          },
+          where: docWhere,
           orderBy: { createdAt: 'desc' },
+          take: DOCS_CAP,
           select: {
             id: true,
             title: true,
@@ -159,11 +166,14 @@ export default async function DocumentsPage({
           },
         }),
       ]);
-      return { clientRow, folders, docs };
+      // Nur wenn der Cap erreicht wurde: Gesamtzahl für den Truncation-Hinweis.
+      const docsTotal =
+        docs.length === DOCS_CAP ? await tx.document.count({ where: docWhere }) : docs.length;
+      return { clientRow, folders, docs, docsTotal };
     },
   );
 
-  const { clientRow, folders, docs } = data;
+  const { clientRow, folders, docs, docsTotal } = data;
   const childFolders = folders.filter((f) => (f.parentId ?? null) === (folderId ?? null));
 
   const tierOf = (
@@ -248,6 +258,8 @@ export default async function DocumentsPage({
       currentFolderId={folderId ?? null}
       deleted={deleted}
       q={q}
+      truncated={docsTotal > docs.length}
+      totalCount={docsTotal}
       toggleDeletedHref={base({
         type: typeParam,
         client: scopeClientId ?? undefined,

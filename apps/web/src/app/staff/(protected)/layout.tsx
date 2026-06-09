@@ -1,6 +1,7 @@
 ﻿import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 import { staffAuth } from '@/server/auth/staff';
+import { STAFF_SESSION_COOKIE } from '@/server/auth/session-cookie';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { LogOut } from 'lucide-react';
 import { SidebarNav, type NavItem } from '@/components/sidebar-nav';
@@ -64,7 +65,7 @@ export default async function StaffLayout({ children }: { children: React.ReactN
     // Kein Cookie → direkt zum Login (kein unnötiger Umweg).
     const hasSessionCookie = (await cookies())
       .getAll()
-      .some((c) => c.name.startsWith('__taxtronik_staff_session'));
+      .some((c) => c.name.startsWith(STAFF_SESSION_COOKIE));
     redirect(hasSessionCookie ? '/api/staff/force-logout' : '/staff/login');
   }
 

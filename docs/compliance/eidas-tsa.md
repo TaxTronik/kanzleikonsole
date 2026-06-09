@@ -1,6 +1,6 @@
 # TSA-Konfiguration und eIDAS-Zeitstempel
 
-Stand: 2026-05-14
+Stand: 2026-06-10
 
 taxtronik nutzt RFC-3161-Zeitstempel für die tägliche Versiegelung des
 Audit-Hash-Chain-Top-Hashes. Diese Datei klärt:
@@ -21,12 +21,19 @@ Audit-Hash-Chain-Top-Hashes. Diese Datei klärt:
 
 ### Unterstützte Provider
 
-| `providerId` | TSA-URL | Qualifiziert nach eIDAS? |
-|---|---|---|
-| `dtrust` | `http://timestamp.d-trust.net/tsa` | Ja — Qualified Trust Service Provider, BSI-anerkannt |
-| `swisssign` | `http://tsa.swisssign.net` | Ja (eIDAS-Anerkennung in EU) |
-| `freetsa` | `https://freetsa.org/tsr` | Nein — Best-effort, nicht beweistauglich |
-| Custom-URL | beliebig | Operator-Verantwortung |
+Quelle: [`packages/evidence/src/providers/tsa-providers.ts`](../../packages/evidence/src/providers/tsa-providers.ts)
+(in der Admin-UI auswählbar):
+
+| `providerId` | TSA-URL | Kosten | Qualifiziert nach eIDAS? |
+|---|---|---|---|
+| `freetsa` | `https://freetsa.org/tsr` | kostenlos | Nein — Test-/Dev-Betrieb |
+| `digicert` | `http://timestamp.digicert.com` | kostenlos | Nein (US-CA) |
+| `sectigo` | `http://timestamp.sectigo.com` | kostenlos | Nein |
+| `globalsign` | `http://timestamp.globalsign.com/tsa/r6advanced1` | kostenlos | Nein — EU-ansässig, Default |
+| `apple` | `http://timestamp.apple.com/ts01` | kostenlos | Nein |
+| `dtrust` | `https://tsa.d-trust.net/timestamp` | kommerziell | **Ja** — Bundesdruckerei, empfohlen für Produktion |
+| `swisscom` | `http://tsa.swisscom.com/…` | kommerziell | **Ja** (CH) |
+| `custom` | eigene URL | — | Operator-Verantwortung |
 
 ## TSA-Ausfall — Fallback-Verhalten
 
@@ -64,8 +71,13 @@ Audit-Hash-Chain-Top-Hashes. Diese Datei klärt:
   ORDER BY tenant_id, seal_date;
   ```
   Tage mit `missing_stamp = true` sind aus eIDAS-Sicht nicht beweistauglich.
-  Operator sollte den TSA-Anschluss prüfen und einen manuellen Re-Seal
-  triggern (über die Admin-UI).
+  Operator sollte den TSA-Anschluss prüfen — fehlende Stempel holt der
+  nächste `evidence-seal`-Lauf automatisch nach (Backfill); einen
+  dedizierten manuellen Re-Seal-Trigger gibt es nicht. Manuell anstoßbar
+  sind: die Audit-Archiv-Rotation unter `/staff/admin/archive` und die
+  Chain-Verifikation über den „Jetzt prüfen"-Button unter
+  `/staff/admin/audit` (läuft als Hintergrund-Job, Ergebnis wird
+  persistiert angezeigt).
 
 ## PoA-Signatur (eIDAS Art. 26 — fortgeschrittene elektronische Signatur)
 
@@ -75,6 +87,6 @@ aber:
 
 - Bei strittigen Mandaten ist eine qualifizierte Signatur (Smartcard,
   z. B. D-Trust QES) sicherer.
-- taxtronik hat einen `EidasSignaturePort`-Interface vorgesehen — die
-  konkrete QES-Integration (Smartcard-Reader-Anbindung) ist nicht Teil
-  des MVP.
+- Ein `EidasSignaturePort`-Interface für QES-Integration (Smartcard-
+  Reader-Anbindung) ist **geplant, aber nicht implementiert** — im Code
+  existiert dazu derzeit nichts, nur das OTP-Verfahren (ADR-0009).

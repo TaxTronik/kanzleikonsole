@@ -265,6 +265,9 @@ interface BrowserProps {
   deleted: boolean;
   q: string;
   toggleDeletedHref?: string;
+  /** P-3: Server hat die Dokumentliste gecappt — Hinweis anzeigen. */
+  truncated?: boolean;
+  totalCount?: number;
 }
 interface EmbeddedProps {
   variant: 'embedded';
@@ -275,6 +278,20 @@ interface EmbeddedProps {
   canUpload?: boolean;
   /** Sachverhalts-Bezug — Uploads aus dem Aktenregal-Tab setzen analysis_id. */
   analysisId?: string;
+  /** P-3: Server hat die Dokumentliste gecappt — Hinweis anzeigen. */
+  truncated?: boolean;
+  totalCount?: number;
+}
+
+/** P-3: Hinweis, wenn der Server die Dokumentliste gecappt hat. */
+function TruncationHint({ shown, totalCount }: { shown: number; totalCount?: number }) {
+  return (
+    <p className="mb-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-3 py-1.5 text-xs text-amber-900 dark:text-amber-100">
+      Zeige die neuesten {shown.toLocaleString('de-DE')} Dokumente
+      {totalCount ? ` von ${totalCount.toLocaleString('de-DE')}` : ''} — ältere bitte über
+      Ordner oder Suche eingrenzen.
+    </p>
+  );
 }
 
 export function DocumentExplorer(props: BrowserProps | EmbeddedProps) {
@@ -298,7 +315,8 @@ export function DocumentExplorer(props: BrowserProps | EmbeddedProps) {
 type Sel = { kind: 'file' | 'folder'; id: string };
 
 function BrowserView({
-  crumbs, entries, scope, folders, currentFolderId, deleted, q, toggleDeletedHref, ops,
+  crumbs, entries, scope, folders, currentFolderId, deleted, q, toggleDeletedHref,
+  truncated, totalCount, ops,
 }: Omit<BrowserProps, 'variant'> & { ops: DocumentOps }) {
   const { router, busy, start } = ops;
   const [search, setSearch] = useState(q);
@@ -651,6 +669,13 @@ function BrowserView({
 
       <OpErrorBanner ops={ops} />
 
+      {truncated && (
+        <TruncationHint
+          shown={entries.filter((e) => e.kind === 'file').length}
+          totalCount={totalCount}
+        />
+      )}
+
       {/* „Eine Ebene hoch" als Drop-Ziel (Wurzel des Scopes) */}
       {scope && currentFolderId && (
         <div
@@ -871,7 +896,8 @@ function MenuItem({
 // ---------------------------------------------------------------------------
 
 function EmbeddedView({
-  clientId, folders, documents, scopeLabel, canUpload = true, analysisId, ops,
+  clientId, folders, documents, scopeLabel, canUpload = true, analysisId,
+  truncated, totalCount, ops,
 }: Omit<EmbeddedProps, 'variant'> & { ops: DocumentOps }) {
   const { router, busy } = ops;
   const [sel, setSel] = useState<string | 'all' | 'none'>('all');
@@ -1068,6 +1094,8 @@ function EmbeddedView({
         </div>
 
         <OpErrorBanner ops={ops} />
+
+        {truncated && <TruncationHint shown={documents.length} totalCount={totalCount} />}
 
         <div className="card overflow-hidden">
           {shown.length === 0 ? (

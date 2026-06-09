@@ -130,6 +130,14 @@ NEXTAUTH_URL=https://taxtronik.kanzlei.example.de
 ```
 
 Die path-basierte Trennung (`/staff/*` vs `/portal/*`) plus die getrennten
-Cookie-Namen (`__taxtronik_staff_session` vs `__taxtronik_portal_session`)
-mit `Path=/` bietet weiterhin saubere Surface-Isolation, nur eben auf
-Cookie-Pfad-Ebene statt Subdomain-Ebene.
+Cookie-Namen (`__Host-taxtronik_staff_session` vs
+`__Host-taxtronik_portal_session`) mit `Path=/` bietet weiterhin saubere
+Surface-Isolation, nur eben auf Cookie-Pfad-Ebene statt Subdomain-Ebene.
+
+**Cookie-Präfix-Logik** (`apps/web/src/server/auth/session-cookie.ts`): In
+Production ohne Cookie-Domain tragen die Session-Cookies das `__Host-`-Präfix
+(Browser erzwingen Secure + `Path=/` + kein Domain-Attribut — kein
+Überschreiben durch Subdomains). Mit gesetzter `STAFF_COOKIE_DOMAIN` /
+`PORTAL_COOKIE_DOMAIN` (Subdomain-Trennung) heißen sie
+`__Secure-taxtronik_*_session`, weil `__Host-` kein Domain-Attribut erlaubt.
+Im Dev (HTTP) bleibt der unpräfixte Name `__taxtronik_*_session`.

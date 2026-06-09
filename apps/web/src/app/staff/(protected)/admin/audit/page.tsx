@@ -12,8 +12,9 @@ import { ShieldCheck, ShieldAlert, ChevronLeft, ChevronRight, FileDown } from 'l
 import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
-import { evidenceService } from '@/server/container';
+import { AUDIT_VERIFY_RESULT_SETTING_KEY, type PersistedVerifyResult } from '@taxtronik/evidence';
 import { env } from '@taxtronik/config';
+import { triggerAuditVerifyAction } from './actions';
 import { signAuditToken, AUDIT_TOKEN_TTL_DAYS } from '@/server/audit-access/token';
 import { CopyField } from '@/components/copy-field';
 import type { Prisma } from '@prisma/client';
@@ -34,6 +35,7 @@ interface SearchParams {
   resourceType?: string;
   from?: string;
   to?: string;
+  verify?: string;
 }
 
 export default async function AuditLogPage({
@@ -73,7 +75,11 @@ export default async function AuditLogPage({
     }
   }
 
-  const [entries, totalCount, chainResult] = await withTenantContext(
+  // P-1: aktive Filter? Nur dann ist ein exakter COUNT vertretbar; bei leerem
+  // Filter wäre das ein Scan über den GANZEN Log → reltuples-Schätzung.
+  const hasFilter = Boolean(sp.action || sp.actorType || sp.resourceType || sp.from || sp.to);
+
+  const [entries, verifyRow, resourceTypeRows, totalCount] = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) =>
       Promise.all([
@@ -82,25 +88,38 @@ export default async function AuditLogPage({
           orderBy: { id: 'desc' },
           take: PAGE_SIZE + 1,
         }),
-        tx.auditLog.count({ where }),
-        evidenceService.verifyChain(tx, tenantId).catch(() => null),
+        // P-1: Chain-Verifikation läuft NICHT mehr im Render-Pfad (SHA-256 über
+        // den kompletten Log; Sekunden bei 200k, P2028 ab ~500k). Hier nur das
+        // vom täglichen Worker-Job (audit-verify-check) persistierte Ergebnis.
+        tx.tenantSetting.findUnique({
+          where: { tenantId_key: { tenantId, key: AUDIT_VERIFY_RESULT_SETTING_KEY } },
+        }),
+        // P-1: groupBy statt distinct — Prisma dedupliziert `distinct` ohne
+        // nativeDistinct IN-MEMORY und überträgt dafür JEDE Zeile.
+        tx.auditLog.groupBy({
+          by: ['resourceType'],
+          orderBy: { resourceType: 'asc' },
+        }),
+        hasFilter
+          ? tx.auditLog.count({ where })
+          : // pg_class-reltuples-Schätzung statt COUNT(*) über den ganzen Log.
+            tx.$queryRaw<{ estimate: bigint }[]>`
+              SELECT reltuples::bigint AS estimate
+              FROM pg_class
+              WHERE oid = to_regclass('audit_log')
+            `.then((rows) => {
+              const est = Number(rows[0]?.estimate ?? -1);
+              // -1 = Tabelle noch nie analysiert (frische DB) → exakter Count ok.
+              return est >= 0 ? est : tx.auditLog.count();
+            }),
       ]),
   );
+
+  const verifyResult = (verifyRow?.value ?? null) as PersistedVerifyResult | null;
 
   const hasNext = entries.length > PAGE_SIZE;
   const visibleEntries = entries.slice(0, PAGE_SIZE);
   const nextCursor = hasNext ? String(visibleEntries[visibleEntries.length - 1]!.id) : null;
-
-  // Distinct resource_types für Filter-Dropdown
-  const resourceTypes = await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    (tx) =>
-      tx.auditLog.findMany({
-        select: { resourceType: true },
-        distinct: ['resourceType'],
-        orderBy: { resourceType: 'asc' },
-      }),
-  );
 
   // Filter-Query-String für Pagination-Links
   const baseQs = new URLSearchParams();
@@ -145,50 +164,84 @@ export default async function AuditLogPage({
         />
       </div>
 
-      {/* Hash-Chain-Status */}
+      {/* Hash-Chain-Status — letztes persistiertes Ergebnis des täglichen
+          Prüf-Jobs (audit-verify-check); „Jetzt prüfen" stößt einen neuen
+          Lauf im Hintergrund an. */}
       <div
         className={
-          chainResult?.ok
-            ? 'rounded-md border border-green-200 bg-green-50 p-4 mb-6'
-            : 'rounded-md border border-red-200 bg-red-50 p-4 mb-6'
+          !verifyResult
+            ? 'rounded-md border border-default bg-gray-50 p-4 mb-6'
+            : verifyResult.ok
+              ? 'rounded-md border border-green-200 bg-green-50 p-4 mb-6'
+              : 'rounded-md border border-red-200 bg-red-50 p-4 mb-6'
         }
       >
         <div className="flex items-start gap-3">
-          {chainResult?.ok ? (
+          {verifyResult?.ok ? (
             <ShieldCheck className="h-5 w-5 text-green-600 mt-0.5" />
           ) : (
-            <ShieldAlert className="h-5 w-5 text-red-600 mt-0.5" />
+            <ShieldAlert
+              className={
+                verifyResult ? 'h-5 w-5 text-red-600 mt-0.5' : 'h-5 w-5 text-disabled mt-0.5'
+              }
+            />
           )}
           <div className="flex-1">
-            {chainResult?.ok ? (
+            {!verifyResult ? (
+              <p className="text-sm text-secondary">
+                Noch kein Prüfergebnis — der tägliche Integritäts-Job ist noch nicht
+                gelaufen. „Jetzt prüfen" stößt eine Verifikation an.
+              </p>
+            ) : verifyResult.ok ? (
               <>
                 <p className="text-sm font-medium text-green-900">
-                  Hash-Chain intakt — {chainResult.checked} Einträge geprüft
+                  Hash-Chain intakt — {verifyResult.checked.toLocaleString('de-DE')} Einträge geprüft
                 </p>
                 <p className="text-xs text-green-700 mt-1">
-                  {chainResult.sealsChecked} Tagesversiegelungen geprüft
-                  {chainResult.sealBreaks.length > 0
-                    ? ` · ${chainResult.sealBreaks.length} mit TSA-Problem`
-                    : ''}
+                  {verifyResult.sealsChecked} Tagesversiegelungen geprüft
+                  {' · '}zuletzt geprüft {fmtDateTimeSeconds(new Date(verifyResult.checkedAt))}
                 </p>
               </>
-            ) : chainResult ? (
+            ) : (
               <>
                 <p className="text-sm font-medium text-red-900">
-                  ⚠ Hash-Chain gebrochen!
+                  {verifyResult.error ? 'Verifikation fehlgeschlagen.' : '⚠ Hash-Chain gebrochen!'}
                 </p>
-                {chainResult.firstBreak && (
+                {verifyResult.firstBreak && (
                   <p className="text-xs text-red-700 mt-1 font-mono">
-                    Erster Bruch bei Audit-ID {String(chainResult.firstBreak.auditId)} (
-                    {fmtDateTimeSeconds(chainResult.firstBreak.occurredAt,)}
+                    Erster Bruch bei Audit-ID {verifyResult.firstBreak.auditId} (
+                    {fmtDateTimeSeconds(new Date(verifyResult.firstBreak.occurredAt))}
                     )
                   </p>
                 )}
+                {verifyResult.sealBreaks > 0 && (
+                  <p className="text-xs text-red-700 mt-1">
+                    {verifyResult.sealBreaks} Tagesversiegelung(en) mit TSA-Problem
+                  </p>
+                )}
+                {(verifyResult.policyBreaks ?? []).map((b) => (
+                  <p key={b} className="text-xs text-red-700 mt-1">{b}</p>
+                ))}
+                {verifyResult.error && (
+                  <p className="text-xs text-red-700 mt-1">Fehler: {verifyResult.error}</p>
+                )}
+                <p className="text-xs text-red-700 mt-1">
+                  Geprüft {fmtDateTimeSeconds(new Date(verifyResult.checkedAt))}
+                </p>
               </>
-            ) : (
-              <p className="text-sm text-secondary">Verifikation fehlgeschlagen.</p>
+            )}
+            {sp.verify === 'queued' && (
+              <p className="text-xs text-secondary mt-2">
+                Prüfung angestoßen — das Ergebnis erscheint hier, sobald der
+                Hintergrund-Job abgeschlossen ist.
+              </p>
             )}
           </div>
+          <form action={triggerAuditVerifyAction}>
+            <button type="submit" className="btn-secondary text-xs shrink-0">
+              Jetzt prüfen
+            </button>
+          </form>
         </div>
       </div>
 
@@ -218,7 +271,7 @@ export default async function AuditLogPage({
           <label className="label" htmlFor="resourceType">Ressource</label>
           <select id="resourceType" name="resourceType" className="input text-xs" defaultValue={sp.resourceType ?? ''}>
             <option value="">Alle</option>
-            {resourceTypes.map((r) => (
+            {resourceTypeRows.map((r) => (
               <option key={r.resourceType} value={r.resourceType}>{r.resourceType}</option>
             ))}
           </select>
@@ -240,7 +293,15 @@ export default async function AuditLogPage({
       {/* Tabelle */}
       <div className="card overflow-hidden">
         <div className="px-6 py-3 border-b border-default flex items-center justify-between text-xs text-muted">
-          <span>{totalCount.toLocaleString('de-DE')} Treffer · zeige {visibleEntries.length}</span>
+          <span>
+            {hasFilter
+              ? `${totalCount.toLocaleString('de-DE')} Treffer · zeige ${visibleEntries.length}`
+              : // reltuples-Schätzung (gerundet) — exakter Count würde den ganzen Log scannen.
+                `~${(totalCount >= 1000
+                  ? Math.round(totalCount / 100) * 100
+                  : totalCount
+                ).toLocaleString('de-DE')} Einträge gesamt · zeige ${visibleEntries.length}`}
+          </span>
         </div>
         {visibleEntries.length === 0 ? (
           <p className="px-6 py-16 text-sm text-disabled text-center">Keine Einträge.</p>

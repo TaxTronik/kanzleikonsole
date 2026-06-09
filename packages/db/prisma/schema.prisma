@@ -197,6 +197,11 @@ model GwgCheck {
   verifiedBy       String?              @map("verified_by") @db.Uuid
   rejectedReason   String?              @map("rejected_reason")
   notes            String?
+  /// GwG § 8 Abs. 4 S. 4 (iter81): Vernichtungsvermerk. Gesetzt, wenn die
+  /// Aufzeichnungen des Checks vernichtet wurden (Berechtigte gelöscht,
+  /// Ausweis-Details genullt, riskAnswers/notes entfernt). Der Skelett-
+  /// Datensatz bleibt als Nachweis, DASS geprüft wurde.
+  destroyedAt      DateTime?            @map("destroyed_at")
   createdAt        DateTime             @default(now()) @map("created_at")
   updatedAt        DateTime             @updatedAt @map("updated_at")
   beneficialOwners GwgBeneficialOwner[]
@@ -2115,6 +2120,7 @@ enum NotificationKind {
   GWG_EXPIRED
   GWG_ID_EXPIRY_SOON
   GWG_ID_EXPIRED
+  GWG_DELETION_DUE
   INVOICE_OVERDUE
   PHONE_NOTE_FORWARDED
   VACATION_DECISION

@@ -112,7 +112,13 @@ export async function materializeTenantTaxDeadlines(
   });
   stats.configsScanned = configs.length;
 
-  // 2. Pro Config alle Kandidaten generieren und idempotent einfügen
+  // 2. Pro Config alle Kandidaten generieren und idempotent einfügen.
+  //    P-4: EIN createMany(skipDuplicates) über den Unique-Key
+  //    (tenantId, clientId, kind, period) statt findUnique+create pro
+  //    Kandidat — vorher 2 sequentielle Queries × Configs × Kandidaten
+  //    (5.000–12.000 bei 1000 Mandanten), was die interaktive 15-s-Tx der
+  //    Web-Action riss (P2028). skipDuplicates = ON CONFLICT DO NOTHING.
+  const candidateRows: Prisma.TaxDeadlineCreateManyInput[] = [];
   for (const cfg of configs) {
     // Übersprungen wenn Mandant nicht freigeschaltet (GwG)
     if (!cfg.client.allowActive) continue;
@@ -124,40 +130,36 @@ export async function materializeTenantTaxDeadlines(
       // ein Termin erst NACH Ende seines Fälligkeitstags (§ 108 (1) AO) —
       // ein heute fälliger Termin wird noch angelegt.
       if (endOfDueDay(c.dueDate).getTime() < now.getTime()) continue;
-      // Upsert über Unique (tenantId, clientId, kind, period)
-      const existing = await db.taxDeadline.findUnique({
-        where: {
-          tenantId_clientId_kind_period: {
-            tenantId,
-            clientId: cfg.clientId,
-            kind: c.kind,
-            period: c.period,
-          },
-        },
+      candidateRows.push({
+        tenantId,
+        clientId: cfg.clientId,
+        configId: cfg.id,
+        kind: c.kind,
+        period: c.period,
+        dueDate: c.dueDate,
       });
-      if (existing) continue;
-
-      await db.taxDeadline.create({
-        data: {
-          tenantId,
-          clientId: cfg.clientId,
-          configId: cfg.id,
-          kind: c.kind,
-          period: c.period,
-          dueDate: c.dueDate,
-        },
-      });
-      stats.deadlinesCreated += 1;
     }
   }
+  if (candidateRows.length > 0) {
+    const created = await db.taxDeadline.createMany({
+      data: candidateRows,
+      skipDuplicates: true,
+    });
+    stats.deadlinesCreated = created.count;
+  }
 
-  // 3. Auto-Anforderungen für Termine im Reminder-Fenster erzeugen
+  // 3. Auto-Anforderungen für Termine im Reminder-Fenster erzeugen.
+  //    P-4: SQL-Vorfilter auf dueDate ≤ now + max(reminderDaysBefore) —
+  //    vorher wurden ALLE geplanten Termine (90-Tage-Horizont × Mandanten)
+  //    geladen und der Großteil in JS verworfen.
+  const maxReminderDays = configs.reduce((m, c) => Math.max(m, c.reminderDaysBefore), 0);
   const upcoming = await db.taxDeadline.findMany({
     where: {
       tenantId,
       status: 'PLANNED',
       requestId: null,
       config: { reminderDaysBefore: { gt: 0 } },
+      dueDate: { lte: new Date(now.getTime() + maxReminderDays * 24 * 60 * 60 * 1000) },
     },
     include: { config: { select: { reminderDaysBefore: true } } },
   });

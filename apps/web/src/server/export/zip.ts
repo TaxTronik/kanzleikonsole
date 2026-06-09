@@ -44,6 +44,50 @@ export class ZipTooLargeError extends Error {
   }
 }
 
+/**
+ * P-6: Modul-globales Concurrency-Limit für ZIP-Builds. Ein Build hält bis zu
+ * ~2 GB RAM (geladene Entries + Concat-Kopie) — ab wenigen parallelen Exporten
+ * kippt die Instanz, obwohl jeder einzelne unter dem 1-GB-Cap bleibt. Da
+ * buildZip synchron ist, muss der Slot das GANZE Fetch+Build des Aufrufers
+ * umschließen: Slot holen, Bytes laden, buildZip, Slot freigeben (finally).
+ * Max. 2 gleichzeitige Builds pro Instanz; weitere warten kurz und brechen
+ * dann mit ZipBusyError ab (Aufrufer → HTTP 429).
+ */
+const ZIP_MAX_PARALLEL_BUILDS = 2;
+const ZIP_SLOT_WAIT_MS = 10_000;
+const ZIP_SLOT_POLL_MS = 250;
+let activeZipBuilds = 0;
+
+export class ZipBusyError extends Error {
+  constructor() {
+    super(
+      'Zu viele gleichzeitige ZIP-Exporte auf diesem Server. ' +
+        'Bitte versuchen Sie es in wenigen Augenblicken erneut.',
+    );
+    this.name = 'ZipBusyError';
+  }
+}
+
+/**
+ * Reserviert einen ZIP-Build-Slot. Gibt die Release-Funktion zurück — der
+ * Aufrufer MUSS sie in einem `finally` aufrufen. Wirft ZipBusyError, wenn
+ * nach kurzem Warten kein Slot frei wird.
+ */
+export async function acquireZipBuildSlot(): Promise<() => void> {
+  const deadline = Date.now() + ZIP_SLOT_WAIT_MS;
+  while (activeZipBuilds >= ZIP_MAX_PARALLEL_BUILDS) {
+    if (Date.now() >= deadline) throw new ZipBusyError();
+    await new Promise((resolve) => setTimeout(resolve, ZIP_SLOT_POLL_MS));
+  }
+  activeZipBuilds += 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    activeZipBuilds -= 1;
+  };
+}
+
 export function buildZip(entries: ZipEntry[]): Buffer {
   // T-4: Vorab-Check auf Gesamtgröße. Mit STORE-Methode (keine Kompression) ist
   // die ZIP-Größe ≈ Summe der Eingaben + Headern; das reicht für einen

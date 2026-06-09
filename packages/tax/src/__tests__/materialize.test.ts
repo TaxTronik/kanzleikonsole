@@ -5,9 +5,11 @@
 // Fake-Client (vi.fn pro Query) und einen separaten Fake-Tx für runAtomic,
 // damit prüfbar ist, dass Request + Deadline-Update + Audit-Eintrag wirklich
 // in DERSELBEN Transaktion laufen. Abgedeckt:
-//   - Upsert: neue Termine werden angelegt, vorhandene (Unique-Key) nicht
+//   - Upsert: EIN createMany(skipDuplicates) über den Unique-Key (P-4 —
+//     vorher findUnique+create pro Kandidat), Duplikate zählen nicht
 //   - Mandant ohne allowActive (GwG) wird übersprungen
-//   - Reminder-Pfad: Request + REMINDED + Evidence atomar, Re-Check-Race
+//   - Reminder-Pfad: Request + REMINDED + Evidence atomar, Re-Check-Race,
+//     SQL-Vorfilter dueDate ≤ now + max(reminderDaysBefore)
 //   - Reminder-Fenster (reminderDaysBefore) noch nicht erreicht → kein Request
 //   - OVERDUE erst NACH Ende des Fälligkeitstags (§ 108 (1) AO)
 // =============================================================================
@@ -25,6 +27,7 @@ const NOW = new Date('2026-06-09T10:00:00.000Z');
 interface HarnessOptions {
   configs?: unknown[];
   upcoming?: unknown[];
+  createdCount?: number;
   overdueCount?: number;
 }
 
@@ -33,8 +36,7 @@ function makeHarness(opts: HarnessOptions = {}) {
     tenantSetting: { findUnique: vi.fn().mockResolvedValue(null) },
     taxScheduleConfig: { findMany: vi.fn().mockResolvedValue(opts.configs ?? []) },
     taxDeadline: {
-      findUnique: vi.fn().mockResolvedValue(null),
-      create: vi.fn().mockResolvedValue({}),
+      createMany: vi.fn().mockResolvedValue({ count: opts.createdCount ?? 0 }),
       findMany: vi.fn().mockResolvedValue(opts.upcoming ?? []),
       updateMany: vi.fn().mockResolvedValue({ count: opts.overdueCount ?? 0 }),
     },
@@ -65,6 +67,7 @@ function ustaMonthlyConfig(overrides: Record<string, unknown> = {}) {
     kind: 'USTA_MONATLICH',
     hasDauerfrist: false,
     advised: false,
+    reminderDaysBefore: 10,
     client: { id: 'client-1', allowActive: true },
     ...overrides,
   };
@@ -72,7 +75,7 @@ function ustaMonthlyConfig(overrides: Record<string, unknown> = {}) {
 
 describe('Upsert — Termine aus aktiven Configs', () => {
   it('legt einen neuen Termin im Horizont an (USt-VA Mai → fällig 10.06.)', async () => {
-    const { db, deps } = makeHarness({ configs: [ustaMonthlyConfig()] });
+    const { db, deps } = makeHarness({ configs: [ustaMonthlyConfig()], createdCount: 1 });
     const stats = await materializeTenantTaxDeadlines(deps, {
       tenantId: TENANT,
       systemStaffId: STAFF,
@@ -84,35 +87,29 @@ describe('Upsert — Termine aus aktiven Configs', () => {
     expect(db.tenantSetting.findUnique).toHaveBeenCalledWith({
       where: { tenantId_key: { tenantId: TENANT, key: 'tax_region' } },
     });
-    // Idempotenz-Check über den Unique-Key
-    expect(db.taxDeadline.findUnique).toHaveBeenCalledWith({
-      where: {
-        tenantId_clientId_kind_period: {
+    // P-4: EIN createMany über alle Kandidaten — Idempotenz via skipDuplicates
+    // (ON CONFLICT DO NOTHING auf dem Unique-Key tenant+client+kind+period).
+    expect(db.taxDeadline.createMany).toHaveBeenCalledTimes(1);
+    expect(db.taxDeadline.createMany).toHaveBeenCalledWith({
+      data: [
+        {
           tenantId: TENANT,
           clientId: 'client-1',
+          configId: 'cfg-1',
           kind: 'USTA_MONATLICH',
           period: '2026-05',
+          dueDate: new Date(Date.UTC(2026, 5, 10)),
         },
-      },
-    });
-    expect(db.taxDeadline.create).toHaveBeenCalledTimes(1);
-    expect(db.taxDeadline.create).toHaveBeenCalledWith({
-      data: {
-        tenantId: TENANT,
-        clientId: 'client-1',
-        configId: 'cfg-1',
-        kind: 'USTA_MONATLICH',
-        period: '2026-05',
-        dueDate: new Date(Date.UTC(2026, 5, 10)),
-      },
+      ],
+      skipDuplicates: true,
     });
     expect(stats.configsScanned).toBe(1);
     expect(stats.deadlinesCreated).toBe(1);
   });
 
-  it('ist idempotent: vorhandener Termin (Unique-Key) wird nicht erneut angelegt', async () => {
-    const { db, deps } = makeHarness({ configs: [ustaMonthlyConfig()] });
-    db.taxDeadline.findUnique.mockResolvedValue({ id: 'dl-existing' });
+  it('ist idempotent: vorhandener Termin (Unique-Key) zählt nicht als neu angelegt', async () => {
+    // skipDuplicates → DB meldet count: 0, wenn alle Kandidaten schon existieren
+    const { db, deps } = makeHarness({ configs: [ustaMonthlyConfig()], createdCount: 0 });
 
     const stats = await materializeTenantTaxDeadlines(deps, {
       tenantId: TENANT,
@@ -121,7 +118,9 @@ describe('Upsert — Termine aus aktiven Configs', () => {
       now: NOW,
     });
 
-    expect(db.taxDeadline.create).not.toHaveBeenCalled();
+    expect(db.taxDeadline.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skipDuplicates: true }),
+    );
     expect(stats.deadlinesCreated).toBe(0);
   });
 
@@ -136,8 +135,7 @@ describe('Upsert — Termine aus aktiven Configs', () => {
       now: NOW,
     });
 
-    expect(db.taxDeadline.findUnique).not.toHaveBeenCalled();
-    expect(db.taxDeadline.create).not.toHaveBeenCalled();
+    expect(db.taxDeadline.createMany).not.toHaveBeenCalled();
     expect(stats.configsScanned).toBe(1);
     expect(stats.deadlinesCreated).toBe(0);
   });
@@ -164,13 +162,16 @@ describe('Reminder-Pfad — Auto-Anforderung atomar', () => {
       now: NOW,
     });
 
-    // Kandidaten-Query: nur PLANNED ohne Request, Reminder konfiguriert
+    // Kandidaten-Query: nur PLANNED ohne Request, Reminder konfiguriert.
+    // P-4: SQL-Vorfilter dueDate ≤ now + max(reminderDaysBefore) — ohne
+    // geladene Configs ist das Fenster 0 Tage (lte = now).
     expect(db.taxDeadline.findMany).toHaveBeenCalledWith({
       where: {
         tenantId: TENANT,
         status: 'PLANNED',
         requestId: null,
         config: { reminderDaysBefore: { gt: 0 } },
+        dueDate: { lte: NOW },
       },
       include: { config: { select: { reminderDaysBefore: true } } },
     });
@@ -203,6 +204,29 @@ describe('Reminder-Pfad — Auto-Anforderung atomar', () => {
       after: { requestId: 'req-1', kind: 'USTA_MONATLICH', period: '2026-05' },
     });
     expect(stats.requestsCreated).toBe(1);
+  });
+
+  it('SQL-Vorfilter: Fenster = now + max(reminderDaysBefore) aus den geladenen Configs', async () => {
+    // Config trägt zum Reminder-Fenster bei, auch wenn der Mandant (GwG)
+    // keine neuen Kandidaten bekommt.
+    const cfg = ustaMonthlyConfig({
+      reminderDaysBefore: 14,
+      client: { id: 'client-1', allowActive: false },
+    });
+    const { db, deps } = makeHarness({ configs: [cfg] });
+
+    await materializeTenantTaxDeadlines(deps, {
+      tenantId: TENANT,
+      systemStaffId: STAFF,
+      now: NOW,
+    });
+
+    const arg = db.taxDeadline.findMany.mock.calls[0]![0] as {
+      where: { dueDate: { lte: Date } };
+    };
+    expect(arg.where.dueDate.lte).toEqual(
+      new Date(NOW.getTime() + 14 * 24 * 60 * 60 * 1000),
+    );
   });
 
   it('Reminder-Fenster noch nicht erreicht → kein Request', async () => {

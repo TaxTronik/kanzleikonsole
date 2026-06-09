@@ -11,6 +11,8 @@ import { ArrowLeft, FileWarning, Plus, FileText } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { FilingsSection } from './filings/filings-section';
+import { NoticeStatusSelect } from './status-select';
+import { NOTICE_STATUS_TRANSITIONS } from './transitions';
 
 import { fmtDateShort, fmtEUR } from '@/lib/fmt';
 const KIND_LABELS: Record<string, string> = {
@@ -228,6 +230,10 @@ export default async function ClientNoticesPage({
                       {n.status === 'ABGEHOLFEN' && <span className="badge-green">{STATUS_LABELS[n.status]}</span>}
                       {n.status === 'ZURUECKGEWIESEN' && <span className="badge-red">{STATUS_LABELS[n.status]}</span>}
                       {n.status === 'RECHTSKRAEFTIG' && <span className="badge-gray">{STATUS_LABELS[n.status]}</span>}
+                      <NoticeStatusSelect
+                        noticeId={n.id}
+                        allowed={[...(NOTICE_STATUS_TRANSITIONS[n.status] ?? [])]}
+                      />
                     </td>
                   </tr>
                 );

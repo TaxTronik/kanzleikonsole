@@ -12,6 +12,8 @@
 //     DB-Eintrag wird nachgezogen
 //   - echte S3-Fehler beim HeadObject propagieren (nur NotFound ist erwartet)
 //   - F3: optionaler RFC-3161-Stempel; Fehlschlag → tsaResponseBlob NULL
+//   - RF-13: AUDIT_ARCHIVE_MODE=HARD wird ehrlich als SOFT persistiert
+//     (DB-Cleanup nicht implementiert — kein irreführender HARD-Nachweis)
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -28,15 +30,16 @@ const h = vi.hoisted(() => {
   const tsaTimestamp = vi.fn();
   const assertPublicHost = vi.fn();
   const retention = new Date('2036-12-31T23:59:59.000Z');
-  return { prismaOwner, s3Send, serializeArchive, tsaTimestamp, assertPublicHost, retention };
+  // RF-13: hoisted, damit der Logger auch nach vi.resetModules() (HARD-Test
+  // unten) objekt-identisch geteilt bleibt und Warn-Assertions möglich sind.
+  const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+  return { prismaOwner, s3Send, serializeArchive, tsaTimestamp, assertPublicHost, retention, log };
 });
 
 vi.mock('bullmq', () => import('./mocks/bullmq'));
 vi.mock('../../queues', () => ({ connection: {} }));
 vi.mock('../../prisma-owner', () => ({ prismaOwner: h.prismaOwner }));
-vi.mock('../../logger', () => ({
-  log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-}));
+vi.mock('../../logger', () => ({ log: h.log }));
 vi.mock('../../http/ssrf-guard', () => ({ assertPublicHost: h.assertPublicHost }));
 vi.mock('@taxtronik/config', () => ({ env: { S3_BUCKET_GOBD: 'gobd-bucket' } }));
 vi.mock('@taxtronik/storage', () => ({
@@ -283,5 +286,36 @@ describe('F3: optionaler RFC-3161-Stempel', () => {
       data: expect.objectContaining({ tsaResponseBlob: null }),
     });
     expect(result).toEqual({ totalArchived: 2, totalDeleted: 0 });
+  });
+});
+
+describe('RF-13: AUDIT_ARCHIVE_MODE=HARD wird ehrlich als SOFT persistiert', () => {
+  // MODE wird beim Modul-Load gelesen → frische Modul-Instanz mit gestubbter
+  // ENV. Achtung: vi.resetModules() leert die Modul-Registry — der neue Worker
+  // registriert sich in einer NEUEN processors-Map (mocks/bullmq wird ebenfalls
+  // neu instanziiert), daher holen wir den Processor aus der frischen Map.
+  // Die hoisted h.*-Mocks sind objekt-identisch geteilt und gelten weiter.
+  it('mode=HARD → Archiv-Eintrag mit mode SOFT, totalDeleted bleibt 0', async () => {
+    vi.stubEnv('AUDIT_ARCHIVE_MODE', 'HARD');
+    vi.resetModules();
+    try {
+      const fresh = (await import('./mocks/bullmq')).processors;
+      await import('../audit-rotate');
+      // Je nachdem, ob vitest die bullmq-Mock-Factory neu evaluiert, landet
+      // der frische Processor in der neuen ODER der alten Map — beide prüfen.
+      const proc = fresh.get('audit-rotate') ?? processors.get('audit-rotate');
+      const result = (await proc!({ data: { tenantId: TENANT } })) as RotateResult;
+
+      // Warn-Hinweis beweist, dass wirklich die HARD-Konfiguration lief
+      // (kein vakuum-grüner Lauf des alten SOFT-Moduls).
+      expect(h.log.warn).toHaveBeenCalledWith(expect.stringContaining('AUDIT_ARCHIVE_MODE=HARD'));
+      expect(h.prismaOwner.auditArchive.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ mode: 'SOFT' }),
+      });
+      expect(result).toEqual({ totalArchived: 2, totalDeleted: 0 });
+    } finally {
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    }
   });
 });

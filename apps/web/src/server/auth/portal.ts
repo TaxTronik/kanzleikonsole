@@ -7,7 +7,7 @@
 //   2. User klickt Link → /portal/login/verify?token=...
 //   3. Verify-Page ruft portalSignIn('credentials', { token, ... }) auf.
 //   4. authorize() verifiziert Token via verifyMagicLink, gibt Contact zurück.
-//   5. JWT-Session wird gesetzt (Cookie __taxtronik_portal_session, path=/portal).
+//   5. JWT-Session wird gesetzt (Cookie-Name siehe session-cookie.ts, path=/).
 // =============================================================================
 
 import { cache } from 'react';
@@ -16,6 +16,7 @@ import Credentials from 'next-auth/providers/credentials';
 import { env } from '@taxtronik/config';
 import { verifyMagicLink } from './magic-link';
 import { isTokenRevoked } from './revocation';
+import { PORTAL_SESSION_COOKIE } from './session-cookie';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { log } from '@/server/logger';
 
@@ -94,7 +95,9 @@ const portalConfig: NextAuthConfig = {
 
   cookies: {
     sessionToken: {
-      name: '__taxtronik_portal_session',
+      // Härtung: __Host-/__Secure-Präfix in Production — Name zentral in
+      // session-cookie.ts (Begründung + Constraints dort, analog staff.ts).
+      name: PORTAL_SESSION_COOKIE,
       options: {
         httpOnly: true,
         secure: env.NODE_ENV === 'production',

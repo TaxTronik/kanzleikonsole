@@ -39,6 +39,27 @@ export async function checkPortalWriteLimit(contactId: string): Promise<RateLimi
 }
 
 /**
+ * Per-User-Limit für die globale Staff-Suche (Defense in Depth): 30/min deckt
+ * jedes legitime Typeahead, bremst aber systematisches Abgrasen (5 parallele
+ * ILIKE-/FTS-Queries pro Request) über einen kompromittierten Account.
+ */
+export async function checkStaffSearchLimit(staffId: string): Promise<RateLimitResult> {
+  return checkRateLimit(`search:${staffId}`, { max: 30, windowSec: 60 });
+}
+
+/**
+ * Per-User-Limit für Export-Routen (CSV-Volltabellen, ZIP-Builds — teuer und
+ * datenreich): 5 pro 10 min und Export-Art. Key pro Routen-Art (`kind`),
+ * damit ein Mandanten-CSV nicht das Audit-Export-Kontingent verbraucht.
+ */
+export async function checkStaffExportLimit(
+  kind: string,
+  staffId: string,
+): Promise<RateLimitResult> {
+  return checkRateLimit(`export:${kind}:${staffId}`, { max: 5, windowSec: 600 });
+}
+
+/**
  * K-3: Einheitliches Verhalten bei Redis-Ausfall.
  *  - Production: fail-CLOSED (kein Bypass über provozierte Redis-Fehler)
  *  - Dev: fail-OPEN (lokale Tests ohne Redis möglich)

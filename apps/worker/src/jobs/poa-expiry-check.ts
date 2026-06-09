@@ -49,8 +49,12 @@ export const poaExpiryWorker = new Worker<ChecksJob>(
         select: { id: true },
       });
 
+      // RF-14: nur das Relevanz-Fenster laden (validUntil <= now + 30 Tage =
+      // Warn-Grenze) statt aller SIGNED-Vollmachten mit validUntil — der
+      // In-Memory-Filter (daysLeft > 30 → skip) bleibt als exakte Tagesrechnung.
+      const soonCutoff = new Date(now.getTime() + WARN_DAYS_SOON * 24 * 60 * 60 * 1000);
       const candidates = await prismaOwner.powerOfAttorney.findMany({
-        where: { tenantId, status: 'SIGNED', validUntil: { not: null } },
+        where: { tenantId, status: 'SIGNED', validUntil: { not: null, lte: soonCutoff } },
         include: {
           client: {
             select: {

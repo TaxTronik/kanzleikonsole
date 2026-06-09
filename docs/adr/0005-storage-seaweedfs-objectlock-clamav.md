@@ -19,7 +19,8 @@ ist später ohne API-Bruch möglich.
 - S3-Credentials in `infra/scripts/seaweedfs-s3.json` (für Dev plain; in
   Produktion wird der Container mit Secrets gemountet)
 
-Vier Buckets — angelegt vom `seaweedfs-init`-Container über die AWS-CLI:
+Fünf Buckets — angelegt vom `seaweedfs-init`-Container über die AWS-CLI
+(Stand der ursprünglichen Entscheidung; aktueller Stand siehe Addendum):
 - `gobd` mit Object-Lock-Mode `COMPLIANCE` und Default-Retention 10 Jahre
 - `general` (transiente Anhänge, KB-Bilder)
 - `staff-private` (Mitarbeiter-Ablage, mit Versionierung)
@@ -99,3 +100,25 @@ rclone copy minio-source: seaweed-dest: --progress
 
 Im Dev reicht `docker compose down -v && ./scripts/setup.ps1` (zerstört alle
 Daten — nur in Test-Umgebungen).
+
+## Addendum (2026-06-10)
+
+Zwei Punkte der ursprünglichen Entscheidung sind inzwischen überholt:
+
+1. **Sechster Bucket `gwg`** (B-1): `GWG_EVIDENCE` liegt nicht mehr im
+   `gobd`-Bucket, sondern in einem eigenen Bucket `gwg` mit Object-Lock-Mode
+   **GOVERNANCE** und 5 Jahren Retention. Grund: § 8 Abs. 4 GwG ist eine
+   Höchstfrist mit Vernichtungspflicht — COMPLIANCE würde die geforderte
+   unverzügliche Vernichtung nach Mandatsende technisch verhindern;
+   GOVERNANCE erlaubt die privilegierte Frühlöschung
+   (`s3:BypassGovernanceRetention`). Siehe `lockModeForTier()` in
+   `packages/storage/src/client.ts`/`service.ts` und
+   [docs/compliance/gwg.md](../compliance/gwg.md).
+2. **Kein Browser-Presigned-PUT mehr**: Uploads und Downloads laufen
+   vollständig **app-proxied** — der Object-Store hängt nur am internen
+   Docker-Netz und ist nie öffentlich erreichbar (§ 203 StGB, minimale
+   Angriffsfläche on-prem). Der im Upload-Flow oben beschriebene Schritt
+   „Browser PUTet direkt zum Object-Store" und der Vorteil „Presigned-URL =
+   App muss nicht puffern" gelten nicht mehr; die App streamt die Datei in
+   den Quarantine-Bucket und committet danach (Scan → Hash → Ziel-Bucket,
+   unverändert). Siehe Kommentar in `packages/storage/src/client.ts`.

@@ -96,12 +96,16 @@ afterEach(() => {
 });
 
 describe('Schwellenlogik', () => {
-  it('nur SIGNED-Vollmachten mit validUntil werden überhaupt geladen', async () => {
+  it('RF-14: nur SIGNED-Vollmachten im 30-Tage-Relevanz-Fenster werden geladen', async () => {
     await run();
 
     expect(h.prismaOwner.powerOfAttorney.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { tenantId: TENANT, status: 'SIGNED', validUntil: { not: null } },
+        where: {
+          tenantId: TENANT,
+          status: 'SIGNED',
+          validUntil: { not: null, lte: new Date(FIXED_NOW.getTime() + 30 * DAY) },
+        },
       }),
     );
   });

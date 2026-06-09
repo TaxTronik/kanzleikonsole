@@ -1,6 +1,6 @@
 # GoBD-Verfahrensdokumentation taxtronik
 
-Stand: 2026-05-14 · Iteration nach Sicherheits-Audit-Round 11
+Stand: 2026-06-10
 
 Dieses Dokument beschreibt, wie taxtronik die Anforderungen der **Grundsätze
 zur ordnungsmäßigen Führung und Aufbewahrung von Büchern, Aufzeichnungen und
@@ -27,11 +27,16 @@ Berechnet das Object-Lock-`ObjectLockRetainUntilDate` als
 Kalenderjahres auf demselben Aufbewahrungs-Stichtag.
 
 **Geltungsbereich**:
-- `DocumentClassification = GOBD_INVOICE | GOBD_CONTRACT | GOBD_TAX | GWG_EVIDENCE` werden
+- `DocumentClassification = GOBD_INVOICE | GOBD_CONTRACT | GOBD_TAX` werden
   in den Object-Lock-Bucket `gobd` mit COMPLIANCE-Mode geschrieben.
   Vor Ablauf der Retention sind Updates und Deletes von SeaweedFS
   hart-abgelehnt (auch für Owner-Credentials).
-- Audit-Archive (siehe Abschnitt 3) werden in denselben Bucket gelegt.
+- `GWG_EVIDENCE` liegt in einem **eigenen Bucket `gwg`** mit Object-Lock
+  **GOVERNANCE** und 5 Jahren Retention (`gwgRetentionUntil()`): § 8 Abs. 4
+  GwG ist eine 5-Jahre-Höchstfrist mit Vernichtungspflicht — COMPLIANCE
+  würde die geforderte unverzügliche Vernichtung nach Mandatsende technisch
+  verhindern. Details in [gwg.md](./gwg.md).
+- Audit-Archive (siehe Abschnitt 3) werden in den `gobd`-Bucket gelegt.
 
 **Nicht** unter Object-Lock fallen:
 - `GENERAL` (Mandanten-Schriftwechsel, Formulare, Notizen) — kürzere
@@ -64,6 +69,10 @@ Kalenderjahres auf demselben Aufbewahrungs-Stichtag.
   02:45 UTC (siehe [`apps/worker/src/scheduler.ts`](../../apps/worker/src/scheduler.ts)).
   Bei Hash-Bruch wird eine `SYSTEM_AUDIT_BREAK`-Notification an alle
   ADMIN/PARTNER versendet (idempotent pro `auditId`).
+- Das Prüf-Ergebnis wird persistiert (`tenant_setting`-Key
+  `audit_verify_result`) und auf `/staff/admin/audit` angezeigt; der
+  „Jetzt prüfen"-Button stößt dort einen neuen Verifikationslauf als
+  Hintergrund-Job an (kein Chain-Hashing im Render-Pfad).
 
 ## 3. Audit-Trail (GoBD Rn. 102 ff., „Protokollierung")
 
@@ -76,9 +85,12 @@ Hash ein (R-3 / H-2).
 
 **Wartung**:
 - Wöchentliche Auslagerung in NDJSON-Segmente (`audit-rotate`-Worker
-  sonntags 03:00 UTC). Aktuell nur SOFT-Rotation (Datei wird geschrieben,
-  DB bleibt). HARD-Rotation (DB-Cleanup) ist nicht implementiert — der
-  Audit-Log wächst monoton.
+  sonntags 03:00 UTC, manueller Trigger unter `/staff/admin/archive`).
+  Aktuell nur SOFT-Rotation (Datei wird geschrieben, DB bleibt).
+  HARD-Rotation (DB-Cleanup) ist nicht implementiert — der Audit-Log
+  wächst monoton. Ein konfiguriertes `AUDIT_ARCHIVE_MODE=HARD` wird beim
+  Lesen ehrlich auf SOFT normalisiert und pro Lauf als Warnung geloggt,
+  damit `audit_archive` keinen DB-Cleanup behauptet, der nie stattfand.
 
 ## 4. Lesbarmachung / Datenträgerüberlassung (Z3-Recht der FinVerw, § 147 Abs. 6 AO)
 
@@ -92,10 +104,13 @@ Hash ein (R-3 / H-2).
 ## 5. Schnittstellen / Datensicherheit
 
 - Authentifizierung: Staff mit Passwort + TOTP-Pflicht; Mandanten mit
-  Magic-Link + optional 2FA.
-- Backups: Postgres + SeaweedFS via [`backup/runner.ts`](../../apps/web/src/server/backup/runner.ts).
-  SHA-256 jedes Dumps in `BackupRecord.sha256`; Restore verifiziert
-  diesen Hash vor pg_restore (P-6).
+  Magic-Link (Single-Use, kein zweiter Faktor im Portal).
+- Backups: Postgres-Dump in den S3-Backup-Bucket via
+  [`backup/runner.ts`](../../apps/web/src/server/backup/runner.ts)
+  (Operator-Cron `scripts/backup.sh` bzw. manuell; auditiert als
+  `backup.run`). SHA-256 jedes Dumps in `BackupRecord.sha256`; Restore
+  verifiziert diesen Hash vor pg_restore (P-6). Der SeaweedFS-Inhalt
+  selbst wird von der App NICHT mitgesichert (siehe nächster Punkt).
 - Off-Site-Replikation des `gobd`-Buckets: NICHT Teil von taxtronik.
   Operator muss separat eine S3-Replikation einrichten (z. B. SeaweedFS
   Filer-Replication oder externes Tool wie restic/borg).

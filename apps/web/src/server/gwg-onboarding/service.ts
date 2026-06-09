@@ -39,17 +39,18 @@ export interface LoadedInvite {
   tenant: Pick<Tenant, 'id' | 'name' | 'slug'>;
 }
 
+// S-5: Einheitliche Fehlermeldung für alle „Token nicht nutzbar"-Zustände
+// (nicht gefunden / cancelled / submitted / expired). Vorher konnten vier
+// unterscheidbare Texte den Token-Lifecycle gegenüber einem Angreifer mit
+// abgegriffenem Token (Mail-Log, Browser-History) leaken. Symmetrisch zum
+// PoA-GENERIC_TOKEN_ERROR-Pattern. Exportiert, damit auch der Rate-Limit-
+// Pfad der Page dieselbe Ansicht rendert (kein Token-Probing-Orakel).
+export const GENERIC_TOKEN_ERROR = 'Einladung ungültig oder nicht mehr verfügbar.';
+
 export async function loadInviteByRawToken(rawToken: string): Promise<
   | { ok: true; invite: LoadedInvite }
   | { ok: false; error: string }
 > {
-  // S-5: Einheitliche Fehlermeldung für alle „Token nicht nutzbar"-Zustände
-  // (nicht gefunden / cancelled / submitted / expired). Vorher konnten vier
-  // unterscheidbare Texte den Token-Lifecycle gegenüber einem Angreifer mit
-  // abgegriffenem Token (Mail-Log, Browser-History) leaken. Symmetrisch zum
-  // PoA-GENERIC_TOKEN_ERROR-Pattern.
-  const GENERIC_TOKEN_ERROR = 'Einladung ungültig oder nicht mehr verfügbar.';
-
   if (!rawToken || rawToken.length < 10) {
     return { ok: false, error: GENERIC_TOKEN_ERROR };
   }

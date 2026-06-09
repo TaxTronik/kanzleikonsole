@@ -1,9 +1,9 @@
 'use server';
 
 import { z } from 'zod';
-import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import { evidenceService } from '@/server/container';
-import { materializeTaxDeadlines } from '@/server/tax-deadlines/materialize';
+import { enqueueTaxDeadlineMaterialize } from '@/server/jobs/tax-deadline-materialize-queue';
 import { staffActionGuard, withStaff, ActionError } from '@/server/actions/staff-action';
 
 export async function markDeadlineDoneAction(formData: FormData): Promise<void> {
@@ -68,11 +68,22 @@ export async function markDeadlinesDoneAction(formData: FormData): Promise<void>
   );
 }
 
-export async function rematerializeAction(): Promise<void> {
+export async function rematerializeAction(formData: FormData): Promise<void> {
   const g = await staffActionGuard();
   if (!g.ok) return;
 
-  await materializeTaxDeadlines(g.ctx, { systemStaffId: g.staffId });
+  // P-4: tenant-weite Materialisierung gehört nicht in eine interaktive
+  // 15-s-Server-Action-Tx (P2028 bei vielen Mandanten) → BullMQ-Job; der
+  // Worker (tax-deadline-materialize) übernimmt nur diesen Tenant.
+  await enqueueTaxDeadlineMaterialize(g.tenantId);
 
-  revalidatePath('/staff/tax-deadlines');
+  // UI-Feedback „Berechnung angestoßen" + aktuelle Ansicht beibehalten.
+  const qs = new URLSearchParams({ queued: '1' });
+  const view = formData.get('view');
+  if (view === 'month' || view === 'list') qs.set('view', view);
+  const scope = formData.get('scope');
+  if (scope === 'mine' || scope === 'all') qs.set('scope', scope);
+  const q = formData.get('q');
+  if (typeof q === 'string' && q) qs.set('q', q.slice(0, 120));
+  redirect(`/staff/tax-deadlines?${qs.toString()}`);
 }

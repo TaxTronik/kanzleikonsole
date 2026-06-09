@@ -82,6 +82,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'gwg.check.verify': 'GwG-Prüfung verifiziert',
   'gwg.check.reject': 'GwG-Prüfung abgelehnt',
   'gwg.evidence.destroy': 'GwG-Beleg vernichtet (§ 8 Abs. 4)',
+  'gwg.check.destroy': 'GwG-Aufzeichnungen vernichtet (§ 8 Abs. 4)',
   // RF-8: System-Statuswechsel aus dem Worker (gwg-expiry-check)
   'gwg.check.expire': 'GwG-Prüfung abgelaufen (System)',
   'client.deactivate.gwg_expired': 'Mandant deaktiviert — GwG-Prüfung abgelaufen',
@@ -111,6 +112,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'tax_deadline.auto_request': 'Auto-Anforderung erzeugt',
   'tax_deadline.complete': 'Steuertermin erledigt',
   'tax_notice.create': 'Bescheid erfasst',
+  'tax_notice.status': 'Bescheid-Status geändert',
 
   // BWA
   'bwa.import': 'BWA-Daten importiert',
@@ -248,6 +250,16 @@ export const ACTION_LABELS: Record<string, string> = {
   // Audit-Archiv
   'audit.rotate.trigger': 'Audit-Rotation gestartet',
 
+  // Auth-/Systemereignisse (Audit-Lücke geschlossen: Logins standen vorher
+  // nur in flüchtigen pino-Logs, nicht in der Hash-Chain)
+  'auth.login.success': 'Anmeldung erfolgreich',
+  'auth.login.failure': 'Anmeldung fehlgeschlagen',
+  'auth.login.lockout': 'Konto gesperrt (Fehlversuche)',
+  'auth.totp.enroll': 'TOTP eingerichtet',
+  'auth.backup_code.consume': 'Backup-Code verwendet (Recovery)',
+  'auth.magic_link.consume': 'Portal-Anmeldung (Magic-Link)',
+  'backup.run': 'Backup-Lauf',
+
   // Custom-Felder
   'client_custom_field.create': 'Custom-Feld angelegt',
   'client_custom_field.update': 'Custom-Feld geändert',
@@ -334,6 +346,7 @@ export const RESOURCE_TYPE_LABELS: Record<string, string> = {
   gwg_onboarding_invite: 'GwG-Onboarding',
   audit_archive: 'Audit-Archiv',
   client_custom_field_def: 'Custom-Feld-Definition',
+  backup_record: 'Backup',
   state_machine: 'Status-Maschine',
   tax_filing: 'Steuererklärung',
   request_template: 'Anforderungs-Vorlage',

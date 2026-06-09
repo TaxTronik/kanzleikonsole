@@ -10,7 +10,8 @@
 # Diese Datei beantwortet die Findings aus dem Pen-Test-Skelett:
 #  - H-2: korrektes X-Forwarded-For (Client-supplied Header wird gestrippt)
 #  - R-2: NEXTAUTH_TRUST_HOST + Host-Header-Filterung
-#  - K-2: HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy
+#  - K-2: Security-Header (HSTS, XFO, XCTO, Referrer-Policy) setzt die APP —
+#    nginx reicht sie nur durch (siehe Kommentar im vhost unten)
 #  - V-2: Rate-Limit auf /api/health gegen DoS-Polling
 # =============================================================================
 
@@ -87,23 +88,18 @@ server {
     proxy_http_version 1.1;
     proxy_set_header Connection "";
 
-    # ---- Security-Header (vom Reverse-Proxy gesetzt) ----
-    # HSTS: 1 Jahr, includeSubdomains, preload-fähig
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
-    # Frame-Embedding: SAMEORIGIN statt DENY — der eigene Dokument-Viewer
-    # bettet Preview-Streams (PDF/Bild) per same-origin <iframe> ein. DENY
-    # würde das (zusätzlich zur App-CSP) hart blockieren. Cross-Origin-
-    # Framing (echter Clickjacking-Vektor) bleibt verboten. Muss zur
-    # App-Policy passen (next.config.mjs: frame-ancestors 'self').
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    # MIME-Sniffing ablehnen (B-Doku M-2)
-    add_header X-Content-Type-Options "nosniff" always;
-    # Referrer minimal halten
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-    # Permissions-Policy (FLoC, Geolocation, Camera, USB blocken)
-    add_header Permissions-Policy "geolocation=(), microphone=(), camera=(), usb=()" always;
-    # CSP wird von Next.js selbst gesetzt (in app/layout via Headers) —
-    # NICHT hier doppelt setzen, sonst Konflikt.
+    # ---- Security-Header: setzt die APP, nicht der Reverse-Proxy ----
+    # Sämtliche Security-Header (HSTS, X-Frame-Options, X-Content-Type-Options,
+    # Referrer-Policy, Permissions-Policy, CSP) kommen aus der App
+    # (apps/web/next.config.mjs) und werden hier nur durchgereicht. KEINE
+    # add_header-Duplikate setzen: nginx ADDIERT zu den Upstream-Headern,
+    # der Browser sieht dann zwei Werte und nimmt bei Referrer-Policy den
+    # LETZTEN — die App setzt für Token-URLs (/portal/login/verify, /poa/sign,
+    # /gwg-onboarding) gezielt `Referrer-Policy: no-referrer`, ein hier
+    # gesetztes add_header Referrer-Policy würde das überschreiben und die
+    # Tokens via Referer leaken. Hier nur ergänzen, wenn die App-Header in
+    # next.config.mjs entfernt werden — Achtung: dann pfad-spezifische
+    # Policies (no-referrer auf Token-URLs) per location-Block nachbauen.
 
     # ---- V-2: Rate-Limit auf /api/health gegen DoS-Polling ----
     location = /api/health {

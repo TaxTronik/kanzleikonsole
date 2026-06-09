@@ -12,6 +12,9 @@ import {
   EvidenceService,
   LocalTimestampAdapter,
   Rfc3161HttpAdapter,
+  AUDIT_VERIFY_RESULT_SETTING_KEY,
+  toPersistedVerifyResult,
+  type PersistedVerifyResult,
 } from '@taxtronik/evidence';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
@@ -34,6 +37,28 @@ const evidenceService = new EvidenceService(timestampPort);
 // in Produktion wäre nie aufgefallen.
 const requireExternalTsa =
   env.NODE_ENV === 'production' || process.env['EVIDENCE_REQUIRE_TSA'] === 'true';
+
+// P-1: verifyChain hasht JEDE audit_log-Zeile (SHA-256) — bei 500k+ Einträgen
+// dauert der Walk Minuten. Der Prisma-Default (5 s) riss hier P2028 lange
+// bevor der Lauf fertig war. Großzügiges Timeout nach dem Muster von
+// TX_OPTIONS (@taxtronik/db), nur für den Verify-Walk dimensioniert.
+const VERIFY_TX_OPTIONS = { timeout: 120_000, maxWait: 5_000 } as const;
+
+// P-1: Ergebnis des Laufs persistieren (tenant_setting `audit_verify_result`)
+// — die Admin-Audit-Seite zeigt NUR dieses Ergebnis, statt bei jedem Render
+// selbst die komplette Chain zu hashen.
+async function persistVerifyResult(
+  tenantId: string,
+  result: PersistedVerifyResult,
+): Promise<void> {
+  await withWorkerTenantContext(tenantId, async (tx) => {
+    await tx.tenantSetting.upsert({
+      where: { tenantId_key: { tenantId, key: AUDIT_VERIFY_RESULT_SETTING_KEY } },
+      create: { tenantId, key: AUDIT_VERIFY_RESULT_SETTING_KEY, value: result as object },
+      update: { value: result as object },
+    });
+  });
+}
 
 // M7: Tenant-Pagination. Bei vielen Tenants würde `findMany({})` ohne
 // Limit alle Records in Memory laden, und die anschließende sequenzielle
@@ -71,9 +96,12 @@ export const auditVerifyWorker = new Worker<ChecksJob>(
 
     for await (const tenantIds of tenantBatches) for (const tenantId of tenantIds) {
       try {
-        const r = await prismaOwner.$transaction(async (tx) =>
-          evidenceService.verifyChain(tx, tenantId, { requireExternalTsa }),
+        const checkedAt = new Date();
+        const r = await prismaOwner.$transaction(
+          async (tx) => evidenceService.verifyChain(tx, tenantId, { requireExternalTsa }),
+          VERIFY_TX_OPTIONS,
         );
+        await persistVerifyResult(tenantId, toPersistedVerifyResult(r, checkedAt));
 
         if (!r.ok) {
           // P-8: Notifications werden jetzt in einer Tenant-Context-Transaktion
@@ -129,6 +157,20 @@ export const auditVerifyWorker = new Worker<ChecksJob>(
       } catch (err) {
         log.error({ tenantId, err: (err as Error).message }, 'audit-verify: tenant failed');
         results.push({ tenantId, ok: false, broken: 'verify-error' });
+        // Auch Lauf-Fehler persistieren — die Admin-Seite soll nicht ewig ein
+        // veraltetes „intakt" zeigen, wenn der Check selbst kaputt ist.
+        await persistVerifyResult(tenantId, {
+          checkedAt: new Date().toISOString(),
+          ok: false,
+          checked: 0,
+          sealsChecked: 0,
+          sealBreaks: 0,
+          policyBreaks: [],
+          firstBreak: null,
+          error: (err as Error).message,
+        }).catch((e) =>
+          log.warn({ tenantId, err: (e as Error).message }, 'audit-verify: persist failed'),
+        );
       }
     }
 

@@ -18,9 +18,11 @@
 // =============================================================================
 
 import { NextResponse, type NextRequest } from 'next/server';
+import { env } from '@taxtronik/config';
 import { getClientIp } from '@/server/rate-limit';
 import { z } from 'zod';
 import { staffAuth } from '@/server/auth/staff';
+import { assertSameOrigin } from '@/server/http/assert-same-origin';
 import {
   commitBytesWithTier,
   classificationToTier,
@@ -68,6 +70,11 @@ const FieldsSchema = z
   });
 
 export async function POST(req: NextRequest) {
+  // CSRF-Defense-in-Depth (zusätzlich zu SameSite=lax): Cross-Origin-POSTs
+  // ablehnen, bevor irgendetwas gepuffert oder authentifiziert wird.
+  const csrf = assertSameOrigin(req, env.NEXTAUTH_URL);
+  if (csrf) return csrf;
+
   const session = await staffAuth();
   if (!session?.user) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });

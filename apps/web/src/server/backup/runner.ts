@@ -25,6 +25,7 @@ import type { PrismaClient } from '@prisma/client';
 import { env } from '@taxtronik/config';
 import { prismaBytes } from '@/server/db/prisma-bytes';
 import { prismaOwner as ownerSingleton } from '@/server/db/prisma-owner';
+import { evidenceService } from '@/server/container';
 
 const BACKUP_BUCKET = process.env['S3_BUCKET_BACKUPS'] ?? 'backups';
 
@@ -198,19 +199,39 @@ export async function runBackup(): Promise<BackupResult> {
 
   const sha = hash.digest();
 
-  // Records auf SUCCESS aktualisieren
+  // Records auf SUCCESS aktualisieren. RF-12: der Backup-Lauf gehört als
+  // Systemereignis in die Audit-Hash-Chain (backup.run) — in DERSELBEN Tx
+  // wie das Status-Update. (Restore ist bewusst NICHT auditiert: reine CLI
+  // ohne App-Kontext, siehe restore.ts.)
   await Promise.all(
     records.map((r) =>
-      prismaOwner.backupRecord.update({
-        where: { id: r.id },
-        data: {
-          status: 'SUCCESS',
-          finishedAt: new Date(),
-          sizeBytes: BigInt(sizeBytes),
-          bucket: BACKUP_BUCKET,
-          key,
-          sha256: prismaBytes(sha),
-        },
+      prismaOwner.$transaction(async (tx) => {
+        await tx.backupRecord.update({
+          where: { id: r.id },
+          data: {
+            status: 'SUCCESS',
+            finishedAt: new Date(),
+            sizeBytes: BigInt(sizeBytes),
+            bucket: BACKUP_BUCKET,
+            key,
+            sha256: prismaBytes(sha),
+          },
+        });
+        await evidenceService.record(tx, {
+          tenantId: r.tenantId,
+          actorType: 'SYSTEM',
+          actorId: null,
+          action: 'backup.run',
+          resourceType: 'backup_record',
+          resourceId: r.id,
+          after: {
+            status: 'SUCCESS',
+            sizeBytes,
+            bucket: BACKUP_BUCKET,
+            key,
+            sha256: sha.toString('hex'),
+          },
+        });
       }),
     ),
   );
@@ -228,18 +249,32 @@ export async function runBackup(): Promise<BackupResult> {
 
 async function failAll(
   prismaOwner: PrismaClient,
-  records: Array<{ id: string }>,
+  records: Array<{ id: string; tenantId: string }>,
   msg: string,
 ): Promise<void> {
+  // RF-12: auch der fehlgeschlagene Lauf wird auditiert (backup.run mit
+  // status FAILED) — sonst wäre ein still scheiterndes Backup unsichtbar
+  // in der Chain, obwohl SYSTEM_BACKUP_FAILED-Monitoring darauf aufbaut.
   await Promise.all(
     records.map((r) =>
-      prismaOwner.backupRecord.update({
-        where: { id: r.id },
-        data: {
-          status: 'FAILED',
-          finishedAt: new Date(),
-          errorMsg: msg,
-        },
+      prismaOwner.$transaction(async (tx) => {
+        await tx.backupRecord.update({
+          where: { id: r.id },
+          data: {
+            status: 'FAILED',
+            finishedAt: new Date(),
+            errorMsg: msg,
+          },
+        });
+        await evidenceService.record(tx, {
+          tenantId: r.tenantId,
+          actorType: 'SYSTEM',
+          actorId: null,
+          action: 'backup.run',
+          resourceType: 'backup_record',
+          resourceId: r.id,
+          after: { status: 'FAILED', error: msg },
+        });
       }),
     ),
   );

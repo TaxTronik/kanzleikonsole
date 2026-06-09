@@ -9,6 +9,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { staffAuth } from '@/server/auth/staff';
+import { checkStaffSearchLimit } from '@/server/rate-limit';
 import { withTenantContext } from '@taxtronik/db';
 
 const QuerySchema = z.object({
@@ -27,6 +28,15 @@ export async function GET(req: NextRequest) {
   const session = await staffAuth();
   if (!session?.user) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
+
+  // Per-User-Rate-Limit (Defense in Depth gegen Scraping/DB-Last).
+  const rl = await checkStaffSearchLimit(session.user.staffId);
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: 'rate_limited', retryAfter: rl.retryAfter },
+      { status: 429 },
+    );
   }
 
   const parsed = QuerySchema.safeParse({ q: req.nextUrl.searchParams.get('q') });

@@ -25,10 +25,13 @@ const m = vi.hoisted(() => ({
   notify: vi.fn(),
   withTenantContext: vi.fn(),
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  // RF-12: Audit-Record beim Magic-Link-Consume (auth.magic_link.consume)
+  evidenceRecord: vi.fn(),
   prismaOwner: {
     tenant: { findUnique: vi.fn() },
     clientContact: { findFirst: vi.fn(), update: vi.fn() },
     magicLink: { create: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn() },
+    $transaction: vi.fn(),
   },
 }));
 
@@ -38,6 +41,7 @@ vi.mock('@taxtronik/config', () => ({
   portalBaseUrl: 'https://portal.example.de',
 }));
 vi.mock('@/server/db/prisma-owner', () => ({ prismaOwner: m.prismaOwner }));
+vi.mock('@/server/container', () => ({ evidenceService: { record: m.evidenceRecord } }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: m.withTenantContext }));
 vi.mock('@/server/notifications/service', () => ({ notify: m.notify }));
 vi.mock('@/server/logger', () => ({ log: m.log }));
@@ -68,6 +72,12 @@ beforeEach(() => {
   m.prismaOwner.clientContact.update.mockResolvedValue({});
   m.prismaOwner.magicLink.create.mockResolvedValue({});
   m.prismaOwner.magicLink.updateMany.mockResolvedValue({ count: 1 });
+  // RF-12: der Consume läuft in einer Tx (updateMany + Audit-Record) —
+  // der Mock reicht prismaOwner selbst als Tx-Client durch.
+  m.prismaOwner.$transaction.mockImplementation(
+    async (fn: (tx: unknown) => unknown) => fn(m.prismaOwner),
+  );
+  m.evidenceRecord.mockResolvedValue({});
   m.sendTemplateMail.mockResolvedValue(undefined);
   m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
     fn({}),

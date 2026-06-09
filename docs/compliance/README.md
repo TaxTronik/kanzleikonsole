@@ -10,8 +10,8 @@ muss sie an die eigene Situation anpassen.
 |---|---|
 | [dsfa-template.md](./dsfa-template.md) | Datenschutz-Folgenabschätzung nach Art. 35 DSGVO |
 | [vvt-template.md](./vvt-template.md) | Verzeichnis von Verarbeitungstätigkeiten nach Art. 30 DSGVO |
-| (eigene) gobd-konzept.md | GoBD-Verfahrensdokumentation (Pflicht nach AEAO § 146) |
-| (eigene) gwg-richtlinie.md | Interne GwG-Richtlinie und Risikoanalyse |
+| [gobd.md](./gobd.md) | GoBD-Verfahrensdokumentation der Software (die kanzleieigene Verfahrensdoku bleibt Pflicht, siehe [gobd-template.md](./gobd-template.md)) |
+| [gwg.md](./gwg.md) | GwG-Pflichten → Module-Mapping (Identifizierung, Aufzeichnung, Vernichtung); die interne GwG-Richtlinie + Risikoanalyse (§ 5 GwG) erstellt die Kanzlei selbst |
 
 ## Pflichten im Überblick
 
@@ -23,10 +23,11 @@ muss sie an die eigene Situation anpassen.
 | **DSGVO Art. 15-21** | Betroffenenrechte | abgewickelt in `/staff/admin/dsgvo` |
 | **§ 146 AO + GoBD** | Unveränderbarkeit der Aufzeichnungen | Hash-Chain + RFC-3161 (ADR-0004), Object-Lock (ADR-0005) |
 | **§ 147 AO** | 10-jährige Aufbewahrung | Object-Lock COMPLIANCE 10 Jahre |
-| **§ 10 GwG** | Identifizierung des Mandanten | GwG-Modul mit Risikoanalyse + DB-Trigger (ADR-0007) |
+| **§ 10 GwG** | Identifizierung des Mandanten | GwG-Modul mit Risikoanalyse + DB-Trigger (ADR-0007), siehe [gwg.md](./gwg.md) |
+| **§ 8 GwG** | Aufzeichnung (5 J. Höchstfrist) + Vernichtungspflicht | `gwg`-Bucket GOVERNANCE 5 J. + Review-Queue `/staff/admin/gwg-retention`, siehe [gwg.md](./gwg.md) |
 | **§ 11 GwG / DSGVO Art. 28** | Dienstleister-Kontrolle | `/staff/service-providers` |
 | **eIDAS Art. 26** | Fortgeschrittene elektronische Signatur | Token + OTP-Verfahren (ADR-0009) |
-| **§ 257 HGB** | 6-jährige Aufbewahrung kaufmännischer Korrespondenz | Object-Lock COMPLIANCE |
+| **§ 257 HGB** | 6-jährige Aufbewahrung kaufmännischer Korrespondenz | keine eigene 6-Jahres-Lock-Stufe — es gibt genau drei Schutzstufen (kein Lock / GwG 5 J. GOVERNANCE / GoBD 10 J. COMPLIANCE). Korrespondenz ohne GoBD-Einstufung liegt ohne Object-Lock im `general`-Bucket; wer Unveränderbarkeit braucht, stuft als GoBD-Typ ein (10 J. decken die 6 J. ab) |
 | **§ 203 StGB** | Verschwiegenheit | RBAC, RLS, separater Auth-Flow |
 | **§ 26 BDSG** | Mitarbeiterdaten | Mitarbeiter-Zeit/Urlaub mit RBAC |
 

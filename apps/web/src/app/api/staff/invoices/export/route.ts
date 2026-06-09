@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { getClientIp } from '@/server/rate-limit';
+import { getClientIp, checkStaffExportLimit } from '@/server/rate-limit';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
@@ -16,6 +16,15 @@ export async function GET(req: NextRequest) {
   const session = await staffAuth();
   if (!session?.user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const { tenantId, staffId } = session.user;
+
+  // Per-User-Rate-Limit (Defense in Depth): Exporte sind teuer + datenreich.
+  const rl = await checkStaffExportLimit('invoices', staffId);
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: 'rate_limited', retryAfter: rl.retryAfter },
+      { status: 429 },
+    );
+  }
 
   const sp = req.nextUrl.searchParams;
   const status = sp.get('status');

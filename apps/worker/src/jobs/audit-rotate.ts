@@ -43,7 +43,15 @@ import { assertPublicHost } from '../http/ssrf-guard';
 
 const BATCH = Number(process.env['AUDIT_ARCHIVE_BATCH'] ?? '5000');
 const MIN_AGE_DAYS = Number(process.env['AUDIT_ARCHIVE_MIN_AGE_DAYS'] ?? '90');
-const MODE = (process.env['AUDIT_ARCHIVE_MODE'] ?? 'SOFT') as 'SOFT' | 'HARD';
+const MODE_RAW = (process.env['AUDIT_ARCHIVE_MODE'] ?? 'SOFT') as 'SOFT' | 'HARD';
+// RF-13: HARD (DB-Cleanup nach Archivierung) ist im MVP nicht implementiert —
+// der Insert-Only-Trigger auf audit_log blockiert DELETEs (bräuchte eine
+// SECURITY-DEFINER-Funktion, siehe IDEAS.md). Vorher wurde bei
+// AUDIT_ARCHIVE_MODE=HARD trotzdem mode='HARD' in audit_archive persistiert —
+// ein irreführender Nachweis („Einträge wurden aus der DB entfernt", obwohl
+// nichts gelöscht wurde). Beim Config-Lesen ehrlich auf SOFT normalisieren,
+// bis HARD tatsächlich existiert; der Warn-Hinweis kommt pro Lauf (unten).
+const MODE: 'SOFT' = MODE_RAW === 'HARD' ? 'SOFT' : MODE_RAW;
 const ARCHIVE_BUCKET = env.S3_BUCKET_GOBD;
 // § 147 AO: 10 Jahre ab Schluss des Kalenderjahres — siehe gobdRetentionUntil
 // im @taxtronik/storage-Paket. Audit-Archive ist GoBD-pflichtig.
@@ -60,8 +68,16 @@ export const auditRotateWorker = new Worker<ChecksJob>(
       : (await prismaOwner.tenant.findMany({ select: { id: true } })).map((t) => t.id);
 
     let totalArchived = 0;
-    let totalDeleted = 0;
+    // Bleibt 0, solange HARD nicht implementiert ist (RF-13) — Feld im
+    // Job-Result beibehalten, damit Monitoring/Tests stabil bleiben.
+    const totalDeleted = 0;
     const cutoff = new Date(Date.now() - MIN_AGE_DAYS * 24 * 60 * 60 * 1000);
+
+    if (MODE_RAW === 'HARD') {
+      log.warn(
+        'audit-rotate: AUDIT_ARCHIVE_MODE=HARD angefordert, aber DB-Cleanup ist im MVP nicht implementiert (Insert-Only-Trigger blockiert DELETE) — Archiv-Einträge werden ehrlich als SOFT persistiert.',
+      );
+    }
 
     for (const tenantId of tenantIds) {
       // 1. Letzten archivierten Audit-ID finden
@@ -218,17 +234,8 @@ export const auditRotateWorker = new Worker<ChecksJob>(
       });
       totalArchived += ser.entryCount;
 
-      // 6. HARD-Mode: archivierte Einträge aus audit_log löschen
-      // Achtung: audit_log hat Insert-Only-Trigger. Für HARD-Rotation braucht
-      // es eine explizite SECURITY DEFINER-Funktion oder eine kontrollierte
-      // Trigger-Aussetzung. Im MVP liefern wir nur SOFT (Datei-Backup) —
-      // HARD bleibt als Hook für später (siehe IDEAS.md / Architektur-ADR).
-      if (MODE === 'HARD') {
-        log.warn(
-          { tenantId, count: ser.entryCount },
-          'audit-rotate: HARD-Modus angefordert, aber DB-Cleanup ist im MVP nicht implementiert (Trigger blockiert DELETE). Datei wurde geschrieben.',
-        );
-      }
+      // 6. HARD-Mode (DB-Cleanup) ist im MVP nicht implementiert — siehe
+      //    MODE-Normalisierung oben (RF-13). totalDeleted bleibt ehrlich 0.
 
       log.info(
         { tenantId, from: String(ser.fromAuditId), to: String(ser.toAuditId), count: ser.entryCount, storageKey },

@@ -13,6 +13,12 @@
 //   - 60 Tage vor expiry_date: Auto-Anforderung an Mandant erzeugen
 //     („Bitte neuen Personalausweis hochladen") + Notification an Bearbeiter
 //   - Nur einmal pro Dokument (idempotent über offene Request)
+//
+// GwG-Lösch-Queue (§ 8 Abs. 4 S. 4):
+//   - Sobald Belege/Aufzeichnungen beendeter Mandate löschreif sind, geht
+//     täglich eine idempotente Notification (GWG_DELETION_DUE) an alle
+//     ADMIN/PARTNER — die Review-Queue (/staff/admin/gwg-retention) war
+//     vorher rein passiv. Tages-Dedupe über resource_id = Tenant-ID.
 // =============================================================================
 
 import { Worker } from 'bullmq';
@@ -52,6 +58,7 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
     let stage3 = 0;
     let idDocReminders = 0;
     let idDocRequests = 0;
+    let deletionDueNotices = 0;
 
     for (const tenantId of tenantIds) {
       const now = new Date();
@@ -74,11 +81,16 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
       // ----------------------------------------------------------------------
       // 1. GwG-Check-Eskalation
       // ----------------------------------------------------------------------
+      // RF-14: nur das Relevanz-Fenster laden (validUntil <= now + 90 Tage =
+      // Stage-1-Grenze). Vorher zog die Query ALLE VERIFIED-Checks mit
+      // validUntil und filterte erst im Speicher — unnötige Last, die mit dem
+      // Mandantenbestand linear wächst.
+      const stage1Cutoff = new Date(now.getTime() + WARN_DAYS_STAGE1 * 24 * 60 * 60 * 1000);
       const candidates = await prismaOwner.gwgCheck.findMany({
         where: {
           tenantId,
           status: 'VERIFIED',
-          validUntil: { not: null },
+          validUntil: { not: null, lte: stage1Cutoff },
         },
         include: {
           client: {
@@ -247,13 +259,62 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
           idDocRequests += 1;
         }
       }
+
+      // ----------------------------------------------------------------------
+      // 3. GwG-Lösch-Queue (§ 8 Abs. 4 S. 4) — tägliche Notification an
+      //    ADMIN/PARTNER, sobald Einträge löschreif sind.
+      //
+      //    Fristlogik wie apps/web/src/server/gwg/retention.ts: Frist endet am
+      //    Jahresende des Mandatsende-Jahres + 5 Jahre → „löschreif" ⟺
+      //    mandateEndedAt < 1.1.(Jahr(now) − 5). Der SQL-Filter ist hier EXAKT
+      //    (kein Grobfilter): jedes Mandatsende vor diesem Stichtag hat eine
+      //    Frist ≤ 1.1.(Jahr(now)) ≤ now; jedes spätere eine Frist > now.
+      // ----------------------------------------------------------------------
+      const gwgDeletionCutoff = new Date(Date.UTC(now.getUTCFullYear() - 5, 0, 1));
+      const [dueDocs, dueChecks] = await Promise.all([
+        prismaOwner.document.count({
+          where: {
+            tenantId,
+            classification: 'GWG_EVIDENCE',
+            deletedAt: null,
+            client: { mandateEndedAt: { lt: gwgDeletionCutoff } },
+          },
+        }),
+        prismaOwner.gwgCheck.count({
+          where: {
+            tenantId,
+            destroyedAt: null,
+            client: { mandateEndedAt: { lt: gwgDeletionCutoff } },
+          },
+        }),
+      ]);
+      const dueTotal = dueDocs + dueChecks;
+      if (dueTotal > 0) {
+        const itemWord = dueTotal === 1 ? '1 Eintrag' : `${dueTotal} Einträge`;
+        for (const s of adminPartners) {
+          // Idempotent: ungelesene Notification wird aktualisiert; der Daily-
+          // Dedupe-Index (iter81) deckelt zusätzlich auf 1/Tag. resource_id =
+          // Tenant-ID als stabiler Schlüssel für den Tages-Dedupe.
+          await upsertNotification(tenantId, s.id, {
+            kind: 'GWG_DELETION_DUE' as NotificationKind,
+            title: `GwG-Pflichtlöschung: ${itemWord} löschreif`,
+            body:
+              'Belege/Aufzeichnungen beendeter Mandate, deren Aufbewahrungsfrist ' +
+              '(§ 8 Abs. 4 GwG) abgelaufen ist — bitte Vernichtung in der Review-Queue bestätigen.',
+            href: '/staff/admin/gwg-retention',
+            resourceType: 'tenant',
+            resourceId: tenantId,
+          });
+        }
+        deletionDueNotices += adminPartners.length;
+      }
     }
 
     log.info(
-      { stage1, stage2, stage3, idDocReminders, idDocRequests },
+      { stage1, stage2, stage3, idDocReminders, idDocRequests, deletionDueNotices },
       'gwg-expiry: done',
     );
-    return { stage1, stage2, stage3, idDocReminders, idDocRequests };
+    return { stage1, stage2, stage3, idDocReminders, idDocRequests, deletionDueNotices };
   },
   { connection, concurrency: 1 },
 );

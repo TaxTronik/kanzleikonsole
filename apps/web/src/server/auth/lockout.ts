@@ -60,12 +60,16 @@ async function resetDistinctFailIps(userId: string): Promise<void> {
  *
  * Wird mit `prismaOwner` (BYPASSRLS) aufgerufen, weil der Login-Flow
  * vor dem RLS-Context läuft.
+ *
+ * RF-12: gibt zurück, ob DIESER Fehlversuch das Konto gesperrt hat — die
+ * Call-Sites schreiben darauf basierend auth.login.lockout in die Audit-Chain
+ * (siehe login-audit.ts). Bestehende Aufrufer dürfen das Ergebnis ignorieren.
  */
 export async function recordFailedLogin(
   prismaOwner: PrismaClient,
   staffUserId: string,
   ip: string | null = null,
-): Promise<void> {
+): Promise<{ locked: boolean }> {
   // Erst inkrementieren, dann lesen — atomar pro Statement.
   const updated = await prismaOwner.staffUser.update({
     where: { id: staffUserId },
@@ -94,7 +98,9 @@ export async function recordFailedLogin(
       },
     });
     await resetDistinctFailIps(staffUserId);
+    return { locked: true };
   }
+  return { locked: false };
 }
 
 /**

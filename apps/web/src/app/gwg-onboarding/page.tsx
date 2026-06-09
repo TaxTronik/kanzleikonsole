@@ -6,7 +6,9 @@
 // die wieder den Token mitprüft.
 // =============================================================================
 
-import { loadInviteByRawToken } from '@/server/gwg-onboarding/service';
+import { headers } from 'next/headers';
+import { checkIpOrGlobalLimit, getClientIp } from '@/server/rate-limit';
+import { GENERIC_TOKEN_ERROR, loadInviteByRawToken } from '@/server/gwg-onboarding/service';
 import { OnboardingWizard } from './wizard';
 
 export default async function GwgOnboardingPage({
@@ -16,7 +18,21 @@ export default async function GwgOnboardingPage({
 }) {
   const sp = await searchParams;
   const token = sp.token ?? '';
-  const result = await loadInviteByRawToken(token);
+
+  // Rate-Limit für den unauthentifizierten Token-Lookup (DB-Lookup + Status-
+  // Write pro Request, Muster wie gwg-upload-ip in actions.ts). Bei
+  // Überschreitung DIESELBE generische Fehlansicht wie bei ungültigem Token —
+  // eine eigene „zu viele Versuche"-Meldung wäre ein Token-Probing-Orakel.
+  const ip = getClientIp(await headers());
+  const rl = await checkIpOrGlobalLimit(
+    'gwg-invite-load',
+    ip,
+    { max: 30, windowSec: 600 },
+    { max: 200, windowSec: 600 },
+  );
+  const result = rl.ok
+    ? await loadInviteByRawToken(token)
+    : { ok: false as const, error: GENERIC_TOKEN_ERROR };
 
   if (!result.ok) {
     return (

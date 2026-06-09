@@ -14,6 +14,7 @@ import { createHash, randomBytes, randomInt } from 'node:crypto';
 import { sendTemplateMail } from '@/server/mail/dispatch';
 import { env, portalBaseUrl } from '@taxtronik/config';
 import { prismaOwner } from '@/server/db/prisma-owner';
+import { evidenceService } from '@/server/container';
 import { withTenantContext } from '@taxtronik/db';
 import { notify } from '@/server/notifications/service';
 import { log } from '@/server/logger';
@@ -199,12 +200,27 @@ export async function verifyMagicLink(rawToken: string): Promise<{
   });
   if (!contact) return null;
 
-  // Atomar als consumed markieren (Race-Schutz)
-  const claim = await prismaOwner.magicLink.updateMany({
-    where: { id: link.id, consumedAt: null },
-    data: { consumedAt: new Date() },
+  // Atomar als consumed markieren (Race-Schutz). RF-12: der Consume IST der
+  // Portal-Login — auth.magic_link.consume wandert in DERSELBEN Tx in die
+  // Audit-Hash-Chain (vorher stand der Portal-Login nirgends manipulationsfest).
+  const claimed = await prismaOwner.$transaction(async (tx) => {
+    const claim = await tx.magicLink.updateMany({
+      where: { id: link.id, consumedAt: null },
+      data: { consumedAt: new Date() },
+    });
+    if (claim.count !== 1) return false;
+    await evidenceService.record(tx, {
+      tenantId: link.tenantId,
+      actorType: 'CLIENT_CONTACT',
+      actorId: contact.id,
+      action: 'auth.magic_link.consume',
+      resourceType: 'client_contact',
+      resourceId: contact.id,
+      after: { email: contact.email },
+    });
+    return true;
   });
-  if (claim.count !== 1) return null;
+  if (!claimed) return null;
 
   // Last-Login-Timestamp updaten (fire-and-forget)
   prismaOwner.clientContact

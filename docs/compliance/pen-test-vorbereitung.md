@@ -107,9 +107,13 @@ TOTP-Secrets liegen in einem separaten verschlüsselten Übergabe-Dokument.
 - [ ] Polyglot-Files (PDF mit eingebettetem JS)
 - [ ] Zip-Bomb (kleine Datei expandiert auf GB)
 - [ ] EICAR — wird vom ClamAV-Container abgelehnt?
-- [ ] Quarantäne-Bucket: über Presigned-URL fremde Dateien hochladen
-      und committen mit anderen Metadaten?
-- [ ] Object-Lock-COMPLIANCE: GoBD-Klassen wirklich unlöschbar?
+- [ ] Quarantäne-Commit: fremden `quarantineKey` (anderer Tenant /
+      anderer Bucket) einreichen und mit anderen Metadaten committen?
+      (Presigned-Browser-Uploads gibt es nicht mehr — Uploads laufen
+      app-proxied, der Object-Store ist nur intern erreichbar)
+- [ ] Object-Lock: GoBD-Klassen (COMPLIANCE) wirklich unlöschbar?
+      GwG-Bucket (GOVERNANCE): Frühlöschung nur mit
+      `BypassGovernanceRetention`-Recht möglich?
 
 ### 5.5 Server-Actions (Next.js 16)
 

@@ -39,6 +39,7 @@ interface Search {
   scope?: 'mine' | 'all';
   month?: string; // YYYY-MM
   q?: string;     // Mandantenname / DATEV-Nr / Addison-Nr (Substring, case-insensitive)
+  queued?: string; // '1' nach „Neu berechnen" — Materialisierung läuft im Hintergrund
 }
 
 export default async function TaxDeadlinesPage({
@@ -71,10 +72,12 @@ export default async function TaxDeadlinesPage({
   const clientFilter: Prisma.TaxDeadlineWhereInput =
     Object.keys(clientWhere).length > 0 ? { client: clientWhere } : {};
 
+  const queued = sp.queued === '1';
+
   if (view === 'month') {
-    return renderMonth(tenantId, staffId, year, month0, scope, q, clientFilter);
+    return renderMonth(tenantId, staffId, year, month0, scope, q, clientFilter, queued);
   }
-  return renderList(tenantId, staffId, scope, q, clientFilter);
+  return renderList(tenantId, staffId, scope, q, clientFilter, queued);
 }
 
 async function renderMonth(
@@ -85,6 +88,7 @@ async function renderMonth(
   scope: 'mine' | 'all',
   q: string,
   clientFilter: Prisma.TaxDeadlineWhereInput,
+  queued: boolean,
 ) {
   // Monatsanfang/-ende UTC
   const start = new Date(Date.UTC(year, month0, 1));
@@ -155,7 +159,7 @@ async function renderMonth(
 
   return (
     <div className="p-8 max-w-7xl">
-      <PageHeader view="month" scope={scope} q={q} />
+      <PageHeader view="month" scope={scope} q={q} queued={queued} />
 
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
@@ -252,6 +256,7 @@ async function renderList(
   scope: 'mine' | 'all',
   q: string,
   clientFilter: Prisma.TaxDeadlineWhereInput,
+  queued: boolean,
 ) {
   const [overdue, upcoming, done] = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
@@ -277,7 +282,7 @@ async function renderList(
 
   return (
     <div className="p-8 max-w-6xl">
-      <PageHeader view="list" scope={scope} q={q} />
+      <PageHeader view="list" scope={scope} q={q} queued={queued} />
 
       <div className="grid grid-cols-3 gap-4 mb-6">
         <Stat label="Überfällig" value={overdue.length} accent="red" />
@@ -313,10 +318,12 @@ function PageHeader({
   view,
   scope,
   q,
+  queued,
 }: {
   view: 'month' | 'list';
   scope: 'mine' | 'all';
   q: string;
+  queued: boolean;
 }) {
   return (
     <div className="mb-6">
@@ -348,6 +355,10 @@ function PageHeader({
             <ViewLink active={view === 'list'} view="list" scope={scope} q={q} label="Liste" />
           </div>
           <form action={rematerializeAction}>
+            {/* Ansicht beibehalten — die Action redirectet mit queued=1 zurück */}
+            <input type="hidden" name="view" value={view} />
+            <input type="hidden" name="scope" value={scope} />
+            <input type="hidden" name="q" value={q} />
             <button type="submit" className="btn-secondary text-xs">
               <ListChecks className="h-4 w-4" />
               Neu berechnen
@@ -355,6 +366,12 @@ function PageHeader({
           </form>
         </div>
       </div>
+      {queued && (
+        <div className="mb-3 rounded-md border border-brand-200 bg-brand-50 px-4 py-2 text-sm text-brand-700">
+          Berechnung angestoßen — die Steuertermine werden im Hintergrund
+          aktualisiert und erscheinen hier in Kürze.
+        </div>
+      )}
       <form
         method="get"
         action="/staff/tax-deadlines"

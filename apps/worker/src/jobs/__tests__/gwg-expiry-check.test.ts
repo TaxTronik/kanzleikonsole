@@ -10,6 +10,8 @@
 //   - Idempotenz: bereits umgestellte Checks erzeugen keinen Audit-Eintrag
 //   - U-5: Auto-Anforderung für ablaufende Ausweise idempotent per FK
 //     (linkedGwgIdDocumentId), HIGH/7-Tage-Frist wenn bereits abgelaufen
+//   - GwG-Lösch-Queue (§ 8 Abs. 4 S. 4): GWG_DELETION_DUE an ADMIN/PARTNER,
+//     sobald löschreife Belege/Aufzeichnungen existieren (resource_id = Tenant)
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -18,8 +20,9 @@ const h = vi.hoisted(() => {
   const prismaOwner = {
     tenant: { findMany: vi.fn() },
     staffUser: { findMany: vi.fn() },
-    gwgCheck: { findMany: vi.fn() },
+    gwgCheck: { findMany: vi.fn(), count: vi.fn() },
     gwgIdDocument: { findMany: vi.fn() },
+    document: { count: vi.fn() },
     request: { findFirst: vi.fn(), create: vi.fn() },
   };
   const tx = {
@@ -62,6 +65,7 @@ interface GwgResult {
   stage3: number;
   idDocReminders: number;
   idDocRequests: number;
+  deletionDueNotices: number;
 }
 
 function run(): Promise<GwgResult> {
@@ -115,7 +119,9 @@ beforeEach(() => {
   h.prismaOwner.tenant.findMany.mockResolvedValue([{ id: TENANT }]);
   h.prismaOwner.staffUser.findMany.mockResolvedValue([{ id: 'admin-1' }]);
   h.prismaOwner.gwgCheck.findMany.mockResolvedValue([]);
+  h.prismaOwner.gwgCheck.count.mockResolvedValue(0);
   h.prismaOwner.gwgIdDocument.findMany.mockResolvedValue([]);
+  h.prismaOwner.document.count.mockResolvedValue(0);
   h.prismaOwner.request.findFirst.mockResolvedValue(null);
   h.prismaOwner.request.create.mockResolvedValue({ id: 'req-1' });
   h.tx.gwgCheck.updateMany.mockResolvedValue({ count: 1 });
@@ -129,6 +135,20 @@ afterEach(() => {
 });
 
 describe('Stufenlogik an den Tagesgrenzen', () => {
+  it('RF-14: lädt nur VERIFIED-Checks im 90-Tage-Relevanz-Fenster', async () => {
+    await run();
+
+    expect(h.prismaOwner.gwgCheck.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          tenantId: TENANT,
+          status: 'VERIFIED',
+          validUntil: { not: null, lte: new Date(FIXED_NOW.getTime() + 90 * DAY) },
+        },
+      }),
+    );
+  });
+
   it('91 Tage Rest → keine Eskalation', async () => {
     h.prismaOwner.gwgCheck.findMany.mockResolvedValue([gwgCheck(new Date(FIXED_NOW.getTime() + 91 * DAY))]);
 
@@ -323,5 +343,59 @@ describe('Personalausweis-Ablauf (U-5: Idempotenz per FK)', () => {
     expect(h.upsertNotification).toHaveBeenCalled();
     expect(h.prismaOwner.request.create).not.toHaveBeenCalled();
     expect(result.idDocRequests).toBe(0);
+  });
+});
+
+describe('GwG-Lösch-Queue (§ 8 Abs. 4 S. 4): GWG_DELETION_DUE', () => {
+  it('löschreife Belege + Aufzeichnungen → tägliche Notification an alle ADMIN/PARTNER', async () => {
+    h.prismaOwner.staffUser.findMany.mockResolvedValue([{ id: 'admin-1' }, { id: 'partner-1' }]);
+    h.prismaOwner.document.count.mockResolvedValue(2);
+    h.prismaOwner.gwgCheck.count.mockResolvedValue(1);
+
+    const result = await run();
+
+    // Frist-Cutoff: Mandatsende vor dem 1.1.(Jahr(now) − 5) — exakt, kein Grobfilter
+    const cutoff = new Date(Date.UTC(2021, 0, 1));
+    expect(h.prismaOwner.document.count).toHaveBeenCalledWith({
+      where: {
+        tenantId: TENANT,
+        classification: 'GWG_EVIDENCE',
+        deletedAt: null,
+        client: { mandateEndedAt: { lt: cutoff } },
+      },
+    });
+    expect(h.prismaOwner.gwgCheck.count).toHaveBeenCalledWith({
+      where: {
+        tenantId: TENANT,
+        destroyedAt: null,
+        client: { mandateEndedAt: { lt: cutoff } },
+      },
+    });
+
+    const calls = h.upsertNotification.mock.calls.filter(
+      (c) => (c[2] as { kind: string }).kind === 'GWG_DELETION_DUE',
+    );
+    expect(calls.map((c) => c[1]).sort()).toEqual(['admin-1', 'partner-1']);
+    for (const c of calls) {
+      expect(c[2]).toMatchObject({
+        kind: 'GWG_DELETION_DUE',
+        title: 'GwG-Pflichtlöschung: 3 Einträge löschreif',
+        href: '/staff/admin/gwg-retention',
+        // resource_id = Tenant-ID: stabiler Schlüssel für den Tages-Dedupe (iter81)
+        resourceType: 'tenant',
+        resourceId: TENANT,
+      });
+    }
+    expect(result.deletionDueNotices).toBe(2);
+  });
+
+  it('nichts löschreif → keine GWG_DELETION_DUE-Notification', async () => {
+    const result = await run();
+
+    const calls = h.upsertNotification.mock.calls.filter(
+      (c) => (c[2] as { kind: string }).kind === 'GWG_DELETION_DUE',
+    );
+    expect(calls).toEqual([]);
+    expect(result.deletionDueNotices).toBe(0);
   });
 });

@@ -1,5 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { gwgDeletionDeadline, isGwgDeletionDue, GWG_RETENTION_YEARS } from '../retention';
+import { describe, it, expect, vi } from 'vitest';
+import type { TxClient } from '@taxtronik/db';
+import {
+  gwgDeletionDeadline,
+  isGwgDeletionDue,
+  findDueGwgCheckDeletions,
+  GWG_RETENTION_YEARS,
+} from '../retention';
 
 describe('gwgDeletionDeadline — § 8 Abs. 4 (Jahresende + 5 J.)', () => {
   it('Mandatsende 2026-03-15 → fällig ab 2032-01-01', () => {
@@ -38,5 +44,64 @@ describe('isGwgDeletionDue', () => {
 
   it('true lange nach dem Stichtag', () => {
     expect(isGwgDeletionDue(mandateEnd, new Date('2040-01-01T00:00:00Z'))).toBe(true);
+  });
+});
+
+describe('findDueGwgCheckDeletions — § 8 Abs. 4 S. 4 (DB-Aufzeichnungen)', () => {
+  const NOW = new Date('2032-06-01T00:00:00Z');
+
+  function fakeTx(clients: unknown[]) {
+    const findMany = vi.fn().mockResolvedValue(clients);
+    return { tx: { client: { findMany } } as unknown as TxClient, findMany };
+  }
+
+  it('filtert auf nicht-vernichtete Checks fälliger Mandate (Grobfilter + exakte Frist)', async () => {
+    const mandateEnd = new Date('2026-06-01T00:00:00Z'); // fällig ab 2032-01-01
+    const { tx, findMany } = fakeTx([
+      {
+        id: 'client-1',
+        name: 'Alt GmbH',
+        mandateEndedAt: mandateEnd,
+        gwgChecks: [{ id: 'chk-1', status: 'VERIFIED' }],
+        _count: { documents: 2 },
+      },
+    ]);
+
+    const out = await findDueGwgCheckDeletions(tx, NOW);
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          mandateEndedAt: { lt: new Date(Date.UTC(2027, 0, 1)) },
+          gwgChecks: { some: { destroyedAt: null } },
+        },
+      }),
+    );
+    expect(out).toEqual([
+      {
+        checkId: 'chk-1',
+        clientId: 'client-1',
+        clientName: 'Alt GmbH',
+        status: 'VERIFIED',
+        mandateEndedAt: mandateEnd,
+        deletionDeadline: new Date('2032-01-01T00:00:00.000Z'),
+        openEvidenceDocs: 2,
+      },
+    ]);
+  });
+
+  it('Mandat noch nicht fällig (exakte Jahresende-Rundung) → kein Item', async () => {
+    // Grobfilter könnte den Client liefern; die exakte Prüfung verwirft ihn.
+    const { tx } = fakeTx([
+      {
+        id: 'client-2',
+        name: 'Frisch GmbH',
+        mandateEndedAt: new Date('2027-02-01T00:00:00Z'), // fällig erst ab 2033-01-01
+        gwgChecks: [{ id: 'chk-2', status: 'EXPIRED' }],
+        _count: { documents: 0 },
+      },
+    ]);
+
+    expect(await findDueGwgCheckDeletions(tx, NOW)).toEqual([]);
   });
 });

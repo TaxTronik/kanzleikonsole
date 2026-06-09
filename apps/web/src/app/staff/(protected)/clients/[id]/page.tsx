@@ -27,6 +27,11 @@ const kindLabels: Record<string, string> = {
   PERSGES: 'Personengesellschaft',
 };
 
+// P-3: Lade-Caps — vorher wurden ALLE Anforderungen und ALLE Dokumente
+// (inkl. soft-gelöschter) geladen und als Client-Props serialisiert.
+const REQUESTS_CAP = 50;
+const MANAGER_DOCS_CAP = 1000;
+
 function formatCustomValue(type: string, value: unknown): React.ReactNode {
   if (value === null || value === undefined || value === '') {
     return <span className="text-disabled font-normal">—</span>;
@@ -75,8 +80,11 @@ export default async function ClientDetailPage({
             orderBy: { name: 'asc' },
           },
           requests: {
+            // Offene zuerst (status asc), darin neueste zuerst — Cap gegen
+            // Mandanten mit hunderten Anforderungen (Link zur Übersicht im UI).
             orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
             include: { responses: { take: 1, orderBy: { createdAt: 'desc' } } },
+            take: REQUESTS_CAP,
           },
           contacts: { where: { active: true }, orderBy: { fullName: 'asc' } },
           gwgChecks: { orderBy: { createdAt: 'desc' }, take: 1 },
@@ -165,11 +173,14 @@ export default async function ClientDetailPage({
           orderBy: [{ status: 'asc' }, { receivedAt: 'desc' }],
           take: 50,
         }),
-        // Für den DocumentExplorer: alle Dokumente des Mandanten INKL.
+        // Für den DocumentExplorer: Dokumente des Mandanten INKL.
         // soft-gelöschter (die Komponente hat eine eigene Gelöscht-Ansicht).
+        // Gecappt auf die neuesten MANAGER_DOCS_CAP — bei Erreichen zeigt
+        // der Explorer einen Truncation-Hinweis (truncated/totalCount).
         tx.document.findMany({
           where: { clientId: id },
           orderBy: { createdAt: 'desc' },
+          take: MANAGER_DOCS_CAP,
           select: {
             id: true,
             title: true,
@@ -196,6 +207,11 @@ export default async function ClientDetailPage({
           select: { id: true },
         }),
       ]);
+      // Nur wenn der Cap erreicht wurde: Gesamtzahl für den Truncation-Hinweis.
+      const managerDocsTotal =
+        managerDocs.length === MANAGER_DOCS_CAP
+          ? await tx.document.count({ where: { clientId: id } })
+          : managerDocs.length;
       return {
         client: c,
         phoneNotes,
@@ -211,13 +227,14 @@ export default async function ClientDetailPage({
         pendingAppointmentRequests,
         handovers,
         managerDocs,
+        managerDocsTotal,
         hasDatevDocs: datevDoc !== null,
       };
     },
   );
 
   if (!data) notFound();
-  const { client, phoneNotes, taxDeadlines, pendingChangeRequests, customDefs, customValues, staffList, workflowInstances, reminders, binders, upcomingAppointments, pendingAppointmentRequests, handovers, managerDocs, hasDatevDocs } = data;
+  const { client, phoneNotes, taxDeadlines, pendingChangeRequests, customDefs, customValues, staffList, workflowInstances, reminders, binders, upcomingAppointments, pendingAppointmentRequests, handovers, managerDocs, managerDocsTotal, hasDatevDocs } = data;
   const staffNameById = new Map(staffList.map((s) => [s.id, s.fullName]));
 
   // Subsumtion/TCMS: Admin/Partner ODER dem Mandanten zugeordneter
@@ -735,13 +752,28 @@ export default async function ClientDetailPage({
           requests: (
             <div key="requests" className="card overflow-hidden">
               <div className="flex items-center justify-between px-6 py-4 border-b border-default">
-                <h2 className="text-sm font-medium text-primary">Anforderungen</h2>
-                {client.allowActive && (
-                  <Link href={`/staff/clients/${client.id}/requests/new`} className="btn-primary text-xs py-1.5">
-                    <Plus className="h-3.5 w-3.5" />
-                    Neue Anforderung
+                <h2 className="text-sm font-medium text-primary">
+                  Anforderungen
+                  {client.requests.length === REQUESTS_CAP && (
+                    <span className="ml-2 text-xs font-normal text-muted">
+                      zeige die neuesten {REQUESTS_CAP}
+                    </span>
+                  )}
+                </h2>
+                <div className="flex items-center gap-3">
+                  <Link
+                    href={`/staff/requests?q=${encodeURIComponent(client.name)}`}
+                    className="text-xs text-brand-700 hover:underline"
+                  >
+                    Alle Anforderungen →
                   </Link>
-                )}
+                  {client.allowActive && (
+                    <Link href={`/staff/clients/${client.id}/requests/new`} className="btn-primary text-xs py-1.5">
+                      <Plus className="h-3.5 w-3.5" />
+                      Neue Anforderung
+                    </Link>
+                  )}
+                </div>
               </div>
               {client.requests.length === 0 ? (
                 <div className="px-6 py-10 text-center">
@@ -823,6 +855,8 @@ export default async function ClientDetailPage({
                 scopeLabel={client.name}
                 folders={client.documentFolders}
                 documents={managerDocs.map(toManagedDoc)}
+                truncated={managerDocsTotal > managerDocs.length}
+                totalCount={managerDocsTotal}
               />
             </div>
           ),

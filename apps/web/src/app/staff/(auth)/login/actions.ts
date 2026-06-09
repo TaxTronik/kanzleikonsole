@@ -13,7 +13,9 @@ import {
   verifyTotpCode,
 } from '@/server/auth/totp';
 import { staffSignIn, DEV_SKIP_TOTP } from '@/server/auth/staff';
-import { recordFailedLogin, resetFailedLogin } from '@/server/auth/lockout';
+import { resetFailedLogin } from '@/server/auth/lockout';
+import { recordFailedLoginAudited } from '@/server/auth/login-audit';
+import { evidenceService } from '@/server/container';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { checkIpOrGlobalLimit, resetRateLimit, getClientIp } from '@/server/rate-limit';
 import { env } from '@taxtronik/config';
@@ -113,7 +115,14 @@ export async function checkPasswordAction(
     // Account-gebundener Lockout (S2 + L-4): Lockout greift erst bei N _distinkten_
     // Quell-IPs in einem rollierenden Fenster. Single-IP-Spam fängt das IP-RL ab,
     // ohne den Account zu sperren — kein Lockout-DoS via bekannte E-Mail.
-    await recordFailedLogin(prismaOwner, staffUser.id, ip).catch(() => void 0);
+    // RF-12: zählt UND schreibt auth.login.failure(/.lockout) in die Audit-Chain.
+    await recordFailedLoginAudited({
+      tenantId: tenant.id,
+      staffUserId: staffUser.id,
+      email: staffUser.email,
+      ip,
+      reason: 'password',
+    }).catch(() => void 0);
     return { ok: false, error: GENERIC_LOGIN_ERROR };
   }
 
@@ -242,12 +251,25 @@ export async function confirmTotpEnrollmentAction(
   const backupCodes = Array.from({ length: 8 }, generateBackupCode);
   const hashedBackupCodes = await Promise.all(backupCodes.map((c) => hash(c, 12)));
 
-  await prismaOwner.staffUser.update({
-    where: { id: staffUser.id },
-    data: {
-      totpEnrolledAt: new Date(),
-      totpBackupCodes: hashedBackupCodes,
-    },
+  // RF-12: das TOTP-Enrollment ist die Wurzel der 2FA-Vertrauenskette → in
+  // DERSELBEN Tx wie die Mutation in die Audit-Hash-Chain (auth.totp.enroll).
+  await prismaOwner.$transaction(async (tx) => {
+    await tx.staffUser.update({
+      where: { id: staffUser.id },
+      data: {
+        totpEnrolledAt: new Date(),
+        totpBackupCodes: hashedBackupCodes,
+      },
+    });
+    await evidenceService.record(tx, {
+      tenantId: tenant.id,
+      actorType: 'STAFF',
+      actorId: staffUser.id,
+      action: 'auth.totp.enroll',
+      resourceType: 'staff_user',
+      resourceId: staffUser.id,
+      after: { email: staffUser.email, backupCodesIssued: backupCodes.length },
+    });
   });
 
   // V-1: Rohe Codes EINMAL an den Client zurück. Vorher waren sie tot in der

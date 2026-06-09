@@ -1,6 +1,6 @@
 # taxtronik — Funktionsumfang
 
-Stand: 2026-06-03. Die mit ⚙ markierten Module sind pro Kanzlei in den
+Stand: 2026-06-10. Die mit ⚙ markierten Module sind pro Kanzlei in den
 Einstellungen ein- bzw. ausschaltbar.
 
 ## Überblick
@@ -149,6 +149,23 @@ Mandanten.
     `gwg_beneficial_owner` + `gwg_id_document` (Vorder + Rückseite) angelegt
   - Audit-Trail mit IP + User-Agent
   - Kanzlei besorgt nur HR-Auszug + Transparenzregister-Auszug selbst
+- **Pflichtvernichtung nach § 8 Abs. 4 GwG** — Review-Queue unter
+  `/staff/admin/gwg-retention` (ADMIN/PARTNER, kein stilles Auto-Delete):
+  - Löschreif ab Jahresende des Mandatsendes + 5 Jahre
+    (`client.mandateEndedAt`)
+  - **Datei-Belege**: bestätigte Vernichtung löscht Bytes + DB-Records,
+    auditiert `gwg.evidence.destroy` (GwG-Belege liegen dafür im eigenen
+    `gwg`-Bucket mit Object-Lock GOVERNANCE statt COMPLIANCE)
+  - **DB-Aufzeichnungen**: zweite Stufe vernichtet das `gwg_check`-Aggregat
+    (wirtschaftlich Berechtigte gelöscht, Ausweis-Details genullt,
+    Risiko-Antworten entfernt); ein Skelett-Datensatz mit
+    `destroyedAt`-Vernichtungsvermerk bleibt als Nachweis, auditiert
+    `gwg.check.destroy`; erst zulässig, wenn keine Datei-Belege mehr
+    existieren
+  - Täglich idempotente **`GWG_DELETION_DUE`-Notification** an alle
+    ADMIN/PARTNER, sobald Einträge löschreif sind (Worker
+    `gwg-expiry-check`)
+  - Compliance-Hintergrund in `docs/compliance/gwg.md`
 
 ## Anforderungen (Requests)
 
@@ -220,8 +237,16 @@ Mandanten.
 ### Speicher, Versionierung, Nachweis
 
 - ClamAV-Virus-Scan synchron beim Upload; SeaweedFS-Object-Storage,
-  Object-Lock COMPLIANCE (GoBD 10 J. / GwG 5 J.), Store nie öffentlich
-  (App proxied Up-/Downloads).
+  Object-Lock (GoBD 10 J. COMPLIANCE / GwG 5 J. GOVERNANCE), Store nie
+  öffentlich (App proxied Up-/Downloads).
+- Upload-Limit 100 MB pro Datei; das mitgelieferte
+  `infra/clamav/clamd.conf` hebt das clamd-Stream-Limit passend dazu auf
+  `StreamMaxLength 110M` an (Stock-Image: 25M → Scans > 25 MB schlügen
+  sonst fehl).
+- Auf der Mandanten-Detailseite lädt der Datei-Manager die neuesten
+  1000 Dokumente (bei Erreichen des Caps Truncation-Hinweis mit
+  Gesamtzahl); der Anforderungs-Block zeigt die neuesten 50 mit Link zur
+  vollen Übersicht.
 - Versionierung pro Dokument; SHA-256-Hash + Audit-Log pro
   Upload/Download/Verschieben/Typ-Änderung/Freigabe.
 - **Soft-Delete**: „Löschen" blendet nur aus (Bytes bleiben unter
@@ -245,14 +270,29 @@ hierin umbenannt.
 - Konfiguration pro Mandant: USt-VA (mtl./quart./jährl.),
   LSt-Anmeldung (mtl./quart./jährl.), ESt/KSt/GewSt-VZ + Erklärungen
 - Mit Dauerfristverlängerung (USt/LSt) → +1 Monat
+- **Beratene Erklärungsfrist § 149 (3) AO** als `advised`-Option pro
+  Schedule-Config (letzter Tag des Monats Februar des zweiten Folgejahres
+  statt 31.07. des Folgejahres). Default `false`; eine UI zum Aktivieren
+  gibt es noch nicht — das Flag ist derzeit nur per DB setzbar
 - Werktagsverschiebung gem. § 108 (3) AO inkl. bundes­länderspezifischer
   Feiertage (alle 16 Länder + Buß-Bettag, Karfreitag/Ostermontag/
   Pfingstmontag via Gauß-Algorithmus)
-- Auto-Anforderung an Mandanten N Tage vor Fälligkeit (konfigurierbar)
-- Worker materialisiert täglich Termine 90 Tage voraus
+- **Tagesgenaue Überfälligkeit (§ 108 (1) AO)**: ein heute fälliger Termin
+  ist noch nicht überfällig — OVERDUE wird erst nach Ende des
+  Fälligkeitstags gesetzt
+- Auto-Anforderung an Mandanten N Tage vor Fälligkeit (konfigurierbar),
+  auditiert als `tax_deadline.auto_request`
+- **Gemeinsamer Materialisierer-Kern** in `@taxtronik/tax`
+  (`materializeTenantTaxDeadlines`): Web-App und Worker nutzen exakt
+  dieselbe Logik (per Dependency-Injection, transaktional) — keine
+  Web/Worker-Drift
+- Worker materialisiert täglich Termine 90 Tage voraus; die tenant-weite
+  Neuberechnung aus der UI läuft als Hintergrund-Job (Button quittiert
+  mit „Berechnung angestoßen", kein Timeout bei vielen Mandanten)
 - Niemals retroaktiv (Mandanten werden unterjährig übernommen)
 - Tax-Schedule-Config-Deaktivierung räumt offene Termine mit auf
-- Tax-Engine-Unit-Tests (28 Tests, eigenständiges `@taxtronik/tax`-Package)
+- Unit-Tests für Engine + Materialisierer im eigenständigen
+  `@taxtronik/tax`-Package
 
 ### Termine (Appointment-Modell)
 
@@ -316,8 +356,15 @@ nebeneinander auf einer Seite.
 - **Einspruchsfristen-Reminder**: Worker `reminders-daily` schickt
   14 / 7 / 1 Tage vor `appealDeadline` Notifications an den Prüfer
   (idempotent über day-bucket pro Resource/Kind)
-- Status-Maschine: NEU → GEPRÜFT → EINSPRUCH → ABGEHOLFEN/ZURUECKGEWIESEN →
-  RECHTSKRAEFTIG
+- **Status-Maschine mit bedienbaren Übergängen** (Quick-Action-Auswahl in
+  der Tabelle, `updateNoticeStatusAction`, auditiert `tax_notice.status`),
+  entlang des Einspruchs-Lebenszyklus § 347 ff. AO:
+  - NEU → GEPRÜFT (Normalfall) oder direkt EINSPRUCH
+  - GEPRÜFT → EINSPRUCH / RECHTSKRÄFTIG; zurück auf NEU (Fehlklick)
+  - EINSPRUCH → ABGEHOLFEN / ZURÜCKGEWIESEN
+  - ABGEHOLFEN / ZURÜCKGEWIESEN → RECHTSKRÄFTIG (final)
+  - Side-Effects: GEPRÜFT stempelt `reviewedAt/-By`, EINSPRUCH
+    `appealFiledAt`, Abschluss `appealResolvedAt`
 - PDF des Bescheids wird verlinkt (über Document-Modul)
 - Verknüpfungs-Indikator zeigt in der Tabelle „↪ aus Erklärung"
   + „Portal"-Badge, wenn der Mandant die Erklärung sieht
@@ -767,7 +814,9 @@ Kanzlei nicht.
 - „Alle gelesen"-Bulk-Action
 - Volle Liste auf eigener Seite
 - Notification-Kinds u. a. für GwG-Stufen (Soon/90/30/Expired,
-  ID-Ablauf), Anforderungs-Antworten, Vollmachts-Signaturen, überfällige
+  ID-Ablauf), **GwG-Pflichtlöschung** (`GWG_DELETION_DUE`, täglich an
+  ADMIN/PARTNER bei löschreifen Belegen/Aufzeichnungen),
+  Anforderungs-Antworten, Vollmachts-Signaturen, überfällige
   Rechnungen, Stammdaten-Änderungsanträge, Audit-Chain-Brüche,
   **Tax-Notice-Appeal-Reminder** (Einspruchsfrist 14/7/1),
   **Client-Reminder-Due** (Wiedervorlage fällig),
@@ -778,8 +827,14 @@ Kanzlei nicht.
 ## DSGVO
 
 - Anfragen-Verwaltung (Auskunft, Löschung, Berichtigung)
-- Datenexport pro Mandanten-Kontakt (alle Daten als JSON/Files)
-- Anonymisierung von Kontakten
+- Datenexport pro Mandanten-Kontakt als JSON: Stammdaten,
+  Anforderungs-Antworten, Dokument-Metadaten (nur die dem Kontakt via
+  Audit-Trail zugeordneten Dokumente), Vollmachten, Terminanfragen,
+  Formular-Antworten, Telefonnotizen (Namens-Heuristik) + Verweis auf den
+  Audit-CSV-Export; keine Datei-Downloads im Export, jeder Export
+  auditiert
+- Anonymisierung von Kontakten (`anonymized-<uuid>@taxtronik.local` /
+  „Anonymisiert", Sessions revoked, Magic-Links invalidiert)
 - Dienstleisterverzeichnis (Auftragsverarbeiter Art. 28/30 DSGVO,
   unter Admin/DSGVO einsortiert)
 - DSFA-Vorlage + DSGVO-Lösch-/Aufbewahrungs-Konzept als Dokumentation
@@ -791,25 +846,46 @@ Kanzlei nicht.
   UPDATE/DELETE auf `audit_log` und `audit_seal`
 - Tagesversiegelung mit RFC-3161-Zeitstempel (TSA-Adapter)
 - Verifikations-CLI: `pnpm verify:chain`
+- **Persistiertes Chain-Verify-Ergebnis**: der tägliche
+  `audit-verify-check`-Worker legt das Ergebnis als `TenantSetting`
+  (`audit_verify_result`) ab; `/staff/admin/audit` zeigt es an (intakt /
+  Bruch mit erster Bruchstelle / TSA-Probleme) statt bei jedem
+  Seitenaufruf die Chain zu hashen. „Jetzt prüfen"-Button stößt einen
+  neuen Lauf als BullMQ-Job an
+- **Auth-/System-Ereignisse in der Audit-Chain**: `auth.login.success` /
+  `.failure` / `.lockout`, `auth.totp.enroll`, `auth.backup_code.consume`,
+  `auth.magic_link.consume` (Portal-Anmeldung) sowie `backup.run` — das
+  OPEN-Zugriffsmodell wird mit Audit-Nachvollziehbarkeit begründet, also
+  stehen auch Logins manipulationsevident in der Chain (kein Audit-Event
+  bei unbekannter E-Mail — Anti-Enumeration)
 - Audit-Log-Viewer (ADMIN/PARTNER) mit Filter, CSV-Export, Detail-Seite
   mit JSON-Diff vs. Vorgänger
-- Cross-Tenant-RLS-Test (13 Tests, sequentiell, Vitest)
-- Hash-Chain + canonical-json Tests (21 Tests in
-  `packages/evidence/src/__tests__/`)
+- Cross-Tenant-RLS-Tests (sequentiell, Vitest, in `packages/db`)
+- Hash-Chain-, canonical-json- und RFC-3161-Verifikations-Tests in
+  `packages/evidence/src/__tests__/`
 - **Audit-Log-Rotation** („Kassenbon-Abriss")
   - Wöchentlicher Worker `audit-rotate` archiviert Segmente als
     hash-versiegeltes NDJSON im Object-Store (Object-Lock COMPLIANCE 10 J.)
   - `verify:chain` rekonstruiert die Chain durchgängig aus DB + Archiv-Dateien
   - Admin-UI unter `/staff/admin/archive` mit Manual-Trigger
+  - Nur SOFT-Rotation (DB bleibt); ein konfiguriertes
+    `AUDIT_ARCHIVE_MODE=HARD` wird ehrlich auf SOFT normalisiert und pro
+    Lauf als Warnung geloggt — `audit_archive` behauptet keinen
+    DB-Cleanup, der nicht stattfand
 - **Audit-Action-Labels** für 80+ Action-Keys und alle Resource-Types
-  werden in „freundlichen" Views (Dashboard, Timeline, Notifications)
-  deutsch übersetzt; Compliance-View bleibt technisch
+  (inkl. der Auth-, Backup-, `gwg.check.destroy`- und
+  `tax_notice.status`-Events) werden in „freundlichen" Views (Dashboard,
+  Timeline, Notifications) deutsch übersetzt; Compliance-View bleibt
+  technisch
 
 ## Backups & Disaster Recovery
 
-- Tägliches Postgres-Dump + S3-Sync
-- Pre-Flight-DB-Backup vor Migration
-- Backup-Records mit Größe und Status
+- Postgres-Dump in den S3-Backup-Bucket — manuell (`scripts/backup.sh` /
+  `pnpm --filter @taxtronik/web backup:run`) oder per Operator-Cron;
+  jeder Lauf wird als `backup.run` in der Audit-Chain dokumentiert
+- Pre-Flight-DB-Backup vor Migration (`scripts/update.sh`)
+- Backup-Records mit Größe, SHA-256 und Status (letzter Stand in der
+  Admin-Übersicht)
 - **Restore-Mechanismus**: `pnpm backup:restore --latest` (oder `--key`),
   automatischer Smoke-Test, Schutz vor Überschreiben durch
   `--confirm-overwrite`-Flag
@@ -926,7 +1002,11 @@ Kanzlei nicht.
   Einspruchsfristen, fällige Wiedervorlagen, überfällige Pendelordner),
   `n8n-deliver` + `n8n-outbox-reconcile` (HMAC-signierter Outbox-Versand),
   `magic-link-cleanup`, `dsgvo-retention`, `poa-expiry-check`,
-  `risk-analyse-llm` (on-demand LLM-Vertiefung der Subsumtion)
+  `risk-analyse-llm` (on-demand LLM-Vertiefung der Subsumtion).
+  Ein asynchroner Virus-Scan-Job existiert bewusst nicht — Scans laufen
+  ausschließlich synchron beim Upload-Commit in `@taxtronik/storage`.
+  Die Worker-Jobs haben eigene Unit-Tests
+  (`apps/worker/src/jobs/__tests__/`)
 - n8n als Workflow-Engine für Mail-Versand und Eskalationen (signierte
   HMAC-Webhooks, n8n liest via `/api/n8n/*` mit Token,
   respektiert Portal-Notification-Setting per `notifiableContacts`-Array)
@@ -972,21 +1052,36 @@ Kanzlei nicht.
   bis zum eingebetteten GlobalSign-Root R6 _as-of_ genTime, kritische EKU
   timeStamping + ESS-SigningCertificate-Bindung; Adapter-Modus wird im Report
   ausgewiesen, Self-Timestamp im Produktivmodus = harter Fail
-- **Aufbewahrungs-Buckets nach Recht getrennt**: `gobd` (10 J. § 147 AO),
-  `gwg` (5 J. § 8 Abs. 4 GwG, separate Höchstfrist), `general` /
-  `staff-private` (kein Object-Lock); Retain-Until-Logik nach Kalenderjahres-
-  Schluss (Jahresende + N + 1 Tag)
+- **Aufbewahrungs-Buckets nach Recht getrennt**: `gobd` (10 J. § 147 AO,
+  Object-Lock COMPLIANCE), `gwg` (5 J. § 8 Abs. 4 GwG — Höchstfrist mit
+  Vernichtungspflicht, deshalb Object-Lock GOVERNANCE mit privilegierter
+  Frühlöschung), `general` / `staff-private` (kein Object-Lock);
+  Retain-Until-Logik nach Kalenderjahres-Schluss (Jahresende + N + 1 Tag)
 - **TOTP-Pflicht für Staff** mit lokal generiertem QR-Code (kein Drittanbieter-
   Roundtrip), 8 Backup-Codes als One-Time-Use mit Row-Lock-Konsumption,
   TOTP-Replay-Schutz via Redis-Nonce-Set, Account-Lockout an 5 _distinkten_
   IPs (kein Single-IP-Lockout-DoS)
+- **Session-Cookie-Präfixe** (`session-cookie.ts`): in Production
+  `__Host-taxtronik_*_session` (ohne konfigurierte Cookie-Domain; Browser
+  erzwingen Secure + `Path=/` + kein Domain-Attribut — kein Überschreiben
+  durch Subdomains) bzw. `__Secure-taxtronik_*_session` bei gesetzter
+  `STAFF_`/`PORTAL_COOKIE_DOMAIN`; im Dev (HTTP) unverändert unpräfixt
+- **CSRF-Origin-Check** als Defense in Depth zu `SameSite=lax` auf den drei
+  Upload-Commit-Routen (Staff-Commit, New-Version-Commit, Portal-Commit):
+  Cross-Origin-POST → `403 { error: 'origin_mismatch' }`
 - **SSRF-Schutz + DNS-Rebinding** für jeden serverseitigen fetch zu Admin-
   konfigurierbaren URLs (RSS, TSA, n8n, Update-Manifest, Health-Check) via
   zentralem `safeFetch` mit undici-Agent + gepinntem Lookup, Body-Cap,
   `redirect: 'error'` + 30s-Default-Timeout
 - **Rate-Limiting** auf Login, TOTP, Magic-Link, GwG-Upload, PoA-Sign,
   Portal-Write — fail-CLOSED in Production bei Redis-Ausfall;
-  `checkIpOrGlobalLimit` deckelt sowohl Per-IP als auch globalen Sturm
+  `checkIpOrGlobalLimit` deckelt sowohl Per-IP als auch globalen Sturm;
+  per-User-Limits auf der Staff-Suche (30/min) und allen CSV-/ZIP-Exporten
+  (5 pro 10 min je Export-Art: clients, audit, requests, invoices,
+  datev-belege) → `429 { error: 'rate_limited' }`; öffentliche
+  Token-Lade-Pfade (GwG-Onboarding, PoA-Signatur) per IP 30/10 min mit
+  derselben generischen Fehlansicht wie bei ungültigem Token (kein
+  Token-Probing-Orakel)
 - **Reverse-Proxy-Trust-Boundary**: `TRUST_PROXY_REQUIRED`-ENV gate für
   `getClientIp` — kein blindes XFF-Vertrauen ohne explizite Operator-Zusage
 - **Mail-Pipeline**: HMAC-Outbound für n8n inkl. event + 128-Bit-Nonce,
@@ -1001,11 +1096,14 @@ Kanzlei nicht.
   fail-closed)
 - **Container-Hardening**: `cap_drop: ALL` + `no-new-privileges` + `read_only`-
   Root-FS auf App/Worker mit `tmpfs:/tmp`, alle Infra-Ports an `127.0.0.1`,
-  App/n8n hinter Reverse-Proxy (NGINX-Beispiel-Konfig in `infra/nginx/`)
+  App/n8n hinter Reverse-Proxy (NGINX-Beispiel-Konfig in `infra/nginx/`;
+  das Beispiel setzt bewusst keine eigenen Security-`add_header`-Zeilen —
+  die Header kommen aus der App, ein nginx-seitiges `add_header` würde u. a.
+  die token-spezifische `no-referrer`-Policy überschreiben)
 - **Dev-Default-Denylist**: Bekannte Dev-Schlüsselwerte werden in Production
   in der ENV-Validierung hart abgelehnt — kein „vergessenes Setup-Skript-
   Generieren" mit committed-Secret-Material
 - **Compliance-Dokumente** unter `docs/compliance/`: `gobd.md`, `gobd-template.md`,
-  `dsgvo-konzept.md`, `dsfa-template.md`, `vvt-template.md`, `eidas-tsa.md`,
-  `auth-secret-rotation.md`, `tenancy-model.md`, `cookie-config.md`,
-  `avv-template.md`, `pen-test-vorbereitung.md`
+  `dsgvo-konzept.md`, `gwg.md`, `dsfa-template.md`, `vvt-template.md`,
+  `eidas-tsa.md`, `auth-secret-rotation.md`, `tenancy-model.md`,
+  `cookie-config.md`, `avv-template.md`, `pen-test-vorbereitung.md`

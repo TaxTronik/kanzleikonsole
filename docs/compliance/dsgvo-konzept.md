@@ -1,6 +1,6 @@
 # DSGVO — Lösch-, Aufbewahrungs- und Verarbeitungskonzept
 
-Stand: 2026-05-11. Dieses Dokument beschreibt für taxtronik:
+Stand: 2026-06-10. Dieses Dokument beschreibt für taxtronik:
 
 - Welche personenbezogenen Daten verarbeitet werden
 - Welche Aufbewahrungsfristen gelten
@@ -111,10 +111,20 @@ sehen — siehe [pen-test-vorbereitung.md](./pen-test-vorbereitung.md).
 | Klassifikation | Bucket | Object-Lock | Retention |
 |---|---|---|---|
 | `GOBD_INVOICE`, `GOBD_CONTRACT`, `GOBD_TAX` | `gobd` | COMPLIANCE | 10 Jahre + 1 Tag (Jahresende-Logik, § 147 AO) |
-| `GWG_EVIDENCE` | `gwg` (separat!) | COMPLIANCE | 5 Jahre + 1 Tag |
+| `GWG_EVIDENCE` | `gwg` (separat!) | **GOVERNANCE** | 5 Jahre + 1 Tag |
 | `GENERAL`, `STAFF_PRIVATE` | jeweils eigener Bucket | — | kein Lock, Lifecycle nach Bedarf |
 
-`GwgRetentionUntil()` ist in [`packages/storage/src/service.ts`](../../packages/storage/src/service.ts)
+**Warum GOVERNANCE statt COMPLIANCE für GwG?** COMPLIANCE lässt sich vor
+Ablauf von niemandem (auch nicht root) verkürzen — damit wäre die von
+§ 8 Abs. 4 Satz 4 GwG geforderte UNVERZÜGLICHE Vernichtung nach Ende der
+Geschäftsbeziehung technisch nicht erfüllbar (Konflikt mit Art. 5 Abs. 1
+lit. e DSGVO). GOVERNANCE erlaubt die privilegierte Frühlöschung
+(`s3:BypassGovernanceRetention`); für alle ohne dieses Recht bleibt die
+fristgebundene Unveränderbarkeit erhalten. GoBD-Klassen bleiben COMPLIANCE
+(keine Frühlöschung vorgesehen). Siehe `lockModeForTier()` in
+[`packages/storage/src/service.ts`](../../packages/storage/src/service.ts).
+
+`gwgRetentionUntil()` ist in [`packages/storage/src/service.ts`](../../packages/storage/src/service.ts)
 implementiert. Vor Round 13 lagen GwG-Bilder im `gobd`-Bucket mit
 10-Jahre-COMPLIANCE — Bestandsdaten aus dieser Zeit MÜSSEN von der Kanzlei
 nach Ablauf der 5-Jahre-GwG-Frist manuell gelöscht werden (Object-Lock
@@ -131,6 +141,7 @@ erforderlich, falls Bestandsdaten existieren).
 | Anforderungen + Antworten ohne GoBD-Bezug | 6 Jahre (10 J. mit GoBD-Bezug) | Worker `dsgvo-retention` (täglich 04:00 UTC) |
 | Notifications | 1 Jahr nach Erstellung | Worker `dsgvo-retention` (täglich 04:00 UTC) |
 | `magic_link` (verbrauchte oder abgelaufene) | 30 Tage | direkt nach Verbrauch |
+| GwG-Belege + GwG-Aufzeichnungen beendeter Mandate | Mandatsende-Jahresende + 5 Jahre (§ 8 (4) GwG) | Review-Queue `/staff/admin/gwg-retention` — Vernichtung wird vom Berufsträger bestätigt (kein Auto-Delete); Worker `gwg-expiry-check` schickt täglich eine idempotente `GWG_DELETION_DUE`-Notification an ADMIN/PARTNER, sobald Einträge löschreif sind. Details in [gwg.md](./gwg.md) |
 
 > Stand 2026-05-29: Der Worker `dsgvo-retention`
 > ([apps/worker/src/jobs/dsgvo-retention.ts](../../apps/worker/src/jobs/dsgvo-retention.ts))
@@ -166,8 +177,10 @@ Daraus folgt für die DSGVO-Löschung:
 - **Akzeptierter Konflikt:** Aufbewahrungspflicht (GoBD/AO) hat im
   Steuerberater-Kontext Vorrang vor Art. 17 DSGVO (s. Art. 17 (3) b);
   betroffene Mitarbeiter werden im Vertrag darauf hingewiesen
-- Nach Ablauf der gesetzlichen 10 Jahre wird das ganze `audit_log`-
-  Segment gelöscht (jährliche Archiv-Rotation, noch nicht implementiert)
+- Segmente werden wöchentlich als NDJSON in den Object-Store archiviert
+  (`audit-rotate`, SOFT-Rotation). Die Löschung der DB-Einträge nach
+  Ablauf der gesetzlichen 10 Jahre (HARD-Rotation) ist noch nicht
+  implementiert — der Audit-Log wächst monoton (siehe gobd.md § 3)
 
 ---
 
@@ -175,12 +188,33 @@ Daraus folgt für die DSGVO-Löschung:
 
 ### 4.1 Auskunft (Art. 15 DSGVO)
 
-**Implementiert** als DSGVO-Modul (`/staff/admin/dsgvo`):
+**Implementiert** als DSGVO-Modul (`/staff/admin/dsgvo`),
+`exportContactDataAction` in
+[`apps/web/src/app/staff/(protected)/admin/dsgvo/actions.ts`](<../../apps/web/src/app/staff/(protected)/admin/dsgvo/actions.ts>):
 
-- Pro `client_contact` ein Datenexport als ZIP/JSON mit allen verlinkten
-  Datenklassen
-- Audit-Log-Einträge als CSV-Auszug (zugeordnet via `actor_id`)
-- Aufruf: `GET /staff/admin/dsgvo` → neue Anfrage anlegen → Export-Action
+- Pro `client_contact` ein **JSON-Export** mit folgenden Datenklassen:
+  - Kontakt-Stammdaten (E-Mail, Name, Mandant, Anlage-/Login-Zeitpunkte)
+  - Anforderungs-Antworten der Person (`request_response`)
+  - **Dokument-Metadaten** der Dokumente, die dem Kontakt über den
+    Audit-Trail direkt zugeordnet sind (Upload, Antwort) — bewusst NICHT
+    alle Dokumente des Mandanten (bei mehreren Kontakten würden sonst
+    Daten Dritter mit exportiert)
+  - Vollmachten (`power_of_attorney`, via Signer-FK oder E-Mail-Match)
+  - Terminanfragen (`appointment_request`)
+  - Formular-Antworten (`form_submission` — die selbst eingegebenen
+    Antworten, Art.-20-relevant)
+  - Telefonnotizen (`phone_note`) per Heuristik „gleicher Mandant +
+    Anrufername = Kontaktname" — kann Namensgleiche treffen bzw.
+    abweichende Schreibweisen verfehlen; der Sachbearbeiter prüft den
+    Export vor Herausgabe
+  - Anzahl der Magic-Link-Anforderungen
+- **Keine Datei-Downloads** im Export — Dokumente sind nur als Metadaten
+  enthalten (Titel, Klassifikation, Datum); die Dateien selbst gibt die
+  Kanzlei bei Bedarf separat heraus
+- Audit-Log-Einträge der Person werden nicht inline gedumpt — der Export
+  verweist auf den **Audit-CSV-Export** (`/api/staff/admin/audit/export`,
+  Filter auf Akteur/Ressource = Kontakt)
+- Jeder Export wird selbst auditiert (`dsgvo.export.contact`)
 
 ### 4.2 Berichtigung (Art. 16)
 
@@ -193,9 +227,11 @@ Daraus folgt für die DSGVO-Löschung:
 **Anonymisierung statt Löschung** (wegen Hash-Chain):
 
 - `dsgvo.anonymize.contact`-Action setzt für `client_contact`:
-  - `email` → `deleted-{id}@anon.taxtronik.local`
-  - `fullName` → „Gelöschter Kontakt"
+  - `email` → `anonymized-<uuid>@taxtronik.local`
+  - `fullName` → „Anonymisiert"
   - `active` → false
+- Zusätzlich werden offene Magic-Links der Person ungültig gemacht und
+  alle aktiven Portal-Sessions sofort revoked
 - Verknüpfte Daten (z. B. Vollmacht-Signaturen, Anforderungen) bleiben
   erhalten — die Person ist aber nicht mehr identifizierbar
 - Audit-Log-Einträge: `actor_id` bleibt (UUID, kein Klartext-Bezug)
@@ -252,13 +288,18 @@ gepflegt.
 - Hash-verketteter Audit-Log mit RFC-3161-Stempel
 - ClamAV-Synchron-Scan auf jeden Upload
 - DB-Trigger blocken UPDATE/DELETE auf `audit_log` und `audit_seal`
-- SeaweedFS-Object-Lock COMPLIANCE für GoBD-Klassen
+- SeaweedFS-Object-Lock: COMPLIANCE für GoBD-Klassen, GOVERNANCE für
+  GwG-Belege (siehe § 2.1)
 
 ### Verfügbarkeit
 
-- Tägliches Postgres-Dump + SeaweedFS-Sync
-- Pre-Flight-Backup vor jeder Migration
-- BackupRecord-Tabelle mit Status
+- Postgres-Dump in den S3-Backup-Bucket via Operator-Cron bzw. manuell
+  (`scripts/backup.sh` / `pnpm --filter @taxtronik/web backup:run`);
+  jeder Lauf wird auditiert (`backup.run`) und als `BackupRecord` mit
+  Status + SHA-256 erfasst, die Admin-Übersicht zeigt den letzten Stand.
+  Kein automatischer SeaweedFS-Sync durch die App — die Off-Site-
+  Replikation des Object-Stores ist Operator-Aufgabe (siehe gobd.md § 5)
+- Pre-Flight-Backup vor jeder Migration (`scripts/update.sh`)
 
 ### Belastbarkeit
 
@@ -292,3 +333,5 @@ individuell durchgeführt mit Vorlagen aus dem Bereich „Steuerberater
 | DSGVO-Auskunft | (read) | `dsgvo.export.contact` |
 | DSGVO-Anonymisierung | `client_contact` (Felder anonymisiert) | `dsgvo.anonymize.contact` |
 | Mandant deaktiviert (GwG abgelaufen) | `client.allowActive = false` | `gwg.expired` (Worker) |
+| GwG-Datei-Beleg vernichtet (§ 8 (4)) | `document` + `document_version` gelöscht, Bytes vernichtet | `gwg.evidence.destroy` |
+| GwG-Aufzeichnungen vernichtet (§ 8 (4)) | `gwg_beneficial_owner` gelöscht, `gwg_id_document` genullt, `gwg_check` anonymisiert + `destroyedAt` | `gwg.check.destroy` |

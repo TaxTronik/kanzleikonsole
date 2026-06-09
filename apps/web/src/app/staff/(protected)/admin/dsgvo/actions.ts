@@ -192,6 +192,75 @@ export async function exportContactDataAction(contactId: string): Promise<{
         where: { tenantId, email: contact.email },
       });
 
+      // Art. 15/20: weitere Datenklassen mit Personenbezug des Antragstellers.
+      // Verknüpfungs-Heuristiken (kommentiert, weil das Schema nicht überall
+      // einen Kontakt-FK hat):
+      //  - power_of_attorney: signerContactId (FK) ODER signerEmail-Match
+      //    (citext → case-insensitiv) — Vollmachten tragen Name/E-Mail/IP
+      //    des Unterzeichners.
+      //  - appointment_request: createdByContact (FK).
+      //  - form_submission: submittedByContact (FK); answers sind die von der
+      //    Person selbst eingegebenen Daten (Art.-20-relevant).
+      //  - phone_note: KEIN Kontakt-FK im Schema → Heuristik „gleicher Mandant
+      //    + Anrufername == Kontaktname (case-insensitiv)". Kann Namens-
+      //    gleiche Dritte treffen bzw. abweichende Schreibweisen verfehlen —
+      //    der Sachbearbeiter prüft den Export vor Herausgabe ohnehin.
+      const [powersOfAttorney, appointmentRequests, formSubmissions, phoneNotes] =
+        await Promise.all([
+          tx.powerOfAttorney.findMany({
+            where: {
+              OR: [{ signerContactId: contactId }, { signerEmail: contact.email }],
+            },
+            select: {
+              id: true,
+              subject: true,
+              scope: true,
+              status: true,
+              signerName: true,
+              signerEmail: true,
+              signedAt: true,
+              signedByIp: true,
+              validFrom: true,
+              validUntil: true,
+            },
+          }),
+          tx.appointmentRequest.findMany({
+            where: { createdByContact: contactId },
+            select: {
+              id: true,
+              subject: true,
+              notes: true,
+              status: true,
+              createdAt: true,
+              decidedAt: true,
+            },
+          }),
+          tx.formSubmission.findMany({
+            where: { submittedByContact: contactId },
+            select: {
+              id: true,
+              name: true,
+              status: true,
+              answers: true,
+              submittedAt: true,
+            },
+          }),
+          tx.phoneNote.findMany({
+            where: {
+              clientId: contact.clientId,
+              callerName: { equals: contact.fullName, mode: 'insensitive' },
+            },
+            select: {
+              id: true,
+              subject: true,
+              body: true,
+              callerName: true,
+              callerPhone: true,
+              createdAt: true,
+            },
+          }),
+        ]);
+
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',
@@ -219,6 +288,19 @@ export async function exportContactDataAction(contactId: string): Promise<{
           // (Upload, Antwort etc.). NICHT alle Dokumente des Mandanten.
           documentsActedOnByContact: documents,
           magicLinkRequests: magicLinks,
+          powersOfAttorney,
+          appointmentRequests,
+          formSubmissions,
+          // Heuristik: gleicher Mandant + Anrufername == Kontaktname (siehe oben).
+          phoneNotes,
+        },
+        // Art. 15 Abs. 1: Verweis statt Inline-Dump — die vollständigen
+        // Audit-Einträge der Person liefert der CSV-Export der Audit-Chain.
+        auditTrail: {
+          note:
+            'Audit-Einträge zu dieser Person sind über den Audit-CSV-Export ' +
+            'verfügbar (Filter: Akteur/Ressource = dieser Kontakt).',
+          csvExport: '/api/staff/admin/audit/export',
         },
         exportedAt: new Date().toISOString(),
         exportedBy: staffId,
