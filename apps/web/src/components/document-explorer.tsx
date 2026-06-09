@@ -1,4 +1,21 @@
-﻿'use client';
+'use client';
+
+// =============================================================================
+// DocumentExplorer — DIE Dokumentenverwaltung (konsolidiert aus den früheren
+// Komponenten DocumentBrowser + DocumentsManager, die dieselben Server-Actions
+// doppelt verdrahteten).
+//
+// Zwei Varianten, ein Satz Handler/Dialoge:
+//   variant="browser"  — /staff/documents: URL-getrieben (Server filtert per
+//                        ?type=&client=&folder=&q=&deleted=), Breadcrumbs,
+//                        Multi-Select/Bulk, Drag&Drop, Kontextmenü, OS-Drop.
+//   variant="embedded" — Mandanten-Tab „Dokumente" + Subsumtions-„Aktenregal":
+//                        alle Dokumente auf einmal, Sidebar-Ordnerbaum filtert
+//                        lokal, Tabelle, Lösch-Dialog mit Grund-Feld.
+//
+// Geteilt: useDocumentOps (Transition, Fehlerbanner, Share/Restore) +
+// SharedDialogs (Preview, Retag, Ordner anlegen/umbenennen, Confirm).
+// =============================================================================
 
 import { useMemo, useState, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -10,8 +27,13 @@ import {
 } from 'lucide-react';
 import { DocumentPreviewModal } from '@/components/document-preview';
 import { DocumentUploadButton } from '@/components/document-upload-button';
-import { RetagDialog } from '@/components/document-dialogs';
-import { Modal, ConfirmModal, InputModal } from '@/components/ui/modal';
+import {
+  DeleteDocModal,
+  MoveDialog,
+  MoveTargetDialog,
+  RetagDialog,
+} from '@/components/document-dialogs';
+import { ConfirmModal, InputModal } from '@/components/ui/modal';
 import { FolderTreePicker } from '@/components/folder-tree-picker';
 import {
   softDeleteDocumentAction,
@@ -38,8 +60,36 @@ import {
   type FolderNode,
 } from '@/components/document-browser-utils';
 
-export type { Crumb, Entry };
-type Sel = { kind: 'file' | 'folder'; id: string };
+export type { Crumb, Entry, FolderNode };
+
+/** Dokument-Zeile für den Embedded-Modus (siehe toManagedDoc in managed-docs). */
+export interface ManagedDoc {
+  id: string;
+  title: string;
+  classification: string;
+  typeName: string;
+  typeId: string | null;
+  tier: 'NONE' | 'GWG' | 'GOBD';
+  sizeBytes: number;
+  createdAt: string;
+  folderId: string | null;
+  deletedAt: string | null;
+  shared: boolean;
+}
+
+const CLASS_LABELS: Record<string, string> = {
+  GOBD_INVOICE: 'GoBD Rechnung',
+  GOBD_CONTRACT: 'GoBD Vertrag',
+  GOBD_TAX: 'GoBD Steuer',
+  GWG_EVIDENCE: 'GwG Nachweis',
+  PERSONNEL: 'Personal',
+  STAFF_PRIVATE: 'Intern',
+  GENERAL: 'Allgemein',
+};
+
+// ---------------------------------------------------------------------------
+// Geteilter Zustand + Handler beider Varianten
+// ---------------------------------------------------------------------------
 
 interface ConfirmState {
   title: string;
@@ -49,10 +99,164 @@ interface ConfirmState {
   danger?: boolean;
   action: () => Promise<{ ok: boolean; error?: string }>;
 }
+interface RetagState {
+  ids: string[];
+  title: string;
+  /** Nur bei Einzel-Dokument — sperrt Herabstufungen clientseitig. */
+  tier?: 'NONE' | 'GWG' | 'GOBD';
+  typeId?: string | null;
+  onDone?: () => void;
+}
+interface CreateFolderState { parentId: string | null; title: string; placeholder: string }
 
-export function DocumentBrowser({
-  crumbs, entries, scope, folders, currentFolderId, deleted, q, toggleDeletedHref,
-}: {
+function useDocumentOps() {
+  const router = useRouter();
+  const [busy, start] = useTransition();
+  // Sammel-Fehlermeldung für Hintergrund-Operationen (statt window.alert).
+  const [opError, setOpError] = useState<string | null>(null);
+  const [previewDoc, setPreviewDoc] = useState<{ id: string; name: string } | null>(null);
+  const [retag, setRetag] = useState<RetagState | null>(null);
+  const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
+  const [createFolder, setCreateFolder] = useState<CreateFolderState | null>(null);
+  const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
+
+  function toggleShare(id: string, share: boolean) {
+    start(async () => {
+      setOpError(null);
+      const r = await setDocumentShareAction({ documentId: id, share });
+      if (!r.ok) setOpError(r.error ?? 'Fehler.'); else router.refresh();
+    });
+  }
+  function restoreDoc(id: string) {
+    start(async () => {
+      setOpError(null);
+      const r = await restoreDocumentAction({ documentId: id });
+      if (!r.ok) setOpError(r.error ?? 'Fehler.'); else router.refresh();
+    });
+  }
+
+  return {
+    router, busy, start,
+    opError, setOpError,
+    previewDoc, setPreviewDoc,
+    retag, setRetag,
+    renameTarget, setRenameTarget,
+    createFolder, setCreateFolder,
+    confirmState, setConfirmState,
+    toggleShare, restoreDoc,
+  };
+}
+type DocumentOps = ReturnType<typeof useDocumentOps>;
+
+function OpErrorBanner({ ops }: { ops: DocumentOps }) {
+  if (!ops.opError) return null;
+  return (
+    <div className="alert-error-sm mb-3 flex items-start justify-between gap-3">
+      <span className="whitespace-pre-line">{ops.opError}</span>
+      <button
+        type="button"
+        onClick={() => ops.setOpError(null)}
+        aria-label="Meldung schließen"
+        className="shrink-0 opacity-70 hover:opacity-100"
+      >
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
+/** Badge „geteilt"/„privat" an Mandanten-Dokumenten. */
+function ShareBadge({ shared }: { shared: boolean }) {
+  return (
+    <span
+      className={`text-[10px] px-1.5 py-0.5 rounded border inline-flex items-center gap-0.5 ${
+        shared
+          ? 'bg-green-50 text-green-700 border-green-200'
+          : 'bg-gray-50 text-muted border-default'
+      }`}
+    >
+      {shared ? <Share2 className="h-2.5 w-2.5" /> : <EyeOff className="h-2.5 w-2.5" />}
+      {shared ? 'geteilt' : 'privat'}
+    </span>
+  );
+}
+
+/** Von beiden Varianten genutzte Dialoge (Zustand in useDocumentOps). */
+function SharedDialogs({ ops, scopeClientId }: { ops: DocumentOps; scopeClientId: string | null }) {
+  const { router } = ops;
+  return (
+    <>
+      {ops.retag && (
+        <RetagDialog
+          documentIds={ops.retag.ids}
+          documentTitle={ops.retag.title}
+          currentTier={ops.retag.tier}
+          currentTypeId={ops.retag.typeId}
+          onClose={() => ops.setRetag(null)}
+          onDone={() => {
+            const cb = ops.retag?.onDone;
+            ops.setRetag(null);
+            cb?.();
+            router.refresh();
+          }}
+        />
+      )}
+      {ops.previewDoc && (
+        <DocumentPreviewModal
+          documentId={ops.previewDoc.id}
+          documentTitle={ops.previewDoc.name}
+          onClose={() => ops.setPreviewDoc(null)}
+        />
+      )}
+      {ops.createFolder && (
+        <InputModal
+          title={ops.createFolder.title}
+          placeholder={ops.createFolder.placeholder}
+          confirmLabel="Anlegen"
+          busyLabel="Legt an…"
+          onSubmit={async (name) => {
+            const r = await createFolderAction({
+              clientId: scopeClientId, parentId: ops.createFolder!.parentId, name,
+            });
+            if (r.ok) router.refresh();
+            return r;
+          }}
+          onClose={() => ops.setCreateFolder(null)}
+        />
+      )}
+      {ops.renameTarget && (
+        <InputModal
+          title="Ordner umbenennen"
+          initialValue={ops.renameTarget.name}
+          onSubmit={async (name) => {
+            const r = await renameFolderAction({ folderId: ops.renameTarget!.id, name });
+            if (r.ok) router.refresh();
+            return r;
+          }}
+          onClose={() => ops.setRenameTarget(null)}
+        />
+      )}
+      {ops.confirmState && (
+        <ConfirmModal
+          title={ops.confirmState.title}
+          message={ops.confirmState.message}
+          confirmLabel={ops.confirmState.confirmLabel}
+          busyLabel={ops.confirmState.busyLabel}
+          danger={ops.confirmState.danger}
+          onConfirm={ops.confirmState.action}
+          onClose={() => ops.setConfirmState(null)}
+        />
+      )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Öffentliche Komponente
+// ---------------------------------------------------------------------------
+
+interface BrowserProps {
+  variant: 'browser';
   crumbs: Crumb[];
   entries: Entry[];
   scope: { clientId: string | null; typeParam: string } | null;
@@ -61,23 +265,48 @@ export function DocumentBrowser({
   deleted: boolean;
   q: string;
   toggleDeletedHref?: string;
-}) {
-  const router = useRouter();
-  const [busy, start] = useTransition();
+}
+interface EmbeddedProps {
+  variant: 'embedded';
+  clientId: string | null;
+  folders: FolderNode[];
+  documents: ManagedDoc[];
+  scopeLabel: string;
+  canUpload?: boolean;
+  /** Sachverhalts-Bezug — Uploads aus dem Aktenregal-Tab setzen analysis_id. */
+  analysisId?: string;
+}
+
+export function DocumentExplorer(props: BrowserProps | EmbeddedProps) {
+  const ops = useDocumentOps();
+  const scopeClientId =
+    props.variant === 'browser' ? (props.scope?.clientId ?? null) : props.clientId;
+  return (
+    <>
+      {props.variant === 'browser'
+        ? <BrowserView {...props} ops={ops} />
+        : <EmbeddedView {...props} ops={ops} />}
+      <SharedDialogs ops={ops} scopeClientId={scopeClientId} />
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Variante „browser" — /staff/documents (URL-getrieben, Explorer-Stil)
+// ---------------------------------------------------------------------------
+
+type Sel = { kind: 'file' | 'folder'; id: string };
+
+function BrowserView({
+  crumbs, entries, scope, folders, currentFolderId, deleted, q, toggleDeletedHref, ops,
+}: Omit<BrowserProps, 'variant'> & { ops: DocumentOps }) {
+  const { router, busy, start } = ops;
   const [search, setSearch] = useState(q);
   const [sel, setSel] = useState<Sel[]>([]);
-  const [retagDoc, setRetagDoc] = useState<Extract<Entry, { kind: 'file' }> | null>(null);
-  const [previewDoc, setPreviewDoc] = useState<{ id: string; name: string } | null>(null);
-  const [bulkRetag, setBulkRetag] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
   const [ctx, setCtx] = useState<{ x: number; y: number; e: Entry } | null>(null);
   const [dropTarget, setDropTarget] = useState<string | 'root' | null>(null);
   const [osDrag, setOsDrag] = useState(false);
-  // Sammel-Fehlermeldung für Hintergrund-Operationen (statt window.alert).
-  const [opError, setOpError] = useState<string | null>(null);
-  const [newFolderOpen, setNewFolderOpen] = useState(false);
-  const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
-  const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
 
   useEffect(() => {
     const close = () => setCtx(null);
@@ -114,7 +343,11 @@ export function DocumentBrowser({
   }
   function newFolder() {
     if (!scope) return;
-    setNewFolderOpen(true);
+    ops.setCreateFolder({
+      parentId: currentFolderId,
+      title: 'Neuer Ordner',
+      placeholder: 'Name des neuen Ordners',
+    });
   }
 
   // ---- Verschieben (eine Menge → Ziel-Ordner-ID | null=Wurzel) ----
@@ -122,7 +355,7 @@ export function DocumentBrowser({
   function moveSet(items: Sel[], target: string | null) {
     if (items.length === 0) return;
     start(async () => {
-      setOpError(null);
+      ops.setOpError(null);
       const errs = await runChunked(items, async (it) => {
         if (it.kind === 'file') {
           const r = await setDocumentFolderAction({ documentId: it.id, folderId: target });
@@ -135,7 +368,7 @@ export function DocumentBrowser({
         const r = await moveFolderAction({ folderId: it.id, newParentId: target });
         return r.ok ? null : (r.error ?? 'Fehler');
       });
-      if (errs.length) setOpError([...new Set(errs)].join('\n'));
+      if (errs.length) ops.setOpError([...new Set(errs)].join('\n'));
       clearSel();
       setMoveOpen(false);
       router.refresh();
@@ -156,7 +389,7 @@ export function DocumentBrowser({
   }
 
   function softDelete(id: string, name: string) {
-    setConfirmState({
+    ops.setConfirmState({
       title: 'Dokument löschen',
       message: `„${name}" löschen?\nDie Datei bleibt revisionssicher aufbewahrt (Object-Lock), wird nur ausgeblendet.`,
       confirmLabel: 'Löschen',
@@ -169,39 +402,22 @@ export function DocumentBrowser({
       },
     });
   }
-  function toggleShare(id: string, share: boolean) {
-    start(async () => {
-      setOpError(null);
-      const r = await setDocumentShareAction({ documentId: id, share });
-      if (!r.ok) setOpError(r.error ?? 'Fehler.'); else router.refresh();
-    });
-  }
-  function restore(id: string) {
-    start(async () => {
-      setOpError(null);
-      const r = await restoreDocumentAction({ documentId: id });
-      if (!r.ok) setOpError(r.error ?? 'Fehler.'); else router.refresh();
-    });
-  }
   // Bulk-Freigabe/-Entzug: begrenzt parallel, Fehler gesammelt anzeigen.
   function bulkShare(share: boolean) {
     const ids = sel.filter((s) => s.kind === 'file').map((s) => s.id);
     start(async () => {
-      setOpError(null);
+      ops.setOpError(null);
       const errs = await runChunked(ids, async (id) => {
         const r = await setDocumentShareAction({ documentId: id, share });
         return r.ok ? null : (r.error ?? 'Fehler');
       });
-      if (errs.length) setOpError([...new Set(errs)].join('\n'));
+      if (errs.length) ops.setOpError([...new Set(errs)].join('\n'));
       clearSel();
       router.refresh();
     });
   }
-  function renameFolder(id: string, cur: string) {
-    setRenameTarget({ id, name: cur });
-  }
   function deleteFolder(id: string, name: string) {
-    setConfirmState({
+    ops.setConfirmState({
       title: 'Ordner löschen',
       message: `Ordner „${name}" löschen?\nInhalt rückt eine Ebene hoch. Kein Dokument wird gelöscht.`,
       confirmLabel: 'Löschen',
@@ -239,9 +455,9 @@ export function DocumentBrowser({
           d.types[0]?.id ?? '';
       }
     } catch { /* ignore */ }
-    if (!typeId) { setOpError('Kein Datei-Typ verfügbar.'); return; }
+    if (!typeId) { ops.setOpError('Kein Datei-Typ verfügbar.'); return; }
     start(async () => {
-      setOpError(null);
+      ops.setOpError(null);
       const errs: string[] = [];
       for (const f of files) {
         const fd = new FormData();
@@ -257,7 +473,7 @@ export function DocumentBrowser({
           errs.push(`${f.name}: ${(b as { error?: string }).error ?? res.status}`);
         }
       }
-      if (errs.length) setOpError(`Upload-Fehler:\n${errs.join('\n')}`);
+      if (errs.length) ops.setOpError(`Upload-Fehler:\n${errs.join('\n')}`);
       router.refresh();
     });
   }
@@ -331,7 +547,10 @@ export function DocumentBrowser({
             {sel.every((s) => s.kind === 'file') && !deleted && (
               <button
                 type="button"
-                onClick={() => setBulkRetag(true)}
+                onClick={() => {
+                  const ids = sel.filter((s) => s.kind === 'file').map((s) => s.id);
+                  ops.setRetag({ ids, title: `${ids.length} Dokument(e)`, onDone: clearSel });
+                }}
                 disabled={busy}
                 className="btn-secondary text-xs py-1.5"
               >
@@ -364,7 +583,7 @@ export function DocumentBrowser({
                 disabled={busy}
                 onClick={() => {
                   const ids = sel.filter((s) => s.kind === 'file').map((s) => s.id);
-                  setConfirmState({
+                  ops.setConfirmState({
                     title: 'Dokumente löschen',
                     message: `${ids.length} Dokument(e) löschen? Bleiben revisionssicher aufbewahrt, nur ausgeblendet.`,
                     confirmLabel: 'Löschen',
@@ -430,20 +649,7 @@ export function DocumentBrowser({
         )}
       </div>
 
-      {/* Sammel-Fehlermeldung (ersetzt window.alert) */}
-      {opError && (
-        <div className="alert-error-sm mb-3 flex items-start justify-between gap-3">
-          <span className="whitespace-pre-line">{opError}</span>
-          <button
-            type="button"
-            onClick={() => setOpError(null)}
-            aria-label="Meldung schließen"
-            className="shrink-0 opacity-70 hover:opacity-100"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      )}
+      <OpErrorBanner ops={ops} />
 
       {/* „Eine Ebene hoch" als Drop-Ziel (Wurzel des Scopes) */}
       {scope && currentFolderId && (
@@ -523,7 +729,7 @@ export function DocumentBrowser({
                 ) : (
                   <button
                     type="button"
-                    onClick={() => setPreviewDoc({ id: e.id, name: e.name })}
+                    onClick={() => ops.setPreviewDoc({ id: e.id, name: e.name })}
                     className="flex items-center gap-3 flex-1 min-w-0 text-left"
                     title="Vorschau öffnen"
                   >
@@ -538,18 +744,7 @@ export function DocumentBrowser({
                             {TIER_BADGE[e.tier]}
                           </span>
                         )}
-                        {scope?.clientId && !e.deletedAt && (
-                          <span
-                            className={`text-[10px] px-1.5 py-0.5 rounded border inline-flex items-center gap-0.5 ${
-                              e.shared
-                                ? 'bg-green-50 text-green-700 border-green-200'
-                                : 'bg-gray-50 text-muted border-default'
-                            }`}
-                          >
-                            {e.shared ? <Share2 className="h-2.5 w-2.5" /> : <EyeOff className="h-2.5 w-2.5" />}
-                            {e.shared ? 'geteilt' : 'privat'}
-                          </span>
-                        )}
+                        {scope?.clientId && !e.deletedAt && <ShareBadge shared={e.shared} />}
                       </div>
                       <div className="text-xs text-disabled truncate">
                         {e.typeName || '—'} · {fmtBytes(e.sizeBytes)} ·{' '}
@@ -564,7 +759,7 @@ export function DocumentBrowser({
                       <Download className="h-4 w-4" />
                     </a>
                     {e.deletedAt ? (
-                      <button type="button" disabled={busy} title="Wiederherstellen" onClick={() => restore(e.id)} className="icon-btn">
+                      <button type="button" disabled={busy} title="Wiederherstellen" onClick={() => ops.restoreDoc(e.id)} className="icon-btn">
                         <RotateCcw className="h-4 w-4" />
                       </button>
                     ) : (
@@ -574,13 +769,13 @@ export function DocumentBrowser({
                             type="button"
                             disabled={busy}
                             title={e.shared ? 'Freigabe für Mandant zurückziehen' : 'Für Mandant freigeben'}
-                            onClick={() => toggleShare(e.id, !e.shared)}
+                            onClick={() => ops.toggleShare(e.id, !e.shared)}
                             className={`p-1.5 ${e.shared ? 'text-green-600 hover:text-green-700' : 'text-disabled hover:text-brand-700'}`}
                           >
                             {e.shared ? <Share2 className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
                           </button>
                         )}
-                        <button type="button" title="Typ ändern" onClick={() => setRetagDoc(e)} className="icon-btn">
+                        <button type="button" title="Typ ändern" onClick={() => ops.setRetag({ ids: [e.id], title: e.name, tier: e.tier, typeId: e.typeId })} className="icon-btn">
                           <Tag className="h-4 w-4" />
                         </button>
                         <button type="button" title="Verschieben" onClick={() => { toggle('file', e.id, false); setMoveOpen(true); }} className="icon-btn">
@@ -621,7 +816,7 @@ export function DocumentBrowser({
             <>
               <MenuItem icon={Folder} label="Öffnen" onClick={() => router.push((ctx.e as { href: string }).href)} />
               <MenuItem icon={Download} label="Als ZIP laden" onClick={() => { window.location.href = dlUrl([], [ctx.e.id]); setCtx(null); }} />
-              <MenuItem icon={Pencil} label="Umbenennen" onClick={() => { renameFolder(ctx.e.id, ctx.e.name); setCtx(null); }} />
+              <MenuItem icon={Pencil} label="Umbenennen" onClick={() => { ops.setRenameTarget({ id: ctx.e.id, name: ctx.e.name }); setCtx(null); }} />
               <MenuItem icon={FolderInput} label="Verschieben" onClick={() => { setMoveOpen(true); setCtx(null); }} />
               <MenuItem icon={Trash2} label="Löschen" danger onClick={() => { deleteFolder(ctx.e.id, ctx.e.name); setCtx(null); }} />
             </>
@@ -633,12 +828,12 @@ export function DocumentBrowser({
               {!('deletedAt' in ctx.e && ctx.e.deletedAt) && (
                 <>
                   <MenuItem icon={FolderInput} label="Verschieben" onClick={() => { setMoveOpen(true); setCtx(null); }} />
-                  <MenuItem icon={Tag} label="Typ ändern" onClick={() => { setRetagDoc(ctx.e as Extract<Entry, { kind: 'file' }>); setCtx(null); }} />
+                  <MenuItem icon={Tag} label="Typ ändern" onClick={() => { const f = ctx.e as Extract<Entry, { kind: 'file' }>; ops.setRetag({ ids: [f.id], title: f.name, tier: f.tier, typeId: f.typeId }); setCtx(null); }} />
                   <MenuItem icon={Trash2} label="Löschen" danger onClick={() => { softDelete(ctx.e.id, ctx.e.name); setCtx(null); }} />
                 </>
               )}
               {'deletedAt' in ctx.e && ctx.e.deletedAt && (
-                <MenuItem icon={RotateCcw} label="Wiederherstellen" onClick={() => { restore(ctx.e.id); setCtx(null); }} />
+                <MenuItem icon={RotateCcw} label="Wiederherstellen" onClick={() => { ops.restoreDoc(ctx.e.id); setCtx(null); }} />
               )}
             </>
           )}
@@ -651,70 +846,6 @@ export function DocumentBrowser({
           movingFolderIds={sel.filter((s) => s.kind === 'folder').map((s) => s.id)}
           onClose={() => setMoveOpen(false)}
           onPick={(target) => moveSet(sel, target)}
-        />
-      )}
-      {retagDoc && (
-        <RetagDialog
-          documentIds={[retagDoc.id]}
-          documentTitle={retagDoc.name}
-          currentTier={retagDoc.tier}
-          currentTypeId={retagDoc.typeId}
-          onClose={() => setRetagDoc(null)}
-          onDone={() => { setRetagDoc(null); router.refresh(); }}
-        />
-      )}
-      {previewDoc && (
-        <DocumentPreviewModal
-          documentId={previewDoc.id}
-          documentTitle={previewDoc.name}
-          onClose={() => setPreviewDoc(null)}
-        />
-      )}
-      {bulkRetag && (
-        <RetagDialog
-          documentIds={sel.filter((s) => s.kind === 'file').map((s) => s.id)}
-          documentTitle={`${sel.filter((s) => s.kind === 'file').length} Dokument(e)`}
-          onClose={() => setBulkRetag(false)}
-          onDone={() => { setBulkRetag(false); clearSel(); router.refresh(); }}
-        />
-      )}
-      {newFolderOpen && scope && (
-        <InputModal
-          title="Neuer Ordner"
-          placeholder="Name des neuen Ordners"
-          confirmLabel="Anlegen"
-          busyLabel="Legt an…"
-          onSubmit={async (name) => {
-            const r = await createFolderAction({
-              clientId: scope.clientId, parentId: currentFolderId, name,
-            });
-            if (r.ok) router.refresh();
-            return r;
-          }}
-          onClose={() => setNewFolderOpen(false)}
-        />
-      )}
-      {renameTarget && (
-        <InputModal
-          title="Ordner umbenennen"
-          initialValue={renameTarget.name}
-          onSubmit={async (name) => {
-            const r = await renameFolderAction({ folderId: renameTarget.id, name });
-            if (r.ok) router.refresh();
-            return r;
-          }}
-          onClose={() => setRenameTarget(null)}
-        />
-      )}
-      {confirmState && (
-        <ConfirmModal
-          title={confirmState.title}
-          message={confirmState.message}
-          confirmLabel={confirmState.confirmLabel}
-          busyLabel={confirmState.busyLabel}
-          danger={confirmState.danger}
-          onConfirm={confirmState.action}
-          onClose={() => setConfirmState(null)}
         />
       )}
     </div>
@@ -735,41 +866,343 @@ function MenuItem({
   );
 }
 
-function MoveTargetDialog({
-  folders, movingFolderIds, onClose, onPick,
-}: {
-  folders: FolderNode[];
-  movingFolderIds: string[];
-  onClose: () => void;
-  onPick: (target: string | null) => void;
-}) {
-  const [target, setTarget] = useState<string | null>(null);
-  // Ziele, die im Teilbaum eines zu verschiebenden Ordners liegen, sperren.
-  const blocked = useMemo(() => {
-    const b = new Set<string>();
-    for (const id of movingFolderIds) for (const d of descendants(folders, id)) b.add(d);
-    return b;
-  }, [folders, movingFolderIds]);
+// ---------------------------------------------------------------------------
+// Variante „embedded" — Mandanten-Tab + Aktenregal (lokal gefiltert, Tabelle)
+// ---------------------------------------------------------------------------
+
+function EmbeddedView({
+  clientId, folders, documents, scopeLabel, canUpload = true, analysisId, ops,
+}: Omit<EmbeddedProps, 'variant'> & { ops: DocumentOps }) {
+  const { router, busy } = ops;
+  const [sel, setSel] = useState<string | 'all' | 'none'>('all');
+  const [q, setQ] = useState('');
+  const [moveDoc, setMoveDoc] = useState<ManagedDoc | null>(null);
+  const [confirmDelDoc, setConfirmDelDoc] = useState<ManagedDoc | null>(null);
+
+  const active = documents.filter((d) => !d.deletedAt);
+  const deleted = documents.filter((d) => d.deletedAt);
+  const [showDeleted, setShowDeleted] = useState(false);
+
+  const countIn = (fid: string | 'all' | 'none') => {
+    if (fid === 'all') return active.length;
+    if (fid === 'none') return active.filter((d) => !d.folderId).length;
+    const ids = descendants(folders, fid);
+    return active.filter((d) => d.folderId && ids.has(d.folderId)).length;
+  };
+
+  const shown = useMemo(() => {
+    const base = showDeleted ? deleted : active;
+    let list =
+      sel === 'all'
+        ? base
+        : sel === 'none'
+          ? base.filter((d) => !d.folderId)
+          : (() => {
+              const ids = descendants(folders, sel);
+              return base.filter((d) => d.folderId && ids.has(d.folderId));
+            })();
+    const needle = q.trim().toLowerCase();
+    if (needle) list = list.filter((d) => d.title.toLowerCase().includes(needle));
+    return [...list].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }, [showDeleted, deleted, active, sel, folders, q]);
+
+  function deleteFolder(f: FolderNode) {
+    ops.setConfirmState({
+      title: 'Ordner löschen',
+      message: `Ordner „${f.name}" löschen?\n\nUnterordner und Dokumente werden eine Ebene nach oben verschoben. Es wird kein Dokument gelöscht.`,
+      confirmLabel: 'Löschen',
+      busyLabel: 'Löscht…',
+      danger: true,
+      action: async () => {
+        const r = await deleteFolderAction({ folderId: f.id });
+        if (r.ok) {
+          if (sel === f.id) setSel('all');
+          router.refresh();
+        }
+        return r;
+      },
+    });
+  }
+
+  // Hover-Aktionen + Zähler pro Ordnerzeile (im gemeinsamen FolderTreePicker).
+  function folderRowExtra(f: FolderNode) {
+    return (
+      <>
+        <span className="text-xs text-disabled">{countIn(f.id) || ''}</span>
+        <span className="hidden group-hover:flex items-center gap-0.5">
+          <button
+            type="button"
+            title="Unterordner"
+            onClick={(e) => {
+              e.stopPropagation();
+              ops.setCreateFolder({
+                parentId: f.id,
+                title: 'Neuer Unterordner',
+                placeholder: 'Name des Unterordners',
+              });
+            }}
+            className="text-disabled hover:text-brand-700"
+          >
+            <FolderPlus className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            title="Umbenennen"
+            onClick={(e) => {
+              e.stopPropagation();
+              ops.setRenameTarget({ id: f.id, name: f.name });
+            }}
+            className="text-disabled hover:text-brand-700"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            title="Löschen (Inhalt rückt eine Ebene hoch)"
+            onClick={(e) => {
+              e.stopPropagation();
+              deleteFolder(f);
+            }}
+            className="text-disabled hover:text-red-600"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </span>
+      </>
+    );
+  }
 
   return (
-    <Modal title="Verschieben nach…" onClose={onClose}>
-      <h2 className="text-base font-semibold text-primary mb-3">Verschieben nach…</h2>
-      <div className="border border-default rounded-md max-h-72 overflow-auto p-1">
-        <FolderTreePicker
-          folders={folders}
-          value={target}
-          onSelect={setTarget}
-          rootLabel="— Wurzel (ohne Ordner) —"
-          disabledIds={blocked}
-          showCheck
-        />
-      </div>
-      <div className="flex gap-2 mt-4">
-        <button type="button" onClick={onClose} className="btn-secondary flex-1">Abbrechen</button>
-        <button type="button" onClick={() => onPick(target)} className="btn-primary flex-1">
-          Hierher verschieben
+    <div className="grid grid-cols-[240px_1fr] gap-4">
+      {/* ---- Ordnerbaum ---- */}
+      <div className="card p-2 self-start">
+        <div className="flex items-center justify-between px-2 py-1.5 mb-1">
+          <span className="text-xs font-semibold text-muted uppercase tracking-wide">
+            Ordner
+          </span>
+          <button
+            type="button"
+            title="Ordner anlegen"
+            onClick={() =>
+              ops.setCreateFolder({
+                parentId: null,
+                title: 'Neuer Ordner',
+                placeholder: 'Name des neuen Ordners',
+              })
+            }
+            className="text-disabled hover:text-brand-700"
+          >
+            <FolderPlus className="h-4 w-4" />
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={() => setSel('all')}
+          className={`w-full flex items-center gap-1.5 rounded px-2 py-1 text-sm ${
+            sel === 'all' ? 'bg-brand-50 text-brand-700' : 'hover:bg-gray-50 text-secondary'
+          }`}
+        >
+          <FileText className="h-4 w-4" />
+          <span className="flex-1 text-left">Alle</span>
+          <span className="text-xs text-disabled">{active.length || ''}</span>
         </button>
+        <button
+          type="button"
+          onClick={() => setSel('none')}
+          className={`w-full flex items-center gap-1.5 rounded px-2 py-1 text-sm ${
+            sel === 'none' ? 'bg-brand-50 text-brand-700' : 'hover:bg-gray-50 text-secondary'
+          }`}
+        >
+          <Folder className="h-4 w-4 text-disabled" />
+          <span className="flex-1 text-left">Ohne Ordner</span>
+          <span className="text-xs text-disabled">{countIn('none') || ''}</span>
+        </button>
+        <div className="mt-1 border-t border-subtle pt-1">
+          {folders.length === 0 ? (
+            <p className="px-2 py-3 text-xs text-disabled">
+              Noch keine Ordner. Oben „+" für den ersten Ordner.
+            </p>
+          ) : (
+            <FolderTreePicker
+              folders={folders}
+              value={sel !== 'all' && sel !== 'none' ? sel : null}
+              onSelect={(id) => { if (id) setSel(id); }}
+              indent={14}
+              rowExtra={folderRowExtra}
+            />
+          )}
+        </div>
       </div>
-    </Modal>
+
+      {/* ---- Dokumentenliste ---- */}
+      <div>
+        <div className="flex flex-wrap items-center gap-3 mb-3">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="h-4 w-4 text-disabled absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="In Auswahl suchen…"
+              className="input pl-9"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowDeleted((v) => !v)}
+            className={`text-xs px-3 py-1.5 rounded ${
+              showDeleted ? 'bg-brand-50 text-brand-700' : 'text-muted hover:text-secondary'
+            }`}
+          >
+            {showDeleted ? `Gelöscht (${deleted.length})` : `Gelöschte anzeigen (${deleted.length})`}
+          </button>
+          {canUpload && (
+            <DocumentUploadButton
+              clientId={clientId ?? undefined}
+              folderId={typeof sel === 'string' && sel !== 'all' && sel !== 'none' ? sel : undefined}
+              analysisId={analysisId}
+              defaultClassification={clientId ? 'GOBD_INVOICE' : 'GENERAL'}
+              buttonLabel="Hochladen"
+              buttonClassName="btn-primary text-xs py-1.5"
+            />
+          )}
+        </div>
+
+        <OpErrorBanner ops={ops} />
+
+        <div className="card overflow-hidden">
+          {shown.length === 0 ? (
+            <div className="px-6 py-14 text-center">
+              <FileText className="h-10 w-10 text-disabled mx-auto mb-2" />
+              <p className="text-sm text-disabled">
+                {showDeleted ? 'Keine gelöschten Dokumente.' : 'Keine Dokumente in dieser Auswahl.'}
+              </p>
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 border-b border-default">
+                  <th className="text-left px-5 py-2.5 text-xs font-medium text-muted uppercase">Titel</th>
+                  <th className="text-left px-5 py-2.5 text-xs font-medium text-muted uppercase">Klassifikation</th>
+                  <th className="text-left px-5 py-2.5 text-xs font-medium text-muted uppercase">Größe</th>
+                  <th className="text-left px-5 py-2.5 text-xs font-medium text-muted uppercase">Datum</th>
+                  <th className="px-5 py-2.5" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border-subtle">
+                {shown.map((d) => (
+                  <tr key={d.id} className="hover:bg-gray-50">
+                    <td className="px-5 py-3 font-medium text-primary">
+                      <button
+                        type="button"
+                        onClick={() => ops.setPreviewDoc({ id: d.id, name: d.title })}
+                        className="text-left hover:underline"
+                        title="Vorschau öffnen"
+                      >
+                        {d.title}
+                      </button>
+                    </td>
+                    <td className="px-5 py-3 text-secondary">
+                      <span className="inline-flex items-center gap-1.5">
+                        {d.typeName || CLASS_LABELS[d.classification] || d.classification}
+                        {!d.deletedAt && <ShareBadge shared={d.shared} />}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3 text-secondary">{fmtBytes(d.sizeBytes)}</td>
+                    <td className="px-5 py-3 text-secondary">{fmtDate(d.createdAt)}</td>
+                    <td className="px-5 py-3 text-right whitespace-nowrap">
+                      {!d.deletedAt && (
+                        <>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            title={d.shared ? 'Freigabe für Mandant zurückziehen' : 'Für Mandant freigeben'}
+                            onClick={() => ops.toggleShare(d.id, !d.shared)}
+                            className={`p-1.5 ${d.shared ? 'text-green-600 hover:text-green-700' : 'text-disabled hover:text-brand-700'}`}
+                          >
+                            {d.shared ? <Share2 className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                          </button>
+                          <button
+                            type="button"
+                            title="Typ ändern"
+                            onClick={() => ops.setRetag({ ids: [d.id], title: d.title, tier: d.tier, typeId: d.typeId })}
+                            className="icon-btn"
+                          >
+                            <Tag className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            title="In Ordner verschieben"
+                            onClick={() => setMoveDoc(d)}
+                            className="icon-btn"
+                          >
+                            <FolderInput className="h-4 w-4" />
+                          </button>
+                        </>
+                      )}
+                      <a
+                        href={`/api/staff/documents/${d.id}/download`}
+                        className="text-disabled hover:text-primary p-1.5 inline-flex items-center"
+                        title="Herunterladen"
+                      >
+                        <Download className="h-4 w-4" />
+                      </a>
+                      {d.deletedAt ? (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          title="Wiederherstellen"
+                          onClick={() => ops.restoreDoc(d.id)}
+                          className="icon-btn"
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          title="Löschen"
+                          onClick={() => setConfirmDelDoc(d)}
+                          className="text-disabled hover:text-red-600 p-1.5"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+        <p className="mt-2 text-xs text-disabled">
+          {scopeLabel} · Klassifikation (GoBD/GwG) und Aufbewahrung sind
+          unabhängig von der Ordnerablage. Löschen blendet nur aus — die Datei
+          bleibt revisionssicher aufbewahrt.
+        </p>
+      </div>
+
+      {confirmDelDoc && (
+        <DeleteDocModal
+          doc={confirmDelDoc}
+          onClose={() => setConfirmDelDoc(null)}
+          onDone={() => {
+            setConfirmDelDoc(null);
+            router.refresh();
+          }}
+        />
+      )}
+      {moveDoc && (
+        <MoveDialog
+          documentId={moveDoc.id}
+          documentTitle={moveDoc.title}
+          currentFolderId={moveDoc.folderId}
+          folders={folders}
+          onClose={() => setMoveDoc(null)}
+          onDone={() => {
+            setMoveDoc(null);
+            router.refresh();
+          }}
+        />
+      )}
+    </div>
   );
 }

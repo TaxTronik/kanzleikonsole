@@ -1,14 +1,15 @@
 // =============================================================================
-// Gemeinsamer Mapper Document-Row → ManagedDoc (für den DocumentsManager).
+// Gemeinsamer Mapper Document-Row → ManagedDoc (für den DocumentExplorer,
+// Variante "embedded").
 //
 // Eine Quelle für die Tier-Ableitung + Feld-Abbildung — genutzt von der
 // Mandanten-Detailseite UND dem Subsumtions-Tab „Aktenregal" (kein Doppel-Code).
 // =============================================================================
 
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
-import type { ManagedDoc } from '@/components/documents-manager';
+import type { ManagedDoc } from '@/components/document-explorer';
 
-/** Felder, die der DocumentsManager (via toManagedDoc) braucht. */
+/** Felder, die der DocumentExplorer (via toManagedDoc) braucht. */
 export const MANAGED_DOC_SELECT = {
   id: true,
   title: true,

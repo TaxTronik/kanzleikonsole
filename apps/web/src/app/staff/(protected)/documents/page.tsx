@@ -2,7 +2,7 @@ import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { redirect } from 'next/navigation';
 import type { ClientKind, DocumentProtectionTier } from '@prisma/client';
-import { DocumentBrowser, type Entry, type Crumb } from '@/components/document-browser';
+import { DocumentExplorer, type Entry, type Crumb } from '@/components/document-explorer';
 
 const KIND_LABEL: Record<string, string> = {
   NATPERS: 'Natürliche Personen',
@@ -66,7 +66,8 @@ export default async function DocumentsPage({
       },
     ];
     return (
-      <DocumentBrowser
+      <DocumentExplorer
+        variant="browser"
         crumbs={[{ label: 'Dokumente', href: '/staff/documents' }]}
         entries={entries}
         scope={null}
@@ -97,7 +98,8 @@ export default async function DocumentsPage({
       icon: 'client',
     }));
     return (
-      <DocumentBrowser
+      <DocumentExplorer
+        variant="browser"
         crumbs={[
           { label: 'Dokumente', href: '/staff/documents' },
           { label: KIND_LABEL[typeParam] ?? typeParam, href: base({ type: typeParam }) },
@@ -237,7 +239,8 @@ export default async function DocumentsPage({
   }
 
   return (
-    <DocumentBrowser
+    <DocumentExplorer
+      variant="browser"
       crumbs={crumbs}
       entries={entries}
       scope={{ clientId: scopeClientId, typeParam }}

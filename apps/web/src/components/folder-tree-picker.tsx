@@ -2,9 +2,9 @@
 
 // =============================================================================
 // FolderTreePicker — gemeinsamer, rekursiver Ordnerbaum mit Auswahl.
-// Ersetzt die drei fast identischen Implementierungen in document-browser
-// (MoveTargetDialog), document-dialogs (MoveDialog) und documents-manager
-// (renderTree). Zeilen sind tastaturbedienbar (Enter/Leertaste).
+// Genutzt von document-dialogs (MoveDialog, MoveTargetDialog) und dem
+// DocumentExplorer (Sidebar der Variante "embedded"). Zeilen sind
+// tastaturbedienbar (Enter/Leertaste).
 // =============================================================================
 
 import { useMemo, useState } from 'react';

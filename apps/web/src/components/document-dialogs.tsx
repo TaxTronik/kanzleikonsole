@@ -1,13 +1,16 @@
 'use client';
 
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useMemo, useState, useTransition } from 'react';
 import {
   setDocumentFolderAction,
 } from '@/app/staff/(protected)/documents/folder-actions';
-import { retagDocumentAction } from '@/app/staff/(protected)/documents/actions';
+import {
+  retagDocumentAction,
+  softDeleteDocumentAction,
+} from '@/app/staff/(protected)/documents/actions';
 import { Modal } from '@/components/ui/modal';
 import { FolderTreePicker } from '@/components/folder-tree-picker';
-import { runChunked, type FolderNode } from '@/components/document-browser-utils';
+import { descendants, runChunked, type FolderNode } from '@/components/document-browser-utils';
 
 export type { FolderNode };
 
@@ -217,6 +220,115 @@ export function RetagDialog({
           className="btn-primary flex-1"
         >
           {busy ? 'Ändert…' : multi ? 'Anwenden' : 'Typ ändern'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+// ===========================================================================
+// MoveTargetDialog — Ziel-Ordner für eine AUSWAHL (Dateien + Ordner) wählen.
+// Anders als MoveDialog (ein Dokument, führt selbst aus) liefert dieser nur
+// das Ziel zurück; das Verschieben übernimmt der Aufrufer (Bulk/DnD).
+// ===========================================================================
+export function MoveTargetDialog({
+  folders, movingFolderIds, onClose, onPick,
+}: {
+  folders: FolderNode[];
+  movingFolderIds: string[];
+  onClose: () => void;
+  onPick: (target: string | null) => void;
+}) {
+  const [target, setTarget] = useState<string | null>(null);
+  // Ziele, die im Teilbaum eines zu verschiebenden Ordners liegen, sperren.
+  const blocked = useMemo(() => {
+    const b = new Set<string>();
+    for (const id of movingFolderIds) for (const d of descendants(folders, id)) b.add(d);
+    return b;
+  }, [folders, movingFolderIds]);
+
+  return (
+    <Modal title="Verschieben nach…" onClose={onClose}>
+      <h2 className="text-base font-semibold text-primary mb-3">Verschieben nach…</h2>
+      <div className="border border-default rounded-md max-h-72 overflow-auto p-1">
+        <FolderTreePicker
+          folders={folders}
+          value={target}
+          onSelect={setTarget}
+          rootLabel="— Wurzel (ohne Ordner) —"
+          disabledIds={blocked}
+          showCheck
+        />
+      </div>
+      <div className="flex gap-2 mt-4">
+        <button type="button" onClick={onClose} className="btn-secondary flex-1">Abbrechen</button>
+        <button type="button" onClick={() => onPick(target)} className="btn-primary flex-1">
+          Hierher verschieben
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+// ===========================================================================
+// DeleteDocModal — Soft-Delete MIT optionalem Grund + GoBD/GwG-Aufklärung
+// (Einsatz im Embedded-Modus des DocumentExplorer).
+// ===========================================================================
+export function DeleteDocModal({
+  doc,
+  onClose,
+  onDone,
+}: {
+  doc: { id: string; title: string; classification: string };
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [reason, setReason] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, start] = useTransition();
+  const locked = doc.classification.startsWith('GOBD_') || doc.classification === 'GWG_EVIDENCE';
+  return (
+    <Modal title="Dokument löschen" onClose={onClose}>
+      <h2 className="text-lg font-semibold text-primary mb-2">Dokument löschen</h2>
+      <p className="text-sm text-secondary mb-3">„{doc.title}" wird aus den Listen ausgeblendet.</p>
+      <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 mb-4">
+        Die Datei bleibt im revisionssicheren Object-Store und wird
+        <strong> gesetzlich weiter aufbewahrt</strong>
+        {locked
+          ? ' (Object-Lock COMPLIANCE — physisch nicht löschbar bis Fristende, § 147 AO / § 8 Abs. 4 GwG).'
+          : ' — sie wird nicht physisch entfernt.'}{' '}
+        Protokolliert im Audit-Log, wiederherstellbar.
+      </div>
+      <textarea
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        rows={2}
+        maxLength={500}
+        className="input mb-3"
+        placeholder="Grund (optional)"
+      />
+      {err && <div className="rounded bg-red-50 p-2 text-xs text-red-700 mb-3">{err}</div>}
+      <div className="flex gap-2">
+        <button type="button" onClick={onClose} disabled={busy} className="btn-secondary flex-1">
+          Abbrechen
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() =>
+            start(async () => {
+              setErr(null);
+              const r = await softDeleteDocumentAction({
+                documentId: doc.id,
+                reason: reason.trim() || undefined,
+              });
+              if (r.ok) onDone();
+              else setErr(r.error ?? 'Fehler.');
+            })
+          }
+          className="btn-primary flex-1 !bg-red-600 hover:!bg-red-700"
+        >
+          {busy ? 'Löscht…' : 'Löschen'}
         </button>
       </div>
     </Modal>

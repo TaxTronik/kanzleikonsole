@@ -10,7 +10,7 @@ import { readClientLayout, type ClientBlockKey } from '@/server/settings/client-
 import { CockpitGrid } from './cockpit-grid';
 import { RequestDecision, type RequestRow } from '@/app/staff/(protected)/calendar/request-decision';
 import { SCHEDULE_LABELS } from '@taxtronik/tax';
-import { DocumentsManager } from '@/components/documents-manager';
+import { DocumentExplorer } from '@/components/document-explorer';
 import { toManagedDoc } from '@/server/documents/managed-docs';
 import { ClientContactsPanel } from '@/components/client-contacts-panel';
 import { QuickPhoneNote } from './quick-phone-note';
@@ -165,8 +165,8 @@ export default async function ClientDetailPage({
           orderBy: [{ status: 'asc' }, { receivedAt: 'desc' }],
           take: 50,
         }),
-        // Für den DocumentsManager: alle Dokumente des Mandanten INKL.
-        // soft-gelöschter (der Manager hat eine eigene Gelöscht-Ansicht).
+        // Für den DocumentExplorer: alle Dokumente des Mandanten INKL.
+        // soft-gelöschter (die Komponente hat eine eigene Gelöscht-Ansicht).
         tx.document.findMany({
           where: { clientId: id },
           orderBy: { createdAt: 'desc' },
@@ -816,7 +816,8 @@ export default async function ClientDetailPage({
                   Dokumente können erst nach GwG-Freischaltung hochgeladen werden.
                 </p>
               )}
-              <DocumentsManager
+              <DocumentExplorer
+                variant="embedded"
                 clientId={client.id}
                 canUpload={client.allowActive}
                 scopeLabel={client.name}

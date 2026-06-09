@@ -10,7 +10,7 @@ import { WorkflowSection } from '../../workflows/workflow-section';
 import { StartWorkflowForm } from '../../workflows/start-form';
 import { withTenantContext } from '@taxtronik/db';
 import { loadAnalysisDocuments } from '@/server/documents/managed-docs';
-import { DocumentsManager } from '@/components/documents-manager';
+import { DocumentExplorer } from '@/components/document-explorer';
 import type { AnalysisDTO, MarkingDTO, NormRefDTO, ResearchResultDTO, ResearchRequestDTO } from '../_ui';
 
 export default async function AnalysisPage({
@@ -88,10 +88,11 @@ export default async function AnalysisPage({
     </div>
   );
 
-  // Aktenregal-Tab: Dokumente dieses Sachverhalts — reuse DocumentsManager,
+  // Aktenregal-Tab: Dokumente dieses Sachverhalts — reuse DocumentExplorer,
   // gescopt per analysisId (Uploads setzen analysis_id; GwG-Gate wie am Mandanten).
   const aktenregal = (
-    <DocumentsManager
+    <DocumentExplorer
+      variant="embedded"
       clientId={id}
       analysisId={analysisId}
       canUpload={clientInfo?.allowActive ?? false}
