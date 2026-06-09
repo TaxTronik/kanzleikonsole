@@ -29,10 +29,15 @@ import {
   type ProtectionTier,
 } from '@taxtronik/storage';
 import { withTenantContext } from '@taxtronik/db';
-import { prismaBytes } from '@/server/db/prisma-bytes';
+import {
+  parseMultipartUpload,
+  storageCommitErrorResponse,
+  createDocumentWithVersion,
+} from '@/server/documents/upload-helpers';
 import { carrierClassification } from '@/server/storage/document-type';
 import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
+import { log } from '@/server/logger';
 
 // iter55: bevorzugt documentTypeId (trägt die Schutzstufe). classification
 // bleibt als Back-Compat erlaubt (Altpfade / Kern-Typ direkt). Mindestens
@@ -78,20 +83,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'TOO_LARGE' }, { status: 413 });
   }
 
-  let form: FormData;
-  try {
-    form = await req.formData();
-  } catch {
-    return NextResponse.json({ error: 'invalid_multipart' }, { status: 400 });
-  }
-
-  const file = form.get('file');
-  if (!(file instanceof Blob)) {
-    return NextResponse.json({ error: 'file_missing' }, { status: 400 });
-  }
-  if (file.size > MAX_UPLOAD_BYTES) {
-    return NextResponse.json({ error: 'TOO_LARGE' }, { status: 413 });
-  }
+  // Befund 12: Multipart-Parse + Datei-Checks zentral (upload-helpers).
+  const upload = await parseMultipartUpload(req);
+  if (!upload.ok) return upload.response;
+  const { form, file } = upload;
 
   const parsed = FieldsSchema.safeParse({
     classification: form.get('classification') ?? undefined,
@@ -115,44 +110,123 @@ export async function POST(req: NextRequest) {
 
   // Typ → Schutzstufe + Carrier-Klassifikation + finale documentTypeId
   // auflösen (vor dem Storage-Commit, weil die Stufe Bucket/Lock bestimmt).
+  // Befund 1a: auch die rein lesenden Referenz-Validierungen (clientId,
+  // analysisId, workflowItemId, folderId) laufen HIER — vor dem Storage-
+  // Commit. Ein object-locked Objekt kann nicht mehr gelöscht werden;
+  // scheiterte die Validierung erst danach, blieb ein verwaistes Objekt.
   let tier: ProtectionTier;
   let classification: string;
   let resolvedTypeId: string | null;
+  let effectiveFolderId: string | null;
   try {
     const r = await withTenantContext(
       { tenantId, actorId: staffId, actorType: 'STAFF' },
       async (tx) => {
+        let resolved: {
+          tier: ProtectionTier;
+          classification: string;
+          resolvedTypeId: string | null;
+        };
         if (parsed.data.documentTypeId) {
           const t = await tx.documentType.findFirst({
             where: { id: parsed.data.documentTypeId, tenantId, active: true },
             select: { id: true, tier: true, classificationKey: true },
           });
           if (!t) throw new Error('TYPE_NOT_FOUND: Datei-Typ nicht gefunden.');
-          return {
+          resolved = {
             tier: t.tier as ProtectionTier,
             classification: carrierClassification(t.tier as ProtectionTier, t.classificationKey),
             resolvedTypeId: t.id,
           };
+        } else {
+          // Back-Compat: Klassifikation gegeben → Kern-Typ desselben Tenants
+          // verknüpfen, Stufe gesetzlich ableiten.
+          const cls = parsed.data.classification!;
+          const builtin = await tx.documentType.findFirst({
+            where: { tenantId, classificationKey: cls },
+            select: { id: true },
+          });
+          resolved = {
+            tier: classificationToTier(cls),
+            classification: cls,
+            resolvedTypeId: builtin?.id ?? null,
+          };
         }
-        // Back-Compat: Klassifikation gegeben → Kern-Typ desselben Tenants
-        // verknüpfen, Stufe gesetzlich ableiten.
-        const cls = parsed.data.classification!;
-        const builtin = await tx.documentType.findFirst({
-          where: { tenantId, classificationKey: cls },
-          select: { id: true },
-        });
-        return {
-          tier: classificationToTier(cls),
-          classification: cls,
-          resolvedTypeId: builtin?.id ?? null,
-        };
+
+        // M-1: Tenant-Sanity-Check für clientId — FK greift nur auf Existenz,
+        // nicht auf Tenant-Match.
+        if (clientId) {
+          const c = await tx.client.findFirst({ where: { id: clientId }, select: { id: true } });
+          if (!c) {
+            throw new Error('CLIENT_NOT_FOUND: clientId nicht in diesem Tenant.');
+          }
+        }
+        // Tenant-Sanity für analysisId (analog clientId — der FK prüft nur Existenz,
+        // unter RLS sieht findFirst nur Analysen DIESES Tenants).
+        if (analysisId) {
+          const a = await tx.riskAnalysis.findFirst({ where: { id: analysisId }, select: { id: true } });
+          if (!a) {
+            throw new Error('ANALYSIS_NOT_FOUND: analysisId nicht in diesem Tenant.');
+          }
+        }
+        // HIGH: Tenant-/Mandanten-Sanity für workflowItemId. Der FK prüft nur
+        // Existenz (workflow_item.id), nicht Tenant/Mandant — und workflow_item
+        // trägt selbst keine tenant_id. Ohne diesen Check ließe sich mit bekannter
+        // UUID ein Dokument an einen fremden Workflow-Schritt hängen, innerhalb
+        // desselben Tenants auch mandantenübergreifend. Über die instance-Relation
+        // (trägt tenantId + clientId) scopen und Mandanten-Gleichheit erzwingen.
+        if (workflowItemId) {
+          const wi = await tx.workflowItem.findFirst({
+            where: { id: workflowItemId, instance: { tenantId } },
+            select: { instance: { select: { clientId: true } } },
+          });
+          if (!wi) {
+            throw new Error('WORKFLOW_ITEM_NOT_FOUND: workflowItemId nicht in diesem Tenant.');
+          }
+          if ((wi.instance.clientId ?? null) !== (clientId ?? null)) {
+            throw new Error(
+              'WORKFLOW_ITEM_CLIENT_MISMATCH: Workflow-Schritt gehört zu einem anderen Mandanten.',
+            );
+          }
+        }
+        // Ordner muss zum Tenant gehören und im selben Bereich liegen wie das
+        // Dokument (Mandant ↔ Mandant, bzw. beide kanzlei-intern). Sonst
+        // ignorieren (Dokument landet ohne Ordner) statt hart abzubrechen.
+        let folder: string | null = null;
+        if (folderId) {
+          const f = await tx.documentFolder.findFirst({
+            where: { id: folderId, tenantId },
+            select: { clientId: true },
+          });
+          if (f && (f.clientId ?? null) === (clientId ?? null)) {
+            folder = folderId;
+          }
+        }
+        return { ...resolved, effectiveFolderId: folder };
       },
     );
     tier = r.tier;
     classification = r.classification;
     resolvedTypeId = r.resolvedTypeId;
+    effectiveFolderId = r.effectiveFolderId;
   } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 400 });
+    // Bekannte Validierungsfehler → 400 mit Message; alles andere generisch
+    // + strukturiertes Log (Policy rbac.ts: unbekannte Errors nie roh ans UI).
+    const msg = (e as Error).message ?? '';
+    const isValidation =
+      msg.startsWith('TYPE_NOT_FOUND') ||
+      msg.startsWith('CLIENT_NOT_FOUND') ||
+      msg.startsWith('ANALYSIS_NOT_FOUND') ||
+      msg.startsWith('WORKFLOW_ITEM_NOT_FOUND') ||
+      msg.startsWith('WORKFLOW_ITEM_CLIENT_MISMATCH');
+    if (isValidation) {
+      return NextResponse.json({ error: msg }, { status: 400 });
+    }
+    log.error(
+      { component: 'documents-commit', tenantId, err: msg },
+      'documents-commit: Validierungs-Tx vor Storage-Commit fehlgeschlagen',
+    );
+    return NextResponse.json({ error: 'internal_error' }, { status: 500 });
   }
 
   const fileData = Buffer.from(await file.arrayBuffer());
@@ -163,72 +237,23 @@ export async function POST(req: NextRequest) {
   try {
     commit = await commitBytesWithTier({ fileData, tier, tenantId });
   } catch (e) {
-    const msg = (e as Error).message;
-    const status =
-      msg.startsWith('INFECTED') ? 422 :
-      msg.startsWith('TOO_LARGE') ? 413 :
-      msg.startsWith('FORBIDDEN') ? 403 :
-      msg.startsWith('SCAN_ERROR') ? 502 : 500;
-    return NextResponse.json({ error: msg }, { status });
+    // Befund 12: Mapping zentral (war 3× wortgleich kopiert).
+    return storageCommitErrorResponse(e);
   }
 
-  // 2. DB-Records + Audit in derselben Tx (Konsistenzgarantie)
-  const docRow = await withTenantContext(
+  // 2. DB-Records + Audit in derselben Tx (Konsistenzgarantie). Die
+  // Referenz-Validierungen liefen bereits VOR dem Storage-Commit (Befund 1a) —
+  // hier nur noch Insert + Audit.
+  let docRow;
+  try {
+    docRow = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
-      // M-1: Tenant-Sanity-Check für clientId — FK greift nur auf Existenz,
-      // nicht auf Tenant-Match.
-      if (clientId) {
-        const c = await tx.client.findFirst({ where: { id: clientId }, select: { id: true } });
-        if (!c) {
-          throw new Error('CLIENT_NOT_FOUND: clientId nicht in diesem Tenant.');
-        }
-      }
-      // Tenant-Sanity für analysisId (analog clientId — der FK prüft nur Existenz,
-      // unter RLS sieht findFirst nur Analysen DIESES Tenants).
-      if (analysisId) {
-        const a = await tx.riskAnalysis.findFirst({ where: { id: analysisId }, select: { id: true } });
-        if (!a) {
-          throw new Error('ANALYSIS_NOT_FOUND: analysisId nicht in diesem Tenant.');
-        }
-      }
-      // HIGH: Tenant-/Mandanten-Sanity für workflowItemId. Der FK prüft nur
-      // Existenz (workflow_item.id), nicht Tenant/Mandant — und workflow_item
-      // trägt selbst keine tenant_id. Ohne diesen Check ließe sich mit bekannter
-      // UUID ein Dokument an einen fremden Workflow-Schritt hängen, innerhalb
-      // desselben Tenants auch mandantenübergreifend. Über die instance-Relation
-      // (trägt tenantId + clientId) scopen und Mandanten-Gleichheit erzwingen.
-      if (workflowItemId) {
-        const wi = await tx.workflowItem.findFirst({
-          where: { id: workflowItemId, instance: { tenantId } },
-          select: { instance: { select: { clientId: true } } },
-        });
-        if (!wi) {
-          throw new Error('WORKFLOW_ITEM_NOT_FOUND: workflowItemId nicht in diesem Tenant.');
-        }
-        if ((wi.instance.clientId ?? null) !== (clientId ?? null)) {
-          throw new Error(
-            'WORKFLOW_ITEM_CLIENT_MISMATCH: Workflow-Schritt gehört zu einem anderen Mandanten.',
-          );
-        }
-      }
-      // Ordner muss zum Tenant gehören und im selben Bereich liegen wie das
-      // Dokument (Mandant ↔ Mandant, bzw. beide kanzlei-intern). Sonst
-      // ignorieren (Dokument landet ohne Ordner) statt hart abzubrechen.
-      let effectiveFolderId: string | null = null;
-      if (folderId) {
-        const f = await tx.documentFolder.findFirst({
-          where: { id: folderId, tenantId },
-          select: { clientId: true },
-        });
-        if (f && (f.clientId ?? null) === (clientId ?? null)) {
-          effectiveFolderId = folderId;
-        }
-      }
       // M-2: detectedMime aus Magic-Bytes hat Vorrang vor Client-gemeldetem Wert.
       const effectiveMime = commit.detectedMime ?? mimeType;
-      const document = await tx.document.create({
-        data: {
+      // Befund 12: Document+Version-Insert zentral (upload-helpers).
+      const { document } = await createDocumentWithVersion(tx, {
+        documentData: {
           tenantId,
           clientId: clientId ?? null,
           ownerStaffId: staffId,
@@ -241,20 +266,8 @@ export async function POST(req: NextRequest) {
           analysisId: analysisId ?? null,
           folderId: effectiveFolderId,
         },
-      });
-      await tx.documentVersion.create({
-        data: {
-          documentId: document.id,
-          versionNo: 1,
-          storageBucket: commit.targetBucket,
-          storageKey: commit.targetKey,
-          sha256: prismaBytes(commit.sha256),
-          sizeBytes: commit.sizeBytes,
-          immutable: commit.immutable,
-          scanStatus: 'CLEAN',
-          scanCompletedAt: new Date(),
-          createdById: staffId,
-        },
+        commit,
+        createdById: staffId,
       });
       await evidenceService.record(tx, {
         tenantId,
@@ -275,7 +288,26 @@ export async function POST(req: NextRequest) {
       });
       return document;
     },
-  );
+    );
+  } catch (e) {
+    // Befund 1: zu diesem Zeitpunkt liegt das Objekt bereits object-locked
+    // im Storage und kann NICHT gelöscht werden. Scheitert die DB-Tx jetzt
+    // noch (z. B. TOCTOU: Client zwischen Validierung und Insert gelöscht →
+    // FK-Fehler), bleibt ein verwaistes Objekt zurück → Key strukturiert
+    // loggen, damit Ops aufräumen/abgleichen kann.
+    log.error(
+      {
+        component: 'documents-commit',
+        tenantId,
+        orphanedBucket: commit.targetBucket,
+        orphanedKey: commit.targetKey,
+        sha256: commit.sha256.toString('hex'),
+        err: (e as Error).message,
+      },
+      'documents-commit: DB-Commit nach Storage-Upload fehlgeschlagen — Objekt verwaist',
+    );
+    return NextResponse.json({ error: 'internal_error' }, { status: 500 });
+  }
 
   // 3. n8n-Event (fire-and-forget)
   emitN8nEvent('document.uploaded', {

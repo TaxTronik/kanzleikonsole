@@ -255,10 +255,18 @@ export const n8nOutboxReconcileWorker = new Worker(
         'deliver',
         { outboxId: row.id },
         {
+          // RF-1: deterministische jobId — symmetrisch zum initialen Enqueue
+          // in apps/web (outbox.ts). Läuft die ursprüngliche Retry-Kette noch
+          // (Backoff bis ~31 min > 5-min-Reconcile-Cutoff), ist dieses add ein
+          // No-Op statt einer zweiten, parallelen Job-Kette mit Doppel-POSTs.
+          jobId: `outbox-${row.id}`,
           attempts: 6,
           backoff: { type: 'exponential', delay: 60_000 },
           removeOnComplete: { age: 24 * 60 * 60 },
-          removeOnFail: false,
+          // RF-1: age-basiert statt `false` — ein für immer aufgehobener
+          // FAILED-Job würde mit seiner jobId jede spätere Re-Zustellung
+          // (Ops: Reihe zurück auf PENDING) dauerhaft blockieren.
+          removeOnFail: { age: 7 * 24 * 60 * 60 },
         },
       );
     }

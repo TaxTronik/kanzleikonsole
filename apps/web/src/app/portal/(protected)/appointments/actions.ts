@@ -8,6 +8,7 @@ import { evidenceService } from '@/server/container';
 import { notify } from '@/server/notifications/service';
 import { assertPortalFeature } from '@/server/settings/portal-features';
 import { checkRateLimit } from '@/server/rate-limit';
+import { assertStaffInTenant } from '@/server/db/assert-tenant';
 import { toActionError } from '@/server/auth/rbac';
 import { portalActionGuard, withPortalContext, ActionError } from '@/server/actions/portal-action';
 
@@ -90,6 +91,12 @@ export async function createAppointmentRequestAction(
     await withTenantContext(
       ctx,
       async (tx) => {
+        // P-7 (Befund 5): preferredStaffId ist Portal-User-kontrolliert und
+        // wurde ungeprüft persistiert + benotified — FK prüft nur Existenz im
+        // DB-Cluster, nicht den Tenant-Match.
+        if (parsed.data.preferredStaffId) {
+          await assertStaffInTenant(tx, parsed.data.preferredStaffId);
+        }
         const req = await tx.appointmentRequest.create({
           data: {
             tenantId,

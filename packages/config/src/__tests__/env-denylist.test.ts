@@ -171,4 +171,22 @@ describe('ENV — Dev-Default-Denylist (Audit Round 14, Finding 7)', () => {
       }),
     ).toThrow(/ENV-Validierung/);
   });
+
+  it('leeres SMTP_HOST → throw (Fail-fast, analog S3_ACCESS_KEY .min(1))', () => {
+    expect(() =>
+      parseEnvFrom({
+        ...VALID_BASE,
+        SMTP_HOST: '',
+      }),
+    ).toThrow(/ENV-Validierung/);
+  });
+
+  it('leeres SMTP_FROM → throw (Fail-fast, analog S3_ACCESS_KEY .min(1))', () => {
+    expect(() =>
+      parseEnvFrom({
+        ...VALID_BASE,
+        SMTP_FROM: '',
+      }),
+    ).toThrow(/ENV-Validierung/);
+  });
 });

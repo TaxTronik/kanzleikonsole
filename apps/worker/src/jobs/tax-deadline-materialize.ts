@@ -1,27 +1,31 @@
 // =============================================================================
 // tax-deadline-materialize-Worker
 //
-// Täglich:
-//   1. Aktive TaxScheduleConfigs durchgehen, Termine für die nächsten N Tage
-//      idempotent in tax_deadline einfügen.
-//   2. Wenn ein Termin im Reminder-Fenster liegt (dueDate - reminderDaysBefore
-//      <= today), automatisch eine Anforderung an den Mandanten erzeugen
-//      (Status: REMINDED).
-//   3. Vergangene Termine ohne Erledigung als OVERDUE markieren.
+// Täglicher Regelbetrieb der Steuertermin-Materialisierung. Die eigentliche
+// Logik lebt in @taxtronik/tax (materializeTenantTaxDeadlines) und ist mit
+// dem Web-Pfad (apps/web/src/server/tax-deadlines/materialize.ts) geteilt —
+// EINE Logik, keine Drift. Hier nur die Worker-Verdrahtung:
+//   - prismaOwner (BYPASSRLS) als DB-Client; tenantId-Filter setzt der Kern;
+//   - atomare Blöcke (Request + Deadline-Update + Audit-Eintrag) laufen je in
+//     einer withWorkerTenantContext-Transaktion (Muster: invoice-overdue);
+//   - Audit über EvidenceService (Muster: risk-analyse-llm).
 //
 // Mandant muss freigeschaltet (allowActive) sein — sonst keine Termine.
-// Nutzt prismaOwner (BYPASSRLS) und filtert manuell nach tenantId, wie in
-// den anderen Worker-Jobs.
 // =============================================================================
 
 import { Worker } from 'bullmq';
-import { type TaxScheduleKind, type Prisma } from '@prisma/client';
+import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
-import { generateDeadlines, SCHEDULE_LABELS, type GermanRegion } from '@taxtronik/tax';
+import { materializeTenantTaxDeadlines } from '@taxtronik/tax';
 import { prismaOwner } from '../prisma-owner';
+import { withWorkerTenantContext } from '../tenant-context';
 
 const HORIZON_DAYS = 90;
+
+// record() braucht nur den Tx (der TimestampPort dient dem Versiegeln, nicht
+// dem Schreiben) — Muster wie in risk-analyse-llm.ts.
+const evidence = new EvidenceService(new LocalTimestampAdapter());
 
 export const taxDeadlineMaterializeWorker = new Worker<ChecksJob>(
   'tax-deadline-materialize',
@@ -30,8 +34,6 @@ export const taxDeadlineMaterializeWorker = new Worker<ChecksJob>(
       ? [job.data.tenantId]
       : (await prismaOwner.tenant.findMany({ select: { id: true } })).map((t) => t.id);
 
-    const now = new Date();
-    const horizon = new Date(now.getTime() + HORIZON_DAYS * 24 * 60 * 60 * 1000);
     let totalCreated = 0;
     let totalRequests = 0;
     let totalOverdue = 0;
@@ -52,101 +54,17 @@ export const taxDeadlineMaterializeWorker = new Worker<ChecksJob>(
         continue;
       }
 
-      // 1. Region des Tenants laden (für Werktagsverschiebung)
-      const regionRow = await prismaOwner.tenantSetting.findUnique({
-        where: { tenantId_key: { tenantId, key: 'tax_region' } },
-      });
-      const region = ((regionRow?.value as { region?: string } | null)?.region ?? null) as GermanRegion | null;
-
-      // 2. Termine materialisieren
-      const configs = await prismaOwner.taxScheduleConfig.findMany({
-        where: { tenantId, active: true },
-        include: { client: { select: { id: true, allowActive: true } } },
-      });
-      for (const cfg of configs) {
-        if (!cfg.client.allowActive) continue;
-        const candidates = generateDeadlines(
-          cfg.kind as TaxScheduleKind,
-          now,
-          horizon,
-          cfg.hasDauerfrist,
-          region,
-        );
-        for (const c of candidates) {
-          // Keine Vergangenheits-Termine — Mandanten werden unterjährig übernommen
-          if (c.dueDate.getTime() < now.getTime()) continue;
-          const existing = await prismaOwner.taxDeadline.findUnique({
-            where: {
-              tenantId_clientId_kind_period: {
-                tenantId,
-                clientId: cfg.clientId,
-                kind: c.kind,
-                period: c.period,
-              },
-            },
-          });
-          if (existing) continue;
-          await prismaOwner.taxDeadline.create({
-            data: {
-              tenantId,
-              clientId: cfg.clientId,
-              configId: cfg.id,
-              kind: c.kind,
-              period: c.period,
-              dueDate: c.dueDate,
-            },
-          });
-          totalCreated += 1;
-        }
-      }
-
-      // 2. Auto-Anforderungen
-      const upcoming = await prismaOwner.taxDeadline.findMany({
-        where: {
-          tenantId,
-          status: 'PLANNED',
-          requestId: null,
-          config: { reminderDaysBefore: { gt: 0 } },
+      const stats = await materializeTenantTaxDeadlines(
+        {
+          db: prismaOwner,
+          runAtomic: (fn) => withWorkerTenantContext(tenantId, fn),
+          recordEvidence: (tx, event) => evidence.record(tx, event),
         },
-        include: { config: { select: { reminderDaysBefore: true } } },
-      });
-      for (const dl of upcoming) {
-        const reminderDays = dl.config?.reminderDaysBefore ?? 0;
-        if (reminderDays === 0) continue;
-        const remindFrom = new Date(
-          dl.dueDate.getTime() - reminderDays * 24 * 60 * 60 * 1000,
-        );
-        if (remindFrom > now) continue;
-
-        const dueLabel = new Intl.DateTimeFormat('de-DE').format(dl.dueDate);
-        const kindLabel = SCHEDULE_LABELS[dl.kind as TaxScheduleKind];
-        const txData: Prisma.RequestCreateInput = {
-          tenant: { connect: { id: tenantId } },
-          client: { connect: { id: dl.clientId } },
-          title: `${kindLabel} ${dl.period} bis ${dueLabel}`,
-          description: `Bitte stellen Sie die Unterlagen für ${kindLabel} ${dl.period} bereit. Fälligkeit: ${dueLabel}.`,
-          priority: 'NORMAL',
-          createdByStaff: systemStaff.id,
-          dueAt: dl.dueDate,
-        };
-        const req = await prismaOwner.request.create({ data: txData });
-        await prismaOwner.taxDeadline.update({
-          where: { id: dl.id },
-          data: { requestId: req.id, status: 'REMINDED' },
-        });
-        totalRequests += 1;
-      }
-
-      // 3. OVERDUE markieren
-      const ov = await prismaOwner.taxDeadline.updateMany({
-        where: {
-          tenantId,
-          status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS'] },
-          dueDate: { lt: now },
-        },
-        data: { status: 'OVERDUE' },
-      });
-      totalOverdue += ov.count;
+        { tenantId, systemStaffId: systemStaff.id, horizonDays: HORIZON_DAYS },
+      );
+      totalCreated += stats.deadlinesCreated;
+      totalRequests += stats.requestsCreated;
+      totalOverdue += stats.markedOverdue;
     }
 
     log.info(

@@ -11,6 +11,8 @@
 //   - LSt-Anmeldung: gleiches Schema wie USt-VA
 //   - ESt/KSt/GewSt-Vorauszahlung: 10.03., 10.06., 10.09., 10.12.
 //   - ESt/KSt/GewSt-Erklärung: gesetzlich 31.07. d. Folgejahres
+//   - Beratene Fälle (advised, § 149 (3) AO): Erklärung bis zum letzten Tag
+//     des Monats Februar des ZWEITEN Folgejahres
 //
 // Wenn Fälligkeit auf Sa/So/Feiertag fällt, verschiebt sich gem. § 108 (3) AO
 // auf den nächsten Werktag. Feiertagslogik: nur Bundesweite (NW-spezifische
@@ -27,10 +29,17 @@ export interface DeadlineCandidate {
 
 /**
  * Liefert alle Fälligkeiten einer Schedule-Art im Bereich [from, to].
+ * Der Bereich gilt für das KONKRETE (werktagsverschobene) Fälligkeitsdatum —
+ * alle Zweige prüfen das verschobene Datum gegen [from, to].
  *
  * `region` wird für die Werktagsverschiebung verwendet (überspringt
  * landesspezifische Feiertage gemäß Sitz der Kanzlei). Wenn null:
  * nur bundeseinheitliche Feiertage.
+ *
+ * `advised`: beratene Erklärungsfrist nach § 149 (3) AO — letzter Tag des
+ * Monats Februar des ZWEITEN Folgejahres statt 31.07. des Folgejahres.
+ * Wirkt nur auf die Erklärungs-/Jahres-Arten. Default false = bisheriges
+ * Verhalten (nicht-beratene Frist).
  */
 export function generateDeadlines(
   kind: TaxScheduleKind,
@@ -38,6 +47,7 @@ export function generateDeadlines(
   to: Date,
   hasDauerfrist: boolean,
   region: GermanRegion | null = null,
+  advised = false,
 ): DeadlineCandidate[] {
   const out: DeadlineCandidate[] = [];
   switch (kind) {
@@ -45,8 +55,10 @@ export function generateDeadlines(
     case 'LSTA_MONATLICH':
       iterateMonths(from, to, (year, month) => {
         const period = `${year}-${pad(month)}`;
-        const due = monthlyVaDueDate(year, month, hasDauerfrist);
-        out.push({ kind, period, dueDate: shiftToNextWorkday(due, region) });
+        const due = shiftToNextWorkday(monthlyVaDueDate(year, month, hasDauerfrist), region);
+        if (due >= from && due <= to) {
+          out.push({ kind, period, dueDate: due });
+        }
       });
       break;
 
@@ -54,8 +66,10 @@ export function generateDeadlines(
     case 'LSTA_QUARTAL':
       iterateQuarters(from, to, (year, q) => {
         const period = `${year}-Q${q}`;
-        const due = quarterlyVaDueDate(year, q, hasDauerfrist);
-        out.push({ kind, period, dueDate: shiftToNextWorkday(due, region) });
+        const due = shiftToNextWorkday(quarterlyVaDueDate(year, q, hasDauerfrist), region);
+        if (due >= from && due <= to) {
+          out.push({ kind, period, dueDate: due });
+        }
       });
       break;
 
@@ -65,14 +79,10 @@ export function generateDeadlines(
       // 10.03., 10.06., 10.09., 10.12.
       iterateYears(from, to, (year) => {
         for (const month of [3, 6, 9, 12]) {
-          const due = new Date(Date.UTC(year, month - 1, 10));
+          const due = shiftToNextWorkday(new Date(Date.UTC(year, month - 1, 10)), region);
           if (due >= from && due <= to) {
             const q = Math.ceil(month / 3);
-            out.push({
-              kind,
-              period: `${year}-Q${q}`,
-              dueDate: shiftToNextWorkday(due, region),
-            });
+            out.push({ kind, period: `${year}-Q${q}`, dueDate: due });
           }
         }
       });
@@ -83,14 +93,22 @@ export function generateDeadlines(
     case 'KST_ERKLAERUNG':
     case 'GEWST_ERKLAERUNG':
     case 'LSTA_JAEHRLICH':
-      // Gesetzliche Frist: 31.07. des Folgejahres (gilt für 2025+ wieder)
+      // Gesetzliche Frist: 31.07. des Folgejahres (gilt für 2025+ wieder).
+      // Beratene Fälle (§ 149 (3) AO): letzter Tag des Monats Februar des
+      // ZWEITEN Folgejahres — Date.UTC(year, 2, 0) ist Schaltjahr-sicher
+      // (Tag 0 im März = 28. oder 29. Februar).
       iterateYears(from, to, (year) => {
-        // Der Termin gehört zum *Vorjahr* (Veranlagungsjahr),
-        // fällt aber im "year" an.
-        const period = `${year - 1}`;
-        const due = new Date(Date.UTC(year, 6, 31)); // 31.07.
+        // Der Termin gehört zum *Veranlagungsjahr* (Vorjahr, bei beratener
+        // Frist Vor-Vorjahr), fällt aber im "year" an.
+        const period = advised ? `${year - 2}` : `${year - 1}`;
+        const due = shiftToNextWorkday(
+          advised
+            ? new Date(Date.UTC(year, 2, 0)) // letzter Februartag
+            : new Date(Date.UTC(year, 6, 31)), // 31.07.
+          region,
+        );
         if (due >= from && due <= to) {
-          out.push({ kind, period, dueDate: shiftToNextWorkday(due, region) });
+          out.push({ kind, period, dueDate: due });
         }
       });
       break;
@@ -202,6 +220,27 @@ export function shiftToNextWorkday(date: Date, region?: GermanRegion | null): Da
   return d;
 }
 
+// ---------------------------------------------------------------------------
+// § 108 (1) AO — Tagesgrenzen
+//
+// `dueDate` wird als UTC-Mitternacht gespeichert (@db.Date). Die Frist läuft
+// aber bis zum ENDE des Fälligkeitstags: ein heute fälliger Termin ist weder
+// retrospektiv noch überfällig.
+// ---------------------------------------------------------------------------
+
+/** Ende des Fälligkeitstags (23:59:59.999 UTC) — bis dahin ist die Frist gewahrt. */
+export function endOfDueDay(dueDate: Date): Date {
+  return new Date(Date.UTC(
+    dueDate.getUTCFullYear(), dueDate.getUTCMonth(), dueDate.getUTCDate(),
+    23, 59, 59, 999,
+  ));
+}
+
+/** UTC-Mitternacht des Tages von `d` — nur Termine mit dueDate DAVOR sind überfällig. */
+export function startOfUtcDay(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
 function isWeekendOrHoliday(d: Date, region: GermanRegion | null): boolean {
   const day = d.getUTCDay();
   if (day === 0 || day === 6) return true;
@@ -301,9 +340,14 @@ export function germanHolidays(year: number, region: GermanRegion | null): Date[
   return out;
 }
 
-/** Letzter Mittwoch vor `date` (für Buß- und Bettag, Sa-Bezugspunkt). */
+/**
+ * Letzter Mittwoch STRIKT vor `date`. Buß- und Bettag ist der Mittwoch VOR
+ * dem 23.11. — fällt der 23.11. selbst auf einen Mittwoch (z. B. 2022, 2033),
+ * ist es der 16.11., nicht der 23.11.
+ */
 function wednesdayBefore(date: Date): Date {
   const d = new Date(date.getTime());
+  d.setUTCDate(d.getUTCDate() - 1); // strikt davor: `date` selbst zählt nicht
   while (d.getUTCDay() !== 3) {
     d.setUTCDate(d.getUTCDate() - 1);
   }

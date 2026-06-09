@@ -31,7 +31,14 @@ export async function setupSchedules(): Promise<void> {
   await evidenceSealQueue.upsertJobScheduler(
     'daily-seal',
     { pattern: '30 2 * * *' },
-    { name: 'evidence-seal', data: {} },
+    {
+      name: 'evidence-seal',
+      data: {},
+      // RF-2: Retries für den Versiegelungslauf — ein transienter Fehler
+      // (TSA/DB kurz weg) soll nicht bis zum nächsten Kalendertag warten.
+      // Verpasste Tage holt der Lauf ohnehin per Backfill nach.
+      opts: { attempts: 3, backoff: { type: 'exponential', delay: 5 * 60_000 } },
+    },
   );
   await auditVerifyQueue.upsertJobScheduler(
     'daily-audit-verify',

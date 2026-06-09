@@ -8,10 +8,10 @@
 
 import Link from 'next/link';
 import type { LucideIcon } from 'lucide-react';
+import type { TxClient } from '@taxtronik/db';
 
-// Prisma-Tx ist `any` typisiert, weil Tx-Generics in den 600+ Aufrufstellen
-// zu viel Boilerplate wären. Domain-spezifische Helpers casten lokal.
-export type Tx = any;
+// Prisma-Transaktions-Client aus withTenantContext (RLS-gebunden).
+export type Tx = TxClient;
 
 export interface RenderCtx {
   tx: Tx;

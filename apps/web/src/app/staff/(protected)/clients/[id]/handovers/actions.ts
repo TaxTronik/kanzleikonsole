@@ -6,6 +6,7 @@ import type { Prisma } from '@prisma/client';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { sendTemplateMail } from '@/server/mail/dispatch';
+import { fireAndForget } from '@/server/util/fire-and-forget';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { toActionError } from '@/server/auth/rbac';
 import { withStaff, staffActionGuard, ActionError, type ActionResult } from '@/server/actions/staff-action';
@@ -135,7 +136,8 @@ export async function updateHandoverStatusAction(input: {
   if (notifyPayload) {
     const p = notifyPayload as { clientId: string; label: string; contactEmail: string | null; contactName: string | null };
     if (p.contactEmail) {
-      void sendTemplateMail({
+      // Befund 3: fire-and-forget mit catch+Log statt `void ….catch(() => void 0)`.
+      fireAndForget('sendTemplateMail (handover-ready)', sendTemplateMail({
         tenantId,
         slug: 'handover-ready',
         to: p.contactEmail,
@@ -157,7 +159,7 @@ export async function updateHandoverStatusAction(input: {
           subject: 'Ihre Unterlagen können abgeholt werden — {{label}}',
           bodyMd: 'Sehr geehrte/r {{contact.fullName}},\n\nIhre bei uns hinterlegten Unterlagen ({{label}}) sind fertig bearbeitet und können in unseren Geschäftsräumen abgeholt werden.\n\nMit freundlichen Grüßen\nIhre Steuerkanzlei',
         },
-      }).catch(() => void 0);
+      }));
     }
   }
 

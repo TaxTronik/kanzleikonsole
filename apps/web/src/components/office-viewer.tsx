@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 
 /**
@@ -20,13 +20,17 @@ export function OfficeViewer({
   url: string;
   kind: 'docx' | 'xlsx';
 }) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  // Callback-Ref als State: Der Effekt läuft erst, wenn der Container im DOM
+  // ist (kein Busy-Wait/Polling nötig).
+  const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sheets, setSheets] = useState<XlsxSheet[]>([]);
   const [activeSheet, setActiveSheet] = useState(0);
 
   useEffect(() => {
+    // DOCX braucht den DOM-Container — erst rendern, wenn er gemountet ist.
+    if (kind === 'docx' && !container) return;
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -39,18 +43,10 @@ export function OfficeViewer({
         if (cancelled) return;
 
         if (kind === 'docx') {
-          // Render-Logik: warten bis der Container im DOM ist (er ist immer
-          // gemountet, weil wir hier conditional NUR ein Overlay rendern).
-          const start = Date.now();
-          while (!containerRef.current && Date.now() - start < 2000) {
-            await new Promise((r) => setTimeout(r, 20));
-          }
-          if (!containerRef.current) {
-            throw new Error('DOM-Container nicht bereit — bitte Modal neu öffnen.');
-          }
+          if (!container) return;
           const mod = await import('docx-preview');
-          containerRef.current.innerHTML = '';
-          await mod.renderAsync(buf, containerRef.current, undefined, {
+          container.innerHTML = '';
+          await mod.renderAsync(buf, container, undefined, {
             className: 'docx-rendered',
             inWrapper: true,
             ignoreWidth: false,
@@ -88,14 +84,14 @@ export function OfficeViewer({
     return () => {
       cancelled = true;
     };
-  }, [url, kind]);
+  }, [url, kind, container]);
 
   // DOCX: Container ist IMMER gerendert, Spinner ist Overlay
   if (kind === 'docx') {
     return (
       <div className="relative h-full bg-white">
         <div className="h-full overflow-y-auto p-6">
-          <div ref={containerRef} className="docx-viewer" />
+          <div ref={setContainer} className="docx-viewer" />
         </div>
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm">

@@ -12,10 +12,15 @@
 
 import { Worker } from 'bullmq';
 import type { NotificationKind } from '@prisma/client';
+import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
+import { withWorkerTenantContext } from '../tenant-context';
 import { upsertNotification } from '../notify';
+
+// RF-8: record() braucht nur den Tx — gleiches Muster wie risk-analyse-llm.ts.
+const evidence = new EvidenceService(new LocalTimestampAdapter());
 
 const WARN_DAYS_SOON = 30;
 
@@ -71,9 +76,25 @@ export const poaExpiryWorker = new Worker<ChecksJob>(
         if (recipients.length === 0) continue;
 
         if (isExpired) {
-          await prismaOwner.powerOfAttorney.updateMany({
-            where: { id: poa.id, status: 'SIGNED' },
-            data: { status: 'EXPIRED' },
+          // RF-8: Statuswechsel im Tenant-Context + Audit-Record in derselben
+          // TX (vorher: nacktes prismaOwner-Update ohne evidence.record).
+          await withWorkerTenantContext(tenantId, async (tx) => {
+            const res = await tx.powerOfAttorney.updateMany({
+              where: { id: poa.id, status: 'SIGNED' },
+              data: { status: 'EXPIRED' },
+            });
+            if (res.count > 0) {
+              await evidence.record(tx, {
+                tenantId,
+                actorType: 'SYSTEM',
+                actorId: null,
+                action: 'poa.expire',
+                resourceType: 'power_of_attorney',
+                resourceId: poa.id,
+                before: { status: 'SIGNED' },
+                after: { status: 'EXPIRED', validUntil: poa.validUntil },
+              });
+            }
           });
         }
 

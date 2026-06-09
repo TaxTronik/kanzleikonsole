@@ -7,6 +7,7 @@ import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { notify } from '@/server/notifications/service';
 import { toActionError } from '@/server/auth/rbac';
+import { assertStaffInTenant } from '@/server/db/assert-tenant';
 import { staffActionGuard, withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
 
 export type ActionResult = BaseActionResult;
@@ -221,6 +222,10 @@ export async function forwardPhoneNoteAction(input: {
     if (!note) throw new ActionError('Telefonzettel nicht gefunden.');
     if (note.doneAt) throw new ActionError('Erledigte Zettel können nicht übertragen werden.');
 
+    // P-7 (Befund 5): toStaffId Tenant-Sanity — Create-Pfad oben prüft
+    // forwardToStaff, der Forward-Pfad fehlte.
+    await assertStaffInTenant(tx, parsed.data.toStaffId);
+
     await tx.phoneNote.update({
       where: { id: parsed.data.id },
       data: { forwardToStaff: parsed.data.toStaffId, readAt: null },
@@ -277,6 +282,12 @@ export async function phoneNoteToReminderAction(input: {
     if (!note) throw new ActionError('Telefonzettel nicht gefunden.');
     if (note.doneAt) throw new ActionError('Bereits erledigt.');
     if (!note.clientId) throw new ActionError('Telefonzettel ohne Mandantenbezug — Wiedervorlage nicht möglich.');
+
+    // P-7 (Befund 5): vom Aufrufer übergebene assigneeStaffId Tenant-Sanity.
+    // (note.forwardToStaff/staffId stammen aus dem Tenant-Kontext selbst.)
+    if (parsed.data.assigneeStaffId) {
+      await assertStaffInTenant(tx, parsed.data.assigneeStaffId);
+    }
 
     const reminder = await tx.clientReminder.create({
       data: {

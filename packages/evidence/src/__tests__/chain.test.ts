@@ -53,6 +53,14 @@ describe('chainValue — F1-Normalisierung', () => {
   it('Decimal-like (toJSON liefert String) → String', () => {
     expect(chainValue({ toJSON: () => '19.90' })).toBe('19.90');
   });
+
+  it('RF-10: BigInt → String (wirft nicht, auch verschachtelt)', () => {
+    // Nacktes JSON.stringify würde bei BigInt einen TypeError werfen und die
+    // umgebende Fach-TX zurückrollen (z. B. sizeBytes aus BigInt-Spalten).
+    expect(chainValue(123n)).toBe('123');
+    expect(chainValue({ sizeBytes: 9007199254740993n })).toEqual({ sizeBytes: '9007199254740993' });
+    expect(chainValue([1n, { n: 2n }])).toEqual(['1', { n: '2' }]);
+  });
 });
 
 describe('eventHash — Record == Verify == Archiv (F1/A2)', () => {
@@ -77,6 +85,14 @@ describe('eventHash — Record == Verify == Archiv (F1/A2)', () => {
       expect(recordHash.equals(verifyHash)).toBe(true);
     });
   }
+
+  it('RF-10: BigInt-Live-Wert hasht wie der gespeicherte jsonb-Roundtrip (String)', () => {
+    // Record speichert chainValue(before) als jsonb → BigInt landet als String
+    // in der DB; der Verify-Pfad liest genau diesen String zurück.
+    const recordHash = eventHash(PREV, ev({ sizeBytes: 123n }, null));
+    const verifyHash = eventHash(PREV, ev({ sizeBytes: '123' }, null));
+    expect(recordHash.equals(verifyHash)).toBe(true);
+  });
 
   it('Date- und String-occurredAt liefern denselben Hash', () => {
     const d = new Date('2026-01-02T03:04:05.678Z');

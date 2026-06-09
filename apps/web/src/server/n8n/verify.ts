@@ -14,7 +14,7 @@
 // =============================================================================
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import type { NextRequest } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { env } from '@taxtronik/config';
 import { consumeNonce } from './nonce-store';
 
@@ -26,6 +26,23 @@ export interface VerifyResult {
   error?: string;
   /** Bei `ok=false` HTTP-Status, den der Caller zurückgeben sollte. */
   status?: number;
+}
+
+/**
+ * Befund 10: Einheitliche Reject-Response für fehlgeschlagene
+ * verifyN8nSignature-Checks. Vorher mappte jede Route selbst — drei von vier
+ * gaben pauschal 401 zurück und maskierten damit den Redis-Ausfall (503,
+ * für n8n retrybar) als Auth-Fehler. 503 (Replay-Store down) und 500
+ * (Fehlkonfiguration) werden durchgereicht; alles andere ist ein Auth-Fehler
+ * → generisches 401 ohne Detail-Leak (Audit Round 14, Finding 2 — kein
+ * Side-Channel über Schlüssel-/Zeit-/Replay-Status). Details loggt der Caller.
+ */
+export function n8nRejectResponse(ver: VerifyResult): NextResponse {
+  const status = ver.status === 503 || ver.status === 500 ? ver.status : 401;
+  return NextResponse.json(
+    { error: status === 401 ? 'unauthorized' : 'unavailable' },
+    { status },
+  );
 }
 
 export async function verifyN8nSignature(req: NextRequest): Promise<VerifyResult> {

@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { z } from 'zod';
 import { getClientIp } from '@/server/rate-limit';
 import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
@@ -14,6 +15,17 @@ import {
 } from '@/server/export/csv';
 import type { Prisma } from '@prisma/client';
 
+// Befund 11: Query-Parameter validieren statt `new Date(sp.get('from')!)` —
+// ein kaputter Wert ergab Invalid Date → Prisma-Fehler → 500. Leere Strings
+// (z. B. `?action=`) zählen wie „nicht gesetzt" (Verhalten wie vorher).
+const QuerySchema = z.object({
+  action: z.string().max(200).optional(),
+  actorType: z.enum(['STAFF', 'CLIENT_CONTACT', 'SYSTEM']).optional(),
+  resourceType: z.string().max(200).optional(),
+  from: z.string().date().optional(),
+  to: z.string().date().optional(),
+});
+
 export async function GET(req: NextRequest) {
   const session = await staffAuth();
   if (!session?.user) {
@@ -25,18 +37,30 @@ export async function GET(req: NextRequest) {
   const { tenantId, staffId } = session.user;
 
   const sp = req.nextUrl.searchParams;
-  const where: Prisma.AuditLogWhereInput = {};
-  if (sp.get('action')) where.action = { contains: sp.get('action')!, mode: 'insensitive' };
-  const at = sp.get('actorType');
-  if (at && ['STAFF', 'CLIENT_CONTACT', 'SYSTEM'].includes(at)) {
-    where.actorType = at as 'STAFF' | 'CLIENT_CONTACT' | 'SYSTEM';
+  const parsed = QuerySchema.safeParse({
+    action: sp.get('action') || undefined,
+    actorType: sp.get('actorType') || undefined,
+    resourceType: sp.get('resourceType') || undefined,
+    from: sp.get('from') || undefined,
+    to: sp.get('to') || undefined,
+  });
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: 'validation', issues: parsed.error.issues },
+      { status: 400 },
+    );
   }
-  if (sp.get('resourceType')) where.resourceType = sp.get('resourceType')!;
-  if (sp.get('from') || sp.get('to')) {
+  const q = parsed.data;
+
+  const where: Prisma.AuditLogWhereInput = {};
+  if (q.action) where.action = { contains: q.action, mode: 'insensitive' };
+  if (q.actorType) where.actorType = q.actorType;
+  if (q.resourceType) where.resourceType = q.resourceType;
+  if (q.from || q.to) {
     where.occurredAt = {};
-    if (sp.get('from')) where.occurredAt.gte = new Date(sp.get('from')!);
-    if (sp.get('to')) {
-      const to = new Date(sp.get('to')!);
+    if (q.from) where.occurredAt.gte = new Date(q.from);
+    if (q.to) {
+      const to = new Date(q.to);
       to.setHours(23, 59, 59, 999);
       where.occurredAt.lte = to;
     }

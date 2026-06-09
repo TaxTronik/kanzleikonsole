@@ -200,7 +200,10 @@ model GwgCheck {
   createdAt        DateTime             @default(now()) @map("created_at")
   updatedAt        DateTime             @updatedAt @map("updated_at")
   beneficialOwners GwgBeneficialOwner[]
-  client           Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  // RF-15 (iter79): NoAction statt Cascade — ein Client-Hard-Delete darf
+  // GwG-Akten (5-Jahres-Pflicht, § 8 GwG) nicht mitlöschen. NoAction (statt
+  // Restrict), damit die Tenant-Kaskade weiterhin funktioniert.
+  client           Client               @relation(fields: [clientId], references: [id], onDelete: NoAction)
   tenant           Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   idDocuments      GwgIdDocument[]
 
@@ -292,7 +295,9 @@ model PowerOfAttorney {
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @updatedAt @map("updated_at")
   signingOtpAttempts    Int       @default(0) @map("signing_otp_attempts")
-  client                Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  // RF-15 (iter79): NoAction statt Cascade — signierte Vollmachten dürfen
+  // einen Client-Hard-Delete nicht mitsterben (Aufbewahrung/Beweiswert).
+  client                Client    @relation(fields: [clientId], references: [id], onDelete: NoAction)
   tenant                Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, clientId])
@@ -1014,7 +1019,9 @@ model DocumentVersion {
 model AuditLog {
   id           BigInt         @id @default(autoincrement())
   tenantId     String         @map("tenant_id") @db.Uuid
-  occurredAt   DateTime       @default(now()) @map("occurred_at")
+  // RF-6 (iter77): timestamptz — occurredAt ist hash-relevant (toISOString),
+  // timestamp ohne TZ kippte beim Verify in fremder Prozess-TZ.
+  occurredAt   DateTime       @default(now()) @map("occurred_at") @db.Timestamptz(6)
   actorType    AuditActorType @map("actor_type")
   actorId      String?        @map("actor_id") @db.Uuid
   action       String
@@ -1030,6 +1037,8 @@ model AuditLog {
 
   @@index([tenantId, occurredAt])
   @@index([tenantId, resourceType, resourceId])
+  // RF-16 (iter77): Vorgänger-Lookup in record() (ORDER BY id DESC pro Tenant)
+  @@index([tenantId, id])
   @@map("audit_log")
 }
 
@@ -1338,7 +1347,8 @@ model AuditSeal {
   tsaRequestBlob  Bytes?   @map("tsa_request_blob")
   tsaResponseBlob Bytes?   @map("tsa_response_blob")
   tsaSerial       String?  @map("tsa_serial")
-  sealedAt        DateTime @default(now()) @map("sealed_at")
+  // RF-6 (iter77): timestamptz, siehe AuditLog.occurredAt
+  sealedAt        DateTime @default(now()) @map("sealed_at") @db.Timestamptz(6)
   sealedBy        String   @default("system") @map("sealed_by")
   tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: NoAction)
 
@@ -1354,6 +1364,8 @@ model TaxScheduleConfig {
   kind               TaxScheduleKind
   active             Boolean         @default(true)
   hasDauerfrist      Boolean         @default(false) @map("has_dauerfrist")
+  /// Beratene Erklärungsfrist § 149 (3) AO (Ende Februar des zweiten Folgejahres)
+  advised            Boolean         @default(false)
   reminderDaysBefore Int             @default(10) @map("reminder_days_before")
   notes              String?
   createdByStaff     String          @map("created_by_staff") @db.Uuid
@@ -1853,8 +1865,9 @@ model AuditArchive {
   tenantId        String           @map("tenant_id") @db.Uuid
   fromAuditId     BigInt           @map("from_audit_id")
   toAuditId       BigInt           @map("to_audit_id")
-  fromOccurredAt  DateTime         @map("from_occurred_at")
-  toOccurredAt    DateTime         @map("to_occurred_at")
+  // RF-6 (iter77): timestamptz, siehe AuditLog.occurredAt
+  fromOccurredAt  DateTime         @map("from_occurred_at") @db.Timestamptz(6)
+  toOccurredAt    DateTime         @map("to_occurred_at") @db.Timestamptz(6)
   entryCount      Int              @map("entry_count")
   firstPrevHash   Bytes            @map("first_prev_hash")
   lastThisHash    Bytes            @map("last_this_hash")
@@ -1865,7 +1878,8 @@ model AuditArchive {
   tsaResponseBlob Bytes?           @map("tsa_response_blob")
   tsaSerial       String?          @map("tsa_serial")
   mode            AuditArchiveMode @default(SOFT)
-  archivedAt      DateTime         @default(now()) @map("archived_at")
+  // RF-6 (iter77): timestamptz, siehe AuditLog.occurredAt
+  archivedAt      DateTime         @default(now()) @map("archived_at") @db.Timestamptz(6)
   archivedBy      String           @default("system") @map("archived_by")
 
   @@unique([tenantId, fromAuditId])

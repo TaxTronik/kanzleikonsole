@@ -7,6 +7,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { requestMagicLink } from '@/server/auth/magic-link';
 import { sendTemplateMail } from '@/server/mail/dispatch';
+import { fireAndForget } from '@/server/util/fire-and-forget';
 import { generateInviteToken, INVITE_TTL_DAYS } from '@/server/gwg-onboarding/service';
 import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
 
@@ -154,7 +155,8 @@ export async function onboardingSendGwgAction(formData: FormData) {
   });
 
   const link = `${portalBaseUrl}/gwg-onboarding?token=${encodeURIComponent(raw)}`;
-  void sendTemplateMail({
+  // Befund 3: fire-and-forget mit catch+Log statt `void ….catch(() => void 0)`.
+  fireAndForget('sendTemplateMail (gwg-onboarding wizard)', sendTemplateMail({
     tenantId,
     slug: 'gwg-onboarding',
     to: parsed.data.inviteEmail,
@@ -179,7 +181,7 @@ export async function onboardingSendGwgAction(formData: FormData) {
       subject: 'Identifizierung für Ihre Mandantschaft',
       bodyMd: 'Sehr geehrte/r {{inviteName}},\n\nbitte identifizieren Sie sich über folgenden Link: {{link}}',
     },
-  }).catch(() => void 0);
+  }));
 
   redirect(`/staff/clients/onboarding/${parsed.data.clientId}?step=poa`);
 }

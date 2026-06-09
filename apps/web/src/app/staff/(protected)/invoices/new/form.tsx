@@ -13,6 +13,17 @@ interface Position {
   unit: string;
 }
 
+// Stabile React-Keys für Positionszeilen (Add/Remove) — kein key={index}.
+type PositionRow = Position & { id: string };
+let posIdSeq = 0;
+const newPosition = (): PositionRow => ({
+  id: `pos-${++posIdSeq}`,
+  description: '',
+  quantity: 1,
+  unitPrice: 0,
+  unit: 'Stunde',
+});
+
 interface Props {
   clients: Array<{ id: string; name: string }>;
   suggestedNumber: string;
@@ -33,9 +44,7 @@ export function NewInvoiceForm({ clients, suggestedNumber }: Props) {
   const [vatRate, setVatRate] = useState(19);
   const [format, setFormat] = useState<'PDF' | 'XRECHNUNG' | 'ZUGFERD'>('XRECHNUNG');
   const [notes, setNotes] = useState('');
-  const [positions, setPositions] = useState<Position[]>([
-    { description: '', quantity: 1, unitPrice: 0, unit: 'Stunde' },
-  ]);
+  const [positions, setPositions] = useState<PositionRow[]>([newPosition()]);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -44,7 +53,7 @@ export function NewInvoiceForm({ clients, suggestedNumber }: Props) {
   }
 
   function addPosition() {
-    setPositions((ps) => [...ps, { description: '', quantity: 1, unitPrice: 0, unit: 'Stunde' }]);
+    setPositions((ps) => [...ps, newPosition()]);
   }
 
   function removePosition(idx: number) {
@@ -76,7 +85,13 @@ export function NewInvoiceForm({ clients, suggestedNumber }: Props) {
         vatRate,
         notes,
         format,
-        positions,
+        // `id` ist nur der React-Key — nicht an die Action durchreichen.
+        positions: positions.map((p) => ({
+          description: p.description,
+          quantity: p.quantity,
+          unitPrice: p.unitPrice,
+          unit: p.unit,
+        })),
       });
       if (r.error || !r.invoiceId) {
         setError(r.error ?? 'Anlegen fehlgeschlagen.');
@@ -196,10 +211,11 @@ export function NewInvoiceForm({ clients, suggestedNumber }: Props) {
 
         <div className="space-y-3">
           {positions.map((p, i) => (
-            <div key={i} className="grid grid-cols-12 gap-2 items-end">
+            <div key={p.id} className="grid grid-cols-12 gap-2 items-end">
               <div className="col-span-5">
-                <label className="label">Beschreibung</label>
+                <label className="label" htmlFor={`pos-${i}-description`}>Beschreibung</label>
                 <input
+                  id={`pos-${i}-description`}
                   type="text"
                   className="input"
                   value={p.description}
@@ -208,8 +224,9 @@ export function NewInvoiceForm({ clients, suggestedNumber }: Props) {
                 />
               </div>
               <div className="col-span-2">
-                <label className="label">Menge</label>
+                <label className="label" htmlFor={`pos-${i}-quantity`}>Menge</label>
                 <input
+                  id={`pos-${i}-quantity`}
                   type="number"
                   step="0.01"
                   className="input"
@@ -219,8 +236,9 @@ export function NewInvoiceForm({ clients, suggestedNumber }: Props) {
                 />
               </div>
               <div className="col-span-2">
-                <label className="label">Einheit</label>
+                <label className="label" htmlFor={`pos-${i}-unit`}>Einheit</label>
                 <input
+                  id={`pos-${i}-unit`}
                   type="text"
                   className="input"
                   value={p.unit}
@@ -228,8 +246,9 @@ export function NewInvoiceForm({ clients, suggestedNumber }: Props) {
                 />
               </div>
               <div className="col-span-2">
-                <label className="label">Einzelpreis €</label>
+                <label className="label" htmlFor={`pos-${i}-unitPrice`}>Einzelpreis €</label>
                 <input
+                  id={`pos-${i}-unitPrice`}
                   type="number"
                   step="0.01"
                   className="input"
@@ -244,6 +263,7 @@ export function NewInvoiceForm({ clients, suggestedNumber }: Props) {
                   onClick={() => removePosition(i)}
                   className="text-disabled hover:text-red-600 p-2"
                   disabled={positions.length === 1}
+                  aria-label="Position entfernen"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>

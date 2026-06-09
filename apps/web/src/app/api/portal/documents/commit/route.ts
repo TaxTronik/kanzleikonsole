@@ -1,12 +1,16 @@
 // App-proxied Upload (kein presigned-direct): Browser POSTet multipart,
 // die App streamt intern zu SeaweedFS. Object-Store nie öffentlich.
 import { NextResponse, type NextRequest } from 'next/server';
-import { getClientIp } from '@/server/rate-limit';
+import { getClientIp, checkPortalWriteLimit } from '@/server/rate-limit';
 import { z } from 'zod';
 import { portalAuth } from '@/server/auth/portal';
 import { commitDocumentFromBytes, MAX_UPLOAD_BYTES } from '@taxtronik/storage';
 import { withTenantContext } from '@taxtronik/db';
-import { prismaBytes } from '@/server/db/prisma-bytes';
+import {
+  parseMultipartUpload,
+  storageCommitErrorResponse,
+  createDocumentWithVersion,
+} from '@/server/documents/upload-helpers';
 import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
 
@@ -21,19 +25,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
-  let form: FormData;
-  try {
-    form = await req.formData();
-  } catch {
-    return NextResponse.json({ error: 'invalid_multipart' }, { status: 400 });
+  // Befund 13: Rate-Limit analog zu den Portal-Write-Actions (S4-Backstop) —
+  // Uploads sättigen sonst Storage + ClamAV ohne jede Begrenzung.
+  const rl = await checkPortalWriteLimit(session.user.contactId);
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: 'rate_limited', retryAfter: rl.retryAfter },
+      { status: 429 },
+    );
   }
-  const file = form.get('file');
-  if (!(file instanceof Blob)) {
-    return NextResponse.json({ error: 'file_missing' }, { status: 400 });
-  }
-  if (file.size > MAX_UPLOAD_BYTES) {
+
+  // Befund 13 (analog Staff-Route): ehrlich deklarierte Über-Größe ablehnen,
+  // BEVOR req.formData() den gesamten Body in den RAM puffert (+1 MB Marge
+  // für Multipart-Framing + Metadatenfelder). Lügt der Client über
+  // Content-Length, greift der file.size-Check im Multipart-Helfer.
+  const declaredLen = Number(req.headers.get('content-length') ?? 0);
+  if (Number.isFinite(declaredLen) && declaredLen > MAX_UPLOAD_BYTES + 1024 * 1024) {
     return NextResponse.json({ error: 'TOO_LARGE' }, { status: 413 });
   }
+
+  // Befund 12: Multipart-Parse + Datei-Checks zentral (upload-helpers).
+  const upload = await parseMultipartUpload(req);
+  if (!upload.ok) return upload.response;
+  const { form, file } = upload;
+
   const parsed = Schema.safeParse({
     title: form.get('title'),
     mimeType: form.get('mimeType') ?? undefined,
@@ -65,13 +80,8 @@ export async function POST(req: NextRequest) {
   try {
     commit = await commitDocumentFromBytes({ fileData, classification: 'GENERAL', tenantId });
   } catch (e) {
-    const msg = (e as Error).message;
-    const status =
-      msg.startsWith('INFECTED') ? 422 :
-      msg.startsWith('TOO_LARGE') ? 413 :
-      msg.startsWith('FORBIDDEN') ? 403 :
-      msg.startsWith('SCAN_ERROR') ? 502 : 500;
-    return NextResponse.json({ error: msg }, { status });
+    // Befund 12: Mapping zentral (war 3× wortgleich kopiert).
+    return storageCommitErrorResponse(e);
   }
 
   // M-2: Magic-Bytes-Detection schlägt Client-gemeldete mimeType, wenn ein
@@ -83,8 +93,9 @@ export async function POST(req: NextRequest) {
   const docRow = await withTenantContext(
     { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' },
     async (tx) => {
-      const document = await tx.document.create({
-        data: {
+      // Befund 12: Document+Version-Insert zentral (upload-helpers).
+      const { document } = await createDocumentWithVersion(tx, {
+        documentData: {
           tenantId,
           clientId,
           ownerStaffId: null,
@@ -97,20 +108,8 @@ export async function POST(req: NextRequest) {
           // Upload nicht mehr. sharedByStaff bleibt null (client-originiert).
           sharedWithClientAt: new Date(),
         },
-      });
-      await tx.documentVersion.create({
-        data: {
-          documentId: document.id,
-          versionNo: 1,
-          storageBucket: commit.targetBucket,
-          storageKey: commit.targetKey,
-          sha256: prismaBytes(commit.sha256),
-          sizeBytes: commit.sizeBytes,
-          immutable: commit.immutable,
-          scanStatus: 'CLEAN',
-          scanCompletedAt: new Date(),
-          createdById: contactId,
-        },
+        commit,
+        createdById: contactId,
       });
       await evidenceService.record(tx, {
         tenantId,

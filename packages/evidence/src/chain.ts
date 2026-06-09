@@ -30,10 +30,18 @@ export interface ChainEvent {
  * vom Eingabetyp. Deckt sonst hash-brechende Fälle ab:
  *   - nicht-JSON-native Werte: Prisma.Decimal → "19.90", Buffer → {type:'Buffer',…}
  *   - undefined → null (kein gespeicherter Wert)
+ *   - RF-10: BigInt → String (z. B. sizeBytes aus Prisma-BigInt-Spalten).
+ *     Nacktes JSON.stringify wirft bei BigInt einen TypeError und rollte damit
+ *     die umgebende Fach-TX zurück. Konsistent mit canonicalJson (bigint →
+ *     toString()): gespeicherte jsonb-Form und Verify-Roundtrip sind identisch.
  * Falsy-Werte (0 / '' / false) bleiben als sie selbst erhalten (nicht zu null).
  */
 export function chainValue(value: unknown): unknown {
-  return value === undefined ? null : JSON.parse(JSON.stringify(value));
+  if (value === undefined) return null;
+  if (typeof value === 'bigint') return value.toString();
+  return JSON.parse(
+    JSON.stringify(value, (_key, v: unknown) => (typeof v === 'bigint' ? v.toString() : v)),
+  );
 }
 
 /** Kanonische Event-Serialisierung (Schlüssel sortiert via canonicalJson). */

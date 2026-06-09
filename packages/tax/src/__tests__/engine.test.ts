@@ -11,9 +11,12 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+  endOfDueDay,
   generateDeadlines,
   germanHolidays,
+  SCHEDULE_LABELS,
   shiftToNextWorkday,
+  startOfUtcDay,
 } from '../index';
 
 function ymd(d: Date): string {
@@ -76,6 +79,18 @@ describe('germanHolidays — landesspezifisch', () => {
     // 2026: 23.11. ist Montag. Letzter Mittwoch davor = 18.11.2026.
     const sn26 = germanHolidays(2026, 'DE-SN').map(ymd);
     expect(sn26).toContain('2026-11-18');
+  });
+
+  it('Buß- und Bettag 2022: 23.11. ist selbst Mittwoch → 16.11. (Mittwoch DAVOR)', () => {
+    const sn = germanHolidays(2022, 'DE-SN').map(ymd);
+    expect(sn).toContain('2022-11-16');
+    expect(sn).not.toContain('2022-11-23');
+  });
+
+  it('Buß- und Bettag 2033: 23.11. ist selbst Mittwoch → 16.11. (Mittwoch DAVOR)', () => {
+    const sn = germanHolidays(2033, 'DE-SN').map(ymd);
+    expect(sn).toContain('2033-11-16');
+    expect(sn).not.toContain('2033-11-23');
   });
 
   it('Berlin hat Internationalen Frauentag (8. März)', () => {
@@ -265,5 +280,107 @@ describe('generateDeadlines — Region', () => {
     const dez = out.find((d) => d.period === '2024-12');
     expect(dez).toBeDefined();
     expect(ymd(dez!.dueDate)).toBe('2025-02-10');
+  });
+});
+
+describe('generateDeadlines — Bereichs-Invariante [from, to]', () => {
+  const ALL_KINDS = Object.keys(SCHEDULE_LABELS) as (keyof typeof SCHEDULE_LABELS)[];
+
+  it('ALLE Ergebnisse liegen in [from, to] — über Arten, Dauerfrist, advised und Regionen', () => {
+    const ranges: Array<[Date, Date]> = [
+      [new Date(Date.UTC(2026, 0, 1)), new Date(Date.UTC(2026, 2, 31))],  // 90-Tage-Horizont
+      [new Date(Date.UTC(2025, 5, 15)), new Date(Date.UTC(2025, 8, 13))], // mitten im Jahr
+      [new Date(Date.UTC(2025, 0, 1)), new Date(Date.UTC(2026, 11, 31))], // zwei Jahre
+      [new Date(Date.UTC(2027, 11, 20)), new Date(Date.UTC(2028, 0, 5))], // kurz, Jahreswechsel
+    ];
+    for (const kind of ALL_KINDS) {
+      for (const [from, to] of ranges) {
+        for (const dauerfrist of [false, true]) {
+          for (const advised of [false, true]) {
+            for (const region of [null, 'DE-BY', 'DE-SN'] as const) {
+              const out = generateDeadlines(kind, from, to, dauerfrist, region, advised);
+              for (const d of out) {
+                const label = `${kind} ${d.period} → ${ymd(d.dueDate)} außerhalb [${ymd(from)}, ${ymd(to)}]`;
+                expect(d.dueDate.getTime(), label).toBeGreaterThanOrEqual(from.getTime());
+                expect(d.dueDate.getTime(), label).toBeLessThanOrEqual(to.getTime());
+              }
+            }
+          }
+        }
+      }
+    }
+  });
+
+  it('QUARTAL: 90-Tage-Horizont erzeugt keine Termine über den Horizont hinaus (Regression)', () => {
+    const from = new Date(Date.UTC(2026, 0, 1));
+    const to = new Date(Date.UTC(2026, 2, 31));
+    const out = generateDeadlines('USTA_QUARTAL', from, to, false);
+    // Nur Q4/2025 (fällig 10.01.2026, Sa → Mo 12.01.) liegt im Fenster —
+    // vorher wurden ALLE Quartale von 2025 bis 2027 erzeugt.
+    expect(out.map((d) => d.period)).toEqual(['2025-Q4']);
+    expect(ymd(out[0]!.dueDate)).toBe('2026-01-12');
+  });
+
+  it('MONATLICH: nur Fälligkeiten im Fenster (Regression)', () => {
+    const from = new Date(Date.UTC(2026, 0, 1));
+    const to = new Date(Date.UTC(2026, 1, 28));
+    const out = generateDeadlines('USTA_MONATLICH', from, to, false);
+    // Dez-2025-VA fällig 12.01.2026 (10.01. ist Sa), Jan-2026-VA fällig 10.02.2026.
+    expect(out.map((d) => d.period).sort()).toEqual(['2025-12', '2026-01']);
+  });
+});
+
+describe('generateDeadlines — beratene Erklärungsfrist (§ 149 (3) AO)', () => {
+  it('VZ 2025 beraten → letzter Februartag 2027 ist So, 28.02. → Verschiebung auf Mo, 01.03.2027 (§ 108 (3) AO)', () => {
+    const from = new Date(Date.UTC(2027, 0, 1));
+    const to = new Date(Date.UTC(2027, 11, 31));
+    const out = generateDeadlines('EST_ERKLAERUNG', from, to, false, null, true);
+    const hit = out.find((d) => d.period === '2025');
+    expect(hit).toBeDefined();
+    expect(ymd(hit!.dueDate)).toBe('2027-03-01');
+  });
+
+  it('Schaltjahr: VZ 2026 beraten → 29.02.2028 (Di, Werktag — keine Verschiebung)', () => {
+    const from = new Date(Date.UTC(2028, 0, 1));
+    const to = new Date(Date.UTC(2028, 11, 31));
+    const out = generateDeadlines('KST_ERKLAERUNG', from, to, false, null, true);
+    const hit = out.find((d) => d.period === '2026');
+    expect(hit).toBeDefined();
+    expect(ymd(hit!.dueDate)).toBe('2028-02-29');
+  });
+
+  it('Default (advised=false) bleibt 31.07. des Folgejahres — bestehende Termine ändern sich nicht', () => {
+    const from = new Date(Date.UTC(2027, 0, 1));
+    const to = new Date(Date.UTC(2027, 11, 31));
+    const out = generateDeadlines('EST_ERKLAERUNG', from, to, false);
+    const hit = out.find((d) => d.period === '2026');
+    expect(hit).toBeDefined();
+    // 31.07.2027 ist Samstag → Verschiebung auf Mo, 02.08.2027
+    expect(ymd(hit!.dueDate)).toBe('2027-08-02');
+  });
+});
+
+describe('endOfDueDay / startOfUtcDay — § 108 (1) AO Tagesgrenzen', () => {
+  it('endOfDueDay liefert 23:59:59.999 UTC des Fälligkeitstags', () => {
+    const r = endOfDueDay(new Date(Date.UTC(2026, 2, 10)));
+    expect(r.toISOString()).toBe('2026-03-10T23:59:59.999Z');
+  });
+
+  it('heute fälliger Termin ist bis Tagesende NICHT abgelaufen', () => {
+    const due = new Date(Date.UTC(2026, 2, 10)); // UTC-Mitternacht (@db.Date)
+    const mittags = new Date(Date.UTC(2026, 2, 10, 12, 30));
+    expect(endOfDueDay(due).getTime()).toBeGreaterThanOrEqual(mittags.getTime());
+    const morgenFrueh = new Date(Date.UTC(2026, 2, 11, 0, 30));
+    expect(endOfDueDay(due).getTime()).toBeLessThan(morgenFrueh.getTime());
+  });
+
+  it('startOfUtcDay schneidet auf UTC-Mitternacht — Termine von HEUTE sind nicht überfällig', () => {
+    const now = new Date(Date.UTC(2026, 2, 10, 15, 23, 42));
+    const cutoff = startOfUtcDay(now);
+    expect(cutoff.toISOString()).toBe('2026-03-10T00:00:00.000Z');
+    // Heute fälliger Termin (UTC-Mitternacht) liegt NICHT vor dem Cutoff …
+    expect(new Date(Date.UTC(2026, 2, 10)).getTime()).toBeGreaterThanOrEqual(cutoff.getTime());
+    // … der von gestern schon.
+    expect(new Date(Date.UTC(2026, 2, 9)).getTime()).toBeLessThan(cutoff.getTime());
   });
 });

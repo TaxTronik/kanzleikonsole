@@ -10,6 +10,7 @@ import { consumeTotpCode } from './totp-replay';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { log } from '@/server/logger';
 import { getClientIp, checkIpOrGlobalLimit } from '@/server/rate-limit';
+import { fireAndForget } from '@/server/util/fire-and-forget';
 
 // DEV-ONLY: TOTP-Bypass für lokale Entwicklung. DOPPELT gegated — greift nur,
 // wenn NODE_ENV ≠ production UND DEV_SKIP_TOTP=true. In Produktion ist
@@ -52,18 +53,8 @@ function isStaffTokenPayload(t: unknown): t is StaffTokenPayload {
   );
 }
 
-/**
- * Fire-and-forget DB-Update, das im Hintergrund läuft. Fehler werden geloggt
- * (Q6) — schluckt sie nicht stillschweigend, aber blockiert auch den
- * Login-Flow nicht. Backoff/Retry ist hier bewusst nicht implementiert: bei
- * persistentem DB-Ausfall hilft Retry nicht, und der Login-Pfad muss schnell
- * antworten.
- */
-function fireAndForget(label: string, p: Promise<unknown>): void {
-  p.catch((err: unknown) => {
-    log.warn({ label, err: (err as Error).message }, 'staff-auth: fire-and-forget failed');
-  });
-}
+// Fire-and-forget DB-Updates (Q6): Helfer liegt jetzt zentral in
+// @/server/util/fire-and-forget (wird auch von Mail-Side-Effects genutzt).
 
 const staffConfig: NextAuthConfig = {
   basePath: '/api/auth/staff',

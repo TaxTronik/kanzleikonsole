@@ -168,6 +168,15 @@ export class EvidenceService {
    * Wird vom Worker täglich aufgerufen (Job `evidence:seal:daily`).
    *
    * Idempotent: Doppel-Aufruf für dasselbe (tenant, sealDate) ist No-Op.
+   *
+   * RF-4: Braucht bewusst KEINE umgebende Transaktion. Der TSA-Call (Schritt 3,
+   * HTTP mit 10-s-Timeout) riss vorher das interaktive 5-s-Prisma-TX-Timeout
+   * (P2028). Korrektheit ohne TX: versiegelt werden nur abgeschlossene
+   * Vergangenheitstage (sealDate < heute, UTC), und record() schreibt
+   * occurred_at = now() — zwischen Top-Lookup (Schritt 2) und INSERT (Schritt 4)
+   * können also keine neuen audit_log-Zeilen für den Zieltag mehr entstehen;
+   * der gestempelte Hash bleibt der Tages-Spitzen-Hash. Parallele Doppelläufe
+   * fängt der Unique-Constraint (tenant_id, seal_date) + ON CONFLICT DO NOTHING.
    */
   async sealDay(
     tx: Tx,
@@ -185,11 +194,17 @@ export class EvidenceService {
       return { sealed: false, reason: 'bereits versiegelt' };
     }
 
-    // 2. Top-Eintrag des Tages holen.
+    // 2. Top-Eintrag des Tages holen. RF-6: explizite UTC-Halboffen-Range
+    //    statt `occurred_at::date = …` — der ::date-Cast hängt seit der
+    //    timestamptz-Umstellung (iter77) von der DB-Session-TZ ab und ist
+    //    nicht index-fähig; die Range nutzt den (tenant_id, occurred_at)-Index.
+    const dayStartUtc = new Date(`${dateOnly(sealDate)}T00:00:00.000Z`);
+    const nextDayStartUtc = new Date(dayStartUtc.getTime() + 24 * 60 * 60 * 1000);
     const top = await tx.$queryRaw<{ id: bigint; this_hash: Buffer }[]>`
       SELECT id, this_hash FROM audit_log
       WHERE tenant_id = ${tenantId}::uuid
-        AND occurred_at::date = ${dateOnly(sealDate)}::date
+        AND occurred_at >= ${dayStartUtc}
+        AND occurred_at < ${nextDayStartUtc}
       ORDER BY id DESC
       LIMIT 1
     `;
@@ -198,11 +213,12 @@ export class EvidenceService {
     }
     const topRow = top[0]!;
 
-    // 3. RFC-3161-Stempel holen.
+    // 3. RFC-3161-Stempel holen (HTTP — deshalb läuft sealDay außerhalb
+    //    einer Transaktion, siehe Methodenkommentar).
     const stamp = await this.timestampPort.timestamp(topRow.this_hash);
 
-    // 4. INSERT.
-    await tx.$executeRaw`
+    // 4. INSERT — ON CONFLICT DO NOTHING macht parallele Doppelläufe harmlos.
+    const insertedCount = await tx.$executeRaw`
       INSERT INTO audit_seal (
         tenant_id, seal_date, top_audit_id, top_hash,
         tsa_request_blob, tsa_response_blob, tsa_serial, sealed_at, sealed_by
@@ -217,7 +233,11 @@ export class EvidenceService {
         ${new Date(stamp.timestampedAt)},
         ${'system'}
       )
+      ON CONFLICT (tenant_id, seal_date) DO NOTHING
     `;
+    if (insertedCount === 0) {
+      return { sealed: false, reason: 'bereits versiegelt (paralleler Lauf)' };
+    }
 
     return { sealed: true };
   }
@@ -269,73 +289,63 @@ export class EvidenceService {
     const sealTopIds = new Set<bigint>(seals.map((s) => s.top_audit_id));
     const recomputedTops = new Map<bigint, Buffer>();
 
-    // 1. Audit-Chain durchgehen.
-    const rows = await tx.$queryRaw<
-      Array<{
-        id: bigint;
-        occurred_at: Date;
-        actor_type: AuditActorType;
-        actor_id: string | null;
-        action: string;
-        resource_type: string;
-        resource_id: string | null;
-        before: unknown;
-        after: unknown;
-        prev_hash: Buffer;
-        this_hash: Buffer;
-      }>
-    >`
-      SELECT id, occurred_at, actor_type, actor_id, action,
-             resource_type, resource_id, "before", "after",
-             prev_hash, this_hash
-      FROM audit_log
-      WHERE tenant_id = ${tenantId}::uuid
-      ORDER BY id ASC
-    `;
-
+    // 1. Audit-Chain durchgehen. RF-5: cursor-basiert in 1000er-Chunks nach id
+    //    statt alle Rows auf einmal — der Speicherbedarf wächst sonst linear
+    //    mit der audit_log-Größe. Semantik identisch: der Walk läuft weiterhin
+    //    strikt id-aufsteigend über ALLE Zeilen des Tenants.
+    const BATCH_SIZE = 1000;
     let expectedPrev = genesisHash(tenantId);
-    for (const r of rows) {
-      // prev_hash muss mit erwartetem Vorgänger übereinstimmen
-      if (!Buffer.from(r.prev_hash).equals(expectedPrev)) {
-        result.ok = false;
-        result.firstBreak = {
-          auditId: r.id,
+    let cursor = BigInt(-1);
+    for (;;) {
+      const rows = await fetchAuditBatch(tx, tenantId, cursor, BATCH_SIZE);
+      if (rows.length === 0) break;
+
+      for (const r of rows) {
+        // prev_hash muss mit erwartetem Vorgänger übereinstimmen
+        if (!Buffer.from(r.prev_hash).equals(expectedPrev)) {
+          result.ok = false;
+          result.firstBreak = {
+            auditId: r.id,
+            occurredAt: r.occurred_at,
+            expectedHash: expectedPrev.toString('hex'),
+            actualHash: Buffer.from(r.prev_hash).toString('hex'),
+          };
+          return result;
+        }
+
+        const computed = eventHash(expectedPrev, {
+          tenantId,
           occurredAt: r.occurred_at,
-          expectedHash: expectedPrev.toString('hex'),
-          actualHash: Buffer.from(r.prev_hash).toString('hex'),
-        };
-        return result;
+          actorType: r.actor_type,
+          actorId: r.actor_id,
+          action: r.action,
+          resourceType: r.resource_type,
+          resourceId: r.resource_id,
+          before: r.before,
+          after: r.after,
+        });
+
+        if (!computed.equals(Buffer.from(r.this_hash))) {
+          result.ok = false;
+          result.firstBreak = {
+            auditId: r.id,
+            occurredAt: r.occurred_at,
+            expectedHash: computed.toString('hex'),
+            actualHash: Buffer.from(r.this_hash).toString('hex'),
+          };
+          return result;
+        }
+
+        // Den AUS DER KETTE REKONSTRUIERTEN Spitzen-Hash dieses Eintrags festhalten,
+        // falls er versiegelt wurde — er (nicht die DB-Spalte) ist der Prüfwert unten.
+        if (sealTopIds.has(r.id)) recomputedTops.set(r.id, computed);
+
+        expectedPrev = Buffer.from(r.this_hash);
+        result.checked++;
       }
 
-      const computed = eventHash(expectedPrev, {
-        tenantId,
-        occurredAt: r.occurred_at,
-        actorType: r.actor_type,
-        actorId: r.actor_id,
-        action: r.action,
-        resourceType: r.resource_type,
-        resourceId: r.resource_id,
-        before: r.before,
-        after: r.after,
-      });
-
-      if (!computed.equals(Buffer.from(r.this_hash))) {
-        result.ok = false;
-        result.firstBreak = {
-          auditId: r.id,
-          occurredAt: r.occurred_at,
-          expectedHash: computed.toString('hex'),
-          actualHash: Buffer.from(r.this_hash).toString('hex'),
-        };
-        return result;
-      }
-
-      // Den AUS DER KETTE REKONSTRUIERTEN Spitzen-Hash dieses Eintrags festhalten,
-      // falls er versiegelt wurde — er (nicht die DB-Spalte) ist der Prüfwert unten.
-      if (sealTopIds.has(r.id)) recomputedTops.set(r.id, computed);
-
-      expectedPrev = Buffer.from(r.this_hash);
-      result.checked++;
+      cursor = rows[rows.length - 1]!.id;
+      if (rows.length < BATCH_SIZE) break;
     }
 
     // 2. Tages-Stempel verifizieren — gegen den REKONSTRUIERTEN Ketten-Hash.
@@ -389,6 +399,39 @@ export class EvidenceService {
 // -----------------------------------------------------------------------------
 // Helpers
 // -----------------------------------------------------------------------------
+
+interface AuditChainRow {
+  id: bigint;
+  occurred_at: Date;
+  actor_type: AuditActorType;
+  actor_id: string | null;
+  action: string;
+  resource_type: string;
+  resource_id: string | null;
+  before: unknown;
+  after: unknown;
+  prev_hash: Buffer;
+  this_hash: Buffer;
+}
+
+/** RF-5: ein id-aufsteigender Chunk der Audit-Chain (Cursor = letzte id). */
+async function fetchAuditBatch(
+  tx: Tx,
+  tenantId: string,
+  cursor: bigint,
+  limit: number,
+): Promise<AuditChainRow[]> {
+  return tx.$queryRaw<AuditChainRow[]>`
+    SELECT id, occurred_at, actor_type, actor_id, action,
+           resource_type, resource_id, "before", "after",
+           prev_hash, this_hash
+    FROM audit_log
+    WHERE tenant_id = ${tenantId}::uuid
+      AND id > ${cursor}
+    ORDER BY id ASC
+    LIMIT ${limit}
+  `;
+}
 
 function genesisHash(tenantId: string): Buffer {
   return createHash('sha256')

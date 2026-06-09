@@ -63,6 +63,13 @@ export async function enqueueN8nEvent(
       'deliver',
       { outboxId },
       {
+        // RF-1: deterministische jobId pro Outbox-Reihe. Der Reconcile-Job
+        // (alle 5 min) reiht PENDING-Reihen >5 min erneut ein, während die
+        // BullMQ-Retry-Kette hier noch laufen kann (exponentieller Backoff bis
+        // ~31 min) — ohne jobId entstünden parallele Job-Ketten für dieselbe
+        // outboxId und mehrfache POSTs mit frischer Nonce. BullMQ dedupliziert
+        // adds mit identischer jobId, solange der Job noch existiert.
+        jobId: `outbox-${outboxId}`,
         // Erster Versuch sofort, Folgeversuche mit den oben definierten Intervallen.
         // BullMQ erwartet ein einzelnes Delay zwischen Versuchen — wir nutzen
         // 'exponential' und stellen den Erstwert auf 60s ein. Approximiert die
@@ -71,7 +78,11 @@ export async function enqueueN8nEvent(
         attempts: RETRY_BACKOFF_MS.length + 1,
         backoff: { type: 'exponential', delay: 60_000 },
         removeOnComplete: { age: 24 * 60 * 60 }, // 1 Tag aufheben
-        removeOnFail: false, // FAILED-Jobs für Ops behalten
+        // RF-1: vorher `false` (für immer behalten) — ein erschöpfter Job
+        // blockierte dann mit seiner jobId jede spätere Re-Zustellung (z. B.
+        // Ops setzt eine FAILED-Reihe zurück auf PENDING). 7 Tage reichen
+        // für die Ops-Inspektion; danach gibt die jobId den Weg wieder frei.
+        removeOnFail: { age: 7 * 24 * 60 * 60 },
       },
     );
   } catch (err) {

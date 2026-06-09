@@ -82,6 +82,9 @@ export const ACTION_LABELS: Record<string, string> = {
   'gwg.check.verify': 'GwG-Prüfung verifiziert',
   'gwg.check.reject': 'GwG-Prüfung abgelehnt',
   'gwg.evidence.destroy': 'GwG-Beleg vernichtet (§ 8 Abs. 4)',
+  // RF-8: System-Statuswechsel aus dem Worker (gwg-expiry-check)
+  'gwg.check.expire': 'GwG-Prüfung abgelaufen (System)',
+  'client.deactivate.gwg_expired': 'Mandant deaktiviert — GwG-Prüfung abgelaufen',
 
   // Rechnungen
   'invoice.create': 'Rechnung erstellt',
@@ -89,6 +92,8 @@ export const ACTION_LABELS: Record<string, string> = {
   'invoice.send': 'Rechnung versendet',
   'invoice.paid': 'Rechnung bezahlt',
   'invoice.cancel': 'Rechnung storniert',
+  // RF-8: System-Statuswechsel aus dem Worker (invoice-overdue-check)
+  'invoice.overdue': 'Rechnung überfällig (System)',
   'invoice.xrechnung.download': 'XRechnung exportiert',
   'invoice.zugferd.download': 'ZUGFeRD exportiert',
 
@@ -97,6 +102,8 @@ export const ACTION_LABELS: Record<string, string> = {
   'poa.send': 'Vollmacht versendet',
   'poa.sign': 'Vollmacht signiert',
   'poa.revoke': 'Vollmacht widerrufen',
+  // RF-8: System-Statuswechsel aus dem Worker (poa-expiry-check)
+  'poa.expire': 'Vollmacht abgelaufen (System)',
 
   // Steuertermine + Bescheide
   'tax_schedule.create': 'Steuertermin-Konfig erstellt',

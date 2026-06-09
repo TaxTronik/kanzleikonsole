@@ -4,7 +4,19 @@ import { useState, useTransition } from 'react';
 import { Plus, Trash2, Upload, Check, ArrowLeft, ArrowRight, Loader } from 'lucide-react';
 import { uploadIdImageAction, submitOnboardingAction } from './actions';
 
+// Client-seitiges Upload-Limit: Die Datei wird Base64-kodiert an die Server-
+// Action geschickt (+33 % Overhead). Damit eine Datei knapp unter dem Limit
+// das Server-Action-bodySizeLimit von 10 MB (next.config.mjs) nicht sprengt,
+// liegt die effektive Grenze bei 7 MB (7 MB × 4/3 ≈ 9,3 MB + JSON-Overhead).
+const MAX_UPLOAD_BYTES = 7 * 1024 * 1024;
+const MAX_UPLOAD_LABEL = '7 MB';
+
+// Stabile React-Keys für Owner-Cards (Add/Remove) — kein key={index}.
+let ownerIdSeq = 0;
+const nextOwnerId = () => `owner-${++ownerIdSeq}`;
+
 interface BeneficialOwner {
+  id: string;              // nur clientseitig (React-Key), wird nicht übermittelt
   fullName: string;
   birthDate: string;       // YYYY-MM-DD
   nationality: string;
@@ -62,6 +74,12 @@ export function OnboardingWizard({
   const [extraDocs, setExtraDocs] = useState<Array<{ documentId: string; fileName: string }>>([]);
   const [extraUploadError, setExtraUploadError] = useState<string | null>(null);
 
+  // Ausweis-Upload-Fehler je Owner+Seite (Key: `${ownerId}:${side}`).
+  const [idUploadErrors, setIdUploadErrors] = useState<Record<string, string | null>>({});
+  function setIdError(ownerId: string, side: 'front' | 'back', msg: string | null) {
+    setIdUploadErrors((s) => ({ ...s, [`${ownerId}:${side}`]: msg }));
+  }
+
   // Submit-State
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
@@ -78,54 +96,71 @@ export function OnboardingWizard({
   }
 
   async function handleIdUpload(
-    ownerIndex: number,
+    ownerId: string,
     side: 'front' | 'back',
     file: File,
   ) {
-    if (file.size > 10 * 1024 * 1024) {
-      patchOwner(ownerIndex, side === 'front' ? { idFront: null } : { idBack: null });
+    setIdError(ownerId, side, null);
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setIdError(ownerId, side, `Datei zu groß (max. ${MAX_UPLOAD_LABEL}).`);
       return;
     }
-    const buf = await file.arrayBuffer();
-    const base64 = Buffer.from(buf).toString('base64');
-    const r = await uploadIdImageAction({
-      token,
-      fileName: file.name,
-      mimeType: file.type || 'application/octet-stream',
-      base64,
-      kind: 'ID_DOCUMENT',
-    });
-    if (!r.ok) {
-      alert(`Upload fehlgeschlagen: ${r.error ?? 'unbekannt'}`);
-      return;
-    }
-    if (side === 'front') {
-      patchOwner(ownerIndex, { idFront: { documentId: r.documentId!, fileName: file.name } });
-    } else {
-      patchOwner(ownerIndex, { idBack: { documentId: r.documentId!, fileName: file.name } });
+    try {
+      const buf = await file.arrayBuffer();
+      const base64 = Buffer.from(buf).toString('base64');
+      const r = await uploadIdImageAction({
+        token,
+        fileName: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        base64,
+        kind: 'ID_DOCUMENT',
+      });
+      if (!r.ok) {
+        setIdError(ownerId, side, `Upload fehlgeschlagen: ${r.error ?? 'unbekannt'}`);
+        return;
+      }
+      setOwners((s) =>
+        s.map((o) =>
+          o.id === ownerId
+            ? {
+                ...o,
+                [side === 'front' ? 'idFront' : 'idBack']: {
+                  documentId: r.documentId!,
+                  fileName: file.name,
+                },
+              }
+            : o,
+        ),
+      );
+    } catch {
+      setIdError(ownerId, side, 'Upload fehlgeschlagen — bitte Verbindung prüfen und erneut versuchen.');
     }
   }
 
   async function handleExtraUpload(file: File) {
     setExtraUploadError(null);
-    if (file.size > 10 * 1024 * 1024) {
-      setExtraUploadError('Datei zu groß (max. 10 MB).');
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setExtraUploadError(`Datei zu groß (max. ${MAX_UPLOAD_LABEL}).`);
       return;
     }
-    const buf = await file.arrayBuffer();
-    const base64 = Buffer.from(buf).toString('base64');
-    const r = await uploadIdImageAction({
-      token,
-      fileName: file.name,
-      mimeType: file.type || 'application/octet-stream',
-      base64,
-      kind: 'EXTRA',
-    });
-    if (!r.ok) {
-      setExtraUploadError(r.error ?? 'Upload fehlgeschlagen.');
-      return;
+    try {
+      const buf = await file.arrayBuffer();
+      const base64 = Buffer.from(buf).toString('base64');
+      const r = await uploadIdImageAction({
+        token,
+        fileName: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        base64,
+        kind: 'EXTRA',
+      });
+      if (!r.ok) {
+        setExtraUploadError(r.error ?? 'Upload fehlgeschlagen.');
+        return;
+      }
+      setExtraDocs((d) => [...d, { documentId: r.documentId!, fileName: file.name }]);
+    } catch {
+      setExtraUploadError('Upload fehlgeschlagen — bitte Verbindung prüfen und erneut versuchen.');
     }
-    setExtraDocs((d) => [...d, { documentId: r.documentId!, fileName: file.name }]);
   }
 
   function validateStep(): string | null {
@@ -269,12 +304,14 @@ export function OnboardingWizard({
           </div>
           {owners.map((o, i) => (
             <OwnerCard
-              key={i}
+              key={o.id}
               index={i}
               owner={o}
               onPatch={(p) => patchOwner(i, p)}
               onRemove={owners.length > 1 ? () => removeOwner(i) : null}
-              onUpload={(side, file) => handleIdUpload(i, side, file)}
+              onUpload={(side, file) => { void handleIdUpload(o.id, side, file); }}
+              frontError={idUploadErrors[`${o.id}:front`] ?? null}
+              backError={idUploadErrors[`${o.id}:back`] ?? null}
             />
           ))}
           <button type="button" onClick={addOwner} className="btn-secondary">
@@ -302,7 +339,7 @@ export function OnboardingWizard({
                 className="sr-only"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
-                  if (f) handleExtraUpload(f);
+                  if (f) void handleExtraUpload(f);
                   e.target.value = '';
                 }}
               />
@@ -366,6 +403,7 @@ export function OnboardingWizard({
 
 function emptyOwner(name: string): BeneficialOwner {
   return {
+    id: nextOwnerId(),
     fullName: name,
     birthDate: '',
     nationality: 'DE',
@@ -417,13 +455,15 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 }
 
 function OwnerCard({
-  index, owner, onPatch, onRemove, onUpload,
+  index, owner, onPatch, onRemove, onUpload, frontError, backError,
 }: {
   index: number;
   owner: BeneficialOwner;
   onPatch: (p: Partial<BeneficialOwner>) => void;
   onRemove: (() => void) | null;
   onUpload: (side: 'front' | 'back', file: File) => void;
+  frontError: string | null;
+  backError: string | null;
 }) {
   return (
     <div className="card p-6 space-y-4">
@@ -455,11 +495,13 @@ function OwnerCard({
           label="Personalausweis Vorderseite"
           file={owner.idFront}
           onUpload={(f) => onUpload('front', f)}
+          error={frontError}
         />
         <IdUploadField
           label="Personalausweis Rückseite"
           file={owner.idBack}
           onUpload={(f) => onUpload('back', f)}
+          error={backError}
         />
       </div>
     </div>
@@ -467,11 +509,12 @@ function OwnerCard({
 }
 
 function IdUploadField({
-  label, file, onUpload,
+  label, file, onUpload, error,
 }: {
   label: string;
   file: { documentId: string; fileName: string } | null;
   onUpload: (file: File) => void;
+  error: string | null;
 }) {
   return (
     <div>
@@ -500,7 +543,8 @@ function IdUploadField({
           />
         </label>
       )}
-      <p className="text-xs text-muted mt-1">JPG / PNG / PDF, max. 10 MB</p>
+      {error && <p className="text-xs text-red-700 mt-1">{error}</p>}
+      <p className="text-xs text-muted mt-1">JPG / PNG / PDF, max. {MAX_UPLOAD_LABEL}</p>
     </div>
   );
 }

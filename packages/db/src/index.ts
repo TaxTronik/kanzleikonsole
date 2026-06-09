@@ -7,6 +7,7 @@ export { prismaOwner } from './owner-client';
 export {
   withTenantContext,
   withSystemContext,
+  TX_OPTIONS,
   type TenantContext,
   type ActorType,
   type TxClient,

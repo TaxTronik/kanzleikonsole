@@ -7,11 +7,14 @@
 
 import { Worker } from 'bullmq';
 import { Prisma } from '@prisma/client';
+import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
 import { withWorkerTenantContext } from '../tenant-context';
 
+// RF-8: record() braucht nur den Tx — gleiches Muster wie risk-analyse-llm.ts.
+const evidence = new EvidenceService(new LocalTimestampAdapter());
 
 export const invoiceOverdueWorker = new Worker<ChecksJob>(
   'invoice-overdue-check',
@@ -44,6 +47,18 @@ export const invoiceOverdueWorker = new Worker<ChecksJob>(
             await tx.invoice.update({
               where: { id: inv.id },
               data: { status: 'OVERDUE' },
+            });
+            // RF-8: System-Statuswechsel in die Audit-Chain — derselbe TX wie
+            // das Update (vorher fehlte der evidence.record komplett).
+            await evidence.record(tx, {
+              tenantId,
+              actorType: 'SYSTEM',
+              actorId: null,
+              action: 'invoice.overdue',
+              resourceType: 'invoice',
+              resourceId: inv.id,
+              before: { status: 'SENT' },
+              after: { status: 'OVERDUE', daysOverdue },
             });
             const data = {
               tenantId,

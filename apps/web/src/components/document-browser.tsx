@@ -5,16 +5,17 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   Folder, FileText, ChevronRight, Search, FolderPlus,
-  Download, RotateCcw, Trash2, Pencil, FolderInput, Tag, X, CornerLeftUp, Check,
+  Download, RotateCcw, Trash2, Pencil, FolderInput, Tag, X, CornerLeftUp,
   Share2, EyeOff,
 } from 'lucide-react';
 import { DocumentPreviewModal } from '@/components/document-preview';
 import { DocumentUploadButton } from '@/components/document-upload-button';
 import { RetagDialog } from '@/components/document-dialogs';
+import { Modal, ConfirmModal, InputModal } from '@/components/ui/modal';
+import { FolderTreePicker } from '@/components/folder-tree-picker';
 import {
   softDeleteDocumentAction,
   restoreDocumentAction,
-  retagDocumentAction,
   setDocumentShareAction,
 } from '@/app/staff/(protected)/documents/actions';
 import {
@@ -31,6 +32,7 @@ import {
   fmtBytes,
   fmtDate,
   navIcon,
+  runChunked,
   type Crumb,
   type Entry,
   type FolderNode,
@@ -38,6 +40,15 @@ import {
 
 export type { Crumb, Entry };
 type Sel = { kind: 'file' | 'folder'; id: string };
+
+interface ConfirmState {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  busyLabel?: string;
+  danger?: boolean;
+  action: () => Promise<{ ok: boolean; error?: string }>;
+}
 
 export function DocumentBrowser({
   crumbs, entries, scope, folders, currentFolderId, deleted, q, toggleDeletedHref,
@@ -62,6 +73,11 @@ export function DocumentBrowser({
   const [ctx, setCtx] = useState<{ x: number; y: number; e: Entry } | null>(null);
   const [dropTarget, setDropTarget] = useState<string | 'root' | null>(null);
   const [osDrag, setOsDrag] = useState(false);
+  // Sammel-Fehlermeldung für Hintergrund-Operationen (statt window.alert).
+  const [opError, setOpError] = useState<string | null>(null);
+  const [newFolderOpen, setNewFolderOpen] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
+  const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
 
   useEffect(() => {
     const close = () => setCtx(null);
@@ -98,36 +114,28 @@ export function DocumentBrowser({
   }
   function newFolder() {
     if (!scope) return;
-    const name = window.prompt('Name des neuen Ordners:');
-    if (!name?.trim()) return;
-    start(async () => {
-      const r = await createFolderAction({
-        clientId: scope.clientId, parentId: currentFolderId, name: name.trim(),
-      });
-      if (!r.ok) alert(r.error); else router.refresh();
-    });
+    setNewFolderOpen(true);
   }
 
   // ---- Verschieben (eine Menge → Ziel-Ordner-ID | null=Wurzel) ----
+  // Begrenzt parallel (Chunks), Fehler gesammelt anzeigen.
   function moveSet(items: Sel[], target: string | null) {
     if (items.length === 0) return;
     start(async () => {
-      const errs: string[] = [];
-      for (const it of items) {
+      setOpError(null);
+      const errs = await runChunked(items, async (it) => {
         if (it.kind === 'file') {
           const r = await setDocumentFolderAction({ documentId: it.id, folderId: target });
-          if (!r.ok) errs.push(r.error ?? 'Fehler');
-        } else {
-          // Ordner nicht in sich/Teilbaum
-          if (target && descendants(folders, it.id).has(target)) {
-            errs.push('Ordner kann nicht in seinen eigenen Unterbaum.');
-            continue;
-          }
-          const r = await moveFolderAction({ folderId: it.id, newParentId: target });
-          if (!r.ok) errs.push(r.error ?? 'Fehler');
+          return r.ok ? null : (r.error ?? 'Fehler');
         }
-      }
-      if (errs.length) alert([...new Set(errs)].join('\n'));
+        // Ordner nicht in sich/Teilbaum
+        if (target && descendants(folders, it.id).has(target)) {
+          return 'Ordner kann nicht in seinen eigenen Unterbaum.';
+        }
+        const r = await moveFolderAction({ folderId: it.id, newParentId: target });
+        return r.ok ? null : (r.error ?? 'Fehler');
+      });
+      if (errs.length) setOpError([...new Set(errs)].join('\n'));
       clearSel();
       setMoveOpen(false);
       router.refresh();
@@ -148,37 +156,62 @@ export function DocumentBrowser({
   }
 
   function softDelete(id: string, name: string) {
-    if (!confirm(`„${name}" löschen?\nDie Datei bleibt revisionssicher aufbewahrt (Object-Lock), wird nur ausgeblendet.`)) return;
-    start(async () => {
-      const r = await softDeleteDocumentAction({ documentId: id });
-      if (!r.ok) alert(r.error); else router.refresh();
+    setConfirmState({
+      title: 'Dokument löschen',
+      message: `„${name}" löschen?\nDie Datei bleibt revisionssicher aufbewahrt (Object-Lock), wird nur ausgeblendet.`,
+      confirmLabel: 'Löschen',
+      busyLabel: 'Löscht…',
+      danger: true,
+      action: async () => {
+        const r = await softDeleteDocumentAction({ documentId: id });
+        if (r.ok) router.refresh();
+        return r;
+      },
     });
   }
   function toggleShare(id: string, share: boolean) {
     start(async () => {
+      setOpError(null);
       const r = await setDocumentShareAction({ documentId: id, share });
-      if (!r.ok) alert(r.error); else router.refresh();
+      if (!r.ok) setOpError(r.error ?? 'Fehler.'); else router.refresh();
     });
   }
   function restore(id: string) {
     start(async () => {
+      setOpError(null);
       const r = await restoreDocumentAction({ documentId: id });
-      if (!r.ok) alert(r.error); else router.refresh();
+      if (!r.ok) setOpError(r.error ?? 'Fehler.'); else router.refresh();
+    });
+  }
+  // Bulk-Freigabe/-Entzug: begrenzt parallel, Fehler gesammelt anzeigen.
+  function bulkShare(share: boolean) {
+    const ids = sel.filter((s) => s.kind === 'file').map((s) => s.id);
+    start(async () => {
+      setOpError(null);
+      const errs = await runChunked(ids, async (id) => {
+        const r = await setDocumentShareAction({ documentId: id, share });
+        return r.ok ? null : (r.error ?? 'Fehler');
+      });
+      if (errs.length) setOpError([...new Set(errs)].join('\n'));
+      clearSel();
+      router.refresh();
     });
   }
   function renameFolder(id: string, cur: string) {
-    const name = window.prompt('Neuer Name:', cur);
-    if (!name?.trim()) return;
-    start(async () => {
-      const r = await renameFolderAction({ folderId: id, name: name.trim() });
-      if (!r.ok) alert(r.error); else router.refresh();
-    });
+    setRenameTarget({ id, name: cur });
   }
   function deleteFolder(id: string, name: string) {
-    if (!confirm(`Ordner „${name}" löschen?\nInhalt rückt eine Ebene hoch. Kein Dokument wird gelöscht.`)) return;
-    start(async () => {
-      const r = await deleteFolderAction({ folderId: id });
-      if (!r.ok) alert(r.error); else router.refresh();
+    setConfirmState({
+      title: 'Ordner löschen',
+      message: `Ordner „${name}" löschen?\nInhalt rückt eine Ebene hoch. Kein Dokument wird gelöscht.`,
+      confirmLabel: 'Löschen',
+      busyLabel: 'Löscht…',
+      danger: true,
+      action: async () => {
+        const r = await deleteFolderAction({ folderId: id });
+        if (r.ok) router.refresh();
+        return r;
+      },
     });
   }
   function dlUrl(fileIds: string[], folderIds: string[]) {
@@ -206,8 +239,9 @@ export function DocumentBrowser({
           d.types[0]?.id ?? '';
       }
     } catch { /* ignore */ }
-    if (!typeId) { alert('Kein Datei-Typ verfügbar.'); return; }
+    if (!typeId) { setOpError('Kein Datei-Typ verfügbar.'); return; }
     start(async () => {
+      setOpError(null);
       const errs: string[] = [];
       for (const f of files) {
         const fd = new FormData();
@@ -223,7 +257,7 @@ export function DocumentBrowser({
           errs.push(`${f.name}: ${(b as { error?: string }).error ?? res.status}`);
         }
       }
-      if (errs.length) alert(`Upload-Fehler:\n${errs.join('\n')}`);
+      if (errs.length) setOpError(`Upload-Fehler:\n${errs.join('\n')}`);
       router.refresh();
     });
   }
@@ -309,12 +343,7 @@ export function DocumentBrowser({
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() =>
-                    start(async () => {
-                      for (const s of sel) await setDocumentShareAction({ documentId: s.id, share: true });
-                      clearSel(); router.refresh();
-                    })
-                  }
+                  onClick={() => bulkShare(true)}
                   className="btn-secondary text-xs py-1.5 !text-green-700"
                 >
                   <Share2 className="h-4 w-4" /> Freigeben
@@ -322,12 +351,7 @@ export function DocumentBrowser({
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() =>
-                    start(async () => {
-                      for (const s of sel) await setDocumentShareAction({ documentId: s.id, share: false });
-                      clearSel(); router.refresh();
-                    })
-                  }
+                  onClick={() => bulkShare(false)}
                   className="btn-secondary text-xs py-1.5"
                 >
                   <EyeOff className="h-4 w-4" /> Privat
@@ -339,10 +363,24 @@ export function DocumentBrowser({
                 type="button"
                 disabled={busy}
                 onClick={() => {
-                  if (!confirm(`${sel.length} Dokument(e) löschen? Bleiben revisionssicher aufbewahrt, nur ausgeblendet.`)) return;
-                  start(async () => {
-                    for (const s of sel) await softDeleteDocumentAction({ documentId: s.id });
-                    clearSel(); router.refresh();
+                  const ids = sel.filter((s) => s.kind === 'file').map((s) => s.id);
+                  setConfirmState({
+                    title: 'Dokumente löschen',
+                    message: `${ids.length} Dokument(e) löschen? Bleiben revisionssicher aufbewahrt, nur ausgeblendet.`,
+                    confirmLabel: 'Löschen',
+                    busyLabel: 'Löscht…',
+                    danger: true,
+                    action: async () => {
+                      const errs = await runChunked(ids, async (id) => {
+                        const r = await softDeleteDocumentAction({ documentId: id });
+                        return r.ok ? null : (r.error ?? 'Fehler');
+                      });
+                      clearSel();
+                      router.refresh();
+                      return errs.length
+                        ? { ok: false, error: [...new Set(errs)].join('\n') }
+                        : { ok: true };
+                    },
                   });
                 }}
                 className="btn-secondary text-xs py-1.5 !text-red-600"
@@ -391,6 +429,21 @@ export function DocumentBrowser({
           </>
         )}
       </div>
+
+      {/* Sammel-Fehlermeldung (ersetzt window.alert) */}
+      {opError && (
+        <div className="alert-error-sm mb-3 flex items-start justify-between gap-3">
+          <span className="whitespace-pre-line">{opError}</span>
+          <button
+            type="button"
+            onClick={() => setOpError(null)}
+            aria-label="Meldung schließen"
+            className="shrink-0 opacity-70 hover:opacity-100"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {/* „Eine Ebene hoch" als Drop-Ziel (Wurzel des Scopes) */}
       {scope && currentFolderId && (
@@ -602,7 +655,7 @@ export function DocumentBrowser({
       )}
       {retagDoc && (
         <RetagDialog
-          documentId={retagDoc.id}
+          documentIds={[retagDoc.id]}
           documentTitle={retagDoc.name}
           currentTier={retagDoc.tier}
           currentTypeId={retagDoc.typeId}
@@ -618,85 +671,52 @@ export function DocumentBrowser({
         />
       )}
       {bulkRetag && (
-        <BulkRetagDialog
-          fileIds={sel.filter((s) => s.kind === 'file').map((s) => s.id)}
+        <RetagDialog
+          documentIds={sel.filter((s) => s.kind === 'file').map((s) => s.id)}
+          documentTitle={`${sel.filter((s) => s.kind === 'file').length} Dokument(e)`}
           onClose={() => setBulkRetag(false)}
           onDone={() => { setBulkRetag(false); clearSel(); router.refresh(); }}
         />
       )}
-    </div>
-  );
-}
-
-function BulkRetagDialog({
-  fileIds, onClose, onDone,
-}: {
-  fileIds: string[];
-  onClose: () => void;
-  onDone: () => void;
-}) {
-  const [types, setTypes] = useState<{ id: string; name: string; tier: 'NONE' | 'GWG' | 'GOBD' }[]>([]);
-  const [sel, setSel] = useState('');
-  const [busy, start] = useTransition();
-  const [msg, setMsg] = useState<string | null>(null);
-  useEffect(() => {
-    let c = false;
-    (async () => {
-      try {
-        const r = await fetch('/api/staff/document-types');
-        if (!r.ok) return;
-        const d = (await r.json()) as { types: typeof types };
-        if (!c) setTypes(d.types);
-      } catch { /* ignore */ }
-    })();
-    return () => { c = true; };
-  }, []);
-  return (
-    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className="w-full max-w-md card p-6 relative" onClick={(e) => e.stopPropagation()}>
-        <button type="button" onClick={onClose} className="modal-close">
-          <X className="h-5 w-5" />
-        </button>
-        <h2 className="text-base font-semibold text-primary mb-1">
-          Typ ändern — {fileIds.length} Dokument(e)
-        </h2>
-        <p className="text-xs text-muted mb-3">
-          Herabstufungen (GoBD/GwG → schwächer) werden serverseitig je Datei
-          abgelehnt und am Ende zusammengefasst.
-        </p>
-        <select className="input mb-3" value={sel} onChange={(e) => setSel(e.target.value)}>
-          <option value="">— Typ wählen —</option>
-          {types.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}{t.tier !== 'NONE' ? ` — ${t.tier === 'GOBD' ? 'GoBD 10 J.' : 'GwG 5 J.'}` : ''}
-            </option>
-          ))}
-        </select>
-        {msg && <div className="rounded bg-amber-50 p-2 text-xs text-amber-800 mb-3 whitespace-pre-line">{msg}</div>}
-        <div className="flex gap-2">
-          <button type="button" onClick={onClose} disabled={busy} className="btn-secondary flex-1">Abbrechen</button>
-          <button
-            type="button"
-            disabled={busy || !sel}
-            onClick={() =>
-              start(async () => {
-                setMsg(null);
-                let ok = 0;
-                const errs: string[] = [];
-                for (const id of fileIds) {
-                  const r = await retagDocumentAction({ documentId: id, documentTypeId: sel });
-                  if (r.ok) ok++; else errs.push(r.error ?? 'Fehler');
-                }
-                if (errs.length === 0) onDone();
-                else setMsg(`${ok} geändert, ${errs.length} abgelehnt:\n${[...new Set(errs)].join('\n')}`);
-              })
-            }
-            className="btn-primary flex-1"
-          >
-            {busy ? 'Ändert…' : 'Anwenden'}
-          </button>
-        </div>
-      </div>
+      {newFolderOpen && scope && (
+        <InputModal
+          title="Neuer Ordner"
+          placeholder="Name des neuen Ordners"
+          confirmLabel="Anlegen"
+          busyLabel="Legt an…"
+          onSubmit={async (name) => {
+            const r = await createFolderAction({
+              clientId: scope.clientId, parentId: currentFolderId, name,
+            });
+            if (r.ok) router.refresh();
+            return r;
+          }}
+          onClose={() => setNewFolderOpen(false)}
+        />
+      )}
+      {renameTarget && (
+        <InputModal
+          title="Ordner umbenennen"
+          initialValue={renameTarget.name}
+          onSubmit={async (name) => {
+            const r = await renameFolderAction({ folderId: renameTarget.id, name });
+            if (r.ok) router.refresh();
+            return r;
+          }}
+          onClose={() => setRenameTarget(null)}
+        />
+      )}
+      {confirmState && (
+        <ConfirmModal
+          title={confirmState.title}
+          message={confirmState.message}
+          confirmLabel={confirmState.confirmLabel}
+          busyLabel={confirmState.busyLabel}
+          danger={confirmState.danger}
+          onConfirm={confirmState.action}
+          onClose={() => setConfirmState(null)}
+        />
+      )}
     </div>
   );
 }
@@ -724,81 +744,32 @@ function MoveTargetDialog({
   onPick: (target: string | null) => void;
 }) {
   const [target, setTarget] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   // Ziele, die im Teilbaum eines zu verschiebenden Ordners liegen, sperren.
   const blocked = useMemo(() => {
     const b = new Set<string>();
     for (const id of movingFolderIds) for (const d of descendants(folders, id)) b.add(d);
     return b;
   }, [folders, movingFolderIds]);
-  const childrenOf = useMemo(() => {
-    const m = new Map<string | null, FolderNode[]>();
-    for (const f of [...folders].sort((a, b) => a.name.localeCompare(b.name, 'de')))
-      m.set(f.parentId, [...(m.get(f.parentId) ?? []), f]);
-    return m;
-  }, [folders]);
-
-  function row(f: FolderNode, depth: number) {
-    const kids = childrenOf.get(f.id) ?? [];
-    const open = expanded[f.id];
-    const dis = blocked.has(f.id);
-    return (
-      <div key={f.id}>
-        <div
-          className={`flex items-center gap-1 rounded px-2 py-1.5 text-sm ${
-            dis ? 'opacity-40 cursor-not-allowed'
-            : target === f.id ? 'bg-brand-50 text-brand-700 cursor-pointer'
-            : 'hover:bg-gray-50 text-secondary cursor-pointer'
-          }`}
-          style={{ paddingLeft: `${depth * 16 + 8}px` }}
-          onClick={() => !dis && setTarget(f.id)}
-        >
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); setExpanded((x) => ({ ...x, [f.id]: !x[f.id] })); }}
-            className={kids.length ? 'text-disabled' : 'invisible'}
-          >
-            <ChevronRight className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-90' : ''}`} />
-          </button>
-          <Folder className="h-4 w-4" />
-          <span className="truncate flex-1">{f.name}</span>
-          {target === f.id && <Check className="h-3.5 w-3.5" />}
-        </div>
-        {open && kids.map((k) => row(k, depth + 1))}
-      </div>
-    );
-  }
 
   return (
-    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className="w-full max-w-md card p-6 relative" onClick={(e) => e.stopPropagation()}>
-        <button type="button" onClick={onClose} className="modal-close">
-          <X className="h-5 w-5" />
-        </button>
-        <h2 className="text-base font-semibold text-primary mb-3">Verschieben nach…</h2>
-        <div className="border border-default rounded-md max-h-72 overflow-auto p-1">
-          <div
-            className={`flex items-center gap-2 rounded px-2 py-1.5 text-sm cursor-pointer ${
-              target === null ? 'bg-brand-50 text-brand-700' : 'hover:bg-gray-50 text-secondary'
-            }`}
-            onClick={() => setTarget(null)}
-          >
-            <Folder className="h-4 w-4 text-disabled" />
-            <span className="flex-1">— Wurzel (ohne Ordner) —</span>
-            {target === null && <Check className="h-3.5 w-3.5" />}
-          </div>
-          {(childrenOf.get(null) ?? []).map((f) => row(f, 0))}
-          {folders.length === 0 && (
-            <p className="px-2 py-3 text-xs text-disabled">Keine Ordner in diesem Bereich.</p>
-          )}
-        </div>
-        <div className="flex gap-2 mt-4">
-          <button type="button" onClick={onClose} className="btn-secondary flex-1">Abbrechen</button>
-          <button type="button" onClick={() => onPick(target)} className="btn-primary flex-1">
-            Hierher verschieben
-          </button>
-        </div>
+    <Modal title="Verschieben nach…" onClose={onClose}>
+      <h2 className="text-base font-semibold text-primary mb-3">Verschieben nach…</h2>
+      <div className="border border-default rounded-md max-h-72 overflow-auto p-1">
+        <FolderTreePicker
+          folders={folders}
+          value={target}
+          onSelect={setTarget}
+          rootLabel="— Wurzel (ohne Ordner) —"
+          disabledIds={blocked}
+          showCheck
+        />
       </div>
-    </div>
+      <div className="flex gap-2 mt-4">
+        <button type="button" onClick={onClose} className="btn-secondary flex-1">Abbrechen</button>
+        <button type="button" onClick={() => onPick(target)} className="btn-primary flex-1">
+          Hierher verschieben
+        </button>
+      </div>
+    </Modal>
   );
 }

@@ -148,9 +148,18 @@ export async function setRolesAction(input: { userId: string; roles: string[] })
   const { tenantId, staffId, ctx } = g;
 
   const parsed = z
-    .object({ userId: z.string().uuid(), roles: z.array(z.enum(ROLE_VALUES)) })
+    .object({
+      userId: z.string().uuid(),
+      // Befund 14: min(1) — ein leeres Array würde sonst ALLE Rollen entfernen
+      // und den User effektiv funktionslos machen.
+      roles: z
+        .array(z.enum(ROLE_VALUES))
+        .min(1, 'Mindestens eine Rolle muss zugewiesen bleiben.'),
+    })
     .safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
+  }
   if (parsed.data.userId === staffId) {
     return { ok: false, error: 'Eigene Rollen nicht ändern.' };
   }

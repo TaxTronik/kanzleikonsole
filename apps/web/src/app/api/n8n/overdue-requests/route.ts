@@ -17,7 +17,7 @@
 
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
-import { verifyN8nSignature } from '@/server/n8n/verify';
+import { verifyN8nSignature, n8nRejectResponse } from '@/server/n8n/verify';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { log } from '@/server/logger';
 
@@ -28,7 +28,8 @@ export async function GET(req: NextRequest) {
   if (!ver.ok) {
     // Audit 2: generische Antwort, Detail nur ins Log.
     log.warn({ component: 'n8n', reason: ver.error }, 'n8n-verify: rejected');
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+    // Befund 10: zentrales Status-Mapping (503/500 retrybar, sonst 401).
+    return n8nRejectResponse(ver);
   }
 
   const tenantId = TenantIdSchema.safeParse(req.nextUrl.searchParams.get('tenantId'));

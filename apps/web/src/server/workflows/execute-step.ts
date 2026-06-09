@@ -26,6 +26,7 @@ import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { renderTemplate } from '@/server/mail/dispatch';
 import { sendMail } from '@/server/mail/send';
+import { log } from '@/server/logger';
 
 export interface ExecuteResult {
   ok: boolean;
@@ -47,7 +48,13 @@ export async function executeWorkflowStep(opts: ExecuteOpts): Promise<ExecuteRes
   const { tenantId, staffId, itemId } = opts;
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
 
-  return withTenantContext(ctx, async (tx) => {
+  // Befund 4: SMTP-Versand NICHT innerhalb der interaktiven Tx (15s-Timeout →
+  // P2028-Risiko; Rollback NACH Versand = Doppelversand beim Retry). Der
+  // Tx-Callback sammelt die fertig gerenderten Mails nur ein; verschickt wird
+  // NACH dem Commit (gleiches Muster wie uploadExternalInvoiceAction).
+  const mailJobs: Array<{ to: string; subject: string; text: string; html: string }> = [];
+
+  const result = await withTenantContext(ctx, async (tx) => {
     const item = await tx.workflowItem.findUnique({
       where: { id: itemId },
       include: { instance: { select: { clientId: true, name: true } } },
@@ -199,23 +206,21 @@ export async function executeWorkflowStep(opts: ExecuteOpts): Promise<ExecuteRes
           return { ok: false, error: 'Mandant hat keinen aktiven Portal-Kontakt mit E-Mail-Opt-in.' };
         }
         // Pro Kontakt mit eigenen Vars rendern (contact.fullName ist
-        // empfänger-spezifisch, alles andere identisch)
-        await Promise.allSettled(
-          contacts.map((c) => {
-            const vars = {
-              contact: { fullName: c.fullName, email: c.email },
-              client: { name: client?.name ?? '' },
-              step: { title: item.title },
-            };
-            return sendMail({
-              to: c.email,
-              subject: renderTemplate(subjectTpl, vars),
-              text: renderTemplate(bodyTpl, vars),
-              html: markdownToInlineHtml(renderTemplate(bodyTpl, vars)),
-              tenantId,
-            });
-          }),
-        );
+        // empfänger-spezifisch, alles andere identisch). Befund 4: hier nur
+        // RENDERN und einsammeln — der Versand passiert nach dem Tx-Commit.
+        for (const c of contacts) {
+          const vars = {
+            contact: { fullName: c.fullName, email: c.email },
+            client: { name: client?.name ?? '' },
+            step: { title: item.title },
+          };
+          mailJobs.push({
+            to: c.email,
+            subject: renderTemplate(subjectTpl, vars),
+            text: renderTemplate(bodyTpl, vars),
+            html: markdownToInlineHtml(renderTemplate(bodyTpl, vars)),
+          });
+        }
         await tx.workflowItem.update({
           where: { id: itemId },
           data: { doneAt: new Date(), doneByStaff: staffId },
@@ -272,6 +277,36 @@ export async function executeWorkflowStep(opts: ExecuteOpts): Promise<ExecuteRes
 
     return result;
   });
+
+  // Befund 4: Versand NACH dem Commit. allSettled-Ergebnisse werden jetzt
+  // ausgewertet — Fehlschläge strukturiert loggen statt stillschweigend zu
+  // verwerfen (vorher: alle Mails fehlgeschlagen → Item trotzdem done, kein Log).
+  if (result.ok && mailJobs.length > 0) {
+    const settled = await Promise.allSettled(
+      mailJobs.map((j) => sendMail({ ...j, tenantId })),
+    );
+    const failures = settled
+      .map((s, i) => ({ s, to: mailJobs[i]!.to }))
+      .filter((x): x is { s: PromiseRejectedResult; to: string } => x.s.status === 'rejected');
+    if (failures.length > 0) {
+      log.error(
+        {
+          component: 'workflow-execute-step',
+          itemId,
+          tenantId,
+          failedCount: failures.length,
+          totalRecipients: mailJobs.length,
+          failures: failures.map((x) => ({
+            to: x.to,
+            err: (x.s.reason as Error)?.message ?? String(x.s.reason),
+          })),
+        },
+        'CLIENT_EMAIL: Versand an einen oder mehrere Empfänger fehlgeschlagen (Item bereits done)',
+      );
+    }
+  }
+
+  return result;
 }
 
 /**

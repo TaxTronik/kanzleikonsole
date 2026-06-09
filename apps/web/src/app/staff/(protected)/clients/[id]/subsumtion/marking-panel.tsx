@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Save, Send, BookPlus, BookmarkPlus, Trash2, AlertTriangle, Webhook, Eye, Loader2, ChevronRight, Scale, Search, Undo2, Library } from 'lucide-react';
 import {
@@ -15,44 +15,9 @@ import {
   herkunftBadge, buildKatalogOverlay, katalogStatus,
 } from './_ui';
 import type { ResolvedNorm, NormHit, PromptTemplateDTO } from '@/server/risk';
+import { useDialogA11y } from '@/components/ui/modal';
 
 type Flash = (r: { ok: boolean; error?: string }, ok?: string) => void;
-
-/** Modal-A11y: Esc schließt, Tab bleibt im Dialog gefangen, Initial-Fokus aufs
- *  erste Element, beim Schließen kehrt der Fokus zum Auslöser zurück. */
-function useDialogA11y(onClose: () => void) {
-  const ref = useRef<HTMLDivElement>(null);
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
-  useEffect(() => {
-    const node = ref.current;
-    const prevFocus = document.activeElement as HTMLElement | null;
-    const focusables = () =>
-      node
-        ? Array.from(
-            node.querySelectorAll<HTMLElement>(
-              'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])',
-            ),
-          ).filter((el) => el.offsetParent !== null)
-        : [];
-    focusables()[0]?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.preventDefault(); closeRef.current(); return; }
-      if (e.key !== 'Tab') return;
-      const f = focusables();
-      if (f.length === 0) return;
-      const first = f[0]!, last = f[f.length - 1]!;
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-    };
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      prevFocus?.focus?.();
-    };
-  }, []);
-  return ref;
-}
 
 export function MarkingPanel(props: {
   clientId: string;

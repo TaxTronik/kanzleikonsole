@@ -5,7 +5,8 @@ import { headers } from 'next/headers';
 import { commitDocumentFromBytes, MAX_UPLOAD_BYTES } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
 import { withSystemContext } from '@taxtronik/db';
-import { prismaBytes } from '@/server/db/prisma-bytes';
+import { createDocumentWithVersion } from '@/server/documents/upload-helpers';
+import { toActionError } from '@/server/auth/rbac';
 import {
   hashInviteToken,
   prismaOwner,
@@ -25,6 +26,30 @@ export interface ActionResult {
   ok: boolean;
   error?: string;
   documentId?: string;
+}
+
+// ----------------------------------------------------------------------------
+// Befund 6: Fehler-Mapping für diesen anonymen (Token-)Endpoint. Rohe Prisma-/
+// Storage-Meldungen dürfen nicht an Unauthentifizierte durchgereicht werden.
+// Bekannte fachliche Fehler → verständliche deutsche Meldung; alles andere
+// läuft durch das zentrale toActionError (generische Meldung + strukturiertes
+// Server-Log).
+// ----------------------------------------------------------------------------
+function toAnonymousActionError(e: unknown): ActionResult {
+  const msg = (e as Error)?.message ?? '';
+  if (msg.startsWith('INFECTED')) {
+    return { ok: false, error: 'Die Datei wurde vom Virenscanner abgewiesen.' };
+  }
+  if (msg.startsWith('TOO_LARGE')) {
+    return { ok: false, error: 'Die Datei ist zu groß.' };
+  }
+  if (msg.startsWith('SCAN_ERROR')) {
+    return {
+      ok: false,
+      error: 'Der Virenscan ist derzeit nicht verfügbar. Bitte versuchen Sie es später erneut.',
+    };
+  }
+  return toActionError(e);
 }
 
 // ----------------------------------------------------------------------------
@@ -133,8 +158,9 @@ export async function uploadIdImageAction(input: {
     // Dokument + erste Version anlegen — direkt im SYSTEM-Kontext, weil
     // der Mandant keinen Auth-Kontext hat. Audit-Trail via evidence-Service.
     documentId = await withSystemContext(invite.tenantId, async (tx) => {
-      const doc = await tx.document.create({
-        data: {
+      // Befund 12: Document+Version-Insert zentral (upload-helpers).
+      const { document: doc } = await createDocumentWithVersion(tx, {
+        documentData: {
           tenantId: invite.tenantId,
           clientId: invite.clientId,
           title: fileName,
@@ -145,20 +171,9 @@ export async function uploadIdImageAction(input: {
           // auslösen.
           mimeType: stored.detectedMime ?? mimeType,
         },
-      });
-      await tx.documentVersion.create({
-        data: {
-          documentId: doc.id,
-          versionNo: 1,
-          storageBucket: stored.targetBucket,
-          storageKey: stored.targetKey,
-          sha256: prismaBytes(stored.sha256),
-          sizeBytes: stored.sizeBytes,
-          immutable: stored.immutable,
-          scanStatus: 'CLEAN',
-          scanCompletedAt: new Date(),
-          createdById: invite.createdByStaff, // System-Action: erfasst-für, nicht erfasst-von
-        },
+        commit: stored,
+        // System-Action: erfasst-für, nicht erfasst-von
+        createdById: invite.createdByStaff,
       });
       await evidenceService.record(tx, {
         tenantId: invite.tenantId,
@@ -187,7 +202,8 @@ export async function uploadIdImageAction(input: {
       WHERE id = ${invite.id}::uuid
     `;
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    // Befund 6: kein Durchreichen roher Prisma-/Storage-Meldungen an Anonyme.
+    return toAnonymousActionError(e);
   }
 
   return { ok: true, documentId };
@@ -421,7 +437,8 @@ export async function submitOnboardingAction(input: z.infer<typeof SubmitSchema>
       }
     });
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    // Befund 6: kein Durchreichen roher Prisma-/DB-Meldungen an Anonyme.
+    return toAnonymousActionError(e);
   }
 
   return { ok: true };

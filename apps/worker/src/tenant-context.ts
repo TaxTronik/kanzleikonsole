@@ -14,6 +14,7 @@
 // =============================================================================
 
 import type { PrismaClient } from '@prisma/client';
+import { TX_OPTIONS } from '@taxtronik/db';
 import { prismaOwner } from './prisma-owner';
 
 type TxClient = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
@@ -22,6 +23,9 @@ export async function withWorkerTenantContext<T>(
   tenantId: string,
   fn: (tx: TxClient) => Promise<T>,
 ): Promise<T> {
+  // RF-12: dieselben TX-Timeouts wie das Web-Pendant (packages/db) — vorher
+  // lief der Worker mit dem Prisma-Default von 5 s und riss bei längeren
+  // Job-Transaktionen P2028, während die Web-Seite bewusst 15 s fährt.
   return prismaOwner.$transaction(async (tx) => {
     await tx.$queryRaw`
       SELECT
@@ -30,5 +34,5 @@ export async function withWorkerTenantContext<T>(
         set_config('app.current_actor_type', 'SYSTEM', true)
     `;
     return fn(tx);
-  });
+  }, TX_OPTIONS);
 }

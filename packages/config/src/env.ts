@@ -96,11 +96,11 @@ const envSchema = z.object({
   CLAMAV_PORT: z.coerce.number().int().positive().default(3310),
 
   // --- SMTP -----------------------------------------------------------------
-  SMTP_HOST: z.string(),
+  SMTP_HOST: z.string().min(1),
   SMTP_PORT: z.coerce.number().int().positive(),
   SMTP_USER: z.string().optional().default(''),
   SMTP_PASSWORD: z.string().optional().default(''),
-  SMTP_FROM: z.string(),
+  SMTP_FROM: z.string().min(1),
 
   // --- n8n ------------------------------------------------------------------
   N8N_WEBHOOK_BASE_URL: z.preprocess((v) => v === '' ? undefined : v, z.string().url().optional()),

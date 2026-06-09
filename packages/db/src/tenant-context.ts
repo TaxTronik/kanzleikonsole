@@ -97,7 +97,9 @@ function serializeTx<T extends object>(tx: T): T {
 // interaktive Transaktionen reißen (P2028), z. B. auf Dashboards mit vielen
 // Aggregationen unter Last. Daher großzügigeres Limit; maxWait bleibt knapp,
 // damit ein erschöpfter Pool schnell sichtbar wird statt lange zu blockieren.
-const TX_OPTIONS = { timeout: 15_000, maxWait: 5_000 } as const;
+// RF-12: exportiert, damit der Worker (withWorkerTenantContext) dieselben
+// Timeouts nutzt statt beim Prisma-Default von 5 s zu bleiben.
+export const TX_OPTIONS = { timeout: 15_000, maxWait: 5_000 } as const;
 
 export async function withTenantContext<T>(
   ctx: TenantContext,

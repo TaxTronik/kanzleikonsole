@@ -14,7 +14,7 @@
 
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
-import { verifyN8nSignature } from '@/server/n8n/verify';
+import { verifyN8nSignature, n8nRejectResponse } from '@/server/n8n/verify';
 import { receiveResearchResult } from '@/server/risk';
 import { log } from '@/server/logger';
 
@@ -30,7 +30,8 @@ export async function POST(req: NextRequest) {
   const ver = await verifyN8nSignature(req);
   if (!ver.ok) {
     log.warn({ component: 'n8n', reason: ver.error }, 'n8n-verify: rejected (research-result)');
-    return NextResponse.json({ error: 'unauthorized' }, { status: ver.status ?? 401 });
+    // Befund 10: zentrales Status-Mapping (503/500 retrybar, sonst 401).
+    return n8nRejectResponse(ver);
   }
 
   let body: unknown;

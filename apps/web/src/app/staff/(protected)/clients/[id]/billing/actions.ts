@@ -155,12 +155,14 @@ export async function createInvoiceFromTimeEntriesAction(input: z.infer<typeof C
       return inv.id;
     });
   } catch (e) {
-    const msg = (e as Error).message;
-    if (msg.includes('GwG-Schranke') || msg.includes('nicht aktiv')) {
-      return { ok: false, error: 'Mandant ist nicht aktiv (GwG-Prüfung ausstehend).' };
-    }
-    if (msg.includes('Unique')) {
+    // Befund 8 (gleiche Bug-Klasse wie invoices/actions.ts): Prisma-Error-Code
+    // statt fragiler Message-Substrings; GwG-Schranke über den stabilen
+    // Trigger-Marker aus den Migrationen matchen.
+    if ((e as { code?: string }).code === 'P2002') {
       return { ok: false, error: 'Rechnungsnummer existiert bereits.' };
+    }
+    if ((e as Error).message?.includes('GwG-Schranke')) {
+      return { ok: false, error: 'Mandant ist nicht aktiv (GwG-Prüfung ausstehend).' };
     }
     return toActionError(e);
   }

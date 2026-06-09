@@ -73,6 +73,12 @@ function isPrivateIPv6(ip: string): boolean {
 }
 
 /**
+ * Nur für Unit-Tests exportiert (Tabellen-Tests der SSRF-Policy ohne DNS).
+ * Produktiv-Caller nutzen ausschließlich `assertPublicHost`/`safeFetch`.
+ */
+export { isPrivateIPv4, isPrivateIPv6, v4MappedHexToDotted };
+
+/**
  * N2: Eigene Fehler-Klasse statt String-Match. Caller können sicher per
  * `instanceof SsrfGuardError` zwischen SSRF-Verweigerung und sonstigen
  * fetch-Fehlern (Connect-Refused, Timeout, TLS-Cert) unterscheiden, ohne
@@ -88,11 +94,20 @@ export class SsrfGuardError extends Error {
 }
 
 /**
+ * IPv6-Brackets entfernen: `[::1]` → `::1`. URL.hostname liefert IPv6-Literale
+ * MIT Brackets — isIP()/Range-Checks erwarten die nackte Adresse.
+ */
+function stripBrackets(host: string): string {
+  return host.startsWith('[') && host.endsWith(']') ? host.slice(1, -1) : host;
+}
+
+/**
  * Allowlist für interne Hostnames, die bewusst auf private/Loopback-Adressen
  * zeigen dürfen (z. B. Docker-Compose-Service-DNS: `n8n`, `seaweedfs`).
  *
  * Konfiguration:
  *  - `INTERNAL_FETCH_HOSTS=n8n,seaweedfs,host.docker.internal` — Komma-Liste
+ *    (IPv6 wahlweise mit oder ohne Brackets, wird normalisiert)
  *  - Im Dev-Mode (`NODE_ENV !== 'production'`) sind `localhost`, `127.0.0.1`,
  *    `[::1]` automatisch erlaubt — damit `pnpm dev` ohne Extra-Config läuft.
  *
@@ -105,7 +120,7 @@ function readAllowlist(): Set<string> {
   const set = new Set(
     raw
       .split(',')
-      .map((s) => s.trim().toLowerCase())
+      .map((s) => stripBrackets(s.trim().toLowerCase()))
       .filter((s) => s.length > 0),
   );
   if (process.env['NODE_ENV'] !== 'production') {
@@ -137,8 +152,11 @@ export async function assertPublicHost(url: string): Promise<LookupAddress[]> {
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     throw new SsrfGuardError('forbidden-scheme', `Nur http(s) erlaubt (war: ${parsed.protocol}).`);
   }
-  // URL.hostname für IPv6 liefert `[::1]` ohne Brackets als `::1`.
-  const host = parsed.hostname.toLowerCase();
+  // URL.hostname liefert IPv6-Literale MIT Brackets (`[::1]`). Für isIP(),
+  // Allowlist-Match und Range-Checks auf die nackte Adresse normalisieren —
+  // sonst erkennt isIP() IPv6-Literale nie (die Literal-IP-Sperre griffe für
+  // v6 nicht) und der Dev-Allowlist-Eintrag `::1` wäre tot.
+  const host = stripBrackets(parsed.hostname.toLowerCase());
   const allowlist = readAllowlist();
   if (allowlist.has(host)) {
     // Trusted internal target — DNS-Lookup trotzdem, damit safeFetch pinnen

@@ -48,6 +48,26 @@ export function fileIcon(mimeType: string): LucideIcon {
 export const navIcon = (icon: 'kind' | 'internal' | 'client'): LucideIcon =>
   icon === 'internal' ? Lock : icon === 'client' ? Building2 : Users;
 
+/**
+ * Bulk-Operationen begrenzt parallel ausführen (Chunks à `size`), Fehler
+ * einsammeln statt abzubrechen. `fn` liefert eine Fehlermeldung oder null.
+ */
+export async function runChunked<T>(
+  items: T[],
+  fn: (item: T) => Promise<string | null>,
+  size = 4,
+): Promise<string[]> {
+  const errs: string[] = [];
+  for (let i = 0; i < items.length; i += size) {
+    const settled = await Promise.allSettled(items.slice(i, i + size).map(fn));
+    for (const r of settled) {
+      if (r.status === 'rejected') errs.push('Netzwerkfehler.');
+      else if (r.value) errs.push(r.value);
+    }
+  }
+  return errs;
+}
+
 /** Nachfahren (inkl. self) — Cycle-Schutz beim Ordner-Verschieben. */
 export function descendants(all: FolderNode[], root: string): Set<string> {
   const byParent = new Map<string | null, FolderNode[]>();

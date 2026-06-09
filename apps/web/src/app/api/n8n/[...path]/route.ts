@@ -7,7 +7,7 @@
 // =============================================================================
 
 import { NextResponse, type NextRequest } from 'next/server';
-import { verifyN8nSignature } from '@/server/n8n/verify';
+import { verifyN8nSignature, n8nRejectResponse } from '@/server/n8n/verify';
 import { log } from '@/server/logger';
 
 export async function POST(
@@ -24,10 +24,8 @@ export async function POST(
       { component: 'n8n-webhook', reason: ver.error, status: ver.status },
       'n8n-verify: rejected',
     );
-    return NextResponse.json(
-      { error: 'unauthorized' },
-      { status: ver.status === 503 ? 503 : 401 },
-    );
+    // Befund 10: zentrales Status-Mapping (503/500 retrybar, sonst 401).
+    return n8nRejectResponse(ver);
   }
 
   const { path } = await params;

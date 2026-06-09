@@ -42,6 +42,16 @@ function stripCData(s: string): string {
   return s.replace(/^<!\[CDATA\[/, '').replace(/\]\]>$/, '');
 }
 
+/**
+ * String.fromCodePoint statt fromCharCode: Codepoints > U+FFFF (Emoji etc.)
+ * brauchen Surrogate-Paare. fromCodePoint wirft RangeError für ungültige
+ * Codepoints (> U+10FFFF, NaN) — kaputte Entities → U+FFFD statt Item-Verlust.
+ */
+function fromCodePointSafe(cp: number): string {
+  if (!Number.isInteger(cp) || cp < 0 || cp > 0x10ffff) return '�';
+  return String.fromCodePoint(cp);
+}
+
 function decodeEntities(s: string): string {
   return s
     .replace(/&lt;/g, '<')
@@ -49,13 +59,25 @@ function decodeEntities(s: string): string {
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
     .replace(/&amp;/g, '&')
-    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)));
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => fromCodePointSafe(parseInt(n, 16)))
+    .replace(/&#(\d+);/g, (_, n) => fromCodePointSafe(Number(n)));
 }
 
 function pickTag(xml: string, tag: string): string | null {
   const m = xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'));
   if (!m) return null;
   return decodeEntities(stripCData(m[1]!.trim()));
+}
+
+/**
+ * pubDate → Date, aber NUR wenn parsebar. Ein Invalid Date würde beim
+ * DB-Insert werfen — das Item ginge komplett verloren, obwohl Titel/Link
+ * brauchbar sind. Unparsebares Datum → null (Item bleibt erhalten).
+ */
+function parsePubDate(raw: string | null): Date | null {
+  if (!raw) return null;
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 /**
@@ -89,7 +111,7 @@ export function parseRss(xml: string, sourceUrl: string): FetchedRssItem[] {
       title: title.replace(/<[^>]+>/g, '').slice(0, 500),
       summary: description ? description.replace(/<[^>]+>/g, '').slice(0, 2000) : null,
       link,
-      publishedAt: pubDate ? new Date(pubDate) : null,
+      publishedAt: parsePubDate(pubDate),
     });
   }
   return items;

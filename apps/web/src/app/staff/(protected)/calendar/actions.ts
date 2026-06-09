@@ -4,7 +4,9 @@ import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { evidenceService } from '@/server/container';
 import { notify } from '@/server/notifications/service';
-import { sendTemplateMail } from '@/server/mail/dispatch';
+import { sendTemplateMail, type DispatchOptions } from '@/server/mail/dispatch';
+import { fireAndForget } from '@/server/util/fire-and-forget';
+import { assertClientInTenant, assertStaffInTenant } from '@/server/db/assert-tenant';
 import { withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
 
 export interface ActionResult extends BaseActionResult { id?: string; }
@@ -143,6 +145,10 @@ export async function updateAppointmentAction(
         select: { title: true, startsAt: true, endsAt: true, status: true },
       });
       if (!before) throw new ActionError('Termin nicht gefunden.');
+      // P-7 (Befund 5): ownerStaffId/clientId Tenant-Sanity — das Create-
+      // Pendant oben prüft, der Update-Pfad fehlte.
+      await assertStaffInTenant(tx, parsed.data.ownerStaffId);
+      if (parsed.data.clientId) await assertClientInTenant(tx, parsed.data.clientId);
       await tx.appointment.update({
         where: { id: parsed.data.id },
         data: {
@@ -216,8 +222,15 @@ export async function acceptAppointmentRequestAction(input: {
   const parsed = AcceptSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  return withStaff(
+  // Befund 4: SMTP-Versand nicht innerhalb der Tx (Timeout-/Doppelversand-
+  // Risiko bei Rollback nach Versand). Mail-Parameter in der Tx einsammeln,
+  // Versand nach dem Commit (Muster uploadExternalInvoiceAction).
+  let confirmMail: DispatchOptions | null = null;
+
+  const r = await withStaff(
     async (tx, { tenantId, staffId }) => {
+      // P-7 (Befund 5): ownerStaffId Tenant-Sanity — FK prüft nur Existenz.
+      await assertStaffInTenant(tx, parsed.data.ownerStaffId);
       const req = await tx.appointmentRequest.findUnique({
         where: { id: parsed.data.requestId },
         select: {
@@ -295,12 +308,11 @@ export async function acceptAppointmentRequestAction(input: {
         });
       }
 
-      // Bestätigungs-Mail an den Mandanten-Kontakt (außerhalb der Tx
-      // wird nicht gestartet, weil wir den Empfänger nur hier sehen —
-      // sendTemplateMail benutzt prismaOwner ohne Tx-Kontext, ist safe)
+      // Bestätigungs-Mail an den Mandanten-Kontakt — Empfänger sehen wir nur
+      // hier in der Tx, der Versand selbst passiert nach dem Commit (Befund 4).
       const contact = req.createdByContactRel;
       if (contact && contact.active && contact.notificationsEnabled) {
-        await sendTemplateMail({
+        confirmMail = {
           tenantId,
           slug: 'appointment-confirmed',
           to: contact.email,
@@ -312,7 +324,8 @@ export async function acceptAppointmentRequestAction(input: {
               location: '',
             },
           },
-          n8nEvent: 'client.created',
+          // Befund 7 (Bug-Klasse R-5): vorher fälschlich 'client.created'.
+          n8nEvent: 'appointment.responded',
           n8nPayload: {
             tenantId,
             kind: 'appointment-accepted',
@@ -324,11 +337,18 @@ export async function acceptAppointmentRequestAction(input: {
             subject: 'Termin-Bestätigung: {{appointment.title}}',
             bodyMd: 'Sehr geehrte/r {{contact.fullName}},\n\nwir bestätigen Ihren Termin:\n\n**{{appointment.title}}**\n{{appointment.startsAt}}',
           },
-        });
+        };
       }
     },
     { revalidate: ['/staff/calendar', '/staff/tax-deadlines', '/portal/appointments'] },
   );
+
+  if (r.ok && confirmMail) {
+    // Befund 3/4: fire-and-forget mit catch+Log — Mail-Fehler kippen die
+    // bereits committete Entscheidung nicht.
+    fireAndForget('sendTemplateMail (appointment-confirmed)', sendTemplateMail(confirmMail));
+  }
+  return r;
 }
 
 const RejectSchema = z.object({
@@ -343,7 +363,10 @@ export async function rejectAppointmentRequestAction(input: {
   const parsed = RejectSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  return withStaff(
+  // Befund 4: Mail-Parameter in der Tx einsammeln, Versand nach dem Commit.
+  let rejectMail: DispatchOptions | null = null;
+
+  const r = await withStaff(
     async (tx, { tenantId, staffId }) => {
       const req = await tx.appointmentRequest.findUnique({
         where: { id: parsed.data.requestId },
@@ -374,7 +397,7 @@ export async function rejectAppointmentRequestAction(input: {
 
       const contact = req.createdByContactRel;
       if (contact && contact.active && contact.notificationsEnabled) {
-        await sendTemplateMail({
+        rejectMail = {
           tenantId,
           slug: 'appointment-rejected',
           to: contact.email,
@@ -383,7 +406,8 @@ export async function rejectAppointmentRequestAction(input: {
             request: { subject: req.subject },
             rejectionReason: parsed.data.reason?.trim() || 'Bitte schlagen Sie über das Portal alternative Zeiten vor.',
           },
-          n8nEvent: 'client.created',
+          // Befund 7 (Bug-Klasse R-5): vorher fälschlich 'client.created'.
+          n8nEvent: 'appointment.responded',
           n8nPayload: {
             tenantId,
             kind: 'appointment-rejected',
@@ -393,9 +417,15 @@ export async function rejectAppointmentRequestAction(input: {
             subject: 'Ihre Termin-Anfrage konnten wir leider nicht annehmen',
             bodyMd: 'Sehr geehrte/r {{contact.fullName}},\n\nleider können wir Ihre Termin-Anfrage „{{request.subject}}" nicht annehmen.\n\n{{rejectionReason}}',
           },
-        });
+        };
       }
     },
     { revalidate: ['/staff/calendar', '/portal/appointments'] },
   );
+
+  if (r.ok && rejectMail) {
+    // Befund 3/4: fire-and-forget mit catch+Log — Versand nach der Tx.
+    fireAndForget('sendTemplateMail (appointment-rejected)', sendTemplateMail(rejectMail));
+  }
+  return r;
 }

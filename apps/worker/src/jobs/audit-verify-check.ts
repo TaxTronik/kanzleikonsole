@@ -28,6 +28,13 @@ const timestampPort = env.TIMESTAMP_AUTHORITY_URL
   : new LocalTimestampAdapter();
 const evidenceService = new EvidenceService(timestampPort);
 
+// RF-5: Produktivmodus → externe TSA verpflichtend (Self-Timestamp = harter
+// Fail). Symmetrisch zur CLI (packages/evidence/src/cli/verify.ts) — vorher
+// lief der tägliche Check immer ohne Policy-Prüfung und ein Self-Timestamp
+// in Produktion wäre nie aufgefallen.
+const requireExternalTsa =
+  env.NODE_ENV === 'production' || process.env['EVIDENCE_REQUIRE_TSA'] === 'true';
+
 // M7: Tenant-Pagination. Bei vielen Tenants würde `findMany({})` ohne
 // Limit alle Records in Memory laden, und die anschließende sequenzielle
 // `evidenceService.verifyChain(tx, tenantId)`-Loop könnte Stunden laufen.
@@ -65,7 +72,7 @@ export const auditVerifyWorker = new Worker<ChecksJob>(
     for await (const tenantIds of tenantBatches) for (const tenantId of tenantIds) {
       try {
         const r = await prismaOwner.$transaction(async (tx) =>
-          evidenceService.verifyChain(tx, tenantId),
+          evidenceService.verifyChain(tx, tenantId, { requireExternalTsa }),
         );
 
         if (!r.ok) {

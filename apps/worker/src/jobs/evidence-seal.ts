@@ -63,6 +63,58 @@ async function timestampPortFor(tenantId: string): Promise<TimestampPort> {
   return new LocalTimestampAdapter();
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+// RF-2: harte Obergrenze pro Lauf — schützt vor Endlosschleifen bei kaputten
+// Daten (z. B. occurred_at weit in der Vergangenheit). Der Rest des Backlogs
+// wird von den Folgeläufen abgearbeitet (sealDay ist idempotent).
+const MAX_BACKFILL_DAYS = 366;
+
+/** UTC-Mitternacht des Tages, in dem `d` liegt. */
+function utcDayStart(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
+/**
+ * RF-2: Alle noch unversiegelten Tage eines Tenants bis einschließlich gestern
+ * (UTC). Vorher versiegelte der Job stur „jetzt − 24 h" — fiel ein Lauf aus
+ * (Worker down, TSA down), blieb der Tag dauerhaft unversiegelt. Startpunkt:
+ * Tag nach dem letzten Seal, sonst der älteste audit_log-Tag.
+ */
+async function pendingSealDays(tenantId: string): Promise<Date[]> {
+  const yesterday = utcDayStart(new Date(Date.now() - DAY_MS));
+
+  // seal_date als Text lesen — date-Spalten würden je nach Treiber-TZ sonst
+  // auf den Vortag kippen (gleiche Vorsicht wie RF-6 in sealDay).
+  const lastSeal = await prismaOwner.$queryRaw<Array<{ max: string | null }>>`
+    SELECT max(seal_date)::text AS max FROM audit_seal WHERE tenant_id = ${tenantId}::uuid
+  `;
+  // Startpunkt: ältestes Audit-Event NACH dem letzten Seal-Tag. Tage ganz ohne
+  // Events brauchen keinen Seal — so iteriert ein ruhiger Tenant nicht jeden
+  // Tag erneut über einen langen leeren Zeitraum.
+  const afterLastSeal = lastSeal[0]?.max
+    ? new Date(new Date(`${lastSeal[0].max}T00:00:00.000Z`).getTime() + DAY_MS)
+    : undefined;
+  const oldest = await prismaOwner.auditLog.aggregate({
+    _min: { occurredAt: true },
+    where: { tenantId, ...(afterLastSeal ? { occurredAt: { gte: afterLastSeal } } : {}) },
+  });
+  if (!oldest._min.occurredAt) return []; // nichts Unversiegeltes
+  const start = utcDayStart(oldest._min.occurredAt);
+
+  const days: Date[] = [];
+  for (let t = start.getTime(); t <= yesterday.getTime(); t += DAY_MS) {
+    if (days.length >= MAX_BACKFILL_DAYS) {
+      log.warn(
+        { tenantId, start: start.toISOString().slice(0, 10), capped: MAX_BACKFILL_DAYS },
+        'evidence-seal: Backfill-Obergrenze erreicht — Rest folgt bei den nächsten Läufen',
+      );
+      break;
+    }
+    days.push(new Date(t));
+  }
+  return days;
+}
+
 export const evidenceSealWorker = new Worker<EvidenceSealJob>(
   'evidence-seal',
   async (job) => {
@@ -74,22 +126,27 @@ export const evidenceSealWorker = new Worker<EvidenceSealJob>(
       tenantIds = tenants.map((t) => t.id);
     }
 
-    const sealDate = job.data.sealDate
-      ? new Date(job.data.sealDate)
-      : new Date(Date.now() - 24 * 60 * 60 * 1000); // gestern
-
     const results: Array<{ tenantId: string; sealed: boolean; reason?: string }> = [];
 
     for (const tenantId of tenantIds) {
       try {
+        // RF-2: Manual-Trigger mit explizitem Datum versiegelt genau diesen
+        // Tag; der Scheduler-Lauf füllt alle verpassten Tage bis gestern auf.
+        const days = job.data.sealDate
+          ? [new Date(job.data.sealDate)]
+          : await pendingSealDays(tenantId);
+        if (days.length === 0) continue;
+
         const port = await timestampPortFor(tenantId);
         const service = new EvidenceService(port);
-        const r = await prismaOwner.$transaction(async (tx) => {
-          // RLS bypass — Owner-Verbindung
-          return service.sealDay(tx, tenantId, sealDate);
-        });
-        results.push({ tenantId, ...r });
-        log.info({ tenantId, sealDate: sealDate.toISOString().slice(0, 10), ...r }, 'evidence-seal: tenant');
+        for (const sealDate of days) {
+          // RF-4: bewusst KEINE Transaktion mehr um sealDay — der TSA-HTTP-Call
+          // (bis 10 s) riss das interaktive 5-s-Prisma-TX-Timeout (P2028).
+          // Idempotenz/Race-Sicherheit liegt jetzt in sealDay selbst.
+          const r = await service.sealDay(prismaOwner, tenantId, sealDate);
+          results.push({ tenantId, ...r });
+          log.info({ tenantId, sealDate: sealDate.toISOString().slice(0, 10), ...r }, 'evidence-seal: tenant');
+        }
       } catch (err) {
         log.error({ tenantId, err: (err as Error).message }, 'evidence-seal: tenant failed');
         results.push({ tenantId, sealed: false, reason: (err as Error).message });

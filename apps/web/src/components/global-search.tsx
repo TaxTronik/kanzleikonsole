@@ -29,6 +29,7 @@ export function GlobalSearch({ navItems = [] }: { navItems?: { label: string; hr
   const [results, setResults] = useState<SearchResult[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [activeIdx, setActiveIdx] = useState(0);
 
   // Nav-Kommandos (Sprung zu Seiten) — rein clientseitig aus der gefilterten
@@ -79,19 +80,30 @@ export function GlobalSearch({ navItems = [] }: { navItems?: { label: string; hr
     if (q.length < 2) {
       setResults([]);
       setLoading(false);
+      setError(null);
       return;
     }
     let cancelled = false;
     setLoading(true);
+    setError(null);
     const t = setTimeout(async () => {
       try {
         const res = await fetch(`/api/staff/search?q=${encodeURIComponent(q)}`);
         if (!res.ok) {
-          if (!cancelled) setResults([]);
+          if (!cancelled) {
+            setResults([]);
+            setError('Suche fehlgeschlagen — bitte später erneut versuchen.');
+          }
           return;
         }
         const data = (await res.json()) as { results: SearchResult[] };
         if (!cancelled) setResults(data.results);
+      } catch {
+        // Netzwerk-/Offline-Fehler: Fehlerzustand statt „Keine Treffer".
+        if (!cancelled) {
+          setResults([]);
+          setError('Suche nicht erreichbar — bitte Verbindung prüfen.');
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -161,7 +173,11 @@ export function GlobalSearch({ navItems = [] }: { navItems?: { label: string; hr
       {showPanel && (
         <div className="absolute left-0 right-0 mt-1 bg-surface border border-default rounded-md shadow-lg max-h-96 overflow-y-auto z-50">
           {items.length === 0 && !loading ? (
-            <p className="px-4 py-3 text-sm text-disabled text-center">Keine Treffer.</p>
+            error ? (
+              <p className="px-4 py-3 text-sm text-red-700 text-center">{error}</p>
+            ) : (
+              <p className="px-4 py-3 text-sm text-disabled text-center">Keine Treffer.</p>
+            )
           ) : (
             <ul>
               {items.map((r, i) => {

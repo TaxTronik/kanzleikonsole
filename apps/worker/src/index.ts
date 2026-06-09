@@ -6,7 +6,6 @@
 // =============================================================================
 
 import { writeFileSync } from 'node:fs';
-import { virusScanWorker } from './jobs/virus-scan';
 import { evidenceSealWorker } from './jobs/evidence-seal';
 import { gwgExpiryWorker } from './jobs/gwg-expiry-check';
 import { invoiceOverdueWorker } from './jobs/invoice-overdue-check';
@@ -22,6 +21,7 @@ import { poaExpiryWorker } from './jobs/poa-expiry-check';
 import { riskAnalyseLlmWorker } from './jobs/risk-analyse-llm';
 import { setupSchedules } from './scheduler';
 import { connection } from './queues';
+import { prismaOwner } from './prisma-owner';
 import { log } from './logger';
 
 // Q-9: Heartbeat-File für Docker-HEALTHCHECK. Worker schreibt alle 30 s einen
@@ -56,7 +56,6 @@ async function main() {
   log.info(
     {
       workers: [
-        'virus-scan',
         'evidence-seal',
         'gwg-expiry-check',
         'invoice-overdue-check',
@@ -82,7 +81,6 @@ async function shutdown(reason: string) {
   if (heartbeatTimer) clearInterval(heartbeatTimer);
   try {
     await Promise.all([
-      virusScanWorker.close(),
       evidenceSealWorker.close(),
       gwgExpiryWorker.close(),
       invoiceOverdueWorker.close(),
@@ -98,6 +96,9 @@ async function shutdown(reason: string) {
       poaExpiryWorker.close(),
       riskAnalyseLlmWorker.close(),
     ]);
+    // RF-13: auch den Prisma-Pool sauber schließen — vorher blieben offene
+    // Postgres-Connections bis zum Prozess-Ende stehen.
+    await prismaOwner.$disconnect();
     await connection.quit();
     log.info('worker: shutdown complete');
     process.exit(0);

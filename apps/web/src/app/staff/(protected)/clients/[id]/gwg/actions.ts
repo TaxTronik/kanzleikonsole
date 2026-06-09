@@ -9,6 +9,7 @@ import { evidenceService } from '@/server/container';
 import { computeRiskScore } from '@/server/gwg/risk-score';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { notifyClientContacts } from '@/server/mail/dispatch';
+import { fireAndForget } from '@/server/util/fire-and-forget';
 import { portalBaseUrl } from '@taxtronik/config';
 import { staffActionGuard, withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
 
@@ -309,8 +310,9 @@ export async function verifyCheckAction(
     return toActionError(e);
   }
 
-  // Begrüßungs-Mail an alle Mandanten-Kontakte mit Mail-Opt-in (nach Commit)
-  void notifyClientContacts({
+  // Begrüßungs-Mail an alle Mandanten-Kontakte mit Mail-Opt-in (nach Commit).
+  // Befund 3: fire-and-forget mit catch+Log statt `void` (unhandled rejection).
+  fireAndForget('notifyClientContacts (gwg-activated)', notifyClientContacts({
     tenantId,
     clientId,
     slug: 'gwg-activated',
@@ -324,7 +326,7 @@ export async function verifyCheckAction(
       bodyMd:
         'Sehr geehrte/r {{contact.fullName}},\n\nIhre Mandantschaft ist jetzt vollständig eingerichtet. Loggen Sie sich gerne in Ihr Mandantenportal ein:\n\n{{portalUrl}}',
     },
-  });
+  }));
   revalidatePath(`/staff/clients/${clientId}`);
   revalidatePath(`/staff/clients/${clientId}/gwg`);
   return { ok: true };

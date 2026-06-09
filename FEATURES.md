@@ -917,8 +917,8 @@ Kanzlei nicht.
 - Pro Request: Prisma-Middleware setzt `app.current_tenant_id` /
   `app.current_actor_id` / `app.current_actor_type` via `SET LOCAL`
 - Doppelte Verteidigung: App-Filter + RLS-Policy + DB-Trigger
-- BullMQ-Worker für Hintergrund-Jobs (15 Workers):
-  `virus-scan`, `evidence-seal`, `gwg-expiry-check`,
+- BullMQ-Worker für Hintergrund-Jobs (14 Workers):
+  `evidence-seal`, `gwg-expiry-check`,
   `invoice-overdue-check`, `audit-verify-check`,
   `tax-deadline-materialize`, `audit-rotate`, `tax-news-fetch`
   (05:30 UTC, holt alle aktiven RSS-Feeds aus `rss_feed`),

@@ -17,11 +17,16 @@
 
 import { Worker } from 'bullmq';
 import { type NotificationKind } from '@prisma/client';
+import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
+import { withWorkerTenantContext } from '../tenant-context';
 import { upsertNotification } from '../notify';
 
+// RF-8: record() braucht nur den Tx (der TimestampPort dient dem Versiegeln,
+// nicht dem Schreiben) — gleiches Muster wie risk-analyse-llm.ts.
+const evidence = new EvidenceService(new LocalTimestampAdapter());
 
 const WARN_DAYS_STAGE1 = 90;
 const WARN_DAYS_STAGE2 = 30;
@@ -99,17 +104,44 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
         const kind = NOTIFICATION_KIND_FOR_STAGE[stage];
 
         if (stage === 'STAGE3') {
-          // Mandant deaktivieren + Check auf EXPIRED
-          await prismaOwner.$transaction([
-            prismaOwner.gwgCheck.updateMany({
+          // Mandant deaktivieren + Check auf EXPIRED. RF-8: läuft jetzt im
+          // Tenant-Context und schreibt die System-Statuswechsel in die
+          // Audit-Chain (vorher: nackte prismaOwner-Updates ohne
+          // evidence.record) — Muster analog risk-analyse-llm.ts.
+          await withWorkerTenantContext(tenantId, async (tx) => {
+            const checkRes = await tx.gwgCheck.updateMany({
               where: { id: check.id, status: 'VERIFIED' },
               data: { status: 'EXPIRED' },
-            }),
-            prismaOwner.client.updateMany({
+            });
+            if (checkRes.count > 0) {
+              await evidence.record(tx, {
+                tenantId,
+                actorType: 'SYSTEM',
+                actorId: null,
+                action: 'gwg.check.expire',
+                resourceType: 'gwg_check',
+                resourceId: check.id,
+                before: { status: 'VERIFIED' },
+                after: { status: 'EXPIRED', validUntil: check.validUntil },
+              });
+            }
+            const clientRes = await tx.client.updateMany({
               where: { id: check.clientId, allowActive: true },
               data: { allowActive: false },
-            }),
-          ]);
+            });
+            if (clientRes.count > 0) {
+              await evidence.record(tx, {
+                tenantId,
+                actorType: 'SYSTEM',
+                actorId: null,
+                action: 'client.deactivate.gwg_expired',
+                resourceType: 'client',
+                resourceId: check.clientId,
+                before: { allowActive: true },
+                after: { allowActive: false, gwgCheckId: check.id },
+              });
+            }
+          });
         }
 
         const title = titleForStage(stage, daysLeft, check.client.name);

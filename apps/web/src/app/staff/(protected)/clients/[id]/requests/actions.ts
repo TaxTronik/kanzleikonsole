@@ -7,6 +7,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { notifyClientContacts } from '@/server/mail/dispatch';
+import { fireAndForget } from '@/server/util/fire-and-forget';
 import { portalBaseUrl } from '@taxtronik/config';
 import { toActionError } from '@/server/auth/rbac';
 import { staffActionGuard } from '@/server/actions/staff-action';
@@ -127,7 +128,8 @@ export async function createRequestAction(
   }
 
   const portalUrl = `${portalBaseUrl}/portal/requests/${createdId}`;
-  void notifyClientContacts({
+  // Befund 3: fire-and-forget mit catch+Log statt `void` (unhandled rejection).
+  fireAndForget('notifyClientContacts (request-opened)', notifyClientContacts({
     tenantId,
     clientId: data.clientId,
     slug: 'request-opened',
@@ -141,7 +143,7 @@ export async function createRequestAction(
       subject: 'Neue Anforderung von Ihrer Kanzlei: {{request.title}}',
       bodyMd: 'Sehr geehrte/r {{contact.fullName}},\n\nin Ihrem Mandantenportal liegt eine neue Anforderung für Sie bereit:\n\n**{{request.title}}**\n\n{{request.description}}\n\nBitte öffnen Sie das Portal:\n{{portalUrl}}',
     },
-  });
+  }));
 
   revalidatePath(`/staff/clients/${data.clientId}`);
   revalidatePath('/staff/requests');
@@ -220,7 +222,8 @@ export async function addStaffResponseAction(formData: FormData): Promise<Action
 
   if (reqInfo) {
     const portalUrl = `${portalBaseUrl}/portal/requests/${requestId}`;
-    void notifyClientContacts({
+    // Befund 3: fire-and-forget mit catch+Log statt `void`.
+    fireAndForget('notifyClientContacts (request-staff-replied)', notifyClientContacts({
       tenantId,
       clientId: reqInfo.clientId,
       slug: 'request-staff-replied',
@@ -234,7 +237,7 @@ export async function addStaffResponseAction(formData: FormData): Promise<Action
         subject: 'Antwort von Ihrer Kanzlei: {{request.title}}',
         bodyMd: 'Sehr geehrte/r {{contact.fullName}},\n\nIhre Kanzlei hat auf Ihre Anforderung „{{request.title}}" geantwortet.\n\nDie Antwort können Sie im Mandantenportal einsehen:\n{{portalUrl}}',
       },
-    });
+    }));
   }
   revalidatePath('/staff/requests');
   return { ok: true };

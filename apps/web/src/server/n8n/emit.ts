@@ -36,6 +36,10 @@ export type StaticN8nEventName =
   // n8n-Workflows, die auf staff.locked als „Account ausgesperrt"-Alarm
   // hören, hätten sonst beim Urlaubsantrag ausgelöst.
   | 'staff.vacation_requested'
+  // R-5 (gleiche Bug-Klasse): Termin-Bestätigung/-Ablehnung — vorher fälschlich
+  // als client.created emittiert (calendar/actions.ts). Payload trägt
+  // kind: 'appointment-accepted' | 'appointment-rejected'.
+  | 'appointment.responded'
   | 'risk.research_requested'
   | 'taxtronik.ping';
 

@@ -1,15 +1,16 @@
 ﻿'use client';
 
 import { useMemo, useState, useTransition } from 'react';
-import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import {
-  Folder, FolderOpen, FolderPlus, ChevronRight, ChevronDown, Pencil, Trash2,
+  Folder, FolderPlus, Pencil, Trash2,
   Search, Download, X, FileText, FolderInput, RotateCcw, Tag, Share2, EyeOff,
 } from 'lucide-react';
 import { DocumentPreviewModal } from '@/components/document-preview';
 import { DocumentUploadButton } from '@/components/document-upload-button';
 import { MoveDialog, RetagDialog } from '@/components/document-dialogs';
+import { Modal, ConfirmModal, InputModal } from '@/components/ui/modal';
+import { FolderTreePicker } from '@/components/folder-tree-picker';
 import {
   softDeleteDocumentAction,
   restoreDocumentAction,
@@ -70,26 +71,21 @@ export function DocumentsManager({
 }) {
   const router = useRouter();
   const [sel, setSel] = useState<string | 'all' | 'none'>('all');
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [q, setQ] = useState('');
   const [busy, start] = useTransition();
   const [renaming, setRenaming] = useState<FolderNode | null>(null);
+  const [createIn, setCreateIn] = useState<{ parentId: string | null } | null>(null);
+  const [confirmDelFolder, setConfirmDelFolder] = useState<FolderNode | null>(null);
   const [confirmDelDoc, setConfirmDelDoc] = useState<ManagedDoc | null>(null);
   const [moveDoc, setMoveDoc] = useState<ManagedDoc | null>(null);
   const [retagDoc, setRetagDoc] = useState<ManagedDoc | null>(null);
   const [previewDoc, setPreviewDoc] = useState<{ id: string; name: string } | null>(null);
+  // Sammel-Fehlermeldung für Hintergrund-Operationen (statt window.alert).
+  const [opError, setOpError] = useState<string | null>(null);
 
   const active = documents.filter((d) => !d.deletedAt);
   const deleted = documents.filter((d) => d.deletedAt);
   const [showDeleted, setShowDeleted] = useState(false);
-
-  const childrenOf = useMemo(() => {
-    const m = new Map<string | null, FolderNode[]>();
-    for (const f of [...folders].sort((a, b) => a.name.localeCompare(b.name, 'de'))) {
-      m.set(f.parentId, [...(m.get(f.parentId) ?? []), f]);
-    }
-    return m;
-  }, [folders]);
 
   const countIn = (fid: string | 'all' | 'none') => {
     if (fid === 'all') return active.length;
@@ -114,99 +110,48 @@ export function DocumentsManager({
     return [...list].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }, [showDeleted, deleted, active, sel, folders, q]);
 
-  function renderTree(parentId: string | null, depth: number) {
-    const kids = childrenOf.get(parentId) ?? [];
-    return kids.map((f) => {
-      const hasKids = (childrenOf.get(f.id) ?? []).length > 0;
-      const open = expanded[f.id];
-      const isSel = sel === f.id;
-      return (
-        <div key={f.id}>
-          <div
-            className={`flex items-center gap-1 rounded px-2 py-1 text-sm cursor-pointer group ${
-              isSel ? 'bg-brand-50 text-brand-700' : 'hover:bg-gray-50 text-secondary'
-            }`}
-            style={{ paddingLeft: `${depth * 14 + 8}px` }}
-            onClick={() => setSel(f.id)}
+  // Hover-Aktionen + Zähler pro Ordnerzeile (im gemeinsamen FolderTreePicker).
+  function folderRowExtra(f: FolderNode) {
+    return (
+      <>
+        <span className="text-xs text-disabled">{countIn(f.id) || ''}</span>
+        <span className="hidden group-hover:flex items-center gap-0.5">
+          <button
+            type="button"
+            title="Unterordner"
+            onClick={(e) => {
+              e.stopPropagation();
+              setCreateIn({ parentId: f.id });
+            }}
+            className="text-disabled hover:text-brand-700"
           >
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setExpanded((x) => ({ ...x, [f.id]: !x[f.id] }));
-              }}
-              className={hasKids ? 'text-disabled' : 'invisible'}
-            >
-              {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-            </button>
-            {isSel ? <FolderOpen className="h-4 w-4 shrink-0" /> : <Folder className="h-4 w-4 shrink-0" />}
-            <span className="truncate flex-1">{f.name}</span>
-            <span className="text-xs text-disabled">{countIn(f.id) || ''}</span>
-            <span className="hidden group-hover:flex items-center gap-0.5">
-              <button
-                type="button"
-                title="Unterordner"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  promptCreate(f.id);
-                }}
-                className="text-disabled hover:text-brand-700"
-              >
-                <FolderPlus className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                title="Umbenennen"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setRenaming(f);
-                }}
-                className="text-disabled hover:text-brand-700"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                title="Löschen (Inhalt rückt eine Ebene hoch)"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (
-                    confirm(
-                      `Ordner „${f.name}" löschen?\n\nUnterordner und Dokumente werden eine Ebene nach oben verschoben. Es wird kein Dokument gelöscht.`,
-                    )
-                  ) {
-                    start(async () => {
-                      const r = await deleteFolderAction({ folderId: f.id });
-                      if (!r.ok) alert(r.error);
-                      else {
-                        if (sel === f.id) setSel('all');
-                        router.refresh();
-                      }
-                    });
-                  }
-                }}
-                className="text-disabled hover:text-red-600"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            </span>
-          </div>
-          {open && hasKids && renderTree(f.id, depth + 1)}
-        </div>
-      );
-    });
-  }
-
-  function promptCreate(parentId: string | null) {
-    const name = window.prompt(
-      parentId ? 'Name des Unterordners:' : 'Name des neuen Ordners:',
+            <FolderPlus className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            title="Umbenennen"
+            onClick={(e) => {
+              e.stopPropagation();
+              setRenaming(f);
+            }}
+            className="text-disabled hover:text-brand-700"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            title="Löschen (Inhalt rückt eine Ebene hoch)"
+            onClick={(e) => {
+              e.stopPropagation();
+              setConfirmDelFolder(f);
+            }}
+            className="text-disabled hover:text-red-600"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </span>
+      </>
     );
-    if (!name || !name.trim()) return;
-    start(async () => {
-      const r = await createFolderAction({ clientId, parentId, name: name.trim() });
-      if (!r.ok) alert(r.error);
-      else router.refresh();
-    });
   }
 
   return (
@@ -220,39 +165,47 @@ export function DocumentsManager({
           <button
             type="button"
             title="Ordner anlegen"
-            onClick={() => promptCreate(null)}
+            onClick={() => setCreateIn({ parentId: null })}
             className="text-disabled hover:text-brand-700"
           >
             <FolderPlus className="h-4 w-4" />
           </button>
         </div>
-        <div
-          className={`flex items-center gap-1.5 rounded px-2 py-1 text-sm cursor-pointer ${
+        <button
+          type="button"
+          onClick={() => setSel('all')}
+          className={`w-full flex items-center gap-1.5 rounded px-2 py-1 text-sm ${
             sel === 'all' ? 'bg-brand-50 text-brand-700' : 'hover:bg-gray-50 text-secondary'
           }`}
-          onClick={() => setSel('all')}
         >
           <FileText className="h-4 w-4" />
-          <span className="flex-1">Alle</span>
+          <span className="flex-1 text-left">Alle</span>
           <span className="text-xs text-disabled">{active.length || ''}</span>
-        </div>
-        <div
-          className={`flex items-center gap-1.5 rounded px-2 py-1 text-sm cursor-pointer ${
+        </button>
+        <button
+          type="button"
+          onClick={() => setSel('none')}
+          className={`w-full flex items-center gap-1.5 rounded px-2 py-1 text-sm ${
             sel === 'none' ? 'bg-brand-50 text-brand-700' : 'hover:bg-gray-50 text-secondary'
           }`}
-          onClick={() => setSel('none')}
         >
           <Folder className="h-4 w-4 text-disabled" />
-          <span className="flex-1">Ohne Ordner</span>
+          <span className="flex-1 text-left">Ohne Ordner</span>
           <span className="text-xs text-disabled">{countIn('none') || ''}</span>
-        </div>
+        </button>
         <div className="mt-1 border-t border-subtle pt-1">
           {folders.length === 0 ? (
             <p className="px-2 py-3 text-xs text-disabled">
               Noch keine Ordner. Oben „+" für den ersten Ordner.
             </p>
           ) : (
-            renderTree(null, 0)
+            <FolderTreePicker
+              folders={folders}
+              value={sel !== 'all' && sel !== 'none' ? sel : null}
+              onSelect={(id) => { if (id) setSel(id); }}
+              indent={14}
+              rowExtra={folderRowExtra}
+            />
           )}
         </div>
       </div>
@@ -289,6 +242,21 @@ export function DocumentsManager({
             />
           )}
         </div>
+
+        {/* Sammel-Fehlermeldung (ersetzt window.alert) */}
+        {opError && (
+          <div className="alert-error-sm mb-3 flex items-start justify-between gap-3">
+            <span className="whitespace-pre-line">{opError}</span>
+            <button
+              type="button"
+              onClick={() => setOpError(null)}
+              aria-label="Meldung schließen"
+              className="shrink-0 opacity-70 hover:opacity-100"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
 
         <div className="card overflow-hidden">
           {shown.length === 0 ? (
@@ -350,8 +318,9 @@ export function DocumentsManager({
                             title={d.shared ? 'Freigabe für Mandant zurückziehen' : 'Für Mandant freigeben'}
                             onClick={() =>
                               start(async () => {
+                                setOpError(null);
                                 const r = await setDocumentShareAction({ documentId: d.id, share: !d.shared });
-                                if (!r.ok) alert(r.error); else router.refresh();
+                                if (!r.ok) setOpError(r.error ?? 'Fehler.'); else router.refresh();
                               })
                             }
                             className={`p-1.5 ${d.shared ? 'text-green-600 hover:text-green-700' : 'text-disabled hover:text-brand-700'}`}
@@ -390,8 +359,9 @@ export function DocumentsManager({
                           title="Wiederherstellen"
                           onClick={() =>
                             start(async () => {
+                              setOpError(null);
                               const r = await restoreDocumentAction({ documentId: d.id });
-                              if (!r.ok) alert(r.error);
+                              if (!r.ok) setOpError(r.error ?? 'Fehler.');
                               else router.refresh();
                             })
                           }
@@ -424,13 +394,47 @@ export function DocumentsManager({
       </div>
 
       {renaming && (
-        <RenameModal
-          folder={renaming}
-          onClose={() => setRenaming(null)}
-          onDone={() => {
-            setRenaming(null);
-            router.refresh();
+        <InputModal
+          title="Ordner umbenennen"
+          initialValue={renaming.name}
+          onSubmit={async (name) => {
+            const r = await renameFolderAction({ folderId: renaming.id, name });
+            if (r.ok) router.refresh();
+            return r;
           }}
+          onClose={() => setRenaming(null)}
+        />
+      )}
+      {createIn && (
+        <InputModal
+          title={createIn.parentId ? 'Neuer Unterordner' : 'Neuer Ordner'}
+          placeholder={createIn.parentId ? 'Name des Unterordners' : 'Name des neuen Ordners'}
+          confirmLabel="Anlegen"
+          busyLabel="Legt an…"
+          onSubmit={async (name) => {
+            const r = await createFolderAction({ clientId, parentId: createIn.parentId, name });
+            if (r.ok) router.refresh();
+            return r;
+          }}
+          onClose={() => setCreateIn(null)}
+        />
+      )}
+      {confirmDelFolder && (
+        <ConfirmModal
+          title="Ordner löschen"
+          message={`Ordner „${confirmDelFolder.name}" löschen?\n\nUnterordner und Dokumente werden eine Ebene nach oben verschoben. Es wird kein Dokument gelöscht.`}
+          confirmLabel="Löschen"
+          busyLabel="Löscht…"
+          danger
+          onConfirm={async () => {
+            const r = await deleteFolderAction({ folderId: confirmDelFolder.id });
+            if (r.ok) {
+              if (sel === confirmDelFolder.id) setSel('all');
+              router.refresh();
+            }
+            return r;
+          }}
+          onClose={() => setConfirmDelFolder(null)}
         />
       )}
       {confirmDelDoc && (
@@ -458,7 +462,7 @@ export function DocumentsManager({
       )}
       {retagDoc && (
         <RetagDialog
-          documentId={retagDoc.id}
+          documentIds={[retagDoc.id]}
           documentTitle={retagDoc.title}
           currentTier={retagDoc.tier}
           currentTypeId={retagDoc.typeId}
@@ -480,59 +484,6 @@ export function DocumentsManager({
   );
 }
 
-function RenameModal({
-  folder,
-  onClose,
-  onDone,
-}: {
-  folder: FolderNode;
-  onClose: () => void;
-  onDone: () => void;
-}) {
-  const [name, setName] = useState(folder.name);
-  const [err, setErr] = useState<string | null>(null);
-  const [busy, start] = useTransition();
-  const modal = (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className="w-full max-w-sm card p-6 relative" onClick={(e) => e.stopPropagation()}>
-        <button type="button" onClick={onClose} className="modal-close">
-          <X className="h-5 w-5" />
-        </button>
-        <h2 className="text-base font-semibold text-primary mb-3">Ordner umbenennen</h2>
-        <input
-          autoFocus
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="input mb-3"
-          maxLength={120}
-        />
-        {err && <div className="rounded bg-red-50 p-2 text-xs text-red-700 mb-3">{err}</div>}
-        <div className="flex gap-2">
-          <button type="button" onClick={onClose} disabled={busy} className="btn-secondary flex-1">
-            Abbrechen
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() =>
-              start(async () => {
-                setErr(null);
-                const r = await renameFolderAction({ folderId: folder.id, name: name.trim() });
-                if (r.ok) onDone();
-                else setErr(r.error ?? 'Fehler.');
-              })
-            }
-            className="btn-primary flex-1"
-          >
-            {busy ? 'Speichert…' : 'Speichern'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-  return typeof document !== 'undefined' ? createPortal(modal, document.body) : null;
-}
-
 function DeleteDocModal({
   doc,
   onClose,
@@ -546,56 +497,50 @@ function DeleteDocModal({
   const [err, setErr] = useState<string | null>(null);
   const [busy, start] = useTransition();
   const locked = doc.classification.startsWith('GOBD_') || doc.classification === 'GWG_EVIDENCE';
-  const modal = (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className="w-full max-w-md card p-6 relative" onClick={(e) => e.stopPropagation()}>
-        <button type="button" onClick={onClose} className="modal-close">
-          <X className="h-5 w-5" />
-        </button>
-        <h2 className="text-lg font-semibold text-primary mb-2">Dokument löschen</h2>
-        <p className="text-sm text-secondary mb-3">„{doc.title}" wird aus den Listen ausgeblendet.</p>
-        <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 mb-4">
-          Die Datei bleibt im revisionssicheren Object-Store und wird
-          <strong> gesetzlich weiter aufbewahrt</strong>
-          {locked
-            ? ' (Object-Lock COMPLIANCE — physisch nicht löschbar bis Fristende, § 147 AO / § 8 Abs. 4 GwG).'
-            : ' — sie wird nicht physisch entfernt.'}{' '}
-          Protokolliert im Audit-Log, wiederherstellbar.
-        </div>
-        <textarea
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          rows={2}
-          maxLength={500}
-          className="input mb-3"
-          placeholder="Grund (optional)"
-        />
-        {err && <div className="rounded bg-red-50 p-2 text-xs text-red-700 mb-3">{err}</div>}
-        <div className="flex gap-2">
-          <button type="button" onClick={onClose} disabled={busy} className="btn-secondary flex-1">
-            Abbrechen
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() =>
-              start(async () => {
-                setErr(null);
-                const r = await softDeleteDocumentAction({
-                  documentId: doc.id,
-                  reason: reason.trim() || undefined,
-                });
-                if (r.ok) onDone();
-                else setErr(r.error ?? 'Fehler.');
-              })
-            }
-            className="btn-primary flex-1 !bg-red-600 hover:!bg-red-700"
-          >
-            {busy ? 'Löscht…' : 'Löschen'}
-          </button>
-        </div>
+  return (
+    <Modal title="Dokument löschen" onClose={onClose}>
+      <h2 className="text-lg font-semibold text-primary mb-2">Dokument löschen</h2>
+      <p className="text-sm text-secondary mb-3">„{doc.title}" wird aus den Listen ausgeblendet.</p>
+      <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 mb-4">
+        Die Datei bleibt im revisionssicheren Object-Store und wird
+        <strong> gesetzlich weiter aufbewahrt</strong>
+        {locked
+          ? ' (Object-Lock COMPLIANCE — physisch nicht löschbar bis Fristende, § 147 AO / § 8 Abs. 4 GwG).'
+          : ' — sie wird nicht physisch entfernt.'}{' '}
+        Protokolliert im Audit-Log, wiederherstellbar.
       </div>
-    </div>
+      <textarea
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        rows={2}
+        maxLength={500}
+        className="input mb-3"
+        placeholder="Grund (optional)"
+      />
+      {err && <div className="rounded bg-red-50 p-2 text-xs text-red-700 mb-3">{err}</div>}
+      <div className="flex gap-2">
+        <button type="button" onClick={onClose} disabled={busy} className="btn-secondary flex-1">
+          Abbrechen
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() =>
+            start(async () => {
+              setErr(null);
+              const r = await softDeleteDocumentAction({
+                documentId: doc.id,
+                reason: reason.trim() || undefined,
+              });
+              if (r.ok) onDone();
+              else setErr(r.error ?? 'Fehler.');
+            })
+          }
+          className="btn-primary flex-1 !bg-red-600 hover:!bg-red-700"
+        >
+          {busy ? 'Löscht…' : 'Löschen'}
+        </button>
+      </div>
+    </Modal>
   );
-  return typeof document !== 'undefined' ? createPortal(modal, document.body) : null;
 }

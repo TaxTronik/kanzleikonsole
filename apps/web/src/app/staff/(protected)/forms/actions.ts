@@ -6,6 +6,7 @@ import { withTenantContext } from '@taxtronik/db';
 import type { FormFieldType, Prisma } from '@prisma/client';
 import { evidenceService } from '@/server/container';
 import { notifyClientContacts } from '@/server/mail/dispatch';
+import { fireAndForget } from '@/server/util/fire-and-forget';
 import { portalBaseUrl } from '@taxtronik/config';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { toActionError } from '@/server/auth/rbac';
@@ -235,7 +236,8 @@ export async function createSubmissionAction(input: z.infer<typeof CreateSubmiss
     return toActionError(e);
   }
 
-  void notifyClientContacts({
+  // Befund 3: fire-and-forget mit catch+Log statt `void` (unhandled rejection).
+  fireAndForget('notifyClientContacts (form-sent)', notifyClientContacts({
     tenantId,
     clientId: parsed.data.clientId,
     slug: 'request-opened',
@@ -253,7 +255,7 @@ export async function createSubmissionAction(input: z.infer<typeof CreateSubmiss
       subject: 'Neues Formular von Ihrer Kanzlei',
       bodyMd: 'Sehr geehrte/r {{contact.fullName}},\n\nin Ihrem Mandantenportal liegt ein neues Formular zum Ausfüllen bereit.\n\nBitte öffnen Sie das Portal:\n{{portalUrl}}',
     },
-  });
+  }));
 
   revalidatePath(`/staff/clients/${parsed.data.clientId}`);
   revalidatePath('/staff/forms');

@@ -23,7 +23,7 @@
 // =============================================================================
 
 import { Worker } from 'bullmq';
-import { HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { HeadObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import {
   Rfc3161HttpAdapter,
   resolveTsaUrl,
@@ -31,27 +31,20 @@ import {
   type ArchiveAuditRow,
 } from '@taxtronik/evidence';
 import { env } from '@taxtronik/config';
-import { gobdRetentionUntil } from '@taxtronik/storage';
+// RF-11: gemeinsamer S3-Client + Bucket aus @taxtronik/storage/@taxtronik/config
+// statt eigenem Client mit ''-Credential-Fallbacks (lief sonst mit leeren Keys
+// einfach los und scheiterte erst am Request).
+import { gobdRetentionUntil, s3 } from '@taxtronik/storage';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
 import { assertPublicHost } from '../http/ssrf-guard';
 
 
-const s3 = new S3Client({
-  endpoint: process.env['S3_ENDPOINT'],
-  region: process.env['S3_REGION'] ?? 'us-east-1',
-  credentials: {
-    accessKeyId: process.env['S3_ACCESS_KEY'] ?? '',
-    secretAccessKey: process.env['S3_SECRET_KEY'] ?? '',
-  },
-  forcePathStyle: true,
-});
-
 const BATCH = Number(process.env['AUDIT_ARCHIVE_BATCH'] ?? '5000');
 const MIN_AGE_DAYS = Number(process.env['AUDIT_ARCHIVE_MIN_AGE_DAYS'] ?? '90');
 const MODE = (process.env['AUDIT_ARCHIVE_MODE'] ?? 'SOFT') as 'SOFT' | 'HARD';
-const ARCHIVE_BUCKET = process.env['S3_BUCKET_GOBD'] ?? 'gobd';
+const ARCHIVE_BUCKET = env.S3_BUCKET_GOBD;
 // § 147 AO: 10 Jahre ab Schluss des Kalenderjahres — siehe gobdRetentionUntil
 // im @taxtronik/storage-Paket. Audit-Archive ist GoBD-pflichtig.
 
@@ -79,12 +72,27 @@ export const auditRotateWorker = new Worker<ChecksJob>(
       });
       const sinceId = lastArchive?.toAuditId ?? BigInt(0);
 
-      // 2. Einträge laden (alt genug + nicht-archiviert)
+      // 2. Einträge laden (alt genug + nicht-archiviert). RF-11: erst die
+      //    Obergrenze max(id) mit occurredAt <= cutoff bestimmen, dann eine
+      //    REINE id-Range ziehen. Die alte Kombi-Selektion `id > sinceId AND
+      //    occurredAt <= cutoff` konnte bei nicht-monotoner Uhr (NTP-Rücksprung:
+      //    jüngere id mit älterem occurredAt mitten im Bereich, umgekehrt
+      //    ausgelassene Zeilen) Lücken ins Segment reißen — die Archiv-Datei
+      //    hätte dann einen Hash-Bruch. Eine lückenlose id-Range ist per
+      //    Konstruktion kontiguierlich zur Hash-Chain (Verkettung folgt id).
+      const boundary = await prismaOwner.auditLog.aggregate({
+        _max: { id: true },
+        where: { tenantId, occurredAt: { lte: cutoff } },
+      });
+      const maxId = boundary._max.id;
+      if (maxId === null || maxId <= sinceId) {
+        log.debug({ tenantId }, 'audit-rotate: nichts zu archivieren');
+        continue;
+      }
       const rows = await prismaOwner.auditLog.findMany({
         where: {
           tenantId,
-          id: { gt: sinceId },
-          occurredAt: { lte: cutoff },
+          id: { gt: sinceId, lte: maxId },
         },
         orderBy: { id: 'asc' },
         take: BATCH,

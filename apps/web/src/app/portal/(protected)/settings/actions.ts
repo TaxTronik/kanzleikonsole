@@ -1,12 +1,13 @@
 'use server';
 
 import { evidenceService } from '@/server/container';
+import { log } from '@/server/logger';
 import { withPortalContext, ActionError } from '@/server/actions/portal-action';
 
 export async function saveNotificationSettingAction(formData: FormData): Promise<void> {
   const enabled = formData.get('enabled') === 'on';
 
-  await withPortalContext(
+  const r = await withPortalContext(
     async (tx, { tenantId, contactId }) => {
       const before = await tx.clientContact.findUnique({
         where: { id: contactId },
@@ -32,4 +33,14 @@ export async function saveNotificationSettingAction(formData: FormData): Promise
     },
     { revalidate: '/portal/settings' },
   );
+
+  // Befund 9: das ActionResult von withPortalContext wurde vorher weggeworfen.
+  // Der Call-Site ist ein plain <form action> ohne Result-Channel (Signatur
+  // bleibt deshalb Promise<void>) — Fehler mindestens strukturiert loggen.
+  if (!r.ok) {
+    log.warn(
+      { component: 'portal-settings', err: r.error },
+      'saveNotificationSettingAction fehlgeschlagen',
+    );
+  }
 }

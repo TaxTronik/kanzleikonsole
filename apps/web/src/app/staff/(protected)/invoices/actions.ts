@@ -7,10 +7,11 @@ import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { commitDocumentFromBytes } from '@taxtronik/storage';
-import { prismaBytes } from '@/server/db/prisma-bytes';
+import { createDocumentWithVersion } from '@/server/documents/upload-helpers';
 import { sendTemplateMail } from '@/server/mail/dispatch';
 import { toActionError } from '@/server/auth/rbac';
 import { ensureZugferdArchive } from '@/server/invoicing/archive';
+import { log } from '@/server/logger';
 import { staffActionGuard, withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
 
 export type ActionResult = BaseActionResult;
@@ -109,12 +110,19 @@ export async function createInvoiceAction(input: {
       return inv.id;
     });
   } catch (e) {
-    const msg = (e as Error).message;
-    if (msg.includes('GwG-Schranke') || msg.includes('nicht aktiv')) {
-      return { ok: false, error: 'Mandant ist nicht aktiv (GwG-Prüfung ausstehend).' };
-    }
-    if (msg.includes('Unique')) {
+    // Befund 8: Klassifikation über Prisma-Error-Code statt fragiler Message-
+    // Substrings (msg.includes('Unique') / includes('nicht aktiv') matchte
+    // z. B. auch „nicht aktiviert"). P2002 = Unique-Violation, symmetrisch zu
+    // uploadExternalInvoiceAction unten.
+    if ((e as { code?: string }).code === 'P2002') {
       return { ok: false, error: 'Rechnungsnummer existiert bereits.' };
+    }
+    // GwG-Schranke: DB-Trigger (RAISE EXCEPTION … 'GwG-Schranke', SQLSTATE
+    // P0001) — Prisma kennt den Code nicht und reicht den Trigger-Text in der
+    // Message durch. Der Marker „GwG-Schranke" ist der stabile Vertrag aus den
+    // Migrationen (init/iter2/iter5).
+    if ((e as Error).message?.includes('GwG-Schranke')) {
+      return { ok: false, error: 'Mandant ist nicht aktiv (GwG-Prüfung ausstehend).' };
     }
     return toActionError(e);
   }
@@ -128,10 +136,18 @@ const StatusSchema = z.object({
 
 export async function markSentAction(formData: FormData): Promise<void> {
   const g = await staffActionGuard();
-  if (!g.ok) return;
+  if (!g.ok) {
+    // Befund 9: Form-Action ohne Result-Channel — Guard-Ablehnung mindestens
+    // strukturiert loggen statt kommentarlos zu verschlucken.
+    log.warn({ component: 'invoices', action: 'markSent', err: g.error }, 'markSentAction: Guard abgelehnt');
+    return;
+  }
   const { tenantId, staffId, ctx } = g;
   const parsed = StatusSchema.safeParse({ invoiceId: formData.get('invoiceId') });
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    log.warn({ component: 'invoices', action: 'markSent' }, 'markSentAction: ungültige invoiceId');
+    return;
+  }
 
   await withTenantContext(ctx, async (tx) => {
     const updated = await tx.invoice.update({
@@ -156,8 +172,13 @@ export async function markSentAction(formData: FormData): Promise<void> {
   // generiert dann nach. Der Status ist bereits gesetzt + auditiert.
   try {
     await ensureZugferdArchive(ctx, parsed.data.invoiceId);
-  } catch {
-    /* bewusst geschluckt — Archiv ist optional zum Versandzeitpunkt */
+  } catch (e) {
+    // Best-effort bleibt (Archiv ist optional zum Versandzeitpunkt) — aber
+    // loggen (Befund 9), damit wiederholte Archiv-Fehler für Ops sichtbar sind.
+    log.warn(
+      { component: 'invoices', invoiceId: parsed.data.invoiceId, err: (e as Error).message },
+      'markSentAction: ensureZugferdArchive fehlgeschlagen — Download generiert nach',
+    );
   }
 
   emitN8nEvent('invoice.due', { tenantId, invoiceId: parsed.data.invoiceId });
@@ -330,8 +351,9 @@ export async function uploadExternalInvoiceAction(input: z.infer<typeof UploadEx
       clientName = cli.name;
       recipients = cli.contacts;
 
-      const doc = await tx.document.create({
-        data: {
+      // Befund 12: Document+Version-Insert zentral (upload-helpers).
+      const { document: doc } = await createDocumentWithVersion(tx, {
+        documentData: {
           tenantId,
           clientId: data.clientId,
           title: `Rechnung ${data.number}: ${data.subject}`,
@@ -339,20 +361,8 @@ export async function uploadExternalInvoiceAction(input: z.infer<typeof UploadEx
           // P-3: Magic-Bytes statt Client-Header — siehe M-2.
           mimeType: stored.detectedMime ?? data.pdf.mimeType ?? 'application/pdf',
         },
-      });
-      await tx.documentVersion.create({
-        data: {
-          documentId: doc.id,
-          versionNo: 1,
-          storageBucket: stored.targetBucket,
-          storageKey: stored.targetKey,
-          sha256: prismaBytes(stored.sha256),
-          sizeBytes: stored.sizeBytes,
-          immutable: stored.immutable,
-          scanStatus: 'CLEAN',
-          scanCompletedAt: new Date(),
-          createdById: staffId,
-        },
+        commit: stored,
+        createdById: staffId,
       });
 
       const inv = await tx.invoice.create({

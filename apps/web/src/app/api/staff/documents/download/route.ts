@@ -98,18 +98,6 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      for (const d of [...looseDocs, ...folderDocs.map((x) => x.doc)]) {
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
-          action: 'document.download',
-          resourceType: 'document',
-          resourceId: d.id,
-          ip: getClientIp(req.headers),
-          userAgent: req.headers.get('user-agent'),
-        });
-      }
       return { looseDocs, folderDocs };
     },
   );
@@ -120,10 +108,35 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
 
+  // Befund 15: Audit-Einträge erst NACH der Auslieferungsentscheidung
+  // schreiben (vorher: bis zu 700 document.download-Einträge committet,
+  // obwohl der Download anschließend mit 413 zip_too_large abgelehnt wurde —
+  // der Audit-Trail behauptete Downloads, die nie stattfanden). Auditiert
+  // werden nur Dokumente, die tatsächlich ausgeliefert werden (usable).
+  const recordDownloadAudits = (docs: { id: string }[]) =>
+    withTenantContext(
+      { tenantId, actorId: staffId, actorType: 'STAFF' },
+      async (tx) => {
+        for (const d of docs) {
+          await evidenceService.record(tx, {
+            tenantId,
+            actorType: 'STAFF',
+            actorId: staffId,
+            action: 'document.download',
+            resourceType: 'document',
+            resourceId: d.id,
+            ip: getClientIp(req.headers),
+            userAgent: req.headers.get('user-agent'),
+          });
+        }
+      },
+    );
+
   // Genau eine lose Datei, keine Ordner → unkomprimiert durchstreamen (O(1)).
   if (usableLoose.length === 1 && usableFolder.length === 0 && folderIds.length === 0) {
     const d = usableLoose[0]!;
     const v = d.versions[0]!;
+    await recordDownloadAudits([d]);
     const obj = await streamObject(v.storageBucket, v.storageKey);
     const headers: Record<string, string> = {
       'content-type': d.mimeType || 'application/octet-stream',
@@ -147,6 +160,9 @@ export async function GET(req: NextRequest) {
     const e = new ZipTooLargeError(Number(totalBytes), ZIP_MAX_TOTAL_BYTES);
     return NextResponse.json({ error: 'zip_too_large', message: e.message }, { status: 413 });
   }
+
+  // Befund 15: Machbarkeit steht fest → jetzt auditieren, dann ausliefern.
+  await recordDownloadAudits([...usableLoose, ...usableFolder.map((x) => x.doc)]);
 
   // ZIP. Dubletten je Verzeichnis durchnummerieren.
   const seen = new Map<string, number>();

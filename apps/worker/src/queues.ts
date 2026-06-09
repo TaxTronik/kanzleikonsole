@@ -2,14 +2,18 @@
 // BullMQ-Queues
 //
 // Queues:
-//   - virus-scan: asynchrone ClamAV-Prüfung (Fallback)
 //   - evidence-seal: tägliche RFC-3161-Versiegelung
 //   - gwg-expiry-check: täglich, schreibt Notifications für ablaufende GwG
 //   - invoice-overdue-check: täglich, OVERDUE-Status + Notifications
 //   - audit-verify-check: täglich, prüft Hash-Chain-Integrität
+//
+// RF-3: die virus-scan-Queue ist entfernt — sie hatte keinen Producer im Repo
+// und der Job duplizierte die (inzwischen nur in @taxtronik/storage gefixte)
+// ClamAV-Scan-Logik. Der synchrone Scan in packages/storage/src/service.ts
+// ist der einzige Scan-Pfad.
 // =============================================================================
 
-import { Queue, QueueEvents } from 'bullmq';
+import { Queue } from 'bullmq';
 import IORedis from 'ioredis';
 import { env } from '@taxtronik/config';
 
@@ -18,13 +22,6 @@ const redisUrl = env.REDIS_URL;
 export const connection = new IORedis(redisUrl, {
   maxRetriesPerRequest: null,
 });
-
-export interface VirusScanJob {
-  tenantId: string;
-  documentVersionId: string;
-  bucket: string;
-  storageKey: string;
-}
 
 export interface EvidenceSealJob {
   tenantId?: string;
@@ -48,7 +45,6 @@ export interface RiskAnalyseLlmJob {
   optionen?: Record<string, unknown>;
 }
 
-export const virusScanQueue = new Queue<VirusScanJob, void, string>('virus-scan', { connection });
 export const evidenceSealQueue = new Queue<EvidenceSealJob, void, string>('evidence-seal', { connection });
 export const gwgExpiryQueue = new Queue<ChecksJob, void, string>('gwg-expiry-check', { connection });
 export const invoiceOverdueQueue = new Queue<ChecksJob, void, string>('invoice-overdue-check', { connection });
@@ -64,5 +60,6 @@ export const dsgvoRetentionQueue = new Queue<ChecksJob, void, string>('dsgvo-ret
 export const poaExpiryQueue = new Queue<ChecksJob, void, string>('poa-expiry-check', { connection });
 export const riskAnalyseLlmQueue = new Queue<RiskAnalyseLlmJob, void, string>('risk-analyse-llm', { connection });
 
-export const virusScanEvents = new QueueEvents('virus-scan', { connection });
-export const evidenceSealEvents = new QueueEvents('evidence-seal', { connection });
+// RF-3/RF-13: die QueueEvents-Instanzen (virus-scan, evidence-seal) sind
+// entfernt — sie hatten keinerlei Consumer und wurden beim Shutdown nie
+// geschlossen (offene Redis-Subscriptions).

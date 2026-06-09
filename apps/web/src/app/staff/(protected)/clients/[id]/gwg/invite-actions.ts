@@ -6,6 +6,7 @@ import { portalBaseUrl } from '@taxtronik/config';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { sendTemplateMail } from '@/server/mail/dispatch';
+import { fireAndForget } from '@/server/util/fire-and-forget';
 import { generateInviteToken, INVITE_TTL_DAYS } from '@/server/gwg-onboarding/service';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { toActionError } from '@/server/auth/rbac';
@@ -72,7 +73,9 @@ export async function sendInviteAction(input: {
 
   const link = `${portalBaseUrl}/gwg-onboarding?token=${encodeURIComponent(raw)}`;
 
-  void sendTemplateMail({
+  // Befund 3: fire-and-forget mit catch+Log statt `void ….catch(() => void 0)`
+  // (Fehler wurden vorher stillschweigend verschluckt).
+  fireAndForget('sendTemplateMail (gwg-onboarding invite)', sendTemplateMail({
     tenantId,
     slug: 'gwg-onboarding',
     to: inviteEmail,
@@ -91,7 +94,7 @@ export async function sendInviteAction(input: {
       subject: 'Identifizierung für Ihre Mandantschaft',
       bodyMd: 'Sehr geehrte/r {{inviteName}},\n\num Sie als Mandant aufzunehmen, sind wir gesetzlich verpflichtet, Ihre Identität nach dem Geldwäschegesetz zu prüfen.\n\nBitte füllen Sie das kurze Online-Formular über folgenden Link aus:\n\n{{link}}\n\nDer Link ist 14 Tage gültig.',
     },
-  }).catch(() => void 0);
+  }));
 
   revalidatePath(`/staff/clients/${clientId}/gwg`);
   return { ok: true, link };
