@@ -19,7 +19,7 @@ import { resourceLabel } from '@/server/audit/labels';
 import { BookmarkRemoveButton } from '../bookmark-remove-button';
 import { MyDayToggle } from '../my-day-toggle';
 import { NotesEditor } from '../notes-editor';
-import { ListShell, type RenderCtx } from './_shared';
+import { ListShell, notDeniedClient, type RenderCtx } from './_shared';
 
 // --- Bookmarks ---------------------------------------------------------------
 
@@ -94,12 +94,12 @@ export async function PersonalNotes({ tx, staffId }: RenderCtx): Promise<React.R
 
 // --- MyDay (offene Workflow-Schritte) ----------------------------------------
 
-export async function MyDay({ tx, staffId }: RenderCtx): Promise<React.ReactNode> {
+export async function MyDay({ tx, staffId, deniedClientIds }: RenderCtx): Promise<React.ReactNode> {
   const items = await tx.workflowItem.findMany({
     where: {
       assigneeStaffId: staffId,
       doneAt: null,
-      instance: { status: 'ACTIVE' },
+      instance: { status: 'ACTIVE', ...notDeniedClient(deniedClientIds) },
     },
     orderBy: [{ dueDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }],
     take: 20,
@@ -154,10 +154,11 @@ export async function MyDay({ tx, staffId }: RenderCtx): Promise<React.ReactNode
 
 // --- MyWorkflows -------------------------------------------------------------
 
-export async function MyWorkflows({ tx, staffId }: RenderCtx): Promise<React.ReactNode> {
+export async function MyWorkflows({ tx, staffId, deniedClientIds }: RenderCtx): Promise<React.ReactNode> {
   const instances = await tx.workflowInstance.findMany({
     where: {
       status: 'ACTIVE',
+      ...notDeniedClient(deniedClientIds),
       OR: [
         { startedByStaff: staffId },
         { items: { some: { assigneeStaffId: staffId, doneAt: null } } },
@@ -226,10 +227,11 @@ export async function MyWorkflows({ tx, staffId }: RenderCtx): Promise<React.Rea
 
 // --- MyReminders (Wiedervorlagen) --------------------------------------------
 
-export async function MyReminders({ tx, staffId }: RenderCtx): Promise<React.ReactNode> {
+export async function MyReminders({ tx, staffId, deniedClientIds }: RenderCtx): Promise<React.ReactNode> {
   const reminders = await tx.clientReminder.findMany({
     where: {
       doneAt: null,
+      ...notDeniedClient(deniedClientIds),
       OR: [
         { assigneeStaffId: staffId },
         { assigneeStaffId: null, createdByStaff: staffId },

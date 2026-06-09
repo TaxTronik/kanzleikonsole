@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { getClientIp } from '@/server/rate-limit';
 import { staffAuth } from '@/server/auth/staff';
+import { canAccessClientTx } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { streamObject, sanitizeFilenameForHeader } from '@taxtronik/storage';
 import { filenameWithExtension } from '@/server/storage/preview-mime';
@@ -40,6 +41,12 @@ export async function GET(
       if (!d) return null;
       const version = d.versions[0];
       if (!version) return null;
+
+      // Zugriffsmodell (vertraulich-Flag / RESTRICTED): mandantengebundene
+      // Dokumente nur, wenn der Mitarbeiter den Mandanten sehen darf.
+      // clientId = null → allgemeines Kanzlei-Dokument, kein Check.
+      // Verweigerung → null → 404 (kein Existenz-Leak), VOR dem Audit-Eintrag.
+      if (d.clientId && !(await canAccessClientTx(tx, session, d.clientId))) return null;
 
       await evidenceService.record(tx, {
         tenantId,

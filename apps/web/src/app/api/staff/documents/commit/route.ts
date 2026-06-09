@@ -22,6 +22,7 @@ import { env } from '@taxtronik/config';
 import { getClientIp } from '@/server/rate-limit';
 import { z } from 'zod';
 import { staffAuth } from '@/server/auth/staff';
+import { canAccessClientTx } from '@/server/auth/rbac';
 import { assertSameOrigin } from '@/server/http/assert-same-origin';
 import {
   commitBytesWithTier,
@@ -161,10 +162,12 @@ export async function POST(req: NextRequest) {
         }
 
         // M-1: Tenant-Sanity-Check für clientId — FK greift nur auf Existenz,
-        // nicht auf Tenant-Match.
+        // nicht auf Tenant-Match. Zugriffsmodell (vertraulich-Flag /
+        // RESTRICTED): gesperrte Mandanten wie „nicht gefunden" behandeln
+        // (kein Existenz-Leak) — kein Upload in fremde Mandanten-Akten.
         if (clientId) {
           const c = await tx.client.findFirst({ where: { id: clientId }, select: { id: true } });
-          if (!c) {
+          if (!c || !(await canAccessClientTx(tx, session, clientId))) {
             throw new Error('CLIENT_NOT_FOUND: clientId nicht in diesem Tenant.');
           }
         }

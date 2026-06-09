@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { getClientIp, checkStaffExportLimit } from '@/server/rate-limit';
 import { staffAuth } from '@/server/auth/staff';
+import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import {
@@ -32,11 +33,16 @@ export async function GET(req: NextRequest) {
   const { rows, truncated } = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
+      // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Rechnungen gesperrter
+      // Mandanten tauchen nicht im CSV auf.
+      const denied = await inaccessibleClientIdsFor(tx, session);
       const list = await tx.invoice.findMany({
-        where:
-          status && ['DRAFT', 'SENT', 'PAID', 'OVERDUE', 'CANCELLED'].includes(status)
+        where: {
+          ...(denied.length ? { clientId: { notIn: denied } } : {}),
+          ...(status && ['DRAFT', 'SENT', 'PAID', 'OVERDUE', 'CANCELLED'].includes(status)
             ? { status: status as 'DRAFT' | 'SENT' | 'PAID' | 'OVERDUE' | 'CANCELLED' }
-            : undefined,
+            : {}),
+        },
         orderBy: [{ issueDate: 'desc' }],
         take: MAX_EXPORT_ROWS + 1, // +1 zur Trunkierungs-Erkennung
         include: { client: { select: { name: true, datevNo: true } } },

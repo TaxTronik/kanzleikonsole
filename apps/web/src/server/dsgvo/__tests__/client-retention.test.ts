@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { Prisma } from '@prisma/client';
 import type { TxClient } from '@taxtronik/db';
 import {
   clientAnonymizationDeadline,
@@ -7,6 +8,7 @@ import {
   CLIENT_ANONYMIZATION_YEARS,
   GOBD_RETENTION_YEARS,
 } from '../client-retention';
+import { anonymizeClientSideTablesInTx } from '../anonymize-client-data';
 
 describe('clientAnonymizationDeadline — Art. 17 (Jahresende + längste Frist)', () => {
   it('Mandatsende 2026-03-15 → fällig ab 2037-01-01', () => {
@@ -109,5 +111,113 @@ describe('findDueClientAnonymizations — Review-Queue (NATPERS, Fristablauf)', 
     ]);
 
     expect(await findDueClientAnonymizations(tx, NOW)).toEqual([]);
+  });
+});
+
+describe('anonymizeClientSideTablesInTx — personentragende Nebentabellen (eine Tx)', () => {
+  const CLIENT_ID = 'client-1';
+  const CONTACT_IDS = ['contact-1', 'contact-2'];
+
+  function fakeTx() {
+    const tx = {
+      powerOfAttorney: { updateMany: vi.fn().mockResolvedValue({ count: 2 }) },
+      gwgOnboardingInvite: { deleteMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      formSubmission: { updateMany: vi.fn().mockResolvedValue({ count: 3 }) },
+      appointment: { updateMany: vi.fn().mockResolvedValue({ count: 4 }) },
+      appointmentRequest: { deleteMany: vi.fn().mockResolvedValue({ count: 5 }) },
+      clientReminder: { updateMany: vi.fn().mockResolvedValue({ count: 6 }) },
+      pendingBinder: { updateMany: vi.fn().mockResolvedValue({ count: 7 }) },
+      clientHandover: { updateMany: vi.fn().mockResolvedValue({ count: 8 }) },
+      riskAnalysis: { updateMany: vi.fn().mockResolvedValue({ count: 9 }) },
+      riskMarking: { updateMany: vi.fn().mockResolvedValue({ count: 10 }) },
+    };
+    return { tx: tx as unknown as TxClient, mocks: tx };
+  }
+
+  it('nullt/ersetzt alle Klassen und liefert die Zähler fürs Audit-Event', async () => {
+    const { tx, mocks } = fakeTx();
+
+    const out = await anonymizeClientSideTablesInTx(tx, {
+      clientId: CLIENT_ID,
+      contactIds: CONTACT_IDS,
+    });
+
+    // Vollmachten: NOT-NULL-Felder → Platzhalter, IP/UA → null; nur DB-Felder
+    // (die Dokumente unterliegen der Dokument-Retention).
+    expect(mocks.powerOfAttorney.updateMany).toHaveBeenCalledWith({
+      where: { clientId: CLIENT_ID },
+      data: {
+        signerName: 'Anonymisiert',
+        signerEmail: 'anonymisiert@taxtronik.local',
+        signedByIp: null,
+        signedByUserAgent: null,
+      },
+    });
+    // GwG-Invites zwecklos nach Fristablauf → löschen.
+    expect(mocks.gwgOnboardingInvite.deleteMany).toHaveBeenCalledWith({
+      where: { clientId: CLIENT_ID },
+    });
+    // Formular-Antworten: clientId ODER über Kontakte des Mandanten.
+    expect(mocks.formSubmission.updateMany).toHaveBeenCalledWith({
+      where: {
+        OR: [{ clientId: CLIENT_ID }, { submittedByContact: { in: CONTACT_IDS } }],
+      },
+      data: { answers: { anonymized: true } },
+    });
+    expect(mocks.appointment.updateMany).toHaveBeenCalledWith({
+      where: { clientId: CLIENT_ID },
+      data: { title: 'Anonymisiert', notes: null, location: null },
+    });
+    // Terminanfragen (Portal-Kontakt) → löschen; appointment.from_request_id
+    // ist ON DELETE SET NULL, abgeleitete Termine bleiben.
+    expect(mocks.appointmentRequest.deleteMany).toHaveBeenCalledWith({
+      where: { clientId: CLIENT_ID },
+    });
+    expect(mocks.clientReminder.updateMany).toHaveBeenCalledWith({
+      where: { clientId: CLIENT_ID },
+      data: { subject: 'Anonymisiert', notes: null },
+    });
+    expect(mocks.pendingBinder.updateMany).toHaveBeenCalledWith({
+      where: { clientId: CLIENT_ID },
+      data: { label: 'Anonymisiert', contents: null },
+    });
+    expect(mocks.clientHandover.updateMany).toHaveBeenCalledWith({
+      where: { clientId: CLIENT_ID },
+      data: { label: 'Anonymisiert', contents: null, notifiedContactEmail: null },
+    });
+    // Sachverhalt: sourceText NOT NULL → '', Rich-Doc-Kopie → DbNull;
+    // Markierungen zitieren den Text wörtlich → mit-leeren.
+    expect(mocks.riskAnalysis.updateMany).toHaveBeenCalledWith({
+      where: { clientId: CLIENT_ID },
+      data: { sourceText: '', sourceDoc: Prisma.DbNull },
+    });
+    expect(mocks.riskMarking.updateMany).toHaveBeenCalledWith({
+      where: { analysis: { clientId: CLIENT_ID } },
+      data: { matchedText: '', notiz: null },
+    });
+
+    expect(out).toEqual({
+      poaSignersAnonymized: 2,
+      gwgInvitesDeleted: 1,
+      formSubmissionAnswersAnonymized: 3,
+      appointmentsAnonymized: 4,
+      appointmentRequestsDeleted: 5,
+      remindersAnonymized: 6,
+      pendingBindersAnonymized: 7,
+      handoversAnonymized: 8,
+      riskAnalysesCleared: 9,
+      riskMarkingsCleared: 10,
+    });
+  });
+
+  it('ohne Kontakte: Formular-Filter bleibt korrekt (leeres in-Array trifft nichts)', async () => {
+    const { tx, mocks } = fakeTx();
+
+    await anonymizeClientSideTablesInTx(tx, { clientId: CLIENT_ID, contactIds: [] });
+
+    expect(mocks.formSubmission.updateMany).toHaveBeenCalledWith({
+      where: { OR: [{ clientId: CLIENT_ID }, { submittedByContact: { in: [] } }] },
+      data: { answers: { anonymized: true } },
+    });
   });
 });

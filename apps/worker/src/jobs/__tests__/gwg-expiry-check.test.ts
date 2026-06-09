@@ -7,7 +7,10 @@
 //   - Empfänger pro Stufe inkl. ADMIN/PARTNER-Fallback
 //   - RF-8: STAGE3-Statuswechsel (Check EXPIRED + Mandant deaktiviert) und
 //     die zugehörigen Audit-Records laufen in EINER Tenant-Context-Tx
+//   - GwG-Schranke: bei STAGE3-Deaktivierung werden Portal-Sessions aller
+//     aktiven Kontakte revoziert (revoke:portal:<contactId> via Redis)
 //   - Idempotenz: bereits umgestellte Checks erzeugen keinen Audit-Eintrag
+//     und keine erneute Session-Revocation
 //   - U-5: Auto-Anforderung für ablaufende Ausweise idempotent per FK
 //     (linkedGwgIdDocumentId), HIGH/7-Tage-Frist wenn bereits abgelaufen
 //   - GwG-Lösch-Queue (§ 8 Abs. 4 S. 4): GWG_DELETION_DUE an ADMIN/PARTNER,
@@ -24,6 +27,7 @@ const h = vi.hoisted(() => {
     gwgIdDocument: { findMany: vi.fn() },
     document: { count: vi.fn() },
     request: { findFirst: vi.fn(), create: vi.fn() },
+    clientContact: { findMany: vi.fn() },
   };
   const tx = {
     gwgCheck: { updateMany: vi.fn() },
@@ -34,11 +38,15 @@ const h = vi.hoisted(() => {
   );
   const record = vi.fn();
   const upsertNotification = vi.fn();
-  return { prismaOwner, tx, withWorkerTenantContext, record, upsertNotification };
+  // Portal-Session-Revocation: der Worker schreibt `revoke:portal:<contactId>`
+  // direkt über die BullMQ-Redis-Verbindung (Key-Schema aus
+  // apps/web/src/server/auth/revocation.ts).
+  const redisSet = vi.fn();
+  return { prismaOwner, tx, withWorkerTenantContext, record, upsertNotification, redisSet };
 });
 
 vi.mock('bullmq', () => import('./mocks/bullmq'));
-vi.mock('../../queues', () => ({ connection: {} }));
+vi.mock('../../queues', () => ({ connection: { set: h.redisSet } }));
 vi.mock('../../prisma-owner', () => ({ prismaOwner: h.prismaOwner }));
 vi.mock('../../logger', () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -124,10 +132,12 @@ beforeEach(() => {
   h.prismaOwner.document.count.mockResolvedValue(0);
   h.prismaOwner.request.findFirst.mockResolvedValue(null);
   h.prismaOwner.request.create.mockResolvedValue({ id: 'req-1' });
+  h.prismaOwner.clientContact.findMany.mockResolvedValue([{ id: 'contact-1' }]);
   h.tx.gwgCheck.updateMany.mockResolvedValue({ count: 1 });
   h.tx.client.updateMany.mockResolvedValue({ count: 1 });
   h.record.mockResolvedValue({});
   h.upsertNotification.mockResolvedValue(undefined);
+  h.redisSet.mockResolvedValue('OK');
 });
 
 afterEach(() => {
@@ -251,6 +261,20 @@ describe('STAGE3 — Ablauf (RF-8: Statuswechsel + Audit in EINER Tx)', () => {
       expect((call[2] as { kind: string }).kind).toBe('GWG_EXPIRED');
     }
     expect(result.stage3).toBe(3);
+
+    // GwG-Schranke (§ 11 GwG): Portal-Sessions ALLER aktiven Kontakte des
+    // deaktivierten Mandanten werden sofort revoziert — Key-Schema wie in
+    // apps/web/src/server/auth/revocation.ts (revoke:portal:<contactId>).
+    expect(h.prismaOwner.clientContact.findMany).toHaveBeenCalledWith({
+      where: { clientId: 'client-1', active: true },
+      select: { id: true },
+    });
+    expect(h.redisSet).toHaveBeenCalledWith(
+      'revoke:portal:contact-1',
+      String(FIXED_NOW.getTime()),
+      'EX',
+      30 * 24 * 60 * 60,
+    );
   });
 
   it('idempotent: Check/Mandant bereits umgestellt (count=0) → KEIN Audit-Eintrag', async () => {
@@ -261,6 +285,9 @@ describe('STAGE3 — Ablauf (RF-8: Statuswechsel + Audit in EINER Tx)', () => {
     await run();
 
     expect(h.record).not.toHaveBeenCalled();
+    // keine erneute Session-Revocation — der Mandant war schon deaktiviert
+    // (Revocation lief beim tatsächlichen Übergang bzw. in rejectCheckAction)
+    expect(h.redisSet).not.toHaveBeenCalled();
     // die (idempotente) Notification geht trotzdem raus
     expect(h.upsertNotification).toHaveBeenCalled();
   });

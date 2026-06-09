@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { ArrowLeft, Send, CheckCircle2, X, FileCode } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
+import { canAccessClientTx } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { markSentAction, markPaidAction, cancelInvoiceAction } from '../actions';
 
@@ -33,15 +34,20 @@ export default async function InvoiceDetailPage({
 
   const inv = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
-    (tx) =>
-      tx.invoice.findUnique({
+    async (tx) => {
+      const row = await tx.invoice.findUnique({
         where: { id },
         include: {
           client: true,
           positions: { orderBy: { position: 'asc' } },
           document: true,
         },
-      }),
+      });
+      // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Rechnung eines
+      // gesperrten Mandanten verhält sich wie nicht vorhanden.
+      if (row && !(await canAccessClientTx(tx, session, row.clientId))) return null;
+      return row;
+    },
   );
 
   if (!inv) notFound();

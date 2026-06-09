@@ -77,8 +77,13 @@ export async function requestMagicLink(input: {
 
   const contact = await prismaOwner.clientContact.findFirst({
     where: { tenantId: input.tenantId, email: input.email.toLowerCase(), active: true },
+    include: { client: { select: { allowActive: true, anonymizedAt: true } } },
   });
-  if (!contact) {
+  // GwG-Schranke (§ 11 GwG): Kontakte deaktivierter (allowActive=false, z. B.
+  // GwG abgelaufen/abgelehnt) oder anonymisierter Mandanten bekommen KEINEN
+  // Login-Link. Identisches Anti-Enumeration-Verhalten wie „Contact unbekannt"
+  // — keine eigene Fehlermeldung, gleiche Latenz.
+  if (!contact || !contact.client.allowActive || contact.client.anonymizedAt !== null) {
     await antiTimingDelay();
     return { ok: true };
   }
@@ -197,8 +202,11 @@ export async function verifyMagicLink(rawToken: string): Promise<{
 
   const contact = await prismaOwner.clientContact.findFirst({
     where: { tenantId: link.tenantId, email: link.email, active: true },
+    include: { client: { select: { allowActive: true, anonymizedAt: true } } },
   });
-  if (!contact) return null;
+  // GwG-Schranke (§ 11 GwG): Mandant zwischenzeitlich deaktiviert/anonymisiert
+  // → Token verfällt wie bei unbekanntem/inaktivem Kontakt (null, kein Consume).
+  if (!contact || !contact.client.allowActive || contact.client.anonymizedAt !== null) return null;
 
   // Atomar als consumed markieren (Race-Schutz). RF-12: der Consume IST der
   // Portal-Login — auth.magic_link.consume wandert in DERSELBEN Tx in die

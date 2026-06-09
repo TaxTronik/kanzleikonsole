@@ -7,14 +7,22 @@ import { CalendarDays } from 'lucide-react';
 import { SCHEDULE_LABELS } from '@taxtronik/tax';
 import { fmtDateShort, fmtTimeShort } from '@/lib/fmt';
 import { CALENDAR_PAST_MS } from '@/lib/consts';
-import { ListShell, type RenderCtx } from './_shared';
+import { ListShell, notDeniedClient, type RenderCtx } from './_shared';
 
-export async function CalendarWidget({ tx }: RenderCtx): Promise<React.ReactNode> {
+export async function CalendarWidget({ tx, deniedClientIds }: RenderCtx): Promise<React.ReactNode> {
   const horizon = new Date();
   horizon.setDate(horizon.getDate() + 30);
   const [appts, deadlines] = await Promise.all([
     tx.appointment.findMany({
-      where: { status: { not: 'CANCELLED' }, endsAt: { gte: new Date() }, startsAt: { lte: horizon } },
+      where: {
+        status: { not: 'CANCELLED' },
+        endsAt: { gte: new Date() },
+        startsAt: { lte: horizon },
+        // clientId nullable: Termine ohne Mandantenbezug bleiben sichtbar.
+        ...(deniedClientIds?.length
+          ? { OR: [{ clientId: null }, { clientId: { notIn: deniedClientIds } }] }
+          : {}),
+      },
       orderBy: { startsAt: 'asc' },
       take: 20,
       select: {
@@ -32,6 +40,7 @@ export async function CalendarWidget({ tx }: RenderCtx): Promise<React.ReactNode
       where: {
         status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS', 'OVERDUE'] },
         dueDate: { gte: new Date(Date.now() - CALENDAR_PAST_MS), lte: horizon },
+        ...notDeniedClient(deniedClientIds),
       },
       orderBy: { dueDate: 'asc' },
       take: 20,

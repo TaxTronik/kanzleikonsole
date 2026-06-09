@@ -15,6 +15,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { getClientIp, checkStaffExportLimit } from '@/server/rate-limit';
 import { z } from 'zod';
 import { staffAuth } from '@/server/auth/staff';
+import { canAccessClientTx } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { fetchObjectBytes } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
@@ -104,6 +105,11 @@ export async function GET(
         select: { id: true, name: true, datevNo: true },
       });
       if (!client) return null;
+
+      // Zugriffsmodell (vertraulich-Flag / RESTRICTED): der Export enthält ALLE
+      // GoBD-Originale des Mandanten — gesperrt → null → 404 (kein Existenz-
+      // Leak), bevor Belege gelesen oder auditiert werden.
+      if (!(await canAccessClientTx(tx, session, clientId))) return null;
 
       const docs = await tx.document.findMany({
         where: {

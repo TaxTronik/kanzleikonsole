@@ -13,6 +13,7 @@ import { checkRateLimit, checkIpOrGlobalLimit, getClientIp } from '@/server/rate
 import { isStaffAdmin, toActionError } from '@/server/auth/rbac';
 import { headers } from 'next/headers';
 import { staffActionGuard, withStaff, ActionError } from '@/server/actions/staff-action';
+import { assertClientInTenant } from '@/server/db/assert-tenant';
 
 const SIGNING_TOKEN_TTL_HOURS = 72;
 
@@ -62,6 +63,20 @@ export async function createPoaAction(formData: FormData): Promise<void> {
   const data = parsed.data;
 
   const id = await withTenantContext(ctx, async (tx) => {
+      // clientId kommt aus dem Formular — Existenz im aktuellen Tenant prüfen
+      // (RLS-aware), bevor der FK-Insert eine fremde UUID akzeptieren würde.
+      await assertClientInTenant(tx, data.clientId);
+      // signerContactId muss zum gewählten Mandanten gehören — sonst ließe
+      // sich ein fremder Kontakt als Unterzeichner verknüpfen.
+      if (data.signerContactId) {
+        const contact = await tx.clientContact.findFirst({
+          where: { id: data.signerContactId, clientId: data.clientId },
+          select: { id: true },
+        });
+        if (!contact) {
+          throw new ActionError('Ansprechpartner gehört nicht zum gewählten Mandanten.');
+        }
+      }
       const poa = await tx.powerOfAttorney.create({
         data: {
           tenantId,

@@ -19,6 +19,8 @@ import { Prisma } from '@prisma/client';
 // Subpath statt Barrel: vermeidet, dass owner-client (verlangt DATABASE_URL beim
 // Import) in reine Unit-Tests gezogen wird, die rbac.ts transitiv importieren.
 import { withTenantContext } from '@taxtronik/db/tenant-context';
+// type-only: wird zur Compile-Zeit gelöscht, zieht den Owner-Client NICHT rein.
+import type { TxClient } from '@taxtronik/db';
 import { readAccessPolicyTx, decideClientAccess } from '@/server/settings/access-policy';
 import { staffAuth, type StaffSession } from './staff';
 import { log } from '@/server/logger';
@@ -79,36 +81,85 @@ export async function requireStaffAdmin(): Promise<StaffSession> {
  * an jedem nicht-vertraulichen Mandanten arbeiten; `ClientResponsibility` ist nur
  * noch Zuständigkeit/Filter. Existiert der Mandant nicht (oder anderer Tenant via
  * RLS) → kein Zugriff.
+ *
+ * Durchgesetzt wird die Policy überall, wo client-gebundene Inhalte das System
+ * verlassen: Subsumtions-Workspace/-Export sowie die Staff-API-Routen für
+ * Dokument-Download/-Preview, Bulk-ZIP, DATEV-Belege-Export, XRechnung/ZUGFeRD,
+ * globale Suche und CSV-Exporte (Mandanten/Rechnungen/Anforderungen).
  */
 export async function canAccessClient(session: StaffSession, clientId: string): Promise<boolean> {
   if (isStaffAdmin(session)) return true;
   const { tenantId, staffId } = session.user;
   return withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
-      const policy = await readAccessPolicyTx(tx, tenantId);
-      const client = await tx.client.findUnique({
-        where: { id: clientId },
-        select: { vertraulich: true },
-      });
-      if (!client) return false;
-      // Responsibility nur abfragen, wenn sie überhaupt entscheiden kann
-      // (RESTRICTED oder vertraulicher Mandant) — spart im OPEN-Normalfall eine Query.
-      const needResponsibility = policy.clientAccessMode === 'RESTRICTED' || client.vertraulich;
-      const isResponsible = needResponsibility
-        ? (await tx.clientResponsibility.findFirst({
-            where: { clientId, staffId, role: { in: ['BERUFSTRAEGER', 'HAUPTBEARBEITER'] } },
-            select: { id: true },
-          })) !== null
-        : false;
-      return decideClientAccess({
-        isAdmin: false,
-        mode: policy.clientAccessMode,
-        vertraulich: client.vertraulich,
-        isResponsible,
-      });
-    },
+    (tx) => canAccessClientTx(tx, session, clientId),
   );
+}
+
+/**
+ * Variante von `canAccessClient` auf einer BESTEHENDEN Tx — für Routen, die den
+ * Check in dieselbe Transaktion wie ihren Objekt-Lookup legen wollen (kein
+ * zweiter Tenant-Kontext, und der Audit-Eintrag entsteht erst NACH bestandenem
+ * Check).
+ */
+export async function canAccessClientTx(
+  tx: TxClient,
+  session: StaffSession,
+  clientId: string,
+): Promise<boolean> {
+  if (isStaffAdmin(session)) return true;
+  const { tenantId, staffId } = session.user;
+  const policy = await readAccessPolicyTx(tx, tenantId);
+  const client = await tx.client.findUnique({
+    where: { id: clientId },
+    select: { vertraulich: true },
+  });
+  if (!client) return false;
+  // Responsibility nur abfragen, wenn sie überhaupt entscheiden kann
+  // (RESTRICTED oder vertraulicher Mandant) — spart im OPEN-Normalfall eine Query.
+  const needResponsibility = policy.clientAccessMode === 'RESTRICTED' || client.vertraulich;
+  const isResponsible = needResponsibility
+    ? (await tx.clientResponsibility.findFirst({
+        where: { clientId, staffId, role: { in: ['BERUFSTRAEGER', 'HAUPTBEARBEITER'] } },
+        select: { id: true },
+      })) !== null
+    : false;
+  return decideClientAccess({
+    isAdmin: false,
+    mode: policy.clientAccessMode,
+    vertraulich: client.vertraulich,
+    isResponsible,
+  });
+}
+
+/**
+ * Menge der Mandanten-IDs, die der Mitarbeiter NICHT sehen darf — für
+ * Mengen-Endpunkte (Suche, CSV-Exporte, Bulk-ZIP), die nicht pro Treffer
+ * `canAccessClient` rufen können. Eine leichte Query pro Request:
+ *  - Admin/Partner → leer (keine Zusatzlast).
+ *  - OPEN: nur vertraulich markierte Mandanten ohne eigene Zuordnung — im
+ *    Normalfall (keine vertraulichen Mandanten) ist das Ergebnis sofort leer.
+ *  - RESTRICTED: alle Mandanten ohne eigene Zuordnung.
+ * Semantik exakt wie `decideClientAccess` (Zuordnung = Berufsträger/
+ * Hauptbearbeiter via ClientResponsibility).
+ */
+export async function inaccessibleClientIdsFor(
+  tx: TxClient,
+  session: StaffSession,
+): Promise<string[]> {
+  if (isStaffAdmin(session)) return [];
+  const { tenantId, staffId } = session.user;
+  const policy = await readAccessPolicyTx(tx, tenantId);
+  const rows = await tx.client.findMany({
+    where: {
+      ...(policy.clientAccessMode === 'OPEN' ? { vertraulich: true } : {}),
+      responsibilities: {
+        none: { staffId, role: { in: ['BERUFSTRAEGER', 'HAUPTBEARBEITER'] } },
+      },
+    },
+    select: { id: true },
+  });
+  return rows.map((r) => r.id);
 }
 
 /** Wirft `ForbiddenError`, wenn kein Zugriff auf den Mandanten besteht. */

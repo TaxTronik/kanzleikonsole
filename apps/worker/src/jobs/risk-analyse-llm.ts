@@ -88,8 +88,10 @@ export const riskAnalyseLlmWorker = new Worker<RiskAnalyseLlmJob, void, string>(
     }
 
     await withWorkerTenantContext(tenantId, async (tx) => {
-      const analysis = await tx.riskAnalysis.findUnique({
-        where: { id: analysisId },
+      // tenantId re-asserten: der Owner-Client hat BYPASSRLS — die id aus dem
+      // Job-Payload darf nicht allein über die Zugehörigkeit entscheiden.
+      const analysis = await tx.riskAnalysis.findFirst({
+        where: { id: analysisId, tenantId },
         select: { id: true, markings: { select: { start: true, end: true, herkunft: true, begriff: true } } },
       });
       if (!analysis) {

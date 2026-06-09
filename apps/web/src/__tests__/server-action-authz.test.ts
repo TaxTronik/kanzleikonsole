@@ -41,7 +41,9 @@ const PRIMITIVE =
 
 // Delegation: ruft die Action eine ANDERE *Action auf, ist die Autorisierung dort
 // garantiert (jene Action wird von diesem Guardrail selbst geprüft → Transitivität).
-const DELEGATION = /\b\w+Action\s*\(/;
+// Zählt NUR, wenn das Ziel in der Menge der gesammelten exportierten Action-Namen
+// liegt — ein beliebiger lokaler `fooAction(`-Aufruf wäre sonst ein Freifahrtschein.
+const DELEGATION_CALL = /\b(\w+Action)\s*\(/g;
 
 function walkActionFiles(dir: string): string[] {
   const out: string[] = [];
@@ -85,31 +87,50 @@ function topLevelFns(src: ts.SourceFile): Fn[] {
 
 const files = walkActionFiles(APP_DIR).filter((f) => readFileSync(f, 'utf8').includes("'use server'"));
 
+// Erster Pass: Surface sammeln (alle Top-Level-Funktionen je Datei) + Menge
+// der exportierten Action-Namen — das Delegations-Ziel muss darin liegen.
+const parsedFiles = files.map((file) => {
+  const src = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
+  return { file, fns: topLevelFns(src) };
+});
+const exportedActionNames = new Set(
+  parsedFiles.flatMap(({ fns }) =>
+    fns.filter((f) => f.exported && /Action$/.test(f.name)).map((f) => f.name),
+  ),
+);
+
+/** True, wenn der Body eine ANDERE gesammelte exportierte Action aufruft. */
+function delegatesToKnownAction(body: string, self: string): boolean {
+  for (const m of body.matchAll(DELEGATION_CALL)) {
+    const target = m[1]!;
+    if (target !== self && exportedActionNames.has(target)) return true;
+  }
+  return false;
+}
+
 describe('Server-Actions sind autorisiert (Struktur-Guardrail)', () => {
   it('findet die Server-Action-Fläche', () => {
     expect(files.length).toBeGreaterThan(40);
   });
 
-  for (const file of files) {
+  for (const { file, fns } of parsedFiles) {
     const rel = relative(APP_DIR, file).replace(/\\/g, '/');
     if (ALLOWLIST_FILES.some((a) => rel === a || rel.endsWith('/' + a))) continue;
 
-    const src = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
-    const fns = topLevelFns(src);
     // Auth-tragende Helfer derselben Datei (z. B. `guard`, `guardAnalysis`): ihr
     // Body enthält selbst ein Primitiv → ein Aufruf gilt als Autorisierung.
     const authHelpers = fns.filter((f) => PRIMITIVE.test(f.body)).map((f) => f.name);
-    const authorized = (body: string) =>
-      PRIMITIVE.test(body) ||
-      DELEGATION.test(body) ||
-      authHelpers.some((h) => new RegExp(`\\b${h}\\b`).test(body));
+    const authorized = (fn: Fn) =>
+      PRIMITIVE.test(fn.body) ||
+      delegatesToKnownAction(fn.body, fn.name) ||
+      authHelpers.some((h) => new RegExp(`\\b${h}\\b`).test(fn.body));
 
     const actions = fns.filter(
       (f) => f.exported && /Action$/.test(f.name) && !ALLOWLIST_FNS.has(`${rel}::${f.name}`),
     );
 
     it(`${rel}: alle Actions referenzieren eine Autorisierung`, () => {
-      const missing = actions.filter((a) => !authorized(a.body)).map((a) => a.name);
+      const missing = actions.filter((a) => !authorized(a)).map((a) => a.name);
       expect(
         missing,
         `Ohne Auth-Referenz (staffAuth/portalAuth/guard*/require*/canAccessClient): ${missing.join(', ')}`,

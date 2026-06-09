@@ -1,4 +1,5 @@
 ﻿import { staffAuth } from '@/server/auth/staff';
+import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
@@ -99,8 +100,12 @@ export default async function RequestsOverviewPage({
 
   const [requests, totalCount] = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) =>
-      Promise.all([
+    async (tx) => {
+      // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Anforderungen
+      // gesperrter Mandanten ausblenden (konsistent zum CSV-Export).
+      const denied = await inaccessibleClientIdsFor(tx, session);
+      if (denied.length) where.clientId = { notIn: denied };
+      return Promise.all([
         tx.request.findMany({
           where,
           orderBy: orderByFor(sort, dir),
@@ -112,7 +117,8 @@ export default async function RequestsOverviewPage({
           },
         }),
         tx.request.count({ where }),
-      ]),
+      ]);
+    },
   );
 
   const baseQs = new URLSearchParams();

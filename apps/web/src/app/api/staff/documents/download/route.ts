@@ -8,6 +8,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { getClientIp } from '@/server/rate-limit';
 import { staffAuth } from '@/server/auth/staff';
+import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { fetchObjectBytes, streamObject, sanitizeFilenameForHeader } from '@taxtronik/storage';
 import { filenameWithExtension } from '@/server/storage/preview-mime';
@@ -56,8 +57,19 @@ export async function GET(req: NextRequest) {
         },
       };
 
+      // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Dokumente gesperrter
+      // Mandanten aus dem Set filtern — auditiert werden nur die tatsächlich
+      // gelieferten (usable*). clientId = null (Kanzlei-Dokumente) bleibt frei.
+      const denied = await inaccessibleClientIdsFor(tx, session);
+      const accessWhere = denied.length
+        ? { OR: [{ clientId: null }, { clientId: { notIn: denied } }] }
+        : {};
+
       const looseDocs = ids.length
-        ? await tx.document.findMany({ where: { id: { in: ids }, tenantId, deletedAt: null }, select: sel })
+        ? await tx.document.findMany({
+            where: { id: { in: ids }, tenantId, deletedAt: null, ...accessWhere },
+            select: sel,
+          })
         : [];
 
       let folderDocs: { doc: (typeof looseDocs)[number]; path: string }[] = [];
@@ -97,7 +109,7 @@ export async function GET(req: NextRequest) {
         }
         if (subtree.size) {
           const inFolders = await tx.document.findMany({
-            where: { tenantId, deletedAt: null, folderId: { in: [...subtree] } },
+            where: { tenantId, deletedAt: null, folderId: { in: [...subtree] }, ...accessWhere },
             select: sel,
           });
           folderDocs = inFolders

@@ -6,8 +6,9 @@ import { env } from '@taxtronik/config';
 import { getClientIp } from '@/server/rate-limit';
 import { z } from 'zod';
 import { staffAuth } from '@/server/auth/staff';
+import { canAccessClientTx } from '@/server/auth/rbac';
 import { assertSameOrigin } from '@/server/http/assert-same-origin';
-import { commitDocumentFromBytes } from '@taxtronik/storage';
+import { commitDocumentFromBytes, MAX_UPLOAD_BYTES } from '@taxtronik/storage';
 import { withTenantContext } from '@taxtronik/db';
 import { prismaBytes } from '@/server/db/prisma-bytes';
 import {
@@ -36,6 +37,16 @@ export async function POST(
 
   const { id: documentId } = await params;
 
+  // DoS-Mitigation: ehrlich deklarierte Über-Größe ablehnen, BEVOR req.formData()
+  // den gesamten Body in den RAM puffert (+1 MB Marge für Multipart-Framing +
+  // Metadatenfelder) — identisch zu staff/documents/commit. Lügt der Client über
+  // Content-Length oder nutzt chunked-Encoding, greift der file.size-Check in
+  // parseMultipartUpload (dann ist gepuffert).
+  const declaredLen = Number(req.headers.get('content-length') ?? 0);
+  if (Number.isFinite(declaredLen) && declaredLen > MAX_UPLOAD_BYTES + 1024 * 1024) {
+    return NextResponse.json({ error: 'TOO_LARGE' }, { status: 413 });
+  }
+
   // Befund 12: Multipart-Parse + Datei-Checks zentral (upload-helpers).
   const upload = await parseMultipartUpload(req);
   if (!upload.ok) return upload.response;
@@ -54,9 +65,16 @@ export async function POST(
 
   // Existierendes Dokument lesen — Audit 4: expliziter Tenant-Filter.
   // (versionNo wird hier NICHT mehr ermittelt — siehe Befund 2 unten.)
+  // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Dokumente gesperrter
+  // Mandanten wie „nicht gefunden" behandeln (kein Existenz-Leak).
   const doc = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
-    (tx) => tx.document.findFirst({ where: { id: documentId, tenantId } }),
+    async (tx) => {
+      const d = await tx.document.findFirst({ where: { id: documentId, tenantId } });
+      if (!d) return null;
+      if (d.clientId && !(await canAccessClientTx(tx, session, d.clientId))) return null;
+      return d;
+    },
   );
   if (!doc) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 

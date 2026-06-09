@@ -7,11 +7,12 @@
 //
 // Abgedeckt:
 //   - hashToken: deterministisch, bekannter Vektor
-//   - requestMagicLink: Throttle/unbekannter Tenant/unbekannter Contact →
-//     IMMER ok:true ohne Mail (Anti-Enumeration), Happy-Path speichert NUR
-//     den Hash (nie den rohen Token), TTL 30 min, SMTP-Fehler wird geschluckt
-//   - verifyMagicLink: zu kurz/unbekannt/konsumiert/abgelaufen → null,
-//     One-Time-Use über atomares updateMany (Race → null)
+//   - requestMagicLink: Throttle/unbekannter Tenant/unbekannter Contact/
+//     GwG-deaktivierter Mandant (client.allowActive=false) → IMMER ok:true
+//     ohne Mail (Anti-Enumeration), Happy-Path speichert NUR den Hash (nie
+//     den rohen Token), TTL 30 min, SMTP-Fehler wird geschluckt
+//   - verifyMagicLink: zu kurz/unbekannt/konsumiert/abgelaufen/Mandant
+//     GwG-deaktiviert → null, One-Time-Use über atomares updateMany (Race → null)
 //
 // Anti-Timing-Delays (setTimeout 250–500 ms) laufen über die Fake-Clock —
 // Promise starten, Timer abspulen, dann auflösen.
@@ -59,6 +60,8 @@ const CONTACT = {
   clientId: 'client-1',
   email: 'mandant@example.de',
   fullName: 'Max Mandant',
+  // GwG-Schranke: der Parent-Client wird per include mitgeladen.
+  client: { allowActive: true, anonymizedAt: null },
 };
 
 beforeEach(() => {
@@ -149,6 +152,21 @@ describe('requestMagicLink — Anti-Enumeration (immer ok:true)', () => {
     expect(m.sendTemplateMail).not.toHaveBeenCalled();
   });
 
+  it('Mandant GwG-deaktiviert (allowActive=false) → ok:true, KEIN Token, KEINE Mail', async () => {
+    // GwG-Schranke (§ 11 GwG): identisches Verhalten wie „Contact unbekannt" —
+    // kein unterscheidbarer Fehler, sonst wäre der Sperr-Status enumerierbar.
+    m.prismaOwner.clientContact.findFirst.mockResolvedValue({
+      ...CONTACT,
+      client: { allowActive: false, anonymizedAt: null },
+    });
+    const res = await withTimersFlushed(
+      requestMagicLink({ tenantId: 'tenant-1', email: 'mandant@example.de' }),
+    );
+    expect(res).toEqual({ ok: true });
+    expect(m.prismaOwner.magicLink.create).not.toHaveBeenCalled();
+    expect(m.sendTemplateMail).not.toHaveBeenCalled();
+  });
+
   it('SMTP-Fehler wird geschluckt → trotzdem ok:true, Ops-Log + Notification', async () => {
     m.sendTemplateMail.mockRejectedValue(new Error('smtp down'));
     const res = await withTimersFlushed(
@@ -213,6 +231,7 @@ describe('requestMagicLink — Happy Path', () => {
     );
     expect(m.prismaOwner.clientContact.findFirst).toHaveBeenCalledWith({
       where: { tenantId: 'tenant-1', email: 'mandant@example.de', active: true },
+      include: { client: { select: { allowActive: true, anonymizedAt: true } } },
     });
   });
 });
@@ -275,6 +294,19 @@ describe('verifyMagicLink', () => {
     m.prismaOwner.magicLink.findFirst.mockResolvedValue(linkRecord());
     m.prismaOwner.clientContact.findFirst.mockResolvedValue(null);
     expect(await verifyMagicLink(RAW_TOKEN)).toBeNull();
+  });
+
+  it('Mandant GwG-deaktiviert (allowActive=false) → null, Token wird NICHT konsumiert', async () => {
+    // GwG-Schranke (§ 11 GwG): Mandant zwischen Request und Klick deaktiviert
+    // (GwG abgelaufen/abgelehnt) → Login verweigert, ununterscheidbar vom
+    // unbekannten/inaktiven Kontakt.
+    m.prismaOwner.magicLink.findFirst.mockResolvedValue(linkRecord());
+    m.prismaOwner.clientContact.findFirst.mockResolvedValue({
+      ...CONTACT,
+      client: { allowActive: false, anonymizedAt: null },
+    });
+    expect(await verifyMagicLink(RAW_TOKEN)).toBeNull();
+    expect(m.prismaOwner.magicLink.updateMany).not.toHaveBeenCalled();
   });
 
   it('Race: updateMany trifft 0 Zeilen (parallel konsumiert) → null', async () => {

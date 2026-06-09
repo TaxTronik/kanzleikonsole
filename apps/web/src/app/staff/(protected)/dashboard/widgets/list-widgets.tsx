@@ -19,7 +19,7 @@ import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
 import { GWG_EXPIRY_WINDOW_MS } from '@/lib/consts';
 import { actionLabel, resourceLabel } from '@/server/audit/labels';
 import { PhoneNoteRow } from '../phone-note-check';
-import { ListShell, NOTICE_KIND_LABELS, type RenderCtx } from './_shared';
+import { ListShell, NOTICE_KIND_LABELS, notDeniedClient, type RenderCtx } from './_shared';
 
 // --- Recent Activity ----------------------------------------------------------
 
@@ -112,9 +112,13 @@ export async function RecentActivity({ tx }: RenderCtx): Promise<React.ReactNode
 
 // --- Upcoming Requests --------------------------------------------------------
 
-export async function UpcomingRequests({ tx }: RenderCtx): Promise<React.ReactNode> {
+export async function UpcomingRequests({ tx, deniedClientIds }: RenderCtx): Promise<React.ReactNode> {
   const items = await tx.request.findMany({
-    where: { status: { in: ['OPEN', 'IN_PROGRESS'] }, dueAt: { not: null } },
+    where: {
+      status: { in: ['OPEN', 'IN_PROGRESS'] },
+      dueAt: { not: null },
+      ...notDeniedClient(deniedClientIds),
+    },
     orderBy: { dueAt: 'asc' },
     take: 20,
     include: { client: { select: { id: true, name: true } } },
@@ -140,10 +144,10 @@ export async function UpcomingRequests({ tx }: RenderCtx): Promise<React.ReactNo
 
 // --- GwG läuft bald aus -------------------------------------------------------
 
-export async function GwgExpiring({ tx }: RenderCtx): Promise<React.ReactNode> {
+export async function GwgExpiring({ tx, deniedClientIds }: RenderCtx): Promise<React.ReactNode> {
   const cutoff = new Date(Date.now() + GWG_EXPIRY_WINDOW_MS);
   const checks = await tx.gwgCheck.findMany({
-    where: { status: 'VERIFIED', validUntil: { lte: cutoff } },
+    where: { status: 'VERIFIED', validUntil: { lte: cutoff }, ...notDeniedClient(deniedClientIds) },
     orderBy: { validUntil: 'asc' },
     take: 20,
     include: { client: { select: { id: true, name: true } } },
@@ -173,9 +177,9 @@ export async function GwgExpiring({ tx }: RenderCtx): Promise<React.ReactNode> {
 
 // --- Ungeprüfte Bescheide -----------------------------------------------------
 
-export async function UnreviewedNotices({ tx }: RenderCtx): Promise<React.ReactNode> {
+export async function UnreviewedNotices({ tx, deniedClientIds }: RenderCtx): Promise<React.ReactNode> {
   const items = await tx.taxNotice.findMany({
-    where: { status: 'NEU' },
+    where: { status: 'NEU', ...notDeniedClient(deniedClientIds) },
     orderBy: { createdAt: 'desc' },
     take: 20,
     include: { client: { select: { id: true, name: true } } },
@@ -205,9 +209,12 @@ export async function UnreviewedNotices({ tx }: RenderCtx): Promise<React.ReactN
 
 // --- Steuertermine ------------------------------------------------------------
 
-export async function TaxDeadlines({ tx }: RenderCtx): Promise<React.ReactNode> {
+export async function TaxDeadlines({ tx, deniedClientIds }: RenderCtx): Promise<React.ReactNode> {
   const items = await tx.taxDeadline.findMany({
-    where: { status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS', 'OVERDUE'] } },
+    where: {
+      status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS', 'OVERDUE'] },
+      ...notDeniedClient(deniedClientIds),
+    },
     orderBy: { dueDate: 'asc' },
     take: 20,
     include: { client: { select: { id: true, name: true } } },
@@ -245,9 +252,15 @@ export async function TaxDeadlines({ tx }: RenderCtx): Promise<React.ReactNode> 
 
 // --- Telefonzettel ------------------------------------------------------------
 
-export async function PhoneNotesWidget({ tx }: RenderCtx): Promise<React.ReactNode> {
+export async function PhoneNotesWidget({ tx, deniedClientIds }: RenderCtx): Promise<React.ReactNode> {
   const items = await tx.phoneNote.findMany({
-    where: { doneAt: null },
+    where: {
+      doneAt: null,
+      // clientId nullable: Zettel ohne Mandantenbezug bleiben sichtbar.
+      ...(deniedClientIds?.length
+        ? { OR: [{ clientId: null }, { clientId: { notIn: deniedClientIds } }] }
+        : {}),
+    },
     orderBy: [{ readAt: 'asc' }, { createdAt: 'desc' }],
     take: 20,
     include: { client: { select: { id: true, name: true } } },

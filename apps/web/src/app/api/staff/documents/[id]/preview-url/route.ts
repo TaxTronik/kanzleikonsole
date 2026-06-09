@@ -13,6 +13,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { getClientIp } from '@/server/rate-limit';
 import { staffAuth } from '@/server/auth/staff';
+import { canAccessClientTx } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { streamObject } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
@@ -40,6 +41,9 @@ export async function GET(
         include: { versions: { orderBy: { versionNo: 'desc' }, take: 1 } },
       });
       if (!d || !d.versions[0]) return null;
+      // Zugriffsmodell (vertraulich-Flag / RESTRICTED): wie /download —
+      // Verweigerung → null → 404 (kein Existenz-Leak), VOR dem Audit-Eintrag.
+      if (d.clientId && !(await canAccessClientTx(tx, session, d.clientId))) return null;
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',

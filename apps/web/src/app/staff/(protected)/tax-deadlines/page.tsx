@@ -16,7 +16,8 @@ import { parseMonth, shortKind } from '@/lib/tax-calendar';
 import Link from 'next/link';
 import { SavedViews } from '@/components/saved-views';
 import { CalendarDays, AlertTriangle, ListChecks, ChevronLeft, ChevronRight } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+import { staffAuth, type StaffSession } from '@/server/auth/staff';
+import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import type { Prisma } from '@prisma/client';
 import { SCHEDULE_LABELS } from '@taxtronik/tax';
@@ -55,7 +56,7 @@ export default async function TaxDeadlinesPage({
   const q = (sp.q ?? '').trim();
   const { year, month0 } = parseMonth(sp.month);
 
-  const { tenantId, staffId } = session.user;
+  const { staffId } = session.user;
 
   // Client-Filter aufbauen — scope + Volltext-Suche kombinierbar.
   const clientWhere: Prisma.ClientWhereInput = {};
@@ -75,14 +76,13 @@ export default async function TaxDeadlinesPage({
   const queued = sp.queued === '1';
 
   if (view === 'month') {
-    return renderMonth(tenantId, staffId, year, month0, scope, q, clientFilter, queued);
+    return renderMonth(session, year, month0, scope, q, clientFilter, queued);
   }
-  return renderList(tenantId, staffId, scope, q, clientFilter, queued);
+  return renderList(session, scope, q, clientFilter, queued);
 }
 
 async function renderMonth(
-  tenantId: string,
-  staffId: string,
+  session: StaffSession,
   year: number,
   month0: number,
   scope: 'mine' | 'all',
@@ -90,21 +90,27 @@ async function renderMonth(
   clientFilter: Prisma.TaxDeadlineWhereInput,
   queued: boolean,
 ) {
+  const { tenantId, staffId } = session.user;
   // Monatsanfang/-ende UTC
   const start = new Date(Date.UTC(year, month0, 1));
   const end = new Date(Date.UTC(year, month0 + 1, 0, 23, 59, 59, 999));
 
   const deadlines = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
-    (tx) =>
-      tx.taxDeadline.findMany({
+    async (tx) => {
+      // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Termine gesperrter
+      // Mandanten ausblenden.
+      const denied = await inaccessibleClientIdsFor(tx, session);
+      return tx.taxDeadline.findMany({
         where: {
           ...clientFilter,
+          ...(denied.length ? { clientId: { notIn: denied } } : {}),
           dueDate: { gte: start, lte: end },
         },
         orderBy: { dueDate: 'asc' },
         include: { client: { select: { id: true, name: true } } },
-      }),
+      });
+    },
   );
 
   // Gruppieren nach Tag → dann nach (kind+period) — Steuertermine sind für
@@ -251,33 +257,38 @@ async function renderMonth(
 }
 
 async function renderList(
-  tenantId: string,
-  staffId: string,
+  session: StaffSession,
   scope: 'mine' | 'all',
   q: string,
   clientFilter: Prisma.TaxDeadlineWhereInput,
   queued: boolean,
 ) {
+  const { tenantId, staffId } = session.user;
   const [overdue, upcoming, done] = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) =>
-      Promise.all([
+    async (tx) => {
+      // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Termine gesperrter
+      // Mandanten ausblenden.
+      const denied = await inaccessibleClientIdsFor(tx, session);
+      const notDenied = denied.length ? { clientId: { notIn: denied } } : {};
+      return Promise.all([
         tx.taxDeadline.findMany({
-          where: { ...clientFilter, status: 'OVERDUE' },
+          where: { ...clientFilter, ...notDenied, status: 'OVERDUE' },
           orderBy: { dueDate: 'asc' },
           include: { client: { select: { id: true, name: true } } },
           take: 100,
         }),
         tx.taxDeadline.findMany({
-          where: { ...clientFilter, status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS', 'SUBMITTED'] } },
+          where: { ...clientFilter, ...notDenied, status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS', 'SUBMITTED'] } },
           orderBy: { dueDate: 'asc' },
           include: { client: { select: { id: true, name: true } } },
           take: 200,
         }),
         tx.taxDeadline.count({
-          where: { ...clientFilter, status: 'DONE', completedAt: { not: null } },
+          where: { ...clientFilter, ...notDenied, status: 'DONE', completedAt: { not: null } },
         }),
-      ]),
+      ]);
+    },
   );
 
   return (

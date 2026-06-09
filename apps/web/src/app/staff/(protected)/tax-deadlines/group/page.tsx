@@ -10,6 +10,7 @@ import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, CalendarDays, CheckCheck } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
+import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import type { Prisma, TaxScheduleKind } from '@prisma/client';
 import { SCHEDULE_LABELS } from '@taxtronik/tax';
@@ -71,12 +72,17 @@ export default async function TaxDeadlineGroupPage({
 
   const deadlines = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
-    (tx) =>
-      tx.taxDeadline.findMany({
+    async (tx) => {
+      // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Termine gesperrter
+      // Mandanten ausblenden.
+      const denied = await inaccessibleClientIdsFor(tx, session);
+      if (denied.length) where.clientId = { notIn: denied };
+      return tx.taxDeadline.findMany({
         where,
         orderBy: [{ status: 'asc' }, { client: { name: 'asc' } }],
         include: { client: { select: { id: true, name: true } } },
-      }),
+      });
+    },
   );
 
   // Aufteilen

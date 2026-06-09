@@ -6,9 +6,11 @@
 // =============================================================================
 
 import { NextResponse, type NextRequest } from 'next/server';
+import { getClientIp, checkStaffExportLimit } from '@/server/rate-limit';
 import { staffAuth } from '@/server/auth/staff';
 import { requireSubsumtionAccess, ForbiddenError, UnauthorizedError } from '@/server/auth/rbac';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
+import { evidenceService } from '@/server/container';
 import { readModules } from '@/server/settings/modules';
 import { buildReportModel } from '@/server/risk/export/report-model';
 import { renderDocx } from '@/server/risk/export/to-docx';
@@ -32,6 +34,16 @@ export async function GET(
   if (!session?.user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const { tenantId, staffId } = session.user;
   const ctx: TenantContext = { tenantId, actorId: staffId, actorType: 'STAFF' };
+
+  // Per-User-Rate-Limit (Defense in Depth): Report-Rendering (DOCX/PDF) ist
+  // teuer + datenreich — gleiches Muster wie die übrigen Export-Routen.
+  const exportRl = await checkStaffExportLimit('subsumtion', staffId);
+  if (!exportRl.ok) {
+    return NextResponse.json(
+      { error: 'rate_limited', retryAfter: exportRl.retryAfter },
+      { status: 429 },
+    );
+  }
 
   const modules = await readModules(ctx);
   if (!modules.risk) return NextResponse.json({ error: 'not found' }, { status: 404 });
@@ -64,6 +76,22 @@ export async function GET(
   const isPdf = format === 'pdf';
   const buf = isPdf ? await renderPdf(model) : await renderDocx(model);
   const filename = safeFilename(model.title, isPdf ? 'pdf' : 'docx');
+
+  // Audit-Eintrag erst nach erfolgreichem Aufbau (Compliance: wer hat wann
+  // welchen Report exportiert) — analog client.belege.export.
+  await withTenantContext(ctx, async (tx) => {
+    await evidenceService.record(tx, {
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
+      action: 'subsumtion.report.export',
+      resourceType: 'risk_analysis',
+      resourceId: analysisId,
+      after: { clientId: id, format, markings: markingIds?.length ?? null },
+      ip: getClientIp(req.headers),
+      userAgent: req.headers.get('user-agent'),
+    });
+  });
 
   return new NextResponse(new Uint8Array(buf), {
     status: 200,

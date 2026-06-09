@@ -1,4 +1,5 @@
 ﻿import { staffAuth } from '@/server/auth/staff';
+import { canAccessClientTx } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
@@ -28,8 +29,8 @@ export default async function RequestDetailPage({
 
   const reqRow = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
-    (tx) =>
-      tx.request.findUnique({
+    async (tx) => {
+      const row = await tx.request.findUnique({
         where: { id },
         include: {
           client: true,
@@ -38,7 +39,13 @@ export default async function RequestDetailPage({
             include: { document: true },
           },
         },
-      }),
+      });
+      // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Anforderung eines
+      // gesperrten Mandanten verhält sich wie nicht vorhanden (kein
+      // Existenz-Leak per direkter URL).
+      if (row && !(await canAccessClientTx(tx, session, row.clientId))) return null;
+      return row;
+    },
   );
 
   if (!reqRow) notFound();

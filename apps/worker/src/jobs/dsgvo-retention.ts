@@ -26,13 +26,25 @@
 // Idempotent: doppelte Ausführung pro Tag ist ein no-op (zweiter Lauf findet
 // nichts mehr jenseits des Cutoffs). prismaOwner, weil systemweite Wartung
 // über alle Tenants (wie magic-link-cleanup) — bewusst BYPASSRLS.
+//
+// Audit-Nachweis: Datenvernichtung braucht einen Vernichtungsvermerk in der
+// Hash-Chain (Art. 5 Abs. 2 — analog gwg.check.destroy: nur Zähler, keine
+// Personendaten). Die Löschungen laufen daher PRO TENANT; hat ein Lauf für
+// einen Tenant etwas vernichtet, schreibt er EIN zusammenfassendes Event
+// 'dsgvo.retention.run' (Zähler je Datenklasse + Cutoffs) in dessen Chain.
+// Läufe ohne Treffer schreiben kein Event (kein tägliches Chain-Rauschen).
 // =============================================================================
 
 import { Worker } from 'bullmq';
 import type { Prisma } from '@prisma/client';
+import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
+import { withWorkerTenantContext } from '../tenant-context';
+
+// RF-8: record() braucht nur den Tx — gleiches Muster wie poa-expiry-check.ts.
+const evidence = new EvidenceService(new LocalTimestampAdapter());
 
 const NOTIFICATION_RETENTION_YEARS = 1;
 const PHONE_NOTE_RETENTION_YEARS = 3;
@@ -90,49 +102,87 @@ async function purgeRequests(where: Prisma.RequestWhereInput): Promise<number> {
 
 export const dsgvoRetentionWorker = new Worker<ChecksJob>(
   'dsgvo-retention',
-  async () => {
+  async (job) => {
     const notifCutoff = yearsAgo(NOTIFICATION_RETENTION_YEARS);
     const phoneCutoff = yearsAgo(PHONE_NOTE_RETENTION_YEARS);
     const loginCutoff = yearsAgo(LAST_LOGIN_RETENTION_YEARS);
     const requestCutoff = yearsAgo(REQUEST_RETENTION_YEARS);
     const requestGobdCutoff = yearsAgo(REQUEST_GOBD_RETENTION_YEARS);
 
-    const notifications = await prismaOwner.notification.deleteMany({
-      where: { createdAt: { lt: notifCutoff } },
-    });
-    const phoneNotes = await prismaOwner.phoneNote.deleteMany({
-      where: { createdAt: { lt: phoneCutoff } },
-    });
-    const lastLogins = await prismaOwner.clientContact.updateMany({
-      where: { lastLoginAt: { lt: loginCutoff } },
-      data: { lastLoginAt: null },
-    });
+    const tenantIds = job.data.tenantId
+      ? [job.data.tenantId]
+      : (await prismaOwner.tenant.findMany({ select: { id: true } })).map((t) => t.id);
 
-    // Requests ohne GoBD-Bezug nach 6 Jahren, mit GoBD-Bezug erst nach 10.
-    const requestsNonGobd = await purgeRequests({
-      createdAt: { lt: requestCutoff },
-      NOT: GOBD_LINKED,
-    });
-    const requestsGobd = await purgeRequests({
-      createdAt: { lt: requestGobdCutoff },
-      ...GOBD_LINKED,
-    });
+    for (const tenantId of tenantIds) {
+      const notifications = await prismaOwner.notification.deleteMany({
+        where: { tenantId, createdAt: { lt: notifCutoff } },
+      });
+      const phoneNotes = await prismaOwner.phoneNote.deleteMany({
+        where: { tenantId, createdAt: { lt: phoneCutoff } },
+      });
+      const lastLogins = await prismaOwner.clientContact.updateMany({
+        where: { tenantId, lastLoginAt: { lt: loginCutoff } },
+        data: { lastLoginAt: null },
+      });
 
-    log.info(
-      {
+      // Requests ohne GoBD-Bezug nach 6 Jahren, mit GoBD-Bezug erst nach 10.
+      const requestsNonGobd = await purgeRequests({
+        tenantId,
+        createdAt: { lt: requestCutoff },
+        NOT: GOBD_LINKED,
+      });
+      const requestsGobd = await purgeRequests({
+        tenantId,
+        createdAt: { lt: requestGobdCutoff },
+        ...GOBD_LINKED,
+      });
+
+      const counts = {
         notificationsDeleted: notifications.count,
         phoneNotesDeleted: phoneNotes.count,
         lastLoginCleared: lastLogins.count,
         requestsDeletedNonGobd: requestsNonGobd,
         requestsDeletedGobd: requestsGobd,
-        notifCutoff: notifCutoff.toISOString(),
-        phoneCutoff: phoneCutoff.toISOString(),
-        loginCutoff: loginCutoff.toISOString(),
-        requestCutoff: requestCutoff.toISOString(),
-        requestGobdCutoff: requestGobdCutoff.toISOString(),
-      },
-      'dsgvo-retention',
-    );
+      };
+      const totalAffected = Object.values(counts).reduce((a, b) => a + b, 0);
+
+      // Vernichtungsvermerk: ein Event pro Lauf+Tenant. Nachgelagert (nicht in
+      // einer Tx mit den Löschungen): purgeRequests ist über mehrere Batch-Txen
+      // verteilt, die Zähler stehen erst nach Abschluss fest.
+      if (totalAffected > 0) {
+        await withWorkerTenantContext(tenantId, async (tx) => {
+          await evidence.record(tx, {
+            tenantId,
+            actorType: 'SYSTEM',
+            actorId: null,
+            action: 'dsgvo.retention.run',
+            resourceType: 'tenant',
+            resourceId: tenantId,
+            after: {
+              ...counts,
+              notifCutoff: notifCutoff.toISOString(),
+              phoneCutoff: phoneCutoff.toISOString(),
+              loginCutoff: loginCutoff.toISOString(),
+              requestCutoff: requestCutoff.toISOString(),
+              requestGobdCutoff: requestGobdCutoff.toISOString(),
+            },
+          });
+        });
+      }
+
+      log.info(
+        {
+          tenantId,
+          ...counts,
+          notifCutoff: notifCutoff.toISOString(),
+          phoneCutoff: phoneCutoff.toISOString(),
+          loginCutoff: loginCutoff.toISOString(),
+          requestCutoff: requestCutoff.toISOString(),
+          requestGobdCutoff: requestGobdCutoff.toISOString(),
+        },
+        'dsgvo-retention',
+      );
+    }
   },
   { connection },
 );

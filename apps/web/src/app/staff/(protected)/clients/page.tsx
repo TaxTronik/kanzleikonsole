@@ -1,4 +1,5 @@
 ﻿import { staffAuth } from '@/server/auth/staff';
+import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
@@ -22,6 +23,7 @@ interface SearchParams {
   dir?: SortDir;
   mine?: '1';
   page?: string;
+  denied?: string;
 }
 
 function parseSort(sp: SearchParams): { sort: SortKey; dir: SortDir } {
@@ -107,8 +109,12 @@ export default async function ClientsPage({
 
   const [clients, totalCount] = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) =>
-      Promise.all([
+    async (tx) => {
+      // Zugriffsmodell (vertraulich-Flag / RESTRICTED): gesperrte Mandanten
+      // erscheinen gar nicht erst in der Liste (konsistent zu Suche/Export).
+      const denied = await inaccessibleClientIdsFor(tx, session);
+      if (denied.length) where.id = { notIn: denied };
+      return Promise.all([
         tx.client.findMany({
           where,
           orderBy: orderByFor(sort, dir),
@@ -136,7 +142,8 @@ export default async function ClientsPage({
           },
         }),
         tx.client.count({ where }),
-      ]),
+      ]);
+    },
   );
 
   const baseQs = new URLSearchParams();
@@ -155,6 +162,12 @@ export default async function ClientsPage({
 
   return (
     <div className="p-8">
+      {sp.denied === '1' && (
+        <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+          Kein Zugriff auf diesen Mandanten — er ist als vertraulich markiert
+          oder Ihnen nicht zugeordnet.
+        </div>
+      )}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-primary">Mandanten</h1>

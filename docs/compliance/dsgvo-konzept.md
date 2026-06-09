@@ -251,9 +251,45 @@ Daraus folgt für die DSGVO-Löschung:
 - `confirmClientAnonymizationAction` setzt: `name` → „Anonymisiert";
   `street`/`postalCode`/`city`/`countryIso`/`vatId`/`invoiceEmail`/
   `internalNotes`/`datevNo`/`addisonNo` → null; `allowActive` → false;
-  Custom-Feld-Werte (`client_custom_field_value`) werden gelöscht;
-  verknüpfte `client_contact`s werden mit-anonymisiert (geteilte Logik,
-  inkl. Magic-Link-Invalidierung + Session-Revocation)
+  Custom-Feld-Werte (`client_custom_field_value`) und Stammdaten-
+  Änderungsanträge (`client_master_change_request`, tragen die alten
+  Stammdaten im Json) werden gelöscht; verknüpfte `client_contact`s werden
+  mit-anonymisiert (geteilte Logik, inkl. Magic-Link-Invalidierung +
+  Session-Revocation)
+- Personentragende **Nebentabellen** werden in derselben Transaktion
+  mitbehandelt (`anonymizeClientSideTablesInTx`, Zähler je Klasse im
+  Audit-Event):
+  - `power_of_attorney`: `signerName`/`signerEmail` → Platzhalter (NOT NULL),
+    `signedByIp`/`signedByUserAgent` → null — nur die DB-Personenfelder;
+    die Vollmachts-PDFs unterliegen der Dokument-Retention (Object-Lock)
+  - `gwg_onboarding_invite`: gelöscht (inviteEmail/-Name, Submit-IP/UA;
+    nach Mandatsende + Fristablauf zwecklos, keine eingehenden FKs)
+  - `form_submission`: `answers` (freies Json) → `{ anonymized: true }`,
+    Metadaten (Template, Status, Zeitstempel) bleiben; erfasst Submissions
+    über `clientId` ODER über `submittedByContact` der Mandanten-Kontakte
+  - `appointment`: `title` → „Anonymisiert", `notes`/`location` → null
+    (Treffpunkt kann die Privatadresse sein); Zeiträume bleiben
+  - `appointment_request`: gelöscht (vom Portal-Kontakt erstellt, nach der
+    Anonymisierung zwecklos; `appointment.from_request_id` ist
+    ON DELETE SET NULL — abgeleitete Termine bleiben)
+  - `client_reminder`: `subject` → „Anonymisiert", `notes` → null
+  - `pending_binder`: `label` → „Anonymisiert", `contents` → null
+  - `client_handover`: `label` → „Anonymisiert", `contents` und
+    `notifiedContactEmail` (Klartext-Kopie der Kontakt-E-Mail) → null
+  - `risk_analysis`: `sourceText` → leer, `sourceDoc` → null (der
+    Lebenssachverhalt); `risk_marking.matchedText`/`notiz` → leer/null
+    (wörtliche Zitate aus dem Sachverhalt); Analyse-Metadaten
+    (Hash, Engine-/Katalog-Version, Archiv-Referenzen) bleiben
+- **Bewusst NICHT angefasst** (Rechtsgrundlage bzw. eigener Lösch-Pfad):
+  - GoBD-pflichtige Objekte — `invoice`, `document` (Object-Lock-Retention),
+    `tax_*`, `bwa_*`, `time_entry`: Handels-/Steuerbelege nach § 147 AO;
+    ihre Vernichtung läuft über die Dokument-/Archiv-Retention, nicht über
+    die Stammdaten-Anonymisierung. Der `risk_analysis`-Archiv-Snapshot im
+    GoBD-Bucket bleibt bis zum Ablauf seines Object-Locks.
+  - `notification`, `phone_note`, `request`, `client_contact.lastLoginAt`:
+    löscht der zeitbasierte **dsgvo-retention-Worker** (§ 2.2) nach seinen
+    kürzeren Fristen — in der Regel lange vor der Mandanten-Anonymisierung
+  - `audit_log`: insert-only Hash-Chain, Akteurs-Bezug nur als UUID
 - Skelett-Datensatz bleibt: `id`, `kind`, `mandateEndedAt` und
   `anonymizedAt` als Vernichtungsvermerk (Nachweis, DASS anonymisiert wurde)
 - Vorbedingung: GwG-Belege/-Aufzeichnungen des Mandanten sind bereits über
@@ -358,7 +394,7 @@ individuell durchgeführt mit Vorlagen aus dem Bereich „Steuerberater
 | Rechnung erstellen | `invoice`, `invoice_position` | `invoice.create` |
 | DSGVO-Auskunft | (read) | `dsgvo.export.contact` |
 | DSGVO-Anonymisierung | `client_contact` (Felder anonymisiert) | `dsgvo.anonymize.contact` |
-| Mandant anonymisiert (Art. 17, nach Fristablauf) | `client` (Stammdaten genullt + `anonymized_at`), `client_custom_field_value` gelöscht, `client_contact` anonymisiert | `client.anonymize` |
+| Mandant anonymisiert (Art. 17, nach Fristablauf) | `client` (Stammdaten genullt + `anonymized_at`), `client_custom_field_value` + `client_master_change_request` + `gwg_onboarding_invite` + `appointment_request` gelöscht, `client_contact` anonymisiert, Nebentabellen genullt (`power_of_attorney`-Signer, `form_submission.answers`, `appointment`, `client_reminder`, `pending_binder`, `client_handover`, `risk_analysis`-Sachverhalt) — Zähler je Klasse im Event | `client.anonymize` |
 | Mandant deaktiviert (GwG abgelaufen) | `client.allowActive = false` | `gwg.expired` (Worker) |
 | GwG-Datei-Beleg vernichtet (§ 8 (4)) | `document` + `document_version` gelöscht, Bytes vernichtet | `gwg.evidence.destroy` |
 | GwG-Aufzeichnungen vernichtet (§ 8 (4)) | `gwg_beneficial_owner` gelöscht, `gwg_id_document` genullt, `gwg_check` anonymisiert + `destroyedAt` | `gwg.check.destroy` |

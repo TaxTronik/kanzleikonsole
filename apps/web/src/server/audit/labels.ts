@@ -17,6 +17,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'client.mandate.reopen': 'Mandat wieder aufgenommen',
   'client.anonymize': 'Mandant anonymisiert (DSGVO Art. 17)',
   'client.belege.export': 'DATEV-Belege exportiert',
+  'subsumtion.report.export': 'Subsumtions-Report exportiert',
   'client.onboarding.complete': 'Onboarding abgeschlossen',
 
   // Dokumente
@@ -153,6 +154,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'dsgvo.request.rejected': 'DSGVO-Anfrage abgelehnt',
   'dsgvo.export.contact': 'DSGVO-Datenauskunft',
   'dsgvo.anonymize.contact': 'DSGVO-Anonymisierung',
+  'dsgvo.retention.run': 'DSGVO-Fristenlöschung (System)',
 
   // Portal-Settings
   'portal.notifications.toggle': 'Portal-Benachrichtigungen geändert',
@@ -250,6 +252,7 @@ export const ACTION_LABELS: Record<string, string> = {
 
   // Audit-Archiv
   'audit.rotate.trigger': 'Audit-Rotation gestartet',
+  'audit.verify.trigger': 'Audit-Verifikation gestartet',
 
   // Auth-/Systemereignisse (Audit-Lücke geschlossen: Logins standen vorher
   // nur in flüchtigen pino-Logs, nicht in der Hash-Chain)

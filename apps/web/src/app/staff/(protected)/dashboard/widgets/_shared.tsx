@@ -17,6 +17,24 @@ export interface RenderCtx {
   tx: Tx;
   staffId: string;
   isAdmin?: boolean;
+  /**
+   * Zugriffsmodell (vertraulich-Flag / RESTRICTED): Mandanten-IDs, die der
+   * Mitarbeiter nicht sehen darf — EINMAL pro Dashboard-Render berechnet und
+   * an alle Widgets durchgereicht, die Mandantennamen/-inhalte zeigen.
+   */
+  deniedClientIds?: string[];
+}
+
+/**
+ * Where-Fragment für Widgets mit Pflicht-`clientId`: blendet Datensätze
+ * gesperrter Mandanten aus. Für nullable `clientId` (Termine, Telefonzettel)
+ * stattdessen die OR-Variante inline nutzen, damit Einträge ohne
+ * Mandantenbezug sichtbar bleiben.
+ */
+export function notDeniedClient(
+  deniedClientIds: string[] | undefined,
+): { clientId?: { notIn: string[] } } {
+  return deniedClientIds?.length ? { clientId: { notIn: deniedClientIds } } : {};
 }
 
 export const NOTICE_KIND_LABELS: Record<string, string> = {

@@ -7,6 +7,7 @@ import { evidenceService } from '@/server/container';
 import { revokeAllSessions } from '@/server/auth/revocation';
 import { isClientAnonymizationDue } from '@/server/dsgvo/client-retention';
 import { anonymizeContactInTx, isAnonymizedContactEmail } from '@/server/dsgvo/anonymize-contact';
+import { anonymizeClientSideTablesInTx } from '@/server/dsgvo/anonymize-client-data';
 import { staffActionGuard, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
 
 export type ActionResult = BaseActionResult;
@@ -18,8 +19,11 @@ export type ActionResult = BaseActionResult;
  * Stammdaten (Name, Adresse, USt-ID, Notizen, externe Nummern) werden genullt,
  * Custom-Feld-Werte gelöscht, verknüpfte Kontakte mit-anonymisiert. Ein
  * Skelett-Datensatz (id, kind, Mandatsende, anonymizedAt als Vernichtungs-
- * vermerk) bleibt erhalten. Defense in Depth: prüft Mandantentyp + gesetzliche
- * Frist + GwG-Vorbedingung erneut server-seitig.
+ * vermerk) bleibt erhalten. Personentragende Nebentabellen (Vollmacht-Signer,
+ * GwG-Invites, Formular-Antworten, Termine, Wiedervorlagen, Pendelordner,
+ * Übergaben, Risiko-Sachverhalte) werden in derselben Tx mitbehandelt
+ * (anonymizeClientSideTablesInTx). Defense in Depth: prüft Mandantentyp +
+ * gesetzliche Frist + GwG-Vorbedingung erneut server-seitig.
  */
 export async function confirmClientAnonymizationAction(input: { clientId: string }): Promise<ActionResult> {
   // DSGVO-Anonymisierung ist Compliance-Hoheit → ADMIN/PARTNER.
@@ -97,6 +101,9 @@ export async function confirmClientAnonymizationAction(input: { clientId: string
     });
     // Custom-Feld-Werte sind freie personenbezogene Stammdaten → löschen.
     const deletedCustomValues = await tx.clientCustomFieldValue.deleteMany({ where: { clientId } });
+    // Stammdaten-Änderungsanträge tragen die ALTEN Stammdaten im fields-Json
+    // (Name, Adresse, …) — sie würden die Anonymisierung sonst unterlaufen.
+    const deletedChangeRequests = await tx.clientMasterChangeRequest.deleteMany({ where: { clientId } });
 
     // 5. Verknüpfte Kontakte mit-anonymisieren (geteilte Logik mit admin/dsgvo).
     //    Bereits anonymisierte Kontakte überspringen (idempotent, kein
@@ -113,7 +120,16 @@ export async function confirmClientAnonymizationAction(input: { clientId: string
       if (r) anonymizedContactIds.push(r.contactId);
     }
 
-    // 6. Anonymisierung auditieren (audit_log ist insert-only → der Nachweis
+    // 6. Personentragende Nebentabellen in derselben Tx mitbehandeln
+    //    (Vollmacht-Signer, GwG-Invites, Formular-Antworten, Termine/-Anfragen,
+    //    Wiedervorlagen, Pendelordner, Übergaben, Risiko-Sachverhalte) —
+    //    Zähler je Klasse landen im Audit-Event.
+    const sideTables = await anonymizeClientSideTablesInTx(tx, {
+      clientId,
+      contactIds: client.contacts.map((c) => c.id),
+    });
+
+    // 7. Anonymisierung auditieren (audit_log ist insert-only → der Nachweis
     //    bleibt dauerhaft; bewusst nur Zähler, keine Personendaten im Event).
     await evidenceService.record(tx, {
       tenantId,
@@ -131,6 +147,8 @@ export async function confirmClientAnonymizationAction(input: { clientId: string
         anonymizedAt: anonymizedAt.toISOString(),
         contactsAnonymized: anonymizedContactIds.length,
         customFieldValuesDeleted: deletedCustomValues.count,
+        masterChangeRequestsDeleted: deletedChangeRequests.count,
+        ...sideTables,
       },
     });
     return { ok: true };

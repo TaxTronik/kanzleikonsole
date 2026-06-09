@@ -178,6 +178,12 @@ function toDosDateTime(d: Date): { date: number; time: number } {
 /**
  * Säubert einen Dateinamen für die Verwendung im ZIP — entfernt
  * Pfad-Trenner, Steuerzeichen und problematische Zeichen.
+ *
+ * Zip-Slip-Härtung: Aufrufer setzen sanitisierte Segmente zu Archiv-Pfaden
+ * zusammen (pathOf/addEntry im Dokument-Download). Ein Ordner-/Dateiname wie
+ * '..' wäre dort nach dem Join ein Pfad-Navigations-Segment beim Entpacken —
+ * reine Punkt-Segmente werden daher neutralisiert, führende Punkte ersetzt
+ * (sonst entstehen versteckte Unix-Dotfiles).
  */
 export function sanitizeZipFileName(name: string, maxLen = 100): string {
   const cleaned = name
@@ -186,5 +192,6 @@ export function sanitizeZipFileName(name: string, maxLen = 100): string {
     .replace(/\s+/g, ' ')
     .trim();
   if (cleaned.length === 0) return 'datei';
-  return cleaned.slice(0, maxLen);
+  if (/^\.+$/.test(cleaned)) return 'datei';
+  return cleaned.replace(/^\.+/, '_').slice(0, maxLen);
 }

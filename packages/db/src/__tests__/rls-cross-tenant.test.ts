@@ -47,6 +47,9 @@ let requestAId: string;
 let requestBId: string;
 let invoiceAId: string;
 let invoiceBId: string;
+let bwaPlanBId: string;
+let bwaPlanLineAId: string;
+let bwaPlanLineBId: string;
 
 beforeAll(async () => {
   // Zwei Tenants anlegen (Owner-Verbindung, BYPASSRLS)
@@ -181,6 +184,40 @@ beforeAll(async () => {
   });
   invoiceAId = invA.id;
   invoiceBId = invB.id;
+
+  // Je ein BWA-Plan mit einer Planzeile. bwa_plan_line ist eine Join-Tabelle
+  // OHNE eigenes tenant_id — RLS läuft über die EXISTS-Policy auf den
+  // Eltern-Plan (iter83, analog bwa_position).
+  const planA = await owner.bwaPlan.create({
+    data: {
+      tenantId: tenantAId,
+      clientId: clientAId,
+      name: 'Plan A',
+      year: 2026,
+      createdBy: staffAId,
+      createdByType: 'STAFF',
+    },
+  });
+  const planB = await owner.bwaPlan.create({
+    data: {
+      tenantId: tenantBId,
+      clientId: clientBId,
+      name: 'Plan B',
+      year: 2026,
+      createdBy: staffBId,
+      createdByType: 'STAFF',
+    },
+  });
+  bwaPlanBId = planB.id;
+
+  const lineA = await owner.bwaPlanLine.create({
+    data: { planId: planA.id, axis: 'REVENUE', amount: '100000' },
+  });
+  const lineB = await owner.bwaPlanLine.create({
+    data: { planId: planB.id, axis: 'REVENUE', amount: '200000' },
+  });
+  bwaPlanLineAId = lineA.id;
+  bwaPlanLineBId = lineB.id;
 });
 
 afterAll(async () => {
@@ -326,6 +363,48 @@ describeWithDatabase('Cross-Tenant RLS', () => {
     expect(resB.map((c) => c.id)).toContain(clientBId);
     expect(resA.map((c) => c.id)).not.toContain(clientBId);
     expect(resB.map((c) => c.id)).not.toContain(clientAId);
+  });
+
+  // ---------------------------------------------------------------------
+  // Join-Tabellen ohne eigenes tenant_id (EXISTS-Policy auf Eltern-Tabelle)
+  // — bwa_plan_line hatte bis iter83 GAR KEIN RLS. Diese Tests stellen
+  // sicher, dass die Join-Policy (USING + WITH CHECK über bwa_plan)
+  // Cross-Tenant-Reads und -Writes blockt und nicht wieder wegdriftet.
+  // ---------------------------------------------------------------------
+
+  it('Test 20: BwaPlanLine (Join-Tabelle) — Tenant A sieht keine Planzeile von B', async () => {
+    const lines = await withTenantContext(
+      { tenantId: tenantAId, actorId: null, actorType: 'SYSTEM' },
+      (tx) => tx.bwaPlanLine.findMany({ where: { id: { in: [bwaPlanLineAId, bwaPlanLineBId] } } }),
+    );
+    const ids = lines.map((l) => l.id);
+    expect(ids).toContain(bwaPlanLineAId);
+    expect(ids).not.toContain(bwaPlanLineBId);
+  });
+
+  it('Test 21: BwaPlanLine — Insert an Plan von B aus Kontext A wird blockiert (WITH CHECK)', async () => {
+    await expect(
+      withTenantContext(
+        { tenantId: tenantAId, actorId: null, actorType: 'SYSTEM' },
+        (tx) =>
+          tx.bwaPlanLine.create({
+            data: { planId: bwaPlanBId, axis: 'PERSONNEL', amount: '1' },
+          }),
+      ),
+    ).rejects.toThrow();
+  });
+
+  it('Test 22: BwaPlanLine — Cross-Tenant-Update auf Planzeile von B schlägt fehl', async () => {
+    await expect(
+      withTenantContext(
+        { tenantId: tenantAId, actorId: null, actorType: 'SYSTEM' },
+        (tx) =>
+          tx.bwaPlanLine.update({
+            where: { id: bwaPlanLineBId },
+            data: { amount: '999999' },
+          }),
+      ),
+    ).rejects.toThrow(); // RLS-Violation oder Record not found
   });
 
   // ---------------------------------------------------------------------

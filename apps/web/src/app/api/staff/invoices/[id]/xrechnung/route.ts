@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { getClientIp } from '@/server/rate-limit';
 import { staffAuth } from '@/server/auth/staff';
+import { canAccessClientTx } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { generateXRechnungCii } from '@/server/invoicing/xrechnung';
@@ -22,15 +23,20 @@ export async function GET(
   // Audit Round 15, Finding 4: expliziter tenantId-Filter zusätzlich zu RLS.
   // XRechnung-XML enthält Verkäufer + Mandanten-Stammdaten (USt-ID,
   // Adresse) — RLS-Drift wäre direkter Cross-Tenant-Read.
-  const invoice = await withTenantContext(ctx, (tx) =>
-    tx.invoice.findFirst({
+  const invoice = await withTenantContext(ctx, async (tx) => {
+    const inv = await tx.invoice.findFirst({
       where: { id, tenantId },
       include: {
         client: true,
         positions: { orderBy: { position: 'asc' } },
       },
-    }),
-  );
+    });
+    if (!inv) return null;
+    // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Rechnung gehört zu einem
+    // gesperrten Mandanten → null → 404 (kein Existenz-Leak).
+    if (!(await canAccessClientTx(tx, session, inv.clientId))) return null;
+    return inv;
+  });
 
   if (!invoice) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });

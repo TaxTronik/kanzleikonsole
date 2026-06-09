@@ -943,7 +943,17 @@ Kanzlei nicht.
   Mitarbeiter darf mandantenübergreifend arbeiten (Audit-Log trägt die
   Nachvollziehbarkeit); `RESTRICTED`: nur Admin/Partner + zugeordnete
   Berufsträger/Hauptbearbeiter. Pro Mandant „vertraulich"-Flag als Ventil
-  (auch im OPEN-Modus auf Zugeordnete beschränkt), nur Admin/Partner setzt es
+  (auch im OPEN-Modus auf Zugeordnete beschränkt), nur Admin/Partner setzt es.
+  Durchgesetzt wird das Gate in den Staff-API-Routen (Dokument-Download/
+  -Preview, Bulk-ZIP, DATEV-/CSV-Exporte, globale Suche), im gesamten
+  Mandanten-Detailbereich (`/staff/clients/[id]/**` per Layout-Guard mit
+  Redirect, Subsumtion zusätzlich eigener Guard) sowie in den tenant-weiten
+  Listen und Dashboard-Widgets (Mandanten-, Anforderungs-, Rechnungs-,
+  Kalender- und Steuertermin-Ansichten filtern gesperrte Mandanten aus;
+  reine Zähler-KPIs ohne Namen bleiben ungefiltert). Bekannte Grenze:
+  Mutations-Server-Actions verlassen sich auf Tenant-Isolation (RLS) und
+  prüfen das Objekt-Gate noch nicht — wer die ID eines vertraulichen
+  Mandanten kennt, kann dort Schreiboperationen auslösen.
 - Vollmachten-Modus (`MARKDOWN_OTP` / `PDF_TEMPLATE` / `OFF`)
 - Rechnungs-Modus (`IN_APP` / `EXTERNAL` / `OFF`)
 - PDF-Begleittext-Templates für beide Modi (Markdown mit Platzhaltern)

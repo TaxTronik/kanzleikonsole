@@ -31,7 +31,14 @@ vi.mock('@/server/auth/staff', () => ({
   staffAuth: vi.fn(),
 }));
 
-import { toActionError, UnauthorizedError, ForbiddenError } from '../rbac';
+import {
+  toActionError,
+  UnauthorizedError,
+  ForbiddenError,
+  canAccessClientTx,
+  inaccessibleClientIdsFor,
+} from '../rbac';
+import type { StaffSession } from '../staff';
 import { log } from '@/server/logger';
 
 beforeEach(() => {
@@ -103,5 +110,132 @@ describe('toActionError', () => {
     const r = toActionError('boom');
     expect(r.ok).toBe(false);
     expect(r.error).toMatch(/Unerwarteter Fehler/);
+  });
+});
+
+// =============================================================================
+// canAccessClientTx / inaccessibleClientIdsFor — Vertraulich-/RESTRICTED-Gate
+// auf Stub-Tx (kein DB-Zugriff). Die reine Entscheidungslogik testet
+// access-policy (decideClientAccess); hier geht es um die Tx-Orchestrierung:
+// Policy lesen → Mandant lesen → Responsibility nur wenn nötig.
+// =============================================================================
+
+function makeSession(roles: string[]): StaffSession {
+  return {
+    user: {
+      id: 'u1',
+      email: 'm@kanzlei.de',
+      name: 'M',
+      fullName: 'Mitarbeiter Eins',
+      tenantId: 't1',
+      staffId: 's1',
+      roles,
+    },
+  } as StaffSession;
+}
+
+interface StubTxConfig {
+  mode?: 'OPEN' | 'RESTRICTED';
+  client?: { vertraulich: boolean } | null;
+  responsible?: boolean;
+  deniedIds?: string[];
+}
+
+interface ClientFindManyArgs {
+  where: {
+    vertraulich?: boolean;
+    responsibilities: { none: { staffId: string; role: { in: string[] } } };
+  };
+}
+
+function makeTx(cfg: StubTxConfig) {
+  const clientFindMany = vi.fn(async (_args: ClientFindManyArgs) =>
+    (cfg.deniedIds ?? []).map((id) => ({ id })),
+  );
+  const responsibilityFindFirst = vi.fn(async () => (cfg.responsible ? { id: 'r1' } : null));
+  const tx = {
+    tenantSetting: {
+      findUnique: vi.fn(async () =>
+        cfg.mode ? { value: { clientAccessMode: cfg.mode } } : null,
+      ),
+    },
+    client: {
+      findUnique: vi.fn(async () => cfg.client ?? null),
+      findMany: clientFindMany,
+    },
+    clientResponsibility: { findFirst: responsibilityFindFirst },
+  };
+  // Cast über never: Stub deckt nur die von den Helfern berührte Tx-Fläche ab.
+  return { tx: tx as never, clientFindMany, responsibilityFindFirst };
+}
+
+describe('canAccessClientTx', () => {
+  it('Admin/Partner → Zugriff ohne jede Query', async () => {
+    const { tx, responsibilityFindFirst } = makeTx({});
+    await expect(canAccessClientTx(tx, makeSession(['ADMIN']), 'c1')).resolves.toBe(true);
+    expect(responsibilityFindFirst).not.toHaveBeenCalled();
+  });
+
+  it('OPEN + nicht vertraulich → Zugriff, Responsibility wird NICHT abgefragt', async () => {
+    const { tx, responsibilityFindFirst } = makeTx({
+      mode: 'OPEN',
+      client: { vertraulich: false },
+    });
+    await expect(canAccessClientTx(tx, makeSession(['STAFF']), 'c1')).resolves.toBe(true);
+    expect(responsibilityFindFirst).not.toHaveBeenCalled();
+  });
+
+  it('OPEN + vertraulich → nur mit Zuordnung', async () => {
+    const denied = makeTx({ mode: 'OPEN', client: { vertraulich: true }, responsible: false });
+    await expect(canAccessClientTx(denied.tx, makeSession(['STAFF']), 'c1')).resolves.toBe(false);
+    const granted = makeTx({ mode: 'OPEN', client: { vertraulich: true }, responsible: true });
+    await expect(canAccessClientTx(granted.tx, makeSession(['STAFF']), 'c1')).resolves.toBe(true);
+  });
+
+  it('RESTRICTED → nur mit Zuordnung, auch ohne vertraulich-Flag', async () => {
+    const denied = makeTx({
+      mode: 'RESTRICTED',
+      client: { vertraulich: false },
+      responsible: false,
+    });
+    await expect(canAccessClientTx(denied.tx, makeSession(['STAFF']), 'c1')).resolves.toBe(false);
+    const granted = makeTx({
+      mode: 'RESTRICTED',
+      client: { vertraulich: false },
+      responsible: true,
+    });
+    await expect(canAccessClientTx(granted.tx, makeSession(['STAFF']), 'c1')).resolves.toBe(true);
+  });
+
+  it('Mandant existiert nicht (oder fremder Tenant via RLS) → kein Zugriff', async () => {
+    const { tx } = makeTx({ mode: 'OPEN', client: null });
+    await expect(canAccessClientTx(tx, makeSession(['STAFF']), 'c1')).resolves.toBe(false);
+  });
+});
+
+describe('inaccessibleClientIdsFor', () => {
+  it('Admin/Partner → leer, keine Query (kein Zusatz-Load)', async () => {
+    const { tx, clientFindMany } = makeTx({});
+    await expect(inaccessibleClientIdsFor(tx, makeSession(['PARTNER']))).resolves.toEqual([]);
+    expect(clientFindMany).not.toHaveBeenCalled();
+  });
+
+  it('OPEN → nur vertrauliche Mandanten ohne eigene Zuordnung', async () => {
+    const { tx, clientFindMany } = makeTx({ mode: 'OPEN', deniedIds: ['c9'] });
+    await expect(inaccessibleClientIdsFor(tx, makeSession(['STAFF']))).resolves.toEqual(['c9']);
+    const where = clientFindMany.mock.calls[0]![0]!.where;
+    expect(where.vertraulich).toBe(true);
+    expect(where.responsibilities.none.staffId).toBe('s1');
+  });
+
+  it('RESTRICTED → alle Mandanten ohne eigene Zuordnung (kein vertraulich-Filter)', async () => {
+    const { tx, clientFindMany } = makeTx({ mode: 'RESTRICTED', deniedIds: ['c1', 'c2'] });
+    await expect(inaccessibleClientIdsFor(tx, makeSession(['STAFF']))).resolves.toEqual([
+      'c1',
+      'c2',
+    ]);
+    const where = clientFindMany.mock.calls[0]![0]!.where;
+    expect(where).not.toHaveProperty('vertraulich');
+    expect(where.responsibilities.none.role.in).toContain('HAUPTBEARBEITER');
   });
 });

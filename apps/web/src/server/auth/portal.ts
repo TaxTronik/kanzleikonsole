@@ -136,16 +136,32 @@ const portalConfig: NextAuthConfig = {
       // JWT-Ablauf (24 h) bzw. bis zur Revocation weiterarbeiten. prismaOwner
       // (BYPASSRLS) ist nötig, weil der Callback außerhalb eines Tenant-Kontexts
       // läuft; die Tenant/Mandant-Gleichheit wird gegen das Token erzwungen.
+      // GwG-Schranke (§ 11 GwG): zusätzlich MUSS der Parent-Mandant aktiv
+      // (allowActive) und nicht anonymisiert sein — bei GwG-Ablauf/-Ablehnung
+      // wird allowActive=false gesetzt, das Portal ist dann gesperrt. Läuft im
+      // selben Lookup mit (kein zusätzlicher Round-Trip).
       // Transienter DB-Fehler → durchlassen (kein Massen-Logout).
       try {
         const c = await prismaOwner.clientContact.findUnique({
           where: { id: token.contactId },
-          select: { active: true, tenantId: true, clientId: true },
+          select: {
+            active: true,
+            tenantId: true,
+            clientId: true,
+            client: { select: { allowActive: true, anonymizedAt: true } },
+          },
         });
-        if (!c || !c.active || c.tenantId !== token.tenantId || c.clientId !== token.clientId) {
+        if (
+          !c ||
+          !c.active ||
+          c.tenantId !== token.tenantId ||
+          c.clientId !== token.clientId ||
+          !c.client.allowActive ||
+          c.client.anonymizedAt !== null
+        ) {
           log.warn(
             { contactId: token.contactId, tokenTenant: token.tenantId },
-            'portal-auth: Session ohne gültigen/aktiven Kontakt — invalidiert (Re-Login erzwungen)',
+            'portal-auth: Session ohne gültigen/aktiven Kontakt oder Mandant gesperrt/anonymisiert — invalidiert (Re-Login erzwungen)',
           );
           return session; // keine Portal-Felder → portalAuth liefert null
         }

@@ -120,6 +120,7 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
           // Tenant-Context und schreibt die System-Statuswechsel in die
           // Audit-Chain (vorher: nackte prismaOwner-Updates ohne
           // evidence.record) — Muster analog risk-analyse-llm.ts.
+          let clientDeactivated = false;
           await withWorkerTenantContext(tenantId, async (tx) => {
             const checkRes = await tx.gwgCheck.updateMany({
               where: { id: check.id, status: 'VERIFIED' },
@@ -142,6 +143,7 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
               data: { allowActive: false },
             });
             if (clientRes.count > 0) {
+              clientDeactivated = true;
               await evidence.record(tx, {
                 tenantId,
                 actorType: 'SYSTEM',
@@ -154,6 +156,18 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
               });
             }
           });
+          // GwG-Schranke (§ 11 GwG): bestehende Portal-Sessions aller Kontakte
+          // sofort beenden — sonst bliebe ein eingeloggter Kontakt bis zum
+          // JWT-Ablauf (24 h) handlungsfähig. Nach dem Commit (Redis ist nicht
+          // transaktional); nur beim tatsächlichen Übergang (idempotent, der
+          // Check ist danach EXPIRED und kein Kandidat mehr).
+          if (clientDeactivated) {
+            const contacts = await prismaOwner.clientContact.findMany({
+              where: { clientId: check.clientId, active: true },
+              select: { id: true },
+            });
+            await revokePortalSessions(contacts.map((c) => c.id));
+          }
         }
 
         const title = titleForStage(stage, daysLeft, check.client.name);
@@ -326,6 +340,40 @@ gwgExpiryWorker.on('failed', (job, err) => {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// Portal-Session-Revocation (S11) — Worker-Seite.
+//
+// KOPPLUNG: Key-Schema und Semantik stammen aus
+// apps/web/src/server/auth/revocation.ts — `revoke:portal:<contactId>` →
+// ms-Timestamp; Tokens mit `iat` davor gelten als revoked; TTL 30 Tage
+// (länger als die 24-h-JWT-TTL, damit auch noch nicht abgelaufene Tokens
+// erfasst werden). Das Web-Modul ist nicht importierbar (`@/`-Alias,
+// Web-Logger/Singleton) — der Worker schreibt deshalb über seine bestehende
+// BullMQ-Redis-Verbindung (gleiche REDIS_URL, kein Key-Prefix) dieselben
+// Keys. Schema-Änderungen in revocation.ts MÜSSEN hier nachgezogen werden.
+//
+// Fail-Mode: fail-open mit Log (analog revocation.ts) — der Session-Callback
+// in apps/web/src/server/auth/portal.ts prüft client.allowActive zusätzlich
+// bei jedem Request (Defense in Depth).
+const PORTAL_REVOKE_TTL_SEC = 30 * 24 * 60 * 60;
+
+async function revokePortalSessions(contactIds: string[]): Promise<void> {
+  for (const contactId of contactIds) {
+    try {
+      await connection.set(
+        `revoke:portal:${contactId}`,
+        String(Date.now()),
+        'EX',
+        PORTAL_REVOKE_TTL_SEC,
+      );
+    } catch (e) {
+      log.warn(
+        { contactId, err: (e as Error).message },
+        'gwg-expiry: Portal-Session-Revocation fehlgeschlagen (fail-open)',
+      );
+    }
+  }
+}
 
 function stageForDaysLeft(daysLeft: number): Stage | null {
   if (daysLeft <= 0) return 'STAGE3';

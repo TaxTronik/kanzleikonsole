@@ -9,6 +9,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { staffAuth } from '@/server/auth/staff';
+import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
 import { checkStaffSearchLimit } from '@/server/rate-limit';
 import { withTenantContext } from '@taxtronik/db';
 
@@ -55,9 +56,17 @@ export async function GET(req: NextRequest) {
   const results = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
+      // Zugriffsmodell (vertraulich-Flag / RESTRICTED): EINMAL pro Request die
+      // gesperrten Mandanten ermitteln und alle client-gebundenen Treffer-
+      // Queries filtern. Im OPEN-Normalfall (keine vertraulichen Mandanten)
+      // ist `denied` leer und es entsteht keine Zusatz-Bedingung.
+      const denied = await inaccessibleClientIdsFor(tx, session);
+      const clientNotDenied = denied.length ? { clientId: { notIn: denied } } : {};
+
       const [clients, requests, documents, invoices, kbArticles] = await Promise.all([
         tx.client.findMany({
           where: {
+            ...(denied.length ? { id: { notIn: denied } } : {}),
             OR: [
               { name: { contains: likeTerm, mode: 'insensitive' } },
               { datevNo: { contains: likeTerm, mode: 'insensitive' } },
@@ -71,6 +80,7 @@ export async function GET(req: NextRequest) {
         }),
         tx.request.findMany({
           where: {
+            ...clientNotDenied,
             OR: [
               { title: { contains: likeTerm, mode: 'insensitive' } },
               { description: { contains: likeTerm, mode: 'insensitive' } },
@@ -81,13 +91,19 @@ export async function GET(req: NextRequest) {
           orderBy: { createdAt: 'desc' },
         }),
         tx.document.findMany({
-          where: { title: { contains: likeTerm, mode: 'insensitive' }, deletedAt: null },
+          where: {
+            title: { contains: likeTerm, mode: 'insensitive' },
+            deletedAt: null,
+            // clientId = null (Kanzlei-Dokumente) bleibt sichtbar.
+            ...(denied.length ? { OR: [{ clientId: null }, { clientId: { notIn: denied } }] } : {}),
+          },
           select: { id: true, title: true, classification: true, client: { select: { name: true } } },
           take: 5,
           orderBy: { createdAt: 'desc' },
         }),
         tx.invoice.findMany({
           where: {
+            ...clientNotDenied,
             OR: [
               { number: { contains: likeTerm, mode: 'insensitive' } },
               { subject: { contains: likeTerm, mode: 'insensitive' } },

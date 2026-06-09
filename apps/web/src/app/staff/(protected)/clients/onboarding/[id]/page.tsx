@@ -10,6 +10,7 @@ import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Wand2, ShieldCheck, ScrollText, Inbox, Check, ExternalLink } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
+import { canAccessClient } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { readModules } from '@/server/settings/modules';
 import { Stepper } from '../stepper';
@@ -40,6 +41,9 @@ export default async function OnboardingStepPage({
   const session = await staffAuth();
   if (!session?.user) redirect('/staff/login');
   const { id } = await params;
+  // Wizard liegt außerhalb von clients/[id]/ — der Layout-Guard greift hier
+  // nicht, daher eigener Vertraulich-/RESTRICTED-Check.
+  if (!(await canAccessClient(session, id))) redirect('/staff/clients?denied=1');
   const sp = await searchParams;
   const step = parseStep(sp.step);
   const { tenantId, staffId } = session.user;

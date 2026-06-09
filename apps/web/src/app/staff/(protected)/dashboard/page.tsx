@@ -1,5 +1,5 @@
 ﻿import { staffAuth } from '@/server/auth/staff';
-import { isStaffAdmin } from '@/server/auth/rbac';
+import { isStaffAdmin, inaccessibleClientIdsFor } from '@/server/auth/rbac';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import { redirect } from 'next/navigation';
 
@@ -38,13 +38,20 @@ export default async function DashboardPage() {
   const isAdmin = isStaffAdmin(session);
   const ctx: TenantContext = { tenantId, actorId: staffId, actorType: 'STAFF' };
 
-  // 1. Layout laden (eine kurze Tx).
-  const layout = await withTenantContext(ctx, async (tx) => {
-    const staff = await tx.staffUser.findUnique({
-      where: { id: staffId },
-      select: { dashboardLayout: true },
-    });
-    return staff?.dashboardLayout ? parseLayout(staff.dashboardLayout) : DEFAULT_LAYOUT;
+  // 1. Layout laden (eine kurze Tx) + EIN denied-Set für alle Widgets
+  // (Zugriffsmodell: vertraulich-Flag / RESTRICTED).
+  const { layout, deniedClientIds } = await withTenantContext(ctx, async (tx) => {
+    const [staff, deniedClientIds] = await Promise.all([
+      tx.staffUser.findUnique({
+        where: { id: staffId },
+        select: { dashboardLayout: true },
+      }),
+      inaccessibleClientIdsFor(tx, session),
+    ]);
+    return {
+      layout: staff?.dashboardLayout ? parseLayout(staff.dashboardLayout) : DEFAULT_LAYOUT,
+      deniedClientIds,
+    };
   });
 
   // 2. Widgets PARALLEL rendern — jedes in eigener Tx (eigene Connection).
@@ -53,7 +60,9 @@ export default async function DashboardPage() {
   // Widget statt Summe aller. Concurrency-Cap schützt den Pool.
   const rendered = await mapWithConcurrency(layout.widgets, WIDGET_CONCURRENCY, async (w) => ({
     widget: w,
-    node: await withTenantContext(ctx, (tx) => renderWidget(w.type, { tx, staffId, isAdmin })),
+    node: await withTenantContext(ctx, (tx) =>
+      renderWidget(w.type, { tx, staffId, isAdmin, deniedClientIds }),
+    ),
   }));
 
   return (

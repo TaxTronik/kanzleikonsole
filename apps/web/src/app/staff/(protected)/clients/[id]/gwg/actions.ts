@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { isStaffAdmin, toActionError } from '@/server/auth/rbac';
+import { revokeAllSessions } from '@/server/auth/revocation';
 import { withTenantContext } from '@taxtronik/db';
 import type { Prisma } from '@prisma/client';
 import { evidenceService } from '@/server/container';
@@ -354,6 +355,7 @@ export async function rejectCheckAction(
   if (!parsed.success) return { ok: false, error: 'Begründung erforderlich.' };
   const { checkId, clientId, reason } = parsed.data;
 
+  let contactIds: string[] = [];
   try {
     await withTenantContext(ctx, async (tx) => {
       await tx.gwgCheck.update({
@@ -364,6 +366,12 @@ export async function rejectCheckAction(
         where: { id: clientId, allowActive: true },
         data: { allowActive: false },
       });
+      contactIds = (
+        await tx.clientContact.findMany({
+          where: { clientId, active: true },
+          select: { id: true },
+        })
+      ).map((c) => c.id);
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',
@@ -376,6 +384,15 @@ export async function rejectCheckAction(
     });
   } catch (e) {
     return toActionError(e);
+  }
+
+  // GwG-Schranke (§ 11 GwG): bestehende Portal-Sessions aller Kontakte des
+  // Mandanten sofort beenden — sonst bliebe ein bereits eingeloggter Kontakt
+  // bis zum JWT-Ablauf (24 h) handlungsfähig. Nach dem Commit (Redis ist
+  // nicht transaktional); fail-open analog revocation.ts, der Session-
+  // Callback in portal.ts prüft allowActive zusätzlich pro Request.
+  for (const contactId of contactIds) {
+    await revokeAllSessions('portal', contactId);
   }
 
   emitN8nEvent('gwg.expired', { tenantId, clientId, reason: 'rejected' });

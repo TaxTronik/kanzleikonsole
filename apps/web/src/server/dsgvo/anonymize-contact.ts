@@ -45,6 +45,10 @@ export async function anonymizeContactInTx(
     data: {
       email: anonymousEmail,
       fullName: 'Anonymisiert',
+      // phone/role sind ebenfalls personenbezogene Daten (Durchwahl,
+      // Funktionsbezeichnung wie „Geschäftsführer") → mit-nullen.
+      phone: null,
+      role: null,
       active: false,
     },
   });

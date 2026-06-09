@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { getClientIp } from '@/server/rate-limit';
 import { staffAuth } from '@/server/auth/staff';
+import { canAccessClientTx } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { streamObject } from '@taxtronik/storage';
@@ -18,6 +19,21 @@ export async function GET(
   const { id } = await params;
   const { tenantId, staffId } = session.user;
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
+
+  // Zugriffsmodell (vertraulich-Flag / RESTRICTED): VOR ensureZugferdArchive
+  // prüfen (das würde sonst ggf. generieren + ablegen). Gesperrter Mandant
+  // oder unbekannte Rechnung → 404 (kein Existenz-Leak).
+  const accessible = await withTenantContext(ctx, async (tx) => {
+    const inv = await tx.invoice.findFirst({
+      where: { id, tenantId },
+      select: { clientId: true },
+    });
+    if (!inv) return false;
+    return canAccessClientTx(tx, session, inv.clientId);
+  });
+  if (!accessible) {
+    return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  }
 
   // Option B: byte-stabile ZUGFeRD-Archiv-PDF sicherstellen (einmal generiert +
   // revisionssicher abgelegt). Wurde sie beim Ausstellen (markSent) erzeugt,

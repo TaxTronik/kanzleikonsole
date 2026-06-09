@@ -2,6 +2,7 @@
 import { redirect } from 'next/navigation';
 import { Receipt, Plus, FileDown } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
+import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { Pagination } from '@/components/pagination';
 import type { Prisma, InvoiceStatus } from '@prisma/client';
@@ -37,8 +38,12 @@ export default async function InvoicesPage({
 
   const [invoices, totalCount] = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) =>
-      Promise.all([
+    async (tx) => {
+      // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Rechnungen
+      // gesperrter Mandanten ausblenden (konsistent zum CSV-Export).
+      const denied = await inaccessibleClientIdsFor(tx, session);
+      if (denied.length) where.clientId = { notIn: denied };
+      return Promise.all([
         tx.invoice.findMany({
           where,
           orderBy: { id: 'desc' },
@@ -46,7 +51,8 @@ export default async function InvoicesPage({
           include: { client: { select: { id: true, name: true } } },
         }),
         tx.invoice.count({ where: sp.cursor ? { ...where, id: undefined } : where }),
-      ]),
+      ]);
+    },
   );
 
   const hasNext = invoices.length > PAGE_SIZE;

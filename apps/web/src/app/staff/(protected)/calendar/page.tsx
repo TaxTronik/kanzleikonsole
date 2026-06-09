@@ -15,6 +15,7 @@ import { parseMonth, shortKind } from '@/lib/tax-calendar';
 import Link from 'next/link';
 import { CalendarDays, ChevronLeft, ChevronRight, Inbox, AlertTriangle } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
+import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { SCHEDULE_LABELS } from '@taxtronik/tax';
 import { NewAppointmentDialog } from './new-appointment-dialog';
@@ -44,14 +45,26 @@ export default async function CalendarPage({
   const data = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
+      // Zugriffsmodell (vertraulich-Flag / RESTRICTED): EIN denied-Set pro
+      // Render, an alle mandantengebundenen Queries durchgereicht.
+      const denied = await inaccessibleClientIdsFor(tx, session);
+      const notDenied = denied.length ? { clientId: { notIn: denied } } : {};
       const [deadlines, appointments, pendingRequests, staffList, clientsList] = await Promise.all([
         tx.taxDeadline.findMany({
-          where: { dueDate: { gte: start, lte: end } },
+          where: { dueDate: { gte: start, lte: end }, ...notDenied },
           orderBy: { dueDate: 'asc' },
           include: { client: { select: { id: true, name: true } } },
         }),
         tx.appointment.findMany({
-          where: { startsAt: { lte: end }, endsAt: { gte: start }, status: { not: 'CANCELLED' } },
+          where: {
+            startsAt: { lte: end },
+            endsAt: { gte: start },
+            status: { not: 'CANCELLED' },
+            // clientId nullable: Termine ohne Mandantenbezug bleiben sichtbar.
+            ...(denied.length
+              ? { OR: [{ clientId: null }, { clientId: { notIn: denied } }] }
+              : {}),
+          },
           orderBy: { startsAt: 'asc' },
           include: {
             owner: { select: { id: true, fullName: true } },
@@ -59,7 +72,7 @@ export default async function CalendarPage({
           },
         }),
         tx.appointmentRequest.findMany({
-          where: { status: 'PENDING' },
+          where: { status: 'PENDING', ...notDenied },
           orderBy: { createdAt: 'desc' },
           include: {
             client: { select: { id: true, name: true } },
@@ -72,7 +85,7 @@ export default async function CalendarPage({
           select: { id: true, fullName: true },
         }),
         tx.client.findMany({
-          where: { allowActive: true },
+          where: { allowActive: true, ...(denied.length ? { id: { notIn: denied } } : {}) },
           orderBy: { name: 'asc' },
           select: { id: true, name: true },
           take: 500,
