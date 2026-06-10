@@ -1,7 +1,13 @@
 // =============================================================================
 // Setup-Checkliste — fasst zusammen, was für eine produktive Inbetriebnahme
-// noch konfiguriert werden muss. Anzeige im Admin-Banner und auf der
-// Integrationen-Seite.
+// noch konfiguriert werden muss. Anzeige im Admin-Banner, auf der
+// Integrationen-Seite und (kompakt, nur Admins) auf dem Dashboard.
+//
+// Die reine Entscheidungsfunktion liegt importfrei in checklist.ts
+// (Wahrheitstabellen-Test); hier wird nur der IST-Zustand geladen. Alle
+// Punkte erledigen sich durch echte Konfiguration von selbst — es gibt
+// bewusst keinen „Ausblenden"-Schalter und keinen gespeicherten
+// Tutorial-Fortschritt, der lügen könnte.
 // =============================================================================
 
 import { withTenantContext } from '@taxtronik/db';
@@ -10,14 +16,9 @@ import { readSellerInfo } from '@/server/settings/tenant-settings';
 import { readBranding } from '@/server/settings/branding';
 import { readTaxRegion } from '@/server/settings/tax-region';
 import { getSmtpStatus } from '@/server/settings/smtp';
+import { buildSetupItems, type SetupItem } from './checklist';
 
-export interface SetupItem {
-  key: string;
-  label: string;
-  done: boolean;
-  href: string;
-  hint?: string;
-}
+export type { SetupItem } from './checklist';
 
 export interface SetupStatus {
   items: SetupItem[];
@@ -27,53 +28,40 @@ export interface SetupStatus {
 }
 
 export async function getSetupStatus(ctx: TenantContext): Promise<SetupStatus> {
-  const [seller, branding, region, smtp, contactCount] = await Promise.all([
+  const [seller, branding, region, smtp, counts] = await Promise.all([
     readSellerInfo(ctx),
     readBranding(ctx),
     readTaxRegion(ctx),
     getSmtpStatus(ctx),
-    withTenantContext(ctx, (tx) =>
-      tx.clientContact.count({ where: { active: true } }),
-    ),
+    withTenantContext(ctx, async (tx) => {
+      const [contactCount, activeClientCount, modulesRow] = await Promise.all([
+        tx.clientContact.count({ where: { active: true } }),
+        tx.client.count({ where: { allowActive: true } }),
+        // readModules liefert Defaults, wenn nie gespeichert wurde — für die
+        // Checkliste zählt die BEWUSSTE Entscheidung, also die Setting-Zeile.
+        tx.tenantSetting.findUnique({
+          where: { tenantId_key: { tenantId: ctx.tenantId, key: 'modules' } },
+          select: { tenantId: true },
+        }),
+      ]);
+      return { contactCount, activeClientCount, modulesConfigured: modulesRow !== null };
+    }),
   ]);
 
-  const items: SetupItem[] = [
-    {
-      key: 'branding',
-      label: 'Erscheinungsbild (Logo + Anzeigename)',
-      done: Boolean(branding.displayName) && Boolean(branding.logoDataUrl),
-      href: '/staff/admin/settings/branding',
-      hint: 'Logo und Anzeigename erscheinen in Mitarbeiter- und Mandanten-Oberfläche.',
-    },
-    {
-      key: 'region',
-      label: 'Bundesland gesetzt',
-      done: region !== null,
-      href: '/staff/admin/settings/region',
-      hint: 'Steuert die Werktagsverschiebung bei Steuerterminen.',
-    },
-    {
-      key: 'seller',
-      label: 'Kanzlei-Stammdaten (für XRechnung)',
-      done: Boolean(seller.name && seller.street && seller.postalCode && seller.city && seller.vatId),
-      href: '/staff/admin/settings/seller',
-      hint: 'Name, Anschrift und USt-ID werden für Rechnungs-Exports gebraucht.',
-    },
-    {
-      key: 'smtp',
-      label: 'E-Mail-Versand konfiguriert',
-      done: smtp.configured,
-      href: '/staff/admin/settings/mail',
-      hint: 'Sonst kein Magic-Link-Login fürs Portal und keine Reminder-Mails.',
-    },
-    {
-      key: 'contacts',
-      label: 'Mindestens ein Portal-Kontakt aktiv',
-      done: contactCount > 0,
-      href: '/staff/clients',
-      hint: 'Mandanten brauchen mindestens einen Kontakt mit E-Mail-Adresse, um sich einzuloggen.',
-    },
-  ];
+  const items = buildSetupItems({
+    brandingComplete: Boolean(branding.displayName) && Boolean(branding.logoDataUrl),
+    regionSet: region !== null,
+    // E-Mail + Telefon: Pflicht der XRechnung (BG-6) — ohne sie verweigert
+    // die E-Rechnungs-Erzeugung (seller_incomplete, fail-closed).
+    sellerComplete: Boolean(
+      seller.name && seller.street && seller.postalCode && seller.city &&
+      seller.vatId && seller.email && seller.phone,
+    ),
+    smtpConfigured: smtp.configured,
+    modulesConfigured: counts.modulesConfigured,
+    activeClientCount: counts.activeClientCount,
+    contactCount: counts.contactCount,
+  });
 
   const doneCount = items.filter((i) => i.done).length;
   return {

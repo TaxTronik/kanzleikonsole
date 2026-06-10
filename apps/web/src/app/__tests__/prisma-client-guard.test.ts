@@ -42,6 +42,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   'packages/db/src/owner-client.ts',
   // Dev-Seed (NODE_ENV!=production erzwungen), Owner-Verbindung.
   'packages/db/seeds/dev.ts',
+  // Production-Provisionierung (Tenant + Admin, keine Demodaten) — läuft als
+  // Operator-CLI VOR dem ersten Login, Owner-Verbindung ist hier der Zweck.
+  'packages/db/seeds/provision.ts',
   // RLS-Integrationstest konstruiert bewusst Owner- + App-Client.
   'packages/db/src/__tests__/rls-cross-tenant.test.ts',
   // GwG-Schranken-Test konstruiert einen Owner-Client fürs Setup.

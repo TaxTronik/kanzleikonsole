@@ -2,8 +2,11 @@
 import { isStaffAdmin, inaccessibleClientIdsFor } from '@/server/auth/rbac';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import { redirect } from 'next/navigation';
+import Link from 'next/link';
+import { ListChecks, ArrowRight } from 'lucide-react';
 
 import { DEFAULT_LAYOUT, parseLayout } from '@/server/dashboard/widgets';
+import { getSetupStatus, type SetupStatus } from '@/server/setup/status';
 import { renderWidget } from './widgets';
 import { DashboardGrid } from './dashboard-grid';
 
@@ -65,12 +68,35 @@ export default async function DashboardPage() {
     ),
   }));
 
+  // Onboarding: solange die Inbetriebnahme-Checkliste offen ist, sehen Admins
+  // sie direkt nach dem Login — nicht erst beim Besuch der Administration.
+  // Erledigt sich von selbst (kein gespeicherter Tutorial-Zustand).
+  const setup: SetupStatus | null = isAdmin ? await getSetupStatus(ctx) : null;
+
   return (
     <div className="p-8">
       <div className="mb-4">
         <h1 className="text-2xl font-bold text-primary">Dashboard</h1>
         <p className="text-muted mt-1">Willkommen, {session.user.fullName}</p>
       </div>
+
+      {setup && !setup.allDone && (
+        <Link
+          href="/staff/admin"
+          className="card p-4 mb-4 flex items-center gap-3 border-l-4 border-l-yellow-500 dark:border-l-yellow-400 hover:bg-gray-50 group"
+        >
+          <ListChecks className="h-5 w-5 text-yellow-600 dark:text-yellow-400 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-primary">
+              Erste Schritte zur Inbetriebnahme — {setup.doneCount} von {setup.totalCount} erledigt
+            </p>
+            <p className="text-xs text-muted truncate">
+              Offen: {setup.items.filter((i) => !i.done).map((i) => i.label).join(' · ')}
+            </p>
+          </div>
+          <ArrowRight className="h-4 w-4 text-disabled group-hover:text-muted shrink-0" />
+        </Link>
+      )}
 
       <DashboardGrid initialLayout={layout} initialRendered={rendered} />
     </div>

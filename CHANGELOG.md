@@ -12,6 +12,12 @@ der Eintrag entsteht mit der Änderung, nicht nachträglich.
 
 ## [Unreleased]
 
+- Onboarding: Inbetriebnahme-Checkliste ausgebaut — prüft jetzt auch
+  E-Mail/Telefon der Kanzlei (E-Rechnungs-Pflicht), die bewusste Modul-/
+  Rechnungsmodus-Entscheidung und den ersten GwG-aktiven Mandanten;
+  erscheint für Admins zusätzlich kompakt auf dem Dashboard und erledigt
+  sich ausschließlich über echten Systemzustand; neues Anwenderdoku-Kapitel
+  „Erste Schritte" (Inbetriebnahme in 30 Minuten)
 - Deployment: Production-Provisionierung ohne Demodaten —
   `pnpm --filter @taxtronik/db provision` legt Tenant, Default-Dokumenttypen
   und ein Admin-Konto an (Zufallspasswort, einmalig angezeigt); der Dev-Seed

@@ -1,0 +1,72 @@
+# Erste Schritte: Die Kanzlei in 30 Minuten einrichten
+
+Dieses Kapitel führt Administratoren nach der frischen Installation durch
+die Inbetriebnahme. Die Software begleitet diesen Weg selbst: Auf dem
+Dashboard und unter **Administration → Übersicht** erscheint die Checkliste
+**„Erste Schritte zur Inbetriebnahme"** — jeder Punkt prüft den echten
+Systemzustand, verlinkt direkt an die richtige Stelle und hakt sich von
+selbst ab, sobald er erledigt ist. Ist alles eingerichtet, verschwindet die
+Liste.
+
+> Voraussetzung: Die Installation wurde vom Betreiber provisioniert
+> (Kanzlei-Tenant + Admin-Konto, ohne Demodaten — siehe
+> [Betriebsdoku, Release/Update §2.1](../operations/release.md)). Sie haben
+> die Zugangsdaten des Admin-Kontos erhalten.
+
+## 1. Erster Login und Zwei-Faktor (≈ 5 min)
+
+Melden Sie sich unter `/staff/login` an (E-Mail, Passwort, Kanzlei-Kürzel
+aus der Provisionierung). Beim ersten Login richten Sie verpflichtend die
+Zwei-Faktor-Authentisierung ein: QR-Code mit einer Authenticator-App
+scannen, Code bestätigen, **die acht Backup-Codes sicher verwahren**
+(es gibt keinen Self-Service-Reset — siehe
+[Administration](administration.md)). Danach: initiales Passwort beim
+Betreiber als verbraucht melden bzw. die `.admin-credentials.txt` auf dem
+Server löschen lassen.
+
+## 2. Die Checkliste durchgehen (≈ 15 min)
+
+In der empfohlenen Reihenfolge — jeder Punkt ist aus der Checkliste heraus
+direkt verlinkt:
+
+1. **Erscheinungsbild** — Logo und Anzeigename der Kanzlei (erscheinen in
+   beiden Oberflächen und in E-Mails).
+2. **Bundesland** — steuert die Werktagsverschiebung der Steuertermine.
+3. **Kanzlei-Stammdaten** — Name, Anschrift, USt-ID, **E-Mail und
+   Telefon**. Die letzten beiden sind Pflichtangaben der E-Rechnung
+   (XRechnung); ohne sie verweigert die Rechnungserzeugung mit klarer
+   Meldung.
+4. **E-Mail-Versand (SMTP)** — ohne ihn kein Mandanten-Login (Magic-Link)
+   und keine Benachrichtigungs-Mails. Mit der Testfunktion prüfen.
+5. **Module & Rechnungsmodus** — einmal bewusst speichern, auch wenn die
+   Voreinstellung passt. Wichtigste Entscheidung: Rechnungen **In-App**
+   (Positionen + E-Rechnung in TaxTronik), **Extern** (PDF-Ablage aus der
+   Kanzleisoftware) oder **Aus**.
+6. **Erster Mandant** — anlegen und die GwG-Prüfung abschließen; erst
+   dann wird der Mandant „aktiv" und kann Anforderungen und Rechnungen
+   erhalten (gesetzliche Schranke, von der Datenbank erzwungen).
+7. **Portal-Kontakt** — in der Mandantenakte unter *Kontakte* einladen;
+   Mandanten melden sich ausschließlich per E-Mail-Link an.
+
+## 3. Team einrichten (≈ 10 min)
+
+Unter **Administration → Benutzer**: Konten für die Mitarbeiter anlegen
+(jede Person richtet ihre Zwei-Faktor-Anmeldung selbst ein). Für
+Mitarbeiter ohne Admin-/Partner-Rolle die **Berechtigungen** setzen —
+*Rechnungen anlegen/bearbeiten*, *Rechnungen versenden* und *Urlaub
+entscheiden* sind Einzelrechte; neue Konten starten ohne
+(siehe [Administration](administration.md)). Zuständigkeiten je Mandant
+(Berufsträger/Hauptbearbeiter) pflegen Sie in der Mandantenakte; ob
+Mitarbeiter alle oder nur zugeordnete Mandanten sehen, steuert das
+Zugriffsmodell in den Einstellungen.
+
+## 4. Erste Arbeitsschritte zum Kennenlernen
+
+- Eine **Anforderung** an den Testmandanten stellen und im Portal (als
+  eingeladener Kontakt) beantworten — so sehen Sie beide Seiten.
+- Eine **Rechnung** im Entwurf anlegen und versenden: Die Nummer wird
+  automatisch lückenlos vergeben, beim Versand entsteht die
+  revisionssichere Archivkopie und die Rechnung wird festgeschrieben
+  ([Rechnungen](rechnungen.md)).
+- **Administration → Übersicht** zeigt dauerhaft den Compliance-Status:
+  Prüfprotokoll-Kette, letztes Backup, monatlicher Wiederherstellungstest.
