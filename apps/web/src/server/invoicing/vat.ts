@@ -12,6 +12,8 @@
 // abgebildet (Kanzlei-Praxis: Regelsteuersatz; 0 % als Randfall).
 // =============================================================================
 
+import { round2 } from '@/lib/fmt';
+
 export interface VatPosition {
   netAmount: number;
   vatRate: number;
@@ -30,10 +32,6 @@ export interface VatTotals {
   totalAmount: number;
   /** Einheitlicher Satz aller Positionen — oder null bei Mischsätzen. */
   uniformRate: number | null;
-}
-
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
 }
 
 /** Gruppiert Positionen nach Steuersatz und bildet die Kopf-Summen. */

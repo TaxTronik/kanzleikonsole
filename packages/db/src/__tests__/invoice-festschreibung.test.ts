@@ -63,11 +63,22 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  // Trigger-Bypass NUR fürs Test-Cleanup (Festschreibung blockiert sonst
-  // absichtlich das Löschen versendeter Rechnungen).
-  await owner.$executeRawUnsafe(`SET session_replication_role = replica`);
-  await owner.tenant.deleteMany({ where: { id: tenantId } });
-  await owner.$executeRawUnsafe(`SET session_replication_role = DEFAULT`);
+  // Cleanup: die Festschreibungs-Trigger blockieren sonst das Löschen
+  // versendeter Rechnungen. BEWUSST gezielt deaktiviert statt
+  // session_replication_role=replica — Letzteres schaltet auch die
+  // FK-Cascade-Trigger ab, sodass tenant.deleteMany verwaiste Kinder
+  // hinterließe. In EINER Transaktion, damit DISABLE und DELETE garantiert
+  // auf DERSELBEN Pool-Connection laufen (sonst greift das DISABLE evtl.
+  // nicht für das DELETE). DISABLE TRIGGER wirkt auch für Cascade-Deletes.
+  await owner.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe(`ALTER TABLE "invoice" DISABLE TRIGGER invoice_protect_delete`);
+    await tx.$executeRawUnsafe(`ALTER TABLE "invoice" DISABLE TRIGGER invoice_protect_update`);
+    await tx.$executeRawUnsafe(`ALTER TABLE "invoice_position" DISABLE TRIGGER invoice_position_protect`);
+    await tx.tenant.deleteMany({ where: { id: tenantId } });
+    await tx.$executeRawUnsafe(`ALTER TABLE "invoice" ENABLE TRIGGER invoice_protect_delete`);
+    await tx.$executeRawUnsafe(`ALTER TABLE "invoice" ENABLE TRIGGER invoice_protect_update`);
+    await tx.$executeRawUnsafe(`ALTER TABLE "invoice_position" ENABLE TRIGGER invoice_position_protect`);
+  });
   await owner.$disconnect();
 });
 

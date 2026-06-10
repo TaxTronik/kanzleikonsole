@@ -1,7 +1,6 @@
 'use server';
 
 import { z } from 'zod';
-import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
@@ -64,7 +63,9 @@ const CreateSchema = z.object({
   dueDate: z.string().date(),
   notes: z.string().max(5000).optional().or(z.literal('')),
   format: z.enum(['PDF', 'XRECHNUNG', 'ZUGFERD']).default('PDF'),
-  positions: z.array(PositionSchema).min(1),
+  // max(): die Action ist direkt aufrufbar — ohne Obergrenze könnte ein
+  // Aufruf beliebig viele Positionen in einer Tx anlegen.
+  positions: z.array(PositionSchema).min(1).max(200),
 });
 
 export async function createInvoiceAction(input: {
@@ -333,42 +334,6 @@ export async function cancelInvoiceAction(formData: FormData): Promise<void> {
     { requirePermission: 'INVOICE_MANAGE', revalidate: ['/staff/invoices', `/staff/invoices/${parsed.data.invoiceId}`] },
   );
   if (!r.ok) throw new ActionError(r.error ?? 'Aktion fehlgeschlagen.');
-}
-
-// Formular-Helper für create-Page (transformiert FormData inkl. Position-Repeater).
-// Delegiert an createInvoiceAction (dort sitzt das Auth-Gate).
-export async function createInvoiceFromFormAction(formData: FormData): Promise<void> {
-  const positions: Array<{ description: string; quantity: number; unitPrice: number; unit: string; vatRate: number }> = [];
-  for (let i = 0; i < 50; i++) {
-    const desc = formData.get(`positions[${i}].description`);
-    if (!desc) continue;
-    positions.push({
-      description: String(desc),
-      quantity: Number(formData.get(`positions[${i}].quantity`) ?? 0),
-      unitPrice: Number(formData.get(`positions[${i}].unitPrice`) ?? 0),
-      unit: String(formData.get(`positions[${i}].unit`) ?? 'Stück'),
-      vatRate: Number(formData.get(`positions[${i}].vatRate`) ?? 19),
-    });
-  }
-
-  const r = await createInvoiceAction({
-    clientId: String(formData.get('clientId') ?? ''),
-    subject: String(formData.get('subject') ?? ''),
-    issueDate: String(formData.get('issueDate') ?? ''),
-    dueDate: String(formData.get('dueDate') ?? ''),
-    notes: String(formData.get('notes') ?? ''),
-    format: (String(formData.get('format') ?? 'PDF') as 'PDF' | 'XRECHNUNG' | 'ZUGFERD'),
-    positions,
-  });
-
-  if (!r.ok || !r.invoiceId) {
-    // Fehler werden nicht gefangen — Browser zeigt Server-Action-Fehler;
-    // bessere UX kommt im Client-Component-Wrapper.
-    throw new ActionError(r.error ?? 'Rechnungsanlage fehlgeschlagen.');
-  }
-
-  revalidatePath('/staff/invoices');
-  redirect(`/staff/invoices/${r.invoiceId}`); // wirft (never) — NACH der delegierten Action
 }
 
 // ----------------------------------------------------------------------------

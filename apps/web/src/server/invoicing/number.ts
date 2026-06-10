@@ -82,6 +82,3 @@ const TRANSITIONS: Record<InvoiceStatus, ReadonlyArray<InvoiceStatus>> = {
 export function isValidInvoiceTransition(from: InvoiceStatus, to: InvoiceStatus): boolean {
   return TRANSITIONS[from]?.includes(to) ?? false;
 }
-
-/** Stabiler Fehlertext-Marker der Festschreibungs-Trigger (iter85). */
-export const FESTSCHREIBUNG_MARKER = 'Festschreibung';

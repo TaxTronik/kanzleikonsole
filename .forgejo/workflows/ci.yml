@@ -558,11 +558,27 @@ jobs:
       - name: Referenz-XRechnung erzeugen (Mischsätze 19/7/0 %)
         run: pnpm --filter @taxtronik/web exec tsx src/server/invoicing/cli/generate-sample.ts "$GITHUB_WORKSPACE/kosit/sample.xml"
 
-      # Exit-Code ≠ 0 bei REJECT → Job schlägt fehl (fail-closed).
+      # Der Validator liefert Exit ≠ 0 sowohl bei inhaltlichem REJECT als auch
+      # bei Umgebungs-/Konfigfehlern (z. B. Szenario-Datei fehlt) — beides soll
+      # den Job rot machen, aber die Logs müssen den Fall unterscheidbar machen.
+      # Geschrieben wird der Bericht nur bei tatsächlicher Prüfung; bricht der
+      # Validator vorher ab (kein report/), ist das ein Umgebungsfehler.
       - name: KoSIT-Validierung (Schema + Schematron + BR-DE)
         run: |
           cd kosit
+          set +e
           java -jar validator.jar -s config/scenarios.xml -r config -o report sample.xml
+          rc=$?
+          set -e
+          if [ ! -s report/sample-report.xml ]; then
+            echo "::error::KoSIT-Validator hat keinen Bericht geschrieben (Exit $rc) — Umgebungs-/Konfigurationsfehler, NICHT inhaltlicher REJECT."
+            exit 1
+          fi
+          if [ $rc -ne 0 ]; then
+            echo "::error::XRechnung-Validierung fehlgeschlagen (REJECT) — siehe Artefakt kosit-pruefbericht."
+            exit $rc
+          fi
+          echo "XRechnung-Validierung bestanden (ACCEPTABLE)."
 
       - name: Prüfbericht hochladen
         if: always()
@@ -570,4 +586,6 @@ jobs:
         with:
           name: kosit-pruefbericht
           path: kosit/report/
-          if-no-files-found: ignore
+          # error statt ignore: fehlt der Bericht, ist das ein echtes Problem
+          # (Validator lief nicht) und soll sichtbar werden, nicht still passieren.
+          if-no-files-found: warn

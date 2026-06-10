@@ -233,9 +233,8 @@ export async function setPermissionsAction(input: {
     return { ok: false, error: 'Eigene Berechtigungen nicht ändern.' };
   }
 
-  let changed = false;
   try {
-    const result = await withTenantContext(ctx, async (tx) => {
+    const revoke = await withTenantContext(ctx, async (tx) => {
       // Existenz + Tenant-Zugehörigkeit prüfen: das leere permissions-Array ist
       // erlaubt und schreibt ggf. gar nichts — ohne diese Prüfung würde die
       // Action für eine fremde/erfundene userId mit ok:true enden (RLS schlägt
@@ -281,14 +280,13 @@ export async function setPermissionsAction(input: {
       // selbst (Session lädt Rechte frisch), und der DB-Fallback verweigert ein
       // erweitertes Recht dort sicher (fail-closed). Entzug dagegen bliebe im
       // alten Token bis zu 24 h wirksam → Sofort-Logout.
-      return { revoke: toRemove.length > 0 };
+      return toRemove.length > 0;
     });
-    changed = result.revoke;
+    if (revoke) {
+      await revokeAllSessions('staff', parsed.data.userId);
+    }
   } catch (e) {
     return toActionError(e);
-  }
-  if (changed) {
-    await revokeAllSessions('staff', parsed.data.userId);
   }
   revalidatePath(LIST);
   return { ok: true };

@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
-import { fmtDateShort } from '@/lib/fmt';
+import { fmtDateShort, round2 } from '@/lib/fmt';
 import { toActionError } from '@/server/auth/rbac';
 import { allocateInvoiceNumber } from '@/server/invoicing/number';
 import { readModules } from '@/server/settings/modules';
@@ -220,10 +220,6 @@ export async function billAllPendingHoursAction(formData: FormData): Promise<voi
 
   if (!r.ok || !r.invoiceId) throw new Error(r.error ?? 'Rechnungsanlage fehlgeschlagen.');
   redirect(`/staff/invoices/${r.invoiceId}`);
-}
-
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
 }
 
 function formatDateShort(d: Date): string {
