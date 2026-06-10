@@ -43,7 +43,7 @@ export async function GET(
   if (!archive.ok) {
     if (archive.code === 'seller_incomplete') {
       return NextResponse.json(
-        { error: 'seller_incomplete', message: 'Verkäufer-Stammdaten unvollständig (Name, Straße, PLZ, Ort).' },
+        { error: 'seller_incomplete', message: 'Verkäufer-Stammdaten unvollständig (Name, Straße, PLZ, Ort, E-Mail, Telefon).' },
         { status: 422 },
       );
     }

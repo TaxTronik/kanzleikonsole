@@ -24,6 +24,7 @@
 import { create } from 'xmlbuilder2';
 import type { XMLBuilder } from 'xmlbuilder2/lib/interfaces';
 import type { SellerInfo } from '@/server/settings/tenant-settings';
+import { computeVatTotals, vatCategory } from '@/server/invoicing/vat';
 import { fmtDateShort } from '@/lib/fmt';
 
 export interface XRechnungInvoice {
@@ -33,10 +34,11 @@ export interface XRechnungInvoice {
   subject: string;
   notes: string | null;
   currency: 'EUR';
-  vatRate: number; // z. B. 19
   netAmount: number;
   vatAmount: number;
   totalAmount: number;
+  // iter86: Steuersatz je Position (§ 14 Abs. 4 Nr. 8 UStG); der Header-
+  // Steuerblock wird daraus je Satz gruppiert gebildet.
   positions: Array<{
     position: number;
     description: string;
@@ -44,6 +46,7 @@ export interface XRechnungInvoice {
     unit: string;
     unitPrice: number;
     netAmount: number;
+    vatRate: number;
   }>;
 }
 
@@ -55,6 +58,9 @@ export interface XRechnungBuyer {
   countryIso: string;
   vatId: string | null;
   email: string | null;
+  /** Käuferreferenz (BT-10, BR-DE-15 Pflicht). B2G: Leitweg-ID; B2B üblich:
+   *  vereinbarte Referenz/E-Mail. Fallback in der Generierung: email → name. */
+  reference?: string | null;
 }
 
 function fmtDate(d: Date): string {
@@ -86,8 +92,15 @@ function unitCode(unit: string): string {
   return 'C62';
 }
 
-function dateTime(parent: XMLBuilder, ns: string, date: Date): void {
-  parent.ele(ns, 'udt:DateTimeString', { format: '102' }).txt(fmtDate(date));
+const RSM = 'urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100';
+const RAM = 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100';
+const UDT = 'urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100';
+
+// KoSIT-Befund 2026-06: DateTimeString MUSS im UDT-Namespace liegen — vorher
+// wurde der RAM-Namespace des Eltern-Elements durchgereicht (Prefix `udt:` mit
+// falscher Namespace-URI), was die CII-Schema-Validierung ablehnt.
+function dateTime(parent: XMLBuilder, date: Date): void {
+  parent.ele(UDT, 'udt:DateTimeString', { format: '102' }).txt(fmtDate(date));
 }
 
 export function generateXRechnungCii(
@@ -95,9 +108,6 @@ export function generateXRechnungCii(
   seller: SellerInfo,
   buyer: XRechnungBuyer,
 ): string {
-  const RSM = 'urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100';
-  const RAM = 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100';
-  const UDT = 'urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100';
 
   const doc = create({ version: '1.0', encoding: 'UTF-8' });
   const root = doc.ele(RSM, 'rsm:CrossIndustryInvoice', {
@@ -108,8 +118,13 @@ export function generateXRechnungCii(
   // -------------------------------------------------------------------------
   // ExchangedDocumentContext
   // -------------------------------------------------------------------------
-  root
-    .ele(RSM, 'rsm:ExchangedDocumentContext')
+  const docContext = root.ele(RSM, 'rsm:ExchangedDocumentContext');
+  // BT-23 Geschäftsprozess: Pflicht (PEPPOL-EN16931-R001), Standard-Prozesskennung.
+  docContext
+    .ele(RAM, 'ram:BusinessProcessSpecifiedDocumentContextParameter')
+    .ele(RAM, 'ram:ID')
+    .txt('urn:fdc:peppol.eu:2017:poacc:billing:01:1.0');
+  docContext
     .ele(RAM, 'ram:GuidelineSpecifiedDocumentContextParameter')
     .ele(RAM, 'ram:ID')
     .txt('urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0');
@@ -120,7 +135,7 @@ export function generateXRechnungCii(
   const exDoc = root.ele(RSM, 'rsm:ExchangedDocument');
   exDoc.ele(RAM, 'ram:ID').txt(invoice.number);
   exDoc.ele(RAM, 'ram:TypeCode').txt('380');
-  dateTime(exDoc.ele(RAM, 'ram:IssueDateTime'), RAM, invoice.issueDate);
+  dateTime(exDoc.ele(RAM, 'ram:IssueDateTime'), invoice.issueDate);
 
   if (invoice.notes) {
     exDoc.ele(RAM, 'ram:IncludedNote').ele(RAM, 'ram:Content').txt(invoice.notes);
@@ -164,8 +179,8 @@ export function generateXRechnungCii(
     const lineSettle = line.ele(RAM, 'ram:SpecifiedLineTradeSettlement');
     const lineTax = lineSettle.ele(RAM, 'ram:ApplicableTradeTax');
     lineTax.ele(RAM, 'ram:TypeCode').txt('VAT');
-    lineTax.ele(RAM, 'ram:CategoryCode').txt('S');
-    lineTax.ele(RAM, 'ram:RateApplicablePercent').txt(invoice.vatRate.toFixed(2));
+    lineTax.ele(RAM, 'ram:CategoryCode').txt(vatCategory(pos.vatRate));
+    lineTax.ele(RAM, 'ram:RateApplicablePercent').txt(pos.vatRate.toFixed(2));
     lineSettle
       .ele(RAM, 'ram:SpecifiedTradeSettlementLineMonetarySummation')
       .ele(RAM, 'ram:LineTotalAmount')
@@ -177,9 +192,32 @@ export function generateXRechnungCii(
   // -------------------------------------------------------------------------
   const agreement = sct.ele(RAM, 'ram:ApplicableHeaderTradeAgreement');
 
+  // BT-10 Käuferreferenz (BR-DE-15 Pflicht, KoSIT 2026-06). MUSS als erstes
+  // Kind des Agreements stehen (CII-Elementreihenfolge).
+  agreement
+    .ele(RAM, 'ram:BuyerReference')
+    .txt(buyer.reference || buyer.email || buyer.name);
+
   // Seller
   const sellerEl = agreement.ele(RAM, 'ram:SellerTradeParty');
   sellerEl.ele(RAM, 'ram:Name').txt(seller.name);
+
+  // BG-6 Verkäufer-Kontakt (BR-DE-2 Pflicht, KoSIT 2026-06). CII-Reihenfolge:
+  // DefinedTradeContact VOR PostalTradeAddress.
+  const contact = sellerEl.ele(RAM, 'ram:DefinedTradeContact');
+  contact.ele(RAM, 'ram:PersonName').txt(seller.name);
+  if (seller.phone) {
+    contact
+      .ele(RAM, 'ram:TelephoneUniversalCommunication')
+      .ele(RAM, 'ram:CompleteNumber')
+      .txt(seller.phone);
+  }
+  if (seller.email) {
+    contact
+      .ele(RAM, 'ram:EmailURIUniversalCommunication')
+      .ele(RAM, 'ram:URIID')
+      .txt(seller.email);
+  }
 
   const sellerAddr = sellerEl.ele(RAM, 'ram:PostalTradeAddress');
   if (seller.postalCode) sellerAddr.ele(RAM, 'ram:PostcodeCode').txt(seller.postalCode);
@@ -230,9 +268,17 @@ export function generateXRechnungCii(
   }
 
   // -------------------------------------------------------------------------
-  // Header — Delivery (leer, da Dienstleistungsrechnung)
+  // Header — Delivery. BT-72 Leistungsdatum (BR-DE-TMP-32, KoSIT 2026-06):
+  // Konvention „Leistungsdatum entspricht Rechnungsdatum" — ein eigener
+  // Leistungszeitraum wird nicht erfasst.
   // -------------------------------------------------------------------------
-  sct.ele(RAM, 'ram:ApplicableHeaderTradeDelivery');
+  dateTime(
+    sct
+      .ele(RAM, 'ram:ApplicableHeaderTradeDelivery')
+      .ele(RAM, 'ram:ActualDeliverySupplyChainEvent')
+      .ele(RAM, 'ram:OccurrenceDateTime'),
+    invoice.issueDate,
+  );
 
   // -------------------------------------------------------------------------
   // Header — Settlement
@@ -254,20 +300,23 @@ export function generateXRechnungCii(
     }
   }
 
-  // Steuerblock
-  const tax = settle.ele(RAM, 'ram:ApplicableTradeTax');
-  tax.ele(RAM, 'ram:CalculatedAmount').txt(fmtAmount(invoice.vatAmount));
-  tax.ele(RAM, 'ram:TypeCode').txt('VAT');
-  tax.ele(RAM, 'ram:BasisAmount').txt(fmtAmount(invoice.netAmount));
-  tax.ele(RAM, 'ram:CategoryCode').txt('S');
-  tax.ele(RAM, 'ram:RateApplicablePercent').txt(invoice.vatRate.toFixed(2));
+  // Steuerblock: EIN ApplicableTradeTax je Steuersatz-Gruppe (EN 16931 BG-23;
+  // § 14 Abs. 4 Nr. 8 UStG — Entgelt aufgeschlüsselt nach Sätzen).
+  for (const g of computeVatTotals(invoice.positions).groups) {
+    const tax = settle.ele(RAM, 'ram:ApplicableTradeTax');
+    tax.ele(RAM, 'ram:CalculatedAmount').txt(fmtAmount(g.vat));
+    tax.ele(RAM, 'ram:TypeCode').txt('VAT');
+    tax.ele(RAM, 'ram:BasisAmount').txt(fmtAmount(g.net));
+    tax.ele(RAM, 'ram:CategoryCode').txt(vatCategory(g.rate));
+    tax.ele(RAM, 'ram:RateApplicablePercent').txt(g.rate.toFixed(2));
+  }
 
   // Zahlungsbedingungen
   const terms = settle.ele(RAM, 'ram:SpecifiedTradePaymentTerms');
   terms
     .ele(RAM, 'ram:Description')
     .txt(`Zahlbar bis ${fmtDateShort(invoice.dueDate)}`);
-  dateTime(terms.ele(RAM, 'ram:DueDateDateTime'), RAM, invoice.dueDate);
+  dateTime(terms.ele(RAM, 'ram:DueDateDateTime'), invoice.dueDate);
 
   // Summen
   const sum = settle.ele(RAM, 'ram:SpecifiedTradeSettlementHeaderMonetarySummation');

@@ -39,9 +39,11 @@ XRechnung-/ZUGFeRD-Download werden in der Audit-Hash-Chain festgehalten.
 
 1. **Rechnungen → Neue Rechnung** (nur aktive, GwG-verifizierte Mandanten
    sind wählbar).
-2. Betreff, Daten, USt-Satz und Positionen erfassen (Menge × Einzelpreis;
-   Summen berechnet der Server). Format wählen: XRechnung (Standard),
-   ZUGFeRD oder PDF.
+2. Betreff, Daten und Positionen erfassen (Menge × Einzelpreis; Summen
+   berechnet der Server). Der USt-Satz wird **je Position** gewählt
+   (19 % / 7 % / 0 %) — Mischsätze auf einer Rechnung sind möglich, die
+   Steuer wird je Satz gruppiert ausgewiesen und gerundet. Format wählen:
+   XRechnung (Standard), ZUGFeRD oder PDF.
 3. **Anlegen** → die Rechnung erhält ihre Nummer und steht als Entwurf
    auf der Detailseite.
 4. Auf der Detailseite: **Als versendet markieren** (erstellt die
@@ -49,8 +51,9 @@ XRechnung-/ZUGFeRD-Download werden in der Audit-Hash-Chain festgehalten.
    XRechnung-XML und ZUGFeRD-PDF lassen sich dort jederzeit herunterladen.
 
 Hinweis: Für die E-Rechnungs-Erzeugung müssen die Kanzlei-Absenderdaten
-(Einstellungen → Rechnungsdaten) und die Mandanten-Anschrift (Straße, PLZ,
-Ort) vollständig sein.
+(Einstellungen → Rechnungsdaten) vollständig sein — Name, Anschrift sowie
+**E-Mail und Telefon** (Pflichtangaben der XRechnung) — ebenso die
+Mandanten-Anschrift (Straße, PLZ, Ort).
 
 ### Stunden abrechnen
 

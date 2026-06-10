@@ -85,6 +85,8 @@ export async function createInvoiceFromTimeEntriesAction(input: z.infer<typeof C
       const totalGross = round2(totalNet + vatAmount);
 
       // 3. Positionen je nach Strategie
+      // iter86: Stundenabrechnung ist einheitlich besteuert — der eine
+      // Formular-Satz gilt für alle erzeugten Positionen.
       let positions: Array<{
         position: number;
         description: string;
@@ -92,6 +94,7 @@ export async function createInvoiceFromTimeEntriesAction(input: z.infer<typeof C
         unit: string;
         unitPrice: number;
         netAmount: number;
+        vatRate: number;
       }>;
 
       if (data.strategy === 'one-line') {
@@ -105,6 +108,7 @@ export async function createInvoiceFromTimeEntriesAction(input: z.infer<typeof C
             unit: 'Stunde',
             unitPrice: avgRate,
             netAmount: totalNet,
+            vatRate: data.vatRate,
           },
         ];
       } else {
@@ -115,6 +119,7 @@ export async function createInvoiceFromTimeEntriesAction(input: z.infer<typeof C
           unit: 'Stunde',
           unitPrice: x.rate,
           netAmount: x.net,
+          vatRate: data.vatRate,
         }));
       }
 

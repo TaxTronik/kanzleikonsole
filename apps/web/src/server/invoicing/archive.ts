@@ -59,9 +59,11 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
     return { ok: true, bucket: existing.storageBucket, key: existing.storageKey, number: loaded.number };
   }
 
-  // 2. Validierung (identisch zur bisherigen Download-Route).
+  // 2. Validierung (identisch zur bisherigen Download-Route). E-Mail + Telefon
+  // sind XRechnung-Pflicht (BG-6 Verkäufer-Kontakt, BR-DE-2/-6/-7) — ohne sie
+  // würde nicht-konformes XML archiviert, daher fail-closed.
   const seller = await readSellerInfo(ctx);
-  if (!seller.name || !seller.street || !seller.city || !seller.postalCode) {
+  if (!seller.name || !seller.street || !seller.city || !seller.postalCode || !seller.email || !seller.phone) {
     return { ok: false, code: 'seller_incomplete' };
   }
   if (!loaded.client.street || !loaded.client.city || !loaded.client.postalCode) {
@@ -76,7 +78,6 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
     subject: loaded.subject,
     notes: loaded.notes,
     currency: 'EUR' as const,
-    vatRate: Number(loaded.vatRate.toString()),
     netAmount: Number(loaded.netAmount.toString()),
     vatAmount: Number(loaded.vatAmount.toString()),
     totalAmount: Number(loaded.totalAmount.toString()),
@@ -87,6 +88,7 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
       unit: p.unit,
       unitPrice: Number(p.unitPrice.toString()),
       netAmount: Number(p.netAmount.toString()),
+      vatRate: Number(p.vatRate.toString()),
     })),
   };
   const buyer = {

@@ -11,6 +11,7 @@ import { createDocumentWithVersion } from '@/server/documents/upload-helpers';
 import { sendTemplateMail } from '@/server/mail/dispatch';
 import { toActionError } from '@/server/auth/rbac';
 import { ensureZugferdArchive } from '@/server/invoicing/archive';
+import { computeVatTotals } from '@/server/invoicing/vat';
 import { allocateInvoiceNumber, isValidInvoiceTransition } from '@/server/invoicing/number';
 import { readModules, type InvoiceMode } from '@/server/settings/modules';
 import { log } from '@/server/logger';
@@ -35,6 +36,8 @@ const PositionSchema = z.object({
   quantity: z.coerce.number().min(0).max(100000),
   unitPrice: z.coerce.number().min(-1000000).max(1000000),
   unit: z.string().max(50).default('Stück'),
+  // iter86 (§ 14 Abs. 4 Nr. 8 UStG): Steuersatz je Position.
+  vatRate: z.coerce.number().min(0).max(99).default(19),
 });
 
 // iter85 (GoB): KEIN number-Feld mehr — die Rechnungsnummer wird automatisch
@@ -46,7 +49,6 @@ const CreateSchema = z.object({
   subject: z.string().min(1).max(500),
   issueDate: z.string().date(),
   dueDate: z.string().date(),
-  vatRate: z.coerce.number().min(0).max(99).default(19),
   notes: z.string().max(5000).optional().or(z.literal('')),
   format: z.enum(['PDF', 'XRECHNUNG', 'ZUGFERD']).default('PDF'),
   positions: z.array(PositionSchema).min(1),
@@ -57,10 +59,9 @@ export async function createInvoiceAction(input: {
   subject: string;
   issueDate: string;
   dueDate: string;
-  vatRate: number;
   notes?: string;
   format: 'PDF' | 'XRECHNUNG' | 'ZUGFERD';
-  positions: Array<{ description: string; quantity: number; unitPrice: number; unit: string }>;
+  positions: Array<{ description: string; quantity: number; unitPrice: number; unit: string; vatRate: number }>;
 }): Promise<ActionResult & { invoiceId?: string; number?: string }> {
   const g = await staffActionGuard();
   if (!g.ok) return g;
@@ -75,7 +76,7 @@ export async function createInvoiceAction(input: {
   }
   const data = parsed.data;
 
-  // Beträge berechnen
+  // Beträge berechnen — USt je Satz-Gruppe (§ 14 Abs. 4 Nr. 8 UStG, iter86).
   const positionsWithNet = data.positions.map((p, i) => ({
     position: i + 1,
     description: p.description,
@@ -83,10 +84,9 @@ export async function createInvoiceAction(input: {
     unitPrice: p.unitPrice,
     unit: p.unit,
     netAmount: round2(p.quantity * p.unitPrice),
+    vatRate: p.vatRate,
   }));
-  const netTotal = round2(positionsWithNet.reduce((s, p) => s + p.netAmount, 0));
-  const vatTotal = round2((netTotal * data.vatRate) / 100);
-  const grandTotal = round2(netTotal + vatTotal);
+  const totals = computeVatTotals(positionsWithNet);
 
   let invoiceId: string;
   let invoiceNumber: string;
@@ -105,10 +105,11 @@ export async function createInvoiceAction(input: {
           dueDate: new Date(data.dueDate),
           status: 'DRAFT',
           format: data.format,
-          netAmount: netTotal,
-          vatAmount: vatTotal,
-          totalAmount: grandTotal,
-          vatRate: data.vatRate,
+          netAmount: totals.netAmount,
+          vatAmount: totals.vatAmount,
+          totalAmount: totals.totalAmount,
+          // Kopf-Satz nur bei einheitlichem Satz (Anzeige/CSV); Mischsätze → null.
+          vatRate: totals.uniformRate,
           notes: data.notes || null,
           createdByStaff: staffId,
           positions: { create: positionsWithNet },
@@ -125,7 +126,7 @@ export async function createInvoiceAction(input: {
         after: {
           number,
           clientId: data.clientId,
-          totalAmount: grandTotal,
+          totalAmount: totals.totalAmount,
           format: data.format,
         },
       });
@@ -159,7 +160,7 @@ const StatusSchema = z.object({
 
 const ARCHIVE_FAIL_TEXT: Record<string, string> = {
   not_found: 'Rechnung nicht gefunden.',
-  seller_incomplete: 'Kanzlei-Rechnungsabsender unvollständig (Einstellungen → Rechnungsdaten).',
+  seller_incomplete: 'Kanzlei-Rechnungsabsender unvollständig — Name, Anschrift, E-Mail und Telefon sind Pflicht (Einstellungen → Rechnungsdaten).',
   buyer_incomplete: 'Mandanten-Anschrift unvollständig (Straße/PLZ/Ort).',
 };
 
@@ -292,7 +293,7 @@ function round2(n: number): number {
 // Formular-Helper für create-Page (transformiert FormData inkl. Position-Repeater).
 // Delegiert an createInvoiceAction (dort sitzt das Auth-Gate).
 export async function createInvoiceFromFormAction(formData: FormData): Promise<void> {
-  const positions: Array<{ description: string; quantity: number; unitPrice: number; unit: string }> = [];
+  const positions: Array<{ description: string; quantity: number; unitPrice: number; unit: string; vatRate: number }> = [];
   for (let i = 0; i < 50; i++) {
     const desc = formData.get(`positions[${i}].description`);
     if (!desc) continue;
@@ -301,6 +302,7 @@ export async function createInvoiceFromFormAction(formData: FormData): Promise<v
       quantity: Number(formData.get(`positions[${i}].quantity`) ?? 0),
       unitPrice: Number(formData.get(`positions[${i}].unitPrice`) ?? 0),
       unit: String(formData.get(`positions[${i}].unit`) ?? 'Stück'),
+      vatRate: Number(formData.get(`positions[${i}].vatRate`) ?? 19),
     });
   }
 
@@ -309,7 +311,6 @@ export async function createInvoiceFromFormAction(formData: FormData): Promise<v
     subject: String(formData.get('subject') ?? ''),
     issueDate: String(formData.get('issueDate') ?? ''),
     dueDate: String(formData.get('dueDate') ?? ''),
-    vatRate: Number(formData.get('vatRate') ?? 19),
     notes: String(formData.get('notes') ?? ''),
     format: (String(formData.get('format') ?? 'PDF') as 'PDF' | 'XRECHNUNG' | 'ZUGFERD'),
     positions,
@@ -437,7 +438,9 @@ export async function uploadExternalInvoiceAction(input: z.infer<typeof UploadEx
           netAmount: data.totalAmount,  // EXTERNAL: kein USt-Split, Brutto=Netto pro Pos
           vatAmount: 0,
           totalAmount: data.totalAmount,
-          vatRate: 0,
+          // iter86: kein bekannter Satz (Ausweis steht in der Fremd-PDF) → NULL
+          // statt fälschlich 0 % (CSV wies vorher USt 0 aus).
+          vatRate: null,
           notes: data.notes ?? null,
           documentId: doc.id,
           createdByStaff: staffId,

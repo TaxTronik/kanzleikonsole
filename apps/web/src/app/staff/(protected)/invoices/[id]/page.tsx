@@ -5,6 +5,7 @@ import { staffAuth } from '@/server/auth/staff';
 import { canAccessClientTx } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { markSentAction, markPaidAction, cancelInvoiceAction } from '../actions';
+import { computeVatTotals } from '@/server/invoicing/vat';
 
 import { fmtDateShort, fmtEUR } from '@/lib/fmt';
 const statusLabels: Record<string, string> = {
@@ -51,6 +52,11 @@ export default async function InvoiceDetailPage({
   );
 
   if (!inv) notFound();
+
+  // iter86: USt-Ausweis je Steuersatz-Gruppe (§ 14 Abs. 4 Nr. 8 UStG).
+  const vatGroups = computeVatTotals(
+    inv.positions.map((p) => ({ netAmount: Number(p.netAmount), vatRate: Number(p.vatRate) })),
+  ).groups;
 
   return (
     <div className="p-8 max-w-4xl">
@@ -100,6 +106,7 @@ export default async function InvoiceDetailPage({
               <th className="th">Beschreibung</th>
               <th className="th th-right">Menge</th>
               <th className="th th-right">Einzelpreis</th>
+              <th className="th th-right">USt %</th>
               <th className="th th-right">Netto</th>
             </tr>
           </thead>
@@ -115,22 +122,28 @@ export default async function InvoiceDetailPage({
                   {fmtEUR(p.unitPrice)}
                 </td>
                 <td className="td-num">
+                  {Number(p.vatRate).toLocaleString('de-DE')}
+                </td>
+                <td className="td-num">
                   {fmtEUR(p.netAmount)}
                 </td>
               </tr>
             ))}
             <tr className="bg-gray-50">
-              <td colSpan={4} className="px-6 py-3 text-right text-secondary">Netto</td>
+              <td colSpan={5} className="px-6 py-3 text-right text-secondary">Netto</td>
               <td className="td-num">{fmtEUR(inv.netAmount)}</td>
             </tr>
-            <tr className="bg-gray-50">
-              <td colSpan={4} className="px-6 py-3 text-right text-secondary">
-                USt ({Number(inv.vatRate)} %)
-              </td>
-              <td className="td-num">{fmtEUR(inv.vatAmount)}</td>
-            </tr>
+            {/* iter86: USt-Ausweis je Steuersatz-Gruppe (§ 14 Abs. 4 Nr. 8 UStG) */}
+            {vatGroups.map((g) => (
+              <tr key={g.rate} className="bg-gray-50">
+                <td colSpan={5} className="px-6 py-3 text-right text-secondary">
+                  USt ({g.rate.toLocaleString('de-DE')} %)
+                </td>
+                <td className="td-num">{fmtEUR(g.vat)}</td>
+              </tr>
+            ))}
             <tr className="bg-gray-100 font-bold">
-              <td colSpan={4} className="px-6 py-3 text-right text-primary">Brutto</td>
+              <td colSpan={5} className="px-6 py-3 text-right text-primary">Brutto</td>
               <td className="px-6 py-3 text-right font-mono tabular-nums text-primary">{fmtEUR(inv.totalAmount)}</td>
             </tr>
           </tbody>

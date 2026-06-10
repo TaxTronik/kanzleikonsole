@@ -12,6 +12,18 @@ der Eintrag entsteht mit der Änderung, nicht nachträglich.
 
 ## [Unreleased]
 
+- **[Scope]** Fakturierung: USt-Satz je Position (Migration iter86,
+  19 % / 7 % / 0 % je Zeile, § 14 Abs. 4 Nr. 8 UStG) mit Steuerausweis
+  und Rundung je Satz-Gruppe in Anzeige, PDF und E-Rechnung
+  (EN-16931-Kategorien S/Z); Bestandsrechnungen übernehmen den bisherigen
+  Kopfsatz auf alle Positionen
+- **[Scope]** E-Rechnung KoSIT-konform: XRechnung-Generator besteht jetzt
+  den KoSIT-Validator (XRechnung 3.0.2, Schema + Schematron inkl. BR-DE) —
+  ergänzt: Geschäftsprozess (BT-23), Käuferreferenz (BT-10),
+  Verkäufer-Kontakt (BG-6, dafür sind Kanzlei-E-Mail + -Telefon jetzt
+  Pflichtangaben), Leistungsdatum (BT-72 = Rechnungsdatum), korrigiert:
+  Namespace der Datumselemente; neuer CI-Job `e-rechnung` validiert jeden
+  Lauf gegen den gepinnten Validator und archiviert den Prüfbericht
 - **[Scope]** Fakturierung GoB-fest (Migration iter85): automatische
   lückenlose Rechnungsnummern je Jahr (Nummernkreis, manuelle Eingabe nur
   noch im Extern-Modus), DB-seitige Festschreibung nach Versand (Felder +

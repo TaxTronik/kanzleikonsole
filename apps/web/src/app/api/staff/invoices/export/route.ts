@@ -72,7 +72,9 @@ export async function GET(req: NextRequest) {
     { key: 'clientDatev', label: 'Mandant DATEV', accessor: (r) => r.client.datevNo ?? '' },
     { key: 'subject', label: 'Betreff', accessor: (r) => r.subject },
     { key: 'netAmount', label: 'Netto', accessor: (r) => Number(r.netAmount.toString()) },
-    { key: 'vatRate', label: 'USt-Satz %', accessor: (r) => Number(r.vatRate.toString()) },
+    // iter86: NULL = Mischsätze (Satz lebt an den Positionen) oder
+    // EXTERNAL-PDF (Ausweis in der Datei) → leere Zelle statt falscher 0.
+    { key: 'vatRate', label: 'USt-Satz %', accessor: (r) => (r.vatRate === null ? '' : Number(r.vatRate.toString())) },
     { key: 'vatAmount', label: 'USt', accessor: (r) => Number(r.vatAmount.toString()) },
     { key: 'totalAmount', label: 'Brutto', accessor: (r) => Number(r.totalAmount.toString()) },
     { key: 'sentAt', label: 'Versendet', accessor: (r) => r.sentAt },

@@ -11,6 +11,8 @@ interface Position {
   quantity: number;
   unitPrice: number;
   unit: string;
+  // iter86: Steuersatz je Position (§ 14 Abs. 4 Nr. 8 UStG).
+  vatRate: number;
 }
 
 // Stabile React-Keys für Positionszeilen (Add/Remove) — kein key={index}.
@@ -22,6 +24,7 @@ const newPosition = (): PositionRow => ({
   quantity: 1,
   unitPrice: 0,
   unit: 'Stunde',
+  vatRate: 19,
 });
 
 interface Props {
@@ -39,7 +42,6 @@ export function NewInvoiceForm({ clients }: Props) {
   const [subject, setSubject] = useState('');
   const [issueDate, setIssueDate] = useState(today);
   const [dueDate, setDueDate] = useState(inThirtyDays);
-  const [vatRate, setVatRate] = useState(19);
   const [format, setFormat] = useState<'PDF' | 'XRECHNUNG' | 'ZUGFERD'>('XRECHNUNG');
   const [notes, setNotes] = useState('');
   const [positions, setPositions] = useState<PositionRow[]>([newPosition()]);
@@ -58,8 +60,12 @@ export function NewInvoiceForm({ clients }: Props) {
     setPositions((ps) => (ps.length > 1 ? ps.filter((_, i) => i !== idx) : ps));
   }
 
+  // iter86: Vorschau-Summen je Positions-Satz (verbindlich rechnet der Server).
   const netTotal = positions.reduce((s, p) => s + (p.quantity || 0) * (p.unitPrice || 0), 0);
-  const vatTotal = (netTotal * vatRate) / 100;
+  const vatTotal = positions.reduce(
+    (s, p) => s + ((p.quantity || 0) * (p.unitPrice || 0) * (p.vatRate || 0)) / 100,
+    0,
+  );
   const grandTotal = netTotal + vatTotal;
 
   function handleSubmit(e: React.FormEvent) {
@@ -79,7 +85,6 @@ export function NewInvoiceForm({ clients }: Props) {
         subject,
         issueDate,
         dueDate,
-        vatRate,
         notes,
         format,
         // `id` ist nur der React-Key — nicht an die Action durchreichen.
@@ -88,6 +93,7 @@ export function NewInvoiceForm({ clients }: Props) {
           quantity: p.quantity,
           unitPrice: p.unitPrice,
           unit: p.unit,
+          vatRate: p.vatRate,
         })),
       });
       if (r.error || !r.invoiceId) {
@@ -164,20 +170,6 @@ export function NewInvoiceForm({ clients }: Props) {
             />
           </div>
           <div>
-            <label className="label" htmlFor="vatRate">USt (%)</label>
-            <input
-              id="vatRate"
-              type="number"
-              step="0.01"
-              min="0"
-              max="99"
-              className="input"
-              value={vatRate}
-              onChange={(e) => setVatRate(Number(e.target.value))}
-              required
-            />
-          </div>
-          <div>
             <label className="label" htmlFor="format">Format</label>
             <select
               id="format"
@@ -205,7 +197,7 @@ export function NewInvoiceForm({ clients }: Props) {
         <div className="space-y-3">
           {positions.map((p, i) => (
             <div key={p.id} className="grid grid-cols-12 gap-2 items-end">
-              <div className="col-span-5">
+              <div className="col-span-4">
                 <label className="label" htmlFor={`pos-${i}-description`}>Beschreibung</label>
                 <input
                   id={`pos-${i}-description`}
@@ -250,6 +242,19 @@ export function NewInvoiceForm({ clients }: Props) {
                   required
                 />
               </div>
+              <div className="col-span-1">
+                <label className="label" htmlFor={`pos-${i}-vatRate`}>USt %</label>
+                <select
+                  id={`pos-${i}-vatRate`}
+                  className="input"
+                  value={p.vatRate}
+                  onChange={(e) => setPosField(i, 'vatRate', Number(e.target.value))}
+                >
+                  <option value={19}>19</option>
+                  <option value={7}>7</option>
+                  <option value={0}>0</option>
+                </select>
+              </div>
               <div className="col-span-1 pb-2 text-right">
                 <button
                   type="button"
@@ -268,7 +273,7 @@ export function NewInvoiceForm({ clients }: Props) {
         <div className="mt-6 pt-4 border-t border-default grid grid-cols-2 gap-2 text-sm">
           <div className="text-right text-secondary">Netto:</div>
           <div className="font-mono tabular-nums text-right">{fmtEUR(netTotal)}</div>
-          <div className="text-right text-secondary">USt ({vatRate} %):</div>
+          <div className="text-right text-secondary">USt:</div>
           <div className="font-mono tabular-nums text-right">{fmtEUR(vatTotal)}</div>
           <div className="text-right text-primary font-bold">Brutto:</div>
           <div className="font-mono tabular-nums text-right text-primary font-bold">{fmtEUR(grandTotal)}</div>

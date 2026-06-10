@@ -44,13 +44,13 @@ export async function GET(
 
   const seller = await readSellerInfo(ctx);
 
-  // Pflichtfeld-Check
-  if (!seller.name || !seller.street || !seller.city || !seller.postalCode) {
+  // Pflichtfeld-Check — E-Mail/Telefon sind XRechnung-Pflicht (BG-6, BR-DE-2/-6/-7).
+  if (!seller.name || !seller.street || !seller.city || !seller.postalCode || !seller.email || !seller.phone) {
     return NextResponse.json(
       {
         error: 'seller_incomplete',
         message:
-          'Verkäufer-Stammdaten unvollständig. Bitte zuerst unter /staff/admin/settings ergänzen (Name, Straße, PLZ, Ort).',
+          'Verkäufer-Stammdaten unvollständig. Bitte zuerst unter /staff/admin/settings ergänzen (Name, Straße, PLZ, Ort, E-Mail, Telefon).',
       },
       { status: 422 },
     );
@@ -74,7 +74,6 @@ export async function GET(
       subject: invoice.subject,
       notes: invoice.notes,
       currency: 'EUR',
-      vatRate: Number(invoice.vatRate.toString()),
       netAmount: Number(invoice.netAmount.toString()),
       vatAmount: Number(invoice.vatAmount.toString()),
       totalAmount: Number(invoice.totalAmount.toString()),
@@ -85,6 +84,7 @@ export async function GET(
         unit: p.unit,
         unitPrice: Number(p.unitPrice.toString()),
         netAmount: Number(p.netAmount.toString()),
+        vatRate: Number(p.vatRate.toString()),
       })),
     },
     seller,

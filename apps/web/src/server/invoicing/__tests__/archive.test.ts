@@ -20,7 +20,10 @@ import { evidenceService } from '@/server/container';
 
 const ctx = { tenantId: 't1', actorId: 's1', actorType: 'STAFF' as const };
 
-const COMPLETE_SELLER = { name: 'Kanzlei', street: 'Weg 1', city: 'Stadt', postalCode: '12345' };
+const COMPLETE_SELLER = {
+  name: 'Kanzlei', street: 'Weg 1', city: 'Stadt', postalCode: '12345',
+  email: 'mail@kanzlei.example', phone: '+49 30 1',
+};
 const COMPLETE_CLIENT = {
   name: 'Mandant', street: 'Gasse 2', city: 'Ort', postalCode: '54321',
   countryIso: 'DE', vatId: null, invoiceEmail: null,
@@ -80,6 +83,14 @@ describe('ensureZugferdArchive', () => {
   it('seller_incomplete bei unvollständigen Verkäuferdaten', async () => {
     tx.invoice.findFirst.mockResolvedValueOnce(baseInvoice());
     vi.mocked(readSellerInfo).mockResolvedValue({ name: 'X', street: '', city: '', postalCode: '' } as never);
+    const res = await ensureZugferdArchive(ctx, 'inv1');
+    expect(res).toEqual({ ok: false, code: 'seller_incomplete' });
+    expect(generateZugferdPdf).not.toHaveBeenCalled();
+  });
+
+  it('seller_incomplete ohne Telefon/E-Mail (BG-6-Pflicht der XRechnung)', async () => {
+    tx.invoice.findFirst.mockResolvedValueOnce(baseInvoice());
+    vi.mocked(readSellerInfo).mockResolvedValue({ ...COMPLETE_SELLER, phone: null } as never);
     const res = await ensureZugferdArchive(ctx, 'inv1');
     expect(res).toEqual({ ok: false, code: 'seller_incomplete' });
     expect(generateZugferdPdf).not.toHaveBeenCalled();

@@ -15,9 +15,14 @@ deaktiviert das Modul.
 
 - `Invoice` — Kopf (number tenant-unique, Beträge als Decimal(12,2), Status
   DRAFT/SENT/PAID/OVERDUE/CANCELLED, Format PDF/XRECHNUNG/ZUGFERD,
-  `documentId` → GoBD-Archivkopie); `InvoicePosition` (Cascade am Entwurf);
+  `documentId` → GoBD-Archivkopie); `InvoicePosition` (Cascade am Entwurf,
+  trägt seit iter86 den USt-Satz je Position — § 14 Abs. 4 Nr. 8 UStG);
   `InvoiceCategory` (EXTERNAL: Mail-Template-Zuordnung);
   `InvoiceNumberSeq` (tenantId+year → lastNo, Nummernkreis).
+- USt-Logik zentral in `server/invoicing/vat.ts`: Gruppierung je Satz,
+  Rundung je Satz-Gruppe (nicht je Position), EN-16931-Kategorie S/Z;
+  `invoice.vatRate` ist nur noch informativ (einheitlicher Satz oder NULL
+  bei Mischsätzen/EXTERNAL).
 
 ## Programminterne Kontrollen
 
@@ -36,8 +41,10 @@ deaktiviert das Modul.
 
 - **E-Rechnung:** XRechnung (UN/CEFACT CII, Profil XRechnung 3.0,
   `server/invoicing/xrechnung.ts`) und ZUGFeRD (PDF mit eingebettetem
-  Factur-X-XML, EN 16931, `zugferd.ts`); Pflichtfeld-Validierung
-  (Verkäufer/Käufer-Anschrift) vor Erzeugung.
+  Factur-X-XML, EN 16931, `zugferd.ts`); Steuerblock je Satz-Gruppe (BG-23),
+  Käuferreferenz (BT-10), Verkäufer-Kontakt (BG-6), Leistungsdatum (BT-72,
+  Konvention: = Rechnungsdatum); Pflichtfeld-Validierung vor Erzeugung —
+  Verkäufer-Anschrift inkl. E-Mail + Telefon (BG-6-Pflicht), Käufer-Anschrift.
 - **GoBD-Archiv:** `server/invoicing/archive.ts` — byte-stabile Ablage bei
   Versand (Object-Lock COMPLIANCE, 10 Jahre), idempotent, als geteiltes
   Mandanten-Dokument (Portal-Download); EXTERNAL-PDF analog beim Upload.
@@ -57,13 +64,20 @@ deaktiviert das Modul.
 | Überfälligkeit automatisch + auditiert | Worker | `apps/worker/.../invoice-overdue-check.test.ts` (5 Fälle) |
 | Mandantentrennung | RLS + tenant-Filter | `rls-cross-tenant.test.ts` (Invoice-Fälle) |
 | Auth auf jeder Action | staffActionGuard/withStaff | `server-action-authz.test.ts` (AST-Guard) |
+| USt je Position, Rundung je Satz-Gruppe | `vat.ts` (iter86) | `invoicing/__tests__/vat.test.ts` (5 Fälle) |
+| XRechnung-Konformität (Schema + BR-DE) | `xrechnung.ts` | `xrechnung.test.ts` (Struktur) + CI-Job `e-rechnung`: KoSIT-Validator gegen die geteilte Mischsätze-Fixture (`sample-fixture.ts`), Prüfbericht als Artefakt |
 
 ## Bekannte Grenzen (dokumentiert, bewusst)
 
-- USt nur Kategorie „S" in der E-Rechnung — steuerfreie/0%-Fälle (Kategorie
-  Z/E mit Befreiungsgrund) sind nicht abgebildet; fachliche Entscheidung
-  offen (Gap-Analyse).
+- E-Rechnung kennt die USt-Kategorien S (Satz > 0) und Z (0 %) — befreite
+  Umsätze mit Befreiungsgrund (Kategorie E, BT-121) sind nicht abgebildet;
+  0-%-Positionen laufen als Z ohne Begründungstext.
 - Storno ist ein Status, kein Stornobeleg (kein Dokumenttyp 381 / keine
-  Gutschrift); EXTERNAL erfasst keinen USt-Split (Brutto=Netto in der DB).
-- XRechnung-/ZUGFeRD-Konformität ist konstruktiv umgesetzt, aber nicht
-  gegen den KoSIT-Validator automatisiert geprüft.
+  Gutschrift); EXTERNAL erfasst keinen USt-Split (Brutto=Netto in der DB,
+  `vatRate` der Positionen/des Kopfes bleibt NULL).
+- Leistungsdatum (BT-72) wird per Konvention mit dem Rechnungsdatum
+  gleichgesetzt; ein eigenes Leistungsdatum-Feld gibt es nicht.
+
+Seit iter86 entfallen: USt je Position (vorher nur Kopfsatz) und die
+fehlende KoSIT-Prüfung — der CI-Job `e-rechnung` validiert jeden Lauf
+gegen Schema + Schematron (inkl. BR-DE) der XRechnung 3.0.2.

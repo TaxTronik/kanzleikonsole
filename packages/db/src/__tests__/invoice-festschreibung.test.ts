@@ -91,7 +91,7 @@ async function makeInvoice(): Promise<string> {
       vatRate: 19,
       createdByStaff: staffId,
       positions: {
-        create: [{ position: 1, description: 'Stunde', quantity: 1, unit: 'Stunde', unitPrice: 100, netAmount: 100 }],
+        create: [{ position: 1, description: 'Stunde', quantity: 1, unit: 'Stunde', unitPrice: 100, netAmount: 100, vatRate: 19 }],
       },
     },
   });
@@ -138,7 +138,7 @@ describeWithDatabase('Festschreibung: Rechnung nach Versand unveränderlich (ite
     await expect(owner.invoicePosition.delete({ where: { id: pos.id } })).rejects.toThrow(/Festschreibung/);
     await expect(
       owner.invoicePosition.create({
-        data: { invoiceId: id, position: 2, description: 'Nachschub', quantity: 1, unit: 'Stück', unitPrice: 1, netAmount: 1 },
+        data: { invoiceId: id, position: 2, description: 'Nachschub', quantity: 1, unit: 'Stück', unitPrice: 1, netAmount: 1, vatRate: 19 },
       }),
     ).rejects.toThrow(/Festschreibung/);
   });

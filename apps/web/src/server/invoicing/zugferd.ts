@@ -25,6 +25,7 @@ import {
   type PDFFont,
 } from 'pdf-lib';
 import type { XRechnungInvoice, XRechnungBuyer } from './xrechnung';
+import { computeVatTotals } from './vat';
 import type { SellerInfo } from '@/server/settings/tenant-settings';
 
 import { fmtDateShort, fmtDecimal, fmtEUR } from '@/lib/fmt';
@@ -209,9 +210,13 @@ export async function generateZugferdPdf(
   drawText(ctx, 'Netto', sumCol1, ctx.y);
   drawText(ctx, fmtEUR(invoice.netAmount), sumCol2, ctx.y);
   ctx.y -= 14;
-  drawText(ctx, `USt (${invoice.vatRate.toFixed(2)} %)`, sumCol1, ctx.y);
-  drawText(ctx, fmtEUR(invoice.vatAmount), sumCol2, ctx.y);
-  ctx.y -= 14;
+  // iter86: USt-Ausweis je Steuersatz-Gruppe (§ 14 Abs. 4 Nr. 8 UStG).
+  for (const g of computeVatTotals(invoice.positions).groups) {
+    newPageIfNeeded(ctx, 14);
+    drawText(ctx, `USt (${g.rate.toFixed(2)} %)`, sumCol1, ctx.y);
+    drawText(ctx, fmtEUR(g.vat), sumCol2, ctx.y);
+    ctx.y -= 14;
+  }
   drawLine(ctx, ctx.y, rgb(0.4, 0.4, 0.4));
   ctx.y -= 14;
   drawText(ctx, 'Brutto', sumCol1, ctx.y, { bold: true, size: FONT_SIZE_HEADING });

@@ -391,7 +391,9 @@ model Invoice {
   netAmount      Decimal           @map("net_amount") @db.Decimal(12, 2)
   vatAmount      Decimal           @map("vat_amount") @db.Decimal(12, 2)
   totalAmount    Decimal           @map("total_amount") @db.Decimal(12, 2)
-  vatRate        Decimal           @map("vat_rate") @db.Decimal(5, 2)
+  // iter86: NULL bei Mischsätzen (Satz lebt an den Positionen); bei
+  // einheitlichem Satz redundant gesetzt (Anzeige/CSV, Bestandsdaten).
+  vatRate        Decimal?          @map("vat_rate") @db.Decimal(5, 2)
   notes          String?
   sentAt         DateTime?         @map("sent_at")
   paidAt         DateTime?         @map("paid_at")
@@ -464,6 +466,10 @@ model InvoicePosition {
   unitPrice   Decimal @map("unit_price") @db.Decimal(10, 2)
   unit        String  @default("Stück")
   netAmount   Decimal @map("net_amount") @db.Decimal(12, 2)
+  // iter86 (§ 14 Abs. 4 Nr. 8 UStG): Steuersatz lebt an der Position;
+  // Kopf-Summen + E-Rechnungs-Steuerblock werden je Satz gruppiert
+  // (server/invoicing/vat.ts).
+  vatRate     Decimal @map("vat_rate") @db.Decimal(5, 2)
   invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   @@unique([invoiceId, position])
