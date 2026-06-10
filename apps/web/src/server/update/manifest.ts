@@ -22,9 +22,13 @@
 //   ]
 // }
 //
-// Signatur:
+// Signatur (zwei Transportwege, gleiche Bytes):
 //   - HTTP-Header X-Manifest-Signature: ed25519:<base64(sig(body))>
-//   - Public Key in env.UPDATE_PUBLIC_KEY (PEM oder hex 32-Byte)
+//   - ODER detached unter <url>.sig (Inhalt: `ed25519:<base64>`) — statisches
+//     Hosting (Forgejo-Raw, Pages, S3) kann keine Response-Header setzen;
+//     die Release-Pipeline (release.yml) publiziert manifest.json +
+//     manifest.json.sig (scripts/release/build-update-manifest.mjs).
+//   - Public Key in env.UPDATE_PUBLIC_KEY (PEM oder raw 32-Byte base64)
 //
 // MVP: Wir verifizieren die Signatur via Node-Crypto. Falls keine Signatur
 // konfiguriert ist, läuft der Adapter im „insecure"-Modus (Logging-Warnung).
@@ -118,7 +122,7 @@ export async function checkForUpdates(currentVersion: string): Promise<CheckResu
   } catch (e) {
     return { ok: false, error: `Manifest-Body nicht lesbar: ${(e as Error).message}` };
   }
-  const signature = response.headers.get('x-manifest-signature');
+  let signature = response.headers.get('x-manifest-signature');
   const publicKeyB64 = process.env['UPDATE_PUBLIC_KEY'];
 
   let warning: string | undefined;
@@ -133,9 +137,16 @@ export async function checkForUpdates(currentVersion: string): Promise<CheckResu
       };
     }
     warning = 'UPDATE_PUBLIC_KEY nicht gesetzt — Manifest-Signatur nicht verifiziert (nur in Dev erlaubt)!';
-  } else if (!signature) {
-    return { ok: false, error: 'Manifest hat keine Signatur (X-Manifest-Signature fehlt).' };
   } else {
+    // Statisches Hosting kann keine Header setzen → Fallback auf die detached
+    // Signatur unter <url>.sig. Erst wenn BEIDE Wege fehlen, fail-closed.
+    if (!signature) signature = await fetchDetachedSignature(url);
+    if (!signature) {
+      return {
+        ok: false,
+        error: 'Manifest hat keine Signatur (weder X-Manifest-Signature-Header noch <url>.sig).',
+      };
+    }
     const ok = verifyManifestSignature(body, signature, publicKeyB64);
     if (!ok) {
       return { ok: false, error: 'Manifest-Signatur ungültig — Update verweigert.' };
@@ -157,6 +168,33 @@ export async function checkForUpdates(currentVersion: string): Promise<CheckResu
     newer,
     warning,
   };
+}
+
+// Signatur-Dateien sind winzig (`ed25519:` + base64(64 Bytes) ≈ 100 Zeichen);
+// 4 KB lässt Luft für Whitespace, mehr ist verdächtig.
+const MAX_SIG_BYTES = 4096;
+
+/**
+ * Holt die detached Signatur `<url>.sig` (Inhalt: `ed25519:<base64>`).
+ * Best-effort: jeder Fehler → null, der Aufrufer entscheidet fail-closed.
+ * Gleiche Guards wie das Manifest selbst (SSRF, Timeout, No-Redirect, Cap).
+ */
+async function fetchDetachedSignature(manifestUrl: string): Promise<string | null> {
+  try {
+    const res = await safeFetch(`${manifestUrl}.sig`, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(MANIFEST_TIMEOUT_MS),
+      redirect: 'error',
+    });
+    if (!res.ok) return null;
+    const cl = res.headers.get('content-length');
+    if (cl && Number(cl) > MAX_SIG_BYTES) return null;
+    const text = (await res.text()).trim();
+    if (text.length > MAX_SIG_BYTES) return null;
+    return /^ed25519:[A-Za-z0-9+/=]+$/.test(text) ? text : null;
+  } catch {
+    return null;
+  }
 }
 
 function verifyManifestSignature(

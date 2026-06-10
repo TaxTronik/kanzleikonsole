@@ -92,7 +92,33 @@ mit dem Image `1.4.x` funktionieren. Der CI-Job `upgrade-path` testet die
 Hinrichtung (alter Migrationsstand → HEAD); die Rückwärts-Verträglichkeit ist
 Review-Disziplin beim Schreiben der Migration.
 
-## 5. Welcher Stand läuft gerade?
+## 5. Update-Benachrichtigung (signiertes Manifest)
+
+Jedes Release publiziert zusätzlich ein **Ed25519-signiertes Update-Manifest**
+(`manifest.json` + detached `manifest.json.sig`). Installationen mit
+konfiguriertem `UPDATE_MANIFEST_URL` + `UPDATE_PUBLIC_KEY` zeigen dann in der
+Admin-UI „Update verfügbar" — inklusive Release-Notes (Tag-Annotation) und
+`migrationsRequired` (automatisch aus dem Migrations-Diff zum Vortag-Release).
+Die Signaturprüfung ist fail-closed: ohne gültige Signatur wird kein Update
+angezeigt. Es gibt bewusst **kein Auto-Update** — einspielen bleibt
+`./scripts/update.sh`.
+
+**Einmaliges Vendor-Setup:**
+
+1. Schlüsselpaar erzeugen: `node scripts/release/generate-update-key.mjs`
+   - privater Schlüssel → Forgejo-Repo-Secret `UPDATE_MANIFEST_PRIVATE_KEY`
+   - öffentlicher Schlüssel → an Kunden verteilen (`UPDATE_PUBLIC_KEY`)
+2. **Öffentliches** Repo für das Manifest anlegen (z. B. `TaxTronik/updates`),
+   Schreib-Token als Secret `UPDATE_MANIFEST_TOKEN`, Repo-URL als Variable
+   `UPDATE_MANIFEST_REPO`. Solange die Variable fehlt, überspringt die
+   Pipeline den Manifest-Job.
+3. Kunden-.env: `UPDATE_MANIFEST_URL` auf die Raw-URL des Manifests +
+   `UPDATE_PUBLIC_KEY` setzen (siehe `.env.example`).
+
+Release-Notes pflegen heißt: **annotierte Tags** verwenden —
+`git tag -a v1.4.0 -m "Kurzbeschreibung fürs Admin-Panel"`.
+
+## 6. Welcher Stand läuft gerade?
 
 - Admin-UI zeigt `APP_VERSION` (Seite „Administration").
 - `/api/health/detail` (admin-gated) liefert `version.app` + `version.commit`.

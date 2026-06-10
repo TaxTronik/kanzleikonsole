@@ -35,6 +35,10 @@ jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      prefix: ${{ steps.meta.outputs.prefix }}
+      web_digest: ${{ steps.push.outputs.web_digest }}
     steps:
       - uses: actions/checkout@v4
 
@@ -123,9 +127,83 @@ jobs:
           done
 
       - name: Push in die Registry
+        id: push
         run: |
           set -euo pipefail
           for img in web worker; do
             docker push "${{ steps.meta.outputs.prefix }}/$img:${{ steps.meta.outputs.version }}"
             docker push "${{ steps.meta.outputs.prefix }}/$img:latest"
           done
+          # Digest des gepushten web-Images fürs Update-Manifest (RepoDigests
+          # ist erst NACH dem Push befüllt).
+          DIGEST="$(docker inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' \
+            "${{ steps.meta.outputs.prefix }}/web:${{ steps.meta.outputs.version }}" \
+            | grep -F "${{ steps.meta.outputs.prefix }}/web@" | head -1 | cut -d@ -f2)"
+          test -n "$DIGEST"
+          echo "web_digest=$DIGEST" >> "$GITHUB_OUTPUT"
+
+  # ===========================================================================
+  # Signiertes Update-Manifest publizieren — die Admin-UI jeder Installation
+  # zeigt dann „Update verfügbar" (apps/web/src/server/update/manifest.ts
+  # verifiziert die Ed25519-Signatur fail-closed).
+  #
+  # Erst aktiv, wenn das Publishing-Ziel konfiguriert ist:
+  #   vars.UPDATE_MANIFEST_REPO          = PUBLIC Repo, z. B.
+  #       https://git.hirschmann-koxha.de/TaxTronik/updates.git
+  #   secrets.UPDATE_MANIFEST_TOKEN      = Token mit Schreibrecht auf das Repo
+  #   secrets.UPDATE_MANIFEST_PRIVATE_KEY= Ed25519 PKCS8-PEM
+  #       (einmalig erzeugen: node scripts/release/generate-update-key.mjs)
+  # Kunden-.env: UPDATE_MANIFEST_URL auf die Raw-URL des Manifests,
+  #   z. B. https://git.hirschmann-koxha.de/TaxTronik/updates/raw/branch/main/manifest.json
+  # plus UPDATE_PUBLIC_KEY (Ausgabe des Key-Skripts).
+  # ===========================================================================
+  manifest:
+    needs: release
+    if: vars.UPDATE_MANIFEST_REPO != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Manifest bauen, signieren und publizieren
+        env:
+          UPDATE_MANIFEST_PRIVATE_KEY: ${{ secrets.UPDATE_MANIFEST_PRIVATE_KEY }}
+          MANIFEST_REPO: ${{ vars.UPDATE_MANIFEST_REPO }}
+          MANIFEST_TOKEN: ${{ secrets.UPDATE_MANIFEST_TOKEN }}
+          VERSION: ${{ needs.release.outputs.version }}
+          IMAGE: ${{ needs.release.outputs.prefix }}/web:${{ needs.release.outputs.version }}
+          DIGEST: ${{ needs.release.outputs.web_digest }}
+        run: |
+          set -euo pipefail
+          test -n "$MANIFEST_TOKEN" || { echo "secrets.UPDATE_MANIFEST_TOKEN fehlt"; exit 1; }
+          test -n "$UPDATE_MANIFEST_PRIVATE_KEY" || { echo "secrets.UPDATE_MANIFEST_PRIVATE_KEY fehlt"; exit 1; }
+          git fetch --tags --force 2>/dev/null || true
+          TAG="$GITHUB_REF_NAME"
+
+          # migrationsRequired: haben sich die Migrationen seit dem vorherigen
+          # Release geändert? Erstes Release → konservativ true.
+          PREV="$(git tag --list 'v*' --sort=-v:refname | grep -vx "$TAG" | head -1 || true)"
+          MIG=true
+          if [ -n "$PREV" ] && git diff --quiet "$PREV" "$TAG" -- packages/db/prisma/migrations; then
+            MIG=false
+          fi
+
+          # Release-Notes = Tag-Annotation (bei lightweight Tags die Commit-Message).
+          git tag -l --format='%(contents)' "$TAG" > /tmp/notes.txt
+
+          # Bestehendes Manifest fortschreiben.
+          REPO_NOSCHEME="${MANIFEST_REPO#https://}"
+          git clone --depth 1 "https://x:${MANIFEST_TOKEN}@${REPO_NOSCHEME}" /tmp/updates
+
+          ARGS=(--version "$VERSION" --image "$IMAGE" --image-digest "$DIGEST"
+                --migrations-required "$MIG" --notes-file /tmp/notes.txt --out-dir /tmp/updates)
+          if [ -f /tmp/updates/manifest.json ]; then ARGS+=(--in /tmp/updates/manifest.json); fi
+          node scripts/release/build-update-manifest.mjs "${ARGS[@]}"
+
+          cd /tmp/updates
+          git add manifest.json manifest.json.sig
+          git -c user.name=taxtronik-release -c user.email=release@taxtronik.invalid \
+            commit -m "manifest: $VERSION"
+          git push
