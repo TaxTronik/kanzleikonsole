@@ -119,6 +119,15 @@ Zwei Punkte der ursprünglichen Entscheidung sind inzwischen überholt:
    Docker-Netz und ist nie öffentlich erreichbar (§ 203 StGB, minimale
    Angriffsfläche on-prem). Der im Upload-Flow oben beschriebene Schritt
    „Browser PUTet direkt zum Object-Store" und der Vorteil „Presigned-URL =
-   App muss nicht puffern" gelten nicht mehr; die App streamt die Datei in
-   den Quarantine-Bucket und committet danach (Scan → Hash → Ziel-Bucket,
-   unverändert). Siehe Kommentar in `packages/storage/src/client.ts`.
+   App muss nicht puffern" gelten nicht mehr; die App nimmt die Bytes selbst
+   entgegen, scannt synchron mit ClamAV VOR dem DB-Insert und schreibt direkt
+   in den Ziel-Bucket (`commitBytesWithTier`/`commitDocumentFromBytes` in
+   `packages/storage/src/service.ts`).
+3. **Quarantine-Bucket entfernt** (Security-Audit 2026-06, Befund 1): Mit dem
+   synchronen Scan-Pfad gibt es keinen Zwei-Phasen-Upload mehr — der
+   `quarantine`-Bucket, seine 30-Tage-Lifecycle-Rule und die CORS-Freigabe
+   (PUT/GET/HEAD für die Browser-Origin) waren Relikte der Presigned-
+   Architektur und wurden aus `infra/scripts/init-storage.sh`, dem
+   Env-Schema (`S3_BUCKET_QUARANTINE`) und dem Code entfernt, damit der
+   unscannbare, browser-beschreibbare Pfad nicht versehentlich reaktiviert
+   werden kann.

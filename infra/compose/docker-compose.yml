@@ -178,10 +178,6 @@ services:
       AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:?S3_SECRET_KEY nicht gesetzt}
       AWS_DEFAULT_REGION: us-east-1
       S3_ENDPOINT: http://seaweedfs:8333
-      # Browser-Origin für CORS auf den quarantine-Bucket. Komma-getrennt
-      # für Multi-Surface-Deploys (staff. + portal. Subdomain).
-      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
-      APP_PUBLIC_ORIGIN: ${APP_PUBLIC_ORIGIN:-}
     volumes:
       - ../scripts/init-storage.sh:/init-storage.sh:ro
     entrypoint: ["/bin/sh", "/init-storage.sh"]

@@ -84,14 +84,6 @@ function lockModeForTier(tier: ProtectionTier): 'GOVERNANCE' | 'COMPLIANCE' {
 // Typen
 // ---------------------------------------------------------------------------
 
-export interface CommitDocumentInput {
-  quarantineBucket: string;
-  quarantineKey: string;
-  classification: string;
-  tenantId: string;
-  fileName: string;
-}
-
 export interface CommitDocumentResult {
   targetBucket: string;
   targetKey: string;
@@ -113,7 +105,7 @@ export type ScanResult = 'CLEAN' | 'INFECTED' | 'ERROR';
 // Upload-Cap. Begrenzt sowohl Buffer-in-Memory (OOM-Schutz beim ClamAV-Scan)
 // als auch Storage-/Bandbreitenmissbrauch. 100 MB ist großzügig für typische
 // Belege, BWA-PDFs, Scans — größere Pakete sollten via Dokumenten-Upload-Job
-// (Worker) oder DATEV-Schnittstelle laufen, nicht über Quarantine-PUT.
+// (Worker) oder DATEV-Schnittstelle laufen, nicht über den Browser-Upload.
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
 // M-2: Magic-Number-Validierung. Verhindert, dass jemand image/jpeg deklariert,
@@ -304,7 +296,7 @@ export async function streamObject(bucket: string, storageKey: string): Promise<
 /**
  * Direkter Bytes-Upload OHNE Virus-Scan/Dokument-Semantik — für intern erzeugte
  * Blobs (z. B. gzip-rawResult, Subsumtions-Archiv). NICHT für Mandanten-Uploads
- * (die laufen über commitDocument* inkl. ClamAV-Scan).
+ * (die laufen über commitBytesWithTier/commitDocumentFromBytes inkl. ClamAV-Scan).
  *
  * `retainUntil` setzt Object-Lock COMPLIANCE (revisionssicher bis zu dem Datum) —
  * der Ziel-Bucket MUSS Object-Lock-fähig sein (GoBD/GwG-Buckets sind es).
@@ -334,9 +326,11 @@ export async function putObjectBytes(
 
 // ---------------------------------------------------------------------------
 // Geteilter Kern: Bytes scannen, hashen, in den Ziel-Bucket schreiben.
-// Wird sowohl von commitDocument (Quarantäne-Pfad) als auch von
-// commitDocumentFromBytes (direkter Pfad) genutzt. Caller ist für Cleanup
-// (z. B. Quarantäne-Datei löschen) verantwortlich.
+// Genutzt von commitBytesWithTier/commitDocumentFromBytes. ClamAV läuft
+// synchron VOR dem Upload — eine infizierte Datei erreicht nie einen Bucket.
+// (Den früheren Quarantäne-Zwischenschritt der Presigned-Upload-Architektur
+// gibt es nicht mehr; Uploads sind app-proxied, der Object-Store ist nur
+// intern erreichbar.)
 // ---------------------------------------------------------------------------
 
 async function scanHashAndUpload(
@@ -433,80 +427,3 @@ export async function commitDocumentFromBytes(input: {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Commit: Quarantine → Target-Bucket
-// ---------------------------------------------------------------------------
-
-export async function commitDocument(
-  input: CommitDocumentInput,
-): Promise<CommitDocumentResult> {
-  const { quarantineBucket, quarantineKey, classification, tenantId } = input;
-
-  // C3: quarantineBucket MUSS der Quarantäne-Bucket sein. Sonst kann ein
-  // Mandant mit gültiger Session ein Objekt aus gobd/staff-private (per
-  // geratener Storage-Key-UUID innerhalb desselben Tenants) als „neues
-  // GENERAL-Dokument" zurück-committen — im Portal-Pfad reale Eskalation
-  // (Mandant sieht plötzlich GoBD-Belege als eigenes Portal-Dokument).
-  if (quarantineBucket !== env.S3_BUCKET_QUARANTINE) {
-    throw new Error(`FORBIDDEN: quarantineBucket muss '${env.S3_BUCKET_QUARANTINE}' sein.`);
-  }
-
-  // Defense in Depth: Caller-Body trägt quarantineKey aus dem Presign-Response,
-  // aber ein böser Mandant könnte einen fremden Key (sofern erraten/erspäht)
-  // einreichen. Keys werden mit `tenants/<tenantId>/...` generiert — hier
-  // erzwingen, dass der eingelieferte Key zum Session-Tenant passt.
-  const expectedPrefix = `tenants/${tenantId}/`;
-  if (!quarantineKey.startsWith(expectedPrefix)) {
-    throw new Error('FORBIDDEN: quarantineKey gehört nicht zum Session-Tenant.');
-  }
-
-  const deleteQuarantine = () =>
-    s3.send(new DeleteObjectCommand({ Bucket: quarantineBucket, Key: quarantineKey }));
-
-  // 1. Datei aus Quarantine laden — Größen-Cap vor dem Streaming
-  const getResult = await s3.send(
-    new GetObjectCommand({ Bucket: quarantineBucket, Key: quarantineKey }),
-  );
-
-  // SeaweedFS liefert ContentLength im Response — wenn größer als Cap, gar
-  // nicht erst streamen.
-  if (typeof getResult.ContentLength === 'number' && getResult.ContentLength > MAX_UPLOAD_BYTES) {
-    await deleteQuarantine();
-    throw new Error(`TOO_LARGE: Datei (${getResult.ContentLength} B) überschreitet das Limit von ${MAX_UPLOAD_BYTES} B.`);
-  }
-
-  const bodyStream = getResult.Body as Readable;
-  const chunks: Buffer[] = [];
-  let received = 0;
-  for await (const chunk of bodyStream) {
-    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as ArrayBuffer);
-    received += buf.length;
-    // Streaming-Guard: bricht auch ab, wenn S3 die ContentLength falsch
-    // angegeben oder weggelassen hat.
-    if (received > MAX_UPLOAD_BYTES) {
-      bodyStream.destroy();
-      await deleteQuarantine();
-      throw new Error(`TOO_LARGE: Datei überschreitet das Limit von ${MAX_UPLOAD_BYTES} B (Streaming).`);
-    }
-    chunks.push(buf);
-  }
-  const fileData = Buffer.concat(chunks);
-
-  // 2. Scan + Hash + Upload (gemeinsamer Kern).
-  // Bei INFECTED zusätzlich die Quarantine-Datei löschen — bei SCAN_ERROR
-  // bewusst NICHT löschen, damit Admins die Datei forensisch prüfen können.
-  let result: CommitDocumentResult;
-  try {
-    result = await scanHashAndUpload(fileData, classificationToTier(classification), tenantId);
-  } catch (e) {
-    const msg = (e as Error).message;
-    if (msg.startsWith('INFECTED')) {
-      await deleteQuarantine();
-    }
-    throw e;
-  }
-
-  // 3. Erfolg → Quarantine-Datei aufräumen
-  await deleteQuarantine();
-  return result;
-}

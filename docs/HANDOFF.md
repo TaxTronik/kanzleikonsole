@@ -38,7 +38,7 @@ pnpm db:migrate:deploy
 ```
 
 Erwartet: Postgres lauschend auf 5432, SeaweedFS-Master auf <http://localhost:9333>,
-Buckets `gobd` (Object-Lock), `general`, `staff-private`, `quarantine` existieren.
+Buckets `gobd`/`gwg` (Object-Lock), `general`, `staff-private`, `backups` existieren.
 
 ### Schritt 2: Auth.js v5 Setup
 

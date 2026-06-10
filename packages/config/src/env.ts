@@ -89,7 +89,6 @@ const envSchema = z.object({
   S3_BUCKET_GWG: z.string().default('gwg'),
   S3_BUCKET_GENERAL: z.string().default('general'),
   S3_BUCKET_STAFF_PRIVATE: z.string().default('staff-private'),
-  S3_BUCKET_QUARANTINE: z.string().default('quarantine'),
 
   // --- ClamAV ---------------------------------------------------------------
   CLAMAV_HOST: z.string().default('localhost'),

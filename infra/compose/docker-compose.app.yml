@@ -154,7 +154,6 @@ services:
       S3_BUCKET_GWG: gwg
       S3_BUCKET_GENERAL: general
       S3_BUCKET_STAFF_PRIVATE: staff-private
-      S3_BUCKET_QUARANTINE: quarantine
       CLAMAV_HOST: clamav
       CLAMAV_PORT: 3310
       SMTP_HOST: ${SMTP_HOST:-mailhog}

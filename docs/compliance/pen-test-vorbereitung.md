@@ -19,7 +19,7 @@ ersten Produktivstart bei einer Kanzlei.
   - Magic-Link-Verify, PoA-Sign-Token, GwG-Onboarding-Token
 - **Auth-Flow** (Auth.js v5 mit TOTP-Pflicht für Staff, Magic-Link für Portal)
 - **Tenant-Isolation** via Postgres-RLS (siehe `packages/db/src/__tests__/rls-cross-tenant.test.ts`)
-- **Datei-Upload** (Quarantäne-Bucket, ClamAV-Scan, SeaweedFS-Object-Lock)
+- **Datei-Upload** (app-proxied, synchroner ClamAV-Scan, SeaweedFS-Object-Lock)
 - **Audit-Log-Integrität** (Hash-Chain + RFC-3161-Stempel)
 
 ### Out of Scope (separat oder später)
@@ -107,10 +107,9 @@ TOTP-Secrets liegen in einem separaten verschlüsselten Übergabe-Dokument.
 - [ ] Polyglot-Files (PDF mit eingebettetem JS)
 - [ ] Zip-Bomb (kleine Datei expandiert auf GB)
 - [ ] EICAR — wird vom ClamAV-Container abgelehnt?
-- [ ] Quarantäne-Commit: fremden `quarantineKey` (anderer Tenant /
-      anderer Bucket) einreichen und mit anderen Metadaten committen?
-      (Presigned-Browser-Uploads gibt es nicht mehr — Uploads laufen
-      app-proxied, der Object-Store ist nur intern erreichbar)
+      (Presigned-Browser-Uploads und den Quarantäne-Bucket gibt es nicht
+      mehr — Uploads laufen app-proxied mit synchronem Scan, der
+      Object-Store ist nur intern erreichbar)
 - [ ] Object-Lock: GoBD-Klassen (COMPLIANCE) wirklich unlöschbar?
       GwG-Bucket (GOVERNANCE): Frühlöschung nur mit
       `BypassGovernanceRetention`-Recht möglich?
