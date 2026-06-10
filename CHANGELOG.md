@@ -12,6 +12,12 @@ der Eintrag entsteht mit der Änderung, nicht nachträglich.
 
 ## [Unreleased]
 
+- ELSTER-Vorbereitung: Architektur- und Pflichtendokument für die
+  ERiC-Anbindung (docs/development/eric-integration.md — Bridge als
+  separater Dienst in privatem Repo, Lizenzpflichten→Produktanforderungen,
+  Ausbaustufen ab UStVA-Validierung); neuer CI-Guard
+  `check-no-eric-spec.sh` verhindert versehentliches Einchecken
+  vertraulicher Spezifikationsartefakte
 - Compliance: TCMS-Einordnung nach IDW PS 980 (docs/compliance/
   idw-ps980-tcms.md) — Mapping der CMS-Grundelemente auf vorhandene
   Bausteine und Konzept für den Teilbereich Organschaft als ersten

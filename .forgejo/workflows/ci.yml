@@ -57,6 +57,9 @@ jobs:
       - name: Guard real DATEV identifiers
         run: sh scripts/check-no-real-datev.sh
 
+      - name: Guard ERiC/ELSTER spec artifacts
+        run: sh scripts/check-no-eric-spec.sh
+
       - name: Lint
         run: pnpm lint
 
