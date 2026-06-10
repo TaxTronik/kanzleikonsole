@@ -6,6 +6,9 @@
 # - S3-Client-Aufrufe: gitleaks deutet den Variablennamen S3_ACCESS_KEY
 #   selbst als Secret, der Inhalt kommt jedoch aus process.env
 # - docs/operations/lizenz.md: gestumpfter Beispiel-JWT
+# - totp.test.ts: feste Base32-Test-Vektoren (RFC-4648), keine echten TOTP-
+#   Secrets. Pfad-Allowlist (statt Inline-Kommentar), weil der History-Scan
+#   sonst den Treffer im Erst-Commit weiterhin meldet.
 # =============================================================================
 
 [extend]
@@ -17,6 +20,7 @@ description = "taxtronik-spezifische False-Positives"
 paths = [
   '''(^|/)\.env\.example$''',
   '''(^|/)docs/operations/lizenz\.md$''',
+  '''(^|/)apps/web/src/server/auth/__tests__/totp\.test\.ts$''',
 ]
 
 # regexTarget = "line" prüft gegen die volle Quellzeile (Default wäre nur der
