@@ -21,6 +21,7 @@ import {
   KatalogKuratierungBegriffSchema,
   KatalogKuratierungListeSchema,
   KatalogResponseSchema,
+  KatalogReviewResponseSchema,
   LlmStartResponseSchema,
   LlmStatusResponseSchema,
   OpaqueObjectSchema,
@@ -30,6 +31,7 @@ import {
   type KatalogKuratierungBegriff,
   type KatalogKuratierungListe,
   type KatalogResponse,
+  type KatalogReviewResponse,
   type LlmStartResponse,
   type LlmStatusResponse,
   type OpaqueObject,
@@ -53,6 +55,9 @@ const FAST_RETRY: RetryOptions = { retries: 2, baseDelayMs: 300 };
 const NO_RETRY: RetryOptions = { retries: 0, baseDelayMs: 0 };
 
 const BREAKER_DEFAULTS = { failureThreshold: 5, resetTimeoutMs: 30_000 };
+
+/** Review-Statuswerte des geteilten Festwissens (§4-Lebenszyklus, nur vorwärts). */
+export type KatalogReviewStatus = 'entwurf' | 'geprüft' | 'freigegeben';
 
 export interface ZweiphasenAnalyseInput {
   text: string;
@@ -147,6 +152,29 @@ export class RiskLayerClient {
       retry: NO_RETRY,
     });
     return KatalogDefiniereResponseSchema.parse(raw);
+  }
+
+  /**
+   * `POST /v1/katalog/review` — Review-Lebenszyklus eines GETEILTEN Berater-
+   * Eintrags (entwurf → geprüft → freigegeben, NUR vorwärts; seit Engine 1.1.0).
+   * Schreibend → KEIN Auto-Retry. Lebenszyklus-Ablehnungen (Rückwärts-Übergang,
+   * unbekannte id) kommen als HTTP 400 mit `{ok:false, fehler}` → der `request`-
+   * Pfad wirft RiskLayerHttpError; der Aufrufer übersetzt das in einen
+   * Domänenfehler. Die Antwort nennt den VOLLSTÄNDIGEN Übergang (alter_status →
+   * neuer_status) für den Audit-Chain-Eintrag des Hosts (§4: die Engine
+   * auditiert nicht).
+   */
+  async katalogReview(input: {
+    id: string;
+    status: KatalogReviewStatus;
+    /** Prüfer-Kennung (StaffUser-ID) — Engine-Default ist 'berater'. */
+    pruefer?: string;
+  }): Promise<KatalogReviewResponse> {
+    const raw = await this.request('POST', '/v1/katalog/review', {
+      body: input,
+      retry: NO_RETRY,
+    });
+    return KatalogReviewResponseSchema.parse(raw);
   }
 
   /**

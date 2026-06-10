@@ -170,6 +170,23 @@ export const KatalogKuratiereResponseSchema = z
   .catchall(z.unknown());
 export type KatalogKuratiereResponse = z.infer<typeof KatalogKuratiereResponseSchema>;
 
+/** `POST /v1/katalog/review` → Review-Lebenszyklus eines GETEILTEN Berater-
+ *  Eintrags (nur vorwärts: entwurf → geprüft → freigegeben; seit Engine 1.1.0).
+ *  Die Antwort nennt den VOLLSTÄNDIGEN Übergang (alter_status → neuer_status) —
+ *  das ist die Grundlage für den Audit-Chain-Eintrag des Hosts, die Engine
+ *  auditiert nicht. `ok:false` (HTTP 400) trägt `fehler`. */
+export const KatalogReviewResponseSchema = z
+  .object({
+    ok: z.boolean().default(false),
+    id: z.string().nullish(),
+    alter_status: z.string().nullish(),
+    neuer_status: z.string().nullish(),
+    pruefer: z.string().nullish(),
+    fehler: z.string().nullish(),
+  })
+  .catchall(z.unknown());
+export type KatalogReviewResponse = z.infer<typeof KatalogReviewResponseSchema>;
+
 /** `GET /v1/katalog` → Version + Begriffe (Extra-Felder via catchall erhalten). */
 export const KatalogResponseSchema = z.object({
   version: z.string(),

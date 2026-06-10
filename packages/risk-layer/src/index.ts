@@ -7,7 +7,7 @@
 // =============================================================================
 
 export { RiskLayerClient } from './client';
-export type { RiskLayerClientOptions, ZweiphasenAnalyseInput } from './client';
+export type { RiskLayerClientOptions, ZweiphasenAnalyseInput, KatalogReviewStatus } from './client';
 export { RiskLayerHttpError } from './client';
 
 export {
@@ -38,6 +38,7 @@ export type {
   KatalogKuratiereResponse,
   KatalogKuratierungBegriff,
   KatalogKuratierungListe,
+  KatalogReviewResponse,
   LlmStatusResponse,
   LlmStartResponse,
   OpaqueObject,

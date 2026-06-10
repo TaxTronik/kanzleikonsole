@@ -55,6 +55,31 @@ describe('RiskLayerClient', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  it('katalogReview postet id/status/pruefer und parst den vollständigen Übergang', async () => {
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) =>
+      jsonResponse({ ok: true, id: 'b1', alter_status: 'entwurf', neuer_status: 'geprüft', pruefer: 's1' }),
+    );
+    const client = new RiskLayerClient({ config, fetchImpl });
+
+    const r = await client.katalogReview({ id: 'b1', status: 'geprüft', pruefer: 's1' });
+    expect(r).toMatchObject({ ok: true, alter_status: 'entwurf', neuer_status: 'geprüft', pruefer: 's1' });
+
+    const [url, init] = fetchImpl.mock.calls[0]!;
+    expect(url).toBe('http://risk-layer:8000/v1/katalog/review');
+    expect(init!.method).toBe('POST');
+    expect(JSON.parse(init!.body as string)).toEqual({ id: 'b1', status: 'geprüft', pruefer: 's1' });
+  });
+
+  it('katalogReview wird bei 503 NICHT retried (Schreiben)', async () => {
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse({}, 503));
+    const client = new RiskLayerClient({ config, fetchImpl });
+
+    await expect(
+      client.katalogReview({ id: 'b1', status: 'freigegeben' }),
+    ).rejects.toBeInstanceOf(RiskLayerHttpError);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it('katalogGet parst Version + Begriffe', async () => {
     const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) =>
       jsonResponse({ version: 'v9', begriffe: [{ id: 'b1', begriff: 'Test', extra: 1 }] }),

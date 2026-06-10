@@ -40,6 +40,9 @@ export type {
   KatalogKuratierClient, KatalogReadClient, KatalogKuratierungView,
 } from './catalog-norms';
 
+export { setKatalogReviewStatus, CatalogReviewFailedError } from './catalog-review';
+export type { KatalogReviewInput, KatalogReviewResult, ReviewCapableClient } from './catalog-review';
+
 export { getLlmStatus } from './llm';
 export type { LlmStatusDTO, LlmStatusClient } from './llm';
 

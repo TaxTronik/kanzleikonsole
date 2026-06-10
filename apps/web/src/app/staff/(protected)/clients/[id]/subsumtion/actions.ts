@@ -35,6 +35,7 @@ import {
   removeBeraterNorm,
   kuratiereKatalogNorm,
   readKatalogKuratierung,
+  setKatalogReviewStatus,
   archiveAnalysis,
   reformatSourceDoc,
   reanalyzeAnalysis,
@@ -769,6 +770,35 @@ export async function katalogKuratierungAction(
     requireEngine();
     const view = await readKatalogKuratierung(parsed.katalogId, staffId);
     return { ok: true, verworfen: view.verworfen, ergaenzt: view.ergaenzt };
+  } catch (e) {
+    return toActionError(e);
+  }
+}
+
+const ReviewKatalogBegriffSchema = z.object({
+  clientId: z.string().uuid(),
+  katalogId: z.string().min(1).max(200),
+  // 'entwurf' ist der Startzustand und von hier nicht setzbar — die Engine
+  // erlaubt ohnehin nur Vorwärts-Übergänge.
+  status: z.enum(['geprüft', 'freigegeben']),
+});
+
+/** Freigabe-Lebenszyklus des geteilten Festwissens (§4, Engine 1.1.0): schaltet
+ *  einen geteilten Berater-Eintrag vorwärts (entwurf → geprüft → freigegeben).
+ *  Der Übergang läuft IMMER über `POST /v1/katalog/review` — erst die Engine-
+ *  Bestätigung (vollständiger Übergang) landet in der Audit-Chain. */
+export async function reviewKatalogBegriffAction(
+  input: z.infer<typeof ReviewKatalogBegriffSchema>,
+): Promise<OkActionResult<{ alterStatus: string; neuerStatus: string }>> {
+  try {
+    const parsed = ReviewKatalogBegriffSchema.parse(input);
+    const { ctx } = await guard(parsed.clientId);
+    requireEngine();
+    const res = await setKatalogReviewStatus(ctx, {
+      begriffId: parsed.katalogId,
+      status: parsed.status,
+    });
+    return { ok: true, alterStatus: res.alterStatus, neuerStatus: res.neuerStatus };
   } catch (e) {
     return toActionError(e);
   }
