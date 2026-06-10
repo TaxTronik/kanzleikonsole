@@ -11,9 +11,16 @@
 # Läuft eigenständig — KEINE Prod-.env nötig. Quelle = $DATABASE_URL, das Ziel
 # wird daraus abgeleitet (gleiche Verbindung, DB-Name `taxtronik_restore`).
 #
-# Lokal:   DATABASE_URL=postgresql://… sh scripts/restore-selftest.sh
+# Lokal:   DATABASE_URL=postgresql://… bash scripts/restore-selftest.sh
 # In CI:   eigener Job `restore` (siehe .forgejo/workflows/ci.yml).
 # =============================================================================
+
+# Das Skript nutzt bash-Features (pipefail, [[ … ]], BASH_SOURCE). Wird es per
+# `sh …` aufgerufen (auf Debian/Ubuntu ist sh = dash), scheitert sonst schon
+# `set -o pipefail`. Daher unter einer Nicht-bash-Shell sofort mit bash neu
+# starten.
+if [ -z "${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
+
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

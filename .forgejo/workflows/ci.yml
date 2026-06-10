@@ -214,7 +214,7 @@ jobs:
         run: pnpm --filter @taxtronik/db seed
 
       - name: Backup→Restore self-test
-        run: sh scripts/restore-selftest.sh
+        run: bash scripts/restore-selftest.sh
 
   e2e-smoke:
     name: Browser Smoke

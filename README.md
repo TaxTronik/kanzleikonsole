@@ -178,7 +178,7 @@ Hinweise:
 - Der CI-Job `restore` fährt einen echten Backup→Restore-Roundtrip
   (`runner --out-file` → `restore --file`) und prüft Zeilenzahlen sowie die
   Audit-Hash-Chain auf der wiederhergestellten DB. Lokal:
-  `DATABASE_URL=… sh scripts/restore-selftest.sh` (siehe
+  `DATABASE_URL=… bash scripts/restore-selftest.sh` (siehe
   `docs/operations/disaster-recovery.md`, Abschnitt 7.1).
 
 ## Projektstruktur

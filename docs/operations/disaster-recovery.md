@@ -195,7 +195,7 @@ temporär an und droppt sie wieder):
 
 ```bash
 DATABASE_URL=postgresql://taxtronik:…@localhost:5432/taxtronik \
-  sh scripts/restore-selftest.sh
+  bash scripts/restore-selftest.sh
 ```
 
 **Air-Gapped-/manuelle Sicherung:** Der `--out-file`/`--file`-Modus taugt auch
