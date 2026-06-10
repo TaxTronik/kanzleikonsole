@@ -12,6 +12,15 @@ der Eintrag entsteht mit der Änderung, nicht nachträglich.
 
 ## [Unreleased]
 
+- Fristenkontrollbuch (/staff/fristen): vereinheitlichte Kontrollsicht über
+  Steuertermine, Einspruchsfristen, Anforderungen und Wiedervorlagen mit
+  Verantwortlichen und Erledigungsnachweis; offene Fristen verfallen nie
+  durch Zeitablauf, der CSV-Export wird in der Audit-Chain dokumentiert
+- Review-Härtung des Release-Deltas: zwei unabhängige Review-Durchgänge,
+  42 verifizierte Befunde behoben — u. a. Einzelrechte im
+  Produktions-Login, Portal-Freigabe nur für versendete Rechnungen,
+  markSent-Doppelsubmit, Overdue-Worker-Robustheit, USt-ID-Pflichtcheck,
+  Berechtigungs-Metadaten aus einer Quelle mit Drift-Guard
 - ELSTER-Vorbereitung: Architektur- und Pflichtendokument für die
   ERiC-Anbindung (docs/development/eric-integration.md — Bridge als
   separater Dienst in privatem Repo, Lizenzpflichten→Produktanforderungen,

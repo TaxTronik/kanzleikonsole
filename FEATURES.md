@@ -532,6 +532,29 @@ User-Agent bei Signatur.
   Bearbeiter/Ersteller; idempotent über (resourceId, kind, day-bucket)
 - Audit-Trail über `client_reminder.create/.done/.delete`
 
+## Fristenkontrollbuch
+
+Vereinheitlichte Kontrollsicht `/staff/fristen` über alle vier
+fristenführenden Quellen — Steuertermine, Einspruchsfristen (Bescheide),
+Anforderungs-Fälligkeiten und Wiedervorlagen.
+
+- **Kein eigener Zustand**: Erledigung wird aus den Quellmodulen abgelesen
+  (dort auditiert) — das Buch kann nie vom echten Stand abweichen
+- Offene Fristen erscheinen bis zum Horizont **ohne untere Grenze** — eine
+  überfällige Frist verschwindet nie durch Zeitablauf; Erledigte als
+  Rückschau im gewählten Fenster (7/30/90 Tage)
+- Gruppierung nach Dringlichkeit (Überfällig / Heute / Diese Woche /
+  Später), Filter „Meine" (Verantwortlicher = Hauptbearbeiter des
+  Mandanten, bei Wiedervorlagen die Zuweisung)
+- Erledigt-Wahrheitstabellen bewusst konservativ: GEPRÜFT (Bescheid) und
+  RESPONDED (Anforderung) gelten als OFFEN, solange die Entscheidung/
+  Prüfung aussteht (Unit-getestet)
+- **CSV-Export als Erledigungsnachweis** (Fälligkeit, Verantwortlicher,
+  Status, erledigt am/von) — jeder Export als `fristen.export.csv` in der
+  Audit-Hash-Chain, rate-limitiert
+- Zugriffsmodell: RESTRICTED-/vertrauliche Mandanten gefiltert (identisch
+  zu Kalender/Exporten)
+
 ## Pendelordner
 
 - Physische Belege-Ordner-Übergaben verfolgen
