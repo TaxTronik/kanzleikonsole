@@ -12,6 +12,11 @@ der Eintrag entsteht mit der Änderung, nicht nachträglich.
 
 ## [Unreleased]
 
+- Compliance: TCMS-Einordnung nach IDW PS 980 (docs/compliance/
+  idw-ps980-tcms.md) — Mapping der CMS-Grundelemente auf vorhandene
+  Bausteine und Konzept für den Teilbereich Organschaft als ersten
+  Kontrollkreis (Risikoinventar, Kontrollzyklen je Governance-Typ,
+  fünfstufiges Assessment; Umsetzung als iter88 geplant)
 - Onboarding: Inbetriebnahme-Checkliste ausgebaut — prüft jetzt auch
   E-Mail/Telefon der Kanzlei (E-Rechnungs-Pflicht), die bewusste Modul-/
   Rechnungsmodus-Entscheidung und den ersten GwG-aktiven Mandanten;

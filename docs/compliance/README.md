@@ -12,6 +12,8 @@ muss sie an die eigene Situation anpassen.
 | [vvt-template.md](./vvt-template.md) | Verzeichnis von Verarbeitungstätigkeiten nach Art. 30 DSGVO |
 | [gobd.md](./gobd.md) | GoBD-Verfahrensdokumentation der Software (die kanzleieigene Verfahrensdoku bleibt Pflicht, siehe [gobd-template.md](./gobd-template.md)) |
 | [gwg.md](./gwg.md) | GwG-Pflichten → Module-Mapping (Identifizierung, Aufzeichnung, Vernichtung); die interne GwG-Richtlinie + Risikoanalyse (§ 5 GwG) erstellt die Kanzlei selbst |
+| [idw-ps880-pruefungsbereitschaft.md](./idw-ps880-pruefungsbereitschaft.md) | Prüfungsbereitschaft der Software nach IDW PS 880: Scope, Gap-Analyse, Maßnahmenstand |
+| [idw-ps980-tcms.md](./idw-ps980-tcms.md) | TCMS nach IDW PS 980: Grundelemente-Mapping, Teilbereich Organschaft (Konzept iter88) |
 
 ## Pflichten im Überblick
 
