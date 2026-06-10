@@ -12,8 +12,20 @@ der Eintrag entsteht mit der Änderung, nicht nachträglich.
 
 ## [Unreleased]
 
+- **[Scope]** Fakturierung GoB-fest (Migration iter85): automatische
+  lückenlose Rechnungsnummern je Jahr (Nummernkreis, manuelle Eingabe nur
+  noch im Extern-Modus), DB-seitige Festschreibung nach Versand (Felder +
+  Positionen), Statusübergangs-Matrix nur vorwärts, GoBD-Archivkopie ist
+  Pflicht vor dem Versand, abgerechnete Zeiteinträge unlöschbar
+- **[Scope]** Portal: Rechnungs-PDFs sind für Mandanten abrufbar
+  (Freigabe wurde nie gesetzt — „Öffnen" lief auf 404)
+- **[Scope]** Dokumente: Detailseite prüft jetzt die
+  RESTRICTED-Zuständigkeit (Metadaten-Leak geschlossen)
 - **[Scope]** CI führt jetzt alle Testpakete aus (vorher 4 von 11) und
   archiviert Testprotokolle als Nachweis-Artefakte je Lauf
+- Anwenderdokumentation für die Scope-Module (docs/anwenderdoku/:
+  Dokumente, Rechnungen, Administration) und technische Modulbeschreibungen
+  mit Traceability (docs/development/module/)
 - Entwicklungsverfahren und Testkonzept als beschriebene Verfahren
   dokumentiert (docs/development/)
 - IDW-PS-880-Gap-Analyse mit beschlossenem Prüfungs-Scope

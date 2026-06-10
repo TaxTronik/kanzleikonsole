@@ -62,20 +62,20 @@ Status: ✅ vorhanden und prüfungstauglich · 🟡 vorhanden, aber formalisiere
 
 | Bestandteil | Status | Befund |
 |---|---|---|
-| Technische Dokumentation | 🟡 | architecture.md, 12+ ADRs, FEATURES.md, Prisma-Schema, dichte Code-Kommentare. Fehlt: ein zusammenführendes Dokument je Scope-Modul (Datenmodell, Verarbeitungslogik, Schnittstellen, Kontrollen) — der Prüfer darf nicht auf Code-Lektüre angewiesen sein. |
+| Technische Dokumentation | ✅ (Scope) | architecture.md, 12+ ADRs, FEATURES.md, Prisma-Schema, dichte Code-Kommentare. **Seit 2026-06-10:** Modulbeschreibungen je Scope-Modul inkl. Kontrollen + Traceability unter `docs/development/module/`. |
 | Betriebsdokumentation | ✅/🟡 | README-Produktivbetrieb, release.md, disaster-recovery.md, Verfahrensdoku-Generator, Runbooks. Fehlt: Mengen-/Performance-Annahmen, vollständige Parameter-Referenz (.env-Optionen sind dokumentiert, aber verstreut). |
-| **Anwenderdokumentation** | 🔴 | **Größte Einzellücke.** Es existiert kein Benutzerhandbuch (Bedienung der Module für Kanzlei-Mitarbeiter, Admin-Handbuch). Fehlende oder stark lückenhafte Anwenderdoku ist ein Beispiel für schwerwiegende Mängel, die die Bescheinigung gefährden (vgl. Tz. 81). |
+| **Anwenderdokumentation** | ✅ (Scope) / 🟡 (übrige Module) | **Seit 2026-06-10:** Benutzerhandbuch für die Scope-Module unter `docs/anwenderdoku/` (Dokumente, Rechnungen, Administration inkl. Mandanten-Portal-Abschnitte). Übrige Module (BWA, Workflows, Subsumtion …) folgen sukzessive — für den beschlossenen Scope ausreichend (vgl. Tz. 81). |
 
 ### 3.2 Softwareentwicklungsverfahren (vgl. Tz. 50–63)
 
 | Anforderung | Status | Befund |
 |---|---|---|
-| Beschriebenes Entwicklungs-/Wartungs-/Freigabeverfahren | 🟡 | Faktisch vorhanden und stark (CI-Gates, Reviews, Guard-Tests, Release-Pipeline) — aber nirgends als Verfahren **beschrieben** (Rollen, Phasen, Genehmigung von Änderungen, Hotfix-Pfad, Freigabe = Tag durch wen?). |
-| Programmierstandards/Namenskonventionen | 🟡 | ESLint/Prettier/tsconfig erzwingen sie maschinell (vgl. Tz. 58 — genau das gewünschte Muster); kurzes Standards-Dokument fehlt, das sie benennt und auf die Configs verweist. |
+| Beschriebenes Entwicklungs-/Wartungs-/Freigabeverfahren | ✅ | **Seit 2026-06-10:** `docs/development/entwicklungsverfahren.md` (Rollen inkl. KI-Assistenz, Änderungs-/Hotfix-Weg, Freigabe = annotierter Tag, Fehlermanagement, Doku-Pflicht je Änderung). |
+| Programmierstandards/Namenskonventionen | ✅ | maschinell erzwungen (ESLint/Prettier/tsconfig, vgl. Tz. 58) und im Entwicklungsverfahren benannt. |
 | Versionsführung, abgegrenzte Releases | ✅ | Git-Historie, SemVer-Tags, signierte Update-Manifeste, Image-Digests, APP_VERSION/GIT_SHA im Produkt sichtbar (vgl. Tz. 59, 62 — Programmidentität ist besser gelöst als gefordert). |
-| Test-/Abnahmekonzept dokumentiert | 🔴 | 700+ automatisierte Tests inkl. Negativ-, RLS-, Restore- und Upgrade-Pfad-Tests existieren — aber **kein Testkonzept-Dokument** (Testarten, Abdeckungsanspruch, Schnittstellen-/Parametertests, Fehlerbehebungs- und Wiederholungstest-Prozess; vgl. Tz. 60, 69 ff.). |
-| Testnachweise je Release, für Dritte nachvollziehbar | 🔴 | CI-Läufe beweisen die Ausführung, werden aber nicht als **Release-Artefakt archiviert** (Testbericht: was lief, erwartet vs. erzielt, Abdeckung). |
-| Doku-Aktualisierung bei jeder Programmänderung | 🟡 | Gelebt (Doku-Updates in denselben Commits), aber als Pflicht nirgends festgeschrieben (vgl. Tz. 63). |
+| Test-/Abnahmekonzept dokumentiert | ✅ | **Seit 2026-06-10:** `docs/development/testkonzept.md` (Testarten inkl. Negativ-/Schnittstellen-/Parametertests, Abdeckungsanspruch je Scope-Modul, Fehler-/Wiederholungstest-Prozess). Nebenbefund behoben: CI testet jetzt ALLE Pakete (vorher 4 von 11). |
+| Testnachweise je Release, für Dritte nachvollziehbar | ✅ | **Seit 2026-06-10:** CI archiviert Testprotokolle als Artefakte (`testbericht-unit/-db/-restore`, Playwright-Report immer); Nachweis-Kette Tag → Commit → CI-Lauf → Artefakte im Testkonzept beschrieben. |
+| Doku-Aktualisierung bei jeder Programmänderung | ✅ | als Pflicht im Entwicklungsverfahren festgeschrieben (vgl. Tz. 63) und gelebt. |
 | Kontrollumfeld-Risiken (Personal, Technologie) | 🟡 | Bus-Faktor 1 ist der relevante Risikoindikator (vgl. Tz. 53) — HANDOFF.md mildert; ehrlich dokumentieren statt verstecken. |
 
 ### 3.3 Programmfunktionen im Scope (vgl. Tz. 25–36)
@@ -85,14 +85,14 @@ Status: ✅ vorhanden und prüfungstauglich · 🟡 vorhanden, aber formalisiere
 | Unveränderlichkeit/Protokollierung | ✅ | Audit-Hash-Chain (append-only, Trigger), Object-Lock, RFC-3161-Versiegelung, Stammdaten-Änderungsprotokoll, täglicher Verify-Job, monatlicher Restore-Drill — Vorzeigebereich. |
 | Zugriffsschutzsystem | ✅/🟡 | Rollen, TOTP-Pflicht, RLS-Backstop, Portal-/Staff-Trennung, Lockout. Passwort-Policy dokumentieren und begründen (TOTP-Zweitfaktor statt Ablauf/Historie — bewusste, zu erläuternde Abweichung von klassischen Beispielen in Tz. 35). |
 | Eingabe-/Verarbeitungs-/Ausgabekontrollen | 🟡 | Vorhanden (zod-Validierung, Magic-Byte-Checks, Plausibilitäten), aber nicht als Kontrollsystem **beschrieben** — die Aufbauprüfung (vgl. Tz. 14, 64 ff.) arbeitet auf der Doku, nicht auf dem Code. |
-| **Fakturierung: Belegnummern** | 🔴 zu klären | Rechnungsnummern sind tenant-eindeutig (DB-Unique-Constraint), CANCELLED-Status existiert. **Zu verifizieren/ergänzen:** automatische lückenlose Vergabe je Nummernkreis, Lücken-Auswertung, Schreibschutz nach Versand (Festschreibung), Storno statt Änderung (vgl. Tz. 27, 30). Das ist der einzige Bereich, in dem vermutlich **Produktfunktionen** fehlen, nicht nur Doku. |
+| **Fakturierung: Belegnummern/Festschreibung** | ✅ | **Seit 2026-06-10 (iter85):** automatische, lückenlose Nummernvergabe je Tenant+Jahr (Sequenz, atomar in der Anlage-Tx — Lücken-Auswertung damit obsolet, Lücken können nicht entstehen); DB-seitige Festschreibung nach Versand (Felder + Positionen, auch für Owner); Status-Matrix nur vorwärts; GoBD-Archivkopie ist Pflicht VOR dem Versand; abgerechnete Zeiteinträge unlöschbar. Details + bewusste Grenzen (USt-Kategorien, Stornobeleg): `docs/development/module/fakturierung.md`. |
 
 ### 3.4 Prüfungsorganisatorisches (vgl. Tz. 44 f., 56, 88 f.)
 
 | Anforderung | Status | Befund |
 |---|---|---|
 | Definiertes Testsystem mit Stammdatenbestand | 🟡 | setup.sh + Demo-Seed existieren; als „Prüfumgebung" beschreiben (Hardware/OS/DB-Angaben für den Bericht, vgl. Tz. 89) und Seed ggf. um prüfungsrelevante Fälle erweitern (vgl. Tz. 56). |
-| Änderungsdokumentation je Release | 🟡 | Tag-Annotationen + signierte Manifeste vorhanden; strukturiertes CHANGELOG mit Kennzeichnung scope-relevanter Änderungen einführen (Basis für Folgeprüfungen, vgl. Tz. 110, 113). |
+| Änderungsdokumentation je Release | ✅ | **Seit 2026-06-10:** `CHANGELOG.md` mit `[Scope]`-Kennzeichnung je Release (Pflegeregel: Eintrag entsteht mit der Änderung; vgl. Tz. 110, 113). |
 | Vollständigkeitserklärung, Auftragsinhalte | — | Sache der Beauftragung (vgl. Tz. 44); kein Repo-Artefakt. |
 
 ## 4. Maßnahmenplan
