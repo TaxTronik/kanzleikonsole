@@ -233,8 +233,19 @@ export async function setPermissionsAction(input: {
     return { ok: false, error: 'Eigene Berechtigungen nicht ändern.' };
   }
 
+  let changed = false;
   try {
-    await withTenantContext(ctx, async (tx) => {
+    const result = await withTenantContext(ctx, async (tx) => {
+      // Existenz + Tenant-Zugehörigkeit prüfen: das leere permissions-Array ist
+      // erlaubt und schreibt ggf. gar nichts — ohne diese Prüfung würde die
+      // Action für eine fremde/erfundene userId mit ok:true enden (RLS schlägt
+      // mangels Write nie an) und der Revoke ins Leere feuern.
+      const target = await tx.staffUser.findUnique({
+        where: { id: parsed.data.userId },
+        select: { id: true },
+      });
+      if (!target) throw new ActionError('Benutzer nicht gefunden.');
+
       const before = await tx.staffPermission.findMany({
         where: { staffUserId: parsed.data.userId },
       });
@@ -266,14 +277,19 @@ export async function setPermissionsAction(input: {
           after: { permissions: parsed.data.permissions },
         });
       }
+      // Revoke nur bei ENTZUG: Erweiterungen greifen beim nächsten Request von
+      // selbst (Session lädt Rechte frisch), und der DB-Fallback verweigert ein
+      // erweitertes Recht dort sicher (fail-closed). Entzug dagegen bliebe im
+      // alten Token bis zu 24 h wirksam → Sofort-Logout.
+      return { revoke: toRemove.length > 0 };
     });
+    changed = result.revoke;
   } catch (e) {
     return toActionError(e);
   }
-  // Wie bei Rollen: Entzug sofort wirksam machen. Die Session lädt Rechte zwar
-  // pro Request frisch aus der DB, fällt bei transienten DB-Fehlern aber auf
-  // den (bis zu 24h alten) Token zurück — Revoke schließt dieses Fenster.
-  await revokeAllSessions('staff', parsed.data.userId);
+  if (changed) {
+    await revokeAllSessions('staff', parsed.data.userId);
+  }
   revalidatePath(LIST);
   return { ok: true };
 }

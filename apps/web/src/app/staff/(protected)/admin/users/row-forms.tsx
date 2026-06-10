@@ -117,6 +117,7 @@ export function SetPermissionsForm({
   const [perms, setPerms] = useState<Set<string>>(new Set(currentPermissions));
   const [isPending, start] = useTransition();
   const [dirty, setDirty] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   function toggle(p: Permission) {
     setPerms((s) => {
@@ -126,12 +127,20 @@ export function SetPermissionsForm({
       return next;
     });
     setDirty(true);
+    setError(null);
   }
 
   function save() {
     start(async () => {
-      await setPermissionsAction({ userId, permissions: Array.from(perms) as Permission[] });
-      setDirty(false);
+      const res = await setPermissionsAction({ userId, permissions: Array.from(perms) as Permission[] });
+      // Nur bei Erfolg als gespeichert markieren — sonst bleibt „Speichern"
+      // sichtbar und der Fehler wird angezeigt (vorher: stiller Falsch-Erfolg).
+      if (res.ok) {
+        setDirty(false);
+        setError(null);
+      } else {
+        setError(res.error ?? 'Speichern fehlgeschlagen.');
+      }
     });
   }
 
@@ -167,6 +176,7 @@ export function SetPermissionsForm({
           {isPending ? '…' : 'Speichern'}
         </button>
       )}
+      {error && <span className="text-xs text-red-700">{error}</span>}
     </div>
   );
 }

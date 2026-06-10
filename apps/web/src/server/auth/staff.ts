@@ -347,6 +347,11 @@ const staffConfig: NextAuthConfig = {
           tenantId: tenant.id,
           fullName: staffUser.fullName,
           roles: staffUser.roles.map((r) => r.role as string),
+          // iter87: Einzelrechte MÜSSEN auch im Produktions-Login ins Token —
+          // sonst trägt jedes Prod-JWT permissions=[] und der DB-Fallback im
+          // session-Callback liefert bei einem transienten DB-Fehler fälschlich
+          // „keine Rechte" (asymmetrisch zum roles-Fallback).
+          permissions: staffUser.permissions.map((p) => p.permission as string),
         };
       },
     }),
