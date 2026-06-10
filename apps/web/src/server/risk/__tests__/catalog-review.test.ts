@@ -3,10 +3,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // @taxtronik/db (Barrel) verlangt DATABASE_URL beim Import + macht echte Tx →
 // mocken. evidenceService ist ein Spy. Der Paket-Mock liefert RiskLayerHttpError
 // als echte Klasse, weil catalog-review.ts per instanceof darauf prüft.
-const h = vi.hoisted(() => ({ record: vi.fn() }));
+// `definedBy` simuliert den risk.catalog.defined-Eintrag der Audit-Chain
+// (Vier-Augen-Quelle): null = kein bekannter Autor.
+const h = vi.hoisted(() => ({
+  record: vi.fn(),
+  definedBy: null as { actorId: string | null } | null,
+}));
 
 vi.mock('@taxtronik/db', () => ({
-  withTenantContext: async (_ctx: unknown, fn: (tx: unknown) => unknown) => fn({}),
+  withTenantContext: async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+    fn({ auditLog: { findFirst: async () => h.definedBy } }),
 }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: h.record } }));
 vi.mock('@taxtronik/risk-layer', () => {
@@ -32,6 +38,7 @@ const ctx = { tenantId: 't1', actorId: 's1', actorType: 'STAFF' } as unknown as 
 
 beforeEach(() => {
   h.record.mockReset();
+  h.definedBy = null;
 });
 
 describe('setKatalogReviewStatus', () => {
@@ -81,6 +88,32 @@ describe('setKatalogReviewStatus', () => {
       setKatalogReviewStatus(ctx, { begriffId: 'bX', status: 'freigegeben' }, client as unknown as Client),
     ).rejects.toBeInstanceOf(CatalogReviewFailedError);
     expect(h.record).not.toHaveBeenCalled();
+  });
+
+  it('Vier-Augen: der Autor des Begriffs wird geblockt — kein Engine-Call, kein Audit', async () => {
+    h.definedBy = { actorId: 's1' }; // = ctx.actorId
+    const client = { katalogReview: vi.fn() };
+    await expect(
+      setKatalogReviewStatus(ctx, { begriffId: 'b1', status: 'freigegeben' }, client as unknown as Client),
+    ).rejects.toThrow('Vier-Augen-Prinzip');
+    expect(client.katalogReview).not.toHaveBeenCalled();
+    expect(h.record).not.toHaveBeenCalled();
+  });
+
+  it('Vier-Augen: eine ZWEITE Person darf freigeben', async () => {
+    h.definedBy = { actorId: 'jemand-anderes' };
+    const client = {
+      katalogReview: vi.fn(async () => ({
+        ok: true, id: 'b1', alter_status: 'geprüft', neuer_status: 'freigegeben', pruefer: 's1',
+      })),
+    };
+    const res = await setKatalogReviewStatus(
+      ctx,
+      { begriffId: 'b1', status: 'freigegeben' },
+      client as unknown as Client,
+    );
+    expect(res.neuerStatus).toBe('freigegeben');
+    expect(h.record).toHaveBeenCalledTimes(1);
   });
 
   it('reicht Transportfehler (503) unverändert weiter — kein Audit', async () => {

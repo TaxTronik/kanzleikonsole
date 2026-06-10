@@ -7,7 +7,7 @@ import {
   updateMarkingAction, deleteMarkingAction, delegateAction, pushDefinitionAction,
   previewResearchAction, sendResearchAction, resolveNormAction, resolveNormByZitatAction,
   searchNormAction, addBeraterNormAction, setNormVerworfenAction, removeBeraterNormAction,
-  kuratiereKatalogNormAction, katalogKuratierungAction,
+  kuratiereKatalogNormAction, katalogKuratierungAction, reviewKatalogBegriffAction,
   listPromptTemplatesAction, createPromptTemplateAction, deletePromptTemplateAction,
 } from './actions';
 import {
@@ -108,6 +108,9 @@ export function MarkingPanel(props: {
       )}
       <NormRefList clientId={clientId} markingId={m.id} katalogId={m.begriffId} refs={m.normRefs} fallback={m.normAnker}
         engineConfigured={engineConfigured} pending={pending} start={start} flash={flash} onChanged={onChanged} />
+      {m.begriffId && engineConfigured && (
+        <KatalogReviewControl clientId={clientId} katalogId={m.begriffId} pending={pending} start={start} flash={flash} />
+      )}
       {m.normketten != null && Array.isArray(m.normketten) && m.normketten.length > 0 && (
         <details className="text-xs">
           <summary className="cursor-pointer text-muted">Normketten (Kaskade)</summary>
@@ -375,6 +378,42 @@ function formatIsoDate(iso: string): string {
 /** Absatz-Marker "(1)" auf eigene Zeilen brechen — bessere Lesbarkeit. */
 function formatGesetzestext(text: string): string {
   return text.replace(/\((\d+[a-z]?)\)\s*/g, '\n($1) ').trim();
+}
+
+/** Freigabe-Lebenszyklus des GETEILTEN Festwissens (Engine 1.1.0): entwurf →
+ *  geprüft → freigegeben, nur vorwärts, immer über POST /v1/katalog/review —
+ *  erst dann steht der Übergang in der Audit-Chain. Vier-Augen-Prinzip und
+ *  „nur geteilte Einträge" erzwingt der Server; Ablehnungen (z. B. eigener
+ *  Begriff, Rückwärts-Übergang) kommen als Fehlertext zurück. */
+function KatalogReviewControl({
+  clientId, katalogId, pending, start, flash,
+}: {
+  clientId: string; katalogId: string; pending: boolean; start: (cb: () => void) => void; flash: Flash;
+}) {
+  function review(status: 'geprüft' | 'freigegeben') {
+    if (status === 'freigegeben' && !window.confirm(
+      'Begriff kanzleiweit freigeben? Der Übergang ist nur vorwärts möglich und wird in der Audit-Chain verankert.',
+    )) return;
+    start(async () => {
+      const r = await reviewKatalogBegriffAction({ clientId, katalogId, status });
+      flash(r, status === 'freigegeben' ? 'Begriff freigegeben (auditiert).' : 'Begriff als geprüft markiert (auditiert).');
+    });
+  }
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      <p className="text-[11px] text-muted inline-flex items-center gap-1">
+        <Library className="h-3 w-3" /> Katalog-Review (geteilt)
+      </p>
+      <button type="button" disabled={pending} onClick={() => review('geprüft')}
+        className="text-[11px] rounded border border-default px-1.5 py-0.5 hover:bg-gray-50 dark:hover:bg-gray-900/40 disabled:opacity-50">
+        Als geprüft markieren
+      </button>
+      <button type="button" disabled={pending} onClick={() => review('freigegeben')}
+        className="text-[11px] rounded border border-emerald-600/60 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.5 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-50">
+        Freigeben
+      </button>
+    </div>
+  );
 }
 
 /** Die Engine-Norm ist NICHT verbindlich: der Berater ergänzt eigene Normen und

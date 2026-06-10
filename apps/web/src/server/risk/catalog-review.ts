@@ -57,12 +57,36 @@ function fehlerAusBody(body: string): string {
  * Schaltet den Review-Status eines geteilten Berater-Eintrags vorwärts und
  * verankert den Übergang in der Hash-Chain. `pruefer` ist der handelnde
  * StaffUser (ctx.actorId) — die Engine spiegelt ihn in der Antwort zurück.
+ *
+ * Vier-Augen-Prinzip (TCMS): der AUTOR eines Begriffs darf den eigenen
+ * Eintrag nicht selbst weiterschalten. Die Engine kennt den Autor nur als
+ * Freitext-Tag — beweissicher steht er in UNSERER Audit-Chain
+ * (`risk.catalog.defined`, after.begriffId). Begriffe ohne solchen Eintrag
+ * (direkt in der Engine kuratiert) haben keinen bekannten Autor → keine
+ * Sperre möglich, der Lebenszyklus bleibt nutzbar.
  */
 export async function setKatalogReviewStatus(
   ctx: TenantContext,
   input: KatalogReviewInput,
   client?: ReviewCapableClient,
 ): Promise<KatalogReviewResult> {
+  const defined = await withTenantContext(ctx, (tx) =>
+    tx.auditLog.findFirst({
+      where: {
+        tenantId: ctx.tenantId,
+        action: 'risk.catalog.defined',
+        after: { path: ['begriffId'], equals: input.begriffId },
+      },
+      orderBy: { occurredAt: 'asc' },
+      select: { actorId: true },
+    }),
+  );
+  if (defined?.actorId && defined.actorId === ctx.actorId) {
+    throw new CatalogReviewFailedError(
+      'Vier-Augen-Prinzip: Sie haben diesen Begriff selbst definiert — der Review-Übergang muss von einer zweiten Person erfolgen.',
+    );
+  }
+
   const c = client ?? new RiskLayerClient();
   let res;
   try {
