@@ -496,3 +496,75 @@ jobs:
           name: playwright-report
           path: apps/e2e/playwright-report/
           if-no-files-found: ignore
+
+  # ===========================================================================
+  # E-Rechnung-Konformität: erzeugt die Referenz-XRechnung (Mischsätze-Fixture,
+  # dieselbe Quelle wie die Unit-Tests) und prüft sie mit dem KoSIT-Validator
+  # gegen die XRechnung-3.0-Szenarien — XML-Schema + Schematron inkl. der
+  # deutschen BR-DE-Geschäftsregeln. Der Job schlägt fehl, sobald der Generator
+  # nicht-konformes XML liefert; der Prüfbericht ist der Konformitätsnachweis
+  # je Lauf. Validator + Szenarien sind per Version UND SHA-256 gepinnt.
+  # ===========================================================================
+  e-rechnung:
+    name: XRechnung-Konformität (KoSIT)
+    runs-on: ubuntu-latest
+    needs: quality
+    timeout-minutes: 15
+    env:
+      VALIDATOR_URL: https://github.com/itplr-kosit/validator/releases/download/v1.6.2/validator-1.6.2-standalone.jar
+      VALIDATOR_SHA256: 244978514ad48f67c7573acfffc8f4fd73d81feda6f276710033f9913579857e
+      SCENARIOS_URL: https://github.com/itplr-kosit/validator-configuration-xrechnung/releases/download/v2026-01-31/xrechnung-3.0.2-validator-configuration-2026-01-31.zip
+      SCENARIOS_SHA256: 6a5a5911a421b25fbc423f62f93f894df7b236f5d73ca4f84bb222a945082704
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # Nur esbuild (für tsx) — der Generator braucht weder Prisma noch sharp.
+      - name: Rebuild esbuild
+        run: pnpm rebuild -r esbuild || true
+
+      - name: Java + unzip + curl installieren
+        run: |
+          if ! command -v java >/dev/null 2>&1 || ! command -v unzip >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
+            SUDO=""
+            if command -v sudo >/dev/null 2>&1; then SUDO=sudo; fi
+            $SUDO apt-get update
+            $SUDO apt-get install -y default-jre-headless unzip curl ca-certificates
+          fi
+          java -version
+
+      - name: KoSIT-Validator + XRechnung-Szenarien laden (Version + SHA-256 gepinnt)
+        run: |
+          set -o pipefail
+          mkdir -p kosit/config
+          curl -fsSL -o kosit/validator.jar "$VALIDATOR_URL"
+          echo "$VALIDATOR_SHA256  kosit/validator.jar" | sha256sum -c -
+          curl -fsSL -o kosit/scenarios.zip "$SCENARIOS_URL"
+          echo "$SCENARIOS_SHA256  kosit/scenarios.zip" | sha256sum -c -
+          unzip -q -o kosit/scenarios.zip -d kosit/config
+
+      - name: Referenz-XRechnung erzeugen (Mischsätze 19/7/0 %)
+        run: pnpm --filter @taxtronik/web exec tsx src/server/invoicing/cli/generate-sample.ts "$GITHUB_WORKSPACE/kosit/sample.xml"
+
+      # Exit-Code ≠ 0 bei REJECT → Job schlägt fehl (fail-closed).
+      - name: KoSIT-Validierung (Schema + Schematron + BR-DE)
+        run: |
+          cd kosit
+          java -jar validator.jar -s config/scenarios.xml -r config -o report sample.xml
+
+      - name: Prüfbericht hochladen
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: kosit-pruefbericht
+          path: kosit/report/
+          if-no-files-found: ignore
