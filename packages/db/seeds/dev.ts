@@ -19,32 +19,22 @@
 
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
-import { randomBytes } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createPostgresAdapter, requireDatabaseUrl } from '../src/prisma-adapter';
+import { ensureDefaultDocumentTypes as ensureDocTypes, generateAdminPassword } from './lib';
 
 if (process.env['NODE_ENV'] === 'production') {
   console.error('[seed] FATAL: Dev-Seed darf NICHT in Produktion laufen.');
   console.error('[seed] NODE_ENV=production erkannt — Abbruch.');
-  console.error('[seed] Für Production-Provisioning bitte ein dediziertes Skript verwenden,');
-  console.error('[seed] das einen zufälligen Admin und ein zufälliges Passwort vorsieht.');
+  console.error('[seed] Für Production-Provisioning (Tenant + Admin, KEINE Demodaten):');
+  console.error('[seed]   TENANT_NAME=… ADMIN_EMAIL=… pnpm --filter @taxtronik/db provision');
   process.exit(1);
 }
 
 const prisma = new PrismaClient({
   adapter: createPostgresAdapter(requireDatabaseUrl(process.env['DATABASE_URL'], 'DATABASE_URL')),
 });
-
-function generateAdminPassword(): string {
-  // base64url, 18 Bytes = 24 Zeichen, ~144 Bit Entropie. Memorierbar genug
-  // für einmaligen Login + TOTP-Setup, danach kann der Admin selbst rotieren.
-  return randomBytes(18)
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-}
 
 async function main() {
   console.log('[seed] Starte Dev-Seed…');
@@ -65,7 +55,7 @@ async function main() {
   // Migrationszeitpunkt existieren — nachträglich angelegte Tenants (Seed,
   // Onboarding-UI) brauchen den Sync hier. Idempotent über
   // (tenant_id, classification_key)-Eindeutigkeit.
-  await ensureDefaultDocumentTypes(tenant.id);
+  await ensureDocTypes(prisma, tenant.id);
 
   // 2. Admin-Mitarbeiter — Passwort entweder aus ENV oder frisch generiert.
   // Kein hartcodiertes Default mehr (U-3). Wir schreiben das frisch erzeugte
@@ -228,49 +218,6 @@ async function main() {
   console.log('  (Passwort auch in packages/db/.admin-credentials.txt)');
   console.log('  Portal-Login (Magic-Link): mandant@taxtronik.local');
   console.log('  → Magic-Link-Mail landet in MailHog (http://localhost:8025).');
-}
-
-/**
- * Stellt sicher, dass die 7 Default-Dokumenttypen für einen Tenant existieren.
- * Idempotent — ergänzt nur fehlende Einträge, fasst vorhandene nicht an
- * (auch wenn der Anwender Name/Sort manuell überschrieben hat).
- */
-async function ensureDefaultDocumentTypes(tenantId: string): Promise<void> {
-  const defaults: Array<{
-    name: string;
-    tier: 'NONE' | 'GWG' | 'GOBD';
-    classificationKey: string;
-    sortOrder: number;
-  }> = [
-    { name: 'GoBD Rechnung', tier: 'GOBD', classificationKey: 'GOBD_INVOICE', sortOrder: 10 },
-    { name: 'GoBD Vertrag',  tier: 'GOBD', classificationKey: 'GOBD_CONTRACT', sortOrder: 20 },
-    { name: 'GoBD Steuer',   tier: 'GOBD', classificationKey: 'GOBD_TAX',      sortOrder: 30 },
-    { name: 'GwG Nachweis',  tier: 'GWG',  classificationKey: 'GWG_EVIDENCE',  sortOrder: 40 },
-    { name: 'Personal',      tier: 'NONE', classificationKey: 'PERSONNEL',     sortOrder: 50 },
-    { name: 'Intern',        tier: 'NONE', classificationKey: 'STAFF_PRIVATE', sortOrder: 60 },
-    { name: 'Allgemein',     tier: 'NONE', classificationKey: 'GENERAL',       sortOrder: 70 },
-  ];
-  const existing = await prisma.documentType.findMany({
-    where: { tenantId },
-    select: { classificationKey: true },
-  });
-  const have = new Set(existing.map((d) => d.classificationKey));
-  const missing = defaults.filter((d) => !have.has(d.classificationKey));
-  if (missing.length === 0) {
-    console.log('[seed] Dokumenttypen: bereits vorhanden.');
-    return;
-  }
-  await prisma.documentType.createMany({
-    data: missing.map((d) => ({
-      tenantId,
-      name: d.name,
-      tier: d.tier,
-      builtin: true,
-      classificationKey: d.classificationKey,
-      sortOrder: d.sortOrder,
-    })),
-  });
-  console.log(`[seed] Dokumenttypen: ${missing.length} ergänzt.`);
 }
 
 main()

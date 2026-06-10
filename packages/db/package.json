@@ -22,6 +22,7 @@
     "migrate:dev": "prisma migrate dev",
     "studio": "prisma studio",
     "seed": "tsx --env-file-if-exists=../../.env seeds/dev.ts",
+    "provision": "tsx --env-file-if-exists=../../.env seeds/provision.ts",
     "verify:schema-drift": "tsx --env-file-if-exists=../../.env scripts/verify-drift.ts"
   },
   "dependencies": {

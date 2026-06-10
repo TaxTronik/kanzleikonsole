@@ -61,6 +61,24 @@ bauen `deploy.sh`/`update.sh` wie bisher lokal aus dem Checkout — dann braucht
 der Server weiterhin die Build-Toolchain, und es läuft nicht das in CI
 getestete Artefakt.
 
+### 2.1 Erstinstallation: Provisionierung (ohne Demodaten)
+
+Eine frische Produktiv-Installation enthält nach den Migrationen **keinerlei
+Daten** — der Dev-Seed (Demomandant, Beispieldaten) verweigert bei
+`NODE_ENV=production` bewusst den Dienst. Die Grundausstattung (Kanzlei-Tenant,
+Default-Dokumenttypen, ein Admin-Konto) legt das Provisionierungs-Skript an:
+
+```bash
+TENANT_NAME="Kanzlei Müller" ADMIN_EMAIL="admin@kanzlei-mueller.de" \
+  pnpm --filter @taxtronik/db provision
+```
+
+Optional: `TENANT_SLUG` (Login-Feld „Kanzlei", Default `default`) und
+`ADMIN_PASSWORD` (sonst zufällig generiert, einmalig angezeigt und in
+`.admin-credentials.txt` abgelegt — nach Erstlogin + TOTP-Setup löschen).
+Das Skript ist gegen Doppelausführung geschützt: Hat der Tenant bereits
+Mitarbeiter, bricht es ab und verändert nichts.
+
 ## 3. Rollback
 
 **App-Rollback (keine neuen Migrationen seit dem letzten Update):**

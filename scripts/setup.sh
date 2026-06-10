@@ -179,7 +179,8 @@ if [[ $SKIP_SEED -eq 0 ]]; then
   detected_env=$(grep -E '^NODE_ENV=' .env 2>/dev/null | head -n1 | cut -d= -f2- | tr -d '"' || true)
   if [[ "$detected_env" == "production" ]]; then
     warn "Demo-Seed übersprungen: NODE_ENV=production in .env erkannt."
-    warn "Für Production bitte einen dedizierten Provisionierungs-Pfad nutzen."
+    warn "Production-Provisionierung (Tenant + Admin, KEINE Demodaten):"
+    warn "  TENANT_NAME=\"Kanzlei ...\" ADMIN_EMAIL=... pnpm --filter @taxtronik/db provision"
   else
     step "Demo-Seed einspielen"
     pnpm --filter '@taxtronik/db' run seed || warn "Seed übersprungen (Skript hat Fehler gemeldet)."

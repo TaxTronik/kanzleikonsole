@@ -12,6 +12,11 @@ der Eintrag entsteht mit der Änderung, nicht nachträglich.
 
 ## [Unreleased]
 
+- Deployment: Production-Provisionierung ohne Demodaten —
+  `pnpm --filter @taxtronik/db provision` legt Tenant, Default-Dokumenttypen
+  und ein Admin-Konto an (Zufallspasswort, einmalig angezeigt); der Dev-Seed
+  verweigert in Produktion weiterhin, Doppel-Provisionierung wird erkannt
+  und abgebrochen (dokumentiert in docs/operations/release.md §2.1)
 - **[Scope]** Zugriffsschutz: granulare Einzelrechte je Mitarbeiter
   (Migration iter87) — Rechnungen anlegen/bearbeiten, Rechnungen versenden
   (= Festschreibung, inkl. Extern-Upload) und Urlaub entscheiden sind jetzt
