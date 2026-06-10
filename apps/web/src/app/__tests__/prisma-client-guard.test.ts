@@ -51,6 +51,10 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   'apps/worker/src/prisma-owner.ts',
   // Backup-Restore-Probe — Admin-Operation gegen die Ziel-DB.
   'apps/web/src/server/backup/restore.ts',
+  // Restore-Drill: eigener Client gegen die WEGWERF-DB taxtronik_drill
+  // (Chain-Verifikation auf dem wiederhergestellten Stand) — bewusst kein
+  // App-/Owner-Client, die zeigen auf die Produktiv-DB.
+  'apps/worker/src/jobs/backup-drill.ts',
 ]);
 
 function walk(dir: string, acc: string[]): void {
