@@ -13,9 +13,13 @@ der Eintrag entsteht mit der Änderung, nicht nachträglich.
 ## [Unreleased]
 
 - Posteingang: Architektur-Konzept für den intelligenten Dokumenteneingang
-  (docs/development/posteingang-konzept.md) — drei Kanäle (Outlook,
-  Nextcloud, UNC/Scanner) auf eine Triage-Pipeline, on-prem OCR + LLM,
-  Ablage erst nach Bestätigung; Umsetzung in vier Stufen geplant
+  (docs/development/posteingang-konzept.md) — Outlook (Add-In für
+  persönliche Postfächer + zentrales Funktionspostfach, M365-Regelfall)
+  und UNC/Scanner (Soll-Struktur + Mapping für Bestandsordner) auf eine
+  Triage-Pipeline; mehrstufige Klassifikation mit Vision-Stufe für
+  Beleg-Scans inkl. Beleglisten-Export (XLSX) als Arbeitspapier-Grundlage;
+  on-prem mit explizitem VRAM-Budget (≤ 16 GB / zwei Systeme); Ablage erst
+  nach Bestätigung; Umsetzung in fünf Stufen geplant
 - Fristenkontrollbuch (/staff/fristen): vereinheitlichte Kontrollsicht über
   Steuertermine, Einspruchsfristen, Anforderungen und Wiedervorlagen mit
   Verantwortlichen und Erledigungsnachweis; offene Fristen verfallen nie
