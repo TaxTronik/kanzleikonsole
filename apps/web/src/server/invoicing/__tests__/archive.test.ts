@@ -46,7 +46,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   tx = {
     invoice: { findFirst: vi.fn(), update: vi.fn().mockResolvedValue({}) },
-    document: { create: vi.fn().mockResolvedValue({ id: 'doc1' }) },
+    document: { create: vi.fn().mockResolvedValue({ id: 'doc1' }), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
     documentVersion: { create: vi.fn().mockResolvedValue({}) },
   };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -60,14 +60,43 @@ beforeEach(() => {
 describe('ensureZugferdArchive', () => {
   it('idempotent: vorhandenes Archiv → dieselben Bytes, KEINE Neugenerierung', async () => {
     tx.invoice.findFirst.mockResolvedValueOnce(baseInvoice({
+      status: 'SENT',
       documentId: 'doc-existing',
-      document: { versions: [{ storageBucket: 'gobd', storageKey: 'k-existing' }] },
+      document: { sharedWithClientAt: new Date(), versions: [{ storageBucket: 'gobd', storageKey: 'k-existing' }] },
     }));
     const res = await ensureZugferdArchive(ctx, 'inv1');
     expect(res).toEqual({ ok: true, bucket: 'gobd', key: 'k-existing', number: 'R-001' });
     expect(generateZugferdPdf).not.toHaveBeenCalled();
     expect(commitBytesWithTier).not.toHaveBeenCalled();
     expect(tx.document.create).not.toHaveBeenCalled();
+    // bereits freigegeben → keine erneute Freigabe
+    expect(tx.document.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('selbstheilend: als DRAFT erzeugte Kopie wird nach Versand nachträglich freigegeben', async () => {
+    // Rechnung ist inzwischen SENT, das verknüpfte Archiv aber noch ungeteilt
+    // (z. B. zuvor per DRAFT-Download erzeugt). Der nächste Helfer-Lauf gibt frei.
+    tx.invoice.findFirst.mockResolvedValueOnce(baseInvoice({
+      status: 'SENT',
+      documentId: 'doc-existing',
+      document: { sharedWithClientAt: null, versions: [{ storageBucket: 'gobd', storageKey: 'k-existing' }] },
+    }));
+    const res = await ensureZugferdArchive(ctx, 'inv1');
+    expect(res.ok).toBe(true);
+    expect(tx.document.updateMany).toHaveBeenCalledWith({
+      where: { id: 'doc-existing', sharedWithClientAt: null },
+      data: expect.objectContaining({ sharedByStaff: 's1' }),
+    });
+  });
+
+  it('DRAFT mit verknüpfter Kopie wird NICHT nachträglich freigegeben', async () => {
+    tx.invoice.findFirst.mockResolvedValueOnce(baseInvoice({
+      status: 'DRAFT',
+      documentId: 'doc-existing',
+      document: { sharedWithClientAt: null, versions: [{ storageBucket: 'gobd', storageKey: 'k-existing' }] },
+    }));
+    await ensureZugferdArchive(ctx, 'inv1');
+    expect(tx.document.updateMany).not.toHaveBeenCalled();
   });
 
   it('not_applicable für EXTERNAL/PDF-Rechnung (deren documentId ist der Upload)', async () => {

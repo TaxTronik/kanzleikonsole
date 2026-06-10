@@ -570,7 +570,11 @@ jobs:
           java -jar validator.jar -s config/scenarios.xml -r config -o report sample.xml
           rc=$?
           set -e
-          if [ ! -s report/sample-report.xml ]; then
+          # Auf einen NICHT-LEEREN Report-Ordner prüfen statt auf einen festen
+          # Dateinamen — der Validator benennt den Bericht <input>-report.xml,
+          # was sich mit der Version ändern könnte. Leerer/fehlender Ordner =
+          # Umgebungs-/Konfigfehler (Validator lief nicht), nicht REJECT.
+          if [ -z "$(ls -A report 2>/dev/null)" ]; then
             echo "::error::KoSIT-Validator hat keinen Bericht geschrieben (Exit $rc) — Umgebungs-/Konfigurationsfehler, NICHT inhaltlicher REJECT."
             exit 1
           fi

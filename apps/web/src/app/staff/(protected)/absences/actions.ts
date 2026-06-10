@@ -297,7 +297,13 @@ export async function endAbsenceAction(formData: FormData): Promise<void> {
     async (tx, { tenantId, staffId }) => {
       const before = await tx.absence.findFirst({ where: { id: parsed.data.id, tenantId, staffId } });
       if (!before || before.endDate) return;
-      await tx.absence.update({ where: { id: parsed.data.id }, data: { endDate: new Date() } });
+      // Enddatum nie vor dem Beginn: bei einer zukunftsdatierten offenen Meldung,
+      // die sofort beendet wird, würde „heute" < startDate ergeben (start > end →
+      // der Eintrag verschwände aus dem Kalender). Auf mindestens den Starttag
+      // klemmen. (Spalte ist @db.Date — die Uhrzeit fällt ohnehin weg.)
+      const today = new Date();
+      const endDate = today < before.startDate ? before.startDate : today;
+      await tx.absence.update({ where: { id: parsed.data.id }, data: { endDate } });
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',

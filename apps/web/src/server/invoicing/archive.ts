@@ -56,6 +56,21 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
   // Bereits archiviert? → exakt dieselben Bytes wiederverwenden.
   const existing = loaded.document?.versions[0];
   if (loaded.documentId && existing) {
+    // Selbstheilend: Wurde die Kopie als DRAFT erzeugt (sharedWithClientAt=null)
+    // und die Rechnung ist inzwischen versendet, gibt sie dieser Aufruf jetzt
+    // frei. Da der Helfer bei jedem ZUGFeRD-Download UND beim Versand läuft,
+    // konvergiert die Portal-Freigabe so unabhängig vom Versand-Pfad — markSent
+    // teilt zwar selbst, aber ein künftiger/abweichender Send-Pfad bleibt
+    // dadurch abgedeckt. Idempotent über das sharedWithClientAt IS NULL.
+    const shareable = loaded.status === 'SENT' || loaded.status === 'PAID' || loaded.status === 'OVERDUE';
+    if (shareable && loaded.document && !loaded.document.sharedWithClientAt) {
+      await withTenantContext(ctx, (tx) =>
+        tx.document.updateMany({
+          where: { id: loaded.documentId!, sharedWithClientAt: null },
+          data: { sharedWithClientAt: new Date(), sharedByStaff: actorId },
+        }),
+      );
+    }
     return { ok: true, bucket: existing.storageBucket, key: existing.storageKey, number: loaded.number };
   }
 

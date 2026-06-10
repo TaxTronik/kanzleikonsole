@@ -191,23 +191,24 @@ describe('Idempotenz der Notification', () => {
 });
 
 describe('Fehlerbehandlung', () => {
-  it('P2002 (paralleler Trigger) wird geschluckt, die nächste Rechnung läuft weiter', async () => {
+  it('P2002 (paralleler Notification-Insert) wird geschluckt, die nächste Rechnung läuft weiter', async () => {
     h.prismaOwner.invoice.findMany.mockResolvedValue([
       invoice(),
       invoice({ id: 'inv-2', number: 'RE-2026-0002' }),
     ]);
-    h.tx.invoice.updateMany.mockRejectedValueOnce(
+    // Reale P2002-Quelle ist der Notification-Idempotenz-Index bei create —
+    // updateMany(status=SENT) kann nach dem Recheck-Fix kein P2002 mehr werfen
+    // (paralleler Treffer ergibt count=0). Den Catch also an seinem echten
+    // Auslöser testen.
+    h.tx.notification.create.mockRejectedValueOnce(
       new h.PrismaClientKnownRequestError('Unique constraint failed', { code: 'P2002' }),
     );
 
     const result = await run();
 
-    // inv-1 abgebrochen, inv-2 normal verarbeitet
+    // inv-1: Insert kollidierte (geschluckt, nicht gezählt), inv-2 normal.
     expect(result).toEqual({ updated: 1, notified: 1 });
-    expect(h.tx.notification.create).toHaveBeenCalledTimes(1);
-    expect(h.tx.notification.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ resourceId: 'inv-2' }),
-    });
+    expect(h.tx.notification.create).toHaveBeenCalledTimes(2);
   });
 
   it('andere Fehler propagieren (Job schlägt fehl)', async () => {

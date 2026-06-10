@@ -9,8 +9,12 @@
 // (Muster: gwg-allow-active.test.ts / protect_immutable_document_version).
 //
 // Cleanup: SENT-Rechnungen sind absichtlich unlöschbar — der afterAll
-// deaktiviert Trigger sessionweit (session_replication_role = replica,
-// Owner = Superuser in Dev/CI) und räumt dann den Test-Tenant ab.
+// deaktiviert GEZIELT die drei Festschreibungs-Trigger in EINER Transaktion
+// (nicht session_replication_role=replica, das auch FK-Cascade abschaltete)
+// und räumt dann den Test-Tenant ab. Die DDL ist transaktional: bricht das
+// DELETE ab, rollt auch das DISABLE TRIGGER zurück — die Trigger bleiben nie
+// global deaktiviert. Legt der Test künftig immutable document_version-Zeilen
+// an, muss deren Schutz-Trigger hier ebenfalls in die Disable-Liste.
 // =============================================================================
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';

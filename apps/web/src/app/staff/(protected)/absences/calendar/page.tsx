@@ -52,8 +52,12 @@ export default async function AbsencesCalendarPage({
           select: { id: true, fullName: true },
         }),
         tx.vacationRequest.findMany({
+          // staff.active konsistent zum Hauptkalender filtern — die Zellen werden
+          // ohnehin nur für aktive staffList-Zeilen gerendert, aber der Schutz
+          // gehört an die Query (Defense in Depth gegen spätere Render-Änderung).
           where: {
             status: 'APPROVED',
+            staff: { active: true },
             startDate: { lte: end },
             endDate: { gte: start },
           },
@@ -61,6 +65,7 @@ export default async function AbsencesCalendarPage({
         }),
         tx.absence.findMany({
           where: {
+            staff: { active: true },
             startDate: { lte: end },
             OR: [{ endDate: null }, { endDate: { gte: start } }],
           },
