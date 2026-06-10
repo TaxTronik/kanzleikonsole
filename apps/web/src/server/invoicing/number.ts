@@ -5,9 +5,14 @@
 // die Sequenztabelle invoice_number_seq. Die Vergabe läuft IN der Anlage-
 // Transaktion unter einem Advisory-Lock — schlägt der INSERT fehl, rollt die
 // Sequenz mit zurück, es entsteht keine Lücke. Storno erzeugt keine Lücke
-// (CANCELLED behält die Nummer und erklärt sie); EXTERNAL-Rechnungen tragen
-// die Nummer des Fremdsystems und gehen an der Sequenz vorbei (nur der
-// Unique-Index schützt).
+// (CANCELLED behält die Nummer und erklärt sie). Auch ein Entwurf erhält
+// bereits seine endgültige Nummer; auf App-Ebene gibt es KEINE Lösch-Aktion
+// für Rechnungen (Entwürfe werden storniert, nicht gelöscht), sodass keine
+// vergebene Nummer verschwindet. Der DELETE-für-DRAFT-Trigger ist reiner
+// Backstop (Cascade/DB-Wartung) und keine reguläre Nutzeroperation.
+// EXTERNAL-Rechnungen tragen die Nummer des Fremdsystems und gehen an der
+// Sequenz vorbei; ihr Format ist gegen das reservierte YYYY-NNNN-Muster
+// abgegrenzt (UploadExternalSchema), damit sie keinen Sequenz-Slot belegen.
 //
 // Statusübergänge: identische Matrix wie der DB-Trigger invoice_protect_update
 // (Backstop) — hier für verständliche Fehlermeldungen VOR dem DB-Roundtrip.

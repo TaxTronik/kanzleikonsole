@@ -51,11 +51,13 @@ export async function getSetupStatus(ctx: TenantContext): Promise<SetupStatus> {
   const items = buildSetupItems({
     brandingComplete: Boolean(branding.displayName) && Boolean(branding.logoDataUrl),
     regionSet: region !== null,
-    // E-Mail + Telefon: Pflicht der XRechnung (BG-6) — ohne sie verweigert
-    // die E-Rechnungs-Erzeugung (seller_incomplete, fail-closed).
+    // E-Mail + Telefon: Pflicht der XRechnung (BG-6); USt-ID ODER Steuernummer
+    // bei Standardsatz (BR-S-02) — identisch zum Laufzeit-Check
+    // (seller_incomplete, fail-closed), damit die Checkliste nicht „erledigt"
+    // meldet, während die E-Rechnungs-Erzeugung noch verweigert.
     sellerComplete: Boolean(
       seller.name && seller.street && seller.postalCode && seller.city &&
-      seller.vatId && seller.email && seller.phone,
+      (seller.vatId || seller.taxNumber) && seller.email && seller.phone,
     ),
     smtpConfigured: smtp.configured,
     modulesConfigured: counts.modulesConfigured,

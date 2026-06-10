@@ -44,13 +44,18 @@ export async function GET(
 
   const seller = await readSellerInfo(ctx);
 
-  // Pflichtfeld-Check — E-Mail/Telefon sind XRechnung-Pflicht (BG-6, BR-DE-2/-6/-7).
-  if (!seller.name || !seller.street || !seller.city || !seller.postalCode || !seller.email || !seller.phone) {
+  // Pflichtfeld-Check — E-Mail/Telefon sind XRechnung-Pflicht (BG-6, BR-DE-2/-6/-7);
+  // USt-ID ODER Steuernummer ist bei Standardsatz-Positionen Pflicht
+  // (EN-16931 BR-S-02 / BR-CO-26) — ohne sie lehnt KoSIT die Rechnung ab.
+  if (
+    !seller.name || !seller.street || !seller.city || !seller.postalCode ||
+    !seller.email || !seller.phone || (!seller.vatId && !seller.taxNumber)
+  ) {
     return NextResponse.json(
       {
         error: 'seller_incomplete',
         message:
-          'Verkäufer-Stammdaten unvollständig. Bitte zuerst unter /staff/admin/settings ergänzen (Name, Straße, PLZ, Ort, E-Mail, Telefon).',
+          'Verkäufer-Stammdaten unvollständig. Bitte zuerst unter /staff/admin/settings ergänzen (Name, Straße, PLZ, Ort, E-Mail, Telefon, USt-ID oder Steuernummer).',
       },
       { status: 422 },
     );

@@ -22,7 +22,7 @@ const ctx = { tenantId: 't1', actorId: 's1', actorType: 'STAFF' as const };
 
 const COMPLETE_SELLER = {
   name: 'Kanzlei', street: 'Weg 1', city: 'Stadt', postalCode: '12345',
-  email: 'mail@kanzlei.example', phone: '+49 30 1',
+  email: 'mail@kanzlei.example', phone: '+49 30 1', vatId: 'DE123456789', taxNumber: null,
 };
 const COMPLETE_CLIENT = {
   name: 'Mandant', street: 'Gasse 2', city: 'Ort', postalCode: '54321',
@@ -94,6 +94,23 @@ describe('ensureZugferdArchive', () => {
     const res = await ensureZugferdArchive(ctx, 'inv1');
     expect(res).toEqual({ ok: false, code: 'seller_incomplete' });
     expect(generateZugferdPdf).not.toHaveBeenCalled();
+  });
+
+  it('seller_incomplete ohne USt-ID UND Steuernummer (BR-S-02)', async () => {
+    tx.invoice.findFirst.mockResolvedValueOnce(baseInvoice());
+    vi.mocked(readSellerInfo).mockResolvedValue({ ...COMPLETE_SELLER, vatId: null, taxNumber: null } as never);
+    const res = await ensureZugferdArchive(ctx, 'inv1');
+    expect(res).toEqual({ ok: false, code: 'seller_incomplete' });
+    expect(generateZugferdPdf).not.toHaveBeenCalled();
+  });
+
+  it('Steuernummer allein genügt (USt-ID fehlt, taxNumber gesetzt)', async () => {
+    tx.invoice.findFirst
+      .mockResolvedValueOnce(baseInvoice({ status: 'SENT' }))
+      .mockResolvedValueOnce(baseInvoice({ status: 'SENT' }));
+    vi.mocked(readSellerInfo).mockResolvedValue({ ...COMPLETE_SELLER, vatId: null, taxNumber: '12/345/67890' } as never);
+    const res = await ensureZugferdArchive(ctx, 'inv1');
+    expect(res.ok).toBe(true);
   });
 
   it('buyer_incomplete bei unvollständiger Mandantenadresse', async () => {

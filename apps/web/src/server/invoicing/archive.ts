@@ -60,10 +60,14 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
   }
 
   // 2. Validierung (identisch zur bisherigen Download-Route). E-Mail + Telefon
-  // sind XRechnung-Pflicht (BG-6 Verkäufer-Kontakt, BR-DE-2/-6/-7) — ohne sie
-  // würde nicht-konformes XML archiviert, daher fail-closed.
+  // sind XRechnung-Pflicht (BG-6 Verkäufer-Kontakt, BR-DE-2/-6/-7); USt-ID ODER
+  // Steuernummer ist bei Standardsatz Pflicht (EN-16931 BR-S-02/BR-CO-26) —
+  // ohne sie würde nicht-konformes XML archiviert, daher fail-closed.
   const seller = await readSellerInfo(ctx);
-  if (!seller.name || !seller.street || !seller.city || !seller.postalCode || !seller.email || !seller.phone) {
+  if (
+    !seller.name || !seller.street || !seller.city || !seller.postalCode ||
+    !seller.email || !seller.phone || (!seller.vatId && !seller.taxNumber)
+  ) {
     return { ok: false, code: 'seller_incomplete' };
   }
   if (!loaded.client.street || !loaded.client.city || !loaded.client.postalCode) {

@@ -45,10 +45,22 @@ const PositionSchema = z.object({
 // und lückenlos aus dem Nummernkreis vergeben (allocateInvoiceNumber, in
 // derselben Tx wie der INSERT). Manuelle Nummern gibt es nur noch im
 // EXTERNAL-Modus (Nummer des Fremdsystems).
+// Das Rechnungsdatum bestimmt den Jahres-Nummernkreis (allocateInvoiceNumber
+// liest issueDate.getUTCFullYear()). Ein frei rück-/vordatiertes Datum würde
+// sonst einen fremden Jahreskreis öffnen — daher auf das laufende Jahr ± 1
+// begrenzt (deckt die Jahreswechsel-Grenze ab, blockt 2020/2099).
+function issueYearPlausible(dateStr: string): boolean {
+  const year = new Date(dateStr).getUTCFullYear();
+  const now = new Date().getUTCFullYear();
+  return year >= now - 1 && year <= now + 1;
+}
+
 const CreateSchema = z.object({
   clientId: z.string().uuid(),
   subject: z.string().min(1).max(500),
-  issueDate: z.string().date(),
+  issueDate: z.string().date().refine(issueYearPlausible, {
+    message: 'Rechnungsdatum liegt außerhalb des plausiblen Bereichs (laufendes Jahr ± 1).',
+  }),
   dueDate: z.string().date(),
   notes: z.string().max(5000).optional().or(z.literal('')),
   format: z.enum(['PDF', 'XRECHNUNG', 'ZUGFERD']).default('PDF'),
@@ -365,10 +377,18 @@ export async function createInvoiceFromFormAction(formData: FormData): Promise<v
 // Rechnung kommt fertig aus der zentralen Rechnungssoftware.
 // ----------------------------------------------------------------------------
 
+// Das Format `YYYY-NNNN` ist dem automatischen Nummernkreis vorbehalten —
+// `allocateInvoiceNumber` initialisiert die Sequenz aus dem MAX dieser Nummern.
+// Eine EXTERNAL-Fremdnummer in genau diesem Muster könnte einen Sequenz-Slot
+// belegen und die nächste Auto-Vergabe in eine endlose Unique-Kollision treiben.
+const RESERVED_AUTO_NUMBER = /^\d{4}-\d+$/;
+
 const UploadExternalSchema = z.object({
   clientId: z.string().uuid(),
   categoryId: z.string().uuid().nullable().optional(),
-  number: z.string().min(1).max(50),
+  number: z.string().min(1).max(50).refine((n) => !RESERVED_AUTO_NUMBER.test(n), {
+    message: 'Diese Nummer hat das Format des automatischen Nummernkreises (JJJJ-NNNN) und ist reserviert. Bitte die Originalnummer des Fremdsystems verwenden.',
+  }),
   subject: z.string().min(1).max(200),
   issueDate: z.string().date(),
   dueDate: z.string().date(),
