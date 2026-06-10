@@ -63,12 +63,25 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Unit tests without external services
+      # ALLE Pakete außer @taxtronik/db (dessen RLS-Tests brauchen die echte
+      # Postgres-Instanz → Job `db`). Vorher liefen hier nur 4 von 11 Test-
+      # Paketen — Worker/Crypto/Risk-Layer & Co. waren in CI ungetestet.
+      # Das Protokoll ist der Testnachweis je Lauf (docs/development/
+      # testkonzept.md, Abschnitt 4) und wird als Artefakt archiviert.
+      # turbo direkt aufrufen: `pnpm test -- --filter=…` würde den Filter an
+      # vitest durchreichen statt an turbo (Paket-Scope bliebe ungefiltert).
+      - name: Unit tests (alle Pakete ohne DB-Bedarf)
         run: |
-          pnpm --filter @taxtronik/config test
-          pnpm --filter @taxtronik/evidence test
-          pnpm --filter @taxtronik/tax test
-          pnpm --filter @taxtronik/web test
+          set -o pipefail
+          pnpm exec turbo run test --filter='!@taxtronik/db' 2>&1 | tee testbericht-unit.log
+
+      - name: Testnachweis hochladen
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: testbericht-unit
+          path: testbericht-unit.log
+          if-no-files-found: ignore
 
   db:
     name: Migrations, RLS, Drift
@@ -138,7 +151,17 @@ jobs:
         run: pnpm --filter @taxtronik/db exec prisma migrate deploy
 
       - name: RLS tests
-        run: pnpm --filter @taxtronik/db test
+        run: |
+          set -o pipefail
+          pnpm --filter @taxtronik/db test 2>&1 | tee testbericht-db.log
+
+      - name: Testnachweis hochladen
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: testbericht-db
+          path: testbericht-db.log
+          if-no-files-found: ignore
 
       - name: Schema drift check
         run: pnpm verify:schema-drift
@@ -235,7 +258,17 @@ jobs:
         run: pnpm --filter @taxtronik/db seed
 
       - name: Backup→Restore self-test
-        run: bash scripts/restore-selftest.sh
+        run: |
+          set -o pipefail
+          bash scripts/restore-selftest.sh 2>&1 | tee testbericht-restore.log
+
+      - name: Testnachweis hochladen
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: testbericht-restore
+          path: testbericht-restore.log
+          if-no-files-found: ignore
 
   # ===========================================================================
   # Upgrade-Pfad: simuliert das Kunden-Update. Eine DB wird auf den
@@ -454,8 +487,10 @@ jobs:
       - name: Run smoke E2E
         run: pnpm --filter @taxtronik/e2e exec playwright test tests/01-smoke.spec.ts
 
+      # immer hochladen (nicht nur bei Fehlschlag): der Report ist der
+      # E2E-Testnachweis je Lauf (Testkonzept Abschnitt 4).
       - name: Upload Playwright report
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v3
         with:
           name: playwright-report

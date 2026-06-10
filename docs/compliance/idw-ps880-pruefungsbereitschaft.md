@@ -34,11 +34,11 @@ zwischen geprüfter und neuer Version eindeutig hervorgehen (vgl. Tz. 109 ff.).
 Unsere Release-Pipeline (Tags, signierte Manifeste, Image-Digests) ist dafür
 die richtige Basis — die Änderungsdokumentation muss formalisiert werden.
 
-## 2. Scope-Entscheidung (offen — vor Beauftragung festlegen)
+## 2. Scope-Entscheidung (beschlossen am 2026-06-10)
 
 Prüfungsgegenstand können das Produkt insgesamt, einzelne Module oder
-einzelne Funktionen sein (vgl. Tz. 9, 44, 88). Vorschlag für einen ersten,
-beherrschbaren Scope mit maximalem Bescheinigungswert:
+einzelne Funktionen sein (vgl. Tz. 9, 44, 88). Beschlossener Scope für die
+erste Bescheinigung:
 
 | Modul/Funktion | Begründung |
 |---|---|
