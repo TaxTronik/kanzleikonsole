@@ -11,11 +11,9 @@ interface CategoryOption { id: string; name: string; }
 export function ExternalInvoiceForm({
   clients,
   categories,
-  suggestedNumber,
 }: {
   clients: ClientOption[];
   categories: CategoryOption[];
-  suggestedNumber: string;
 }) {
   const router = useRouter();
   const [isPending, start] = useTransition();
@@ -98,9 +96,11 @@ export function ExternalInvoiceForm({
       <div className="grid grid-cols-3 gap-4">
         <div>
           <label className="label" htmlFor="number">Rechnungsnummer <span className="text-red-600">*</span></label>
+          {/* EXTERNAL: Nummer kommt aus dem Fremdsystem (kein Vorschlag —
+              der interne Nummernkreis gilt nur für In-App-Rechnungen). */}
           <input
             id="number" name="number" type="text" required maxLength={50}
-            defaultValue={suggestedNumber}
+            placeholder="Nummer aus der Rechnungssoftware"
             className="input font-mono"
           />
         </div>

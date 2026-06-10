@@ -7,16 +7,14 @@ import { createInvoiceFromTimeEntriesAction } from './actions';
 import { fmtEUR } from '@/lib/fmt';
 interface Props {
   clientId: string;
-  suggestedNumber: string;
   totalHours: number;
 }
 
-export function BillingForm({ clientId, suggestedNumber, totalHours }: Props) {
+export function BillingForm({ clientId, totalHours }: Props) {
   const router = useRouter();
   const today = new Date().toISOString().slice(0, 10);
   const inThirtyDays = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
-  const [number, setNumber] = useState(suggestedNumber);
   const [subject, setSubject] = useState(`Beratungsleistungen ${new Date().toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })}`);
   const [issueDate, setIssueDate] = useState(today);
   const [dueDate, setDueDate] = useState(inThirtyDays);
@@ -39,7 +37,6 @@ export function BillingForm({ clientId, suggestedNumber, totalHours }: Props) {
     startTransition(async () => {
       const r = await createInvoiceFromTimeEntriesAction({
         clientId,
-        number,
         subject,
         issueDate,
         dueDate,
@@ -61,8 +58,11 @@ export function BillingForm({ clientId, suggestedNumber, totalHours }: Props) {
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="label" htmlFor="number">Rechnungsnummer</label>
-          <input id="number" type="text" className="input" value={number} onChange={(e) => setNumber(e.target.value)} required maxLength={50} />
+          <label className="label">Rechnungsnummer</label>
+          {/* iter85 (GoB): automatische lückenlose Vergabe beim Anlegen. */}
+          <p className="input bg-gray-50 dark:bg-gray-900/40 text-muted select-none">
+            wird automatisch vergeben
+          </p>
         </div>
         <div>
           <label className="label" htmlFor="format">Format</label>

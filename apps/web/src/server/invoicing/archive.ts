@@ -127,6 +127,11 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
         title: `Rechnung ${loaded.number} (ZUGFeRD)`,
         classification: 'GOBD_INVOICE',
         mimeType: 'application/pdf',
+        // iter85 (Befund 7): Rechnungs-PDFs sind für den Mandanten bestimmt —
+        // ohne Freigabe lief der Portal-„Öffnen"-Link auf 404
+        // (Portal-Download filtert auf sharedWithClientAt).
+        sharedWithClientAt: new Date(),
+        sharedByStaff: actorId,
       },
     });
     await tx.documentVersion.create({

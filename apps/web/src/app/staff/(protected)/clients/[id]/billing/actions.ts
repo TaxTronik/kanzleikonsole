@@ -7,11 +7,14 @@ import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { fmtDateShort } from '@/lib/fmt';
 import { toActionError } from '@/server/auth/rbac';
+import { allocateInvoiceNumber } from '@/server/invoicing/number';
+import { readModules } from '@/server/settings/modules';
 import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
 
+// iter85 (GoB): kein number-Feld — automatische lückenlose Vergabe aus dem
+// Nummernkreis (siehe invoices/actions.ts).
 const CreateSchema = z.object({
   clientId: z.string().uuid(),
-  number: z.string().min(1).max(50),
   subject: z.string().min(1).max(500),
   issueDate: z.string().date(),
   dueDate: z.string().date(),
@@ -37,6 +40,12 @@ export async function createInvoiceFromTimeEntriesAction(input: z.infer<typeof C
   const g = await staffActionGuard();
   if (!g.ok) return g;
   const { tenantId, staffId, ctx } = g;
+
+  // Defense in Depth (Befund 11): Stundenabrechnung erzeugt In-App-Rechnungen.
+  const modules = await readModules(ctx);
+  if (modules.invoiceMode !== 'IN_APP') {
+    return { ok: false, error: 'Das Rechnungsmodul ist für diesen Vorgang nicht aktiviert.' };
+  }
 
   const parsed = CreateSchema.safeParse(input);
   if (!parsed.success) {
@@ -109,12 +118,13 @@ export async function createInvoiceFromTimeEntriesAction(input: z.infer<typeof C
         }));
       }
 
-      // 4. Rechnung anlegen
+      // 4. Rechnung anlegen — Nummer lückenlos in derselben Tx vergeben
+      const number = await allocateInvoiceNumber(tx, tenantId, new Date(data.issueDate));
       const inv = await tx.invoice.create({
         data: {
           tenantId,
           clientId: data.clientId,
-          number: data.number,
+          number,
           subject: data.subject,
           issueDate: new Date(data.issueDate),
           dueDate: new Date(data.dueDate),
@@ -144,7 +154,7 @@ export async function createInvoiceFromTimeEntriesAction(input: z.infer<typeof C
         resourceType: 'invoice',
         resourceId: inv.id,
         after: {
-          number: data.number,
+          number,
           clientId: data.clientId,
           timeEntryCount: entries.length,
           totalAmount: totalGross,
@@ -183,17 +193,15 @@ export async function billAllPendingHoursAction(formData: FormData): Promise<voi
   const clientId = formData.get('clientId');
   const hourlyRate = Number(formData.get('hourlyRate') ?? 120);
   const subject = String(formData.get('subject') ?? 'Beratungsstunden');
-  const number = String(formData.get('number') ?? '');
   const issueDate = String(formData.get('issueDate') ?? '');
   const dueDate = String(formData.get('dueDate') ?? '');
 
-  if (typeof clientId !== 'string' || !number || !issueDate || !dueDate) {
+  if (typeof clientId !== 'string' || !issueDate || !dueDate) {
     throw new Error('Pflichtfelder fehlen.');
   }
 
   const r = await createInvoiceFromTimeEntriesAction({
     clientId,
-    number,
     subject,
     issueDate,
     dueDate,

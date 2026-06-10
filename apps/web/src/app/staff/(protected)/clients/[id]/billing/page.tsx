@@ -23,29 +23,23 @@ export default async function ClientBillingPage({
       const client = await tx.client.findUnique({ where: { id: clientId } });
       if (!client) return null;
 
-      const [pendingEntries, lastInvoice] = await Promise.all([
-        tx.timeEntry.findMany({
-          where: {
-            clientId,
-            billable: true,
-            invoiceId: null,
-            endedAt: { not: null },
-          },
-          orderBy: { startedAt: 'asc' },
-          include: { staff: { select: { fullName: true } } },
-        }),
-        tx.invoice.findFirst({
-          orderBy: { createdAt: 'desc' },
-          select: { number: true, issueDate: true },
-        }),
-      ]);
+      const pendingEntries = await tx.timeEntry.findMany({
+        where: {
+          clientId,
+          billable: true,
+          invoiceId: null,
+          endedAt: { not: null },
+        },
+        orderBy: { startedAt: 'asc' },
+        include: { staff: { select: { fullName: true } } },
+      });
 
-      return { client, pendingEntries, lastInvoice };
+      return { client, pendingEntries };
     },
   );
 
   if (!data) notFound();
-  const { client, pendingEntries, lastInvoice } = data;
+  const { client, pendingEntries } = data;
 
   const totalMinutes = pendingEntries.reduce((s, e) => {
     if (!e.endedAt) return s;
@@ -53,17 +47,8 @@ export default async function ClientBillingPage({
   }, 0);
   const totalHours = totalMinutes / 60;
 
-  // Vorschlag für nächste Rechnungsnummer
-  const year = new Date().getFullYear();
-  const suggestNumber = (() => {
-    if (lastInvoice?.number) {
-      const m = lastInvoice.number.match(/^(\d{4})-(\d+)$/);
-      if (m && m[1] === String(year)) {
-        return `${year}-${String(Number(m[2]) + 1).padStart(4, '0')}`;
-      }
-    }
-    return `${year}-0001`;
-  })();
+  // iter85 (GoB): Rechnungsnummer vergibt der Nummernkreis automatisch und
+  // lückenlos beim Anlegen — kein clientseitiger Vorschlag mehr.
 
   const fmtMin = (m: number) => {
     const h = Math.floor(m / 60);
@@ -147,7 +132,7 @@ export default async function ClientBillingPage({
           {client.allowActive && (
             <div className="card p-6">
               <h2 className="text-sm font-medium text-primary mb-3">Rechnung erstellen</h2>
-              <BillingForm clientId={client.id} suggestedNumber={suggestNumber} totalHours={totalHours} />
+              <BillingForm clientId={client.id} totalHours={totalHours} />
             </div>
           )}
         </>

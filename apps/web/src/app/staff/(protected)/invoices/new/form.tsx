@@ -26,10 +26,9 @@ const newPosition = (): PositionRow => ({
 
 interface Props {
   clients: Array<{ id: string; name: string }>;
-  suggestedNumber: string;
 }
 
-export function NewInvoiceForm({ clients, suggestedNumber }: Props) {
+export function NewInvoiceForm({ clients }: Props) {
   const router = useRouter();
   const today = new Date().toISOString().slice(0, 10);
   const inThirtyDays = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
@@ -37,7 +36,6 @@ export function NewInvoiceForm({ clients, suggestedNumber }: Props) {
     .slice(0, 10);
 
   const [clientId, setClientId] = useState(clients[0]?.id ?? '');
-  const [number, setNumber] = useState(suggestedNumber);
   const [subject, setSubject] = useState('');
   const [issueDate, setIssueDate] = useState(today);
   const [dueDate, setDueDate] = useState(inThirtyDays);
@@ -78,7 +76,6 @@ export function NewInvoiceForm({ clients, suggestedNumber }: Props) {
     startTransition(async () => {
       const r = await createInvoiceAction({
         clientId,
-        number,
         subject,
         issueDate,
         dueDate,
@@ -120,16 +117,12 @@ export function NewInvoiceForm({ clients, suggestedNumber }: Props) {
             </select>
           </div>
           <div>
-            <label className="label" htmlFor="number">Rechnungsnummer</label>
-            <input
-              id="number"
-              type="text"
-              className="input"
-              value={number}
-              onChange={(e) => setNumber(e.target.value)}
-              required
-              maxLength={50}
-            />
+            <label className="label">Rechnungsnummer</label>
+            {/* iter85 (GoB): automatische, lückenlose Vergabe beim Anlegen —
+                keine manuelle Eingabe mehr (Nummernkreis je Jahr). */}
+            <p className="input bg-gray-50 dark:bg-gray-900/40 text-muted select-none">
+              wird automatisch vergeben (fortlaufend je Jahr)
+            </p>
           </div>
         </div>
 

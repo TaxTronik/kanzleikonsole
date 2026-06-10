@@ -15,7 +15,7 @@ export default async function NewInvoicePage() {
   const modules = await readModules({ tenantId, actorId: staffId, actorType: 'STAFF' });
   if (modules.invoiceMode === 'OFF') redirect('/staff/dashboard');
 
-  const [clients, categories, lastInvoice] = await withTenantContext(
+  const [clients, categories] = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) =>
       Promise.all([
@@ -29,25 +29,12 @@ export default async function NewInvoicePage() {
           orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
           select: { id: true, name: true },
         }),
-        tx.invoice.findFirst({
-          orderBy: { createdAt: 'desc' },
-          select: { number: true, issueDate: true },
-        }),
       ]),
   );
 
-  // Vorschlag für nächste Rechnungsnummer: YYYY-XXXX, +1 wenn Format passt
-  const year = new Date().getFullYear();
-  const suggestNumber = (() => {
-    if (lastInvoice?.number) {
-      const m = lastInvoice.number.match(/^(\d{4})-(\d+)$/);
-      if (m && m[1] === String(year)) {
-        return `${year}-${String(Number(m[2]) + 1).padStart(4, '0')}`;
-      }
-    }
-    return `${year}-0001`;
-  })();
-
+  // iter85 (GoB): In-App-Nummern vergibt der Nummernkreis automatisch und
+  // lückenlos beim Anlegen — der frühere clientseitige Vorschlag entfällt.
+  // EXTERNAL trägt weiterhin die Nummer des Fremdsystems (manuell).
   const isExternal = modules.invoiceMode === 'EXTERNAL';
 
   return (
@@ -73,13 +60,9 @@ export default async function NewInvoicePage() {
           Keine aktiven Mandanten vorhanden. Bitte zuerst GwG-Prüfung abschließen.
         </div>
       ) : isExternal ? (
-        <ExternalInvoiceForm
-          clients={clients}
-          categories={categories}
-          suggestedNumber={suggestNumber}
-        />
+        <ExternalInvoiceForm clients={clients} categories={categories} />
       ) : (
-        <NewInvoiceForm clients={clients} suggestedNumber={suggestNumber} />
+        <NewInvoiceForm clients={clients} />
       )}
     </div>
   );

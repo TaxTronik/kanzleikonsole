@@ -3,7 +3,7 @@
 import { z } from 'zod';
 import { evidenceService } from '@/server/container';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
-import { withStaff, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
+import { withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
 
 export type ActionResult = BaseActionResult;
 
@@ -95,6 +95,11 @@ export async function deleteTimeEntryAction(formData: FormData): Promise<void> {
     async (tx, { tenantId, staffId }) => {
       const before = await tx.timeEntry.findFirst({ where: { id, staffId } });
       if (!before) return;
+      // iter85 (GoB, Befund 10): abgerechnete Stunden sind Abrechnungsgrundlage
+      // einer Rechnung — Löschen würde den Beleg-Zusammenhang zerstören.
+      if (before.invoiceId) {
+        throw new ActionError('Dieser Eintrag ist bereits abgerechnet und kann nicht gelöscht werden.');
+      }
       await tx.timeEntry.delete({ where: { id } });
       await evidenceService.record(tx, {
         tenantId,

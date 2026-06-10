@@ -11,10 +11,24 @@ import { createDocumentWithVersion } from '@/server/documents/upload-helpers';
 import { sendTemplateMail } from '@/server/mail/dispatch';
 import { toActionError } from '@/server/auth/rbac';
 import { ensureZugferdArchive } from '@/server/invoicing/archive';
+import { allocateInvoiceNumber, isValidInvoiceTransition } from '@/server/invoicing/number';
+import { readModules, type InvoiceMode } from '@/server/settings/modules';
 import { log } from '@/server/logger';
 import { staffActionGuard, withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
+import type { TenantContext } from '@taxtronik/db';
 
 export type ActionResult = BaseActionResult;
+
+// Defense in Depth (Befund 11 der Modul-Inventur): das invoiceMode-Gate lag
+// nur in der UI (new/page.tsx) — die Actions selbst waren bei deaktiviertem
+// bzw. falschem Modus direkt aufrufbar.
+async function requireInvoiceMode(ctx: TenantContext, mode: InvoiceMode): Promise<ActionResult | null> {
+  const modules = await readModules(ctx);
+  if (modules.invoiceMode !== mode) {
+    return { ok: false, error: 'Das Rechnungsmodul ist für diesen Vorgang nicht aktiviert.' };
+  }
+  return null;
+}
 
 const PositionSchema = z.object({
   description: z.string().min(1).max(500),
@@ -23,9 +37,12 @@ const PositionSchema = z.object({
   unit: z.string().max(50).default('Stück'),
 });
 
+// iter85 (GoB): KEIN number-Feld mehr — die Rechnungsnummer wird automatisch
+// und lückenlos aus dem Nummernkreis vergeben (allocateInvoiceNumber, in
+// derselben Tx wie der INSERT). Manuelle Nummern gibt es nur noch im
+// EXTERNAL-Modus (Nummer des Fremdsystems).
 const CreateSchema = z.object({
   clientId: z.string().uuid(),
-  number: z.string().min(1).max(50),
   subject: z.string().min(1).max(500),
   issueDate: z.string().date(),
   dueDate: z.string().date(),
@@ -37,7 +54,6 @@ const CreateSchema = z.object({
 
 export async function createInvoiceAction(input: {
   clientId: string;
-  number: string;
   subject: string;
   issueDate: string;
   dueDate: string;
@@ -45,10 +61,13 @@ export async function createInvoiceAction(input: {
   notes?: string;
   format: 'PDF' | 'XRECHNUNG' | 'ZUGFERD';
   positions: Array<{ description: string; quantity: number; unitPrice: number; unit: string }>;
-}): Promise<ActionResult & { invoiceId?: string }> {
+}): Promise<ActionResult & { invoiceId?: string; number?: string }> {
   const g = await staffActionGuard();
   if (!g.ok) return g;
   const { tenantId, staffId, ctx } = g;
+
+  const gate = await requireInvoiceMode(ctx, 'IN_APP');
+  if (gate) return gate;
 
   const parsed = CreateSchema.safeParse(input);
   if (!parsed.success) {
@@ -70,13 +89,17 @@ export async function createInvoiceAction(input: {
   const grandTotal = round2(netTotal + vatTotal);
 
   let invoiceId: string;
+  let invoiceNumber: string;
   try {
-    invoiceId = await withTenantContext(ctx, async (tx) => {
+    [invoiceId, invoiceNumber] = await withTenantContext(ctx, async (tx) => {
+      // Lückenlose Vergabe in DERSELBEN Tx: scheitert der INSERT, rollt die
+      // Sequenz mit zurück — es entsteht keine Lücke.
+      const number = await allocateInvoiceNumber(tx, tenantId, new Date(data.issueDate));
       const inv = await tx.invoice.create({
         data: {
           tenantId,
           clientId: data.clientId,
-          number: data.number,
+          number,
           subject: data.subject,
           issueDate: new Date(data.issueDate),
           dueDate: new Date(data.dueDate),
@@ -100,14 +123,14 @@ export async function createInvoiceAction(input: {
         resourceType: 'invoice',
         resourceId: inv.id,
         after: {
-          number: data.number,
+          number,
           clientId: data.clientId,
           totalAmount: grandTotal,
           format: data.format,
         },
       });
 
-      return inv.id;
+      return [inv.id, number] as const;
     });
   } catch (e) {
     // Befund 8: Klassifikation über Prisma-Error-Code statt fragiler Message-
@@ -127,12 +150,18 @@ export async function createInvoiceAction(input: {
     return toActionError(e);
   }
 
-  return { ok: true, invoiceId };
+  return { ok: true, invoiceId, number: invoiceNumber };
 }
 
 const StatusSchema = z.object({
   invoiceId: z.string().uuid(),
 });
+
+const ARCHIVE_FAIL_TEXT: Record<string, string> = {
+  not_found: 'Rechnung nicht gefunden.',
+  seller_incomplete: 'Kanzlei-Rechnungsabsender unvollständig (Einstellungen → Rechnungsdaten).',
+  buyer_incomplete: 'Mandanten-Anschrift unvollständig (Straße/PLZ/Ort).',
+};
 
 export async function markSentAction(formData: FormData): Promise<void> {
   const g = await staffActionGuard();
@@ -147,6 +176,26 @@ export async function markSentAction(formData: FormData): Promise<void> {
   if (!parsed.success) {
     log.warn({ component: 'invoices', action: 'markSent' }, 'markSentAction: ungültige invoiceId');
     return;
+  }
+
+  // iter85 (GoB): Precondition + Archiv-PFLICHT vor dem Versand.
+  // Nur DRAFT → SENT; und die byte-stabile GoBD-Archivkopie muss VOR der
+  // Festschreibung existieren — vorher war das Archiv best-effort und eine
+  // SENT-Rechnung konnte ohne revisionssichere Kopie existieren (Befund 8).
+  // PDF-/EXTERNAL-Formate haben kein Generat (not_applicable) und passieren.
+  const current = await withTenantContext(ctx, (tx) =>
+    tx.invoice.findUnique({ where: { id: parsed.data.invoiceId }, select: { status: true } }),
+  );
+  if (!current) return;
+  if (!isValidInvoiceTransition(current.status, 'SENT')) {
+    throw new ActionError(`Statuswechsel ${current.status} → SENT ist nicht zulässig.`);
+  }
+
+  const archive = await ensureZugferdArchive(ctx, parsed.data.invoiceId);
+  if (!archive.ok && archive.code !== 'not_applicable') {
+    throw new ActionError(
+      `Versand abgebrochen — GoBD-Archivkopie konnte nicht erstellt werden: ${ARCHIVE_FAIL_TEXT[archive.code] ?? archive.code}`,
+    );
   }
 
   await withTenantContext(ctx, async (tx) => {
@@ -165,22 +214,6 @@ export async function markSentAction(formData: FormData): Promise<void> {
     });
   });
 
-  // Option B: ZUGFeRD-Archiv schon beim Ausstellen festschreiben → byte-stabile
-  // GoBD-Kopie ab Ausstellung, keine CPU-Wiederholung bei späteren Downloads.
-  // Best-effort: schlägt es fehl (Adresse unvollständig, Storage-Hiccup, oder
-  // EXTERNAL/PDF-Rechnung), blockiert das den Versand NICHT — der Download
-  // generiert dann nach. Der Status ist bereits gesetzt + auditiert.
-  try {
-    await ensureZugferdArchive(ctx, parsed.data.invoiceId);
-  } catch (e) {
-    // Best-effort bleibt (Archiv ist optional zum Versandzeitpunkt) — aber
-    // loggen (Befund 9), damit wiederholte Archiv-Fehler für Ops sichtbar sind.
-    log.warn(
-      { component: 'invoices', invoiceId: parsed.data.invoiceId, err: (e as Error).message },
-      'markSentAction: ensureZugferdArchive fehlgeschlagen — Download generiert nach',
-    );
-  }
-
   emitN8nEvent('invoice.due', { tenantId, invoiceId: parsed.data.invoiceId });
   revalidatePath('/staff/invoices');
   revalidatePath(`/staff/invoices/${parsed.data.invoiceId}`);
@@ -192,6 +225,15 @@ export async function markPaidAction(formData: FormData): Promise<void> {
 
   await withStaff(
     async (tx, { tenantId, staffId }) => {
+      // iter85: Precondition (UI verbirgt den Button, die Action prüft selbst;
+      // der DB-Trigger ist der Backstop).
+      const current = await tx.invoice.findUnique({
+        where: { id: parsed.data.invoiceId }, select: { status: true },
+      });
+      if (!current) return;
+      if (!isValidInvoiceTransition(current.status, 'PAID')) {
+        throw new ActionError(`Statuswechsel ${current.status} → PAID ist nicht zulässig.`);
+      }
       const updated = await tx.invoice.update({
         where: { id: parsed.data.invoiceId },
         data: { status: 'PAID', paidAt: new Date() },
@@ -216,6 +258,15 @@ export async function cancelInvoiceAction(formData: FormData): Promise<void> {
 
   await withStaff(
     async (tx, { tenantId, staffId }) => {
+      // iter85: PAID/CANCELLED sind terminal — vorher war z. B. PAID → CANCELLED
+      // per direktem Action-Aufruf möglich (Schutz lag nur in der UI).
+      const current = await tx.invoice.findUnique({
+        where: { id: parsed.data.invoiceId }, select: { status: true },
+      });
+      if (!current) return;
+      if (!isValidInvoiceTransition(current.status, 'CANCELLED')) {
+        throw new ActionError(`Statuswechsel ${current.status} → CANCELLED ist nicht zulässig.`);
+      }
       const updated = await tx.invoice.update({
         where: { id: parsed.data.invoiceId },
         data: { status: 'CANCELLED' },
@@ -255,7 +306,6 @@ export async function createInvoiceFromFormAction(formData: FormData): Promise<v
 
   const r = await createInvoiceAction({
     clientId: String(formData.get('clientId') ?? ''),
-    number: String(formData.get('number') ?? ''),
     subject: String(formData.get('subject') ?? ''),
     issueDate: String(formData.get('issueDate') ?? ''),
     dueDate: String(formData.get('dueDate') ?? ''),
@@ -305,6 +355,9 @@ export async function uploadExternalInvoiceAction(input: z.infer<typeof UploadEx
   const g = await staffActionGuard();
   if (!g.ok) return g;
   const { tenantId, staffId, ctx } = g;
+
+  const gate = await requireInvoiceMode(ctx, 'EXTERNAL');
+  if (gate) return gate;
 
   const parsed = UploadExternalSchema.safeParse(input);
   if (!parsed.success) {
@@ -360,6 +413,11 @@ export async function uploadExternalInvoiceAction(input: z.infer<typeof UploadEx
           classification: 'GOBD_INVOICE',
           // P-3: Magic-Bytes statt Client-Header — siehe M-2.
           mimeType: stored.detectedMime ?? data.pdf.mimeType ?? 'application/pdf',
+          // iter85 (Befund 7): Rechnungs-PDFs sind FÜR den Mandanten bestimmt —
+          // ohne Freigabe lief der „Öffnen"-Link im Portal auf 404 (die
+          // Portal-Download-Route filtert auf sharedWithClientAt).
+          sharedWithClientAt: new Date(),
+          sharedByStaff: staffId,
         },
         commit: stored,
         createdById: staffId,

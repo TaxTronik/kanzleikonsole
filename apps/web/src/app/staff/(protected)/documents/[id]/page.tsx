@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { ArrowLeft, FileText, Lock, Shield } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
+import { canAccessClientTx } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { DocumentPreviewButton } from '@/components/document-preview';
 import { AcknowledgeButton } from '../acknowledge-button';
@@ -42,6 +43,18 @@ export default async function DocumentDetailPage({
   );
 
   if (!doc) notFound();
+
+  // iter85 (Inventur-Befund): Download/Preview prüfen die RESTRICTED-
+  // Zuständigkeit — die Detailseite zeigte Metadaten (Titel, Versionen, SHA)
+  // gesperrter Mandanten trotzdem. Gleiche 404-Semantik wie die Download-
+  // Route (kein Existenz-Leak).
+  if (doc.client) {
+    const allowed = await withTenantContext(
+      { tenantId, actorId: staffId, actorType: 'STAFF' },
+      (tx) => canAccessClientTx(tx, session, doc.client!.id),
+    );
+    if (!allowed) notFound();
+  }
 
   // Name des Bestätigers nachladen (optional; vermeidet zusätzlichen Join)
   let acknowledgedByName: string | null = null;

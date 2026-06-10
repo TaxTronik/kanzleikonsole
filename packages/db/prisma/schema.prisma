@@ -54,6 +54,7 @@ model Tenant {
   gwgInvites                 GwgOnboardingInvite[]
   invoices                   Invoice[]
   invoiceCategories          InvoiceCategory[]
+  invoiceNumberSeqs          InvoiceNumberSeq[]
   kbArticles                 KbArticle[]
   kbCategories               KbCategory[]
   magicLinks                 MagicLink[]
@@ -420,6 +421,22 @@ model Invoice {
 /// Rechnungstypen für EXTERNAL-Modus (PDF-Upload aus zentraler Software).
 /// Pro Typ kann ein E-Mail-Template-Slug hinterlegt sein — der Begleittext
 /// der Mail an den Mandanten richtet sich nach dem Rechnungstyp.
+// iter85 (GoB): Nummernkreis für die automatische, lückenlose Rechnungsnummern-
+// Vergabe je Tenant+Jahr (Format YYYY-NNNN). Vergabe NUR über
+// allocateInvoiceNumber (apps/web/src/server/invoicing/number.ts) — atomar
+// unter Advisory-Lock in der Anlage-Tx; zählt nur bei erfolgreichem INSERT
+// hoch, daher lückenlos. EXTERNAL-Rechnungen nutzen die Fremdsystem-Nummer
+// und gehen an der Sequenz vorbei.
+model InvoiceNumberSeq {
+  tenantId String @map("tenant_id") @db.Uuid
+  year     Int
+  lastNo   Int    @default(0) @map("last_no")
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, year])
+  @@map("invoice_number_seq")
+}
+
 model InvoiceCategory {
   id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId          String    @map("tenant_id") @db.Uuid

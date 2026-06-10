@@ -46,6 +46,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   'packages/db/src/__tests__/rls-cross-tenant.test.ts',
   // GwG-Schranken-Test konstruiert einen Owner-Client fürs Setup.
   'packages/db/src/__tests__/gwg-allow-active.test.ts',
+  // Festschreibungs-Test (iter85): Owner-Client, um die Rechnungs-Trigger
+  // GEGEN den privilegierten Pfad zu beweisen (Schutz gilt auch für Owner).
+  'packages/db/src/__tests__/invoice-festschreibung.test.ts',
   // Owner-Singleton für System-/Worker-Jobs (laufen via withSystemContext).
   'apps/web/src/server/db/prisma-owner.ts',
   'apps/worker/src/prisma-owner.ts',

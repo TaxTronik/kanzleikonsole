@@ -237,6 +237,21 @@ Mitarbeiter-Konten, ${data.counts.portalContactsActive} aktive Portal-Zugänge.
 - **Vier-Augen-Prinzip:** Freigaben des geteilten Fachwissens (Begriffskatalog)
   erfordern eine zweite Person und werden auditiert.
 
+### 3.1 Mitgeltende Herstellerdokumentation
+
+Die folgenden, mit der Software versionierten Dokumente ergänzen dieses
+Dokument (Verzeichnis \`docs/\` der Installation, Stand = installierte
+Version):
+
+- Softwareentwicklungs-, Wartungs- und Freigabeverfahren
+  (\`docs/development/entwicklungsverfahren.md\`)
+- Test- und Abnahmekonzept inkl. Testnachweis-Kette
+  (\`docs/development/testkonzept.md\`)
+- Änderungsdokumentation je Release (\`CHANGELOG.md\`)
+- Release-/Update-Prozess und Rollback (\`docs/operations/release.md\`)
+- Disaster-Recovery-Runbook (\`docs/operations/disaster-recovery.md\`)
+- Anwenderdokumentation (\`docs/anwenderdoku/\`)
+
 ---
 *Generiert von TaxTronik ${data.appVersion}. Dieses Dokument bei wesentlichen
 Konfigurationsänderungen neu erzeugen und revisionssicher ablegen.*
