@@ -16,6 +16,8 @@ const kindLabels: Record<string, string> = {
   INVOICE_OVERDUE: 'Rechnung überfällig',
   PHONE_NOTE_FORWARDED: 'Telefonzettel weitergeleitet',
   VACATION_DECISION: 'Urlaubsentscheidung',
+  VACATION_REQUESTED: 'Urlaubsantrag',
+  ABSENCE_REPORTED: 'Abwesenheitsmeldung',
   CLIENT_MASTER_CHANGE_REQUEST: 'Mandanten-Stammdaten-Änderung',
   TAX_NEWS_NEW: 'Neue BMF/BFH-News',
   SYSTEM_BACKUP_FAILED: 'Backup fehlgeschlagen',

@@ -93,11 +93,13 @@ export default async function CalendarPage({
         // iter87: Abwesenheiten im Kanzleikalender — nur Name + „Urlaub"/„abw.",
         // ohne Art/Grund (vertraulich, siehe Absence-Modell).
         tx.vacationRequest.findMany({
-          where: { status: 'APPROVED', startDate: { lte: end }, endDate: { gte: start } },
+          // Nur aktive Mitarbeiter — sonst tauchen Namen deaktivierter Konten im
+          // Kanzleikalender auf (der Wandkalender filtert über staffList genauso).
+          where: { status: 'APPROVED', staff: { active: true }, startDate: { lte: end }, endDate: { gte: start } },
           select: { startDate: true, endDate: true, staff: { select: { fullName: true } } },
         }),
         tx.absence.findMany({
-          where: { startDate: { lte: end }, OR: [{ endDate: null }, { endDate: { gte: start } }] },
+          where: { staff: { active: true }, startDate: { lte: end }, OR: [{ endDate: null }, { endDate: { gte: start } }] },
           select: { startDate: true, endDate: true, staff: { select: { fullName: true } } },
         }),
       ]);

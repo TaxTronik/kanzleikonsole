@@ -134,6 +134,8 @@ export const ACTION_LABELS: Record<string, string> = {
   // heißt der Vorgang absence.report (generische Abwesenheitsmeldung).
   'sick.create': 'Krankmeldung',
   'absence.report': 'Abwesenheitsmeldung',
+  'absence.end': 'Abwesenheit beendet',
+  'absence.delete': 'Abwesenheitsmeldung gelöscht',
 
   // Knowledge-Base
   'kb.article.create': 'Wissensartikel erstellt',

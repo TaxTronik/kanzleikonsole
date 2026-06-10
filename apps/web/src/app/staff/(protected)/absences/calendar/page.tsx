@@ -87,9 +87,13 @@ export default async function AbsencesCalendarPage({
       setCell(v.staffId, d, 'U');
     }
   }
+  // Offene Abwesenheiten (kein Enddatum) laufen bis HEUTE, nicht bis zum Ende
+  // des angezeigten Fensters — sonst erschiene die Person über alle künftigen
+  // Wochen abwesend. Identische Konvention wie im Kanzleikalender.
+  const todayCell = startOfDayUTC(new Date());
   for (const a of absences) {
     const s = startOfDayUTC(a.startDate);
-    const e = a.endDate ? startOfDayUTC(a.endDate) : end;
+    const e = a.endDate ? startOfDayUTC(a.endDate) : todayCell;
     for (let d = s; d.getTime() <= e.getTime(); d = new Date(d.getTime() + 86400000)) {
       setCell(a.staffId, d, 'A');
     }

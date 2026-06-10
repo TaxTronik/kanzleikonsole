@@ -15,9 +15,12 @@ export type ActionResult = BaseActionResult;
 // iter87: Entscheidungsträger = ADMIN/PARTNER (implizit) + Inhaber des
 // Einzelrechts ABSENCE_DECIDE — ohne die meldende Person selbst. Gezielte
 // Adressierung statt Broadcast: andere Mitarbeiter sehen die Meldung nicht.
-async function absenceDeciderIds(tx: TxClient, excludeStaffId: string): Promise<string[]> {
+async function absenceDeciderIds(tx: TxClient, tenantId: string, excludeStaffId: string): Promise<string[]> {
   const deciders = await tx.staffUser.findMany({
     where: {
+      // Expliziter tenantId-Filter zusätzlich zur RLS (Defense in Depth, wie
+      // die übrigen Tenant-gebundenen Queries) — schützt bei RLS-Drift.
+      tenantId,
       active: true,
       id: { not: excludeStaffId },
       OR: [
@@ -91,7 +94,7 @@ export async function createVacationRequestAction(
         after: { startDate: parsed.data.startDate, endDate: parsed.data.endDate, workdays },
       });
       // iter87: Entscheidungsträger informieren (gezielt, kein Broadcast).
-      await notifyMany(tx, await absenceDeciderIds(tx, staffId), {
+      await notifyMany(tx, await absenceDeciderIds(tx, tenantId, staffId), {
         tenantId,
         kind: 'VACATION_REQUESTED',
         title: `Urlaubsantrag: ${g.session.user.fullName}`,
@@ -269,7 +272,7 @@ export async function reportAbsenceAction(
         after: { kind: parsed.data.kind, startDate: parsed.data.startDate, endDate: parsed.data.endDate || null },
       });
       // iter87: Entscheidungsträger informieren — sie dürfen Art + Grund sehen.
-      await notifyMany(tx, await absenceDeciderIds(tx, staffId), {
+      await notifyMany(tx, await absenceDeciderIds(tx, tenantId, staffId), {
         tenantId,
         kind: 'ABSENCE_REPORTED',
         title: `${parsed.data.kind === 'SICKNESS' ? 'Krankmeldung' : 'Abwesenheitsmeldung'}: ${session.user.fullName}`,
@@ -277,6 +280,56 @@ export async function reportAbsenceAction(
         href: '/staff/absences',
         resourceType: 'absence',
         resourceId: absence.id,
+      });
+    },
+    { revalidate: '/staff/absences' },
+  );
+}
+
+// iter87-Nachzieher: eine offene Abwesenheit beenden (Enddatum = heute). Nur
+// die eigene Meldung; ohne das blieben offene Meldungen für immer im Kalender
+// (läuft bis „heute") und in der Vertretungssicht stehen.
+export async function endAbsenceAction(formData: FormData): Promise<void> {
+  const parsed = z.object({ id: z.string().uuid() }).safeParse({ id: formData.get('id') });
+  if (!parsed.success) return;
+
+  await withStaff(
+    async (tx, { tenantId, staffId }) => {
+      const before = await tx.absence.findFirst({ where: { id: parsed.data.id, tenantId, staffId } });
+      if (!before || before.endDate) return;
+      await tx.absence.update({ where: { id: parsed.data.id }, data: { endDate: new Date() } });
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'absence.end',
+        resourceType: 'absence',
+        resourceId: parsed.data.id,
+        after: { kind: before.kind },
+      });
+    },
+    { revalidate: '/staff/absences' },
+  );
+}
+
+// Eine eigene Abwesenheitsmeldung löschen (Korrektur einer Fehleingabe).
+export async function deleteAbsenceAction(formData: FormData): Promise<void> {
+  const parsed = z.object({ id: z.string().uuid() }).safeParse({ id: formData.get('id') });
+  if (!parsed.success) return;
+
+  await withStaff(
+    async (tx, { tenantId, staffId }) => {
+      const before = await tx.absence.findFirst({ where: { id: parsed.data.id, tenantId, staffId } });
+      if (!before) return;
+      await tx.absence.delete({ where: { id: parsed.data.id } });
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'absence.delete',
+        resourceType: 'absence',
+        resourceId: parsed.data.id,
+        before: { kind: before.kind },
       });
     },
     { revalidate: '/staff/absences' },

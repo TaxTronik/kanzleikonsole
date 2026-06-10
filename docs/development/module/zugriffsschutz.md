@@ -38,8 +38,9 @@ rollenbasierte Berechtigungen, Mandantentrennung in Tiefenstaffelung
   ist nur Komfort. Vergabe/Entzug Admin-only, Selbständerung gesperrt,
   Entzug beendet Sitzungen sofort (Revocation + per-Request-Frischladung
   der Rechte aus der DB). Update-Migration verteilt `INVOICE_*` an alle
-  aktiven Bestandsmitarbeiter (kein Verhaltensbruch), `ABSENCE_DECIDE`
-  bleibt bei Admin/Partner bis zur expliziten Delegation.
+  Bestandsmitarbeiter (auch deaktivierte — sie behalten die Rechte bei
+  späterer Reaktivierung; kein Verhaltensbruch), `ABSENCE_DECIDE` bleibt
+  bei Admin/Partner bis zur expliziten Delegation.
 - Mandantenzugriff: Policy OPEN (alle aktiven Staff außer vertrauliche
   Mandanten) oder RESTRICTED (nur Zuständige laut `ClientResponsibility`);
   zentral `canAccessClient(Tx)` + `inaccessibleClientIdsFor` für Mengen.

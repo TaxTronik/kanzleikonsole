@@ -44,11 +44,16 @@ ALTER TABLE "staff_permission" FORCE ROW LEVEL SECURITY;
 -- Minimalrechte: Grants werden angelegt/entzogen, nie geändert (kein UPDATE).
 GRANT SELECT, INSERT, DELETE ON "staff_permission" TO taxtronik_app;
 
--- Backfill (siehe Kopfkommentar): Status quo bleibt erhalten.
+-- Backfill (siehe Kopfkommentar): Status quo bleibt erhalten. BEWUSST ohne
+-- WHERE "active" — vor iter87 durfte JEDER Mitarbeiter Rechnungen anlegen/
+-- versenden, sobald er aktiv war. Ein zum Migrationszeitpunkt deaktiviertes
+-- Konto, das später reaktiviert wird, soll diese Rechte ebenfalls behalten;
+-- ein WHERE "active" würde ihm die Rechte sonst still entziehen. Inaktive
+-- Konten können sich nicht anmelden, der Grant ist für sie folgenlos.
 INSERT INTO "staff_permission" ("staff_user_id", "permission")
-SELECT "id", 'INVOICE_MANAGE'::"staff_permission_name" FROM "staff_user" WHERE "active";
+SELECT "id", 'INVOICE_MANAGE'::"staff_permission_name" FROM "staff_user";
 INSERT INTO "staff_permission" ("staff_user_id", "permission")
-SELECT "id", 'INVOICE_SEND'::"staff_permission_name" FROM "staff_user" WHERE "active";
+SELECT "id", 'INVOICE_SEND'::"staff_permission_name" FROM "staff_user";
 
 -- ---------------------------------------------------------------------------
 -- 2) sick_leave → absence

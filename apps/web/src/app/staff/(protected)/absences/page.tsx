@@ -6,7 +6,7 @@ import { hasStaffPermission } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { VacationForm } from './vacation-form';
 import { AbsenceForm } from './absence-form';
-import { decideVacationAction, cancelVacationAction } from './actions';
+import { decideVacationAction, cancelVacationAction, endAbsenceAction, deleteAbsenceAction } from './actions';
 import { loadAbsenceCoverage } from '@/server/absences/coverage';
 import { fmtDateShort } from '@/lib/fmt';
 
@@ -265,13 +265,27 @@ export default async function AbsencesPage() {
         ) : (
           <ul className="divide-y divide-border-subtle">
             {myAbsences.map((s) => (
-              <li key={s.id} className="px-6 py-3">
-                <p className="text-sm text-primary">
-                  {fmtDateShort(s.startDate)}
-                  {s.endDate ? ` – ${fmtDateShort(s.endDate)}` : ' (offen)'}
-                  <span className="ml-2 text-xs text-muted">{kindLabels[s.kind] ?? s.kind}</span>
-                </p>
-                {s.notes && <p className="text-xs text-muted mt-1">{s.notes}</p>}
+              <li key={s.id} className="px-6 py-3 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm text-primary">
+                    {fmtDateShort(s.startDate)}
+                    {s.endDate ? ` – ${fmtDateShort(s.endDate)}` : ' (offen)'}
+                    <span className="ml-2 text-xs text-muted">{kindLabels[s.kind] ?? s.kind}</span>
+                  </p>
+                  {s.notes && <p className="text-xs text-muted mt-1">{s.notes}</p>}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {!s.endDate && (
+                    <form action={endAbsenceAction}>
+                      <input type="hidden" name="id" value={s.id} />
+                      <button type="submit" className="text-xs text-brand-700 hover:underline">Beenden</button>
+                    </form>
+                  )}
+                  <form action={deleteAbsenceAction}>
+                    <input type="hidden" name="id" value={s.id} />
+                    <button type="submit" className="text-xs text-red-700 hover:underline">Löschen</button>
+                  </form>
+                </div>
               </li>
             ))}
           </ul>
