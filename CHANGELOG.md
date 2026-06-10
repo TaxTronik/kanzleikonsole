@@ -12,6 +12,10 @@ der Eintrag entsteht mit der Änderung, nicht nachträglich.
 
 ## [Unreleased]
 
+- Posteingang: Architektur-Konzept für den intelligenten Dokumenteneingang
+  (docs/development/posteingang-konzept.md) — drei Kanäle (Outlook,
+  Nextcloud, UNC/Scanner) auf eine Triage-Pipeline, on-prem OCR + LLM,
+  Ablage erst nach Bestätigung; Umsetzung in vier Stufen geplant
 - Fristenkontrollbuch (/staff/fristen): vereinheitlichte Kontrollsicht über
   Steuertermine, Einspruchsfristen, Anforderungen und Wiedervorlagen mit
   Verantwortlichen und Erledigungsnachweis; offene Fristen verfallen nie
