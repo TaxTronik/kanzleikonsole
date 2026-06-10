@@ -37,6 +37,7 @@ import {
   ForbiddenError,
   canAccessClientTx,
   inaccessibleClientIdsFor,
+  hasStaffPermission,
 } from '../rbac';
 import type { StaffSession } from '../staff';
 import { log } from '@/server/logger';
@@ -120,7 +121,7 @@ describe('toActionError', () => {
 // Policy lesen → Mandant lesen → Responsibility nur wenn nötig.
 // =============================================================================
 
-function makeSession(roles: string[]): StaffSession {
+function makeSession(roles: string[], permissions: string[] = []): StaffSession {
   return {
     user: {
       id: 'u1',
@@ -130,9 +131,37 @@ function makeSession(roles: string[]): StaffSession {
       tenantId: 't1',
       staffId: 's1',
       roles,
+      permissions,
     },
   } as StaffSession;
 }
+
+// iter87: Einzelrecht-Wahrheitstabelle — ADMIN/PARTNER implizit alles,
+// EMPLOYEE nur mit explizitem Grant in der Session.
+describe('hasStaffPermission', () => {
+  it('ADMIN/PARTNER → implizit alle Rechte, ohne Grant', () => {
+    expect(hasStaffPermission(makeSession(['ADMIN']), 'INVOICE_SEND')).toBe(true);
+    expect(hasStaffPermission(makeSession(['PARTNER']), 'ABSENCE_DECIDE')).toBe(true);
+  });
+
+  it('EMPLOYEE ohne Grant → kein Recht', () => {
+    expect(hasStaffPermission(makeSession(['EMPLOYEE']), 'INVOICE_MANAGE')).toBe(false);
+  });
+
+  it('EMPLOYEE mit Grant → genau dieses Recht', () => {
+    const s = makeSession(['EMPLOYEE'], ['INVOICE_MANAGE']);
+    expect(hasStaffPermission(s, 'INVOICE_MANAGE')).toBe(true);
+    expect(hasStaffPermission(s, 'INVOICE_SEND')).toBe(false);
+  });
+
+  it('keine Session / fehlende Felder → fail-closed', () => {
+    expect(hasStaffPermission(null, 'INVOICE_SEND')).toBe(false);
+    expect(hasStaffPermission(undefined, 'INVOICE_SEND')).toBe(false);
+    expect(
+      hasStaffPermission({ user: { roles: ['EMPLOYEE'] } } as never, 'INVOICE_SEND'),
+    ).toBe(false);
+  });
+});
 
 interface StubTxConfig {
   mode?: 'OPEN' | 'RESTRICTED';

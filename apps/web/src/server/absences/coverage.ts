@@ -20,7 +20,9 @@ export interface CoverageRequest {
 export interface CoverageEntry {
   staffId: string;
   fullName: string;
-  kind: 'vacation' | 'sick';
+  // iter87: 'absent' statt 'sick' — Krankheit und sonstige Abwesenheit werden
+  // im Team bewusst nicht unterschieden (Persönlichkeitsrechte).
+  kind: 'vacation' | 'absent';
   until: Date | null;
   requests: CoverageRequest[];
 }
@@ -28,12 +30,12 @@ export interface CoverageEntry {
 export async function loadAbsenceCoverage(tx: TxClient, selfId: string): Promise<CoverageEntry[]> {
   const today = new Date();
 
-  const [vacations, sickLeaves] = await Promise.all([
+  const [vacations, absences] = await Promise.all([
     tx.vacationRequest.findMany({
       where: { status: 'APPROVED', startDate: { lte: today }, endDate: { gte: today } },
       select: { endDate: true, staff: { select: { id: true, fullName: true } } },
     }),
-    tx.sickLeave.findMany({
+    tx.absence.findMany({
       where: { startDate: { lte: today }, OR: [{ endDate: null }, { endDate: { gte: today } }] },
       select: { endDate: true, staff: { select: { id: true, fullName: true } } },
     }),
@@ -52,12 +54,12 @@ export async function loadAbsenceCoverage(tx: TxClient, selfId: string): Promise
       requests: [],
     });
   }
-  for (const s of sickLeaves) {
+  for (const s of absences) {
     if (s.staff.id === selfId || absent.has(s.staff.id)) continue;
     absent.set(s.staff.id, {
       staffId: s.staff.id,
       fullName: s.staff.fullName,
-      kind: 'sick',
+      kind: 'absent',
       until: s.endDate,
       requests: [],
     });

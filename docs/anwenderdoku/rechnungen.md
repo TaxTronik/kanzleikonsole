@@ -50,6 +50,11 @@ XRechnung-/ZUGFeRD-Download werden in der Audit-Hash-Chain festgehalten.
    GoBD-Archivkopie und schreibt fest), später **Als bezahlt markieren**.
    XRechnung-XML und ZUGFeRD-PDF lassen sich dort jederzeit herunterladen.
 
+Hinweis: Rechnungen anlegen und versenden dürfen nur Mitarbeiter mit dem
+jeweiligen Recht (*Rechnungen anlegen/bearbeiten* bzw. *Rechnungen
+versenden*, siehe [Administration](administration.md)); Admin/Partner haben
+beide immer.
+
 Hinweis: Für die E-Rechnungs-Erzeugung müssen die Kanzlei-Absenderdaten
 (Einstellungen → Rechnungsdaten) vollständig sein — Name, Anschrift sowie
 **E-Mail und Telefon** (Pflichtangaben der XRechnung) — ebenso die

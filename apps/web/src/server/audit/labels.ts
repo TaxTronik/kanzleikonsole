@@ -130,7 +130,10 @@ export const ACTION_LABELS: Record<string, string> = {
   'vacation.approve': 'Urlaubsantrag genehmigt',
   'vacation.reject': 'Urlaubsantrag abgelehnt',
   'vacation.cancel': 'Urlaubsantrag zurückgezogen',
+  // 'sick.create' bleibt für Alt-Einträge in der Chain lesbar; seit iter87
+  // heißt der Vorgang absence.report (generische Abwesenheitsmeldung).
   'sick.create': 'Krankmeldung',
+  'absence.report': 'Abwesenheitsmeldung',
 
   // Knowledge-Base
   'kb.article.create': 'Wissensartikel erstellt',
@@ -184,6 +187,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'staff.activate': 'Mitarbeiter aktiviert',
   'staff.deactivate': 'Mitarbeiter deaktiviert',
   'staff.roles.update': 'Mitarbeiter-Rollen geändert',
+  'staff.permissions.update': 'Mitarbeiter-Berechtigungen geändert',
   'staff.skills.update': 'Mitarbeiter-Tätigkeiten geändert',
   'staff_skill.create': 'Tätigkeit angelegt',
   'staff_skill.update': 'Tätigkeit geändert',
@@ -339,6 +343,7 @@ export const RESOURCE_TYPE_LABELS: Record<string, string> = {
   time_entry: 'Zeiteintrag',
   vacation_request: 'Urlaubsantrag',
   sick_leave: 'Krankmeldung',
+  absence: 'Abwesenheitsmeldung',
   kb_article: 'Wissensartikel',
   kb_category: 'Wissens-Kategorie',
   service_provider: 'Dienstleister',

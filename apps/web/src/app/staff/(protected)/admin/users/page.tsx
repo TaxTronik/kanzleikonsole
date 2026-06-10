@@ -15,7 +15,7 @@ import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { fmtDateNumeric } from '@/lib/fmt';
 import { CreateUserForm } from './create-form';
-import { ToggleActiveForm, SetRolesForm, SetSkillsForm } from './row-forms';
+import { ToggleActiveForm, SetRolesForm, SetPermissionsForm, SetSkillsForm } from './row-forms';
 import { SkillBadge } from '@/components/skill-badge';
 
 const ROLE_LABELS: Record<string, string> = {
@@ -40,6 +40,7 @@ export default async function UsersAdminPage() {
           orderBy: [{ active: 'desc' }, { fullName: 'asc' }],
           include: {
             roles: true,
+            permissions: true,
             skillAssignments: { include: { skill: true } },
           },
         }),
@@ -80,6 +81,7 @@ export default async function UsersAdminPage() {
               <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Name</th>
               <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">E-Mail</th>
               <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Rollen</th>
+              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Berechtigungen</th>
               <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Tätigkeiten</th>
               <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">2FA</th>
               <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Letzter Login</th>
@@ -106,6 +108,20 @@ export default async function UsersAdminPage() {
                   <td className="px-6 py-3 text-secondary">{u.email}</td>
                   <td className="px-6 py-3">
                     <SetRolesForm userId={u.id} currentRoles={roleNames} disabled={isSelf} />
+                  </td>
+                  <td className="px-6 py-3">
+                    {/* iter87: ADMIN/PARTNER haben implizit alles — Chips nur
+                        für EMPLOYEE-only-Benutzer (und nicht für sich selbst). */}
+                    {roleNames.includes('ADMIN') || roleNames.includes('PARTNER') ? (
+                      <span className="text-xs text-disabled" title="ADMIN/PARTNER haben implizit alle Berechtigungen">alle (implizit)</span>
+                    ) : isSelf ? (
+                      <span className="text-xs text-disabled">—</span>
+                    ) : (
+                      <SetPermissionsForm
+                        userId={u.id}
+                        currentPermissions={u.permissions.map((p) => p.permission)}
+                      />
+                    )}
                   </td>
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-2">

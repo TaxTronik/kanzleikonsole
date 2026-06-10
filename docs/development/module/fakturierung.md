@@ -34,7 +34,7 @@ deaktiviert das Modul.
 | Ablaufsteuerung | Status-Matrix doppelt: App (`isValidInvoiceTransition`, klare Meldungen) + identische Trigger-Matrix als Backstop; PAID/CANCELLED terminal |
 | GwG-Schranke | DB-Trigger blockt Rechnungsanlage für nicht-aktive Mandanten (init/iter5) |
 | Archiv-Pflicht | `markSentAction`: GoBD-Archivkopie (s. u.) MUSS vor dem Statuswechsel existieren (außer PDF/EXTERNAL: not_applicable) |
-| Zugriff | Staff-Session-Guard je Action; RESTRICTED-Mandanten in Liste/Detail/Downloads gefiltert; Portal sieht nur eigene, nicht-DRAFT-Rechnungen |
+| Zugriff | Staff-Session-Guard je Action; seit iter87 Einzelrechte: Anlegen/Bearbeiten/Zahlung/Storno nur mit `INVOICE_MANAGE`, Versand (= Festschreibung) und EXTERNAL-Upload nur mit `INVOICE_SEND` (ADMIN/PARTNER implizit, Vergabe auditiert); RESTRICTED-Mandanten in Liste/Detail/Downloads gefiltert; Portal sieht nur eigene, nicht-DRAFT-Rechnungen |
 | Protokollierung | Audit-Events `invoice.create/.create.from_time/.send/.paid/.cancel/.upload/.overdue/.archive.zugferd`, `invoice.xrechnung.download`/`zugferd.download` (mit IP/UA), `invoices.export.csv` — alle in der Hash-Chain |
 
 ## Verarbeitung / Schnittstellen

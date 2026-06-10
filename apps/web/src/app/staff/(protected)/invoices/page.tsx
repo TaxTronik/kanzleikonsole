@@ -2,7 +2,7 @@
 import { redirect } from 'next/navigation';
 import { Receipt, Plus, FileDown } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
-import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
+import { inaccessibleClientIdsFor, hasStaffPermission } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { Pagination } from '@/components/pagination';
 import type { Prisma, InvoiceStatus } from '@prisma/client';
@@ -86,10 +86,12 @@ export default async function InvoicesPage({
             <FileDown className="h-3.5 w-3.5" />
             CSV
           </a>
-          <Link href="/staff/invoices/new" className="btn-primary">
-            <Plus className="h-3.5 w-3.5" />
-            Neue Rechnung
-          </Link>
+          {hasStaffPermission(session, 'INVOICE_MANAGE') && (
+            <Link href="/staff/invoices/new" className="btn-primary">
+              <Plus className="h-3.5 w-3.5" />
+              Neue Rechnung
+            </Link>
+          )}
         </div>
       </div>
 

@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { ArrowLeft, Clock } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
+import { hasStaffPermission } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { BillingForm } from './billing-form';
 import { fmtDateShort } from '@/lib/fmt';
@@ -128,8 +129,8 @@ export default async function ClientBillingPage({
             </table>
           </div>
 
-          {/* Form zur Rechnungs-Erstellung */}
-          {client.allowActive && (
+          {/* Form zur Rechnungs-Erstellung — nur mit Einzelrecht (iter87) */}
+          {client.allowActive && hasStaffPermission(session, 'INVOICE_MANAGE') && (
             <div className="card p-6">
               <h2 className="text-sm font-medium text-primary mb-3">Rechnung erstellen</h2>
               <BillingForm clientId={client.id} totalHours={totalHours} />

@@ -12,6 +12,16 @@ Tätigkeitsbereichen, 2FA-Status, letztem Login und Aktiv-Status.
   *Mitarbeiter* (immer), optional *Partner* und/oder *Admin* (beide gelten
   als Administratoren). Mindestens eine Rolle ist Pflicht; die eigenen
   Rollen und der eigene Aktiv-Status sind nicht änderbar (Selbstschutz).
+- **Berechtigungen (Einzelrechte):** Für Mitarbeiter ohne Admin-/Partner-
+  Rolle steuern drei Schalter, was sie zusätzlich dürfen: *Rechnungen
+  anlegen/bearbeiten*, *Rechnungen versenden* (löst die unveränderliche
+  Festschreibung aus; umfasst auch den PDF-Upload im Extern-Modus) und
+  *Urlaub entscheiden* (entscheidet Urlaubsanträge und erhält Urlaubs-/
+  Abwesenheitsmeldungen). Admin/Partner haben immer alle Rechte. **Neu
+  angelegte Mitarbeiter starten ohne Rechnungs-Rechte**; bestehende
+  Mitarbeiter behalten beim Update ihre bisherigen Möglichkeiten und
+  können danach gezielt eingeschränkt werden. Jede Änderung steht im
+  Prüfprotokoll und beendet die Sitzungen der betroffenen Person.
 - **Zwei-Faktor (TOTP) ist Pflicht:** Beim ersten Login richtet jede Person
   ihre Authenticator-App selbst ein (QR-Code wird lokal erzeugt, kein
   externer Dienst) und erhält **einmalig acht Backup-Codes** — sicher

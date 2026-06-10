@@ -12,6 +12,20 @@ der Eintrag entsteht mit der Änderung, nicht nachträglich.
 
 ## [Unreleased]
 
+- **[Scope]** Zugriffsschutz: granulare Einzelrechte je Mitarbeiter
+  (Migration iter87) — Rechnungen anlegen/bearbeiten, Rechnungen versenden
+  (= Festschreibung, inkl. Extern-Upload) und Urlaub entscheiden sind jetzt
+  delegierbare Einzelrechte; Admin/Partner implizit alles, Vergabe/Entzug
+  Admin-only und in der Audit-Chain (`staff.permissions.update`), Entzug
+  wirkt sofort. Bestandsmitarbeiter behalten beim Update ihre
+  Rechnungs-Rechte (Backfill); neue Mitarbeiter starten ohne Rechnungs-Rechte
+- Abwesenheiten: Krankmeldung zur generischen Abwesenheitsmeldung
+  verallgemeinert (Krankheit/Sonstige, Migration iter87); Grund nur für
+  Melder + Entscheidungsträger sichtbar, Team-Ansichten zeigen neutral
+  „abw."; genehmigte Urlaube („‹Name› Urlaub") und Abwesenheiten
+  („‹Name› abw.") erscheinen im Kanzleikalender; Entscheidungsträger
+  (Admin/Partner + Einzelrecht) werden bei Anträgen und Meldungen gezielt
+  benachrichtigt, Antragsteller über die Entscheidung
 - **[Scope]** Fakturierung: USt-Satz je Position (Migration iter86,
   19 % / 7 % / 0 % je Zeile, § 14 Abs. 4 Nr. 8 UStG) mit Steuerausweis
   und Rundung je Satz-Gruppe in Anzeige, PDF und E-Rechnung

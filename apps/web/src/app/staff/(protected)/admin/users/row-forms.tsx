@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef, useEffect } from 'react';
 import { Tags } from 'lucide-react';
-import { setActiveAction, setRolesAction } from './actions';
+import { setActiveAction, setRolesAction, setPermissionsAction } from './actions';
 import { setStaffSkillsAction } from '../skills/actions';
 
 export function ToggleActiveForm({ userId, active }: { userId: string; active: boolean }) {
@@ -85,6 +85,79 @@ export function SetRolesForm({
         })}
       </div>
       {dirty && !disabled && (
+        <button
+          type="button"
+          onClick={save}
+          disabled={isPending}
+          className="text-xs text-brand-700 hover:underline"
+        >
+          {isPending ? '…' : 'Speichern'}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// iter87: Einzelrechte (Kurz-Chips; ADMIN/PARTNER haben implizit alles —
+// dann sind die Chips ausgeblendet, siehe page.tsx).
+const PERMISSION_OPTIONS = [
+  { key: 'INVOICE_MANAGE', short: 'Re. anlegen', title: 'Rechnungen anlegen/bearbeiten (inkl. Zahlung/Storno)' },
+  { key: 'INVOICE_SEND', short: 'Re. versenden', title: 'Rechnungen versenden (Festschreibung, EXTERNAL-Upload)' },
+  { key: 'ABSENCE_DECIDE', short: 'Urlaub entsch.', title: 'Urlaub entscheiden / Abwesenheitsmeldungen erhalten' },
+] as const;
+type Permission = typeof PERMISSION_OPTIONS[number]['key'];
+
+export function SetPermissionsForm({
+  userId,
+  currentPermissions,
+}: {
+  userId: string;
+  currentPermissions: string[];
+}) {
+  const [perms, setPerms] = useState<Set<string>>(new Set(currentPermissions));
+  const [isPending, start] = useTransition();
+  const [dirty, setDirty] = useState(false);
+
+  function toggle(p: Permission) {
+    setPerms((s) => {
+      const next = new Set(s);
+      if (next.has(p)) next.delete(p);
+      else next.add(p);
+      return next;
+    });
+    setDirty(true);
+  }
+
+  function save() {
+    start(async () => {
+      await setPermissionsAction({ userId, permissions: Array.from(perms) as Permission[] });
+      setDirty(false);
+    });
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex gap-1">
+        {PERMISSION_OPTIONS.map((p) => {
+          const has = perms.has(p.key);
+          return (
+            <button
+              key={p.key}
+              type="button"
+              onClick={() => toggle(p.key)}
+              className={
+                has
+                  ? 'px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-600 text-white'
+                  : 'px-2 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-secondary hover:bg-gray-200'
+              }
+              title={p.title}
+            >
+              {p.short}
+            </button>
+          );
+        })}
+      </div>
+      {dirty && (
         <button
           type="button"
           onClick={save}

@@ -203,3 +203,77 @@ export async function setRolesAction(input: { userId: string; roles: string[] })
   revalidatePath(LIST);
   return { ok: true };
 }
+
+// ----------------------------------------------------------------------------
+// Einzelrechte setzen (iter87)
+// ----------------------------------------------------------------------------
+
+const PERMISSION_VALUES = ['INVOICE_MANAGE', 'INVOICE_SEND', 'ABSENCE_DECIDE'] as const;
+
+export async function setPermissionsAction(input: {
+  userId: string;
+  permissions: string[];
+}): Promise<ActionResult> {
+  const g = await staffActionGuard({ requireAdmin: true });
+  if (!g.ok) return g;
+  const { tenantId, staffId, ctx } = g;
+
+  const parsed = z
+    .object({
+      userId: z.string().uuid(),
+      // Leeres Array ist hier ERLAUBT (anders als Rollen): alle Einzelrechte
+      // entziehen ist ein legitimer Zustand — ADMIN/PARTNER bleiben implizit.
+      permissions: z.array(z.enum(PERMISSION_VALUES)),
+    })
+    .safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
+  }
+  if (parsed.data.userId === staffId) {
+    return { ok: false, error: 'Eigene Berechtigungen nicht ändern.' };
+  }
+
+  try {
+    await withTenantContext(ctx, async (tx) => {
+      const before = await tx.staffPermission.findMany({
+        where: { staffUserId: parsed.data.userId },
+      });
+      const beforePerms = before.map((b) => b.permission);
+      const newSet = new Set(parsed.data.permissions);
+      const oldSet = new Set(beforePerms);
+      const toRemove = beforePerms.filter((p) => !newSet.has(p));
+      const toAdd = parsed.data.permissions.filter((p) => !oldSet.has(p));
+
+      if (toRemove.length > 0) {
+        await tx.staffPermission.deleteMany({
+          where: { staffUserId: parsed.data.userId, permission: { in: toRemove } },
+        });
+      }
+      for (const p of toAdd) {
+        await tx.staffPermission.create({
+          data: { staffUserId: parsed.data.userId, permission: p, grantedBy: staffId },
+        });
+      }
+      if (toAdd.length > 0 || toRemove.length > 0) {
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'staff.permissions.update',
+          resourceType: 'staff_user',
+          resourceId: parsed.data.userId,
+          before: { permissions: beforePerms },
+          after: { permissions: parsed.data.permissions },
+        });
+      }
+    });
+  } catch (e) {
+    return toActionError(e);
+  }
+  // Wie bei Rollen: Entzug sofort wirksam machen. Die Session lädt Rechte zwar
+  // pro Request frisch aus der DB, fällt bei transienten DB-Fehlern aber auf
+  // den (bis zu 24h alten) Token zurück — Revoke schließt dieses Fenster.
+  await revokeAllSessions('staff', parsed.data.userId);
+  revalidatePath(LIST);
+  return { ok: true };
+}

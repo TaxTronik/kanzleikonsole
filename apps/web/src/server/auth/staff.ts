@@ -34,6 +34,9 @@ export type StaffSession = Session & {
     tenantId: string;
     staffId: string;
     roles: string[];
+    // iter87: granulare Einzelrechte (StaffPermissionName-Werte). ADMIN/PARTNER
+    // brauchen keine — hasStaffPermission (rbac.ts) gibt ihnen implizit alles.
+    permissions: string[];
   };
 };
 
@@ -42,6 +45,9 @@ interface StaffTokenPayload {
   tenantId: string;
   fullName: string;
   roles: string[];
+  // Optional: Tokens von vor iter87 tragen das Feld nicht — sie bleiben
+  // gültig (kein Massen-Logout beim Update); die Session lädt ohnehin frisch.
+  permissions?: string[];
 }
 
 function isStaffTokenPayload(t: unknown): t is StaffTokenPayload {
@@ -52,7 +58,9 @@ function isStaffTokenPayload(t: unknown): t is StaffTokenPayload {
     typeof o['tenantId'] === 'string' &&
     typeof o['fullName'] === 'string' &&
     Array.isArray(o['roles']) &&
-    o['roles'].every((r) => typeof r === 'string')
+    o['roles'].every((r) => typeof r === 'string') &&
+    (o['permissions'] === undefined ||
+      (Array.isArray(o['permissions']) && o['permissions'].every((p) => typeof p === 'string')))
   );
 }
 
@@ -115,7 +123,7 @@ const staffConfig: NextAuthConfig = {
         // Mitarbeiter laden
         const staffUser = await prismaOwner.staffUser.findFirst({
           where: { tenantId: tenant.id, email },
-          include: { roles: true },
+          include: { roles: true, permissions: true },
         });
         if (!staffUser || !staffUser.active) return null;
 
@@ -170,6 +178,7 @@ const staffConfig: NextAuthConfig = {
             tenantId: tenant.id,
             fullName: staffUser.fullName,
             roles: staffUser.roles.map((r) => r.role as string),
+            permissions: staffUser.permissions.map((p) => p.permission as string),
           };
         }
 
@@ -381,6 +390,7 @@ const staffConfig: NextAuthConfig = {
         token.tenantId = u.tenantId;
         token.fullName = u.fullName;
         token.roles = u.roles;
+        token.permissions = u.permissions ?? [];
       }
       return token;
     },
@@ -414,10 +424,19 @@ const staffConfig: NextAuthConfig = {
       // auf revokeAllSessions oder den JWT-Ablauf zu warten. Bleibt null bei
       // transientem DB-Fehler → Fallback auf token.roles (stale, aber kein Logout).
       let freshRoles: string[] | null = null;
+      // iter87: Berechtigungen hängen am selben frischen DB-Stand wie die
+      // Rollen — ein Entzug (z. B. INVOICE_SEND) wirkt damit sofort, nicht
+      // erst nach JWT-Ablauf.
+      let freshPermissions: string[] | null = null;
       try {
         const u = await prismaOwner.staffUser.findUnique({
           where: { id: token.staffId },
-          select: { active: true, tenantId: true, roles: { select: { role: true } } },
+          select: {
+            active: true,
+            tenantId: true,
+            roles: { select: { role: true } },
+            permissions: { select: { permission: true } },
+          },
         });
         if (!u || !u.active || u.tenantId !== token.tenantId) {
           log.warn(
@@ -427,6 +446,7 @@ const staffConfig: NextAuthConfig = {
           return session; // keine Staff-Felder → staffAuth liefert null
         }
         freshRoles = u.roles.map((r) => r.role as string);
+        freshPermissions = u.permissions.map((p) => p.permission as string);
       } catch (err) {
         // Transienter DB-Fehler darf nicht alle ausloggen — loggen, durchlassen.
         log.warn(
@@ -439,6 +459,7 @@ const staffConfig: NextAuthConfig = {
       session.user.tenantId = token.tenantId;
       session.user.fullName = token.fullName;
       session.user.roles = freshRoles ?? token.roles;
+      session.user.permissions = freshPermissions ?? token.permissions ?? [];
       return session;
     },
   },

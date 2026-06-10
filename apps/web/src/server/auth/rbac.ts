@@ -57,6 +57,30 @@ export function isStaffAdmin(session: StaffSession | null | undefined): boolean 
   return session.user.roles.some((r) => r === 'ADMIN' || r === 'PARTNER');
 }
 
+// iter87: granulare Einzelrechte. Werte spiegeln das DB-Enum
+// StaffPermissionName — als String-Union statt @prisma/client-Import, damit
+// reine Unit-Tests (Wahrheitstabellen) keinen generierten Client brauchen.
+export type StaffPermissionName = 'INVOICE_MANAGE' | 'INVOICE_SEND' | 'ABSENCE_DECIDE';
+
+export const PERMISSION_LABELS: Record<StaffPermissionName, string> = {
+  INVOICE_MANAGE: 'Rechnungen anlegen/bearbeiten (inkl. Zahlung/Storno)',
+  INVOICE_SEND: 'Rechnungen versenden (Festschreibung, EXTERNAL-Upload)',
+  ABSENCE_DECIDE: 'Urlaub entscheiden / Abwesenheitsmeldungen erhalten',
+};
+
+/**
+ * Einzelrecht-Prüfung: ADMIN/PARTNER haben implizit ALLE Rechte (kleine
+ * Kanzleien arbeiten ohne Grants weiter), EMPLOYEE braucht den expliziten
+ * Grant (staff_permission, von Admins vergeben und auditiert).
+ */
+export function hasStaffPermission(
+  session: StaffSession | null | undefined,
+  permission: StaffPermissionName,
+): boolean {
+  if (isStaffAdmin(session)) return true;
+  return session?.user?.permissions?.includes(permission) ?? false;
+}
+
 /**
  * Liefert die aktive StaffSession oder wirft `UnauthorizedError`.
  */

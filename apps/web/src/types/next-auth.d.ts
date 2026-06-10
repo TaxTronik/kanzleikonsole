@@ -24,6 +24,7 @@ declare module 'next-auth' {
       // Staff-Surface
       staffId?: string;
       roles?: string[];
+      permissions?: string[];
       // Portal-Surface
       contactId?: string;
       clientId?: string;
@@ -37,6 +38,7 @@ declare module 'next-auth/jwt' {
     fullName?: string;
     staffId?: string;
     roles?: string[];
+    permissions?: string[];
     contactId?: string;
     clientId?: string;
   }

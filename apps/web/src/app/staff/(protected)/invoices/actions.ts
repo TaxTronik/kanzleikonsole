@@ -63,7 +63,8 @@ export async function createInvoiceAction(input: {
   format: 'PDF' | 'XRECHNUNG' | 'ZUGFERD';
   positions: Array<{ description: string; quantity: number; unitPrice: number; unit: string; vatRate: number }>;
 }): Promise<ActionResult & { invoiceId?: string; number?: string }> {
-  const g = await staffActionGuard();
+  // iter87: Anlegen braucht das Einzelrecht (ADMIN/PARTNER implizit).
+  const g = await staffActionGuard({ requirePermission: 'INVOICE_MANAGE' });
   if (!g.ok) return g;
   const { tenantId, staffId, ctx } = g;
 
@@ -165,7 +166,8 @@ const ARCHIVE_FAIL_TEXT: Record<string, string> = {
 };
 
 export async function markSentAction(formData: FormData): Promise<void> {
-  const g = await staffActionGuard();
+  // iter87: Versenden = GoB-Festschreibung — eigenes Einzelrecht INVOICE_SEND.
+  const g = await staffActionGuard({ requirePermission: 'INVOICE_SEND' });
   if (!g.ok) {
     // Befund 9: Form-Action ohne Result-Channel — Guard-Ablehnung mindestens
     // strukturiert loggen statt kommentarlos zu verschlucken.
@@ -249,7 +251,7 @@ export async function markPaidAction(formData: FormData): Promise<void> {
         after: { number: updated.number, paidAt: updated.paidAt },
       });
     },
-    { revalidate: ['/staff/invoices', `/staff/invoices/${parsed.data.invoiceId}`] },
+    { requirePermission: 'INVOICE_MANAGE', revalidate: ['/staff/invoices', `/staff/invoices/${parsed.data.invoiceId}`] },
   );
 }
 
@@ -282,7 +284,7 @@ export async function cancelInvoiceAction(formData: FormData): Promise<void> {
         after: { number: updated.number },
       });
     },
-    { revalidate: ['/staff/invoices', `/staff/invoices/${parsed.data.invoiceId}`] },
+    { requirePermission: 'INVOICE_MANAGE', revalidate: ['/staff/invoices', `/staff/invoices/${parsed.data.invoiceId}`] },
   );
 }
 
@@ -353,7 +355,9 @@ export async function uploadExternalInvoiceAction(input: z.infer<typeof UploadEx
   error?: string;
   id?: string;
 }> {
-  const g = await staffActionGuard();
+  // iter87: EXTERNAL-Upload stellt aus UND stellt zu (Mail an Mandanten) —
+  // das ist der Versand-Akt, daher INVOICE_SEND statt INVOICE_MANAGE.
+  const g = await staffActionGuard({ requirePermission: 'INVOICE_SEND' });
   if (!g.ok) return g;
   const { tenantId, staffId, ctx } = g;
 

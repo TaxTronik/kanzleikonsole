@@ -37,7 +37,8 @@ export interface CreateResult {
 }
 
 export async function createInvoiceFromTimeEntriesAction(input: z.infer<typeof CreateSchema>): Promise<CreateResult> {
-  const g = await staffActionGuard();
+  // iter87: Stundenabrechnung legt Rechnungs-Entwürfe an → INVOICE_MANAGE.
+  const g = await staffActionGuard({ requirePermission: 'INVOICE_MANAGE' });
   if (!g.ok) return g;
   const { tenantId, staffId, ctx } = g;
 
@@ -192,7 +193,7 @@ export async function createInvoiceFromTimeEntriesAction(input: z.infer<typeof C
  * Nutzt 'one-line' und alle nicht-abgerechneten Stunden.
  */
 export async function billAllPendingHoursAction(formData: FormData): Promise<void> {
-  const g = await staffActionGuard();
+  const g = await staffActionGuard({ requirePermission: 'INVOICE_MANAGE' });
   if (!g.ok) return; // void-Action: still abbrechen (die delegierte Action prüft erneut)
 
   const clientId = formData.get('clientId');

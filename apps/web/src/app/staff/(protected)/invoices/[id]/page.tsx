@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { ArrowLeft, Send, CheckCircle2, X, FileCode } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
-import { canAccessClientTx } from '@/server/auth/rbac';
+import { canAccessClientTx, hasStaffPermission } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { markSentAction, markPaidAction, cancelInvoiceAction } from '../actions';
 import { computeVatTotals } from '@/server/invoicing/vat';
@@ -52,6 +52,11 @@ export default async function InvoiceDetailPage({
   );
 
   if (!inv) notFound();
+
+  // iter87: Buttons nur mit Einzelrecht zeigen — die Actions prüfen selbst
+  // (UI-Ausblendung ist Komfort, kein Schutz).
+  const canManage = hasStaffPermission(session, 'INVOICE_MANAGE');
+  const canSend = hasStaffPermission(session, 'INVOICE_SEND');
 
   // iter86: USt-Ausweis je Steuersatz-Gruppe (§ 14 Abs. 4 Nr. 8 UStG).
   const vatGroups = computeVatTotals(
@@ -186,7 +191,7 @@ export default async function InvoiceDetailPage({
           <FileCode className="h-4 w-4" />
           ZUGFeRD (PDF)
         </a>
-        {inv.status === 'DRAFT' && (
+        {inv.status === 'DRAFT' && canSend && (
           <form action={markSentAction}>
             <input type="hidden" name="invoiceId" value={inv.id} />
             <button type="submit" className="btn-primary">
@@ -195,7 +200,7 @@ export default async function InvoiceDetailPage({
             </button>
           </form>
         )}
-        {(inv.status === 'SENT' || inv.status === 'OVERDUE') && (
+        {(inv.status === 'SENT' || inv.status === 'OVERDUE') && canManage && (
           <form action={markPaidAction}>
             <input type="hidden" name="invoiceId" value={inv.id} />
             <button type="submit" className="btn-primary">
@@ -204,7 +209,7 @@ export default async function InvoiceDetailPage({
             </button>
           </form>
         )}
-        {inv.status !== 'CANCELLED' && inv.status !== 'PAID' && (
+        {inv.status !== 'CANCELLED' && inv.status !== 'PAID' && canManage && (
           <form action={cancelInvoiceAction}>
             <input type="hidden" name="invoiceId" value={inv.id} />
             <button type="submit" className="btn-secondary text-red-700 border-red-300 hover:bg-red-50">

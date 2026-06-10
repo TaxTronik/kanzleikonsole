@@ -20,4 +20,34 @@ describe('decideStaffGuard', () => {
   it('Admin verlangt und Admin → erlaubt', () => {
     expect(decideStaffGuard({ hasUser: true, isAdmin: true, requireAdmin: true })).toBeNull();
   });
+
+  // iter87: Einzelrecht-Gate (hasPermission liefert der Caller via
+  // hasStaffPermission — ADMIN/PARTNER-implizit ist dort schon eingerechnet).
+  it('Einzelrecht verlangt, nicht vorhanden → Meldung mit Rechtename', () => {
+    expect(
+      decideStaffGuard({
+        hasUser: true, isAdmin: false, requireAdmin: false,
+        requiredPermission: 'INVOICE_SEND', hasPermission: false,
+      }),
+    ).toBe('Keine Berechtigung (INVOICE_SEND).');
+  });
+
+  it('Einzelrecht verlangt und vorhanden → erlaubt', () => {
+    expect(
+      decideStaffGuard({
+        hasUser: true, isAdmin: false, requireAdmin: false,
+        requiredPermission: 'INVOICE_MANAGE', hasPermission: true,
+      }),
+    ).toBeNull();
+  });
+
+  it('Einzelrecht schlägt auch bei Admin-Flag NICHT fehl (Implizit-Logik liegt beim Caller)', () => {
+    // Kein-Session-Fall dominiert weiterhin alles.
+    expect(
+      decideStaffGuard({
+        hasUser: false, isAdmin: true, requireAdmin: false,
+        requiredPermission: 'ABSENCE_DECIDE', hasPermission: true,
+      }),
+    ).toBe('Nicht eingeloggt.');
+  });
 });

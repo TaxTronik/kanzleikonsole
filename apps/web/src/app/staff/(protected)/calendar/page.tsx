@@ -49,7 +49,7 @@ export default async function CalendarPage({
       // Render, an alle mandantengebundenen Queries durchgereicht.
       const denied = await inaccessibleClientIdsFor(tx, session);
       const notDenied = denied.length ? { clientId: { notIn: denied } } : {};
-      const [deadlines, appointments, pendingRequests, staffList, clientsList] = await Promise.all([
+      const [deadlines, appointments, pendingRequests, staffList, clientsList, vacations, absences] = await Promise.all([
         tx.taxDeadline.findMany({
           where: { dueDate: { gte: start, lte: end }, ...notDenied },
           orderBy: { dueDate: 'asc' },
@@ -90,8 +90,18 @@ export default async function CalendarPage({
           select: { id: true, name: true },
           take: 500,
         }),
+        // iter87: Abwesenheiten im Kanzleikalender — nur Name + „Urlaub"/„abw.",
+        // ohne Art/Grund (vertraulich, siehe Absence-Modell).
+        tx.vacationRequest.findMany({
+          where: { status: 'APPROVED', startDate: { lte: end }, endDate: { gte: start } },
+          select: { startDate: true, endDate: true, staff: { select: { fullName: true } } },
+        }),
+        tx.absence.findMany({
+          where: { startDate: { lte: end }, OR: [{ endDate: null }, { endDate: { gte: start } }] },
+          select: { startDate: true, endDate: true, staff: { select: { fullName: true } } },
+        }),
       ]);
-      return { deadlines, appointments, pendingRequests, staffList, clientsList };
+      return { deadlines, appointments, pendingRequests, staffList, clientsList, vacations, absences };
     },
   );
 
@@ -127,6 +137,36 @@ export default async function CalendarPage({
       apptByDay.set(dayKey, arr);
     }
     arr.push(a);
+  }
+
+  // iter87: Abwesenheiten als ganztägige Einträge an JEDEM Tag des Zeitraums
+  // (auf den Monat geklammert). Offene Meldungen (ohne Enddatum) laufen bis
+  // heute. Anzeige bewusst neutral: „‹Name› Urlaub" bzw. „‹Name› abw.".
+  const absenceByDay = new Map<string, string[]>();
+  function addAbsenceRange(from: Date, to: Date, label: string) {
+    const clampedFrom = from < start ? start : from;
+    const clampedTo = to > end ? end : to;
+    for (
+      let d = new Date(Date.UTC(clampedFrom.getUTCFullYear(), clampedFrom.getUTCMonth(), clampedFrom.getUTCDate()));
+      d.getTime() <= clampedTo.getTime();
+      d = new Date(d.getTime() + 24 * 60 * 60 * 1000)
+    ) {
+      const key = d.toISOString().slice(0, 10);
+      let arr = absenceByDay.get(key);
+      if (!arr) {
+        arr = [];
+        absenceByDay.set(key, arr);
+      }
+      arr.push(label);
+    }
+  }
+  const nowDay = new Date();
+  for (const v of data.vacations) {
+    addAbsenceRange(v.startDate, v.endDate, `${v.staff.fullName} Urlaub`);
+  }
+  for (const a of data.absences) {
+    const until = a.endDate ?? (nowDay > a.startDate ? nowDay : a.startDate);
+    addAbsenceRange(a.startDate, until, `${a.staff.fullName} abw.`);
   }
 
   // Kalendergitter
@@ -168,7 +208,7 @@ export default async function CalendarPage({
             Kanzleikalender
           </h1>
           <p className="text-muted text-sm">
-            Steuertermine und Termine — alle Mandanten der Kanzlei.
+            Steuertermine, Termine und Abwesenheiten — alle Mandanten der Kanzlei.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -244,6 +284,7 @@ export default async function CalendarPage({
             const dlGroups = deadlineByDay.get(k);
             const dlArr = dlGroups ? Array.from(dlGroups.values()) : [];
             const appts = apptByDay.get(k) ?? [];
+            const absentToday = absenceByDay.get(k) ?? [];
             const cellKey = `${cell.date.getUTCFullYear()}-${String(cell.date.getUTCMonth() + 1).padStart(2, '0')}-${String(cell.date.getUTCDate()).padStart(2, '0')}`;
             const isToday = cellKey === todayKey;
             return (
@@ -258,6 +299,11 @@ export default async function CalendarPage({
                 <div className={isToday ? 'self-start font-bold text-brand-700 bg-brand-50 dark:bg-brand-900/40 dark:text-brand-200 px-1.5 py-0.5 rounded' : 'self-start text-secondary'}>
                   {cell.date.getUTCDate()}
                 </div>
+                {absentToday.slice(0, 2).map((label, idx) => (
+                  <span key={`abs-${idx}`} className="cal-pill cal-pill-absence" title={label}>
+                    {label}
+                  </span>
+                ))}
                 {appts.slice(0, 3).map((a) => (
                   <Link
                     key={a.id}
@@ -291,9 +337,9 @@ export default async function CalendarPage({
                     </Link>
                   );
                 })}
-                {(appts.length > 3 || dlArr.length > 3) && (
+                {(appts.length > 3 || dlArr.length > 3 || absentToday.length > 2) && (
                   <div className="text-[10px] text-muted">
-                    +{Math.max(0, appts.length - 3) + Math.max(0, dlArr.length - 3)} weitere
+                    +{Math.max(0, appts.length - 3) + Math.max(0, dlArr.length - 3) + Math.max(0, absentToday.length - 2)} weitere
                   </div>
                 )}
               </div>

@@ -132,10 +132,11 @@ model StaffUser {
   notifications                Notification[]
   phone_note                   PhoneNote[]
   rssFeeds                     RssFeed[]
-  sickLeaves                   SickLeave[]
+  absences                     Absence[]
   bookmarks                    StaffBookmark[]
   notes                        StaffNote[]
   roles                        StaffRole[]
+  permissions                  StaffPermission[]
   skillAssignments             StaffSkillAssignment[]
   tenant                       Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   timeEntries                  TimeEntry[]
@@ -167,21 +168,27 @@ model VacationRequest {
   @@map("vacation_request")
 }
 
-model SickLeave {
-  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId   String    @map("tenant_id") @db.Uuid
-  staffId    String    @map("staff_id") @db.Uuid
-  startDate  DateTime  @map("start_date") @db.Date
-  endDate    DateTime? @map("end_date") @db.Date
-  documentId String?   @map("document_id") @db.Uuid
+// iter87: generalisiert aus SickLeave — eine Meldung je Abwesenheit. `kind`
+// unterscheidet Krankheit von sonstigen Abwesenheiten (Fortbildung etc.);
+// `notes` (Grund) ist vertraulich: sichtbar nur für die meldende Person und
+// Entscheidungsträger (ABSENCE_DECIDE bzw. Admin/Partner). Kalender zeigen
+// nur „abw." ohne Art/Grund.
+model Absence {
+  id         String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String      @map("tenant_id") @db.Uuid
+  staffId    String      @map("staff_id") @db.Uuid
+  kind       AbsenceKind @default(SICKNESS)
+  startDate  DateTime    @map("start_date") @db.Date
+  endDate    DateTime?   @map("end_date") @db.Date
+  documentId String?     @map("document_id") @db.Uuid
   notes      String?
-  createdAt  DateTime  @default(now()) @map("created_at")
-  updatedAt  DateTime  @updatedAt @map("updated_at")
-  document   Document? @relation(fields: [documentId], references: [id])
-  staff      StaffUser @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  createdAt  DateTime    @default(now()) @map("created_at")
+  updatedAt  DateTime    @updatedAt @map("updated_at")
+  document   Document?   @relation(fields: [documentId], references: [id])
+  staff      StaffUser   @relation(fields: [staffId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, staffId, startDate])
-  @@map("sick_leave")
+  @@map("absence")
 }
 
 model GwgCheck {
@@ -580,6 +587,21 @@ model StaffRole {
   @@map("staff_role")
 }
 
+// iter87: Einzel-Berechtigungen je Mitarbeiter — feiner als die Rollen.
+// ADMIN/PARTNER haben implizit ALLE Berechtigungen (rbac.ts hasPermission);
+// EMPLOYEE braucht den expliziten Grant. Vergabe/Entzug nur durch Admins,
+// auditiert (staff.permissions.update mit before/after in der Hash-Chain).
+model StaffPermission {
+  staffUserId String              @map("staff_user_id") @db.Uuid
+  permission  StaffPermissionName
+  grantedBy   String?             @map("granted_by") @db.Uuid
+  grantedAt   DateTime            @default(now()) @map("granted_at")
+  staffUser   StaffUser           @relation(fields: [staffUserId], references: [id], onDelete: Cascade)
+
+  @@id([staffUserId, permission])
+  @@map("staff_permission")
+}
+
 model DsgvoRequest {
   id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId         String             @map("tenant_id") @db.Uuid
@@ -955,7 +977,7 @@ model Document {
   invoiceAttachments  Invoice[]
   requestResponses    RequestResponse[]
   riskAnalyses        RiskAnalysis[]         @relation("AnalysisSourceDoc")
-  sickLeaves          SickLeave[]
+  absences            Absence[]
   taxFilings          TaxFiling[]
   taxNotices          TaxNotice[]
 
@@ -2022,6 +2044,28 @@ enum StaffRoleName {
   @@map("staff_role_name")
 }
 
+// iter87: granulare Einzelrechte (siehe StaffPermission).
+//   INVOICE_MANAGE — Rechnungen anlegen/bearbeiten, Zahlung/Storno führen
+//   INVOICE_SEND   — Rechnungen ausstellen: versenden (= GoB-Festschreibung)
+//                    inkl. EXTERNAL-Upload (stellt aus und zu)
+//   ABSENCE_DECIDE — Urlaubsanträge entscheiden, Abwesenheitsmeldungen erhalten
+enum StaffPermissionName {
+  INVOICE_MANAGE
+  INVOICE_SEND
+  ABSENCE_DECIDE
+
+  @@map("staff_permission_name")
+}
+
+// iter87: Art einer Abwesenheitsmeldung (Absence). SICKNESS = Krankmeldung,
+// OTHER = sonstige Abwesenheit (Fortbildung, Sonderurlaub, Dienstreise …).
+enum AbsenceKind {
+  SICKNESS
+  OTHER
+
+  @@map("absence_kind")
+}
+
 enum VacationStatus {
   PENDING
   APPROVED
@@ -2163,6 +2207,8 @@ enum NotificationKind {
   INVOICE_OVERDUE
   PHONE_NOTE_FORWARDED
   VACATION_DECISION
+  VACATION_REQUESTED
+  ABSENCE_REPORTED
   SYSTEM_BACKUP_FAILED
   SYSTEM_AUDIT_BREAK
   SYSTEM_MAIL_FAILED

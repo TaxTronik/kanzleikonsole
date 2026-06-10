@@ -20,7 +20,14 @@ import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db/tenant-context';
 import type { TenantContext, TxClient } from '@taxtronik/db';
 import { staffAuth, type StaffSession } from '@/server/auth/staff';
-import { isStaffAdmin, toActionError, ActionError, type ActionErrorResult } from '@/server/auth/rbac';
+import {
+  isStaffAdmin,
+  hasStaffPermission,
+  toActionError,
+  ActionError,
+  type ActionErrorResult,
+  type StaffPermissionName,
+} from '@/server/auth/rbac';
 import { decideStaffGuard } from './staff-action-policy';
 import type { ActionResult } from './types';
 
@@ -46,12 +53,18 @@ export type StaffGuardResult = ({ ok: true } & StaffCtx) | ActionErrorResult;
  * Auth-Gate für Staff-Actions: prüft Session (+ optional Admin) und liefert
  * Session + Tenant-Kontext. Discriminated Union → Caller: `if (!g.ok) return g;`.
  */
-export async function staffActionGuard(opts: { requireAdmin?: boolean } = {}): Promise<StaffGuardResult> {
+export async function staffActionGuard(
+  opts: { requireAdmin?: boolean; requirePermission?: StaffPermissionName } = {},
+): Promise<StaffGuardResult> {
   const session = await staffAuth();
   const denied = decideStaffGuard({
     hasUser: !!session?.user,
     isAdmin: isStaffAdmin(session),
     requireAdmin: opts.requireAdmin ?? false,
+    requiredPermission: opts.requirePermission ?? null,
+    hasPermission: opts.requirePermission
+      ? hasStaffPermission(session, opts.requirePermission)
+      : true,
   });
   if (denied || !session?.user) return { ok: false, error: denied ?? 'Nicht eingeloggt.' };
   const { tenantId, staffId } = session.user;
@@ -72,7 +85,12 @@ export async function staffActionGuard(opts: { requireAdmin?: boolean } = {}): P
  */
 export async function withStaff<T extends Record<string, unknown> = Record<string, never>>(
   fn: (tx: TxClient, ctx: StaffCtx) => Promise<T | void>,
-  opts: { requireAdmin?: boolean; uniqueError?: string; revalidate?: string | string[] } = {},
+  opts: {
+    requireAdmin?: boolean;
+    requirePermission?: StaffPermissionName;
+    uniqueError?: string;
+    revalidate?: string | string[];
+  } = {},
 ): Promise<ActionResult & Partial<T>> {
   // Fehlerpfade tragen keine T-Felder → Cast nach Partial<T> ist korrekt
   // (TS kann das über das generische Partial<T> nur nicht selbst beweisen).

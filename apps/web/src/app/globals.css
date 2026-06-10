@@ -500,6 +500,14 @@
   .cal-pill-appointment {
     @apply bg-emerald-100 text-emerald-900 hover:bg-emerald-50 dark:bg-emerald-700 dark:text-emerald-50 dark:hover:bg-emerald-600;
   }
+  /* iter87: ganztägige Abwesenheits-Einträge („Name Urlaub" / „Name abw.") —
+     neutral-grau, nicht klickbar, bewusst ohne Hover-Akzent. Kein dark:-
+     Override: die Grau-Skala invertiert hier bereits über CSS-Variablen
+     (Muster cal-pill-done) — ein dark:bg-gray-700 würde doppelt invertieren. */
+  .cal-pill-absence {
+    @apply bg-gray-100;
+    color: rgb(var(--text-secondary));
+  }
 }
 
 /*

@@ -1,10 +1,11 @@
 ﻿import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { Plane, Thermometer, Check, X, Inbox, UserCheck } from 'lucide-react';
+import { Plane, CalendarOff, Check, X, Inbox, UserCheck } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
+import { hasStaffPermission } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { VacationForm } from './vacation-form';
-import { SickForm } from './sick-form';
+import { AbsenceForm } from './absence-form';
 import { decideVacationAction, cancelVacationAction } from './actions';
 import { loadAbsenceCoverage } from '@/server/absences/coverage';
 import { fmtDateShort } from '@/lib/fmt';
@@ -16,23 +17,32 @@ const statusLabels: Record<string, string> = {
   CANCELLED: 'Zurückgezogen',
 };
 
+const kindLabels: Record<string, string> = {
+  SICKNESS: 'Krankheit',
+  OTHER: 'Sonstige',
+};
+
 export default async function AbsencesPage() {
   const session = await staffAuth();
   if (!session?.user) redirect('/staff/login');
 
-  const { tenantId, staffId, roles } = session.user;
-  const isAdmin = roles?.includes('ADMIN') || roles?.includes('PARTNER');
+  const { tenantId, staffId } = session.user;
+  // iter87: Entscheiden + Meldungen einsehen via Einzelrecht (Admin/Partner implizit).
+  const canDecide = hasStaffPermission(session, 'ABSENCE_DECIDE');
 
-  const { myVacations, allPendingVacations, mySick, staff, coverage } = await withTenantContext(
+  const today = new Date();
+  const recentWindow = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+  const { myVacations, allPendingVacations, myAbsences, teamAbsences, staff, coverage } = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
-      const [myVacations, allPendingVacations, mySick, staff] = await Promise.all([
+      const [myVacations, allPendingVacations, myAbsences, teamAbsences, staff] = await Promise.all([
         tx.vacationRequest.findMany({
           where: { staffId },
           orderBy: { startDate: 'desc' },
           take: 30,
         }),
-        isAdmin
+        canDecide
           ? tx.vacationRequest.findMany({
               where: { status: 'PENDING' },
               orderBy: { startDate: 'asc' },
@@ -40,18 +50,31 @@ export default async function AbsencesPage() {
               take: 30,
             })
           : Promise.resolve([]),
-        tx.sickLeave.findMany({
+        tx.absence.findMany({
           where: { staffId },
           orderBy: { startDate: 'desc' },
           take: 30,
         }),
+        // Grund/Art sind vertraulich: Team-Meldungen sieht NUR, wer
+        // entscheiden darf — alle anderen sehen im Kalender nur „abw.".
+        canDecide
+          ? tx.absence.findMany({
+              where: {
+                staffId: { not: staffId },
+                OR: [{ endDate: null }, { endDate: { gte: recentWindow } }],
+              },
+              orderBy: { startDate: 'desc' },
+              include: { staff: { select: { fullName: true } } },
+              take: 30,
+            })
+          : Promise.resolve([]),
         tx.staffUser.findMany({
           where: { active: true },
           select: { id: true, fullName: true },
         }),
       ]);
       const coverage = await loadAbsenceCoverage(tx, staffId);
-      return { myVacations, allPendingVacations, mySick, staff, coverage };
+      return { myVacations, allPendingVacations, myAbsences, teamAbsences, staff, coverage };
     },
   );
 
@@ -63,7 +86,7 @@ export default async function AbsencesPage() {
         <div>
           <h1 className="text-2xl font-bold text-primary mb-1">Abwesenheiten</h1>
           <p className="text-muted text-sm">
-            Urlaub beantragen oder Krankheit melden.
+            Urlaub beantragen oder Abwesenheit melden (Krankheit, Fortbildung …).
           </p>
         </div>
         <a href="/staff/absences/calendar" className="btn-secondary text-xs">
@@ -85,7 +108,7 @@ export default async function AbsencesPage() {
                   <p className="font-medium text-primary">
                     {c.fullName}
                     <span className="ml-2 text-xs font-normal text-muted">
-                      {c.kind === 'vacation' ? 'Urlaub' : 'krank'}
+                      {c.kind === 'vacation' ? 'Urlaub' : 'abw.'}
                       {c.until ? ` bis ${fmtDateShort(c.until)}` : ''}
                     </span>
                   </p>
@@ -127,18 +150,18 @@ export default async function AbsencesPage() {
           <VacationForm />
         </div>
 
-        {/* Krankmeldung */}
+        {/* Abwesenheitsmeldung (krank/sonstige) */}
         <div className="card p-6 h-fit">
           <h2 className="text-sm font-medium text-primary mb-3 flex items-center gap-2">
-            <Thermometer className="h-4 w-4 text-red-600" />
-            Krankmeldung
+            <CalendarOff className="h-4 w-4 text-red-600" />
+            Abwesenheit melden
           </h2>
-          <SickForm />
+          <AbsenceForm />
         </div>
       </div>
 
-      {/* Admin: ausstehende Anträge */}
-      {isAdmin && allPendingVacations.length > 0 && (
+      {/* Entscheidungsträger: ausstehende Anträge */}
+      {canDecide && allPendingVacations.length > 0 && (
         <div className="card overflow-hidden mb-6 border-yellow-200">
           <div className="px-6 py-4 border-b border-default bg-yellow-50">
             <h2 className="text-sm font-medium text-yellow-900">
@@ -232,20 +255,21 @@ export default async function AbsencesPage() {
         )}
       </div>
 
-      {/* Eigene Krankmeldungen */}
-      <div className="card overflow-hidden">
+      {/* Eigene Abwesenheitsmeldungen */}
+      <div className="card overflow-hidden mb-6">
         <div className="px-6 py-4 border-b border-default">
-          <h2 className="text-sm font-medium text-primary">Meine Krankmeldungen</h2>
+          <h2 className="text-sm font-medium text-primary">Meine Abwesenheitsmeldungen</h2>
         </div>
-        {mySick.length === 0 ? (
+        {myAbsences.length === 0 ? (
           <p className="px-6 py-10 text-sm text-disabled text-center">Keine Einträge.</p>
         ) : (
           <ul className="divide-y divide-border-subtle">
-            {mySick.map((s) => (
+            {myAbsences.map((s) => (
               <li key={s.id} className="px-6 py-3">
                 <p className="text-sm text-primary">
                   {fmtDateShort(s.startDate)}
                   {s.endDate ? ` – ${fmtDateShort(s.endDate)}` : ' (offen)'}
+                  <span className="ml-2 text-xs text-muted">{kindLabels[s.kind] ?? s.kind}</span>
                 </p>
                 {s.notes && <p className="text-xs text-muted mt-1">{s.notes}</p>}
               </li>
@@ -253,6 +277,32 @@ export default async function AbsencesPage() {
           </ul>
         )}
       </div>
+
+      {/* Entscheidungsträger: Meldungen des Teams (Art + Grund sichtbar) */}
+      {canDecide && teamAbsences.length > 0 && (
+        <div className="card overflow-hidden">
+          <div className="px-6 py-4 border-b border-default">
+            <h2 className="text-sm font-medium text-primary">Meldungen im Team (letzte 30 Tage)</h2>
+            <p className="text-xs text-muted mt-0.5">
+              Nur für Entscheidungsträger sichtbar — der Kalender zeigt allen anderen nur „abw.".
+            </p>
+          </div>
+          <ul className="divide-y divide-border-subtle">
+            {teamAbsences.map((s) => (
+              <li key={s.id} className="px-6 py-3">
+                <p className="text-sm text-primary">
+                  <span className="font-medium">{s.staff.fullName}</span>
+                  {' · '}
+                  {fmtDateShort(s.startDate)}
+                  {s.endDate ? ` – ${fmtDateShort(s.endDate)}` : ' (offen)'}
+                  <span className="ml-2 text-xs text-muted">{kindLabels[s.kind] ?? s.kind}</span>
+                </p>
+                {s.notes && <p className="text-xs text-muted mt-1">{s.notes}</p>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

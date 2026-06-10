@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
+import { hasStaffPermission } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { readModules } from '@/server/settings/modules';
 import { NewInvoiceForm } from './form';
@@ -14,6 +15,11 @@ export default async function NewInvoicePage() {
   const { tenantId, staffId } = session.user;
   const modules = await readModules({ tenantId, actorId: staffId, actorType: 'STAFF' });
   if (modules.invoiceMode === 'OFF') redirect('/staff/dashboard');
+
+  // iter87: EXTERNAL-Upload = Ausstellen+Zustellen (INVOICE_SEND), In-App-
+  // Anlage = Entwurf (INVOICE_MANAGE). Die Actions prüfen dieselbe Regel.
+  const needed = modules.invoiceMode === 'EXTERNAL' ? 'INVOICE_SEND' : 'INVOICE_MANAGE';
+  if (!hasStaffPermission(session, needed)) redirect('/staff/invoices');
 
   const [clients, categories] = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },

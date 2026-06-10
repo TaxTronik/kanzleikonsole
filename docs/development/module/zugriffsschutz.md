@@ -29,6 +29,17 @@ rollenbasierte Berechtigungen, Mandantentrennung in Tiefenstaffelung
 
 - Rollen: ADMIN/PARTNER (= Admin-Funktionen) / EMPLOYEE; min. 1 Rolle,
   Selbständerung gesperrt.
+- **Einzelrechte (iter87):** `staff_permission` je Mitarbeiter —
+  `INVOICE_MANAGE` (Rechnungen anlegen/bearbeiten, Zahlung/Storno),
+  `INVOICE_SEND` (versenden = Festschreibung, EXTERNAL-Upload),
+  `ABSENCE_DECIDE` (Urlaub entscheiden, Abwesenheitsmeldungen erhalten).
+  ADMIN/PARTNER implizit alles (`hasStaffPermission`); Durchsetzung im
+  zentralen Gate (`staffActionGuard({ requirePermission })`), UI-Ausblendung
+  ist nur Komfort. Vergabe/Entzug Admin-only, Selbständerung gesperrt,
+  Entzug beendet Sitzungen sofort (Revocation + per-Request-Frischladung
+  der Rechte aus der DB). Update-Migration verteilt `INVOICE_*` an alle
+  aktiven Bestandsmitarbeiter (kein Verhaltensbruch), `ABSENCE_DECIDE`
+  bleibt bei Admin/Partner bis zur expliziten Delegation.
 - Mandantenzugriff: Policy OPEN (alle aktiven Staff außer vertrauliche
   Mandanten) oder RESTRICTED (nur Zuständige laut `ClientResponsibility`);
   zentral `canAccessClient(Tx)` + `inaccessibleClientIdsFor` für Mengen.
@@ -44,7 +55,7 @@ rollenbasierte Berechtigungen, Mandantentrennung in Tiefenstaffelung
 
 `auth.login`(+Methode)/`auth.login.failure`/`auth.login.lockout`,
 `auth.totp.enroll`, `auth.backup_code.consume`, `auth.magic_link.consume`,
-`staff.create/.roles.update/.activate/.deactivate/.skills.update`,
+`staff.create/.roles.update/.permissions.update/.activate/.deactivate/.skills.update`,
 `client_contact.create/.update/.deactivate` — alle in der Hash-Chain.
 
 ## Traceability
@@ -57,6 +68,7 @@ rollenbasierte Berechtigungen, Mandantentrennung in Tiefenstaffelung
 | Lockout ohne Fremd-Aussperrung | auth/lockout | `lockout.test.ts` |
 | TOTP-Helfer | auth/totp | `totp.test.ts` |
 | Zugriffspolicy-Wahrheitstabelle | settings/access-policy | `access-policy.test.ts` |
+| Einzelrechte (implizit/Grant/fail-closed) | rbac.hasStaffPermission + decideStaffGuard | `rbac.test.ts` + `staff-action.test.ts` (Wahrheitstabellen) |
 | Fehler ohne Internals | rbac.toActionError | `rbac.test.ts` |
 | Open-Redirect-Schutz | safePortalReturnTo | `safe-return-to.test.ts` |
 | GwG-Sperre Portal-Zugang | DB-Trigger + Session-Check | `gwg-allow-active.test.ts` + portal.ts-Revalidierung |

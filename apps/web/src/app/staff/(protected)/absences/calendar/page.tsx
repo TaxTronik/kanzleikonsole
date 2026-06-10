@@ -59,7 +59,7 @@ export default async function AbsencesCalendarPage({
           },
           select: { staffId: true, startDate: true, endDate: true },
         }),
-        tx.sickLeave.findMany({
+        tx.absence.findMany({
           where: {
             startDate: { lte: end },
             OR: [{ endDate: null }, { endDate: { gte: start } }],
@@ -68,15 +68,17 @@ export default async function AbsencesCalendarPage({
         }),
       ]),
   );
-  const [staffList, vacations, sickLeaves] = data;
+  const [staffList, vacations, absences] = data;
 
-  // Tag-Index → "U" oder "K" pro Mitarbeiter
-  const cellMap = new Map<string, 'U' | 'K' | 'UK'>();
-  function setCell(staffId: string, date: Date, kind: 'U' | 'K') {
+  // Tag-Index → "U" (Urlaub) oder "A" (abwesend) pro Mitarbeiter. iter87:
+  // Krankheit und sonstige Abwesenheit erscheinen einheitlich als „abw." —
+  // die Art ist vertraulich (nur Melder + Entscheidungsträger).
+  const cellMap = new Map<string, 'U' | 'A' | 'UA'>();
+  function setCell(staffId: string, date: Date, kind: 'U' | 'A') {
     const key = `${staffId}:${date.toISOString().slice(0, 10)}`;
     const old = cellMap.get(key);
     if (!old) cellMap.set(key, kind);
-    else if (old !== kind) cellMap.set(key, 'UK');
+    else if (old !== kind) cellMap.set(key, 'UA');
   }
   for (const v of vacations) {
     const s = startOfDayUTC(v.startDate);
@@ -85,11 +87,11 @@ export default async function AbsencesCalendarPage({
       setCell(v.staffId, d, 'U');
     }
   }
-  for (const sl of sickLeaves) {
-    const s = startOfDayUTC(sl.startDate);
-    const e = sl.endDate ? startOfDayUTC(sl.endDate) : end;
+  for (const a of absences) {
+    const s = startOfDayUTC(a.startDate);
+    const e = a.endDate ? startOfDayUTC(a.endDate) : end;
     for (let d = s; d.getTime() <= e.getTime(); d = new Date(d.getTime() + 86400000)) {
-      setCell(sl.staffId, d, 'K');
+      setCell(a.staffId, d, 'A');
     }
   }
 
@@ -174,14 +176,14 @@ export default async function AbsencesCalendarPage({
                   const weekend = isWeekend(d);
                   const cls = cell === 'U'
                     ? 'bg-emerald-200'
-                    : cell === 'K'
+                    : cell === 'A'
                       ? 'bg-red-200'
-                      : cell === 'UK'
+                      : cell === 'UA'
                         ? 'bg-amber-300'
                         : weekend
                           ? 'bg-gray-50'
                           : '';
-                  const title = cell === 'U' ? 'Urlaub' : cell === 'K' ? 'Krank' : cell === 'UK' ? 'Urlaub+Krank' : '';
+                  const title = cell === 'U' ? 'Urlaub' : cell === 'A' ? 'abw.' : cell === 'UA' ? 'Urlaub + abw.' : '';
                   return (
                     <td
                       key={i}
@@ -193,8 +195,8 @@ export default async function AbsencesCalendarPage({
                       title={title ? `${s.fullName} · ${fmtDateMedium(d)} · ${title}` : ''}
                     >
                       {cell === 'U' && <span className="text-[10px] text-emerald-900 font-medium">U</span>}
-                      {cell === 'K' && <span className="text-[10px] text-red-900 font-medium">K</span>}
-                      {cell === 'UK' && <span className="text-[10px] text-amber-900 font-medium">UK</span>}
+                      {cell === 'A' && <span className="text-[10px] text-red-900 font-medium">A</span>}
+                      {cell === 'UA' && <span className="text-[10px] text-amber-900 font-medium">UA</span>}
                     </td>
                   );
                 })}
@@ -209,7 +211,7 @@ export default async function AbsencesCalendarPage({
           <span className="inline-block w-3 h-3 rounded bg-emerald-200" /> Urlaub (genehmigt)
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block w-3 h-3 rounded bg-red-200" /> Krank
+          <span className="inline-block w-3 h-3 rounded bg-red-200" /> abwesend (krank, Fortbildung …)
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className="inline-block w-3 h-3 rounded bg-gray-50 border border-default" /> Wochenende
