@@ -162,6 +162,9 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-taxtronik <noreply@taxtronik.local>}
+      # Betriebs-Alarme (health-alert-Job): Down-/Up-Mails bei Infrastruktur-
+      # Ausfall. Leer = Alerting aus.
+      OPS_ALERT_EMAIL: ${OPS_ALERT_EMAIL:-}
 
   # ===========================================================================
   # Einmal-Migration: wendet Prisma-Migrationen an, BEVOR app/worker starten

@@ -101,6 +101,10 @@ const envSchema = z.object({
   SMTP_USER: z.string().optional().default(''),
   SMTP_PASSWORD: z.string().optional().default(''),
   SMTP_FROM: z.string().min(1),
+  // Empfänger für Betriebs-Alarme (Health-Down/Up-Mails des Worker-Jobs
+  // health-alert). Leer = Alerting aus. Bewusst E-Mail statt In-App: wenn die
+  // App down ist, sieht niemand In-App-Notifications.
+  OPS_ALERT_EMAIL: z.preprocess((v) => (v === '' ? undefined : v), z.string().email().optional()),
 
   // --- n8n ------------------------------------------------------------------
   N8N_WEBHOOK_BASE_URL: z.preprocess((v) => v === '' ? undefined : v, z.string().url().optional()),

@@ -26,6 +26,34 @@ export interface PersistedVerifyResult {
   error: string | null;
 }
 
+// -----------------------------------------------------------------------------
+// Restore-Drill-Ergebnis (tenant_setting `backup_drill_result`).
+//
+// Der monatliche Worker-Job (apps/worker/src/jobs/backup-drill.ts) spielt das
+// letzte erfolgreiche Backup in eine Wegwerf-DB ein und verifiziert die
+// Audit-Hash-Chain auf dem WIEDERHERGESTELLTEN Stand — der beweisbare
+// Wirksamkeitsnachweis der Sicherung (Art. 32 Abs. 1 lit. d DSGVO, GoBD).
+// Liegt hier neben dem Audit-Verify-Ergebnis, weil derselbe Konsument-Split
+// gilt: Worker schreibt, Admin-Seite liest nur das persistierte Ergebnis.
+// -----------------------------------------------------------------------------
+
+/** tenant_setting-Key, unter dem das letzte Drill-Ergebnis liegt. */
+export const BACKUP_DRILL_RESULT_SETTING_KEY = 'backup_drill_result';
+
+export interface PersistedDrillResult {
+  /** Zeitpunkt des Drill-Laufs (ISO-8601). */
+  checkedAt: string;
+  ok: boolean;
+  /** Objekt-Key des eingespielten Backups (null, wenn keins vorhanden war). */
+  backupKey: string | null;
+  /** Erstellzeitpunkt des eingespielten Backups (ISO-8601). */
+  backupFinishedAt: string | null;
+  /** Geprüfte Audit-Einträge auf der wiederhergestellten DB. */
+  auditChecked: number;
+  /** Gesetzt, wenn der Drill fehlschlug (Restore-/Chain-/Lauf-Fehler). */
+  error: string | null;
+}
+
 export function toPersistedVerifyResult(
   r: VerificationResult,
   checkedAt: Date,

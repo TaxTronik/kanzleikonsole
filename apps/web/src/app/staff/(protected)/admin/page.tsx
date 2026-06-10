@@ -15,6 +15,10 @@ import {
 import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
+import {
+  BACKUP_DRILL_RESULT_SETTING_KEY,
+  type PersistedDrillResult,
+} from '@taxtronik/evidence';
 import { evidenceService } from '@/server/container';
 import { checkForUpdates, type CheckResult } from '@/server/update/manifest';
 import { getLicenseInfo } from '@/server/license/state';
@@ -37,7 +41,7 @@ export default async function AdminPage() {
 
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
 
-  const [chainResult, lastBackup, openDsgvoCount, providerCount, contactCount, gwgDueCount, anonDueCount] =
+  const [chainResult, lastBackup, drillSetting, openDsgvoCount, providerCount, contactCount, gwgDueCount, anonDueCount] =
     await withTenantContext(
       ctx,
       async (tx) =>
@@ -46,6 +50,11 @@ export default async function AdminPage() {
           tx.backupRecord.findFirst({
             orderBy: { startedAt: 'desc' },
           }),
+          // Letztes Restore-Drill-Ergebnis (monatlicher Worker-Job — Art. 32
+          // DSGVO Wirksamkeitsnachweis). Nur lesen, nie hier rechnen.
+          tx.tenantSetting.findUnique({
+            where: { tenantId_key: { tenantId, key: BACKUP_DRILL_RESULT_SETTING_KEY } },
+          }),
           tx.dsgvoRequest.count({ where: { status: { in: ['RECEIVED', 'IN_PROGRESS'] } } }),
           tx.serviceProvider.count(),
           tx.clientContact.count({ where: { active: true } }),
@@ -53,6 +62,8 @@ export default async function AdminPage() {
           findDueClientAnonymizations(tx).then((d) => d.length),
         ]),
     );
+
+  const drill = (drillSetting?.value ?? null) as PersistedDrillResult | null;
 
   const setup = await getSetupStatus(ctx);
 
@@ -199,6 +210,24 @@ export default async function AdminPage() {
                 <p className="text-xs text-yellow-700 mt-1 flex items-center gap-1">
                   <AlertTriangle className="h-3.5 w-3.5" />
                   Noch nie gesichert
+                </p>
+              )}
+              {/* Restore-Drill: beweisbarer Wiederherstellungstest (monatlich) */}
+              {drill ? (
+                drill.ok ? (
+                  <p className="text-xs text-green-700 mt-1">
+                    Restore-Test {fmtDateTimeShort(new Date(drill.checkedAt))}: erfolgreich
+                    {drill.auditChecked > 0 ? ` (${drill.auditChecked} Audit-Einträge verifiziert)` : ''}
+                  </p>
+                ) : (
+                  <p className="text-xs text-red-700 mt-1">
+                    ⚠ Restore-Test {fmtDateTimeShort(new Date(drill.checkedAt))} fehlgeschlagen
+                    {drill.error ? ` — ${drill.error}` : ''}
+                  </p>
+                )
+              ) : (
+                <p className="text-xs text-muted mt-1">
+                  Restore-Test: noch kein Lauf (monatlich am 1., 05:00 UTC)
                 </p>
               )}
             </div>

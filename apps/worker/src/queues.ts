@@ -59,6 +59,8 @@ export const magicLinkCleanupQueue = new Queue<ChecksJob, void, string>('magic-l
 export const dsgvoRetentionQueue = new Queue<ChecksJob, void, string>('dsgvo-retention', { connection });
 export const poaExpiryQueue = new Queue<ChecksJob, void, string>('poa-expiry-check', { connection });
 export const riskAnalyseLlmQueue = new Queue<RiskAnalyseLlmJob, void, string>('risk-analyse-llm', { connection });
+export const backupDrillQueue = new Queue<ChecksJob, void, string>('backup-drill', { connection });
+export const healthAlertQueue = new Queue<ChecksJob, void, string>('health-alert', { connection });
 
 // RF-3/RF-13: die QueueEvents-Instanzen (virus-scan, evidence-seal) sind
 // entfernt — sie hatten keinerlei Consumer und wurden beim Shutdown nie

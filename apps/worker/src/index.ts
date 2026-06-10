@@ -19,6 +19,8 @@ import { magicLinkCleanupWorker } from './jobs/magic-link-cleanup';
 import { dsgvoRetentionWorker } from './jobs/dsgvo-retention';
 import { poaExpiryWorker } from './jobs/poa-expiry-check';
 import { riskAnalyseLlmWorker } from './jobs/risk-analyse-llm';
+import { backupDrillWorker } from './jobs/backup-drill';
+import { healthAlertWorker } from './jobs/health-alert';
 import { setupSchedules } from './scheduler';
 import { connection } from './queues';
 import { prismaOwner } from './prisma-owner';
@@ -70,6 +72,8 @@ async function main() {
         'dsgvo-retention',
         'poa-expiry-check',
         'risk-analyse-llm',
+        'backup-drill',
+        'health-alert',
       ],
     },
     'worker: ready',
@@ -95,6 +99,8 @@ async function shutdown(reason: string) {
       dsgvoRetentionWorker.close(),
       poaExpiryWorker.close(),
       riskAnalyseLlmWorker.close(),
+      backupDrillWorker.close(),
+      healthAlertWorker.close(),
     ]);
     // RF-13: auch den Prisma-Pool sauber schließen — vorher blieben offene
     // Postgres-Connections bis zum Prozess-Ende stehen.

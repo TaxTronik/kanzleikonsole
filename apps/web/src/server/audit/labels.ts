@@ -263,6 +263,8 @@ export const ACTION_LABELS: Record<string, string> = {
   'auth.backup_code.consume': 'Backup-Code verwendet (Recovery)',
   'auth.magic_link.consume': 'Portal-Anmeldung (Magic-Link)',
   'backup.run': 'Backup-Lauf',
+  'backup.drill.completed': 'Restore-Test erfolgreich (System)',
+  'backup.drill.failed': 'Restore-Test fehlgeschlagen (System)',
 
   // Custom-Felder
   'client_custom_field.create': 'Custom-Feld angelegt',
@@ -352,6 +354,7 @@ export const RESOURCE_TYPE_LABELS: Record<string, string> = {
   audit_archive: 'Audit-Archiv',
   client_custom_field_def: 'Custom-Feld-Definition',
   backup_record: 'Backup',
+  backup: 'Backup',
   state_machine: 'Status-Maschine',
   tax_filing: 'Steuererklärung',
   request_template: 'Anforderungs-Vorlage',

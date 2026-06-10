@@ -38,14 +38,20 @@ RUN cd packages/db && \
 # P-10: Kein corepack/pnpm in der Runtime-Stage. Reduziert Image-Größe und
 # verkleinert den Angriffsvektor. tsx wird zur Laufzeit per find lokalisiert
 # (pnpm-Store-Layout legt es nicht unter node_modules/.bin/ ab).
-FROM node:22-alpine AS runner
+# Runner explizit auf Alpine 3.23 gepinnt: postgresql18-client liegt erst ab
+# 3.23 in main (v3.22 hat nur 17) — ein floatendes node:22-alpine könnte je
+# nach Upstream-Stand ohne pg18 dastehen und der apk add unten bräche.
+FROM node:22-alpine3.23 AS runner
 # Versions-Metadaten — siehe Dockerfile.web (Release-Workflow setzt Tag + Commit).
 ARG APP_VERSION=dev
 ARG GIT_SHA=unknown
 LABEL org.opencontainers.image.title="taxtronik-worker" \
       org.opencontainers.image.version="${APP_VERSION}" \
       org.opencontainers.image.revision="${GIT_SHA}"
-RUN apk add --no-cache openssl
+# postgresql18-client: pg_restore für den monatlichen Restore-Drill
+# (jobs/backup-drill.ts). Client-Major MUSS >= Server-Major (18) sein —
+# ein älterer pg_restore kann 18er-Dumps nicht lesen.
+RUN apk add --no-cache openssl postgresql18-client
 WORKDIR /app
 
 ENV NODE_ENV=production \

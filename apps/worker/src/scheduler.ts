@@ -24,6 +24,8 @@ import {
   magicLinkCleanupQueue,
   dsgvoRetentionQueue,
   poaExpiryQueue,
+  backupDrillQueue,
+  healthAlertQueue,
 } from './queues';
 import { log } from './logger';
 
@@ -105,6 +107,25 @@ export async function setupSchedules(): Promise<void> {
     { pattern: '20 6 * * *' },
     { name: 'poa-expiry-check', data: {} },
   );
+  // Restore-Drill: monatlich am 1. um 05:00 UTC — beweisbarer Wirksamkeits-
+  // nachweis der Sicherung (Art. 32 DSGVO / GoBD). Retry, weil transiente
+  // S3-/DB-Fehler nicht bis zum nächsten Monat warten sollen.
+  await backupDrillQueue.upsertJobScheduler(
+    'monthly-backup-drill',
+    { pattern: '0 5 1 * *' },
+    {
+      name: 'backup-drill',
+      data: {},
+      opts: { attempts: 2, backoff: { type: 'exponential', delay: 30 * 60_000 } },
+    },
+  );
+  // Health-Alert alle 5 Minuten: Down-/Up-Mails an OPS_ALERT_EMAIL bei
+  // Infrastruktur-Ausfall (No-Op, solange die Adresse nicht gesetzt ist).
+  await healthAlertQueue.upsertJobScheduler(
+    'health-alert',
+    { every: 5 * 60_000 },
+    { name: 'health-alert', data: {} },
+  );
 
   log.info(
     {
@@ -121,6 +142,8 @@ export async function setupSchedules(): Promise<void> {
         'magic-link-cleanup @ 03:30 UTC daily',
         'dsgvo-retention @ 04:00 UTC daily',
         'poa-expiry-check @ 06:20 UTC daily',
+        'backup-drill @ 05:00 UTC 1st of month',
+        'health-alert @ every 5 min',
       ],
     },
     'scheduler: registered',
