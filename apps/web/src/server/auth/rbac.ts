@@ -57,16 +57,12 @@ export function isStaffAdmin(session: StaffSession | null | undefined): boolean 
   return session.user.roles.some((r) => r === 'ADMIN' || r === 'PARTNER');
 }
 
-// iter87: granulare Einzelrechte. Werte spiegeln das DB-Enum
-// StaffPermissionName — als String-Union statt @prisma/client-Import, damit
-// reine Unit-Tests (Wahrheitstabellen) keinen generierten Client brauchen.
-export type StaffPermissionName = 'INVOICE_MANAGE' | 'INVOICE_SEND' | 'ABSENCE_DECIDE';
-
-export const PERMISSION_LABELS: Record<StaffPermissionName, string> = {
-  INVOICE_MANAGE: 'Rechnungen anlegen/bearbeiten (inkl. Zahlung/Storno)',
-  INVOICE_SEND: 'Rechnungen versenden (Festschreibung, EXTERNAL-Upload)',
-  ABSENCE_DECIDE: 'Urlaub entscheiden / Abwesenheitsmeldungen erhalten',
-};
+// iter87: granulare Einzelrechte — EINZIGE Quelle in lib/staff-permissions.ts
+// (reines Daten-Modul, auch im Client-Bundle/Unit-Test ohne @prisma/client
+// nutzbar). Hier nur re-exportiert, damit bestehende Importpfade stabil bleiben.
+export type { StaffPermissionName } from '@/lib/staff-permissions';
+export { PERMISSION_LABELS } from '@/lib/staff-permissions';
+import type { StaffPermissionName } from '@/lib/staff-permissions';
 
 /**
  * Einzelrecht-Prüfung: ADMIN/PARTNER haben implizit ALLE Rechte (kleine

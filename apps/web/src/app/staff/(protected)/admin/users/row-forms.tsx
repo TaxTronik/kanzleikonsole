@@ -4,6 +4,7 @@ import { useState, useTransition, useRef, useEffect } from 'react';
 import { Tags } from 'lucide-react';
 import { setActiveAction, setRolesAction, setPermissionsAction } from './actions';
 import { setStaffSkillsAction } from '../skills/actions';
+import { STAFF_PERMISSIONS, type StaffPermissionName } from '@/lib/staff-permissions';
 
 export function ToggleActiveForm({ userId, active }: { userId: string; active: boolean }) {
   const [isPending, start] = useTransition();
@@ -99,13 +100,9 @@ export function SetRolesForm({
 }
 
 // iter87: Einzelrechte (Kurz-Chips; ADMIN/PARTNER haben implizit alles —
-// dann sind die Chips ausgeblendet, siehe page.tsx).
-const PERMISSION_OPTIONS = [
-  { key: 'INVOICE_MANAGE', short: 'Re. anlegen', title: 'Rechnungen anlegen/bearbeiten (inkl. Zahlung/Storno)' },
-  { key: 'INVOICE_SEND', short: 'Re. versenden', title: 'Rechnungen versenden (Festschreibung, EXTERNAL-Upload)' },
-  { key: 'ABSENCE_DECIDE', short: 'Urlaub entsch.', title: 'Urlaub entscheiden / Abwesenheitsmeldungen erhalten' },
-] as const;
-type Permission = typeof PERMISSION_OPTIONS[number]['key'];
+// dann sind die Chips ausgeblendet, siehe page.tsx). Liste + Texte aus der
+// zentralen Quelle (lib/staff-permissions), nicht mehr hier kopiert.
+type Permission = StaffPermissionName;
 
 export function SetPermissionsForm({
   userId,
@@ -147,7 +144,7 @@ export function SetPermissionsForm({
   return (
     <div className="flex items-center gap-2">
       <div className="flex gap-1">
-        {PERMISSION_OPTIONS.map((p) => {
+        {STAFF_PERMISSIONS.map((p) => {
           const has = perms.has(p.key);
           return (
             <button
@@ -159,7 +156,7 @@ export function SetPermissionsForm({
                   ? 'px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-600 text-white'
                   : 'px-2 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-secondary hover:bg-gray-200'
               }
-              title={p.title}
+              title={p.label}
             >
               {p.short}
             </button>

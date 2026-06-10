@@ -8,6 +8,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { seedDefaultRssFeeds } from '@/server/rss/defaults';
 import { toActionError } from '@/server/auth/rbac';
+import { STAFF_PERMISSION_VALUES } from '@/lib/staff-permissions';
 import { staffActionGuard, ActionError, type ActionResult } from '@/server/actions/staff-action';
 
 const LIST = '/staff/admin/users';
@@ -205,10 +206,8 @@ export async function setRolesAction(input: { userId: string; roles: string[] })
 }
 
 // ----------------------------------------------------------------------------
-// Einzelrechte setzen (iter87)
+// Einzelrechte setzen (iter87) — zulässige Werte aus der zentralen Quelle.
 // ----------------------------------------------------------------------------
-
-const PERMISSION_VALUES = ['INVOICE_MANAGE', 'INVOICE_SEND', 'ABSENCE_DECIDE'] as const;
 
 export async function setPermissionsAction(input: {
   userId: string;
@@ -223,7 +222,7 @@ export async function setPermissionsAction(input: {
       userId: z.string().uuid(),
       // Leeres Array ist hier ERLAUBT (anders als Rollen): alle Einzelrechte
       // entziehen ist ein legitimer Zustand — ADMIN/PARTNER bleiben implizit.
-      permissions: z.array(z.enum(PERMISSION_VALUES)),
+      permissions: z.array(z.enum(STAFF_PERMISSION_VALUES)),
     })
     .safeParse(input);
   if (!parsed.success) {
