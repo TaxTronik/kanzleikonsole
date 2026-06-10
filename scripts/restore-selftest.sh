@@ -31,6 +31,7 @@ info() { printf '\n[selftest] %s\n' "$*"; }
 require_cmd() { command -v "$1" >/dev/null 2>&1 || die "Command '$1' nicht gefunden."; }
 require_cmd psql
 require_cmd pnpm
+require_cmd node
 
 [[ -n "${DATABASE_URL:-}" ]] || die "DATABASE_URL nicht gesetzt (Quelle des Selbsttests)."
 
@@ -38,26 +39,54 @@ SRC_URL="$DATABASE_URL"
 TARGET_DB="taxtronik_restore"
 
 # -----------------------------------------------------------------------------
-# DATABASE_URL zerlegen. Wir bauen daraus:
-#   - die Ziel-URL (gleiche Verbindung, DB-Name TARGET_DB) für restore/verify
-#   - eine Admin-URL auf die `postgres`-DB für DROP/CREATE der Ziel-DB
-# psql bekommt die Verbindungsdaten als URL übergeben; das Passwort steckt darin
-# und wird so nicht über die Prozess-Args sichtbar (psql liest die URL selbst).
+# DATABASE_URL zerlegen. Prisma-URLs tragen Query-Parameter (?schema=…), die
+# libpq NICHT kennt — psql bricht damit ab: `invalid URI query parameter:
+# "schema"`. psql bekommt deshalb NIE die URI, sondern (symmetrisch zu
+# buildPgConnArgs in runner.ts/restore.ts, P-2) die Einzelteile via
+# -h/-p/-U/-d plus PGPASSWORD/PGSSLMODE — so landet das Passwort auch nicht
+# in den Prozess-Args (/proc/<pid>/cmdline). Die VOLLE URL (inkl. ?schema=)
+# behalten nur die Prisma-Aufrufe (restore.ts, verify:chain).
 # -----------------------------------------------------------------------------
-# Schema-Query (?schema=… / ?sslmode=…) am Ende abtrennen und für die Ziel-URL
-# wiederverwenden, damit search_path/SSL-Verhalten gleich bleiben.
-SRC_BASE="${SRC_URL%%\?*}"        # alles vor dem ersten '?'
-SRC_QUERY=""
-if [[ "$SRC_URL" == *\?* ]]; then SRC_QUERY="?${SRC_URL#*\?}"; fi
+url_part() {
+  node -e '
+    const u = new URL(process.argv[1]);
+    const part = {
+      host: u.hostname,
+      port: u.port || "5432",
+      user: decodeURIComponent(u.username),
+      password: decodeURIComponent(u.password),
+      dbname: u.pathname.slice(1),
+      sslmode: u.searchParams.get("sslmode") || "",
+    }[process.argv[2]];
+    if (part === undefined) { console.error("url_part: unbekannter Teil"); process.exit(1); }
+    process.stdout.write(part);
+  ' "$SRC_URL" "$1"
+}
 
-# Verbindungs-Präfix (postgresql://user:pw@host:port/) vom DB-Namen trennen.
-PREFIX="${SRC_BASE%/*}/"          # bis inkl. letztem '/'
-SRC_DBNAME="${SRC_BASE##*/}"      # DB-Name der Quelle
+PG_HOST="$(url_part host)"
+PG_PORT="$(url_part port)"
+PG_USER="$(url_part user)"
+SRC_DBNAME="$(url_part dbname)"
+# Getrennt zuweisen + exportieren: `export VAR=$(cmd)` würde unter set -e einen
+# Fehler von cmd verschlucken (Exit-Status des export zählt).
+PG_PASSWORD="$(url_part password)"
+export PGPASSWORD="$PG_PASSWORD"
+PG_SSLMODE="$(url_part sslmode)"
+if [[ -n "$PG_SSLMODE" ]]; then export PGSSLMODE="$PG_SSLMODE"; fi
 
 [[ "$SRC_DBNAME" != "$TARGET_DB" ]] || die "Quelle ist bereits '$TARGET_DB' — Abbruch (würde Quelle zerstören)."
 
-TARGET_URL="${PREFIX}${TARGET_DB}${SRC_QUERY}"
-ADMIN_URL="${PREFIX}postgres${SRC_QUERY}"
+# Ziel-URL für die Prisma-Seite: gleiche Verbindung + Query, DB-Name TARGET_DB.
+SRC_BASE="${SRC_URL%%\?*}"        # alles vor dem ersten '?'
+SRC_QUERY=""
+if [[ "$SRC_URL" == *\?* ]]; then SRC_QUERY="?${SRC_URL#*\?}"; fi
+TARGET_URL="${SRC_BASE%/*}/${TARGET_DB}${SRC_QUERY}"
+
+# psql gegen eine benannte DB derselben Verbindung (Teile s. o.).
+psql_db() {
+  local db="$1"; shift
+  psql -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$db" -v ON_ERROR_STOP=1 "$@"
+}
 
 TMP="$(mktemp -d)"
 DUMP_FILE="$TMP/selftest.dump"
@@ -69,23 +98,23 @@ cleanup() {
   local rc=$?
   rm -rf "$TMP" 2>/dev/null || true
   # Ziel-DB best-effort droppen; Fehler hier dürfen den Exit-Code nicht ändern.
-  psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q \
+  psql_db postgres -q \
     -c "DROP DATABASE IF EXISTS $TARGET_DB WITH (FORCE)" >/dev/null 2>&1 || true
   exit "$rc"
 }
 trap cleanup EXIT
 
-# Hilfsfunktion: count(*) einer Tabelle gegen eine gegebene URL.
+# Hilfsfunktion: count(*) einer Tabelle in einer benannten DB.
 count_rows() {
-  local url="$1" table="$2"
-  psql "$url" -v ON_ERROR_STOP=1 -tA -c "SELECT count(*) FROM \"$table\""
+  local db="$1" table="$2"
+  psql_db "$db" -tA -c "SELECT count(*) FROM \"$table\""
 }
 
 # -----------------------------------------------------------------------------
 # 1./2. Ziel-DB frisch anlegen. Rollen sind cluster-global → schon vorhanden.
 # -----------------------------------------------------------------------------
 info "Ziel-DB '$TARGET_DB' neu anlegen…"
-psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q \
+psql_db postgres -q \
   -c "DROP DATABASE IF EXISTS $TARGET_DB WITH (FORCE)" \
   -c "CREATE DATABASE $TARGET_DB"
 
@@ -121,8 +150,8 @@ info "Assertion A: Zeilenzahlen Quelle ↔ Ziel vergleichen…"
 TABLES=(tenant audit_log client document invoice)
 ASSERT_OK=1
 for t in "${TABLES[@]}"; do
-  src_n="$(count_rows "$SRC_URL" "$t")"
-  dst_n="$(count_rows "$TARGET_URL" "$t")"
+  src_n="$(count_rows "$SRC_DBNAME" "$t")"
+  dst_n="$(count_rows "$TARGET_DB" "$t")"
   if [[ "$src_n" != "$dst_n" ]]; then
     echo "  ✗ $t: Quelle=$src_n  Ziel=$dst_n  (ABWEICHUNG)"
     ASSERT_OK=0
@@ -147,6 +176,6 @@ info "Restore-Selbsttest ERFOLGREICH."
 echo "  Quelle: $SRC_DBNAME → Ziel: $TARGET_DB"
 echo "  Verglichene Tabellen (Zeilen):"
 for t in "${TABLES[@]}"; do
-  echo "    $t = $(count_rows "$TARGET_URL" "$t")"
+  echo "    $t = $(count_rows "$TARGET_DB" "$t")"
 done
 echo "  Audit-Hash-Chain auf der wiederhergestellten DB: intakt."

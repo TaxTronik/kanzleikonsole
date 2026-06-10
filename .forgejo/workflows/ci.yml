@@ -190,17 +190,31 @@ jobs:
       - name: Generate Prisma client
         run: pnpm --filter @taxtronik/db exec prisma generate
 
-      - name: Install PostgreSQL client
+      # Dieser Job ist der EINZIGE mit pg_dump/pg_restore (via runner.ts/
+      # restore.ts). Anders als psql bricht pg_dump hart ab, wenn der Server
+      # neuer ist als der Client („aborting because of server version
+      # mismatch") — die Distro-Pakete (postgresql-client) sind älter als der
+      # Postgres-18-Service. Daher Client 18 aus dem PGDG-Repo.
+      - name: Install PostgreSQL 18 client (pg_dump/pg_restore)
         run: |
-          if ! command -v psql >/dev/null 2>&1; then
-            if command -v sudo >/dev/null 2>&1; then
-              sudo apt-get update
-              sudo apt-get install -y postgresql-client
-            else
-              apt-get update
-              apt-get install -y postgresql-client
-            fi
+          MAJOR="$(pg_dump --version 2>/dev/null | awk '{print $3}' | cut -d. -f1)"
+          if [ "${MAJOR:-0}" -ge 18 ]; then
+            echo "vorhanden: $(pg_dump --version)"
+            exit 0
           fi
+          SUDO=""
+          if command -v sudo >/dev/null 2>&1; then SUDO=sudo; fi
+          $SUDO apt-get update
+          $SUDO apt-get install -y curl ca-certificates
+          $SUDO install -d /usr/share/postgresql-common/pgdg
+          $SUDO curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          . /etc/os-release
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] http://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
+            | $SUDO tee /etc/apt/sources.list.d/pgdg.list
+          $SUDO apt-get update
+          $SUDO apt-get install -y postgresql-client-18
+          pg_dump --version
 
       - name: Bootstrap roles and extensions
         run: |
