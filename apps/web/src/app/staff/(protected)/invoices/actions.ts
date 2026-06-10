@@ -14,6 +14,7 @@ import { ensureZugferdArchive } from '@/server/invoicing/archive';
 import { computeVatTotals } from '@/server/invoicing/vat';
 import { allocateInvoiceNumber, isValidInvoiceTransition } from '@/server/invoicing/number';
 import { readModules, type InvoiceMode } from '@/server/settings/modules';
+import { round2 } from '@/lib/fmt';
 import { log } from '@/server/logger';
 import { staffActionGuard, withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
 import type { TenantContext } from '@taxtronik/db';
@@ -201,11 +202,27 @@ export async function markSentAction(formData: FormData): Promise<void> {
     );
   }
 
-  await withTenantContext(ctx, async (tx) => {
-    const updated = await tx.invoice.update({
-      where: { id: parsed.data.invoiceId },
+  const sent = await withTenantContext(ctx, async (tx) => {
+    // TOCTOU-Schutz: Der Statuswechsel ist NUR gültig, solange die Rechnung
+    // noch DRAFT ist. Bei Doppel-Submit (zwei Tabs / zwei Bearbeiter) passieren
+    // beide den Precheck oben, aber nur der erste trifft hier status=DRAFT —
+    // der zweite läuft ins Leere (count 0) statt sentAt zu überschreiben und
+    // ein zweites invoice.send/invoice.due-Event zu erzeugen.
+    const res = await tx.invoice.updateMany({
+      where: { id: parsed.data.invoiceId, status: 'DRAFT' },
       data: { status: 'SENT', sentAt: new Date() },
     });
+    if (res.count === 0) return null;
+
+    const updated = await tx.invoice.findUniqueOrThrow({ where: { id: parsed.data.invoiceId } });
+    // Portal-Freigabe der Archivkopie ist Teil des Versands (der Archiv-Helfer
+    // lief noch im Status DRAFT und hat bewusst nicht freigegeben).
+    if (updated.documentId) {
+      await tx.document.updateMany({
+        where: { id: updated.documentId, sharedWithClientAt: null },
+        data: { sharedWithClientAt: new Date(), sharedByStaff: staffId },
+      });
+    }
     await evidenceService.record(tx, {
       tenantId,
       actorType: 'STAFF',
@@ -215,7 +232,11 @@ export async function markSentAction(formData: FormData): Promise<void> {
       resourceId: updated.id,
       after: { number: updated.number, sentAt: updated.sentAt },
     });
+    return updated;
   });
+
+  // Race verloren → kein doppeltes n8n-Event, kein doppeltes Revalidate.
+  if (!sent) return;
 
   emitN8nEvent('invoice.due', { tenantId, invoiceId: parsed.data.invoiceId });
   revalidatePath('/staff/invoices');
@@ -226,7 +247,7 @@ export async function markPaidAction(formData: FormData): Promise<void> {
   const parsed = StatusSchema.safeParse({ invoiceId: formData.get('invoiceId') });
   if (!parsed.success) return;
 
-  await withStaff(
+  const r = await withStaff(
     async (tx, { tenantId, staffId }) => {
       // iter85: Precondition (UI verbirgt den Button, die Action prüft selbst;
       // der DB-Trigger ist der Backstop).
@@ -253,13 +274,16 @@ export async function markPaidAction(formData: FormData): Promise<void> {
     },
     { requirePermission: 'INVOICE_MANAGE', revalidate: ['/staff/invoices', `/staff/invoices/${parsed.data.invoiceId}`] },
   );
+  // Ablehnung (z. B. unzulässiger Statuswechsel bei veralteter Seite) darf nicht
+  // still verpuffen — werfen, damit die UI den Grund zeigt statt eines No-ops.
+  if (!r.ok) throw new ActionError(r.error ?? 'Aktion fehlgeschlagen.');
 }
 
 export async function cancelInvoiceAction(formData: FormData): Promise<void> {
   const parsed = StatusSchema.safeParse({ invoiceId: formData.get('invoiceId') });
   if (!parsed.success) return;
 
-  await withStaff(
+  const r = await withStaff(
     async (tx, { tenantId, staffId }) => {
       // iter85: PAID/CANCELLED sind terminal — vorher war z. B. PAID → CANCELLED
       // per direktem Action-Aufruf möglich (Schutz lag nur in der UI).
@@ -274,6 +298,16 @@ export async function cancelInvoiceAction(formData: FormData): Promise<void> {
         where: { id: parsed.data.invoiceId },
         data: { status: 'CANCELLED' },
       });
+      // Storno gibt die abgerechneten Zeiteinträge zur Neuabrechnung frei:
+      // ihr invoiceId-Link ist nur der Abrechnungs-Pool-Marker, NICHT Teil der
+      // festgeschriebenen Rechnungspositionen (die als eigene InvoicePosition-
+      // Snapshots an der stornierten Rechnung erhalten bleiben). Ohne das wären
+      // die Stunden dauerhaft gefesselt — weder neu abrechenbar (Pool-Filter
+      // invoiceId:null) noch löschbar (Löschschutz für abgerechnete Einträge).
+      const released = await tx.timeEntry.updateMany({
+        where: { invoiceId: parsed.data.invoiceId },
+        data: { invoiceId: null },
+      });
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',
@@ -281,15 +315,12 @@ export async function cancelInvoiceAction(formData: FormData): Promise<void> {
         action: 'invoice.cancel',
         resourceType: 'invoice',
         resourceId: updated.id,
-        after: { number: updated.number },
+        after: { number: updated.number, releasedTimeEntries: released.count },
       });
     },
     { requirePermission: 'INVOICE_MANAGE', revalidate: ['/staff/invoices', `/staff/invoices/${parsed.data.invoiceId}`] },
   );
-}
-
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
+  if (!r.ok) throw new ActionError(r.error ?? 'Aktion fehlgeschlagen.');
 }
 
 // Formular-Helper für create-Page (transformiert FormData inkl. Position-Repeater).

@@ -27,7 +27,7 @@ const h = vi.hoisted(() => {
     invoice: { findMany: vi.fn() },
   };
   const tx = {
-    invoice: { update: vi.fn() },
+    invoice: { updateMany: vi.fn() },
     notification: { findFirst: vi.fn(), update: vi.fn(), create: vi.fn() },
   };
   const withWorkerTenantContext = vi.fn(
@@ -93,7 +93,7 @@ beforeEach(() => {
   );
   h.prismaOwner.tenant.findMany.mockResolvedValue([{ id: TENANT }]);
   h.prismaOwner.invoice.findMany.mockResolvedValue([]);
-  h.tx.invoice.update.mockResolvedValue({});
+  h.tx.invoice.updateMany.mockResolvedValue({ count: 1 });
   h.tx.notification.findFirst.mockResolvedValue(null);
   h.tx.notification.update.mockResolvedValue({});
   h.tx.notification.create.mockResolvedValue({});
@@ -118,8 +118,9 @@ describe('U-1/RF-8: Statuswechsel + Audit + Notification in einer Tx', () => {
     );
     expect(h.withWorkerTenantContext).toHaveBeenCalledTimes(1);
     expect(h.withWorkerTenantContext.mock.calls[0]![0]).toBe(TENANT);
-    expect(h.tx.invoice.update).toHaveBeenCalledWith({
-      where: { id: 'inv-1' },
+    // Status-Recheck IN der Tx: nur SENT → OVERDUE (sonst würfe der Trigger).
+    expect(h.tx.invoice.updateMany).toHaveBeenCalledWith({
+      where: { id: 'inv-1', status: 'SENT' },
       data: { status: 'OVERDUE' },
     });
     // Audit-Record läuft auf DEMSELBEN Tx-Client wie das Update
@@ -195,7 +196,7 @@ describe('Fehlerbehandlung', () => {
       invoice(),
       invoice({ id: 'inv-2', number: 'RE-2026-0002' }),
     ]);
-    h.tx.invoice.update.mockRejectedValueOnce(
+    h.tx.invoice.updateMany.mockRejectedValueOnce(
       new h.PrismaClientKnownRequestError('Unique constraint failed', { code: 'P2002' }),
     );
 
@@ -211,8 +212,22 @@ describe('Fehlerbehandlung', () => {
 
   it('andere Fehler propagieren (Job schlägt fehl)', async () => {
     h.prismaOwner.invoice.findMany.mockResolvedValue([invoice()]);
-    h.tx.invoice.update.mockRejectedValueOnce(new Error('connection lost'));
+    h.tx.invoice.updateMany.mockRejectedValueOnce(new Error('connection lost'));
 
     await expect(run()).rejects.toThrow('connection lost');
+  });
+
+  it('zwischenzeitlich bezahlt/storniert (count 0) → übersprungen, kein Audit/Notification', async () => {
+    // Review-Fix: zwischen findMany und Update kann die Rechnung den Status
+    // verlassen haben. updateMany trifft dann nichts (count 0) — die Rechnung
+    // wird übersprungen statt den Trigger (restrict_violation) auszulösen.
+    h.prismaOwner.invoice.findMany.mockResolvedValue([invoice()]);
+    h.tx.invoice.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    const result = await run();
+
+    expect(result).toEqual({ updated: 0, notified: 0 });
+    expect(h.record).not.toHaveBeenCalled();
+    expect(h.tx.notification.create).not.toHaveBeenCalled();
   });
 });

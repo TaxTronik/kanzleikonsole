@@ -122,6 +122,14 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
     if (fresh?.documentId && freshVersion) {
       return { bucket: freshVersion.storageBucket, key: freshVersion.storageKey };
     }
+    // Portal-Freigabe NUR für bereits versendete Rechnungen: Wird der ZUGFeRD-
+    // Download für einen DRAFT geöffnet (Kontroll-Klick), entsteht zwar die
+    // Archivkopie, sie darf aber nicht im Mandanten-Portal auftauchen. Beim
+    // Versand selbst läuft dieser Helfer noch im Status DRAFT — markSentAction
+    // gibt die Kopie nach dem Statuswechsel frei. Eine spätere Lazy-Erzeugung
+    // bei schon versendeter Rechnung (z. B. Altbestand) wird hier direkt
+    // freigegeben.
+    const shareable = loaded.status === 'SENT' || loaded.status === 'PAID' || loaded.status === 'OVERDUE';
     const doc = await tx.document.create({
       data: {
         tenantId: ctx.tenantId,
@@ -129,11 +137,8 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
         title: `Rechnung ${loaded.number} (ZUGFeRD)`,
         classification: 'GOBD_INVOICE',
         mimeType: 'application/pdf',
-        // iter85 (Befund 7): Rechnungs-PDFs sind für den Mandanten bestimmt —
-        // ohne Freigabe lief der Portal-„Öffnen"-Link auf 404
-        // (Portal-Download filtert auf sharedWithClientAt).
-        sharedWithClientAt: new Date(),
-        sharedByStaff: actorId,
+        sharedWithClientAt: shareable ? new Date() : null,
+        sharedByStaff: shareable ? actorId : null,
       },
     });
     await tx.documentVersion.create({

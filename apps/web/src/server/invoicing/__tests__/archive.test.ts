@@ -116,6 +116,28 @@ describe('ensureZugferdArchive', () => {
     expect(evidenceService.record).toHaveBeenCalledTimes(1);
   });
 
+  it('DRAFT-Archiv wird NICHT fürs Portal freigegeben (sharedWithClientAt=null)', async () => {
+    // Review-Fix: ein Kontroll-Download des ZUGFeRD eines Entwurfs erzeugt die
+    // Archivkopie, darf sie aber nicht im Mandanten-Portal sichtbar machen.
+    tx.invoice.findFirst
+      .mockResolvedValueOnce(baseInvoice({ status: 'DRAFT' }))
+      .mockResolvedValueOnce(baseInvoice({ status: 'DRAFT' }));
+    await ensureZugferdArchive(ctx, 'inv1');
+    const created = tx.document.create.mock.calls[0]![0]!.data;
+    expect(created.sharedWithClientAt).toBeNull();
+    expect(created.sharedByStaff).toBeNull();
+  });
+
+  it('Lazy-Archiv einer bereits versendeten Rechnung wird freigegeben', async () => {
+    tx.invoice.findFirst
+      .mockResolvedValueOnce(baseInvoice({ status: 'SENT' }))
+      .mockResolvedValueOnce(baseInvoice({ status: 'SENT' }));
+    await ensureZugferdArchive(ctx, 'inv1');
+    const created = tx.document.create.mock.calls[0]![0]!.data;
+    expect(created.sharedWithClientAt).toBeInstanceOf(Date);
+    expect(created.sharedByStaff).toBe('s1');
+  });
+
   it('Race: paralleler Aufruf hat inzwischen verknüpft → KEIN Duplikat, Gewinner-Bytes', async () => {
     tx.invoice.findFirst
       .mockResolvedValueOnce(baseInvoice()) // load: kein documentId
