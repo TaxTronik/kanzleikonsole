@@ -95,3 +95,23 @@ export function previewDisposition(mimeType: string, fileName: string): string {
 export function previewContentType(mimeType: string): string {
   return isInlineSafeMime(mimeType) ? mimeType : 'application/octet-stream';
 }
+
+/**
+ * Zusätzliche Sicherheits-Header für die Stream-Response (Audit 2026-06
+ * Befund 4): `text/plain` wird inline ausgeliefert und hängt sonst allein an
+ * `X-Content-Type-Options: nosniff` — würde der Browser den Inhalt doch als
+ * HTML interpretieren, wäre das Stored-XSS. `CSP: sandbox` nimmt dem Dokument
+ * Skript-Ausführung und gibt ihm eine opaque Origin (keine Cookies/Storage
+ * der App), egal wie der Browser den Inhalt deutet.
+ *
+ * Bewusst NUR für text/plain: PDFs brauchen den (teils geprivilegierten)
+ * Browser-Viewer, den `sandbox` in Chromium blockieren kann; Bilder sind
+ * magic-byte-validiert und führen nichts aus.
+ */
+export function previewSecurityHeaders(mimeType: string): Record<string, string> {
+  const normalized = mimeType.split(';')[0]?.trim().toLowerCase();
+  if (normalized === 'text/plain') {
+    return { 'content-security-policy': 'sandbox' };
+  }
+  return {};
+}

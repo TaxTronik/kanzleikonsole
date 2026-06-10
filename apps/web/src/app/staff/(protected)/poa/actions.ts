@@ -142,9 +142,14 @@ export async function sendForSignatureAction(formData: FormData): Promise<Action
           status: 'SENT',
           signingTokenHash: tokenHash,
           signingTokenExpiresAt: expiresAt,
-          // Etwaiges OTP zurücksetzen
+          // Etwaiges OTP zurücksetzen. Neuer Signatur-Token = neuer
+          // Lebenszyklus → beide Fehlversuchszähler auf 0 (Audit 2026-06
+          // Befund 2: der Total-Zähler wird NUR hier zurückgesetzt, nie
+          // beim OTP-Re-Issue).
           signingOtpHash: null,
           signingOtpExpiresAt: null,
+          signingOtpAttempts: 0,
+          signingOtpAttemptsTotal: 0,
         },
       });
 
@@ -366,7 +371,10 @@ export async function requestSigningOtpAction(rawToken: string): Promise<ActionR
         // Vorher saß ein User mit 4 falschen Eingaben nach einem neuen Code-
         // Request immer noch auf 4/5 — ein weiterer Tipper-Fehler hätte den
         // Token komplett invalidiert. Das pro-Token-Hard-Cap (N-5,
-        // poa-otp-cap, 10 Issues / 72 h) bleibt davon unberührt.
+        // poa-otp-cap, 10 Issues / 72 h) bleibt davon unberührt — ebenso
+        // signingOtpAttemptsTotal (Audit 2026-06 Befund 2): der überlebt
+        // Re-Issues und deckelt die Fehlversuche über den ganzen
+        // Token-Lebenszyklus.
         signingOtpAttempts: 0,
       },
     });
@@ -435,6 +443,12 @@ export async function signPoaAction(input: {
 
   const owner = prismaOwner;
   const MAX_POA_OTP_ATTEMPTS = 5;
+  // Audit 2026-06 Befund 2: Cap über den GESAMTEN Token-Lebenszyklus. Der
+  // pro-OTP-Zähler wird beim Re-Issue zurückgesetzt (UX) — mit Issue-Cap 10
+  // ergäbe das allein ~50 Versuche. Der Total-Zähler überlebt Re-Issues:
+  // nach 15 Fehlversuchen ist der Signatur-Token endgültig hinüber, egal
+  // wie viele frische OTPs angefordert wurden.
+  const MAX_POA_OTP_ATTEMPTS_TOTAL = 15;
 
   try {
     const poa = await owner.powerOfAttorney.findFirst({ where: { signingTokenHash: tokenHash } });
@@ -464,16 +478,23 @@ export async function signPoaAction(input: {
     if (!otpMatches) {
       const updated = await owner.powerOfAttorney.update({
         where: { id: poa.id },
-        data: { signingOtpAttempts: { increment: 1 } },
-        select: { signingOtpAttempts: true },
+        data: {
+          signingOtpAttempts: { increment: 1 },
+          signingOtpAttemptsTotal: { increment: 1 },
+        },
+        select: { signingOtpAttempts: true, signingOtpAttemptsTotal: true },
       });
-      if (updated.signingOtpAttempts >= MAX_POA_OTP_ATTEMPTS) {
+      if (
+        updated.signingOtpAttempts >= MAX_POA_OTP_ATTEMPTS ||
+        updated.signingOtpAttemptsTotal >= MAX_POA_OTP_ATTEMPTS_TOTAL
+      ) {
         await owner.powerOfAttorney.update({
           where: { id: poa.id },
           data: {
             signingTokenHash: null,
             signingOtpHash: null,
             signingOtpAttempts: 0,
+            signingOtpAttemptsTotal: 0,
           },
         });
       }
@@ -492,6 +513,7 @@ export async function signPoaAction(input: {
         signingTokenHash: null,
         signingOtpHash: null,
         signingOtpAttempts: 0,
+        signingOtpAttemptsTotal: 0,
       },
     });
     if (claim.count !== 1) {

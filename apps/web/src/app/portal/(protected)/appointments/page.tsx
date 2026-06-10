@@ -35,7 +35,7 @@ export default async function PortalAppointmentsPage() {
   const data = await withTenantContext(
     { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' },
     async (tx) => {
-      const [appointments, requests, staffList] = await Promise.all([
+      const [appointments, requests, staffList, contact] = await Promise.all([
         tx.appointment.findMany({
           where: {
             clientId,
@@ -65,8 +65,14 @@ export default async function PortalAppointmentsPage() {
           orderBy: { fullName: 'asc' },
           select: { id: true, fullName: true },
         }),
+        // Eigener Kontakt: icalTokenVersion geht in den Feed-Token-HMAC ein
+        // (Einzelwiderruf, Audit 2026-06 Befund 3).
+        tx.clientContact.findUnique({
+          where: { id: contactId },
+          select: { icalTokenVersion: true },
+        }),
       ]);
-      return { appointments, requests, staffList };
+      return { appointments, requests, staffList, contact };
     },
   );
 
@@ -82,7 +88,9 @@ export default async function PortalAppointmentsPage() {
         </p>
       </div>
 
-      <IcalSubscribe url={`${portalBaseUrl}/api/portal/ical/${signIcalToken(contactId)}`} />
+      <IcalSubscribe
+        url={`${portalBaseUrl}/api/portal/ical/${signIcalToken(contactId, data.contact?.icalTokenVersion ?? 1)}`}
+      />
 
       {features.appointmentRequests && (
         <div className="mb-6">

@@ -16,16 +16,20 @@ export async function GET(
   { params }: { params: Promise<{ token: string }> },
 ) {
   const { token } = await params;
-  const contactId = verifyIcalToken(token);
-  if (!contactId) {
+  const verified = verifyIcalToken(token);
+  if (!verified) {
     return new Response('Not Found', { status: 404 });
   }
 
   const contact = await prismaOwner.clientContact.findFirst({
-    where: { id: contactId, active: true },
-    select: { clientId: true, client: { select: { name: true } } },
+    where: { id: verified.contactId, active: true },
+    select: { clientId: true, icalTokenVersion: true, client: { select: { name: true } } },
   });
-  if (!contact) {
+  // Versions-Check (Audit 2026-06 Befund 3): Token trägt die Version, mit der
+  // er signiert wurde — stimmt sie nicht mehr mit dem DB-Stand überein, wurde
+  // der Feed für diesen Kontakt widerrufen. Gleiche 404 wie bei ungültigem
+  // Token (kein Orakel, ob ein Kontakt existiert).
+  if (!contact || contact.icalTokenVersion !== verified.version) {
     return new Response('Not Found', { status: 404 });
   }
 

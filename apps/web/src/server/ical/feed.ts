@@ -3,9 +3,12 @@
 //
 // Kalender-Apps (Outlook, Apple, Google) können sich nicht einloggen — der
 // Zugriff läuft daher über einen unguessbaren, HMAC-signierten Token in der
-// URL (Capability, wie Magic-Link/PoA). Der Token enthält die contactId und
-// eine HMAC-Signatur mit domain-getrenntem Schlüssel (HKDF aus AUTH_SECRET).
-// Stateless: keine DB-Spalte, Revocation global über AUTH_SECRET-Rotation.
+// URL (Capability, wie Magic-Link/PoA). Der Token enthält contactId + eine
+// pro-Kontakt rotierbare Versionsnummer (clientContact.icalTokenVersion,
+// Audit 2026-06 Befund 3) und eine HMAC-Signatur mit domain-getrenntem
+// Schlüssel (HKDF aus AUTH_SECRET). Die Route vergleicht die Token-Version
+// mit dem DB-Stand: Version inkrementieren = Einzelwiderruf aller Feed-URLs
+// dieses Kontakts, ohne globale AUTH_SECRET-Rotation.
 // =============================================================================
 
 import { createHmac, hkdfSync, timingSafeEqual } from 'node:crypto';
@@ -23,24 +26,36 @@ function icalKey(): Buffer {
   );
 }
 
-/** `<contactId>.<hmac-base64url>` — contactId ist eine UUID (enthält keinen Punkt). */
-export function signIcalToken(contactId: string): string {
-  const sig = createHmac('sha256', icalKey()).update(contactId).digest('base64url');
-  return `${contactId}.${sig}`;
+/**
+ * `<contactId>.<version>.<hmac-base64url>` — contactId ist eine UUID, version
+ * eine positive Ganzzahl (beide ohne Punkt). Die Version ist Teil des
+ * HMAC-Payloads UND klartextlich im Token, damit die Route sie gegen den
+ * DB-Stand (clientContact.icalTokenVersion) vergleichen kann.
+ */
+export function signIcalToken(contactId: string, version: number): string {
+  const payload = `${contactId}.${version}`;
+  const sig = createHmac('sha256', icalKey()).update(payload).digest('base64url');
+  return `${payload}.${sig}`;
 }
 
-/** Gibt die contactId zurück, wenn der Token gültig signiert ist — sonst null. */
-export function verifyIcalToken(token: string): string | null {
-  const dot = token.lastIndexOf('.');
-  if (dot <= 0) return null;
-  const contactId = token.slice(0, dot);
-  const provided = token.slice(dot + 1);
-  const expected = createHmac('sha256', icalKey()).update(contactId).digest('base64url');
+/**
+ * Gibt contactId + Version zurück, wenn der Token gültig signiert ist — sonst
+ * null. Tokens im alten zweiteiligen Format (vor iter84, ohne Version) sind
+ * bewusst ungültig: damit gilt der Versions-Check ausnahmslos.
+ */
+export function verifyIcalToken(token: string): { contactId: string; version: number } | null {
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  const [contactId, versionStr, provided] = parts as [string, string, string];
+  if (!contactId || !/^\d{1,9}$/.test(versionStr)) return null;
+  const expected = createHmac('sha256', icalKey())
+    .update(`${contactId}.${versionStr}`)
+    .digest('base64url');
   const a = Buffer.from(provided);
   const b = Buffer.from(expected);
   if (a.length !== b.length) return null;
   if (!timingSafeEqual(a, b)) return null;
-  return contactId;
+  return { contactId, version: Number(versionStr) };
 }
 
 export interface IcalEvent {

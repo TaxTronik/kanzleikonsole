@@ -10,6 +10,12 @@
 // das Session-Cookie und redirectet. Damit sind Prefetch/Doppel-Render
 // idempotent. Der Token verlässt nie das Client-Bundle (Hidden-Field im
 // serverseitig gerenderten Form, kein useSearchParams).
+//
+// Referrer (Audit 2026-06 Befund 5): Die Seite trägt den Token im URL-Query.
+// Die Route liefert bereits `Referrer-Policy: no-referrer` als Header
+// (next.config.mjs H-3) — zusätzlich referrerPolicy="no-referrer" an den
+// internen Links, damit der Schutz nicht allein an der Header-Konfiguration
+// hängt (Defense in Depth, wirkt auch wenn die next.config-Regel je verrutscht).
 // =============================================================================
 
 import Link from 'next/link';
@@ -36,7 +42,7 @@ export default async function VerifyMagicLinkPage({ searchParams }: PageProps) {
             ? 'Der Link ist ungültig, abgelaufen oder wurde bereits verwendet.'
             : 'Kein Token in der URL.'}
         </div>
-        <Link href="/portal/login" className="btn-primary inline-block">
+        <Link href="/portal/login" referrerPolicy="no-referrer" className="btn-primary inline-block">
           Neuen Link anfordern
         </Link>
       </Shell>
@@ -56,7 +62,7 @@ export default async function VerifyMagicLinkPage({ searchParams }: PageProps) {
           Anmelden
         </button>
       </form>
-      <Link href="/portal/login" className="text-xs text-disabled hover:underline">
+      <Link href="/portal/login" referrerPolicy="no-referrer" className="text-xs text-disabled hover:underline">
         Neuen Link anfordern
       </Link>
     </Shell>

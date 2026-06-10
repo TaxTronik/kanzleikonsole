@@ -300,6 +300,11 @@ model PowerOfAttorney {
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @updatedAt @map("updated_at")
   signingOtpAttempts    Int       @default(0) @map("signing_otp_attempts")
+  // Audit 2026-06 Befund 2: lebenszyklus-weiter Fehlversuchszähler. Anders als
+  // signingOtpAttempts wird er beim OTP-Re-Issue NICHT zurückgesetzt — nur beim
+  // Versand eines neuen Signatur-Tokens (sendForSignatureAction). Deckelt die
+  // Gesamtversuche pro Token-Lebenszyklus (vorher ~50 über Re-Issue-Resets).
+  signingOtpAttemptsTotal Int     @default(0) @map("signing_otp_attempts_total")
   // RF-15 (iter79): NoAction statt Cascade — signierte Vollmachten dürfen
   // einen Client-Hard-Delete nicht mitsterben (Aufbewahrung/Beweiswert).
   client                Client    @relation(fields: [clientId], references: [id], onDelete: NoAction)
@@ -844,6 +849,10 @@ model ClientContact {
   notificationsEnabled Boolean                     @default(true) @map("notifications_enabled")
   phone                String?
   role                 String?
+  // Audit 2026-06 Befund 3: geht in den iCal-Feed-HMAC ein (server/ical/feed.ts).
+  // Inkrementieren widerruft alle ausgegebenen Feed-URLs NUR dieses Kontakts —
+  // vorher ging Revocation nur global über AUTH_SECRET-Rotation.
+  icalTokenVersion     Int                         @default(1) @map("ical_token_version")
   appointmentRequests  AppointmentRequest[]
   client               Client                      @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant               Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)

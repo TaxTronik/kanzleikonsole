@@ -17,7 +17,11 @@ import { canAccessClientTx } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { streamObject } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
-import { previewContentType, previewDisposition } from '@/server/storage/preview-mime';
+import {
+  previewContentType,
+  previewDisposition,
+  previewSecurityHeaders,
+} from '@/server/storage/preview-mime';
 
 export async function GET(
   req: NextRequest,
@@ -78,6 +82,9 @@ export async function GET(
       'content-type': previewContentType(doc.mimeType),
       'content-disposition': previewDisposition(doc.mimeType, doc.title),
       'cache-control': 'private, no-store',
+      // Audit 2026-06 Befund 4: CSP sandbox für text/plain — Inline-Anzeige
+      // hängt nicht mehr allein an nosniff.
+      ...previewSecurityHeaders(doc.mimeType),
     };
     if (obj.contentLength !== null) headers['content-length'] = String(obj.contentLength);
     return new NextResponse(obj.body, { status: 200, headers });
