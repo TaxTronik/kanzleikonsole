@@ -37,7 +37,7 @@ Strukturelle Stärken, die ganze Angriffsklassen eliminieren:
 | 3 | Niedrig | **iCal-Feed-Token ohne Einzelwiderruf**: statischer HMAC über `contactId`, Revocation nur global via AUTH_SECRET-Rotation. Deaktivierte Kontakte → 404 (gut); Inhalt nur Termine. | `server/ical/feed.ts:27-44` | Optional: `icalTokenVersion` pro Kontakt in den HMAC aufnehmen. **Umgesetzt am 2026-06-10:** `clientContact.icalTokenVersion` (Migration iter84) ist Teil des HMAC-Payloads; die Route vergleicht gegen den DB-Stand — Versions-Bump = Einzelwiderruf. Alte zweiteilige Tokens sind seit dem Deploy ungültig (Kalender-Abos einmalig neu abonnieren). |
 | 4 | Info | **`text/plain` inline-Preview** hängt allein an `X-Content-Type-Options: nosniff` (greift via `/:path*` auch auf API-Responses). Funktioniert in aktuellen Browsern — aber Single-Point. | `server/storage/preview-mime.ts:20-27` | Optional: `text/plain` als `attachment` oder per-Response `CSP: sandbox`. **Umgesetzt am 2026-06-10:** `previewSecurityHeaders()` setzt `Content-Security-Policy: sandbox` auf `text/plain`-Streams (Staff- und Portal-Preview-Route); inline-UX bleibt erhalten. |
 | 5 | Info | **Magic-Link-Token im URL-Query** der Verify-Seite; interner „Neuen Link anfordern"-Link könnte den Referer (same-origin) mit Token senden. One-Time-Use + POST-Consume entschärfen das weitgehend. | `portal/(auth)/login/verify/page.tsx:28,59` | Optional: `referrerPolicy="no-referrer"` am Link bzw. globale Referrer-Policy. **Umgesetzt am 2026-06-10:** `referrerPolicy="no-referrer"` an beiden internen Links; der Route-Header `Referrer-Policy: no-referrer` (next.config H-3) bestand bereits — jetzt doppelt abgesichert. |
-| 6 | Info | **Kein Read-Rate-Limit** auf Portal-Download/Preview (nur eigene, freigegebene Dokumente; schreibt pro Abruf einen Audit-Eintrag → Audit-Spam/Last möglich). | `api/portal/documents/[id]/*` | Optional: leichtes Read-Limit. |
+| 6 | Info | **Kein Read-Rate-Limit** auf Portal-Download/Preview (nur eigene, freigegebene Dokumente; schreibt pro Abruf einen Audit-Eintrag → Audit-Spam/Last möglich). | `api/portal/documents/[id]/*` | Optional: leichtes Read-Limit. **Umgesetzt am 2026-06-10:** `checkPortalReadLimit` (gemeinsamer Bucket pro Session-Kontakt, 240/10 min — großzügig: eine Preview kostet 2 Requests) greift in beiden Routen VOR dem DB-Zugriff/Audit-Write; Überschreitung → 429 mit `Retry-After`. Tests in `api/portal/documents/__tests__`. |
 | 7 | Info | **ZIP-Bomben** werden gespeichert, aber nie app-seitig entpackt (nur durchgestreamt; ClamAV scannt mit eigenen Limits; 100-MB-Cap). Akzeptiertes Restrisiko. | `packages/storage/src/service.ts:131` | Keine Maßnahme zwingend. |
 
 ## Abdeckung (geprüft und sauber)
@@ -62,8 +62,9 @@ nicht wegen akuter Ausnutzbarkeit, sondern damit der Pentest-Bericht nicht
 mit Architektur-Archäologie verstopft wird. Befunde 2–7 sind bewusste oder
 vertretbare Restrisiken; Härtung lohnt opportunistisch.
 
-**Stand 2026-06-10:** Befunde 1–5 sind umgesetzt (Vermerke in der Tabelle;
+**Stand 2026-06-10:** Befunde 1–6 sind umgesetzt (Vermerke in der Tabelle;
 Befund 1 als Dead-Config-Bereinigung, Befunde 2–5 mit Migration iter84 und
 Tests in `server/ical/__tests__`, `server/storage/__tests__` und
-`staff/(protected)/poa/__tests__`). Offen bleiben Befund 6 (Read-Rate-Limit,
-optional) und Befund 7 (akzeptiertes Restrisiko).
+`staff/(protected)/poa/__tests__`, Befund 6 als Read-Rate-Limit mit Tests in
+`api/portal/documents/__tests__`). Offen bleibt nur Befund 7 (akzeptiertes
+Restrisiko).

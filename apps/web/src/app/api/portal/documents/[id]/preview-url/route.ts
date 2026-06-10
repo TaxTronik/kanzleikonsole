@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { getClientIp } from '@/server/rate-limit';
+import { getClientIp, checkPortalReadLimit } from '@/server/rate-limit';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 import { streamObject } from '@taxtronik/storage';
@@ -21,6 +21,17 @@ export async function GET(
 
   const { id } = await params;
   const { tenantId, contactId, clientId } = session.user;
+
+  // Audit 2026-06 Befund 6: Read-Limit pro Session-Kontakt (gemeinsamer
+  // Bucket mit der Download-Route) — deckelt Audit-Spam/Last, BEVOR der
+  // Abruf einen evidence-Eintrag schreibt.
+  const rl = await checkPortalReadLimit(contactId);
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: 'rate_limited', retryAfter: rl.retryAfter },
+      { status: 429, headers: { 'retry-after': String(rl.retryAfter) } },
+    );
+  }
 
   const doc = await withTenantContext(
     { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' },

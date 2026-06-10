@@ -75,6 +75,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'client_contact.create': 'Ansprechpartner angelegt',
   'client_contact.update': 'Ansprechpartner aktualisiert',
   'client_contact.deactivate': 'Ansprechpartner deaktiviert',
+  'client_contact.ical_rotate': 'Kalender-Feed-URLs widerrufen (iCal)',
 
   // GwG-Prüfung
   'gwg.check.open': 'GwG-Prüfung gestartet',

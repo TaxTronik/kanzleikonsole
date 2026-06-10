@@ -1,11 +1,13 @@
 ﻿'use client';
 
 import { useActionState, useState, useRef, useEffect, useTransition } from 'react';
-import { Mail, Phone, UserX, Pencil, Plus, X } from 'lucide-react';
+import { Mail, Phone, UserX, Pencil, Plus, X, CalendarOff } from 'lucide-react';
+import { ConfirmModal } from '@/components/ui/modal';
 import {
   inviteContactAction,
   deactivateContactAction,
   updateContactAction,
+  rotateIcalTokenAction,
   type ActionResult,
 } from '@/app/staff/(protected)/clients/[id]/contacts/actions';
 
@@ -135,6 +137,7 @@ function ContactRow({
   clientId: string;
   onEdit: () => void;
 }) {
+  const [confirmRotate, setConfirmRotate] = useState(false);
   return (
     <li className="px-5 py-3 flex items-center justify-between gap-3">
       <div className="min-w-0 flex-1 grid grid-cols-3 gap-4 items-center">
@@ -166,6 +169,14 @@ function ContactRow({
         >
           <Pencil className="h-4 w-4" />
         </button>
+        <button
+          type="button"
+          onClick={() => setConfirmRotate(true)}
+          className="text-disabled hover:text-red-600 p-1.5"
+          title="Kalender-Feed widerrufen"
+        >
+          <CalendarOff className="h-4 w-4" />
+        </button>
         <form action={deactivateContactAction}>
           <input type="hidden" name="contactId" value={contact.id} />
           <input type="hidden" name="clientId" value={clientId} />
@@ -174,6 +185,17 @@ function ContactRow({
           </button>
         </form>
       </div>
+      {confirmRotate && (
+        <ConfirmModal
+          title="Kalender-Feed widerrufen"
+          message={`Alle ausgegebenen iCal-Feed-URLs von ${contact.fullName} werden ungültig. Der Mandant muss den Kalender im Portal (Termine) neu abonnieren.`}
+          confirmLabel="Widerrufen"
+          busyLabel="Widerruft…"
+          danger
+          onConfirm={() => rotateIcalTokenAction({ contactId: contact.id, clientId })}
+          onClose={() => setConfirmRotate(false)}
+        />
+      )}
     </li>
   );
 }

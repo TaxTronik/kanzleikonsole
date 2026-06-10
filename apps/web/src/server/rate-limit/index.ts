@@ -39,6 +39,20 @@ export async function checkPortalWriteLimit(contactId: string): Promise<RateLimi
 }
 
 /**
+ * Audit 2026-06 Befund 6: leichtes Read-Limit für Portal-Download/Preview.
+ * Jeder Abruf schreibt einen Audit-Eintrag (evidenceService) — ohne Limit
+ * kann ein eingeloggter Mandant Audit-Spam/DB-Last erzeugen. Großzügig
+ * dimensioniert: eine Preview kostet 2 Requests (JSON-Metadata + Stream),
+ * 240/10 min erlauben also ~120 Dokument-Ansichten in Folge — legitimes
+ * Durchklicken der Dokumentliste bleibt unbemerkt, Spam ist auf 240
+ * Audit-Einträge/10 min gedeckelt. Key pro Session-Kontakt (nicht IP):
+ * trifft den Verursacher direkt, kein Fremd-Lockout hinter Shared-NAT.
+ */
+export async function checkPortalReadLimit(contactId: string): Promise<RateLimitResult> {
+  return checkRateLimit(`portal-read:${contactId}`, { max: 240, windowSec: 600 });
+}
+
+/**
  * Per-User-Limit für die globale Staff-Suche (Defense in Depth): 30/min deckt
  * jedes legitime Typeahead, bremst aber systematisches Abgrasen (5 parallele
  * ILIKE-/FTS-Queries pro Request) über einen kompromittierten Account.

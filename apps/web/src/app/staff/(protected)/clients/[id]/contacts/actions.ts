@@ -175,6 +175,59 @@ export async function updateContactAction(
   );
 }
 
+const RotateIcalSchema = z.object({
+  contactId: z.string().uuid(),
+  clientId: z.string().uuid(),
+});
+
+/**
+ * Widerruft alle iCal-Feed-URLs eines Kontakts: icalTokenVersion geht in den
+ * Feed-Token-HMAC ein (server/ical/feed.ts), die Route vergleicht die Version
+ * gegen den DB-Stand — der Increment entwertet jede ausgegebene URL. Der
+ * Mandant muss den Kalender im Portal neu abonnieren.
+ */
+export async function rotateIcalTokenAction(
+  input: z.infer<typeof RotateIcalSchema>,
+): Promise<ActionResult> {
+  const g = await staffActionGuard();
+  if (!g.ok) return g;
+  const { ctx } = g;
+
+  const parsed = RotateIcalSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  const { contactId, clientId } = parsed.data;
+
+  try {
+    await withTenantContext(ctx, async (tx) => {
+      const contact = await tx.clientContact.findUnique({
+        where: { id: contactId },
+        select: { clientId: true },
+      });
+      if (!contact) throw new ActionError('Ansprechpartner nicht gefunden.');
+      if (contact.clientId !== clientId) throw new ActionError('Mandant stimmt nicht überein.');
+      const updated = await tx.clientContact.update({
+        where: { id: contactId },
+        data: { icalTokenVersion: { increment: 1 } },
+        select: { icalTokenVersion: true },
+      });
+      await evidenceService.record(tx, {
+        tenantId: g.tenantId,
+        actorType: 'STAFF',
+        actorId: g.staffId,
+        action: 'client_contact.ical_rotate',
+        resourceType: 'client_contact',
+        resourceId: contactId,
+        after: { icalTokenVersion: updated.icalTokenVersion },
+      });
+    });
+  } catch (e) {
+    return toActionError(e);
+  }
+
+  revalidatePath(`/staff/clients/${clientId}`);
+  return { ok: true };
+}
+
 export async function deactivateContactAction(formData: FormData): Promise<void> {
   const g = await staffActionGuard();
   if (!g.ok) return; // void-Action: bei fehlender Auth still abbrechen (wie zuvor)
