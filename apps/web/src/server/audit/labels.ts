@@ -265,6 +265,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'backup.run': 'Backup-Lauf',
   'backup.drill.completed': 'Restore-Test erfolgreich (System)',
   'backup.drill.failed': 'Restore-Test fehlgeschlagen (System)',
+  'compliance.verfahrensdoku.generated': 'Verfahrensdokumentation erzeugt',
 
   // Custom-Felder
   'client_custom_field.create': 'Custom-Feld angelegt',

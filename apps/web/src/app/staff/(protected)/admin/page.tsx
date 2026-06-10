@@ -313,6 +313,12 @@ export default async function AdminPage() {
             </Link>
           </li>
           <li>
+            {/* Route-Handler-Download (kein <Link> — kein Client-Side-Routing) */}
+            <a href="/api/staff/admin/verfahrensdoku" className="text-brand-700 hover:underline">
+              → Verfahrensdokumentation (GoBD) aus dem IST-Zustand erzeugen
+            </a>
+          </li>
+          <li>
             <Link href="/staff/admin/gwg-retention" className="text-brand-700 hover:underline">
               → GwG-Pflichtlöschung (§ 8 Abs. 4)
             </Link>
