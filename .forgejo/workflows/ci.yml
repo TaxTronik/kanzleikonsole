@@ -197,7 +197,14 @@ jobs:
       # Postgres-18-Service. Daher Client 18 aus dem PGDG-Repo.
       - name: Install PostgreSQL 18 client (pg_dump/pg_restore)
         run: |
-          MAJOR="$(pg_dump --version 2>/dev/null | awk '{print $3}' | cut -d. -f1)"
+          # command -v-Guard: der Runner fährt run-Steps mit set -e -o pipefail.
+          # Fehlt pg_dump komplett, würde `pg_dump --version | …` den Step
+          # sofort mit 127 (command not found) beenden, bevor die Installation
+          # überhaupt erreicht wird.
+          MAJOR=0
+          if command -v pg_dump >/dev/null 2>&1; then
+            MAJOR="$(pg_dump --version | awk '{print $3}' | cut -d. -f1)"
+          fi
           if [ "${MAJOR:-0}" -ge 18 ]; then
             echo "vorhanden: $(pg_dump --version)"
             exit 0
