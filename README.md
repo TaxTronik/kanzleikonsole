@@ -98,10 +98,20 @@ jedem Compose-Aufruf die SeaweedFS-S3-Konfiguration.
 Im Normalfall gibt es nur drei Befehle:
 
 ```bash
-./scripts/deploy.sh   # aktueller Checkout: Infra, Build, Migration, Restart, Health-Smoke
-./scripts/update.sh   # git ff-only, Backup, Build, Migration, Restart, Health-Smoke
+./scripts/deploy.sh   # Infra, Image-Pull (oder Build), Backup, Migration, Restart, Health-Smoke
+./scripts/update.sh   # git ff-only, Backup, Image-Pull (oder Build), Migration, Restart, Health-Smoke
 ./scripts/backup.sh   # manuelles Postgres-Backup in den S3-Backup-Bucket
 ```
+
+Releases entstehen über Git-Tags (`v1.4.0`): der Forgejo-Workflow
+`release.yml` baut die Images, scannt sie mit Trivy und pusht sie in die
+Forgejo-Container-Registry. Auf dem Server zeigt
+`TAXTRONIK_IMAGE_PREFIX=git.hirschmann-koxha.de/taxtronik` auf die Registry,
+`TAXTRONIK_VERSION` pinnt das Release — die Skripte ziehen dann fertige,
+CI-getestete Images statt lokal zu bauen. `TAXTRONIK_VERSION` ist in
+Produktion Pflicht (kein `latest`-Fallback), damit Deploy-Stand und Rollback
+immer eindeutig sind. Details und Rollback-Pfad:
+[docs/operations/release.md](docs/operations/release.md)
 
 `update.sh` macht bewusst kein `git reset --hard`. Wenn lokale Änderungen oder
 ein nicht-fast-forward Stand existieren, bricht das Skript ab.
@@ -117,7 +127,8 @@ Wichtige `.env`-Werte für ein Multi-Domain-Deploy:
 
 ```ini
 NODE_ENV=production
-TAXTRONIK_VERSION=latest
+TAXTRONIK_IMAGE_PREFIX=git.hirschmann-koxha.de/taxtronik
+TAXTRONIK_VERSION=1.4.0
 
 NEXTAUTH_URL=https://kanzlei.example.de
 PORTAL_PUBLIC_URL=https://mandanten.example.de

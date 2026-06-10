@@ -1,0 +1,131 @@
+# =============================================================================
+# Release Images — baut web + worker und pusht sie in die Forgejo-Container-
+# Registry. Ausgelöst durch einen Versions-Tag:
+#
+#   git tag v1.4.0 && git push forgejo v1.4.0
+#
+# Ergebnis: <registry>/<owner>/web:1.4.0 + :latest (analog worker). Der
+# Registry-Host wird aus der Instanz-URL abgeleitet (GITHUB_SERVER_URL,
+# z. B. git.hirschmann-koxha.de); via Repo-Variable REGISTRY übersteuerbar.
+#
+# Auth: Default ist der Actions-Auto-Token (GITHUB_TOKEN). Falls die Instanz
+# dem Auto-Token kein write:package erlaubt, einen PAT mit write:package als
+# Secrets REGISTRY_USER + REGISTRY_TOKEN hinterlegen — die werden bevorzugt.
+#
+# Trivy-Gate: CRITICAL-CVEs mit verfügbarem Fix blockieren den Push. HIGH wird
+# nur rapportiert — Alpine-Basis-CVEs ohne Fix würden sonst jedes Release
+# aufhalten.
+#
+# Zielmaschine (.env), danach ./scripts/update.sh:
+#   TAXTRONIK_IMAGE_PREFIX=git.hirschmann-koxha.de/taxtronik
+#   TAXTRONIK_VERSION=1.4.0
+# Prozess-Doku: docs/operations/release.md
+# =============================================================================
+name: Release Images
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version, Registry und Build-Metadaten bestimmen
+        id: meta
+        env:
+          REGISTRY_OVERRIDE: ${{ vars.REGISTRY }}
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          REGISTRY="${REGISTRY_OVERRIDE:-${GITHUB_SERVER_URL#*://}}"
+          OWNER="$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
+          {
+            echo "version=$VERSION"
+            echo "registry=$REGISTRY"
+            echo "prefix=$REGISTRY/$OWNER"
+            echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Registry-Login
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ steps.meta.outputs.registry }}
+          username: ${{ secrets.REGISTRY_USER || github.actor }}
+          password: ${{ secrets.REGISTRY_TOKEN || secrets.GITHUB_TOKEN }}
+
+      # push: false + load: true — erst nach dem Trivy-Gate pushen. Kein
+      # setup-buildx: der Docker-Driver legt die Images direkt im lokalen
+      # Daemon ab, wo Trivy und `docker push` sie finden.
+      - name: web — bauen
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/Dockerfile.web
+          push: false
+          load: true
+          tags: |
+            ${{ steps.meta.outputs.prefix }}/web:${{ steps.meta.outputs.version }}
+            ${{ steps.meta.outputs.prefix }}/web:latest
+          build-args: |
+            APP_VERSION=${{ steps.meta.outputs.version }}
+            GIT_SHA=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ steps.meta.outputs.created }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+      - name: worker — bauen
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/Dockerfile.worker
+          push: false
+          load: true
+          tags: |
+            ${{ steps.meta.outputs.prefix }}/worker:${{ steps.meta.outputs.version }}
+            ${{ steps.meta.outputs.prefix }}/worker:latest
+          build-args: |
+            APP_VERSION=${{ steps.meta.outputs.version }}
+            GIT_SHA=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ steps.meta.outputs.created }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+      - name: Trivy-Scan (CRITICAL mit Fix blockt den Push)
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.cache/trivy"
+          for img in web worker; do
+            ref="${{ steps.meta.outputs.prefix }}/$img:${{ steps.meta.outputs.version }}"
+            # Pass 1: HIGH+CRITICAL rapportieren (informativ, blockt nicht)
+            docker run --rm \
+              -v /var/run/docker.sock:/var/run/docker.sock \
+              -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+              aquasec/trivy:latest image \
+              --severity HIGH,CRITICAL --ignore-unfixed --exit-code 0 "$ref"
+            # Pass 2: CRITICAL mit Fix → Release abbrechen
+            docker run --rm \
+              -v /var/run/docker.sock:/var/run/docker.sock \
+              -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+              aquasec/trivy:latest image \
+              --severity CRITICAL --ignore-unfixed --exit-code 1 --quiet "$ref"
+          done
+
+      - name: Push in die Registry
+        run: |
+          set -euo pipefail
+          for img in web worker; do
+            docker push "${{ steps.meta.outputs.prefix }}/$img:${{ steps.meta.outputs.version }}"
+            docker push "${{ steps.meta.outputs.prefix }}/$img:latest"
+          done

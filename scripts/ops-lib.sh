@@ -64,6 +64,22 @@ image_tag() {
   printf '%s' "${TAXTRONIK_VERSION:-latest}"
 }
 
+# Registry-Pull-Modus: TAXTRONIK_IMAGE_PREFIX enthält einen Registry-Pfad
+# (z. B. git.hirschmann-koxha.de/taxtronik) — erkennbar am '/'. Ohne Slash
+# (Default `taxtronik`) bauen die Skripte lokal aus dem Checkout.
+images_from_registry() {
+  [[ "${TAXTRONIK_IMAGE_PREFIX:-taxtronik}" == */* ]]
+}
+
+require_release_version() {
+  # Kein latest/dev-Fallback in Produktion: Deploy und Rollback brauchen einen
+  # eindeutig benannten Stand — sonst ist nie nachvollziehbar, welche Version
+  # gerade läuft und auf welchen Tag man zurück kann.
+  if [[ -z "${TAXTRONIK_VERSION:-}" ]]; then
+    die "TAXTRONIK_VERSION ist nicht in der .env gesetzt. Registry-Pull: auf das Release pinnen (z. B. TAXTRONIK_VERSION=1.4.0). Lokaler Build: z. B. TAXTRONIK_VERSION=$(date +%Y-%m-%d)."
+  fi
+}
+
 preflight_common() {
   require_cmd docker
   require_cmd node
@@ -83,34 +99,57 @@ assert_production_env() {
   fi
 }
 
-prisma_cli() {
-  local prisma
-  prisma="$(find "$ROOT/node_modules" -path '*/prisma/build/index.js' -not -path '*/cache/*' 2>/dev/null | head -1 || true)"
-  [[ -n "$prisma" ]] || die "Prisma CLI nicht gefunden. Auf dem Server einmal 'corepack enable && pnpm install --frozen-lockfile' ausfuehren."
-  printf '%s' "$prisma"
-}
-
-owner_database_url_for_host() {
-  # Migrationen laufen vom Host gegen den publizierten Postgres-Port. Host/Port
-  # sind übersteuerbar (POSTGRES_HOST/POSTGRES_PORT in .env), falls die Compose
-  # den Port nur auf einem bestimmten Interface oder abweichend published.
-  local host="${POSTGRES_HOST:-127.0.0.1}"
-  local port="${POSTGRES_PORT:-5432}"
-  printf 'postgresql://taxtronik:%s@%s:%s/taxtronik?schema=public' "$POSTGRES_PASSWORD" "$host" "$port"
-}
-
 run_migrations() {
-  info "DB-Migrationen anwenden"
-  DATABASE_URL="$(owner_database_url_for_host)" \
-    node "$(prisma_cli)" migrate deploy --schema "$ROOT/packages/db/prisma/schema.prisma"
+  # One-Shot-Container statt Host-Prisma: das Worker-Image enthält Prisma-CLI
+  # und Migrationen, die Owner-DB-URL kommt aus der Compose-Definition. Damit
+  # läuft exakt derselbe Pfad wie bei `./dc up`, und der Server braucht für
+  # Migrationen weder node_modules noch einen publizierten Postgres-Port.
+  info "DB-Migrationen anwenden (migrate-Container)"
+  compose run --rm migrate
 }
 
 build_images() {
-  local tag
+  local prefix tag sha
+  prefix="${TAXTRONIK_IMAGE_PREFIX:-taxtronik}"
   tag="$(image_tag)"
-  info "Docker-Images bauen: taxtronik/web:$tag und taxtronik/worker:$tag"
-  docker build -f "$ROOT/infra/docker/Dockerfile.web" -t "taxtronik/web:$tag" "$ROOT"
-  docker build -f "$ROOT/infra/docker/Dockerfile.worker" -t "taxtronik/worker:$tag" "$ROOT"
+  sha="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  info "Docker-Images bauen: $prefix/web:$tag und $prefix/worker:$tag"
+  docker build -f "$ROOT/infra/docker/Dockerfile.web" \
+    --build-arg APP_VERSION="$tag" --build-arg GIT_SHA="$sha" \
+    -t "$prefix/web:$tag" "$ROOT"
+  docker build -f "$ROOT/infra/docker/Dockerfile.worker" \
+    --build-arg APP_VERSION="$tag" --build-arg GIT_SHA="$sha" \
+    -t "$prefix/worker:$tag" "$ROOT"
+}
+
+pull_images() {
+  info "Images aus der Registry ziehen: ${TAXTRONIK_IMAGE_PREFIX}/{web,worker}:$(image_tag)"
+  compose pull app worker
+}
+
+# Pull-before-Stop: Images werden beschafft, solange der alte Stand noch läuft —
+# die Downtime beim Update reduziert sich auf den reinen Container-Neustart.
+provide_images() {
+  if images_from_registry; then
+    pull_images
+  else
+    build_images
+  fi
+}
+
+backup_before_migrations() {
+  # Sicherheitsnetz vor `migrate deploy` (Prisma ist forward-only, kein
+  # automatischer Rollback). Erst ab dem zweiten Deploy sinnvoll — beim
+  # Erstdeploy existiert noch kein Schema, das man sichern könnte.
+  local migrated
+  migrated="$(compose --infra exec -T postgres \
+    psql -U taxtronik -d taxtronik -tAc \
+    "SELECT to_regclass('public._prisma_migrations') IS NOT NULL" 2>/dev/null || true)"
+  if [[ "$migrated" == "t" ]]; then
+    run_backup
+  else
+    info "Erstdeploy erkannt (keine _prisma_migrations-Tabelle) — Backup vor Migration entfällt."
+  fi
 }
 
 start_infra() {

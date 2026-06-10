@@ -50,6 +50,13 @@ export async function GET() {
     {
       status: allOk ? 'ok' : 'degraded',
       services,
+      // APP_VERSION kommt aus Compose (TAXTRONIK_VERSION) bzw. dem Image-Build,
+      // GIT_SHA backt der Release-Workflow ins Image — beantwortet "welcher
+      // Stand läuft hier gerade?" ohne SSH auf den Server.
+      version: {
+        app: process.env['APP_VERSION'] ?? 'dev',
+        commit: process.env['GIT_SHA'] ?? 'unknown',
+      },
       timestamp: new Date().toISOString(),
     },
     { status: allOk ? 200 : 503 },

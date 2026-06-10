@@ -13,9 +13,17 @@ x-hardening: &hardening
   cap_drop:
     - ALL
 
+# Log-Rotation — siehe docker-compose.yml (Anchors gelten pro File).
+x-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
+
 services:
   app:
-    <<: *hardening
+    <<: [*hardening, *logging]
     # Image-Prefix parametrisiert: Default `taxtronik` (lokaler Build via
     # deploy.sh). Für Registry-Pull in der .env setzen, z. B.
     # TAXTRONIK_IMAGE_PREFIX=git.kanzlei.de/rey → git.kanzlei.de/rey/web:<version>.
@@ -101,7 +109,7 @@ services:
       - "${APP_BIND:-127.0.0.1}:${APP_BIND_PORT:-3000}:3000"
 
   worker:
-    <<: *hardening
+    <<: [*hardening, *logging]
     image: ${TAXTRONIK_IMAGE_PREFIX:-taxtronik}/worker:${TAXTRONIK_VERSION:-dev}
     container_name: taxtronik-worker
     restart: unless-stopped
@@ -164,7 +172,7 @@ services:
   # bereits aktuell). Rollen/Extensions legt der Postgres-Init-Container an.
   # ===========================================================================
   migrate:
-    <<: *hardening
+    <<: [*hardening, *logging]
     image: ${TAXTRONIK_IMAGE_PREFIX:-taxtronik}/worker:${TAXTRONIK_VERSION:-dev}
     container_name: taxtronik-migrate
     restart: "no"
@@ -184,7 +192,7 @@ services:
         exec node "$$PRISMA" migrate deploy
 
   n8n:
-    <<: *hardening
+    <<: [*hardening, *logging]
     image: n8nio/n8n:latest@sha256:1872cce3548bf4dcfe5aceaf3d9293f4499635823fbdea0ee726bd222d2e44b8
     container_name: taxtronik-n8n
     restart: unless-stopped
@@ -243,7 +251,7 @@ services:
   #   und RISK_LAYER_DEVICE=gpu setzen.
   # ===========================================================================
   risk-layer:
-    <<: *hardening
+    <<: [*hardening, *logging]
     image: ${RISK_LAYER_IMAGE:-taxtronik/risk-layer:latest}
     container_name: taxtronik-risk-layer
     restart: unless-stopped

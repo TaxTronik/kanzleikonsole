@@ -34,9 +34,20 @@ x-hardening: &hardening
   cap_drop:
     - ALL
 
+# Log-Rotation für alle Services: der Docker-Default (json-file, unbegrenzt)
+# füllt auf On-Prem-Servern nach Monaten die Platte. 10 MB × 5 Dateien pro
+# Container reichen für die Fehlersuche; Langzeit-Aufbewahrung ist Sache des
+# Betreibers (syslog/journald-Forwarding).
+x-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
+
 services:
   postgres:
-    <<: *hardening
+    <<: [*hardening, *logging]
     # Pin per Digest (Reproduzierbarkeit/Audit). Tag bleibt als Klartext-Hinweis.
     # Neu auflösen: docker buildx imagetools inspect postgres:18-alpine --format '{{.Manifest.Digest}}'
     image: postgres:18-alpine@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
@@ -74,7 +85,7 @@ services:
       retries: 10
 
   redis:
-    <<: *hardening
+    <<: [*hardening, *logging]
     image: redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
     container_name: taxtronik-redis
     restart: unless-stopped
@@ -104,7 +115,7 @@ services:
   # produktive Skalierung können diese in separate Services aufgeteilt werden;
   # für die Kanzlei-Größe (10–500 Mitarbeiter) reicht der Single-Node-Setup.
   seaweedfs:
-    <<: *hardening
+    <<: [*hardening, *logging]
     image: chrislusf/seaweedfs:latest@sha256:e14ad400e28c811fe8426dc08abf248ec722b9f017713290a9b84a54557f45c2
     container_name: taxtronik-seaweedfs
     restart: unless-stopped
@@ -156,7 +167,7 @@ services:
   # Läuft via amazon/aws-cli, weil SeaweedFS keine `mc`-Variante hat — die
   # AWS-CLI spricht den S3-Standard nativ.
   seaweedfs-init:
-    <<: *hardening
+    <<: [*hardening, *logging]
     image: amazon/aws-cli:latest@sha256:c95ab0642137f55a12b95b6956dd03cefdbd73e760e0e7b870afc9b47f9c8150
     container_name: taxtronik-seaweedfs-init
     depends_on:
@@ -177,7 +188,7 @@ services:
     restart: "no"
 
   clamav:
-    <<: *hardening
+    <<: [*hardening, *logging]
     image: clamav/clamav:stable@sha256:d4000290254603e7ee45d4904425c7d98c015af727f402756198fe41a31e7777
     container_name: taxtronik-clamav
     restart: unless-stopped

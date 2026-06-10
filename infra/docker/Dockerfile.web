@@ -71,6 +71,15 @@ RUN cd apps/web && \
 
 # ----- Runtime ---------------------------------------------------------------
 FROM node:22-alpine AS runner
+# Versions-Metadaten: setzt der Release-Workflow (release.yml) aus Tag + Commit,
+# lokale Builds lassen die Defaults stehen. Landen als ENV im Container —
+# Admin-Seite und /api/health/detail zeigen sie an; Compose darf APP_VERSION
+# zur Laufzeit mit TAXTRONIK_VERSION überschreiben.
+ARG APP_VERSION=dev
+ARG GIT_SHA=unknown
+LABEL org.opencontainers.image.title="taxtronik-web" \
+      org.opencontainers.image.version="${APP_VERSION}" \
+      org.opencontainers.image.revision="${GIT_SHA}"
 # T-3: wget für den HEALTHCHECK. node:alpine bringt es nicht standardmäßig
 # mit; ~270 KB Overhead sind gegenüber dem Operability-Gewinn vernachlässigbar.
 RUN apk add --no-cache openssl wget
@@ -78,7 +87,9 @@ WORKDIR /app
 
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
-    PORT=3000
+    PORT=3000 \
+    APP_VERSION=${APP_VERSION} \
+    GIT_SHA=${GIT_SHA}
 
 # Standalone-Output enthält dank `outputFileTracingRoot` in next.config.mjs
 # alle Workspace-Dateien + getracten node_modules (inkl. Prisma-Engine).

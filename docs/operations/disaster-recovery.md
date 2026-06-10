@@ -216,7 +216,8 @@ pnpm --filter @taxtronik/web exec tsx src/server/backup/restore.ts \
 
 - [ ] Frische VM/Server bereitgestellt
 - [ ] Docker + Compose installiert
-- [ ] taxtronik-Repo auskucheckt, korrekte Version (siehe `APP_VERSION` aus letztem Backup)
+- [ ] taxtronik-Repo ausgecheckt; `TAXTRONIK_VERSION` aus der gesicherten `.env`
+      pinnt das passende Release-Image (Registry-Modus: kein Build nötig)
 - [ ] `.env` aus Backup-Vault wiederhergestellt
 - [ ] `docker compose up -d postgres redis seaweedfs clamav` (Infra)
 - [ ] `pnpm install`
@@ -227,3 +228,34 @@ pnpm --filter @taxtronik/web exec tsx src/server/backup/restore.ts \
 - [ ] App + Worker starten: `pnpm dev` (oder Production-Setup)
 - [ ] Manueller Login + Test der wichtigsten Module
 - [ ] Wiederherstellung in DSGVO-Verarbeitungsverzeichnis vermerken
+
+## 9. Rollback auf eine vorherige Version
+
+Vollständiger Prozess inkl. Expand/Contract-Konvention:
+[release.md](release.md). Kurzfassung:
+
+### 9.1 Nur App zurück (keine Migrationen seit dem letzten Update)
+
+```bash
+# .env: TAXTRONIK_VERSION auf den vorherigen Tag zurücksetzen, dann:
+./scripts/deploy.sh
+```
+
+Registry-Images sind versioniert — das ist ein reiner Re-Pin, die Datenbank
+bleibt unangetastet. Dank Expand/Contract-Konvention verträgt die N-DB den
+N−1-Code.
+
+### 9.2 Rollback über Migrationen hinweg (letzte Option)
+
+`deploy.sh`/`update.sh` legen vor jeder Migration automatisch ein Backup an
+(Skip nur beim Erstdeploy). Pfad zurück:
+
+1. Backup von **vor** der Migration einspielen (Abschnitt 3; bei gefüllter
+   Ziel-DB `--confirm-overwrite`)
+2. `TAXTRONIK_VERSION` auf den vorherigen Tag setzen
+3. `./scripts/deploy.sh`
+4. `pnpm verify:chain` — Audit-Kette muss intakt sein
+
+> **Achtung:** Alle Daten, die nach dem Backup entstanden sind, gehen
+> verloren. Vorher prüfen, ob ein Fix-Forward (Patch-Release) der bessere Weg
+> ist.

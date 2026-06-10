@@ -1,0 +1,100 @@
+# Release- und Update-Prozess
+
+Wie kommt ein Stand aus Git zum Kunden — und wie kommt man zurück, wenn etwas
+schiefgeht?
+
+## 1. Release erstellen (Vendor-Seite)
+
+Releases sind Git-Tags nach SemVer (`vMAJOR.MINOR.PATCH`):
+
+```bash
+git tag v1.4.0
+git push forgejo v1.4.0
+```
+
+Der Tag-Push löst `.forgejo/workflows/release.yml` aus:
+
+1. Baut `web` + `worker` mit `APP_VERSION=1.4.0` und dem Commit-SHA als
+   Build-Args (sichtbar in Admin-UI und `/api/health/detail`).
+2. Trivy-Scan: CRITICAL-CVEs mit verfügbarem Fix brechen das Release ab,
+   HIGH wird rapportiert.
+3. Push in die Forgejo-Container-Registry:
+   `git.hirschmann-koxha.de/taxtronik/web:1.4.0` (+ `:latest`, analog
+   `worker`).
+
+Vorher sollte der normale CI-Lauf (Quality, DB, Restore-Roundtrip,
+Upgrade-Pfad, E2E) auf dem getaggten Commit grün sein — taggen heißt
+freigeben.
+
+**Einmaliges Forgejo-Setup:** Actions-Runner mit Docker-Zugriff (existiert für
+build-images.yml bereits). Falls der Actions-Auto-Token keine Pakete schreiben
+darf, einen PAT mit `write:package` als Secrets `REGISTRY_USER` +
+`REGISTRY_TOKEN` im Repo hinterlegen. Optional Repo-Variable `REGISTRY`, wenn
+der Registry-Host von der Instanz-URL abweicht.
+
+## 2. Update einspielen (Betreiber-Seite)
+
+In der `.env` des Servers einmalig den Registry-Modus aktivieren und pro
+Update die Version pinnen:
+
+```ini
+TAXTRONIK_IMAGE_PREFIX=git.hirschmann-koxha.de/taxtronik
+TAXTRONIK_VERSION=1.4.0
+```
+
+Dann:
+
+```bash
+./scripts/update.sh
+```
+
+Das Skript zieht Code (`git ff-only`) und Images, macht ein Backup, migriert
+über den One-Shot-`migrate`-Container und startet App/Worker/n8n neu. Die
+Images werden gepullt, **bevor** die alten Container stoppen — die Downtime
+ist der reine Container-Neustart.
+
+Private Registry: einmalig `docker login git.hirschmann-koxha.de` auf dem
+Server (Token mit `read:package` genügt).
+
+Ohne Registry-Zugriff (`TAXTRONIK_IMAGE_PREFIX` ohne Slash bzw. ungesetzt)
+bauen `deploy.sh`/`update.sh` wie bisher lokal aus dem Checkout — dann braucht
+der Server weiterhin die Build-Toolchain, und es läuft nicht das in CI
+getestete Artefakt.
+
+## 3. Rollback
+
+**App-Rollback (keine neuen Migrationen seit dem letzten Update):**
+`TAXTRONIK_VERSION` in der `.env` auf den vorherigen Tag zurücksetzen, dann
+`./scripts/deploy.sh`. Da Images versioniert in der Registry liegen, ist das
+ein reiner Re-Pin.
+
+**Rollback über Migrationen hinweg:** Prisma-Migrationen sind forward-only.
+`deploy.sh`/`update.sh` legen deshalb **vor** jeder Migration ein Backup an.
+Pfad zurück: Backup einspielen (siehe
+[disaster-recovery.md](disaster-recovery.md), Abschnitt 9), dann den
+vorherigen Tag pinnen und `./scripts/deploy.sh`. Achtung: Daten, die nach dem
+Backup entstanden sind, gehen dabei verloren — Rollback über Migrationen ist
+die letzte Option, nicht der Standardweg.
+
+## 4. Migrations-Konvention: Expand/Contract
+
+Damit App-Rollbacks (der häufige Fall) ohne DB-Restore möglich bleiben,
+sollten destruktive Schema-Änderungen nie im selben Release passieren wie der
+Code, der sie erzwingt:
+
+- **Expand (Release N):** Neue Spalten/Tabellen anlegen, alte parallel
+  weiterbedienen. Spalten nullable oder mit Default einführen.
+- **Contract (Release N+1 oder später):** Alte Spalten/Tabellen erst
+  entfernen, wenn kein unterstützter Rollback-Stand sie mehr liest.
+
+Konkret: Nach einem Update auf `1.5.0` muss die Datenbank von `1.5.0` noch
+mit dem Image `1.4.x` funktionieren. Der CI-Job `upgrade-path` testet die
+Hinrichtung (alter Migrationsstand → HEAD); die Rückwärts-Verträglichkeit ist
+Review-Disziplin beim Schreiben der Migration.
+
+## 5. Welcher Stand läuft gerade?
+
+- Admin-UI zeigt `APP_VERSION` (Seite „Administration").
+- `/api/health/detail` (admin-gated) liefert `version.app` + `version.commit`.
+- `docker image inspect` zeigt die OCI-Labels
+  (`org.opencontainers.image.version` / `.revision`).

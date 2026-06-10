@@ -1,9 +1,9 @@
 # =============================================================================
 # Build Images — baut taxtronik/web + taxtronik/worker zur VALIDIERUNG.
 #
-# BUILD-ONLY, solange das Repo privat ist: KEIN Registry-Login, KEIN Push, KEIN
-# Release. Beweist nur, dass die Multi-Stage-Builds in CI durchlaufen (fängt
-# Build-Brüche früh ab).
+# BUILD-ONLY: KEIN Registry-Login, KEIN Push. Beweist nur, dass die Multi-
+# Stage-Builds in CI durchlaufen (fängt Build-Brüche früh ab). Das eigentliche
+# Release (Tag → Build → Trivy → Registry-Push) liegt in release.yml.
 #
 # Liegt unter .forgejo/workflows/ → läuft nur auf Forgejo (GitHub-Mirror ignoriert
 # den Ordner).
@@ -13,11 +13,6 @@
 # VORAUSSETZUNG in Forgejo: Actions aktiviert + ein Runner, der Docker bauen kann
 # (Host-Docker-Socket oder Docker-in-Docker; Label = runs-on unten). KEINE
 # Registry/Secrets nötig, solange nur gebaut wird.
-#
-# SPÄTER auf Release/Push umstellen (Repo öffentlich / release-bereit): den
-# `RELEASE:`-Block am Dateiende einkommentieren (Registry-Login + push:true +
-# version/latest-Tags), REGISTRY-Variable + ggf. REGISTRY_USER/REGISTRY_TOKEN in
-# Forgejo setzen und einen Tag-Trigger (`tags: ['v*']`) ergänzen.
 # =============================================================================
 name: Build Images
 
@@ -59,42 +54,3 @@ jobs:
           file: infra/docker/Dockerfile.worker
           push: false
           tags: taxtronik/worker:ci
-
-# =============================================================================
-# RELEASE (SPÄTER aktivieren — solange privat NICHT nutzen):
-#
-# 1. Trigger oben um den Tag-Push ergänzen:
-#      on:
-#        push:
-#          tags: ['v*']
-#
-# 2. Forgejo-Setup: Repo-Variable REGISTRY = git.deine-domain.de setzen; Auth via
-#    Auto-Token (secrets.GITHUB_TOKEN) oder PAT mit write:package als Secrets
-#    REGISTRY_USER + REGISTRY_TOKEN.
-#
-# 3. Im Job vor den Build-Schritten einloggen und push:true + Tags setzen:
-#
-#      - name: Version + Prefix bestimmen
-#        id: meta
-#        run: |
-#          V="${GITHUB_REF_NAME#v}"   # vom Tag v1.4.0 → 1.4.0
-#          OWNER="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
-#          echo "version=$V"                         >> "$GITHUB_OUTPUT"
-#          echo "prefix=${{ vars.REGISTRY }}/$OWNER" >> "$GITHUB_OUTPUT"
-#
-#      - name: Registry-Login
-#        uses: docker/login-action@v3
-#        with:
-#          registry: ${{ vars.REGISTRY }}
-#          username: ${{ secrets.REGISTRY_USER || github.actor }}
-#          password: ${{ secrets.REGISTRY_TOKEN || secrets.GITHUB_TOKEN }}
-#
-#    Dann an den web-/worker-Build-Schritten:  push: true
-#      tags: |
-#        ${{ steps.meta.outputs.prefix }}/web:${{ steps.meta.outputs.version }}
-#        ${{ steps.meta.outputs.prefix }}/web:latest
-#    (analog worker) und permissions: packages: write ergänzen.
-#
-# 4. In der Ziel-.env: TAXTRONIK_IMAGE_PREFIX=git.deine-domain.de/<owner> +
-#    TAXTRONIK_VERSION=1.4.0 → `docker compose ... pull && up -d`.
-# =============================================================================

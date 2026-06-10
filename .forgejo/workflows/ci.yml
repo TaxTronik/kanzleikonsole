@@ -216,6 +216,129 @@ jobs:
       - name: Backup→Restore self-test
         run: bash scripts/restore-selftest.sh
 
+  # ===========================================================================
+  # Upgrade-Pfad: simuliert das Kunden-Update. Eine DB wird auf den
+  # Migrationsstand des LETZTEN Release-Tags gebracht, dann werden die
+  # aktuellen Migrationen darauf angewendet — genau das passiert bei jedem
+  # ./scripts/update.sh beim Kunden. Fängt nachträglich editierte
+  # Migrations-Historie und Brüche im Migrations-Suffix, die der frische
+  # Komplett-Durchlauf im db-Job nicht sieht. Solange kein v*-Tag existiert,
+  # ist der Job ein No-Op.
+  # ===========================================================================
+  upgrade-path:
+    name: Upgrade-Pfad (letztes Release → HEAD)
+    runs-on: ubuntu-latest
+    needs: quality
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: taxtronik
+          POSTGRES_PASSWORD: taxtronik
+          POSTGRES_DB: taxtronik
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U taxtronik"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:5432/taxtronik?schema=public
+      DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@localhost:5432/taxtronik?schema=public
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Letztes Release-Tag ermitteln
+        id: last
+        run: |
+          git fetch --tags --force 2>/dev/null || true
+          TAG="$(git tag --list 'v*' --sort=-v:refname | head -1)"
+          if [ -z "$TAG" ]; then
+            echo "Kein v*-Tag vorhanden — Upgrade-Pfad-Test wird übersprungen."
+          else
+            echo "Teste Upgrade-Pfad ab Release: $TAG"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - uses: pnpm/action-setup@v4
+        if: steps.last.outputs.tag != ''
+
+      - uses: actions/setup-node@v4
+        if: steps.last.outputs.tag != ''
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        if: steps.last.outputs.tag != ''
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Rebuild approved native packages
+        if: steps.last.outputs.tag != ''
+        run: pnpm rebuild -r @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver || true
+
+      - name: Generate Prisma client
+        if: steps.last.outputs.tag != ''
+        run: pnpm --filter @taxtronik/db exec prisma generate
+
+      - name: Install PostgreSQL client
+        if: steps.last.outputs.tag != ''
+        run: |
+          if ! command -v psql >/dev/null 2>&1; then
+            if command -v sudo >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y postgresql-client
+            else
+              apt-get update
+              apt-get install -y postgresql-client
+            fi
+          fi
+
+      - name: Bootstrap roles and extensions
+        if: steps.last.outputs.tag != ''
+        run: |
+          PGPASSWORD=taxtronik psql -h localhost -U taxtronik -d taxtronik \
+            -v ON_ERROR_STOP=1 -f packages/db/prisma/init/01_bootstrap.sql
+
+      - name: Migrationsstand des letzten Releases herstellen
+        if: steps.last.outputs.tag != ''
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.last.outputs.tag }}"
+          mkdir -p /tmp/release
+          git archive "$TAG" packages/db/prisma/migrations | tar -x -C /tmp/release
+          # Prisma 7: die Datasource-URL lebt in der Config, nicht im Schema.
+          # Temporäre Config zeigt auf die Release-Migrationen; das Schema
+          # (HEAD) dient nur der Provider-Validierung — `migrate deploy`
+          # liest keine Models.
+          cat > packages/db/upgrade-path.config.ts <<'EOF'
+          import { defineConfig, env } from 'prisma/config';
+
+          export default defineConfig({
+            schema: 'prisma/schema.prisma',
+            migrations: { path: '/tmp/release/packages/db/prisma/migrations' },
+            datasource: { url: env('DATABASE_URL') },
+          });
+          EOF
+          pnpm --filter @taxtronik/db exec prisma migrate deploy --config upgrade-path.config.ts
+          rm packages/db/upgrade-path.config.ts
+
+      - name: Aktuelle Migrationen darauf anwenden (= Kunden-Update)
+        if: steps.last.outputs.tag != ''
+        run: pnpm --filter @taxtronik/db exec prisma migrate deploy
+
+      - name: Migrationsstatus muss sauber sein
+        if: steps.last.outputs.tag != ''
+        run: pnpm --filter @taxtronik/db exec prisma migrate status
+
+      - name: RLS-Tests auf der upgegradeten DB
+        if: steps.last.outputs.tag != ''
+        run: pnpm --filter @taxtronik/db test
+
   e2e-smoke:
     name: Browser Smoke
     runs-on: ubuntu-latest

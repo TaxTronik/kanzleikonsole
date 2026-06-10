@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Pull latest code, backup, migrate, rebuild and restart app services.
+# Pull latest code + images (or rebuild), backup, migrate and restart app services.
+# Im Registry-Modus vorher TAXTRONIK_VERSION in der .env auf das neue Release pinnen.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -19,10 +20,11 @@ git merge --ff-only "${TAXTRONIK_UPDATE_REF:-origin/main}"
 load_env
 preflight_common
 assert_production_env
+require_release_version
 
 start_infra
 run_backup
-build_images
+provide_images
 run_migrations
 start_apps
 smoke_health
