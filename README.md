@@ -175,6 +175,11 @@ Hinweise:
 - RLS-Cross-Tenant-Tests skippen lokal ohne DB-URLs, schlagen in CI aber fehl,
   wenn `DATABASE_URL` oder `DATABASE_APP_URL` fehlt.
 - `pnpm verify:chain` prüft die Audit-Hash-Chain.
+- Der CI-Job `restore` fährt einen echten Backup→Restore-Roundtrip
+  (`runner --out-file` → `restore --file`) und prüft Zeilenzahlen sowie die
+  Audit-Hash-Chain auf der wiederhergestellten DB. Lokal:
+  `DATABASE_URL=… sh scripts/restore-selftest.sh` (siehe
+  `docs/operations/disaster-recovery.md`, Abschnitt 7.1).
 
 ## Projektstruktur
 

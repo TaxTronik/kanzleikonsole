@@ -169,6 +169,49 @@ Mindestens vierteljährlich:
 5. Ergebnis in der DSGVO-Verarbeitungs-Doku als Wiederherstellungs-Test
    dokumentieren
 
+### 7.1 Automatisierter Restore-Selbsttest (CI)
+
+Zusätzlich zum vierteljährlichen manuellen Test läuft bei jedem CI-Durchlauf
+ein automatisierter Backup→Restore-Roundtrip (Job `restore` in
+`.forgejo/workflows/ci.yml`, nach dem `db`-Job). Er fährt den ECHTEN
+Code-Pfad — kein Parallel-Reimplementat:
+
+1. `runner.ts --out-file` erzeugt einen `pg_dump` (identische Flags wie das
+   Produktiv-Backup) der migrierten + geseedeten Quell-DB als lokale Datei.
+2. `restore.ts --file` spielt diese Datei via `pg_restore` (identische Flags,
+   `--single-transaction --exit-on-error`, Smoke-Test) in eine frische
+   Ziel-DB `taxtronik_restore` ein.
+3. **Assertion A:** Zeilenzahl-Vergleich Quelle ↔ Ziel für die wichtigsten
+   Tabellen (`tenant`, `audit_log`, `client`, `document`, `invoice`).
+4. **Assertion B (compliance-kritisch):** `verify:chain` auf der
+   wiederhergestellten DB — die Audit-Hash-Chain MUSS intakt sein.
+
+> Hinweis: `pg_restore --clean --if-exists` in eine frische DB erzeugt
+> harmlose Notices (`DROP … IF EXISTS` auf noch nicht existente Objekte). Das
+> ist normal; nur echte Fehler brechen den Restore via `--exit-on-error`.
+
+**Lokal ausführen** (gegen eine Dev- oder Test-DB; legt `taxtronik_restore`
+temporär an und droppt sie wieder):
+
+```bash
+DATABASE_URL=postgresql://taxtronik:…@localhost:5432/taxtronik \
+  sh scripts/restore-selftest.sh
+```
+
+**Air-Gapped-/manuelle Sicherung:** Der `--out-file`/`--file`-Modus taugt auch
+für Backups ohne Object-Store. Dump exportieren, Datei auf ein getrenntes
+Medium transferieren, später per `--file` wiederherstellen:
+
+```bash
+# Export (kein S3, kein BackupRecord, reiner Dump):
+pnpm --filter @taxtronik/web exec tsx src/server/backup/runner.ts \
+  --out-file /sicher/taxtronik.dump
+
+# Restore aus der lokalen Datei (DB-Hash-Verifikation entfällt — Datei-Quelle):
+pnpm --filter @taxtronik/web exec tsx src/server/backup/restore.ts \
+  --file /sicher/taxtronik.dump --confirm-overwrite
+```
+
 ## 8. Checkliste „Server kompletter Neuaufbau"
 
 - [ ] Frische VM/Server bereitgestellt

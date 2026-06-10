@@ -18,6 +18,8 @@
 
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { createWriteStream } from 'node:fs';
+import { pipeline } from 'node:stream/promises';
 import { PassThrough } from 'node:stream';
 import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
@@ -67,6 +69,71 @@ export interface BackupResult {
 }
 
 /**
+ * DRY: gemeinsame pg_dump-Argumentliste für S3- UND Datei-Sink. MUSS identisch
+ * bleiben, damit der Restore-Selbsttest (runner --out-file → restore --file)
+ * exakt denselben Dump-Code-Pfad testet, der auch in Produktion läuft.
+ */
+function buildPgDumpArgs(connArgs: string[]): string[] {
+  return [
+    '--format=custom',
+    '--no-owner',
+    '--no-privileges',
+    '--compress=6',
+    ...connArgs,
+  ];
+}
+
+/**
+ * DRY: startet pg_dump und liefert einen Stream der Dump-Bytes, während SHA-256
+ * und Größe nebenbei berechnet werden. Den Stream konsumiert der jeweilige Sink
+ * (S3-Upload bzw. lokale Datei). `result()` blockt bis pg_dump beendet ist und
+ * gibt Hash + Größe zurück oder wirft bei Exit-Code ≠ 0.
+ */
+function spawnPgDump(dumpUrl: string, connEnv: Record<string, string>, args: string[]): {
+  stream: PassThrough;
+  result: () => Promise<{ sha: Buffer; sizeBytes: number }>;
+} {
+  const pgDumpPath = process.env['PG_DUMP_PATH'] ?? 'pg_dump';
+  // F7: pg_dump.stdout direkt zum Sink streamen — kein Buffer.concat über
+  // den ganzen Dump. Hash + Größe werden via PassThrough nebenbei berechnet.
+  const child = spawn(pgDumpPath, args, {
+    env: { ...process.env, ...connEnv },
+  });
+
+  const hash = createHash('sha256');
+  let sizeBytes = 0;
+  let stderrBuf = '';
+
+  child.stderr.on('data', (c: Buffer) => {
+    stderrBuf += c.toString('utf8');
+  });
+
+  const through = new PassThrough();
+  child.stdout.on('data', (c: Buffer) => {
+    hash.update(c);
+    sizeBytes += c.length;
+  });
+  child.stdout.pipe(through);
+
+  let dumpExitCode: number | null = null;
+  child.on('exit', (code) => { dumpExitCode = code ?? -1; });
+
+  const result = async (): Promise<{ sha: Buffer; sizeBytes: number }> => {
+    if (dumpExitCode === null) {
+      dumpExitCode = await new Promise<number>((resolve) => {
+        child.on('exit', (code) => resolve(code ?? -1));
+      });
+    }
+    if (dumpExitCode !== 0) {
+      throw new Error(`pg_dump exit ${dumpExitCode}: ${stderrBuf.slice(0, 1000)}`);
+    }
+    return { sha: hash.digest(), sizeBytes };
+  };
+
+  return { stream: through, result };
+}
+
+/**
  * Führt ein vollständiges Postgres-Backup durch und lädt es in Object-Store.
  * Ein BackupRecord pro Tenant wird angelegt (für Admin-UI).
  *
@@ -101,8 +168,6 @@ export async function runBackup(): Promise<BackupResult> {
   const mi = String(now.getUTCMinutes()).padStart(2, '0');
   const key = `pgdump/${yyyy}/${mm}/${dd}/taxtronik-${yyyy}${mm}${dd}-${hh}${mi}.sql.gz`;
 
-  const pgDumpPath = process.env['PG_DUMP_PATH'] ?? 'pg_dump';
-
   // P-2: connection-URL parsen, Passwort in PGPASSWORD, Rest als Args
   let connArgs: ReturnType<typeof buildPgConnArgs>;
   try {
@@ -111,36 +176,13 @@ export async function runBackup(): Promise<BackupResult> {
     await failAll(prismaOwner, records, `DATABASE_URL nicht parsebar: ${(e as Error).message}`);
     return { ok: false, error: 'DATABASE_URL nicht parsebar' };
   }
-  const args = [
-    '--format=custom',
-    '--no-owner',
-    '--no-privileges',
-    '--compress=6',
-    ...connArgs.args,
-  ];
+  const args = buildPgDumpArgs(connArgs.args);
 
   // F7: pg_dump.stdout direkt zu S3 streamen — kein Buffer.concat über
   // den ganzen Dump. Hash + Größe werden via PassThrough nebenbei berechnet.
   // Reduziert Spitzenspeicher auf Multipart-Chunk-Größe (5 MB) und halbiert
   // die Wartezeit, weil Upload parallel zum Dump läuft.
-  const child = spawn(pgDumpPath, args, {
-    env: { ...process.env, ...connArgs.env },
-  });
-
-  const hash = createHash('sha256');
-  let sizeBytes = 0;
-  let stderrBuf = '';
-
-  child.stderr.on('data', (c: Buffer) => {
-    stderrBuf += c.toString('utf8');
-  });
-
-  const through = new PassThrough();
-  child.stdout.on('data', (c: Buffer) => {
-    hash.update(c);
-    sizeBytes += c.length;
-  });
-  child.stdout.pipe(through);
+  const dump = spawnPgDump(dumpUrl, connArgs.env, args);
 
   // Upload in Object-Store (Streaming).
   const s3 = new S3Client({
@@ -155,17 +197,12 @@ export async function runBackup(): Promise<BackupResult> {
     params: {
       Bucket: BACKUP_BUCKET,
       Key: key,
-      Body: through,
+      Body: dump.stream,
       ContentType: 'application/octet-stream',
     },
     queueSize: 4,
     partSize: 5 * 1024 * 1024,
   });
-
-  // pg_dump-Exit-Code parallel zum Upload abwarten — wenn pg_dump scheitert,
-  // bricht der Pipe-Body sowieso ab und der Upload schlägt fehl.
-  let dumpExitCode: number | null = null;
-  child.on('exit', (code) => { dumpExitCode = code ?? -1; });
 
   try {
     await upload.done();
@@ -175,13 +212,12 @@ export async function runBackup(): Promise<BackupResult> {
   }
 
   // Warten bis pg_dump fertig ist (sollte zu diesem Zeitpunkt bereits sein).
-  if (dumpExitCode === null) {
-    dumpExitCode = await new Promise<number>((resolve) => {
-      child.on('exit', (code) => resolve(code ?? -1));
-    });
-  }
-  if (dumpExitCode !== 0) {
-    const errMsg = `pg_dump exit ${dumpExitCode}: ${stderrBuf.slice(0, 1000)}`;
+  let sha: Buffer;
+  let sizeBytes: number;
+  try {
+    ({ sha, sizeBytes } = await dump.result());
+  } catch (e) {
+    const errMsg = (e as Error).message;
     // P-5: S3-Upload lief parallel zu pg_dump. Ist der Dump nach erfolgreichem
     // Upload mit Exit-Code ≠ 0 abgestürzt, liegt jetzt ein partieller Dump im
     // Bucket. Lifecycle-Regel räumt ihn irgendwann, bis dahin existieren aber
@@ -196,8 +232,6 @@ export async function runBackup(): Promise<BackupResult> {
     await failAll(prismaOwner, records, errMsg);
     return { ok: false, error: errMsg };
   }
-
-  const sha = hash.digest();
 
   // Records auf SUCCESS aktualisieren. RF-12: der Backup-Lauf gehört als
   // Systemereignis in die Audit-Hash-Chain (backup.run) — in DERSELBEN Tx
@@ -280,8 +314,66 @@ async function failAll(
   );
 }
 
+/**
+ * Reiner Dump-Export in eine lokale Datei (--out-file / BACKUP_OUT_FILE).
+ *
+ * Bewusst OHNE S3, OHNE BackupRecord, OHNE backup.run-Audit — es ist ein
+ * Datei-Sink für Air-Gapped-Transfer und für den automatisierten
+ * Restore-Selbsttest (CI). Verwendet aber EXAKT dieselbe pg_dump-Arg-Liste
+ * und Stream/Hash-Logik wie der S3-Pfad (DRY), damit der echte Dump-Code
+ * getestet wird. Datei wird mit Mode 0o600 angelegt (Passwort-Hashes!).
+ */
+async function dumpToFile(outFile: string): Promise<BackupResult> {
+  const dumpUrl = process.env['DATABASE_URL'] ?? '';
+  if (!dumpUrl) {
+    return { ok: false, error: 'DATABASE_URL nicht gesetzt' };
+  }
+  let connArgs: ReturnType<typeof buildPgConnArgs>;
+  try {
+    connArgs = buildPgConnArgs(dumpUrl);
+  } catch (e) {
+    return { ok: false, error: `DATABASE_URL nicht parsebar: ${(e as Error).message}` };
+  }
+  const args = buildPgDumpArgs(connArgs.args);
+
+  const dump = spawnPgDump(dumpUrl, connArgs.env, args);
+
+  // Stream → lokale Datei (Mode 0o600). Hash + Größe laufen über das
+  // PassThrough nebenher und stehen nach result() bereit.
+  try {
+    await pipeline(dump.stream, createWriteStream(outFile, { mode: 0o600 }));
+  } catch (e) {
+    return { ok: false, error: `Schreiben nach ${outFile} fehlgeschlagen: ${(e as Error).message}` };
+  }
+
+  let sha: Buffer;
+  let sizeBytes: number;
+  try {
+    ({ sha, sizeBytes } = await dump.result());
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+
+  return { ok: true, sizeBytes, sha256: sha.toString('hex') };
+}
+
 // CLI-Eintritt
 async function main() {
+  // --out-file / BACKUP_OUT_FILE: reiner lokaler Dump-Export (kein S3/Record).
+  const argv = process.argv.slice(2);
+  const flagIdx = argv.indexOf('--out-file');
+  const outFile = flagIdx >= 0 ? argv[flagIdx + 1] : process.env['BACKUP_OUT_FILE'];
+  if (outFile) {
+    console.log(`[backup] Dump-Export nach ${outFile} (lokal, kein S3/Record)…`);
+    const r = await dumpToFile(outFile);
+    if (!r.ok) {
+      console.error(`[backup] FEHLER: ${r.error}`);
+      process.exit(1);
+    }
+    console.log(`[backup] OK — ${r.sizeBytes} Bytes, sha256=${r.sha256?.slice(0, 16)}…, datei=${outFile}`);
+    return;
+  }
+
   console.log('[backup] Starte Backup…');
   const r = await runBackup();
   if (!r.ok) {

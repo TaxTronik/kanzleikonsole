@@ -9,6 +9,8 @@
 //   pnpm tsx apps/web/src/server/backup/restore.ts --list
 //   pnpm tsx apps/web/src/server/backup/restore.ts --key <s3-key> [--target-url postgres://...]
 //   pnpm tsx apps/web/src/server/backup/restore.ts --latest
+//   pnpm tsx apps/web/src/server/backup/restore.ts --file <pfad>   (lokale Dump-Datei,
+//     z. B. aus `runner --out-file`; KEINE S3-/BackupRecord-Hash-Verifikation)
 //
 // Sicherheits-Voraussetzungen:
 //   - DATABASE_URL des Restore-Ziels MUSS eine FRISCHE Datenbank sein
@@ -19,7 +21,7 @@
 
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { createWriteStream, unlinkSync } from 'node:fs';
+import { createReadStream, createWriteStream, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
@@ -60,6 +62,7 @@ interface CliArgs {
   list: boolean;
   latest: boolean;
   key?: string;
+  file?: string;
   targetUrl?: string;
   confirmOverwrite: boolean;
   smokeTest: boolean;
@@ -75,11 +78,29 @@ function parseArgs(): CliArgs {
     if (a === '--list') out.list = true;
     else if (a === '--latest') out.latest = true;
     else if (a === '--key') out.key = argv[++i];
+    else if (a === '--file') out.file = argv[++i];
     else if (a === '--target-url') out.targetUrl = argv[++i];
     else if (a === '--confirm-overwrite') out.confirmOverwrite = true;
     else if (a === '--no-smoke-test') out.smokeTest = false;
   }
   return out;
+}
+
+/**
+ * Lokale Dump-Datei (--file): SHA-256 + Größe berechnen für Transparenz.
+ * KEINE Verifikation gegen einen BackupRecord (es gibt keinen — die Quelle
+ * ist eine Datei, kein S3-Objekt). Spiegelt fetchToTempFile, ohne Download.
+ */
+async function hashLocalFile(filePath: string): Promise<{ sha: string; size: number }> {
+  const hash = createHash('sha256');
+  let size = 0;
+  const tap = new PassThrough();
+  tap.on('data', (c: Buffer) => {
+    hash.update(c);
+    size += c.length;
+  });
+  await pipeline(createReadStream(filePath), tap);
+  return { sha: hash.digest('hex'), size };
 }
 
 function s3Client(): S3Client {
@@ -239,17 +260,10 @@ async function main() {
     process.exit(0);
   }
 
-  let key = args.key;
-  if (!key && args.latest) {
-    const backups = await listBackups();
-    if (backups.length === 0) {
-      process.stderr.write(`Kein Backup vorhanden — kann nicht „--latest" wiederherstellen.\n`);
-      process.exit(1);
-    }
-    key = backups[0]!.key;
-  }
-  if (!key) {
-    process.stderr.write(`Bitte --key <s3-key> oder --latest angeben.\n`);
+  // --file und --key/--latest schließen sich gegenseitig aus: entweder lokale
+  // Datei-Quelle (kein S3, kein Record) ODER S3-Objekt (mit Hash-Verifikation).
+  if (args.file && (args.key || args.latest)) {
+    process.stderr.write('--file und --key/--latest schließen sich aus. Bitte nur eine Quelle angeben.\n');
     process.exit(1);
   }
 
@@ -259,8 +273,70 @@ async function main() {
     process.exit(1);
   }
 
+  // Quelle bestimmen: entweder lokale Datei oder S3-Objekt.
+  // `path`     = Pfad der Dump-Datei, die pg_restore liest.
+  // `cleanup`  = ob die Datei nach dem Restore gelöscht wird (nur Temp-Downloads,
+  //              NICHT die vom Anwender bereitgestellte --file-Quelle).
+  let path: string;
+  let cleanup: boolean;
+
+  if (args.file) {
+    // P-6-Hinweis: Im Datei-Modus entfällt die Hash-Verifikation gegen den
+    // BackupRecord — die Quelle ist eine Datei, kein S3-Objekt mit DB-Referenz.
+    // Wir berechnen den lokalen SHA trotzdem und geben ihn für die manuelle
+    // Nachverfolgung (Air-Gapped-Transfer) aus.
+    process.stdout.write(`Lokale Dump-Datei: ${args.file}\n`);
+    const { sha, size } = await hashLocalFile(args.file);
+    process.stdout.write(`  ${(size / 1024 / 1024).toFixed(2)} MB, sha256=${sha.slice(0, 16)}…\n`);
+    process.stdout.write(
+      `  HINWEIS: Datei-Quelle → keine Hash-Verifikation gegen BackupRecord (DB-Referenz entfällt).\n`,
+    );
+    path = args.file;
+    cleanup = false;
+  } else {
+    let key = args.key;
+    if (!key && args.latest) {
+      const backups = await listBackups();
+      if (backups.length === 0) {
+        process.stderr.write(`Kein Backup vorhanden — kann nicht „--latest" wiederherstellen.\n`);
+        process.exit(1);
+      }
+      key = backups[0]!.key;
+    }
+    if (!key) {
+      process.stderr.write(`Bitte --key <s3-key>, --latest oder --file <pfad> angeben.\n`);
+      process.exit(1);
+    }
+
+    process.stdout.write(`Lade Backup ${key} aus dem Object-Store …\n`);
+    const dl = await fetchToTempFile(key);
+    process.stdout.write(`  ${(dl.size / 1024 / 1024).toFixed(2)} MB, sha256=${dl.sha.slice(0, 16)}…\n`);
+
+    // P-6: Tampering-Schutz. BackupRecord enthält den am Schreibzeitpunkt
+    // berechneten Hash; weicht der heruntergeladene davon ab, hat jemand
+    // das Object im Bucket ersetzt → abort.
+    const expectedSha = await getExpectedSha(key);
+    if (expectedSha) {
+      if (expectedSha !== dl.sha) {
+        try { unlinkSync(dl.path); } catch { /* ignore */ }
+        throw new Error(
+          `Hash-Mismatch: erwartet ${expectedSha.slice(0, 16)}…, gelesen ${dl.sha.slice(0, 16)}…. ` +
+          'Backup wurde nach Erstellung verändert (Tampering oder Storage-Defekt). Restore abgebrochen.',
+        );
+      }
+      process.stdout.write(`  Hash gegen BackupRecord verifiziert ✓\n`);
+    } else {
+      process.stdout.write(
+        `  WARNUNG: Kein passender BackupRecord — Hash konnte nicht gegen DB-Referenz verifiziert werden.\n`,
+      );
+    }
+    path = dl.path;
+    cleanup = true;
+  }
+
   const empty = await targetIsEmpty(targetUrl);
   if (!empty && !args.confirmOverwrite) {
+    if (cleanup) { try { unlinkSync(path); } catch { /* ignore */ } }
     process.stderr.write(
       'ZIEL-DB IST NICHT LEER. Restore würde bestehende Tabellen droppen+ersetzen.\n' +
       'Bitte erneut mit --confirm-overwrite aufrufen, wenn das gewollt ist.\n',
@@ -268,34 +344,13 @@ async function main() {
     process.exit(1);
   }
 
-  process.stdout.write(`Lade Backup ${key} aus dem Object-Store …\n`);
-  const { path, sha, size } = await fetchToTempFile(key);
-  process.stdout.write(`  ${(size / 1024 / 1024).toFixed(2)} MB, sha256=${sha.slice(0, 16)}…\n`);
-
-  // P-6: Tampering-Schutz. BackupRecord enthält den am Schreibzeitpunkt
-  // berechneten Hash; weicht der heruntergeladene davon ab, hat jemand
-  // das Object im Bucket ersetzt → abort.
-  const expectedSha = await getExpectedSha(key);
-  if (expectedSha) {
-    if (expectedSha !== sha) {
-      try { unlinkSync(path); } catch { /* ignore */ }
-      throw new Error(
-        `Hash-Mismatch: erwartet ${expectedSha.slice(0, 16)}…, gelesen ${sha.slice(0, 16)}…. ` +
-        'Backup wurde nach Erstellung verändert (Tampering oder Storage-Defekt). Restore abgebrochen.',
-      );
-    }
-    process.stdout.write(`  Hash gegen BackupRecord verifiziert ✓\n`);
-  } else {
-    process.stdout.write(
-      `  WARNUNG: Kein passender BackupRecord — Hash konnte nicht gegen DB-Referenz verifiziert werden.\n`,
-    );
-  }
-
   process.stdout.write(`Spiele in DB ein …\n`);
   try {
     await runPgRestore(path, targetUrl);
   } finally {
-    try { unlinkSync(path); } catch { /* ignore */ }
+    // Nur heruntergeladene Temp-Dateien löschen — die --file-Quelle gehört dem
+    // Anwender und bleibt erhalten.
+    if (cleanup) { try { unlinkSync(path); } catch { /* ignore */ } }
   }
   process.stdout.write(`✓ Restore abgeschlossen.\n`);
 

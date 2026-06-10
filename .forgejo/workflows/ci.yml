@@ -146,6 +146,76 @@ jobs:
       - name: Evidence chain CLI
         run: pnpm verify:chain
 
+  restore:
+    name: Backup→Restore Roundtrip
+    runs-on: ubuntu-latest
+    needs: db
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: taxtronik
+          POSTGRES_PASSWORD: taxtronik
+          POSTGRES_DB: taxtronik
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U taxtronik"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:5432/taxtronik?schema=public
+      DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@localhost:5432/taxtronik?schema=public
+      # Seed fix-codiertes Admin-Passwort → vermeidet das Schreiben von
+      # .admin-credentials.txt und den zufälligen Passwort-Output in CI.
+      ADMIN_PASSWORD: ci-restore-selftest-admin-pw
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Rebuild approved native packages
+        run: pnpm rebuild -r @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver || true
+
+      - name: Generate Prisma client
+        run: pnpm --filter @taxtronik/db exec prisma generate
+
+      - name: Install PostgreSQL client
+        run: |
+          if ! command -v psql >/dev/null 2>&1; then
+            if command -v sudo >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y postgresql-client
+            else
+              apt-get update
+              apt-get install -y postgresql-client
+            fi
+          fi
+
+      - name: Bootstrap roles and extensions
+        run: |
+          PGPASSWORD=taxtronik psql -h localhost -U taxtronik -d taxtronik \
+            -v ON_ERROR_STOP=1 -f packages/db/prisma/init/01_bootstrap.sql
+
+      - name: Apply migrations
+        run: pnpm --filter @taxtronik/db exec prisma migrate deploy
+
+      - name: Seed demo data
+        run: pnpm --filter @taxtronik/db seed
+
+      - name: Backup→Restore self-test
+        run: sh scripts/restore-selftest.sh
+
   e2e-smoke:
     name: Browser Smoke
     runs-on: ubuntu-latest
