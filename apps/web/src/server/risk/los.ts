@@ -1,17 +1,28 @@
 // =============================================================================
-// Quantenlos — beweisbar blinde Compliance-Stichprobe (Engine 1.3.0).
+// Quantenlos — beweisbar blinde Compliance-Stichprobe (Engine ≥ 1.3.1).
 //
-// Der Rahmen sind die RiskAnalysis-IDs eines Zeitraums — NUR UUIDs, kein
-// Falltext, kein Mandantendatum (§203: die Engine sieht ausschließlich opake
-// IDs und committet darauf). Der zurückkommende Nachweis (Commitment, Entropie-
+// Zwei Rahmen-Typen:
+//  * `subsumtion` — RiskAnalysis-IDs eines Zeitraums (Risk-Review): je
+//    Treffer entsteht eine Review-Aufgabe als ClientReminder.
+//  * `audit` — Audit-Log-IDs eines Zeitraums (Betriebs-Nachschau): blinde
+//    Nachschau-Probe über ALLE Chain-Ereignisse — der Review-Gegenstand ist
+//    das protokollierte Handeln selbst (das OPEN-Zugriffsmodell stützt sich
+//    auf die Chain als Kontrolle; die blinde Probe ist das Review-Glied
+//    dazu). Keine automatischen Aufgaben: die Treffer werden direkt in der
+//    Ergebnisliste geprüft.
+// In beiden Fällen NUR opake IDs an die Engine — kein Falltext, kein
+// Mandantendatum (§203). Der zurückkommende Nachweis (Commitment, Entropie-
 // Provenienz, Ableitung) wird als Audit-Event in der Hash-Chain verankert —
 // KEINE eigene Tabelle: die Chain ist bereits der manipulationsevidente Ort,
 // und `after` trägt Nachweis + Rahmen für die spätere Re-Verifikation.
 //
-// Je Stichproben-Eintrag entsteht eine Review-Aufgabe als ClientReminder —
-// das Repo-Muster für interne Aufgaben (vgl. RiskMarking-Delegation: „kein
-// eigener Aufgaben-Store"). Analysen ohne Mandantenbezug bekommen keine
-// Wiedervorlage (ClientReminder verlangt clientId) → Hinweis im Ergebnis.
+// Analysen ohne Mandantenbezug bekommen keine Wiedervorlage (ClientReminder
+// verlangt clientId) → Hinweis im Ergebnis.
+//
+// `ibmToken`: der zentral in der Konsole verwaltete IBM-Quantum-Zugang
+// (verschlüsselt in `quantenlos.ibm`, s. settings/quantenlos.ts) wird von der
+// Action-Schicht gelesen und hier nur DURCHGEREICHT — bewusst als expliziter
+// Parameter statt Settings-Import: die Fachlogik bleibt speicher-agnostisch.
 //
 // QPU-Queue („wartet"): job_id + Rahmen landen als TenantSetting
 // (`quantenlos.pending`, ein Job pro Kanzlei) — Abholen manuell per Button
@@ -23,7 +34,7 @@
 // nichts geschrieben.
 // =============================================================================
 
-import { withTenantContext, type TenantContext } from '@taxtronik/db';
+import { withTenantContext, type TenantContext, type TxClient } from '@taxtronik/db';
 import {
   RiskLayerClient,
   LosNachweisSchema,
@@ -31,6 +42,7 @@ import {
   type LosNachweis,
 } from '@taxtronik/risk-layer';
 import { evidenceService } from '@/server/container';
+import { ACTION_LABELS } from '@/server/audit/labels';
 
 /** Minimale Client-Verträge für DI/Tests. */
 export type LosZiehClient = Pick<RiskLayerClient, 'losZiehen'>;
@@ -39,6 +51,12 @@ export type LosPruefClient = Pick<RiskLayerClient, 'losPruefen'>;
 
 const PENDING_KEY = 'quantenlos.pending';
 const REVIEW_DUE_DAYS = 14;
+// Obergrenze für den Audit-Rahmen: die ID-Liste wandert als JSON zur Engine —
+// jenseits davon den Zeitraum verkürzen statt Multi-Megabyte-Payloads bauen.
+const MAX_AUDIT_RAHMEN = 50_000;
+
+/** Worauf committet die Ziehung? */
+export type LosRahmenTyp = 'subsumtion' | 'audit';
 
 export interface LosZeitraum {
   /** YYYY-MM-DD (inklusive). */
@@ -54,12 +72,14 @@ export interface PendingLos {
   k: number;
   /** Der committete Rahmen — wird beim Abholen UNVERÄNDERT mitgesendet. */
   rahmen: string[];
+  /** Fehlt bei Alt-Einträgen (vor Audit-Nachschau) ⇒ 'subsumtion'. */
+  rahmenTyp?: LosRahmenTyp;
   zeitraum: LosZeitraum;
   beantragtAm: string;
   beantragtVon: string | null;
 }
 
-/** Stichproben-Eintrag, angereichert um Anzeige-Daten aus der eigenen DB. */
+/** Stichproben-Eintrag (Rahmen-Typ `subsumtion`), mit Anzeige-Daten. */
 export interface LosStichprobeEintrag {
   analysisId: string;
   titel: string | null;
@@ -68,10 +88,24 @@ export interface LosStichprobeEintrag {
   geloescht: boolean;
 }
 
+/** Nachschau-Treffer (Rahmen-Typ `audit`), mit Anzeige-Daten aus der Chain. */
+export interface LosNachschauEintrag {
+  auditId: string;
+  action: string;
+  label: string;
+  occurredAt: string | null;
+  actorType: string | null;
+  actorId: string | null;
+  resourceType: string | null;
+  /** Chain-Einträge sind unlöschbar — true wäre ein Befund für sich. */
+  fehlt: boolean;
+}
+
 /** Abgeschlossene Ziehung — Anzeige-DTO aus dem Audit-Event. */
 export interface LosZiehung {
   /** Audit-Log-ID des Nachweis-Events (Anker für „Nachweis prüfen"). */
   auditId: string;
+  rahmenTyp: LosRahmenTyp;
   gezogenAm: string;
   zeitraum: LosZeitraum | null;
   backend: string;
@@ -80,7 +114,10 @@ export interface LosZiehung {
   commitment: string;
   n: number;
   k: number;
+  /** Befüllt bei Rahmen-Typ `subsumtion`, sonst leer. */
   stichprobe: LosStichprobeEintrag[];
+  /** Befüllt bei Rahmen-Typ `audit`, sonst leer. */
+  nachschau: LosNachschauEintrag[];
   rohCountsSha256: string | null;
   extraktor: string;
   drbg: string;
@@ -93,8 +130,12 @@ export type LosZiehungErgebnis =
   | { status: 'wartet'; pending: PendingLos };
 
 export class LosRahmenLeerError extends Error {
-  constructor() {
-    super('Im gewählten Zeitraum gibt es keine Subsumtionen — der Rahmen ist leer.');
+  constructor(typ: LosRahmenTyp = 'subsumtion') {
+    super(
+      typ === 'audit'
+        ? 'Im gewählten Zeitraum gibt es keine Audit-Ereignisse — der Rahmen ist leer.'
+        : 'Im gewählten Zeitraum gibt es keine Subsumtionen — der Rahmen ist leer.',
+    );
     this.name = 'LosRahmenLeerError';
   }
 }
@@ -107,13 +148,34 @@ export class LosNachweisInkonsistentError extends Error {
 }
 
 /**
- * Baut den Rahmen: RiskAnalysis-IDs des Zeitraums (createdAt), aufsteigend
- * sortiert (deterministische Reihenfolge → reproduzierbares Commitment).
+ * Baut den Rahmen, aufsteigend sortiert (deterministische Reihenfolge →
+ * reproduzierbares Commitment):
+ *  * `subsumtion` — RiskAnalysis-IDs des Zeitraums (createdAt).
+ *  * `audit` — Audit-Log-IDs des Zeitraums (occurredAt), als Dezimal-Strings.
+ *    ALLE Chain-Ereignisse, keine Ausnahmen — eine gefilterte Nachschau wäre
+ *    wieder eine menschliche Vorauswahl.
  */
 export async function buildLosRahmen(
   ctx: TenantContext,
   zeitraum: LosZeitraum,
+  typ: LosRahmenTyp = 'subsumtion',
 ): Promise<string[]> {
+  if (typ === 'audit') {
+    const rows = await withTenantContext(ctx, (tx) =>
+      tx.auditLog.findMany({
+        where: { occurredAt: { gte: startOfDay(zeitraum.von), lte: endOfDay(zeitraum.bis) } },
+        select: { id: true },
+        orderBy: { id: 'asc' },
+        take: MAX_AUDIT_RAHMEN + 1,
+      }),
+    );
+    if (rows.length > MAX_AUDIT_RAHMEN) {
+      throw new Error(
+        `Der Audit-Rahmen übersteigt ${MAX_AUDIT_RAHMEN.toLocaleString('de-DE')} Ereignisse — bitte den Zeitraum verkürzen.`,
+      );
+    }
+    return rows.map((r) => String(r.id));
+  }
   const rows = await withTenantContext(ctx, (tx) =>
     tx.riskAnalysis.findMany({
       where: { createdAt: { gte: startOfDay(zeitraum.von), lte: endOfDay(zeitraum.bis) } },
@@ -131,17 +193,30 @@ export async function buildLosRahmen(
  */
 export async function zieheLosStichprobe(
   ctx: TenantContext,
-  input: { zeitraum: LosZeitraum; k: number; backend: LosBackend },
+  input: {
+    zeitraum: LosZeitraum;
+    k: number;
+    backend: LosBackend;
+    rahmenTyp?: LosRahmenTyp;
+    /** Zentral verwalteter IBM-Zugang (Action-Schicht liest, hier nur Durchreichung). */
+    ibmToken?: string;
+  },
   client?: LosZiehClient,
 ): Promise<LosZiehungErgebnis> {
-  const rahmen = await buildLosRahmen(ctx, input.zeitraum);
-  if (rahmen.length === 0) throw new LosRahmenLeerError();
+  const rahmenTyp = input.rahmenTyp ?? 'subsumtion';
+  const rahmen = await buildLosRahmen(ctx, input.zeitraum, rahmenTyp);
+  if (rahmen.length === 0) throw new LosRahmenLeerError(rahmenTyp);
   if (input.k < 1 || input.k > rahmen.length) {
     throw new Error(`k muss zwischen 1 und ${rahmen.length} (Rahmengröße) liegen.`);
   }
 
   const c = client ?? new RiskLayerClient();
-  const res = await c.losZiehen({ rahmen, k: input.k, backend: input.backend });
+  const res = await c.losZiehen({
+    rahmen,
+    k: input.k,
+    backend: input.backend,
+    ...(input.ibmToken ? { ibmToken: input.ibmToken } : {}),
+  });
 
   if (res.status === 'wartet') {
     const pending: PendingLos = {
@@ -150,6 +225,7 @@ export async function zieheLosStichprobe(
       commitment: res.commitment,
       k: res.k,
       rahmen,
+      rahmenTyp,
       zeitraum: input.zeitraum,
       beantragtAm: new Date().toISOString(),
       beantragtVon: ctx.actorId,
@@ -169,13 +245,13 @@ export async function zieheLosStichprobe(
         action: 'risk.los.beantragt',
         resourceType: 'quantenlos',
         resourceId: res.commitment,
-        after: { jobId: res.job_id, backend: res.backend, k: res.k, n: rahmen.length, zeitraum: input.zeitraum },
+        after: { jobId: res.job_id, backend: res.backend, k: res.k, n: rahmen.length, zeitraum: input.zeitraum, rahmenTyp },
       });
     });
     return { status: 'wartet', pending };
   }
 
-  const ziehung = await finalisiereZiehung(ctx, res.nachweis, rahmen, input.zeitraum, null);
+  const ziehung = await finalisiereZiehung(ctx, res.nachweis, rahmen, input.zeitraum, null, rahmenTyp);
   return { status: 'fertig', ziehung };
 }
 
@@ -196,16 +272,25 @@ export async function getPendingLos(ctx: TenantContext): Promise<PendingLos | nu
 export async function holeLosAb(
   ctx: TenantContext,
   client?: LosAbholClient,
+  opts: { ibmToken?: string } = {},
 ): Promise<LosZiehungErgebnis> {
   const pending = await getPendingLos(ctx);
   if (!pending) throw new Error('Kein wartender Quantenlos-Job vorhanden.');
 
   const c = client ?? new RiskLayerClient();
-  const res = await c.losAbholen({ jobId: pending.jobId, rahmen: pending.rahmen, k: pending.k });
+  const res = await c.losAbholen({
+    jobId: pending.jobId,
+    rahmen: pending.rahmen,
+    k: pending.k,
+    ...(opts.ibmToken ? { ibmToken: opts.ibmToken } : {}),
+  });
 
   if (res.status === 'wartet') return { status: 'wartet', pending };
 
-  const ziehung = await finalisiereZiehung(ctx, res.nachweis, pending.rahmen, pending.zeitraum, pending.jobId);
+  const ziehung = await finalisiereZiehung(
+    ctx, res.nachweis, pending.rahmen, pending.zeitraum, pending.jobId,
+    pending.rahmenTyp ?? 'subsumtion',
+  );
   return { status: 'fertig', ziehung };
 }
 
@@ -220,6 +305,7 @@ async function finalisiereZiehung(
   rahmen: string[],
   zeitraum: LosZeitraum,
   pendingJobId: string | null,
+  rahmenTyp: LosRahmenTyp,
 ): Promise<LosZiehung> {
   const rahmenSet = new Set(rahmen);
   const fremd = nachweis.stichprobe.filter((id) => !rahmenSet.has(id));
@@ -234,50 +320,63 @@ async function finalisiereZiehung(
 
   const hinweise: string[] = [];
 
-  const { auditId, eintraege } = await withTenantContext(ctx, async (tx) => {
-    const analysen = await tx.riskAnalysis.findMany({
-      where: { id: { in: nachweis.stichprobe } },
-      select: { id: true, clientId: true, title: true },
-    });
-    const byId = new Map(analysen.map((a) => [a.id, a]));
-
-    const eintraege: LosStichprobeEintrag[] = nachweis.stichprobe.map((id) => {
-      const a = byId.get(id);
-      return { analysisId: id, titel: a?.title ?? null, clientId: a?.clientId ?? null, geloescht: !a };
-    });
-
-    // Review-Aufgabe je Treffer — als ClientReminder (Repo-Muster für interne
-    // Aufgaben). Ohne Mandantenbezug keine Wiedervorlage möglich → Hinweis.
-    const due = new Date();
-    due.setDate(due.getDate() + REVIEW_DUE_DAYS);
+  const { auditId, eintraege, nachschau } = await withTenantContext(ctx, async (tx) => {
+    let eintraege: LosStichprobeEintrag[] = [];
+    let nachschau: LosNachschauEintrag[] = [];
     const reminderIds: string[] = [];
-    for (const e of eintraege) {
-      if (!e.clientId) {
-        hinweise.push(
-          e.geloescht
-            ? `Analyse ${e.analysisId.slice(0, 8)}… existiert nicht mehr — keine Review-Aufgabe angelegt.`
-            : `Analyse ${e.analysisId.slice(0, 8)}… hat keinen Mandantenbezug — keine Review-Aufgabe angelegt.`,
-        );
-        continue;
-      }
-      const r = await tx.clientReminder.create({
-        data: {
-          tenantId: ctx.tenantId,
-          clientId: e.clientId,
-          dueDate: due,
-          subject: `Quantenlos-Review: ${e.titel ?? `Subsumtion ${e.analysisId.slice(0, 8)}…`}`.slice(0, 200),
-          notes:
-            `Blind gezogene Compliance-Stichprobe (Quantenlos, Commitment ${nachweis.rahmen.commitment.slice(0, 16)}…). ` +
-            `Bitte fachlich reviewen: /staff/clients/${e.clientId}/subsumtion/${e.analysisId}`,
-          createdByStaff: staffId,
-          assigneeStaffId: staffId,
-        },
-        select: { id: true },
+
+    if (rahmenTyp === 'audit') {
+      // Betriebs-Nachschau: Treffer sind Chain-Ereignisse — direkt in der
+      // Ergebnisliste reviewen, keine automatischen Aufgaben (es gibt keinen
+      // Mandanten-Anker, und der Review-Gegenstand ist das Protokoll selbst).
+      nachschau = await ladeNachschauEintraege(tx, nachweis.stichprobe);
+      hinweise.push(
+        'Betriebs-Nachschau: die gezogenen Chain-Ereignisse direkt hier reviewen — es werden keine Wiedervorlagen angelegt.',
+      );
+    } else {
+      const analysen = await tx.riskAnalysis.findMany({
+        where: { id: { in: nachweis.stichprobe } },
+        select: { id: true, clientId: true, title: true },
       });
-      reminderIds.push(r.id);
+      const byId = new Map(analysen.map((a) => [a.id, a]));
+
+      eintraege = nachweis.stichprobe.map((id) => {
+        const a = byId.get(id);
+        return { analysisId: id, titel: a?.title ?? null, clientId: a?.clientId ?? null, geloescht: !a };
+      });
+
+      // Review-Aufgabe je Treffer — als ClientReminder (Repo-Muster für interne
+      // Aufgaben). Ohne Mandantenbezug keine Wiedervorlage möglich → Hinweis.
+      const due = new Date();
+      due.setDate(due.getDate() + REVIEW_DUE_DAYS);
+      for (const e of eintraege) {
+        if (!e.clientId) {
+          hinweise.push(
+            e.geloescht
+              ? `Analyse ${e.analysisId.slice(0, 8)}… existiert nicht mehr — keine Review-Aufgabe angelegt.`
+              : `Analyse ${e.analysisId.slice(0, 8)}… hat keinen Mandantenbezug — keine Review-Aufgabe angelegt.`,
+          );
+          continue;
+        }
+        const r = await tx.clientReminder.create({
+          data: {
+            tenantId: ctx.tenantId,
+            clientId: e.clientId,
+            dueDate: due,
+            subject: `Quantenlos-Review: ${e.titel ?? `Subsumtion ${e.analysisId.slice(0, 8)}…`}`.slice(0, 200),
+            notes:
+              `Blind gezogene Compliance-Stichprobe (Quantenlos, Commitment ${nachweis.rahmen.commitment.slice(0, 16)}…). ` +
+              `Bitte fachlich reviewen: /staff/clients/${e.clientId}/subsumtion/${e.analysisId}`,
+            createdByStaff: staffId,
+            assigneeStaffId: staffId,
+          },
+          select: { id: true },
+        });
+        reminderIds.push(r.id);
+      }
     }
 
-    // Nachweis + Rahmen in die Hash-Chain. Der Rahmen (nur UUIDs) MUSS mit ins
+    // Nachweis + Rahmen in die Hash-Chain. Der Rahmen (nur IDs) MUSS mit ins
     // `after`: ohne ihn ist der Nachweis später nicht re-verifizierbar
     // (das Commitment bindet an genau diese ID-Liste).
     const ev = await evidenceService.record(tx, {
@@ -287,7 +386,7 @@ async function finalisiereZiehung(
       action: 'risk.los.gezogen',
       resourceType: 'quantenlos',
       resourceId: nachweis.rahmen.commitment,
-      after: { nachweis, rahmen, zeitraum, reviewAufgaben: reminderIds },
+      after: { nachweis, rahmen, zeitraum, rahmenTyp, reviewAufgaben: reminderIds },
     });
 
     if (pendingJobId) {
@@ -296,10 +395,10 @@ async function finalisiereZiehung(
       });
     }
 
-    return { auditId: ev.id, eintraege };
+    return { auditId: ev.id, eintraege, nachschau };
   });
 
-  return toZiehung(String(auditId), nachweis, zeitraum, eintraege, hinweise);
+  return toZiehung(String(auditId), rahmenTyp, nachweis, zeitraum, eintraege, nachschau, hinweise);
 }
 
 /** Letzte Ziehungen aus dem Audit-Log (action `risk.los.gezogen`). */
@@ -313,28 +412,46 @@ export async function listLosZiehungen(ctx: TenantContext, limit = 10): Promise<
     });
 
     const parsed = rows.flatMap((row) => {
-      const after = row.after as { nachweis?: unknown; rahmen?: unknown; zeitraum?: unknown } | null;
+      const after = row.after as {
+        nachweis?: unknown; rahmen?: unknown; zeitraum?: unknown; rahmenTyp?: unknown;
+      } | null;
       const nachweis = LosNachweisSchema.safeParse(after?.nachweis);
       if (!nachweis.success) return [];
-      return [{ id: row.id, nachweis: nachweis.data, zeitraum: (after?.zeitraum ?? null) as LosZeitraum | null }];
+      // Alt-Events (vor Audit-Nachschau) tragen kein rahmenTyp ⇒ 'subsumtion'.
+      const rahmenTyp: LosRahmenTyp = after?.rahmenTyp === 'audit' ? 'audit' : 'subsumtion';
+      return [{
+        id: row.id,
+        nachweis: nachweis.data,
+        zeitraum: (after?.zeitraum ?? null) as LosZeitraum | null,
+        rahmenTyp,
+      }];
     });
 
-    const alleIds = [...new Set(parsed.flatMap((p) => p.nachweis.stichprobe))];
-    const analysen = alleIds.length
+    const analyseIds = [...new Set(
+      parsed.filter((p) => p.rahmenTyp === 'subsumtion').flatMap((p) => p.nachweis.stichprobe),
+    )];
+    const analysen = analyseIds.length
       ? await tx.riskAnalysis.findMany({
-          where: { id: { in: alleIds } },
+          where: { id: { in: analyseIds } },
           select: { id: true, clientId: true, title: true },
         })
       : [];
     const byId = new Map(analysen.map((a) => [a.id, a]));
 
-    return parsed.map((p) => {
+    const ziehungen: LosZiehung[] = [];
+    for (const p of parsed) {
+      if (p.rahmenTyp === 'audit') {
+        const nachschau = await ladeNachschauEintraege(tx, p.nachweis.stichprobe);
+        ziehungen.push(toZiehung(String(p.id), 'audit', p.nachweis, p.zeitraum, [], nachschau, []));
+        continue;
+      }
       const eintraege: LosStichprobeEintrag[] = p.nachweis.stichprobe.map((id) => {
         const a = byId.get(id);
         return { analysisId: id, titel: a?.title ?? null, clientId: a?.clientId ?? null, geloescht: !a };
       });
-      return toZiehung(String(p.id), p.nachweis, p.zeitraum, eintraege, []);
-    });
+      ziehungen.push(toZiehung(String(p.id), 'subsumtion', p.nachweis, p.zeitraum, eintraege, [], []));
+    }
+    return ziehungen;
   });
 }
 
@@ -352,7 +469,7 @@ export interface LosPruefErgebnis {
 export async function pruefeLosNachweis(
   ctx: TenantContext,
   auditId: string,
-  opts: { online?: boolean } = {},
+  opts: { online?: boolean; ibmToken?: string } = {},
   client?: LosPruefClient,
 ): Promise<LosPruefErgebnis> {
   const row = await withTenantContext(ctx, (tx) =>
@@ -368,7 +485,12 @@ export async function pruefeLosNachweis(
   const rahmen = (after?.rahmen ?? []) as string[];
 
   const c = client ?? new RiskLayerClient();
-  const res = await c.losPruefen({ nachweis, rahmen, online: opts.online });
+  const res = await c.losPruefen({
+    nachweis,
+    rahmen,
+    online: opts.online,
+    ...(opts.ibmToken ? { ibmToken: opts.ibmToken } : {}),
+  });
   return { gueltig: res.gueltig, geprueft: res.geprueft, hinweise: res.hinweise };
 }
 
@@ -376,15 +498,49 @@ export async function pruefeLosNachweis(
 // Helpers
 // -----------------------------------------------------------------------------
 
+/** Anzeige-Daten der Nachschau-Treffer aus der Chain (Rahmen-Typ `audit`). */
+async function ladeNachschauEintraege(
+  tx: TxClient,
+  stichprobe: string[],
+): Promise<LosNachschauEintrag[]> {
+  const ids = stichprobe.filter((s) => /^\d+$/.test(s));
+  const rows = ids.length
+    ? await tx.auditLog.findMany({
+        where: { id: { in: ids.map((s) => BigInt(s)) } },
+        select: {
+          id: true, action: true, occurredAt: true,
+          actorType: true, actorId: true, resourceType: true,
+        },
+      })
+    : [];
+  const byId = new Map(rows.map((r) => [String(r.id), r]));
+  return stichprobe.map((s) => {
+    const r = byId.get(s);
+    return {
+      auditId: s,
+      action: r?.action ?? '',
+      label: r ? (ACTION_LABELS[r.action] ?? r.action) : '',
+      occurredAt: r ? r.occurredAt.toISOString() : null,
+      actorType: r?.actorType ?? null,
+      actorId: r?.actorId ?? null,
+      resourceType: r?.resourceType ?? null,
+      fehlt: !r,
+    };
+  });
+}
+
 function toZiehung(
   auditId: string,
+  rahmenTyp: LosRahmenTyp,
   nachweis: LosNachweis,
   zeitraum: LosZeitraum | null,
   stichprobe: LosStichprobeEintrag[],
+  nachschau: LosNachschauEintrag[],
   hinweise: string[],
 ): LosZiehung {
   return {
     auditId,
+    rahmenTyp,
     gezogenAm: nachweis.gezogen_am,
     zeitraum,
     backend: nachweis.entropie.backend,
@@ -394,6 +550,7 @@ function toZiehung(
     n: nachweis.rahmen.n,
     k: nachweis.k,
     stichprobe,
+    nachschau,
     rohCountsSha256: nachweis.entropie.roh_counts_sha256 ?? null,
     extraktor: nachweis.ableitung.extraktor,
     drbg: nachweis.ableitung.drbg,

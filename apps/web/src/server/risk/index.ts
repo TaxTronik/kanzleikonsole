@@ -87,6 +87,6 @@ export {
 } from './los';
 export type {
   LosZeitraum, PendingLos, LosZiehung, LosZiehungErgebnis,
-  LosStichprobeEintrag, LosPruefErgebnis,
+  LosStichprobeEintrag, LosNachschauEintrag, LosRahmenTyp, LosPruefErgebnis,
   LosZiehClient, LosAbholClient, LosPruefClient,
 } from './los';

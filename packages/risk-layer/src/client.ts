@@ -269,10 +269,19 @@ export class RiskLayerClient {
    * `POST /v1/los/ziehen` — zieht eine beweisbar blinde Stichprobe (k aus dem
    * Rahmen). KEIN Auto-Retry: ein Retry könnte einen zweiten QPU-Job einreihen
    * (Doppel-Ziehung). `wartet` (QPU-Queue) ⇒ job_id merken und `losAbholen`.
+   * `ibmToken` (Engine ≥ 1.3.1): zentral verwalteter IBM-Zugang pro Request —
+   * die Engine persistiert/loggt ihn nie; ohne ihn gilt ihr Maschinen-Zugang.
    */
-  async losZiehen(input: { rahmen: string[]; k: number; backend: LosBackend }): Promise<LosErgebnis> {
+  async losZiehen(input: {
+    rahmen: string[];
+    k: number;
+    backend: LosBackend;
+    ibmToken?: string;
+  }): Promise<LosErgebnis> {
+    const body: Record<string, unknown> = { rahmen: input.rahmen, k: input.k, backend: input.backend };
+    if (input.ibmToken) body.ibm_token = input.ibmToken;
     const raw = await this.request('POST', '/v1/los/ziehen', {
-      body: { rahmen: input.rahmen, k: input.k, backend: input.backend },
+      body,
       timeoutMs: LOS_TIMEOUT_MS,
       retry: NO_RETRY,
     });
@@ -284,9 +293,16 @@ export class RiskLayerClient {
    * Idempotenter Poll (die Engine zieht nicht erneut) → retrybar. Antwortet
    * weiter in der wartet-Form, solange der Job in der IBM-Queue liegt.
    */
-  async losAbholen(input: { jobId: string; rahmen: string[]; k: number }): Promise<LosErgebnis> {
+  async losAbholen(input: {
+    jobId: string;
+    rahmen: string[];
+    k: number;
+    ibmToken?: string;
+  }): Promise<LosErgebnis> {
+    const body: Record<string, unknown> = { job_id: input.jobId, rahmen: input.rahmen, k: input.k };
+    if (input.ibmToken) body.ibm_token = input.ibmToken;
     const raw = await this.request('POST', '/v1/los/abholen', {
-      body: { job_id: input.jobId, rahmen: input.rahmen, k: input.k },
+      body,
       timeoutMs: LOS_TIMEOUT_MS,
       retry: FAST_RETRY,
     });
@@ -295,16 +311,18 @@ export class RiskLayerClient {
 
   /**
    * `POST /v1/los/pruefen` — verifiziert einen Nachweis gegen den Rahmen
-   * (Commitment, Ableitung; `online:true` zusätzlich die IBM-Job-Attestierung).
-   * Read-only/idempotent → retrybar.
+   * (Commitment, Ableitung; `online:true` zusätzlich die IBM-Job-Attestierung,
+   * `ibmToken` optional für den Online-Refetch). Read-only/idempotent → retrybar.
    */
   async losPruefen(input: {
     nachweis: LosNachweis;
     rahmen: string[];
     online?: boolean;
+    ibmToken?: string;
   }): Promise<LosPruefenResponse> {
     const body: Record<string, unknown> = { nachweis: input.nachweis, rahmen: input.rahmen };
     if (input.online !== undefined) body.online = input.online;
+    if (input.ibmToken) body.ibm_token = input.ibmToken;
     const raw = await this.request('POST', '/v1/los/pruefen', {
       body,
       timeoutMs: LOS_TIMEOUT_MS,

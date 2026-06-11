@@ -15,6 +15,7 @@ import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { isRiskLayerConfigured } from '@taxtronik/risk-layer';
 import { readModules } from '@/server/settings/modules';
+import { getIbmTokenStatus } from '@/server/settings/quantenlos';
 import { buildLosRahmen, getPendingLos, listLosZiehungen } from '@/server/risk';
 import { QuantenlosPanel } from './quantenlos-panel';
 
@@ -39,20 +40,22 @@ export default async function QuantenlosPage() {
   const von = new Date(bis.getTime() - 90 * 24 * 60 * 60 * 1000);
   const zeitraum = { von: ymd(von), bis: ymd(bis) };
 
-  const [rahmen, pending, ziehungen] = bereit
+  const [rahmen, pending, ziehungen, ibmToken] = bereit
     ? await Promise.all([
         buildLosRahmen(ctx, zeitraum),
         getPendingLos(ctx),
         listLosZiehungen(ctx, 10),
+        getIbmTokenStatus(ctx),
       ])
-    : [[], null, []];
+    : [[], null, [], { hinterlegt: false, suffix: null, gesetztAm: null }];
 
   return (
     <div className="p-8">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-primary mb-1">Quantenlos — blinde Stichprobe</h1>
         <p className="text-muted text-sm">
-          Beweisbar blinde Review-Stichprobe über die Subsumtionen eines Zeitraums. Die Engine
+          Beweisbar blinde Review-Stichprobe — wahlweise über die Subsumtionen eines Zeitraums
+          (Risk-Review) oder über die Audit-Ereignisse (Betriebs-Nachschau). Die Engine
           committet auf den ID-Rahmen, BEVOR sie zieht — die Auswahl ist nachweislich nicht
           steuerbar. Der Nachweis wird in der Audit-Hash-Chain verankert.
         </p>
@@ -81,6 +84,7 @@ export default async function QuantenlosPage() {
           initialN={rahmen.length}
           initialPending={pending}
           initialZiehungen={ziehungen}
+          initialIbmToken={ibmToken}
         />
       )}
     </div>

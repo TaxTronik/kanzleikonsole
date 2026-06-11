@@ -329,6 +329,8 @@ export const ACTION_LABELS: Record<string, string> = {
   'risk.research.discarded': 'Rechercheergebnis verworfen',
   'risk.los.beantragt': 'Quantenlos beantragt (QPU-Queue)',
   'risk.los.gezogen': 'Quantenlos-Stichprobe gezogen',
+  'tenant.settings.quantenlos_ibm.update': 'IBM-Quantum-Zugang (Quantenlos) hinterlegt',
+  'tenant.settings.quantenlos_ibm.reset': 'IBM-Quantum-Zugang (Quantenlos) entfernt',
 };
 
 export const RESOURCE_TYPE_LABELS: Record<string, string> = {

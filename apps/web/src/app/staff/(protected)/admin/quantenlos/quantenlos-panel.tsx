@@ -2,20 +2,23 @@
 
 // =============================================================================
 // Quantenlos-Panel — Rahmen-Vorschau, Ziehen, Abholen (QPU-Queue), Historie
-// mit „Nachweis prüfen". Reine Anzeige-/Interaktionsschicht; alles Fachliche
-// läuft über die Server-Actions.
+// mit „Nachweis prüfen" + zentrale IBM-Zugangs-Karte. Reine Anzeige-/
+// Interaktionsschicht; alles Fachliche läuft über die Server-Actions.
 // =============================================================================
 
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
-import { Dices, ShieldCheck, ShieldAlert, RefreshCw, Hourglass } from 'lucide-react';
+import { Dices, ShieldCheck, ShieldAlert, RefreshCw, Hourglass, KeyRound, Trash2 } from 'lucide-react';
 import { fmtDateTimeShort } from '@/lib/fmt';
-import type { LosZiehung, PendingLos, LosPruefErgebnis } from '@/server/risk';
+import type { LosZiehung, PendingLos, LosPruefErgebnis, LosRahmenTyp } from '@/server/risk';
+import type { IbmTokenStatus } from '@/server/settings/quantenlos';
 import {
   rahmenVorschauAction,
   losZiehenAction,
   losAbholenAction,
   losPruefenAction,
+  ibmTokenSpeichernAction,
+  ibmTokenEntfernenAction,
 } from './actions';
 
 type Backend = 'qpu' | 'simulator' | 'csprng';
@@ -40,10 +43,32 @@ const BACKENDS: { value: Backend; label: string; hinweis: string }[] = [
   },
 ];
 
+const RAHMEN_TYPEN: { value: LosRahmenTyp; label: string; hinweis: string; einheit: [string, string] }[] = [
+  {
+    value: 'subsumtion',
+    label: 'Subsumtionen — Risk-Review',
+    hinweis: 'Rahmen: die Subsumtionen des Zeitraums. Je Treffer entsteht eine Review-Wiedervorlage (+14 Tage).',
+    einheit: ['Subsumtion', 'Subsumtionen'],
+  },
+  {
+    value: 'audit',
+    label: 'Audit-Ereignisse — Betriebs-Nachschau',
+    hinweis:
+      'Rahmen: ALLE Chain-Ereignisse des Zeitraums (nur laufende Nummern an die Engine). Blinde Nachschau über das protokollierte Handeln — Treffer direkt hier reviewen, keine automatischen Aufgaben.',
+    einheit: ['Audit-Ereignis', 'Audit-Ereignisse'],
+  },
+];
+
 function QuelleBadge({ quelleKlasse }: { quelleKlasse: string }) {
   if (quelleKlasse === 'qpu') return <span className="badge badge-purple">QPU (attestierbar)</span>;
   if (quelleKlasse === 'simulator') return <span className="badge badge-yellow">Simulator — Test</span>;
   return <span className="badge badge-gray">CSPRNG — Fallback</span>;
+}
+
+function RahmenTypBadge({ typ }: { typ: LosRahmenTyp }) {
+  return typ === 'audit'
+    ? <span className="badge badge-green">Betriebs-Nachschau</span>
+    : <span className="badge badge-gray">Risk-Review</span>;
 }
 
 function Mono({ value, max = 24 }: { value: string; max?: number }) {
@@ -60,11 +85,13 @@ interface Props {
   initialN: number;
   initialPending: PendingLos | null;
   initialZiehungen: LosZiehung[];
+  initialIbmToken: IbmTokenStatus;
 }
 
-export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, initialZiehungen }: Props) {
+export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, initialZiehungen, initialIbmToken }: Props) {
   const [von, setVon] = useState(initialZeitraum.von);
   const [bis, setBis] = useState(initialZeitraum.bis);
+  const [rahmenTyp, setRahmenTyp] = useState<LosRahmenTyp>('subsumtion');
   const [n, setN] = useState<number | null>(initialN);
   const [k, setK] = useState(Math.min(3, Math.max(1, initialN)));
   const [backend, setBackend] = useState<Backend>('qpu');
@@ -77,12 +104,20 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
   const [busy, start] = useTransition();
   const [pruefBusy, setPruefBusy] = useState<string | null>(null);
 
-  const backendInfo = BACKENDS.find((b) => b.value === backend)!;
+  // IBM-Zugang (zentrale Config) — der Token selbst bleibt im Eingabefeld,
+  // zurück kommt nur der maskierte Status.
+  const [ibmToken, setIbmToken] = useState<IbmTokenStatus>(initialIbmToken);
+  const [tokenEingabe, setTokenEingabe] = useState('');
+  const [tokenFehler, setTokenFehler] = useState<string | null>(null);
+  const [tokenBusy, startToken] = useTransition();
 
-  function aktualisiereVorschau(nextVon: string, nextBis: string) {
+  const backendInfo = BACKENDS.find((b) => b.value === backend)!;
+  const typInfo = RAHMEN_TYPEN.find((t) => t.value === rahmenTyp)!;
+
+  function aktualisiereVorschau(nextVon: string, nextBis: string, nextTyp: LosRahmenTyp) {
     setN(null);
     start(async () => {
-      const r = await rahmenVorschauAction({ von: nextVon, bis: nextBis });
+      const r = await rahmenVorschauAction({ von: nextVon, bis: nextBis, rahmenTyp: nextTyp });
       if (r.ok && r.n !== undefined) setN(r.n);
       else setFehler(r.ok ? null : r.error ?? 'Rahmen-Vorschau fehlgeschlagen.');
     });
@@ -92,7 +127,7 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
     setFehler(null);
     setQueueHinweis(null);
     start(async () => {
-      const r = await losZiehenAction({ von, bis, k, backend });
+      const r = await losZiehenAction({ von, bis, k, backend, rahmenTyp });
       if (!r.ok || !r.ergebnis) {
         setFehler(!r.ok ? r.error ?? 'Ziehung fehlgeschlagen.' : 'Ziehung fehlgeschlagen.');
         return;
@@ -143,27 +178,120 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
     });
   }
 
+  function tokenSpeichern() {
+    setTokenFehler(null);
+    startToken(async () => {
+      const r = await ibmTokenSpeichernAction({ token: tokenEingabe });
+      if (r.ok && r.status) {
+        setIbmToken(r.status);
+        setTokenEingabe('');
+      } else if (!r.ok) {
+        setTokenFehler(r.error ?? 'Speichern fehlgeschlagen.');
+      }
+    });
+  }
+
+  function tokenEntfernen() {
+    setTokenFehler(null);
+    startToken(async () => {
+      const r = await ibmTokenEntfernenAction();
+      if (r.ok && r.status) setIbmToken(r.status);
+      else if (!r.ok) setTokenFehler(r.error ?? 'Entfernen fehlgeschlagen.');
+    });
+  }
+
   return (
     <div className="space-y-6">
+      {/* IBM-Quantum-Zugang — zentrale Config statt Credentials auf der Engine-Maschine */}
+      <div className="card p-5">
+        <h2 className="text-sm font-semibold text-primary mb-2 flex items-center gap-2">
+          <KeyRound className="h-4 w-4 text-brand-700" />
+          IBM-Quantum-Zugang
+        </h2>
+        <p className="text-xs text-muted mb-3">
+          Der API-Token (quantum.ibm.com) wird hier AES-256-GCM-verschlüsselt gespeichert und der
+          Engine nur pro Ziehung mitgereicht — sie persistiert und loggt ihn nie. Ohne Token nutzt
+          die Engine ihren Maschinen-Zugang, falls auf dem Engine-Host hinterlegt.
+        </p>
+        <div className="flex items-center gap-3 flex-wrap">
+          {ibmToken.hinterlegt ? (
+            <>
+              <span className="badge badge-green">Token hinterlegt</span>
+              <code className="font-mono text-xs text-secondary">***{ibmToken.suffix ?? ''}</code>
+              {ibmToken.gesetztAm && (
+                <span className="text-xs text-muted">
+                  gesetzt {fmtDateTimeShort(new Date(ibmToken.gesetztAm))}
+                </span>
+              )}
+              <button onClick={tokenEntfernen} disabled={tokenBusy} className="btn-secondary text-xs">
+                <Trash2 className="h-3.5 w-3.5" />
+                Entfernen
+              </button>
+            </>
+          ) : (
+            <span className="badge badge-gray">Kein Token hinterlegt</span>
+          )}
+        </div>
+        <div className="flex items-end gap-2 mt-3">
+          <div className="flex-1 max-w-md">
+            <label className="label" htmlFor="ibm-token">
+              {ibmToken.hinterlegt ? 'Token ersetzen' : 'Token hinterlegen'}
+            </label>
+            <input
+              id="ibm-token"
+              type="password"
+              autoComplete="off"
+              className="input text-xs font-mono"
+              placeholder="IBM-Quantum-API-Token"
+              value={tokenEingabe}
+              onChange={(e) => setTokenEingabe(e.target.value)}
+            />
+          </div>
+          <button
+            onClick={tokenSpeichern}
+            disabled={tokenBusy || tokenEingabe.trim().length < 8}
+            className="btn-primary text-xs"
+          >
+            {tokenBusy ? 'Speichert …' : 'Speichern'}
+          </button>
+        </div>
+        {tokenFehler && <p className="text-xs text-red-600 mt-2">{tokenFehler}</p>}
+      </div>
+
       {/* Ziehungs-Formular */}
       <div className="card p-5">
         <h2 className="text-sm font-semibold text-primary mb-3 flex items-center gap-2">
           <Dices className="h-4 w-4 text-brand-700" />
           Neue Stichprobe ziehen
         </h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div>
+            <label className="label" htmlFor="rahmenTyp">Prüfrahmen</label>
+            <select
+              id="rahmenTyp" className="input text-xs" value={rahmenTyp}
+              onChange={(e) => {
+                const typ = e.target.value as LosRahmenTyp;
+                setRahmenTyp(typ);
+                aktualisiereVorschau(von, bis, typ);
+              }}
+            >
+              {RAHMEN_TYPEN.map((t) => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </select>
+          </div>
           <div>
             <label className="label" htmlFor="von">Zeitraum von</label>
             <input
               id="von" type="date" className="input text-xs" value={von}
-              onChange={(e) => { setVon(e.target.value); aktualisiereVorschau(e.target.value, bis); }}
+              onChange={(e) => { setVon(e.target.value); aktualisiereVorschau(e.target.value, bis, rahmenTyp); }}
             />
           </div>
           <div>
             <label className="label" htmlFor="bis">Zeitraum bis</label>
             <input
               id="bis" type="date" className="input text-xs" value={bis}
-              onChange={(e) => { setBis(e.target.value); aktualisiereVorschau(von, e.target.value); }}
+              onChange={(e) => { setBis(e.target.value); aktualisiereVorschau(von, e.target.value, rahmenTyp); }}
             />
           </div>
           <div>
@@ -186,7 +314,16 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
           </div>
         </div>
 
-        <p className="text-xs text-muted mt-2">{backendInfo.hinweis}</p>
+        <p className="text-xs text-muted mt-2">{typInfo.hinweis}</p>
+        <p className="text-xs text-muted mt-1">
+          {backendInfo.hinweis}
+          {backend === 'qpu' && !ibmToken.hinterlegt && (
+            <span className="text-yellow-700">
+              {' '}Kein Token hinterlegt — die Ziehung gelingt nur, wenn der Engine-Host eigene
+              IBM-Credentials hat (sonst klare Ablehnung, keine stille Degradation).
+            </span>
+          )}
+        </p>
 
         <div className="flex items-center justify-between mt-4">
           <p className="text-xs text-secondary">
@@ -195,7 +332,8 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
               <span className="text-disabled">wird ermittelt …</span>
             ) : (
               <>
-                <span className="font-semibold">{n}</span> Subsumtion{n === 1 ? '' : 'en'} im Zeitraum
+                <span className="font-semibold">{n}</span>{' '}
+                {n === 1 ? typInfo.einheit[0] : typInfo.einheit[1]} im Zeitraum
                 — es werden ausschließlich IDs an die Engine übertragen.
               </>
             )}
@@ -256,6 +394,7 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
                     <div className="space-y-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <QuelleBadge quelleKlasse={z.quelleKlasse} />
+                        <RahmenTypBadge typ={z.rahmenTyp} />
                         <span className="text-sm font-medium text-primary">
                           k={z.k} aus n={z.n}
                         </span>
@@ -294,28 +433,54 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
                     </div>
                   </div>
 
-                  {/* Stichprobe */}
-                  <ul className="mt-3 space-y-1">
-                    {z.stichprobe.map((s) => (
-                      <li key={s.analysisId} className="text-xs flex items-center gap-2">
-                        <span className="text-disabled font-mono">{s.analysisId.slice(0, 8)}…</span>
-                        {s.clientId && !s.geloescht ? (
-                          <Link
-                            href={`/staff/clients/${s.clientId}/subsumtion/${s.analysisId}`}
-                            className="text-brand-700 hover:underline"
-                          >
-                            {s.titel ?? 'Subsumtion öffnen'}
-                          </Link>
-                        ) : (
-                          <span className="text-secondary">{s.titel ?? 'Subsumtion'}</span>
-                        )}
-                        {s.geloescht && <span className="badge badge-red">gelöscht</span>}
-                        {!s.clientId && !s.geloescht && (
-                          <span className="badge badge-gray">ohne Mandantenbezug</span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
+                  {/* Treffer: Subsumtionen (Risk-Review) bzw. Chain-Ereignisse (Nachschau) */}
+                  {z.rahmenTyp === 'audit' ? (
+                    <ul className="mt-3 space-y-1">
+                      {z.nachschau.map((e) => (
+                        <li key={e.auditId} className="text-xs flex items-center gap-2 flex-wrap">
+                          <span className="text-disabled font-mono">#{e.auditId}</span>
+                          {e.fehlt ? (
+                            <span className="badge badge-red" title="Chain-Einträge sind unlöschbar — ein fehlender Eintrag ist ein Befund.">
+                              Eintrag fehlt!
+                            </span>
+                          ) : (
+                            <>
+                              <span className="text-secondary">{e.label}</span>
+                              {e.occurredAt && (
+                                <span className="text-muted">{fmtDateTimeShort(new Date(e.occurredAt))}</span>
+                              )}
+                              {e.resourceType && <span className="badge badge-gray">{e.resourceType}</span>}
+                              <span className="text-muted">
+                                {e.actorType === 'STAFF' ? 'Staff' : e.actorType === 'CLIENT' ? 'Mandant' : 'System'}
+                              </span>
+                            </>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <ul className="mt-3 space-y-1">
+                      {z.stichprobe.map((s) => (
+                        <li key={s.analysisId} className="text-xs flex items-center gap-2">
+                          <span className="text-disabled font-mono">{s.analysisId.slice(0, 8)}…</span>
+                          {s.clientId && !s.geloescht ? (
+                            <Link
+                              href={`/staff/clients/${s.clientId}/subsumtion/${s.analysisId}`}
+                              className="text-brand-700 hover:underline"
+                            >
+                              {s.titel ?? 'Subsumtion öffnen'}
+                            </Link>
+                          ) : (
+                            <span className="text-secondary">{s.titel ?? 'Subsumtion'}</span>
+                          )}
+                          {s.geloescht && <span className="badge badge-red">gelöscht</span>}
+                          {!s.clientId && !s.geloescht && (
+                            <span className="badge badge-gray">ohne Mandantenbezug</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
 
                   {(z.hinweise.length > 0 || (pruef && pruef.hinweise.length > 0)) && (
                     <ul className="mt-2 space-y-0.5">

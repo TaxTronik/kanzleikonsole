@@ -162,6 +162,24 @@ describe('RiskLayerClient — Quantenlos', () => {
     });
   });
 
+  it('ibmToken wandert als ibm_token in die Bodies aller drei Routen (Engine 1.3.1)', async () => {
+    const fetchImpl = vi.fn<(u: string, i?: RequestInit) => Promise<Response>>();
+    fetchImpl.mockResolvedValueOnce(jsonResponse(wartetFixture));
+    fetchImpl.mockResolvedValueOnce(jsonResponse(wartetFixture));
+    fetchImpl.mockResolvedValueOnce(
+      jsonResponse({ ok: true, gueltig: true, geprueft: [], hinweise: [] }),
+    );
+    const client = new RiskLayerClient({ config, fetchImpl });
+
+    await client.losZiehen({ rahmen: ['a1'], k: 1, backend: 'qpu', ibmToken: 'ibm-tok' });
+    await client.losAbholen({ jobId: 'ibm-job-42', rahmen: ['a1'], k: 1, ibmToken: 'ibm-tok' });
+    await client.losPruefen({ nachweis: nachweisFixture, rahmen: ['a1'], online: true, ibmToken: 'ibm-tok' });
+
+    for (const [, init] of fetchImpl.mock.calls) {
+      expect(JSON.parse(init!.body as string)).toMatchObject({ ibm_token: 'ibm-tok' });
+    }
+  });
+
   it('losPruefen wirft bei 422 (kaputter Nachweis) RiskLayerHttpError ohne Retry', async () => {
     const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) =>
       jsonResponse({ ok: false, fehler: 'nachweis: protokoll_version fehlt' }, 422),

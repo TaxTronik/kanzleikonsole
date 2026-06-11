@@ -12,6 +12,12 @@ const h = vi.hoisted(() => {
     ] as { id: string; clientId: string | null; title: string | null }[],
     pendingRow: null as { value: unknown } | null,
     auditRows: [] as { id: bigint; after: unknown }[],
+    // Chain-Ereignisse für den Audit-Rahmen (Betriebs-Nachschau): zeitraum-
+    // Query (occurredAt) liefert alle, id-in-Query die angefragten.
+    chainRows: [] as {
+      id: bigint; action: string; occurredAt: Date;
+      actorType: string; actorId: string | null; resourceType: string;
+    }[],
     record: vi.fn(async (_tx: unknown, _event: unknown) =>
       ({ id: 77n, occurredAt: new Date(), prevHash: Buffer.alloc(0), thisHash: Buffer.alloc(0) })),
     reminderCreate: vi.fn(async (_args: unknown) => ({ id: 'rem-1' })),
@@ -30,7 +36,14 @@ const h = vi.hoisted(() => {
       deleteMany: state.settingDeleteMany,
     },
     auditLog: {
-      findMany: async () => state.auditRows,
+      findMany: async (args?: { where?: { id?: { in: bigint[] }; occurredAt?: unknown; action?: string } }) => {
+        if (args?.where?.id?.in) {
+          const gesucht = args.where.id.in.map(String);
+          return state.chainRows.filter((r) => gesucht.includes(String(r.id)));
+        }
+        if (args?.where?.occurredAt) return state.chainRows;
+        return state.auditRows;
+      },
       findFirst: async (args: { where: { id: bigint } }) =>
         state.auditRows.find((r) => r.id === args.where.id) ?? null,
     },
@@ -91,6 +104,7 @@ beforeEach(() => {
   ];
   h.state.pendingRow = null;
   h.state.auditRows = [];
+  h.state.chainRows = [];
   h.state.record.mockClear();
   h.state.reminderCreate.mockClear();
   h.state.settingUpsert.mockClear();
@@ -187,6 +201,97 @@ describe('zieheLosStichprobe', () => {
   });
 });
 
+describe('zieheLosStichprobe — IBM-Token-Durchreichung', () => {
+  it('reicht ibmToken an den Engine-Client durch (zentrale Config, qpu)', async () => {
+    const losZiehen = vi.fn(async () => ({
+      ok: true as const, status: 'wartet' as const,
+      job_id: 'ibm-job-42', backend: 'qpu', commitment: 'c0ffee', k: 2,
+    }));
+    await zieheLosStichprobe(
+      ctx,
+      { zeitraum, k: 2, backend: 'qpu', ibmToken: 'ibm-tok' },
+      { losZiehen },
+    );
+    expect(losZiehen).toHaveBeenCalledWith({
+      rahmen: ['a1', 'b2', 'c3'], k: 2, backend: 'qpu', ibmToken: 'ibm-tok',
+    });
+  });
+});
+
+describe('zieheLosStichprobe — Rahmen-Typ audit (Betriebs-Nachschau)', () => {
+  const chain = [
+    { id: 1n, action: 'client.created', occurredAt: new Date('2026-05-02T10:00:00Z'), actorType: 'STAFF', actorId: 's1', resourceType: 'client' },
+    { id: 2n, action: 'document.upload', occurredAt: new Date('2026-05-03T10:00:00Z'), actorType: 'STAFF', actorId: 's2', resourceType: 'document' },
+    // Unbekannte Action ⇒ Label-Fallback auf den Rohstring.
+    { id: 3n, action: 'sonder.aktion', occurredAt: new Date('2026-05-04T10:00:00Z'), actorType: 'SYSTEM', actorId: null, resourceType: 'invoice' },
+  ];
+
+  it('Rahmen = Chain-IDs, Treffer als Nachschau-Einträge, KEINE Wiedervorlagen', async () => {
+    h.state.chainRows = chain;
+    const auditNachweis = { ...nachweis, stichprobe: ['1', '3'] };
+    const losZiehen = vi.fn(async () => ({ ok: true as const, status: 'fertig' as const, nachweis: auditNachweis }));
+
+    const r = await zieheLosStichprobe(
+      ctx,
+      { zeitraum, k: 2, backend: 'csprng', rahmenTyp: 'audit' },
+      { losZiehen },
+    );
+
+    // Engine sieht NUR die laufenden Nummern der Chain-Ereignisse.
+    expect(losZiehen).toHaveBeenCalledWith({ rahmen: ['1', '2', '3'], k: 2, backend: 'csprng' });
+
+    expect(r.status).toBe('fertig');
+    if (r.status !== 'fertig') return;
+    expect(r.ziehung.rahmenTyp).toBe('audit');
+    expect(r.ziehung.stichprobe).toEqual([]);
+    expect(r.ziehung.nachschau).toEqual([
+      {
+        auditId: '1', action: 'client.created', label: 'Mandant angelegt',
+        occurredAt: '2026-05-02T10:00:00.000Z', actorType: 'STAFF', actorId: 's1',
+        resourceType: 'client', fehlt: false,
+      },
+      {
+        auditId: '3', action: 'sonder.aktion', label: 'sonder.aktion',
+        occurredAt: '2026-05-04T10:00:00.000Z', actorType: 'SYSTEM', actorId: null,
+        resourceType: 'invoice', fehlt: false,
+      },
+    ]);
+
+    // Keine Aufgaben — der Review-Gegenstand ist das Protokoll selbst.
+    expect(h.state.reminderCreate).not.toHaveBeenCalled();
+    expect(r.ziehung.hinweise.some((s) => s.includes('keine Wiedervorlagen'))).toBe(true);
+
+    // Chain-Event trägt den Rahmen-Typ (Re-Verifikation + Anzeige).
+    const ev = h.state.record.mock.calls[0]![1] as unknown as { after: Record<string, unknown> };
+    expect(ev.after).toMatchObject({ rahmenTyp: 'audit', rahmen: ['1', '2', '3'], reviewAufgaben: [] });
+  });
+
+  it('leerer Audit-Rahmen → LosRahmenLeerError mit Audit-Wortlaut', async () => {
+    h.state.chainRows = [];
+    const losZiehen = vi.fn();
+    await expect(
+      zieheLosStichprobe(ctx, { zeitraum, k: 1, backend: 'csprng', rahmenTyp: 'audit' }, { losZiehen }),
+    ).rejects.toThrow('keine Audit-Ereignisse');
+    expect(losZiehen).not.toHaveBeenCalled();
+  });
+
+  it('listLosZiehungen erkennt audit-Events und meldet fehlende Chain-Einträge', async () => {
+    h.state.chainRows = chain.slice(0, 1); // nur #1 existiert (noch)
+    const auditNachweis = { ...nachweis, stichprobe: ['1', '3'] };
+    h.state.auditRows = [{
+      id: 88n,
+      after: { nachweis: auditNachweis, rahmen: ['1', '2', '3'], zeitraum, rahmenTyp: 'audit' },
+    }];
+    const list = await listLosZiehungen(ctx);
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ auditId: '88', rahmenTyp: 'audit', stichprobe: [] });
+    expect(list[0]!.nachschau).toMatchObject([
+      { auditId: '1', fehlt: false, label: 'Mandant angelegt' },
+      { auditId: '3', fehlt: true },
+    ]);
+  });
+});
+
 describe('holeLosAb', () => {
   const pending = {
     jobId: 'ibm-job-42', backend: 'qpu', commitment: 'c0ffee', k: 2,
@@ -208,6 +313,18 @@ describe('holeLosAb', () => {
     expect(r.status).toBe('wartet');
     expect(h.state.settingDeleteMany).not.toHaveBeenCalled();
     expect(h.state.record).not.toHaveBeenCalled();
+  });
+
+  it('reicht ibmToken an losAbholen durch (zentrale Config)', async () => {
+    h.state.pendingRow = { value: pending };
+    const losAbholen = vi.fn(async () => ({
+      ok: true as const, status: 'wartet' as const,
+      job_id: 'ibm-job-42', backend: 'qpu', commitment: 'c0ffee', k: 2,
+    }));
+    await holeLosAb(ctx, { losAbholen }, { ibmToken: 'ibm-tok' });
+    expect(losAbholen).toHaveBeenCalledWith({
+      jobId: 'ibm-job-42', rahmen: ['a1', 'b2', 'c3'], k: 2, ibmToken: 'ibm-tok',
+    });
   });
 
   it('fertig → finalisiert (Chain + Aufgaben) und räumt den Pending-Job weg', async () => {
@@ -238,6 +355,17 @@ describe('pruefeLosNachweis / listLosZiehungen', () => {
     const r = await pruefeLosNachweis(ctx, '77', { online: true }, { losPruefen });
     expect(losPruefen).toHaveBeenCalledWith({ nachweis, rahmen: ['a1', 'b2', 'c3'], online: true });
     expect(r).toEqual({ gueltig: true, geprueft: ['commitment'], hinweise: [] });
+  });
+
+  it('reicht ibmToken an losPruefen durch (Online-Refetch)', async () => {
+    h.state.auditRows = [{ id: 77n, after: { nachweis, rahmen: ['a1', 'b2', 'c3'], zeitraum } }];
+    const losPruefen = vi.fn(async () => ({
+      ok: true as const, gueltig: true, geprueft: [], hinweise: [],
+    }));
+    await pruefeLosNachweis(ctx, '77', { online: true, ibmToken: 'ibm-tok' }, { losPruefen });
+    expect(losPruefen).toHaveBeenCalledWith({
+      nachweis, rahmen: ['a1', 'b2', 'c3'], online: true, ibmToken: 'ibm-tok',
+    });
   });
 
   it('unbekannte auditId → Fehler ohne Engine-Call', async () => {
