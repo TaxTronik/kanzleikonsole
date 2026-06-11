@@ -327,6 +327,8 @@ export const ACTION_LABELS: Record<string, string> = {
   'risk.research.submitted': 'Rechercheergebnis eingereicht',
   'risk.research.assigned': 'Rechercheergebnis zugeordnet',
   'risk.research.discarded': 'Rechercheergebnis verworfen',
+  'risk.los.beantragt': 'Quantenlos beantragt (QPU-Queue)',
+  'risk.los.gezogen': 'Quantenlos-Stichprobe gezogen',
 };
 
 export const RESOURCE_TYPE_LABELS: Record<string, string> = {
@@ -381,6 +383,7 @@ export const RESOURCE_TYPE_LABELS: Record<string, string> = {
   risk_marking: 'Markierung',
   risk_research_request: 'Rechercheauftrag',
   risk_research_result: 'Rechercheergebnis',
+  quantenlos: 'Quantenlos-Ziehung',
 };
 
 export function actionLabel(action: string): string {

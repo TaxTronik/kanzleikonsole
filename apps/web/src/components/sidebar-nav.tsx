@@ -25,6 +25,7 @@ import {
   IdCard,
   Mail,
   AlarmClock,
+  Dices,
 } from 'lucide-react';
 
 // Icons werden als String-Key übergeben (Server → Client darf keine
@@ -52,6 +53,7 @@ const ICONS = {
   IdCard,
   Mail,
   AlarmClock,
+  Dices,
 } as const;
 
 export type NavIcon = keyof typeof ICONS;

@@ -24,6 +24,8 @@ import {
   KatalogReviewResponseSchema,
   LlmStartResponseSchema,
   LlmStatusResponseSchema,
+  LosErgebnisSchema,
+  LosPruefenResponseSchema,
   OpaqueObjectSchema,
   type HealthResponse,
   type KatalogDefiniereResponse,
@@ -34,6 +36,10 @@ import {
   type KatalogReviewResponse,
   type LlmStartResponse,
   type LlmStatusResponse,
+  type LosBackend,
+  type LosErgebnis,
+  type LosNachweis,
+  type LosPruefenResponse,
   type OpaqueObject,
 } from './schema';
 import {
@@ -48,6 +54,9 @@ import {
 // auf einem langen Sachverhalt mehrere Minuten brauchen. 45 s war zu knapp.
 const FAST_TIMEOUT_MS = 10_000;
 const LLM_TIMEOUT_MS = 300_000;
+// Los-Pfad: die QPU-Submission (IBM-Roundtrip) bzw. die Online-Attestierung beim
+// Prüfen brauchen länger als der FAST-Pfad — bleiben aber deutlich unter LLM.
+const LOS_TIMEOUT_MS = 60_000;
 
 // Retry-Profile: idempotente/billige Calls dürfen wiederholen; teure (LLM) und
 // schreibende (definiere) NICHT.
@@ -252,6 +261,56 @@ export class RiskLayerClient {
       retry: FAST_RETRY,
     });
     return OpaqueObjectSchema.parse(raw);
+  }
+
+  // --- Quantenlos (blinde Compliance-Stichprobe, Engine 1.3.0) ---------------
+
+  /**
+   * `POST /v1/los/ziehen` — zieht eine beweisbar blinde Stichprobe (k aus dem
+   * Rahmen). KEIN Auto-Retry: ein Retry könnte einen zweiten QPU-Job einreihen
+   * (Doppel-Ziehung). `wartet` (QPU-Queue) ⇒ job_id merken und `losAbholen`.
+   */
+  async losZiehen(input: { rahmen: string[]; k: number; backend: LosBackend }): Promise<LosErgebnis> {
+    const raw = await this.request('POST', '/v1/los/ziehen', {
+      body: { rahmen: input.rahmen, k: input.k, backend: input.backend },
+      timeoutMs: LOS_TIMEOUT_MS,
+      retry: NO_RETRY,
+    });
+    return LosErgebnisSchema.parse(raw);
+  }
+
+  /**
+   * `POST /v1/los/abholen` — holt das Ergebnis eines wartenden QPU-Jobs ab.
+   * Idempotenter Poll (die Engine zieht nicht erneut) → retrybar. Antwortet
+   * weiter in der wartet-Form, solange der Job in der IBM-Queue liegt.
+   */
+  async losAbholen(input: { jobId: string; rahmen: string[]; k: number }): Promise<LosErgebnis> {
+    const raw = await this.request('POST', '/v1/los/abholen', {
+      body: { job_id: input.jobId, rahmen: input.rahmen, k: input.k },
+      timeoutMs: LOS_TIMEOUT_MS,
+      retry: FAST_RETRY,
+    });
+    return LosErgebnisSchema.parse(raw);
+  }
+
+  /**
+   * `POST /v1/los/pruefen` — verifiziert einen Nachweis gegen den Rahmen
+   * (Commitment, Ableitung; `online:true` zusätzlich die IBM-Job-Attestierung).
+   * Read-only/idempotent → retrybar.
+   */
+  async losPruefen(input: {
+    nachweis: LosNachweis;
+    rahmen: string[];
+    online?: boolean;
+  }): Promise<LosPruefenResponse> {
+    const body: Record<string, unknown> = { nachweis: input.nachweis, rahmen: input.rahmen };
+    if (input.online !== undefined) body.online = input.online;
+    const raw = await this.request('POST', '/v1/los/pruefen', {
+      body,
+      timeoutMs: LOS_TIMEOUT_MS,
+      retry: FAST_RETRY,
+    });
+    return LosPruefenResponseSchema.parse(raw);
   }
 
   // --- Health ---------------------------------------------------------------

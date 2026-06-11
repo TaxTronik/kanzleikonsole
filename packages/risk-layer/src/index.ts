@@ -41,7 +41,17 @@ export type {
   KatalogReviewResponse,
   LlmStatusResponse,
   LlmStartResponse,
+  LosBackend,
+  LosErgebnis,
+  LosNachweis,
+  LosPruefenResponse,
   OpaqueObject,
+} from './schema';
+export {
+  LosBackendSchema,
+  LosNachweisSchema,
+  LosErgebnisSchema,
+  LosPruefenResponseSchema,
 } from './schema';
 
 export { CircuitBreaker, CircuitOpenError, executeResilient, withRetry } from './resilience';

@@ -39,7 +39,7 @@ const allNavItems: NavConfig[] = [
   { href: '/staff/reports', label: 'Auswertungen', icon: 'BarChart3', moduleKey: 'bwa' },
 ];
 
-type AdminNavConfig = NavItem & { moduleKey?: 'workflows' | 'forms' };
+type AdminNavConfig = NavItem & { moduleKey?: 'workflows' | 'forms' | 'risk' };
 
 const allAdminNavItems: AdminNavConfig[] = [
   { href: '/staff/admin', label: 'Übersicht', icon: 'Shield', exact: true },
@@ -51,6 +51,7 @@ const allAdminNavItems: AdminNavConfig[] = [
   { href: '/staff/admin/email-templates', label: 'E-Mail-Vorlagen', icon: 'Mail' },
   { href: '/staff/admin/invoice-categories', label: 'Rechnungstypen', icon: 'Receipt' },
   { href: '/staff/admin/audit', label: 'Audit-Log', icon: 'Shield' },
+  { href: '/staff/admin/quantenlos', label: 'Quantenlos', icon: 'Dices', moduleKey: 'risk' },
   { href: '/staff/admin/archive', label: 'Audit-Archiv', icon: 'Archive' },
   { href: '/staff/admin/dsgvo', label: 'DSGVO', icon: 'Shield' },
   { href: '/staff/service-providers', label: 'Dienstleister (AVV)', icon: 'Building2' },

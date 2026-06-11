@@ -242,3 +242,80 @@ export const LlmStartResponseSchema = z
   .object({ ok: z.boolean().default(true), hinweis: z.string().nullish() })
   .catchall(z.unknown());
 export type LlmStartResponse = z.infer<typeof LlmStartResponseSchema>;
+
+// -----------------------------------------------------------------------------
+// Quantenlos (beweisbar blinde Compliance-Stichprobe) — Engine 1.3.0.
+// -----------------------------------------------------------------------------
+
+/** Zufallsquelle des Loses. `qpu` = echter IBM-Quantenprozessor (attestierbar
+ *  via job_id), `simulator`/`csprng` = Test/Fallback (NICHT attestierbar). */
+export const LosBackendSchema = z.enum(['qpu', 'simulator', 'csprng']);
+export type LosBackend = z.infer<typeof LosBackendSchema>;
+
+/** Entropie-Block des Nachweises. Permissiv (catchall): die Engine liefert je
+ *  nach Backend weitere Attestierungs-Felder (Kalibrierung, Shots …) — alles
+ *  bleibt im Nachweis erhalten; wir lesen nur die Anzeige-/Prüf-Felder. */
+const LosEntropieSchema = z
+  .object({
+    quelle_klasse: z.string(),
+    backend: z.string(),
+    /** IBM-Job-ID — nur bei `qpu` (öffentlich nachschlagbar, attestierbar). */
+    job_id: z.string().nullish(),
+    job_tags: z.array(z.string()).nullish(),
+    /** Bindung an die Roh-Messung (Counts-Hash) — Kern der Nachprüfbarkeit. */
+    roh_counts_sha256: z.string().nullish(),
+  })
+  .catchall(z.unknown());
+
+/**
+ * Los-Nachweis (protokoll_version 1): selbst-tragendes Beweisdokument der
+ * Ziehung. `rahmen.commitment` bindet an die Grundgesamtheit (Hash über die
+ * IDs — die Engine sieht NIE Inhalte), `stichprobe` sind die gezogenen IDs.
+ * Permissiv (catchall) — der Nachweis wird unverändert abgelegt/zurückgereicht.
+ */
+export const LosNachweisSchema = z
+  .object({
+    protokoll_version: z.number().int(),
+    gezogen_am: z.string(),
+    rahmen: z.object({ commitment: z.string(), n: z.number().int() }).catchall(z.unknown()),
+    k: z.number().int(),
+    stichprobe: z.array(z.string()),
+    entropie: LosEntropieSchema,
+    ableitung: z.object({ extraktor: z.string(), drbg: z.string() }).catchall(z.unknown()),
+  })
+  .catchall(z.unknown());
+export type LosNachweis = z.infer<typeof LosNachweisSchema>;
+
+/** Fertige Ziehung — der Nachweis liegt vor. */
+const LosFertigSchema = z
+  .object({ ok: z.literal(true), status: z.literal('fertig'), nachweis: LosNachweisSchema })
+  .catchall(z.unknown());
+
+/** QPU-Queue: der Job läuft noch — job_id merken und später `losAbholen`. */
+const LosWartetSchema = z
+  .object({
+    ok: z.literal(true),
+    status: z.literal('wartet'),
+    job_id: z.string(),
+    backend: z.string(),
+    commitment: z.string(),
+    k: z.number().int(),
+  })
+  .catchall(z.unknown());
+
+/** `POST /v1/los/ziehen` und `POST /v1/los/abholen` antworten beide in der
+ *  fertig- ODER wartet-Form (Fehler kommen als non-2xx → RiskLayerHttpError). */
+export const LosErgebnisSchema = z.discriminatedUnion('status', [LosFertigSchema, LosWartetSchema]);
+export type LosErgebnis = z.infer<typeof LosErgebnisSchema>;
+
+/** `POST /v1/los/pruefen` → Nachweis-Verifikation (offline; `online:true`
+ *  prüft zusätzlich die IBM-Job-Attestierung). */
+export const LosPruefenResponseSchema = z
+  .object({
+    ok: z.literal(true),
+    gueltig: z.boolean(),
+    geprueft: z.array(z.string()).default([]),
+    hinweise: z.array(z.string()).default([]),
+  })
+  .catchall(z.unknown());
+export type LosPruefenResponse = z.infer<typeof LosPruefenResponseSchema>;

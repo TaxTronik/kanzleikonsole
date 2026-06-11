@@ -79,3 +79,14 @@ export type { ResearchInput, ResearchPreview, InboundResult } from './research';
 
 export { scoreMarkingSuggestions, extractNormRefs } from './suggest';
 export type { MarkingSuggestion, ScoreableMarking } from './suggest';
+
+export {
+  buildLosRahmen, zieheLosStichprobe, holeLosAb, getPendingLos,
+  listLosZiehungen, pruefeLosNachweis,
+  LosRahmenLeerError, LosNachweisInkonsistentError,
+} from './los';
+export type {
+  LosZeitraum, PendingLos, LosZiehung, LosZiehungErgebnis,
+  LosStichprobeEintrag, LosPruefErgebnis,
+  LosZiehClient, LosAbholClient, LosPruefClient,
+} from './los';
