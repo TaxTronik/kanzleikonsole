@@ -3,9 +3,10 @@ import { loginAsAdmin } from './helpers/auth';
 
 test.describe('Auth-Flow', () => {
   test.skip(
-    !process.env['E2E_TOTP_SECRET'],
+    !process.env['E2E_TOTP_SECRET'] && !process.env['DEV_SKIP_TOTP'],
     'Setze E2E_TOTP_SECRET=… damit dieser Test laufen kann ' +
-      '(Wert siehst du beim ersten Login im UI unter dem QR-Code).',
+      '(Wert siehst du beim ersten Login im UI unter dem QR-Code). ' +
+      'Alternativ: DEV_SKIP_TOTP=true für Dev-Umgebung.',
   );
 
   test('Admin loggt sich ein und sieht Dashboard', async ({ page }) => {

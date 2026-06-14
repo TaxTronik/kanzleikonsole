@@ -1,11 +1,13 @@
 // =============================================================================
-// E2E-Helper: Login-Flow mit TOTP
+// E2E-Helper: Login-Flow mit TOTP (und DEV_SKIP_TOTP-Support)
 //
-// Wenn der Admin-User noch nie eingeloggt war (totpEnrolledAt=null),
-// erscheint der Setup-Schritt mit QR-Code. Wir extrahieren den Setup-Secret
-// aus der Seite (sichtbar in <code>...</code>), generieren das TOTP und
-// schließen das Enrollment ab. Bei späteren Logins reicht das gespeicherte
-// Secret (in `process.env.E2E_TOTP_SECRET`).
+// Wenn DEV_SKIP_TOTP=true gesetzt ist, entfällt der TOTP-Schritt komplett —
+// nach dem Passwort-Login landet man direkt auf dem Dashboard.
+//
+// Ohne DEV_SKIP_TOTP: Beim ersten Login erscheint der Setup-Schritt mit
+// QR-Code. Wir extrahieren den Setup-Secret (sichtbar in <code>...</code>),
+// generieren das TOTP und schließen das Enrollment ab. Bei späteren Logins
+// reicht das gespeicherte Secret (in `process.env.E2E_TOTP_SECRET`).
 // =============================================================================
 
 import { type Page, expect } from '@playwright/test';
@@ -15,12 +17,29 @@ export const ADMIN_EMAIL = process.env['E2E_ADMIN_EMAIL'] ?? 'admin@taxtronik.lo
 export const ADMIN_PASSWORD = process.env['E2E_ADMIN_PASSWORD'] ?? 'dev-password-123';
 
 export async function loginAsAdmin(page: Page): Promise<void> {
-  await page.goto('/staff/login');
+  // networkidle wartet, bis alle async Scripts geladen sind und React
+  // hydriert hat — load allein reicht bei Turbopack nicht.
+  await page.goto('/staff/login', { waitUntil: 'networkidle' });
 
   // Schritt 1: Passwort
   await page.getByLabel('E-Mail').fill(ADMIN_EMAIL);
   await page.getByLabel('Passwort').fill(ADMIN_PASSWORD);
   await page.getByRole('button', { name: /Weiter/ }).click();
+
+  // DEV_SKIP_TOTP: Nach Passwort direkt auf Dashboard — checkPasswordAction
+  // liefert devSkip:true, die UI triggert loginAction + window.location-Redirect.
+  // Das sind zwei Server Actions, daher grosszügiger Timeout.
+  const onDashboard = await page
+    .waitForURL(/\/staff\/dashboard/, { timeout: 15_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (onDashboard) return;
+
+  // Fallback: prüfen, ob auf der Staff-Login-Seite ein Fehler steht
+  const errorText = await page.locator('[role="alert"], .text-red-600, .text-red-500').first().textContent().catch(() => '');
+  if (errorText) {
+    throw new Error(`Login fehlgeschlagen: ${errorText} (URL: ${page.url()})`);
+  }
 
   // Wenn TOTP-Setup verlangt: Secret aus DOM lesen, durchklicken
   const setupVisible = await page

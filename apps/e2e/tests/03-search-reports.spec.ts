@@ -3,8 +3,8 @@ import { loginAsAdmin } from './helpers/auth';
 
 test.describe('Search + Reports', () => {
   test.skip(
-    !process.env['E2E_TOTP_SECRET'],
-    'Setze E2E_TOTP_SECRET=… damit dieser Test laufen kann.',
+    !process.env['E2E_TOTP_SECRET'] && !process.env['DEV_SKIP_TOTP'],
+    'Setze E2E_TOTP_SECRET=… oder DEV_SKIP_TOTP=true damit dieser Test laufen kann.',
   );
 
   test('Globale Suche findet Test-Mandant', async ({ page }) => {
