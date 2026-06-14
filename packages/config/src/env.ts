@@ -131,6 +131,18 @@ const envSchema = z.object({
   LICENSE_KEY: z.string().optional(),
   LICENSE_PUBLIC_KEY: z.string().optional(),
 
+  // --- Dev-Only: TOTP-Bypass ------------------------------------------------
+  // DEV_SKIP_TOTP umgeht die TOTP-Pflicht für Staff-Logins (nur mit Passwort
+  // einloggen). Greift NUR wenn NODE_ENV !== 'production'. In Produktion wird
+  // der Wert zur Sicherheit hart auf false normalisiert, selbst falls jemand
+  // ihn versehentlich setzt. Siehe apps/web/src/server/auth/staff.ts.
+  DEV_SKIP_TOTP: z
+    .preprocess(
+      (v) => (v === '' || v === undefined ? undefined : v),
+      z.union([z.literal('true'), z.literal('false')]).optional(),
+    )
+    .transform((s) => s === 'true'),
+
   // --- Optional: Cookie-Domain pro Surface (Subdomain-Trennung) -------------
   // Wenn gesetzt: Cookie wird für die Domain (statt host-only) ausgestellt.
   // Beispiel: STAFF_COOKIE_DOMAIN=staff.kanzlei.example.de
