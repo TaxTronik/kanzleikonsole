@@ -46,7 +46,7 @@ async function countDistinctFailIps(userId: string, ip: string | null): Promise<
 async function resetDistinctFailIps(userId: string): Promise<void> {
   const r = getRedis();
   if (!r) return;
-  try { await r.del(`staff-fail-ips:${userId}`); } catch { /* noop */ }
+  try { await r.del(`staff-fail-ips:${userId}`); } catch { console.warn('[lockout] Redis del für fail-ips fehlgeschlagen'); }
 }
 
 /**

@@ -195,6 +195,8 @@ function parseEnv(): Env {
       { key: 'AUTH_SECRET', value: 'secret' },
       { key: 'N8N_HMAC_SECRET', value: 'dev-only-hmac-secret-min-32-chars-long-xxx' },
       { key: 'N8N_ENCRYPTION_KEY', value: 'dev-only-n8n-encryption-key-xxxxxxxx' },
+      { key: 'POSTGRES_PASSWORD', value: 'taxtronik' },
+      { key: 'TAXTRONIK_APP_PASSWORD', value: 'taxtronik_app' },
     ];
     for (const { key, value } of DEV_DEFAULT_DENYLIST) {
       const actual = (parsed.data as Record<string, unknown>)[key] ?? process.env[key];

@@ -30,9 +30,11 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.5",
     "@eslint/js": "^10.0.1",
+    "@next/eslint-plugin-next": "^16.2.9",
     "@types/node": "^25.9.1",
     "dotenv": "^17.4.2",
     "eslint": "^10.4.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "prettier": "^3.8.3",
     "turbo": "^2.9.14",
     "typescript": "^6.0.3",

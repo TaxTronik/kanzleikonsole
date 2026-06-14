@@ -13,7 +13,8 @@
   "scripts": {
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "test": "echo 'Keine Tests'"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1053.0",

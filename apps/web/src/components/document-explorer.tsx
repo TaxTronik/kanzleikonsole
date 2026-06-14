@@ -403,7 +403,7 @@ function BrowserView({
     try {
       const items = JSON.parse(payloadRaw) as Sel[];
       moveSet(items.filter((i) => !(i.kind === 'folder' && i.id === target)), target);
-    } catch { /* ignore */ }
+    } catch { console.warn('[doc-explorer] Drag-Drop-Payload konnte nicht geparst werden'); }
   }
 
   function softDelete(id: string, name: string) {
@@ -472,7 +472,7 @@ function BrowserView({
           d.types.find((t) => t.tier === 'NONE')?.id ??
           d.types[0]?.id ?? '';
       }
-    } catch { /* ignore */ }
+    } catch { console.warn('[doc-explorer] Datei-Typ-Ermittlung fehlgeschlagen'); }
     if (!typeId) { ops.setOpError('Kein Datei-Typ verfügbar.'); return; }
     start(async () => {
       ops.setOpError(null);

@@ -318,7 +318,7 @@ async function main() {
     const expectedSha = await getExpectedSha(key);
     if (expectedSha) {
       if (expectedSha !== dl.sha) {
-        try { unlinkSync(dl.path); } catch { /* ignore */ }
+        try { unlinkSync(dl.path); } catch { console.warn('[restore] Temp-Datei konnte nicht gelöscht werden:', dl.path); }
         throw new Error(
           `Hash-Mismatch: erwartet ${expectedSha.slice(0, 16)}…, gelesen ${dl.sha.slice(0, 16)}…. ` +
           'Backup wurde nach Erstellung verändert (Tampering oder Storage-Defekt). Restore abgebrochen.',
@@ -336,7 +336,7 @@ async function main() {
 
   const empty = await targetIsEmpty(targetUrl);
   if (!empty && !args.confirmOverwrite) {
-    if (cleanup) { try { unlinkSync(path); } catch { /* ignore */ } }
+    if (cleanup) { try { unlinkSync(path); } catch { console.warn('[restore] Temp-Datei konnte nicht gelöscht werden:', path); } }
     process.stderr.write(
       'ZIEL-DB IST NICHT LEER. Restore würde bestehende Tabellen droppen+ersetzen.\n' +
       'Bitte erneut mit --confirm-overwrite aufrufen, wenn das gewollt ist.\n',
@@ -350,7 +350,7 @@ async function main() {
   } finally {
     // Nur heruntergeladene Temp-Dateien löschen — die --file-Quelle gehört dem
     // Anwender und bleibt erhalten.
-    if (cleanup) { try { unlinkSync(path); } catch { /* ignore */ } }
+    if (cleanup) { try { unlinkSync(path); } catch { console.warn('[restore] Temp-Datei konnte nicht gelöscht werden:', path); } }
   }
   process.stdout.write(`✓ Restore abgeschlossen.\n`);
 
