@@ -20,6 +20,12 @@ const AUTH_DIR = path.join(os.tmpdir(), 'taxtronik-e2e-auth');
 const STAFF_AUTH = path.join(AUTH_DIR, 'staff.json');
 const MANDANT_AUTH = path.join(AUTH_DIR, 'mandant.json');
 
+// Origin für CSRF-Header: aus ENV (CI-konfigurierbar) oder Dev-Default.
+// NICHT aus page.url() — das ist about:blank vor der ersten Navigation
+// und würde Origin: "null" setzen → CSRF-Check schlägt fehl → 403.
+const BASE_ORIGIN = process.env['E2E_BASE_URL'] ?? 'http://localhost:3000';
+const MANDANT_AUTH = path.join(AUTH_DIR, 'mandant.json');
+
 function createMinimalPdf(): Buffer {
   const pdf = [
     '%PDF-1.4', '1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj',
@@ -234,11 +240,10 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
-    const origin = new URL(page.url() || 'http://localhost:3000').origin;
     // Commit-Endpoint: multipart mit Datei, aber OHNE classification und
     // documentTypeId → Zod-.refine() schlägt fehl → 400.
     const res = await page.request.post('/api/staff/documents/commit', {
-      headers: { Origin: origin },
+      headers: { Origin: BASE_ORIGIN },
       multipart: {
         file: {
           name: 'no-type.pdf',
@@ -305,7 +310,6 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
-    const origin = new URL(page.url() || 'http://localhost:3000').origin;
     // Der Commit-Endpoint prüft deklarierte Content-Length VOR dem Puffern.
     // MAX_UPLOAD_BYTES = 100 * 1024 * 1024. Mit +1MB Marge → bei >101MB 413.
     // Wir schicken einen winzigen Body, lügen aber beim Content-Length-Header.
@@ -313,7 +317,7 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
     const fakeLargeLen = String(100 * 1024 * 1024 + 2 * 1024 * 1024);
     const res = await page.request.post('/api/staff/documents/commit', {
       headers: {
-        Origin: origin,
+        Origin: BASE_ORIGIN,
         'Content-Length': fakeLargeLen,
         'Content-Type': 'multipart/form-data; boundary=fake',
       },
@@ -1241,13 +1245,12 @@ test.describe.serial('File Upload Security — ClamAV & Validation', () => {
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
-    const origin = new URL(page.url() || 'http://localhost:3000').origin;
     const eicarBuffer = createEicarBuffer();
 
     // Authentifizierter POST an den echten Commit-Endpoint.
     // Kein .catch — wenn der Request wirft, muss der Test rot werden.
     const res = await page.request.post('/api/staff/documents/commit', {
-      headers: { Origin: origin },
+      headers: { Origin: BASE_ORIGIN },
       multipart: {
         file: {
           name: 'eicar-test.com',
@@ -1264,15 +1267,13 @@ test.describe.serial('File Upload Security — ClamAV & Validation', () => {
     expect(status, 'EICAR darf niemals mit 200 durchkommen').not.toBe(200);
     // 500 = Server-Crash, kein Schutz → auch rot
     expect(status, '500 ist ein Fehler, kein ClamAV-Schutz').not.toBe(500);
-    // Erwartet: 422 (INFECTED) von ClamAV. 400/401/403 sind akzeptable
-    // Vorab-Validierungen, aber 422 ist der Beweis dass ClamAV greift.
-    expect([400, 401, 403, 422]).toContain(status);
+    // Mit korrektem Origin + Auth MUSS ClamAV greifen → 422 INFECTED.
+    // 401/403 bedeuten Setup-Fehler (CSRF/Auth), kein ClamAV-Beweis.
+    expect(status, 'EICAR muss von ClamAV mit 422 abgelehnt werden').toBe(422);
 
-    // Wenn wir einen Body haben, sollte bei 422 "INFECTED" drinstehen
-    if (status === 422) {
-      const body = await res.json().catch(() => ({}));
-      expect(body.error ?? '').toMatch(/INFECTED/i);
-    }
+    // Body muss INFECTED enthalten
+    const body = await res.json().catch(() => ({}));
+    expect(body.error ?? '', 'Response-Body muss INFECTED-Präfix haben').toMatch(/INFECTED/i);
 
     await ctx.close();
   });
@@ -1285,12 +1286,11 @@ test.describe.serial('File Upload Security — ClamAV & Validation', () => {
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
-    const origin = new URL(page.url() || 'http://localhost:3000').origin;
     // Commit mit .pdf.exe Datei. Der Server ERKENNT den MIME via Magic Bytes
     // (PDF), speichert aber den Originalnamen sanitized. Wichtig: die Datei
     // darf nicht als application/x-msscan ausgeführt werden.
     const res = await page.request.post('/api/staff/documents/commit', {
-      headers: { Origin: origin },
+      headers: { Origin: BASE_ORIGIN },
       multipart: {
         file: {
           name: 'invoice.pdf.exe',

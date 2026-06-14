@@ -487,8 +487,8 @@ jobs:
           cat web.log
           exit 1
 
-      - name: Run E2E tests
-        run: pnpm --filter @taxtronik/e2e exec playwright test tests/
+      - name: Run E2E smoke tests
+        run: pnpm --filter @taxtronik/e2e exec playwright test tests/01-smoke.spec.ts
 
       # immer hochladen (nicht nur bei Fehlschlag): der Report ist der
       # E2E-Testnachweis je Lauf (Testkonzept Abschnitt 4).
@@ -535,6 +535,21 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+      # ClamAV für EICAR-Test (07-compliance 10.1)
+      clamav:
+        image: clamav/clamav:latest
+        ports:
+          - 3310:3310
+        options: >-
+          --health-interval 30s
+          --health-timeout 10s
+          --health-retries 15
+      # MailHog für Magic-Link-Tests
+      mailhog:
+        image: mailhog/mailhog:latest
+        ports:
+          - 8025:8025
+          - 1025:1025
     env:
       DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:5432/taxtronik?schema=public
       DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@localhost:5432/taxtronik?schema=public
@@ -542,6 +557,12 @@ jobs:
       ADMIN_PASSWORD: dev-password-123
       DEV_SKIP_TOTP: 'true'
       E2E_BASE_URL: http://127.0.0.1:3000
+      E2E_MAILHOG_URL: http://127.0.0.1:8025
+      CLAMAV_HOST: localhost
+      CLAMAV_PORT: '3310'
+      SMTP_HOST: localhost
+      SMTP_PORT: '1025'
+      SMTP_FROM: 'TaxTronik <noreply@example.de>'
       NODE_ENV: test
     steps:
       - uses: actions/checkout@v4
