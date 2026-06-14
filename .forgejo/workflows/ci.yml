@@ -535,7 +535,13 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
-      # ClamAV für EICAR-Test (07-compliance 10.1)
+      # MailHog für Magic-Link-Tests
+      mailhog:
+        image: mailhog/mailhog:latest
+        ports:
+          - 8025:8025
+          - 1025:1025
+      # ClamAV für EICAR-Test
       clamav:
         image: clamav/clamav:latest
         ports:
@@ -544,25 +550,6 @@ jobs:
           --health-interval 30s
           --health-timeout 10s
           --health-retries 15
-      # MailHog für Magic-Link-Tests
-      mailhog:
-        image: mailhog/mailhog:latest
-        ports:
-          - 8025:8025
-          - 1025:1025
-      # MinIO als S3-Object-Store (ersetzt SeaweedFS in CI)
-      minio:
-        image: minio/minio:latest
-        env:
-          MINIO_ROOT_USER: ci
-          MINIO_ROOT_PASSWORD: ci-secret
-        ports:
-          - 9000:9000
-        options: >-
-          --health-cmd "curl -sf http://localhost:9000/minio/health/ready || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
     env:
       DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:5432/taxtronik?schema=public
       DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@localhost:5432/taxtronik?schema=public
@@ -576,10 +563,10 @@ jobs:
       SMTP_HOST: localhost
       SMTP_PORT: '1025'
       SMTP_FROM: 'TaxTronik <noreply@example.de>'
-      S3_ENDPOINT: http://localhost:9000
+      S3_ENDPOINT: http://localhost:8333
       S3_REGION: us-east-1
       S3_ACCESS_KEY: ci
-      S3_SECRET_KEY: ci-secret
+      S3_SECRET_KEY: ci-secret-plus-thirtytwo-chars
       S3_BUCKET_GOBD: gobd
       S3_BUCKET_GWG: gwg
       S3_BUCKET_GENERAL: general
@@ -631,17 +618,57 @@ jobs:
           PGPASSWORD=taxtronik psql -h localhost -U taxtronik -d taxtronik -c \
             "UPDATE staff_user SET locked_until = NULL, failed_login_count = 0, totp_secret_enc = NULL, totp_enrolled_at = NULL WHERE email = 'admin@taxtronik.local';"
 
-      - name: Create S3 buckets (MinIO)
+      - name: Start SeaweedFS (same S3 engine as production)
         run: |
-          curl -sL https://dl.min.io/client/mc/release/linux-amd64/mc -o /usr/local/bin/mc
-          chmod +x /usr/local/bin/mc
-          mc alias set local http://localhost:9000 ci ci-secret
-          for b in gobd gwg general staff-private backup quarantine; do
-            mc mb "local/$b" || true
+          # S3-Config aus Template rendern
+          S3_ACCESS_KEY=ci S3_SECRET_KEY=ci-secret-plus-thirtytwo-chars
+          cat > /tmp/seaweedfs-s3.json << 'S3JSON'
+          {
+            "identities": [
+              {
+                "name": "taxtronik",
+                "credentials": [
+                  { "accessKey": "ci", "secretKey": "ci-secret-plus-thirtytwo-chars" }
+                ],
+                "actions": ["Admin","Read","Write","List","Tagging",
+                  "GetBucketAcl","PutBucketAcl","GetObjectAcl","PutObjectAcl",
+                  "GetObjectRetention","PutObjectRetention","GetObjectLegalHold",
+                  "PutObjectLegalHold","GetBucketObjectLockConfiguration",
+                  "PutBucketObjectLockConfiguration","GetBucketVersioning","PutBucketVersioning"]
+              }
+            ]
+          }
+          S3JSON
+
+          docker run -d --name seaweedfs-ci \
+            -p 8333:8333 -p 9333:9333 \
+            -v /tmp/seaweedfs-s3.json:/etc/seaweedfs/s3.json:ro \
+            chrislusf/seaweedfs:latest \
+            server -dir=/data -master.volumeSizeLimitMB=2048 \
+            -volume.max=0 -s3 -s3.config=/etc/seaweedfs/s3.json \
+            -s3.port=8333 -master.port=9333 -filer
+
+          # Wait for SeaweedFS health
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:9333/cluster/healthz >/dev/null 2>&1; then
+              echo "SeaweedFS ready"
+              break
+            fi
+            sleep 2
           done
-          # Object-Lock für GoBD- und GwG-Buckets (COMPLIANCE/GOVERNANCE)
-          mc retention --default governance "local/gobd" || true
-          mc retention --default governance "local/gwg" || true
+
+      - name: Create S3 buckets with Object-Lock (SeaweedFS, production-parity)
+        run: |
+          # Buckets mit Object-Lock (COMPLIANCE für GoBD/GwG).
+          # Kein || true — wenn Object-Lock fehlschlägt, ist das ein GoBD-Bruch.
+          docker run --rm --network host \
+            -e AWS_ACCESS_KEY_ID=ci \
+            -e AWS_SECRET_ACCESS_KEY=ci-secret-plus-thirtytwo-chars \
+            -e AWS_DEFAULT_REGION=us-east-1 \
+            -v $PWD/infra/scripts/init-storage.sh:/init-storage.sh:ro \
+            -e S3_ENDPOINT=http://localhost:8333 \
+            --entrypoint /bin/sh \
+            amazon/aws-cli:latest /init-storage.sh
 
       - name: Build web app
         run: pnpm --filter @taxtronik/web build

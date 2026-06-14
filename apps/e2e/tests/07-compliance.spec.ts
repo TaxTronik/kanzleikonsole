@@ -46,28 +46,29 @@ function createEicarBuffer(): Buffer {
 }
 
 // =============================================================================
-// FIX 3: Direkter DB-Zugriff (via docker exec psql) für echte Tenant-Isolation.
-// Erzeugt einen zweiten Tenant + Mandanten, dessen ID admin (Tenant A) NICHT
-// sehen dürfen — ein realer Cross-Tenant-Versuch statt einer erfundenen UUID.
+// FIX 3: Direkter DB-Zugriff für echte Tenant-Isolation.
+// Unterstützt BOTH: docker exec (lokales Dev) UND psql -h localhost (CI).
+// In CI läuft Postgres als Service-Container, nicht als docker-exec-barer Container.
 // =============================================================================
 const PG_CONTAINER = process.env['E2E_POSTGRES_CONTAINER'] ?? 'taxtronik-postgres';
 const PG_USER = process.env['E2E_POSTGRES_USER'] ?? 'taxtronik';
 const PG_DB = process.env['E2E_POSTGRES_DB'] ?? 'taxtronik';
+const PG_HOST = process.env['E2E_POSTGRES_HOST'] ?? 'localhost';
+const PG_PASSWORD = process.env['E2E_POSTGRES_PASSWORD'] ?? 'taxtronik';
+
+function buildPsqlCmd(query: string): string {
+  const escaped = query.replace(/'/g, "'\\''").replace(/\n/g, ' ');
+  // Versuche zuerst docker exec (lokal), fallback auf psql -h localhost (CI)
+  return `docker exec ${PG_CONTAINER} psql -U ${PG_USER} -d ${PG_DB} -t -A -c "${escaped.replace(/"/g, '\\"')}" 2>/dev/null || PGPASSWORD=${PG_PASSWORD} psql -h ${PG_HOST} -U ${PG_USER} -d ${PG_DB} -t -A -c '${escaped}'`;
+}
 
 function psql(query: string): string {
-  const escaped = query.replace(/"/g, '\\"').replace(/\n/g, ' ');
-  return execSync(
-    `docker exec ${PG_CONTAINER} psql -U ${PG_USER} -d ${PG_DB} -t -A -c "${escaped}"`,
-    { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] },
-  ).trim();
+  return execSync(buildPsqlCmd(query), { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
 }
 
 function psqlAvailable(): boolean {
   try {
-    execSync(
-      `docker exec ${PG_CONTAINER} psql -U ${PG_USER} -d ${PG_DB} -t -A -c "SELECT 1"`,
-      { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] },
-    );
+    execSync(buildPsqlCmd('SELECT 1'), { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
     return true;
   } catch {
     return false;
@@ -1203,101 +1204,70 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
 // SECTION 8: Magic Link Security
 // =============================================================================
 test.describe('Magic Link Security', () => {
-  test('8.1 Request magic link and verify it arrives in MailHog', async ({ page, request }) => {
+  test('8.1 Magic-Link-Anfrage liefert E-Mail in MailHog', async ({ page, request }) => {
     test.setTimeout(30_000);
 
+    // MailHog ist ein Pflichtservice im Paranoid-CI. Wenn er nicht erreichbar
+    // ist, ist das ein Infrastruktur-Fehler → FAIL, nicht skip.
+    const mailhogUrl = process.env['E2E_MAILHOG_URL'] ?? 'http://127.0.0.1:8025';
+    const mhCheck = await request.get(`${mailhogUrl}/api/v1/health`).catch(() => null);
+    expect(mhCheck, 'MailHog muss erreichbar sein (Pflichtservice)').not.toBeNull();
+
+    // Alte Mails löschen, damit wir sicher die neue Mail finden
+    await request.delete(`${mailhogUrl}/api/v1/messages`).catch(() => {});
+
     await page.goto('/portal/login', { waitUntil: 'networkidle' });
-    await page.waitForTimeout(1000);
-
-    const emailInput = page.getByLabel('E-Mail-Adresse');
-    const emailVisible = await emailInput.isVisible({ timeout: 5000 }).catch(() => false);
-    if (!emailVisible) {
-      test.skip(true, 'Portal login page not fully loaded');
-      return;
-    }
-
-    await emailInput.fill(PORTAL_EMAIL);
+    await page.getByLabel('E-Mail-Adresse').fill(PORTAL_EMAIL);
     await page.getByRole('button', { name: /Login-Link anfordern/i }).click();
 
-    const result = await Promise.race([
-      page.getByText(/Login-Link verschickt/i).waitFor({ state: 'visible', timeout: 10_000 }).then(() => 'success' as const),
-      page.getByText(/Zu viele Anfragen|Fehler|nicht gefunden/i).waitFor({ state: 'visible', timeout: 10_000 }).then(() => 'error' as const),
-      page.waitForTimeout(10_000).then(() => 'timeout' as const),
-    ]);
+    // Erfolgsmeldung MUSS erscheinen — SMTP/MailHog ist Pflicht
+    await expect(
+      page.getByText(/Login-Link verschickt/i),
+      'Magic-Link muss verschickt werden (SMTP muss funktionieren)',
+    ).toBeVisible({ timeout: 10_000 });
 
-    if (result === 'error') {
-      const errorText = await page.locator('text=/Zu viele Anfragen|Fehler|nicht gefunden/i').first().textContent().catch(() => '');
-      test.skip(true, `Magic link request failed: ${errorText}`);
-      return;
-    }
-    if (result === 'timeout') {
-      test.skip(true, 'Magic link request timed out (SMTP may not be running)');
-      return;
-    }
-
-    const mailhogUrl = process.env['E2E_MAILHOG_URL'] ?? 'http://127.0.0.1:8025';
-    await page.waitForTimeout(1000);
+    // Mail MUSS in MailHog ankommen
+    await page.waitForTimeout(2000);
     const res = await request.get(`${mailhogUrl}/api/v2/messages?limit=5`);
-
-    if (res.ok()) {
-      const data = await res.json();
-      const items = data.items ?? [];
-      const found = items.some((msg: any) => {
-        const headers = msg.Content?.Headers ?? {};
-        const to = Array.isArray(headers['To']) ? headers['To'].join(' ') : headers['To'] ?? '';
-        return to.includes(PORTAL_EMAIL);
-      });
-      expect(found).toBe(true);
-    } else {
-      test.skip(true, `MailHog not reachable at ${mailhogUrl}`);
-    }
+    expect(res.ok(), 'MailHog API muss antworten').toBe(true);
+    const data = await res.json();
+    const found = (data.items ?? []).some((msg: { Content?: { Headers?: Record<string, string[]> } }) => {
+      const headers = msg.Content?.Headers ?? {};
+      const to = Array.isArray(headers['To']) ? headers['To'].join(' ') : headers['To'] ?? '';
+      return to.includes(PORTAL_EMAIL);
+    });
+    expect(found, 'Magic-Link-Mail muss in MailHog für PORTAL_EMAIL ankommen').toBe(true);
   });
 
-  test('8.2 Magic link contains token parameter', async ({ page, request }) => {
+  test('8.2 Magic-Link-Mail enthält Token-Parameter', async ({ page, request }) => {
     test.setTimeout(30_000);
 
+    const mailhogUrl = process.env['E2E_MAILHOG_URL'] ?? 'http://127.0.0.1:8025';
+
     await page.goto('/portal/login', { waitUntil: 'networkidle' });
-    await page.waitForTimeout(1000);
-
-    const emailInput = page.getByLabel('E-Mail-Adresse');
-    const emailVisible = await emailInput.isVisible({ timeout: 5000 }).catch(() => false);
-    if (!emailVisible) {
-      test.skip(true, 'Portal login page not fully loaded');
-      return;
-    }
-
-    await emailInput.fill(PORTAL_EMAIL);
+    await page.getByLabel('E-Mail-Adresse').fill(PORTAL_EMAIL);
     await page.getByRole('button', { name: /Login-Link anfordern/i }).click();
 
-    const successVisible = await page.getByText(/Login-Link verschickt/i).isVisible({ timeout: 10_000 }).catch(() => false);
-    if (!successVisible) {
-      test.skip(true, 'Magic link request did not succeed (rate-limited or SMTP down)');
-      return;
-    }
+    await expect(page.getByText(/Login-Link verschickt/i)).toBeVisible({ timeout: 10_000 });
+    await page.waitForTimeout(2000);
 
-    await page.waitForTimeout(1000);
-    const mailhogUrl = process.env['E2E_MAILHOG_URL'] ?? 'http://127.0.0.1:8025';
     const res = await request.get(`${mailhogUrl}/api/v2/messages?limit=5`);
+    expect(res.ok(), 'MailHog API muss antworten').toBe(true);
 
-    if (res.ok()) {
-      const data = await res.json();
-      const items: Array<{ Content?: { Body?: string } }> = data.items ?? [];
-      let foundToken = false;
-
-      for (const msg of items) {
-        let body = msg.Content?.Body ?? '';
-        body = body.replace(/=\r?\n/g, '');
-        body = body.replace(/=3D/g, '=');
-        body = body.replace(/=EE=80=85/g, '');
-        if (body.includes('token=')) {
-          foundToken = true;
-          break;
-        }
+    const data = await res.json();
+    const items: Array<{ Content?: { Body?: string } }> = data.items ?? [];
+    let foundToken = false;
+    for (const msg of items) {
+      let body = msg.Content?.Body ?? '';
+      body = body.replace(/=\r?\n/g, '');
+      body = body.replace(/=3D/g, '=');
+      body = body.replace(/=EE=80=85/g, '');
+      if (body.includes('token=')) {
+        foundToken = true;
+        break;
       }
-      expect(foundToken).toBe(true);
-    } else {
-      test.skip(true, `MailHog not reachable at ${mailhogUrl}`);
     }
+    expect(foundToken, 'Magic-Link-Mail muss einen Token-Parameter enthalten').toBe(true);
   });
 
   test('8.3 Invalid/expired token fails gracefully', async ({ page }) => {
