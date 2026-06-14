@@ -12,6 +12,7 @@
 import { test, expect, type Browser, type Page } from '@playwright/test';
 import { loginAsAdmin, ADMIN_EMAIL } from './helpers/auth';
 import { loginAsMandant, requestMagicLink, PORTAL_EMAIL } from './helpers/portal-auth';
+import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -42,6 +43,35 @@ function createEicarBuffer(): Buffer {
     'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*',
     'utf-8',
   );
+}
+
+// =============================================================================
+// FIX 3: Direkter DB-Zugriff (via docker exec psql) für echte Tenant-Isolation.
+// Erzeugt einen zweiten Tenant + Mandanten, dessen ID admin (Tenant A) NICHT
+// sehen dürfen — ein realer Cross-Tenant-Versuch statt einer erfundenen UUID.
+// =============================================================================
+const PG_CONTAINER = process.env['E2E_POSTGRES_CONTAINER'] ?? 'taxtronik-postgres';
+const PG_USER = process.env['E2E_POSTGRES_USER'] ?? 'taxtronik';
+const PG_DB = process.env['E2E_POSTGRES_DB'] ?? 'taxtronik';
+
+function psql(query: string): string {
+  const escaped = query.replace(/"/g, '\\"').replace(/\n/g, ' ');
+  return execSync(
+    `docker exec ${PG_CONTAINER} psql -U ${PG_USER} -d ${PG_DB} -t -A -c "${escaped}"`,
+    { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] },
+  ).trim();
+}
+
+function psqlAvailable(): boolean {
+  try {
+    execSync(
+      `docker exec ${PG_CONTAINER} psql -U ${PG_USER} -d ${PG_DB} -t -A -c "SELECT 1"`,
+      { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] },
+    );
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // =============================================================================
@@ -131,7 +161,15 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
     }
 
     await page.waitForTimeout(2000);
-    await expect(page.locator('body')).toBeVisible();
+    // FIX 2: Statt body-visible — der Upload MUSS das Dokument in der Liste
+    // erzeugen. Sonst ist der Upload-Vorgang (GoBD §147 AO) fehlgeschlagen.
+    await page.goto('/staff/documents');
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForTimeout(2000);
+    await expect(
+      page.getByText('E2E Compliance Test Dokument').first(),
+      'Hochgeladenes Dokument muss nach Upload in der Dokumentenliste stehen',
+    ).toBeVisible({ timeout: 8000 });
     await ctx.close();
   });
 
@@ -186,18 +224,16 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
       await page.waitForTimeout(3000);
       expect(page.url()).not.toContain('/staff/login');
 
-      // The deleted view may not have explicit "gelöscht/Papierkorb" text;
-      // it may just show an empty state or a different heading
-      const deletedText = page.getByText(/gelöscht|Papierkorb|Keine|deleted/i);
-      const textVisible = await deletedText.first().isVisible({ timeout: 5000 }).catch(() => false);
-      if (!textVisible) {
-        // If no deleted items exist, the view still loaded — that's acceptable
-        await expect(page.locator('body')).toBeVisible();
-        test.skip(true, 'Deleted documents view empty or unstructured');
-      }
+      // FIX 2: Auch im Deleted-View muss eine konkrete Aussage treffen — die
+      // Seite lädt entweder den Papierkorb oder eine Leer-Meldung, nicht "body".
+      const deletedHeading = page.getByRole('heading', { name: /Dokumente|Papierkorb/i });
+      await expect(deletedHeading.first()).toBeVisible({ timeout: 5000 });
     }
 
-    await expect(page.locator('body')).toBeVisible();
+    // FIX 2: Nach Soft-Delete muss die Dokumenten-Übersicht noch geladen sein
+    // und darf nicht auf Login umgeleitet worden sein (Konkret statt body).
+    expect(page.url()).not.toContain('/staff/login');
+    await expect(page.getByRole('heading', { name: /Dokumente|Papierkorb|Mustermann/i }).first()).toBeVisible({ timeout: 5000 });
     await ctx.close();
   });
 
@@ -300,7 +336,15 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
       test.skip(true, 'No document to create new version for');
     }
 
-    await expect(page.locator('body')).toBeVisible();
+    // FIX 2: Wenn ein Version-Upload stattfand, muss die Detailseite Versions-
+    // Metadaten oder zumindest den SHA-256-Hash zeigen (GoBD-Integrität).
+    if (page.url().includes('/staff/documents/')) {
+      const integrityMarker = page.getByText(/SHA-256|Version|v[0-9]+/i);
+      await expect(integrityMarker.first()).toBeVisible({ timeout: 5000 });
+    } else {
+      // Kein Ziel-Dokument gefunden → seed-abhängig, aber Seite muss stabil sein.
+      expect(page.url()).not.toContain('/staff/login');
+    }
     await ctx.close();
   });
 
@@ -345,9 +389,11 @@ test.describe.serial('GwG §10-12 — Geldwäschegesetz-Compliance', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
+    // FIX 1: Admin MUSS die GwG-Pflichtlöschungs-Seite sehen (§ 8 GwG).
+    // Eine Umleitung auf Dashboard/Login ist ein RBAC-/Session-Fehler → FAIL.
     if (page.url().includes('/staff/dashboard') || page.url().includes('/staff/login')) {
-      test.skip(true, 'GwG retention page not accessible (redirected to dashboard/login)');
-      await ctx.close(); return;
+      await ctx.close();
+      throw new Error('Admin cannot access GwG retention page — RBAC or session issue');
     }
 
     const heading = page.getByRole('heading', { name: /GwG-Pflichtlöschung/i });
@@ -355,12 +401,15 @@ test.describe.serial('GwG §10-12 — Geldwäschegesetz-Compliance', () => {
     if (!headingVisible) {
       const hasContent = await page.getByText(/GwG|Belege|löschreif/i).first().isVisible({ timeout: 5000 }).catch(() => false);
       if (!hasContent) {
-        test.skip(true, 'GwG retention page content not found');
+        await ctx.close();
+        throw new Error('GwG retention page loaded but rendered no GwG content — page broken');
       }
     }
 
-    const retentionYearText = page.getByText(/5 Jahre|§ 8 Abs\. 4/i);
-    await expect(retentionYearText.first()).toBeVisible({ timeout: 5000 });
+    // FIX 4: Die Aufbewahrungsfrist MUSS „5 Jahre" (GwG § 8 Abs. 4) lauten —
+    // nicht irgendein GwG-Text. Eine abweichende Frist wäre ein Compliance-Bug.
+    const retentionYearText = page.getByText(/5\s?Jahre/);
+    await expect(retentionYearText.first(), 'GwG retention period must be "5 Jahre" (§ 8 Abs. 4 GwG)').toBeVisible({ timeout: 5000 });
 
     await ctx.close();
   });
@@ -394,7 +443,10 @@ test.describe.serial('GwG §10-12 — Geldwäschegesetz-Compliance', () => {
   test('2.3 GwG-Onboarding public page loads', async ({ page }) => {
     await page.goto('/gwg-onboarding');
     await page.waitForTimeout(2000);
-    await expect(page.locator('body')).toBeVisible();
+    // FIX 2: Kein body-visible — die öffentliche GwG-Onboarding-Seite muss
+    // GwG-relevanten Inhalt (Identifizierung/Geldwäsche) rendern.
+    const gwgContent = page.getByText(/GwG|Geldwäsche|Identifizierung|identifizieren/i);
+    await expect(gwgContent.first()).toBeVisible({ timeout: 5000 });
   });
 
   test('2.4 GwG verification workflow states are visible', async ({ browser }) => {
@@ -406,8 +458,10 @@ test.describe.serial('GwG §10-12 — Geldwäschegesetz-Compliance', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
+    // FIX 1: Admin-Seite — Umleitung ist ein Fehler, kein Skip.
     if (page.url().includes('/staff/dashboard') || page.url().includes('/staff/login')) {
-      test.skip(true, 'Admin dashboard not accessible'); await ctx.close(); return;
+      await ctx.close();
+      throw new Error('Admin cannot access admin dashboard — RBAC or session issue');
     }
 
     const gwgContent = page.getByText(/GwG|Geldwäsche/i);
@@ -433,9 +487,10 @@ test.describe.serial('DSGVO — Datenschutz-Grundverordnung', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
+    // FIX 1: DSGVO-Admin-Seite — Umleitung = RBAC/Session-Fehler → FAIL.
     if (page.url().includes('/staff/dashboard') || page.url().includes('/staff/login')) {
-      test.skip(true, 'DSGVO page not accessible (redirected to dashboard/login)');
-      await ctx.close(); return;
+      await ctx.close();
+      throw new Error('Admin cannot access DSGVO requests page — RBAC or session issue');
     }
 
     const heading = page.getByRole('heading', { name: /DSGVO-Anfragen/i });
@@ -445,7 +500,8 @@ test.describe.serial('DSGVO — Datenschutz-Grundverordnung', () => {
       if (hasContent) {
         await expect(page.getByText(/DSGVO|Auskunft/i).first()).toBeVisible();
       } else {
-        test.skip(true, 'DSGVO page content not found');
+        await ctx.close();
+        throw new Error('DSGVO requests page loaded but rendered no DSGVO content — page broken');
       }
     } else {
       await expect(heading).toBeVisible();
@@ -463,8 +519,10 @@ test.describe.serial('DSGVO — Datenschutz-Grundverordnung', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
+    // FIX 1: DSGVO-Retention-Anonymisierung — Admin MUSS zugreifen (Art. 17).
     if (page.url().includes('/staff/dashboard') || page.url().includes('/staff/login')) {
-      test.skip(true, 'DSGVO retention page not accessible'); await ctx.close(); return;
+      await ctx.close();
+      throw new Error('Admin cannot access DSGVO retention page — RBAC or session issue');
     }
 
     const heading = page.getByRole('heading', { name: /Anonymisierung/i });
@@ -474,7 +532,8 @@ test.describe.serial('DSGVO — Datenschutz-Grundverordnung', () => {
       if (hasContent) {
         await expect(page.getByText(/anonymisierungsrei|Anonymisierung/i).first()).toBeVisible();
       } else {
-        test.skip(true, 'DSGVO retention/anonymization page empty');
+        await ctx.close();
+        throw new Error('DSGVO retention page loaded but no anonymization content rendered');
       }
     } else {
       await expect(heading).toBeVisible();
@@ -497,8 +556,10 @@ test.describe.serial('DSGVO — Datenschutz-Grundverordnung', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
+    // FIX 1: Admin-Seite — Umleitung = Fehler.
     if (page.url().includes('/staff/dashboard') || page.url().includes('/staff/login')) {
-      test.skip(true, 'Admin page not accessible'); await ctx.close(); return;
+      await ctx.close();
+      throw new Error('Admin cannot access admin page — RBAC or session issue');
     }
 
     const dsgvoLink = page.getByRole('link', { name: /DSGVO/i });
@@ -530,9 +591,10 @@ test.describe.serial('Audit Trail — GoBD-Revisionssicherheit', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
+    // FIX 1: Audit-Log ist GoBD-pflichtig — Admin MUSS zugreifen.
     if (page.url().includes('/staff/dashboard') || page.url().includes('/staff/login')) {
-      test.skip(true, 'Audit page not accessible (redirected to dashboard/login)');
-      await ctx.close(); return;
+      await ctx.close();
+      throw new Error('Admin cannot access audit log page — RBAC or session issue');
     }
 
     const heading = page.getByRole('heading', { name: /Audit-Log/i });
@@ -540,7 +602,8 @@ test.describe.serial('Audit Trail — GoBD-Revisionssicherheit', () => {
     if (!headingVisible) {
       const hasContent = await page.getByText(/Hash-Chain|Prüfer-Link|Noch kein/).first().isVisible({ timeout: 5000 }).catch(() => false);
       if (!hasContent) {
-        test.skip(true, 'Audit page content not found');
+        await ctx.close();
+        throw new Error('Audit page loaded but rendered no audit content — page broken');
       }
     }
 
@@ -556,7 +619,8 @@ test.describe.serial('Audit Trail — GoBD-Revisionssicherheit', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
     if (page.url().includes('/staff/dashboard') || page.url().includes('/staff/login')) {
-      test.skip(true, 'Audit page not accessible'); await ctx.close(); return;
+      await ctx.close();
+      throw new Error('Admin cannot access audit log page — RBAC or session issue');
     }
 
     const thElements = page.locator('thead th');
@@ -567,7 +631,8 @@ test.describe.serial('Audit Trail — GoBD-Revisionssicherheit', () => {
       const hasTimestamp = headerTexts.some((h: string) => /Zeit|Datum/i.test(h));
       const hasAction = headerTexts.some((h: string) => /Action|Akteur/i.test(h));
       if (!hasTimestamp && !hasAction) {
-        test.skip(true, 'Audit table columns not as expected in headers');
+        await ctx.close();
+        throw new Error('Audit table missing Zeit/Action/Akteur columns — schema regression');
       }
     }
 
@@ -575,6 +640,47 @@ test.describe.serial('Audit Trail — GoBD-Revisionssicherheit', () => {
     const count = await rows.count().catch(() => 0);
     if (count > 0) {
       await expect(rows.first()).toBeVisible();
+    }
+
+    await ctx.close();
+  });
+
+  // FIX 4: Konkrete Action-Labels prüfen. Frühere Tests (Login, Document-Upload)
+  // erzeugen Audit-Einträge mit definierten Action-Typen. Diese MÜSSEN in der
+  // Tabelle auftauchen — sonst ist die Audit-Trail lückenhaft (GoBD-Verstoß).
+  test('4.2b Audit log contains specific action types from earlier tests', async ({ browser }) => {
+    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    const ctx = await browser.newContext({ storageState: STAFF_AUTH });
+    const page = await ctx.newPage();
+
+    // Der Login in „Login as admin" erzeugt auth.login.success; der Document-
+    // Upload in 1.1 erzeugt document.upload. Wir suchen über die Paginierung,
+    // bis wir mindestens eine der beiden Action-Label-Zeilen finden.
+    await page.goto('/staff/admin/audit');
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForTimeout(3000);
+    if (page.url().includes('/staff/dashboard') || page.url().includes('/staff/login')) {
+      await ctx.close();
+      throw new Error('Admin cannot access audit log page — RBAC or session issue');
+    }
+
+    const actionCell = page.locator('table tbody tr td:nth-child(4)');
+    const rowCount = await actionCell.count().catch(() => 0);
+    expect(rowCount, 'Audit-Tabelle muss Einträge aus früheren Tests enthalten').toBeGreaterThan(0);
+
+    const actions: string[] = [];
+    if (rowCount > 0) {
+      const texts = await actionCell.allInnerTexts().catch(() => [] as string[]);
+      actions.push(...texts.map((t) => t.trim()));
+    }
+
+    const hasLogin = actions.some((a) => a.includes('auth.login.success'));
+    const hasUpload = actions.some((a) => a.includes('document.upload'));
+    // auth.login.success MUSS da sein (Login ist Voraussetzung jedes Tests hier).
+    expect(hasLogin, 'Audit-Log muss auth.login.success enthalten (Login ist Test-Präfix)').toBe(true);
+    // document.upload nur, falls der Upload in 1.1 erfolgreich war (siehe 1.2).
+    if (hasUpload) {
+      // ok — zusätzlicher Beweis, dass der Audit-Trail Actions korrekt loggt.
     }
 
     await ctx.close();
@@ -589,7 +695,8 @@ test.describe.serial('Audit Trail — GoBD-Revisionssicherheit', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
     if (page.url().includes('/staff/dashboard') || page.url().includes('/staff/login')) {
-      test.skip(true, 'Audit page not accessible'); await ctx.close(); return;
+      await ctx.close();
+      throw new Error('Admin cannot access audit log page — RBAC or session issue');
     }
 
     const editButtons = page.locator('table tbody').getByRole('button', { name: /Bearbeiten|Edit|Ändern/i });
@@ -612,16 +719,14 @@ test.describe.serial('Audit Trail — GoBD-Revisionssicherheit', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
     if (page.url().includes('/staff/dashboard') || page.url().includes('/staff/login')) {
-      test.skip(true, 'Audit page not accessible'); await ctx.close(); return;
+      await ctx.close();
+      throw new Error('Admin cannot access audit log page — RBAC or session issue');
     }
 
+    // FIX 1: Hash-Chain-Banner ist GoBD-pflichtig — fehlt es, ist die Seite
+    // kaputt (kein Skip, sondern FAIL).
     const hashBanner = page.getByText(/Hash-Chain|Noch kein Prüfergebnis|Prüfer-Link/i);
-    const bannerVisible = await hashBanner.first().isVisible({ timeout: 5000 }).catch(() => false);
-    if (bannerVisible) {
-      await expect(hashBanner.first()).toBeVisible();
-    } else {
-      test.skip(true, 'Hash-Chain banner not found on audit page');
-    }
+    await expect(hashBanner.first(), 'Hash-Chain/Prüfergebnis-Banner muss auf Audit-Seite stehen').toBeVisible({ timeout: 5000 });
 
     await ctx.close();
   });
@@ -635,16 +740,14 @@ test.describe.serial('Audit Trail — GoBD-Revisionssicherheit', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
     if (page.url().includes('/staff/dashboard') || page.url().includes('/staff/login')) {
-      test.skip(true, 'Audit page not accessible'); await ctx.close(); return;
+      await ctx.close();
+      throw new Error('Admin cannot access audit log page — RBAC or session issue');
     }
 
+    // FIX 1: Prüfer-Link-Sektion ist Bestandteil der Audit-Seite. Fehlt sie,
+    // ist die Seite unvollständig → FAIL (kein Skip).
     const prueferLink = page.getByText(/Prüfer-Link/i);
-    const linkVisible = await prueferLink.isVisible({ timeout: 5000 }).catch(() => false);
-    if (linkVisible) {
-      await expect(prueferLink).toBeVisible();
-    } else {
-      test.skip(true, 'Prüfer-Link section not found');
-    }
+    await expect(prueferLink, 'Prüfer-Link-Sektion muss auf Audit-Seite vorhanden sein').toBeVisible({ timeout: 5000 });
 
     await ctx.close();
   });
@@ -653,7 +756,46 @@ test.describe.serial('Audit Trail — GoBD-Revisionssicherheit', () => {
 // =============================================================================
 // SECTION 5: Tenant Isolation (§203 StGB)
 // =============================================================================
+// FIX 3: Echte Mandantentrennung mit einem ZWEITEN Tenant. Eine erfundene UUID
+// (alter Test 5.2/5.3) beweist nur, dass Nicht-Existenz abgelehnt wird — nicht,
+// dass eine EXISTIERENDE fremde Mandant unsichtbar ist. Hier legen wir via psql
+// einen echten zweiten Tenant + Mandanten an und versuchen, als admin (Tenant A)
+// darauf zuzugreifen. §203 StGB verlangt strikte Trennung.
+let TENANT_B_CLIENT_ID: string | null = null;
+
 test.describe.serial('Tenant Isolation — §203 StGB Mandantentrennung', () => {
+  test.beforeAll(() => {
+    // Lege zweiten Tenant „Fremd Kanzlei" + Mandanten „Fremd Mandant GmbH" an.
+    // Wenn Postgres/Docker nicht erreichbar ist, wird der neue Test übersprungen
+    // (infra-abhängig) — aber 5.1–5.4 laufen weiterhin.
+    //
+    // Hinweis: Prisma @updatedAt hat keinen DB-Default → wir setzen updated_at
+    // explizit. created_at hat @default(now()) und wird von Postgres gefüllt.
+    if (!psqlAvailable()) return;
+    try {
+      psql(
+        `INSERT INTO tenant (slug, name, updated_at) ` +
+          `VALUES ('fremd-kanzlei', 'Fremd Kanzlei', now()) ` +
+          `ON CONFLICT (slug) DO NOTHING`,
+      );
+      const tenantBId = psql(`SELECT id FROM tenant WHERE slug = 'fremd-kanzlei'`);
+      if (!tenantBId) return;
+      psql(
+        // allow_active=false: ein frischer Mandant ohne verifizierten GwG-Check
+        // darf nicht aktiv sein (DB-Trigger »allow_active erfordert gwg_check«).
+        // Für den Tenant-Isolation-Test reicht Existenz in Tenant B.
+        `INSERT INTO client (tenant_id, kind, name, allow_active, updated_at) ` +
+          `VALUES ('${tenantBId}', 'JURPERS', 'Fremd Mandant GmbH', false, now()) ` +
+          `ON CONFLICT DO NOTHING`,
+      );
+      TENANT_B_CLIENT_ID = psql(
+        `SELECT id FROM client WHERE tenant_id = '${tenantBId}' AND name = 'Fremd Mandant GmbH'`,
+      );
+    } catch {
+      TENANT_B_CLIENT_ID = null;
+    }
+  });
+
   test('5.1 Admin only sees own tenant clients', async ({ browser }) => {
     if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
@@ -665,6 +807,12 @@ test.describe.serial('Tenant Isolation — §203 StGB Mandantentrennung', () => 
     expect(page.url()).not.toContain('/staff/login');
 
     await expect(page.getByText('Mustermann GmbH').first()).toBeVisible({ timeout: 8000 });
+    // FIX 3: Fremd-Mandant aus Tenant B darf in Tenant As Liste NICHT auftauchen.
+    if (TENANT_B_CLIENT_ID) {
+      const foreignLeak = page.getByText('Fremd Mandant GmbH');
+      const leaked = await foreignLeak.isVisible({ timeout: 2000 }).catch(() => false);
+      expect(leaked, 'Fremder Mandant (Tenant B) darf in Tenant As Client-Liste nicht sichtbar sein').toBe(false);
+    }
 
     await ctx.close();
   });
@@ -710,6 +858,45 @@ test.describe.serial('Tenant Isolation — §203 StGB Mandantentrennung', () => 
     await ctx.close();
   });
 
+  // FIX 3: Der echte Cross-Tenant-Test. Tenant B hat einen existierenden
+  // Mandanten (oben per psql angelegt). Admin (Tenant A) darf ihn über UI UND
+  // API nicht sehen — sonst §203 StGB-Verstoß (Datenleck an fremde Kanzlei).
+  test('5.3b Real cross-tenant access to existing Tenant-B client is blocked', async ({ browser }) => {
+    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!TENANT_B_CLIENT_ID) {
+      test.skip(true, 'Tenant B / Postgres not available (infra-dependent)');
+      return;
+    }
+    const ctx = await browser.newContext({ storageState: STAFF_AUTH });
+    const page = await ctx.newPage();
+
+    // (1) UI-Versuch: /staff/clients/<Tenant-B-Client-ID>
+    const uiRes = await page.goto(`/staff/clients/${TENANT_B_CLIENT_ID}`);
+    await page.waitForTimeout(2000);
+    const uiStatus = uiRes?.status() ?? 200;
+    expect(uiStatus, 'UI darf fremden Mandanten nicht mit 200 ausliefern (§203 StGB)').not.toBe(200);
+    // 404 oder Redirect (302) auf Dashboard/Login — niemals 200 mit Fremddaten.
+    expect([403, 404, 302]).toContain(uiStatus);
+
+    // Falls kein Redirect: sicherstellen, dass KEINE Fremddaten gerendert werden.
+    if (!page.url().includes('/staff/login') && !page.url().includes('/staff/dashboard')) {
+      const foreignData = page.getByText('Fremd Mandant GmbH');
+      const leaked = await foreignData.isVisible({ timeout: 2000 }).catch(() => false);
+      expect(leaked, 'Fremder Mandantenname darf nicht im DOM auftauchen').toBe(false);
+      const notFoundText = page.getByText(/nicht gefunden|404|Not Found/i);
+      await expect(notFoundText.first()).toBeVisible({ timeout: 3000 });
+    }
+
+    // (2) API-Versuch: GET /api/staff/clients/<Tenant-B-Client-ID>/export
+    const apiRes = await page.request.get(`/api/staff/clients/${TENANT_B_CLIENT_ID}/export`, {
+      headers: { Origin: BASE_ORIGIN },
+    });
+    expect(apiRes.status(), 'API darf fremden Mandanten nicht exportieren (§203 StGB)').not.toBe(200);
+    expect([401, 403, 404]).toContain(apiRes.status());
+
+    await ctx.close();
+  });
+
   test('5.4 Health endpoint shows DB connectivity (indirect RLS check)', async ({ browser }) => {
     if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
@@ -733,17 +920,22 @@ test.describe.serial('Tenant Isolation — §203 StGB Mandantentrennung', () => 
 // SECTION 6: Session & Cookie Security
 // =============================================================================
 test.describe('Session & Cookie Security', () => {
+  // FIX 4: Der exakte Staff-Session-Cookie-Name (Single Source of Truth:
+  // apps/web/src/server/auth/session-cookie.ts). In Dev: __taxtronik_staff_session.
+  const STAFF_COOKIE_RE = /^(__Host-|__Secure-|__)?taxtronik[_-]?staff/i;
+
   test('6.1 Login sets session cookie', async ({ page }) => {
     test.setTimeout(60_000);
     await loginAsAdmin(page);
     await expect(page).toHaveURL(/\/staff\/dashboard/, { timeout: 15_000 });
 
     const cookies = await page.context().cookies();
-    const sessionCookie = cookies.find((c) => c.name.includes('taxtronik') || c.name.includes('staff'));
-    expect(sessionCookie).toBeDefined();
+    const sessionCookie = cookies.find((c) => STAFF_COOKIE_RE.test(c.name));
+    expect(sessionCookie, 'Login muss ein taxtronik*staff Session-Cookie setzen').toBeDefined();
 
     if (sessionCookie) {
-      expect(sessionCookie.name).toMatch(/taxtronik.*staff|staff.*taxtronik/i);
+      // FIX 4: Cookie-Name MUSS dem taxtronik*staff-Muster entsprechen.
+      expect(sessionCookie.name).toMatch(STAFF_COOKIE_RE);
       expect(sessionCookie.httpOnly).toBe(true);
       expect(['lax', 'strict', 'Lax', 'Strict']).toContain(sessionCookie.sameSite);
     }
@@ -754,24 +946,32 @@ test.describe('Session & Cookie Security', () => {
     await loginAsAdmin(page);
     await expect(page).toHaveURL(/\/staff\/dashboard/, { timeout: 15_000 });
 
+    const cookiesBefore = await page.context().cookies();
+    const sessionCookie = cookiesBefore.find((c) => STAFF_COOKIE_RE.test(c.name));
+    expect(sessionCookie, 'Session-Cookie muss vor Logout existieren').toBeDefined();
+    const cookieName = sessionCookie?.name;
+
     const logoutBtn = page.getByRole('button', { name: /Abmelden/i });
     const logoutVisible = await logoutBtn.isVisible({ timeout: 5000 }).catch(() => false);
 
     if (logoutVisible) {
       await logoutBtn.click();
       await page.waitForTimeout(2000);
-
-      if (page.url().includes('/staff/login')) {
-        const cookies = await page.context().cookies();
-        const sessionCookie = cookies.find((c) => c.name.includes('taxtronik') || c.name.includes('staff'));
-        if (sessionCookie) {
-          expect(sessionCookie.value).toBeFalsy();
-        }
-      }
     } else {
       await page.goto('/staff/logout');
       await page.waitForTimeout(2000);
     }
+
+    // FIX 4: Nach Logout MUSS das konkrete Session-Cookie weg sein — nicht nur
+    // „body visible". Wir prüfen beim exakten Namen, dass Wert leer/Setup-Cookie
+    // entfernt wurde.
+    expect(page.url()).toContain('/staff/login');
+    const cookiesAfter = await page.context().cookies();
+    const after = cookiesAfter.find((c) => c.name === cookieName);
+    expect(
+      after?.value,
+      `Session-Cookie „${cookieName}" muss nach Logout geleert/gelöscht sein`,
+    ).toBeFalsy();
   });
 
   test('6.3 Protected routes redirect to login when session expires', async ({ page }) => {
@@ -805,12 +1005,17 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
     if (headingVisible) {
       await expect(heading).toBeVisible();
 
+      // FIX 1: EXTERNAL-Modus (zentrale Rechnungssoftware) ist der EINZIG
+      // gültige Skip-Grund für Rechnungs-Tests (config-abhängig).
       const external = await page.getByText(/zentraler Rechnungssoftware/).isVisible({ timeout: 2000 }).catch(() => false);
       if (external) {
         test.skip(true, 'Invoice mode is EXTERNAL — skipping inline creation');
       }
     } else {
-      test.skip(true, 'Invoice creation page not accessible');
+      // FIX 1: Wenn die Seite OHNE EXTERNAL-Hinweis nicht lädt, ist das ein Bug
+      // (admin sollte die Rechnungsseite sehen) → FAIL statt Skip.
+      await ctx.close();
+      throw new Error('Invoice creation page not accessible for admin and not in EXTERNAL mode — page broken or RBAC issue');
     }
 
     await ctx.close();
@@ -825,21 +1030,25 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
+    // FIX 1: Redirect auf Login (Session kaputt) oder Dashboard (Feature für
+    // admin gesperrt) ist ein Fehler — kein Skip. EXTERNAL wird unten geprüft.
     if (page.url().includes('/staff/login') || page.url().includes('/staff/dashboard')) {
-      test.skip(true, 'Invoice creation not accessible (redirect to login/dashboard/off)');
-      await ctx.close(); return;
+      await ctx.close();
+      throw new Error('Admin cannot access invoice creation page — RBAC/session/feature-flag issue');
     }
 
     const isExternal =
       (await page.getByText(/zentraler Rechnungssoftware/).isVisible({ timeout: 2000 }).catch(() => false)) ||
       (await page.getByText(/PDF-Rechnung hochladen/).isVisible({ timeout: 2000 }).catch(() => false));
     if (isExternal) {
+      // FIX 1: EXTERNAL-Modus ist der gültige config-abhängige Skip-Grund.
       test.skip(true, 'Invoice mode is EXTERNAL — no inline creation (GoBD §146 Abs. 2)');
       await ctx.close(); return;
     }
 
     const noClients = await page.getByText(/Keine aktiven Mandanten/).isVisible({ timeout: 2000 }).catch(() => false);
     if (noClients) {
+      // FIX 1: GwG-Schranke (keine verifizierten Mandanten) — config-/seed-abhängig.
       test.skip(true, 'No active clients for invoice creation (GwG-Schranke)');
       await ctx.close(); return;
     }
@@ -847,8 +1056,9 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
     const subjectInput = page.locator('#subject');
     const subjectReady = await subjectInput.isVisible({ timeout: 8000 }).catch(() => false);
     if (!subjectReady) {
-      test.skip(true, 'Invoice form #subject field not found (EXTERNAL mode or slow render)');
-      await ctx.close(); return;
+      // FIX 1: Weder EXTERNAL noch „keine Mandanten", aber #subject fehlt → Bug.
+      await ctx.close();
+      throw new Error('Invoice form #subject field not found (not EXTERNAL, clients exist) — form regression');
     }
 
     await page.locator('#clientId').selectOption({ label: 'Mustermann GmbH' });
@@ -1229,7 +1439,12 @@ test.describe.serial('Input Validation — XSS/SQL Injection', () => {
     await searchInput.press('Enter');
     await page.waitForTimeout(2000);
 
-    await expect(page.locator('body')).toBeVisible();
+    // FIX 2: Statt body-visible — die Suche darf keinen Server-Fehler auslösen
+    // und die Mandanten-Seite muss funktionsfähig bleiben (keine Leerseite).
+    const crashError = page.getByText(/SQL|syntax error|pg_|Something went wrong|Internal Server/i);
+    const crashed = await crashError.first().isVisible({ timeout: 2000 }).catch(() => false);
+    expect(crashed, 'Sehr lange Eingabe darf keinen Server-Fehler auslösen').toBe(false);
+    await expect(page.getByRole('heading', { name: /Mandanten|Clients/i }).first()).toBeVisible({ timeout: 5000 });
 
     await ctx.close();
   });
@@ -1343,21 +1558,18 @@ test.describe.serial('File Upload Security — ClamAV & Validation', () => {
 test.describe('Authorization & RBAC', () => {
   test('11.1 Admin can access admin routes', async ({ page }) => {
     test.setTimeout(60_000);
-    try {
-      await loginAsAdmin(page);
-    } catch {
-      test.skip(true, 'Admin login failed (account locked or TOTP required)');
-      return;
-    }
+    // FIX 1: Login-Fehler ist ein echter Fehler (DEV_SKIP_TOTP=true gesetzt) —
+    // kein Skip, der eine kaputte Auth-Grundlage versteckt.
+    await loginAsAdmin(page);
     await expect(page).toHaveURL(/\/staff\/dashboard/, { timeout: 15_000 });
 
     await page.goto('/staff/admin');
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
+    // FIX 1: admin@… MUSS die Admin-Rolle haben. Redirect = RBAC-Bug → FAIL.
     if (page.url().includes('/staff/dashboard') || page.url().includes('/staff/login')) {
-      test.skip(true, 'Admin not ADMIN role (redirected)');
-      return;
+      throw new Error('Admin account lacks ADMIN role — redirected away from /staff/admin');
     }
 
     const adminHeading = page.getByRole('heading', { name: /Administration/i });
@@ -1381,12 +1593,8 @@ test.describe('Authorization & RBAC', () => {
 
   test('11.3 Admin sees DSGVO settings in sidebar', async ({ page }) => {
     test.setTimeout(60_000);
-    try {
-      await loginAsAdmin(page);
-    } catch {
-      test.skip(true, 'Admin login failed (account locked or TOTP required)');
-      return;
-    }
+    // FIX 1: Login muss funktionieren (DEV_SKIP_TOTP) — kein Skip bei Fehler.
+    await loginAsAdmin(page);
     await expect(page).toHaveURL(/\/staff\/dashboard/, { timeout: 15_000 });
 
     const dsgvoLink = page.getByRole('link', { name: /DSGVO/i });
@@ -1412,18 +1620,15 @@ test.describe.serial('Backup & Restore — §147 AO Compliance', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
+    // FIX 1: Admin-Seite — Umleitung = Fehler (§147 AO Backup-Transparenz).
     if (page.url().includes('/staff/dashboard') || page.url().includes('/staff/login')) {
-      test.skip(true, 'Admin page not accessible'); await ctx.close(); return;
+      await ctx.close();
+      throw new Error('Admin cannot access admin dashboard — RBAC or session issue');
     }
 
+    // FIX 1: Backup-Info ist §147 AO-pflichtig — fehlt sie ganz, FAIL statt Skip.
     const backupText = page.getByText(/Backup|Sicherung|gesichert|Restore/i);
-    const backupVisible = await backupText.first().isVisible({ timeout: 5000 }).catch(() => false);
-
-    if (backupVisible) {
-      await expect(backupText.first()).toBeVisible();
-    } else {
-      test.skip(true, 'Backup info not found on admin dashboard');
-    }
+    await expect(backupText.first(), 'Admin-Dashboard muss Backup/Restore-Info zeigen (§147 AO)').toBeVisible({ timeout: 5000 });
 
     await ctx.close();
   });
@@ -1437,17 +1642,15 @@ test.describe.serial('Backup & Restore — §147 AO Compliance', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
+    // FIX 1: Audit-Archiv ist GoBD-pflichtig — Umleitung = Fehler.
     if (page.url().includes('/staff/dashboard') || page.url().includes('/staff/login')) {
-      test.skip(true, 'Audit archive not accessible'); await ctx.close(); return;
+      await ctx.close();
+      throw new Error('Admin cannot access audit archive page — RBAC or session issue');
     }
 
+    // FIX 1: Archiv-Heading muss da sein — kein Skip bei „nicht gefunden".
     const heading = page.getByRole('heading', { name: /Archiv|Audit-Archiv/i });
-    const headingVisible = await heading.isVisible({ timeout: 5000 }).catch(() => false);
-    if (headingVisible) {
-      await expect(heading).toBeVisible();
-    } else {
-      test.skip(true, 'Audit archive heading not found');
-    }
+    await expect(heading.first(), 'Audit-Archiv muss eine Archiv-Überschrift haben').toBeVisible({ timeout: 5000 });
 
     await ctx.close();
   });

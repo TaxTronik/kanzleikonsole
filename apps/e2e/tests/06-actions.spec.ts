@@ -114,11 +114,17 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
       }
     }
 
-    await expect(page.locator('body')).toBeVisible();
+    // FIX 2: Statt body-visible — das hochgeladene Dokument MUSS in der Liste
+    // erscheinen, sonst ist der Upload-Vorgang fehlgeschlagen.
+    await page.goto('/staff/documents');
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForTimeout(2000);
+    await expect(
+      page.getByText('E2E Test Dokument').first(),
+      'Hochgeladenes Dokument muss in der Dokumentenliste sichtbar sein',
+    ).toBeVisible({ timeout: 8000 });
     await ctx.close();
   });
-
-  // 2. Document Sharing
   test('Share a document with the client', async ({ browser }) => {
     if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
@@ -189,8 +195,9 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     const heading = page.getByRole('heading', { name: /Neue Rechnung|PDF-Rechnung/ }).first();
     const headingVisible = await heading.isVisible({ timeout: 5000 }).catch(() => false);
     if (!headingVisible) {
-      test.skip(true, 'Invoice creation page heading not found (EXTERNAL mode or unavailable)');
-      await ctx.close(); return;
+      // FIX 1: Weder EXTERNAL noch Heading → Seiten-Bug/RBAC-Fehler → FAIL.
+      await ctx.close();
+      throw new Error('Invoice creation page heading not found (not in EXTERNAL mode) — page broken or RBAC issue');
     }
 
     await page.locator('#clientId').selectOption({ label: 'Mustermann GmbH' });
@@ -236,7 +243,12 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     await btn.click();
     await page.waitForTimeout(3000);
 
-    await expect(page.locator('body')).toBeVisible();
+    // FIX 2: Statt body-visible — der Termin MUSS im Kalender/der Liste
+    // auftauchen, sonst wurde er nicht persistiert.
+    await expect(
+      page.getByText('E2E Test Termin').first(),
+      'Erstellter Termin muss im Kalender sichtbar sein',
+    ).toBeVisible({ timeout: 5000 });
     await ctx.close();
   });
 
@@ -359,7 +371,12 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     await s.click();
     await page.waitForTimeout(3000);
 
-    await expect(page.locator('body')).toBeVisible();
+    // FIX 2: Statt body-visible — die Telefonnotiz MUSS auf der Mandanten-
+    // detailseite erscheinen, sonst wurde sie nicht gespeichert.
+    await expect(
+      page.getByText('E2E Test Anruf').first(),
+      'Telefonnotiz „E2E Test Anruf" muss nach dem Anlegen sichtbar sein',
+    ).toBeVisible({ timeout: 5000 });
     await ctx.close();
   });
 
@@ -431,7 +448,17 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     await expect(stopBtn2).toBeVisible({ timeout: 5000 });
     await stopBtn2.click();
     await page.waitForTimeout(1500);
-    await expect(page.locator('body')).toBeVisible();
+    // FIX 2: Statt body-visible — nach Stoppen muss der Timer beendet sein:
+    // der „Timer starten"-Button ist wieder sichtbar und der erfasste Eintrag
+    // taucht in der Zeiterfassungs-Liste auf.
+    await expect(
+      page.getByRole('button', { name: /Timer starten/ }),
+      'Nach Stoppen muss „Timer starten" wieder verfügbar sein',
+    ).toBeVisible({ timeout: 5000 });
+    await expect(
+      page.getByText('E2E Test Zeiterfassung').first(),
+      'Gestoppter Zeiteintrag muss in der Liste erscheinen',
+    ).toBeVisible({ timeout: 5000 });
     await ctx.close();
   });
 
@@ -465,13 +492,18 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
+    // FIX 1: Audit-Log ist GoBD-pflichtig — admin MUSS zugreifen. Redirect = Fehler.
     if (page.url().includes('/staff/dashboard') || page.url().includes('/staff/login')) {
-      test.skip(true, 'Audit page not accessible (redirected to dashboard/login)');
-      await ctx.close(); return;
+      await ctx.close();
+      throw new Error('Admin cannot access audit page — RBAC or session issue');
     }
 
-    // At minimum, audit page body must be visible
-    await expect(page.locator('body')).toBeVisible();
+    // FIX 2: Statt body-visible — die Audit-Seite MUSS die Audit-Tabelle oder
+    // eine Leer-Meldung rendern (konkretes Seiten-Element).
+    const auditContent = page.getByRole('heading', { name: /Audit-Log/i }).or(
+      page.getByText(/Keine Einträge|Hash-Chain/i).first(),
+    );
+    await expect(auditContent.first()).toBeVisible({ timeout: 5000 });
 
     const rows = page.locator('table tbody tr');
     const count = await rows.count().catch(() => 0);
@@ -516,7 +548,10 @@ test.describe('Portal Actions', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
     await expect(page.getByRole('heading', { name: /Dokumente/ })).toBeVisible({ timeout: 8000 });
-    await expect(page.locator('body')).toBeVisible();
+    // FIX 2: Statt body-visible — die Dokumenten-Seite MUSS eine Tabelle oder
+    // Leer-Meldung zeigen (kein bloßer Body-Check).
+    const docsContent = page.locator('table').or(page.getByText(/Keine Dokumente|noch keine Dokumente/i));
+    await expect(docsContent.first()).toBeVisible({ timeout: 5000 });
     await ctx.close();
   });
 
@@ -529,7 +564,10 @@ test.describe('Portal Actions', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
     await expect(page.getByRole('heading', { name: /Anforderungen/ })).toBeVisible({ timeout: 8000 });
-    await expect(page.locator('body')).toBeVisible();
+    // FIX 2: Statt body-visible — die Anforderungs-Seite MUSS konkreten
+    // Inhalt (Tabelle/Leer-Meldung) rendern.
+    const reqContent = page.locator('table').or(page.getByText(/Keine Anforder/i));
+    await expect(reqContent.first()).toBeVisible({ timeout: 5000 });
     await ctx.close();
   });
 
@@ -565,7 +603,10 @@ test.describe('Portal Actions', () => {
     await s.click();
     await page.waitForTimeout(4000);
 
-    await expect(page.locator('body')).toBeVisible();
+    // FIX 2: Statt body-visible — die Terminanfrage MUSS bestätigt werden
+    // (Erfolgs-Meldung oder der Betreff erscheint in der Anfrage-Liste).
+    const confirmation = page.getByText(/E2E Test Terminanfrage|erfolgreich|versendet|angefragt/i);
+    await expect(confirmation.first(), 'Terminanfrage muss bestätigt oder gelistet werden').toBeVisible({ timeout: 5000 });
     await ctx.close();
   });
 });

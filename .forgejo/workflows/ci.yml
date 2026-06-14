@@ -550,6 +550,19 @@ jobs:
         ports:
           - 8025:8025
           - 1025:1025
+      # MinIO als S3-Object-Store (ersetzt SeaweedFS in CI)
+      minio:
+        image: minio/minio:latest
+        env:
+          MINIO_ROOT_USER: ci
+          MINIO_ROOT_PASSWORD: ci-secret
+        ports:
+          - 9000:9000
+        options: >-
+          --health-cmd "curl -sf http://localhost:9000/minio/health/ready || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
     env:
       DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:5432/taxtronik?schema=public
       DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@localhost:5432/taxtronik?schema=public
@@ -563,6 +576,15 @@ jobs:
       SMTP_HOST: localhost
       SMTP_PORT: '1025'
       SMTP_FROM: 'TaxTronik <noreply@example.de>'
+      S3_ENDPOINT: http://localhost:9000
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY: ci
+      S3_SECRET_KEY: ci-secret
+      S3_BUCKET_GOBD: gobd
+      S3_BUCKET_GWG: gwg
+      S3_BUCKET_GENERAL: general
+      S3_BUCKET_STAFF_PRIVATE: staff-private
+      S3_BUCKET_BACKUP: backup
       NODE_ENV: test
     steps:
       - uses: actions/checkout@v4
@@ -608,6 +630,18 @@ jobs:
         run: |
           PGPASSWORD=taxtronik psql -h localhost -U taxtronik -d taxtronik -c \
             "UPDATE staff_user SET locked_until = NULL, failed_login_count = 0, totp_secret_enc = NULL, totp_enrolled_at = NULL WHERE email = 'admin@taxtronik.local';"
+
+      - name: Create S3 buckets (MinIO)
+        run: |
+          curl -sL https://dl.min.io/client/mc/release/linux-amd64/mc -o /usr/local/bin/mc
+          chmod +x /usr/local/bin/mc
+          mc alias set local http://localhost:9000 ci ci-secret
+          for b in gobd gwg general staff-private backup quarantine; do
+            mc mb "local/$b" || true
+          done
+          # Object-Lock für GoBD- und GwG-Buckets (COMPLIANCE/GOVERNANCE)
+          mc retention --default governance "local/gobd" || true
+          mc retention --default governance "local/gwg" || true
 
       - name: Build web app
         run: pnpm --filter @taxtronik/web build
