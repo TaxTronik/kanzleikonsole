@@ -7,8 +7,8 @@ test.describe('Rate-Limit', () => {
     test.setTimeout(60_000);
 
     // Use a single fixed email to deterministically trigger per-IP rate limit.
-    // The rate limit is 10 magic-link requests per 10 minutes per IP.
-    // Sending 6 rapid requests from the same IP should trigger the block.
+    // Das Limit ist 5 Magic-Link-Anfragen pro 15 Minuten pro IP (actions.ts:32).
+    // 5 Anfragen laufen durch, die 6. MUSS blockiert werden.
     for (let i = 0; i < 5; i++) {
       await page.goto('/portal/login', { waitUntil: 'domcontentloaded' });
       await page.getByLabel('E-Mail-Adresse').fill(TARGET_EMAIL);

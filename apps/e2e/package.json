@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node -e \"console.log('E2E nicht im Standard-pnpm-test enthalten. Browser-Download (~250 MB) und laufender Stack (Postgres/Redis/SeaweedFS/ClamAV) sind Voraussetzung. Starten: pnpm e2e (vom Repo-Root) oder pnpm --filter @taxtronik/e2e e2e. Siehe apps/e2e/README.md.')\"",
+    "test": "node -e \"console.log('E2E ist bewusst nicht in pnpm test (Turbo) enthalten — benötigt laufenden Docker-Stack (Postgres/Redis/SeaweedFS/ClamAV/MailHog) + Browser-Download (~250 MB). CI: .forgejo/workflows/ci.yml Job e2e-paranoid. Lokal: pnpm e2e oder pnpm --filter @taxtronik/e2e e2e. Siehe apps/e2e/README.md.')\"",
     "e2e": "playwright install chromium --with-deps && playwright test",
     "e2e:ui": "playwright install chromium --with-deps && playwright test --ui",
     "e2e:headed": "playwright install chromium --with-deps && playwright test --headed",

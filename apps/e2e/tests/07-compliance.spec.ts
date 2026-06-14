@@ -140,10 +140,10 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
     await page.waitForTimeout(3000);
     expect(page.url()).not.toContain('/staff/login');
 
-    await expect(page.locator('body')).toBeVisible();
-    const entries = page.locator('table tbody tr, [data-doc-row]');
-    const count = await entries.count().catch(() => 0);
-    expect(count).toBeGreaterThanOrEqual(0);
+    // Konkreten Titel aus Test 1.1 auf der Seite wiederfinden.
+    // Falls der Upload in 1.1 fehlgeschlagen ist, ist das hier rot.
+    const uploaded = page.getByText('E2E Compliance Test Dokument');
+    await expect(uploaded.first()).toBeVisible({ timeout: 5000 });
 
     await ctx.close();
   });
@@ -229,35 +229,29 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
     await ctx.close();
   });
 
-  test('1.5 Non-PDF file rejection', async ({ browser }) => {
+  test('1.5 Upload ohne classification/documentTypeId wird mit 400 abgelehnt', async ({ browser }) => {
     if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
-    // Test via API: a non-PDF file disguised as PDF MUST be rejected
-    const uploadEndpoint = '/api/staff/documents/upload';
-    const txtFile = Buffer.from('This is a text file disguised as PDF', 'utf-8');
-
-    const res = await page.request.post(uploadEndpoint, {
+    const origin = new URL(page.url() || 'http://localhost:3000').origin;
+    // Commit-Endpoint: multipart mit Datei, aber OHNE classification und
+    // documentTypeId → Zod-.refine() schlägt fehl → 400.
+    const res = await page.request.post('/api/staff/documents/commit', {
+      headers: { Origin: origin },
       multipart: {
         file: {
-          name: 'fake.pdf',
+          name: 'no-type.pdf',
           mimeType: 'application/pdf',
-          buffer: txtFile,
+          buffer: createMinimalPdf(),
         },
-        title: 'Fake PDF',
-        documentTypeId: '00000000-0000-0000-0000-000000000001',
+        title: 'Upload ohne Typ',
       },
-    }).catch(() => null);
+    });
 
-    if (res) {
-      const status = res.status();
-      // Non-PDF disguised as PDF MUST NOT return 200 — must be rejected
-      expect(status).not.toBe(200);
-      // Acceptable rejection codes: 400 (bad request), 415 (unsupported media),
-      // 422 (unprocessable), 401/403 (auth needed)
-      expect([400, 401, 403, 415, 422, 500]).toContain(status);
-    }
+    expect(res.status()).toBe(400);
+    const body = await res.json().catch(() => ({}));
+    expect(body.error ?? '').toMatch(/validation|classification|documentTypeId/i);
 
     await ctx.close();
   });
@@ -306,32 +300,30 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
     await ctx.close();
   });
 
-  test('1.7 File size limit check (reject >100MB upload)', async ({ browser }) => {
+  test('1.7 Content-Length-Präfix-Check: >100MB+1MB wird mit 413 abgelehnt', async ({ browser }) => {
     if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
-    const res = await page.request.post('/api/staff/documents/upload', {
-      multipart: {
-        file: {
-          name: 'large-file.pdf',
-          mimeType: 'application/pdf',
-          buffer: Buffer.alloc(1024 * 1024 * 5, 0),
-        },
-        title: 'Large Test File',
-        documentTypeId: '00000000-0000-0000-0000-000000000001',
+    const origin = new URL(page.url() || 'http://localhost:3000').origin;
+    // Der Commit-Endpoint prüft deklarierte Content-Length VOR dem Puffern.
+    // MAX_UPLOAD_BYTES = 100 * 1024 * 1024. Mit +1MB Marge → bei >101MB 413.
+    // Wir schicken einen winzigen Body, lügen aber beim Content-Length-Header.
+    // Der Server lehnt VOR dem Lesen ab → 413 (DoS-Schutz).
+    const fakeLargeLen = String(100 * 1024 * 1024 + 2 * 1024 * 1024);
+    const res = await page.request.post('/api/staff/documents/commit', {
+      headers: {
+        Origin: origin,
+        'Content-Length': fakeLargeLen,
+        'Content-Type': 'multipart/form-data; boundary=fake',
       },
-    }).catch(() => null);
+      data: 'x',
+    });
 
-    if (res) {
-      const status = res.status();
-      // Oversized file MUST NOT be accepted (200/302 = pass-through = FAIL)
-      expect(status).not.toBe(200);
-      expect(status).not.toBe(302);
-      // Acceptable: 413 (payload too large), 400 (bad request), 401/403 (no auth),
-      // 422 (unprocessable), 500 (server error from size limit)
-      expect([400, 401, 403, 413, 422, 500]).toContain(status);
-    }
+    // 413 ist der erwartete Präfix-Check. 400 ist auch akzeptabel
+    // (multipart parse fail), aber NIEMALS 200.
+    expect(res.status()).not.toBe(200);
+    expect([400, 413]).toContain(res.status());
 
     await ctx.close();
   });
@@ -1244,169 +1236,106 @@ test.describe.serial('Input Validation — XSS/SQL Injection', () => {
 // SECTION 10: File Upload Security
 // =============================================================================
 test.describe.serial('File Upload Security — ClamAV & Validation', () => {
-  test('10.1 EICAR test file upload (ClamAV should reject)', async ({ browser }) => {
+  test('10.1 EICAR-Testdatei wird von ClamAV abgelehnt (422, nicht 200)', async ({ browser }) => {
     if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
+    const origin = new URL(page.url() || 'http://localhost:3000').origin;
     const eicarBuffer = createEicarBuffer();
 
-    const res = await page.request.post('/api/staff/documents/upload', {
+    // Authentifizierter POST an den echten Commit-Endpoint.
+    // Kein .catch — wenn der Request wirft, muss der Test rot werden.
+    const res = await page.request.post('/api/staff/documents/commit', {
+      headers: { Origin: origin },
       multipart: {
         file: {
           name: 'eicar-test.com',
           mimeType: 'application/octet-stream',
           buffer: eicarBuffer,
         },
-        title: 'EICAR Test File',
-        documentTypeId: '00000000-0000-0000-0000-000000000001',
+        title: 'EICAR Test',
+        classification: 'GENERAL',
       },
-    }).catch(() => null);
-
-    if (res) {
-      const status = res.status();
-      // EICAR MUST NOT pass through with 200 — that means malware got accepted
-      if (status === 200) {
-        // Even if ClamAV is not running, this is a security failure:
-        // the endpoint accepted an EICAR test file. FAIL the test.
-        throw new Error(`SECURITY FAILURE: EICAR test file was accepted with status 200 — malware passthrough detected!`);
-      }
-      // Acceptable rejection codes: 400/415/422 (rejected content),
-      // 401/403 (auth), 413 (too big), 500 (server error blocking it)
-      expect([400, 401, 403, 413, 415, 422, 500]).toContain(status);
-    }
-
-    // Also try the upload page directly (navigate to client scope first)
-    await page.goto('/staff/documents');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
-
-    const clientNav = page.getByRole('link', { name: /Juristische Personen/i });
-    if (await clientNav.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await clientNav.click();
-      await page.waitForTimeout(2000);
-    }
-
-    const mustermannLink = page.getByRole('link', { name: /Mustermann/ }).first();
-    if (await mustermannLink.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await mustermannLink.click();
-      await page.waitForTimeout(3000);
-    }
-
-    const uploadBtn = page.getByRole('button', { name: /Hochladen/i }).first();
-    let btnVisible = await uploadBtn.isVisible({ timeout: 3000 }).catch(() => false);
-    if (!btnVisible) {
-      const uploadBtn2 = page.getByRole('button', { name: /Upload/i }).first();
-      btnVisible = await uploadBtn2.isVisible({ timeout: 3000 }).catch(() => false);
-      if (btnVisible) {
-        await uploadBtn2.click();
-      } else {
-        const uploadLink = page.getByRole('link', { name: /Hochladen|Dokument.*hochladen|Upload/i }).first();
-        btnVisible = await uploadLink.isVisible({ timeout: 3000 }).catch(() => false);
-        if (!btnVisible) {
-          const allButtons = await page.locator('button, a[role="button"]').allInnerTexts().catch(() => [] as string[]);
-          throw new Error(`Upload button not found on /staff/documents. Available buttons: ${allButtons.join(', ') || '(none)'}`);
-        }
-        await uploadLink.click();
-      }
-    } else {
-      await uploadBtn.click();
-    }
-    await page.waitForTimeout(1000);
-
-    const fileInput = page.locator('input[type="file"]').first();
-    if (await fileInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await fileInput.setInputFiles({
-        name: 'eicar-test.com',
-        mimeType: 'application/octet-stream',
-        buffer: eicarBuffer,
-      });
-      await page.waitForTimeout(500);
-
-      const submitBtn = page.locator('button[type="submit"]').filter({ hasText: /Hochladen/ });
-      if (await submitBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await submitBtn.click();
-        await page.waitForTimeout(4000);
-      }
-    }
-
-    await ctx.close();
-  });
-
-  test('10.2 Double extension file upload', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
-    const ctx = await browser.newContext({ storageState: STAFF_AUTH });
-    const page = await ctx.newPage();
-
-    // Navigate to client scope where upload button appears
-    await page.goto('/staff/documents');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
-    expect(page.url()).not.toContain('/staff/login');
-
-    const clientNav = page.getByRole('link', { name: /Juristische Personen/i });
-    if (await clientNav.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await clientNav.click();
-      await page.waitForTimeout(2000);
-    }
-
-    const mustermannLink = page.getByRole('link', { name: /Mustermann/ }).first();
-    if (await mustermannLink.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await mustermannLink.click();
-      await page.waitForTimeout(3000);
-    }
-
-    const uploadBtn = page.getByRole('button', { name: /Hochladen/i }).first();
-    const btnVisible = await uploadBtn.isVisible({ timeout: 5000 }).catch(() => false);
-    if (!btnVisible) {
-      test.skip(true, 'Upload button not found in client document view');
-      await ctx.close(); return;
-    }
-    await uploadBtn.click();
-    await page.waitForTimeout(1000);
-
-    const fileInput = page.locator('input[type="file"]').first();
-    await expect(fileInput).toBeVisible({ timeout: 5000 });
-    await fileInput.setInputFiles({
-      name: 'invoice.pdf.exe',
-      mimeType: 'application/x-msdownload',
-      buffer: createMinimalPdf(),
     });
-    await page.waitForTimeout(500);
 
-    const submitBtn = page.locator('button[type="submit"]').filter({ hasText: /Hochladen/ });
-    await expect(submitBtn).toBeVisible({ timeout: 5000 });
-    await submitBtn.click();
-    await page.waitForTimeout(4000);
+    const status = res.status();
+    // 200 = Malware wurde akzeptiert → SECURITY FAILURE
+    expect(status, 'EICAR darf niemals mit 200 durchkommen').not.toBe(200);
+    // 500 = Server-Crash, kein Schutz → auch rot
+    expect(status, '500 ist ein Fehler, kein ClamAV-Schutz').not.toBe(500);
+    // Erwartet: 422 (INFECTED) von ClamAV. 400/401/403 sind akzeptable
+    // Vorab-Validierungen, aber 422 ist der Beweis dass ClamAV greift.
+    expect([400, 401, 403, 422]).toContain(status);
 
-    await expect(page.locator('body')).toBeVisible();
+    // Wenn wir einen Body haben, sollte bei 422 "INFECTED" drinstehen
+    if (status === 422) {
+      const body = await res.json().catch(() => ({}));
+      expect(body.error ?? '').toMatch(/INFECTED/i);
+    }
+
     await ctx.close();
   });
 
-  test('10.3 File metadata (SHA-256 hash) stored for documents', async ({ browser }) => {
+    await ctx.close();
+  });
+
+  test('10.2 Double-Extension-Datei (invoice.pdf.exe) wird nicht als .exe gespeichert', async ({ browser }) => {
     if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
+    const origin = new URL(page.url() || 'http://localhost:3000').origin;
+    // Commit mit .pdf.exe Datei. Der Server ERKENNT den MIME via Magic Bytes
+    // (PDF), speichert aber den Originalnamen sanitized. Wichtig: die Datei
+    // darf nicht als application/x-msscan ausgeführt werden.
+    const res = await page.request.post('/api/staff/documents/commit', {
+      headers: { Origin: origin },
+      multipart: {
+        file: {
+          name: 'invoice.pdf.exe',
+          mimeType: 'application/x-msdownload',
+          buffer: createMinimalPdf(),
+        },
+        title: 'Double Ext Test',
+        classification: 'GENERAL',
+      },
+    });
+
+    // Die Datei ist ein gültiges PDF (Magic Bytes) → ClamAV lässt sie durch.
+    // Aber der erkannte MIME muss application/pdf sein, nicht x-msdownload.
+    // 200 ist OK (Datei wird angenommen), 400/422 auch (falls Policy das ablehnt).
+    // 500 ist ein Fehler.
+    expect(res.status()).not.toBe(500);
+    if (res.status() === 200) {
+      const body = await res.json().catch(() => ({}));
+      // detectedMime sollte application/pdf sein (Magic-Bytes-Check)
+      expect(body.detectedMime ?? body.mimeType ?? '').toContain('pdf');
+    }
+
+    await ctx.close();
+  });
+
+  test('10.3 Dokument-Detailseite zeigt SHA-256-Hash', async ({ browser }) => {
+    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    const ctx = await browser.newContext({ storageState: STAFF_AUTH });
+    const page = await ctx.newPage();
+
+    // Das in 1.1 hochgeladene Dokument aufrufen
     await page.goto('/staff/documents');
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
     expect(page.url()).not.toContain('/staff/login');
 
-    const docLink = page.locator('table tbody tr a').first();
-    const docVisible = await docLink.isVisible({ timeout: 5000 }).catch(() => false);
+    const docLink = page.getByRole('link', { name: /E2E Compliance Test Dokument/i }).first();
+    await expect(docLink).toBeVisible({ timeout: 8000 });
+    await docLink.click();
+    await page.waitForTimeout(3000);
+    expect(page.url()).toContain('/staff/documents/');
 
-    if (docVisible) {
-      await docLink.click();
-      await page.waitForTimeout(3000);
-
-      if (page.url().includes('/staff/documents/')) {
-        const shaText = page.getByText(/SHA-256:/);
-        await expect(shaText).toBeVisible({ timeout: 5000 });
-      }
-    } else {
-      test.skip(true, 'No documents found to check SHA-256 hash');
-    }
+    // SHA-256 muss auf der Detailseite stehen
+    const shaText = page.getByText(/SHA-256/i);
+    await expect(shaText).toBeVisible({ timeout: 5000 });
 
     await ctx.close();
   });
