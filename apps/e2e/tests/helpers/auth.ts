@@ -57,6 +57,16 @@ export async function loginAsAdmin(page: Page): Promise<void> {
     const code = generateSync({ secret: secret.trim() });
     await page.getByLabel('Bestätigungs-Code').fill(code);
     await page.getByRole('button', { name: /Bestätigen/ }).click();
+
+    // Nach Enrollment erscheint eine Backup-Codes-Seite („Recovery-Codes").
+    // Erst nach Bestätigung („Codes notiert") geht's zum TOTP-Login.
+    const backupVisible = await page
+      .getByText(/Recovery-Codes|Codes notiert/)
+      .isVisible({ timeout: 3_000 })
+      .catch(() => false);
+    if (backupVisible) {
+      await page.getByRole('button', { name: /Codes notiert/ }).click();
+    }
   }
 
   // Schritt 2: TOTP-Login
