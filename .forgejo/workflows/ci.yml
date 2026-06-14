@@ -501,6 +501,133 @@ jobs:
           if-no-files-found: ignore
 
   # ===========================================================================
+  # E2E-Paranoid: härteter Teilsuite-Test (Rate-Limit, Walkthrough, Actions,
+  # Compliance) — läuft parallel zum vollen E2E-Smoke als zusätzlicher
+  # Sicherheitsgurt im PR-Workflow. Trennung vom Smoke-Job, damit die gesamte
+  # Compliance-+Security-Testsuite ihre eigenen Timeouts, Retries und Reports
+  # bekommt, ohne den Smoke-Lauf zu verlangsamen.
+  # ===========================================================================
+  e2e-paranoid:
+    name: E2E Paranoid (Rate-Limit, Actions, Compliance)
+    runs-on: ubuntu-latest
+    needs: db
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: taxtronik
+          POSTGRES_PASSWORD: taxtronik
+          POSTGRES_DB: taxtronik
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U taxtronik"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:5432/taxtronik?schema=public
+      DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@localhost:5432/taxtronik?schema=public
+      REDIS_URL: redis://localhost:6379
+      ADMIN_PASSWORD: dev-password-123
+      DEV_SKIP_TOTP: 'true'
+      E2E_BASE_URL: http://127.0.0.1:3000
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Rebuild approved native packages
+        run: pnpm rebuild -r @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver || true
+
+      - name: Generate Prisma client
+        run: pnpm --filter @taxtronik/db exec prisma generate
+
+      - name: Install PostgreSQL client
+        run: |
+          if ! command -v psql >/dev/null 2>&1; then
+            if command -v sudo >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y postgresql-client
+            else
+              apt-get update
+              apt-get install -y postgresql-client
+            fi
+          fi
+
+      - name: Bootstrap database
+        run: |
+          PGPASSWORD=taxtronik psql -h localhost -U taxtronik -d taxtronik \
+            -v ON_ERROR_STOP=1 -f packages/db/prisma/init/01_bootstrap.sql
+          pnpm --filter @taxtronik/db exec prisma migrate deploy
+
+      - name: Seed database
+        run: pnpm --filter @taxtronik/db seed
+
+      - name: Disable TOTP and unlock admin account
+        run: |
+          PGPASSWORD=taxtronik psql -h localhost -U taxtronik -d taxtronik -c \
+            "UPDATE staff_user SET locked_until = NULL, failed_login_count = 0, totp_secret_enc = NULL, totp_enrolled_at = NULL WHERE email = 'admin@taxtronik.local';"
+
+      - name: Build web app
+        run: pnpm --filter @taxtronik/web build
+
+      - name: Install Playwright browser
+        run: pnpm --filter @taxtronik/e2e exec playwright install chromium --with-deps
+
+      - name: Start web app
+        run: |
+          pnpm --filter @taxtronik/web start > web.log 2>&1 &
+          echo $! > web.pid
+
+          for i in {1..60}; do
+            status="$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/api/health || true)"
+            if [ "$status" = "200" ] || [ "$status" = "503" ]; then
+              exit 0
+            fi
+            sleep 2
+          done
+
+          cat web.log
+          exit 1
+
+      - name: Flush Redis rate-limit state
+        run: |
+          if command -v redis-cli >/dev/null 2>&1; then
+            redis-cli -h localhost FLUSHDB
+          fi
+
+      - name: Run E2E paranoid tests
+        run: pnpm --filter @taxtronik/e2e exec playwright test tests/04-rate-limit.spec.ts tests/05-user-walkthrough.spec.ts tests/06-actions.spec.ts tests/07-compliance.spec.ts
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: playwright-report-paranoid
+          path: apps/e2e/playwright-report/
+          if-no-files-found: ignore
+
+  # ===========================================================================
   # E-Rechnung-Konformität: erzeugt die Referenz-XRechnung (Mischsätze-Fixture,
   # dieselbe Quelle wie die Unit-Tests) und prüft sie mit dem KoSIT-Validator
   # gegen die XRechnung-3.0-Szenarien — XML-Schema + Schematron inkl. der
