@@ -178,6 +178,9 @@ pnpm verify:chain
 
 Hinweise:
 
+- `pnpm lint` prüft TypeScript (`@typescript-eslint`), React Hooks
+  (`eslint-plugin-react-hooks`), Next.js-Konventionen (`@next/eslint-plugin-next`)
+  und domänenspezifische AST-Regeln (RBAC-Guardrails).
 - `pnpm test` läuft via Turborepo über alle Workspaces mit Test-Skript —
   neben der Web-App auch die Worker-Jobs (`apps/worker/src/jobs/__tests__`)
   und die Packages (u. a. `tax`, `evidence`, `db`, `crypto`, `http-utils`,
@@ -207,6 +210,7 @@ packages/
   evidence/    Audit-Hash-Chain, Archive, Verify-CLI
   http-utils/  Safe Fetch, SSRF-Guards, Netzwerk-Utilities
   n8n-shared/  HMAC-Signatur für App/Worker -> n8n
+  risk-layer/  Zustandsloser §4-Engine-Client (Risk Analysis)
   rss/         RSS-Fetching und Parser
   storage/     S3/SeaweedFS-Client, Retention, Scan-Pipeline
   tax/         Steuertermine und fachliche Rechenlogik
@@ -234,6 +238,8 @@ TaxTronik ist für regulatorisch sensible Kanzleidaten gebaut:
   öffentliche Angriffsfläche.
 - GwG: Verifizierungs-Workflows und systemische Schranken.
 - eIDAS: Signatur- und Zeitstempel-Adapter.
+
+Sicherheitslücken vertraulich melden: siehe [SECURITY.md](SECURITY.md).
 
 Vor Produktivstart sollte ein externer Penetrationstest und ein Restore-Test
 aus einem echten Backup erfolgen.

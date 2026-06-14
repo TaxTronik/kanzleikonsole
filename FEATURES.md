@@ -1056,7 +1056,7 @@ Kanzlei nicht.
   Resilienz mit Circuit-Breaker, reiner Transport)
 - **Forgejo-Actions-CI** (`.forgejo/workflows/`, self-hosted Runner): `ci.yml`
   (Quality: Lint/Typecheck/Unit · DB: Migrationen/RLS/Drift/verify:chain mit
-  Postgres-Service · Browser-Smoke via Playwright), `security.yml` (pnpm-audit +
+  Postgres-Service   · Browser-E2E via Playwright (volle Suite: Smoke, Auth, Search, Rate-Limit)), `security.yml` (pnpm-audit +
   gitleaks-Secret-Scan, wöchentlicher Cron), `build-images.yml` (Web-/Worker-
   Image-Build, build-only); GitHub-Mirror läuft ohne Actions, `dependabot.yml`
   liegt ebenfalls unter `.forgejo/`
@@ -1127,15 +1127,20 @@ Kanzlei nicht.
   editierbare Vorschau, das Platzhalter→Original-Mapping bleibt RLS-lokal;
   signierter n8n-Inbound (HMAC + Timestamp-Fenster + Redis-Replay-Nonce,
   fail-closed)
+- **Security Policy**: `SECURITY.md` mit vertraulichem Reporting-Kanal
+  (E-Mail), Response-SLA (2/5 Werktage), Scope-Definition und Hinweis auf
+  ADR-0002–0010 als Secure-by-Design-Grundlage
 - **Container-Hardening**: `cap_drop: ALL` + `no-new-privileges` + `read_only`-
   Root-FS auf App/Worker mit `tmpfs:/tmp`, alle Infra-Ports an `127.0.0.1`,
   App/n8n hinter Reverse-Proxy (NGINX-Beispiel-Konfig in `infra/nginx/`;
   das Beispiel setzt bewusst keine eigenen Security-`add_header`-Zeilen —
   die Header kommen aus der App, ein nginx-seitiges `add_header` würde u. a.
   die token-spezifische `no-referrer`-Policy überschreiben)
-- **Dev-Default-Denylist**: Bekannte Dev-Schlüsselwerte werden in Production
-  in der ENV-Validierung hart abgelehnt — kein „vergessenes Setup-Skript-
-  Generieren" mit committed-Secret-Material
+- **Dev-Default-Denylist**: Bekannte Dev-Schlüsselwerte (`AUTH_SECRET`,
+  `N8N_HMAC_SECRET`, `N8N_ENCRYPTION_KEY`, `POSTGRES_PASSWORD`,
+  `TAXTRONIK_APP_PASSWORD`) werden in Production in der ENV-Validierung
+  hart abgelehnt — kein „vergessenes Setup-Skript-Generieren" mit
+  committed-Secret-Material
 - **Compliance-Dokumente** unter `docs/compliance/`: `gobd.md`, `gobd-template.md`,
   `dsgvo-konzept.md`, `gwg.md`, `dsfa-template.md`, `vvt-template.md`,
   `eidas-tsa.md`, `auth-secret-rotation.md`, `tenancy-model.md`,
