@@ -2,15 +2,36 @@
 // User-Walkthrough: Klickt sich wie Steuerberater & Mandant durch die App
 // =============================================================================
 import { test, expect } from '@playwright/test';
-import { loginAsAdmin } from './helpers/auth';
+import { loginAsAdmin, ADMIN_EMAIL } from './helpers/auth';
 import { loginAsMandant, requestMagicLink, PORTAL_EMAIL } from './helpers/portal-auth';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+const AUTH_DIR = path.join(os.tmpdir(), 'taxtronik-e2e-auth');
+const STAFF_AUTH = path.join(AUTH_DIR, 'staff-walkthrough.json');
 
 // ===========================================================================
 // STAFF-SIDE — serial damit pro Test kein neuer Login nötig ist
 // ===========================================================================
 test.describe.serial('Staff: Core-Flows', () => {
-  test('Login & Dashboard mit Widgets', async ({ page }) => {
+  test.use({ storageState: STAFF_AUTH });
+
+  test.beforeAll(async ({ browser }) => {
+    fs.mkdirSync(AUTH_DIR, { recursive: true });
+    const ctx = await browser.newContext({ storageState: undefined });
+    const page = await ctx.newPage();
     await loginAsAdmin(page);
+    await ctx.storageState({ path: STAFF_AUTH });
+    await ctx.close();
+  });
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/staff/dashboard');
+    await expect(page).toHaveURL(/\/staff\/dashboard/, { timeout: 15_000 });
+  });
+
+  test('Login & Dashboard mit Widgets', async ({ page }) => {
     await expect(page.getByRole('heading', { name: /Dashboard/i })).toBeVisible();
     await expect(page.locator('.react-grid-layout')).toBeVisible();
   });
@@ -24,7 +45,8 @@ test.describe.serial('Staff: Core-Flows', () => {
     if (!(await searchInput.isVisible().catch(() => false))) {
       await page.goto('/staff/clients'); // Clients-Seite hat immer Such-Input
     }
-    const input = page.getByPlaceholder(/Mandanten, Anforderungen/).first();
+    const input = page.getByPlaceholder(/Mandanten|Suche|Suchen/i).first();
+    await expect(input, 'Globale Suche oder Mandanten-Suche muss nach Login verfuegbar sein').toBeVisible({ timeout: 10_000 });
     await input.click().catch(() => {});
     await input.fill('Mustermann');
     await expect(page.getByText('Mustermann GmbH').first()).toBeVisible({ timeout: 5000 });
@@ -36,21 +58,25 @@ test.describe.serial('Staff: Core-Flows', () => {
   });
 
   test('Mandanten-Detail: Cockpit-Blöcke', async ({ page }) => {
-    await page.getByText('Mustermann GmbH').first().click();
+    await page.goto('/staff/clients');
+    await page.getByRole('link', { name: /Mustermann GmbH/i }).first().click();
     await expect(page).toHaveURL(/\/staff\/clients\//);
     await expect(page.getByRole('heading', { name: 'Stammdaten' })).toBeVisible();
   });
 
   test('Mandant bearbeiten: Formular öffnet', async ({ page }) => {
+    await page.goto('/staff/clients');
+    await page.getByRole('link', { name: /Mustermann GmbH/i }).first().click();
+    await expect(page).toHaveURL(/\/staff\/clients\//);
     await page.getByRole('link', { name: /Stammdaten bearbeiten/i }).click();
     // Client-Edit-Seite hat input-Felder
-    await expect(page.locator('input').first()).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('input:not([type="hidden"])').first()).toBeVisible({ timeout: 5000 });
   });
 
   test('Dokumente: Explorer mit Sidebar', async ({ page }) => {
     await page.goto('/staff/documents');
-    // Sidebar mit "Ordner" oder "Alle" sollte sichtbar sein
-    await expect(page.getByText(/Ordner|Alle/).first()).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('navigation').filter({ hasText: /Dokumente/i }).first()).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('link', { name: /Juristische Personen/i })).toBeVisible({ timeout: 5000 });
   });
 
   test('Rechnungen: Neue Rechnung Formular', async ({ page }) => {
@@ -95,6 +121,22 @@ test.describe.serial('Staff: Core-Flows', () => {
 });
 
 test.describe.serial('Staff: Admin & Konfiguration', () => {
+  test.use({ storageState: STAFF_AUTH });
+
+  test.beforeAll(async ({ browser }) => {
+    fs.mkdirSync(AUTH_DIR, { recursive: true });
+    const ctx = await browser.newContext({ storageState: undefined });
+    const page = await ctx.newPage();
+    await loginAsAdmin(page);
+    await ctx.storageState({ path: STAFF_AUTH });
+    await ctx.close();
+  });
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/staff/dashboard');
+    await expect(page).toHaveURL(/\/staff\/dashboard/, { timeout: 15_000 });
+  });
+
   test('Login für Admin-Tests', async ({ page }) => {
     await loginAsAdmin(page);
   });
@@ -107,7 +149,8 @@ test.describe.serial('Staff: Admin & Konfiguration', () => {
 
   test('Benutzerverwaltung', async ({ page }) => {
     await page.goto('/staff/admin/users');
-    await expect(page.getByText('admin@taxtronik.local')).toBeVisible();
+    await expect(page).toHaveURL(/\/staff\/admin\/users/);
+    await expect(page.getByRole('cell', { name: ADMIN_EMAIL })).toBeVisible();
   });
 
   test('Audit-Log', async ({ page }) => {
@@ -143,40 +186,50 @@ test.describe.serial('Portal: Mandanten-Login & Features', () => {
 
   test('Magic-Link Login & Dashboard', async ({ page, request }) => {
     await loginAsMandant(page, request);
-    await expect(page.getByText(/Dashboard|Willkommen/i).first()).toBeVisible({ timeout: 5000 });
+    await expect(page).toHaveURL(/\/portal\/dashboard/);
+    await expect(page.getByRole('heading', { name: /Hallo|Übersicht/i }).first()).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('link', { name: /Dokumente/i })).toBeVisible({ timeout: 5000 });
   });
 
   test('Portal: Dokumente', async ({ page }) => {
+    await loginAsMandant(page, page.request);
     await page.goto('/portal/documents');
-    await expect(page.getByText(/Dokument|Datei/i).first()).toBeVisible({ timeout: 5000 });
+    await expect(page).toHaveURL(/\/portal\/documents/);
+    await expect(page.getByRole('heading', { name: /Dokumente/i })).toBeVisible({ timeout: 5000 });
   });
 
   test('Portal: Anforderungen', async ({ page }) => {
+    await loginAsMandant(page, page.request);
     await page.goto('/portal/requests');
     await expect(page.getByText(/Anforderung|Anfrage/i).first()).toBeVisible({ timeout: 5000 });
   });
 
   test('Portal: Formulare', async ({ page }) => {
+    await loginAsMandant(page, page.request);
     await page.goto('/portal/forms');
     await expect(page.getByText(/Formular/i).first()).toBeVisible({ timeout: 5000 });
   });
 
   test('Portal: Rechnungen', async ({ page }) => {
+    await loginAsMandant(page, page.request);
     await page.goto('/portal/invoices');
     await expect(page.getByText(/Rechnung|Zahlung/i).first()).toBeVisible({ timeout: 5000 });
   });
 
   test('Portal: Termine', async ({ page }) => {
+    await loginAsMandant(page, page.request);
     await page.goto('/portal/appointments');
     await expect(page.getByText(/Termin|Appointment/i).first()).toBeVisible({ timeout: 5000 });
   });
 
   test('Portal: Stammdaten', async ({ page }) => {
+    await loginAsMandant(page, page.request);
     await page.goto('/portal/stammdaten');
     await expect(page.getByText(/Stammdaten|Änderung/i).first()).toBeVisible({ timeout: 5000 });
   });
 
   test('Portal: Einstellungen', async ({ page }) => {
+    await loginAsMandant(page, page.request);
     await page.goto('/portal/settings');
     await expect(page.getByText(/Einstellung|Benachrichtigung/i).first()).toBeVisible({ timeout: 5000 });
   });

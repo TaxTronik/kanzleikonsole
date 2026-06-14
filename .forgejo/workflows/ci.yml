@@ -511,7 +511,7 @@ jobs:
     name: E2E Paranoid (Rate-Limit, Actions, Compliance)
     runs-on: ubuntu-latest
     needs: db
-    timeout-minutes: 25
+    timeout-minutes: 45
     services:
       postgres:
         image: postgres:18
@@ -537,13 +537,13 @@ jobs:
           --health-retries 10
       # MailHog für Magic-Link-Tests
       mailhog:
-        image: mailhog/mailhog:latest
+        image: mailhog/mailhog:latest@sha256:8d76a3d4ffa32a3661311944007a415332c4bb855657f4f6c57996405c009bea
         ports:
           - 8025:8025
           - 1025:1025
       # ClamAV für EICAR-Test
       clamav:
-        image: clamav/clamav:latest
+        image: clamav/clamav:stable@sha256:d4000290254603e7ee45d4904425c7d98c015af727f402756198fe41a31e7777
         ports:
           - 3310:3310
         options: >-
@@ -571,7 +571,7 @@ jobs:
       S3_BUCKET_GWG: gwg
       S3_BUCKET_GENERAL: general
       S3_BUCKET_STAFF_PRIVATE: staff-private
-      S3_BUCKET_BACKUP: backup
+      S3_BUCKET_BACKUPS: backups
       NODE_ENV: test
     steps:
       - uses: actions/checkout@v4
@@ -587,7 +587,7 @@ jobs:
         run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Rebuild approved native packages
-        run: pnpm rebuild -r @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver || true
+        run: pnpm rebuild -r @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver
 
       - name: Generate Prisma client
         run: pnpm --filter @taxtronik/db exec prisma generate
@@ -674,7 +674,25 @@ jobs:
             -v $PWD/infra/scripts/init-storage.sh:/init-storage.sh:ro \
             -e S3_ENDPOINT=http://localhost:8333 \
             --entrypoint /bin/sh \
-            amazon/aws-cli:latest /init-storage.sh
+            amazon/aws-cli:latest@sha256:c95ab0642137f55a12b95b6956dd03cefdbd73e760e0e7b870afc9b47f9c8150 /init-storage.sh
+
+      - name: Verify S3 buckets and Object-Lock
+        run: |
+          docker run --rm --network host \
+            -e AWS_ACCESS_KEY_ID=ci \
+            -e AWS_SECRET_ACCESS_KEY=ci-secret-plus-thirtytwo-chars \
+            -e AWS_DEFAULT_REGION=us-east-1 \
+            --entrypoint /bin/sh \
+            amazon/aws-cli:latest@sha256:c95ab0642137f55a12b95b6956dd03cefdbd73e760e0e7b870afc9b47f9c8150 -ec '
+              AWS="aws --endpoint-url http://localhost:8333"
+              for bucket in gobd gwg general staff-private backups; do
+                $AWS s3api head-bucket --bucket "$bucket"
+              done
+              $AWS s3api get-object-lock-configuration --bucket gobd | grep -q "\"Mode\": \"COMPLIANCE\""
+              $AWS s3api get-object-lock-configuration --bucket gobd | grep -q "\"Years\": 10"
+              $AWS s3api get-object-lock-configuration --bucket gwg | grep -q "\"Mode\": \"COMPLIANCE\""
+              $AWS s3api get-object-lock-configuration --bucket gwg | grep -q "\"Years\": 5"
+            '
 
       - name: Build web app
         run: pnpm --filter @taxtronik/web build

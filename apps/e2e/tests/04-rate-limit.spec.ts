@@ -1,8 +1,13 @@
 import { test, expect } from '@playwright/test';
+import { flushRedisDb } from './helpers/redis';
 
 const TARGET_EMAIL = 'rate-limit-test@taxtronik.local';
 
 test.describe('Rate-Limit', () => {
+  test.afterEach(async () => {
+    await flushRedisDb();
+  });
+
   test('Magic-Link-Anfrage wird nach 5 Versuchen blockiert', async ({ page }) => {
     test.setTimeout(60_000);
 

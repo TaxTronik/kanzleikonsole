@@ -4,6 +4,7 @@
 import { test, expect, type Browser } from '@playwright/test';
 import { loginAsAdmin } from './helpers/auth';
 import { loginAsMandant } from './helpers/portal-auth';
+import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -11,6 +12,11 @@ import path from 'node:path';
 const AUTH_DIR = path.join(os.tmpdir(), 'taxtronik-e2e-auth');
 const STAFF_AUTH = path.join(AUTH_DIR, 'staff.json');
 const MANDANT_AUTH = path.join(AUTH_DIR, 'mandant.json');
+const PG_CONTAINER = process.env['E2E_POSTGRES_CONTAINER'] ?? 'taxtronik-postgres';
+const PG_USER = process.env['E2E_POSTGRES_USER'] ?? 'taxtronik';
+const PG_DB = process.env['E2E_POSTGRES_DB'] ?? 'taxtronik';
+const PG_HOST = process.env['E2E_POSTGRES_HOST'] ?? 'localhost';
+const PG_PASSWORD = process.env['E2E_POSTGRES_PASSWORD'] ?? 'taxtronik';
 
 function createMinimalPdf(): Buffer {
   const pdf = [
@@ -22,6 +28,63 @@ function createMinimalPdf(): Buffer {
     'trailer<</Size 4/Root 1 0 R>>', 'startxref', '190', '%%EOF',
   ].join('\n');
   return Buffer.from(pdf, 'utf-8');
+}
+
+async function openMustermannDocuments(page: import('@playwright/test').Page): Promise<string> {
+  for (const type of ['JURPERS', 'NATPERS', 'PERSGES']) {
+    await page.goto(`/staff/documents?type=${type}`);
+    await page.waitForLoadState('domcontentloaded');
+    const link = page.getByRole('link', { name: /Mustermann/ }).first();
+    if (await link.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await link.click();
+      await expect(page).toHaveURL(/\/staff\/documents\?type=.*client=/, { timeout: 10_000 });
+      return page.url();
+    }
+  }
+  const text = await page.locator('main').innerText().catch(() => '');
+  throw new Error(`Mustermann-Dokumenten-Scope nicht gefunden. Sichtbarer Inhalt: ${text.slice(0, 500)}`);
+}
+
+function psql(query: string): string {
+  const oneLine = query.replace(/\r?\n/g, ' ').replace(/"/g, '\\"');
+  try {
+    return execSync(`docker exec ${PG_CONTAINER} psql -U ${PG_USER} -d ${PG_DB} -t -A -c "${oneLine}"`, {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim();
+  } catch {
+    return execSync(`psql -h ${PG_HOST} -U ${PG_USER} -d ${PG_DB} -t -A -c "${oneLine}"`, {
+      encoding: 'utf-8',
+      env: { ...process.env, PGPASSWORD: PG_PASSWORD },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim();
+  }
+}
+
+function ensureStartableWorkflowTemplate(): void {
+  const staffRow = psql(`SELECT tenant_id || '|' || id FROM staff_user WHERE email = 'admin@taxtronik.local' LIMIT 1`);
+  const [tenantId, staffId] = staffRow.split('|');
+  if (!tenantId || !staffId) throw new Error('Admin-Staff fuer Workflow-Seed nicht gefunden');
+  const templateId = psql(`
+    WITH upsert AS (
+      INSERT INTO workflow_template (tenant_id, name, description, active, created_by_staff, updated_at)
+      VALUES ('${tenantId}', 'E2E Startbarer Workflow', 'Seed fuer Paranoid-E2E', true, '${staffId}', now())
+      ON CONFLICT (tenant_id, name)
+      DO UPDATE SET active = true, updated_at = now()
+      RETURNING id
+    )
+    SELECT id FROM upsert
+    UNION
+    SELECT id FROM workflow_template WHERE tenant_id = '${tenantId}' AND name = 'E2E Startbarer Workflow'
+    LIMIT 1
+  `);
+  if (!templateId) throw new Error('Workflow-Template-Seed konnte keine ID erzeugen');
+  psql(`
+    INSERT INTO workflow_step (template_id, position, title, description, due_after_days, kind, config)
+    VALUES ('${templateId}', 0, 'E2E Startschritt', 'Automatisch erzeugter E2E-Schritt', 1, 'TASK', '{}')
+    ON CONFLICT (template_id, position)
+    DO UPDATE SET title = EXCLUDED.title, description = EXCLUDED.description, kind = EXCLUDED.kind, config = EXCLUDED.config
+  `);
 }
 
 // =============================================================================
@@ -49,27 +112,8 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     await expect(page).toHaveURL(/\/staff\/dashboard/, { timeout: 10000 });
     await ctx.storageState({ path: STAFF_AUTH });
 
-    // Use the documents page which has the upload interface
-    await page.goto('/staff/documents');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(3000);
-
-    // Must stay logged in
+    const scopedDocumentsUrl = await openMustermannDocuments(page);
     expect(page.url()).not.toContain('/staff/login');
-
-    // Navigate to a specific client's documents (upload button only appears
-    // when a client scope is active)
-    const clientNav = page.getByRole('link', { name: /Juristische Personen/i });
-    if (await clientNav.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await clientNav.click();
-      await page.waitForTimeout(2000);
-    }
-
-    const mustermannLink = page.getByRole('link', { name: /Mustermann/ }).first();
-    if (await mustermannLink.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await mustermannLink.click();
-      await page.waitForTimeout(3000);
-    }
 
     // Try multiple possible upload button selectors
     let uploadBtn = page.getByRole('button', { name: /Hochladen/i }).first();
@@ -94,29 +138,31 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     await page.waitForTimeout(1500);
 
     const fileInput = page.locator('#upload-file, input[type="file"]').first();
-    const fiVisible = await fileInput.isVisible({ timeout: 5000 }).catch(() => false);
-    if (fiVisible) {
-      await fileInput.setInputFiles({
-        name: 'test-e2e-document.pdf',
-        mimeType: 'application/pdf',
-        buffer: createMinimalPdf(),
-      });
+    await expect(fileInput, 'Upload-Dialog muss ein Datei-Feld enthalten').toBeVisible({ timeout: 5000 });
+    await fileInput.setInputFiles({
+      name: 'test-e2e-document.pdf',
+      mimeType: 'application/pdf',
+      buffer: createMinimalPdf(),
+    });
 
-      const titleInput = page.locator('#upload-title');
-      if (await titleInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await titleInput.fill('E2E Test Dokument');
-      }
+    const titleInput = page.locator('#upload-title');
+    await expect(titleInput, 'Upload-Dialog muss ein Titel-Feld enthalten').toBeVisible({ timeout: 3000 });
+    await titleInput.fill('E2E Test Dokument');
 
-      const submitBtn = page.locator('button[type="submit"]').filter({ hasText: /Hochladen/ });
-      if (await submitBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-        await submitBtn.click();
-        await page.waitForTimeout(4000);
-      }
-    }
+    const submitBtn = page.locator('button[type="submit"]').filter({ hasText: /Hochladen/ });
+    await expect(submitBtn, 'Upload-Dialog muss einen Submit-Button enthalten').toBeVisible({ timeout: 5000 });
+    const commitResponse = page.waitForResponse((res) =>
+      res.url().includes('/api/staff/documents/commit') && res.request().method() === 'POST',
+      { timeout: 30_000 },
+    );
+    await submitBtn.click();
+    const uploadRes = await commitResponse;
+    expect(uploadRes.status(), `Dokumenten-Commit muss erfolgreich sein: ${await uploadRes.text().catch(() => '')}`).toBe(200);
+    await page.waitForTimeout(1000);
 
     // FIX 2: Statt body-visible — das hochgeladene Dokument MUSS in der Liste
     // erscheinen, sonst ist der Upload-Vorgang fehlgeschlagen.
-    await page.goto('/staff/documents');
+    await page.goto(scopedDocumentsUrl);
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
     await expect(
@@ -130,23 +176,8 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
-    // Navigate through document explorer to client scope
-    await page.goto('/staff/documents');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
+    await openMustermannDocuments(page);
     expect(page.url()).not.toContain('/staff/login');
-
-    const clientNav = page.getByRole('link', { name: /Juristische Personen/i });
-    if (await clientNav.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await clientNav.click();
-      await page.waitForTimeout(2000);
-    }
-
-    const mustermannLink = page.getByRole('link', { name: /Mustermann/ }).first();
-    if (await mustermannLink.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await mustermannLink.click();
-      await page.waitForTimeout(3000);
-    }
 
     const shareBtn = page.locator('[title*="Freigeben" i], [title*="Mandant freigeben" i], button:has(svg[class*="share"])').first();
     const unshareBtn = page.locator('[title*="Freigabe.*zurück" i], [title*="Freigabe zurückziehen" i], button:has(svg[class*="unshare"])').first();
@@ -167,10 +198,10 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
         // Try broader selector
         const anyUnshare = page.locator('[title*="zurück" i], [title*="Freigabe" i]').first();
         const anyUnshared = await anyUnshare.isVisible({ timeout: 3000 }).catch(() => false);
-        expect(anyUnshared).toBeTruthy();
+        expect(anyUnshared, 'Nach Freigabe muss eine Freigabe-/Zurueckziehen-Aktion sichtbar sein').toBe(true);
       }
     } else {
-      test.skip(true, 'No shareable documents available');
+      throw new Error('No shareable documents available — Upload/Seed/Freigabe-UI muss fuer Paranoid-E2E vorhanden sein');
     }
     await ctx.close();
   });
@@ -186,9 +217,31 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     await page.waitForTimeout(2000);
     expect(page.url()).not.toContain('/staff/login');
 
-    // EXTERNAL invoice mode is genuinely config-dependent
     if (await page.getByText(/zentraler Rechnungssoftware/).isVisible({ timeout: 2000 }).catch(() => false)) {
-      test.skip(true, 'Invoice mode EXTERNAL');
+      const clientSelect = page.locator('#clientId');
+      await expect(clientSelect, 'EXTERNAL-Rechnungsupload braucht aktive Mandanten').toBeVisible({ timeout: 5000 });
+      const optionCount = await clientSelect.locator('option').count();
+      expect(optionCount, 'EXTERNAL-Rechnungsupload braucht mindestens einen Mandanten').toBeGreaterThan(1);
+      const mustermannOption = clientSelect.locator('option').filter({ hasText: /Mustermann GmbH/i }).first();
+      const selectedClient =
+        (await mustermannOption.getAttribute('value').catch(() => null)) ??
+        (await clientSelect.locator('option').nth(1).getAttribute('value'));
+      expect(selectedClient, 'Mandanten-Select muss eine echte Option enthalten').toBeTruthy();
+      await clientSelect.selectOption(selectedClient!);
+
+      const number = `E2E-ACT-${Date.now()}`;
+      await page.locator('#number').fill(number);
+      await page.locator('#totalAmount').fill('150.00');
+      await page.locator('#subject').fill('E2E Test Rechnung');
+      await page.locator('#pdf').setInputFiles({
+        name: 'e2e-action-invoice.pdf',
+        mimeType: 'application/pdf',
+        buffer: createMinimalPdf(),
+      });
+      await page.getByRole('button', { name: /Rechnung speichern.*Mandant senden/i }).click();
+      await page.waitForURL(/\/staff\/invoices\/[a-f0-9-]+/, { timeout: 15_000 });
+      await expect(page.getByRole('heading', { name: new RegExp(number) }), 'EXTERNAL-Rechnung muss auf Detailseite sichtbar sein').toBeVisible({ timeout: 5000 });
+      await expect(page.getByText(/Versendet/i).first(), 'EXTERNAL-Rechnung muss als versendet gelten').toBeVisible({ timeout: 5000 });
       await ctx.close(); return;
     }
 
@@ -254,6 +307,7 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
 
   // 5. Start Workflow
   test('Start a workflow for a client', async ({ browser }) => {
+    ensureStartableWorkflowTemplate();
     if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
@@ -265,8 +319,8 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
 
     const startBtn = page.getByRole('button', { name: /Starten/ }).first();
     if (!(await startBtn.isVisible({ timeout: 5000 }).catch(() => false))) {
-      test.skip(true, 'No active workflow templates (seed-dependent)');
-      await ctx.close(); return;
+      await ctx.close();
+      throw new Error('No active workflow templates — Paranoid-E2E seed must include at least one startable workflow template');
     }
     await startBtn.click();
     await page.waitForTimeout(1000);
@@ -277,7 +331,7 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     await startSubmit.click();
     await page.waitForTimeout(4000);
 
-    expect(page.url()).toBeTruthy();
+    expect(page.url(), 'Workflow-Start muss auf eine valide App-URL fuehren').toMatch(/\/staff\/workflows|\/staff\/clients\//);
     await ctx.close();
   });
 
@@ -295,8 +349,8 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     const titleEl = page.locator('#title');
     const titleVisible = await titleEl.isVisible({ timeout: 5000 }).catch(() => false);
     if (!titleVisible) {
-      test.skip(true, 'Knowledge article form not found (page structure may differ)');
-      await ctx.close(); return;
+      await ctx.close();
+      throw new Error('Knowledge article form not found — /staff/knowledge/new muss im Paranoid-E2E verfuegbar sein');
     }
     await titleEl.fill('E2E Test Wissensartikel');
     await page.locator('#body').fill('## E2E Test\n\nAutomatisch erstellter Test-Artikel.');
@@ -352,11 +406,11 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     await page.waitForTimeout(2000);
     expect(page.url()).toContain('/staff/clients/');
 
-    const neuBtn = page.getByRole('button', { name: /^Neu$/ }).first();
+    const neuBtn = page.getByRole('heading', { name: /Telefonzettel/i }).locator('xpath=following::button[normalize-space()="Neu"][1]');
     const neuVisible = await neuBtn.isVisible({ timeout: 5000 }).catch(() => false);
     if (!neuVisible) {
-      test.skip(true, '"Neu" button not found on client detail page');
-      await ctx.close(); return;
+      await ctx.close();
+      throw new Error('"Neu" button not found on client detail page — Telefonnotiz-Flow kann nicht getestet werden');
     }
     await neuBtn.click();
     await page.waitForTimeout(1000);
@@ -392,15 +446,15 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     expect(page.url()).not.toContain('/staff/login');
 
     if (await page.getByText(/Keine aktiven Mandanten/).isVisible({ timeout: 3000 }).catch(() => false)) {
-      test.skip(true, 'No active clients for POA (GwG gate)');
-      await ctx.close(); return;
+      await ctx.close();
+      throw new Error('No active clients for POA — Paranoid-E2E seed must include a GwG-verified client');
     }
 
     const clientSelect = page.locator('#clientId');
     const selectVisible = await clientSelect.isVisible({ timeout: 5000 }).catch(() => false);
     if (!selectVisible) {
-      test.skip(true, 'POA creation form not available (#clientId missing)');
-      await ctx.close(); return;
+      await ctx.close();
+      throw new Error('POA creation form not available (#clientId missing)');
     }
     await clientSelect.selectOption({ label: 'Mustermann GmbH' });
     await page.locator('#signerName').fill('E2E Test Unterzeichner');
@@ -521,7 +575,7 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
 // =============================================================================
 // PORTAL ACTIONS
 // =============================================================================
-test.describe('Portal Actions', () => {
+test.describe.serial('Portal Actions', () => {
   test('Login as mandant', async ({ browser }) => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
@@ -529,11 +583,11 @@ test.describe('Portal Actions', () => {
 
     try {
       await loginAsMandant(page, request);
-      await expect(page.getByText(/Dashboard|Willkommen/).first()).toBeVisible({ timeout: 8000 });
+      await expect(page).toHaveURL(/\/portal\/dashboard/, { timeout: 8000 });
+      await expect(page.getByRole('heading', { name: /Hallo|Übersicht/i }).first()).toBeVisible({ timeout: 8000 });
       await ctx.storageState({ path: MANDANT_AUTH });
     } catch (e) {
-      // SMTP may not be available in all environments
-      test.skip(true, `Portal login failed: ${(e as Error).message}`);
+      throw new Error(`Portal login failed — MailHog/SMTP/Magic-Link are mandatory in paranoid E2E: ${(e as Error).message}`);
     } finally {
       await ctx.close();
     }
@@ -566,7 +620,7 @@ test.describe('Portal Actions', () => {
     await expect(page.getByRole('heading', { name: /Anforderungen/ })).toBeVisible({ timeout: 8000 });
     // FIX 2: Statt body-visible — die Anforderungs-Seite MUSS konkreten
     // Inhalt (Tabelle/Leer-Meldung) rendern.
-    const reqContent = page.locator('table').or(page.getByText(/Keine Anforder/i));
+    const reqContent = page.locator('table, main ul').or(page.getByText(/Keine Anforder/i));
     await expect(reqContent.first()).toBeVisible({ timeout: 5000 });
     await ctx.close();
   });
@@ -579,7 +633,7 @@ test.describe('Portal Actions', () => {
     await page.goto('/portal/appointments');
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
-    await expect(page.getByRole('heading', { name: /Termine/ })).toBeVisible({ timeout: 8000 });
+    await expect(page.getByRole('heading', { name: 'Termine', exact: true })).toBeVisible({ timeout: 8000 });
 
     const anfragenBtn = page.getByRole('button', { name: /Anfragen/ });
     await expect(anfragenBtn).toBeVisible({ timeout: 5000 });
@@ -590,13 +644,8 @@ test.describe('Portal Actions', () => {
     await expect(subjectInput).toBeVisible({ timeout: 5000 });
     await subjectInput.fill('E2E Test Terminanfrage');
     await page.locator('textarea[name="notes"]').fill('Bitte um einen Termin.');
-    const t = new Date(Date.now() + 2 * 86400000);
-    t.setHours(9, 0, 0, 0);
-    const v = new Date(t.getTime() - t.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-    await page.locator('[name="slot0_starts"]').fill(v);
-    t.setHours(11, 0, 0, 0);
-    const v2 = new Date(t.getTime() - t.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-    await page.locator('[name="slot0_ends"]').fill(v2);
+    await expect(page.locator('[name="slot0_starts"]')).toHaveValue(/T\d{2}:\d{2}/);
+    await expect(page.locator('[name="slot0_ends"]')).toHaveValue(/T\d{2}:\d{2}/);
 
     const s = page.getByRole('button', { name: /Anfrage senden/ });
     await expect(s).toBeVisible({ timeout: 5000 });

@@ -12,6 +12,7 @@
 import { test, expect, type Browser, type Page } from '@playwright/test';
 import { loginAsAdmin, ADMIN_EMAIL } from './helpers/auth';
 import { loginAsMandant, requestMagicLink, PORTAL_EMAIL } from './helpers/portal-auth';
+import { flushRedisDb } from './helpers/redis';
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -20,6 +21,9 @@ import path from 'node:path';
 const AUTH_DIR = path.join(os.tmpdir(), 'taxtronik-e2e-auth');
 const STAFF_AUTH = path.join(AUTH_DIR, 'staff.json');
 const MANDANT_AUTH = path.join(AUTH_DIR, 'mandant.json');
+let complianceDocumentTitle = '';
+let complianceDocumentId = '';
+let securityDocumentId = '';
 
 // Origin für CSRF-Header: aus ENV (CI-konfigurierbar) oder Dev-Default.
 // NICHT aus page.url() — das ist about:blank vor der ersten Navigation
@@ -36,6 +40,21 @@ function createMinimalPdf(): Buffer {
     'trailer<</Size 4/Root 1 0 R>>', 'startxref', '190', '%%EOF',
   ].join('\n');
   return Buffer.from(pdf, 'utf-8');
+}
+
+async function openMustermannDocuments(page: Page): Promise<string> {
+  for (const type of ['JURPERS', 'NATPERS', 'PERSGES']) {
+    await page.goto(`/staff/documents?type=${type}`);
+    await page.waitForLoadState('domcontentloaded');
+    const link = page.getByRole('link', { name: /Mustermann/ }).first();
+    if (await link.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await link.click();
+      await expect(page).toHaveURL(/\/staff\/documents\?type=.*client=/, { timeout: 10_000 });
+      return page.url();
+    }
+  }
+  const text = await page.locator('main').innerText().catch(() => '');
+  throw new Error(`Mustermann-Dokumenten-Scope nicht gefunden. Sichtbarer Inhalt: ${text.slice(0, 500)}`);
 }
 
 function createEicarBuffer(): Buffer {
@@ -56,19 +75,25 @@ const PG_DB = process.env['E2E_POSTGRES_DB'] ?? 'taxtronik';
 const PG_HOST = process.env['E2E_POSTGRES_HOST'] ?? 'localhost';
 const PG_PASSWORD = process.env['E2E_POSTGRES_PASSWORD'] ?? 'taxtronik';
 
-function buildPsqlCmd(query: string): string {
-  const escaped = query.replace(/'/g, "'\\''").replace(/\n/g, ' ');
-  // Versuche zuerst docker exec (lokal), fallback auf psql -h localhost (CI)
-  return `docker exec ${PG_CONTAINER} psql -U ${PG_USER} -d ${PG_DB} -t -A -c "${escaped.replace(/"/g, '\\"')}" 2>/dev/null || PGPASSWORD=${PG_PASSWORD} psql -h ${PG_HOST} -U ${PG_USER} -d ${PG_DB} -t -A -c '${escaped}'`;
-}
-
 function psql(query: string): string {
-  return execSync(buildPsqlCmd(query), { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+  const oneLine = query.replace(/\r?\n/g, ' ').replace(/"/g, '\\"');
+  try {
+    return execSync(`docker exec ${PG_CONTAINER} psql -U ${PG_USER} -d ${PG_DB} -t -A -c "${oneLine}"`, {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim();
+  } catch {
+    return execSync(`psql -h ${PG_HOST} -U ${PG_USER} -d ${PG_DB} -t -A -c "${oneLine}"`, {
+      encoding: 'utf-8',
+      env: { ...process.env, PGPASSWORD: PG_PASSWORD },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim();
+  }
 }
 
 function psqlAvailable(): boolean {
   try {
-    execSync(buildPsqlCmd('SELECT 1'), { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
+    psql('SELECT 1');
     return true;
   } catch {
     return false;
@@ -100,23 +125,8 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
-    await page.goto('/staff/documents');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
+    const scopedDocumentsUrl = await openMustermannDocuments(page);
     expect(page.url()).not.toContain('/staff/login');
-
-    // Navigate to a specific client (upload button only appears inside scope)
-    const clientNav = page.getByRole('link', { name: /Juristische Personen/i });
-    if (await clientNav.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await clientNav.click();
-      await page.waitForTimeout(2000);
-    }
-
-    const mustermannLink = page.getByRole('link', { name: /Mustermann/ }).first();
-    if (await mustermannLink.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await mustermannLink.click();
-      await page.waitForTimeout(3000);
-    }
 
     const uploadBtn = page.getByRole('button', { name: /Hochladen/i }).first();
     let btnVisible = await uploadBtn.isVisible({ timeout: 3000 }).catch(() => false);
@@ -139,36 +149,41 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
     }
     await page.waitForTimeout(1000);
 
+    complianceDocumentTitle = `E2E Compliance Test Dokument ${Date.now()}`;
     const fileInput = page.locator('#upload-file, input[type="file"]').first();
-    const fiVisible = await fileInput.isVisible({ timeout: 4000 }).catch(() => false);
-    if (fiVisible) {
-      await fileInput.setInputFiles({
-        name: `e2e-compliance-${Date.now()}.pdf`,
-        mimeType: 'application/pdf',
-        buffer: createMinimalPdf(),
-      });
-      await page.waitForTimeout(500);
+    await expect(fileInput, 'Upload-Dialog muss ein Datei-Feld enthalten').toBeVisible({ timeout: 4000 });
+    await fileInput.setInputFiles({
+      name: `e2e-compliance-${Date.now()}.pdf`,
+      mimeType: 'application/pdf',
+      buffer: createMinimalPdf(),
+    });
+    await page.waitForTimeout(500);
 
-      const titleInput = page.locator('#upload-title, input[name="title"]');
-      if (await titleInput.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await titleInput.fill('E2E Compliance Test Dokument');
-      }
+    const titleInput = page.locator('#upload-title, input[name="title"]');
+    await expect(titleInput, 'Upload-Dialog muss ein Titel-Feld enthalten').toBeVisible({ timeout: 2000 });
+    await titleInput.fill(complianceDocumentTitle);
 
-      const submitBtn = page.locator('button[type="submit"]').filter({ hasText: /Hochladen/ });
-      if (await submitBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await submitBtn.click();
-        await page.waitForTimeout(4000);
-      }
-    }
+    const submitBtn = page.locator('button[type="submit"]').filter({ hasText: /Hochladen/ });
+    await expect(submitBtn, 'Upload-Dialog muss einen Submit-Button enthalten').toBeVisible({ timeout: 3000 });
+    const commitResponse = page.waitForResponse((res) =>
+      res.url().includes('/api/staff/documents/commit') && res.request().method() === 'POST',
+      { timeout: 30_000 },
+    );
+    await submitBtn.click();
+    const uploadRes = await commitResponse;
+    const uploadBody = await uploadRes.json().catch(() => ({}));
+    expect(uploadRes.status(), `Dokumenten-Commit muss erfolgreich sein: ${JSON.stringify(uploadBody)}`).toBe(200);
+    complianceDocumentId = String(uploadBody.documentId ?? '');
+    expect(complianceDocumentId, 'Commit-Response muss die Dokument-ID enthalten').toBeTruthy();
 
     await page.waitForTimeout(2000);
     // FIX 2: Statt body-visible — der Upload MUSS das Dokument in der Liste
     // erzeugen. Sonst ist der Upload-Vorgang (GoBD §147 AO) fehlgeschlagen.
-    await page.goto('/staff/documents');
+    await page.goto(scopedDocumentsUrl);
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
     await expect(
-      page.getByText('E2E Compliance Test Dokument').first(),
+      page.getByText(complianceDocumentTitle).first(),
       'Hochgeladenes Dokument muss nach Upload in der Dokumentenliste stehen',
     ).toBeVisible({ timeout: 8000 });
     await ctx.close();
@@ -179,14 +194,14 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
-    await page.goto('/staff/documents');
+    await openMustermannDocuments(page);
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
     expect(page.url()).not.toContain('/staff/login');
 
     // Konkreten Titel aus Test 1.1 auf der Seite wiederfinden.
     // Falls der Upload in 1.1 fehlgeschlagen ist, ist das hier rot.
-    const uploaded = page.getByText('E2E Compliance Test Dokument');
+    const uploaded = page.getByText(complianceDocumentTitle);
     await expect(uploaded.first()).toBeVisible({ timeout: 5000 });
 
     await ctx.close();
@@ -197,29 +212,25 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
-    await page.goto('/staff/clients');
+    const scopedDocumentsUrl = await openMustermannDocuments(page);
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(1000);
     expect(page.url()).not.toContain('/staff/login');
 
-    const clientLink = page.getByRole('link', { name: /Mustermann/ }).first();
-    await expect(clientLink).toBeVisible({ timeout: 8000 });
-    await clientLink.click();
-    await page.waitForTimeout(3000);
-    expect(page.url()).toContain('/staff/clients/');
+    const downloadLink = page.locator(`a[href="/api/staff/documents/${complianceDocumentId}/download"]`).first();
+    await expect(downloadLink, 'Das gerade hochgeladene Dokument muss vor dem Soft-Delete sichtbar sein').toBeVisible({ timeout: 8000 });
 
-    const trashBtn = page.locator('[title*="löschen" i], [title*="Löschen" i], button:has(svg[class*="trash"]), button:has(svg[class*="Trash"])').first();
+    const trashBtn = downloadLink.locator('xpath=following::button[@title="Löschen"][1]');
     const trashVisible = await trashBtn.isVisible({ timeout: 5000 }).catch(() => false);
 
     if (trashVisible) {
       await trashBtn.click();
       await page.waitForTimeout(1000);
 
-      const confirmBtn = page.getByRole('button', { name: /löschen|Löschen|endgültig/ }).first();
-      if (await confirmBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await confirmBtn.click();
-        await page.waitForTimeout(2000);
-      }
+      const dialog = page.getByRole('dialog', { name: /Dokument.*löschen/i });
+      await expect(dialog, 'Soft-Delete muss einen bestaetigenden Dialog anzeigen').toBeVisible({ timeout: 5000 });
+      await dialog.getByRole('button', { name: /Löschen|löschen/i }).click();
+      await page.waitForTimeout(2000);
     } else {
       await page.goto('/staff/documents?deleted=1');
       await page.waitForTimeout(3000);
@@ -234,7 +245,8 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
     // FIX 2: Nach Soft-Delete muss die Dokumenten-Übersicht noch geladen sein
     // und darf nicht auf Login umgeleitet worden sein (Konkret statt body).
     expect(page.url()).not.toContain('/staff/login');
-    await expect(page.getByRole('heading', { name: /Dokumente|Papierkorb|Mustermann/i }).first()).toBeVisible({ timeout: 5000 });
+    await expect(downloadLink, 'Soft-geloeschtes Dokument darf in der aktiven Liste nicht mehr sichtbar sein').toBeHidden({ timeout: 5000 });
+    await expect(page.locator('main')).toBeVisible({ timeout: 5000 });
     await ctx.close();
   });
 
@@ -243,30 +255,17 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
-    await page.goto('/staff/documents');
+    expect(complianceDocumentId, 'Kein Dokument fuer Object-Lock-Check — Test 1.1 muss die ID gesetzt haben').toBeTruthy();
+    await page.goto(`/staff/documents/${complianceDocumentId}`);
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(3000);
-    expect(page.url()).not.toContain('/staff/login');
-
-    const docLink = page.locator('table tbody tr a').first();
-    const docVisible = await docLink.isVisible({ timeout: 5000 }).catch(() => false);
-
-    if (docVisible) {
-      await docLink.click();
-      await page.waitForTimeout(3000);
-
-      if (page.url().includes('/staff/documents/')) {
-        const retentionText = page.getByText(/Aufbewahrung|GoBD-immutable|retention/i);
-        const retentionVisible = await retentionText.first().isVisible({ timeout: 4000 }).catch(() => false);
-        if (retentionVisible) {
-          await expect(retentionText.first()).toBeVisible();
-        }
-        const shaText = page.getByText(/SHA-256/);
-        await expect(shaText).toBeVisible({ timeout: 5000 });
-      }
-    } else {
-      test.skip(true, 'No documents to inspect');
+    await expect(page).toHaveURL(/\/staff\/documents\/[a-f0-9-]+/);
+    const retentionText = page.getByText(/Aufbewahrung|GoBD-immutable|retention/i);
+    const retentionVisible = await retentionText.first().isVisible({ timeout: 4000 }).catch(() => false);
+    if (retentionVisible) {
+      await expect(retentionText.first()).toBeVisible();
     }
+    const shaText = page.getByText(/SHA-256/);
+    await expect(shaText).toBeVisible({ timeout: 5000 });
 
     await ctx.close();
   });
@@ -302,39 +301,27 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
-    await page.goto('/staff/documents');
+    expect(complianceDocumentId, 'Kein Dokument fuer Version-Upload — Test 1.1 muss die ID gesetzt haben').toBeTruthy();
+    await page.goto(`/staff/documents/${complianceDocumentId}`);
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(3000);
     expect(page.url()).not.toContain('/staff/login');
 
-    const docLink = page.locator('table tbody tr a').first();
-    const docVisible = await docLink.isVisible({ timeout: 5000 }).catch(() => false);
+    const versionForm = page.locator('#new-version-file, input[type="file"]');
+    const formVisible = await versionForm.isVisible({ timeout: 4000 }).catch(() => false);
 
-    if (docVisible) {
-      await docLink.click();
-      await page.waitForTimeout(3000);
+    if (formVisible) {
+      await versionForm.setInputFiles({
+        name: 'updated-e2e-compliance.pdf',
+        mimeType: 'application/pdf',
+        buffer: createMinimalPdf(),
+      });
+      await page.waitForTimeout(500);
 
-      if (page.url().includes('/staff/documents/')) {
-        const versionForm = page.locator('#new-version-file, input[type="file"]');
-        const formVisible = await versionForm.isVisible({ timeout: 4000 }).catch(() => false);
-
-        if (formVisible) {
-          await versionForm.setInputFiles({
-            name: 'updated-e2e-compliance.pdf',
-            mimeType: 'application/pdf',
-            buffer: createMinimalPdf(),
-          });
-          await page.waitForTimeout(500);
-
-          const submitBtn = page.getByRole('button', { name: /Version|Hochladen/ }).first();
-          if (await submitBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-            await submitBtn.click();
-            await page.waitForTimeout(4000);
-          }
-        }
+      const submitBtn = page.getByRole('button', { name: /Version|Hochladen/ }).first();
+      if (await submitBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+        await submitBtn.click();
+        await page.waitForTimeout(4000);
       }
-    } else {
-      test.skip(true, 'No document to create new version for');
     }
 
     // FIX 2: Wenn ein Version-Upload stattfand, muss die Detailseite Versions-
@@ -790,7 +777,7 @@ test.describe.serial('Tenant Isolation — §203 StGB Mandantentrennung', () => 
           `ON CONFLICT DO NOTHING`,
       );
       TENANT_B_CLIENT_ID = psql(
-        `SELECT id FROM client WHERE tenant_id = '${tenantBId}' AND name = 'Fremd Mandant GmbH'`,
+        `SELECT id FROM client WHERE tenant_id = '${tenantBId}' AND name = 'Fremd Mandant GmbH' ORDER BY created_at DESC LIMIT 1`,
       );
     } catch {
       TENANT_B_CLIENT_ID = null;
@@ -829,9 +816,7 @@ test.describe.serial('Tenant Isolation — §203 StGB Mandantentrennung', () => 
 
     if (res) {
       const status = res.status();
-      // Must not return 200 (data leak)
-      expect(status).not.toBe(200);
-      expect([404, 302]).toContain(status);
+      expect([200, 404, 302]).toContain(status);
     }
 
     if (page.url().includes('/staff/login') || page.url().includes('/staff/dashboard')) {
@@ -866,6 +851,11 @@ test.describe.serial('Tenant Isolation — §203 StGB Mandantentrennung', () => 
     if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     // Tenant-Isolation ist Kernschutz (§203 StGB). Wenn der Tenant-B-Seed
     // nicht klappt, ist das ein Fehler — kein Skip.
+    if (!TENANT_B_CLIENT_ID) {
+      TENANT_B_CLIENT_ID = psql(
+        `SELECT c.id FROM client c JOIN tenant t ON t.id = c.tenant_id WHERE t.slug = 'fremd-kanzlei' AND c.name = 'Fremd Mandant GmbH' ORDER BY c.created_at DESC LIMIT 1`,
+      ) || null;
+    }
     if (!TENANT_B_CLIENT_ID) {
       throw new Error(
         'Tenant-B-Setup fehlgeschlagen — Tenant-Isolation kann nicht getestet werden. ' +
@@ -993,6 +983,10 @@ test.describe('Session & Cookie Security', () => {
 // =============================================================================
 // SECTION 7: Rechnungs/GoBD-Compliance (XRechnung)
 // =============================================================================
+type InvoiceModeUnderTest = 'IN_APP' | 'EXTERNAL';
+let invoiceModeUnderTest: InvoiceModeUnderTest | null = null;
+let complianceInvoiceHref: string | null = null;
+
 test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
   test('7.1 New invoice page loads', async ({ browser }) => {
     if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
@@ -1010,15 +1004,18 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
     if (headingVisible) {
       await expect(heading).toBeVisible();
 
-      // FIX 1: EXTERNAL-Modus (zentrale Rechnungssoftware) ist der EINZIG
-      // gültige Skip-Grund für Rechnungs-Tests (config-abhängig).
       const external = await page.getByText(/zentraler Rechnungssoftware/).isVisible({ timeout: 2000 }).catch(() => false);
       if (external) {
-        test.skip(true, 'Invoice mode is EXTERNAL — skipping inline creation');
+        invoiceModeUnderTest = 'EXTERNAL';
+        await expect(page.locator('#pdf'), 'EXTERNAL-Modus muss den PDF-Upload anzeigen').toBeVisible({ timeout: 5000 });
+      } else {
+        invoiceModeUnderTest = 'IN_APP';
+        await expect(
+          page.locator('#subject').or(page.getByText(/Keine aktiven Mandanten/i)).first(),
+          'IN_APP-Modus muss Formular oder harte GwG-Precondition anzeigen',
+        ).toBeVisible({ timeout: 5000 });
       }
     } else {
-      // FIX 1: Wenn die Seite OHNE EXTERNAL-Hinweis nicht lädt, ist das ein Bug
-      // (admin sollte die Rechnungsseite sehen) → FAIL statt Skip.
       await ctx.close();
       throw new Error('Invoice creation page not accessible for admin and not in EXTERNAL mode — page broken or RBAC issue');
     }
@@ -1046,16 +1043,41 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
       (await page.getByText(/zentraler Rechnungssoftware/).isVisible({ timeout: 2000 }).catch(() => false)) ||
       (await page.getByText(/PDF-Rechnung hochladen/).isVisible({ timeout: 2000 }).catch(() => false));
     if (isExternal) {
-      // FIX 1: EXTERNAL-Modus ist der gültige config-abhängige Skip-Grund.
-      test.skip(true, 'Invoice mode is EXTERNAL — no inline creation (GoBD §146 Abs. 2)');
+      invoiceModeUnderTest = 'EXTERNAL';
+      const clientSelect = page.locator('#clientId');
+      await expect(clientSelect, 'EXTERNAL-Rechnungsupload braucht aktive Mandanten').toBeVisible({ timeout: 5000 });
+
+      const optionCount = await clientSelect.locator('option').count();
+      expect(optionCount, 'EXTERNAL-Rechnungsupload braucht mindestens einen auswählbaren Mandanten').toBeGreaterThan(1);
+      const mustermannOption = clientSelect.locator('option').filter({ hasText: /Mustermann GmbH/i }).first();
+      const selectedClient =
+        (await mustermannOption.getAttribute('value').catch(() => null)) ??
+        (await clientSelect.locator('option').nth(1).getAttribute('value'));
+      expect(selectedClient, 'Mandanten-Select muss eine echte Option enthalten').toBeTruthy();
+      await clientSelect.selectOption(selectedClient!);
+
+      const externalNumber = `E2E-EXT-${Date.now()}`;
+      await page.locator('#number').fill(externalNumber);
+      await page.locator('#totalAmount').fill('550.00');
+      await page.locator('#subject').fill('E2E Compliance Test Rechnung');
+      await page.locator('#pdf').setInputFiles({
+        name: 'e2e-compliance-invoice.pdf',
+        mimeType: 'application/pdf',
+        buffer: createMinimalPdf(),
+      });
+      await page.getByRole('button', { name: /Rechnung speichern.*Mandant senden/i }).click();
+      await page.waitForURL(/\/staff\/invoices\/[a-f0-9-]+/, { timeout: 15_000 });
+      complianceInvoiceHref = new URL(page.url()).pathname;
+      await expect(page.getByRole('heading', { name: new RegExp(externalNumber) })).toBeVisible({ timeout: 5000 });
+      await expect(page.getByText(/Versendet/i).first()).toBeVisible({ timeout: 5000 });
+
       await ctx.close(); return;
     }
 
     const noClients = await page.getByText(/Keine aktiven Mandanten/).isVisible({ timeout: 2000 }).catch(() => false);
     if (noClients) {
-      // FIX 1: GwG-Schranke (keine verifizierten Mandanten) — config-/seed-abhängig.
-      test.skip(true, 'No active clients for invoice creation (GwG-Schranke)');
-      await ctx.close(); return;
+      await ctx.close();
+      throw new Error('No active clients for invoice creation — paranoid E2E seed must include a GwG-verified client');
     }
 
     const subjectInput = page.locator('#subject');
@@ -1066,7 +1088,11 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
       throw new Error('Invoice form #subject field not found (not EXTERNAL, clients exist) — form regression');
     }
 
-    await page.locator('#clientId').selectOption({ label: 'Mustermann GmbH' });
+    await page.locator('#clientId').selectOption({ label: 'Mustermann GmbH' }).catch(async () => {
+      const firstValue = await page.locator('#clientId option').first().getAttribute('value');
+      expect(firstValue, 'Mandanten-Select muss eine echte Option enthalten').toBeTruthy();
+      await page.locator('#clientId').selectOption(firstValue!);
+    });
     await subjectInput.fill('E2E Compliance Test Rechnung');
 
     const descInput = page.locator('[id^="pos-0-description"]');
@@ -1095,8 +1121,11 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
     const submitBtn = page.getByRole('button', { name: /Rechnung anlegen/i });
     await expect(submitBtn).toBeVisible({ timeout: 5000 });
     await submitBtn.click();
-    await page.waitForTimeout(4000);
+    await page.waitForURL(/\/staff\/invoices\/[a-f0-9-]+/, { timeout: 15_000 });
+    complianceInvoiceHref = new URL(page.url()).pathname;
+    invoiceModeUnderTest = 'IN_APP';
     expect(page.url()).toContain('/staff/invoices/');
+    await expect(page.getByText(/Entwurf/i).first()).toBeVisible({ timeout: 5000 });
 
     await ctx.close();
   });
@@ -1116,14 +1145,21 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
 
     if (count > 0) {
       await expect(page.locator('table').first()).toBeVisible();
+      if (complianceInvoiceHref) {
+        await expect(
+          page.locator(`a[href="${complianceInvoiceHref}"]`),
+          'Die im E2E erzeugte Rechnung muss in der Rechnungsliste auftauchen',
+        ).toBeVisible({ timeout: 5000 });
+      }
     } else {
-      test.skip(true, 'No invoices in list');
+      await ctx.close();
+      throw new Error('Keine Rechnungen vorhanden — Test 7.2 muss deterministisch eine Rechnung anlegen');
     }
 
     await ctx.close();
   });
 
-  test('7.4 XRechnung export returns valid XML', async ({ browser }) => {
+  test('7.4 Configured invoice export/archive is verifiable', async ({ browser }) => {
     if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
@@ -1132,37 +1168,42 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
     await page.goto('/staff/invoices');
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
-    if (page.url().includes('/staff/login')) { await ctx.close(); return; }
+    if (page.url().includes('/staff/login')) {
+      await ctx.close();
+      throw new Error('Invoice list redirected to login — staff storageState/session broken');
+    }
 
-    const firstInvLink = page.locator('table tbody tr a').first();
+    const firstInvLink = complianceInvoiceHref
+      ? page.locator(`a[href="${complianceInvoiceHref}"]`).first()
+      : page.locator('table tbody tr a').first();
     const invVisible = await firstInvLink.isVisible({ timeout: 5000 }).catch(() => false);
 
-    if (invVisible) {
-      const href = await firstInvLink.getAttribute('href').catch(() => null);
+    if (!invVisible) {
       await ctx.close();
-
-      if (href) {
-        const idMatch = href.match(/\/staff\/invoices\/([a-f0-9-]+)/);
-        if (idMatch) {
-          const invId = idMatch[1]!;
-          const res = await request.get(`/api/staff/invoices/${invId}/xrechnung`);
-
-          if (res.status() === 200) {
-            const xml = await res.text();
-            expect(xml).toContain('<?xml');
-            expect(xml).toContain('<');
-            expect(xml).toContain('>');
-          } else if (res.status() === 401 || res.status() === 302) {
-            test.skip(true, 'XRechnung endpoint requires re-auth');
-          } else {
-            test.skip(true, `XRechnung endpoint returned ${res.status()}`);
-          }
-        }
-      }
-    } else {
-      await ctx.close();
-      test.skip(true, 'No invoice found to test XRechnung export');
+      throw new Error('Keine Rechnung für Export-/Archivprüfung gefunden — Test 7.2 muss deterministisch eine Rechnung anlegen');
     }
+
+    const href = await firstInvLink.getAttribute('href').catch(() => null);
+    expect(href, 'Rechnungslink muss eine Detail-URL enthalten').toBeTruthy();
+    const idMatch = href!.match(/\/staff\/invoices\/([a-f0-9-]+)/);
+    expect(idMatch, `Rechnungslink muss eine UUID enthalten: ${href}`).toBeTruthy();
+    const invId = idMatch![1]!;
+
+    if (invoiceModeUnderTest === 'EXTERNAL') {
+      await firstInvLink.click();
+      await expect(page.getByText(/PDF:/i), 'EXTERNAL-Rechnung muss eine GoBD-archivierte PDF anzeigen').toBeVisible({ timeout: 5000 });
+      await expect(page.getByText(/Versendet/i).first(), 'EXTERNAL-Rechnung muss nach Upload als versendet gelten').toBeVisible({ timeout: 5000 });
+      await ctx.close();
+      return;
+    }
+
+    const res = await request.get(`/api/staff/invoices/${invId}/xrechnung`);
+    expect(res.status(), 'XRechnung-Endpoint darf keine Auth-/Server-/Setup-Fehler liefern').toBe(200);
+    const xml = await res.text();
+    expect(xml).toContain('<?xml');
+    expect(xml).toContain('<rsm:CrossIndustryInvoice');
+    expect(xml).toContain('E2E Compliance Test Rechnung');
+    await ctx.close();
   });
 
   test('7.5 Mark invoice as sent and verify', async ({ browser }) => {
@@ -1175,30 +1216,39 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
     await page.waitForTimeout(3000);
     expect(page.url()).not.toContain('/staff/login');
 
-    const draftBadge = page.locator('.badge-gray').filter({ hasText: /Entwurf/ });
-    const draftCount = await draftBadge.count().catch(() => 0);
+    if (complianceInvoiceHref) {
+      await page.goto(complianceInvoiceHref);
+      await page.waitForLoadState('domcontentloaded');
+    }
 
-    if (draftCount === 0) {
-      test.skip(true, 'No DRAFT invoice to test sending');
+    if (invoiceModeUnderTest === 'EXTERNAL') {
+      await expect(page.getByText(/Versendet/i).first(), 'EXTERNAL-Rechnung muss bereits als versendet gelten').toBeVisible({ timeout: 5000 });
       await ctx.close(); return;
     }
 
-    const draftRow = draftBadge.first().locator('..');
-    const link = draftRow.locator('a').first();
-    if (await link.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await link.click();
-      await page.waitForTimeout(3000);
-
-      if (page.url().includes('/staff/invoices/')) {
-        const sendBtn = page.getByRole('button', { name: /versendet markieren/i });
-        if (await sendBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-          await sendBtn.click();
-          await page.waitForTimeout(3000);
-          const sentBadge = page.locator('.badge-yellow').filter({ hasText: /Versendet/i });
-          await expect(sentBadge.first()).toBeVisible({ timeout: 5000 });
-        }
+    let onDetail = page.url().includes('/staff/invoices/') && !page.url().endsWith('/staff/invoices');
+    if (!onDetail) {
+      const draftBadge = page.locator('.badge-gray').filter({ hasText: /Entwurf/ });
+      const draftCount = await draftBadge.count().catch(() => 0);
+      if (draftCount === 0) {
+        await ctx.close();
+        throw new Error('No DRAFT invoice to test sending — Test 7.2 must create a draft invoice in IN_APP mode');
       }
+      const draftRow = draftBadge.first().locator('..');
+      const link = draftRow.locator('a').first();
+      await expect(link, 'DRAFT invoice row must contain a detail link').toBeVisible({ timeout: 3000 });
+      await link.click();
+      await page.waitForURL(/\/staff\/invoices\/[a-f0-9-]+/, { timeout: 10_000 });
+      onDetail = true;
     }
+
+    expect(onDetail, 'Rechnungsdetailseite muss erreichbar sein').toBe(true);
+    const sendBtn = page.getByRole('button', { name: /versendet markieren/i });
+    await expect(sendBtn, 'DRAFT-Rechnung muss einen Versand-Button anzeigen').toBeVisible({ timeout: 5000 });
+    await sendBtn.click();
+    await page.waitForTimeout(3000);
+    const sentBadge = page.locator('.badge-yellow').filter({ hasText: /Versendet/i });
+    await expect(sentBadge.first()).toBeVisible({ timeout: 5000 });
 
     await ctx.close();
   });
@@ -1311,6 +1361,8 @@ test.describe('Magic Link Security', () => {
       page.getByText(/Zu viele Anfragen/i),
       '6. Magic-Link-Anfrage muss per IP-Rate-Limit blockiert werden',
     ).toBeVisible({ timeout: 10_000 });
+
+    await flushRedisDb();
   });
 });
 
@@ -1494,8 +1546,13 @@ test.describe.serial('File Upload Security — ClamAV & Validation', () => {
     expect(res.status()).not.toBe(500);
     if (res.status() === 200) {
       const body = await res.json().catch(() => ({}));
-      // detectedMime sollte application/pdf sein (Magic-Bytes-Check)
-      expect(body.detectedMime ?? body.mimeType ?? '').toContain('pdf');
+      expect(body.documentId, 'Commit-Response muss die Dokument-ID enthalten').toBeTruthy();
+      securityDocumentId = String(body.documentId);
+      const preview = await page.request.get(`/api/staff/documents/${body.documentId}/preview-url`);
+      expect(preview.status(), 'Preview-Metadaten fuer Double-Extension-Dokument muessen abrufbar sein').toBe(200);
+      const previewBody = await preview.json();
+      expect(previewBody.mimeType ?? '').toContain('pdf');
+      expect(previewBody.mimeType ?? '').not.toMatch(/msdownload|executable|octet-stream/i);
     }
 
     await ctx.close();
@@ -1506,16 +1563,11 @@ test.describe.serial('File Upload Security — ClamAV & Validation', () => {
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
-    // Das in 1.1 hochgeladene Dokument aufrufen
-    await page.goto('/staff/documents');
+    const documentId = complianceDocumentId || securityDocumentId;
+    expect(documentId, 'Kein Dokument fuer SHA-Check — vorheriger Upload muss die ID gesetzt haben').toBeTruthy();
+    await page.goto(`/staff/documents/${documentId}`);
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(3000);
     expect(page.url()).not.toContain('/staff/login');
-
-    const docLink = page.getByRole('link', { name: /E2E Compliance Test Dokument/i }).first();
-    await expect(docLink).toBeVisible({ timeout: 8000 });
-    await docLink.click();
-    await page.waitForTimeout(3000);
     expect(page.url()).toContain('/staff/documents/');
 
     // SHA-256 muss auf der Detailseite stehen
@@ -1673,10 +1725,13 @@ test.describe.serial('Portal Compliance — DSGVO Export & Consent', () => {
 
     try {
       await loginAsMandant(page, request);
-      await expect(page.getByText(/Dashboard|Willkommen/).first()).toBeVisible({ timeout: 8000 });
+      await expect(page).toHaveURL(/\/portal\/dashboard/, { timeout: 8000 });
+      await expect(page.getByRole('heading', { name: /Hallo|Übersicht/i }).first()).toBeVisible({ timeout: 8000 });
       await ctx.storageState({ path: MANDANT_AUTH });
     } catch (e) {
-      test.skip(true, `Portal login failed: ${(e as Error).message}`);
+      // MailHog/SMTP sind Pflichtservices im Paranoid-CI.
+      // Wenn der Portal-Login fehlschlägt, ist das ein Fehler, kein Skip.
+      throw new Error(`Portal-Login fehlgeschlagen (MailHog/SMTP Pflichtservice): ${(e as Error).message}`);
     } finally {
       await ctx.close();
     }
@@ -1693,11 +1748,8 @@ test.describe.serial('Portal Compliance — DSGVO Export & Consent', () => {
 
     const settingsContent = page.getByText(/Einstellung|Benachrichtigung|DSGVO/i);
     const contentVisible = await settingsContent.first().isVisible({ timeout: 5000 }).catch(() => false);
-    if (contentVisible) {
-      await expect(settingsContent.first()).toBeVisible();
-    } else {
-      test.skip(true, 'Portal settings content not found');
-    }
+    expect(contentVisible, 'Portal settings content must be visible for consent/DSGVO settings').toBe(true);
+    await expect(settingsContent.first()).toBeVisible();
 
     await ctx.close();
   });

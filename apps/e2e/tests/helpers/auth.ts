@@ -24,16 +24,30 @@ export async function loginAsAdmin(page: Page): Promise<void> {
   // Schritt 1: Passwort
   await page.getByLabel('E-Mail').fill(ADMIN_EMAIL);
   await page.getByLabel('Passwort').fill(ADMIN_PASSWORD);
-  await page.getByRole('button', { name: /Weiter/ }).click();
+  const continueButton = page.getByRole('button', { name: /Weiter|Wird gepr/i });
+  await continueButton.click();
 
   // DEV_SKIP_TOTP: Nach Passwort direkt auf Dashboard — checkPasswordAction
   // liefert devSkip:true, die UI triggert loginAction + window.location-Redirect.
   // Das sind zwei Server Actions, daher grosszügiger Timeout.
-  const onDashboard = await page
-    .waitForURL(/\/staff\/dashboard/, { timeout: 15_000 })
+  let onDashboard = await page
+    .waitForURL(/\/staff\/dashboard/, { timeout: 7_000 })
     .then(() => true)
     .catch(() => false);
   if (onDashboard) return;
+
+  // Turbopack/React kann lokal selten einen Submit verschlucken, wenn die Seite
+  // gerade frisch hydratisiert. Ein zweiter, zustandsgeprüfter Submit ist
+  // deterministischer als später irreführend in den TOTP-Pfad zu fallen.
+  const stillOnPasswordStep = await page.getByRole('button', { name: /^Weiter$/ }).isVisible({ timeout: 1000 }).catch(() => false);
+  if (stillOnPasswordStep) {
+    await page.getByRole('button', { name: /^Weiter$/ }).click();
+    onDashboard = await page
+      .waitForURL(/\/staff\/dashboard/, { timeout: 7_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (onDashboard) return;
+  }
 
   // Fallback: prüfen, ob auf der Staff-Login-Seite ein Fehler steht
   const errorText = await page.locator('[role="alert"], .alert-error-sm, .alert-error, .text-red-600, .text-red-500, .text-red-700').first().textContent().catch(() => '');
@@ -72,6 +86,12 @@ export async function loginAsAdmin(page: Page): Promise<void> {
   // Schritt 2: TOTP-Login
   const secret = process.env['E2E_TOTP_SECRET'];
   if (!secret) {
+    const bodyText = await page.locator('body').innerText().catch(() => '');
+    if (/Mitarbeiter-Login/i.test(bodyText) && /Passwort/i.test(bodyText) && /Weiter/i.test(bodyText)) {
+      throw new Error(
+        `Passwort-Login blieb auf Schritt 1 stehen. DEV_SKIP_TOTP/Passwort/Server-Action prüfen. URL: ${page.url()}. Text: ${bodyText.slice(0, 500)}`,
+      );
+    }
     throw new Error(
       'TOTP-Secret unbekannt. Setze E2E_TOTP_SECRET=… oder lass den Admin im UI neu enrollen.',
     );
