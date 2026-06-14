@@ -96,7 +96,7 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
 
   test('1.1 Upload a PDF document', async ({ browser }) => {
     test.setTimeout(60_000);
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -175,7 +175,7 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
   });
 
   test('1.2 Verify uploaded document appears in list', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -193,7 +193,7 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
   });
 
   test('1.3 Soft-delete a document and verify it is hidden but recoverable', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -239,7 +239,7 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
   });
 
   test('1.4 Object-Lock metadata validation (retention date)', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -272,7 +272,7 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
   });
 
   test('1.5 Upload ohne classification/documentTypeId wird mit 400 abgelehnt', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -298,7 +298,7 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
   });
 
   test('1.6 Upload new version of existing document', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -350,7 +350,7 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
   });
 
   test('1.7 Content-Length-Präfix-Check: >100MB+1MB wird mit 413 abgelehnt', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -382,7 +382,7 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
 // =============================================================================
 test.describe.serial('GwG §10-12 — Geldwäschegesetz-Compliance', () => {
   test('2.1 GwG retention page loads', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -416,7 +416,7 @@ test.describe.serial('GwG §10-12 — Geldwäschegesetz-Compliance', () => {
   });
 
   test('2.2 Client detail shows GwG status badge', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -451,7 +451,7 @@ test.describe.serial('GwG §10-12 — Geldwäschegesetz-Compliance', () => {
   });
 
   test('2.4 GwG verification workflow states are visible', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -480,7 +480,7 @@ test.describe.serial('GwG §10-12 — Geldwäschegesetz-Compliance', () => {
 // =============================================================================
 test.describe.serial('DSGVO — Datenschutz-Grundverordnung', () => {
   test('3.1 DSGVO requests page loads', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -512,7 +512,7 @@ test.describe.serial('DSGVO — Datenschutz-Grundverordnung', () => {
   });
 
   test('3.2 Client anonymization UI exists', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -549,7 +549,7 @@ test.describe.serial('DSGVO — Datenschutz-Grundverordnung', () => {
   });
 
   test('3.3 Consent/DSGVO settings in admin sidebar', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -584,7 +584,7 @@ test.describe.serial('DSGVO — Datenschutz-Grundverordnung', () => {
 // =============================================================================
 test.describe.serial('Audit Trail — GoBD-Revisionssicherheit', () => {
   test('4.1 Audit log page loads', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -612,7 +612,7 @@ test.describe.serial('Audit Trail — GoBD-Revisionssicherheit', () => {
   });
 
   test('4.2 Audit entries have timestamps and actor IDs', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -650,7 +650,7 @@ test.describe.serial('Audit Trail — GoBD-Revisionssicherheit', () => {
   // erzeugen Audit-Einträge mit definierten Action-Typen. Diese MÜSSEN in der
   // Tabelle auftauchen — sonst ist die Audit-Trail lückenhaft (GoBD-Verstoß).
   test('4.2b Audit log contains specific action types from earlier tests', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -688,7 +688,7 @@ test.describe.serial('Audit Trail — GoBD-Revisionssicherheit', () => {
   });
 
   test('4.3 Audit log is NOT modifiable (no edit/delete buttons)', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -712,7 +712,7 @@ test.describe.serial('Audit Trail — GoBD-Revisionssicherheit', () => {
   });
 
   test('4.4 Hash-Chain integrity banner is visible', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -733,7 +733,7 @@ test.describe.serial('Audit Trail — GoBD-Revisionssicherheit', () => {
   });
 
   test('4.5 Prüfer-Link (audit token) section exists', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -798,7 +798,7 @@ test.describe.serial('Tenant Isolation — §203 StGB Mandantentrennung', () => 
   });
 
   test('5.1 Admin only sees own tenant clients', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -819,7 +819,7 @@ test.describe.serial('Tenant Isolation — §203 StGB Mandantentrennung', () => 
   });
 
   test('5.2 Cross-tenant access via fabricated UUID returns 404', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -845,7 +845,7 @@ test.describe.serial('Tenant Isolation — §203 StGB Mandantentrennung', () => 
   });
 
   test('5.3 Cross-tenant API call returns 403/404', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const request = ctx.request;
 
@@ -863,7 +863,7 @@ test.describe.serial('Tenant Isolation — §203 StGB Mandantentrennung', () => 
   // Mandanten (oben per psql angelegt). Admin (Tenant A) darf ihn über UI UND
   // API nicht sehen — sonst §203 StGB-Verstoß (Datenleck an fremde Kanzlei).
   test('5.3b Real cross-tenant access to existing Tenant-B client is blocked', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     // Tenant-Isolation ist Kernschutz (§203 StGB). Wenn der Tenant-B-Seed
     // nicht klappt, ist das ein Fehler — kein Skip.
     if (!TENANT_B_CLIENT_ID) {
@@ -903,7 +903,7 @@ test.describe.serial('Tenant Isolation — §203 StGB Mandantentrennung', () => 
   });
 
   test('5.4 Health endpoint shows DB connectivity (indirect RLS check)', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const request = ctx.request;
 
@@ -995,7 +995,7 @@ test.describe('Session & Cookie Security', () => {
 // =============================================================================
 test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
   test('7.1 New invoice page loads', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -1027,7 +1027,7 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
   });
 
   test('7.2 Create invoice with line items', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -1102,7 +1102,7 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
   });
 
   test('7.3 Invoice list shows sequential numbers', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -1124,7 +1124,7 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
   });
 
   test('7.4 XRechnung export returns valid XML', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
     const request = ctx.request;
@@ -1166,7 +1166,7 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
   });
 
   test('7.5 Mark invoice as sent and verify', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -1291,26 +1291,26 @@ test.describe('Magic Link Security', () => {
   });
 
   test('8.4 Rate limiting on magic link requests', async ({ page }) => {
-    // Send 6 requests in rapid succession
-    for (let i = 0; i < 6; i++) {
+    // Gleiche feste Adresse wie 04-rate-limit.spec.ts für deterministisches
+    // Verhalten. Das Limit ist per-IP (5/15min), nicht per-E-Mail.
+    // Redis sollte vor diesem Test geflusht sein (CI macht das).
+    const RATE_LIMIT_EMAIL = 'compliance-rate-limit-test@taxtronik.local';
+    for (let i = 0; i < 5; i++) {
       await page.goto('/portal/login', { waitUntil: 'domcontentloaded' });
-      await page.waitForTimeout(150);
-      await page.getByLabel('E-Mail-Adresse').fill(`compliance-spam-${i}-${Date.now()}@nope.local`);
+      await page.getByLabel('E-Mail-Adresse').fill(RATE_LIMIT_EMAIL);
       await page.getByRole('button', { name: /Login-Link anfordern/i }).click();
-      await page.waitForTimeout(150);
+      await page.waitForTimeout(200);
     }
 
-    const errorOrSuccess = page.locator('text=/Zu viele Anfragen|Login-Link verschickt/i');
-    await expect(errorOrSuccess.first()).toBeVisible({ timeout: 10_000 });
+    // 6. Anfrage MUSS blockiert werden
+    await page.goto('/portal/login', { waitUntil: 'domcontentloaded' });
+    await page.getByLabel('E-Mail-Adresse').fill(RATE_LIMIT_EMAIL);
+    await page.getByRole('button', { name: /Login-Link anfordern/i }).click();
 
-    const maybeError = await page.getByText(/Zu viele Anfragen/i).isVisible().catch(() => false);
-    if (!maybeError) {
-      await page.goto('/portal/login', { waitUntil: 'domcontentloaded' });
-      await page.waitForTimeout(300);
-      await page.getByLabel('E-Mail-Adresse').fill('last-spam@nope.local');
-      await page.getByRole('button', { name: /Login-Link anfordern/i }).click();
-      await expect(page.getByText(/Zu viele Anfragen/i)).toBeVisible({ timeout: 5_000 });
-    }
+    await expect(
+      page.getByText(/Zu viele Anfragen/i),
+      '6. Magic-Link-Anfrage muss per IP-Rate-Limit blockiert werden',
+    ).toBeVisible({ timeout: 10_000 });
   });
 });
 
@@ -1319,7 +1319,7 @@ test.describe('Magic Link Security', () => {
 // =============================================================================
 test.describe.serial('Input Validation — XSS/SQL Injection', () => {
   test('9.1 XSS in client name field is escaped', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -1364,7 +1364,7 @@ test.describe.serial('Input Validation — XSS/SQL Injection', () => {
   });
 
   test('9.2 SQL injection patterns in search are escaped', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -1395,7 +1395,7 @@ test.describe.serial('Input Validation — XSS/SQL Injection', () => {
   });
 
   test('9.3 Very long inputs are handled gracefully', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -1429,7 +1429,7 @@ test.describe.serial('Input Validation — XSS/SQL Injection', () => {
 // =============================================================================
 test.describe.serial('File Upload Security — ClamAV & Validation', () => {
   test('10.1 EICAR-Testdatei wird von ClamAV abgelehnt (422, nicht 200)', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -1467,7 +1467,7 @@ test.describe.serial('File Upload Security — ClamAV & Validation', () => {
   });
 
   test('10.2 Double-Extension-Datei (invoice.pdf.exe) wird nicht als .exe gespeichert', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -1502,7 +1502,7 @@ test.describe.serial('File Upload Security — ClamAV & Validation', () => {
   });
 
   test('10.3 Dokument-Detailseite zeigt SHA-256-Hash', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -1586,7 +1586,7 @@ test.describe('Authorization & RBAC', () => {
 // =============================================================================
 test.describe.serial('Backup & Restore — §147 AO Compliance', () => {
   test('12.1 Admin dashboard shows backup info', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -1608,7 +1608,7 @@ test.describe.serial('Backup & Restore — §147 AO Compliance', () => {
   });
 
   test('12.2 Audit archive page shows archive segments', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -1630,7 +1630,7 @@ test.describe.serial('Backup & Restore — §147 AO Compliance', () => {
   });
 
   test('12.3 Health detail shows S3/Object-Store connectivity (backup storage)', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const request = ctx.request;
 
@@ -1683,7 +1683,7 @@ test.describe.serial('Portal Compliance — DSGVO Export & Consent', () => {
   });
 
   test('13.1 Portal settings page loads (consent/DSGVO settings)', async ({ browser }) => {
-    if (!fs.existsSync(MANDANT_AUTH)) { test.skip(true, 'No mandant auth state'); return; }
+    if (!fs.existsSync(MANDANT_AUTH)) { throw new Error('Portal-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
     const ctx = await browser.newContext({ storageState: MANDANT_AUTH });
     const page = await ctx.newPage();
 
@@ -1703,7 +1703,7 @@ test.describe.serial('Portal Compliance — DSGVO Export & Consent', () => {
   });
 
   test('13.2 Portal document page verifies shared docs access', async ({ browser }) => {
-    if (!fs.existsSync(MANDANT_AUTH)) { test.skip(true, 'No mandant auth state'); return; }
+    if (!fs.existsSync(MANDANT_AUTH)) { throw new Error('Portal-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
     const ctx = await browser.newContext({ storageState: MANDANT_AUTH });
     const page = await ctx.newPage();
 

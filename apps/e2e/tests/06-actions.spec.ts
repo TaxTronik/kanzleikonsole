@@ -126,7 +126,7 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     await ctx.close();
   });
   test('Share a document with the client', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -177,7 +177,7 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
 
   // 3. Create Invoice
   test('Create a new invoice', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -215,7 +215,7 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
 
   // 4. Create Calendar Appointment
   test('Create a calendar appointment', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -254,7 +254,7 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
 
   // 5. Start Workflow
   test('Start a workflow for a client', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -283,7 +283,7 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
 
   // 6. Create Knowledge Article
   test('Create a knowledge article', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -310,7 +310,7 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
 
   // 7. Create Form Template
   test('Create a form template', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -337,7 +337,7 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
 
   // 8. Add Phone Note
   test('Add a phone note on client detail', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -382,7 +382,7 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
 
   // 9. Create POA
   test('Create a power of attorney', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -417,7 +417,7 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
 
   // 10. Log Time Entry
   test('Start and stop a time entry', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -464,7 +464,7 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
 
   // 11. Tenant Isolation
   test('Verify tenant isolation', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -484,7 +484,7 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
 
   // 12. Audit Trail
   test('Audit trail contains entries', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -540,7 +540,7 @@ test.describe('Portal Actions', () => {
   });
 
   test('View shared documents in portal', async ({ browser }) => {
-    if (!fs.existsSync(MANDANT_AUTH)) { test.skip(true, 'No mandant auth state'); return; }
+    if (!fs.existsSync(MANDANT_AUTH)) { throw new Error('Portal-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
     const ctx = await browser.newContext({ storageState: MANDANT_AUTH });
     const page = await ctx.newPage();
 
@@ -556,7 +556,7 @@ test.describe('Portal Actions', () => {
   });
 
   test('Portal requests page loads', async ({ browser }) => {
-    if (!fs.existsSync(MANDANT_AUTH)) { test.skip(true, 'No mandant auth state'); return; }
+    if (!fs.existsSync(MANDANT_AUTH)) { throw new Error('Portal-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
     const ctx = await browser.newContext({ storageState: MANDANT_AUTH });
     const page = await ctx.newPage();
 
@@ -572,7 +572,7 @@ test.describe('Portal Actions', () => {
   });
 
   test('Request an appointment as mandant', async ({ browser }) => {
-    if (!fs.existsSync(MANDANT_AUTH)) { test.skip(true, 'No mandant auth state'); return; }
+    if (!fs.existsSync(MANDANT_AUTH)) { throw new Error('Portal-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
     const ctx = await browser.newContext({ storageState: MANDANT_AUTH });
     const page = await ctx.newPage();
 

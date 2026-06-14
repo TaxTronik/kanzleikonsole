@@ -74,13 +74,17 @@ for b in general staff-private backups; do
   ensure_bucket "$b"
 done
 
-# Versionierung für staff-private (versehentliche Überschreibungen wiederherstellbar)
-# WARNUNG, nicht fatal — SeaweedFS unterstützt evtl. nicht alle Versioning-Features.
+# Versionierung für staff-private und Lifecycle für backups.
+# Beide sind wichtige Features, aber NICHT GoBD-kritisch (Object-Lock ist
+# bereits hart gesetzt). SeaweedFS implementiert diese S3-Operationen evtl.
+# unvollständig — wir warnen explizit, brechen aber nicht ab.
+# In einer produktiven MinIO/AWS-S3-Umgebung würden diese hart fehlschlagen.
+echo "[init-storage] Konfiguriere Versioning (staff-private)…"
 $AWS s3api put-bucket-versioning --bucket staff-private \
   --versioning-configuration Status=Enabled \
-  || echo "[init-storage] WARNUNG: Versioning für staff-private fehlgeschlagen (SeaweedFS-Limit)"
+  || echo "[init-storage] WARNUNG: Versioning für staff-private fehlgeschlagen (SeaweedFS-Limit, nicht GoBD-kritisch)"
 
-# Lifecycle-Rules für backups (90-Tage-Expiry)
+echo "[init-storage] Konfiguriere Lifecycle (backups, 90 Tage)…"
 $AWS s3api put-bucket-lifecycle-configuration --bucket backups \
   --lifecycle-configuration '{
     "Rules":[{
@@ -90,6 +94,6 @@ $AWS s3api put-bucket-lifecycle-configuration --bucket backups \
       "Expiration":{"Days":90}
     }]
   }' \
-  || echo "[init-storage] WARNUNG: Lifecycle-Rule für backups fehlgeschlagen (SeaweedFS-Limit)"
+  || echo "[init-storage] WARNUNG: Lifecycle-Rule für backups fehlgeschlagen (SeaweedFS-Limit, nicht GoBD-kritisch)"
 
 echo "[init-storage] Fertig."
