@@ -864,9 +864,13 @@ test.describe.serial('Tenant Isolation — §203 StGB Mandantentrennung', () => 
   // API nicht sehen — sonst §203 StGB-Verstoß (Datenleck an fremde Kanzlei).
   test('5.3b Real cross-tenant access to existing Tenant-B client is blocked', async ({ browser }) => {
     if (!fs.existsSync(STAFF_AUTH)) { test.skip(true, 'No auth state'); return; }
+    // Tenant-Isolation ist Kernschutz (§203 StGB). Wenn der Tenant-B-Seed
+    // nicht klappt, ist das ein Fehler — kein Skip.
     if (!TENANT_B_CLIENT_ID) {
-      test.skip(true, 'Tenant B / Postgres not available (infra-dependent)');
-      return;
+      throw new Error(
+        'Tenant-B-Setup fehlgeschlagen — Tenant-Isolation kann nicht getestet werden. ' +
+        'psql-Verbindung prüfen (docker exec oder localhost).',
+      );
     }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();

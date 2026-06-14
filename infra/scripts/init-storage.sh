@@ -50,8 +50,11 @@ ensure_bucket_with_lock() {
   fi
   echo "[init-storage] Erstelle Bucket '$name' mit Object-Lock (${years} Jahre)…"
   $AWS s3api create-bucket --bucket "$name" --object-lock-enabled-for-bucket
+  # GoBD/GwG-Retention ist compliance-kritisch — KEIN || true.
+  # Wenn Object-Lock nicht gesetzt werden kann, ist das ein GoBD-Bruch
+  # und der gesamte Storage-Setup muss fehlschlagen.
   $AWS s3api put-object-lock-configuration --bucket "$name" \
-    --object-lock-configuration "{\"ObjectLockEnabled\":\"Enabled\",\"Rule\":{\"DefaultRetention\":{\"Mode\":\"COMPLIANCE\",\"Years\":${years}}}}" || true
+    --object-lock-configuration "{\"ObjectLockEnabled\":\"Enabled\",\"Rule\":{\"DefaultRetention\":{\"Mode\":\"COMPLIANCE\",\"Years\":${years}}}}"
 }
 
 ensure_bucket() {
@@ -72,10 +75,12 @@ for b in general staff-private backups; do
 done
 
 # Versionierung für staff-private (versehentliche Überschreibungen wiederherstellbar)
+# WARNUNG, nicht fatal — SeaweedFS unterstützt evtl. nicht alle Versioning-Features.
 $AWS s3api put-bucket-versioning --bucket staff-private \
-  --versioning-configuration Status=Enabled || true
+  --versioning-configuration Status=Enabled \
+  || echo "[init-storage] WARNUNG: Versioning für staff-private fehlgeschlagen (SeaweedFS-Limit)"
 
-# Lifecycle-Rules
+# Lifecycle-Rules für backups (90-Tage-Expiry)
 $AWS s3api put-bucket-lifecycle-configuration --bucket backups \
   --lifecycle-configuration '{
     "Rules":[{
@@ -84,6 +89,7 @@ $AWS s3api put-bucket-lifecycle-configuration --bucket backups \
       "Filter":{"Prefix":""},
       "Expiration":{"Days":90}
     }]
-  }' || true
+  }' \
+  || echo "[init-storage] WARNUNG: Lifecycle-Rule für backups fehlgeschlagen (SeaweedFS-Limit)"
 
 echo "[init-storage] Fertig."

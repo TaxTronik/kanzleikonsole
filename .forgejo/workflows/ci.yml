@@ -643,7 +643,7 @@ jobs:
           docker run -d --name seaweedfs-ci \
             -p 8333:8333 -p 9333:9333 \
             -v /tmp/seaweedfs-s3.json:/etc/seaweedfs/s3.json:ro \
-            chrislusf/seaweedfs:latest \
+            chrislusf/seaweedfs:latest@sha256:e14ad400e28c811fe8426dc08abf248ec722b9f017713290a9b84a54557f45c2 \
             server -dir=/data -master.volumeSizeLimitMB=2048 \
             -volume.max=0 -s3 -s3.config=/etc/seaweedfs/s3.json \
             -s3.port=8333 -master.port=9333 -filer
@@ -656,6 +656,12 @@ jobs:
             fi
             sleep 2
           done
+          # Hart failen, wenn SeaweedFS nach 120s nicht healthy ist
+          if ! curl -sf http://localhost:9333/cluster/healthz >/dev/null 2>&1; then
+            echo "SeaweedFS not healthy after 120s — logs:"
+            docker logs seaweedfs-ci 2>&1 | tail -50
+            exit 1
+          fi
 
       - name: Create S3 buckets with Object-Lock (SeaweedFS, production-parity)
         run: |
