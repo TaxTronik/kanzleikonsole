@@ -36,7 +36,7 @@ export async function loginAsAdmin(page: Page): Promise<void> {
   if (onDashboard) return;
 
   // Fallback: prüfen, ob auf der Staff-Login-Seite ein Fehler steht
-  const errorText = await page.locator('[role="alert"], .text-red-600, .text-red-500').first().textContent().catch(() => '');
+  const errorText = await page.locator('[role="alert"], .alert-error-sm, .alert-error, .text-red-600, .text-red-500, .text-red-700').first().textContent().catch(() => '');
   if (errorText) {
     throw new Error(`Login fehlgeschlagen: ${errorText} (URL: ${page.url()})`);
   }
