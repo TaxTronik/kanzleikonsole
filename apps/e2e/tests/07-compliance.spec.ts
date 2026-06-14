@@ -24,7 +24,6 @@ const MANDANT_AUTH = path.join(AUTH_DIR, 'mandant.json');
 // NICHT aus page.url() — das ist about:blank vor der ersten Navigation
 // und würde Origin: "null" setzen → CSRF-Check schlägt fehl → 403.
 const BASE_ORIGIN = process.env['E2E_BASE_URL'] ?? 'http://localhost:3000';
-const MANDANT_AUTH = path.join(AUTH_DIR, 'mandant.json');
 
 function createMinimalPdf(): Buffer {
   const pdf = [
@@ -1274,9 +1273,6 @@ test.describe.serial('File Upload Security — ClamAV & Validation', () => {
     // Body muss INFECTED enthalten
     const body = await res.json().catch(() => ({}));
     expect(body.error ?? '', 'Response-Body muss INFECTED-Präfix haben').toMatch(/INFECTED/i);
-
-    await ctx.close();
-  });
 
     await ctx.close();
   });
