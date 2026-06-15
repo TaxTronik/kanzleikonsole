@@ -7,7 +7,7 @@ import { decryptTotpSecret, verifyTotpCode } from './totp';
 import { resetFailedLogin } from './lockout';
 import { recordFailedLoginAudited, auditIp } from './login-audit';
 import { isTokenRevoked } from './revocation';
-import { STAFF_SESSION_COOKIE } from './session-cookie';
+import { STAFF_SESSION_COOKIE, USE_SECURE_COOKIES } from './session-cookie';
 import { evidenceService } from '@/server/container';
 import { consumeTotpCode } from './totp-replay';
 import { prismaOwner } from '@/server/db/prisma-owner';
@@ -396,7 +396,7 @@ const staffConfig: NextAuthConfig = {
       name: STAFF_SESSION_COOKIE,
       options: {
         httpOnly: true,
-        secure: env.NODE_ENV === 'production',
+        secure: USE_SECURE_COOKIES,
         sameSite: 'lax' as const,
         path: '/',
         // Optional: Subdomain-Trennung (siehe docs/operations/subdomain-trennung.md)

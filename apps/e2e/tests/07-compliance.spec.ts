@@ -934,6 +934,9 @@ test.describe('Session & Cookie Security', () => {
       expect(sessionCookie.name).toMatch(STAFF_COOKIE_RE);
       expect(sessionCookie.httpOnly).toBe(true);
       expect(['lax', 'strict', 'Lax', 'Strict']).toContain(sessionCookie.sameSite);
+      if (page.url().startsWith('http://')) {
+        expect(sessionCookie.secure, 'HTTP-E2E darf kein Secure-Session-Cookie setzen').toBe(false);
+      }
     }
   });
 

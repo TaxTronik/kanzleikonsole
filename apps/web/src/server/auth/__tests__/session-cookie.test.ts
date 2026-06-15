@@ -25,6 +25,7 @@ describe('session cookie names', () => {
       PORTAL_COOKIE_DOMAIN: 'portal.example.test',
     });
 
+    expect(cookies.USE_SECURE_COOKIES).toBe(true);
     expect(cookies.STAFF_SESSION_COOKIE).toBe('__Host-taxtronik_staff_session');
     expect(cookies.PORTAL_SESSION_COOKIE).toBe('__Secure-taxtronik_portal_session');
   });
@@ -40,6 +41,7 @@ describe('session cookie names', () => {
       PORTAL_COOKIE_DOMAIN: undefined,
     });
 
+    expect(cookies.USE_SECURE_COOKIES).toBe(false);
     expect(cookies.STAFF_SESSION_COOKIE).toBe('__taxtronik_staff_session');
     expect(cookies.PORTAL_SESSION_COOKIE).toBe('__taxtronik_portal_session');
   });

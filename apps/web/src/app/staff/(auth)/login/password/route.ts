@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { encode } from 'next-auth/jwt';
 import { env } from '@taxtronik/config';
 import { prismaOwner } from '@/server/db/prisma-owner';
-import { STAFF_SESSION_COOKIE } from '@/server/auth/session-cookie';
+import { STAFF_SESSION_COOKIE, USE_SECURE_COOKIES } from '@/server/auth/session-cookie';
 import { checkPasswordAction, loginAction } from '../actions';
 
 function safeStaffReturnTo(raw: string | null): string {
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const response = NextResponse.redirect(new URL(returnTo, req.url), 303);
   response.cookies.set(STAFF_SESSION_COOKIE, token, {
     httpOnly: true,
-    secure: env.NODE_ENV === 'production',
+    secure: USE_SECURE_COOKIES,
     sameSite: 'lax',
     path: '/',
     maxAge: 24 * 60 * 60,

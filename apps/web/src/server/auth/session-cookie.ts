@@ -29,10 +29,10 @@ const IS_LOCAL_HTTP_E2E =
   process.env['E2E_ALLOW_DEV_SKIP_TOTP_IN_PRODUCTION'] === 'true' &&
   isLocalhostUrl(process.env['NEXTAUTH_URL']);
 
-const USE_SECURE_COOKIE_PREFIX = process.env.NODE_ENV === 'production' && !IS_LOCAL_HTTP_E2E;
+export const USE_SECURE_COOKIES = process.env.NODE_ENV === 'production' && !IS_LOCAL_HTTP_E2E;
 
 function sessionCookieName(base: string, cookieDomain: string | undefined): string {
-  if (!USE_SECURE_COOKIE_PREFIX) return `__${base}`;
+  if (!USE_SECURE_COOKIES) return `__${base}`;
   return cookieDomain ? `__Secure-${base}` : `__Host-${base}`;
 }
 

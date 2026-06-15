@@ -16,7 +16,7 @@ import Credentials from 'next-auth/providers/credentials';
 import { env } from '@taxtronik/config';
 import { verifyMagicLink } from './magic-link';
 import { isTokenRevoked } from './revocation';
-import { PORTAL_SESSION_COOKIE } from './session-cookie';
+import { PORTAL_SESSION_COOKIE, USE_SECURE_COOKIES } from './session-cookie';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { log } from '@/server/logger';
 
@@ -100,7 +100,7 @@ const portalConfig: NextAuthConfig = {
       name: PORTAL_SESSION_COOKIE,
       options: {
         httpOnly: true,
-        secure: env.NODE_ENV === 'production',
+        secure: USE_SECURE_COOKIES,
         sameSite: 'lax' as const,
         path: '/',
         ...(env.PORTAL_COOKIE_DOMAIN ? { domain: env.PORTAL_COOKIE_DOMAIN } : {}),
