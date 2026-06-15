@@ -294,7 +294,8 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     const btn = page.locator('button[type="submit"]').filter({ hasText: /Anlegen/ });
     await expect(btn).toBeVisible({ timeout: 5000 });
     await btn.click();
-    await page.waitForTimeout(3000);
+    await expect(page.locator('.modal-overlay')).toBeHidden({ timeout: 10_000 });
+    await page.goto(`/staff/calendar?month=${s.slice(0, 7)}`, { waitUntil: 'networkidle' });
 
     // FIX 2: Statt body-visible — der Termin MUSS im Kalender/der Liste
     // auftauchen, sonst wurde er nicht persistiert.

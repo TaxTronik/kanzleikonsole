@@ -1,34 +1,70 @@
-// =============================================================================
-// E2E-Helper: Login-Flow mit TOTP (und DEV_SKIP_TOTP-Support)
-//
-// Wenn DEV_SKIP_TOTP=true gesetzt ist, entfällt der TOTP-Schritt komplett —
-// nach dem Passwort-Login landet man direkt auf dem Dashboard.
-//
-// Ohne DEV_SKIP_TOTP: Beim ersten Login erscheint der Setup-Schritt mit
-// QR-Code. Wir extrahieren den Setup-Secret (sichtbar in <code>...</code>),
-// generieren das TOTP und schließen das Enrollment ab. Bei späteren Logins
-// reicht das gespeicherte Secret (in `process.env.E2E_TOTP_SECRET`).
-// =============================================================================
-
-import { type Page, expect } from '@playwright/test';
+import { type APIResponse, type Page, expect } from '@playwright/test';
 import { generateSync } from 'otplib';
 
 export const ADMIN_EMAIL = process.env['E2E_ADMIN_EMAIL'] ?? 'admin@taxtronik.local';
 export const ADMIN_PASSWORD = process.env['E2E_ADMIN_PASSWORD'] ?? 'dev-password-123';
 
+const STAFF_SESSION_COOKIE_RE = /^__(?:Host-|Secure-)?taxtronik_staff_session$/;
+
+function isStaffSessionCookieName(name: string): boolean {
+  return STAFF_SESSION_COOKIE_RE.test(name);
+}
+
+function setCookieHeaders(response: APIResponse): string[] {
+  const headers = response
+    .headersArray()
+    .filter((header) => header.name.toLowerCase() === 'set-cookie')
+    .map((header) => header.value);
+  const collapsed = response.headers()['set-cookie'];
+  if (collapsed && !headers.includes(collapsed)) headers.push(collapsed);
+  return headers;
+}
+
+async function ensureStaffSessionCookieFromResponse(page: Page, response: APIResponse): Promise<boolean> {
+  const existing = await page.context().cookies();
+  if (existing.some((cookie) => isStaffSessionCookieName(cookie.name))) return true;
+
+  for (const header of setCookieHeaders(response)) {
+    const match = header.match(/(__(?:Host-|Secure-)?taxtronik_staff_session)=([^;,]+)/);
+    if (!match) continue;
+    await page.context().addCookies([
+      {
+        name: match[1]!,
+        value: match[2]!,
+        url: new URL('/', page.url()).toString(),
+        httpOnly: true,
+        secure: match[1]!.startsWith('__Host-') || match[1]!.startsWith('__Secure-'),
+        sameSite: 'Lax',
+      },
+    ]);
+    return true;
+  }
+  return false;
+}
+
 export async function loginAsAdmin(page: Page): Promise<void> {
-  // networkidle wartet, bis alle async Scripts geladen sind und React
-  // hydriert hat — load allein reicht bei Turbopack nicht.
   await page.goto('/staff/login', { waitUntil: 'networkidle' });
 
-  // Schritt 1: Passwort
   await page.getByLabel('E-Mail').fill(ADMIN_EMAIL);
   await page.getByLabel('Passwort').fill(ADMIN_PASSWORD);
 
-  // In CI ist DEV_SKIP_TOTP=true gesetzt. Fuer diesen Pfad gibt es bewusst
-  // einen nativen POST-Fallback (/staff/login/password), damit der Login auch
-  // bei React-Hydration-/Server-Action-Haengern deterministisch funktioniert.
+  // CI uses DEV_SKIP_TOTP. Exercise the real browser submit first; if React or
+  // Server Actions hang, fall back to the deterministic POST route and verify
+  // that the session cookie is really present before opening the dashboard.
   if (process.env['DEV_SKIP_TOTP'] === 'true') {
+    const continueButton = page.getByRole('button', { name: /Weiter|Wird gepr/i });
+    await expect(continueButton).toBeEnabled({ timeout: 10_000 });
+    await continueButton.click();
+
+    const uiReachedDashboard = await page
+      .waitForURL(/\/staff\/dashboard/, { timeout: 10_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (uiReachedDashboard) {
+      await expect(page).toHaveURL(/\/staff\/dashboard/, { timeout: 5_000 });
+      return;
+    }
+
     const response = await page.context().request.post('/staff/login/password?returnTo=%2Fstaff%2Fdashboard', {
       form: {
         email: ADMIN_EMAIL,
@@ -38,14 +74,18 @@ export async function loginAsAdmin(page: Page): Promise<void> {
       maxRedirects: 0,
     });
     const location = response.headers()['location'] ?? '';
-    if (response.status() !== 303 || !/\/staff\/dashboard$/.test(location)) {
+    const hasSessionCookie = await ensureStaffSessionCookieFromResponse(page, response);
+    if (response.status() !== 303 || !/\/staff\/dashboard$/.test(location) || !hasSessionCookie) {
       const body = await response.text().catch(() => '');
+      const cookies = await page.context().cookies();
       throw new Error(
-        `DEV_SKIP_TOTP-Login-Fallback fehlgeschlagen: status=${response.status()} location=${location} body=${body.slice(0, 500)}`,
+        `DEV_SKIP_TOTP-Login-Fallback fehlgeschlagen: status=${response.status()} location=${location} ` +
+          `hasSessionCookie=${hasSessionCookie} cookies=${cookies.map((c) => c.name).join(',')} body=${body.slice(0, 500)}`,
       );
     }
+
     await page.goto('/staff/dashboard', { waitUntil: 'networkidle' });
-    await expect(page).toHaveURL(/\/staff\/dashboard/, { timeout: 5_000 });
+    await expect(page).toHaveURL(/\/staff\/dashboard/, { timeout: 15_000 });
     return;
   }
 
@@ -53,19 +93,16 @@ export async function loginAsAdmin(page: Page): Promise<void> {
   await expect(continueButton).toBeEnabled({ timeout: 10_000 });
   await continueButton.click();
 
-  // DEV_SKIP_TOTP: Nach Passwort direkt auf Dashboard — checkPasswordAction
-  // liefert devSkip:true, die UI triggert loginAction + window.location-Redirect.
-  // Das sind zwei Server Actions, daher grosszügiger Timeout.
   let onDashboard = await page
     .waitForURL(/\/staff\/dashboard/, { timeout: 7_000 })
     .then(() => true)
     .catch(() => false);
   if (onDashboard) return;
 
-  // Turbopack/React kann lokal selten einen Submit verschlucken, wenn die Seite
-  // gerade frisch hydratisiert. Ein zweiter, zustandsgeprüfter Submit ist
-  // deterministischer als später irreführend in den TOTP-Pfad zu fallen.
-  const stillOnPasswordStep = await page.getByRole('button', { name: /^Weiter$/ }).isVisible({ timeout: 1000 }).catch(() => false);
+  const stillOnPasswordStep = await page
+    .getByRole('button', { name: /^Weiter$/ })
+    .isVisible({ timeout: 1000 })
+    .catch(() => false);
   if (stillOnPasswordStep) {
     const retryButton = page.getByRole('button', { name: /^Weiter$/ });
     await expect(retryButton).toBeEnabled({ timeout: 10_000 });
@@ -77,13 +114,15 @@ export async function loginAsAdmin(page: Page): Promise<void> {
     if (onDashboard) return;
   }
 
-  // Fallback: prüfen, ob auf der Staff-Login-Seite ein Fehler steht
-  const errorText = await page.locator('[role="alert"], .alert-error-sm, .alert-error, .text-red-600, .text-red-500, .text-red-700').first().textContent().catch(() => '');
+  const errorText = await page
+    .locator('[role="alert"], .alert-error-sm, .alert-error, .text-red-600, .text-red-500, .text-red-700')
+    .first()
+    .textContent()
+    .catch(() => '');
   if (errorText) {
     throw new Error(`Login fehlgeschlagen: ${errorText} (URL: ${page.url()})`);
   }
 
-  // Wenn TOTP-Setup verlangt: Secret aus DOM lesen, durchklicken
   const setupVisible = await page
     .getByText(/Zwei-Faktor-Authentifizierung einrichten/i)
     .isVisible({ timeout: 2_000 })
@@ -100,8 +139,6 @@ export async function loginAsAdmin(page: Page): Promise<void> {
     await page.getByLabel('Bestätigungs-Code').fill(code);
     await page.getByRole('button', { name: /Bestätigen/ }).click();
 
-    // Nach Enrollment erscheint eine Backup-Codes-Seite („Recovery-Codes").
-    // Erst nach Bestätigung („Codes notiert") geht's zum TOTP-Login.
     const backupVisible = await page
       .getByText(/Recovery-Codes|Codes notiert/)
       .isVisible({ timeout: 3_000 })
@@ -111,19 +148,17 @@ export async function loginAsAdmin(page: Page): Promise<void> {
     }
   }
 
-  // Schritt 2: TOTP-Login
   const secret = process.env['E2E_TOTP_SECRET'];
   if (!secret) {
     const bodyText = await page.locator('body').innerText().catch(() => '');
     if (/Mitarbeiter-Login/i.test(bodyText) && /Passwort/i.test(bodyText) && /Weiter/i.test(bodyText)) {
       throw new Error(
-        `Passwort-Login blieb auf Schritt 1 stehen. DEV_SKIP_TOTP/Passwort/Server-Action prüfen. URL: ${page.url()}. Text: ${bodyText.slice(0, 500)}`,
+        `Passwort-Login blieb auf Schritt 1 stehen. DEV_SKIP_TOTP/Passwort/Server-Action pruefen. URL: ${page.url()}. Text: ${bodyText.slice(0, 500)}`,
       );
     }
-    throw new Error(
-      'TOTP-Secret unbekannt. Setze E2E_TOTP_SECRET=… oder lass den Admin im UI neu enrollen.',
-    );
+    throw new Error('TOTP-Secret unbekannt. Setze E2E_TOTP_SECRET oder lass den Admin im UI neu enrollen.');
   }
+
   const code = generateSync({ secret });
   await page.getByLabel('TOTP-Code').fill(code);
   await page.getByRole('button', { name: /Anmelden/ }).click();

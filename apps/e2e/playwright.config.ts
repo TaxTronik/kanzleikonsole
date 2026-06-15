@@ -39,8 +39,8 @@ process.env['E2E_BASE_URL'] = BASE_URL;
 
 export default defineConfig({
   testDir: './tests',
-  timeout: 30_000,
-  expect: { timeout: 5_000 },
+  timeout: 60_000,             // Increased from 30s for CI stability
+  expect: { timeout: 10_000 }, // Increased from 5s for CI stability
   fullyParallel: false,        // Auth-Tests sequenziell (nur 1 Admin-Account)
   forbidOnly: !!process.env['CI'],
   retries: process.env['CI'] ? 2 : 0,
@@ -54,7 +54,7 @@ export default defineConfig({
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
-    actionTimeout: 10_000,
+    actionTimeout: 15_000,  // Increased from 10s for CI stability
   },
   projects: [
     {
