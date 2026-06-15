@@ -23,11 +23,15 @@ function isLocalhostUrl(raw: string | undefined): boolean {
   }
 }
 
+function hasLocalHttpE2eUrl(): boolean {
+  return [process.env['NEXTAUTH_URL'], process.env['E2E_BASE_URL']].some(isLocalhostUrl);
+}
+
 const IS_LOCAL_HTTP_E2E =
   process.env['CI'] === 'true' &&
   process.env['DEV_SKIP_TOTP'] === 'true' &&
   process.env['E2E_ALLOW_DEV_SKIP_TOTP_IN_PRODUCTION'] === 'true' &&
-  isLocalhostUrl(process.env['NEXTAUTH_URL']);
+  hasLocalHttpE2eUrl();
 
 export const USE_SECURE_COOKIES = process.env.NODE_ENV === 'production' && !IS_LOCAL_HTTP_E2E;
 

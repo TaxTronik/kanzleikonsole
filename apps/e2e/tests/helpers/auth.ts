@@ -5,9 +5,34 @@ export const ADMIN_EMAIL = process.env['E2E_ADMIN_EMAIL'] ?? 'admin@taxtronik.lo
 export const ADMIN_PASSWORD = process.env['E2E_ADMIN_PASSWORD'] ?? 'dev-password-123';
 
 const STAFF_SESSION_COOKIE_RE = /^__(?:Host-|Secure-)?taxtronik_staff_session$/;
+const STAFF_DASHBOARD_PATH = '/staff/dashboard';
 
 function isStaffSessionCookieName(name: string): boolean {
   return STAFF_SESSION_COOKIE_RE.test(name);
+}
+
+type BrowserCookie = {
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
+  secure: boolean;
+  expires: number;
+};
+
+function describeStaffCookies(cookies: BrowserCookie[]): string {
+  const staffCookies = cookies.filter((cookie) => isStaffSessionCookieName(cookie.name));
+  if (staffCookies.length === 0) return '<none>';
+  return staffCookies
+    .map(
+      (cookie) =>
+        `${cookie.name}{domain=${cookie.domain};path=${cookie.path};secure=${cookie.secure};expires=${cookie.expires};valueLen=${cookie.value.length}}`,
+    )
+    .join(',');
+}
+
+function setCookieHeaderHasSecureAttribute(header: string): boolean {
+  return /(?:^|;)\s*secure(?:;|$)/i.test(header);
 }
 
 function setCookieHeaders(response: APIResponse): string[] {
@@ -22,24 +47,42 @@ function setCookieHeaders(response: APIResponse): string[] {
 
 async function ensureStaffSessionCookieFromResponse(page: Page, response: APIResponse): Promise<boolean> {
   const existing = await page.context().cookies();
-  if (existing.some((cookie) => isStaffSessionCookieName(cookie.name))) return true;
+  if (existing.some((cookie) => isStaffSessionCookieName(cookie.name) && cookie.value.length > 0)) return true;
 
   for (const header of setCookieHeaders(response)) {
     const match = header.match(/(__(?:Host-|Secure-)?taxtronik_staff_session)=([^;,]+)/);
     if (!match) continue;
+    const cookieName = match[1]!;
     await page.context().addCookies([
       {
-        name: match[1]!,
+        name: cookieName,
         value: match[2]!,
         url: new URL('/', page.url()).toString(),
         httpOnly: true,
-        secure: match[1]!.startsWith('__Host-') || match[1]!.startsWith('__Secure-'),
+        secure:
+          setCookieHeaderHasSecureAttribute(header) ||
+          cookieName.startsWith('__Host-') ||
+          cookieName.startsWith('__Secure-'),
         sameSite: 'Lax',
       },
     ]);
     return true;
   }
   return false;
+}
+
+async function assertDashboardAcceptsStaffSession(page: Page): Promise<void> {
+  const response = await page.context().request.get(STAFF_DASHBOARD_PATH, { maxRedirects: 0 });
+  const status = response.status();
+  if (status >= 200 && status < 300) return;
+
+  const location = response.headers()['location'] ?? '';
+  const body = await response.text().catch(() => '');
+  const cookies = await page.context().cookies();
+  throw new Error(
+    `DEV_SKIP_TOTP-Session wurde vom Dashboard abgelehnt: status=${status} url=${response.url()} ` +
+      `location=${location} staffCookies=${describeStaffCookies(cookies)} body=${body.slice(0, 500)}`,
+  );
 }
 
 export async function loginAsAdmin(page: Page): Promise<void> {
@@ -84,7 +127,8 @@ export async function loginAsAdmin(page: Page): Promise<void> {
       );
     }
 
-    await page.goto('/staff/dashboard', { waitUntil: 'networkidle' });
+    await assertDashboardAcceptsStaffSession(page);
+    await page.goto(STAFF_DASHBOARD_PATH, { waitUntil: 'domcontentloaded' });
     await expect(page).toHaveURL(/\/staff\/dashboard/, { timeout: 15_000 });
     return;
   }

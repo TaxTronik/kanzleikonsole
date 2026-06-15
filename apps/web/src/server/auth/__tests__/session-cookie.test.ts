@@ -45,4 +45,21 @@ describe('session cookie names', () => {
     expect(cookies.STAFF_SESSION_COOKIE).toBe('__taxtronik_staff_session');
     expect(cookies.PORTAL_SESSION_COOKIE).toBe('__taxtronik_portal_session');
   });
+
+  it('also accepts E2E_BASE_URL as the local HTTP CI E2E signal', async () => {
+    const cookies = await loadCookieNames({
+      NODE_ENV: 'production',
+      CI: 'true',
+      DEV_SKIP_TOTP: 'true',
+      E2E_ALLOW_DEV_SKIP_TOTP_IN_PRODUCTION: 'true',
+      NEXTAUTH_URL: undefined,
+      E2E_BASE_URL: 'http://127.0.0.1:3000',
+      STAFF_COOKIE_DOMAIN: undefined,
+      PORTAL_COOKIE_DOMAIN: undefined,
+    });
+
+    expect(cookies.USE_SECURE_COOKIES).toBe(false);
+    expect(cookies.STAFF_SESSION_COOKIE).toBe('__taxtronik_staff_session');
+    expect(cookies.PORTAL_SESSION_COOKIE).toBe('__taxtronik_portal_session');
+  });
 });
