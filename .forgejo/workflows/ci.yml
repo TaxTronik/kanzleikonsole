@@ -688,14 +688,13 @@ jobs:
             ls -la "$WORKSPACE_DIR/infra/scripts" || true
             exit 1
           fi
-          docker run --rm --network host \
+          docker run --rm -i --network host \
             -e AWS_ACCESS_KEY_ID=ci \
             -e AWS_SECRET_ACCESS_KEY=ci-secret-plus-thirtytwo-chars \
             -e AWS_DEFAULT_REGION=us-east-1 \
-            -v "$INIT_STORAGE:/init-storage.sh:ro" \
             -e S3_ENDPOINT=http://localhost:8333 \
             --entrypoint /bin/sh \
-            amazon/aws-cli:latest@sha256:c95ab0642137f55a12b95b6956dd03cefdbd73e760e0e7b870afc9b47f9c8150 -ec 'sh /init-storage.sh'
+            amazon/aws-cli:latest@sha256:c95ab0642137f55a12b95b6956dd03cefdbd73e760e0e7b870afc9b47f9c8150 -s < "$INIT_STORAGE"
 
       - name: Verify S3 buckets and Object-Lock
         run: |
