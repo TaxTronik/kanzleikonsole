@@ -25,7 +25,8 @@
     "verify:schema-drift": "pnpm --filter @taxtronik/db verify:schema-drift",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md}\"",
-    "guard:datev": "sh scripts/check-no-real-datev.sh"
+    "guard:datev": "sh scripts/check-no-real-datev.sh",
+    "guard:paranoid-e2e": "sh scripts/check-paranoid-e2e.sh"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.5",

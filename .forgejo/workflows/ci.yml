@@ -60,6 +60,9 @@ jobs:
       - name: Guard ERiC/ELSTER spec artifacts
         run: sh scripts/check-no-eric-spec.sh
 
+      - name: Guard paranoid E2E coverage
+        run: sh scripts/check-paranoid-e2e.sh
+
       - name: Lint
         run: pnpm lint
 
