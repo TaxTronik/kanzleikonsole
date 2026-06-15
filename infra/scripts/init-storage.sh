@@ -85,7 +85,7 @@ done
 # Beide sind wichtige Features, aber NICHT GoBD-kritisch (Object-Lock ist
 # bereits hart gesetzt). SeaweedFS implementiert diese S3-Operationen evtl.
 # unvollständig — wir warnen explizit, brechen aber nicht ab.
-# In einer produktiven MinIO/AWS-S3-Umgebung würden diese hart fehlschlagen.
+# In einer produktiven SeaweedFS/AWS-S3-Umgebung würden diese hart fehlschlagen.
 echo "[init-storage] Konfiguriere Versioning (staff-private)…"
 $AWS s3api put-bucket-versioning --bucket staff-private \
   --versioning-configuration Status=Enabled \

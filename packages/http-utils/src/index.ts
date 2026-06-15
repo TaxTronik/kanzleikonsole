@@ -215,7 +215,7 @@ export async function safeFetch(url: string, init?: RequestInit): Promise<Respon
   const addresses = await assertPublicHost(url);
   // IPv4 vor IPv6 bevorzugen: dual-stack-Lookups liefern auf Windows oft
   // erst ::1 zurück, aber Docker-Desktop-Port-Forwards und die meisten
-  // Default-Bindings (n8n, MinIO, SMTP) hören nur auf IPv4. Das ergäbe
+  // Default-Bindings (n8n, SeaweedFS, SMTP) hören nur auf IPv4. Das ergäbe
   // sonst ein irreführendes „fetch failed" trotz laufendem Service.
   // Wenn der Hostname nur IPv6-Adressen hat, bleibt v6 das Ziel.
   const pinned = addresses.find((a) => a.family === 4) ?? addresses[0]!;

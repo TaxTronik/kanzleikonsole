@@ -209,9 +209,9 @@ function parseEnv(): Env {
       { key: 'N8N_ENCRYPTION_KEY', value: 'dev-only-n8n-encryption-key-xxxxxxxx' },
       { key: 'POSTGRES_PASSWORD', value: 'taxtronik' },
       { key: 'TAXTRONIK_APP_PASSWORD', value: 'taxtronik_app' },
-      { key: 'S3_ACCESS_KEY', value: 'minio' },
+      { key: 'S3_ACCESS_KEY', value: 'seaweedfs' },
       { key: 'S3_ACCESS_KEY', value: 'ci' },
-      { key: 'S3_SECRET_KEY', value: 'minio12345' },
+      { key: 'S3_SECRET_KEY', value: 'seaweedfs12345' },
       { key: 'S3_SECRET_KEY', value: 'ci-secret' },
       { key: 'S3_SECRET_KEY', value: 'ci-secret-plus-thirtytwo-chars' },
     ];

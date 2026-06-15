@@ -27,7 +27,7 @@ Fünf Buckets — angelegt vom `seaweedfs-init`-Container über die AWS-CLI
 - `quarantine` (Upload-Stage, 30-Tage-Lifecycle)
 - `backups` (Postgres-Dumps + Audit-Archive, 90-Tage-Lifecycle)
 
-**Upload-Flow** (Defense-in-Depth, unverändert zum MinIO-Setup):
+**Upload-Flow** (Defense-in-Depth, unverändert zum SeaweedFS-Setup):
 1. Browser holt Presigned-PUT-URL für `quarantine`
 2. Browser PUTet die Datei direkt zum Object-Store
 3. App-Endpoint `commit`:

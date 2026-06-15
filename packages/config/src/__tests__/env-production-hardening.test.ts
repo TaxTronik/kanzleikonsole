@@ -7,8 +7,8 @@ const VALID_BASE: NodeJS.ProcessEnv = {
   AUTH_SECRET: 'a-securely-generated-secret-of-at-least-32-chars',
   NEXTAUTH_URL: 'http://localhost:3000',
   S3_ENDPOINT: 'http://localhost:9000',
-  S3_ACCESS_KEY: 'minio',
-  S3_SECRET_KEY: 'minio12345',
+  S3_ACCESS_KEY: 'seaweedfs',
+  S3_SECRET_KEY: 'seaweedfs12345',
   SMTP_HOST: 'localhost',
   SMTP_PORT: '1025',
   SMTP_FROM: 'noreply@taxtronik.local',
@@ -52,7 +52,7 @@ describe('ENV production hardening', () => {
 
   it('blockt bekannte oder kurze S3-Secrets in production', () => {
     expect(() =>
-      parseEnvFrom({ ...PROD_BASE, S3_SECRET_KEY: 'minio12345' }),
+      parseEnvFrom({ ...PROD_BASE, S3_SECRET_KEY: 'seaweedfs12345' }),
     ).toThrow(/S3_SECRET_KEY.*Dev-Default/);
     expect(() =>
       parseEnvFrom({ ...PROD_BASE, S3_SECRET_KEY: 'short-storage-secret' }),

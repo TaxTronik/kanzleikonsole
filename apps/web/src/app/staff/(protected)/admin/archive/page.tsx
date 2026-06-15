@@ -54,7 +54,7 @@ export default async function AuditArchivePage() {
           </h1>
           <p className="text-muted text-sm">
             Segmentweise ausgelagerte Audit-Log-Einträge — verschlüsselt, hash-versiegelt
-            und mit Object-Lock COMPLIANCE für 10 Jahre in MinIO gespeichert. Wird vom
+            und mit Object-Lock COMPLIANCE für 10 Jahre in SeaweedFS gespeichert. Wird vom
             Worker wöchentlich rotiert; manuelle Auslösung möglich.
           </p>
         </div>
@@ -137,7 +137,7 @@ export default async function AuditArchivePage() {
 
       <p className="text-xs text-disabled mt-4 flex items-center gap-2">
         <ShieldCheck className="h-3 w-3" />
-        Jedes Segment ist als NDJSON-Datei mit RFC-3161-Stempel in MinIO archiviert
+        Jedes Segment ist als NDJSON-Datei mit RFC-3161-Stempel in SeaweedFS archiviert
         (Object-Lock COMPLIANCE 10 Jahre). Die <code>verify:chain</code>-CLI prüft bei
         jedem Lauf die Datei-Integrität gegen die Hash-Anker.
       </p>
