@@ -13,13 +13,7 @@ ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 cd "$ROOT"
 
 WORKFLOW=".forgejo/workflows/ci.yml"
-REQUIRED_SPECS="
-apps/e2e/tests/04-rate-limit.spec.ts
-apps/e2e/tests/05-user-walkthrough.spec.ts
-apps/e2e/tests/06-actions.spec.ts
-apps/e2e/tests/07-compliance.spec.ts
-apps/e2e/tests/08-differential.spec.ts
-"
+REQUIRED_SPECS="$(find apps/e2e/tests -maxdepth 1 -name '*.spec.ts' | sort)"
 
 FAIL=0
 
@@ -32,7 +26,7 @@ for spec in $REQUIRED_SPECS; do
 
   workflow_ref="${spec#apps/e2e/}"
   if ! grep -Fq "$workflow_ref" "$WORKFLOW"; then
-    echo "FEHLER: Pflicht-Paranoid-E2E-Spec ist nicht im CI-Workflow verdrahtet: $workflow_ref" >&2
+    echo "FEHLER: E2E-Spec ist nicht im CI-Workflow verdrahtet: $workflow_ref" >&2
     FAIL=1
   fi
 done

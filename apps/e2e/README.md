@@ -45,15 +45,16 @@ pnpm --filter @taxtronik/e2e e2e:headed
 
 ## Auth-Tests
 
-Die Auth-Tests in `02-auth.spec.ts` brauchen das **TOTP-Secret** des Admin-Users.
-Beim allerersten Login im UI bekommst du dieses Secret unter dem QR-Code zu
-sehen — kopiere es und setze:
+Die Auth-Tests in `02-auth.spec.ts` laufen im CI mit `DEV_SKIP_TOTP=true` und
+sind dort Pflichtbestandteil der Paranoid-Suite. Lokal ohne `DEV_SKIP_TOTP`
+brauchen sie das **TOTP-Secret** des Admin-Users. Beim allerersten Login im UI
+bekommst du dieses Secret unter dem QR-Code zu sehen — kopiere es und setze:
 
 ```powershell
 $env:E2E_TOTP_SECRET = "JBSWY3DPEHPK3PXP"  # Beispiel
 ```
 
-Wenn nicht gesetzt, werden diese Tests übersprungen.
+Wenn nicht gesetzt, muss lokal `DEV_SKIP_TOTP=true` aktiv sein.
 
 ## Konfiguration via ENV
 
@@ -62,7 +63,14 @@ Wenn nicht gesetzt, werden diese Tests übersprungen.
 | `E2E_BASE_URL` | `http://localhost:3000` |
 | `E2E_ADMIN_EMAIL` | `admin@taxtronik.local` |
 | `E2E_ADMIN_PASSWORD` | `dev-password-123` |
-| `E2E_TOTP_SECRET` | (leer — Auth-Tests werden übersprungen) |
+| `E2E_TOTP_SECRET` | (leer, wenn `DEV_SKIP_TOTP=true`; sonst erforderlich) |
+
+## CI-Guard
+
+`scripts/check-paranoid-e2e.sh` erzwingt, dass jede `apps/e2e/tests/*.spec.ts`
+im Forgejo-Workflow verdrahtet ist und dass die E2E-Suite keine
+`test.only`/`test.skip`/`test.fixme`-Marker enthält. Neue E2E-Specs sind damit
+automatisch CI-pflichtig.
 
 ## Reports
 
