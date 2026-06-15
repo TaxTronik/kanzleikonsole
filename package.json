@@ -23,6 +23,7 @@
     "db:seed": "pnpm --filter @taxtronik/db seed",
     "verify:chain": "pnpm --filter @taxtronik/evidence verify",
     "verify:schema-drift": "pnpm --filter @taxtronik/db verify:schema-drift",
+    "verify:rls": "pnpm --filter @taxtronik/db verify:rls",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md}\"",
     "guard:datev": "sh scripts/check-no-real-datev.sh",

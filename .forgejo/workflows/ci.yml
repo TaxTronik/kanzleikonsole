@@ -181,6 +181,9 @@ jobs:
       - name: Schema drift check
         run: pnpm verify:schema-drift
 
+      - name: RLS drift gate
+        run: pnpm verify:rls
+
       - name: Evidence chain CLI
         run: pnpm verify:chain
 

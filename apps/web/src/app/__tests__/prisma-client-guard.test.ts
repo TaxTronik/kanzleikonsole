@@ -61,6 +61,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // (Chain-Verifikation auf dem wiederhergestellten Stand) — bewusst kein
   // App-/Owner-Client, die zeigen auf die Produktiv-DB.
   'apps/worker/src/jobs/backup-drill.ts',
+  // RLS-Drift-Gate: introspectiert pg_catalog für ENABLE/FORCE RLS + Policies.
+  // Owner-Verbindung (BYPASSRLS), bewusst kein App-Request-Pfad.
+  'packages/db/scripts/verify-rls.ts',
 ]);
 
 function walk(dir: string, acc: string[]): void {
