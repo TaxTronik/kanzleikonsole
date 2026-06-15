@@ -26,6 +26,8 @@ const STAFF_PATH_PREFIX = '/staff';
 const PORTAL_PATH_PREFIX = '/portal';
 const STAFF_LOGIN_PATH = '/staff/login';
 const PORTAL_LOGIN_PATH = '/portal/login';
+const STAFF_SESSION_COOKIE_BASE = 'taxtronik_staff_session';
+const PORTAL_SESSION_COOKIE_BASE = 'taxtronik_portal_session';
 
 // Host→Surface (Multi-Domain-Deploy). PORTAL_PUBLIC_URL = Mandanten-Domain,
 // NEXTAUTH_URL = Kanzlei/Staff-Domain. Wird einmal beim Worker-Start aus den
@@ -108,10 +110,8 @@ export function proxy(request: NextRequest): NextResponse {
   }
 
   // 5. Session-Cookie prüfen.
-  const cookieName =
-    surface === 'staff' ? STAFF_SESSION_COOKIE : PORTAL_SESSION_COOKIE;
-  const session = request.cookies.get(cookieName);
-  if (!session?.value) {
+  const session = readSessionCookie(request, surface);
+  if (!session) {
     // Nicht eingeloggt → zur Login-Seite des Surface umleiten.
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = surface === 'staff' ? STAFF_LOGIN_PATH : PORTAL_LOGIN_PATH;
@@ -139,6 +139,46 @@ export function proxy(request: NextRequest): NextResponse {
 // -----------------------------------------------------------------------------
 
 type Surface = 'staff' | 'portal';
+
+function sessionCookieBase(surface: Surface): string {
+  return surface === 'staff' ? STAFF_SESSION_COOKIE_BASE : PORTAL_SESSION_COOKIE_BASE;
+}
+
+function configuredSessionCookieName(surface: Surface): string {
+  return surface === 'staff' ? STAFF_SESSION_COOKIE : PORTAL_SESSION_COOKIE;
+}
+
+function isLocalHttpRequest(request: NextRequest): boolean {
+  const { protocol, hostname } = request.nextUrl;
+  return (
+    protocol === 'http:' &&
+    (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1')
+  );
+}
+
+function localHttpSessionCookieNames(surface: Surface): string[] {
+  const base = sessionCookieBase(surface);
+  return [`__${base}`, `__Host-${base}`, `__Secure-${base}`];
+}
+
+function readSessionCookie(request: NextRequest, surface: Surface): string | undefined {
+  const configured = request.cookies.get(configuredSessionCookieName(surface));
+  if (configured?.value) return configured.value;
+
+  // CI/local E2E can run Next's proxy in an environment where non-public env
+  // vars are unavailable while Node route handlers still see them. In that
+  // case the proxy may compute the secure production prefix while the Node
+  // login route correctly emits the local HTTP cookie name. Keep this fallback
+  // limited to localhost HTTP so production still requires the configured
+  // __Host-/__Secure-prefixed cookie.
+  if (!isLocalHttpRequest(request)) return undefined;
+
+  for (const name of localHttpSessionCookieNames(surface)) {
+    const cookie = request.cookies.get(name);
+    if (cookie?.value) return cookie.value;
+  }
+  return undefined;
+}
 
 function detectSurface(pathname: string): Surface | null {
   if (pathname.startsWith(STAFF_PATH_PREFIX)) return 'staff';
