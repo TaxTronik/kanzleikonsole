@@ -34,7 +34,30 @@ export async function loginAsMandant(page: Page, request: APIRequestContext): Pr
   await page.getByRole('button', { name: /Anmelden/i }).click();
   // Wait for redirect to dashboard (may take a moment with Turbopack)
   await page.waitForURL(/\/portal\/dashboard/, { timeout: 15_000 }).catch(() => {});
-  await expect(page).toHaveURL(/\/portal\/dashboard/, { timeout: 5_000 });
+  await expectPortalDashboardReady(page);
+}
+
+export async function expectPortalDashboardReady(page: Page, timeout = 20_000): Promise<void> {
+  await expect(page).toHaveURL(/\/portal\/dashboard/, { timeout });
+  await page.waitForLoadState('networkidle', { timeout: 3_000 }).catch(() => {});
+
+  const dashboardShell = page
+    .getByRole('heading', { name: /Hallo/i })
+    .or(page.getByText(/Ubersicht|Übersicht/i))
+    .first();
+
+  try {
+    await expect(
+      dashboardShell,
+      'Portal-Dashboard muss nach Magic-Link-Login gerendert sein',
+    ).toBeVisible({ timeout });
+    await expect(page.getByRole('link', { name: /Dokumente/i })).toBeVisible({ timeout: 10_000 });
+  } catch (e) {
+    const body = await page.locator('body').innerText({ timeout: 1000 }).catch(() => '');
+    throw new Error(
+      `Portal-Dashboard wurde nicht fertig gerendert. url=${page.url()} body=${body.replace(/\s+/g, ' ').slice(0, 800)} cause=${(e as Error).message}`,
+    );
+  }
 }
 
 export async function clearMailhogMessages(request: APIRequestContext): Promise<void> {

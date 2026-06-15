@@ -1,12 +1,17 @@
 'use server';
 
 import { z } from 'zod';
-import { headers } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { AuthError } from 'next-auth';
+import { encode } from 'next-auth/jwt';
+import { env } from '@taxtronik/config';
 import { safePortalReturnTo } from './verify/safe-return-to';
-import { requestMagicLink } from '@/server/auth/magic-link';
-import { portalSignIn } from '@/server/auth/portal';
+import { requestMagicLink, verifyMagicLink } from '@/server/auth/magic-link';
+import {
+  PORTAL_SESSION_COOKIE,
+  PORTAL_SESSION_JWT_SALT,
+  USE_SECURE_COOKIES,
+} from '@/server/auth/session-cookie';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { checkIpOrGlobalLimit, getClientIp } from '@/server/rate-limit';
 
@@ -67,18 +72,36 @@ export interface VerifyResult {
 export async function verifyMagicLinkAction(token: string): Promise<VerifyResult> {
   if (!token) return { ok: false, error: 'Token fehlt.' };
 
-  try {
-    await portalSignIn('credentials', {
-      token,
-      redirect: false,
-    });
-    return { ok: true };
-  } catch (error) {
-    if (error instanceof AuthError) {
-      return { ok: false, error: 'Link ungültig oder abgelaufen.' };
-    }
-    throw error;
-  }
+  const result = await verifyMagicLink(token);
+  if (!result) return { ok: false, error: 'Link ungültig oder abgelaufen.' };
+
+  const c = result.contact;
+  const sessionToken = await encode({
+    secret: env.AUTH_SECRET,
+    salt: PORTAL_SESSION_JWT_SALT,
+    maxAge: 24 * 60 * 60,
+    token: {
+      sub: c.id,
+      email: c.email,
+      name: c.fullName,
+      contactId: c.id,
+      tenantId: c.tenantId,
+      clientId: c.clientId,
+      fullName: c.fullName,
+    },
+  });
+
+  const jar = await cookies();
+  jar.set(PORTAL_SESSION_COOKIE, sessionToken, {
+    httpOnly: true,
+    secure: USE_SECURE_COOKIES,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 24 * 60 * 60,
+    ...(env.PORTAL_COOKIE_DOMAIN ? { domain: env.PORTAL_COOKIE_DOMAIN } : {}),
+  });
+
+  return { ok: true };
 }
 
 /**

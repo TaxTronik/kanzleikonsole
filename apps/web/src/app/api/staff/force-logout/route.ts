@@ -10,7 +10,22 @@
 // =============================================================================
 
 import { NextResponse, type NextRequest } from 'next/server';
+import { env } from '@taxtronik/config';
 import { staffSignOut } from '@/server/auth/staff';
+import { STAFF_SESSION_COOKIE_BASE, sessionCookieNameVariants } from '@/server/auth/session-cookie';
+
+function expireStaffSessionCookies(response: NextResponse): void {
+  for (const name of sessionCookieNameVariants(STAFF_SESSION_COOKIE_BASE)) {
+    response.cookies.set(name, '', {
+      httpOnly: true,
+      sameSite: 'lax',
+      path: '/',
+      expires: new Date(0),
+      maxAge: 0,
+      ...(env.STAFF_COOKIE_DOMAIN ? { domain: env.STAFF_COOKIE_DOMAIN } : {}),
+    });
+  }
+}
 
 export async function GET(req: NextRequest) {
   // GET bleibt bewusst GET: einziger Aufrufer ist der redirect() aus
@@ -31,5 +46,7 @@ export async function GET(req: NextRequest) {
   } catch {
     // Selbst wenn signOut scheitert: trotzdem zum Login leiten.
   }
-  return NextResponse.redirect(new URL('/staff/login', req.url));
+  const response = NextResponse.redirect(new URL('/staff/login', req.url));
+  expireStaffSessionCookies(response);
+  return response;
 }

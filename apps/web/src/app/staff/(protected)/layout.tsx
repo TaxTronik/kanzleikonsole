@@ -148,13 +148,7 @@ export default async function StaffLayout({ children }: { children: React.ReactN
               <p className="text-xs text-muted truncate">{session.user.email}</p>
             </div>
           </div>
-          <form
-            action={async () => {
-              'use server';
-              const { staffSignOut } = await import('@/server/auth/staff');
-              await staffSignOut({ redirectTo: '/staff/login' });
-            }}
-          >
+          <form action="/api/staff/force-logout" method="get">
             <button
               type="submit"
               className="flex w-full items-center gap-2 px-3 py-2 text-sm text-secondary hover:text-primary hover:bg-gray-100 rounded-md transition-colors"

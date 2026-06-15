@@ -3,7 +3,7 @@
 // =============================================================================
 import { test, expect } from '@playwright/test';
 import { loginAsAdmin, ADMIN_EMAIL } from './helpers/auth';
-import { loginAsMandant, requestMagicLink, PORTAL_EMAIL } from './helpers/portal-auth';
+import { expectPortalDashboardReady, loginAsMandant, requestMagicLink, PORTAL_EMAIL } from './helpers/portal-auth';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -186,9 +186,7 @@ test.describe.serial('Portal: Mandanten-Login & Features', () => {
 
   test('Magic-Link Login & Dashboard', async ({ page, request }) => {
     await loginAsMandant(page, request);
-    await expect(page).toHaveURL(/\/portal\/dashboard/);
-    await expect(page.getByRole('heading', { name: /Hallo|Übersicht/i }).first()).toBeVisible({ timeout: 5000 });
-    await expect(page.getByRole('link', { name: /Dokumente/i })).toBeVisible({ timeout: 5000 });
+    await expectPortalDashboardReady(page);
   });
 
   test('Portal: Dokumente', async ({ page }) => {

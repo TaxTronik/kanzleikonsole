@@ -117,6 +117,7 @@ export async function createPhoneNoteAction(
   }
 
   revalidatePath('/staff/phone-notes');
+  if (data.clientId) revalidatePath(`/staff/clients/${data.clientId}`);
   return { ok: true };
 }
 

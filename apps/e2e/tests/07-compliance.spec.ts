@@ -11,7 +11,7 @@
 // =============================================================================
 import { test, expect, type Browser, type Page } from '@playwright/test';
 import { loginAsAdmin, ADMIN_EMAIL } from './helpers/auth';
-import { loginAsMandant, requestMagicLink, PORTAL_EMAIL } from './helpers/portal-auth';
+import { expectPortalDashboardReady, loginAsMandant, requestMagicLink, PORTAL_EMAIL } from './helpers/portal-auth';
 import { flushRedisDb } from './helpers/redis';
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -98,6 +98,22 @@ function psqlAvailable(): boolean {
   } catch {
     return false;
   }
+}
+
+async function readAuditActionsFiltered(page: Page, action: string): Promise<string[]> {
+  const qs = new URLSearchParams({ action });
+  await page.goto(`/staff/admin/audit?${qs.toString()}`);
+  await page.waitForLoadState('domcontentloaded');
+  if (page.url().includes('/staff/dashboard') || page.url().includes('/staff/login')) {
+    throw new Error('Admin cannot access audit log page — RBAC or session issue');
+  }
+  await expect(page.getByRole('heading', { name: /Audit-Log/i })).toBeVisible({ timeout: 10_000 });
+  await expect(
+    page.locator('table tbody tr').or(page.getByText(/Keine Einträge|Keine Eintraege/i)).first(),
+    `Audit-Filter fuer ${action} muss Tabelle oder Leerzustand rendern`,
+  ).toBeVisible({ timeout: 10_000 });
+  const texts = await page.locator('table tbody tr td:nth-child(4)').allInnerTexts().catch(() => [] as string[]);
+  return texts.map((t) => t.trim()).filter(Boolean);
 }
 
 // =============================================================================
@@ -642,30 +658,17 @@ test.describe.serial('Audit Trail — GoBD-Revisionssicherheit', () => {
     const page = await ctx.newPage();
 
     // Der Login in „Login as admin" erzeugt auth.login.success; der Document-
-    // Upload in 1.1 erzeugt document.upload. Wir suchen über die Paginierung,
-    // bis wir mindestens eine der beiden Action-Label-Zeilen finden.
-    await page.goto('/staff/admin/audit');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(3000);
-    if (page.url().includes('/staff/dashboard') || page.url().includes('/staff/login')) {
-      await ctx.close();
-      throw new Error('Admin cannot access audit log page — RBAC or session issue');
-    }
-
-    const actionCell = page.locator('table tbody tr td:nth-child(4)');
-    const rowCount = await actionCell.count().catch(() => 0);
-    expect(rowCount, 'Audit-Tabelle muss Einträge aus früheren Tests enthalten').toBeGreaterThan(0);
-
-    const actions: string[] = [];
-    if (rowCount > 0) {
-      const texts = await actionCell.allInnerTexts().catch(() => [] as string[]);
-      actions.push(...texts.map((t) => t.trim()));
-    }
-
-    const hasLogin = actions.some((a) => a.includes('auth.login.success'));
-    const hasUpload = actions.some((a) => a.includes('document.upload'));
+    // Upload in 1.1 erzeugt document.upload. Wir filtern gezielt auf die Action,
+    // damit hohe Audit-Volumina nicht von der ersten Cursor-Seite abhängen.
+    const loginActions = await readAuditActionsFiltered(page, 'auth.login.success');
+    const hasLogin = loginActions.some((a) => a.includes('auth.login.success'));
+    const uploadActions = await readAuditActionsFiltered(page, 'document.upload');
+    const hasUpload = uploadActions.some((a) => a.includes('document.upload'));
     // auth.login.success MUSS da sein (Login ist Voraussetzung jedes Tests hier).
-    expect(hasLogin, 'Audit-Log muss auth.login.success enthalten (Login ist Test-Präfix)').toBe(true);
+    expect(
+      hasLogin,
+      `Audit-Log muss auth.login.success enthalten (sichtbare gefilterte Actions: ${loginActions.join(', ') || 'keine'})`,
+    ).toBe(true);
     // document.upload nur, falls der Upload in 1.1 erfolgreich war (siehe 1.2).
     if (hasUpload) {
       // ok — zusätzlicher Beweis, dass der Audit-Trail Actions korrekt loggt.
@@ -1729,8 +1732,7 @@ test.describe.serial('Portal Compliance — DSGVO Export & Consent', () => {
 
     try {
       await loginAsMandant(page, request);
-      await expect(page).toHaveURL(/\/portal\/dashboard/, { timeout: 8000 });
-      await expect(page.getByRole('heading', { name: /Hallo|Übersicht/i }).first()).toBeVisible({ timeout: 8000 });
+      await expectPortalDashboardReady(page);
       await ctx.storageState({ path: MANDANT_AUTH });
     } catch (e) {
       // MailHog/SMTP sind Pflichtservices im Paranoid-CI.

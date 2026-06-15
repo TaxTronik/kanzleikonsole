@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState, useId } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Plus, X, Phone } from 'lucide-react';
 import {
   createPhoneNoteAction,
@@ -36,6 +37,7 @@ export function QuickPhoneNote({
   currentStaffId: string;
 }) {
   const [open, setOpen] = useState(false);
+  const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const datalistId = useId();
   const [callerName, setCallerName] = useState('');
@@ -51,8 +53,9 @@ export function QuickPhoneNote({
       setCallerName('');
       setCallerPhone('');
       setOpen(false);
+      router.refresh();
     }
-  }, [state]);
+  }, [router, state]);
 
   function onCallerNameChange(value: string) {
     setCallerName(value);

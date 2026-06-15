@@ -3,7 +3,7 @@
 // =============================================================================
 import { test, expect, type Browser } from '@playwright/test';
 import { loginAsAdmin } from './helpers/auth';
-import { loginAsMandant } from './helpers/portal-auth';
+import { expectPortalDashboardReady, loginAsMandant } from './helpers/portal-auth';
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -424,14 +424,14 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     const s = page.getByRole('button', { name: /Notiz anlegen/ });
     await expect(s).toBeVisible({ timeout: 5000 });
     await s.click();
-    await page.waitForTimeout(3000);
+    await expect(s, 'Telefonnotiz-Formular muss nach erfolgreicher Anlage schließen').toBeHidden({ timeout: 10_000 });
 
     // FIX 2: Statt body-visible — die Telefonnotiz MUSS auf der Mandanten-
     // detailseite erscheinen, sonst wurde sie nicht gespeichert.
     await expect(
       page.getByText('E2E Test Anruf').first(),
       'Telefonnotiz „E2E Test Anruf" muss nach dem Anlegen sichtbar sein',
-    ).toBeVisible({ timeout: 5000 });
+    ).toBeVisible({ timeout: 10_000 });
     await ctx.close();
   });
 
@@ -584,8 +584,7 @@ test.describe.serial('Portal Actions', () => {
 
     try {
       await loginAsMandant(page, request);
-      await expect(page).toHaveURL(/\/portal\/dashboard/, { timeout: 8000 });
-      await expect(page.getByRole('heading', { name: /Hallo|Übersicht/i }).first()).toBeVisible({ timeout: 8000 });
+      await expectPortalDashboardReady(page);
       await ctx.storageState({ path: MANDANT_AUTH });
     } catch (e) {
       throw new Error(`Portal login failed — MailHog/SMTP/Magic-Link are mandatory in paranoid E2E: ${(e as Error).message}`);
