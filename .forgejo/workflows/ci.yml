@@ -649,6 +649,11 @@ jobs:
           }
           S3JSON
 
+          # Selbstheilung fuer persistente/self-hosted Runner: ein abgebrochener
+          # Vorlauf kann den Container liegenlassen und der feste Name wuerde
+          # sonst mit "container name already in use" fehlschlagen.
+          docker rm -f seaweedfs-ci >/dev/null 2>&1 || true
+
           docker run -d --name seaweedfs-ci \
             -p 8333:8333 -p 9333:9333 \
             -v /tmp/seaweedfs-s3.json:/etc/seaweedfs/s3.json:ro \
@@ -748,6 +753,10 @@ jobs:
           name: playwright-report-paranoid
           path: apps/e2e/playwright-report/
           if-no-files-found: ignore
+
+      - name: Stop SeaweedFS
+        if: always()
+        run: docker rm -f seaweedfs-ci >/dev/null 2>&1 || true
 
   # ===========================================================================
   # E-Rechnung-Konformität: erzeugt die Referenz-XRechnung (Mischsätze-Fixture,
