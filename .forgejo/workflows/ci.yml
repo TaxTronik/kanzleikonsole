@@ -657,13 +657,24 @@ jobs:
           # sonst mit "container name already in use" fehlschlagen.
           docker rm -f seaweedfs-ci >/dev/null 2>&1 || true
 
-          docker run -d --name seaweedfs-ci \
+          # KEIN Host-Bind-Mount fuer die S3-Config: act_runner/Forgejo fuehrt
+          # den Job in einem eigenen Container aus und reicht `docker` an den
+          # Host-Daemon weiter. `-v /tmp/seaweedfs-s3.json:...` wird daher auf
+          # dem Daemon-Host aufgeloest, wo die Datei nicht existiert -> dockerd
+          # legt sie als Verzeichnis an -> SeaweedFS fatal ("s3.json: is a
+          # directory"), das S3-Gateway stirbt. Container also nur `create`n
+          # (laeuft noch nicht), die Config via `docker cp` in die eigene
+          # Container-Schicht schreiben (wandert als tar ueber den Engine-API,
+          # liegt also am Client-FS, nicht am Daemon-Host) und erst dann
+          # `start`en. Topologie-unabhaengig (DinD/Socket/act-runner).
+          docker create --name seaweedfs-ci \
             -p 8333:8333 -p 9333:9333 \
-            -v /tmp/seaweedfs-s3.json:/etc/seaweedfs/s3.json:ro \
             chrislusf/seaweedfs:latest@sha256:e14ad400e28c811fe8426dc08abf248ec722b9f017713290a9b84a54557f45c2 \
             server -dir=/data -master.volumeSizeLimitMB=2048 \
             -volume.max=0 -s3 -s3.config=/etc/seaweedfs/s3.json \
             -s3.port=8333 -master.port=9333 -filer
+          docker cp /tmp/seaweedfs-s3.json seaweedfs-ci:/etc/seaweedfs/s3.json
+          docker start seaweedfs-ci
 
           # Wait for SeaweedFS health
           for i in $(seq 1 60); do
