@@ -27,15 +27,11 @@ ENV NEXT_TELEMETRY_DISABLED=1 \
     DATABASE_URL=postgresql://build:build@build/build \
     DATABASE_APP_URL=postgresql://build:build@build/build \
     REDIS_URL=redis://build:6379 \
-    AUTH_SECRET=build-time-dummy-not-used-at-runtime-padding-padding \
     NEXTAUTH_URL=https://build.local \
     NEXTAUTH_TRUST_HOST=true \
-    N8N_HMAC_SECRET=build-time-hmac-secret-padding-padding-padding-padding \
     STAFF_COOKIE_DOMAIN=staff.build.local \
     PORTAL_COOKIE_DOMAIN=portal.build.local \
     S3_ENDPOINT=https://build.local \
-    S3_ACCESS_KEY=build \
-    S3_SECRET_KEY=build \
     SMTP_HOST=build.local \
     SMTP_PORT=587 \
     SMTP_FROM=build@build.local
@@ -67,7 +63,12 @@ RUN mkdir -p apps/web/public
 
 RUN cd apps/web && \
     NEXT=$(find /repo -path "*/next/dist/bin/next" -not -path "*/cache/*" 2>/dev/null | head -1) && \
-    test -n "$NEXT" && node "$NEXT" build
+    test -n "$NEXT" && \
+    AUTH_SECRET=build-time-dummy-not-used-at-runtime-padding-padding \
+    N8N_HMAC_SECRET=build-time-hmac-secret-padding-padding-padding-padding \
+    S3_ACCESS_KEY=build-time-access-key \
+    S3_SECRET_KEY=build-time-s3-secret-padding-padding-padding \
+    node "$NEXT" build
 
 # ----- Runtime ---------------------------------------------------------------
 FROM node:22-alpine AS runner

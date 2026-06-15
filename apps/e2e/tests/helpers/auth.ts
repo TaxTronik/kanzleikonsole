@@ -24,6 +24,23 @@ export async function loginAsAdmin(page: Page): Promise<void> {
   // Schritt 1: Passwort
   await page.getByLabel('E-Mail').fill(ADMIN_EMAIL);
   await page.getByLabel('Passwort').fill(ADMIN_PASSWORD);
+
+  // In CI ist DEV_SKIP_TOTP=true gesetzt. Fuer diesen Pfad gibt es bewusst
+  // einen nativen POST-Fallback (/staff/login/password), damit der Login auch
+  // bei React-Hydration-/Server-Action-Haengern deterministisch funktioniert.
+  if (process.env['DEV_SKIP_TOTP'] === 'true') {
+    await Promise.all([
+      page.waitForURL(/\/staff\/dashboard/, { timeout: 15_000 }),
+      page.locator('form[action^="/staff/login/password"]').evaluate((form) => {
+        const nativeSubmit = Reflect.get(Object.getPrototypeOf(form), 'submit') as () => void;
+        nativeSubmit.call(form);
+      }),
+    ]);
+    await page.waitForLoadState('networkidle').catch(() => void 0);
+    await expect(page).toHaveURL(/\/staff\/dashboard/, { timeout: 5_000 });
+    return;
+  }
+
   const continueButton = page.getByRole('button', { name: /Weiter|Wird gepr/i });
   await expect(continueButton).toBeEnabled({ timeout: 10_000 });
   await continueButton.click();
