@@ -64,6 +64,17 @@ export default async function ClientDetailPage({
   const { id } = await params;
   const { tenantId, staffId } = session.user;
   const settingsCtx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
+
+  // Tenant-Isolation-Backstop vor allen weiteren Loads. Wenn Next erst nach
+  // gestreamten Shell-Teilen in notFound() läuft, kann der Browser ein 200 mit
+  // 404-UI sehen. Für §203-StGB-Negativtests und Caches muss die Entscheidung
+  // so früh wie möglich fallen.
+  const visibleClient = await withTenantContext(
+    { tenantId, actorId: staffId, actorType: 'STAFF' },
+    (tx) => tx.client.findFirst({ where: { id, tenantId }, select: { id: true } }),
+  );
+  if (!visibleClient) notFound();
+
   const [modules, clientLayout] = await Promise.all([
     readModules(settingsCtx),
     readClientLayout(settingsCtx),
@@ -73,7 +84,7 @@ export default async function ClientDetailPage({
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
       const c = await tx.client.findUnique({
-        where: { id },
+        where: { id, tenantId },
         include: {
           documentFolders: {
             select: { id: true, name: true, parentId: true },

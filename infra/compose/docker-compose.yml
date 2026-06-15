@@ -6,9 +6,8 @@
 # über Override-Files dazugeschaltet (siehe docker-compose.app.yml).
 #
 # Object-Store: SeaweedFS mit S3-API + Object-Lock COMPLIANCE-Mode für GoBD-
-# konforme Aufbewahrung (10 Jahre). MinIO wurde 2025 abgelöst, weil die
-# Community-Version Compliance-Features schrittweise entfernt hat und auf
-# AGPL gewechselt ist.
+# konforme Aufbewahrung (10 Jahre). Dieser Stack startet ausschließlich
+# SeaweedFS als S3-kompatiblen Object-Store.
 #
 # Dev-Komfort (Mailhog, n8n) liegt in docker-compose.dev.yml.
 #

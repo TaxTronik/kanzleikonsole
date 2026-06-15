@@ -25,6 +25,7 @@ export async function loginAsAdmin(page: Page): Promise<void> {
   await page.getByLabel('E-Mail').fill(ADMIN_EMAIL);
   await page.getByLabel('Passwort').fill(ADMIN_PASSWORD);
   const continueButton = page.getByRole('button', { name: /Weiter|Wird gepr/i });
+  await expect(continueButton).toBeEnabled({ timeout: 10_000 });
   await continueButton.click();
 
   // DEV_SKIP_TOTP: Nach Passwort direkt auf Dashboard — checkPasswordAction
@@ -41,7 +42,9 @@ export async function loginAsAdmin(page: Page): Promise<void> {
   // deterministischer als später irreführend in den TOTP-Pfad zu fallen.
   const stillOnPasswordStep = await page.getByRole('button', { name: /^Weiter$/ }).isVisible({ timeout: 1000 }).catch(() => false);
   if (stillOnPasswordStep) {
-    await page.getByRole('button', { name: /^Weiter$/ }).click();
+    const retryButton = page.getByRole('button', { name: /^Weiter$/ });
+    await expect(retryButton).toBeEnabled({ timeout: 10_000 });
+    await retryButton.click();
     onDashboard = await page
       .waitForURL(/\/staff\/dashboard/, { timeout: 7_000 })
       .then(() => true)

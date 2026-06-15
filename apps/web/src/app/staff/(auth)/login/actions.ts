@@ -127,7 +127,7 @@ export async function checkPasswordAction(
   }
 
   // Erfolg → Counter zurücksetzen (IP-RL + Account-Counter)
-  await resetRateLimit(`staff-pw:${ip}`);
+  await resetRateLimit(ip ? `staff-pw:${ip}` : 'staff-pw:global');
   resetFailedLogin(prismaOwner, staffUser.id).catch(() => void 0);
 
   // DEV-ONLY: TOTP überspringen → UI loggt direkt ein (ohne Code/Setup).
@@ -288,17 +288,19 @@ export async function loginAction(formData: FormData): Promise<LoginResult> {
   // teuer (Replay-Schutz + Per-Token-One-Time-Use), bei null-IP weiter
   // globaler Sturm-Bucket.
   const ip = getClientIp(await headers());
-  const rl = await checkIpOrGlobalLimit(
-    'staff-totp',
-    ip,
-    { max: 5, windowSec: 300 },
-    { max: 100, windowSec: 300 },
-  );
-  if (!rl.ok) {
-    return {
-      ok: false,
-      error: `Zu viele Versuche. Bitte ${Math.ceil(rl.retryAfter / 60)} Min. warten.`,
-    };
+  if (!DEV_SKIP_TOTP) {
+    const rl = await checkIpOrGlobalLimit(
+      'staff-totp',
+      ip,
+      { max: 5, windowSec: 300 },
+      { max: 100, windowSec: 300 },
+    );
+    if (!rl.ok) {
+      return {
+        ok: false,
+        error: `Zu viele Versuche. Bitte ${Math.ceil(rl.retryAfter / 60)} Min. warten.`,
+      };
+    }
   }
 
   try {
@@ -312,7 +314,9 @@ export async function loginAction(formData: FormData): Promise<LoginResult> {
     // Cookie wurde durch staffSignIn in der Response gesetzt.
     // Client macht jetzt window.location.href = '/staff/dashboard'
     // (Hard-Reload, damit Browser den Cookie zuverlässig im nächsten Request mitsendet).
-    await resetRateLimit(`staff-totp:${ip}`);
+    if (!DEV_SKIP_TOTP) {
+      await resetRateLimit(ip ? `staff-totp:${ip}` : 'staff-totp:global');
+    }
     return { ok: true };
   } catch (error) {
     if (error instanceof AuthError) {

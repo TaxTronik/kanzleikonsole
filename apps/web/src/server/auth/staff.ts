@@ -12,7 +12,7 @@ import { evidenceService } from '@/server/container';
 import { consumeTotpCode } from './totp-replay';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { log } from '@/server/logger';
-import { getClientIp, checkIpOrGlobalLimit } from '@/server/rate-limit';
+import { getClientIp, checkIpOrGlobalLimit, resetRateLimit } from '@/server/rate-limit';
 import { fireAndForget } from '@/server/util/fire-and-forget';
 
 // DEV-ONLY: TOTP-Bypass für lokale Entwicklung. DOPPELT gegated — greift nur,
@@ -156,6 +156,7 @@ const staffConfig: NextAuthConfig = {
             { staffId: staffUser.id },
             'staff-auth: DEV_SKIP_TOTP aktiv — TOTP übersprungen (NUR Dev!)',
           );
+          await resetRateLimit(ip ? `staff-authorize:${ip}` : 'staff-authorize:global');
           fireAndForget('resetFailedLogin', resetFailedLogin(prismaOwner, staffUser.id));
           // RF-12: auch der Dev-Login landet in der Chain (method markiert ihn).
           await prismaOwner.$transaction((tx) =>
@@ -322,6 +323,7 @@ const staffConfig: NextAuthConfig = {
         // (auth.login.success) — in DERSELBEN Tx wie der lastLoginAt-Write
         // (Record-Muster wie überall) und deshalb awaited statt fire-and-forget.
         fireAndForget('resetFailedLogin', resetFailedLogin(prismaOwner, staffUser.id));
+        await resetRateLimit(ip ? `staff-authorize:${ip}` : 'staff-authorize:global');
         await prismaOwner.$transaction(async (tx) => {
           await tx.staffUser.update({
             where: { id: staffUser.id },

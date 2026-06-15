@@ -228,9 +228,12 @@ async function scanWithClamAV(data: Buffer): Promise<ScanResult> {
  * vorher hatten wir zwei abweichende Whitelisten für denselben Header.
  */
 export function sanitizeFilenameForHeader(name: string): string {
-  // \r, \n, \\, " entfernen; auch Control-Chars (0x00-0x1F) raus
+  // Ab CR/LF alles verwerfen: ein Angreifer darf keinen pseudo-Header-Namen
+  // hinter dem Zeilenumbruch in den sichtbaren Dateinamen retten.
+  const firstLine = name.split(/[\r\n]/)[0] ?? '';
+  // \\, " entfernen; auch Control-Chars (0x00-0x1F) raus
   // eslint-disable-next-line no-control-regex
-  return name.replace(/[\r\n\\"\x00-\x1F]/g, '').slice(0, 200) || 'download';
+  return firstLine.replace(/[\\"\x00-\x1F]/g, '').slice(0, 200) || 'download';
 }
 
 // ---------------------------------------------------------------------------
@@ -426,4 +429,3 @@ export async function commitDocumentFromBytes(input: {
     tenantId,
   });
 }
-

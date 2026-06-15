@@ -69,9 +69,6 @@ export async function checkObjectStore(): Promise<ServiceStatus> {
   }
 }
 
-/** @deprecated Wird durch `checkObjectStore` ersetzt — Wrapper für die Health-Route. */
-export const checkMinIO = checkObjectStore;
-
 export async function checkClamAV(): Promise<ServiceStatus> {
   return new Promise((resolve) => {
     const start = Date.now();

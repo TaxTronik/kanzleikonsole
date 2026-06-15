@@ -46,8 +46,8 @@ export default function StaffLoginPage() {
 
   const tenantSlug = 'default';
 
-  function handlePasswordSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  function submitPasswordStep() {
+    if (isPending) return;
     setError(null);
     startTransition(async () => {
       const result = await checkPasswordAction(email, password, tenantSlug);
@@ -74,6 +74,11 @@ export default function StaffLoginPage() {
         setStep('setup');
       }
     });
+  }
+
+  function handlePasswordSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    submitPasswordStep();
   }
 
   function handleSetupConfirm(e: React.FormEvent) {
@@ -130,11 +135,18 @@ export default function StaffLoginPage() {
 
           {/* Step: Passwort */}
           {step === 'password' && (
-            <form onSubmit={handlePasswordSubmit} className="space-y-4">
+            <form
+              onSubmit={handlePasswordSubmit}
+              method="post"
+              action={`/staff/login/password?returnTo=${encodeURIComponent(returnTo)}`}
+              className="space-y-4"
+            >
+              <input type="hidden" name="tenantSlug" value={tenantSlug} />
               <div>
                 <label className="label" htmlFor="email">E-Mail</label>
                 <input
                   id="email"
+                  name="email"
                   type="email"
                   className="input"
                   value={email}
@@ -148,6 +160,7 @@ export default function StaffLoginPage() {
                 <label className="label" htmlFor="password">Passwort</label>
                 <input
                   id="password"
+                  name="password"
                   type="password"
                   className="input"
                   value={password}

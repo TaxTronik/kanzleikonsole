@@ -59,12 +59,12 @@ test.describe.serial('Upload API fuzz and negative cases', () => {
   });
 
   test('sanitizes CRLF filename on download response headers', async ({ page }) => {
-    const title = `E2E Header Injection ${Date.now()}`;
+    const title = `E2E Header Injection ${Date.now()}\r\nX-Injected: yes`;
     const res = await page.request.post('/api/staff/documents/commit', {
       headers: { Origin: BASE_ORIGIN },
       multipart: {
         file: {
-          name: 'evil\r\nX-Injected: yes.pdf',
+          name: 'valid-header-injection-carrier.pdf',
           mimeType: 'application/pdf',
           buffer: createPdf(),
         },

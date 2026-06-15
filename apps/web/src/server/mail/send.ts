@@ -59,16 +59,21 @@ function envSmtp(): SmtpConfig {
 
 function transporterFor(cfg: SmtpConfig): Transporter {
   const isImplicitTls = cfg.secure || cfg.port === 465;
+  const isDevMailhog =
+    env.NODE_ENV !== 'production' &&
+    cfg.port === 1025 &&
+    ['localhost', '127.0.0.1', 'mailhog'].includes(cfg.host.toLowerCase());
   // U-2: STARTTLS erzwingen für Port 587 (Submission). Vorher fiel Nodemailer
   // im opportunistischen Modus auf Klartext zurück, wenn der SMTP-Server kein
   // STARTTLS ankündigt (oder ein MitM die Ankündigung stripped). Folge: AUTH-
   // Header inkl. Passwort plain.
   //   - Port 25: Mail-Relay zwischen Servern. requireTLS würde legitime MX-
   //     Relays brechen — bewusst nicht erzwingen.
+  //   - Dev-MailHog auf localhost:1025 spricht absichtlich kein STARTTLS.
   //   - Port 465: Implicit TLS — STARTTLS-Flag irrelevant.
   //   - Port 587 / alles andere: requireTLS=true.
   // tls.minVersion: TLS 1.0/1.1 verbieten — SHA-1/RC4-Ciphers raus.
-  const requireTLS = !isImplicitTls && cfg.port !== 25;
+  const requireTLS = !isImplicitTls && cfg.port !== 25 && !isDevMailhog;
   return nodemailer.createTransport({
     host: cfg.host,
     port: cfg.port,

@@ -71,22 +71,26 @@ const nextConfig = {
     //  - `connect-src ws:` AUSSCHLIESSLICH im Dev-Mode: Turbopack-HMR-WebSocket.
     const isDev = process.env.NODE_ENV !== 'production';
 
+    const loopbackDevOrigins = isDev ? ' http://localhost:* http://127.0.0.1:*' : '';
+
     // Object-Store ist NIE ein eigener Browser-Origin: Up-/Downloads laufen
     // ausschließlich same-origin durch die Next.js-App (Variante B). Darum
     // bleibt `connect-src`/`form-action` hart auf `'self'` — keine S3-Origin-
-    // Aufweichung.
+    // Aufweichung. Im Dev-Modus erlauben wir zusätzlich Loopback-Hosts, weil
+    // E2E/Browser zwischen localhost und 127.0.0.1 wechseln können; Production
+    // bleibt exakt same-origin.
     const csp = [
       `default-src 'self'`,
       `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''}`,
       `style-src 'self' 'unsafe-inline'`,
       `img-src 'self' data: blob:`,
       `font-src 'self' data:`,
-      `connect-src 'self'${isDev ? ' ws: wss:' : ''}`,
+      `connect-src 'self'${loopbackDevOrigins}${isDev ? ' ws: wss:' : ''}`,
       // 'self' statt 'none': der Dokument-Viewer bettet Preview-Streams
       // (PDF/Bild) per <iframe> ein — same-origin. 'none' hätte das blockiert.
       // Cross-Origin-Framing (echter Clickjacking-Vektor) bleibt verboten.
       `frame-ancestors 'self'`,
-      `form-action 'self'`,
+      `form-action 'self'${loopbackDevOrigins}`,
       `base-uri 'self'`,
       `object-src 'none'`,
       `worker-src 'self' blob:`,
