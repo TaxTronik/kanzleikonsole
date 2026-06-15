@@ -759,7 +759,7 @@ jobs:
           fi
 
       - name: Run E2E paranoid tests
-        run: pnpm --filter @taxtronik/e2e exec playwright test tests/02-auth.spec.ts tests/03-search-reports.spec.ts tests/04-rate-limit.spec.ts tests/05-user-walkthrough.spec.ts tests/06-actions.spec.ts tests/07-compliance.spec.ts tests/08-differential.spec.ts tests/09-api-rbac.spec.ts tests/10-concurrency.spec.ts
+        run: pnpm --filter @taxtronik/e2e exec playwright test tests/02-auth.spec.ts tests/03-search-reports.spec.ts tests/04-rate-limit.spec.ts tests/05-user-walkthrough.spec.ts tests/06-actions.spec.ts tests/07-compliance.spec.ts tests/08-differential.spec.ts tests/09-api-rbac.spec.ts tests/10-concurrency.spec.ts tests/11-upload-fuzz.spec.ts
 
       - name: Upload Playwright report
         if: always()
