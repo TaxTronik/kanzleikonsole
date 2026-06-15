@@ -70,6 +70,16 @@ const FieldsSchema = z
     message: 'classification oder documentTypeId erforderlich',
   });
 
+const REFERENCE_CHANGED = 'REFERENCE_CHANGED';
+
+function referenceChanged(message: string): Error {
+  return new Error(`${REFERENCE_CHANGED}: ${message}`);
+}
+
+function isReferenceChanged(e: unknown): boolean {
+  return ((e as Error).message ?? '').startsWith(REFERENCE_CHANGED);
+}
+
 export async function POST(req: NextRequest) {
   // CSRF-Defense-in-Depth (zusätzlich zu SameSite=lax): Cross-Origin-POSTs
   // ablehnen, bevor irgendetwas gepuffert oder authentifiziert wird.
@@ -257,47 +267,78 @@ export async function POST(req: NextRequest) {
   let docRow;
   try {
     docRow = await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
-      // M-2: detectedMime aus Magic-Bytes hat Vorrang vor Client-gemeldetem Wert.
-      const effectiveMime = commit.detectedMime ?? mimeType;
-      // Befund 12: Document+Version-Insert zentral (upload-helpers).
-      const { document } = await createDocumentWithVersion(tx, {
-        documentData: {
+      { tenantId, actorId: staffId, actorType: 'STAFF' },
+      async (tx) => {
+        let finalFolderId = effectiveFolderId;
+
+        if (clientId) {
+          const c = await tx.client.findFirst({ where: { id: clientId }, select: { id: true } });
+          if (!c || !(await canAccessClientTx(tx, session, clientId))) {
+            throw referenceChanged('clientId nicht mehr gueltig oder nicht mehr zugaenglich.');
+          }
+        }
+        if (analysisId) {
+          const a = await tx.riskAnalysis.findFirst({ where: { id: analysisId }, select: { id: true } });
+          if (!a) {
+            throw referenceChanged('analysisId nicht mehr gueltig.');
+          }
+        }
+        if (workflowItemId) {
+          const wi = await tx.workflowItem.findFirst({
+            where: { id: workflowItemId, instance: { tenantId } },
+            select: { instance: { select: { clientId: true } } },
+          });
+          if (!wi || (wi.instance.clientId ?? null) !== (clientId ?? null)) {
+            throw referenceChanged('workflowItemId nicht mehr gueltig oder Mandant geaendert.');
+          }
+        }
+        if (effectiveFolderId) {
+          const f = await tx.documentFolder.findFirst({
+            where: { id: effectiveFolderId, tenantId },
+            select: { clientId: true },
+          });
+          finalFolderId = f && (f.clientId ?? null) === (clientId ?? null) ? effectiveFolderId : null;
+        }
+
+        // M-2: detectedMime aus Magic-Bytes hat Vorrang vor Client-gemeldetem Wert.
+        const effectiveMime = commit.detectedMime ?? mimeType;
+        // Befund 12: Document+Version-Insert zentral (upload-helpers).
+        const { document } = await createDocumentWithVersion(tx, {
+          documentData: {
+            tenantId,
+            clientId: clientId ?? null,
+            ownerStaffId: staffId,
+            title,
+            classification: classification as never,
+            documentTypeId: resolvedTypeId,
+            mimeType: effectiveMime,
+            retentionUntil: commit.retentionUntil,
+            workflowItemId: workflowItemId ?? null,
+            analysisId: analysisId ?? null,
+            folderId: finalFolderId,
+          },
+          commit,
+          createdById: staffId,
+        });
+        await evidenceService.record(tx, {
           tenantId,
-          clientId: clientId ?? null,
-          ownerStaffId: staffId,
-          title,
-          classification: classification as never,
-          documentTypeId: resolvedTypeId,
-          mimeType: effectiveMime,
-          retentionUntil: commit.retentionUntil,
-          workflowItemId: workflowItemId ?? null,
-          analysisId: analysisId ?? null,
-          folderId: effectiveFolderId,
-        },
-        commit,
-        createdById: staffId,
-      });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'document.upload',
-        resourceType: 'document',
-        resourceId: document.id,
-        after: {
-          title,
-          classification,
-          clientId: clientId ?? null,
-          sha256: commit.sha256.toString('hex'),
-          immutable: commit.immutable,
-        },
-        ip: getClientIp(req.headers),
-        userAgent: req.headers.get('user-agent'),
-      });
-      return document;
-    },
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'document.upload',
+          resourceType: 'document',
+          resourceId: document.id,
+          after: {
+            title,
+            classification,
+            clientId: clientId ?? null,
+            sha256: commit.sha256.toString('hex'),
+            immutable: commit.immutable,
+          },
+          ip: getClientIp(req.headers),
+          userAgent: req.headers.get('user-agent'),
+        });
+        return document;
+      },
     );
   } catch (e) {
     // Befund 1: zu diesem Zeitpunkt liegt das Objekt bereits object-locked
@@ -316,6 +357,12 @@ export async function POST(req: NextRequest) {
       },
       'documents-commit: DB-Commit nach Storage-Upload fehlgeschlagen — Objekt verwaist',
     );
+    if (isReferenceChanged(e)) {
+      return NextResponse.json(
+        { error: 'reference_changed', message: 'Referenz hat sich waehrend des Uploads geaendert.' },
+        { status: 409 },
+      );
+    }
     return NextResponse.json({ error: 'internal_error' }, { status: 500 });
   }
 
