@@ -63,6 +63,9 @@ jobs:
       - name: Guard paranoid E2E coverage
         run: sh scripts/check-paranoid-e2e.sh
 
+      - name: Guard pinned CI service images
+        run: sh scripts/check-ci-images-pinned.sh
+
       - name: Lint
         run: pnpm lint
 
@@ -96,7 +99,7 @@ jobs:
     timeout-minutes: 20
     services:
       postgres:
-        image: postgres:18
+        image: postgres:18@sha256:c27c01f74af25bde5f4f0f69d01944c4fc7f0376ea53c72aa1180dd593ce1d52
         env:
           POSTGRES_USER: taxtronik
           POSTGRES_PASSWORD: taxtronik
@@ -182,7 +185,7 @@ jobs:
     timeout-minutes: 20
     services:
       postgres:
-        image: postgres:18
+        image: postgres:18@sha256:c27c01f74af25bde5f4f0f69d01944c4fc7f0376ea53c72aa1180dd593ce1d52
         env:
           POSTGRES_USER: taxtronik
           POSTGRES_PASSWORD: taxtronik
@@ -292,7 +295,7 @@ jobs:
     timeout-minutes: 20
     services:
       postgres:
-        image: postgres:18
+        image: postgres:18@sha256:c27c01f74af25bde5f4f0f69d01944c4fc7f0376ea53c72aa1180dd593ce1d52
         env:
           POSTGRES_USER: taxtronik
           POSTGRES_PASSWORD: taxtronik
@@ -406,7 +409,7 @@ jobs:
     timeout-minutes: 20
     services:
       postgres:
-        image: postgres:18
+        image: postgres:18@sha256:c27c01f74af25bde5f4f0f69d01944c4fc7f0376ea53c72aa1180dd593ce1d52
         env:
           POSTGRES_USER: taxtronik
           POSTGRES_PASSWORD: taxtronik
@@ -419,7 +422,7 @@ jobs:
           --health-timeout 3s
           --health-retries 10
       redis:
-        image: redis:7-alpine
+        image: redis:7-alpine@sha256:b1addbe72465a718643cff9e60a58e6df1841e29d6d7d60c9a85d8d72f08d1a7
         ports:
           - 6379:6379
         options: >-
@@ -517,7 +520,7 @@ jobs:
     timeout-minutes: 45
     services:
       postgres:
-        image: postgres:18
+        image: postgres:18@sha256:c27c01f74af25bde5f4f0f69d01944c4fc7f0376ea53c72aa1180dd593ce1d52
         env:
           POSTGRES_USER: taxtronik
           POSTGRES_PASSWORD: taxtronik
@@ -530,7 +533,7 @@ jobs:
           --health-timeout 3s
           --health-retries 10
       redis:
-        image: redis:7-alpine
+        image: redis:7-alpine@sha256:b1addbe72465a718643cff9e60a58e6df1841e29d6d7d60c9a85d8d72f08d1a7
         ports:
           - 6379:6379
         options: >-
