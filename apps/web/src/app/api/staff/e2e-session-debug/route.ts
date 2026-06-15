@@ -14,6 +14,9 @@
 // behoben ist, wird diese Datei wieder gelöscht.
 // =============================================================================
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 import { NextResponse, type NextRequest } from 'next/server';
 import { decode } from 'next-auth/jwt';
 import { env } from '@taxtronik/config';
