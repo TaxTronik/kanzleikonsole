@@ -426,6 +426,10 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     await s.click();
     await expect(s, 'Telefonnotiz-Formular muss nach erfolgreicher Anlage schließen').toBeHidden({ timeout: 10_000 });
 
+    // router.refresh() kann unter CI-Load unzuverlässig sein; nach Form-Schließen
+    // die Seite neu laden, damit die Telefonnotiz-Liste garantiert aktuell ist.
+    await page.reload({ waitForLoadState: 'domcontentloaded' });
+
     // FIX 2: Statt body-visible — die Telefonnotiz MUSS auf der Mandanten-
     // detailseite erscheinen, sonst wurde sie nicht gespeichert.
     await expect(

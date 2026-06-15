@@ -7,7 +7,10 @@ import {
   STAFF_SESSION_JWT_SALT,
   USE_SECURE_COOKIES,
 } from '@/server/auth/session-cookie';
-import { checkPasswordAction, loginAction } from '../actions';
+import { checkPasswordAction } from '../actions';
+import { evidenceService } from '@/server/container';
+import { auditIp } from '@/server/auth/login-audit';
+import { getClientIp } from '@/server/rate-limit';
 
 function safeStaffReturnTo(raw: string | null): string {
   if (!raw) return '/staff/dashboard';
@@ -39,16 +42,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return loginRedirect(req, 'totp-required');
   }
 
-  const loginFormData = new FormData();
-  loginFormData.set('email', email);
-  loginFormData.set('password', password);
-  loginFormData.set('tenantSlug', tenantSlug);
-
-  const loginResult = await loginAction(loginFormData);
-  if (!loginResult.ok) {
-    return loginRedirect(req, 'session-invalid');
-  }
-
   const tenant = await prismaOwner.tenant.findFirst({ where: { slug: tenantSlug } });
   const staffUser = tenant
     ? await prismaOwner.staffUser.findFirst({
@@ -59,6 +52,27 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   if (!tenant || !staffUser) {
     return loginRedirect(req, 'session-invalid');
   }
+
+  const ip = (() => {
+    try {
+      return getClientIp(req.headers);
+    } catch {
+      return null;
+    }
+  })();
+
+  await prismaOwner.$transaction((tx) =>
+    evidenceService.record(tx, {
+      tenantId: tenant.id,
+      actorType: 'STAFF',
+      actorId: staffUser.id,
+      action: 'auth.login.success',
+      resourceType: 'staff_user',
+      resourceId: staffUser.id,
+      after: { email: staffUser.email, method: 'dev_skip_totp' },
+      ip: auditIp(ip),
+    }),
+  );
 
   const token = await encode({
     secret: env.AUTH_SECRET,
