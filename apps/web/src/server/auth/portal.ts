@@ -11,16 +11,20 @@
 // =============================================================================
 
 import { cache } from 'react';
+import { cookies } from 'next/headers';
 import NextAuth, { type NextAuthConfig, type Session } from 'next-auth';
+import { decode, type JWT } from 'next-auth/jwt';
 import Credentials from 'next-auth/providers/credentials';
 import { env } from '@taxtronik/config';
 import { verifyMagicLink } from './magic-link';
 import { isTokenRevoked } from './revocation';
 import {
   PORTAL_SESSION_COOKIE,
+  PORTAL_SESSION_COOKIE_BASE,
   PORTAL_SESSION_JWT_DECODE_SALTS,
   PORTAL_SESSION_JWT_SALT,
   USE_SECURE_COOKIES,
+  sessionCookieNameVariants,
 } from './session-cookie';
 import { createStableSessionJwtOptions } from './session-jwt';
 import { prismaOwner } from '@/server/db/prisma-owner';
@@ -44,7 +48,106 @@ function isPortalTokenPayload(t: unknown): t is PortalTokenPayload {
   );
 }
 
-// Narrower Session-Typ für das Portal-Surface. Module-Augmentation für
+// Harte Server-Session-Validierung fuer portalAuth: Cookie prefix-tolerant
+// lesen, JWT mit stabilen Salts decodieren und dann Revocation/DB pruefen.
+function unique(values: string[]): string[] {
+  return Array.from(new Set(values));
+}
+
+function portalSessionCookieNames(): string[] {
+  return unique([PORTAL_SESSION_COOKIE, ...sessionCookieNameVariants(PORTAL_SESSION_COOKIE_BASE)]);
+}
+
+async function readPortalSessionTokenCookie(): Promise<string | null> {
+  const jar = await cookies();
+  for (const name of portalSessionCookieNames()) {
+    const value = jar.get(name)?.value;
+    if (value) return value;
+  }
+  return null;
+}
+
+function hasValidJwtLifetime(token: JWT): boolean {
+  return typeof token.exp === 'number' && token.exp > Math.floor(Date.now() / 1000);
+}
+
+async function decodePortalSessionToken(rawToken: string): Promise<JWT | null> {
+  for (const salt of unique(PORTAL_SESSION_JWT_DECODE_SALTS)) {
+    try {
+      const token = await decode({ token: rawToken, secret: env.AUTH_SECRET, salt });
+      if (token && hasValidJwtLifetime(token)) return token;
+    } catch {
+      // Historical salt miss; try the next candidate.
+    }
+  }
+  return null;
+}
+
+function sessionExpires(token: JWT): string {
+  const exp = typeof token.exp === 'number' ? token.exp : Math.floor(Date.now() / 1000);
+  return new Date(exp * 1000).toISOString();
+}
+
+function hasPortalSessionFields(session: Session | null): session is PortalSession {
+  const u = session?.user as
+    | { contactId?: unknown; clientId?: unknown; tenantId?: unknown; fullName?: unknown }
+    | undefined;
+  return (
+    !!u &&
+    typeof u.contactId === 'string' &&
+    typeof u.clientId === 'string' &&
+    typeof u.tenantId === 'string' &&
+    typeof u.fullName === 'string'
+  );
+}
+
+async function hydratePortalSessionFromToken(session: Session, token: unknown): Promise<Session> {
+  if (!isPortalTokenPayload(token)) return session;
+
+  const tokenIat = (token as { iat?: number }).iat;
+  if (await isTokenRevoked('portal', token.contactId, tokenIat)) {
+    return session;
+  }
+
+  try {
+    const c = await prismaOwner.clientContact.findUnique({
+      where: { id: token.contactId },
+      select: {
+        active: true,
+        tenantId: true,
+        clientId: true,
+        client: { select: { allowActive: true, anonymizedAt: true } },
+      },
+    });
+    if (
+      !c ||
+      !c.active ||
+      c.tenantId !== token.tenantId ||
+      c.clientId !== token.clientId ||
+      !c.client.allowActive ||
+      c.client.anonymizedAt !== null
+    ) {
+      log.warn(
+        { contactId: token.contactId, tokenTenant: token.tenantId },
+        'portal-auth: Session ohne gueltigen/aktiven Kontakt oder Mandant gesperrt/anonymisiert - invalidiert (Re-Login erzwungen)',
+      );
+      return session;
+    }
+  } catch (err) {
+    log.warn(
+      { err: (err as Error).message },
+      'portal-auth: Session-Existenzpruefung fehlgeschlagen - durchgelassen',
+    );
+  }
+
+  session.user.contactId = token.contactId;
+  session.user.tenantId = token.tenantId;
+  session.user.clientId = token.clientId;
+  session.user.fullName = token.fullName;
+  return session;
+}
+
+// Narrower Session-Typ fuer das Portal-Surface. Module-Augmentation fuer
 // Session.user liegt zentral in src/types/next-auth.d.ts.
 export type PortalSession = Session & {
   user: {
@@ -209,10 +312,26 @@ export const portalSignOut: typeof _portal.signOut = _portal.signOut;
 // React cache(): request-scoped Dedup (analog staffAuth) — Portal-Layout + Pages
 // rufen portalAuth mehrfach pro Request; cache() spart die redundanten
 // Redis-/DB-Round-Trips ohne Cross-Request-Risiko.
+// Symmetrisch zu staffAuth: direkte Cookie/JWT-Validierung, danach dieselben
+// Revocation- und DB-Gates wie im NextAuth-Session-Callback.
 export const portalAuth = cache(async (): Promise<PortalSession | null> => {
-  const raw = await _portal.auth();
-  if (!raw?.user) return null;
-  const u = raw.user as { contactId?: string };
-  if (!u.contactId) return null;
-  return raw as PortalSession;
+  const rawToken = await readPortalSessionTokenCookie();
+  if (!rawToken) return null;
+
+  const token = await decodePortalSessionToken(rawToken);
+  if (!token) return null;
+
+  const baseSession: Session = {
+    user: {
+      id: typeof token.sub === 'string' ? token.sub : token.contactId ?? '',
+      email: typeof token.email === 'string' ? token.email : '',
+      name: typeof token.name === 'string' ? token.name : token.fullName ?? '',
+      fullName: '',
+      tenantId: '',
+    },
+    expires: sessionExpires(token),
+  };
+
+  const session = await hydratePortalSessionFromToken(baseSession, token);
+  return hasPortalSessionFields(session) ? session : null;
 });

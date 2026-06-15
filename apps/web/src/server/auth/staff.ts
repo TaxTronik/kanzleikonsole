@@ -1,5 +1,7 @@
 import { cache } from 'react';
+import { cookies } from 'next/headers';
 import NextAuth, { type NextAuthConfig, type Session } from 'next-auth';
+import { decode, type JWT } from 'next-auth/jwt';
 import Credentials from 'next-auth/providers/credentials';
 import { compare } from 'bcryptjs';
 import { env } from '@taxtronik/config';
@@ -9,9 +11,11 @@ import { recordFailedLoginAudited, auditIp } from './login-audit';
 import { isTokenRevoked } from './revocation';
 import {
   STAFF_SESSION_COOKIE,
+  STAFF_SESSION_COOKIE_BASE,
   STAFF_SESSION_JWT_DECODE_SALTS,
   STAFF_SESSION_JWT_SALT,
   USE_SECURE_COOKIES,
+  sessionCookieNameVariants,
 } from './session-cookie';
 import { createStableSessionJwtOptions } from './session-jwt';
 import { evidenceService } from '@/server/container';
@@ -84,6 +88,108 @@ function isStaffTokenPayload(t: unknown): t is StaffTokenPayload {
     (o['permissions'] === undefined ||
       (Array.isArray(o['permissions']) && o['permissions'].every((p) => typeof p === 'string')))
   );
+}
+
+function unique(values: string[]): string[] {
+  return Array.from(new Set(values));
+}
+
+function staffSessionCookieNames(): string[] {
+  return unique([STAFF_SESSION_COOKIE, ...sessionCookieNameVariants(STAFF_SESSION_COOKIE_BASE)]);
+}
+
+async function readStaffSessionTokenCookie(): Promise<string | null> {
+  const jar = await cookies();
+  for (const name of staffSessionCookieNames()) {
+    const value = jar.get(name)?.value;
+    if (value) return value;
+  }
+  return null;
+}
+
+function hasValidJwtLifetime(token: JWT): boolean {
+  return typeof token.exp === 'number' && token.exp > Math.floor(Date.now() / 1000);
+}
+
+async function decodeStaffSessionToken(rawToken: string): Promise<JWT | null> {
+  for (const salt of unique(STAFF_SESSION_JWT_DECODE_SALTS)) {
+    try {
+      const token = await decode({ token: rawToken, secret: env.AUTH_SECRET, salt });
+      if (token && hasValidJwtLifetime(token)) return token;
+    } catch {
+      // Historical salt miss; try the next candidate.
+    }
+  }
+  return null;
+}
+
+function sessionExpires(token: JWT): string {
+  const exp = typeof token.exp === 'number' ? token.exp : Math.floor(Date.now() / 1000);
+  return new Date(exp * 1000).toISOString();
+}
+
+function hasStaffSessionFields(session: Session | null): session is StaffSession {
+  const u = session?.user as
+    | {
+        staffId?: unknown;
+        tenantId?: unknown;
+        fullName?: unknown;
+        roles?: unknown;
+        permissions?: unknown;
+      }
+    | undefined;
+  return (
+    !!u &&
+    typeof u.staffId === 'string' &&
+    typeof u.tenantId === 'string' &&
+    typeof u.fullName === 'string' &&
+    Array.isArray(u.roles) &&
+    Array.isArray(u.permissions)
+  );
+}
+
+async function hydrateStaffSessionFromToken(session: Session, token: unknown): Promise<Session> {
+  if (!isStaffTokenPayload(token)) return session;
+
+  const tokenIat = (token as { iat?: number }).iat;
+  if (await isTokenRevoked('staff', token.staffId, tokenIat)) {
+    return session;
+  }
+
+  let freshRoles: string[] | null = null;
+  let freshPermissions: string[] | null = null;
+  try {
+    const u = await prismaOwner.staffUser.findUnique({
+      where: { id: token.staffId },
+      select: {
+        active: true,
+        tenantId: true,
+        roles: { select: { role: true } },
+        permissions: { select: { permission: true } },
+      },
+    });
+    if (!u || !u.active || u.tenantId !== token.tenantId) {
+      log.warn(
+        { staffId: token.staffId, tokenTenant: token.tenantId },
+        'staff-auth: Session ohne gueltigen User/Tenant - invalidiert (Re-Login erzwungen)',
+      );
+      return session;
+    }
+    freshRoles = u.roles.map((r) => r.role as string);
+    freshPermissions = u.permissions.map((p) => p.permission as string);
+  } catch (err) {
+    log.warn(
+      { err: (err as Error).message },
+      'staff-auth: Session-Existenzpruefung fehlgeschlagen - durchgelassen',
+    );
+  }
+
+  session.user.staffId = token.staffId;
+  session.user.tenantId = token.tenantId;
+  session.user.fullName = token.fullName;
+  session.user.roles = freshRoles ?? token.roles;
+  session.user.permissions = freshPermissions ?? token.permissions ?? [];
+  return session;
 }
 
 // Fire-and-forget DB-Updates (Q6): Helfer liegt jetzt zentral in
@@ -508,20 +614,31 @@ export const staffHandlers: typeof _staff.handlers = _staff.handlers;
 export const staffSignIn: typeof _staff.signIn = _staff.signIn;
 export const staffSignOut: typeof _staff.signOut = _staff.signOut;
 
-// Wrapper, der auf das narrower StaffSession-Typ castet. Aufrufer können
-// `session.user.staffId` / `roles` ohne `?` benutzen, weil im staff-Surface
-// die Credentials-Provider-`authorize` diese Felder garantiert. Zusätzlich:
-// wenn der Revocation-Check im session-Callback die Staff-Felder nicht
-// gesetzt hat (S11), liefern wir null statt einer halb-leeren Session.
-// React cache(): dedupliziert pro Request. staffAuth wird im (protected)/layout
-// UND in jeder Page darunter (bei verschachtelten Layouts sogar 3×) aufgerufen;
-// jeder Aufruf triggert sonst den Session-Callback = 1 Redis-Revocation-Check +
-// 1 DB-findUnique (Ghost-Session-Härtung). cache() ist request-scoped (nie über
-// Requests/User hinweg) → null Staleness-/Leak-Risiko, redundante Round-Trips weg.
+// Harter Server-Gatekeeper fuer Staff-Sessions: Cookie prefix-tolerant lesen,
+// JWT mit stabilen Salts decodieren und dann dieselben Revocation-/DB-Gates
+// wie der NextAuth-Session-Callback pruefen. React cache() dedupliziert diese
+// Redis-/DB-Roundtrips request-scoped, ohne Cross-Request-Staleness.
+// CI-Haertung: Der Wrapper decodiert das Cookie selbst mit stabilen Salts, damit
+// gueltige lokale HTTP-E2E-Sessions nicht von NextAuths auth()-Pipeline verloren
+// gehen, bevor unsere eigenen Gates greifen koennen.
 export const staffAuth = cache(async (): Promise<StaffSession | null> => {
-  const raw = await _staff.auth();
-  if (!raw?.user) return null;
-  const u = raw.user as { staffId?: string };
-  if (!u.staffId) return null;
-  return raw as StaffSession;
+  const rawToken = await readStaffSessionTokenCookie();
+  if (!rawToken) return null;
+
+  const token = await decodeStaffSessionToken(rawToken);
+  if (!token) return null;
+
+  const baseSession: Session = {
+    user: {
+      id: typeof token.sub === 'string' ? token.sub : token.staffId ?? '',
+      email: typeof token.email === 'string' ? token.email : '',
+      name: typeof token.name === 'string' ? token.name : token.fullName ?? '',
+      fullName: '',
+      tenantId: '',
+    },
+    expires: sessionExpires(token),
+  };
+
+  const session = await hydrateStaffSessionFromToken(baseSession, token);
+  return hasStaffSessionFields(session) ? session : null;
 });
