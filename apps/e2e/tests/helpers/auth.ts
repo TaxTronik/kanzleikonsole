@@ -79,9 +79,23 @@ async function assertDashboardAcceptsStaffSession(page: Page): Promise<void> {
   const location = response.headers()['location'] ?? '';
   const body = await response.text().catch(() => '');
   const cookies = await page.context().cookies();
+
+  // TEMP: Diagnose-Endpoint zieht die decode/Gate/Pipeline-Zustände und legt
+  // sie direkt in die Fehlermeldung, damit der Playwright-Report das Rätsel
+  // „Session abgelehnt" aufklärt (web.log wird bei gesundem Start nicht
+  // ausgegeben). Siehe apps/web/.../_e2e-session-debug/route.ts.
+  let debug = '';
+  try {
+    const dbg = await page.context().request.get('/api/staff/_e2e-session-debug', { maxRedirects: 0 });
+    debug = await dbg.text().catch(() => '');
+  } catch (e) {
+    debug = `debug-fetch-failed: ${(e as Error).message}`;
+  }
+
   throw new Error(
     `DEV_SKIP_TOTP-Session wurde vom Dashboard abgelehnt: status=${status} url=${response.url()} ` +
-      `location=${location} staffCookies=${describeStaffCookies(cookies)} body=${body.slice(0, 500)}`,
+      `location=${location} staffCookies=${describeStaffCookies(cookies)} ` +
+      `DEBUG=${debug} body=${body.slice(0, 300)}`,
   );
 }
 
