@@ -25,17 +25,24 @@
 set -e
 
 ENDPOINT="${S3_ENDPOINT:-http://seaweedfs:8333}"
-AWS="aws --endpoint-url $ENDPOINT"
+AWS="aws --endpoint-url $ENDPOINT --cli-connect-timeout 2 --cli-read-timeout 5"
 
 # Bis SeaweedFS-S3-Gateway antwortet
 echo "[init-storage] Warte auf S3-Endpoint $ENDPOINT…"
+READY=0
 for i in $(seq 1 60); do
   if $AWS s3api list-buckets >/dev/null 2>&1; then
     echo "[init-storage] Endpoint erreichbar."
+    READY=1
     break
   fi
+  echo "[init-storage] S3 noch nicht erreichbar (Versuch $i/60)."
   sleep 2
 done
+if [ "$READY" -ne 1 ]; then
+  echo "[init-storage] FEHLER: S3-Endpoint $ENDPOINT nach 120s nicht erreichbar." >&2
+  exit 1
+fi
 
 bucket_exists() {
   $AWS s3api head-bucket --bucket "$1" >/dev/null 2>&1

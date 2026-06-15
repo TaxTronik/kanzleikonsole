@@ -676,6 +676,22 @@ jobs:
             docker logs seaweedfs-ci 2>&1 | tail -50
             exit 1
           fi
+          # Master-Health reicht nicht: das S3-Gateway kann noch nicht bereit
+          # sein. Port 8333 muss HTTP sprechen, bevor aws-cli initialisiert.
+          for i in $(seq 1 60); do
+            code="$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8333/ || true)"
+            if [ "$code" != "000" ]; then
+              echo "SeaweedFS S3 gateway ready (HTTP $code)"
+              break
+            fi
+            sleep 2
+          done
+          code="$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8333/ || true)"
+          if [ "$code" = "000" ]; then
+            echo "SeaweedFS S3 gateway not reachable after 120s — logs:"
+            docker logs seaweedfs-ci 2>&1 | tail -80
+            exit 1
+          fi
 
       - name: Create S3 buckets with Object-Lock (SeaweedFS, production-parity)
         run: |
@@ -743,7 +759,7 @@ jobs:
           fi
 
       - name: Run E2E paranoid tests
-        run: pnpm --filter @taxtronik/e2e exec playwright test tests/02-auth.spec.ts tests/03-search-reports.spec.ts tests/04-rate-limit.spec.ts tests/05-user-walkthrough.spec.ts tests/06-actions.spec.ts tests/07-compliance.spec.ts tests/08-differential.spec.ts tests/09-api-rbac.spec.ts
+        run: pnpm --filter @taxtronik/e2e exec playwright test tests/02-auth.spec.ts tests/03-search-reports.spec.ts tests/04-rate-limit.spec.ts tests/05-user-walkthrough.spec.ts tests/06-actions.spec.ts tests/07-compliance.spec.ts tests/08-differential.spec.ts tests/09-api-rbac.spec.ts tests/10-concurrency.spec.ts
 
       - name: Upload Playwright report
         if: always()
