@@ -35,17 +35,39 @@ const IS_LOCAL_HTTP_E2E =
 
 export const USE_SECURE_COOKIES = process.env.NODE_ENV === 'production' && !IS_LOCAL_HTTP_E2E;
 
+export const STAFF_SESSION_COOKIE_BASE = 'taxtronik_staff_session';
+export const PORTAL_SESSION_COOKIE_BASE = 'taxtronik_portal_session';
+
 function sessionCookieName(base: string, cookieDomain: string | undefined): string {
   if (!USE_SECURE_COOKIES) return `__${base}`;
   return cookieDomain ? `__Secure-${base}` : `__Host-${base}`;
 }
 
 export const STAFF_SESSION_COOKIE = sessionCookieName(
-  'taxtronik_staff_session',
+  STAFF_SESSION_COOKIE_BASE,
   process.env['STAFF_COOKIE_DOMAIN'] || undefined,
 );
 
 export const PORTAL_SESSION_COOKIE = sessionCookieName(
-  'taxtronik_portal_session',
+  PORTAL_SESSION_COOKIE_BASE,
   process.env['PORTAL_COOKIE_DOMAIN'] || undefined,
 );
+
+export function sessionCookieNameVariants(base: string): string[] {
+  return [`__${base}`, `__Host-${base}`, `__Secure-${base}`];
+}
+
+export const STAFF_SESSION_JWT_SALT = STAFF_SESSION_COOKIE_BASE;
+export const PORTAL_SESSION_JWT_SALT = PORTAL_SESSION_COOKIE_BASE;
+
+export const STAFF_SESSION_JWT_DECODE_SALTS = [
+  STAFF_SESSION_JWT_SALT,
+  STAFF_SESSION_COOKIE,
+  ...sessionCookieNameVariants(STAFF_SESSION_COOKIE_BASE),
+];
+
+export const PORTAL_SESSION_JWT_DECODE_SALTS = [
+  PORTAL_SESSION_JWT_SALT,
+  PORTAL_SESSION_COOKIE,
+  ...sessionCookieNameVariants(PORTAL_SESSION_COOKIE_BASE),
+];

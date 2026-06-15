@@ -16,7 +16,13 @@ import Credentials from 'next-auth/providers/credentials';
 import { env } from '@taxtronik/config';
 import { verifyMagicLink } from './magic-link';
 import { isTokenRevoked } from './revocation';
-import { PORTAL_SESSION_COOKIE, USE_SECURE_COOKIES } from './session-cookie';
+import {
+  PORTAL_SESSION_COOKIE,
+  PORTAL_SESSION_JWT_DECODE_SALTS,
+  PORTAL_SESSION_JWT_SALT,
+  USE_SECURE_COOKIES,
+} from './session-cookie';
+import { createStableSessionJwtOptions } from './session-jwt';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { log } from '@/server/logger';
 
@@ -92,6 +98,8 @@ const portalConfig: NextAuthConfig = {
     maxAge: 24 * 60 * 60,
     updateAge: 4 * 60 * 60,
   },
+
+  jwt: createStableSessionJwtOptions(PORTAL_SESSION_JWT_SALT, PORTAL_SESSION_JWT_DECODE_SALTS),
 
   cookies: {
     sessionToken: {

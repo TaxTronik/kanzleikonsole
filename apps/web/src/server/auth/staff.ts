@@ -7,7 +7,13 @@ import { decryptTotpSecret, verifyTotpCode } from './totp';
 import { resetFailedLogin } from './lockout';
 import { recordFailedLoginAudited, auditIp } from './login-audit';
 import { isTokenRevoked } from './revocation';
-import { STAFF_SESSION_COOKIE, USE_SECURE_COOKIES } from './session-cookie';
+import {
+  STAFF_SESSION_COOKIE,
+  STAFF_SESSION_JWT_DECODE_SALTS,
+  STAFF_SESSION_JWT_SALT,
+  USE_SECURE_COOKIES,
+} from './session-cookie';
+import { createStableSessionJwtOptions } from './session-jwt';
 import { evidenceService } from '@/server/container';
 import { consumeTotpCode } from './totp-replay';
 import { prismaOwner } from '@/server/db/prisma-owner';
@@ -386,6 +392,8 @@ const staffConfig: NextAuthConfig = {
     maxAge: 24 * 60 * 60,
     updateAge: 4 * 60 * 60,
   },
+
+  jwt: createStableSessionJwtOptions(STAFF_SESSION_JWT_SALT, STAFF_SESSION_JWT_DECODE_SALTS),
 
   cookies: {
     sessionToken: {
