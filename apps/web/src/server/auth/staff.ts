@@ -15,12 +15,28 @@ import { log } from '@/server/logger';
 import { getClientIp, checkIpOrGlobalLimit, resetRateLimit } from '@/server/rate-limit';
 import { fireAndForget } from '@/server/util/fire-and-forget';
 
-// DEV-ONLY: TOTP-Bypass für lokale Entwicklung. DOPPELT gegated — greift nur,
-// wenn NODE_ENV ≠ production UND DEV_SKIP_TOTP=true. In Produktion ist
-// env.NODE_ENV === 'production', der Wert also immer false → der Bypass-Zweig
-// in authorize() ist dort strukturell toter Code. Siehe .env.example.
+// DEV-/E2E-only: TOTP-Bypass fuer lokale Entwicklung und den lokalen CI-E2E-
+// Lauf. In echter Produktion bleibt der Bypass aus; der CI-Sonderfall braucht
+// zusaetzlich CI=true, E2E_ALLOW_DEV_SKIP_TOTP_IN_PRODUCTION=true und einen
+// localhost-NEXTAUTH_URL.
+function isLocalhostAuthUrl(raw: string): boolean {
+  try {
+    const hostname = new URL(raw).hostname;
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+  } catch {
+    return false;
+  }
+}
+
+const ALLOW_CI_PRODUCTION_TOTP_SKIP =
+  env.NODE_ENV === 'production' &&
+  process.env['CI'] === 'true' &&
+  process.env['E2E_ALLOW_DEV_SKIP_TOTP_IN_PRODUCTION'] === 'true' &&
+  isLocalhostAuthUrl(env.NEXTAUTH_URL);
+
 export const DEV_SKIP_TOTP =
-  env.NODE_ENV !== 'production' && process.env['DEV_SKIP_TOTP'] === 'true';
+  process.env['DEV_SKIP_TOTP'] === 'true' &&
+  (env.NODE_ENV !== 'production' || ALLOW_CI_PRODUCTION_TOTP_SKIP);
 
 // Narrower Session-Typ für das Staff-Surface — Felder, die staff-spezifisch
 // sind (staffId, roles), sind hier verpflichtend. Module-Augmentation für

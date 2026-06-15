@@ -29,14 +29,22 @@ export async function loginAsAdmin(page: Page): Promise<void> {
   // einen nativen POST-Fallback (/staff/login/password), damit der Login auch
   // bei React-Hydration-/Server-Action-Haengern deterministisch funktioniert.
   if (process.env['DEV_SKIP_TOTP'] === 'true') {
-    await Promise.all([
-      page.waitForURL(/\/staff\/dashboard/, { timeout: 15_000 }),
-      page.locator('form[action^="/staff/login/password"]').evaluate((form) => {
-        const nativeSubmit = Reflect.get(Object.getPrototypeOf(form), 'submit') as () => void;
-        nativeSubmit.call(form);
-      }),
-    ]);
-    await page.waitForLoadState('networkidle').catch(() => void 0);
+    const response = await page.context().request.post('/staff/login/password?returnTo=%2Fstaff%2Fdashboard', {
+      form: {
+        email: ADMIN_EMAIL,
+        password: ADMIN_PASSWORD,
+        tenantSlug: 'default',
+      },
+      maxRedirects: 0,
+    });
+    const location = response.headers()['location'] ?? '';
+    if (response.status() !== 303 || !/\/staff\/dashboard$/.test(location)) {
+      const body = await response.text().catch(() => '');
+      throw new Error(
+        `DEV_SKIP_TOTP-Login-Fallback fehlgeschlagen: status=${response.status()} location=${location} body=${body.slice(0, 500)}`,
+      );
+    }
+    await page.goto('/staff/dashboard', { waitUntil: 'networkidle' });
     await expect(page).toHaveURL(/\/staff\/dashboard/, { timeout: 5_000 });
     return;
   }

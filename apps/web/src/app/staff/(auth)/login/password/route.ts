@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { encode } from 'next-auth/jwt';
+import { env } from '@taxtronik/config';
+import { prismaOwner } from '@/server/db/prisma-owner';
+import { STAFF_SESSION_COOKIE } from '@/server/auth/session-cookie';
 import { checkPasswordAction, loginAction } from '../actions';
 
 function safeStaffReturnTo(raw: string | null): string {
@@ -41,5 +45,41 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return loginRedirect(req, 'session-invalid');
   }
 
-  return NextResponse.redirect(new URL(returnTo, req.url), 303);
+  const tenant = await prismaOwner.tenant.findFirst({ where: { slug: tenantSlug } });
+  const staffUser = tenant
+    ? await prismaOwner.staffUser.findFirst({
+        where: { tenantId: tenant.id, email: email.toLowerCase(), active: true },
+        include: { roles: true, permissions: true },
+      })
+    : null;
+  if (!tenant || !staffUser) {
+    return loginRedirect(req, 'session-invalid');
+  }
+
+  const token = await encode({
+    secret: env.AUTH_SECRET,
+    salt: STAFF_SESSION_COOKIE,
+    maxAge: 24 * 60 * 60,
+    token: {
+      sub: staffUser.id,
+      email: staffUser.email,
+      name: staffUser.fullName,
+      staffId: staffUser.id,
+      tenantId: tenant.id,
+      fullName: staffUser.fullName,
+      roles: staffUser.roles.map((r) => r.role as string),
+      permissions: staffUser.permissions.map((p) => p.permission as string),
+    },
+  });
+
+  const response = NextResponse.redirect(new URL(returnTo, req.url), 303);
+  response.cookies.set(STAFF_SESSION_COOKIE, token, {
+    httpOnly: true,
+    secure: env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 24 * 60 * 60,
+    ...(env.STAFF_COOKIE_DOMAIN ? { domain: env.STAFF_COOKIE_DOMAIN } : {}),
+  });
+  return response;
 }

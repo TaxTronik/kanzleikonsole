@@ -1,33 +1,38 @@
 // =============================================================================
-// Session-Cookie-Namen (Staff + Portal) — Single Source of Truth.
+// Session-Cookie-Namen (Staff + Portal) - Single Source of Truth.
 //
-// Härtung: __Host-/__Secure-Präfix nach Auth.js-Standardmuster, NUR wenn das
-// Cookie `secure` ausgestellt wird (Production) — im HTTP-Dev lehnen Browser
-// Präfix-Cookies ab, dort bleibt der bisherige unpräfixte Name.
-//   - KEINE Cookie-Domain konfiguriert (Default, host-only) → `__Host-`:
-//     Browser erzwingen Secure + Path=/ + kein Domain-Attribut; das Cookie
-//     kann nicht von Subdomains oder unsicheren Kontexten überschrieben
-//     werden (Session-Fixation via Sibling-Subdomain ausgeschlossen).
-//   - Cookie-Domain gesetzt (Subdomain-Trennung, STAFF_/PORTAL_COOKIE_DOMAIN)
-//     → `__Secure-`: __Host- wäre mit Domain-Attribut ungültig.
-// Die Cookie-OPTIONEN (secure/path/domain) stehen weiterhin in staff.ts /
-// portal.ts und passen zu dieser Wahl (secure nur prod; domain nur wenn env
-// gesetzt; path '/').
+// Haertung: __Host-/__Secure-Prefix nach Auth.js-Standardmuster, aber nur,
+// wenn das Cookie auch als Secure-Cookie ausgestellt wird. Browser verwerfen
+// Prefix-Cookies in lokalen HTTP-Testlaeufen, deshalb bleibt dort der
+// unpraefixte Name.
 //
-// ROLLOUT-HINWEIS: die Namensänderung in Produktion invalidiert bestehende
-// Sessions (einmaliges Re-Login) — akzeptiert.
-//
-// Bewusst OHNE @taxtronik/config-Import: proxy.ts (Middleware-Bundle) braucht
-// die Namen ebenfalls und soll die Zod-Env-Validierung nicht ins Proxy-Bundle
-// ziehen (proxy.ts liest auch sonst direkt aus process.env). Die Werte sind
-// identisch zu env.STAFF_/PORTAL_COOKIE_DOMAIN (gleiche Quelle, leerer String
-// zählt wie in env.ts als „nicht gesetzt").
+// Bewusst ohne @taxtronik/config-Import: proxy.ts braucht die Namen ebenfalls
+// und soll die Zod-Env-Validierung nicht ins Proxy-Bundle ziehen.
 // =============================================================================
 
-const IS_PROD = process.env.NODE_ENV === 'production';
+function isLocalhostUrl(raw: string | undefined): boolean {
+  if (!raw) return false;
+  try {
+    const url = new URL(raw);
+    return (
+      url.protocol === 'http:' &&
+      (url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '::1')
+    );
+  } catch {
+    return false;
+  }
+}
+
+const IS_LOCAL_HTTP_E2E =
+  process.env['CI'] === 'true' &&
+  process.env['DEV_SKIP_TOTP'] === 'true' &&
+  process.env['E2E_ALLOW_DEV_SKIP_TOTP_IN_PRODUCTION'] === 'true' &&
+  isLocalhostUrl(process.env['NEXTAUTH_URL']);
+
+const USE_SECURE_COOKIE_PREFIX = process.env.NODE_ENV === 'production' && !IS_LOCAL_HTTP_E2E;
 
 function sessionCookieName(base: string, cookieDomain: string | undefined): string {
-  if (!IS_PROD) return `__${base}`; // Dev (HTTP): Browser lehnen Präfix-Cookies ab
+  if (!USE_SECURE_COOKIE_PREFIX) return `__${base}`;
   return cookieDomain ? `__Secure-${base}` : `__Host-${base}`;
 }
 

@@ -568,6 +568,7 @@ jobs:
       REDIS_URL: redis://localhost:6379
       ADMIN_PASSWORD: dev-password-123
       DEV_SKIP_TOTP: 'true'
+      E2E_ALLOW_DEV_SKIP_TOTP_IN_PRODUCTION: 'true'
       E2E_BASE_URL: http://127.0.0.1:3000
       E2E_MAILHOG_URL: http://127.0.0.1:8025
       CLAMAV_HOST: localhost
