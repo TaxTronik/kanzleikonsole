@@ -209,6 +209,11 @@ function parseEnv(): Env {
       { key: 'N8N_ENCRYPTION_KEY', value: 'dev-only-n8n-encryption-key-xxxxxxxx' },
       { key: 'POSTGRES_PASSWORD', value: 'taxtronik' },
       { key: 'TAXTRONIK_APP_PASSWORD', value: 'taxtronik_app' },
+      { key: 'S3_ACCESS_KEY', value: 'minio' },
+      { key: 'S3_ACCESS_KEY', value: 'ci' },
+      { key: 'S3_SECRET_KEY', value: 'minio12345' },
+      { key: 'S3_SECRET_KEY', value: 'ci-secret' },
+      { key: 'S3_SECRET_KEY', value: 'ci-secret-plus-thirtytwo-chars' },
     ];
     for (const { key, value } of DEV_DEFAULT_DENYLIST) {
       const actual = (parsed.data as Record<string, unknown>)[key] ?? process.env[key];
@@ -240,6 +245,25 @@ function parseEnv(): Env {
     // teilt /api/auth/* mit beiden Surfaces). Subdomain-Trennung ist der
     // einzige wirksame Hebel. Warnen (nicht failen — manche Single-Host-Deploys
     // sind bewusst).
+    if (new URL(parsed.data.NEXTAUTH_URL).protocol !== 'https:') {
+      throw new Error('[config] NEXTAUTH_URL muss in Produktion HTTPS verwenden.');
+    }
+    if (parsed.data.PORTAL_PUBLIC_URL && new URL(parsed.data.PORTAL_PUBLIC_URL).protocol !== 'https:') {
+      throw new Error('[config] PORTAL_PUBLIC_URL muss in Produktion HTTPS verwenden.');
+    }
+    if (parsed.data.S3_SECRET_KEY.length < 32) {
+      throw new Error('[config] S3_SECRET_KEY ist in Produktion Pflicht mit mindestens 32 Zeichen.');
+    }
+    if (parsed.data.N8N_DELIVERY_MODE && parsed.data.N8N_DELIVERY_MODE !== 'production') {
+      throw new Error('[config] N8N_DELIVERY_MODE darf in Produktion nicht test/log sein.');
+    }
+    if (parsed.data.RISK_LAYER_URL && !parsed.data.RISK_LAYER_TOKEN) {
+      throw new Error('[config] RISK_LAYER_URL gesetzt, aber RISK_LAYER_TOKEN fehlt.');
+    }
+    if (!parsed.data.RISK_LAYER_URL && parsed.data.RISK_LAYER_TOKEN) {
+      throw new Error('[config] RISK_LAYER_TOKEN gesetzt, aber RISK_LAYER_URL fehlt.');
+    }
+
     const staffDom = parsed.data.STAFF_COOKIE_DOMAIN;
     const portalDom = parsed.data.PORTAL_COOKIE_DOMAIN;
     if (!staffDom || !portalDom) {
@@ -251,6 +275,10 @@ function parseEnv(): Env {
     } else if (staffDom === portalDom) {
       throw new Error(
         '[config] STAFF_COOKIE_DOMAIN und PORTAL_COOKIE_DOMAIN müssen unterschiedliche Subdomains sein, sonst greift die Cookie-Trennung nicht (S12).',
+      );
+    } else if (staffDom.startsWith('.') || portalDom.startsWith('.')) {
+      throw new Error(
+        '[config] STAFF_COOKIE_DOMAIN/PORTAL_COOKIE_DOMAIN duerfen keine Parent-Domain mit fuehrendem Punkt sein.',
       );
     }
   }

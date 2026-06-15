@@ -40,7 +40,7 @@ jobs:
       prefix: ${{ steps.meta.outputs.prefix }}
       web_digest: ${{ steps.push.outputs.web_digest }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Version, Registry und Build-Metadaten bestimmen
         id: meta
@@ -59,7 +59,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Registry-Login
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
         with:
           registry: ${{ steps.meta.outputs.registry }}
           username: ${{ secrets.REGISTRY_USER || github.actor }}
@@ -69,7 +69,7 @@ jobs:
       # setup-buildx: der Docker-Driver legt die Images direkt im lokalen
       # Daemon ab, wo Trivy und `docker push` sie finden.
       - name: web — bauen
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
           context: .
           file: infra/docker/Dockerfile.web
@@ -88,7 +88,7 @@ jobs:
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
 
       - name: worker — bauen
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
           context: .
           file: infra/docker/Dockerfile.worker
@@ -116,13 +116,13 @@ jobs:
             docker run --rm \
               -v /var/run/docker.sock:/var/run/docker.sock \
               -v "$HOME/.cache/trivy:/root/.cache/trivy" \
-              aquasec/trivy:latest image \
+              aquasec/trivy:latest@sha256:2a335d3a73d4e1d52d73c8ef417ab0f91f86ba0a912caf8227665b988a6f4015 image \
               --severity HIGH,CRITICAL --ignore-unfixed --exit-code 0 "$ref"
             # Pass 2: CRITICAL mit Fix → Release abbrechen
             docker run --rm \
               -v /var/run/docker.sock:/var/run/docker.sock \
               -v "$HOME/.cache/trivy:/root/.cache/trivy" \
-              aquasec/trivy:latest image \
+              aquasec/trivy:latest@sha256:2a335d3a73d4e1d52d73c8ef417ab0f91f86ba0a912caf8227665b988a6f4015 image \
               --severity CRITICAL --ignore-unfixed --exit-code 1 --quiet "$ref"
           done
 
@@ -163,7 +163,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
 

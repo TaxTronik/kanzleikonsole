@@ -16,6 +16,7 @@ concurrency:
 
 env:
   GITLEAKS_VERSION: 8.24.3
+  GITLEAKS_LINUX_X64_SHA256: 9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c
 
 jobs:
   dependencies:
@@ -23,11 +24,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22
           cache: pnpm
@@ -43,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
 
@@ -52,6 +53,7 @@ jobs:
           curl -fsSL \
             "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
             -o /tmp/gitleaks.tar.gz
+          echo "${GITLEAKS_LINUX_X64_SHA256}  /tmp/gitleaks.tar.gz" | sha256sum -c -
           tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
           chmod +x /tmp/gitleaks
 

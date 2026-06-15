@@ -55,6 +55,9 @@ export function assertSameOrigin(
   // same-origin) — fehlt er, ist es ein älterer oder Nicht-Browser-Client.
   // Sec-Fetch-Site als zweites Signal; fehlt auch das, durchlassen
   // (Defense in Depth — kein Hard-Block für legitime Alt-Clients).
-  if (req.headers.get('sec-fetch-site') === 'cross-site') return mismatch();
-  return null;
+  const fetchSite = req.headers.get('sec-fetch-site');
+  if (fetchSite === 'same-origin' || fetchSite === 'same-site' || fetchSite === 'none') {
+    return null;
+  }
+  return mismatch();
 }

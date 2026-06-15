@@ -10,8 +10,8 @@ set -eu
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 cd "$ROOT"
 
-WORKFLOW=".forgejo/workflows/ci.yml"
-HITS="$(grep -nE '^[[:space:]]+image:[[:space:]]+[^[:space:]]+$' "$WORKFLOW" \
+WORKFLOWS="$(find .forgejo/workflows -type f \( -name '*.yml' -o -name '*.yaml' \) | sort)"
+HITS="$(grep -nE '^[[:space:]]+image:[[:space:]]+[^[:space:]]+$' $WORKFLOWS \
   | grep -v '@sha256:' \
   || true)"
 

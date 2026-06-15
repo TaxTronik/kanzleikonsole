@@ -63,6 +63,9 @@ jobs:
       - name: Guard paranoid E2E coverage
         run: sh scripts/check-paranoid-e2e.sh
 
+      - name: Guard no focused or skipped tests
+        run: sh scripts/check-no-focused-tests.sh
+
       - name: Guard pinned CI service images
         run: sh scripts/check-ci-images-pinned.sh
 

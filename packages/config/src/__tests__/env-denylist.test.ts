@@ -35,7 +35,10 @@ const PROD_BASE: NodeJS.ProcessEnv = {
   NODE_ENV: 'production',
   DATABASE_APP_URL: 'postgres://app:pw@localhost:5432/taxtronik',
   N8N_HMAC_SECRET: 'a-securely-generated-hmac-secret-of-at-least-32-chars',
+  NEXTAUTH_URL: 'https://staff.example.de',
   NEXTAUTH_TRUST_HOST: 'true',
+  S3_ACCESS_KEY: 'prod-storage-access-key',
+  S3_SECRET_KEY: 'prod-storage-secret-with-at-least-thirty-two-chars',
   STAFF_COOKIE_DOMAIN: 'staff.example.de',
   PORTAL_COOKIE_DOMAIN: 'portal.example.de',
 };
