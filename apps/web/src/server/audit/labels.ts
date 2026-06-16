@@ -261,6 +261,7 @@ export const ACTION_LABELS: Record<string, string> = {
   // Audit-Archiv
   'audit.rotate.trigger': 'Audit-Rotation gestartet',
   'audit.verify.trigger': 'Audit-Verifikation gestartet',
+  'audit.recovery.checkpoint': 'Audit-Recovery-Checkpoint gesetzt',
 
   // Auth-/Systemereignisse (Audit-Lücke geschlossen: Logins standen vorher
   // nur in flüchtigen pino-Logs, nicht in der Hash-Chain)

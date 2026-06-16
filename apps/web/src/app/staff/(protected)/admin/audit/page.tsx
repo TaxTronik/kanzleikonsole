@@ -12,9 +12,15 @@ import { ShieldCheck, ShieldAlert, ChevronLeft, ChevronRight, FileDown } from 'l
 import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
-import { AUDIT_VERIFY_RESULT_SETTING_KEY, type PersistedVerifyResult } from '@taxtronik/evidence';
+import {
+  AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY,
+  AUDIT_VERIFY_RESULT_SETTING_KEY,
+  type PersistedRecoveryCheckpoint,
+  type PersistedVerifyResult,
+} from '@taxtronik/evidence';
 import { env } from '@taxtronik/config';
-import { triggerAuditVerifyAction } from './actions';
+import { evidenceService } from '@/server/container';
+import { createAuditRecoveryCheckpointAction, triggerAuditVerifyAction } from './actions';
 import { signAuditToken, AUDIT_TOKEN_TTL_DAYS } from '@/server/audit-access/token';
 import { CopyField } from '@/components/copy-field';
 import type { Prisma } from '@prisma/client';
@@ -36,6 +42,7 @@ interface SearchParams {
   from?: string;
   to?: string;
   verify?: string;
+  checkpoint?: string;
 }
 
 export default async function AuditLogPage({
@@ -79,7 +86,7 @@ export default async function AuditLogPage({
   // Filter wäre das ein Scan über den GANZEN Log → reltuples-Schätzung.
   const hasFilter = Boolean(sp.action || sp.actorType || sp.resourceType || sp.from || sp.to);
 
-  const [entries, verifyRow, resourceTypeRows, totalCount] = await withTenantContext(
+  const [entries, verifyRow, checkpointRow, resourceTypeRows, totalCount] = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) =>
       Promise.all([
@@ -93,6 +100,9 @@ export default async function AuditLogPage({
         // vom täglichen Worker-Job (audit-verify-check) persistierte Ergebnis.
         tx.tenantSetting.findUnique({
           where: { tenantId_key: { tenantId, key: AUDIT_VERIFY_RESULT_SETTING_KEY } },
+        }),
+        tx.tenantSetting.findUnique({
+          where: { tenantId_key: { tenantId, key: AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY } },
         }),
         // P-1: groupBy statt distinct — Prisma dedupliziert `distinct` ohne
         // nativeDistinct IN-MEMORY und überträgt dafür JEDE Zeile.
@@ -116,6 +126,16 @@ export default async function AuditLogPage({
   );
 
   const verifyResult = (verifyRow?.value ?? null) as PersistedVerifyResult | null;
+  const checkpoint = (checkpointRow?.value ?? null) as PersistedRecoveryCheckpoint | null;
+  const recoveryResult = checkpoint
+    ? await withTenantContext(
+        { tenantId, actorId: staffId, actorType: 'STAFF' },
+        (tx) =>
+          evidenceService.verifyRecoverySegment(tx, tenantId, BigInt(checkpoint.auditId), {
+            requireExternalTsa: env.NODE_ENV === 'production',
+          }),
+      ).catch(() => null)
+    : null;
 
   const hasNext = entries.length > PAGE_SIZE;
   const visibleEntries = entries.slice(0, PAGE_SIZE);
@@ -228,12 +248,81 @@ export default async function AuditLogPage({
                 <p className="text-xs text-red-700 mt-1">
                   Geprüft {fmtDateTimeSeconds(new Date(verifyResult.checkedAt))}
                 </p>
+                {checkpoint ? (
+                  <div
+                    className={
+                      recoveryResult?.ok
+                        ? 'mt-3 rounded-md border border-yellow-300 bg-yellow-50 px-3 py-2 text-xs text-yellow-900'
+                        : 'mt-3 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-900'
+                    }
+                  >
+                    <p className="font-medium">
+                      Recovery-Checkpoint gesetzt: Audit-ID {checkpoint.auditId}
+                    </p>
+                    <p className="mt-1">
+                      Historischer Bruch bleibt bestehen. Die Kette wird ab diesem Eintrag als
+                      separate Wiederaufnahme geprüft.
+                    </p>
+                    {recoveryResult ? (
+                      recoveryResult.ok ? (
+                        <p className="mt-1">
+                          Recovery-Teilkette aktuell fortlaufend: {recoveryResult.checked.toLocaleString('de-DE')}{' '}
+                          Einträge geprüft
+                          {recoveryResult.sealsChecked > 0
+                            ? `, ${recoveryResult.sealsChecked} Tagesversiegelungen geprüft`
+                            : ''}
+                          .
+                        </p>
+                      ) : (
+                        <p className="mt-1">
+                          Recovery-Teilkette hat ebenfalls einen Befund
+                          {recoveryResult.firstBreak
+                            ? ` bei Audit-ID ${recoveryResult.firstBreak.auditId}`
+                            : ''}
+                          .
+                        </p>
+                      )
+                    ) : (
+                      <p className="mt-1">Recovery-Teilkette konnte gerade nicht geprüft werden.</p>
+                    )}
+                    {checkpoint.reason && <p className="mt-1">Begründung: {checkpoint.reason}</p>}
+                    <p className="mt-1 text-yellow-800">
+                      Angelegt {fmtDateTimeSeconds(new Date(checkpoint.createdAt))}
+                    </p>
+                  </div>
+                ) : (
+                  <form action={createAuditRecoveryCheckpointAction} className="mt-3 rounded-md border border-red-300 bg-white/70 p-3">
+                    <p className="text-xs font-medium text-red-900">
+                      Wiederaufnahme markieren
+                    </p>
+                    <p className="text-xs text-red-700 mt-1">
+                      Legt keinen grünen Pass an. Der historische Bruch bleibt sichtbar; ab dem neuen
+                      Audit-Eintrag wird eine Recovery-Teilkette geprüft.
+                    </p>
+                    <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                      <input
+                        name="reason"
+                        className="input text-xs sm:flex-1"
+                        maxLength={500}
+                        placeholder="Begründung, z. B. TSA-Fehlkonfiguration behoben"
+                      />
+                      <button type="submit" className="btn-primary !bg-red-600 text-xs hover:!bg-red-700">
+                        Recovery-Checkpoint anlegen
+                      </button>
+                    </div>
+                  </form>
+                )}
               </>
             )}
             {sp.verify === 'queued' && (
               <p className="text-xs text-secondary mt-2">
                 Prüfung angestoßen — das Ergebnis erscheint hier, sobald der
                 Hintergrund-Job abgeschlossen ist.
+              </p>
+            )}
+            {sp.checkpoint === 'created' && (
+              <p className="text-xs text-secondary mt-2">
+                Recovery-Checkpoint angelegt.
               </p>
             )}
           </div>

@@ -12,6 +12,9 @@ import type { VerificationResult } from './service';
 /** tenant_setting-Key, unter dem das letzte Prüf-Ergebnis liegt. */
 export const AUDIT_VERIFY_RESULT_SETTING_KEY = 'audit_verify_result';
 
+/** tenant_setting-Key für den bewusst gesetzten Recovery-Checkpoint. */
+export const AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY = 'audit_recovery_checkpoint';
+
 export interface PersistedVerifyResult {
   /** Zeitpunkt des Prüf-Laufs (ISO-8601). */
   checkedAt: string;
@@ -24,6 +27,16 @@ export interface PersistedVerifyResult {
   firstBreak: { auditId: string; occurredAt: string } | null;
   /** Gesetzt, wenn der Lauf selbst fehlschlug (Exception statt Ketten-Bruch). */
   error: string | null;
+}
+
+export interface PersistedRecoveryCheckpoint {
+  auditId: string;
+  createdAt: string;
+  createdBy: string;
+  reason: string | null;
+  firstBreak: { auditId: string; occurredAt: string } | null;
+  trustedPrevHash: string;
+  trustedThisHash: string;
 }
 
 // -----------------------------------------------------------------------------

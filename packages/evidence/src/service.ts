@@ -293,7 +293,6 @@ export class EvidenceService {
     //    statt alle Rows auf einmal — der Speicherbedarf wächst sonst linear
     //    mit der audit_log-Größe. Semantik identisch: der Walk läuft weiterhin
     //    strikt id-aufsteigend über ALLE Zeilen des Tenants.
-    const BATCH_SIZE = 1000;
     let expectedPrev = genesisHash(tenantId);
     let cursor = BigInt(-1);
     for (;;) {
@@ -394,6 +393,155 @@ export class EvidenceService {
 
     return result;
   }
+
+  /**
+   * Prüft eine bewusst neu gestartete Teilkette ab einem Recovery-Checkpoint.
+   *
+   * Der historische Bruch davor bleibt bestehen. Für den Checkpoint selbst wird
+   * der gespeicherte `prev_hash` als neuer Vertrauensanker verwendet; ab dort
+   * wird jede Zeile wieder normal per SHA-256-Walk geprüft. Damit kann die UI
+   * ehrlich ausweisen: "historisch unterbrochen, ab Audit-ID X wieder fortlaufend
+   * geprüft", ohne den alten Zeitraum grünzuwaschen.
+   */
+  async verifyRecoverySegment(
+    tx: Tx,
+    tenantId: string,
+    checkpointAuditId: bigint,
+    opts: VerifyChainOptions = {},
+  ): Promise<VerificationResult> {
+    const result: VerificationResult = {
+      ok: true,
+      checked: 0,
+      sealsChecked: 0,
+      sealBreaks: [],
+      tsaMode: this.timestampPort.mode,
+      policyBreaks: [],
+    };
+
+    if (opts.requireExternalTsa && this.timestampPort.mode === 'local') {
+      result.ok = false;
+      result.policyBreaks.push(
+        'Self-Timestamp (LocalTimestampAdapter) im Produktivmodus unzulässig — ' +
+          'externe RFC-3161-TSA erforderlich (TIMESTAMP_AUTHORITY_URL setzen).',
+      );
+    }
+
+    const anchor = await tx.$queryRaw<Array<{ id: bigint; prev_hash: Buffer; occurred_at: Date }>>`
+      SELECT id, prev_hash, occurred_at
+      FROM audit_log
+      WHERE tenant_id = ${tenantId}::uuid
+        AND id = ${checkpointAuditId}
+      LIMIT 1
+    `;
+    if (anchor.length === 0) {
+      result.ok = false;
+      result.policyBreaks.push(`Recovery-Checkpoint Audit-ID ${checkpointAuditId} existiert nicht mehr.`);
+      return result;
+    }
+
+    const seals = await tx.$queryRaw<
+      Array<{
+        seal_date: Date;
+        top_audit_id: bigint;
+        top_hash: Buffer;
+        tsa_response_blob: Buffer | null;
+      }>
+    >`
+      SELECT seal_date, top_audit_id, top_hash, tsa_response_blob
+      FROM audit_seal
+      WHERE tenant_id = ${tenantId}::uuid
+        AND top_audit_id >= ${checkpointAuditId}
+      ORDER BY seal_date ASC
+    `;
+    const sealTopIds = new Set<bigint>(seals.map((s) => s.top_audit_id));
+    const recomputedTops = new Map<bigint, Buffer>();
+
+    const startCursor = checkpointAuditId - BigInt(1);
+    let expectedPrev = Buffer.from(anchor[0]!.prev_hash);
+    let cursor = startCursor;
+    for (;;) {
+      const rows = await fetchAuditBatch(tx, tenantId, cursor, BATCH_SIZE);
+      if (rows.length === 0) break;
+
+      for (const r of rows) {
+        if (!Buffer.from(r.prev_hash).equals(expectedPrev)) {
+          result.ok = false;
+          result.firstBreak = {
+            auditId: r.id,
+            occurredAt: r.occurred_at,
+            expectedHash: expectedPrev.toString('hex'),
+            actualHash: Buffer.from(r.prev_hash).toString('hex'),
+          };
+          return result;
+        }
+
+        const computed = eventHash(expectedPrev, {
+          tenantId,
+          occurredAt: r.occurred_at,
+          actorType: r.actor_type,
+          actorId: r.actor_id,
+          action: r.action,
+          resourceType: r.resource_type,
+          resourceId: r.resource_id,
+          before: r.before,
+          after: r.after,
+        });
+
+        if (!computed.equals(Buffer.from(r.this_hash))) {
+          result.ok = false;
+          result.firstBreak = {
+            auditId: r.id,
+            occurredAt: r.occurred_at,
+            expectedHash: computed.toString('hex'),
+            actualHash: Buffer.from(r.this_hash).toString('hex'),
+          };
+          return result;
+        }
+
+        if (sealTopIds.has(r.id)) recomputedTops.set(r.id, computed);
+
+        expectedPrev = Buffer.from(r.this_hash);
+        result.checked++;
+      }
+
+      cursor = rows[rows.length - 1]!.id;
+      if (rows.length < BATCH_SIZE) break;
+    }
+
+    for (const s of seals) {
+      result.sealsChecked++;
+      const recomputed = recomputedTops.get(s.top_audit_id);
+      if (!recomputed) {
+        result.ok = false;
+        result.sealBreaks.push({
+          sealDate: s.seal_date,
+          reason: `versiegelter Spitzen-Eintrag (audit_id ${s.top_audit_id}) fehlt in der Recovery-Teilkette`,
+        });
+        continue;
+      }
+      if (!recomputed.equals(Buffer.from(s.top_hash))) {
+        result.ok = false;
+        result.sealBreaks.push({
+          sealDate: s.seal_date,
+          reason: 'gespeicherter top_hash weicht vom rekonstruierten Recovery-Ketten-Hash ab',
+        });
+        continue;
+      }
+      const sealOk = await this.timestampPort.verify(
+        recomputed,
+        s.tsa_response_blob ? Buffer.from(s.tsa_response_blob) : null,
+      );
+      if (!sealOk) {
+        result.ok = false;
+        result.sealBreaks.push({
+          sealDate: s.seal_date,
+          reason: 'TSA-Verifikation gegen Recovery-Ketten-Spitzen-Hash fehlgeschlagen',
+        });
+      }
+    }
+
+    return result;
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -413,6 +561,8 @@ interface AuditChainRow {
   prev_hash: Buffer;
   this_hash: Buffer;
 }
+
+const BATCH_SIZE = 1000;
 
 /** RF-5: ein id-aufsteigender Chunk der Audit-Chain (Cursor = letzte id). */
 async function fetchAuditBatch(

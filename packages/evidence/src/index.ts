@@ -5,9 +5,11 @@
 export { EvidenceService, type AuditEventInput, type RecordedEvent, type VerificationResult } from './service';
 export {
   AUDIT_VERIFY_RESULT_SETTING_KEY,
+  AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY,
   BACKUP_DRILL_RESULT_SETTING_KEY,
   toPersistedVerifyResult,
   type PersistedVerifyResult,
+  type PersistedRecoveryCheckpoint,
   type PersistedDrillResult,
 } from './verify-status';
 export { canonicalJson } from './canonical-json';
