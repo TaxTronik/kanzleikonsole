@@ -74,9 +74,6 @@ export default async function InvoicesPage({
       <div className="flex items-end justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-primary mb-1">Rechnungen</h1>
-          <p className="text-muted text-sm">
-            B2B: Pflicht XRechnung/ZUGFeRD ab 2025.
-          </p>
         </div>
         <div className="flex gap-2">
           <a

@@ -72,7 +72,9 @@ export const DEFAULT_MODULES: ModuleConfig = {
   risk: false,
   // Opt-in: erfordert zusätzlich die deployte Signal-Engine (signalEngineConfig).
   signalEngine: false,
-  poaMode: 'MARKDOWN_OTP',
+  // Default: PDF_TEMPLATE (extern) — Vollmachten werden als PDF aus einer
+  // externen Vorlage angebunden, nicht im Inline-Markdown-Editor verfasst.
+  poaMode: 'PDF_TEMPLATE',
   poaPdfTemplate: null,
   // Default: EXTERNAL (PDF-Upload aus zentraler Rechnungssoftware) — der
   // typische Use Case in mittleren bis großen Kanzleien. In-App-Erstellung
