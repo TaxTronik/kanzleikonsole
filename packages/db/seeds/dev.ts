@@ -179,9 +179,9 @@ async function main() {
   // 4. Beispiel-Portal-Kontakt (für Magic-Link-Test)
   const contact = await prisma.clientContact.upsert({
     where: {
-      tenantId_email: { tenantId: tenant.id, email: 'mandant@taxtronik.local' },
+      tenantId_clientId_email: { tenantId: tenant.id, clientId: client.id, email: 'mandant@taxtronik.local' },
     },
-    update: { fullName: 'Max Mustermann', active: true, clientId: client.id },
+    update: { fullName: 'Max Mustermann', active: true },
     create: {
       tenantId: tenant.id,
       clientId: client.id,

@@ -6,7 +6,7 @@
 // Benutzeranlage; das Zielkonto muss existieren.
 // =============================================================================
 
-import { PrismaClient } from '../src/prisma-client';
+import { Prisma, PrismaClient } from '../src/prisma-client';
 import bcrypt from 'bcryptjs';
 import { createPostgresAdapter, requireDatabaseUrl } from '../src/prisma-adapter';
 import { generateAdminPassword, writeAdminCredentials } from './lib';
@@ -81,7 +81,7 @@ async function main() {
       totpSecretEnc: null,
       totpEnrolledAt: null,
       totpSetupStartedAt: null,
-      totpBackupCodes: null,
+      totpBackupCodes: Prisma.DbNull,
     },
   });
 
