@@ -15,6 +15,19 @@ const MAX_UPLOAD_LABEL = '7 MB';
 let ownerIdSeq = 0;
 const nextOwnerId = () => `owner-${++ownerIdSeq}`;
 
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error('Datei konnte nicht gelesen werden.'));
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      const comma = result.indexOf(',');
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 interface BeneficialOwner {
   id: string;              // nur clientseitig (React-Key), wird nicht übermittelt
   fullName: string;
@@ -106,8 +119,7 @@ export function OnboardingWizard({
       return;
     }
     try {
-      const buf = await file.arrayBuffer();
-      const base64 = Buffer.from(buf).toString('base64');
+      const base64 = await fileToBase64(file);
       const r = await uploadIdImageAction({
         token,
         fileName: file.name,
@@ -144,8 +156,7 @@ export function OnboardingWizard({
       return;
     }
     try {
-      const buf = await file.arrayBuffer();
-      const base64 = Buffer.from(buf).toString('base64');
+      const base64 = await fileToBase64(file);
       const r = await uploadIdImageAction({
         token,
         fileName: file.name,

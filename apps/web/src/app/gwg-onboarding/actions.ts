@@ -12,6 +12,7 @@ import {
   prismaOwner,
 } from '@/server/gwg-onboarding/service';
 import { checkRateLimit, checkIpOrGlobalLimit, getClientIp } from '@/server/rate-limit';
+import { log } from '@/server/logger';
 
 // M4: GwG-Uploads sind enger gecappt als der globale MAX_UPLOAD_BYTES (100 MB).
 // Ausweis-Scans sind typischerweise ≤5 MB; 10 MB ist großzügig für hochauflösende
@@ -203,6 +204,22 @@ export async function uploadIdImageAction(input: {
     `;
   } catch (e) {
     // Befund 6: kein Durchreichen roher Prisma-/Storage-Meldungen an Anonyme.
+    const err = e as Error;
+    log.error(
+      {
+        component: 'gwg-onboarding-upload',
+        kind,
+        inviteId: invite.id,
+        tenantId: invite.tenantId,
+        clientId: invite.clientId,
+        mimeType,
+        sizeBytes: fileData.length,
+        name: err?.name,
+        err: err?.message,
+        stack: err?.stack,
+      },
+      'GwG onboarding upload failed',
+    );
     return toAnonymousActionError(e);
   }
 
