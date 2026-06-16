@@ -90,10 +90,10 @@ services:
       SMTP_FROM: ${SMTP_FROM:-taxtronik <noreply@taxtronik.local>}
       N8N_WEBHOOK_BASE_URL: http://n8n:5678/webhook
       N8N_HMAC_SECRET: ${N8N_HMAC_SECRET}
-      # Risk-Layer / TCMS-Engine (§4) — opt-in. URL ist intern vorverdrahtet;
-      # aktiv wird das Modul erst mit gesetztem RISK_LAYER_TOKEN (min 32 Zeichen).
-      # Engine selbst via `--profile risk-layer` starten (siehe Service unten).
-      RISK_LAYER_URL: ${RISK_LAYER_URL:-http://risk-layer:8000}
+      # Risk-Layer / TCMS-Engine (§4) — opt-in.
+      # Leer => Modul inaktiv. Aktivieren nur mit RISK_LAYER_URL, RISK_LAYER_TOKEN
+      # und Compose-Profil `risk-layer`.
+      RISK_LAYER_URL: ${RISK_LAYER_URL:-}
       RISK_LAYER_TOKEN: ${RISK_LAYER_TOKEN:-}
       # SSRF-Guard-Allowlist: die Docker-Service-Namen lösen auf private
       # 172.x-Adressen auf. Ohne diese Liste blockt der Guard die n8n-Bridge
