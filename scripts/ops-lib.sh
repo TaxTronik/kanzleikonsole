@@ -411,6 +411,10 @@ generate_prisma_client_for_host_tools() {
 run_backup() {
   require_cmd pnpm
   info "Backup starten"
+  # .prisma/client fuer den Host-tsx-Runner erzeugen. pnpm 11 + Monorepo führt
+  # den @prisma/client-Postinstall nicht zuverlässig aus (Schema liegt in
+  # packages/db) — sonst "Cannot find module '.prisma/client/default'".
+  generate_prisma_client_for_host_tools
   # pg_dump-Escape-Hatch: falls der Host kein postgresql-client hat (Standard
   # bei Docker-Compose-Only-Setup), pg_dump aus dem laufenden Postgres-Container
   # nutzen. Client-Major passt dann garantiert zum Server (kein apt/Papierkram).
