@@ -190,6 +190,11 @@ doctor() {
     info "doctor --fix: Secrets + Prod-Defaults ergaenzen"
     [[ "$(get_env NODE_ENV)" != "production" ]] && { set_env NODE_ENV production; info "NODE_ENV=production gesetzt."; }
     [[ -z "$(get_env TAXTRONIK_VERSION)" ]] && { set_env TAXTRONIK_VERSION "$(date +%Y-%m-%d)"; info "TAXTRONIK_VERSION=$(date +%Y-%m-%d) gesetzt (spater auf Release pinnen)."; }
+    # NEXTAUTH_TRUST_HOST ist in Produktion Pflicht (env.ts:238). Default true:
+    # der Stack steht ohnehin hinter einem Reverse-Proxy (P-4), der die Host-
+    # Header setzt/filtert. Wer ohne Proxy direkt ins Netz bindet, muss das
+    # nachtraeglich auf false setzen.
+    [[ -z "$(get_env NEXTAUTH_TRUST_HOST)" ]] && { set_env NEXTAUTH_TRUST_HOST true; info "NEXTAUTH_TRUST_HOST=true gesetzt (Prod hinter Reverse-Proxy)."; }
     ensure_secret AUTH_SECRET 32
     ensure_secret N8N_HMAC_SECRET 32
     ensure_secret N8N_ENCRYPTION_KEY 24
@@ -233,6 +238,24 @@ doctor() {
   elif [[ "$NEXTAUTH_URL" == *localhost* || "$NEXTAUTH_URL" == *127.0.0.1* ]]; then
     _dr_row "WARN" "NEXTAUTH_URL" "=$NEXTAUTH_URL (oeffentliche URL setzen)"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
   else _dr_row "OK" "NEXTAUTH_URL" "$NEXTAUTH_URL"; fi
+
+  # NEXTAUTH_TRUST_HOST ist in Produktion Pflicht (env.ts-Cross-Field-Check).
+  if [[ "${NODE_ENV:-}" == "production" && -z "${NEXTAUTH_TRUST_HOST:-}" ]]; then
+    _dr_row "FEHLT" "NEXTAUTH_TRUST_HOST" "in Prod Pflicht (true/false)"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  else _dr_row "OK" "NEXTAUTH_TRUST_HOST" "${NEXTAUTH_TRUST_HOST:-true}"; fi
+
+  # Risk-Layer (optional): URL und Token MUSS als Paar gesetzt werden (beide
+  # oder keines), sonst wirft die ENV-Validierung. Token min 32 (Secret32).
+  local rl_url="${RISK_LAYER_URL:-}" rl_tok="${RISK_LAYER_TOKEN:-}"
+  if [[ -n "$rl_url" && -z "$rl_tok" ]]; then
+    _dr_row "FEHLT" "RISK_LAYER_TOKEN" "URL gesetzt, Token fehlt"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  elif [[ -z "$rl_url" && -n "$rl_tok" ]]; then
+    _dr_row "FEHLT" "RISK_LAYER_URL" "Token gesetzt, URL fehlt"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  elif [[ -n "$rl_url" && ${#rl_tok} -lt 32 ]]; then
+    _dr_row "SCHWACH" "RISK_LAYER_TOKEN" "nur ${#rl_tok} Zeichen (< 32)"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
+  elif [[ -n "$rl_url" ]]; then
+    _dr_row "OK" "RISK_LAYER" "konfiguriert (URL + Token)"
+  else _dr_row "OK" "RISK_LAYER" "inaktiv (ok)"; fi
 
   [[ -z "${SMTP_HOST:-}" ]] && { _dr_row "WARN" "SMTP_HOST" "leer (kein Mail-Versand)"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1)); }
   [[ -z "${PORTAL_PUBLIC_URL:-}" ]] && { _dr_row "WARN" "PORTAL_PUBLIC_URL" "leer (Single-Host: ok)"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1)); }
@@ -397,6 +420,28 @@ prepare_env_interactive() {
     else
       warn "NEXTAUTH_URL ist leer/localhost (kein TTY) — bitte spaeter in .env setzen."
     fi
+  fi
+
+  # Risk-Layer-Engine (optional, §4): URL + Bearer-Token. Beide oder keines,
+  # sonst wirft die ENV-Validierung beim Backup-Schritt. Token min 32 Zeichen.
+  # prompt() fragt nur bei TTY und nur, wenn der Wert noch ungesetzt ist.
+  prompt "Risk-Layer-URL (leer = Risk-Layer inaktiv)" RISK_LAYER_URL ""
+  if [[ -n "${RISK_LAYER_URL:-}" ]]; then
+    prompt "Risk-Layer Bearer-Token (min 32 Zeichen)" RISK_LAYER_TOKEN ""
+    if [[ ${#RISK_LAYER_TOKEN} -lt 32 ]]; then
+      warn "RISK_LAYER_TOKEN zu kurz (< 32) — Risk-Layer bleibt inaktiv."
+      RISK_LAYER_URL=""; RISK_LAYER_TOKEN=""
+    fi
+  else
+    # URL leer -> Token darf nicht allein stehen (sonst Cross-Field-Fehler).
+    RISK_LAYER_TOKEN=""
+  fi
+  if [[ -n "${RISK_LAYER_URL:-}" && -n "${RISK_LAYER_TOKEN:-}" ]]; then
+    set_env RISK_LAYER_URL "$RISK_LAYER_URL"
+    set_env RISK_LAYER_TOKEN "$RISK_LAYER_TOKEN"
+  else
+    set_env RISK_LAYER_URL ""
+    set_env RISK_LAYER_TOKEN ""
   fi
 
   # Schluss-Check (read-only). Bleiben blockierende Fehler, Klartext + Abbruch.

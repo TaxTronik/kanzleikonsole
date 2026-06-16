@@ -112,7 +112,10 @@ const envSchema = z.object({
   // (siehe `n8nDeliveryMode`): dev → 'test' (nur n8n-Test-Hooks, trifft NIE die
   // Produktiv-Workflows — sicheres Debugging), prod → 'production'. 'log' = nicht
   // senden, nur die signierte Anfrage ins Log (Offline-Dev ohne laufendes n8n).
-  N8N_DELIVERY_MODE: z.enum(['production', 'test', 'log']).optional(),
+  N8N_DELIVERY_MODE: z.preprocess(
+    (v) => (v === '' || v === undefined ? undefined : v),
+    z.enum(['production', 'test', 'log']).optional(),
+  ),
 
   // --- Risk-Layer (TCMS-Engine, §4) -----------------------------------------
   // Netzinterne, mandantendatenführende Analyse-Engine. Beide Werte optional:
