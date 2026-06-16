@@ -5,6 +5,8 @@
 
 import type { PrismaClient } from '@prisma/client';
 import { randomBytes } from 'node:crypto';
+import { writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 export function generateAdminPassword(): string {
   // base64url, 18 Bytes = 24 Zeichen, ~144 Bit Entropie. Memorierbar genug
@@ -14,6 +16,21 @@ export function generateAdminPassword(): string {
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
     .replace(/=+$/, '');
+}
+
+export function adminCredentialsPath(): string {
+  return resolve(
+    process.env['ADMIN_CREDENTIALS_PATH'] ||
+      process.env['INIT_CWD'] ||
+      process.cwd(),
+    '.admin-credentials.txt',
+  );
+}
+
+export function writeAdminCredentials(email: string, password: string): string {
+  const credPath = adminCredentialsPath();
+  writeFileSync(credPath, `email=${email}\npassword=${password}\n`, { mode: 0o600 });
+  return credPath;
 }
 
 /**

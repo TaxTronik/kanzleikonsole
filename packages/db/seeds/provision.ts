@@ -10,8 +10,8 @@
 //
 // Optional:
 //   TENANT_SLUG     (Default: 'default' — Login-Feld „Kanzlei")
-//   ADMIN_PASSWORD  (min. 12 Zeichen; sonst zufällig generiert, einmalig
-//                    angezeigt + in .admin-credentials.txt, chmod 600)
+//   ADMIN_PASSWORD  (min. 12 Zeichen; sonst zufällig generiert)
+//   ADMIN_CREDENTIALS_PATH (Default: .admin-credentials.txt im Aufruf-Root)
 //
 // Schutz: Hat der Tenant bereits Mitarbeiter, bricht das Skript ab — eine
 // laufende Installation wird nie still verändert (kein Passwort-Reset, keine
@@ -20,10 +20,8 @@
 
 import { PrismaClient } from '../src/prisma-client';
 import bcrypt from 'bcryptjs';
-import { writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { createPostgresAdapter, requireDatabaseUrl } from '../src/prisma-adapter';
-import { ensureDefaultDocumentTypes, generateAdminPassword } from './lib';
+import { ensureDefaultDocumentTypes, generateAdminPassword, writeAdminCredentials } from './lib';
 
 const prisma = new PrismaClient({
   adapter: createPostgresAdapter(requireDatabaseUrl(process.env['DATABASE_URL'], 'DATABASE_URL')),
@@ -38,7 +36,8 @@ async function main() {
   const tenantName = process.env['TENANT_NAME']?.trim();
   const adminEmail = process.env['ADMIN_EMAIL']?.trim().toLowerCase();
   const slug = (process.env['TENANT_SLUG']?.trim() || 'default').toLowerCase();
-  const explicitPassword = process.env['ADMIN_PASSWORD'];
+  const explicitPasswordRaw = process.env['ADMIN_PASSWORD'];
+  const explicitPassword = explicitPasswordRaw && explicitPasswordRaw.trim() ? explicitPasswordRaw : undefined;
 
   if (!tenantName) fail('TENANT_NAME fehlt (Anzeigename der Kanzlei).');
   if (!adminEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) {
@@ -86,9 +85,8 @@ async function main() {
   });
   console.log(`[provision] Admin-Konto angelegt: ${admin.email}`);
 
+  const credPath = writeAdminCredentials(adminEmail, adminPassword);
   if (!explicitPassword) {
-    const credPath = resolve(process.cwd(), '.admin-credentials.txt');
-    writeFileSync(credPath, `email=${adminEmail}\npassword=${adminPassword}\n`, { mode: 0o600 });
     console.log('');
     console.log('  ============================================================');
     console.log('  Initiales Admin-Passwort (NUR diesmal sichtbar):');
@@ -97,6 +95,8 @@ async function main() {
     console.log('  Nach dem ersten Login + TOTP-Setup die Datei sicher löschen.');
     console.log('  ============================================================');
     console.log('');
+  } else {
+    console.log(`  Admin-Passwort aus $ADMIN_PASSWORD uebernommen und gespeichert in: ${credPath} (chmod 600).`);
   }
 
   console.log('[provision] Fertig — keine Demodaten angelegt.');

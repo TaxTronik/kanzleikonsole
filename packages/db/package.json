@@ -24,6 +24,7 @@
     "studio": "prisma studio",
     "seed": "tsx --env-file-if-exists=../../.env seeds/dev.ts",
     "provision": "tsx --env-file-if-exists=../../.env seeds/provision.ts",
+    "reset-admin-password": "tsx --env-file-if-exists=../../.env seeds/reset-admin-password.ts",
     "verify:schema-drift": "tsx --env-file-if-exists=../../.env scripts/verify-drift.ts",
     "verify:rls": "tsx --env-file-if-exists=../../.env scripts/verify-rls.ts"
   },

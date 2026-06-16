@@ -7,6 +7,7 @@
 #   ./taxtronik update               git pull + Backup + bauen/pullen + migrieren + starten
 #   ./taxtronik backup               Postgres -> S3-Backup-Bucket
 #   ./taxtronik rollback [<version>] zurueck auf vorherigen Stand (keine Migration)
+#   ./taxtronik reset-admin-password Admin-Passwort neu setzen (Recovery)
 #   ./taxtronik doctor [--fix]       .env vorab validieren / Secrets generieren
 #   ./taxtronik up|down|ps|logs|exec|pull ...   docker-compose-Passthrough
 #   ./taxtronik --infra up -d                     nur Infra (Postgres/Redis/S3/ClamAV)
@@ -30,6 +31,7 @@ Nutze:
   ./taxtronik update                git pull + Backup + bauen/pullen + migrieren + starten
   ./taxtronik backup                Postgres-Backup in den S3-Backup-Bucket
   ./taxtronik rollback [<version>]  zurueck auf frueheren Stand (ohne DB-Migration)
+  ./taxtronik reset-admin-password  Admin-Passwort neu setzen (Recovery)
   ./taxtronik doctor [--fix]        .env-Validierung; --fix generiert fehlende Secrets
   ./taxtronik up|down|ps|logs|exec|pull ...   docker-compose-Passthrough (ganzer Stack)
   ./taxtronik --infra <cmd>                    nur Infra-Services
@@ -51,6 +53,7 @@ case "$cmd" in
   update)    cmd_update ;;
   backup)    cmd_backup ;;
   rollback)  shift || true; cmd_rollback "${1:-}" ;;
+  reset-admin-password) cmd_reset_admin_password ;;
   doctor)    shift || true; doctor "$@" ;;
   up|down|stop|restart|ps|logs|exec|pull|top|config|port|images|stats)
     shift || true; compose "$cmd" "$@" ;;

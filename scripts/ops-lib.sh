@@ -841,9 +841,28 @@ ensure_provisioned_interactive() {
     return 0
   fi
   generate_prisma_client_for_host_tools
-  ( cd "$ROOT" && TENANT_NAME="$TENANT_NAME" ADMIN_EMAIL="$ADMIN_EMAIL" \
+  ( cd "$ROOT" && TENANT_NAME="$TENANT_NAME" ADMIN_EMAIL="$ADMIN_EMAIL" ADMIN_CREDENTIALS_PATH="$ROOT/.admin-credentials.txt" \
       pnpm --filter @taxtronik/db provision ) \
     || warn "Provisionierung fehlgeschlagen — siehe Ausgabe."
+}
+
+cmd_reset_admin_password() {
+  require_cmd pnpm
+  require_cmd node
+  load_env
+  require_env DATABASE_URL
+
+  prompt "Admin-E-Mail (ADMIN_EMAIL)" ADMIN_EMAIL ""
+  prompt "Kanzlei-Slug (TENANT_SLUG)" TENANT_SLUG "default"
+  if [[ -z "${ADMIN_EMAIL:-}" ]]; then
+    die "ADMIN_EMAIL fehlt. Beispiel: ADMIN_EMAIL=admin@example.de ./taxtronik reset-admin-password"
+  fi
+  TENANT_SLUG="${TENANT_SLUG:-default}"
+
+  generate_prisma_client_for_host_tools
+  ( cd "$ROOT" && ADMIN_EMAIL="$ADMIN_EMAIL" TENANT_SLUG="$TENANT_SLUG" ADMIN_CREDENTIALS_PATH="$ROOT/.admin-credentials.txt" \
+      pnpm --filter @taxtronik/db reset-admin-password )
+  info "Admin-Passwort neu gesetzt. Credentials: $ROOT/.admin-credentials.txt"
 }
 
 # Gemeinsame Deploy-Sequenz (deploy + bootstrap). Enthaelt die Erstinstall-
