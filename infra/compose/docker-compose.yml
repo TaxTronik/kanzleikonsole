@@ -202,7 +202,10 @@ services:
       # StreamMaxLength/MaxFileSize/MaxScanSize über das App-Limit.
       - ../clamav/clamd.conf:/etc/clamav/clamd.conf:ro
     healthcheck:
-      test: ["CMD", "/usr/local/bin/clamdcheck.sh"]
+      # Das Image-Skript nutzt `nc localhost 3310`; je nach Host-/nc-Variante
+      # kann `localhost` trotz laufendem clamd unzuverlaessig sein. Direkt IPv4
+      # pingen, passend zur App-Konfiguration (CLAMAV_HOST=clamav, Port 3310).
+      test: ["CMD-SHELL", "echo PING | nc 127.0.0.1 3310 | grep -qx PONG"]
       interval: 30s
       timeout: 10s
       retries: 5
