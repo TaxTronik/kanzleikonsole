@@ -15,8 +15,15 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { isRiskLayerConfigured, RiskLayerHttpError } from '@taxtronik/risk-layer';
+import {
+  CircuitOpenError,
+  isRiskLayerConfigured,
+  RiskLayerHttpError,
+  RiskLayerNotConfiguredError,
+} from '@taxtronik/risk-layer';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
+import { Prisma } from '@taxtronik/db/prisma-client';
+import { SsrfGuardError } from '@taxtronik/http-utils';
 import { staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
 import { toActionError, ForbiddenError } from '@/server/auth/rbac';
 import { readModules } from '@/server/settings/modules';
@@ -52,15 +59,75 @@ function engineMessage(e: RiskLayerHttpError): string {
   return `Risk-Engine antwortete mit HTTP ${e.status}.`;
 }
 
+function errorCauseCode(e: Error): string | null {
+  const cause = (e as Error & { cause?: unknown }).cause;
+  if (cause && typeof cause === 'object' && 'code' in cause) {
+    const code = (cause as { code?: unknown }).code;
+    if (typeof code === 'string' && code.trim()) return code;
+  }
+  return null;
+}
+
 function toQuantenlosActionError(e: unknown): ActionResult {
   if (e instanceof LosRahmenLeerError || e instanceof LosNachweisInkonsistentError) {
     return { ok: false, error: e.message };
   }
+  if (e instanceof RiskLayerNotConfiguredError) {
+    return {
+      ok: false,
+      error:
+        'Risk-Engine ist nicht konfiguriert. Bitte RISK_LAYER_URL und RISK_LAYER_TOKEN setzen.',
+    };
+  }
   if (e instanceof RiskLayerHttpError) {
     return { ok: false, error: `Risk-Engine: ${engineMessage(e)}` };
   }
+  if (e instanceof SsrfGuardError) {
+    return {
+      ok: false,
+      error:
+        `Risk-Engine-URL wurde vom SSRF-Schutz blockiert (${e.reason}). ` +
+        'Prüfe RISK_LAYER_URL und INTERNAL_FETCH_HOSTS.',
+    };
+  }
+  if (e instanceof CircuitOpenError) {
+    return {
+      ok: false,
+      error: 'Risk-Engine ist vorübergehend gesperrt, weil mehrere Aufrufe fehlgeschlagen sind. Bitte später erneut versuchen.',
+    };
+  }
+  if (e instanceof z.ZodError) {
+    const first = e.issues[0];
+    return {
+      ok: false,
+      error:
+        'Risk-Engine-Antwort passt nicht zum erwarteten Quantenlos-Schema. ' +
+        `Vermutlich läuft eine alte oder inkompatible Engine. Detail: ${first?.path.join('.') || 'Antwort'} ${first?.message ?? ''}`.trim(),
+    };
+  }
+  if (e instanceof Prisma.PrismaClientKnownRequestError) {
+    return {
+      ok: false,
+      error: `Datenbankfehler beim Quantenlos (${e.code}). Bitte Server-Log prüfen.`,
+    };
+  }
   if (e instanceof Error) {
     const msg = e.message;
+    const code = errorCauseCode(e);
+    if (e.name === 'AbortError' || msg.includes('timed out') || msg.includes('The operation was aborted')) {
+      return {
+        ok: false,
+        error: 'Risk-Engine hat nicht rechtzeitig geantwortet. Bitte Engine-Status und Logs prüfen.',
+      };
+    }
+    if (msg === 'fetch failed' || code) {
+      return {
+        ok: false,
+        error:
+          `Risk-Engine nicht erreichbar${code ? ` (${code})` : ''}. ` +
+          'Prüfe Container, RISK_LAYER_URL und INTERNAL_FETCH_HOSTS.',
+      };
+    }
     if (
       msg.startsWith('k muss zwischen ') ||
       msg.startsWith('Der Audit-Rahmen ') ||
