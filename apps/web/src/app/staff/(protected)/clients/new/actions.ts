@@ -7,6 +7,10 @@ import { evidenceService } from '@/server/container';
 import { z } from 'zod';
 import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
 
+function redirectWithError(message: string): never {
+  redirect(`/staff/clients/new?error=${encodeURIComponent(message)}`);
+}
+
 const createClientSchema = z.object({
   name: z.string().min(1, 'Name ist Pflichtfeld'),
   kind: z.enum(['NATPERS', 'JURPERS', 'PERSGES']),
@@ -45,7 +49,7 @@ export async function createClientAction(formData: FormData) {
   });
 
   if (!parsed.success) {
-    throw new ActionError(parsed.error.issues.map((i) => i.message).join(', '));
+    redirectWithError(parsed.error.issues.map((i) => i.message).join(', '));
   }
 
   const {
@@ -62,61 +66,67 @@ export async function createClientAction(formData: FormData) {
     hauptbearbeiterIds,
   } = parsed.data;
 
-  const clientId = await withTenantContext(ctx, async (tx) => {
-    const assignedStaffIds = Array.from(new Set([...berufstraegerIds, ...hauptbearbeiterIds]));
-    const activeStaffCount = await tx.staffUser.count({
-      where: { tenantId, id: { in: assignedStaffIds }, active: true },
-    });
-    if (activeStaffCount !== assignedStaffIds.length) {
-      throw new ActionError('Eine gewählte Zuständigkeit ist nicht mehr aktiv.');
-    }
+  let clientId: string;
+  try {
+    clientId = await withTenantContext(ctx, async (tx) => {
+      const assignedStaffIds = Array.from(new Set([...berufstraegerIds, ...hauptbearbeiterIds]));
+      const activeStaffCount = await tx.staffUser.count({
+        where: { tenantId, id: { in: assignedStaffIds }, active: true },
+      });
+      if (activeStaffCount !== assignedStaffIds.length) {
+        throw new ActionError('Eine gewählte Zuständigkeit ist nicht mehr aktiv.');
+      }
 
-    const client = await tx.client.create({
-      data: {
+      const client = await tx.client.create({
+        data: {
+          tenantId,
+          name,
+          kind,
+          datevNo: datevNo ?? null,
+          allowActive: false,
+          street: street || null,
+          postalCode: postalCode || null,
+          city: city || null,
+          countryIso: countryIso || null,
+          vatId: vatId || null,
+          invoiceEmail: invoiceEmail || null,
+        },
+      });
+
+      for (const sid of berufstraegerIds) {
+        await tx.clientResponsibility.create({
+          data: { tenantId, clientId: client.id, staffId: sid, role: 'BERUFSTRAEGER' },
+        });
+      }
+      for (const sid of hauptbearbeiterIds) {
+        await tx.clientResponsibility.create({
+          data: { tenantId, clientId: client.id, staffId: sid, role: 'HAUPTBEARBEITER' },
+        });
+      }
+
+      await evidenceService.record(tx, {
         tenantId,
-        name,
-        kind,
-        datevNo: datevNo ?? null,
-        allowActive: false,
-        street: street || null,
-        postalCode: postalCode || null,
-        city: city || null,
-        countryIso: countryIso || null,
-        vatId: vatId || null,
-        invoiceEmail: invoiceEmail || null,
-      },
-    });
-
-    for (const sid of berufstraegerIds) {
-      await tx.clientResponsibility.create({
-        data: { tenantId, clientId: client.id, staffId: sid, role: 'BERUFSTRAEGER' },
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'client.created',
+        resourceType: 'client',
+        resourceId: client.id,
+        after: {
+          name,
+          kind,
+          datevNo: datevNo ?? null,
+          hasAddress: !!(street && city),
+          berufstraegerIds,
+          hauptbearbeiterIds,
+        },
       });
-    }
-    for (const sid of hauptbearbeiterIds) {
-      await tx.clientResponsibility.create({
-        data: { tenantId, clientId: client.id, staffId: sid, role: 'HAUPTBEARBEITER' },
-      });
-    }
 
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
-      action: 'client.created',
-      resourceType: 'client',
-      resourceId: client.id,
-      after: {
-        name,
-        kind,
-        datevNo: datevNo ?? null,
-        hasAddress: !!(street && city),
-        berufstraegerIds,
-        hauptbearbeiterIds,
-      },
+      return client.id;
     });
-
-    return client.id;
-  });
+  } catch (e) {
+    if (e instanceof ActionError) redirectWithError(e.message);
+    throw e;
+  }
 
   redirect(`/staff/clients/${clientId}`);
 }

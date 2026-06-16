@@ -7,6 +7,10 @@ import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
 
+function redirectWithError(message: string): never {
+  redirect(`/staff/clients/onboarding/new?error=${encodeURIComponent(message)}`);
+}
+
 const Schema = z.object({
   name: z.string().min(1, 'Name ist Pflichtfeld').max(200),
   kind: z.enum(['NATPERS', 'JURPERS', 'PERSGES']),
@@ -45,64 +49,70 @@ export async function createOnboardingClientAction(formData: FormData) {
     hauptbearbeiterIds: formData.getAll('hauptbearbeiterIds').map(String),
   });
   if (!parsed.success) {
-    throw new ActionError(parsed.error.issues.map((i) => i.message).join(', '));
+    redirectWithError(parsed.error.issues.map((i) => i.message).join(', '));
   }
 
-  const clientId = await withTenantContext(ctx, async (tx) => {
-    const assignedStaffIds = Array.from(new Set([
-      ...parsed.data.berufstraegerIds,
-      ...parsed.data.hauptbearbeiterIds,
-    ]));
-    const activeStaffCount = await tx.staffUser.count({
-      where: { tenantId, id: { in: assignedStaffIds }, active: true },
-    });
-    if (activeStaffCount !== assignedStaffIds.length) {
-      throw new ActionError('Eine gewählte Zuständigkeit ist nicht mehr aktiv.');
-    }
-
-    const client = await tx.client.create({
-      data: {
-        tenantId,
-        name: parsed.data.name,
-        kind: parsed.data.kind,
-        datevNo: parsed.data.datevNo || null,
-        addisonNo: parsed.data.addisonNo || null,
-        allowActive: false,
-        street: parsed.data.street || null,
-        postalCode: parsed.data.postalCode || null,
-        city: parsed.data.city || null,
-        countryIso: parsed.data.countryIso || null,
-        vatId: parsed.data.vatId || null,
-        invoiceEmail: parsed.data.invoiceEmail || null,
-      },
-    });
-
-    for (const sid of parsed.data.berufstraegerIds) {
-      await tx.clientResponsibility.create({
-        data: { tenantId, clientId: client.id, staffId: sid, role: 'BERUFSTRAEGER' },
+  let clientId: string;
+  try {
+    clientId = await withTenantContext(ctx, async (tx) => {
+      const assignedStaffIds = Array.from(new Set([
+        ...parsed.data.berufstraegerIds,
+        ...parsed.data.hauptbearbeiterIds,
+      ]));
+      const activeStaffCount = await tx.staffUser.count({
+        where: { tenantId, id: { in: assignedStaffIds }, active: true },
       });
-    }
-    for (const sid of parsed.data.hauptbearbeiterIds) {
-      await tx.clientResponsibility.create({
-        data: { tenantId, clientId: client.id, staffId: sid, role: 'HAUPTBEARBEITER' },
-      });
-    }
+      if (activeStaffCount !== assignedStaffIds.length) {
+        throw new ActionError('Eine gewählte Zuständigkeit ist nicht mehr aktiv.');
+      }
 
-    await evidenceService.record(tx, {
-      tenantId, actorType: 'STAFF', actorId: staffId,
-      action: 'client.created',
-      resourceType: 'client',
-      resourceId: client.id,
-      after: {
-        name: parsed.data.name,
-        kind: parsed.data.kind,
-        onboarding: true,
-        berufstraegerIds: parsed.data.berufstraegerIds,
-        hauptbearbeiterIds: parsed.data.hauptbearbeiterIds,
-      },
+      const client = await tx.client.create({
+        data: {
+          tenantId,
+          name: parsed.data.name,
+          kind: parsed.data.kind,
+          datevNo: parsed.data.datevNo || null,
+          addisonNo: parsed.data.addisonNo || null,
+          allowActive: false,
+          street: parsed.data.street || null,
+          postalCode: parsed.data.postalCode || null,
+          city: parsed.data.city || null,
+          countryIso: parsed.data.countryIso || null,
+          vatId: parsed.data.vatId || null,
+          invoiceEmail: parsed.data.invoiceEmail || null,
+        },
+      });
+
+      for (const sid of parsed.data.berufstraegerIds) {
+        await tx.clientResponsibility.create({
+          data: { tenantId, clientId: client.id, staffId: sid, role: 'BERUFSTRAEGER' },
+        });
+      }
+      for (const sid of parsed.data.hauptbearbeiterIds) {
+        await tx.clientResponsibility.create({
+          data: { tenantId, clientId: client.id, staffId: sid, role: 'HAUPTBEARBEITER' },
+        });
+      }
+
+      await evidenceService.record(tx, {
+        tenantId, actorType: 'STAFF', actorId: staffId,
+        action: 'client.created',
+        resourceType: 'client',
+        resourceId: client.id,
+        after: {
+          name: parsed.data.name,
+          kind: parsed.data.kind,
+          onboarding: true,
+          berufstraegerIds: parsed.data.berufstraegerIds,
+          hauptbearbeiterIds: parsed.data.hauptbearbeiterIds,
+        },
+      });
+      return client.id;
     });
-    return client.id;
-  });
+  } catch (e) {
+    if (e instanceof ActionError) redirectWithError(e.message);
+    throw e;
+  }
 
   redirect(`/staff/clients/onboarding/${clientId}?step=contact`);
 }

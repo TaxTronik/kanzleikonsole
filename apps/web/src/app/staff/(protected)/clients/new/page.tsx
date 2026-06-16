@@ -6,9 +6,14 @@ import { createClientAction } from './actions';
 import { withTenantContext } from '@taxtronik/db';
 import { ResponsibilityFields } from '../responsibility-fields';
 
-export default async function NewClientPage() {
+export default async function NewClientPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
   const session = await staffAuth();
   if (!session?.user) redirect('/staff/login');
+  const sp = await searchParams;
   const { tenantId, staffId } = session.user;
   const staff = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
@@ -30,6 +35,8 @@ export default async function NewClientPage() {
 
       <div className="card p-6">
         <form action={createClientAction} className="space-y-6">
+          {sp.error && <div className="alert-error-sm">{sp.error}</div>}
+
           <div>
             <label className="label" htmlFor="name">Name / Firma *</label>
             <input

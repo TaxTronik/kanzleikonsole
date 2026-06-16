@@ -13,9 +13,14 @@ import { stepsForTenant } from '../steps';
 import { createOnboardingClientAction } from './actions';
 import { ResponsibilityFields } from '../../responsibility-fields';
 
-export default async function OnboardingStartPage() {
+export default async function OnboardingStartPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
   const session = await staffAuth();
   if (!session?.user) redirect('/staff/login');
+  const sp = await searchParams;
   const { tenantId, staffId } = session.user;
 
   const [modules, staff] = await Promise.all([
@@ -55,6 +60,8 @@ export default async function OnboardingStartPage() {
       <div className="card p-6">
         <h2 className="text-sm font-medium text-primary mb-4">Stammdaten</h2>
         <form action={createOnboardingClientAction} className="space-y-4">
+          {sp.error && <div className="alert-error-sm">{sp.error}</div>}
+
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
               <label className="label" htmlFor="name">Name / Firma <span className="text-red-600">*</span></label>
