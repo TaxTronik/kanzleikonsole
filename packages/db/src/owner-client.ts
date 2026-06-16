@@ -16,7 +16,9 @@
 // nutzen können.
 // =============================================================================
 
-import { PrismaClient } from '@prisma/client';
+import prismaClientPkg from '@prisma/client';
+const { PrismaClient } = prismaClientPkg;
+type PrismaClient = InstanceType<typeof prismaClientPkg.PrismaClient>;
 import { createPostgresAdapter, requireDatabaseUrl } from './prisma-adapter';
 
 declare global {

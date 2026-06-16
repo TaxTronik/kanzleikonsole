@@ -8,7 +8,9 @@
 // interpretiert (Race zwischen Scheduler-Tick und manuellem Trigger).
 // =============================================================================
 
-import { Prisma, type NotificationKind } from '@prisma/client';
+import type { NotificationKind } from '@prisma/client';
+import prismaClientPkg from '@prisma/client';
+const { Prisma } = prismaClientPkg;
 import { withWorkerTenantContext } from './tenant-context';
 
 export interface NotifyData {

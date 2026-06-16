@@ -32,7 +32,8 @@ import type { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { Worker } from 'bullmq';
-import { PrismaClient } from '@prisma/client';
+import prismaClientPkg from '@prisma/client';
+const { PrismaClient } = prismaClientPkg;
 import { env } from '@taxtronik/config';
 import { createPostgresAdapter } from '@taxtronik/db/prisma-adapter';
 import {

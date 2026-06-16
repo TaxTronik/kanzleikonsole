@@ -3,7 +3,8 @@
 // die URL in der Konsole aus. NUR im Dev-Modus benutzen — in Produktion
 // muss der Link über Mail/SMS zugestellt werden.
 
-import { PrismaClient } from '@prisma/client';
+import prismaClientPkg from '@prisma/client';
+const { PrismaClient } = prismaClientPkg;
 import { createHash, randomBytes } from 'node:crypto';
 
 const TTL_MIN = 30;
