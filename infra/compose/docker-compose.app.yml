@@ -260,7 +260,12 @@ services:
     profiles: ["risk-layer"]
     environment:
       # Shared Secret — identisch zu RISK_LAYER_TOKEN der App (Bearer-Auth).
-      RISK_LAYER_TOKEN: ${RISK_LAYER_TOKEN:?RISK_LAYER_TOKEN nicht gesetzt — das risk-layer-Profil braucht ein Token (min 32 Zeichen)}
+      # Bewusst ${...:-} statt :? : Compose interpoliert Variablen ALLER Services
+      # schon beim Datei-Laden, auch bei inaktiven Profilen. :? wuerde also JEDEn
+      # compose-Aufruf (migrate, up, ps, ...) abbrechen, sobald risk-layer nicht
+      # genutzt wird. Die Token-Pflicht (min 32) greift erst, wenn das Profil
+      # aktiviert wird (App validiert RISK_LAYER_TOKEN beim Boot).
+      RISK_LAYER_TOKEN: ${RISK_LAYER_TOKEN:-}
       RISK_LAYER_DEVICE: ${RISK_LAYER_DEVICE:-cpu}
     volumes:
       # Katalog + Corpus (Graph/Embedding) sind regenerierbar und enthalten

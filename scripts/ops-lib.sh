@@ -350,26 +350,124 @@ save_state() {
 }
 
 # ---------------------------------------------------------------------------
+# .env-Vorbereitung (deploy/update/bootstrap). Stellt sicher, dass der Server
+# eine vollstaendige PROD-.env hat, OHNE dass der Operator vorher von Hand
+# editieren muss: generiert fehlende Secrets, fragt interaktiv die oeffentliche
+# URL ab und backt die generierten DB-Passwoerter in die DATABASE-URLs.
+# ---------------------------------------------------------------------------
+
+# Generierte DB-Passwoerter in DATABASE_URL / DATABASE_APP_URL einsetzen, aber
+# NUR wenn die URL noch den Platzhalter enthaelt (sonst: eine vom Operator
+# bewusst gesetzte URL, z. B. externe DB, wird bewahrt). Host-seitige Tools
+# (provision, backup:run) lesen die URL direkt aus .env; Container-ENV wird von
+# docker-compose.app.yml ohnehin ueberschrieben.
+bake_db_urls_into_env() {
+  local pg_pw app_pw cur_db cur_app
+  pg_pw="$(get_env POSTGRES_PASSWORD)"; app_pw="$(get_env TAXTRONIK_APP_PASSWORD)"
+  cur_db="$(get_env DATABASE_URL)";     cur_app="$(get_env DATABASE_APP_URL)"
+  [[ -n "$pg_pw"  && ( -z "$cur_db"  || "$cur_db"  == *'$'"{POSTGRES_PASSWORD}"* ) ]] && \
+    set_env DATABASE_URL     "postgresql://taxtronik:${pg_pw}@localhost:5432/taxtronik?schema=public"
+  [[ -n "$app_pw" && ( -z "$cur_app" || "$cur_app" == *'$'"{TAXTRONIK_APP_PASSWORD}"* ) ]] && \
+    set_env DATABASE_APP_URL "postgresql://taxtronik_app:${app_pw}@localhost:5432/taxtronik?schema=public"
+}
+
+# Interaktive .env-Vorbereitung fuer deploy/update/bootstrap.
+prepare_env_interactive() {
+  if [[ ! -f "$ENVFILE" ]]; then
+    info ".env fehlt — aus Vorlage anlegen"
+    [[ -f "$ROOT/.env.example" ]] || die ".env.example fehlt."
+    cp "$ROOT/.env.example" "$ENVFILE"
+  fi
+  # Prod-Default (NODE_ENV, TAXTRONIK_VERSION) + fehlende Secrets generieren.
+  doctor --fix >/dev/null || true
+  bake_db_urls_into_env
+
+  # Einzige Angabe, die wir nicht raten duerfen: die oeffentliche Staff-URL.
+  # Nur nachfragen, falls leer/localhost UND stdin ein TTY ist (CI vorher setzen).
+  load_env
+  if [[ -z "${NEXTAUTH_URL:-}" || "$NEXTAUTH_URL" == *localhost* || "$NEXTAUTH_URL" == *127.0.0.1* ]]; then
+    local def="${NEXTAUTH_URL:-https://$(hostname 2>/dev/null || echo localhost)}"
+    if [[ -t 0 ]]; then
+      local input=""
+      read -rp "Oeffentliche Staff-URL (NEXTAUTH_URL) [$def]: " input || true
+      set_env NEXTAUTH_URL "${input:-$def}"
+    else
+      warn "NEXTAUTH_URL ist leer/localhost (kein TTY) — bitte spaeter in .env setzen."
+    fi
+  fi
+
+  # Schluss-Check (read-only). Bleiben blockierende Fehler, Klartext + Abbruch.
+  if ! doctor >/dev/null; then
+    doctor
+    die ".env noch unvollstaendig — siehe doctor-Ausgabe oben (Tipp: ./taxtronik doctor --fix)."
+  fi
+  info ".env bereit (Prod)."
+}
+
+# Erstinstall-Erkennung: falls die DB noch KEINE Mitarbeiter enthaelt, Tenant +
+# Admin anlegen (provision.ts). Auf einer bestehenden Installation ein No-op.
+ensure_provisioned_interactive() {
+  local count
+  count="$(compose --infra exec -T postgres psql -U taxtronik -d taxtronik -tAc \
+    'SELECT count(*) FROM staff_user' 2>/dev/null | tr -d '[:space:]' || true)"
+  if [[ "$count" =~ ^[0-9]+$ && "$count" -gt 0 ]]; then
+    return 0
+  fi
+  info "Keine Mitarbeiter in der DB — Erstinstall: Tenant + Admin anlegen."
+  prompt "Kanzlei-Name (TENANT_NAME)" TENANT_NAME "Kanzlei"
+  prompt "Admin-E-Mail (ADMIN_EMAIL)" ADMIN_EMAIL "admin@$(hostname 2>/dev/null || echo localhost)"
+  if [[ -z "${TENANT_NAME:-}" || -z "${ADMIN_EMAIL:-}" ]]; then
+    warn "Provisionierung uebersprungen (TENANT_NAME/ADMIN_EMAIL leer). Spaeter: TENANT_NAME=.. ADMIN_EMAIL=.. pnpm --filter @taxtronik/db provision"
+    return 0
+  fi
+  require_cmd pnpm
+  ( cd "$ROOT" && TENANT_NAME="$TENANT_NAME" ADMIN_EMAIL="$ADMIN_EMAIL" \
+      pnpm --filter @taxtronik/db provision ) \
+    || warn "Provisionierung fehlgeschlagen — siehe Ausgabe."
+}
+
+# Gemeinsame Deploy-Sequenz (deploy + bootstrap). Enthaelt die Erstinstall-
+# Erkennung, sodass deploy eine frische Installation komplett abdeckt.
+_deploy_core() {
+  load_env; preflight_common; assert_production_env; require_release_version
+  start_infra
+  wait_postgres_healthy
+  provide_images
+  backup_before_migrations
+  run_migrations
+  ensure_provisioned_interactive
+  start_apps
+  smoke_health
+  save_state
+}
+
+# ---------------------------------------------------------------------------
 # Operator-Kommandos (aufgerufen vom Dispatcher ./taxtronik)
 # ---------------------------------------------------------------------------
 cmd_deploy() {
-  load_env; preflight_common; assert_production_env; require_release_version
-  doctor || die "doctor meldet Fehler — erst beheben (siehe oben)."
-  start_infra; provide_images; backup_before_migrations; run_migrations; start_apps; smoke_health
-  save_state
+  require_cmd docker; require_cmd node; require_cmd curl
+  prepare_env_interactive
+  _deploy_core
   info "Deploy fertig. Version: $(image_tag)"
 }
 
 cmd_update() {
-  load_env; preflight_common; assert_production_env; require_cmd git
+  require_cmd docker; require_cmd node; require_cmd curl; require_cmd git
   info "Code aktualisieren (git ff-only)"
   cd "$ROOT"
   git fetch origin
   git merge --ff-only "${TAXTRONIK_UPDATE_REF:-origin/main}"
-  # .env kann sich im Pull geaendert haben -> neu laden
+  # .env ggfs. aus dem aktualisierten Stand neu vervollstaendigen (Prod-Defaults,
+  # fehlende Secrets, NEXTAUTH_URL) — wie bei deploy ohne Hand-Editiererei.
+  prepare_env_interactive
   load_env; preflight_common; assert_production_env; require_release_version
-  doctor || die "doctor meldet Fehler — erst beheben (siehe oben)."
-  start_infra; run_backup; provide_images; run_migrations; start_apps; smoke_health
+  start_infra
+  wait_postgres_healthy
+  run_backup
+  provide_images
+  run_migrations
+  start_apps
+  smoke_health
   save_state
   info "Update fertig. Version: $(image_tag)"
 }
@@ -411,78 +509,20 @@ cmd_rollback() {
   info "Rollback fertig. Version: $target"
 }
 
-# Prod-Erstinstall in einem Kommando: .env (Prod) erzeugen, Infra, Images bauen,
-# migrieren, Tenant+Admin provisionieren, Apps starten, Smoke.
+# Prod-Erstinstall in einem Kommando. Funktionell ein Deploy (das seinerseits
+# Erstinstall-Erkennung + Provisionierung enthaelt), plus Willkommens-Banner.
 cmd_bootstrap() {
   require_cmd docker; require_cmd node; require_cmd git; require_cmd curl
-
-  if [[ ! -f "$ENVFILE" ]]; then
-    info ".env aus Vorlage anlegen"
-    [[ -f "$ROOT/.env.example" ]] || die ".env.example fehlt."
-    cp "$ROOT/.env.example" "$ENVFILE"
-    set_env NODE_ENV production
-    set_env TAXTRONIK_VERSION "$(date +%Y-%m-%d)"
-  fi
-  # NODE_ENV sicherheitshalber auf Prod stellen (Vorlage ist Dev).
-  set_env NODE_ENV production
-
-  # Secrets + Versions-Defaults generieren, dann validieren.
-  doctor --fix || true
-
-  # Generierte DB-Passwoerter in die DATABASE-URLs einsetzen. Host-seitige
-  # Tools (provision, backup:run) lesen DATABASE_URL direkt aus .env — dort darf
-  # KEIN literales ${POSTGRES_PASSWORD} stehen, weil Compose .env-Werte nicht
-  # untereinander substituiert. Container-seitig ueberschreibt docker-compose.app.yml
-  # die URLs ohnehin (dort subst. Compose ${POSTGRES_PASSWORD} korrekt).
-  # Nur setzen, wenn die URL leer ist oder noch den Platzhalter enthaelt
-  # (sonst: vom Operator pflichtbewusst geaenderte URL, z. B. externe DB, behalten).
-  local pg_pw app_pw cur_db cur_app
-  pg_pw="$(get_env POSTGRES_PASSWORD)"; app_pw="$(get_env TAXTRONIK_APP_PASSWORD)"
-  cur_db="$(get_env DATABASE_URL)";     cur_app="$(get_env DATABASE_APP_URL)"
-  [[ -n "$pg_pw" && ( -z "$cur_db" || "$cur_db" == *'$'"{POSTGRES_PASSWORD}"* ) ]] && \
-    set_env DATABASE_URL "postgresql://taxtronik:${pg_pw}@localhost:5432/taxtronik?schema=public"
-  [[ -n "$app_pw" && ( -z "$cur_app" || "$cur_app" == *'$'"{TAXTRONIK_APP_PASSWORD}"* ) ]] && \
-    set_env DATABASE_APP_URL "postgresql://taxtronik_app:${app_pw}@localhost:5432/taxtronik?schema=public"
-
-  # Interaktiv die wenigen Dinge abfragen, die wir nicht raten duerfen.
-  load_env
-  prompt "Oeffentliche Staff-URL (NEXTAUTH_URL)" NEXTAUTH_URL "https://$(hostname 2>/dev/null || echo localhost)"
-  [[ -n "${NEXTAUTH_URL:-}" ]] && set_env NEXTAUTH_URL "$NEXTAUTH_URL"
-  prompt "Kanzlei-Name (TENANT_NAME)" TENANT_NAME "Kanzlei"
-  prompt "Admin-E-Mail (ADMIN_EMAIL)"  ADMIN_EMAIL  "admin@$(hostname 2>/dev/null || echo localhost)"
-
-  info "Produktiv-Stack wird hochgefahren. Rest-Konfig (SMTP, Portal-URL, Lizenz) bei Bedarf in .env eintragen und './taxtronik deploy'."
-
-  render_s3_config
-  start_infra
-  wait_postgres_healthy
-  provide_images
-  run_migrations
-
-  # Provisionierung (Tenant + Admin). provision.ts wehrt sich selbst gegen
-  # erneuten Lauf (bricht sauber ab, wenn bereits Mitarbeiter vorhanden).
-  if [[ -n "${TENANT_NAME:-}" && -n "${ADMIN_EMAIL:-}" ]]; then
-    require_cmd pnpm
-    info "Tenant + Admin provisionieren"
-    ( cd "$ROOT" && TENANT_NAME="$TENANT_NAME" ADMIN_EMAIL="$ADMIN_EMAIL" \
-        pnpm --filter @taxtronik/db provision ) \
-      || warn "Provisionierung uebersprungen (evtl. bereits erfolgt — siehe Ausgabe)."
-  else
-    warn "TENANT_NAME/ADMIN_EMAIL leer — Provisionierung uebersprungen. Später: TENANT_NAME=.. ADMIN_EMAIL=.. pnpm --filter @taxtronik/db provision"
-  fi
-
-  start_apps
-  smoke_health
-  save_state
-
+  prepare_env_interactive
+  _deploy_core
+  info "Bootstrap fertig. Version: $(image_tag)"
   cat <<EOF
 
 =================================================================
   Setup abgeschlossen. Version: $(image_tag)
 =================================================================
-  Staff-Login : ${NEXTAUTH_URL:-(NEXTAUTH_URL in .env)}/staff/login
-  Admin-E-Mail: ${ADMIN_EMAIL:-(siehe .admin-credentials.txt)}
-  Passwort    : siehe $ROOT/.admin-credentials.txt (nur bei Auto-Generierung)
+  Staff-Login : (NEXTAUTH_URL aus .env)/staff/login
+  Admin-Zugang: siehe $ROOT/.admin-credentials.txt (falls neu angelegt)
                 Nach erstem Login + TOTP-Setup die Datei sicher loeschen.
 
   Naechste Schritte:
