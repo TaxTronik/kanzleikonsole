@@ -54,9 +54,9 @@ export async function onboardingAddContactAction(formData: FormData) {
 
   const sendInvite = parsed.data.sendPortalInvite === 'on' || parsed.data.sendPortalInvite === '1';
 
-  let contactEmail = '';
-  let contactId = '';
-  let clientAllowsPortal = false;
+  let contactEmail: string;
+  let contactId: string;
+  let clientAllowsPortal: boolean;
   try {
     const result = await withTenantContext(ctx, async (tx) => {
       const client = await tx.client.findUnique({
