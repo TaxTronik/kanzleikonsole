@@ -852,15 +852,8 @@ cmd_reset_admin_password() {
   load_env
   require_env DATABASE_URL
 
-  prompt "Admin-E-Mail (ADMIN_EMAIL)" ADMIN_EMAIL ""
-  prompt "Kanzlei-Slug (TENANT_SLUG)" TENANT_SLUG "default"
-  if [[ -z "${ADMIN_EMAIL:-}" ]]; then
-    die "ADMIN_EMAIL fehlt. Beispiel: ADMIN_EMAIL=admin@example.de ./taxtronik reset-admin-password"
-  fi
-  TENANT_SLUG="${TENANT_SLUG:-default}"
-
   generate_prisma_client_for_host_tools
-  ( cd "$ROOT" && ADMIN_EMAIL="$ADMIN_EMAIL" TENANT_SLUG="$TENANT_SLUG" ADMIN_CREDENTIALS_PATH="$ROOT/.admin-credentials.txt" \
+  ( cd "$ROOT" && ADMIN_EMAIL="${ADMIN_EMAIL:-}" TENANT_SLUG="${TENANT_SLUG:-}" ADMIN_CREDENTIALS_PATH="$ROOT/.admin-credentials.txt" \
       pnpm --filter @taxtronik/db reset-admin-password )
   info "Admin-Passwort neu gesetzt. Credentials: $ROOT/.admin-credentials.txt"
 }

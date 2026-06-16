@@ -22,28 +22,51 @@ function fail(msg: string): never {
 
 async function main() {
   const adminEmail = process.env['ADMIN_EMAIL']?.trim().toLowerCase();
-  const slug = (process.env['TENANT_SLUG']?.trim() || 'default').toLowerCase();
+  const slug = process.env['TENANT_SLUG']?.trim().toLowerCase();
   const explicitPasswordRaw = process.env['ADMIN_PASSWORD'];
   const explicitPassword = explicitPasswordRaw && explicitPasswordRaw.trim() ? explicitPasswordRaw : undefined;
 
-  if (!adminEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) {
-    fail('ADMIN_EMAIL fehlt oder ist keine gueltige E-Mail-Adresse.');
+  if (adminEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) {
+    fail('ADMIN_EMAIL ist keine gueltige E-Mail-Adresse.');
   }
-  if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(slug)) {
+  if (slug && !/^[a-z0-9][a-z0-9-]{0,62}$/.test(slug)) {
     fail(`TENANT_SLUG '${slug}' ist ungueltig (a-z, 0-9, Bindestrich).`);
   }
   if (explicitPassword !== undefined && explicitPassword.length < 12) {
     fail('ADMIN_PASSWORD muss mindestens 12 Zeichen haben.');
   }
 
-  const tenant = await prisma.tenant.findUnique({ where: { slug } });
-  if (!tenant) fail(`Tenant '${slug}' existiert nicht.`);
-
-  const staff = await prisma.staffUser.findFirst({
-    where: { tenantId: tenant.id, email: adminEmail },
-    select: { id: true, email: true },
+  const candidates = await prisma.staffUser.findMany({
+    where: {
+      ...(adminEmail ? { email: adminEmail } : {}),
+      ...(slug ? { tenant: { slug } } : {}),
+      roles: { some: { role: 'ADMIN' } },
+    },
+    select: {
+      id: true,
+      email: true,
+      tenant: { select: { slug: true, name: true } },
+    },
+    orderBy: [{ tenant: { slug: 'asc' } }, { email: 'asc' }],
   });
-  if (!staff) fail(`Staff-Konto '${adminEmail}' im Tenant '${slug}' existiert nicht.`);
+
+  if (candidates.length === 0) {
+    fail(
+      adminEmail || slug
+        ? 'Kein passendes ADMIN-Konto gefunden.'
+        : 'Kein ADMIN-Konto gefunden.',
+    );
+  }
+  if (candidates.length > 1) {
+    console.error('[reset-admin-password] Mehrere ADMIN-Konten gefunden. Bitte mit ADMIN_EMAIL oder TENANT_SLUG eindeutig machen:');
+    for (const c of candidates) {
+      console.error(`  TENANT_SLUG=${c.tenant.slug} ADMIN_EMAIL=${c.email} (${c.tenant.name})`);
+    }
+    process.exit(1);
+  }
+
+  const staff = candidates[0];
+  if (!staff) fail('Kein ADMIN-Konto gefunden.');
 
   const adminPassword = explicitPassword ?? generateAdminPassword();
   const passwordHash = await bcrypt.hash(adminPassword, 12);
@@ -62,7 +85,7 @@ async function main() {
     },
   });
 
-  console.log(`[reset-admin-password] Passwort gesetzt: ${staff.email} (Tenant: ${slug})`);
+  console.log(`[reset-admin-password] Passwort gesetzt: ${staff.email} (Tenant: ${staff.tenant.slug})`);
   console.log('[reset-admin-password] TOTP wird beim naechsten Login neu eingerichtet.');
 
   const credPath = writeAdminCredentials(staff.email, adminPassword);
