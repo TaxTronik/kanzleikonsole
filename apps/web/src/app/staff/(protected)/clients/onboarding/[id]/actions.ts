@@ -13,6 +13,11 @@ import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
 
 export interface WizardResult { ok: boolean; error?: string; }
 
+function redirectToContact(clientId: string, error?: string): never {
+  const suffix = error ? `&error=${encodeURIComponent(error)}` : '';
+  redirect(`/staff/clients/onboarding/${clientId}?step=contact${suffix}`);
+}
+
 // ---------------------------------------------------------------------------
 // Schritt 2: Ansprechpartner + (optional) Portal-Magic-Link
 // ---------------------------------------------------------------------------
@@ -30,6 +35,7 @@ export async function onboardingAddContactAction(formData: FormData) {
   const g = await staffActionGuard();
   if (!g.ok) redirect('/staff/login'); // redirect wirft (never) — außerhalb try/catch
   const { tenantId, staffId, ctx } = g;
+  const rawClientId = typeof formData.get('clientId') === 'string' ? String(formData.get('clientId')) : '';
 
   const parsed = ContactSchema.safeParse({
     clientId: formData.get('clientId'),
@@ -40,36 +46,50 @@ export async function onboardingAddContactAction(formData: FormData) {
     sendPortalInvite: formData.get('sendPortalInvite') ?? '',
   });
   if (!parsed.success) {
+    if (/^[a-f0-9-]{36}$/.test(rawClientId)) {
+      redirectToContact(rawClientId, parsed.error.issues.map((i) => i.message).join(', '));
+    }
     throw new ActionError(parsed.error.issues.map((i) => i.message).join(', '));
   }
 
   const sendInvite = parsed.data.sendPortalInvite === 'on' || parsed.data.sendPortalInvite === '1';
 
-  await withTenantContext(ctx, async (tx) => {
-    const existing = await tx.clientContact.findFirst({
-      where: { tenantId, email: parsed.data.email.toLowerCase() },
-    });
-    if (existing) {
-      if (existing.clientId !== parsed.data.clientId) {
-        throw new ActionError('E-Mail ist bereits einem anderen Mandanten zugeordnet.');
+  let contactEmail = '';
+  let clientAllowsPortal = false;
+  try {
+    const result = await withTenantContext(ctx, async (tx) => {
+      const client = await tx.client.findUnique({
+        where: { id: parsed.data.clientId },
+        select: { allowActive: true },
+      });
+      if (!client) throw new ActionError('Mandant nicht gefunden.');
+
+      const existing = await tx.clientContact.findFirst({
+        where: { tenantId, email: parsed.data.email.toLowerCase() },
+      });
+      if (existing) {
+        if (existing.clientId !== parsed.data.clientId) {
+          throw new ActionError('E-Mail ist bereits einem anderen Mandanten zugeordnet.');
+        }
+        await tx.clientContact.update({
+          where: { id: existing.id },
+          data: {
+            fullName: parsed.data.fullName,
+            phone: parsed.data.phone?.trim() || null,
+            role: parsed.data.role?.trim() || null,
+            active: true,
+          },
+        });
+        await evidenceService.record(tx, {
+          tenantId, actorType: 'STAFF', actorId: staffId,
+          action: 'client_contact.update',
+          resourceType: 'client_contact',
+          resourceId: existing.id,
+          after: { onboarding: true },
+        });
+        return { email: existing.email, allowActive: client.allowActive };
       }
-      await tx.clientContact.update({
-        where: { id: existing.id },
-        data: {
-          fullName: parsed.data.fullName,
-          phone: parsed.data.phone?.trim() || null,
-          role: parsed.data.role?.trim() || null,
-          active: true,
-        },
-      });
-      await evidenceService.record(tx, {
-        tenantId, actorType: 'STAFF', actorId: staffId,
-        action: 'client_contact.update',
-        resourceType: 'client_contact',
-        resourceId: existing.id,
-        after: { onboarding: true },
-      });
-    } else {
+
       const c = await tx.clientContact.create({
         data: {
           tenantId,
@@ -87,12 +107,18 @@ export async function onboardingAddContactAction(formData: FormData) {
         resourceId: c.id,
         after: { email: parsed.data.email, onboarding: true },
       });
-    }
-  });
+      return { email: c.email, allowActive: client.allowActive };
+    });
+    contactEmail = result.email;
+    clientAllowsPortal = result.allowActive;
+  } catch (e) {
+    if (e instanceof ActionError) redirectToContact(parsed.data.clientId, e.message);
+    throw e;
+  }
 
-  if (sendInvite) {
+  if (sendInvite && clientAllowsPortal) {
     try {
-      await requestMagicLink({ tenantId, email: parsed.data.email.toLowerCase() });
+      await requestMagicLink({ tenantId, email: contactEmail });
     } catch {
       // Mailversand-Fehler nicht blockierend — Wizard läuft weiter, Berater kann später nachversenden
     }

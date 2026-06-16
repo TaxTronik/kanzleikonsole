@@ -23,7 +23,7 @@ import {
 } from './actions';
 import { GwgSubmissionSummary, type GwgSubmissionSummaryData } from '@/components/gwg-submission-summary';
 
-interface Search { step?: string; }
+interface Search { step?: string; error?: string; }
 
 const VALID_STEPS: StepKey[] = ['contact', 'gwg', 'poa', 'first_request', 'done'];
 
@@ -210,7 +210,13 @@ export default async function OnboardingStepPage({
       <Stepper steps={steps} currentKey={activeStep} doneKeys={doneKeys} />
 
       {activeStep === 'contact' && (
-        <ContactStep clientId={client.id} contactName={firstContact?.fullName ?? ''} contactEmail={firstContact?.email ?? ''} />
+        <ContactStep
+          clientId={client.id}
+          contactName={firstContact?.fullName ?? ''}
+          contactEmail={firstContact?.email ?? ''}
+          allowActive={client.allowActive}
+          error={sp.error}
+        />
       )}
 
       {activeStep === 'gwg' && (
@@ -253,7 +259,19 @@ export default async function OnboardingStepPage({
 
 // ----- Step Components --------------------------------------------------------
 
-function ContactStep({ clientId, contactName, contactEmail }: { clientId: string; contactName: string; contactEmail: string }) {
+function ContactStep({
+  clientId,
+  contactName,
+  contactEmail,
+  allowActive,
+  error,
+}: {
+  clientId: string;
+  contactName: string;
+  contactEmail: string;
+  allowActive: boolean;
+  error?: string;
+}) {
   return (
     <div className="card p-6">
       <h2 className="text-sm font-medium text-primary mb-1">Ansprechpartner + Portal-Zugang</h2>
@@ -261,6 +279,7 @@ function ContactStep({ clientId, contactName, contactEmail }: { clientId: string
         Mindestens ein Ansprechpartner ermöglicht später Portal-Login, Anforderungen und Magic-Link-Mails.
       </p>
       <form action={onboardingAddContactAction} className="space-y-4">
+        {error && <div className="alert-error-sm">{error}</div>}
         <input type="hidden" name="clientId" value={clientId} />
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -280,9 +299,22 @@ function ContactStep({ clientId, contactName, contactEmail }: { clientId: string
             <input id="role" name="role" type="text" maxLength={80} className="input" placeholder='z. B. „Geschäftsführer"' />
           </div>
         </div>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" name="sendPortalInvite" defaultChecked className="h-4 w-4 rounded border-strong text-brand-600" />
-          Magic-Link für Portal-Zugang jetzt versenden
+        <label className={allowActive ? 'flex items-center gap-2 text-sm' : 'flex items-start gap-2 text-sm text-muted'}>
+          <input
+            type="checkbox"
+            name="sendPortalInvite"
+            defaultChecked={allowActive}
+            disabled={!allowActive}
+            className="h-4 w-4 rounded border-strong text-brand-600 disabled:opacity-40 mt-0.5"
+          />
+          <span>
+            Magic-Link für Portal-Zugang jetzt versenden
+            {!allowActive && (
+              <span className="block text-xs text-muted mt-0.5">
+                Erst nach abgeschlossener GwG-Verifikation möglich. Im nächsten Schritt wird der GwG-Onboarding-Link versendet.
+              </span>
+            )}
+          </span>
         </label>
         <div className="flex justify-end gap-2 pt-3 border-t border-subtle">
           <SkipButton clientId={clientId} next="gwg" label="Überspringen" />
