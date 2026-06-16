@@ -163,12 +163,15 @@ done
 
 # -------------------------------------------------------------------- Node-Pakete
 step "Node-Abhängigkeiten installieren"
-pnpm install --silent
+pnpm install --silent --prod=false
 done_ "Pakete installiert."
 
 # -------------------------------------------------------------------- Prisma Client
 step "Prisma Client generieren"
-( cd packages/db && node ../../node_modules/prisma/build/index.js generate )
+PRISMA_CLI="$(find "$REPO_ROOT/node_modules" "$REPO_ROOT/packages/db/node_modules" \
+  -path "*/prisma/build/index.js" -not -path "*/cache/*" 2>/dev/null | head -n1 || true)"
+[[ -n "$PRISMA_CLI" && -f "$PRISMA_CLI" ]] || fail "Prisma CLI nicht gefunden. pnpm install --prod=false pruefen."
+( cd packages/db && node "$PRISMA_CLI" generate )
 done_ "Prisma Client generiert."
 
 # -------------------------------------------------------------------- Prisma

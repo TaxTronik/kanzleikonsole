@@ -29,6 +29,7 @@ peerDependencyRules:
 
 overrides:
   "@hono/node-server": "^1.19.13"
+  hono: "4.12.25"
   ioredis: "^5.11.0"
   postcss: "^8.5.15"
   # esbuild 0.28.0 is vulnerable (GHSA-gv7w-rqvm-qjhr); force the patched release.

@@ -27,8 +27,8 @@ const SKIP_DIRS = new Set([
 ]);
 // Toleriert beliebigen Whitespace (`new  PrismaClient`, Zeilenumbruch) zwischen
 // `new` und `PrismaClient`, damit ungewöhnliche Formatierung den Guard nicht
-// aushebelt.
-const NEEDLE = /\bnew\s+PrismaClient\b/;
+// aushebelt. PrismaClientCtor ist der Alias fuer den zentralen Interop-Adapter.
+const NEEDLE = /\bnew\s+PrismaClient(?:Ctor)?\b/;
 // Dieser Guard erwähnt NEEDLE in Kommentaren/Meldungen, instanziiert aber
 // keinen Client — sich selbst nicht als Treffer werten.
 const SELF = 'apps/web/src/app/__tests__/prisma-client-guard.test.ts';

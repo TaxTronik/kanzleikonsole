@@ -353,10 +353,57 @@ smoke_health() {
   die "Health-Smoke fehlgeschlagen."
 }
 
+resolve_prisma_cli() {
+  local candidate
+  for candidate in \
+    "$ROOT/node_modules/prisma/build/index.js" \
+    "$ROOT/packages/db/node_modules/prisma/build/index.js"
+  do
+    [[ -f "$candidate" ]] && { printf '%s\n' "$candidate"; return 0; }
+  done
+  candidate="$(find "$ROOT/node_modules" "$ROOT/packages/db/node_modules" \
+    -path '*/prisma/build/index.js' -not -path '*/cache/*' 2>/dev/null | head -n1 || true)"
+  [[ -n "$candidate" && -f "$candidate" ]] && printf '%s\n' "$candidate"
+  return 0
+}
+
+resolve_tsx_cli() {
+  local candidate
+  for candidate in \
+    "$ROOT/node_modules/tsx/dist/cli.mjs" \
+    "$ROOT/apps/web/node_modules/tsx/dist/cli.mjs" \
+    "$ROOT/packages/db/node_modules/tsx/dist/cli.mjs"
+  do
+    [[ -f "$candidate" ]] && { printf '%s\n' "$candidate"; return 0; }
+  done
+  candidate="$(find "$ROOT/node_modules" "$ROOT/apps/web/node_modules" "$ROOT/packages/db/node_modules" \
+    -path '*/tsx/dist/cli.mjs' -not -path '*/cache/*' 2>/dev/null | head -n1 || true)"
+  [[ -n "$candidate" && -f "$candidate" ]] && printf '%s\n' "$candidate"
+  return 0
+}
+
+host_tool_deps_ready() {
+  [[ -n "$(resolve_prisma_cli)" && -n "$(resolve_tsx_cli)" ]]
+}
+
+ensure_host_tool_deps() {
+  host_tool_deps_ready && return 0
+  require_cmd pnpm
+  info "Host-Tool-Abhaengigkeiten installieren (Prisma/tsx fuer Backup/Provision)"
+  # NODE_ENV=production laesst pnpm devDependencies sonst aus. Die Host-Tools
+  # laufen zwar auf einem Prod-Server, brauchen aber Prisma CLI + tsx aus den
+  # workspace-devDependencies. Runtime bleibt trotzdem containerisiert.
+  (cd "$ROOT" && pnpm install --frozen-lockfile --prod=false \
+    --filter @taxtronik/web... --filter @taxtronik/web --filter @taxtronik/db)
+  host_tool_deps_ready || die "Host-Tool-Abhaengigkeiten fehlen weiterhin (Prisma CLI/tsx). Bitte pnpm-Install-Log pruefen."
+}
+
 generate_prisma_client_for_host_tools() {
   require_cmd node
-  local prisma_cli="$ROOT/node_modules/prisma/build/index.js"
-  [[ -f "$prisma_cli" ]] || die "Prisma CLI fehlt ($prisma_cli). Bitte vorher 'pnpm install --frozen-lockfile' ausfuehren."
+  ensure_host_tool_deps
+  local prisma_cli
+  prisma_cli="$(resolve_prisma_cli)"
+  [[ -n "$prisma_cli" ]] || die "Prisma CLI fehlt nach Host-Tool-Install."
   info "Prisma Client generieren (Host-Tools)"
   (cd "$ROOT/packages/db" && node "$prisma_cli" generate)
 }
@@ -379,6 +426,28 @@ wait_postgres_healthy() {
     [[ "$s" == "healthy" ]] && { info "Postgres healthy."; return 0; }
     sleep 2
   done
+}
+
+sql_literal() {
+  local value
+  value="$(printf '%s' "$1" | sed "s/'/''/g")"
+  printf "'%s'" "$value"
+}
+
+sync_postgres_roles_from_env() {
+  require_cmd docker
+  require_env POSTGRES_PASSWORD TAXTRONIK_APP_PASSWORD N8N_DB_PASSWORD
+  local pg_pw app_pw n8n_pw
+  pg_pw="$(sql_literal "$POSTGRES_PASSWORD")"
+  app_pw="$(sql_literal "$TAXTRONIK_APP_PASSWORD")"
+  n8n_pw="$(sql_literal "$N8N_DB_PASSWORD")"
+
+  info "Postgres-Rollenpasswoerter mit .env synchronisieren"
+  {
+    printf 'ALTER ROLE taxtronik WITH PASSWORD %s;\n' "$pg_pw"
+    printf "DO \$\$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'taxtronik_app') THEN EXECUTE format('ALTER ROLE taxtronik_app WITH PASSWORD %%L', %s); END IF; END \$\$;\n" "$app_pw"
+    printf "DO \$\$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'n8n') THEN EXECUTE format('ALTER ROLE n8n WITH PASSWORD %%L', %s); END IF; END \$\$;\n" "$n8n_pw"
+  } | docker exec -i taxtronik-postgres psql -U taxtronik -d taxtronik -v ON_ERROR_STOP=1
 }
 
 # prompt LABEL VAR [DEFAULT]: interaktiv erfragen, falls VAR noch ungesetzt und
@@ -575,6 +644,7 @@ _deploy_core() {
   load_env; preflight_common; assert_production_env; require_release_version
   start_infra
   wait_postgres_healthy
+  sync_postgres_roles_from_env
   provide_images
   backup_before_migrations
   run_migrations
@@ -606,6 +676,7 @@ cmd_update() {
   load_env; preflight_common; assert_production_env; require_release_version
   start_infra
   wait_postgres_healthy
+  sync_postgres_roles_from_env
   run_backup
   provide_images
   run_migrations
@@ -617,6 +688,8 @@ cmd_update() {
 
 cmd_backup() {
   load_env; preflight_common; assert_production_env
+  wait_postgres_healthy
+  sync_postgres_roles_from_env
   run_backup
   info "Backup fertig."
 }

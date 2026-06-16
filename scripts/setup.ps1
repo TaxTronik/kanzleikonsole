@@ -175,7 +175,7 @@ while ((Get-Date) -lt $deadline) {
 
 # -------------------------------------------------------------------- pnpm install
 Write-Step "Node-Abhängigkeiten installieren"
-& pnpm install --silent
+& pnpm install --silent --prod=false
 if ($LASTEXITCODE -ne 0) { Write-Host "pnpm install fehlgeschlagen." -ForegroundColor Red; exit 1 }
 Write-Done "Pakete installiert."
 
