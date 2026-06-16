@@ -19,12 +19,10 @@ export function generateAdminPassword(): string {
 }
 
 export function adminCredentialsPath(): string {
-  return resolve(
-    process.env['ADMIN_CREDENTIALS_PATH'] ||
-      process.env['INIT_CWD'] ||
-      process.cwd(),
-    '.admin-credentials.txt',
-  );
+  const explicitPath = process.env['ADMIN_CREDENTIALS_PATH']?.trim();
+  if (explicitPath) return resolve(explicitPath);
+
+  return resolve(process.env['INIT_CWD'] || process.cwd(), '.admin-credentials.txt');
 }
 
 export function writeAdminCredentials(email: string, password: string): string {
