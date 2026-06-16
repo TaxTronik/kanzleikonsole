@@ -79,7 +79,7 @@ async function sendOneMagicLink(input: {
       },
       fallback: {
         subject: `Ihr Login-Link zum Mandantenportal (${contact.client.name})`,
-        bodyMd: `Hallo {{contact.fullName}},\n\nueber den folgenden Link koennen Sie sich in das Mandantenportal fuer {{client.name}} einloggen:\n\n{{link}}\n\nDer Link ist {{expiresMinutes}} Minuten gueltig und kann nur einmal verwendet werden.`,
+        bodyMd: `Hallo {{contact.fullName}},\n\nüber den folgenden Link können Sie sich in das Mandantenportal für {{client.name}} einloggen:\n\n{{link}}\n\nDer Link ist {{expiresMinutes}} Minuten gültig und kann nur einmal verwendet werden.`,
       },
     });
   } catch (e) {

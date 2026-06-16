@@ -211,11 +211,15 @@ describe('requestMagicLink — Happy Path', () => {
     const mailArgs = m.sendTemplateMail.mock.calls[0]![0] as {
       to: string;
       vars: { link: string };
+      fallback: { bodyMd: string };
     };
     expect(mailArgs.to).toBe(CONTACT.email);
     expect(mailArgs.vars.link).toMatch(
       /^https:\/\/portal\.example\.de\/portal\/login\/verify\?token=/,
     );
+    expect(mailArgs.fallback.bodyMd).toContain('über den folgenden Link können');
+    expect(mailArgs.fallback.bodyMd).toContain('für {{client.name}}');
+    expect(mailArgs.fallback.bodyMd).toContain('Minuten gültig');
 
     // Der Link enthält den ROHEN Token; sein Hash muss exakt dem gespeicherten
     // tokenHash entsprechen — und der rohe Token darf NIE in der DB landen.
