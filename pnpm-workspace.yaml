@@ -2,12 +2,24 @@ packages:
   - "apps/*"
   - "packages/*"
 
+# pnpm 11 reads project settings from pnpm-workspace.yaml instead of
+# package.json#pnpm or non-auth .npmrc entries.
+nodeLinker: hoisted
+shamefullyHoist: true
+confirmModulesPurge: false
+audit: true
+auditLevel: high
+
+# pnpm 11: Build scripts are denied unless explicitly reviewed here.
+# Keep this allowlist narrow; packages not listed remain blocked.
 allowBuilds:
   '@prisma/client': true
   '@prisma/engines': true
+  canvas: false
   esbuild: true
   msgpackr-extract: true
   prisma: true
+  sharp: true
   unrs-resolver: true
 
 peerDependencyRules:
@@ -37,15 +49,3 @@ overrides:
 # Symlink injizieren. Der Wert steht im Lockfile; muss hier gespiegelt werden,
 # sonst meldet `pnpm install --frozen-lockfile` einen Config-Mismatch.
 injectWorkspacePackages: true
-
-# pnpm 11: Build-Scripts (postinstall etc.) sind per Default deaktiviert.
-# Hier explizit die Pakete listen, deren Build-Hooks wir laufen lassen wollen.
-# Alles andere bleibt geblockt — Supply-Chain-Härtung gegen bösartige
-# postinstall-Scripts in transitiven Deps.
-onlyBuiltDependencies:
-  - "@prisma/client"
-  - "@prisma/engines"
-  - prisma
-  - esbuild
-  - sharp
-  - unrs-resolver
