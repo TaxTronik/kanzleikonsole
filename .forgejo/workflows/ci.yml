@@ -292,7 +292,7 @@ jobs:
   # Upgrade-Pfad: simuliert das Kunden-Update. Eine DB wird auf den
   # Migrationsstand des LETZTEN Release-Tags gebracht, dann werden die
   # aktuellen Migrationen darauf angewendet — genau das passiert bei jedem
-   # ./taxtronik update beim Kunden. Fängt nachträglich editierte
+  # ./taxtronik update beim Kunden. Fängt nachträglich editierte
   # Migrations-Historie und Brüche im Migrations-Suffix, die der frische
   # Komplett-Durchlauf im db-Job nicht sieht. Solange kein v*-Tag existiert,
   # ist der Job ein No-Op.
