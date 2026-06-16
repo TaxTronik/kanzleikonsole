@@ -409,9 +409,17 @@ generate_prisma_client_for_host_tools() {
 }
 
 run_backup() {
-  generate_prisma_client_for_host_tools
+  require_cmd pnpm
   info "Backup starten"
-  (cd "$ROOT" && pnpm --filter @taxtronik/web backup:run)
+  # pg_dump-Escape-Hatch: falls der Host kein postgresql-client hat (Standard
+  # bei Docker-Compose-Only-Setup), pg_dump aus dem laufenden Postgres-Container
+  # nutzen. Client-Major passt dann garantiert zum Server (kein apt/Papierkram).
+  # runner.ts liest PG_DUMP_PATH gezielt aus (siehe Kopfkommentar dort).
+  if ! command -v pg_dump >/dev/null 2>&1; then
+    export PG_DUMP_PATH="$ROOT/infra/scripts/pg_dump-via-container.sh"
+    info "pg_dump fehlt auf dem Host -> nutze pg_dump aus dem Postgres-Container (PG_DUMP_PATH)."
+  fi
+  ( cd "$ROOT" && pnpm --filter @taxtronik/web backup:run )
 }
 
 # ---------------------------------------------------------------------------
