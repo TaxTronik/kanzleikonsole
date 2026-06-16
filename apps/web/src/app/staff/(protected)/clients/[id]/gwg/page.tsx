@@ -11,6 +11,7 @@ import { AddIdDocumentForm } from './add-id-doc-form';
 import { InviteSection } from './invite-section';
 import { GwgDecisionForms } from './decision-forms';
 import { fmtDateShort } from '@/lib/fmt';
+import { GwgSubmissionSummary, type GwgSubmissionSummaryData } from '@/components/gwg-submission-summary';
 
 const statusLabels: Record<string, string> = {
   DRAFT: 'Entwurf',
@@ -71,12 +72,79 @@ export default async function GwgPage({
           orderBy: { fullName: 'asc' },
         }),
       ]);
-      return { client, check, clientDocuments, invites, contacts };
+      const latestInvite = invites[0] ?? null;
+      const uploadedIds = Array.isArray(latestInvite?.uploadedDocumentIds)
+        ? (latestInvite.uploadedDocumentIds as unknown[]).filter((id): id is string => typeof id === 'string')
+        : [];
+      const uploadedDocuments = uploadedIds.length > 0
+        ? await tx.document.findMany({
+            where: { clientId, id: { in: uploadedIds } },
+            select: { id: true, title: true, createdAt: true },
+            orderBy: { createdAt: 'desc' },
+          })
+        : [];
+      return { client, check, clientDocuments, invites, contacts, uploadedDocuments };
     },
   );
 
   if (!data) notFound();
-  const { client, check, clientDocuments, invites, contacts } = data;
+  const { client, check, clientDocuments, invites, contacts, uploadedDocuments } = data;
+  const latestInvite = invites[0] ?? null;
+  const submittedSummary: GwgSubmissionSummaryData = {
+    client: {
+      name: client.name,
+      kind: client.kind,
+      street: client.street,
+      postalCode: client.postalCode,
+      city: client.city,
+      countryIso: client.countryIso,
+      vatId: client.vatId,
+      allowActive: client.allowActive,
+    },
+    invite: latestInvite
+      ? {
+          inviteName: latestInvite.inviteName,
+          inviteEmail: latestInvite.inviteEmail,
+          status: latestInvite.status,
+          createdAt: latestInvite.createdAt.toISOString(),
+          expiresAt: latestInvite.expiresAt.toISOString(),
+          submittedAt: latestInvite.submittedAt?.toISOString() ?? null,
+        }
+      : null,
+    owners: check?.beneficialOwners.map((o) => ({
+      id: o.id,
+      fullName: o.fullName,
+      birthDate: o.birthDate?.toISOString() ?? null,
+      birthPlace: o.birthPlace,
+      nationality: o.nationality,
+      residence: o.residence,
+      ownershipPct: o.ownershipPct?.toString() ?? null,
+      isPep: o.isPep,
+      notes: o.notes,
+    })) ?? [],
+    idDocuments: check?.idDocuments.map((d) => ({
+      id: d.id,
+      type: d.type,
+      ownerName: d.ownerName,
+      number: d.number,
+      issuedBy: d.issuedBy,
+      issueDate: d.issueDate?.toISOString() ?? null,
+      expiryDate: d.expiryDate?.toISOString() ?? null,
+      notes: d.notes,
+      document: d.document
+        ? {
+            id: d.document.id,
+            title: d.document.title,
+            createdAt: d.document.createdAt.toISOString(),
+          }
+        : null,
+    })) ?? [],
+    uploadedDocuments: uploadedDocuments.map((d) => ({
+      id: d.id,
+      title: d.title,
+      createdAt: d.createdAt.toISOString(),
+    })),
+  };
 
   return (
     <div className="p-8 max-w-4xl">
@@ -116,6 +184,10 @@ export default async function GwgPage({
             submittedAt: i.submittedAt?.toISOString() ?? null,
           }))}
         />
+      </div>
+
+      <div className="mb-6">
+        <GwgSubmissionSummary data={submittedSummary} />
       </div>
 
       {!check ? (

@@ -32,12 +32,17 @@ interface BeneficialOwner {
   id: string;              // nur clientseitig (React-Key), wird nicht übermittelt
   fullName: string;
   birthDate: string;       // YYYY-MM-DD
+  birthPlace: string;
   nationality: string;
   street: string;
   postalCode: string;
   city: string;
   countryIso: string;
   sharePercent: string;    // String für freie Eingabe „>25%"
+  idNumber: string;
+  idIssuedBy: string;
+  idIssueDate: string;     // YYYY-MM-DD
+  idExpiryDate: string;    // YYYY-MM-DD
   // Hochgeladene Ausweis-Bilder (server-seitige documentId)
   idFront: { documentId: string; fileName: string } | null;
   idBack: { documentId: string; fileName: string } | null;
@@ -219,12 +224,17 @@ export function OnboardingWizard({
         owners: owners.map((o) => ({
           fullName: o.fullName,
           birthDate: o.birthDate,
+          birthPlace: o.birthPlace,
           nationality: o.nationality,
           street: o.street,
           postalCode: o.postalCode,
           city: o.city,
           countryIso: o.countryIso,
           sharePercent: o.sharePercent,
+          idNumber: o.idNumber,
+          idIssuedBy: o.idIssuedBy,
+          idIssueDate: o.idIssueDate,
+          idExpiryDate: o.idExpiryDate,
           idFrontDocumentId: o.idFront!.documentId,
           idBackDocumentId: o.idBack!.documentId,
         })),
@@ -381,6 +391,7 @@ export function OnboardingWizard({
             <SummaryRow label="Adresse" value={`${street}, ${postalCode} ${city}, ${countryIso}`} />
             {vatId && <SummaryRow label="USt-ID" value={vatId} />}
             <SummaryRow label="Wirtschaftlich Berechtigte" value={`${owners.length} Person${owners.length === 1 ? '' : 'en'}`} />
+            <SummaryRow label="Ausweisangaben" value={`${owners.filter((o) => o.idNumber || o.idExpiryDate).length} erfasst`} />
             <SummaryRow label="Sonstige Dokumente" value={`${extraDocs.length} hochgeladen`} />
           </dl>
           {submitError && <div className="alert-error-sm">{submitError}</div>}
@@ -417,12 +428,17 @@ function emptyOwner(name: string): BeneficialOwner {
     id: nextOwnerId(),
     fullName: name,
     birthDate: '',
+    birthPlace: '',
     nationality: 'DE',
     street: '',
     postalCode: '',
     city: '',
     countryIso: 'DE',
     sharePercent: '',
+    idNumber: '',
+    idIssuedBy: '',
+    idIssueDate: '',
+    idExpiryDate: '',
     idFront: null,
     idBack: null,
   };
@@ -489,16 +505,36 @@ function OwnerCard({
       <Field label="Vollständiger Name" value={owner.fullName} onChange={(v) => onPatch({ fullName: v })} required />
       <div className="grid grid-cols-2 gap-3">
         <Field label="Geburtsdatum" type="date" value={owner.birthDate} onChange={(v) => onPatch({ birthDate: v })} required />
+        <Field label="Geburtsort" value={owner.birthPlace} onChange={(v) => onPatch({ birthPlace: v })} />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
         <Field label="Staatsangehörigkeit" value={owner.nationality} onChange={(v) => onPatch({ nationality: v })} placeholder="DE" />
+        <Field label={'Anteil (z. B. 50% oder „Alleingesellschafter")'} value={owner.sharePercent} onChange={(v) => onPatch({ sharePercent: v })} />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Straße + Hausnr." value={owner.street} onChange={(v) => onPatch({ street: v })} />
-        <Field label={'Anteil (z. B. 50% oder „Alleingesellschafter")'} value={owner.sharePercent} onChange={(v) => onPatch({ sharePercent: v })} />
+        <Field label="Land" value={owner.countryIso} onChange={(v) => onPatch({ countryIso: v })} />
       </div>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <Field label="PLZ" value={owner.postalCode} onChange={(v) => onPatch({ postalCode: v })} />
         <Field label="Ort" value={owner.city} onChange={(v) => onPatch({ city: v })} />
-        <Field label="Land" value={owner.countryIso} onChange={(v) => onPatch({ countryIso: v })} />
+      </div>
+
+      <div className="rounded-md border border-default bg-gray-50 p-4 space-y-3">
+        <div>
+          <h4 className="text-sm font-medium text-primary">Ausweisdaten</h4>
+          <p className="text-xs text-muted mt-0.5">
+            Falls vorhanden, bitte direkt vom Ausweis übernehmen.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Ausweisnummer" value={owner.idNumber} onChange={(v) => onPatch({ idNumber: v })} />
+          <Field label="Ausstellende Behörde" value={owner.idIssuedBy} onChange={(v) => onPatch({ idIssuedBy: v })} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Ausgestellt am" type="date" value={owner.idIssueDate} onChange={(v) => onPatch({ idIssueDate: v })} />
+          <Field label="Gültig bis" type="date" value={owner.idExpiryDate} onChange={(v) => onPatch({ idExpiryDate: v })} />
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4 pt-2">

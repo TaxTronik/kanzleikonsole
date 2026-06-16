@@ -21,6 +21,7 @@ import {
   onboardingSkipAction,
   onboardingCompleteAction,
 } from './actions';
+import { GwgSubmissionSummary, type GwgSubmissionSummaryData } from '@/components/gwg-submission-summary';
 
 interface Search { step?: string; }
 
@@ -55,7 +56,17 @@ export default async function OnboardingStepPage({
       async (tx) => {
         const client = await tx.client.findUnique({
           where: { id },
-          select: { id: true, name: true, kind: true, allowActive: true },
+          select: {
+            id: true,
+            name: true,
+            kind: true,
+            street: true,
+            postalCode: true,
+            city: true,
+            countryIso: true,
+            vatId: true,
+            allowActive: true,
+          },
         });
         if (!client) return null;
         const [contactCount, gwgInvite, gwgCheck, poaCount, requestCount] = await Promise.all([
@@ -63,28 +74,105 @@ export default async function OnboardingStepPage({
           tx.gwgOnboardingInvite.findFirst({
             where: { clientId: id },
             orderBy: { createdAt: 'desc' },
-            select: { id: true, inviteEmail: true, inviteName: true, status: true },
+            select: {
+              id: true,
+              inviteEmail: true,
+              inviteName: true,
+              status: true,
+              createdAt: true,
+              expiresAt: true,
+              submittedAt: true,
+              uploadedDocumentIds: true,
+            },
           }),
           tx.gwgCheck.findFirst({
             where: { clientId: id },
             orderBy: { createdAt: 'desc' },
-            select: { status: true },
+            include: {
+              beneficialOwners: { orderBy: { createdAt: 'asc' } },
+              idDocuments: { orderBy: { createdAt: 'asc' }, include: { document: true } },
+            },
           }),
           tx.powerOfAttorney.count({ where: { clientId: id } }),
           tx.request.count({ where: { clientId: id } }),
         ]);
+        const uploadedIds = Array.isArray(gwgInvite?.uploadedDocumentIds)
+          ? (gwgInvite.uploadedDocumentIds as unknown[]).filter((docId): docId is string => typeof docId === 'string')
+          : [];
+        const uploadedDocuments = uploadedIds.length > 0
+          ? await tx.document.findMany({
+              where: { clientId: id, id: { in: uploadedIds } },
+              select: { id: true, title: true, createdAt: true },
+              orderBy: { createdAt: 'desc' },
+            })
+          : [];
         const firstContact = await tx.clientContact.findFirst({
           where: { clientId: id, active: true },
           orderBy: { createdAt: 'asc' },
           select: { fullName: true, email: true },
         });
-        return { client, contactCount, gwgInvite, gwgCheck, poaCount, requestCount, firstContact };
+        return { client, contactCount, gwgInvite, gwgCheck, poaCount, requestCount, firstContact, uploadedDocuments };
       },
     ),
   ]);
 
   if (!data) notFound();
-  const { client, contactCount, gwgInvite, gwgCheck, poaCount, requestCount, firstContact } = data;
+  const { client, contactCount, gwgInvite, gwgCheck, poaCount, requestCount, firstContact, uploadedDocuments } = data;
+  const gwgSummary: GwgSubmissionSummaryData = {
+    client: {
+      name: client.name,
+      kind: client.kind,
+      street: client.street,
+      postalCode: client.postalCode,
+      city: client.city,
+      countryIso: client.countryIso,
+      vatId: client.vatId,
+      allowActive: client.allowActive,
+    },
+    invite: gwgInvite
+      ? {
+          inviteName: gwgInvite.inviteName,
+          inviteEmail: gwgInvite.inviteEmail,
+          status: gwgInvite.status,
+          createdAt: gwgInvite.createdAt.toISOString(),
+          expiresAt: gwgInvite.expiresAt.toISOString(),
+          submittedAt: gwgInvite.submittedAt?.toISOString() ?? null,
+        }
+      : null,
+    owners: gwgCheck?.beneficialOwners.map((o) => ({
+      id: o.id,
+      fullName: o.fullName,
+      birthDate: o.birthDate?.toISOString() ?? null,
+      birthPlace: o.birthPlace,
+      nationality: o.nationality,
+      residence: o.residence,
+      ownershipPct: o.ownershipPct?.toString() ?? null,
+      isPep: o.isPep,
+      notes: o.notes,
+    })) ?? [],
+    idDocuments: gwgCheck?.idDocuments.map((d) => ({
+      id: d.id,
+      type: d.type,
+      ownerName: d.ownerName,
+      number: d.number,
+      issuedBy: d.issuedBy,
+      issueDate: d.issueDate?.toISOString() ?? null,
+      expiryDate: d.expiryDate?.toISOString() ?? null,
+      notes: d.notes,
+      document: d.document
+        ? {
+            id: d.document.id,
+            title: d.document.title,
+            createdAt: d.document.createdAt.toISOString(),
+          }
+        : null,
+    })) ?? [],
+    uploadedDocuments: uploadedDocuments.map((d) => ({
+      id: d.id,
+      title: d.title,
+      createdAt: d.createdAt.toISOString(),
+    })),
+  };
 
   const steps = stepsForTenant(modules);
   const doneKeys = new Set<StepKey>();
@@ -126,12 +214,17 @@ export default async function OnboardingStepPage({
       )}
 
       {activeStep === 'gwg' && (
-        <GwgStep
-          clientId={client.id}
-          defaultName={firstContact?.fullName ?? ''}
-          defaultEmail={firstContact?.email ?? ''}
-          existingInvite={gwgInvite}
-        />
+        <div className="space-y-4">
+          <GwgStep
+            clientId={client.id}
+            defaultName={firstContact?.fullName ?? ''}
+            defaultEmail={firstContact?.email ?? ''}
+            existingInvite={gwgInvite}
+          />
+          {(gwgInvite || gwgCheck || gwgSummary.uploadedDocuments.length > 0) && (
+            <GwgSubmissionSummary data={gwgSummary} title="Aktueller Stand der GwG-Einreichung" />
+          )}
+        </div>
       )}
 
       {activeStep === 'poa' && modules.poaMode !== 'OFF' && (
@@ -224,7 +317,7 @@ function GwgStep({
 
       {existingInvite && (
         <div className="mb-4 p-3 rounded-md bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 text-xs text-emerald-800 dark:text-emerald-200">
-          GwG-Einladung bereits am {existingInvite.inviteEmail} verschickt (Status: {existingInvite.status}).
+          GwG-Einladung bereits an {existingInvite.inviteEmail} verschickt (Status: {existingInvite.status}).
         </div>
       )}
 

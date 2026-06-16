@@ -199,7 +199,11 @@ export async function uploadIdImageAction(input: {
     // nicht definiert ist.
     await prismaOwner.$executeRaw`
       UPDATE gwg_onboarding_invite
-      SET uploaded_document_ids = uploaded_document_ids || ${JSON.stringify([documentId])}::jsonb
+      SET uploaded_document_ids = uploaded_document_ids || ${JSON.stringify([documentId])}::jsonb,
+          status = CASE
+            WHEN status = 'PENDING'::gwg_invite_status THEN 'STARTED'::gwg_invite_status
+            ELSE status
+          END
       WHERE id = ${invite.id}::uuid
     `;
   } catch (e) {
@@ -233,12 +237,17 @@ export async function uploadIdImageAction(input: {
 const OwnerSchema = z.object({
   fullName: z.string().min(1).max(200),
   birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  birthPlace: z.string().max(200).optional().or(z.literal('')),
   nationality: z.string().max(50).optional().or(z.literal('')),
   street: z.string().max(255).optional().or(z.literal('')),
   postalCode: z.string().max(20).optional().or(z.literal('')),
   city: z.string().max(100).optional().or(z.literal('')),
   countryIso: z.string().max(10).optional().or(z.literal('')),
   sharePercent: z.string().max(50).optional().or(z.literal('')),
+  idNumber: z.string().max(100).optional().or(z.literal('')),
+  idIssuedBy: z.string().max(200).optional().or(z.literal('')),
+  idIssueDate: z.string().date().optional().or(z.literal('')),
+  idExpiryDate: z.string().date().optional().or(z.literal('')),
   idFrontDocumentId: z.string().uuid(),
   idBackDocumentId: z.string().uuid(),
 });
@@ -381,6 +390,7 @@ export async function submitOnboardingAction(input: z.infer<typeof SubmitSchema>
             gwgCheckId: checkId,
             fullName: o.fullName.trim(),
             birthDate: new Date(o.birthDate + 'T00:00:00.000Z'),
+            birthPlace: o.birthPlace?.trim() || null,
             nationality: o.nationality?.trim() || null,
             residence,
             ownershipPct,
@@ -394,6 +404,10 @@ export async function submitOnboardingAction(input: z.infer<typeof SubmitSchema>
             type: 'PERSONALAUSWEIS',
             ownerName: o.fullName.trim(),
             documentId: o.idFrontDocumentId,
+            number: o.idNumber?.trim() || null,
+            issuedBy: o.idIssuedBy?.trim() || null,
+            issueDate: o.idIssueDate ? new Date(o.idIssueDate + 'T00:00:00.000Z') : null,
+            expiryDate: o.idExpiryDate ? new Date(o.idExpiryDate + 'T00:00:00.000Z') : null,
             notes: 'Vorderseite (durch Mandant hochgeladen)',
           },
         });
@@ -403,6 +417,10 @@ export async function submitOnboardingAction(input: z.infer<typeof SubmitSchema>
             type: 'PERSONALAUSWEIS',
             ownerName: o.fullName.trim(),
             documentId: o.idBackDocumentId,
+            number: o.idNumber?.trim() || null,
+            issuedBy: o.idIssuedBy?.trim() || null,
+            issueDate: o.idIssueDate ? new Date(o.idIssueDate + 'T00:00:00.000Z') : null,
+            expiryDate: o.idExpiryDate ? new Date(o.idExpiryDate + 'T00:00:00.000Z') : null,
             notes: 'Rückseite (durch Mandant hochgeladen)',
           },
         });
