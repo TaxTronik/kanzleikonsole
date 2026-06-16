@@ -31,6 +31,7 @@ const owner = new PrismaClient({
 });
 
 let tenantId: string;
+let staffId: string;
 
 const HOUR = 60 * 60 * 1000;
 
@@ -39,6 +40,17 @@ beforeAll(async () => {
     data: { slug: `test-gwg-${Date.now()}`, name: 'GwG-Schranke Test' },
   });
   tenantId = tenant.id;
+
+  const staff = await owner.staffUser.create({
+    data: {
+      tenantId,
+      email: `test-gwg-${Date.now()}@example.com`,
+      fullName: 'GwG Test Staff',
+      passwordHash: 'x',
+      active: true,
+    },
+  });
+  staffId = staff.id;
 });
 
 afterAll(async () => {
@@ -66,6 +78,43 @@ async function makeGwgCheck(
 
 function activate(clientId: string): Promise<unknown> {
   return owner.client.update({ where: { id: clientId }, data: { allowActive: true } });
+}
+
+let inviteSeq = 0;
+
+function makeDocument(
+  clientId: string,
+  classification: 'GWG_EVIDENCE' | 'GENERAL' = 'GENERAL',
+): Promise<unknown> {
+  return owner.document.create({
+    data: {
+      tenantId,
+      clientId,
+      title: `${classification}-${Date.now()}-${++inviteSeq}`,
+      classification,
+      mimeType: 'image/jpeg',
+    },
+  });
+}
+
+async function makeInvite(
+  clientId: string,
+  status: 'PENDING' | 'STARTED' | 'SUBMITTED' | 'EXPIRED' | 'CANCELLED' = 'PENDING',
+  expiresAt = new Date(Date.now() + HOUR),
+): Promise<void> {
+  inviteSeq += 1;
+  await owner.gwgOnboardingInvite.create({
+    data: {
+      tenantId,
+      clientId,
+      inviteEmail: `invite-${Date.now()}-${inviteSeq}@example.com`,
+      inviteName: 'GwG Invite',
+      tokenHash: `token-${Date.now()}-${inviteSeq}`,
+      expiresAt,
+      status,
+      createdByStaff: staffId,
+    },
+  });
 }
 
 describeWithDatabase('GwG-Schranke: allow_active erfordert verifizierten gwg_check', () => {
@@ -129,5 +178,27 @@ describeWithDatabase('GwG-Schranke: allow_active erfordert verifizierten gwg_che
     await expect(
       owner.client.update({ where: { id }, data: { allowActive: false } }),
     ).resolves.toBeTruthy();
+  });
+
+  it('Dokumente fuer inaktive Mandanten bleiben grundsaetzlich blockiert', async () => {
+    const id = await makeClient('Dokument blockiert');
+    await expect(makeDocument(id, 'GENERAL')).rejects.toThrow();
+  });
+
+  it('GWG_EVIDENCE ohne aktive Onboarding-Einladung bleibt blockiert', async () => {
+    const id = await makeClient('GwG Dokument ohne Invite');
+    await expect(makeDocument(id, 'GWG_EVIDENCE')).rejects.toThrow();
+  });
+
+  it('GWG_EVIDENCE mit aktiver Onboarding-Einladung ist vor Aktivierung erlaubt', async () => {
+    const id = await makeClient('GwG Dokument mit Invite');
+    await makeInvite(id, 'PENDING');
+    await expect(makeDocument(id, 'GWG_EVIDENCE')).resolves.toBeTruthy();
+  });
+
+  it('GWG_EVIDENCE mit erledigter Onboarding-Einladung bleibt vor Aktivierung blockiert', async () => {
+    const id = await makeClient('GwG Dokument submitted Invite');
+    await makeInvite(id, 'SUBMITTED');
+    await expect(makeDocument(id, 'GWG_EVIDENCE')).rejects.toThrow();
   });
 });
