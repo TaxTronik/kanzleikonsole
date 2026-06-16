@@ -52,12 +52,14 @@ load_env() {
     elif [[ "$value" == \'*\' && "$value" == *\' ]]; then value="${value:1:${#value}-2}"; fi
     export "$key=$value"
   done < "$ENVFILE"
+  return 0
 }
 
 require_env() {
   local missing=()
   for key in "$@"; do [[ -z "${!key:-}" ]] && missing+=("$key"); done
   (( ${#missing[@]} > 0 )) && die "Pflichtwerte fehlen in .env: ${missing[*]}"
+  return 0   # explizit: (( 0 )) && ... gibt sonst Status 1 -> set -e bricht ab
 }
 
 # Wert aus .env lesen OHNE shell-Variablen (für Render/Checks vor load_env).
@@ -369,6 +371,7 @@ bake_db_urls_into_env() {
     set_env DATABASE_URL     "postgresql://taxtronik:${pg_pw}@localhost:5432/taxtronik?schema=public"
   [[ -n "$app_pw" && ( -z "$cur_app" || "$cur_app" == *'$'"{TAXTRONIK_APP_PASSWORD}"* ) ]] && \
     set_env DATABASE_APP_URL "postgresql://taxtronik_app:${app_pw}@localhost:5432/taxtronik?schema=public"
+  return 0
 }
 
 # Interaktive .env-Vorbereitung fuer deploy/update/bootstrap.
