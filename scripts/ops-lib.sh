@@ -126,6 +126,9 @@ compose() {
     shift
     docker compose -f "$BASE" --env-file "$ENVFILE" "$@"
   else
+    if [[ "${1:-}" == "up" ]]; then
+      reconcile_n8n_encryption_key_from_volume
+    fi
     docker compose -f "$BASE" -f "$APP" --env-file "$ENVFILE" "$@"
   fi
 }
@@ -180,6 +183,129 @@ _dr_secret() {
   fi
 }
 
+_n8n_container_id() {
+  docker ps -aq --filter 'name=^/taxtronik-n8n$' 2>/dev/null | head -n1 || true
+}
+
+_n8n_home_volume() {
+  local cid="$1"
+  [[ -n "$cid" ]] || return 0
+  docker inspect -f '{{range .Mounts}}{{if eq .Destination "/home/node/.n8n"}}{{.Name}}{{end}}{{end}}' "$cid" 2>/dev/null || true
+}
+
+_compose_project_name() {
+  printf '%s' "${COMPOSE_PROJECT_NAME:-$(basename "$(dirname "$BASE")")}"
+}
+
+_n8n_data_volume() {
+  local cid="${1:-}" project volume candidate
+  [[ -z "$cid" ]] && cid="$(_n8n_container_id)"
+
+  volume="$(_n8n_home_volume "$cid")"
+  if [[ -n "$volume" ]]; then
+    printf '%s\n' "$volume"
+    return 0
+  fi
+
+  project="$(_compose_project_name)"
+  volume="$(docker volume ls -q \
+    --filter "label=com.docker.compose.project=$project" \
+    --filter 'label=com.docker.compose.volume=n8n_data' 2>/dev/null | head -n1 || true)"
+  if [[ -n "$volume" ]]; then
+    printf '%s\n' "$volume"
+    return 0
+  fi
+
+  candidate="${project}_n8n_data"
+  if docker volume inspect "$candidate" >/dev/null 2>&1; then
+    printf '%s\n' "$candidate"
+  fi
+}
+
+_extract_n8n_encryption_key_from_file() {
+  local file="$1"
+  [[ -r "$file" ]] || return 0
+  sed -n 's/.*"encryptionKey"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$file" | head -n1 || true
+}
+
+_n8n_config_encryption_key() {
+  local cid="$1" volume="$2" image running mountpoint
+  if [[ -n "$cid" ]]; then
+    running="$(docker inspect -f '{{.State.Running}}' "$cid" 2>/dev/null || true)"
+  fi
+  if [[ -n "${cid:-}" && "$running" == "true" ]]; then
+    docker exec "$cid" node -p \
+      "const fs=require('fs'); const p='/home/node/.n8n/config'; fs.existsSync(p) ? (JSON.parse(fs.readFileSync(p,'utf8')).encryptionKey || '') : ''" \
+      2>/dev/null || true
+    return 0
+  fi
+
+  [[ -n "$volume" ]] || return 0
+  mountpoint="$(docker volume inspect -f '{{.Mountpoint}}' "$volume" 2>/dev/null || true)"
+  if [[ -n "$mountpoint" && -f "$mountpoint/config" ]]; then
+    _extract_n8n_encryption_key_from_file "$mountpoint/config"
+    return 0
+  fi
+
+  if [[ -n "${cid:-}" ]]; then
+    image="$(docker inspect -f '{{.Config.Image}}' "$cid" 2>/dev/null || true)"
+  fi
+  image="${image:-alpine:3.20}"
+  docker run --rm --entrypoint node -v "$volume:/data:ro" "$image" -p \
+    "const fs=require('fs'); const p='/data/config'; fs.existsSync(p) ? (JSON.parse(fs.readFileSync(p,'utf8')).encryptionKey || '') : ''" \
+    2>/dev/null || \
+  docker run --rm -v "$volume:/data:ro" alpine:3.20 sh -c \
+    "test -f /data/config && sed -n 's/.*\"encryptionKey\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p' /data/config | head -n1" \
+    2>/dev/null || true
+}
+
+reconcile_n8n_encryption_key_from_volume() {
+  command -v docker >/dev/null 2>&1 || return 0
+  [[ -f "$ENVFILE" ]] || return 0
+
+  local cid volume volume_key env_key
+  cid="$(_n8n_container_id)"
+  volume="$(_n8n_data_volume "$cid")"
+  [[ -n "$volume" ]] || return 0
+
+  volume_key="$(_n8n_config_encryption_key "$cid" "$volume" | tr -d '\r\n')"
+  [[ -n "$volume_key" ]] || return 0
+
+  env_key="$(get_env N8N_ENCRYPTION_KEY)"
+  if [[ -z "$env_key" ]]; then
+    info "N8N_ENCRYPTION_KEY aus vorhandenem n8n-Volume uebernommen (${volume})."
+    set_env N8N_ENCRYPTION_KEY "$volume_key"
+    export N8N_ENCRYPTION_KEY="$volume_key"
+  elif [[ "$env_key" != "$volume_key" ]]; then
+    warn "N8N_ENCRYPTION_KEY in .env passt nicht zum vorhandenen n8n-Volume (${volume}); .env wird auf den Volume-Key korrigiert."
+    set_env N8N_ENCRYPTION_KEY "$volume_key"
+    export N8N_ENCRYPTION_KEY="$volume_key"
+  fi
+}
+
+_doctor_n8n_volume_key() {
+  command -v docker >/dev/null 2>&1 || return 0
+  [[ -n "${N8N_ENCRYPTION_KEY:-}" ]] || return 0
+
+  local cid volume volume_key
+  cid="$(_n8n_container_id)"
+  volume="$(_n8n_data_volume "$cid")"
+  [[ -n "$volume" ]] || return 0
+  volume_key="$(_n8n_config_encryption_key "$cid" "$volume" | tr -d '\r\n')"
+
+  if [[ -z "$volume_key" ]]; then
+    _dr_row "WARN" "N8N_VOLUME_KEY" "nicht lesbar/noch nicht initialisiert"
+    _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
+  elif [[ "$volume_key" != "$N8N_ENCRYPTION_KEY" ]]; then
+    _dr_row "FEHLT" "N8N_VOLUME_KEY" "passt nicht zu .env (Volume: ${volume:-unbekannt})"
+    echo "           Bestehende n8n-Daten behalten: N8N_ENCRYPTION_KEY in .env auf den Volume-Key setzen."
+    echo "           Frisches n8n akzeptieren: ./taxtronik down && docker volume rm ${volume:-<n8n-volume>} && ./taxtronik up -d"
+    _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  else
+    _dr_row "OK" "N8N_VOLUME_KEY" "passt zu .env"
+  fi
+}
+
 doctor() {
   local fix=0
   [[ "${1:-}" == "--fix" ]] && fix=1
@@ -211,6 +337,7 @@ doctor() {
   _dr_secret AUTH_SECRET 32
   _dr_secret N8N_HMAC_SECRET 32
   _dr_secret N8N_ENCRYPTION_KEY 24
+  _doctor_n8n_volume_key
   _dr_secret POSTGRES_PASSWORD 24
   _dr_secret TAXTRONIK_APP_PASSWORD 24
   _dr_secret S3_SECRET_KEY 32
@@ -686,6 +813,8 @@ prepare_env_interactive() {
     set_env RISK_LAYER_URL ""
     set_env RISK_LAYER_TOKEN ""
   fi
+
+  reconcile_n8n_encryption_key_from_volume
 
   # Schluss-Check (read-only). Bleiben blockierende Fehler, Klartext + Abbruch.
   if ! doctor >/dev/null; then
