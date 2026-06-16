@@ -55,16 +55,14 @@ export async function inviteContactAction(
   const roleClean = role?.trim() || null;
 
   let contactEmail: string;
+  let contactId: string;
   try {
-    contactEmail = await withTenantContext(ctx, async (tx) => {
-      // existiert ein aktiver Kontakt schon?
+    const result = await withTenantContext(ctx, async (tx) => {
+      // existiert dieser Kontakt bei diesem Mandanten schon?
       const existing = await tx.clientContact.findFirst({
-        where: { tenantId, email: email.toLowerCase() },
+        where: { tenantId, clientId, email: email.toLowerCase() },
       });
       if (existing) {
-        if (existing.clientId !== clientId) {
-          throw new ActionError('E-Mail bereits einem anderen Mandanten zugeordnet.');
-        }
         await tx.clientContact.update({
           where: { id: existing.id },
           data: { fullName, phone: phoneClean, role: roleClean, active: true },
@@ -78,7 +76,7 @@ export async function inviteContactAction(
           resourceId: existing.id,
           after: { email, fullName, phone: phoneClean, role: roleClean, clientId },
         });
-        return existing.email;
+        return { id: existing.id, email: existing.email };
       }
       const contact = await tx.clientContact.create({
         data: {
@@ -99,14 +97,16 @@ export async function inviteContactAction(
         resourceId: contact.id,
         after: { email: contact.email, fullName, phone: phoneClean, role: roleClean, clientId },
       });
-      return contact.email;
+      return { id: contact.id, email: contact.email };
     });
+    contactId = result.id;
+    contactEmail = result.email;
   } catch (e) {
     return toActionError(e);
   }
 
   if (sendInvite) {
-    await requestMagicLink({ tenantId, email: contactEmail });
+    await requestMagicLink({ tenantId, email: contactEmail, contactId });
   }
 
   revalidatePath(`/staff/clients/${clientId}`);
@@ -145,15 +145,11 @@ export async function updateContactAction(
       // des Tenants, nicht auf einen anderen Mandanten zeigend.
       if (email !== before.email) {
         const clash = await tx.clientContact.findFirst({
-          where: { tenantId, email, id: { not: contactId } },
+          where: { tenantId, clientId, email, id: { not: contactId } },
           select: { clientId: true },
         });
         if (clash) {
-          throw new ActionError(
-            clash.clientId === clientId
-              ? 'E-Mail bereits einem anderen Ansprechpartner dieses Mandanten zugeordnet.'
-              : 'E-Mail bereits einem anderen Mandanten zugeordnet.',
-          );
+          throw new ActionError('E-Mail bereits einem anderen Ansprechpartner dieses Mandanten zugeordnet.');
         }
       }
       await tx.clientContact.update({

@@ -1,15 +1,3 @@
-// =============================================================================
-// Magic-Link-Service
-//
-// - generateMagicLink(tenantId, email): erzeugt rohen Token (32 Bytes b64url),
-//   speichert SHA-256-Hash + Ablaufzeit in DB, gibt rohen Token zurück.
-// - verifyMagicLink(token): hashed Token, sucht zugehörigen Eintrag, prüft
-//   Gültigkeit/Verbrauch, markiert als consumed, gibt zugehörigen ClientContact
-//   zurück (oder null).
-//
-// Hinweis: rohen Token NIE persistieren — nur per Mail an den User.
-// =============================================================================
-
 import { createHash, randomBytes, randomInt } from 'node:crypto';
 import { sendTemplateMail } from '@/server/mail/dispatch';
 import { env, portalBaseUrl } from '@taxtronik/config';
@@ -30,35 +18,110 @@ function generateRawToken(): string {
   return randomBytes(32).toString('base64url');
 }
 
+type MagicLinkContact = {
+  id: string;
+  tenantId: string;
+  clientId: string;
+  email: string;
+  fullName: string;
+  client: { name: string; allowActive: boolean; anonymizedAt: Date | null };
+};
+
+async function antiTimingDelay(): Promise<void> {
+  await new Promise<void>((resolve) => setTimeout(resolve, 250 + randomInt(0, 250)));
+}
+
+async function sendOneMagicLink(input: {
+  tenantName: string;
+  contact: MagicLinkContact;
+}): Promise<void> {
+  const { tenantName, contact } = input;
+  const rawToken = generateRawToken();
+  const tokenHash = hashToken(rawToken);
+  const expiresAt = new Date(Date.now() + MAGIC_LINK_TTL_MINUTES * 60 * 1000);
+
+  await prismaOwner.magicLink.create({
+    data: {
+      tenantId: contact.tenantId,
+      contactId: contact.id,
+      email: contact.email,
+      tokenHash,
+      expiresAt,
+    },
+  });
+
+  const link = `${portalBaseUrl}/portal/login/verify?token=${encodeURIComponent(rawToken)}`;
+
+  if (env.NODE_ENV !== 'production') {
+    log.info(
+      {
+        email: contact.email,
+        contactId: contact.id,
+        clientId: contact.clientId,
+        devSignInUrl: link,
+        expiresMinutes: MAGIC_LINK_TTL_MINUTES,
+      },
+      'magic-link (DEV) - direkt einloggen ueber den Link',
+    );
+  }
+
+  try {
+    await sendTemplateMail({
+      tenantId: contact.tenantId,
+      slug: 'magic-link',
+      to: contact.email,
+      vars: {
+        contact: { fullName: contact.fullName, email: contact.email },
+        tenant: { name: tenantName },
+        client: { name: contact.client.name },
+        link,
+        expiresMinutes: MAGIC_LINK_TTL_MINUTES,
+      },
+      fallback: {
+        subject: `Ihr Login-Link zum Mandantenportal (${contact.client.name})`,
+        bodyMd: `Hallo {{contact.fullName}},\n\nueber den folgenden Link koennen Sie sich in das Mandantenportal fuer {{client.name}} einloggen:\n\n{{link}}\n\nDer Link ist {{expiresMinutes}} Minuten gueltig und kann nur einmal verwendet werden.`,
+      },
+    });
+  } catch (e) {
+    log[env.NODE_ENV === 'production' ? 'error' : 'warn'](
+      { err: (e as Error).message, email: contact.email, contactId: contact.id },
+      'magic-link: SMTP-Versand fehlgeschlagen - Token bleibt gueltig, Resend moeglich',
+    );
+    try {
+      await withTenantContext(
+        { tenantId: contact.tenantId, actorId: null, actorType: 'SYSTEM' },
+        (tx) =>
+          notify(tx, {
+            tenantId: contact.tenantId,
+            staffId: null,
+            kind: 'SYSTEM_MAIL_FAILED',
+            title: 'Login-Link konnte nicht versendet werden',
+            body: `Der Magic-Link an ${contact.email} wurde nicht zugestellt (SMTP-Fehler). Bitte Mailserver pruefen oder den Link erneut senden.`,
+            resourceType: 'client_contact',
+            resourceId: contact.id,
+          }),
+      );
+    } catch (notifyErr) {
+      log.error(
+        { err: (notifyErr as Error).message, email: contact.email, contactId: contact.id },
+        'magic-link: Notification ueber SMTP-Fehler konnte nicht angelegt werden',
+      );
+    }
+  }
+}
+
 /**
- * Erzeugt einen Magic-Link für (tenantId, email) und sendet die Mail.
- * Findet kein Contact existiert, gibt nicht-fail zurück (anti-enumeration).
+ * Erzeugt Magic-Links fuer eine E-Mail-Adresse. Bei Staff-Flows wird per
+ * contactId exakt der gewuenschte Ansprechpartner adressiert. Ohne contactId
+ * (Portal-Login per E-Mail) bekommen alle aktiven Kontakte dieser Adresse
+ * einen eigenen, kontaktgebundenen Link.
  */
 export async function requestMagicLink(input: {
   tenantId: string;
   email: string;
+  contactId?: string;
 }): Promise<{ ok: boolean }> {
-  // N-9: Throttle pro (tenantId, email), auch wenn requestMagicLink intern aus
-  // einem authentifizierten Staff-Flow (z. B. inviteContactAction) heraus
-  // aufgerufen wird. Verhindert Mail-Bombing von Kontakten durch einen
-  // kompromittierten/missbräuchlichen Staff-Account. Symmetrisch zum Limit
-  // in der öffentlichen requestMagicLinkAction.
-  //
-  // UX-Note: Anti-Enumeration verlangt, dass wir bei Drosselung weiterhin
-  // ok:true zurückgeben — sonst könnte ein Angreifer durch Probieren
-  // herausfinden, welche E-Mails existieren. Konsequenz: ein Staff, der die
-  // „Login-Link senden"-Aktion doppelt klickt, sieht zweimal Erfolg, aber die
-  // zweite Mail wird stillschweigend nicht versendet. Im Staff-UI sollte die
-  // Schaltfläche nach dem ersten Klick deshalb mind. 60 s disabled bleiben.
   const emailKey = input.email.toLowerCase();
-
-  // M-4/F5: Anti-Enumeration + Anti-Timing. JEDER „stille Erfolg" (Throttle,
-  // Tenant unbekannt, Contact unbekannt) bekommt dieselbe Latenz wie der echte
-  // Pfad (DB-Write + SMTP ~250-500 ms) — sonst lässt sich per Stoppuhr
-  // enumerieren. randomInt (kryptographisch) statt Math.random, dessen Verteilung
-  // sonst versehentlich für etwas Sicherheitsrelevantes wiederverwendet werden könnte.
-  const antiTimingDelay = () =>
-    new Promise<void>((resolve) => setTimeout(resolve, 250 + randomInt(0, 250)));
 
   const rl = await checkRateLimit(`magic-link-issue:${input.tenantId}:${emailKey}`, {
     max: 1,
@@ -75,117 +138,36 @@ export async function requestMagicLink(input: {
     return { ok: true };
   }
 
-  const contact = await prismaOwner.clientContact.findFirst({
-    where: { tenantId: input.tenantId, email: input.email.toLowerCase(), active: true },
-    include: { client: { select: { allowActive: true, anonymizedAt: true } } },
-  });
-  // GwG-Schranke (§ 11 GwG): Kontakte deaktivierter (allowActive=false, z. B.
-  // GwG abgelaufen/abgelehnt) oder anonymisierter Mandanten bekommen KEINEN
-  // Login-Link. Identisches Anti-Enumeration-Verhalten wie „Contact unbekannt"
-  // — keine eigene Fehlermeldung, gleiche Latenz.
-  if (!contact || !contact.client.allowActive || contact.client.anonymizedAt !== null) {
+  const contacts = (input.contactId
+    ? await prismaOwner.clientContact.findMany({
+        where: { id: input.contactId, tenantId: input.tenantId, email: emailKey, active: true },
+        include: { client: { select: { name: true, allowActive: true, anonymizedAt: true } } },
+        orderBy: { createdAt: 'asc' },
+      })
+    : await prismaOwner.clientContact.findMany({
+        where: { tenantId: input.tenantId, email: emailKey, active: true },
+        include: { client: { select: { name: true, allowActive: true, anonymizedAt: true } } },
+        orderBy: { createdAt: 'asc' },
+      })) as MagicLinkContact[];
+
+  const eligibleContacts = contacts.filter(
+    (contact) => contact.client.allowActive && contact.client.anonymizedAt === null,
+  );
+  if (eligibleContacts.length === 0) {
     await antiTimingDelay();
     return { ok: true };
   }
 
-  const rawToken = generateRawToken();
-  const tokenHash = hashToken(rawToken);
-  const expiresAt = new Date(Date.now() + MAGIC_LINK_TTL_MINUTES * 60 * 1000);
-
-  await prismaOwner.magicLink.create({
-    data: {
-      tenantId: input.tenantId,
-      email: contact.email,
-      tokenHash,
-      expiresAt,
-    },
-  });
-
-  const link = `${portalBaseUrl}/portal/login/verify?token=${encodeURIComponent(rawToken)}`;
-
-  // Dev-Convenience: Link zusätzlich ins Server-Log schreiben, damit man auch
-  // ohne funktionierende SMTP-Anbindung (z. B. blockierter Port 1025) ins
-  // Portal einsteigen kann. In Production NICHT — der Klartext-Token darf
-  // dort die Anwendung nicht verlassen.
-  if (env.NODE_ENV !== 'production') {
-    // L-3 + L1/NEW7: Strukturiertes Log statt console.log. Property-Name
-    // bewusst `devSignInUrl` statt `link`, weil Pino-Redact `*.link`
-    // global verschluckt (Defense in Depth gegen Token-Leak im Prod-Log).
-    // Hier ist explizit gewollt, dass der URL im Dev sichtbar ist.
-    log.info(
-      {
-        email: contact.email,
-        devSignInUrl: link,
-        expiresMinutes: MAGIC_LINK_TTL_MINUTES,
-      },
-      'magic-link (DEV) — direkt einloggen über den Link',
-    );
-  }
-
-  // M-3: SMTP-Fehler dürfen die Anti-Enumeration-Garantie nicht brechen.
-  // Vorher: throw e in Production hätte den Caller mit einer Exception
-  // beworfen, die anders zurückkommt als die schweigende „kein Contact"-
-  // Variante (250-500ms-Delay + ok:true). Ein Angreifer mit Stoppuhr und
-  // simultaner SMTP-Störung könnte daraus den Account-Existenz-Status ableiten.
-  // Jetzt: SMTP-Fehler immer schlucken + strukturiert loggen. Token bleibt
-  // in der DB, der User bekommt halt keinen Link — Resend-Pfad ist gangbar.
-  // Operations sieht den Fehler im Log UND als In-App-Notification (unten).
-  try {
-    await sendTemplateMail({
-      tenantId: contact.tenantId,
-      slug: 'magic-link',
-      to: contact.email,
-      vars: {
-        contact: { fullName: contact.fullName, email: contact.email },
-        tenant: { name: tenant.name },
-        link,
-        expiresMinutes: MAGIC_LINK_TTL_MINUTES,
-      },
-      fallback: {
-        subject: 'Ihr Login-Link zum Mandantenportal',
-        bodyMd: `Hallo {{contact.fullName}},\n\nüber den folgenden Link können Sie sich in das Mandantenportal einloggen:\n\n{{link}}\n\nDer Link ist {{expiresMinutes}} Minuten gültig und kann nur einmal verwendet werden.`,
-      },
-    });
-  } catch (e) {
-    // Production: error-Level, damit Ops das Monitoring abgreift. KEIN throw —
-    // Anti-Enumeration ist wichtiger als der eine fehlgeschlagene Send.
-    log[env.NODE_ENV === 'production' ? 'error' : 'warn'](
-      { err: (e as Error).message, email: contact.email },
-      'magic-link: SMTP-Versand fehlgeschlagen — Token bleibt gültig, Resend möglich',
-    );
-    // In-App-Notification an die Kanzlei: der Kontakt hat seinen Login-Link
-    // NICHT erhalten — Staff kann nachfassen / erneut senden. Best-effort in
-    // eigenem try/catch: ein Notification-Fehler darf weder den Flow brechen
-    // noch die Anti-Enumeration-Garantie (immer ok:true) verletzen.
-    // Idempotent pro Kontakt (resourceId) — wiederholte Fehler spammen nicht.
-    try {
-      await withTenantContext(
-        { tenantId: contact.tenantId, actorId: null, actorType: 'SYSTEM' },
-        (tx) =>
-          notify(tx, {
-            tenantId: contact.tenantId,
-            staffId: null,
-            kind: 'SYSTEM_MAIL_FAILED',
-            title: 'Login-Link konnte nicht versendet werden',
-            body: `Der Magic-Link an ${contact.email} wurde nicht zugestellt (SMTP-Fehler). Bitte Mailserver prüfen oder den Link erneut senden.`,
-            resourceType: 'client_contact',
-            resourceId: contact.id,
-          }),
-      );
-    } catch (notifyErr) {
-      log.error(
-        { err: (notifyErr as Error).message, email: contact.email },
-        'magic-link: Notification über SMTP-Fehler konnte nicht angelegt werden',
-      );
-    }
+  for (const contact of eligibleContacts) {
+    await sendOneMagicLink({ tenantName: tenant.name, contact });
   }
 
   return { ok: true };
 }
 
 /**
- * Verifiziert einen Magic-Link-Token und gibt ClientContact + tenant zurück.
- * Markiert Token als consumed (one-time-use).
+ * Verifiziert einen Magic-Link-Token und gibt den gebundenen ClientContact
+ * zurueck. Legacy-Links ohne contactId verwenden den alten tenant/email-Fallback.
  */
 export async function verifyMagicLink(rawToken: string): Promise<{
   contact: { id: string; tenantId: string; clientId: string; email: string; fullName: string };
@@ -200,17 +182,32 @@ export async function verifyMagicLink(rawToken: string): Promise<{
   if (link.consumedAt) return null;
   if (link.expiresAt < new Date()) return null;
 
-  const contact = await prismaOwner.clientContact.findFirst({
-    where: { tenantId: link.tenantId, email: link.email, active: true },
-    include: { client: { select: { allowActive: true, anonymizedAt: true } } },
-  });
-  // GwG-Schranke (§ 11 GwG): Mandant zwischenzeitlich deaktiviert/anonymisiert
-  // → Token verfällt wie bei unbekanntem/inaktivem Kontakt (null, kein Consume).
-  if (!contact || !contact.client.allowActive || contact.client.anonymizedAt !== null) return null;
+  const contact = (link.contactId
+    ? await prismaOwner.clientContact.findUnique({
+        where: { id: link.contactId },
+        include: { client: { select: { allowActive: true, anonymizedAt: true } } },
+      })
+    : await prismaOwner.clientContact.findFirst({
+        where: { tenantId: link.tenantId, email: link.email, active: true },
+        include: { client: { select: { allowActive: true, anonymizedAt: true } } },
+      })) as
+    | (Omit<MagicLinkContact, 'client'> & {
+        active: boolean;
+        client: { allowActive: boolean; anonymizedAt: Date | null };
+      })
+    | null;
 
-  // Atomar als consumed markieren (Race-Schutz). RF-12: der Consume IST der
-  // Portal-Login — auth.magic_link.consume wandert in DERSELBEN Tx in die
-  // Audit-Hash-Chain (vorher stand der Portal-Login nirgends manipulationsfest).
+  if (
+    !contact ||
+    !contact.active ||
+    contact.tenantId !== link.tenantId ||
+    contact.email.toLowerCase() !== link.email.toLowerCase() ||
+    !contact.client.allowActive ||
+    contact.client.anonymizedAt !== null
+  ) {
+    return null;
+  }
+
   const claimed = await prismaOwner.$transaction(async (tx) => {
     const claim = await tx.magicLink.updateMany({
       where: { id: link.id, consumedAt: null },
@@ -230,7 +227,6 @@ export async function verifyMagicLink(rawToken: string): Promise<{
   });
   if (!claimed) return null;
 
-  // Last-Login-Timestamp updaten (fire-and-forget)
   prismaOwner.clientContact
     .update({ where: { id: contact.id }, data: { lastLoginAt: new Date() } })
     .catch(() => void 0);

@@ -54,7 +54,14 @@ export async function anonymizeContactInTx(
   });
   // Magic-Links der Person ungültig machen (consumed)
   await tx.magicLink.updateMany({
-    where: { tenantId, email: before.email, consumedAt: null },
+    where: {
+      tenantId,
+      consumedAt: null,
+      OR: [
+        { contactId },
+        { contactId: null, email: before.email },
+      ],
+    },
     data: { consumedAt: new Date() },
   });
   await evidenceService.record(tx, {

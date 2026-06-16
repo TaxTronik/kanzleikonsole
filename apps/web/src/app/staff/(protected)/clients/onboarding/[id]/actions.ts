@@ -55,6 +55,7 @@ export async function onboardingAddContactAction(formData: FormData) {
   const sendInvite = parsed.data.sendPortalInvite === 'on' || parsed.data.sendPortalInvite === '1';
 
   let contactEmail = '';
+  let contactId = '';
   let clientAllowsPortal = false;
   try {
     const result = await withTenantContext(ctx, async (tx) => {
@@ -65,12 +66,9 @@ export async function onboardingAddContactAction(formData: FormData) {
       if (!client) throw new ActionError('Mandant nicht gefunden.');
 
       const existing = await tx.clientContact.findFirst({
-        where: { tenantId, email: parsed.data.email.toLowerCase() },
+        where: { tenantId, clientId: parsed.data.clientId, email: parsed.data.email.toLowerCase() },
       });
       if (existing) {
-        if (existing.clientId !== parsed.data.clientId) {
-          throw new ActionError('E-Mail ist bereits einem anderen Mandanten zugeordnet.');
-        }
         await tx.clientContact.update({
           where: { id: existing.id },
           data: {
@@ -87,7 +85,7 @@ export async function onboardingAddContactAction(formData: FormData) {
           resourceId: existing.id,
           after: { onboarding: true },
         });
-        return { email: existing.email, allowActive: client.allowActive };
+        return { id: existing.id, email: existing.email, allowActive: client.allowActive };
       }
 
       const c = await tx.clientContact.create({
@@ -107,8 +105,9 @@ export async function onboardingAddContactAction(formData: FormData) {
         resourceId: c.id,
         after: { email: parsed.data.email, onboarding: true },
       });
-      return { email: c.email, allowActive: client.allowActive };
+      return { id: c.id, email: c.email, allowActive: client.allowActive };
     });
+    contactId = result.id;
     contactEmail = result.email;
     clientAllowsPortal = result.allowActive;
   } catch (e) {
@@ -118,7 +117,7 @@ export async function onboardingAddContactAction(formData: FormData) {
 
   if (sendInvite && clientAllowsPortal) {
     try {
-      await requestMagicLink({ tenantId, email: contactEmail });
+      await requestMagicLink({ tenantId, email: contactEmail, contactId });
     } catch {
       // Mailversand-Fehler nicht blockierend — Wizard läuft weiter, Berater kann später nachversenden
     }

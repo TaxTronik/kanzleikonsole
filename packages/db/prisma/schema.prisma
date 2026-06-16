@@ -902,8 +902,9 @@ model ClientContact {
   client               Client                      @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant               Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   masterChangeRequests ClientMasterChangeRequest[]
+  magicLinks           MagicLink[]
 
-  @@unique([tenantId, email])
+  @@unique([tenantId, clientId, email])
   @@index([tenantId, clientId])
   @@map("client_contact")
 }
@@ -911,14 +912,17 @@ model ClientContact {
 model MagicLink {
   id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId   String    @map("tenant_id") @db.Uuid
+  contactId  String?   @map("contact_id") @db.Uuid
   email      String    @db.Citext
   tokenHash  String    @map("token_hash")
   expiresAt  DateTime  @map("expires_at")
   consumedAt DateTime? @map("consumed_at")
   createdAt  DateTime  @default(now()) @map("created_at")
+  contact    ClientContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
   tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tokenHash])
+  @@index([contactId])
   @@index([tenantId, email])
   @@map("magic_link")
 }

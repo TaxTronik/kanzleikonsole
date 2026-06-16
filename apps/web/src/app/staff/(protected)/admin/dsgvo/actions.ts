@@ -190,7 +190,13 @@ export async function exportContactDataAction(contactId: string): Promise<{
           })
         : [];
       const magicLinks = await tx.magicLink.count({
-        where: { tenantId, email: contact.email },
+        where: {
+          tenantId,
+          OR: [
+            { contactId },
+            { contactId: null, email: contact.email },
+          ],
+        },
       });
 
       // Art. 15/20: weitere Datenklassen mit Personenbezug des Antragstellers.

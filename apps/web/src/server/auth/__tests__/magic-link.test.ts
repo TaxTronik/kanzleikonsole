@@ -30,7 +30,7 @@ const m = vi.hoisted(() => ({
   evidenceRecord: vi.fn(),
   prismaOwner: {
     tenant: { findUnique: vi.fn() },
-    clientContact: { findFirst: vi.fn(), update: vi.fn() },
+    clientContact: { findFirst: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
     magicLink: { create: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn() },
     $transaction: vi.fn(),
   },
@@ -60,8 +60,9 @@ const CONTACT = {
   clientId: 'client-1',
   email: 'mandant@example.de',
   fullName: 'Max Mandant',
+  active: true,
   // GwG-Schranke: der Parent-Client wird per include mitgeladen.
-  client: { allowActive: true, anonymizedAt: null },
+  client: { name: 'Muster GmbH', allowActive: true, anonymizedAt: null },
 };
 
 beforeEach(() => {
@@ -72,6 +73,8 @@ beforeEach(() => {
   m.checkRateLimit.mockResolvedValue({ ok: true });
   m.prismaOwner.tenant.findUnique.mockResolvedValue(TENANT);
   m.prismaOwner.clientContact.findFirst.mockResolvedValue(CONTACT);
+  m.prismaOwner.clientContact.findMany.mockResolvedValue([CONTACT]);
+  m.prismaOwner.clientContact.findUnique.mockResolvedValue(CONTACT);
   m.prismaOwner.clientContact.update.mockResolvedValue({});
   m.prismaOwner.magicLink.create.mockResolvedValue({});
   m.prismaOwner.magicLink.updateMany.mockResolvedValue({ count: 1 });
@@ -143,7 +146,7 @@ describe('requestMagicLink — Anti-Enumeration (immer ok:true)', () => {
   });
 
   it('unbekannter Contact → ok:true, KEIN Token', async () => {
-    m.prismaOwner.clientContact.findFirst.mockResolvedValue(null);
+    m.prismaOwner.clientContact.findMany.mockResolvedValue([]);
     const res = await withTimersFlushed(
       requestMagicLink({ tenantId: 'tenant-1', email: 'unbekannt@example.de' }),
     );
@@ -155,10 +158,10 @@ describe('requestMagicLink — Anti-Enumeration (immer ok:true)', () => {
   it('Mandant GwG-deaktiviert (allowActive=false) → ok:true, KEIN Token, KEINE Mail', async () => {
     // GwG-Schranke (§ 11 GwG): identisches Verhalten wie „Contact unbekannt" —
     // kein unterscheidbarer Fehler, sonst wäre der Sperr-Status enumerierbar.
-    m.prismaOwner.clientContact.findFirst.mockResolvedValue({
+    m.prismaOwner.clientContact.findMany.mockResolvedValue([{
       ...CONTACT,
-      client: { allowActive: false, anonymizedAt: null },
-    });
+      client: { name: 'Muster GmbH', allowActive: false, anonymizedAt: null },
+    }]);
     const res = await withTimersFlushed(
       requestMagicLink({ tenantId: 'tenant-1', email: 'mandant@example.de' }),
     );
@@ -196,9 +199,10 @@ describe('requestMagicLink — Happy Path', () => {
 
     expect(m.prismaOwner.magicLink.create).toHaveBeenCalledTimes(1);
     const createArgs = m.prismaOwner.magicLink.create.mock.calls[0]![0] as {
-      data: { tenantId: string; email: string; tokenHash: string; expiresAt: Date };
+      data: { tenantId: string; contactId: string; email: string; tokenHash: string; expiresAt: Date };
     };
     expect(createArgs.data.tenantId).toBe('tenant-1');
+    expect(createArgs.data.contactId).toBe(CONTACT.id);
     expect(createArgs.data.email).toBe(CONTACT.email);
     expect(createArgs.data.tokenHash).toMatch(/^[0-9a-f]{64}$/);
     expect(createArgs.data.expiresAt).toEqual(new Date(FIXED_NOW.getTime() + TTL_MS));
@@ -229,9 +233,10 @@ describe('requestMagicLink — Happy Path', () => {
       'magic-link-issue:tenant-1:mandant@example.de',
       expect.anything(),
     );
-    expect(m.prismaOwner.clientContact.findFirst).toHaveBeenCalledWith({
+    expect(m.prismaOwner.clientContact.findMany).toHaveBeenCalledWith({
       where: { tenantId: 'tenant-1', email: 'mandant@example.de', active: true },
-      include: { client: { select: { allowActive: true, anonymizedAt: true } } },
+      include: { client: { select: { name: true, allowActive: true, anonymizedAt: true } } },
+      orderBy: { createdAt: 'asc' },
     });
   });
 });
@@ -247,6 +252,7 @@ function linkRecord(overrides: Partial<Record<string, unknown>> = {}) {
     id: 'link-1',
     tenantId: 'tenant-1',
     email: CONTACT.email,
+    contactId: CONTACT.id,
     tokenHash: hashToken(RAW_TOKEN),
     consumedAt: null,
     expiresAt: new Date(FIXED_NOW.getTime() + 5 * 60 * 1000),
@@ -292,7 +298,7 @@ describe('verifyMagicLink', () => {
 
   it('Contact existiert nicht mehr / inaktiv → null', async () => {
     m.prismaOwner.magicLink.findFirst.mockResolvedValue(linkRecord());
-    m.prismaOwner.clientContact.findFirst.mockResolvedValue(null);
+    m.prismaOwner.clientContact.findUnique.mockResolvedValue(null);
     expect(await verifyMagicLink(RAW_TOKEN)).toBeNull();
   });
 
@@ -301,9 +307,10 @@ describe('verifyMagicLink', () => {
     // (GwG abgelaufen/abgelehnt) → Login verweigert, ununterscheidbar vom
     // unbekannten/inaktiven Kontakt.
     m.prismaOwner.magicLink.findFirst.mockResolvedValue(linkRecord());
-    m.prismaOwner.clientContact.findFirst.mockResolvedValue({
+    m.prismaOwner.clientContact.findUnique.mockResolvedValue({
       ...CONTACT,
-      client: { allowActive: false, anonymizedAt: null },
+      active: true,
+      client: { name: 'Muster GmbH', allowActive: false, anonymizedAt: null },
     });
     expect(await verifyMagicLink(RAW_TOKEN)).toBeNull();
     expect(m.prismaOwner.magicLink.updateMany).not.toHaveBeenCalled();
