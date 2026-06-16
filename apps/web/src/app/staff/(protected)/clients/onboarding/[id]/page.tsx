@@ -21,6 +21,7 @@ import {
   onboardingSkipAction,
   onboardingCompleteAction,
 } from './actions';
+import { ConfirmSubmitButton } from './confirm-submit-button';
 import { GwgSubmissionSummary, type GwgSubmissionSummaryData } from '@/components/gwg-submission-summary';
 
 interface Search { step?: string; error?: string; }
@@ -175,6 +176,9 @@ export default async function OnboardingStepPage({
   };
 
   const steps = stepsForTenant(modules);
+  const hasGwgSubmission = Boolean(
+    gwgInvite?.submittedAt || gwgCheck || gwgSummary.uploadedDocuments.length > 0,
+  );
   const doneKeys = new Set<StepKey>();
   doneKeys.add('master_data'); // sind wir hier, ist der Mandant da
   if (contactCount > 0) doneKeys.add('contact');
@@ -226,6 +230,7 @@ export default async function OnboardingStepPage({
             defaultName={firstContact?.fullName ?? ''}
             defaultEmail={firstContact?.email ?? ''}
             existingInvite={gwgInvite}
+            hasSubmission={hasGwgSubmission}
           />
           {(gwgInvite || gwgCheck || gwgSummary.uploadedDocuments.length > 0) && (
             <GwgSubmissionSummary data={gwgSummary} title="Aktueller Stand der GwG-Einreichung" />
@@ -330,12 +335,15 @@ function GwgStep({
   defaultName,
   defaultEmail,
   existingInvite,
+  hasSubmission,
 }: {
   clientId: string;
   defaultName: string;
   defaultEmail: string;
   existingInvite: { id: string; inviteEmail: string; inviteName: string; status: string } | null;
+  hasSubmission: boolean;
 }) {
+  const sendFormId = `gwg-send-${clientId}`;
   return (
     <div className="card p-6">
       <h2 className="text-sm font-medium text-primary mb-1 flex items-center gap-2">
@@ -353,7 +361,7 @@ function GwgStep({
         </div>
       )}
 
-      <form action={onboardingSendGwgAction} className="space-y-4">
+      <form id={sendFormId} action={onboardingSendGwgAction} className="space-y-4">
         <input type="hidden" name="clientId" value={clientId} />
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -365,15 +373,30 @@ function GwgStep({
             <input id="inviteEmail" name="inviteEmail" type="email" required maxLength={255} defaultValue={defaultEmail} className="input" />
           </div>
         </div>
-        <div className="flex justify-end gap-2 pt-3 border-t border-subtle">
-          {existingInvite && (
-            <SkipButton clientId={clientId} next="poa" label="Bereits gesendet — weiter" />
-          )}
-          <button type="submit" className="btn-primary text-sm">
-            {existingInvite ? 'Erneut senden' : 'Einladung senden'}
-          </button>
-        </div>
       </form>
+      <div className="flex justify-end gap-2 pt-3 mt-4 border-t border-subtle">
+        {hasSubmission ? (
+          <form action={onboardingSkipAction} className="inline">
+            <input type="hidden" name="clientId" value={clientId} />
+            <input type="hidden" name="next" value="poa" />
+            <ConfirmSubmitButton
+              className="btn-primary text-sm"
+              message="GwG-Unterlagen als geprüft markieren und im Onboarding weitergehen?"
+            >
+              Geprüft (weiter)
+            </ConfirmSubmitButton>
+          </form>
+        ) : existingInvite ? (
+          <SkipButton clientId={clientId} next="poa" label="Weiter" />
+        ) : null}
+        <button
+          type="submit"
+          form={sendFormId}
+          className={existingInvite ? 'btn-secondary text-sm' : 'btn-primary text-sm'}
+        >
+          {existingInvite ? 'Erneut senden' : 'Einladung senden'}
+        </button>
+      </div>
     </div>
   );
 }
