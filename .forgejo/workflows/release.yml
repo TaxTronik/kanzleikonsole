@@ -16,7 +16,7 @@
 # nur rapportiert — Alpine-Basis-CVEs ohne Fix würden sonst jedes Release
 # aufhalten.
 #
-# Zielmaschine (.env), danach ./scripts/update.sh:
+# Zielmaschine (.env), danach ./taxtronik update:
 #   TAXTRONIK_IMAGE_PREFIX=git.hirschmann-koxha.de/taxtronik
 #   TAXTRONIK_VERSION=1.4.0
 # Prozess-Doku: docs/operations/release.md

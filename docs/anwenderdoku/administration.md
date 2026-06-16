@@ -87,8 +87,8 @@ Administratoren sehen immer alles.
   wurde. Ein Fehlschlag erzeugt eine Benachrichtigung an alle
   Administratoren und erfordert sofortige Klärung.
 - **Wichtig (Betreiber-Pflicht):** Die *tägliche* Sicherung selbst wird vom
-  Server-Betreiber eingerichtet (`./scripts/backup.sh` per Cron) — sie
-  läuft nicht automatisch aus der Anwendung. Die Update-/Deploy-Skripte
+  Server-Betreiber eingerichtet (`./taxtronik backup` per Cron) — sie
+  läuft nicht automatisch aus der Anwendung. `./taxtronik update`/`deploy`
   sichern zusätzlich vor jeder Datenbankmigration automatisch.
 - Wiederherstellung im Ernstfall: siehe Disaster-Recovery-Runbook
   (Betriebsdokumentation); Kurzbefehle stehen auf der Admin-Karte.

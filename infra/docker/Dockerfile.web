@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # =============================================================================
 # Multi-Stage Dockerfile für apps/web (Next.js standalone)
 #
@@ -43,7 +44,8 @@ COPY . .
 # nötigen postinstall-Hooks (Prisma-Engine, sharp libvips, esbuild) holt rebuild
 # nach. --filter @taxtronik/db, damit dessen devDep prisma (+ transitiv dotenv)
 # für prisma generate/migrate von packages/db auflösbar ist.
-RUN pnpm install --frozen-lockfile --ignore-scripts \
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile --ignore-scripts \
       --filter @taxtronik/web... --filter @taxtronik/web --filter @taxtronik/db
 
 RUN pnpm rebuild -r --filter @taxtronik/web... --filter @taxtronik/web \
@@ -61,7 +63,8 @@ RUN cd packages/db && \
 # Safety-Net: leeres public/ anlegen, damit COPY in der runner-Stage nicht knallt.
 RUN mkdir -p apps/web/public
 
-RUN cd apps/web && \
+RUN --mount=type=cache,target=/repo/apps/web/.next/cache \
+    cd apps/web && \
     NEXT=$(find /repo -path "*/next/dist/bin/next" -not -path "*/cache/*" 2>/dev/null | head -1) && \
     test -n "$NEXT" && \
     AUTH_SECRET=build-time-dummy-not-used-at-runtime-padding-padding \

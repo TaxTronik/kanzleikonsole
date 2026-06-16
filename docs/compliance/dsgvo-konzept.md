@@ -356,12 +356,12 @@ gepflegt.
 ### Verfügbarkeit
 
 - Postgres-Dump in den S3-Backup-Bucket via Operator-Cron bzw. manuell
-  (`scripts/backup.sh` / `pnpm --filter @taxtronik/web backup:run`);
+  (`./taxtronik backup` / `pnpm --filter @taxtronik/web backup:run`);
   jeder Lauf wird auditiert (`backup.run`) und als `BackupRecord` mit
   Status + SHA-256 erfasst, die Admin-Übersicht zeigt den letzten Stand.
   Kein automatischer SeaweedFS-Sync durch die App — die Off-Site-
   Replikation des Object-Stores ist Operator-Aufgabe (siehe gobd.md § 5)
-- Pre-Flight-Backup vor jeder Migration (`scripts/update.sh`)
+- Pre-Flight-Backup vor jeder Migration (`./taxtronik update`/`deploy`)
 
 ### Belastbarkeit
 

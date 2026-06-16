@@ -63,7 +63,7 @@ services:
       - DAC_OVERRIDE
     environment:
       POSTGRES_USER: taxtronik
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD nicht gesetzt — bitte ./scripts/setup.sh ausführen}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD nicht gesetzt — bitte ./taxtronik bootstrap (Prod) bzw. ./scripts/setup.sh (Dev) ausfuehren}
       POSTGRES_DB: taxtronik
       # Werden vom Init-Skript zum Anlegen der Anwendungs-Rollen verwendet
       TAXTRONIK_APP_PASSWORD: ${TAXTRONIK_APP_PASSWORD:?TAXTRONIK_APP_PASSWORD nicht gesetzt}

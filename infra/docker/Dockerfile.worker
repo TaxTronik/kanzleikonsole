@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # =============================================================================
 # Worker-Dockerfile (BullMQ-Worker)
 #
@@ -19,7 +20,8 @@ COPY . .
 # --ignore-scripts (pnpm 11 blockt Build-Scripts) → postinstall-Hooks holt rebuild
 # nach. `--filter @taxtronik/db`, damit dessen devDep prisma (+ transitiv dotenv)
 # für den Migrate-Service (prisma.config.ts) von packages/db auflösbar ist.
-RUN pnpm install --frozen-lockfile --ignore-scripts --filter @taxtronik/worker... --filter @taxtronik/db
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile --ignore-scripts --filter @taxtronik/worker... --filter @taxtronik/db
 
 RUN pnpm rebuild -r --filter @taxtronik/worker... \
       @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver \

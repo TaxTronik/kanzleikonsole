@@ -28,7 +28,7 @@ monatlich per Restore-Drill (Art. 32 Abs. 1 lit. d DSGVO).
 - **CI-Selbsttest** (`scripts/restore-selftest.sh`, Job `restore`): echter
   runner→restore-Roundtrip je Commit mit Zeilenzahl-Assertions + Chain-
   Verifikation; Protokoll als CI-Artefakt.
-- **Operator:** `backup.sh` (Cron-Pflicht des Betreibers — kein
+- **Operator:** `./taxtronik backup` (Cron-Pflicht des Betreibers — kein
   App-interner Tagesjob, bewusst), Deploy/Update sichern automatisch vor
   jeder Migration; DR-Runbook mit Rollback-Pfaden.
 
@@ -40,7 +40,7 @@ monatlich per Restore-Drill (Art. 32 Abs. 1 lit. d DSGVO).
 | Wiederherstellbarkeit je Software-Stand | restore-selftest.sh | CI-Job `restore` (Artefakt `testbericht-restore`) |
 | Wiederherstellbarkeit je Installation | backup-drill-Worker | `backup-drill.test.ts` (Helfer) + End-to-End über echte Queue/Image (verifiziert 2026-06-10); Audit-Events in der Chain |
 | Ganz-oder-gar-nicht-Restore | --single-transaction | CI-Roundtrip |
-| Migration nie ohne Backup | ops-lib `backup_before_migrations` | deploy.sh/update.sh-Pfad |
+| Migration nie ohne Backup | ops-lib `backup_before_migrations` | ./taxtronik deploy/update |
 | Sichtbarkeit | Admin-Backup-Karte + Drill-Ergebnis | manuelle Abnahme |
 
 ## Bekannte Grenzen

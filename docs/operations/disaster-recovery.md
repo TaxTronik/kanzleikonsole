@@ -237,8 +237,9 @@ Vollständiger Prozess inkl. Expand/Contract-Konvention:
 ### 9.1 Nur App zurück (keine Migrationen seit dem letzten Update)
 
 ```bash
-# .env: TAXTRONIK_VERSION auf den vorherigen Tag zurücksetzen, dann:
-./scripts/deploy.sh
+# Automatisch auf den vorherigen Stand (aus .taxtronik.state) zurueck:
+./taxtronik rollback
+# oder manuell: in der .env TAXTRONIK_VERSION pinnen, dann ./taxtronik deploy
 ```
 
 Registry-Images sind versioniert — das ist ein reiner Re-Pin, die Datenbank
@@ -247,13 +248,13 @@ N−1-Code.
 
 ### 9.2 Rollback über Migrationen hinweg (letzte Option)
 
-`deploy.sh`/`update.sh` legen vor jeder Migration automatisch ein Backup an
+`./taxtronik deploy`/`update` legen vor jeder Migration automatisch ein Backup an
 (Skip nur beim Erstdeploy). Pfad zurück:
 
 1. Backup von **vor** der Migration einspielen (Abschnitt 3; bei gefüllter
    Ziel-DB `--confirm-overwrite`)
 2. `TAXTRONIK_VERSION` auf den vorherigen Tag setzen
-3. `./scripts/deploy.sh`
+3. `./taxtronik deploy`
 4. `pnpm verify:chain` — Audit-Kette muss intakt sein
 
 > **Achtung:** Alle Daten, die nach dem Backup entstanden sind, gehen

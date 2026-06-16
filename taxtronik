@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# =============================================================================
+# taxtronik — Operator-CLI (ein Einstieg fuer das ganze produktive Deployment).
+#
+#   ./taxtronik bootstrap            Prod-Erstinstall (1 Kommando bis laufende App)
+#   ./taxtronik deploy               bauen/pullen + migrieren + starten + Smoke
+#   ./taxtronik update               git pull + Backup + bauen/pullen + migrieren + starten
+#   ./taxtronik backup               Postgres -> S3-Backup-Bucket
+#   ./taxtronik rollback [<version>] zurueck auf vorherigen Stand (keine Migration)
+#   ./taxtronik doctor [--fix]       .env vorab validieren / Secrets generieren
+#   ./taxtronik up|down|ps|logs|exec|pull ...   docker-compose-Passthrough
+#   ./taxtronik --infra up -d                     nur Infra (Postgres/Redis/S3/ClamAV)
+#
+# Server führt NUR Prod aus — .env auf dem Server ist immer eine Prod-.env.
+# Dev-Setup (andere Maschine): scripts/setup.sh.
+# =============================================================================
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT/scripts/ops-lib.sh"
+
+usage() {
+  cat <<'EOF'
+taxtronik — Operator-CLI
+
+Nutze:
+  ./taxtronik bootstrap             Prod-Erstinstall (Infra, Images, Migration, Admin)
+  ./taxtronik deploy                bauen/pullen + migrieren + starten + Health-Smoke
+  ./taxtronik update                git pull + Backup + bauen/pullen + migrieren + starten
+  ./taxtronik backup                Postgres-Backup in den S3-Backup-Bucket
+  ./taxtronik rollback [<version>]  zurueck auf frueheren Stand (ohne DB-Migration)
+  ./taxtronik doctor [--fix]        .env-Validierung; --fix generiert fehlende Secrets
+  ./taxtronik up|down|ps|logs|exec|pull ...   docker-compose-Passthrough (ganzer Stack)
+  ./taxtronik --infra <cmd>                    nur Infra-Services
+  ./taxtronik help                 diese Hilfe
+EOF
+}
+
+# --infra als erstes Argument: nur Basis-Services (ohne app/worker/n8n).
+if [[ "${1:-}" == "--infra" ]]; then
+  shift
+  compose --infra "$@"
+  exit
+fi
+
+cmd="${1:-help}"
+case "$cmd" in
+  bootstrap) shift || true; cmd_bootstrap "$@" ;;
+  deploy)    cmd_deploy ;;
+  update)    cmd_update ;;
+  backup)    cmd_backup ;;
+  rollback)  shift || true; cmd_rollback "${1:-}" ;;
+  doctor)    shift || true; doctor "$@" ;;
+  up|down|stop|restart|ps|logs|exec|pull|top|config|port|images|stats)
+    shift || true; compose "$cmd" "$@" ;;
+  help|-h|--help) usage ;;
+  *) echo "Unbekanntes Kommando: $cmd" >&2; echo >&2; usage >&2; exit 1 ;;
+esac

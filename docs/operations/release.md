@@ -45,7 +45,7 @@ TAXTRONIK_VERSION=1.4.0
 Dann:
 
 ```bash
-./scripts/update.sh
+./taxtronik update
 ```
 
 Das Skript zieht Code (`git ff-only`) und Images, macht ein Backup, migriert
@@ -57,7 +57,7 @@ Private Registry: einmalig `docker login git.hirschmann-koxha.de` auf dem
 Server (Token mit `read:package` genügt).
 
 Ohne Registry-Zugriff (`TAXTRONIK_IMAGE_PREFIX` ohne Slash bzw. ungesetzt)
-bauen `deploy.sh`/`update.sh` wie bisher lokal aus dem Checkout — dann braucht
+baut `./taxtronik deploy`/`update` lokal aus dem Checkout — dann braucht
 der Server weiterhin die Build-Toolchain, und es läuft nicht das in CI
 getestete Artefakt.
 
@@ -82,15 +82,16 @@ Mitarbeiter, bricht es ab und verändert nichts.
 ## 3. Rollback
 
 **App-Rollback (keine neuen Migrationen seit dem letzten Update):**
-`TAXTRONIK_VERSION` in der `.env` auf den vorherigen Tag zurücksetzen, dann
-`./scripts/deploy.sh`. Da Images versioniert in der Registry liegen, ist das
-ein reiner Re-Pin.
+`./taxtronik rollback` (setzt `TAXTRONIK_VERSION` auf den vorherigen Stand aus
+`.taxtronik.state` zurück und startet App/Worker neu). Alternativ den Tag in der
+`.env` von Hand pinnen und `./taxtronik deploy`. Da Images versioniert in der
+Registry liegen, ist das ein reiner Re-Pin.
 
 **Rollback über Migrationen hinweg:** Prisma-Migrationen sind forward-only.
-`deploy.sh`/`update.sh` legen deshalb **vor** jeder Migration ein Backup an.
+`./taxtronik deploy`/`update` legen deshalb **vor** jeder Migration ein Backup an.
 Pfad zurück: Backup einspielen (siehe
 [disaster-recovery.md](disaster-recovery.md), Abschnitt 9), dann den
-vorherigen Tag pinnen und `./scripts/deploy.sh`. Achtung: Daten, die nach dem
+vorherigen Tag pinnen und `./taxtronik deploy`. Achtung: Daten, die nach dem
 Backup entstanden sind, gehen dabei verloren — Rollback über Migrationen ist
 die letzte Option, nicht der Standardweg.
 
@@ -119,7 +120,7 @@ Admin-UI „Update verfügbar" — inklusive Release-Notes (Tag-Annotation) und
 `migrationsRequired` (automatisch aus dem Migrations-Diff zum Vortag-Release).
 Die Signaturprüfung ist fail-closed: ohne gültige Signatur wird kein Update
 angezeigt. Es gibt bewusst **kein Auto-Update** — einspielen bleibt
-`./scripts/update.sh`.
+`./taxtronik update`.
 
 **Einmaliges Vendor-Setup:**
 

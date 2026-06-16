@@ -1,6 +1,6 @@
-# Shell-Scripts und der dc-Wrapper MÜSSEN LF behalten — sonst scheitert
+# Shell-Scripts und die Operator-CLI MÜSSEN LF behalten — sonst scheitert
 # der Linux-Server mit „bad interpreter: /usr/bin/env bash^M".
-dc                text eol=lf
+taxtronik         text eol=lf
 *.sh              text eol=lf
 infra/scripts/*   text eol=lf
 

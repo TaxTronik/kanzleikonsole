@@ -25,7 +25,7 @@ services:
   app:
     <<: [*hardening, *logging]
     # Image-Prefix parametrisiert: Default `taxtronik` (lokaler Build via
-    # deploy.sh). Für Registry-Pull in der .env setzen, z. B.
+    # ./taxtronik deploy). Für Registry-Pull in der .env setzen, z. B.
     # TAXTRONIK_IMAGE_PREFIX=git.kanzlei.de/rey → git.kanzlei.de/rey/web:<version>.
     image: ${TAXTRONIK_IMAGE_PREFIX:-taxtronik}/web:${TAXTRONIK_VERSION:-dev}
     container_name: taxtronik-app

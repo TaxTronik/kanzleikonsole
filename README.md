@@ -91,16 +91,25 @@ PowerShell:
 
 ## Produktivbetrieb
 
-Produktiv läuft der Stack über den Compose-Wrapper [dc](dc). Der Wrapper
-setzt immer die richtigen Compose-Dateien, nutzt die Root-`.env` und rendert vor
-jedem Compose-Aufruf die SeaweedFS-S3-Konfiguration.
+Produktiv läuft der Stack über die Operator-CLI [`./taxtronik`](taxtronik). Sie
+wählt immer die richtigen Compose-Dateien, nutzt die Root-`.env`, rendert vor
+jedem Aufruf die SeaweedFS-S3-Konfiguration und validiert die `.env` vorab
+(`doctor`) statt mitten im Deploy abzubrechen.
 
-Im Normalfall gibt es nur drei Befehle:
+Erstinstall (eine Kanzlei, ein Server, ein Kommando bis zur laufenden App):
 
 ```bash
-./scripts/deploy.sh   # Infra, Image-Pull (oder Build), Backup, Migration, Restart, Health-Smoke
-./scripts/update.sh   # git ff-only, Backup, Image-Pull (oder Build), Migration, Restart, Health-Smoke
-./scripts/backup.sh   # manuelles Postgres-Backup in den S3-Backup-Bucket
+./taxtronik bootstrap   # Prod-.env + Secrets, Infra, Images, Migration, Tenant + Admin
+```
+
+Im Normalfall danach:
+
+```bash
+./taxtronik deploy      # bauen/pullen + migrieren + starten + Health-Smoke
+./taxtronik update      # git ff-only + Backup + bauen/pullen + migrieren + starten
+./taxtronik backup      # manuelles Postgres-Backup in den S3-Backup-Bucket
+./taxtronik doctor      # .env prüfen (--fix generiert fehlende Secrets)
+./taxtronik rollback    # zurück auf den vorherigen Stand (keine Migration)
 ```
 
 Releases entstehen über Git-Tags (`v1.4.0`): der Forgejo-Workflow
@@ -113,8 +122,8 @@ Produktion Pflicht (kein `latest`-Fallback), damit Deploy-Stand und Rollback
 immer eindeutig sind. Details und Rollback-Pfad:
 [docs/operations/release.md](docs/operations/release.md)
 
-`update.sh` macht bewusst kein `git reset --hard`. Wenn lokale Änderungen oder
-ein nicht-fast-forward Stand existieren, bricht das Skript ab.
+`./taxtronik update` macht bewusst kein `git reset --hard`. Wenn lokale
+Änderungen oder ein nicht-fast-forward Stand existieren, bricht das Kommando ab.
 
 Hinweis zum nächsten Update: Durch die Umstellung der Session-Cookie-Namen auf
 `__Host-`/`__Secure-`-Präfixe werden einmalig alle aktiven Sessions invalidiert
@@ -155,14 +164,14 @@ Reverse Proxy und TLS liegen vor der App. Die Compose-Ports sind auf localhost
 gebunden; der Object-Store bleibt intern. Beispiel:
 [infra/nginx/taxtronik.conf.example](infra/nginx/taxtronik.conf.example)
 
-Weitere Operator-Kommandos:
+Weitere Operator-Kommandos (docker-compose-Passthrough):
 
 ```bash
-./dc ps
-./dc logs app --tail 80
-./dc logs worker --tail 80
-./dc --infra up -d
-./dc down
+./taxtronik ps
+./taxtronik logs app --tail 80
+./taxtronik logs worker --tail 80
+./taxtronik --infra up -d      # nur Infra (Postgres/Redis/S3/ClamAV)
+./taxtronik down
 ```
 
 ## Qualitätssicherung

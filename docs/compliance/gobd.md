@@ -107,7 +107,7 @@ Hash ein (R-3 / H-2).
   Magic-Link (Single-Use, kein zweiter Faktor im Portal).
 - Backups: Postgres-Dump in den S3-Backup-Bucket via
   [`backup/runner.ts`](../../apps/web/src/server/backup/runner.ts)
-  (Operator-Cron `scripts/backup.sh` bzw. manuell; auditiert als
+  (Operator-Cron `./taxtronik backup` bzw. manuell; auditiert als
   `backup.run`). SHA-256 jedes Dumps in `BackupRecord.sha256`; Restore
   verifiziert diesen Hash vor pg_restore (P-6). Der SeaweedFS-Inhalt
   selbst wird von der App NICHT mitgesichert (siehe nächster Punkt).

@@ -55,7 +55,7 @@ Sicherheits-Scope umfasst:
 
 TaxTronik setzt zwingend voraus:
 
-- `AUTH_SECRET`: mindestens 32 Zeichen, zufällig generiert (siehe `scripts/setup.sh`)
+- `AUTH_SECRET`: mindestens 32 Zeichen, zufällig generiert (siehe `./taxtronik bootstrap` bzw. `scripts/setup.sh`)
 - `DATABASE_APP_URL`: separater, RLS-beschränkter DB-Nutzer — in Produktion **Pflicht**
 - `N8N_HMAC_SECRET`: mindestens 32 Zeichen
 - TLS via Reverse Proxy vor der App (Ports nur an localhost)
