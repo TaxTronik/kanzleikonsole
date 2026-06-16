@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Sun, Moon, Monitor } from 'lucide-react';
 
 type ThemePref = 'light' | 'dark' | 'system';
+const THEME_EVENT = 'taxtronik-theme-change';
 
 function applyTheme(pref: ThemePref): void {
   let dark: boolean;
@@ -30,6 +31,17 @@ export function ThemeToggle() {
   useEffect(() => {
     setPref(readPref());
     setMounted(true);
+    function sync() {
+      const next = readPref();
+      setPref(next);
+      applyTheme(next);
+    }
+    window.addEventListener('storage', sync);
+    window.addEventListener(THEME_EVENT, sync);
+    return () => {
+      window.removeEventListener('storage', sync);
+      window.removeEventListener(THEME_EVENT, sync);
+    };
   }, []);
 
   // Bei "system" auf Änderungen der OS-Einstellung reagieren
@@ -52,6 +64,7 @@ export function ThemeToggle() {
       // ignore
     }
     applyTheme(next);
+    window.dispatchEvent(new Event(THEME_EVENT));
   }
 
   function cycle() {

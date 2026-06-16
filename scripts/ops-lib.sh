@@ -316,6 +316,7 @@ doctor() {
     info "doctor --fix: Secrets + Prod-Defaults ergaenzen"
     [[ "$(get_env NODE_ENV)" != "production" ]] && { set_env NODE_ENV production; info "NODE_ENV=production gesetzt."; }
     [[ -z "$(get_env TAXTRONIK_VERSION)" ]] && { set_env TAXTRONIK_VERSION "$(date +%Y-%m-%d)"; info "TAXTRONIK_VERSION=$(date +%Y-%m-%d) gesetzt (spater auf Release pinnen)."; }
+    [[ -z "$(get_env TIMESTAMP_AUTHORITY_URL)" ]] && { set_env TIMESTAMP_AUTHORITY_URL "http://timestamp.globalsign.com/tsa/r6advanced1"; info "TIMESTAMP_AUTHORITY_URL=GlobalSign gesetzt."; }
     # NEXTAUTH_TRUST_HOST ist in Produktion Pflicht (env.ts:238). Default true:
     # der Stack steht ohnehin hinter einem Reverse-Proxy (P-4), der die Host-
     # Header setzt/filtert. Wer ohne Proxy direkt ins Netz bindet, muss das

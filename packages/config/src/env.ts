@@ -127,7 +127,8 @@ const envSchema = z.object({
   RISK_LAYER_TOKEN: z.preprocess((v) => v === '' ? undefined : v, Secret32.optional()),
 
   // --- RFC-3161-Zeitstempel -------------------------------------------------
-  // Leer = lokaler Self-Timestamp (MVP).
+  // Deploy-Default: GlobalSign. Leer ist nur fuer Dev/Test als lokaler
+  // Self-Timestamp gedacht; Settings blockieren Self-Timestamp in Production.
   TIMESTAMP_AUTHORITY_URL: z.preprocess((v) => v === '' ? undefined : v, z.string().url().optional()),
 
   // --- Lizenzschlüssel ------------------------------------------------------

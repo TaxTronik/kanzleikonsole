@@ -14,9 +14,10 @@ interface Props {
   initial: TsaConfig;
   providers: TsaProvider[];
   envFallback: string | null;
+  production: boolean;
 }
 
-export function TsaForm({ initial, providers, envFallback }: Props) {
+export function TsaForm({ initial, providers, envFallback, production }: Props) {
   const [providerId, setProviderId] = useState(initial.providerId);
   const [customUrl, setCustomUrl] = useState(initial.customUrl);
   const [testResult, setTestResult] = useState<ActionResult | null>(null);
@@ -65,6 +66,12 @@ export function TsaForm({ initial, providers, envFallback }: Props) {
           Hash-Chain nur Selbstauskunft, keinen unabhängigen Drittnachweis.
         </div>
       )}
+      {production && (
+        <div className="rounded-md border border-red-300 dark:border-red-900/60 bg-red-50 dark:bg-red-950/30 px-4 py-3 text-xs text-red-900 dark:text-red-200">
+          <strong>Produktionsschutz:</strong> Self-Timestamp ist gesperrt. Die Audit-Hash-Chain
+          muss mit einer externen RFC-3161-TSA versiegelt werden.
+        </div>
+      )}
 
       <form action={saveAction} className="space-y-4">
         {/* Provider-Liste als Cards */}
@@ -84,6 +91,7 @@ export function TsaForm({ initial, providers, envFallback }: Props) {
                   name="providerId"
                   value=""
                   checked={providerId === ''}
+                  disabled={production}
                   onChange={() => setProviderId('')}
                   className="mt-1"
                 />
@@ -92,7 +100,7 @@ export function TsaForm({ initial, providers, envFallback }: Props) {
                     Lokaler Self-Timestamp
                   </div>
                   <div className="text-xs text-muted">
-                    Kein externer Dienst — Server-Uhrzeit als Stempel. Nur für Dev/Test.
+                    Kein externer Dienst — Server-Uhrzeit als Stempel. {production ? 'In Produktion nicht zulässig.' : 'Nur für Dev/Test.'}
                   </div>
                 </div>
               </div>

@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { randomBytes } from 'node:crypto';
 import { withTenantContext } from '@taxtronik/db';
+import { env } from '@taxtronik/config';
 import { evidenceService } from '@/server/container';
 import { assertPublicHost } from '@/server/http/ssrf-guard';
 import { writeTaxRegion } from '@/server/settings/tax-region';
@@ -87,6 +88,12 @@ export async function saveTsaAction(
     customUrl: formData.get('customUrl') ?? '',
   });
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  if (env.NODE_ENV === 'production' && !parsed.data.providerId) {
+    return {
+      ok: false,
+      error: 'Self-Timestamp ist in Produktion gesperrt. Bitte eine externe RFC-3161-TSA waehlen.',
+    };
+  }
 
   if (parsed.data.providerId === 'custom' && !(parsed.data.customUrl ?? '').trim()) {
     return { ok: false, error: 'Bei „Eigener TSA-Server" eine URL angeben.' };

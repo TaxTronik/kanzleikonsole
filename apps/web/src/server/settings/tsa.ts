@@ -17,7 +17,7 @@ export interface TsaConfig {
 }
 
 export const DEFAULT_TSA: TsaConfig = {
-  providerId: '',  // leer = ENV-Fallback bzw. LocalTimestampAdapter
+  providerId: 'globalsign',
   customUrl: '',
 };
 
@@ -29,7 +29,7 @@ export async function readTsaConfig(ctx: TenantContext): Promise<TsaConfig> {
     if (!row) return DEFAULT_TSA;
     const v = row.value as Partial<TsaConfig>;
     return {
-      providerId: v.providerId ?? '',
+      providerId: v.providerId ?? DEFAULT_TSA.providerId,
       customUrl: v.customUrl ?? '',
     };
   });

@@ -19,6 +19,7 @@ import { connection, type EvidenceSealJob } from '../queues';
 import { log } from '../logger';
 import { assertPublicHost } from '../http/ssrf-guard';
 
+const DEFAULT_TSA_PROVIDER_ID = 'globalsign';
 
 /**
  * Bevorzugt die tenant-spezifische TSA-Konfiguration (UI-gepflegt), Fallback
@@ -31,7 +32,7 @@ async function timestampPortFor(tenantId: string): Promise<TimestampPort> {
   });
   if (row) {
     const v = row.value as { providerId?: string; customUrl?: string };
-    const url = resolveTsaUrl(v.providerId ?? null, v.customUrl ?? null);
+    const url = resolveTsaUrl(v.providerId || DEFAULT_TSA_PROVIDER_ID, v.customUrl ?? null);
     if (url) {
       // F1: TOCTOU-Schutz. Die URL wurde beim Save geprüft (NEW1), aber
       // DNS-Rebinding oder Legacy-Configs könnten zwischenzeitlich auf
@@ -39,6 +40,7 @@ async function timestampPortFor(tenantId: string): Promise<TimestampPort> {
       try {
         await assertPublicHost(url);
       } catch (err) {
+        if (env.NODE_ENV === 'production') throw err;
         log.warn(
           { tenantId, url, err: (err as Error).message },
           'evidence-seal: TSA-URL nicht öffentlich auflösbar — Fallback auf LocalTimestamp',
@@ -48,17 +50,22 @@ async function timestampPortFor(tenantId: string): Promise<TimestampPort> {
       return new Rfc3161HttpAdapter(url);
     }
   }
-  if (env.TIMESTAMP_AUTHORITY_URL) {
+  const fallbackUrl = env.TIMESTAMP_AUTHORITY_URL ?? resolveTsaUrl(DEFAULT_TSA_PROVIDER_ID, null);
+  if (fallbackUrl) {
     try {
-      await assertPublicHost(env.TIMESTAMP_AUTHORITY_URL);
+      await assertPublicHost(fallbackUrl);
     } catch (err) {
+      if (env.NODE_ENV === 'production') throw err;
       log.warn(
-        { url: env.TIMESTAMP_AUTHORITY_URL, err: (err as Error).message },
+        { url: fallbackUrl, err: (err as Error).message },
         'evidence-seal: ENV-TSA-URL nicht öffentlich auflösbar — Fallback auf LocalTimestamp',
       );
       return new LocalTimestampAdapter();
     }
-    return new Rfc3161HttpAdapter(env.TIMESTAMP_AUTHORITY_URL);
+    return new Rfc3161HttpAdapter(fallbackUrl);
+  }
+  if (env.NODE_ENV === 'production') {
+    throw new Error('Production erfordert eine externe RFC-3161-TSA.');
   }
   return new LocalTimestampAdapter();
 }

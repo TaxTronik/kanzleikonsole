@@ -364,7 +364,7 @@ export default async function ClientDetailPage({
       })()}
 
       {/* Navigation als horizontale Pill-Leiste — spart vertikalen Platz */}
-      <nav className="flex flex-wrap gap-2 mb-6 -mt-4">
+      <nav className="flex flex-wrap gap-2 mb-6">
         <Link href={`/staff/clients/${client.id}/timeline`} className="btn-secondary text-xs py-1">Aktivitätsstrom</Link>
         {modules.timeTracking && (
           <Link href={`/staff/clients/${client.id}/billing`} className="btn-secondary text-xs py-1">Stunden abrechnen</Link>

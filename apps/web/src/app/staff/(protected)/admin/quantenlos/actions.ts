@@ -15,7 +15,7 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { isRiskLayerConfigured } from '@taxtronik/risk-layer';
+import { isRiskLayerConfigured, RiskLayerHttpError } from '@taxtronik/risk-layer';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import { staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
 import { toActionError, ForbiddenError } from '@/server/auth/rbac';
@@ -33,11 +33,45 @@ import {
   zieheLosStichprobe,
   holeLosAb,
   pruefeLosNachweis,
+  LosRahmenLeerError,
+  LosNachweisInkonsistentError,
   type LosZiehungErgebnis,
   type LosPruefErgebnis,
 } from '@/server/risk';
 
 const PFAD = '/staff/admin/quantenlos';
+
+function engineMessage(e: RiskLayerHttpError): string {
+  try {
+    const body = JSON.parse(e.body) as Record<string, unknown>;
+    const msg = body['fehler'] ?? body['error'] ?? body['detail'] ?? body['message'];
+    if (typeof msg === 'string' && msg.trim()) return msg.trim();
+  } catch {
+    // Non-JSON response; fall through to status-only message.
+  }
+  return `Risk-Engine antwortete mit HTTP ${e.status}.`;
+}
+
+function toQuantenlosActionError(e: unknown): ActionResult {
+  if (e instanceof LosRahmenLeerError || e instanceof LosNachweisInkonsistentError) {
+    return { ok: false, error: e.message };
+  }
+  if (e instanceof RiskLayerHttpError) {
+    return { ok: false, error: `Risk-Engine: ${engineMessage(e)}` };
+  }
+  if (e instanceof Error) {
+    const msg = e.message;
+    if (
+      msg.startsWith('k muss zwischen ') ||
+      msg.startsWith('Der Audit-Rahmen ') ||
+      msg.startsWith('Kein wartender Quantenlos-Job ') ||
+      msg.startsWith('Ziehung nicht gefunden.')
+    ) {
+      return { ok: false, error: msg };
+    }
+  }
+  return toActionError(e);
+}
 
 async function guard(): Promise<{ ok: true; ctx: TenantContext } | ({ ok: false } & { error: string })> {
   const g = await staffActionGuard({ requireAdmin: true });
@@ -68,7 +102,7 @@ export async function rahmenVorschauAction(
     const rahmen = await buildLosRahmen(g.ctx, parsed, parsed.rahmenTyp ?? 'subsumtion');
     return { ok: true, n: rahmen.length };
   } catch (e) {
-    return toActionError(e);
+    return toQuantenlosActionError(e);
   }
 }
 
@@ -97,7 +131,7 @@ export async function losZiehenAction(
     revalidatePath(PFAD);
     return { ok: true, ergebnis };
   } catch (e) {
-    return toActionError(e);
+    return toQuantenlosActionError(e);
   }
 }
 
@@ -110,7 +144,7 @@ export async function losAbholenAction(): Promise<ActionResult & { ergebnis?: Lo
     revalidatePath(PFAD);
     return { ok: true, ergebnis };
   } catch (e) {
-    return toActionError(e);
+    return toQuantenlosActionError(e);
   }
 }
 
@@ -133,7 +167,7 @@ export async function losPruefenAction(
     });
     return { ok: true, ergebnis };
   } catch (e) {
-    return toActionError(e);
+    return toQuantenlosActionError(e);
   }
 }
 

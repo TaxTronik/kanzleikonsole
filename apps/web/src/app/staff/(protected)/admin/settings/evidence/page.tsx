@@ -16,12 +16,13 @@ export default async function EvidenceSettingsPage() {
   return (
     <SectionCard
       title="Zeitstempel-Behörde (TSA)"
-      description="Externe RFC-3161-Stelle, die täglich den Spitzen-Hash der Audit-Chain versiegelt. Ohne externe TSA fällt der Tagesabschluss auf einen Self-Timestamp zurück — ausreichend für Tests, aber kein gerichtsfester Drittnachweis."
+      description="Externe RFC-3161-Stelle, die täglich den Spitzen-Hash der Audit-Chain versiegelt. In Produktion ist eine externe TSA Pflicht; Self-Timestamp ist nur für lokale Tests zulässig."
     >
       <TsaForm
         initial={tsa}
         providers={TSA_PROVIDERS}
         envFallback={env.TIMESTAMP_AUTHORITY_URL ?? null}
+        production={env.NODE_ENV === 'production'}
       />
     </SectionCard>
   );

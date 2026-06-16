@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Sparkles, Square } from 'lucide-react';
 
 type UiMode = 'classic' | 'modern';
+const UI_MODE_EVENT = 'taxtronik-ui-mode-change';
 
 function readPref(): UiMode {
   try {
@@ -33,6 +34,17 @@ export function UiModeToggle() {
   useEffect(() => {
     setMode(readPref());
     setMounted(true);
+    function sync() {
+      const next = readPref();
+      setMode(next);
+      applyMode(next);
+    }
+    window.addEventListener('storage', sync);
+    window.addEventListener(UI_MODE_EVENT, sync);
+    return () => {
+      window.removeEventListener('storage', sync);
+      window.removeEventListener(UI_MODE_EVENT, sync);
+    };
   }, []);
 
   function toggle() {
@@ -45,6 +57,7 @@ export function UiModeToggle() {
       // ignore
     }
     applyMode(next);
+    window.dispatchEvent(new Event(UI_MODE_EVENT));
   }
 
   if (!mounted) return <div className="w-9 h-9" aria-hidden />;
