@@ -5,11 +5,10 @@
 // sonst DATABASE_URL (Owner). In Produktion immer DATABASE_APP_URL.
 // =============================================================================
 
-import prismaClientPkg from '@prisma/client';
+import { PrismaClient as PrismaClientCtor, type PrismaClientInstance } from './prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from './prisma-adapter';
 
-const { PrismaClient } = prismaClientPkg;
-export type PrismaClient = InstanceType<typeof prismaClientPkg.PrismaClient>;
+export type PrismaClient = PrismaClientInstance;
 
 declare global {
   var __taxtronikPrisma: PrismaClient | undefined;
@@ -46,7 +45,7 @@ export function resolveAppDatasourceUrl(env: AppDatasourceEnv): string | undefin
 function buildClient(): PrismaClient {
   const datasourceUrl = resolveAppDatasourceUrl(process.env);
 
-  return new PrismaClient({
+  return new PrismaClientCtor({
     adapter: createPostgresAdapter(optionalDatabaseUrl(datasourceUrl)),
     log:
       process.env['NODE_ENV'] === 'development'
@@ -61,4 +60,3 @@ export const prisma: PrismaClient = globalThis.__taxtronikPrisma ?? buildClient(
 if (process.env['NODE_ENV'] !== 'production') {
   globalThis.__taxtronikPrisma = prisma;
 }
-

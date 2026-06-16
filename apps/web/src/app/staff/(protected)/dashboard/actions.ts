@@ -1,7 +1,8 @@
 'use server';
 
 import { z } from 'zod';
-import { Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
+import { Prisma as PrismaRuntime } from '@taxtronik/db/prisma-client';
 import { WIDGET_BY_TYPE, type DashboardLayout } from '@/server/dashboard/widgets';
 import { withStaff, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
 
@@ -49,7 +50,7 @@ export async function resetDashboardLayoutAction(): Promise<ActionResult> {
     async (tx, { staffId }) => {
       await tx.staffUser.update({
         where: { id: staffId },
-        data: { dashboardLayout: Prisma.JsonNull },
+        data: { dashboardLayout: PrismaRuntime.JsonNull },
       });
     },
     { revalidate: '/staff/dashboard' },

@@ -18,7 +18,7 @@
 // =============================================================================
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 
 const hasDatabase = Boolean(process.env['DATABASE_URL']);

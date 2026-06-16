@@ -6,8 +6,7 @@
 // =============================================================================
 
 import { Worker } from 'bullmq';
-import prismaClientPkg from '@prisma/client';
-const { Prisma } = prismaClientPkg;
+import { Prisma } from '@taxtronik/db/prisma-client';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';

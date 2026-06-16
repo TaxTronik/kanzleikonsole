@@ -23,8 +23,7 @@
 // Store holen (fetchRawResult, apps/web/src/server/risk/raw-store.ts).
 // =============================================================================
 
-import prismaClientPkg from '@prisma/client';
-const { Prisma } = prismaClientPkg;
+import { Prisma } from '../src/prisma-client';
 import { prismaOwner } from '../src/owner-client';
 
 interface NormRef {

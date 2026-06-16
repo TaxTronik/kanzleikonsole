@@ -166,6 +166,11 @@ step "Node-Abhängigkeiten installieren"
 pnpm install --silent
 done_ "Pakete installiert."
 
+# -------------------------------------------------------------------- Prisma Client
+step "Prisma Client generieren"
+( cd packages/db && node ../../node_modules/prisma/build/index.js generate )
+done_ "Prisma Client generiert."
+
 # -------------------------------------------------------------------- Prisma
 step "Datenbank-Migrationen anwenden"
 pnpm --filter '@taxtronik/db' prisma migrate deploy

@@ -9,8 +9,7 @@
 // =============================================================================
 
 import type { NotificationKind } from '@prisma/client';
-import prismaClientPkg from '@prisma/client';
-const { Prisma } = prismaClientPkg;
+import { Prisma } from '@taxtronik/db/prisma-client';
 import { withWorkerTenantContext } from './tenant-context';
 
 export interface NotifyData {

@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./client": "./src/client.ts",
+    "./prisma-client": "./src/prisma-client.ts",
     "./prisma-adapter": "./src/prisma-adapter.ts",
     "./tenant-context": "./src/tenant-context.ts"
   },

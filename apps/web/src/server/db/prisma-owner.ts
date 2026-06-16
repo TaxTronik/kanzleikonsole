@@ -14,10 +14,10 @@
 // @taxtronik/db verwenden.
 // =============================================================================
 
-import prismaClientPkg from '@prisma/client';
-const { PrismaClient } = prismaClientPkg;
-type PrismaClient = InstanceType<typeof prismaClientPkg.PrismaClient>;
+import { PrismaClient as PrismaClientCtor, type PrismaClientInstance } from '@taxtronik/db/prisma-client';
 import { createPostgresAdapter, requireDatabaseUrl } from '@taxtronik/db/prisma-adapter';
+
+type PrismaClient = PrismaClientInstance;
 
 declare global {
   var __taxtronik_prisma_owner: PrismaClient | undefined;
@@ -25,7 +25,7 @@ declare global {
 
 export const prismaOwner: PrismaClient =
   globalThis.__taxtronik_prisma_owner ??
-  new PrismaClient({
+  new PrismaClientCtor({
     adapter: createPostgresAdapter(requireDatabaseUrl(process.env['DATABASE_URL'], 'DATABASE_URL')),
   });
 

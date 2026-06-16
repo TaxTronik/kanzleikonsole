@@ -15,7 +15,7 @@
 // können sie zu 401/403 mappen.
 // =============================================================================
 
-import { Prisma } from '@prisma/client';
+import { Prisma } from '@taxtronik/db/prisma-client';
 // Subpath statt Barrel: vermeidet, dass owner-client (verlangt DATABASE_URL beim
 // Import) in reine Unit-Tests gezogen wird, die rbac.ts transitiv importieren.
 import { withTenantContext } from '@taxtronik/db/tenant-context';

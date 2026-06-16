@@ -11,8 +11,7 @@
 // Siehe ADR 0002 (RLS und App-Level-Tenancy), Security-Review S14 (FORCE RLS).
 // =============================================================================
 
-import prismaClientPkg from '@prisma/client';
-const { PrismaClient } = prismaClientPkg;
+import { PrismaClient } from '../src/prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../src/prisma-adapter';
 
 // ---------------------------------------------------------------------------

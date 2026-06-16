@@ -16,17 +16,17 @@
 // nutzen können.
 // =============================================================================
 
-import prismaClientPkg from '@prisma/client';
-const { PrismaClient } = prismaClientPkg;
-type PrismaClient = InstanceType<typeof prismaClientPkg.PrismaClient>;
+import { PrismaClient as PrismaClientCtor, type PrismaClientInstance } from './prisma-client';
 import { createPostgresAdapter, requireDatabaseUrl } from './prisma-adapter';
+
+type PrismaClient = PrismaClientInstance;
 
 declare global {
   var __taxtronikPrismaOwner: PrismaClient | undefined;
 }
 
 function buildOwnerClient(): PrismaClient {
-  return new PrismaClient({
+  return new PrismaClientCtor({
     adapter: createPostgresAdapter(requireDatabaseUrl(process.env['DATABASE_URL'], 'DATABASE_URL')),
     log: ['warn', 'error'],
   });

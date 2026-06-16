@@ -279,9 +279,19 @@ function parseEnv(): Env {
       throw new Error(
         '[config] STAFF_COOKIE_DOMAIN und PORTAL_COOKIE_DOMAIN müssen unterschiedliche Subdomains sein, sonst greift die Cookie-Trennung nicht (S12).',
       );
+    } else if (!parsed.data.PORTAL_PUBLIC_URL) {
+      throw new Error(
+        '[config] PORTAL_PUBLIC_URL ist Pflicht, wenn STAFF_COOKIE_DOMAIN/PORTAL_COOKIE_DOMAIN gesetzt sind.',
+      );
     } else if (staffDom.startsWith('.') || portalDom.startsWith('.')) {
       throw new Error(
         '[config] STAFF_COOKIE_DOMAIN/PORTAL_COOKIE_DOMAIN duerfen keine Parent-Domain mit fuehrendem Punkt sein.',
+      );
+    } else if (
+      [staffDom, portalDom].some((d) => d.includes('://') || d.includes('/') || d.includes(':'))
+    ) {
+      throw new Error(
+        '[config] STAFF_COOKIE_DOMAIN/PORTAL_COOKIE_DOMAIN duerfen nur Hostnames enthalten (ohne Protokoll, Pfad oder Port).',
       );
     }
   }

@@ -9,8 +9,7 @@
 // Next.js dev.
 // =============================================================================
 
-import prismaClientPkg from '@prisma/client';
-const { PrismaClient } = prismaClientPkg;
+import { PrismaClient } from '@taxtronik/db/prisma-client';
 import { createPostgresAdapter, requireDatabaseUrl } from '@taxtronik/db/prisma-adapter';
 
 export const prismaOwner = new PrismaClient({

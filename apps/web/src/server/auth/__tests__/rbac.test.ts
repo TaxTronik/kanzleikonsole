@@ -13,7 +13,7 @@
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '@taxtronik/db/prisma-client';
 
 // Logger mocken, bevor rbac importiert wird — sonst zieht der pino-Import
 // die echte ENV-Validierung an.

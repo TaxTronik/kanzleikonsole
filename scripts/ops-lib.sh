@@ -260,6 +260,23 @@ doctor() {
   [[ -z "${SMTP_HOST:-}" ]] && { _dr_row "WARN" "SMTP_HOST" "leer (kein Mail-Versand)"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1)); }
   [[ -z "${PORTAL_PUBLIC_URL:-}" ]] && { _dr_row "WARN" "PORTAL_PUBLIC_URL" "leer (Single-Host: ok)"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1)); }
 
+  local staff_dom="${STAFF_COOKIE_DOMAIN:-}" portal_dom="${PORTAL_COOKIE_DOMAIN:-}"
+  if [[ -z "$staff_dom" && -z "$portal_dom" ]]; then
+    _dr_row "WARN" "COOKIE_DOMAINS" "leer (Single-Host; Subdomain-Trennung empfohlen)"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
+  elif [[ -z "$staff_dom" || -z "$portal_dom" ]]; then
+    _dr_row "FEHLT" "COOKIE_DOMAINS" "STAFF_COOKIE_DOMAIN und PORTAL_COOKIE_DOMAIN gemeinsam setzen"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  elif [[ -z "${PORTAL_PUBLIC_URL:-}" ]]; then
+    _dr_row "FEHLT" "PORTAL_PUBLIC_URL" "bei Cookie-Domain-Trennung Pflicht"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  elif [[ "$staff_dom" == "$portal_dom" ]]; then
+    _dr_row "FEHLT" "COOKIE_DOMAINS" "Staff/Portal muessen unterschiedliche Subdomains sein"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  elif [[ "$staff_dom" == .* || "$portal_dom" == .* ]]; then
+    _dr_row "FEHLT" "COOKIE_DOMAINS" "keine Parent-Domain mit fuehrendem Punkt"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  elif [[ "$staff_dom" == *"://"* || "$portal_dom" == *"://"* || "$staff_dom" == *"/"* || "$portal_dom" == *"/"* || "$staff_dom" == *":"* || "$portal_dom" == *":"* ]]; then
+    _dr_row "FEHLT" "COOKIE_DOMAINS" "nur Hostnames, keine URLs/Pfade/Ports"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  else
+    _dr_row "OK" "COOKIE_DOMAINS" "$staff_dom / $portal_dom"
+  fi
+
   echo
   if (( _DOCTOR_ERRS > 0 )); then
     echo "  -> $_DOCTOR_ERRS Fehler, $_DOCTOR_WARNS Warnung(en). Blockierend — erst beheben."
@@ -336,8 +353,16 @@ smoke_health() {
   die "Health-Smoke fehlgeschlagen."
 }
 
+generate_prisma_client_for_host_tools() {
+  require_cmd node
+  local prisma_cli="$ROOT/node_modules/prisma/build/index.js"
+  [[ -f "$prisma_cli" ]] || die "Prisma CLI fehlt ($prisma_cli). Bitte vorher 'pnpm install --frozen-lockfile' ausfuehren."
+  info "Prisma Client generieren (Host-Tools)"
+  (cd "$ROOT/packages/db" && node "$prisma_cli" generate)
+}
+
 run_backup() {
-  require_cmd pnpm
+  generate_prisma_client_for_host_tools
   info "Backup starten"
   (cd "$ROOT" && pnpm --filter @taxtronik/web backup:run)
 }
@@ -364,6 +389,74 @@ prompt() {
   [[ -t 0 ]] || return 0
   read -rp "$label [$def]: " input || true
   printf -v "$var" '%s' "${input:-$def}"
+}
+
+url_hostname() {
+  local url="${1:-}"
+  [[ -z "$url" ]] && return 0
+  node -e "try { process.stdout.write(new URL(process.argv[1]).hostname) } catch {}" "$url" 2>/dev/null || true
+}
+
+validate_cookie_domains_or_die() {
+  local staff_dom portal_dom portal_url
+  staff_dom="$(get_env STAFF_COOKIE_DOMAIN)"
+  portal_dom="$(get_env PORTAL_COOKIE_DOMAIN)"
+  portal_url="$(get_env PORTAL_PUBLIC_URL)"
+
+  [[ -z "$staff_dom" && -z "$portal_dom" ]] && return 0
+  [[ -n "$staff_dom" && -n "$portal_dom" ]] || \
+    die "STAFF_COOKIE_DOMAIN und PORTAL_COOKIE_DOMAIN muessen gemeinsam gesetzt sein (oder beide leer fuer Single-Host)."
+  [[ -n "$portal_url" ]] || \
+    die "PORTAL_PUBLIC_URL muss gesetzt sein, wenn STAFF_COOKIE_DOMAIN/PORTAL_COOKIE_DOMAIN gesetzt sind."
+  [[ "$staff_dom" != "$portal_dom" ]] || \
+    die "STAFF_COOKIE_DOMAIN und PORTAL_COOKIE_DOMAIN muessen unterschiedliche Subdomains sein."
+  [[ "$staff_dom" != .* && "$portal_dom" != .* ]] || \
+    die "STAFF_COOKIE_DOMAIN/PORTAL_COOKIE_DOMAIN duerfen keine Parent-Domain mit fuehrendem Punkt sein."
+  [[ "$staff_dom" != *"://"* && "$portal_dom" != *"://"* && "$staff_dom" != *"/"* && "$portal_dom" != *"/"* && "$staff_dom" != *":"* && "$portal_dom" != *":"* ]] || \
+    die "STAFF_COOKIE_DOMAIN/PORTAL_COOKIE_DOMAIN sind reine Hostnames, keine URLs, Pfade oder host:port-Werte."
+}
+
+configure_surface_domains_interactive() {
+  load_env
+  local input portal_url staff_dom portal_dom staff_host portal_host
+  portal_url="${PORTAL_PUBLIC_URL:-}"
+
+  if [[ -t 0 && -z "$portal_url" ]]; then
+    read -rp "Oeffentliche Portal-URL (PORTAL_PUBLIC_URL, leer = Single-Host) []: " input || true
+    if [[ -n "$input" ]]; then
+      set_env PORTAL_PUBLIC_URL "$input"
+      portal_url="$input"
+    fi
+  fi
+
+  staff_dom="${STAFF_COOKIE_DOMAIN:-}"
+  portal_dom="${PORTAL_COOKIE_DOMAIN:-}"
+  if [[ -t 0 ]]; then
+    staff_host="$(url_hostname "${NEXTAUTH_URL:-}")"
+    portal_host="$(url_hostname "$portal_url")"
+    if [[ -z "$portal_url" ]]; then
+      staff_host=""
+      portal_host=""
+    fi
+
+    if [[ -z "$staff_dom" ]]; then
+      read -rp "Staff-Cookie-Domain (STAFF_COOKIE_DOMAIN, nur Hostname) [$staff_host]: " input || true
+      set_env STAFF_COOKIE_DOMAIN "${input:-$staff_host}"
+    fi
+    if [[ -z "$portal_dom" ]]; then
+      read -rp "Portal-Cookie-Domain (PORTAL_COOKIE_DOMAIN, nur Hostname) [$portal_host]: " input || true
+      set_env PORTAL_COOKIE_DOMAIN "${input:-$portal_host}"
+    fi
+  else
+    if [[ -z "$staff_dom" || -z "$portal_dom" ]]; then
+      warn "STAFF_COOKIE_DOMAIN/PORTAL_COOKIE_DOMAIN nicht vollstaendig gesetzt (Single-Host oder manuell in .env setzen)."
+    fi
+  fi
+
+  validate_cookie_domains_or_die
+  if [[ -t 0 && -z "$(get_env STAFF_COOKIE_DOMAIN)" && -z "$(get_env PORTAL_COOKIE_DOMAIN)" ]]; then
+    warn "Single-Host-Deploy gewaehlt: STAFF_COOKIE_DOMAIN/PORTAL_COOKIE_DOMAIN bleiben leer."
+  fi
 }
 
 # Schreibt Last-Good-Version fuer rollback. previous = alter current-Stand.
@@ -425,6 +518,8 @@ prepare_env_interactive() {
   # Risk-Layer-Engine (optional, §4): URL + Bearer-Token. Beide oder keines,
   # sonst wirft die ENV-Validierung beim Backup-Schritt. Token min 32 Zeichen.
   # prompt() fragt nur bei TTY und nur, wenn der Wert noch ungesetzt ist.
+  configure_surface_domains_interactive
+
   prompt "Risk-Layer-URL (leer = Risk-Layer inaktiv)" RISK_LAYER_URL ""
   if [[ -n "${RISK_LAYER_URL:-}" ]]; then
     prompt "Risk-Layer Bearer-Token (min 32 Zeichen)" RISK_LAYER_TOKEN ""
@@ -468,7 +563,7 @@ ensure_provisioned_interactive() {
     warn "Provisionierung uebersprungen (TENANT_NAME/ADMIN_EMAIL leer). Spaeter: TENANT_NAME=.. ADMIN_EMAIL=.. pnpm --filter @taxtronik/db provision"
     return 0
   fi
-  require_cmd pnpm
+  generate_prisma_client_for_host_tools
   ( cd "$ROOT" && TENANT_NAME="$TENANT_NAME" ADMIN_EMAIL="$ADMIN_EMAIL" \
       pnpm --filter @taxtronik/db provision ) \
     || warn "Provisionierung fehlgeschlagen — siehe Ausgabe."

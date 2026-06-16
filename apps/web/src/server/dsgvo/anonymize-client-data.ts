@@ -11,7 +11,7 @@
 // time_entry) bleiben bewusst unberührt (eigene Retention-Pfade).
 // =============================================================================
 
-import { Prisma } from '@prisma/client';
+import { Prisma } from '@taxtronik/db/prisma-client';
 import type { TxClient } from '@taxtronik/db';
 
 /** Zähler je Datenklasse — landen im Audit-Event `client.anonymize`. */

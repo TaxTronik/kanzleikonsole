@@ -18,8 +18,7 @@
 // Zweit-Admins durch erneutes Ausführen). Benutzerpflege danach in der App.
 // =============================================================================
 
-import prismaClientPkg from '@prisma/client';
-const { PrismaClient } = prismaClientPkg;
+import { PrismaClient } from '../src/prisma-client';
 import bcrypt from 'bcryptjs';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';

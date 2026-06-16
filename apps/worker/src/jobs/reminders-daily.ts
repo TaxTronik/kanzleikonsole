@@ -16,8 +16,7 @@
 // =============================================================================
 
 import { Worker } from 'bullmq';
-import prismaClientPkg from '@prisma/client';
-const { Prisma } = prismaClientPkg;
+import { Prisma } from '@taxtronik/db/prisma-client';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
@@ -87,7 +86,7 @@ export const remindersDailyWorker = new Worker<ChecksJob>(
 
     const now = new Date();
     const today = startOfDay(now);
-    let counts = { appeal: 0, reminders: 0, binders: 0 };
+    const counts = { appeal: 0, reminders: 0, binders: 0 };
 
     for (const tenantId of tenantIds) {
       // ---- Einspruchsfristen ----

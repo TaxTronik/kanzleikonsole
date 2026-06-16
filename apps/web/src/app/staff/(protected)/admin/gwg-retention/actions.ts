@@ -1,7 +1,7 @@
 'use server';
 
 import { z } from 'zod';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '@taxtronik/db/prisma-client';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
 import { deleteObject } from '@taxtronik/storage';

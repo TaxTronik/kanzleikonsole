@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '@taxtronik/db/prisma-client';
 import type { TxClient } from '@taxtronik/db';
 import {
   clientAnonymizationDeadline,

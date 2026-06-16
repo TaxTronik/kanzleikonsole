@@ -20,6 +20,7 @@ const PROD_BASE: NodeJS.ProcessEnv = {
   DATABASE_APP_URL: 'postgres://app:pw@localhost:5432/taxtronik',
   N8N_HMAC_SECRET: 'a-securely-generated-hmac-secret-of-at-least-32-chars',
   NEXTAUTH_URL: 'https://staff.example.de',
+  PORTAL_PUBLIC_URL: 'https://portal.example.de',
   NEXTAUTH_TRUST_HOST: 'true',
   S3_ACCESS_KEY: 'prod-storage-access-key',
   S3_SECRET_KEY: 'prod-storage-secret-with-at-least-thirty-two-chars',
@@ -84,5 +85,23 @@ describe('ENV production hardening', () => {
     expect(() =>
       parseEnvFrom({ ...PROD_BASE, STAFF_COOKIE_DOMAIN: '.example.de' }),
     ).toThrow(/Parent-Domain/);
+  });
+
+  it('verlangt PORTAL_PUBLIC_URL fuer Cookie-Domain-Trennung', () => {
+    const broken = { ...PROD_BASE };
+    delete broken.PORTAL_PUBLIC_URL;
+    expect(() => parseEnvFrom(broken)).toThrow(/PORTAL_PUBLIC_URL/);
+  });
+
+  it('blockt Cookie-Domains mit Protokoll, Pfad oder Port', () => {
+    expect(() =>
+      parseEnvFrom({ ...PROD_BASE, STAFF_COOKIE_DOMAIN: 'https://staff.example.de' }),
+    ).toThrow(/Hostnames/);
+    expect(() =>
+      parseEnvFrom({ ...PROD_BASE, PORTAL_COOKIE_DOMAIN: 'portal.example.de:443' }),
+    ).toThrow(/Hostnames/);
+    expect(() =>
+      parseEnvFrom({ ...PROD_BASE, PORTAL_COOKIE_DOMAIN: 'portal.example.de/login' }),
+    ).toThrow(/Hostnames/);
   });
 });
