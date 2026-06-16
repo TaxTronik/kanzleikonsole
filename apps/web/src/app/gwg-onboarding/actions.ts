@@ -13,6 +13,7 @@ import {
 } from '@/server/gwg-onboarding/service';
 import { checkRateLimit, checkIpOrGlobalLimit, getClientIp } from '@/server/rate-limit';
 import { log } from '@/server/logger';
+import { notifyMany } from '@/server/notifications/service';
 
 // M4: GwG-Uploads sind enger gecappt als der globale MAX_UPLOAD_BYTES (100 MB).
 // Ausweis-Scans sind typischerweise ≤5 MB; 10 MB ist großzügig für hochauflösende
@@ -469,6 +470,35 @@ export async function submitOnboardingAction(input: z.infer<typeof SubmitSchema>
           ip,
           userAgent: ua,
         });
+      }
+
+      const responsibilities = await tx.clientResponsibility.findMany({
+        where: { clientId: invite.clientId, role: { in: ['BERUFSTRAEGER', 'HAUPTBEARBEITER'] } },
+        select: { staffId: true },
+      });
+      const staffIds = Array.from(new Set(responsibilities.map((r) => r.staffId)));
+      try {
+        await notifyMany(tx, staffIds.length > 0 ? staffIds : [null], {
+          tenantId: invite.tenantId,
+          kind: 'GWG_ONBOARDING_SUBMITTED',
+          title: 'GwG-Onboarding eingereicht',
+          body: `${after.name} hat GwG-Angaben und Unterlagen übermittelt.`,
+          href: `/staff/clients/${invite.clientId}/gwg`,
+          resourceType: 'gwg_onboarding_invite',
+          resourceId: invite.id,
+        });
+      } catch (e) {
+        log.error(
+          {
+            component: 'gwg-onboarding-submit',
+            inviteId: invite.id,
+            tenantId: invite.tenantId,
+            clientId: invite.clientId,
+            name: (e as Error)?.name,
+            err: (e as Error)?.message,
+          },
+          'GwG onboarding submit notification failed',
+        );
       }
     });
   } catch (e) {

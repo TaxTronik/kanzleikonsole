@@ -1,0 +1,57 @@
+interface StaffOption {
+  id: string;
+  fullName: string;
+  email: string;
+}
+
+export function ResponsibilityFields({ staff }: { staff: StaffOption[] }) {
+  return (
+    <fieldset className="border border-default rounded-md p-4 space-y-4">
+      <legend className="text-xs font-medium text-muted uppercase tracking-wide px-2">
+        Zuständigkeit
+      </legend>
+      <p className="text-xs text-muted">
+        Mindestens ein Berufsträger ist Pflicht. Diese Zuordnung steuert GwG-Verifikation,
+        Benachrichtigungen und „Meine Mandanten".
+      </p>
+
+      <div>
+        <p className="text-xs font-medium text-secondary mb-2">
+          Berufsträger <span className="text-red-600">*</span>
+        </p>
+        <div className="max-h-48 overflow-auto rounded-md border border-default divide-y divide-border-subtle">
+          {staff.map((s) => (
+            <label key={s.id} className="flex items-center gap-3 text-sm px-3 py-2">
+              <input
+                type="checkbox"
+                name="berufstraegerIds"
+                value={s.id}
+                className="rounded border-strong text-brand-600"
+              />
+              <span className="text-primary">{s.fullName}</span>
+              <span className="text-xs text-muted truncate">{s.email}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <p className="text-xs font-medium text-secondary mb-2">Hauptbearbeiter</p>
+        <div className="max-h-48 overflow-auto rounded-md border border-default divide-y divide-border-subtle">
+          {staff.map((s) => (
+            <label key={s.id} className="flex items-center gap-3 text-sm px-3 py-2">
+              <input
+                type="checkbox"
+                name="hauptbearbeiterIds"
+                value={s.id}
+                className="rounded border-strong text-brand-600"
+              />
+              <span className="text-primary">{s.fullName}</span>
+              <span className="text-xs text-muted truncate">{s.email}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+    </fieldset>
+  );
+}

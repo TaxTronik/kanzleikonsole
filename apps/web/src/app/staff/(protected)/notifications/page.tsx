@@ -12,6 +12,7 @@ const kindLabels: Record<string, string> = {
   POA_EXPIRY_SOON: 'Vollmacht läuft bald aus',
   POA_EXPIRED: 'Vollmacht abgelaufen',
   GWG_EXPIRY_SOON: 'GwG läuft bald aus',
+  GWG_ONBOARDING_SUBMITTED: 'GwG-Onboarding eingereicht',
   SYSTEM_MAIL_FAILED: 'Mailversand fehlgeschlagen',
   INVOICE_OVERDUE: 'Rechnung überfällig',
   PHONE_NOTE_FORWARDED: 'Telefonzettel weitergeleitet',

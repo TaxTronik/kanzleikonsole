@@ -7,16 +7,28 @@ import Link from 'next/link';
 import { ArrowLeft, Wand2 } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { readModules } from '@/server/settings/modules';
+import { withTenantContext } from '@taxtronik/db';
 import { Stepper } from '../stepper';
 import { stepsForTenant } from '../steps';
 import { createOnboardingClientAction } from './actions';
+import { ResponsibilityFields } from '../../responsibility-fields';
 
 export default async function OnboardingStartPage() {
   const session = await staffAuth();
   if (!session?.user) redirect('/staff/login');
   const { tenantId, staffId } = session.user;
 
-  const modules = await readModules({ tenantId, actorId: staffId, actorType: 'STAFF' });
+  const [modules, staff] = await Promise.all([
+    readModules({ tenantId, actorId: staffId, actorType: 'STAFF' }),
+    withTenantContext(
+      { tenantId, actorId: staffId, actorType: 'STAFF' },
+      (tx) => tx.staffUser.findMany({
+        where: { active: true },
+        orderBy: { fullName: 'asc' },
+        select: { id: true, fullName: true, email: true },
+      }),
+    ),
+  ]);
   const steps = stepsForTenant(modules);
 
   return (
@@ -89,6 +101,8 @@ export default async function OnboardingStartPage() {
               <input id="invoiceEmail" name="invoiceEmail" type="email" maxLength={255} className="input" />
             </div>
           </div>
+
+          <ResponsibilityFields staff={staff} />
 
           <div className="flex justify-end gap-2 pt-3 border-t border-subtle">
             <Link href="/staff/clients" className="btn-secondary text-sm">

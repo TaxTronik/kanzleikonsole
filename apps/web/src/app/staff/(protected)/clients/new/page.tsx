@@ -3,10 +3,21 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { createClientAction } from './actions';
+import { withTenantContext } from '@taxtronik/db';
+import { ResponsibilityFields } from '../responsibility-fields';
 
 export default async function NewClientPage() {
   const session = await staffAuth();
   if (!session?.user) redirect('/staff/login');
+  const { tenantId, staffId } = session.user;
+  const staff = await withTenantContext(
+    { tenantId, actorId: staffId, actorType: 'STAFF' },
+    (tx) => tx.staffUser.findMany({
+      where: { active: true },
+      orderBy: { fullName: 'asc' },
+      select: { id: true, fullName: true, email: true },
+    }),
+  );
 
   return (
     <div className="p-8 max-w-2xl">
@@ -89,6 +100,8 @@ export default async function NewClientPage() {
               </div>
             </div>
           </fieldset>
+
+          <ResponsibilityFields staff={staff} />
 
           <div className="alert-warning">
             <strong>Hinweis:</strong> Der Mandant wird zunächst mit dem Status{' '}
