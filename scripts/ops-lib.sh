@@ -158,7 +158,7 @@ preflight_common() {
   require_cmd curl
   require_env \
     POSTGRES_PASSWORD TAXTRONIK_APP_PASSWORD AUTH_SECRET \
-    S3_ACCESS_KEY S3_SECRET_KEY N8N_HMAC_SECRET N8N_ENCRYPTION_KEY N8N_DB_PASSWORD
+    S3_ENDPOINT S3_ACCESS_KEY S3_SECRET_KEY N8N_HMAC_SECRET N8N_ENCRYPTION_KEY N8N_DB_PASSWORD
 }
 
 # ---------------------------------------------------------------------------
@@ -423,6 +423,7 @@ run_backup() {
     export PG_DUMP_PATH="$ROOT/infra/scripts/pg_dump-via-container.sh"
     info "pg_dump fehlt auf dem Host -> nutze pg_dump aus dem Postgres-Container (PG_DUMP_PATH)."
   fi
+  ensure_s3_ready_for_backup
   ( cd "$ROOT" && pnpm --filter @taxtronik/web backup:run )
 }
 
@@ -436,6 +437,17 @@ wait_postgres_healthy() {
     [[ $(date +%s) -ge $deadline ]] && die "Postgres nach 120 s nicht healthy."
     s="$(docker inspect --format '{{.State.Health.Status}}' taxtronik-postgres 2>/dev/null || true)"
     [[ "$s" == "healthy" ]] && { info "Postgres healthy."; return 0; }
+    sleep 2
+  done
+}
+
+wait_seaweedfs_healthy() {
+  info "Warten bis SeaweedFS healthy ist"
+  local deadline=$(( $(date +%s) + 120 )) s
+  while :; do
+    [[ $(date +%s) -ge $deadline ]] && die "SeaweedFS nach 120 s nicht healthy."
+    s="$(docker inspect --format '{{.State.Health.Status}}' taxtronik-seaweedfs 2>/dev/null || true)"
+    [[ "$s" == "healthy" ]] && { info "SeaweedFS healthy."; return 0; }
     sleep 2
   done
 }
@@ -460,6 +472,61 @@ sync_postgres_roles_from_env() {
     printf "DO \$\$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'taxtronik_app') THEN EXECUTE format('ALTER ROLE taxtronik_app WITH PASSWORD %%L', %s); END IF; END \$\$;\n" "$app_pw"
     printf "DO \$\$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'n8n') THEN EXECUTE format('ALTER ROLE n8n WITH PASSWORD %%L', %s); END IF; END \$\$;\n" "$n8n_pw"
   } | docker exec -i taxtronik-postgres psql -U taxtronik -d taxtronik -v ON_ERROR_STOP=1
+}
+
+s3_preflight() {
+  require_env S3_ENDPOINT S3_ACCESS_KEY S3_SECRET_KEY
+  node --input-type=module <<'NODE'
+import { ListBucketsCommand, S3Client } from '@aws-sdk/client-s3';
+
+const client = new S3Client({
+  endpoint: process.env.S3_ENDPOINT,
+  region: process.env.S3_REGION || 'us-east-1',
+  credentials: {
+    accessKeyId: process.env.S3_ACCESS_KEY,
+    secretAccessKey: process.env.S3_SECRET_KEY,
+  },
+  forcePathStyle: true,
+});
+
+try {
+  const result = await client.send(new ListBucketsCommand({}));
+  const backupBucket = process.env.S3_BUCKET_BACKUPS || 'backups';
+  const buckets = result.Buckets?.map((bucket) => bucket.Name).filter(Boolean) ?? [];
+  if (!buckets.includes(backupBucket)) {
+    throw new Error(`Backup-Bucket '${backupBucket}' fehlt`);
+  }
+} catch (error) {
+  const e = error instanceof Error ? error : new Error(String(error));
+  console.error(`[s3-preflight] ${e.name}: ${e.message}`);
+  process.exit(1);
+}
+NODE
+}
+
+reload_seaweedfs_credentials_from_env() {
+  info "SeaweedFS-S3-Konfiguration aus .env neu laden"
+  render_s3_config
+  compose --infra up -d --force-recreate seaweedfs
+  wait_seaweedfs_healthy
+  docker rm -f taxtronik-seaweedfs-init >/dev/null 2>&1 || true
+  compose --infra up -d seaweedfs-init
+  local code
+  code="$(docker wait taxtronik-seaweedfs-init 2>/dev/null || echo 1)"
+  if [[ "$code" != "0" ]]; then
+    compose --infra logs seaweedfs-init --tail 80 || true
+    die "SeaweedFS-Bucket-Init fehlgeschlagen (Exit $code)."
+  fi
+}
+
+ensure_s3_ready_for_backup() {
+  info "S3-Preflight (SeaweedFS Credentials/Buckets)"
+  if s3_preflight; then
+    return 0
+  fi
+  warn "S3-Preflight fehlgeschlagen. Vermutlich laufen SeaweedFS-Credentials noch mit alter s3.json. Lade Object-Store aus .env neu."
+  reload_seaweedfs_credentials_from_env
+  s3_preflight || die "S3-Preflight auch nach SeaweedFS-Neuladen fehlgeschlagen. S3_ENDPOINT/S3_ACCESS_KEY/S3_SECRET_KEY pruefen."
 }
 
 # prompt LABEL VAR [DEFAULT]: interaktiv erfragen, falls VAR noch ungesetzt und
@@ -700,7 +767,9 @@ cmd_update() {
 
 cmd_backup() {
   load_env; preflight_common; assert_production_env
+  start_infra
   wait_postgres_healthy
+  wait_seaweedfs_healthy
   sync_postgres_roles_from_env
   run_backup
   info "Backup fertig."
