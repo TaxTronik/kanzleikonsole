@@ -126,3 +126,60 @@ describe('PrismaClient-Guard — keine ungeprüften DB-Clients', () => {
     ).toEqual([]);
   });
 });
+
+const OWNER_IMPORT =
+  /import\s*\{[^}]*\bprismaOwner\b[^}]*\}\s*from\s*['"]([^'"]+)['"]/gs;
+
+// Bewusst freigegebene Owner-Client-Importe. Neue Treffer muessen hier mit
+// fachlicher Begruendung landen, damit BYPASSRLS-Nutzung nicht versehentlich in
+// normale Request-Pfade rutscht.
+const ALLOWED_PRISMA_OWNER_IMPORTS = new Set<string>([
+  'apps/web/src/app/api/n8n/expiring-gwg-checks/route.ts <- @/server/db/prisma-owner',
+  'apps/web/src/app/api/n8n/overdue-requests/route.ts <- @/server/db/prisma-owner',
+  'apps/web/src/app/api/n8n/request-detail/[id]/route.ts <- @/server/db/prisma-owner',
+  'apps/web/src/app/api/portal/ical/[token]/route.ts <- @/server/db/prisma-owner',
+  'apps/web/src/app/audit-verify/[token]/page.tsx <- @/server/db/prisma-owner',
+  'apps/web/src/app/gwg-onboarding/actions.ts <- @/server/gwg-onboarding/service',
+  'apps/web/src/app/portal/(auth)/login/actions.ts <- @/server/db/prisma-owner',
+  'apps/web/src/app/staff/(auth)/login/actions.ts <- @/server/db/prisma-owner',
+  'apps/web/src/app/staff/(auth)/login/password/route.ts <- @/server/db/prisma-owner',
+  'apps/web/src/app/staff/(protected)/poa/actions.ts <- @/server/db/prisma-owner',
+  'apps/web/src/server/auth/login-audit.ts <- @/server/db/prisma-owner',
+  'apps/web/src/server/auth/magic-link.ts <- @/server/db/prisma-owner',
+  'apps/web/src/server/auth/portal.ts <- @/server/db/prisma-owner',
+  'apps/web/src/server/auth/staff.ts <- @/server/db/prisma-owner',
+  'apps/web/src/server/backup/restore.ts <- @/server/db/prisma-owner',
+  'apps/web/src/server/backup/runner.ts <- @/server/db/prisma-owner',
+  'apps/web/src/server/gwg-onboarding/service.ts <- @/server/db/prisma-owner',
+  'apps/web/src/server/license/state.ts <- @/server/db/prisma-owner',
+  'apps/web/src/server/mail/dispatch.ts <- @/server/db/prisma-owner',
+  'apps/web/src/server/n8n/outbox.ts <- @/server/db/prisma-owner',
+  'apps/web/src/server/risk/research.ts <- @/server/db/prisma-owner',
+  'apps/web/src/server/settings/legal.ts <- @/server/db/prisma-owner',
+  'apps/web/src/server/tax-news/fetcher.ts <- @/server/db/prisma-owner',
+]);
+
+describe('prismaOwner-Guard - BYPASSRLS-Importe bleiben explizit', () => {
+  it('jeder prismaOwner-Import steht auf der Allowlist', () => {
+    const files: string[] = [];
+    walk(resolve(REPO_ROOT, 'apps/web/src'), files);
+
+    const offenders: string[] = [];
+    for (const file of files) {
+      const content = readFileSync(file, 'utf-8');
+      const rel = relative(REPO_ROOT, file).split(sep).join('/');
+      for (const match of content.matchAll(OWNER_IMPORT)) {
+        const source = match[1]!;
+        const key = `${rel} <- ${source}`;
+        if (!ALLOWED_PRISMA_OWNER_IMPORTS.has(key)) offenders.push(key);
+      }
+    }
+
+    expect(
+      offenders,
+      `Neue prismaOwner-Importe gefunden:\n  ${offenders.join('\n  ')}\n\n` +
+        'Normale mandantenbezogene Pfade muessen prisma + withTenantContext nutzen. ' +
+        'Owner-Pfad wirklich noetig? Dann mit Begruendung in ALLOWED_PRISMA_OWNER_IMPORTS aufnehmen.',
+    ).toEqual([]);
+  });
+});

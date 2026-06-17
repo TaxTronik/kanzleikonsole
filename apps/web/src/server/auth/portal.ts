@@ -136,8 +136,9 @@ async function hydratePortalSessionFromToken(session: Session, token: unknown): 
   } catch (err) {
     log.warn(
       { err: (err as Error).message },
-      'portal-auth: Session-Existenzpruefung fehlgeschlagen - durchgelassen',
+      'portal-auth: Session-Existenzpruefung fehlgeschlagen - invalidiert (Re-Login erzwungen)',
     );
+    return session;
   }
 
   session.user.contactId = token.contactId;
@@ -251,7 +252,8 @@ const portalConfig: NextAuthConfig = {
       // (allowActive) und nicht anonymisiert sein — bei GwG-Ablauf/-Ablehnung
       // wird allowActive=false gesetzt, das Portal ist dann gesperrt. Läuft im
       // selben Lookup mit (kein zusätzlicher Round-Trip).
-      // Transienter DB-Fehler → durchlassen (kein Massen-Logout).
+      // Fail-closed: bei unbestätigtem DB-Stand keine alte Portal-Session
+      // weiterreichen.
       try {
         const c = await prismaOwner.clientContact.findUnique({
           where: { id: token.contactId },
@@ -279,8 +281,9 @@ const portalConfig: NextAuthConfig = {
       } catch (err) {
         log.warn(
           { err: (err as Error).message },
-          'portal-auth: Session-Existenzprüfung fehlgeschlagen — durchgelassen',
+          'portal-auth: Session-Existenzprüfung fehlgeschlagen — invalidiert (Re-Login erzwungen)',
         );
+        return session; // keine Portal-Felder → portalAuth liefert null
       }
 
       session.user.contactId = token.contactId;

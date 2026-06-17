@@ -66,7 +66,7 @@ async function sendOneMagicLink(input: {
   }
 
   try {
-    await sendTemplateMail({
+    const mailResult = await sendTemplateMail({
       tenantId: contact.tenantId,
       slug: 'magic-link',
       to: contact.email,
@@ -82,11 +82,26 @@ async function sendOneMagicLink(input: {
         bodyMd: `Hallo {{contact.fullName}},\n\nüber den folgenden Link können Sie sich in das Mandantenportal für {{client.name}} einloggen:\n\n{{link}}\n\nDer Link ist {{expiresMinutes}} Minuten gültig und kann nur einmal verwendet werden.`,
       },
     });
+    if (!mailResult.ok) {
+      throw new Error('template mail returned ok=false');
+    }
   } catch (e) {
     log[env.NODE_ENV === 'production' ? 'error' : 'warn'](
       { err: (e as Error).message, email: contact.email, contactId: contact.id },
-      'magic-link: SMTP-Versand fehlgeschlagen - Token bleibt gueltig, Resend moeglich',
+      'magic-link: SMTP-Versand fehlgeschlagen - Token wird invalidiert',
     );
+    if (env.NODE_ENV === 'production') {
+      try {
+        await prismaOwner.magicLink.deleteMany({
+          where: { tokenHash, consumedAt: null },
+        });
+      } catch (deleteErr) {
+        log.error(
+          { err: (deleteErr as Error).message, email: contact.email, contactId: contact.id },
+          'magic-link: Token nach SMTP-Fehler konnte nicht invalidiert werden',
+        );
+      }
+    }
     try {
       await withTenantContext(
         { tenantId: contact.tenantId, actorId: null, actorType: 'SYSTEM' },

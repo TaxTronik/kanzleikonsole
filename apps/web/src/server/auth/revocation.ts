@@ -65,7 +65,11 @@ export async function getRevocationTimestamp(
     const v = await r.get(key(surface, userId));
     if (!v) return 0;
     return Number(v) || 0;
-  } catch {
+  } catch (e) {
+    log.warn(
+      { component: 'revocation', err: (e as Error).message },
+      'revocation timestamp read failed',
+    );
     return 0;
   }
 }

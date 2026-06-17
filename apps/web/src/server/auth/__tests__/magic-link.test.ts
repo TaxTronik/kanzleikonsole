@@ -31,7 +31,7 @@ const m = vi.hoisted(() => ({
   prismaOwner: {
     tenant: { findUnique: vi.fn() },
     clientContact: { findFirst: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
-    magicLink: { create: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn() },
+    magicLink: { create: vi.fn(), deleteMany: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn() },
     $transaction: vi.fn(),
   },
 }));
@@ -84,7 +84,8 @@ beforeEach(() => {
     async (fn: (tx: unknown) => unknown) => fn(m.prismaOwner),
   );
   m.evidenceRecord.mockResolvedValue({});
-  m.sendTemplateMail.mockResolvedValue(undefined);
+  m.prismaOwner.magicLink.deleteMany.mockResolvedValue({ count: 1 });
+  m.sendTemplateMail.mockResolvedValue({ ok: true, sentViaTemplate: false });
   m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
     fn({}),
   );
@@ -177,6 +178,21 @@ describe('requestMagicLink — Anti-Enumeration (immer ok:true)', () => {
     );
     expect(res).toEqual({ ok: true });
     expect(m.log.error).toHaveBeenCalled();
+    expect(m.prismaOwner.magicLink.deleteMany).toHaveBeenCalledWith({
+      where: { tokenHash: expect.stringMatching(/^[0-9a-f]{64}$/), consumedAt: null },
+    });
+    expect(m.notify).toHaveBeenCalled();
+  });
+
+  it('sendTemplateMail ok:false invalidiert den erzeugten Token ebenfalls', async () => {
+    m.sendTemplateMail.mockResolvedValue({ ok: false, sentViaTemplate: false });
+    const res = await withTimersFlushed(
+      requestMagicLink({ tenantId: 'tenant-1', email: 'mandant@example.de' }),
+    );
+    expect(res).toEqual({ ok: true });
+    expect(m.prismaOwner.magicLink.deleteMany).toHaveBeenCalledWith({
+      where: { tokenHash: expect.stringMatching(/^[0-9a-f]{64}$/), consumedAt: null },
+    });
     expect(m.notify).toHaveBeenCalled();
   });
 
@@ -187,6 +203,7 @@ describe('requestMagicLink — Anti-Enumeration (immer ok:true)', () => {
       requestMagicLink({ tenantId: 'tenant-1', email: 'mandant@example.de' }),
     );
     expect(res).toEqual({ ok: true });
+    expect(m.prismaOwner.magicLink.deleteMany).toHaveBeenCalled();
   });
 });
 

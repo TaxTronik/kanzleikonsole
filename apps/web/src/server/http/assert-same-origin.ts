@@ -5,10 +5,9 @@
 // POSTing bereits — dieser Check ist die zweite Verteidigungslinie für die
 // Fälle, in denen SameSite nicht greift (ältere Browser, Subdomain-
 // Konstellationen, künftige Cookie-Änderungen). Browser senden bei POST den
-// Origin-Header zuverlässig mit; fehlt er (ältere/Nicht-Browser-Clients),
-// fällt der Check auf Sec-Fetch-Site zurück und lässt den Request sonst
-// durch — bewusst fail-open, weil die eigentliche Autorisierung (Session)
-// unverändert dahinter liegt.
+// Origin-Header zuverlässig mit; fehlt er, muss Sec-Fetch-Site eindeutig
+// same-origin/same-site/none sein. Fehlen beide Signale, blocken wir
+// fail-closed.
 // =============================================================================
 
 import { NextResponse, type NextRequest } from 'next/server';
@@ -53,8 +52,7 @@ export function assertSameOrigin(
 
   // Kein Origin-Header: Browser senden ihn bei POST praktisch immer (auch
   // same-origin) — fehlt er, ist es ein älterer oder Nicht-Browser-Client.
-  // Sec-Fetch-Site als zweites Signal; fehlt auch das, durchlassen
-  // (Defense in Depth — kein Hard-Block für legitime Alt-Clients).
+  // Sec-Fetch-Site als zweites Signal; fehlt auch das, blocken wir.
   const fetchSite = req.headers.get('sec-fetch-site');
   if (fetchSite === 'same-origin' || fetchSite === 'same-site' || fetchSite === 'none') {
     return null;

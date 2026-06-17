@@ -162,8 +162,8 @@ async function hydrateStaffSessionFromToken(session: Session, token: unknown): P
     return session;
   }
 
-  let freshRoles: string[] | null = null;
-  let freshPermissions: string[] | null = null;
+  let freshRoles: string[];
+  let freshPermissions: string[];
   try {
     const u = await prismaOwner.staffUser.findUnique({
       where: { id: token.staffId },
@@ -194,8 +194,8 @@ async function hydrateStaffSessionFromToken(session: Session, token: unknown): P
   session.user.staffId = token.staffId;
   session.user.tenantId = token.tenantId;
   session.user.fullName = token.fullName;
-  session.user.roles = freshRoles ?? token.roles;
-  session.user.permissions = freshPermissions ?? token.permissions ?? [];
+  session.user.roles = freshRoles;
+  session.user.permissions = freshPermissions;
   return session;
 }
 
@@ -492,10 +492,8 @@ const staffConfig: NextAuthConfig = {
           tenantId: tenant.id,
           fullName: staffUser.fullName,
           roles: staffUser.roles.map((r) => r.role as string),
-          // iter87: Einzelrechte MÜSSEN auch im Produktions-Login ins Token —
-          // sonst trägt jedes Prod-JWT permissions=[] und der DB-Fallback im
-          // session-Callback liefert bei einem transienten DB-Fehler fälschlich
-          // „keine Rechte" (asymmetrisch zum roles-Fallback).
+          // iter87: Einzelrechte MÜSSEN auch im Produktions-Login ins Token,
+          // damit alte und neue JWT-Schemata sauber unterschieden werden.
           permissions: staffUser.permissions.map((p) => p.permission as string),
         };
       },
@@ -573,13 +571,13 @@ const staffConfig: NextAuthConfig = {
       // F3: Rollen aus DIESEM frischen DB-Stand übernehmen (nicht aus dem bis zu
       // 24 h alten JWT). Der Roundtrip ist für die Ghost-Session-Prüfung ohnehin
       // bezahlt → eine Rollen-Reduktion (z. B. ADMIN entzogen) wirkt sofort, ohne
-      // auf revokeAllSessions oder den JWT-Ablauf zu warten. Bleibt null bei
-      // transientem DB-Fehler → Fallback auf token.roles (stale, aber kein Logout).
-      let freshRoles: string[] | null = null;
+      // auf revokeAllSessions oder den JWT-Ablauf zu warten. Bei transientem
+      // DB-Fehler bleibt die Session bewusst ohne Staff-Felder (fail-closed).
+      let freshRoles: string[];
       // iter87: Berechtigungen hängen am selben frischen DB-Stand wie die
       // Rollen — ein Entzug (z. B. INVOICE_SEND) wirkt damit sofort, nicht
       // erst nach JWT-Ablauf.
-      let freshPermissions: string[] | null = null;
+      let freshPermissions: string[];
       try {
         const u = await prismaOwner.staffUser.findUnique({
           where: { id: token.staffId },
@@ -600,18 +598,20 @@ const staffConfig: NextAuthConfig = {
         freshRoles = u.roles.map((r) => r.role as string);
         freshPermissions = u.permissions.map((p) => p.permission as string);
       } catch (err) {
-        // Transienter DB-Fehler darf nicht alle ausloggen — loggen, durchlassen.
+        // Fail-closed: keine Rollen/Berechtigungen aus einem alten JWT nutzen,
+        // wenn der frische DB-Stand nicht verifiziert werden kann.
         log.warn(
           { err: (err as Error).message },
-          'staff-auth: Session-Existenzprüfung fehlgeschlagen — durchgelassen',
+          'staff-auth: Session-Existenzprüfung fehlgeschlagen — invalidiert (Re-Login erzwungen)',
         );
+        return session; // keine Staff-Felder → staffAuth liefert null
       }
 
       session.user.staffId = token.staffId;
       session.user.tenantId = token.tenantId;
       session.user.fullName = token.fullName;
-      session.user.roles = freshRoles ?? token.roles;
-      session.user.permissions = freshPermissions ?? token.permissions ?? [];
+      session.user.roles = freshRoles;
+      session.user.permissions = freshPermissions;
       return session;
     },
   },
