@@ -216,6 +216,13 @@ Für getrennte Staff-/Mandanten-Domains:
 Details: [docs/operations/subdomain-trennung.md](docs/operations/subdomain-trennung.md)
 und [infra/n8n/workflows/README.md](infra/n8n/workflows/README.md).
 
+Weitere Betriebsrunbooks:
+
+- [Day-2 Operations](docs/operations/day-2-operations.md)
+- [Secret-Rotation](docs/operations/secret-rotation.md)
+- [Release-Rehearsal](docs/operations/release-rehearsal.md)
+- [Disaster Recovery](docs/operations/disaster-recovery.md)
+
 Weitere Operator-Kommandos (docker-compose-Passthrough):
 
 ```bash
@@ -232,6 +239,7 @@ Weitere Operator-Kommandos (docker-compose-Passthrough):
 pnpm lint
 pnpm typecheck
 pnpm test
+pnpm test:ops
 pnpm e2e
 pnpm verify:schema-drift
 pnpm verify:chain
@@ -246,6 +254,8 @@ Hinweise:
   neben der Web-App auch die Worker-Jobs (`apps/worker/src/jobs/__tests__`)
   und die Packages (u. a. `tax`, `evidence`, `db`, `crypto`, `http-utils`,
   `rss`, `n8n-shared`), inkl. Auth-Suiten für TOTP, Magic-Link und Lockout.
+- `pnpm test:ops` prüft die Operator-CLI-Gates (`doctor`, Prod-SMTP ohne
+  Mailhog, Risk-Layer-Paarung, Build-Cache-Prune) ohne echten Deploy.
 - E2E-Login-Tests brauchen `E2E_TOTP_SECRET`.
 - RLS-Cross-Tenant-Tests skippen lokal ohne DB-URLs, schlagen in CI aber fehl,
   wenn `DATABASE_URL` oder `DATABASE_APP_URL` fehlt.
@@ -255,6 +265,8 @@ Hinweise:
   Audit-Hash-Chain auf der wiederhergestellten DB. Lokal:
   `DATABASE_URL=… bash scripts/restore-selftest.sh` (siehe
   `docs/operations/disaster-recovery.md`, Abschnitt 7.1).
+- Das Assurance-Modell bündelt Threat Model, Known Limits und Release-Gates:
+  [docs/assurance/assurance-model.md](docs/assurance/assurance-model.md).
 
 ## Projektstruktur
 

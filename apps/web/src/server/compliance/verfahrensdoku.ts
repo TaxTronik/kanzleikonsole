@@ -248,7 +248,10 @@ Version):
 - Test- und Abnahmekonzept inkl. Testnachweis-Kette
   (\`docs/development/testkonzept.md\`)
 - Änderungsdokumentation / Vor-Release-Journal (\`CHANGELOG.md\`)
+- Assurance-Modell, Threat Model und Known Limits (\`docs/assurance/\`)
 - Release-/Update-Prozess und Rollback (\`docs/operations/release.md\`)
+- Day-2 Operations und Secret-Rotation (\`docs/operations/day-2-operations.md\`,
+  \`docs/operations/secret-rotation.md\`)
 - Disaster-Recovery-Runbook (\`docs/operations/disaster-recovery.md\`)
 - Anwenderdokumentation (\`docs/anwenderdoku/\`)
 

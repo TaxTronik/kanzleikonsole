@@ -11,6 +11,7 @@ Ist-Zustand; Änderungen am Testverfahren werden hier nachgezogen.
 |---|---|---|---|
 | Unit-/Komponententests | Vitest, `**/__tests__/` in allen Paketen | Verarbeitungslogik, Validierungen, Mapping, Fehlerpfade | jeder CI-Lauf |
 | Guard-Tests | Vitest (z. B. `prisma-client-guard`, ENV-Schema-Tests) | erzwingen Verfahrensregeln maschinell (kein DB-Zugriff am Kontrollsystem vorbei, keine ungültige Konfiguration) | jeder CI-Lauf |
+| Operator-CLI-Tests | `scripts/tests/ops-lib.test.sh` | `./taxtronik doctor`, SMTP-Prod-Gates, Risk-Layer-Paarung und Build-Cache-Prune ohne echten Docker-Deploy | CI-Job `quality` |
 | RLS-/Integrationstests | Vitest gegen echte Postgres-Instanz (`packages/db`) | Mandantentrennung auf Datenbankebene (Cross-Tenant-Zugriffe müssen scheitern), GwG-Schranken, Audit-Trigger | CI-Job `db` |
 | Migrations-/Drift-Tests | Prisma + Drift-Check-Skript | Migrationshistorie erzeugt exakt das deklarierte Schema | CI-Job `db` |
 | Restore-Roundtrip | `scripts/restore-selftest.sh` (echter Produktionscode-Pfad) | Backup ist wiederherstellbar UND inhaltlich intakt (Zeilenzahlen, Audit-Hash-Chain auf der wiederhergestellten DB) | CI-Job `restore` |
@@ -61,9 +62,9 @@ Vollständigkeit, Abweichungen):
 
 1. **CI-Artefakte je Lauf:** die Jobs `quality`, `db` und `restore` laden
    ihre vollständigen Testprotokolle als Artefakte hoch
-   (`testbericht-unit`, `testbericht-db`, `testbericht-restore`); der
-   E2E-Job archiviert den Playwright-Report. Ein Testprotokoll weist je
-   Testdatei und Testfall Bestehen/Fehlschlag aus.
+   (`testbericht-unit`, `testbericht-ops`, `testbericht-db`,
+   `testbericht-restore`); die E2E-Jobs archivieren Playwright-Reports. Ein
+   Testprotokoll weist je Testdatei und Testfall Bestehen/Fehlschlag aus.
 2. **Job-Logs:** alle übrigen Schritte (Upgrade-Pfad, Drift-Check, Builds)
    sind über die persistierten CI-Logs des jeweiligen Laufs nachvollziehbar.
 3. **Release-Bezug:** maßgeblich für ein Release ist der CI-Lauf des
@@ -80,8 +81,11 @@ Vollständigkeit, Abweichungen):
 - **Kein Coverage-Prozentziel:** Maßstab ist die funktionale Abdeckung je
   Scope-Modul (Abschnitt 2) plus verpflichtende Negativ- und
   Regressionstests — ein Zeilenprozentwert erzeugt Scheinsicherheit.
-- **E2E bewusst schmal** (Smoke): die fachliche Tiefe liegt in den Unit-/
-  Integrationsebenen, wo Fehlerursachen präzise lokalisierbar sind.
+- **E2E zweistufig:** `e2e-smoke` bleibt schnell und klein; die umfangreiche
+  `e2e-paranoid`-Suite bleibt als breite Release-Regression bestehen
+  (Auth/RBAC, Tenant-Isolation, Compliance, Differential, Concurrency,
+  Upload-Fuzz). Fachliche Detailtiefe liegt zusätzlich in Unit-/Integrations-
+  tests, wo Fehlerursachen präzise lokalisierbar sind.
 - **Lasttests:** bisher nicht etabliert; bekanntes offenes Thema (siehe
   Gap-Analyse) — für die Bescheinigungsfähigkeit nicht vorausgesetzt, für
   den Betrieb größerer Kanzleien geplant.

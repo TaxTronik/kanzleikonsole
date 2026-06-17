@@ -72,6 +72,19 @@ jobs:
       - name: Guard pinned CI actions
         run: sh scripts/check-ci-actions-pinned.sh
 
+      - name: Operator CLI tests
+        run: |
+          set -o pipefail
+          pnpm test:ops 2>&1 | tee testbericht-ops.log
+
+      - name: Ops-Testnachweis hochladen
+        if: always()
+        uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5
+        with:
+          name: testbericht-ops
+          path: testbericht-ops.log
+          if-no-files-found: ignore
+
       - name: Lint
         run: pnpm lint
 

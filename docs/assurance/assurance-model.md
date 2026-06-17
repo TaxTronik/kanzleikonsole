@@ -82,6 +82,7 @@ zu `isStaffAdmin(session)`. AST-Guard (`server-action-authz.test.ts`)
 |---|---|---|---|
 | **Unit** | vitest | ~533 (web) + ~70 (packages) | Jeder Commit (`turbo run test`) |
 | **Property-Based** | fast-check | 18 Properties | Jeder Commit (in vitest) |
+| **Operator CLI** | Bash | `doctor`, SMTP, Risk-Layer, Build-Cache-Prune | CI `quality` Job |
 | **Integration (DB)** | vitest + Postgres | ~22 (RLS, Festschreibung, GwG) | CI `db` Job |
 | **E2E Smoke** | Playwright | 1 Spec | CI `e2e-smoke` Job |
 | **E2E Paranoid (Release)** | Playwright | 10 Specs (122 Tests) | CI `e2e-paranoid` Job |
@@ -94,11 +95,12 @@ zu `isStaffAdmin(session)`. AST-Guard (`server-action-authz.test.ts`)
 | Gate | Befehl | Was prüft es | CI Job |
 |---|---|---|---|
 | **Lint + TypeCheck** | `turbo run lint typecheck` | ESLint, `no-explicit-any: error`, tsc strict | `quality` |
+| **Operator CLI** | `pnpm test:ops` | Prod-Env-Gates, Mailhog-Verbot, Risk-Layer-Paarung, Build-Cache-Prune | `quality` |
 | **Schema-Drift** | `pnpm verify:schema-drift` | schema.prisma vs Migrationen | `db` |
 | **RLS-Drift** | `pnpm verify:rls` | Jede Tabelle hat ENABLE+FORCE RLS + Policy | `db` |
 | **Audit-Chain** | `pnpm verify:chain` | Hash-Chain recompute, TSA-Verify, Archive | `db` |
-| **Secret-Scan** | `gitleaks detect` | Vollständige Git-Historie | `security` |
-| **Dependency-Audit** | `pnpm audit --prod --audit-level high` | Bekannte Vulnerabilitäten | `security` |
+| **Secret-Scan** | `gitleaks detect` | Vollständige Git-Historie, Log als Artefakt | `security` |
+| **Dependency-Audit** | `pnpm audit --prod --audit-level high` | Bekannte Vulnerabilitäten, Log als Artefakt | `security` |
 | **Paranoid E2E** | 10 Specs, 122 Tests | Auth, RBAC, Tenant-Isolation, Compliance | `e2e-paranoid` |
 | **XRechnung** | KoSIT Validator | Schematron + BR-DE Konformität | `e-rechnung` |
 | **Container-Scan** | Trivy | CRITICAL-with-fix blockiert Release | `release` |
@@ -147,6 +149,9 @@ fachliche Würdigung" bis "RLS ist die letzte Barriere, nicht die einzige".
 
 - [Threat Model](./threat-model.md)
 - [Known Limits](./known-limits.md)
+- [Day-2 Operations](../operations/day-2-operations.md)
+- [Secret-Rotation](../operations/secret-rotation.md)
+- [Release-Rehearsal](../operations/release-rehearsal.md)
 - [ADR 0002: RLS und App-Level-Tenancy](../adr/0002-rls-und-app-level-tenancy.md)
 - [ADR 0012: Schema-Drift-Detection](../adr/0012-schema-drift-detection.md)
 - [Tenancy Model](../compliance/tenancy-model.md)

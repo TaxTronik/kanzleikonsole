@@ -931,6 +931,12 @@ Kanzlei nicht.
   periodisch auf (`TAXTRONIK_BUILD_CACHE_PRUNE_UNTIL`, Default 168h)
 - Mailhog ist Dev-only; Produktion verlangt ein echtes SMTP-Relay und blockt
   Mailhog-/localhost:1025-Defaults im `doctor`
+- `pnpm test:ops` prüft Operator-CLI-Gates maschinell (Prod-SMTP, Risk-Layer,
+  Build-Cache-Prune) und läuft als Quality-Gate in CI
+- Betriebsrunbooks für Day-2 Operations, Secret-Rotation und Release-Rehearsal
+  unter `docs/operations/`
+- Assurance-Dokumentation mit Threat Model und Known Limits unter
+  `docs/assurance/`
 
 ## Benutzer-Verwaltung (ADMIN/PARTNER)
 

@@ -62,6 +62,12 @@ Die Assets, deren Vertraulichkeit, Integrität oder Verfügbarkeit existenzbedro
 | T-INFRA-1 | Ein Secret wird committet | gitleaks, Pre-Commit | `security.yml` (gitleaks scan) |
 | T-INFRA-2 | Eine bekannte Vulnerability (high+) in Prod-Dependencies | `pnpm audit` | `security.yml` (weekly + PR) |
 | T-INFRA-3 | CI-Images oder Actions sind nicht gepinnt | SHA/Digest-Pinning | `check-ci-images-pinned.sh`, `check-ci-actions-pinned.sh` |
+| T-INFRA-4 | Allgemeine Server-Fetches erreichen interne/private Ziele | `safeFetch`, DNS-Rebinding-Schutz, Allowlist | `@taxtronik/http-utils` Tests |
+| T-INFRA-5 | Risk-Layer-Konfiguration ist halb gesetzt oder nutzt ein falsches Vertrauensmodell | `doctor`, dedizierter trusted Risk-Layer-Client | `pnpm test:ops`, Risk-Layer Client Tests |
+| T-INFRA-6 | n8n-Webhooks werden gefälscht oder replayed | HMAC, Timestamp-Fenster, Nonce | n8n Verify Tests, E2E/Workflow-Smoke |
+| T-INFRA-7 | Produktion startet mit Dev-Mailhog-Defaults | Compose `${VAR:?}`, `doctor` SMTP-Gate | `pnpm test:ops` |
+| T-INFRA-8 | Backup existiert, ist aber nicht wiederherstellbar | Restore-Roundtrip, Backup-Drill | CI `restore`, `backup-drill`, `disaster-recovery.md` |
+| T-INFRA-9 | Lokaler Build-Cache füllt den Server | automatischer BuildKit-Prune nach Lokalbuild | `pnpm test:ops`, Day-2 Runbook |
 
 ## 3. Angriffsvektoren
 
@@ -75,6 +81,9 @@ Die Assets, deren Vertraulichkeit, Integrität oder Verfügbarkeit existenzbedro
 | **SQL Injection** | Angreifer injiziert SQL in Search/Filter | Prisma-Parameterized-Queries, E2E 07 (9.2) |
 | **File Upload Malware** | EICAR-Testdatei, Double-Extension | ClamAV, MIME-Check, E2E 07 (10.1-10.3) |
 | **Brute Force** | Passwort- oder TOTP-Brute-Force | IP-RL + Account-Lockout, E2E 04 |
+| **SSRF / DNS-Rebinding** | Admin-konfigurierte URLs zeigen auf interne Netze | `safeFetch`, gepinnter Lookup, `INTERNAL_FETCH_HOSTS` nur bewusst |
+| **Webhook Replay** | alter n8n-Callback wird erneut gesendet | HMAC + Timestamp + Redis-Nonce |
+| **Dev-Config in Prod** | Mailhog oder Dev-Secrets gelangen in Production | ENV-Denylist, Compose-Pflichtvariablen, `doctor` |
 
 ## 4. Vertrauensgrenzen (Trust Boundaries)
 

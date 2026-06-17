@@ -42,6 +42,13 @@ Versionsabschnitt überführt.
   Handoff- und Entwicklungsdoku entfernt bzw. neutralisiert
 - Windows: irreführender Root-Shortcut `start.cmd` entfernt; der verbleibende
   PowerShell-Helfer ist als lokaler Container-Dev-Helfer gekennzeichnet
+- Qualitätssicherung: `pnpm test:ops` ergänzt Operator-CLI-Regressionen für
+  `doctor`, Prod-SMTP/Mailhog-Gates, Risk-Layer-Konfiguration und
+  Build-Cache-Prune; CI archiviert `testbericht-ops`
+- Security-Nachweise: `security.yml` archiviert Dependency-Audit- und
+  Gitleaks-Logs als prüfbare Artefakte
+- Betriebsreife: Runbooks für Day-2 Operations, Secret-Rotation und
+  Release-Rehearsal ergänzt; Testkonzept und Assurance-Modell aktualisiert
 
 ### Risk-Layer / TCMS
 

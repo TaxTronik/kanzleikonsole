@@ -26,6 +26,10 @@ Vorher sollte der normale CI-Lauf (Quality, DB, Restore-Roundtrip,
 Upgrade-Pfad, E2E) auf dem getaggten Commit grün sein — taggen heißt
 freigeben.
 
+Vor dem ersten echten Produkt-Release und vor größeren Releases wird zusätzlich
+das [Release-Rehearsal](release-rehearsal.md) auf einem frischen
+Wegwerf-System durchgeführt.
+
 **Einmaliges Forgejo-Setup:** Actions-Runner mit Docker-Zugriff (existiert für
 build-images.yml bereits). Falls der Actions-Auto-Token keine Pakete schreiben
 darf, einen PAT mit `write:package` als Secrets `REGISTRY_USER` +

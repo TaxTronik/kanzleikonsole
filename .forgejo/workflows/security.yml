@@ -37,7 +37,17 @@ jobs:
         run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Audit production dependencies
-        run: pnpm audit --prod --audit-level high
+        run: |
+          set -o pipefail
+          pnpm audit --prod --audit-level high 2>&1 | tee security-audit-prod.log
+
+      - name: Dependency-audit evidence upload
+        if: always()
+        uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5
+        with:
+          name: security-audit-prod
+          path: security-audit-prod.log
+          if-no-files-found: ignore
 
   secrets:
     name: Secret Scan
@@ -58,4 +68,14 @@ jobs:
           chmod +x /tmp/gitleaks
 
       - name: Scan repository
-        run: /tmp/gitleaks detect --source . --redact --verbose
+        run: |
+          set -o pipefail
+          /tmp/gitleaks detect --source . --redact --verbose 2>&1 | tee security-gitleaks.log
+
+      - name: Secret-scan evidence upload
+        if: always()
+        uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5
+        with:
+          name: security-gitleaks
+          path: security-gitleaks.log
+          if-no-files-found: ignore

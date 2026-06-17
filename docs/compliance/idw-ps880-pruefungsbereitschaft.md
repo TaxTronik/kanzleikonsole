@@ -74,7 +74,7 @@ Status: ✅ vorhanden und prüfungstauglich · 🟡 vorhanden, aber formalisiere
 | Programmierstandards/Namenskonventionen | ✅ | maschinell erzwungen (ESLint/Prettier/tsconfig, vgl. Tz. 58) und im Entwicklungsverfahren benannt. |
 | Versionsführung, abgegrenzte Releases | ✅ | Git-Historie, SemVer-Tags, signierte Update-Manifeste, Image-Digests, APP_VERSION/GIT_SHA im Produkt sichtbar (vgl. Tz. 59, 62 — Programmidentität ist besser gelöst als gefordert). |
 | Test-/Abnahmekonzept dokumentiert | ✅ | **Seit 2026-06-10:** `docs/development/testkonzept.md` (Testarten inkl. Negativ-/Schnittstellen-/Parametertests, Abdeckungsanspruch je Scope-Modul, Fehler-/Wiederholungstest-Prozess). Nebenbefund behoben: CI testet jetzt ALLE Pakete (vorher 4 von 11). |
-| Testnachweise je Release, für Dritte nachvollziehbar | ✅ | **Seit 2026-06-10:** CI archiviert Testprotokolle als Artefakte (`testbericht-unit/-db/-restore`, Playwright-Report immer); Nachweis-Kette Tag → Commit → CI-Lauf → Artefakte im Testkonzept beschrieben. |
+| Testnachweise je Release, für Dritte nachvollziehbar | ✅ | **Seit 2026-06-10:** CI archiviert Testprotokolle als Artefakte (`testbericht-unit/-ops/-db/-restore`, Playwright-Reports, Security-Logs); Nachweis-Kette Tag → Commit → CI-Lauf → Artefakte im Testkonzept beschrieben. |
 | Doku-Aktualisierung bei jeder Programmänderung | ✅ | als Pflicht im Entwicklungsverfahren festgeschrieben (vgl. Tz. 63) und gelebt. |
 | Kontrollumfeld-Risiken (Personal, Technologie) | 🟡 | Bus-Faktor 1 ist der relevante Risikoindikator (vgl. Tz. 53) — HANDOFF.md mildert; ehrlich dokumentieren statt verstecken. |
 
