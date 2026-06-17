@@ -21,6 +21,7 @@ import {
 import { env } from '@taxtronik/config';
 import { evidenceService } from '@/server/container';
 import { createAuditRecoveryCheckpointAction, triggerAuditVerifyAction } from './actions';
+import { AuditVerifyAutoRefresh } from './audit-verify-auto-refresh';
 import { signAuditToken, AUDIT_TOKEN_TTL_DAYS } from '@/server/audit-access/token';
 import { CopyField } from '@/components/copy-field';
 import type { Prisma } from '@prisma/client';
@@ -137,14 +138,14 @@ export default async function AuditLogPage({
       ).catch(() => null)
     : null;
 
-  // Headline-Schweregrad: ein HISTORISCHER Bruch MIT gesetztem Checkpoint UND
-  // intakter Recovery-Teilkette wird bernsteinfarben („historisch, abgegrenzt")
-  // statt rot dargestellt. Reines Rot bleibt ohne Checkpoint oder bei erneutem
-  // Bruch ab dem Checkpoint. `recovered` wird vom täglichen Worker gesetzt
-  // (checkpoint-aware) — zusätzlich zur Live-Verifikation als Fallback, falls
-  // die letztere z. B. am TSA-Check scheitert.
-  const recoveryIntact =
-    !!checkpoint && (!!verifyResult?.recovered || !!recoveryResult?.ok);
+  // Headline-Schweregrad: ein HISTORISCHER Bruch MIT gesetztem Checkpoint wird
+  // bernsteinfarben („historisch, abgegrenzt") statt rot dargestellt — ausnahms-
+  // weise auch dann, wenn die Live-Recovery-Verifikation gerade nicht möglich
+  // ist (null, z. B. TSA-Problem): der Checkpoint ist die bewusste Aussage, dass
+  // der Befund versorgt ist. Reines Rot NUR bei einem bestätigten NEUEN Bruch ab
+  // dem Checkpoint (recoveryResult.ok === false) oder ohne Checkpoint.
+  const confirmedNewBreak = !!checkpoint && recoveryResult !== null && !recoveryResult.ok;
+  const recoveryIntact = !!checkpoint && !confirmedNewBreak;
   const chainStatus: 'none' | 'ok' | 'amber' | 'red' = !verifyResult
     ? 'none'
     : verifyResult.ok
@@ -169,6 +170,7 @@ export default async function AuditLogPage({
 
   return (
     <div className="p-8">
+      {sp.verify === 'queued' && <AuditVerifyAutoRefresh />}
       <div className="flex items-end justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-primary mb-1">Audit-Log</h1>

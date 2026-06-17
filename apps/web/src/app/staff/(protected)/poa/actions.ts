@@ -60,7 +60,10 @@ export async function createPoaAction(
     signerEmail: formData.get('signerEmail'),
     signerName: formData.get('signerName'),
     subject: formData.get('subject'),
-    scope: formData.get('scope'),
+    // Im Extern-Modus sendet das Form kein scope-Feld → formData.get liefert
+    // null. Zod .optional() akzeptiert aber nur undefined, nicht null — daher
+    // auf '' coalescen (s. #2 "expected string, received null").
+    scope: formData.get('scope') ?? '',
     validFrom: formData.get('validFrom'),
     validUntil: formData.get('validUntil') ?? '',
   });

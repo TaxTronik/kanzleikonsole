@@ -183,6 +183,19 @@ export const auditVerifyWorker = new Worker<ChecksJob>(
           });
           results.push({ tenantId, ok: false, broken: r.firstBreak ? String(r.firstBreak.auditId) : 'unknown' });
         } else {
+          // Chain intakt ODER historischer Bruch durch Checkpoint abgegrenzt
+          // (recovered): eine noch offene SYSTEM_AUDIT_BREAK-Notification als
+          // gelesen markieren, damit Bell/Counter nicht weiter auf einen Bruch
+          // hinweist, der bereits versorgt ist. (User-Feedback: „nach Checkpoint
+          // keine Break-Meldung/Notification mehr".)
+          await withWorkerTenantContext(tenantId, async (tx) => {
+            await tx.notification.updateMany({
+              where: { tenantId, kind: 'SYSTEM_AUDIT_BREAK', readAt: null },
+              data: { readAt: new Date() },
+            });
+          }).catch((e) =>
+            log.warn({ tenantId, err: (e as Error).message }, 'audit-verify: clear-notification failed'),
+          );
           results.push({ tenantId, ok: true });
         }
       } catch (err) {
