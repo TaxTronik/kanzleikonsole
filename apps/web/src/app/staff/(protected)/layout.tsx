@@ -14,6 +14,7 @@ import { readBranding } from '@/server/settings/branding';
 import { readModules } from '@/server/settings/modules';
 import { brandPaletteStyle } from '@/lib/brand-palette';
 import { TenantLogo } from '@/components/tenant-logo';
+import { AutoRefresh } from '@/components/auto-refresh';
 
 // Vollständige Liste — wird im Layout pro Tenant gefiltert (Module-Toggles).
 type ModuleKey =
@@ -98,6 +99,7 @@ export default async function StaffLayout({ children }: { children: React.ReactN
       className="flex h-screen bg-surface-page"
       style={brandPaletteStyle(branding.accentColor)}
     >
+      <AutoRefresh />
       {/* Sidebar */}
       <aside className="app-sidebar w-64 bg-white dark:bg-gray-900 border-r border-default flex flex-col">
         {/* Logo */}

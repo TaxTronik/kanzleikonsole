@@ -121,9 +121,10 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
     email: loaded.client.invoiceEmail,
   };
   let pdfBytes: Uint8Array;
+  let cii: string;
   try {
     const branding = await readBranding(ctx);
-    const cii = generateXRechnungCii(xInput, seller, buyer);
+    cii = generateXRechnungCii(xInput, seller, buyer);
     pdfBytes = await generateZugferdPdf(xInput, seller, buyer, cii, branding.logoDataUrl);
   } catch (e) {
     // Schritt-Kontext im Fehlertext — sonst ist „ZUGFeRD geht nicht" nicht
@@ -139,6 +140,15 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
     stored = await commitBytesWithTier({ fileData: Buffer.from(pdfBytes), tier: 'GOBD', tenantId: ctx.tenantId, skipScan: true });
   } catch (e) {
     throw new Error(`ZUGFeRD-Ablage im GOBD-Object-Store fehlgeschlagen: ${(e as Error).message}`, { cause: e });
+  }
+
+  // XRechnung-XML parallel ablegen — erscheint als eigenständiges Dokument im
+  // Mandantenordner (gleiche Generierung, nur XML statt PDF).
+  let storedXml: CommitDocumentResult;
+  try {
+    storedXml = await commitBytesWithTier({ fileData: Buffer.from(cii, 'utf8'), tier: 'GOBD', tenantId: ctx.tenantId, skipScan: true });
+  } catch (e) {
+    throw new Error(`XRechnung-Ablage im GOBD-Object-Store fehlgeschlagen: ${(e as Error).message}`, { cause: e });
   }
 
   // 5. Document + Version anlegen + verknüpfen (Tx). Race-sicher: hat ein
@@ -191,6 +201,33 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
       },
     });
     await tx.invoice.update({ where: { id: invoiceId }, data: { documentId: doc.id } });
+    // XRechnung-XML als eigenständiges Dokument (selbe Freigabe-Logik wie das
+    // ZUGFeRD-PDF), damit die XML separat im Mandantenordner auftaucht.
+    const xmlDoc = await tx.document.create({
+      data: {
+        tenantId: ctx.tenantId,
+        clientId: loaded.clientId,
+        title: `Rechnung ${loaded.number} (XRechnung)`,
+        classification: 'GOBD_INVOICE',
+        mimeType: 'application/xml',
+        sharedWithClientAt: shareable ? new Date() : null,
+        sharedByStaff: shareable ? actorId : null,
+      },
+    });
+    await tx.documentVersion.create({
+      data: {
+        documentId: xmlDoc.id,
+        versionNo: 1,
+        storageBucket: storedXml.targetBucket,
+        storageKey: storedXml.targetKey,
+        sha256: prismaBytes(storedXml.sha256),
+        sizeBytes: storedXml.sizeBytes,
+        immutable: storedXml.immutable,
+        scanStatus: 'CLEAN',
+        scanCompletedAt: new Date(),
+        createdById: actorId,
+      },
+    });
     await evidenceService.record(tx, {
       tenantId: ctx.tenantId,
       actorType: 'STAFF',

@@ -11,6 +11,7 @@ import { readModules } from '@/server/settings/modules';
 import { readPortalFeatures, type PortalFeatures } from '@/server/settings/portal-features';
 import { brandPaletteStyle } from '@/lib/brand-palette';
 import { TenantLogo } from '@/components/tenant-logo';
+import { AutoRefresh } from '@/components/auto-refresh';
 
 // Tenant-weite Module-Toggles steuern, ob das gesamte Feature aktiv ist
 // (Staff + Portal). Portal-Feature-Toggles erlauben darüber hinaus, einzelne
@@ -75,6 +76,7 @@ export default async function PortalLayout({ children }: { children: React.React
       className="flex h-screen bg-surface-page"
       style={brandPaletteStyle(branding.accentColor)}
     >
+      <AutoRefresh />
       <aside className="app-sidebar w-64 bg-white dark:bg-gray-900 border-r border-default flex flex-col">
         <div className="h-16 flex flex-col justify-center px-6 border-b border-default">
           {branding.logoDataUrl || branding.logoDataUrlDark ? (
