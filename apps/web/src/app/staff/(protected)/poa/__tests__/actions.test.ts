@@ -50,7 +50,19 @@ vi.mock('next/navigation', () => ({ redirect: m.redirect }));
 vi.mock('next/cache', () => ({ revalidatePath: m.revalidatePath }));
 vi.mock('next/headers', () => ({ headers: m.headers }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: m.withTenantContext }));
-vi.mock('@taxtronik/config', () => ({ portalBaseUrl: 'https://portal.example.de' }));
+vi.mock('@taxtronik/config', () => ({
+  portalBaseUrl: 'https://portal.example.de',
+  env: {
+    S3_ENDPOINT: 'http://seaweedfs:8333',
+    S3_REGION: 'us-east-1',
+    S3_ACCESS_KEY: 'test-access-key',
+    S3_SECRET_KEY: 'test-secret-key',
+    S3_BUCKET_GOBD: 'gobd',
+    S3_BUCKET_GWG: 'gwg',
+    S3_BUCKET_STAFF_PRIVATE: 'staff-private',
+    S3_BUCKET_GENERAL: 'general',
+  },
+}));
 vi.mock('@/server/container', () => ({ evidenceService: { record: m.evidenceRecord } }));
 vi.mock('@/server/mail/dispatch', () => ({ sendTemplateMail: m.sendTemplateMail }));
 vi.mock('@/server/db/prisma-owner', () => ({ prismaOwner: m.prismaOwner }));

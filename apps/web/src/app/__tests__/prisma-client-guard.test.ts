@@ -45,6 +45,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // Production-Provisionierung (Tenant + Admin, keine Demodaten) — läuft als
   // Operator-CLI VOR dem ersten Login, Owner-Verbindung ist hier der Zweck.
   'packages/db/seeds/provision.ts',
+  // Production-Recovery-CLI: setzt ein bestehendes Admin-Passwort außerhalb
+  // des App-Request-Pfads zurück; Owner-Verbindung ist hier bewusst nötig.
+  'packages/db/seeds/reset-admin-password.ts',
   // RLS-Integrationstest konstruiert bewusst Owner- + App-Client.
   'packages/db/src/__tests__/rls-cross-tenant.test.ts',
   // GwG-Schranken-Test konstruiert einen Owner-Client fürs Setup.
