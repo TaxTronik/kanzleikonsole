@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   Circle,
   ArrowRight,
+  Download,
 } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
@@ -26,6 +27,7 @@ import { getSetupStatus } from '@/server/setup/status';
 import { findDueGwgDeletionDocs } from '@/server/gwg/retention';
 import { findDueClientAnonymizations } from '@/server/dsgvo/client-retention';
 import { LicenseCard } from './license-card';
+import { BackupRunButton } from './backup-run-button';
 import { fmtDateTimeShort } from '@/lib/fmt';
 
 const APP_VERSION = process.env['APP_VERSION'] ?? 'dev';
@@ -230,10 +232,25 @@ export default async function AdminPage() {
                   Restore-Test: noch kein Lauf (monatlich am 1., 05:00 UTC)
                 </p>
               )}
+              <div className="mt-3 flex flex-wrap items-start gap-2">
+                <BackupRunButton />
+                {lastBackup?.status === 'SUCCESS' && lastBackup.key && (
+                  <Link
+                    href={`/api/staff/admin/backups/${lastBackup.id}/download`}
+                    className="btn-secondary text-xs py-1.5 inline-flex items-center gap-1.5"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Backup herunterladen
+                  </Link>
+                )}
+              </div>
             </div>
           </div>
           <p className="text-xs text-disabled">
             CLI: <code className="text-secondary">pnpm --filter @taxtronik/web backup:run</code>
+          </p>
+          <p className="text-xs text-disabled mt-1">
+            Lokale Kopie: <code className="text-secondary">backups/</code>
           </p>
         </div>
 

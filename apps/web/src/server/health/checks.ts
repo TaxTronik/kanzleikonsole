@@ -11,6 +11,7 @@ import { createConnection } from 'node:net';
 import { env, riskLayerConfig } from '@taxtronik/config';
 import { S3Client, ListBucketsCommand } from '@aws-sdk/client-s3';
 import { Rfc3161HttpAdapter, resolveTsaUrl } from '@taxtronik/evidence';
+import { RiskLayerClient } from '@taxtronik/risk-layer';
 import { randomBytes } from 'node:crypto';
 import { safeFetch } from '@/server/http/ssrf-guard';
 
@@ -149,18 +150,13 @@ export async function checkSignalEngine(): Promise<ServiceStatus | null> {
   if (!riskLayerConfig) return null;
   const start = Date.now();
   try {
-    const url = new URL('/v1/health', riskLayerConfig.url);
-    const ctrl = new AbortController();
-    const to = setTimeout(() => ctrl.abort(), 3000);
-    // safeFetch macht assertPublicHost + DNS-Pinning in einem Schritt (der interne
-    // Host muss in INTERNAL_FETCH_HOSTS stehen); redirect:'error' gegen 302→intern.
-    const res = await safeFetch(url.toString(), {
-      headers: { Authorization: `Bearer ${riskLayerConfig.token}` },
-      signal: ctrl.signal,
-      redirect: 'error',
-    });
-    clearTimeout(to);
-    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+    // RISK_LAYER_URL ist Operator-ENV und darf bewusst 127.0.0.1, Docker-DNS
+    // oder private LAN-IPs nutzen. Deshalb derselbe trusted Transport wie beim
+    // Subsumtions-/Risk-Layer statt des öffentlichen SSRF-Guards.
+    const health = await new RiskLayerClient({ config: riskLayerConfig }).health();
+    if ((health as { ok?: unknown }).ok === false) {
+      return { ok: false, error: 'Engine meldet ok=false' };
+    }
     return { ok: true, latencyMs: Date.now() - start };
   } catch (e) {
     return { ok: false, error: (e as Error).message };

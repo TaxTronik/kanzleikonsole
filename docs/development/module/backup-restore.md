@@ -11,9 +11,10 @@ monatlich per Restore-Drill (Art. 32 Abs. 1 lit. d DSGVO).
 
 - **Runner** (`apps/web/src/server/backup/runner.ts`): `pg_dump`
   (custom-Format, komprimiert; Passwort via PGPASSWORD, nie in Prozess-Args)
-  → Streaming-Upload in den `backups`-Bucket mit SHA-256/Größe nebenbei;
-  `BackupRecord` je Tenant (RUNNING→SUCCESS/FAILED, Hash, Key) + Audit
-  `backup.run` in derselben Tx; Fehlerpfad räumt Teil-Uploads ab.
+  → lokale Operator-Kopie unter `BACKUP_LOCAL_DIR` (Default `backups/`) →
+  Streaming-Upload in den `backups`-Bucket; SHA-256/Größe stammen aus
+  demselben Dump. `BackupRecord` je Tenant (RUNNING→SUCCESS/FAILED, Hash, Key)
+  + Audit `backup.run` in derselben Tx.
   Datei-Modus (`--out-file`) für Selbsttest/Air-Gap mit identischen Flags.
 - **Restore-CLI** (`restore.ts`): `--list/--latest/--key/--file`;
   S3-Restores verifizieren den SHA-256 **gegen den BackupRecord** (Abbruch
@@ -28,9 +29,10 @@ monatlich per Restore-Drill (Art. 32 Abs. 1 lit. d DSGVO).
 - **CI-Selbsttest** (`scripts/restore-selftest.sh`, Job `restore`): echter
   runner→restore-Roundtrip je Commit mit Zeilenzahl-Assertions + Chain-
   Verifikation; Protokoll als CI-Artefakt.
-- **Operator:** `./taxtronik backup` (Cron-Pflicht des Betreibers — kein
-  App-interner Tagesjob, bewusst), Deploy/Update sichern automatisch vor
-  jeder Migration; DR-Runbook mit Rollback-Pfaden.
+- **Operator/Admin:** `./taxtronik backup` (Cron-Pflicht des Betreibers — kein
+  App-interner Tagesjob, bewusst), Admin-Übersicht mit Browser-Trigger und
+  Download erfolgreicher Läufe; Deploy/Update sichern automatisch vor jeder
+  Migration; DR-Runbook mit Rollback-Pfaden.
 
 ## Traceability
 
@@ -41,7 +43,7 @@ monatlich per Restore-Drill (Art. 32 Abs. 1 lit. d DSGVO).
 | Wiederherstellbarkeit je Installation | backup-drill-Worker | `backup-drill.test.ts` (Helfer) + End-to-End über echte Queue/Image (verifiziert 2026-06-10); Audit-Events in der Chain |
 | Ganz-oder-gar-nicht-Restore | --single-transaction | CI-Roundtrip |
 | Migration nie ohne Backup | ops-lib `backup_before_migrations` | ./taxtronik deploy/update |
-| Sichtbarkeit | Admin-Backup-Karte + Drill-Ergebnis | manuelle Abnahme |
+| Sichtbarkeit | Admin-Backup-Karte + Drill-Ergebnis + Browser-Trigger/Download | manuelle Abnahme |
 
 ## Bekannte Grenzen
 

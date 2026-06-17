@@ -4,15 +4,17 @@ Was tun, wenn die taxtronik-Installation einer Kanzlei beschädigt ist oder
 ausfällt? Dieses Runbook beschreibt den Wiederherstellungs-Pfad.
 
 > **Voraussetzung:** Das Backup-Tooling läuft regelmäßig
-> (`pnpm backup:run`, idealerweise per Cron oder n8n täglich) und liefert
-> erfolgreiche `BackupRecord`-Einträge. Audit-Archive werden wöchentlich
+> (`pnpm backup:run`, `./taxtronik backup` oder Admin-Browser-Trigger,
+> idealerweise per Cron täglich) und liefert erfolgreiche `BackupRecord`-
+> Einträge. Jeder Dump liegt zusätzlich lokal unter `backups/` bzw.
+> `BACKUP_LOCAL_DIR` und im S3-Backup-Bucket. Audit-Archive werden wöchentlich
 > vom Worker gerollt (siehe `audit-rotate`).
 
 ## 1. Was wird gesichert?
 
 | Datenklasse | Wo liegt es? | Wie wird es gesichert? | Wie wird es wiederhergestellt? |
 |---|---|---|---|
-| Stammdaten + Bewegungsdaten | Postgres | täglicher `pg_dump --format=custom --compress=6` → Object-Store-Bucket `backups` | `pnpm backup:restore` (siehe Schritt 3) |
+| Stammdaten + Bewegungsdaten | Postgres | täglicher `pg_dump --format=custom --compress=6` → lokale Kopie `backups/` + Object-Store-Bucket `backups` | `pnpm backup:restore` (siehe Schritt 3) |
 | Dokumente / Belege | Object-Store-Bucket `gobd` / `general` / `staff-private` | SeaweedFS-eigene Replikation/Backup (extern) | Object-Store-Restore aus extern |
 | Audit-Log (aktuell) | Postgres `audit_log` | im pg_dump enthalten | mit pg_restore zurück |
 | Audit-Archive (gerollt) | SeaweedFS `gobd/tenants/.../audit-archive/...ndjson` | Object-Lock COMPLIANCE 10 J. | bleibt erhalten — `verify:chain` rekonstruiert Chain |

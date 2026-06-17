@@ -78,6 +78,7 @@ services:
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
       S3_BUCKET_BACKUPS: backups
+      BACKUP_LOCAL_DIR: ${BACKUP_LOCAL_DIR:-/app/backups}
       # B-1: gwg-Bucket explizit setzen — Default-Zod-Wert ist 'gwg', aber
       # für Doku/Override-Transparenz besser hier sichtbar.
       S3_BUCKET_GWG: gwg
@@ -107,6 +108,10 @@ services:
       #   APP_BIND_PORT=3001
       # NEXTAUTH_URL bleibt dabei unverändert (zeigt auf die public Subdomain).
       - "${APP_BIND:-127.0.0.1}:${APP_BIND_PORT:-3000}:3000"
+    volumes:
+      # Browser-triggered Backups: lokale Operator-Kopie im Repo-Root unter
+      # ./backups, im read-only Container als gezielt schreibbares Volume.
+      - ${BACKUP_HOST_DIR:-../../backups}:/app/backups
 
   worker:
     <<: [*hardening, *logging]

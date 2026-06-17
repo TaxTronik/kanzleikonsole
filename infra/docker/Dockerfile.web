@@ -84,7 +84,7 @@ LABEL org.opencontainers.image.title="taxtronik-web" \
       org.opencontainers.image.revision="${GIT_SHA}"
 # T-3: wget für den HEALTHCHECK. node:alpine bringt es nicht standardmäßig
 # mit; ~270 KB Overhead sind gegenüber dem Operability-Gewinn vernachlässigbar.
-RUN apk add --no-cache openssl wget
+RUN apk add --no-cache openssl wget postgresql18-client
 WORKDIR /app
 
 ENV NODE_ENV=production \

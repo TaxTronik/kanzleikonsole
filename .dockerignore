@@ -41,6 +41,9 @@ logs
 npm-debug.log*
 pnpm-debug.log*
 
+# Lokale Operator-Backups (Postgres-Dumps)
+backups
+
 # Test-Output
 coverage
 .nyc_output

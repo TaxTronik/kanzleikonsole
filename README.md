@@ -121,7 +121,7 @@ Im Normalfall danach:
 ```bash
 ./taxtronik deploy      # bauen/pullen + migrieren + starten + Health-Smoke
 ./taxtronik update      # git ff-only + Backup + bauen/pullen + migrieren + starten
-./taxtronik backup      # manuelles Postgres-Backup in den S3-Backup-Bucket
+./taxtronik backup      # manuelles Postgres-Backup nach backups/ + S3-Backup-Bucket
 ./taxtronik doctor      # .env prüfen (--fix generiert fehlende Secrets)
 ./taxtronik rollback    # zurück auf den vorherigen Stand (keine Migration)
 ```

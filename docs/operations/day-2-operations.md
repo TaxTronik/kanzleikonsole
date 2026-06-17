@@ -72,6 +72,11 @@ Vor jedem Update:
 ./taxtronik backup
 ```
 
+`./taxtronik backup` schreibt den Dump zuerst lokal unter `backups/` (bzw.
+`BACKUP_HOST_DIR`/`BACKUP_LOCAL_DIR`) und lädt dieselbe Datei danach in den
+S3-Backup-Bucket. Der gleiche Lauf kann in der Admin-Übersicht per Browser
+gestartet und für erfolgreiche `BackupRecord`-Einträge heruntergeladen werden.
+
 Dann:
 
 ```bash

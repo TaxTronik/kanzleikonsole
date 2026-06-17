@@ -87,7 +87,7 @@ function toQuantenlosActionError(e: unknown): ActionResult {
       ok: false,
       error:
         `Risk-Engine-URL wurde vom SSRF-Schutz blockiert (${e.reason}). ` +
-        'Prüfe RISK_LAYER_URL und INTERNAL_FETCH_HOSTS.',
+        'Prüfe RISK_LAYER_URL; Risk-Layer-Ziele dürfen interne IPs nutzen.',
     };
   }
   if (e instanceof CircuitOpenError) {
@@ -125,7 +125,7 @@ function toQuantenlosActionError(e: unknown): ActionResult {
         ok: false,
         error:
           `Risk-Engine nicht erreichbar${code ? ` (${code})` : ''}. ` +
-          'Prüfe Container, RISK_LAYER_URL und INTERNAL_FETCH_HOSTS.',
+          'Prüfe Container, RISK_LAYER_URL und Bearer-Token.',
       };
     }
     if (

@@ -1,9 +1,9 @@
 // =============================================================================
 // Backup-Runner
 //
-// Strategie: pg_dump (komprimiert) → SHA-256 → Upload in Object-Store mit
-// Object-Lock-Retention. Schreibt einen BackupRecord pro Lauf für die
-// Admin-UI-Statusanzeige.
+// Strategie: pg_dump (komprimiert) → lokale Operator-Kopie → SHA-256 → Upload
+// in Object-Store mit Object-Lock-Retention. Schreibt einen BackupRecord pro
+// Lauf für die Admin-UI-Statusanzeige.
 //
 // Aufruf:
 //   - Manuell: pnpm backup:run
@@ -18,7 +18,8 @@
 
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { createWriteStream } from 'node:fs';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { unlink } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { PassThrough } from 'node:stream';
 import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
@@ -28,6 +29,7 @@ import { env } from '@taxtronik/config';
 import { prismaBytes } from '@/server/db/prisma-bytes';
 import { prismaOwner as ownerSingleton } from '@/server/db/prisma-owner';
 import { evidenceService } from '@/server/container';
+import { ensureBackupLocalPathForKey } from './local-path';
 
 const BACKUP_BUCKET = process.env['S3_BUCKET_BACKUPS'] ?? 'backups';
 
@@ -66,6 +68,7 @@ export interface BackupResult {
   bucket?: string;
   key?: string;
   sha256?: string;
+  localPath?: string;
 }
 
 /**
@@ -89,7 +92,7 @@ function buildPgDumpArgs(connArgs: string[]): string[] {
  * (S3-Upload bzw. lokale Datei). `result()` blockt bis pg_dump beendet ist und
  * gibt Hash + Größe zurück oder wirft bei Exit-Code ≠ 0.
  */
-function spawnPgDump(dumpUrl: string, connEnv: Record<string, string>, args: string[]): {
+function spawnPgDump(connEnv: Record<string, string>, args: string[]): {
   stream: PassThrough;
   result: () => Promise<{ sha: Buffer; sizeBytes: number }>;
 } {
@@ -178,13 +181,38 @@ export async function runBackup(): Promise<BackupResult> {
   }
   const args = buildPgDumpArgs(connArgs.args);
 
-  // F7: pg_dump.stdout direkt zu S3 streamen — kein Buffer.concat über
-  // den ganzen Dump. Hash + Größe werden via PassThrough nebenbei berechnet.
-  // Reduziert Spitzenspeicher auf Multipart-Chunk-Größe (5 MB) und halbiert
-  // die Wartezeit, weil Upload parallel zum Dump läuft.
-  const dump = spawnPgDump(dumpUrl, connArgs.env, args);
+  let localPath: string;
+  try {
+    localPath = await ensureBackupLocalPathForKey(key);
+  } catch (e) {
+    const errMsg = `Lokaler Backup-Pfad nicht bereit: ${(e as Error).message}`;
+    await failAll(prismaOwner, records, errMsg);
+    return { ok: false, error: errMsg };
+  }
 
-  // Upload in Object-Store (Streaming).
+  const dump = spawnPgDump(connArgs.env, args);
+
+  try {
+    await pipeline(dump.stream, createWriteStream(localPath, { mode: 0o600 }));
+  } catch (e) {
+    const errMsg = `Lokaler Backup-Write fehlgeschlagen: ${(e as Error).message}`;
+    await unlink(localPath).catch(() => undefined);
+    await failAll(prismaOwner, records, errMsg);
+    return { ok: false, error: errMsg };
+  }
+
+  let sha: Buffer;
+  let sizeBytes: number;
+  try {
+    ({ sha, sizeBytes } = await dump.result());
+  } catch (e) {
+    const errMsg = (e as Error).message;
+    await unlink(localPath).catch(() => undefined);
+    await failAll(prismaOwner, records, errMsg);
+    return { ok: false, error: errMsg };
+  }
+
+  // Upload in Object-Store (Streaming aus der lokalen Operator-Kopie).
   const s3 = new S3Client({
     endpoint: env.S3_ENDPOINT,
     region: env.S3_REGION,
@@ -197,7 +225,7 @@ export async function runBackup(): Promise<BackupResult> {
     params: {
       Bucket: BACKUP_BUCKET,
       Key: key,
-      Body: dump.stream,
+      Body: createReadStream(localPath),
       ContentType: 'application/octet-stream',
     },
     queueSize: 4,
@@ -207,27 +235,11 @@ export async function runBackup(): Promise<BackupResult> {
   try {
     await upload.done();
   } catch (e) {
-    await failAll(prismaOwner, records, `S3-Upload fehlgeschlagen: ${(e as Error).message}`);
-    return { ok: false, error: (e as Error).message };
-  }
-
-  // Warten bis pg_dump fertig ist (sollte zu diesem Zeitpunkt bereits sein).
-  let sha: Buffer;
-  let sizeBytes: number;
-  try {
-    ({ sha, sizeBytes } = await dump.result());
-  } catch (e) {
-    const errMsg = (e as Error).message;
-    // P-5: S3-Upload lief parallel zu pg_dump. Ist der Dump nach erfolgreichem
-    // Upload mit Exit-Code ≠ 0 abgestürzt, liegt jetzt ein partieller Dump im
-    // Bucket. Lifecycle-Regel räumt ihn irgendwann, bis dahin existieren aber
-    // verwirrende „taxtronik-…sql.gz"-Files, die jemand versehentlich für
-    // einen Restore nehmen könnte. Best-effort-Cleanup direkt.
+    const errMsg = `S3-Upload fehlgeschlagen: ${(e as Error).message}`;
     try {
       await s3.send(new DeleteObjectCommand({ Bucket: BACKUP_BUCKET, Key: key }));
     } catch (delErr) {
-      // Cleanup-Failure nicht fatal — Lifecycle räumt später. Nur ins Log.
-      console.error(`[backup] Partial-Dump-Cleanup fehlgeschlagen für ${key}: ${(delErr as Error).message}`);
+      console.error(`[backup] S3-Cleanup fehlgeschlagen für ${key}: ${(delErr as Error).message}`);
     }
     await failAll(prismaOwner, records, errMsg);
     return { ok: false, error: errMsg };
@@ -263,6 +275,7 @@ export async function runBackup(): Promise<BackupResult> {
             sizeBytes,
             bucket: BACKUP_BUCKET,
             key,
+            localPath,
             sha256: sha.toString('hex'),
           },
         });
@@ -278,6 +291,7 @@ export async function runBackup(): Promise<BackupResult> {
     bucket: BACKUP_BUCKET,
     key,
     sha256: sha.toString('hex'),
+    localPath,
   };
 }
 
@@ -336,7 +350,7 @@ async function dumpToFile(outFile: string): Promise<BackupResult> {
   }
   const args = buildPgDumpArgs(connArgs.args);
 
-  const dump = spawnPgDump(dumpUrl, connArgs.env, args);
+  const dump = spawnPgDump(connArgs.env, args);
 
   // Stream → lokale Datei (Mode 0o600). Hash + Größe laufen über das
   // PassThrough nebenher und stehen nach result() bereit.
@@ -380,7 +394,7 @@ async function main() {
     console.error(`[backup] FEHLER: ${r.error}`);
     process.exit(1);
   }
-  console.log(`[backup] OK — ${r.sizeBytes} Bytes, sha256=${r.sha256?.slice(0, 16)}…, key=${r.key}`);
+  console.log(`[backup] OK — ${r.sizeBytes} Bytes, sha256=${r.sha256?.slice(0, 16)}…, key=${r.key}, lokal=${r.localPath}`);
 }
 
 if (process.argv[1]?.endsWith('runner.ts') || process.argv[1]?.endsWith('runner.js')) {

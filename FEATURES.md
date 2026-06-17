@@ -906,12 +906,14 @@ Kanzlei nicht.
 
 ## Backups & Disaster Recovery
 
-- Postgres-Dump in den S3-Backup-Bucket — manuell (`./taxtronik backup` /
-  `pnpm --filter @taxtronik/web backup:run`) oder per Operator-Cron;
-  jeder Lauf wird als `backup.run` in der Audit-Chain dokumentiert
+- Postgres-Dump als lokale Operator-Kopie unter `backups/` und Upload in den
+  S3-Backup-Bucket — manuell (`./taxtronik backup` /
+  `pnpm --filter @taxtronik/web backup:run`), per Admin-Browser-Button oder per
+  Operator-Cron; jeder Lauf wird als `backup.run` in der Audit-Chain
+  dokumentiert, Browser-Trigger/Downloads zusätzlich als Staff-Ereignisse
 - Pre-Flight-DB-Backup vor Migration (`./taxtronik update`/`deploy`)
 - Backup-Records mit Größe, SHA-256 und Status (letzter Stand in der
-  Admin-Übersicht)
+  Admin-Übersicht, Download für erfolgreiche Läufe)
 - **Restore-Mechanismus**: `pnpm backup:restore --latest` (oder `--key`),
   automatischer Smoke-Test, Schutz vor Überschreiben durch
   `--confirm-overwrite`-Flag
