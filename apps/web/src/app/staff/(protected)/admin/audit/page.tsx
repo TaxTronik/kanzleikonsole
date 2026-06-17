@@ -137,6 +137,20 @@ export default async function AuditLogPage({
       ).catch(() => null)
     : null;
 
+  // Headline-Schweregrad: ein HISTORISCHER Bruch MIT gesetztem Checkpoint UND
+  // intakter Recovery-Teilkette wird bernsteinfarben („historisch, abgegrenzt")
+  // statt rot dargestellt. Reines Rot bleibt ohne Checkpoint oder bei erneutem
+  // Bruch ab dem Checkpoint. So wird ein dauerhaft roter Alarm vermieden, obwohl
+  // der Checkpoint den Befund bereits abgegrenzt hat.
+  const recoveryIntact = !!checkpoint && !!recoveryResult?.ok;
+  const chainStatus: 'none' | 'ok' | 'amber' | 'red' = !verifyResult
+    ? 'none'
+    : verifyResult.ok
+      ? 'ok'
+      : recoveryIntact
+        ? 'amber'
+        : 'red';
+
   const hasNext = entries.length > PAGE_SIZE;
   const visibleEntries = entries.slice(0, PAGE_SIZE);
   const nextCursor = hasNext ? String(visibleEntries[visibleEntries.length - 1]!.id) : null;
@@ -189,20 +203,24 @@ export default async function AuditLogPage({
           Lauf im Hintergrund an. */}
       <div
         className={
-          !verifyResult
+          chainStatus === 'none'
             ? 'rounded-md border border-default bg-gray-50 p-4 mb-6'
-            : verifyResult.ok
+            : chainStatus === 'ok'
               ? 'rounded-md border border-green-200 bg-green-50 p-4 mb-6'
-              : 'rounded-md border border-red-200 bg-red-50 p-4 mb-6'
+              : chainStatus === 'amber'
+                ? 'rounded-md border border-yellow-200 bg-yellow-50 p-4 mb-6'
+                : 'rounded-md border border-red-200 bg-red-50 p-4 mb-6'
         }
       >
         <div className="flex items-start gap-3">
-          {verifyResult?.ok ? (
+          {chainStatus === 'ok' ? (
             <ShieldCheck className="h-5 w-5 text-green-600 mt-0.5" />
+          ) : chainStatus === 'amber' ? (
+            <ShieldAlert className="h-5 w-5 text-yellow-600 mt-0.5" />
           ) : (
             <ShieldAlert
               className={
-                verifyResult ? 'h-5 w-5 text-red-600 mt-0.5' : 'h-5 w-5 text-disabled mt-0.5'
+                chainStatus === 'none' ? 'h-5 w-5 text-disabled mt-0.5' : 'h-5 w-5 text-red-600 mt-0.5'
               }
             />
           )}
@@ -220,6 +238,32 @@ export default async function AuditLogPage({
                 <p className="text-xs text-green-700 mt-1">
                   {verifyResult.sealsChecked} Tagesversiegelungen geprüft
                   {' · '}zuletzt geprüft {fmtDateTimeSeconds(new Date(verifyResult.checkedAt))}
+                </p>
+              </>
+            ) : recoveryIntact ? (
+              <>
+                <p className="text-sm font-medium text-yellow-900">
+                  Historischer Chain-Befund — ab Recovery-Checkpoint fortlaufend geprüft
+                </p>
+                {verifyResult.firstBreak && (
+                  <p className="text-xs text-yellow-800 mt-1 font-mono">
+                    Befund bei Audit-ID {verifyResult.firstBreak.auditId} (
+                    {fmtDateTimeSeconds(new Date(verifyResult.firstBreak.occurredAt))}) — historisch,
+                    durch Checkpoint abgegrenzt.
+                  </p>
+                )}
+                {recoveryResult && (
+                  <p className="text-xs text-yellow-800 mt-1">
+                    Recovery-Teilkette ab Audit-ID {checkpoint!.auditId} intakt:{' '}
+                    {recoveryResult.checked.toLocaleString('de-DE')} Einträge geprüft
+                    {recoveryResult.sealsChecked > 0
+                      ? `, ${recoveryResult.sealsChecked} Tagesversiegelungen geprüft`
+                      : ''}
+                    .
+                  </p>
+                )}
+                <p className="text-xs text-yellow-700 mt-1">
+                  Zuletzt geprüft {fmtDateTimeSeconds(new Date(verifyResult.checkedAt))}
                 </p>
               </>
             ) : (
