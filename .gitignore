@@ -37,7 +37,7 @@ packages/db/prisma/migrations/_temp/
 infra/compose/.volumes/
 
 # Lokale Operator-Backups (Postgres-Dumps)
-backups/
+/backups/
 
 # Setup-gerenderte Config-Dateien (enthalten Secrets aus .env)
 infra/scripts/seaweedfs-s3.generated.json

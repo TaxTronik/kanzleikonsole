@@ -179,6 +179,20 @@ test_prune_build_cache_failure_is_non_blocking() {
   pass "build cache prune failure is non-blocking"
 }
 
+test_restore_source_detection_uses_s3_for_bucket_sources() {
+  restore_needs_s3 --list || test_fail "restore --list should require S3"
+  restore_needs_s3 --latest --target-url postgresql://example/db || test_fail "restore --latest should require S3"
+  restore_needs_s3 --key pgdump/demo.dump || test_fail "restore --key should require S3"
+  pass "restore source detection requires S3 for list/latest/key"
+}
+
+test_restore_source_detection_skips_s3_for_local_file() {
+  if restore_needs_s3 --file "$TMP_DIR/demo.dump" --target-url postgresql://example/db; then
+    test_fail "restore --file should not require S3"
+  fi
+  pass "restore source detection skips S3 for local files"
+}
+
 test_doctor_accepts_prod_smtp
 test_doctor_rejects_mailhog
 test_doctor_rejects_loopback_mailhog_port
@@ -187,5 +201,7 @@ test_doctor_rejects_incomplete_risk_layer_pair
 test_prune_build_cache_calls_docker_builder_prune
 test_prune_build_cache_can_be_disabled
 test_prune_build_cache_failure_is_non_blocking
+test_restore_source_detection_uses_s3_for_bucket_sources
+test_restore_source_detection_skips_s3_for_local_file
 
 printf '\n%s ops-lib tests passed.\n' "$TESTS_RUN"

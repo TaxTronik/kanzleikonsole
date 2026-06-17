@@ -75,7 +75,16 @@ Vor jedem Update:
 `./taxtronik backup` schreibt den Dump zuerst lokal unter `backups/` (bzw.
 `BACKUP_HOST_DIR`/`BACKUP_LOCAL_DIR`) und lädt dieselbe Datei danach in den
 S3-Backup-Bucket. Der gleiche Lauf kann in der Admin-Übersicht per Browser
-gestartet und für erfolgreiche `BackupRecord`-Einträge heruntergeladen werden.
+gestartet werden; erfolgreiche `BackupRecord`-Einträge bieten getrennte
+Downloads für die lokale Kopie und das S3-Objekt.
+
+Restore läuft über den Operator-Wrapper:
+
+```bash
+./taxtronik restore --list
+./taxtronik restore --latest --target-url <postgres-url>
+./taxtronik restore --file backups/<dump> --target-url <postgres-url>
+```
 
 Dann:
 

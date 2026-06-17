@@ -593,6 +593,28 @@ run_backup() {
   ( cd "$ROOT" && pnpm --filter @taxtronik/web backup:run )
 }
 
+restore_needs_s3() {
+  local arg
+  for arg in "$@"; do
+    [[ "$arg" == "--file" ]] && return 1
+  done
+  return 0
+}
+
+run_restore() {
+  require_cmd pnpm
+  info "Restore starten"
+  generate_prisma_client_for_host_tools
+  if ! command -v pg_restore >/dev/null 2>&1; then
+    export PG_RESTORE_PATH="$ROOT/infra/scripts/pg_restore-via-container.sh"
+    info "pg_restore fehlt auf dem Host -> nutze pg_restore aus dem Postgres-Container (PG_RESTORE_PATH)."
+  fi
+  if restore_needs_s3 "$@"; then
+    ensure_s3_ready_for_backup
+  fi
+  ( cd "$ROOT" && pnpm --filter @taxtronik/web backup:restore -- "$@" )
+}
+
 # ---------------------------------------------------------------------------
 # Hilfs-Ablaeufe fuer bootstrap / rollback
 # ---------------------------------------------------------------------------
@@ -984,6 +1006,18 @@ cmd_backup() {
   sync_postgres_roles_from_env
   run_backup
   info "Backup fertig."
+}
+
+cmd_restore() {
+  load_env; preflight_common; assert_production_env
+  start_infra
+  wait_postgres_healthy
+  if restore_needs_s3 "$@"; then
+    wait_seaweedfs_healthy
+  fi
+  sync_postgres_roles_from_env
+  run_restore "$@"
+  info "Restore fertig."
 }
 
 # Rollback auf einen frueheren Image-Stand. KEINE DB-Migration (Prisma ist

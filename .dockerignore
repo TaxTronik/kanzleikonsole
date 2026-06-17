@@ -42,7 +42,7 @@ npm-debug.log*
 pnpm-debug.log*
 
 # Lokale Operator-Backups (Postgres-Dumps)
-backups
+/backups
 
 # Test-Output
 coverage

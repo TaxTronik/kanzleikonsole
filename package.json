@@ -22,6 +22,7 @@
     "db:migrate:deploy": "pnpm --filter @taxtronik/db migrate:deploy",
     "db:studio": "pnpm --filter @taxtronik/db studio",
     "db:seed": "pnpm --filter @taxtronik/db seed",
+    "demo:retention": "pnpm --filter @taxtronik/web demo:retention",
     "verify:chain": "pnpm --filter @taxtronik/evidence verify",
     "verify:schema-drift": "pnpm --filter @taxtronik/db verify:schema-drift",
     "verify:rls": "pnpm --filter @taxtronik/db verify:rls",

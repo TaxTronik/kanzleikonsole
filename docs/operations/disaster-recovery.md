@@ -14,7 +14,7 @@ ausfällt? Dieses Runbook beschreibt den Wiederherstellungs-Pfad.
 
 | Datenklasse | Wo liegt es? | Wie wird es gesichert? | Wie wird es wiederhergestellt? |
 |---|---|---|---|
-| Stammdaten + Bewegungsdaten | Postgres | täglicher `pg_dump --format=custom --compress=6` → lokale Kopie `backups/` + Object-Store-Bucket `backups` | `pnpm backup:restore` (siehe Schritt 3) |
+| Stammdaten + Bewegungsdaten | Postgres | täglicher `pg_dump --format=custom --compress=6` → lokale Kopie `backups/` + Object-Store-Bucket `backups` | `./taxtronik restore` (siehe Schritt 3) |
 | Dokumente / Belege | Object-Store-Bucket `gobd` / `general` / `staff-private` | SeaweedFS-eigene Replikation/Backup (extern) | Object-Store-Restore aus extern |
 | Audit-Log (aktuell) | Postgres `audit_log` | im pg_dump enthalten | mit pg_restore zurück |
 | Audit-Archive (gerollt) | SeaweedFS `gobd/tenants/.../audit-archive/...ndjson` | Object-Lock COMPLIANCE 10 J. | bleibt erhalten — `verify:chain` rekonstruiert Chain |
@@ -49,13 +49,14 @@ ausfällt? Dieses Runbook beschreibt den Wiederherstellungs-Pfad.
 ### Vorbereitung
 
 Frische Postgres-Instanz hochziehen (z. B. via docker-compose, leere DB).
-ENV-Variable `DATABASE_URL` auf das Restore-Ziel setzen.
+Für Proberestores immer `--target-url` verwenden, damit nicht versehentlich
+die produktive `DATABASE_URL` aus `.env` überschrieben wird.
 
 ### Schritt 3.1 — Verfügbare Backups listen
 
 ```bash
 cd /opt/taxtronik
-pnpm --filter @taxtronik/web exec tsx src/server/backup/restore.ts --list
+./taxtronik restore --list
 ```
 
 Ausgabe (gekürzt):
@@ -70,23 +71,37 @@ Verfügbare Backups (12, neueste zuerst):
 ### Schritt 3.2 — Restore (neueste Sicherung)
 
 ```bash
-pnpm --filter @taxtronik/web exec tsx src/server/backup/restore.ts --latest
+./taxtronik restore --latest --target-url postgresql://taxtronik:...@localhost:5432/taxtronik_restore
 ```
 
 Wenn die Ziel-DB nicht leer ist (z. B. Teil-Schaden), explizit bestätigen:
 
 ```bash
-pnpm --filter @taxtronik/web exec tsx src/server/backup/restore.ts --latest --confirm-overwrite
+./taxtronik restore --latest \
+  --target-url postgresql://taxtronik:...@localhost:5432/taxtronik_restore \
+  --confirm-overwrite
 ```
 
 ### Schritt 3.3 — Spezifische Sicherung wiederherstellen
 
 ```bash
-pnpm --filter @taxtronik/web exec tsx src/server/backup/restore.ts \
-  --key pgdump/2026/05/10/taxtronik-20260510-0300.sql.gz
+./taxtronik restore \
+  --key pgdump/2026/05/10/taxtronik-20260510-0300.sql.gz \
+  --target-url postgresql://taxtronik:...@localhost:5432/taxtronik_restore
 ```
 
-### Schritt 3.4 — Smoke-Test
+### Schritt 3.4 — Lokale Kopie statt S3
+
+Wenn der lokale Dump aus `backups/` bzw. `BACKUP_LOCAL_DIR` genutzt werden
+soll, läuft der Restore bewusst ohne S3-Preflight:
+
+```bash
+./taxtronik restore \
+  --file /opt/taxtronik/backups/taxtronik-20260510-0300.dump \
+  --target-url postgresql://taxtronik:...@localhost:5432/taxtronik_restore
+```
+
+### Schritt 3.5 — Smoke-Test
 
 Nach dem Restore prüft das Skript automatisch (kann mit `--no-smoke-test`
 übersprungen werden):
@@ -165,7 +180,7 @@ beweisbar lückenlos, solange Object-Lock-Bestände erhalten sind.
 Mindestens vierteljährlich:
 
 1. Frische Postgres-Instanz (Test-Container) hochziehen
-2. `restore.ts --latest --target-url postgres://test/test --no-smoke-test`
+2. `./taxtronik restore --latest --target-url postgres://test/test --no-smoke-test`
 3. `pnpm verify:chain` gegen Test-DB → muss durchlaufen
 4. Manueller Login mit einem Test-Account → muss funktionieren
 5. Ergebnis in der DSGVO-Verarbeitungs-Doku als Wiederherstellungs-Test
@@ -210,8 +225,9 @@ pnpm --filter @taxtronik/web exec tsx src/server/backup/runner.ts \
   --out-file /sicher/taxtronik.dump
 
 # Restore aus der lokalen Datei (DB-Hash-Verifikation entfällt — Datei-Quelle):
-pnpm --filter @taxtronik/web exec tsx src/server/backup/restore.ts \
-  --file /sicher/taxtronik.dump --confirm-overwrite
+./taxtronik restore --file /sicher/taxtronik.dump \
+  --target-url postgresql://taxtronik:...@localhost:5432/taxtronik_restore \
+  --confirm-overwrite
 ```
 
 ## 8. Checkliste „Server kompletter Neuaufbau"
@@ -224,7 +240,7 @@ pnpm --filter @taxtronik/web exec tsx src/server/backup/restore.ts \
 - [ ] `docker compose up -d postgres redis seaweedfs clamav` (Infra)
 - [ ] `pnpm install`
 - [ ] `pnpm db:migrate:deploy` (DB-Schema bauen)
-- [ ] `pnpm --filter @taxtronik/web exec tsx src/server/backup/restore.ts --latest`
+- [ ] `./taxtronik restore --latest --target-url <postgres-url>`
 - [ ] `pnpm verify:chain` läuft sauber durch
 - [ ] Object-Store-Daten aus externem Backup zurückgespielt
 - [ ] App + Worker starten: `pnpm dev` (oder Production-Setup)

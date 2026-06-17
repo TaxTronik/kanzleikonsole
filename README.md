@@ -54,6 +54,15 @@ Das Setup erzeugt `.env`, generiert Secrets, startet Postgres/Redis/SeaweedFS/
 ClamAV/Mailhog/n8n, installiert Pakete, migriert die DB, legt Buckets an und
 seedet Demo-Daten.
 
+Zusätzliche Retention-/Object-Lock-Fixtures für lokale Abnahmetests:
+
+```bash
+pnpm demo:retention
+```
+
+Das erzeugt GwG-Testfälle für löschreif/nicht löschreif sowie Object-Lock
+abgelaufen/aktiv. Nicht in Produktion ausführen.
+
 Danach starten:
 
 ```bash
@@ -122,6 +131,9 @@ Im Normalfall danach:
 ./taxtronik deploy      # bauen/pullen + migrieren + starten + Health-Smoke
 ./taxtronik update      # git ff-only + Backup + bauen/pullen + migrieren + starten
 ./taxtronik backup      # manuelles Postgres-Backup nach backups/ + S3-Backup-Bucket
+./taxtronik restore --list
+./taxtronik restore --latest --target-url <postgres-url>
+./taxtronik restore --file backups/<dump> --target-url <postgres-url>
 ./taxtronik doctor      # .env prüfen (--fix generiert fehlende Secrets)
 ./taxtronik rollback    # zurück auf den vorherigen Stand (keine Migration)
 ```
@@ -255,7 +267,8 @@ Hinweise:
   und die Packages (u. a. `tax`, `evidence`, `db`, `crypto`, `http-utils`,
   `rss`, `n8n-shared`), inkl. Auth-Suiten für TOTP, Magic-Link und Lockout.
 - `pnpm test:ops` prüft die Operator-CLI-Gates (`doctor`, Prod-SMTP ohne
-  Mailhog, Risk-Layer-Paarung, Build-Cache-Prune) ohne echten Deploy.
+  Mailhog, Risk-Layer-Paarung, Build-Cache-Prune, Restore-Quellwahl) ohne
+  echten Deploy.
 - E2E-Login-Tests brauchen `E2E_TOTP_SECRET`.
 - RLS-Cross-Tenant-Tests skippen lokal ohne DB-URLs, schlagen in CI aber fehl,
   wenn `DATABASE_URL` oder `DATABASE_APP_URL` fehlt.

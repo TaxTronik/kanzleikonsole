@@ -119,6 +119,15 @@ Versionsabschnitt überführt.
 
 ### Backup, Archiv und Compliance-Nachweise
 
+- **[Scope]** Backup: Admin-Trigger/Download-Routen sind im Build-Kontext
+  enthalten; erfolgreiche Backups bieten getrennte Browser-Downloads für lokale
+  Kopie und S3-Objekt
+- **[Scope]** Restore: `./taxtronik restore` ergänzt den Operator-Pfad für
+  `--list`, `--latest`, `--key` und lokale `--file`-Dumps; Container-Fallback
+  streamt Host-Dumps korrekt in `pg_restore`
+- **[Scope]** Retention-Abnahme: `pnpm demo:retention` erzeugt lokale
+  GwG-/Object-Lock-Testfälle für löschreif/nicht löschreif sowie aktiven bzw.
+  abgelaufenen Governance-Lock
 - **[Scope]** Backup: monatlicher Restore-Drill mit Chain-Verifikation auf der
   wiederhergestellten DB; Health-Alarme per E-Mail bei Infrastruktur-Ausfall
 - Audit-Archivierung: monatliche Archivläufe, Hash-Chain-Prüfung und

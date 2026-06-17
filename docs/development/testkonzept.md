@@ -52,7 +52,7 @@ Regressionstest (siehe
 | Umgebung | Beschreibung |
 |---|---|
 | CI (maßgeblich) | Forgejo-Runner; je Lauf frische Postgres-18-Instanz (Service-Container), definierte ENV (siehe `ci.yml`), reproduzierbare Installation (`--frozen-lockfile`). Die CI-Umgebung ist die Referenz für alle Testnachweise. |
-| Lokal | identischer Stack via Docker Compose (`./scripts/setup.sh`), Demo-Stammdatenbestand über den Seed (`packages/db/seeds/dev.ts`) — Admin-Konto, Beispiel-Mandant, Dokumente. Dieser Seed ist zugleich die Basis des Prüf-Testsystems für eine Softwareprüfung (definierter, reproduzierbarer Stammdatenbestand). |
+| Lokal | identischer Stack via Docker Compose (`./scripts/setup.sh`), Demo-Stammdatenbestand über den Seed (`packages/db/seeds/dev.ts`) — Admin-Konto, Beispiel-Mandant, Dokumente. Optional ergänzt `pnpm demo:retention` GwG-/Object-Lock-Fälle für Löschfrist-Tests (löschreif/nicht löschreif, Lock aktiv/abgelaufen). Dieser Seed ist zugleich die Basis des Prüf-Testsystems für eine Softwareprüfung (definierter, reproduzierbarer Stammdatenbestand). |
 | Prüf-/Abnahmesystem | für eine externe Prüfung wird ein definierter Release-Stand (Tag + Image-Digest) mit dem Seed-Datenbestand auf dem dokumentierten Compose-Stack bereitgestellt; Hardware-/OS-/DB-Angaben ergeben sich aus der Betriebsdokumentation ([README](../../README.md), [release.md](../operations/release.md)). |
 
 ## 4. Testnachweise (Dokumentation der Durchführung)

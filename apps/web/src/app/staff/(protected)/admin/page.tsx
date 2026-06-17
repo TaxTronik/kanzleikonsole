@@ -236,13 +236,22 @@ export default async function AdminPage() {
                 <BackupRunButton />
                 {/* Route-Handler-Download (kein <Link> — kein Client-Side-Routing) */}
                 {lastBackup?.status === 'SUCCESS' && lastBackup.key && (
-                  <a
-                    href={`/api/staff/admin/backups/${lastBackup.id}/download`}
-                    className="btn-secondary text-xs py-1.5 inline-flex items-center gap-1.5"
-                  >
-                    <Download className="h-3.5 w-3.5" />
-                    Backup herunterladen
-                  </a>
+                  <>
+                    <a
+                      href={`/api/staff/admin/backups/${lastBackup.id}/download?source=local`}
+                      className="btn-secondary text-xs py-1.5 inline-flex items-center gap-1.5"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Lokal
+                    </a>
+                    <a
+                      href={`/api/staff/admin/backups/${lastBackup.id}/download?source=s3`}
+                      className="btn-secondary text-xs py-1.5 inline-flex items-center gap-1.5"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      S3
+                    </a>
+                  </>
                 )}
               </div>
             </div>

@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "backup:run": "tsx --env-file-if-exists=../../.env src/server/backup/runner.ts",
-    "backup:restore": "tsx --env-file-if-exists=../../.env src/server/backup/restore.ts"
+    "backup:restore": "tsx --env-file-if-exists=../../.env src/server/backup/restore.ts",
+    "demo:retention": "tsx --env-file-if-exists=../../.env src/server/demo/retention-fixtures.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1053.0",

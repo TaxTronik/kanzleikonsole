@@ -16,7 +16,8 @@ monatlich per Restore-Drill (Art. 32 Abs. 1 lit. d DSGVO).
   demselben Dump. `BackupRecord` je Tenant (RUNNING→SUCCESS/FAILED, Hash, Key)
   + Audit `backup.run` in derselben Tx.
   Datei-Modus (`--out-file`) für Selbsttest/Air-Gap mit identischen Flags.
-- **Restore-CLI** (`restore.ts`): `--list/--latest/--key/--file`;
+- **Restore-CLI** (`./taxtronik restore`, intern `restore.ts`):
+  `--list/--latest/--key/--file`;
   S3-Restores verifizieren den SHA-256 **gegen den BackupRecord** (Abbruch
   bei Abweichung); Ziel-DB-Leer-Check mit explizitem `--confirm-overwrite`;
   `pg_restore --single-transaction --exit-on-error` (ganz oder gar nicht);
@@ -31,8 +32,9 @@ monatlich per Restore-Drill (Art. 32 Abs. 1 lit. d DSGVO).
   Verifikation; Protokoll als CI-Artefakt.
 - **Operator/Admin:** `./taxtronik backup` (Cron-Pflicht des Betreibers — kein
   App-interner Tagesjob, bewusst), Admin-Übersicht mit Browser-Trigger und
-  Download erfolgreicher Läufe; Deploy/Update sichern automatisch vor jeder
-  Migration; DR-Runbook mit Rollback-Pfaden.
+  getrenntem Download lokaler Kopie oder S3-Objekt; `./taxtronik restore`
+  spielt S3- oder lokale Dump-Quellen zurück; Deploy/Update sichern automatisch
+  vor jeder Migration; DR-Runbook mit Rollback-Pfaden.
 
 ## Traceability
 

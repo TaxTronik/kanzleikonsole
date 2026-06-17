@@ -1,6 +1,6 @@
 # taxtronik — Funktionsumfang
 
-Stand: 2026-06-17. Die mit ⚙ markierten Module sind pro Kanzlei in den
+Stand: 2026-06-18. Die mit ⚙ markierten Module sind pro Kanzlei in den
 Einstellungen ein- bzw. ausschaltbar.
 
 ## Überblick
@@ -913,10 +913,14 @@ Kanzlei nicht.
   dokumentiert, Browser-Trigger/Downloads zusätzlich als Staff-Ereignisse
 - Pre-Flight-DB-Backup vor Migration (`./taxtronik update`/`deploy`)
 - Backup-Records mit Größe, SHA-256 und Status (letzter Stand in der
-  Admin-Übersicht, Download für erfolgreiche Läufe)
-- **Restore-Mechanismus**: `pnpm backup:restore --latest` (oder `--key`),
-  automatischer Smoke-Test, Schutz vor Überschreiben durch
-  `--confirm-overwrite`-Flag
+  Admin-Übersicht, getrennte Downloads für lokale Kopie und S3-Objekt)
+- **Restore-Mechanismus**: `./taxtronik restore --list`,
+  `./taxtronik restore --latest --target-url <postgres-url>` oder
+  `./taxtronik restore --file <dump>`; automatischer Smoke-Test, Schutz vor
+  Überschreiben durch `--confirm-overwrite`-Flag
+- **Retention-/Object-Lock-Demodaten**: `pnpm demo:retention` erzeugt lokale
+  GwG-Testfälle für löschreif/nicht löschreif sowie aktiven/abgelaufenen
+  Governance-Lock
 - Disaster-Recovery-Runbook in `docs/operations/disaster-recovery.md`
 
 ## Update-Mechanik & Lizenzschlüssel
