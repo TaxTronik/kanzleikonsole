@@ -6,6 +6,8 @@
 #   ./taxtronik deploy               bauen/pullen + migrieren + starten + Smoke
 #   ./taxtronik update               git pull + Backup + bauen/pullen + migrieren + starten
 #   ./taxtronik backup               Postgres -> lokale Kopie + S3-Backup-Bucket
+#   ./taxtronik backup-files         Kanzleidateien aus SeaweedFS -> backups/object-store
+#   ./taxtronik backup-full          Datenbank + Kanzleidateien
 #   ./taxtronik restore --list       Backups auflisten / Restore starten
 #   ./taxtronik rollback [<version>] zurueck auf vorherigen Stand (keine Migration)
 #   ./taxtronik reset-admin-password Admin-Passwort neu setzen (Recovery)
@@ -31,6 +33,8 @@ Nutze:
   ./taxtronik deploy                bauen/pullen + migrieren + starten + Health-Smoke
   ./taxtronik update                git pull + Backup + bauen/pullen + migrieren + starten
   ./taxtronik backup                Postgres-Backup nach backups/ + S3-Backup-Bucket
+  ./taxtronik backup-files          Kanzleidateien aus SeaweedFS nach backups/object-store
+  ./taxtronik backup-full           Datenbank-Backup + Kanzleidateien-Export
   ./taxtronik restore --list        Backups im S3-Backup-Bucket auflisten
   ./taxtronik restore --latest --target-url <url> [--confirm-overwrite]
   ./taxtronik restore --key <s3-key> | --file <dump>
@@ -56,6 +60,8 @@ case "$cmd" in
   deploy)    cmd_deploy ;;
   update)    cmd_update ;;
   backup)    cmd_backup ;;
+  backup-files) cmd_backup_files ;;
+  backup-full) cmd_backup_full ;;
   restore)   shift || true; cmd_restore "$@" ;;
   rollback)  shift || true; cmd_rollback "${1:-}" ;;
   reset-admin-password) cmd_reset_admin_password ;;

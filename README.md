@@ -131,6 +131,8 @@ Im Normalfall danach:
 ./taxtronik deploy      # bauen/pullen + migrieren + starten + Health-Smoke
 ./taxtronik update      # git ff-only + Backup + bauen/pullen + migrieren + starten
 ./taxtronik backup      # manuelles Postgres-Backup nach backups/ + S3-Backup-Bucket
+./taxtronik backup-files # Kanzleidateien aus SeaweedFS nach backups/object-store
+./taxtronik backup-full # Datenbank + Kanzleidateien-Byte-Export
 ./taxtronik restore --list
 ./taxtronik restore --latest --target-url <postgres-url>
 ./taxtronik restore --file backups/<dump> --target-url <postgres-url>
@@ -153,6 +155,13 @@ die Operator-CLI nach erfolgreichem Build ungenutzten Docker-BuildKit-Cache auf
 (`until=168h`). Das lässt sich mit `TAXTRONIK_BUILD_CACHE_PRUNE=off` abschalten
 oder per `TAXTRONIK_BUILD_CACHE_PRUNE_UNTIL=336h` anpassen. Registry-Deploys
 pullen fertige Images und führen keinen Build-Cache-Prune aus.
+
+Backup-Scope: `./taxtronik backup` sichert die Postgres-Datenbank
+(Mandanten, Audit, Metadaten, Dokument-Verweise). Die eigentlichen Kanzlei-
+dateien liegen in SeaweedFS. Für eine lokale Byte-Kopie der Datei-Buckets:
+`./taxtronik backup-files`; beides zusammen: `./taxtronik backup-full`.
+Für volle Object-Lock-/Versioning-Treue zusätzlich SeaweedFS-Replikation oder
+Volume-Snapshots einrichten (siehe Disaster-Recovery-Runbook).
 
 `./taxtronik update` macht bewusst kein `git reset --hard`. Wenn lokale
 Änderungen oder ein nicht-fast-forward Stand existieren, bricht das Kommando ab.

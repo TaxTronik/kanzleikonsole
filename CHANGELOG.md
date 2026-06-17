@@ -35,6 +35,8 @@ Versionsabschnitt überführt.
 - Deployment: CI-getestete Registry-Images vorbereitet (Trivy-Gate), Pull statt
   Build auf dem Server, automatisches Backup vor jeder Migration,
   dokumentierter Rollback-Pfad
+- Toolchain: pnpm-Pin auf 11.7.0 angehoben (Root `packageManager` und
+  Docker-Builds)
 - Ops-Doku: README, FEATURES, Release-Doku, nginx-Beispiel und n8n-Workflow-Doku
   beschreiben getrennte Staff-/Mandantenportal-Setups, n8n-Proxy-Varianten,
   Risk-Layer-Anbindung und Produktions-SMTP
@@ -122,6 +124,10 @@ Versionsabschnitt überführt.
 - **[Scope]** Backup: Admin-Trigger/Download-Routen sind im Build-Kontext
   enthalten; erfolgreiche Backups bieten getrennte Browser-Downloads für lokale
   Kopie und S3-Objekt
+- **[Scope]** Backup: Browser-Backup-Verzeichnis wird vor App-Start
+  vorbereitet und im Compose-One-Shot auf den Container-`node`-User
+  berechtigt; Kanzleidateien können per `./taxtronik backup-files` bzw.
+  `backup-full` als SeaweedFS-Bucket-Export gesichert werden
 - **[Scope]** Restore: `./taxtronik restore` ergänzt den Operator-Pfad für
   `--list`, `--latest`, `--key` und lokale `--file`-Dumps; Container-Fallback
   streamt Host-Dumps korrekt in `pg_restore`

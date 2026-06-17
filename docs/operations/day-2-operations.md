@@ -78,6 +78,17 @@ S3-Backup-Bucket. Der gleiche Lauf kann in der Admin-Übersicht per Browser
 gestartet werden; erfolgreiche `BackupRecord`-Einträge bieten getrennte
 Downloads für die lokale Kopie und das S3-Objekt.
 
+Die Kanzleidateien selbst liegen nicht in Postgres, sondern in SeaweedFS.
+Zusätzlich sichern:
+
+```bash
+./taxtronik backup-files   # Datei-Buckets nach backups/object-store/<timestamp>
+./taxtronik backup-full    # Datenbank + Datei-Byte-Export
+```
+
+Für volle Object-Lock-/Versioning-Treue ist zusätzlich SeaweedFS-Replikation
+oder ein Volume-Snapshot nötig (siehe Disaster-Recovery-Runbook).
+
 Restore läuft über den Operator-Wrapper:
 
 ```bash

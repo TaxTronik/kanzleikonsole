@@ -911,6 +911,10 @@ Kanzlei nicht.
   `pnpm --filter @taxtronik/web backup:run`), per Admin-Browser-Button oder per
   Operator-Cron; jeder Lauf wird als `backup.run` in der Audit-Chain
   dokumentiert, Browser-Trigger/Downloads zusätzlich als Staff-Ereignisse
+- Kanzleidateien-Export: `./taxtronik backup-files` schreibt die SeaweedFS-
+  Dokument-Buckets (`gobd`, `gwg`, `general`, `staff-private`) nach
+  `backups/object-store/<timestamp>/`; `./taxtronik backup-full` kombiniert
+  Datenbank-Backup und Datei-Byte-Export
 - Pre-Flight-DB-Backup vor Migration (`./taxtronik update`/`deploy`)
 - Backup-Records mit Größe, SHA-256 und Status (letzter Stand in der
   Admin-Übersicht, getrennte Downloads für lokale Kopie und S3-Objekt)

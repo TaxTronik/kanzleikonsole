@@ -9,7 +9,7 @@ import { sanitizeFilenameForHeader } from '@taxtronik/storage';
 import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { evidenceService } from '@/server/container';
-import { getClientIp, checkStaffExportLimit } from '@/server/rate-limit';
+import { getClientIp, checkStaffBackupDownloadLimit } from '@/server/rate-limit';
 import { backupDownloadFilename, backupLocalPathForKey } from '@/server/backup/local-path';
 
 export const runtime = 'nodejs';
@@ -35,7 +35,7 @@ export async function GET(
     return NextResponse.json({ error: 'invalid_source' }, { status: 400 });
   }
 
-  const rl = await checkStaffExportLimit('backup-download', staffId);
+  const rl = await checkStaffBackupDownloadLimit(staffId, source);
   if (!rl.ok) {
     return NextResponse.json({ error: 'rate_limited', retryAfter: rl.retryAfter }, { status: 429 });
   }

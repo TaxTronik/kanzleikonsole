@@ -25,6 +25,7 @@ DEV="$ROOT/infra/compose/docker-compose.dev.yml"
 S3_TEMPLATE="$ROOT/infra/scripts/seaweedfs-s3.template.json"
 S3_GENERATED="$ROOT/infra/scripts/seaweedfs-s3.generated.json"
 STATE="$ROOT/.taxtronik.state"
+AWS_CLI_IMAGE_DEFAULT="amazon/aws-cli:latest@sha256:c95ab0642137f55a12b95b6956dd03cefdbd73e760e0e7b870afc9b47f9c8150"
 
 # ---------------------------------------------------------------------------
 # Ausgabe-Helper
@@ -480,6 +481,35 @@ pull_images() {
 # Downtime beim Update reduziert sich auf den reinen Container-Neustart.
 provide_images() { if images_from_registry; then pull_images; else build_images; fi; }
 
+resolve_backup_host_dir() {
+  local dir="${BACKUP_HOST_DIR:-../../backups}"
+  if [[ "$dir" == /* ]]; then
+    printf '%s\n' "$dir"
+  else
+    # Compose loest relative Bind-Mounts relativ zum Compose-File auf.
+    (cd "$ROOT/infra/compose" && mkdir -p "$dir" && cd "$dir" && pwd -P)
+  fi
+}
+
+prepare_backup_host_dir() {
+  local dir
+  dir="$(resolve_backup_host_dir)"
+  info "Backup-Verzeichnis vorbereiten: $dir"
+  mkdir -p "$dir" || die "Backup-Verzeichnis konnte nicht angelegt werden: $dir"
+  chmod 0770 "$dir" 2>/dev/null || warn "chmod 0770 fuer $dir fehlgeschlagen."
+  # Linux-Prod: node-User im Container hat UID/GID 1000. Wenn der Operator kein
+  # chown darf, korrigiert backup-dir-init den Bind-Mount im Container.
+  chown 1000:1000 "$dir" 2>/dev/null || true
+}
+
+run_backup_dir_init() {
+  prepare_backup_host_dir
+  info "Backup-Bind-Mount fuer App-Container berechtigen"
+  docker rm -f taxtronik-backup-dir-init >/dev/null 2>&1 || true
+  compose run --rm --no-deps backup-dir-init >/dev/null || \
+    warn "backup-dir-init konnte den Bind-Mount nicht korrigieren. Pruefe BACKUP_HOST_DIR-Rechte, falls Browser-Backups EACCES liefern."
+}
+
 run_migrations() {
   # One-Shot-Container statt Host-Prisma: das Worker-Image enthaelt Prisma-CLI
   # + Migrationen. Der Server braucht fuer Migrationen weder node_modules noch
@@ -500,7 +530,11 @@ backup_before_migrations() {
 }
 
 start_infra() { info "Infra starten"; compose --infra up -d; }
-start_apps()  { info "App, Worker und n8n starten/neu erzeugen"; compose up -d --force-recreate --no-deps app worker n8n; }
+start_apps()  {
+  info "App, Worker und n8n starten/neu erzeugen"
+  run_backup_dir_init
+  compose up -d --force-recreate --no-deps app worker n8n
+}
 
 smoke_health() {
   local url status
@@ -591,6 +625,50 @@ run_backup() {
   fi
   ensure_s3_ready_for_backup
   ( cd "$ROOT" && pnpm --filter @taxtronik/web backup:run )
+}
+
+object_store_backup_buckets() {
+  printf '%s\n' ${BACKUP_OBJECT_BUCKETS:-${S3_BUCKET_GOBD:-gobd} ${S3_BUCKET_GWG:-gwg} ${S3_BUCKET_GENERAL:-general} ${S3_BUCKET_STAFF_PRIVATE:-staff-private}}
+}
+
+run_backup_files() {
+  require_cmd docker
+  local host_dir stamp dest bucket endpoint buckets_file
+  prepare_backup_host_dir
+  host_dir="$(resolve_backup_host_dir)"
+  stamp="$(date -u +'%Y%m%d-%H%M%S')"
+  dest="$host_dir/object-store/$stamp"
+  mkdir -p "$dest" || die "Object-Store-Backup-Ziel konnte nicht angelegt werden: $dest"
+  chmod 0700 "$dest" 2>/dev/null || true
+
+  endpoint="${BACKUP_OBJECT_ENDPOINT:-http://seaweedfs:8333}"
+  buckets_file="$dest/buckets.txt"
+  : > "$buckets_file"
+
+  info "Kanzleidateien aus SeaweedFS exportieren: $dest"
+  info "Hinweis: Dies ist eine Byte-Kopie der Buckets. Fuer Object-Lock-/Versioning-Metadaten zusaetzlich SeaweedFS-Replikation oder Volume-Snapshots nutzen."
+
+  while IFS= read -r bucket; do
+    [[ -z "$bucket" ]] && continue
+    printf '%s\n' "$bucket" >> "$buckets_file"
+    info "Bucket exportieren: $bucket"
+    docker run --rm \
+      --network taxtronik \
+      -e AWS_ACCESS_KEY_ID="$S3_ACCESS_KEY" \
+      -e AWS_SECRET_ACCESS_KEY="$S3_SECRET_KEY" \
+      -e AWS_DEFAULT_REGION="${S3_REGION:-us-east-1}" \
+      -v "$dest:/backup" \
+      "${TAXTRONIK_AWS_CLI_IMAGE:-$AWS_CLI_IMAGE_DEFAULT}" \
+      --endpoint-url "$endpoint" s3 sync "s3://$bucket" "/backup/$bucket" --only-show-errors
+  done < <(object_store_backup_buckets)
+
+  {
+    printf 'created_utc=%s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+    printf 'endpoint=%s\n' "$endpoint"
+    printf 'buckets='
+    paste -sd, "$buckets_file"
+  } > "$dest/manifest.txt"
+  info "Kanzleidateien-Export fertig: $dest"
 }
 
 restore_needs_s3() {
@@ -1006,6 +1084,21 @@ cmd_backup() {
   sync_postgres_roles_from_env
   run_backup
   info "Backup fertig."
+}
+
+cmd_backup_files() {
+  load_env; preflight_common; assert_production_env
+  start_infra
+  wait_seaweedfs_healthy
+  ensure_s3_ready_for_backup
+  run_backup_files
+  info "Kanzleidateien-Backup fertig."
+}
+
+cmd_backup_full() {
+  cmd_backup
+  cmd_backup_files
+  info "Vollbackup fertig (Datenbank + Kanzleidateien-Byte-Export)."
 }
 
 cmd_restore() {

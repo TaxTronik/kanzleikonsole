@@ -16,6 +16,12 @@ monatlich per Restore-Drill (Art. 32 Abs. 1 lit. d DSGVO).
   demselben Dump. `BackupRecord` je Tenant (RUNNING→SUCCESS/FAILED, Hash, Key)
   + Audit `backup.run` in derselben Tx.
   Datei-Modus (`--out-file`) für Selbsttest/Air-Gap mit identischen Flags.
+- **Kanzleidateien-Export** (`./taxtronik backup-files`): kopiert die
+  SeaweedFS-Dokument-Buckets `gobd`, `gwg`, `general`, `staff-private` als
+  lokale Byte-Kopie nach `backups/object-store/<timestamp>/`.
+  `./taxtronik backup-full` führt Datenbank-Backup und Datei-Export zusammen
+  aus. Object-Lock-/Versioning-Metadaten sind Betreiber-Thema via
+  SeaweedFS-Replikation oder Volume-Snapshot.
 - **Restore-CLI** (`./taxtronik restore`, intern `restore.ts`):
   `--list/--latest/--key/--file`;
   S3-Restores verifizieren den SHA-256 **gegen den BackupRecord** (Abbruch
@@ -45,11 +51,14 @@ monatlich per Restore-Drill (Art. 32 Abs. 1 lit. d DSGVO).
 | Wiederherstellbarkeit je Installation | backup-drill-Worker | `backup-drill.test.ts` (Helfer) + End-to-End über echte Queue/Image (verifiziert 2026-06-10); Audit-Events in der Chain |
 | Ganz-oder-gar-nicht-Restore | --single-transaction | CI-Roundtrip |
 | Migration nie ohne Backup | ops-lib `backup_before_migrations` | ./taxtronik deploy/update |
+| Kanzleidateien sicherbar | `./taxtronik backup-files` + DR-Runbook für Replikation/Snapshot | Operator-Abnahme |
 | Sichtbarkeit | Admin-Backup-Karte + Drill-Ergebnis + Browser-Trigger/Download | manuelle Abnahme |
 
 ## Bekannte Grenzen
 
-Object-Store-Inhalte (Dokumente) sichert das DB-Backup nicht — externe
-Replikation/Backup des SeaweedFS-Volumes ist Betreiber-Pflicht (DR-Runbook
-Abschnitt 4); keine Unit-Tests direkt für runner/restore (Abdeckung über den
-CI-Roundtrip, der exakt den Produktionscode-Pfad fährt).
+Object-Store-Inhalte (Dokumente) sichert das DB-Backup nicht. `backup-files`
+liefert eine lokale Byte-Kopie der Dokument-Buckets; vollständige
+Object-Lock-/Versioning-Treue erfordert externe SeaweedFS-Replikation oder
+Volume-Snapshots (DR-Runbook Abschnitt 4). Keine Unit-Tests direkt für
+runner/restore (Abdeckung über den CI-Roundtrip, der exakt den
+Produktionscode-Pfad fährt).

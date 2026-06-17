@@ -92,6 +92,18 @@ export async function checkStaffExportLimit(
 }
 
 /**
+ * Backup-Downloads sind Admin-only und im Betrieb oft Doppelchecks
+ * (lokale Kopie + S3-Objekt direkt nacheinander). Sie bekommen daher ein
+ * eigenes, großzügigeres Limit und getrennte Buckets pro Quelle.
+ */
+export async function checkStaffBackupDownloadLimit(
+  staffId: string,
+  source: 'auto' | 'local' | 's3',
+): Promise<RateLimitResult> {
+  return checkRateLimit(`backup-download:${source}:${staffId}`, { max: 30, windowSec: 600 });
+}
+
+/**
  * K-3: Einheitliches Verhalten bei Redis-Ausfall.
  *  - Production: fail-CLOSED (kein Bypass über provozierte Redis-Fehler)
  *  - Dev: fail-OPEN (lokale Tests ohne Redis möglich)

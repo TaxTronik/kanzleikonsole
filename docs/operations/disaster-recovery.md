@@ -9,13 +9,16 @@ ausfällt? Dieses Runbook beschreibt den Wiederherstellungs-Pfad.
 > Einträge. Jeder Dump liegt zusätzlich lokal unter `backups/` bzw.
 > `BACKUP_LOCAL_DIR` und im S3-Backup-Bucket. Audit-Archive werden wöchentlich
 > vom Worker gerollt (siehe `audit-rotate`).
+>
+> Wichtig: Das Postgres-Backup enthält Dokument-Metadaten und Storage-Keys,
+> aber nicht die Datei-Bytes der Kanzleidokumente. Diese liegen in SeaweedFS.
 
 ## 1. Was wird gesichert?
 
 | Datenklasse | Wo liegt es? | Wie wird es gesichert? | Wie wird es wiederhergestellt? |
 |---|---|---|---|
 | Stammdaten + Bewegungsdaten | Postgres | täglicher `pg_dump --format=custom --compress=6` → lokale Kopie `backups/` + Object-Store-Bucket `backups` | `./taxtronik restore` (siehe Schritt 3) |
-| Dokumente / Belege | Object-Store-Bucket `gobd` / `general` / `staff-private` | SeaweedFS-eigene Replikation/Backup (extern) | Object-Store-Restore aus extern |
+| Dokumente / Belege | Object-Store-Bucket `gobd` / `gwg` / `general` / `staff-private` | `./taxtronik backup-files` als lokale Byte-Kopie plus SeaweedFS-Replikation/Volume-Snapshot für Object-Lock-/Versioning-Treue | Object-Store-Restore aus extern |
 | Audit-Log (aktuell) | Postgres `audit_log` | im pg_dump enthalten | mit pg_restore zurück |
 | Audit-Archive (gerollt) | SeaweedFS `gobd/tenants/.../audit-archive/...ndjson` | Object-Lock COMPLIANCE 10 J. | bleibt erhalten — `verify:chain` rekonstruiert Chain |
 | Tagesversiegelungen | Postgres `audit_seal` | im pg_dump enthalten | mit pg_restore zurück |
@@ -132,6 +135,52 @@ Bei Bruch zeigt die CLI die genaue Audit-ID und den Grund.
 
 ## 4. Restore-Procedure (SeaweedFS)
 
+### Variante 0: Lokaler Bucket-Export (`backup-files`)
+
+Für kleine Single-Node-Installationen kann zusätzlich zum DB-Backup eine
+lokale Byte-Kopie der Kanzleidateien erzeugt werden:
+
+```bash
+./taxtronik backup-files
+# oder DB + Dateien zusammen:
+./taxtronik backup-full
+```
+
+Ziel:
+
+```text
+backups/
+  object-store/
+    20260618-013000/
+      gobd/
+      gwg/
+      general/
+      staff-private/
+      manifest.txt
+```
+
+Restore in frisch initialisierte Buckets (nach `seaweedfs-init`):
+
+```bash
+set -a
+. ./.env
+set +a
+
+docker run --rm --network taxtronik \
+  -e AWS_ACCESS_KEY_ID="$S3_ACCESS_KEY" \
+  -e AWS_SECRET_ACCESS_KEY="$S3_SECRET_KEY" \
+  -e AWS_DEFAULT_REGION="${S3_REGION:-us-east-1}" \
+  -v "$PWD/backups/object-store/20260618-013000:/backup:ro" \
+  amazon/aws-cli:latest@sha256:c95ab0642137f55a12b95b6956dd03cefdbd73e760e0e7b870afc9b47f9c8150 \
+  --endpoint-url http://seaweedfs:8333 s3 sync /backup/gobd s3://gobd --only-show-errors
+```
+
+Für `gwg`, `general` und `staff-private` analog wiederholen.
+
+Grenze: Dieser Export ist eine Datei-Byte-Kopie. Er erhält nicht zuverlässig
+alle Object-Lock-/Versioning-Metadaten des Object-Stores. Für GoBD-/GwG-
+Nachweistreue ist zusätzlich Variante A oder B Pflicht.
+
 ### Variante A: S3-Bucket-Replikation (empfohlen)
 
 Konfiguration einer kontinuierlichen Replikation in einen Off-Site-SeaweedFS
@@ -181,9 +230,11 @@ Mindestens vierteljährlich:
 
 1. Frische Postgres-Instanz (Test-Container) hochziehen
 2. `./taxtronik restore --latest --target-url postgres://test/test --no-smoke-test`
-3. `pnpm verify:chain` gegen Test-DB → muss durchlaufen
-4. Manueller Login mit einem Test-Account → muss funktionieren
-5. Ergebnis in der DSGVO-Verarbeitungs-Doku als Wiederherstellungs-Test
+3. Stichprobe aus `./taxtronik backup-files` in Test-Buckets spiegeln und
+   Dokument-Download prüfen
+4. `pnpm verify:chain` gegen Test-DB → muss durchlaufen
+5. Manueller Login mit einem Test-Account → muss funktionieren
+6. Ergebnis in der DSGVO-Verarbeitungs-Doku als Wiederherstellungs-Test
    dokumentieren
 
 ### 7.1 Automatisierter Restore-Selbsttest (CI)
@@ -241,8 +292,9 @@ pnpm --filter @taxtronik/web exec tsx src/server/backup/runner.ts \
 - [ ] `pnpm install`
 - [ ] `pnpm db:migrate:deploy` (DB-Schema bauen)
 - [ ] `./taxtronik restore --latest --target-url <postgres-url>`
+- [ ] Kanzleidateien aus `backups/object-store/<timestamp>/` oder externer
+      SeaweedFS-Replikation in die Buckets zurückgespielt
 - [ ] `pnpm verify:chain` läuft sauber durch
-- [ ] Object-Store-Daten aus externem Backup zurückgespielt
 - [ ] App + Worker starten: `pnpm dev` (oder Production-Setup)
 - [ ] Manueller Login + Test der wichtigsten Module
 - [ ] Wiederherstellung in DSGVO-Verarbeitungsverzeichnis vermerken

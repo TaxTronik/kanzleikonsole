@@ -49,6 +49,8 @@ services:
       # Schema muss aktuell sein, bevor die App startet (one-shot, s. u.).
       migrate:
         condition: service_completed_successfully
+      backup-dir-init:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://taxtronik:${POSTGRES_PASSWORD}@postgres:5432/taxtronik?schema=public
@@ -111,6 +113,28 @@ services:
     volumes:
       # Browser-triggered Backups: lokale Operator-Kopie im Repo-Root unter
       # ./backups, im read-only Container als gezielt schreibbares Volume.
+      - ${BACKUP_HOST_DIR:-../../backups}:/app/backups
+
+  backup-dir-init:
+    <<: [*hardening, *logging]
+    image: ${TAXTRONIK_IMAGE_PREFIX:-taxtronik}/worker:${TAXTRONIK_VERSION:-dev}
+    container_name: taxtronik-backup-dir-init
+    restart: "no"
+    user: "0:0"
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+    command:
+      - sh
+      - -c
+      - >-
+        mkdir -p /app/backups &&
+        chown 1000:1000 /app/backups &&
+        chmod 0770 /app/backups
+    volumes:
+      # Gleicher Bind-Mount wie app. Korrigiert Host-Pfade, die Docker vorher
+      # root-owned angelegt hat; danach kann der node-User der App schreiben.
       - ${BACKUP_HOST_DIR:-../../backups}:/app/backups
 
   worker:
