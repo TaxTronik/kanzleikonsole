@@ -123,7 +123,11 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
   const pdfBytes = await generateZugferdPdf(xInput, seller, buyer, cii);
 
   // 4. Revisionssicher ablegen (GOBD-Tier, Object-Lock) — ebenfalls ausserhalb Tx.
-  const stored = await commitBytesWithTier({ fileData: Buffer.from(pdfBytes), tier: 'GOBD', tenantId: ctx.tenantId });
+  //    skipScan: die PDF wurde von der App selbst erzeugt (kein Nutzer-Upload),
+  //    ClamAV würde hier nur Zeit kosten und konnte am INSTREAM-TCP hängen —
+  //    Hauptursache des früheren „ZUGFeRD lädt ewig". Die documentVersion weiter
+  //    unten wird ohnehin mit scanStatus 'CLEAN' angelegt.
+  const stored = await commitBytesWithTier({ fileData: Buffer.from(pdfBytes), tier: 'GOBD', tenantId: ctx.tenantId, skipScan: true });
 
   // 5. Document + Version anlegen + verknüpfen (Tx). Race-sicher: hat ein
   //    paralleler Erst-Download inzwischen verknüpft, nehmen wir dessen Bytes —

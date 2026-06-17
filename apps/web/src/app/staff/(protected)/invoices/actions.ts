@@ -14,6 +14,7 @@ import { computeVatTotals } from '@/server/invoicing/vat';
 import { allocateInvoiceNumber, isValidInvoiceTransition } from '@/server/invoicing/number';
 import { readModules, type InvoiceMode } from '@/server/settings/modules';
 import { round2 } from '@/lib/fmt';
+import { withTimeout } from '@/lib/with-timeout';
 import { log } from '@/server/logger';
 import { staffActionGuard, withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
 import type { TenantContext } from '@taxtronik/db';
@@ -211,7 +212,15 @@ export async function markSentAction(
     return { ok: false, error: `Statuswechsel ${current.status} → SENT ist nicht zulässig.` };
   }
 
-  const archive = await ensureZugferdArchive(ctx, parsed.data.invoiceId);
+  let archive;
+  try {
+    archive = await withTimeout(ensureZugferdArchive(ctx, parsed.data.invoiceId), 45_000);
+  } catch {
+    return {
+      ok: false,
+      error: 'ZUGFeRD-Archiv konnte nicht rechtzeitig erzeugt werden — bitte erneut versuchen.',
+    };
+  }
   if (!archive.ok && archive.code !== 'not_applicable') {
     return {
       ok: false,

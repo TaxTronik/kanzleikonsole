@@ -6,6 +6,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { streamObject } from '@taxtronik/storage';
 import { ensureZugferdArchive } from '@/server/invoicing/archive';
+import { withTimeout } from '@/lib/with-timeout';
 
 export async function GET(
   req: NextRequest,
@@ -39,7 +40,17 @@ export async function GET(
   // revisionssicher abgelegt). Wurde sie beim Ausstellen (markSent) erzeugt,
   // ist das hier nur ein Lookup; sonst wird sie jetzt generiert + gespeichert.
   // Validierung (Adresse vollständig) liegt im Helfer.
-  const archive = await ensureZugferdArchive(ctx, id);
+  // Zeitdach: PDF-Gen + Object-Store sind gebunden, damit der Download nie
+  // endlos am Browser-Spinner hängen bleibt (früher „lädt ewig").
+  let archive;
+  try {
+    archive = await withTimeout(ensureZugferdArchive(ctx, id), 45_000);
+  } catch {
+    return NextResponse.json(
+      { error: 'timeout', message: 'ZUGFeRD-PDF konnte nicht rechtzeitig erzeugt werden — bitte erneut versuchen.' },
+      { status: 504 },
+    );
+  }
   if (!archive.ok) {
     if (archive.code === 'seller_incomplete') {
       return NextResponse.json(

@@ -340,13 +340,16 @@ async function scanHashAndUpload(
   fileData: Buffer,
   tier: ProtectionTier,
   tenantId: string,
+  skipScan = false,
 ): Promise<CommitDocumentResult> {
-  const scanResult = await scanWithClamAV(fileData);
-  if (scanResult === 'INFECTED') {
-    throw new Error('INFECTED: Datei wurde von ClamAV als infiziert markiert.');
-  }
-  if (scanResult === 'ERROR') {
-    throw new Error('SCAN_ERROR: ClamAV-Scan fehlgeschlagen.');
+  if (!skipScan) {
+    const scanResult = await scanWithClamAV(fileData);
+    if (scanResult === 'INFECTED') {
+      throw new Error('INFECTED: Datei wurde von ClamAV als infiziert markiert.');
+    }
+    if (scanResult === 'ERROR') {
+      throw new Error('SCAN_ERROR: ClamAV-Scan fehlgeschlagen.');
+    }
   }
 
   const sha256 = createHash('sha256').update(fileData).digest();
@@ -404,12 +407,16 @@ export async function commitBytesWithTier(input: {
   fileData: Buffer;
   tier: ProtectionTier;
   tenantId: string;
+  /** ClamAV-Scan überspringen — NUR für Bytes, die die App selbst erzeugt hat
+   *  (kein Nutzer-Upload). Vermeidet unnötige TCP-Roundtrips und mögliche
+   *  Hänger beim Scan der eigenen PDF (z. B. ZUGFeRD-Archiv). */
+  skipScan?: boolean;
 }): Promise<CommitDocumentResult> {
-  const { fileData, tier, tenantId } = input;
+  const { fileData, tier, tenantId, skipScan } = input;
   if (fileData.length > MAX_UPLOAD_BYTES) {
     throw new Error(`TOO_LARGE: Datei überschreitet das Limit von ${MAX_UPLOAD_BYTES} Bytes.`);
   }
-  return scanHashAndUpload(fileData, tier, tenantId);
+  return scanHashAndUpload(fileData, tier, tenantId, skipScan);
 }
 
 /**
