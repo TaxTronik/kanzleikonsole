@@ -10,6 +10,7 @@
 // =============================================================================
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { FileCode, Loader2 } from 'lucide-react';
 
 export function InvoiceFormatDownload({
@@ -21,6 +22,7 @@ export function InvoiceFormatDownload({
   label: string;
   title?: string;
 }) {
+  const router = useRouter();
   const [status, setStatus] = useState<'idle' | 'loading'>('idle');
   const [error, setError] = useState<string | null>(null);
 
@@ -46,6 +48,7 @@ export function InvoiceFormatDownload({
         a.remove();
         URL.revokeObjectURL(url);
         setStatus('idle');
+        router.refresh();
       } else {
         let message = `Fehler (${res.status})`;
         try {

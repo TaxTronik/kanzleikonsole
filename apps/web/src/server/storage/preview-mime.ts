@@ -51,6 +51,26 @@ const MIME_TO_EXT: Readonly<Record<string, string>> = {
   'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
 };
 
+function normalizedMimeType(mimeType: string | null | undefined, fileName?: string | null): string | null {
+  const normalized = mimeType?.split(';')[0]?.trim().toLowerCase() || null;
+  if (
+    normalized === 'application/pdf' ||
+    normalized === 'application/x-pdf' ||
+    normalized === 'application/acrobat' ||
+    normalized === 'applications/vnd.pdf' ||
+    normalized === 'application/vnd.pdf'
+  ) {
+    return 'application/pdf';
+  }
+  if (
+    (normalized === null || normalized === 'application/octet-stream' || normalized === 'binary/octet-stream') &&
+    fileName?.trim().toLowerCase().endsWith('.pdf')
+  ) {
+    return 'application/pdf';
+  }
+  return normalized;
+}
+
 /**
  * Stellt sicher, dass `name` eine zur `mimeType` passende Endung trägt.
  * Hat der Name bereits die korrekte Endung (case-insensitive), bleibt er
@@ -58,16 +78,15 @@ const MIME_TO_EXT: Readonly<Record<string, string>> = {
  */
 export function filenameWithExtension(name: string, mimeType: string | null | undefined): string {
   const base = name.trim() || 'download';
-  const normalized = mimeType?.split(';')[0]?.trim().toLowerCase();
+  const normalized = normalizedMimeType(mimeType, base);
   const ext = normalized ? MIME_TO_EXT[normalized] : undefined;
   if (!ext) return base;
   if (base.toLowerCase().endsWith(`.${ext}`)) return base;
   return `${base}.${ext}`;
 }
 
-export function isInlineSafeMime(mimeType: string | null | undefined): boolean {
-  if (!mimeType) return false;
-  const normalized = mimeType.split(';')[0]?.trim().toLowerCase();
+export function isInlineSafeMime(mimeType: string | null | undefined, fileName?: string | null): boolean {
+  const normalized = normalizedMimeType(mimeType, fileName);
   if (!normalized) return false;
   return INLINE_MIME_WHITELIST.has(normalized);
 }
@@ -82,7 +101,7 @@ export function previewDisposition(mimeType: string, fileName: string): string {
   // (sanitizeFilenameForHeader) — vorher strippte preview-mime nur \r\n",
   // service strippte zusätzlich Backslash + Control-Chars. Jetzt eine Quelle.
   const safeName = sanitizeFilenameForHeader(filenameWithExtension(fileName, mimeType));
-  const mode = isInlineSafeMime(mimeType) ? 'inline' : 'attachment';
+  const mode = isInlineSafeMime(mimeType, fileName) ? 'inline' : 'attachment';
   return `${mode}; filename="${safeName}"`;
 }
 
@@ -92,8 +111,9 @@ export function previewDisposition(mimeType: string, fileName: string): string {
  * trotz attachment beim Direkt-Aufruf der Signed-URL den Header
  * ignoriert und doch rendert.
  */
-export function previewContentType(mimeType: string): string {
-  return isInlineSafeMime(mimeType) ? mimeType : 'application/octet-stream';
+export function previewContentType(mimeType: string, fileName?: string | null): string {
+  const normalized = normalizedMimeType(mimeType, fileName);
+  return normalized && isInlineSafeMime(normalized, fileName) ? normalized : 'application/octet-stream';
 }
 
 /**
@@ -108,8 +128,8 @@ export function previewContentType(mimeType: string): string {
  * Browser-Viewer, den `sandbox` in Chromium blockieren kann; Bilder sind
  * magic-byte-validiert und führen nichts aus.
  */
-export function previewSecurityHeaders(mimeType: string): Record<string, string> {
-  const normalized = mimeType.split(';')[0]?.trim().toLowerCase();
+export function previewSecurityHeaders(mimeType: string, fileName?: string | null): Record<string, string> {
+  const normalized = normalizedMimeType(mimeType, fileName);
   if (normalized === 'text/plain') {
     return { 'content-security-policy': 'sandbox' };
   }

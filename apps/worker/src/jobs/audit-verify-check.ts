@@ -91,6 +91,7 @@ export const auditVerifyWorker = new Worker<ChecksJob>(
   'audit-verify-check',
   async (job) => {
     const results: Array<{ tenantId: string; ok: boolean; broken?: string }> = [];
+    const manualSingleTenant = !!job.data.tenantId;
     const tenantBatches: AsyncGenerator<string[]> = job.data.tenantId
       ? (async function* () { yield [job.data.tenantId!]; })()
       : await loadTenantIdsChunked();
@@ -182,6 +183,45 @@ export const auditVerifyWorker = new Worker<ChecksJob>(
               where: { tenantId, kind: 'SYSTEM_AUDIT_BREAK', readAt: null },
               data: { readAt: new Date() },
             });
+            if (manualSingleTenant && r.ok && !recovered) {
+              const recipients = await tx.staffUser.findMany({
+                where: {
+                  tenantId,
+                  active: true,
+                  roles: { some: { role: { in: ['ADMIN', 'PARTNER'] } } },
+                },
+                select: { id: true },
+              });
+              for (const rec of recipients) {
+                const existing = await tx.notification.findFirst({
+                  where: {
+                    tenantId,
+                    staffId: rec.id,
+                    kind: 'SYSTEM_AUDIT_OK',
+                    resourceType: 'audit_log',
+                    readAt: null,
+                  },
+                });
+                const data = {
+                  tenantId,
+                  staffId: rec.id,
+                  kind: 'SYSTEM_AUDIT_OK' as const,
+                  title: 'Audit-Chain intakt',
+                  body: `Manuelle Pruefung erfolgreich: ${r.checked} Audit-Eintraege und ${r.sealsChecked} Siegel geprueft.`,
+                  href: '/staff/admin/audit',
+                  resourceType: 'audit_log',
+                  resourceId: null,
+                };
+                if (existing) {
+                  await tx.notification.update({
+                    where: { id: existing.id },
+                    data: { ...data, createdAt: new Date() },
+                  });
+                } else {
+                  await tx.notification.create({ data });
+                }
+              }
+            }
           }).catch((e) =>
             log.warn({ tenantId, err: (e as Error).message }, 'audit-verify: clear-notification failed'),
           );

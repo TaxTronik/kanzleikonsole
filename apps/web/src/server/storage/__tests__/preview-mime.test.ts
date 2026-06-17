@@ -61,6 +61,12 @@ describe('previewDisposition / previewContentType', () => {
     expect(previewDisposition('text/html', 'boese')).toMatch(/^attachment; /);
     expect(previewContentType('text/html')).toBe('application/octet-stream');
   });
+
+  it('alte/falsch gespeicherte PDFs werden anhand MIME-Variante oder Dateiname inline dargestellt', () => {
+    expect(previewContentType('application/x-pdf', 'Vollmacht')).toBe('application/pdf');
+    expect(previewDisposition('application/octet-stream', 'Vollmacht.pdf')).toBe('inline; filename="Vollmacht.pdf"');
+    expect(previewContentType('application/octet-stream', 'Vollmacht.pdf')).toBe('application/pdf');
+  });
 });
 
 describe('filenameWithExtension', () => {

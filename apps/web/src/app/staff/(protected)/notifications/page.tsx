@@ -23,6 +23,7 @@ const kindLabels: Record<string, string> = {
   TAX_NEWS_NEW: 'Neue BMF/BFH-News',
   SYSTEM_BACKUP_FAILED: 'Backup fehlgeschlagen',
   SYSTEM_AUDIT_BREAK: 'Audit-Chain-Bruch',
+  SYSTEM_AUDIT_OK: 'Audit-Chain intakt',
 };
 
 export default async function NotificationsPage() {

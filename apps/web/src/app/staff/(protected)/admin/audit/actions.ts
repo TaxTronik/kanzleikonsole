@@ -37,7 +37,7 @@ export async function triggerAuditVerifyAction(): Promise<void> {
     });
   });
 
-  redirect('/staff/admin/audit?verify=queued');
+  redirect(`/staff/admin/audit?verify=queued&queuedAt=${Date.now()}`);
 }
 
 /**
@@ -101,5 +101,5 @@ export async function createAuditRecoveryCheckpointAction(formData: FormData): P
   });
 
   await enqueueAuditVerify(tenantId);
-  redirect('/staff/admin/audit?checkpoint=created&verify=queued');
+  redirect(`/staff/admin/audit?checkpoint=created&verify=queued&queuedAt=${Date.now()}`);
 }

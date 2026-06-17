@@ -1,6 +1,6 @@
 ﻿import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, CheckCircle2, X } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, FileText, X } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { canAccessClientTx, hasStaffPermission } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
@@ -35,7 +35,7 @@ export default async function InvoiceDetailPage({
   const { id } = await params;
   const { tenantId, staffId } = session.user;
 
-  const inv = await withTenantContext(
+  const data = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
       const row = await tx.invoice.findUnique({
@@ -49,11 +49,41 @@ export default async function InvoiceDetailPage({
       // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Rechnung eines
       // gesperrten Mandanten verhält sich wie nicht vorhanden.
       if (row && !(await canAccessClientTx(tx, session, row.clientId))) return null;
-      return row;
+      if (!row) return null;
+
+      const artifactOr: Array<{ id: string } | { title: { in: string[] } }> = [
+        { title: { in: [`Rechnung ${row.number} (ZUGFeRD)`, `Rechnung ${row.number} (XRechnung)`] } },
+      ];
+      if (row.documentId) artifactOr.push({ id: row.documentId });
+
+      const artifacts = await tx.document.findMany({
+        where: {
+          tenantId,
+          clientId: row.clientId,
+          classification: 'GOBD_INVOICE',
+          deletedAt: null,
+          versions: { some: {} },
+          OR: artifactOr,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      return { invoice: row, artifacts };
     },
   );
 
-  if (!inv) notFound();
+  if (!data) notFound();
+  const inv = data.invoice;
+  const invoiceDocuments = data.artifacts;
+  const hasXRechnung = invoiceDocuments.some((d) =>
+    d.title === `Rechnung ${inv.number} (XRechnung)` ||
+    d.mimeType.toLowerCase().includes('xml'),
+  );
+  const hasZugferd = invoiceDocuments.some((d) =>
+    d.id === inv.documentId ||
+    d.title === `Rechnung ${inv.number} (ZUGFeRD)`,
+  );
+  const canGenerateFormats = inv.format !== 'PDF';
 
   // iter87: Buttons nur mit Einzelrecht zeigen — die Actions prüfen selbst
   // (UI-Ausblendung ist Komfort, kein Schutz).
@@ -164,29 +194,46 @@ export default async function InvoiceDetailPage({
         </div>
       )}
 
-      {inv.document && (
-        <div className="card p-4 mb-6 flex items-center justify-between">
-          <span className="text-sm text-secondary">PDF: {inv.document.title}</span>
-          <a
-            href={`/api/staff/documents/${inv.document.id}/download`}
-            className="text-sm text-brand-700 hover:underline"
-          >
-            Öffnen
-          </a>
+      {invoiceDocuments.length > 0 && (
+        <div className="card p-4 mb-6">
+          <h3 className="text-xs font-medium text-muted uppercase tracking-wide mb-3">Rechnungsdateien</h3>
+          <div className="divide-y divide-border-subtle">
+            {invoiceDocuments.map((doc) => (
+              <div key={doc.id} className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
+                <div className="min-w-0 flex items-center gap-3">
+                  <FileText className="h-4 w-4 text-muted shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-secondary truncate">{doc.title}</p>
+                    <p className="text-xs text-disabled">{doc.mimeType}</p>
+                  </div>
+                </div>
+                <a
+                  href={`/api/staff/documents/${doc.id}/download`}
+                  className="text-sm text-brand-700 hover:underline shrink-0"
+                >
+                  Öffnen
+                </a>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
       <div className="flex flex-wrap gap-2">
-        <InvoiceFormatDownload
-          href={`/api/staff/invoices/${inv.id}/xrechnung`}
-          label="XRechnung (XML)"
-          title="XRechnung 3.0 (XML) herunterladen"
-        />
-        <InvoiceFormatDownload
-          href={`/api/staff/invoices/${inv.id}/zugferd`}
-          label="ZUGFeRD (PDF)"
-          title="ZUGFeRD/Factur-X PDF (mit eingebetteter XRechnung-XML) herunterladen"
-        />
+        {canGenerateFormats && !hasXRechnung && (
+          <InvoiceFormatDownload
+            href={`/api/staff/invoices/${inv.id}/xrechnung`}
+            label="XRechnung (XML)"
+            title="XRechnung 3.0 (XML) herunterladen"
+          />
+        )}
+        {canGenerateFormats && !hasZugferd && (
+          <InvoiceFormatDownload
+            href={`/api/staff/invoices/${inv.id}/zugferd`}
+            label="ZUGFeRD (PDF)"
+            title="ZUGFeRD/Factur-X PDF (mit eingebetteter XRechnung-XML) herunterladen"
+          />
+        )}
         {inv.status === 'DRAFT' && canSend && (
           <MarkSentForm invoiceId={inv.id} />
         )}
@@ -221,4 +268,3 @@ function KV({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
-

@@ -10,6 +10,7 @@ vi.mock('@/server/container', () => ({ evidenceService: { record: vi.fn() } }));
 vi.mock('@/server/invoicing/xrechnung', () => ({ generateXRechnungCii: vi.fn(() => '<cii/>') }));
 vi.mock('@/server/invoicing/zugferd', () => ({ generateZugferdPdf: vi.fn(async () => new Uint8Array([1, 2, 3])) }));
 vi.mock('@/server/settings/tenant-settings', () => ({ readSellerInfo: vi.fn() }));
+vi.mock('@/server/settings/branding', () => ({ readBranding: vi.fn(async () => ({ logoDataUrl: null })) }));
 
 import { ensureZugferdArchive } from '../archive';
 import { withTenantContext } from '@taxtronik/db';
@@ -46,7 +47,11 @@ beforeEach(() => {
   vi.clearAllMocks();
   tx = {
     invoice: { findFirst: vi.fn(), update: vi.fn().mockResolvedValue({}) },
-    document: { create: vi.fn().mockResolvedValue({ id: 'doc1' }), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    document: {
+      create: vi.fn().mockResolvedValue({ id: 'doc1' }),
+      findFirst: vi.fn().mockResolvedValue(null),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+    },
     documentVersion: { create: vi.fn().mockResolvedValue({}) },
   };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -59,6 +64,11 @@ beforeEach(() => {
 
 describe('ensureZugferdArchive', () => {
   it('idempotent: vorhandenes Archiv → dieselben Bytes, KEINE Neugenerierung', async () => {
+    tx.document.findFirst.mockResolvedValueOnce({
+      id: 'xml-existing',
+      sharedWithClientAt: new Date(),
+      versions: [{ storageBucket: 'gobd', storageKey: 'xml-existing' }],
+    });
     tx.invoice.findFirst.mockResolvedValueOnce(baseInvoice({
       status: 'SENT',
       documentId: 'doc-existing',
@@ -74,6 +84,11 @@ describe('ensureZugferdArchive', () => {
   });
 
   it('selbstheilend: als DRAFT erzeugte Kopie wird nach Versand nachträglich freigegeben', async () => {
+    tx.document.findFirst.mockResolvedValueOnce({
+      id: 'xml-existing',
+      sharedWithClientAt: new Date(),
+      versions: [{ storageBucket: 'gobd', storageKey: 'xml-existing' }],
+    });
     // Rechnung ist inzwischen SENT, das verknüpfte Archiv aber noch ungeteilt
     // (z. B. zuvor per DRAFT-Download erzeugt). Der nächste Helfer-Lauf gibt frei.
     tx.invoice.findFirst.mockResolvedValueOnce(baseInvoice({
@@ -90,6 +105,11 @@ describe('ensureZugferdArchive', () => {
   });
 
   it('DRAFT mit verknüpfter Kopie wird NICHT nachträglich freigegeben', async () => {
+    tx.document.findFirst.mockResolvedValueOnce({
+      id: 'xml-existing',
+      sharedWithClientAt: null,
+      versions: [{ storageBucket: 'gobd', storageKey: 'xml-existing' }],
+    });
     tx.invoice.findFirst.mockResolvedValueOnce(baseInvoice({
       status: 'DRAFT',
       documentId: 'doc-existing',
@@ -155,9 +175,9 @@ describe('ensureZugferdArchive', () => {
     const res = await ensureZugferdArchive(ctx, 'inv1');
     expect(res).toEqual({ ok: true, bucket: 'gobd', key: 'k-new', number: 'R-001' });
     expect(generateZugferdPdf).toHaveBeenCalledTimes(1);
-    expect(commitBytesWithTier).toHaveBeenCalledTimes(1);
-    expect(tx.document.create).toHaveBeenCalledTimes(1);
-    expect(tx.documentVersion.create).toHaveBeenCalledTimes(1);
+    expect(commitBytesWithTier).toHaveBeenCalledTimes(2);
+    expect(tx.document.create).toHaveBeenCalledTimes(2);
+    expect(tx.documentVersion.create).toHaveBeenCalledTimes(2);
     expect(tx.invoice.update).toHaveBeenCalledWith({ where: { id: 'inv1' }, data: { documentId: 'doc1' } });
     expect(evidenceService.record).toHaveBeenCalledTimes(1);
   });

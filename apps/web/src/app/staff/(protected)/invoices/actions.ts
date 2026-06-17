@@ -276,16 +276,31 @@ export async function markSentAction(
   const client = await withTenantContext(ctx, (tx) =>
     tx.client.findUnique({
       where: { id: sent.clientId },
-      select: { name: true, invoiceEmail: true },
+      select: {
+        name: true,
+        invoiceEmail: true,
+        contacts: {
+          where: { active: true, notificationsEnabled: true },
+          select: { email: true, fullName: true },
+        },
+      },
     }),
   );
+  const recipients = new Map<string, { email: string; fullName: string }>();
   if (client?.invoiceEmail) {
+    recipients.set(client.invoiceEmail.toLowerCase(), { email: client.invoiceEmail, fullName: client.name });
+  }
+  for (const contact of client?.contacts ?? []) {
+    recipients.set(contact.email.toLowerCase(), contact);
+  }
+  for (const recipient of recipients.values()) {
     fireAndForget('sendTemplateMail (invoice-sent)', sendTemplateMail({
       tenantId,
       slug: 'invoice-sent',
-      to: client.invoiceEmail,
+      to: recipient.email,
       vars: {
-        client: { name: client.name },
+        contact: { fullName: recipient.fullName, email: recipient.email },
+        client: { name: client?.name ?? 'Mandant' },
         invoice: {
           number: sent.number,
           total: fmtEUR(Number(sent.totalAmount.toString())),
@@ -294,9 +309,9 @@ export async function markSentAction(
         link: `${portalBaseUrl}/portal/invoices`,
       },
       fallback: {
-        subject: 'Neue Rechnung — {{client.name}}',
+        subject: 'Neue Rechnung {{invoice.number}}',
         bodyMd:
-          'Sehr geehrte/r {{client.name}},\n\n' +
+          'Sehr geehrte/r {{contact.fullName}},\n\n' +
           'eine neue Rechnung ({{invoice.number}}) über {{invoice.total}} steht in Ihrem Mandantenportal bereit.\n' +
           'Fälligkeit: {{invoice.dueDate}}\n\n' +
           'Zur Übersicht: {{link}}',

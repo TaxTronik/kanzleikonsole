@@ -71,17 +71,17 @@ export async function GET(
   if (req.nextUrl.searchParams.get('stream') === '1') {
     const obj = await streamObject(doc.bucket, doc.key);
     const headers: Record<string, string> = {
-      'content-type': previewContentType(doc.mimeType),
+      'content-type': previewContentType(doc.mimeType, doc.title),
       'content-disposition': previewDisposition(doc.mimeType, doc.title),
       'cache-control': 'private, no-store',
       // Audit 2026-06 Befund 4: CSP sandbox für text/plain — Inline-Anzeige
       // hängt nicht mehr allein an nosniff.
-      ...previewSecurityHeaders(doc.mimeType),
+      ...previewSecurityHeaders(doc.mimeType, doc.title),
     };
     if (obj.contentLength !== null) headers['content-length'] = String(obj.contentLength);
     return new NextResponse(obj.body, { status: 200, headers });
   }
 
   const url = `${req.nextUrl.pathname}?stream=1`;
-  return NextResponse.json({ url, mimeType: previewContentType(doc.mimeType), title: doc.title });
+  return NextResponse.json({ url, mimeType: previewContentType(doc.mimeType, doc.title), title: doc.title });
 }

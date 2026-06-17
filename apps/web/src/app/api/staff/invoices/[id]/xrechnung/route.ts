@@ -3,7 +3,9 @@ import { getClientIp } from '@/server/rate-limit';
 import { staffAuth } from '@/server/auth/staff';
 import { canAccessClientTx } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
+import { commitBytesWithTier } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
+import { prismaBytes } from '@/server/db/prisma-bytes';
 import { generateXRechnungCii } from '@/server/invoicing/xrechnung';
 import { readSellerInfo } from '@/server/settings/tenant-settings';
 
@@ -103,6 +105,70 @@ export async function GET(
       email: invoice.client.invoiceEmail,
     },
   );
+
+  const shareable = invoice.status === 'SENT' || invoice.status === 'PAID' || invoice.status === 'OVERDUE';
+  const xmlTitle = `Rechnung ${invoice.number} (XRechnung)`;
+  const existingXml = await withTenantContext(ctx, (tx) =>
+    tx.document.findFirst({
+      where: {
+        tenantId,
+        clientId: invoice.clientId,
+        title: xmlTitle,
+        classification: 'GOBD_INVOICE',
+        deletedAt: null,
+      },
+      include: { versions: { orderBy: { versionNo: 'desc' }, take: 1 } },
+    }),
+  );
+  if (existingXml?.versions[0]) {
+    if (shareable && !existingXml.sharedWithClientAt) {
+      await withTenantContext(ctx, (tx) =>
+        tx.document.updateMany({
+          where: { id: existingXml.id, sharedWithClientAt: null },
+          data: { sharedWithClientAt: new Date(), sharedByStaff: staffId },
+        }),
+      );
+    }
+  } else {
+    try {
+      const storedXml = await commitBytesWithTier({
+        fileData: Buffer.from(xml, 'utf8'),
+        tier: 'GOBD',
+        tenantId,
+        skipScan: true,
+      });
+      await withTenantContext(ctx, async (tx) => {
+        const doc = await tx.document.create({
+          data: {
+            tenantId,
+            clientId: invoice.clientId,
+            title: xmlTitle,
+            classification: 'GOBD_INVOICE',
+            mimeType: 'application/xml',
+            sharedWithClientAt: shareable ? new Date() : null,
+            sharedByStaff: shareable ? staffId : null,
+          },
+        });
+        await tx.documentVersion.create({
+          data: {
+            documentId: doc.id,
+            versionNo: 1,
+            storageBucket: storedXml.targetBucket,
+            storageKey: storedXml.targetKey,
+            sha256: prismaBytes(storedXml.sha256),
+            sizeBytes: storedXml.sizeBytes,
+            immutable: storedXml.immutable,
+            scanStatus: 'CLEAN',
+            scanCompletedAt: new Date(),
+            createdById: staffId,
+          },
+        });
+      });
+    } catch {
+      // Der Download selbst bleibt nutzbar; der Button verschwindet erst, wenn
+      // die revisionssichere Ablage erfolgreich nachgezogen wurde.
+    }
+  }
 
   // Audit-Log (separate Tx, da Hauptlogik abgeschlossen)
   await withTenantContext(ctx, async (tx) => {
