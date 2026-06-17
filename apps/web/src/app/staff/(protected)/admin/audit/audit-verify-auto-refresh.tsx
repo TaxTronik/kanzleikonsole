@@ -19,20 +19,25 @@ export function AuditVerifyAutoRefresh({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const queuedMs = queuedAt ? Number(queuedAt) : NaN;
+  const checkedMs = checkedAt ? Date.parse(checkedAt) : NaN;
+  const hasQueuedCheck = Number.isFinite(queuedMs);
+  const queuedSecondMs = hasQueuedCheck ? Math.floor(queuedMs / 1000) * 1000 : NaN;
+  const hasFreshResult = hasQueuedCheck && Number.isFinite(checkedMs) && checkedMs >= queuedSecondMs;
 
   useEffect(() => {
-    const queuedMs = queuedAt ? Number(queuedAt) : NaN;
-    const checkedMs = checkedAt ? Date.parse(checkedAt) : NaN;
-    if (!Number.isFinite(queuedMs) || !Number.isFinite(checkedMs) || checkedMs < queuedMs) return;
+    if (!hasFreshResult) return;
 
     const qs = new URLSearchParams(searchParams.toString());
     qs.delete('verify');
     qs.delete('queuedAt');
     const next = qs.toString() ? `${pathname}?${qs.toString()}` : pathname;
     router.replace(next, { scroll: false });
-  }, [checkedAt, pathname, queuedAt, router, searchParams]);
+  }, [hasFreshResult, pathname, router, searchParams]);
 
   useEffect(() => {
+    if (!hasQueuedCheck || hasFreshResult) return;
+
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const start = Date.now();
@@ -47,6 +52,6 @@ export function AuditVerifyAutoRefresh({
       stopped = true;
       if (timer) clearTimeout(timer);
     };
-  }, [router]);
+  }, [hasFreshResult, hasQueuedCheck, router]);
   return null;
 }

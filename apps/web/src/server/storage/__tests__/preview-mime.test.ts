@@ -18,8 +18,10 @@ vi.mock('@taxtronik/storage', () => ({
 }));
 
 import {
+  effectiveDocumentMime,
   filenameWithExtension,
   isInlineSafeMime,
+  isLikelyPoaPdf,
   previewContentType,
   previewDisposition,
   previewSecurityHeaders,
@@ -66,6 +68,30 @@ describe('previewDisposition / previewContentType', () => {
     expect(previewContentType('application/x-pdf', 'Vollmacht')).toBe('application/pdf');
     expect(previewDisposition('application/octet-stream', 'Vollmacht.pdf')).toBe('inline; filename="Vollmacht.pdf"');
     expect(previewContentType('application/octet-stream', 'Vollmacht.pdf')).toBe('application/pdf');
+  });
+});
+
+describe('effectiveDocumentMime', () => {
+  it('erzwingt PDF fuer Vollmachten, auch wenn alte Metadaten octet-stream sagen', () => {
+    expect(
+      effectiveDocumentMime({
+        mimeType: 'application/octet-stream',
+        title: 'Vollmacht Test GmbH',
+        classification: 'GOBD_CONTRACT',
+      }),
+    ).toBe('application/pdf');
+    expect(effectiveDocumentMime({ mimeType: null, title: 'sonstiges', isPoaDocument: true })).toBe('application/pdf');
+  });
+
+  it('wendet die Vollmacht-Heuristik nicht auf beliebige GoBD-Vertraege an', () => {
+    expect(isLikelyPoaPdf({ title: 'Beratungsvertrag', classification: 'GOBD_CONTRACT' })).toBe(false);
+    expect(
+      effectiveDocumentMime({
+        mimeType: 'text/html',
+        title: 'Beratungsvertrag',
+        classification: 'GOBD_CONTRACT',
+      }),
+    ).toBe('application/octet-stream');
   });
 });
 

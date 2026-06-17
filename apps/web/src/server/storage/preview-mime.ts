@@ -91,6 +91,26 @@ export function isInlineSafeMime(mimeType: string | null | undefined, fileName?:
   return INLINE_MIME_WHITELIST.has(normalized);
 }
 
+export function isLikelyPoaPdf(input: {
+  title?: string | null;
+  classification?: string | null;
+  isPoaDocument?: boolean | null;
+}): boolean {
+  if (input.isPoaDocument) return true;
+  const title = input.title?.toLowerCase() ?? '';
+  return input.classification === 'GOBD_CONTRACT' && title.includes('vollmacht');
+}
+
+export function effectiveDocumentMime(input: {
+  mimeType: string | null | undefined;
+  title?: string | null;
+  classification?: string | null;
+  isPoaDocument?: boolean | null;
+}): string {
+  if (isLikelyPoaPdf(input)) return 'application/pdf';
+  return previewContentType(input.mimeType ?? '', input.title);
+}
+
 /**
  * Liefert den Content-Disposition-Header für Preview-Responses. Wenn die
  * MIME-Type nicht in der Inline-Whitelist ist, wird `attachment` erzwungen,

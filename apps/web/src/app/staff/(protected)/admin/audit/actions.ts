@@ -21,6 +21,7 @@ export async function triggerAuditVerifyAction(): Promise<void> {
   const g = await staffActionGuard({ requireAdmin: true });
   if (!g.ok) throw new ActionError(g.error);
   const { tenantId, staffId, ctx } = g;
+  const queuedAt = Date.now();
 
   await enqueueAuditVerify(tenantId, staffId);
 
@@ -37,7 +38,7 @@ export async function triggerAuditVerifyAction(): Promise<void> {
     });
   });
 
-  redirect(`/staff/admin/audit?verify=queued&queuedAt=${Date.now()}`);
+  redirect(`/staff/admin/audit?verify=queued&queuedAt=${queuedAt}`);
 }
 
 /**
@@ -51,6 +52,7 @@ export async function createAuditRecoveryCheckpointAction(formData: FormData): P
   const g = await staffActionGuard({ requireAdmin: true });
   if (!g.ok) throw new ActionError(g.error);
   const { tenantId, staffId, ctx } = g;
+  const queuedAt = Date.now();
   const reason = String(formData.get('reason') ?? '').trim().slice(0, 500) || null;
 
   await withTenantContext(ctx, async (tx) => {
@@ -101,5 +103,5 @@ export async function createAuditRecoveryCheckpointAction(formData: FormData): P
   });
 
   await enqueueAuditVerify(tenantId, staffId);
-  redirect(`/staff/admin/audit?checkpoint=created&verify=queued&queuedAt=${Date.now()}`);
+  redirect(`/staff/admin/audit?checkpoint=created&verify=queued&queuedAt=${queuedAt}`);
 }

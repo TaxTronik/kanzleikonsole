@@ -3,7 +3,7 @@ import { getClientIp, checkPortalReadLimit } from '@/server/rate-limit';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 import { streamObject, sanitizeFilenameForHeader } from '@taxtronik/storage';
-import { filenameWithExtension } from '@/server/storage/preview-mime';
+import { effectiveDocumentMime, filenameWithExtension } from '@/server/storage/preview-mime';
 import { evidenceService } from '@/server/container';
 
 export async function GET(
@@ -51,9 +51,16 @@ export async function GET(
         userAgent: req.headers.get('user-agent'),
       });
 
+      const isPoaDocument = await tx.powerOfAttorney.findFirst({
+        where: { tenantId, documentId: d.id },
+        select: { id: true },
+      });
+
       return {
         title: d.title,
         mimeType: d.mimeType,
+        classification: d.classification,
+        isPoaDocument: !!isPoaDocument,
         bucket: version.storageBucket,
         key: version.storageKey,
       };
@@ -66,9 +73,10 @@ export async function GET(
 
   // App-proxied Download — Object-Store bleibt intern, direkt durchstreamen (O(1)).
   const obj = await streamObject(doc.bucket, doc.key);
+  const contentType = effectiveDocumentMime(doc);
   const headers: Record<string, string> = {
-    'content-type': doc.mimeType || 'application/octet-stream',
-    'content-disposition': `attachment; filename="${sanitizeFilenameForHeader(filenameWithExtension(doc.title, doc.mimeType))}"`,
+    'content-type': contentType,
+    'content-disposition': `attachment; filename="${sanitizeFilenameForHeader(filenameWithExtension(doc.title, contentType))}"`,
     'cache-control': 'private, no-store',
   };
   if (obj.contentLength !== null) headers['content-length'] = String(obj.contentLength);
