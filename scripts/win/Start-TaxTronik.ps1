@@ -1,12 +1,15 @@
 ﻿#requires -version 5.1
 # =============================================================================
-# TaxTronik — Ein-Klick-Start für Windows.
+# TaxTronik — lokaler Container-Dev-Helfer für Windows.
 #
-# Fährt den GANZEN Stack containerisiert hoch (Infra + App + Worker + n8n;
-# Migrationen laufen automatisch über den migrate-Service via depends_on).
-# Beim ersten Lauf: Secrets generieren, Images bauen. Folgestarts: nur `up`.
+# Kein Produktionsstarter und nicht der normale Windows-Setup-Pfad. Für die
+# lokale Entwicklung ist `.\scripts\setup.ps1` maßgeblich; danach laufen Web
+# und Worker üblicherweise über `pnpm ... dev`.
 #
-#   Doppelklick auf  start.cmd   (im Repo-Root)   — oder:
+# Dieses Skript ist nur ein Shortcut für den containerisierten lokalen
+# App-/Worker-Stack. Beim ersten Lauf: Secrets generieren, Images bauen.
+# Folgestarts: nur `up`.
+#
 #   powershell -ExecutionPolicy Bypass -File scripts\win\Start-TaxTronik.ps1
 #
 # Schalter:
@@ -191,6 +194,6 @@ if ($ready) { Ok "App ist erreichbar." } else { Warn "App-Health nicht bestaetig
 $loginUrl = "http://localhost:$port/staff/login"
 if (-not $NoBrowser) { Start-Process $loginUrl }
 Write-Host ""
-Write-Host "TaxTronik laeuft:  $loginUrl" -ForegroundColor Green
+Write-Host "TaxTronik lokaler Container-Dev-Stack laeuft:  $loginUrl" -ForegroundColor Green
 Write-Host "Stoppen:           docker compose --env-file .env -f $Base -f $App down" -ForegroundColor DarkGray
-Write-Host "Hinweis: E-Mail-Versand zeigt ohne SMTP-Server ins Leere — SMTP_* in .env setzen oder Mailhog separat starten." -ForegroundColor DarkGray
+Write-Host "Hinweis: Kein Produktionsstarter. Prod nutzt ./taxtronik bootstrap/deploy." -ForegroundColor DarkGray

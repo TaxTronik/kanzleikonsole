@@ -143,6 +143,21 @@ image_tag() { printf '%s' "${TAXTRONIK_VERSION:-latest}"; }
 # aus der Registry (CI-gebaut). Ohne '/' (Default `taxtronik`) => Lokalbuild.
 images_from_registry() { [[ "${TAXTRONIK_IMAGE_PREFIX:-taxtronik}" == */* ]]; }
 
+prune_build_cache() {
+  local mode until
+  mode="${TAXTRONIK_BUILD_CACHE_PRUNE:-auto}"
+  until="${TAXTRONIK_BUILD_CACHE_PRUNE_UNTIL:-168h}"
+
+  [[ "$mode" == "off" ]] && {
+    info "Docker-Build-Cache-Prune uebersprungen (TAXTRONIK_BUILD_CACHE_PRUNE=off)."
+    return 0
+  }
+
+  info "Docker-Build-Cache aufraeumen (unused > $until)"
+  docker builder prune --force --filter "until=$until" >/dev/null || \
+    warn "Docker-Build-Cache konnte nicht bereinigt werden (Deploy laeuft weiter)."
+}
+
 require_release_version() {
   [[ -n "${TAXTRONIK_VERSION:-}" ]] || \
     die "TAXTRONIK_VERSION fehlt in .env. Auf ein Release pinnen (z. B. TAXTRONIK_VERSION=1.4.0) — oder './taxtronik bootstrap' bzw. 'doctor --fix' fuer ein Erstdeploy."
@@ -181,6 +196,12 @@ _dr_secret() {
   else
     _dr_row "OK" "$key" "${#val} Zeichen"
   fi
+}
+
+smtp_points_to_dev_mailhog() {
+  local host="${1:-}" port="${2:-}" host_lc
+  host_lc="${host,,}"
+  [[ "$host_lc" == "mailhog" || ( ( "$host_lc" == "localhost" || "$host" == "127.0.0.1" ) && "$port" == "1025" ) ]]
 }
 
 _n8n_container_id() {
@@ -385,7 +406,23 @@ doctor() {
     _dr_row "OK" "RISK_LAYER" "konfiguriert (URL + Token)"
   else _dr_row "OK" "RISK_LAYER" "inaktiv (ok)"; fi
 
-  [[ -z "${SMTP_HOST:-}" ]] && { _dr_row "WARN" "SMTP_HOST" "leer (kein Mail-Versand)"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1)); }
+  if [[ -z "${SMTP_HOST:-}" ]]; then
+    _dr_row "FEHLT" "SMTP_HOST" "Prod braucht ein echtes SMTP-Relay (Mailhog nur Dev)"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  elif smtp_points_to_dev_mailhog "${SMTP_HOST:-}" "${SMTP_PORT:-}"; then
+    _dr_row "FEHLT" "SMTP_HOST" "Dev-Mailhog-Default (${SMTP_HOST}:${SMTP_PORT:-}) darf nicht in Prod deployen"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  else
+    _dr_row "OK" "SMTP_HOST" "$SMTP_HOST"
+  fi
+  if [[ -z "${SMTP_PORT:-}" ]]; then
+    _dr_row "FEHLT" "SMTP_PORT" "leer"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  else
+    _dr_row "OK" "SMTP_PORT" "$SMTP_PORT"
+  fi
+  if [[ -z "${SMTP_FROM:-}" ]]; then
+    _dr_row "FEHLT" "SMTP_FROM" "leer"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  else
+    _dr_row "OK" "SMTP_FROM" "$SMTP_FROM"
+  fi
   [[ -z "${PORTAL_PUBLIC_URL:-}" ]] && { _dr_row "WARN" "PORTAL_PUBLIC_URL" "leer (Single-Host: ok)"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1)); }
 
   local staff_dom="${STAFF_COOKIE_DOMAIN:-}" portal_dom="${PORTAL_COOKIE_DOMAIN:-}"
@@ -431,6 +468,7 @@ build_images() {
   docker build -f "$ROOT/infra/docker/Dockerfile.worker" \
     --build-arg APP_VERSION="$tag" --build-arg GIT_SHA="$sha" \
     -t "$prefix/worker:$tag" "$ROOT"
+  prune_build_cache
 }
 
 pull_images() {
@@ -667,6 +705,35 @@ prompt() {
   printf -v "$var" '%s' "${input:-$def}"
 }
 
+configure_smtp_interactive() {
+  local host_def port_def from_def input needs=0
+
+  [[ -z "${SMTP_HOST:-}" || -z "${SMTP_PORT:-}" || -z "${SMTP_FROM:-}" ]] && needs=1
+  smtp_points_to_dev_mailhog "${SMTP_HOST:-}" "${SMTP_PORT:-}" && needs=1
+  (( needs == 1 )) || return 0
+
+  if [[ ! -t 0 ]]; then
+    warn "SMTP ist nicht produktionsbereit (Mailhog/localhost:1025 ist nur Dev) — bitte SMTP_HOST/SMTP_PORT/SMTP_FROM in .env setzen."
+    return 0
+  fi
+
+  host_def="${SMTP_HOST:-smtp.example.de}"
+  port_def="${SMTP_PORT:-587}"
+  from_def="${SMTP_FROM:-noreply@example.de}"
+  if smtp_points_to_dev_mailhog "$host_def" "$port_def"; then
+    host_def="smtp.example.de"
+    port_def="587"
+  fi
+  [[ "$from_def" == *"example.local"* ]] && from_def="noreply@example.de"
+
+  read -rp "SMTP-Host (Prod-Relay; Mailhog nur Dev) [$host_def]: " input || true
+  set_env SMTP_HOST "${input:-$host_def}"
+  read -rp "SMTP-Port [$port_def]: " input || true
+  set_env SMTP_PORT "${input:-$port_def}"
+  read -rp "SMTP-Absender [$from_def]: " input || true
+  set_env SMTP_FROM "${input:-$from_def}"
+}
+
 url_hostname() {
   local url="${1:-}"
   [[ -z "$url" ]] && return 0
@@ -790,6 +857,8 @@ prepare_env_interactive() {
       warn "NEXTAUTH_URL ist leer/localhost (kein TTY) — bitte spaeter in .env setzen."
     fi
   fi
+
+  configure_smtp_interactive
 
   # Risk-Layer-Engine (optional, §4): URL + Bearer-Token. Beide oder keines,
   # sonst wirft die ENV-Validierung beim Backup-Schritt. Token min 32 Zeichen.

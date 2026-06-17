@@ -92,7 +92,7 @@ Status: ✅ vorhanden und prüfungstauglich · 🟡 vorhanden, aber formalisiere
 | Anforderung | Status | Befund |
 |---|---|---|
 | Definiertes Testsystem mit Stammdatenbestand | 🟡 | setup.sh + Demo-Seed existieren; als „Prüfumgebung" beschreiben (Hardware/OS/DB-Angaben für den Bericht, vgl. Tz. 89) und Seed ggf. um prüfungsrelevante Fälle erweitern (vgl. Tz. 56). |
-| Änderungsdokumentation je Release | ✅ | **Seit 2026-06-10:** `CHANGELOG.md` mit `[Scope]`-Kennzeichnung je Release (Pflegeregel: Eintrag entsteht mit der Änderung; vgl. Tz. 110, 113). |
+| Änderungsdokumentation | ✅ | `CHANGELOG.md` führt bis zum ersten echten Release den `[Unreleased]`-Arbeitsstand und danach versionierte Abschnitte; scope-relevante Änderungen sind mit `[Scope]` gekennzeichnet (Pflegeregel: Eintrag entsteht mit der Änderung; vgl. Tz. 110, 113). |
 | Vollständigkeitserklärung, Auftragsinhalte | — | Sache der Beauftragung (vgl. Tz. 44); kein Repo-Artefakt. |
 
 ## 4. Maßnahmenplan

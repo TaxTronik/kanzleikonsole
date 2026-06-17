@@ -83,11 +83,11 @@ services:
       S3_BUCKET_GWG: gwg
       CLAMAV_HOST: clamav
       CLAMAV_PORT: 3310
-      SMTP_HOST: ${SMTP_HOST:-mailhog}
-      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_HOST: ${SMTP_HOST:?SMTP_HOST nicht gesetzt - Prod braucht ein echtes SMTP-Relay; Mailhog nur in docker-compose.dev.yml}
+      SMTP_PORT: ${SMTP_PORT:?SMTP_PORT nicht gesetzt}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      SMTP_FROM: ${SMTP_FROM:-taxtronik <noreply@taxtronik.local>}
+      SMTP_FROM: ${SMTP_FROM:?SMTP_FROM nicht gesetzt}
       N8N_WEBHOOK_BASE_URL: http://n8n:5678/webhook
       N8N_HMAC_SECRET: ${N8N_HMAC_SECRET}
       # Risk-Layer / TCMS-Engine (§4) — opt-in.
@@ -98,7 +98,7 @@ services:
       # SSRF-Guard-Allowlist: die Docker-Service-Namen lösen auf private
       # 172.x-Adressen auf. Ohne diese Liste blockt der Guard die n8n-Bridge
       # ("Hostname löst auf private Adresse auf"). Per .env überschreibbar.
-      INTERNAL_FETCH_HOSTS: ${INTERNAL_FETCH_HOSTS:-n8n,seaweedfs,clamav,postgres,redis,risk-layer}
+      INTERNAL_FETCH_HOSTS: ${INTERNAL_FETCH_HOSTS:-n8n,seaweedfs,clamav,postgres,redis}
       APP_VERSION: ${TAXTRONIK_VERSION:-dev}
     ports:
       # P-4: An 127.0.0.1 binden — Reverse-Proxy auf dem Host (nginx/caddy/
@@ -156,11 +156,11 @@ services:
       S3_BUCKET_STAFF_PRIVATE: staff-private
       CLAMAV_HOST: clamav
       CLAMAV_PORT: 3310
-      SMTP_HOST: ${SMTP_HOST:-mailhog}
-      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_HOST: ${SMTP_HOST:?SMTP_HOST nicht gesetzt - Prod braucht ein echtes SMTP-Relay; Mailhog nur in docker-compose.dev.yml}
+      SMTP_PORT: ${SMTP_PORT:?SMTP_PORT nicht gesetzt}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      SMTP_FROM: ${SMTP_FROM:-taxtronik <noreply@taxtronik.local>}
+      SMTP_FROM: ${SMTP_FROM:?SMTP_FROM nicht gesetzt}
       # Betriebs-Alarme (health-alert-Job): Down-/Up-Mails bei Infrastruktur-
       # Ausfall. Leer = Alerting aus.
       OPS_ALERT_EMAIL: ${OPS_ALERT_EMAIL:-}
@@ -211,7 +211,7 @@ services:
       GENERIC_TIMEZONE: Europe/Berlin
       TAXTRONIK_API_URL: http://app:3000
       N8N_HMAC_SECRET: ${N8N_HMAC_SECRET}
-      SMTP_FROM: ${SMTP_FROM:-taxtronik <noreply@taxtronik.local>}
+      SMTP_FROM: ${SMTP_FROM:?SMTP_FROM nicht gesetzt}
       GWG_OFFICER_EMAIL: ${GWG_OFFICER_EMAIL:-admin@taxtronik.local}
       # Eigene Verschlüsselung der gespeicherten Credentials
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}

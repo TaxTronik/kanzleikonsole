@@ -927,6 +927,10 @@ Kanzlei nicht.
 - **Subdomain-Trennung Staff/Portal** vorbereitet (Cookie-Domain pro
   Surface über `STAFF_COOKIE_DOMAIN`/`PORTAL_COOKIE_DOMAIN`,
   Caddy-Beispiel in `docs/operations/subdomain-trennung.md`)
+- Operator-CLI räumt bei lokalen Docker-Builds ungenutzten BuildKit-Cache
+  periodisch auf (`TAXTRONIK_BUILD_CACHE_PRUNE_UNTIL`, Default 168h)
+- Mailhog ist Dev-only; Produktion verlangt ein echtes SMTP-Relay und blockt
+  Mailhog-/localhost:1025-Defaults im `doctor`
 
 ## Benutzer-Verwaltung (ADMIN/PARTNER)
 

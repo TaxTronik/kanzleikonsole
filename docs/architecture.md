@@ -1,8 +1,8 @@
 # Architektur
 
-Dieses Dokument fasst die Architektur von taxtronik zusammen. Der vollständige
-Plan (mit Iterationen, Entities, Risiken) liegt unter
-`~/.claude/plans/hey-claude-ich-will-zazzy-noodle.md`.
+Dieses Dokument fasst die Architektur von taxtronik zusammen. Operative Details,
+Feature-Stand und Release-Prozess stehen in `README.md`, `FEATURES.md` und
+`docs/operations/`.
 
 ## Stack im Überblick
 

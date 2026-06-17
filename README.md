@@ -136,6 +136,12 @@ Produktion Pflicht (kein `latest`-Fallback), damit Deploy-Stand und Rollback
 immer eindeutig sind. Details und Rollback-Pfad:
 [docs/operations/release.md](docs/operations/release.md)
 
+Bei lokalen Image-Builds (`TAXTRONIK_IMAGE_PREFIX` ohne Registry-Slash) räumt
+die Operator-CLI nach erfolgreichem Build ungenutzten Docker-BuildKit-Cache auf
+(`until=168h`). Das lässt sich mit `TAXTRONIK_BUILD_CACHE_PRUNE=off` abschalten
+oder per `TAXTRONIK_BUILD_CACHE_PRUNE_UNTIL=336h` anpassen. Registry-Deploys
+pullen fertige Images und führen keinen Build-Cache-Prune aus.
+
 `./taxtronik update` macht bewusst kein `git reset --hard`. Wenn lokale
 Änderungen oder ein nicht-fast-forward Stand existieren, bricht das Kommando ab.
 
@@ -186,6 +192,10 @@ SMTP_USER=...
 SMTP_PASSWORD=...
 SMTP_FROM="TaxTronik <noreply@example.de>"
 ```
+
+Mailhog ist ausschließlich Teil des lokalen Dev-Stacks. In Produktion müssen
+`SMTP_HOST`, `SMTP_PORT` und `SMTP_FROM` auf ein echtes SMTP-Relay zeigen;
+`./taxtronik doctor` blockt `mailhog` sowie `localhost:1025`/`127.0.0.1:1025`.
 
 Reverse Proxy und TLS liegen vor der App. Die Compose-Ports sind auf localhost
 gebunden; der Object-Store bleibt intern. Das nginx-Beispiel enthält den

@@ -11,7 +11,7 @@ werden hier im selben Commit nachgezogen.
 | Rolle | Wer | Verantwortung |
 |---|---|---|
 | Verantwortlicher Entwickler / Produktverantwortung | Rey Koxha | fachliche Anforderungen, Architektur-Entscheidungen, Code-Review, Freigabe jedes Releases |
-| KI-Assistenz | Claude (Anthropic), agentenbasiert | Werkzeug zur Implementierung, Analyse und Dokumentation — **kein** eigenständiger Freigeber; jede Änderung durchläuft die maschinellen Gates (Abschnitt 4) und die menschliche Freigabe |
+| KI-Assistenz | agentenbasiertes Entwicklerwerkzeug | Werkzeug zur Implementierung, Analyse und Dokumentation — **kein** eigenständiger Freigeber; jede Änderung durchläuft die maschinellen Gates (Abschnitt 4) und die menschliche Freigabe |
 | Externe Prüfinstanzen | CI-Pipeline (Forgejo Actions), adversariale Security-Reviews | maschinelle bzw. strukturierte unabhängige Kontrolle vor Merge/Release |
 
 Personelles Schlüsselrisiko (Einzelperson) ist bekannt und wird durch
@@ -110,10 +110,11 @@ werden als CI-Artefakte archiviert (siehe
   ausschließlich manuell über das dokumentierte Update-Verfahren mit
   automatischem Backup vor jeder Migration und definiertem Rollback-Pfad
   (siehe [docs/operations/release.md](../operations/release.md)).
-- **Änderungsdokumentation je Release:** [CHANGELOG.md](../../CHANGELOG.md)
-  führt je Version die Änderungen mit Kennzeichnung der für den
-  Prüfungs-Scope relevanten Einträge (Grundlage für Folgeprüfungen,
-  vgl. IDW PS 880 n.F. (01.2022), Tz. 110).
+- **Änderungsdokumentation:** [CHANGELOG.md](../../CHANGELOG.md) führt bis
+  zum ersten echten Release den `[Unreleased]`-Arbeitsstand und ab dem ersten
+  Release je Version die Änderungen mit Kennzeichnung der für den
+  Prüfungs-Scope relevanten Einträge (Grundlage für Folgeprüfungen, vgl.
+  IDW PS 880 n.F. (01.2022), Tz. 110).
 
 ## 6. Fehlermanagement
 

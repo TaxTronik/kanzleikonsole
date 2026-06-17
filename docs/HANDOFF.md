@@ -1,7 +1,8 @@
-# Handoff — Wo das nächste LLM weitermacht
+# Handoff — Projektstand und historische Foundation-Notizen
 
-Diese Datei ist für das Folge-LLM (typischerweise günstigeres Modell), das
-Iteration 1 zur Lauffähigkeit bringt und dann Iter. 2+ implementiert.
+Diese Datei dokumentiert den ursprünglichen Foundation-Aufbau und verbleibende
+Orientierungspunkte. Aktuelle Betriebs-, Feature- und Architektur-Doku steht in
+`README.md`, `FEATURES.md`, `docs/architecture.md` und `docs/operations/`.
 
 ## Was schon steht (Foundation, Iter. 1 — kritische Dateien)
 
@@ -115,11 +116,11 @@ Pflicht in CI.
 
 ## Iteration 2+
 
-Folge dem Plan unter `~/.claude/plans/hey-claude-ich-will-zazzy-noodle.md`,
-Sektion „MVP-Iterationen". Nicht überspringen — jede Iteration baut auf der
-vorigen Foundation auf.
+Die ursprünglichen Iterationsnotizen sind in der Repo-Doku, den ADRs und den
+aktuellen Issues konsolidiert. Neue Arbeiten sollten an diesen Quellen und der
+vorhandenen Foundation ausgerichtet werden.
 
-## Wichtige Regeln (siehe auch Memories in `~/.claude/projects/e--taxtronik/memory/`)
+## Wichtige Regeln
 
 1. **n8n statt Eigencode** für Kommunikation/Reminder/Cron, wo immer möglich.
 2. **Externe APIs (DATEV/Transparenzregister/ELSTER) NICHT im MVP** — nur

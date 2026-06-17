@@ -247,7 +247,7 @@ Version):
   (\`docs/development/entwicklungsverfahren.md\`)
 - Test- und Abnahmekonzept inkl. Testnachweis-Kette
   (\`docs/development/testkonzept.md\`)
-- Änderungsdokumentation je Release (\`CHANGELOG.md\`)
+- Änderungsdokumentation / Vor-Release-Journal (\`CHANGELOG.md\`)
 - Release-/Update-Prozess und Rollback (\`docs/operations/release.md\`)
 - Disaster-Recovery-Runbook (\`docs/operations/disaster-recovery.md\`)
 - Anwenderdokumentation (\`docs/anwenderdoku/\`)

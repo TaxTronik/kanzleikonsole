@@ -59,7 +59,10 @@ Server (Token mit `read:package` genügt).
 Ohne Registry-Zugriff (`TAXTRONIK_IMAGE_PREFIX` ohne Slash bzw. ungesetzt)
 baut `./taxtronik deploy`/`update` lokal aus dem Checkout — dann braucht
 der Server weiterhin die Build-Toolchain, und es läuft nicht das in CI
-getestete Artefakt.
+getestete Artefakt. Nach erfolgreichen lokalen Builds löscht die Operator-CLI
+ungenutzten Docker-BuildKit-Cache älter als 7 Tage (`until=168h`), damit der
+Server nicht langsam volläuft. Steuerung: `TAXTRONIK_BUILD_CACHE_PRUNE=off`
+oder `TAXTRONIK_BUILD_CACHE_PRUNE_UNTIL=336h`.
 
 ### 2.1 Erstinstallation: Provisionierung (ohne Demodaten)
 
