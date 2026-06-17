@@ -4,6 +4,7 @@ import { useActionState, useState } from 'react';
 import { saveBrandingAction, type ActionResult } from './actions';
 import type { BrandingInfo } from '@/server/settings/branding';
 import { TenantLogo } from '@/components/tenant-logo';
+import { FileButton } from '@/components/file-button';
 
 const MAX_LOGO_BYTES = 200 * 1024; // 200 KB nach base64
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
@@ -25,43 +26,21 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
   const [logoDark, setLogoDark] = useState<string | null>(initial.logoDataUrlDark);
   const [logoDarkError, setLogoDarkError] = useState<string | null>(null);
 
-  function onLogoFileChange(e: React.ChangeEvent<HTMLInputElement>): void {
-    setLogoError(null);
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Gemeinsamer Lese+Validierungs-Pfad für hell/dunkel-Logo. Das File-Input
+  // selbst wird NICHT übermittelt — die Daten-URL fließt via FileReader in den
+  // React-State und von dort ins versteckte Feld (s. FileButton ohne name).
+  function readLogo(file: File, onError: (m: string | null) => void, onData: (d: string) => void): void {
+    onError(null);
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
-      setLogoError('Nur PNG, JPG oder WebP erlaubt.');
+      onError('Nur PNG, JPG oder WebP erlaubt.');
       return;
     }
     if (file.size > MAX_LOGO_BYTES) {
-      setLogoError(`Datei zu groß (max. ${Math.round(MAX_LOGO_BYTES / 1024)} KB).`);
+      onError(`Datei zu groß (max. ${Math.round(MAX_LOGO_BYTES / 1024)} KB).`);
       return;
     }
     const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = String(reader.result);
-      setLogo(dataUrl);
-    };
-    reader.readAsDataURL(file);
-  }
-
-  function onLogoDarkFileChange(e: React.ChangeEvent<HTMLInputElement>): void {
-    setLogoDarkError(null);
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
-      setLogoDarkError('Nur PNG, JPG oder WebP erlaubt.');
-      return;
-    }
-    if (file.size > MAX_LOGO_BYTES) {
-      setLogoDarkError(`Datei zu groß (max. ${Math.round(MAX_LOGO_BYTES / 1024)} KB).`);
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = String(reader.result);
-      setLogoDark(dataUrl);
-    };
+    reader.onload = () => onData(String(reader.result));
     reader.readAsDataURL(file);
   }
 
@@ -123,14 +102,16 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
       </div>
 
       <div>
-        <label className="label" htmlFor="logoFile">Logo — hell (PNG/JPG/WebP, max. 200 KB)</label>
-        <input
-          id="logoFile"
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          onChange={onLogoFileChange}
-          className="block text-sm text-secondary"
-        />
+        <span className="label">Logo — hell (PNG/JPG/WebP, max. 200 KB)</span>
+        <div className="mt-1">
+          <FileButton
+            id="logoFile"
+            accept="image/png,image/jpeg,image/webp"
+            onSelect={(f) => readLogo(f, setLogoError, setLogo)}
+          >
+            Logo auswählen
+          </FileButton>
+        </div>
         <input type="hidden" name="logoDataUrl" value={logo ?? ''} />
         {logoError && <p className="text-xs text-red-700 mt-1">{logoError}</p>}
         {logo && (
@@ -148,14 +129,16 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
       </div>
 
       <div>
-        <label className="label" htmlFor="logoFileDark">Logo — dunkel für Dark Mode (optional)</label>
-        <input
-          id="logoFileDark"
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          onChange={onLogoDarkFileChange}
-          className="block text-sm text-secondary"
-        />
+        <span className="label">Logo — dunkel für Dark Mode (optional)</span>
+        <div className="mt-1">
+          <FileButton
+            id="logoFileDark"
+            accept="image/png,image/jpeg,image/webp"
+            onSelect={(f) => readLogo(f, setLogoDarkError, setLogoDark)}
+          >
+            Dark-Logo auswählen
+          </FileButton>
+        </div>
         <input type="hidden" name="logoDataUrlDark" value={logoDark ?? ''} />
         {logoDarkError && <p className="text-xs text-red-700 mt-1">{logoDarkError}</p>}
         {logoDark ? (

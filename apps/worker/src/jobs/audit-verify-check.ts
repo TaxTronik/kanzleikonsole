@@ -16,7 +16,6 @@ import {
   AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY,
   toPersistedVerifyResult,
   type PersistedVerifyResult,
-  type PersistedRecoveryCheckpoint,
 } from '@taxtronik/evidence';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
@@ -104,12 +103,14 @@ export const auditVerifyWorker = new Worker<ChecksJob>(
           VERIFY_TX_OPTIONS,
         );
 
-        // Recovery-Checkpoint: ist der Bruch bereits durch einen gesetzten
-        // Checkpoint abgegrenzt UND die Teilkette ab dort intakt, gilt der
-        // Befund als „versorgt" (recovered). Folge: keine SYSTEM_AUDIT_BREAK-
-        // Notification, und die Admin-Seite zeigt bernstein (historisch) statt
-        // rot. Ohne Checkpoint oder bei erneutem Bruch ab dem Checkpoint bleibt
-        // es bei der roten Meldung + Notification.
+        // Recovery-Checkpoint = bewusste Abgrenzung durch den Admin. Er ist das
+        // harte Kill-Signal für den Break-Alarm: sobald gesetzt, gilt der
+        // historische Bruch als versorgt (recovered) — keine neue
+        // SYSTEM_AUDIT_BREAK-Notification, und die bestehende wird als gelesen
+        // markiert. Eine Teilketten-Verifikation (verifyRecoverySegment) hat
+        // sich hier als fehleranfällig erwiesen (TSA-/Segment-Probleme) und das
+        // Alarm-Verhalten unzuverlässig gemacht; der Checkpoint ist die
+        // ausdrückliche Admin-Anweisung "Break versorgt".
         let recovered = false;
         if (!r.ok) {
           const cpRow = await withWorkerTenantContext(tenantId, (tx) =>
@@ -117,19 +118,7 @@ export const auditVerifyWorker = new Worker<ChecksJob>(
               where: { tenantId_key: { tenantId, key: AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY } },
             }),
           );
-          const cp = (cpRow?.value ?? null) as PersistedRecoveryCheckpoint | null;
-          if (cp) {
-            const segR = await prismaOwner
-              .$transaction(
-                async (tx) =>
-                  evidenceService.verifyRecoverySegment(tx, tenantId, BigInt(cp.auditId), {
-                    requireExternalTsa,
-                  }),
-                VERIFY_TX_OPTIONS,
-              )
-              .catch(() => null);
-            recovered = !!segR?.ok;
-          }
+          recovered = !!(cpRow?.value);
         }
 
         await persistVerifyResult(tenantId, { ...toPersistedVerifyResult(r, checkedAt), recovered });

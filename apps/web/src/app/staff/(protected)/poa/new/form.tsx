@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from 'react';
 import { createPoaAction, type ActionResult } from '../actions';
+import { FileButton } from '@/components/file-button';
 
 interface Client {
   id: string;
@@ -130,15 +131,10 @@ export function NewPoaForm({ clients, poaMode }: { clients: Client[]; poaMode: '
         </div>
       ) : (
         <div>
-          <label className="label" htmlFor="poaPdf">Vollmacht als PDF</label>
-          <input
-            id="poaPdf"
-            name="poaPdf"
-            type="file"
-            accept="application/pdf"
-            required
-            className="block text-sm text-secondary"
-          />
+          <span className="label">Vollmacht als PDF</span>
+          <div className="mt-1">
+            <FileButton id="poaPdf" name="poaPdf" accept="application/pdf">PDF auswählen</FileButton>
+          </div>
           <p className="text-xs text-muted mt-1">
             Die PDF wird revisionssicher (GoBD) abgelegt und am Vollmacht-Datensatz verknüpft.
           </p>

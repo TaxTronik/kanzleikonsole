@@ -138,14 +138,12 @@ export default async function AuditLogPage({
       ).catch(() => null)
     : null;
 
-  // Headline-Schweregrad: ein HISTORISCHER Bruch MIT gesetztem Checkpoint wird
-  // bernsteinfarben („historisch, abgegrenzt") statt rot dargestellt — ausnahms-
-  // weise auch dann, wenn die Live-Recovery-Verifikation gerade nicht möglich
-  // ist (null, z. B. TSA-Problem): der Checkpoint ist die bewusste Aussage, dass
-  // der Befund versorgt ist. Reines Rot NUR bei einem bestätigten NEUEN Bruch ab
-  // dem Checkpoint (recoveryResult.ok === false) oder ohne Checkpoint.
-  const confirmedNewBreak = !!checkpoint && recoveryResult !== null && !recoveryResult.ok;
-  const recoveryIntact = !!checkpoint && !confirmedNewBreak;
+  // Headline-Schweregrad: ein gesetzter Recovery-Checkpoint ist das harte
+  // Kill-Signal für den Break-Alarm — sobald gesetzt, zeigt die Seite bernstein
+  // („historisch, abgegrenzt") statt rot. Reines Rot nur ohne Checkpoint. Der
+  // Worker feuert in diesem Fall ebenfalls keine SYSTEM_AUDIT_BREAK-Notification
+  // mehr und persists recovered=true.
+  const recoveryIntact = !!checkpoint;
   const chainStatus: 'none' | 'ok' | 'amber' | 'red' = !verifyResult
     ? 'none'
     : verifyResult.ok
@@ -296,70 +294,26 @@ export default async function AuditLogPage({
                 <p className="text-xs text-red-700 mt-1">
                   Geprüft {fmtDateTimeSeconds(new Date(verifyResult.checkedAt))}
                 </p>
-                {checkpoint ? (
-                  <div
-                    className={
-                      recoveryResult?.ok
-                        ? 'mt-3 rounded-md border border-yellow-300 bg-yellow-50 px-3 py-2 text-xs text-yellow-900'
-                        : 'mt-3 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-900'
-                    }
-                  >
-                    <p className="font-medium">
-                      Recovery-Checkpoint gesetzt: Audit-ID {checkpoint.auditId}
-                    </p>
-                    <p className="mt-1">
-                      Historischer Bruch bleibt bestehen. Die Kette wird ab diesem Eintrag als
-                      separate Wiederaufnahme geprüft.
-                    </p>
-                    {recoveryResult ? (
-                      recoveryResult.ok ? (
-                        <p className="mt-1">
-                          Recovery-Teilkette aktuell fortlaufend: {recoveryResult.checked.toLocaleString('de-DE')}{' '}
-                          Einträge geprüft
-                          {recoveryResult.sealsChecked > 0
-                            ? `, ${recoveryResult.sealsChecked} Tagesversiegelungen geprüft`
-                            : ''}
-                          .
-                        </p>
-                      ) : (
-                        <p className="mt-1">
-                          Recovery-Teilkette hat ebenfalls einen Befund
-                          {recoveryResult.firstBreak
-                            ? ` bei Audit-ID ${recoveryResult.firstBreak.auditId}`
-                            : ''}
-                          .
-                        </p>
-                      )
-                    ) : (
-                      <p className="mt-1">Recovery-Teilkette konnte gerade nicht geprüft werden.</p>
-                    )}
-                    {checkpoint.reason && <p className="mt-1">Begründung: {checkpoint.reason}</p>}
-                    <p className="mt-1 text-yellow-800">
-                      Angelegt {fmtDateTimeSeconds(new Date(checkpoint.createdAt))}
-                    </p>
+                <form action={createAuditRecoveryCheckpointAction} className="mt-3 rounded-md border border-red-300 bg-white/70 p-3">
+                  <p className="text-xs font-medium text-red-900">
+                    Wiederaufnahme markieren
+                  </p>
+                  <p className="text-xs text-red-700 mt-1">
+                    Legt einen Recovery-Checkpoint an: das historische Rot wird damit
+                    bernstein abgegrenzt und die Break-Benachrichtigung verstummt.
+                  </p>
+                  <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                    <input
+                      name="reason"
+                      className="input text-xs sm:flex-1"
+                      maxLength={500}
+                      placeholder="Begründung, z. B. TSA-Fehlkonfiguration behoben"
+                    />
+                    <button type="submit" className="btn-primary !bg-red-600 text-xs hover:!bg-red-700">
+                      Recovery-Checkpoint anlegen
+                    </button>
                   </div>
-                ) : (
-                  <form action={createAuditRecoveryCheckpointAction} className="mt-3 rounded-md border border-red-300 bg-white/70 p-3">
-                    <p className="text-xs font-medium text-red-900">
-                      Wiederaufnahme markieren
-                    </p>
-                    <p className="text-xs text-red-700 mt-1">
-                      Legt keinen grünen Pass an. Der historische Bruch bleibt sichtbar; ab dem neuen
-                      Audit-Eintrag wird eine Recovery-Teilkette geprüft.
-                    </p>
-                    <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-                      <input
-                        name="reason"
-                        className="input text-xs sm:flex-1"
-                        maxLength={500}
-                        placeholder="Begründung, z. B. TSA-Fehlkonfiguration behoben"
-                      />
-                      <button type="submit" className="btn-primary !bg-red-600 text-xs hover:!bg-red-700">
-                        Recovery-Checkpoint anlegen
-                      </button>
-                    </div>
-                  </form>
-                )}
+                </form>
               </>
             )}
             {sp.verify === 'queued' && (
