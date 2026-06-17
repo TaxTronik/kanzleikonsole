@@ -6,6 +6,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { sendForSignatureAction, revokePoaAction } from '../actions';
 import { renderMarkdown } from '@/lib/markdown';
 import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
+import { DocumentPreviewButton } from '@/components/document-preview';
 
 const statusLabels: Record<string, string> = {
   DRAFT: 'Entwurf',
@@ -110,12 +111,19 @@ export default async function PoaDetailPage({
 
       <div className="card p-6 mb-6">
         <h2 className="text-xs font-medium text-muted uppercase tracking-wide mb-3">
-          Vollmachtsumfang
+          Vollmacht
         </h2>
-        <div
-          className="prose prose-sm max-w-none [&_h1]:text-xl [&_h1]:font-bold [&_h2]:text-lg [&_h2]:font-semibold [&_p]:my-3 [&_ul]:list-disc [&_ul]:ml-6"
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
+        {poa.documentId ? (
+          <div className="flex items-center gap-2">
+            <DocumentPreviewButton documentId={poa.documentId} documentTitle={poa.subject} />
+            <span className="text-xs text-muted">Externe Vollmacht (PDF)</span>
+          </div>
+        ) : (
+          <div
+            className="prose prose-sm max-w-none [&_h1]:text-xl [&_h1]:font-bold [&_h2]:text-lg [&_h2]:font-semibold [&_p]:my-3 [&_ul]:list-disc [&_ul]:ml-6"
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+        )}
       </div>
 
       <div className="flex flex-wrap gap-2">

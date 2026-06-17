@@ -1,7 +1,7 @@
 ﻿'use client';
 
-import { useState } from 'react';
-import { createPoaAction } from '../actions';
+import { useActionState, useState } from 'react';
+import { createPoaAction, type ActionResult } from '../actions';
 
 interface Client {
   id: string;
@@ -11,6 +11,10 @@ interface Client {
 
 export function NewPoaForm({ clients, poaMode }: { clients: Client[]; poaMode: 'MARKDOWN_OTP' | 'PDF_TEMPLATE' }) {
   const today = new Date().toISOString().slice(0, 10);
+  const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
+    createPoaAction,
+    null,
+  );
   const [clientId, setClientId] = useState(clients[0]?.id ?? '');
   const [contactId, setContactId] = useState('');
   const [signerEmail, setSignerEmail] = useState('');
@@ -30,7 +34,7 @@ export function NewPoaForm({ clients, poaMode }: { clients: Client[]; poaMode: '
   }
 
   return (
-    <form action={createPoaAction} className="card p-6 space-y-4">
+    <form action={formAction} className="card p-6 space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="label" htmlFor="clientId">Mandant</label>
@@ -125,10 +129,19 @@ export function NewPoaForm({ clients, poaMode }: { clients: Client[]; poaMode: '
           />
         </div>
       ) : (
-        <div className="rounded-md border border-default bg-surface p-4 text-sm text-muted">
-          Modus „PDF-Template (extern)": der Vollmachtstext wird außerhalb von taxtronik
-          gepflegt (externe Vollmachtsdatenbank). Ein Inline-Textentfall entfällt hier —
-          die externe PDF kann nach dem Anlegen am Datensatz hinterlegt werden.
+        <div>
+          <label className="label" htmlFor="poaPdf">Vollmacht als PDF</label>
+          <input
+            id="poaPdf"
+            name="poaPdf"
+            type="file"
+            accept="application/pdf"
+            required
+            className="block text-sm text-secondary"
+          />
+          <p className="text-xs text-muted mt-1">
+            Die PDF wird revisionssicher (GoBD) abgelegt und am Vollmacht-Datensatz verknüpft.
+          </p>
         </div>
       )}
 
@@ -155,12 +168,17 @@ export function NewPoaForm({ clients, poaMode }: { clients: Client[]; poaMode: '
         </div>
       </div>
 
-      <div className="flex gap-2">
-        <button type="submit" className="btn-primary">Anlegen</button>
+      <div className="flex gap-2 items-center">
+        <button type="submit" disabled={isPending} className="btn-primary disabled:opacity-60">
+          {isPending ? 'Lege an …' : 'Anlegen'}
+        </button>
         <p className="text-xs text-muted self-center">
-          Nach Anlegen können Sie die Vollmacht zur Unterschrift senden.
+          {poaMode === 'MARKDOWN_OTP' ? 'Nach Anlegen können Sie die Vollmacht zur Unterschrift senden.' : 'Nach Anlegen können Sie die Vollmacht bei Bedarf zur Unterschrift weiterleiten.'}
         </p>
       </div>
+      {state && !state.ok && (
+        <p className="text-sm text-red-700 dark:text-red-400">{state.error}</p>
+      )}
     </form>
   );
 }

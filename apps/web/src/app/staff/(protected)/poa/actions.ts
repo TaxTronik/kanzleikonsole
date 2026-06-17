@@ -15,6 +15,8 @@ import { headers } from 'next/headers';
 import { staffActionGuard, withStaff, ActionError } from '@/server/actions/staff-action';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { readModules } from '@/server/settings/modules';
+import { commitBytesWithTier, MAX_UPLOAD_BYTES, type CommitDocumentResult } from '@taxtronik/storage';
+import { createDocumentWithVersion } from '@/server/documents/upload-helpers';
 
 const SIGNING_TOKEN_TTL_HOURS = 72;
 
@@ -35,9 +37,12 @@ const CreateSchema = z.object({
 
 export interface ActionResult { ok: boolean; error?: string; }
 
-export async function createPoaAction(formData: FormData): Promise<void> {
+export async function createPoaAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   const g = await staffActionGuard();
-  if (!g.ok) return; // void: still abbrechen (Seite ist ohnehin auth-gated)
+  if (!g.ok) return { ok: false, error: g.error };
   const { tenantId, staffId, ctx, session } = g;
 
   // R-4: Vollmachtserteilung ist berufsrechtlich eine Erklärung des
@@ -46,7 +51,7 @@ export async function createPoaAction(formData: FormData): Promise<void> {
   // können. ADMIN/PARTNER (in der Praxis: Kanzleileitung + Partner =
   // Berufsträger) als Gate. Für 4-Augen-Workflow später separater Schritt.
   if (!isStaffAdmin(session)) {
-    throw new ActionError('Vollmachten dürfen nur von ADMIN/PARTNER (Berufsträger) angelegt werden.');
+    return { ok: false, error: 'Vollmachten dürfen nur von ADMIN/PARTNER (Berufsträger) angelegt werden.' };
   }
 
   const parsed = CreateSchema.safeParse({
@@ -59,25 +64,49 @@ export async function createPoaAction(formData: FormData): Promise<void> {
     validFrom: formData.get('validFrom'),
     validUntil: formData.get('validUntil') ?? '',
   });
-  if (!parsed.success) throw new ActionError('Validierungsfehler.');
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues.map((i) => i.message).join(', ') };
+  }
 
   const data = parsed.data;
 
-  // Extern-Modus (PDF_TEMPLATE): kein Inline-Text — der Vollmachtstext wird
-  // außerhalb gepflegt. Das DB-Feld `scope` ist Pflicht, daher wird im Extern-
-  // Modus ein Deskriptor gesetzt, der am Datensatz klar macht, dass der Inhalt
-  // extern liegt. Im In-App-Modus (MARKDOWN_OTP) bleibt scope Pflicht.
   const modules = await readModules(ctx);
   const externMode = modules.poaMode === 'PDF_TEMPLATE';
+
+  // Scope: Im In-App-Modus (MARKDOWN_OTP) Pflicht (Inline-Text). Im Extern-
+  // Modus wird kein Inline-Text gepflegt — das DB-Pflichtfeld bekommt einen
+  // Deskriptor, der klar macht, dass die echte Vollmacht als PDF hinterlegt ist.
   const scopeRaw = (data.scope ?? '').trim();
-  const scope = externMode
-    ? (scopeRaw || '— Extern als PDF hinterlegt (kein Inline-Text) —')
-    : scopeRaw;
-  if (!scope) {
-    throw new ActionError('Umfang (Markdown) ist im In-App-Modus Pflicht.');
+  if (!externMode && !scopeRaw) {
+    return { ok: false, error: 'Umfang (Markdown) ist im In-App-Modus Pflicht.' };
+  }
+  const scope = externMode ? '— Extern als PDF hinterlegt —' : scopeRaw;
+
+  // Extern-Modus: Vollmachts-PDF direkt bei der Anlage hochladen. Nutzer-Upload
+  // → ClamAV-Scan bleibt aktiv (anders als bei app-generierten Bytes).
+  let pdfCommit: CommitDocumentResult | null = null;
+  if (externMode) {
+    const file = formData.get('poaPdf');
+    if (!(file instanceof File) || file.size === 0) {
+      return { ok: false, error: 'Bitte eine PDF-Datei hochladen.' };
+    }
+    if (file.type !== 'application/pdf') {
+      return { ok: false, error: 'Nur PDF-Dateien erlaubt.' };
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      return { ok: false, error: `PDF zu groß (max. ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)} MB).` };
+    }
+    try {
+      const buf = Buffer.from(await file.arrayBuffer());
+      pdfCommit = await commitBytesWithTier({ fileData: buf, tier: 'GOBD', tenantId });
+    } catch (e) {
+      return { ok: false, error: `Upload fehlgeschlagen: ${(e as Error).message}` };
+    }
   }
 
-  const id = await withTenantContext(ctx, async (tx) => {
+  let id: string;
+  try {
+    id = await withTenantContext(ctx, async (tx) => {
       // clientId kommt aus dem Formular — Existenz im aktuellen Tenant prüfen
       // (RLS-aware), bevor der FK-Insert eine fremde UUID akzeptieren würde.
       await assertClientInTenant(tx, data.clientId);
@@ -92,6 +121,23 @@ export async function createPoaAction(formData: FormData): Promise<void> {
           throw new ActionError('Ansprechpartner gehört nicht zum gewählten Mandanten.');
         }
       }
+      // Extern-Modus: Document + erste Version aus dem Upload anlegen und am
+      // POA-Datensatz verknüpfen (documentId).
+      let documentId: string | null = null;
+      if (pdfCommit) {
+        const { document } = await createDocumentWithVersion(tx, {
+          documentData: {
+            tenantId,
+            clientId: data.clientId,
+            title: `Vollmacht — ${data.subject}`,
+            classification: 'GOBD_CONTRACT',
+            mimeType: 'application/pdf',
+          },
+          commit: pdfCommit,
+          createdById: staffId,
+        });
+        documentId = document.id;
+      }
       const poa = await tx.powerOfAttorney.create({
         data: {
           tenantId,
@@ -105,6 +151,7 @@ export async function createPoaAction(formData: FormData): Promise<void> {
           validUntil: data.validUntil ? new Date(data.validUntil) : null,
           status: 'DRAFT',
           createdByStaff: staffId,
+          documentId,
         },
       });
       await evidenceService.record(tx, {
@@ -114,11 +161,14 @@ export async function createPoaAction(formData: FormData): Promise<void> {
         action: 'poa.create',
         resourceType: 'power_of_attorney',
         resourceId: poa.id,
-        after: { subject: data.subject, signerEmail: data.signerEmail },
+        after: { subject: data.subject, signerEmail: data.signerEmail, externMode, withPdf: !!documentId },
       });
       return poa.id;
-    },
-  );
+    });
+  } catch (e) {
+    if (e instanceof ActionError) return { ok: false, error: e.message };
+    return { ok: false, error: 'Anlegen fehlgeschlagen.' };
+  }
 
   revalidatePath('/staff/poa');
   redirect(`/staff/poa/${id}`);
