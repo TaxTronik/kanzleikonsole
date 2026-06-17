@@ -18,6 +18,7 @@ export const AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY = 'audit_recovery_checkpoint'
 export interface PersistedVerifyResult {
   /** Zeitpunkt des Prüf-Laufs (ISO-8601). */
   checkedAt: string;
+  requestId?: string | null;
   ok: boolean;
   checked: number;
   sealsChecked: number;

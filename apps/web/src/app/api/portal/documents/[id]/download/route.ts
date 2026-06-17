@@ -73,7 +73,7 @@ export async function GET(
 
   // App-proxied Download — Object-Store bleibt intern, direkt durchstreamen (O(1)).
   const obj = await streamObject(doc.bucket, doc.key);
-  const contentType = effectiveDocumentMime(doc);
+  const contentType = effectiveDocumentMime({ ...doc, mimeType: obj.contentType ?? doc.mimeType });
   const headers: Record<string, string> = {
     'content-type': contentType,
     'content-disposition': `attachment; filename="${sanitizeFilenameForHeader(filenameWithExtension(doc.title, contentType))}"`,

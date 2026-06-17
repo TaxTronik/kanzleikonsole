@@ -33,6 +33,7 @@ export interface ChecksJob {
   tenantId?: string;
   // optional: Mitarbeiter, der den manuellen Check ausgelöst hat.
   requestedByStaffId?: string;
+  requestId?: string;
 }
 
 export interface N8nDeliverJob {

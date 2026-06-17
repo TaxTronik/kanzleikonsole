@@ -82,7 +82,7 @@ export async function GET(
   // App-proxied: Bytes intern aus SeaweedFS holen und direkt durchstreamen
   // (O(1)-Speicher). Der Object-Store ist nie öffentlich erreichbar.
   const obj = await streamObject(doc.bucket, doc.key);
-  const contentType = effectiveDocumentMime(doc);
+  const contentType = effectiveDocumentMime({ ...doc, mimeType: obj.contentType ?? doc.mimeType });
   const headers: Record<string, string> = {
     'content-type': contentType,
     'content-disposition': `attachment; filename="${sanitizeFilenameForHeader(filenameWithExtension(doc.title, contentType))}"`,

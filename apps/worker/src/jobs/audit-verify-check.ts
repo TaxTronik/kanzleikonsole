@@ -122,7 +122,11 @@ export const auditVerifyWorker = new Worker<ChecksJob>(
           recovered = !!(cpRow?.value);
         }
 
-        await persistVerifyResult(tenantId, { ...toPersistedVerifyResult(r, checkedAt), recovered });
+        await persistVerifyResult(tenantId, {
+          ...toPersistedVerifyResult(r, checkedAt),
+          requestId: job.data.requestId ?? null,
+          recovered,
+        });
 
         if (!r.ok && !recovered) {
           // P-8: Notifications werden jetzt in einer Tenant-Context-Transaktion
@@ -251,6 +255,7 @@ export const auditVerifyWorker = new Worker<ChecksJob>(
         // veraltetes „intakt" zeigen, wenn der Check selbst kaputt ist.
         await persistVerifyResult(tenantId, {
           checkedAt: new Date().toISOString(),
+          requestId: job.data.requestId ?? null,
           ok: false,
           checked: 0,
           sealsChecked: 0,

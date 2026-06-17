@@ -43,7 +43,7 @@ interface SearchParams {
   from?: string;
   to?: string;
   verify?: string;
-  queuedAt?: string;
+  requestId?: string;
   checkpoint?: string;
 }
 
@@ -175,7 +175,7 @@ export default async function AuditLogPage({
   return (
     <div className="p-8">
       {sp.verify === 'queued' && (
-        <AuditVerifyAutoRefresh queuedAt={sp.queuedAt} checkedAt={verifyResult?.checkedAt ?? null} />
+        <AuditVerifyAutoRefresh requestId={sp.requestId} resultRequestId={verifyResult?.requestId ?? null} />
       )}
       <div className="flex items-end justify-between mb-6">
         <div>

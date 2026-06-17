@@ -10,27 +10,24 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
  * anzeigt. Bricht nach 5 min ab (Worker nicht erreichbar/hängt).
  */
 export function AuditVerifyAutoRefresh({
-  queuedAt,
-  checkedAt,
+  requestId,
+  resultRequestId,
 }: {
-  queuedAt?: string | null;
-  checkedAt?: string | null;
+  requestId?: string | null;
+  resultRequestId?: string | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const queuedMs = queuedAt ? Number(queuedAt) : NaN;
-  const checkedMs = checkedAt ? Date.parse(checkedAt) : NaN;
-  const hasQueuedCheck = Number.isFinite(queuedMs);
-  const queuedSecondMs = hasQueuedCheck ? Math.floor(queuedMs / 1000) * 1000 : NaN;
-  const hasFreshResult = hasQueuedCheck && Number.isFinite(checkedMs) && checkedMs >= queuedSecondMs;
+  const hasQueuedCheck = !!requestId;
+  const hasFreshResult = !!requestId && resultRequestId === requestId;
 
   useEffect(() => {
     if (!hasFreshResult) return;
 
     const qs = new URLSearchParams(searchParams.toString());
     qs.delete('verify');
-    qs.delete('queuedAt');
+    qs.delete('requestId');
     const next = qs.toString() ? `${pathname}?${qs.toString()}` : pathname;
     router.replace(next, { scroll: false });
   }, [hasFreshResult, pathname, router, searchParams]);

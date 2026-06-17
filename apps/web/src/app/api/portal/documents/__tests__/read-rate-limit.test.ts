@@ -65,6 +65,7 @@ const DOCUMENT = {
   id: 'doc-1',
   title: 'BWA Mai',
   mimeType: 'application/pdf',
+  classification: 'GOBD_INVOICE',
   versions: [{ versionNo: 1, storageBucket: 'docs', storageKey: 'k/doc-1' }],
 };
 
@@ -85,6 +86,8 @@ beforeEach(() => {
     fn(m.tx),
   );
   m.streamObject.mockResolvedValue({ body: 'bytes', contentLength: 5 });
+  m.fetchObjectBytes.mockResolvedValue(Buffer.from('%PDF-1.4'));
+  m.detectMimeFromMagicBytes.mockReturnValue('application/pdf');
 });
 
 // Beide Routen müssen sich identisch verhalten — gemeinsamer Bucket, gleiche
@@ -158,6 +161,27 @@ describe('Preview-Route — Antwortformen unter Limit', () => {
     );
     expect(res.status).toBe(200);
     expect(m.checkPortalReadLimit).toHaveBeenCalledTimes(1);
-    expect(m.streamObject).toHaveBeenCalledWith('docs', 'k/doc-1');
+    expect(m.fetchObjectBytes).toHaveBeenCalledWith('docs', 'k/doc-1');
+    expect(res.headers.get('content-type')).toBe('application/pdf');
+  });
+
+  it('?stream=1 bevorzugt Magic-Bytes vor falschen Metadaten', async () => {
+    m.tx.document.findFirst.mockResolvedValue({
+      ...DOCUMENT,
+      title: 'Vollmacht Test GmbH',
+      mimeType: 'image/jpeg',
+      classification: 'GOBD_CONTRACT',
+    });
+    m.fetchObjectBytes.mockResolvedValue(Buffer.from('%PDF-1.7'));
+    m.detectMimeFromMagicBytes.mockReturnValue('application/pdf');
+
+    const res = await previewGet(
+      new NextRequest('http://portal.example.de/api/portal/documents/doc-1/preview-url?stream=1'),
+      params(),
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('application/pdf');
+    expect(res.headers.get('content-disposition')).toBe('inline');
   });
 });

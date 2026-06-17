@@ -9,12 +9,14 @@
 
 import IORedis from 'ioredis';
 import { Queue } from 'bullmq';
+import { randomUUID } from 'node:crypto';
 import { env } from '@taxtronik/config';
 import { log } from '@/server/logger';
 
 interface AuditVerifyJob {
   tenantId: string;
   requestedByStaffId?: string;
+  requestId?: string;
 }
 
 declare global {
@@ -41,17 +43,17 @@ function getHandle(): { conn: IORedis; queue: Queue<AuditVerifyJob> } {
   return handle;
 }
 
-/** Reiht eine manuelle Chain-Verifikation für EINEN Tenant ein. Idempotent über jobId. */
-export async function enqueueAuditVerify(tenantId: string, requestedByStaffId?: string): Promise<void> {
+/** Reiht eine manuelle Chain-Verifikation für EINEN Tenant ein und liefert die Lauf-ID. */
+export async function enqueueAuditVerify(tenantId: string, requestedByStaffId?: string): Promise<string> {
   const { queue } = getHandle();
-  // BullMQ verbietet ':' in Custom-Job-IDs — daher '-'. Mehrfach-Klicks während
-  // ein Lauf aussteht sind No-Ops (ID existiert); abgeschlossene/gescheiterte
-  // Jobs werden vorher geräumt, damit ein erneuter Anstoß durchläuft.
-  const jobId = `audit-verify-manual-${tenantId}`;
-  await queue.remove(jobId).catch(() => {});
-  await queue.add('audit-verify-check', { tenantId, requestedByStaffId }, {
+  // Die UI wartet exakt auf diese requestId. Eine feste jobId pro Tenant kann
+  // ein altes Persistenz-Ergebnis wie einen frischen Lauf aussehen lassen.
+  const requestId = randomUUID();
+  const jobId = `audit-verify-manual-${tenantId}-${requestId}`;
+  await queue.add('audit-verify-check', { tenantId, requestedByStaffId, requestId }, {
     jobId,
     removeOnComplete: 20,
     removeOnFail: 20,
   });
+  return requestId;
 }
