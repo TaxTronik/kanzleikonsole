@@ -12,6 +12,33 @@ function jsonResponse(data: unknown, status = 200): Response {
 }
 
 describe('RiskLayerClient', () => {
+  it('erlaubt Operator-konfigurierte Loopback-IP als Risk-Layer-Backend ohne INTERNAL_FETCH_HOSTS', async () => {
+    const originalHosts = process.env['INTERNAL_FETCH_HOSTS'];
+    const originalNodeEnv = process.env['NODE_ENV'];
+    process.env['NODE_ENV'] = 'production';
+    delete process.env['INTERNAL_FETCH_HOSTS'];
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse({ ok: true }));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const client = new RiskLayerClient({
+        config: { url: 'http://127.0.0.1:8000', token: config.token },
+      });
+
+      const health = await client.health();
+      expect(health).toEqual({ ok: true });
+      const [url, init] = fetchMock.mock.calls[0]!;
+      expect(url).toBe('http://127.0.0.1:8000/v1/health');
+      expect(init!.redirect).toBe('error');
+      expect((init!.headers as Record<string, string>).authorization).toBe(`Bearer ${config.token}`);
+    } finally {
+      vi.unstubAllGlobals();
+      if (originalHosts === undefined) delete process.env['INTERNAL_FETCH_HOSTS'];
+      else process.env['INTERNAL_FETCH_HOSTS'] = originalHosts;
+      if (originalNodeEnv === undefined) delete process.env['NODE_ENV'];
+      else process.env['NODE_ENV'] = originalNodeEnv;
+    }
+  });
+
   it('setzt Bearer-Header, ruft den richtigen Pfad und sendet mitLLM:false default', async () => {
     const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse(analysePayload));
     const client = new RiskLayerClient({ config, fetchImpl });

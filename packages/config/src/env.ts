@@ -121,8 +121,10 @@ const envSchema = z.object({
   // Netzinterne, mandantendatenführende Analyse-Engine. Beide Werte optional:
   // ist die Engine nicht deployt, bleibt das Risk-Modul schlicht inaktiv
   // (riskLayerConfig === null → der Client wirft RiskLayerNotConfiguredError).
-  // RISK_LAYER_URL zeigt auf den internen Compose-Host (z. B. http://risk-layer:8000),
-  // der Hostname MUSS dann in INTERNAL_FETCH_HOSTS stehen (safeFetch-Allowlist).
+  // RISK_LAYER_URL zeigt auf den internen Compose-Host (z. B. http://risk-layer:8000)
+  // oder eine Operator-verwaltete interne IP/Loopback-URL. Der Risk-Layer-Client
+  // behandelt diesen ENV-Wert als trusted Backend-Ziel; INTERNAL_FETCH_HOSTS ist
+  // dafür nicht nötig (bleibt aber für n8n/RSS/TSA-safeFetch-Pfade relevant).
   RISK_LAYER_URL: z.preprocess((v) => v === '' ? undefined : v, z.string().url().optional()),
   RISK_LAYER_TOKEN: z.preprocess((v) => v === '' ? undefined : v, Secret32.optional()),
 

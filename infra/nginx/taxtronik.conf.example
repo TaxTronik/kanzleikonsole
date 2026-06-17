@@ -3,6 +3,7 @@
 #
 # Annahmen:
 #   - taxtronik-app läuft auf 127.0.0.1:3000 (Default seit P-4)
+#   - optional: n8n-UI läuft auf 127.0.0.1:5678
 #   - TLS-Zertifikat in /etc/letsencrypt/live/<domain>/...
 #   - Single-Host-Setup (kein Multi-Subdomain) — für Subdomain-Trennung siehe
 #     docs/operations/subdomain-trennung.md
@@ -18,6 +19,15 @@
 upstream taxtronik_app {
     server 127.0.0.1:3000;
     keepalive 32;
+}
+
+# Optional, wenn die n8n-UI über einen eigenen VHost veröffentlicht werden soll.
+# App/Worker erreichen n8n im Compose-Netz üblicherweise direkt über
+# http://n8n:5678/webhook; dieser Upstream ist nur für Browser-Zugriff auf die
+# n8n-Oberfläche gedacht.
+upstream taxtronik_n8n {
+    server 127.0.0.1:5678;
+    keepalive 16;
 }
 
 # -----------------------------------------------------------------------------
@@ -114,6 +124,15 @@ server {
     }
 
     # ---- Allgemeine API-Endpoints ----
+    # n8n -> App: signierte Inbound-API. Im getrennten Staff-/Portal-Setup gehört
+    # dieser Pfad auf den Staff/API-VHost oder eine interne App-URL; das
+    # Mandantenportal braucht /api/n8n/* nicht. Die App prüft HMAC + Replay-Nonce.
+    location ^~ /api/n8n/ {
+        limit_req zone=taxtronik_api burst=20 nodelay;
+        proxy_pass http://taxtronik_app;
+        proxy_read_timeout 120s;
+    }
+
     location /api/ {
         limit_req zone=taxtronik_api burst=20 nodelay;
         proxy_pass http://taxtronik_app;
@@ -139,3 +158,52 @@ server {
     # ---- Server-Identification raus ----
     server_tokens off;
 }
+
+# -----------------------------------------------------------------------------
+# Optional: n8n-UI hinter eigenem TLS-VHost
+# -----------------------------------------------------------------------------
+# n8n ist ein eigener Dienst. Wenn die UI öffentlich erreichbar sein muss,
+# dann nur über TLS und n8n-Login, idealerweise zusätzlich per IP-Allowlist,
+# VPN oder Basic Auth. Ohne externen UI-Zugriff diesen kompletten Block
+# weglassen; die App/Worker sprechen n8n intern.
+#
+# server {
+#     listen 443 ssl http2;
+#     listen [::]:443 ssl http2;
+#     server_name n8n.example.com;
+#
+#     ssl_certificate     /etc/letsencrypt/live/n8n.example.com/fullchain.pem;
+#     ssl_certificate_key /etc/letsencrypt/live/n8n.example.com/privkey.pem;
+#
+#     client_max_body_size 25M;
+#
+#     proxy_set_header Host $host;
+#     proxy_set_header X-Forwarded-Host $host;
+#     proxy_set_header X-Forwarded-Proto $scheme;
+#     proxy_set_header X-Forwarded-For $remote_addr;
+#     proxy_set_header X-Real-IP $remote_addr;
+#     proxy_http_version 1.1;
+#     proxy_set_header Upgrade $http_upgrade;
+#     proxy_set_header Connection "upgrade";
+#
+#     location / {
+#         proxy_pass http://taxtronik_n8n;
+#         proxy_read_timeout 3600s;
+#     }
+# }
+
+# -----------------------------------------------------------------------------
+# Optional: getrennte Staff- und Mandantenportal-VHosts
+# -----------------------------------------------------------------------------
+# Für produktive Kanzleien ist meist sinnvoll:
+#   NEXTAUTH_URL=https://staff.kanzlei.example.de
+#   PORTAL_PUBLIC_URL=https://portal.kanzlei.example.de
+#   STAFF_COOKIE_DOMAIN=staff.kanzlei.example.de
+#   PORTAL_COOKIE_DOMAIN=portal.kanzlei.example.de
+#
+# Staff/API-VHost: /staff/*, /api/staff/*, /api/auth/staff/* und /api/n8n/*
+# Portal-VHost:   /portal/*, /api/portal/*, /api/auth/portal/*, /poa/sign,
+#                 /gwg-onboarding sowie gemeinsame Assets (_next/static).
+#
+# Vollständige Pfadliste und Caddy-Variante:
+# docs/operations/subdomain-trennung.md

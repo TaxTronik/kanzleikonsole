@@ -15,12 +15,12 @@ Plan (mit Iterationen, Entities, Risiken) liegt unter
         │  app  (Next.js 16 — UI + API + Server Actions) │
         └─┬──────┬──────┬──────────┬─────────┬───────────┘
           │      │      │          │         │
-       Postgres  Redis  SeaweedFS ClamAV    n8n (Webhooks raus)
-       (RLS)    (BullMQ) (Object  (Virus-   (Mail/Reminder/Cron)
+       Postgres  Redis  SeaweedFS ClamAV    n8n          Risk-Layer
+       (RLS)    (BullMQ) (Object  (Virus-   (Workflows)  (TCMS / /v1)
                           Lock)   Scan)
-                ▲                            │
-                │                            │ HMAC-signierte Calls
-                │                            ▼
+                ▲                            │            ▲
+                │                            │ HMAC       │ Bearer
+                │                            ▼            │
         ┌───────┴────────────────────────────────────────┐
         │  worker (Node + BullMQ)                        │
         │  - Hash-Chain-Versiegelung (täglich, RFC-3161) │
@@ -47,9 +47,11 @@ Plan (mit Iterationen, Entities, Risiken) liegt unter
    Worker versiegelt täglich den Tages-Spitzen-Hash mit RFC-3161. Verifikation
    per CLI (`pnpm verify:chain`).
 
-4. **n8n für Kommunikation, Code für Compliance** — Reminder, Mails, Eskalationen
-   laufen in n8n. Auth, Audit, Storage, GwG-Schranke sind eigenständiger Code
-   in der App (zu kritisch für externe Workflow-Engine).
+4. **n8n für Workflows, Code für Compliance** — Reminder, Recherche-Relays und
+   optionale Mail-/Eskalationsstrecken laufen über n8n. Transaktionale
+   Basismails kann die App selbst per SMTP versenden. Auth, Audit, Storage und
+   GwG-Schranke sind eigenständiger Code in der App (zu kritisch für externe
+   Workflow-Engine).
 
 5. **Externe Integrationen erst nach Process-Proof** — DATEV/Transparenz­register/
    ELSTER kommen NICHT im MVP. Stattdessen manueller Import (BWA als
@@ -59,6 +61,12 @@ Plan (mit Iterationen, Entities, Risiken) liegt unter
    plus App-Guard verhindern Mandantenanlage und alle client-bezogenen
    Operationen, solange `client.allow_active = false`. Wird ab Iter. 4 vom
    verifizierten `gwg_check` gesetzt.
+
+7. **Risk-Layer als internes Backend** — die TCMS-/Subsumtions-Engine ist opt-in,
+   zustandslos und wird über `RISK_LAYER_URL` + Bearer-Token angesprochen. Diese
+   URL ist Operator-Konfiguration und darf Docker-Service-DNS, Loopback oder eine
+   interne IP sein; nutzerkonfigurierbare externe Fetches bleiben weiterhin beim
+   zentralen SSRF-Guard.
 
 ## Repositorystruktur
 

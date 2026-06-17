@@ -5,12 +5,13 @@
 // Schema-Validierung, Domänen-Mapping. KEINE Geschäftslogik (kein DB-/Request-
 // Zugriff — das passiert app-seitig in apps/web/src/server/risk).
 //
-// `safeFetch` (@taxtronik/http-utils) erzwingt den SSRF-Guard; der interne
-// Engine-Host MUSS daher in INTERNAL_FETCH_HOSTS stehen (sonst löst er auf eine
-// private Adresse auf und wird geblockt — Absicht).
+// Der Default-Transport ist bewusst ein enger, trusted Backend-Fetch:
+// RISK_LAYER_URL kommt aus Operator-ENV, die Pfade sind fest codiert, und die
+// Engine ist ein internes Backend (häufig 127.0.0.1, Docker-Service-DNS oder
+// private LAN-IP). Der globale SSRF-Guard bleibt für admin-/nutzerkonfigurierbare
+// URLs (RSS, TSA, n8n, Update-Manifest) zuständig.
 // =============================================================================
 
-import { safeFetch } from '@taxtronik/http-utils';
 import { requireRiskLayerConfig, type RiskLayerConfig } from './config';
 import { mapAnalyse, type RiskAnalysisResult } from './mapping';
 import {
@@ -65,6 +66,17 @@ const NO_RETRY: RetryOptions = { retries: 0, baseDelayMs: 0 };
 
 const BREAKER_DEFAULTS = { failureThreshold: 5, resetTimeoutMs: 30_000 };
 
+async function trustedRiskLayerFetch(url: string, init?: RequestInit): Promise<Response> {
+  const parsed = new URL(url);
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new TypeError(`Risk-Layer-URL muss http(s) sein (war: ${parsed.protocol}).`);
+  }
+  return fetch(parsed.toString(), {
+    ...init,
+    redirect: 'error',
+  });
+}
+
 /** Review-Statuswerte des geteilten Festwissens (§4-Lebenszyklus, nur vorwärts). */
 export type KatalogReviewStatus = 'entwurf' | 'geprüft' | 'freigegeben';
 
@@ -101,7 +113,7 @@ function isRetryable(err: unknown): boolean {
 export interface RiskLayerClientOptions {
   /** Override der Config (Tests/Mehrmandanten); Default: aus @taxtronik/config. */
   config?: RiskLayerConfig;
-  /** Override des fetch (Tests); Default: safeFetch. */
+  /** Override des fetch (Tests); Default: trustedRiskLayerFetch. */
   fetchImpl?: (url: string, init?: RequestInit) => Promise<Response>;
   /** Geteilter Breaker (Tests/DI); Default: neuer pro Client. */
   breaker?: CircuitBreaker;
@@ -117,7 +129,7 @@ export class RiskLayerClient {
     const cfg = opts.config ?? requireRiskLayerConfig();
     this.url = cfg.url.replace(/\/$/, '');
     this.token = cfg.token;
-    this.fetchImpl = opts.fetchImpl ?? safeFetch;
+    this.fetchImpl = opts.fetchImpl ?? trustedRiskLayerFetch;
     this.breaker = opts.breaker ?? new CircuitBreaker(BREAKER_DEFAULTS);
   }
 

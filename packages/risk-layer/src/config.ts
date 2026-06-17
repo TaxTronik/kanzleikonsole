@@ -26,7 +26,7 @@ export class RiskLayerNotConfiguredError extends Error {
   constructor() {
     super(
       'Risk-Layer-Engine ist nicht konfiguriert — RISK_LAYER_URL und ' +
-        'RISK_LAYER_TOKEN müssen gesetzt sein (und der Host in INTERNAL_FETCH_HOSTS).',
+        'RISK_LAYER_TOKEN müssen gesetzt sein.',
     );
     this.name = 'RiskLayerNotConfiguredError';
   }

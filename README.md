@@ -27,6 +27,7 @@ Vollständige Architektur: [docs/architecture.md](docs/architecture.md)
 | Storage | SeaweedFS S3-API, Object-Lock, ClamAV-Scan vor Commit |
 | Jobs | BullMQ Worker, Redis |
 | Workflows | n8n für Reminder, Kommunikation und Cron-Automation |
+| Risk / TCMS | optionale on-prem Risk-Layer-Engine (`/v1/*`) |
 | Deploy | Docker Compose, On-Premise, Reverse Proxy davor |
 
 ## Entwicklung
@@ -74,6 +75,19 @@ Nützliche lokale Dienste:
 | n8n | <http://localhost:5678> |
 | SeaweedFS Master | <http://localhost:9333> |
 | SeaweedFS Filer | <http://localhost:8888> |
+
+Optionaler Risk-Layer lokal:
+
+```bash
+RISK_LAYER_URL=http://127.0.0.1:8000
+RISK_LAYER_TOKEN=<mindestens-32-zeichen>
+```
+
+`RISK_LAYER_URL` ist ein Operator-Backend-Ziel und darf Docker-Service-DNS
+(`http://risk-layer:8000`), Loopback (`http://127.0.0.1:8000`) oder eine
+interne IP enthalten. `INTERNAL_FETCH_HOSTS` wird dafür nicht benötigt; diese
+Allowlist bleibt für allgemeine `safeFetch`-Pfade wie n8n, RSS, TSA und
+Update-Manifest relevant.
 
 Reset:
 
@@ -153,6 +167,19 @@ N8N_HMAC_SECRET=...
 N8N_ENCRYPTION_KEY=...
 S3_SECRET_KEY=...
 
+# Optional: n8n-UI/API hinter eigenem Reverse-Proxy
+N8N_HOST=n8n.example.de
+N8N_WEBHOOK_URL=https://n8n.example.de/
+N8N_BIND=127.0.0.1
+
+# Optional: Risk-Layer / TCMS
+RISK_LAYER_URL=http://risk-layer:8000
+# Alternativ bei separatem lokalen Dienst:
+# RISK_LAYER_URL=http://127.0.0.1:8000
+# oder interne IP:
+# RISK_LAYER_URL=http://10.10.0.42:8000
+RISK_LAYER_TOKEN=...
+
 SMTP_HOST=mail.example.de
 SMTP_PORT=587
 SMTP_USER=...
@@ -161,8 +188,23 @@ SMTP_FROM="TaxTronik <noreply@example.de>"
 ```
 
 Reverse Proxy und TLS liegen vor der App. Die Compose-Ports sind auf localhost
-gebunden; der Object-Store bleibt intern. Beispiel:
+gebunden; der Object-Store bleibt intern. Das nginx-Beispiel enthält den
+Single-Host-Default, Hinweise für `/api/n8n/*`, ein optionales n8n-UI-VHost und
+ein Staff-/Portal-Split-Setup:
 [infra/nginx/taxtronik.conf.example](infra/nginx/taxtronik.conf.example)
+
+Für getrennte Staff-/Mandanten-Domains:
+
+- `NEXTAUTH_URL` zeigt auf die Staff-/Kanzlei-URL.
+- `PORTAL_PUBLIC_URL` zeigt auf die Mandantenportal-URL und wird für
+  Mandanten-Magic-Links, PoA- und GwG-Onboarding-Links genutzt.
+- `STAFF_COOKIE_DOMAIN` und `PORTAL_COOKIE_DOMAIN` sind Subdomain-spezifisch,
+  nie die Parent-Domain.
+- n8n ruft App-Endpunkte unter `/api/n8n/*` mit HMAC-Signatur auf; `TAXTRONIK_API_URL`
+  in n8n zeigt auf die intern oder per Proxy erreichbare App-Basis-URL.
+
+Details: [docs/operations/subdomain-trennung.md](docs/operations/subdomain-trennung.md)
+und [infra/n8n/workflows/README.md](infra/n8n/workflows/README.md).
 
 Weitere Operator-Kommandos (docker-compose-Passthrough):
 

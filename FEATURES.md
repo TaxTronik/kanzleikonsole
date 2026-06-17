@@ -1,6 +1,6 @@
 # taxtronik — Funktionsumfang
 
-Stand: 2026-06-10. Die mit ⚙ markierten Module sind pro Kanzlei in den
+Stand: 2026-06-17. Die mit ⚙ markierten Module sind pro Kanzlei in den
 Einstellungen ein- bzw. ausschaltbar.
 
 ## Überblick
@@ -709,6 +709,9 @@ Kanzlei nicht.
 
 - Modul `risk` pro Tenant **plus** konfigurierte Engine (URL + Bearer-Token) —
   beides nötig, sonst ist die Subsumtion nicht sichtbar
+- `RISK_LAYER_URL` ist ein trusted Operator-Backend-Ziel und darf Docker-Service-
+  DNS, Loopback (`127.0.0.1`) oder eine interne IP enthalten; dafür ist kein
+  `INTERNAL_FETCH_HOSTS`-Eintrag nötig
 - Zugang: global ADMIN/PARTNER **oder** dem Mandanten zugeordneter
   Berufsträger/Hauptbearbeiter (`ClientResponsibility`)
 - Jede Server-Action autorisiert über die **echte** Ressource (Analyse/
@@ -1043,6 +1046,9 @@ Kanzlei nicht.
 - n8n als Workflow-Engine für Mail-Versand und Eskalationen (signierte
   HMAC-Webhooks, n8n liest via `/api/n8n/*` mit Token,
   respektiert Portal-Notification-Setting per `notifiableContacts`-Array)
+- Getrenntes Staff-/Mandantenportal-Setup über `NEXTAUTH_URL`,
+  `PORTAL_PUBLIC_URL`, `STAFF_COOKIE_DOMAIN` und `PORTAL_COOKIE_DOMAIN`;
+  `/api/n8n/*` gehört dabei auf die Staff/API-Seite oder eine interne App-URL
 - SeaweedFS für Document-Storage mit Object-Lock-Buckets
 - ClamAV-Synchron-Scan + Helper `commitDocumentFromBytes` für Public-Wizard-
   Uploads
@@ -1106,6 +1112,9 @@ Kanzlei nicht.
   konfigurierbaren URLs (RSS, TSA, n8n, Update-Manifest, Health-Check) via
   zentralem `safeFetch` mit undici-Agent + gepinntem Lookup, Body-Cap,
   `redirect: 'error'` + 30s-Default-Timeout
+- **Risk-Layer-Transport** ist davon getrennt: `RISK_LAYER_URL` ist eine
+  serverseitige Operator-Konfiguration, wird nur mit festen `/v1/*`-Pfaden und
+  Bearer-Token genutzt, erlaubt interne IPs/Loopback und blockt Redirects
 - **Rate-Limiting** auf Login, TOTP, Magic-Link, GwG-Upload, PoA-Sign,
   Portal-Write — fail-CLOSED in Production bei Redis-Ausfall;
   `checkIpOrGlobalLimit` deckelt sowohl Per-IP als auch globalen Sturm;
@@ -1133,9 +1142,10 @@ Kanzlei nicht.
 - **Container-Hardening**: `cap_drop: ALL` + `no-new-privileges` + `read_only`-
   Root-FS auf App/Worker mit `tmpfs:/tmp`, alle Infra-Ports an `127.0.0.1`,
   App/n8n hinter Reverse-Proxy (NGINX-Beispiel-Konfig in `infra/nginx/`;
-  das Beispiel setzt bewusst keine eigenen Security-`add_header`-Zeilen —
-  die Header kommen aus der App, ein nginx-seitiges `add_header` würde u. a.
-  die token-spezifische `no-referrer`-Policy überschreiben)
+  mit Hinweisen für `/api/n8n/*`, separaten n8n-VHost und Staff-/Portal-Split);
+  das Beispiel setzt bewusst keine eigenen Security-`add_header`-Zeilen — die
+  Header kommen aus der App, ein nginx-seitiges `add_header` würde u. a. die
+  token-spezifische `no-referrer`-Policy überschreiben)
 - **Dev-Default-Denylist**: Bekannte Dev-Schlüsselwerte (`AUTH_SECRET`,
   `N8N_HMAC_SECRET`, `N8N_ENCRYPTION_KEY`, `POSTGRES_PASSWORD`,
   `TAXTRONIK_APP_PASSWORD`) werden in Production in der ENV-Validierung

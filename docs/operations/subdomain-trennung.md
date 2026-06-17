@@ -76,6 +76,9 @@ portal.kanzlei.example.de {
 # Staff-Subdomain als Haupt-URL
 NEXTAUTH_URL=https://staff.kanzlei.example.de
 
+# Mandanten-Links (Portal-Login, GwG-Onboarding, PoA-Signatur)
+PORTAL_PUBLIC_URL=https://portal.kanzlei.example.de
+
 # Cookie-Domains pro Surface — Subdomain-spezifisch (NICHT die Hauptdomain!)
 STAFF_COOKIE_DOMAIN=staff.kanzlei.example.de
 PORTAL_COOKIE_DOMAIN=portal.kanzlei.example.de
@@ -92,20 +95,40 @@ PORTAL_COOKIE_DOMAIN=portal.kanzlei.example.de
 ### 4. Mail-Links
 
 Magic-Links für Portal-Login, GwG-Onboarding-Einladungen, PoA-Signatur etc.
-nutzen `env.NEXTAUTH_URL` als Basis. Wenn Staff- und Portal-URL getrennt
-sind, sollte die Mail-Generierung explizit die richtige URL pro Empfängertyp
-wählen:
+nutzen `PORTAL_PUBLIC_URL` als Basis. `NEXTAUTH_URL` bleibt die Staff-/App-Basis
+für Server-Callbacks und das Kanzlei-UI:
 
 | Mail | Empfänger | Basis-URL |
 |---|---|---|
-| Magic-Link Portal-Login | Mandant | Portal-Subdomain |
-| GwG-Onboarding | Mandant | Portal-Subdomain |
-| PoA-Sign | Mandant | Portal-Subdomain |
+| Magic-Link Portal-Login | Mandant | `PORTAL_PUBLIC_URL` |
+| GwG-Onboarding | Mandant | `PORTAL_PUBLIC_URL` |
+| PoA-Sign | Mandant | `PORTAL_PUBLIC_URL` |
 | Staff-Reset-Link (zukünftig) | Mitarbeiter | Staff-Subdomain |
 
-Aktueller Code nutzt nur `NEXTAUTH_URL` — Erweiterung mit
-`PORTAL_PUBLIC_URL` und `STAFF_PUBLIC_URL` als optionale Overrides ist
-ein offener Punkt (siehe IDEAS.md).
+Der aktuelle Code nutzt `PORTAL_PUBLIC_URL` für mandantengerichtete Links und
+fällt nur im Single-Host-Setup auf `NEXTAUTH_URL` zurück.
+
+### 4.1 n8n
+
+n8n kann als lokaler Compose-Service laufen oder hinter einem eigenen VHost
+stehen. Für die App ist entscheidend:
+
+```env
+N8N_WEBHOOK_BASE_URL=http://n8n:5678/webhook
+N8N_HMAC_SECRET=<identisch in App, Worker und n8n>
+```
+
+In n8n selbst:
+
+```env
+TAXTRONIK_API_URL=https://staff.kanzlei.example.de
+N8N_HMAC_SECRET=<identisch>
+```
+
+`TAXTRONIK_API_URL` darf auch eine interne URL sein (z. B.
+`http://app:3000` im Compose-Netz). Extern erreichbare n8n-Calls gehen nur auf
+`/api/n8n/*`; diese Endpunkte sind HMAC-signiert und gehören im Split-Setup auf
+die Staff/API-Seite, nicht auf das öffentliche Mandantenportal.
 
 ### 5. Firewall (optional)
 

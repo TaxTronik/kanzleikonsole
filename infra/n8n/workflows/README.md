@@ -6,7 +6,9 @@ anpassen.
 
 ## Setup
 
-1. n8n starten (siehe `docker-compose.yml`).
+1. n8n starten:
+   - Dev: `infra/compose/docker-compose.dev.yml`
+   - Produktion: `infra/compose/docker-compose.app.yml` bzw. `./taxtronik deploy`
 2. n8n-Web-UI öffnen: <http://localhost:5678>
 3. Workflows importieren: **Workflows → Import from File** → die JSONs hier
    nacheinander auswählen.
@@ -16,7 +18,8 @@ anpassen.
      - Header-Wert: `<wird via Pre-Request-Script aus N8N_HMAC_SECRET berechnet>`
    - **Kanzlei SMTP** (E-Mail SMTP) mit den eigenen SMTP-Daten.
 5. Environment-Variablen in n8n setzen:
-   - `TAXTRONIK_API_URL` (z. B. `http://app:3000` im Docker-Netz)
+   - `TAXTRONIK_API_URL` (z. B. `http://app:3000` im Docker-Netz oder
+     `https://staff.kanzlei.example.de` im Subdomain-Setup)
    - `N8N_HMAC_SECRET` (identisch mit `N8N_HMAC_SECRET` in der App)
    - `SMTP_FROM`
    - `GWG_OFFICER_EMAIL`
@@ -51,6 +54,11 @@ signiert. Die Header `x-taxtronik-event`, `x-taxtronik-timestamp` und
 n8n -> App: API-Aufrufe an `/api/n8n/*` erwarten
 `x-taxtronik-signature: sha256=<hex(hmac(method + " " + pathAndSearch + "\n" + timestamp + "\n" + body, N8N_HMAC_SECRET))>`
 plus `x-taxtronik-timestamp`.
+
+Im getrennten Staff-/Mandantenportal-Setup zeigt `TAXTRONIK_API_URL` bewusst auf
+die Staff/API-Seite oder eine interne App-URL. Mandantenlinks in Mails kommen
+aus der App (`PORTAL_PUBLIC_URL`), nicht aus n8n; Workflows sollten also keine
+Portal-Basis-URL hart codieren.
 
 ## Versionierung
 

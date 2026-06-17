@@ -152,7 +152,8 @@ Folgende Schwächen sind dem Team bekannt und werden NICHT durch den Pen-Test
 verifiziert (separate Sanierungs-Pipeline):
 
 - Datei-Upload-Limit pro Tenant (Storage-Quota) ist nicht implementiert
-- E-Mail-Versand läuft komplett über n8n; ohne n8n-Setup keine Mails
+- E-Mail-Versand läuft per App-SMTP-Templates; n8n ergänzt Workflows/Reminder
+  und ist ohne Setup kein Blocker für transaktionale Basismails
 - BWA-Score-Card-Engine ist regelbasiert ohne Profi-Validierung
 - Steuer-Engine: NRW-/landesspezifische Termine + Werktagsverschiebung
   vorhanden, aber rechtliche Vollständigkeit nicht zertifiziert
