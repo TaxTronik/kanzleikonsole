@@ -6,6 +6,11 @@ import { usePathname } from 'next/navigation';
 import { Bell, CheckCheck } from 'lucide-react';
 import { fmtDateTimeShort } from '@/lib/fmt';
 import {
+  playNotificationSound,
+  isNotificationSoundEnabled,
+  setNotificationSoundEnabled,
+} from '@/lib/notification-sound';
+import {
   markNotificationReadAction,
   markAllNotificationsReadAction,
 } from '@/app/staff/(protected)/notifications/actions';
@@ -49,17 +54,37 @@ export function NotificationsBell({ initialUnread }: Props) {
   const [unread, setUnread] = useState(initialUnread);
   const [items, setItems] = useState<NotificationItem[] | null>(null);
   const [open, setOpen] = useState(false);
+  const [soundOn, setSoundOn] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
   const visibleRef = useRef(true);
   const pathname = usePathname();
   const now = Date.now();
+
+  useEffect(() => {
+    setSoundOn(isNotificationSoundEnabled());
+  }, []);
+
+  function toggleSound() {
+    const next = !soundOn;
+    setSoundOn(next);
+    setNotificationSoundEnabled(next);
+    // Beim Aktivieren einmal probe-Play (gibt Nutzer:in direktes Feedback +
+    // löst ggf. die Autoplay-Sperre durch die Nutzerinteraktion).
+    if (next) playNotificationSound();
+  }
 
   const refreshCount = useCallback(async () => {
     try {
       const res = await fetch('/api/staff/notifications/count', { cache: 'no-store' });
       if (!res.ok) return;
       const data = (await res.json()) as { unread: number };
-      setUnread(data.unread);
+      // Funktionaler Update + Delta-Check: nur bei echtem Zuwachs Ton, und
+      // robust gegen zwei parallel laufende Polls (vorher: Klammergriff auf
+      // veraltetem `unread`).
+      setUnread((prev) => {
+        if (data.unread > prev) playNotificationSound();
+        return data.unread;
+      });
     } catch {
       // silent
     }
@@ -71,7 +96,10 @@ export function NotificationsBell({ initialUnread }: Props) {
       if (!res.ok) return;
       const data = (await res.json()) as RecentResponse;
       setItems(data.items);
-      setUnread(data.unread);
+      setUnread((prev) => {
+        if (data.unread > prev) playNotificationSound();
+        return data.unread;
+      });
     } catch {
       // silent
     }
@@ -240,13 +268,22 @@ export function NotificationsBell({ initialUnread }: Props) {
             )}
           </div>
 
-          <div className="border-t border-default px-4 py-2 text-center">
+          <div className="border-t border-default px-4 py-2 flex items-center justify-between gap-2">
+            <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={soundOn}
+                onChange={toggleSound}
+                className="rounded border-default"
+              />
+              Ton bei neuen Benachrichtigungen
+            </label>
             <Link
               href="/staff/notifications"
               onClick={() => setOpen(false)}
-              className="text-xs text-brand-700 dark:text-brand-500 hover:underline"
+              className="text-xs text-brand-700 dark:text-brand-500 hover:underline shrink-0"
             >
-              Alle Benachrichtigungen anzeigen →
+              Alle anzeigen →
             </Link>
           </div>
         </div>
