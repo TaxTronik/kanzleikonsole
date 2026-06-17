@@ -23,7 +23,14 @@ import { describe, it, expect } from 'vitest';
 const REPO_ROOT = resolve(__dirname, '../../../../../');
 const SCAN_DIRS = ['apps', 'packages'];
 const SKIP_DIRS = new Set([
-  'node_modules', '.next', '.turbo', 'dist', 'build', 'out', 'coverage', '.git',
+  'node_modules',
+  '.next',
+  '.turbo',
+  'dist',
+  'build',
+  'out',
+  'coverage',
+  '.git',
 ]);
 // Toleriert beliebigen Whitespace (`new  PrismaClient`, Zeilenumbruch) zwischen
 // `new` und `PrismaClient`, damit ungewöhnliche Formatierung den Guard nicht
@@ -127,8 +134,7 @@ describe('PrismaClient-Guard — keine ungeprüften DB-Clients', () => {
   });
 });
 
-const OWNER_IMPORT =
-  /import\s*\{[^}]*\bprismaOwner\b[^}]*\}\s*from\s*['"]([^'"]+)['"]/gs;
+const OWNER_IMPORT = /import\s*\{[^}]*\bprismaOwner\b[^}]*\}\s*from\s*['"]([^'"]+)['"]/gs;
 
 // Bewusst freigegebene Owner-Client-Importe. Neue Treffer muessen hier mit
 // fachlicher Begruendung landen, damit BYPASSRLS-Nutzung nicht versehentlich in
@@ -150,6 +156,8 @@ const ALLOWED_PRISMA_OWNER_IMPORTS = new Set<string>([
   'apps/web/src/server/auth/staff.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/backup/restore.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/backup/runner.ts <- @/server/db/prisma-owner',
+  // Dev-only Retention/Object-Lock-Fixtures; verweigert NODE_ENV=production.
+  'apps/web/src/server/demo/retention-fixtures.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/gwg-onboarding/service.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/license/state.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/mail/dispatch.ts <- @/server/db/prisma-owner',

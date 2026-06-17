@@ -1,5 +1,7 @@
 ﻿import { redirect } from 'next/navigation';
 import Link from 'next/link';
+import { stat } from 'node:fs/promises';
+import { HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import {
   ShieldCheck,
   Database,
@@ -13,24 +15,24 @@ import {
   ArrowRight,
   Download,
 } from 'lucide-react';
+import { env } from '@taxtronik/config';
 import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
-import {
-  BACKUP_DRILL_RESULT_SETTING_KEY,
-  type PersistedDrillResult,
-} from '@taxtronik/evidence';
+import { BACKUP_DRILL_RESULT_SETTING_KEY, type PersistedDrillResult } from '@taxtronik/evidence';
 import { evidenceService } from '@/server/container';
 import { checkForUpdates, type CheckResult } from '@/server/update/manifest';
 import { getLicenseInfo } from '@/server/license/state';
 import { getSetupStatus } from '@/server/setup/status';
 import { findDueGwgDeletionDocs } from '@/server/gwg/retention';
 import { findDueClientAnonymizations } from '@/server/dsgvo/client-retention';
+import { backupLocalPathForKey } from '@/server/backup/local-path';
 import { LicenseCard } from './license-card';
 import { BackupRunButton } from './backup-run-button';
 import { fmtDateTimeShort } from '@/lib/fmt';
 
 const APP_VERSION = process.env['APP_VERSION'] ?? 'dev';
+type BackupAvailability = { local: boolean; s3: boolean };
 
 export default async function AdminPage() {
   const session = await staffAuth();
@@ -43,28 +45,35 @@ export default async function AdminPage() {
 
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
 
-  const [chainResult, lastBackup, drillSetting, openDsgvoCount, providerCount, contactCount, gwgDueCount, anonDueCount] =
-    await withTenantContext(
-      ctx,
-      async (tx) =>
-        Promise.all([
-          evidenceService.verifyChain(tx, tenantId).catch(() => null),
-          tx.backupRecord.findFirst({
-            orderBy: { startedAt: 'desc' },
-          }),
-          // Letztes Restore-Drill-Ergebnis (monatlicher Worker-Job — Art. 32
-          // DSGVO Wirksamkeitsnachweis). Nur lesen, nie hier rechnen.
-          tx.tenantSetting.findUnique({
-            where: { tenantId_key: { tenantId, key: BACKUP_DRILL_RESULT_SETTING_KEY } },
-          }),
-          tx.dsgvoRequest.count({ where: { status: { in: ['RECEIVED', 'IN_PROGRESS'] } } }),
-          tx.serviceProvider.count(),
-          tx.clientContact.count({ where: { active: true } }),
-          findDueGwgDeletionDocs(tx).then((d) => d.length),
-          findDueClientAnonymizations(tx).then((d) => d.length),
-        ]),
-    );
+  const [
+    chainResult,
+    lastBackup,
+    drillSetting,
+    openDsgvoCount,
+    providerCount,
+    contactCount,
+    gwgDueCount,
+    anonDueCount,
+  ] = await withTenantContext(ctx, async (tx) =>
+    Promise.all([
+      evidenceService.verifyChain(tx, tenantId).catch(() => null),
+      tx.backupRecord.findFirst({
+        orderBy: { startedAt: 'desc' },
+      }),
+      // Letztes Restore-Drill-Ergebnis (monatlicher Worker-Job — Art. 32
+      // DSGVO Wirksamkeitsnachweis). Nur lesen, nie hier rechnen.
+      tx.tenantSetting.findUnique({
+        where: { tenantId_key: { tenantId, key: BACKUP_DRILL_RESULT_SETTING_KEY } },
+      }),
+      tx.dsgvoRequest.count({ where: { status: { in: ['RECEIVED', 'IN_PROGRESS'] } } }),
+      tx.serviceProvider.count(),
+      tx.clientContact.count({ where: { active: true } }),
+      findDueGwgDeletionDocs(tx).then((d) => d.length),
+      findDueClientAnonymizations(tx).then((d) => d.length),
+    ]),
+  );
 
+  const backupAvailability = await checkBackupAvailability(lastBackup);
   const drill = (drillSetting?.value ?? null) as PersistedDrillResult | null;
 
   const setup = await getSetupStatus(ctx);
@@ -80,9 +89,7 @@ export default async function AdminPage() {
     <div className="p-8">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-primary mb-1">Administration</h1>
-        <p className="text-muted text-sm">
-          Compliance-Status, Backup, Updates, DSGVO, Lizenz.
-        </p>
+        <p className="text-muted text-sm">Compliance-Status, Backup, Updates, DSGVO, Lizenz.</p>
       </div>
 
       {/* Lizenz-Banner ganz oben — sichtbar auch ohne Scrollen */}
@@ -128,11 +135,11 @@ export default async function AdminPage() {
                       >
                         {item.label}
                       </span>
-                      {!item.done && <ArrowRight className="h-3.5 w-3.5 text-disabled group-hover:text-muted" />}
+                      {!item.done && (
+                        <ArrowRight className="h-3.5 w-3.5 text-disabled group-hover:text-muted" />
+                      )}
                     </div>
-                    {!item.done && item.hint && (
-                      <p className="text-xs text-muted">{item.hint}</p>
-                    )}
+                    {!item.done && item.hint && <p className="text-xs text-muted">{item.hint}</p>}
                   </div>
                 </Link>
               </li>
@@ -145,7 +152,9 @@ export default async function AdminPage() {
         {/* Audit-Chain */}
         <div className="card p-6">
           <div className="flex items-start gap-3 mb-3">
-            <ShieldCheck className={chainResult?.ok ? 'h-5 w-5 text-green-600' : 'h-5 w-5 text-red-600'} />
+            <ShieldCheck
+              className={chainResult?.ok ? 'h-5 w-5 text-green-600' : 'h-5 w-5 text-red-600'}
+            />
             <div className="flex-1">
               <h2 className="text-sm font-medium text-primary">Audit-Hash-Chain</h2>
               {chainResult ? (
@@ -156,7 +165,9 @@ export default async function AdminPage() {
                     </p>
                     <p className="text-xs text-muted mt-1">
                       {chainResult.sealsChecked} Tagesversiegelungen geprüft
-                      {chainResult.sealBreaks.length > 0 ? `, ${chainResult.sealBreaks.length} mit TSA-Problem` : ''}
+                      {chainResult.sealBreaks.length > 0
+                        ? `, ${chainResult.sealBreaks.length} mit TSA-Problem`
+                        : ''}
                     </p>
                   </>
                 ) : (
@@ -187,8 +198,8 @@ export default async function AdminPage() {
                 lastBackup?.status === 'SUCCESS'
                   ? 'h-5 w-5 text-green-600'
                   : lastBackup?.status === 'FAILED'
-                  ? 'h-5 w-5 text-red-600'
-                  : 'h-5 w-5 text-disabled'
+                    ? 'h-5 w-5 text-red-600'
+                    : 'h-5 w-5 text-disabled'
               }
             />
             <div className="flex-1">
@@ -196,8 +207,7 @@ export default async function AdminPage() {
               {lastBackup ? (
                 <>
                   <p className="text-xs text-secondary mt-1">
-                    {fmtDateTimeShort(lastBackup.startedAt,)}{' '}
-                    — {lastBackup.status}
+                    {fmtDateTimeShort(lastBackup.startedAt)} — {lastBackup.status}
                   </p>
                   {lastBackup.sizeBytes && (
                     <p className="text-xs text-muted mt-1">
@@ -219,7 +229,9 @@ export default async function AdminPage() {
                 drill.ok ? (
                   <p className="text-xs text-green-700 mt-1">
                     Restore-Test {fmtDateTimeShort(new Date(drill.checkedAt))}: erfolgreich
-                    {drill.auditChecked > 0 ? ` (${drill.auditChecked} Audit-Einträge verifiziert)` : ''}
+                    {drill.auditChecked > 0
+                      ? ` (${drill.auditChecked} Audit-Einträge verifiziert)`
+                      : ''}
                   </p>
                 ) : (
                   <p className="text-xs text-red-700 mt-1">
@@ -237,20 +249,30 @@ export default async function AdminPage() {
                 {/* Route-Handler-Download (kein <Link> — kein Client-Side-Routing) */}
                 {lastBackup?.status === 'SUCCESS' && lastBackup.key && (
                   <>
-                    <a
-                      href={`/api/staff/admin/backups/${lastBackup.id}/download?source=local`}
-                      className="btn-secondary text-xs py-1.5 inline-flex items-center gap-1.5"
-                    >
-                      <Download className="h-3.5 w-3.5" />
-                      Lokal
-                    </a>
-                    <a
-                      href={`/api/staff/admin/backups/${lastBackup.id}/download?source=s3`}
-                      className="btn-secondary text-xs py-1.5 inline-flex items-center gap-1.5"
-                    >
-                      <Download className="h-3.5 w-3.5" />
-                      S3
-                    </a>
+                    {backupAvailability.local && (
+                      <a
+                        href={`/api/staff/admin/backups/${lastBackup.id}/download?source=local`}
+                        className="btn-secondary text-xs py-1.5 inline-flex items-center gap-1.5"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        Lokal
+                      </a>
+                    )}
+                    {backupAvailability.s3 && (
+                      <a
+                        href={`/api/staff/admin/backups/${lastBackup.id}/download?source=s3`}
+                        className="btn-secondary text-xs py-1.5 inline-flex items-center gap-1.5"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        S3
+                      </a>
+                    )}
+                    {!backupAvailability.local && !backupAvailability.s3 && (
+                      <p className="basis-full text-xs text-yellow-700">
+                        Download nicht verfügbar: Backup-Datei nicht gefunden. Bitte neues Backup
+                        starten.
+                      </p>
+                    )}
                   </>
                 )}
               </div>
@@ -282,7 +304,8 @@ export default async function AdminPage() {
               {updateCheck.ok ? (
                 'hasUpdate' in updateCheck && updateCheck.hasUpdate ? (
                   <p className="text-xs text-yellow-700 mt-1">
-                    {updateCheck.newer?.length} neuere Version{updateCheck.newer && updateCheck.newer.length === 1 ? '' : 'en'} verfügbar
+                    {updateCheck.newer?.length} neuere Version
+                    {updateCheck.newer && updateCheck.newer.length === 1 ? '' : 'en'} verfügbar
                   </p>
                 ) : (
                   <p className="text-xs text-green-700 mt-1">Aktuell auf dem neuesten Stand.</p>
@@ -299,10 +322,14 @@ export default async function AdminPage() {
         {/* DSGVO */}
         <div className="card p-6">
           <div className="flex items-start gap-3 mb-3">
-            <Shield className={openDsgvoCount > 0 ? 'h-5 w-5 text-yellow-600' : 'h-5 w-5 text-green-600'} />
+            <Shield
+              className={openDsgvoCount > 0 ? 'h-5 w-5 text-yellow-600' : 'h-5 w-5 text-green-600'}
+            />
             <div className="flex-1">
               <h2 className="text-sm font-medium text-primary">Offene DSGVO-Anfragen</h2>
-              <p className="text-xs text-secondary mt-1">{openDsgvoCount} Anfragen in Bearbeitung</p>
+              <p className="text-xs text-secondary mt-1">
+                {openDsgvoCount} Anfragen in Bearbeitung
+              </p>
               <Link
                 href="/staff/admin/dsgvo"
                 className="inline-block mt-2 text-xs text-brand-700 hover:underline"
@@ -434,4 +461,57 @@ function fmtBytes(b: number): string {
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
   if (b < 1024 * 1024 * 1024) return `${(b / 1024 / 1024).toFixed(1)} MB`;
   return `${(b / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+async function checkBackupAvailability(
+  backup: {
+    status: string;
+    bucket: string | null;
+    key: string | null;
+    sizeBytes: bigint | null;
+  } | null,
+): Promise<BackupAvailability> {
+  if (!backup || backup.status !== 'SUCCESS' || !backup.bucket || !backup.key) {
+    return { local: false, s3: false };
+  }
+
+  const [local, s3] = await Promise.all([
+    isLocalBackupAvailable(backup.key, backup.sizeBytes),
+    isS3BackupAvailable(backup.bucket, backup.key, backup.sizeBytes),
+  ]);
+
+  return { local, s3 };
+}
+
+async function isLocalBackupAvailable(key: string, expectedSize: bigint | null): Promise<boolean> {
+  try {
+    const info = await stat(backupLocalPathForKey(key));
+    if (!info.isFile()) return false;
+    return expectedSize === null || BigInt(info.size) === expectedSize;
+  } catch {
+    return false;
+  }
+}
+
+async function isS3BackupAvailable(
+  bucket: string,
+  key: string,
+  expectedSize: bigint | null,
+): Promise<boolean> {
+  try {
+    const s3 = new S3Client({
+      endpoint: env.S3_ENDPOINT,
+      region: env.S3_REGION,
+      credentials: { accessKeyId: env.S3_ACCESS_KEY, secretAccessKey: env.S3_SECRET_KEY },
+      forcePathStyle: true,
+    });
+    const head = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+    return (
+      expectedSize === null ||
+      typeof head.ContentLength !== 'number' ||
+      BigInt(head.ContentLength) === expectedSize
+    );
+  } catch {
+    return false;
+  }
 }
