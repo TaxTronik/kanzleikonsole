@@ -11,6 +11,7 @@ import { AddIdDocumentForm } from './add-id-doc-form';
 import { InviteSection } from './invite-section';
 import { GwgDecisionForms } from './decision-forms';
 import { fmtDateShort } from '@/lib/fmt';
+import { DocumentPreviewButton } from '@/components/document-preview';
 import { GwgSubmissionSummary, type GwgSubmissionSummaryData } from '@/components/gwg-submission-summary';
 
 const statusLabels: Record<string, string> = {
@@ -324,11 +325,10 @@ export default async function GwgPage({
                       {d.expiryDate ? ` · gültig bis ${fmtDateShort(d.expiryDate)}` : ''}
                     </p>
                     {d.document && (
-                      <p className="text-xs text-brand-700 ml-6 mt-1">
-                        <a href={`/api/staff/documents/${d.document.id}/download`} className="hover:underline">
-                          {d.document.title} öffnen
-                        </a>
-                      </p>
+                      <div className="flex items-center gap-1 ml-6 mt-1">
+                        <span className="text-xs text-muted">{d.document.title}</span>
+                        <DocumentPreviewButton documentId={d.document.id} documentTitle={d.document.title} />
+                      </div>
                     )}
                   </li>
                 ))}

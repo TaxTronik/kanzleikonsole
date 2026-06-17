@@ -40,6 +40,7 @@ const base: VerfahrensdokuData = {
     policyBreaks: [],
     firstBreak: null,
     error: null,
+    recovered: false,
   },
   counts: {
     staffActive: 12,

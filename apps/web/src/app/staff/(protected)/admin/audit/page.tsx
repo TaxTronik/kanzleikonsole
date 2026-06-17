@@ -140,9 +140,11 @@ export default async function AuditLogPage({
   // Headline-Schweregrad: ein HISTORISCHER Bruch MIT gesetztem Checkpoint UND
   // intakter Recovery-Teilkette wird bernsteinfarben („historisch, abgegrenzt")
   // statt rot dargestellt. Reines Rot bleibt ohne Checkpoint oder bei erneutem
-  // Bruch ab dem Checkpoint. So wird ein dauerhaft roter Alarm vermieden, obwohl
-  // der Checkpoint den Befund bereits abgegrenzt hat.
-  const recoveryIntact = !!checkpoint && !!recoveryResult?.ok;
+  // Bruch ab dem Checkpoint. `recovered` wird vom täglichen Worker gesetzt
+  // (checkpoint-aware) — zusätzlich zur Live-Verifikation als Fallback, falls
+  // die letztere z. B. am TSA-Check scheitert.
+  const recoveryIntact =
+    !!checkpoint && (!!verifyResult?.recovered || !!recoveryResult?.ok);
   const chainStatus: 'none' | 'ok' | 'amber' | 'red' = !verifyResult
     ? 'none'
     : verifyResult.ok

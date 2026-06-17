@@ -27,6 +27,11 @@ export interface PersistedVerifyResult {
   firstBreak: { auditId: string; occurredAt: string } | null;
   /** Gesetzt, wenn der Lauf selbst fehlschlug (Exception statt Ketten-Bruch). */
   error: string | null;
+  /** True, wenn ein Recovery-Checkpoint gesetzt ist UND die Teilkette ab dort
+   *  intakt geprüft wurde. Der historische Bruch gilt damit als versorgt → die
+   *  Admin-Seite zeigt bernstein (statt rot) und der Worker feuert KEINE
+   *  SYSTEM_AUDIT_BREAK-Notification. */
+  recovered: boolean;
 }
 
 export interface PersistedRecoveryCheckpoint {
@@ -85,5 +90,6 @@ export function toPersistedVerifyResult(
         }
       : null,
     error: null,
+    recovered: false,
   };
 }

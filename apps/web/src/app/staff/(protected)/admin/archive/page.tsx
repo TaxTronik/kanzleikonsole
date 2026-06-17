@@ -8,7 +8,6 @@ import { ArrowLeft, Archive, ShieldCheck } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
-import { triggerAuditRotateAction } from './actions';
 import { fmtDateTimeShort } from '@/lib/fmt';
 
 
@@ -37,17 +36,7 @@ export default async function AuditArchivePage() {
       const totalBytes = archives.reduce((s, a) => s + Number(a.fileSizeBytes), 0);
       const lastArchivedTo = archives[0]?.toAuditId ?? BigInt(0);
       const pendingCount = lastEntry ? Number(lastEntry.id - lastArchivedTo) : 0;
-      // „Jetzt rotieren" ist nur sinnvoll, wenn unarchivierte Einträge existieren,
-      // die älter als die Mindesthaltfrist sind — sonst no-op-t der Worker und der
-      // Klick erzeugt nur ein irreführendes audit.rotate.trigger-Event. Der Wert
-      // gleicht MIN_AGE_DAYS im Worker (apps/worker/src/jobs/audit-rotate.ts).
-      const ARCHIVE_MIN_AGE_DAYS = 90;
-      const cutoff = new Date(Date.now() - ARCHIVE_MIN_AGE_DAYS * 24 * 60 * 60 * 1000);
-      const rotatableEntry = await tx.auditLog.findFirst({
-        where: { id: { gt: lastArchivedTo }, occurredAt: { lte: cutoff } },
-        select: { id: true },
-      });
-      return { archives, totalArchived, totalBytes, pendingCount, rotatable: !!rotatableEntry };
+      return { archives, totalArchived, totalBytes, pendingCount };
     },
   );
 
@@ -64,21 +53,10 @@ export default async function AuditArchivePage() {
           </h1>
           <p className="text-muted text-sm">
             Segmentweise ausgelagerte Audit-Log-Einträge — verschlüsselt, hash-versiegelt
-            und mit Object-Lock COMPLIANCE für 10 Jahre in SeaweedFS gespeichert. Wird vom
-            Worker wöchentlich rotiert; manuelle Auslösung möglich.
+            und mit Object-Lock COMPLIANCE für 10 Jahre in SeaweedFS gespeichert. Die Rotation
+            läuft vom Worker automatisch (wöchentlich, sobald Einträge älter als 90 Tage sind).
           </p>
         </div>
-        <form action={triggerAuditRotateAction}>
-          <button
-            type="submit"
-            disabled={!data.rotatable}
-            className={data.rotatable ? 'btn-primary' : 'btn-secondary'}
-            title={data.rotatable ? undefined : 'Älteste Einträge jünger als 90 Tage — nichts zu rotieren.'}
-          >
-            <Archive className="h-4 w-4" />
-            {data.rotatable ? 'Jetzt rotieren' : 'Nichts zu rotieren'}
-          </button>
-        </form>
       </div>
 
       <div className="grid grid-cols-3 gap-4 mb-6">

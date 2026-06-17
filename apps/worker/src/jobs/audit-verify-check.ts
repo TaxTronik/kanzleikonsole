@@ -13,8 +13,10 @@ import {
   LocalTimestampAdapter,
   Rfc3161HttpAdapter,
   AUDIT_VERIFY_RESULT_SETTING_KEY,
+  AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY,
   toPersistedVerifyResult,
   type PersistedVerifyResult,
+  type PersistedRecoveryCheckpoint,
 } from '@taxtronik/evidence';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
@@ -101,9 +103,38 @@ export const auditVerifyWorker = new Worker<ChecksJob>(
           async (tx) => evidenceService.verifyChain(tx, tenantId, { requireExternalTsa }),
           VERIFY_TX_OPTIONS,
         );
-        await persistVerifyResult(tenantId, toPersistedVerifyResult(r, checkedAt));
 
+        // Recovery-Checkpoint: ist der Bruch bereits durch einen gesetzten
+        // Checkpoint abgegrenzt UND die Teilkette ab dort intakt, gilt der
+        // Befund als „versorgt" (recovered). Folge: keine SYSTEM_AUDIT_BREAK-
+        // Notification, und die Admin-Seite zeigt bernstein (historisch) statt
+        // rot. Ohne Checkpoint oder bei erneutem Bruch ab dem Checkpoint bleibt
+        // es bei der roten Meldung + Notification.
+        let recovered = false;
         if (!r.ok) {
+          const cpRow = await withWorkerTenantContext(tenantId, (tx) =>
+            tx.tenantSetting.findUnique({
+              where: { tenantId_key: { tenantId, key: AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY } },
+            }),
+          );
+          const cp = (cpRow?.value ?? null) as PersistedRecoveryCheckpoint | null;
+          if (cp) {
+            const segR = await prismaOwner
+              .$transaction(
+                async (tx) =>
+                  evidenceService.verifyRecoverySegment(tx, tenantId, BigInt(cp.auditId), {
+                    requireExternalTsa,
+                  }),
+                VERIFY_TX_OPTIONS,
+              )
+              .catch(() => null);
+            recovered = !!segR?.ok;
+          }
+        }
+
+        await persistVerifyResult(tenantId, { ...toPersistedVerifyResult(r, checkedAt), recovered });
+
+        if (!r.ok && !recovered) {
           // P-8: Notifications werden jetzt in einer Tenant-Context-Transaktion
           // geschrieben — auch wenn prismaOwner BYPASSRLS hat. Setzt die
           // app.current_*-Session-Variablen, sodass Audit-Trigger und etwaige
@@ -168,6 +199,7 @@ export const auditVerifyWorker = new Worker<ChecksJob>(
           policyBreaks: [],
           firstBreak: null,
           error: (err as Error).message,
+          recovered: false,
         }).catch((e) =>
           log.warn({ tenantId, err: (e as Error).message }, 'audit-verify: persist failed'),
         );
