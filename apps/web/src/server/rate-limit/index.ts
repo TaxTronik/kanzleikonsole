@@ -25,6 +25,24 @@ export interface RateLimitResult {
   retryAfter: number; // Sekunden bis Reset
 }
 
+const STAFF_PASSWORD_ACCOUNT_LIMIT: RateLimitConfig = { max: 20, windowSec: 600 };
+
+export function staffPasswordAccountRateLimitKey(staffUserId: string): string {
+  return `staff-pw-account:${staffUserId}`;
+}
+
+/**
+ * Pre-bcrypt Account-Bucket fuer Staff-Logins. Das IP-Limit schuetzt einzelne
+ * Quellen; dieser Bucket deckelt verteilte Versuche gegen dasselbe Konto,
+ * bevor bcrypt CPU kostet. Bewusst grosszuegig, damit legitime Tippfehler nicht
+ * sofort zum Account-DoS werden.
+ */
+export async function checkStaffPasswordAccountLimit(
+  staffUserId: string,
+): Promise<RateLimitResult> {
+  return checkRateLimit(staffPasswordAccountRateLimitKey(staffUserId), STAFF_PASSWORD_ACCOUNT_LIMIT);
+}
+
 /**
  * Globaler Spam-Backstop für Portal-Schreibpfade (S4). 60 Ops pro 10 min
  * pro Contact deckt z. B. Form-Drafts, Request-Antworten, BWA-Plan-Edits,

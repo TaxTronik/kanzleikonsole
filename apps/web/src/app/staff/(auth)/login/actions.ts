@@ -17,7 +17,13 @@ import { resetFailedLogin } from '@/server/auth/lockout';
 import { recordFailedLoginAudited } from '@/server/auth/login-audit';
 import { evidenceService } from '@/server/container';
 import { prismaOwner } from '@/server/db/prisma-owner';
-import { checkIpOrGlobalLimit, resetRateLimit, getClientIp } from '@/server/rate-limit';
+import {
+  checkIpOrGlobalLimit,
+  checkStaffPasswordAccountLimit,
+  getClientIp,
+  resetRateLimit,
+  staffPasswordAccountRateLimitKey,
+} from '@/server/rate-limit';
 import { env } from '@taxtronik/config';
 
 const { compare, hash } = bcrypt;
@@ -110,6 +116,11 @@ export async function checkPasswordAction(
     return { ok: false, error: GENERIC_LOGIN_ERROR };
   }
 
+  const accountRl = await checkStaffPasswordAccountLimit(staffUser.id);
+  if (!accountRl.ok) {
+    return { ok: false, error: GENERIC_LOGIN_ERROR };
+  }
+
   const passwordOk = await compare(password, staffUser.passwordHash);
   if (!passwordOk) {
     // Account-gebundener Lockout (S2 + L-4): Lockout greift erst bei N _distinkten_
@@ -128,6 +139,7 @@ export async function checkPasswordAction(
 
   // Erfolg → Counter zurücksetzen (IP-RL + Account-Counter)
   await resetRateLimit(ip ? `staff-pw:${ip}` : 'staff-pw:global');
+  await resetRateLimit(staffPasswordAccountRateLimitKey(staffUser.id));
   resetFailedLogin(prismaOwner, staffUser.id).catch(() => void 0);
 
   // DEV-ONLY: TOTP überspringen → UI loggt direkt ein (ohne Code/Setup).

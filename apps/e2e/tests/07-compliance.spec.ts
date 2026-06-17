@@ -1198,7 +1198,7 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
 
     if (invoiceModeUnderTest === 'EXTERNAL') {
       await firstInvLink.click();
-      await expect(page.getByText(/PDF:/i), 'EXTERNAL-Rechnung muss eine GoBD-archivierte PDF anzeigen').toBeVisible({ timeout: 5000 });
+      await expect(page.getByText(/application\/pdf/i), 'EXTERNAL-Rechnung muss eine GoBD-archivierte PDF anzeigen').toBeVisible({ timeout: 5000 });
       await expect(page.getByText(/Versendet/i).first(), 'EXTERNAL-Rechnung muss nach Upload als versendet gelten').toBeVisible({ timeout: 5000 });
       await ctx.close();
       return;

@@ -465,7 +465,22 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     await page.locator('#signerName').fill('E2E Test Unterzeichner');
     await page.locator('#signerEmail').fill('test@example.com');
     await page.locator('#subject').fill('E2E Test Vollmacht');
-    await page.locator('#scope').fill('## Umfang\n\nHiermit bevollmachtige ich...');
+    // POA-Modus ist konfigurierbar (Default PDF-Template/extern, alternativ
+    // In-App Markdown). Beide Pfade abdecken: Scope-Textarea wenn vorhanden,
+    // sonst PDF-Upload über den FileButton (#poaPdf).
+    if (await page.locator('#scope').isVisible().catch(() => false)) {
+      await page.locator('#scope').fill('## Umfang\n\nHiermit bevollmachtige ich...');
+    } else {
+      const pdf = Buffer.from(
+        '%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n' +
+        '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n' +
+        '3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R>>endobj\n' +
+        'xref\n0 4\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000115 00000 n \n' +
+        'trailer<</Size 4/Root 1 0 R>>\nstartxref\n190\n%%EOF\n',
+        'latin1',
+      );
+      await page.locator('#poaPdf').setInputFiles({ name: 'vollmacht.pdf', mimeType: 'application/pdf', buffer: pdf });
+    }
     const s = page.getByRole('button', { name: /Anlegen/ });
     await expect(s).toBeVisible({ timeout: 5000 });
     await s.click();

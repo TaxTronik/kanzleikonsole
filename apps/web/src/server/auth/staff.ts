@@ -22,7 +22,13 @@ import { evidenceService } from '@/server/container';
 import { consumeTotpCode } from './totp-replay';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { log } from '@/server/logger';
-import { getClientIp, checkIpOrGlobalLimit, resetRateLimit } from '@/server/rate-limit';
+import {
+  getClientIp,
+  checkIpOrGlobalLimit,
+  checkStaffPasswordAccountLimit,
+  resetRateLimit,
+  staffPasswordAccountRateLimitKey,
+} from '@/server/rate-limit';
 import { fireAndForget } from '@/server/util/fire-and-forget';
 
 // DEV-/E2E-only: TOTP-Bypass fuer lokale Entwicklung und den lokalen CI-E2E-
@@ -180,8 +186,9 @@ async function hydrateStaffSessionFromToken(session: Session, token: unknown): P
   } catch (err) {
     log.warn(
       { err: (err as Error).message },
-      'staff-auth: Session-Existenzpruefung fehlgeschlagen - durchgelassen',
+      'staff-auth: Session-Existenzpruefung fehlgeschlagen - invalidiert (Re-Login erzwungen)',
     );
+    return session;
   }
 
   session.user.staffId = token.staffId;
@@ -259,6 +266,12 @@ const staffConfig: NextAuthConfig = {
         if (staffUser.lockedUntil && staffUser.lockedUntil > new Date()) return null;
 
         // Passwort prüfen
+        const accountRl = await checkStaffPasswordAccountLimit(staffUser.id);
+        if (!accountRl.ok) {
+          log.warn({ staffId: staffUser.id }, 'staff-auth: account password-rate-limit hit');
+          return null;
+        }
+
         const passwordOk = await compare(password, staffUser.passwordHash);
         if (!passwordOk) {
           // Account-gebundener Lockout (S2): IP-RL allein hilft nicht gegen
@@ -285,6 +298,7 @@ const staffConfig: NextAuthConfig = {
             'staff-auth: DEV_SKIP_TOTP aktiv — TOTP übersprungen (NUR Dev!)',
           );
           await resetRateLimit(ip ? `staff-authorize:${ip}` : 'staff-authorize:global');
+          await resetRateLimit(staffPasswordAccountRateLimitKey(staffUser.id));
           fireAndForget('resetFailedLogin', resetFailedLogin(prismaOwner, staffUser.id));
           // RF-12: auch der Dev-Login landet in der Chain (method markiert ihn).
           await prismaOwner.$transaction((tx) =>
@@ -312,6 +326,7 @@ const staffConfig: NextAuthConfig = {
         }
 
         // TOTP ist Pflicht — ohne Enrollment kein Login
+        await resetRateLimit(staffPasswordAccountRateLimitKey(staffUser.id));
         if (!staffUser.totpSecretEnc || !staffUser.totpEnrolledAt) return null;
 
         // TOTP-Code prüfen

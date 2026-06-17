@@ -82,7 +82,11 @@ export async function GET(
   // App-proxied: Bytes intern aus SeaweedFS holen und direkt durchstreamen
   // (O(1)-Speicher). Der Object-Store ist nie öffentlich erreichbar.
   const obj = await streamObject(doc.bucket, doc.key);
-  const contentType = effectiveDocumentMime({ ...doc, mimeType: obj.contentType ?? doc.mimeType });
+  // Content-Type aus der DB (doc.mimeType) — zuverlässig der beim Upload
+  // validierte Wert. obj.contentType von SeaweedFS ist oft ein generisches
+  // 'application/octet-stream' (wenn beim PUT kein ContentType gesetzt wurde)
+  // und würde den echten Typ verdecken (z. B. PDF-Download als octet-stream).
+  const contentType = effectiveDocumentMime(doc);
   const headers: Record<string, string> = {
     'content-type': contentType,
     'content-disposition': `attachment; filename="${sanitizeFilenameForHeader(filenameWithExtension(doc.title, contentType))}"`,
