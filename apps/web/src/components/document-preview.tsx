@@ -28,30 +28,22 @@ export function DocumentPreviewModal({
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
   const [url, setUrl] = useState<string | null>(null);
-  const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const [mimeType, setMimeType] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    let nextObjectUrl: string | null = null;
     setLoading(true);
     setError(null);
     setUrl(null);
-    setObjectUrl(null);
     (async () => {
       try {
         const res = await fetch(`${apiPrefix}/documents/${documentId}/preview-url`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = (await res.json()) as { url: string; mimeType: string };
-        const previewRes = await fetch(data.url, { cache: 'no-store' });
-        if (!previewRes.ok) throw new Error(`HTTP ${previewRes.status}`);
-        const bytes = await previewRes.arrayBuffer();
-        nextObjectUrl = URL.createObjectURL(new Blob([bytes], { type: data.mimeType }));
         if (cancelled) return;
         setUrl(data.url);
-        setObjectUrl(nextObjectUrl);
         setMimeType(data.mimeType);
       } catch (e) {
         if (!cancelled) setError((e as Error).message);
@@ -61,7 +53,6 @@ export function DocumentPreviewModal({
     })();
     return () => {
       cancelled = true;
-      if (nextObjectUrl) URL.revokeObjectURL(nextObjectUrl);
     };
   }, [documentId, apiPrefix]);
 
@@ -120,12 +111,12 @@ export function DocumentPreviewModal({
               Vorschau konnte nicht geladen werden: {error}
             </div>
           )}
-          {url && objectUrl && !loading && !error && (
+          {url && !loading && !error && (
             <>
               {isImage ? (
-                <img src={objectUrl} alt={documentTitle} className="w-full h-full object-contain bg-white" />
+                <img src={url} alt={documentTitle} className="w-full h-full object-contain bg-white" />
               ) : isPdf ? (
-                <iframe src={objectUrl} className="w-full h-full border-0" title={documentTitle} />
+                <iframe src={url} className="w-full h-full border-0" title={documentTitle} />
               ) : officeKind ? (
                 <OfficeViewer url={url} kind={officeKind} />
               ) : (

@@ -24,21 +24,6 @@ import {
   previewSecurityHeaders,
 } from '@/server/storage/preview-mime';
 
-async function sniffPreviewMime(doc: {
-  mimeType: string;
-  title: string;
-  classification: string;
-  bucket: string;
-  key: string;
-  isPoaDocument: boolean;
-}): Promise<string> {
-  const metadataMime = effectiveDocumentMime(doc);
-  const bytes = await fetchObjectBytes(doc.bucket, doc.key);
-  const detected = detectMimeFromMagicBytes(bytes);
-  const detectedMime = detected ? previewContentType(detected, doc.title) : 'application/octet-stream';
-  return detectedMime !== 'application/octet-stream' ? detectedMime : metadataMime;
-}
-
 async function fetchPreviewBytes(doc: {
   mimeType: string;
   title: string;
@@ -144,6 +129,6 @@ export async function GET(
   }
 
   const url = `${req.nextUrl.pathname}?stream=1`;
-  const mimeType = await sniffPreviewMime(doc).catch(() => previewContentType(doc.mimeType, doc.title));
+  const mimeType = effectiveDocumentMime(doc);
   return NextResponse.json({ url, mimeType, title: doc.title });
 }

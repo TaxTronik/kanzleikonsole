@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 
 /**
  * Nach „Jetzt prüfen" / Recovery-Checkpoint pollt diese Komponente nur den
@@ -14,8 +14,6 @@ export function AuditVerifyAutoRefresh({
   requestId?: string | null;
 }) {
   const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
   const hasQueuedCheck = !!requestId;
 
   useEffect(() => {
@@ -24,14 +22,6 @@ export function AuditVerifyAutoRefresh({
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const start = Date.now();
-    const finish = (): void => {
-      const qs = new URLSearchParams(searchParams.toString());
-      qs.delete('verify');
-      qs.delete('requestId');
-      const next = qs.toString() ? `${pathname}?${qs.toString()}` : pathname;
-      router.replace(next, { scroll: false });
-      router.refresh();
-    };
     const tick = async (): Promise<void> => {
       if (stopped) return;
       try {
@@ -41,7 +31,7 @@ export function AuditVerifyAutoRefresh({
         if (res.ok) {
           const data = (await res.json()) as { done?: boolean };
           if (data.done) {
-            finish();
+            router.refresh();
             return;
           }
         }
@@ -56,6 +46,6 @@ export function AuditVerifyAutoRefresh({
       stopped = true;
       if (timer) clearTimeout(timer);
     };
-  }, [hasQueuedCheck, pathname, requestId, router, searchParams]);
+  }, [hasQueuedCheck, requestId, router]);
   return null;
 }
