@@ -253,6 +253,7 @@ export function SmtpForm({ initial, envFallback, defaultTestTo }: Props) {
       {/* Test-Versand */}
       <form
         onSubmit={onTest}
+        data-settings-no-track
         className="rounded-md border border-default bg-surface-raised p-4 space-y-2"
       >
         <div className="text-sm font-medium text-primary">
