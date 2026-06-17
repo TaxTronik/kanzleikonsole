@@ -133,7 +133,13 @@ services:
       - "server"
       - "-dir=/data"
       - "-master.volumeSizeLimitMB=2048"
-      - "-volume.max=0"
+      # -volume.max: maximale Anzahl Volumes pro Volume-Server. Der Master
+      # vergibt neue Volumes nur an Datenknoten mit freien Slots (max > belegt).
+      # Ein Wert von 0 wird als „0 freie Slots" gemeldet → der Master findet
+      # „Not enough data nodes found" / „0 node candidates" und JEDE Collection
+      # ohne bestehende Volumes (z. B. gobd) kann nicht mehr wachsen. 500 × 2 GB
+      # = 1 TB — für die Kanzlei-Größe praktisch unbegrenzt.
+      - "-volume.max=500"
       - "-s3"
       - "-s3.config=/etc/seaweedfs/s3.json"
       - "-s3.port=8333"
