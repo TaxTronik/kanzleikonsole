@@ -11,13 +11,16 @@
 // =============================================================================
 
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 
 const REFRESH_INTERVAL_MS = 30_000;
 
 export function AutoRefresh() {
   const router = useRouter();
+  const pathname = usePathname();
   useEffect(() => {
+    if (pathname.startsWith('/staff/admin/audit')) return;
+
     function isTyping(): boolean {
       const ae = document.activeElement;
       if (!ae) return false;
@@ -44,6 +47,6 @@ export function AutoRefresh() {
       clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [router]);
+  }, [pathname, router]);
   return null;
 }

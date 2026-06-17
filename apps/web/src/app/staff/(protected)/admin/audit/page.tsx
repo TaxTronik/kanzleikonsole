@@ -175,7 +175,7 @@ export default async function AuditLogPage({
   return (
     <div className="p-8">
       {sp.verify === 'queued' && (
-        <AuditVerifyAutoRefresh requestId={sp.requestId} resultRequestId={verifyResult?.requestId ?? null} />
+        <AuditVerifyAutoRefresh requestId={sp.requestId} />
       )}
       <div className="flex items-end justify-between mb-6">
         <div>
