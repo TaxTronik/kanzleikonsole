@@ -16,7 +16,7 @@
 
 import type { TenantContext } from '@taxtronik/db';
 import { withTenantContext } from '@taxtronik/db';
-import { commitBytesWithTier } from '@taxtronik/storage';
+import { commitBytesWithTier, type CommitDocumentResult } from '@taxtronik/storage';
 import { prismaBytes } from '@/server/db/prisma-bytes';
 import { evidenceService } from '@/server/container';
 import { generateXRechnungCii } from '@/server/invoicing/xrechnung';
@@ -119,15 +119,25 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
     vatId: loaded.client.vatId,
     email: loaded.client.invoiceEmail,
   };
-  const cii = generateXRechnungCii(xInput, seller, buyer);
-  const pdfBytes = await generateZugferdPdf(xInput, seller, buyer, cii);
+  let pdfBytes: Uint8Array;
+  try {
+    const cii = generateXRechnungCii(xInput, seller, buyer);
+    pdfBytes = await generateZugferdPdf(xInput, seller, buyer, cii);
+  } catch (e) {
+    // Schritt-Kontext im Fehlertext — sonst ist „ZUGFeRD geht nicht" nicht
+    // von der PDF-Generierung vs. Ablage unterscheidbar.
+    throw new Error(`ZUGFeRD-PDF-Generierung fehlgeschlagen: ${(e as Error).message}`, { cause: e });
+  }
 
-  // 4. Revisionssicher ablegen (GOBD-Tier, Object-Lock) — ebenfalls ausserhalb Tx.
-  //    skipScan: die PDF wurde von der App selbst erzeugt (kein Nutzer-Upload),
-  //    ClamAV würde hier nur Zeit kosten und konnte am INSTREAM-TCP hängen —
-  //    Hauptursache des früheren „ZUGFeRD lädt ewig". Die documentVersion weiter
-  //    unten wird ohnehin mit scanStatus 'CLEAN' angelegt.
-  const stored = await commitBytesWithTier({ fileData: Buffer.from(pdfBytes), tier: 'GOBD', tenantId: ctx.tenantId, skipScan: true });
+  // 4. Revisionssicher ablegen (GOBD-Tier, Object-Lock COMPLIANCE im GOBD-Bucket)
+  //    — ebenfalls ausserhalb Tx. skipScan: App-eigene PDF (kein Nutzer-Upload),
+  //    ClamAV ist hier sinnlos; die documentVersion wird mit scanStatus 'CLEAN' angelegt.
+  let stored: CommitDocumentResult;
+  try {
+    stored = await commitBytesWithTier({ fileData: Buffer.from(pdfBytes), tier: 'GOBD', tenantId: ctx.tenantId, skipScan: true });
+  } catch (e) {
+    throw new Error(`ZUGFeRD-Ablage im GOBD-Object-Store fehlgeschlagen: ${(e as Error).message}`, { cause: e });
+  }
 
   // 5. Document + Version anlegen + verknüpfen (Tx). Race-sicher: hat ein
   //    paralleler Erst-Download inzwischen verknüpft, nehmen wir dessen Bytes —

@@ -52,10 +52,12 @@ export async function GET(
         { status: 504 },
       );
     }
-    // Meist Object-Store (SeaweedFS) nicht erreichbar — dedizierte Meldung statt
-    // generisch, damit der Admin die Ursache (Netz/Storage) erkennt.
+    // Echten Fehlertext durchreichen (enthält Schritt-Kontext aus
+    // ensureZugferdArchive: PDF-Generierung vs. GOBD-Ablage) — sonst raten
+    // wir bei „ZUGFeRD geht nicht" nur über die Ursache.
+    const detail = err instanceof Error ? err.message : String(err);
     return NextResponse.json(
-      { error: 'generation_failed', message: 'ZUGFeRD-PDF konnte nicht erzeugt werden — Object-Store prüfen (S3_ENDPOINT / SeaweedFS erreichbar?).' },
+      { error: 'generation_failed', message: detail },
       { status: 502 },
     );
   }

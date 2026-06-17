@@ -221,7 +221,7 @@ export async function markSentAction(
       error:
         err instanceof TimeoutError
           ? 'ZUGFeRD-Archiv konnte nicht rechtzeitig erzeugt werden — bitte erneut versuchen.'
-          : 'ZUGFeRD-Archiv konnte nicht erzeugt werden — Object-Store prüfen (SeaweedFS erreichbar?).',
+          : `ZUGFeRD-Archiv konnte nicht erzeugt werden: ${err instanceof Error ? err.message : String(err)}`,
     };
   }
   if (!archive.ok && archive.code !== 'not_applicable') {
