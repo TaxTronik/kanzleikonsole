@@ -23,6 +23,7 @@ import {
   StandardFonts,
   rgb,
   type PDFFont,
+  type PDFImage,
 } from 'pdf-lib';
 import type { XRechnungInvoice, XRechnungBuyer } from './xrechnung';
 import { computeVatTotals } from './vat';
@@ -89,10 +90,27 @@ export async function generateZugferdPdf(
   seller: SellerInfo,
   buyer: XRechnungBuyer,
   ciiXml: string,
+  logoDataUrl?: string | null,
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
+
+  // Optional: Kanzlei-Logo (PNG/JPEG aus dem Tenant-Branding). WebP wird von
+  // pdf-lib nicht unterstützt → dann kein Logo statt eines Fehlers.
+  let logoImg: PDFImage | null = null;
+  if (logoDataUrl) {
+    try {
+      const m = /^data:image\/(png|jpe?g);base64,(.+)$/i.exec(logoDataUrl);
+      if (m) {
+        const bytes = Buffer.from(m[2]!, 'base64');
+        const isPng = m[1]!.toLowerCase() === 'png';
+        logoImg = isPng ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
+      }
+    } catch {
+      logoImg = null;
+    }
+  }
 
   // A4
   const pageWidth = 595;
@@ -112,6 +130,12 @@ export async function generateZugferdPdf(
   };
 
   // Verkäufer-Block (oben links, klein)
+  if (logoImg) {
+    const logoH = 36;
+    const logoW = (logoImg.width / logoImg.height) * logoH;
+    ctx.page.drawImage(logoImg, { x: margin, y: ctx.y - logoH, width: logoW, height: logoH });
+    ctx.y -= logoH + 6;
+  }
   drawText(ctx, seller.name, margin, ctx.y, { bold: true, size: FONT_SIZE_SMALL });
   ctx.y -= 11;
   if (seller.street) {
@@ -248,14 +272,16 @@ export async function generateZugferdPdf(
     drawText(ctx, `Verwendungszweck: ${invoice.number}`, margin, ctx.y); ctx.y -= 11;
   }
 
-  // Footer
-  drawText(
-    ctx,
-    'Diese PDF enthält eine maschinenlesbare ZUGFeRD/Factur-X-XML (Profil EN 16931).',
-    margin,
-    margin + 10,
-    { size: 7, color: rgb(0.5, 0.5, 0.5) },
-  );
+  // Footer auf JEDER Seite: Kanzlei + ZUGFeRD-Hinweis + Seitenzahl.
+  const pages = doc.getPages();
+  const pageCount = pages.length;
+  const sellerLine =
+    `${seller.name}${seller.postalCode || seller.city ? ' · ' : ''}${(seller.postalCode ?? '')} ${seller.city ?? ''}`.trim();
+  pages.forEach((p, i) => {
+    p.drawText(sellerLine, { x: margin, y: margin - 4, size: 7, font, color: rgb(0.5, 0.5, 0.5) });
+    p.drawText(`Seite ${i + 1} von ${pageCount}`, { x: pageWidth - margin - 60, y: margin - 4, size: 7, font, color: rgb(0.5, 0.5, 0.5) });
+    p.drawText('Diese PDF enthält eine maschinenlesbare ZUGFeRD/Factur-X-XML (Profil EN 16931).', { x: margin, y: margin - 14, size: 7, font, color: rgb(0.5, 0.5, 0.5) });
+  });
 
   // ----- XML-Anhang einbetten ----------------------------------------------
   await embedFacturXAttachment(doc, ciiXml);

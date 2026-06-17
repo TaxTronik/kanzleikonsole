@@ -8,12 +8,14 @@ import { emitN8nEvent } from '@/server/n8n/emit';
 import { commitDocumentFromBytes } from '@taxtronik/storage';
 import { createDocumentWithVersion } from '@/server/documents/upload-helpers';
 import { sendTemplateMail } from '@/server/mail/dispatch';
+import { fireAndForget } from '@/server/util/fire-and-forget';
+import { portalBaseUrl } from '@taxtronik/config';
 import { toActionError } from '@/server/auth/rbac';
 import { ensureZugferdArchive } from '@/server/invoicing/archive';
 import { computeVatTotals } from '@/server/invoicing/vat';
 import { allocateInvoiceNumber, isValidInvoiceTransition } from '@/server/invoicing/number';
 import { readModules, type InvoiceMode } from '@/server/settings/modules';
-import { round2 } from '@/lib/fmt';
+import { round2, fmtEUR, fmtDateShort } from '@/lib/fmt';
 import { withTimeout, TimeoutError } from '@/lib/with-timeout';
 import { log } from '@/server/logger';
 import { staffActionGuard, withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
@@ -267,6 +269,40 @@ export async function markSentAction(
   // Race verloren → kein doppeltes n8n-Event, kein doppeltes Revalidate. Der
   // gewünschte Endzustand (SENT) ist durch das konkurrierende Request erreicht.
   if (!sent) return { ok: true };
+
+  // Mandant über den Versand informieren. Template-Slug 'invoice-sent' — falls
+  // im ACP keines definiert ist, greift der Fallback (hartcodiert). Fire-and-
+  // forget: ein Mail-Versand-Fehler scheitert nicht den Rechnungs-Versand.
+  const client = await withTenantContext(ctx, (tx) =>
+    tx.client.findUnique({
+      where: { id: sent.clientId },
+      select: { name: true, invoiceEmail: true },
+    }),
+  );
+  if (client?.invoiceEmail) {
+    fireAndForget('sendTemplateMail (invoice-sent)', sendTemplateMail({
+      tenantId,
+      slug: 'invoice-sent',
+      to: client.invoiceEmail,
+      vars: {
+        client: { name: client.name },
+        invoice: {
+          number: sent.number,
+          total: fmtEUR(Number(sent.totalAmount.toString())),
+          dueDate: sent.dueDate ? fmtDateShort(sent.dueDate) : '—',
+        },
+        link: `${portalBaseUrl}/portal/invoices`,
+      },
+      fallback: {
+        subject: 'Neue Rechnung — {{client.name}}',
+        bodyMd:
+          'Sehr geehrte/r {{client.name}},\n\n' +
+          'eine neue Rechnung ({{invoice.number}}) über {{invoice.total}} steht in Ihrem Mandantenportal bereit.\n' +
+          'Fälligkeit: {{invoice.dueDate}}\n\n' +
+          'Zur Übersicht: {{link}}',
+      },
+    }));
+  }
 
   emitN8nEvent('invoice.due', { tenantId, invoiceId: parsed.data.invoiceId });
   revalidatePath('/staff/invoices');

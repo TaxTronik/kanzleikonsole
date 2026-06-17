@@ -22,6 +22,7 @@ import { evidenceService } from '@/server/container';
 import { generateXRechnungCii } from '@/server/invoicing/xrechnung';
 import { generateZugferdPdf } from '@/server/invoicing/zugferd';
 import { readSellerInfo } from '@/server/settings/tenant-settings';
+import { readBranding } from '@/server/settings/branding';
 
 export type ArchiveResult =
   | { ok: true; bucket: string; key: string; number: string }
@@ -121,8 +122,9 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
   };
   let pdfBytes: Uint8Array;
   try {
+    const branding = await readBranding(ctx);
     const cii = generateXRechnungCii(xInput, seller, buyer);
-    pdfBytes = await generateZugferdPdf(xInput, seller, buyer, cii);
+    pdfBytes = await generateZugferdPdf(xInput, seller, buyer, cii, branding.logoDataUrl);
   } catch (e) {
     // Schritt-Kontext im Fehlertext — sonst ist „ZUGFeRD geht nicht" nicht
     // von der PDF-Generierung vs. Ablage unterscheidbar.

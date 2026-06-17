@@ -48,16 +48,22 @@ export async function GET(
       // Zugriffsmodell (vertraulich-Flag / RESTRICTED): wie /download —
       // Verweigerung → null → 404 (kein Existenz-Leak), VOR dem Audit-Eintrag.
       if (d.clientId && !(await canAccessClientTx(tx, session, d.clientId))) return null;
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'document.preview',
-        resourceType: 'document',
-        resourceId: id,
-        ip: getClientIp(req.headers),
-        userAgent: req.headers.get('user-agent'),
-      });
+      // Audit-Nebeneffekt: darf die Vorschau nicht blockieren (ein Audit-Fehler
+      // soll nicht verhindern, dass ein berechtigter Nutzer das Dokument sieht).
+      try {
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'document.preview',
+          resourceType: 'document',
+          resourceId: id,
+          ip: getClientIp(req.headers),
+          userAgent: req.headers.get('user-agent'),
+        });
+      } catch {
+        // bewusst schlucken — Vorschau hat Vorrang vor dem Audit-Nebeneintrag.
+      }
       return {
         title: d.title,
         mimeType: d.mimeType,
@@ -77,7 +83,12 @@ export async function GET(
   // MIME-Whitelist verhindert, dass z. B. als text/html hochgeladene
   // Dateien inline gerendert werden (XSS).
   if (req.nextUrl.searchParams.get('stream') === '1') {
-    const obj = await streamObject(doc.bucket, doc.key);
+    let obj;
+    try {
+      obj = await streamObject(doc.bucket, doc.key);
+    } catch {
+      return NextResponse.json({ error: 'storage_unavailable' }, { status: 502 });
+    }
     const headers: Record<string, string> = {
       'content-type': previewContentType(doc.mimeType),
       'content-disposition': previewDisposition(doc.mimeType, doc.title),

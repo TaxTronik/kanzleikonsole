@@ -1,9 +1,9 @@
 ﻿import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { Inbox, FileText, Clock, ClipboardList, CheckCircle2 } from 'lucide-react';
+import { Inbox, FileText, Clock, ClipboardList, CheckCircle2, Receipt } from 'lucide-react';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
-import { fmtDateShort } from '@/lib/fmt';
+import { fmtDateShort, fmtEUR } from '@/lib/fmt';
 
 export default async function PortalDashboardPage() {
   const session = await portalAuth();
@@ -11,7 +11,7 @@ export default async function PortalDashboardPage() {
 
   const { tenantId, contactId, clientId } = session.user;
 
-  const [openRequestCount, documentCount, recentRequests, todoRequests, todoForms] =
+  const [openRequestCount, documentCount, recentRequests, todoRequests, todoForms, openInvoices] =
     await withTenantContext(
       { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' },
       async (tx) =>
@@ -38,6 +38,14 @@ export default async function PortalDashboardPage() {
             select: { id: true, template: { select: { name: true } } },
             orderBy: { createdAt: 'desc' },
             take: 10,
+          }),
+          // Offene Rechnungen (versendet / überfällig) — Mandant sieht sie im
+          // Portal; hier als Überblick auf der Startseite.
+          tx.invoice.findMany({
+            where: { clientId, status: { in: ['SENT', 'OVERDUE'] } },
+            select: { id: true, number: true, dueDate: true, totalAmount: true, status: true },
+            orderBy: { dueDate: 'asc' },
+            take: 5,
           }),
         ]),
     );
@@ -110,6 +118,43 @@ export default async function PortalDashboardPage() {
           accent="gray"
           large={false}
         />
+      </div>
+
+      <div className="card overflow-hidden mb-8">
+        <div className="px-6 py-4 border-b border-default flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Receipt className="h-4 w-4 text-brand-600" />
+            <h2 className="text-sm font-medium text-primary">Offene Rechnungen</h2>
+            {openInvoices.length > 0 && (
+              <span className="badge-yellow">{openInvoices.length}</span>
+            )}
+          </div>
+          <Link href="/portal/invoices" className="text-sm text-brand-700 hover:underline">
+            Alle anzeigen
+          </Link>
+        </div>
+        {openInvoices.length === 0 ? (
+          <div className="px-6 py-10 text-center">
+            <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
+            <p className="text-sm text-muted">Keine offenen Rechnungen.</p>
+          </div>
+        ) : (
+          <ul className="divide-y divide-border-subtle">
+            {openInvoices.map((inv) => (
+              <li key={inv.id} className="px-6 py-3 flex items-center justify-between gap-3">
+                <Link href="/portal/invoices" className="flex items-center gap-3 min-w-0 hover:underline">
+                  <Receipt className="h-4 w-4 text-muted shrink-0" />
+                  <span className="text-sm text-primary truncate">Rechnung {inv.number}</span>
+                </Link>
+                <span className="text-xs text-muted shrink-0 flex items-center gap-3">
+                  <span>{fmtEUR(Number(inv.totalAmount.toString()))}</span>
+                  {inv.dueDate && <span>fällig {fmtDateShort(inv.dueDate)}</span>}
+                  {inv.status === 'OVERDUE' && <span className="badge-red">überfällig</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <div className="card overflow-hidden">
