@@ -231,9 +231,19 @@ export function sanitizeFilenameForHeader(name: string): string {
   // Ab CR/LF alles verwerfen: ein Angreifer darf keinen pseudo-Header-Namen
   // hinter dem Zeilenumbruch in den sichtbaren Dateinamen retten.
   const firstLine = name.split(/[\r\n]/)[0] ?? '';
-  // \\, " entfernen; auch Control-Chars (0x00-0x1F) raus
-  // eslint-disable-next-line no-control-regex
-  return firstLine.replace(/[\\"\x00-\x1F]/g, '').slice(0, 200) || 'download';
+  // \\, " entfernen; auch Control-Chars (0x00-0x1F) raus.
+  // Zusätzlich Non-Latin-1 (>= U+0100) ersetzen: HTTP-Header-Werte müssen
+  // ByteString (<=255) sein, sonst wirft Node "Cannot convert argument to a
+  // ByteString" (z. B. EM DASH U+2014 in "Vollmacht — …"). Betrifft Preview-
+  // und Download-Content-Disposition. Umlaute (äöüß <=255) bleiben erhalten.
+  return (
+    firstLine
+      .replace(/[\u0100-\uFFFF]/g, '_')
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\\"\x00-\x1F]/g, '')
+      .trim()
+      .slice(0, 200) || 'download'
+  );
 }
 
 // ---------------------------------------------------------------------------

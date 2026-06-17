@@ -132,7 +132,7 @@ export async function createPoaAction(
           documentData: {
             tenantId,
             clientId: data.clientId,
-            title: `Vollmacht — ${data.subject}`,
+            title: `Vollmacht - ${data.subject}`,
             classification: 'GOBD_CONTRACT',
             mimeType: 'application/pdf',
           },
