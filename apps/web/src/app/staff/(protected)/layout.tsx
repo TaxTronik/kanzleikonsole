@@ -13,6 +13,7 @@ import { UiModeToggle } from '@/components/ui-mode-toggle';
 import { readBranding } from '@/server/settings/branding';
 import { readModules } from '@/server/settings/modules';
 import { brandPaletteStyle } from '@/lib/brand-palette';
+import { TenantLogo } from '@/components/tenant-logo';
 
 // Vollständige Liste — wird im Layout pro Tenant gefiltert (Module-Toggles).
 type ModuleKey =
@@ -101,9 +102,9 @@ export default async function StaffLayout({ children }: { children: React.ReactN
       <aside className="app-sidebar w-64 bg-white dark:bg-gray-900 border-r border-default flex flex-col">
         {/* Logo */}
         <div className="h-16 flex flex-col justify-center px-4 border-b border-default min-w-0">
-          {branding.logoDataUrl ? (
-            <img
-              src={branding.logoDataUrl}
+          {branding.logoDataUrl || branding.logoDataUrlDark ? (
+            <TenantLogo
+              branding={branding}
               alt={branding.displayName}
               className="h-9 max-w-full object-contain self-start"
             />

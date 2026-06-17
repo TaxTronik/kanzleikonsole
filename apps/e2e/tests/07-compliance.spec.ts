@@ -1250,7 +1250,7 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
     }
 
     expect(onDetail, 'Rechnungsdetailseite muss erreichbar sein').toBe(true);
-    const sendBtn = page.getByRole('button', { name: /versendet markieren/i });
+    const sendBtn = page.getByRole('button', { name: /an mandant übergeben/i });
     await expect(sendBtn, 'DRAFT-Rechnung muss einen Versand-Button anzeigen').toBeVisible({ timeout: 5000 });
     await sendBtn.click();
     await page.waitForTimeout(3000);

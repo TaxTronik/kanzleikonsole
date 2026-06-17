@@ -8,7 +8,7 @@
 
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
-import { Dices, ShieldCheck, ShieldAlert, RefreshCw, Hourglass, KeyRound, Trash2 } from 'lucide-react';
+import { Dices, ShieldCheck, ShieldAlert, RefreshCw, Hourglass, KeyRound, Trash2, Copy, Check } from 'lucide-react';
 import { fmtDateTimeShort } from '@/lib/fmt';
 import type { LosZiehung, PendingLos, LosPruefErgebnis, LosRahmenTyp } from '@/server/risk';
 import type { IbmTokenStatus } from '@/server/settings/quantenlos';
@@ -71,12 +71,35 @@ function RahmenTypBadge({ typ }: { typ: LosRahmenTyp }) {
     : <span className="badge badge-gray">Risk-Review</span>;
 }
 
-function Mono({ value, max = 24 }: { value: string; max?: number }) {
-  const kurz = value.length > max ? `${value.slice(0, max)}…` : value;
+// Langer kryptografischer Wert (Commitment/Hash/Job-ID) — VOLLSTÄNDIG und
+// kopierbar statt auf 24 Zeichen abgeschnitten. Bisher war der volle Wert nur
+// per Title-Tooltip erreichbar (auf Touch-Geräten gar nicht), was forensische
+// Vergleiche zweier Commitments praktisch unmöglich machte.
+function HashWert({ label, value }: { label: string; value: string }) {
+  const [kopiert, setKopiert] = useState(false);
   return (
-    <code className="font-mono text-xs text-secondary break-all" title={value}>
-      {kurz}
-    </code>
+    <div className="min-w-0">
+      <div className="text-[11px] uppercase tracking-wide text-muted mb-0.5">{label}</div>
+      <div className="flex items-start gap-1.5">
+        <code className="font-mono text-xs text-primary break-all">{value}</code>
+        <button
+          type="button"
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(value);
+              setKopiert(true);
+              setTimeout(() => setKopiert(false), 1200);
+            } catch {
+              /* Clipboard nicht verfügbar (z. B. unsichere Herkunft) */
+            }
+          }}
+          className="text-disabled hover:text-brand-700 shrink-0 mt-0.5"
+          title="Wert kopieren"
+        >
+          {kopiert ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -359,10 +382,13 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
             <div className="flex-1 text-sm">
               <p className="font-medium text-yellow-900">QPU-Job wartet in der IBM-Queue</p>
               <p className="text-xs text-yellow-800 mt-1">
-                Job-ID <Mono value={pending.jobId} max={40} /> · Commitment{' '}
-                <Mono value={pending.commitment} /> · k={pending.k} aus n={pending.rahmen.length} ·
-                beantragt {fmtDateTimeShort(new Date(pending.beantragtAm))}
+                k={pending.k} aus n={pending.rahmen.length} · beantragt{' '}
+                {fmtDateTimeShort(new Date(pending.beantragtAm))}
               </p>
+              <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1.5">
+                <HashWert label="IBM-Job-ID" value={pending.jobId} />
+                <HashWert label="Commitment" value={pending.commitment} />
+              </div>
               {queueHinweis && <p className="text-xs text-yellow-800 mt-1">{queueHinweis}</p>}
             </div>
             <button onClick={abholen} disabled={busy} className="btn-secondary text-xs">
@@ -403,12 +429,15 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
                           {z.zeitraum ? ` · Zeitraum ${z.zeitraum.von} – ${z.zeitraum.bis}` : ''}
                         </span>
                       </div>
-                      <div className="text-xs text-secondary space-x-3">
-                        <span>Commitment: <Mono value={z.commitment} /></span>
-                        {z.jobId && <span>IBM-Job: <Mono value={z.jobId} max={40} /></span>}
-                        {z.rohCountsSha256 && <span>Roh-Counts: <Mono value={z.rohCountsSha256} max={16} /></span>}
-                        <span className="text-muted">{z.extraktor} → {z.drbg}</span>
-                      </div>
+                      <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1.5 mt-1">
+                        <HashWert label="Commitment" value={z.commitment} />
+                        {z.jobId && <HashWert label="IBM-Job-ID" value={z.jobId} />}
+                        {z.rohCountsSha256 && <HashWert label="Roh-Counts (SHA-256)" value={z.rohCountsSha256} />}
+                        <div className="min-w-0">
+                          <div className="text-[11px] uppercase tracking-wide text-muted mb-0.5">Extraktor / DRBG</div>
+                          <div className="text-xs text-primary">{z.extraktor} &rarr; {z.drbg}</div>
+                        </div>
+                      </dl>
                     </div>
                     <div className="flex flex-col items-end gap-1">
                       <button

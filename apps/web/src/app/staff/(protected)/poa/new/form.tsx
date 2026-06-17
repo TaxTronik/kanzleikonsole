@@ -9,7 +9,7 @@ interface Client {
   contacts: Array<{ id: string; fullName: string; email: string }>;
 }
 
-export function NewPoaForm({ clients }: { clients: Client[] }) {
+export function NewPoaForm({ clients, poaMode }: { clients: Client[]; poaMode: 'MARKDOWN_OTP' | 'PDF_TEMPLATE' }) {
   const today = new Date().toISOString().slice(0, 10);
   const [clientId, setClientId] = useState(clients[0]?.id ?? '');
   const [contactId, setContactId] = useState('');
@@ -110,19 +110,27 @@ export function NewPoaForm({ clients }: { clients: Client[] }) {
         />
       </div>
 
-      <div>
-        <label className="label" htmlFor="scope">Umfang (Markdown)</label>
-        <textarea
-          id="scope"
-          name="scope"
-          rows={10}
-          className="input font-mono text-sm"
-          required
-          minLength={1}
-          maxLength={20000}
-          placeholder={`Hiermit bevollmächtige ich…\n\n## Umfang\n- …\n- …\n\n## Wirksamkeit\n…`}
-        />
-      </div>
+      {poaMode === 'MARKDOWN_OTP' ? (
+        <div>
+          <label className="label" htmlFor="scope">Umfang (Markdown)</label>
+          <textarea
+            id="scope"
+            name="scope"
+            rows={10}
+            className="input font-mono text-sm"
+            required
+            minLength={1}
+            maxLength={20000}
+            placeholder={`Hiermit bevollmächtige ich…\n\n## Umfang\n- …\n- …\n\n## Wirksamkeit\n…`}
+          />
+        </div>
+      ) : (
+        <div className="rounded-md border border-default bg-surface p-4 text-sm text-muted">
+          Modus „PDF-Template (extern)": der Vollmachtstext wird außerhalb von taxtronik
+          gepflegt (externe Vollmachtsdatenbank). Ein Inline-Textentfall entfällt hier —
+          die externe PDF kann nach dem Anlegen am Datensatz hinterlegt werden.
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <div>

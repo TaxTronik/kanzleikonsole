@@ -1,11 +1,12 @@
 ﻿import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Send, CheckCircle2, X, FileCode } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, X, FileCode } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { canAccessClientTx, hasStaffPermission } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
-import { markSentAction, markPaidAction, cancelInvoiceAction } from '../actions';
+import { markPaidAction, cancelInvoiceAction } from '../actions';
 import { computeVatTotals } from '@/server/invoicing/vat';
+import { MarkSentForm } from './mark-sent-form';
 
 import { fmtDateShort, fmtEUR } from '@/lib/fmt';
 const statusLabels: Record<string, string> = {
@@ -192,13 +193,7 @@ export default async function InvoiceDetailPage({
           ZUGFeRD (PDF)
         </a>
         {inv.status === 'DRAFT' && canSend && (
-          <form action={markSentAction}>
-            <input type="hidden" name="invoiceId" value={inv.id} />
-            <button type="submit" className="btn-primary">
-              <Send className="h-4 w-4" />
-              Als versendet markieren
-            </button>
-          </form>
+          <MarkSentForm invoiceId={inv.id} />
         )}
         {(inv.status === 'SENT' || inv.status === 'OVERDUE') && canManage && (
           <form action={markPaidAction}>

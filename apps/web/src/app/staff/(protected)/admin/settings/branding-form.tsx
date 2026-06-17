@@ -3,6 +3,7 @@
 import { useActionState, useState } from 'react';
 import { saveBrandingAction, type ActionResult } from './actions';
 import type { BrandingInfo } from '@/server/settings/branding';
+import { TenantLogo } from '@/components/tenant-logo';
 
 const MAX_LOGO_BYTES = 200 * 1024; // 200 KB nach base64
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
@@ -21,6 +22,8 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
   const [subtitle, setSubtitle] = useState(initial.subtitle ?? '');
   const [logo, setLogo] = useState<string | null>(initial.logoDataUrl);
   const [logoError, setLogoError] = useState<string | null>(null);
+  const [logoDark, setLogoDark] = useState<string | null>(initial.logoDataUrlDark);
+  const [logoDarkError, setLogoDarkError] = useState<string | null>(null);
 
   function onLogoFileChange(e: React.ChangeEvent<HTMLInputElement>): void {
     setLogoError(null);
@@ -38,6 +41,26 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
     reader.onload = () => {
       const dataUrl = String(reader.result);
       setLogo(dataUrl);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function onLogoDarkFileChange(e: React.ChangeEvent<HTMLInputElement>): void {
+    setLogoDarkError(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      setLogoDarkError('Nur PNG, JPG oder WebP erlaubt.');
+      return;
+    }
+    if (file.size > MAX_LOGO_BYTES) {
+      setLogoDarkError(`Datei zu groß (max. ${Math.round(MAX_LOGO_BYTES / 1024)} KB).`);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result);
+      setLogoDark(dataUrl);
     };
     reader.readAsDataURL(file);
   }
@@ -100,7 +123,7 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
       </div>
 
       <div>
-        <label className="label" htmlFor="logoFile">Logo (PNG/JPG/WebP, max. 200 KB)</label>
+        <label className="label" htmlFor="logoFile">Logo — hell (PNG/JPG/WebP, max. 200 KB)</label>
         <input
           id="logoFile"
           type="file"
@@ -112,23 +135,52 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
         {logoError && <p className="text-xs text-red-700 mt-1">{logoError}</p>}
         {logo && (
           <div className="mt-2 flex items-center gap-3">
-            <img src={logo} alt="Logo-Vorschau" className="h-12 max-w-[200px] object-contain border border-default rounded" />
+            <img src={logo} alt="Logo-Vorschau hell" className="h-12 max-w-[200px] object-contain border border-default rounded" />
             <button
               type="button"
               onClick={() => setLogo(null)}
               className="text-xs text-red-700 hover:underline"
             >
-              Logo entfernen
+              Entfernen
             </button>
           </div>
+        )}
+      </div>
+
+      <div>
+        <label className="label" htmlFor="logoFileDark">Logo — dunkel für Dark Mode (optional)</label>
+        <input
+          id="logoFileDark"
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          onChange={onLogoDarkFileChange}
+          className="block text-sm text-secondary"
+        />
+        <input type="hidden" name="logoDataUrlDark" value={logoDark ?? ''} />
+        {logoDarkError && <p className="text-xs text-red-700 mt-1">{logoDarkError}</p>}
+        {logoDark ? (
+          <div className="mt-2 flex items-center gap-3">
+            <div className="rounded p-1 bg-gray-900">
+              <img src={logoDark} alt="Logo-Vorschau dunkel" className="h-12 max-w-[200px] object-contain" />
+            </div>
+            <button
+              type="button"
+              onClick={() => setLogoDark(null)}
+              className="text-xs text-red-700 hover:underline"
+            >
+              Entfernen
+            </button>
+          </div>
+        ) : (
+          <p className="text-xs text-muted mt-1">Ohne Dark-Logo gilt das hell-Logo in beiden Themes.</p>
         )}
       </div>
 
       <div className="rounded-md p-4 border border-default" style={{ backgroundColor: `${previewAccent}15` }}>
         <p className="text-xs text-muted uppercase tracking-wide mb-2">Vorschau</p>
         <div className="flex items-center gap-3">
-          {logo ? (
-            <img src={logo} alt={displayName} className="h-9 object-contain" />
+          {logo || logoDark ? (
+            <TenantLogo branding={{ logoDataUrl: logo, logoDataUrlDark: logoDark }} alt={displayName} className="h-9 object-contain" />
           ) : (
             <span className="text-xl font-bold" style={{ color: previewAccent }}>{displayName}</span>
           )}

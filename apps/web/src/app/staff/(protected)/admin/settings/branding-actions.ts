@@ -98,6 +98,7 @@ const BrandingSchema = z.object({
   accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Hex-Farbe wie #2563eb').transform((s) => s.toLowerCase()),
   subtitle: z.string().max(100).optional().or(z.literal('')),
   logoDataUrl: z.string().max(MAX_LOGO_DATAURL_LEN).optional().or(z.literal('')),
+  logoDataUrlDark: z.string().max(MAX_LOGO_DATAURL_LEN).optional().or(z.literal('')),
 });
 
 export async function saveBrandingAction(
@@ -112,6 +113,7 @@ export async function saveBrandingAction(
     accentColor: formData.get('accentColor'),
     subtitle: formData.get('subtitle') ?? '',
     logoDataUrl: formData.get('logoDataUrl') ?? '',
+    logoDataUrlDark: formData.get('logoDataUrlDark') ?? '',
   });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues.map((i) => i.message).join('; ') };
@@ -121,6 +123,10 @@ export async function saveBrandingAction(
   if (logoStr && !LOGO_DATAURL_RE.test(logoStr)) {
     return { ok: false, error: 'Ungültiges Logo-Format.' };
   }
+  const logoDarkStr = parsed.data.logoDataUrlDark ?? '';
+  if (logoDarkStr && !LOGO_DATAURL_RE.test(logoDarkStr)) {
+    return { ok: false, error: 'Ungültiges Dark-Logo-Format.' };
+  }
 
   const { tenantId, staffId, ctx } = g;
   const info: BrandingInfo = {
@@ -128,6 +134,7 @@ export async function saveBrandingAction(
     accentColor: parsed.data.accentColor,
     subtitle: parsed.data.subtitle || null,
     logoDataUrl: logoStr || null,
+    logoDataUrlDark: logoDarkStr || null,
   };
 
   await writeBranding(ctx, info);
@@ -140,8 +147,13 @@ export async function saveBrandingAction(
       action: 'tenant.settings.branding.update',
       resourceType: 'tenant_setting',
       resourceId: 'branding',
-      // logoDataUrl absichtlich weglassen — würde audit_log mit base64 fluten
-      after: { ...info, logoDataUrl: info.logoDataUrl ? '<data-url>' : null },
+      // logoDataUrl(+-Dark) absichtlich weglassen — würde audit_log mit base64
+      // fluten.
+      after: {
+        ...info,
+        logoDataUrl: info.logoDataUrl ? '<data-url>' : null,
+        logoDataUrlDark: info.logoDataUrlDark ? '<data-url>' : null,
+      },
     });
   });
 

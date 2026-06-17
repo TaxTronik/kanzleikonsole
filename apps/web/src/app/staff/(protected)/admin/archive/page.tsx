@@ -37,7 +37,17 @@ export default async function AuditArchivePage() {
       const totalBytes = archives.reduce((s, a) => s + Number(a.fileSizeBytes), 0);
       const lastArchivedTo = archives[0]?.toAuditId ?? BigInt(0);
       const pendingCount = lastEntry ? Number(lastEntry.id - lastArchivedTo) : 0;
-      return { archives, totalArchived, totalBytes, pendingCount };
+      // „Jetzt rotieren" ist nur sinnvoll, wenn unarchivierte Einträge existieren,
+      // die älter als die Mindesthaltfrist sind — sonst no-op-t der Worker und der
+      // Klick erzeugt nur ein irreführendes audit.rotate.trigger-Event. Der Wert
+      // gleicht MIN_AGE_DAYS im Worker (apps/worker/src/jobs/audit-rotate.ts).
+      const ARCHIVE_MIN_AGE_DAYS = 90;
+      const cutoff = new Date(Date.now() - ARCHIVE_MIN_AGE_DAYS * 24 * 60 * 60 * 1000);
+      const rotatableEntry = await tx.auditLog.findFirst({
+        where: { id: { gt: lastArchivedTo }, occurredAt: { lte: cutoff } },
+        select: { id: true },
+      });
+      return { archives, totalArchived, totalBytes, pendingCount, rotatable: !!rotatableEntry };
     },
   );
 
@@ -59,9 +69,14 @@ export default async function AuditArchivePage() {
           </p>
         </div>
         <form action={triggerAuditRotateAction}>
-          <button type="submit" className="btn-primary">
+          <button
+            type="submit"
+            disabled={!data.rotatable}
+            className={data.rotatable ? 'btn-primary' : 'btn-secondary'}
+            title={data.rotatable ? undefined : 'Älteste Einträge jünger als 90 Tage — nichts zu rotieren.'}
+          >
             <Archive className="h-4 w-4" />
-            Jetzt rotieren
+            {data.rotatable ? 'Jetzt rotieren' : 'Nichts zu rotieren'}
           </button>
         </form>
       </div>

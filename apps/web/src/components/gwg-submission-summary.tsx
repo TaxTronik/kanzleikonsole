@@ -1,6 +1,6 @@
-import Link from 'next/link';
 import { FileCheck, IdCard, UserRound } from 'lucide-react';
 import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
+import { DocumentPreviewButton } from '@/components/document-preview';
 
 export interface GwgSummaryDocument {
   id: string;
@@ -206,12 +206,10 @@ export function GwgSubmissionSummary({
                 <div className="flex items-center justify-between gap-3 text-xs">
                   <span className="text-muted">{doc.notes ?? ''}</span>
                   {doc.document && (
-                    <Link
-                      href={`/api/staff/documents/${doc.document.id}/download`}
-                      className="text-brand-700 hover:underline font-medium"
-                    >
-                      {doc.document.title} öffnen
-                    </Link>
+                    <div className="flex items-center gap-1">
+                      <span className="text-muted truncate">{doc.document.title}</span>
+                      <DocumentPreviewButton documentId={doc.document.id} documentTitle={doc.document.title} />
+                    </div>
                   )}
                 </div>
               </li>
@@ -230,12 +228,7 @@ export function GwgSubmissionSummary({
                   <p className="font-medium text-primary truncate">{doc.title}</p>
                   <p className="text-xs text-muted">{doc.createdAt ? fmtDateTimeShort(new Date(doc.createdAt)) : '—'}</p>
                 </div>
-                <Link
-                  href={`/api/staff/documents/${doc.id}/download`}
-                  className="text-xs text-brand-700 hover:underline font-medium shrink-0"
-                >
-                  öffnen
-                </Link>
+                <DocumentPreviewButton documentId={doc.id} documentTitle={doc.title} />
               </li>
             ))}
           </ul>

@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { useState, useRef, useEffect, type ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   GridLayout,
   useContainerWidth,
@@ -25,6 +26,40 @@ function uid(): string {
   return 'w-' + crypto.randomUUID();
 }
 
+// Erste-passierende freie Position auf dem 12-Spalten-Grid (First-Fit), statt
+// neue Widgets stur unten links anzuhängen (x:0/y:maxY). Nutzt bestehenden
+// Freiraum neben anderen Widgets und hält das Dashboard kompakt — löst das
+// „alles untereinander"-Problem.
+function findFreeSlot(
+  existing: { x: number; y: number; w: number; h: number }[],
+  w: number,
+  h: number,
+  cols = 12,
+): { x: number; y: number } {
+  const occupied = new Set<string>();
+  for (const item of existing) {
+    for (let ix = item.x; ix < item.x + item.w; ix++) {
+      for (let iy = item.y; iy < item.y + item.h; iy++) {
+        occupied.add(`${ix},${iy}`);
+      }
+    }
+  }
+  for (let y = 0; y < 500; y++) {
+    for (let x = 0; x <= cols - w; x++) {
+      let fits = true;
+      for (let ix = x; ix < x + w; ix++) {
+        for (let iy = y; iy < y + h; iy++) {
+          if (occupied.has(`${ix},${iy}`)) { fits = false; break; }
+        }
+        if (!fits) break;
+      }
+      if (fits) return { x, y };
+    }
+  }
+  const maxY = existing.reduce((acc, item) => Math.max(acc, item.y + item.h), 0);
+  return { x: 0, y: maxY };
+}
+
 interface RenderedWidget {
   widget: LayoutWidget;
   node: ReactNode;
@@ -37,8 +72,15 @@ export function DashboardGrid({
   initialLayout: DashboardLayout;
   initialRendered: RenderedWidget[];
 }) {
+  const router = useRouter();
   const [editMode, setEditMode] = useState(false);
   const [widgets, setWidgets] = useState<LayoutWidget[]>(initialLayout.widgets);
+  // Synchroner Spiegel des Widget-States: Click-Handler lesen die aktuellste
+  // Liste auch bei schnellen Mehrfach-Klicks (vor dem nächsten Render), ohne
+  // Seitenwirkungen in setWidgets-Updatern absetzen zu müssen. Fixt das
+  // „weiterhin als hinzufügbar"-Verhalten bei rapid Adds.
+  const widgetsRef = useRef(widgets);
+  widgetsRef.current = widgets;
   const [error, setError] = useState<string | null>(null);
   // settled=false beim ersten Paint → der Grid bleibt per Inline-Style
   // `visibility:hidden` UNSICHTBAR (Layout-Dimensionen bleiben erhalten, die
@@ -97,20 +139,32 @@ export function DashboardGrid({
   }
 
   function add(type: WidgetType) {
-    // Doppelt-Klick-Schutz: gleichen Typ nicht ein zweites Mal einfügen
-    if (widgets.some((w) => w.type === type)) return;
+    // Gegen veraltete Closures: gegen den synchronen Ref prüfen, nicht gegen
+    // den Render-Snapshot `widgets` (sonst verschwinden Widgets bei schnellen
+    // Mehrfach-Klicks und tauchen wieder als hinzufügbar auf).
+    const current = widgetsRef.current;
+    if (current.some((w) => w.type === type)) return;
     const def = DEFAULT_SIZE[type];
-    const maxY = widgets.reduce((acc, w) => Math.max(acc, w.y + w.h), 0);
+    const pos = findFreeSlot(current, def.w, def.h);
     const next: LayoutWidget[] = [
-      ...widgets,
-      { id: uid(), type, x: 0, y: maxY, w: def.w, h: def.h },
+      ...current,
+      { id: uid(), type, x: pos.x, y: pos.y, w: def.w, h: def.h },
     ];
+    widgetsRef.current = next;
     setWidgets(next);
-    persist(next);
+    // Widgets sind server-gerendert — sofort speichern + Server neu laden,
+    // damit der neue Widget-Knoten ohne manuellen Reload an der gefundenen
+    // Position erscheint (vorher tauchte er erst nach Reload auf).
+    void saveDashboardLayoutAction({ version: 2, widgets: next }).then((r) => {
+      if (!r.ok) setError(r.error ?? 'Fehler beim Speichern.');
+      router.refresh();
+    });
   }
 
   function remove(id: string) {
-    const next = widgets.filter((w) => w.id !== id);
+    const current = widgetsRef.current;
+    const next = current.filter((w) => w.id !== id);
+    widgetsRef.current = next;
     setWidgets(next);
     persist(next);
   }

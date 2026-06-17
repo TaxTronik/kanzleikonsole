@@ -21,6 +21,11 @@ export interface BrandingInfo {
   // typischerweise <50 KB; vermeidet Storage-Komplexität für ein einzelnes
   // Bild pro Tenant. Wenn null: Text-Anzeige (displayName) wird verwendet.
   logoDataUrl: string | null;
+  // Optional: Dark-Mode-Variante des Logos (Data-URL, gleiche Formate). Wenn
+  // gesetzt, wird im Dark Theme diese Variante gerendert — sonst ist ein
+  // dunkles Logo auf dem dunklen Sidebar-Hintergrund unlesbar. Bleibt sie null,
+  // gilt logoDataUrl in beiden Themes (bisheriges Verhalten).
+  logoDataUrlDark: string | null;
 }
 
 export const DEFAULT_BRANDING: BrandingInfo = {
@@ -28,6 +33,7 @@ export const DEFAULT_BRANDING: BrandingInfo = {
   accentColor: '#2563eb', // brand-600
   subtitle: null,
   logoDataUrl: null,
+  logoDataUrlDark: null,
 };
 
 const KEY_BRANDING = 'branding';

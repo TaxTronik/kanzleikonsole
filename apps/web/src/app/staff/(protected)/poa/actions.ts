@@ -14,6 +14,7 @@ import { isStaffAdmin, toActionError } from '@/server/auth/rbac';
 import { headers } from 'next/headers';
 import { staffActionGuard, withStaff, ActionError } from '@/server/actions/staff-action';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
+import { readModules } from '@/server/settings/modules';
 
 const SIGNING_TOKEN_TTL_HOURS = 72;
 
@@ -27,7 +28,7 @@ const CreateSchema = z.object({
   signerEmail: z.string().email().max(255),
   signerName: z.string().min(1).max(200),
   subject: z.string().min(1).max(300),
-  scope: z.string().min(1).max(20000),
+  scope: z.string().max(20000).optional(),
   validFrom: z.string().date(),
   validUntil: z.string().date().optional().or(z.literal('')),
 });
@@ -62,6 +63,20 @@ export async function createPoaAction(formData: FormData): Promise<void> {
 
   const data = parsed.data;
 
+  // Extern-Modus (PDF_TEMPLATE): kein Inline-Text — der Vollmachtstext wird
+  // außerhalb gepflegt. Das DB-Feld `scope` ist Pflicht, daher wird im Extern-
+  // Modus ein Deskriptor gesetzt, der am Datensatz klar macht, dass der Inhalt
+  // extern liegt. Im In-App-Modus (MARKDOWN_OTP) bleibt scope Pflicht.
+  const modules = await readModules(ctx);
+  const externMode = modules.poaMode === 'PDF_TEMPLATE';
+  const scopeRaw = (data.scope ?? '').trim();
+  const scope = externMode
+    ? (scopeRaw || '— Extern als PDF hinterlegt (kein Inline-Text) —')
+    : scopeRaw;
+  if (!scope) {
+    throw new ActionError('Umfang (Markdown) ist im In-App-Modus Pflicht.');
+  }
+
   const id = await withTenantContext(ctx, async (tx) => {
       // clientId kommt aus dem Formular — Existenz im aktuellen Tenant prüfen
       // (RLS-aware), bevor der FK-Insert eine fremde UUID akzeptieren würde.
@@ -85,7 +100,7 @@ export async function createPoaAction(formData: FormData): Promise<void> {
           signerEmail: data.signerEmail.toLowerCase(),
           signerName: data.signerName,
           subject: data.subject,
-          scope: data.scope,
+          scope,
           validFrom: new Date(data.validFrom),
           validUntil: data.validUntil ? new Date(data.validUntil) : null,
           status: 'DRAFT',

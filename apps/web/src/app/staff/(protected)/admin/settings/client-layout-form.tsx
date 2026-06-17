@@ -34,10 +34,46 @@ const ICONS: Record<ClientBlockKey, typeof CalendarDays> = {
   documents: FileText,
 };
 
+// First-Fit auf dem 12-Spalten-Grid: nutzt bestehenden Freiraum statt neue
+// Blöcke stur unten links anzuhängen (x:0/y:maxY).
+function findFreeSlot(
+  existing: { x: number; y: number; w: number; h: number }[],
+  w: number,
+  h: number,
+  cols = 12,
+): { x: number; y: number } {
+  const occupied = new Set<string>();
+  for (const item of existing) {
+    for (let ix = item.x; ix < item.x + item.w; ix++) {
+      for (let iy = item.y; iy < item.y + item.h; iy++) {
+        occupied.add(`${ix},${iy}`);
+      }
+    }
+  }
+  for (let y = 0; y < 500; y++) {
+    for (let x = 0; x <= cols - w; x++) {
+      let fits = true;
+      for (let ix = x; ix < x + w; ix++) {
+        for (let iy = y; iy < y + h; iy++) {
+          if (occupied.has(`${ix},${iy}`)) { fits = false; break; }
+        }
+        if (!fits) break;
+      }
+      if (fits) return { x, y };
+    }
+  }
+  const maxY = existing.reduce((acc, item) => Math.max(acc, item.y + item.h), 0);
+  return { x: 0, y: maxY };
+}
+
 export function ClientLayoutForm({ initial }: { initial: ClientLayoutConfig }) {
   const router = useRouter();
   const [editMode, setEditMode] = useState(false);
   const [items, setItems] = useState<ClientGridItem[]>(initial.items);
+  // Synchroner Spiegel: Click-Handler sehen die aktuellste Liste auch bei
+  // schnellen Mehrfach-Klicks (vor dem nächsten Render).
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
   const [error, setError] = useState<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { width, containerRef, mounted } = useContainerWidth();
@@ -78,19 +114,23 @@ export function ClientLayoutForm({ initial }: { initial: ClientLayoutConfig }) {
   }
 
   function add(key: ClientBlockKey) {
-    if (items.some((it) => it.id === key)) return;
+    const current = itemsRef.current;
+    if (current.some((it) => it.id === key)) return;
     const def = BLOCK_SIZE[key];
-    const maxY = items.reduce((acc, it) => Math.max(acc, it.y + it.h), 0);
+    const pos = findFreeSlot(current, def.w, def.h);
     const next: ClientGridItem[] = [
-      ...items,
-      { id: key, x: 0, y: maxY, w: def.w, h: def.h },
+      ...current,
+      { id: key, x: pos.x, y: pos.y, w: def.w, h: def.h },
     ];
+    itemsRef.current = next;
     setItems(next);
     persist(next);
   }
 
   function remove(key: ClientBlockKey) {
-    const next = items.filter((it) => it.id !== key);
+    const current = itemsRef.current;
+    const next = current.filter((it) => it.id !== key);
+    itemsRef.current = next;
     setItems(next);
     persist(next);
   }

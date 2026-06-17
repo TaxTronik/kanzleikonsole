@@ -179,20 +179,23 @@ const ARCHIVE_FAIL_TEXT: Record<string, string> = {
   buyer_incomplete: 'Mandanten-Anschrift unvollständig (Straße/PLZ/Ort).',
 };
 
-export async function markSentAction(formData: FormData): Promise<void> {
+export async function markSentAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   // iter87: Versenden = GoB-Festschreibung — eigenes Einzelrecht INVOICE_SEND.
   const g = await staffActionGuard({ requirePermission: 'INVOICE_SEND' });
   if (!g.ok) {
-    // Befund 9: Form-Action ohne Result-Channel — Guard-Ablehnung mindestens
-    // strukturiert loggen statt kommentarlos zu verschlucken.
+    // Befund 9: Guard-Ablehnung strukturiert loggen UND an die UI zurückmelden
+    // (früher Form-Action ohne Result-Channel → kommentarlos verschluckt).
     log.warn({ component: 'invoices', action: 'markSent', err: g.error }, 'markSentAction: Guard abgelehnt');
-    return;
+    return { ok: false, error: g.error };
   }
   const { tenantId, staffId, ctx } = g;
   const parsed = StatusSchema.safeParse({ invoiceId: formData.get('invoiceId') });
   if (!parsed.success) {
     log.warn({ component: 'invoices', action: 'markSent' }, 'markSentAction: ungültige invoiceId');
-    return;
+    return { ok: false, error: 'Ungültige Rechnungs-ID.' };
   }
 
   // iter85 (GoB): Precondition + Archiv-PFLICHT vor dem Versand.
@@ -203,16 +206,17 @@ export async function markSentAction(formData: FormData): Promise<void> {
   const current = await withTenantContext(ctx, (tx) =>
     tx.invoice.findUnique({ where: { id: parsed.data.invoiceId }, select: { status: true } }),
   );
-  if (!current) return;
+  if (!current) return { ok: false, error: 'Rechnung nicht gefunden.' };
   if (!isValidInvoiceTransition(current.status, 'SENT')) {
-    throw new ActionError(`Statuswechsel ${current.status} → SENT ist nicht zulässig.`);
+    return { ok: false, error: `Statuswechsel ${current.status} → SENT ist nicht zulässig.` };
   }
 
   const archive = await ensureZugferdArchive(ctx, parsed.data.invoiceId);
   if (!archive.ok && archive.code !== 'not_applicable') {
-    throw new ActionError(
-      `Versand abgebrochen — GoBD-Archivkopie konnte nicht erstellt werden: ${ARCHIVE_FAIL_TEXT[archive.code] ?? archive.code}`,
-    );
+    return {
+      ok: false,
+      error: `Versand abgebrochen — GoBD-Archivkopie konnte nicht erstellt werden: ${ARCHIVE_FAIL_TEXT[archive.code] ?? archive.code}`,
+    };
   }
 
   const sent = await withTenantContext(ctx, async (tx) => {
@@ -248,12 +252,14 @@ export async function markSentAction(formData: FormData): Promise<void> {
     return updated;
   });
 
-  // Race verloren → kein doppeltes n8n-Event, kein doppeltes Revalidate.
-  if (!sent) return;
+  // Race verloren → kein doppeltes n8n-Event, kein doppeltes Revalidate. Der
+  // gewünschte Endzustand (SENT) ist durch das konkurrierende Request erreicht.
+  if (!sent) return { ok: true };
 
   emitN8nEvent('invoice.due', { tenantId, invoiceId: parsed.data.invoiceId });
   revalidatePath('/staff/invoices');
   revalidatePath(`/staff/invoices/${parsed.data.invoiceId}`);
+  return { ok: true };
 }
 
 export async function markPaidAction(formData: FormData): Promise<void> {

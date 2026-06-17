@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
+import { readModules } from '@/server/settings/modules';
 import { NewPoaForm } from './form';
 
 export default async function NewPoaPage() {
@@ -10,14 +11,14 @@ export default async function NewPoaPage() {
   if (!session?.user) redirect('/staff/login');
 
   const { tenantId, staffId } = session.user;
-  const clients = await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    (tx) =>
-      tx.client.findMany({
-        where: { allowActive: true },
-        orderBy: { name: 'asc' },
-        include: { contacts: { where: { active: true }, orderBy: { fullName: 'asc' } } },
-      }),
+  const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
+  const modules = await readModules(ctx);
+  const clients = await withTenantContext(ctx, (tx) =>
+    tx.client.findMany({
+      where: { allowActive: true },
+      orderBy: { name: 'asc' },
+      include: { contacts: { where: { active: true }, orderBy: { fullName: 'asc' } } },
+    }),
   );
 
   return (
@@ -29,12 +30,16 @@ export default async function NewPoaPage() {
         <h1 className="text-2xl font-bold text-primary">Neue Vollmacht</h1>
       </div>
 
-      {clients.length === 0 ? (
+      {modules.poaMode === 'OFF' ? (
+        <div className="card p-8 text-center text-sm text-muted">
+          Das Vollmachten-Modul ist deaktiviert (Einstellungen &rarr; Module).
+        </div>
+      ) : clients.length === 0 ? (
         <div className="card p-8 text-center text-sm text-muted">
           Keine aktiven Mandanten. Bitte zuerst GwG-Prüfung abschließen.
         </div>
       ) : (
-        <NewPoaForm clients={clients.map((c) => ({
+        <NewPoaForm poaMode={modules.poaMode} clients={clients.map((c) => ({
           id: c.id,
           name: c.name,
           contacts: c.contacts.map((ct) => ({ id: ct.id, fullName: ct.fullName, email: ct.email })),
