@@ -43,6 +43,7 @@ interface SearchParams {
   from?: string;
   to?: string;
   verify?: string;
+  queuedAt?: string;
   checkpoint?: string;
 }
 
@@ -155,6 +156,11 @@ export default async function AuditLogPage({
   const hasNext = entries.length > PAGE_SIZE;
   const visibleEntries = entries.slice(0, PAGE_SIZE);
   const nextCursor = hasNext ? String(visibleEntries[visibleEntries.length - 1]!.id) : null;
+  const auditLinkExpiresAt = (() => {
+    const now = new Date();
+    return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+      + AUDIT_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000;
+  })();
 
   // Filter-Query-String für Pagination-Links
   const baseQs = new URLSearchParams();
@@ -168,7 +174,9 @@ export default async function AuditLogPage({
 
   return (
     <div className="p-8">
-      {sp.verify === 'queued' && <AuditVerifyAutoRefresh />}
+      {sp.verify === 'queued' && (
+        <AuditVerifyAutoRefresh queuedAt={sp.queuedAt} checkedAt={verifyResult?.checkedAt ?? null} />
+      )}
       <div className="flex items-end justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-primary mb-1">Audit-Log</h1>
@@ -195,7 +203,7 @@ export default async function AuditLogPage({
         <CopyField
           value={`${env.NEXTAUTH_URL.replace(/\/$/, '')}/audit-verify/${signAuditToken(
             tenantId,
-            Date.now() + AUDIT_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000,
+            auditLinkExpiresAt,
           )}`}
         />
       </div>

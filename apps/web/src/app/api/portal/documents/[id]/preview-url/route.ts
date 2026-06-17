@@ -2,13 +2,22 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { getClientIp, checkPortalReadLimit } from '@/server/rate-limit';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
-import { streamObject } from '@taxtronik/storage';
+import { detectMimeFromMagicBytes, fetchObjectBytes, streamObject } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
 import {
   previewContentType,
   previewDisposition,
   previewSecurityHeaders,
 } from '@/server/storage/preview-mime';
+
+async function sniffPreviewMime(doc: { mimeType: string; title: string; bucket: string; key: string }): Promise<string> {
+  const metadataMime = previewContentType(doc.mimeType, doc.title);
+  if (metadataMime !== 'application/octet-stream') return metadataMime;
+
+  const bytes = await fetchObjectBytes(doc.bucket, doc.key);
+  const detected = detectMimeFromMagicBytes(bytes);
+  return detected ? previewContentType(detected, doc.title) : metadataMime;
+}
 
 export async function GET(
   req: NextRequest,
@@ -69,7 +78,27 @@ export async function GET(
   // Object-Store bleibt intern: ?stream=1 streamt Bytes inline, sonst
   // JSON-Metadata mit `url` auf diese Route mit ?stream=1.
   if (req.nextUrl.searchParams.get('stream') === '1') {
-    const obj = await streamObject(doc.bucket, doc.key);
+    let obj;
+    try {
+      const metadataMime = previewContentType(doc.mimeType, doc.title);
+      if (metadataMime === 'application/octet-stream') {
+        const bytes = await fetchObjectBytes(doc.bucket, doc.key);
+        const detected = detectMimeFromMagicBytes(bytes);
+        const contentType = detected ? previewContentType(detected, doc.title) : metadataMime;
+        const dispositionMime = contentType === 'application/octet-stream' ? doc.mimeType : contentType;
+        const headers: Record<string, string> = {
+          'content-type': contentType,
+          'content-disposition': previewDisposition(dispositionMime, doc.title),
+          'cache-control': 'private, no-store',
+          ...previewSecurityHeaders(dispositionMime, doc.title),
+          'content-length': String(bytes.length),
+        };
+        return new NextResponse(new Uint8Array(bytes), { status: 200, headers });
+      }
+      obj = await streamObject(doc.bucket, doc.key);
+    } catch {
+      return NextResponse.json({ error: 'storage_unavailable' }, { status: 502 });
+    }
     const headers: Record<string, string> = {
       'content-type': previewContentType(doc.mimeType, doc.title),
       'content-disposition': previewDisposition(doc.mimeType, doc.title),
@@ -83,5 +112,6 @@ export async function GET(
   }
 
   const url = `${req.nextUrl.pathname}?stream=1`;
-  return NextResponse.json({ url, mimeType: previewContentType(doc.mimeType, doc.title), title: doc.title });
+  const mimeType = await sniffPreviewMime(doc).catch(() => previewContentType(doc.mimeType, doc.title));
+  return NextResponse.json({ url, mimeType, title: doc.title });
 }
