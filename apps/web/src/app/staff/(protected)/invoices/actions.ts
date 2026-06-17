@@ -14,7 +14,7 @@ import { computeVatTotals } from '@/server/invoicing/vat';
 import { allocateInvoiceNumber, isValidInvoiceTransition } from '@/server/invoicing/number';
 import { readModules, type InvoiceMode } from '@/server/settings/modules';
 import { round2 } from '@/lib/fmt';
-import { withTimeout } from '@/lib/with-timeout';
+import { withTimeout, TimeoutError } from '@/lib/with-timeout';
 import { log } from '@/server/logger';
 import { staffActionGuard, withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
 import type { TenantContext } from '@taxtronik/db';
@@ -215,10 +215,13 @@ export async function markSentAction(
   let archive;
   try {
     archive = await withTimeout(ensureZugferdArchive(ctx, parsed.data.invoiceId), 45_000);
-  } catch {
+  } catch (err) {
     return {
       ok: false,
-      error: 'ZUGFeRD-Archiv konnte nicht rechtzeitig erzeugt werden — bitte erneut versuchen.',
+      error:
+        err instanceof TimeoutError
+          ? 'ZUGFeRD-Archiv konnte nicht rechtzeitig erzeugt werden — bitte erneut versuchen.'
+          : 'ZUGFeRD-Archiv konnte nicht erzeugt werden — Object-Store prüfen (SeaweedFS erreichbar?).',
     };
   }
   if (!archive.ok && archive.code !== 'not_applicable') {

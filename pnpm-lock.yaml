@@ -513,6 +513,9 @@ importers:
       '@aws-sdk/client-s3':
         specifier: ^3.1053.0
         version: 3.1053.0
+      '@smithy/node-http-handler':
+        specifier: ^4.7.0
+        version: 4.7.4
       '@taxtronik/config':
         specifier: workspace:*
         version: link:../config

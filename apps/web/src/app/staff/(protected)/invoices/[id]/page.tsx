@@ -1,12 +1,13 @@
 ﻿import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, CheckCircle2, X, FileCode } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, X } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { canAccessClientTx, hasStaffPermission } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { markPaidAction, cancelInvoiceAction } from '../actions';
 import { computeVatTotals } from '@/server/invoicing/vat';
 import { MarkSentForm } from './mark-sent-form';
+import { InvoiceFormatDownload } from './invoice-format-download';
 
 import { fmtDateShort, fmtEUR } from '@/lib/fmt';
 const statusLabels: Record<string, string> = {
@@ -176,22 +177,16 @@ export default async function InvoiceDetailPage({
       )}
 
       <div className="flex flex-wrap gap-2">
-        <a
+        <InvoiceFormatDownload
           href={`/api/staff/invoices/${inv.id}/xrechnung`}
-          className="btn-secondary"
+          label="XRechnung (XML)"
           title="XRechnung 3.0 (XML) herunterladen"
-        >
-          <FileCode className="h-4 w-4" />
-          XRechnung (XML)
-        </a>
-        <a
+        />
+        <InvoiceFormatDownload
           href={`/api/staff/invoices/${inv.id}/zugferd`}
-          className="btn-secondary"
+          label="ZUGFeRD (PDF)"
           title="ZUGFeRD/Factur-X PDF (mit eingebetteter XRechnung-XML) herunterladen"
-        >
-          <FileCode className="h-4 w-4" />
-          ZUGFeRD (PDF)
-        </a>
+        />
         {inv.status === 'DRAFT' && canSend && (
           <MarkSentForm invoiceId={inv.id} />
         )}

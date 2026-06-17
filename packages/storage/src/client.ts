@@ -1,4 +1,5 @@
 import { S3Client } from '@aws-sdk/client-s3';
+import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { env } from '@taxtronik/config';
 
 // Singleton S3-Client (forcePathStyle = true, weil On-Prem-Engine wie
@@ -26,6 +27,16 @@ export const s3 = new S3Client({
   forcePathStyle: true,
   requestChecksumCalculation: 'WHEN_REQUIRED',
   responseChecksumValidation: 'WHEN_REQUIRED',
+  // Explizite Socket-/Connect-Timeouts. Ohne sie kann ein hängender TCP-Socket
+  // (z. B. SeaweedFS-Endpoint nicht erreichbar / gedroppte SYNs) einen SDK-Call
+  // blockieren, bis das OS-Connect-Timeout (Linux ~21 s) × SDK-Retries
+  // zuschlägt — in Summe deutlich >45 s ("ZUGFeRD lädt ewig"). Damit werden
+  // Object-Store-Probleme schnell und diagnosable, statt den Request endlos
+  // offen zu halten. connectionTimeout = TCP-Aufbau, socketTimeout = Inaktivität.
+  requestHandler: new NodeHttpHandler({
+    connectionTimeout: 5_000,
+    socketTimeout: 30_000,
+  }),
 });
 
 export function getBucketForClassification(classification: string): string {

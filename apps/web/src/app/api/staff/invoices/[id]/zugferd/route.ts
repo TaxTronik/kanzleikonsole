@@ -6,7 +6,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { streamObject } from '@taxtronik/storage';
 import { ensureZugferdArchive } from '@/server/invoicing/archive';
-import { withTimeout } from '@/lib/with-timeout';
+import { withTimeout, TimeoutError } from '@/lib/with-timeout';
 
 export async function GET(
   req: NextRequest,
@@ -45,10 +45,18 @@ export async function GET(
   let archive;
   try {
     archive = await withTimeout(ensureZugferdArchive(ctx, id), 45_000);
-  } catch {
+  } catch (err) {
+    if (err instanceof TimeoutError) {
+      return NextResponse.json(
+        { error: 'timeout', message: 'Zeitüberschreitung beim Erzeugen der ZUGFeRD-PDF — bitte erneut versuchen.' },
+        { status: 504 },
+      );
+    }
+    // Meist Object-Store (SeaweedFS) nicht erreichbar — dedizierte Meldung statt
+    // generisch, damit der Admin die Ursache (Netz/Storage) erkennt.
     return NextResponse.json(
-      { error: 'timeout', message: 'ZUGFeRD-PDF konnte nicht rechtzeitig erzeugt werden — bitte erneut versuchen.' },
-      { status: 504 },
+      { error: 'generation_failed', message: 'ZUGFeRD-PDF konnte nicht erzeugt werden — Object-Store prüfen (S3_ENDPOINT / SeaweedFS erreichbar?).' },
+      { status: 502 },
     );
   }
   if (!archive.ok) {
