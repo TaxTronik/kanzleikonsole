@@ -129,7 +129,8 @@ export default async function AuditLogPage({
 
   const verifyResult = (verifyRow?.value ?? null) as PersistedVerifyResult | null;
   const checkpoint = (checkpointRow?.value ?? null) as PersistedRecoveryCheckpoint | null;
-  const pendingVerify = sp.verify === 'queued' && !!sp.requestId && verifyResult?.requestId !== sp.requestId;
+  const pendingVerify = sp.verify === 'queued';
+  const pollVerify = pendingVerify && !!sp.requestId && verifyResult?.requestId !== sp.requestId;
   const recoveryResult = checkpoint
     ? await withTenantContext(
         { tenantId, actorId: staffId, actorType: 'STAFF' },
@@ -175,7 +176,7 @@ export default async function AuditLogPage({
 
   return (
     <div className="p-8">
-      {pendingVerify && (
+      {pollVerify && (
         <AuditVerifyAutoRefresh requestId={sp.requestId} />
       )}
       <div className="flex items-end justify-between mb-6">

@@ -2,34 +2,8 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { getClientIp, checkPortalReadLimit } from '@/server/rate-limit';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
-import { detectMimeFromMagicBytes, fetchObjectBytes } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
-import {
-  effectiveDocumentMime,
-  previewContentType,
-  previewDisposition,
-  previewSecurityHeaders,
-} from '@/server/storage/preview-mime';
-
-async function fetchPreviewBytes(doc: {
-  mimeType: string;
-  title: string;
-  classification: string;
-  bucket: string;
-  key: string;
-  isPoaDocument: boolean;
-}): Promise<{ bytes: Buffer; contentType: string; dispositionMime: string }> {
-  const metadataMime = effectiveDocumentMime(doc);
-  const bytes = await fetchObjectBytes(doc.bucket, doc.key);
-  const detected = detectMimeFromMagicBytes(bytes);
-  const detectedMime = detected ? previewContentType(detected, doc.title) : 'application/octet-stream';
-  const contentType = detectedMime !== 'application/octet-stream' ? detectedMime : metadataMime;
-  return {
-    bytes,
-    contentType,
-    dispositionMime: contentType === 'application/octet-stream' ? doc.mimeType : contentType,
-  };
-}
+import { documentPreviewMetadata, loadDocumentPreview } from '@/server/storage/document-preview';
 
 export async function GET(
   req: NextRequest,
@@ -96,25 +70,21 @@ export async function GET(
   // Object-Store bleibt intern: ?stream=1 streamt Bytes inline, sonst
   // JSON-Metadata mit `url` auf diese Route mit ?stream=1.
   if (req.nextUrl.searchParams.get('stream') === '1') {
-    let preview: Awaited<ReturnType<typeof fetchPreviewBytes>>;
+    let preview: Awaited<ReturnType<typeof loadDocumentPreview>>;
     try {
-      preview = await fetchPreviewBytes(doc);
+      preview = await loadDocumentPreview(doc);
     } catch {
       return NextResponse.json({ error: 'storage_unavailable' }, { status: 502 });
     }
     const headers: Record<string, string> = {
-      'content-type': preview.contentType,
-      'content-disposition': previewDisposition(preview.dispositionMime, doc.title),
-      'cache-control': 'private, no-store',
+      ...preview.headers,
       // Audit 2026-06 Befund 4: CSP sandbox für text/plain — Inline-Anzeige
       // hängt nicht mehr allein an nosniff.
-      ...previewSecurityHeaders(preview.dispositionMime, doc.title),
-      'content-length': String(preview.bytes.length),
     };
     return new NextResponse(new Uint8Array(preview.bytes), { status: 200, headers });
   }
 
   const url = `${req.nextUrl.pathname}?stream=1`;
-  const mimeType = effectiveDocumentMime(doc);
-  return NextResponse.json({ url, mimeType, title: doc.title });
+  const meta = documentPreviewMetadata(doc);
+  return NextResponse.json({ url, mimeType: meta.mimeType, title: meta.title });
 }
