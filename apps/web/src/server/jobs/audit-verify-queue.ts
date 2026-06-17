@@ -14,6 +14,7 @@ import { log } from '@/server/logger';
 
 interface AuditVerifyJob {
   tenantId: string;
+  requestedByStaffId?: string;
 }
 
 declare global {
@@ -41,14 +42,14 @@ function getHandle(): { conn: IORedis; queue: Queue<AuditVerifyJob> } {
 }
 
 /** Reiht eine manuelle Chain-Verifikation für EINEN Tenant ein. Idempotent über jobId. */
-export async function enqueueAuditVerify(tenantId: string): Promise<void> {
+export async function enqueueAuditVerify(tenantId: string, requestedByStaffId?: string): Promise<void> {
   const { queue } = getHandle();
   // BullMQ verbietet ':' in Custom-Job-IDs — daher '-'. Mehrfach-Klicks während
   // ein Lauf aussteht sind No-Ops (ID existiert); abgeschlossene/gescheiterte
   // Jobs werden vorher geräumt, damit ein erneuter Anstoß durchläuft.
   const jobId = `audit-verify-manual-${tenantId}`;
   await queue.remove(jobId).catch(() => {});
-  await queue.add('audit-verify-check', { tenantId }, {
+  await queue.add('audit-verify-check', { tenantId, requestedByStaffId }, {
     jobId,
     removeOnComplete: 20,
     removeOnFail: 20,

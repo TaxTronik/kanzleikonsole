@@ -24,8 +24,11 @@ const m = vi.hoisted(() => ({
   withTenantContext: vi.fn(),
   evidenceRecord: vi.fn(),
   streamObject: vi.fn(),
+  fetchObjectBytes: vi.fn(),
+  detectMimeFromMagicBytes: vi.fn(),
   tx: {
     document: { findFirst: vi.fn() },
+    powerOfAttorney: { findFirst: vi.fn() },
   },
 }));
 
@@ -38,6 +41,8 @@ vi.mock('@taxtronik/db', () => ({ withTenantContext: m.withTenantContext }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: m.evidenceRecord } }));
 vi.mock('@taxtronik/storage', () => ({
   streamObject: m.streamObject,
+  fetchObjectBytes: m.fetchObjectBytes,
+  detectMimeFromMagicBytes: m.detectMimeFromMagicBytes,
   sanitizeFilenameForHeader: (s: string) => s,
 }));
 vi.mock('@/server/storage/preview-mime', () => ({
@@ -73,6 +78,7 @@ beforeEach(() => {
   m.checkPortalReadLimit.mockResolvedValue({ ok: true, remaining: 239, retryAfter: 0 });
   m.getClientIp.mockReturnValue('203.0.113.7');
   m.tx.document.findFirst.mockResolvedValue(DOCUMENT);
+  m.tx.powerOfAttorney.findFirst.mockResolvedValue(null);
   m.evidenceRecord.mockResolvedValue({});
   m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
     fn(m.tx),

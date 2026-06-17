@@ -22,7 +22,7 @@ export async function triggerAuditVerifyAction(): Promise<void> {
   if (!g.ok) throw new ActionError(g.error);
   const { tenantId, staffId, ctx } = g;
 
-  await enqueueAuditVerify(tenantId);
+  await enqueueAuditVerify(tenantId, staffId);
 
   // Manueller Trigger gehört in die Chain (analog audit.rotate.trigger) —
   // WER die Verifikation angestoßen hat, ist Teil der Rechenschaft.
@@ -100,6 +100,6 @@ export async function createAuditRecoveryCheckpointAction(formData: FormData): P
     });
   });
 
-  await enqueueAuditVerify(tenantId);
+  await enqueueAuditVerify(tenantId, staffId);
   redirect(`/staff/admin/audit?checkpoint=created&verify=queued&queuedAt=${Date.now()}`);
 }

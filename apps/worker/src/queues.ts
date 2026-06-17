@@ -31,6 +31,8 @@ export interface EvidenceSealJob {
 export interface ChecksJob {
   // optional: nur einen Tenant prüfen (für Manual-Trigger)
   tenantId?: string;
+  // optional: Mitarbeiter, der den manuellen Check ausgelöst hat.
+  requestedByStaffId?: string;
 }
 
 export interface N8nDeliverJob {

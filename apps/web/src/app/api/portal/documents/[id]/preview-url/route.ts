@@ -10,7 +10,8 @@ import {
   previewSecurityHeaders,
 } from '@/server/storage/preview-mime';
 
-async function sniffPreviewMime(doc: { mimeType: string; title: string; bucket: string; key: string }): Promise<string> {
+async function sniffPreviewMime(doc: { mimeType: string; title: string; bucket: string; key: string; isPoaDocument: boolean }): Promise<string> {
+  if (doc.isPoaDocument) return 'application/pdf';
   const metadataMime = previewContentType(doc.mimeType, doc.title);
   if (metadataMime !== 'application/octet-stream') return metadataMime;
 
@@ -62,11 +63,16 @@ export async function GET(
         ip: getClientIp(req.headers),
         userAgent: req.headers.get('user-agent'),
       });
+      const isPoaDocument = await tx.powerOfAttorney.findFirst({
+        where: { tenantId, documentId: d.id },
+        select: { id: true },
+      });
       return {
         title: d.title,
         mimeType: d.mimeType,
         bucket: d.versions[0].storageBucket,
         key: d.versions[0].storageKey,
+        isPoaDocument: !!isPoaDocument,
       };
     },
   );
@@ -80,7 +86,7 @@ export async function GET(
   if (req.nextUrl.searchParams.get('stream') === '1') {
     let obj;
     try {
-      const metadataMime = previewContentType(doc.mimeType, doc.title);
+      const metadataMime = doc.isPoaDocument ? 'application/pdf' : previewContentType(doc.mimeType, doc.title);
       if (metadataMime === 'application/octet-stream') {
         const bytes = await fetchObjectBytes(doc.bucket, doc.key);
         const detected = detectMimeFromMagicBytes(bytes);
@@ -100,12 +106,12 @@ export async function GET(
       return NextResponse.json({ error: 'storage_unavailable' }, { status: 502 });
     }
     const headers: Record<string, string> = {
-      'content-type': previewContentType(doc.mimeType, doc.title),
-      'content-disposition': previewDisposition(doc.mimeType, doc.title),
+      'content-type': doc.isPoaDocument ? 'application/pdf' : previewContentType(doc.mimeType, doc.title),
+      'content-disposition': previewDisposition(doc.isPoaDocument ? 'application/pdf' : doc.mimeType, doc.title),
       'cache-control': 'private, no-store',
       // Audit 2026-06 Befund 4: CSP sandbox für text/plain — Inline-Anzeige
       // hängt nicht mehr allein an nosniff.
-      ...previewSecurityHeaders(doc.mimeType, doc.title),
+      ...previewSecurityHeaders(doc.isPoaDocument ? 'application/pdf' : doc.mimeType, doc.title),
     };
     if (obj.contentLength !== null) headers['content-length'] = String(obj.contentLength);
     return new NextResponse(obj.body, { status: 200, headers });

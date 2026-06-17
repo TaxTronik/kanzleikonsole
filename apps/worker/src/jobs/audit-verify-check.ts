@@ -183,15 +183,30 @@ export const auditVerifyWorker = new Worker<ChecksJob>(
               where: { tenantId, kind: 'SYSTEM_AUDIT_BREAK', readAt: null },
               data: { readAt: new Date() },
             });
-            if (manualSingleTenant && r.ok && !recovered) {
-              const recipients = await tx.staffUser.findMany({
-                where: {
-                  tenantId,
-                  active: true,
-                  roles: { some: { role: { in: ['ADMIN', 'PARTNER'] } } },
-                },
-                select: { id: true },
-              });
+            if (manualSingleTenant) {
+              let recipients = job.data.requestedByStaffId
+                ? await tx.staffUser.findMany({
+                    where: { tenantId, id: job.data.requestedByStaffId, active: true },
+                    select: { id: true },
+                  })
+                : await tx.staffUser.findMany({
+                    where: {
+                      tenantId,
+                      active: true,
+                      roles: { some: { role: { in: ['ADMIN', 'PARTNER'] } } },
+                    },
+                    select: { id: true },
+                  });
+              if (recipients.length === 0) {
+                recipients = await tx.staffUser.findMany({
+                  where: {
+                    tenantId,
+                    active: true,
+                    roles: { some: { role: { in: ['ADMIN', 'PARTNER'] } } },
+                  },
+                  select: { id: true },
+                });
+              }
               for (const rec of recipients) {
                 const existing = await tx.notification.findFirst({
                   where: {
@@ -206,8 +221,10 @@ export const auditVerifyWorker = new Worker<ChecksJob>(
                   tenantId,
                   staffId: rec.id,
                   kind: 'SYSTEM_AUDIT_OK' as const,
-                  title: 'Audit-Chain intakt',
-                  body: `Manuelle Pruefung erfolgreich: ${r.checked} Audit-Eintraege und ${r.sealsChecked} Siegel geprueft.`,
+                  title: recovered ? 'Audit-Chain mit Recovery-Checkpoint geprueft' : 'Audit-Chain intakt',
+                  body: recovered
+                    ? `Manuelle Pruefung abgeschlossen: historischer Bruch bleibt abgegrenzt, ${r.checked} Audit-Eintraege geprueft.`
+                    : `Manuelle Pruefung abgeschlossen: ${r.checked} Audit-Eintraege und ${r.sealsChecked} Siegel geprueft.`,
                   href: '/staff/admin/audit',
                   resourceType: 'audit_log',
                   resourceId: null,
