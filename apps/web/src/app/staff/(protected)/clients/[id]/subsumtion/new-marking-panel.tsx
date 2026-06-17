@@ -23,9 +23,10 @@ export function NewMarkingPanel(props: {
   // Begriff automatisch mit dem markierten Text vorbefüllen — kein Pflicht-Tippen.
   const selStart = props.selection?.start;
   const selEnd = props.selection?.end;
+  const selectedText = props.selection?.text ?? null;
   useEffect(() => {
-    if (props.selection) setBegriff(props.selection.text.trim().replace(/\s+/g, ' '));
-  }, [selStart, selEnd]);
+    if (selectedText) setBegriff(selectedText.trim().replace(/\s+/g, ' '));
+  }, [selStart, selEnd, selectedText]);
 
   function submit() {
     const sel = props.selection;

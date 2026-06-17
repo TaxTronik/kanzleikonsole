@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element -- Tenant logos are stored as tenant-managed data URLs. */
 import type { BrandingInfo } from '@/server/settings/branding';
 
 /**

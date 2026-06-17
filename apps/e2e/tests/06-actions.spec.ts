@@ -1,7 +1,7 @@
 // =============================================================================
 // 06-actions.spec.ts — Real user interactions (not just page rendering)
 // =============================================================================
-import { test, expect, type Browser } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { loginAsAdmin } from './helpers/auth';
 import { expectPortalDashboardReady, loginAsMandant } from './helpers/portal-auth';
 import { execSync } from 'node:child_process';
@@ -93,14 +93,14 @@ function ensureStartableWorkflowTemplate(): void {
 test.describe.serial('Staff Actions and Data Integrity', () => {
   test.beforeAll(() => {
     fs.mkdirSync(AUTH_DIR, { recursive: true });
-    try { fs.unlinkSync(STAFF_AUTH); } catch {}
-    try { fs.unlinkSync(MANDANT_AUTH); } catch {}
+    try { fs.unlinkSync(STAFF_AUTH); } catch { /* best-effort cleanup */ }
+    try { fs.unlinkSync(MANDANT_AUTH); } catch { /* best-effort cleanup */ }
   });
 
   test.afterAll(() => {
-    try { fs.unlinkSync(STAFF_AUTH); } catch {}
-    try { fs.unlinkSync(MANDANT_AUTH); } catch {}
-    try { fs.rmdirSync(AUTH_DIR); } catch {}
+    try { fs.unlinkSync(STAFF_AUTH); } catch { /* best-effort cleanup */ }
+    try { fs.unlinkSync(MANDANT_AUTH); } catch { /* best-effort cleanup */ }
+    try { fs.rmdirSync(AUTH_DIR); } catch { /* best-effort cleanup */ }
   });
 
   // 1. Document Upload
@@ -428,7 +428,7 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
 
     // router.refresh() kann unter CI-Load unzuverlässig sein; nach Form-Schließen
     // die Seite neu laden, damit die Telefonnotiz-Liste garantiert aktuell ist.
-    await page.reload({ waitForLoadState: 'domcontentloaded' });
+    await page.reload({ waitUntil: 'domcontentloaded' });
 
     // FIX 2: Statt body-visible — die Telefonnotiz MUSS auf der Mandanten-
     // detailseite erscheinen, sonst wurde sie nicht gespeichert.
@@ -606,7 +606,7 @@ test.describe.serial('Portal Actions', () => {
       await expectPortalDashboardReady(page);
       await ctx.storageState({ path: MANDANT_AUTH });
     } catch (e) {
-      throw new Error(`Portal login failed — MailHog/SMTP/Magic-Link are mandatory in paranoid E2E: ${(e as Error).message}`);
+      throw new Error(`Portal login failed — MailHog/SMTP/Magic-Link are mandatory in paranoid E2E: ${(e as Error).message}`, { cause: e });
     } finally {
       await ctx.close();
     }

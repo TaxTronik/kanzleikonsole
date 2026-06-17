@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { useState, useTransition } from 'react';
+import Link from 'next/link';
 import { Plus } from 'lucide-react';
 import { createSubmissionAction } from '../../../forms/actions';
 
@@ -35,9 +36,9 @@ export function SendFormButton({ clientId, templates }: { clientId: string; temp
 
   if (templates.length === 0) {
     return (
-      <a href="/staff/forms" className="btn-secondary text-xs">
+      <Link href="/staff/forms" className="btn-secondary text-xs">
         Vorlagen anlegen →
-      </a>
+      </Link>
     );
   }
 

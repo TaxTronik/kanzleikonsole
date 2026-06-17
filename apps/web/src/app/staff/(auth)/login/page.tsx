@@ -254,6 +254,7 @@ export default function StaffLoginPage() {
                   und Setup-Flow kaputt. Jetzt: lokal via npm `qrcode`. */}
               <div className="flex justify-center my-4">
                 <div className="border border-default rounded-lg p-3 bg-surface">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- TOTP QR code is a local data URL; Next image optimization is not useful here. */}
                   <img
                     src={setupQrDataUrl}
                     alt="TOTP QR-Code"

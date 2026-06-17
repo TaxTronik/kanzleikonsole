@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 // =============================================================================
 // Backfill: RiskMarking.normRefs aus dem gespeicherten RiskAnalysis.rawResult.
 //

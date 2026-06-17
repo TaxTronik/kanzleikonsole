@@ -9,9 +9,9 @@
 //
 // Jeder describe.serial-Block teilt eine Login-Session via storageState.
 // =============================================================================
-import { test, expect, type Browser, type Page } from '@playwright/test';
-import { loginAsAdmin, ADMIN_EMAIL } from './helpers/auth';
-import { expectPortalDashboardReady, loginAsMandant, requestMagicLink, PORTAL_EMAIL } from './helpers/portal-auth';
+import { test, expect, type Page } from '@playwright/test';
+import { loginAsAdmin } from './helpers/auth';
+import { expectPortalDashboardReady, loginAsMandant, PORTAL_EMAIL } from './helpers/portal-auth';
 import { flushRedisDb } from './helpers/redis';
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -122,7 +122,7 @@ async function readAuditActionsFiltered(page: Page, action: string): Promise<str
 test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
   test.beforeAll(() => {
     fs.mkdirSync(AUTH_DIR, { recursive: true });
-    try { fs.unlinkSync(STAFF_AUTH); } catch {}
+    try { fs.unlinkSync(STAFF_AUTH); } catch { /* best-effort cleanup */ }
   });
 
   test('Login as admin', async ({ browser }) => {
@@ -228,7 +228,7 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
-    const scopedDocumentsUrl = await openMustermannDocuments(page);
+    await openMustermannDocuments(page);
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(1000);
     expect(page.url()).not.toContain('/staff/login');
@@ -1401,11 +1401,6 @@ test.describe.serial('Input Validation — XSS/SQL Injection', () => {
     await searchInput.fill(xssPayload);
     await page.waitForTimeout(500);
 
-    // Confirm the input was filled (browser may sanitize on input)
-    const inputValue = await searchInput.inputValue().catch(() => '');
-    // If the script tag was accepted as-is in the input, that's already a concern
-    // (input fields should allow typing — the real test is in rendered output)
-
     await searchInput.press('Enter');
     await page.waitForTimeout(2000);
 
@@ -1720,9 +1715,9 @@ test.describe.serial('Backup & Restore — §147 AO Compliance', () => {
 // =============================================================================
 test.describe.serial('Portal Compliance — DSGVO Export & Consent', () => {
   test.afterAll(() => {
-    try { fs.unlinkSync(STAFF_AUTH); } catch {}
-    try { fs.unlinkSync(MANDANT_AUTH); } catch {}
-    try { fs.rmdirSync(AUTH_DIR); } catch {}
+    try { fs.unlinkSync(STAFF_AUTH); } catch { /* best-effort cleanup */ }
+    try { fs.unlinkSync(MANDANT_AUTH); } catch { /* best-effort cleanup */ }
+    try { fs.rmdirSync(AUTH_DIR); } catch { /* best-effort cleanup */ }
   });
 
   test('Portal login for compliance tests', async ({ browser }) => {
@@ -1737,7 +1732,7 @@ test.describe.serial('Portal Compliance — DSGVO Export & Consent', () => {
     } catch (e) {
       // MailHog/SMTP sind Pflichtservices im Paranoid-CI.
       // Wenn der Portal-Login fehlschlägt, ist das ein Fehler, kein Skip.
-      throw new Error(`Portal-Login fehlgeschlagen (MailHog/SMTP Pflichtservice): ${(e as Error).message}`);
+      throw new Error(`Portal-Login fehlgeschlagen (MailHog/SMTP Pflichtservice): ${(e as Error).message}`, { cause: e });
     } finally {
       await ctx.close();
     }

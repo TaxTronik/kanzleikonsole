@@ -56,6 +56,7 @@ export async function expectPortalDashboardReady(page: Page, timeout = 20_000): 
     const body = await page.locator('body').innerText({ timeout: 1000 }).catch(() => '');
     throw new Error(
       `Portal-Dashboard wurde nicht fertig gerendert. url=${page.url()} body=${body.replace(/\s+/g, ' ').slice(0, 800)} cause=${(e as Error).message}`,
+      { cause: e },
     );
   }
 }

@@ -116,6 +116,7 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
         {logoError && <p className="text-xs text-red-700 mt-1">{logoError}</p>}
         {logo && (
           <div className="mt-2 flex items-center gap-3">
+            {/* eslint-disable-next-line @next/next/no-img-element -- Logo previews are tenant-provided data URLs. */}
             <img src={logo} alt="Logo-Vorschau hell" className="h-12 max-w-[200px] object-contain border border-default rounded" />
             <button
               type="button"
@@ -144,6 +145,7 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
         {logoDark ? (
           <div className="mt-2 flex items-center gap-3">
             <div className="rounded p-1 bg-gray-900">
+              {/* eslint-disable-next-line @next/next/no-img-element -- Logo previews are tenant-provided data URLs. */}
               <img src={logoDark} alt="Logo-Vorschau dunkel" className="h-12 max-w-[200px] object-contain" />
             </div>
             <button

@@ -66,6 +66,11 @@ export default [
       'react-hooks': reactHooks,
       '@next/next': nextPlugin,
     },
+    settings: {
+      next: {
+        rootDir: 'apps/web/',
+      },
+    },
     rules: {
       ...reactHooks.configs.recommended.rules,
       ...nextPlugin.configs.recommended.rules,

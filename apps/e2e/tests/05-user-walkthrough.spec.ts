@@ -3,7 +3,7 @@
 // =============================================================================
 import { test, expect } from '@playwright/test';
 import { loginAsAdmin, ADMIN_EMAIL } from './helpers/auth';
-import { expectPortalDashboardReady, loginAsMandant, requestMagicLink, PORTAL_EMAIL } from './helpers/portal-auth';
+import { expectPortalDashboardReady, loginAsMandant, requestMagicLink } from './helpers/portal-auth';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import Link from 'next/link';
 import { Plus, Users } from 'lucide-react';
 import { startInstanceAction } from './actions';
 
@@ -91,7 +92,7 @@ export function StartWorkflowForm({
               <p className="text-xs text-muted mt-1">
                 Keine Vorlagen vorhanden — als <strong>eigener Workflow</strong> starten und die Schritte
                 danach hinzufügen.{' '}
-                <a href="/staff/workflows/templates" className="text-brand hover:underline">Vorlagen anlegen →</a>
+                <Link href="/staff/workflows/templates" className="text-brand hover:underline">Vorlagen anlegen →</Link>
               </p>
             )}
           </div>

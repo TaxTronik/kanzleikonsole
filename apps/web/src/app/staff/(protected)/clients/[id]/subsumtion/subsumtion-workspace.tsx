@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Sparkles, Upload, Loader2, FileDown, FolderOpen, ClipboardList, Webhook, Archive, Lock, RefreshCw, X, AlertTriangle } from 'lucide-react';
@@ -50,6 +50,8 @@ interface Props {
   engineConfigured: boolean;
   initial: AnalysisDTO | null;
 }
+
+const EMPTY_MARKINGS: MarkingDTO[] = [];
 
 export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, researchResults = [], researchRequests = [], aufgaben, aktenregal, engineConfigured, initial }: Props) {
   const router = useRouter();
@@ -109,12 +111,12 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
   // geändert (deckt Erstlauf null→Zeit UND Re-Run alt→neu ab).
   const llmBaselineRef = useRef<string | null>(null);
 
-  function beginLlmRun() {
+  const beginLlmRun = useCallback(() => {
     llmBaselineRef.current = enriched;
     pollDeadlineRef.current = Date.now() + 10 * 60_000;
     setLlmFailed(null);
     setPollLlm(true);
-  }
+  }, [enriched]);
 
   useEffect(() => {
     if (!engineConfigured) { setLlm(null); return; }
@@ -152,13 +154,13 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
     if (!pollLlm) return () => { active = false; };
     const iv = setInterval(tick, 5000);
     return () => { active = false; clearInterval(iv); };
-  }, [clientId, engineConfigured, enriched, pollLlm, initial?.id, router]);
+  }, [beginLlmRun, clientId, engineConfigured, enriched, pollLlm, initial?.id, router]);
 
   // Cursor in einer Markierung → inspizieren; Auswahl (Ziehen) → eigene Markierung.
   function selectMarking(id: string | null) { setSelectedId(id); if (id) setManualSel(null); }
   function selectForMarking(sel: ManualSelection | null) { setManualSel(sel); if (sel) setSelectedId(null); }
 
-  const markings = initial?.markings ?? [];
+  const markings = initial?.markings ?? EMPTY_MARKINGS;
   const visibleMarkings = useMemo(() => markings.filter((m) => isVisible(m, filters)), [markings, filters]);
   const selected = markings.find((m) => m.id === selectedId) ?? null;
   const ownCount = markings.filter((m) => m.herkunft === 'BERATER').length;

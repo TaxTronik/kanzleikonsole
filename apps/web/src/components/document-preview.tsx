@@ -114,6 +114,7 @@ export function DocumentPreviewModal({
           {url && !loading && !error && (
             <>
               {isImage ? (
+                // eslint-disable-next-line @next/next/no-img-element -- Document previews use short-lived blob URLs from the authenticated API.
                 <img src={url} alt={documentTitle} className="w-full h-full object-contain bg-white" />
               ) : isPdf ? (
                 <iframe src={url} className="w-full h-full border-0" title={documentTitle} />

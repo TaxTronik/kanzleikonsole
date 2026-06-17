@@ -124,7 +124,7 @@ export function NotificationsBell({ initialUnread }: Props) {
   useEffect(() => {
     refreshCount();
     setOpen(false);
-  }, [pathname]);
+  }, [pathname, refreshCount]);
 
   // Klick außerhalb schließt das Dropdown
   useEffect(() => {
