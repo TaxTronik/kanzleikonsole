@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { SettingsNav } from './nav';
+import { SettingsFormGuard } from '@/components/settings-form-guard';
 
 export default async function SettingsLayout({ children }: { children: React.ReactNode }) {
   const session = await staffAuth();
@@ -35,7 +36,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
         <aside className="lg:sticky lg:top-6 self-start">
           <SettingsNav />
         </aside>
-        <div className="min-w-0">{children}</div>
+        <SettingsFormGuard>{children}</SettingsFormGuard>
       </div>
     </div>
   );

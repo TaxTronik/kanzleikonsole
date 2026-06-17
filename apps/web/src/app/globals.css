@@ -748,3 +748,22 @@
 .tt-content ol { list-style: decimal; padding-left: 1.4rem; margin: 0 0 0.5rem; }
 .tt-content li { margin: 0.1rem 0; }
 .tt-content li > p { margin: 0; }
+
+/* Settings: Dirty-Formulare heben ihren Speichern-Button hervor (gelber
+ * Puls-Ring), damit er sich unter mehreren Buttons pro Seite schnell findet.
+ * Getriggert durch die Klasse `settings-dirty` (s. SettingsFormGuard). */
+form.settings-dirty button[type="submit"],
+form.settings-dirty input[type="submit"] {
+  animation: settings-dirty-pulse 1.6s ease-in-out infinite;
+}
+@keyframes settings-dirty-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.85); }
+  50%      { box-shadow: 0 0 0 5px rgba(250, 204, 21, 0.40); }
+}
+@media (prefers-reduced-motion: reduce) {
+  form.settings-dirty button[type="submit"],
+  form.settings-dirty input[type="submit"] {
+    animation: none;
+    box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.85);
+  }
+}
