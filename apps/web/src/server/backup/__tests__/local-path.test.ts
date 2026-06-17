@@ -10,12 +10,12 @@ afterEach(() => {
 });
 
 describe('backup local path helpers', () => {
-  it('spiegelt S3-Keys unter dem konfigurierten Backup-Root', () => {
+  it('legt lokale Kopie flach (nur Dateiname) unter dem Backup-Root', () => {
     process.env['BACKUP_LOCAL_DIR'] = resolve('tmp-backups');
 
     expect(backupLocalDir()).toBe(resolve('tmp-backups'));
     expect(backupLocalPathForKey('pgdump/2026/06/17/taxtronik.dump')).toBe(
-      resolve('tmp-backups', 'pgdump', '2026', '06', '17', 'taxtronik.dump'),
+      resolve('tmp-backups', 'taxtronik.dump'),
     );
   });
 

@@ -1,10 +1,32 @@
+import { existsSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 import { mkdir } from 'node:fs/promises';
 
 const DEFAULT_BACKUP_DIR = 'backups';
+const WORKSPACE_MARKER = 'pnpm-workspace.yaml';
+
+/**
+ * Löst das lokale Backup-Verzeichnis auf. Ohne ENV-Override
+ * (`BACKUP_LOCAL_DIR`) wird das Backup-Dir am Monorepo-Root abgelegt — nicht
+ * in apps/web/backups —, damit CLI- (`./taxtronik backup`) und Browser-Trigger
+ * (Admin-Button) denselben Ort nutzen. In Docker ist BACKUP_LOCAL_DIR gesetzt
+ * (/app/backups) und dieser Lookup entfällt.
+ */
+function resolveBackupRoot(): string {
+  let dir = resolve(process.cwd());
+  for (;;) {
+    if (existsSync(join(dir, WORKSPACE_MARKER))) {
+      return join(dir, DEFAULT_BACKUP_DIR);
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return join(process.cwd(), DEFAULT_BACKUP_DIR);
+}
 
 export function backupLocalDir(): string {
-  return resolve(process.env['BACKUP_LOCAL_DIR'] ?? join(process.cwd(), DEFAULT_BACKUP_DIR));
+  return resolve(process.env['BACKUP_LOCAL_DIR'] ?? resolveBackupRoot());
 }
 
 export function backupLocalPathForKey(key: string): string {
@@ -18,7 +40,11 @@ export function backupLocalPathForKey(key: string): string {
     throw new Error('Ungueltiger Backup-Key.');
   }
 
-  const target = resolve(root, ...parts);
+  // Lokale Kopie flach unter dem Backup-Root: nur der Dateiname (Leaf), ohne
+  // pgdump/YYYY/MM/DD/-Verschachtelung. Der S3-Key bleibt davon unberührt
+  // strukturiert (S3-Lifecycle-Policies brauchen die Datumsprefixe).
+  const leaf = parts[parts.length - 1]!;
+  const target = resolve(root, leaf);
   if (target !== root && !target.startsWith(root + sep)) {
     throw new Error('Ungueltiger Backup-Pfad.');
   }

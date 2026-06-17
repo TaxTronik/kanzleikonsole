@@ -234,20 +234,21 @@ export default async function AdminPage() {
               )}
               <div className="mt-3 flex flex-wrap items-start gap-2">
                 <BackupRunButton />
+                {/* Route-Handler-Download (kein <Link> — kein Client-Side-Routing) */}
                 {lastBackup?.status === 'SUCCESS' && lastBackup.key && (
-                  <Link
+                  <a
                     href={`/api/staff/admin/backups/${lastBackup.id}/download`}
                     className="btn-secondary text-xs py-1.5 inline-flex items-center gap-1.5"
                   >
                     <Download className="h-3.5 w-3.5" />
                     Backup herunterladen
-                  </Link>
+                  </a>
                 )}
               </div>
             </div>
           </div>
           <p className="text-xs text-disabled">
-            CLI: <code className="text-secondary">pnpm --filter @taxtronik/web backup:run</code>
+            CLI: <code className="text-secondary">./taxtronik backup</code>
           </p>
           <p className="text-xs text-disabled mt-1">
             Lokale Kopie: <code className="text-secondary">backups/</code>
