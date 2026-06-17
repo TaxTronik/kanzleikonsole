@@ -45,11 +45,11 @@ NODE_ENV=production
 TAXTRONIK_VERSION=2026.06.17-test
 AUTH_SECRET=auth-secret-with-at-least-thirty-two-chars
 N8N_HMAC_SECRET=n8n-hmac-secret-with-at-least-thirty-two-chars
-N8N_ENCRYPTION_KEY=n8n-encryption-key-24chars
+N8N_ENCRYPTION_KEY=aaaaaaaaaaaaaaaaaaaaaaaa
 POSTGRES_PASSWORD=postgres-password-24chars
 TAXTRONIK_APP_PASSWORD=app-password-24chars-long
 S3_ACCESS_KEY=prod-access-key
-S3_SECRET_KEY=s3-secret-with-at-least-thirty-two-chars
+S3_SECRET_KEY=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 N8N_DB_PASSWORD=n8n-db-password-24chars
 DATABASE_URL=postgresql://taxtronik:owner@localhost:5432/taxtronik?schema=public
 DATABASE_APP_URL=postgresql://taxtronik_app:app@localhost:5432/taxtronik?schema=public

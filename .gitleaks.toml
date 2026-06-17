@@ -30,4 +30,9 @@ regexTarget = "line"
 regexes = [
   # S3-Client-Konstruktor: Variablen-Reference, kein hartkodiertes Secret.
   '''secretAccessKey:\s*env\.S3_SECRET_KEY''',
+  # Synthetische Fixture-Werte aus scripts/tests/ops-lib.test.sh. Diese Werte
+  # waren in Commit 6520d08 absichtlich nur Längen-Dummies für ./taxtronik doctor;
+  # der History-Scan sieht sie weiterhin, obwohl keine echten Secrets vorliegen.
+  '''N8N_ENCRYPTION_KEY=n8n-encryption-key-24chars''',
+  '''S3_SECRET_KEY=s3-secret-with-at-least-thirty-two-chars''',
 ]

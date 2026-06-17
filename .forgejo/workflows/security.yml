@@ -70,7 +70,7 @@ jobs:
       - name: Scan repository
         run: |
           set -o pipefail
-          /tmp/gitleaks detect --source . --redact --verbose 2>&1 | tee security-gitleaks.log
+          /tmp/gitleaks detect --source . --config .gitleaks.toml --redact --verbose 2>&1 | tee security-gitleaks.log
 
       - name: Secret-scan evidence upload
         if: always()
