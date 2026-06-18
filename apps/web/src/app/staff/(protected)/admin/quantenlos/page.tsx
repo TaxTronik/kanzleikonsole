@@ -62,9 +62,9 @@ export default async function QuantenlosPage() {
       </div>
 
       {!bereit ? (
-        <div className="rounded-md border border-yellow-200 bg-yellow-50 p-4 flex items-start gap-3">
-          <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5" />
-          <div className="text-sm text-yellow-900">
+        <div className="rounded-md border border-yellow-200 bg-yellow-50 p-4 flex items-start gap-3 dark:border-yellow-900/60 dark:bg-yellow-900/20">
+          <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5 dark:text-yellow-300" />
+          <div className="text-sm text-yellow-900 dark:text-yellow-100">
             {!modules.risk ? (
               <p>
                 Das Subsumtions-Modul ist deaktiviert — Quantenlos setzt es voraus.{' '}

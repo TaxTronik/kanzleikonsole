@@ -159,7 +159,60 @@ export async function checkSignalEngine(): Promise<ServiceStatus | null> {
     }
     return { ok: true, latencyMs: Date.now() - start };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: formatSignalEngineError(e) };
+  }
+}
+
+function formatSignalEngineError(e: unknown): string {
+  if (!(e instanceof Error)) return String(e);
+  const code = errorCauseCode(e);
+
+  if (
+    e.name === 'AbortError' ||
+    e.name === 'TimeoutError' ||
+    e.message.includes('timed out') ||
+    e.message.includes('The operation was aborted')
+  ) {
+    return 'Signal-Engine hat nicht rechtzeitig geantwortet. Bitte Engine-Status und Logs pruefen.';
+  }
+
+  if (e.message === 'fetch failed' || code) {
+    const codeSuffix = code ? ` (${code})` : '';
+    if (riskLayerConfig && isLoopbackUrl(riskLayerConfig.url)) {
+      const host = new URL(riskLayerConfig.url).host;
+      return (
+        `Signal-Engine nicht erreichbar${codeSuffix}. RISK_LAYER_URL zeigt auf ${host}; ` +
+        'in einem Docker-Container meint 127.0.0.1/localhost den App-Container. ' +
+        'Im Compose-Stack http://risk-layer:8000 oder eine vom App-Container erreichbare interne Adresse nutzen.'
+      );
+    }
+    return (
+      `Signal-Engine nicht erreichbar${codeSuffix}. ` +
+      'Pruefe Container, RISK_LAYER_URL und Bearer-Token.'
+    );
+  }
+
+  return e.message;
+}
+
+function errorCauseCode(e: Error): string | null {
+  const cause = (e as { cause?: unknown }).cause;
+  if (!cause || typeof cause !== 'object') return null;
+  const code = (cause as { code?: unknown }).code;
+  return typeof code === 'string' ? code : null;
+}
+
+function isLoopbackUrl(rawUrl: string): boolean {
+  try {
+    const hostname = new URL(rawUrl).hostname.toLowerCase();
+    return (
+      hostname === 'localhost' ||
+      hostname === '::1' ||
+      hostname === '[::1]' ||
+      hostname.startsWith('127.')
+    );
+  } catch {
+    return false;
   }
 }
 

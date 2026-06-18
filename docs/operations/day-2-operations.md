@@ -144,6 +144,11 @@ ein altes Volume mit anderem Encryption Key nutzt.
 Loopback und Docker-Service-DNS sind erlaubt, ohne `INTERNAL_FETCH_HOSTS` zu
 erweitern.
 
+Bei Docker gilt: `127.0.0.1`/`localhost` zeigt aus Sicht von `taxtronik-app`
+auf den App-Container selbst. Fuer den Compose-Risk-Layer daher
+`http://risk-layer:8000` verwenden; bei separat laufender Engine eine aus dem
+App-Container erreichbare interne Host-IP oder DNS-Adresse setzen.
+
 Pflichtpaar:
 
 - `RISK_LAYER_URL`

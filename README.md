@@ -88,6 +88,7 @@ Nützliche lokale Dienste:
 Optionaler Risk-Layer lokal:
 
 ```bash
+# App laeuft direkt auf demselben Host:
 RISK_LAYER_URL=http://127.0.0.1:8000
 RISK_LAYER_TOKEN=<mindestens-32-zeichen>
 ```
@@ -97,6 +98,12 @@ RISK_LAYER_TOKEN=<mindestens-32-zeichen>
 interne IP enthalten. `INTERNAL_FETCH_HOSTS` wird dafür nicht benötigt; diese
 Allowlist bleibt für allgemeine `safeFetch`-Pfade wie n8n, RSS, TSA und
 Update-Manifest relevant.
+
+Wichtig bei Docker: `127.0.0.1`/`localhost` wird aus dem App-Container heraus
+als App-Container selbst interpretiert, nicht als Host. Im Compose-Stack mit
+Risk-Layer-Profil deshalb `RISK_LAYER_URL=http://risk-layer:8000` verwenden.
+Bei einer separat auf dem Host laufenden Engine eine interne Adresse nutzen,
+die aus dem `taxtronik-app`-Container erreichbar ist.
 
 Reset:
 
@@ -201,7 +208,8 @@ N8N_BIND=127.0.0.1
 
 # Optional: Risk-Layer / TCMS
 RISK_LAYER_URL=http://risk-layer:8000
-# Alternativ bei separatem lokalen Dienst:
+# Alternativ, wenn die App nicht im Container laeuft oder der Host aus dem
+# App-Container ueber diese Adresse erreichbar ist:
 # RISK_LAYER_URL=http://127.0.0.1:8000
 # oder interne IP:
 # RISK_LAYER_URL=http://10.10.0.42:8000

@@ -79,9 +79,11 @@ function HashWert({ label, value }: { label: string; value: string }) {
   const [kopiert, setKopiert] = useState(false);
   return (
     <div className="min-w-0">
-      <div className="text-[11px] uppercase tracking-wide text-muted mb-0.5">{label}</div>
+      <div className="text-[11px] uppercase tracking-wide text-secondary dark:text-gray-300 mb-1">{label}</div>
       <div className="flex items-start gap-1.5">
-        <code className="font-mono text-xs text-primary break-all">{value}</code>
+        <code className="rounded-md border border-gray-200 bg-gray-50 px-1.5 py-1 font-mono text-xs leading-relaxed text-gray-900 break-all dark:border-gray-700 dark:bg-gray-950/70 dark:text-gray-100">
+          {value}
+        </code>
         <button
           type="button"
           onClick={async () => {
@@ -93,7 +95,7 @@ function HashWert({ label, value }: { label: string; value: string }) {
               /* Clipboard nicht verfügbar (z. B. unsichere Herkunft) */
             }
           }}
-          className="text-disabled hover:text-brand-700 shrink-0 mt-0.5"
+          className="text-disabled hover:text-brand-700 shrink-0 mt-1 dark:text-gray-400 dark:hover:text-brand-300"
           title="Wert kopieren"
         >
           {kopiert ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
@@ -278,7 +280,7 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
             {tokenBusy ? 'Speichert …' : 'Speichern'}
           </button>
         </div>
-        {tokenFehler && <p className="text-xs text-red-600 mt-2">{tokenFehler}</p>}
+        {tokenFehler && <p className="text-xs text-red-600 dark:text-red-300 mt-2">{tokenFehler}</p>}
       </div>
 
       {/* Ziehungs-Formular */}
@@ -341,7 +343,7 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
         <p className="text-xs text-muted mt-1">
           {backendInfo.hinweis}
           {backend === 'qpu' && !ibmToken.hinterlegt && (
-            <span className="text-yellow-700">
+            <span className="text-yellow-700 dark:text-yellow-300">
               {' '}Kein Token hinterlegt — die Ziehung gelingt nur, wenn der Engine-Host eigene
               IBM-Credentials hat (sonst klare Ablehnung, keine stille Degradation).
             </span>
@@ -371,17 +373,17 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
             {busy ? 'Zieht …' : 'Stichprobe ziehen'}
           </button>
         </div>
-        {fehler && <p className="text-xs text-red-600 mt-2">{fehler}</p>}
+        {fehler && <p className="text-xs text-red-600 dark:text-red-300 mt-2">{fehler}</p>}
       </div>
 
       {/* Wartender QPU-Job */}
       {pending && (
-        <div className="rounded-md border border-yellow-200 bg-yellow-50 p-4">
+        <div className="rounded-md border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-900/60 dark:bg-yellow-900/20">
           <div className="flex items-start gap-3">
-            <Hourglass className="h-5 w-5 text-yellow-600 mt-0.5" />
+            <Hourglass className="h-5 w-5 text-yellow-600 mt-0.5 dark:text-yellow-300" />
             <div className="flex-1 text-sm">
-              <p className="font-medium text-yellow-900">QPU-Job wartet in der IBM-Queue</p>
-              <p className="text-xs text-yellow-800 mt-1">
+              <p className="font-medium text-yellow-900 dark:text-yellow-100">QPU-Job wartet in der IBM-Queue</p>
+              <p className="text-xs text-yellow-800 mt-1 dark:text-yellow-200">
                 k={pending.k} aus n={pending.rahmen.length} · beantragt{' '}
                 {fmtDateTimeShort(new Date(pending.beantragtAm))}
               </p>
@@ -389,7 +391,7 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
                 <HashWert label="IBM-Job-ID" value={pending.jobId} />
                 <HashWert label="Commitment" value={pending.commitment} />
               </div>
-              {queueHinweis && <p className="text-xs text-yellow-800 mt-1">{queueHinweis}</p>}
+              {queueHinweis && <p className="text-xs text-yellow-800 mt-1 dark:text-yellow-200">{queueHinweis}</p>}
             </div>
             <button onClick={abholen} disabled={busy} className="btn-secondary text-xs">
               <RefreshCw className="h-3.5 w-3.5" />
@@ -401,21 +403,28 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
 
       {/* Historie inkl. frischem Ergebnis */}
       <div className="card overflow-hidden">
-        <div className="px-5 py-3 border-b border-default">
+        <div className="px-5 py-3 border-b border-default dark:bg-gray-950/40">
           <h2 className="text-sm font-semibold text-primary">Ziehungen</h2>
-          <p className="text-xs text-muted">
+          <p className="text-xs text-secondary">
             Jede Ziehung ist als Audit-Event in der Hash-Chain verankert (Aktion{' '}
-            <code className="font-mono">risk.los.gezogen</code>).
+            <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-primary dark:bg-gray-900">risk.los.gezogen</code>).
           </p>
         </div>
         {ziehungen.length === 0 ? (
           <p className="px-5 py-12 text-sm text-disabled text-center">Noch keine Ziehungen.</p>
         ) : (
-          <ul className="divide-y divide-border-subtle">
+          <ul className="divide-y divide-border-subtle bg-white dark:bg-gray-950/30">
             {ziehungen.map((z) => {
               const pruef = pruefErgebnisse[z.auditId];
               return (
-                <li key={z.auditId} className={`p-5 ${z.auditId === neueste ? 'bg-brand-50/40' : ''}`}>
+                <li
+                  key={z.auditId}
+                  className={`p-5 bg-white dark:bg-gray-900/80 ${
+                    z.auditId === neueste
+                      ? 'border-l-2 border-brand-600 bg-brand-50/60 dark:border-brand-500 dark:bg-brand-900/25'
+                      : ''
+                  }`}
+                >
                   <div className="flex items-start justify-between gap-3 flex-wrap">
                     <div className="space-y-1">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -424,7 +433,7 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
                         <span className="text-sm font-medium text-primary">
                           k={z.k} aus n={z.n}
                         </span>
-                        <span className="text-xs text-muted">
+                        <span className="text-xs text-secondary dark:text-gray-300">
                           {fmtDateTimeShort(new Date(z.gezogenAm))}
                           {z.zeitraum ? ` · Zeitraum ${z.zeitraum.von} – ${z.zeitraum.bis}` : ''}
                         </span>
@@ -434,8 +443,10 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
                         {z.jobId && <HashWert label="IBM-Job-ID" value={z.jobId} />}
                         {z.rohCountsSha256 && <HashWert label="Roh-Counts (SHA-256)" value={z.rohCountsSha256} />}
                         <div className="min-w-0">
-                          <div className="text-[11px] uppercase tracking-wide text-muted mb-0.5">Extraktor / DRBG</div>
-                          <div className="text-xs text-primary">{z.extraktor} &rarr; {z.drbg}</div>
+                          <div className="text-[11px] uppercase tracking-wide text-secondary dark:text-gray-300 mb-1">Extraktor / DRBG</div>
+                          <div className="inline-flex rounded-md border border-gray-200 bg-gray-50 px-1.5 py-1 text-xs text-gray-900 dark:border-gray-700 dark:bg-gray-950/70 dark:text-gray-100">
+                            {z.extraktor} &rarr; {z.drbg}
+                          </div>
                         </div>
                       </dl>
                     </div>
@@ -450,12 +461,12 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
                       </button>
                       {pruef && (
                         <span
-                          className={`flex items-center gap-1 text-xs ${pruef.gueltig ? 'text-green-700' : 'text-red-700'}`}
+                          className={`flex items-center gap-1 text-xs ${pruef.gueltig ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}
                         >
                           {pruef.gueltig ? <ShieldCheck className="h-3.5 w-3.5" /> : <ShieldAlert className="h-3.5 w-3.5" />}
                           {pruef.gueltig ? 'gültig' : 'UNGÜLTIG'}
                           {pruef.geprueft.length > 0 && (
-                            <span className="text-muted">({pruef.geprueft.join(', ')})</span>
+                            <span className="text-secondary dark:text-gray-300">({pruef.geprueft.join(', ')})</span>
                           )}
                         </span>
                       )}
@@ -464,22 +475,25 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
 
                   {/* Treffer: Subsumtionen (Risk-Review) bzw. Chain-Ereignisse (Nachschau) */}
                   {z.rahmenTyp === 'audit' ? (
-                    <ul className="mt-3 space-y-1">
+                    <ul className="mt-3 space-y-1.5">
                       {z.nachschau.map((e) => (
-                        <li key={e.auditId} className="text-xs flex items-center gap-2 flex-wrap">
-                          <span className="text-disabled font-mono">#{e.auditId}</span>
+                        <li
+                          key={e.auditId}
+                          className="flex items-center gap-2 flex-wrap rounded-md border border-transparent bg-gray-50/70 px-2 py-1 text-xs dark:border-gray-800 dark:bg-gray-950/55"
+                        >
+                          <span className="font-mono text-gray-500 dark:text-gray-300">#{e.auditId}</span>
                           {e.fehlt ? (
                             <span className="badge badge-red" title="Chain-Einträge sind unlöschbar — ein fehlender Eintrag ist ein Befund.">
                               Eintrag fehlt!
                             </span>
                           ) : (
                             <>
-                              <span className="text-secondary">{e.label}</span>
+                              <span className="font-medium text-primary">{e.label}</span>
                               {e.occurredAt && (
-                                <span className="text-muted">{fmtDateTimeShort(new Date(e.occurredAt))}</span>
+                                <span className="text-secondary dark:text-gray-300">{fmtDateTimeShort(new Date(e.occurredAt))}</span>
                               )}
                               {e.resourceType && <span className="badge badge-gray">{e.resourceType}</span>}
-                              <span className="text-muted">
+                              <span className="text-secondary dark:text-gray-300">
                                 {e.actorType === 'STAFF' ? 'Staff' : e.actorType === 'CLIENT' ? 'Mandant' : 'System'}
                               </span>
                             </>
@@ -488,19 +502,22 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
                       ))}
                     </ul>
                   ) : (
-                    <ul className="mt-3 space-y-1">
+                    <ul className="mt-3 space-y-1.5">
                       {z.stichprobe.map((s) => (
-                        <li key={s.analysisId} className="text-xs flex items-center gap-2">
-                          <span className="text-disabled font-mono">{s.analysisId.slice(0, 8)}…</span>
+                        <li
+                          key={s.analysisId}
+                          className="flex items-center gap-2 rounded-md border border-transparent bg-gray-50/70 px-2 py-1 text-xs dark:border-gray-800 dark:bg-gray-950/55"
+                        >
+                          <span className="font-mono text-gray-500 dark:text-gray-300">{s.analysisId.slice(0, 8)}…</span>
                           {s.clientId && !s.geloescht ? (
                             <Link
                               href={`/staff/clients/${s.clientId}/subsumtion/${s.analysisId}`}
-                              className="text-brand-700 hover:underline"
+                              className="text-brand-700 hover:underline dark:text-brand-300"
                             >
                               {s.titel ?? 'Subsumtion öffnen'}
                             </Link>
                           ) : (
-                            <span className="text-secondary">{s.titel ?? 'Subsumtion'}</span>
+                            <span className="text-primary">{s.titel ?? 'Subsumtion'}</span>
                           )}
                           {s.geloescht && <span className="badge badge-red">gelöscht</span>}
                           {!s.clientId && !s.geloescht && (
@@ -514,7 +531,7 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
                   {(z.hinweise.length > 0 || (pruef && pruef.hinweise.length > 0)) && (
                     <ul className="mt-2 space-y-0.5">
                       {[...z.hinweise, ...(pruef?.hinweise ?? [])].map((hint, i) => (
-                        <li key={i} className="text-xs text-muted">· {hint}</li>
+                        <li key={i} className="text-xs text-secondary dark:text-gray-300">· {hint}</li>
                       ))}
                     </ul>
                   )}

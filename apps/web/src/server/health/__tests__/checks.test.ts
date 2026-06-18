@@ -47,6 +47,7 @@ import { checkSignalEngine } from '../checks';
 
 describe('checkSignalEngine', () => {
   beforeEach(() => {
+    mocks.riskLayerConfig.url = 'http://127.0.0.1:8000';
     mocks.health.mockReset().mockResolvedValue({ ok: true });
     mocks.riskLayerClient.mockReset().mockImplementation(function RiskLayerClientMock() {
       return { health: mocks.health };
@@ -68,6 +69,31 @@ describe('checkSignalEngine', () => {
     await expect(checkSignalEngine()).resolves.toMatchObject({
       ok: false,
       error: 'Engine meldet ok=false',
+    });
+  });
+
+  it('erklaert fetch failed bei Loopback-URL aus Container-Sicht', async () => {
+    const err = new TypeError('fetch failed') as Error & { cause?: { code: string } };
+    err.cause = { code: 'ECONNREFUSED' };
+    mocks.health.mockRejectedValueOnce(err);
+
+    const result = await checkSignalEngine();
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: expect.stringContaining('RISK_LAYER_URL zeigt auf 127.0.0.1:8000'),
+    });
+    expect(result?.error).toContain('Docker-Container');
+    expect(result?.error).toContain('http://risk-layer:8000');
+  });
+
+  it('meldet Transportfehler bei Service-DNS ohne Loopback-Hinweis', async () => {
+    mocks.riskLayerConfig.url = 'http://risk-layer:8000';
+    mocks.health.mockRejectedValueOnce(new TypeError('fetch failed'));
+
+    await expect(checkSignalEngine()).resolves.toEqual({
+      ok: false,
+      error: 'Signal-Engine nicht erreichbar. Pruefe Container, RISK_LAYER_URL und Bearer-Token.',
     });
   });
 });
