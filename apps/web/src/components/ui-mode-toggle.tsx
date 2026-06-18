@@ -5,7 +5,6 @@ import { Sparkles, Square } from 'lucide-react';
 
 type UiMode = 'classic' | 'modern';
 const UI_MODE_EVENT = 'taxtronik-ui-mode-change';
-const UI_MODE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
 function readPref(): UiMode {
   try {
@@ -14,26 +13,7 @@ function readPref(): UiMode {
   } catch {
     // ignore
   }
-  try {
-    if (readCookie('ui_mode') === 'modern') return 'modern';
-  } catch {
-    // ignore
-  }
   return 'classic';
-}
-
-function readCookie(name: string): string | null {
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = document.cookie.match(new RegExp(`(?:^|; )${escaped}=([^;]*)`));
-  return match ? decodeURIComponent(match[1]!) : null;
-}
-
-function writeCookie(name: string, value: string | null): void {
-  if (value === null) {
-    document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax`;
-    return;
-  }
-  document.cookie = `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${UI_MODE_COOKIE_MAX_AGE}; SameSite=Lax`;
 }
 
 function applyMode(mode: UiMode): void {
@@ -73,11 +53,6 @@ export function UiModeToggle() {
     try {
       if (next === 'classic') localStorage.removeItem('ui_mode');
       else localStorage.setItem('ui_mode', next);
-    } catch {
-      // ignore
-    }
-    try {
-      writeCookie('ui_mode', next === 'classic' ? null : next);
     } catch {
       // ignore
     }
