@@ -13,6 +13,7 @@
 // =============================================================================
 
 const LOCALE = 'de-DE';
+const TIME_ZONE = 'Europe/Berlin';
 
 // --- Numerisch -----------------------------------------------------------------
 
@@ -90,21 +91,21 @@ export function fmtPercent(n: number | null | undefined): string {
 
 // --- Datum / Zeit --------------------------------------------------------------
 
-const dateShortFormatter = new Intl.DateTimeFormat(LOCALE);
-const dateNumericFormatter = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'short' });
-const dateMediumFormatter = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'medium' });
-const dateLongFormatter = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'long' });
-const dateWeekdayLongFormatter = new Intl.DateTimeFormat(LOCALE, { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
-const timeShortFormatter = new Intl.DateTimeFormat(LOCALE, { hour: '2-digit', minute: '2-digit' });
-const timeMediumFormatter = new Intl.DateTimeFormat(LOCALE, { timeStyle: 'medium' });
-const dateTimeShortFormatter = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'short', timeStyle: 'short' });
-const dateTimeMediumFormatter = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'medium', timeStyle: 'short' });
-const dateTimeLongFormatter = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'long', timeStyle: 'medium' });
-const dateTimeSecondsFormatter = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'short', timeStyle: 'medium' });
-const weekdayShortFormatter = new Intl.DateTimeFormat(LOCALE, { weekday: 'short' });
-const dayFormatter = new Intl.DateTimeFormat(LOCALE, { day: '2-digit' });
-const monthShortFormatter = new Intl.DateTimeFormat(LOCALE, { month: 'short' });
-const monthYearFormatter = new Intl.DateTimeFormat(LOCALE, { month: 'long', year: 'numeric' });
+const dateShortFormatter = new Intl.DateTimeFormat(LOCALE, { timeZone: TIME_ZONE });
+const dateNumericFormatter = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'short', timeZone: TIME_ZONE });
+const dateMediumFormatter = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'medium', timeZone: TIME_ZONE });
+const dateLongFormatter = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'long', timeZone: TIME_ZONE });
+const dateWeekdayLongFormatter = new Intl.DateTimeFormat(LOCALE, { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', timeZone: TIME_ZONE });
+const timeShortFormatter = new Intl.DateTimeFormat(LOCALE, { hour: '2-digit', minute: '2-digit', timeZone: TIME_ZONE });
+const timeMediumFormatter = new Intl.DateTimeFormat(LOCALE, { timeStyle: 'medium', timeZone: TIME_ZONE });
+const dateTimeShortFormatter = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'short', timeStyle: 'short', timeZone: TIME_ZONE });
+const dateTimeMediumFormatter = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'medium', timeStyle: 'short', timeZone: TIME_ZONE });
+const dateTimeLongFormatter = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'long', timeStyle: 'medium', timeZone: TIME_ZONE });
+const dateTimeSecondsFormatter = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'short', timeStyle: 'medium', timeZone: TIME_ZONE });
+const weekdayShortFormatter = new Intl.DateTimeFormat(LOCALE, { weekday: 'short', timeZone: TIME_ZONE });
+const dayFormatter = new Intl.DateTimeFormat(LOCALE, { day: '2-digit', timeZone: TIME_ZONE });
+const monthShortFormatter = new Intl.DateTimeFormat(LOCALE, { month: 'short', timeZone: TIME_ZONE });
+const monthYearFormatter = new Intl.DateTimeFormat(LOCALE, { month: 'long', year: 'numeric', timeZone: TIME_ZONE });
 
 /** `12.5.2026` (numerisch, ohne Null-Padding) */
 export function fmtDateShort(d: Date): string { return dateShortFormatter.format(d); }
