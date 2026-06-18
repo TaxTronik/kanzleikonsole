@@ -81,7 +81,7 @@ function HashWert({ label, value }: { label: string; value: string }) {
     <div className="min-w-0">
       <div className="text-[11px] uppercase tracking-wide text-secondary dark:text-gray-300 mb-1">{label}</div>
       <div className="flex items-start gap-1.5">
-        <code className="rounded-md border border-gray-200 bg-gray-50 px-1.5 py-1 font-mono text-xs leading-relaxed text-gray-900 break-all dark:border-gray-700 dark:bg-gray-950/70 dark:text-gray-100">
+        <code className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 font-mono text-sm leading-relaxed text-gray-900 break-all dark:border-gray-600 dark:bg-gray-900 dark:text-white">
           {value}
         </code>
         <button
@@ -403,25 +403,25 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
 
       {/* Historie inkl. frischem Ergebnis */}
       <div className="card overflow-hidden">
-        <div className="px-5 py-3 border-b border-default dark:bg-gray-950/40">
+        <div className="px-5 py-3 border-b border-default dark:bg-gray-900">
           <h2 className="text-sm font-semibold text-primary">Ziehungen</h2>
-          <p className="text-xs text-secondary">
+          <p className="text-xs text-secondary dark:text-gray-300">
             Jede Ziehung ist als Audit-Event in der Hash-Chain verankert (Aktion{' '}
-            <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-primary dark:bg-gray-900">risk.los.gezogen</code>).
+            <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-primary dark:bg-gray-800 dark:text-white">risk.los.gezogen</code>).
           </p>
         </div>
         {ziehungen.length === 0 ? (
           <p className="px-5 py-12 text-sm text-disabled text-center">Noch keine Ziehungen.</p>
         ) : (
-          <ul className="divide-y divide-border-subtle bg-white dark:bg-gray-950/30">
+          <ul className="divide-y divide-border-subtle bg-white dark:bg-gray-900">
             {ziehungen.map((z) => {
               const pruef = pruefErgebnisse[z.auditId];
               return (
                 <li
                   key={z.auditId}
-                  className={`p-5 bg-white dark:bg-gray-900/80 ${
+                  className={`p-5 bg-white dark:bg-gray-800 ${
                     z.auditId === neueste
-                      ? 'border-l-2 border-brand-600 bg-brand-50/60 dark:border-brand-500 dark:bg-brand-900/25'
+                      ? 'border-l-2 border-brand-600 bg-brand-50/60 dark:border-brand-400 dark:bg-brand-900/35'
                       : ''
                   }`}
                 >
@@ -444,7 +444,7 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
                         {z.rohCountsSha256 && <HashWert label="Roh-Counts (SHA-256)" value={z.rohCountsSha256} />}
                         <div className="min-w-0">
                           <div className="text-[11px] uppercase tracking-wide text-secondary dark:text-gray-300 mb-1">Extraktor / DRBG</div>
-                          <div className="inline-flex rounded-md border border-gray-200 bg-gray-50 px-1.5 py-1 text-xs text-gray-900 dark:border-gray-700 dark:bg-gray-950/70 dark:text-gray-100">
+                          <div className="inline-flex rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-900 dark:text-white">
                             {z.extraktor} &rarr; {z.drbg}
                           </div>
                         </div>
@@ -479,9 +479,9 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
                       {z.nachschau.map((e) => (
                         <li
                           key={e.auditId}
-                          className="flex items-center gap-2 flex-wrap rounded-md border border-transparent bg-gray-50/70 px-2 py-1 text-xs dark:border-gray-800 dark:bg-gray-950/55"
+                          className="flex items-center gap-2 flex-wrap rounded-md border border-gray-100 bg-gray-50 px-2.5 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-900"
                         >
-                          <span className="font-mono text-gray-500 dark:text-gray-300">#{e.auditId}</span>
+                          <span className="font-mono text-gray-500 dark:text-gray-200">#{e.auditId}</span>
                           {e.fehlt ? (
                             <span className="badge badge-red" title="Chain-Einträge sind unlöschbar — ein fehlender Eintrag ist ein Befund.">
                               Eintrag fehlt!
@@ -490,10 +490,10 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
                             <>
                               <span className="font-medium text-primary">{e.label}</span>
                               {e.occurredAt && (
-                                <span className="text-secondary dark:text-gray-300">{fmtDateTimeShort(new Date(e.occurredAt))}</span>
+                                <span className="text-secondary dark:text-gray-200">{fmtDateTimeShort(new Date(e.occurredAt))}</span>
                               )}
                               {e.resourceType && <span className="badge badge-gray">{e.resourceType}</span>}
-                              <span className="text-secondary dark:text-gray-300">
+                              <span className="text-secondary dark:text-gray-200">
                                 {e.actorType === 'STAFF' ? 'Staff' : e.actorType === 'CLIENT' ? 'Mandant' : 'System'}
                               </span>
                             </>
@@ -506,9 +506,9 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
                       {z.stichprobe.map((s) => (
                         <li
                           key={s.analysisId}
-                          className="flex items-center gap-2 rounded-md border border-transparent bg-gray-50/70 px-2 py-1 text-xs dark:border-gray-800 dark:bg-gray-950/55"
+                          className="flex items-center gap-2 rounded-md border border-gray-100 bg-gray-50 px-2.5 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-900"
                         >
-                          <span className="font-mono text-gray-500 dark:text-gray-300">{s.analysisId.slice(0, 8)}…</span>
+                          <span className="font-mono text-gray-500 dark:text-gray-200">{s.analysisId.slice(0, 8)}…</span>
                           {s.clientId && !s.geloescht ? (
                             <Link
                               href={`/staff/clients/${s.clientId}/subsumtion/${s.analysisId}`}

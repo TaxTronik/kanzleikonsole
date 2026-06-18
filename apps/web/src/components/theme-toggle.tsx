@@ -5,6 +5,7 @@ import { Sun, Moon, Monitor } from 'lucide-react';
 
 type ThemePref = 'light' | 'dark' | 'system';
 const THEME_EVENT = 'taxtronik-theme-change';
+const THEME_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
 function applyTheme(pref: ThemePref): void {
   let dark: boolean;
@@ -21,7 +22,27 @@ function readPref(): ThemePref {
   } catch {
     // ignore
   }
+  try {
+    const v = readCookie('theme');
+    if (v === 'dark' || v === 'light') return v;
+  } catch {
+    // ignore
+  }
   return 'system';
+}
+
+function readCookie(name: string): string | null {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = document.cookie.match(new RegExp(`(?:^|; )${escaped}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]!) : null;
+}
+
+function writeCookie(name: string, value: string | null): void {
+  if (value === null) {
+    document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax`;
+    return;
+  }
+  document.cookie = `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${THEME_COOKIE_MAX_AGE}; SameSite=Lax`;
 }
 
 export function ThemeToggle() {
@@ -60,6 +81,11 @@ export function ThemeToggle() {
     try {
       if (next === 'system') localStorage.removeItem('theme');
       else localStorage.setItem('theme', next);
+    } catch {
+      // ignore
+    }
+    try {
+      writeCookie('theme', next === 'system' ? null : next);
     } catch {
       // ignore
     }
