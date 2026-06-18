@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { cookies } from 'next/headers';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -27,19 +28,26 @@ export const dynamic = 'force-dynamic';
 const bootstrap = `
 (function () {
   try {
+    function cookie(name) {
+      var m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+      return m ? decodeURIComponent(m[1]) : null;
+    }
     var t = localStorage.getItem('theme');
     var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
     var dark = t === 'dark' || (t !== 'light' && prefersDark);
     if (dark) document.documentElement.classList.add('dark');
-    var ui = localStorage.getItem('ui_mode');
-    if (ui === 'modern') document.documentElement.classList.add('ui-modern');
+    var ui = localStorage.getItem('ui_mode') || cookie('ui_mode');
+    document.documentElement.classList.toggle('ui-modern', ui === 'modern');
   } catch (_) {}
 })();
 `.trim();
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const jar = await cookies();
+  const uiMode = jar.get('ui_mode')?.value;
+
   return (
-    <html lang="de" suppressHydrationWarning>
+    <html lang="de" className={uiMode === 'modern' ? 'ui-modern' : undefined} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: bootstrap }} />
       </head>
