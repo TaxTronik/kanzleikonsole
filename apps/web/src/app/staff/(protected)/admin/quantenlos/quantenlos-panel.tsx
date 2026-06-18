@@ -115,7 +115,7 @@ function HashWert({ label, value }: { label: string; value: string }) {
   const [kopiert, setKopiert] = useState(false);
   return (
     <div className="min-w-0">
-      <div className="text-[11px] uppercase tracking-wide text-secondary dark:text-gray-100 mb-1">{label}</div>
+      <div className="text-[11px] uppercase tracking-wide text-secondary dark:text-white mb-1">{label}</div>
       <div className="flex items-start gap-1.5">
         <code className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 font-mono text-sm leading-relaxed text-gray-900 break-all dark:border-gray-600 dark:bg-gray-900 dark:text-white">
           {value}
@@ -131,7 +131,7 @@ function HashWert({ label, value }: { label: string; value: string }) {
               /* Clipboard nicht verfügbar (z. B. unsichere Herkunft) */
             }
           }}
-          className="text-disabled hover:text-brand-700 shrink-0 mt-1 dark:text-gray-400 dark:hover:text-brand-300"
+          className="text-disabled hover:text-brand-700 shrink-0 mt-1 dark:text-white dark:hover:text-brand-300"
           title="Wert kopieren"
         >
           {kopiert ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
@@ -266,12 +266,12 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
       <QuantenlosThemeSync />
 
       {/* IBM-Quantum-Zugang — zentrale Config statt Credentials auf der Engine-Maschine */}
-      <div className="card p-5">
+      <div className="card p-5 dark:!bg-gray-900">
         <h2 className="text-sm font-semibold text-primary mb-2 flex items-center gap-2">
           <KeyRound className="h-4 w-4 text-brand-700" />
           IBM-Quantum-Zugang
         </h2>
-        <p className="text-xs text-muted mb-3">
+        <p className="text-xs text-muted mb-3 dark:text-white">
           Der API-Token (quantum.ibm.com) wird hier AES-256-GCM-verschlüsselt gespeichert und der
           Engine nur pro Ziehung mitgereicht — sie persistiert und loggt ihn nie. Ohne Token nutzt
           die Engine ihren Maschinen-Zugang, falls auf dem Engine-Host hinterlegt.
@@ -280,9 +280,9 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
           {ibmToken.hinterlegt ? (
             <>
               <span className="badge badge-green">Token hinterlegt</span>
-              <code className="font-mono text-xs text-secondary">***{ibmToken.suffix ?? ''}</code>
+              <code className="font-mono text-xs text-secondary dark:text-white">***{ibmToken.suffix ?? ''}</code>
               {ibmToken.gesetztAm && (
-                <span className="text-xs text-muted">
+                <span className="text-xs text-muted dark:text-white">
                   gesetzt {fmtDateTimeShort(new Date(ibmToken.gesetztAm))}
                 </span>
               )}
@@ -297,7 +297,7 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
         </div>
         <div className="flex items-end gap-2 mt-3">
           <div className="flex-1 max-w-md">
-            <label className="label" htmlFor="ibm-token">
+            <label className="label dark:!text-white" htmlFor="ibm-token">
               {ibmToken.hinterlegt ? 'Token ersetzen' : 'Token hinterlegen'}
             </label>
             <input
@@ -322,14 +322,14 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
       </div>
 
       {/* Ziehungs-Formular */}
-      <div className="card p-5">
+      <div className="card p-5 dark:!bg-gray-900">
         <h2 className="text-sm font-semibold text-primary mb-3 flex items-center gap-2">
           <Dices className="h-4 w-4 text-brand-700" />
           Neue Stichprobe ziehen
         </h2>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <div>
-            <label className="label" htmlFor="rahmenTyp">Prüfrahmen</label>
+            <label className="label dark:!text-white" htmlFor="rahmenTyp">Prüfrahmen</label>
             <select
               id="rahmenTyp" className="input text-xs" value={rahmenTyp}
               onChange={(e) => {
@@ -344,28 +344,28 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
             </select>
           </div>
           <div>
-            <label className="label" htmlFor="von">Zeitraum von</label>
+            <label className="label dark:!text-white" htmlFor="von">Zeitraum von</label>
             <input
               id="von" type="date" className="input text-xs" value={von}
               onChange={(e) => { setVon(e.target.value); aktualisiereVorschau(e.target.value, bis, rahmenTyp); }}
             />
           </div>
           <div>
-            <label className="label" htmlFor="bis">Zeitraum bis</label>
+            <label className="label dark:!text-white" htmlFor="bis">Zeitraum bis</label>
             <input
               id="bis" type="date" className="input text-xs" value={bis}
               onChange={(e) => { setBis(e.target.value); aktualisiereVorschau(von, e.target.value, rahmenTyp); }}
             />
           </div>
           <div>
-            <label className="label" htmlFor="k">Stichprobe (k)</label>
+            <label className="label dark:!text-white" htmlFor="k">Stichprobe (k)</label>
             <input
               id="k" type="number" min={1} max={n ?? 500} className="input text-xs" value={k}
               onChange={(e) => setK(Math.max(1, Number(e.target.value) || 1))}
             />
           </div>
           <div>
-            <label className="label" htmlFor="backend">Zufallsquelle</label>
+            <label className="label dark:!text-white" htmlFor="backend">Zufallsquelle</label>
             <select
               id="backend" className="input text-xs" value={backend}
               onChange={(e) => setBackend(e.target.value as Backend)}
@@ -377,8 +377,8 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
           </div>
         </div>
 
-        <p className="text-xs text-muted mt-2">{typInfo.hinweis}</p>
-        <p className="text-xs text-muted mt-1">
+        <p className="text-xs text-muted mt-2 dark:text-white">{typInfo.hinweis}</p>
+        <p className="text-xs text-muted mt-1 dark:text-white">
           {backendInfo.hinweis}
           {backend === 'qpu' && !ibmToken.hinterlegt && (
             <span className="text-yellow-700 dark:text-yellow-300">
@@ -389,10 +389,10 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
         </p>
 
         <div className="flex items-center justify-between mt-4">
-          <p className="text-xs text-secondary">
+          <p className="text-xs text-secondary dark:text-white">
             Rahmen:{' '}
             {n === null ? (
-              <span className="text-disabled">wird ermittelt …</span>
+              <span className="text-disabled dark:text-white">wird ermittelt …</span>
             ) : (
               <>
                 <span className="font-semibold">{n}</span>{' '}
@@ -440,16 +440,16 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
       )}
 
       {/* Historie inkl. frischem Ergebnis */}
-      <div className="card overflow-hidden">
+      <div className="card overflow-hidden dark:!bg-gray-900">
         <div className="px-5 py-3 border-b border-default dark:bg-gray-900">
           <h2 className="text-sm font-semibold text-primary">Ziehungen</h2>
-          <p className="text-xs text-secondary dark:text-gray-100">
+          <p className="text-xs text-secondary dark:text-white">
             Jede Ziehung ist als Audit-Event in der Hash-Chain verankert (Aktion{' '}
-            <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-primary dark:bg-gray-800 dark:text-white">risk.los.gezogen</code>).
+            <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-primary dark:bg-gray-900 dark:text-white">risk.los.gezogen</code>).
           </p>
         </div>
         {ziehungen.length === 0 ? (
-          <p className="px-5 py-12 text-sm text-disabled text-center">Noch keine Ziehungen.</p>
+          <p className="px-5 py-12 text-sm text-disabled text-center dark:text-white">Noch keine Ziehungen.</p>
         ) : (
           <ul className="divide-y divide-border-subtle bg-white dark:bg-gray-900">
             {ziehungen.map((z) => {
@@ -457,7 +457,7 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
               return (
                 <li
                   key={z.auditId}
-                  className={`p-5 bg-white dark:bg-gray-800 ${
+                  className={`p-5 bg-white dark:bg-gray-900 ${
                     z.auditId === neueste
                       ? 'border-l-2 border-brand-600 bg-brand-50/60 dark:border-brand-400 dark:bg-brand-900/35'
                       : ''
@@ -471,7 +471,7 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
                         <span className="text-sm font-medium text-primary">
                           k={z.k} aus n={z.n}
                         </span>
-                        <span className="text-xs text-secondary dark:text-gray-100">
+                        <span className="text-xs text-secondary dark:text-white">
                           {fmtDateTimeShort(new Date(z.gezogenAm))}
                           {z.zeitraum ? ` · Zeitraum ${z.zeitraum.von} – ${z.zeitraum.bis}` : ''}
                         </span>
@@ -481,7 +481,7 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
                         {z.jobId && <HashWert label="IBM-Job-ID" value={z.jobId} />}
                         {z.rohCountsSha256 && <HashWert label="Roh-Counts (SHA-256)" value={z.rohCountsSha256} />}
                         <div className="min-w-0">
-                          <div className="text-[11px] uppercase tracking-wide text-secondary dark:text-gray-100 mb-1">Extraktor / DRBG</div>
+                          <div className="text-[11px] uppercase tracking-wide text-secondary dark:text-white mb-1">Extraktor / DRBG</div>
                           <div className="inline-flex rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-900 dark:text-white">
                             {z.extraktor} &rarr; {z.drbg}
                           </div>
@@ -504,7 +504,7 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
                           {pruef.gueltig ? <ShieldCheck className="h-3.5 w-3.5" /> : <ShieldAlert className="h-3.5 w-3.5" />}
                           {pruef.gueltig ? 'gültig' : 'UNGÜLTIG'}
                           {pruef.geprueft.length > 0 && (
-                            <span className="text-secondary dark:text-gray-100">({pruef.geprueft.join(', ')})</span>
+                            <span className="text-secondary dark:text-white">({pruef.geprueft.join(', ')})</span>
                           )}
                         </span>
                       )}
@@ -519,7 +519,7 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
                           key={e.auditId}
                           className="flex items-center gap-2 flex-wrap rounded-md border border-gray-100 bg-gray-50 px-2.5 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-900"
                         >
-                          <span className="font-mono text-gray-500 dark:text-gray-100">#{e.auditId}</span>
+                          <span className="font-mono text-gray-500 dark:text-white">#{e.auditId}</span>
                           {e.fehlt ? (
                             <span className="badge badge-red" title="Chain-Einträge sind unlöschbar — ein fehlender Eintrag ist ein Befund.">
                               Eintrag fehlt!
@@ -528,10 +528,10 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
                             <>
                               <span className="font-medium text-primary">{e.label}</span>
                               {e.occurredAt && (
-                                <span className="text-secondary dark:text-gray-100">{fmtDateTimeShort(new Date(e.occurredAt))}</span>
+                                <span className="text-secondary dark:text-white">{fmtDateTimeShort(new Date(e.occurredAt))}</span>
                               )}
                               {e.resourceType && <span className="badge badge-gray">{e.resourceType}</span>}
-                              <span className="text-secondary dark:text-gray-100">
+                              <span className="text-secondary dark:text-white">
                                 {e.actorType === 'STAFF' ? 'Staff' : e.actorType === 'CLIENT' ? 'Mandant' : 'System'}
                               </span>
                             </>
@@ -546,7 +546,7 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
                           key={s.analysisId}
                           className="flex items-center gap-2 rounded-md border border-gray-100 bg-gray-50 px-2.5 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-900"
                         >
-                          <span className="font-mono text-gray-500 dark:text-gray-100">{s.analysisId.slice(0, 8)}…</span>
+                          <span className="font-mono text-gray-500 dark:text-white">{s.analysisId.slice(0, 8)}…</span>
                           {s.clientId && !s.geloescht ? (
                             <Link
                               href={`/staff/clients/${s.clientId}/subsumtion/${s.analysisId}`}
@@ -569,7 +569,7 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
                   {(z.hinweise.length > 0 || (pruef && pruef.hinweise.length > 0)) && (
                     <ul className="mt-2 space-y-0.5">
                       {[...z.hinweise, ...(pruef?.hinweise ?? [])].map((hint, i) => (
-                        <li key={i} className="text-xs text-secondary dark:text-gray-100">· {hint}</li>
+                        <li key={i} className="text-xs text-secondary dark:text-white">· {hint}</li>
                       ))}
                     </ul>
                   )}
