@@ -157,7 +157,7 @@ importers:
         specifier: 5.0.0-beta.31
         version: 5.0.0-beta.31(next@16.2.6(@babel/core@7.29.7)(@playwright/test@1.60.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(nodemailer@9.0.1)(react@19.2.6)
       nodemailer:
-        specifier: ^9.0.1
+        specifier: 9.0.1
         version: 9.0.1
       otplib:
         specifier: ^13.4.0
@@ -296,7 +296,7 @@ importers:
         specifier: ^5.11.0
         version: 5.11.0
       nodemailer:
-        specifier: ^9.0.1
+        specifier: 9.0.1
         version: 9.0.1
       pino:
         specifier: ^10.3.1
@@ -433,7 +433,7 @@ importers:
   packages/http-utils:
     dependencies:
       undici:
-        specifier: ^8.5.0
+        specifier: 8.5.0
         version: 8.5.0
     devDependencies:
       '@types/node':

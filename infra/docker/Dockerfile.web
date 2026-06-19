@@ -18,7 +18,7 @@ RUN apk add --no-cache libc6-compat openssl
 WORKDIR /repo
 # pnpm 11 — Lockfile-Format ab Round 11 enthält settings.injectWorkspacePackages,
 # das pnpm 10 unter --frozen-lockfile ablehnt.
-RUN corepack enable && corepack prepare pnpm@11.7.0 --activate
+RUN corepack enable && corepack prepare pnpm@11.8.0 --activate
 
 # Build-Time-Dummies für ENV-Validierung (@taxtronik/config wirft beim Modul-Load,
 # wenn ENV-Vars fehlen — Next evaluiert Server-Components bei der Page-Data-

@@ -13,7 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "undici": "^8.5.0"
+    "undici": "8.5.0"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",

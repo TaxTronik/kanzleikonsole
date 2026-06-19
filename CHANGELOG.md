@@ -35,7 +35,7 @@ Versionsabschnitt überführt.
 - Deployment: CI-getestete Registry-Images vorbereitet (Trivy-Gate), Pull statt
   Build auf dem Server, automatisches Backup vor jeder Migration,
   dokumentierter Rollback-Pfad
-- Toolchain: pnpm-Pin auf 11.7.0 angehoben (Root `packageManager` und
+- Toolchain: pnpm-Pin auf 11.8.0 angehoben (Root `packageManager` und
   Docker-Builds)
 - Ops-Doku: README, FEATURES, Release-Doku, nginx-Beispiel und n8n-Workflow-Doku
   beschreiben getrennte Staff-/Mandantenportal-Setups, n8n-Proxy-Varianten,
@@ -49,6 +49,9 @@ Versionsabschnitt überführt.
   Build-Cache-Prune; CI archiviert `testbericht-ops`
 - Security-Nachweise: `security.yml` archiviert Dependency-Audit- und
   Gitleaks-Logs als prüfbare Artefakte
+- Supply-Chain-Schutz: pnpm blockt frische npm-Releases sieben Tage,
+  prüft Lockfile-Trust erneut und CI/Release erzwingen einen Guard gegen
+  exotische Paketquellen sowie ungeprüfte Install-Scripts
 - Betriebsreife: Runbooks für Day-2 Operations, Secret-Rotation und
   Release-Rehearsal ergänzt; Testkonzept und Assurance-Modell aktualisiert
 

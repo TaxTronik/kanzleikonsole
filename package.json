@@ -6,7 +6,7 @@
   "engines": {
     "node": ">=22.13"
   },
-  "packageManager": "pnpm@11.7.0",
+  "packageManager": "pnpm@11.8.0",
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
@@ -32,7 +32,8 @@
     "guard:paranoid-e2e": "sh scripts/check-paranoid-e2e.sh",
     "guard:no-focused-tests": "sh scripts/check-no-focused-tests.sh",
     "guard:ci-images": "sh scripts/check-ci-images-pinned.sh",
-    "guard:ci-actions": "sh scripts/check-ci-actions-pinned.sh"
+    "guard:ci-actions": "sh scripts/check-ci-actions-pinned.sh",
+    "guard:supply-chain": "sh scripts/check-pnpm-supply-chain.sh"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.5",
