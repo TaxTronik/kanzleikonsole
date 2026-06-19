@@ -25,7 +25,7 @@ allowBuilds:
 peerDependencyRules:
   allowedVersions:
     eslint: "10"
-    nodemailer: "8"
+    nodemailer: "9"
 
 overrides:
   "@hono/node-server": "^1.19.13"
