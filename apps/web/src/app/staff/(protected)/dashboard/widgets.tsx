@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 /**
  * Dashboard-Widget-Renderer (Dispatcher).
  *
@@ -35,7 +36,7 @@ import {
   MyReminders,
 } from './widgets/personal';
 
-export async function renderWidget(type: WidgetType, ctx: RenderCtx): Promise<React.ReactNode> {
+export async function renderWidget(type: WidgetType, ctx: RenderCtx): Promise<ReactNode> {
   switch (type) {
     case 'kpi_clients':
       return kpi(ctx, Users, 'Mandanten', '/staff/clients', (t) => t.client.count());

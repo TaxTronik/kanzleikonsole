@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode, type ChangeEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Sparkles, Upload, Loader2, FileDown, FolderOpen, ClipboardList, Webhook, Archive, Lock, RefreshCw, X, AlertTriangle } from 'lucide-react';
@@ -121,32 +121,36 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
   useEffect(() => {
     if (!engineConfigured) { setLlm(null); return; }
     let active = true;
-    const tick = async () => {
-      if (pollLlm && Date.now() > pollDeadlineRef.current) {
-        setPollLlm(false);
-        setInfo('Die KI-Vertiefung läuft im Hintergrund weiter — die Markierungen erscheinen beim nächsten Öffnen.');
-        return;
-      }
-      const r = await llmStatusAction({ clientId, analysisId: initial?.id });
-      if (!active || !r.ok) return;
-      setLlm(r.status);
-      // Läuft serverseitig ein Job (z. B. nach einem Page-Reload — der Client-
-      // State ist dann weg, der Job-Zustand aber bekannt)? → „läuft"-Polling
-      // wieder aufnehmen, damit Statusanzeige + Trigger-Sperre erneut greifen.
-      if (!pollLlm && r.jobRunning) {
-        beginLlmRun();
-        return;
-      }
-      if (pollLlm && r.enrichedAt && r.enrichedAt !== llmBaselineRef.current) {
-        highlightLlmRef.current = true;
-        setPollLlm(false);
-        router.refresh(); // weich: Editor/Selektion/Scroll bleiben erhalten
-      } else if (pollLlm && r.jobFailed) {
-        // Job endgültig gescheitert → „lädt" beenden, Retry anbieten (nicht bis zum
-        // 10-Min-Deadline weiterpollen).
-        setPollLlm(false);
-        setLlmFailed(r.jobError || 'Die KI-Vertiefung ist fehlgeschlagen.');
-      }
+    const tick = () => {
+      void (async () => {
+        if (pollLlm && Date.now() > pollDeadlineRef.current) {
+          setPollLlm(false);
+          setInfo('Die KI-Vertiefung läuft im Hintergrund weiter — die Markierungen erscheinen beim nächsten Öffnen.');
+          return;
+        }
+        const r = await llmStatusAction({ clientId, analysisId: initial?.id });
+        if (!active || !r.ok) return;
+        setLlm(r.status);
+        // Läuft serverseitig ein Job (z. B. nach einem Page-Reload — der Client-
+        // State ist dann weg, der Job-Zustand aber bekannt)? → „läuft"-Polling
+        // wieder aufnehmen, damit Statusanzeige + Trigger-Sperre erneut greifen.
+        if (!pollLlm && r.jobRunning) {
+          beginLlmRun();
+          return;
+        }
+        if (pollLlm && r.enrichedAt && r.enrichedAt !== llmBaselineRef.current) {
+          highlightLlmRef.current = true;
+          setPollLlm(false);
+          router.refresh(); // weich: Editor/Selektion/Scroll bleiben erhalten
+        } else if (pollLlm && r.jobFailed) {
+          // Job endgültig gescheitert → „lädt" beenden, Retry anbieten (nicht bis zum
+          // 10-Min-Deadline weiterpollen).
+          setPollLlm(false);
+          setLlmFailed(r.jobError || 'Die KI-Vertiefung ist fehlgeschlagen.');
+        }
+      })().catch((err) => {
+        console.warn('[subsumtion] LLM-Status konnte nicht aktualisiert werden', err);
+      });
     };
     tick();
     // Ohne aktiven Lauf: nur der eine Mount-Tick (erkennt einen ggf. laufenden
@@ -245,7 +249,7 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
       router.push(`/staff/clients/${clientId}/subsumtion/${r.analysisId}`);
     });
   }
-  function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+  function onFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;

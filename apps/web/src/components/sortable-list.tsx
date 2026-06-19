@@ -14,7 +14,7 @@
  * bekommt einen blauen Top-Border-Indikator.
  */
 
-import { useRef, useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react';
 import { GripVertical } from 'lucide-react';
 
 interface Props {
@@ -26,7 +26,7 @@ interface Props {
 }
 
 export interface DragHandleProps {
-  onPointerDown: (e: React.PointerEvent) => void;
+  onPointerDown: (e: ReactPointerEvent) => void;
   className: string;
   title: string;
   role: string;
@@ -38,12 +38,12 @@ export function SortableList({ count, onReorder, renderItem, className }: Props)
   const [draggingFrom, setDraggingFrom] = useState<number | null>(null);
   const [hoverTarget, setHoverTarget] = useState<number | null>(null);
 
-  function startDrag(index: number, e: React.PointerEvent) {
+  function startDrag(index: number, e: ReactPointerEvent) {
     setDraggingFrom(index);
     setHoverTarget(index);
     (e.target as Element).setPointerCapture?.(e.pointerId);
 
-    function onMove(ev: PointerEvent) {
+    function onMove(ev: globalThis.PointerEvent) {
       if (!containerRef.current) return;
       const items = Array.from(containerRef.current.querySelectorAll<HTMLElement>('[data-sortable-index]'));
       let target = index;
@@ -62,7 +62,7 @@ export function SortableList({ count, onReorder, renderItem, className }: Props)
       setHoverTarget(target);
     }
 
-    function onUp(ev: PointerEvent) {
+    function onUp(ev: globalThis.PointerEvent) {
       document.removeEventListener('pointermove', onMove);
       document.removeEventListener('pointerup', onUp);
       setDraggingFrom((from) => {

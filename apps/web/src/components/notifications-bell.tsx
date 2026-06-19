@@ -73,36 +73,40 @@ export function NotificationsBell({ initialUnread }: Props) {
     if (next) playNotificationSound();
   }
 
-  const refreshCount = useCallback(async () => {
-    try {
-      const res = await fetch('/api/staff/notifications/count', { cache: 'no-store' });
-      if (!res.ok) return;
-      const data = (await res.json()) as { unread: number };
-      // Funktionaler Update + Delta-Check: nur bei echtem Zuwachs Ton, und
-      // robust gegen zwei parallel laufende Polls (vorher: Klammergriff auf
-      // veraltetem `unread`).
-      setUnread((prev) => {
-        if (data.unread > prev) playNotificationSound();
-        return data.unread;
-      });
-    } catch {
-      // silent
-    }
+  const refreshCount = useCallback(() => {
+    void (async () => {
+      try {
+        const res = await fetch('/api/staff/notifications/count', { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = (await res.json()) as { unread: number };
+        // Funktionaler Update + Delta-Check: nur bei echtem Zuwachs Ton, und
+        // robust gegen zwei parallel laufende Polls (vorher: Klammergriff auf
+        // veraltetem `unread`).
+        setUnread((prev) => {
+          if (data.unread > prev) playNotificationSound();
+          return data.unread;
+        });
+      } catch {
+        // silent
+      }
+    })();
   }, []);
 
-  const refreshRecent = useCallback(async () => {
-    try {
-      const res = await fetch('/api/staff/notifications/recent', { cache: 'no-store' });
-      if (!res.ok) return;
-      const data = (await res.json()) as RecentResponse;
-      setItems(data.items);
-      setUnread((prev) => {
-        if (data.unread > prev) playNotificationSound();
-        return data.unread;
-      });
-    } catch {
-      // silent
-    }
+  const refreshRecent = useCallback(() => {
+    void (async () => {
+      try {
+        const res = await fetch('/api/staff/notifications/recent', { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = (await res.json()) as RecentResponse;
+        setItems(data.items);
+        setUnread((prev) => {
+          if (data.unread > prev) playNotificationSound();
+          return data.unread;
+        });
+      } catch {
+        // silent
+      }
+    })();
   }, []);
 
   useEffect(() => {

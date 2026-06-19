@@ -151,7 +151,7 @@ function hasTimestampingEku(cert: Certificate): boolean {
   // RFC 3161 §2.3: Das EKU-Extension MUSS vorhanden UND als kritisch markiert
   // sein. Ein Cert mit nicht-kritischer (oder fehlender) timeStamping-EKU darf
   // NICHT als TSA-Signer akzeptiert werden — sonst genügte irgendein Server-Cert.
-  if (!ext || ext.critical !== true) return false;
+  if (!ext || !ext.critical) return false;
   const purposes = (ext.parsedValue as { keyPurposes?: string[] } | undefined)?.keyPurposes;
   return Array.isArray(purposes) && purposes.includes(EKU_TIMESTAMPING);
 }

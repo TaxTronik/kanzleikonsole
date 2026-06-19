@@ -10,7 +10,7 @@
 //     Initial-Fokus, Fokus-Rückgabe an den Auslöser (useDialogA11y)
 // =============================================================================
 
-import { useEffect, useRef, useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
@@ -66,7 +66,7 @@ export function Modal({
   /** Für aria-label — kurze deutsche Bezeichnung des Dialogs. */
   title: string;
   onClose: () => void;
-  children: React.ReactNode;
+  children: ReactNode;
   maxWidth?: string;
 }) {
   const ref = useDialogA11y(onClose);
@@ -104,7 +104,7 @@ export function ConfirmModal({
   onClose,
 }: {
   title: string;
-  message: React.ReactNode;
+  message: ReactNode;
   confirmLabel?: string;
   busyLabel?: string;
   danger?: boolean;

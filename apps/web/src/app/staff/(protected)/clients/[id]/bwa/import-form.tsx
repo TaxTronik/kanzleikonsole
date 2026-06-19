@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useTransition, type SubmitEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Upload } from 'lucide-react';
 import { importAddisonCsvAction, importDatevXlsxAction, type ImportResult } from './actions';
@@ -24,7 +24,7 @@ export function BwaImportForm({ clientId }: { clientId: string }) {
       ? 'Addison-CSV mit Semikolon, deutsche Dezimalkommas, z. B. a<MandantenNr>.csv'
       : 'DATEV-XLSX-Vorjahresvergleich, z. B. <Berater>_<Mandant>_<Jahr>_Vorjahresvergleich.xlsx';
 
-  function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setResult(null);

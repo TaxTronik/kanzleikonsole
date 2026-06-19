@@ -1,4 +1,5 @@
-﻿import { redirect } from 'next/navigation';
+import type { ReactNode } from 'react';
+import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 import { staffAuth } from '@/server/auth/staff';
 import { STAFF_SESSION_COOKIE } from '@/server/auth/session-cookie';
@@ -60,7 +61,7 @@ const allAdminNavItems: AdminNavConfig[] = [
   { href: '/staff/admin/settings', label: 'Einstellungen', icon: 'Settings' },
 ];
 
-export default async function StaffLayout({ children }: { children: React.ReactNode }) {
+export default async function StaffLayout({ children }: { children: ReactNode }) {
   const session = await staffAuth();
   if (!session?.user) {
     // Liegt ein (ungültiges/Geister-)Session-Cookie vor, aber staffAuth lieferte

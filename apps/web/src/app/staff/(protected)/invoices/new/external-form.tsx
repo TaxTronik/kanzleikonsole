@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useRef, useState, useTransition } from 'react';
+import { useRef, useState, useTransition, type SubmitEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Upload, FileText, Send } from 'lucide-react';
 import { uploadExternalInvoiceAction } from '../actions';
@@ -30,7 +30,7 @@ export function ExternalInvoiceForm({
     });
   }
 
-  function submit(e: React.FormEvent<HTMLFormElement>) {
+  function submit(e: SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     if (!file) {

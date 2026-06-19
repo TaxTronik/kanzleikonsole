@@ -17,6 +17,8 @@ interface AuditRotateJob {
 }
 
 declare global {
+  // `var` is intentional for ambient globalThis augmentation.
+  // noinspection ES6ConvertVarToLetConst
   var __taxtronik_audit_rotate_queue: { conn: IORedis; queue: Queue<AuditRotateJob> } | undefined;
 }
 

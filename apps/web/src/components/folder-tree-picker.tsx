@@ -7,7 +7,7 @@
 // tastaturbedienbar (Enter/Leertaste).
 // =============================================================================
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode, type KeyboardEvent } from 'react';
 import { Folder, FolderOpen, ChevronRight, ChevronDown, Check } from 'lucide-react';
 import type { FolderNode } from '@/components/document-browser-utils';
 
@@ -36,7 +36,7 @@ export function FolderTreePicker({
   showCheck?: boolean;
   emptyLabel?: string;
   /** Zusatzinhalt pro Zeile (z. B. Zähler, Hover-Aktionen). */
-  rowExtra?: (f: FolderNode) => React.ReactNode;
+  rowExtra?: (f: FolderNode) => ReactNode;
 }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
@@ -48,7 +48,7 @@ export function FolderTreePicker({
     return m;
   }, [folders]);
 
-  const keySelect = (e: React.KeyboardEvent, id: string | null) => {
+  const keySelect = (e: KeyboardEvent, id: string | null) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       onSelect(id);

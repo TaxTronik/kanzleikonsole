@@ -188,14 +188,13 @@ function detectSurface(pathname: string): Surface | null {
 }
 
 function isPublicPath(pathname: string): boolean {
-  if (PUBLIC_PATHS.has(pathname)) return true;
   // Trailing-slash-Varianten und Auth.js-Routen durchlassen.
-  if (pathname.startsWith('/api/auth/')) return true;
-  if (pathname.startsWith('/staff/login')) return true;
-  if (pathname.startsWith('/portal/login')) return true;
-  if (pathname.startsWith('/poa/sign')) return true;
-  if (pathname.startsWith('/gwg-onboarding')) return true;
-  return false;
+  return PUBLIC_PATHS.has(pathname) ||
+    pathname.startsWith('/api/auth/') ||
+    pathname.startsWith('/staff/login') ||
+    pathname.startsWith('/portal/login') ||
+    pathname.startsWith('/poa/sign') ||
+    pathname.startsWith('/gwg-onboarding');
 }
 
 function extractTenantSlug(request: NextRequest): string | null {

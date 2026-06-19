@@ -1,4 +1,5 @@
-﻿import { redirect } from 'next/navigation';
+import type { ComponentType } from 'react';
+import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { stat } from 'node:fs/promises';
 import { HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
@@ -439,7 +440,7 @@ function SmallKpi({
   value,
   subtitle,
 }: {
-  icon: React.ComponentType<{ className?: string }>;
+  icon: ComponentType<{ className?: string }>;
   label: string;
   value: number;
   subtitle?: string;

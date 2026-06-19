@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useTransition, type ReactNode, type ChangeEvent } from 'react';
 import { FileText, Upload, X } from 'lucide-react';
 import type { FormFieldType } from '@prisma/client';
 import { fmtTimeMedium } from '@/lib/fmt';
@@ -169,7 +169,7 @@ function renderField(
   set: (next: AnswerValue) => void,
   disabled: boolean,
   submissionId: string,
-): React.ReactNode {
+): ReactNode {
   switch (f.type) {
     case 'TEXT':
     case 'EMAIL':
@@ -318,7 +318,7 @@ function FileUploadField({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
-  async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+  async function onPick(e: ChangeEvent<HTMLInputElement>) {
     setUploadError(null);
     const file = e.target.files?.[0];
     e.target.value = '';

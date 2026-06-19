@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition, useEffect } from 'react';
+import { useState, useTransition, useEffect, type MouseEvent } from 'react';
 import { Bookmark, BookmarkCheck } from 'lucide-react';
 import { toggleBookmarkAction } from './bookmark-actions';
 
@@ -28,7 +28,7 @@ export function BookmarkButton({
     setBookmarked(initiallyBookmarked);
   }, [initiallyBookmarked]);
 
-  function toggle(e: React.MouseEvent) {
+  function toggle(e: MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
     const next = !bookmarked;

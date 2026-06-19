@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useEffect, useRef } from 'react';
+import { useActionState, useEffect, useRef, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   saveAdminFieldsAction,
@@ -55,7 +55,7 @@ export function AdminFieldsForm({
   children,
 }: {
   clientId: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
     saveAdminFieldsAction,
@@ -84,7 +84,7 @@ export function ResponsibilitiesForm({
   children,
 }: {
   clientId: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
     setResponsibilitiesAction,
@@ -165,7 +165,7 @@ export function GwgFieldsForm({
   children,
 }: {
   clientId: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
     saveGwgFieldsAction,

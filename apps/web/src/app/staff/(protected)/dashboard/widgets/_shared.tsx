@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 // =============================================================================
 // Dashboard-Widget-Shared-Utilities
 //
@@ -64,10 +65,10 @@ export function ListShell({
 }: {
   icon?: LucideIcon;
   title: string;
-  children: React.ReactNode;
+  children: ReactNode;
   emptyText: string;
   isEmpty: boolean;
-  footer?: React.ReactNode;
+  footer?: ReactNode;
 }) {
   return (
     <div className="card h-full flex flex-col">
@@ -102,7 +103,7 @@ export async function kpi(
   href: string,
   count: (t: Tx) => Promise<number>,
   accent: 'gray' | 'yellow' = 'gray',
-): Promise<React.ReactNode> {
+): Promise<ReactNode> {
   let value = 0;
   try {
     value = await count(ctx.tx);

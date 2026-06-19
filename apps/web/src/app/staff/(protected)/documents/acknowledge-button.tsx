@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useTransition, type MouseEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { CheckCircle2, Circle } from 'lucide-react';
 import { acknowledgeDocumentAction } from './acknowledge-actions';
@@ -23,7 +23,7 @@ export function AcknowledgeButton({
   const [doneAt, setDoneAt] = useState(acknowledgedAt);
   const [isPending, start] = useTransition();
 
-  function toggle(e: React.MouseEvent) {
+  function toggle(e: MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
     const next = !done;

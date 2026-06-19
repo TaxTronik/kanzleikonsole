@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useTransition, type SubmitEvent } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   checkPasswordAction,
@@ -76,12 +76,12 @@ export default function StaffLoginPage() {
     });
   }
 
-  function handlePasswordSubmit(e: React.FormEvent) {
+  function handlePasswordSubmit(e: SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
     submitPasswordStep();
   }
 
-  function handleSetupConfirm(e: React.FormEvent) {
+  function handleSetupConfirm(e: SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     startTransition(async () => {

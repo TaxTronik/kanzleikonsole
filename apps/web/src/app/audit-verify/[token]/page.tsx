@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 // =============================================================================
 // /audit-verify/[token] — öffentliche, read-only Evidence-Verifikation
 //
@@ -97,7 +98,7 @@ export default async function AuditVerifyPage({
   );
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
+function Shell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-surface-page flex items-center justify-center p-6">
       <div className="card p-8 max-w-lg w-full">{children}</div>

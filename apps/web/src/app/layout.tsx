@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import './globals.css';
@@ -42,7 +43,7 @@ const bootstrap = `
 })();
 `.trim();
 
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
   const jar = await cookies();
   const uiMode = jar.get('ui_mode')?.value;
 

@@ -44,9 +44,7 @@ export const WORKFLOW_STEP_RE = /^workflow\.step\.[a-z][a-z0-9_-]{0,40}$/;
  * Defense in Depth gegen direkte DB-Manipulation an `n8n_outbox.event`.
  */
 export function isAllowedN8nEvent(event: string): boolean {
-  if (STATIC_EVENT_WHITELIST.has(event)) return true;
-  if (WORKFLOW_STEP_RE.test(event)) return true;
-  return false;
+  return STATIC_EVENT_WHITELIST.has(event) || WORKFLOW_STEP_RE.test(event);
 }
 
 export interface OutboundSignature {

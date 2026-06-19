@@ -1,4 +1,5 @@
-﻿// =============================================================================
+import type { ReactNode } from 'react';
+// =============================================================================
 // /portal/login/verify — Server-Component
 //
 // Der Magic-Link-Token wird NICHT mehr beim GET-Render konsumiert (das ist
@@ -69,7 +70,7 @@ export default async function VerifyMagicLinkPage({ searchParams }: PageProps) {
   );
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
+function Shell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-surface-page">
       <div className="w-full max-w-md">

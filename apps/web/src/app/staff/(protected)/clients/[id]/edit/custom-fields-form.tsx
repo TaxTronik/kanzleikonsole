@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useTransition, type ReactNode } from 'react';
 import { saveCustomFieldValuesAction } from '../../../admin/custom-fields/actions';
 import { fmtTimeMedium } from '@/lib/fmt';
 
@@ -88,7 +88,7 @@ export function CustomFieldsForm({
   );
 }
 
-function renderInput(d: FieldDef, v: Value, set: (v: Value) => void): React.ReactNode {
+function renderInput(d: FieldDef, v: Value, set: (v: Value) => void): ReactNode {
   switch (d.type) {
     case 'TEXTAREA':
       return (

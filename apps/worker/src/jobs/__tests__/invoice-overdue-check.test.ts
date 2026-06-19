@@ -150,7 +150,7 @@ describe('U-1/RF-8: Statuswechsel + Audit + Notification in einer Tx', () => {
 
   it('Singular bei genau 1 Tag Verzug', async () => {
     h.prismaOwner.invoice.findMany.mockResolvedValue([
-      invoice({ dueDate: new Date(FIXED_NOW.getTime() - 1 * DAY) }),
+      invoice({ dueDate: new Date(FIXED_NOW.getTime() - DAY) }),
     ]);
 
     await run();

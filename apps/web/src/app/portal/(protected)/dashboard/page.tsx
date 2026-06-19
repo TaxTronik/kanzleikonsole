@@ -1,4 +1,5 @@
-﻿import { redirect } from 'next/navigation';
+import type { ComponentType } from 'react';
+import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { Inbox, FileText, Clock, ClipboardList, CheckCircle2, Receipt } from 'lucide-react';
 import { portalAuth } from '@/server/auth/portal';
@@ -195,7 +196,7 @@ function KpiCard({
   accent,
   large = true,
 }: {
-  icon: React.ComponentType<{ className?: string }>;
+  icon: ComponentType<{ className?: string }>;
   label: string;
   value: number | string;
   accent: 'yellow' | 'gray';

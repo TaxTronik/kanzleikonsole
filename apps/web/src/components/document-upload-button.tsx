@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useTransition, useEffect } from 'react';
+import { useState, useTransition, useEffect, type SubmitEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { Upload, X } from 'lucide-react';
@@ -93,7 +93,7 @@ export function DocumentUploadButton({
     setOpen(false);
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     if (!file) {

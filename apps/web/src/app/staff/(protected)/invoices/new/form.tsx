@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useTransition, type SubmitEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Trash2 } from 'lucide-react';
 import { createInvoiceAction } from '../actions';
@@ -68,7 +68,7 @@ export function NewInvoiceForm({ clients }: Props) {
   );
   const grandTotal = netTotal + vatTotal;
 
-  function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     if (!clientId) {
@@ -304,4 +304,3 @@ export function NewInvoiceForm({ clients }: Props) {
     </form>
   );
 }
-

@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useTransition, useState } from 'react';
+import { useTransition, useState, type ReactNode, type MouseEvent } from 'react';
 import { Check } from 'lucide-react';
 import { markPhoneNoteDoneAction } from '@/app/staff/(protected)/phone-notes/actions';
 
@@ -10,7 +10,7 @@ export function PhoneNoteRow({
   className,
 }: {
   id: string;
-  children: React.ReactNode;
+  children: ReactNode;
   className?: string;
 }) {
   const [hidden, setHidden] = useState(false);
@@ -18,7 +18,7 @@ export function PhoneNoteRow({
 
   if (hidden) return null;
 
-  function mark(e: React.MouseEvent) {
+  function mark(e: MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
     setHidden(true);

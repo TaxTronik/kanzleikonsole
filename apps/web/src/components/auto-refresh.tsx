@@ -25,7 +25,7 @@ export function AutoRefresh() {
       const ae = document.activeElement;
       if (!ae) return false;
       const tag = (ae.tagName ?? '').toLowerCase();
-      return tag === 'input' || tag === 'textarea' || tag === 'select' || (ae as HTMLElement).isContentEditable === true;
+      return tag === 'input' || tag === 'textarea' || tag === 'select' || (ae as HTMLElement).isContentEditable;
     }
 
     function tick(): void {

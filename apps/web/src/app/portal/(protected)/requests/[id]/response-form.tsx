@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useTransition, useRef } from 'react';
+import { useState, useTransition, useRef, type SubmitEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Paperclip, X } from 'lucide-react';
 import { addPortalResponseAction } from './actions';
@@ -14,7 +14,7 @@ export function PortalResponseForm({ requestId }: { requestId: string }) {
   const [progress, setProgress] = useState<'idle' | 'upload' | 'commit' | 'response'>('idle');
   const [isPending, startTransition] = useTransition();
 
-  function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     if (!message.trim()) {

@@ -13,6 +13,8 @@ import IORedis from 'ioredis';
 import { env } from '@taxtronik/config';
 
 declare global {
+  // `var` is intentional for ambient globalThis augmentation.
+  // noinspection ES6ConvertVarToLetConst
   var __taxtronik_redis: IORedis | null | undefined;
 }
 

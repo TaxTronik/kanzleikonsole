@@ -136,7 +136,7 @@ fachliche Würdigung" bis "RLS ist die letzte Barriere, nicht die einzige".
 
 | Phase | Maßnahme | Status |
 |---|---|---|
-| **Jetzt** | `security.txt` für Responsible Disclosure | [`public/.well-known/security.txt`](#) |
+| **Jetzt** | `SECURITY.md` für Responsible Disclosure | [`SECURITY.md`](../../SECURITY.md) |
 | **Nächstes Quartal** | Externer Code-Audit für Kernmodule (RLS, Audit, RBAC) | Geplant |
 | **Pre-Launch** | Penetrationstest (OWASP Top 10, API, Auth) | Roadmap |
 | **Pre-Launch** | PS 880 Readiness Dokumentation | `docs/compliance/idw-ps880-pruefungsbereitschaft.md` |
@@ -153,7 +153,7 @@ fachliche Würdigung" bis "RLS ist die letzte Barriere, nicht die einzige".
 - [Secret-Rotation](../operations/secret-rotation.md)
 - [Release-Rehearsal](../operations/release-rehearsal.md)
 - [ADR 0002: RLS und App-Level-Tenancy](../adr/0002-rls-und-app-level-tenancy.md)
-- [ADR 0012: Schema-Drift-Detection](../adr/0012-schema-drift-detection.md)
+- [ADR 0012: Prisma Migration Drift Check](../adr/0012-prisma-migration-drift-check.md)
 - [Tenancy Model](../compliance/tenancy-model.md)
 - [GoBD Compliance](../compliance/gobd.md)
 - [GwG Compliance](../compliance/gwg.md)

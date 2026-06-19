@@ -266,7 +266,7 @@ export function germanHolidays(year: number, region: GermanRegion | null): Date[
   const out: Date[] = [
     new Date(Date.UTC(year, 0, 1)),       // Neujahr
     new Date(easter.getTime() - 2 * ms),   // Karfreitag
-    new Date(easter.getTime() + 1 * ms),   // Ostermontag
+    new Date(easter.getTime() + ms),       // Ostermontag
     new Date(Date.UTC(year, 4, 1)),       // Tag der Arbeit
     new Date(easter.getTime() + 39 * ms),  // Christi Himmelfahrt
     new Date(easter.getTime() + 50 * ms),  // Pfingstmontag

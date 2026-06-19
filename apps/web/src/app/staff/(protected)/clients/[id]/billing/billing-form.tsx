@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useTransition, useMemo } from 'react';
+import { useState, useTransition, useMemo, type SubmitEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { createInvoiceFromTimeEntriesAction } from './actions';
 
@@ -31,7 +31,7 @@ export function BillingForm({ clientId, totalHours }: Props) {
   const previewGross = previewNet + previewVat;
 
 
-  function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     startTransition(async () => {

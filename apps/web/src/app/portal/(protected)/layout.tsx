@@ -1,4 +1,5 @@
-﻿import { redirect } from 'next/navigation';
+import type { ReactNode } from 'react';
+import { redirect } from 'next/navigation';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 import { LogOut } from 'lucide-react';
@@ -39,7 +40,7 @@ const allPortalNavItems: PortalNavConfig[] = [
   { href: '/portal/settings', label: 'Einstellungen', icon: 'Settings' },
 ];
 
-export default async function PortalLayout({ children }: { children: React.ReactNode }) {
+export default async function PortalLayout({ children }: { children: ReactNode }) {
   const session = await portalAuth();
   if (!session?.user) {
     redirect('/portal/login');
@@ -59,15 +60,10 @@ export default async function PortalLayout({ children }: { children: React.React
 
   const navItems: NavItem[] = allPortalNavItems
     .filter((it) => {
-      if (it.moduleKey) {
-        if (it.moduleKey === 'invoices') {
-          if (modules.invoiceMode === 'OFF') return false;
-        } else if (!modules[it.moduleKey]) {
-          return false;
-        }
-      }
-      if (it.portalFeature && !portalFeatures[it.portalFeature]) return false;
-      return true;
+      const moduleEnabled = !it.moduleKey ||
+        (it.moduleKey === 'invoices' ? modules.invoiceMode !== 'OFF' : modules[it.moduleKey]);
+      const portalFeatureEnabled = !it.portalFeature || portalFeatures[it.portalFeature];
+      return moduleEnabled && portalFeatureEnabled;
     })
     .map((it) => ({ href: it.href, label: it.label, icon: it.icon, exact: it.exact }));
 

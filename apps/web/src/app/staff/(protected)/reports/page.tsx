@@ -1,4 +1,5 @@
-﻿// =============================================================================
+import type { ComponentType } from 'react';
+// =============================================================================
 // /staff/reports — Auswertungs-Dashboard
 //
 // Zeigt aggregierte KPIs über Anforderungen, Zeit, Rechnungen, Mandanten.
@@ -340,7 +341,7 @@ function Kpi({
   subtitle,
   accent,
 }: {
-  icon: React.ComponentType<{ className?: string }>;
+  icon: ComponentType<{ className?: string }>;
   label: string;
   value: string;
   subtitle?: string;

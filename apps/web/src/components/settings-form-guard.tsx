@@ -82,7 +82,6 @@ export function SettingsFormGuard({ children }: { children: ReactNode }) {
       const forms = Array.from(root!.querySelectorAll('form'));
       if (forms.some((f) => isSaveable(f) && f.classList.contains('settings-dirty'))) {
         e.preventDefault();
-        e.returnValue = '';
       }
     }
 

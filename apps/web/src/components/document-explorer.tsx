@@ -17,7 +17,7 @@
 // SharedDialogs (Preview, Retag, Ordner anlegen/umbenennen, Confirm).
 // =============================================================================
 
-import { useMemo, useState, useTransition, useEffect } from 'react';
+import { useMemo, useState, useTransition, useEffect, type SubmitEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -352,7 +352,7 @@ function BrowserView({
   }
   const clearSel = () => setSel([]);
 
-  function applySearch(ev: React.FormEvent) {
+  function applySearch(ev: SubmitEvent<HTMLFormElement>) {
     ev.preventDefault();
     const u = new URL(here, window.location.origin);
     if (search.trim()) u.searchParams.set('q', search.trim());
@@ -458,41 +458,51 @@ function BrowserView({
   // OS-Datei-Drop = Upload in den aktuellen Bereich/Ordner. Nur sinnvoll,
   // wenn ein Scope (Mandant/Kanzlei-intern) offen ist und nicht im
   // Gelöscht-Modus. Typ = Default-Typ der Kanzlei (GENERAL/erste NONE).
-  async function uploadDropped(files: File[]) {
+  function uploadDropped(files: File[]) {
     if (!scope || deleted || files.length === 0) return;
-    let typeId = '';
-    try {
-      const r = await fetch('/api/staff/document-types');
-      if (r.ok) {
-        const d = (await r.json()) as {
-          types: { id: string; classificationKey: string | null; tier: string }[];
-        };
-        typeId =
-          d.types.find((t) => t.classificationKey === 'GENERAL')?.id ??
-          d.types.find((t) => t.tier === 'NONE')?.id ??
-          d.types[0]?.id ?? '';
-      }
-    } catch { console.warn('[doc-explorer] Datei-Typ-Ermittlung fehlgeschlagen'); }
-    if (!typeId) { ops.setOpError('Kein Datei-Typ verfügbar.'); return; }
-    start(async () => {
-      ops.setOpError(null);
-      const errs: string[] = [];
-      for (const f of files) {
-        const fd = new FormData();
-        fd.set('file', f);
-        fd.set('documentTypeId', typeId);
-        fd.set('title', f.name.replace(/\.[^.]+$/, ''));
-        fd.set('mimeType', f.type || 'application/octet-stream');
-        if (scope.clientId) fd.set('clientId', scope.clientId);
-        if (currentFolderId) fd.set('folderId', currentFolderId);
-        const res = await fetch('/api/staff/documents/commit', { method: 'POST', body: fd });
-        if (!res.ok) {
-          const b = await res.json().catch(() => ({}));
-          errs.push(`${f.name}: ${(b as { error?: string }).error ?? res.status}`);
+    void (async () => {
+      let typeId = '';
+      try {
+        const r = await fetch('/api/staff/document-types');
+        if (r.ok) {
+          const d = (await r.json()) as {
+            types: { id: string; classificationKey: string | null; tier: string }[];
+          };
+          typeId =
+            d.types.find((t) => t.classificationKey === 'GENERAL')?.id ??
+            d.types.find((t) => t.tier === 'NONE')?.id ??
+            d.types[0]?.id ?? '';
         }
-      }
-      if (errs.length) ops.setOpError(`Upload-Fehler:\n${errs.join('\n')}`);
-      router.refresh();
+      } catch { console.warn('[doc-explorer] Datei-Typ-Ermittlung fehlgeschlagen'); }
+      if (!typeId) { ops.setOpError('Kein Datei-Typ verfügbar.'); return; }
+      start(() => {
+        void (async () => {
+          ops.setOpError(null);
+          const errs: string[] = [];
+          for (const f of files) {
+            const fd = new FormData();
+            fd.set('file', f);
+            fd.set('documentTypeId', typeId);
+            fd.set('title', f.name.replace(/\.[^.]+$/, ''));
+            fd.set('mimeType', f.type || 'application/octet-stream');
+            if (scope.clientId) fd.set('clientId', scope.clientId);
+            if (currentFolderId) fd.set('folderId', currentFolderId);
+            const res = await fetch('/api/staff/documents/commit', { method: 'POST', body: fd });
+            if (!res.ok) {
+              const b = await res.json().catch(() => ({}));
+              errs.push(`${f.name}: ${(b as { error?: string }).error ?? res.status}`);
+            }
+          }
+          if (errs.length) ops.setOpError(`Upload-Fehler:\n${errs.join('\n')}`);
+          router.refresh();
+        })().catch((err) => {
+          console.warn('[doc-explorer] Drop-Upload fehlgeschlagen', err);
+          ops.setOpError('Drop-Upload fehlgeschlagen.');
+        });
+      });
+    })().catch((err) => {
+      console.warn('[doc-explorer] Drop-Upload fehlgeschlagen', err);
+      ops.setOpError('Drop-Upload fehlgeschlagen.');
     });
   }
   // Unterscheidet OS-Datei-Drop (dataTransfer.types enthält 'Files') vom

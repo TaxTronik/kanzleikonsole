@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useTransition, type SubmitEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import type { RiskFactor } from '@/server/gwg/risk-score';
 import { saveRiskAnswersAction } from './actions';
@@ -33,7 +33,7 @@ export function RiskAssessmentForm({
     setAnswers((a) => ({ ...a, [key]: value }));
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     startTransition(async () => {

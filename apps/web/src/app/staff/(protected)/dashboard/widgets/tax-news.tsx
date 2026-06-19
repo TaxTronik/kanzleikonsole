@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 // =============================================================================
 // RSS-Reader-Widget (BMF/BFH und beliebige weitere Feeds).
 //
@@ -24,7 +25,7 @@ function feedBadgeClass(color: string | null): string {
   }
 }
 
-export async function TaxNews({ tx, staffId, isAdmin }: RenderCtx): Promise<React.ReactNode> {
+export async function TaxNews({ tx, staffId, isAdmin }: RenderCtx): Promise<ReactNode> {
   const [feeds, staff, bookmarks] = await Promise.all([
     tx.rssFeed.findMany({
       where: { staffId },

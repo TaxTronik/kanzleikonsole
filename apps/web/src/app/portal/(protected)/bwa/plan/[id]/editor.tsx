@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useTransition, useMemo } from 'react';
+import { useState, useTransition, useMemo, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { Save, Trash2 } from 'lucide-react';
 import { fmtEURRound, fmtTimeMedium } from '@/lib/fmt';
@@ -14,9 +14,9 @@ export type UpdatePlanFn = (input: {
   notes: string | null;
   status: 'DRAFT' | 'FINAL';
   lines: Array<{ axis: PlanAxis; amount: number; note: string | null }>;
-}) => Promise<{ ok: boolean; error?: string } | void>;
+}) => Promise<{ ok: boolean; error?: string }>;
 
-export type DeletePlanFn = (input: { planId: string }) => Promise<{ ok: boolean; error?: string } | void>;
+export type DeletePlanFn = (input: { planId: string }) => Promise<{ ok: boolean; error?: string }>;
 
 type Axis =
   | 'REVENUE' | 'PERSONNEL' | 'OTHER_COSTS' | 'DEPRECIATION' | 'MATERIAL' | 'OTHER_INCOME' | 'TAXES';
@@ -53,7 +53,7 @@ export function PlanEditor({
   backHref: string;
   onUpdate: UpdatePlanFn;
   onDelete: DeletePlanFn;
-  actorInfo?: React.ReactNode;
+  actorInfo?: ReactNode;
 }) {
   const router = useRouter();
   const [name, setName] = useState(initial.name);
@@ -97,7 +97,7 @@ export function PlanEditor({
           note: lines[a].note.trim() || null,
         })),
       });
-      if (r && r.ok === false) {
+      if (!r.ok) {
         setError(r.error ?? 'Fehler.');
         return;
       }
@@ -109,7 +109,7 @@ export function PlanEditor({
     if (!confirm('Planung wirklich löschen?')) return;
     start(async () => {
       const r = await onDelete({ planId });
-      if (r && r.ok === false) {
+      if (!r.ok) {
         setError(r.error ?? 'Fehler.');
         return;
       }

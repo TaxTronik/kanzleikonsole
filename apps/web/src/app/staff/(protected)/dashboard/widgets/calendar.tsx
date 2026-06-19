@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 // =============================================================================
 // Kalender-Widget — gemerged appointments + tax-deadlines, nächste 30 Tage.
 // =============================================================================
@@ -9,7 +10,7 @@ import { fmtDateShort, fmtTimeShort } from '@/lib/fmt';
 import { CALENDAR_PAST_MS } from '@/lib/consts';
 import { ListShell, notDeniedClient, type RenderCtx } from './_shared';
 
-export async function CalendarWidget({ tx, deniedClientIds }: RenderCtx): Promise<React.ReactNode> {
+export async function CalendarWidget({ tx, deniedClientIds }: RenderCtx): Promise<ReactNode> {
   const horizon = new Date();
   horizon.setDate(horizon.getDate() + 30);
   const [appts, deadlines] = await Promise.all([

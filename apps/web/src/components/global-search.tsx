@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentType, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, Loader2, Users, Inbox, FileText, BookOpen, Receipt, ArrowRight } from 'lucide-react';
 
@@ -12,7 +12,7 @@ interface SearchResult {
   href: string;
 }
 
-const ICON: Record<SearchResult['type'], React.ComponentType<{ className?: string }>> = {
+const ICON: Record<SearchResult['type'], ComponentType<{ className?: string }>> = {
   client: Users,
   request: Inbox,
   document: FileText,
@@ -49,7 +49,7 @@ export function GlobalSearch({ navItems = [] }: { navItems?: { label: string; hr
 
   // Cmd+K / Ctrl+K → Fokus
   useEffect(() => {
-    function onKey(e: KeyboardEvent) {
+    function onKey(e: globalThis.KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         inputRef.current?.focus();
@@ -119,7 +119,7 @@ export function GlobalSearch({ navItems = [] }: { navItems?: { label: string; hr
     setActiveIdx(0);
   }, [items.length]);
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+  function handleKeyDown(e: ReactKeyboardEvent<HTMLInputElement>) {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       setActiveIdx((i) => Math.min(i + 1, items.length - 1));

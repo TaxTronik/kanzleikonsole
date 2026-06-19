@@ -1,11 +1,12 @@
-﻿export function SectionCard({
+import type { ReactNode } from 'react';
+export function SectionCard({
   title,
   description,
   children,
 }: {
   title: string;
   description?: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <section>

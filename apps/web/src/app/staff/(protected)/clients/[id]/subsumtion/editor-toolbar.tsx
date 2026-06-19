@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 // =============================================================================
 // Gemeinsame Format-Toolbar (Tiptap v3) — genutzt vom Sachverhalt-Editor
 // (Compose) und vom formatierten Review (Formatierung bearbeiten). v3 rendert
@@ -20,7 +21,7 @@ function Btn({
   disabled?: boolean;
   onClick: () => void;
   title: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <button

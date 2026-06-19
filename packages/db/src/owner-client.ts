@@ -22,6 +22,8 @@ import { createPostgresAdapter, requireDatabaseUrl } from './prisma-adapter';
 type PrismaClient = PrismaClientInstance;
 
 declare global {
+  // `var` is intentional for ambient globalThis augmentation.
+  // noinspection ES6ConvertVarToLetConst
   var __taxtronikPrismaOwner: PrismaClient | undefined;
 }
 

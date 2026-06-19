@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useActionState, useState, useTransition } from 'react';
+import { useActionState, useState, useTransition, type SubmitEvent } from 'react';
 import { Send, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
 import {
   saveSmtpAction,
@@ -55,7 +55,7 @@ export function SmtpForm({ initial, envFallback, defaultTestTo }: Props) {
     setSecure(p.secure);
   }
 
-  async function onTest(e: React.FormEvent<HTMLFormElement>) {
+  async function onTest(e: SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
     setTestResult(null);

@@ -35,7 +35,7 @@ export async function getLlmStatus(client?: LlmStatusClient): Promise<LlmStatusD
   const s = await c.llmStatus();
   const q = s.queue ?? null;
   return {
-    verfuegbar: s.verfuegbar === true,
+    verfuegbar: s.verfuegbar,
     modellGeladen: bool(s.modell_geladen),
     binaryVorhanden: bool(s.binary_vorhanden),
     vonUnsGestartet: bool(s.von_uns_gestartet),

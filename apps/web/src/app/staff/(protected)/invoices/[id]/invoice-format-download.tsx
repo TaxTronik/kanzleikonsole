@@ -9,7 +9,7 @@
 // INLINE aus — die Seite bleibt sichtbar.
 // =============================================================================
 
-import { useState } from 'react';
+import { useState, type MouseEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { FileCode, Loader2 } from 'lucide-react';
 
@@ -26,7 +26,7 @@ export function InvoiceFormatDownload({
   const [status, setStatus] = useState<'idle' | 'loading'>('idle');
   const [error, setError] = useState<string | null>(null);
 
-  async function onDownload(e: React.MouseEvent) {
+  async function onDownload(e: MouseEvent) {
     e.preventDefault();
     if (status === 'loading') return;
     setStatus('loading');

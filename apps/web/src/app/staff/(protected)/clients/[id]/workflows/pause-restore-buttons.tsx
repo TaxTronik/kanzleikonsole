@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useTransition, useEffect } from 'react';
+import { useState, useTransition, useEffect, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { Pause, Play, RotateCcw, X } from 'lucide-react';
@@ -157,7 +157,7 @@ export function ResumeWorkflowButton({ instanceId }: { instanceId: string }) {
 export function RestoreWorkflowButton({ instanceId }: { instanceId: string }) {
   const router = useRouter();
   const [isPending, start] = useTransition();
-  function go(e: React.MouseEvent) {
+  function go(e: MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
     if (!confirm('Workflow wiederherstellen? Status geht zurück auf "Aktiv".')) return;

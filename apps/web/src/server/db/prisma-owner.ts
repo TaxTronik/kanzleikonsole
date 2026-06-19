@@ -20,6 +20,8 @@ import { createPostgresAdapter, requireDatabaseUrl } from '@taxtronik/db/prisma-
 type PrismaClient = PrismaClientInstance;
 
 declare global {
+  // `var` is intentional for ambient globalThis augmentation.
+  // noinspection ES6ConvertVarToLetConst
   var __taxtronik_prisma_owner: PrismaClient | undefined;
 }
 

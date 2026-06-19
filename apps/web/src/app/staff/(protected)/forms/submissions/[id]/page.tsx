@@ -1,4 +1,5 @@
-﻿// =============================================================================
+import type { ReactNode } from 'react';
+// =============================================================================
 // /staff/forms/submissions/[id] — Antwort einer Form-Submission ansehen
 // =============================================================================
 
@@ -19,7 +20,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 
-function renderValue(type: FormFieldType, value: unknown, fieldOptions: unknown): React.ReactNode {
+function renderValue(type: FormFieldType, value: unknown, fieldOptions: unknown): ReactNode {
   if (value === null || value === undefined || value === '') {
     return <span className="text-disabled">—</span>;
   }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useTransition, type SubmitEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Upload } from 'lucide-react';
 
@@ -16,7 +16,7 @@ export function NewVersionForm({ documentId }: Props) {
   const [progress, setProgress] = useState<'idle' | 'presign' | 'upload' | 'commit'>('idle');
   const [isPending, startTransition] = useTransition();
 
-  function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     if (!file) {

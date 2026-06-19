@@ -16,7 +16,7 @@ export interface CreatePlanInput {
   lines: Array<{ axis: PlanAxis; amount: number; note: string | null }>;
 }
 
-export type CreatePlanFn = (input: CreatePlanInput) => Promise<{ ok: boolean; error?: string; id?: string } | void>;
+export type CreatePlanFn = (input: CreatePlanInput) => Promise<{ ok: boolean; error?: string; id?: string }>;
 
 interface Base {
   id: string;
@@ -158,7 +158,7 @@ export function PlanWizard({
           note: lines[a].note.trim() || null,
         })),
       });
-      if (r && r.ok === false) setError(r.error ?? 'Fehler beim Speichern.');
+      if (!r.ok) setError(r.error ?? 'Fehler beim Speichern.');
     });
   }
 

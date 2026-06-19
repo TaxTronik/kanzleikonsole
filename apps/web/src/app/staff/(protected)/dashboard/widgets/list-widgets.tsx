@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 // =============================================================================
 // Einfache Listen-Widgets fürs Dashboard.
 //
@@ -23,7 +24,7 @@ import { ListShell, NOTICE_KIND_LABELS, notDeniedClient, type RenderCtx } from '
 
 // --- Recent Activity ----------------------------------------------------------
 
-export async function RecentActivity({ tx }: RenderCtx): Promise<React.ReactNode> {
+export async function RecentActivity({ tx }: RenderCtx): Promise<ReactNode> {
   // P-5: kein auditLog.count() mehr — das war ein COUNT(*) über den KOMPLETTEN
   // Log bei jedem Dashboard-Render, nur für eine dekorative Fußzeile.
   const items = await tx.auditLog.findMany({
@@ -112,7 +113,7 @@ export async function RecentActivity({ tx }: RenderCtx): Promise<React.ReactNode
 
 // --- Upcoming Requests --------------------------------------------------------
 
-export async function UpcomingRequests({ tx, deniedClientIds }: RenderCtx): Promise<React.ReactNode> {
+export async function UpcomingRequests({ tx, deniedClientIds }: RenderCtx): Promise<ReactNode> {
   const items = await tx.request.findMany({
     where: {
       status: { in: ['OPEN', 'IN_PROGRESS'] },
@@ -144,7 +145,7 @@ export async function UpcomingRequests({ tx, deniedClientIds }: RenderCtx): Prom
 
 // --- GwG läuft bald aus -------------------------------------------------------
 
-export async function GwgExpiring({ tx, deniedClientIds }: RenderCtx): Promise<React.ReactNode> {
+export async function GwgExpiring({ tx, deniedClientIds }: RenderCtx): Promise<ReactNode> {
   const cutoff = new Date(Date.now() + GWG_EXPIRY_WINDOW_MS);
   const checks = await tx.gwgCheck.findMany({
     where: { status: 'VERIFIED', validUntil: { lte: cutoff }, ...notDeniedClient(deniedClientIds) },
@@ -177,7 +178,7 @@ export async function GwgExpiring({ tx, deniedClientIds }: RenderCtx): Promise<R
 
 // --- Ungeprüfte Bescheide -----------------------------------------------------
 
-export async function UnreviewedNotices({ tx, deniedClientIds }: RenderCtx): Promise<React.ReactNode> {
+export async function UnreviewedNotices({ tx, deniedClientIds }: RenderCtx): Promise<ReactNode> {
   const items = await tx.taxNotice.findMany({
     where: { status: 'NEU', ...notDeniedClient(deniedClientIds) },
     orderBy: { createdAt: 'desc' },
@@ -209,7 +210,7 @@ export async function UnreviewedNotices({ tx, deniedClientIds }: RenderCtx): Pro
 
 // --- Steuertermine ------------------------------------------------------------
 
-export async function TaxDeadlines({ tx, deniedClientIds }: RenderCtx): Promise<React.ReactNode> {
+export async function TaxDeadlines({ tx, deniedClientIds }: RenderCtx): Promise<ReactNode> {
   const items = await tx.taxDeadline.findMany({
     where: {
       status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS', 'OVERDUE'] },
@@ -252,7 +253,7 @@ export async function TaxDeadlines({ tx, deniedClientIds }: RenderCtx): Promise<
 
 // --- Telefonzettel ------------------------------------------------------------
 
-export async function PhoneNotesWidget({ tx, deniedClientIds }: RenderCtx): Promise<React.ReactNode> {
+export async function PhoneNotesWidget({ tx, deniedClientIds }: RenderCtx): Promise<ReactNode> {
   const items = await tx.phoneNote.findMany({
     where: {
       doneAt: null,

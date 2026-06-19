@@ -221,7 +221,7 @@ describe('Empfänger', () => {
     // Statuswechsel — eine abgelaufene POA ohne Empfänger bleibt SIGNED.
     h.prismaOwner.staffUser.findMany.mockResolvedValue([]);
     h.prismaOwner.powerOfAttorney.findMany.mockResolvedValue([
-      poa(new Date(FIXED_NOW.getTime() - 1 * DAY), {
+      poa(new Date(FIXED_NOW.getTime() - DAY), {
         client: { name: 'Muster GmbH', responsibilities: [] },
       }),
     ]);

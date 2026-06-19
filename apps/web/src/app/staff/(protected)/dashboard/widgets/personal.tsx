@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 // =============================================================================
 // Personal-Widgets — pro-Mitarbeiter, persönlich gebunden.
 //
@@ -23,7 +24,7 @@ import { ListShell, notDeniedClient, type RenderCtx } from './_shared';
 
 // --- Bookmarks ---------------------------------------------------------------
 
-export async function Bookmarks({ tx, staffId }: RenderCtx): Promise<React.ReactNode> {
+export async function Bookmarks({ tx, staffId }: RenderCtx): Promise<ReactNode> {
   const items = await tx.staffBookmark.findMany({
     where: { staffId },
     orderBy: { createdAt: 'desc' },
@@ -69,7 +70,7 @@ export async function Bookmarks({ tx, staffId }: RenderCtx): Promise<React.React
 
 // --- PersonalNotes -----------------------------------------------------------
 
-export async function PersonalNotes({ tx, staffId }: RenderCtx): Promise<React.ReactNode> {
+export async function PersonalNotes({ tx, staffId }: RenderCtx): Promise<ReactNode> {
   const notes = await tx.staffNote.findMany({
     where: { staffId },
     orderBy: { createdAt: 'desc' },
@@ -94,7 +95,7 @@ export async function PersonalNotes({ tx, staffId }: RenderCtx): Promise<React.R
 
 // --- MyDay (offene Workflow-Schritte) ----------------------------------------
 
-export async function MyDay({ tx, staffId, deniedClientIds }: RenderCtx): Promise<React.ReactNode> {
+export async function MyDay({ tx, staffId, deniedClientIds }: RenderCtx): Promise<ReactNode> {
   const items = await tx.workflowItem.findMany({
     where: {
       assigneeStaffId: staffId,
@@ -154,7 +155,7 @@ export async function MyDay({ tx, staffId, deniedClientIds }: RenderCtx): Promis
 
 // --- MyWorkflows -------------------------------------------------------------
 
-export async function MyWorkflows({ tx, staffId, deniedClientIds }: RenderCtx): Promise<React.ReactNode> {
+export async function MyWorkflows({ tx, staffId, deniedClientIds }: RenderCtx): Promise<ReactNode> {
   const instances = await tx.workflowInstance.findMany({
     where: {
       status: 'ACTIVE',
@@ -227,7 +228,7 @@ export async function MyWorkflows({ tx, staffId, deniedClientIds }: RenderCtx): 
 
 // --- MyReminders (Wiedervorlagen) --------------------------------------------
 
-export async function MyReminders({ tx, staffId, deniedClientIds }: RenderCtx): Promise<React.ReactNode> {
+export async function MyReminders({ tx, staffId, deniedClientIds }: RenderCtx): Promise<ReactNode> {
   const reminders = await tx.clientReminder.findMany({
     where: {
       doneAt: null,

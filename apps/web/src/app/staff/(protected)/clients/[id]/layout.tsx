@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 // =============================================================================
 // Zentraler Zugriffs-Guard für ALLE Mandanten-Detailseiten unter
 // /staff/clients/[id]/** (Cockpit, Edit, GwG, BWA, Bescheide, Workflows, …).
@@ -23,7 +24,7 @@ export default async function ClientDetailLayout({
   children,
   params,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
   params: Promise<{ id: string }>;
 }) {
   const session = await staffAuth();

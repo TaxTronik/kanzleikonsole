@@ -1,4 +1,5 @@
-﻿import { staffAuth } from '@/server/auth/staff';
+import type { ReactNode } from 'react';
+import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { redirect, notFound } from 'next/navigation';
@@ -32,7 +33,7 @@ const kindLabels: Record<string, string> = {
 const REQUESTS_CAP = 50;
 const MANAGER_DOCS_CAP = 1000;
 
-function formatCustomValue(type: string, value: unknown): React.ReactNode {
+function formatCustomValue(type: string, value: unknown): ReactNode {
   if (value === null || value === undefined || value === '') {
     return <span className="text-disabled font-normal">—</span>;
   }
@@ -398,7 +399,7 @@ export default async function ClientDetailPage({
 
       {/* Mandanten-Grid — alle Karten in der Reihenfolge/Position aus tenant_setting.client_detail.layout */}
       {(() => {
-        const blocks: Record<ClientBlockKey, React.ReactNode> = {
+        const blocks: Record<ClientBlockKey, ReactNode> = {
           upcoming: (() => {
             // Vereinigt Steuertermine (modul-gated) + Appointments
             // (modul-gated). Wenn beide Module aus sind → kein Block.

@@ -17,6 +17,8 @@ export interface N8nDeliverJob {
 }
 
 declare global {
+  // `var` is intentional for ambient globalThis augmentation.
+  // noinspection ES6ConvertVarToLetConst
   var __taxtronik_n8n_queue: { conn: IORedis; queue: Queue<N8nDeliverJob> } | undefined;
 }
 

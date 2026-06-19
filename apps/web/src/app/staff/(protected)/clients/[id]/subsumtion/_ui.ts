@@ -172,8 +172,7 @@ export const FILTER_LABEL: Record<FilterKey, string> = {
  *  streitig — der Streit-Filter aktiv ist. */
 export function isVisible(m: MarkingDTO, active: Set<FilterKey>): boolean {
   if (!active.has(m.herkunft)) return false;
-  if (m.streitig && !active.has('STREIT')) return false;
-  return true;
+  return !m.streitig || active.has('STREIT');
 }
 
 // Unterstreichungs-Farbe (Hex) je Herkunft — als Inline-Style angewandt, damit
@@ -204,4 +203,3 @@ export function herkunftBadge(h: Herkunft): string {
   };
   return map[h] ?? 'badge-gray';
 }
-

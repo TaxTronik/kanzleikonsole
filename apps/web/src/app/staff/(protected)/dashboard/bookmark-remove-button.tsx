@@ -1,12 +1,12 @@
 ﻿'use client';
 
-import { useTransition } from 'react';
+import { useTransition, type MouseEvent } from 'react';
 import { X } from 'lucide-react';
 import { removeBookmarkAction } from './bookmark-actions';
 
 export function BookmarkRemoveButton({ id }: { id: string }) {
   const [isPending, start] = useTransition();
-  function remove(e: React.MouseEvent) {
+  function remove(e: MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
     start(async () => {

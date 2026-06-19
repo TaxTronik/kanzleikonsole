@@ -18,6 +18,8 @@ interface TaxDeadlineMaterializeJob {
 }
 
 declare global {
+  // `var` is intentional for ambient globalThis augmentation.
+  // noinspection ES6ConvertVarToLetConst
   var __taxtronik_tax_deadline_materialize_queue:
     | { conn: IORedis; queue: Queue<TaxDeadlineMaterializeJob> }
     | undefined;
