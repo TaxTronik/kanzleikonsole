@@ -48,7 +48,10 @@ export function TaxScheduleForm({
           <tbody className="divide-y divide-border-subtle">
             {ALL_KINDS.map((kind) => {
               const cfg = byKind.get(kind);
-              const usesDauerfrist = kind.startsWith('USTA_') || kind.startsWith('LSTA_');
+              // Dauerfristverlaengerung gibt es NUR fuer USt-Voranmeldungen
+              // (§ 18 Abs. 6 UStG, §§ 46-48 UStDV) — nicht fuer die
+              // Lohnsteuer-Anmeldung (§ 41a EStG). Daher kein LSTA_.
+              const usesDauerfrist = kind.startsWith('USTA_');
               return (
                 <tr key={kind}>
                   <td className="px-4 py-3">

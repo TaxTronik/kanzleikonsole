@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
+import { appealDeadline } from '@taxtronik/tax';
 import { evidenceService } from '@/server/container';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { assertClientAccessTx, toActionError } from '@/server/auth/rbac';
@@ -58,9 +59,11 @@ export async function createNoticeAction(formData: FormData): Promise<void> {
 
   const d = parsed.data;
   const noticeDate = new Date(d.noticeDate + 'T00:00:00.000Z');
-  // Bekanntgabefiktion 3 Tage + 1 Monat = +33 Tage. Trigger setzt das gleiche
-  // im DB-Default — wir berechnen es trotzdem App-seitig für Kohärenz.
-  const appealDeadline = new Date(noticeDate.getTime() + 33 * 24 * 60 * 60 * 1000);
+  // Einspruchsfrist korrekt nach § 355 AO (1 Monat kalendarisch) + § 122 Abs. 2
+  // AO (4-Tage-Bekanntgabefiktion ab 2025) + Werktagsverschiebung § 108 (3) AO.
+  // Maßgebliche Berechnung liegt zentral in @taxtronik/tax; der DB-Trigger ist
+  // nur ein grober Backstop, falls die App die Frist nicht setzt.
+  const appealDeadlineDate = appealDeadline(noticeDate);
 
   await withTenantContext(
     ctx,
@@ -93,7 +96,7 @@ export async function createNoticeAction(formData: FormData): Promise<void> {
           kind: d.kind,
           period: d.period,
           noticeDate,
-          appealDeadline,
+          appealDeadline: appealDeadlineDate,
           fileNumber: d.fileNumber ?? null,
           assessedAmount: parseDecimal(d.assessedAmount),
           expectedAmount: parseDecimal(d.expectedAmount) ?? expectedFromFiling,
