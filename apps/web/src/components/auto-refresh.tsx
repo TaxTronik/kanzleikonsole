@@ -15,23 +15,28 @@ import { usePathname, useRouter } from 'next/navigation';
 
 const REFRESH_INTERVAL_MS = 30_000;
 
+/**
+ * True, wenn der Nutzer gerade in einem Eingabefeld tippt — dann darf kein
+ * router.refresh() dazwischenfunken (Formulare/Modals würden gestört).
+ * Auch von der Notifications-Bell genutzt (Notification-getriebener Refresh).
+ */
+export function isUserTyping(): boolean {
+  const ae = document.activeElement;
+  if (!ae) return false;
+  const tag = (ae.tagName ?? '').toLowerCase();
+  return tag === 'input' || tag === 'textarea' || tag === 'select' || (ae as HTMLElement).isContentEditable;
+}
+
 export function AutoRefresh() {
   const router = useRouter();
   const pathname = usePathname();
   useEffect(() => {
     if (pathname.startsWith('/staff/admin/audit')) return;
 
-    function isTyping(): boolean {
-      const ae = document.activeElement;
-      if (!ae) return false;
-      const tag = (ae.tagName ?? '').toLowerCase();
-      return tag === 'input' || tag === 'textarea' || tag === 'select' || (ae as HTMLElement).isContentEditable;
-    }
-
     function tick(): void {
       // Nur refreshen, wenn der Tab sichtbar ist und der Nutzer nicht gerade
       // tippt — sonst gäbe es Störungen bei Formularen / offenen Modals.
-      if (!document.hidden && !isTyping()) {
+      if (!document.hidden && !isUserTyping()) {
         router.refresh();
       }
     }
