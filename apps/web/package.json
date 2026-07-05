@@ -21,6 +21,7 @@
     "@taxtronik/config": "workspace:*",
     "@taxtronik/crypto": "workspace:*",
     "@taxtronik/db": "workspace:*",
+    "@taxtronik/elster": "workspace:*",
     "@taxtronik/evidence": "workspace:*",
     "@taxtronik/http-utils": "workspace:*",
     "@taxtronik/n8n-shared": "workspace:*",

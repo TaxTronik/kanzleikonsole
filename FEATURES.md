@@ -1009,7 +1009,7 @@ Kanzlei nicht.
 - Assurance-Dokumentation mit Threat Model und Known Limits unter
   `docs/assurance/`
 
-## ELSTER-Anbindung (Vorstufe, noch ohne UI)
+## ELSTER-Anbindung (Stufe 2: Steuerkonto-Abfrage)
 
 Neutrales Paket `@taxtronik/elster`: typisierter HTTP-Client zur privaten
 eric-bridge (separates Privat-Repo, eigener Debian-Container mit der
@@ -1019,12 +1019,20 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
 
 - Endpunkte: Health-Check, Validierung (Stufe 1), generische Abfrage +
   strukturierte Kontoabfrage inkl. Sollstellungen (Stufe 2)
+- **Steuerkonto-UI** im Mandanten-Detail (`/staff/clients/[id]/elster`,
+  bridge-gated): Abruf von Sollstellungen (Jahr), offenen Beträgen und
+  Istbuchungen (ab Datum) je Steuerart; Basis ist die **Steuernummer am
+  Mandanten** (13-stelliges ELSTER-Format, eine pro Mandant — Tochter-
+  gesellschaften sind eigene Mandanten). Jeder Abruf wird als Vorgang
+  persistiert (append-only Historie, RLS) mit Evidence-Record; die
+  Zertifikats-PIN wird durchgereicht, nie gespeichert
 - Datenteil, TransferHeader und Hersteller-ID entstehen ausschließlich
   in der Bridge — das Monorepo enthält kein ERiC-Spezifikationswissen
   (CI-Guard `scripts/check-no-eric-spec.sh`)
 - Fail-safe: Testmerker als Default, Echtübermittlung nur mit explizitem
-  `echtfall: true`; Zertifikats-PIN pro Aufruf, nicht persistiert
-- Noch offen: Worker-Jobs + Staff-UI, Versand-Datenarten (UStVA zuerst)
+  Echtfall-Häkchen; Zertifikats-PIN pro Aufruf, nicht persistiert
+- Noch offen: Versand-Datenarten (UStVA zuerst), Worker-Jobs für
+  periodische Soll/Ist-Abgleiche
 - Architektur + Lizenzpflichten: `docs/development/eric-integration.md`
 
 ## Benutzer-Verwaltung (ADMIN/PARTNER)

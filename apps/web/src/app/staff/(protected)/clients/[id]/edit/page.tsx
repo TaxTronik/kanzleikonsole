@@ -84,12 +84,27 @@ export default async function ClientEditPage({ params }: { params: Promise<{ id:
         <div className="grid grid-cols-2 gap-4">
           <Field label="DATEV-Nr." name="datevNo" defaultValue={client.datevNo ?? ''} />
           <Field label="Addison-Nr." name="addisonNo" defaultValue={client.addisonNo ?? ''} />
+          <div>
+            <label className="label-sm">
+              Steuernummer{' '}
+              <span className="text-disabled font-normal">(13-stellig, ELSTER-Bundesformat)</span>
+            </label>
+            <input
+              name="steuernummer"
+              defaultValue={client.steuernummer ?? ''}
+              maxLength={13}
+              pattern="[0-9]{13}"
+              inputMode="numeric"
+              placeholder="z. B. 9198011310010"
+              className="input w-full font-mono"
+              title="13 Ziffern — Basis der ELSTER-Kontoabfrage (Steuerkonto)"
+            />
+          </div>
           <Field
             label="Rechnungs-E-Mail"
             name="invoiceEmail"
             type="email"
             defaultValue={client.invoiceEmail ?? ''}
-            colspan={2}
           />
           <div>
             <label className="label-sm">Priorität</label>

@@ -21,6 +21,13 @@ const AdminSchema = z.object({
   clientId: z.string().uuid(),
   datevNo: z.string().max(50).optional().nullable(),
   addisonNo: z.string().max(50).optional().nullable(),
+  // 13-stelliges ELSTER-Bundesformat (Basis der Kontoabfrage); leer = keine.
+  steuernummer: z
+    .string()
+    .regex(/^[0-9]{13}$/, 'Steuernummer: 13 Ziffern (ELSTER-Bundesformat) erwartet.')
+    .optional()
+    .nullable()
+    .or(z.literal('')),
   invoiceEmail: z.string().email().max(255).optional().nullable().or(z.literal('')),
   priority: z.enum(['A', 'B', 'C']).nullable().optional().or(z.literal('')),
   internalNotes: z.string().max(10_000).optional().nullable(),
@@ -46,6 +53,7 @@ export async function saveAdminFieldsAction(
     clientId: formData.get('clientId'),
     datevNo: formData.get('datevNo'),
     addisonNo: formData.get('addisonNo'),
+    steuernummer: formData.get('steuernummer'),
     invoiceEmail: formData.get('invoiceEmail'),
     priority: formData.get('priority'),
     internalNotes: formData.get('internalNotes'),
@@ -61,7 +69,7 @@ export async function saveAdminFieldsAction(
       await assertClientAccessTx(tx, session, clientId);
       const before = await tx.client.findUnique({
         where: { id: clientId },
-        select: { datevNo: true, addisonNo: true, invoiceEmail: true, priority: true, internalNotes: true, vertraulich: true },
+        select: { datevNo: true, addisonNo: true, steuernummer: true, invoiceEmail: true, priority: true, internalNotes: true, vertraulich: true },
       });
       if (!before) throw new ActionError('Mandant nicht gefunden.');
 
@@ -69,6 +77,7 @@ export async function saveAdminFieldsAction(
       const after = {
         datevNo: emptyToNull(parsed.data.datevNo),
         addisonNo: emptyToNull(parsed.data.addisonNo),
+        steuernummer: emptyToNull(parsed.data.steuernummer),
         invoiceEmail: emptyToNull(parsed.data.invoiceEmail),
         priority: prio === 'A' || prio === 'B' || prio === 'C' ? prio : null,
         internalNotes: emptyToNull(parsed.data.internalNotes),

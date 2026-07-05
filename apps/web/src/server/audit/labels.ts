@@ -116,6 +116,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'tax_deadline.auto_request': 'Auto-Anforderung erzeugt',
   'tax_deadline.complete': 'Steuertermin erledigt',
   'tax_notice.create': 'Bescheid erfasst',
+  'elster.kontoabfrage': 'ELSTER-Kontoabfrage durchgeführt',
   'tax_notice.status': 'Bescheid-Status geändert',
 
   // BWA
