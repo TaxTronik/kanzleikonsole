@@ -52,7 +52,7 @@ jobs:
         run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Rebuild approved native packages
-        run: pnpm rebuild -r @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver || true
+        run: pnpm rebuild -r @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver
 
       - name: Generate Prisma client
         run: pnpm --filter @taxtronik/db exec prisma generate
@@ -151,7 +151,7 @@ jobs:
         run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Rebuild approved native packages
-        run: pnpm rebuild -r @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver || true
+        run: pnpm rebuild -r @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver
 
       - name: Generate Prisma client
         run: pnpm --filter @taxtronik/db exec prisma generate
@@ -242,7 +242,7 @@ jobs:
         run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Rebuild approved native packages
-        run: pnpm rebuild -r @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver || true
+        run: pnpm rebuild -r @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver
 
       - name: Generate Prisma client
         run: pnpm --filter @taxtronik/db exec prisma generate
@@ -367,7 +367,7 @@ jobs:
 
       - name: Rebuild approved native packages
         if: steps.last.outputs.tag != ''
-        run: pnpm rebuild -r @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver || true
+        run: pnpm rebuild -r @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver
 
       - name: Generate Prisma client
         if: steps.last.outputs.tag != ''
@@ -473,7 +473,7 @@ jobs:
         run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Rebuild approved native packages
-        run: pnpm rebuild -r @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver || true
+        run: pnpm rebuild -r @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver
 
       - name: Generate Prisma client
         run: pnpm --filter @taxtronik/db exec prisma generate
@@ -840,7 +840,7 @@ jobs:
 
       # Nur esbuild (für tsx) — der Generator braucht weder Prisma noch sharp.
       - name: Rebuild esbuild
-        run: pnpm rebuild -r esbuild || true
+        run: pnpm rebuild -r esbuild
 
       - name: Java + unzip + curl installieren
         run: |
