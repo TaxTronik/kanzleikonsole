@@ -111,6 +111,7 @@ export const ACTION_LABELS: Record<string, string> = {
 
   // Steuertermine + Bescheide
   'tax_schedule.create': 'Steuertermin-Konfig erstellt',
+  'tax_schedule.update': 'Steuertermin-Konfig geändert (Fristen)',
   'tax_schedule.deactivate': 'Steuertermin-Konfig deaktiviert',
   'tax_deadline.auto_request': 'Auto-Anforderung erzeugt',
   'tax_deadline.complete': 'Steuertermin erledigt',

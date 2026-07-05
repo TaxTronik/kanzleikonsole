@@ -17,6 +17,16 @@ const ALL_KINDS: TaxScheduleKind[] = [
   'EST_ERKLAERUNG', 'KST_ERKLAERUNG', 'GEWST_ERKLAERUNG',
 ];
 
+// Beratene Erklärungsfrist § 149 (3) AO — nur für Erklärungen zulässig
+// (nicht Anmeldungen, nicht Vorauszahlungen). Serverseitige Whitelist,
+// damit ein manipuliertes Formular advised nicht auf andere Arten setzt.
+const ADVISED_KINDS = new Set<TaxScheduleKind>([
+  'USTA_JAEHRLICH', 'EST_ERKLAERUNG', 'KST_ERKLAERUNG', 'GEWST_ERKLAERUNG',
+]);
+
+// Analog für Dauerfrist (§§ 46-48 UStDV: nur USt-Voranmeldungen).
+const DAUERFRIST_KINDS = new Set<TaxScheduleKind>(['USTA_MONATLICH', 'USTA_QUARTAL']);
+
 export interface ActionResult {
   ok: boolean;
   error?: string;
@@ -35,11 +45,13 @@ export async function saveScheduleConfigAction(
   if (!parsed.success) return { ok: false, error: 'Ungültige Mandanten-ID.' };
   const clientId = parsed.data;
 
-  // Pro Kind die drei Felder einsammeln
+  // Pro Kind die Felder einsammeln. Dauerfrist/advised werden serverseitig
+  // auf die fachlich zulässigen Arten begrenzt (Whitelists oben).
   const updates = ALL_KINDS.map((kind) => ({
     kind,
     active: formData.get(`active.${kind}`) === 'on',
-    hasDauerfrist: formData.get(`dauerfrist.${kind}`) === 'on',
+    hasDauerfrist: DAUERFRIST_KINDS.has(kind) && formData.get(`dauerfrist.${kind}`) === 'on',
+    advised: ADVISED_KINDS.has(kind) && formData.get(`advised.${kind}`) === 'on',
     reminderDaysBefore: clampInt(formData.get(`reminder.${kind}`), 0, 90, 10),
   }));
 
@@ -88,14 +100,51 @@ export async function saveScheduleConfigAction(
 
         // Aktiv: Upsert
         if (old) {
+          // Fristrelevante Änderung (Dauerfrist/advised)? Dann müssen die noch
+          // offenen Termine dieses Kinds WEG, bevor neu materialisiert wird:
+          // materialize nutzt createMany(skipDuplicates) über (tenant, client,
+          // kind, period) — ein bestehender Termin derselben Periode bliebe
+          // sonst mit dem ALTEN Fälligkeitsdatum stehen und das neue würde nie
+          // geschrieben. Erledigte Termine bleiben (Audit-relevant), analog
+          // zum Deactivate-Pfad oben.
+          const datesChanged =
+            old.hasDauerfrist !== u.hasDauerfrist || old.advised !== u.advised;
+          let removedCount = 0;
+          if (old.active && datesChanged) {
+            const removed = await tx.taxDeadline.deleteMany({
+              where: {
+                clientId,
+                kind: u.kind,
+                status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS', 'OVERDUE'] },
+              },
+            });
+            removedCount = removed.count;
+          }
           await tx.taxScheduleConfig.update({
             where: { id: old.id },
             data: {
               active: true,
               hasDauerfrist: u.hasDauerfrist,
+              advised: u.advised,
               reminderDaysBefore: u.reminderDaysBefore,
             },
           });
+          if (datesChanged) {
+            await evidenceService.record(tx, {
+              tenantId,
+              actorType: 'STAFF',
+              actorId: staffId,
+              action: 'tax_schedule.update',
+              resourceType: 'tax_schedule_config',
+              resourceId: old.id,
+              before: { hasDauerfrist: old.hasDauerfrist, advised: old.advised },
+              after: {
+                hasDauerfrist: u.hasDauerfrist,
+                advised: u.advised,
+                rematerializedDeadlines: removedCount,
+              },
+            });
+          }
         } else {
           const created = await tx.taxScheduleConfig.create({
             data: {
@@ -104,6 +153,7 @@ export async function saveScheduleConfigAction(
               kind: u.kind,
               active: true,
               hasDauerfrist: u.hasDauerfrist,
+              advised: u.advised,
               reminderDaysBefore: u.reminderDaysBefore,
               createdByStaff: staffId,
             },
@@ -115,7 +165,12 @@ export async function saveScheduleConfigAction(
             action: 'tax_schedule.create',
             resourceType: 'tax_schedule_config',
             resourceId: created.id,
-            after: { kind: u.kind, hasDauerfrist: u.hasDauerfrist, reminderDaysBefore: u.reminderDaysBefore },
+            after: {
+              kind: u.kind,
+              hasDauerfrist: u.hasDauerfrist,
+              advised: u.advised,
+              reminderDaysBefore: u.reminderDaysBefore,
+            },
           });
         }
       }

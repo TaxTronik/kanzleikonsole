@@ -16,8 +16,16 @@ export interface ScheduleConfigDto {
   kind: TaxScheduleKind;
   active: boolean;
   hasDauerfrist: boolean;
+  advised: boolean;
   reminderDaysBefore: number;
 }
+
+// Beratene Erklärungsfrist § 149 (3) AO (letzter Februartag des ZWEITEN
+// Folgejahres) gilt nur für ERKLÄRUNGEN — nicht für Anmeldungen (auch nicht
+// die LSt-Jahresanmeldung) und nicht für Vorauszahlungen.
+const ADVISED_KINDS = new Set<TaxScheduleKind>([
+  'USTA_JAEHRLICH', 'EST_ERKLAERUNG', 'KST_ERKLAERUNG', 'GEWST_ERKLAERUNG',
+]);
 
 export function TaxScheduleForm({
   clientId,
@@ -42,16 +50,20 @@ export function TaxScheduleForm({
               <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">Aktiv</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">Termin</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">Dauerfrist</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase" title="Beratene Erklärungsfrist § 149 Abs. 3 AO — Ende Februar des zweiten Folgejahres">
+                Beraten (§ 149 (3))
+              </th>
               <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">Reminder (Tage)</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border-subtle">
             {ALL_KINDS.map((kind) => {
               const cfg = byKind.get(kind);
-              // Dauerfristverlaengerung gibt es NUR fuer USt-Voranmeldungen
+              // Dauerfristverlaengerung gibt es NUR fuer USt-VORANMELDUNGEN
               // (§ 18 Abs. 6 UStG, §§ 46-48 UStDV) — nicht fuer die
-              // Lohnsteuer-Anmeldung (§ 41a EStG). Daher kein LSTA_.
-              const usesDauerfrist = kind.startsWith('USTA_');
+              // Lohnsteuer-Anmeldung (§ 41a EStG) und nicht fuer die
+              // USt-Jahreserklaerung (§ 149 AO).
+              const usesDauerfrist = kind === 'USTA_MONATLICH' || kind === 'USTA_QUARTAL';
               return (
                 <tr key={kind}>
                   <td className="px-4 py-3">
@@ -71,6 +83,18 @@ export function TaxScheduleForm({
                         type="checkbox"
                         name={`dauerfrist.${kind}`}
                         defaultChecked={cfg?.hasDauerfrist ?? false}
+                        className="rounded border-strong text-brand-600"
+                      />
+                    ) : (
+                      <span className="text-disabled">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {ADVISED_KINDS.has(kind) ? (
+                      <input
+                        type="checkbox"
+                        name={`advised.${kind}`}
+                        defaultChecked={cfg?.advised ?? false}
                         className="rounded border-strong text-brand-600"
                       />
                     ) : (
