@@ -223,4 +223,26 @@ describe('Einspruchsfrist § 355 AO + § 122 (2) AO', () => {
     // → 27.12. (So) → Fristende Mo 28.12.2026.
     expect(ymd(appealDeadline(utc('2026-11-21')))).toBe('2026-12-28');
   });
+
+  // § 122 (2) AO Halbsatz 2: Fiktion gilt NICHT bei späterem tatsächlichem Zugang.
+  it('tatsächlicher Zugang NACH Fiktionstag → Monatsfrist ab echtem Zugang', () => {
+    // Bescheid 01.02.2027 (Mo): Fiktion 05.02.2027 (Fr). Tatsächlich erst
+    // 09.02.2027 (Di) zugegangen → Fristende 09.03.2027 (Di).
+    // Ohne receivedAt wäre es der 05.03.2027.
+    expect(ymd(appealDeadline(utc('2027-02-01'), null, utc('2027-02-09')))).toBe('2027-03-09');
+  });
+
+  it('tatsächlicher Zugang VOR Fiktionstag verkürzt die Frist NICHT', () => {
+    // Bescheid 01.02.2027: Fiktion 05.02.2027 (Fr). Tatsächlich schon am
+    // 03.02.2027 (Mi) im Briefkasten → Fiktion bleibt maßgeblich (Mindestschutz)
+    // → Fristende 05.03.2027, wie ohne receivedAt.
+    expect(ymd(appealDeadline(utc('2027-02-01'), null, utc('2027-02-03')))).toBe('2027-03-05');
+  });
+
+  it('tatsächlicher Zugang am Samstag wird NICHT werktagsverschoben', () => {
+    // Bescheid 01.07.2026 (Mi): Fiktion 05.07. (So) → verschoben Mo 06.07.
+    // Tatsächlich erst Sa 11.07.2026 zugegangen (Faktum, keine Verschiebung)
+    // → +1 Monat = 11.08.2026 (Di) = Fristende.
+    expect(ymd(appealDeadline(utc('2026-07-01'), null, utc('2026-07-11')))).toBe('2026-08-11');
+  });
 });

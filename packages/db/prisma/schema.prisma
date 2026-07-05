@@ -1525,6 +1525,9 @@ model TaxNotice {
   kind             TaxNoticeKind
   period           String
   noticeDate       DateTime        @map("notice_date") @db.Date
+  /// Tatsächlicher Zugangstag (§ 122 Abs. 2 AO Hs. 2): kam der Bescheid SPÄTER
+  /// als die 4-Tage-Fiktion an, läuft die Einspruchsfrist ab diesem Tag.
+  receivedAt       DateTime?       @map("received_at") @db.Date
   appealDeadline   DateTime?       @map("appeal_deadline") @db.Date
   status           TaxNoticeStatus @default(NEU)
   fileNumber       String?         @map("file_number")

@@ -79,6 +79,20 @@ export default async function NewNoticePage({
           </div>
         </div>
 
+        <div>
+          <label className="label-sm">
+            Tatsächlich zugegangen am{' '}
+            <span className="text-disabled font-normal">(optional)</span>
+          </label>
+          <input type="date" name="receivedAt" className="input w-full" />
+          <p className="text-xs text-muted mt-1">
+            Nur ausfüllen, wenn der Bescheid <strong>später</strong> als die
+            4-Tage-Bekanntgabefiktion (§ 122 Abs. 2 AO) ankam — die
+            Einspruchsfrist läuft dann ab dem echten Zugang. Ein früherer
+            Zugang verkürzt die Frist nicht.
+          </p>
+        </div>
+
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="label-sm">Festgesetzt (EUR)</label>

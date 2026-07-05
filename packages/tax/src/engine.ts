@@ -320,18 +320,37 @@ export const BEKANNTGABE_FIKTION_TAGE = 4;
  * Berechnet die Einspruchsfrist eines Steuerbescheids aus dem Bescheiddatum
  * (Tag der Aufgabe zur Post, als UTC-Mitternacht).
  *
+ * `receivedAt` (optional): TATSÄCHLICHER Zugangstag beim Empfänger. § 122
+ * Abs. 2 AO: die Fiktion gilt, „außer wenn der Verwaltungsakt nicht oder zu
+ * einem SPÄTEREN Zeitpunkt zugegangen ist" — kam der Bescheid später an
+ * (Postverzögerung, liegengeblieben), beginnt die Monatsfrist erst mit dem
+ * echten Zugang. Ein FRÜHERER tatsächlicher Zugang verkürzt die Frist dagegen
+ * NICHT (die Fiktion ist Mindestschutz; st. Rspr.). Der tatsächliche Zugang
+ * ist ein Faktum und wird nicht werktagsverschoben — nur Fiktionstag und
+ * Fristende unterliegen § 108 Abs. 3 AO.
+ *
  * `region`: Standard `null` = nur bundeseinheitliche Feiertage. Bewusst
  * konservativ — würde man Landesfeiertage annehmen, verschöbe sich die Frist
  * eher nach hinten; `null` wahrt die Frist eher zu früh als zu spät.
  */
-export function appealDeadline(noticeDate: Date, region: GermanRegion | null = null): Date {
+export function appealDeadline(
+  noticeDate: Date,
+  region: GermanRegion | null = null,
+  receivedAt: Date | null = null,
+): Date {
   // 1. Bekanntgabe: + Fiktionstage, dann Werktagsverschiebung.
   const fiktion = new Date(Date.UTC(
     noticeDate.getUTCFullYear(),
     noticeDate.getUTCMonth(),
     noticeDate.getUTCDate() + BEKANNTGABE_FIKTION_TAGE,
   ));
-  const bekanntgabe = shiftToNextWorkday(fiktion, region);
+  let bekanntgabe = shiftToNextWorkday(fiktion, region);
+
+  // Tatsächlich SPÄTER zugegangen → echter Zugangstag ist maßgeblich.
+  if (receivedAt) {
+    const received = startOfUtcDay(receivedAt);
+    if (received.getTime() > bekanntgabe.getTime()) bekanntgabe = received;
+  }
 
   // 2. + 1 Monat kalendarisch (BGB), Monatsende-sicher.
   const y = bekanntgabe.getUTCFullYear();
