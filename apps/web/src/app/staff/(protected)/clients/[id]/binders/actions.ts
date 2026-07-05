@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import type { Prisma } from '@prisma/client';
 import { evidenceService } from '@/server/container';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
+import { assertClientAccessTx } from '@/server/auth/rbac';
 import { withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
 
 const StatusEnum = z.enum(['PREPARED', 'WITH_CLIENT', 'RETURNED', 'COMPLETED']);
@@ -29,7 +30,8 @@ export async function createBinderAction(
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, session }) => {
+      await assertClientAccessTx(tx, session, parsed.data.clientId);
       // Q-5: clientId Tenant-Sanity
       await assertClientInTenant(tx, parsed.data.clientId);
       const b = await tx.pendingBinder.create({
@@ -61,12 +63,13 @@ export async function updateBinderStatusAction(input: {
   const parsed = z.object({ id: z.string().uuid(), status: StatusEnum }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId }) => {
+  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
     const before = await tx.pendingBinder.findUnique({
       where: { id: parsed.data.id },
       select: { status: true, clientId: true },
     });
     if (!before) throw new ActionError('Pendelordner nicht gefunden.');
+    await assertClientAccessTx(tx, session, before.clientId);
 
     const now = new Date();
     const data: Prisma.PendingBinderUpdateInput = { status: parsed.data.status };
@@ -92,8 +95,10 @@ export async function deleteBinderAction(input: { id: string }): Promise<ActionR
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId }) => {
-    const b = await tx.pendingBinder.findUnique({ where: { id: parsed.data.id }, select: { label: true } });
+  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
+    const b = await tx.pendingBinder.findUnique({ where: { id: parsed.data.id }, select: { label: true, clientId: true } });
+    if (!b) throw new ActionError('Pendelordner nicht gefunden.');
+    await assertClientAccessTx(tx, session, b.clientId);
     await tx.pendingBinder.delete({ where: { id: parsed.data.id } });
     await evidenceService.record(tx, {
       tenantId, actorType: 'STAFF', actorId: staffId,

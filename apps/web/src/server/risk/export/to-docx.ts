@@ -7,13 +7,14 @@ import {
   Table, TableRow, TableCell, WidthType, BorderStyle, UnderlineType,
 } from 'docx';
 import { type ReportModel, type ReportToken } from './report-types';
+import { fmtDateShort } from '@/lib/fmt';
 
 const hex = (c: string) => c.replace('#', '');
 
 function meta(model: ReportModel): string {
   return [
     model.clientName ? `Mandant: ${model.clientName}` : null,
-    `Erstellt: ${model.createdAt.toLocaleDateString('de-DE')}`,
+    `Erstellt: ${fmtDateShort(model.createdAt)}`,
     `Markierungen: ${model.counts.gesamt} (davon ${model.counts.eigen} eigene)`,
     `Katalog ${model.katalogVersion} · Engine ${model.engineVersion}`,
     model.llmEnriched ? 'KI-vertieft' : null,

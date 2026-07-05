@@ -2,37 +2,17 @@
 
 import { useEffect, useState } from 'react';
 import { Sun, Moon, Monitor } from 'lucide-react';
-
-type ThemePref = 'light' | 'dark' | 'system';
-const THEME_EVENT = 'taxtronik-theme-change';
-
-function applyTheme(pref: ThemePref): void {
-  let dark: boolean;
-  if (pref === 'dark') dark = true;
-  else if (pref === 'light') dark = false;
-  else dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  document.documentElement.classList.toggle('dark', dark);
-}
-
-function readPref(): ThemePref {
-  try {
-    const v = localStorage.getItem('theme');
-    if (v === 'dark' || v === 'light') return v;
-  } catch {
-    // ignore
-  }
-  return 'system';
-}
+import { applyTheme, readThemePref, setThemePref, THEME_EVENT, type ThemePref } from '@/lib/theme';
 
 export function ThemeToggle() {
   const [pref, setPref] = useState<ThemePref>('system');
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setPref(readPref());
+    setPref(readThemePref());
     setMounted(true);
     function sync() {
-      const next = readPref();
+      const next = readThemePref();
       setPref(next);
       applyTheme(next);
     }
@@ -57,14 +37,7 @@ export function ThemeToggle() {
 
   function setAndPersist(next: ThemePref) {
     setPref(next);
-    try {
-      if (next === 'system') localStorage.removeItem('theme');
-      else localStorage.setItem('theme', next);
-    } catch {
-      // ignore
-    }
-    applyTheme(next);
-    window.dispatchEvent(new Event(THEME_EVENT));
+    setThemePref(next);
   }
 
   function cycle() {

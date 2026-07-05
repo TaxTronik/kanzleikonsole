@@ -7,6 +7,7 @@
 
 import PDFDocument from 'pdfkit';
 import { type ReportModel, type ReportToken } from './report-types';
+import { fmtDateShort } from '@/lib/fmt';
 
 function toBuffer(doc: PDFKit.PDFDocument): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -69,7 +70,7 @@ function drawAnnotated(
 function metaLine(model: ReportModel): string {
   return [
     model.clientName ? `Mandant: ${model.clientName}` : null,
-    `Erstellt: ${model.createdAt.toLocaleDateString('de-DE')}`,
+    `Erstellt: ${fmtDateShort(model.createdAt)}`,
     `Markierungen: ${model.counts.gesamt} (${model.counts.eigen} eigene)`,
     `Katalog ${model.katalogVersion} · Engine ${model.engineVersion}`,
     model.llmEnriched ? 'KI-vertieft' : null,

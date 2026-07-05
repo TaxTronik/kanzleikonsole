@@ -9,6 +9,7 @@ import {
   setMandateEndAction,
   type ActionResult,
 } from './actions';
+import { fmtDateShort } from '@/lib/fmt';
 
 /**
  * Reactivity-Helper: `revalidatePath` in der Server-Action lädt zwar die
@@ -145,7 +146,7 @@ export function MandateForm({
         {ended ? (
           <>
             Mandat beendet seit{' '}
-            <strong>{new Date(mandateEndedAt!).toLocaleDateString('de-DE')}</strong>.
+            <strong>{fmtDateShort(new Date(mandateEndedAt!))}</strong>.
           </>
         ) : (
           <span className="text-muted">Mandat ist aktiv.</span>

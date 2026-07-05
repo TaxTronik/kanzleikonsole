@@ -155,10 +155,12 @@ export function DashboardGrid({
     // Widgets sind server-gerendert — sofort speichern + Server neu laden,
     // damit der neue Widget-Knoten ohne manuellen Reload an der gefundenen
     // Position erscheint (vorher tauchte er erst nach Reload auf).
-    void saveDashboardLayoutAction({ version: 2, widgets: next }).then((r) => {
-      if (!r.ok) setError(r.error ?? 'Fehler beim Speichern.');
-      router.refresh();
-    });
+    void saveDashboardLayoutAction({ version: 2, widgets: next })
+      .then((r) => {
+        if (!r.ok) setError(r.error ?? 'Fehler beim Speichern.');
+        router.refresh();
+      })
+      .catch(() => setError('Fehler beim Speichern — bitte erneut versuchen.'));
   }
 
   function remove(id: string) {

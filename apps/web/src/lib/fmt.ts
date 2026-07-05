@@ -141,6 +141,52 @@ export function fmtMonthShort(d: Date): string { return monthShortFormatter.form
 /** `Mai 2026` */
 export function fmtMonthYear(d: Date): string { return monthYearFormatter.format(d); }
 
+// --- Zeitzonen-Tagesgrenzen ----------------------------------------------------
+// Wandelt einen `YYYY-MM-DD`-Kalendertag (Europe/Berlin) in die zugehörigen
+// UTC-Instants um. Ohne das mischen Filter sonst UTC-Mitternacht mit
+// server-lokaler Uhrzeit → Einträge von 00:00–02:00 Berlin landen im Vortag.
+
+/** Berlin-Offset (ms) am gegebenen Instant, DST-korrekt via Intl. */
+function berlinOffsetMs(instant: Date): number {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone: TIME_ZONE,
+    hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+  const p = Object.fromEntries(dtf.formatToParts(instant).map((x) => [x.type, x.value]));
+  // `hour` kann bei Mitternacht als '24' formatiert werden → auf 0 normalisieren.
+  const hour = p.hour === '24' ? 0 : Number(p.hour);
+  const asUtc = Date.UTC(
+    Number(p.year), Number(p.month) - 1, Number(p.day),
+    hour, Number(p.minute), Number(p.second),
+  );
+  return asUtc - instant.getTime();
+}
+
+/** Parst `YYYY-MM-DD`; null bei ungültigem Format. */
+function parseYmd(s: string): { y: number; m: number; d: number } | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return null;
+  return { y: Number(m[1]), m: Number(m[2]), d: Number(m[3]) };
+}
+
+/** UTC-Instant für 00:00:00.000 Berlin-Zeit des Kalendertags (oder null). */
+export function berlinDayStartUtc(dateStr: string): Date | null {
+  const p = parseYmd(dateStr);
+  if (!p) return null;
+  const guess = Date.UTC(p.y, p.m - 1, p.d, 0, 0, 0, 0);
+  return new Date(guess - berlinOffsetMs(new Date(guess)));
+}
+
+/** UTC-Instant für 23:59:59.999 Berlin-Zeit des Kalendertags (oder null). */
+export function berlinDayEndUtc(dateStr: string): Date | null {
+  const p = parseYmd(dateStr);
+  if (!p) return null;
+  const guess = Date.UTC(p.y, p.m - 1, p.d, 23, 59, 59, 999);
+  return new Date(guess - berlinOffsetMs(new Date(guess)));
+}
+
 // --- Dauer ---------------------------------------------------------------------
 
 /** Minuten → `2h 15m` oder `15m`. */

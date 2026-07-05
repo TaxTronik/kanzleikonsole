@@ -78,8 +78,10 @@ export async function POST(req: NextRequest) {
       { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' },
       'documentUpload',
     );
-  } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 403 });
+  } catch {
+    // Kein Roh-Message-Leak: assertPortalFeature wirft bei deaktiviertem
+    // Feature — generische, stabile Antwort statt interner Exception-Message.
+    return NextResponse.json({ error: 'feature_disabled' }, { status: 403 });
   }
 
   const fileData = Buffer.from(await file.arrayBuffer());

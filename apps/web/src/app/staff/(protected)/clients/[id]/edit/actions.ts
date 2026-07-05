@@ -2,7 +2,7 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { isStaffAdmin, toActionError } from '@/server/auth/rbac';
+import { isStaffAdmin, toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
@@ -58,6 +58,7 @@ export async function saveAdminFieldsAction(
 
   try {
     await withTenantContext(ctx, async (tx) => {
+      await assertClientAccessTx(tx, session, clientId);
       const before = await tx.client.findUnique({
         where: { id: clientId },
         select: { datevNo: true, addisonNo: true, invoiceEmail: true, priority: true, internalNotes: true, vertraulich: true },
@@ -120,7 +121,7 @@ export async function saveGwgFieldsAction(
 ): Promise<ActionResult> {
   const g = await staffActionGuard();
   if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
+  const { tenantId, staffId, ctx, session } = g;
 
   const parsed = GwgSchema.safeParse({
     clientId: formData.get('clientId'),
@@ -137,6 +138,7 @@ export async function saveGwgFieldsAction(
 
   try {
     await withTenantContext(ctx, async (tx) => {
+      await assertClientAccessTx(tx, session, clientId);
       const before = await tx.client.findUnique({
         where: { id: clientId },
         select: {
@@ -236,6 +238,7 @@ export async function setResponsibilitiesAction(
 
   try {
     await withTenantContext(ctx, async (tx) => {
+      await assertClientAccessTx(tx, session, clientId);
       const before = await tx.clientResponsibility.findMany({ where: { clientId } });
 
       // 1. Berufsträger — Diff. Mehrere möglich (Gesellschafter-Konstellationen,
@@ -331,6 +334,7 @@ export async function setMandateEndAction(
 
   try {
     await withTenantContext(ctx, async (tx) => {
+      await assertClientAccessTx(tx, session, clientId);
       const before = await tx.client.findUnique({
         where: { id: clientId },
         select: { mandateEndedAt: true },

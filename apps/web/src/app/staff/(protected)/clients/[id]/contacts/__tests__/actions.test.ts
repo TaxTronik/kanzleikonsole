@@ -42,6 +42,8 @@ vi.mock('@/server/auth/rbac', () => ({
     ok: false,
     error: e instanceof Error ? e.message : 'Fehler.',
   }),
+  // Vertraulich-/RESTRICTED-Ventil (M-1): im Unit-Test No-op = Zugriff gewährt.
+  assertClientAccessTx: vi.fn(),
 }));
 vi.mock('@/server/actions/staff-action', () => ({
   ActionError: m.ActionError,

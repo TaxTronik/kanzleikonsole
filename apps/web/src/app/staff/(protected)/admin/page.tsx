@@ -20,8 +20,12 @@ import { env } from '@taxtronik/config';
 import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
-import { BACKUP_DRILL_RESULT_SETTING_KEY, type PersistedDrillResult } from '@taxtronik/evidence';
-import { evidenceService } from '@/server/container';
+import {
+  BACKUP_DRILL_RESULT_SETTING_KEY,
+  type PersistedDrillResult,
+  AUDIT_VERIFY_RESULT_SETTING_KEY,
+  type PersistedVerifyResult,
+} from '@taxtronik/evidence';
 import { checkForUpdates, type CheckResult } from '@/server/update/manifest';
 import { getLicenseInfo } from '@/server/license/state';
 import { getSetupStatus } from '@/server/setup/status';
@@ -47,7 +51,7 @@ export default async function AdminPage() {
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
 
   const [
-    chainResult,
+    verifyRow,
     lastBackup,
     drillSetting,
     openDsgvoCount,
@@ -57,7 +61,13 @@ export default async function AdminPage() {
     anonDueCount,
   ] = await withTenantContext(ctx, async (tx) =>
     Promise.all([
-      evidenceService.verifyChain(tx, tenantId).catch(() => null),
+      // P-1: Chain-Verifikation läuft NICHT im Render-Pfad (SHA-256 über den
+      // ganzen Log; Sekunden bei 200k, P2028 ab ~500k). Nur das vom täglichen
+      // Worker-Job (audit-verify-check) persistierte Ergebnis lesen — wie die
+      // Audit-Seite (admin/audit/page.tsx).
+      tx.tenantSetting.findUnique({
+        where: { tenantId_key: { tenantId, key: AUDIT_VERIFY_RESULT_SETTING_KEY } },
+      }),
       tx.backupRecord.findFirst({
         orderBy: { startedAt: 'desc' },
       }),
@@ -76,6 +86,7 @@ export default async function AdminPage() {
 
   const backupAvailability = await checkBackupAvailability(lastBackup);
   const drill = (drillSetting?.value ?? null) as PersistedDrillResult | null;
+  const verifyResult = (verifyRow?.value ?? null) as PersistedVerifyResult | null;
 
   const setup = await getSetupStatus(ctx);
 
@@ -154,35 +165,63 @@ export default async function AdminPage() {
         <div className="card p-6">
           <div className="flex items-start gap-3 mb-3">
             <ShieldCheck
-              className={chainResult?.ok ? 'h-5 w-5 text-green-600' : 'h-5 w-5 text-red-600'}
+              className={
+                verifyResult?.ok
+                  ? 'h-5 w-5 text-green-600'
+                  : verifyResult?.recovered
+                    ? 'h-5 w-5 text-amber-600'
+                    : verifyResult
+                      ? 'h-5 w-5 text-red-600'
+                      : 'h-5 w-5 text-muted'
+              }
             />
             <div className="flex-1">
               <h2 className="text-sm font-medium text-primary">Audit-Hash-Chain</h2>
-              {chainResult ? (
-                chainResult.ok ? (
+              {verifyResult ? (
+                verifyResult.ok ? (
                   <>
                     <p className="text-xs text-green-700 mt-1">
-                      Intakt — {chainResult.checked} Einträge geprüft
+                      Intakt — {verifyResult.checked} Einträge geprüft
                     </p>
                     <p className="text-xs text-muted mt-1">
-                      {chainResult.sealsChecked} Tagesversiegelungen geprüft
-                      {chainResult.sealBreaks.length > 0
-                        ? `, ${chainResult.sealBreaks.length} mit TSA-Problem`
+                      {verifyResult.sealsChecked} Tagesversiegelungen geprüft
+                      {verifyResult.sealBreaks > 0
+                        ? `, ${verifyResult.sealBreaks} mit TSA-Problem`
                         : ''}
                     </p>
+                    <p className="text-xs text-muted mt-1">
+                      Zuletzt geprüft: {fmtDateTimeShort(new Date(verifyResult.checkedAt))}
+                    </p>
+                  </>
+                ) : verifyResult.error ? (
+                  <>
+                    <p className="text-xs text-red-700 mt-1">
+                      ⚠ Verifikationslauf fehlgeschlagen
+                    </p>
+                    <p className="text-xs text-muted mt-1">{verifyResult.error}</p>
                   </>
                 ) : (
                   <>
-                    <p className="text-xs text-red-700 mt-1">⚠ Hash-Chain gebrochen!</p>
-                    {chainResult.firstBreak && (
+                    <p
+                      className={`text-xs mt-1 ${
+                        verifyResult.recovered ? 'text-amber-700' : 'text-red-700'
+                      }`}
+                    >
+                      {verifyResult.recovered
+                        ? 'Historischer Bruch — Recovery-Checkpoint gesetzt'
+                        : '⚠ Hash-Chain gebrochen!'}
+                    </p>
+                    {verifyResult.firstBreak && (
                       <p className="text-xs text-muted mt-1">
-                        Bei Audit-ID {String(chainResult.firstBreak.auditId)}
+                        Bei Audit-ID {String(verifyResult.firstBreak.auditId)}
                       </p>
                     )}
                   </>
                 )
               ) : (
-                <p className="text-xs text-muted mt-1">Verifikation fehlgeschlagen.</p>
+                <p className="text-xs text-muted mt-1">
+                  Noch keine Verifikation — der tägliche Prüf-Job hat noch nicht gelaufen.
+                </p>
               )}
             </div>
           </div>
@@ -349,7 +388,7 @@ export default async function AdminPage() {
         <SmallKpi
           icon={CheckCircle2}
           label="Audit-Einträge"
-          value={chainResult?.checked ?? 0}
+          value={verifyResult?.checked ?? 0}
           subtitle="hash-versiegelt"
         />
       </div>

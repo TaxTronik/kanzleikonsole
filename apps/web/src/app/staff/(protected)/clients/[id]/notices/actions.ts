@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
+import { assertClientAccessTx, toActionError } from '@/server/auth/rbac';
 import { staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
 import { NOTICE_STATUS_TRANSITIONS } from './transitions';
 
@@ -39,7 +40,7 @@ export async function createNoticeAction(formData: FormData): Promise<void> {
   // void/throw-Form-Action: Gate liefert die Fehlermeldung als Wurf (Vertrag bleibt).
   const g = await staffActionGuard();
   if (!g.ok) throw new Error(g.error);
-  const { tenantId, staffId, ctx } = g;
+  const { tenantId, staffId, ctx, session } = g;
 
   const parsed = Schema.safeParse({
     clientId: formData.get('clientId'),
@@ -64,6 +65,7 @@ export async function createNoticeAction(formData: FormData): Promise<void> {
   await withTenantContext(
     ctx,
     async (tx) => {
+      await assertClientAccessTx(tx, session, d.clientId);
       // Q-5: clientId muss im aktuellen Tenant existieren — sonst kann ein
       // UI-Bug / direkter API-Call eine fremde clientId persistieren.
       await assertClientInTenant(tx, d.clientId);
@@ -141,7 +143,7 @@ export async function updateNoticeStatusAction(input: {
 }): Promise<ActionResult> {
   const g = await staffActionGuard();
   if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
+  const { tenantId, staffId, ctx, session } = g;
 
   const parsed = z
     .object({ noticeId: z.string().uuid(), status: z.enum(NOTICE_STATUS_VALUES) })
@@ -150,13 +152,16 @@ export async function updateNoticeStatusAction(input: {
   const { noticeId, status } = parsed.data;
 
   let clientId: string | null = null;
-  const result = await withTenantContext(ctx, async (tx): Promise<ActionResult> => {
+  let result: ActionResult;
+  try {
+    result = await withTenantContext(ctx, async (tx): Promise<ActionResult> => {
     const before = await tx.taxNotice.findFirst({
       where: { id: noticeId, tenantId },
       select: { id: true, status: true, clientId: true, reviewedAt: true, appealFiledAt: true },
     });
     if (!before) return { ok: false, error: 'Bescheid nicht gefunden.' };
     clientId = before.clientId;
+    await assertClientAccessTx(tx, session, before.clientId);
 
     const allowed = NOTICE_STATUS_TRANSITIONS[before.status] ?? [];
     if (!allowed.includes(status)) {
@@ -193,7 +198,10 @@ export async function updateNoticeStatusAction(input: {
       after: { status: updated.status },
     });
     return { ok: true };
-  });
+    });
+  } catch (e) {
+    return toActionError(e);
+  }
 
   if (result.ok && clientId) revalidatePath(`/staff/clients/${clientId}/notices`);
   return result;

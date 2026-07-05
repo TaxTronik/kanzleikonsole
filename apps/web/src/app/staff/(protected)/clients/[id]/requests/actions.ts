@@ -9,8 +9,8 @@ import { emitN8nEvent } from '@/server/n8n/emit';
 import { notifyClientContacts } from '@/server/mail/dispatch';
 import { fireAndForget } from '@/server/util/fire-and-forget';
 import { portalBaseUrl } from '@taxtronik/config';
-import { toActionError } from '@/server/auth/rbac';
-import { staffActionGuard } from '@/server/actions/staff-action';
+import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
+import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
 
 const CreateSchema = z.object({
   clientId: z.string().uuid(),
@@ -36,7 +36,7 @@ export async function createRequestAction(
 ): Promise<ActionResult> {
   const g = await staffActionGuard();
   if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
+  const { tenantId, staffId, ctx, session } = g;
 
   const parsed = CreateSchema.safeParse({
     clientId: formData.get('clientId'),
@@ -61,6 +61,7 @@ export async function createRequestAction(
   let createdId: string;
   try {
     createdId = await withTenantContext(ctx, async (tx) => {
+      await assertClientAccessTx(tx, session, data.clientId);
       // Optional: Formular-Submission vorab anlegen — die Submission ist
       // im DRAFT-Status und wird mit der Request verknüpft.
       let formSubmissionId: string | null = null;
@@ -157,7 +158,7 @@ const CloseSchema = z.object({
 export async function closeRequestAction(formData: FormData): Promise<void> {
   const g = await staffActionGuard();
   if (!g.ok) return; // void-Action: still abbrechen
-  const { tenantId, staffId, ctx } = g;
+  const { tenantId, staffId, ctx, session } = g;
 
   const parsed = CloseSchema.safeParse({ requestId: formData.get('requestId') });
   if (!parsed.success) return;
@@ -166,6 +167,7 @@ export async function closeRequestAction(formData: FormData): Promise<void> {
   await withTenantContext(ctx, async (tx) => {
     const before = await tx.request.findUnique({ where: { id: requestId } });
     if (!before) return;
+    await assertClientAccessTx(tx, session, before.clientId);
     const updated = await tx.request.update({
       where: { id: requestId },
       data: { status: 'CLOSED', closedAt: new Date(), closedByStaff: staffId },
@@ -194,7 +196,7 @@ const StaffResponseSchema = z.object({
 export async function addStaffResponseAction(formData: FormData): Promise<ActionResult> {
   const g = await staffActionGuard();
   if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
+  const { tenantId, staffId, ctx, session } = g;
 
   const parsed = StaffResponseSchema.safeParse({
     requestId: formData.get('requestId'),
@@ -203,22 +205,30 @@ export async function addStaffResponseAction(formData: FormData): Promise<Action
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
   const { requestId, message } = parsed.data;
 
-  const reqInfo = await withTenantContext(ctx, async (tx) => {
-    const resp = await tx.requestResponse.create({
-      data: { requestId, authorType: 'STAFF', authorId: staffId, message },
+  let reqInfo: { clientId: string; title: string } | null;
+  try {
+    reqInfo = await withTenantContext(ctx, async (tx) => {
+      const req = await tx.request.findUnique({ where: { id: requestId }, select: { clientId: true } });
+      if (!req) throw new ActionError('Anforderung nicht gefunden.');
+      await assertClientAccessTx(tx, session, req.clientId);
+      const resp = await tx.requestResponse.create({
+        data: { requestId, authorType: 'STAFF', authorId: staffId, message },
+      });
+      await tx.request.update({ where: { id: requestId }, data: { status: 'IN_PROGRESS' } });
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'request.response',
+        resourceType: 'request_response',
+        resourceId: resp.id,
+        after: { requestId, length: message.length },
+      });
+      return tx.request.findUnique({ where: { id: requestId }, select: { clientId: true, title: true } });
     });
-    await tx.request.update({ where: { id: requestId }, data: { status: 'IN_PROGRESS' } });
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
-      action: 'request.response',
-      resourceType: 'request_response',
-      resourceId: resp.id,
-      after: { requestId, length: message.length },
-    });
-    return tx.request.findUnique({ where: { id: requestId }, select: { clientId: true, title: true } });
-  });
+  } catch (e) {
+    return toActionError(e);
+  }
 
   if (reqInfo) {
     const portalUrl = `${portalBaseUrl}/portal/requests/${requestId}`;

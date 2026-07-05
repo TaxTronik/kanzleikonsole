@@ -9,6 +9,7 @@ import { notify } from '@/server/notifications/service';
 import { toActionError } from '@/server/auth/rbac';
 import { assertStaffInTenant } from '@/server/db/assert-tenant';
 import { staffActionGuard, withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
+import { fmtDateShort } from '@/lib/fmt';
 
 export type ActionResult = BaseActionResult;
 
@@ -296,7 +297,7 @@ export async function phoneNoteToReminderAction(input: {
         clientId: note.clientId,
         dueDate: new Date(parsed.data.dueDate),
         subject: `${note.callerName}: ${note.subject}`,
-        notes: `Telefonnotiz vom ${new Date().toLocaleDateString('de-DE')}${note.callerPhone ? ' (Tel ' + note.callerPhone + ')' : ''}\n\n${note.body}`,
+        notes: `Telefonnotiz vom ${fmtDateShort(new Date())}${note.callerPhone ? ' (Tel ' + note.callerPhone + ')' : ''}\n\n${note.body}`,
         createdByStaff: staffId,
         assigneeStaffId: parsed.data.assigneeStaffId ?? note.forwardToStaff ?? staffId,
       },
