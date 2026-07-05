@@ -188,6 +188,7 @@ model Absence {
   staff      StaffUser   @relation(fields: [staffId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, staffId, startDate])
+  @@index([tenantId, documentId])
   @@map("absence")
 }
 
@@ -243,6 +244,7 @@ model GwgIdDocument {
   linkedRequests Request[]
 
   @@index([gwgCheckId])
+  @@index([documentId])
   @@map("gwg_id_document")
 }
 
@@ -283,40 +285,40 @@ model ServiceProvider {
 }
 
 model PowerOfAttorney {
-  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId              String    @map("tenant_id") @db.Uuid
-  clientId              String    @map("client_id") @db.Uuid
-  signerContactId       String?   @map("signer_contact_id") @db.Uuid
-  signerEmail           String    @map("signer_email") @db.Citext
-  signerName            String    @map("signer_name")
-  subject               String
-  scope                 String
-  validFrom             DateTime  @map("valid_from") @db.Date
-  validUntil            DateTime? @map("valid_until") @db.Date
-  status                PoaStatus @default(DRAFT)
-  signingTokenHash      String?   @map("signing_token_hash")
-  signingTokenExpiresAt DateTime? @map("signing_token_expires_at")
-  signingOtpHash        String?   @map("signing_otp_hash")
-  signingOtpExpiresAt   DateTime? @map("signing_otp_expires_at")
-  signedAt              DateTime? @map("signed_at")
-  signedByIp            String?   @map("signed_by_ip") @db.Inet
-  signedByUserAgent     String?   @map("signed_by_user_agent")
-  documentId            String?   @map("document_id") @db.Uuid
-  createdByStaff        String    @map("created_by_staff") @db.Uuid
-  revokedAt             DateTime? @map("revoked_at")
-  revokedReason         String?   @map("revoked_reason")
-  createdAt             DateTime  @default(now()) @map("created_at")
-  updatedAt             DateTime  @updatedAt @map("updated_at")
-  signingOtpAttempts    Int       @default(0) @map("signing_otp_attempts")
+  id                      String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                String    @map("tenant_id") @db.Uuid
+  clientId                String    @map("client_id") @db.Uuid
+  signerContactId         String?   @map("signer_contact_id") @db.Uuid
+  signerEmail             String    @map("signer_email") @db.Citext
+  signerName              String    @map("signer_name")
+  subject                 String
+  scope                   String
+  validFrom               DateTime  @map("valid_from") @db.Date
+  validUntil              DateTime? @map("valid_until") @db.Date
+  status                  PoaStatus @default(DRAFT)
+  signingTokenHash        String?   @map("signing_token_hash")
+  signingTokenExpiresAt   DateTime? @map("signing_token_expires_at")
+  signingOtpHash          String?   @map("signing_otp_hash")
+  signingOtpExpiresAt     DateTime? @map("signing_otp_expires_at")
+  signedAt                DateTime? @map("signed_at")
+  signedByIp              String?   @map("signed_by_ip") @db.Inet
+  signedByUserAgent       String?   @map("signed_by_user_agent")
+  documentId              String?   @map("document_id") @db.Uuid
+  createdByStaff          String    @map("created_by_staff") @db.Uuid
+  revokedAt               DateTime? @map("revoked_at")
+  revokedReason           String?   @map("revoked_reason")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+  signingOtpAttempts      Int       @default(0) @map("signing_otp_attempts")
   // Audit 2026-06 Befund 2: lebenszyklus-weiter Fehlversuchszähler. Anders als
   // signingOtpAttempts wird er beim OTP-Re-Issue NICHT zurückgesetzt — nur beim
   // Versand eines neuen Signatur-Tokens (sendForSignatureAction). Deckelt die
   // Gesamtversuche pro Token-Lebenszyklus (vorher ~50 über Re-Issue-Resets).
-  signingOtpAttemptsTotal Int     @default(0) @map("signing_otp_attempts_total")
+  signingOtpAttemptsTotal Int       @default(0) @map("signing_otp_attempts_total")
   // RF-15 (iter79): NoAction statt Cascade — signierte Vollmachten dürfen
   // einen Client-Hard-Delete nicht mitsterben (Aufbewahrung/Beweiswert).
-  client                Client    @relation(fields: [clientId], references: [id], onDelete: NoAction)
-  tenant                Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client                  Client    @relation(fields: [clientId], references: [id], onDelete: NoAction)
+  tenant                  Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, clientId])
   @@index([tenantId, status])
@@ -421,6 +423,7 @@ model Invoice {
   @@index([tenantId, clientId])
   @@index([tenantId, dueDate])
   @@index([tenantId, categoryId], map: "invoice_tenant_category_idx")
+  @@index([tenantId, documentId])
   // iter71: pg_trgm-GIN für die globale Suche (Rechnungsnr. + Betreff)
   @@index([number(ops: raw("gin_trgm_ops"))], type: Gin, map: "invoice_number_trgm_idx")
   @@index([subject(ops: raw("gin_trgm_ops"))], type: Gin, map: "invoice_subject_trgm_idx")
@@ -702,6 +705,7 @@ model StaffBookmark {
 
   @@unique([staffId, resourceType, resourceId], map: "staff_bookmark_staff_resource_key")
   @@index([staffId, createdAt(sort: Desc)], map: "staff_bookmark_staff_created_idx")
+  @@index([tenantId])
   @@map("staff_bookmark")
 }
 
@@ -716,6 +720,7 @@ model StaffNote {
   tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "staff_note_tenant_fk")
 
   @@index([staffId, createdAt(sort: Desc)], map: "staff_note_staff_idx")
+  @@index([tenantId])
   @@map("staff_note")
 }
 
@@ -910,16 +915,16 @@ model ClientContact {
 }
 
 model MagicLink {
-  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId   String    @map("tenant_id") @db.Uuid
-  contactId  String?   @map("contact_id") @db.Uuid
-  email      String    @db.Citext
-  tokenHash  String    @map("token_hash")
-  expiresAt  DateTime  @map("expires_at")
-  consumedAt DateTime? @map("consumed_at")
-  createdAt  DateTime  @default(now()) @map("created_at")
+  id         String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String         @map("tenant_id") @db.Uuid
+  contactId  String?        @map("contact_id") @db.Uuid
+  email      String         @db.Citext
+  tokenHash  String         @map("token_hash")
+  expiresAt  DateTime       @map("expires_at")
+  consumedAt DateTime?      @map("consumed_at")
+  createdAt  DateTime       @default(now()) @map("created_at")
   contact    ClientContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
-  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant     Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tokenHash])
   @@index([contactId])
@@ -1147,6 +1152,7 @@ model Request {
   @@index([tenantId, dueAt])
   @@index([workflowItemId], map: "request_workflow_item_idx")
   @@index([linkedGwgIdDocumentId], map: "request_gwg_id_doc_idx")
+  @@index([tenantId, formSubmissionId])
   // iter71: pg_trgm-GIN für die globale Suche
   @@index([title(ops: raw("gin_trgm_ops"))], type: Gin, map: "request_title_trgm_idx")
   @@index([description(ops: raw("gin_trgm_ops"))], type: Gin, map: "request_description_trgm_idx")
@@ -1173,6 +1179,7 @@ model RequestTemplate {
 
   @@unique([tenantId, name], map: "request_template_tenant_name_key")
   @@index([tenantId, sortOrder], map: "request_template_tenant_sort_idx")
+  @@index([tenantId, formTemplateId])
   @@map("request_template")
 }
 
@@ -1208,6 +1215,7 @@ model RequestResponse {
   request    Request               @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
   @@index([requestId])
+  @@index([documentId])
   @@map("request_response")
 }
 
@@ -1218,39 +1226,39 @@ model RequestResponse {
 /// `createdById` ist — wie request.created_by_staff — eine reine Mitarbeiter-
 /// UUID ohne FK (Mitarbeiter werden deaktiviert, nicht gelöscht).
 model RiskAnalysis {
-  id               String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId         String                @map("tenant_id") @db.Uuid
-  clientId         String?               @map("client_id") @db.Uuid
-  documentId       String?               @map("document_id") @db.Uuid
+  id                String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String                @map("tenant_id") @db.Uuid
+  clientId          String?               @map("client_id") @db.Uuid
+  documentId        String?               @map("document_id") @db.Uuid
   // Der analysierte Sachverhalt im Klartext. Nötig, um eine gespeicherte
   // Analyse WIEDER mit dem Highlight-Overlay (Zeichen-Offsets) zu öffnen und um
   // die LLM-Phase 2 zu fahren. Mandanten-Arbeitsprodukt, RLS-geschützt.
-  sourceText       String                @map("source_text")
+  sourceText        String                @map("source_text")
   // Formatierter Sachverhalt als Tiptap/ProseMirror-JSON. sourceText ist die
   // daraus abgeleitete Plaintext-Serialisierung (Engine/Offsets/Hash). null =
   // Alt-Analyse ohne Rich-Doc (Review fällt auf Plaintext-Ansicht zurück).
-  sourceDoc        Json?                 @map("source_doc")
-  title            String?
-  textHash         String                @map("text_hash")
-  katalogVersion   String                @map("katalog_version")
-  engineVersion    String                @map("engine_version")
-  createdById      String                @map("created_by_id") @db.Uuid
+  sourceDoc         Json?                 @map("source_doc")
+  title             String?
+  textHash          String                @map("text_hash")
+  katalogVersion    String                @map("katalog_version")
+  engineVersion     String                @map("engine_version")
+  createdById       String                @map("created_by_id") @db.Uuid
   // Engine-rawResult liegt im Object-Store (SeaweedFS, gzip) — reines Audit/
   // Replay-Kaltarchiv, zur Laufzeit ungelesen. Nur die Referenz bleibt in PG.
-  rawResultBucket  String?               @map("raw_result_bucket")
-  rawResultKey     String?               @map("raw_result_key")
+  rawResultBucket   String?               @map("raw_result_bucket")
+  rawResultKey      String?               @map("raw_result_key")
   // Revisionssichere Archivierung (GoBD/§147 AO): self-contained Snapshot
   // (Sachverhalt + Markierungen + Hash) gzip im GoBD-Bucket (Object-Lock).
   // Archivierte Analysen sind schreibgeschützt (Mutationen abgelehnt).
-  archivedAt       DateTime?             @map("archived_at") @db.Timestamptz(6)
-  archiveBucket    String?               @map("archive_bucket")
-  archiveKey       String?               @map("archive_key")
+  archivedAt        DateTime?             @map("archived_at") @db.Timestamptz(6)
+  archiveBucket     String?               @map("archive_bucket")
+  archiveKey        String?               @map("archive_key")
   // Gesetzt, sobald die asynchrone LLM-Phase die Analyse angereichert hat.
-  llmEnrichedAt    DateTime?             @map("llm_enriched_at") @db.Timestamptz(6)
-  createdAt        DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
-  tenant           Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  client           Client?               @relation(fields: [clientId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "risk_analysis_client_fk")
-  document         Document?             @relation("AnalysisSourceDoc", fields: [documentId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "risk_analysis_document_fk")
+  llmEnrichedAt     DateTime?             @map("llm_enriched_at") @db.Timestamptz(6)
+  createdAt         DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant            Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client            Client?               @relation(fields: [clientId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "risk_analysis_client_fk")
+  document          Document?             @relation("AnalysisSourceDoc", fields: [documentId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "risk_analysis_document_fk")
   markings          RiskMarking[]
   researchRequests  RiskResearchRequest[]
   workflowInstances WorkflowInstance[]
@@ -1365,6 +1373,7 @@ model RiskResearchResult {
 
   @@index([tenantId, status])
   @@index([tenantId, markingId])
+  @@index([tenantId, researchRequestId])
   @@map("risk_research_result")
 }
 
@@ -1405,6 +1414,7 @@ model PhoneNote {
   @@index([tenantId, clientId])
   @@index([tenantId, forwardToStaff, readAt])
   @@index([tenantId, doneAt], map: "phone_note_tenant_done_idx")
+  @@index([tenantId, doneByStaff])
   @@map("phone_note")
 }
 
@@ -1473,6 +1483,7 @@ model TaxDeadline {
   @@unique([tenantId, clientId, kind, period])
   @@index([tenantId, dueDate])
   @@index([tenantId, status, dueDate])
+  @@index([tenantId, configId])
   @@map("tax_deadline")
 }
 
@@ -1503,6 +1514,7 @@ model TaxFiling {
 
   @@unique([tenantId, clientId, kind, period], map: "tax_filing_tenant_client_kind_period_key")
   @@index([tenantId, clientId], map: "tax_filing_tenant_client_idx")
+  @@index([tenantId, documentId])
   @@map("tax_filing")
 }
 
@@ -1541,6 +1553,7 @@ model TaxNotice {
   @@unique([tenantId, clientId, kind, period])
   @@index([tenantId, clientId])
   @@index([tenantId, status, appealDeadline])
+  @@index([tenantId, documentId])
   @@map("tax_notice")
 }
 
@@ -1615,6 +1628,7 @@ model WorkflowStep {
 
   @@unique([templateId, position])
   @@index([templateId])
+  @@index([skillId])
   @@map("workflow_step")
 }
 
@@ -1646,6 +1660,7 @@ model WorkflowInstance {
   @@index([tenantId, clientId, status])
   @@index([tenantId, status, startedAt])
   @@index([tenantId, analysisId])
+  @@index([tenantId, templateId])
   @@map("workflow_instance")
 }
 
@@ -1694,6 +1709,7 @@ model WorkflowItem {
 
   @@index([instanceId, position])
   @@index([assigneeStaffId, doneAt])
+  @@index([skillId])
   @@map("workflow_item")
 }
 
@@ -1782,6 +1798,7 @@ model FormSubmission {
   @@index([tenantId, clientId, status])
   @@index([tenantId, status, createdAt])
   @@index([workflowItemId], map: "form_submission_workflow_item_idx")
+  @@index([tenantId, templateId])
   @@map("form_submission")
 }
 
@@ -1834,6 +1851,8 @@ model ClientMasterChangeRequest {
 
   @@index([clientId, createdAt(sort: Desc)], map: "client_master_change_request_client_idx")
   @@index([tenantId, status, createdAt(sort: Desc)], map: "client_master_change_request_tenant_status_idx")
+  @@index([tenantId, contactId])
+  @@index([tenantId, decidedBy])
   @@map("client_master_change_request")
 }
 
@@ -1927,6 +1946,7 @@ model StateMachineTransition {
   toState       StateMachineState @relation("ToState", fields: [toStateId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "state_machine_transition_to_fk")
 
   @@index([machineId], map: "state_machine_transition_machine_idx")
+  @@index([tenantId])
   @@map("state_machine_transition")
 }
 
@@ -2013,6 +2033,7 @@ model AppointmentRequest {
 
   @@index([tenantId, clientId], map: "appointment_request_client_idx")
   @@index([tenantId, status, createdAt(sort: Desc)], map: "appointment_request_tenant_status_idx")
+  @@index([tenantId, createdByContact])
   @@map("appointment_request")
 }
 
@@ -2037,6 +2058,7 @@ model ClientHandover {
 
   @@index([clientId, status], map: "client_handover_client_status_idx")
   @@index([tenantId, status], map: "client_handover_tenant_status_idx")
+  @@index([tenantId, createdByStaff])
   @@map("client_handover")
 }
 

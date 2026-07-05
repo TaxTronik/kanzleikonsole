@@ -41,6 +41,16 @@ const envSchema = z.object({
 
   // --- Auth.js --------------------------------------------------------------
   AUTH_SECRET: Secret32,
+  // Optionales, dediziertes Schlüssel-Material für die Secret-Box
+  // (@taxtronik/crypto). Wenn gesetzt, wird dieser Wert (statt AUTH_SECRET) als
+  // HKDF-IKM für die v2-Key-Ableitung genutzt. Zweck: AUTH_SECRET kann rotiert
+  // werden (Auth.js-JWT-Signing), ohne dass gespeicherte Secrets
+  // undechiffrierbar werden — der Box-Key bleibt stabil. Ist der Wert NICHT
+  // gesetzt, bleibt das bisherige Verhalten exakt erhalten (Fallback auf
+  // AUTH_SECRET), sodass Bestands-Blobs weiter entschlüsselt werden.
+  // Hinweis: Eine echte Box-Key-Rotation erfordert weiterhin einen Re-Wrap der
+  // Bestands-Secrets (kein Key-Ring im Drahtformat).
+  SECRET_BOX_KEY: z.preprocess((v) => (v === '' ? undefined : v), Secret32.optional()),
   NEXTAUTH_URL: z.string().url(),
   // Public-URL der Mandanten-Subdomain. Alle an Mandanten versendeten Links
   // (Magic-Link, GwG-Onboarding, Portal-Formular) müssen auf diese Domain

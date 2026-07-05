@@ -232,12 +232,39 @@ describe('generateDeadlines — Vorauszahlungs-Termine', () => {
     expect(yearOnes.map((d) => d.period).sort()).toEqual(['2025-Q1', '2025-Q2', '2025-Q3', '2025-Q4']);
   });
 
-  it('GewSt-VZ Q4 (Dezember 2025) — 10.12.2025 ist Mittwoch → bleibt', () => {
+  it('GewSt-VZ 2025 — § 19 (1) GewStG: 15.02./15.05./15.08./15.11. (nicht 10er)', () => {
     const from = new Date(Date.UTC(2025, 0, 1));
     const to = new Date(Date.UTC(2025, 11, 31));
     const out = generateDeadlines('GEWST_VZ', from, to, false);
-    const q4 = out.find((d) => d.period === '2025-Q4');
-    expect(ymd(q4!.dueDate)).toBe('2025-12-10');
+    const q = Object.fromEntries(
+      out.filter((d) => d.period.startsWith('2025-')).map((d) => [d.period, ymd(d.dueDate)]),
+    );
+    // 15.02.2025 = Sa → Mo 17.02.; 15.05. = Do; 15.08. = Fr; 15.11.2025 = Sa → Mo 17.11.
+    expect(q['2025-Q1']).toBe('2025-02-17');
+    expect(q['2025-Q2']).toBe('2025-05-15');
+    expect(q['2025-Q3']).toBe('2025-08-15');
+    expect(q['2025-Q4']).toBe('2025-11-17');
+  });
+});
+
+describe('generateDeadlines — LSt-Jahresanmeldung', () => {
+  it('LStA jährlich 2025 — § 41a (1) EStG: 10.01.2026 (Sa) → Mo 12.01.2026', () => {
+    const from = new Date(Date.UTC(2026, 0, 1));
+    const to = new Date(Date.UTC(2026, 11, 31));
+    const out = generateDeadlines('LSTA_JAEHRLICH', from, to, false);
+    const hit = out.find((d) => d.period === '2025');
+    expect(hit).toBeDefined();
+    expect(ymd(hit!.dueDate)).toBe('2026-01-12');
+  });
+
+  it('LStA jährlich ignoriert advised (§ 149 (3) AO gilt nicht für Anmeldungen)', () => {
+    const from = new Date(Date.UTC(2026, 0, 1));
+    const to = new Date(Date.UTC(2026, 11, 31));
+    const plain = generateDeadlines('LSTA_JAEHRLICH', from, to, false);
+    const advised = generateDeadlines('LSTA_JAEHRLICH', from, to, false, null, true);
+    expect(advised.map((d) => [d.period, ymd(d.dueDate)])).toEqual(
+      plain.map((d) => [d.period, ymd(d.dueDate)]),
+    );
   });
 });
 

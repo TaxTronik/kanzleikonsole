@@ -56,6 +56,18 @@ async function pkijsValid(dataFile: string, tsrFile: string, caFile: string): Pr
   return (await verifyTimestampResponse(payload, tsr, roots)).valid;
 }
 
+// CI-Zwang wie bei den RLS-Tests (packages/db/.../rls-cross-tenant.test.ts): in
+// CI darf dieser Differenz-Test NICHT still wegfallen, nur weil openssl fehlt —
+// sonst verliert die Evidenz ihre unabhängige Gegenprobe unbemerkt. Ohne CI
+// (lokal ohne openssl) bleibt der Test übersprungen.
+const opensslAvailable = hasOpenssl();
+if (process.env['CI'] === 'true' && !opensslAvailable) {
+  throw new Error(
+    'RFC-3161-Differenz-Test braucht openssl im PATH in CI. ' +
+      'openssl ts -verify ist die unabhaengige Referenz gegen pkijs-verify().',
+  );
+}
+
 const GS_PAY = fp('globalsign-payload.bin');
 const GS_TSR = fp('globalsign-resp.tsr');
 const GS_ROOT = fp('globalsign-root-r6.pem');
@@ -75,7 +87,7 @@ const CONCORDANT: Array<{ name: string; data: string; tsr: string; ca: string }>
   { name: 'Synthetik ohne ESS', data: SY_PAY, tsr: fp('synthetic-no-ess.tsr'), ca: SY_ROOT },
 ];
 
-describe.skipIf(!hasOpenssl())('RFC-3161 Differenz-Test (pkijs vs openssl ts -verify)', () => {
+describe.skipIf(!opensslAvailable)('RFC-3161 Differenz-Test (pkijs vs openssl ts -verify)', () => {
   for (const c of CONCORDANT) {
     it(`gleiches Urteil: ${c.name}`, async () => {
       const ours = await pkijsValid(c.data, c.tsr, c.ca);

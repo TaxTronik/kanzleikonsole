@@ -60,7 +60,7 @@ export function gwgRetentionUntil(now: Date = new Date()): Date {
   return new Date(Date.UTC(startYear + 5 + 1, 0, 1, 0, 0, 0, 0));
 }
 
-function retentionForTier(tier: ProtectionTier): Date | null {
+export function retentionForTier(tier: ProtectionTier): Date | null {
   if (tier === 'GOBD') return gobdRetentionUntil();
   if (tier === 'GWG') return gwgRetentionUntil();
   return null;
@@ -76,7 +76,7 @@ function retentionForTier(tier: ProtectionTier): Date | null {
  *  - GOBD → COMPLIANCE: 10 Jahre echte, von niemandem aufhebbare Unveränderbarkeit
  *    (GoBD / § 147 AO), keine Frühlöschung vorgesehen.
  */
-function lockModeForTier(tier: ProtectionTier): 'GOVERNANCE' | 'COMPLIANCE' {
+export function lockModeForTier(tier: ProtectionTier): 'GOVERNANCE' | 'COMPLIANCE' {
   return tier === 'GWG' ? 'GOVERNANCE' : 'COMPLIANCE';
 }
 
@@ -156,19 +156,53 @@ async function scanWithClamAV(data: Buffer): Promise<ScanResult> {
     const socket = createConnection(
       { host: env.CLAMAV_HOST, port: env.CLAMAV_PORT },
       () => {
-        // INSTREAM-Protokoll: zINSTREAM\0 + chunks + zero-length-chunk
-        socket.write(Buffer.from('zINSTREAM\0'));
-
+        // INSTREAM-Protokoll: zINSTREAM\0 + <len-prefix><chunk>… + zero-length-chunk.
+        //
+        // N-6: clamd bricht den Stream mit INSTREAM size limit exceeded ab, sobald
+        // die Gesamtmenge StreamMaxLength (clamd.conf-Default 25 MB) übersteigt —
+        // MAX_UPLOAD_BYTES ist aber 100 MB. Damit Uploads zwischen 25 und 100 MB
+        // nicht deterministisch als SCAN_ERROR abgelehnt werden, MUSS clamd mit
+        // StreamMaxLength >= MAX_UPLOAD_BYTES (>= 100M) deployt werden. Diese
+        // Deploy-Konfig lebt außerhalb dieses Pakets (clamd.conf), darf beim
+        // Rollout aber nicht vergessen werden.
+        //
+        // N-8: Backpressure. Große Dateien (bis MAX_UPLOAD_BYTES) dürfen nicht in
+        // einer Schleife blind in den Socket-Puffer geschrieben werden — sonst
+        // wächst der Kernel-/Node-Write-Puffer unkontrolliert. Wir respektieren
+        // den Rückgabewert von socket.write() und warten bei `false` auf 'drain',
+        // bevor der nächste Chunk folgt. Die INSTREAM-Semantik (4-Byte-BE-
+        // Längenpräfix je Chunk, abschließender 4-Byte-Null-Terminator) bleibt
+        // dabei exakt erhalten — nur das Schreiben wird gedrosselt.
         const chunkSize = 4096;
-        for (let offset = 0; offset < data.length; offset += chunkSize) {
-          const chunk = data.subarray(offset, offset + chunkSize);
-          const lenBuf = Buffer.allocUnsafe(4);
-          lenBuf.writeUInt32BE(chunk.length, 0);
-          socket.write(lenBuf);
-          socket.write(chunk);
-        }
-        // Terminator: 4-byte zero
-        socket.write(Buffer.alloc(4));
+
+        const writeWithBackpressure = (buf: Buffer): Promise<void> =>
+          new Promise((resolveWrite) => {
+            if (socket.write(buf)) {
+              resolveWrite();
+            } else {
+              socket.once('drain', resolveWrite);
+            }
+          });
+
+        void (async () => {
+          try {
+            await writeWithBackpressure(Buffer.from('zINSTREAM\0'));
+
+            for (let offset = 0; offset < data.length; offset += chunkSize) {
+              const chunk = data.subarray(offset, offset + chunkSize);
+              const lenBuf = Buffer.allocUnsafe(4);
+              lenBuf.writeUInt32BE(chunk.length, 0);
+              await writeWithBackpressure(lenBuf);
+              await writeWithBackpressure(chunk);
+            }
+
+            // Terminator: 4-byte zero
+            await writeWithBackpressure(Buffer.alloc(4));
+          } catch {
+            // Schreib-/Socket-Fehler werden über das 'error'-Event unten in ein
+            // settle('ERROR') überführt; hier nichts weiter zu tun.
+          }
+        })();
       },
     );
 
@@ -311,14 +345,21 @@ export async function streamObject(bucket: string, storageKey: string): Promise<
  * Blobs (z. B. gzip-rawResult, Subsumtions-Archiv). NICHT für Mandanten-Uploads
  * (die laufen über commitBytesWithTier/commitDocumentFromBytes inkl. ClamAV-Scan).
  *
- * `retainUntil` setzt Object-Lock COMPLIANCE (revisionssicher bis zu dem Datum) —
- * der Ziel-Bucket MUSS Object-Lock-fähig sein (GoBD/GwG-Buckets sind es).
+ * `retainUntil` setzt Object-Lock (revisionssicher bis zu dem Datum) — der
+ * Ziel-Bucket MUSS Object-Lock-fähig sein (GoBD/GwG-Buckets sind es).
+ *
+ * N-7: Der Lock-Modus wird NICHT mehr hart auf COMPLIANCE verdrahtet, sondern
+ * aus dem `tier` via `lockModeForTier` abgeleitet (GWG → GOVERNANCE, sonst
+ * COMPLIANCE). Ohne `tier` bleibt COMPLIANCE der sichere Default (Back-Compat
+ * für bestehende GoBD-Aufrufer). GwG-Objekte MÜSSEN `tier: 'GWG'` übergeben,
+ * damit die von § 8 Abs. 4 Satz 4 GwG geforderte Frühlöschung technisch möglich
+ * bleibt (siehe lockModeForTier).
  */
 export async function putObjectBytes(
   bucket: string,
   storageKey: string,
   bytes: Buffer,
-  opts: { contentType?: string; retainUntil?: Date | null } = {},
+  opts: { contentType?: string; retainUntil?: Date | null; tier?: ProtectionTier } = {},
 ): Promise<void> {
   if (bytes.length > MAX_UPLOAD_BYTES) {
     throw new Error(`TOO_LARGE: Objekt (${bytes.length} B) überschreitet das Limit.`);
@@ -331,7 +372,10 @@ export async function putObjectBytes(
       ContentLength: bytes.length,
       ContentType: opts.contentType ?? 'application/octet-stream',
       ...(opts.retainUntil
-        ? { ObjectLockMode: 'COMPLIANCE' as const, ObjectLockRetainUntilDate: opts.retainUntil }
+        ? {
+            ObjectLockMode: opts.tier ? lockModeForTier(opts.tier) : ('COMPLIANCE' as const),
+            ObjectLockRetainUntilDate: opts.retainUntil,
+          }
         : {}),
     }),
   );

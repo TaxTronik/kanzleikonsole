@@ -21,6 +21,10 @@ export interface PersistedVerifyResult {
   requestId?: string | null;
   ok: boolean;
   checked: number;
+  /** Höchste geprüfte Audit-ID (Monotonie-Anker gegen Tail-Truncation, s.
+   *  VerificationResult.lastAuditId). Als String, weil BigInt nicht JSON-fähig
+   *  ist. `null` bei leerer Kette oder vor der Einführung des Felds. */
+  lastAuditId: string | null;
   sealsChecked: number;
   /** Anzahl Tagesversiegelungen mit TSA-Problem. */
   sealBreaks: number;
@@ -81,6 +85,7 @@ export function toPersistedVerifyResult(
     checkedAt: checkedAt.toISOString(),
     ok: r.ok,
     checked: r.checked,
+    lastAuditId: r.lastAuditId === null ? null : String(r.lastAuditId),
     sealsChecked: r.sealsChecked,
     sealBreaks: r.sealBreaks.length,
     policyBreaks: r.policyBreaks,

@@ -84,6 +84,14 @@ async function main() {
       for (const b of result.sealBreaks) {
         process.stdout.write(`  ✗ TSA-Bruch am ${b.sealDate.toISOString().slice(0, 10)}: ${b.reason}\n`);
       }
+    } else if (result.checked === 0) {
+      // N-3: Eine leere Kette ist KEIN Integritätsnachweis. Ohne persistierten
+      // Monotonie-Anker (den nur der Worker führt) kann die CLI einen kompletten
+      // Wipe nicht von einem frischen Tenant unterscheiden — daher explizit
+      // warnen statt "intakt" zu melden.
+      process.stdout.write(
+        `  ⚠ Kette leer — keine Einträge geprüft (kein Integritätsnachweis; bei erwarteten Daten Wipe-Verdacht)\n`,
+      );
     } else {
       process.stdout.write(`  ✓ Kette intakt\n`);
     }

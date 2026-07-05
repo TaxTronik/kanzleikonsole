@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ElsterBridgeClient, ElsterBridgeHttpError } from '../client';
+import {
+  ElsterBridgeClient,
+  ElsterBridgeHttpError,
+  ElsterKontoabfrageInputError,
+} from '../client';
 import { ElsterNotConfiguredError, isElsterConfigured } from '../config';
 import type { KontoabfrageTeil } from '../schema';
 
@@ -122,6 +126,41 @@ describe('kontoabfrage', () => {
     expect(body.testmerker).toBeUndefined();
   });
 
+  it('wirft lokal (ohne Bridge-Call) bei 0 Teil-Abfragen', async () => {
+    const fetchImpl = vi.fn();
+    const client = new ElsterBridgeClient({ config: CONFIG, fetchImpl });
+
+    await expect(
+      client.kontoabfrage({
+        abfragen: [],
+        datenLieferant: 'Kanzlei Test',
+        pin: '123456',
+        uebertragung: { testmerker: '230000001' },
+      }),
+    ).rejects.toThrow(ElsterKontoabfrageInputError);
+    // Kein kostenpflichtiger Vorgang: die Bridge wurde nie kontaktiert.
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('wirft lokal (ohne Bridge-Call) bei 76 Teil-Abfragen', async () => {
+    const fetchImpl = vi.fn();
+    const client = new ElsterBridgeClient({ config: CONFIG, fetchImpl });
+    const many: KontoabfrageTeil[] = Array.from({ length: 76 }, () => ({
+      art: 'O',
+      steuernummer: '2657086132381',
+    }));
+
+    await expect(
+      client.kontoabfrage({
+        abfragen: many,
+        datenLieferant: 'Kanzlei Test',
+        pin: '123456',
+        uebertragung: { testmerker: '230000001' },
+      }),
+    ).rejects.toThrow(ElsterKontoabfrageInputError);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it('reicht TH-Phasen-Fehler typisiert durch', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       jsonResponse({
@@ -145,5 +184,46 @@ describe('kontoabfrage', () => {
 
     expect(r.ok).toBe(false);
     expect(r.phase).toBe('transferheader');
+  });
+});
+
+describe('ElsterBridgeHttpError (kein Body-Leak in der Message)', () => {
+  it('übernimmt KEINEN rohen Body-Ausschnitt in die Fehler-Message', async () => {
+    const secret = 'Steuernummer 2657086132381 Betrag 12345,67 EUR';
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(secret, { status: 500, headers: { 'content-type': 'text/plain' } }),
+    );
+    const client = new ElsterBridgeClient({ config: CONFIG, fetchImpl });
+
+    const err = (await client
+      .validate({ xml: '<x/>', datenartVersion: 'UStVA_2026' })
+      .then(() => null)
+      .catch((e) => e)) as ElsterBridgeHttpError;
+
+    expect(err).toBeInstanceOf(ElsterBridgeHttpError);
+    expect(err.message).not.toContain(secret);
+    expect(err.message).not.toContain('2657086132381');
+    expect(err.message).toContain('500');
+    // Der vollständige Body bleibt separat (für gezieltes, nicht-standardmäßiges Logging).
+    expect(err.body).toBe(secret);
+  });
+
+  it('übernimmt nur ein strukturiertes Fehlerfeld, nicht die Nutzdaten', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse(
+        { error: 'unauthorized', returnCode: 610001002, steuernummer: '2657086132381' },
+        401,
+      ),
+    );
+    const client = new ElsterBridgeClient({ config: CONFIG, fetchImpl });
+
+    const err = (await client
+      .validate({ xml: '<x/>', datenartVersion: 'UStVA_2026' })
+      .then(() => null)
+      .catch((e) => e)) as ElsterBridgeHttpError;
+
+    expect(err.message).toContain('unauthorized');
+    expect(err.message).toContain('610001002');
+    expect(err.message).not.toContain('2657086132381');
   });
 });
