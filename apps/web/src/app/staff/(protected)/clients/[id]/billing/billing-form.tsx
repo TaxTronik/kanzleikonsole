@@ -4,7 +4,7 @@ import { useState, useTransition, useMemo, type SubmitEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { createInvoiceFromTimeEntriesAction } from './actions';
 
-import { fmtEUR } from '@/lib/fmt';
+import { fmtEUR, fmtMonthYear } from '@/lib/fmt';
 interface Props {
   clientId: string;
   totalHours: number;
@@ -15,7 +15,7 @@ export function BillingForm({ clientId, totalHours }: Props) {
   const today = new Date().toISOString().slice(0, 10);
   const inThirtyDays = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
-  const [subject, setSubject] = useState(`Beratungsleistungen ${new Date().toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })}`);
+  const [subject, setSubject] = useState(`Beratungsleistungen ${fmtMonthYear(new Date())}`);
   const [issueDate, setIssueDate] = useState(today);
   const [dueDate, setDueDate] = useState(inThirtyDays);
   const [vatRate, setVatRate] = useState(19);

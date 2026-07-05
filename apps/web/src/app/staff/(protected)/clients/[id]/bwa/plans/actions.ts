@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
-import { toActionError } from '@/server/auth/rbac';
+import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { staffActionGuard, withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
 
 const AXES = [
@@ -37,7 +37,7 @@ export async function createStaffPlanAction(
 ): Promise<ActionResult> {
   const g = await staffActionGuard();
   if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
+  const { tenantId, staffId, ctx, session } = g;
   if (!z.string().uuid().safeParse(clientId).success) return { ok: false, error: 'Mandant ungültig.' };
   const parsed = CreateSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
@@ -52,6 +52,7 @@ export async function createStaffPlanAction(
   let id: string;
   try {
     id = await withTenantContext(ctx, async (tx) => {
+      await assertClientAccessTx(tx, session, clientId);
       const plan = await tx.bwaPlan.create({
         data: {
           tenantId,
@@ -112,10 +113,11 @@ export async function updateStaffPlanAction(
   const { planId } = parsed.data;
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, session }) => {
       const plan = await tx.bwaPlan.findUnique({ where: { id: planId } });
       if (!plan) throw new ActionError('Plan nicht gefunden.');
       if (plan.clientId !== clientId) throw new ActionError('Kein Zugriff.');
+      await assertClientAccessTx(tx, session, plan.clientId);
 
       await tx.bwaPlan.update({
         where: { id: planId },
@@ -164,10 +166,11 @@ export async function deleteStaffPlanAction(
   const { planId } = parsed.data;
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, session }) => {
       const plan = await tx.bwaPlan.findUnique({ where: { id: planId } });
       if (!plan) throw new ActionError('Plan nicht gefunden.');
       if (plan.clientId !== clientId) throw new ActionError('Kein Zugriff.');
+      await assertClientAccessTx(tx, session, plan.clientId);
       await tx.bwaPlan.delete({ where: { id: planId } });
       await evidenceService.record(tx, {
         tenantId,

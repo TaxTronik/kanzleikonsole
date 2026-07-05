@@ -13,6 +13,7 @@ import { useRouter } from 'next/navigation';
 import { Webhook, Send, MessageSquarePlus } from 'lucide-react';
 import { ResearchComposer } from './marking-panel';
 import { ResearchResultsBlock } from './research-results-block';
+import { fmtDateShort } from '@/lib/fmt';
 import type { ResearchRequestDTO, ResearchResultDTO, MarkingDTO } from './_ui';
 
 const REQ_STATUS: Record<ResearchRequestDTO['status'], { label: string; cls: string }> = {
@@ -109,7 +110,7 @@ export function ResearchView(props: {
                     )}
                     {req.prompt && <p className="text-xs text-muted mt-0.5 line-clamp-2">{req.prompt}</p>}
                     <p className="text-[11px] text-disabled mt-0.5">
-                      {staffById[req.createdById] ?? 'Mitarbeiter'} · {new Date(req.createdAt).toLocaleDateString('de-DE')}
+                      {staffById[req.createdById] ?? 'Mitarbeiter'} · {fmtDateShort(new Date(req.createdAt))}
                       {req.includeSachverhalt ? ' · mit Sachverhalt' : ''}
                       {req.resultCount > 0 ? ` · ${req.resultCount} Antwort(en)` : ''}
                     </p>

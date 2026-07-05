@@ -61,6 +61,27 @@ async function persistVerifyResult(
   });
 }
 
+// M-2/N-3: Tail-Truncation-Erkennung. Die höchste Audit-ID darf zwischen zwei
+// Läufen NICHT schrumpfen — audit_log ist append-only, und die Archiv-Rotation
+// entfernt nur die ältesten (niedrigsten) IDs, nie die neuesten. Ein kleinerer
+// oder verschwundener Anker beweist gelöschte Spitzen-Einträge. Gibt die
+// Alarm-Begründung zurück oder null, wenn alles monoton ist.
+function detectTailTruncation(
+  prev: PersistedVerifyResult | null,
+  newLastAuditId: bigint | null,
+): string | null {
+  if (!prev) return null; // erster Lauf — kein Anker
+  const prevLast = prev.lastAuditId ? BigInt(prev.lastAuditId) : null;
+  if (prevLast === null) return null; // kein früherer Anker (Altdatensatz/leer)
+  if (newLastAuditId === null) {
+    return `Audit-Kette ist leer, obwohl zuvor bis Audit-ID ${prevLast} geprüft wurde — Spitzen-Einträge gelöscht.`;
+  }
+  if (newLastAuditId < prevLast) {
+    return `Höchste Audit-ID von ${prevLast} auf ${newLastAuditId} gesunken — die neuesten Einträge wurden gelöscht (Tail-Truncation).`;
+  }
+  return null;
+}
+
 // M7: Tenant-Pagination. Bei vielen Tenants würde `findMany({})` ohne
 // Limit alle Records in Memory laden, und die anschließende sequenzielle
 // `evidenceService.verifyChain(tx, tenantId)`-Loop könnte Stunden laufen.
@@ -99,10 +120,27 @@ export const auditVerifyWorker = new Worker<ChecksJob>(
     for await (const tenantIds of tenantBatches) for (const tenantId of tenantIds) {
       try {
         const checkedAt = new Date();
+        // Vorergebnis VOR dem neuen Lauf lesen — liefert den Monotonie-Anker
+        // (lastAuditId) für die Tail-Truncation-Erkennung unten.
+        const prevRow = await withWorkerTenantContext(tenantId, (tx) =>
+          tx.tenantSetting.findUnique({
+            where: { tenantId_key: { tenantId, key: AUDIT_VERIFY_RESULT_SETTING_KEY } },
+          }),
+        );
+        const prev = (prevRow?.value ?? null) as PersistedVerifyResult | null;
+
         const r = await prismaOwner.$transaction(
           async (tx) => evidenceService.verifyChain(tx, tenantId, { requireExternalTsa }),
           VERIFY_TX_OPTIONS,
         );
+
+        // M-2/N-3: Monotonie-Anker gegen Tail-Truncation der UNVERSIEGELTEN
+        // Spitze. Der Seal-Check oben fängt nur das Löschen VERSIEGELTER Einträge;
+        // die neuesten, noch nicht tagesversiegelten Einträge (oder eine komplett
+        // geleerte Kette) hinterlassen sonst eine konsistente Kette (ok=true).
+        // Nur bei ok=true auswerten: bei einem Bruch ist lastAuditId die letzte
+        // GUTE ID (früher Abbruch), kein echter Ketten-Endpunkt.
+        const shrinkReason = r.ok ? detectTailTruncation(prev, r.lastAuditId) : null;
 
         // Recovery-Checkpoint = bewusste Abgrenzung durch den Admin. Er ist das
         // harte Kill-Signal für den Break-Alarm: sobald gesetzt, gilt der
@@ -111,7 +149,8 @@ export const auditVerifyWorker = new Worker<ChecksJob>(
         // markiert. Eine Teilketten-Verifikation (verifyRecoverySegment) hat
         // sich hier als fehleranfällig erwiesen (TSA-/Segment-Probleme) und das
         // Alarm-Verhalten unzuverlässig gemacht; der Checkpoint ist die
-        // ausdrückliche Admin-Anweisung "Break versorgt".
+        // ausdrückliche Admin-Anweisung "Break versorgt". Ein FRISCHER
+        // Schrumpf-Befund wird davon NICHT abgedeckt — das ist neue Manipulation.
         let recovered = false;
         if (!r.ok) {
           const cpRow = await withWorkerTenantContext(tenantId, (tx) =>
@@ -122,13 +161,18 @@ export const auditVerifyWorker = new Worker<ChecksJob>(
           recovered = !!(cpRow?.value);
         }
 
+        const effectiveOk = r.ok && !shrinkReason;
+        const suppressAlarm = recovered && !shrinkReason;
+        const base = toPersistedVerifyResult(r, checkedAt);
         await persistVerifyResult(tenantId, {
-          ...toPersistedVerifyResult(r, checkedAt),
+          ...base,
+          ok: effectiveOk,
+          policyBreaks: shrinkReason ? [...base.policyBreaks, shrinkReason] : base.policyBreaks,
           requestId: job.data.requestId ?? null,
           recovered,
         });
 
-        if (!r.ok && !recovered) {
+        if (!effectiveOk && !suppressAlarm) {
           // P-8: Notifications werden jetzt in einer Tenant-Context-Transaktion
           // geschrieben — auch wenn prismaOwner BYPASSRLS hat. Setzt die
           // app.current_*-Session-Variablen, sodass Audit-Trigger und etwaige
@@ -160,7 +204,9 @@ export const auditVerifyWorker = new Worker<ChecksJob>(
                 title: `⚠ Audit-Hash-Chain gebrochen!`,
                 body: r.firstBreak
                   ? `Erster Bruch bei Audit-ID ${r.firstBreak.auditId} (${new Date(r.firstBreak.occurredAt).toISOString()})`
-                  : `Verifikation fehlgeschlagen.`,
+                  : shrinkReason
+                    ? shrinkReason
+                    : `Verifikation fehlgeschlagen.`,
                 href: `/staff/admin/audit`,
                 resourceType: 'audit_log',
                 resourceId: r.firstBreak ? String(r.firstBreak.auditId) : null,
@@ -258,6 +304,7 @@ export const auditVerifyWorker = new Worker<ChecksJob>(
           requestId: job.data.requestId ?? null,
           ok: false,
           checked: 0,
+          lastAuditId: null,
           sealsChecked: 0,
           sealBreaks: 0,
           policyBreaks: [],

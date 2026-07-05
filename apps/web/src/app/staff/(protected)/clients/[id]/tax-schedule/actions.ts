@@ -7,6 +7,7 @@ import type { TaxScheduleKind } from '@prisma/client';
 import { evidenceService } from '@/server/container';
 import { materializeTaxDeadlines } from '@/server/tax-deadlines/materialize';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
+import { assertClientAccessTx } from '@/server/auth/rbac';
 import { staffActionGuard } from '@/server/actions/staff-action';
 
 const ALL_KINDS: TaxScheduleKind[] = [
@@ -28,7 +29,7 @@ export async function saveScheduleConfigAction(
 ): Promise<ActionResult> {
   const g = await staffActionGuard();
   if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
+  const { tenantId, staffId, ctx, session } = g;
 
   const parsed = z.string().uuid().safeParse(formData.get('clientId'));
   if (!parsed.success) return { ok: false, error: 'Ungültige Mandanten-ID.' };
@@ -45,6 +46,7 @@ export async function saveScheduleConfigAction(
   await withTenantContext(
     ctx,
     async (tx) => {
+      await assertClientAccessTx(tx, session, clientId);
       // R-2: clientId Tenant-Sanity vor allen taxScheduleConfig-Mutationen.
       await assertClientInTenant(tx, clientId);
       // Bestehende laden für Diff

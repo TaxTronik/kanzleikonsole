@@ -6,7 +6,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { commitDocumentFromBytes } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
 import { prismaBytes } from '@/server/db/prisma-bytes';
-import { toActionError } from '@/server/auth/rbac';
+import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { staffActionGuard, withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
 
 export interface ActionResult extends BaseActionResult {
@@ -45,7 +45,7 @@ export async function saveTaxFilingAction(
 ): Promise<ActionResult> {
   const g = await staffActionGuard();
   if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
+  const { tenantId, staffId, ctx, session } = g;
 
   const parsed = SaveSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
@@ -59,8 +59,10 @@ export async function saveTaxFilingAction(
       return { ok: false, error: 'PDF zu groß (max. 10 MB).' };
     }
     const stored = await commitDocumentFromBytes({ fileData, classification: 'GOBD_TAX', tenantId });
-    documentId = await withTenantContext(ctx, async (tx) => {
-      const doc = await tx.document.create({
+    try {
+      documentId = await withTenantContext(ctx, async (tx) => {
+        await assertClientAccessTx(tx, session, data.clientId);
+        const doc = await tx.document.create({
         data: {
           tenantId,
           clientId: data.clientId,
@@ -85,12 +87,16 @@ export async function saveTaxFilingAction(
         },
       });
       return doc.id;
-    });
+      });
+    } catch (e) {
+      return toActionError(e);
+    }
   }
 
   let resultId: string;
   try {
     resultId = await withTenantContext(ctx, async (tx) => {
+      await assertClientAccessTx(tx, session, data.clientId);
       const baseData = {
         kind: data.kind,
         period: data.period,
@@ -175,10 +181,11 @@ export async function shareTaxFilingAction(
   const { filingId, clientId, share } = parsed.data;
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, session }) => {
       const filing = await tx.taxFiling.findUnique({ where: { id: filingId } });
       if (!filing) throw new ActionError('Erklärung nicht gefunden.');
       if (filing.clientId !== clientId) throw new ActionError('Mandant stimmt nicht.');
+      await assertClientAccessTx(tx, session, filing.clientId);
 
       await tx.taxFiling.update({
         where: { id: filingId },
@@ -209,9 +216,10 @@ export async function deleteTaxFilingAction(input: {
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, session }) => {
       const filing = await tx.taxFiling.findUnique({ where: { id: parsed.data.filingId } });
       if (!filing) throw new ActionError('Erklärung nicht gefunden.');
+      await assertClientAccessTx(tx, session, filing.clientId);
       await tx.taxFiling.delete({ where: { id: parsed.data.filingId } });
       await evidenceService.record(tx, {
         tenantId,

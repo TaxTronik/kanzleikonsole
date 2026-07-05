@@ -8,8 +8,12 @@
 //   - USt-Voranmeldung MONATLICH: bis 10. des Folgemonats (Dauerfrist +1 Monat)
 //   - USt-Voranmeldung QUARTALSWEISE: bis 10. nach Quartal (Dauerfrist +1 Monat)
 //   - USt-Jahreserklärung: 31.07. des Folgejahres (StBerater 28.02. d. übern. J.)
-//   - LSt-Anmeldung: gleiches Schema wie USt-VA
-//   - ESt/KSt/GewSt-Vorauszahlung: 10.03., 10.06., 10.09., 10.12.
+//   - LSt-Anmeldung (monatlich/quartalsweise): gleiches Schema wie USt-VA
+//   - LSt-Anmeldung JÄHRLICH (§ 41a (1) EStG): 10.01. des Folgejahres — eine
+//     Steuer-ANMELDUNG, daher gilt die 10-Tage-Frist, NICHT die 31.07.-
+//     Erklärungsfrist und NICHT § 149 (3) AO (advised wirkt hier nicht).
+//   - ESt/KSt-Vorauszahlung (§ 37 EStG): 10.03., 10.06., 10.09., 10.12.
+//   - GewSt-Vorauszahlung (§ 19 (1) GewStG): 15.02., 15.05., 15.08., 15.11.
 //   - ESt/KSt/GewSt-Erklärung: gesetzlich 31.07. d. Folgejahres
 //   - Beratene Fälle (advised, § 149 (3) AO): Erklärung bis zum letzten Tag
 //     des Monats Februar des ZWEITEN Folgejahres
@@ -75,8 +79,7 @@ export function generateDeadlines(
 
     case 'EST_VZ':
     case 'KST_VZ':
-    case 'GEWST_VZ':
-      // 10.03., 10.06., 10.09., 10.12.
+      // § 37 EStG: 10.03., 10.06., 10.09., 10.12.
       iterateYears(from, to, (year) => {
         for (const month of [3, 6, 9, 12]) {
           const due = shiftToNextWorkday(new Date(Date.UTC(year, month - 1, 10)), region);
@@ -88,11 +91,37 @@ export function generateDeadlines(
       });
       break;
 
+    case 'GEWST_VZ':
+      // § 19 (1) GewStG: 15.02., 15.05., 15.08., 15.11. — eigene, von § 37 EStG
+      // abweichende Termine (NICHT 10.03./06./09./12.).
+      iterateYears(from, to, (year) => {
+        for (const month of [2, 5, 8, 11]) {
+          const due = shiftToNextWorkday(new Date(Date.UTC(year, month - 1, 15)), region);
+          if (due >= from && due <= to) {
+            const q = Math.ceil(month / 3);
+            out.push({ kind, period: `${year}-Q${q}`, dueDate: due });
+          }
+        }
+      });
+      break;
+
+    case 'LSTA_JAEHRLICH':
+      // § 41a (1) EStG: jährliche Lohnsteuer-ANMELDUNG bis 10.01. des
+      // Folgejahres. Anmeldungszeitraum ist das Kalenderjahr (year - 1), die
+      // Frist fällt in `year`. advised (§ 149 (3) AO) gilt für Anmeldungen NICHT.
+      iterateYears(from, to, (year) => {
+        const period = `${year - 1}`;
+        const due = shiftToNextWorkday(new Date(Date.UTC(year, 0, 10)), region);
+        if (due >= from && due <= to) {
+          out.push({ kind, period, dueDate: due });
+        }
+      });
+      break;
+
     case 'USTA_JAEHRLICH':
     case 'EST_ERKLAERUNG':
     case 'KST_ERKLAERUNG':
     case 'GEWST_ERKLAERUNG':
-    case 'LSTA_JAEHRLICH':
       // Gesetzliche Frist: 31.07. des Folgejahres (gilt für 2025+ wieder).
       // Beratene Fälle (§ 149 (3) AO): letzter Tag des Monats Februar des
       // ZWEITEN Folgejahres — Date.UTC(year, 2, 0) ist Schaltjahr-sicher

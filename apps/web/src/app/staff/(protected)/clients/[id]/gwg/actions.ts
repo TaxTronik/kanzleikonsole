@@ -2,7 +2,7 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { isStaffAdmin, toActionError } from '@/server/auth/rbac';
+import { isStaffAdmin, toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { revokeAllSessions } from '@/server/auth/revocation';
 import { withTenantContext } from '@taxtronik/db';
 import type { Prisma } from '@prisma/client';
@@ -26,7 +26,8 @@ export async function openCheckAction(formData: FormData): Promise<void> {
   const { clientId } = parsed.data;
 
   await withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, session }) => {
+      await assertClientAccessTx(tx, session, clientId);
       const check = await tx.gwgCheck.create({
         data: { tenantId, clientId, status: 'DRAFT' },
       });
@@ -62,7 +63,8 @@ export async function saveRiskAnswersAction(input: {
   const result = computeRiskScore(answers);
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, session }) => {
+      await assertClientAccessTx(tx, session, clientId);
       const before = await tx.gwgCheck.findFirst({ where: { id: checkId, clientId } });
       if (!before) throw new ActionError('GwG-Check nicht gefunden.');
       const updated = await tx.gwgCheck.update({
@@ -121,7 +123,8 @@ export async function addBeneficialOwnerAction(
   const data = parsed.data;
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, session }) => {
+      await assertClientAccessTx(tx, session, data.clientId);
       const owner = await tx.gwgBeneficialOwner.create({
         data: {
           gwgCheckId: data.checkId,
@@ -191,7 +194,8 @@ export async function addIdDocumentAction(
   const data = parsed.data;
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, session }) => {
+      await assertClientAccessTx(tx, session, data.clientId);
       const idDoc = await tx.gwgIdDocument.create({
         data: {
           gwgCheckId: data.checkId,
@@ -345,7 +349,7 @@ export async function rejectCheckAction(
 ) {
   const g = await staffActionGuard();
   if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
+  const { tenantId, staffId, ctx, session } = g;
 
   const parsed = RejectSchema.safeParse({
     checkId: formData.get('checkId'),
@@ -358,6 +362,7 @@ export async function rejectCheckAction(
   let contactIds: string[] = [];
   try {
     await withTenantContext(ctx, async (tx) => {
+      await assertClientAccessTx(tx, session, clientId);
       await tx.gwgCheck.update({
         where: { id: checkId },
         data: { status: 'REJECTED', rejectedReason: reason },

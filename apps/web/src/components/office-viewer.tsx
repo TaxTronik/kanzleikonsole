@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
+import { fmtDateTimeShort } from '@/lib/fmt';
 
 /**
  * Inline-Viewer für Word- und Excel-Dateien direkt im Browser, ohne
@@ -193,7 +194,7 @@ function formatCell(value: unknown): string {
   if (typeof value === 'string') return value;
   if (typeof value === 'number') return value.toLocaleString('de-DE');
   if (typeof value === 'boolean') return value ? 'Ja' : 'Nein';
-  if (value instanceof Date) return value.toLocaleString('de-DE');
+  if (value instanceof Date) return fmtDateTimeShort(value);
   if (typeof value === 'object') {
     const o = value as { text?: unknown; richText?: { text?: unknown }[]; result?: unknown; formula?: unknown; hyperlink?: unknown };
     if (typeof o.text === 'string') return o.text;

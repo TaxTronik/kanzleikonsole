@@ -215,20 +215,32 @@ export const n8nDeliverWorker = new Worker<N8nDeliverJob>(
 
 n8nDeliverWorker.on('failed', async (job, err) => {
   if (!job) return;
-  if (job.attemptsMade >= (job.opts.attempts ?? 1)) {
-    // Letzter Versuch verbraucht — als FAILED stempeln.
-    await prismaOwner.n8nOutbox.update({
-      where: { id: job.data.outboxId },
-      data: { status: 'FAILED', lastError: err.message.slice(0, 1000) },
-    });
+  // Der DB-Write hier läuft im async EventEmitter-Handler: eine geworfene
+  // Rejection (typischerweise weil die DB — der wahrscheinlichste Fail-Grund —
+  // gerade nicht erreichbar ist) würde sonst als unhandled Rejection den ganzen
+  // Worker-Prozess (process.exit(1)) reißen. Daher hart einfangen und nur
+  // loggen; die Reconcile-/Retry-Mechanik holt den Zustand später ohnehin nach.
+  try {
+    if (job.attemptsMade >= (job.opts.attempts ?? 1)) {
+      // Letzter Versuch verbraucht — als FAILED stempeln.
+      await prismaOwner.n8nOutbox.update({
+        where: { id: job.data.outboxId },
+        data: { status: 'FAILED', lastError: err.message.slice(0, 1000) },
+      });
+      log.error(
+        { outboxId: job.data.outboxId, attempts: job.attemptsMade, err: err.message },
+        'n8n-deliver: FAILED after all retries',
+      );
+    } else {
+      log.warn(
+        { outboxId: job.data.outboxId, attempt: job.attemptsMade, err: err.message },
+        'n8n-deliver: retry pending',
+      );
+    }
+  } catch (handlerErr) {
     log.error(
-      { outboxId: job.data.outboxId, attempts: job.attemptsMade, err: err.message },
-      'n8n-deliver: FAILED after all retries',
-    );
-  } else {
-    log.warn(
-      { outboxId: job.data.outboxId, attempt: job.attemptsMade, err: err.message },
-      'n8n-deliver: retry pending',
+      { outboxId: job.data.outboxId, err: (handlerErr as Error).message },
+      'n8n-deliver: failed-handler could not persist status',
     );
   }
 });

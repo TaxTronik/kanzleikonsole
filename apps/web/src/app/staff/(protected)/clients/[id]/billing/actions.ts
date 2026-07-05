@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { fmtDateShort, round2 } from '@/lib/fmt';
-import { toActionError } from '@/server/auth/rbac';
+import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { allocateInvoiceNumber } from '@/server/invoicing/number';
 import { readModules } from '@/server/settings/modules';
 import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
@@ -40,7 +40,7 @@ export async function createInvoiceFromTimeEntriesAction(input: z.infer<typeof C
   // iter87: Stundenabrechnung legt Rechnungs-Entwürfe an → INVOICE_MANAGE.
   const g = await staffActionGuard({ requirePermission: 'INVOICE_MANAGE' });
   if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
+  const { tenantId, staffId, ctx, session } = g;
 
   // Defense in Depth (Befund 11): Stundenabrechnung erzeugt In-App-Rechnungen.
   const modules = await readModules(ctx);
@@ -57,6 +57,7 @@ export async function createInvoiceFromTimeEntriesAction(input: z.infer<typeof C
   let invoiceId: string;
   try {
     invoiceId = await withTenantContext(ctx, async (tx) => {
+      await assertClientAccessTx(tx, session, data.clientId);
       // 1. Sammle abrechenbare, nicht abgerechnete TimeEntries
       const where = {
         tenantId,

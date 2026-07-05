@@ -192,6 +192,31 @@ export async function requireClientAccess(clientId: string): Promise<StaffSessio
 }
 
 /**
+ * Wie `requireClientAccess`, aber auf einer BESTEHENDEN Tenant-Tx und mit einer
+ * bereits vorhandenen Session — für mutierende Server-Actions, die das
+ * Vertraulich-/RESTRICTED-Ventil (Mandantentrennung INNERHALB der Kanzlei)
+ * durchsetzen müssen. Der Layout-Guard (`canAccessClient` im Seiten-Layout)
+ * schützt Server-Actions NICHT, weil diese als direkte POSTs am Layout
+ * vorbeilaufen; RLS scoped nur pro Tenant, nicht pro Vertraulichkeit. Daher als
+ * ERSTE Anweisung im Tenant-Tx-Callback jeder mutierenden Client-Action rufen,
+ * bevor Zielobjekte gelesen/geschrieben werden. Wirft `ForbiddenError`
+ * (→ `toActionError` mappt es auf `{ ok:false, error }`).
+ */
+export async function assertClientAccessTx(
+  tx: TxClient,
+  session: StaffSession,
+  clientId: string,
+): Promise<void> {
+  // Admin/Partner haben stets Zugriff (Kurzschluss wie in `canAccessClient`);
+  // `canAccessClientTx` selbst wertet bewusst mit isAdmin:false und würde einen
+  // Admin auf einem vertraulichen Mandanten ohne Zuordnung sonst fälschlich sperren.
+  if (isStaffAdmin(session)) return;
+  if (!(await canAccessClientTx(tx, session, clientId))) {
+    throw new ForbiddenError('Kein Zugriff auf diesen Mandanten.');
+  }
+}
+
+/**
  * Subsumtions-Workspace-Zugang. Nutzt jetzt die zentrale `canAccessClient`-Policy
  * (OPEN-Default + Vertraulich-Ventil) statt einer eigenen Responsibility-Prüfung —
  * damit Mitarbeiter mandantenübergreifend mitarbeiten können. Name bleibt für die

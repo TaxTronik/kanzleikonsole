@@ -8,6 +8,7 @@ import { sendTemplateMail, type DispatchOptions } from '@/server/mail/dispatch';
 import { fireAndForget } from '@/server/util/fire-and-forget';
 import { assertClientInTenant, assertStaffInTenant } from '@/server/db/assert-tenant';
 import { withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
+import { fmtDateTimeShort, fmtDateTimeMedium } from '@/lib/fmt';
 
 export interface ActionResult extends BaseActionResult { id?: string; }
 
@@ -301,7 +302,7 @@ export async function acceptAppointmentRequestAction(input: {
           staffId: parsed.data.ownerStaffId,
           kind: 'APPOINTMENT_REQUESTED',
           title: `Neuer Termin: ${req.client.name}`,
-          body: `${req.subject} — ${startsAt.toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}`,
+          body: `${req.subject} — ${fmtDateTimeShort(startsAt)}`,
           href: `/staff/calendar`,
           resourceType: 'appointment',
           resourceId: appt.id,
@@ -320,7 +321,7 @@ export async function acceptAppointmentRequestAction(input: {
             contact: { fullName: contact.fullName, email: contact.email },
             appointment: {
               title: req.subject,
-              startsAt: startsAt.toLocaleString('de-DE', { dateStyle: 'long', timeStyle: 'short' }),
+              startsAt: fmtDateTimeMedium(startsAt),
               location: '',
             },
           },

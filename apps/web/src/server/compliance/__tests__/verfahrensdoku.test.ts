@@ -35,6 +35,7 @@ const base: VerfahrensdokuData = {
     checkedAt: '2026-06-10T02:45:00Z',
     ok: true,
     checked: 5000,
+    lastAuditId: '5000',
     sealsChecked: 120,
     sealBreaks: 0,
     policyBreaks: [],

@@ -20,6 +20,12 @@ export async function GET(req: NextRequest) {
   if (!requestId) {
     return NextResponse.json({ error: 'missing_request_id' }, { status: 400 });
   }
+  // Optionaler Trigger-Zeitpunkt: erlaubt „fertig", sobald IRGENDEIN Lauf nach
+  // dem Trigger persistiert wurde — auch wenn die requestId zwischenzeitlich vom
+  // nächtlichen Lauf (requestId=null) oder einem parallelen Trigger überschrieben
+  // wurde. Ohne diesen Fallback blieb das Polling in solchen Fällen ewig hängen.
+  const queuedAtParam = req.nextUrl.searchParams.get('queuedAt');
+  const queuedAtMs = queuedAtParam ? Date.parse(queuedAtParam) : NaN;
 
   const { tenantId, staffId } = session.user;
   const result = await withTenantContext(
@@ -32,9 +38,14 @@ export async function GET(req: NextRequest) {
     },
   );
 
+  const checkedAtMs = result?.checkedAt ? Date.parse(result.checkedAt) : NaN;
+  const doneByRequestId = !!result && result.requestId === requestId;
+  const doneByTimestamp =
+    !!result && !Number.isNaN(queuedAtMs) && !Number.isNaN(checkedAtMs) && checkedAtMs > queuedAtMs;
+
   return NextResponse.json(
     {
-      done: result?.requestId === requestId,
+      done: doneByRequestId || doneByTimestamp,
       checkedAt: result?.checkedAt ?? null,
       ok: result?.ok ?? null,
       requestId: result?.requestId ?? null,

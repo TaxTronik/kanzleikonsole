@@ -16,11 +16,13 @@
 // gespeichert noch geloggt.
 // =============================================================================
 
+import { z } from 'zod';
 import { requireElsterConfig, type ElsterConfig } from './config';
 import {
   AbfrageResponseSchema,
   BridgeHealthSchema,
   KontoabfrageResponseSchema,
+  KontoabfrageTeilSchema,
   ValidateResponseSchema,
   type AbfrageResponse,
   type BridgeHealth,
@@ -29,6 +31,20 @@ import {
   type ValidateResponse,
 } from './schema';
 
+/** Ober-/Untergrenze der Teil-Abfragen pro Kontoabfrage-Vorgang (siehe kontoabfrage()). */
+const KONTOABFRAGE_MIN_TEILE = 1;
+const KONTOABFRAGE_MAX_TEILE = 75;
+
+/**
+ * Lokale Validierung der Kontoabfrage-Eingabe: min. 1, max. 75 Teil-Abfragen,
+ * jede gegen `KontoabfrageTeilSchema`. Bewusst getrennte Instanz, damit die
+ * Fehlermeldung die Kontoabfrage-Grenzen benennt.
+ */
+const KontoabfrageTeileSchema = z
+  .array(KontoabfrageTeilSchema)
+  .min(KONTOABFRAGE_MIN_TEILE)
+  .max(KONTOABFRAGE_MAX_TEILE);
+
 // Validierung ist lokal/CPU-gebunden (kein Serverkontakt) — trotzdem großzügig:
 // der erste Aufruf einer Datenart lädt das Prüf-Plugin nach.
 const VALIDATE_TIMEOUT_MS = 30_000;
@@ -36,14 +52,69 @@ const VALIDATE_TIMEOUT_MS = 30_000;
 const ABFRAGE_TIMEOUT_MS = 120_000;
 const HEALTH_TIMEOUT_MS = 5_000;
 
-/** HTTP-Fehler der Bridge (non-2xx). Trägt Status + Fehler-Body für den Aufrufer. */
+/**
+ * Ungültige Kontoabfrage-Eingabe — lokal erkannt, BEVOR ein kostenpflichtiger
+ * Vorgang beim ELSTER-Server entsteht. Eigene Klasse, damit Caller den
+ * Validierungsfehler sauber vom Transport-/HTTP-Fehler trennen.
+ */
+export class ElsterKontoabfrageInputError extends Error {
+  constructor(
+    message: string,
+    /** Strukturierte zod-Issues (ohne die Eingabewerte selbst). */
+    readonly issues: readonly z.core.$ZodIssue[] = [],
+  ) {
+    super(message);
+    this.name = 'ElsterKontoabfrageInputError';
+  }
+}
+
+/** Nur ein Fehlercode-/Fehlertext-Feld aus einer Bridge-Fehlerantwort — KEINE Nutzdaten. */
+const BridgeErrorBodySchema = z.object({
+  error: z.string().optional(),
+  errorText: z.string().nullable().optional(),
+  returnCode: z.number().int().optional(),
+});
+
+/**
+ * Extrahiert aus einem Fehler-Body nur das strukturierte Fehlerfeld (error /
+ * errorText / returnCode). Gelingt das Parsen nicht oder fehlt jedes Feld, wird
+ * `null` geliefert — der rohe Body landet dann NICHT in der Message.
+ */
+function extractBridgeError(body: string): string | null {
+  let json: unknown;
+  try {
+    json = JSON.parse(body);
+  } catch {
+    return null;
+  }
+  const parsed = BridgeErrorBodySchema.safeParse(json);
+  if (!parsed.success) return null;
+  const { error, errorText, returnCode } = parsed.data;
+  const label = error ?? errorText ?? null;
+  if (label && returnCode !== undefined) return `${label} (returnCode ${returnCode})`;
+  if (label) return label;
+  if (returnCode !== undefined) return `returnCode ${returnCode}`;
+  return null;
+}
+
+/**
+ * HTTP-Fehler der Bridge (non-2xx). Die Message trägt bewusst KEINEN rohen
+ * Response-Body (potenziell Steuerdaten → Logs/Monitoring), sondern nur Status,
+ * Pfad und — falls strukturiert parsebar — ein Fehlercode-/Fehlertext-Feld.
+ * Der vollständige Body bleibt in `body` verfügbar, wird aber nicht mitgeloggt.
+ */
 export class ElsterBridgeHttpError extends Error {
   constructor(
     readonly status: number,
     readonly path: string,
     readonly body: string,
   ) {
-    super(`eric-bridge ${path} antwortete ${status}: ${body.slice(0, 200)}`);
+    const detail = extractBridgeError(body);
+    super(
+      detail
+        ? `eric-bridge ${path} antwortete ${status}: ${detail}`
+        : `eric-bridge ${path} antwortete ${status}.`,
+    );
     this.name = 'ElsterBridgeHttpError';
   }
 }
@@ -117,9 +188,22 @@ export class ElsterBridgeClient {
    * TransferHeader (inkl. Hersteller-ID) entstehen in der Bridge.
    */
   async kontoabfrage(input: KontoabfrageInput): Promise<KontoabfrageResponse> {
+    // Lokale Vorab-Validierung: jeder Bridge-Call erzeugt einen
+    // kostenpflichtigen ELSTER-Vorgang — fehlerhafte Eingaben (0 oder >75
+    // Teil-Abfragen, ungültige Steuernummer/Steuerart) hier abfangen.
+    const validated = KontoabfrageTeileSchema.safeParse(input.abfragen);
+    if (!validated.success) {
+      const count = Array.isArray(input.abfragen) ? input.abfragen.length : 0;
+      throw new ElsterKontoabfrageInputError(
+        `Ungültige Kontoabfrage: ${count} Teil-Abfrage(n) — erlaubt sind ` +
+          `${KONTOABFRAGE_MIN_TEILE}–${KONTOABFRAGE_MAX_TEILE} gültige Teil-Abfragen.`,
+        validated.error.issues,
+      );
+    }
+
     const raw = await this.request('POST', '/v1/kontoabfrage', {
       body: {
-        abfragen: input.abfragen,
+        abfragen: validated.data,
         datenLieferant: input.datenLieferant,
         pin: input.pin,
         ...input.uebertragung,

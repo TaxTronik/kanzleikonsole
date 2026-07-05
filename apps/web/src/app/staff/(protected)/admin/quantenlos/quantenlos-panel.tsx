@@ -6,10 +6,11 @@
 // Interaktionsschicht; alles Fachliche läuft über die Server-Actions.
 // =============================================================================
 
-import { useLayoutEffect, useState, useTransition } from 'react';
+import { useState, useTransition } from 'react';
 import Link from 'next/link';
 import { Dices, ShieldCheck, ShieldAlert, RefreshCw, Hourglass, KeyRound, Trash2, Copy, Check } from 'lucide-react';
 import { fmtDateTimeShort } from '@/lib/fmt';
+import { ThemeSync } from '@/components/theme-sync';
 import type { LosZiehung, PendingLos, LosPruefErgebnis, LosRahmenTyp } from '@/server/risk';
 import type { IbmTokenStatus } from '@/server/settings/quantenlos';
 import {
@@ -69,42 +70,6 @@ function RahmenTypBadge({ typ }: { typ: LosRahmenTyp }) {
   return typ === 'audit'
     ? <span className="badge badge-green">Betriebs-Nachschau</span>
     : <span className="badge badge-gray">Risk-Review</span>;
-}
-
-function syncQuantenlosTheme() {
-  try {
-    const theme = window.localStorage.getItem('theme');
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    document.documentElement.classList.toggle('dark', theme === 'dark' || (theme !== 'light' && prefersDark));
-  } catch {
-    // Best effort: theme bootstrap is still owned by the root layout.
-  }
-}
-
-function QuantenlosThemeSync() {
-  useLayoutEffect(() => {
-    syncQuantenlosTheme();
-
-    const onThemeChange = () => syncQuantenlosTheme();
-    const onStorage = (event: StorageEvent) => {
-      if (!event.key || event.key === 'theme') syncQuantenlosTheme();
-    };
-    const media = window.matchMedia('(prefers-color-scheme: dark)');
-
-    window.addEventListener('pageshow', onThemeChange);
-    window.addEventListener('focus', onThemeChange);
-    window.addEventListener('storage', onStorage);
-    media.addEventListener('change', onThemeChange);
-
-    return () => {
-      window.removeEventListener('pageshow', onThemeChange);
-      window.removeEventListener('focus', onThemeChange);
-      window.removeEventListener('storage', onStorage);
-      media.removeEventListener('change', onThemeChange);
-    };
-  }, []);
-
-  return null;
 }
 
 // Langer kryptografischer Wert (Commitment/Hash/Job-ID) — VOLLSTÄNDIG und
@@ -263,7 +228,7 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
 
   return (
     <div className="space-y-6">
-      <QuantenlosThemeSync />
+      <ThemeSync />
 
       {/* IBM-Quantum-Zugang — zentrale Config statt Credentials auf der Engine-Maschine */}
       <div className="card p-5 dark:!bg-gray-900">

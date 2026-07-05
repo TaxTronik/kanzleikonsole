@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { evidenceService } from '@/server/container';
+import { assertClientAccessTx } from '@/server/auth/rbac';
 import { withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
 
 const InputSchema = z.object({
@@ -27,10 +28,11 @@ export async function decideChangeRequestAction(
   const { requestId, clientId, approve, decisionNote } = parsed.data;
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, session }) => {
       const req = await tx.clientMasterChangeRequest.findUnique({ where: { id: requestId } });
       if (!req) throw new ActionError('Anfrage nicht gefunden.');
       if (req.clientId !== clientId) throw new ActionError('Mandant stimmt nicht überein.');
+      await assertClientAccessTx(tx, session, req.clientId);
       if (req.status !== 'PENDING') throw new ActionError('Anfrage wurde bereits entschieden.');
 
       const fields = (req.fields ?? {}) as Record<string, unknown>;

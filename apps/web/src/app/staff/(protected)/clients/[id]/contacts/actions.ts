@@ -6,7 +6,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { requestMagicLink } from '@/server/auth/magic-link';
 import { revokeAllSessions } from '@/server/auth/revocation';
-import { toActionError } from '@/server/auth/rbac';
+import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { withStaff, staffActionGuard, ActionError } from '@/server/actions/staff-action';
 
 const InviteSchema = z.object({
@@ -32,7 +32,7 @@ export async function inviteContactAction(
   // (braucht tenantId + die im Tx ermittelte E-Mail).
   const g = await staffActionGuard();
   if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
+  const { tenantId, staffId, ctx, session } = g;
 
   const parsed = InviteSchema.safeParse({
     clientId: formData.get('clientId'),
@@ -58,6 +58,7 @@ export async function inviteContactAction(
   let contactId: string;
   try {
     const result = await withTenantContext(ctx, async (tx) => {
+      await assertClientAccessTx(tx, session, clientId);
       // existiert dieser Kontakt bei diesem Mandanten schon?
       const existing = await tx.clientContact.findFirst({
         where: { tenantId, clientId, email: email.toLowerCase() },
@@ -133,13 +134,14 @@ export async function updateContactAction(
   const role = parsed.data.role?.trim() || null;
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, session }) => {
       const before = await tx.clientContact.findUnique({
         where: { id: contactId },
         select: { fullName: true, email: true, phone: true, role: true, clientId: true },
       });
       if (!before) throw new ActionError('Ansprechpartner nicht gefunden.');
       if (before.clientId !== clientId) throw new ActionError('Mandant stimmt nicht überein.');
+      await assertClientAccessTx(tx, session, before.clientId);
       // E-Mail ist die Portal-Login-Identität: bei Änderung dieselbe
       // Uniqueness-Regel wie bei der Einladung — keine Dublette innerhalb
       // des Tenants, nicht auf einen anderen Mandanten zeigend.
@@ -187,7 +189,7 @@ export async function rotateIcalTokenAction(
 ): Promise<ActionResult> {
   const g = await staffActionGuard();
   if (!g.ok) return g;
-  const { ctx } = g;
+  const { ctx, session } = g;
 
   const parsed = RotateIcalSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
@@ -201,6 +203,7 @@ export async function rotateIcalTokenAction(
       });
       if (!contact) throw new ActionError('Ansprechpartner nicht gefunden.');
       if (contact.clientId !== clientId) throw new ActionError('Mandant stimmt nicht überein.');
+      await assertClientAccessTx(tx, session, contact.clientId);
       const updated = await tx.clientContact.update({
         where: { id: contactId },
         data: { icalTokenVersion: { increment: 1 } },
@@ -227,7 +230,7 @@ export async function rotateIcalTokenAction(
 export async function deactivateContactAction(formData: FormData): Promise<void> {
   const g = await staffActionGuard();
   if (!g.ok) return; // void-Action: bei fehlender Auth still abbrechen (wie zuvor)
-  const { ctx } = g;
+  const { ctx, session } = g;
 
   // S2: UUID-Validation für beide IDs.
   const parsed = z
@@ -237,6 +240,13 @@ export async function deactivateContactAction(formData: FormData): Promise<void>
   const { contactId, clientId } = parsed.data;
 
   await withTenantContext(ctx, async (tx) => {
+    const contact = await tx.clientContact.findUnique({
+      where: { id: contactId },
+      select: { clientId: true },
+    });
+    if (!contact) throw new ActionError('Ansprechpartner nicht gefunden.');
+    if (contact.clientId !== clientId) throw new ActionError('Mandant stimmt nicht überein.');
+    await assertClientAccessTx(tx, session, contact.clientId);
     await tx.clientContact.update({
       where: { id: contactId },
       data: { active: false },

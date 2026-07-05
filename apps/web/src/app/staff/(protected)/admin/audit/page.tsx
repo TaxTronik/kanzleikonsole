@@ -19,13 +19,12 @@ import {
   type PersistedVerifyResult,
 } from '@taxtronik/evidence';
 import { env } from '@taxtronik/config';
-import { evidenceService } from '@/server/container';
 import { createAuditRecoveryCheckpointAction, triggerAuditVerifyAction } from './actions';
 import { AuditVerifyAutoRefresh } from './audit-verify-auto-refresh';
 import { signAuditToken, AUDIT_TOKEN_TTL_DAYS } from '@/server/audit-access/token';
 import { CopyField } from '@/components/copy-field';
 import type { Prisma } from '@prisma/client';
-import { fmtDateTimeSeconds } from '@/lib/fmt';
+import { fmtDateTimeSeconds, berlinDayStartUtc, berlinDayEndUtc } from '@/lib/fmt';
 
 const PAGE_SIZE = 50;
 
@@ -44,6 +43,7 @@ interface SearchParams {
   to?: string;
   verify?: string;
   requestId?: string;
+  queuedAt?: string;
   checkpoint?: string;
 }
 
@@ -69,12 +69,12 @@ export default async function AuditLogPage({
   if (sp.resourceType) where.resourceType = sp.resourceType;
   if (sp.from || sp.to) {
     where.occurredAt = {};
-    if (sp.from) where.occurredAt.gte = new Date(sp.from);
-    if (sp.to) {
-      const to = new Date(sp.to);
-      to.setHours(23, 59, 59, 999);
-      where.occurredAt.lte = to;
-    }
+    // Tagesgrenzen in Europe/Berlin (nicht UTC/server-lokal), passend zur
+    // Anzeige — sonst erscheinen Einträge von 00:00–02:00 Berlin im Vortag.
+    const gte = sp.from ? berlinDayStartUtc(sp.from) : null;
+    const lte = sp.to ? berlinDayEndUtc(sp.to) : null;
+    if (gte) where.occurredAt.gte = gte;
+    if (lte) where.occurredAt.lte = lte;
   }
   if (sp.cursor) {
     try {
@@ -130,16 +130,21 @@ export default async function AuditLogPage({
   const verifyResult = (verifyRow?.value ?? null) as PersistedVerifyResult | null;
   const checkpoint = (checkpointRow?.value ?? null) as PersistedRecoveryCheckpoint | null;
   const pendingVerify = sp.verify === 'queued';
-  const pollVerify = pendingVerify && !!sp.requestId && verifyResult?.requestId !== sp.requestId;
-  const recoveryResult = checkpoint
-    ? await withTenantContext(
-        { tenantId, actorId: staffId, actorType: 'STAFF' },
-        (tx) =>
-          evidenceService.verifyRecoverySegment(tx, tenantId, BigInt(checkpoint.auditId), {
-            requireExternalTsa: env.NODE_ENV === 'production',
-          }),
-      ).catch(() => null)
-    : null;
+  // „Fertig", wenn das persistierte Ergebnis exakt den angestoßenen Lauf trägt
+  // ODER (robust gegen Überschreiben durch nächtlichen/parallelen Lauf) neuer
+  // als der Trigger-Zeitpunkt ist. Solange nicht fertig, wird gepollt.
+  const queuedAtMs = sp.queuedAt ? Date.parse(sp.queuedAt) : NaN;
+  const checkedAtMs = verifyResult?.checkedAt ? Date.parse(verifyResult.checkedAt) : NaN;
+  const verifyDone =
+    !!verifyResult &&
+    ((!!sp.requestId && verifyResult.requestId === sp.requestId) ||
+      (!Number.isNaN(queuedAtMs) && !Number.isNaN(checkedAtMs) && checkedAtMs > queuedAtMs));
+  const pollVerify = pendingVerify && !!sp.requestId && !verifyDone;
+  // P-1/M-6: Die Recovery-Teilketten-Verifikation läuft NICHT mehr im
+  // Render-Pfad (SHA-256-Walk ab Checkpoint, wuchs unbegrenzt). Der `recovered`-
+  // Status stammt allein aus dem persistierten Worker-Ergebnis + gesetztem
+  // Checkpoint. Der Worker berechnet die Teilkette bewusst nicht (als
+  // fehleranfällig verworfen); der Checkpoint ist die Admin-Abgrenzung.
 
   // Headline-Schweregrad: ein gesetzter Recovery-Checkpoint ist das harte
   // Kill-Signal für den Break-Alarm — sobald gesetzt, zeigt die Seite bernstein
@@ -177,7 +182,7 @@ export default async function AuditLogPage({
   return (
     <div className="p-8">
       {pollVerify && (
-        <AuditVerifyAutoRefresh requestId={sp.requestId} />
+        <AuditVerifyAutoRefresh requestId={sp.requestId} queuedAt={sp.queuedAt} />
       )}
       <div className="flex items-end justify-between mb-6">
         <div>
@@ -264,14 +269,10 @@ export default async function AuditLogPage({
                     durch Checkpoint abgegrenzt.
                   </p>
                 )}
-                {recoveryResult && (
+                {checkpoint && (
                   <p className="text-xs text-yellow-800 mt-1">
-                    Recovery-Teilkette ab Audit-ID {checkpoint!.auditId} intakt:{' '}
-                    {recoveryResult.checked.toLocaleString('de-DE')} Einträge geprüft
-                    {recoveryResult.sealsChecked > 0
-                      ? `, ${recoveryResult.sealsChecked} Tagesversiegelungen geprüft`
-                      : ''}
-                    .
+                    Recovery-Checkpoint ab Audit-ID {checkpoint.auditId} gesetzt — der
+                    historische Bruch bleibt abgegrenzt.
                   </p>
                 )}
                 <p className="text-xs text-yellow-700 mt-1">

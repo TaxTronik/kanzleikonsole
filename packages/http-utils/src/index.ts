@@ -56,8 +56,30 @@ function isPrivateIPv6(ip: string): boolean {
   if (v.startsWith('fe8') || v.startsWith('fe9') || v.startsWith('fea') || v.startsWith('feb')) return true;
   // M-5: deprecated site-local fec0::/10, NAT64 64:ff9b::/96, 6to4 2002::/16.
   if (v.startsWith('fec') || v.startsWith('fed') || v.startsWith('fee') || v.startsWith('fef')) return true;
+  // N-9: Multicast ff00::/8 (IANA Special-Purpose Registry). Deckt ff02::/link-
+  // local, ff05:: etc. mit ab. Muss NACH fe8-fef stehen, kollidiert aber nicht,
+  // da dort nur fe*/fec* geprüft wird — ff* fällt sonst durch als „öffentlich".
+  if (v.startsWith('ff')) return true;
   if (v.startsWith('64:ff9b:')) return true;
   if (v.startsWith('2002:')) return true;
+  // N-9: Dokumentation 2001:db8::/32 (RFC 3849) — eigener Prefix, liegt
+  // AUSSERHALB des unten geprüften 2001::/23 (group2 = 0db8 > 0x01ff).
+  if (v.startsWith('2001:db8:')) return true;
+  // N-9: IETF-Protocol-Assignments 2001::/23 (IANA Special-Purpose Registry).
+  // Der /23 umfasst group1 == 2001 UND group2 in [0x0000, 0x01ff] und deckt
+  // damit Teredo (2001:0000::/32), Benchmarking (2001:0002::/48) und ORCHIDv2
+  // (2001:0020::/28) gemeinsam ab. IPv6-Kurzschreibweise lässt führende Nullen
+  // weg (2001:2:: statt 2001:0002::), darum group2 numerisch prüfen statt per
+  // String-Prefix.
+  if (v.startsWith('2001:')) {
+    const group2 = v.split(':')[1] ?? '';
+    // Leere group2 (z. B. "2001::") ⇒ 0x0000 ⇒ im /23, fail-closed.
+    const n = group2 === '' ? 0 : parseInt(group2, 16);
+    if (!Number.isNaN(n) && n <= 0x01ff) return true;
+  }
+  // N-9: Discard-Only 100::/64 (RFC 6666). group1 == 0100 und group2..4 == 0.
+  // In Kurzform "100::". Enges Match, um öffentliche 1000::/… nicht zu treffen.
+  if (v === '100::' || v.startsWith('100::') || v.startsWith('100:0:')) return true;
   if (v.startsWith('::ffff:')) {
     const rest = v.slice('::ffff:'.length);
     // Dotted-Form: ::ffff:127.0.0.1
@@ -205,6 +227,12 @@ const SAFE_FETCH_DEFAULT_TIMEOUT_MS = 30_000;
  * N6: Agent wird erst geschlossen, nachdem der Body komplett gestreamt
  * (oder gecancelt) wurde — sonst bricht der Stream bei größeren Bodies.
  *
+ * N-10: Zusätzlich ist der Agent-Close an das effektive `signal` gekoppelt.
+ * Ein Caller, der NUR `res.status` liest und den Body nie konsumiert/cancelt,
+ * würde sonst die Verbindung (und den undici-Agent) offen halten. Spätestens
+ * beim Timeout/Abort (Default 30s) wird der Agent garantiert geschlossen und
+ * der Body verworfen. Wer den Body regulär liest, ist davon unberührt.
+ *
  * Performance-Hinweis (Round 12): pro Aufruf wird ein neuer Agent erzeugt,
  * also pro Request ein eigener TCP+TLS-Handshake. Für Hochfrequenz-Pfade
  * wäre ein Per-(host, pinned-IP)-Agent-Cache mit TTL sinnvoll —
@@ -239,9 +267,12 @@ export async function safeFetch(url: string, init?: RequestInit): Promise<Respon
     },
   });
   // Defaults VOR ...init, damit Caller sie explizit überschreiben können.
+  // Das effektive Signal wird unten (N-10) auch als Not-Aus für den Agent
+  // benutzt, darum hier in einer Variable festhalten.
+  const effectiveSignal = init?.signal ?? AbortSignal.timeout(SAFE_FETCH_DEFAULT_TIMEOUT_MS);
   const merged = {
     redirect: 'error' as const,
-    signal: init?.signal ?? AbortSignal.timeout(SAFE_FETCH_DEFAULT_TIMEOUT_MS),
+    signal: effectiveSignal,
     ...init,
     dispatcher: agent,
   };
@@ -270,6 +301,30 @@ export async function safeFetch(url: string, init?: RequestInit): Promise<Respon
     closed = true;
     agent.close().catch(() => void 0);
   };
+  // N-10: Verbindungs-/Agent-Leak absichern. Der reguläre Close hängt daran,
+  // dass der Body konsumiert (start → done) ODER gecancelt (cancel) wird. Ein
+  // Caller, der NUR `res.status` liest und den Body nie anfasst, triggert
+  // weder start noch cancel → der Agent (und damit TCP+TLS-Verbindung) bliebe
+  // offen. Als Not-Aus koppeln wir closeOnce zusätzlich an das effektive
+  // Signal: spätestens beim Timeout/Abort (Default 30s) wird der Agent
+  // garantiert geschlossen. Die erfolgreiche Streaming-Semantik bleibt
+  // unangetastet — wer den Body liest, schließt weiterhin sofort über
+  // start/cancel (i. d. R. lange vor dem Signal).
+  if (effectiveSignal.aborted) {
+    // Extremfall: Signal ist bereits abgebrochen, bevor wir hier ankommen.
+    response.body.cancel().catch(() => void 0);
+    closeOnce();
+  } else {
+    effectiveSignal.addEventListener(
+      'abort',
+      () => {
+        // Body verwerfen, falls noch niemand ihn liest, dann Agent schließen.
+        if (!closed) response.body?.cancel().catch(() => void 0);
+        closeOnce();
+      },
+      { once: true },
+    );
+  }
   const wrapped = new ReadableStream({
     async start(controller) {
       const reader = response.body!.getReader();

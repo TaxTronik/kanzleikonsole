@@ -39,8 +39,10 @@ test.describe.serial('Staff: Core-Flows', () => {
   test('Globale Suche findet Mandant', async ({ page }) => {
     // Suche via Tastatur-Shortcut oder Klick auf Such-Icon öffnen
     await page.keyboard.press('Control+k');
-    await page.waitForTimeout(500);
     const searchInput = page.getByPlaceholder(/Mandanten, Anforderungen/);
+    // Deterministisch statt fixem Sleep: kurz auf das Palette-Input warten;
+    // greift der Shortcut nicht, fällt der Block unten auf die Clients-Seite zurück.
+    await searchInput.waitFor({ state: 'visible', timeout: 2000 }).catch(() => {});
     // Fallback: manuell Input suchen falls Shortcut nicht greift
     if (!(await searchInput.isVisible().catch(() => false))) {
       await page.goto('/staff/clients'); // Clients-Seite hat immer Such-Input
@@ -250,7 +252,7 @@ test.describe('Öffentliche Seiten & Cross-Cutting', () => {
   test('Mobile Viewport (375px)', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto('/staff/login');
-    await page.waitForTimeout(500);
+    // Sleep entfernt: die folgende Web-First-Assertion wartet selbst auf das Element.
     await expect(page.getByText(/Mitarbeiter-Login/i)).toBeVisible();
   });
 });

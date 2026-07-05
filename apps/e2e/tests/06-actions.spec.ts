@@ -135,7 +135,6 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
       throw new Error(`Upload button not found on /staff/documents. Available buttons: ${allButtons.join(', ') || '(none)'}`);
     }
     await uploadBtn.click();
-    await page.waitForTimeout(1500);
 
     const fileInput = page.locator('#upload-file, input[type="file"]').first();
     await expect(fileInput, 'Upload-Dialog muss ein Datei-Feld enthalten').toBeVisible({ timeout: 5000 });
@@ -158,13 +157,11 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     await submitBtn.click();
     const uploadRes = await commitResponse;
     expect(uploadRes.status(), `Dokumenten-Commit muss erfolgreich sein: ${await uploadRes.text().catch(() => '')}`).toBe(200);
-    await page.waitForTimeout(1000);
 
     // FIX 2: Statt body-visible — das hochgeladene Dokument MUSS in der Liste
     // erscheinen, sonst ist der Upload-Vorgang fehlgeschlagen.
     await page.goto(scopedDocumentsUrl);
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
     await expect(
       page.getByText('E2E Test Dokument').first(),
       'Hochgeladenes Dokument muss in der Dokumentenliste sichtbar sein',
@@ -185,13 +182,14 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     const sharedAlready = await unshareBtn.isVisible({ timeout: 3000 }).catch(() => false);
     if (sharedAlready) {
       await unshareBtn.click();
-      await page.waitForTimeout(1500);
+      // Nach dem Zurückziehen muss der „Freigeben"-Button wieder erscheinen;
+      // die folgende isVisible-Abfrage pollt darauf.
+      await shareBtn.waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {});
     }
 
     const canShare = await shareBtn.isVisible({ timeout: 5000 }).catch(() => false);
     if (canShare) {
       await shareBtn.click();
-      await page.waitForTimeout(2000);
       // The unshare button may appear with a different title after sharing
       const nowUnshared = await unshareBtn.isVisible({ timeout: 5000 }).catch(() => false);
       if (!nowUnshared) {
@@ -214,7 +212,6 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
 
     await page.goto('/staff/invoices/new');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
     expect(page.url()).not.toContain('/staff/login');
 
     if (await page.getByText(/zentraler Rechnungssoftware/).isVisible({ timeout: 2000 }).catch(() => false)) {
@@ -261,7 +258,7 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     const submitBtn = page.getByRole('button', { name: /Rechnung anlegen/ });
     await expect(submitBtn).toBeVisible({ timeout: 5000 });
     await submitBtn.click();
-    await page.waitForTimeout(4000);
+    await page.waitForURL(/\/staff\/invoices\//, { timeout: 15_000 });
     expect(page.url()).toContain('/staff/invoices/');
     await ctx.close();
   });
@@ -274,11 +271,9 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
 
     await page.goto('/staff/calendar');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
     expect(page.url()).not.toContain('/staff/login');
 
     await page.getByRole('button', { name: /Neuer Termin/ }).click();
-    await page.waitForTimeout(1000);
 
     const titleInput = page.locator('input[name="title"]');
     await expect(titleInput).toBeVisible({ timeout: 5000 });
@@ -315,7 +310,6 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
 
     await page.goto('/staff/workflows/templates');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
     expect(page.url()).not.toContain('/staff/login');
 
     const startBtn = page.getByRole('button', { name: /Starten/ }).first();
@@ -324,13 +318,12 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
       throw new Error('No active workflow templates — Paranoid-E2E seed must include at least one startable workflow template');
     }
     await startBtn.click();
-    await page.waitForTimeout(1000);
 
     await page.locator('.modal-overlay select').selectOption({ label: 'Mustermann GmbH' });
     const startSubmit = page.getByRole('button', { name: /Workflow starten/ });
     await expect(startSubmit).toBeVisible({ timeout: 5000 });
     await startSubmit.click();
-    await page.waitForTimeout(4000);
+    await page.waitForURL(/\/staff\/workflows|\/staff\/clients\//, { timeout: 15_000 });
 
     expect(page.url(), 'Workflow-Start muss auf eine valide App-URL fuehren').toMatch(/\/staff\/workflows|\/staff\/clients\//);
     await ctx.close();
@@ -344,7 +337,6 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
 
     await page.goto('/staff/knowledge/new');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
     expect(page.url()).not.toContain('/staff/login');
 
     const titleEl = page.locator('#title');
@@ -358,7 +350,7 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     const s = page.getByRole('button', { name: /Anlegen/ });
     await expect(s).toBeVisible({ timeout: 5000 });
     await s.click();
-    await page.waitForTimeout(4000);
+    await page.waitForURL(/knowledge/, { timeout: 15_000 });
     expect(page.url()).toContain('knowledge');
     await ctx.close();
   });
@@ -371,13 +363,11 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
 
     await page.goto('/staff/forms');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
     expect(page.url()).not.toContain('/staff/login');
 
     const summary = page.locator('summary').filter({ hasText: /Neue Vorlage anlegen/ });
     await expect(summary).toBeVisible({ timeout: 5000 });
     await summary.click();
-    await page.waitForTimeout(800);
 
     const formName = page.locator('#form-name');
     await expect(formName).toBeVisible({ timeout: 5000 });
@@ -385,7 +375,7 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     const s = page.getByRole('button', { name: /Vorlage anlegen/ });
     await expect(s).toBeVisible({ timeout: 5000 });
     await s.click();
-    await page.waitForTimeout(4000);
+    await page.waitForURL(/forms/, { timeout: 15_000 });
     expect(page.url()).toContain('forms');
     await ctx.close();
   });
@@ -398,14 +388,18 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
 
     await page.goto('/staff/clients');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(3000);
     expect(page.url()).not.toContain('/staff/login');
 
     const clientLink = page.getByRole('link', { name: /Mustermann/ }).first();
     await expect(clientLink).toBeVisible({ timeout: 8000 });
     await clientLink.click();
-    await page.waitForTimeout(2000);
+    await page.waitForURL(/\/staff\/clients\//, { timeout: 15_000 });
     expect(page.url()).toContain('/staff/clients/');
+
+    // Deterministischer Anker statt fixem Sleep: erst wenn die Telefonzettel-
+    // Sektion gerendert ist, existiert der "Neu"-Button darunter. Die
+    // Mandanten-Detailseite ist groß und rendert die Sektionen progressiv.
+    await expect(page.getByRole('heading', { name: /Telefonzettel/i })).toBeVisible({ timeout: 10_000 });
 
     const neuBtn = page.getByRole('heading', { name: /Telefonzettel/i }).locator('xpath=following::button[normalize-space()="Neu"][1]');
     const neuVisible = await neuBtn.isVisible({ timeout: 5000 }).catch(() => false);
@@ -414,7 +408,6 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
       throw new Error('"Neu" button not found on client detail page — Telefonnotiz-Flow kann nicht getestet werden');
     }
     await neuBtn.click();
-    await page.waitForTimeout(1000);
 
     const callerInput = page.locator('#qpn-caller');
     await expect(callerInput).toBeVisible({ timeout: 5000 });
@@ -447,7 +440,6 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
 
     await page.goto('/staff/poa/new');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
     expect(page.url()).not.toContain('/staff/login');
 
     if (await page.getByText(/Keine aktiven Mandanten/).isVisible({ timeout: 3000 }).catch(() => false)) {
@@ -484,7 +476,7 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     const s = page.getByRole('button', { name: /Anlegen/ });
     await expect(s).toBeVisible({ timeout: 5000 });
     await s.click();
-    await page.waitForTimeout(4000);
+    await page.waitForURL(/poa/, { timeout: 15_000 });
     expect(page.url()).toContain('poa');
     await ctx.close();
   });
@@ -504,9 +496,9 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     const stopBtn = page.getByRole('button', { name: /Stoppen/ });
     if (await stopBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
       await stopBtn.click();
-      await page.waitForTimeout(2000);
-      await page.reload();
-      await page.waitForTimeout(1500);
+      // Warten bis der Stopp verarbeitet ist: der „Stoppen"-Button verschwindet.
+      await stopBtn.waitFor({ state: 'hidden', timeout: 10_000 }).catch(() => {});
+      await page.reload({ waitUntil: 'domcontentloaded' });
     }
 
     const descInput = page.locator('#description');
@@ -516,12 +508,10 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     const startBtn = page.getByRole('button', { name: /Timer starten/ });
     await expect(startBtn).toBeVisible({ timeout: 5000 });
     await startBtn.click();
-    await page.waitForTimeout(2500);
 
     const stopBtn2 = page.getByRole('button', { name: /Stoppen/ });
     await expect(stopBtn2).toBeVisible({ timeout: 5000 });
     await stopBtn2.click();
-    await page.waitForTimeout(1500);
     // FIX 2: Statt body-visible — nach Stoppen muss der Timer beendet sein:
     // der „Timer starten"-Button ist wieder sichtbar und der erfasste Eintrag
     // taucht in der Zeiterfassungs-Liste auf.
@@ -544,14 +534,12 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
 
     await page.goto('/staff/clients');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(3000);
     expect(page.url()).not.toContain('/staff/login');
 
     await expect(page.getByText('Mustermann GmbH').first()).toBeVisible({ timeout: 8000 });
 
     await page.goto('/staff/dashboard');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
     await expect(page.getByRole('heading', { name: /Dashboard/i })).toBeVisible({ timeout: 5000 });
     await ctx.close();
   });
@@ -564,7 +552,6 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
 
     await page.goto('/staff/admin/audit');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(3000);
 
     // FIX 1: Audit-Log ist GoBD-pflichtig — admin MUSS zugreifen. Redirect = Fehler.
     if (page.url().includes('/staff/dashboard') || page.url().includes('/staff/login')) {
@@ -619,7 +606,6 @@ test.describe.serial('Portal Actions', () => {
 
     await page.goto('/portal/documents');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
     await expect(page.getByRole('heading', { name: /Dokumente/ })).toBeVisible({ timeout: 8000 });
     // FIX 2: Statt body-visible — die Dokumenten-Seite MUSS eine Tabelle oder
     // Leer-Meldung zeigen (kein bloßer Body-Check).
@@ -635,7 +621,6 @@ test.describe.serial('Portal Actions', () => {
 
     await page.goto('/portal/requests');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
     await expect(page.getByRole('heading', { name: /Anforderungen/ })).toBeVisible({ timeout: 8000 });
     // FIX 2: Statt body-visible — die Anforderungs-Seite MUSS konkreten
     // Inhalt (Tabelle/Leer-Meldung) rendern.
@@ -651,13 +636,11 @@ test.describe.serial('Portal Actions', () => {
 
     await page.goto('/portal/appointments');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
     await expect(page.getByRole('heading', { name: 'Termine', exact: true })).toBeVisible({ timeout: 8000 });
 
     const anfragenBtn = page.getByRole('button', { name: /Anfragen/ });
     await expect(anfragenBtn).toBeVisible({ timeout: 5000 });
     await anfragenBtn.click();
-    await page.waitForTimeout(1000);
 
     const subjectInput = page.locator('input[name="subject"]');
     await expect(subjectInput).toBeVisible({ timeout: 5000 });
@@ -669,7 +652,6 @@ test.describe.serial('Portal Actions', () => {
     const s = page.getByRole('button', { name: /Anfrage senden/ });
     await expect(s).toBeVisible({ timeout: 5000 });
     await s.click();
-    await page.waitForTimeout(4000);
 
     // FIX 2: Statt body-visible — die Terminanfrage MUSS bestätigt werden
     // (Erfolgs-Meldung oder der Betreff erscheint in der Anfrage-Liste).

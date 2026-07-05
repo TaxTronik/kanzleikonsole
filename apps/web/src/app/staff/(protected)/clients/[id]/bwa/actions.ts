@@ -6,7 +6,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { parseAddisonBwaCsv, parseAddisonBwaCompactCsv } from '@/server/bwa/addison-parser';
 import { parseDatevBwaXlsx } from '@/server/bwa/datev-parser';
-import { toActionError } from '@/server/auth/rbac';
+import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
 
 export interface ImportResult {
@@ -30,7 +30,7 @@ export async function importAddisonCsvAction(input: {
 }): Promise<ImportResult> {
   const g = await staffActionGuard();
   if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
+  const { tenantId, staffId, ctx, session } = g;
 
   const parsed = ImportSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
@@ -50,6 +50,7 @@ export async function importAddisonCsvAction(input: {
 
   try {
     await withTenantContext(ctx, async (tx) => {
+      await assertClientAccessTx(tx, session, clientId);
       // Sicherheits-Check: Mandant existiert in diesem Tenant
       const client = await tx.client.findUnique({ where: { id: clientId } });
       if (!client) throw new ActionError('Mandant nicht gefunden.');
@@ -118,7 +119,7 @@ export async function importDatevXlsxAction(input: {
 }): Promise<ImportResult> {
   const g = await staffActionGuard();
   if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
+  const { tenantId, staffId, ctx, session } = g;
 
   const parsed = DatevImportSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
@@ -144,6 +145,7 @@ export async function importDatevXlsxAction(input: {
 
   try {
     await withTenantContext(ctx, async (tx) => {
+      await assertClientAccessTx(tx, session, clientId);
       const client = await tx.client.findUnique({ where: { id: clientId } });
       if (!client) throw new ActionError('Mandant nicht gefunden.');
 
@@ -204,7 +206,7 @@ const DeleteSchema = z.object({
 export async function deleteBwaPeriodAction(formData: FormData): Promise<void> {
   const g = await staffActionGuard();
   if (!g.ok) return; // void-Action: bei fehlender Auth still abbrechen
-  const { tenantId, staffId, ctx } = g;
+  const { tenantId, staffId, ctx, session } = g;
 
   const parsed = DeleteSchema.safeParse({
     periodId: formData.get('periodId'),
@@ -213,6 +215,7 @@ export async function deleteBwaPeriodAction(formData: FormData): Promise<void> {
   if (!parsed.success) return;
 
   await withTenantContext(ctx, async (tx) => {
+    await assertClientAccessTx(tx, session, parsed.data.clientId);
     const before = await tx.bwaPeriod.findFirst({
       where: { id: parsed.data.periodId, clientId: parsed.data.clientId },
     });

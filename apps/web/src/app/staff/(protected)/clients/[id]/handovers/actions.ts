@@ -8,7 +8,7 @@ import { evidenceService } from '@/server/container';
 import { sendTemplateMail } from '@/server/mail/dispatch';
 import { fireAndForget } from '@/server/util/fire-and-forget';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
-import { toActionError } from '@/server/auth/rbac';
+import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { withStaff, staffActionGuard, ActionError, type ActionResult } from '@/server/actions/staff-action';
 
 const StatusEnum = z.enum(['RECEIVED', 'IN_PROGRESS', 'READY', 'PICKED_UP']);
@@ -31,7 +31,8 @@ export async function createHandoverAction(
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, session }) => {
+      await assertClientAccessTx(tx, session, parsed.data.clientId);
       // Q-5: clientId Tenant-Sanity
       await assertClientInTenant(tx, parsed.data.clientId);
       const h = await tx.clientHandover.create({
@@ -63,7 +64,7 @@ export async function updateHandoverStatusAction(input: {
   // und braucht tenantId außerhalb der Tx.
   const g = await staffActionGuard();
   if (!g.ok) return g;
-  const { tenantId, ctx } = g;
+  const { tenantId, ctx, session } = g;
 
   const parsed = z.object({ id: z.string().uuid(), status: StatusEnum }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
@@ -90,6 +91,7 @@ export async function updateHandoverStatusAction(input: {
         },
       });
       if (!before) throw new ActionError('Anlieferung nicht gefunden.');
+      await assertClientAccessTx(tx, session, before.clientId);
       if (before.status === parsed.data.status) return;
 
       const now = new Date();
@@ -172,8 +174,10 @@ export async function deleteHandoverAction(input: { id: string }): Promise<Actio
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId }) => {
-    const h = await tx.clientHandover.findUnique({ where: { id: parsed.data.id }, select: { label: true } });
+  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
+    const h = await tx.clientHandover.findUnique({ where: { id: parsed.data.id }, select: { label: true, clientId: true } });
+    if (!h) throw new ActionError('Anlieferung nicht gefunden.');
+    await assertClientAccessTx(tx, session, h.clientId);
     await tx.clientHandover.delete({ where: { id: parsed.data.id } });
     await evidenceService.record(tx, {
       tenantId, actorType: 'STAFF', actorId: staffId,

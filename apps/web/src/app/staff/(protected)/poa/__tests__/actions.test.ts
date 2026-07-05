@@ -50,6 +50,13 @@ vi.mock('next/navigation', () => ({ redirect: m.redirect }));
 vi.mock('next/cache', () => ({ revalidatePath: m.revalidatePath }));
 vi.mock('next/headers', () => ({ headers: m.headers }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: m.withTenantContext }));
+// storage muss gemockt werden: das echte Paket lädt seine injizierte
+// @taxtronik/config-Kopie (anderer Modulpfad), die der Config-Mock unten nicht
+// abdeckt — deren ENV-Validierung würfe ohne vollständige ENV beim Import.
+vi.mock('@taxtronik/storage', () => ({
+  commitBytesWithTier: vi.fn(),
+  MAX_UPLOAD_BYTES: 100 * 1024 * 1024,
+}));
 vi.mock('@taxtronik/config', () => ({
   portalBaseUrl: 'https://portal.example.de',
   env: {

@@ -95,6 +95,20 @@ describe('isPrivateIPv6', () => {
     ['fee0::1', 'fec0::/10 (fee)'],
     ['64:ff9b::808:808', 'NAT64 64:ff9b::/96'],
     ['2002:808:808::', '6to4 2002::/16'],
+    // N-9: neu ergänzte IANA-Special-Purpose-Bereiche
+    ['ff02::1', 'Multicast ff00::/8 (link-local all-nodes)'],
+    ['ff05::1:3', 'Multicast ff00::/8 (site-local)'],
+    ['ff00::', 'Multicast ff00::/8 (unteres Ende)'],
+    ['2001:0:1234::', 'Teredo 2001:0000::/32'],
+    ['2001::abcd', 'Teredo 2001:0000::/32 (Kurzform group2=0)'],
+    ['2001:db8::1', 'Dokumentation 2001:db8::/32'],
+    ['2001:2::1', 'Benchmarking 2001:2::/48'],
+    ['2001:2:0:1::', 'Benchmarking 2001:2::/48'],
+    ['2001:20::1', 'ORCHIDv2 2001:20::/28'],
+    ['2001:2f::1', 'ORCHIDv2 2001:20::/28 (oberes Ende der group2-Nibble)'],
+    ['2001:1ff::1', 'IETF-Protocol 2001::/23 (oberes group2=01ff)'],
+    ['100::1', 'Discard-Only 100::/64'],
+    ['100:0:0:0::1', 'Discard-Only 100::/64 (ausgeschrieben)'],
     ['::ffff:10.0.0.1', 'v4-mapped dotted, 10/8'],
     ['::ffff:192.168.1.1', 'v4-mapped dotted, 192.168/16'],
     ['::ffff:127.0.0.1', 'v4-mapped dotted, loopback'],
@@ -113,6 +127,12 @@ describe('isPrivateIPv6', () => {
     ['fe00::1', 'unterhalb fe80::/10'],
     ['::ffff:8.8.8.8', 'v4-mapped dotted, öffentlich'],
     ['::ffff:808:808', 'v4-mapped HEX, 8.8.8.8 (öffentlich)'],
+    // N-9: direkt oberhalb der neuen Sperr-Bereiche — dürfen NICHT geblockt werden
+    ['2001:200::1', 'öffentlich, group2=0200 > 01ff (direkt über 2001::/23)'],
+    ['2001:4860::1', 'öffentlich (Google), group2=4860'],
+    ['2001:dc8::1', 'öffentlich, group2=0dc8 ≠ 0db8 (neben Doku-Bereich)'],
+    ['1000::1', 'öffentlich, kein Discard-Only 100::/64'],
+    ['1002:808:808::', 'öffentlich, group1=1002 ≠ 6to4'],
   ];
   it.each(publicIps)('%s ist öffentlich (%s)', (ip) => {
     expect(isPrivateIPv6(ip)).toBe(false);

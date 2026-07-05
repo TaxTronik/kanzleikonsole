@@ -12,7 +12,7 @@
 //   v1: deriveKey = SHA-256(AUTH_SECRET) — keine Domain-Trennung. Wenn
 //       AUTH_SECRET an anderer Stelle (Auth.js-JWT-Signing) leakt, war damit
 //       auch der secret-box-Key kompromittiert.
-//   v2: deriveKey = HKDF-SHA256(AUTH_SECRET, salt, info='taxtronik-secret-box-v2')
+//   v2: deriveKey = HKDF-SHA256(IKM, salt, info='taxtronik-secret-box-v2')
 //       — Domain-getrennt, sodass kein anderer AUTH_SECRET-Konsument denselben
 //       Key materialisiert. Spiegelt das Pattern aus auth/totp.ts.
 //
@@ -21,6 +21,19 @@
 //
 // M-1: HKDF mit Context-Label statt nacktem SHA-256. Decrypt kann beide
 // Versionen lesen — neue Werte werden v2 geschrieben.
+//
+// N-2 (Key-Ableitung/Rotation): IKM für die HKDF-Ableitung ist per Default
+// AUTH_SECRET. Da AUTH_SECRET auch das Auth.js-JWT-Signing trägt, würde eine
+// AUTH_SECRET-Rotation ALLE gespeicherten Secrets undechiffrierbar machen.
+// Abhilfe (rückwärtskompatibel): das OPTIONALE env.SECRET_BOX_KEY. Ist es
+// gesetzt, dient es als HKDF-IKM statt AUTH_SECRET → der Box-Key entkoppelt
+// sich von AUTH_SECRET und übersteht dessen Rotation. Ist es NICHT gesetzt,
+// bleibt das bisherige Verhalten exakt erhalten (Fallback AUTH_SECRET), sodass
+// Bestands-Blobs weiter entschlüsselt werden. ACHTUNG: Das Drahtformat kennt
+// keine Key-ID/Key-Ring — eine ECHTE Rotation des Box-Keys erfordert weiterhin
+// einen Re-Wrap der Bestands-Secrets (entschlüsseln mit altem, neu
+// verschlüsseln mit neuem Key). SECRET_BOX_KEY löst nur die AUTH_SECRET-
+// Kopplung, nicht die Rotation des Box-Keys selbst.
 // =============================================================================
 
 import { createCipheriv, createDecipheriv, createHash, hkdfSync, randomBytes } from 'node:crypto';
@@ -28,7 +41,17 @@ import { env } from '@taxtronik/config';
 
 const CURRENT_VERSION = 'v2';
 const IV_LEN = 12; // GCM standard
+const TAG_LEN = 16; // GCM Auth-Tag: volle 128 Bit — kürzere Tags werden abgelehnt (N-1)
 const ALGO = 'aes-256-gcm';
+
+/**
+ * IKM für die HKDF-Ableitung (N-2). Bevorzugt das dedizierte, optionale
+ * SECRET_BOX_KEY; ohne dieses Fallback auf AUTH_SECRET (bisheriges Verhalten,
+ * damit Bestands-Blobs weiter lesbar bleiben).
+ */
+function secretBoxIkm(): string {
+  return env.SECRET_BOX_KEY ?? env.AUTH_SECRET;
+}
 
 // HKDF-Salt für v2. Konstanter, gepinneter Wert — Salt soll laut RFC 5869
 // nicht-geheim sein können, dient nur der domain-Trennung gegen Schlüssel-
@@ -37,12 +60,15 @@ const HKDF_SALT = Buffer.from('taxtronik-secret-box-v2-salt', 'utf8');
 const HKDF_INFO = Buffer.from('taxtronik-secret-box-v2', 'utf8');
 
 function deriveKeyV1(): Buffer {
+  // v1-Bestandsdaten wurden IMMER aus AUTH_SECRET abgeleitet — nicht auf
+  // SECRET_BOX_KEY umstellen, sonst werden alte v1-Blobs undechiffrierbar.
   return createHash('sha256').update(env.AUTH_SECRET).digest();
 }
 
 function deriveKeyV2(): Buffer {
   // hkdfSync(digest, ikm, salt, info, keylen) → ArrayBuffer
-  const ab = hkdfSync('sha256', env.AUTH_SECRET, HKDF_SALT, HKDF_INFO, 32);
+  // IKM: SECRET_BOX_KEY falls gesetzt, sonst AUTH_SECRET (N-2).
+  const ab = hkdfSync('sha256', secretBoxIkm(), HKDF_SALT, HKDF_INFO, 32);
   return Buffer.from(ab);
 }
 
@@ -91,6 +117,13 @@ export function decryptSecret(blob: string): string {
   const iv = Buffer.from(ivB64, 'base64');
   const tag = Buffer.from(tagB64, 'base64');
   const ct = Buffer.from(ctB64, 'base64');
+  // N-1: Länge von IV und Auth-Tag hart validieren, BEVOR sie an OpenSSL
+  // gehen. Node akzeptiert bei AES-256-GCM sonst verkürzte Auth-Tags (ab
+  // 4 Byte) via setAuthTag — das senkt die Forgery-Hürde drastisch. Wir
+  // verlangen exakt das Format, das encryptSecret schreibt: IV 12 B, Tag 16 B.
+  if (iv.length !== IV_LEN || tag.length !== TAG_LEN) {
+    throw new Error('Ungültiges Krypto-Blob-Format: IV/Tag-Länge');
+  }
   const decipher = createDecipheriv(ALGO, key, iv);
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(ct), decipher.final()]).toString('utf8');

@@ -24,15 +24,19 @@ const { TEST_SECRET } = vi.hoisted(() => ({
 }));
 
 vi.mock('@taxtronik/config', () => ({
-  env: { AUTH_SECRET: TEST_SECRET },
+  // SECRET_BOX_KEY default undefined → Fallback auf AUTH_SECRET (N-2).
+  env: { AUTH_SECRET: TEST_SECRET, SECRET_BOX_KEY: undefined },
 }));
 
 import { encryptSecret, decryptSecret, looksEncrypted } from '../index';
 import { env } from '@taxtronik/config';
 
+type MockEnv = { AUTH_SECRET: string; SECRET_BOX_KEY: string | undefined };
+
 afterEach(() => {
-  // Tests dürfen das gemockte AUTH_SECRET temporär verstellen (Wrong-Key-Test).
-  (env as { AUTH_SECRET: string }).AUTH_SECRET = TEST_SECRET;
+  // Tests dürfen AUTH_SECRET/SECRET_BOX_KEY temporär verstellen; danach Reset.
+  (env as MockEnv).AUTH_SECRET = TEST_SECRET;
+  (env as MockEnv).SECRET_BOX_KEY = undefined;
 });
 
 // -----------------------------------------------------------------------------
@@ -126,8 +130,7 @@ describe('decryptSecret — Manipulation und falscher Key', () => {
 
   it('falscher Key (anderes AUTH_SECRET) → wirft', () => {
     const blob = encryptSecret('geheim');
-    (env as { AUTH_SECRET: string }).AUTH_SECRET =
-      'a-completely-different-secret-with-32-chars!';
+    (env as MockEnv).AUTH_SECRET = 'a-completely-different-secret-with-32-chars!';
     expect(() => decryptSecret(blob)).toThrow();
   });
 
@@ -208,5 +211,74 @@ describe('looksEncrypted', () => {
   it('null/undefined → false', () => {
     expect(looksEncrypted(null)).toBe(false);
     expect(looksEncrypted(undefined)).toBe(false);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// N-1: harte IV/Tag-Längenprüfung vor createDecipheriv
+// -----------------------------------------------------------------------------
+
+describe('decryptSecret — N-1: IV/Tag-Längenprüfung', () => {
+  /** Ein Feld des Blobs durch beliebige Bytes ersetzen (b64-kodiert). */
+  function replaceField(blob: string, fieldIndex: 1 | 2 | 3, bytes: Buffer): string {
+    const parts = blob.split(':');
+    parts[fieldIndex] = bytes.toString('base64');
+    return parts.join(':');
+  }
+
+  it('verkürzter Auth-Tag (4 Byte) → wirft mit klarer Meldung statt zu akzeptieren', () => {
+    // Ohne Prüfung würde Node bei GCM einen 4-Byte-Tag via setAuthTag
+    // schlucken → Forgery-Hürde gesenkt. Mit N-1 ein harter Fehler.
+    const blob = replaceField(encryptSecret('geheim'), 2, randomBytes(4));
+    expect(() => decryptSecret(blob)).toThrow(/IV\/Tag-Länge/);
+  });
+
+  it('leerer Auth-Tag (0 Byte) → wirft', () => {
+    const blob = replaceField(encryptSecret('geheim'), 2, Buffer.alloc(0));
+    expect(() => decryptSecret(blob)).toThrow(/IV\/Tag-Länge/);
+  });
+
+  it('zu langes IV (16 Byte) → wirft', () => {
+    const blob = replaceField(encryptSecret('geheim'), 1, randomBytes(16));
+    expect(() => decryptSecret(blob)).toThrow(/IV\/Tag-Länge/);
+  });
+
+  it('korrekte Längen (IV 12 / Tag 16) passieren die Prüfung (Roundtrip ok)', () => {
+    expect(decryptSecret(encryptSecret('geheim'))).toBe('geheim');
+  });
+});
+
+// -----------------------------------------------------------------------------
+// N-2: optionaler SECRET_BOX_KEY als HKDF-IKM (AUTH_SECRET-Entkopplung)
+// -----------------------------------------------------------------------------
+
+describe('SECRET_BOX_KEY — N-2: dedizierter Box-Key + Fallback', () => {
+  const BOX_KEY = 'dedicated-secret-box-key-with-32-plus-chars';
+
+  it('ohne SECRET_BOX_KEY: Verhalten unverändert (Fallback AUTH_SECRET)', () => {
+    (env as MockEnv).SECRET_BOX_KEY = undefined;
+    expect(decryptSecret(encryptSecret('geheim'))).toBe('geheim');
+  });
+
+  it('mit SECRET_BOX_KEY: Roundtrip funktioniert', () => {
+    (env as MockEnv).SECRET_BOX_KEY = BOX_KEY;
+    expect(decryptSecret(encryptSecret('geheim'))).toBe('geheim');
+  });
+
+  it('SECRET_BOX_KEY entkoppelt von AUTH_SECRET: AUTH_SECRET-Rotation lässt Blob lesbar', () => {
+    (env as MockEnv).SECRET_BOX_KEY = BOX_KEY;
+    const blob = encryptSecret('rotations-fest');
+    // AUTH_SECRET rotieren — der Box-Key hängt jetzt an SECRET_BOX_KEY.
+    (env as MockEnv).AUTH_SECRET = 'rotated-auth-secret-with-32-plus-chars!';
+    expect(decryptSecret(blob)).toBe('rotations-fest');
+  });
+
+  it('gesetzter SECRET_BOX_KEY erzeugt anderen Key als der AUTH_SECRET-Fallback', () => {
+    (env as MockEnv).SECRET_BOX_KEY = undefined;
+    const fallbackBlob = encryptSecret('x');
+    (env as MockEnv).SECRET_BOX_KEY = BOX_KEY;
+    // Mit anderem IKM ist der v2-Key anders → der Fallback-Blob ist nicht mehr
+    // dechiffrierbar (belegt, dass SECRET_BOX_KEY tatsächlich greift).
+    expect(() => decryptSecret(fallbackBlob)).toThrow();
   });
 });

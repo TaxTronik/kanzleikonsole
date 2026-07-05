@@ -22,6 +22,11 @@ export async function triggerAuditVerifyAction(): Promise<void> {
   if (!g.ok) throw new ActionError(g.error);
   const { tenantId, staffId, ctx } = g;
 
+  // Zeitstempel VOR dem Enqueue: das Polling gilt als fertig, sobald ein
+  // persistiertes Ergebnis NEUER als dieser Moment vorliegt (unabhängig von der
+  // requestId). Das überlebt ein Überschreiben durch den nächtlichen Lauf oder
+  // einen parallelen zweiten Trigger — sonst würde `done` nie true.
+  const queuedAt = new Date().toISOString();
   const requestId = await enqueueAuditVerify(tenantId, staffId);
 
   // Manueller Trigger gehört in die Chain (analog audit.rotate.trigger) —
@@ -37,7 +42,9 @@ export async function triggerAuditVerifyAction(): Promise<void> {
     });
   });
 
-  redirect(`/staff/admin/audit?verify=queued&requestId=${requestId}`);
+  redirect(
+    `/staff/admin/audit?verify=queued&requestId=${requestId}&queuedAt=${encodeURIComponent(queuedAt)}`,
+  );
 }
 
 /**
@@ -100,6 +107,9 @@ export async function createAuditRecoveryCheckpointAction(formData: FormData): P
     });
   });
 
+  const queuedAt = new Date().toISOString();
   const requestId = await enqueueAuditVerify(tenantId, staffId);
-  redirect(`/staff/admin/audit?checkpoint=created&verify=queued&requestId=${requestId}`);
+  redirect(
+    `/staff/admin/audit?checkpoint=created&verify=queued&requestId=${requestId}&queuedAt=${encodeURIComponent(queuedAt)}`,
+  );
 }

@@ -8,7 +8,11 @@
 // docs/development/eric-integration.md).
 // =============================================================================
 
-export { ElsterBridgeClient, ElsterBridgeHttpError } from './client';
+export {
+  ElsterBridgeClient,
+  ElsterBridgeHttpError,
+  ElsterKontoabfrageInputError,
+} from './client';
 export type { ElsterBridgeClientOptions, KontoabfrageInput, Uebertragung } from './client';
 
 export {

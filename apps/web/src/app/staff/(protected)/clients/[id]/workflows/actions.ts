@@ -7,6 +7,7 @@ import { evidenceService } from '@/server/container';
 import { executeWorkflowStep, type ExecuteResult } from '@/server/workflows/execute-step';
 import { parseStepConfig } from '@/server/workflows/step-config';
 import { assertClientInTenant, assertStaffInTenant } from '@/server/db/assert-tenant';
+import { assertClientAccessTx, toActionError } from '@/server/auth/rbac';
 import { staffActionGuard, withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
 
 // Einheitliches Action-Ergebnis aus der zentralen Quelle.
@@ -40,7 +41,8 @@ export async function startInstanceAction(input: {
   }
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, session }) => {
+      await assertClientAccessTx(tx, session, parsed.data.clientId);
       // Tenant-Sanity: clientId + (optional) analysisId müssen zu diesem Tenant
       // gehören. FK/RLS sind der Backstop; hier ein klarer Fehler statt FK-Bruch.
       await assertClientInTenant(tx, parsed.data.clientId);
@@ -156,12 +158,13 @@ export async function setWorkflowMembersAction(input: {
     .safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId }) => {
+  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
     const inst = await tx.workflowInstance.findUnique({
       where: { id: parsed.data.instanceId },
       include: { members: { select: { staffId: true } } },
     });
     if (!inst) throw new ActionError('Workflow nicht gefunden.');
+    await assertClientAccessTx(tx, session, inst.clientId);
 
     const want = new Set<string>([inst.startedByStaff, ...parsed.data.memberIds]);
     const have = new Set(inst.members.map((m) => m.staffId));
@@ -212,7 +215,13 @@ export async function toggleItemDoneAction(input: { id: string; done: boolean })
   const parsed = z.object({ id: z.string().uuid(), done: z.boolean() }).safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { staffId }) => {
+  const r = await withStaff(async (tx, { staffId, session }) => {
+    const existing = await tx.workflowItem.findUnique({
+      where: { id: parsed.data.id },
+      select: { instance: { select: { clientId: true } } },
+    });
+    if (!existing) throw new ActionError('Schritt nicht gefunden.');
+    await assertClientAccessTx(tx, session, existing.instance.clientId);
     const item = await tx.workflowItem.update({
       where: { id: parsed.data.id },
       data: parsed.data.done
@@ -262,7 +271,13 @@ export async function setItemDueDateAction(input: {
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
   // R-6: P2025-Mapping erledigt withStaff via toActionError.
-  const r = await withStaff(async (tx) => {
+  const r = await withStaff(async (tx, { session }) => {
+    const existing = await tx.workflowItem.findUnique({
+      where: { id: parsed.data.id },
+      select: { instance: { select: { clientId: true } } },
+    });
+    if (!existing) throw new ActionError('Schritt nicht gefunden.');
+    await assertClientAccessTx(tx, session, existing.instance.clientId);
     await tx.workflowItem.update({
       where: { id: parsed.data.id },
       data: { dueDate: parsed.data.dueDate ? new Date(parsed.data.dueDate) : null },
@@ -284,7 +299,13 @@ export async function setItemAssigneeAction(input: {
     .safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx) => {
+  const r = await withStaff(async (tx, { session }) => {
+    const existing = await tx.workflowItem.findUnique({
+      where: { id: parsed.data.id },
+      select: { instance: { select: { clientId: true } } },
+    });
+    if (!existing) throw new ActionError('Schritt nicht gefunden.');
+    await assertClientAccessTx(tx, session, existing.instance.clientId);
     // R-2: assigneeStaffId muss im aktuellen Tenant existieren (falls nicht null).
     if (parsed.data.staffId) {
       await assertStaffInTenant(tx, parsed.data.staffId);
@@ -316,11 +337,12 @@ export async function cancelInstanceAction(input: {
     .safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId }) => {
+  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
     const inst = await tx.workflowInstance.findUnique({
       where: { id: parsed.data.instanceId },
     });
     if (!inst) throw new ActionError('Workflow nicht gefunden.');
+    await assertClientAccessTx(tx, session, inst.clientId);
     if (inst.status !== 'ACTIVE' && inst.status !== 'PAUSED') {
       throw new ActionError('Workflow ist bereits abgeschlossen oder abgebrochen.');
     }
@@ -365,9 +387,10 @@ export async function restoreInstanceAction(input: {
   const parsed = z.object({ instanceId: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId }) => {
+  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
     const inst = await tx.workflowInstance.findUnique({ where: { id: parsed.data.instanceId } });
     if (!inst) throw new ActionError('Workflow nicht gefunden.');
+    await assertClientAccessTx(tx, session, inst.clientId);
     if (inst.status !== 'CANCELLED') throw new ActionError('Nur abgebrochene Workflows lassen sich wiederherstellen.');
 
     const line = `[Wiederhergestellt am ${new Date().toISOString().slice(0, 16).replace('T', ' ')}]`;
@@ -414,9 +437,10 @@ export async function pauseInstanceAction(input: {
     .safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId }) => {
+  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
     const inst = await tx.workflowInstance.findUnique({ where: { id: parsed.data.instanceId } });
     if (!inst) throw new ActionError('Workflow nicht gefunden.');
+    await assertClientAccessTx(tx, session, inst.clientId);
     if (inst.status !== 'ACTIVE') throw new ActionError('Nur aktive Workflows können pausiert werden.');
 
     const reasonText = (parsed.data.reason ?? '').trim();
@@ -454,9 +478,10 @@ export async function resumeInstanceAction(input: { instanceId: string }) {
   const parsed = z.object({ instanceId: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId }) => {
+  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
     const inst = await tx.workflowInstance.findUnique({ where: { id: parsed.data.instanceId } });
     if (!inst) throw new ActionError('Workflow nicht gefunden.');
+    await assertClientAccessTx(tx, session, inst.clientId);
     if (inst.status !== 'PAUSED') throw new ActionError('Nur pausierte Workflows können fortgesetzt werden.');
 
     await tx.workflowInstance.update({
@@ -512,12 +537,13 @@ export async function addItemToInstanceAction(input: {
   const configResult = parseStepConfig(kind, parsed.data.config);
   if (!configResult.ok) return { ok: false as const, error: `Kind ${kind}: ${configResult.error}` };
 
-  const r = await withStaff(async (tx, { tenantId, staffId }) => {
+  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
     const inst = await tx.workflowInstance.findUnique({
       where: { id: parsed.data.instanceId },
       include: { items: { orderBy: { position: 'desc' }, take: 1, select: { position: true } } },
     });
     if (!inst) throw new ActionError('Workflow nicht gefunden.');
+    await assertClientAccessTx(tx, session, inst.clientId);
     if (inst.status === 'COMPLETED' || inst.status === 'CANCELLED') {
       throw new ActionError('Workflow ist abgeschlossen oder abgebrochen.');
     }
@@ -568,8 +594,12 @@ export async function handoverItemAction(input: {
 
   const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
     const myName = session.user.name ?? 'Ich';
-    const item = await tx.workflowItem.findUnique({ where: { id: parsed.data.itemId } });
+    const item = await tx.workflowItem.findUnique({
+      where: { id: parsed.data.itemId },
+      include: { instance: { select: { clientId: true } } },
+    });
     if (!item) throw new ActionError('Schritt nicht gefunden.');
+    await assertClientAccessTx(tx, session, item.instance.clientId);
     if (item.doneAt) throw new ActionError('Schritt ist bereits erledigt.');
     if (parsed.data.toStaffId === item.assigneeStaffId) {
       throw new ActionError('Empfänger ist bereits Bearbeiter.');
@@ -627,9 +657,10 @@ export async function addItemCommentAction(input: {
     const authorName = session.user.name ?? 'Mitarbeiter';
     const item = await tx.workflowItem.findUnique({
       where: { id: parsed.data.itemId },
-      select: { id: true },
+      select: { id: true, instance: { select: { clientId: true } } },
     });
     if (!item) throw new ActionError('Schritt nicht gefunden.');
+    await assertClientAccessTx(tx, session, item.instance.clientId);
     const commentBody = parsed.data.body.trim();
     const comment = await tx.workflowItemComment.create({
       data: {
@@ -711,11 +742,12 @@ export async function deleteCancelledInstanceAction(input: {
   const parsed = z.object({ instanceId: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId }) => {
+  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
     const inst = await tx.workflowInstance.findUnique({
       where: { id: parsed.data.instanceId },
     });
     if (!inst) throw new ActionError('Workflow nicht gefunden.');
+    await assertClientAccessTx(tx, session, inst.clientId);
     if (inst.status !== 'CANCELLED') {
       throw new ActionError('Nur abgebrochene Workflows können endgültig gelöscht werden.');
     }
@@ -754,6 +786,22 @@ export async function executeItemAction(input: { id: string }): Promise<ActionRe
   if (!g.ok) return g;
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+
+  // Vertraulich-/RESTRICTED-Ventil: executeWorkflowStep prüft den Mandanten-
+  // Zugriff selbst NICHT — daher hier vor der Delegation über die Instanz des
+  // Items den Zugriff sicherstellen.
+  try {
+    await withTenantContext(g.ctx, async (tx) => {
+      const item = await tx.workflowItem.findUnique({
+        where: { id: parsed.data.id },
+        select: { instance: { select: { clientId: true } } },
+      });
+      if (!item) throw new ActionError('Schritt nicht gefunden.');
+      await assertClientAccessTx(tx, g.session, item.instance.clientId);
+    });
+  } catch (e) {
+    return toActionError(e);
+  }
 
   const result = await executeWorkflowStep({
     tenantId: g.tenantId,

@@ -49,6 +49,13 @@ export interface RecordedEvent {
 export interface VerificationResult {
   ok: boolean;
   checked: number;
+  /**
+   * Höchste geprüfte Audit-ID dieses Tenants (null bei leerer Kette). Dient als
+   * Monotonie-Anker gegen Tail-Truncation der UNVERSIEGELTEN Spitze: schrumpft
+   * dieser Wert zwischen zwei Läufen, wurden die neuesten Einträge gelöscht.
+   * Robust gegen Archiv-Rotation, die nur die ältesten (niedrigen) IDs entfernt.
+   */
+  lastAuditId: bigint | null;
   firstBreak?: {
     auditId: bigint;
     occurredAt: Date;
@@ -254,6 +261,7 @@ export class EvidenceService {
     const result: VerificationResult = {
       ok: true,
       checked: 0,
+      lastAuditId: null,
       sealsChecked: 0,
       sealBreaks: [],
       tsaMode: this.timestampPort.mode,
@@ -341,6 +349,7 @@ export class EvidenceService {
 
         expectedPrev = Buffer.from(r.this_hash);
         result.checked++;
+        result.lastAuditId = r.id;
       }
 
       cursor = rows[rows.length - 1]!.id;
@@ -412,6 +421,7 @@ export class EvidenceService {
     const result: VerificationResult = {
       ok: true,
       checked: 0,
+      lastAuditId: null,
       sealsChecked: 0,
       sealBreaks: [],
       tsaMode: this.timestampPort.mode,
@@ -502,6 +512,7 @@ export class EvidenceService {
 
         expectedPrev = Buffer.from(r.this_hash);
         result.checked++;
+        result.lastAuditId = r.id;
       }
 
       cursor = rows[rows.length - 1]!.id;

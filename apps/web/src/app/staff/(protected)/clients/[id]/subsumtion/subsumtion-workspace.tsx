@@ -15,6 +15,7 @@ import { NewMarkingPanel } from './new-marking-panel';
 import { ExportPanel } from './export-panel';
 import { MarkingList } from './marking-list';
 import { ResearchView } from './research-view';
+import { fmtDateShort } from '@/lib/fmt';
 import { type AnalysisDTO, type ResearchResultDTO, type ResearchRequestDTO, type MarkingDTO, FILTER_KEYS, type FilterKey, isVisible } from './_ui';
 
 /** Skeleton im Panel, während die LLM-Phase läuft — statt eines harten Reloads:
@@ -471,7 +472,7 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
         <ExportPanel clientId={clientId} analysisId={initial.id} markings={markings} />
         {initial.archivedAt ? (
           <span className="badge-gray text-xs inline-flex items-center gap-1 ml-auto" title="Revisionssicher archiviert (Object-Lock)">
-            <Lock className="h-3.5 w-3.5" /> Archiviert {new Date(initial.archivedAt).toLocaleDateString('de-DE')}
+            <Lock className="h-3.5 w-3.5" /> Archiviert {fmtDateShort(new Date(initial.archivedAt))}
           </span>
         ) : (
           <>
