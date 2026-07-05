@@ -29,6 +29,17 @@ import {
 } from './queues';
 import { log } from './logger';
 
+// RF-2: Gemeinsame Retry-Policy für periodische Wartungs-Jobs. Ein transienter
+// Redis-/DB-/Netz-Fehler um die nächtliche Laufzeit soll den Job nicht bis zum
+// nächsten Kalendertag ausfallen lassen (v. a. den Integritäts-Check
+// audit-verify-check). Alle diese Jobs sind idempotent. Die 5-Minuten-Jobs
+// (health-alert, n8n-outbox-reconcile) brauchen das nicht — der nächste Lauf
+// kommt ohnehin gleich.
+const DAILY_RETRY = {
+  attempts: 3,
+  backoff: { type: 'exponential' as const, delay: 5 * 60_000 },
+} as const;
+
 export async function setupSchedules(): Promise<void> {
   await evidenceSealQueue.upsertJobScheduler(
     'daily-seal',
@@ -45,41 +56,41 @@ export async function setupSchedules(): Promise<void> {
   await auditVerifyQueue.upsertJobScheduler(
     'daily-audit-verify',
     { pattern: '45 2 * * *' },
-    { name: 'audit-verify-check', data: {} },
+    { name: 'audit-verify-check', data: {}, opts: DAILY_RETRY },
   );
   await gwgExpiryQueue.upsertJobScheduler(
     'daily-gwg-expiry',
     { pattern: '0 6 * * *' },
-    { name: 'gwg-expiry-check', data: {} },
+    { name: 'gwg-expiry-check', data: {}, opts: DAILY_RETRY },
   );
   await invoiceOverdueQueue.upsertJobScheduler(
     'daily-invoice-overdue',
     { pattern: '15 6 * * *' },
-    { name: 'invoice-overdue-check', data: {} },
+    { name: 'invoice-overdue-check', data: {}, opts: DAILY_RETRY },
   );
   await taxDeadlineMaterializeQueue.upsertJobScheduler(
     'daily-tax-deadline-materialize',
     { pattern: '30 6 * * *' },
-    { name: 'tax-deadline-materialize', data: {} },
+    { name: 'tax-deadline-materialize', data: {}, opts: DAILY_RETRY },
   );
   // Audit-Rotation: wöchentlich Sonntag 03:00 UTC
   await auditRotateQueue.upsertJobScheduler(
     'weekly-audit-rotate',
     { pattern: '0 3 * * 0' },
-    { name: 'audit-rotate', data: {} },
+    { name: 'audit-rotate', data: {}, opts: DAILY_RETRY },
   );
   // BMF/BFH-RSS-Feeds täglich 05:30 UTC (~07:30 MESZ — vor Bürobeginn)
   await taxNewsFetchQueue.upsertJobScheduler(
     'daily-tax-news-fetch',
     { pattern: '30 5 * * *' },
-    { name: 'tax-news-fetch', data: {} },
+    { name: 'tax-news-fetch', data: {}, opts: DAILY_RETRY },
   );
   // Reminder-Bündel täglich 06:45 UTC: Einspruchsfristen + Wiedervorlagen +
   // überfällige Pendelordner. Notifications werden idempotent angelegt.
   await remindersDailyQueue.upsertJobScheduler(
     'daily-reminders',
     { pattern: '45 6 * * *' },
-    { name: 'reminders-daily', data: {} },
+    { name: 'reminders-daily', data: {}, opts: DAILY_RETRY },
   );
   // S15 Outbox-Reconciliation: alle 5 Minuten stuck PENDING-Reihen erneut
   // einreihen (App-Crash zwischen Outbox-Write und Queue-Add).
@@ -92,20 +103,20 @@ export async function setupSchedules(): Promise<void> {
   await magicLinkCleanupQueue.upsertJobScheduler(
     'daily-magic-link-cleanup',
     { pattern: '30 3 * * *' },
-    { name: 'magic-link-cleanup', data: {} },
+    { name: 'magic-link-cleanup', data: {}, opts: DAILY_RETRY },
   );
   // DSGVO-Retention täglich 04:00 UTC — löscht Notifications (>1J), Phone-Notes
   // (>3J) und nullt client_contact.lastLoginAt (>2J). Siehe dsgvo-konzept.md 2.2.
   await dsgvoRetentionQueue.upsertJobScheduler(
     'daily-dsgvo-retention',
     { pattern: '0 4 * * *' },
-    { name: 'dsgvo-retention', data: {} },
+    { name: 'dsgvo-retention', data: {}, opts: DAILY_RETRY },
   );
   // Vollmachten-Ablauf täglich 06:20 UTC (nach gwg-expiry/invoice-overdue).
   await poaExpiryQueue.upsertJobScheduler(
     'daily-poa-expiry',
     { pattern: '20 6 * * *' },
-    { name: 'poa-expiry-check', data: {} },
+    { name: 'poa-expiry-check', data: {}, opts: DAILY_RETRY },
   );
   // Restore-Drill: monatlich am 1. um 05:00 UTC — beweisbarer Wirksamkeits-
   // nachweis der Sicherung (Art. 32 DSGVO / GoBD). Retry, weil transiente
