@@ -1,6 +1,6 @@
 # ELSTER-Anbindung über ERiC: Architektur, Lizenzpflichten, Umgangsregeln
 
-Arbeitsstand: 2026-06-10. Grundlage ist die ELSTER-Lizenzvereinbarung für
+Arbeitsstand: 2026-07-05. Grundlage ist die ELSTER-Lizenzvereinbarung für
 Softwarehersteller (§-Angaben beziehen sich darauf) und die
 Herstellerunterlagen aus dem ELSTER-Entwicklerbereich. Dieses Dokument
 beschreibt Regeln und Architektur in eigenen Worten — die Unterlagen
@@ -57,14 +57,23 @@ worker (BullMQ, Alpine)  ──HTTP (intern, Token)──▶  eric-bridge (Debia
 ```
 
 - **Privates Repo `taxtronik-eric-bridge`:** Node auf Debian-slim, FFI auf
-  die C-API, kleiner HTTP-Dienst mit zwei Kernoperationen:
-  `validate` (Datensatz prüfen, Fehlerliste zurück) und `submit`
-  (prüfen + senden, Antwort/Transferticket zurück). Instanz-Pool nach
-  Herstellerempfehlung (Instanzen sind teuer, 1 Instanz : 1 Thread).
+  die C-API, kleiner HTTP-Dienst. Umgesetzt: `GET /healthz`,
+  `POST /v1/validate` (Stufe 1, lokal), `POST /v1/abfrage` (Stufe 2,
+  generisch: Datenteil rein, Bridge erzeugt TransferHeader) und
+  `POST /v1/kontoabfrage` (Stufe 2, strukturierte Parameter für
+  Istbuchungen/offene Beträge/Sollstellungen). ALLES Schema-nahe —
+  Datenteil-Aufbau, TransferHeader-Erzeugung (über die dafür vorgesehene
+  ERiC-Funktion) und die Hersteller-ID (`ERIC_HERSTELLER_ID`) — lebt in
+  der Bridge; die Eingabe an die TransferHeader-Erzeugung ist bewusst
+  namespace-frei, sodass Aufrufer keine Schema-Marker brauchen.
 - **Dieses Repo:** neutrale Schnittstelle `@taxtronik/elster` (Typen,
-  HTTP-Client, Fehlertaxonomie, Feature-Flag `ELSTER_BRIDGE_URL` +
-  Token) und die Worker-Jobs/UI darauf. Ohne konfigurierte Bridge ist das
-  Modul unsichtbar (Muster: Signal-Engine/Risk-Layer).
+  Zod-validierter HTTP-Client, Fehlertaxonomie, Feature-Flag
+  `ELSTER_BRIDGE_URL` + `ELSTER_BRIDGE_TOKEN`) — umgesetzt in
+  `packages/elster`. Worker-Jobs/UI darauf folgen als eigene Iteration.
+  Ohne konfigurierte Bridge ist das Modul unsichtbar (Muster:
+  Signal-Engine/Risk-Layer). Fail-safe: Abfragen verlangen ENTWEDER einen
+  Testmerker ODER die explizite Erklärung `echtfall: true` — versehentliche
+  Echtübermittlungen aus Dev/Staging sind damit ausgeschlossen.
 - **Bauen/Deployen:** Das Bridge-Image wird außerhalb dieses Repos gebaut
   (privates Repo + privates Registry-Paket); compose bindet es nur ein.
   Die nativen Bibliotheken kommen als Volume vom Server-Verzeichnis —
@@ -89,9 +98,24 @@ verwirft Daten nach Validierung).
    Bedarf; jede Datenart bringt eigene Jahresversionen mit (jährliche
    Pflege im November-Release-Takt).
 
-## 4. Offene Entscheidungen vor iter-Start
+## 4. Stand und offene Entscheidungen
 
-- Hersteller-ID beantragen (produktbezogen) — Voraussetzung für alles.
-- PIN-Handling beim Versand (pro Vorgang eingeben vs. Sitzungs-Cache).
-- Welche Datenart zuerst produktiv (Vorschlag: UStVA, höchste Frequenz).
-- Naming/Repo-Anlage `taxtronik-eric-bridge` auf dem Forgejo.
+Erledigt:
+
+- Hersteller-ID beantragt und erhalten (2026-07, produktbezogen). Der Wert
+  ist ein Geheimnis: ausschließlich als `ERIC_HERSTELLER_ID` im
+  Bridge-Deployment (Env/Secret), nie in Code, Doku oder Beispieldaten.
+- Repo `taxtronik-eric-bridge` angelegt; Stufe 1 (Validierung) und Stufe 2
+  (Kontoabfrage inkl. Sollstellungen) implementiert.
+- Neutrale Schnittstelle `packages/elster` in diesem Repo.
+
+Offen:
+
+- PIN-Handling beim Versand (pro Vorgang eingeben vs. Sitzungs-Cache) —
+  aktuell: pro Vorgang, wird nirgends persistiert.
+- Worker-Jobs + UI auf `@taxtronik/elster` (Kontoabfrage-Ergebnisse in
+  Fristen-/Steuerterminmodul einhängen; DSGVO-Kenntnisnahme-Dialog VOR
+  erstmaliger Nutzung, siehe § 5-Pflicht in Abschnitt 2).
+- Versand-Datenarten (UStVA zuerst) als Stufe-2-Ausbau.
+- Ende-zu-Ende-Test gegen den Clearingstellen-Testbetrieb (Testmerker,
+  Test-Portalzertifikat) aus dem Bridge-Container.

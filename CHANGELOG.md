@@ -91,6 +91,12 @@ Versionsabschnitt überführt.
 
 ### Fachliche Module und Workflows
 
+- ELSTER: neutrales Paket `@taxtronik/elster` (Feature-Flag
+  `ELSTER_BRIDGE_URL`/`ELSTER_BRIDGE_TOKEN`, typisierter Client für
+  Validierung und Kontoabfrage inkl. Sollstellungen). Datenteil und
+  TransferHeader — und damit die Hersteller-ID — entstehen ausschließlich in
+  der privaten eric-bridge; ohne konfigurierte Bridge bleibt das Modul
+  inaktiv (Muster Risk-Layer)
 - Posteingang: Architektur-Konzept für intelligenten Dokumenteneingang
   (`docs/development/posteingang-konzept.md`) über Outlook, UNC/Scanner und
   mehrstufige Triage-Pipeline mit Vision-Stufe für Beleg-Scans

@@ -1,33 +1,37 @@
 # taxtronik — Funktionsumfang
 
-Stand: 2026-06-18. Die mit ⚙ markierten Module sind pro Kanzlei in den
-Einstellungen ein- bzw. ausschaltbar.
+Stand: 2026-07-05. Die mit ⚙ markierten Module sind pro Kanzlei in den
+Einstellungen ein- bzw. ausschaltbar (Boolean-Toggle unter Admin →
+Einstellungen → Module). Rechnungen und Vollmachten sind keine Toggles,
+sondern Modus-Schalter (`invoiceMode` / `poaMode`) mit `OFF`-Option —
+sie tragen der Einheitlichkeit halber ebenfalls ein ⚙.
 
 ## Überblick
 
 **Mandanten & Akte** — Mandanten-CRM · Onboarding-Wizard · GwG-Compliance ·
 Anforderungen · Dokumente (Datei-Manager) · Kanzleikalender ⚙ · Bescheide &
-Steuererklärungen ⚙ · Telefonzettel ⚙ · Wiedervorlagen · Pendelordner
+Steuererklärungen ⚙ · Telefonzettel ⚙ · Wiedervorlagen ⚙ · Pendelordner ⚙ ·
+Anlieferungen ⚙ · Fristenkontrollbuch
 
 **Beratung & Auswertung** — BWA, Hochrechnung & Planung ⚙ ·
 Subsumtions-Workspace / TCMS ⚙ · Wissensdatenbank ⚙
 
 **Abrechnung & Vertretung** — Rechnungen ⚙ · Vollmachten ⚙ · Zeiterfassung ⚙
 
-**Prozesse & Vorlagen** — Workflow-Vorlagen · Form-Builder ·
+**Prozesse & Vorlagen** — Workflow-Vorlagen ⚙ · Form-Builder ⚙ ·
 Status-Maschinen-Builder · Anforderungs-Vorlagen · Custom-Felder
 
-**Mitarbeiter & Kanzlei** — Dashboard-Widget-Builder · RSS-Reader ·
-Abwesenheiten · Benutzer-Verwaltung · Tätigkeitsbereiche/Skills ·
-Kanzlei-Einstellungen
+**Mitarbeiter & Kanzlei** — Dashboard-Widget-Builder · RSS-Reader ⚙ ·
+Abwesenheiten · Benutzer-Verwaltung (inkl. Einzelrechte) ·
+Tätigkeitsbereiche/Skills · Kanzlei-Einstellungen
 
 **Mandanten-Portal** — Login · Anforderungen · Formulare · Dokumente ·
 Stammdaten-Self-Service · Steuererklärungen · Termine · Auswertungen ·
-Rechnungen · GwG-Onboarding
+Rechnungen · Anlieferungen · GwG-Onboarding
 
 **Querschnitt** — Globale Suche · Benachrichtigungen · DSGVO · Compliance &
-Audit · Backups & DR · Update-Mechanik & Lizenz · UI (Dark/Modern) ·
-Sicherheit · Architektur
+Audit · Backups & DR · Update-Mechanik & Lizenz · ELSTER-Anbindung
+(Vorstufe) · UI (Dark/Modern) · Sicherheit · Architektur
 
 ---
 
@@ -71,13 +75,10 @@ Sicherheit · Architektur
   anstehende Steuertermine, aktive Workflows, **Wiedervorlagen**,
   **Pendelordner**, Telefonzettel, **anstehende Termine** + offene
   Terminanfragen
-- **Wiedervorlagen-Block** — Datum + Stichwort + optional zugewiesener
-  Bearbeiter; offene + erledigte Sektion mit Check-Toggle; Worker schickt
-  zur Fälligkeit eine Notification an Bearbeiter/Ersteller
-- **Pendelordner-Tracker** — physische Belege-Ordner-Übergaben verfolgen;
-  Status PREPARED → WITH_CLIENT → RETURNED → COMPLETED mit Auto-Stamping
-  der jeweiligen Zeitstempel; Overdue-Reminder über `expectedReturnAt`;
-  Inhaltsliste als Markdown
+- **Wiedervorlagen-Block** — offene + erledigte Sektion mit Check-Toggle
+  (Details → Abschnitt „Wiedervorlagen")
+- **Pendelordner-Block** (Details → Abschnitt „Pendelordner") und
+  **Anlieferungen-Block** (Details → Abschnitt „Anlieferungen")
 - **Inline-Telefonzettel-Anlage** auf der Mandantenseite mit Anrufer-
   Autocomplete aus den Ansprechpartnern (übernimmt Telefonnummer)
 - **Anstehende-Termine-Block** — nächste 5 `Appointment`-Einträge des
@@ -263,12 +264,17 @@ Mandanten.
 
 Vereint Steuertermine und freie Termine (Mandantenmeetings, intern, privat)
 unter `/staff/calendar`. Der frühere Nav-Eintrag „Steuertermine" wurde
-hierin umbenannt.
+hierin umbenannt. Technisch hängen hier zwei getrennte Modul-Schalter
+dran: der Steuertermin-Teil am Modul `taxNotices` (gemeinsam mit den
+Bescheiden), der Termin-Teil (Appointments + Portal-Terminanfragen) am
+Modul `appointments`.
 
 ### Steuertermin-Engine
 
-- Konfiguration pro Mandant: USt-VA (mtl./quart./jährl.),
-  LSt-Anmeldung (mtl./quart./jährl.), ESt/KSt/GewSt-VZ + Erklärungen
+- Konfiguration pro Mandant unter `/staff/clients/:id/tax-schedule`:
+  USt-VA (mtl./quart./jährl.), LSt-Anmeldung (mtl./quart./jährl.),
+  ESt/KSt/GewSt-VZ + Erklärungen; ohne GwG-Freigabe (`allowActive`)
+  werden keine Termine materialisiert (Hinweis-Banner)
 - Mit Dauerfristverlängerung (USt/LSt) → +1 Monat
 - **Beratene Erklärungsfrist § 149 (3) AO** als `advised`-Option pro
   Schedule-Config (letzter Tag des Monats Februar des zweiten Folgejahres
@@ -383,28 +389,42 @@ nebeneinander auf einer Seite.
 
 Modus-Wahl pro Kanzlei:
 
-- **`IN_APP`** (Default): vollständige Erstellung in taxtronik
-  - XRechnung 3.0 CII-XML-Generierung (B2G-Pflicht)
+- **`IN_APP`**: vollständige Erstellung in taxtronik
+  - XRechnung 3.0.2 CII-XML-Generierung (B2G-Pflicht) — besteht den
+    KoSIT-Validator (Schema + Schematron inkl. BR-DE); CI-Job
+    `e-rechnung` validiert gegen den gepinnten Validator
   - ZUGFeRD/Factur-X PDF/A-3 mit eingebettetem XML
+  - **GoB-fest**: automatische lückenlose Rechnungsnummern je Jahr,
+    DB-seitige Festschreibung nach Versand, Statusübergänge nur
+    vorwärts, GoBD-Archivkopie vor Versand, Schutz abgerechneter
+    Zeiteinträge
+  - **USt-Satz je Position** (19 % / 7 % / 0 %) mit Steuerausweis und
+    Rundung je Satz-Gruppe in Anzeige, PDF und E-Rechnung
   - Status-Maschine: DRAFT → SENT → PAID / OVERDUE / CANCELLED
   - Time-to-Invoice: nicht abgerechnete Zeiteinträge eines Mandanten direkt
     in Rechnungspositionen umwandeln
   - Worker markiert überfällige Rechnungen täglich, schreibt Notification
   - CSV-Export, XRechnung- und ZUGFeRD-Download pro Rechnung
-- **`EXTERNAL`**: Erstellung extern (z. B. zentrale DATEV-Abrechnung
-  bei Partnerschaft mit mehreren Standorten), taxtronik versendet nur
-  eine Standard-Mail mit PDF-Anhang. Konfigurierbarer Markdown-Begleittext
-  mit Platzhaltern `{name}`, `{client}`, `{number}`, `{amount}`
+- **`EXTERNAL`** (Default): Erstellung extern (z. B. zentrale
+  DATEV-Abrechnung bei Partnerschaft mit mehreren Standorten), taxtronik
+  versendet nur eine Standard-Mail mit PDF-Anhang. Konfigurierbarer
+  Markdown-Begleittext mit Platzhaltern `{name}`, `{client}`, `{number}`,
+  `{amount}`
 - **`OFF`**: Modul komplett deaktiviert
+
+Rechnungen anlegen/bearbeiten und versenden sind zusätzlich über
+granulare Einzelrechte pro Mitarbeiter steuerbar (siehe
+Benutzer-Verwaltung). Versendete Rechnungen sind für den Mandanten im
+Portal als PDF abrufbar.
 
 ## Vollmachten ⚙
 
 Modus-Wahl pro Kanzlei:
 
-- **`MARKDOWN_OTP`** (Default): Vollmachts-Text als Markdown in der App,
+- **`MARKDOWN_OTP`**: Vollmachts-Text als Markdown in der App,
   Mandant signiert per E-Mail-Magic-Link + 6-stelligem Email-OTP
   (eIDAS „Advanced Electronic Signature")
-- **`PDF_TEMPLATE`**: Standardtext + PDF-Anhang per Mail an Mandant.
+- **`PDF_TEMPLATE`** (Default): Standardtext + PDF-Anhang per Mail an Mandant.
   Konfigurierbarer Subject/Markdown-Body mit Platzhaltern `{name}`, `{client}`.
   Für Kanzleien mit externer Vollmachtsdatenbank
 - **`OFF`**: Modul komplett deaktiviert
@@ -412,7 +432,7 @@ Modus-Wahl pro Kanzlei:
 Status-Maschine: DRAFT → SENT → SIGNED / REVOKED. Audit-Log mit IP +
 User-Agent bei Signatur.
 
-## Workflow-Vorlagen
+## Workflow-Vorlagen ⚙
 
 - Wiederkehrende Prozesse als Checklisten-Vorlagen
   (z. B. „Neuer Mandant", „Jahresabschluss-Prozess", „Lohn-Monatslauf")
@@ -432,7 +452,7 @@ User-Agent bei Signatur.
   abgebrochener Instanzen, **Engpass-Schritt** (Position mit längster
   durchschnittlicher Bearbeitungszeit über alle Instanzen)
 
-## Form-Builder (eigene Anfrage-Formulare an Mandanten)
+## Form-Builder (eigene Anfrage-Formulare an Mandanten) ⚙
 
 - Vorlagen pro Kanzlei (z. B. „Steuerunterlagen 2025", „Fahrtenbuch",
   „Lohnstammdaten")
@@ -521,7 +541,7 @@ User-Agent bei Signatur.
 - Gesamtansicht unter `/staff/phone-notes` mit denselben Inline-Aktionen +
   Mandanten-Link
 
-## Wiedervorlagen
+## Wiedervorlagen ⚙
 
 - Pro Mandant Datum + Stichwort + optional Notiz + zugewiesener
   Bearbeiter (Default: Ersteller)
@@ -555,9 +575,9 @@ Anforderungs-Fälligkeiten und Wiedervorlagen.
 - Zugriffsmodell: RESTRICTED-/vertrauliche Mandanten gefiltert (identisch
   zu Kalender/Exporten)
 
-## Pendelordner
+## Pendelordner ⚙
 
-- Physische Belege-Ordner-Übergaben verfolgen
+- Physische Belege-Ordner-Übergaben verfolgen (Kanzlei → Mandant)
 - Status PREPARED → WITH_CLIENT → RETURNED → COMPLETED mit Auto-Stamping
   der jeweiligen Zeitstempel (`sentAt` / `returnedAt` / `completedAt`)
 - Erwartetes Rückgabedatum (`expectedReturnAt`) + Inhaltsliste als
@@ -568,7 +588,20 @@ Anforderungs-Fälligkeiten und Wiedervorlagen.
 - Block am Mandantendetail + Aktion-Buttons „Ausgegeben / Zurückerhalten /
   Abgeschlossen"
 
-## RSS-Reader
+## Anlieferungen ⚙
+
+Gegenstück zum Pendelordner (Modul `handovers`): vom Mandanten physisch
+bei der Kanzlei angelieferte Unterlagen verfolgen — vom Eingang bis zur
+Abholung.
+
+- Label + Inhaltsbeschreibung, Block am Mandantendetail
+- Status RECEIVED → IN_PROGRESS → READY → PICKED_UP mit Zeitstempeln
+- Bei „Abholbereit" (READY) Benachrichtigungs-Mail an den Ansprechpartner
+- Portal-Sicht `/portal/handovers` zeigt dem Mandanten den Status
+  (zusätzlich über Portal-Feature-Flag `handoversView` abschaltbar)
+- Audit-Trail über `client_handover.*`
+
+## RSS-Reader ⚙
 
 Pro Mitarbeiter abonnierte RSS-Feeds — aus dem ursprünglichen
 „BMF/BFH News"-Widget zu einem generischen Reader entwickelt.
@@ -592,10 +625,17 @@ Pro Mitarbeiter abonnierte RSS-Feeds — aus dem ursprünglichen
 
 ## Abwesenheiten
 
-- Urlaubsantrag (Mitarbeiter beantragt, ADMIN/PARTNER entscheidet)
-- Krankmeldung mit AU-Bescheinigungs-Upload
+- Urlaubsantrag (Mitarbeiter beantragt; ADMIN/PARTNER oder Mitarbeiter
+  mit Einzelrecht „Urlaub entscheiden" entscheidet)
+- **Generische Abwesenheitsmeldung** (aus der früheren Krankmeldung
+  erweitert): Krankheit oder Sonstiges (Fortbildung, Sonderurlaub …) mit
+  optionalem Bescheinigungs-Upload (z. B. AU); Benachrichtigung an die
+  Entscheidungsträger
+- Abwesenheiten erscheinen als Einträge im Kanzleikalender
 - Wandkalender für alle Mitarbeiter (4/8/12 Wochen)
-  - Grün = Urlaub, Rot = Krank, Wochenenden ausgegraut
+  - Grün = Urlaub; sonstige Abwesenheit neutral als „abw." ohne
+    Grund-Anzeige (Krankheit ist für Kollegen nicht erkennbar);
+    Wochenenden ausgegraut
   - Reine Sichtbarkeit zur Absprache, kein Vergleich/Quoten
 
 ## BWA, Hochrechnung & Planung ⚙
@@ -815,12 +855,15 @@ Kanzlei nicht.
 - **Termine** (`/portal/appointments`): eigene bestätigte Termine + Anfrage-
   Formular mit 1–3 Wunschterminen + optionalem Wunsch-Bearbeiter; Verlauf
   eigener Anfragen mit Status (PENDING/ACCEPTED/REJECTED/CANCELLED) +
-  Rücknahme-Button bei PENDING
+  Rücknahme-Button bei PENDING; token-basierter iCal-Feed
+  (`/api/portal/ical/:token`) zum Abonnieren der Termine
 - **Auswertungen** (`/portal/bwa`): Liquiditäts-Indikatoren,
   Jahres-Hochrechnung (beide Strategien mit Spanne), Plan vs.
   Hochrechnung, eigene Planungen + Szenario-Vergleich
   (siehe „BWA, Hochrechnung & Planung")
-- Rechnungen-Übersicht
+- Rechnungen-Übersicht inkl. PDF-Abruf versendeter Rechnungen
+- **Anlieferungen** (`/portal/handovers`): Status der bei der Kanzlei
+  angelieferten Unterlagen bis „abholbereit" / „abgeholt"
 - Einstellungen: E-Mail-Benachrichtigungen ein/aus pro Kontakt
 - Sidebar-Footer: prominente „Darstellung"-Sektion mit UI-Mode + Theme-
   Toggle direkt über dem Abmelden-Button (zusätzlich in der Topbar)
@@ -898,6 +941,9 @@ Kanzlei nicht.
     `AUDIT_ARCHIVE_MODE=HARD` wird ehrlich auf SOFT normalisiert und pro
     Lauf als Warnung geloggt — `audit_archive` behauptet keinen
     DB-Cleanup, der nicht stattfand
+- **GoBD-Verfahrensdokumentation aus dem IST-Zustand**: das Admin-Panel
+  generiert die Verfahrensdoku aus der laufenden Konfiguration
+  (Export über `/api/staff/admin/verfahrensdoku`)
 - **Audit-Action-Labels** für 80+ Action-Keys und alle Resource-Types
   (inkl. der Auth-, Backup-, `gwg.check.destroy`- und
   `tax_notice.status`-Events) werden in „freundlichen" Views (Dashboard,
@@ -925,6 +971,17 @@ Kanzlei nicht.
 - **Retention-/Object-Lock-Demodaten**: `pnpm demo:retention` erzeugt lokale
   GwG-Testfälle für löschreif/nicht löschreif sowie aktiven/abgelaufenen
   Governance-Lock
+- **Monatlicher Restore-Drill**: Worker `backup-drill` (1. des Monats)
+  spielt das jüngste Backup automatisch zurück und verifiziert die
+  Audit-Hash-Chain auf der wiederhergestellten Datenbank
+  (Art.-32-Nachweis)
+- **Health-Alarme**: Worker `health-alert` prüft alle 5 Minuten
+  Postgres / Redis / Object-Store / ClamAV und schickt Ops-Mails bei
+  Ausfall und Erholung
+- Produktions-Provisionierung ohne Demodaten:
+  `pnpm --filter @taxtronik/db provision` legt Tenant,
+  Default-Dokumenttypen und Admin-Konto an (Dev-Seed verweigert in
+  Produktion, Doppel-Provisionierung wird erkannt)
 - Disaster-Recovery-Runbook in `docs/operations/disaster-recovery.md`
 
 ## Update-Mechanik & Lizenzschlüssel
@@ -948,6 +1005,24 @@ Kanzlei nicht.
 - Assurance-Dokumentation mit Threat Model und Known Limits unter
   `docs/assurance/`
 
+## ELSTER-Anbindung (Vorstufe, noch ohne UI)
+
+Neutrales Paket `@taxtronik/elster`: typisierter HTTP-Client zur privaten
+eric-bridge (separates Privat-Repo, eigener Debian-Container mit der
+nativen ERiC-Bibliothek). Aktivierung per Feature-Flag
+`ELSTER_BRIDGE_URL` + `ELSTER_BRIDGE_TOKEN` — ohne konfigurierte Bridge
+bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
+
+- Endpunkte: Health-Check, Validierung (Stufe 1), generische Abfrage +
+  strukturierte Kontoabfrage inkl. Sollstellungen (Stufe 2)
+- Datenteil, TransferHeader und Hersteller-ID entstehen ausschließlich
+  in der Bridge — das Monorepo enthält kein ERiC-Spezifikationswissen
+  (CI-Guard `scripts/check-no-eric-spec.sh`)
+- Fail-safe: Testmerker als Default, Echtübermittlung nur mit explizitem
+  `echtfall: true`; Zertifikats-PIN pro Aufruf, nicht persistiert
+- Noch offen: Worker-Jobs + Staff-UI, Versand-Datenarten (UStVA zuerst)
+- Architektur + Lizenzpflichten: `docs/development/eric-integration.md`
+
 ## Benutzer-Verwaltung (ADMIN/PARTNER)
 
 - Anlegen mit Initial-Passwort (TOTP wird beim ersten Login eingerichtet)
@@ -958,6 +1033,10 @@ Kanzlei nicht.
   deaktivierbar)
 - Übersicht: Name, E-Mail, Rollen, 2FA-Status, letzter Login
 - Tätigkeitsbereich-Zuordnung pro Mitarbeiter (Tags-Icon-Popover)
+- **Granulare Einzelrechte je Mitarbeiter** (jenseits der Rollen):
+  Rechnungen anlegen/bearbeiten, Rechnungen versenden, Urlaub
+  entscheiden; ADMIN/PARTNER haben implizit alle Rechte, Vergabe/Entzug
+  ist Admin-only und wird als `staff.permissions.update` auditiert
 
 ## Tätigkeitsbereiche / Skills
 
@@ -983,8 +1062,17 @@ Kanzlei nicht.
   Datenschutzerklärung-URL; werden im Footer der Login-Seiten (Staff +
   Portal) verlinkt (Pflicht nach Telemediengesetz / DSGVO); in
   angemeldeten Sitzungen bewusst nicht prominent angezeigt
-- Modul-Aktivierung pro Tenant (BWA / Wissen / Zeiterfassung /
-  Telefonzettel / Steuertermine + Bescheide / Subsumtion-TCMS)
+- Modul-Aktivierung pro Tenant — 15 Boolean-Module: BWA, Wissensdatenbank,
+  Zeiterfassung, Telefonzettel, Steuertermine + Bescheide (`taxNotices`),
+  Workflows, Formulare, Wiedervorlagen, Pendelordner, Anlieferungen,
+  Termine (`appointments`), RSS-Reader sowie als Opt-in Inbound-Mail
+  (n8n-Mailstrecke), Subsumtion/TCMS (`risk`) und Signal-Engine
+- **Portal-Feature-Flags** (granular, unabhängig von den Modul-Toggles):
+  Terminanfragen, BWA-Ansicht, BWA-Planung, Dokument-Upload,
+  Stammdaten-Self-Service, Anlieferungs-Status
+- **Inbetriebnahme-Checkliste** — prüft Kanzlei-Kontaktdaten,
+  Modul-/Rechnungsmodus-Entscheidung und ersten GwG-aktiven Mandanten;
+  begleitendes Anwenderdoku-Kapitel „Erste Schritte"
 - **Zugriffsmodell** (`OPEN` / `RESTRICTED`) — `OPEN` (Default): jeder aktive
   Mitarbeiter darf mandantenübergreifend arbeiten (Audit-Log trägt die
   Nachvollziehbarkeit); `RESTRICTED`: nur Admin/Partner + zugeordnete
@@ -1049,7 +1137,7 @@ Kanzlei nicht.
 - Pro Request: Prisma-Middleware setzt `app.current_tenant_id` /
   `app.current_actor_id` / `app.current_actor_type` via `SET LOCAL`
 - Doppelte Verteidigung: App-Filter + RLS-Policy + DB-Trigger
-- BullMQ-Worker für Hintergrund-Jobs (14 Workers):
+- BullMQ-Worker für Hintergrund-Jobs (16 Workers):
   `evidence-seal`, `gwg-expiry-check`,
   `invoice-overdue-check`, `audit-verify-check`,
   `tax-deadline-materialize`, `audit-rotate`, `tax-news-fetch`
@@ -1058,7 +1146,9 @@ Kanzlei nicht.
   Einspruchsfristen, fällige Wiedervorlagen, überfällige Pendelordner),
   `n8n-deliver` + `n8n-outbox-reconcile` (HMAC-signierter Outbox-Versand),
   `magic-link-cleanup`, `dsgvo-retention`, `poa-expiry-check`,
-  `risk-analyse-llm` (on-demand LLM-Vertiefung der Subsumtion).
+  `risk-analyse-llm` (on-demand LLM-Vertiefung der Subsumtion),
+  `backup-drill` (monatlicher Restore-Test mit Chain-Verifikation),
+  `health-alert` (5-Minuten-Infrastruktur-Health mit Ops-Mail).
   Ein asynchroner Virus-Scan-Job existiert bewusst nicht — Scans laufen
   ausschließlich synchron beim Upload-Commit in `@taxtronik/storage`.
   Die Worker-Jobs haben eigene Unit-Tests
@@ -1079,7 +1169,9 @@ Kanzlei nicht.
   `@taxtronik/rss` (Parser + Streaming-Body-Cap),
   `@taxtronik/n8n-shared` (Event-Whitelist + HMAC-Sign mit Replay-Nonce),
   `@taxtronik/risk-layer` (zustandsloser §4-Engine-Client: Schema/Mapping/
-  Resilienz mit Circuit-Breaker, reiner Transport)
+  Resilienz mit Circuit-Breaker, reiner Transport),
+  `@taxtronik/elster` (typisierter Client zur privaten eric-bridge,
+  Feature-Flag-gated — siehe „ELSTER-Anbindung")
 - **Forgejo-Actions-CI** (`.forgejo/workflows/`, self-hosted Runner): `ci.yml`
   (Quality: Lint/Typecheck/Unit · DB: Migrationen/RLS/Drift/verify:chain mit
   Postgres-Service   · Browser-E2E via Playwright (volle Suite: Smoke, Auth, Search, Rate-Limit)), `security.yml` (pnpm-audit +

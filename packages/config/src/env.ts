@@ -128,6 +128,15 @@ const envSchema = z.object({
   RISK_LAYER_URL: z.preprocess((v) => v === '' ? undefined : v, z.string().url().optional()),
   RISK_LAYER_TOKEN: z.preprocess((v) => v === '' ? undefined : v, Secret32.optional()),
 
+  // --- ELSTER-Bridge (eric-bridge, privater Dienst) ---------------------------
+  // Netzinterner HTTP-Dienst, der die native ERiC-Bibliothek kapselt (eigener
+  // Debian-Container; Repo taxtronik-eric-bridge). Beide Werte optional:
+  // ohne Deployment bleibt das ELSTER-Modul inaktiv (elsterConfig === null →
+  // der Client wirft ElsterNotConfiguredError). Die Hersteller-ID ist KEIN
+  // App-ENV — sie ist ausschließlich Konfiguration der Bridge selbst.
+  ELSTER_BRIDGE_URL: z.preprocess((v) => v === '' ? undefined : v, z.string().url().optional()),
+  ELSTER_BRIDGE_TOKEN: z.preprocess((v) => v === '' ? undefined : v, z.string().min(16).optional()),
+
   // --- RFC-3161-Zeitstempel -------------------------------------------------
   // Deploy-Default: GlobalSign. Leer ist nur fuer Dev/Test als lokaler
   // Self-Timestamp gedacht; Settings blockieren Self-Timestamp in Production.
@@ -326,6 +335,18 @@ export const portalBaseUrl: string = (
 export const riskLayerConfig: { url: string; token: string } | null =
   env.RISK_LAYER_URL && env.RISK_LAYER_TOKEN
     ? { url: env.RISK_LAYER_URL.replace(/\/$/, ''), token: env.RISK_LAYER_TOKEN }
+    : null;
+
+/**
+ * Konfiguration der ELSTER-Bridge (eric-bridge) oder `null`, wenn nicht
+ * deployt. Gleiches Muster wie `riskLayerConfig`: `null` ist ein gültiger
+ * Zustand — ohne Bridge bleibt das ELSTER-Modul unsichtbar. Der
+ * `@taxtronik/elster`-Client wirft bei `null` eine klare
+ * `ElsterNotConfiguredError`. Trailing-Slash wird entfernt.
+ */
+export const elsterConfig: { url: string; token: string } | null =
+  env.ELSTER_BRIDGE_URL && env.ELSTER_BRIDGE_TOKEN
+    ? { url: env.ELSTER_BRIDGE_URL.replace(/\/$/, ''), token: env.ELSTER_BRIDGE_TOKEN }
     : null;
 
 /**
