@@ -197,7 +197,6 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
     // erzeugen. Sonst ist der Upload-Vorgang (GoBD §147 AO) fehlgeschlagen.
     await page.goto(scopedDocumentsUrl);
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
     await expect(
       page.getByText(complianceDocumentTitle).first(),
       'Hochgeladenes Dokument muss nach Upload in der Dokumentenliste stehen',
@@ -212,8 +211,7 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
 
     await openMustermannDocuments(page);
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(3000);
-    expect(page.url()).not.toContain('/staff/login');
+    await expect(page).not.toHaveURL(/\/staff\/login/);
 
     // Konkreten Titel aus Test 1.1 auf der Seite wiederfinden.
     // Falls der Upload in 1.1 fehlgeschlagen ist, ist das hier rot.
@@ -230,8 +228,7 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
 
     await openMustermannDocuments(page);
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(1000);
-    expect(page.url()).not.toContain('/staff/login');
+    await expect(page).not.toHaveURL(/\/staff\/login/);
 
     const downloadLink = page.locator(`a[href="/api/staff/documents/${complianceDocumentId}/download"]`).first();
     await expect(downloadLink, 'Das gerade hochgeladene Dokument muss vor dem Soft-Delete sichtbar sein').toBeVisible({ timeout: 8000 });
@@ -249,8 +246,7 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
       await page.waitForTimeout(2000);
     } else {
       await page.goto('/staff/documents?deleted=1');
-      await page.waitForTimeout(3000);
-      expect(page.url()).not.toContain('/staff/login');
+      await expect(page).not.toHaveURL(/\/staff\/login/);
 
       // FIX 2: Auch im Deleted-View muss eine konkrete Aussage treffen — die
       // Seite lädt entweder den Papierkorb oder eine Leer-Meldung, nicht "body".
@@ -425,14 +421,12 @@ test.describe.serial('GwG §10-12 — Geldwäschegesetz-Compliance', () => {
 
     await page.goto('/staff/clients');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(3000);
-    expect(page.url()).not.toContain('/staff/login');
+    await expect(page).not.toHaveURL(/\/staff\/login/);
 
     const clientLink = page.getByRole('link', { name: /Mustermann/ }).first();
     await expect(clientLink).toBeVisible({ timeout: 8000 });
     await clientLink.click();
-    await page.waitForTimeout(3000);
-    expect(page.url()).toContain('/staff/clients/');
+    await expect(page).toHaveURL(/\/staff\/clients\//);
 
     const statusBadge = page.locator('.badge-green, .badge-yellow').first();
     const badgeVisible = await statusBadge.isVisible({ timeout: 5000 }).catch(() => false);
@@ -794,8 +788,7 @@ test.describe.serial('Tenant Isolation — §203 StGB Mandantentrennung', () => 
 
     await page.goto('/staff/clients');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(3000);
-    expect(page.url()).not.toContain('/staff/login');
+    await expect(page).not.toHaveURL(/\/staff\/login/);
 
     await expect(page.getByText('Mustermann GmbH').first()).toBeVisible({ timeout: 8000 });
     // FIX 3: Fremd-Mandant aus Tenant B darf in Tenant As Liste NICHT auftauchen.
@@ -978,12 +971,10 @@ test.describe('Session & Cookie Security', () => {
 
   test('6.3 Protected routes redirect to login when session expires', async ({ page }) => {
     await page.goto('/staff/dashboard');
-    await page.waitForTimeout(2000);
-    expect(page.url()).toContain('/staff/login');
+    await expect(page).toHaveURL(/\/staff\/login/);
 
     await page.goto('/staff/clients');
-    await page.waitForTimeout(2000);
-    expect(page.url()).toContain('/staff/login');
+    await expect(page).toHaveURL(/\/staff\/login/);
   });
 });
 
@@ -1002,8 +993,7 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
 
     await page.goto('/staff/invoices/new');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(3000);
-    expect(page.url()).not.toContain('/staff/login');
+    await expect(page).not.toHaveURL(/\/staff\/login/);
 
     const heading = page.getByText(/Rechnung|Neue Rechnung/i).first();
     const headingVisible = await heading.isVisible({ timeout: 5000 }).catch(() => false);
@@ -1144,8 +1134,7 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
 
     await page.goto('/staff/invoices');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(3000);
-    expect(page.url()).not.toContain('/staff/login');
+    await expect(page).not.toHaveURL(/\/staff\/login/);
 
     const tableRows = page.locator('table tbody tr');
     const count = await tableRows.count().catch(() => 0);
@@ -1220,8 +1209,7 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
 
     await page.goto('/staff/invoices');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(3000);
-    expect(page.url()).not.toContain('/staff/login');
+    await expect(page).not.toHaveURL(/\/staff\/login/);
 
     if (complianceInvoiceHref) {
       await page.goto(complianceInvoiceHref);
@@ -1384,8 +1372,7 @@ test.describe.serial('Input Validation — XSS/SQL Injection', () => {
 
     await page.goto('/staff/clients');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
-    expect(page.url()).not.toContain('/staff/login');
+    await expect(page).not.toHaveURL(/\/staff\/login/);
 
     const searchInput = page.getByPlaceholder(/Mandanten|Suche|Suchen/i).first();
     await expect(searchInput).toBeVisible({ timeout: 5000 });
@@ -1424,8 +1411,7 @@ test.describe.serial('Input Validation — XSS/SQL Injection', () => {
 
     await page.goto('/staff/clients');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
-    expect(page.url()).not.toContain('/staff/login');
+    await expect(page).not.toHaveURL(/\/staff\/login/);
 
     const searchInput = page.getByPlaceholder(/Mandanten|Suche|Suchen/i).first();
     await expect(searchInput).toBeVisible({ timeout: 5000 });
@@ -1455,8 +1441,7 @@ test.describe.serial('Input Validation — XSS/SQL Injection', () => {
 
     await page.goto('/staff/clients');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
-    expect(page.url()).not.toContain('/staff/login');
+    await expect(page).not.toHaveURL(/\/staff\/login/);
 
     const searchInput = page.getByPlaceholder(/Mandanten|Suche|Suchen/i).first();
     await expect(searchInput).toBeVisible({ timeout: 5000 });
@@ -1609,12 +1594,10 @@ test.describe('Authorization & RBAC', () => {
     const page = await ctx.newPage();
 
     await page.goto('/staff/admin/audit');
-    await page.waitForTimeout(2000);
-    expect(page.url()).toContain('/staff/login');
+    await expect(page).toHaveURL(/\/staff\/login/);
 
     await page.goto('/staff/admin/dsgvo');
-    await page.waitForTimeout(2000);
-    expect(page.url()).toContain('/staff/login');
+    await expect(page).toHaveURL(/\/staff\/login/);
 
     await ctx.close();
   });

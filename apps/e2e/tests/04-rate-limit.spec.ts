@@ -17,8 +17,16 @@ test.describe('Rate-Limit', () => {
     for (let i = 0; i < 5; i++) {
       await page.goto('/portal/login', { waitUntil: 'domcontentloaded' });
       await page.getByLabel('E-Mail-Adresse').fill(TARGET_EMAIL);
+      // Deterministisch statt fixem Sleep: auf die POST-Antwort der Server-Action
+      // warten — sie beweist, dass die Anfrage serverseitig verarbeitet (der
+      // Rate-Limit-Zähler erhöht) wurde, bevor die nächste Runde startet.
+      // Wortunabhängig (Anti-Enumeration liefert eine generische Antwort).
+      const respPromise = page.waitForResponse(
+        (r) => r.url().includes('/portal/login') && r.request().method() === 'POST',
+        { timeout: 15_000 },
+      );
       await page.getByRole('button', { name: /Login-Link anfordern/i }).click();
-      await page.waitForTimeout(200);
+      await respPromise;
     }
 
     // 6th request MUST trigger rate limiting
