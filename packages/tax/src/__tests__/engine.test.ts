@@ -387,6 +387,59 @@ describe('generateDeadlines — beratene Erklärungsfrist (§ 149 (3) AO)', () =
   });
 });
 
+describe('generateDeadlines — EGAO-Übergangsfristen (Art. 97 § 36 Abs. 3 EGAO)', () => {
+  it('VZ 2023 beraten → 31.05.2025 (Sa) → Mo 02.06.2025 (nicht Ende Februar 2025)', () => {
+    const from = new Date(Date.UTC(2025, 0, 1));
+    const to = new Date(Date.UTC(2025, 11, 31));
+    const out = generateDeadlines('EST_ERKLAERUNG', from, to, false, null, true);
+    const hit = out.find((d) => d.period === '2023');
+    expect(hit).toBeDefined();
+    expect(ymd(hit!.dueDate)).toBe('2025-06-02');
+  });
+
+  it('VZ 2024 beraten → 30.04.2026 (Do, Werktag — letzte EGAO-Verlängerung)', () => {
+    const from = new Date(Date.UTC(2026, 0, 1));
+    const to = new Date(Date.UTC(2026, 11, 31));
+    const out = generateDeadlines('KST_ERKLAERUNG', from, to, false, null, true);
+    const hit = out.find((d) => d.period === '2024');
+    expect(hit).toBeDefined();
+    expect(ymd(hit!.dueDate)).toBe('2026-04-30');
+  });
+
+  it('VZ 2023 nicht beraten → 31.08.2024 (Sa) → Mo 02.09.2024', () => {
+    const from = new Date(Date.UTC(2024, 0, 1));
+    const to = new Date(Date.UTC(2024, 11, 31));
+    const out = generateDeadlines('EST_ERKLAERUNG', from, to, false);
+    const hit = out.find((d) => d.period === '2023');
+    expect(hit).toBeDefined();
+    expect(ymd(hit!.dueDate)).toBe('2024-09-02');
+  });
+
+  it('VZ 2020 nicht beraten → 31.10.2021 (So): bundesweit Mo 01.11., in Bayern (Allerheiligen) Di 02.11.2021', () => {
+    const from = new Date(Date.UTC(2021, 0, 1));
+    const to = new Date(Date.UTC(2021, 11, 31));
+    const bund = generateDeadlines('EST_ERKLAERUNG', from, to, false);
+    expect(ymd(bund.find((d) => d.period === '2020')!.dueDate)).toBe('2021-11-01');
+    const by = generateDeadlines('EST_ERKLAERUNG', from, to, false, 'DE-BY');
+    expect(ymd(by.find((d) => d.period === '2020')!.dueDate)).toBe('2021-11-02');
+  });
+
+  it('VZ 2024 nicht beraten → Regelfrist 31.07.2025 (EGAO endet nicht beraten mit VZ 2023)', () => {
+    const from = new Date(Date.UTC(2025, 0, 1));
+    const to = new Date(Date.UTC(2025, 11, 31));
+    const out = generateDeadlines('EST_ERKLAERUNG', from, to, false);
+    expect(ymd(out.find((d) => d.period === '2024')!.dueDate)).toBe('2025-07-31');
+  });
+
+  it('VZ 2025 beraten → Regelfrist § 149 (3) AO (EGAO endet beraten mit VZ 2024)', () => {
+    const from = new Date(Date.UTC(2027, 0, 1));
+    const to = new Date(Date.UTC(2027, 11, 31));
+    const out = generateDeadlines('USTA_JAEHRLICH', from, to, false, null, true);
+    // 28.02.2027 (So) → Mo 01.03.2027
+    expect(ymd(out.find((d) => d.period === '2025')!.dueDate)).toBe('2027-03-01');
+  });
+});
+
 describe('endOfDueDay / startOfUtcDay — § 108 (1) AO Tagesgrenzen', () => {
   it('endOfDueDay liefert 23:59:59.999 UTC des Fälligkeitstags', () => {
     const r = endOfDueDay(new Date(Date.UTC(2026, 2, 10)));

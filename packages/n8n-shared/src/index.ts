@@ -15,8 +15,13 @@ import { createHmac, randomBytes } from 'node:crypto';
 /**
  * System-Events, die die App aktiv an n8n schickt. Workflow-Step-Events
  * (`workflow.step.<suffix>`) sind separat über WORKFLOW_STEP_RE typisiert.
+ *
+ * EINZIGE Quelle: aus dieser Tupel-Konstante werden sowohl die Runtime-
+ * Whitelist als auch der TS-Union-Typ `StaticN8nEventName` abgeleitet. So
+ * kann ein typisiertes Emit nie an einer fehlenden Whitelist-Zeile scheitern
+ * (die Drift-Klasse aus Round 12 bzw. dem appointment.responded-Befund).
  */
-export const STATIC_EVENT_WHITELIST = new Set<string>([
+export const STATIC_EVENT_NAMES = [
   'client.created',
   'client.handover.ready',
   'document.uploaded',
@@ -24,13 +29,21 @@ export const STATIC_EVENT_WHITELIST = new Set<string>([
   'request.responded',
   'request.closed',
   'phone_note.created',
+  // Termin-Bestätigung/-Ablehnung (calendar/actions.ts). Payload trägt
+  // kind: 'appointment-accepted' | 'appointment-rejected'.
+  'appointment.responded',
   'gwg.expired',
   'invoice.due',
   'staff.locked',
+  // Urlaubsantrag — nicht als staff.locked emittieren (anderer Alarm).
   'staff.vacation_requested',
   'risk.research_requested',
   'taxtronik.ping',
-]);
+] as const;
+
+export type StaticN8nEventName = (typeof STATIC_EVENT_NAMES)[number];
+
+export const STATIC_EVENT_WHITELIST = new Set<string>(STATIC_EVENT_NAMES);
 
 /**
  * Workflow-Step-Suffix: lowercase + Ziffern + `_-`, kein Punkt (L-7).

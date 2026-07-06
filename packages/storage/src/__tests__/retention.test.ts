@@ -17,6 +17,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   gobdRetentionUntil,
+  gobdRetentionUntilFor,
+  gobdRetentionYears,
   gwgRetentionUntil,
   retentionForTier,
   lockModeForTier,
@@ -31,6 +33,29 @@ function gobdLegalDeadline(docDate: Date): Date {
   // 10 volle Jahre nach dem Jahresende.
   return new Date(endOfCreationYear + 10 * 365 * 24 * 60 * 60 * 1000);
 }
+
+describe('gobdRetentionUntilFor — BEG IV, belegart-abhängig (8 J. Rechnungen)', () => {
+  it('GOBD_INVOICE → 8 Jahre (§ 147 Abs. 3 AO n.F. / § 14b UStG n.F.)', () => {
+    expect(gobdRetentionYears('GOBD_INVOICE')).toBe(8);
+    // Beleg 2026 → Jahresende 2026 + 8 J. + 1 Tag = 2035-01-01.
+    expect(gobdRetentionUntilFor('GOBD_INVOICE', new Date(Date.UTC(2026, 2, 15))).toISOString())
+      .toBe('2035-01-01T00:00:00.000Z');
+  });
+
+  it('Bücher/Abschlüsse/Verträge bleiben bei 10 Jahren', () => {
+    expect(gobdRetentionYears('GOBD_TAX')).toBe(10);
+    expect(gobdRetentionYears('GOBD_CONTRACT')).toBe(10);
+    expect(gobdRetentionUntilFor('GOBD_TAX', new Date(Date.UTC(2026, 2, 15))).toISOString())
+      .toBe('2037-01-01T00:00:00.000Z');
+  });
+
+  it('ohne/unbekannte Klassifikation → 10 Jahre (konservativer Default)', () => {
+    expect(gobdRetentionYears()).toBe(10);
+    expect(gobdRetentionYears('SONSTIGE')).toBe(10);
+    expect(gobdRetentionUntilFor(undefined, new Date(Date.UTC(2026, 2, 15))).getTime())
+      .toBe(gobdRetentionUntil(new Date(Date.UTC(2026, 2, 15))).getTime());
+  });
+});
 
 describe('gobdRetentionUntil — § 147 AO, 10 Jahre ab Jahresende', () => {
   it('Beleg vom 2026-03-15 → Retain-Until 2037-01-01', () => {

@@ -15,7 +15,6 @@
 import { requireRiskLayerConfig, type RiskLayerConfig } from './config';
 import { mapAnalyse, type RiskAnalysisResult } from './mapping';
 import {
-  AnalyseResponseSchema,
   HealthResponseSchema,
   KatalogDefiniereResponseSchema,
   KatalogKuratiereResponseSchema,
@@ -148,8 +147,8 @@ export class RiskLayerClient {
       timeoutMs: mitLLM ? LLM_TIMEOUT_MS : FAST_TIMEOUT_MS,
       retry: mitLLM ? NO_RETRY : FAST_RETRY,
     });
-    // Vollständige Validierung + Mapping (mapAnalyse parst das Envelope selbst).
-    AnalyseResponseSchema.parse(raw);
+    // mapAnalyse validiert das Envelope vollständig (AnalyseResponseSchema)
+    // selbst — kein separater Vorab-parse (doppelte Validierungslast).
     return mapAnalyse(raw);
   }
 

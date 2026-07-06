@@ -405,6 +405,16 @@ model Invoice {
   // iter86: NULL bei Mischsätzen (Satz lebt an den Positionen); bei
   // einheitlichem Satz redundant gesetzt (Anzeige/CSV, Bestandsdaten).
   vatRate        Decimal?          @map("vat_rate") @db.Decimal(5, 2)
+  // iter98: Leistungszeitraum (§ 14 Abs. 4 Nr. 6 UStG, § 31 Abs. 4 UStDV —
+  // Monat genügt). NULL = kein separater Zeitraum → der Empfänger-Vorsteuer-
+  // abzug knüpft dann an das Rechnungsdatum. In XRechnung als BG-14
+  // (BT-73/BT-74), im ZUGFeRD-PDF als Klartext ausgewiesen.
+  servicePeriodStart DateTime?     @map("service_period_start") @db.Date
+  servicePeriodEnd   DateTime?     @map("service_period_end") @db.Date
+  // iter101: Befreiungsgrund für 0 %-Umsätze (§ 14 Abs. 4 Nr. 8 UStG; z. B.
+  // „§ 19 UStG Kleinunternehmer", „steuerfrei nach § 4 Nr. …"). NULL = kein
+  // 0 %-Umsatz. In XRechnung als BT-120 (Kategorie „E") ausgewiesen.
+  vatExemptionReason String?       @map("vat_exemption_reason")
   notes          String?
   sentAt         DateTime?         @map("sent_at")
   paidAt         DateTime?         @map("paid_at")
@@ -413,6 +423,11 @@ model Invoice {
   createdAt      DateTime          @default(now()) @map("created_at")
   updatedAt      DateTime          @updatedAt @map("updated_at")
   categoryId     String?           @map("category_id") @db.Uuid
+  // iter100: Storno-Verkettung. stornoOfId zeigt von der Stornorechnung
+  // (TypeCode 381, negierte Beträge) auf die stornierte Originalrechnung.
+  stornoOfId     String?           @map("storno_of_id") @db.Uuid
+  stornoOf       Invoice?          @relation("InvoiceStorno", fields: [stornoOfId], references: [id], onUpdate: NoAction, onDelete: NoAction)
+  stornoBy       Invoice[]         @relation("InvoiceStorno")
   category       InvoiceCategory?  @relation(fields: [categoryId], references: [id], onUpdate: NoAction)
   client         Client            @relation(fields: [clientId], references: [id])
   document       Document?         @relation(fields: [documentId], references: [id])
@@ -1550,6 +1565,10 @@ model TaxNotice {
   appealFiledAt    DateTime?       @map("appeal_filed_at")
   appealReason     String?         @map("appeal_reason")
   appealResolvedAt DateTime?       @map("appeal_resolved_at")
+  /// Klagefrist zum FG (§ 47 Abs. 1 FGO, 1 Monat ab Bekanntgabe der
+  /// Einspruchsentscheidung). Gesetzt beim Übergang nach ZURUECKGEWIESEN/
+  /// TEILABHILFE; wird im Fristenkontrollbuch überwacht.
+  klageDeadline    DateTime?       @map("klage_deadline") @db.Date
   documentId       String?         @map("document_id") @db.Uuid
   deadlineId       String?         @map("deadline_id") @db.Uuid
   createdByStaff   String          @map("created_by_staff") @db.Uuid
@@ -2530,7 +2549,9 @@ enum TaxNoticeStatus {
   GEPRUEFT
   EINSPRUCH
   ABGEHOLFEN
+  TEILABHILFE
   ZURUECKGEWIESEN
+  KLAGE
   RECHTSKRAEFTIG
 
   @@map("tax_notice_status")

@@ -21,7 +21,14 @@
 // =============================================================================
 
 import { describe, it, expect } from 'vitest';
-import { generateDeadlines, germanHolidays, shiftToNextWorkday, appealDeadline, type GermanRegion } from '../index';
+import {
+  generateDeadlines,
+  germanHolidays,
+  shiftToNextWorkday,
+  appealDeadline,
+  bekanntgabeFiktionTage,
+  type GermanRegion,
+} from '../index';
 
 function ymd(d: Date): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
@@ -244,5 +251,19 @@ describe('Einspruchsfrist § 355 AO + § 122 (2) AO', () => {
     // Tatsächlich erst Sa 11.07.2026 zugegangen (Faktum, keine Verschiebung)
     // → +1 Monat = 11.08.2026 (Di) = Fristende.
     expect(ymd(appealDeadline(utc('2026-07-01'), null, utc('2026-07-11')))).toBe('2026-08-11');
+  });
+
+  // Art. 97 § 1 Abs. 16 EGAO: Die Vier-Tages-Fiktion des PostModG gilt erst
+  // für Verwaltungsakte, die ab dem 01.01.2025 zur Post gegeben wurden.
+  it('Alt-Bescheid (Aufgabe bis 31.12.2024): DREI-Tages-Fiktion (§ 122 (2) AO a.F.)', () => {
+    // Bescheid 10.12.2024 (Di): +3 = 13.12.2024 (Fr, Werktag) → Bekanntgabe.
+    // +1 Monat = 13.01.2025 (Mo) = Fristende. Mit (falscher) 4-Tage-Fiktion
+    // wäre der 14.12. (Sa) → Mo 16.12. → Fristende 16.01.2025 — drei Tage zu spät.
+    expect(ymd(appealDeadline(utc('2024-12-10')))).toBe('2025-01-13');
+  });
+
+  it('bekanntgabeFiktionTage — Stichtagsgrenze 01.01.2025', () => {
+    expect(bekanntgabeFiktionTage(utc('2024-12-31'))).toBe(3);
+    expect(bekanntgabeFiktionTage(utc('2025-01-01'))).toBe(4);
   });
 });

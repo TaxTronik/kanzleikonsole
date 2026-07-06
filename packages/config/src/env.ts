@@ -99,6 +99,9 @@ const envSchema = z.object({
   S3_BUCKET_GWG: z.string().default('gwg'),
   S3_BUCKET_GENERAL: z.string().default('general'),
   S3_BUCKET_STAFF_PRIVATE: z.string().default('staff-private'),
+  // Backup-Bucket (server/backup, storage/deploy-readiness) — vorher roh aus
+  // process.env gelesen, jetzt schema-validiert.
+  S3_BUCKET_BACKUPS: z.string().default('backups'),
 
   // --- ClamAV ---------------------------------------------------------------
   CLAMAV_HOST: z.string().default('localhost'),
@@ -155,6 +158,15 @@ const envSchema = z.object({
   // --- Lizenzschlüssel ------------------------------------------------------
   LICENSE_KEY: z.string().optional(),
   LICENSE_PUBLIC_KEY: z.string().optional(),
+
+  // --- Update-Check (server/update/manifest) --------------------------------
+  // Ohne diese Werte meldet die App „Update-Check nicht konfiguriert". Vorher
+  // roh aus process.env gelesen — jetzt schema-validiert (optional).
+  UPDATE_MANIFEST_URL: z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional()),
+  UPDATE_PUBLIC_KEY: z.string().optional(),
+
+  // --- Logging --------------------------------------------------------------
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 
   // --- Dev-Only: TOTP-Bypass ------------------------------------------------
   // DEV_SKIP_TOTP umgeht die TOTP-Pflicht für Staff-Logins (nur mit Passwort

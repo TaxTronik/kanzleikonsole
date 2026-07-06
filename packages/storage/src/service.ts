@@ -35,6 +35,34 @@ export function gobdRetentionUntil(now: Date = new Date()): Date {
 }
 
 /**
+ * BEG IV (Viertes Bürokratieentlastungsgesetz, seit 01.01.2025): die
+ * Aufbewahrungsfrist für BUCHUNGSBELEGE (§ 147 Abs. 3 AO n.F.) und RECHNUNGEN
+ * (§ 14b Abs. 1 UStG n.F.) wurde von 10 auf 8 Jahre verkürzt. Bücher,
+ * Abschlüsse und die übrigen buchungsrelevanten Unterlagen bleiben bei 10.
+ * Object-Lock ist COMPLIANCE (irreversibel) → eine pauschale 10-Jahres-Frist
+ * für Rechnungen wäre Über-Aufbewahrung personenbezogener Daten ohne
+ * Rechtsgrundlage (Art. 5 Abs. 1 lit. e DSGVO).
+ */
+const GOBD_RETENTION_YEARS_BY_CLASSIFICATION: Record<string, number> = {
+  GOBD_INVOICE: 8, // Rechnung/Buchungsbeleg — BEG IV
+  GOBD_CONTRACT: 10,
+  GOBD_TAX: 10,
+};
+
+export function gobdRetentionYears(classification?: string): number {
+  if (classification && classification in GOBD_RETENTION_YEARS_BY_CLASSIFICATION) {
+    return GOBD_RETENTION_YEARS_BY_CLASSIFICATION[classification]!;
+  }
+  return 10;
+}
+
+/** Wie gobdRetentionUntil, aber belegart-abhängig (8 J. für Rechnungen). */
+export function gobdRetentionUntilFor(classification?: string, now: Date = new Date()): Date {
+  const startYear = now.getUTCFullYear();
+  return new Date(Date.UTC(startYear + gobdRetentionYears(classification) + 1, 0, 1, 0, 0, 0, 0));
+}
+
+/**
  * B-1: § 8 Abs. 4 GwG schreibt 5 Jahre Aufbewahrung vor — und satz 4 verlangt
  * EXPLIZIT „unverzügliche Vernichtung" nach Ablauf. Längere Aufbewahrung ist
  * nicht zulässig (DSGVO Art. 5 Abs. 1 lit. e + GwG-Höchstfrist).
@@ -407,6 +435,7 @@ async function scanHashAndUpload(
   tier: ProtectionTier,
   tenantId: string,
   skipScan = false,
+  classification?: string,
 ): Promise<CommitDocumentResult> {
   if (!skipScan) {
     const scanResult = await scanWithClamAV(fileData);
@@ -431,7 +460,10 @@ async function scanHashAndUpload(
   const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
   const randomId = crypto.randomUUID();
   const targetKey = `tenants/${tenantId}/${tier.toLowerCase()}/${yyyy}/${mm}/${randomId}.bin`;
-  const retentionUntil = retentionForTier(tier);
+  // GOBD: belegart-abhängige Frist (8 J. Rechnungen, sonst 10 — BEG IV). Ohne
+  // classification bleibt es bei 10 (Verhalten wie bisher). GWG/NONE: tier-Default.
+  const retentionUntil =
+    tier === 'GOBD' ? gobdRetentionUntilFor(classification, now) : retentionForTier(tier);
   const locked = tier !== 'NONE';
 
   await s3.send(
@@ -477,12 +509,15 @@ export async function commitBytesWithTier(input: {
    *  (kein Nutzer-Upload). Vermeidet unnötige TCP-Roundtrips und mögliche
    *  Hänger beim Scan der eigenen PDF (z. B. ZUGFeRD-Archiv). */
   skipScan?: boolean;
+  /** GOBD-Belegart für die belegart-abhängige Aufbewahrungsfrist (BEG IV:
+   *  Rechnungen 8 J.). Ohne Angabe gilt bei GOBD die 10-Jahres-Frist. */
+  classification?: string;
 }): Promise<CommitDocumentResult> {
-  const { fileData, tier, tenantId, skipScan } = input;
+  const { fileData, tier, tenantId, skipScan, classification } = input;
   if (fileData.length > MAX_UPLOAD_BYTES) {
     throw new Error(`TOO_LARGE: Datei überschreitet das Limit von ${MAX_UPLOAD_BYTES} Bytes.`);
   }
-  return scanHashAndUpload(fileData, tier, tenantId, skipScan);
+  return scanHashAndUpload(fileData, tier, tenantId, skipScan, classification);
 }
 
 /**
@@ -500,5 +535,6 @@ export async function commitDocumentFromBytes(input: {
     fileData,
     tier: classificationToTier(classification),
     tenantId,
+    classification,
   });
 }

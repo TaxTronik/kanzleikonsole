@@ -17,10 +17,12 @@
 //   - ESt/KSt/GewSt-Erklärung: gesetzlich 31.07. d. Folgejahres
 //   - Beratene Fälle (advised, § 149 (3) AO): Erklärung bis zum letzten Tag
 //     des Monats Februar des ZWEITEN Folgejahres
+//   - Übergangsrecht Art. 97 § 36 Abs. 3 EGAO (Corona): abweichende
+//     Erklärungsfristen für die VZ 2020–2024 (s. EGAO_ERKLAERUNG_*)
 //
 // Wenn Fälligkeit auf Sa/So/Feiertag fällt, verschiebt sich gem. § 108 (3) AO
-// auf den nächsten Werktag. Feiertagslogik: nur Bundesweite (NW-spezifische
-// Termine aus Vereinfachungsgründen ignoriert; verbessert sich später).
+// auf den nächsten Werktag. Feiertagslogik: bundeseinheitliche Feiertage
+// immer; mit gesetztem `region` zusätzlich die landesspezifischen.
 // =============================================================================
 
 import type { TaxScheduleKind } from '@prisma/client';
@@ -144,28 +146,62 @@ export function generateDeadlines(
     case 'EST_ERKLAERUNG':
     case 'KST_ERKLAERUNG':
     case 'GEWST_ERKLAERUNG':
-      // Gesetzliche Frist: 31.07. des Folgejahres (gilt für 2025+ wieder).
+      // Gesetzliche Frist: 31.07. des Folgejahres (gilt ab VZ 2024 wieder).
       // Beratene Fälle (§ 149 (3) AO): letzter Tag des Monats Februar des
       // ZWEITEN Folgejahres — Date.UTC(year, 2, 0) ist Schaltjahr-sicher
       // (Tag 0 im März = 28. oder 29. Februar).
+      // VZ 2020–2024: verlängerte Fristen nach Art. 97 § 36 Abs. 3 EGAO
+      // (Override-Tabellen unten; § 108 (3) AO wird danach normal angewandt).
       iterateYears(from, to, (year) => {
         // Der Termin gehört zum *Veranlagungsjahr* (Vorjahr, bei beratener
-        // Frist Vor-Vorjahr), fällt aber im "year" an.
-        const period = advised ? `${year - 2}` : `${year - 1}`;
-        const due = shiftToNextWorkday(
-          advised
+        // Frist Vor-Vorjahr), fällt aber im "year" an. Die EGAO-Fristen
+        // verlängern nur Monat/Tag, nie über die Jahresgrenze hinaus — die
+        // Jahr→Periode-Zuordnung bleibt deshalb auch für sie korrekt.
+        const periodYear = advised ? year - 2 : year - 1;
+        const egao = (advised ? EGAO_ERKLAERUNG_BERATEN : EGAO_ERKLAERUNG_NICHT_BERATEN)[periodYear];
+        const basis = egao
+          ? new Date(Date.UTC(year, egao[0], egao[1]))
+          : advised
             ? new Date(Date.UTC(year, 2, 0)) // letzter Februartag
-            : new Date(Date.UTC(year, 6, 31)), // 31.07.
-          region,
-        );
+            : new Date(Date.UTC(year, 6, 31)); // 31.07.
+        const due = shiftToNextWorkday(basis, region);
         if (due >= from && due <= to) {
-          out.push({ kind, period, dueDate: due });
+          out.push({ kind, period: `${periodYear}`, dueDate: due });
         }
       });
       break;
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// Art. 97 § 36 Abs. 3 EGAO — Corona-bedingt verlängerte Erklärungsfristen.
+//
+// Gesetzliche BASIS-Termine (vor § 108 (3)-Verschiebung) je Veranlagungs-
+// zeitraum, als [Monat 0-basiert, Tag] im Fälligkeitsjahr. Ab VZ 2024 (nicht
+// beraten) bzw. VZ 2025 (beraten) gelten wieder die Regelfristen des § 149 AO.
+// ---------------------------------------------------------------------------
+
+/** Nicht beratene Fälle: VZ → Basis-Termin. VZ 2020: 31.10.2021 (So, § 108 (3)
+ * → 01./02.11. je nach Land); VZ 2021: 31.10.2022; VZ 2022: 30.09.2023 (Sa →
+ * 02.10.2023); VZ 2023: 31.08.2024 (Sa → 02.09.2024). */
+const EGAO_ERKLAERUNG_NICHT_BERATEN: Record<number, [number, number]> = {
+  2020: [9, 31],
+  2021: [9, 31],
+  2022: [8, 30],
+  2023: [7, 31],
+};
+
+/** Beratene Fälle (§ 149 (3) AO): VZ 2020: 31.08.2022; VZ 2021: 31.08.2023;
+ * VZ 2022: 31.07.2024; VZ 2023: 31.05.2025 (Sa → 02.06.2025);
+ * VZ 2024: 30.04.2026. */
+const EGAO_ERKLAERUNG_BERATEN: Record<number, [number, number]> = {
+  2020: [7, 31],
+  2021: [7, 31],
+  2022: [6, 31],
+  2023: [4, 31],
+  2024: [3, 30],
+};
 
 // ---------------------------------------------------------------------------
 // Hilfsfunktionen
@@ -317,6 +353,16 @@ export function startOfUtcDay(d: Date): Date {
 export const BEKANNTGABE_FIKTION_TAGE = 4;
 
 /**
+ * Fiktionstage abhängig vom Bescheiddatum: Das Postrechtsmodernisierungs-
+ * gesetz gilt für Verwaltungsakte, die ab dem 01.01.2025 zur Post gegeben
+ * wurden (Art. 97 § 1 Abs. 16 EGAO). Für nacherfasste Alt-Bescheide
+ * (Aufgabe bis 31.12.2024) gilt weiterhin die Drei-Tages-Fiktion.
+ */
+export function bekanntgabeFiktionTage(noticeDate: Date): number {
+  return noticeDate.getTime() < Date.UTC(2025, 0, 1) ? 3 : BEKANNTGABE_FIKTION_TAGE;
+}
+
+/**
  * Berechnet die Einspruchsfrist eines Steuerbescheids aus dem Bescheiddatum
  * (Tag der Aufgabe zur Post, als UTC-Mitternacht).
  *
@@ -338,11 +384,12 @@ export function appealDeadline(
   region: GermanRegion | null = null,
   receivedAt: Date | null = null,
 ): Date {
-  // 1. Bekanntgabe: + Fiktionstage, dann Werktagsverschiebung.
+  // 1. Bekanntgabe: + Fiktionstage (datumsabhängig: 3 bis 2024, 4 ab 2025),
+  //    dann Werktagsverschiebung.
   const fiktion = new Date(Date.UTC(
     noticeDate.getUTCFullYear(),
     noticeDate.getUTCMonth(),
-    noticeDate.getUTCDate() + BEKANNTGABE_FIKTION_TAGE,
+    noticeDate.getUTCDate() + bekanntgabeFiktionTage(noticeDate),
   ));
   let bekanntgabe = shiftToNextWorkday(fiktion, region);
 

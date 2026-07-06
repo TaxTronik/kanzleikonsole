@@ -16,6 +16,7 @@ export {
   startOfUtcDay,
   appealDeadline,
   BEKANNTGABE_FIKTION_TAGE,
+  bekanntgabeFiktionTage,
   SCHEDULE_LABELS,
   REGION_LABELS,
   type GermanRegion,
