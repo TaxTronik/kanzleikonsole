@@ -34,6 +34,29 @@ export function isGwgDeletionDue(mandateEndedAt: Date | null | undefined, now: D
   return now.getTime() >= gwgDeletionDeadline(mandateEndedAt).getTime();
 }
 
+/**
+ * § 8 Abs. 4 S. 2 GwG: Der Fristbeginn ist das Ende der Geschäftsbeziehung.
+ * Kam KEINE Geschäftsbeziehung zustande (Onboarding abgelehnt/abgelaufen,
+ * Mandat nie aktiviert), beginnt die Frist mit dem Schluss des Kalenderjahres
+ * der FESTSTELLUNG (Erfassung der Identifizierungsdaten). Sonst würden abgelehnte
+ * Onboardings mit Ausweiskopien unbegrenzt gespeichert (DSGVO Art. 5 Abs. 1
+ * lit. e). Liefert das maßgebliche Startdatum oder null (Frist läuft noch nicht:
+ * aktives/offenes Mandat ohne Ende).
+ */
+export function gwgEffectiveStart(
+  mandateEndedAt: Date | null | undefined,
+  checkStatus: string,
+  feststellungAt: Date | null | undefined,
+): Date | null {
+  if (mandateEndedAt) return mandateEndedAt;
+  // Nur terminale Prüfungen ohne Mandat: eine offene (DRAFT/IN_REVIEW) oder
+  // verifizierte Prüfung kann noch zu einer Geschäftsbeziehung führen.
+  if ((checkStatus === 'REJECTED' || checkStatus === 'EXPIRED') && feststellungAt) {
+    return feststellungAt;
+  }
+  return null;
+}
+
 export interface GwgDeletionItem {
   documentId: string;
   clientId: string;
@@ -106,14 +129,25 @@ export interface GwgCheckDeletionItem {
 export async function findDueGwgCheckDeletions(tx: TxClient, now: Date = new Date()): Promise<GwgCheckDeletionItem[]> {
   const cutoff = new Date(Date.UTC(now.getUTCFullYear() - GWG_RETENTION_YEARS, 0, 1));
   const clients = await tx.client.findMany({
-    where: { mandateEndedAt: { lt: cutoff }, gwgChecks: { some: { destroyedAt: null } } },
+    where: {
+      gwgChecks: { some: { destroyedAt: null } },
+      OR: [
+        // Beendetes Mandat: Frist ab Mandatsende.
+        { mandateEndedAt: { lt: cutoff } },
+        // Nie zustande gekommen: terminale Prüfung, Frist ab Feststellung.
+        {
+          mandateEndedAt: null,
+          gwgChecks: { some: { destroyedAt: null, status: { in: ['REJECTED', 'EXPIRED'] }, createdAt: { lt: cutoff } } },
+        },
+      ],
+    },
     select: {
       id: true,
       name: true,
       mandateEndedAt: true,
       gwgChecks: {
         where: { destroyedAt: null },
-        select: { id: true, status: true },
+        select: { id: true, status: true, createdAt: true },
       },
       _count: {
         select: { documents: { where: { classification: 'GWG_EVIDENCE', deletedAt: null } } },
@@ -123,16 +157,16 @@ export async function findDueGwgCheckDeletions(tx: TxClient, now: Date = new Dat
 
   const out: GwgCheckDeletionItem[] = [];
   for (const c of clients) {
-    if (!c.mandateEndedAt || !isGwgDeletionDue(c.mandateEndedAt, now)) continue;
-    const deadline = gwgDeletionDeadline(c.mandateEndedAt);
     for (const check of c.gwgChecks) {
+      const start = gwgEffectiveStart(c.mandateEndedAt, check.status, check.createdAt);
+      if (!start || !isGwgDeletionDue(start, now)) continue;
       out.push({
         checkId: check.id,
         clientId: c.id,
         clientName: c.name,
         status: check.status,
-        mandateEndedAt: c.mandateEndedAt,
-        deletionDeadline: deadline,
+        mandateEndedAt: start,
+        deletionDeadline: gwgDeletionDeadline(start),
         openEvidenceDocs: c._count.documents,
       });
     }

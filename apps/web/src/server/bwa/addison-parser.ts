@@ -180,6 +180,9 @@ export interface BwaKpis {
   revenue: number | null;
   costs: number | null;
   result: number | null;
+  /** Ergebnis VOR Ertragsteuern (DATEV 1345 bzw. Betriebsergebnis 1300) —
+   *  richtige Bemessungsbasis für die Steuerschätzung (kein Zirkelbezug). */
+  resultBeforeTax: number | null;
   resultMargin: number | null;
   personnelCost: number | null;
   personnelRatio: number | null;
@@ -192,8 +195,9 @@ const ADDISON_PERSONNEL = 3030;
 
 const DATEV_REVENUE = 1051;       // Gesamtleistung
 const DATEV_RESULT = 1380;        // Vorläufiges Ergebnis (nach Steuern)
+const DATEV_RESULT_BEFORE_TAX = 1345; // Ergebnis vor Steuern
 const DATEV_PERSONNEL = 1100;
-const DATEV_OPERATING_RESULT = 1300; // Betriebsergebnis
+const DATEV_OPERATING_RESULT = 1300; // Betriebsergebnis (vor Ertragsteuern)
 
 /**
  * Parst die Addison-Kompakt-CSV (`s*.csv`). Beispiel:
@@ -292,6 +296,10 @@ export function computeBwaKpis(positions: Array<{ number: number; amount: number
   const revenue = map.get(ADDISON_REVENUE) ?? map.get(DATEV_REVENUE) ?? null;
   const personnelCost = map.get(ADDISON_PERSONNEL) ?? map.get(DATEV_PERSONNEL) ?? null;
   const result = map.get(ADDISON_RESULT) ?? map.get(DATEV_RESULT) ?? null;
+  // Vor-Steuer-Ergebnis: DATEV 1345, sonst Betriebsergebnis 1300 (beide vor
+  // Ertragsteuern). Nur so vermeidet die Steuerschätzung den Zirkelbezug.
+  const resultBeforeTax =
+    map.get(DATEV_RESULT_BEFORE_TAX) ?? map.get(DATEV_OPERATING_RESULT) ?? null;
 
   // Kosten: Addison hat eigene Summenzeile; DATEV nur impliziert über
   // Erlöse - Betriebsergebnis (vereinfachte Annahme).
@@ -305,6 +313,7 @@ export function computeBwaKpis(positions: Array<{ number: number; amount: number
     revenue,
     costs,
     result,
+    resultBeforeTax,
     resultMargin: revenue && result !== null ? result / revenue : null,
     personnelCost,
     personnelRatio: revenue && personnelCost !== null ? personnelCost / revenue : null,

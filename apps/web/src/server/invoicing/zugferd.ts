@@ -57,6 +57,25 @@ function fmtDate(d: Date): string {
   return fmtDateShort(d);
 }
 
+/** Bricht Text an Wortgrenzen in Zeilen mit höchstens `maxChars` Zeichen. Ein
+ *  einzelnes überlanges Wort wird hart geteilt (statt es abzuschneiden). */
+function wrapText(text: string, maxChars: number): string[] {
+  const out: string[] = [];
+  let line = '';
+  for (const word of text.split(/\s+/)) {
+    if (word.length > maxChars) {
+      if (line) { out.push(line); line = ''; }
+      for (let i = 0; i < word.length; i += maxChars) out.push(word.slice(i, i + maxChars));
+      continue;
+    }
+    const candidate = line ? `${line} ${word}` : word;
+    if (candidate.length > maxChars) { out.push(line); line = word; }
+    else line = candidate;
+  }
+  if (line) out.push(line);
+  return out.length ? out : [''];
+}
+
 function newPageIfNeeded(ctx: PageContext, neededHeight: number): void {
   if (ctx.y - neededHeight < ctx.margin + 30) {
     ctx.page = ctx.doc.addPage([ctx.pageWidth, ctx.pageHeight]);
@@ -183,9 +202,26 @@ export async function generateZugferdPdf(
   drawText(ctx, 'Fällig am', rightCol, yRight, { size: FONT_SIZE_SMALL, color: rgb(0.5, 0.5, 0.5) });
   drawText(ctx, fmtDate(invoice.dueDate), rightCol + 100, yRight);
   yRight -= 14;
+  // iter98: Leistungszeitraum (§ 14 Abs. 4 Nr. 6 UStG), wenn erfasst.
+  if (invoice.servicePeriodStart && invoice.servicePeriodEnd) {
+    drawText(ctx, 'Leistungszeitraum', rightCol, yRight, { size: FONT_SIZE_SMALL, color: rgb(0.5, 0.5, 0.5) });
+    drawText(
+      ctx,
+      `${fmtDate(invoice.servicePeriodStart)} – ${fmtDate(invoice.servicePeriodEnd)}`,
+      rightCol + 100,
+      yRight,
+      { size: FONT_SIZE_SMALL },
+    );
+    yRight -= 14;
+  }
+  // P2-9: USt-ID ODER (falls nicht vorhanden) Steuernummer — § 14 Abs. 4 Nr. 2
+  // UStG verlangt eine der beiden im menschenlesbaren Teil.
   if (seller.vatId) {
     drawText(ctx, 'USt-ID Verkäufer', rightCol, yRight, { size: FONT_SIZE_SMALL, color: rgb(0.5, 0.5, 0.5) });
     drawText(ctx, seller.vatId, rightCol + 100, yRight, { size: FONT_SIZE_SMALL });
+  } else if (seller.taxNumber) {
+    drawText(ctx, 'Steuernummer', rightCol, yRight, { size: FONT_SIZE_SMALL, color: rgb(0.5, 0.5, 0.5) });
+    drawText(ctx, seller.taxNumber, rightCol + 100, yRight, { size: FONT_SIZE_SMALL });
   }
 
   // Titel
@@ -252,11 +288,14 @@ export async function generateZugferdPdf(
     newPageIfNeeded(ctx, 60);
     drawText(ctx, 'Hinweise', margin, ctx.y, { bold: true, size: FONT_SIZE_SMALL, color: rgb(0.5, 0.5, 0.5) });
     ctx.y -= 12;
-    // Naive Wrapping: max 90 Zeichen pro Zeile
-    for (const line of invoice.notes.split('\n')) {
-      newPageIfNeeded(ctx, 12);
-      drawText(ctx, line.slice(0, 100), margin, ctx.y);
-      ctx.y -= 11;
+    // P3-26: Wort-erhaltendes Umbrechen statt hartem slice(0,100) — kein
+    // Inhaltsverlust in der revisionssicher archivierten PDF.
+    for (const paragraph of invoice.notes.split('\n')) {
+      for (const line of wrapText(paragraph, 100)) {
+        newPageIfNeeded(ctx, 12);
+        drawText(ctx, line, margin, ctx.y);
+        ctx.y -= 11;
+      }
     }
     ctx.y -= 10;
   }

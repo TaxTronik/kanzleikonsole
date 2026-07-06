@@ -47,12 +47,18 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
         client: true,
         positions: { orderBy: { position: 'asc' } },
         document: { include: { versions: { orderBy: { versionNo: 'desc' }, take: 1 } } },
+        stornoOf: { select: { number: true } },
       },
     }),
   );
   if (!loaded) return { ok: false, code: 'not_found' };
   // EXTERNAL (PDF) hat kein ZUGFeRD-Generat — deren documentId ist der Upload.
   if (loaded.format === 'PDF') return { ok: false, code: 'not_applicable' };
+
+  // iter100: Stornorechnung → TypeCode 381 + Referenz auf die Originalrechnung.
+  const stornoFields = loaded.stornoOfId
+    ? { typeCode: '381' as const, precedingInvoiceNumber: loaded.stornoOf?.number ?? null }
+    : {};
 
   const shareable = loaded.status === 'SENT' || loaded.status === 'PAID' || loaded.status === 'OVERDUE';
   const xrechnungTitle = `Rechnung ${loaded.number} (XRechnung)`;
@@ -114,6 +120,10 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
           subject: loaded.subject,
           notes: loaded.notes,
           currency: 'EUR' as const,
+          servicePeriodStart: loaded.servicePeriodStart,
+          servicePeriodEnd: loaded.servicePeriodEnd,
+          vatExemptionReason: loaded.vatExemptionReason,
+          ...stornoFields,
           netAmount: Number(loaded.netAmount.toString()),
           vatAmount: Number(loaded.vatAmount.toString()),
           totalAmount: Number(loaded.totalAmount.toString()),
@@ -143,6 +153,7 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
         tier: 'GOBD',
         tenantId: ctx.tenantId,
         skipScan: true,
+        classification: 'GOBD_INVOICE', // Rechnung → 8 J. (BEG IV)
       });
       await withTenantContext(ctx, async (tx) => {
         const xmlDoc = await tx.document.create({
@@ -198,6 +209,10 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
     subject: loaded.subject,
     notes: loaded.notes,
     currency: 'EUR' as const,
+    servicePeriodStart: loaded.servicePeriodStart,
+    servicePeriodEnd: loaded.servicePeriodEnd,
+    vatExemptionReason: loaded.vatExemptionReason,
+    ...stornoFields,
     netAmount: Number(loaded.netAmount.toString()),
     vatAmount: Number(loaded.vatAmount.toString()),
     totalAmount: Number(loaded.totalAmount.toString()),
@@ -237,7 +252,7 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
   //    ClamAV ist hier sinnlos; die documentVersion wird mit scanStatus 'CLEAN' angelegt.
   let stored: CommitDocumentResult;
   try {
-    stored = await commitBytesWithTier({ fileData: Buffer.from(pdfBytes), tier: 'GOBD', tenantId: ctx.tenantId, skipScan: true });
+    stored = await commitBytesWithTier({ fileData: Buffer.from(pdfBytes), tier: 'GOBD', tenantId: ctx.tenantId, skipScan: true, classification: 'GOBD_INVOICE' });
   } catch (e) {
     throw new Error(`ZUGFeRD-Ablage im GOBD-Object-Store fehlgeschlagen: ${(e as Error).message}`, { cause: e });
   }
@@ -246,7 +261,7 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
   // Mandantenordner (gleiche Generierung, nur XML statt PDF).
   let storedXml: CommitDocumentResult;
   try {
-    storedXml = await commitBytesWithTier({ fileData: Buffer.from(cii, 'utf8'), tier: 'GOBD', tenantId: ctx.tenantId, skipScan: true });
+    storedXml = await commitBytesWithTier({ fileData: Buffer.from(cii, 'utf8'), tier: 'GOBD', tenantId: ctx.tenantId, skipScan: true, classification: 'GOBD_INVOICE' });
   } catch (e) {
     throw new Error(`XRechnung-Ablage im GOBD-Object-Store fehlgeschlagen: ${(e as Error).message}`, { cause: e });
   }

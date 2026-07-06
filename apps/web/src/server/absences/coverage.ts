@@ -8,6 +8,7 @@
 // =============================================================================
 
 import type { TxClient } from '@taxtronik/db';
+import { berlinTodayUtcMidnight } from '@/lib/fmt';
 
 export interface CoverageRequest {
   id: string;
@@ -28,7 +29,10 @@ export interface CoverageEntry {
 }
 
 export async function loadAbsenceCoverage(tx: TxClient, selfId: string): Promise<CoverageEntry[]> {
-  const today = new Date();
+  // startDate/endDate sind @db.Date (UTC-Mitternacht). Gegen die aktuelle
+  // Uhrzeit verglichen fiele der LETZTE Abwesenheitstag ab 00:00 UTC heraus —
+  // daher auf den Berliner Tagesbeginn (UTC-Mitternacht) normalisieren.
+  const today = berlinTodayUtcMidnight();
 
   const [vacations, absences] = await Promise.all([
     tx.vacationRequest.findMany({

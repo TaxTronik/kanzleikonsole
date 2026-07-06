@@ -44,6 +44,8 @@ export default async function InvoiceDetailPage({
           client: true,
           positions: { orderBy: { position: 'asc' } },
           document: true,
+          stornoOf: { select: { id: true, number: true } },
+          stornoBy: { select: { id: true, number: true } },
         },
       });
       // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Rechnung eines
@@ -111,7 +113,25 @@ export default async function InvoiceDetailPage({
             {inv.status === 'PAID' && <span className="badge-green">{statusLabels[inv.status]}</span>}
             {inv.status === 'OVERDUE' && <span className="badge-red">{statusLabels[inv.status]}</span>}
             {inv.status === 'CANCELLED' && <span className="badge-gray">{statusLabels[inv.status]}</span>}
+            {inv.stornoOfId && <span className="badge-red">Stornorechnung</span>}
           </div>
+          {inv.stornoOf && (
+            <p className="text-xs text-red-700">
+              Storno zu Rechnung{' '}
+              <Link href={`/staff/invoices/${inv.stornoOf.id}`} className="underline">{inv.stornoOf.number}</Link>
+            </p>
+          )}
+          {inv.stornoBy.length > 0 && (
+            <p className="text-xs text-amber-700">
+              Storniert durch{' '}
+              {inv.stornoBy.map((s, i) => (
+                <span key={s.id}>
+                  {i > 0 && ', '}
+                  <Link href={`/staff/invoices/${s.id}`} className="underline">{s.number}</Link>
+                </span>
+              ))}
+            </p>
+          )}
           <p className="text-muted text-sm">
             an{' '}
             <Link href={`/staff/clients/${inv.client.id}`} className="hover:underline">

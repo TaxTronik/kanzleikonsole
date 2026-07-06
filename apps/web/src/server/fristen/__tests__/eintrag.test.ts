@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   taxDeadlineErledigt,
   taxNoticeFristErledigt,
+  taxNoticeKlageFristErledigt,
   requestErledigt,
   bucketFor,
   sortEintraege,
@@ -23,9 +24,16 @@ describe('Erledigt-Wahrheitstabellen', () => {
   it('Einspruchsfrist: GEPRUEFT ist NICHT erledigt (Entscheidung steht aus)', () => {
     expect(taxNoticeFristErledigt('NEU')).toBe(false);
     expect(taxNoticeFristErledigt('GEPRUEFT')).toBe(false);
-    for (const done of ['EINSPRUCH', 'ABGEHOLFEN', 'ZURUECKGEWIESEN', 'RECHTSKRAEFTIG']) {
+    for (const done of ['EINSPRUCH', 'ABGEHOLFEN', 'TEILABHILFE', 'ZURUECKGEWIESEN', 'KLAGE', 'RECHTSKRAEFTIG']) {
       expect(taxNoticeFristErledigt(done), done).toBe(true);
     }
+  });
+
+  it('Klagefrist (§ 47 FGO): offen bei ZURUECKGEWIESEN/TEILABHILFE, erledigt bei KLAGE/RECHTSKRAEFTIG', () => {
+    expect(taxNoticeKlageFristErledigt('ZURUECKGEWIESEN')).toBe(false);
+    expect(taxNoticeKlageFristErledigt('TEILABHILFE')).toBe(false);
+    expect(taxNoticeKlageFristErledigt('KLAGE')).toBe(true);
+    expect(taxNoticeKlageFristErledigt('RECHTSKRAEFTIG')).toBe(true);
   });
 
   it('Anforderung: RESPONDED bleibt offen (Prüfung steht aus)', () => {

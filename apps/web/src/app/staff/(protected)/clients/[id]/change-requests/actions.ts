@@ -35,6 +35,21 @@ export async function decideChangeRequestAction(
       await assertClientAccessTx(tx, session, req.clientId);
       if (req.status !== 'PENDING') throw new ActionError('Anfrage wurde bereits entschieden.');
 
+      // TOCTOU-Schutz: Entscheidung zuerst atomar claimen, BEVOR Stammdaten
+      // übernommen werden. Zwei parallele Entscheidungen (approve ‖ reject)
+      // lesen sonst beide PENDING — die Daten würden übernommen, obwohl final
+      // REJECTED gespeichert wird (inkl. doppeltem GwG-Reset/Audit).
+      const decisionClaim = await tx.clientMasterChangeRequest.updateMany({
+        where: { id: requestId, status: 'PENDING' },
+        data: {
+          status: approve ? 'APPROVED' : 'REJECTED',
+          decidedAt: new Date(),
+          decidedBy: staffId,
+          decisionNote: decisionNote ?? null,
+        },
+      });
+      if (decisionClaim.count === 0) throw new ActionError('Anfrage wurde bereits entschieden.');
+
       const fields = (req.fields ?? {}) as Record<string, unknown>;
       const applicable: Partial<Record<ClientField, string | null>> = {};
       for (const k of ALLOWED_FIELDS) {
@@ -72,16 +87,6 @@ export async function decideChangeRequestAction(
           gwgReset = updated.count > 0;
         }
 
-        await tx.clientMasterChangeRequest.update({
-          where: { id: requestId },
-          data: {
-            status: 'APPROVED',
-            decidedAt: new Date(),
-            decidedBy: staffId,
-            decisionNote: decisionNote ?? null,
-          },
-        });
-
         await evidenceService.record(tx, {
           tenantId,
           actorType: 'STAFF',
@@ -93,15 +98,6 @@ export async function decideChangeRequestAction(
           after: { ...applicable, _gwgReverificationTriggered: gwgReset },
         });
       } else {
-        await tx.clientMasterChangeRequest.update({
-          where: { id: requestId },
-          data: {
-            status: 'REJECTED',
-            decidedAt: new Date(),
-            decidedBy: staffId,
-            decisionNote: decisionNote ?? null,
-          },
-        });
         await evidenceService.record(tx, {
           tenantId,
           actorType: 'STAFF',

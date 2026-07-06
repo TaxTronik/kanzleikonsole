@@ -14,7 +14,7 @@ import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { StartWorkflowForm } from './start-form';
 import { WorkflowSection } from './workflow-section';
-import { autoResumePausedWorkflows } from './actions';
+import { autoResumePausedWorkflows } from '@/server/workflows/auto-resume';
 import { loadClientWorkflows } from '@/server/workflows/queries';
 
 export default async function ClientWorkflowsPage({

@@ -4,7 +4,7 @@ import { Receipt } from 'lucide-react';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 
-import { fmtDateShort, fmtEUR } from '@/lib/fmt';
+import { fmtDateShort, fmtEUR, berlinTodayUtcMidnight } from '@/lib/fmt';
 const statusLabels: Record<string, string> = {
   DRAFT: 'Entwurf',
   SENT: 'Offen',
@@ -58,7 +58,9 @@ export default async function PortalInvoicesPage() {
             </thead>
             <tbody className="divide-y divide-border-subtle">
               {invoices.map((i) => {
-                const overdue = i.status === 'SENT' && i.dueDate < new Date();
+                // Überfällig erst ab dem Tag NACH der Fälligkeit (§ 271 BGB) —
+                // konsistent zum invoice-overdue-check-Worker.
+                const overdue = i.status === 'SENT' && i.dueDate < berlinTodayUtcMidnight();
                 return (
                   <tr key={i.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 font-medium text-primary">{i.number}</td>

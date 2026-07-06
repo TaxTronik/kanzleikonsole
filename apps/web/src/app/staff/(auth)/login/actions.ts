@@ -235,16 +235,51 @@ export async function confirmTotpEnrollmentAction(
   totpCode: string,
   tenantSlug: string = 'default',
 ): Promise<ConfirmEnrollmentResult> {
+  // P0-3: Diese Action ist ein zweiter, öffentlich aufrufbarer bcrypt-Prüfpfad
+  // neben checkPasswordAction und MUSS dieselben Schranken tragen — sonst
+  // verteiltes Brute-Force / bcrypt-CPU-Erschöpfung über bekannte E-Mails.
+  const ip = getClientIp(await headers());
+  const rl = await checkIpOrGlobalLimit(
+    'staff-pw',
+    ip,
+    { max: 10, windowSec: 600 },
+    { max: 200, windowSec: 600 },
+  );
+  if (!rl.ok) {
+    return { ok: false, error: `Zu viele Versuche. Bitte ${Math.ceil(rl.retryAfter / 60)} Min. warten.` };
+  }
+
   const tenant = await prismaOwner.tenant.findFirst({ where: { slug: tenantSlug } });
   if (!tenant) return { ok: false, error: 'Kanzlei nicht gefunden.' };
 
   const staffUser = await prismaOwner.staffUser.findFirst({
     where: { tenantId: tenant.id, email: email.toLowerCase() },
   });
+  // Anti-Enumeration: einheitliche Meldung (wie checkPasswordAction).
   if (!staffUser || !staffUser.active) return { ok: false, error: 'Ungültige Daten.' };
 
+  if (staffUser.lockedUntil && staffUser.lockedUntil > new Date()) {
+    return { ok: false, error: 'Ungültige Daten.' };
+  }
+  const accountRl = await checkStaffPasswordAccountLimit(staffUser.id);
+  if (!accountRl.ok) return { ok: false, error: 'Ungültige Daten.' };
+
   const passwordOk = await compare(password, staffUser.passwordHash);
-  if (!passwordOk) return { ok: false, error: 'Ungültige Daten.' };
+  if (!passwordOk) {
+    await recordFailedLoginAudited({
+      tenantId: tenant.id,
+      staffUserId: staffUser.id,
+      email: staffUser.email,
+      ip,
+      reason: 'password',
+    }).catch(() => void 0);
+    return { ok: false, error: 'Ungültige Daten.' };
+  }
+
+  // Passwort korrekt → Zähler zurücksetzen (IP-RL + Account-Counter).
+  await resetRateLimit(ip ? `staff-pw:${ip}` : 'staff-pw:global');
+  await resetRateLimit(staffPasswordAccountRateLimitKey(staffUser.id));
+  resetFailedLogin(prismaOwner, staffUser.id).catch(() => void 0);
 
   if (!staffUser.totpSecretEnc) return { ok: false, error: 'Kein TOTP-Secret gefunden.' };
 

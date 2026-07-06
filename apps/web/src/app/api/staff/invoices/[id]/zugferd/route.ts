@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { getClientIp } from '@/server/rate-limit';
+import { getClientIp, checkStaffExportLimit } from '@/server/rate-limit';
 import { staffAuth } from '@/server/auth/staff';
 import { canAccessClientTx } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
@@ -20,6 +20,11 @@ export async function GET(
   const { id } = await params;
   const { tenantId, staffId } = session.user;
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
+
+  const rl = await checkStaffExportLimit('zugferd', staffId);
+  if (!rl.ok) {
+    return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
+  }
 
   // Zugriffsmodell (vertraulich-Flag / RESTRICTED): VOR ensureZugferdArchive
   // prüfen (das würde sonst ggf. generieren + ablegen). Gesperrter Mandant

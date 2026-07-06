@@ -35,6 +35,7 @@ const m = vi.hoisted(() => {
     staffActionGuard: vi.fn(),
     withStaff: vi.fn(),
     isStaffAdmin: vi.fn(),
+    assertClientAccessTx: vi.fn(),
     assertClientInTenant: vi.fn(),
     redirect: vi.fn(),
     revalidatePath: vi.fn(),
@@ -80,6 +81,7 @@ vi.mock('@/server/rate-limit', () => ({
 }));
 vi.mock('@/server/auth/rbac', () => ({
   isStaffAdmin: m.isStaffAdmin,
+  assertClientAccessTx: m.assertClientAccessTx,
   toActionError: (e: unknown) => ({
     ok: false,
     error: e instanceof Error ? e.message : 'Fehler.',
@@ -270,7 +272,9 @@ describe('sendForSignatureAction', () => {
     const tx = {
       powerOfAttorney: {
         findUnique: vi.fn().mockResolvedValue(poaRecord({ status: 'DRAFT' })),
-        update: vi.fn().mockResolvedValue(poaRecord()),
+        // Neuer Flow: atomarer Claim via updateMany + Re-Fetch.
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        findUniqueOrThrow: vi.fn().mockResolvedValue(poaRecord({ status: 'SENT' })),
       },
       tenant: { findUnique: vi.fn().mockResolvedValue({ id: 'tenant-1', name: 'Kanzlei X' }) },
     };
@@ -283,7 +287,13 @@ describe('sendForSignatureAction', () => {
     const res = await sendForSignatureAction(fd);
     expect(res).toEqual({ ok: true });
 
-    const { data } = tx.powerOfAttorney.update.mock.calls[0]![0] as {
+    // Atomarer Claim nur aus DRAFT/SENT heraus.
+    expect(tx.powerOfAttorney.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: '7e6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e6f', status: { in: ['DRAFT', 'SENT'] } },
+      }),
+    );
+    const { data } = tx.powerOfAttorney.updateMany.mock.calls[0]![0] as {
       data: Record<string, unknown>;
     };
     expect(data.status).toBe('SENT');

@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { evidenceService } from '@/server/container';
+import { assertClientAccessTx } from '@/server/auth/rbac';
 import { withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
 
 const REVALIDATE = '/staff/admin/custom-fields';
@@ -144,7 +145,10 @@ export async function saveCustomFieldValuesAction(
   const { clientId, values } = parsed.data;
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, session }) => {
+      // Vertraulich-/RESTRICTED-Ventil: die Werte hängen am Mandanten-Detail,
+      // die Action ist aber ohne Layout-Guard direkt aufrufbar.
+      await assertClientAccessTx(tx, session, clientId);
       const client = await tx.client.findUnique({
         where: { id: clientId },
         select: { kind: true },

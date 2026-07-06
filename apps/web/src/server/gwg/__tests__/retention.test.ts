@@ -69,11 +69,18 @@ describe('findDueGwgCheckDeletions — § 8 Abs. 4 S. 4 (DB-Aufzeichnungen)', ()
 
     const out = await findDueGwgCheckDeletions(tx, NOW);
 
+    const cutoff = new Date(Date.UTC(2027, 0, 1));
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
-          mandateEndedAt: { lt: new Date(Date.UTC(2027, 0, 1)) },
           gwgChecks: { some: { destroyedAt: null } },
+          OR: [
+            { mandateEndedAt: { lt: cutoff } },
+            {
+              mandateEndedAt: null,
+              gwgChecks: { some: { destroyedAt: null, status: { in: ['REJECTED', 'EXPIRED'] }, createdAt: { lt: cutoff } } },
+            },
+          ],
         },
       }),
     );
@@ -88,6 +95,44 @@ describe('findDueGwgCheckDeletions — § 8 Abs. 4 S. 4 (DB-Aufzeichnungen)', ()
         openEvidenceDocs: 2,
       },
     ]);
+  });
+
+  it('§ 8 Abs. 4 S. 2: abgelehntes Onboarding ohne Mandat → Frist ab Feststellung', async () => {
+    // Kein mandateEndedAt, aber REJECTED-Check von 2026 → fällig ab 2032-01-01.
+    const { tx } = fakeTx([
+      {
+        id: 'client-3',
+        name: 'Abgelehnt GmbH',
+        mandateEndedAt: null,
+        gwgChecks: [{ id: 'chk-3', status: 'REJECTED', createdAt: new Date('2026-03-15T00:00:00Z') }],
+        _count: { documents: 1 },
+      },
+    ]);
+    const out = await findDueGwgCheckDeletions(tx, NOW);
+    expect(out).toEqual([
+      {
+        checkId: 'chk-3',
+        clientId: 'client-3',
+        clientName: 'Abgelehnt GmbH',
+        status: 'REJECTED',
+        mandateEndedAt: new Date('2026-03-15T00:00:00Z'),
+        deletionDeadline: new Date('2032-01-01T00:00:00.000Z'),
+        openEvidenceDocs: 1,
+      },
+    ]);
+  });
+
+  it('offene (IN_REVIEW) Prüfung ohne Mandat → NICHT fällig (kann noch aktiv werden)', async () => {
+    const { tx } = fakeTx([
+      {
+        id: 'client-4',
+        name: 'Offen GmbH',
+        mandateEndedAt: null,
+        gwgChecks: [{ id: 'chk-4', status: 'IN_REVIEW', createdAt: new Date('2020-01-01T00:00:00Z') }],
+        _count: { documents: 0 },
+      },
+    ]);
+    expect(await findDueGwgCheckDeletions(tx, NOW)).toEqual([]);
   });
 
   it('Mandat noch nicht fällig (exakte Jahresende-Rundung) → kein Item', async () => {

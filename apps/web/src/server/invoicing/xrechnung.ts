@@ -34,6 +34,16 @@ export interface XRechnungInvoice {
   subject: string;
   notes: string | null;
   currency: 'EUR';
+  // iter98: Leistungszeitraum (§ 14 Abs. 4 Nr. 6 UStG). Beide gesetzt → BG-14
+  // (BT-73/BT-74). NULL → Konvention „Leistungsdatum = Rechnungsdatum" (BT-72).
+  servicePeriodStart?: Date | null;
+  servicePeriodEnd?: Date | null;
+  // iter100: Dokumenttyp (380 Rechnung, 381 Storno/Korrekturbeleg) + Referenz
+  // auf die stornierte Rechnung (BG-3/BT-25).
+  typeCode?: '380' | '381';
+  precedingInvoiceNumber?: string | null;
+  // iter101: Befreiungsgrund für 0 %-Umsätze (BT-120, Kategorie „E").
+  vatExemptionReason?: string | null;
   netAmount: number;
   vatAmount: number;
   totalAmount: number;
@@ -134,7 +144,7 @@ export function generateXRechnungCii(
   // -------------------------------------------------------------------------
   const exDoc = root.ele(RSM, 'rsm:ExchangedDocument');
   exDoc.ele(RAM, 'ram:ID').txt(invoice.number);
-  exDoc.ele(RAM, 'ram:TypeCode').txt('380');
+  exDoc.ele(RAM, 'ram:TypeCode').txt(invoice.typeCode ?? '380');
   dateTime(exDoc.ele(RAM, 'ram:IssueDateTime'), invoice.issueDate);
 
   if (invoice.notes) {
@@ -179,7 +189,7 @@ export function generateXRechnungCii(
     const lineSettle = line.ele(RAM, 'ram:SpecifiedLineTradeSettlement');
     const lineTax = lineSettle.ele(RAM, 'ram:ApplicableTradeTax');
     lineTax.ele(RAM, 'ram:TypeCode').txt('VAT');
-    lineTax.ele(RAM, 'ram:CategoryCode').txt(vatCategory(pos.vatRate));
+    lineTax.ele(RAM, 'ram:CategoryCode').txt(vatCategory(pos.vatRate, !!invoice.vatExemptionReason));
     lineTax.ele(RAM, 'ram:RateApplicablePercent').txt(pos.vatRate.toFixed(2));
     lineSettle
       .ele(RAM, 'ram:SpecifiedTradeSettlementLineMonetarySummation')
@@ -268,16 +278,17 @@ export function generateXRechnungCii(
   }
 
   // -------------------------------------------------------------------------
-  // Header — Delivery. BT-72 Leistungsdatum (BR-DE-TMP-32, KoSIT 2026-06):
-  // Konvention „Leistungsdatum entspricht Rechnungsdatum" — ein eigener
-  // Leistungszeitraum wird nicht erfasst.
+  // Header — Delivery. BT-72 Leistungsdatum: ist ein Leistungszeitraum erfasst,
+  // gilt dessen ENDE als Leistungsdatum (§ 14 Abs. 4 Nr. 6 UStG), sonst die
+  // Konvention „Leistungsdatum = Rechnungsdatum". Der Zeitraum selbst wird
+  // zusätzlich als BG-14 im Settlement ausgewiesen.
   // -------------------------------------------------------------------------
   dateTime(
     sct
       .ele(RAM, 'ram:ApplicableHeaderTradeDelivery')
       .ele(RAM, 'ram:ActualDeliverySupplyChainEvent')
       .ele(RAM, 'ram:OccurrenceDateTime'),
-    invoice.issueDate,
+    invoice.servicePeriodEnd ?? invoice.issueDate,
   );
 
   // -------------------------------------------------------------------------
@@ -303,12 +314,25 @@ export function generateXRechnungCii(
   // Steuerblock: EIN ApplicableTradeTax je Steuersatz-Gruppe (EN 16931 BG-23;
   // § 14 Abs. 4 Nr. 8 UStG — Entgelt aufgeschlüsselt nach Sätzen).
   for (const g of computeVatTotals(invoice.positions).groups) {
+    const category = vatCategory(g.rate, !!invoice.vatExemptionReason);
     const tax = settle.ele(RAM, 'ram:ApplicableTradeTax');
     tax.ele(RAM, 'ram:CalculatedAmount').txt(fmtAmount(g.vat));
     tax.ele(RAM, 'ram:TypeCode').txt('VAT');
+    // BT-120 Befreiungsgrund (Pflicht bei Kategorie „E", § 14 Abs. 4 Nr. 8 UStG).
+    if (category === 'E' && invoice.vatExemptionReason) {
+      tax.ele(RAM, 'ram:ExemptionReason').txt(invoice.vatExemptionReason);
+    }
     tax.ele(RAM, 'ram:BasisAmount').txt(fmtAmount(g.net));
-    tax.ele(RAM, 'ram:CategoryCode').txt(vatCategory(g.rate));
+    tax.ele(RAM, 'ram:CategoryCode').txt(category);
     tax.ele(RAM, 'ram:RateApplicablePercent').txt(g.rate.toFixed(2));
+  }
+
+  // BG-14 Rechnungs-/Leistungszeitraum (BT-73/BT-74) — nur wenn erfasst.
+  // Reihenfolge im CII-Settlement: nach ApplicableTradeTax, vor PaymentTerms.
+  if (invoice.servicePeriodStart && invoice.servicePeriodEnd) {
+    const period = settle.ele(RAM, 'ram:BillingSpecifiedPeriod');
+    dateTime(period.ele(RAM, 'ram:StartDateTime'), invoice.servicePeriodStart);
+    dateTime(period.ele(RAM, 'ram:EndDateTime'), invoice.servicePeriodEnd);
   }
 
   // Zahlungsbedingungen
@@ -327,6 +351,14 @@ export function generateXRechnungCii(
     .txt(fmtAmount(invoice.vatAmount));
   sum.ele(RAM, 'ram:GrandTotalAmount').txt(fmtAmount(invoice.totalAmount));
   sum.ele(RAM, 'ram:DuePayableAmount').txt(fmtAmount(invoice.totalAmount));
+
+  // BG-3 Referenz auf die vorausgegangene (stornierte) Rechnung — bei Storno.
+  if (invoice.precedingInvoiceNumber) {
+    settle
+      .ele(RAM, 'ram:InvoiceReferencedDocument')
+      .ele(RAM, 'ram:IssuerAssignedID')
+      .txt(invoice.precedingInvoiceNumber);
+  }
 
   return doc.end({ prettyPrint: true });
 }

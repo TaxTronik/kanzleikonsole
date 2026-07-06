@@ -7,6 +7,8 @@ import { estimateTaxes, type LegalForm } from '@/server/bwa/tax-estimator';
 import { fmtEURRound } from '@/lib/fmt';
 interface Props {
   result: number;
+  /** Ergebnis vor Steuern (DATEV 1345/1300) — bevorzugte Bemessungsbasis. */
+  resultBeforeTax?: number | null;
   revenue: number | null;
   inputVat: number | null;
   vatPaid: number | null;
@@ -15,6 +17,7 @@ interface Props {
 
 export function TaxEstimatorCard({
   result,
+  resultBeforeTax,
   revenue,
   inputVat,
   vatPaid,
@@ -24,17 +27,22 @@ export function TaxEstimatorCard({
   const [hebesatz, setHebesatz] = useState<number>(400);
   const [show, setShow] = useState(false);
 
+  // P2-12: Steuern auf das Ergebnis VOR Ertragsteuern bemessen (kein
+  // Zirkelbezug). Fehlt die Zeile, Fallback auf das (evtl. Nach-Steuer-)
+  // Ergebnis — der Estimator ergänzt dann einen Hinweis.
+  const basis = resultBeforeTax ?? result;
   const est = useMemo(
     () =>
       estimateTaxes({
         legalForm,
-        result,
+        result: basis,
+        resultIsAfterTax: resultBeforeTax == null,
         revenue,
         inputVat,
         vatPaid,
         gewerbesteuerHebesatzPct: hebesatz,
       }),
-    [legalForm, hebesatz, result, revenue, inputVat, vatPaid],
+    [legalForm, hebesatz, basis, resultBeforeTax, revenue, inputVat, vatPaid],
   );
 
 

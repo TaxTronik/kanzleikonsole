@@ -13,7 +13,7 @@
 
 import { withTenantContext } from '@taxtronik/db';
 import type { TenantContext } from '@taxtronik/db';
-import { decryptSecret, encryptSecret, looksEncrypted } from '@/server/crypto/secret-box';
+import { encryptSecret, readEncryptedSetting } from '@/server/crypto/secret-box';
 import { env } from '@taxtronik/config';
 
 const KEY = 'integrations.n8n';
@@ -60,19 +60,8 @@ export async function readN8nConfig(ctx: TenantContext): Promise<N8nConfig | nul
     if (!row) return null;
     const v = row.value as Partial<N8nStored> & { hmacSecret?: string; apiKey?: string };
 
-    let hmac = '';
-    if (v.hmacEncrypted && looksEncrypted(v.hmacEncrypted)) {
-      try { hmac = decryptSecret(v.hmacEncrypted); } catch { hmac = ''; }
-    } else if (typeof v.hmacSecret === 'string') {
-      hmac = v.hmacSecret;
-    }
-
-    let apiKey = '';
-    if (v.apiKeyEncrypted && looksEncrypted(v.apiKeyEncrypted)) {
-      try { apiKey = decryptSecret(v.apiKeyEncrypted); } catch { apiKey = ''; }
-    } else if (typeof v.apiKey === 'string') {
-      apiKey = v.apiKey;
-    }
+    const hmac = readEncryptedSetting(v.hmacEncrypted, v.hmacSecret, 'n8n.hmacSecret');
+    const apiKey = readEncryptedSetting(v.apiKeyEncrypted, v.apiKey, 'n8n.apiKey');
 
     return {
       webhookBaseUrl: v.webhookBaseUrl ?? '',

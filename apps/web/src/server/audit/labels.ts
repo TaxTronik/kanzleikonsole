@@ -96,6 +96,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'invoice.send': 'Rechnung versendet',
   'invoice.paid': 'Rechnung bezahlt',
   'invoice.cancel': 'Rechnung storniert',
+  'invoice.storno.create': 'Stornorechnung erstellt',
   // RF-8: System-Statuswechsel aus dem Worker (invoice-overdue-check)
   'invoice.overdue': 'Rechnung überfällig (System)',
   'invoice.xrechnung.download': 'XRechnung exportiert',

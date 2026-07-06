@@ -24,6 +24,7 @@ import {
   type FristEintrag,
   taxDeadlineErledigt,
   taxNoticeFristErledigt,
+  taxNoticeKlageFristErledigt,
   requestErledigt,
   sortEintraege,
 } from './eintrag';
@@ -62,7 +63,7 @@ export async function loadKontrollbuch(
 
   // Offen ohne untere Grenze ODER erledigt im Fenster — je Quelle als OR
   // ausgedrückt, da „erledigt" quellspezifisch ist.
-  const [deadlines, notices, requests, reminders] = await Promise.all([
+  const [deadlines, notices, klagen, requests, reminders] = await Promise.all([
     tx.taxDeadline.findMany({
       where: {
         ...notDenied,
@@ -82,6 +83,22 @@ export async function loadKontrollbuch(
           {
             status: { in: ['EINSPRUCH', 'ABGEHOLFEN', 'ZURUECKGEWIESEN', 'RECHTSKRAEFTIG'] },
             appealDeadline: { gte: rueckschau, lte: horizont },
+          },
+        ],
+      },
+      include: { client: { select: { id: true, name: true } } },
+    }),
+    // Klagefristen (§ 47 FGO): offen bei ZURUECKGEWIESEN/TEILABHILFE, im
+    // Rückschau-Fenster auch KLAGE/RECHTSKRAEFTIG (erledigt).
+    tx.taxNotice.findMany({
+      where: {
+        ...notDenied,
+        klageDeadline: { not: null },
+        OR: [
+          { status: { in: ['ZURUECKGEWIESEN', 'TEILABHILFE'] }, klageDeadline: { lte: horizont } },
+          {
+            status: { in: ['KLAGE', 'RECHTSKRAEFTIG'] },
+            klageDeadline: { gte: rueckschau, lte: horizont },
           },
         ],
       },
@@ -113,7 +130,7 @@ export async function loadKontrollbuch(
   // Verantwortliche: Hauptbearbeiter je Mandant (eine Query) — Wiedervorlagen
   // mit eigener Zuweisung überschreiben das. Namen in einer zweiten Query.
   const clientIds = new Set<string>();
-  for (const r of [...deadlines, ...notices, ...requests, ...reminders]) clientIds.add(r.clientId);
+  for (const r of [...deadlines, ...notices, ...klagen, ...requests, ...reminders]) clientIds.add(r.clientId);
   const responsibilities = clientIds.size
     ? await tx.clientResponsibility.findMany({
         where: { clientId: { in: [...clientIds] }, role: 'HAUPTBEARBEITER' },
@@ -126,6 +143,7 @@ export async function loadKontrollbuch(
   for (const sid of hauptbearbeiter.values()) staffIds.add(sid);
   for (const d of deadlines) if (d.completedByStaff) staffIds.add(d.completedByStaff);
   for (const n of notices) if (n.reviewedBy) staffIds.add(n.reviewedBy);
+  for (const k of klagen) if (k.reviewedBy) staffIds.add(k.reviewedBy);
   for (const r of reminders) {
     if (r.assigneeStaffId) staffIds.add(r.assigneeStaffId);
     if (r.doneByStaff) staffIds.add(r.doneByStaff);
@@ -173,6 +191,25 @@ export async function loadKontrollbuch(
       verantwortlich: verantwortlichId ? (staffName.get(verantwortlichId) ?? null) : null,
       verantwortlichId,
       href: `/staff/clients/${n.clientId}/notices`,
+    });
+  }
+
+  for (const k of klagen) {
+    if (!k.klageDeadline) continue;
+    const verantwortlichId = hauptbearbeiter.get(k.clientId) ?? null;
+    eintraege.push({
+      quelle: 'KLAGEFRIST',
+      id: k.id,
+      titel: `${NOTICE_KIND_LABELS[k.kind] ?? k.kind} ${k.period} (Klage FG)`,
+      clientId: k.client.id,
+      clientName: k.client.name,
+      faelligAm: k.klageDeadline,
+      erledigt: taxNoticeKlageFristErledigt(k.status),
+      erledigtAm: k.appealResolvedAt,
+      erledigtVon: k.reviewedBy ? (staffName.get(k.reviewedBy) ?? null) : null,
+      verantwortlich: verantwortlichId ? (staffName.get(verantwortlichId) ?? null) : null,
+      verantwortlichId,
+      href: `/staff/clients/${k.clientId}/notices`,
     });
   }
 

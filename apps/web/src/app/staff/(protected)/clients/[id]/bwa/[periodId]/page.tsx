@@ -72,6 +72,7 @@ export default async function BwaPeriodDetailPage({
       {kpis.result !== null && (
         <TaxEstimatorCard
           result={kpis.result}
+          resultBeforeTax={kpis.resultBeforeTax}
           revenue={kpis.revenue}
           inputVat={(() => {
             const v = period.positions.find((p) => p.number === 3190);

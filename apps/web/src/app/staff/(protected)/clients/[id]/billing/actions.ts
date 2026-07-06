@@ -1,7 +1,6 @@
 'use server';
 
 import { z } from 'zod';
-import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
@@ -187,40 +186,6 @@ export async function createInvoiceFromTimeEntriesAction(input: z.infer<typeof C
   revalidatePath(`/staff/clients/${data.clientId}`);
   revalidatePath('/staff/invoices');
   return { ok: true, invoiceId };
-}
-
-/**
- * Variante als Form-Action (für direkten POST aus dem UI).
- * Nutzt 'one-line' und alle nicht-abgerechneten Stunden.
- */
-export async function billAllPendingHoursAction(formData: FormData): Promise<void> {
-  const g = await staffActionGuard({ requirePermission: 'INVOICE_MANAGE' });
-  if (!g.ok) return; // void-Action: still abbrechen (die delegierte Action prüft erneut)
-
-  const clientId = formData.get('clientId');
-  const hourlyRate = Number(formData.get('hourlyRate') ?? 120);
-  const subject = String(formData.get('subject') ?? 'Beratungsstunden');
-  const issueDate = String(formData.get('issueDate') ?? '');
-  const dueDate = String(formData.get('dueDate') ?? '');
-
-  if (typeof clientId !== 'string' || !issueDate || !dueDate) {
-    throw new Error('Pflichtfelder fehlen.');
-  }
-
-  const r = await createInvoiceFromTimeEntriesAction({
-    clientId,
-    subject,
-    issueDate,
-    dueDate,
-    vatRate: Number(formData.get('vatRate') ?? 19),
-    format: 'XRECHNUNG',
-    hourlyRate,
-    strategy: (formData.get('strategy') as 'one-line' | 'per-entry') ?? 'one-line',
-    notes: String(formData.get('notes') ?? ''),
-  });
-
-  if (!r.ok || !r.invoiceId) throw new Error(r.error ?? 'Rechnungsanlage fehlgeschlagen.');
-  redirect(`/staff/invoices/${r.invoiceId}`);
 }
 
 function formatDateShort(d: Date): string {

@@ -6,7 +6,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { notify } from '@/server/notifications/service';
-import { toActionError } from '@/server/auth/rbac';
+import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { assertStaffInTenant } from '@/server/db/assert-tenant';
 import { staffActionGuard, withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
 import { fmtDateShort } from '@/lib/fmt';
@@ -53,6 +53,8 @@ export async function createPhoneNoteAction(
       if (data.clientId) {
         const c = await tx.client.findFirst({ where: { id: data.clientId }, select: { id: true } });
         if (!c) throw new Error('CLIENT_NOT_FOUND: clientId nicht in diesem Tenant.');
+        // Vertraulich-/RESTRICTED-Ventil bei Mandantenbezug.
+        await assertClientAccessTx(tx, g.session, data.clientId);
       }
       if (data.forwardToStaff) {
         const s = await tx.staffUser.findFirst({
@@ -273,7 +275,7 @@ export async function phoneNoteToReminderAction(input: {
   }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId }) => {
+  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
     const note = await tx.phoneNote.findUnique({
       where: { id: parsed.data.id },
       select: {
@@ -284,6 +286,7 @@ export async function phoneNoteToReminderAction(input: {
     if (!note) throw new ActionError('Telefonzettel nicht gefunden.');
     if (note.doneAt) throw new ActionError('Bereits erledigt.');
     if (!note.clientId) throw new ActionError('Telefonzettel ohne Mandantenbezug — Wiedervorlage nicht möglich.');
+    await assertClientAccessTx(tx, session, note.clientId);
 
     // P-7 (Befund 5): vom Aufrufer übergebene assigneeStaffId Tenant-Sanity.
     // (note.forwardToStaff/staffId stammen aus dem Tenant-Kontext selbst.)

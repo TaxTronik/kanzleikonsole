@@ -14,14 +14,19 @@ import {
 const SAMPLE = new Date(Date.UTC(2026, 4, 12, 14, 35, 21)); // 12. Mai 2026, 14:35:21 UTC
 
 describe('fmt', () => {
-  it('round2 trims to 2 decimals (Math.round-based, has known float edge cases)', () => {
+  it('round2 rundet kaufmännisch (half away from zero), float-robust', () => {
     expect(round2(1.234)).toBe(1.23);
     expect(round2(1.236)).toBe(1.24);
     expect(round2(0)).toBe(0);
     expect(round2(99.999)).toBe(100);
-    // 1.005 → wegen Float ist 1.005 * 100 = 100.49999... → 100 → 1
-    // Akzeptiert: round2 ist NICHT banker's rounding, sondern Math.round mit
-    // bekannten Float-Edge-Cases. Wer Cent-Genauigkeit braucht, soll Decimal nutzen.
+    // Exakte Halbcent-Grenzen kippen jetzt korrekt nach oben (vorher abgerundet).
+    expect(round2(1.005)).toBe(1.01);
+    expect(round2(8.575)).toBe(8.58);
+    expect(round2(10.075)).toBe(10.08);
+    // Knapp darunter bleibt unten; Negative runden vom Nullpunkt weg.
+    expect(round2(1.004)).toBe(1.0);
+    expect(round2(-1.005)).toBe(-1.01);
+    expect(round2(-2.5 / 100)).toBe(-0.03);
   });
 
   it('fmtEUR formats positive, negative and nullish', () => {

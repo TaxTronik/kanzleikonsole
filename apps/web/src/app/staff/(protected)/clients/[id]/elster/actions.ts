@@ -26,6 +26,7 @@ import {
 } from '@taxtronik/elster';
 import { evidenceService } from '@/server/container';
 import { assertClientAccessTx } from '@/server/auth/rbac';
+import { checkRateLimit } from '@/server/rate-limit';
 import { staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
 
 const STEUERARTEN = ['ESt', 'KSt', 'USt', 'LSt', 'GewSt', 'ZaSt', 'KapESt'] as const;
@@ -53,6 +54,18 @@ export async function kontoabfrageAction(
   const g = await staffActionGuard();
   if (!g.ok) return g;
   const { tenantId, staffId, ctx, session } = g;
+
+  // Jede Abfrage löst einen echten ELSTER-Vorgang aus (Bridge-Roundtrip bis
+  // 120 s, PIN durchgereicht). Drossel gegen Echtfall-Spam / Portalzertifikat-
+  // Sperrgefahr: pro Mitarbeiter + tenant-weiter Backstop.
+  const rlUser = await checkRateLimit(`elster-konto:${staffId}`, { max: 5, windowSec: 600 });
+  if (!rlUser.ok) {
+    return { ok: false, error: 'Zu viele ELSTER-Abfragen — bitte einige Minuten warten.' };
+  }
+  const rlTenant = await checkRateLimit(`elster-konto-tenant:${tenantId}`, { max: 20, windowSec: 600 });
+  if (!rlTenant.ok) {
+    return { ok: false, error: 'Zu viele ELSTER-Abfragen in der Kanzlei — bitte einige Minuten warten.' };
+  }
 
   const parsed = Schema.safeParse({
     clientId: formData.get('clientId'),

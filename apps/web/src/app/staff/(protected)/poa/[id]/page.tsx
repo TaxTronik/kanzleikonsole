@@ -140,22 +140,29 @@ export default async function PoaDetailPage({
           </form>
         )}
         {poa.status !== 'REVOKED' && poa.status !== 'EXPIRED' && (
-          <form action={revokePoaAction} className="flex gap-2">
-            <input type="hidden" name="poaId" value={poa.id} />
-            <input
-              name="reason"
-              type="text"
-              className="input flex-1"
-              placeholder="Widerrufsgrund (Pflicht)"
-              required
-              minLength={1}
-              maxLength={2000}
-            />
-            <button type="submit" className="btn-secondary text-red-700 border-red-300 hover:bg-red-50">
-              <X className="h-4 w-4" />
-              Widerrufen
-            </button>
-          </form>
+          <div>
+            <form action={revokePoaAction} className="flex gap-2">
+              <input type="hidden" name="poaId" value={poa.id} />
+              <input
+                name="reason"
+                type="text"
+                className="input flex-1"
+                placeholder="Widerrufsgrund (Pflicht)"
+                required
+                minLength={1}
+                maxLength={2000}
+              />
+              <button type="submit" className="btn-secondary text-red-700 border-red-300 hover:bg-red-50">
+                <X className="h-4 w-4" />
+                Widerrufen
+              </button>
+            </form>
+            <p className="text-xs text-muted mt-2">
+              Hinweis: Der Widerruf wirkt hier app-intern. Gegenüber dem Finanzamt
+              wird er erst mit Zugang wirksam (§ 80 Abs. 1 S. 4 AO) — bei
+              elektronischer Vollmacht bitte die Vollmachtsdatenbank aktualisieren.
+            </p>
+          </div>
         )}
       </div>
     </div>

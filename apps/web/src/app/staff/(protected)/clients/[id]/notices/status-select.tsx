@@ -8,7 +8,9 @@ const STATUS_LABELS: Record<string, string> = {
   GEPRUEFT: 'Geprüft',
   EINSPRUCH: 'Einspruch eingelegt',
   ABGEHOLFEN: 'Abgeholfen',
+  TEILABHILFE: 'Teilabhilfe',
   ZURUECKGEWIESEN: 'Zurückgewiesen',
+  KLAGE: 'Klage erhoben',
   RECHTSKRAEFTIG: 'Rechtskräftig',
 };
 

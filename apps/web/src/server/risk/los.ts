@@ -34,6 +34,7 @@
 // nichts geschrieben.
 // =============================================================================
 
+import { z } from 'zod';
 import { withTenantContext, type TenantContext, type TxClient } from '@taxtronik/db';
 import {
   RiskLayerClient,
@@ -43,6 +44,23 @@ import {
 } from '@taxtronik/risk-layer';
 import { evidenceService } from '@/server/container';
 import { ACTION_LABELS } from '@/server/audit/labels';
+import { log } from '@/server/logger';
+
+// P3-29c: Struktur-Validierung des JSONB-Settings statt roher Cast — ein
+// beschädigter/veralteter Eintrag ergibt null statt eines TypeError später.
+const PendingLosSchema = z
+  .object({
+    jobId: z.string(),
+    backend: z.string(),
+    commitment: z.string(),
+    k: z.number(),
+    rahmen: z.array(z.string()),
+    rahmenTyp: z.string().optional(),
+    zeitraum: z.object({}).passthrough(),
+    beantragtAm: z.string(),
+    beantragtVon: z.string().nullable(),
+  })
+  .passthrough();
 
 /** Minimale Client-Verträge für DI/Tests. */
 export type LosZiehClient = Pick<RiskLayerClient, 'losZiehen'>;
@@ -262,7 +280,13 @@ export async function getPendingLos(ctx: TenantContext): Promise<PendingLos | nu
       where: { tenantId_key: { tenantId: ctx.tenantId, key: PENDING_KEY } },
     }),
   );
-  return row ? (row.value as unknown as PendingLos) : null;
+  if (!row) return null;
+  const parsed = PendingLosSchema.safeParse(row.value);
+  if (!parsed.success) {
+    log.warn({ component: 'los', tenantId: ctx.tenantId }, 'getPendingLos: ungültiger pending-Eintrag verworfen');
+    return null;
+  }
+  return parsed.data as unknown as PendingLos;
 }
 
 /**

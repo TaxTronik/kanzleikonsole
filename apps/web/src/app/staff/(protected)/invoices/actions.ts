@@ -10,7 +10,7 @@ import { createDocumentWithVersion } from '@/server/documents/upload-helpers';
 import { sendTemplateMail } from '@/server/mail/dispatch';
 import { fireAndForget } from '@/server/util/fire-and-forget';
 import { portalBaseUrl } from '@taxtronik/config';
-import { toActionError } from '@/server/auth/rbac';
+import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { ensureZugferdArchive } from '@/server/invoicing/archive';
 import { computeVatTotals } from '@/server/invoicing/vat';
 import { allocateInvoiceNumber, isValidInvoiceTransition } from '@/server/invoicing/number';
@@ -34,14 +34,29 @@ async function requireInvoiceMode(ctx: TenantContext, mode: InvoiceMode): Promis
   return null;
 }
 
-const PositionSchema = z.object({
-  description: z.string().min(1).max(500),
-  quantity: z.coerce.number().min(0).max(100000),
-  unitPrice: z.coerce.number().min(-1000000).max(1000000),
-  unit: z.string().max(50).default('Stück'),
-  // iter86 (§ 14 Abs. 4 Nr. 8 UStG): Steuersatz je Position.
-  vatRate: z.coerce.number().min(0).max(99).default(19),
-});
+// Zulässige deutsche USt-Sätze (Regel- und ermäßigter Satz + Nullsatz).
+// Serverseitige Whitelist statt freiem 0–99-Bereich (die UI bietet nur diese).
+const ALLOWED_VAT_RATES = [0, 7, 19] as const;
+
+const PositionSchema = z
+  .object({
+    description: z.string().min(1).max(500),
+    quantity: z.coerce.number().min(0).max(100000),
+    unitPrice: z.coerce.number().min(-1000000).max(1000000),
+    unit: z.string().max(50).default('Stück'),
+    // iter86 (§ 14 Abs. 4 Nr. 8 UStG): Steuersatz je Position.
+    vatRate: z.coerce
+      .number()
+      .refine((r) => (ALLOWED_VAT_RATES as readonly number[]).includes(r), {
+        message: 'Ungültiger USt-Satz (zulässig: 0 %, 7 %, 19 %).',
+      })
+      .default(19),
+  })
+  // Positionsbetrag muss in Decimal(12,2) passen (max. 9.999.999.999,99) —
+  // sonst DB-Fehler statt Validierungsmeldung.
+  .refine((p) => Math.abs(p.quantity * p.unitPrice) <= 9_999_999_999.99, {
+    message: 'Positionsbetrag zu groß (max. 9.999.999.999,99 €).',
+  });
 
 // iter85 (GoB): KEIN number-Feld mehr — die Rechnungsnummer wird automatisch
 // und lückenlos aus dem Nummernkreis vergeben (allocateInvoiceNumber, in
@@ -65,7 +80,15 @@ const CreateSchema = z.object({
   }),
   dueDate: z.string().date(),
   notes: z.string().max(5000).optional().or(z.literal('')),
-  format: z.enum(['PDF', 'XRECHNUNG', 'ZUGFERD']).default('PDF'),
+  // iter98: optionaler Leistungszeitraum (§ 14 Abs. 4 Nr. 6 UStG). Nur wirksam,
+  // wenn BEIDE gesetzt sind; sonst gilt das Rechnungsdatum.
+  servicePeriodStart: z.string().date().optional().or(z.literal('')),
+  servicePeriodEnd: z.string().date().optional().or(z.literal('')),
+  // iter101: Befreiungsgrund für 0 %-Umsätze (§ 14 Abs. 4 Nr. 8 UStG).
+  vatExemptionReason: z.string().max(500).optional().or(z.literal('')),
+  // H-4: IN_APP-Rechnungen brauchen ein Generat mit GoBD-Archivkopie. Das
+  // reine „PDF" (kein Generat, kein Dokument) ist nur der EXTERNAL-Upload-Weg.
+  format: z.enum(['XRECHNUNG', 'ZUGFERD']).default('ZUGFERD'),
   // max(): die Action ist direkt aufrufbar — ohne Obergrenze könnte ein
   // Aufruf beliebig viele Positionen in einer Tx anlegen.
   positions: z.array(PositionSchema).min(1).max(200),
@@ -77,7 +100,10 @@ export async function createInvoiceAction(input: {
   issueDate: string;
   dueDate: string;
   notes?: string;
-  format: 'PDF' | 'XRECHNUNG' | 'ZUGFERD';
+  servicePeriodStart?: string;
+  servicePeriodEnd?: string;
+  vatExemptionReason?: string;
+  format: 'XRECHNUNG' | 'ZUGFERD';
   positions: Array<{ description: string; quantity: number; unitPrice: number; unit: string; vatRate: number }>;
 }): Promise<ActionResult & { invoiceId?: string; number?: string }> {
   // iter87: Anlegen braucht das Einzelrecht (ADMIN/PARTNER implizit).
@@ -93,6 +119,23 @@ export async function createInvoiceAction(input: {
     return { ok: false, error: parsed.error.issues.map((i) => i.message).join('; ') };
   }
   const data = parsed.data;
+
+  // Leistungszeitraum: entweder beide leer oder beide gesetzt, Start ≤ Ende.
+  const periodStart = data.servicePeriodStart || null;
+  const periodEnd = data.servicePeriodEnd || null;
+  if ((periodStart === null) !== (periodEnd === null)) {
+    return { ok: false, error: 'Leistungszeitraum braucht Start UND Ende (oder beides leer).' };
+  }
+  if (periodStart && periodEnd && periodStart > periodEnd) {
+    return { ok: false, error: 'Leistungszeitraum: Start liegt nach dem Ende.' };
+  }
+
+  // § 14 Abs. 4 Nr. 8 UStG: 0 %-Umsätze brauchen einen Befreiungshinweis.
+  const exemptionReason = data.vatExemptionReason || null;
+  const hasZeroRate = data.positions.some((p) => p.vatRate === 0);
+  if (hasZeroRate && !exemptionReason) {
+    return { ok: false, error: 'Bei 0 %-Positionen ist ein Befreiungsgrund erforderlich (z. B. „§ 19 UStG Kleinunternehmer", „steuerfrei nach § 4 …").' };
+  }
 
   // Beträge berechnen — USt je Satz-Gruppe (§ 14 Abs. 4 Nr. 8 UStG, iter86).
   const positionsWithNet = data.positions.map((p, i) => ({
@@ -110,6 +153,8 @@ export async function createInvoiceAction(input: {
   let invoiceNumber: string;
   try {
     [invoiceId, invoiceNumber] = await withTenantContext(ctx, async (tx) => {
+      // Vertraulich-/RESTRICTED-Ventil (Gegenstück in clients/[id]/billing).
+      await assertClientAccessTx(tx, g.session, data.clientId);
       // Lückenlose Vergabe in DERSELBEN Tx: scheitert der INSERT, rollt die
       // Sequenz mit zurück — es entsteht keine Lücke.
       const number = await allocateInvoiceNumber(tx, tenantId, new Date(data.issueDate));
@@ -121,6 +166,9 @@ export async function createInvoiceAction(input: {
           subject: data.subject,
           issueDate: new Date(data.issueDate),
           dueDate: new Date(data.dueDate),
+          servicePeriodStart: periodStart ? new Date(periodStart) : null,
+          servicePeriodEnd: periodEnd ? new Date(periodEnd) : null,
+          vatExemptionReason: exemptionReason,
           status: 'DRAFT',
           format: data.format,
           netAmount: totals.netAmount,
@@ -206,9 +254,20 @@ export async function markSentAction(
   // Festschreibung existieren — vorher war das Archiv best-effort und eine
   // SENT-Rechnung konnte ohne revisionssichere Kopie existieren (Befund 8).
   // PDF-/EXTERNAL-Formate haben kein Generat (not_applicable) und passieren.
-  const current = await withTenantContext(ctx, (tx) =>
-    tx.invoice.findUnique({ where: { id: parsed.data.invoiceId }, select: { status: true } }),
-  );
+  let current;
+  try {
+    current = await withTenantContext(ctx, async (tx) => {
+      const inv = await tx.invoice.findUnique({
+        where: { id: parsed.data.invoiceId },
+        select: { status: true, clientId: true, documentId: true, format: true },
+      });
+      // Vertraulich-/RESTRICTED-Ventil.
+      if (inv) await assertClientAccessTx(tx, g.session, inv.clientId);
+      return inv;
+    });
+  } catch (e) {
+    return toActionError(e);
+  }
   if (!current) return { ok: false, error: 'Rechnung nicht gefunden.' };
   if (!isValidInvoiceTransition(current.status, 'SENT')) {
     return { ok: false, error: `Statuswechsel ${current.status} → SENT ist nicht zulässig.` };
@@ -226,11 +285,25 @@ export async function markSentAction(
           : `ZUGFeRD-Archiv konnte nicht erzeugt werden: ${err instanceof Error ? err.message : String(err)}`,
     };
   }
-  if (!archive.ok && archive.code !== 'not_applicable') {
-    return {
-      ok: false,
-      error: `Versand abgebrochen — GoBD-Archivkopie konnte nicht erstellt werden: ${ARCHIVE_FAIL_TEXT[archive.code] ?? archive.code}`,
-    };
+  if (!archive.ok) {
+    if (archive.code !== 'not_applicable') {
+      return {
+        ok: false,
+        error: `Versand abgebrochen — GoBD-Archivkopie konnte nicht erstellt werden: ${ARCHIVE_FAIL_TEXT[archive.code] ?? archive.code}`,
+      };
+    }
+    // H-4: `not_applicable` ist nur für EXTERNAL-Uploads zulässig (deren
+    // documentId IST die Rechnung). Eine IN_APP-Rechnung mit Format „PDF" hat
+    // KEIN Generat und KEIN Dokument — sie darf nicht ohne Rechnungsbeleg
+    // versendet werden (§ 14 Abs. 1 UStG, keine GoBD-Archivkopie).
+    if (!current.documentId) {
+      return {
+        ok: false,
+        error:
+          'Diese Rechnung hat kein Rechnungsdokument (Format „PDF" ohne Beleg). ' +
+          'Bitte als XRechnung oder ZUGFeRD neu anlegen.',
+      };
+    }
   }
 
   const sent = await withTenantContext(ctx, async (tx) => {
@@ -330,13 +403,14 @@ export async function markPaidAction(formData: FormData): Promise<void> {
   if (!parsed.success) return;
 
   const r = await withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, session }) => {
       // iter85: Precondition (UI verbirgt den Button, die Action prüft selbst;
       // der DB-Trigger ist der Backstop).
       const current = await tx.invoice.findUnique({
-        where: { id: parsed.data.invoiceId }, select: { status: true },
+        where: { id: parsed.data.invoiceId }, select: { status: true, clientId: true },
       });
       if (!current) return;
+      await assertClientAccessTx(tx, session, current.clientId);
       if (!isValidInvoiceTransition(current.status, 'PAID')) {
         throw new ActionError(`Statuswechsel ${current.status} → PAID ist nicht zulässig.`);
       }
@@ -362,47 +436,137 @@ export async function markPaidAction(formData: FormData): Promise<void> {
 }
 
 export async function cancelInvoiceAction(formData: FormData): Promise<void> {
+  const g = await staffActionGuard({ requirePermission: 'INVOICE_MANAGE' });
+  if (!g.ok) throw new ActionError(g.error ?? 'Nicht berechtigt.');
+  const { tenantId, staffId, ctx, session } = g;
   const parsed = StatusSchema.safeParse({ invoiceId: formData.get('invoiceId') });
   if (!parsed.success) return;
+  const invoiceId = parsed.data.invoiceId;
 
-  const r = await withStaff(
-    async (tx, { tenantId, staffId }) => {
-      // iter85: PAID/CANCELLED sind terminal — vorher war z. B. PAID → CANCELLED
-      // per direktem Action-Aufruf möglich (Schutz lag nur in der UI).
+  // Tx A: Original prüfen/stornieren + (falls bereits versendet) Storno-DRAFT
+  // mit negierten Beträgen anlegen. Ein reiner DRAFT-Abbruch braucht KEINEN
+  // Korrekturbeleg (nie ausgestellt).
+  let stornoId: string | null = null;
+  let stornoIsInApp = false;
+  try {
+    await withTenantContext(ctx, async (tx) => {
       const current = await tx.invoice.findUnique({
-        where: { id: parsed.data.invoiceId }, select: { status: true },
+        where: { id: invoiceId },
+        include: { positions: { orderBy: { position: 'asc' } } },
       });
-      if (!current) return;
+      if (!current) throw new ActionError('Rechnung nicht gefunden.');
+      await assertClientAccessTx(tx, session, current.clientId);
       if (!isValidInvoiceTransition(current.status, 'CANCELLED')) {
         throw new ActionError(`Statuswechsel ${current.status} → CANCELLED ist nicht zulässig.`);
       }
-      const updated = await tx.invoice.update({
-        where: { id: parsed.data.invoiceId },
-        data: { status: 'CANCELLED' },
-      });
-      // Storno gibt die abgerechneten Zeiteinträge zur Neuabrechnung frei:
-      // ihr invoiceId-Link ist nur der Abrechnungs-Pool-Marker, NICHT Teil der
-      // festgeschriebenen Rechnungspositionen (die als eigene InvoicePosition-
-      // Snapshots an der stornierten Rechnung erhalten bleiben). Ohne das wären
-      // die Stunden dauerhaft gefesselt — weder neu abrechenbar (Pool-Filter
-      // invoiceId:null) noch löschbar (Löschschutz für abgerechnete Einträge).
+
+      const wasDelivered = current.status === 'SENT' || current.status === 'OVERDUE';
+      if (wasDelivered) {
+        // § 14c Abs. 1 i.V.m. § 17 UStG: Korrekturbeleg (TypeCode 381) mit
+        // eigener lückenloser Nummer und negierten Beträgen.
+        const num = (v: { toString(): string }) => -Number(v.toString());
+        const number = await allocateInvoiceNumber(tx, tenantId, new Date());
+        const storno = await tx.invoice.create({
+          data: {
+            tenantId,
+            clientId: current.clientId,
+            number,
+            subject: `Storno zu ${current.number}: ${current.subject}`.slice(0, 500),
+            issueDate: new Date(),
+            dueDate: new Date(),
+            status: 'DRAFT',
+            format: current.format,
+            netAmount: num(current.netAmount),
+            vatAmount: num(current.vatAmount),
+            totalAmount: num(current.totalAmount),
+            vatRate: current.vatRate,
+            vatExemptionReason: current.vatExemptionReason,
+            categoryId: current.categoryId,
+            stornoOfId: current.id,
+            createdByStaff: staffId,
+            positions: {
+              create: current.positions.map((p) => ({
+                position: p.position,
+                description: p.description,
+                quantity: Number(p.quantity.toString()),
+                unitPrice: num(p.unitPrice),
+                unit: p.unit,
+                netAmount: num(p.netAmount),
+                vatRate: Number(p.vatRate.toString()),
+              })),
+            },
+          },
+        });
+        stornoId = storno.id;
+        stornoIsInApp = current.format !== 'PDF';
+        await evidenceService.record(tx, {
+          tenantId, actorType: 'STAFF', actorId: staffId,
+          action: 'invoice.storno.create',
+          resourceType: 'invoice',
+          resourceId: storno.id,
+          after: { number, stornoOf: current.number, totalAmount: num(current.totalAmount) },
+        });
+      }
+
+      await tx.invoice.update({ where: { id: invoiceId }, data: { status: 'CANCELLED' } });
+      // Storno gibt die abgerechneten Zeiteinträge zur Neuabrechnung frei
+      // (Pool-Marker, nicht Teil der festgeschriebenen Positionen).
       const released = await tx.timeEntry.updateMany({
-        where: { invoiceId: parsed.data.invoiceId },
-        data: { invoiceId: null },
+        where: { invoiceId }, data: { invoiceId: null },
       });
       await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+        tenantId, actorType: 'STAFF', actorId: staffId,
         action: 'invoice.cancel',
         resourceType: 'invoice',
-        resourceId: updated.id,
-        after: { number: updated.number, releasedTimeEntries: released.count },
+        resourceId: invoiceId,
+        after: { number: current.number, releasedTimeEntries: released.count, stornoInvoiceId: stornoId },
       });
-    },
-    { requirePermission: 'INVOICE_MANAGE', revalidate: ['/staff/invoices', `/staff/invoices/${parsed.data.invoiceId}`] },
-  );
-  if (!r.ok) throw new ActionError(r.error ?? 'Aktion fehlgeschlagen.');
+    });
+  } catch (e) {
+    if (e instanceof ActionError) throw e;
+    throw new ActionError(toActionError(e).error ?? 'Storno fehlgeschlagen.');
+  }
+
+  // Tx B: Storno-Beleg (IN_APP) erzeugen + festschreiben + zustellen. Best-
+  // effort: scheitert das, bleibt der Storno als DRAFT stehen (manuell
+  // versendbar) — der Original-Storno steht bereits fest.
+  if (stornoId && stornoIsInApp) {
+    try {
+      const archive = await withTimeout(ensureZugferdArchive(ctx, stornoId), 45_000);
+      if (archive.ok || archive.code === 'not_applicable') {
+        await withTenantContext(ctx, async (tx) => {
+          const res = await tx.invoice.updateMany({
+            where: { id: stornoId!, status: 'DRAFT' },
+            data: { status: 'SENT', sentAt: new Date() },
+          });
+          if (res.count === 0) return;
+          const st = await tx.invoice.findUniqueOrThrow({ where: { id: stornoId! } });
+          if (st.documentId) {
+            await tx.document.updateMany({
+              where: { id: st.documentId, sharedWithClientAt: null },
+              data: { sharedWithClientAt: new Date(), sharedByStaff: staffId },
+            });
+          }
+          await evidenceService.record(tx, {
+            tenantId, actorType: 'STAFF', actorId: staffId,
+            action: 'invoice.send',
+            resourceType: 'invoice',
+            resourceId: st.id,
+            after: { number: st.number, storno: true },
+          });
+        });
+        emitN8nEvent('invoice.due', { tenantId, invoiceId: stornoId });
+      }
+    } catch (err) {
+      log.warn(
+        { component: 'invoices', action: 'storno-send', stornoId, err: (err as Error).message },
+        'cancelInvoiceAction: Storno-Beleg konnte nicht automatisch versendet werden (bleibt DRAFT)',
+      );
+    }
+  }
+
+  revalidatePath('/staff/invoices');
+  revalidatePath(`/staff/invoices/${invoiceId}`);
 }
 
 // ----------------------------------------------------------------------------
@@ -486,6 +650,7 @@ export async function uploadExternalInvoiceAction(input: z.infer<typeof UploadEx
         : null;
       mailTemplateSlug = cat?.emailTemplateSlug ?? null;
 
+      await assertClientAccessTx(tx, g.session, data.clientId);
       const cli = await tx.client.findUnique({
         where: { id: data.clientId },
         select: { name: true, contacts: { where: { active: true, notificationsEnabled: true }, select: { email: true, fullName: true } } },
@@ -562,9 +727,10 @@ export async function uploadExternalInvoiceAction(input: z.infer<typeof UploadEx
     return toActionError(e);
   }
 
-  // 3) Mail mit PDF-Anhang an aktive Kontakte mit Opt-in
+  // 3) Mail mit PDF-Anhang an aktive Kontakte mit Opt-in.
+  // fireAndForget (catch + Log) statt still verschlucktem `.catch(() => void 0)`.
   for (const r of recipients) {
-    await sendTemplateMail({
+    fireAndForget('sendTemplateMail (external invoice)', sendTemplateMail({
       tenantId,
       slug: mailTemplateSlug ?? 'invoice-sent',
       to: r.email,
@@ -591,7 +757,7 @@ export async function uploadExternalInvoiceAction(input: z.infer<typeof UploadEx
           contentType: 'application/pdf',
         },
       ],
-    }).catch(() => void 0);
+    }));
   }
 
   revalidatePath('/staff/invoices');

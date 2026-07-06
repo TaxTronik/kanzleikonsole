@@ -10,7 +10,7 @@ import { sendTemplateMail } from '@/server/mail/dispatch';
 import { portalBaseUrl } from '@taxtronik/config';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { checkRateLimit, checkIpOrGlobalLimit, getClientIp } from '@/server/rate-limit';
-import { isStaffAdmin, toActionError } from '@/server/auth/rbac';
+import { isStaffAdmin, toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { headers } from 'next/headers';
 import { staffActionGuard, withStaff, ActionError } from '@/server/actions/staff-action';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
@@ -199,13 +199,20 @@ export async function sendForSignatureAction(formData: FormData): Promise<Action
     sent = await withTenantContext(ctx, async (tx) => {
       const before = await tx.powerOfAttorney.findUnique({ where: { id: poaId } });
       if (!before) throw new ActionError('Vollmacht nicht gefunden.');
+      // Vertraulich-/RESTRICTED-Ventil.
+      await assertClientAccessTx(tx, g.session, before.clientId);
       if (before.status === 'SIGNED') throw new ActionError('Bereits unterschrieben.');
+      if (before.status === 'REVOKED') throw new ActionError('Vollmacht ist widerrufen.');
 
       const tenant = await tx.tenant.findUnique({ where: { id: tenantId } });
       if (!tenant) throw new ActionError('Mandant fehlt.');
 
-      const updated = await tx.powerOfAttorney.update({
-        where: { id: poaId },
+      // TOCTOU-Schutz: atomarer Claim. Race gegen signPoaAction — ein paralleler
+      // Abschluss (→ SIGNED) darf nicht durch ein Re-Send auf SENT zurückgesetzt
+      // werden (sonst frischer Signing-Token für eine bereits signierte
+      // Vollmacht → eIDAS-Beweisspur beschädigt).
+      const claim = await tx.powerOfAttorney.updateMany({
+        where: { id: poaId, status: { in: ['DRAFT', 'SENT'] } },
         data: {
           status: 'SENT',
           signingTokenHash: tokenHash,
@@ -220,6 +227,10 @@ export async function sendForSignatureAction(formData: FormData): Promise<Action
           signingOtpAttemptsTotal: 0,
         },
       });
+      if (claim.count === 0) {
+        throw new ActionError('Status wurde zwischenzeitlich geändert — bitte Seite neu laden.');
+      }
+      const updated = await tx.powerOfAttorney.findUniqueOrThrow({ where: { id: poaId } });
 
       await evidenceService.record(tx, {
         tenantId,
@@ -273,7 +284,14 @@ export async function revokePoaAction(formData: FormData): Promise<void> {
   if (!parsed.success) return;
 
   await withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, session }) => {
+      const before = await tx.powerOfAttorney.findUnique({
+        where: { id: parsed.data.poaId },
+        select: { clientId: true, status: true },
+      });
+      if (!before) throw new ActionError('Vollmacht nicht gefunden.');
+      await assertClientAccessTx(tx, session, before.clientId);
+      if (before.status === 'REVOKED') throw new ActionError('Bereits widerrufen.');
       const updated = await tx.powerOfAttorney.update({
         where: { id: parsed.data.poaId },
         data: {

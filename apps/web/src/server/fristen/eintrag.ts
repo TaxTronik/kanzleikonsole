@@ -10,11 +10,17 @@
 // Dadurch kann das Buch nie vom echten Zustand abweichen.
 // =============================================================================
 
-export type FristQuelle = 'STEUERTERMIN' | 'EINSPRUCHSFRIST' | 'ANFORDERUNG' | 'WIEDERVORLAGE';
+export type FristQuelle =
+  | 'STEUERTERMIN'
+  | 'EINSPRUCHSFRIST'
+  | 'KLAGEFRIST'
+  | 'ANFORDERUNG'
+  | 'WIEDERVORLAGE';
 
 export const QUELLE_LABELS: Record<FristQuelle, string> = {
   STEUERTERMIN: 'Steuertermin',
   EINSPRUCHSFRIST: 'Einspruchsfrist',
+  KLAGEFRIST: 'Klagefrist',
   ANFORDERUNG: 'Anforderung',
   WIEDERVORLAGE: 'Wiedervorlage',
 };
@@ -53,9 +59,20 @@ export function taxNoticeFristErledigt(status: string): boolean {
   return (
     status === 'EINSPRUCH' ||
     status === 'ABGEHOLFEN' ||
+    status === 'TEILABHILFE' ||
     status === 'ZURUECKGEWIESEN' ||
+    status === 'KLAGE' ||
     status === 'RECHTSKRAEFTIG'
   );
+}
+
+/**
+ * Klagefrist (§ 47 FGO): läuft nach der Einspruchsentscheidung (ZURUECKGEWIESEN
+ * / TEILABHILFE). Erledigt, sobald Klage erhoben (KLAGE) oder der Fall
+ * rechtskräftig ist (RECHTSKRAEFTIG = Frist verstrichen/verzichtet).
+ */
+export function taxNoticeKlageFristErledigt(status: string): boolean {
+  return status === 'KLAGE' || status === 'RECHTSKRAEFTIG';
 }
 
 /** Anforderung: erst CLOSED/CANCELLED ist erledigt (RESPONDED = Mandant hat geliefert, Prüfung offen). */

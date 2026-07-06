@@ -17,8 +17,21 @@ const TIME_ZONE = 'Europe/Berlin';
 
 // --- Numerisch -----------------------------------------------------------------
 
+/**
+ * Kaufmännische Rundung auf 2 Nachkommastellen (half away from zero), robust
+ * gegen die Float-Repräsentation. Konsumenten sind u. a. die USt-Berechnung je
+ * Satzgruppe (§ 14 Abs. 4 Nr. 8 UStG) — dort führte das naive
+ * `Math.round(n*100)/100` an exakten Halbcent-Grenzen zu 1 Cent zu wenig
+ * (round2(1.005)=1.00, round2(8.575)=8.57). Eine relative ULP-Korrektur schiebt
+ * echte …5-Beträge über die Rundungsgrenze, ohne knapp darunterliegende Werte
+ * zu beeinflussen.
+ */
 export function round2(n: number): number {
-  return Math.round(n * 100) / 100;
+  if (!Number.isFinite(n)) return n;
+  const sign = n < 0 ? -1 : 1;
+  const cents = Math.abs(n) * 100;
+  const rounded = Math.round(cents + Math.max(1, cents) * 8 * Number.EPSILON);
+  return (sign * rounded) / 100;
 }
 
 const eurFormatter = new Intl.NumberFormat(LOCALE, {
@@ -185,6 +198,21 @@ export function berlinDayEndUtc(dateStr: string): Date | null {
   if (!p) return null;
   const guess = Date.UTC(p.y, p.m - 1, p.d, 23, 59, 59, 999);
   return new Date(guess - berlinOffsetMs(new Date(guess)));
+}
+
+/**
+ * UTC-Mitternacht des HEUTIGEN Berlin-Kalendertags — passend zur `@db.Date`-
+ * Kodierung (dort ist ein Kalendertag als UTC-Mitternacht gespeichert). Für
+ * „überfällig ab Folgetag"-Vergleiche: `dueDate < berlinTodayUtcMidnight()`.
+ */
+export function berlinTodayUtcMidnight(now: Date = new Date()): Date {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: TIME_ZONE,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+    }).formatToParts(now).map((x) => [x.type, x.value]),
+  );
+  return new Date(Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day)));
 }
 
 // --- Dauer ---------------------------------------------------------------------

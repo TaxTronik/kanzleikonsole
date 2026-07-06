@@ -7,9 +7,8 @@
 // Rundung: USt je Satz-Gruppe auf 2 Stellen (nicht je Position — sonst
 // akkumulieren Rundungsdifferenzen), Gesamt = Summe der Gruppen.
 //
-// EN-16931-Kategorie: Satz > 0 → "S" (Standard), Satz = 0 → "Z" (zero rated).
-// Befreite Umsätze mit Befreiungsgrund (Kategorie "E") sind bewusst nicht
-// abgebildet (Kanzlei-Praxis: Regelsteuersatz; 0 % als Randfall).
+// EN-16931-Kategorie: Satz > 0 → "S" (Standard); Satz = 0 MIT Befreiungsgrund →
+// "E" (exempt, BT-120 Pflicht), ohne Grund → "Z" (zero rated).
 // =============================================================================
 
 import { round2 } from '@/lib/fmt';
@@ -55,7 +54,9 @@ export function computeVatTotals(positions: VatPosition[]): VatTotals {
   };
 }
 
-/** EN-16931-Steuerkategorie für einen Satz (s. Kopfkommentar). */
-export function vatCategory(rate: number): 'S' | 'Z' {
-  return rate > 0 ? 'S' : 'Z';
+/** EN-16931-Steuerkategorie für einen Satz (s. Kopfkommentar). Bei 0 % mit
+ *  hinterlegtem Befreiungsgrund → "E" (steuerbefreit), sonst "Z". */
+export function vatCategory(rate: number, hasExemptionReason = false): 'S' | 'Z' | 'E' {
+  if (rate > 0) return 'S';
+  return hasExemptionReason ? 'E' : 'Z';
 }

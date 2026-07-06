@@ -23,7 +23,7 @@
 
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
-import { emitN8nEvent } from '@/server/n8n/emit';
+import { emitN8nEvent, type N8nEventName } from '@/server/n8n/emit';
 import { renderTemplate } from '@/server/mail/dispatch';
 import { sendMail } from '@/server/mail/send';
 import { log } from '@/server/logger';
@@ -53,6 +53,12 @@ export async function executeWorkflowStep(opts: ExecuteOpts): Promise<ExecuteRes
   // Tx-Callback sammelt die fertig gerenderten Mails nur ein; verschickt wird
   // NACH dem Commit (gleiches Muster wie uploadExternalInvoiceAction).
   const mailJobs: Array<{ to: string; subject: string; text: string; html: string }> = [];
+  // M-N2: n8n-Events werden INNERHALB der Tx nur eingesammelt und erst NACH
+  // dem Commit gefeuert. `emitN8nEvent` schreibt über prismaOwner (eigene
+  // Connection) — ein Feuern vor dem Commit würde bei Rollback ein Event für
+  // eine nie existierende Anforderung zustellen bzw. der Worker könnte es vor
+  // Sichtbarkeit des Commits verarbeiten (gleiches Muster wie mailJobs).
+  const n8nEvents: Array<{ event: N8nEventName; payload: Record<string, unknown> }> = [];
 
   const result = await withTenantContext(ctx, async (tx) => {
     const item = await tx.workflowItem.findUnique({
@@ -239,14 +245,20 @@ export async function executeWorkflowStep(opts: ExecuteOpts): Promise<ExecuteRes
         break;
     }
 
-    // n8n-Event feuern (für alle Kinds — wenn gesetzt).
-    // F8: item.n8nEvent ist beim Save via Regex auf [a-z0-9._-]{1,41} begrenzt.
-    // `workflow.step.${...}` ist dadurch im WorkflowStepN8nEvent-Template-Type
-    // — kein unsafe-Cast mehr nötig.
+    // n8n-Event einsammeln (für alle Kinds — wenn gesetzt); gefeuert wird nach
+    // dem Commit (M-N2). F8: item.n8nEvent ist beim Save via Regex auf
+    // [a-z0-9._-]{1,41} begrenzt → `workflow.step.${...}` ist im
+    // WorkflowStepN8nEvent-Template-Type, kein unsafe-Cast nötig.
     if (item.n8nEvent) {
-      emitN8nEvent(
-        `workflow.step.${item.n8nEvent}`,
-        {
+      // M-N6: der beim N8N_TRIGGER validierte `payload` (step-config) wird
+      // jetzt tatsächlich mitgegeben (vorher kommentarlos verworfen).
+      const customPayload =
+        item.kind === 'N8N_TRIGGER' && config['payload'] && typeof config['payload'] === 'object'
+          ? (config['payload'] as Record<string, unknown>)
+          : undefined;
+      n8nEvents.push({
+        event: `workflow.step.${item.n8nEvent}`,
+        payload: {
           tenantId,
           itemId,
           clientId,
@@ -254,9 +266,9 @@ export async function executeWorkflowStep(opts: ExecuteOpts): Promise<ExecuteRes
           title: item.title,
           createdRequestId: result.createdRequestId,
           createdSubmissionId: result.createdSubmissionId,
+          ...(customPayload ? { custom: customPayload } : {}),
         },
-        { tenantId },
-      );
+      });
     }
 
     await evidenceService.record(tx, {
@@ -277,6 +289,11 @@ export async function executeWorkflowStep(opts: ExecuteOpts): Promise<ExecuteRes
 
     return result;
   });
+
+  // M-N2: n8n-Events erst nach erfolgreichem Commit feuern.
+  if (result.ok) {
+    for (const ev of n8nEvents) emitN8nEvent(ev.event, ev.payload, { tenantId });
+  }
 
   // Befund 4: Versand NACH dem Commit. allSettled-Ergebnisse werden jetzt
   // ausgewertet — Fehlschläge strukturiert loggen statt stillschweigend zu

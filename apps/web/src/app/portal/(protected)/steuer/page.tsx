@@ -8,14 +8,16 @@ import { fmtDateShort, fmtEUR } from '@/lib/fmt';
 // Statuse, ab denen wir den Bescheid dem Mandant zeigen — vorher
 // (NEU) ist er noch nicht von der Kanzlei geprüft, daher zurückhalten.
 const VISIBLE_NOTICE_STATUSES = new Set([
-  'GEPRUEFT', 'EINSPRUCH', 'ABGEHOLFEN', 'ZURUECKGEWIESEN', 'RECHTSKRAEFTIG',
+  'GEPRUEFT', 'EINSPRUCH', 'ABGEHOLFEN', 'TEILABHILFE', 'ZURUECKGEWIESEN', 'KLAGE', 'RECHTSKRAEFTIG',
 ]);
 
 const NOTICE_STATUS_LABELS: Record<string, string> = {
   GEPRUEFT: 'Geprüft',
   EINSPRUCH: 'Einspruch eingelegt',
   ABGEHOLFEN: 'Einspruch abgeholfen',
+  TEILABHILFE: 'Teilweise abgeholfen',
   ZURUECKGEWIESEN: 'Einspruch zurückgewiesen',
+  KLAGE: 'Klage beim Finanzgericht',
   RECHTSKRAEFTIG: 'Rechtskräftig',
 };
 

@@ -9,7 +9,7 @@ import { notifyClientContacts } from '@/server/mail/dispatch';
 import { fireAndForget } from '@/server/util/fire-and-forget';
 import { portalBaseUrl } from '@taxtronik/config';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
-import { toActionError } from '@/server/auth/rbac';
+import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { staffActionGuard, withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
 
 export interface ActionResult extends BaseActionResult {
@@ -203,8 +203,9 @@ export async function createSubmissionAction(input: z.infer<typeof CreateSubmiss
   let id: string;
   try {
     id = await withTenantContext(ctx, async (tx) => {
-      // R-2: clientId-Tenant-Sanity
+      // R-2: clientId-Tenant-Sanity + Vertraulich-/RESTRICTED-Ventil
       await assertClientInTenant(tx, parsed.data.clientId);
+      await assertClientAccessTx(tx, g.session, parsed.data.clientId);
       const tpl = await tx.formTemplate.findUnique({
         where: { id: parsed.data.templateId },
         include: { _count: { select: { fields: true } } },
@@ -280,7 +281,14 @@ export async function reviewSubmissionAction(input: {
 
   // R-6: Prisma-Error-Mapping (P2025 = not found / cross-tenant) via withStaff.
   return withStaff(
-    async (tx, { staffId }) => {
+    async (tx, { session, staffId }) => {
+      // Vertraulich-/RESTRICTED-Ventil: Submission zuerst inkl. clientId lesen.
+      const sub = await tx.formSubmission.findUnique({
+        where: { id: parsed.data.id },
+        select: { clientId: true },
+      });
+      if (!sub) throw new ActionError('Formular nicht gefunden.');
+      await assertClientAccessTx(tx, session, sub.clientId);
       await tx.formSubmission.update({
         where: { id: parsed.data.id },
         data: {

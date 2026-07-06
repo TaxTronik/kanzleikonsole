@@ -16,32 +16,12 @@
 import { signOutboundN8n } from './sign';
 import { enqueueN8nEvent } from './outbox';
 
-/**
- * Bekannte System-Events. Workflow-Step-Events haben das dynamische
- * Präfix `workflow.step.<suffix>` und werden separat typisiert (siehe
- * WorkflowStepN8nEvent).
- */
-export type StaticN8nEventName =
-  | 'client.created'
-  | 'client.handover.ready'
-  | 'document.uploaded'
-  | 'request.opened'
-  | 'request.responded'
-  | 'request.closed'
-  | 'phone_note.created'
-  | 'gwg.expired'
-  | 'invoice.due'
-  | 'staff.locked'
-  // R-5: Urlaubsantrag — vorher fälschlich als staff.locked emittiert.
-  // n8n-Workflows, die auf staff.locked als „Account ausgesperrt"-Alarm
-  // hören, hätten sonst beim Urlaubsantrag ausgelöst.
-  | 'staff.vacation_requested'
-  // R-5 (gleiche Bug-Klasse): Termin-Bestätigung/-Ablehnung — vorher fälschlich
-  // als client.created emittiert (calendar/actions.ts). Payload trägt
-  // kind: 'appointment-accepted' | 'appointment-rejected'.
-  | 'appointment.responded'
-  | 'risk.research_requested'
-  | 'taxtronik.ping';
+// Bekannte System-Events. EINZIGE Quelle ist STATIC_EVENT_NAMES in
+// @taxtronik/n8n-shared — daraus werden Runtime-Whitelist UND dieser Typ
+// abgeleitet, sodass ein typisiertes Emit nie an der Whitelist scheitern kann.
+// Workflow-Step-Events (`workflow.step.<suffix>`) sind separat typisiert.
+export type { StaticN8nEventName } from '@taxtronik/n8n-shared';
+import type { StaticN8nEventName } from '@taxtronik/n8n-shared';
 
 /**
  * Dynamische Workflow-Step-Events. Suffix wird beim Speichern der

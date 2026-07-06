@@ -14,7 +14,7 @@
 
 import { withTenantContext } from '@taxtronik/db';
 import type { TenantContext } from '@taxtronik/db';
-import { decryptSecret, encryptSecret, looksEncrypted } from '@/server/crypto/secret-box';
+import { encryptSecret, readEncryptedSetting } from '@/server/crypto/secret-box';
 
 const KEY = 'mail.smtp';
 
@@ -61,18 +61,9 @@ export async function readSmtpConfig(ctx: TenantContext): Promise<SmtpConfig | n
     });
     if (!row) return null;
     const stored = row.value as Partial<SmtpStored> & { password?: string };
-    let password = '';
-    if (stored.passwordEncrypted && looksEncrypted(stored.passwordEncrypted)) {
-      try {
-        password = decryptSecret(stored.passwordEncrypted);
-      } catch {
-        password = '';
-      }
-    } else if (typeof stored.password === 'string') {
-      // Legacy / fehlgeschlagene Migration: behandle als Klartext, wird beim
-      // nächsten Speichern verschlüsselt.
-      password = stored.password;
-    }
+    // Legacy-Klartext (stored.password) als Fallback; Decrypt-Fehler wird
+    // geloggt statt still zu '' (Key-Rotation ohne Re-Wrap).
+    const password = readEncryptedSetting(stored.passwordEncrypted, stored.password, 'smtp.password');
     return {
       host: stored.host ?? '',
       port: typeof stored.port === 'number' ? stored.port : 587,

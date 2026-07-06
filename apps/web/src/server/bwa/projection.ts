@@ -32,7 +32,7 @@ export interface ProjectionRange {
 
 export interface YearProjection {
   year: number;
-  strategy: 'linear-seasonal' | 'trend-regression';
+  strategy: 'linear' | 'trend-regression';
   revenue: ProjectionRange | null;
   costs: ProjectionRange | null;
   result: ProjectionRange | null;             // vor Steuern (BWA-vorläufiges Ergebnis)
@@ -119,34 +119,16 @@ export function linearSeasonalProjection(
   const ytdMonths = monthsCovered(ytd);
   const remainingMonths = 12 - ytdMonths;
 
-  // Saisonalitätsfaktor aus Vorjahren: durchschnittliches Verhältnis
-  // gleicher Periodendauer zu Vollem Jahr.
-  const priorFullYears = periods
-    .filter((p) => p.periodType === 'YEAR' && p.fromDate.getUTCFullYear() < targetYear)
-    .sort((a, b) => b.fromDate.getUTCFullYear() - a.fromDate.getUTCFullYear())
-    .slice(0, 3);
-
   function projectAxis(axisKey: Axis): ProjectionRange | null {
     const ytdKpi = safeKpi(ytd);
     const ytdValue = (ytdKpi as unknown as Record<Axis, number | null>)[axisKey];
     if (ytdValue === null || ytdValue === undefined) return null;
 
-    // Saisonalitätsfaktoren: aus jedem Vorjahr ziehen wir das Verhältnis
-    // (ganzes Jahr) / (gleiche YTD-Monate) — wenn wir das nicht haben,
-    // nehmen wir 12/N als naive Linearität.
-    const seasonalFactors: number[] = [];
-    for (const py of priorFullYears) {
-      const fullKpi = safeKpi(py);
-      const fullValue = (fullKpi as unknown as Record<Axis, number | null>)[axisKey];
-      if (fullValue === null || fullValue === undefined || fullValue === 0) continue;
-      // Naïv: gleiche Monate würden proportional gewesen sein
-      // (echte monatliche Aufteilung haben wir aus Jahres-BWA nicht)
-      seasonalFactors.push(12 / ytdMonths);
-    }
-    const factor =
-      seasonalFactors.length > 0
-        ? seasonalFactors.reduce((a, b) => a + b, 0) / seasonalFactors.length
-        : 12 / ytdMonths;
+    // P3-19: Die Hochrechnung ist REIN LINEAR (12/N). Eine echte Saison-
+    // Gewichtung ließe sich nur mit der Vorjahres-MONATSverteilung bilden — die
+    // liegt aus einer Jahres-BWA aber nicht vor. Der frühere „Saisonfaktor"
+    // war toter Code (pro Vorjahr wurde dieselbe Konstante 12/N gemittelt).
+    const factor = 12 / ytdMonths;
 
     const estimate = ytdValue * factor;
     // Spanne: ±15% bei nur 3 Monaten YTD, ±5% bei 9+ Monaten YTD
@@ -164,7 +146,7 @@ export function linearSeasonalProjection(
   const taxes = estimateTaxRange(result);
   return {
     year: targetYear,
-    strategy: 'linear-seasonal',
+    strategy: 'linear',
     revenue: projectAxis('revenue'),
     costs: projectAxis('costs'),
     result,
@@ -206,7 +188,8 @@ export function trendRegressionProjection(
   targetYear: number,
 ): YearProjection | null {
   const fullYears = periods
-    .filter((p) => p.periodType === 'YEAR')
+    // Nur echte volle Jahre (12 Monate) — Fallback-Ranges nicht als Jahr werten.
+    .filter((p) => p.periodType === 'YEAR' && monthsCovered(p) === 12)
     .sort((a, b) => a.fromDate.getUTCFullYear() - b.fromDate.getUTCFullYear());
   if (fullYears.length < 2) return null;
 

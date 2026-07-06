@@ -4,19 +4,27 @@ import { z } from 'zod';
 import { redirect } from 'next/navigation';
 import { evidenceService } from '@/server/container';
 import { enqueueTaxDeadlineMaterialize } from '@/server/jobs/tax-deadline-materialize-queue';
+import { assertClientAccessTx } from '@/server/auth/rbac';
 import { staffActionGuard, withStaff, ActionError } from '@/server/actions/staff-action';
 
 export async function markDeadlineDoneAction(formData: FormData): Promise<void> {
   const id = z.string().uuid().parse(formData.get('id'));
 
   await withStaff(
-    async (tx, { tenantId, staffId }) => {
-      const before = await tx.taxDeadline.findUnique({ where: { id } });
-      if (!before) throw new ActionError('Termin nicht gefunden.');
-      await tx.taxDeadline.update({
+    async (tx, { tenantId, staffId, session }) => {
+      const before = await tx.taxDeadline.findUnique({
         where: { id },
+        select: { status: true, clientId: true },
+      });
+      if (!before) throw new ActionError('Termin nicht gefunden.');
+      await assertClientAccessTx(tx, session, before.clientId);
+      // Atomarer Claim: nur offene Termine schließen (idempotent, kein
+      // doppelter Audit-Eintrag bei parallelem Klick).
+      const res = await tx.taxDeadline.updateMany({
+        where: { id, status: { notIn: ['DONE', 'SKIPPED'] } },
         data: { status: 'DONE', completedAt: new Date(), completedByStaff: staffId },
       });
+      if (res.count === 0) return;
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',
@@ -39,16 +47,21 @@ export async function markDeadlinesDoneAction(formData: FormData): Promise<void>
   if (ids.length === 0) return;
 
   await withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, session }) => {
       // Nur offene Termine schließen — bereits erledigte/übersprungene nicht
       // anfassen (kein doppelter Audit-Eintrag, idempotent bei Mehrfachklick).
       const toClose = await tx.taxDeadline.findMany({
         where: { id: { in: ids }, status: { notIn: ['DONE', 'SKIPPED'] } },
-        select: { id: true, status: true },
+        select: { id: true, status: true, clientId: true },
       });
       if (toClose.length === 0) return;
+      // Vertraulich-/RESTRICTED-Ventil pro betroffenem Mandanten.
+      for (const clientId of new Set(toClose.map((t) => t.clientId))) {
+        await assertClientAccessTx(tx, session, clientId);
+      }
+      // Status-Guard im updateMany erneut anwenden (Race gegen Parallel-Lauf).
       await tx.taxDeadline.updateMany({
-        where: { id: { in: toClose.map((t) => t.id) } },
+        where: { id: { in: toClose.map((t) => t.id) }, status: { notIn: ['DONE', 'SKIPPED'] } },
         data: { status: 'DONE', completedAt: new Date(), completedByStaff: staffId },
       });
       for (const t of toClose) {

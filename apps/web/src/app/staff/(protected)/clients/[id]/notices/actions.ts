@@ -149,7 +149,7 @@ export async function createNoticeAction(formData: FormData): Promise<void> {
 
 const NOTICE_STATUS_VALUES = [
   'NEU', 'GEPRUEFT', 'EINSPRUCH',
-  'ABGEHOLFEN', 'ZURUECKGEWIESEN', 'RECHTSKRAEFTIG',
+  'ABGEHOLFEN', 'TEILABHILFE', 'ZURUECKGEWIESEN', 'KLAGE', 'RECHTSKRAEFTIG',
 ] as const;
 
 /**
@@ -191,8 +191,20 @@ export async function updateNoticeStatusAction(input: {
     }
 
     const now = new Date();
-    const updated = await tx.taxNotice.update({
-      where: { id: noticeId },
+    // Klagefrist (§ 47 Abs. 1 FGO, 1 Monat) bei Einspruchsentscheidung. Fachlich
+    // identisch zur Einspruchsfrist (§ 122 (2)-Fiktion + § 108 (3)-Verschiebung)
+    // → appealDeadline wird wiederverwendet. Als Bekanntgabetag der Entscheidung
+    // dient der Statuswechsel-Tag (bestes verfügbares Signal; im Zweifel prüfen).
+    const heuteUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const klageFrist =
+      status === 'ZURUECKGEWIESEN' || status === 'TEILABHILFE'
+        ? appealDeadline(heuteUtc, null)
+        : null;
+    // TOCTOU-Schutz: nur aus dem gelesenen Ausgangsstatus heraus wechseln.
+    // Zwei parallele, einzeln gültige Übergänge aus demselben Status würden
+    // sonst appealFiledAt/reviewedAt überschreiben (§ 122 (2)-Nachweis).
+    const claim = await tx.taxNotice.updateMany({
+      where: { id: noticeId, status: before.status },
       data: {
         status,
         ...(status === 'GEPRUEFT' ? { reviewedAt: now, reviewedBy: staffId } : {}),
@@ -204,11 +216,19 @@ export async function updateNoticeStatusAction(input: {
               ...(before.reviewedAt ? {} : { reviewedAt: now, reviewedBy: staffId }),
             }
           : {}),
-        ...(status === 'ABGEHOLFEN' || status === 'ZURUECKGEWIESEN'
+        ...(status === 'ABGEHOLFEN' || status === 'TEILABHILFE' || status === 'ZURUECKGEWIESEN'
           ? { appealResolvedAt: now }
           : {}),
+        // Klagefrist setzen (Entscheidung) bzw. räumen (rechtskräftig, keine Klage).
+        ...(status === 'ZURUECKGEWIESEN' || status === 'TEILABHILFE'
+          ? { klageDeadline: klageFrist }
+          : {}),
+        ...(status === 'RECHTSKRAEFTIG' ? { klageDeadline: null } : {}),
       },
     });
+    if (claim.count === 0) {
+      return { ok: false, error: 'Status wurde zwischenzeitlich geändert — bitte Seite neu laden.' };
+    }
     await evidenceService.record(tx, {
       tenantId,
       actorType: 'STAFF',
@@ -217,7 +237,7 @@ export async function updateNoticeStatusAction(input: {
       resourceType: 'tax_notice',
       resourceId: noticeId,
       before: { status: before.status },
-      after: { status: updated.status },
+      after: { status },
     });
     return { ok: true };
     });

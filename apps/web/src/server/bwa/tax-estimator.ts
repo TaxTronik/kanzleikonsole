@@ -19,8 +19,11 @@ export type LegalForm = 'GMBH' | 'AG' | 'UG' | 'EINZELUNTERNEHMEN' | 'GBR' | 'OH
 
 export interface TaxEstimationInput {
   legalForm: LegalForm;
-  // Vorläufiges Ergebnis (Pos 3250 in BWA, EUR)
+  // Bemessungsbasis: Ergebnis VOR Ertragsteuern (EUR). Wenn nur ein Nach-Steuer-
+  // Ergebnis verfügbar war, `resultIsAfterTax: true` setzen (Disclaimer).
   result: number;
+  /** True, wenn `result` das Ergebnis NACH Steuern ist (Zirkelbezug möglich). */
+  resultIsAfterTax?: boolean;
   // Erlöse (Pos 1990 in BWA, EUR) — für USt-Schätzung
   revenue: number | null;
   // Vorsteuer (Pos 3190 in BWA, EUR)
@@ -80,6 +83,11 @@ export function estimateTaxes(input: TaxEstimationInput): TaxEstimationResult {
     'Diese Schätzung ist eine grobe Orientierung und ersetzt keine fachliche Beurteilung.',
     'Werte basieren auf der vorläufigen BWA und Standard-Sätzen 2025.',
   ];
+  if (input.resultIsAfterTax) {
+    disclaimers.push(
+      'Kein „Ergebnis vor Steuern" in der BWA gefunden (DATEV 1345/1300) — die Schätzung nutzt das vorläufige Ergebnis; die tatsächliche Steuerlast kann dadurch systematisch unterschätzt sein.',
+    );
+  }
 
   const isKap = input.legalForm === 'GMBH' || input.legalForm === 'AG' || input.legalForm === 'UG';
   const isPnP = input.isPersonengesellschaft || input.legalForm === 'GBR' || input.legalForm === 'OHG' || input.legalForm === 'KG' || input.legalForm === 'EINZELUNTERNEHMEN';
@@ -114,10 +122,20 @@ export function estimateTaxes(input: TaxEstimationInput): TaxEstimationResult {
   // ESt (nur Einzelunternehmen — bei PG wäre individuelle Aufteilung nötig)
   let einkommensteuerSchaetzung: number | null = null;
   if (input.legalForm === 'EINZELUNTERNEHMEN') {
-    // Gewerbliche Einkünfte = Ergebnis - Gewerbesteuer
-    const gewerblicheEinkuenfte = Math.max(0, input.result - gewerbesteuer);
-    einkommensteuerSchaetzung = einkommensteuer2025(gewerblicheEinkuenfte);
-    disclaimers.push('ESt: Annahme Single, Grundtarif 2025, nur gewerbliche Einkünfte. Persönliche Faktoren (Familienstand, Sonderausgaben, weitere Einkünfte) nicht berücksichtigt.');
+    // § 4 Abs. 5b EStG: Die Gewerbesteuer ist seit 2008 KEINE Betriebsausgabe —
+    // die gewerblichen Einkünfte sind daher das VOLLE Ergebnis (nicht abzüglich
+    // GewSt). Die Doppelbelastung mildert § 35 EStG über eine Steuerermäßigung.
+    const gewerblicheEinkuenfte = Math.max(0, input.result);
+    const estTariflich = einkommensteuer2025(gewerblicheEinkuenfte);
+    // § 35 Abs. 1 EStG: Ermäßigung = das 4,0-fache des Gewerbesteuer-Messbetrags,
+    // gedeckelt auf die tatsächlich gezahlte Gewerbesteuer und die tarifliche ESt.
+    const gewStAnrechnung = Math.min(
+      Math.round(4 * gewerbesteuerMessbetrag),
+      gewerbesteuer,
+      estTariflich,
+    );
+    einkommensteuerSchaetzung = Math.max(0, estTariflich - gewStAnrechnung);
+    disclaimers.push('ESt: Annahme Single, Grundtarif 2025, gewerbliche Einkünfte (§ 4 Abs. 5b EStG: GewSt nicht abzugsfähig) mit Anrechnung nach § 35 EStG (4,0 × Messbetrag). Persönliche Faktoren (Familienstand, Sonderausgaben, weitere Einkünfte) nicht berücksichtigt.');
   }
 
   let gesamt = gewerbesteuer;

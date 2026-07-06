@@ -9,6 +9,7 @@ import { requestMagicLink } from '@/server/auth/magic-link';
 import { sendTemplateMail } from '@/server/mail/dispatch';
 import { fireAndForget } from '@/server/util/fire-and-forget';
 import { generateInviteToken, INVITE_TTL_DAYS } from '@/server/gwg-onboarding/service';
+import { assertClientAccessTx } from '@/server/auth/rbac';
 import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
 
 export interface WizardResult { ok: boolean; error?: string; }
@@ -64,6 +65,7 @@ export async function onboardingAddContactAction(formData: FormData) {
         select: { allowActive: true },
       });
       if (!client) throw new ActionError('Mandant nicht gefunden.');
+      await assertClientAccessTx(tx, g.session, parsed.data.clientId);
 
       const existing = await tx.clientContact.findFirst({
         where: { tenantId, clientId: parsed.data.clientId, email: parsed.data.email.toLowerCase() },
@@ -154,6 +156,7 @@ export async function onboardingSendGwgAction(formData: FormData) {
   const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
 
   const inviteId = await withTenantContext(ctx, async (tx) => {
+    await assertClientAccessTx(tx, g.session, parsed.data.clientId);
     const inv = await tx.gwgOnboardingInvite.create({
       data: {
         tenantId,
@@ -243,6 +246,7 @@ export async function onboardingCompleteAction(formData: FormData) {
   }
 
   await withTenantContext(ctx, async (tx) => {
+    await assertClientAccessTx(tx, g.session, clientId);
     await evidenceService.record(tx, {
       tenantId, actorType: 'STAFF', actorId: staffId,
       action: 'client.onboarding.complete',

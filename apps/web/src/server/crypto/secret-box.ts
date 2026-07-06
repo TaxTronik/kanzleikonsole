@@ -7,4 +7,34 @@
 // nicht angefasst werden müssen.
 // =============================================================================
 
+import { decryptSecret, looksEncrypted } from '@taxtronik/crypto';
+import { log } from '@/server/logger';
+
 export { encryptSecret, decryptSecret, looksEncrypted } from '@taxtronik/crypto';
+
+/**
+ * Liest ein optional verschlüsseltes Setting-Feld: entschlüsselt den
+ * `encrypted`-Wert, fällt auf `legacyPlain` (unverschlüsselte Altdaten) zurück,
+ * sonst leer. Ein Entschlüsselungsfehler (z. B. nach AUTH_SECRET-/SECRET_BOX_KEY-
+ * Rotation ohne Re-Wrap) wird NICHT still zu '' verschluckt, sondern geloggt —
+ * sonst scheitert etwa der SMTP-/n8n-Auth kommentarlos.
+ */
+export function readEncryptedSetting(
+  encrypted: string | undefined | null,
+  legacyPlain: string | undefined | null,
+  fieldName: string,
+): string {
+  if (encrypted && looksEncrypted(encrypted)) {
+    try {
+      return decryptSecret(encrypted);
+    } catch (e) {
+      log.warn(
+        { component: 'secret-box', field: fieldName, err: (e as Error).message },
+        'readEncryptedSetting: Entschlüsselung fehlgeschlagen (Key-Rotation ohne Re-Wrap?)',
+      );
+      return '';
+    }
+  }
+  if (typeof legacyPlain === 'string') return legacyPlain;
+  return '';
+}

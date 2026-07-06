@@ -7,7 +7,7 @@ import { revokeAllSessions } from '@/server/auth/revocation';
 import { withTenantContext } from '@taxtronik/db';
 import type { Prisma } from '@prisma/client';
 import { evidenceService } from '@/server/container';
-import { computeRiskScore } from '@/server/gwg/risk-score';
+import { computeRiskScore, riskValidForDays } from '@/server/gwg/risk-score';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { notifyClientContacts } from '@/server/mail/dispatch';
 import { fireAndForget } from '@/server/util/fire-and-forget';
@@ -277,12 +277,44 @@ export async function verifyCheckAction(
       if (check.idDocuments.length === 0) {
         throw new ActionError('Mindestens ein Identitätsdokument erforderlich.');
       }
+      // P2-3 / § 12 Abs. 1, § 8 GwG: Es muss mindestens EIN identifikations-
+      // taugliches Dokument (kein VOLLMACHT/SONSTIGES) mit hinterlegter Kopie
+      // (documentId) und — falls ein Ablaufdatum erfasst ist — GÜLTIGER
+      // Ausweis (nicht abgelaufen) vorliegen.
+      const ID_SUITABLE: string[] = [
+        'PERSONALAUSWEIS', 'REISEPASS', 'HANDELSREGISTERAUSZUG',
+        'GESELLSCHAFTSVERTRAG', 'TRANSPARENZREGISTER_AUSZUG',
+      ];
+      const heute = new Date();
+      const taugliches = check.idDocuments.find(
+        (d) =>
+          ID_SUITABLE.includes(d.type) &&
+          d.documentId != null &&
+          (d.expiryDate == null || d.expiryDate.getTime() >= heute.getTime()),
+      );
+      if (!taugliches) {
+        throw new ActionError(
+          'Kein gültiges, identifikationstaugliches Ausweisdokument mit hinterlegter Kopie (§ 12 Abs. 1 GwG). Bitte amtlichen Ausweis/Registerauszug mit Datei und gültigem Ablaufdatum erfassen.',
+        );
+      }
+      // H-2 / § 15 GwG: Ist ein wirtschaftlich Berechtigter als PEP markiert,
+      // MUSS die Risikostufe HIGH sein (jährliche Überwachung). Bei
+      // widersprechender Bewertung Verifikation blockieren — die erneute
+      // Risikobewertung erzwingt über den PEP-Override HIGH.
+      if (check.beneficialOwners.some((o) => o.isPep) && check.riskLevel !== 'HIGH') {
+        throw new ActionError(
+          'Wirtschaftlich Berechtigter ist als PEP markiert — bitte die Risikobewertung erneut durchführen (§ 15 GwG: zwingend hohes Risiko, jährliche Aktualisierung).',
+        );
+      }
 
-      const validForDays = check.riskLevel === 'HIGH' ? 365 : 365 * 3;
+      const validForDays = riskValidForDays(check.riskLevel);
       const validUntil = new Date(Date.now() + validForDays * 24 * 60 * 60 * 1000);
 
-      await tx.gwgCheck.update({
-        where: { id: checkId },
+      // TOCTOU-Schutz: nur aus dem Prüfstatus heraus verifizieren. Verhindert,
+      // dass ein bereits REJECTED-Check ohne Neubewertung auf VERIFIED flippt
+      // bzw. eine parallele Reject-Entscheidung überschrieben wird.
+      const claim = await tx.gwgCheck.updateMany({
+        where: { id: checkId, clientId, status: { in: ['DRAFT', 'IN_REVIEW'] } },
         data: {
           status: 'VERIFIED',
           verifiedAt: new Date(),
@@ -290,6 +322,9 @@ export async function verifyCheckAction(
           validUntil,
         },
       });
+      if (claim.count === 0) {
+        throw new ActionError('GwG-Check ist nicht mehr im Prüfstatus — bitte Seite neu laden.');
+      }
 
       // Mandant scharf schalten — der Trigger erlaubt das jetzt
       await tx.client.update({
@@ -363,10 +398,15 @@ export async function rejectCheckAction(
   try {
     await withTenantContext(ctx, async (tx) => {
       await assertClientAccessTx(tx, session, clientId);
-      await tx.gwgCheck.update({
-        where: { id: checkId },
+      // TOCTOU-Schutz: ein bereits verifizierter Check darf nicht per Race
+      // nachträglich abgelehnt werden (sonst allowActive=true trotz Reject).
+      const claim = await tx.gwgCheck.updateMany({
+        where: { id: checkId, clientId, status: { not: 'VERIFIED' } },
         data: { status: 'REJECTED', rejectedReason: reason },
       });
+      if (claim.count === 0) {
+        throw new ActionError('GwG-Check ist bereits verifiziert — Ablehnung nicht möglich.');
+      }
       await tx.client.updateMany({
         where: { id: clientId, allowActive: true },
         data: { allowActive: false },

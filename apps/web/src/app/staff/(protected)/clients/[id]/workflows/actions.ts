@@ -350,14 +350,16 @@ export async function cancelInstanceAction(input: {
     const reasonLine = `[Abgebrochen am ${new Date().toISOString().slice(0, 16).replace('T', ' ')} von ${staffId}] ${parsed.data.reason}`;
     const merged = inst.notes ? `${inst.notes}\n\n${reasonLine}` : reasonLine;
 
-    await tx.workflowInstance.update({
-      where: { id: parsed.data.instanceId },
+    // TOCTOU-Schutz: nur aus ACTIVE/PAUSED heraus abbrechen (atomarer Claim).
+    const claim = await tx.workflowInstance.updateMany({
+      where: { id: parsed.data.instanceId, status: { in: ['ACTIVE', 'PAUSED'] } },
       data: {
         status: 'CANCELLED',
         completedAt: new Date(),
         notes: merged,
       },
     });
+    if (claim.count === 0) throw new ActionError('Workflow-Status hat sich geändert — bitte Seite neu laden.');
 
     await evidenceService.record(tx, {
       tenantId,
@@ -394,14 +396,16 @@ export async function restoreInstanceAction(input: {
     if (inst.status !== 'CANCELLED') throw new ActionError('Nur abgebrochene Workflows lassen sich wiederherstellen.');
 
     const line = `[Wiederhergestellt am ${new Date().toISOString().slice(0, 16).replace('T', ' ')}]`;
-    await tx.workflowInstance.update({
-      where: { id: parsed.data.instanceId },
+    // TOCTOU-Schutz: nur aus CANCELLED heraus wiederherstellen.
+    const claim = await tx.workflowInstance.updateMany({
+      where: { id: parsed.data.instanceId, status: 'CANCELLED' },
       data: {
         status: 'ACTIVE',
         completedAt: null,
         notes: inst.notes ? `${inst.notes}\n\n${line}` : line,
       },
     });
+    if (claim.count === 0) throw new ActionError('Workflow-Status hat sich geändert — bitte Seite neu laden.');
     await evidenceService.record(tx, {
       tenantId, actorType: 'STAFF', actorId: staffId,
       action: 'workflow.instance.restore',
@@ -448,14 +452,16 @@ export async function pauseInstanceAction(input: {
     const tag = `[Pausiert am ${new Date().toISOString().slice(0, 16).replace('T', ' ')}${until ? ' bis ' + until : ''}]`;
     const reasonLine = reasonText ? `${tag} ${reasonText}` : tag;
 
-    await tx.workflowInstance.update({
-      where: { id: parsed.data.instanceId },
+    // TOCTOU-Schutz: nur aus ACTIVE heraus pausieren.
+    const claim = await tx.workflowInstance.updateMany({
+      where: { id: parsed.data.instanceId, status: 'ACTIVE' },
       data: {
         status: 'PAUSED',
         pausedUntil: until ? new Date(until) : null,
         notes: inst.notes ? `${inst.notes}\n\n${reasonLine}` : reasonLine,
       },
     });
+    if (claim.count === 0) throw new ActionError('Workflow-Status hat sich geändert — bitte Seite neu laden.');
     await evidenceService.record(tx, {
       tenantId, actorType: 'STAFF', actorId: staffId,
       action: 'workflow.instance.pause',
@@ -484,10 +490,12 @@ export async function resumeInstanceAction(input: { instanceId: string }) {
     await assertClientAccessTx(tx, session, inst.clientId);
     if (inst.status !== 'PAUSED') throw new ActionError('Nur pausierte Workflows können fortgesetzt werden.');
 
-    await tx.workflowInstance.update({
-      where: { id: parsed.data.instanceId },
+    // TOCTOU-Schutz: nur aus PAUSED heraus fortsetzen.
+    const claim = await tx.workflowInstance.updateMany({
+      where: { id: parsed.data.instanceId, status: 'PAUSED' },
       data: { status: 'ACTIVE', pausedUntil: null },
     });
+    if (claim.count === 0) throw new ActionError('Workflow-Status hat sich geändert — bitte Seite neu laden.');
     await evidenceService.record(tx, {
       tenantId, actorType: 'STAFF', actorId: staffId,
       action: 'workflow.instance.resume',
@@ -691,40 +699,6 @@ export async function addItemCommentAction(input: {
 }
 
 /**
- * Lazy-Resume: setzt alle pausierten Instanzen, deren `pausedUntil ≤ now`,
- * automatisch auf ACTIVE. Wird beim Page-Load der Workflow-Sichten
- * aufgerufen — kein separater Worker nötig.
- *
- * Kein Server-Action im UI-Sinn: wird server-seitig aus bereits
- * autorisierten Page-Komponenten mit explizitem (tenantId, staffId) gerufen.
- */
-export async function autoResumePausedWorkflows(tenantId: string, staffId: string): Promise<void> {
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
-      const ready = await tx.workflowInstance.findMany({
-        where: { status: 'PAUSED', pausedUntil: { not: null, lte: new Date() } },
-        select: { id: true },
-      });
-      if (ready.length === 0) return;
-      await tx.workflowInstance.updateMany({
-        where: { id: { in: ready.map((r) => r.id) } },
-        data: { status: 'ACTIVE', pausedUntil: null },
-      });
-      for (const r of ready) {
-        await evidenceService.record(tx, {
-          tenantId, actorType: 'SYSTEM', actorId: null,
-          action: 'workflow.instance.auto_resume',
-          resourceType: 'workflow_instance',
-          resourceId: r.id,
-          after: { status: 'ACTIVE' },
-        });
-      }
-    },
-  );
-}
-
-/**
  * Endgültiges Löschen einer abgebrochenen Workflow-Instanz (Stufe 2).
  *
  * Nur erlaubt, wenn die Instanz bereits den Status `CANCELLED` hat — also
@@ -752,6 +726,15 @@ export async function deleteCancelledInstanceAction(input: {
       throw new ActionError('Nur abgebrochene Workflows können endgültig gelöscht werden.');
     }
 
+    // TOCTOU-Schutz: nur löschen, solange noch CANCELLED. Race gegen restore
+    // (CANCELLED → ACTIVE) darf keine wieder aktive Instanz endgültig löschen.
+    const del = await tx.workflowInstance.deleteMany({
+      where: { id: parsed.data.instanceId, status: 'CANCELLED' },
+    });
+    if (del.count === 0) {
+      throw new ActionError('Workflow-Status hat sich geändert — bitte Seite neu laden.');
+    }
+
     await evidenceService.record(tx, {
       tenantId,
       actorType: 'STAFF',
@@ -761,8 +744,6 @@ export async function deleteCancelledInstanceAction(input: {
       resourceId: inst.id,
       before: { name: inst.name, status: inst.status, notes: inst.notes },
     });
-
-    await tx.workflowInstance.delete({ where: { id: parsed.data.instanceId } });
   });
   if (r.ok) {
     revalidatePath('/staff/clients', 'layout');

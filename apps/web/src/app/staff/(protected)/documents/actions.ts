@@ -12,7 +12,7 @@ import {
   type ProtectionTier,
 } from '@taxtronik/storage';
 import { carrierClassification } from '@/server/storage/document-type';
-import { toActionError } from '@/server/auth/rbac';
+import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { staffActionGuard, withStaff, ActionError } from '@/server/actions/staff-action';
 
 export interface DocActionResult {
@@ -25,7 +25,8 @@ export interface DocActionResult {
 //
 // Stufe steuert Bucket + Object-Lock + Aufbewahrung:
 //   Rang 0: NONE  → kein Lock
-//   Rang 1: GWG   → gwg-Bucket, COMPLIANCE 5 J.
+//   Rang 1: GWG   → gwg-Bucket, GOVERNANCE 5 J. (§ 8 Abs. 4 S. 4 GwG erlaubt
+//                   die frühere Vernichtung → GOVERNANCE, nicht COMPLIANCE)
 //   Rang 2: GOBD  → gobd-Bucket, COMPLIANCE 10 J.
 //
 //  - neuer Rang  >  alter Rang → Re-Store (Bytes in korrekten Bucket
@@ -60,13 +61,15 @@ export async function softDeleteDocumentAction(
   const reason = parsed.data.reason?.trim() || null;
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, session }) => {
       // Defense in Depth: expliziter Tenant-Filter zusätzlich zu RLS.
       const doc = await tx.document.findFirst({
         where: { id: documentId, tenantId, deletedAt: null },
-        select: { id: true, title: true, classification: true },
+        select: { id: true, title: true, classification: true, clientId: true },
       });
       if (!doc) throw new ActionError('Dokument nicht gefunden oder bereits gelöscht.');
+      // Vertraulich-/RESTRICTED-Ventil für Mandanten-Dokumente.
+      if (doc.clientId) await assertClientAccessTx(tx, session, doc.clientId);
       await tx.document.update({
         where: { id: documentId },
         data: { deletedAt: new Date(), deletedByStaff: staffId, deleteReason: reason },
@@ -96,12 +99,13 @@ export async function restoreDocumentAction(
   const { documentId } = parsed.data;
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, session }) => {
       const doc = await tx.document.findFirst({
         where: { id: documentId, tenantId, deletedAt: { not: null } },
-        select: { id: true, title: true },
+        select: { id: true, title: true, clientId: true },
       });
       if (!doc) throw new ActionError('Dokument nicht gefunden oder nicht gelöscht.');
+      if (doc.clientId) await assertClientAccessTx(tx, session, doc.clientId);
       await tx.document.update({
         where: { id: documentId },
         data: { deletedAt: null, deletedByStaff: null, deleteReason: null },
@@ -178,6 +182,9 @@ export async function retagDocumentAction(
         },
       });
       if (!d || !d.versions[0]) return null;
+      // Vertraulich-/RESTRICTED-Ventil (ForbiddenError wird unten via
+      // toActionError gemappt).
+      if (d.clientId) await assertClientAccessTx(tx, g.session, d.clientId);
 
       let newTier: ProtectionTier;
       let newTypeId: string | null;
@@ -337,7 +344,7 @@ export async function setDocumentShareAction(
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
   const { documentId, share } = parsed.data;
 
-  const r = await withStaff(async (tx, { tenantId, staffId }) => {
+  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
     const d = await tx.document.findFirst({
       where: { id: documentId, tenantId, deletedAt: null },
       select: { clientId: true, sharedWithClientAt: true },
@@ -346,6 +353,8 @@ export async function setDocumentShareAction(
     if (!d.clientId) {
       throw new ActionError('Nur Mandanten-Dokumente können freigegeben werden.');
     }
+    // Freigabe ans Portal ist besonders sensibel → Ventil zwingend.
+    await assertClientAccessTx(tx, session, d.clientId);
     await tx.document.update({
       where: { id: documentId },
       data: {

@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { getClientIp } from '@/server/rate-limit';
+import { getClientIp, checkStaffExportLimit } from '@/server/rate-limit';
 import { staffAuth } from '@/server/auth/staff';
 import { canAccessClientTx } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
@@ -21,6 +21,13 @@ export async function GET(
   const { id } = await params;
   const { tenantId, staffId } = session.user;
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
+
+  // Export-Limit wie die CSV-Routen: jeder GET rendert XML und kann einen
+  // GoBD-Storage-Commit auslösen.
+  const rl = await checkStaffExportLimit('xrechnung', staffId);
+  if (!rl.ok) {
+    return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
+  }
 
   // Audit Round 15, Finding 4: expliziter tenantId-Filter zusätzlich zu RLS.
   // XRechnung-XML enthält Verkäufer + Mandanten-Stammdaten (USt-ID,
@@ -81,6 +88,9 @@ export async function GET(
       subject: invoice.subject,
       notes: invoice.notes,
       currency: 'EUR',
+      servicePeriodStart: invoice.servicePeriodStart,
+      servicePeriodEnd: invoice.servicePeriodEnd,
+      vatExemptionReason: invoice.vatExemptionReason,
       netAmount: Number(invoice.netAmount.toString()),
       vatAmount: Number(invoice.vatAmount.toString()),
       totalAmount: Number(invoice.totalAmount.toString()),
@@ -136,6 +146,7 @@ export async function GET(
         tier: 'GOBD',
         tenantId,
         skipScan: true,
+        classification: 'GOBD_INVOICE', // Rechnung → 8 J. (BEG IV)
       });
       await withTenantContext(ctx, async (tx) => {
         const doc = await tx.document.create({

@@ -116,6 +116,17 @@ export interface RiskResult {
   breakdown: RiskBreakdown[];
   // Wiederholungsfrist: Hochrisiko = 1 Jahr, sonst 3 Jahre
   validForDays: number;
+  /** True, wenn die Stufe durch den PEP-Override (§ 15 GwG) erzwungen wurde. */
+  pepOverride: boolean;
+}
+
+/**
+ * Wiederholungs-/Aktualisierungsfrist je Risikostufe (§ 10 Abs. 1 Nr. 5 GwG):
+ * Hochrisiko jährlich, sonst alle 3 Jahre. EINZIGE Quelle (vorher doppelt
+ * hartkodiert in risk-score und der Verify-Action).
+ */
+export function riskValidForDays(level: RiskLevel): number {
+  return level === 'HIGH' ? 365 : 365 * 3;
 }
 
 export function computeRiskScore(
@@ -141,10 +152,18 @@ export function computeRiskScore(
     });
   }
 
-  const level: RiskLevel =
+  const scoreLevel: RiskLevel =
     score < LOW_THRESHOLD ? 'LOW' : score < MEDIUM_THRESHOLD ? 'MEDIUM' : 'HIGH';
 
-  const validForDays = level === 'HIGH' ? 365 : 365 * 3;
+  // § 15 Abs. 3 Nr. 1 i.V.m. Abs. 4 GwG: Eine politisch exponierte Person (oder
+  // ein enges Familienmitglied) ist ein ZWINGENDER Fall verstärkter Sorgfalts-
+  // pflichten mit kontinuierlicher/jährlicher Überwachung — unabhängig vom
+  // gewichteten Score immer HIGH. Vorher konnte PEP (3×5=15 < 25) als MEDIUM
+  // mit 3-Jahres-Frist durchlaufen.
+  const pepOverride = (answers['pep'] ?? 0) >= 1;
+  const level: RiskLevel = pepOverride ? 'HIGH' : scoreLevel;
 
-  return { score, level, breakdown, validForDays };
+  const validForDays = riskValidForDays(level);
+
+  return { score, level, breakdown, validForDays, pepOverride };
 }

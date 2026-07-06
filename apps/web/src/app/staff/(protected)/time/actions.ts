@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { evidenceService } from '@/server/container';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
+import { assertClientAccessTx } from '@/server/auth/rbac';
 import { withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
 
 export type ActionResult = BaseActionResult;
@@ -25,10 +26,11 @@ export async function startTimerAction(
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
-      // R-2: clientId Tenant-Sanity falls gesetzt
+    async (tx, { tenantId, staffId, session }) => {
+      // R-2: clientId Tenant-Sanity + Vertraulich-/RESTRICTED-Ventil, falls gesetzt
       if (parsed.data.clientId) {
         await assertClientInTenant(tx, parsed.data.clientId);
+        await assertClientAccessTx(tx, session, parsed.data.clientId);
       }
       // Wenn ein Timer läuft → erst stoppen
       await tx.timeEntry.updateMany({

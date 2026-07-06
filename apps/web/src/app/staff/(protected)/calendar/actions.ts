@@ -7,6 +7,7 @@ import { notify } from '@/server/notifications/service';
 import { sendTemplateMail, type DispatchOptions } from '@/server/mail/dispatch';
 import { fireAndForget } from '@/server/util/fire-and-forget';
 import { assertClientInTenant, assertStaffInTenant } from '@/server/db/assert-tenant';
+import { assertClientAccessTx } from '@/server/auth/rbac';
 import { withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
 import { fmtDateTimeShort, fmtDateTimeMedium } from '@/lib/fmt';
 
@@ -55,7 +56,7 @@ export async function createAppointmentAction(
   if (endsAt.getTime() <= startsAt.getTime()) return { ok: false, error: 'Ende muss nach dem Start liegen.' };
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, session }) => {
       // P-7: Sanity-Check innerhalb des Tenants. RLS schützt cross-tenant,
       // aber FK greift nur auf Existenz im DB-Cluster — sonst kann ein
       // UI-Fehler einen ownerStaffId/clientId aus einem anderen Datenkontext
@@ -71,6 +72,8 @@ export async function createAppointmentAction(
           select: { id: true },
         });
         if (!cli) throw new Error('CLIENT_NOT_FOUND: clientId nicht in diesem Tenant.');
+        // Vertraulich-/RESTRICTED-Ventil bei Mandantenbezug.
+        await assertClientAccessTx(tx, session, parsed.data.clientId);
       }
       const appt = await tx.appointment.create({
         data: {
@@ -140,16 +143,19 @@ export async function updateAppointmentAction(
   if (endsAt.getTime() <= startsAt.getTime()) return { ok: false, error: 'Ende muss nach dem Start liegen.' };
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, session }) => {
       const before = await tx.appointment.findUnique({
         where: { id: parsed.data.id },
-        select: { title: true, startsAt: true, endsAt: true, status: true },
+        select: { title: true, startsAt: true, endsAt: true, status: true, clientId: true },
       });
       if (!before) throw new ActionError('Termin nicht gefunden.');
       // P-7 (Befund 5): ownerStaffId/clientId Tenant-Sanity — das Create-
       // Pendant oben prüft, der Update-Pfad fehlte.
       await assertStaffInTenant(tx, parsed.data.ownerStaffId);
       if (parsed.data.clientId) await assertClientInTenant(tx, parsed.data.clientId);
+      // Vertraulich-/RESTRICTED-Ventil für alten UND neuen Mandantenbezug.
+      if (before.clientId) await assertClientAccessTx(tx, session, before.clientId);
+      if (parsed.data.clientId) await assertClientAccessTx(tx, session, parsed.data.clientId);
       await tx.appointment.update({
         where: { id: parsed.data.id },
         data: {
@@ -187,11 +193,12 @@ export async function deleteAppointmentAction(input: { id: string }): Promise<Ac
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, session }) => {
       const before = await tx.appointment.findUnique({
         where: { id: parsed.data.id },
-        select: { title: true },
+        select: { title: true, clientId: true },
       });
+      if (before?.clientId) await assertClientAccessTx(tx, session, before.clientId);
       await tx.appointment.delete({ where: { id: parsed.data.id } });
       await evidenceService.record(tx, {
         tenantId, actorType: 'STAFF', actorId: staffId,
@@ -229,7 +236,7 @@ export async function acceptAppointmentRequestAction(input: {
   let confirmMail: DispatchOptions | null = null;
 
   const r = await withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, session }) => {
       // P-7 (Befund 5): ownerStaffId Tenant-Sanity — FK prüft nur Existenz.
       await assertStaffInTenant(tx, parsed.data.ownerStaffId);
       const req = await tx.appointmentRequest.findUnique({
@@ -243,6 +250,8 @@ export async function acceptAppointmentRequestAction(input: {
       });
       if (!req) throw new ActionError('Anfrage nicht gefunden.');
       if (req.status !== 'PENDING') throw new ActionError('Anfrage bereits entschieden.');
+      // Vertraulich-/RESTRICTED-Ventil.
+      await assertClientAccessTx(tx, session, req.clientId);
 
       const slots = req.proposedSlots as Array<{ startsAt: string; endsAt: string }>;
       const slot = slots[parsed.data.slotIndex];
@@ -252,6 +261,20 @@ export async function acceptAppointmentRequestAction(input: {
       if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) {
         throw new ActionError('Slot-Zeitstempel kaputt.');
       }
+
+      // TOCTOU-Schutz: Anfrage zuerst atomar claimen (PENDING → ACCEPTED),
+      // BEVOR der Termin angelegt wird. Zwei parallele Accepts würden sonst
+      // zwei bestätigte Termine + zwei Bestätigungs-Mails erzeugen.
+      const claim = await tx.appointmentRequest.updateMany({
+        where: { id: req.id, status: 'PENDING' },
+        data: {
+          status: 'ACCEPTED',
+          acceptedSlot: slot as unknown as Prisma.InputJsonValue,
+          decidedByStaff: staffId,
+          decidedAt: new Date(),
+        },
+      });
+      if (claim.count === 0) throw new ActionError('Anfrage bereits entschieden.');
 
       const appt = await tx.appointment.create({
         data: {
@@ -271,13 +294,7 @@ export async function acceptAppointmentRequestAction(input: {
 
       await tx.appointmentRequest.update({
         where: { id: req.id },
-        data: {
-          status: 'ACCEPTED',
-          acceptedSlot: slot as unknown as Prisma.InputJsonValue,
-          acceptedAppointmentId: appt.id,
-          decidedByStaff: staffId,
-          decidedAt: new Date(),
-        },
+        data: { acceptedAppointmentId: appt.id },
       });
 
       await evidenceService.record(tx, {
@@ -368,19 +385,21 @@ export async function rejectAppointmentRequestAction(input: {
   let rejectMail: DispatchOptions | null = null;
 
   const r = await withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, session }) => {
       const req = await tx.appointmentRequest.findUnique({
         where: { id: parsed.data.requestId },
         select: {
-          id: true, status: true, subject: true,
+          id: true, status: true, subject: true, clientId: true,
           createdByContactRel: { select: { fullName: true, email: true, notificationsEnabled: true, active: true } },
         },
       });
       if (!req) throw new ActionError('Anfrage nicht gefunden.');
       if (req.status !== 'PENDING') throw new ActionError('Anfrage bereits entschieden.');
+      await assertClientAccessTx(tx, session, req.clientId);
 
-      await tx.appointmentRequest.update({
-        where: { id: req.id },
+      // TOCTOU-Schutz: atomarer Claim (PENDING → REJECTED).
+      const claim = await tx.appointmentRequest.updateMany({
+        where: { id: req.id, status: 'PENDING' },
         data: {
           status: 'REJECTED',
           rejectionReason: parsed.data.reason?.trim() || null,
@@ -388,6 +407,7 @@ export async function rejectAppointmentRequestAction(input: {
           decidedAt: new Date(),
         },
       });
+      if (claim.count === 0) throw new ActionError('Anfrage bereits entschieden.');
       await evidenceService.record(tx, {
         tenantId, actorType: 'STAFF', actorId: staffId,
         action: 'appointment_request.reject',

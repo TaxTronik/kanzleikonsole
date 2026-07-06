@@ -33,7 +33,9 @@ const STATUS_LABELS: Record<string, string> = {
   GEPRUEFT: 'Geprüft',
   EINSPRUCH: 'Einspruch eingelegt',
   ABGEHOLFEN: 'Abgeholfen',
+  TEILABHILFE: 'Teilabhilfe',
   ZURUECKGEWIESEN: 'Zurückgewiesen',
+  KLAGE: 'Klage erhoben',
   RECHTSKRAEFTIG: 'Rechtskräftig',
 };
 
@@ -218,6 +220,11 @@ export default async function ClientNoticesPage({
                               {deadlineDays >= 0 ? `noch ${deadlineDays} Tage` : `${-deadlineDays} Tage abgelaufen`}
                             </span>
                           )}
+                          {deadlineDays !== null && deadlineDays < 0 && (n.status === 'NEU' || n.status === 'GEPRUEFT') && (
+                            <span className="text-xs text-amber-700 mt-0.5">
+                              Frist verstrichen — Wiedereinsetzung (§ 110 AO) binnen 1 Monat nach Wegfall des Hindernisses prüfen.
+                            </span>
+                          )}
                         </div>
                       ) : (
                         <span className="text-disabled">—</span>
@@ -228,7 +235,9 @@ export default async function ClientNoticesPage({
                       {n.status === 'GEPRUEFT' && <span className="badge-green">{STATUS_LABELS[n.status]}</span>}
                       {n.status === 'EINSPRUCH' && <span className="badge-yellow">{STATUS_LABELS[n.status]}</span>}
                       {n.status === 'ABGEHOLFEN' && <span className="badge-green">{STATUS_LABELS[n.status]}</span>}
+                      {n.status === 'TEILABHILFE' && <span className="badge-yellow">{STATUS_LABELS[n.status]}</span>}
                       {n.status === 'ZURUECKGEWIESEN' && <span className="badge-red">{STATUS_LABELS[n.status]}</span>}
+                      {n.status === 'KLAGE' && <span className="badge-red">{STATUS_LABELS[n.status]}</span>}
                       {n.status === 'RECHTSKRAEFTIG' && <span className="badge-gray">{STATUS_LABELS[n.status]}</span>}
                       <NoticeStatusSelect
                         noticeId={n.id}

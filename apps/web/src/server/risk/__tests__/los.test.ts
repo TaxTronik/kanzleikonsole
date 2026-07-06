@@ -55,6 +55,10 @@ vi.mock('@taxtronik/db', () => ({
   withTenantContext: async (_ctx: unknown, fn: (tx: unknown) => unknown) => fn(h.tx),
 }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: h.state.record } }));
+// logger zieht @taxtronik/config (ENV-Validierung) — im Unit-Test mocken.
+vi.mock('@/server/logger', () => ({
+  log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
 // Verhindert, dass der Paket-Import @taxtronik/config (ENV-Validierung) zieht —
 // der echte Client wird hier injiziert; die Zod-Schemas sind Re-Implemente light.
 vi.mock('@taxtronik/risk-layer', async () => {

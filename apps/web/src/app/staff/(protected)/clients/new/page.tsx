@@ -102,6 +102,11 @@ export default async function NewClientPage({
                        placeholder="DE123456789" />
               </div>
               <div>
+                <label className="label" htmlFor="steuernummer">Steuernummer (optional)</label>
+                <input id="steuernummer" name="steuernummer" type="text" className="input"
+                       inputMode="numeric" maxLength={13} placeholder="13-stellig (ELSTER)" />
+              </div>
+              <div>
                 <label className="label" htmlFor="invoiceEmail">Rechnungs-E-Mail</label>
                 <input id="invoiceEmail" name="invoiceEmail" type="email" className="input" maxLength={255} />
               </div>
@@ -115,6 +120,11 @@ export default async function NewClientPage({
             <em>GwG ausstehend</em> angelegt. Er kann erst aktiviert werden, wenn die
             GwG-Prüfung abgeschlossen ist.
           </div>
+
+          <label className="flex items-center gap-2 text-sm text-muted">
+            <input type="checkbox" name="confirmDuplicate" value="1" className="checkbox" />
+            Mögliche Doppel-Mandant-Warnung ignorieren und trotzdem anlegen
+          </label>
 
           <div className="flex gap-3 pt-2">
             <button type="submit" className="btn-primary">

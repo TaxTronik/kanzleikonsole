@@ -42,7 +42,10 @@ export function NewInvoiceForm({ clients }: Props) {
   const [subject, setSubject] = useState('');
   const [issueDate, setIssueDate] = useState(today);
   const [dueDate, setDueDate] = useState(inThirtyDays);
-  const [format, setFormat] = useState<'PDF' | 'XRECHNUNG' | 'ZUGFERD'>('XRECHNUNG');
+  const [format, setFormat] = useState<'XRECHNUNG' | 'ZUGFERD'>('XRECHNUNG');
+  const [servicePeriodStart, setServicePeriodStart] = useState('');
+  const [servicePeriodEnd, setServicePeriodEnd] = useState('');
+  const [vatExemptionReason, setVatExemptionReason] = useState('');
   const [notes, setNotes] = useState('');
   const [positions, setPositions] = useState<PositionRow[]>([newPosition()]);
   const [error, setError] = useState<string | null>(null);
@@ -86,6 +89,9 @@ export function NewInvoiceForm({ clients }: Props) {
         issueDate,
         dueDate,
         notes,
+        servicePeriodStart: servicePeriodStart || undefined,
+        servicePeriodEnd: servicePeriodEnd || undefined,
+        vatExemptionReason: vatExemptionReason || undefined,
         format,
         // `id` ist nur der React-Key — nicht an die Action durchreichen.
         positions: positions.map((p) => ({
@@ -177,12 +183,49 @@ export function NewInvoiceForm({ clients }: Props) {
               value={format}
               onChange={(e) => setFormat(e.target.value as typeof format)}
             >
-              <option value="PDF">PDF</option>
               <option value="XRECHNUNG">XRechnung</option>
               <option value="ZUGFERD">ZUGFeRD</option>
             </select>
           </div>
+          <div>
+            <label className="label" htmlFor="servicePeriodStart">Leistung von (optional)</label>
+            <input
+              id="servicePeriodStart"
+              type="date"
+              className="input"
+              value={servicePeriodStart}
+              onChange={(e) => setServicePeriodStart(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="label" htmlFor="servicePeriodEnd">Leistung bis (optional)</label>
+            <input
+              id="servicePeriodEnd"
+              type="date"
+              className="input"
+              value={servicePeriodEnd}
+              onChange={(e) => setServicePeriodEnd(e.target.value)}
+            />
+          </div>
         </div>
+        <p className="text-xs text-muted mt-2">
+          Leistungszeitraum (§ 14 Abs. 4 Nr. 6 UStG) — leer lassen, wenn das Rechnungsdatum gilt.
+        </p>
+        {positions.some((p) => (p.vatRate || 0) === 0) && (
+          <div className="mt-3">
+            <label className="label" htmlFor="vatExemptionReason">Befreiungsgrund (Pflicht bei 0 %)</label>
+            <input
+              id="vatExemptionReason"
+              type="text"
+              className="input"
+              maxLength={500}
+              value={vatExemptionReason}
+              onChange={(e) => setVatExemptionReason(e.target.value)}
+              placeholder="z. B. § 19 UStG Kleinunternehmer / steuerfrei nach § 4 …"
+            />
+            <p className="text-xs text-muted mt-1">§ 14 Abs. 4 Nr. 8 UStG — Hinweis auf die Steuerbefreiung.</p>
+          </div>
+        )}
       </div>
 
       <div className="card p-6">
