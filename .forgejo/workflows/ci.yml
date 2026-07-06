@@ -925,7 +925,10 @@ jobs:
       # globalen env-Block (localhost:8333 bzw. Config-Default localhost:3310).
       POSTGRES_PASSWORD: ci-postgres-pw
       TAXTRONIK_APP_PASSWORD: ci-app-pw
-      COMPOSE: docker compose -f infra/compose/docker-compose.yml
+      # CI-Override backt clamd.conf/s3.json/init-storage.sh in kurzlebige Images
+      # (der Runner-Daemon sieht das Job-Workspace nicht → Einzeldatei-Binds von
+      # dort scheitern). Siehe Kopf von docker-compose.ci.yml.
+      COMPOSE: docker compose -f infra/compose/docker-compose.yml -f infra/compose/docker-compose.ci.yml
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
@@ -953,6 +956,10 @@ jobs:
           set -euo pipefail
           # Selbstheilung bei liegengebliebenem Vorlauf (feste Container-Namen).
           $COMPOSE down -v --remove-orphans >/dev/null 2>&1 || true
+          # CI-Images mit eingebackenen Config-Artefakten bauen (Context wird zum
+          # Daemon gestreamt — host-pfad-unabhängig). seaweedfs-init wird für den
+          # nächsten Schritt vorgebaut, damit `run` nicht implizit bauen muss.
+          $COMPOSE build seaweedfs clamav seaweedfs-init
           $COMPOSE up -d --wait seaweedfs clamav
 
       - name: Create buckets with Object-Lock (real init-storage.sh)

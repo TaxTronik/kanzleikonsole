@@ -1,0 +1,51 @@
+# =============================================================================
+# CI-Override NUR für den Deploy-Readiness-Job (.forgejo/workflows/ci.yml).
+#
+# Warum: Der Forgejo-/act-Runner führt `docker compose` gegen den durchgereichten
+# HOST-Docker-Daemon aus. Der Daemon sieht das Job-Workspace (/workspace/…) NICHT
+# — bind-mountet man von dort eine einzelne Datei, legt Docker die fehlende Quelle
+# als leeres VERZEICHNIS an. Das Mounten eines Verzeichnisses auf die im Image
+# vorhandene Datei (z. B. /etc/clamav/clamd.conf) scheitert dann hart mit
+# "Are you trying to mount a directory onto a file". Betrifft alle drei Einzel-
+# datei-Mounts: clamd.conf, s3.json, init-storage.sh.
+#
+# Fix: Die drei Config-Artefakte werden per `build.dockerfile_inline` in kurzlebige
+# CI-Images GEBACKT (der Build-Context wird von compose zum Daemon gestreamt und
+# ist damit host-pfad-unabhängig). `volumes: !override` ersetzt die komplette
+# Mount-Liste und wirft so den fragilen Datei-Bind raus. Ports/Command/Healthcheck/
+# Hardening bleiben aus der Basis-Datei — es wird DIESELBE Prod-Konfiguration
+# (identische Image-Digests + reale clamd.conf/s3.json/init-storage.sh) geprüft,
+# nur der Einschleusweg der Dateien ist ein anderer.
+#
+# WIRD IN PROD NICHT VERWENDET (Prod nutzt nur docker-compose.yml).
+# =============================================================================
+
+services:
+  seaweedfs:
+    build:
+      context: ../scripts
+      dockerfile_inline: |
+        FROM chrislusf/seaweedfs:latest@sha256:e14ad400e28c811fe8426dc08abf248ec722b9f017713290a9b84a54557f45c2
+        COPY seaweedfs-s3.generated.json /etc/seaweedfs/s3.json
+    image: taxtronik-seaweedfs-ci:latest
+    volumes: !override
+      - seaweed_data:/data
+
+  seaweedfs-init:
+    build:
+      context: ../scripts
+      dockerfile_inline: |
+        FROM amazon/aws-cli:latest@sha256:c95ab0642137f55a12b95b6956dd03cefdbd73e760e0e7b870afc9b47f9c8150
+        COPY init-storage.sh /init-storage.sh
+    image: taxtronik-awscli-ci:latest
+    volumes: !override []
+
+  clamav:
+    build:
+      context: ../clamav
+      dockerfile_inline: |
+        FROM clamav/clamav:stable@sha256:d4000290254603e7ee45d4904425c7d98c015af727f402756198fe41a31e7777
+        COPY clamd.conf /etc/clamav/clamd.conf
+    image: taxtronik-clamav-ci:latest
+    volumes: !override
+      - clamav_data:/var/lib/clamav
