@@ -17,6 +17,7 @@ import { fmtDateTimeShort } from '@/lib/fmt';
 import { parseConsent, countGranted, COMMUNICATION_LABELS, MARKETING_LABELS } from '@/server/privacy/consent';
 import { renderNoticeForTenantTx } from '@/server/privacy/service';
 import { readPrivacyConfigTx, isPrivacyConfigComplete } from '@/server/privacy/notice';
+import { NoticeView } from '@/components/notice-view';
 import { ConsentEditor } from './consent-editor';
 import { revokeAllConsentAction } from './actions';
 
@@ -198,9 +199,9 @@ export default async function ClientPrivacyPage({
         <summary className="text-sm font-medium text-brand-700 dark:text-brand-500 cursor-pointer">
           Datenschutzhinweise (Teil A) — aktuelle Fassung ansehen (Version {notice.version})
         </summary>
-        <pre className="mt-3 whitespace-pre-wrap text-xs text-secondary bg-surface-raised rounded-md p-4 border border-default overflow-x-auto">
-          {notice.body}
-        </pre>
+        <div className="mt-3 bg-surface-raised rounded-md p-4 border border-default overflow-x-auto">
+          <NoticeView body={notice.body} />
+        </div>
       </details>
     </div>
   );

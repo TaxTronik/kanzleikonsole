@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react';
 import { Plus, Trash2, Upload, Check, ArrowLeft, ArrowRight, Loader } from 'lucide-react';
 import { uploadIdImageAction, submitOnboardingAction } from './actions';
 import { ConsentFields } from '@/components/consent-fields';
+import { NoticeView } from '@/components/notice-view';
 import { emptyConsent, type ConsentSelections } from '@/server/privacy/consent';
 
 // Client-seitiges Upload-Limit: Die Datei wird Base64-kodiert an die Server-
@@ -416,7 +417,7 @@ export function OnboardingWizard({
             </p>
           </div>
           <div className="max-h-72 overflow-y-auto rounded-md border border-default bg-surface-raised p-4">
-            <pre className="whitespace-pre-wrap text-xs text-secondary">{noticeBody}</pre>
+            <NoticeView body={noticeBody} />
           </div>
 
           <div>

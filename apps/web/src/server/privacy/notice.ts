@@ -98,104 +98,77 @@ export function renderPrivacyNotice(input: NoticeRenderInput): string {
   const providerLines =
     providers.length > 0
       ? providers
-          .map((p) => `  - ${p.name}${p.category ? ` (${p.category})` : ''}`)
+          .map((p) => `- ${p.name}${p.category ? ` (${p.category})` : ''}`)
           .join('\n')
-      : '  - (Derzeit sind keine Dienstleister mit Datenzugriff erfasst.)';
+      : '- (Derzeit sind keine Dienstleister mit Datenzugriff erfasst.)';
 
+  // Hinweis: Jeder Absatz und jeder Listenpunkt steht bewusst auf EINER Zeile
+  // (kein Soft-Wrap, keine weichen Trennstriche). So rendert der Markdown-Parser
+  // die Blöcke sauber; der Zeilenumbruch übernimmt der Browser.
   return `# Datenschutzhinweise zur Mandatsbearbeitung
 
-_Kurzfassung:_ Die Verarbeitung mandatsnotwendiger Daten erfolgt nicht auf
-Grundlage einer pauschalen Einwilligung, sondern zur Anbahnung und Durchführung
-des Steuerberatungsmandats, zur Erfüllung gesetzlicher Pflichten und zur Wahrung
-berechtigter Interessen. Freiwillige Einwilligungen (Teil B) werden nur dort
-eingeholt, wo sie rechtlich oder praktisch sinnvoll sind.
+*Kurzfassung:* Die Verarbeitung mandatsnotwendiger Daten erfolgt nicht auf Grundlage einer pauschalen Einwilligung, sondern zur Anbahnung und Durchführung des Steuerberatungsmandats, zur Erfüllung gesetzlicher Pflichten und zur Wahrung berechtigter Interessen. Freiwillige Einwilligungen (Teil B) werden nur dort eingeholt, wo sie rechtlich oder praktisch sinnvoll sind.
 
 **Verantwortliche Stelle:** ${responsible}
+
 **Datenschutzbeauftragte/r:** ${config.dpoContact.trim() || 'nicht benannt'}
 
 ## 1. Verantwortlichkeit und berufsrechtliche Einordnung
-Die Kanzlei verarbeitet personenbezogene Daten im Rahmen des Steuerberatungs­
-mandats als eigenständig Verantwortliche im Sinne der DSGVO, weisungsfrei unter
-Beachtung der berufsrechtlichen Verschwiegenheitspflicht. Ein Vertrag zur
-Auftragsverarbeitung zwischen Mandant und Kanzlei ist für die steuerberatende
-Tätigkeit regelmäßig nicht erforderlich.
+
+Die Kanzlei verarbeitet personenbezogene Daten im Rahmen des Steuerberatungsmandats als eigenständig Verantwortliche im Sinne der DSGVO, weisungsfrei unter Beachtung der berufsrechtlichen Verschwiegenheitspflicht. Ein Vertrag zur Auftragsverarbeitung zwischen Mandant und Kanzlei ist für die steuerberatende Tätigkeit regelmäßig nicht erforderlich.
 
 ## 2. Zwecke der Verarbeitung
+
 - Mandatsanbahnung, -annahme, Identitäts- und Kollisionsprüfung, Anlage der Akte.
-- Steuerliche Beratung, Steuererklärungen, Finanz-/Lohnbuchführung, Jahres­
-  abschlüsse, BWA und sonstige beauftragte Leistungen.
-- Kommunikation mit Mandanten, Finanzbehörden, Sozialversicherungsträgern,
-  Gerichten, Banken, Versicherern und sonstigen mandatsbezogenen Stellen.
-- Erfüllung gesetzlicher, berufs-, handels-, steuer- und geldwäscherechtlicher
-  Pflichten sowie Dokumentations- und Aufbewahrungspflichten.
-- Abrechnung, Forderungsmanagement, Qualitätssicherung, Kanzleiorganisation,
-  IT-Sicherheit, Rechtsverfolgung und -verteidigung.
+- Steuerliche Beratung, Steuererklärungen, Finanz-/Lohnbuchführung, Jahresabschlüsse, BWA und sonstige beauftragte Leistungen.
+- Kommunikation mit Mandanten, Finanzbehörden, Sozialversicherungsträgern, Gerichten, Banken, Versicherern und sonstigen mandatsbezogenen Stellen.
+- Erfüllung gesetzlicher, berufs-, handels-, steuer- und geldwäscherechtlicher Pflichten sowie Dokumentations- und Aufbewahrungspflichten.
+- Abrechnung, Forderungsmanagement, Qualitätssicherung, Kanzleiorganisation, IT-Sicherheit, Rechtsverfolgung und -verteidigung.
 
 ## 3. Kategorien verarbeiteter Daten
-Je nach Mandatsumfang insbesondere: Stamm- und Identifikationsdaten (inkl.
-Steuer-ID/Steuernummer/USt-ID), Kontakt- und Kommunikationsdaten, Mandats-,
-Vertrags- und Abrechnungsdaten, Steuer-/Finanz-/Buchhaltungs- und Bankdaten,
-Lohn- und Beschäftigtendaten (soweit beauftragt, inkl. Sozialversicherungs- und
-Gesundheitsdaten sowie Religionszugehörigkeit für Kirchensteuerzwecke), Daten
-Dritter (Angehörige, Gesellschafter, Beschäftigte, wirtschaftlich Berechtigte)
-sowie technische Nutzungsdaten (Portale, Datenräume, IT-Sicherheit).
+
+Je nach Mandatsumfang insbesondere: Stamm- und Identifikationsdaten (inkl. Steuer-ID/Steuernummer/USt-ID), Kontakt- und Kommunikationsdaten, Mandats-, Vertrags- und Abrechnungsdaten, Steuer-/Finanz-/Buchhaltungs- und Bankdaten, Lohn- und Beschäftigtendaten (soweit beauftragt, inkl. Sozialversicherungs- und Gesundheitsdaten sowie Religionszugehörigkeit für Kirchensteuerzwecke), Daten Dritter (Angehörige, Gesellschafter, Beschäftigte, wirtschaftlich Berechtigte) sowie technische Nutzungsdaten (Portale, Datenräume, IT-Sicherheit).
 
 ## 4. Rechtsgrundlagen
+
 - Art. 6 Abs. 1 lit. b DSGVO — Anbahnung/Durchführung/Beendigung des Mandats.
-- Art. 6 Abs. 1 lit. c DSGVO — gesetzliche Pflichten (steuer-, handels-, berufs-,
-  geldwäscherechtlich).
-- Art. 6 Abs. 1 lit. f DSGVO — berechtigte Interessen (Organisation, IT-Sicher­
-  heit, Qualitätssicherung, Forderungsmanagement, Rechtsverfolgung).
-- Art. 9 Abs. 2 lit. g DSGVO i. V. m. § 11 StBerG — besondere Datenkategorien,
-  soweit für die steuerberatende Tätigkeit erforderlich.
-- Art. 6 Abs. 1 lit. a (ggf. Art. 9 Abs. 2 lit. a) DSGVO — nur bei gesonderter,
-  freiwilliger Einwilligung (Teil B).
+- Art. 6 Abs. 1 lit. c DSGVO — gesetzliche Pflichten (steuer-, handels-, berufs-, geldwäscherechtlich).
+- Art. 6 Abs. 1 lit. f DSGVO — berechtigte Interessen (Organisation, IT-Sicherheit, Qualitätssicherung, Forderungsmanagement, Rechtsverfolgung).
+- Art. 9 Abs. 2 lit. g DSGVO i. V. m. § 11 StBerG — besondere Datenkategorien, soweit für die steuerberatende Tätigkeit erforderlich.
+- Art. 6 Abs. 1 lit. a (ggf. Art. 9 Abs. 2 lit. a) DSGVO — nur bei gesonderter, freiwilliger Einwilligung (Teil B).
 
 ## 5. Empfänger und Kategorien von Empfängern
-Daten werden nur weitergegeben, soweit zur Mandatsbearbeitung erforderlich,
-gesetzlich zulässig oder gesondert eingewilligt: Finanzbehörden, Sozial­
-versicherungsträger, Gerichte, Register, Banken, Versicherer; zur Verschwiegen­
-heit verpflichtete Berufsträger/Mitarbeiter/Korrespondenzkanzleien; sowie
-IT-, Hosting-, Wartungs-, Archiv-, Druck-, Post- und Zahlungsdienstleister, die
-vertraglich und berufsrechtlich zur Vertraulichkeit verpflichtet sind. Konkret
-eingesetzte Dienstleister mit Datenzugriff (Stand heute):
+
+Daten werden nur weitergegeben, soweit zur Mandatsbearbeitung erforderlich, gesetzlich zulässig oder gesondert eingewilligt: Finanzbehörden, Sozialversicherungsträger, Gerichte, Register, Banken, Versicherer; zur Verschwiegenheit verpflichtete Berufsträger/Mitarbeiter/Korrespondenzkanzleien; sowie IT-, Hosting-, Wartungs-, Archiv-, Druck-, Post- und Zahlungsdienstleister, die vertraglich und berufsrechtlich zur Vertraulichkeit verpflichtet sind. Konkret eingesetzte Dienstleister mit Datenzugriff (Stand heute):
+
 ${providerLines}
 
 ## 6. Drittlandübermittlungen
-Eine Übermittlung in Staaten außerhalb der EU/des EWR erfolgt grundsätzlich
-nicht, es sei denn, dies ist für das Mandat erforderlich, gesetzlich zulässig
-oder technisch im Rahmen eingesetzter Dienste vorgesehen; dann werden
-Angemessenheitsbeschlüsse oder geeignete Garantien beachtet. Konkrete Dienste
-mit Drittlandbezug: ${config.drittlandServices.trim() || 'keine'}.
+
+Eine Übermittlung in Staaten außerhalb der EU/des EWR erfolgt grundsätzlich nicht, es sei denn, dies ist für das Mandat erforderlich, gesetzlich zulässig oder technisch im Rahmen eingesetzter Dienste vorgesehen; dann werden Angemessenheitsbeschlüsse oder geeignete Garantien beachtet. Konkrete Dienste mit Drittlandbezug: ${config.drittlandServices.trim() || 'keine'}.
 
 ## 7. Speicherdauer und Löschung
-Daten werden gespeichert, solange dies für Mandatsbearbeitung, Abrechnung,
-Dokumentation und gesetzliche Pflichten erforderlich ist. Handakten werden
-grundsätzlich zehn Jahre nach Ablauf des Kalenderjahres der Mandatsbeendigung
-aufbewahrt (§ 147 AO/GoBD); geldwäsche- oder haftungsbezogene Fristen können eine
-längere Speicherung erfordern. Danach werden Daten gelöscht oder eingeschränkt.
+
+Daten werden gespeichert, solange dies für Mandatsbearbeitung, Abrechnung, Dokumentation und gesetzliche Pflichten erforderlich ist. Handakten werden grundsätzlich zehn Jahre nach Ablauf des Kalenderjahres der Mandatsbeendigung aufbewahrt (§ 147 AO/GoBD); geldwäsche- oder haftungsbezogene Fristen können eine längere Speicherung erfordern. Danach werden Daten gelöscht oder eingeschränkt.
 
 ## 8. Pflicht zur Bereitstellung
-Die Bereitstellung der mandatserforderlichen Daten ist regelmäßig vertraglich
-oder gesetzlich erforderlich; ohne sie kann das Mandat nicht ordnungsgemäß
-bearbeitet werden.
+
+Die Bereitstellung der mandatserforderlichen Daten ist regelmäßig vertraglich oder gesetzlich erforderlich; ohne sie kann das Mandat nicht ordnungsgemäß bearbeitet werden.
 
 ## 9. Datensicherheit
-Die Kanzlei setzt angemessene technische und organisatorische Maßnahmen ein. Für
-besonders vertrauliche oder umfangreiche Unterlagen wird ein sicherer Weg
-(Mandantenportal, Datenraum, Ende-zu-Ende-verschlüsselte Kommunikation)
-empfohlen.
+
+Die Kanzlei setzt angemessene technische und organisatorische Maßnahmen ein. Für besonders vertrauliche oder umfangreiche Unterlagen wird ein sicherer Weg (Mandantenportal, Datenraum, Ende-zu-Ende-verschlüsselte Kommunikation) empfohlen.
 
 ## 10. Rechte betroffener Personen
-Betroffene haben Rechte auf Auskunft, Berichtigung, Löschung, Einschränkung,
-Datenübertragbarkeit und Widerspruch; erteilte Einwilligungen können jederzeit
-mit Wirkung für die Zukunft widerrufen werden (Art. 7 Abs. 3 DSGVO). Diese Rechte
-können durch Aufbewahrungs- und Verschwiegenheitspflichten begrenzt sein.
+
+Betroffene haben Rechte auf Auskunft, Berichtigung, Löschung, Einschränkung, Datenübertragbarkeit und Widerspruch; erteilte Einwilligungen können jederzeit mit Wirkung für die Zukunft widerrufen werden (Art. 7 Abs. 3 DSGVO). Diese Rechte können durch Aufbewahrungs- und Verschwiegenheitspflichten begrenzt sein.
+
 Kontakt: ${config.privacyContact.trim() || '[Datenschutz-Kontakt der Kanzlei]'}.
+
 Beschwerderecht bei der Aufsichtsbehörde: ${config.supervisoryAuthority.trim() || '[Aufsichtsbehörde]'}.
 
 ## 11. Automatisierte Entscheidungen
-Eine ausschließlich automatisierte Entscheidungsfindung mit rechtlicher Wirkung
-findet im Rahmen der Mandatsbearbeitung nicht statt.
+
+Eine ausschließlich automatisierte Entscheidungsfindung mit rechtlicher Wirkung findet im Rahmen der Mandatsbearbeitung nicht statt.
 `;
 }
