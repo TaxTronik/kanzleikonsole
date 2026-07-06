@@ -105,6 +105,7 @@ zu `isStaffAdmin(session)`. AST-Guard (`server-action-authz.test.ts`)
 | **XRechnung** | KoSIT Validator | Schematron + BR-DE Konformität | `e-rechnung` |
 | **Container-Scan** | Trivy | CRITICAL-with-fix blockiert Release | `release` |
 | **Backup-Restore** | pg_dump/pg_restore Roundtrip | Backup ist wiederherstellbar | `restore` |
+| **Deploy-Readiness** | `pnpm verify:deploy-readiness` | Prod-Konfig gegen echte Compose-Infra: S3-Buckets + Object-Lock, ClamAV-StreamMaxLength + Signaturen (EICAR), Storage-Roundtrip | `deploy-readiness` |
 
 **Pre-Commit Guards:** `check-no-focused-tests`, `check-paranoid-e2e`,
 `check-ci-images-pinned`, `check-ci-actions-pinned`, `check-no-real-datev`,

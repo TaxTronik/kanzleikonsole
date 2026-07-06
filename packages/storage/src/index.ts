@@ -18,8 +18,16 @@ export {
   detectMimeFromMagicBytes,
   gobdRetentionUntil,
   gwgRetentionUntil,
+  scanBytes,
   MAX_UPLOAD_BYTES,
   type CommitDocumentResult,
   type ObjectStream,
   type ScanResult,
 } from './service';
+export {
+  checkDeployReadiness,
+  type ReadinessReport,
+  type ReadinessCheck,
+  type ReadinessOptions,
+  type CheckStatus,
+} from './deploy-readiness';

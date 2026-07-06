@@ -248,6 +248,18 @@ async function scanWithClamAV(data: Buffer): Promise<ScanResult> {
   });
 }
 
+/**
+ * Öffentlicher Wrapper um den internen ClamAV-INSTREAM-Scan — nutzt EXAKT
+ * denselben Pfad wie die Upload-Pipeline (Chunking, Backpressure, StreamMax-
+ * Length-Verhalten). Für den Deploy-Readiness-Check (deploy-readiness.ts):
+ * dort wird u. a. mit einem Payload in App-Upload-Größe geprüft, ob clamd
+ * `StreamMaxLength` >= `MAX_UPLOAD_BYTES` deployt ist (N-6), und mit EICAR, ob
+ * überhaupt Signaturen geladen sind.
+ */
+export async function scanBytes(data: Buffer): Promise<ScanResult> {
+  return scanWithClamAV(data);
+}
+
 // ---------------------------------------------------------------------------
 // Filename-Sanitizer für Content-Disposition
 // ---------------------------------------------------------------------------

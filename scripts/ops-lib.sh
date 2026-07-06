@@ -553,6 +553,44 @@ smoke_health() {
   die "Health-Smoke fehlgeschlagen."
 }
 
+# Prod-Konfigurations-Gate NACH dem Deploy. smoke_health prueft nur die
+# ERREICHBARKEIT (der /api/health-Endpoint aus dem Container); dieser Check geht
+# tiefer und faengt prod-spezifische KONFIGURATIONS-Fehler (S3-Buckets fehlen /
+# kein Object-Lock, ClamAV-StreamMaxLength < Upload-Cap, keine ClamAV-Signaturen,
+# Storage-Schreib/Lese-Roundtrip kaputt) — genau die Klasse, die sonst erst beim
+# Kunden auffaellt (z. B. der GwG-Upload). Laeuft als Host-Tool gegen die
+# VEROEFFENTLICHTEN Ports (docker port), unabhaengig von den internen
+# Container-Endpunkten. Mit Retry: frisches ClamAV laedt die Signaturen (EICAR)
+# ggf. erst nach dem TCP-Up per freshclam.
+deploy_readiness() {
+  local s3_hp clam_hp s3_endpoint clam_host clam_port
+  s3_hp="$(docker port taxtronik-seaweedfs 8333 2>/dev/null | head -n1 || true)"
+  clam_hp="$(docker port taxtronik-clamav 3310 2>/dev/null | head -n1 || true)"
+  if [[ -z "$s3_hp" || -z "$clam_hp" ]]; then
+    warn "Deploy-Readiness uebersprungen: SeaweedFS/ClamAV-Hostports nicht ermittelbar."
+    return 0
+  fi
+  s3_endpoint="http://${s3_hp/0.0.0.0/127.0.0.1}"
+  clam_host="${clam_hp%%:*}"; clam_host="${clam_host/0.0.0.0/127.0.0.1}"
+  clam_port="${clam_hp##*:}"
+
+  info "Deploy-Readiness: S3=$s3_endpoint ClamAV=$clam_host:$clam_port"
+  local attempt
+  for attempt in 1 2 3 4; do
+    if ( cd "$ROOT" && \
+         S3_ENDPOINT="$s3_endpoint" CLAMAV_HOST="$clam_host" CLAMAV_PORT="$clam_port" \
+         pnpm --filter @taxtronik/storage verify:deploy ); then
+      info "Deploy-Readiness OK."
+      return 0
+    fi
+    if [[ $attempt -lt 4 ]]; then
+      warn "Deploy-Readiness noch nicht bereit (Versuch $attempt/4) — 20 s warten (ClamAV-Signaturen?)."
+      sleep 20
+    fi
+  done
+  die "Deploy-Readiness fehlgeschlagen — Prod-Konfiguration nicht bereit (S3-Buckets/Object-Lock/ClamAV/Roundtrip). Siehe Ausgabe oben; nach Fix erneut deployen."
+}
+
 resolve_prisma_cli() {
   local candidate
   for candidate in \
@@ -1041,6 +1079,7 @@ _deploy_core() {
   ensure_provisioned_interactive
   start_apps
   smoke_health
+  deploy_readiness
   save_state
 }
 
@@ -1072,6 +1111,7 @@ cmd_update() {
   run_migrations
   start_apps
   smoke_health
+  deploy_readiness
   save_state
   info "Update fertig. Version: $(image_tag)"
 }

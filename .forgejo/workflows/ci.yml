@@ -900,3 +900,91 @@ jobs:
           # error statt ignore: fehlt der Bericht, ist das ein echtes Problem
           # (Validator lief nicht) und soll sichtbar werden, nicht still passieren.
           if-no-files-found: warn
+
+  # ===========================================================================
+  # deploy-readiness — Prod-KONFIGURATION gegen die ECHTE Compose-Infra.
+  #
+  # Die übrigen Jobs testen gegen einzeln aufgesetzte CI-Service-Container mit
+  # CI-Konfig; prod-spezifische Fehler (Buckets nicht angelegt / ohne Object-
+  # Lock, clamd StreamMaxLength < Upload-Cap, fehlende ClamAV-Signaturen,
+  # kaputter S3-Roundtrip) fielen daher erst beim Kunden auf — genau die Klasse,
+  # die den GwG-Upload lahmlegte. Dieser Job fährt seaweedfs + clamav aus der
+  # ECHTEN infra/compose/docker-compose.yml hoch (mit den realen Artefakten
+  # init-storage.sh, clamd.conf, seaweedfs-s3.template.json) und lässt den
+  # Deploy-Readiness-Check dagegen laufen — dieselbe Prüfung, die auch nach
+  # jedem `./taxtronik deploy`/`update` läuft (ops-lib deploy_readiness).
+  # Fängt Prod-Konfig-Regressionen VOR dem Deploy.
+  # ===========================================================================
+  deploy-readiness:
+    name: Deploy-Readiness (Prod-Konfig)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Nur für die Compose-Interpolation der Basis-Datei (postgres/n8n werden
+      # NICHT gestartet — Dummies genügen). S3_ENDPOINT/CLAMAV_* kommen aus dem
+      # globalen env-Block (localhost:8333 bzw. Config-Default localhost:3310).
+      POSTGRES_PASSWORD: ci-postgres-pw
+      TAXTRONIK_APP_PASSWORD: ci-app-pw
+      COMPOSE: docker compose -f infra/compose/docker-compose.yml
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        # Der Readiness-Pfad braucht nur @aws-sdk + tsx (kein Prisma, kein Build).
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Render SeaweedFS-S3-Config (wie im Deploy)
+        run: |
+          sed -e "s|__S3_ACCESS_KEY__|${S3_ACCESS_KEY}|" \
+              -e "s|__S3_SECRET_KEY__|${S3_SECRET_KEY}|" \
+              infra/scripts/seaweedfs-s3.template.json \
+              > infra/scripts/seaweedfs-s3.generated.json
+          chmod 644 infra/scripts/seaweedfs-s3.generated.json
+
+      - name: Start real infra (SeaweedFS + ClamAV)
+        run: |
+          set -euo pipefail
+          # Selbstheilung bei liegengebliebenem Vorlauf (feste Container-Namen).
+          $COMPOSE down -v --remove-orphans >/dev/null 2>&1 || true
+          $COMPOSE up -d --wait seaweedfs clamav
+
+      - name: Create buckets with Object-Lock (real init-storage.sh)
+        # Der ECHTE Bucket-Init: legt gobd/gwg mit Object-Lock COMPLIANCE an
+        # (kein || true — bricht der Object-Lock, ist das ein GoBD-Verstoß).
+        run: $COMPOSE run --rm seaweedfs-init
+
+      - name: Deploy-Readiness-Check (S3-Buckets/Object-Lock/ClamAV/Roundtrip)
+        # Retry: frisches ClamAV lädt die Signaturen (EICAR) ggf. erst per
+        # freshclam nach dem TCP-Up. Bis zu 4 Versuche à 20 s.
+        run: |
+          set -uo pipefail
+          for attempt in 1 2 3 4; do
+            if pnpm verify:deploy-readiness; then
+              echo "Deploy-Readiness OK (Versuch $attempt)."
+              exit 0
+            fi
+            if [ "$attempt" -lt 4 ]; then
+              echo "Noch nicht bereit (Versuch $attempt/4) — 20 s warten (ClamAV-Signaturen?)."
+              sleep 20
+            fi
+          done
+          echo "Deploy-Readiness fehlgeschlagen." >&2
+          exit 1
+
+      - name: Diagnose bei Fehler
+        if: failure()
+        run: |
+          echo "=== clamav ==="; $COMPOSE logs clamav --tail 60 || true
+          echo "=== seaweedfs ==="; $COMPOSE logs seaweedfs --tail 60 || true
+          echo "=== seaweedfs-init ==="; $COMPOSE logs seaweedfs-init --tail 60 || true
+
+      - name: Infra abräumen
+        if: always()
+        run: $COMPOSE down -v --remove-orphans || true
