@@ -41,6 +41,7 @@ model Tenant {
   clientCustomFieldDefs      ClientCustomFieldDef[]
   clientCustomFieldValues    ClientCustomFieldValue[]
   clientHandovers            ClientHandover[]
+  clientConsents             ClientConsent[]
   clientMasterChangeRequests ClientMasterChangeRequest[]
   clientReminders            ClientReminder[]
   documents                  Document[]
@@ -787,6 +788,7 @@ model Client {
   anonymizedAt         DateTime?                   @map("anonymized_at")
   appointments         Appointment[]
   appointmentRequests  AppointmentRequest[]
+  clientConsents       ClientConsent[]
   bwaPeriods           BwaPeriod[]
   bwaPlans             BwaPlan[]
   tenant               Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -1595,6 +1597,44 @@ model ElsterKontoabfrage {
 
   @@index([tenantId, clientId, createdAt])
   @@map("elster_kontoabfrage")
+}
+
+/// Datenschutz-Einwilligungen des Mandanten (DSGVO Art. 6/7 + § 11 StBerG).
+/// Append-only Historie: jeder Datensatz ist ein vollständiger Snapshot des
+/// Einwilligungsstands; der neueste je Mandant ist maßgeblich. Ein Widerruf
+/// (Art. 7 Abs. 3 DSGVO) ist ein neuer Snapshot mit den zurückgezogenen
+/// Optionen auf false. `noticeSnapshot` friert den EXAKT gezeigten Hinweistext
+/// ein (Nachweis, welche Fassung der Mandant akzeptiert hat).
+model ClientConsent {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  clientId        String   @map("client_id") @db.Uuid
+  /// Version des Standard-Hinweistextes (server/privacy/notice.ts).
+  noticeVersion   Int      @map("notice_version")
+  /// Gerenderter Volltext der Datenschutzhinweise (Teil A), den der Mandant
+  /// gesehen/akzeptiert hat — inkl. Kanzlei-Angaben + Empfängerliste.
+  noticeSnapshot  String   @map("notice_snapshot")
+  /// Granulare freiwillige Einwilligungen (Teil B): Kommunikationskanäle,
+  /// Marketing, benannte Dritte, Spezialdienstleister. Struktur:
+  /// server/privacy/consent.ts (ConsentSelections).
+  consents        Json
+  /// Erfassungsquelle: STAFF (Kanzlei-seitig) oder PORTAL (Mandant selbst).
+  source          String
+  /// Name der unterzeichnenden vertretungsberechtigten Person (immer gesetzt).
+  signedByName    String   @map("signed_by_name")
+  /// Optional: verknüpfte Kontaktperson (bei Portal/bekanntem Kontakt).
+  signedByContact String?  @map("signed_by_contact") @db.Uuid
+  /// True, wenn dieser Snapshot ein (Teil-)Widerruf ist (für die Anzeige).
+  isRevocation    Boolean  @default(false) @map("is_revocation")
+  note            String?
+  /// Staff-User, der es erfasst hat (null bei Portal-Selbsterfassung).
+  createdBy       String?  @map("created_by") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at")
+  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_consent_client_fkey")
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_consent_tenant_fkey")
+
+  @@index([tenantId, clientId, createdAt])
+  @@map("client_consent")
 }
 
 model StaffSkill {

@@ -7,8 +7,10 @@
 // =============================================================================
 
 import { headers } from 'next/headers';
+import { withSystemContext } from '@taxtronik/db';
 import { checkIpOrGlobalLimit, getClientIp } from '@/server/rate-limit';
 import { GENERIC_TOKEN_ERROR, loadInviteByRawToken } from '@/server/gwg-onboarding/service';
+import { renderNoticeForTenantTx } from '@/server/privacy/service';
 import { OnboardingWizard } from './wizard';
 
 export default async function GwgOnboardingPage({
@@ -49,6 +51,11 @@ export default async function GwgOnboardingPage({
   }
 
   const { invite } = result;
+  // Datenschutzhinweise (Teil A) tenant-spezifisch rendern (System-Kontext:
+  // Public-Pfad, nur durch den Token geschützt).
+  const notice = await withSystemContext(invite.tenant.id, (tx) =>
+    renderNoticeForTenantTx(tx, invite.tenant.id),
+  );
   return (
     <div className="min-h-screen bg-surface-page py-12 px-4">
       <div className="max-w-3xl mx-auto">
@@ -60,6 +67,8 @@ export default async function GwgOnboardingPage({
           token={token}
           inviteName={invite.inviteName}
           client={invite.client}
+          noticeBody={notice.body}
+          noticeVersion={notice.version}
         />
       </div>
     </div>

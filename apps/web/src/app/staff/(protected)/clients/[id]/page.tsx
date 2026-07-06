@@ -375,6 +375,7 @@ export default async function ClientDetailPage({
           <Link href={`/staff/clients/${client.id}/bwa`} className="btn-secondary text-xs py-1">BWA & Auswertungen</Link>
         )}
         <Link href={`/staff/clients/${client.id}/gwg`} className="btn-secondary text-xs py-1">GwG-Prüfung</Link>
+        <Link href={`/staff/clients/${client.id}/privacy`} className="btn-secondary text-xs py-1">Datenschutz</Link>
         {modules.risk && canSubsumtion && (
           <Link href={`/staff/clients/${client.id}/subsumtion`} className="btn-secondary text-xs py-1">Subsumtion / TCMS</Link>
         )}

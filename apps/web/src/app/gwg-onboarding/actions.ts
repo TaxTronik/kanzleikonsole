@@ -14,6 +14,8 @@ import {
 import { checkRateLimit, checkIpOrGlobalLimit, getClientIp } from '@/server/rate-limit';
 import { log } from '@/server/logger';
 import { notifyMany } from '@/server/notifications/service';
+import { ConsentSelectionsSchema, countGranted } from '@/server/privacy/consent';
+import { renderNoticeForTenantTx } from '@/server/privacy/service';
 
 // M4: GwG-Uploads sind enger gecappt als der globale MAX_UPLOAD_BYTES (100 MB).
 // Ausweis-Scans sind typischerweise ≤5 MB; 10 MB ist großzügig für hochauflösende
@@ -265,6 +267,12 @@ const SubmitSchema = z.object({
   }),
   owners: z.array(OwnerSchema).min(1),
   extraDocumentIds: z.array(z.string().uuid()),
+  // Datenschutz-Einwilligungen (Teil B) + Bestätigung der Hinweise (Teil A).
+  consent: z.object({
+    noticeAcknowledged: z.literal(true),
+    signedByName: z.string().min(1).max(300),
+    selections: ConsentSelectionsSchema,
+  }),
 });
 
 export async function submitOnboardingAction(input: z.infer<typeof SubmitSchema>): Promise<ActionResult> {
@@ -363,6 +371,42 @@ export async function submitOnboardingAction(input: z.infer<typeof SubmitSchema>
         });
         checkId = created.id;
       }
+
+      // 2b. Datenschutz-Einwilligungen (Teil B) persistieren + Hinweis-Snapshot
+      // einfrieren. Leere Array-Zeilen verwerfen. source=PORTAL, kein Staff.
+      const sel = parsed.data.consent.selections;
+      sel.thirdParties = sel.thirdParties.filter((t) => t.recipient.trim() !== '');
+      sel.specialists = sel.specialists.filter((s) => s.entity.trim() !== '');
+      const notice = await renderNoticeForTenantTx(tx, invite.tenantId);
+      const consentRow = await tx.clientConsent.create({
+        data: {
+          tenantId: invite.tenantId,
+          clientId: invite.clientId,
+          noticeVersion: notice.version,
+          noticeSnapshot: notice.body,
+          consents: sel as object,
+          source: 'PORTAL',
+          signedByName: parsed.data.consent.signedByName.trim(),
+          isRevocation: false,
+          note: 'Über GwG-Onboarding-Portal erteilt',
+          createdBy: null,
+        },
+      });
+      await evidenceService.record(tx, {
+        tenantId: invite.tenantId,
+        actorType: 'CLIENT_CONTACT',
+        actorId: null,
+        action: 'privacy.consent.grant',
+        resourceType: 'client_consent',
+        resourceId: consentRow.id,
+        after: {
+          clientId: invite.clientId,
+          noticeVersion: notice.version,
+          grantedCount: countGranted(sel),
+          signedByName: parsed.data.consent.signedByName.trim(),
+          source: 'PORTAL',
+        },
+      });
 
       // 3. Wirtschaftlich Berechtigte erfassen
       // Bestehende für diesen Check aufräumen — Mandant gibt aktuelle Liste vor.

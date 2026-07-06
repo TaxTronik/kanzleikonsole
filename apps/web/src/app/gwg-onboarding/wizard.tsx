@@ -3,6 +3,8 @@
 import { useState, useTransition } from 'react';
 import { Plus, Trash2, Upload, Check, ArrowLeft, ArrowRight, Loader } from 'lucide-react';
 import { uploadIdImageAction, submitOnboardingAction } from './actions';
+import { ConsentFields } from '@/components/consent-fields';
+import { emptyConsent, type ConsentSelections } from '@/server/privacy/consent';
 
 // Client-seitiges Upload-Limit: Die Datei wird Base64-kodiert an die Server-
 // Action geschickt (+33 % Overhead). Damit eine Datei knapp unter dem Limit
@@ -63,6 +65,7 @@ const STEPS = [
   { key: 'master', label: 'Stammdaten' },
   { key: 'owners', label: 'Wirtschaftlich Berechtigte' },
   { key: 'documents', label: 'Sonstige Dokumente' },
+  { key: 'privacy', label: 'Datenschutz' },
   { key: 'submit', label: 'Übermitteln' },
 ] as const;
 
@@ -70,12 +73,22 @@ export function OnboardingWizard({
   token,
   inviteName,
   client,
+  noticeBody,
+  noticeVersion,
 }: {
   token: string;
   inviteName: string;
   client: ClientShape;
+  /** Gerenderte Datenschutzhinweise (Teil A) — kanzleispezifisch. */
+  noticeBody: string;
+  noticeVersion: number;
 }) {
   const [step, setStep] = useState(0);
+
+  // Datenschutz-Einwilligungen (Teil B) + Bestätigung + Unterschrift.
+  const [consent, setConsent] = useState<ConsentSelections>(emptyConsent());
+  const [noticeAck, setNoticeAck] = useState(false);
+  const [signedByName, setSignedByName] = useState(inviteName);
 
   // Stammdaten
   const [companyName, setCompanyName] = useState(client.name);
@@ -195,6 +208,10 @@ export function OnboardingWizard({
         if (!o.idBack) return `Person ${i + 1}: Ausweis Rückseite fehlt.`;
       }
     }
+    if (STEPS[step]?.key === 'privacy') {
+      if (!noticeAck) return 'Bitte bestätigen Sie, dass Sie die Datenschutzhinweise zur Kenntnis genommen haben.';
+      if (!signedByName.trim()) return 'Bitte geben Sie den Namen der erklärenden Person an.';
+    }
     return null;
   }
 
@@ -239,6 +256,11 @@ export function OnboardingWizard({
           idBackDocumentId: o.idBack!.documentId,
         })),
         extraDocumentIds: extraDocs.map((d) => d.documentId),
+        consent: {
+          noticeAcknowledged: true as const,
+          signedByName,
+          selections: consent,
+        },
       });
       if (!r.ok) {
         setSubmitError(r.error ?? 'Übermittlung fehlgeschlagen.');
@@ -382,8 +404,57 @@ export function OnboardingWizard({
         </div>
       )}
 
-      {/* Schritt 3: Übermitteln */}
+      {/* Schritt 3: Datenschutz & Einwilligungen */}
       {step === 3 && (
+        <div className="card p-6 space-y-5">
+          <div>
+            <h2 className="text-lg font-semibold text-primary">Datenschutzhinweise</h2>
+            <p className="text-xs text-muted mt-1">
+              Bitte lesen Sie die Hinweise Ihrer Kanzlei (Fassung {noticeVersion}).
+              Die zur Mandatsbearbeitung nötige Verarbeitung ist auch ohne
+              Einwilligung zulässig; die folgenden Einwilligungen sind freiwillig.
+            </p>
+          </div>
+          <div className="max-h-72 overflow-y-auto rounded-md border border-default bg-surface-raised p-4">
+            <pre className="whitespace-pre-wrap text-xs text-secondary">{noticeBody}</pre>
+          </div>
+
+          <div>
+            <h3 className="text-sm font-semibold text-primary mb-1">Freiwillige Einwilligungen</h3>
+            <p className="text-xs text-muted mb-3">Nur ankreuzen, was Sie wünschen. Nichts anzukreuzen ist möglich.</p>
+            <ConsentFields onChange={setConsent} />
+          </div>
+
+          <div className="border-t border-default pt-4 space-y-3">
+            <label className="flex items-start gap-2 text-sm cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={noticeAck}
+                onChange={(e) => setNoticeAck(e.target.checked)}
+                className="mt-0.5 rounded border-strong text-brand-600"
+              />
+              <span className="text-secondary">
+                Ich habe die Datenschutzhinweise zur Kenntnis genommen. Die
+                vorstehenden Einwilligungen erteile ich freiwillig; nicht
+                angekreuzte Optionen gelten als nicht erteilt.
+              </span>
+            </label>
+            <div>
+              <label className="label-sm">Name der erklärenden Person *</label>
+              <input
+                value={signedByName}
+                onChange={(e) => setSignedByName(e.target.value)}
+                maxLength={300}
+                className="input w-full"
+                placeholder="Vor- und Nachname (vertretungsberechtigt)"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Schritt 4: Übermitteln */}
+      {step === 4 && (
         <div className="card p-6 space-y-4">
           <h2 className="text-lg font-semibold text-primary">Zusammenfassung</h2>
           <dl className="space-y-2 text-sm">

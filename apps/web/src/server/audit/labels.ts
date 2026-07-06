@@ -117,6 +117,9 @@ export const ACTION_LABELS: Record<string, string> = {
   'tax_deadline.complete': 'Steuertermin erledigt',
   'tax_notice.create': 'Bescheid erfasst',
   'elster.kontoabfrage': 'ELSTER-Kontoabfrage durchgeführt',
+  'privacy.consent.grant': 'Datenschutz-Einwilligung erfasst',
+  'privacy.consent.revoke': 'Datenschutz-Einwilligung widerrufen',
+  'privacy.config.update': 'Kanzlei-Datenschutzangaben geändert',
   'tax_notice.status': 'Bescheid-Status geändert',
 
   // BWA
