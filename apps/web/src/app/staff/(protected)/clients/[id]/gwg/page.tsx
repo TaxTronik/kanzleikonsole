@@ -268,7 +268,7 @@ export default async function GwgPage({
               2. Wirtschaftlich Berechtigte
             </h2>
             <p className="text-sm text-muted mb-4">
-              Personen mit ≥ 25 % Anteil oder vergleichbarer Kontrolle (§ 3 GwG).
+              Personen mit mehr als 25 % Anteil oder vergleichbarer Kontrolle (§ 3 GwG).
             </p>
 
             {check.beneficialOwners.length > 0 && (

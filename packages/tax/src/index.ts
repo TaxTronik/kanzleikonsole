@@ -14,6 +14,8 @@ export {
   germanHolidays,
   endOfDueDay,
   startOfUtcDay,
+  appealDeadline,
+  BEKANNTGABE_FIKTION_TAGE,
   SCHEDULE_LABELS,
   REGION_LABELS,
   type GermanRegion,

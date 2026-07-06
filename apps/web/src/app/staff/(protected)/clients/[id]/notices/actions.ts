@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
+import { appealDeadline } from '@taxtronik/tax';
 import { evidenceService } from '@/server/container';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { assertClientAccessTx, toActionError } from '@/server/auth/rbac';
@@ -21,6 +22,13 @@ const Schema = z.object({
   kind: z.enum(KIND_VALUES),
   period: z.string().min(1).max(20),
   noticeDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  // Tatsächlicher Zugang (§ 122 Abs. 2 AO Hs. 2) — leer = Fiktion maßgeblich.
+  receivedAt: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional()
+    .nullable()
+    .or(z.literal('')),
   fileNumber: z.string().max(100).optional().nullable(),
   assessedAmount: z.string().optional().nullable(),
   expectedAmount: z.string().optional().nullable(),
@@ -47,6 +55,7 @@ export async function createNoticeAction(formData: FormData): Promise<void> {
     kind: formData.get('kind'),
     period: formData.get('period'),
     noticeDate: formData.get('noticeDate'),
+    receivedAt: formData.get('receivedAt'),
     fileNumber: formData.get('fileNumber'),
     assessedAmount: formData.get('assessedAmount'),
     expectedAmount: formData.get('expectedAmount'),
@@ -58,9 +67,21 @@ export async function createNoticeAction(formData: FormData): Promise<void> {
 
   const d = parsed.data;
   const noticeDate = new Date(d.noticeDate + 'T00:00:00.000Z');
-  // Bekanntgabefiktion 3 Tage + 1 Monat = +33 Tage. Trigger setzt das gleiche
-  // im DB-Default — wir berechnen es trotzdem App-seitig für Kohärenz.
-  const appealDeadline = new Date(noticeDate.getTime() + 33 * 24 * 60 * 60 * 1000);
+  // Tatsächlicher Zugang: nur plausible Werte übernehmen (nicht vor dem
+  // Bescheiddatum — ein Bescheid kann nicht vor seiner Aufgabe zugehen).
+  const receivedAt =
+    d.receivedAt && d.receivedAt !== ''
+      ? new Date(d.receivedAt + 'T00:00:00.000Z')
+      : null;
+  if (receivedAt && receivedAt.getTime() < noticeDate.getTime()) {
+    throw new Error('Zugangsdatum darf nicht vor dem Bescheiddatum liegen.');
+  }
+  // Einspruchsfrist korrekt nach § 355 AO (1 Monat kalendarisch) + § 122 Abs. 2
+  // AO (4-Tage-Bekanntgabefiktion ab 2025; bei SPÄTEREM tatsächlichem Zugang
+  // zählt dieser, Hs. 2) + Werktagsverschiebung § 108 (3) AO. Maßgebliche
+  // Berechnung liegt zentral in @taxtronik/tax; der DB-Trigger ist nur ein
+  // grober Backstop, falls die App die Frist nicht setzt.
+  const appealDeadlineDate = appealDeadline(noticeDate, null, receivedAt);
 
   await withTenantContext(
     ctx,
@@ -93,7 +114,8 @@ export async function createNoticeAction(formData: FormData): Promise<void> {
           kind: d.kind,
           period: d.period,
           noticeDate,
-          appealDeadline,
+          receivedAt,
+          appealDeadline: appealDeadlineDate,
           fileNumber: d.fileNumber ?? null,
           assessedAmount: parseDecimal(d.assessedAmount),
           expectedAmount: parseDecimal(d.expectedAmount) ?? expectedFromFiling,

@@ -56,7 +56,6 @@ export function generateDeadlines(
   const out: DeadlineCandidate[] = [];
   switch (kind) {
     case 'USTA_MONATLICH':
-    case 'LSTA_MONATLICH':
       iterateMonths(from, to, (year, month) => {
         const period = `${year}-${pad(month)}`;
         const due = shiftToNextWorkday(monthlyVaDueDate(year, month, hasDauerfrist), region);
@@ -66,11 +65,34 @@ export function generateDeadlines(
       });
       break;
 
+    case 'LSTA_MONATLICH':
+      // § 41a Abs. 1 EStG: 10. des Folgemonats. KEINE Dauerfristverlaengerung —
+      // die gibt es ausschliesslich fuer USt-Voranmeldungen (§ 18 Abs. 6 UStG,
+      // §§ 46-48 UStDV). hasDauerfrist wird hier bewusst ignoriert.
+      iterateMonths(from, to, (year, month) => {
+        const period = `${year}-${pad(month)}`;
+        const due = shiftToNextWorkday(monthlyVaDueDate(year, month, false), region);
+        if (due >= from && due <= to) {
+          out.push({ kind, period, dueDate: due });
+        }
+      });
+      break;
+
     case 'USTA_QUARTAL':
-    case 'LSTA_QUARTAL':
       iterateQuarters(from, to, (year, q) => {
         const period = `${year}-Q${q}`;
         const due = shiftToNextWorkday(quarterlyVaDueDate(year, q, hasDauerfrist), region);
+        if (due >= from && due <= to) {
+          out.push({ kind, period, dueDate: due });
+        }
+      });
+      break;
+
+    case 'LSTA_QUARTAL':
+      // § 41a Abs. 1 EStG: 10. nach Quartalsende. KEINE Dauerfrist (s. o.).
+      iterateQuarters(from, to, (year, q) => {
+        const period = `${year}-Q${q}`;
+        const due = shiftToNextWorkday(quarterlyVaDueDate(year, q, false), region);
         if (due >= from && due <= to) {
           out.push({ kind, period, dueDate: due });
         }
@@ -268,6 +290,83 @@ export function endOfDueDay(dueDate: Date): Date {
 /** UTC-Mitternacht des Tages von `d` — nur Termine mit dueDate DAVOR sind überfällig. */
 export function startOfUtcDay(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
+// ---------------------------------------------------------------------------
+// Einspruchsfrist (§ 355 Abs. 1 AO): ein Monat nach Bekanntgabe des Bescheids.
+//
+// Bekanntgabefiktion § 122 Abs. 2 Nr. 1 AO (Fassung ab 01.01.2025,
+// Postrechtsmodernisierungsgesetz): ein schriftlicher Verwaltungsakt gilt am
+// VIERTEN Tag nach Aufgabe zur Post als bekannt gegeben (bis 31.12.2024: dritter
+// Tag). Fällt dieser Tag auf Sa/So/Feiertag, verschiebt er sich auf den nächsten
+// Werktag (§ 108 Abs. 3 AO, st. BFH-Rspr.).
+//
+// Die Monatsfrist wird kalendarisch nach §§ 187 Abs. 1, 188 Abs. 2 BGB gerechnet:
+// der Bekanntgabetag zählt nicht mit, die Frist endet mit Ablauf des Tages des
+// Folgemonats, der dem Bekanntgabetag zahlenmäßig entspricht; existiert dieser
+// Tag im Folgemonat nicht (z. B. 31. → Februar), endet sie am letzten Tag des
+// Folgemonats. Fällt das Fristende auf Sa/So/Feiertag → nächster Werktag
+// (§ 108 Abs. 3 AO).
+//
+// NICHT die frühere Näherung „+ 33 Tage": die ist zweifach falsch (3 statt 4
+// Tage Fiktion; 30 Tage statt kalendarischer Monat) und kann eine SPÄTERE Frist
+// ausweisen als die gesetzliche — mit Bestandskraft-/Haftungsrisiko.
+// ---------------------------------------------------------------------------
+
+/** Kalendarische Bekanntgabefiktion ab 01.01.2025: +4 Tage. Davor: +3. */
+export const BEKANNTGABE_FIKTION_TAGE = 4;
+
+/**
+ * Berechnet die Einspruchsfrist eines Steuerbescheids aus dem Bescheiddatum
+ * (Tag der Aufgabe zur Post, als UTC-Mitternacht).
+ *
+ * `receivedAt` (optional): TATSÄCHLICHER Zugangstag beim Empfänger. § 122
+ * Abs. 2 AO: die Fiktion gilt, „außer wenn der Verwaltungsakt nicht oder zu
+ * einem SPÄTEREN Zeitpunkt zugegangen ist" — kam der Bescheid später an
+ * (Postverzögerung, liegengeblieben), beginnt die Monatsfrist erst mit dem
+ * echten Zugang. Ein FRÜHERER tatsächlicher Zugang verkürzt die Frist dagegen
+ * NICHT (die Fiktion ist Mindestschutz; st. Rspr.). Der tatsächliche Zugang
+ * ist ein Faktum und wird nicht werktagsverschoben — nur Fiktionstag und
+ * Fristende unterliegen § 108 Abs. 3 AO.
+ *
+ * `region`: Standard `null` = nur bundeseinheitliche Feiertage. Bewusst
+ * konservativ — würde man Landesfeiertage annehmen, verschöbe sich die Frist
+ * eher nach hinten; `null` wahrt die Frist eher zu früh als zu spät.
+ */
+export function appealDeadline(
+  noticeDate: Date,
+  region: GermanRegion | null = null,
+  receivedAt: Date | null = null,
+): Date {
+  // 1. Bekanntgabe: + Fiktionstage, dann Werktagsverschiebung.
+  const fiktion = new Date(Date.UTC(
+    noticeDate.getUTCFullYear(),
+    noticeDate.getUTCMonth(),
+    noticeDate.getUTCDate() + BEKANNTGABE_FIKTION_TAGE,
+  ));
+  let bekanntgabe = shiftToNextWorkday(fiktion, region);
+
+  // Tatsächlich SPÄTER zugegangen → echter Zugangstag ist maßgeblich.
+  if (receivedAt) {
+    const received = startOfUtcDay(receivedAt);
+    if (received.getTime() > bekanntgabe.getTime()) bekanntgabe = received;
+  }
+
+  // 2. + 1 Monat kalendarisch (BGB), Monatsende-sicher.
+  const y = bekanntgabe.getUTCFullYear();
+  const m = bekanntgabe.getUTCMonth();
+  const d = bekanntgabe.getUTCDate();
+  let ende = new Date(Date.UTC(y, m + 1, d));
+  // Überlauf: existiert der Tag im Zielmonat nicht (z. B. 31.01. → 31.02.),
+  // rollt JS in den übernächsten Monat — dann auf den letzten Tag des
+  // Zielmonats (m+1) zurücksetzen. `Date.UTC(y, m+2, 0)` = Tag 0 von (m+2) =
+  // letzter Tag von (m+1).
+  if (ende.getUTCMonth() !== ((m + 1) % 12)) {
+    ende = new Date(Date.UTC(y, m + 2, 0));
+  }
+
+  // 3. Fristende-Werktagsverschiebung.
+  return shiftToNextWorkday(ende, region);
 }
 
 function isWeekendOrHoliday(d: Date, region: GermanRegion | null): boolean {

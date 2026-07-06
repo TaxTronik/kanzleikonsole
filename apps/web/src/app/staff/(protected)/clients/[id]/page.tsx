@@ -11,6 +11,7 @@ import { readClientLayout, type ClientBlockKey } from '@/server/settings/client-
 import { CockpitGrid } from './cockpit-grid';
 import { RequestDecision, type RequestRow } from '@/app/staff/(protected)/calendar/request-decision';
 import { SCHEDULE_LABELS } from '@taxtronik/tax';
+import { isElsterConfigured } from '@taxtronik/elster';
 import { DocumentExplorer } from '@/components/document-explorer';
 import { toManagedDoc } from '@/server/documents/managed-docs';
 import { ClientContactsPanel } from '@/components/client-contacts-panel';
@@ -382,6 +383,9 @@ export default async function ClientDetailPage({
             <Link href={`/staff/clients/${client.id}/tax-schedule`} className="btn-secondary text-xs py-1">Steuertermine</Link>
             <Link href={`/staff/clients/${client.id}/notices`} className="btn-secondary text-xs py-1">Bescheide</Link>
           </>
+        )}
+        {isElsterConfigured() && (
+          <Link href={`/staff/clients/${client.id}/elster`} className="btn-secondary text-xs py-1">Steuerkonto (ELSTER)</Link>
         )}
         {modules.workflows && (
           <Link href={`/staff/clients/${client.id}/workflows`} className="btn-secondary text-xs py-1">Workflows</Link>

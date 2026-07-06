@@ -42,6 +42,7 @@ export default async function ClientTaxSchedulePage({
     kind: c.kind,
     active: c.active,
     hasDauerfrist: c.hasDauerfrist,
+    advised: c.advised,
     reminderDaysBefore: c.reminderDaysBefore,
   }));
 

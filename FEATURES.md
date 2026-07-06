@@ -275,11 +275,15 @@ Modul `appointments`.
   USt-VA (mtl./quart./jährl.), LSt-Anmeldung (mtl./quart./jährl.),
   ESt/KSt/GewSt-VZ + Erklärungen; ohne GwG-Freigabe (`allowActive`)
   werden keine Termine materialisiert (Hinweis-Banner)
-- Mit Dauerfristverlängerung (USt/LSt) → +1 Monat
+- Mit Dauerfristverlängerung (nur USt-Voranmeldung, § 18 Abs. 6 UStG,
+  §§ 46-48 UStDV) → +1 Monat. Für die Lohnsteuer-Anmeldung (§ 41a EStG) gibt
+  es KEINE Dauerfrist — die Checkbox wird dort nicht angeboten
 - **Beratene Erklärungsfrist § 149 (3) AO** als `advised`-Option pro
   Schedule-Config (letzter Tag des Monats Februar des zweiten Folgejahres
-  statt 31.07. des Folgejahres). Default `false`; eine UI zum Aktivieren
-  gibt es noch nicht — das Flag ist derzeit nur per DB setzbar
+  statt 31.07. des Folgejahres). Über die Steuertermin-Konfig-UI pro
+  Erklärungsart aktivierbar (Spalte „Beraten"); nur für Erklärungen
+  (USt-Jahres-, ESt-/KSt-/GewSt-Erklärung), nicht für Anmeldungen/
+  Vorauszahlungen. Beim Umschalten werden offene Termine neu materialisiert
 - Werktagsverschiebung gem. § 108 (3) AO inkl. bundes­länderspezifischer
   Feiertage (alle 16 Länder + Buß-Bettag, Karfreitag/Ostermontag/
   Pfingstmontag via Gauß-Algorithmus)
@@ -1005,7 +1009,7 @@ Kanzlei nicht.
 - Assurance-Dokumentation mit Threat Model und Known Limits unter
   `docs/assurance/`
 
-## ELSTER-Anbindung (Vorstufe, noch ohne UI)
+## ELSTER-Anbindung (Stufe 2: Steuerkonto-Abfrage)
 
 Neutrales Paket `@taxtronik/elster`: typisierter HTTP-Client zur privaten
 eric-bridge (separates Privat-Repo, eigener Debian-Container mit der
@@ -1015,12 +1019,20 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
 
 - Endpunkte: Health-Check, Validierung (Stufe 1), generische Abfrage +
   strukturierte Kontoabfrage inkl. Sollstellungen (Stufe 2)
+- **Steuerkonto-UI** im Mandanten-Detail (`/staff/clients/[id]/elster`,
+  bridge-gated): Abruf von Sollstellungen (Jahr), offenen Beträgen und
+  Istbuchungen (ab Datum) je Steuerart; Basis ist die **Steuernummer am
+  Mandanten** (13-stelliges ELSTER-Format, eine pro Mandant — Tochter-
+  gesellschaften sind eigene Mandanten). Jeder Abruf wird als Vorgang
+  persistiert (append-only Historie, RLS) mit Evidence-Record; die
+  Zertifikats-PIN wird durchgereicht, nie gespeichert
 - Datenteil, TransferHeader und Hersteller-ID entstehen ausschließlich
   in der Bridge — das Monorepo enthält kein ERiC-Spezifikationswissen
   (CI-Guard `scripts/check-no-eric-spec.sh`)
 - Fail-safe: Testmerker als Default, Echtübermittlung nur mit explizitem
-  `echtfall: true`; Zertifikats-PIN pro Aufruf, nicht persistiert
-- Noch offen: Worker-Jobs + Staff-UI, Versand-Datenarten (UStVA zuerst)
+  Echtfall-Häkchen; Zertifikats-PIN pro Aufruf, nicht persistiert
+- Noch offen: Versand-Datenarten (UStVA zuerst), Worker-Jobs für
+  periodische Soll/Ist-Abgleiche
 - Architektur + Lizenzpflichten: `docs/development/eric-integration.md`
 
 ## Benutzer-Verwaltung (ADMIN/PARTNER)
@@ -1084,10 +1096,14 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   Redirect, Subsumtion zusätzlich eigener Guard) sowie in den tenant-weiten
   Listen und Dashboard-Widgets (Mandanten-, Anforderungs-, Rechnungs-,
   Kalender- und Steuertermin-Ansichten filtern gesperrte Mandanten aus;
-  reine Zähler-KPIs ohne Namen bleiben ungefiltert). Bekannte Grenze:
-  Mutations-Server-Actions verlassen sich auf Tenant-Isolation (RLS) und
-  prüfen das Objekt-Gate noch nicht — wer die ID eines vertraulichen
-  Mandanten kennt, kann dort Schreiboperationen auslösen.
+  reine Zähler-KPIs ohne Namen bleiben ungefiltert). Seit Audit 2026-07
+  (Befund M-1) wird das Objekt-Gate auch in allen MUTIERENDEN Server-Actions
+  unter `/staff/clients/[id]/**` durchgesetzt: `assertClientAccessTx` läuft
+  als erste Anweisung in der Tenant-Tx (Muster `edit/actions.ts`), weil
+  Server-Actions als direkte POSTs am Layout-Guard vorbeilaufen und RLS nur
+  den Tenant scoped, nicht die Vertraulichkeit. Die frühere „bekannte
+  Grenze" (Schreiboperationen per bekannter ID trotz Vertraulich-Flag) ist
+  damit geschlossen.
 - Vollmachten-Modus (`MARKDOWN_OTP` / `PDF_TEMPLATE` / `OFF`)
 - Rechnungs-Modus (`IN_APP` / `EXTERNAL` / `OFF`)
 - PDF-Begleittext-Templates für beide Modi (Markdown mit Platzhaltern)

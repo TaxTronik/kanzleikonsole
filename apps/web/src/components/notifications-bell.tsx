@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { Bell, CheckCheck } from 'lucide-react';
 import { fmtDateTimeShort } from '@/lib/fmt';
 import {
@@ -14,6 +14,7 @@ import {
   markNotificationReadAction,
   markAllNotificationsReadAction,
 } from '@/app/staff/(protected)/notifications/actions';
+import { isUserTyping } from './auto-refresh';
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -57,8 +58,22 @@ export function NotificationsBell({ initialUnread }: Props) {
   const [soundOn, setSoundOn] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
   const visibleRef = useRef(true);
+  // Zuletzt bekannter unread-Stand (race-arm gegenüber parallelen Polls) — Quelle
+  // der Wahrheit für die "es kam etwas Neues"-Erkennung (Ton + Live-Refresh).
+  const lastUnreadRef = useRef(initialUnread);
   const pathname = usePathname();
+  const router = useRouter();
   const now = Date.now();
+
+  // Bei echtem Zuwachs an ungelesenen Benachrichtigungen (serverseitig ist etwas
+  // passiert, z. B. Chain-Verify-Ergebnis) die aktuelle Seite ereignisgetrieben
+  // aktualisieren — sonst blieben Server-Component-Inhalte bis zum nächsten
+  // manuellen Reload stehen. Guards wie AutoRefresh: nicht bei verstecktem Tab
+  // und nicht während der Nutzer tippt.
+  const onUnreadGrew = useCallback(() => {
+    playNotificationSound();
+    if (!document.hidden && !isUserTyping()) router.refresh();
+  }, [router]);
 
   useEffect(() => {
     setSoundOn(isNotificationSoundEnabled());
@@ -79,18 +94,17 @@ export function NotificationsBell({ initialUnread }: Props) {
         const res = await fetch('/api/staff/notifications/count', { cache: 'no-store' });
         if (!res.ok) return;
         const data = (await res.json()) as { unread: number };
-        // Funktionaler Update + Delta-Check: nur bei echtem Zuwachs Ton, und
-        // robust gegen zwei parallel laufende Polls (vorher: Klammergriff auf
-        // veraltetem `unread`).
-        setUnread((prev) => {
-          if (data.unread > prev) playNotificationSound();
-          return data.unread;
-        });
+        // Delta gegen den zuletzt bekannten Stand (Ref = immer aktuell, robust
+        // gegen parallele Polls). Nur bei echtem Zuwachs: Ton + Live-Refresh.
+        const grew = data.unread > lastUnreadRef.current;
+        lastUnreadRef.current = data.unread;
+        setUnread(data.unread);
+        if (grew) onUnreadGrew();
       } catch {
         // silent
       }
     })();
-  }, []);
+  }, [onUnreadGrew]);
 
   const refreshRecent = useCallback(() => {
     void (async () => {
@@ -99,15 +113,15 @@ export function NotificationsBell({ initialUnread }: Props) {
         if (!res.ok) return;
         const data = (await res.json()) as RecentResponse;
         setItems(data.items);
-        setUnread((prev) => {
-          if (data.unread > prev) playNotificationSound();
-          return data.unread;
-        });
+        const grew = data.unread > lastUnreadRef.current;
+        lastUnreadRef.current = data.unread;
+        setUnread(data.unread);
+        if (grew) onUnreadGrew();
       } catch {
         // silent
       }
     })();
-  }, []);
+  }, [onUnreadGrew]);
 
   useEffect(() => {
     function onVisibility() {
@@ -162,7 +176,11 @@ export function NotificationsBell({ initialUnread }: Props) {
       setItems((prev) =>
         prev ? prev.map((p) => (p.id === n.id ? { ...p, readAt: new Date().toISOString() } : p)) : prev,
       );
-      setUnread((u) => Math.max(0, u - 1));
+      setUnread((u) => {
+        const next = Math.max(0, u - 1);
+        lastUnreadRef.current = next;
+        return next;
+      });
     }
   }
 
@@ -171,6 +189,7 @@ export function NotificationsBell({ initialUnread }: Props) {
     setItems((prev) =>
       prev ? prev.map((p) => (p.readAt ? p : { ...p, readAt: new Date().toISOString() })) : prev,
     );
+    lastUnreadRef.current = 0;
     setUnread(0);
   }
 

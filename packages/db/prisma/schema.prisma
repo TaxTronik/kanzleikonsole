@@ -47,6 +47,7 @@ model Tenant {
   documentFolders            DocumentFolder[]
   documentTypes              DocumentType[]
   dsgvoRequests              DsgvoRequest[]
+  elsterKontoabfragen        ElsterKontoabfrage[]
   emailTemplates             EmailTemplate[]
   formSubmissions            FormSubmission[]
   formTemplates              FormTemplate[]
@@ -758,6 +759,10 @@ model Client {
   city                 String?
   countryIso           String?                     @map("country_iso")
   vatId                String?                     @map("vat_id")
+  /// Steuernummer im 13-stelligen ELSTER-Bundesformat — Basis der ELSTER-
+  /// Kontoabfrage (Soll-/Iststellungen). EINE pro Mandant: Tochtergesellschaften/
+  /// Betriebsstätten mit eigener StNr sind eigene Mandanten.
+  steuernummer         String?                     @map("steuernummer")
   invoiceEmail         String?                     @map("invoice_email") @db.Citext
   addisonNo            String?                     @map("addison_no")
   priority             ClientPriority?             @map("priority")
@@ -793,6 +798,7 @@ model Client {
   responsibilities     ClientResponsibility[]
   documents            Document[]
   documentFolders      DocumentFolder[]
+  elsterKontoabfragen  ElsterKontoabfrage[]
   formSubmissions      FormSubmission[]
   gwgChecks            GwgCheck[]
   gwgInvites           GwgOnboardingInvite[]
@@ -1525,6 +1531,9 @@ model TaxNotice {
   kind             TaxNoticeKind
   period           String
   noticeDate       DateTime        @map("notice_date") @db.Date
+  /// Tatsächlicher Zugangstag (§ 122 Abs. 2 AO Hs. 2): kam der Bescheid SPÄTER
+  /// als die 4-Tage-Fiktion an, läuft die Einspruchsfrist ab diesem Tag.
+  receivedAt       DateTime?       @map("received_at") @db.Date
   appealDeadline   DateTime?       @map("appeal_deadline") @db.Date
   status           TaxNoticeStatus @default(NEU)
   fileNumber       String?         @map("file_number")
@@ -1555,6 +1564,37 @@ model TaxNotice {
   @@index([tenantId, status, appealDeadline])
   @@index([tenantId, documentId])
   @@map("tax_notice")
+}
+
+/// ELSTER-Kontoabfrage-Vorgang (Stufe 2 über die eric-bridge). Jeder Abruf ist
+/// ein Vorgang beim ELSTER-Server → Ergebnisse werden persistiert (Historie,
+/// kein unnötiger Doppelabruf). Die Portalzertifikat-PIN wird NIE gespeichert.
+model ElsterKontoabfrage {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  clientId        String   @map("client_id") @db.Uuid
+  /// I = Istbuchungen, O = offene Beträge, ZS = Sollstellungen.
+  art             String
+  /// Steuerart (ESt/KSt/USt/…) — null bei O-Abfrage.
+  steuerart       String?
+  /// ZS: vierstelliges Jahr; I: Wertstellungsdatum TTMMJJJJ.
+  zeitraum        String?
+  /// Explizit erklärter Echtfall (sonst Testmerker-Übertragung).
+  echtfall        Boolean  @default(false)
+  ok              Boolean
+  returnCode      Int      @map("return_code")
+  /// NutzdatenTicket der Bridge — Audit-/GoBD-Bezug zum ELSTER-Vorgang.
+  nutzdatenTicket String?  @map("nutzdaten_ticket")
+  /// Ergebnis-Payload der Bridge (ELSTER-Antwort), null bei Fehler.
+  result          String?
+  errorText       String?  @map("error_text")
+  requestedBy     String   @map("requested_by") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at")
+  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "elster_kontoabfrage_client_fkey")
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "elster_kontoabfrage_tenant_fkey")
+
+  @@index([tenantId, clientId, createdAt])
+  @@map("elster_kontoabfrage")
 }
 
 model StaffSkill {
