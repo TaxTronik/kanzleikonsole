@@ -93,6 +93,8 @@ export const remindersDailyWorker = new Worker<ChecksJob>(
       const notices = await prismaOwner.taxNotice.findMany({
         where: {
           tenantId,
+          // Nach Mandatsende keine Fristen-/Wiedervorlage-Reminder mehr feuern.
+          client: { mandateEndedAt: null },
           appealDeadline: { not: null, gte: today },
           appealFiledAt: null,
           // Nur erinnern, solange noch handelbar: kein Einspruch eingelegt und
@@ -128,6 +130,7 @@ export const remindersDailyWorker = new Worker<ChecksJob>(
       const reminders = await prismaOwner.clientReminder.findMany({
         where: {
           tenantId,
+          client: { mandateEndedAt: null },
           doneAt: null,
           dueDate: { lte: today },
         },
@@ -155,6 +158,7 @@ export const remindersDailyWorker = new Worker<ChecksJob>(
       const binders = await prismaOwner.pendingBinder.findMany({
         where: {
           tenantId,
+          client: { mandateEndedAt: null },
           status: 'WITH_CLIENT',
           expectedReturnAt: { not: null, lt: today },
         },

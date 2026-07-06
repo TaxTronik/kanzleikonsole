@@ -37,11 +37,20 @@ let heartbeatTimer: NodeJS.Timeout | null = null;
 
 function startHeartbeat(): void {
   const touch = () => {
+    // P3-4: Der Heartbeat darf nur „lebendig" melden, wenn auch die BullMQ-
+    // Redis-Verbindung steht. Ein Worker mit dauerhaft getrennter Verbindung
+    // verarbeitet nichts — würde er weiter touchen, bliebe er fälschlich
+    // „healthy". `status === 'ready'` = verbunden und einsatzbereit.
+    if (connection.status !== 'ready') {
+      log.warn({ redisStatus: connection.status }, 'worker: heartbeat skipped — Redis nicht ready');
+      return;
+    }
     try {
       writeFileSync(HEARTBEAT_PATH, String(Date.now()), { mode: 0o600 });
     } catch (err) {
-      // Heartbeat-Failures nicht fatal — nur loggen. Wenn das fehlschlägt,
-      // wird die HEALTHCHECK sowieso bald failen und Docker restartet.
+      // Heartbeat-Failures nicht fatal — nur loggen. Bleibt die Datei zu alt,
+      // schlägt der HEALTHCHECK an (der Ops-Restart-Pfad ist extern, siehe
+      // day-2-operations.md — Plain-Docker restartet unhealthy NICHT selbst).
       log.warn({ err: (err as Error).message }, 'worker: heartbeat write failed');
     }
   };

@@ -53,11 +53,24 @@ const REQUEST_RETENTION_YEARS = 6;
 const REQUEST_GOBD_RETENTION_YEARS = 10;
 const REQUEST_PURGE_BATCH = 500;
 
-/** Datum vor `years` Jahren (schaltjahr-korrekt). */
+/** Datum vor `years` Jahren (schaltjahr-korrekt). Für Fristen OHNE
+ *  Kalenderjahres-Anker (Notifications, Phone-Notes, lastLoginAt). */
 function yearsAgo(years: number): Date {
   const d = new Date();
   d.setFullYear(d.getFullYear() - years);
   return d;
+}
+
+/**
+ * Cutoff für aufbewahrungspflichtige Requests: § 147 Abs. 4 AO — die Frist
+ * beginnt mit SCHLUSS DES KALENDERJAHRES der Entstehung, nicht mit dem
+ * Erstellungsdatum. Ein Request aus dem Jahr Y ist bis 31.12.(Y+years)
+ * aufzubewahren und erst ab dem 1.1.(Y+years+1) löschbar. Gelöscht werden also
+ * nur Requests mit `createdAt` VOR dem 1.1.(aktuelles Jahr − years).
+ * Beispiel (years=10): Request vom 15.03.2026 → löschbar erst ab 01.01.2037.
+ */
+function requestPurgeCutoff(years: number): Date {
+  return new Date(Date.UTC(new Date().getUTCFullYear() - years, 0, 1));
 }
 
 // GoBD-Bezug: mindestens eine Antwort referenziert ein GoBD-relevantes Dokument.
@@ -106,8 +119,8 @@ export const dsgvoRetentionWorker = new Worker<ChecksJob>(
     const notifCutoff = yearsAgo(NOTIFICATION_RETENTION_YEARS);
     const phoneCutoff = yearsAgo(PHONE_NOTE_RETENTION_YEARS);
     const loginCutoff = yearsAgo(LAST_LOGIN_RETENTION_YEARS);
-    const requestCutoff = yearsAgo(REQUEST_RETENTION_YEARS);
-    const requestGobdCutoff = yearsAgo(REQUEST_GOBD_RETENTION_YEARS);
+    const requestCutoff = requestPurgeCutoff(REQUEST_RETENTION_YEARS);
+    const requestGobdCutoff = requestPurgeCutoff(REQUEST_GOBD_RETENTION_YEARS);
 
     const tenantIds = job.data.tenantId
       ? [job.data.tenantId]

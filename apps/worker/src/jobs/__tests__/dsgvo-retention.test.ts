@@ -59,6 +59,15 @@ function cutoff(years: number): Date {
   return d;
 }
 
+/**
+ * Jahresende-Anker für aufbewahrungspflichtige Requests (§ 147 Abs. 4 AO):
+ * gelöscht wird erst ab dem 1.1. des Jahres (aktuelles Jahr − years), NICHT
+ * rollierend ab Erstellungsdatum. FIXED_NOW 2026 → reqCutoff(10) = 2016-01-01.
+ */
+function reqCutoff(years: number): Date {
+  return new Date(Date.UTC(FIXED_NOW.getUTCFullYear() - years, 0, 1));
+}
+
 function run(data: { tenantId?: string } = { tenantId: TENANT }): Promise<unknown> {
   return processors.get('dsgvo-retention')!({ data });
 }
@@ -107,9 +116,25 @@ describe('Löschungen pro Tenant + Cutoffs', () => {
       (c) => (c[0] as { where: Record<string, unknown> }).where,
     );
     expect(requestWheres).toHaveLength(2);
-    expect(requestWheres[0]).toMatchObject({ tenantId: TENANT, createdAt: { lt: cutoff(6) } });
+    // Jahresende-Anker (§ 147 Abs. 4 AO), nicht rollierend ab createdAt.
+    expect(requestWheres[0]).toMatchObject({ tenantId: TENANT, createdAt: { lt: reqCutoff(6) } });
     expect(requestWheres[0]).toHaveProperty('NOT');
-    expect(requestWheres[1]).toMatchObject({ tenantId: TENANT, createdAt: { lt: cutoff(10) } });
+    expect(requestWheres[1]).toMatchObject({ tenantId: TENANT, createdAt: { lt: reqCutoff(10) } });
+  });
+
+  it('Request-Cutoff ist auf den 1. Januar verankert (nicht ab Erstellungsdatum)', async () => {
+    await run();
+    const requestWheres = h.prismaOwner.request.findMany.mock.calls.map(
+      (c) => (c[0] as { where: { createdAt: { lt: Date } } }).where,
+    );
+    // Der GoBD-Cutoff (10 J.) muss der 1.1. sein — ein GoBD-Request vom
+    // 15.03.2016 wäre bis 31.12.2026 aufzubewahren und darf 2026 NICHT gelöscht
+    // werden. Rollierend (2016-06-09) hätte er ihn erfasst.
+    const gobdCutoff = requestWheres[1]!.createdAt.lt;
+    expect(gobdCutoff.getUTCMonth()).toBe(0);
+    expect(gobdCutoff.getUTCDate()).toBe(1);
+    expect(gobdCutoff.getTime()).toBe(Date.UTC(2016, 0, 1));
+    expect(new Date(Date.UTC(2016, 2, 15)).getTime()).toBeGreaterThanOrEqual(gobdCutoff.getTime());
   });
 
   it('ohne job.data.tenantId läuft jeder Tenant einzeln', async () => {
@@ -153,8 +178,8 @@ describe('Audit-Nachweis dsgvo.retention.run', () => {
         notifCutoff: cutoff(1).toISOString(),
         phoneCutoff: cutoff(3).toISOString(),
         loginCutoff: cutoff(2).toISOString(),
-        requestCutoff: cutoff(6).toISOString(),
-        requestGobdCutoff: cutoff(10).toISOString(),
+        requestCutoff: reqCutoff(6).toISOString(),
+        requestGobdCutoff: reqCutoff(10).toISOString(),
       },
     });
   });

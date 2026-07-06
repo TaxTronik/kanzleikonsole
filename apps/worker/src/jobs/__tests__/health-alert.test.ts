@@ -28,7 +28,7 @@ vi.mock('../../logger', () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.
 
 import { evaluateTransitions, FAIL_THRESHOLD, type HealthState } from '../health-alert';
 
-const allOk = { postgres: true, redis: true, objectStore: true, clamav: true };
+const allOk = { postgres: true, redis: true, objectStore: true, clamav: true, backup: true, app: true, n8n: true };
 
 describe('evaluateTransitions', () => {
   it('alles ok, kein Vorzustand → keine Alarme', () => {

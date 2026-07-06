@@ -83,7 +83,11 @@ rand_b64() {
 
 set_env() {
   local key="$1" value="$2"
-  local esc; esc="$(printf '%s\n' "$value" | sed -e 's/[\/&]/\\&/g')"
+  # Ersetzungswert für den sed-Befehl unten escapen. Der Befehl nutzt `|` als
+  # Delimiter (s|...|...|), daher MUSS `|` mit escaped werden — sonst brechen
+  # Werte mit Pipe-Zeichen (z. B. Tokens) das .env-Schreiben (set -e-Abbruch).
+  # `&` ist im Replacement special, `/` unschädlich mitzunehmen.
+  local esc; esc="$(printf '%s\n' "$value" | sed -e 's/[\/&|]/\\&/g')"
   if grep -qE "^${key}=" "$ENVFILE"; then
     if sed --version >/dev/null 2>&1; then
       sed -i -E "s|^${key}=.*$|${key}=${esc}|" "$ENVFILE"
@@ -690,11 +694,17 @@ run_backup_files() {
     [[ -z "$bucket" ]] && continue
     printf '%s\n' "$bucket" >> "$buckets_file"
     info "Bucket exportieren: $bucket"
+    # P3-2: Secrets NICHT als `-e VAR=wert` (landet in der Container-argv, per
+    # `docker inspect`/`ps` lesbar) — stattdessen im Prozess-Env setzen und per
+    # `-e VAR` (ohne Wert) durchreichen. Docker liest den Wert dann aus dem Env.
+    AWS_ACCESS_KEY_ID="$S3_ACCESS_KEY" \
+    AWS_SECRET_ACCESS_KEY="$S3_SECRET_KEY" \
+    AWS_DEFAULT_REGION="${S3_REGION:-us-east-1}" \
     docker run --rm \
       --network taxtronik \
-      -e AWS_ACCESS_KEY_ID="$S3_ACCESS_KEY" \
-      -e AWS_SECRET_ACCESS_KEY="$S3_SECRET_KEY" \
-      -e AWS_DEFAULT_REGION="${S3_REGION:-us-east-1}" \
+      -e AWS_ACCESS_KEY_ID \
+      -e AWS_SECRET_ACCESS_KEY \
+      -e AWS_DEFAULT_REGION \
       -v "$dest:/backup" \
       "${TAXTRONIK_AWS_CLI_IMAGE:-$AWS_CLI_IMAGE_DEFAULT}" \
       --endpoint-url "$endpoint" s3 sync "s3://$bucket" "/backup/$bucket" --only-show-errors

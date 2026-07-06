@@ -13,13 +13,17 @@
 # =============================================================================
 set -euo pipefail
 
+# P3-2: PGPASSWORD als `-e PGPASSWORD` (ohne Wert) durchreichen — nicht als
+# `-e VAR=wert` (das landete in der Container-argv, per `docker inspect` lesbar).
+export PGPASSWORD="${PGPASSWORD:-}"
+
 argc=$#
 if [ "$argc" -gt 0 ]; then
   eval "dump_file=\${$argc}"
   if [ -f "$dump_file" ]; then
     set -- "${@:1:$(($argc - 1))}"
-    exec docker exec -i -e PGPASSWORD="${PGPASSWORD:-}" taxtronik-postgres pg_restore "$@" < "$dump_file"
+    exec docker exec -i -e PGPASSWORD taxtronik-postgres pg_restore "$@" < "$dump_file"
   fi
 fi
 
-exec docker exec -i -e PGPASSWORD="${PGPASSWORD:-}" taxtronik-postgres pg_restore "$@"
+exec docker exec -i -e PGPASSWORD taxtronik-postgres pg_restore "$@"

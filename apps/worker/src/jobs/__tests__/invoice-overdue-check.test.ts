@@ -59,6 +59,9 @@ import '../invoice-overdue-check';
 
 const FIXED_NOW = new Date('2026-06-09T10:00:00.000Z');
 const DAY = 24 * 60 * 60 * 1000;
+// Berlin-Tagesbeginn heute (CEST) als UTC-Mitternacht — überfällig erst ab
+// dem Folgetag der Fälligkeit (§ 271 BGB).
+const TODAY_MIDNIGHT = new Date(Date.UTC(2026, 5, 9));
 const TENANT = 'tenant-1';
 
 interface InvoiceResult {
@@ -110,10 +113,11 @@ describe('U-1/RF-8: Statuswechsel + Audit + Notification in einer Tx', () => {
 
     const result = await run();
 
-    // Nur SENT-Rechnungen mit überschrittener Fälligkeit
+    // Nur SENT-Rechnungen, deren Fälligkeit VOR dem heutigen Tagesbeginn liegt
+    // (Zahlung am Fälligkeitstag ist rechtzeitig → nicht überfällig).
     expect(h.prismaOwner.invoice.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { tenantId: TENANT, status: 'SENT', dueDate: { lt: FIXED_NOW } },
+        where: { tenantId: TENANT, status: 'SENT', dueDate: { lt: TODAY_MIDNIGHT }, stornoOfId: null },
       }),
     );
     expect(h.withWorkerTenantContext).toHaveBeenCalledTimes(1);

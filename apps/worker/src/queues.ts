@@ -23,6 +23,15 @@ export const connection = new IORedis(redisUrl, {
   maxRetriesPerRequest: null,
 });
 
+// P2-16: abgeschlossene/fehlgeschlagene Jobs nicht unbegrenzt in Redis halten.
+// Ohne das wachsen die Job-Hashes (u. a. health-alert/outbox-reconcile alle
+// 5 min) monoton — Redis ohne maxmemory läuft langfristig voll. Per-Job-Options
+// (z. B. n8n-deliver) überschreiben diese Defaults weiterhin.
+const defaultJobOptions = {
+  removeOnComplete: { age: 24 * 60 * 60, count: 500 },
+  removeOnFail: { age: 7 * 24 * 60 * 60 },
+} as const;
+
 export interface EvidenceSealJob {
   tenantId?: string;
   sealDate?: string;
@@ -48,22 +57,22 @@ export interface RiskAnalyseLlmJob {
   optionen?: Record<string, unknown>;
 }
 
-export const evidenceSealQueue = new Queue<EvidenceSealJob, void, string>('evidence-seal', { connection });
-export const gwgExpiryQueue = new Queue<ChecksJob, void, string>('gwg-expiry-check', { connection });
-export const invoiceOverdueQueue = new Queue<ChecksJob, void, string>('invoice-overdue-check', { connection });
-export const auditVerifyQueue = new Queue<ChecksJob, void, string>('audit-verify-check', { connection });
-export const taxDeadlineMaterializeQueue = new Queue<ChecksJob, void, string>('tax-deadline-materialize', { connection });
-export const auditRotateQueue = new Queue<ChecksJob, void, string>('audit-rotate', { connection });
-export const taxNewsFetchQueue = new Queue<ChecksJob, void, string>('tax-news-fetch', { connection });
-export const remindersDailyQueue = new Queue<ChecksJob, void, string>('reminders-daily', { connection });
-export const n8nDeliverQueue = new Queue<N8nDeliverJob, void, string>('n8n-deliver', { connection });
-export const n8nOutboxReconcileQueue = new Queue<Record<string, never>, void, string>('n8n-outbox-reconcile', { connection });
-export const magicLinkCleanupQueue = new Queue<ChecksJob, void, string>('magic-link-cleanup', { connection });
-export const dsgvoRetentionQueue = new Queue<ChecksJob, void, string>('dsgvo-retention', { connection });
-export const poaExpiryQueue = new Queue<ChecksJob, void, string>('poa-expiry-check', { connection });
-export const riskAnalyseLlmQueue = new Queue<RiskAnalyseLlmJob, void, string>('risk-analyse-llm', { connection });
-export const backupDrillQueue = new Queue<ChecksJob, void, string>('backup-drill', { connection });
-export const healthAlertQueue = new Queue<ChecksJob, void, string>('health-alert', { connection });
+export const evidenceSealQueue = new Queue<EvidenceSealJob, void, string>('evidence-seal', { connection, defaultJobOptions });
+export const gwgExpiryQueue = new Queue<ChecksJob, void, string>('gwg-expiry-check', { connection, defaultJobOptions });
+export const invoiceOverdueQueue = new Queue<ChecksJob, void, string>('invoice-overdue-check', { connection, defaultJobOptions });
+export const auditVerifyQueue = new Queue<ChecksJob, void, string>('audit-verify-check', { connection, defaultJobOptions });
+export const taxDeadlineMaterializeQueue = new Queue<ChecksJob, void, string>('tax-deadline-materialize', { connection, defaultJobOptions });
+export const auditRotateQueue = new Queue<ChecksJob, void, string>('audit-rotate', { connection, defaultJobOptions });
+export const taxNewsFetchQueue = new Queue<ChecksJob, void, string>('tax-news-fetch', { connection, defaultJobOptions });
+export const remindersDailyQueue = new Queue<ChecksJob, void, string>('reminders-daily', { connection, defaultJobOptions });
+export const n8nDeliverQueue = new Queue<N8nDeliverJob, void, string>('n8n-deliver', { connection, defaultJobOptions });
+export const n8nOutboxReconcileQueue = new Queue<Record<string, never>, void, string>('n8n-outbox-reconcile', { connection, defaultJobOptions });
+export const magicLinkCleanupQueue = new Queue<ChecksJob, void, string>('magic-link-cleanup', { connection, defaultJobOptions });
+export const dsgvoRetentionQueue = new Queue<ChecksJob, void, string>('dsgvo-retention', { connection, defaultJobOptions });
+export const poaExpiryQueue = new Queue<ChecksJob, void, string>('poa-expiry-check', { connection, defaultJobOptions });
+export const riskAnalyseLlmQueue = new Queue<RiskAnalyseLlmJob, void, string>('risk-analyse-llm', { connection, defaultJobOptions });
+export const backupDrillQueue = new Queue<ChecksJob, void, string>('backup-drill', { connection, defaultJobOptions });
+export const healthAlertQueue = new Queue<ChecksJob, void, string>('health-alert', { connection, defaultJobOptions });
 
 // RF-3/RF-13: die QueueEvents-Instanzen (virus-scan, evidence-seal) sind
 // entfernt — sie hatten keinerlei Consumer und wurden beim Shutdown nie

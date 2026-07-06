@@ -26,14 +26,21 @@ import { prismaOwner } from '../prisma-owner';
 import { sendOpsMail } from '../mailer';
 import { log } from '../logger';
 
-export type ServiceName = 'postgres' | 'redis' | 'objectStore' | 'clamav';
+export type ServiceName =
+  | 'postgres' | 'redis' | 'objectStore' | 'clamav' | 'backup' | 'app' | 'n8n';
 
 const SERVICE_LABEL: Record<ServiceName, string> = {
   postgres: 'Postgres (Datenbank)',
   redis: 'Redis (Queues/Sessions)',
   objectStore: 'Object-Store (SeaweedFS/S3)',
   clamav: 'ClamAV (Virenscanner)',
+  backup: 'Backup (letzte Sicherung veraltet)',
+  app: 'Web-App (Next.js)',
+  n8n: 'n8n (Automations/Outbox)',
 };
+
+/** Max. Alter der letzten erfolgreichen Sicherung, bevor Alarm ausgelöst wird. */
+export const BACKUP_MAX_AGE_MS = 26 * 60 * 60 * 1000;
 
 export interface ServiceState {
   /** Aufeinanderfolgende Fehlläufe. */
@@ -117,6 +124,35 @@ async function checkObjectStore(): Promise<boolean> {
   }
 }
 
+/** HTTP-GET-Healthcheck (2xx = up). Für App- und n8n-Erreichbarkeit im
+ *  internen Netz — deckt Crashloop/Hänger ab, die der Prozess-Restart nicht
+ *  erkennt (der Prozess lebt, antwortet aber nicht). */
+async function checkHttp(url: string): Promise<boolean> {
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), CHECK_TIMEOUT_MS);
+    try {
+      const res = await fetch(url, { signal: ctrl.signal, redirect: 'manual' });
+      return res.status >= 200 && res.status < 400;
+    } finally {
+      clearTimeout(t);
+    }
+  } catch {
+    return false;
+  }
+}
+
+/** App-Healthcheck über das interne Netz (erkennt Crashloop trotz Restart).
+ *  Service-Name `app` aus docker-compose.app.yml, Port 3000 (kein Host-Port). */
+function checkApp(): Promise<boolean> {
+  return checkHttp('http://app:3000/api/health');
+}
+
+/** n8n-Healthcheck (Outbox staut sich sonst still). */
+function checkN8n(): Promise<boolean> {
+  return checkHttp('http://n8n:5678/healthz');
+}
+
 /** zPING → PONG auf dem clamd-Socket (wie der App-Healthcheck). */
 function checkClamAV(): Promise<boolean> {
   return new Promise((resolve) => {
@@ -174,16 +210,35 @@ function alertMail(service: ServiceName, kind: 'down' | 'up'): { subject: string
   };
 }
 
+/**
+ * Backup-Staleness: die letzte ERFOLGREICHE Sicherung darf nicht älter als
+ * BACKUP_MAX_AGE_MS sein. Ohne diesen Check würde ein ausgefallener Backup-Lauf
+ * (kein Scheduler / Host-Cron gestoppt) unbemerkt bleiben, während der
+ * monatliche backup-drill nur die letzte — evtl. uralte — Sicherung validiert.
+ */
+async function checkBackupFresh(now: Date = new Date()): Promise<boolean> {
+  const last = await prismaOwner.backupRecord.findFirst({
+    where: { status: 'SUCCESS', finishedAt: { not: null } },
+    orderBy: { finishedAt: 'desc' },
+    select: { finishedAt: true },
+  });
+  if (!last?.finishedAt) return false; // noch nie erfolgreich gesichert → Alarm
+  return now.getTime() - last.finishedAt.getTime() <= BACKUP_MAX_AGE_MS;
+}
+
 export async function runHealthAlert(): Promise<{ skipped?: boolean; down: ServiceName[] }> {
   if (!env.OPS_ALERT_EMAIL) return { skipped: true, down: [] };
 
-  const [postgres, redis, objectStore, clamav] = await Promise.all([
+  const [postgres, redis, objectStore, clamav, backup, app, n8n] = await Promise.all([
     checkPostgres(),
     checkRedis(),
     checkObjectStore(),
     checkClamAV(),
+    checkBackupFresh(),
+    checkApp(),
+    checkN8n(),
   ]);
-  const current = { postgres, redis, objectStore, clamav };
+  const current = { postgres, redis, objectStore, clamav, backup, app, n8n };
 
   const prev = await loadState();
   const { next, alerts } = evaluateTransitions(prev, current);

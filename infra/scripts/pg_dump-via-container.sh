@@ -12,6 +12,11 @@
 #
 # Wird automatisch durch ops-lib run_backup aktiviert, sobald `pg_dump` nicht
 # im Host-PATH liegt.
+#
+# P3-2: PGPASSWORD als `-e PGPASSWORD` (ohne Wert) durchreichen — Docker liest
+# den Wert aus dem Prozess-Env. `-e VAR=wert` legte das Passwort in die
+# Container-argv (per `docker inspect`/`ps` lesbar).
 # =============================================================================
 set -eu
-exec docker exec -i -e PGPASSWORD="${PGPASSWORD:-}" taxtronik-postgres pg_dump "$@"
+export PGPASSWORD="${PGPASSWORD:-}"
+exec docker exec -i -e PGPASSWORD taxtronik-postgres pg_dump "$@"

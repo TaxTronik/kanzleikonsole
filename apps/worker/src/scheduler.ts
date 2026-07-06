@@ -40,6 +40,13 @@ const DAILY_RETRY = {
   backoff: { type: 'exponential' as const, delay: 5 * 60_000 },
 } as const;
 
+// P2-17: büro-zeit-relevante Morgen-Jobs laufen in Europe/Berlin, damit die
+// Startzeit nicht mit der Sommer-/Winterzeit um eine Stunde verrutscht (vorher
+// reines UTC → im Sommer teils nach Bürobeginn). Die NÄCHTLICHEN Integritäts-
+// Jobs (evidence-seal/audit-verify: an UTC-Tagesgrenzen gekoppelt) bleiben
+// bewusst in UTC.
+const BERLIN = 'Europe/Berlin';
+
 export async function setupSchedules(): Promise<void> {
   await evidenceSealQueue.upsertJobScheduler(
     'daily-seal',
@@ -60,17 +67,17 @@ export async function setupSchedules(): Promise<void> {
   );
   await gwgExpiryQueue.upsertJobScheduler(
     'daily-gwg-expiry',
-    { pattern: '0 6 * * *' },
+    { pattern: '0 7 * * *', tz: BERLIN },
     { name: 'gwg-expiry-check', data: {}, opts: DAILY_RETRY },
   );
   await invoiceOverdueQueue.upsertJobScheduler(
     'daily-invoice-overdue',
-    { pattern: '15 6 * * *' },
+    { pattern: '15 7 * * *', tz: BERLIN },
     { name: 'invoice-overdue-check', data: {}, opts: DAILY_RETRY },
   );
   await taxDeadlineMaterializeQueue.upsertJobScheduler(
     'daily-tax-deadline-materialize',
-    { pattern: '30 6 * * *' },
+    { pattern: '30 7 * * *', tz: BERLIN },
     { name: 'tax-deadline-materialize', data: {}, opts: DAILY_RETRY },
   );
   // Audit-Rotation: wöchentlich Sonntag 03:00 UTC
@@ -79,17 +86,17 @@ export async function setupSchedules(): Promise<void> {
     { pattern: '0 3 * * 0' },
     { name: 'audit-rotate', data: {}, opts: DAILY_RETRY },
   );
-  // BMF/BFH-RSS-Feeds täglich 05:30 UTC (~07:30 MESZ — vor Bürobeginn)
+  // BMF/BFH-RSS-Feeds täglich 06:30 Berlin — vor Bürobeginn, DST-stabil.
   await taxNewsFetchQueue.upsertJobScheduler(
     'daily-tax-news-fetch',
-    { pattern: '30 5 * * *' },
+    { pattern: '30 6 * * *', tz: BERLIN },
     { name: 'tax-news-fetch', data: {}, opts: DAILY_RETRY },
   );
-  // Reminder-Bündel täglich 06:45 UTC: Einspruchsfristen + Wiedervorlagen +
+  // Reminder-Bündel täglich 07:45 Berlin: Einspruchsfristen + Wiedervorlagen +
   // überfällige Pendelordner. Notifications werden idempotent angelegt.
   await remindersDailyQueue.upsertJobScheduler(
     'daily-reminders',
-    { pattern: '45 6 * * *' },
+    { pattern: '45 7 * * *', tz: BERLIN },
     { name: 'reminders-daily', data: {}, opts: DAILY_RETRY },
   );
   // S15 Outbox-Reconciliation: alle 5 Minuten stuck PENDING-Reihen erneut
@@ -115,7 +122,7 @@ export async function setupSchedules(): Promise<void> {
   // Vollmachten-Ablauf täglich 06:20 UTC (nach gwg-expiry/invoice-overdue).
   await poaExpiryQueue.upsertJobScheduler(
     'daily-poa-expiry',
-    { pattern: '20 6 * * *' },
+    { pattern: '20 7 * * *', tz: BERLIN },
     { name: 'poa-expiry-check', data: {}, opts: DAILY_RETRY },
   );
   // Restore-Drill: monatlich am 1. um 05:00 UTC — beweisbarer Wirksamkeits-
@@ -144,15 +151,15 @@ export async function setupSchedules(): Promise<void> {
         'evidence-seal @ 02:30 UTC daily',
         'audit-verify-check @ 02:45 UTC daily',
         'audit-rotate @ 03:00 UTC sundays',
-        'gwg-expiry-check @ 06:00 UTC daily',
-        'invoice-overdue-check @ 06:15 UTC daily',
-        'tax-deadline-materialize @ 06:30 UTC daily',
-        'tax-news-fetch @ 05:30 UTC daily',
-        'reminders-daily @ 06:45 UTC daily',
+        'gwg-expiry-check @ 07:00 Berlin daily',
+        'invoice-overdue-check @ 07:15 Berlin daily',
+        'tax-deadline-materialize @ 07:30 Berlin daily',
+        'tax-news-fetch @ 06:30 Berlin daily',
+        'reminders-daily @ 07:45 Berlin daily',
         'n8n-outbox-reconcile @ every 5 min',
         'magic-link-cleanup @ 03:30 UTC daily',
         'dsgvo-retention @ 04:00 UTC daily',
-        'poa-expiry-check @ 06:20 UTC daily',
+        'poa-expiry-check @ 07:20 Berlin daily',
         'backup-drill @ 05:00 UTC 1st of month',
         'health-alert @ every 5 min',
       ],
