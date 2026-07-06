@@ -12,6 +12,24 @@ Funktionsausfall) · **P2** = mittel · **P3** = niedrig. ⚡ = Quick Win (< 1 h
 
 ---
 
+## Bearbeitungsstand (2026-07-07, Umsetzung) — Runde 4
+
+**NEU ERLEDIGT (Runde 4):**
+- **P2-20** Ressourcen-Limits (`mem_limit` je Service) + Postgres-Basis-Tuning
+  in Compose.
+- **P2-21** n8n-Datenbank in `backup-full` (run_backup_n8n) + Volume-Inventar
+  (disaster-recovery.md).
+- **P1-25** Externes Monitoring/autoheal als Pflicht-Runbook
+  (day-2-operations.md) + irreführende „Docker restartet unhealthy"-Kommentare
+  korrigiert. (Sidecar bewusst nicht eingecheckt — braucht echten Image-Digest.)
+- **P2-2 (Teil)** GwG-Verify verlangt ≥1 wirtschaftlich Berechtigten bei jur.
+  Personen (§ 10 Abs. 1 Nr. 2 GwG). Offen: § 11(4)-Pflichtfelder im Onboarding-
+  Formular.
+- **P3-15** Rechnungs-Vorschau rundet je Satzgruppe wie der Server · **P3-20**
+  one-line-Abrechnung EN-16931-konform · **P3-23** Modul-Gate-Kommentar ehrlich,
+  toter Helfer entfernt · **P2-5** 0%-Befreiungsgrund (Kat. E/BT-120, iter101) ·
+  **P3-29c** los.ts Zod-Validierung.
+
 ## Bearbeitungsstand (2026-07-06, Umsetzung) — Runde 3
 
 Dritte Runde (weitere Features), alle Tests grün (21/21 Test-Tasks, 20/20
