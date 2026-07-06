@@ -108,14 +108,36 @@ Erledigt:
 - Repo `taxtronik-eric-bridge` angelegt; Stufe 1 (Validierung) und Stufe 2
   (Kontoabfrage inkl. Sollstellungen) implementiert.
 - Neutrale Schnittstelle `packages/elster` in diesem Repo.
+- Integrationstest aus dem Bridge-Container (2026-07-06): Stufe 1 validiert
+  den Beispieldatensatz der Distribution mit Rückgabecode 0 (die Demo-
+  Hersteller-ID des Beispiels ist gesperrt — ERiC prüft die ID auch bei rein
+  lokaler Validierung, es muss die eigene sein). Stufe 2 erreicht den
+  Clearingstellen-Testbetrieb Ende-zu-Ende (Zertifikat-Handle, TransferHeader,
+  CMS-Verschlüsselung, Serverantwort geparst); mit dem IdNr-Testzertifikat der
+  Distribution antwortet der Server erwartungsgemäß mit „Signatur für
+  Verfahren/Datenart nicht zugelassen" (130025001) — der letzte Schritt
+  braucht ein Organisations-/Portalzertifikat. Dabei gefundener FFI-Bug
+  (Zertifikat-Handle ist `uint32_t`, kein Pointer — Struct-Layout-Crash) in
+  der Bridge behoben.
+- Deploy-Verdrahtung: Service `eric-bridge` in
+  `infra/compose/docker-compose.app.yml` (Opt-in-Profil `elster`, Muster
+  Risk-Layer: internes Netz, kein Host-Port, Healthcheck auf `/healthz`).
+  Distribution + Zertifikat kommen als Volumes vom Server
+  (`ERIC_DIST_DIR`, `ERIC_CERT_FILE`), Geheimnisse als Env
+  (`ERIC_HERSTELLER_ID`, `ELSTER_BRIDGE_TOKEN`) — Schritte in `.env.example`.
 
 Offen:
 
+- Stufe-2-Abschlusstest mit Organisations-/Portalzertifikat (das
+  IdNr-Testzertifikat der Distribution ist für ElsterKontoabfrage nicht
+  zugelassen; Test-Organisationszertifikat aus dem ELSTER-Entwicklerbereich
+  besorgen oder das echte Portalzertifikat der Kanzlei mit Testmerker nutzen).
 - PIN-Handling beim Versand (pro Vorgang eingeben vs. Sitzungs-Cache) —
   aktuell: pro Vorgang, wird nirgends persistiert.
 - Worker-Jobs + UI auf `@taxtronik/elster` (Kontoabfrage-Ergebnisse in
   Fristen-/Steuerterminmodul einhängen; DSGVO-Kenntnisnahme-Dialog VOR
   erstmaliger Nutzung, siehe § 5-Pflicht in Abschnitt 2).
 - Versand-Datenarten (UStVA zuerst) als Stufe-2-Ausbau.
-- Ende-zu-Ende-Test gegen den Clearingstellen-Testbetrieb (Testmerker,
-  Test-Portalzertifikat) aus dem Bridge-Container.
+- Bridge-Image-Verteilung: aktuell Build auf dem Server aus dem privaten
+  Checkout; optional CI-Publish in die private Registry (Registry-Secret im
+  Bridge-Repo nötig).

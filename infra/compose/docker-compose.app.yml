@@ -98,6 +98,11 @@ services:
       # und Compose-Profil `risk-layer`.
       RISK_LAYER_URL: ${RISK_LAYER_URL:-}
       RISK_LAYER_TOKEN: ${RISK_LAYER_TOKEN:-}
+      # ELSTER / eric-bridge — opt-in (Muster Risk-Layer). Leer => Modul
+      # unsichtbar. Aktivieren nur mit ELSTER_BRIDGE_URL, ELSTER_BRIDGE_TOKEN
+      # und Compose-Profil `elster`.
+      ELSTER_BRIDGE_URL: ${ELSTER_BRIDGE_URL:-}
+      ELSTER_BRIDGE_TOKEN: ${ELSTER_BRIDGE_TOKEN:-}
       # SSRF-Guard-Allowlist: die Docker-Service-Namen lösen auf private
       # 172.x-Adressen auf. Ohne diese Liste blockt der Guard die n8n-Bridge
       # ("Hostname löst auf private Adresse auf"). Per .env überschreibbar.
@@ -193,6 +198,9 @@ services:
       # Betriebs-Alarme (health-alert-Job): Down-/Up-Mails bei Infrastruktur-
       # Ausfall. Leer = Alerting aus.
       OPS_ALERT_EMAIL: ${OPS_ALERT_EMAIL:-}
+      # ELSTER / eric-bridge — opt-in, siehe app-Service.
+      ELSTER_BRIDGE_URL: ${ELSTER_BRIDGE_URL:-}
+      ELSTER_BRIDGE_TOKEN: ${ELSTER_BRIDGE_TOKEN:-}
 
   # ===========================================================================
   # Einmal-Migration: wendet Prisma-Migrationen an, BEVOR app/worker starten
@@ -314,7 +322,74 @@ services:
       retries: 5
       start_period: 40s
 
+  # ===========================================================================
+  # ELSTER / eric-bridge (privates Repo taxtronik-eric-bridge).
+  #
+  # Kapselt die native ERiC-Bibliothek als eigenen Debian-Dienst (glibc-Pflicht;
+  # app/worker laufen auf Alpine/musl). NICHT nach außen exponiert: kein
+  # Host-Port, nur app/worker sprechen ihn im internen Netz an — mit
+  # Bearer-Token (ELSTER_BRIDGE_TOKEN).
+  #
+  # Die ERiC-Distribution ist vertraulich (ELSTER-Lizenzvereinbarung § 14) und
+  # deshalb WEDER im Image NOCH in einem Repo: sie liegt auf dem Server unter
+  # ${ERIC_DIST_DIR} und kommt als read-only Volume. Ein ERiC-Update ist damit
+  # ein Volume-Tausch, kein Image-Rebuild (Mindestversions-Pflicht, § 5).
+  #
+  # Das Image wird AUSSERHALB dieses Repos gebaut (privates Repo
+  # taxtronik-eric-bridge): auf dem Server `docker build -t
+  # taxtronik/eric-bridge:<version> .` im Bridge-Checkout, oder Pull aus der
+  # privaten Registry via ERIC_BRIDGE_IMAGE.
+  #
+  # Opt-in: startet nur mit dem Profil. Stack MIT ELSTER-Modul:
+  #   docker compose --profile elster -f docker-compose.yml -f docker-compose.app.yml up -d
+  # Zusätzlich in der .env: ELSTER_BRIDGE_URL=http://eric-bridge:8085,
+  # ELSTER_BRIDGE_TOKEN, ERIC_HERSTELLER_ID, ERIC_DIST_DIR, ERIC_CERT_FILE.
+  # ===========================================================================
+  eric-bridge:
+    <<: [*hardening, *logging]
+    image: ${ERIC_BRIDGE_IMAGE:-taxtronik/eric-bridge:latest}
+    container_name: taxtronik-eric-bridge
+    restart: unless-stopped
+    profiles: ["elster"]
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    environment:
+      # Shared Secret — identisch zu ELSTER_BRIDGE_TOKEN der App (Bearer-Auth).
+      # ${...:-} statt :? — Begründung siehe risk-layer (Interpolation trifft
+      # auch inaktive Profile). Die Bridge selbst bricht beim Start ab, wenn
+      # das Token fehlt oder zu kurz ist (min 16 Zeichen).
+      BRIDGE_TOKEN: ${ELSTER_BRIDGE_TOKEN:-}
+      # Hersteller-ID: Geheimnis der ELSTER-Lizenzvereinbarung. Lebt NUR hier
+      # (Bridge-Env) — nie in Code, App-Konfiguration oder Beispieldaten.
+      # Ohne sie bleibt /v1/abfrage bzw. /v1/kontoabfrage deaktiviert (503).
+      ERIC_HERSTELLER_ID: ${ERIC_HERSTELLER_ID:-}
+    volumes:
+      # ERiC-Distribution (…/Linux-x86_64/lib der entpackten Distribution),
+      # z. B. /opt/taxtronik/eric/44.1.6.0/lib. Read-only.
+      - ${ERIC_DIST_DIR:-/opt/taxtronik/eric/current}/lib:/opt/eric/lib:ro
+      # eric.log kann personenbezogene Daten enthalten (§ 15): eigenes Volume,
+      # ERiC rotiert selbst (~10 MiB), Zugriff nur Admin, nie weiterleiten.
+      - eric_logs:/var/log/eric
+      # Portalzertifikat (.pfx) der Kanzlei — nur für Stufe 2 (Kontoabfrage/
+      # Versand). Ohne echtes Zertifikat bleibt /dev/null gemountet und die
+      # authentifizierten Endpunkte antworten 503.
+      - ${ERIC_CERT_FILE:-/dev/null}:/opt/eric/cert/cert.pfx:ro
+    healthcheck:
+      # Node-Image → fetch statt curl/wget (nicht garantiert vorhanden).
+      # ok=false (Bibliothek nicht geladen) gilt als unhealthy.
+      test:
+        - "CMD"
+        - "node"
+        - "-e"
+        - "fetch('http://127.0.0.1:8085/healthz').then((r)=>r.json()).then((j)=>process.exit(j.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 8s
+      retries: 5
+      start_period: 20s
+
 volumes:
   n8n_data:
   risk_layer_katalog:
   risk_layer_corpus:
+  eric_logs:
