@@ -669,6 +669,22 @@ run_backup() {
   ( cd "$ROOT" && pnpm --filter @taxtronik/web backup:run )
 }
 
+# P2-21: n8n-Datenbank sichern (Credentials/Ausführungshistorie). Die App-DB
+# (taxtronik) deckt run_backup ab; die separate `n8n`-Postgres-DB fehlte im
+# Backup. Dump landet als Custom-Format im lokalen Backup-Verzeichnis.
+# Wiederherstellung manuell: pg_restore -h 127.0.0.1 -U n8n -d n8n <dump>
+# (plus n8n_data-Volume; N8N_ENCRYPTION_KEY muss zum Dump passen).
+run_backup_n8n() {
+  local dest="${BACKUP_LOCAL_DIR:-$ROOT/backups}"
+  mkdir -p "$dest"
+  local out="$dest/n8n-db-$(date -u +'%Y%m%dT%H%M%SZ').dump"
+  info "n8n-Datenbank sichern -> $out"
+  # Secret nur im Prozess-Env (nicht in der Container-argv, vgl. P3-2).
+  PGPASSWORD="${N8N_DB_PASSWORD:-n8n}" docker exec -i -e PGPASSWORD taxtronik-postgres \
+    pg_dump -h 127.0.0.1 -U n8n -d n8n -Fc > "$out"
+  info "n8n-Datenbank gesichert ($(du -h "$out" 2>/dev/null | cut -f1))."
+}
+
 object_store_backup_buckets() {
   printf '%s\n' ${BACKUP_OBJECT_BUCKETS:-${S3_BUCKET_GOBD:-gobd} ${S3_BUCKET_GWG:-gwg} ${S3_BUCKET_GENERAL:-general} ${S3_BUCKET_STAFF_PRIVATE:-staff-private}}
 }
@@ -1147,8 +1163,9 @@ cmd_backup_files() {
 
 cmd_backup_full() {
   cmd_backup
+  run_backup_n8n
   cmd_backup_files
-  info "Vollbackup fertig (Datenbank + Kanzleidateien-Byte-Export)."
+  info "Vollbackup fertig (Datenbank + n8n-DB + Kanzleidateien-Byte-Export)."
 }
 
 cmd_restore() {

@@ -184,3 +184,33 @@ werden:
 - Restore-Drill-Protokolle
 - Release-Tag, Commit-SHA, Image-Digests
 - Changelog-Abschnitt des ausgelieferten Tags
+
+## Externe Überwachung & Auto-Restart (Pflicht)
+
+Der interne `health-alert`-Job (Worker, alle 5 min) mailt bei Ausfall von
+Postgres/Redis/Object-Store/ClamAV/Backup/App/n8n an `OPS_ALERT_EMAIL`. Er hat
+aber zwei Systemgrenzen, die extern abgedeckt werden MÜSSEN:
+
+1. **Plain-Docker restartet `unhealthy` Container nicht.** Die Restart-Policy
+   `unless-stopped` greift nur bei Prozess-EXIT — ein Container, der läuft aber
+   dessen HEALTHCHECK failt (Deadlock, Hänger), bleibt unbegrenzt stehen.
+2. **Fällt der Worker selbst aus, kann er sich nicht alarmieren.**
+
+Deshalb zusätzlich einrichten:
+
+- **Auto-Restart bei `unhealthy`** — entweder ein autoheal-Sidecar
+  (digest-gepinnt) mit `autoheal=true`-Label an app/worker/n8n, oder ein
+  Host-systemd-Timer:
+
+  ```bash
+  # /usr/local/bin/taxtronik-autoheal.sh (systemd-Timer, z. B. alle 2 min)
+  for c in $(docker ps --filter health=unhealthy --format '{{.Names}}'); do
+    logger "autoheal: restarting $c"; docker restart "$c"
+  done
+  ```
+
+- **Externer Uptime-Check** auf einer ZWEITEN Maschine / einem externen Dienst
+  (Uptime-Kuma o. ä.) gegen `https://<host>/api/health` — erkennt einen
+  Komplettausfall (auch wenn Worker + Mailversand tot sind).
+
+Ohne diese beiden Bausteine kann ein Ausfall unbemerkt bleiben.

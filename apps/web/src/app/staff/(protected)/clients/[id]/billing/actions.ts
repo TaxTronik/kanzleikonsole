@@ -99,15 +99,18 @@ export async function createInvoiceFromTimeEntriesAction(input: z.infer<typeof C
       }>;
 
       if (data.strategy === 'one-line') {
+        // P3-20: EIN Pauschal-Posten mit quantity=1, damit
+        // quantity × unitPrice === netAmount gilt (EN-16931 BR-CO-10 / PEPPOL
+        // R120). Die Stundensumme steht in der Beschreibung — sonst wich
+        // totalHours × round2(Ø-Satz) an Rundungsgrenzen vom Netto ab.
         const totalHours = round2(entriesWithMinutes.reduce((s, x) => s + x.hours, 0));
-        const avgRate = totalHours > 0 ? round2(totalNet / totalHours) : data.hourlyRate;
         positions = [
           {
             position: 1,
-            description: data.subject,
-            quantity: totalHours,
-            unit: 'Stunde',
-            unitPrice: avgRate,
+            description: `${data.subject} (${totalHours} Std.)`,
+            quantity: 1,
+            unit: 'pauschal',
+            unitPrice: totalNet,
             netAmount: totalNet,
             vatRate: data.vatRate,
           },

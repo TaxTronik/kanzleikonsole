@@ -277,6 +277,21 @@ export async function verifyCheckAction(
       if (check.idDocuments.length === 0) {
         throw new ActionError('Mindestens ein Identitätsdokument erforderlich.');
       }
+      // P2-2 / § 10 Abs. 1 Nr. 2, § 3 GwG: Bei juristischen Personen und
+      // Personengesellschaften ist mindestens EIN wirtschaftlich Berechtigter
+      // zu ermitteln (fiktiv-wB, wenn keiner > 25 % hält).
+      const clientKind = await tx.client.findUnique({
+        where: { id: clientId },
+        select: { kind: true },
+      });
+      if (
+        (clientKind?.kind === 'JURPERS' || clientKind?.kind === 'PERSGES') &&
+        check.beneficialOwners.length === 0
+      ) {
+        throw new ActionError(
+          'Bei juristischen Personen/Personengesellschaften ist mindestens ein wirtschaftlich Berechtigter zu erfassen (§ 10 Abs. 1 Nr. 2 GwG).',
+        );
+      }
       // P2-3 / § 12 Abs. 1, § 8 GwG: Es muss mindestens EIN identifikations-
       // taugliches Dokument (kein VOLLMACHT/SONSTIGES) mit hinterlegter Kopie
       // (documentId) und — falls ein Ablaufdatum erfasst ist — GÜLTIGER

@@ -4,6 +4,7 @@ import { useState, useTransition, type SubmitEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Trash2 } from 'lucide-react';
 import { createInvoiceAction } from '../actions';
+import { computeVatTotals } from '@/server/invoicing/vat';
 
 import { fmtEUR } from '@/lib/fmt';
 interface Position {
@@ -63,13 +64,15 @@ export function NewInvoiceForm({ clients }: Props) {
     setPositions((ps) => (ps.length > 1 ? ps.filter((_, i) => i !== idx) : ps));
   }
 
-  // iter86: Vorschau-Summen je Positions-Satz (verbindlich rechnet der Server).
-  const netTotal = positions.reduce((s, p) => s + (p.quantity || 0) * (p.unitPrice || 0), 0);
-  const vatTotal = positions.reduce(
-    (s, p) => s + ((p.quantity || 0) * (p.unitPrice || 0) * (p.vatRate || 0)) / 100,
-    0,
+  // P3-15: Vorschau mit DERSELBEN Logik wie der Server (USt je Satz-Gruppe
+  // gerundet, § 14 Abs. 4 Nr. 8 UStG) statt Positions-weise — sonst weicht die
+  // angezeigte Summe an Rundungsgrenzen von der tatsächlichen Rechnung ab.
+  const preview = computeVatTotals(
+    positions.map((p) => ({ netAmount: (p.quantity || 0) * (p.unitPrice || 0), vatRate: p.vatRate || 0 })),
   );
-  const grandTotal = netTotal + vatTotal;
+  const netTotal = preview.netAmount;
+  const vatTotal = preview.vatAmount;
+  const grandTotal = preview.totalAmount;
 
   function handleSubmit(e: SubmitEvent<HTMLFormElement>) {
     e.preventDefault();

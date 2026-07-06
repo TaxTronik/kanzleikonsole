@@ -5,9 +5,13 @@
 // Liegt in `tenant_setting.modules` als JSON.
 //
 // Verwendung:
-//   - Sidebar filtert Items basierend auf `enabled.*`
-//   - Server-Actions blocken Aufrufe zu deaktivierten Modulen (Defense in Depth)
-//   - PoaMode steuert das Vollmachten-Subsystem
+//   - Sidebar filtert Items basierend auf `enabled.*` (primär UI-Sichtbarkeit).
+//   - Sicherheits-/kostenrelevante Module gaten ZUSÄTZLICH serverseitig über
+//     eigene Helfer: Rechnungen via requireInvoiceMode (invoices/actions.ts),
+//     POA/Risk/Quantenlos über ihre Guards. `assertModuleEnabled` unten steht
+//     als generischer Gate-Baustein bereit (noch nicht flächendeckend
+//     verdrahtet — bewusst, da die reinen Orga-Module ohne Außenwirkung sind).
+//   - PoaMode steuert das Vollmachten-Subsystem.
 // =============================================================================
 
 import { cache } from 'react';
@@ -151,6 +155,9 @@ export type BooleanModuleKey =
   | 'risk'
   | 'signalEngine';
 
+/** Generischer serverseitiger Modul-Gate (wirft bei deaktiviertem Modul).
+ *  Für Orga-Module ohne Außenwirkung bewusst nicht flächendeckend verdrahtet;
+ *  kostenrelevante Module gaten über eigene Helfer (s. Kopfkommentar). */
 export async function assertModuleEnabled(
   ctx: TenantContext,
   module: BooleanModuleKey,
@@ -159,12 +166,4 @@ export async function assertModuleEnabled(
   if (!cfg[module]) {
     throw new Error(`Modul ${module} ist deaktiviert.`);
   }
-}
-
-/**
- * Convenience-Helper: ist die volle In-App-Rechnungserstellung erlaubt?
- */
-export async function isInvoiceCreationEnabled(ctx: TenantContext): Promise<boolean> {
-  const cfg = await readModules(ctx);
-  return cfg.invoiceMode === 'IN_APP';
 }

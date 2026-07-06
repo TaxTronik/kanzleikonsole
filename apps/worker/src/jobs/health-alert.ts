@@ -11,10 +11,13 @@
 //
 // Systemgrenzen (dokumentiert, kein Bug):
 //   - Fällt REDIS aus, läuft auch dieser Job nicht (BullMQ braucht Redis).
-//     Redis-Ausfälle erkennt der Docker-HEALTHCHECK + Restart-Policy; der
-//     Redis-Check hier fängt den Fall „erreichbar, aber degradiert".
-//   - Fällt der WORKER selbst aus, schlägt sein Docker-HEALTHCHECK an
-//     (Heartbeat-File) und Docker restartet ihn.
+//     Der Redis-Check hier fängt den Fall „erreichbar, aber degradiert".
+//   - Fällt der WORKER selbst aus, kann er sich nicht selbst alarmieren.
+//     WICHTIG: Plain-Docker/Compose restartet einen `unhealthy` Container NICHT
+//     automatisch (restart-Policy reagiert nur auf Prozess-EXIT). Für den
+//     Neustart bei failing HEALTHCHECK braucht es einen externen Mechanismus
+//     (autoheal-Sidecar oder Host-systemd-Timer) UND einen externen Uptime-
+//     Check auf GET /api/health — siehe docs/operations/day-2-operations.md.
 // =============================================================================
 
 import { Socket } from 'node:net';

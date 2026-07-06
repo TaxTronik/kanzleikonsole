@@ -52,6 +52,22 @@ services:
     image: postgres:18-alpine@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
     container_name: taxtronik-postgres
     restart: unless-stopped
+    # P2-20: Ressourcen-Limit + Basis-Tuning (Alpine-Default shared_buffers 128 MB
+    # ist für „10-500 Mitarbeiter" zu klein). Werte per .env an den Host-RAM
+    # anpassen; Richtwerte in docs/operations/day-2-operations.md.
+    mem_limit: ${POSTGRES_MEM_LIMIT:-2g}
+    command:
+      - postgres
+      - -c
+      - shared_buffers=${POSTGRES_SHARED_BUFFERS:-512MB}
+      - -c
+      - effective_cache_size=${POSTGRES_EFFECTIVE_CACHE_SIZE:-1536MB}
+      - -c
+      - max_connections=${POSTGRES_MAX_CONNECTIONS:-100}
+      - -c
+      - work_mem=16MB
+      - -c
+      - maintenance_work_mem=128MB
     # Postgres braucht CHOWN/SETUID/SETGID nur in seinem initdb-Pfad; das
     # offizielle Image wechselt mit gosu auf den postgres-User. CHOWN/SETUID/
     # SETGID + FOWNER für das Daten-Volume.
@@ -88,6 +104,11 @@ services:
     image: redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
     container_name: taxtronik-redis
     restart: unless-stopped
+    # P2-20: Ressourcen-Limit (OOM-Kill + Restart statt Host-OOM). BEWUSST KEIN
+    # redis-maxmemory mit Eviction — BullMQ-Keys dürfen nicht verdrängt werden
+    # (Queue-Korruption); die Job-Retention (queues.ts defaultJobOptions) bremst
+    # das Wachstum, AOF überlebt einen Restart.
+    mem_limit: ${REDIS_MEM_LIMIT:-512m}
     # Redis 7 unter dem redis-User; benötigt SETUID/SETGID für den
     # gosu-Drop und CHOWN für das AOF-Volume.
     cap_add:
@@ -118,6 +139,7 @@ services:
     image: chrislusf/seaweedfs:latest@sha256:e14ad400e28c811fe8426dc08abf248ec722b9f017713290a9b84a54557f45c2
     container_name: taxtronik-seaweedfs
     restart: unless-stopped
+    mem_limit: ${SEAWEED_MEM_LIMIT:-1g}
     # SeaweedFS-Image macht beim Start einen su-exec von root nach
     # unprivileged User. Dafür braucht es SETUID + SETGID, sonst kommt
     # „setgroups: Operation not permitted" beim Container-Start.
@@ -193,6 +215,8 @@ services:
     image: clamav/clamav:stable@sha256:d4000290254603e7ee45d4904425c7d98c015af727f402756198fe41a31e7777
     container_name: taxtronik-clamav
     restart: unless-stopped
+    # ClamAV hält die Signatur-DB im RAM (~2-3 GB) — Limit großzügig.
+    mem_limit: ${CLAMAV_MEM_LIMIT:-4g}
     # ClamAV läuft als unprivileged user, braucht CHOWN für sein Daten-Volume.
     cap_add:
       - CHOWN

@@ -330,3 +330,19 @@ N−1-Code.
 > **Achtung:** Alle Daten, die nach dem Backup entstanden sind, gehen
 > verloren. Vorher prüfen, ob ein Fix-Forward (Patch-Release) der bessere Weg
 > ist.
+
+## Volume-Inventar & Backup-Status
+
+| Volume / DB | Inhalt | Backup |
+|---|---|---|
+| Postgres `taxtronik` | App-Daten (Mandanten, Rechnungen, Audit-Chain) | `backup` (pg_dump → S3) |
+| Postgres `n8n` | n8n-Credentials + Ausführungshistorie | `backup-full` (`run_backup_n8n`, lokaler Dump) |
+| `seaweed_data` | GoBD-/GwG-Objekte (Object-Lock) | `backup-files` (Byte-Export) + Volume-Snapshot empfohlen |
+| `n8n_data` | n8n-Config inkl. `encryptionKey` | Volume-Snapshot (der Key MUSS zum n8n-DB-Dump passen) |
+| `redis_data` | BullMQ-Queues (AOF) | bewusst NICHT gesichert (regenerierbar; laufende Jobs) |
+| `clamav_data` | Virensignaturen | bewusst NICHT gesichert (Auto-Download) |
+| `eric_logs` | ERiC-Protokolle (Lizenzpflicht) | Volume-Snapshot beim Betreiber |
+
+Wiederherstellung n8n: Volume `n8n_data` + Postgres-`n8n`-Dump zusammen
+einspielen; `N8N_ENCRYPTION_KEY` in der `.env` muss zum gesicherten Stand passen
+(sonst sind die Credentials unentschlüsselbar).
