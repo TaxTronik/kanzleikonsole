@@ -16,15 +16,21 @@ taxtronik liefert die technische Grundlage.
 
 ## 1. Aufbewahrungsfristen (§ 147 AO)
 
-§ 147 Abs. 3 Satz 1 AO: 10 Jahre für Bücher, Inventare, Bilanzen,
-Buchungsbelege und Rechnungen. Beginn der Frist: **mit dem Schluss des
-Kalenderjahres**, in dem die letzte Eintragung gemacht / der Beleg
+§ 147 Abs. 3 AO: 10 Jahre für Bücher, Inventare, Bilanzen und die übrigen
+buchführungsrelevanten Unterlagen. **BEG IV (seit 01.01.2025): Buchungsbelege
+und Rechnungen nur noch 8 Jahre** (§ 147 Abs. 3 AO n.F., § 14b Abs. 1 UStG
+n.F.). Handels-/Geschäftsbriefe: 6 Jahre. Beginn der Frist jeweils: **mit dem
+Schluss des Kalenderjahres**, in dem die letzte Eintragung gemacht / der Beleg
 empfangen worden ist.
 
-**Implementierung**: `gobdRetentionUntil()` in [`packages/storage/src/service.ts`](../../packages/storage/src/service.ts).
-Berechnet das Object-Lock-`ObjectLockRetainUntilDate` als
-`Jahresende(JahrDerErstellung + 10) + 1 Tag`. Damit landen alle Belege eines
-Kalenderjahres auf demselben Aufbewahrungs-Stichtag.
+**Implementierung**: `gobdRetentionUntilFor(classification)` in
+[`packages/storage/src/service.ts`](../../packages/storage/src/service.ts)
+setzt das Object-Lock-`ObjectLockRetainUntilDate` belegart-abhängig
+(`GOBD_INVOICE` → 8 Jahre, sonst 10) als `Jahresende(JahrDerErstellung + N) + 1
+Tag`. Damit landen alle Belege eines Kalenderjahres auf demselben
+Aufbewahrungs-Stichtag; eine COMPLIANCE-Über-Aufbewahrung von Rechnungen
+(Art. 5 Abs. 1 lit. e DSGVO) wird vermieden. Der frühere pauschale
+`gobdRetentionUntil()` (10 Jahre) bleibt als konservativer Default erhalten.
 
 **Geltungsbereich**:
 - `DocumentClassification = GOBD_INVOICE | GOBD_CONTRACT | GOBD_TAX` werden

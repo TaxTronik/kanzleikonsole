@@ -52,6 +52,16 @@ Jede Änderung — Feature, Fehlerbehebung, Härtung — folgt demselben Weg:
    ausschließlich additiv-vorwärts als neue, datierte Prisma-Migration
    (Expand/Contract-Konvention, siehe
    [docs/operations/release.md](../operations/release.md)).
+   **Migrations-Zeitstempel: reales Erstellungsdatum verwenden** (Audit
+   2026-07, N-11). Die Migrationen iter77–iter97 tragen vordatierte
+   `20260801…`-Präfixe; sie sind appliziert und werden nicht umbenannt.
+   Neue Migrationen müssen NACH `20260801002200` (iter97) einsortieren —
+   bis zum realen 01.08.2026 heißt das: Präfix fortlaufend ab
+   `20260801002300` wählen (nicht `prisma migrate dev` das reale Datum
+   generieren lassen: die neue Migration sortierte sonst VOR bereits
+   applizierte — `migrate dev` meldet einen Historien-Konflikt und schlägt
+   Reset vor, und frische DBs wendeten die Historie in anderer Reihenfolge
+   an als bestehende). Ab dem 02.08.2026 gilt wieder: echtes Datum.
 3. **Tests zuerst dort, wo der Fehler war:** Fehlerbehebungen erhalten einen
    Regressionstest, der den Fehler vor dem Fix nachweisbar reproduziert.
 4. **Review:** Code-Review durch den Verantwortlichen; bei sicherheits- oder

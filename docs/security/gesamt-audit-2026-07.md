@@ -96,6 +96,25 @@ Verwandter DX-Befund: siehe I-1.
 - **Secrets/Vertraulichkeit:** kein echtes `.env` eingecheckt, keine hartcodierten Keys; kein ERiC-Material (CI-Guard `check-no-eric-spec.sh` aktiv); IDW-Dokumente nur mit Tz.-Verweisen in eigener Formulierung.
 - **Teststrategie:** Unit + Property + echte-DB-RLS-Tests + Struktur-Guardrails (api-route-authz/csrf, prisma-client-guard) + 11 E2E-Specs + Backup-Roundtrip + KoSIT-XRechnung-Validator + gitleaks/Trivy/pnpm-audit. Alle Pakete laufen in CI; Actions SHA-gepinnt, Images Digest-gepinnt, guards erzwingen beides.
 
+## Nachtrag 2026-07-06 (Folge-Review)
+
+Folge-Review nach Abarbeitung: Fixes von H-1–H-6, M-1–M-9, N-1–N-10,
+N-14–N-18, N-21/N-22 am Code verifiziert. Zusätzliche Stichproben sauber:
+Markdown-Renderer (escape-first), `ts_headline`-Snippet-Sanitizer,
+ELSTER-Kontoabfrage-Action (Vertraulich-Ventil, PIN-Handling, Tx-Trennung),
+eric-bridge-Compose (internes Netz, kein Host-Port). Neue Befunde:
+
+| # | Befund | Ort | Status |
+|---|--------|-----|--------|
+| F-1 | **Migrations-Vordatierung setzt sich fort** (N-11-Muster): auch iter94–97 tragen `20260801…`-Präfixe; ab realem August Kollisions-/Sortierrisiko, vorher `migrate dev`-Historien-Konflikte bei echt datierten neuen Migrationen. | `packages/db/prisma/migrations/` | Konvention dokumentiert (entwicklungsverfahren.md); Fix = Prozess, kein Rename applizierter Migrationen. |
+| F-2 | **EGAO-Übergangsfristen fehlten** (Art. 97 § 36 Abs. 3 EGAO): Erklärungsfristen VZ 2020–2024 wichen von § 149 AO ab (zuletzt beraten VZ 2024: 30.04.2026 statt Ende Feb. 2026). Kein Datenbestand betroffen: advised-Feature erst seit 05.07.2026, Materialisierung erzeugt nie retrospektiv. | `packages/tax/src/engine.ts` | **Behoben** (Override-Tabellen + 6 Golden-Tests). |
+| F-3 | **Bekanntgabefiktion fix +4 Tage** — für nacherfasste Alt-Bescheide (Aufgabe ≤ 31.12.2024) gilt +3 (Art. 97 § 1 Abs. 16 EGAO). | `packages/tax/src/engine.ts` | **Behoben** (`bekanntgabeFiktionTage(noticeDate)` + Tests). |
+| F-4 | **§ 108 (3)-Region = Kanzlei-Bundesland für alle Mandanten**: maßgeblich ist das Land des zuständigen FA des Mandanten; bei Mandanten in Ländern ohne den Kanzlei-Feiertag kann eine ZU SPÄTE Frist angezeigt werden. Für überregionale Mandate ist `tax_region` unset (nur bundesweite Feiertage) die konservative Wahl. | `packages/tax/src/materialize.ts:103` | Offen — Vorschlag: optionales Region-Feld pro Mandant, Fallback Kanzlei. |
+| F-5 | Veralteter Engine-Header-Kommentar („nur bundesweite Feiertage") widersprach der implementierten Region-Logik. | `packages/tax/src/engine.ts:22` | **Behoben.** |
+
+Weiterhin offen aus dem Hauptbericht: M-10, M-11, M-12, N-12, N-13, N-19
+(Produktentscheidung implementieren vs. entfernen), N-20, I-1.
+
 ## Einordnung
 
 Priorität 1 sind **H-1/H-2 (Steuerfristen)** — fachliche Fehler mit
