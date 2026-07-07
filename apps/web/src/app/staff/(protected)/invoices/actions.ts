@@ -15,7 +15,7 @@ import { ensureZugferdArchive } from '@/server/invoicing/archive';
 import { computeVatTotals } from '@/server/invoicing/vat';
 import { allocateInvoiceNumber, isValidInvoiceTransition } from '@/server/invoicing/number';
 import { readModules, type InvoiceMode } from '@/server/settings/modules';
-import { round2, fmtEUR, fmtDateShort } from '@/lib/fmt';
+import { round2, fmtEUR, fmtDateShort, berlinTodayUtcMidnight } from '@/lib/fmt';
 import { withTimeout, TimeoutError } from '@/lib/with-timeout';
 import { log } from '@/server/logger';
 import { staffActionGuard, withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
@@ -477,15 +477,20 @@ export async function cancelInvoiceAction(formData: FormData): Promise<void> {
         // § 14c Abs. 1 i.V.m. § 17 UStG: Korrekturbeleg (TypeCode 381) mit
         // eigener lückenloser Nummer und negierten Beträgen.
         const num = (v: { toString(): string }) => -Number(v.toString());
-        const number = await allocateInvoiceNumber(tx, tenantId, new Date());
+        // Nummernkreis-Jahr und issueDate MÜSSEN denselben (Berlin-)Kalendertag
+        // treffen: allocateInvoiceNumber nimmt getUTCFullYear, die Anzeige
+        // formatiert in Europe/Berlin. Mit new Date() bekäme ein Storno am 1.1.
+        // 00:00–02:00 Berlin die Nummer des Vorjahres bei Datum im neuen Jahr.
+        const stornoDate = berlinTodayUtcMidnight();
+        const number = await allocateInvoiceNumber(tx, tenantId, stornoDate);
         const storno = await tx.invoice.create({
           data: {
             tenantId,
             clientId: current.clientId,
             number,
             subject: `Storno zu ${current.number}: ${current.subject}`.slice(0, 500),
-            issueDate: new Date(),
-            dueDate: new Date(),
+            issueDate: stornoDate,
+            dueDate: stornoDate,
             status: 'DRAFT',
             format: current.format,
             netAmount: num(current.netAmount),

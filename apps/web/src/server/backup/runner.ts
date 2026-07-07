@@ -118,17 +118,30 @@ function spawnPgDump(connEnv: Record<string, string>, args: string[]): {
   });
   child.stdout.pipe(through);
 
+  // Startfehler (z. B. ENOENT, wenn pg_dump nicht im PATH liegt) feuern als
+  // 'error'-Event auf einem späteren Tick — ohne Listener wäre das eine
+  // uncaught exception, und 'exit' feuert danach nie (result() hinge ewig).
   let dumpExitCode: number | null = null;
+  let spawnError: Error | null = null;
   child.on('exit', (code) => { dumpExitCode = code ?? -1; });
+  child.on('error', (err) => {
+    spawnError = err;
+    // Sink-Seite abbrechen, sonst wartet pipeline() endlos auf Daten.
+    through.destroy(err);
+  });
 
   const result = async (): Promise<{ sha: Buffer; sizeBytes: number }> => {
-    if (dumpExitCode === null) {
-      dumpExitCode = await new Promise<number>((resolve) => {
-        child.on('exit', (code) => resolve(code ?? -1));
+    if (spawnError === null && dumpExitCode === null) {
+      await new Promise<void>((resolve) => {
+        child.on('exit', (code) => { dumpExitCode = code ?? -1; resolve(); });
+        child.on('error', () => resolve());
       });
     }
+    if (spawnError !== null) {
+      throw new Error(`pg_dump konnte nicht gestartet werden: ${spawnError.message}`);
+    }
     if (dumpExitCode !== 0) {
-      throw new Error(`pg_dump exit ${dumpExitCode}: ${stderrBuf.slice(0, 1000)}`);
+      throw new Error(`pg_dump exit ${String(dumpExitCode)}: ${stderrBuf.slice(0, 1000)}`);
     }
     return { sha: hash.digest(), sizeBytes };
   };

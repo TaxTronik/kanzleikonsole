@@ -123,7 +123,15 @@ async function restoreIntoDrill(
   );
   let stderr = '';
   child.stderr.on('data', (c: Buffer) => { stderr += c.toString('utf8'); });
-  const exit = new Promise<number>((resolve) => child.on('close', (code) => resolve(code ?? -1)));
+  // Spawn-Fehler (ENOENT: pg_restore nicht im PATH / falscher PG_RESTORE_PATH)
+  // emittiert 'error' — ohne Listener würde das unbehandelte Event den GESAMTEN
+  // Worker-Prozess töten (uncaughtException → process.exit(1) in index.ts).
+  // Gleiches Muster wie in backup-run.ts für pg_dump.
+  let spawnErr: Error | null = null;
+  const exit = new Promise<number>((resolve) => {
+    child.on('close', (code) => resolve(code ?? -1));
+    child.on('error', (e) => { spawnErr = e; resolve(-1); });
+  });
 
   const hash = createHash('sha256');
   body.on('data', (c: Buffer) => hash.update(c));

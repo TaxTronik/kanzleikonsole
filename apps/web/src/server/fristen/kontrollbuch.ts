@@ -81,7 +81,10 @@ export async function loadKontrollbuch(
         OR: [
           { status: { in: ['NEU', 'GEPRUEFT'] }, appealDeadline: { lte: horizont } },
           {
-            status: { in: ['EINSPRUCH', 'ABGEHOLFEN', 'ZURUECKGEWIESEN', 'RECHTSKRAEFTIG'] },
+            // MUSS mit taxNoticeFristErledigt (eintrag.ts) übereinstimmen —
+            // sonst fallen TEILABHILFE/KLAGE-Bescheide ganz aus dem
+            // Kontrollbuch (weder offen noch im Erledigungsnachweis).
+            status: { in: ['EINSPRUCH', 'ABGEHOLFEN', 'TEILABHILFE', 'ZURUECKGEWIESEN', 'KLAGE', 'RECHTSKRAEFTIG'] },
             appealDeadline: { gte: rueckschau, lte: horizont },
           },
         ],

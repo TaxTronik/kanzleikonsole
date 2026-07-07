@@ -83,6 +83,7 @@ async function main() {
         'poa-expiry-check',
         'risk-analyse-llm',
         'backup-drill',
+        'backup-run',
         'health-alert',
       ],
     },

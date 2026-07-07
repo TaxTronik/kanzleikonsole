@@ -201,16 +201,47 @@ export function berlinDayEndUtc(dateStr: string): Date | null {
 }
 
 /**
+ * Interpretiert einen zeitzonenlosen `YYYY-MM-DDTHH:MM`(:SS)-Stempel (wie ihn
+ * `<input type="datetime-local">` liefert) als Europe/Berlin-Wanduhrzeit und
+ * gibt den zugehörigen UTC-Instant zurück. `null` bei ungültigem Format.
+ *
+ * WICHTIG: NICHT `new Date(s)` verwenden — das interpretiert den String als
+ * Server-Local-Time. Läuft der Container in UTC (Default), verschiebt das jeden
+ * Termin um den Berlin-Offset (1–2 h), da die Anzeige fest Europe/Berlin nutzt.
+ */
+export function berlinWallClockToUtc(s: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(s);
+  if (!m) return null;
+  const guess = Date.UTC(
+    Number(m[1]), Number(m[2]) - 1, Number(m[3]),
+    Number(m[4]), Number(m[5]), Number(m[6] ?? '0'), 0,
+  );
+  return new Date(guess - berlinOffsetMs(new Date(guess)));
+}
+
+const ymdBerlinFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: TIME_ZONE,
+  year: 'numeric', month: '2-digit', day: '2-digit',
+});
+
+/**
+ * Kalendertag eines Instants als `YYYY-MM-DD` in Europe/Berlin. Für die
+ * Tages-Gruppierung von echten UTC-Zeitstempeln (z. B. Termine): `toISOString()`
+ * würde stattdessen den UTC-Tag liefern und Einträge nahe Mitternacht in den
+ * falschen Kalendertag einsortieren.
+ */
+export function berlinYmd(d: Date): string {
+  return ymdBerlinFormatter.format(d); // en-CA liefert bereits `YYYY-MM-DD`
+}
+
+/**
  * UTC-Mitternacht des HEUTIGEN Berlin-Kalendertags — passend zur `@db.Date`-
  * Kodierung (dort ist ein Kalendertag als UTC-Mitternacht gespeichert). Für
  * „überfällig ab Folgetag"-Vergleiche: `dueDate < berlinTodayUtcMidnight()`.
  */
 export function berlinTodayUtcMidnight(now: Date = new Date()): Date {
   const p = Object.fromEntries(
-    new Intl.DateTimeFormat('en-CA', {
-      timeZone: TIME_ZONE,
-      year: 'numeric', month: '2-digit', day: '2-digit',
-    }).formatToParts(now).map((x) => [x.type, x.value]),
+    ymdBerlinFormatter.formatToParts(now).map((x) => [x.type, x.value]),
   );
   return new Date(Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day)));
 }

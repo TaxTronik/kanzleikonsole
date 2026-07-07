@@ -9,7 +9,7 @@ import { fireAndForget } from '@/server/util/fire-and-forget';
 import { assertClientInTenant, assertStaffInTenant } from '@/server/db/assert-tenant';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
-import { fmtDateTimeShort, fmtDateTimeMedium } from '@/lib/fmt';
+import { fmtDateTimeShort, fmtDateTimeMedium, berlinWallClockToUtc } from '@/lib/fmt';
 
 export interface ActionResult extends BaseActionResult { id?: string; }
 
@@ -30,10 +30,11 @@ const CreateSchema = z.object({
 });
 
 function parseLocal(s: string): Date {
-  // "YYYY-MM-DDTHH:MM" als lokale Zeit interpretieren (kein Z) — kommt aus
-  // <input type="datetime-local">. Browser sendet ohne Timezone → wir
-  // konvertieren explizit in den Server-Local-Time-Stempel.
-  return new Date(s);
+  // "YYYY-MM-DDTHH:MM" kommt zeitzonenlos aus <input type="datetime-local">
+  // und meint Berlin-Wanduhrzeit. Als Berlin→UTC konvertieren (NICHT
+  // new Date(s) = Server-Local): sonst verschiebt ein UTC-Container jeden
+  // Termin um den Berlin-Offset gegenüber der fest Berlin-formatierten Anzeige.
+  return berlinWallClockToUtc(s) ?? new Date(NaN);
 }
 
 export async function createAppointmentAction(
@@ -256,8 +257,10 @@ export async function acceptAppointmentRequestAction(input: {
       const slots = req.proposedSlots as Array<{ startsAt: string; endsAt: string }>;
       const slot = slots[parsed.data.slotIndex];
       if (!slot) throw new ActionError('Ungültiger Slot.');
-      const startsAt = new Date(slot.startsAt);
-      const endsAt = new Date(slot.endsAt);
+      // Slots sind zeitzonenlose Berlin-Wanduhr-Strings (Portal-Eingabe) —
+      // als Berlin→UTC konvertieren, konsistent zu parseLocal.
+      const startsAt = berlinWallClockToUtc(slot.startsAt) ?? new Date(NaN);
+      const endsAt = berlinWallClockToUtc(slot.endsAt) ?? new Date(NaN);
       if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) {
         throw new ActionError('Slot-Zeitstempel kaputt.');
       }

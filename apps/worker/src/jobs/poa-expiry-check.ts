@@ -18,6 +18,7 @@ import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
 import { withWorkerTenantContext } from '../tenant-context';
 import { upsertNotification } from '../notify';
+import { berlinTodayUtcMidnight, wholeDaysBetween } from '../date-util';
 
 // RF-8: record() braucht nur den Tx — gleiches Muster wie risk-analyse-llm.ts.
 const evidence = new EvidenceService(new LocalTimestampAdapter());
@@ -25,7 +26,9 @@ const evidence = new EvidenceService(new LocalTimestampAdapter());
 const WARN_DAYS_SOON = 30;
 
 function dateFmt(d: Date): string {
-  return new Intl.DateTimeFormat('de-DE').format(d);
+  // validUntil ist `@db.Date` (UTC-Mitternacht) → Zeitzone fest, sonst zeigt ein
+  // Host mit negativem Offset den Vortag. Europe/Berlin wie im übrigen Produkt.
+  return new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin' }).format(d);
 }
 
 export const poaExpiryWorker = new Worker<ChecksJob>(
@@ -68,9 +71,15 @@ export const poaExpiryWorker = new Worker<ChecksJob>(
         },
       });
 
+      // validUntil ist `@db.Date` (UTC-Mitternacht). Die Vollmacht gilt
+      // INKLUSIVE des validUntil-Tages — abgelaufen also erst ab dem Folgetag
+      // (validUntil < heute). Tagesrechnung über UTC-Mitternachte statt gegen
+      // die Uhrzeit `now`, sonst würde sie am validUntil-Tag einen Tag zu früh
+      // als abgelaufen markiert (daysLeft käme via Math.ceil auf 0).
+      const todayMidnight = berlinTodayUtcMidnight(now);
       for (const poa of candidates) {
-        const daysLeft = Math.ceil((poa.validUntil!.getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
-        const isExpired = daysLeft <= 0;
+        const daysLeft = wholeDaysBetween(todayMidnight, poa.validUntil!);
+        const isExpired = daysLeft < 0;
         if (!isExpired && daysLeft > WARN_DAYS_SOON) continue;
 
         const respIds = poa.client.responsibilities.map((r) => r.staffId);
@@ -104,7 +113,9 @@ export const poaExpiryWorker = new Worker<ChecksJob>(
 
         const title = isExpired
           ? `Vollmacht abgelaufen — ${poa.client.name}`
-          : `Vollmacht läuft in ${daysLeft} Tagen ab — ${poa.client.name}`;
+          : daysLeft === 0
+            ? `Vollmacht läuft heute ab — ${poa.client.name}`
+            : `Vollmacht läuft in ${daysLeft} Tag${daysLeft === 1 ? '' : 'en'} ab — ${poa.client.name}`;
         const body = `„${poa.subject}“ (${poa.signerName}), gültig bis ${dateFmt(poa.validUntil!)}.${
           isExpired ? ' Bitte bei Bedarf eine neue Vollmacht einholen.' : ''
         }`;

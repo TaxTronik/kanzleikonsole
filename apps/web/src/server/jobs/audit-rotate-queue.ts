@@ -36,9 +36,9 @@ function getHandle(): { conn: IORedis; queue: Queue<AuditRotateJob> } {
   if (existing) return existing;
 
   const handle = init();
-  if (env.NODE_ENV !== 'production') {
-    globalThis.__taxtronik_audit_rotate_queue = handle;
-  }
+  // IMMER cachen — nicht nur im Dev: sonst leakt in Produktion jeder Aufruf
+  // eine neue IORedis-Connection (bis Redis maxclients erschöpft ist).
+  globalThis.__taxtronik_audit_rotate_queue = handle;
   return handle;
 }
 

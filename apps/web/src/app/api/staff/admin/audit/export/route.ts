@@ -94,7 +94,10 @@ export async function GET(req: NextRequest) {
         actorId: staffId,
         action: 'audit.export.csv',
         resourceType: 'audit_log',
-        after: { rows: out.length, truncated, filters: Object.fromEntries(sp.entries()) },
+        // Nur die zod-validierten Filter in die (unveränderliche) Hash-Chain —
+        // NICHT die rohen Query-Strings: sonst könnte ein Aufrufer beliebige
+        // Junk-Parameter dauerhaft mit anhängen.
+        after: { rows: out.length, truncated, filters: q },
         ip: getClientIp(req.headers),
         userAgent: req.headers.get('user-agent'),
       });

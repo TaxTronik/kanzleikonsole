@@ -36,9 +36,11 @@ function getHandle(): { conn: IORedis; queue: Queue<N8nDeliverJob> } {
   if (existing) return existing;
 
   const handle = init();
-  if (env.NODE_ENV !== 'production') {
-    globalThis.__taxtronik_n8n_queue = handle;
-  }
+  // IMMER cachen — nicht nur im Dev: ohne Cache öffnet in Produktion jeder
+  // Aufruf eine neue IORedis-Connection, die nie geschlossen wird (Leak bis
+  // Redis maxclients). globalThis statt Modul-Variable, damit der Handle
+  // im Dev auch HMR-Modul-Reloads überlebt.
+  globalThis.__taxtronik_n8n_queue = handle;
   return handle;
 }
 

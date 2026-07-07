@@ -55,6 +55,13 @@ export function storageCommitErrorResponse(e: unknown): NextResponse {
     msg.startsWith('TOO_LARGE') ? 413 :
     msg.startsWith('FORBIDDEN') ? 403 :
     msg.startsWith('SCAN_ERROR') ? 502 : 500;
+  if (status === 500) {
+    // Unbekannte Errors NIE roh ans UI (Policy, siehe rbac.ts) — die Route wird
+    // auch vom Mandanten-Portal genutzt; ein ECONNREFUSED-Text würde interne
+    // Netz-Topologie an externe Clients leaken. Details nur ins Server-Log.
+    log.error({ err: msg }, 'storage-commit: unerwarteter Fehler');
+    return NextResponse.json({ error: 'storage_error' }, { status });
+  }
   return NextResponse.json({ error: msg }, { status });
 }
 

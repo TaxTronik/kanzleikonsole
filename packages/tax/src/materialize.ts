@@ -158,7 +158,12 @@ export async function materializeTenantTaxDeadlines(
       tenantId,
       status: 'PLANNED',
       requestId: null,
-      config: { reminderDaysBefore: { gt: 0 } },
+      // Dieselben Tore wie bei der Materialisierung (Schritt 2): nur AKTIVE
+      // Configs und GwG-freigeschaltete Mandanten. Ohne diese Filter würde ein
+      // Termin einer deaktivierten Config bzw. eines Mandanten mit entzogener
+      // GwG-Freigabe trotzdem eine mandantengerichtete Anforderung auslösen.
+      config: { active: true, reminderDaysBefore: { gt: 0 } },
+      client: { allowActive: true },
       dueDate: { lte: new Date(now.getTime() + maxReminderDays * 24 * 60 * 60 * 1000) },
     },
     include: { config: { select: { reminderDaysBefore: true } } },

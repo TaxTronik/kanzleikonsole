@@ -11,6 +11,7 @@ import { checkRateLimit } from '@/server/rate-limit';
 import { assertStaffInTenant } from '@/server/db/assert-tenant';
 import { toActionError } from '@/server/auth/rbac';
 import { portalActionGuard, withPortalContext, ActionError } from '@/server/actions/portal-action';
+import { berlinWallClockToUtc } from '@/lib/fmt';
 
 export interface ActionResult { ok: boolean; error?: string; id?: string; }
 
@@ -73,8 +74,10 @@ export async function createAppointmentRequestAction(
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
 
   for (const s of parsed.data.slots) {
-    const start = new Date(s.startsAt);
-    const end = new Date(s.endsAt);
+    // Zeitzonenlose Berlin-Wanduhr-Strings — als Berlin→UTC prüfen, damit der
+    // Zukunfts-Check auf einem UTC-Container nicht um den Offset danebenliegt.
+    const start = berlinWallClockToUtc(s.startsAt) ?? new Date(NaN);
+    const end = berlinWallClockToUtc(s.endsAt) ?? new Date(NaN);
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
       return { ok: false, error: 'Ungültiger Zeitstempel.' };
     }

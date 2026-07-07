@@ -30,6 +30,28 @@ export interface ZipEntry {
  */
 export const ZIP_MAX_TOTAL_BYTES = 1024 * 1024 * 1024;
 
+/**
+ * Max. Anzahl Einträge ohne ZIP64. Das EOCD-Feld für die Entry-Zahl ist ein
+ * 16-Bit-Wert (0xffff). Ohne diesen Guard würfe `writeUInt16LE` bei mehr als
+ * 65.535 Dateien ERR_OUT_OF_RANGE — nachdem bereits alle Bytes im RAM sind —
+ * und der Export endete in einem generischen 500. Klarer Fehler stattdessen.
+ */
+export const ZIP_MAX_ENTRIES = 0xffff;
+
+export class ZipTooManyEntriesError extends Error {
+  readonly entryCount: number;
+  readonly limit: number;
+  constructor(entryCount: number, limit: number) {
+    super(
+      `ZIP enthält ${entryCount} Dateien und überschreitet das Limit von ${limit} ` +
+      `Einträgen. Bitte den Datumsbereich enger fassen.`,
+    );
+    this.name = 'ZipTooManyEntriesError';
+    this.entryCount = entryCount;
+    this.limit = limit;
+  }
+}
+
 export class ZipTooLargeError extends Error {
   readonly totalBytes: number;
   readonly limitBytes: number;
@@ -89,6 +111,10 @@ export async function acquireZipBuildSlot(): Promise<() => void> {
 }
 
 export function buildZip(entries: ZipEntry[]): Buffer {
+  // Entry-Zahl gegen die 16-Bit-Grenze des EOCD prüfen (kein ZIP64 hier).
+  if (entries.length > ZIP_MAX_ENTRIES) {
+    throw new ZipTooManyEntriesError(entries.length, ZIP_MAX_ENTRIES);
+  }
   // T-4: Vorab-Check auf Gesamtgröße. Mit STORE-Methode (keine Kompression) ist
   // die ZIP-Größe ≈ Summe der Eingaben + Headern; das reicht für einen
   // pragmatischen Cap. Wir wollen NICHT erst alle Buffer kopieren und dann

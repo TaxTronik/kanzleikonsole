@@ -18,6 +18,7 @@ import {
   sanitizeZipFileName,
   ZipBusyError,
   ZipTooLargeError,
+  ZipTooManyEntriesError,
   ZIP_MAX_TOTAL_BYTES,
   type ZipEntry,
 } from '@/server/export/zip';
@@ -222,7 +223,7 @@ export async function GET(req: NextRequest) {
     try {
       zip = buildZip(entries);
     } catch (e) {
-      if (e instanceof ZipTooLargeError) {
+      if (e instanceof ZipTooLargeError || e instanceof ZipTooManyEntriesError) {
         return NextResponse.json({ error: 'zip_too_large', message: e.message }, { status: 413 });
       }
       throw e;

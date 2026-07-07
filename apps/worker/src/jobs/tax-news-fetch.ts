@@ -17,6 +17,11 @@ import { withWorkerTenantContext } from '../tenant-context';
 
 const RSS_FETCH_CONCURRENCY = 5;
 const DB_BATCH_SIZE = 250;
+// Nur für „frische" Items benachrichtigen. Bindet den Kandidatensatz an die
+// jüngere Vergangenheit, damit ein Feed, der ältere Einträge weiter listet,
+// keine Backfill-Flut auslöst — deckt aber das Retry-Fenster ab (Item wurde in
+// einem vorherigen, abgebrochenen Lauf schon eingefügt).
+const NOTIFY_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 
 function itemKey(source: string, guid: string): string {
   return `${source}\u0000${guid}`;
@@ -90,13 +95,24 @@ export const taxNewsFetchWorker = new Worker<ChecksJob>(
 
     if (errors.length > 0) log.warn({ errors }, 'tax-news-fetch: partial errors');
 
-    if (toInsert.length === 0) {
-      log.info({ feeds: activeFeeds.length, fetched: all.length }, 'tax-news-fetch: no new items');
-      return { feeds: activeFeeds.length, fetched: all.length, inserted: 0 };
+    // Benachrichtigungs-Kandidaten sind ALLE frisch geholten Items (nicht nur
+    // die in DIESEM Lauf eingefügten): Bricht ein Lauf zwischen Insert und
+    // Notification-Phase ab, wären die Items beim Retry bereits vorhanden und
+    // toInsert leer — die Abonnenten bekämen dann NIE eine Notification. Die
+    // Idempotenz sichert weiter unten `existingNotificationKeys`.
+    const notifyCutoff = Date.now() - NOTIFY_MAX_AGE_MS;
+    const notifyCandidates = uniqueFetched.filter(
+      // Ohne publishedAt lässt sich das Alter nicht bestimmen → einschließen
+      // (lieber eine Notification zu viel als eine verpasste).
+      (item) => item.publishedAt === null || item.publishedAt.getTime() >= notifyCutoff,
+    );
+    if (notifyCandidates.length === 0) {
+      log.info({ feeds: activeFeeds.length, fetched: all.length, inserted }, 'tax-news-fetch: no items to notify');
+      return { feeds: activeFeeds.length, fetched: all.length, inserted, notifications: 0 };
     }
 
     const newItems: Array<{ id: string; source: string; title: string; link: string }> = [];
-    for (const batch of chunks(toInsert, DB_BATCH_SIZE)) {
+    for (const batch of chunks(notifyCandidates, DB_BATCH_SIZE)) {
       const rows = await prismaOwner.taxNewsItem.findMany({
         where: {
           OR: batch.map((item) => ({ source: item.source, guid: item.guid })),

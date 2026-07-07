@@ -25,6 +25,7 @@ import {
   sanitizeZipFileName,
   ZipBusyError,
   ZipTooLargeError,
+  ZipTooManyEntriesError,
   ZIP_MAX_TOTAL_BYTES,
   type ZipEntry,
 } from '@/server/export/zip';
@@ -293,6 +294,12 @@ export async function GET(
             totalBytes: err.totalBytes,
             limitBytes: err.limitBytes,
           },
+          { status: 413 },
+        );
+      }
+      if (err instanceof ZipTooManyEntriesError) {
+        return NextResponse.json(
+          { error: 'zip_too_many_entries', message: err.message },
           { status: 413 },
         );
       }

@@ -6,18 +6,21 @@
 // =============================================================================
 
 import type { TaxScheduleKind } from '@prisma/client';
+import { berlinYmd } from '@/lib/fmt';
 
 /**
  * Parst einen `?month=YYYY-MM`-Query-Parameter. Bei fehlend/invalid: aktueller
- * Monat (UTC). Rückgabe ist 0-basiert für JS-Date-Konsumenten.
+ * Monat (Europe/Berlin). Rückgabe ist 0-basiert für JS-Date-Konsumenten.
  */
 export function parseMonth(s: string | undefined): { year: number; month0: number } {
   if (s && /^\d{4}-\d{2}$/.test(s)) {
     const [y, m] = s.split('-').map(Number);
     return { year: y!, month0: (m ?? 1) - 1 };
   }
-  const now = new Date();
-  return { year: now.getUTCFullYear(), month0: now.getUTCMonth() };
+  // Berlin-Monat, nicht UTC: am Monatsersten zwischen 00:00–02:00 Berlin würde
+  // getUTCMonth() sonst den Vormonat aufschlagen.
+  const [y, m] = berlinYmd(new Date()).split('-').map(Number);
+  return { year: y!, month0: (m ?? 1) - 1 };
 }
 
 /**

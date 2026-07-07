@@ -12,28 +12,14 @@ import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
 import { withWorkerTenantContext } from '../tenant-context';
+import { berlinTodayUtcMidnight, wholeDaysBetween } from '../date-util';
 
 // RF-8: record() braucht nur den Tx — gleiches Muster wie risk-analyse-llm.ts.
 const evidence = new EvidenceService(new LocalTimestampAdapter());
 
-/**
- * UTC-Mitternacht des HEUTIGEN Kalendertags in Europe/Berlin. `dueDate` ist
- * `@db.Date` (UTC-Mitternacht des Fälligkeitstags). Eine Zahlung AM
- * Fälligkeitstag ist rechtzeitig (§ 271, § 188 Abs. 1 BGB) — überfällig ist
- * eine Rechnung erst ab dem Folgetag, also `dueDate < heute 00:00 (Berlin)`.
- */
-export function berlinTodayUtcMidnight(now: Date): Date {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Berlin',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(now);
-  const y = Number(parts.find((p) => p.type === 'year')!.value);
-  const m = Number(parts.find((p) => p.type === 'month')!.value);
-  const d = Number(parts.find((p) => p.type === 'day')!.value);
-  return new Date(Date.UTC(y, m - 1, d));
-}
+// `dueDate` ist `@db.Date` (UTC-Mitternacht). Eine Zahlung AM Fälligkeitstag
+// ist rechtzeitig (§ 271, § 188 Abs. 1 BGB) — überfällig erst ab dem Folgetag,
+// also `dueDate < berlinTodayUtcMidnight()`. Helfer liegt geteilt in date-util.
 
 export const invoiceOverdueWorker = new Worker<ChecksJob>(
   'invoice-overdue-check',
@@ -68,9 +54,7 @@ export const invoiceOverdueWorker = new Worker<ChecksJob>(
         // Context. P2002-Catch fängt parallele Trigger ab.
         // daysOverdue aus dem Abstand zweier UTC-Mitternachte (exakte
         // Tagesvielfache) → am ersten Folgetag genau „1 Tag überfällig".
-        const daysOverdue = Math.round(
-          (todayMidnight.getTime() - inv.dueDate.getTime()) / (24 * 60 * 60 * 1000),
-        );
+        const daysOverdue = wholeDaysBetween(inv.dueDate, todayMidnight);
         try {
           const applied = await withWorkerTenantContext(tenantId, async (tx) => {
             // Status-Recheck IN der Tx: zwischen findMany und hier kann die

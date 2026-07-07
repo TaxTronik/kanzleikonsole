@@ -58,7 +58,9 @@ function getHandle(): { conn: IORedis; queues: Map<string, Queue> } {
   const queues = new Map<string, Queue>();
   for (const { name } of QUEUES) queues.set(name, new Queue(name, { connection: conn }));
   const handle = { conn, queues };
-  if (env.NODE_ENV !== 'production') globalThis.__taxtronik_queue_status = handle;
+  // IMMER cachen — nicht nur im Dev: sonst leakt in Produktion jeder Aufruf
+  // eine neue IORedis-Connection samt 17 Queue-Instanzen (pro Seitenaufruf).
+  globalThis.__taxtronik_queue_status = handle;
   return handle;
 }
 

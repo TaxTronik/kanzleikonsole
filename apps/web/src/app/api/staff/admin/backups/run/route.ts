@@ -35,27 +35,39 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'backup_already_running' }, { status: 409 });
   }
 
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    (tx) =>
-      evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'backup.trigger',
-        resourceType: 'tenant',
-        resourceId: tenantId,
-        ip: getClientIp(req.headers),
-        userAgent: req.headers.get('user-agent'),
-        after: { source: 'admin-browser' },
-      }),
-  );
-
-  runningBackup = runBackup().finally(() => {
+  // Slot SOFORT (synchron) belegen — läge zwischen Check und Zuweisung ein
+  // await (der Audit-Write), passieren zwei parallele Requests beide den
+  // Null-Check und starten runBackup() doppelt: beide Läufe schreiben dann
+  // denselben minutengenauen S3-Key/lokalen Pfad und überschreiben sich.
+  runningBackup = (async (): Promise<BackupResult> => {
+    await withTenantContext(
+      { tenantId, actorId: staffId, actorType: 'STAFF' },
+      (tx) =>
+        evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'backup.trigger',
+          resourceType: 'tenant',
+          resourceId: tenantId,
+          ip: getClientIp(req.headers),
+          userAgent: req.headers.get('user-agent'),
+          after: { source: 'admin-browser' },
+        }),
+    );
+    return runBackup();
+  })().finally(() => {
     runningBackup = null;
   });
 
-  const result = await runningBackup;
+  let result: BackupResult;
+  try {
+    result = await runningBackup;
+  } catch (e) {
+    // z. B. Audit-Write fehlgeschlagen — keine internen Details ans UI.
+    console.error(`[backup] Trigger fehlgeschlagen: ${(e as Error).message}`);
+    return NextResponse.json({ error: 'backup_failed' }, { status: 500 });
+  }
   if (!result.ok) {
     return NextResponse.json({ error: result.error ?? 'backup_failed' }, { status: 500 });
   }

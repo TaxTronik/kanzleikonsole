@@ -22,7 +22,7 @@ import { withTenantContext } from '@taxtronik/db';
 import type { Prisma } from '@prisma/client';
 import { SCHEDULE_LABELS } from '@taxtronik/tax';
 import { rematerializeAction, markDeadlineDoneAction } from './actions';
-import { fmtDateShort, fmtMonthYear, fmtWeekdayShort } from '@/lib/fmt';
+import { fmtDateShort, fmtMonthYear, fmtWeekdayShort, berlinYmd } from '@/lib/fmt';
 
 const STATUS_LABELS: Record<string, string> = {
   PLANNED: 'Geplant',
@@ -160,8 +160,8 @@ async function renderMonth(
   const nextMonthQs = `${nextYear}-${String(nextM).padStart(2, '0')}`;
   void prevMonth;
 
-  const today = new Date();
-  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  // Berlin-Tag (nicht Server-Local): Grid-Zellen sind Kalendertage.
+  const todayKey = berlinYmd(new Date());
 
   return (
     <div className="p-8 max-w-7xl">

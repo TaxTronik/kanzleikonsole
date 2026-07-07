@@ -217,7 +217,12 @@ async function runPgRestore(filePath: string, targetUrl: string): Promise<void> 
   let stderr = '';
   child.stderr.on('data', (c: Buffer) => { stderr += c.toString('utf8'); });
   child.stdout.on('data', () => { /* swallow */ });
-  const code: number = await new Promise((res) => child.on('exit', (c) => res(c ?? -1)));
+  // 'error' abfangen: bei Startfehlern (ENOENT etc.) feuert 'exit' nie —
+  // ohne Listener wäre das eine uncaught exception plus ein ewig hängendes await.
+  const code: number = await new Promise((res, rej) => {
+    child.on('exit', (c) => res(c ?? -1));
+    child.on('error', (err) => rej(new Error(`pg_restore konnte nicht gestartet werden: ${err.message}`)));
+  });
   if (code !== 0) {
     throw new Error(`pg_restore exit ${code}: ${stderr.slice(0, 2000)}`);
   }

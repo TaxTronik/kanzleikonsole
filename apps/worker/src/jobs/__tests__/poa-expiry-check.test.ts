@@ -148,8 +148,29 @@ describe('Schwellenlogik', () => {
 });
 
 describe('RF-8: Ablauf — Statuswechsel + Audit-Record in einer Tx', () => {
-  it('validUntil == now zählt als abgelaufen: guarded updateMany + poa.expire im selben Tx', async () => {
-    const validUntil = new Date(FIXED_NOW);
+  it('validUntil == heute (Datum) gilt INKLUSIVE → NICHT abgelaufen, nur „läuft heute ab"', async () => {
+    // validUntil ist @db.Date (UTC-Mitternacht). Am validUntil-Tag ist die
+    // Vollmacht noch gültig — sie läuft erst am Folgetag ab. Kein Statuswechsel.
+    const validUntil = new Date('2026-06-09T00:00:00.000Z');
+    h.prismaOwner.powerOfAttorney.findMany.mockResolvedValue([poa(validUntil)]);
+
+    const result = await run();
+
+    expect(h.withWorkerTenantContext).not.toHaveBeenCalled();
+    expect(h.record).not.toHaveBeenCalled();
+    expect(h.upsertNotification).toHaveBeenCalledWith(
+      TENANT,
+      'hb-1',
+      expect.objectContaining({
+        kind: 'POA_EXPIRY_SOON',
+        title: 'Vollmacht läuft heute ab — Muster GmbH',
+      }),
+    );
+    expect(result).toEqual({ soon: 1, expired: 0 });
+  });
+
+  it('validUntil == gestern (Datum) → abgelaufen: guarded updateMany + poa.expire im selben Tx', async () => {
+    const validUntil = new Date('2026-06-08T00:00:00.000Z');
     h.prismaOwner.powerOfAttorney.findMany.mockResolvedValue([poa(validUntil)]);
 
     const result = await run();

@@ -158,6 +158,13 @@ describe('parseRss — Entities', () => {
     expect(titleOf('kaputt: &#9999999999;')).toBe('kaputt: �');
     expect(titleOf('kaputt: &#x110000;')).toBe('kaputt: �');
   });
+
+  it('&amp; wird NICHT doppelt dekodiert (&amp;#60; → Literal &#60;, nicht <)', () => {
+    // &amp;#60; ist die Escapesequenz für den Literaltext „&#60;". Würde &amp;
+    // vor der Numerik aufgelöst, entstünde fälschlich „<".
+    expect(titleOf('Regel: a &amp;#60; b')).toBe('Regel: a &#60; b');
+    expect(titleOf('Doppelt: &amp;amp;')).toBe('Doppelt: &amp;');
+  });
 });
 
 describe('parseRss — pubDate-Validierung (Regression: Invalid Date → Insert-Crash)', () => {

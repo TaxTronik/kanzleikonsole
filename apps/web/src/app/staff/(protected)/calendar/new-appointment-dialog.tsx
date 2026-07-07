@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useActionState, useState } from 'react';
+import { useActionState, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { Plus, X } from 'lucide-react';
@@ -29,12 +29,18 @@ export function NewAppointmentDialog({
   );
 
   // Portal mount erst nach Client-side hydrate
-  if (typeof window !== 'undefined' && !mounted) setMounted(true);
+  useEffect(() => setMounted(true), []);
 
-  if (state?.ok) {
-    setOpen(false);
-    router.refresh();
-  }
+  // Nach erfolgreichem Submit: Dialog schließen + refresh. Bewusst in
+  // useEffect, NICHT im Render-Body — im Render-Body würde state.ok bei JEDEM
+  // Re-Render erneut router.refresh() feuern (Refresh-Schleife) und das
+  // erneute Öffnen des Dialogs sofort wieder schließen.
+  useEffect(() => {
+    if (state?.ok) {
+      setOpen(false);
+      router.refresh();
+    }
+  }, [state, router]);
 
   const nowLocal = (() => {
     const d = new Date();

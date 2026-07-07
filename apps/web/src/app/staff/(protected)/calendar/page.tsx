@@ -20,7 +20,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { SCHEDULE_LABELS } from '@taxtronik/tax';
 import { NewAppointmentDialog } from './new-appointment-dialog';
 import { RequestDecision, type RequestRow } from './request-decision';
-import { fmtMonthYear, fmtTimeShort, fmtWeekdayShort } from '@/lib/fmt';
+import { fmtMonthYear, fmtTimeShort, fmtWeekdayShort, berlinYmd } from '@/lib/fmt';
 
 
 interface Search {
@@ -132,7 +132,9 @@ export default async function CalendarPage({
   // Termine pro Tag (am Start-Tag eingruppiert; mehrtägige zeigen wir am Anfangstag)
   const apptByDay = new Map<string, Array<typeof data.appointments[number]>>();
   for (const a of data.appointments) {
-    const dayKey = a.startsAt.toISOString().slice(0, 10);
+    // Berlin-Kalendertag (nicht UTC): startsAt ist ein echter Instant; die Pille
+    // zeigt die Berlin-Uhrzeit, also muss die Zelle auch der Berlin-Tag sein.
+    const dayKey = berlinYmd(a.startsAt);
     let arr = apptByDay.get(dayKey);
     if (!arr) {
       arr = [];
@@ -187,8 +189,9 @@ export default async function CalendarPage({
   const nextM = month0 === 11 ? 1 : month0 + 2;
   const nextMonthQs = `${nextYear}-${String(nextM).padStart(2, '0')}`;
 
-  const today = new Date();
-  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  // Berlin-Tag (nicht Server-Local): der Grid-Schlüssel ist der Kalendertag,
+  // und „heute" muss in derselben Zeitzone bestimmt werden wie die Zellen.
+  const todayKey = berlinYmd(new Date());
 
   const requestRows: RequestRow[] = data.pendingRequests.map((r) => ({
     id: r.id,

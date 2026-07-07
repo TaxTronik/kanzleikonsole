@@ -16,7 +16,7 @@ import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { loadKontrollbuch } from '@/server/fristen/kontrollbuch';
 import { bucketFor, BUCKET_LABELS, QUELLE_LABELS, type FristBucket, type FristEintrag } from '@/server/fristen/eintrag';
-import { fmtDateShort } from '@/lib/fmt';
+import { fmtDateShort, berlinTodayUtcMidnight } from '@/lib/fmt';
 
 const RANGES = [7, 30, 90] as const;
 
@@ -42,7 +42,10 @@ export default async function FristenPage({ searchParams }: { searchParams: Prom
   );
 
   const sichtbar = nurOffene ? eintraege.filter((e) => !e.erledigt) : eintraege;
-  const heute = new Date();
+  // bucketFor arbeitet in UTC-Tagesgrenzen (passend zu @db.Date = UTC-Mitternacht).
+  // „Heute" muss daher der Berlin-Kalendertag als UTC-Mitternacht sein — sonst
+  // landet eine Frist zwischen 00:00–02:00 Berlin im falschen Bucket.
+  const heute = berlinTodayUtcMidnight();
 
   // Offene nach Dringlichkeit gruppieren; Erledigte (falls eingeblendet) separat.
   const gruppen = new Map<FristBucket, FristEintrag[]>();

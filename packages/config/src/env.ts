@@ -300,6 +300,15 @@ function parseEnv(): Env {
     if (!parsed.data.RISK_LAYER_URL && parsed.data.RISK_LAYER_TOKEN) {
       throw new Error('[config] RISK_LAYER_TOKEN gesetzt, aber RISK_LAYER_URL fehlt.');
     }
+    // Gleiches Fail-Fast-Pairing wie Risk-Layer: sonst würde ELSTER_BRIDGE_URL
+    // ohne Token still zu elsterConfig=null führen (Modul verschwindet aus der
+    // UI, ohne dass beim Boot ein Fehler sichtbar wird).
+    if (parsed.data.ELSTER_BRIDGE_URL && !parsed.data.ELSTER_BRIDGE_TOKEN) {
+      throw new Error('[config] ELSTER_BRIDGE_URL gesetzt, aber ELSTER_BRIDGE_TOKEN fehlt.');
+    }
+    if (!parsed.data.ELSTER_BRIDGE_URL && parsed.data.ELSTER_BRIDGE_TOKEN) {
+      throw new Error('[config] ELSTER_BRIDGE_TOKEN gesetzt, aber ELSTER_BRIDGE_URL fehlt.');
+    }
 
     const staffDom = parsed.data.STAFF_COOKIE_DOMAIN;
     const portalDom = parsed.data.PORTAL_COOKIE_DOMAIN;

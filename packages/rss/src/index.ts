@@ -53,14 +53,18 @@ function fromCodePointSafe(cp: number): string {
 }
 
 function decodeEntities(s: string): string {
+  // &amp; MUSS zuletzt aufgelöst werden: sonst würde `&amp;#60;` (die
+  // Escapesequenz für den Literaltext `&#60;`) erst zu `&#60;` und dann fälsch-
+  // lich zu `<` doppelt-dekodiert. Named/numerische Entities daher zuerst,
+  // &amp; als Abschluss.
   return s
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
-    .replace(/&amp;/g, '&')
     .replace(/&#x([0-9a-f]+);/gi, (_, n) => fromCodePointSafe(parseInt(n, 16)))
-    .replace(/&#(\d+);/g, (_, n) => fromCodePointSafe(Number(n)));
+    .replace(/&#(\d+);/g, (_, n) => fromCodePointSafe(Number(n)))
+    .replace(/&amp;/g, '&');
 }
 
 function pickTag(xml: string, tag: string): string | null {

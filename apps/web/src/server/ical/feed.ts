@@ -83,19 +83,35 @@ function dateTimeUtc(d: Date): string {
   return `${dateOnly(d)}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
 }
 
-// RFC 5545: Zeilen > 75 Oktette falten (CRLF + Leerzeichen-Prefix).
+// RFC 5545 §3.1: Zeilen dürfen max. 75 OKTETTE lang sein (Fortsetzungszeilen
+// mit CRLF + Leerzeichen). Wichtig: gemessen in UTF-8-Bytes, nicht in JS-
+// String-Längen — Umlaute (2 B) / Emoji (4 B) sprengen sonst das Limit, und ein
+// Umbruch mitten in einer Multibyte-Sequenz (Surrogatpaar) erzeugt ungültiges
+// UTF-8, das strikte Parser ablehnen. Wir brechen daher an Code-Point-Grenzen
+// so, dass jede Zeile inkl. Leerzeichen-Prefix ≤ 75 Oktette bleibt.
+const ICS_MAX_OCTETS = 75;
+
 function foldLine(line: string): string {
-  if (line.length <= 73) return line;
+  if (Buffer.byteLength(line, 'utf8') <= ICS_MAX_OCTETS) return line;
   const parts: string[] = [];
-  let rest = line;
-  parts.push(rest.slice(0, 73));
-  rest = rest.slice(73);
-  while (rest.length > 72) {
-    parts.push(' ' + rest.slice(0, 72));
-    rest = rest.slice(72);
+  let current = '';
+  let currentOctets = 0;
+  let limit = ICS_MAX_OCTETS; // erste Zeile ohne Leerzeichen-Prefix
+  // for..of iteriert über Code Points → Surrogatpaare bleiben intakt.
+  for (const cp of line) {
+    const cpOctets = Buffer.byteLength(cp, 'utf8');
+    if (currentOctets + cpOctets > limit) {
+      parts.push(current);
+      current = cp;
+      currentOctets = cpOctets;
+      limit = ICS_MAX_OCTETS - 1; // Fortsetzungszeilen tragen ein führendes ' '
+    } else {
+      current += cp;
+      currentOctets += cpOctets;
+    }
   }
-  if (rest.length > 0) parts.push(' ' + rest);
-  return parts.join('\r\n');
+  parts.push(current);
+  return parts.map((p, i) => (i === 0 ? p : ' ' + p)).join('\r\n');
 }
 
 export function buildIcs(calName: string, events: IcalEvent[]): string {
