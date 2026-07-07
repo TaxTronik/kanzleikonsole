@@ -333,25 +333,94 @@ export async function generateZugferdPdf(
 
 /**
  * Bettet die CII-XML als Datei-Anhang in das PDF ein, mit dem Filename
- * `factur-x.xml` und der Beziehung "Source" (AFRelationship).
+ * `factur-x.xml` und der Beziehung "Alternative" (AFRelationship).
  */
 async function embedFacturXAttachment(doc: PDFDocument, ciiXml: string): Promise<void> {
   const xmlBytes = new TextEncoder().encode(ciiXml);
 
-  // pdf-lib's high-level attach()-API
+  // pdf-lib high-level attach()-API. P2-8: AFRelationship MUSS "Alternative"
+  // sein (ZUGFeRD 2.x / Factur-X: die XML ist eine ALTERNATIVE Repräsentation
+  // der Rechnung, kein „Source"). „Source" ließ konforme Verarbeiter die
+  // Rechnung nicht als hybrid erkennen.
   await doc.attach(xmlBytes, 'factur-x.xml', {
     mimeType: 'application/xml',
     description: 'Factur-X invoice XML (CII)',
     creationDate: new Date(),
     modificationDate: new Date(),
-    afRelationship: AFRelationship.Source,
+    afRelationship: AFRelationship.Alternative,
   });
 }
 
+/** XML-escapen für den XMP-Klartext (Rechnungsnummer). */
+function xmlEsc(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 /**
- * Setzt Document-Info + minimale XMP-Metadaten, die Factur-X-Verarbeiter
- * erkennen können. Für strikte PDF/A-3-Konformität wäre ein vollständiger
- * XMP-Block nach RDF/XML erforderlich (z. B. via Ghostscript-Postprocessing).
+ * Baut den Factur-X-XMP-Metadatenblock (RDF/XML). Enthält die fx-
+ * Erweiterungsschema-Deklaration + die vier Factur-X-Kernfelder, an denen
+ * konforme Rechnungsverarbeiter (DATEV etc.) das Hybrid-Dokument erkennen.
+ *
+ * BEWUSST OHNE pdfaid:part=3-Behauptung: Diese PDF ist KEIN strikt validiertes
+ * PDF/A-3 (nicht eingebettete Standard-Fonts, kein OutputIntent/ICC). Ein
+ * falsches pdfaid würde einen strengen Validator scheitern lassen. Die
+ * Factur-X-Erkennung (Attachment „Alternative" + fx-XMP) funktioniert dennoch.
+ */
+function buildFacturXXmp(invoiceNumber: string): string {
+  const title = xmlEsc(`Rechnung ${invoiceNumber}`);
+  const FX_NS = 'urn:factur-x:pdfa:CrossIndustryDocument:invoice:1p0#';
+  // XMP-Byte-Order-Mark programmatisch (kein literales Sonderzeichen im
+  // Quelltext → kein ESLint no-irregular-whitespace).
+  const BOM = String.fromCharCode(0xfeff);
+  return `<?xpacket begin="${BOM}" id="W5M0MpCehiHzreSzNTczkc9d"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+    <rdf:Description rdf:about="" xmlns:dc="http://purl.org/dc/elements/1.1/">
+      <dc:title><rdf:Alt><rdf:li xml:lang="x-default">${title}</rdf:li></rdf:Alt></dc:title>
+    </rdf:Description>
+    <rdf:Description rdf:about="" xmlns:pdf="http://ns.adobe.com/pdf/1.3/">
+      <pdf:Producer>taxtronik</pdf:Producer>
+    </rdf:Description>
+    <rdf:Description rdf:about="" xmlns:xmp="http://ns.adobe.com/xap/1.0/">
+      <xmp:CreatorTool>taxtronik</xmp:CreatorTool>
+    </rdf:Description>
+    <rdf:Description rdf:about="" xmlns:fx="${FX_NS}">
+      <fx:DocumentType>INVOICE</fx:DocumentType>
+      <fx:DocumentFileName>factur-x.xml</fx:DocumentFileName>
+      <fx:Version>1.0</fx:Version>
+      <fx:ConformanceLevel>EN 16931</fx:ConformanceLevel>
+    </rdf:Description>
+    <rdf:Description rdf:about=""
+        xmlns:pdfaExtension="http://www.aiim.org/pdfa/ns/extension/"
+        xmlns:pdfaSchema="http://www.aiim.org/pdfa/ns/schema#"
+        xmlns:pdfaProperty="http://www.aiim.org/pdfa/ns/property#">
+      <pdfaExtension:schemas>
+        <rdf:Bag>
+          <rdf:li rdf:parseType="Resource">
+            <pdfaSchema:schema>Factur-X PDFA Extension Schema</pdfaSchema:schema>
+            <pdfaSchema:namespaceURI>${FX_NS}</pdfaSchema:namespaceURI>
+            <pdfaSchema:prefix>fx</pdfaSchema:prefix>
+            <pdfaSchema:property>
+              <rdf:Seq>
+                <rdf:li rdf:parseType="Resource"><pdfaProperty:name>DocumentFileName</pdfaProperty:name><pdfaProperty:valueType>Text</pdfaProperty:valueType><pdfaProperty:category>external</pdfaProperty:category><pdfaProperty:description>name of the embedded XML invoice file</pdfaProperty:description></rdf:li>
+                <rdf:li rdf:parseType="Resource"><pdfaProperty:name>DocumentType</pdfaProperty:name><pdfaProperty:valueType>Text</pdfaProperty:valueType><pdfaProperty:category>external</pdfaProperty:category><pdfaProperty:description>INVOICE</pdfaProperty:description></rdf:li>
+                <rdf:li rdf:parseType="Resource"><pdfaProperty:name>Version</pdfaProperty:name><pdfaProperty:valueType>Text</pdfaProperty:valueType><pdfaProperty:category>external</pdfaProperty:category><pdfaProperty:description>The actual version of the Factur-X data</pdfaProperty:description></rdf:li>
+                <rdf:li rdf:parseType="Resource"><pdfaProperty:name>ConformanceLevel</pdfaProperty:name><pdfaProperty:valueType>Text</pdfaProperty:valueType><pdfaProperty:category>external</pdfaProperty:category><pdfaProperty:description>The conformance level of the Factur-X data</pdfaProperty:description></rdf:li>
+              </rdf:Seq>
+            </pdfaSchema:property>
+          </rdf:li>
+        </rdf:Bag>
+      </pdfaExtension:schemas>
+    </rdf:Description>
+  </rdf:RDF>
+</x:xmpmeta>
+<?xpacket end="w"?>`;
+}
+
+/**
+ * Setzt Document-Info + den Factur-X-XMP-Metadatenstrom am Katalog. Erkennung
+ * durch Factur-X-Verarbeiter, ohne strikte PDF/A-3-Konformität zu behaupten
+ * (s. buildFacturXXmp — eingebettete Fonts/OutputIntent fehlen bewusst).
  */
 function setFacturXMetadata(doc: PDFDocument, invoiceNumber: string): void {
   doc.setTitle(`Rechnung ${invoiceNumber}`);
@@ -360,9 +429,17 @@ function setFacturXMetadata(doc: PDFDocument, invoiceNumber: string): void {
   doc.setProducer('taxtronik');
   doc.setCreator('taxtronik');
 
+  // XMP-Metadatenstrom am Document-Catalog verankern (/Metadata).
+  const xmp = buildFacturXXmp(invoiceNumber);
+  const metadataStream = doc.context.stream(xmp, {
+    Type: 'Metadata',
+    Subtype: 'XML',
+  });
+  const ref = doc.context.register(metadataStream);
+  doc.catalog.set(PDFName.of('Metadata'), ref);
+
   // PDF-Info-Dictionary um Factur-X-Schlüssel ergänzen — manche Verarbeiter
-  // lesen Document-Info statt XMP. Schadet nicht. `getInfoDict` ist in
-  // pdf-lib als private markiert — Cast, weil keine öffentliche API existiert.
+  // lesen Document-Info statt XMP. `getInfoDict` ist in pdf-lib privat — Cast.
   const docAny = doc as unknown as { getInfoDict(): PDFRef };
   const info = doc.context.lookup(docAny.getInfoDict()) as PDFDict | undefined;
   if (info) {

@@ -20,6 +20,7 @@ import { dsgvoRetentionWorker } from './jobs/dsgvo-retention';
 import { poaExpiryWorker } from './jobs/poa-expiry-check';
 import { riskAnalyseLlmWorker } from './jobs/risk-analyse-llm';
 import { backupDrillWorker } from './jobs/backup-drill';
+import { backupRunWorker } from './jobs/backup-run';
 import { healthAlertWorker } from './jobs/health-alert';
 import { setupSchedules } from './scheduler';
 import { connection } from './queues';
@@ -109,6 +110,7 @@ async function shutdown(reason: string) {
       poaExpiryWorker.close(),
       riskAnalyseLlmWorker.close(),
       backupDrillWorker.close(),
+      backupRunWorker.close(),
       healthAlertWorker.close(),
     ]);
     // RF-13: auch den Prisma-Pool sauber schließen — vorher blieben offene

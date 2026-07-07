@@ -20,8 +20,11 @@ const statusLabels: Record<string, string> = {
 
 const formatLabels: Record<string, string> = {
   PDF: 'PDF',
-  XRECHNUNG: 'XRechnung (XML)',
-  ZUGFERD: 'ZUGFeRD (Hybrid PDF/A-3)',
+  // XRechnung (reine XML) ist das strikt EN-16931-/PDF-A-konforme Leitformat für
+  // B2B/B2G. ZUGFeRD ist ein Hybrid-PDF mit eingebetteter Factur-X-XML — kein
+  // strikt validiertes PDF/A-3 (nicht eingebettete Standard-Fonts).
+  XRECHNUNG: 'XRechnung (XML) — führend',
+  ZUGFERD: 'ZUGFeRD/Factur-X (Hybrid-PDF, EN 16931)',
 };
 
 export default async function InvoiceDetailPage({

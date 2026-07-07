@@ -1,7 +1,7 @@
 // =============================================================================
 // ZUGFeRD-Archiv pro Rechnung (Option B: generate-on-issue + byte-stabile Ablage)
 //
-// Die ZUGFeRD-PDF (PDF/A-3 mit eingebettetem XRechnung-CII) ist CPU-intensiv und
+// Die ZUGFeRD-PDF (Hybrid-PDF mit eingebettetem XRechnung-CII als Factur-X) ist CPU-intensiv und
 // wurde bisher bei JEDEM Download neu erzeugt — zudem run-to-run nicht garantiert
 // byte-identisch. Eine ausgestellte Rechnung ist aber immutabel. Wir erzeugen die
 // PDF deshalb EINMAL (beim Ausstellen, sonst spätestens beim ersten Download) und

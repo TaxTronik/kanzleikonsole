@@ -213,6 +213,8 @@ services:
       S3_BUCKET_GWG: gwg
       S3_BUCKET_GENERAL: general
       S3_BUCKET_STAFF_PRIVATE: staff-private
+      # Ziel-Bucket des täglichen backup-run-Jobs (P1-24).
+      S3_BUCKET_BACKUPS: backups
       CLAMAV_HOST: clamav
       CLAMAV_PORT: 3310
       SMTP_HOST: ${SMTP_HOST:?SMTP_HOST nicht gesetzt - Prod braucht ein echtes SMTP-Relay; Mailhog nur in docker-compose.dev.yml}

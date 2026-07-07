@@ -72,6 +72,7 @@ export const dsgvoRetentionQueue = new Queue<ChecksJob, void, string>('dsgvo-ret
 export const poaExpiryQueue = new Queue<ChecksJob, void, string>('poa-expiry-check', { connection, defaultJobOptions });
 export const riskAnalyseLlmQueue = new Queue<RiskAnalyseLlmJob, void, string>('risk-analyse-llm', { connection, defaultJobOptions });
 export const backupDrillQueue = new Queue<ChecksJob, void, string>('backup-drill', { connection, defaultJobOptions });
+export const backupRunQueue = new Queue<ChecksJob, void, string>('backup-run', { connection, defaultJobOptions });
 export const healthAlertQueue = new Queue<ChecksJob, void, string>('health-alert', { connection, defaultJobOptions });
 
 // RF-3/RF-13: die QueueEvents-Instanzen (virus-scan, evidence-seal) sind

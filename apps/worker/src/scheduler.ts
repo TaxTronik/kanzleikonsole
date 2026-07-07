@@ -25,6 +25,7 @@ import {
   dsgvoRetentionQueue,
   poaExpiryQueue,
   backupDrillQueue,
+  backupRunQueue,
   healthAlertQueue,
 } from './queues';
 import { log } from './logger';
@@ -125,6 +126,19 @@ export async function setupSchedules(): Promise<void> {
     { pattern: '20 7 * * *', tz: BERLIN },
     { name: 'poa-expiry-check', data: {}, opts: DAILY_RETRY },
   );
+  // P1-24: automatisches tägliches Backup um 01:00 UTC (nachts, vor allem
+  // anderen). Streamt pg_dump → S3. Ohne Zeitplan hatten update-los betriebene
+  // Installationen faktisch kein aktuelles Backup; der Staleness-Alarm in
+  // health-alert schlägt an, falls dieser Lauf ausfällt.
+  await backupRunQueue.upsertJobScheduler(
+    'daily-backup-run',
+    { pattern: '0 1 * * *' },
+    {
+      name: 'backup-run',
+      data: {},
+      opts: { attempts: 2, backoff: { type: 'exponential', delay: 30 * 60_000 } },
+    },
+  );
   // Restore-Drill: monatlich am 1. um 05:00 UTC — beweisbarer Wirksamkeits-
   // nachweis der Sicherung (Art. 32 DSGVO / GoBD). Retry, weil transiente
   // S3-/DB-Fehler nicht bis zum nächsten Monat warten sollen.
@@ -160,6 +174,7 @@ export async function setupSchedules(): Promise<void> {
         'magic-link-cleanup @ 03:30 UTC daily',
         'dsgvo-retention @ 04:00 UTC daily',
         'poa-expiry-check @ 07:20 Berlin daily',
+        'backup-run @ 01:00 UTC daily',
         'backup-drill @ 05:00 UTC 1st of month',
         'health-alert @ every 5 min',
       ],
