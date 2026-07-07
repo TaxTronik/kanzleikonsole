@@ -15,6 +15,7 @@ export {
   endOfDueDay,
   startOfUtcDay,
   appealDeadline,
+  klageDeadline,
   BEKANNTGABE_FIKTION_TAGE,
   bekanntgabeFiktionTage,
   SCHEDULE_LABELS,

@@ -12,6 +12,48 @@ Funktionsausfall) · **P2** = mittel · **P3** = niedrig. ⚡ = Quick Win (< 1 h
 
 ---
 
+## Bearbeitungsstand (2026-07-07, Selbst-Audit) — Runde 7
+
+Audit der eigenen Branch-Arbeit (kein Spaghetti-Code, saubere Umsetzung) durch
+zwei unabhängige Review-Durchläufe (Korrektheit riskanter Änderungen ·
+Konsistenz/toter Code). Behoben:
+
+- **A1 (HOCH, fachlicher Fristfehler) — Klagefrist rechnete Bekanntgabefiktion
+  doppelt.** `notices/actions.ts` rief für die Klagefrist (§ 47 (1) FGO)
+  `appealDeadline(bekanntgabetag, …)`, das intern die § 122 (2)-Fiktion (+3/4
+  Werktage) aufschlug — obwohl der Übergabewert bereits der Bekanntgabetag der
+  Einspruchsentscheidung ist. Ergebnis: Klagefrist bis zu ~4 Tage **zu spät**
+  angezeigt (bei einem Fristenkontrolltool die gefährliche Richtung). Fix: neue
+  dedizierte `klageDeadline(bekanntgabe, region)` in `@taxtronik/tax` (nur
+  +1 Monat + § 108 (3)-Werktagsverschiebung, keine Fiktion); gemeinsamer
+  Monats-Additions-Kern mit `appealDeadline` extrahiert. Beide Audit-Läufe
+  fanden dies unabhängig als wichtigsten Befund. Tests ergänzt.
+- **A2 (KRITISCH) — `backup-run.ts` fehlender `child.on('error')`.** Bei
+  Spawn-Fehler (ENOENT: pg_dump nicht im PATH) hätte das unbehandelte
+  `error`-Event den **gesamten Worker-Prozess** gerissen, und `upload.done()`
+  wäre unbegrenzt gehängt (RUNNING-Records für immer offen). Fix: Error-Handler
+  zerstört den Body und resolvt die exit-Promise; im Fehlerpfad zusätzlich
+  `child.kill('SIGTERM')` (kein pg_dump-Zombie mit offener DB-Connection) und
+  `body.destroy()`.
+- **A3 (MITTEL, Konsistenz) — Storno-Beleg emittierte `invoice.due`.** Ein
+  Gutschrift-/Korrekturbeleg (§ 14c i.V.m. § 17 UStG) hat keine fällige Zahlung;
+  Zahlungserinnerungs-Workflows dürfen daran nicht anschlagen. Fix: eigenes
+  `invoice.storno`-Event in `STATIC_EVENT_NAMES`.
+- **A4 (Duplikation) — Festschreib-Block extrahiert.** `cancelInvoiceAction`
+  Tx-B duplizierte die DRAFT→SENT-Claim + Portal-Freigabe + invoice.send-Evidence
+  aus `markSentAction`. Fix: gemeinsamer Helfer `finalizeInvoiceSendTx(tx, …)`.
+  Ebenso `pgConnArgs`/`prismaBytes` (in mehreren Worker-Jobs dupliziert) nach
+  `apps/worker/src/pg-conn.ts` gezogen; `queue-status.ts`-QUEUES-Drift
+  (`backup-run` fehlte) behoben.
+- **A5 (dokumentiert, kein Fix nötig)** — EXTERNAL-Storno (Format PDF) bleibt
+  bewusst DRAFT (kein Generat, manuelle Ausstellung); im Code kommentiert.
+
+Verifiziert-korrekt ohne Befund (beide Läufe): `round2` (exhaustiv gegen
+kaufmännische Rundung), EGAO-Basis-Termine, atomare Claims durchgängig,
+Storno-Negierung, Migrationen iter98–101 ↔ Schema, Enum-Vollständigkeit
+KLAGE/TEILABHILFE. Offen/niedrig als Folge notiert: CSV-Export bildet
+Storno-Kennzeichnung (`stornoOfId`) noch nicht ab.
+
 ## Bearbeitungsstand (2026-07-07, Umsetzung) — Runde 6
 
 **NEU ERLEDIGT (Runde 6):**

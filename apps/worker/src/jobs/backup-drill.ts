@@ -44,6 +44,7 @@ import {
 } from '@taxtronik/evidence';
 import { connection, type ChecksJob } from '../queues';
 import { prismaOwner } from '../prisma-owner';
+import { pgConnArgs } from '../pg-conn';
 import { withWorkerTenantContext } from '../tenant-context';
 import { upsertNotification } from '../notify';
 import { log } from '../logger';
@@ -72,21 +73,6 @@ export function withDbName(url: string, db: string): string {
   const u = new URL(url);
   u.pathname = `/${db}`;
   return u.toString();
-}
-
-/** P-2 (wie restore.ts): Passwort via PGPASSWORD, nie in den Prozess-Args. */
-function pgConnArgs(dbUrl: string): { args: string[]; env: Record<string, string> } {
-  const u = new URL(dbUrl);
-  const args = [
-    '-h', u.hostname,
-    '-p', u.port || '5432',
-    '-U', decodeURIComponent(u.username),
-    '-d', u.pathname.slice(1) || decodeURIComponent(u.username),
-  ];
-  const e: Record<string, string> = { PGPASSWORD: decodeURIComponent(u.password) };
-  const sslmode = u.searchParams.get('sslmode');
-  if (sslmode) e['PGSSLMODE'] = sslmode;
-  return { args, env: e };
 }
 
 /**

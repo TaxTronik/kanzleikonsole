@@ -2,7 +2,7 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { withTenantContext } from '@taxtronik/db';
+import { withTenantContext, type TxClient } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { commitDocumentFromBytes } from '@taxtronik/storage';
@@ -230,6 +230,44 @@ const ARCHIVE_FAIL_TEXT: Record<string, string> = {
   buyer_incomplete: 'Mandanten-Anschrift unvollständig (Straße/PLZ/Ort).',
 };
 
+// Festschreibe-Kern des Rechnungsversands, in der übergebenen Transaktion:
+// atomarer DRAFT→SENT-Claim (TOCTOU-Schutz — nur der erste konkurrierende
+// Versand trifft status=DRAFT), Portal-Freigabe der Archivkopie (der Archiv-
+// Helfer lief noch im Status DRAFT und hat bewusst nicht freigegeben) und die
+// invoice.send-Evidence. Rückgabe: die aktualisierte Rechnung, oder null wenn
+// der Claim verloren ging (der gewünschte Endzustand SENT ist dann durch den
+// konkurrierenden Request bereits erreicht). Gemeinsam genutzt von
+// markSentAction (Normalversand) und cancelInvoiceAction (Storno-Beleg), damit
+// die Sequenz nicht zwischen beiden Pfaden driftet.
+async function finalizeInvoiceSendTx(
+  tx: TxClient,
+  opts: { invoiceId: string; staffId: string; tenantId: string; auditExtra?: Record<string, unknown> },
+) {
+  const res = await tx.invoice.updateMany({
+    where: { id: opts.invoiceId, status: 'DRAFT' },
+    data: { status: 'SENT', sentAt: new Date() },
+  });
+  if (res.count === 0) return null;
+
+  const updated = await tx.invoice.findUniqueOrThrow({ where: { id: opts.invoiceId } });
+  if (updated.documentId) {
+    await tx.document.updateMany({
+      where: { id: updated.documentId, sharedWithClientAt: null },
+      data: { sharedWithClientAt: new Date(), sharedByStaff: opts.staffId },
+    });
+  }
+  await evidenceService.record(tx, {
+    tenantId: opts.tenantId,
+    actorType: 'STAFF',
+    actorId: opts.staffId,
+    action: 'invoice.send',
+    resourceType: 'invoice',
+    resourceId: updated.id,
+    after: { number: updated.number, sentAt: updated.sentAt, ...opts.auditExtra },
+  });
+  return updated;
+}
+
 export async function markSentAction(
   _prev: ActionResult | null,
   formData: FormData,
@@ -306,38 +344,12 @@ export async function markSentAction(
     }
   }
 
-  const sent = await withTenantContext(ctx, async (tx) => {
-    // TOCTOU-Schutz: Der Statuswechsel ist NUR gültig, solange die Rechnung
-    // noch DRAFT ist. Bei Doppel-Submit (zwei Tabs / zwei Bearbeiter) passieren
-    // beide den Precheck oben, aber nur der erste trifft hier status=DRAFT —
-    // der zweite läuft ins Leere (count 0) statt sentAt zu überschreiben und
-    // ein zweites invoice.send/invoice.due-Event zu erzeugen.
-    const res = await tx.invoice.updateMany({
-      where: { id: parsed.data.invoiceId, status: 'DRAFT' },
-      data: { status: 'SENT', sentAt: new Date() },
-    });
-    if (res.count === 0) return null;
-
-    const updated = await tx.invoice.findUniqueOrThrow({ where: { id: parsed.data.invoiceId } });
-    // Portal-Freigabe der Archivkopie ist Teil des Versands (der Archiv-Helfer
-    // lief noch im Status DRAFT und hat bewusst nicht freigegeben).
-    if (updated.documentId) {
-      await tx.document.updateMany({
-        where: { id: updated.documentId, sharedWithClientAt: null },
-        data: { sharedWithClientAt: new Date(), sharedByStaff: staffId },
-      });
-    }
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
-      action: 'invoice.send',
-      resourceType: 'invoice',
-      resourceId: updated.id,
-      after: { number: updated.number, sentAt: updated.sentAt },
-    });
-    return updated;
-  });
+  // TOCTOU-Schutz gegen Doppel-Submit (zwei Tabs / zwei Bearbeiter): beide
+  // passieren den Precheck oben, aber der atomare DRAFT→SENT-Claim im Helfer
+  // trifft nur beim ersten status=DRAFT — der zweite läuft ins Leere (null).
+  const sent = await withTenantContext(ctx, (tx) =>
+    finalizeInvoiceSendTx(tx, { invoiceId: parsed.data.invoiceId, staffId, tenantId }),
+  );
 
   // Race verloren → kein doppeltes n8n-Event, kein doppeltes Revalidate. Der
   // gewünschte Endzustand (SENT) ist durch das konkurrierende Request erreicht.
@@ -527,35 +539,26 @@ export async function cancelInvoiceAction(formData: FormData): Promise<void> {
     throw new ActionError(toActionError(e).error ?? 'Storno fehlgeschlagen.');
   }
 
-  // Tx B: Storno-Beleg (IN_APP) erzeugen + festschreiben + zustellen. Best-
-  // effort: scheitert das, bleibt der Storno als DRAFT stehen (manuell
+  // Tx B: Storno-Beleg (IN_APP) erzeugen + festschreiben + zustellen — über
+  // denselben Festschreib-Kern wie der Normalversand (finalizeInvoiceSendTx).
+  // Best-effort: scheitert das, bleibt der Storno als DRAFT stehen (manuell
   // versendbar) — der Original-Storno steht bereits fest.
+  //
+  // EXTERNAL (Format PDF, stornoIsInApp=false): der Storno-Beleg besitzt kein
+  // eigenes Generat und wird bewusst NICHT automatisch versendet — er bleibt
+  // als DRAFT-Korrekturbeleg stehen und ist manuell über die Rechnungssoftware
+  // (aus der auch das Original stammt) auszustellen.
   if (stornoId && stornoIsInApp) {
     try {
       const archive = await withTimeout(ensureZugferdArchive(ctx, stornoId), 45_000);
       if (archive.ok || archive.code === 'not_applicable') {
-        await withTenantContext(ctx, async (tx) => {
-          const res = await tx.invoice.updateMany({
-            where: { id: stornoId!, status: 'DRAFT' },
-            data: { status: 'SENT', sentAt: new Date() },
-          });
-          if (res.count === 0) return;
-          const st = await tx.invoice.findUniqueOrThrow({ where: { id: stornoId! } });
-          if (st.documentId) {
-            await tx.document.updateMany({
-              where: { id: st.documentId, sharedWithClientAt: null },
-              data: { sharedWithClientAt: new Date(), sharedByStaff: staffId },
-            });
-          }
-          await evidenceService.record(tx, {
-            tenantId, actorType: 'STAFF', actorId: staffId,
-            action: 'invoice.send',
-            resourceType: 'invoice',
-            resourceId: st.id,
-            after: { number: st.number, storno: true },
-          });
-        });
-        emitN8nEvent('invoice.due', { tenantId, invoiceId: stornoId });
+        const st = await withTenantContext(ctx, (tx) =>
+          finalizeInvoiceSendTx(tx, { invoiceId: stornoId!, staffId, tenantId, auditExtra: { storno: true } }),
+        );
+        // invoice.storno statt invoice.due: ein Gutschrift-/Korrekturbeleg hat
+        // keine fällige Zahlung — Zahlungserinnerungs-Workflows dürfen nicht
+        // anschlagen. Nur bei erfolgreichem Claim (st != null) emittieren.
+        if (st) emitN8nEvent('invoice.storno', { tenantId, invoiceId: stornoId });
       }
     } catch (err) {
       log.warn(

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
-import { appealDeadline } from '@taxtronik/tax';
+import { appealDeadline, klageDeadline } from '@taxtronik/tax';
 import { evidenceService } from '@/server/container';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { assertClientAccessTx, toActionError } from '@/server/auth/rbac';
@@ -191,14 +191,16 @@ export async function updateNoticeStatusAction(input: {
     }
 
     const now = new Date();
-    // Klagefrist (§ 47 Abs. 1 FGO, 1 Monat) bei Einspruchsentscheidung. Fachlich
-    // identisch zur Einspruchsfrist (§ 122 (2)-Fiktion + § 108 (3)-Verschiebung)
-    // → appealDeadline wird wiederverwendet. Als Bekanntgabetag der Entscheidung
-    // dient der Statuswechsel-Tag (bestes verfügbares Signal; im Zweifel prüfen).
+    // Klagefrist (§ 47 Abs. 1 FGO, 1 Monat ab BEKANNTGABE der Einspruchs-
+    // entscheidung). Als Bekanntgabetag dient der Statuswechsel-Tag (bestes
+    // verfügbares Signal; im Zweifel prüfen). Anders als bei der Einspruchsfrist
+    // ist dieser Tag bereits die Bekanntgabe — die § 122 (2)-Fiktion darf NICHT
+    // erneut aufgeschlagen werden, deshalb klageDeadline (nur +1 Monat + § 108
+    // (3)-Verschiebung) statt appealDeadline.
     const heuteUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
     const klageFrist =
       status === 'ZURUECKGEWIESEN' || status === 'TEILABHILFE'
-        ? appealDeadline(heuteUtc, null)
+        ? klageDeadline(heuteUtc, null)
         : null;
     // TOCTOU-Schutz: nur aus dem gelesenen Ausgangsstatus heraus wechseln.
     // Zwei parallele, einzeln gültige Übergänge aus demselben Status würden

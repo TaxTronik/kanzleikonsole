@@ -26,6 +26,7 @@ import {
   germanHolidays,
   shiftToNextWorkday,
   appealDeadline,
+  klageDeadline,
   bekanntgabeFiktionTage,
   type GermanRegion,
 } from '../index';
@@ -265,5 +266,33 @@ describe('Einspruchsfrist § 355 AO + § 122 (2) AO', () => {
   it('bekanntgabeFiktionTage — Stichtagsgrenze 01.01.2025', () => {
     expect(bekanntgabeFiktionTage(utc('2024-12-31'))).toBe(3);
     expect(bekanntgabeFiktionTage(utc('2025-01-01'))).toBe(4);
+  });
+});
+
+describe('Klagefrist § 47 (1) FGO ab Bekanntgabe der Einspruchsentscheidung', () => {
+  it('schlägt KEINE Bekanntgabefiktion auf (Argument ist bereits die Bekanntgabe)', () => {
+    // Bekanntgabe 07.07.2026 (Di) → +1 Monat 07.08.2026 (Fr), OHNE +4-Tage-
+    // Fiktion. appealDeadline auf denselben Tag ergäbe dagegen 13.08.2026
+    // (Fiktion 11.07. → +1 Monat) — die Klagefrist wäre knapp eine Woche zu spät.
+    expect(ymd(klageDeadline(utc('2026-07-07')))).toBe('2026-08-07');
+    expect(ymd(appealDeadline(utc('2026-07-07')))).toBe('2026-08-13');
+  });
+
+  it('Fristende-Werktagsverschiebung (§ 108 (3) AO)', () => {
+    // Bekanntgabe 30.06.2026 (Di) → +1 Monat 30.07.2026 (Do, Werktag).
+    expect(ymd(klageDeadline(utc('2026-06-30')))).toBe('2026-07-30');
+    // Bekanntgabe 05.01.2026 (Mo) → +1 Monat 05.02.2026 (Do, Werktag).
+    expect(ymd(klageDeadline(utc('2026-01-05')))).toBe('2026-02-05');
+  });
+
+  it('Monatsende-Überlauf: 31.01. → 28.02. (Nicht-Schaltjahr)', () => {
+    // Bekanntgabe 31.01.2026 (Sa) → +1 Monat: 31.02. existiert nicht →
+    // 28.02.2026 (Sa) → § 108 (3)-Verschiebung auf Mo 02.03.2026.
+    expect(ymd(klageDeadline(utc('2026-01-31')))).toBe('2026-03-02');
+  });
+
+  it('normalisiert eine Nicht-Mitternacht-Zeit auf den UTC-Tag', () => {
+    // 14:30 UTC am 07.07.2026 → derselbe Fristbeginn wie Mitternacht.
+    expect(ymd(klageDeadline(new Date('2026-07-07T14:30:00Z')))).toBe('2026-08-07');
   });
 });

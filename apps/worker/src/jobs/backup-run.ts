@@ -32,14 +32,10 @@ import {
 } from '@taxtronik/evidence';
 import { connection, type ChecksJob } from '../queues';
 import { prismaOwner } from '../prisma-owner';
+import { pgConnArgs, prismaBytes } from '../pg-conn';
 import { log } from '../logger';
 
 const BACKUP_BUCKET = env.S3_BUCKET_BACKUPS ?? 'backups';
-
-/** Buffer → Uint8Array für Prisma-Bytes-Spalten (wie audit-rotate.ts). */
-function prismaBytes(value: Buffer | Uint8Array): Uint8Array<ArrayBuffer> {
-  return new Uint8Array(value);
-}
 
 const s3 = new S3Client({
   endpoint: env.S3_ENDPOINT,
@@ -52,21 +48,6 @@ const timestampPort = env.TIMESTAMP_AUTHORITY_URL
   ? new Rfc3161HttpAdapter(env.TIMESTAMP_AUTHORITY_URL)
   : new LocalTimestampAdapter();
 const evidenceService = new EvidenceService(timestampPort);
-
-/** P-2 (wie runner.ts/restore.ts): Passwort via PGPASSWORD, nie in den Args. */
-function pgConnArgs(dbUrl: string): { args: string[]; env: Record<string, string> } {
-  const u = new URL(dbUrl);
-  const args = [
-    '-h', u.hostname,
-    '-p', u.port || '5432',
-    '-U', decodeURIComponent(u.username),
-    '-d', u.pathname.slice(1) || decodeURIComponent(u.username),
-  ];
-  const e: Record<string, string> = { PGPASSWORD: decodeURIComponent(u.password) };
-  const sslmode = u.searchParams.get('sslmode');
-  if (sslmode) e['PGSSLMODE'] = sslmode;
-  return { args, env: e };
-}
 
 interface BackupRecordRef {
   id: string;
@@ -133,7 +114,17 @@ export async function runScheduledBackup(now: Date = new Date()): Promise<{ ok: 
   child.stdout.on('data', (c: Buffer) => { hash.update(c); sizeBytes += c.length; });
   child.stdout.pipe(body);
 
-  const exit = new Promise<number>((resolve) => child.on('exit', (code) => resolve(code ?? -1)));
+  // Ein Spawn-Fehler (ENOENT: pg_dump nicht im PATH, falscher PG_DUMP_PATH,
+  // Image ohne postgresql-client) emittiert 'error' statt 'exit'. Ohne Handler
+  // wirft das unbehandelte 'error'-Event in Node und reißt den GESAMTEN Worker-
+  // Prozess mit (nicht nur diesen Job); zusätzlich endet child.stdout nie →
+  // body bekommt kein 'end' → upload.done() hinge unbegrenzt. Wir zerstören
+  // body mit dem Fehler (upload.done() rejected dann sauber) und resolven exit
+  // mit -1, damit keine unbehandelte Promise-Rejection entsteht.
+  const exit = new Promise<number>((resolve) => {
+    child.on('exit', (code) => resolve(code ?? -1));
+    child.on('error', (e) => { body.destroy(e as Error); resolve(-1); });
+  });
 
   try {
     const upload = new Upload({
@@ -147,6 +138,11 @@ export async function runScheduledBackup(now: Date = new Date()): Promise<{ ok: 
     if (code !== 0) throw new Error(`pg_dump exit ${code}: ${stderrBuf.slice(0, 1000)}`);
   } catch (e) {
     const err = `Backup fehlgeschlagen: ${(e as Error).message}`;
+    // pg_dump-Prozess beenden, falls er noch läuft (z.B. Upload-Init-Fehler):
+    // sonst bleibt er als Zombie hängen und hält eine DB-Connection. body
+    // ebenfalls schließen, damit child.stdout nicht im Backpressure blockiert.
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM');
+    if (!body.destroyed) body.destroy();
     // Verwaistes (evtl. unvollständiges) Objekt best-effort entfernen.
     await s3.send(new DeleteObjectCommand({ Bucket: BACKUP_BUCKET, Key: key })).catch(() => undefined);
     await markAll(records, { status: 'FAILED', finishedAt: new Date(), errorMsg: err }, { status: 'FAILED', error: err });

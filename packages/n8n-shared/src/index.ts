@@ -34,6 +34,10 @@ export const STATIC_EVENT_NAMES = [
   'appointment.responded',
   'gwg.expired',
   'invoice.due',
+  // Storno-/Korrekturbeleg (§ 14c i.V.m. § 17 UStG) versendet. Bewusst NICHT
+  // invoice.due: ein Gutschriftbeleg hat keine fällige Zahlung, Zahlungs-
+  // erinnerungs-Workflows dürfen daran nicht anschlagen.
+  'invoice.storno',
   'staff.locked',
   // Urlaubsantrag — nicht als staff.locked emittieren (anderer Alarm).
   'staff.vacation_requested',

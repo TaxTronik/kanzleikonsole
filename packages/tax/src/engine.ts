@@ -399,10 +399,21 @@ export function appealDeadline(
     if (received.getTime() > bekanntgabe.getTime()) bekanntgabe = received;
   }
 
-  // 2. + 1 Monat kalendarisch (BGB), Monatsende-sicher.
-  const y = bekanntgabe.getUTCFullYear();
-  const m = bekanntgabe.getUTCMonth();
-  const d = bekanntgabe.getUTCDate();
+  // 2. + 1 Monat + § 108 (3)-Werktagsverschiebung.
+  return addMonthWithWorkdayShift(bekanntgabe, region);
+}
+
+/**
+ * Addiert einen Monat (kalendarisch nach BGB, monatsende-sicher) auf einen
+ * bereits feststehenden Fristbeginn und verschiebt das Fristende nach § 108
+ * Abs. 3 AO auf den nächsten Werktag. Gemeinsamer Kern von Einspruchs- und
+ * Klagefrist — der Unterschied liegt nur im Fristbeginn (Einspruch: Bescheid +
+ * Bekanntgabefiktion; Klage: bereits die Bekanntgabe der Einspruchsentscheidung).
+ */
+function addMonthWithWorkdayShift(start: Date, region: GermanRegion | null): Date {
+  const y = start.getUTCFullYear();
+  const m = start.getUTCMonth();
+  const d = start.getUTCDate();
   let ende = new Date(Date.UTC(y, m + 1, d));
   // Überlauf: existiert der Tag im Zielmonat nicht (z. B. 31.01. → 31.02.),
   // rollt JS in den übernächsten Monat — dann auf den letzten Tag des
@@ -411,9 +422,22 @@ export function appealDeadline(
   if (ende.getUTCMonth() !== ((m + 1) % 12)) {
     ende = new Date(Date.UTC(y, m + 2, 0));
   }
-
-  // 3. Fristende-Werktagsverschiebung.
   return shiftToNextWorkday(ende, region);
+}
+
+/**
+ * Klagefrist (§ 47 Abs. 1 FGO, 1 Monat) ab BEKANNTGABE der
+ * Einspruchsentscheidung.
+ *
+ * WICHTIG — Unterschied zu {@link appealDeadline}: Das Argument ist hier bereits
+ * der Bekanntgabetag der Einspruchsentscheidung, NICHT das Bescheiddatum. Die
+ * § 122 Abs. 2 AO-Bekanntgabefiktion darf deshalb NICHT erneut aufgeschlagen
+ * werden — sonst liefe die Klagefrist um die Fiktionstage (3–4 Werktage) zu
+ * spät, was bei einem Fristenkontrolltool die gefährliche Richtung ist. Nur
+ * + 1 Monat + § 108 Abs. 3 AO-Werktagsverschiebung ab dem Bekanntgabetag.
+ */
+export function klageDeadline(bekanntgabe: Date, region: GermanRegion | null = null): Date {
+  return addMonthWithWorkdayShift(startOfUtcDay(bekanntgabe), region);
 }
 
 function isWeekendOrHoliday(d: Date, region: GermanRegion | null): boolean {

@@ -38,6 +38,7 @@ import { gobdRetentionUntil, s3 } from '@taxtronik/storage';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
+import { prismaBytes } from '../pg-conn';
 import { assertPublicHost } from '../http/ssrf-guard';
 
 
@@ -55,10 +56,6 @@ const MODE: 'SOFT' = MODE_RAW === 'HARD' ? 'SOFT' : MODE_RAW;
 const ARCHIVE_BUCKET = env.S3_BUCKET_GOBD;
 // § 147 AO: 10 Jahre ab Schluss des Kalenderjahres — siehe gobdRetentionUntil
 // im @taxtronik/storage-Paket. Audit-Archive ist GoBD-pflichtig.
-
-function prismaBytes(value: Buffer | Uint8Array): Uint8Array<ArrayBuffer> {
-  return new Uint8Array(value);
-}
 
 export const auditRotateWorker = new Worker<ChecksJob>(
   'audit-rotate',

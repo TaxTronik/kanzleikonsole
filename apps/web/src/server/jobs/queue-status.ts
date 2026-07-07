@@ -16,9 +16,14 @@ import { Queue } from 'bullmq';
 import { env } from '@taxtronik/config';
 import { log } from '@/server/logger';
 
-// Alle vom Worker betriebenen Queues (Namen aus apps/worker/src/queues.ts) mit
-// Soll-Intervall in Stunden (für die „veraltet?"-Einordnung; null = Ereignis-
-// getrieben).
+// Alle vom Worker betriebenen Queues mit Soll-Intervall in Stunden (für die
+// „veraltet?"-Einordnung; null = ereignisgetrieben).
+//
+// SOURCE OF TRUTH der Namen: apps/worker/src/queues.ts. Web hängt nicht vom
+// Worker-Package ab (kein gemeinsamer Import möglich) und das Intervall ist
+// ohnehin UI-Metadatum ohne Entsprechung im Worker → die Liste bleibt bewusst
+// explizit. WICHTIG: Wird dort eine Queue ergänzt/entfernt, MUSS sie auch hier
+// gepflegt werden, sonst fehlt sie stillschweigend in der Admin-Übersicht.
 const QUEUES: Array<{ name: string; expectedEveryHours: number | null }> = [
   { name: 'evidence-seal', expectedEveryHours: 24 },
   { name: 'audit-verify-check', expectedEveryHours: 24 },
@@ -31,6 +36,7 @@ const QUEUES: Array<{ name: string; expectedEveryHours: number | null }> = [
   { name: 'magic-link-cleanup', expectedEveryHours: 24 },
   { name: 'dsgvo-retention', expectedEveryHours: 24 },
   { name: 'poa-expiry-check', expectedEveryHours: 24 },
+  { name: 'backup-run', expectedEveryHours: 24 },
   { name: 'backup-drill', expectedEveryHours: 24 * 31 },
   { name: 'health-alert', expectedEveryHours: null },
   { name: 'n8n-deliver', expectedEveryHours: null },
