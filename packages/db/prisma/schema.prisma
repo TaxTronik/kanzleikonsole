@@ -426,7 +426,7 @@ model Invoice {
   // iter100: Storno-Verkettung. stornoOfId zeigt von der Stornorechnung
   // (TypeCode 381, negierte Beträge) auf die stornierte Originalrechnung.
   stornoOfId     String?           @map("storno_of_id") @db.Uuid
-  stornoOf       Invoice?          @relation("InvoiceStorno", fields: [stornoOfId], references: [id], onUpdate: NoAction, onDelete: NoAction)
+  stornoOf       Invoice?          @relation("InvoiceStorno", fields: [stornoOfId], references: [id], onUpdate: NoAction, onDelete: NoAction, map: "invoice_storno_of_fkey")
   stornoBy       Invoice[]         @relation("InvoiceStorno")
   category       InvoiceCategory?  @relation(fields: [categoryId], references: [id], onUpdate: NoAction)
   client         Client            @relation(fields: [clientId], references: [id])
@@ -441,6 +441,8 @@ model Invoice {
   @@index([tenantId, dueDate])
   @@index([tenantId, categoryId], map: "invoice_tenant_category_idx")
   @@index([tenantId, documentId])
+  // iter100: FK-Index auf die Storno-Verkettung (von iter100-Migration angelegt).
+  @@index([stornoOfId], map: "invoice_storno_of_idx")
   // iter71: pg_trgm-GIN für die globale Suche (Rechnungsnr. + Betreff)
   @@index([number(ops: raw("gin_trgm_ops"))], type: Gin, map: "invoice_number_trgm_idx")
   @@index([subject(ops: raw("gin_trgm_ops"))], type: Gin, map: "invoice_subject_trgm_idx")
