@@ -22,7 +22,10 @@ export const SAMPLE_INVOICE: XRechnungInvoice = {
   positions: [
     { position: 1, description: 'Beratung', quantity: 1, unit: 'Stunde', unitPrice: 100, netAmount: 100, vatRate: 19 },
     { position: 2, description: 'Fachliteratur', quantity: 1, unit: 'Stück', unitPrice: 100, netAmount: 100, vatRate: 7 },
-    { position: 3, description: 'Durchlaufender Posten', quantity: 1, unit: 'Pauschal', unitPrice: 50, netAmount: 50, vatRate: 0 },
+    // P3-14: KEIN „durchlaufender Posten" (§ 10 Abs. 1 S. 5 UStG — kein Entgelt,
+    // gehört nicht als Position aufs Entgelt), sondern eine echte 0 %-Nebenkosten-
+    // Position (deckt den Kategorie-Z-Pfad im Test ab).
+    { position: 3, description: 'Nebenkosten (0 % USt)', quantity: 1, unit: 'Pauschal', unitPrice: 50, netAmount: 50, vatRate: 0 },
   ],
 };
 

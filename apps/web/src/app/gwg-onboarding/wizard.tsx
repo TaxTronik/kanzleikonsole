@@ -205,6 +205,12 @@ export function OnboardingWizard({
       for (const [i, o] of owners.entries()) {
         if (!o.fullName.trim()) return `Person ${i + 1}: Vollständiger Name fehlt.`;
         if (!o.birthDate) return `Person ${i + 1}: Geburtsdatum fehlt.`;
+        // § 11 Abs. 4 GwG: Geburtsort, Staatsangehörigkeit, Wohnanschrift Pflicht.
+        if (!o.birthPlace.trim()) return `Person ${i + 1}: Geburtsort fehlt (§ 11 Abs. 4 GwG).`;
+        if (!o.nationality.trim()) return `Person ${i + 1}: Staatsangehörigkeit fehlt (§ 11 Abs. 4 GwG).`;
+        if (!o.street.trim() || !o.postalCode.trim() || !o.city.trim()) {
+          return `Person ${i + 1}: Wohnanschrift (Straße, PLZ, Ort) fehlt (§ 11 Abs. 4 GwG).`;
+        }
         if (!o.idFront) return `Person ${i + 1}: Ausweis Vorderseite fehlt.`;
         if (!o.idBack) return `Person ${i + 1}: Ausweis Rückseite fehlt.`;
       }

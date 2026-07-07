@@ -240,11 +240,13 @@ export async function uploadIdImageAction(input: {
 const OwnerSchema = z.object({
   fullName: z.string().min(1).max(200),
   birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  birthPlace: z.string().max(200).optional().or(z.literal('')),
-  nationality: z.string().max(50).optional().or(z.literal('')),
-  street: z.string().max(255).optional().or(z.literal('')),
-  postalCode: z.string().max(20).optional().or(z.literal('')),
-  city: z.string().max(100).optional().or(z.literal('')),
+  // P2-2 / § 11 Abs. 4 Nr. 1 GwG: Geburtsort, Staatsangehörigkeit und
+  // Wohnanschrift sind bei natürlichen Personen Pflicht-Identifizierungsdaten.
+  birthPlace: z.string().min(1, 'Geburtsort ist Pflicht (§ 11 Abs. 4 GwG).').max(200),
+  nationality: z.string().min(1, 'Staatsangehörigkeit ist Pflicht (§ 11 Abs. 4 GwG).').max(50),
+  street: z.string().min(1, 'Wohnanschrift (Straße) ist Pflicht (§ 11 Abs. 4 GwG).').max(255),
+  postalCode: z.string().min(1, 'Wohnanschrift (PLZ) ist Pflicht.').max(20),
+  city: z.string().min(1, 'Wohnanschrift (Ort) ist Pflicht.').max(100),
   countryIso: z.string().max(10).optional().or(z.literal('')),
   sharePercent: z.string().max(50).optional().or(z.literal('')),
   idNumber: z.string().max(100).optional().or(z.literal('')),

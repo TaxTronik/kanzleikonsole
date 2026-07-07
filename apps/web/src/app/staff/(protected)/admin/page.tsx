@@ -433,6 +433,11 @@ export default async function AdminPage() {
             )}
           </li>
           <li>
+            <Link href="/staff/admin/jobs" className="text-brand-700 hover:underline">
+              → System → Jobs (Hintergrund-Verarbeitung)
+            </Link>
+          </li>
+          <li>
             <Link href="/staff/service-providers" className="text-brand-700 hover:underline">
               → Dienstleisterverzeichnis (DSGVO Art. 28 / GwG § 11)
             </Link>
