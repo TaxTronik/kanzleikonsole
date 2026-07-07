@@ -119,4 +119,3 @@ Die Assets, deren Vertraulichkeit, Integrität oder Verfügbarkeit existenzbedro
 - `docs/compliance/tenancy-model.md`
 - `docs/compliance/gobd.md`
 - `docs/compliance/gwg.md`
-- `docs/security/portal-audit-2026-06.md`

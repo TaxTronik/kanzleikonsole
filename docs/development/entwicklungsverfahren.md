@@ -66,8 +66,8 @@ Jede Änderung — Feature, Fehlerbehebung, Härtung — folgt demselben Weg:
    Regressionstest, der den Fehler vor dem Fix nachweisbar reproduziert.
 4. **Review:** Code-Review durch den Verantwortlichen; bei sicherheits- oder
    compliance-relevanten Änderungen zusätzlich strukturierte adversariale
-   Reviews (mehrere unabhängige Prüfperspektiven, Ergebnisse dokumentiert,
-   z. B. [docs/security/portal-audit-2026-06.md](../security/portal-audit-2026-06.md)).
+   Reviews (mehrere unabhängige Prüfperspektiven, Ergebnisse in der
+   Commit-Historie und den PR-Beschreibungen dokumentiert).
 5. **Maschinelle Gates:** Push löst die CI aus (Abschnitt 4). Ein roter Lauf
    blockiert die Freigabe; Gates werden nicht umgangen.
 6. **Commit-Hygiene:** thematisch geschnittene Commits mit aussagefähiger
