@@ -12,6 +12,23 @@ Funktionsausfall) · **P2** = mittel · **P3** = niedrig. ⚡ = Quick Win (< 1 h
 
 ---
 
+## Bearbeitungsstand (2026-07-07, Umsetzung) — Runde 6
+
+**NEU ERLEDIGT (Runde 6):**
+- **P1-24 (komplett)** Automatischer täglicher Backup-Job im Worker
+  (`backup-run`, 01:00 UTC): pg_dump → S3-Multipart-Stream, BackupRecord +
+  Audit je Tenant, Scheduler-Eintrag, Tests. Zusammen mit dem bereits
+  umgesetzten Staleness-Alarm ist die Lücke geschlossen.
+- **P2-8** ZUGFeRD/Factur-X: AFRelationship-Bug behoben (`Alternative` statt
+  `Source`), vollständiger Factur-X-XMP-Block eingebettet, UI-Label ehrlich
+  (kein falscher PDF/A-3-Anspruch — Standard-Fonts nicht eingebettet; XRechnung
+  als führendes Format). Test.
+  Offen als dokumentierter Folgeschritt: echtes veraPDF-validierbares PDF/A-3
+  bräuchte eingebettete Fonts (fontkit + Font-Asset) + OutputIntent/ICC.
+
+Damit sind **alle P0, alle P1 und praktisch alle P2** umgesetzt. Verbleibend nur
+noch: autoheal-Sidecar (Image-Digest), P2-24 E2E-Specs, kosmetisches P3-27.
+
 ## Bearbeitungsstand (2026-07-07, Umsetzung) — Runde 5
 
 **NEU ERLEDIGT (Runde 5):**
