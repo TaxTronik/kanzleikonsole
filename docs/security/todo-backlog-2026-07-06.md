@@ -12,6 +12,20 @@ Funktionsausfall) · **P2** = mittel · **P3** = niedrig. ⚡ = Quick Win (< 1 h
 
 ---
 
+## Bearbeitungsstand (2026-07-07, Umsetzung) — Runde 5
+
+**NEU ERLEDIGT (Runde 5):**
+- **P2-19** Admin-Seite „System → Jobs": Job-Zähler, letzter Erfolg/Fehler +
+  Staleness je BullMQ-Queue (getQueuesStatus).
+- **P2-2 (komplett)** § 11 Abs. 4 GwG — Geburtsort/Staatsangehörigkeit/
+  Wohnanschrift im Onboarding jetzt Pflicht (Schema + Wizard).
+- **P3-14** Sample-Fixture: „Durchlaufender Posten" (§ 10 Abs. 1 S. 5 UStG) →
+  echte 0 %-Nebenkostenposition.
+
+Verbleibend (bewusst offen): **P2-8** PDF/A-3-Konformität (Factur-X-XMP),
+**P1-24-Rest** echter Backup-Zeitplan (Runner-Extraktion), **P2-24** E2E-Specs,
+autoheal-Sidecar (Digest), **P3-27** consent-Key (id-Threading).
+
 ## Bearbeitungsstand (2026-07-07, Umsetzung) — Runde 4
 
 **NEU ERLEDIGT (Runde 4):**
