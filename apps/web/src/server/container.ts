@@ -9,14 +9,15 @@ import { env } from '@taxtronik/config';
 import {
   EvidenceService,
   LocalTimestampAdapter,
-  Rfc3161HttpAdapter,
+  createRfc3161Adapter,
 } from '@taxtronik/evidence';
 
 // C2: Stub-Adapter wirft unbedingt — der echte HTTP-Adapter ist seit Iter. 18
 // produktionsreif (siehe evidence-seal.ts). Bei konfigurierter TSA-URL den
-// HTTP-Adapter benutzen.
+// HTTP-Adapter benutzen. createRfc3161Adapter verdrahtet die aufgelösten
+// Trust-Roots (Default + optionale Operator-Roots via TSA_TRUSTED_ROOTS_FILE).
 const timestampPort = env.TIMESTAMP_AUTHORITY_URL
-  ? new Rfc3161HttpAdapter(env.TIMESTAMP_AUTHORITY_URL)
+  ? createRfc3161Adapter(env.TIMESTAMP_AUTHORITY_URL)
   : new LocalTimestampAdapter();
 
 export const evidenceService = new EvidenceService(timestampPort);

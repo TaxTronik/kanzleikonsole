@@ -38,7 +38,7 @@ import { createPostgresAdapter } from '@taxtronik/db/prisma-adapter';
 import {
   EvidenceService,
   LocalTimestampAdapter,
-  Rfc3161HttpAdapter,
+  createRfc3161Adapter,
   BACKUP_DRILL_RESULT_SETTING_KEY,
   type PersistedDrillResult,
 } from '@taxtronik/evidence';
@@ -64,7 +64,7 @@ const s3 = new S3Client({
 
 // Wie audit-verify-check: verify() braucht nur den Stamp-Validator.
 const timestampPort = env.TIMESTAMP_AUTHORITY_URL
-  ? new Rfc3161HttpAdapter(env.TIMESTAMP_AUTHORITY_URL)
+  ? createRfc3161Adapter(env.TIMESTAMP_AUTHORITY_URL)
   : new LocalTimestampAdapter();
 const evidenceService = new EvidenceService(timestampPort);
 

@@ -11,7 +11,7 @@ import { prismaOwner } from '../prisma-owner';
 import {
   EvidenceService,
   LocalTimestampAdapter,
-  Rfc3161HttpAdapter,
+  createRfc3161Adapter,
   AUDIT_VERIFY_RESULT_SETTING_KEY,
   AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY,
   toPersistedVerifyResult,
@@ -28,7 +28,7 @@ import { withWorkerTenantContext } from '../tenant-context';
 // evidence-seal.ts) ist hier nicht nötig, weil verify() nur den Stamp
 // validiert, nicht erneut signiert.
 const timestampPort = env.TIMESTAMP_AUTHORITY_URL
-  ? new Rfc3161HttpAdapter(env.TIMESTAMP_AUTHORITY_URL)
+  ? createRfc3161Adapter(env.TIMESTAMP_AUTHORITY_URL)
   : new LocalTimestampAdapter();
 const evidenceService = new EvidenceService(timestampPort);
 

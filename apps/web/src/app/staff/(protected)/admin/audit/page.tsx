@@ -264,8 +264,25 @@ export default async function AuditLogPage({
                   </p>
                 )}
                 {verifyResult.tsaMode === 'rfc3161' && (
-                  <p className="text-xs text-green-700 mt-1">
+                  <p
+                    className={
+                      'text-xs mt-1 ' +
+                      (verifyResult.sealsChecked > 0 &&
+                      (verifyResult.sealsTrustAnchored ?? 0) < verifyResult.sealsChecked
+                        ? 'text-amber-700'
+                        : 'text-green-700')
+                    }
+                  >
                     Zeitstempel-Modus: externe TSA (RFC 3161).
+                    {verifyResult.sealsChecked > 0 && (
+                      <>
+                        {' '}Trust-verankert: {verifyResult.sealsTrustAnchored ?? 0}/
+                        {verifyResult.sealsChecked}.
+                        {(verifyResult.sealsTrustAnchored ?? 0) < verifyResult.sealsChecked && (
+                          <> Übrige nur kryptografisch (cryptoOk) — Produktiv-TSA-Root hinterlegen.</>
+                        )}
+                      </>
+                    )}
                   </p>
                 )}
               </>

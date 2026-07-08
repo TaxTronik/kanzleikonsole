@@ -39,6 +39,19 @@ export interface TimestampPort {
    * Payload. Lokaler Adapter macht eine schwache Selbst-Prüfung.
    */
   verify(payload: Uint8Array, response: Uint8Array | null): Promise<boolean>;
+
+  /**
+   * Optional: wie verify(), liefert aber zusätzlich, ob die Cert-Kette bis zu
+   * einem hinterlegten Trust-Anchor validiert (`trustAnchored`) oder ob das
+   * Token nur kryptografisch wohlgeformt/an die Daten gebunden ist (cryptoOk,
+   * No-Regress-Pfad ohne Anker). Nur der HTTP-Adapter implementiert das; der
+   * Aufrufer nutzt es für Verankerungs-Transparenz und fällt sonst auf verify()
+   * zurück.
+   */
+  verifyDetailed?(
+    payload: Uint8Array,
+    response: Uint8Array | null,
+  ): Promise<{ ok: boolean; trustAnchored: boolean }>;
 }
 
 // -----------------------------------------------------------------------------

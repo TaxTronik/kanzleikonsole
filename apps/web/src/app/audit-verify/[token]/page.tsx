@@ -91,6 +91,13 @@ export default async function AuditVerifyPage({
           }
           warn={result.tsaMode !== 'rfc3161'}
         />
+        {result.tsaMode === 'rfc3161' && result.sealsChecked > 0 && (
+          <Row
+            label="Trust-verankerte Siegel"
+            value={`${result.sealsTrustAnchored ?? 0} / ${result.sealsChecked}`}
+            warn={(result.sealsTrustAnchored ?? 0) < result.sealsChecked}
+          />
+        )}
         <Row
           label="Hash-Chain"
           value={result.ok ? 'lückenlos verkettet' : 'gebrochen'}

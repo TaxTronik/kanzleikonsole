@@ -64,6 +64,14 @@ export interface VerificationResult {
   };
   sealsChecked: number;
   sealBreaks: Array<{ sealDate: Date; reason: string }>;
+  /**
+   * Wie viele der geprüften Siegel bis zu einem hinterlegten Trust-Anchor
+   * validiert haben (nur rfc3161-Adapter). Liegt der Wert unter sealsChecked,
+   * werden Siegel nur cryptoOk (No-Regress, ohne externen Anker) akzeptiert —
+   * Hinweis, die Produktiv-TSA-Root via TSA_TRUSTED_ROOTS_FILE zu hinterlegen.
+   * `undefined`, wenn der Adapter keine Verankerungs-Auskunft liefert (local).
+   */
+  sealsTrustAnchored?: number;
   /** Welcher Zeitstempel-Adapter geprüft hat — IMMER ausgewiesen (Audit-Transparenz). */
   tsaMode: 'local' | 'rfc3161';
   /** Policy-Verstöße (z. B. Self-Timestamp im Produktivmodus). */
@@ -387,11 +395,14 @@ export class EvidenceService {
       // TSA-Bindung: der messageImprint im Token muss an den rekonstruierten Hash
       // binden. Schlägt fehl, sobald die History umgeschrieben wurde (Token trägt
       // den alten Imprint, die Kette rechnet jetzt einen anderen Spitzen-Hash).
-      const sealOk = await this.timestampPort.verify(
+      const sealRes = await this.verifySealBinding(
         recomputed,
         s.tsa_response_blob ? Buffer.from(s.tsa_response_blob) : null,
       );
-      if (!sealOk) {
+      if (sealRes.trustAnchored !== null) {
+        result.sealsTrustAnchored = (result.sealsTrustAnchored ?? 0) + (sealRes.trustAnchored ? 1 : 0);
+      }
+      if (!sealRes.ok) {
         result.ok = false;
         result.sealBreaks.push({
           sealDate: s.seal_date,
@@ -401,6 +412,23 @@ export class EvidenceService {
     }
 
     return result;
+  }
+
+  /**
+   * Prüft die TSA-Bindung eines Siegels an den rekonstruierten Spitzen-Hash.
+   * Nutzt verifyDetailed (Verankerungs-Auskunft) falls der Adapter es anbietet,
+   * sonst verify(). `trustAnchored` ist null, wenn keine Auskunft möglich ist.
+   */
+  private async verifySealBinding(
+    recomputed: Buffer,
+    blob: Buffer | null,
+  ): Promise<{ ok: boolean; trustAnchored: boolean | null }> {
+    const port = this.timestampPort;
+    if (port.verifyDetailed) {
+      const r = await port.verifyDetailed(recomputed, blob);
+      return { ok: r.ok, trustAnchored: r.trustAnchored };
+    }
+    return { ok: await port.verify(recomputed, blob), trustAnchored: null };
   }
 
   /**
@@ -538,11 +566,14 @@ export class EvidenceService {
         });
         continue;
       }
-      const sealOk = await this.timestampPort.verify(
+      const sealRes = await this.verifySealBinding(
         recomputed,
         s.tsa_response_blob ? Buffer.from(s.tsa_response_blob) : null,
       );
-      if (!sealOk) {
+      if (sealRes.trustAnchored !== null) {
+        result.sealsTrustAnchored = (result.sealsTrustAnchored ?? 0) + (sealRes.trustAnchored ? 1 : 0);
+      }
+      if (!sealRes.ok) {
         result.ok = false;
         result.sealBreaks.push({
           sealDate: s.seal_date,

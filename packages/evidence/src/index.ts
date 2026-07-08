@@ -29,7 +29,8 @@ export {
   LocalTimestampAdapter,
   Rfc3161StubAdapter,
 } from './ports/timestamp';
-export { Rfc3161HttpAdapter } from './ports/rfc3161-http';
+export { Rfc3161HttpAdapter, createRfc3161Adapter } from './ports/rfc3161-http';
+export { resolveTsaTrustedRoots } from './ports/resolve-roots';
 export {
   TSA_PROVIDERS,
   getTsaProvider,

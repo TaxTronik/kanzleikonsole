@@ -27,6 +27,7 @@ import { safeFetch } from '@taxtronik/http-utils';
 import type { TimestampPort, TimestampResult } from './timestamp';
 import { verifyTimestampResponse, extractTsaMeta } from './rfc3161-verify';
 import { DEFAULT_TSA_TRUSTED_ROOTS } from './globalsign-roots';
+import { resolveTsaTrustedRoots } from './resolve-roots';
 
 // OID 2.16.840.1.101.3.4.2.1 (SHA-256) in DER
 const SHA256_OID_DER = new Uint8Array([
@@ -128,6 +129,16 @@ const PKI_STATUS_LABELS: Record<number, string> = {
   5: 'revocationNotification',
 };
 
+/**
+ * Standard-Factory für den TSA-Adapter: verdrahtet die aufgelösten Trust-Roots
+ * (Default + optionale Operator-Roots aus `TSA_TRUSTED_ROOTS_FILE`). ALLE
+ * App-/Worker-/CLI-Konstruktionsstellen sollten diese Factory nutzen, damit
+ * eine hinterlegte Produktiv-TSA-Root überall greift (statt nur GlobalSign R6).
+ */
+export function createRfc3161Adapter(tsaUrl: string, timeoutMs?: number): Rfc3161HttpAdapter {
+  return new Rfc3161HttpAdapter(tsaUrl, timeoutMs, resolveTsaTrustedRoots());
+}
+
 export class Rfc3161HttpAdapter implements TimestampPort {
   readonly mode = 'rfc3161' as const;
 
@@ -198,5 +209,16 @@ export class Rfc3161HttpAdapter implements TimestampPort {
     // manipuliertes/fremdes Blob, eine kaputte EKU oder fehlende ESS-Bindung
     // scheitern bereits hier (anders als beim früheren reinen signatureValid).
     return r.cryptoOk;
+  }
+
+  async verifyDetailed(
+    payload: Uint8Array,
+    response: Uint8Array | null,
+  ): Promise<{ ok: boolean; trustAnchored: boolean }> {
+    if (!response) return { ok: false, trustAnchored: false };
+    const r = await verifyTimestampResponse(payload, response, this.trustedRoots);
+    // ok = wie verify(): voll gültig ODER cryptoOk (No-Regress). trustAnchored =
+    // Kette bis zum hinterlegten Root validiert (r.valid impliziert cryptoOk).
+    return { ok: r.valid || r.cryptoOk, trustAnchored: r.valid };
   }
 }
