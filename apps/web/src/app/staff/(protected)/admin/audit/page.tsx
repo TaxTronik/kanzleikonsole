@@ -256,6 +256,18 @@ export default async function AuditLogPage({
                   {verifyResult.sealsChecked} Tagesversiegelungen geprüft
                   {' · '}zuletzt geprüft {fmtDateTimeSeconds(new Date(verifyResult.checkedAt))}
                 </p>
+                {verifyResult.tsaMode === 'local' && (
+                  <p className="text-xs text-amber-700 mt-1">
+                    ⚠ Zeitstempel-Modus: lokal — keine externe TSA. Der Seal-Check ist
+                    gegenstandslos; nur die SHA-256-Kette trägt. Für revisionssichere
+                    externe Verankerung eine RFC-3161-TSA konfigurieren.
+                  </p>
+                )}
+                {verifyResult.tsaMode === 'rfc3161' && (
+                  <p className="text-xs text-green-700 mt-1">
+                    Zeitstempel-Modus: externe TSA (RFC 3161).
+                  </p>
+                )}
               </>
             ) : recoveryIntact ? (
               <>

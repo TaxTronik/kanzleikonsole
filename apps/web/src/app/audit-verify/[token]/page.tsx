@@ -83,6 +83,15 @@ export default async function AuditVerifyPage({
           warn={result.sealBreaks.length > 0}
         />
         <Row
+          label="Zeitstempel-Modus"
+          value={
+            result.tsaMode === 'rfc3161'
+              ? 'externe TSA (RFC 3161)'
+              : 'lokal — keine externe TSA'
+          }
+          warn={result.tsaMode !== 'rfc3161'}
+        />
+        <Row
           label="Hash-Chain"
           value={result.ok ? 'lückenlos verkettet' : 'gebrochen'}
           warn={!result.ok}

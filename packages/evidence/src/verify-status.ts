@@ -37,6 +37,12 @@ export interface PersistedVerifyResult {
    *  Admin-Seite zeigt bernstein (statt rot) und der Worker feuert KEINE
    *  SYSTEM_AUDIT_BREAK-Notification. */
   recovered: boolean;
+  /** Zeitstempel-Modus des Prüf-Laufs — Audit-Transparenz. 'local' = Self-
+   *  Timestamp ohne externe Wahrheitsquelle (nur die SHA-256-Kette trägt, der
+   *  Seal-Check ist gegenstandslos); 'rfc3161' = externe TSA mit kryptografisch
+   *  prüfbarer Antwort. Optional, weil vor Einführung geschriebene Ergebnisse
+   *  das Feld nicht tragen. */
+  tsaMode?: 'local' | 'rfc3161';
 }
 
 export interface PersistedRecoveryCheckpoint {
@@ -97,5 +103,6 @@ export function toPersistedVerifyResult(
       : null,
     error: null,
     recovered: false,
+    tsaMode: r.tsaMode,
   };
 }
