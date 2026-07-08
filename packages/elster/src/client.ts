@@ -43,7 +43,15 @@ const KONTOABFRAGE_MAX_TEILE = 75;
 const KontoabfrageTeileSchema = z
   .array(KontoabfrageTeilSchema)
   .min(KONTOABFRAGE_MIN_TEILE)
-  .max(KONTOABFRAGE_MAX_TEILE);
+  .max(KONTOABFRAGE_MAX_TEILE)
+  // Alle Teil-Abfragen eines Vorgangs müssen dasselbe Finanzamt betreffen —
+  // die ersten 4 Ziffern der 13-stelligen Steuernummer sind der Finanzamts-
+  // Schlüssel (Bundeseinheitliches Format). ELSTER lehnt gemischte Vorgänge
+  // ohnehin ab; hier VOR dem kostenpflichtigen Bridge-Call abfangen.
+  .refine(
+    (teile) => new Set(teile.map((t) => t.steuernummer.slice(0, 4))).size <= 1,
+    'Alle Teil-Abfragen müssen Steuernummern desselben Finanzamts (gleiche ersten 4 Ziffern) tragen.',
+  );
 
 // Validierung ist lokal/CPU-gebunden (kein Serverkontakt) — trotzdem großzügig:
 // der erste Aufruf einer Datenart lädt das Prüf-Plugin nach.

@@ -8,6 +8,7 @@ import { evidenceService } from '@/server/container';
 import { prismaBytes } from '@/server/db/prisma-bytes';
 import { generateXRechnungCii } from '@/server/invoicing/xrechnung';
 import { readSellerInfo } from '@/server/settings/tenant-settings';
+import { isUuid } from '@/lib/uuid';
 
 export async function GET(
   req: NextRequest,
@@ -19,6 +20,9 @@ export async function GET(
   }
 
   const { id } = await params;
+  if (!isUuid(id)) {
+    return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  }
   const { tenantId, staffId } = session.user;
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
 

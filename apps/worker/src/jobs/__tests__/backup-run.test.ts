@@ -101,7 +101,8 @@ describe('runScheduledBackup', () => {
   it('Erfolg: SUCCESS je Tenant + backup.run-Audit + Key-Format', async () => {
     const r = await runScheduledBackup(NOW);
     expect(r.ok).toBe(true);
-    expect(r.key).toBe('pgdump/2026/07/07/taxtronik-20260707-0100.sql.gz');
+    // Sekunden + 6-stelliger Hex-Zufallssuffix gegen prozessübergreifende Key-Kollision.
+    expect(r.key).toMatch(/^pgdump\/2026\/07\/07\/taxtronik-20260707-010000-[0-9a-f]{6}\.sql\.gz$/);
     // RUNNING-Records für beide Tenants angelegt.
     expect(h.prismaOwner.backupRecord.create).toHaveBeenCalledTimes(2);
     // Upload wurde aufgerufen (Stream nach S3).

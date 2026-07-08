@@ -7,6 +7,7 @@ import { evidenceService } from '@/server/container';
 import { streamObject } from '@taxtronik/storage';
 import { ensureZugferdArchive } from '@/server/invoicing/archive';
 import { withTimeout, TimeoutError } from '@/lib/with-timeout';
+import { isUuid } from '@/lib/uuid';
 
 export async function GET(
   req: NextRequest,
@@ -18,6 +19,9 @@ export async function GET(
   }
 
   const { id } = await params;
+  if (!isUuid(id)) {
+    return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  }
   const { tenantId, staffId } = session.user;
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
 

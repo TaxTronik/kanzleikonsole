@@ -1,13 +1,13 @@
 ﻿import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, CheckCircle2, FileText, X } from 'lucide-react';
+import { ArrowLeft, FileText } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { canAccessClientTx, hasStaffPermission } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
-import { markPaidAction, cancelInvoiceAction } from '../actions';
 import { computeVatTotals } from '@/server/invoicing/vat';
 import { MarkSentForm } from './mark-sent-form';
 import { InvoiceFormatDownload } from './invoice-format-download';
+import { InvoiceStatusActions } from './invoice-status-actions';
 
 import { fmtDateShort, fmtEUR } from '@/lib/fmt';
 const statusLabels: Record<string, string> = {
@@ -260,23 +260,13 @@ export default async function InvoiceDetailPage({
         {inv.status === 'DRAFT' && canSend && (
           <MarkSentForm invoiceId={inv.id} />
         )}
-        {(inv.status === 'SENT' || inv.status === 'OVERDUE') && canManage && (
-          <form action={markPaidAction}>
-            <input type="hidden" name="invoiceId" value={inv.id} />
-            <button type="submit" className="btn-primary">
-              <CheckCircle2 className="h-4 w-4" />
-              Als bezahlt markieren
-            </button>
-          </form>
-        )}
-        {inv.status !== 'CANCELLED' && inv.status !== 'PAID' && canManage && (
-          <form action={cancelInvoiceAction}>
-            <input type="hidden" name="invoiceId" value={inv.id} />
-            <button type="submit" className="btn-secondary text-red-700 border-red-300 hover:bg-red-50">
-              <X className="h-4 w-4" />
-              Stornieren
-            </button>
-          </form>
+        {canManage && (
+          <InvoiceStatusActions
+            invoiceId={inv.id}
+            invoiceNumber={inv.number}
+            showMarkPaid={inv.status === 'SENT' || inv.status === 'OVERDUE'}
+            showCancel={inv.status !== 'CANCELLED' && inv.status !== 'PAID'}
+          />
         )}
       </div>
     </div>

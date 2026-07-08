@@ -37,8 +37,15 @@ export function SortableList({ count, onReorder, renderItem, className }: Props)
   const containerRef = useRef<HTMLDivElement>(null);
   const [draggingFrom, setDraggingFrom] = useState<number | null>(null);
   const [hoverTarget, setHoverTarget] = useState<number | null>(null);
+  // Spiegel der aktuellen Drag-Positionen in Refs: `onReorder` (ein Seiteneffekt)
+  // darf NICHT aus einem setState-Updater heraus laufen — Updater müssen rein
+  // sein und werden unter StrictMode doppelt aufgerufen (→ doppeltes Reorder).
+  const draggingFromRef = useRef<number | null>(null);
+  const hoverTargetRef = useRef<number | null>(null);
 
   function startDrag(index: number, e: ReactPointerEvent) {
+    draggingFromRef.current = index;
+    hoverTargetRef.current = index;
     setDraggingFrom(index);
     setHoverTarget(index);
     (e.target as Element).setPointerCapture?.(e.pointerId);
@@ -59,21 +66,23 @@ export function SortableList({ count, onReorder, renderItem, className }: Props)
       const last = items[items.length - 1];
       if (first && ev.clientY < first.getBoundingClientRect().top) target = 0;
       if (last && ev.clientY > last.getBoundingClientRect().bottom) target = items.length - 1;
+      hoverTargetRef.current = target;
       setHoverTarget(target);
     }
 
     function onUp(ev: globalThis.PointerEvent) {
       document.removeEventListener('pointermove', onMove);
       document.removeEventListener('pointerup', onUp);
-      setDraggingFrom((from) => {
-        setHoverTarget((to) => {
-          if (from !== null && to !== null && from !== to) {
-            onReorder(from, to);
-          }
-          return null;
-        });
-        return null;
-      });
+      const from = draggingFromRef.current;
+      const to = hoverTargetRef.current;
+      draggingFromRef.current = null;
+      hoverTargetRef.current = null;
+      setDraggingFrom(null);
+      setHoverTarget(null);
+      // Seiteneffekt AUSSERHALB jeder setState-Updater-Funktion.
+      if (from !== null && to !== null && from !== to) {
+        onReorder(from, to);
+      }
       void ev;
     }
 

@@ -15,6 +15,19 @@
 import { z } from 'zod';
 
 /**
+ * Nur die strukturierten, unverfänglichen Fehlerfelder der Engine. Bewusst
+ * eng (kein Passthrough): der analysierte Text ist ein Mandanten-Sachverhalt
+ * (§ 203) und darf nicht über einen Fehler-Body in Logs geraten. `detail`
+ * akzeptiert NUR einen String — FastAPI-Validierungs-Arrays (die den Input
+ * spiegeln könnten) fallen so aus dem Schema und werden generisch behandelt.
+ */
+export const RiskLayerErrorBodySchema = z.object({
+  error: z.string().optional(),
+  detail: z.string().optional(),
+  code: z.union([z.number(), z.string()]).optional(),
+});
+
+/**
  * Norm-Referenz. Die Engine liefert zwei Varianten:
  *  - Karten:  { zitat, ids: ["norm:UStG:2:abs2:nr2"] }      (granular, plural)
  *  - Risiken: { zitat, id: "norm:KStG:8", titel, text:"" }  (singular + Titel)

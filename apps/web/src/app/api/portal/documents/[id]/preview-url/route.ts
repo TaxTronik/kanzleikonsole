@@ -4,6 +4,7 @@ import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { documentPreviewMetadata, loadDocumentPreview } from '@/server/storage/document-preview';
+import { isUuid } from '@/lib/uuid';
 
 export async function GET(
   req: NextRequest,
@@ -15,6 +16,9 @@ export async function GET(
   }
 
   const { id } = await params;
+  if (!isUuid(id)) {
+    return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  }
   const { tenantId, contactId, clientId } = session.user;
 
   // Audit 2026-06 Befund 6: Read-Limit pro Session-Kontakt (gemeinsamer

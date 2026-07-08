@@ -27,6 +27,7 @@ import {
   LosErgebnisSchema,
   LosPruefenResponseSchema,
   OpaqueObjectSchema,
+  RiskLayerErrorBodySchema,
   type HealthResponse,
   type KatalogDefiniereResponse,
   type KatalogKuratiereResponse,
@@ -89,14 +90,44 @@ export interface ZweiphasenAnalyseInput {
   nutzer?: string;
 }
 
+/**
+ * Extrahiert NUR strukturierte, unverfängliche Fehlerfelder aus dem Engine-Body
+ * (§ 203: der analysierte Text ist ein Mandanten-Sachverhalt und darf NICHT über
+ * eine Fehlermeldung in Logs/Monitoring landen). Gelingt das Parsen nicht oder
+ * fehlt jedes bekannte Feld, wird `null` zurückgegeben → generische Meldung
+ * ohne Roh-Body. Spiegelt `extractBridgeError` im ELSTER-Client.
+ */
+function extractRiskLayerError(body: string): string | null {
+  let json: unknown;
+  try {
+    json = JSON.parse(body);
+  } catch {
+    return null;
+  }
+  const parsed = RiskLayerErrorBodySchema.safeParse(json);
+  if (!parsed.success) return null;
+  const { error, detail, code } = parsed.data;
+  const label = error ?? detail ?? null;
+  if (label && code !== undefined) return `${label} (code ${code})`;
+  if (label) return label;
+  if (code !== undefined) return `code ${code}`;
+  return null;
+}
+
 /** HTTP-Fehler der Engine (non-2xx). Trägt den Status für Retry-Entscheidungen. */
 export class RiskLayerHttpError extends Error {
   constructor(
     readonly status: number,
     readonly path: string,
+    /** Roh-Body — NUR für gezielte, strukturierte Extraktion durch den Aufrufer
+     *  (engineMessage/fehlerAusBody). NIE ungefiltert loggen: kann den
+     *  analysierten Mandanten-Sachverhalt enthalten (§ 203). */
     readonly body: string,
   ) {
-    super(`Risk-Layer ${path} antwortete ${status}: ${body.slice(0, 200)}`);
+    // WICHTIG: die (häufig geloggte) message trägt NUR strukturierte Felder,
+    // nicht den Roh-Body. Vorher: `body.slice(0, 200)` → potenzieller §203-Leak.
+    const label = extractRiskLayerError(body);
+    super(`Risk-Layer ${path} antwortete ${status}${label ? `: ${label}` : ''}`);
     this.name = 'RiskLayerHttpError';
   }
 }

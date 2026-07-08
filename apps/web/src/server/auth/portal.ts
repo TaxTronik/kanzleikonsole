@@ -18,6 +18,7 @@ import Credentials from 'next-auth/providers/credentials';
 import { env } from '@taxtronik/config';
 import { verifyMagicLink } from './magic-link';
 import { isTokenRevoked } from './revocation';
+import { getClientIp, checkIpOrGlobalLimit } from '@/server/rate-limit';
 import {
   PORTAL_SESSION_COOKIE,
   PORTAL_SESSION_COOKIE_BASE,
@@ -174,9 +175,31 @@ const portalConfig: NextAuthConfig = {
       credentials: {
         token: { label: 'Magic-Link-Token', type: 'text' },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         const token = credentials?.token as string | undefined;
         if (!token) return null;
+
+        // Pre-Lookup-Rate-Limit (symmetrisch zum Staff-Login): der Token ist zwar
+        // 256-bit-Zufall und gehasht (Brute-Force chancenlos), aber ohne Limit
+        // kann ein Angreifer unbegrenzt sha256+DB-Lookups gegen den Callback
+        // fahren. Per-IP eng, bei fehlender IP globaler Sturm-Bucket.
+        const ip = (() => {
+          try {
+            return request?.headers ? getClientIp(request.headers) : null;
+          } catch {
+            return null;
+          }
+        })();
+        const rl = await checkIpOrGlobalLimit(
+          'portal-authorize',
+          ip,
+          { max: 10, windowSec: 600 },
+          { max: 200, windowSec: 600 },
+        );
+        if (!rl.ok) {
+          log.warn({ ip, bucket: ip ? 'per-ip' : 'global' }, 'portal-auth: authorize-rate-limit hit');
+          return null;
+        }
 
         const result = await verifyMagicLink(token);
         if (!result) return null;

@@ -69,7 +69,10 @@ const DOCUMENT = {
   versions: [{ versionNo: 1, storageBucket: 'docs', storageKey: 'k/doc-1' }],
 };
 
-function params(id = 'doc-1') {
+// Gültige UUID — die Routen weisen Nicht-UUID-IDs jetzt vor der DB mit 404 ab.
+const DOC_UUID = '11111111-1111-4111-8111-111111111111';
+
+function params(id = DOC_UUID) {
   return { params: Promise.resolve({ id }) };
 }
 

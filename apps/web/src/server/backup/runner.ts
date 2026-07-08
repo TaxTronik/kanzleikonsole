@@ -17,7 +17,7 @@
 // =============================================================================
 
 import { spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { unlink } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
@@ -182,7 +182,12 @@ export async function runBackup(): Promise<BackupResult> {
   const dd = String(now.getUTCDate()).padStart(2, '0');
   const hh = String(now.getUTCHours()).padStart(2, '0');
   const mi = String(now.getUTCMinutes()).padStart(2, '0');
-  const key = `pgdump/${yyyy}/${mm}/${dd}/taxtronik-${yyyy}${mm}${dd}-${hh}${mi}.sql.gz`;
+  const ss = String(now.getUTCSeconds()).padStart(2, '0');
+  // Sekunden + Zufallssuffix gegen Key-Kollision: dieser manuelle Lauf und der
+  // Worker-Backup-Job laufen prozessübergreifend — bei Minutengranularität
+  // könnten sich zwei parallele Läufe denselben S3-Key/Pfad überschreiben.
+  const rnd = randomBytes(3).toString('hex');
+  const key = `pgdump/${yyyy}/${mm}/${dd}/taxtronik-${yyyy}${mm}${dd}-${hh}${mi}${ss}-${rnd}.sql.gz`;
 
   // P-2: connection-URL parsen, Passwort in PGPASSWORD, Rest als Args
   let connArgs: ReturnType<typeof buildPgConnArgs>;

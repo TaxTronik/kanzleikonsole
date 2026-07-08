@@ -5,6 +5,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { streamObject, sanitizeFilenameForHeader } from '@taxtronik/storage';
 import { effectiveDocumentMime, filenameWithExtension } from '@/server/storage/preview-mime';
 import { evidenceService } from '@/server/container';
+import { isUuid } from '@/lib/uuid';
 
 export async function GET(
   req: NextRequest,
@@ -16,6 +17,9 @@ export async function GET(
   }
 
   const { id } = await params;
+  if (!isUuid(id)) {
+    return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  }
   const { tenantId, contactId, clientId } = session.user;
 
   // Audit 2026-06 Befund 6: Read-Limit pro Session-Kontakt — deckelt

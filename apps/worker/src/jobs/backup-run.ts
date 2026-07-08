@@ -19,7 +19,7 @@
 // =============================================================================
 
 import { spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { PassThrough } from 'node:stream';
 import { DeleteObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
@@ -108,7 +108,13 @@ export async function runScheduledBackup(now: Date = new Date()): Promise<{ ok: 
   const dd = String(now.getUTCDate()).padStart(2, '0');
   const hh = String(now.getUTCHours()).padStart(2, '0');
   const mi = String(now.getUTCMinutes()).padStart(2, '0');
-  const key = `pgdump/${yyyy}/${mm}/${dd}/taxtronik-${yyyy}${mm}${dd}-${hh}${mi}.sql.gz`;
+  const ss = String(now.getUTCSeconds()).padStart(2, '0');
+  // Sekunden + Zufallssuffix: der manuelle Web-Trigger und dieser Worker-Job
+  // laufen prozessübergreifend; bei Minutengranularität könnten sich zwei
+  // parallele Läufe denselben S3-Key/Pfad überschreiben (ein Dump ginge
+  // verloren, während beide Records SUCCESS meldeten).
+  const rnd = randomBytes(3).toString('hex');
+  const key = `pgdump/${yyyy}/${mm}/${dd}/taxtronik-${yyyy}${mm}${dd}-${hh}${mi}${ss}-${rnd}.sql.gz`;
 
   let conn: { args: string[]; env: Record<string, string> };
   try {

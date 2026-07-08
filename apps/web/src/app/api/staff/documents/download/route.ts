@@ -23,6 +23,7 @@ import {
   type ZipEntry,
 } from '@/server/export/zip';
 import { evidenceService } from '@/server/container';
+import { isUuid } from '@/lib/uuid';
 
 export async function GET(req: NextRequest) {
   const session = await staffAuth();
@@ -31,11 +32,14 @@ export async function GET(req: NextRequest) {
   }
   const { tenantId, staffId } = session.user;
 
+  // Nur UUID-förmige Werte behalten: Nicht-UUID-Text ginge sonst in
+  // `{ id: { in: ids } }` und würde von der @db.Uuid-Spalte mit P2023 → 500
+  // quittiert (statt schlicht nichts zu matchen).
   const ids = [
-    ...new Set((req.nextUrl.searchParams.get('ids') ?? '').split(',').map((s) => s.trim()).filter(Boolean)),
+    ...new Set((req.nextUrl.searchParams.get('ids') ?? '').split(',').map((s) => s.trim()).filter(isUuid)),
   ].slice(0, 500);
   const folderIds = [
-    ...new Set((req.nextUrl.searchParams.get('folders') ?? '').split(',').map((s) => s.trim()).filter(Boolean)),
+    ...new Set((req.nextUrl.searchParams.get('folders') ?? '').split(',').map((s) => s.trim()).filter(isUuid)),
   ].slice(0, 200);
   if (ids.length === 0 && folderIds.length === 0) {
     return NextResponse.json({ error: 'no_ids' }, { status: 400 });

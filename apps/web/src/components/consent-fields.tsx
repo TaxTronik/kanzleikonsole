@@ -9,7 +9,7 @@
 // parst. Die dynamischen Listen (Dritte/Spezialisten) sind zeilenweise editierbar.
 // =============================================================================
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   COMMUNICATION_LABELS,
   MARKETING_LABELS,
@@ -50,12 +50,18 @@ export function ConsentFields({
   onChange?: (c: ConsentSelections) => void;
 }) {
   const [c, setInner] = useState<ConsentSelections>(initial ?? emptyConsent());
+  // Ref-Spiegel des aktuellen Stands: `onChange` (Parent-setState) darf NICHT
+  // aus einem setState-Updater laufen — das aktualisiert die Elternkomponente
+  // während des Renders („Cannot update a component while rendering …") und
+  // feuert unter StrictMode doppelt. `next` daher aus dem Ref berechnen und
+  // beide Seiteneffekte außerhalb des Updaters ausführen.
+  const cRef = useRef(c);
+  cRef.current = c;
   const setC = (updater: ConsentSelections | ((s: ConsentSelections) => ConsentSelections)) => {
-    setInner((prev) => {
-      const next = typeof updater === 'function' ? updater(prev) : updater;
-      onChange?.(next);
-      return next;
-    });
+    const next = typeof updater === 'function' ? updater(cRef.current) : updater;
+    cRef.current = next;
+    setInner(next);
+    onChange?.(next);
   };
 
   const commKeys = Object.keys(COMMUNICATION_LABELS) as Array<keyof typeof COMMUNICATION_LABELS>;
