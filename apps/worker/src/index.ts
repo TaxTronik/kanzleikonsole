@@ -27,6 +27,30 @@ import { connection } from './queues';
 import { prismaOwner } from './prisma-owner';
 import { log } from './logger';
 
+// Eine Quelle für Ready-Log UND Shutdown: früher waren die Worker-Namen in
+// drei Listen dupliziert (Ready-Log, Shutdown, queue-status im Web) und driften
+// auseinander (backup-run fehlte zeitweise im Ready-Log). Ready-Log und
+// Shutdown leiten sich jetzt aus DIESEM Array ab; `.name` ist der Queue-Name.
+const ALL_WORKERS = [
+  evidenceSealWorker,
+  gwgExpiryWorker,
+  invoiceOverdueWorker,
+  auditVerifyWorker,
+  taxDeadlineMaterializeWorker,
+  auditRotateWorker,
+  taxNewsFetchWorker,
+  remindersDailyWorker,
+  n8nDeliverWorker,
+  n8nOutboxReconcileWorker,
+  magicLinkCleanupWorker,
+  dsgvoRetentionWorker,
+  poaExpiryWorker,
+  riskAnalyseLlmWorker,
+  backupDrillWorker,
+  backupRunWorker,
+  healthAlertWorker,
+] as const;
+
 // Q-9: Heartbeat-File für Docker-HEALTHCHECK. Worker schreibt alle 30 s einen
 // Touch nach /tmp/worker-alive; das Dockerfile prüft per stat-mtime, dass die
 // Datei nicht älter als 90 s ist. Erkennt Deadlock / Redis-Disconnect, ohne
@@ -65,55 +89,14 @@ async function main() {
   log.info('worker: starting');
   startHeartbeat();
   await setupSchedules();
-  log.info(
-    {
-      workers: [
-        'evidence-seal',
-        'gwg-expiry-check',
-        'invoice-overdue-check',
-        'audit-verify-check',
-        'tax-deadline-materialize',
-        'audit-rotate',
-        'tax-news-fetch',
-        'reminders-daily',
-        'n8n-deliver',
-        'n8n-outbox-reconcile',
-        'magic-link-cleanup',
-        'dsgvo-retention',
-        'poa-expiry-check',
-        'risk-analyse-llm',
-        'backup-drill',
-        'backup-run',
-        'health-alert',
-      ],
-    },
-    'worker: ready',
-  );
+  log.info({ workers: ALL_WORKERS.map((w) => w.name) }, 'worker: ready');
 }
 
 async function shutdown(reason: string) {
   log.warn({ reason }, 'worker: shutting down');
   if (heartbeatTimer) clearInterval(heartbeatTimer);
   try {
-    await Promise.all([
-      evidenceSealWorker.close(),
-      gwgExpiryWorker.close(),
-      invoiceOverdueWorker.close(),
-      auditVerifyWorker.close(),
-      taxDeadlineMaterializeWorker.close(),
-      auditRotateWorker.close(),
-      taxNewsFetchWorker.close(),
-      remindersDailyWorker.close(),
-      n8nDeliverWorker.close(),
-      n8nOutboxReconcileWorker.close(),
-      magicLinkCleanupWorker.close(),
-      dsgvoRetentionWorker.close(),
-      poaExpiryWorker.close(),
-      riskAnalyseLlmWorker.close(),
-      backupDrillWorker.close(),
-      backupRunWorker.close(),
-      healthAlertWorker.close(),
-    ]);
+    await Promise.all(ALL_WORKERS.map((w) => w.close()));
     // RF-13: auch den Prisma-Pool sauber schließen — vorher blieben offene
     // Postgres-Connections bis zum Prozess-Ende stehen.
     await prismaOwner.$disconnect();

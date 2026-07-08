@@ -173,7 +173,9 @@ export async function GET(req: NextRequest) {
           id: d.id,
           title: d.title,
           subtitle: `Dokument · ${d.client?.name ?? 'kein Mandant'} · ${d.classification}`,
-          href: `/staff/documents`,
+          // Deep-Link auf die Dokument-Detailseite statt der generischen Liste
+          // (konsistent zu allen anderen Treffertypen).
+          href: `/staff/documents/${d.id}`,
         });
       }
       for (const a of kbArticles) {

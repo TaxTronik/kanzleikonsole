@@ -78,8 +78,10 @@ export interface MaterializeStats {
   markedOverdue: number;
 }
 
-// Identisch zu fmtDateShort der Web-App (`new Intl.DateTimeFormat('de-DE')`).
-const dateFormatter = new Intl.DateTimeFormat('de-DE');
+// Zeitzone fest auf Europe/Berlin — identisch zu fmtDateShort der Web-App.
+// dueDate ist `@db.Date` (UTC-Mitternacht); ohne feste Zone würde ein Host mit
+// negativem Offset in mandantengerichteten Anforderungstexten den Vortag zeigen.
+const dateFormatter = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin' });
 
 export async function materializeTenantTaxDeadlines(
   deps: MaterializeDeps,

@@ -201,18 +201,25 @@ export async function sendMail(opts: MailOptions): Promise<void> {
  * Admin sieht, ob die Eingaben stimmen, bevor er speichert.
  */
 export async function sendTestMail(cfg: SmtpConfig, to: string): Promise<void> {
+  // Ad-hoc-Transporter (nicht aus dem Tenant-LRU): nach dem Test schließen,
+  // sonst bleiben die gepoolten SMTP-Connections bis zum GC offen — pro
+  // „Test-Mail senden"-Klick eine weitere.
   const t = transporterFor(cfg);
-  await t.sendMail({
-    // N5: gleicher Filter wie in sendMail.
-    from: stripHeaderInjection(cfg.from),
-    to: stripHeaderInjection(to),
-    subject: 'taxtronik — SMTP-Test',
-    text:
-      `Diese Test-Mail bestätigt, dass die SMTP-Einstellungen funktionieren.\n\n` +
-      `Host: ${cfg.host}:${cfg.port}\n` +
-      `Verschlüsselung: ${cfg.secure ? 'SSL/TLS' : 'STARTTLS opportunistisch'}\n` +
-      `Absender: ${cfg.from}\n\n` +
-      `Wenn diese Mail in einer echten Inbox angekommen ist, können Sie die ` +
-      `Einstellungen speichern.\n`,
-  });
+  try {
+    await t.sendMail({
+      // N5: gleicher Filter wie in sendMail.
+      from: stripHeaderInjection(cfg.from),
+      to: stripHeaderInjection(to),
+      subject: 'taxtronik — SMTP-Test',
+      text:
+        `Diese Test-Mail bestätigt, dass die SMTP-Einstellungen funktionieren.\n\n` +
+        `Host: ${cfg.host}:${cfg.port}\n` +
+        `Verschlüsselung: ${cfg.secure ? 'SSL/TLS' : 'STARTTLS opportunistisch'}\n` +
+        `Absender: ${cfg.from}\n\n` +
+        `Wenn diese Mail in einer echten Inbox angekommen ist, können Sie die ` +
+        `Einstellungen speichern.\n`,
+    });
+  } finally {
+    t.close();
+  }
 }
