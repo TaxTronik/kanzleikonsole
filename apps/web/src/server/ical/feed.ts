@@ -91,7 +91,7 @@ function dateTimeUtc(d: Date): string {
 // so, dass jede Zeile inkl. Leerzeichen-Prefix ≤ 75 Oktette bleibt.
 const ICS_MAX_OCTETS = 75;
 
-function foldLine(line: string): string {
+export function foldLine(line: string): string {
   if (Buffer.byteLength(line, 'utf8') <= ICS_MAX_OCTETS) return line;
   const parts: string[] = [];
   let current = '';

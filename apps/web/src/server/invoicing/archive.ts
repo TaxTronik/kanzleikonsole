@@ -266,14 +266,17 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
     throw new Error(`XRechnung-Ablage im GOBD-Object-Store fehlgeschlagen: ${(e as Error).message}`, { cause: e });
   }
 
-  // 5. Document + Version anlegen + verknüpfen (Tx). Race-sicher: hat ein
-  //    paralleler Erst-Download inzwischen verknüpft, nehmen wir dessen Bytes —
-  //    es entsteht KEIN zweites Document. Die in S3 bereits abgelegten Bytes des
-  //    Verlierers bleiben dann verwaist (selten: nur bei exakt gleichzeitigem
-  //    Erst-Download eines nie archivierten Belegs; mit dem markSent-Hook quasi
-  //    nie). Aufräumen ist NICHT möglich — GOBD-Tier liegt unter Object-Lock
-  //    COMPLIANCE und ist bis Fristablauf unlöschbar. Bewusst akzeptiert.
+  // 5. Document + Version anlegen + verknüpfen (Tx).
+  //    Race-Serialisierung via transaktionsgebundenem Advisory-Lock je Rechnung
+  //    (gleiches Muster wie die Nummernvergabe, invoicing/number.ts): zwei
+  //    gleichzeitige Erst-Archivierungen derselben Rechnung (z. B. markSent +
+  //    paralleler ZUGFeRD-Download) laufen sonst beide durch die documentId-
+  //    Prüfung und legen je ein Document an — der Verlierer wäre ein verwaistes,
+  //    unter GOBD-Object-Lock unlöschbares Duplikat. Der Lock zwingt den zweiten
+  //    Aufruf zu warten, bis der erste committet hat; danach greift der
+  //    documentId-Recheck und der zweite nimmt die bestehende Kopie.
   const result = await withTenantContext(ctx, async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${'invoice-archive:' + invoiceId}, 0))`;
     const fresh = await tx.invoice.findFirst({
       where: { id: invoiceId, tenantId: ctx.tenantId },
       include: { document: { include: { versions: { orderBy: { versionNo: 'desc' }, take: 1 } } } },

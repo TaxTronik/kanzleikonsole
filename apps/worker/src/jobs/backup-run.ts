@@ -77,10 +77,27 @@ async function markAll(
   );
 }
 
+/** Ab diesem Alter gilt ein RUNNING-Record als verwaist (Hard-Crash/OOM). */
+const STALE_RUNNING_MS = 6 * 60 * 60 * 1000;
+
 export async function runScheduledBackup(now: Date = new Date()): Promise<{ ok: boolean; key?: string; error?: string }> {
   const dumpUrl = env.DATABASE_URL;
   const tenants = await prismaOwner.tenant.findMany({ select: { id: true } });
   if (tenants.length === 0) return { ok: true }; // nichts zu sichern
+
+  // Zombie-Reconcile: bei SIGKILL/OOM/Stromausfall mitten im Dump bleibt ein
+  // BackupRecord ewig auf RUNNING (kein markAll-Pfad greift mehr). Vor dem
+  // neuen Lauf alte RUNNING-Zeilen auf FAILED setzen, damit das Admin-UI kein
+  // dauerhaft „laufendes" Backup zeigt und der Zombie nicht neben dem frischen
+  // Record stehen bleibt.
+  const staleBefore = new Date(now.getTime() - STALE_RUNNING_MS);
+  const reconciled = await prismaOwner.backupRecord.updateMany({
+    where: { status: 'RUNNING', startedAt: { lt: staleBefore } },
+    data: { status: 'FAILED', finishedAt: now, errorMsg: 'Abgebrochen (verwaister RUNNING-Record, vermutlich Prozess-Crash).' },
+  });
+  if (reconciled.count > 0) {
+    log.warn({ count: reconciled.count }, 'backup-run: verwaiste RUNNING-Records auf FAILED gesetzt');
+  }
 
   const records: BackupRecordRef[] = await Promise.all(
     tenants.map((t) => prismaOwner.backupRecord.create({ data: { tenantId: t.id, status: 'RUNNING' } })),

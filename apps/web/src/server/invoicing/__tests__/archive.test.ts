@@ -46,6 +46,8 @@ let tx: any;
 beforeEach(() => {
   vi.clearAllMocks();
   tx = {
+    // Advisory-Lock zur Race-Serialisierung (archive.ts).
+    $executeRaw: vi.fn().mockResolvedValue(0),
     invoice: { findFirst: vi.fn(), update: vi.fn().mockResolvedValue({}) },
     document: {
       create: vi.fn().mockResolvedValue({ id: 'doc1' }),

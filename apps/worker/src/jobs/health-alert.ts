@@ -245,13 +245,29 @@ export async function runHealthAlert(): Promise<{ skipped?: boolean; down: Servi
 
   const prev = await loadState();
   const { next, alerts } = evaluateTransitions(prev, current);
-  await saveState(next);
 
+  // Mails VOR dem Persistieren senden. Sonst würde ein SMTP-Ausfall genau am
+  // Übergangs-Tick den Alarm dauerhaft verschlucken: `alerted:true` wäre schon
+  // gespeichert und unterdrückt jeden weiteren Versand. sendOpsMail schluckt
+  // Fehler und liefert false — den alerted-Flag dann so korrigieren, dass der
+  // nächste Lauf es erneut versucht.
   for (const a of alerts) {
     const { subject, body } = alertMail(a.service, a.kind);
     const sent = await sendOpsMail(subject, body);
     log.warn({ service: a.service, kind: a.kind, sent }, 'health-alert: transition');
+    if (!sent) {
+      const s = next[a.service];
+      if (s) {
+        // down-Mail verloren → nicht als alarmiert markieren (nächster Lauf
+        // re-alarmiert, da failures ≥ Schwelle bleibt).
+        // up-Mail (Entwarnung) verloren → alarmiert lassen, damit der nächste
+        // Lauf bei weiterhin gesundem Dienst die Entwarnung erneut schickt.
+        s.alerted = a.kind === 'up';
+      }
+    }
   }
+
+  await saveState(next);
 
   const down = (Object.keys(current) as ServiceName[]).filter((s) => !current[s]);
   if (down.length > 0) log.warn({ down }, 'health-alert: services down');

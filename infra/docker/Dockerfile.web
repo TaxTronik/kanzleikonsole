@@ -84,12 +84,15 @@ LABEL org.opencontainers.image.title="taxtronik-web" \
       org.opencontainers.image.revision="${GIT_SHA}"
 # T-3: wget für den HEALTHCHECK. node:alpine bringt es nicht standardmäßig
 # mit; ~270 KB Overhead sind gegenüber dem Operability-Gewinn vernachlässigbar.
-RUN apk add --no-cache openssl wget postgresql18-client
+# tzdata: ohne zoneinfo kann musl libc TZ=Europe/Berlin nicht auflösen, Date-
+# Lokalzeit bliebe UTC (Intl funktioniert dank Node-ICU unabhängig davon).
+RUN apk add --no-cache openssl wget postgresql18-client tzdata
 WORKDIR /app
 
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=3000 \
+    TZ=Europe/Berlin \
     APP_VERSION=${APP_VERSION} \
     GIT_SHA=${GIT_SHA}
 

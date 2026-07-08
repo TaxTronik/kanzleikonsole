@@ -53,10 +53,11 @@ LABEL org.opencontainers.image.title="taxtronik-worker" \
 # postgresql18-client: pg_restore für den monatlichen Restore-Drill
 # (jobs/backup-drill.ts). Client-Major MUSS >= Server-Major (18) sein —
 # ein älterer pg_restore kann 18er-Dumps nicht lesen.
-RUN apk add --no-cache openssl postgresql18-client
+RUN apk add --no-cache openssl postgresql18-client tzdata
 WORKDIR /app
 
 ENV NODE_ENV=production \
+    TZ=Europe/Berlin \
     APP_VERSION=${APP_VERSION} \
     GIT_SHA=${GIT_SHA}
 

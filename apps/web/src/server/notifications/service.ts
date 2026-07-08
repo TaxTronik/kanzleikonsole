@@ -61,6 +61,15 @@ export async function notify(tx: TxClient, input: NotifyInput): Promise<void> {
     readAt: null,
   };
 
+  // Race-Serialisierung: findFirst-then-create ist ohne Lock nicht atomar —
+  // zwei parallele notify() für denselben Dedupe-Key (z. B. Worker-Job +
+  // Web-Action) legen sonst beide eine ungelesene Notification an. Ein
+  // transaktionsgebundener Advisory-Lock auf den Key serialisiert nur genau
+  // diese Kollision (unterschiedliche Keys blockieren sich nicht); der zweite
+  // Aufruf sieht dann die Notification des ersten und aktualisiert sie.
+  const lockKey = `notify:${where.tenantId}:${where.staffId ?? ''}:${where.kind}:${where.resourceType ?? ''}:${where.resourceId ?? ''}`;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+
   const existing = await tx.notification.findFirst({ where });
   if (existing) {
     // Refresh: Titel/Body aktualisieren, createdAt auf jetzt

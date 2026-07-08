@@ -57,6 +57,11 @@ services:
         condition: service_completed_successfully
     environment:
       NODE_ENV: production
+      # Container-Zeitzone fix auf Europe/Berlin. Der Code rechnet Datums-/Zeit-
+      # grenzen zwar explizit in Berlin (lib/fmt.ts), aber TZ ist Defense-in-Depth
+      # für jede Stelle, die doch server-lokale Zeit nutzt (z. B. DOS-Timestamps
+      # im ZIP-Writer). Ohne TZ läuft Node in UTC.
+      TZ: Europe/Berlin
       DATABASE_URL: postgresql://taxtronik:${POSTGRES_PASSWORD}@postgres:5432/taxtronik?schema=public
       DATABASE_APP_URL: postgresql://taxtronik_app:${TAXTRONIK_APP_PASSWORD}@postgres:5432/taxtronik?schema=public
       REDIS_URL: redis://redis:6379
@@ -188,6 +193,9 @@ services:
         condition: service_completed_successfully
     environment:
       NODE_ENV: production
+      # Zeitzone fix (Defense-in-Depth): der Worker terminiert Fristen/POA/Backup
+      # explizit in Europe/Berlin (date-util.ts), TZ deckt Rest-Stellen ab.
+      TZ: Europe/Berlin
       LOG_LEVEL: ${LOG_LEVEL:-info}
       DATABASE_URL: postgresql://taxtronik:${POSTGRES_PASSWORD}@postgres:5432/taxtronik?schema=public
       # Production-Pflicht laut @taxtronik/config (RLS-Backstop): der Worker

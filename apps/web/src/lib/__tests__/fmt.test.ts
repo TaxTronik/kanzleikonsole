@@ -9,6 +9,9 @@ import {
   fmtDateTimeShort,
   fmtMonthYear,
   fmtMinutes,
+  berlinWallClockToUtc,
+  berlinYmd,
+  berlinTodayUtcMidnight,
 } from '../fmt';
 
 const SAMPLE = new Date(Date.UTC(2026, 4, 12, 14, 35, 21)); // 12. Mai 2026, 14:35:21 UTC
@@ -70,5 +73,71 @@ describe('fmt', () => {
     expect(fmtMinutes(45)).toBe('45m');
     expect(fmtMinutes(60)).toBe('1h 0m');
     expect(fmtMinutes(135)).toBe('2h 15m');
+  });
+});
+
+describe('berlinWallClockToUtc', () => {
+  it('Winter (CET, UTC+1): 14:30 Berlin → 13:30 UTC', () => {
+    expect(berlinWallClockToUtc('2026-01-15T14:30')?.toISOString()).toBe(
+      '2026-01-15T13:30:00.000Z',
+    );
+  });
+
+  it('Sommer (CEST, UTC+2): 14:30 Berlin → 12:30 UTC', () => {
+    expect(berlinWallClockToUtc('2026-07-15T14:30')?.toISOString()).toBe(
+      '2026-07-15T12:30:00.000Z',
+    );
+  });
+
+  it('optionale Sekunden werden übernommen', () => {
+    expect(berlinWallClockToUtc('2026-07-15T14:30:45')?.toISOString()).toBe(
+      '2026-07-15T12:30:45.000Z',
+    );
+  });
+
+  it('Roundtrip: Berlin-Wanduhrzeit bleibt bei Berlin-Formatierung erhalten', () => {
+    const utc = berlinWallClockToUtc('2026-07-15T14:30')!;
+    expect(fmtTimeShort(utc)).toBe('14:30');
+    const winter = berlinWallClockToUtc('2026-01-15T09:05')!;
+    expect(fmtTimeShort(winter)).toBe('09:05');
+  });
+
+  it('ungültiges Format → null', () => {
+    expect(berlinWallClockToUtc('kein-datum')).toBeNull();
+    expect(berlinWallClockToUtc('2026-07-15')).toBeNull();
+    expect(berlinWallClockToUtc('2026-07-15 14:30')).toBeNull();
+    expect(berlinWallClockToUtc('')).toBeNull();
+  });
+
+  it('liefert für gültiges Format nie null (DST-Lückenstunde crasht nicht)', () => {
+    // 29.03.2026 ist der Sommerzeit-Übergang; 02:30 existiert lokal nicht.
+    // Erwartung: ein wohldefinierter Instant (kein Wurf, kein null).
+    const d = berlinWallClockToUtc('2026-03-29T02:30');
+    expect(d).not.toBeNull();
+    expect(Number.isNaN(d!.getTime())).toBe(false);
+  });
+});
+
+describe('berlinYmd', () => {
+  it('vor Mitternacht Berlin (Winter): UTC-Tag ≠ Berlin-Tag', () => {
+    // 23:30Z am 15.3. ist bereits 00:30 (16.3.) in Berlin (CET, +1).
+    expect(berlinYmd(new Date('2026-03-15T23:30:00Z'))).toBe('2026-03-16');
+  });
+
+  it('vor Mitternacht Berlin (Sommer): 22:30Z → Folgetag', () => {
+    // 22:30Z am 1.7. ist 00:30 (2.7.) in Berlin (CEST, +2).
+    expect(berlinYmd(new Date('2026-07-01T22:30:00Z'))).toBe('2026-07-02');
+  });
+
+  it('Mittag bleibt am selben Kalendertag', () => {
+    expect(berlinYmd(new Date('2026-07-01T12:00:00Z'))).toBe('2026-07-01');
+  });
+});
+
+describe('berlinTodayUtcMidnight', () => {
+  it('gibt UTC-Mitternacht des Berlin-Kalendertags zurück', () => {
+    // 01.07. 22:30Z = 02.07. 00:30 Berlin → heute = 2. Juli, 00:00 UTC.
+    const m = berlinTodayUtcMidnight(new Date('2026-07-01T22:30:00Z'));
+    expect(m.toISOString()).toBe('2026-07-02T00:00:00.000Z');
   });
 });

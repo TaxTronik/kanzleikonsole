@@ -28,6 +28,12 @@ export async function upsertNotification(
 ): Promise<void> {
   try {
     await withWorkerTenantContext(tenantId, async (tx) => {
+      // Race-Serialisierung je Dedupe-Key (siehe notifications/service.ts):
+      // schließt die findFirst-then-create-Lücke auch für Kinds ohne
+      // Daily-Dedupe-Index (dort feuert P2002 nie). Transaktionsgebunden,
+      // blockiert nur identische Keys.
+      const lockKey = `notify:${tenantId}:${staffId}:${data.kind}:${data.resourceType}:${data.resourceId}`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
       const existing = await tx.notification.findFirst({
         where: {
           tenantId,

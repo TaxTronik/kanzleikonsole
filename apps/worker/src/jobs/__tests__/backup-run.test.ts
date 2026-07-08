@@ -14,7 +14,7 @@ import { PassThrough } from 'node:stream';
 const h = vi.hoisted(() => {
   const prismaOwner = {
     tenant: { findMany: vi.fn() },
-    backupRecord: { create: vi.fn(), update: vi.fn() },
+    backupRecord: { create: vi.fn(), update: vi.fn(), updateMany: vi.fn(async (_args: unknown) => ({ count: 0 })) },
     $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn({ backupRecord: { update: vi.fn() } })),
   };
   const record = vi.fn();
@@ -129,5 +129,18 @@ describe('runScheduledBackup', () => {
     expect(r.ok).toBe(true);
     expect(h.prismaOwner.backupRecord.create).not.toHaveBeenCalled();
     expect(h.uploadDone).not.toHaveBeenCalled();
+  });
+
+  it('Zombie-Reconcile: verwaiste RUNNING-Records (> 6h alt) → FAILED', async () => {
+    await runScheduledBackup(NOW);
+    expect(h.prismaOwner.backupRecord.updateMany).toHaveBeenCalledTimes(1);
+    const arg = h.prismaOwner.backupRecord.updateMany.mock.calls[0]![0] as {
+      where: { status: string; startedAt: { lt: Date } };
+      data: { status: string; finishedAt: Date };
+    };
+    expect(arg.where.status).toBe('RUNNING');
+    expect(arg.data.status).toBe('FAILED');
+    // Cutoff = NOW − 6h.
+    expect(arg.where.startedAt.lt).toEqual(new Date(NOW.getTime() - 6 * 60 * 60 * 1000));
   });
 });
