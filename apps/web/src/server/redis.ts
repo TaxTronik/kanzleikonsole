@@ -18,16 +18,42 @@ declare global {
   var __taxtronik_redis: IORedis | null | undefined;
 }
 
+/**
+ * Verbindungs-Optionen des Singletons. Exportiert, damit ein Regressionstest die
+ * Absicht festnagelt (siehe __tests__/redis-options.test.ts).
+ *
+ * Sicherheitskritische Pfade (rate-limit, nonce-store, totp-replay) sollen bei
+ * einem ECHTEN Redis-Ausfall schnell scheitern, damit der Caller seine
+ * fail-Strategie (open/closed) anwenden kann. Dafür sorgen `maxRetriesPerRequest`
+ * und `commandTimeout` — NICHT `enableOfflineQueue: false`.
+ *
+ * `enableOfflineQueue: false` war hier ein Bug: zusammen mit `lazyConnect: true`
+ * wird das ALLERERSTE Kommando abgelehnt („Stream isn't writeable"), solange der
+ * Socket noch verbindet — dasselbe gilt in jedem Reconnect-Fenster. Der
+ * Rate-Limiter deutete das als Redis-Exception und lieferte in Produktion
+ * fail-closed `retryAfter: 60` → der erste Login nach jedem Prozessstart schlug
+ * mit „Zu viele Versuche. Bitte 1 Min. warten." fehl, der sofortige zweite
+ * Versuch klappte. Mit aktivierter Offline-Queue wird das Connect-Fenster
+ * überbrückt (Kommando wird gepuffert und nach `ready` ausgeführt), während ein
+ * echter Ausfall weiterhin in ~60 ms über `maxRetriesPerRequest` abbricht.
+ *
+ * Kein Bypass-Risiko: ein Kommando wird entweder ausgeführt (Zähler erhöht) oder
+ * es wirft (Caller entscheidet fail-closed) — nie „erfolgreich ohne Wirkung".
+ */
+export const REDIS_OPTIONS = {
+  maxRetriesPerRequest: 1,
+  // Puffert nur das kurze (Re-)Connect-Fenster, kein Queuen über einen Ausfall:
+  // maxRetriesPerRequest/commandTimeout brechen weiterhin schnell ab.
+  enableOfflineQueue: true,
+  // Backstop gegen eine hergestellte, aber nicht antwortende Verbindung
+  // (blockierter Redis) — ohne das hinge ein Login unbegrenzt.
+  commandTimeout: 2_000,
+  lazyConnect: true,
+} as const;
+
 function init(): IORedis | null {
   try {
-    const r = new IORedis(env.REDIS_URL, {
-      // Sicherheitskritische Pfade (rate-limit, nonce-store, totp-replay) wollen
-      // schnell scheitern statt zu queuen — bei Redis-Ausfall sollen Caller
-      // ihre eigene fail-Strategie (open/closed) anwenden.
-      maxRetriesPerRequest: 1,
-      enableOfflineQueue: false,
-      lazyConnect: true,
-    });
+    const r = new IORedis(env.REDIS_URL, { ...REDIS_OPTIONS });
     r.on('error', () => {
       // Caller loggen den fachlichen Fehler inklusive Fail-Open/Closed-Entscheid.
       // Der Listener verhindert unhandled error events beim Build oder bei Redis-Downtime.
