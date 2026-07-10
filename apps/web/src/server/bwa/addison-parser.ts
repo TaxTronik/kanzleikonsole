@@ -297,9 +297,17 @@ export function computeBwaKpis(positions: Array<{ number: number; amount: number
   const personnelCost = map.get(ADDISON_PERSONNEL) ?? map.get(DATEV_PERSONNEL) ?? null;
   const result = map.get(ADDISON_RESULT) ?? map.get(DATEV_RESULT) ?? null;
   // Vor-Steuer-Ergebnis: DATEV 1345, sonst Betriebsergebnis 1300 (beide vor
-  // Ertragsteuern). Nur so vermeidet die Steuerschätzung den Zirkelbezug.
+  // Ertragsteuern). Die Addison-Kompaktform ("Kurzfristige Erfolgsrechnung")
+  // hat KEINE Ertragsteuerzeile — dort ist das "Vorläufige Ergebnis" (3250)
+  // bereits ein Vor-Steuer-Wert und dient als Fallback. Wichtig: DATEV 1380
+  // (map(DATEV_RESULT)) ist dagegen NACH Steuern und darf hier NICHT einfließen,
+  // sonst würde die Steuerschätzung doppelt abziehen. Nur so vermeidet die
+  // Steuerschätzung den Zirkelbezug.
   const resultBeforeTax =
-    map.get(DATEV_RESULT_BEFORE_TAX) ?? map.get(DATEV_OPERATING_RESULT) ?? null;
+    map.get(DATEV_RESULT_BEFORE_TAX) ??
+    map.get(DATEV_OPERATING_RESULT) ??
+    map.get(ADDISON_RESULT) ??
+    null;
 
   // Kosten: Addison hat eigene Summenzeile; DATEV nur impliziert über
   // Erlöse - Betriebsergebnis (vereinfachte Annahme).

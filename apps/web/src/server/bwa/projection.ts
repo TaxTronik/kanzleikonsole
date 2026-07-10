@@ -22,7 +22,7 @@
 import { computeBwaKpis, type BwaKpis } from './addison-parser';
 
 export type Axis =
-  | 'revenue' | 'costs' | 'result' | 'personnelCost';
+  | 'revenue' | 'costs' | 'result' | 'resultBeforeTax' | 'personnelCost';
 
 export interface ProjectionRange {
   estimate: number;
@@ -35,7 +35,7 @@ export interface YearProjection {
   strategy: 'linear' | 'trend-regression';
   revenue: ProjectionRange | null;
   costs: ProjectionRange | null;
-  result: ProjectionRange | null;             // vor Steuern (BWA-vorläufiges Ergebnis)
+  result: ProjectionRange | null;             // Ergebnis VOR Ertragsteuern (KPI resultBeforeTax)
   personnelCost: ProjectionRange | null;
   taxes: ProjectionRange | null;              // grobe Pauschal-Schätzung
   resultAfterTax: ProjectionRange | null;     // Ergebnis nach Steuern
@@ -142,7 +142,12 @@ export function linearSeasonalProjection(
     };
   }
 
-  const result = projectAxis('result');
+  // Bemessungsbasis der Steuerschätzung ist das Ergebnis VOR Steuern. Bei
+  // DATEV ist die generische `result`-Achse (Zeile 1380) bereits NACH Steuern —
+  // sie hier zu projizieren und dann `estimateTaxRange` anzuwenden zöge die
+  // Ertragsteuern ein zweites Mal ab. Deshalb `resultBeforeTax` (1345/1300 bzw.
+  // Addison-Vorläufiges-Ergebnis 3250) als Basis.
+  const result = projectAxis('resultBeforeTax');
   const taxes = estimateTaxRange(result);
   return {
     year: targetYear,
@@ -216,7 +221,9 @@ export function trendRegressionProjection(
   }
 
   const years = fullYears.map((p) => p.fromDate.getUTCFullYear());
-  const result = projectAxis('result');
+  // Vor-Steuer-Basis, siehe linearSeasonalProjection: DATEV 1380 wäre nach
+  // Steuern und würde in estimateTaxRange doppelt besteuert.
+  const result = projectAxis('resultBeforeTax');
   const taxes = estimateTaxRange(result);
   return {
     year: targetYear,
