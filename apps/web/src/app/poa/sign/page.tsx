@@ -59,10 +59,30 @@ export default async function PoaSignPage({
           <h2 className="text-sm font-medium text-muted uppercase tracking-wide mb-3">
             Vollmachtsumfang
           </h2>
-          <div
-            className="prose prose-sm max-w-none [&_h1]:text-xl [&_h1]:font-bold [&_h2]:text-lg [&_h2]:font-semibold [&_p]:my-3 [&_ul]:list-disc [&_ul]:ml-6 mb-6"
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
+          {poa.documentId ? (
+            // Extern hinterlegtes PDF: der Vollmachtstext steht im Dokument. Der
+            // Unterzeichner muss es VOR der Signatur ansehen können (Art. 26
+            // eIDAS) — token-gestützte Auslieferung über /poa/sign/document.
+            <div className="mb-6 rounded-md border border-default bg-gray-50 p-4">
+              <p className="text-sm text-secondary mb-3">
+                Der vollständige Vollmachtstext befindet sich im verknüpften
+                PDF-Dokument. Bitte sehen Sie es vor der Unterschrift an.
+              </p>
+              <a
+                href={`/poa/sign/document?token=${encodeURIComponent(token)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-secondary inline-flex items-center gap-2"
+              >
+                Zu unterzeichnendes Dokument (PDF) ansehen
+              </a>
+            </div>
+          ) : (
+            <div
+              className="prose prose-sm max-w-none [&_h1]:text-xl [&_h1]:font-bold [&_h2]:text-lg [&_h2]:font-semibold [&_p]:my-3 [&_ul]:list-disc [&_ul]:ml-6 mb-6"
+              dangerouslySetInnerHTML={{ __html: html }}
+            />
+          )}
         </div>
 
         <SignFlow token={token} signerEmail={poa.signerEmail} />

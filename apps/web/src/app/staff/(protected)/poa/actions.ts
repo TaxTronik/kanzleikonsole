@@ -339,6 +339,7 @@ export async function loadPoaForSigning(rawToken: string): Promise<
         validFrom: Date;
         validUntil: Date | null;
         status: string;
+        documentId: string | null;
       };
       tenantName: string;
     }
@@ -386,6 +387,7 @@ export async function loadPoaForSigning(rawToken: string): Promise<
         validFrom: poa.validFrom,
         validUntil: poa.validUntil,
         status: poa.status,
+        documentId: poa.documentId,
       },
       tenantName: tenant?.name ?? 'Ihre Kanzlei',
     };

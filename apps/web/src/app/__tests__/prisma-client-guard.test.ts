@@ -146,6 +146,10 @@ const ALLOWED_PRISMA_OWNER_IMPORTS = new Set<string>([
   'apps/web/src/app/api/portal/ical/[token]/route.ts <- @/server/db/prisma-owner',
   'apps/web/src/app/audit-verify/[token]/page.tsx <- @/server/db/prisma-owner',
   'apps/web/src/app/gwg-onboarding/actions.ts <- @/server/gwg-onboarding/service',
+  // Unauthentifizierte, token-basierte PoA-Signatur-Dokumentansicht (kein
+  // Session-/Tenant-Kontext) — spiegelt loadPoaForSigning; liefert NUR das eine
+  // per Token freigeschaltete Dokument (scoped auf poa.tenantId + poa.documentId).
+  'apps/web/src/app/poa/sign/document/route.ts <- @/server/db/prisma-owner',
   'apps/web/src/app/portal/(auth)/login/actions.ts <- @/server/db/prisma-owner',
   'apps/web/src/app/staff/(auth)/login/actions.ts <- @/server/db/prisma-owner',
   'apps/web/src/app/staff/(auth)/login/password/route.ts <- @/server/db/prisma-owner',
