@@ -112,6 +112,13 @@ export async function saveTaxFilingAction(
       if (data.filingId) {
         const before = await tx.taxFiling.findUnique({ where: { id: data.filingId } });
         if (!before) throw new ActionError('Erklärung nicht gefunden.');
+        // Mandantenbindung: assertClientAccessTx (oben) autorisiert die
+        // MITGESENDETE data.clientId, das Update greift aber allein über
+        // data.filingId. Ohne diesen Abgleich könnte ein Mitarbeiter mit
+        // Zugriff auf Mandant A per bekannter filingId die Erklärung eines
+        // fremden Mandanten B überschreiben (RLS trennt nur Tenants, nicht
+        // Mandanten). Vgl. shareTaxFilingAction, die genau so bindet.
+        if (before.clientId !== data.clientId) throw new ActionError('Mandant stimmt nicht.');
         await tx.taxFiling.update({
           where: { id: data.filingId },
           data: { ...baseData, ...(documentId ? { documentId } : {}) },
