@@ -49,4 +49,14 @@ describe('vatCategory', () => {
     expect(vatCategory(7)).toBe('S');
     expect(vatCategory(0)).toBe('Z');
   });
+
+  it('Satz 0 mit Befreiungsgrund → E', () => {
+    expect(vatCategory(0, true)).toBe('E');
+  });
+
+  it('Reverse-Charge → AE (§ 13b UStG), hat Vorrang vor S/E/Z', () => {
+    expect(vatCategory(0, false, true)).toBe('AE');
+    expect(vatCategory(19, false, true)).toBe('AE');
+    expect(vatCategory(0, true, true)).toBe('AE');
+  });
 });

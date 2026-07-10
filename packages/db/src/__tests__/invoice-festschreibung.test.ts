@@ -143,9 +143,12 @@ describeWithDatabase('Festschreibung: Rechnung nach Versand unveränderlich (ite
     ).rejects.toThrow(/Festschreibung/);
   });
 
-  it('nach SENT: auch die iter102-Felder sind eingefroren (Leistungszeitraum, USt-Grund, Storno-Bezug)', async () => {
+  it('nach SENT: iter102/107-Felder eingefroren (Leistungszeitraum, USt-Grund, Storno-Bezug, Reverse-Charge)', async () => {
     const id = await makeInvoice();
     await setStatus(id, 'SENT');
+    await expect(
+      owner.invoice.update({ where: { id }, data: { reverseCharge: true } }),
+    ).rejects.toThrow(/Festschreibung/);
     await expect(
       owner.invoice.update({ where: { id }, data: { servicePeriodStart: new Date('2026-05-01') } }),
     ).rejects.toThrow(/Festschreibung/);

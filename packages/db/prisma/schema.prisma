@@ -421,6 +421,10 @@ model Invoice {
   // „§ 19 UStG Kleinunternehmer", „steuerfrei nach § 4 Nr. …"). NULL = kein
   // 0 %-Umsatz. In XRechnung als BT-120 (Kategorie „E") ausgewiesen.
   vatExemptionReason String?       @map("vat_exemption_reason")
+  // Reverse-Charge (§ 13b UStG, EN16931 USt-Kategorie AE): der Leistungs-
+  // empfänger schuldet die Steuer, Positionen sind 0 %. Nur DRAFT-setzbar,
+  // danach festgeschrieben (iter107).
+  reverseCharge   Boolean         @default(false) @map("reverse_charge")
   notes          String?
   sentAt         DateTime?         @map("sent_at")
   paidAt         DateTime?         @map("paid_at")

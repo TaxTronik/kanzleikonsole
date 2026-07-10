@@ -47,6 +47,7 @@ export function NewInvoiceForm({ clients }: Props) {
   const [servicePeriodStart, setServicePeriodStart] = useState('');
   const [servicePeriodEnd, setServicePeriodEnd] = useState('');
   const [vatExemptionReason, setVatExemptionReason] = useState('');
+  const [reverseCharge, setReverseCharge] = useState(false);
   const [notes, setNotes] = useState('');
   const [positions, setPositions] = useState<PositionRow[]>([newPosition()]);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +69,10 @@ export function NewInvoiceForm({ clients }: Props) {
   // gerundet, § 14 Abs. 4 Nr. 8 UStG) statt Positions-weise — sonst weicht die
   // angezeigte Summe an Rundungsgrenzen von der tatsächlichen Rechnung ab.
   const preview = computeVatTotals(
-    positions.map((p) => ({ netAmount: (p.quantity || 0) * (p.unitPrice || 0), vatRate: p.vatRate || 0 })),
+    positions.map((p) => ({
+      netAmount: (p.quantity || 0) * (p.unitPrice || 0),
+      vatRate: reverseCharge ? 0 : p.vatRate || 0,
+    })),
   );
   const netTotal = preview.netAmount;
   const vatTotal = preview.vatAmount;
@@ -94,15 +98,17 @@ export function NewInvoiceForm({ clients }: Props) {
         notes,
         servicePeriodStart: servicePeriodStart || undefined,
         servicePeriodEnd: servicePeriodEnd || undefined,
-        vatExemptionReason: vatExemptionReason || undefined,
+        vatExemptionReason: reverseCharge ? undefined : vatExemptionReason || undefined,
+        reverseCharge,
         format,
         // `id` ist nur der React-Key — nicht an die Action durchreichen.
+        // Reverse-Charge erzwingt 0 % je Position (Kategorie AE).
         positions: positions.map((p) => ({
           description: p.description,
           quantity: p.quantity,
           unitPrice: p.unitPrice,
           unit: p.unit,
-          vatRate: p.vatRate,
+          vatRate: reverseCharge ? 0 : p.vatRate,
         })),
       });
       if (r.error || !r.invoiceId) {
@@ -214,7 +220,25 @@ export function NewInvoiceForm({ clients }: Props) {
         <p className="text-xs text-muted mt-2">
           Leistungszeitraum (§ 14 Abs. 4 Nr. 6 UStG) — leer lassen, wenn das Rechnungsdatum gilt.
         </p>
-        {positions.some((p) => (p.vatRate || 0) === 0) && (
+
+        <div className="mt-3">
+          <label className="flex items-center gap-2 text-sm text-secondary">
+            <input
+              type="checkbox"
+              checked={reverseCharge}
+              onChange={(e) => setReverseCharge(e.target.checked)}
+            />
+            Reverse-Charge (§ 13b UStG) — Steuerschuldnerschaft des Leistungsempfängers
+          </label>
+          {reverseCharge && (
+            <p className="text-xs text-muted mt-1">
+              Alle Positionen werden mit 0 % USt (Kategorie AE) ausgewiesen; der
+              Mandant muss eine USt-IdNr hinterlegt haben.
+            </p>
+          )}
+        </div>
+
+        {!reverseCharge && positions.some((p) => (p.vatRate || 0) === 0) && (
           <div className="mt-3">
             <label className="label" htmlFor="vatExemptionReason">Befreiungsgrund (Pflicht bei 0 %)</label>
             <input
@@ -293,8 +317,9 @@ export function NewInvoiceForm({ clients }: Props) {
                 <select
                   id={`pos-${i}-vatRate`}
                   className="input"
-                  value={p.vatRate}
+                  value={reverseCharge ? 0 : p.vatRate}
                   onChange={(e) => setPosField(i, 'vatRate', Number(e.target.value))}
+                  disabled={reverseCharge}
                 >
                   <option value={19}>19</option>
                   <option value={7}>7</option>

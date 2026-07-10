@@ -77,6 +77,28 @@ describe('generateXRechnungCii — 0 %-Befreiungsgrund (iter101, Kategorie E/BT-
   });
 });
 
+describe('generateXRechnungCii — Reverse-Charge (iter107, Kategorie AE/§ 13b)', () => {
+  const rc = generateXRechnungCii(
+    {
+      ...SAMPLE_INVOICE,
+      reverseCharge: true,
+      // Reverse-Charge weist alle Positionen mit 0 % aus.
+      positions: SAMPLE_INVOICE.positions.map((p) => ({ ...p, vatRate: 0 })),
+    },
+    SAMPLE_SELLER,
+    SAMPLE_BUYER,
+  );
+
+  it('Kategorie AE mit Reverse-Charge-Grund (BT-120), keine S/Z-Kategorie', () => {
+    expect(rc).toContain('<ram:CategoryCode>AE</ram:CategoryCode>');
+    expect(rc).toContain(
+      '<ram:ExemptionReason>Steuerschuldnerschaft des Leistungsempfängers</ram:ExemptionReason>',
+    );
+    expect(rc).not.toContain('<ram:CategoryCode>S</ram:CategoryCode>');
+    expect(rc).not.toContain('<ram:CategoryCode>Z</ram:CategoryCode>');
+  });
+});
+
 describe('generateXRechnungCii — Storno (iter100, TypeCode 381)', () => {
   const storno = generateXRechnungCii(
     { ...SAMPLE_INVOICE, typeCode: '381', precedingInvoiceNumber: '2026-0041' },

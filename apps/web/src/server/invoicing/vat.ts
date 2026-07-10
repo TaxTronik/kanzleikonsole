@@ -54,9 +54,16 @@ export function computeVatTotals(positions: VatPosition[]): VatTotals {
   };
 }
 
-/** EN-16931-Steuerkategorie für einen Satz (s. Kopfkommentar). Bei 0 % mit
- *  hinterlegtem Befreiungsgrund → "E" (steuerbefreit), sonst "Z". */
-export function vatCategory(rate: number, hasExemptionReason = false): 'S' | 'Z' | 'E' {
+/** EN-16931-Steuerkategorie für einen Satz (s. Kopfkommentar). Reverse-Charge
+ *  (§ 13b UStG) → "AE" (Steuerschuldnerschaft des Leistungsempfängers, 0 %).
+ *  Bei 0 % mit hinterlegtem Befreiungsgrund → "E" (steuerbefreit), sonst "Z".
+ *  Satz > 0 → "S". */
+export function vatCategory(
+  rate: number,
+  hasExemptionReason = false,
+  reverseCharge = false,
+): 'S' | 'Z' | 'E' | 'AE' {
+  if (reverseCharge) return 'AE';
   if (rate > 0) return 'S';
   return hasExemptionReason ? 'E' : 'Z';
 }

@@ -86,6 +86,8 @@ const CreateSchema = z.object({
   servicePeriodEnd: z.string().date().optional().or(z.literal('')),
   // iter101: Befreiungsgrund für 0 %-Umsätze (§ 14 Abs. 4 Nr. 8 UStG).
   vatExemptionReason: z.string().max(500).optional().or(z.literal('')),
+  // iter107: Reverse-Charge (§ 13b UStG). Alle Positionen 0 %, Mandant braucht USt-IdNr.
+  reverseCharge: z.boolean().optional().default(false),
   // H-4: IN_APP-Rechnungen brauchen ein Generat mit GoBD-Archivkopie. Das
   // reine „PDF" (kein Generat, kein Dokument) ist nur der EXTERNAL-Upload-Weg.
   format: z.enum(['XRECHNUNG', 'ZUGFERD']).default('ZUGFERD'),
@@ -103,6 +105,7 @@ export async function createInvoiceAction(input: {
   servicePeriodStart?: string;
   servicePeriodEnd?: string;
   vatExemptionReason?: string;
+  reverseCharge?: boolean;
   format: 'XRECHNUNG' | 'ZUGFERD';
   positions: Array<{ description: string; quantity: number; unitPrice: number; unit: string; vatRate: number }>;
 }): Promise<ActionResult & { invoiceId?: string; number?: string }> {
@@ -133,7 +136,12 @@ export async function createInvoiceAction(input: {
   // § 14 Abs. 4 Nr. 8 UStG: 0 %-Umsätze brauchen einen Befreiungshinweis.
   const exemptionReason = data.vatExemptionReason || null;
   const hasZeroRate = data.positions.some((p) => p.vatRate === 0);
-  if (hasZeroRate && !exemptionReason) {
+  // Reverse-Charge (§ 13b): alle Positionen 0 %, eigener Kategorie-Grund (AE) —
+  // kein Befreiungsgrund-Text nötig, dafür MUSS jede Position 0 % sein.
+  if (data.reverseCharge && data.positions.some((p) => p.vatRate !== 0)) {
+    return { ok: false, error: 'Reverse-Charge (§ 13b UStG): alle Positionen müssen 0 % USt haben.' };
+  }
+  if (hasZeroRate && !exemptionReason && !data.reverseCharge) {
     return { ok: false, error: 'Bei 0 %-Positionen ist ein Befreiungsgrund erforderlich (z. B. „§ 19 UStG Kleinunternehmer", „steuerfrei nach § 4 …").' };
   }
 
@@ -155,6 +163,17 @@ export async function createInvoiceAction(input: {
     [invoiceId, invoiceNumber] = await withTenantContext(ctx, async (tx) => {
       // Vertraulich-/RESTRICTED-Ventil (Gegenstück in clients/[id]/billing).
       await assertClientAccessTx(tx, g.session, data.clientId);
+      // BR-AE (EN16931): Reverse-Charge braucht die USt-IdNr des Leistungs-
+      // empfängers (BT-48) — ohne sie wäre die erzeugte XRechnung nicht valide.
+      if (data.reverseCharge) {
+        const cli = await tx.client.findUnique({
+          where: { id: data.clientId },
+          select: { vatId: true },
+        });
+        if (!cli?.vatId) {
+          throw new ActionError('Reverse-Charge (§ 13b UStG) erfordert eine hinterlegte USt-IdNr des Mandanten.');
+        }
+      }
       // Lückenlose Vergabe in DERSELBEN Tx: scheitert der INSERT, rollt die
       // Sequenz mit zurück — es entsteht keine Lücke.
       const number = await allocateInvoiceNumber(tx, tenantId, new Date(data.issueDate));
@@ -169,6 +188,7 @@ export async function createInvoiceAction(input: {
           servicePeriodStart: periodStart ? new Date(periodStart) : null,
           servicePeriodEnd: periodEnd ? new Date(periodEnd) : null,
           vatExemptionReason: exemptionReason,
+          reverseCharge: data.reverseCharge,
           status: 'DRAFT',
           format: data.format,
           netAmount: totals.netAmount,

@@ -44,6 +44,9 @@ export interface XRechnungInvoice {
   precedingInvoiceNumber?: string | null;
   // iter101: Befreiungsgrund für 0 %-Umsätze (BT-120, Kategorie „E").
   vatExemptionReason?: string | null;
+  // iter107: Reverse-Charge (§ 13b UStG) → EN16931-Kategorie „AE" (0 %,
+  // Steuerschuldnerschaft des Leistungsempfängers).
+  reverseCharge?: boolean;
   netAmount: number;
   vatAmount: number;
   totalAmount: number;
@@ -189,7 +192,7 @@ export function generateXRechnungCii(
     const lineSettle = line.ele(RAM, 'ram:SpecifiedLineTradeSettlement');
     const lineTax = lineSettle.ele(RAM, 'ram:ApplicableTradeTax');
     lineTax.ele(RAM, 'ram:TypeCode').txt('VAT');
-    lineTax.ele(RAM, 'ram:CategoryCode').txt(vatCategory(pos.vatRate, !!invoice.vatExemptionReason));
+    lineTax.ele(RAM, 'ram:CategoryCode').txt(vatCategory(pos.vatRate, !!invoice.vatExemptionReason, !!invoice.reverseCharge));
     lineTax.ele(RAM, 'ram:RateApplicablePercent').txt(pos.vatRate.toFixed(2));
     lineSettle
       .ele(RAM, 'ram:SpecifiedTradeSettlementLineMonetarySummation')
@@ -314,13 +317,16 @@ export function generateXRechnungCii(
   // Steuerblock: EIN ApplicableTradeTax je Steuersatz-Gruppe (EN 16931 BG-23;
   // § 14 Abs. 4 Nr. 8 UStG — Entgelt aufgeschlüsselt nach Sätzen).
   for (const g of computeVatTotals(invoice.positions).groups) {
-    const category = vatCategory(g.rate, !!invoice.vatExemptionReason);
+    const category = vatCategory(g.rate, !!invoice.vatExemptionReason, !!invoice.reverseCharge);
     const tax = settle.ele(RAM, 'ram:ApplicableTradeTax');
     tax.ele(RAM, 'ram:CalculatedAmount').txt(fmtAmount(g.vat));
     tax.ele(RAM, 'ram:TypeCode').txt('VAT');
     // BT-120 Befreiungsgrund (Pflicht bei Kategorie „E", § 14 Abs. 4 Nr. 8 UStG).
     if (category === 'E' && invoice.vatExemptionReason) {
       tax.ele(RAM, 'ram:ExemptionReason').txt(invoice.vatExemptionReason);
+    } else if (category === 'AE') {
+      // BR-AE-10: Reverse-Charge braucht den Befreiungsgrund-Text (BT-120).
+      tax.ele(RAM, 'ram:ExemptionReason').txt('Steuerschuldnerschaft des Leistungsempfängers');
     }
     tax.ele(RAM, 'ram:BasisAmount').txt(fmtAmount(g.net));
     tax.ele(RAM, 'ram:CategoryCode').txt(category);

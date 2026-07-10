@@ -117,6 +117,7 @@ export default async function InvoiceDetailPage({
             {inv.status === 'OVERDUE' && <span className="badge-red">{statusLabels[inv.status]}</span>}
             {inv.status === 'CANCELLED' && <span className="badge-gray">{statusLabels[inv.status]}</span>}
             {inv.stornoOfId && <span className="badge-red">Stornorechnung</span>}
+            {inv.reverseCharge && <span className="badge-gray">Reverse-Charge § 13b</span>}
           </div>
           {inv.stornoOf && (
             <p className="text-xs text-red-700">
@@ -136,6 +137,11 @@ export default async function InvoiceDetailPage({
                   )}
                 </span>
               ))}
+            </p>
+          )}
+          {inv.reverseCharge && (
+            <p className="text-xs text-secondary">
+              Steuerschuldnerschaft des Leistungsempfängers (§ 13b UStG) — die USt schuldet der Mandant.
             </p>
           )}
           <p className="text-muted text-sm">
