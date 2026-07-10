@@ -18,6 +18,22 @@ import { staffActionGuard, withStaff, ActionError, type ActionResult as BaseActi
 // Import-Pfad './actions' bleibt für die Form-Komponenten stabil.
 export type ActionResult = BaseActionResult;
 
+// #2 (GwG-Integrität): Nach Abschluss einer Prüfung sind ihre Substanzdaten
+// (Risikoantworten, wirtschaftlich Berechtigte, Ausweisdokumente) unveränderlich
+// — § 8 GwG verlangt die unveränderte Aufbewahrung der Aufzeichnungen. Nur
+// DRAFT/IN_REVIEW sind editierbar; eine Aktualisierung erfolgt über eine neue
+// Prüfung (openCheckAction) bzw. den durch eine GwG-relevante Stammdaten-
+// änderung ausgelösten Reset auf IN_REVIEW (clients/[id]/edit/actions.ts).
+const EDITABLE_GWG_STATUSES: readonly string[] = ['DRAFT', 'IN_REVIEW'];
+
+function assertGwgEditable(status: string): void {
+  if (!EDITABLE_GWG_STATUSES.includes(status)) {
+    throw new ActionError(
+      'Diese GwG-Prüfung ist bereits abgeschlossen (verifiziert/abgelehnt/abgelaufen) und darf nicht mehr geändert werden (§ 8 GwG). Für eine Aktualisierung bitte eine neue Prüfung anlegen.',
+    );
+  }
+}
+
 const OpenSchema = z.object({ clientId: z.string().uuid() });
 
 export async function openCheckAction(formData: FormData): Promise<void> {
@@ -67,6 +83,7 @@ export async function saveRiskAnswersAction(input: {
       await assertClientAccessTx(tx, session, clientId);
       const before = await tx.gwgCheck.findFirst({ where: { id: checkId, clientId } });
       if (!before) throw new ActionError('GwG-Check nicht gefunden.');
+      assertGwgEditable(before.status);
       const updated = await tx.gwgCheck.update({
         where: { id: checkId },
         data: {
@@ -125,6 +142,14 @@ export async function addBeneficialOwnerAction(
   return withStaff(
     async (tx, { tenantId, staffId, session }) => {
       await assertClientAccessTx(tx, session, data.clientId);
+      // Check laden + Status prüfen. Das Scope {id, clientId} bindet die checkId
+      // an den autorisierten Mandanten (kein Cross-Check-Write über fremde ID).
+      const check = await tx.gwgCheck.findFirst({
+        where: { id: data.checkId, clientId: data.clientId },
+        select: { status: true },
+      });
+      if (!check) throw new ActionError('GwG-Check nicht gefunden.');
+      assertGwgEditable(check.status);
       const owner = await tx.gwgBeneficialOwner.create({
         data: {
           gwgCheckId: data.checkId,
@@ -196,6 +221,13 @@ export async function addIdDocumentAction(
   return withStaff(
     async (tx, { tenantId, staffId, session }) => {
       await assertClientAccessTx(tx, session, data.clientId);
+      // Check laden + Status prüfen (bindet checkId an den autorisierten Mandanten).
+      const check = await tx.gwgCheck.findFirst({
+        where: { id: data.checkId, clientId: data.clientId },
+        select: { status: true },
+      });
+      if (!check) throw new ActionError('GwG-Check nicht gefunden.');
+      assertGwgEditable(check.status);
       const idDoc = await tx.gwgIdDocument.create({
         data: {
           gwgCheckId: data.checkId,

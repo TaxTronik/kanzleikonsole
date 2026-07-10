@@ -258,7 +258,7 @@ export default async function GwgPage({
               currentAnswers={(check.riskAnswers as Record<string, number>) ?? {}}
               currentScore={check.riskScore ?? null}
               currentLevel={check.riskLevel ?? null}
-              disabled={check.status === 'VERIFIED' || check.status === 'REJECTED'}
+              disabled={check.status === 'VERIFIED' || check.status === 'REJECTED' || check.status === 'EXPIRED'}
             />
           </section>
 
@@ -291,7 +291,7 @@ export default async function GwgPage({
               </ul>
             )}
 
-            {check.status !== 'VERIFIED' && check.status !== 'REJECTED' && (
+            {check.status !== 'VERIFIED' && check.status !== 'REJECTED' && check.status !== 'EXPIRED' && (
               <AddBeneficialOwnerForm checkId={check.id} clientId={client.id} />
             )}
           </section>
@@ -335,7 +335,7 @@ export default async function GwgPage({
               </ul>
             )}
 
-            {check.status !== 'VERIFIED' && check.status !== 'REJECTED' && (
+            {check.status !== 'VERIFIED' && check.status !== 'REJECTED' && check.status !== 'EXPIRED' && (
               <AddIdDocumentForm
                 checkId={check.id}
                 clientId={client.id}
