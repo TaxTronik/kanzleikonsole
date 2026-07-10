@@ -8,6 +8,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { revokeAllSessions } from '@/server/auth/revocation';
 import { anonymizeContactInTx } from '@/server/dsgvo/anonymize-contact';
+import { dsgvoResponseDeadline } from '@/server/dsgvo/deadline';
 import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
 
 export interface ActionResult { ok: boolean; error?: string; }
@@ -42,9 +43,10 @@ export async function createDsgvoRequestAction(formData: FormData): Promise<void
   if (!parsed.success) throw new ActionError('Validierungsfehler.');
 
   const data = parsed.data;
-  // Frist nach DSGVO: 1 Monat
-  const dueDate = new Date();
-  dueDate.setMonth(dueDate.getMonth() + 1);
+  // Frist nach Art. 12 Abs. 3 DSGVO: 1 Monat. Monatsende-sicher (§ 188 Abs. 3
+  // BGB) — ein nacktes setMonth(+1) rollt z. B. den 31.01. auf den 03.03. und
+  // täuscht Bearbeitungszeit vor, die nicht besteht.
+  const dueDate = dsgvoResponseDeadline(new Date());
 
   const id = await withTenantContext(ctx, async (tx) => {
     const req = await tx.dsgvoRequest.create({
