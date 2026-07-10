@@ -3,7 +3,7 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
-import type { TaxScheduleKind } from '@prisma/client';
+import type { Prisma, TaxScheduleKind } from '@prisma/client';
 import { evidenceService } from '@/server/container';
 import { materializeTaxDeadlines } from '@/server/tax-deadlines/materialize';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
@@ -61,6 +61,7 @@ export async function saveScheduleConfigAction(
       await assertClientAccessTx(tx, session, clientId);
       // R-2: clientId Tenant-Sanity vor allen taxScheduleConfig-Mutationen.
       await assertClientInTenant(tx, clientId);
+      const now = new Date();
       // Bestehende laden für Diff
       const existing = await tx.taxScheduleConfig.findMany({ where: { clientId } });
       const byKind = new Map(existing.map((c) => [c.kind, c]));
@@ -73,13 +74,7 @@ export async function saveScheduleConfigAction(
           // alle noch nicht erledigten Termine wegputzen, damit der Kalender
           // sauber ist. Erledigte Termine bleiben (Audit-relevant).
           if (old && old.active) {
-            const removed = await tx.taxDeadline.deleteMany({
-              where: {
-                clientId,
-                kind: u.kind,
-                status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS', 'OVERDUE'] },
-              },
-            });
+            const removedCount = await removeReschedulableDeadlines(tx, clientId, u.kind, now);
             await tx.taxScheduleConfig.update({
               where: { id: old.id },
               data: { active: false },
@@ -92,7 +87,7 @@ export async function saveScheduleConfigAction(
               resourceType: 'tax_schedule_config',
               resourceId: old.id,
               before: { active: true },
-              after: { active: false, removedDeadlines: removed.count },
+              after: { active: false, removedDeadlines: removedCount },
             });
           }
           continue;
@@ -111,14 +106,7 @@ export async function saveScheduleConfigAction(
             old.hasDauerfrist !== u.hasDauerfrist || old.advised !== u.advised;
           let removedCount = 0;
           if (old.active && datesChanged) {
-            const removed = await tx.taxDeadline.deleteMany({
-              where: {
-                clientId,
-                kind: u.kind,
-                status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS', 'OVERDUE'] },
-              },
-            });
-            removedCount = removed.count;
+            removedCount = await removeReschedulableDeadlines(tx, clientId, u.kind, now);
           }
           await tx.taxScheduleConfig.update({
             where: { id: old.id },
@@ -186,6 +174,45 @@ export async function saveScheduleConfigAction(
   revalidatePath(`/staff/clients/${clientId}/tax-schedule`);
   revalidatePath('/staff/tax-deadlines');
   return { ok: true, savedAt: new Date().toISOString() };
+}
+
+// #10 (Fristen-Schutz): Bei Deaktivierung/Umparametrisierung nur noch NICHT
+// fällige PLANNED/REMINDED-Termine entfernen — die materialisiert der Lauf am
+// Ende ohnehin neu (mit ggf. verschobenem Fälligkeitsdatum). Bewusst NICHT
+// gelöscht: IN_PROGRESS (aktive Bearbeitung), OVERDUE (bereits VERSÄUMTE Frist
+// — dieses Signal darf nie spurlos verschwinden) sowie bereits fällige Termine.
+// Verknüpfte Mandantenanforderungen der entfernten Termine werden geschlossen,
+// damit sie nicht verwaisen und die Neu-Materialisierung keine Dublette erzeugt.
+// (Grenze dueDate ≥ heute-UTC-Mitternacht deckt sich mit dem Re-Materialize-Tor
+// in materialize.ts, das vergangene Termine nie neu erzeugt.)
+async function removeReschedulableDeadlines(
+  tx: Prisma.TransactionClient,
+  clientId: string,
+  kind: TaxScheduleKind,
+  now: Date,
+): Promise<number> {
+  const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const toRemove = await tx.taxDeadline.findMany({
+    where: {
+      clientId,
+      kind,
+      status: { in: ['PLANNED', 'REMINDED'] },
+      dueDate: { gte: startOfToday },
+    },
+    select: { id: true, requestId: true },
+  });
+  if (toRemove.length === 0) return 0;
+  const requestIds = toRemove
+    .map((d) => d.requestId)
+    .filter((r): r is string => r !== null);
+  if (requestIds.length > 0) {
+    await tx.request.updateMany({
+      where: { id: { in: requestIds }, status: { in: ['OPEN', 'IN_PROGRESS', 'RESPONDED'] } },
+      data: { status: 'CANCELLED' },
+    });
+  }
+  await tx.taxDeadline.deleteMany({ where: { id: { in: toRemove.map((d) => d.id) } } });
+  return toRemove.length;
 }
 
 function clampInt(v: FormDataEntryValue | null, min: number, max: number, fallback: number): number {
