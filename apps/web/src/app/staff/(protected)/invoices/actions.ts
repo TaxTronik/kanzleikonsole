@@ -612,6 +612,12 @@ const UploadExternalSchema = z.object({
   issueDate: z.string().date(),
   dueDate: z.string().date(),
   totalAmount: z.coerce.number().min(0).max(100_000_000),
+  // USt-Satz des Fremdbelegs (0 = steuerfrei / Reverse-Charge / Kleinunternehmer).
+  // Nur die deutschen Regelsätze; ohne diesen wäre Netto aus dem Brutto nicht
+  // ableitbar und das Umsatz-KPI (netto) systematisch überhöht.
+  vatRatePct: z.coerce.number().refine((v) => [0, 7, 19].includes(v), {
+    message: 'USt-Satz muss 0, 7 oder 19 % sein.',
+  }),
   notes: z.string().max(1000).nullable().optional(),
   pdf: z.object({
     fileName: z.string().max(255),
@@ -639,6 +645,14 @@ export async function uploadExternalInvoiceAction(input: z.infer<typeof UploadEx
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
   }
   const data = parsed.data;
+
+  // EXTERNAL: erfasst wird der Brutto-Gesamtbetrag + der USt-Satz der Fremd-PDF.
+  // Netto/USt daraus ableiten, damit die Umsatz-KPIs (netto) nicht den Brutto-
+  // betrag als Netto zählen. USt = Brutto − Netto → summiert exakt auf Brutto.
+  // Bei 0 % (steuerfrei/Reverse-Charge) ist Netto = Brutto, USt = 0.
+  const grossAmount = data.totalAmount;
+  const netAmount = Math.round((grossAmount / (1 + data.vatRatePct / 100)) * 100) / 100;
+  const vatAmount = Math.round((grossAmount - netAmount) * 100) / 100;
 
   const pdfBytes = Buffer.from(data.pdf.base64, 'base64');
   if (pdfBytes.length === 0) return { ok: false, error: 'PDF-Daten leer.' };
@@ -710,12 +724,11 @@ export async function uploadExternalInvoiceAction(input: z.infer<typeof UploadEx
           dueDate: new Date(data.dueDate),
           status: 'SENT',
           format: 'PDF',
-          netAmount: data.totalAmount,  // EXTERNAL: kein USt-Split, Brutto=Netto pro Pos
-          vatAmount: 0,
-          totalAmount: data.totalAmount,
-          // iter86: kein bekannter Satz (Ausweis steht in der Fremd-PDF) → NULL
-          // statt fälschlich 0 % (CSV wies vorher USt 0 aus).
-          vatRate: null,
+          netAmount,
+          vatAmount,
+          totalAmount: grossAmount,
+          // Aus Brutto + erfasstem USt-Satz abgeleitet (siehe oben).
+          vatRate: data.vatRatePct,
           notes: data.notes ?? null,
           documentId: doc.id,
           createdByStaff: staffId,

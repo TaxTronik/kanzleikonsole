@@ -51,6 +51,7 @@ export function ExternalInvoiceForm({
         issueDate: String(fd.get('issueDate') ?? ''),
         dueDate: String(fd.get('dueDate') ?? ''),
         totalAmount: Number(fd.get('totalAmount') ?? 0),
+        vatRatePct: Number(fd.get('vatRatePct') ?? 19),
         subject: String(fd.get('subject') ?? ''),
         notes: String(fd.get('notes') ?? '') || null,
         pdf: { fileName: file.name, mimeType: file.type || 'application/pdf', base64 },
@@ -114,7 +115,7 @@ export function ExternalInvoiceForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-4 gap-4">
         <div>
           <label className="label" htmlFor="totalAmount">Betrag (Brutto, €) <span className="text-red-600">*</span></label>
           <input
@@ -124,6 +125,14 @@ export function ExternalInvoiceForm({
           />
         </div>
         <div>
+          <label className="label" htmlFor="vatRatePct">USt-Satz <span className="text-red-600">*</span></label>
+          <select id="vatRatePct" name="vatRatePct" required defaultValue="19" className="input">
+            <option value="19">19 %</option>
+            <option value="7">7 %</option>
+            <option value="0">0 % (steuerfrei / RC)</option>
+          </select>
+        </div>
+        <div className="col-span-2">
           <label className="label" htmlFor="subject">Betreff <span className="text-red-600">*</span></label>
           <input id="subject" name="subject" type="text" required maxLength={200}
             className="input"
