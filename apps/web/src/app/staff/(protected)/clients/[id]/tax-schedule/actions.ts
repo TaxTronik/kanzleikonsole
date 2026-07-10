@@ -106,7 +106,10 @@ export async function saveScheduleConfigAction(
             old.hasDauerfrist !== u.hasDauerfrist || old.advised !== u.advised;
           let removedCount = 0;
           if (old.active && datesChanged) {
-            removedCount = await removeReschedulableDeadlines(tx, clientId, u.kind, now);
+            // Fristverschiebende Änderung → auch laufende (IN_PROGRESS) Zukunfts-
+            // termine neu datieren, damit keiner mit veraltetem Fälligkeitsdatum
+            // stehen bleibt. Sie kommen korrekt neu materialisiert zurück.
+            removedCount = await removeReschedulableDeadlines(tx, clientId, u.kind, now, true);
           }
           await tx.taxScheduleConfig.update({
             where: { id: old.id },
@@ -176,27 +179,40 @@ export async function saveScheduleConfigAction(
   return { ok: true, savedAt: new Date().toISOString() };
 }
 
-// #10 (Fristen-Schutz): Bei Deaktivierung/Umparametrisierung nur noch NICHT
-// fällige PLANNED/REMINDED-Termine entfernen — die materialisiert der Lauf am
-// Ende ohnehin neu (mit ggf. verschobenem Fälligkeitsdatum). Bewusst NICHT
-// gelöscht: IN_PROGRESS (aktive Bearbeitung), OVERDUE (bereits VERSÄUMTE Frist
-// — dieses Signal darf nie spurlos verschwinden) sowie bereits fällige Termine.
-// Verknüpfte Mandantenanforderungen der entfernten Termine werden geschlossen,
-// damit sie nicht verwaisen und die Neu-Materialisierung keine Dublette erzeugt.
-// (Grenze dueDate ≥ heute-UTC-Mitternacht deckt sich mit dem Re-Materialize-Tor
-// in materialize.ts, das vergangene Termine nie neu erzeugt.)
+// #10 (Fristen-Schutz): nur NICHT fällige, noch nicht versäumte Termine
+// entfernen — die materialisiert der Lauf am Ende ohnehin neu (mit ggf.
+// verschobenem Fälligkeitsdatum). Bewusst NIE gelöscht: OVERDUE (bereits
+// VERSÄUMTE Frist — dieses Signal darf nie spurlos verschwinden) und bereits
+// fällige Termine.
+//
+// IN_PROGRESS wird NUR bei einer fristverschiebenden Umparametrisierung entfernt
+// (includeInProgress=true): dort ist die alte Fälligkeit falsch, und der Termin
+// kommt korrekt neu materialisiert (als PLANNED am neuen Datum) zurück — besser
+// als ein aktiver Termin mit veraltetem Datum. Bei einer DEAKTIVIERUNG bleibt
+// IN_PROGRESS dagegen als aktives Bearbeitungssignal erhalten (die Pflicht endet,
+// aber die laufende Bearbeitung soll nicht verschwinden).
+//
+// Verknüpfte Mandantenanforderungen der entfernten Termine werden geschlossen
+// (kein Verwaisen, keine Dublette bei der Neu-Materialisierung). Grenze
+// dueDate ≥ heute-UTC-Mitternacht deckt sich mit dem Re-Materialize-Tor in
+// materialize.ts, das vergangene Termine nie neu erzeugt.
 async function removeReschedulableDeadlines(
   tx: Prisma.TransactionClient,
   clientId: string,
   kind: TaxScheduleKind,
   now: Date,
+  includeInProgress = false,
 ): Promise<number> {
   const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   const toRemove = await tx.taxDeadline.findMany({
     where: {
       clientId,
       kind,
-      status: { in: ['PLANNED', 'REMINDED'] },
+      status: {
+        in: includeInProgress
+          ? ['PLANNED', 'REMINDED', 'IN_PROGRESS']
+          : ['PLANNED', 'REMINDED'],
+      },
       dueDate: { gte: startOfToday },
     },
     select: { id: true, requestId: true },
