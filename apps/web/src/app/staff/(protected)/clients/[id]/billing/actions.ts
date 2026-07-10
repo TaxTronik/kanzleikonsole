@@ -71,6 +71,19 @@ export async function createInvoiceFromTimeEntriesAction(input: z.infer<typeof C
         throw new ActionError('Keine abrechenbaren Stunden für diesen Mandanten.');
       }
 
+      // Leistungszeitraum (§ 14 Abs. 4 Nr. 6 UStG, BT-73/BT-74) aus den
+      // erfassten Zeiten ableiten. Ohne ihn defaultet der Generator BT-72
+      // (Leistungsdatum) auf das Rechnungsdatum — bei Sammelabrechnung eines
+      // früheren Zeitraums sachlich falsch. entries ist nach startedAt
+      // aufsteigend sortiert und oben als non-empty geprüft; endedAt ist per
+      // where-Filter garantiert non-null.
+      const firstEntry = entries[0]!;
+      const servicePeriodStart = firstEntry.startedAt;
+      const servicePeriodEnd = entries.reduce(
+        (max, e) => (e.endedAt! > max ? e.endedAt! : max),
+        firstEntry.endedAt!,
+      );
+
       // 2. Stundenwerte berechnen
       const entriesWithMinutes = entries.map((e) => {
         const end = e.endedAt!;
@@ -137,6 +150,8 @@ export async function createInvoiceFromTimeEntriesAction(input: z.infer<typeof C
           subject: data.subject,
           issueDate: new Date(data.issueDate),
           dueDate: new Date(data.dueDate),
+          servicePeriodStart,
+          servicePeriodEnd,
           status: 'DRAFT',
           format: data.format,
           netAmount: totalNet,
