@@ -31,3 +31,20 @@ describe('estimateTaxes — Einzelunternehmen § 35 EStG', () => {
     expect(r.einkommensteuerSchaetzung!).toBeGreaterThanOrEqual(0);
   });
 });
+
+describe('estimateTaxes — Freiberufler § 18 EStG (keine GewSt)', () => {
+  it('setzt keine Gewerbesteuer an und rechnet nichts nach § 35 an', () => {
+    const r = estimateTaxes({ ...base, isFreiberufler: true });
+    expect(r.gewerbesteuer).toBe(0);
+    expect(r.gewerbesteuerBemessung).toBe(0);
+    expect(r.gewerbesteuerFreibetrag).toBe(0);
+    // Volle tarifliche ESt: ohne GewSt gibt es keine § 35-Anrechnung. Muss
+    // identisch zum Einzelunternehmen mit Hebesatz 0 sein (dort ebenfalls
+    // GewSt 0 → Anrechnung 0).
+    const estVollTariflich = estimateTaxes({ ...base, gewerbesteuerHebesatzPct: 0 })
+      .einkommensteuerSchaetzung!;
+    expect(r.einkommensteuerSchaetzung!).toBe(estVollTariflich);
+    // Und höher als beim gewerblichen Einzelunternehmen mit Anrechnung.
+    expect(r.einkommensteuerSchaetzung!).toBeGreaterThan(estimateTaxes(base).einkommensteuerSchaetzung!);
+  });
+});

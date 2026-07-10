@@ -25,12 +25,17 @@ export function TaxEstimatorCard({
 }: Props) {
   const [legalForm, setLegalForm] = useState<LegalForm>(defaultLegalForm);
   const [hebesatz, setHebesatz] = useState<number>(400);
+  const [isFreiberufler, setIsFreiberufler] = useState(false);
   const [show, setShow] = useState(false);
 
   // P2-12: Steuern auf das Ergebnis VOR Ertragsteuern bemessen (kein
   // Zirkelbezug). Fehlt die Zeile, Fallback auf das (evtl. Nach-Steuer-)
   // Ergebnis — der Estimator ergänzt dann einen Hinweis.
   const basis = resultBeforeTax ?? result;
+  // Freiberufler-Option nur bei Nicht-Kapitalformen sinnvoll (eine GmbH ist
+  // stets Gewerbebetrieb kraft Rechtsform, § 2 Abs. 2 GewStG).
+  const isKapitalform = legalForm === 'GMBH' || legalForm === 'AG' || legalForm === 'UG';
+  const freiberuflich = !isKapitalform && isFreiberufler;
   const est = useMemo(
     () =>
       estimateTaxes({
@@ -41,8 +46,9 @@ export function TaxEstimatorCard({
         inputVat,
         vatPaid,
         gewerbesteuerHebesatzPct: hebesatz,
+        isFreiberufler: freiberuflich,
       }),
-    [legalForm, hebesatz, basis, resultBeforeTax, revenue, inputVat, vatPaid],
+    [legalForm, hebesatz, basis, resultBeforeTax, revenue, inputVat, vatPaid, freiberuflich],
   );
 
 
@@ -96,6 +102,17 @@ export function TaxEstimatorCard({
               />
             </div>
           </div>
+
+          {!isKapitalform && (
+            <label className="flex items-center gap-2 text-sm text-secondary">
+              <input
+                type="checkbox"
+                checked={isFreiberufler}
+                onChange={(e) => setIsFreiberufler(e.target.checked)}
+              />
+              Freiberufliche Tätigkeit (§ 18 EStG) — keine Gewerbesteuer
+            </label>
+          )}
 
           <div className="overflow-hidden rounded-md border border-default">
             <table className="w-full text-sm">

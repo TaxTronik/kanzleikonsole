@@ -34,6 +34,9 @@ export interface TaxEstimationInput {
   gewerbesteuerHebesatzPct: number;
   // Bei Personengesellschaften: Anzahl Gesellschafter (für Freibetrag)
   isPersonengesellschaft?: boolean;
+  /** True bei freiberuflicher Tätigkeit (§ 18 EStG) — keine Gewerbesteuer
+   *  (§ 2 GewStG erfasst nur den Gewerbebetrieb). */
+  isFreiberufler?: boolean;
 }
 
 export interface TaxEstimationResult {
@@ -92,11 +95,19 @@ export function estimateTaxes(input: TaxEstimationInput): TaxEstimationResult {
   const isKap = input.legalForm === 'GMBH' || input.legalForm === 'AG' || input.legalForm === 'UG';
   const isPnP = input.isPersonengesellschaft || input.legalForm === 'GBR' || input.legalForm === 'OHG' || input.legalForm === 'KG' || input.legalForm === 'EINZELUNTERNEHMEN';
 
-  // Gewerbesteuer
-  const gewerbesteuerFreibetrag = isPnP ? GEWST_FREIBETRAG : 0;
-  const gewerbesteuerBemessung = Math.max(0, input.result - gewerbesteuerFreibetrag);
+  // Gewerbesteuer. § 2 GewStG erfasst nur den Gewerbebetrieb — Freiberufler
+  // (§ 18 EStG) sind NICHT gewerbesteuerpflichtig; dann bleiben GewSt-Bemessung,
+  // -Messbetrag und -Betrag (und damit auch die § 35-Anrechnung unten) 0.
+  const gewerbesteuerpflichtig = !input.isFreiberufler;
+  const gewerbesteuerFreibetrag = gewerbesteuerpflichtig && isPnP ? GEWST_FREIBETRAG : 0;
+  const gewerbesteuerBemessung = gewerbesteuerpflichtig
+    ? Math.max(0, input.result - gewerbesteuerFreibetrag)
+    : 0;
   const gewerbesteuerMessbetrag = gewerbesteuerBemessung * GEWST_MESSZAHL;
   const gewerbesteuer = Math.round(gewerbesteuerMessbetrag * (input.gewerbesteuerHebesatzPct / 100));
+  if (input.isFreiberufler) {
+    disclaimers.push('Freiberufliche Tätigkeit (§ 18 EStG): keine Gewerbesteuer angesetzt.');
+  }
 
   // KSt + SolZ (nur Kapital)
   let koerperschaftsteuer: number | null = null;
