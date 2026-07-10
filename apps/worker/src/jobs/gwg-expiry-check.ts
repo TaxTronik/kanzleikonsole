@@ -121,6 +121,7 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
           // Audit-Chain (vorher: nackte prismaOwner-Updates ohne
           // evidence.record) — Muster analog risk-analyse-llm.ts.
           let clientDeactivated = false;
+          let supersededByValid = false;
           await withWorkerTenantContext(tenantId, async (tx) => {
             const checkRes = await tx.gwgCheck.updateMany({
               where: { id: check.id, status: 'VERIFIED' },
@@ -137,6 +138,20 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
                 before: { status: 'VERIFIED' },
                 after: { status: 'EXPIRED', validUntil: check.validUntil },
               });
+            }
+            // Existiert für denselben Mandanten ein NEUERER, noch gültiger
+            // VERIFIED-Check (Wiederholungsprüfung)? openCheckAction/
+            // verifyCheckAction lösen alte Checks nicht ab, sodass mehrere
+            // VERIFIED-Checks koexistieren. Dann darf der abgelaufene Alt-Check
+            // den Mandanten NICHT deaktivieren. Der eben auf EXPIRED gesetzte
+            // Check ist hier bereits ausgeschlossen (status = VERIFIED).
+            const stillValid = await tx.gwgCheck.findFirst({
+              where: { clientId: check.clientId, status: 'VERIFIED', validUntil: { gt: now } },
+              select: { id: true },
+            });
+            if (stillValid) {
+              supersededByValid = true;
+              return;
             }
             const clientRes = await tx.client.updateMany({
               where: { id: check.clientId, allowActive: true },
@@ -156,6 +171,10 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
               });
             }
           });
+          // Durch einen gültigen neueren Check abgelöst: nur Housekeeping
+          // (Alt-Check EXPIRED), keine Deaktivierung und keine Eskalations-
+          // Notification — es besteht kein Handlungsbedarf.
+          if (supersededByValid) continue;
           // GwG-Schranke (§ 11 GwG): bestehende Portal-Sessions aller Kontakte
           // sofort beenden — sonst bliebe ein eingeloggter Kontakt bis zum
           // JWT-Ablauf (24 h) handlungsfähig. Nach dem Commit (Redis ist nicht

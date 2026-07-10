@@ -30,7 +30,7 @@ const h = vi.hoisted(() => {
     clientContact: { findMany: vi.fn() },
   };
   const tx = {
-    gwgCheck: { updateMany: vi.fn() },
+    gwgCheck: { updateMany: vi.fn(), findFirst: vi.fn() },
     client: { updateMany: vi.fn() },
   };
   const withWorkerTenantContext = vi.fn(
@@ -134,6 +134,8 @@ beforeEach(() => {
   h.prismaOwner.request.create.mockResolvedValue({ id: 'req-1' });
   h.prismaOwner.clientContact.findMany.mockResolvedValue([{ id: 'contact-1' }]);
   h.tx.gwgCheck.updateMany.mockResolvedValue({ count: 1 });
+  // Default: kein neuerer gültiger Check → Alt-Verhalten (Mandant wird deaktiviert).
+  h.tx.gwgCheck.findFirst.mockResolvedValue(null);
   h.tx.client.updateMany.mockResolvedValue({ count: 1 });
   h.record.mockResolvedValue({});
   h.upsertNotification.mockResolvedValue(undefined);
@@ -290,6 +292,29 @@ describe('STAGE3 — Ablauf (RF-8: Statuswechsel + Audit in EINER Tx)', () => {
     expect(h.redisSet).not.toHaveBeenCalled();
     // die (idempotente) Notification geht trotzdem raus
     expect(h.upsertNotification).toHaveBeenCalled();
+  });
+
+  it('neuerer gültiger VERIFIED-Check → Alt-Check EXPIRED, aber KEINE Deaktivierung/Eskalation', async () => {
+    // Wiederholungsprüfung: der alte Check ist abgelaufen, ein zweiter,
+    // noch gültiger VERIFIED-Check existiert für denselben Mandanten.
+    h.prismaOwner.gwgCheck.findMany.mockResolvedValue([gwgCheck(new Date(FIXED_NOW.getTime() - 5 * DAY))]);
+    h.tx.gwgCheck.findFirst.mockResolvedValue({ id: 'gwg-2' });
+
+    const result = await run();
+
+    // Alt-Check wird als Housekeeping auf EXPIRED gesetzt + auditiert …
+    expect(h.tx.gwgCheck.updateMany).toHaveBeenCalledWith({
+      where: { id: 'gwg-1', status: 'VERIFIED' },
+      data: { status: 'EXPIRED' },
+    });
+    // … aber der Mandant wird NICHT deaktiviert.
+    expect(h.tx.client.updateMany).not.toHaveBeenCalled();
+    expect(h.record).toHaveBeenCalledTimes(1);
+    expect(h.record.mock.calls[0]![1]).toMatchObject({ action: 'gwg.check.expire' });
+    // Keine STAGE3-Eskalations-Notification, keine Session-Revocation.
+    expect(h.upsertNotification).not.toHaveBeenCalled();
+    expect(h.redisSet).not.toHaveBeenCalled();
+    expect(result.stage3).toBe(0);
   });
 });
 
