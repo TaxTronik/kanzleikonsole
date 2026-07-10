@@ -43,6 +43,10 @@ export function RiskAssessmentForm({
     });
   }
 
+  const allAnswered = factors.every(
+    (f) => answers[f.key] !== undefined && answers[f.key] !== null,
+  );
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {factors.map((f) => (
@@ -50,10 +54,14 @@ export function RiskAssessmentForm({
           <label className="label">{f.label}</label>
           <select
             className="input"
-            value={answers[f.key] ?? 0}
+            value={answers[f.key] ?? ''}
             onChange={(e) => setAnswer(f.key, Number(e.target.value))}
             disabled={disabled}
           >
+            {/* Placeholder erzwingt eine BEWUSSTE Bewertung jedes Faktors — sonst
+                wäre ein unbewerteter Faktor nicht von einer bewussten 0 zu
+                unterscheiden und die Analyse fälschlich als LOW gespeichert. */}
+            <option value="" disabled>— bitte bewerten —</option>
             {f.options.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
@@ -86,9 +94,16 @@ export function RiskAssessmentForm({
       )}
 
       {!disabled && (
-        <button type="submit" className="btn-primary" disabled={isPending}>
-          {isPending ? 'Berechnet…' : currentScore === null ? 'Bewertung berechnen' : 'Bewertung aktualisieren'}
-        </button>
+        <div>
+          <button type="submit" className="btn-primary" disabled={isPending || !allAnswered}>
+            {isPending ? 'Berechnet…' : currentScore === null ? 'Bewertung berechnen' : 'Bewertung aktualisieren'}
+          </button>
+          {!allAnswered && (
+            <p className="text-xs text-muted mt-1">
+              Bitte alle Faktoren bewerten, bevor die Bewertung berechnet wird.
+            </p>
+          )}
+        </div>
       )}
     </form>
   );

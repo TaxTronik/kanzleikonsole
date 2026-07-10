@@ -7,7 +7,7 @@ import { revokeAllSessions } from '@/server/auth/revocation';
 import { withTenantContext } from '@taxtronik/db';
 import type { Prisma } from '@prisma/client';
 import { evidenceService } from '@/server/container';
-import { computeRiskScore, riskValidForDays } from '@/server/gwg/risk-score';
+import { computeRiskScore, riskValidForDays, DEFAULT_FACTORS } from '@/server/gwg/risk-score';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { notifyClientContacts } from '@/server/mail/dispatch';
 import { fireAndForget } from '@/server/util/fire-and-forget';
@@ -305,6 +305,19 @@ export async function verifyCheckAction(
       if (!check) throw new ActionError('GwG-Check nicht gefunden.');
       if (check.riskScore === null || check.riskLevel === null) {
         throw new ActionError('Bitte zuerst Risikobewertung durchführen.');
+      }
+      // § 10 Abs. 2 GwG: Die Risikoanalyse muss VOLLSTÄNDIG sein. Fehlende
+      // Faktoren zählen im Score als 0 und könnten eine unbewertete Prüfung als
+      // LOW verschleiern — vor der Scharfschaltung muss jeder Faktor bewusst
+      // bewertet sein (Defense-in-Depth zum Formular-Placeholder).
+      const savedAnswers = (check.riskAnswers as Record<string, number> | null) ?? {};
+      const unbewertet = DEFAULT_FACTORS.filter(
+        (f) => savedAnswers[f.key] === undefined || savedAnswers[f.key] === null,
+      );
+      if (unbewertet.length > 0) {
+        throw new ActionError(
+          'Die Risikoanalyse ist unvollständig — bitte alle Risikofaktoren bewerten, bevor die Prüfung verifiziert wird (§ 10 Abs. 2 GwG).',
+        );
       }
       if (check.idDocuments.length === 0) {
         throw new ActionError('Mindestens ein Identitätsdokument erforderlich.');
