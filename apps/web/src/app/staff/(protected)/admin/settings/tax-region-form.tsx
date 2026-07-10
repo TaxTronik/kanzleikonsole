@@ -36,7 +36,8 @@ export function TaxRegionForm({ initial }: { initial: GermanRegion | null }) {
       )}
       {state?.ok && (
         <div className="alert-success-sm">
-          Gespeichert. Bestehende Termine werden bei der nächsten Materialisierung neu berechnet.
+          Gespeichert. Neu angelegte Termine berücksichtigen das Bundesland;
+          bereits bestehende Termine werden nicht automatisch neu berechnet.
         </div>
       )}
       <button type="submit" className="btn-primary" disabled={isPending}>
