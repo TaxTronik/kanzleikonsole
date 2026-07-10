@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { Phone } from 'lucide-react';
 import { NewPhoneNoteForm } from './new-form';
 import { PhoneNotesList } from '@/app/staff/(protected)/clients/[id]/phone-notes-list';
+import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
 
 export default async function PhoneNotesPage() {
   const session = await staffAuth();
@@ -13,9 +14,18 @@ export default async function PhoneNotesPage() {
 
   const [notes, clients, staff, callerHistory] = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) =>
-      Promise.all([
+    async (tx) => {
+      // Telefonnotizen gesperrter/vertraulicher Mandanten in dieser globalen
+      // Liste ausblenden. clientId ist NULLABLE (mandantenlose Notizen) — die
+      // OR-Form behält NULL-Zeilen, die ein reines notIn (NULL NOT IN → nicht
+      // wahr) sonst verschluckte.
+      const denied = await inaccessibleClientIdsFor(tx, session);
+      const clientScope = denied.length
+        ? { OR: [{ clientId: null }, { clientId: { notIn: denied } }] }
+        : undefined;
+      return Promise.all([
         tx.phoneNote.findMany({
+          where: clientScope,
           orderBy: [
             { doneAt: { sort: 'asc', nulls: 'first' } },
             { readAt: 'asc' },
@@ -25,6 +35,7 @@ export default async function PhoneNotesPage() {
           take: 100,
         }),
         tx.client.findMany({
+          where: denied.length ? { id: { notIn: denied } } : undefined,
           orderBy: { name: 'asc' },
           select: { id: true, name: true },
         }),
@@ -34,11 +45,13 @@ export default async function PhoneNotesPage() {
           select: { id: true, fullName: true },
         }),
         tx.phoneNote.findMany({
+          where: clientScope,
           orderBy: { createdAt: 'desc' },
           select: { callerName: true, callerPhone: true, clientId: true },
           take: 500,
         }),
-      ]),
+      ]);
+    },
   );
 
   const callerMap = new Map<string, { name: string; phone: string | null; clientId: string | null }>();

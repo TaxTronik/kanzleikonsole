@@ -2,6 +2,7 @@ import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { redirect } from 'next/navigation';
 import type { ClientKind, DocumentProtectionTier } from '@prisma/client';
+import { inaccessibleClientIdsFor, canAccessClient } from '@/server/auth/rbac';
 import { DocumentExplorer, type Entry, type Crumb } from '@/components/document-explorer';
 
 const KIND_LABEL: Record<string, string> = {
@@ -88,12 +89,17 @@ export default async function DocumentsPage({
   if (isKind(typeParam) && !clientId) {
     const clients = await withTenantContext(
       { tenantId, actorId: staffId, actorType: 'STAFF' },
-      (tx) =>
-        tx.client.findMany({
-          where: { kind: typeParam },
+      async (tx) => {
+        // Gesperrte/vertrauliche Mandanten (bzw. im RESTRICTED-Modus alle nicht
+        // zugeordneten) aus der globalen Liste ausblenden — der Layout-Guard
+        // unter clients/[id] greift hier nicht.
+        const denied = await inaccessibleClientIdsFor(tx, session);
+        return tx.client.findMany({
+          where: { kind: typeParam, ...(denied.length ? { id: { notIn: denied } } : {}) },
           select: { id: true, name: true },
           orderBy: { name: 'asc' },
-        }),
+        });
+      },
     );
     const entries: Entry[] = clients.map((c) => ({
       kind: 'nav',
@@ -121,6 +127,14 @@ export default async function DocumentsPage({
 
   // ---- Scope-Ebene: ein Mandant oder Kanzlei-intern ----
   const scopeClientId = typeParam === 'INTERNAL' ? null : (clientId ?? null);
+
+  // Zugriffsschutz auf Scope-Ebene: Diese Ansicht liegt NICHT unter
+  // clients/[id]/layout, dessen canAccessClient-Guard greift hier also nicht.
+  // Ohne Prüfung ließe sich der komplette Dokumentbaum eines gesperrten oder
+  // vertraulichen Mandanten über ?client=<id> laden (RLS trennt nur Tenants).
+  if (scopeClientId && !(await canAccessClient(session, scopeClientId))) {
+    redirect('/staff/documents');
+  }
 
   const data = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },

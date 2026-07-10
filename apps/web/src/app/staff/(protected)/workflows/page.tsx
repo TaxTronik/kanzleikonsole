@@ -15,6 +15,7 @@ import Link from 'next/link';
 import { Workflow, Activity, User as UserIcon, AlertCircle, Plus } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
+import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
 import { fmtDateShort } from '@/lib/fmt';
 
 interface SearchParams {
@@ -35,17 +36,25 @@ export default async function ActiveWorkflowsPage({
   const filter = (sp.filter ?? 'all') as 'all' | 'mine' | 'mineStart';
   const clientFilterId = sp.clientId ?? '';
 
-  const baseWhere = {
-    status: 'ACTIVE' as const,
-    ...(filter === 'mineStart' ? { startedByStaff: staffId } : {}),
-    ...(filter === 'mine' ? { items: { some: { assigneeStaffId: staffId, doneAt: null } } } : {}),
-    ...(clientFilterId ? { clientId: clientFilterId } : {}),
-  };
-
   const [instances, allClients, allStaff] = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) =>
-      Promise.all([
+    async (tx) => {
+      // Gesperrte/vertrauliche Mandanten aus dieser globalen Workflow-Liste
+      // ausblenden. Der optionale Dropdown-Filter (clientFilterId) und der
+      // denied-Ausschluss werden über AND kombiniert — ein zweiter clientId-Key
+      // im Objektliteral würde den Dropdown-Filter überschreiben.
+      // WorkflowInstance.clientId ist NOT NULL → plain notIn.
+      const denied = await inaccessibleClientIdsFor(tx, session);
+      const baseWhere = {
+        status: 'ACTIVE' as const,
+        ...(filter === 'mineStart' ? { startedByStaff: staffId } : {}),
+        ...(filter === 'mine' ? { items: { some: { assigneeStaffId: staffId, doneAt: null } } } : {}),
+        AND: [
+          ...(clientFilterId ? [{ clientId: clientFilterId }] : []),
+          ...(denied.length ? [{ clientId: { notIn: denied } }] : []),
+        ],
+      };
+      return Promise.all([
         tx.workflowInstance.findMany({
           where: baseWhere,
           orderBy: { startedAt: 'desc' },
@@ -67,7 +76,10 @@ export default async function ActiveWorkflowsPage({
           take: 200,
         }),
         tx.client.findMany({
-          where: { workflowInstances: { some: { status: 'ACTIVE' } } },
+          where: {
+            workflowInstances: { some: { status: 'ACTIVE' } },
+            ...(denied.length ? { id: { notIn: denied } } : {}),
+          },
           orderBy: { name: 'asc' },
           select: { id: true, name: true },
         }),
@@ -76,7 +88,8 @@ export default async function ActiveWorkflowsPage({
           orderBy: { fullName: 'asc' },
           select: { id: true, fullName: true },
         }),
-      ]),
+      ]);
+    },
   );
 
   const staffName = new Map(allStaff.map((s) => [s.id, s.fullName]));

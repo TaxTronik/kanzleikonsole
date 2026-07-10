@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { ScrollText, Plus } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
+import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
 import { fmtDateShort } from '@/lib/fmt';
 
 const statusLabels: Record<string, string> = {
@@ -21,12 +22,17 @@ export default async function PoaListPage() {
 
   const poas = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
-    (tx) =>
-      tx.powerOfAttorney.findMany({
+    async (tx) => {
+      // Vollmachten gesperrter/vertraulicher Mandanten aus dieser globalen
+      // Liste ausblenden. PowerOfAttorney.clientId ist NOT NULL → plain notIn.
+      const denied = await inaccessibleClientIdsFor(tx, session);
+      return tx.powerOfAttorney.findMany({
+        where: denied.length ? { clientId: { notIn: denied } } : undefined,
         orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
         include: { client: { select: { id: true, name: true } } },
         take: 200,
-      }),
+      });
+    },
   );
 
   return (
