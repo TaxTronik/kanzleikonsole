@@ -73,7 +73,11 @@ async function loadReports(tx: Prisma.TransactionClient) {
       _count: { _all: true },
     }),
     tx.invoice.aggregate({
-      where: { issueDate: { gte: startOfYear }, status: { not: 'CANCELLED' } },
+      // Storno-Belege (negierte Beträge, stornoOfId gesetzt) NICHT mitzählen:
+      // das stornierte Original ist über status=CANCELLED bereits ausgeschlossen;
+      // der negative Storno würde den Umsatz sonst ein zweites Mal mindern
+      // (Netto-1000-Rechnung → −1000 statt 0). Gutschriften sind kein Umsatz.
+      where: { issueDate: { gte: startOfYear }, status: { not: 'CANCELLED' }, stornoOfId: null },
       _sum: { totalAmount: true, netAmount: true },
       _count: { _all: true },
     }),
@@ -114,6 +118,7 @@ async function loadReports(tx: Prisma.TransactionClient) {
       WHERE c.tenant_id = app.current_tenant_id()
         AND i.issue_date >= ${startOfYear}
         AND i.status <> 'CANCELLED'
+        AND i.storno_of_id IS NULL
       GROUP BY c.id, c.name
       ORDER BY revenue DESC
       LIMIT 5
