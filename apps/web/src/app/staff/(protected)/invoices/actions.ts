@@ -525,7 +525,20 @@ export async function cancelInvoiceAction(formData: FormData): Promise<void> {
         });
       }
 
-      await tx.invoice.update({ where: { id: invoiceId }, data: { status: 'CANCELLED' } });
+      // TOCTOU-Schutz gegen Doppel-Storno: den Übergang atomar nur aus dem
+      // gelesenen Status heraus beanspruchen. Zwei nebenläufige Stornos lesen
+      // sonst beide SENT/OVERDUE und legen je einen Korrekturbeleg an; der
+      // Festschreib-Trigger fängt das nicht ab, weil CANCELLED→CANCELLED ein
+      // No-op ist und die Übergangsprüfung überspringt. Bei count===0 rollt die
+      // gesamte Tx zurück — inklusive des oben in derselben Tx erzeugten
+      // Storno-Belegs. Muster wie finalizeInvoiceSendTx.
+      const claimed = await tx.invoice.updateMany({
+        where: { id: invoiceId, status: current.status },
+        data: { status: 'CANCELLED' },
+      });
+      if (claimed.count === 0) {
+        throw new ActionError('Rechnung wurde zwischenzeitlich geändert — bitte Seite neu laden.');
+      }
       // Storno gibt die abgerechneten Zeiteinträge zur Neuabrechnung frei
       // (Pool-Marker, nicht Teil der festgeschriebenen Positionen).
       const released = await tx.timeEntry.updateMany({
