@@ -19,11 +19,13 @@ type Dialog = null | 'paid' | 'cancel';
 export function InvoiceStatusActions({
   invoiceId,
   invoiceNumber,
+  isPaid,
   showMarkPaid,
   showCancel,
 }: {
   invoiceId: string;
   invoiceNumber: string;
+  isPaid: boolean;
   showMarkPaid: boolean;
   showCancel: boolean;
 }) {
@@ -78,7 +80,12 @@ export function InvoiceStatusActions({
           message={
             `Rechnung ${invoiceNumber} wirklich stornieren? ` +
             `Bei bereits versendeten Rechnungen entsteht ein Korrekturbeleg mit eigener, ` +
-            `lückenloser Nummer (§ 14c UStG). Der Vorgang ist nicht umkehrbar.`
+            `lückenloser Nummer (§ 14c UStG). Der Vorgang ist nicht umkehrbar.` +
+            (isPaid
+              ? ' Diese Rechnung wurde bereits als BEZAHLT markiert — die Rückzahlung ist ' +
+                'gesondert abzuwickeln (kein automatischer Zahlungsfluss); die abgerechneten ' +
+                'Zeiten bleiben verbucht.'
+              : '')
           }
           confirmLabel="Stornieren"
           busyLabel="Storniere…"

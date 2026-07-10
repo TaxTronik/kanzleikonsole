@@ -278,8 +278,9 @@ export default async function InvoiceDetailPage({
           <InvoiceStatusActions
             invoiceId={inv.id}
             invoiceNumber={inv.number}
+            isPaid={inv.status === 'PAID'}
             showMarkPaid={inv.status === 'SENT' || inv.status === 'OVERDUE'}
-            showCancel={inv.status !== 'CANCELLED' && inv.status !== 'PAID'}
+            showCancel={inv.status !== 'CANCELLED'}
           />
         )}
       </div>

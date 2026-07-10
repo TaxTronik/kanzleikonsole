@@ -75,7 +75,9 @@ const TRANSITIONS: Record<InvoiceStatus, ReadonlyArray<InvoiceStatus>> = {
   DRAFT: ['SENT', 'CANCELLED'],
   SENT: ['PAID', 'OVERDUE', 'CANCELLED'],
   OVERDUE: ['PAID', 'CANCELLED'],
-  PAID: [],
+  // QW10: bezahlte Rechnung ist korrigierbar — Storno-/Korrekturbeleg nach
+  // § 14c/§ 17 UStG. Rückzahlung + Zeiteintrags-Behandlung siehe cancelInvoiceAction.
+  PAID: ['CANCELLED'],
   CANCELLED: [],
 };
 

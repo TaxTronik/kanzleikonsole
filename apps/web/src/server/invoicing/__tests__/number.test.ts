@@ -24,7 +24,7 @@ describe('isValidInvoiceTransition (MUSS der DB-Trigger-Matrix entsprechen)', ()
     ['OVERDUE', 'PAID', true],
     ['OVERDUE', 'CANCELLED', true],
     ['OVERDUE', 'SENT', false],
-    ['PAID', 'CANCELLED', false],
+    ['PAID', 'CANCELLED', true], // QW10: bezahlte Rechnung ist stornierbar (§ 14c/§ 17 UStG)
     ['PAID', 'SENT', false],
     ['CANCELLED', 'SENT', false],
     ['CANCELLED', 'PAID', false],

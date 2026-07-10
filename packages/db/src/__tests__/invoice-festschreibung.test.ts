@@ -183,12 +183,15 @@ describeWithDatabase('Festschreibung: Rechnung nach Versand unveränderlich (ite
     ).resolves.toBeTruthy();
   });
 
-  it('Status-Matrix: nur Vorwärts-Übergänge, PAID/CANCELLED terminal', async () => {
+  it('Status-Matrix: Vorwärts-Übergänge + PAID→CANCELLED (QW10), CANCELLED terminal', async () => {
     const ok = await makeInvoice();
     await expect(setStatus(ok, 'SENT')).resolves.toBeTruthy();
     await expect(setStatus(ok, 'OVERDUE')).resolves.toBeTruthy();
     await expect(setStatus(ok, 'PAID')).resolves.toBeTruthy();
-    await expect(setStatus(ok, 'CANCELLED')).rejects.toThrow(/Festschreibung/); // PAID terminal
+    // QW10: bezahlte Rechnung ist stornierbar (§ 14c/§ 17 UStG).
+    await expect(setStatus(ok, 'CANCELLED')).resolves.toBeTruthy();
+    // … danach ist CANCELLED terminal.
+    await expect(setStatus(ok, 'SENT')).rejects.toThrow(/Festschreibung/);
 
     const skip = await makeInvoice();
     await expect(setStatus(skip, 'PAID')).rejects.toThrow(/Festschreibung/); // DRAFT → PAID verboten

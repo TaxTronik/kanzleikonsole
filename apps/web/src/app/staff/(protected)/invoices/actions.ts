@@ -472,7 +472,11 @@ export async function cancelInvoiceAction(formData: FormData): Promise<void> {
         throw new ActionError(`Statuswechsel ${current.status} → CANCELLED ist nicht zulässig.`);
       }
 
-      const wasDelivered = current.status === 'SENT' || current.status === 'OVERDUE';
+      const wasPaid = current.status === 'PAID';
+      // Auch eine bereits BEZAHLTE Rechnung wurde zugestellt → sie braucht einen
+      // Korrekturbeleg (§ 14c Abs. 1 i. V. m. § 17 UStG). QW10.
+      const wasDelivered =
+        current.status === 'SENT' || current.status === 'OVERDUE' || wasPaid;
       if (wasDelivered) {
         // § 14c Abs. 1 i.V.m. § 17 UStG: Korrekturbeleg (TypeCode 381) mit
         // eigener lückenloser Nummer und negierten Beträgen.
@@ -500,6 +504,11 @@ export async function cancelInvoiceAction(formData: FormData): Promise<void> {
             vatExemptionReason: current.vatExemptionReason,
             categoryId: current.categoryId,
             stornoOfId: current.id,
+            // QW10: war das Original bezahlt, die Rückzahlungspflicht auf dem
+            // Korrekturbeleg vermerken (kein automatischer Zahlungsfluss).
+            notes: wasPaid
+              ? 'Original war bereits BEZAHLT — Rückzahlung/Zahlungsrückabwicklung gesondert veranlassen (kein automatischer Zahlungsfluss).'
+              : null,
             createdByStaff: staffId,
             positions: {
               create: current.positions.map((p) => ({
@@ -540,16 +549,21 @@ export async function cancelInvoiceAction(formData: FormData): Promise<void> {
         throw new ActionError('Rechnung wurde zwischenzeitlich geändert — bitte Seite neu laden.');
       }
       // Storno gibt die abgerechneten Zeiteinträge zur Neuabrechnung frei
-      // (Pool-Marker, nicht Teil der festgeschriebenen Positionen).
-      const released = await tx.timeEntry.updateMany({
-        where: { invoiceId }, data: { invoiceId: null },
-      });
+      // (Pool-Marker, nicht Teil der festgeschriebenen Positionen). QW10: bei
+      // einem BEZAHLTEN Storno NICHT freigeben — die Leistung ist bezahlt und
+      // darf nicht erneut abgerechnet werden; die Einträge bleiben verknüpft.
+      const released = wasPaid
+        ? { count: 0 }
+        : await tx.timeEntry.updateMany({
+            where: { invoiceId },
+            data: { invoiceId: null },
+          });
       await evidenceService.record(tx, {
         tenantId, actorType: 'STAFF', actorId: staffId,
         action: 'invoice.cancel',
         resourceType: 'invoice',
         resourceId: invoiceId,
-        after: { number: current.number, releasedTimeEntries: released.count, stornoInvoiceId: stornoId },
+        after: { number: current.number, releasedTimeEntries: released.count, stornoInvoiceId: stornoId, refundDue: wasPaid },
       });
     });
   } catch (e) {
