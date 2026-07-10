@@ -9,6 +9,7 @@ import { evidenceService } from '@/server/container';
 import { sendTemplateMail } from '@/server/mail/dispatch';
 import { portalBaseUrl } from '@taxtronik/config';
 import { prismaOwner } from '@/server/db/prisma-owner';
+import { prismaBytes } from '@/server/db/prisma-bytes';
 import { checkRateLimit, checkIpOrGlobalLimit, getClientIp } from '@/server/rate-limit';
 import { isStaffAdmin, toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { headers } from 'next/headers';
@@ -587,6 +588,27 @@ export async function signPoaAction(input: {
       return { ok: false, error: GENERIC_ERROR };
     }
 
+    // eIDAS-Bindung (Art. 26 lit. d): den signierten Inhalt kryptografisch an
+    // den Signaturakt binden, damit eine nachträgliche Änderung erkennbar ist.
+    // Extern hinterlegtes PDF → SHA-256 der aktuellen Dokumentversion (deren
+    // Weiterversionierung die new-version-Route nach dem Signieren sperrt);
+    // In-App-Vollmacht → Hash des scope-Textes.
+    let signedContentSha256: Buffer | null = null;
+    let signedDocumentVersionId: string | null = null;
+    if (poa.documentId) {
+      const version = await owner.documentVersion.findFirst({
+        where: { documentId: poa.documentId },
+        orderBy: { versionNo: 'desc' },
+        select: { id: true, sha256: true },
+      });
+      if (version) {
+        signedContentSha256 = Buffer.from(version.sha256);
+        signedDocumentVersionId = version.id;
+      }
+    } else if (poa.scope) {
+      signedContentSha256 = createHash('sha256').update(poa.scope, 'utf8').digest();
+    }
+
     // Atomar als signiert markieren (nur ein Versuch erfolgreich)
     const claim = await owner.powerOfAttorney.updateMany({
       where: { id: poa.id, status: 'SENT' },
@@ -595,6 +617,8 @@ export async function signPoaAction(input: {
         signedAt: new Date(),
         signedByIp: ip,
         signedByUserAgent: userAgent,
+        signedContentSha256: signedContentSha256 ? prismaBytes(signedContentSha256) : null,
+        signedDocumentVersionId,
         // Token + OTP entwerten + Counter zurücksetzen
         signingTokenHash: null,
         signingOtpHash: null,
@@ -623,6 +647,8 @@ export async function signPoaAction(input: {
             signerEmail: poa.signerEmail,
             signerName: poa.signerName,
             signedAt: new Date().toISOString(),
+            signedContentSha256: signedContentSha256 ? signedContentSha256.toString('hex') : null,
+            signedDocumentVersionId,
             ip,
             userAgent,
           },

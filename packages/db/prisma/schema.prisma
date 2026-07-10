@@ -305,6 +305,12 @@ model PowerOfAttorney {
   signedAt                DateTime? @map("signed_at")
   signedByIp              String?   @map("signed_by_ip") @db.Inet
   signedByUserAgent       String?   @map("signed_by_user_agent")
+  // eIDAS-Bindung (Art. 26 lit. d): SHA-256 des signierten Inhalts (bei extern
+  // hinterlegtem PDF die Dokumentversion, sonst der scope-Text) + Referenz auf
+  // die konkret signierte Dokumentversion. Beim Signieren gesetzt; macht die
+  // nachträgliche Änderung der signierten Daten erkennbar.
+  signedContentSha256     Bytes?    @map("signed_content_sha256")
+  signedDocumentVersionId String?   @map("signed_document_version_id") @db.Uuid
   documentId              String?   @map("document_id") @db.Uuid
   createdByStaff          String    @map("created_by_staff") @db.Uuid
   revokedAt               DateTime? @map("revoked_at")

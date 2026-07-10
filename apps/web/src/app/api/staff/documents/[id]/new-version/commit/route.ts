@@ -67,16 +67,35 @@ export async function POST(
   // (versionNo wird hier NICHT mehr ermittelt — siehe Befund 2 unten.)
   // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Dokumente gesperrter
   // Mandanten wie „nicht gefunden" behandeln (kein Existenz-Leak).
-  const doc = await withTenantContext(
+  const loaded = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
       const d = await tx.document.findFirst({ where: { id: documentId, tenantId } });
       if (!d) return null;
       if (d.clientId && !(await canAccessClientTx(tx, session, d.clientId))) return null;
-      return d;
+      // eIDAS-Bindung (Art. 26 lit. d): Ist dieses Dokument durch eine bereits
+      // UNTERSCHRIEBENE Vollmacht gebunden, darf keine neue Version nachgeschoben
+      // werden — sonst wäre die signierte Fassung nachträglich austauschbar und
+      // die nachträgliche Änderungserkennbarkeit der Signatur nicht gewahrt.
+      const signedPoa = await tx.powerOfAttorney.findFirst({
+        where: { documentId, status: 'SIGNED' },
+        select: { id: true },
+      });
+      return { doc: d, lockedBySignedPoa: !!signedPoa };
     },
   );
-  if (!doc) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  if (!loaded) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  if (loaded.lockedBySignedPoa) {
+    return NextResponse.json(
+      {
+        error: 'locked_by_signed_poa',
+        message:
+          'Dieses Dokument ist durch eine unterschriebene Vollmacht gebunden und kann nicht mehr geändert werden.',
+      },
+      { status: 409 },
+    );
+  }
+  const doc = loaded.doc;
 
   // Storage-Commit (Scan + Upload, intern zu SeaweedFS)
   const fileData = Buffer.from(await file.arrayBuffer());
