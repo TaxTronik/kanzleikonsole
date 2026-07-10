@@ -146,7 +146,7 @@ export async function loadKontrollbuch(
   for (const sid of hauptbearbeiter.values()) staffIds.add(sid);
   for (const d of deadlines) if (d.completedByStaff) staffIds.add(d.completedByStaff);
   for (const n of notices) if (n.reviewedBy) staffIds.add(n.reviewedBy);
-  for (const k of klagen) if (k.reviewedBy) staffIds.add(k.reviewedBy);
+  for (const k of klagen) if (k.klageFiledBy) staffIds.add(k.klageFiledBy);
   for (const r of reminders) {
     if (r.assigneeStaffId) staffIds.add(r.assigneeStaffId);
     if (r.doneByStaff) staffIds.add(r.doneByStaff);
@@ -208,8 +208,11 @@ export async function loadKontrollbuch(
       clientName: k.client.name,
       faelligAm: k.klageDeadline,
       erledigt: taxNoticeKlageFristErledigt(k.status),
-      erledigtAm: k.appealResolvedAt,
-      erledigtVon: k.reviewedBy ? (staffName.get(k.reviewedBy) ?? null) : null,
+      // #11: Erledigung = tatsächliche Klageeinreichung (wer/wann), nicht die
+      // Einspruchsentscheidung (= Fristbeginn) bzw. der Bescheidprüfer. Fallback
+      // auf appealResolvedAt/null nur für Altbestand ohne klageFiled*-Felder.
+      erledigtAm: k.klageFiledAt ?? k.appealResolvedAt,
+      erledigtVon: k.klageFiledBy ? (staffName.get(k.klageFiledBy) ?? null) : null,
       verantwortlich: verantwortlichId ? (staffName.get(verantwortlichId) ?? null) : null,
       verantwortlichId,
       href: `/staff/clients/${k.clientId}/notices`,

@@ -226,6 +226,11 @@ export async function updateNoticeStatusAction(input: {
           ? { klageDeadline: klageFrist }
           : {}),
         ...(status === 'RECHTSKRAEFTIG' ? { klageDeadline: null } : {}),
+        // #11: tatsächliche Klageeinreichung für den Kontrollbuch-Nachweis
+        // festhalten (wer/wann), statt später Prüf-/Entscheidungsdaten zu
+        // verwenden. now = Tag des Statuswechsels auf KLAGE (bestes verfügbares
+        // Signal; im Zweifel prüfen).
+        ...(status === 'KLAGE' ? { klageFiledAt: now, klageFiledBy: staffId } : {}),
       },
     });
     if (claim.count === 0) {

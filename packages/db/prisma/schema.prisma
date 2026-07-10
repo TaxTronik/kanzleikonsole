@@ -1577,6 +1577,11 @@ model TaxNotice {
   /// Einspruchsentscheidung). Gesetzt beim Übergang nach ZURUECKGEWIESEN/
   /// TEILABHILFE; wird im Fristenkontrollbuch überwacht.
   klageDeadline    DateTime?       @map("klage_deadline") @db.Date
+  /// #11: tatsächliche Klageeinreichung (wer/wann) — für den Fristenkontrollbuch-
+  /// Erledigungsnachweis. Gesetzt beim Statuswechsel auf KLAGE; ersetzt die
+  /// bisherige Behelfsnutzung von appealResolvedAt/reviewedBy.
+  klageFiledAt     DateTime?       @map("klage_filed_at")
+  klageFiledBy     String?         @map("klage_filed_by") @db.Uuid
   documentId       String?         @map("document_id") @db.Uuid
   deadlineId       String?         @map("deadline_id") @db.Uuid
   createdByStaff   String          @map("created_by_staff") @db.Uuid
