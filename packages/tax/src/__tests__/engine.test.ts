@@ -72,6 +72,32 @@ describe('germanHolidays — landesspezifisch', () => {
     expect(bayern).toContain('2025-11-01');
   });
 
+  it('Bayern ohne Gemeinde-Feiertag (bavariaAssumption=false): kein 15.08., übrige Landesfeiertage bleiben', () => {
+    const mit = germanHolidays(2025, 'DE-BY', true).map(ymd);
+    const ohne = germanHolidays(2025, 'DE-BY', false).map(ymd);
+    expect(mit).toContain('2025-08-15');
+    expect(ohne).not.toContain('2025-08-15');
+    expect(ohne).toContain('2025-01-06');
+    expect(ohne).toContain('2025-06-19');
+    expect(ohne).toContain('2025-11-01');
+    expect(ohne.length).toBe(mit.length - 1);
+  });
+
+  it('Saarland bleibt unberührt — Mariä Himmelfahrt ist dort landesweit gesetzlich', () => {
+    expect(germanHolidays(2025, 'DE-SL', false).map(ymd)).toContain('2025-08-15');
+  });
+
+  it('GewSt-VZ-Termin am 15.08.2025 (Fr): mit Gemeinde-Feiertag auf Mo 18.08. verschoben, ohne bleibt Fr', () => {
+    const from = new Date(Date.UTC(2025, 0, 1));
+    const to = new Date(Date.UTC(2025, 11, 31));
+    const q3 = (bavariaAssumption: boolean) =>
+      generateDeadlines('GEWST_VZ', from, to, false, 'DE-BY', false, bavariaAssumption).find(
+        (d) => d.period === '2025-Q3',
+      );
+    expect(ymd(q3(false)!.dueDate)).toBe('2025-08-15');
+    expect(ymd(q3(true)!.dueDate)).toBe('2025-08-18');
+  });
+
   it('Sachsen — Buß- und Bettag fällt auf den letzten Mittwoch vor 23.11.', () => {
     // 2025: 23.11. ist Sonntag. Letzter Mittwoch davor = 19.11.2025.
     const sn = germanHolidays(2025, 'DE-SN').map(ymd);

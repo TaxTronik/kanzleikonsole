@@ -54,13 +54,18 @@ export function generateDeadlines(
   hasDauerfrist: boolean,
   region: GermanRegion | null = null,
   advised = false,
+  // Begeht der Kanzleisitz Mariä Himmelfahrt? Nur in DE-BY relevant (Default an);
+  // false verhindert die Werktagsverschiebung eines auf den 15.08. fallenden
+  // Termins in protestantisch geprägten bayerischen Gemeinden. Siehe germanHolidays.
+  bavariaAssumption = true,
 ): DeadlineCandidate[] {
   const out: DeadlineCandidate[] = [];
+  const shift = (d: Date) => shiftToNextWorkday(d, region, bavariaAssumption);
   switch (kind) {
     case 'USTA_MONATLICH':
       iterateMonths(from, to, (year, month) => {
         const period = `${year}-${pad(month)}`;
-        const due = shiftToNextWorkday(monthlyVaDueDate(year, month, hasDauerfrist), region);
+        const due = shift(monthlyVaDueDate(year, month, hasDauerfrist));
         if (due >= from && due <= to) {
           out.push({ kind, period, dueDate: due });
         }
@@ -73,7 +78,7 @@ export function generateDeadlines(
       // §§ 46-48 UStDV). hasDauerfrist wird hier bewusst ignoriert.
       iterateMonths(from, to, (year, month) => {
         const period = `${year}-${pad(month)}`;
-        const due = shiftToNextWorkday(monthlyVaDueDate(year, month, false), region);
+        const due = shift(monthlyVaDueDate(year, month, false));
         if (due >= from && due <= to) {
           out.push({ kind, period, dueDate: due });
         }
@@ -83,7 +88,7 @@ export function generateDeadlines(
     case 'USTA_QUARTAL':
       iterateQuarters(from, to, (year, q) => {
         const period = `${year}-Q${q}`;
-        const due = shiftToNextWorkday(quarterlyVaDueDate(year, q, hasDauerfrist), region);
+        const due = shift(quarterlyVaDueDate(year, q, hasDauerfrist));
         if (due >= from && due <= to) {
           out.push({ kind, period, dueDate: due });
         }
@@ -94,7 +99,7 @@ export function generateDeadlines(
       // § 41a Abs. 1 EStG: 10. nach Quartalsende. KEINE Dauerfrist (s. o.).
       iterateQuarters(from, to, (year, q) => {
         const period = `${year}-Q${q}`;
-        const due = shiftToNextWorkday(quarterlyVaDueDate(year, q, false), region);
+        const due = shift(quarterlyVaDueDate(year, q, false));
         if (due >= from && due <= to) {
           out.push({ kind, period, dueDate: due });
         }
@@ -106,7 +111,7 @@ export function generateDeadlines(
       // § 37 EStG: 10.03., 10.06., 10.09., 10.12.
       iterateYears(from, to, (year) => {
         for (const month of [3, 6, 9, 12]) {
-          const due = shiftToNextWorkday(new Date(Date.UTC(year, month - 1, 10)), region);
+          const due = shift(new Date(Date.UTC(year, month - 1, 10)));
           if (due >= from && due <= to) {
             const q = Math.ceil(month / 3);
             out.push({ kind, period: `${year}-Q${q}`, dueDate: due });
@@ -120,7 +125,7 @@ export function generateDeadlines(
       // abweichende Termine (NICHT 10.03./06./09./12.).
       iterateYears(from, to, (year) => {
         for (const month of [2, 5, 8, 11]) {
-          const due = shiftToNextWorkday(new Date(Date.UTC(year, month - 1, 15)), region);
+          const due = shift(new Date(Date.UTC(year, month - 1, 15)));
           if (due >= from && due <= to) {
             const q = Math.ceil(month / 3);
             out.push({ kind, period: `${year}-Q${q}`, dueDate: due });
@@ -135,7 +140,7 @@ export function generateDeadlines(
       // Frist fällt in `year`. advised (§ 149 (3) AO) gilt für Anmeldungen NICHT.
       iterateYears(from, to, (year) => {
         const period = `${year - 1}`;
-        const due = shiftToNextWorkday(new Date(Date.UTC(year, 0, 10)), region);
+        const due = shift(new Date(Date.UTC(year, 0, 10)));
         if (due >= from && due <= to) {
           out.push({ kind, period, dueDate: due });
         }
@@ -164,7 +169,7 @@ export function generateDeadlines(
           : advised
             ? new Date(Date.UTC(year, 2, 0)) // letzter Februartag
             : new Date(Date.UTC(year, 6, 31)); // 31.07.
-        const due = shiftToNextWorkday(basis, region);
+        const due = shift(basis);
         if (due >= from && due <= to) {
           out.push({ kind, period: `${periodYear}`, dueDate: due });
         }
@@ -299,9 +304,9 @@ export const REGION_LABELS: Record<GermanRegion, string> = {
  * gesetzliche Feiertage. Wenn `region` gesetzt ist, werden auch die
  * bundeslandspezifischen Feiertage berücksichtigt.
  */
-export function shiftToNextWorkday(date: Date, region?: GermanRegion | null): Date {
+export function shiftToNextWorkday(date: Date, region?: GermanRegion | null, bavariaAssumption = true): Date {
   let d = new Date(date.getTime());
-  while (isWeekendOrHoliday(d, region ?? null)) {
+  while (isWeekendOrHoliday(d, region ?? null, bavariaAssumption)) {
     d = new Date(d.getTime() + 24 * 60 * 60 * 1000);
   }
   return d;
@@ -440,10 +445,10 @@ export function klageDeadline(bekanntgabe: Date, region: GermanRegion | null = n
   return addMonthWithWorkdayShift(startOfUtcDay(bekanntgabe), region);
 }
 
-function isWeekendOrHoliday(d: Date, region: GermanRegion | null): boolean {
+function isWeekendOrHoliday(d: Date, region: GermanRegion | null, bavariaAssumption = true): boolean {
   const day = d.getUTCDay();
   if (day === 0 || day === 6) return true;
-  return germanHolidays(d.getUTCFullYear(), region).some(
+  return germanHolidays(d.getUTCFullYear(), region, bavariaAssumption).some(
     (h) =>
       h.getUTCFullYear() === d.getUTCFullYear() &&
       h.getUTCMonth() === d.getUTCMonth() &&
@@ -457,7 +462,7 @@ function isWeekendOrHoliday(d: Date, region: GermanRegion | null): boolean {
  *
  * Quelle: Feiertagsgesetze der Länder, Stand 2025.
  */
-export function germanHolidays(year: number, region: GermanRegion | null): Date[] {
+export function germanHolidays(year: number, region: GermanRegion | null, bavariaAssumption = true): Date[] {
   const easter = easterSunday(year);
   const ms = 24 * 60 * 60 * 1000;
 
@@ -491,7 +496,11 @@ export function germanHolidays(year: number, region: GermanRegion | null): Date[
       out.push(epiphany, corpusChristi, allSaints);
       break;
     case 'DE-BY':
-      out.push(epiphany, corpusChristi, assumption, allSaints);
+      out.push(epiphany, corpusChristi, allSaints);
+      // Mariä Himmelfahrt ist in Bayern NUR in Gemeinden mit überwiegend
+      // katholischer Bevölkerung gesetzlicher Feiertag (Art. 1 Abs. 1 BayFTG) —
+      // der Tenant steuert das per tax_assumption_holiday (Default an).
+      if (bavariaAssumption) out.push(assumption);
       break;
     case 'DE-BE':
       out.push(womenDay);

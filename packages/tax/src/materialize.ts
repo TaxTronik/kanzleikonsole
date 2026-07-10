@@ -105,7 +105,14 @@ export async function materializeTenantTaxDeadlines(
   const regionRow = await db.tenantSetting.findUnique({
     where: { tenantId_key: { tenantId, key: 'tax_region' } },
   });
-  const region = ((regionRow?.value as { region?: string } | null)?.region ?? null) as GermanRegion | null;
+  const regionValue =
+    (regionRow?.value as { region?: string; assumptionHoliday?: boolean } | null) ?? null;
+  const region = (regionValue?.region ?? null) as GermanRegion | null;
+  // Mariä Himmelfahrt ist in Bayern gemeindeabhängig (Art. 1 Abs. 1 BayFTG).
+  // Default an; nur wenn der Tenant explizit deaktiviert (protestantisch
+  // geprägte Sitz-Gemeinde), werden DE-BY-Fälligkeiten am 15.08. nicht
+  // verschoben. Nur in DE-BY wirksam (DE-SL bleibt landesweit gesetzlich).
+  const bavariaAssumption = regionValue?.assumptionHoliday !== false;
 
   // 1. Aktive Configs laden
   const configs = await db.taxScheduleConfig.findMany({
@@ -125,7 +132,7 @@ export async function materializeTenantTaxDeadlines(
     // Übersprungen wenn Mandant nicht freigeschaltet (GwG)
     if (!cfg.client.allowActive) continue;
 
-    const candidates = generateDeadlines(cfg.kind, now, horizon, cfg.hasDauerfrist, region, cfg.advised);
+    const candidates = generateDeadlines(cfg.kind, now, horizon, cfg.hasDauerfrist, region, cfg.advised, bavariaAssumption);
     for (const c of candidates) {
       // Niemals retrospektiv erzeugen — Mandanten werden oft unterjährig
       // übernommen, alte Perioden gehören dem Vorgänger. „Retrospektiv" ist

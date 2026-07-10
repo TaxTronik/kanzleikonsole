@@ -42,8 +42,14 @@ export async function saveTaxRegionAction(
   const region: GermanRegion | null =
     raw && (VALID_REGIONS as readonly string[]).includes(raw) ? (raw as GermanRegion) : null;
 
+  // Mariä Himmelfahrt (nur DE-BY relevant, gemeindeabhängig): Checkbox nur dort
+  // sichtbar. Für andere Länder immer Default true speichern (irrelevant), damit
+  // ein Regionswechsel den Bayern-Wert nicht als false verschluckt.
+  const assumptionHoliday =
+    region === 'DE-BY' ? formData.get('assumptionHoliday') !== null : true;
+
   const { tenantId, staffId, ctx } = g;
-  await writeTaxRegion(ctx, region);
+  await writeTaxRegion(ctx, region, assumptionHoliday);
 
   await withTenantContext(ctx, async (tx) => {
     await evidenceService.record(tx, {
@@ -53,7 +59,7 @@ export async function saveTaxRegionAction(
       action: 'tenant.settings.tax_region.update',
       resourceType: 'tenant_setting',
       resourceId: 'tax_region',
-      after: { region },
+      after: { region, assumptionHoliday },
     });
   });
 
