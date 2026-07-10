@@ -48,7 +48,7 @@ export default async function InvoiceDetailPage({
           positions: { orderBy: { position: 'asc' } },
           document: true,
           stornoOf: { select: { id: true, number: true } },
-          stornoBy: { select: { id: true, number: true } },
+          stornoBy: { select: { id: true, number: true, status: true } },
         },
       });
       // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Rechnung eines
@@ -131,6 +131,9 @@ export default async function InvoiceDetailPage({
                 <span key={s.id}>
                   {i > 0 && ', '}
                   <Link href={`/staff/invoices/${s.id}`} className="underline">{s.number}</Link>
+                  {s.status === 'DRAFT' && (
+                    <span className="font-medium"> (Entwurf — noch nicht zugestellt)</span>
+                  )}
                 </span>
               ))}
             </p>
@@ -145,6 +148,17 @@ export default async function InvoiceDetailPage({
           </p>
         </div>
       </div>
+
+      {inv.stornoOfId && inv.status === 'DRAFT' && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-4 mb-6 text-sm text-amber-800">
+          <strong>Korrekturbeleg noch nicht zugestellt.</strong> Dieser Storno-/
+          Korrekturbeleg ist ein Entwurf und wurde (noch) nicht an den Mandanten
+          versendet. Die Umsatzsteuer-Berichtigung wird erst mit der Zustellung
+          wirksam (§ 14c Abs. 1 i. V. m. § 17 UStG) — bitte den Beleg{' '}
+          {canSend ? 'unten versenden' : 'manuell versenden'} bzw. bei einer
+          Fremdsystem-Rechnung dort ausstellen.
+        </div>
+      )}
 
       <div className="grid grid-cols-3 gap-4 mb-6">
         <KV label="Betreff" value={inv.subject} />
