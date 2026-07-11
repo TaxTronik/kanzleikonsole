@@ -226,39 +226,38 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
-    await openMustermannDocuments(page);
+    const scopedDocumentsUrl = await openMustermannDocuments(page);
     await page.waitForLoadState('domcontentloaded');
     await expect(page).not.toHaveURL(/\/staff\/login/);
 
-    const downloadLink = page.locator(`a[href="/api/staff/documents/${complianceDocumentId}/download"]`).first();
-    await expect(downloadLink, 'Das gerade hochgeladene Dokument muss vor dem Soft-Delete sichtbar sein').toBeVisible({ timeout: 8000 });
+    const documentRow = page.locator(`[data-document-id="${complianceDocumentId}"]`);
+    await expect(documentRow, 'Das gerade hochgeladene Dokument muss vor dem Soft-Delete eindeutig sichtbar sein').toBeVisible({ timeout: 8000 });
+    await documentRow.hover();
 
-    const trashBtn = downloadLink.locator('xpath=following::button[@title="Löschen"][1]');
-    const trashVisible = await trashBtn.isVisible({ timeout: 5000 }).catch(() => false);
+    const trashBtn = documentRow.getByTitle('Löschen', { exact: true });
+    await expect(trashBtn, 'Das konkrete Dokument muss eine Löschaktion anbieten').toBeVisible({ timeout: 5000 });
+    await trashBtn.click();
 
-    if (trashVisible) {
-      await trashBtn.click();
-      await page.waitForTimeout(1000);
+    const dialog = page.getByRole('dialog', { name: /Dokument.*löschen/i });
+    await expect(dialog, 'Soft-Delete muss einen bestaetigenden Dialog anzeigen').toBeVisible({ timeout: 5000 });
+    await dialog.getByRole('button', { name: /Löschen/i }).click();
+    await expect(documentRow, 'Soft-geloeschtes Dokument darf in der aktiven Liste nicht mehr sichtbar sein').toBeHidden({ timeout: 10_000 });
 
-      const dialog = page.getByRole('dialog', { name: /Dokument.*löschen/i });
-      await expect(dialog, 'Soft-Delete muss einen bestaetigenden Dialog anzeigen').toBeVisible({ timeout: 5000 });
-      await dialog.getByRole('button', { name: /Löschen|löschen/i }).click();
-      await page.waitForTimeout(2000);
-    } else {
-      await page.goto('/staff/documents?deleted=1');
-      await expect(page).not.toHaveURL(/\/staff\/login/);
+    const deletedUrl = new URL(scopedDocumentsUrl);
+    deletedUrl.searchParams.set('deleted', '1');
+    await page.goto(deletedUrl.toString());
+    await expect(page).not.toHaveURL(/\/staff\/login/);
 
-      // FIX 2: Auch im Deleted-View muss eine konkrete Aussage treffen — die
-      // Seite lädt entweder den Papierkorb oder eine Leer-Meldung, nicht "body".
-      const deletedHeading = page.getByRole('heading', { name: /Dokumente|Papierkorb/i });
-      await expect(deletedHeading.first()).toBeVisible({ timeout: 5000 });
-    }
+    const deletedRow = page.locator(`[data-document-id="${complianceDocumentId}"]`);
+    await expect(deletedRow, 'Genau das soft-geloeschte Dokument muss im Papierkorb wiederauffindbar sein').toBeVisible({ timeout: 8000 });
+    await deletedRow.hover();
+    const restoreBtn = deletedRow.getByTitle('Wiederherstellen', { exact: true });
+    await expect(restoreBtn, 'Das soft-geloeschte Dokument muss wiederherstellbar sein').toBeVisible({ timeout: 5000 });
+    await restoreBtn.click();
+    await expect(deletedRow, 'Das wiederhergestellte Dokument muss aus dem Papierkorb verschwinden').toBeHidden({ timeout: 10_000 });
 
-    // FIX 2: Nach Soft-Delete muss die Dokumenten-Übersicht noch geladen sein
-    // und darf nicht auf Login umgeleitet worden sein (Konkret statt body).
-    expect(page.url()).not.toContain('/staff/login');
-    await expect(downloadLink, 'Soft-geloeschtes Dokument darf in der aktiven Liste nicht mehr sichtbar sein').toBeHidden({ timeout: 5000 });
-    await expect(page.locator('main')).toBeVisible({ timeout: 5000 });
+    await page.goto(scopedDocumentsUrl);
+    await expect(page.locator(`[data-document-id="${complianceDocumentId}"]`), 'Das wiederhergestellte Dokument muss erneut in der aktiven Liste stehen').toBeVisible({ timeout: 8000 });
     await ctx.close();
   });
 
@@ -271,11 +270,8 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
     await page.goto(`/staff/documents/${complianceDocumentId}`);
     await page.waitForLoadState('domcontentloaded');
     await expect(page).toHaveURL(/\/staff\/documents\/[a-f0-9-]+/);
-    const retentionText = page.getByText(/Aufbewahrung|GoBD-immutable|retention/i);
-    const retentionVisible = await retentionText.first().isVisible({ timeout: 4000 }).catch(() => false);
-    if (retentionVisible) {
-      await expect(retentionText.first()).toBeVisible();
-    }
+    const retentionText = page.getByText(/Aufbewahrung bis \d{1,2}\.\d{1,2}\.\d{4}/i);
+    await expect(retentionText.first(), 'GoBD-Dokument muss ein sichtbares Aufbewahrungsdatum ausweisen').toBeVisible({ timeout: 8000 });
     const shaText = page.getByText(/SHA-256/);
     await expect(shaText).toBeVisible({ timeout: 5000 });
 
@@ -318,33 +314,36 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
     await page.waitForLoadState('domcontentloaded');
     expect(page.url()).not.toContain('/staff/login');
 
-    const versionForm = page.locator('#new-version-file, input[type="file"]');
-    const formVisible = await versionForm.isVisible({ timeout: 4000 }).catch(() => false);
+    const versionsList = page.getByRole('heading', { name: 'Versionen', exact: true }).locator('xpath=following::ul[1]');
+    await expect(versionsList, 'Versionshistorie muss sichtbar sein').toBeVisible({ timeout: 5000 });
+    const versionRows = versionsList.locator('li');
+    const versionsBefore = await versionRows.count();
+    expect(versionsBefore, 'Ausgangsdokument muss mindestens eine Version haben').toBeGreaterThan(0);
 
-    if (formVisible) {
-      await versionForm.setInputFiles({
-        name: 'updated-e2e-compliance.pdf',
-        mimeType: 'application/pdf',
-        buffer: createMinimalPdf(),
-      });
-      await page.waitForTimeout(500);
+    const versionFile = page.locator('#version-file');
+    await expect(versionFile, 'Formular für eine neue Dokumentversion muss sichtbar sein').toBeVisible({ timeout: 8000 });
+    await versionFile.setInputFiles({
+      name: 'updated-e2e-compliance.pdf',
+      mimeType: 'application/pdf',
+      buffer: createMinimalPdf(),
+    });
 
-      const submitBtn = page.getByRole('button', { name: /Version|Hochladen/ }).first();
-      if (await submitBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await submitBtn.click();
-        await page.waitForTimeout(4000);
-      }
-    }
+    const submitBtn = page.getByRole('button', { name: /Neue Version hochladen/i });
+    await expect(submitBtn).toBeEnabled({ timeout: 5000 });
+    const commitResponse = page.waitForResponse(
+      (res) =>
+        res.url().includes(`/api/staff/documents/${complianceDocumentId}/new-version/commit`) &&
+        res.request().method() === 'POST',
+      { timeout: 30_000 },
+    );
+    await submitBtn.click();
+    const versionResponse = await commitResponse;
+    const versionBody = (await versionResponse.json().catch(() => null)) as { versionNo?: unknown; error?: unknown } | null;
+    expect(versionResponse.status(), `Neuversion-Commit muss erfolgreich sein: ${JSON.stringify(versionBody)}`).toBe(200);
+    expect(versionBody?.versionNo, 'API muss die neue fortlaufende Versionsnummer liefern').toBe(versionsBefore + 1);
 
-    // FIX 2: Wenn ein Version-Upload stattfand, muss die Detailseite Versions-
-    // Metadaten oder zumindest den SHA-256-Hash zeigen (GoBD-Integrität).
-    if (page.url().includes('/staff/documents/')) {
-      const integrityMarker = page.getByText(/SHA-256|Version|v[0-9]+/i);
-      await expect(integrityMarker.first()).toBeVisible({ timeout: 5000 });
-    } else {
-      // Kein Ziel-Dokument gefunden → seed-abhängig, aber Seite muss stabil sein.
-      expect(page.url()).not.toContain('/staff/login');
-    }
+    await expect(versionRows, 'Nach dem Upload muss die Versionshistorie exakt um einen Eintrag wachsen').toHaveCount(versionsBefore + 1, { timeout: 15_000 });
+    await expect(versionRows.first()).toContainText(`v${versionsBefore + 1}`);
     await ctx.close();
   });
 
@@ -1321,17 +1320,24 @@ test.describe('Magic Link Security', () => {
 
   test('8.3 Invalid/expired token fails gracefully', async ({ page }) => {
     await page.goto('/portal/login/verify?token=invalid-token-12345');
-    await page.waitForTimeout(3000);
-
     const errorMsg = page.getByText(/ungültig|abgelaufen|fehlgeschlagen|nicht gefunden/i);
-    const errorVisible = await errorMsg.first().isVisible({ timeout: 5000 }).catch(() => false);
+    const terminalState = async (): Promise<'error' | 'login' | 'pending'> => {
+      const pathname = new URL(page.url()).pathname.replace(/\/$/, '');
+      if (pathname === '/portal/login') return 'login';
+      if (await errorMsg.first().isVisible()) return 'error';
+      return 'pending';
+    };
 
-    if (!errorVisible) {
-      if (page.url().includes('/portal/login')) {
-        // Redirect to login without error is graceful
-      }
-    } else {
+    await expect.poll(terminalState, {
+      message: 'Ungültiger Token muss eine Fehlermeldung oder einen Login-Redirect auslösen',
+      timeout: 10_000,
+    }).toMatch(/^(error|login)$/);
+
+    const state = await terminalState();
+    if (state === 'error') {
       await expect(errorMsg.first()).toBeVisible();
+    } else {
+      await expect(page).toHaveURL(/\/portal\/login(?:[/?#]|$)/);
     }
   });
 

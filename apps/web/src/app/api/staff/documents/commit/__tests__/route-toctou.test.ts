@@ -5,6 +5,7 @@ const m = vi.hoisted(() => ({
   staffAuth: vi.fn(),
   canAccessClientTx: vi.fn(),
   withTenantContext: vi.fn(),
+  classificationToTier: vi.fn(),
   commitBytesWithTier: vi.fn(),
   createDocumentWithVersion: vi.fn(),
   evidenceRecord: vi.fn(),
@@ -21,7 +22,7 @@ vi.mock('@/server/auth/rbac', () => ({ canAccessClientTx: m.canAccessClientTx })
 vi.mock('@taxtronik/db', () => ({ withTenantContext: m.withTenantContext }));
 vi.mock('@taxtronik/storage', () => ({
   MAX_UPLOAD_BYTES: 10 * 1024 * 1024,
-  classificationToTier: () => 'NONE',
+  classificationToTier: m.classificationToTier,
   isGobdClassification: () => false,
   commitBytesWithTier: m.commitBytesWithTier,
 }));
@@ -76,10 +77,24 @@ function makeRequest() {
   });
 }
 
+function makeClassificationRequest() {
+  const fd = new FormData();
+  fd.set('file', new Blob(['rechnung'], { type: 'text/plain' }), 'rechnung.txt');
+  fd.set('title', 'Rechnung');
+  fd.set('classification', 'GOBD_INVOICE');
+
+  return new NextRequest('http://localhost:3000/api/staff/documents/commit', {
+    method: 'POST',
+    headers: { origin: 'http://localhost:3000' },
+    body: fd,
+  });
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   m.staffAuth.mockResolvedValue(SESSION);
   m.canAccessClientTx.mockResolvedValue(true);
+  m.classificationToTier.mockReturnValue('NONE');
   m.getClientIp.mockReturnValue('127.0.0.1');
   m.commitBytesWithTier.mockResolvedValue({
     targetBucket: 'docs-retain-none',
@@ -93,6 +108,53 @@ beforeEach(() => {
 });
 
 describe('POST /api/staff/documents/commit - TOCTOU', () => {
+  it('uebernimmt Schutzstufe und Achtjahresfrist aus dem Kern-Typ im Classification-Backcompat-Pfad', async () => {
+    const findBuiltin = vi.fn().mockResolvedValue({
+      id: DOCUMENT_TYPE_ID,
+      tier: 'GOBD',
+      retentionYears: 8,
+    });
+    m.withTenantContext
+      .mockImplementationOnce(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+        fn({ documentType: { findFirst: findBuiltin } }),
+      )
+      .mockImplementationOnce(async (_ctx: unknown, fn: (tx: unknown) => unknown) => fn({}));
+    m.createDocumentWithVersion.mockResolvedValue({
+      document: { id: '33333333-3333-4333-8333-333333333333' },
+    });
+    m.evidenceRecord.mockResolvedValue(undefined);
+
+    const res = await POST(makeClassificationRequest());
+
+    expect(res.status).toBe(200);
+    expect(findBuiltin).toHaveBeenCalledWith({
+      where: {
+        tenantId: SESSION.user.tenantId,
+        classificationKey: 'GOBD_INVOICE',
+        builtin: true,
+        active: true,
+      },
+      select: { id: true, tier: true, retentionYears: true },
+    });
+    expect(m.classificationToTier).not.toHaveBeenCalled();
+    expect(m.commitBytesWithTier).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tier: 'GOBD',
+        classification: 'GOBD_INVOICE',
+        retentionYears: 8,
+      }),
+    );
+    expect(m.createDocumentWithVersion).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        documentData: expect.objectContaining({
+          classification: 'GOBD_INVOICE',
+          documentTypeId: DOCUMENT_TYPE_ID,
+        }),
+      }),
+    );
+  });
+
   it('liefert 409, wenn eine Referenz nach Vorpruefung und Storage-Commit verschwindet', async () => {
     const preStorageTx = {
       documentType: {

@@ -157,16 +157,20 @@ export async function POST(req: NextRequest) {
             resolvedTypeId: t.id,
           };
         } else {
-          // Back-Compat: Klassifikation gegeben → Kern-Typ desselben Tenants
-          // verknüpfen, Stufe gesetzlich ableiten.
+          // Back-Compat: Klassifikation gegeben → aktiven Kern-Typ desselben
+          // Tenants verknüpfen und dessen Schutzstufe/Frist verwenden.
           const cls = parsed.data.classification!;
           const builtin = await tx.documentType.findFirst({
-            where: { tenantId, classificationKey: cls },
-            select: { id: true },
+            where: { tenantId, classificationKey: cls, builtin: true, active: true },
+            select: { id: true, tier: true, retentionYears: true },
           });
           resolved = {
-            tier: classificationToTier(cls),
+            // Der Kern-Typ ist die fachliche Quelle fuer Schutzstufe und Frist.
+            // Nur bei noch nicht provisionierten Alt-Tenants ohne Kern-Typ auf
+            // die konservative Classification-Ableitung zurueckfallen.
+            tier: builtin ? (builtin.tier as ProtectionTier) : classificationToTier(cls),
             classification: cls,
+            retentionYears: builtin?.retentionYears ?? undefined,
             resolvedTypeId: builtin?.id ?? null,
           };
         }

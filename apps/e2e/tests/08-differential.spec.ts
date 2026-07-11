@@ -16,7 +16,6 @@ const PG_USER = process.env['E2E_POSTGRES_USER'] ?? 'taxtronik';
 const PG_DB = process.env['E2E_POSTGRES_DB'] ?? 'taxtronik';
 const PG_HOST = process.env['E2E_POSTGRES_HOST'] ?? 'localhost';
 const PG_PASSWORD = process.env['E2E_POSTGRES_PASSWORD'] ?? 'taxtronik';
-const CURRENT_YEAR = new Date().getUTCFullYear();
 
 const CASES = [
   {
@@ -24,15 +23,17 @@ const CASES = [
     classification: 'GENERAL',
     expectedBucket: process.env['S3_BUCKET_GENERAL'] ?? 'general',
     expectedImmutable: false,
-    expectedRetentionYear: '',
+    expectedRetentionYears: null,
     expectedKeySegment: '/none/',
   },
   {
+    // Rechnungen/Buchungsbelege: acht Jahre ab Schluss des Entstehungsjahres
+    // (§ 147 Abs. 3 und 4 AO; § 14b Abs. 1 UStG).
     label: 'gobd',
     classification: 'GOBD_INVOICE',
     expectedBucket: process.env['S3_BUCKET_GOBD'] ?? 'gobd',
     expectedImmutable: true,
-    expectedRetentionYear: String(CURRENT_YEAR + 11),
+    expectedRetentionYears: 8,
     expectedKeySegment: '/gobd/',
   },
   {
@@ -40,7 +41,7 @@ const CASES = [
     classification: 'GWG_EVIDENCE',
     expectedBucket: process.env['S3_BUCKET_GWG'] ?? 'gwg',
     expectedImmutable: true,
-    expectedRetentionYear: String(CURRENT_YEAR + 6),
+    expectedRetentionYears: 5,
     expectedKeySegment: '/gwg/',
   },
 ] as const;
@@ -132,9 +133,11 @@ test.describe.serial('Differential invariants', () => {
           v.scan_status,
           v.immutable::text,
           (d.deleted_at IS NULL)::text,
-          COALESCE(date_part('year', d.retention_until)::int::text, '')
+          COALESCE((extract(epoch FROM d.retention_until) * 1000)::bigint::text, ''),
+          COALESCE(dt.retention_years::text, '')
         FROM document d
         JOIN document_version v ON v.document_id = d.id
+        LEFT JOIN document_type dt ON dt.id = d.document_type_id
         WHERE d.id = '${documentId}'
         ORDER BY v.version_no DESC
         LIMIT 1
@@ -151,8 +154,10 @@ test.describe.serial('Differential invariants', () => {
         dbScanStatus,
         dbImmutable,
         dbActive,
-        dbRetentionYear,
+        dbRetentionEpochMs,
+        dbTypeRetentionYears,
       ] = dbRow.split('|');
+      if (!dbKey) throw new Error(`${c.label}: Storage-Key fehlt im DB-Datensatz`);
 
       expect(dbTitle).toBe(title);
       expect(dbClassification).toBe(c.classification);
@@ -165,7 +170,21 @@ test.describe.serial('Differential invariants', () => {
       expect(dbScanStatus).toBe('CLEAN');
       expect(dbImmutable).toBe(String(c.expectedImmutable));
       expect(dbActive).toBe('true');
-      expect(dbRetentionYear).toBe(c.expectedRetentionYear);
+      expect(dbTypeRetentionYears).toBe(
+        c.expectedRetentionYears === null ? '' : String(c.expectedRetentionYears),
+      );
+
+      // Der Storage-Key fixiert das UTC-Jahr dieses konkreten Uploads. Die
+      // Erwartung haengt damit nicht am Modulstart und bleibt auch dann stabil,
+      // wenn der gesamte E2E-Lauf einen Jahreswechsel ueberspannt.
+      const storageYearMatch = dbKey.match(/\/(?:none|gobd|gwg)\/(\d{4})\/\d{2}\//);
+      if (!storageYearMatch) throw new Error(`${c.label}: UTC-Jahr fehlt im Storage-Key ${dbKey}`);
+      const storageYear = Number(storageYearMatch[1]);
+      const expectedRetentionEpochMs =
+        c.expectedRetentionYears === null
+          ? ''
+          : String(Date.UTC(storageYear + c.expectedRetentionYears + 1, 0, 1));
+      expect(dbRetentionEpochMs).toBe(expectedRetentionEpochMs);
 
       const auditRows = Number(psql(`
         SELECT count(*)

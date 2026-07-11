@@ -719,6 +719,7 @@ function BrowserView({
             return (
               <div
                 key={`${e.kind}-${e.id}`}
+                data-document-id={e.kind === 'file' ? e.id : undefined}
                 draggable={sk}
                 onDragStart={(ev) => {
                   const p = dragPayload(e);

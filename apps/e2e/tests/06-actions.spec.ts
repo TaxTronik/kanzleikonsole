@@ -17,6 +17,7 @@ const PG_USER = process.env['E2E_POSTGRES_USER'] ?? 'taxtronik';
 const PG_DB = process.env['E2E_POSTGRES_DB'] ?? 'taxtronik';
 const PG_HOST = process.env['E2E_POSTGRES_HOST'] ?? 'localhost';
 const PG_PASSWORD = process.env['E2E_POSTGRES_PASSWORD'] ?? 'taxtronik';
+let uploadedDocumentId: string | null = null;
 
 function createMinimalPdf(): Buffer {
   const pdf = [
@@ -92,6 +93,7 @@ function ensureStartableWorkflowTemplate(): void {
 // =============================================================================
 test.describe.serial('Staff Actions and Data Integrity', () => {
   test.beforeAll(() => {
+    uploadedDocumentId = null;
     fs.mkdirSync(AUTH_DIR, { recursive: true });
     try { fs.unlinkSync(STAFF_AUTH); } catch { /* best-effort cleanup */ }
     try { fs.unlinkSync(MANDANT_AUTH); } catch { /* best-effort cleanup */ }
@@ -156,14 +158,30 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     );
     await submitBtn.click();
     const uploadRes = await commitResponse;
-    expect(uploadRes.status(), `Dokumenten-Commit muss erfolgreich sein: ${await uploadRes.text().catch(() => '')}`).toBe(200);
+    const uploadPayload = (await uploadRes.json().catch(() => null)) as {
+      documentId?: unknown;
+      error?: unknown;
+    } | null;
+    expect(
+      uploadRes.status(),
+      `Dokumenten-Commit muss erfolgreich sein: ${JSON.stringify(uploadPayload)}`,
+    ).toBe(200);
+    const documentId = uploadPayload?.documentId;
+    expect(typeof documentId, 'Dokumenten-Commit muss eine documentId liefern').toBe('string');
+    if (typeof documentId !== 'string') {
+      throw new Error('Dokumenten-Commit lieferte keine documentId.');
+    }
+    expect(documentId, 'Dokumenten-Commit muss eine UUID liefern').toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    uploadedDocumentId = documentId;
 
     // FIX 2: Statt body-visible — das hochgeladene Dokument MUSS in der Liste
     // erscheinen, sonst ist der Upload-Vorgang fehlgeschlagen.
     await page.goto(scopedDocumentsUrl);
     await page.waitForLoadState('domcontentloaded');
     await expect(
-      page.getByText('E2E Test Dokument').first(),
+      page.locator(`[data-document-id="${documentId}"]`),
       'Hochgeladenes Dokument muss in der Dokumentenliste sichtbar sein',
     ).toBeVisible({ timeout: 8000 });
     await ctx.close();
@@ -176,31 +194,35 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     await openMustermannDocuments(page);
     expect(page.url()).not.toContain('/staff/login');
 
-    const shareBtn = page.locator('[title*="Freigeben" i], [title*="Mandant freigeben" i], button:has(svg[class*="share"])').first();
-    const unshareBtn = page.locator('[title*="Freigabe.*zurück" i], [title*="Freigabe zurückziehen" i], button:has(svg[class*="unshare"])').first();
-
-    const sharedAlready = await unshareBtn.isVisible({ timeout: 3000 }).catch(() => false);
-    if (sharedAlready) {
-      await unshareBtn.click();
-      // Nach dem Zurückziehen muss der „Freigeben"-Button wieder erscheinen;
-      // die folgende isVisible-Abfrage pollt darauf.
-      await shareBtn.waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {});
+    if (!uploadedDocumentId) {
+      throw new Error('Upload-Test hat keine Dokument-ID für den Freigabe-Test hinterlegt.');
     }
 
-    const canShare = await shareBtn.isVisible({ timeout: 5000 }).catch(() => false);
-    if (canShare) {
-      await shareBtn.click();
-      // The unshare button may appear with a different title after sharing
-      const nowUnshared = await unshareBtn.isVisible({ timeout: 5000 }).catch(() => false);
-      if (!nowUnshared) {
-        // Try broader selector
-        const anyUnshare = page.locator('[title*="zurück" i], [title*="Freigabe" i]').first();
-        const anyUnshared = await anyUnshare.isVisible({ timeout: 3000 }).catch(() => false);
-        expect(anyUnshared, 'Nach Freigabe muss eine Freigabe-/Zurueckziehen-Aktion sichtbar sein').toBe(true);
-      }
-    } else {
-      throw new Error('No shareable documents available — Upload/Seed/Freigabe-UI muss fuer Paranoid-E2E vorhanden sein');
-    }
+    const documentRow = page.locator(`[data-document-id="${uploadedDocumentId}"]`);
+    await expect(documentRow, 'Frisch hochgeladenes Dokument muss eindeutig auffindbar sein').toHaveCount(1);
+    await expect(documentRow).toBeVisible({ timeout: 8000 });
+
+    const shareBtn = documentRow.getByTitle('Für Mandant freigeben', { exact: true });
+    const unshareBtn = documentRow.getByTitle('Freigabe für Mandant zurückziehen', { exact: true });
+
+    await expect(
+      documentRow.getByText('privat', { exact: true }),
+      'Ein frisch hochgeladenes Dokument muss zunächst privat sein',
+    ).toBeVisible();
+    await documentRow.hover();
+    await expect(shareBtn, 'Das frisch hochgeladene Dokument muss freigebbar sein').toBeVisible();
+    await shareBtn.click();
+
+    // Auto-retrying Assertions warten auf Server Action und router.refresh().
+    // Beide Prüfungen bleiben auf exakt derselben Dokumentzeile gescoped.
+    await expect(
+      unshareBtn,
+      'Nach Freigabe muss für dasselbe Dokument die Zurückziehen-Aktion erscheinen',
+    ).toBeVisible({ timeout: 10_000 });
+    await expect(
+      documentRow.getByText('geteilt', { exact: true }),
+      'Nach Freigabe muss dasselbe Dokument als geteilt markiert sein',
+    ).toBeVisible({ timeout: 10_000 });
     await ctx.close();
   });
 
