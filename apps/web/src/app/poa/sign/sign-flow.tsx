@@ -21,7 +21,10 @@ export function SignFlow({ token, signerEmail }: Props) {
   function requestOtp() {
     setError(null);
     startTransition(async () => {
-      const r = await requestSigningOtpAction(token);
+      const r = await requestSigningOtpAction({
+        rawToken: token,
+        consentAccepted: agreed,
+      });
       if (r.error) {
         setError(r.error);
       } else {
@@ -34,11 +37,12 @@ export function SignFlow({ token, signerEmail }: Props) {
     setError(null);
     startTransition(async () => {
       // N1: IP + User-Agent werden serverseitig aus headers() gelesen — der
-      // Client darf eIDAS-Audit-Felder nicht selbst liefern. Action-Input
+      // Client darf technische Audit-Felder nicht selbst liefern. Action-Input
       // trägt nur Token + OTP.
       const r = await signPoaAction({
         rawToken: token,
         otp,
+        consentAccepted: agreed,
       });
       if (r.error) {
         setError(r.error);
@@ -52,12 +56,9 @@ export function SignFlow({ token, signerEmail }: Props) {
     return (
       <div className="card p-8 text-center">
         <ShieldCheck className="h-12 w-12 text-green-600 mx-auto mb-3" />
-        <h2 className="text-lg font-semibold text-primary mb-2">
-          Vollmacht unterschrieben
-        </h2>
+        <h2 className="text-lg font-semibold text-primary mb-2">Vollmacht unterschrieben</h2>
         <p className="text-sm text-secondary">
-          Vielen Dank. Ihre Kanzlei wurde benachrichtigt.
-          Sie können dieses Fenster nun schließen.
+          Vielen Dank. Ihre Kanzlei wurde benachrichtigt. Sie können dieses Fenster nun schließen.
         </p>
       </div>
     );
@@ -68,10 +69,10 @@ export function SignFlow({ token, signerEmail }: Props) {
       <div className="card p-6">
         <h2 className="text-sm font-medium text-primary mb-3">Elektronische Unterschrift</h2>
         <p className="text-sm text-secondary mb-4">
-          Mit Klick auf „Bestätigungscode anfordern" senden wir Ihnen einen 6-stelligen
-          Code an <strong>{signerEmail}</strong>. Mit Eingabe des Codes unterzeichnen Sie
-          die Vollmacht elektronisch (eIDAS-konforme fortgeschrittene elektronische
-          Signatur via Magic-Link + OTP).
+          Mit Klick auf „Bestätigungscode anfordern" senden wir Ihnen einen 6-stelligen Code an{' '}
+          <strong>{signerEmail}</strong>. Mit Eingabe des Codes unterzeichnen Sie die angezeigte
+          Fassung elektronisch. Inhalt, Zeitpunkt und technische Bestätigungsdaten werden für den
+          Nachweis protokolliert.
         </p>
 
         <label className="flex items-start gap-2 text-sm text-secondary mb-4">
@@ -82,14 +83,11 @@ export function SignFlow({ token, signerEmail }: Props) {
             className="mt-1"
           />
           <span>
-            Ich habe den Vollmachtsinhalt geprüft und stimme der elektronischen
-            Unterschrift zu.
+            Ich habe den Vollmachtsinhalt geprüft und stimme der elektronischen Unterschrift zu.
           </span>
         </label>
 
-        {error && (
-          <div className="rounded-md bg-red-50 p-3 text-sm text-red-700 mb-3">{error}</div>
-        )}
+        {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700 mb-3">{error}</div>}
 
         <button
           type="button"
@@ -108,8 +106,8 @@ export function SignFlow({ token, signerEmail }: Props) {
     <div className="card p-6">
       <h2 className="text-sm font-medium text-primary mb-3">Bestätigungscode eingeben</h2>
       <p className="text-sm text-secondary mb-4">
-        Wir haben einen 6-stelligen Code an <strong>{signerEmail}</strong> gesendet.
-        Geben Sie den Code unten ein, um die Vollmacht zu unterzeichnen.
+        Wir haben einen 6-stelligen Code an <strong>{signerEmail}</strong> gesendet. Geben Sie den
+        Code unten ein, um die Vollmacht zu unterzeichnen.
       </p>
       <input
         type="text"
@@ -122,9 +120,7 @@ export function SignFlow({ token, signerEmail }: Props) {
         onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
         autoFocus
       />
-      {error && (
-        <div className="rounded-md bg-red-50 p-3 text-sm text-red-700 mb-3">{error}</div>
-      )}
+      {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-700 mb-3">{error}</div>}
       <button
         type="button"
         onClick={sign}
@@ -135,7 +131,10 @@ export function SignFlow({ token, signerEmail }: Props) {
       </button>
       <button
         type="button"
-        onClick={() => { setStage('consent'); setOtp(''); }}
+        onClick={() => {
+          setStage('consent');
+          setOtp('');
+        }}
         className="btn-secondary w-full mt-2"
       >
         Zurück

@@ -1,18 +1,9 @@
-import {
-  PutObjectCommand,
-  GetObjectCommand,
-  DeleteObjectCommand,
-} from '@aws-sdk/client-s3';
+import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { createHash } from 'node:crypto';
 import { createConnection } from 'node:net';
 import { Readable } from 'node:stream';
 import { env } from '@taxtronik/config';
-import {
-  s3,
-  classificationToTier,
-  getBucketForTier,
-  type ProtectionTier,
-} from './client';
+import { s3, classificationToTier, getBucketForTier, type ProtectionTier } from './client';
 
 /**
  * § 147 AO Aufbewahrungsfristen: „Die Aufbewahrungsfrist beginnt mit dem
@@ -62,23 +53,32 @@ export function gobdRetentionUntilFor(classification?: string, now: Date = new D
   return new Date(Date.UTC(startYear + gobdRetentionYears(classification) + 1, 0, 1, 0, 0, 0, 0));
 }
 
+/** Friststichtag für einen fachlich klassifizierten 6-/8-/10-Jahres-Typ. */
+export function retentionUntilForYears(years: number, now: Date = new Date()): Date {
+  if (![5, 6, 8, 10].includes(years)) {
+    throw new Error('INVALID_RETENTION_YEARS: Erlaubt sind 5, 6, 8 oder 10 Jahre.');
+  }
+  return new Date(Date.UTC(now.getUTCFullYear() + years + 1, 0, 1, 0, 0, 0, 0));
+}
+
 /**
- * B-1: § 8 Abs. 4 GwG schreibt 5 Jahre Aufbewahrung vor — und satz 4 verlangt
- * EXPLIZIT „unverzügliche Vernichtung" nach Ablauf. Längere Aufbewahrung ist
- * nicht zulässig (DSGVO Art. 5 Abs. 1 lit. e + GwG-Höchstfrist).
+ * § 8 Abs. 4 GwG schreibt grundsätzlich 5 Jahre Aufbewahrung vor; andere
+ * gesetzliche Vorschriften können länger verpflichten, spätestens nach zehn
+ * Jahren sind die Aufzeichnungen zu vernichten. Der fachliche Fristbeginn
+ * hängt insbesondere vom Ende der Geschäftsbeziehung ab und wird deshalb von
+ * der GwG-Retention-Queue geführt — dieser technische Lock ab Upload ist nur
+ * eine zusätzliche Mindestbarriere, nicht die Löschentscheidung.
  *
  * Wir setzen Object-Lock-Retain-Until daher auf 5 Jahre + 1 Tag (Jahresende
  * basierte Berechnung wäre für GwG-Akten weniger relevant — Frist beginnt
  * mit Ende der Geschäftsbeziehung, nicht mit Erstellungsjahr; das ist eine
  * Operations-Sache, nicht Object-Lock-Sache).
  *
- * Object-Lock-Modus je Stufe (Review F2 — siehe lockModeForTier): GwG-Belege werden
- * im Modus GOVERNANCE geschrieben, GOBD in COMPLIANCE. Hintergrund: COMPLIANCE lässt
- * sich vor Ablauf von NIEMANDEM (auch nicht root) verkürzen oder abschalten — damit
- * wäre die von § 8 Abs. 4 Satz 4 GwG geforderte UNVERZÜGLICHE Vernichtung nach Ende
- * der Geschäftsbeziehung technisch nicht erfüllbar (Konflikt mit DSGVO Art. 5 Abs. 1
- * lit. e). GOVERNANCE erlaubt die privilegierte Frühlöschung (s3:BypassGovernance-
- * Retention), GoBD bleibt voll unveränderbar.
+ * Object-Lock-Modus je Stufe (siehe lockModeForTier): GwG-Belege werden im
+ * Modus GOVERNANCE geschrieben, GOBD in COMPLIANCE. GOVERNANCE erlaubt die
+ * kontrollierte Löschung zum von der Retention-Queue ermittelten tatsächlichen
+ * Fristende; COMPLIANCE könnte einen falsch zu spät gesetzten technischen Lock
+ * selbst nach Eintritt der gesetzlichen Vernichtungspflicht nicht korrigieren.
  * NOCH OFFEN (Ops): die eigentliche Frühlöschung nach Beziehungsende ist ein
  * Lifecycle-Schritt (Löschen MIT BypassGovernanceRetention); zudem SeaweedFS'
  * Object-Lock-Emulation gegen reales S3-GOVERNANCE-Verhalten prüfen.
@@ -96,13 +96,10 @@ export function retentionForTier(tier: ProtectionTier): Date | null {
 
 /**
  * Object-Lock-Modus je Schutzstufe (Review F2):
- *  - GWG  → GOVERNANCE: § 8 Abs. 4 Satz 4 GwG verlangt die UNVERZÜGLICHE
- *    Vernichtung nach Ende der Geschäftsbeziehung. COMPLIANCE würde das technisch
- *    verhindern (vor Ablauf von niemandem löschbar). GOVERNANCE erlaubt die
- *    privilegierte Frühlöschung (s3:BypassGovernanceRetention) — für alle ohne
- *    dieses Recht bleibt die fristgebundene Unveränderbarkeit erhalten.
- *  - GOBD → COMPLIANCE: 10 Jahre echte, von niemandem aufhebbare Unveränderbarkeit
- *    (GoBD / § 147 AO), keine Frühlöschung vorgesehen.
+ *  - GWG  → GOVERNANCE: kontrollierte Löschung zum fachlich ermittelten
+ *    Fristende bleibt möglich; ohne Bypass-Recht unveränderbar.
+ *  - GOBD → COMPLIANCE: echte, von niemandem aufhebbare Unveränderbarkeit für
+ *    die klassifizierte 6-/8-/10-Jahresfrist (§ 147 AO/§ 14b UStG).
  */
 export function lockModeForTier(tier: ProtectionTier): 'GOVERNANCE' | 'COMPLIANCE' {
   return tier === 'GWG' ? 'GOVERNANCE' : 'COMPLIANCE';
@@ -141,17 +138,20 @@ export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 // trotz Content-Type-Header und würden das als HTML rendern. Magic-Numbers
 // sind die ersten Bytes typischer Dateiformate.
 const MAGIC_NUMBERS: ReadonlyArray<{ mime: string; bytes: ReadonlyArray<number | null> }> = [
-  { mime: 'application/pdf', bytes: [0x25, 0x50, 0x44, 0x46, 0x2d] },                  // %PDF-
-  { mime: 'image/png', bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] },      // PNG
-  { mime: 'image/jpeg', bytes: [0xff, 0xd8, 0xff] },                                   // JPEG
-  { mime: 'image/gif', bytes: [0x47, 0x49, 0x46, 0x38] },                              // GIF8
-  { mime: 'image/webp', bytes: [0x52, 0x49, 0x46, 0x46, null, null, null, null, 0x57, 0x45, 0x42, 0x50] }, // RIFF....WEBP
-  { mime: 'image/tiff', bytes: [0x49, 0x49, 0x2a, 0x00] },                             // II*\0 (LE)
-  { mime: 'image/tiff', bytes: [0x4d, 0x4d, 0x00, 0x2a] },                             // MM\0* (BE)
-  { mime: 'application/zip', bytes: [0x50, 0x4b, 0x03, 0x04] },                        // PK.. (xlsx/docx/zip)
-  { mime: 'application/x-tika-ooxml', bytes: [0x50, 0x4b, 0x03, 0x04] },               // PK..
-  { mime: 'application/xml', bytes: [0x3c, 0x3f, 0x78, 0x6d, 0x6c] },                  // <?xml
-  { mime: 'text/plain', bytes: [] },                                                   // kein Header
+  { mime: 'application/pdf', bytes: [0x25, 0x50, 0x44, 0x46, 0x2d] }, // %PDF-
+  { mime: 'image/png', bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] }, // PNG
+  { mime: 'image/jpeg', bytes: [0xff, 0xd8, 0xff] }, // JPEG
+  { mime: 'image/gif', bytes: [0x47, 0x49, 0x46, 0x38] }, // GIF8
+  {
+    mime: 'image/webp',
+    bytes: [0x52, 0x49, 0x46, 0x46, null, null, null, null, 0x57, 0x45, 0x42, 0x50],
+  }, // RIFF....WEBP
+  { mime: 'image/tiff', bytes: [0x49, 0x49, 0x2a, 0x00] }, // II*\0 (LE)
+  { mime: 'image/tiff', bytes: [0x4d, 0x4d, 0x00, 0x2a] }, // MM\0* (BE)
+  { mime: 'application/zip', bytes: [0x50, 0x4b, 0x03, 0x04] }, // PK.. (xlsx/docx/zip)
+  { mime: 'application/x-tika-ooxml', bytes: [0x50, 0x4b, 0x03, 0x04] }, // PK..
+  { mime: 'application/xml', bytes: [0x3c, 0x3f, 0x78, 0x6d, 0x6c] }, // <?xml
+  { mime: 'text/plain', bytes: [] }, // kein Header
 ];
 
 /**
@@ -168,7 +168,10 @@ export function detectMimeFromMagicBytes(data: Buffer): string | null {
     for (let i = 0; i < sig.bytes.length; i++) {
       const expected = sig.bytes[i];
       if (expected === null) continue; // wildcard
-      if (data[i] !== expected) { match = false; break; }
+      if (data[i] !== expected) {
+        match = false;
+        break;
+      }
     }
     if (match) return sig.mime;
   }
@@ -181,58 +184,55 @@ export function detectMimeFromMagicBytes(data: Buffer): string | null {
 
 async function scanWithClamAV(data: Buffer): Promise<ScanResult> {
   return new Promise((resolve) => {
-    const socket = createConnection(
-      { host: env.CLAMAV_HOST, port: env.CLAMAV_PORT },
-      () => {
-        // INSTREAM-Protokoll: zINSTREAM\0 + <len-prefix><chunk>… + zero-length-chunk.
-        //
-        // N-6: clamd bricht den Stream mit INSTREAM size limit exceeded ab, sobald
-        // die Gesamtmenge StreamMaxLength (clamd.conf-Default 25 MB) übersteigt —
-        // MAX_UPLOAD_BYTES ist aber 100 MB. Damit Uploads zwischen 25 und 100 MB
-        // nicht deterministisch als SCAN_ERROR abgelehnt werden, MUSS clamd mit
-        // StreamMaxLength >= MAX_UPLOAD_BYTES (>= 100M) deployt werden. Diese
-        // Deploy-Konfig lebt außerhalb dieses Pakets (clamd.conf), darf beim
-        // Rollout aber nicht vergessen werden.
-        //
-        // N-8: Backpressure. Große Dateien (bis MAX_UPLOAD_BYTES) dürfen nicht in
-        // einer Schleife blind in den Socket-Puffer geschrieben werden — sonst
-        // wächst der Kernel-/Node-Write-Puffer unkontrolliert. Wir respektieren
-        // den Rückgabewert von socket.write() und warten bei `false` auf 'drain',
-        // bevor der nächste Chunk folgt. Die INSTREAM-Semantik (4-Byte-BE-
-        // Längenpräfix je Chunk, abschließender 4-Byte-Null-Terminator) bleibt
-        // dabei exakt erhalten — nur das Schreiben wird gedrosselt.
-        const chunkSize = 4096;
+    const socket = createConnection({ host: env.CLAMAV_HOST, port: env.CLAMAV_PORT }, () => {
+      // INSTREAM-Protokoll: zINSTREAM\0 + <len-prefix><chunk>… + zero-length-chunk.
+      //
+      // N-6: clamd bricht den Stream mit INSTREAM size limit exceeded ab, sobald
+      // die Gesamtmenge StreamMaxLength (clamd.conf-Default 25 MB) übersteigt —
+      // MAX_UPLOAD_BYTES ist aber 100 MB. Damit Uploads zwischen 25 und 100 MB
+      // nicht deterministisch als SCAN_ERROR abgelehnt werden, MUSS clamd mit
+      // StreamMaxLength >= MAX_UPLOAD_BYTES (>= 100M) deployt werden. Diese
+      // Deploy-Konfig lebt außerhalb dieses Pakets (clamd.conf), darf beim
+      // Rollout aber nicht vergessen werden.
+      //
+      // N-8: Backpressure. Große Dateien (bis MAX_UPLOAD_BYTES) dürfen nicht in
+      // einer Schleife blind in den Socket-Puffer geschrieben werden — sonst
+      // wächst der Kernel-/Node-Write-Puffer unkontrolliert. Wir respektieren
+      // den Rückgabewert von socket.write() und warten bei `false` auf 'drain',
+      // bevor der nächste Chunk folgt. Die INSTREAM-Semantik (4-Byte-BE-
+      // Längenpräfix je Chunk, abschließender 4-Byte-Null-Terminator) bleibt
+      // dabei exakt erhalten — nur das Schreiben wird gedrosselt.
+      const chunkSize = 4096;
 
-        const writeWithBackpressure = (buf: Buffer): Promise<void> =>
-          new Promise((resolveWrite) => {
-            if (socket.write(buf)) {
-              resolveWrite();
-            } else {
-              socket.once('drain', resolveWrite);
-            }
-          });
-
-        void (async () => {
-          try {
-            await writeWithBackpressure(Buffer.from('zINSTREAM\0'));
-
-            for (let offset = 0; offset < data.length; offset += chunkSize) {
-              const chunk = data.subarray(offset, offset + chunkSize);
-              const lenBuf = Buffer.allocUnsafe(4);
-              lenBuf.writeUInt32BE(chunk.length, 0);
-              await writeWithBackpressure(lenBuf);
-              await writeWithBackpressure(chunk);
-            }
-
-            // Terminator: 4-byte zero
-            await writeWithBackpressure(Buffer.alloc(4));
-          } catch {
-            // Schreib-/Socket-Fehler werden über das 'error'-Event unten in ein
-            // settle('ERROR') überführt; hier nichts weiter zu tun.
+      const writeWithBackpressure = (buf: Buffer): Promise<void> =>
+        new Promise((resolveWrite) => {
+          if (socket.write(buf)) {
+            resolveWrite();
+          } else {
+            socket.once('drain', resolveWrite);
           }
-        })();
-      },
-    );
+        });
+
+      void (async () => {
+        try {
+          await writeWithBackpressure(Buffer.from('zINSTREAM\0'));
+
+          for (let offset = 0; offset < data.length; offset += chunkSize) {
+            const chunk = data.subarray(offset, offset + chunkSize);
+            const lenBuf = Buffer.allocUnsafe(4);
+            lenBuf.writeUInt32BE(chunk.length, 0);
+            await writeWithBackpressure(lenBuf);
+            await writeWithBackpressure(chunk);
+          }
+
+          // Terminator: 4-byte zero
+          await writeWithBackpressure(Buffer.alloc(4));
+        } catch {
+          // Schreib-/Socket-Fehler werden über das 'error'-Event unten in ein
+          // settle('ERROR') überführt; hier nichts weiter zu tun.
+        }
+      })();
+    });
 
     let response = '';
     // Niedrig: settle-once-Guard — wenn 'end' und 'close' (oder 'error') beide
@@ -436,6 +436,8 @@ async function scanHashAndUpload(
   tenantId: string,
   skipScan = false,
   classification?: string,
+  retentionYears?: number,
+  retentionAnchor?: Date,
 ): Promise<CommitDocumentResult> {
   if (!skipScan) {
     const scanResult = await scanWithClamAV(fileData);
@@ -455,15 +457,19 @@ async function scanHashAndUpload(
   // iter55: Bucket/Lock/Frist hängen an der SCHUTZSTUFE, nicht mehr an der
   // rohen Klassifikation (eigene Typen können beliebige Stufen tragen).
   const targetBucket = getBucketForTier(tier);
-  const now = new Date();
-  const yyyy = now.getUTCFullYear();
-  const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
+  const uploadNow = new Date();
+  const yyyy = uploadNow.getUTCFullYear();
+  const mm = String(uploadNow.getUTCMonth() + 1).padStart(2, '0');
   const randomId = crypto.randomUUID();
   const targetKey = `tenants/${tenantId}/${tier.toLowerCase()}/${yyyy}/${mm}/${randomId}.bin`;
   // GOBD: belegart-abhängige Frist (8 J. Rechnungen, sonst 10 — BEG IV). Ohne
   // classification bleibt es bei 10 (Verhalten wie bisher). GWG/NONE: tier-Default.
   const retentionUntil =
-    tier === 'GOBD' ? gobdRetentionUntilFor(classification, now) : retentionForTier(tier);
+    tier === 'GOBD'
+      ? retentionYears
+        ? retentionUntilForYears(retentionYears, retentionAnchor ?? uploadNow)
+        : gobdRetentionUntilFor(classification, retentionAnchor ?? uploadNow)
+      : retentionForTier(tier);
   const locked = tier !== 'NONE';
 
   await s3.send(
@@ -512,12 +518,35 @@ export async function commitBytesWithTier(input: {
   /** GOBD-Belegart für die belegart-abhängige Aufbewahrungsfrist (BEG IV:
    *  Rechnungen 8 J.). Ohne Angabe gilt bei GOBD die 10-Jahres-Frist. */
   classification?: string;
+  /** Fachlich bestimmtes Aufbewahrungsintervall des Datei-Typs. Für GOBD
+   *  ausschließlich 6, 8 oder 10; verhindert pauschale Zehnjahres-Locks. */
+  retentionYears?: number;
+  /** Fachlicher Anker des Fristbeginn-Jahres, z. B. Dokumentanlage beim
+   *  Retagging. Verhindert, dass bloßes Umklassifizieren die Frist neu startet. */
+  retentionAnchor?: Date;
 }): Promise<CommitDocumentResult> {
-  const { fileData, tier, tenantId, skipScan, classification } = input;
+  const { fileData, tier, tenantId, skipScan, classification, retentionYears, retentionAnchor } =
+    input;
   if (fileData.length > MAX_UPLOAD_BYTES) {
     throw new Error(`TOO_LARGE: Datei überschreitet das Limit von ${MAX_UPLOAD_BYTES} Bytes.`);
   }
-  return scanHashAndUpload(fileData, tier, tenantId, skipScan, classification);
+  if (retentionYears !== undefined) {
+    if (tier === 'GOBD' && ![6, 8, 10].includes(retentionYears)) {
+      throw new Error('INVALID_RETENTION_YEARS: GOBD erlaubt nur 6, 8 oder 10 Jahre.');
+    }
+    if (tier !== 'GOBD') {
+      throw new Error('INVALID_RETENTION_YEARS: Individuelle Jahre sind nur für GOBD zulässig.');
+    }
+  }
+  return scanHashAndUpload(
+    fileData,
+    tier,
+    tenantId,
+    skipScan,
+    classification,
+    retentionYears,
+    retentionAnchor,
+  );
 }
 
 /**

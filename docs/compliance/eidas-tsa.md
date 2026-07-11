@@ -24,16 +24,16 @@ Audit-Hash-Chain-Top-Hashes. Diese Datei klärt:
 Quelle: [`packages/evidence/src/providers/tsa-providers.ts`](../../packages/evidence/src/providers/tsa-providers.ts)
 (in der Admin-UI auswählbar):
 
-| `providerId` | TSA-URL | Kosten | Qualifiziert nach eIDAS? |
-|---|---|---|---|
-| `freetsa` | `https://freetsa.org/tsr` | kostenlos | Nein — Test-/Dev-Betrieb |
-| `digicert` | `http://timestamp.digicert.com` | kostenlos | Nein (US-CA) |
-| `sectigo` | `http://timestamp.sectigo.com` | kostenlos | Nein |
-| `globalsign` | `http://timestamp.globalsign.com/tsa/r6advanced1` | kostenlos | Nein — EU-ansässig, Default |
-| `apple` | `http://timestamp.apple.com/ts01` | kostenlos | Nein |
-| `dtrust` | `https://tsa.d-trust.net/timestamp` | kommerziell | **Ja** — Bundesdruckerei, empfohlen für Produktion |
-| `swisscom` | `http://tsa.swisscom.com/…` | kommerziell | **Ja** (CH) |
-| `custom` | eigene URL | — | Operator-Verantwortung |
+| `providerId` | TSA-URL                                           | Kosten      | Qualifiziert nach eIDAS?                           |
+| ------------ | ------------------------------------------------- | ----------- | -------------------------------------------------- |
+| `freetsa`    | `https://freetsa.org/tsr`                         | kostenlos   | Nein — Test-/Dev-Betrieb                           |
+| `digicert`   | `http://timestamp.digicert.com`                   | kostenlos   | Nein (US-CA)                                       |
+| `sectigo`    | `http://timestamp.sectigo.com`                    | kostenlos   | Nein                                               |
+| `globalsign` | `http://timestamp.globalsign.com/tsa/r6advanced1` | kostenlos   | Nein — EU-ansässig, Default                        |
+| `apple`      | `http://timestamp.apple.com/ts01`                 | kostenlos   | Nein                                               |
+| `dtrust`     | `https://tsa.d-trust.net/timestamp`               | kommerziell | **Ja** — Bundesdruckerei, empfohlen für Produktion |
+| `swisscom`   | `http://tsa.swisscom.com/…`                       | kommerziell | **Ja** (CH)                                        |
+| `custom`     | eigene URL                                        | —           | Operator-Verantwortung                             |
 
 ## TSA-Ausfall — Fallback-Verhalten
 
@@ -79,14 +79,15 @@ Quelle: [`packages/evidence/src/providers/tsa-providers.ts`](../../packages/evid
   `/staff/admin/audit` (läuft als Hintergrund-Job, Ergebnis wird
   persistiert angezeigt).
 
-## PoA-Signatur (eIDAS Art. 26 — fortgeschrittene elektronische Signatur)
+## PoA-Bestätigungsprozess und eIDAS-Einordnung
 
-PoA-OTP-Signatur ist **fortgeschritten**, nicht **qualifiziert**. Das ist im
-deutschen Berufsrecht für Steuerberatervollmachten i. d. R. ausreichend,
-aber:
+Der PoA-Prozess bindet Magic-Link, E-Mail-Code, ausdrückliche Bestätigung und
+den exakten Inhalts-/Dokumentversions-Snapshot in einer Beweisspur. Das erhöht
+den Beweiswert einer elektronischen Erklärung, ist aber **ohne unabhängige
+Identitätsfeststellung und Konformitätsbewertung nicht als fortgeschrittene oder
+qualifizierte elektronische Signatur zugesagt**. Magic-Link und Code werden an
+dasselbe Postfach gesendet und stellen daher keine unabhängigen Faktoren dar.
 
-- Bei strittigen Mandaten ist eine qualifizierte Signatur (Smartcard,
-  z. B. D-Trust QES) sicherer.
-- Ein `EidasSignaturePort`-Interface für QES-Integration (Smartcard-
-  Reader-Anbindung) ist **geplant, aber nicht implementiert** — im Code
-  existiert dazu derzeit nichts, nur das OTP-Verfahren (ADR-0009).
+Wenn ein konkreter Vorgang AES oder QES erfordert, ist ein dafür bewerteter
+Signaturdienst einzubinden. Eine solche Integration ist derzeit nicht
+implementiert (siehe ADR-0009).

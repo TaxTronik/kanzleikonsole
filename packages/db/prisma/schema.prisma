@@ -195,33 +195,44 @@ model Absence {
 }
 
 model GwgCheck {
-  id               String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId         String               @map("tenant_id") @db.Uuid
-  clientId         String               @map("client_id") @db.Uuid
-  status           GwgStatus            @default(DRAFT)
-  riskLevel        GwgRiskLevel?        @map("risk_level")
-  riskScore        Int?                 @map("risk_score")
-  riskBreakdown    Json?                @map("risk_breakdown")
-  riskAnswers      Json?                @map("risk_answers")
-  validUntil       DateTime?            @map("valid_until")
-  verifiedAt       DateTime?            @map("verified_at")
-  verifiedBy       String?              @map("verified_by") @db.Uuid
-  rejectedReason   String?              @map("rejected_reason")
-  notes            String?
-  /// GwG § 8 Abs. 4 S. 4 (iter81): Vernichtungsvermerk. Gesetzt, wenn die
+  id                      String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                String                @map("tenant_id") @db.Uuid
+  clientId                String                @map("client_id") @db.Uuid
+  status                  GwgStatus             @default(DRAFT)
+  riskLevel               GwgRiskLevel?         @map("risk_level")
+  riskScore               Int?                  @map("risk_score")
+  riskBreakdown           Json?                 @map("risk_breakdown")
+  riskAnswers             Json?                 @map("risk_answers")
+  validUntil              DateTime?             @map("valid_until")
+  verifiedAt              DateTime?             @map("verified_at")
+  verifiedBy              String?               @map("verified_by") @db.Uuid
+  rejectedReason          String?               @map("rejected_reason")
+  notes                   String?
+  /// Snapshot der Identifizierungsangaben juristischer Personen/
+  /// Personengesellschaften (§ 11 Abs. 4 Nr. 2 GwG). Die Angaben leben am
+  /// Check statt am Client, damit eine abgeschlossene Prüfung unverändert
+  /// erhalten bleibt und eine Wiederholungsprüfung einen neuen Snapshot erhält.
+  legalForm               String?               @map("legal_form")
+  registerNumber          String?               @map("register_number")
+  registerAuthority       String?               @map("register_authority")
+  noRegisterEntry         Boolean               @default(false) @map("no_register_entry")
+  representativeNames     String[]              @default([]) @map("representative_names")
+  ownershipStructureNotes String?               @map("ownership_structure_notes")
+  /// GwG § 8 Abs. 1 und 4 (iter81): Vernichtungsvermerk. Gesetzt, wenn die
   /// Aufzeichnungen des Checks vernichtet wurden (Berechtigte gelöscht,
   /// Ausweis-Details genullt, riskAnswers/notes entfernt). Der Skelett-
   /// Datensatz bleibt als Nachweis, DASS geprüft wurde.
-  destroyedAt      DateTime?            @map("destroyed_at")
-  createdAt        DateTime             @default(now()) @map("created_at")
-  updatedAt        DateTime             @updatedAt @map("updated_at")
-  beneficialOwners GwgBeneficialOwner[]
+  destroyedAt             DateTime?             @map("destroyed_at")
+  createdAt               DateTime              @default(now()) @map("created_at")
+  updatedAt               DateTime              @updatedAt @map("updated_at")
+  beneficialOwners        GwgBeneficialOwner[]
   // RF-15 (iter79): NoAction statt Cascade — ein Client-Hard-Delete darf
   // GwG-Akten (5-Jahres-Pflicht, § 8 GwG) nicht mitlöschen. NoAction (statt
   // Restrict), damit die Tenant-Kaskade weiterhin funktioniert.
-  client           Client               @relation(fields: [clientId], references: [id], onDelete: NoAction)
-  tenant           Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  idDocuments      GwgIdDocument[]
+  client                  Client                @relation(fields: [clientId], references: [id], onDelete: NoAction)
+  tenant                  Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  idDocuments             GwgIdDocument[]
+  onboardingInvites       GwgOnboardingInvite[]
 
   @@index([tenantId, clientId])
   @@index([tenantId, status])
@@ -287,46 +298,53 @@ model ServiceProvider {
 }
 
 model PowerOfAttorney {
-  id                      String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId                String    @map("tenant_id") @db.Uuid
-  clientId                String    @map("client_id") @db.Uuid
-  signerContactId         String?   @map("signer_contact_id") @db.Uuid
-  signerEmail             String    @map("signer_email") @db.Citext
-  signerName              String    @map("signer_name")
-  subject                 String
-  scope                   String
-  validFrom               DateTime  @map("valid_from") @db.Date
-  validUntil              DateTime? @map("valid_until") @db.Date
-  status                  PoaStatus @default(DRAFT)
-  signingTokenHash        String?   @map("signing_token_hash")
-  signingTokenExpiresAt   DateTime? @map("signing_token_expires_at")
-  signingOtpHash          String?   @map("signing_otp_hash")
-  signingOtpExpiresAt     DateTime? @map("signing_otp_expires_at")
-  signedAt                DateTime? @map("signed_at")
-  signedByIp              String?   @map("signed_by_ip") @db.Inet
-  signedByUserAgent       String?   @map("signed_by_user_agent")
-  // eIDAS-Bindung (Art. 26 lit. d): SHA-256 des signierten Inhalts (bei extern
-  // hinterlegtem PDF die Dokumentversion, sonst der scope-Text) + Referenz auf
-  // die konkret signierte Dokumentversion. Beim Signieren gesetzt; macht die
-  // nachträgliche Änderung der signierten Daten erkennbar.
-  signedContentSha256     Bytes?    @map("signed_content_sha256")
-  signedDocumentVersionId String?   @map("signed_document_version_id") @db.Uuid
-  documentId              String?   @map("document_id") @db.Uuid
-  createdByStaff          String    @map("created_by_staff") @db.Uuid
-  revokedAt               DateTime? @map("revoked_at")
-  revokedReason           String?   @map("revoked_reason")
-  createdAt               DateTime  @default(now()) @map("created_at")
-  updatedAt               DateTime  @updatedAt @map("updated_at")
-  signingOtpAttempts      Int       @default(0) @map("signing_otp_attempts")
+  id                       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                 String    @map("tenant_id") @db.Uuid
+  clientId                 String    @map("client_id") @db.Uuid
+  signerContactId          String?   @map("signer_contact_id") @db.Uuid
+  signerEmail              String    @map("signer_email") @db.Citext
+  signerName               String    @map("signer_name")
+  subject                  String
+  scope                    String
+  validFrom                DateTime  @map("valid_from") @db.Date
+  validUntil               DateTime? @map("valid_until") @db.Date
+  status                   PoaStatus @default(DRAFT)
+  /// DB-seitig gesetzter Zeitpunkt des ersten beweisgebundenen Versands.
+  sentAt                   DateTime? @map("sent_at") @db.Timestamptz(6)
+  signingTokenHash         String?   @map("signing_token_hash")
+  signingTokenExpiresAt    DateTime? @map("signing_token_expires_at")
+  signingOtpHash           String?   @map("signing_otp_hash")
+  signingOtpExpiresAt      DateTime? @map("signing_otp_expires_at")
+  signedAt                 DateTime? @map("signed_at")
+  signedByIp               String?   @map("signed_by_ip") @db.Inet
+  signedByUserAgent        String?   @map("signed_by_user_agent")
+  // SHA-256 des beim Versand erzeugten Inhalts-Manifests plus Referenz auf die
+  // konkret bestätigte Dokumentversion. Beim Signieren aus dem verifizierten
+  // Versand-Snapshot übernommen.
+  signedContentSha256      Bytes?    @map("signed_content_sha256")
+  signedDocumentVersionId  String?   @map("signed_document_version_id") @db.Uuid
+  // Unveränderlicher Versand-Snapshot. Die Signaturseite und der öffentliche
+  // PDF-Endpunkt verwenden ausschließlich diese Fassung; beim Abschluss wird
+  // ihr Hash in signedContentSha256 übernommen.
+  signingContentSnapshot   String?   @map("signing_content_snapshot")
+  signingContentSha256     Bytes?    @map("signing_content_sha256")
+  signingDocumentVersionId String?   @map("signing_document_version_id") @db.Uuid
+  documentId               String?   @map("document_id") @db.Uuid
+  createdByStaff           String    @map("created_by_staff") @db.Uuid
+  revokedAt                DateTime? @map("revoked_at")
+  revokedReason            String?   @map("revoked_reason")
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @updatedAt @map("updated_at")
+  signingOtpAttempts       Int       @default(0) @map("signing_otp_attempts")
   // Audit 2026-06 Befund 2: lebenszyklus-weiter Fehlversuchszähler. Anders als
   // signingOtpAttempts wird er beim OTP-Re-Issue NICHT zurückgesetzt — nur beim
   // Versand eines neuen Signatur-Tokens (sendForSignatureAction). Deckelt die
   // Gesamtversuche pro Token-Lebenszyklus (vorher ~50 über Re-Issue-Resets).
-  signingOtpAttemptsTotal Int       @default(0) @map("signing_otp_attempts_total")
+  signingOtpAttemptsTotal  Int       @default(0) @map("signing_otp_attempts_total")
   // RF-15 (iter79): NoAction statt Cascade — signierte Vollmachten dürfen
   // einen Client-Hard-Delete nicht mitsterben (Aufbewahrung/Beweiswert).
-  client                  Client    @relation(fields: [clientId], references: [id], onDelete: NoAction)
-  tenant                  Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client                   Client    @relation(fields: [clientId], references: [id], onDelete: NoAction)
+  tenant                   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, clientId])
   @@index([tenantId, status])
@@ -396,54 +414,54 @@ model KbArticle {
 }
 
 model Invoice {
-  id             String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId       String            @map("tenant_id") @db.Uuid
-  clientId       String            @map("client_id") @db.Uuid
-  number         String
-  issueDate      DateTime          @map("issue_date") @db.Date
-  dueDate        DateTime          @map("due_date") @db.Date
-  status         InvoiceStatus     @default(DRAFT)
-  format         InvoiceFormat     @default(PDF)
-  subject        String
-  netAmount      Decimal           @map("net_amount") @db.Decimal(12, 2)
-  vatAmount      Decimal           @map("vat_amount") @db.Decimal(12, 2)
-  totalAmount    Decimal           @map("total_amount") @db.Decimal(12, 2)
+  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String            @map("tenant_id") @db.Uuid
+  clientId           String            @map("client_id") @db.Uuid
+  number             String
+  issueDate          DateTime          @map("issue_date") @db.Date
+  dueDate            DateTime          @map("due_date") @db.Date
+  status             InvoiceStatus     @default(DRAFT)
+  format             InvoiceFormat     @default(PDF)
+  subject            String
+  netAmount          Decimal           @map("net_amount") @db.Decimal(12, 2)
+  vatAmount          Decimal           @map("vat_amount") @db.Decimal(12, 2)
+  totalAmount        Decimal           @map("total_amount") @db.Decimal(12, 2)
   // iter86: NULL bei Mischsätzen (Satz lebt an den Positionen); bei
   // einheitlichem Satz redundant gesetzt (Anzeige/CSV, Bestandsdaten).
-  vatRate        Decimal?          @map("vat_rate") @db.Decimal(5, 2)
+  vatRate            Decimal?          @map("vat_rate") @db.Decimal(5, 2)
   // iter98: Leistungszeitraum (§ 14 Abs. 4 Nr. 6 UStG, § 31 Abs. 4 UStDV —
   // Monat genügt). NULL = kein separater Zeitraum → der Empfänger-Vorsteuer-
   // abzug knüpft dann an das Rechnungsdatum. In XRechnung als BG-14
   // (BT-73/BT-74), im ZUGFeRD-PDF als Klartext ausgewiesen.
-  servicePeriodStart DateTime?     @map("service_period_start") @db.Date
-  servicePeriodEnd   DateTime?     @map("service_period_end") @db.Date
+  servicePeriodStart DateTime?         @map("service_period_start") @db.Date
+  servicePeriodEnd   DateTime?         @map("service_period_end") @db.Date
   // iter101: Befreiungsgrund für 0 %-Umsätze (§ 14 Abs. 4 Nr. 8 UStG; z. B.
   // „§ 19 UStG Kleinunternehmer", „steuerfrei nach § 4 Nr. …"). NULL = kein
   // 0 %-Umsatz. In XRechnung als BT-120 (Kategorie „E") ausgewiesen.
-  vatExemptionReason String?       @map("vat_exemption_reason")
+  vatExemptionReason String?           @map("vat_exemption_reason")
   // Reverse-Charge (§ 13b UStG, EN16931 USt-Kategorie AE): der Leistungs-
   // empfänger schuldet die Steuer, Positionen sind 0 %. Nur DRAFT-setzbar,
   // danach festgeschrieben (iter107).
-  reverseCharge   Boolean         @default(false) @map("reverse_charge")
-  notes          String?
-  sentAt         DateTime?         @map("sent_at")
-  paidAt         DateTime?         @map("paid_at")
-  documentId     String?           @map("document_id") @db.Uuid
-  createdByStaff String            @map("created_by_staff") @db.Uuid
-  createdAt      DateTime          @default(now()) @map("created_at")
-  updatedAt      DateTime          @updatedAt @map("updated_at")
-  categoryId     String?           @map("category_id") @db.Uuid
+  reverseCharge      Boolean           @default(false) @map("reverse_charge")
+  notes              String?
+  sentAt             DateTime?         @map("sent_at")
+  paidAt             DateTime?         @map("paid_at")
+  documentId         String?           @map("document_id") @db.Uuid
+  createdByStaff     String            @map("created_by_staff") @db.Uuid
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+  categoryId         String?           @map("category_id") @db.Uuid
   // iter100: Storno-Verkettung. stornoOfId zeigt von der Stornorechnung
   // (TypeCode 381, negierte Beträge) auf die stornierte Originalrechnung.
-  stornoOfId     String?           @map("storno_of_id") @db.Uuid
-  stornoOf       Invoice?          @relation("InvoiceStorno", fields: [stornoOfId], references: [id], onUpdate: NoAction, onDelete: NoAction, map: "invoice_storno_of_fkey")
-  stornoBy       Invoice[]         @relation("InvoiceStorno")
-  category       InvoiceCategory?  @relation(fields: [categoryId], references: [id], onUpdate: NoAction)
-  client         Client            @relation(fields: [clientId], references: [id])
-  document       Document?         @relation(fields: [documentId], references: [id])
-  tenant         Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  positions      InvoicePosition[]
-  timeEntries    TimeEntry[]
+  stornoOfId         String?           @map("storno_of_id") @db.Uuid
+  stornoOf           Invoice?          @relation("InvoiceStorno", fields: [stornoOfId], references: [id], onUpdate: NoAction, onDelete: NoAction, map: "invoice_storno_of_fkey")
+  stornoBy           Invoice[]         @relation("InvoiceStorno")
+  category           InvoiceCategory?  @relation(fields: [categoryId], references: [id], onUpdate: NoAction)
+  client             Client            @relation(fields: [clientId], references: [id])
+  document           Document?         @relation(fields: [documentId], references: [id])
+  tenant             Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  positions          InvoicePosition[]
+  timeEntries        TimeEntry[]
 
   @@unique([tenantId, number])
   @@index([tenantId, status])
@@ -645,7 +663,20 @@ model DsgvoRequest {
   subjectName      String             @map("subject_name")
   description      String
   resultDocumentId String?            @map("result_document_id") @db.Uuid
+  /// Tag, an dem der Antrag tatsächlich eingegangen ist; ab hier läuft die
+  /// Monatsfrist nach Art. 12 Abs. 3 DSGVO.
+  receivedAt       DateTime           @map("received_at") @db.Date
   dueDate          DateTime?          @map("due_date") @db.Date
+  /// Hash des tatsächlich erzeugten Auskunfts-/Portabilitätspakets. So kann
+  /// ein Antrag nicht allein per Statusklick als erledigt markiert werden.
+  resultSha256     Bytes?             @map("result_sha256")
+  resultPreparedAt DateTime?          @map("result_prepared_at")
+  resultPreparedBy String?            @map("result_prepared_by") @db.Uuid
+  resultReviewedAt DateTime?          @map("result_reviewed_at")
+  resultReviewedBy String?            @map("result_reviewed_by") @db.Uuid
+  responseSentAt   DateTime?          @map("response_sent_at") @db.Date
+  responseMethod   String?            @map("response_method")
+  rejectionReason  String?            @map("rejection_reason")
   completedAt      DateTime?          @map("completed_at")
   completedByStaff String?            @map("completed_by_staff") @db.Uuid
   notes            String?
@@ -774,74 +805,78 @@ model Notification {
 }
 
 model Client {
-  id                   String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId             String                      @map("tenant_id") @db.Uuid
-  kind                 ClientKind
-  name                 String
-  datevNo              String?                     @map("datev_no")
-  allowActive          Boolean                     @default(false) @map("allow_active")
-  createdAt            DateTime                    @default(now()) @map("created_at")
-  updatedAt            DateTime                    @updatedAt @map("updated_at")
-  street               String?
-  postalCode           String?                     @map("postal_code")
-  city                 String?
-  countryIso           String?                     @map("country_iso")
-  vatId                String?                     @map("vat_id")
+  id                      String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                String                      @map("tenant_id") @db.Uuid
+  kind                    ClientKind
+  name                    String
+  datevNo                 String?                     @map("datev_no")
+  allowActive             Boolean                     @default(false) @map("allow_active")
+  createdAt               DateTime                    @default(now()) @map("created_at")
+  updatedAt               DateTime                    @updatedAt @map("updated_at")
+  street                  String?
+  postalCode              String?                     @map("postal_code")
+  city                    String?
+  countryIso              String?                     @map("country_iso")
+  vatId                   String?                     @map("vat_id")
   /// Steuernummer im 13-stelligen ELSTER-Bundesformat — Basis der ELSTER-
   /// Kontoabfrage (Soll-/Iststellungen). EINE pro Mandant: Tochtergesellschaften/
   /// Betriebsstätten mit eigener StNr sind eigene Mandanten.
-  steuernummer         String?                     @map("steuernummer")
-  invoiceEmail         String?                     @map("invoice_email") @db.Citext
-  addisonNo            String?                     @map("addison_no")
-  priority             ClientPriority?             @map("priority")
-  internalNotes        String?                     @map("internal_notes")
+  steuernummer            String?                     @map("steuernummer")
+  invoiceEmail            String?                     @map("invoice_email") @db.Citext
+  addisonNo               String?                     @map("addison_no")
+  priority                ClientPriority?             @map("priority")
+  internalNotes           String?                     @map("internal_notes")
   // Zugriffs-Ventil: im OPEN-Zugriffsmodell (Default) dürfen alle aktiven
   // Mitarbeiter an jedem Mandanten arbeiten. Ein als `vertraulich` markierter
   // Mandant bleibt aber auf Admin/Partner + die zugeordneten Berufsträger/
   // Hauptbearbeiter beschränkt (Konflikt-/Geheimhaltungsfälle). Nur Admin/Partner
   // setzt das Flag. Siehe canAccessClient (rbac.ts) + access-policy.ts.
-  vertraulich          Boolean                     @default(false) @map("vertraulich")
+  vertraulich             Boolean                     @default(false) @map("vertraulich")
   // Mandatsende (GwG § 8 Abs. 4): die 5-Jahres-Aufbewahrungsfrist für GwG-Belege
   // beginnt mit dem Schluss des Kalenderjahres, in dem die Geschäftsbeziehung
   // endet. Gesetzt = Mandat beendet, startet die Löschuhr. Siehe server/gwg/
   // retention.ts + die GwG-Lösch-Review-Queue.
-  mandateEndedAt       DateTime?                   @map("mandate_ended_at") @db.Timestamptz(6)
+  mandateEndedAt          DateTime?                   @map("mandate_ended_at") @db.Timestamptz(6)
   // DSGVO Art. 17: Vernichtungsvermerk der Mandanten-Anonymisierung (Pendant zu
   // gwg_check.destroyed_at). Gesetzt = die personenbezogenen Stammdaten der
   // natürlichen Person wurden nach Ablauf ALLER Aufbewahrungsfristen (GoBD 10 J.,
   // GwG 5 J. — ab Jahresende des Mandatsendes, die längste gewinnt) anonymisiert;
   // der Datensatz ist nur noch ein Skelett. Siehe server/dsgvo/client-retention.ts
   // + die Review-Queue /staff/admin/dsgvo-retention.
-  anonymizedAt         DateTime?                   @map("anonymized_at")
-  appointments         Appointment[]
-  appointmentRequests  AppointmentRequest[]
-  clientConsents       ClientConsent[]
-  bwaPeriods           BwaPeriod[]
-  bwaPlans             BwaPlan[]
-  tenant               Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  contacts             ClientContact[]
-  customFieldValues    ClientCustomFieldValue[]
-  handovers            ClientHandover[]
-  masterChangeRequests ClientMasterChangeRequest[]
-  reminders            ClientReminder[]
-  responsibilities     ClientResponsibility[]
-  documents            Document[]
-  documentFolders      DocumentFolder[]
-  elsterKontoabfragen  ElsterKontoabfrage[]
-  formSubmissions      FormSubmission[]
-  gwgChecks            GwgCheck[]
-  gwgInvites           GwgOnboardingInvite[]
-  invoices             Invoice[]
-  pendingBinders       PendingBinder[]
-  phoneNotes           PhoneNote[]
-  poas                 PowerOfAttorney[]
-  requests             Request[]
-  riskAnalyses         RiskAnalysis[]
-  taxDeadlines         TaxDeadline[]
-  taxFilings           TaxFiling[]
-  taxNotices           TaxNotice[]
-  taxScheduleConfigs   TaxScheduleConfig[]
-  workflowInstances    WorkflowInstance[]
+  anonymizedAt            DateTime?                   @map("anonymized_at")
+  // Letzter kontrollierter Retentionlauf für natürliche PoA-Unterzeichner von
+  // JURPERS/PERSGES. Die Gesellschaft bleibt bestehen; nur die nach Fristablauf
+  // nicht mehr erforderlichen Signer-/Snapshotdaten werden redigiert.
+  poaSignerDataRedactedAt DateTime?                   @map("poa_signer_data_redacted_at") @db.Timestamptz(6)
+  appointments            Appointment[]
+  appointmentRequests     AppointmentRequest[]
+  clientConsents          ClientConsent[]
+  bwaPeriods              BwaPeriod[]
+  bwaPlans                BwaPlan[]
+  tenant                  Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contacts                ClientContact[]
+  customFieldValues       ClientCustomFieldValue[]
+  handovers               ClientHandover[]
+  masterChangeRequests    ClientMasterChangeRequest[]
+  reminders               ClientReminder[]
+  responsibilities        ClientResponsibility[]
+  documents               Document[]
+  documentFolders         DocumentFolder[]
+  elsterKontoabfragen     ElsterKontoabfrage[]
+  formSubmissions         FormSubmission[]
+  gwgChecks               GwgCheck[]
+  gwgInvites              GwgOnboardingInvite[]
+  invoices                Invoice[]
+  pendingBinders          PendingBinder[]
+  phoneNotes              PhoneNote[]
+  poas                    PowerOfAttorney[]
+  requests                Request[]
+  riskAnalyses            RiskAnalysis[]
+  taxDeadlines            TaxDeadline[]
+  taxFilings              TaxFiling[]
+  taxNotices              TaxNotice[]
+  taxScheduleConfigs      TaxScheduleConfig[]
+  workflowInstances       WorkflowInstance[]
 
   @@unique([tenantId, datevNo])
   @@index([tenantId])
@@ -968,62 +1003,74 @@ model MagicLink {
 }
 
 model Document {
-  id                  String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId            String                 @map("tenant_id") @db.Uuid
-  clientId            String?                @map("client_id") @db.Uuid
-  ownerStaffId        String?                @map("owner_staff_id") @db.Uuid
-  title               String
-  classification      DocumentClassification
-  mimeType            String                 @map("mime_type")
-  retentionUntil      DateTime?              @map("retention_until")
-  createdAt           DateTime               @default(now()) @map("created_at")
-  updatedAt           DateTime               @updatedAt @map("updated_at")
-  workflowItemId      String?                @map("workflow_item_id") @db.Uuid
+  id                        String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                  String                 @map("tenant_id") @db.Uuid
+  clientId                  String?                @map("client_id") @db.Uuid
+  ownerStaffId              String?                @map("owner_staff_id") @db.Uuid
+  title                     String
+  classification            DocumentClassification
+  mimeType                  String                 @map("mime_type")
+  retentionUntil            DateTime?              @map("retention_until")
+  createdAt                 DateTime               @default(now()) @map("created_at")
+  updatedAt                 DateTime               @updatedAt @map("updated_at")
+  workflowItemId            String?                @map("workflow_item_id") @db.Uuid
   // Optionaler Sachverhalts-Bezug (Aktenregal-Tab): Dokument gehört zu genau
   // dieser RiskAnalysis. Analog workflowItemId. SET NULL bei Analyse-Löschung.
-  analysisId          String?                @map("analysis_id") @db.Uuid
-  acknowledgedAt      DateTime?              @map("acknowledged_at") @db.Timestamptz(6)
-  acknowledgedByStaff String?                @map("acknowledged_by_staff") @db.Uuid
+  analysisId                String?                @map("analysis_id") @db.Uuid
+  acknowledgedAt            DateTime?              @map("acknowledged_at") @db.Timestamptz(6)
+  acknowledgedByStaff       String?                @map("acknowledged_by_staff") @db.Uuid
   // Soft-Delete: GoBD/GwG-Objekte liegen unter Object-Lock COMPLIANCE und sind
   // physisch 10/5 Jahre nicht löschbar (gesetzliche Aufbewahrung). "Löschen"
   // blendet daher nur aus — Bytes bleiben, Audit-Eintrag, wiederherstellbar.
-  deletedAt           DateTime?              @map("deleted_at") @db.Timestamptz(6)
-  deletedByStaff      String?                @map("deleted_by_staff") @db.Uuid
-  deleteReason        String?                @map("delete_reason")
+  deletedAt                 DateTime?              @map("deleted_at") @db.Timestamptz(6)
+  deletedByStaff            String?                @map("deleted_by_staff") @db.Uuid
+  deleteReason              String?                @map("delete_reason")
+  /// Zweiphasige GwG-Vernichtung: Zuerst wird die Absicht transaktional
+  /// protokolliert, danach werden die Object-Store-Bytes idempotent gelöscht
+  /// und erst dann die DB-Versionen kontrolliert entfernt. Ein Crash bleibt so
+  /// als wiederaufnehmbarer PENDING-Zustand sichtbar statt als Halbzustand.
+  gwgDestructionRequestedAt DateTime?              @map("gwg_destruction_requested_at") @db.Timestamptz(6)
+  gwgDestructionRequestedBy String?                @map("gwg_destruction_requested_by") @db.Uuid
+  gwgDestructionError       String?                @map("gwg_destruction_error")
+  gwgDestroyedAt            DateTime?              @map("gwg_destroyed_at") @db.Timestamptz(6)
+  /// Explizite Herkunft von über das anonyme GwG-Onboarding hochgeladenen
+  /// Belegen. Ersetzt für Retention-Zwecke die bisherige lose JSON-ID-Liste.
+  gwgOnboardingInviteId     String?                @map("gwg_onboarding_invite_id") @db.Uuid
   // Mandanten-Freigabe (Opt-in): NULL = privat (nur Kanzlei sieht es),
   // gesetzt = im Mandantenportal sichtbar. Vom Mandanten selbst hochgeladene
   // Dokumente (Portal-Upload, Anforderungs-Antwort) werden bei Anlage
   // automatisch geteilt; Staff-Uploads bleiben privat bis zur Freigabe.
-  sharedWithClientAt  DateTime?              @map("shared_with_client_at") @db.Timestamptz(6)
-  sharedByStaff       String?                @map("shared_by_staff") @db.Uuid
+  sharedWithClientAt        DateTime?              @map("shared_with_client_at") @db.Timestamptz(6)
+  sharedByStaff             String?                @map("shared_by_staff") @db.Uuid
   // Organisatorischer Ordner (frei anlegbar, pro Mandant bzw. kanzlei-intern).
   // UNABHÄNGIG von classification — die treibt Retention/Bucket, der Ordner
   // ist reine Ablage-Struktur. SET NULL bei Ordner-Löschung (Dokument bleibt).
-  folderId            String?                @map("folder_id") @db.Uuid
+  folderId                  String?                @map("folder_id") @db.Uuid
   // onUpdate: NoAction — die Migration iter54_document_folders hat den FK
   // ohne ON UPDATE-Klausel angelegt (Postgres-Default NO ACTION). Ohne
   // explizite Annotation würde Prisma 7 ON UPDATE CASCADE annehmen und
   // Drift melden.
-  folder              DocumentFolder?        @relation(fields: [folderId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  folder                    DocumentFolder?        @relation(fields: [folderId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   // Datei-Typ (7 Kern-Typen read-only + kanzlei-eigene). Der Typ trägt die
   // Schutzstufe (KEINE/GWG/GOBD), die Bucket + Object-Lock + Frist steuert.
   // `classification` bleibt als Back-Compat-Spalte; neue Logik leitet die
   // Stufe aus documentType ab (bzw. aus classification für Altbestand).
-  documentTypeId      String?                @map("document_type_id") @db.Uuid
+  documentTypeId            String?                @map("document_type_id") @db.Uuid
   // onUpdate: NoAction — analog zu folder oben (iter55_document_types).
-  documentType        DocumentType?          @relation(fields: [documentTypeId], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  client              Client?                @relation(fields: [clientId], references: [id])
-  tenant              Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  workflowItem        WorkflowItem?          @relation(fields: [workflowItemId], references: [id], onUpdate: NoAction, map: "document_workflow_item_fk")
-  analysis            RiskAnalysis?          @relation("AnalysisAttachedDocs", fields: [analysisId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "document_analysis_fk")
-  versions            DocumentVersion[]
-  gwgIdDocuments      GwgIdDocument[]
-  invoiceAttachments  Invoice[]
-  requestResponses    RequestResponse[]
-  riskAnalyses        RiskAnalysis[]         @relation("AnalysisSourceDoc")
-  absences            Absence[]
-  taxFilings          TaxFiling[]
-  taxNotices          TaxNotice[]
+  documentType              DocumentType?          @relation(fields: [documentTypeId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  client                    Client?                @relation(fields: [clientId], references: [id])
+  tenant                    Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  workflowItem              WorkflowItem?          @relation(fields: [workflowItemId], references: [id], onUpdate: NoAction, map: "document_workflow_item_fk")
+  analysis                  RiskAnalysis?          @relation("AnalysisAttachedDocs", fields: [analysisId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "document_analysis_fk")
+  gwgOnboardingInvite       GwgOnboardingInvite?   @relation(fields: [gwgOnboardingInviteId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "document_gwg_invite_fk")
+  versions                  DocumentVersion[]
+  gwgIdDocuments            GwgIdDocument[]
+  invoiceAttachments        Invoice[]
+  requestResponses          RequestResponse[]
+  riskAnalyses              RiskAnalysis[]         @relation("AnalysisSourceDoc")
+  absences                  Absence[]
+  taxFilings                TaxFiling[]
+  taxNotices                TaxNotice[]
 
   @@index([tenantId, clientId])
   @@index([tenantId, classification])
@@ -1033,6 +1080,7 @@ model Document {
   @@index([clientId, sharedWithClientAt])
   @@index([workflowItemId], map: "document_workflow_item_idx")
   @@index([tenantId, analysisId])
+  @@index([gwgOnboardingInviteId], map: "document_gwg_invite_idx")
   // iter71: pg_trgm-GIN für die globale Suche (Dokument-Titel)
   @@index([title(ops: raw("gin_trgm_ops"))], type: Gin, map: "document_title_trgm_idx")
   @@map("document")
@@ -1047,6 +1095,9 @@ model DocumentType {
   tenantId          String                 @map("tenant_id") @db.Uuid
   name              String
   tier              DocumentProtectionTier
+  /// Aufbewahrungsintervall des Typs: GOBD 6/8/10 Jahre, GWG technisch 5,
+  /// NONE null. Der fachliche Fristbeginn kann zusätzlich ereignisabhängig sein.
+  retentionYears    Int?                   @map("retention_years")
   builtin           Boolean                @default(false)
   // Für die 7 Kern-Typen = zugehöriger DocumentClassification-Enum-Wert
   // (Mapping Altbestand ↔ Typ); null bei eigenen Typen.
@@ -1070,8 +1121,8 @@ model DocumentType {
   @@map("document_type")
 }
 
-/// Schutzstufe — der einzige Treiber für Bucket + Object-Lock + Frist.
-/// Genau drei, fix: KEINE · GWG (5 Jahre) · GOBD (10 Jahre).
+/// Schutzstufe — Treiber für Bucket + Object-Lock-Modus. Die konkrete
+/// 6-/8-/10-Jahresfrist liegt am DocumentType.
 enum DocumentProtectionTier {
   NONE
   GWG
@@ -1554,48 +1605,63 @@ model TaxFiling {
 }
 
 model TaxNotice {
-  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId         String          @map("tenant_id") @db.Uuid
-  clientId         String          @map("client_id") @db.Uuid
-  kind             TaxNoticeKind
-  period           String
-  noticeDate       DateTime        @map("notice_date") @db.Date
+  id                                        String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                                  String          @map("tenant_id") @db.Uuid
+  clientId                                  String          @map("client_id") @db.Uuid
+  kind                                      TaxNoticeKind
+  period                                    String
+  noticeDate                                DateTime        @map("notice_date") @db.Date
+  /// Post (Inland/Ausland), elektronische Übermittlung und Datenabruf nutzen
+  /// die jeweilige Bekanntgabefiktion; die übrigen Wege brauchen den rechtlich
+  /// maßgeblichen Bekanntgabetag in receivedAt.
+  deliveryMethod                            String          @default("POST") @map("delivery_method")
+  legalRemedyInstructionValid               Boolean         @default(true) @map("legal_remedy_instruction_valid")
   /// Tatsächlicher Zugangstag (§ 122 Abs. 2 AO Hs. 2): kam der Bescheid SPÄTER
   /// als die 4-Tage-Fiktion an, läuft die Einspruchsfrist ab diesem Tag.
-  receivedAt       DateTime?       @map("received_at") @db.Date
-  appealDeadline   DateTime?       @map("appeal_deadline") @db.Date
-  status           TaxNoticeStatus @default(NEU)
-  fileNumber       String?         @map("file_number")
-  assessedAmount   Decimal?        @map("assessed_amount") @db.Decimal(12, 2)
-  prepaidAmount    Decimal?        @map("prepaid_amount") @db.Decimal(12, 2)
-  refundAmount     Decimal?        @map("refund_amount") @db.Decimal(12, 2)
-  payAmount        Decimal?        @map("pay_amount") @db.Decimal(12, 2)
-  expectedAmount   Decimal?        @map("expected_amount") @db.Decimal(12, 2)
-  reviewNotes      String?         @map("review_notes")
-  reviewedAt       DateTime?       @map("reviewed_at")
-  reviewedBy       String?         @map("reviewed_by") @db.Uuid
-  appealFiledAt    DateTime?       @map("appeal_filed_at")
-  appealReason     String?         @map("appeal_reason")
-  appealResolvedAt DateTime?       @map("appeal_resolved_at")
+  receivedAt                                DateTime?       @map("received_at") @db.Date
+  appealDeadline                            DateTime?       @map("appeal_deadline") @db.Date
+  status                                    TaxNoticeStatus @default(NEU)
+  fileNumber                                String?         @map("file_number")
+  assessedAmount                            Decimal?        @map("assessed_amount") @db.Decimal(12, 2)
+  prepaidAmount                             Decimal?        @map("prepaid_amount") @db.Decimal(12, 2)
+  refundAmount                              Decimal?        @map("refund_amount") @db.Decimal(12, 2)
+  payAmount                                 Decimal?        @map("pay_amount") @db.Decimal(12, 2)
+  expectedAmount                            Decimal?        @map("expected_amount") @db.Decimal(12, 2)
+  reviewNotes                               String?         @map("review_notes")
+  reviewedAt                                DateTime?       @map("reviewed_at")
+  reviewedBy                                String?         @map("reviewed_by") @db.Uuid
+  appealFiledAt                             DateTime?       @map("appeal_filed_at")
+  /// Person, die die fristwahrende Einspruchseinlegung dokumentiert hat.
+  appealFiledBy                             String?         @map("appeal_filed_by") @db.Uuid
+  appealReason                              String?         @map("appeal_reason")
+  appealResolvedAt                          DateTime?       @map("appeal_resolved_at")
+  /// Tatsächlicher Bekanntgabetag der Einspruchsentscheidung. Nur dieses
+  /// Datum ist der belastbare Beginn der Klagefrist (§ 47 Abs. 1 FGO).
+  appealDecisionReceivedAt                  DateTime?       @map("appeal_decision_received_at") @db.Date
+  appealDecisionLegalRemedyInstructionValid Boolean?        @map("appeal_decision_legal_remedy_instruction_valid")
   /// Klagefrist zum FG (§ 47 Abs. 1 FGO, 1 Monat ab Bekanntgabe der
   /// Einspruchsentscheidung). Gesetzt beim Übergang nach ZURUECKGEWIESEN/
   /// TEILABHILFE; wird im Fristenkontrollbuch überwacht.
-  klageDeadline    DateTime?       @map("klage_deadline") @db.Date
+  klageDeadline                             DateTime?       @map("klage_deadline") @db.Date
   /// #11: tatsächliche Klageeinreichung (wer/wann) — für den Fristenkontrollbuch-
   /// Erledigungsnachweis. Gesetzt beim Statuswechsel auf KLAGE; ersetzt die
   /// bisherige Behelfsnutzung von appealResolvedAt/reviewedBy.
-  klageFiledAt     DateTime?       @map("klage_filed_at")
-  klageFiledBy     String?         @map("klage_filed_by") @db.Uuid
-  documentId       String?         @map("document_id") @db.Uuid
-  deadlineId       String?         @map("deadline_id") @db.Uuid
-  createdByStaff   String          @map("created_by_staff") @db.Uuid
-  createdAt        DateTime        @default(now()) @map("created_at")
-  updatedAt        DateTime        @updatedAt @map("updated_at")
-  filingId         String?         @map("filing_id") @db.Uuid
-  client           Client          @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tax_notice_client_fkey")
-  document         Document?       @relation(fields: [documentId], references: [id], onUpdate: NoAction, map: "tax_notice_document_fkey")
-  filing           TaxFiling?      @relation("FilingNotices", fields: [filingId], references: [id], onUpdate: NoAction, map: "tax_notice_filing_fk")
-  tenant           Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tax_notice_tenant_fkey")
+  klageFiledAt                              DateTime?       @map("klage_filed_at")
+  klageFiledBy                              String?         @map("klage_filed_by") @db.Uuid
+  /// Abschluss ohne (weitere) Klage bzw. nach Abschluss des Rechtsbehelfswegs.
+  /// Der Klagefrist-Nachweis bleibt daneben unverändert erhalten.
+  legalFinalAt                              DateTime?       @map("legal_final_at")
+  legalFinalBy                              String?         @map("legal_final_by") @db.Uuid
+  documentId                                String?         @map("document_id") @db.Uuid
+  deadlineId                                String?         @map("deadline_id") @db.Uuid
+  createdByStaff                            String          @map("created_by_staff") @db.Uuid
+  createdAt                                 DateTime        @default(now()) @map("created_at")
+  updatedAt                                 DateTime        @updatedAt @map("updated_at")
+  filingId                                  String?         @map("filing_id") @db.Uuid
+  client                                    Client          @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tax_notice_client_fkey")
+  document                                  Document?       @relation(fields: [documentId], references: [id], onUpdate: NoAction, map: "tax_notice_document_fkey")
+  filing                                    TaxFiling?      @relation("FilingNotices", fields: [filingId], references: [id], onUpdate: NoAction, map: "tax_notice_filing_fk")
+  tenant                                    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tax_notice_tenant_fkey")
 
   // Kein @@unique auf (tenant, client, kind, period): Änderungsbescheide (§§ 164,
   // 172 ff. AO) betreffen dieselbe Steuerart/Periode und lösen je eine eigene
@@ -1946,6 +2012,8 @@ model GwgOnboardingInvite {
   updatedAt           DateTime        @updatedAt @map("updated_at")
   client              Client          @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "gwg_invite_client_fkey")
   tenant              Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "gwg_invite_tenant_fkey")
+  gwgCheck            GwgCheck?       @relation(fields: [gwgCheckId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "gwg_invite_check_fkey")
+  uploadedDocuments   Document[]
 
   @@index([tenantId, clientId, status], map: "gwg_invite_tenant_id_client_id_status_idx")
   @@index([tokenHash], map: "gwg_invite_token_hash_idx")

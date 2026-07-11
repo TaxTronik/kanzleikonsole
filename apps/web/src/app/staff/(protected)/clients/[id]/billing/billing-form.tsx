@@ -21,7 +21,9 @@ export function BillingForm({ clientId, totalHours }: Props) {
   const [vatRate, setVatRate] = useState(19);
   const [hourlyRate, setHourlyRate] = useState(120);
   const [strategy, setStrategy] = useState<'one-line' | 'per-entry'>('one-line');
-  const [format, setFormat] = useState<'PDF' | 'XRECHNUNG' | 'ZUGFERD'>('XRECHNUNG');
+  const [format, setFormat] = useState<'XRECHNUNG' | 'ZUGFERD'>('XRECHNUNG');
+  const [reverseCharge, setReverseCharge] = useState(false);
+  const [vatExemptionReason, setVatExemptionReason] = useState('');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -29,7 +31,6 @@ export function BillingForm({ clientId, totalHours }: Props) {
   const previewNet = useMemo(() => totalHours * hourlyRate, [totalHours, hourlyRate]);
   const previewVat = useMemo(() => (previewNet * vatRate) / 100, [previewNet, vatRate]);
   const previewGross = previewNet + previewVat;
-
 
   function handleSubmit(e: SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -41,6 +42,8 @@ export function BillingForm({ clientId, totalHours }: Props) {
         issueDate,
         dueDate,
         vatRate,
+        reverseCharge,
+        vatExemptionReason,
         format,
         hourlyRate,
         strategy,
@@ -65,9 +68,15 @@ export function BillingForm({ clientId, totalHours }: Props) {
           </p>
         </div>
         <div>
-          <label className="label" htmlFor="format">Format</label>
-          <select id="format" className="input" value={format} onChange={(e) => setFormat(e.target.value as typeof format)}>
-            <option value="PDF">PDF</option>
+          <label className="label" htmlFor="format">
+            Format
+          </label>
+          <select
+            id="format"
+            className="input"
+            value={format}
+            onChange={(e) => setFormat(e.target.value as typeof format)}
+          >
             <option value="XRECHNUNG">XRechnung</option>
             <option value="ZUGFERD">ZUGFeRD</option>
           </select>
@@ -75,21 +84,51 @@ export function BillingForm({ clientId, totalHours }: Props) {
       </div>
 
       <div>
-        <label className="label" htmlFor="subject">Betreff</label>
-        <input id="subject" type="text" className="input" value={subject} onChange={(e) => setSubject(e.target.value)} required maxLength={500} />
+        <label className="label" htmlFor="subject">
+          Betreff
+        </label>
+        <input
+          id="subject"
+          type="text"
+          className="input"
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
+          required
+          maxLength={500}
+        />
       </div>
 
       <div className="grid grid-cols-4 gap-3">
         <div>
-          <label className="label" htmlFor="issueDate">Datum</label>
-          <input id="issueDate" type="date" className="input" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} required />
+          <label className="label" htmlFor="issueDate">
+            Datum
+          </label>
+          <input
+            id="issueDate"
+            type="date"
+            className="input"
+            value={issueDate}
+            onChange={(e) => setIssueDate(e.target.value)}
+            required
+          />
         </div>
         <div>
-          <label className="label" htmlFor="dueDate">Fällig</label>
-          <input id="dueDate" type="date" className="input" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required />
+          <label className="label" htmlFor="dueDate">
+            Fällig
+          </label>
+          <input
+            id="dueDate"
+            type="date"
+            className="input"
+            value={dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
+            required
+          />
         </div>
         <div>
-          <label className="label" htmlFor="hourlyRate">Stundensatz</label>
+          <label className="label" htmlFor="hourlyRate">
+            Stundensatz
+          </label>
           <input
             id="hourlyRate"
             type="number"
@@ -102,40 +141,83 @@ export function BillingForm({ clientId, totalHours }: Props) {
           />
         </div>
         <div>
-          <label className="label" htmlFor="vatRate">USt %</label>
-          <input
+          <label className="label" htmlFor="vatRate">
+            USt %
+          </label>
+          <select
             id="vatRate"
-            type="number"
-            step="0.01"
-            min="0"
-            max="99"
             className="input"
-            value={vatRate}
+            value={reverseCharge ? 0 : vatRate}
             onChange={(e) => setVatRate(Number(e.target.value))}
-            required
-          />
+            disabled={reverseCharge}
+          >
+            <option value={19}>19</option>
+            <option value={7}>7</option>
+            <option value={0}>0</option>
+          </select>
         </div>
       </div>
 
+      <label className="flex items-start gap-2 text-sm text-secondary">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={reverseCharge}
+          onChange={(event) => {
+            const checked = event.target.checked;
+            setReverseCharge(checked);
+            if (checked) setVatRate(0);
+          }}
+        />
+        <span>
+          Reverse-Charge (§ 13b UStG)
+          <span className="block text-xs text-muted">
+            Steuerschuldnerschaft des Leistungsempfängers; Mandanten-USt-IdNr erforderlich.
+          </span>
+        </span>
+      </label>
+
+      {!reverseCharge && vatRate === 0 && (
+        <div>
+          <label className="label" htmlFor="vatExemptionReason">
+            Grund für 0 % USt
+          </label>
+          <input
+            id="vatExemptionReason"
+            type="text"
+            className="input"
+            value={vatExemptionReason}
+            onChange={(event) => setVatExemptionReason(event.target.value)}
+            maxLength={500}
+            required
+            placeholder="z. B. § 19 UStG Kleinunternehmer"
+          />
+        </div>
+      )}
+
       <div>
-        <label className="label" htmlFor="strategy">Positionsbildung</label>
+        <label className="label" htmlFor="strategy">
+          Positionsbildung
+        </label>
         <select
           id="strategy"
           className="input"
           value={strategy}
           onChange={(e) => setStrategy(e.target.value as typeof strategy)}
         >
-          <option value="one-line">Eine Sammelposition (Î£ Stunden × Satz)</option>
+          <option value="one-line">Eine Sammelposition (Σ Stunden × Satz)</option>
           <option value="per-entry">Eine Position pro Time-Entry (Detail-Aufstellung)</option>
         </select>
         <p className="text-xs text-muted mt-1">
-          „per-entry" liefert eine detaillierte Aufschlüsselung — empfehlenswert bei
-          gemischten Tätigkeiten.
+          „per-entry" liefert eine detaillierte Aufschlüsselung — empfehlenswert bei gemischten
+          Tätigkeiten.
         </p>
       </div>
 
       <div>
-        <label className="label" htmlFor="notes">Notizen (optional)</label>
+        <label className="label" htmlFor="notes">
+          Notizen (optional)
+        </label>
         <textarea
           id="notes"
           rows={3}
@@ -152,7 +234,9 @@ export function BillingForm({ clientId, totalHours }: Props) {
         <div className="text-right text-secondary">USt ({vatRate} %):</div>
         <div className="font-mono tabular-nums text-right">{fmtEUR(previewVat)}</div>
         <div className="text-right text-primary font-bold">Brutto:</div>
-        <div className="font-mono tabular-nums text-right text-primary font-bold">{fmtEUR(previewGross)}</div>
+        <div className="font-mono tabular-nums text-right text-primary font-bold">
+          {fmtEUR(previewGross)}
+        </div>
       </div>
 
       {error && <div className="alert-error-sm">{error}</div>}

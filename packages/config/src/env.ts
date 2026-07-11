@@ -68,7 +68,10 @@ const envSchema = z.object({
   NEXTAUTH_TRUST_HOST: z
     .preprocess(
       (v) => (v === '' || v === undefined ? undefined : v),
-      z.union([z.literal('true'), z.literal('false')]).transform((s) => s === 'true').optional(),
+      z
+        .union([z.literal('true'), z.literal('false')])
+        .transform((s) => s === 'true')
+        .optional(),
     )
     .optional(),
   // R-3 / H-2: Wenn `true`, vertraut die App den XFF/Real-IP/CF-Connecting-IP-
@@ -91,11 +94,11 @@ const envSchema = z.object({
   S3_ACCESS_KEY: z.string().min(1),
   S3_SECRET_KEY: z.string().min(1),
   S3_BUCKET_GOBD: z.string().default('gobd'),
-  // B-1: Eigener Bucket mit kürzerer Retention für GwG-Beweisdokumente
-  // (Ausweis-Scans, Transparenzregister etc.) — § 8 Abs. 4 GwG schreibt
-  // 5 Jahre Höchstaufbewahrung vor und verlangt unverzügliche Vernichtung
-  // danach. Der `gobd`-Bucket mit Object-Lock-COMPLIANCE und 10 Jahren
-  // wäre für GwG-Daten ein DSGVO-/GwG-Verstoß (zu lang, nicht löschbar).
+  // B-1: Eigener Bucket für GwG-Beweisdokumente (Ausweis-Scans,
+  // Transparenzregister etc.). § 8 Abs. 4 GwG verlangt grundsätzlich fünf
+  // Jahre; andere gesetzliche Pflichten können länger reichen, spätestens
+  // nach zehn Jahren ist zu vernichten. Ein starrer GoBD-COMPLIANCE-Lock
+  // (dokumenttypabhängig 6/8/10 Jahre) wäre dafür nicht steuerbar genug.
   S3_BUCKET_GWG: z.string().default('gwg'),
   S3_BUCKET_GENERAL: z.string().default('general'),
   S3_BUCKET_STAFF_PRIVATE: z.string().default('staff-private'),
@@ -119,7 +122,10 @@ const envSchema = z.object({
   OPS_ALERT_EMAIL: z.preprocess((v) => (v === '' ? undefined : v), z.string().email().optional()),
 
   // --- n8n ------------------------------------------------------------------
-  N8N_WEBHOOK_BASE_URL: z.preprocess((v) => v === '' ? undefined : v, z.string().url().optional()),
+  N8N_WEBHOOK_BASE_URL: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().url().optional(),
+  ),
   N8N_HMAC_SECRET: z.string().optional(),
   // Liefer-Modus für ausgehende Webhooks. Default leitet sich aus NODE_ENV ab
   // (siehe `n8nDeliveryMode`): dev → 'test' (nur n8n-Test-Hooks, trifft NIE die
@@ -138,8 +144,8 @@ const envSchema = z.object({
   // oder eine Operator-verwaltete interne IP/Loopback-URL. Der Risk-Layer-Client
   // behandelt diesen ENV-Wert als trusted Backend-Ziel; INTERNAL_FETCH_HOSTS ist
   // dafür nicht nötig (bleibt aber für n8n/RSS/TSA-safeFetch-Pfade relevant).
-  RISK_LAYER_URL: z.preprocess((v) => v === '' ? undefined : v, z.string().url().optional()),
-  RISK_LAYER_TOKEN: z.preprocess((v) => v === '' ? undefined : v, Secret32.optional()),
+  RISK_LAYER_URL: z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional()),
+  RISK_LAYER_TOKEN: z.preprocess((v) => (v === '' ? undefined : v), Secret32.optional()),
 
   // --- ELSTER-Bridge (eric-bridge, privater Dienst) ---------------------------
   // Netzinterner HTTP-Dienst, der die native ERiC-Bibliothek kapselt (eigener
@@ -147,13 +153,19 @@ const envSchema = z.object({
   // ohne Deployment bleibt das ELSTER-Modul inaktiv (elsterConfig === null →
   // der Client wirft ElsterNotConfiguredError). Die Hersteller-ID ist KEIN
   // App-ENV — sie ist ausschließlich Konfiguration der Bridge selbst.
-  ELSTER_BRIDGE_URL: z.preprocess((v) => v === '' ? undefined : v, z.string().url().optional()),
-  ELSTER_BRIDGE_TOKEN: z.preprocess((v) => v === '' ? undefined : v, z.string().min(16).optional()),
+  ELSTER_BRIDGE_URL: z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional()),
+  ELSTER_BRIDGE_TOKEN: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().min(16).optional(),
+  ),
 
   // --- RFC-3161-Zeitstempel -------------------------------------------------
   // Deploy-Default: GlobalSign. Leer ist nur fuer Dev/Test als lokaler
   // Self-Timestamp gedacht; Settings blockieren Self-Timestamp in Production.
-  TIMESTAMP_AUTHORITY_URL: z.preprocess((v) => v === '' ? undefined : v, z.string().url().optional()),
+  TIMESTAMP_AUTHORITY_URL: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().url().optional(),
+  ),
 
   // --- Lizenzschlüssel ------------------------------------------------------
   LICENSE_KEY: z.string().optional(),
@@ -228,9 +240,7 @@ function parseEnv(): Env {
       );
     }
     if (!parsed.data.N8N_HMAC_SECRET || parsed.data.N8N_HMAC_SECRET.length < 32) {
-      throw new Error(
-        '[config] N8N_HMAC_SECRET ist in Produktion Pflicht (mind. 32 Zeichen).',
-      );
+      throw new Error('[config] N8N_HMAC_SECRET ist in Produktion Pflicht (mind. 32 Zeichen).');
     }
     // Audit Round 14, Finding 7: Bekannte Dev-Defaults dürfen niemals
     // produktiv eingesetzt werden. Wer das .env-Template direkt übernimmt
@@ -285,11 +295,16 @@ function parseEnv(): Env {
     if (new URL(parsed.data.NEXTAUTH_URL).protocol !== 'https:') {
       throw new Error('[config] NEXTAUTH_URL muss in Produktion HTTPS verwenden.');
     }
-    if (parsed.data.PORTAL_PUBLIC_URL && new URL(parsed.data.PORTAL_PUBLIC_URL).protocol !== 'https:') {
+    if (
+      parsed.data.PORTAL_PUBLIC_URL &&
+      new URL(parsed.data.PORTAL_PUBLIC_URL).protocol !== 'https:'
+    ) {
       throw new Error('[config] PORTAL_PUBLIC_URL muss in Produktion HTTPS verwenden.');
     }
     if (parsed.data.S3_SECRET_KEY.length < 32) {
-      throw new Error('[config] S3_SECRET_KEY ist in Produktion Pflicht mit mindestens 32 Zeichen.');
+      throw new Error(
+        '[config] S3_SECRET_KEY ist in Produktion Pflicht mit mindestens 32 Zeichen.',
+      );
     }
     if (parsed.data.N8N_DELIVERY_MODE && parsed.data.N8N_DELIVERY_MODE !== 'production') {
       throw new Error('[config] N8N_DELIVERY_MODE darf in Produktion nicht test/log sein.');
@@ -351,9 +366,7 @@ export const env: Env = parseEnv();
  * NEXTAUTH_URL zurück, wenn keine getrennte Portal-Domain konfiguriert
  * ist (Single-Host-Deploy). Trailing-Slash wird entfernt.
  */
-export const portalBaseUrl: string = (
-  env.PORTAL_PUBLIC_URL ?? env.NEXTAUTH_URL
-).replace(/\/$/, '');
+export const portalBaseUrl: string = (env.PORTAL_PUBLIC_URL ?? env.NEXTAUTH_URL).replace(/\/$/, '');
 
 /**
  * Konfiguration der Risk-Layer-Engine (§4) oder `null`, wenn nicht deployt.

@@ -3,6 +3,7 @@
 import { evidenceService } from '@/server/container';
 import { log } from '@/server/logger';
 import { withPortalContext, ActionError } from '@/server/actions/portal-action';
+import { countGranted, emptyConsent, parseConsent } from '@/server/privacy/consent';
 
 export async function saveNotificationSettingAction(formData: FormData): Promise<void> {
   const enabled = formData.get('enabled') === 'on';
@@ -41,6 +42,69 @@ export async function saveNotificationSettingAction(formData: FormData): Promise
     log.warn(
       { component: 'portal-settings', err: r.error },
       'saveNotificationSettingAction fehlgeschlagen',
+    );
+  }
+}
+
+/** Art. 7 Abs. 3 DSGVO: vollständiger Widerruf im selben Self-Service-Kanal. */
+export async function revokeOwnConsentAction(): Promise<void> {
+  const r = await withPortalContext(
+    async (tx, { tenantId, contactId, clientId }) => {
+      const [contact, previous] = await Promise.all([
+        tx.clientContact.findFirst({
+          where: { id: contactId, clientId },
+          select: { fullName: true },
+        }),
+        tx.clientConsent.findFirst({
+          where: { clientId },
+          orderBy: { createdAt: 'desc' },
+        }),
+      ]);
+      if (!contact) throw new ActionError('Kontakt nicht gefunden.');
+      if (!previous || countGranted(parseConsent(previous.consents)) === 0) return;
+      if (previous.signedByContact !== contactId) {
+        throw new ActionError(
+          'Dieser Einwilligungsstand wurde nicht Ihrem Portal-Kontakt zugeordnet. Bitte wenden Sie sich für den Widerruf an die Kanzlei.',
+        );
+      }
+
+      const row = await tx.clientConsent.create({
+        data: {
+          tenantId,
+          clientId,
+          noticeVersion: previous.noticeVersion,
+          // Für einen Widerruf ist keine neue Annahme nötig. Der bisherige
+          // Snapshot bleibt der richtige Kontext der zurückgezogenen Erklärung.
+          noticeSnapshot: previous.noticeSnapshot,
+          consents: emptyConsent() as object,
+          source: 'PORTAL',
+          signedByName: contact.fullName,
+          signedByContact: contactId,
+          isRevocation: true,
+          note: 'Vollständiger Widerruf im Mandantenportal',
+        },
+      });
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'CLIENT_CONTACT',
+        actorId: contactId,
+        action: 'privacy.consent.revoke',
+        resourceType: 'client_consent',
+        resourceId: row.id,
+        after: {
+          clientId,
+          source: 'PORTAL',
+          revokedCount: countGranted(parseConsent(previous.consents)),
+        },
+      });
+    },
+    { revalidate: '/portal/settings' },
+  );
+
+  if (!r.ok) {
+    log.warn(
+      { component: 'portal-settings', err: r.error },
+      'revokeOwnConsentAction fehlgeschlagen',
     );
   }
 }

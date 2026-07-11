@@ -808,8 +808,9 @@ jobs:
         run: docker rm -f seaweedfs-ci >/dev/null 2>&1 || true
 
   # ===========================================================================
-  # E-Rechnung-Konformität: erzeugt die Referenz-XRechnung (Mischsätze-Fixture,
-  # dieselbe Quelle wie die Unit-Tests) und prüft sie mit dem KoSIT-Validator
+  # E-Rechnung-Konformität: erzeugt Referenz-XRechnungen für Mischsätze,
+  # Reverse Charge und Storno (dieselbe Quelle wie die Unit-Tests) und prüft sie
+  # mit dem KoSIT-Validator
   # gegen die XRechnung-3.0-Szenarien — XML-Schema + Schematron inkl. der
   # deutschen BR-DE-Geschäftsregeln. Der Job schlägt fehl, sobald der Generator
   # nicht-konformes XML liefert; der Prüfbericht ist der Konformitätsnachweis
@@ -862,8 +863,8 @@ jobs:
           echo "$SCENARIOS_SHA256  kosit/scenarios.zip" | sha256sum -c -
           unzip -q -o kosit/scenarios.zip -d kosit/config
 
-      - name: Referenz-XRechnungen erzeugen (Mischsätze 19/7/0 % + Reverse-Charge § 13b)
-        run: pnpm --filter @taxtronik/web exec tsx src/server/invoicing/cli/generate-sample.ts "$GITHUB_WORKSPACE/kosit/sample.xml" "$GITHUB_WORKSPACE/kosit/sample-rc.xml"
+      - name: Referenz-XRechnungen erzeugen (Mischsätze + Reverse-Charge + Storno)
+        run: pnpm --filter @taxtronik/web exec tsx src/server/invoicing/cli/generate-sample.ts "$GITHUB_WORKSPACE/kosit/sample.xml" "$GITHUB_WORKSPACE/kosit/sample-rc.xml" "$GITHUB_WORKSPACE/kosit/sample-storno.xml"
 
       # Der Validator liefert Exit ≠ 0 sowohl bei inhaltlichem REJECT als auch
       # bei Umgebungs-/Konfigfehlern (z. B. Szenario-Datei fehlt) — beides soll
@@ -874,7 +875,7 @@ jobs:
         run: |
           cd kosit
           set +e
-          java -jar validator.jar -s config/scenarios.xml -r config -o report sample.xml sample-rc.xml
+          java -jar validator.jar -s config/scenarios.xml -r config -o report sample.xml sample-rc.xml sample-storno.xml
           rc=$?
           set -e
           # Auf einen NICHT-LEEREN Report-Ordner prüfen statt auf einen festen

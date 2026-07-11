@@ -7,10 +7,17 @@ vi.mock('@taxtronik/db', () => ({ withTenantContext: vi.fn() }));
 vi.mock('@taxtronik/storage', () => ({ commitBytesWithTier: vi.fn() }));
 vi.mock('@/server/db/prisma-bytes', () => ({ prismaBytes: (b: unknown) => b }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: vi.fn() } }));
-vi.mock('@/server/invoicing/xrechnung', () => ({ generateXRechnungCii: vi.fn(() => '<cii/>') }));
-vi.mock('@/server/invoicing/zugferd', () => ({ generateZugferdPdf: vi.fn(async () => new Uint8Array([1, 2, 3])) }));
+vi.mock('@/server/invoicing/xrechnung', () => ({
+  generateXRechnungCii: vi.fn(() => '<cii/>'),
+  toXRechnungInvoice: vi.fn((invoice: unknown) => invoice),
+}));
+vi.mock('@/server/invoicing/zugferd', () => ({
+  generateZugferdPdf: vi.fn(async () => new Uint8Array([1, 2, 3])),
+}));
 vi.mock('@/server/settings/tenant-settings', () => ({ readSellerInfo: vi.fn() }));
-vi.mock('@/server/settings/branding', () => ({ readBranding: vi.fn(async () => ({ logoDataUrl: null })) }));
+vi.mock('@/server/settings/branding', () => ({
+  readBranding: vi.fn(async () => ({ logoDataUrl: null })),
+}));
 
 import { ensureZugferdArchive } from '../archive';
 import { withTenantContext } from '@taxtronik/db';
@@ -22,21 +29,44 @@ import { evidenceService } from '@/server/container';
 const ctx = { tenantId: 't1', actorId: 's1', actorType: 'STAFF' as const };
 
 const COMPLETE_SELLER = {
-  name: 'Kanzlei', street: 'Weg 1', city: 'Stadt', postalCode: '12345',
-  email: 'mail@kanzlei.example', phone: '+49 30 1', vatId: 'DE123456789', taxNumber: null,
+  name: 'Kanzlei',
+  street: 'Weg 1',
+  city: 'Stadt',
+  postalCode: '12345',
+  email: 'mail@kanzlei.example',
+  phone: '+49 30 1',
+  vatId: 'DE123456789',
+  taxNumber: null,
 };
 const COMPLETE_CLIENT = {
-  name: 'Mandant', street: 'Gasse 2', city: 'Ort', postalCode: '54321',
-  countryIso: 'DE', vatId: null, invoiceEmail: null,
+  name: 'Mandant',
+  street: 'Gasse 2',
+  city: 'Ort',
+  postalCode: '54321',
+  countryIso: 'DE',
+  vatId: null,
+  invoiceEmail: null,
 };
 
 const dec = (s: string) => ({ toString: () => s });
 function baseInvoice(overrides: Record<string, unknown> = {}) {
   return {
-    id: 'inv1', number: 'R-001', format: 'XRECHNUNG', clientId: 'c1', documentId: null,
-    issueDate: new Date(), dueDate: new Date(), subject: 'S', notes: null,
-    vatRate: dec('19'), netAmount: dec('100'), vatAmount: dec('19'), totalAmount: dec('119'),
-    client: COMPLETE_CLIENT, positions: [], document: null,
+    id: 'inv1',
+    number: 'R-001',
+    format: 'XRECHNUNG',
+    clientId: 'c1',
+    documentId: null,
+    issueDate: new Date(),
+    dueDate: new Date(),
+    subject: 'S',
+    notes: null,
+    vatRate: dec('19'),
+    netAmount: dec('100'),
+    vatAmount: dec('19'),
+    totalAmount: dec('119'),
+    client: COMPLETE_CLIENT,
+    positions: [],
+    document: null,
     ...overrides,
   };
 }
@@ -60,7 +90,11 @@ beforeEach(() => {
   vi.mocked(withTenantContext).mockImplementation(((_c: any, cb: any) => cb(tx)) as any);
   vi.mocked(readSellerInfo).mockResolvedValue(COMPLETE_SELLER as never);
   vi.mocked(commitBytesWithTier).mockResolvedValue({
-    targetBucket: 'gobd', targetKey: 'k-new', sha256: Buffer.from([9]), sizeBytes: 3, immutable: true,
+    targetBucket: 'gobd',
+    targetKey: 'k-new',
+    sha256: Buffer.from([9]),
+    sizeBytes: 3,
+    immutable: true,
   } as never);
 });
 
@@ -71,11 +105,16 @@ describe('ensureZugferdArchive', () => {
       sharedWithClientAt: new Date(),
       versions: [{ storageBucket: 'gobd', storageKey: 'xml-existing' }],
     });
-    tx.invoice.findFirst.mockResolvedValueOnce(baseInvoice({
-      status: 'SENT',
-      documentId: 'doc-existing',
-      document: { sharedWithClientAt: new Date(), versions: [{ storageBucket: 'gobd', storageKey: 'k-existing' }] },
-    }));
+    tx.invoice.findFirst.mockResolvedValueOnce(
+      baseInvoice({
+        status: 'SENT',
+        documentId: 'doc-existing',
+        document: {
+          sharedWithClientAt: new Date(),
+          versions: [{ storageBucket: 'gobd', storageKey: 'k-existing' }],
+        },
+      }),
+    );
     const res = await ensureZugferdArchive(ctx, 'inv1');
     expect(res).toEqual({ ok: true, bucket: 'gobd', key: 'k-existing', number: 'R-001' });
     expect(generateZugferdPdf).not.toHaveBeenCalled();
@@ -93,11 +132,16 @@ describe('ensureZugferdArchive', () => {
     });
     // Rechnung ist inzwischen SENT, das verknüpfte Archiv aber noch ungeteilt
     // (z. B. zuvor per DRAFT-Download erzeugt). Der nächste Helfer-Lauf gibt frei.
-    tx.invoice.findFirst.mockResolvedValueOnce(baseInvoice({
-      status: 'SENT',
-      documentId: 'doc-existing',
-      document: { sharedWithClientAt: null, versions: [{ storageBucket: 'gobd', storageKey: 'k-existing' }] },
-    }));
+    tx.invoice.findFirst.mockResolvedValueOnce(
+      baseInvoice({
+        status: 'SENT',
+        documentId: 'doc-existing',
+        document: {
+          sharedWithClientAt: null,
+          versions: [{ storageBucket: 'gobd', storageKey: 'k-existing' }],
+        },
+      }),
+    );
     const res = await ensureZugferdArchive(ctx, 'inv1');
     expect(res.ok).toBe(true);
     expect(tx.document.updateMany).toHaveBeenCalledWith({
@@ -112,20 +156,28 @@ describe('ensureZugferdArchive', () => {
       sharedWithClientAt: null,
       versions: [{ storageBucket: 'gobd', storageKey: 'xml-existing' }],
     });
-    tx.invoice.findFirst.mockResolvedValueOnce(baseInvoice({
-      status: 'DRAFT',
-      documentId: 'doc-existing',
-      document: { sharedWithClientAt: null, versions: [{ storageBucket: 'gobd', storageKey: 'k-existing' }] },
-    }));
+    tx.invoice.findFirst.mockResolvedValueOnce(
+      baseInvoice({
+        status: 'DRAFT',
+        documentId: 'doc-existing',
+        document: {
+          sharedWithClientAt: null,
+          versions: [{ storageBucket: 'gobd', storageKey: 'k-existing' }],
+        },
+      }),
+    );
     await ensureZugferdArchive(ctx, 'inv1');
     expect(tx.document.updateMany).not.toHaveBeenCalled();
   });
 
   it('not_applicable für EXTERNAL/PDF-Rechnung (deren documentId ist der Upload)', async () => {
-    tx.invoice.findFirst.mockResolvedValueOnce(baseInvoice({
-      format: 'PDF', documentId: 'upload',
-      document: { versions: [{ storageBucket: 'b', storageKey: 'k' }] },
-    }));
+    tx.invoice.findFirst.mockResolvedValueOnce(
+      baseInvoice({
+        format: 'PDF',
+        documentId: 'upload',
+        document: { versions: [{ storageBucket: 'b', storageKey: 'k' }] },
+      }),
+    );
     const res = await ensureZugferdArchive(ctx, 'inv1');
     expect(res).toEqual({ ok: false, code: 'not_applicable' });
     expect(generateZugferdPdf).not.toHaveBeenCalled();
@@ -133,7 +185,12 @@ describe('ensureZugferdArchive', () => {
 
   it('seller_incomplete bei unvollständigen Verkäuferdaten', async () => {
     tx.invoice.findFirst.mockResolvedValueOnce(baseInvoice());
-    vi.mocked(readSellerInfo).mockResolvedValue({ name: 'X', street: '', city: '', postalCode: '' } as never);
+    vi.mocked(readSellerInfo).mockResolvedValue({
+      name: 'X',
+      street: '',
+      city: '',
+      postalCode: '',
+    } as never);
     const res = await ensureZugferdArchive(ctx, 'inv1');
     expect(res).toEqual({ ok: false, code: 'seller_incomplete' });
     expect(generateZugferdPdf).not.toHaveBeenCalled();
@@ -149,7 +206,11 @@ describe('ensureZugferdArchive', () => {
 
   it('seller_incomplete ohne USt-ID UND Steuernummer (BR-S-02)', async () => {
     tx.invoice.findFirst.mockResolvedValueOnce(baseInvoice());
-    vi.mocked(readSellerInfo).mockResolvedValue({ ...COMPLETE_SELLER, vatId: null, taxNumber: null } as never);
+    vi.mocked(readSellerInfo).mockResolvedValue({
+      ...COMPLETE_SELLER,
+      vatId: null,
+      taxNumber: null,
+    } as never);
     const res = await ensureZugferdArchive(ctx, 'inv1');
     expect(res).toEqual({ ok: false, code: 'seller_incomplete' });
     expect(generateZugferdPdf).not.toHaveBeenCalled();
@@ -159,13 +220,19 @@ describe('ensureZugferdArchive', () => {
     tx.invoice.findFirst
       .mockResolvedValueOnce(baseInvoice({ status: 'SENT' }))
       .mockResolvedValueOnce(baseInvoice({ status: 'SENT' }));
-    vi.mocked(readSellerInfo).mockResolvedValue({ ...COMPLETE_SELLER, vatId: null, taxNumber: '12/345/67890' } as never);
+    vi.mocked(readSellerInfo).mockResolvedValue({
+      ...COMPLETE_SELLER,
+      vatId: null,
+      taxNumber: '12/345/67890',
+    } as never);
     const res = await ensureZugferdArchive(ctx, 'inv1');
     expect(res.ok).toBe(true);
   });
 
   it('buyer_incomplete bei unvollständiger Mandantenadresse', async () => {
-    tx.invoice.findFirst.mockResolvedValueOnce(baseInvoice({ client: { ...COMPLETE_CLIENT, street: null } }));
+    tx.invoice.findFirst.mockResolvedValueOnce(
+      baseInvoice({ client: { ...COMPLETE_CLIENT, street: null } }),
+    );
     const res = await ensureZugferdArchive(ctx, 'inv1');
     expect(res).toEqual({ ok: false, code: 'buyer_incomplete' });
   });
@@ -180,7 +247,10 @@ describe('ensureZugferdArchive', () => {
     expect(commitBytesWithTier).toHaveBeenCalledTimes(2);
     expect(tx.document.create).toHaveBeenCalledTimes(2);
     expect(tx.documentVersion.create).toHaveBeenCalledTimes(2);
-    expect(tx.invoice.update).toHaveBeenCalledWith({ where: { id: 'inv1' }, data: { documentId: 'doc1' } });
+    expect(tx.invoice.update).toHaveBeenCalledWith({
+      where: { id: 'inv1' },
+      data: { documentId: 'doc1' },
+    });
     expect(evidenceService.record).toHaveBeenCalledTimes(1);
   });
 
@@ -209,10 +279,13 @@ describe('ensureZugferdArchive', () => {
   it('Race: paralleler Aufruf hat inzwischen verknüpft → KEIN Duplikat, Gewinner-Bytes', async () => {
     tx.invoice.findFirst
       .mockResolvedValueOnce(baseInvoice()) // load: kein documentId
-      .mockResolvedValueOnce(baseInvoice({ // write-tx Re-Check: jetzt verknüpft
-        documentId: 'doc-winner',
-        document: { versions: [{ storageBucket: 'gobd', storageKey: 'k-winner' }] },
-      }));
+      .mockResolvedValueOnce(
+        baseInvoice({
+          // write-tx Re-Check: jetzt verknüpft
+          documentId: 'doc-winner',
+          document: { versions: [{ storageBucket: 'gobd', storageKey: 'k-winner' }] },
+        }),
+      );
     const res = await ensureZugferdArchive(ctx, 'inv1');
     expect(res).toEqual({ ok: true, bucket: 'gobd', key: 'k-winner', number: 'R-001' });
     // Generierung lief (vor dem Re-Check), aber es entsteht KEIN zweites Document.

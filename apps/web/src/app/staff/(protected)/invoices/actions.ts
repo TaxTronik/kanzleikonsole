@@ -14,12 +14,18 @@ import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { ensureZugferdArchive } from '@/server/invoicing/archive';
 import { computeVatTotals } from '@/server/invoicing/vat';
 import { allocateInvoiceNumber, isValidInvoiceTransition } from '@/server/invoicing/number';
+import { toStornoPosition } from '@/server/invoicing/storno';
 import { readModules, type InvoiceMode } from '@/server/settings/modules';
 import { readSellerInfo } from '@/server/settings/tenant-settings';
 import { round2, fmtEUR, fmtDateShort, berlinTodayUtcMidnight } from '@/lib/fmt';
 import { withTimeout, TimeoutError } from '@/lib/with-timeout';
 import { log } from '@/server/logger';
-import { staffActionGuard, withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
+import {
+  staffActionGuard,
+  withStaff,
+  ActionError,
+  type ActionResult as BaseActionResult,
+} from '@/server/actions/staff-action';
 import type { TenantContext } from '@taxtronik/db';
 
 export type ActionResult = BaseActionResult;
@@ -27,7 +33,10 @@ export type ActionResult = BaseActionResult;
 // Defense in Depth (Befund 11 der Modul-Inventur): das invoiceMode-Gate lag
 // nur in der UI (new/page.tsx) — die Actions selbst waren bei deaktiviertem
 // bzw. falschem Modus direkt aufrufbar.
-async function requireInvoiceMode(ctx: TenantContext, mode: InvoiceMode): Promise<ActionResult | null> {
+async function requireInvoiceMode(
+  ctx: TenantContext,
+  mode: InvoiceMode,
+): Promise<ActionResult | null> {
   const modules = await readModules(ctx);
   if (modules.invoiceMode !== mode) {
     return { ok: false, error: 'Das Rechnungsmodul ist für diesen Vorgang nicht aktiviert.' };
@@ -43,7 +52,9 @@ const PositionSchema = z
   .object({
     description: z.string().min(1).max(500),
     quantity: z.coerce.number().min(0).max(100000),
-    unitPrice: z.coerce.number().min(-1000000).max(1000000),
+    // EN 16931 BR-27: BT-146 (Artikel-Nettopreis) darf nicht negativ sein.
+    // Gutschriften/Stornos werden über eine negative Menge modelliert.
+    unitPrice: z.coerce.number().min(0).max(1000000),
     unit: z.string().max(50).default('Stück'),
     // iter86 (§ 14 Abs. 4 Nr. 8 UStG): Steuersatz je Position.
     vatRate: z.coerce
@@ -108,7 +119,13 @@ export async function createInvoiceAction(input: {
   vatExemptionReason?: string;
   reverseCharge?: boolean;
   format: 'XRECHNUNG' | 'ZUGFERD';
-  positions: Array<{ description: string; quantity: number; unitPrice: number; unit: string; vatRate: number }>;
+  positions: Array<{
+    description: string;
+    quantity: number;
+    unitPrice: number;
+    unit: string;
+    vatRate: number;
+  }>;
 }): Promise<ActionResult & { invoiceId?: string; number?: string }> {
   // iter87: Anlegen braucht das Einzelrecht (ADMIN/PARTNER implizit).
   const g = await staffActionGuard({ requirePermission: 'INVOICE_MANAGE' });
@@ -140,10 +157,17 @@ export async function createInvoiceAction(input: {
   // Reverse-Charge (§ 13b): alle Positionen 0 %, eigener Kategorie-Grund (AE) —
   // kein Befreiungsgrund-Text nötig, dafür MUSS jede Position 0 % sein.
   if (data.reverseCharge && data.positions.some((p) => p.vatRate !== 0)) {
-    return { ok: false, error: 'Reverse-Charge (§ 13b UStG): alle Positionen müssen 0 % USt haben.' };
+    return {
+      ok: false,
+      error: 'Reverse-Charge (§ 13b UStG): alle Positionen müssen 0 % USt haben.',
+    };
   }
   if (hasZeroRate && !exemptionReason && !data.reverseCharge) {
-    return { ok: false, error: 'Bei 0 %-Positionen ist ein Befreiungsgrund erforderlich (z. B. „§ 19 UStG Kleinunternehmer", „steuerfrei nach § 4 …").' };
+    return {
+      ok: false,
+      error:
+        'Bei 0 %-Positionen ist ein Befreiungsgrund erforderlich (z. B. „§ 19 UStG Kleinunternehmer", „steuerfrei nach § 4 …").',
+    };
   }
 
   // Beträge berechnen — USt je Satz-Gruppe (§ 14 Abs. 4 Nr. 8 UStG, iter86).
@@ -164,7 +188,11 @@ export async function createInvoiceAction(input: {
   if (data.reverseCharge) {
     const seller = await readSellerInfo(ctx);
     if (!seller.vatId) {
-      return { ok: false, error: 'Reverse-Charge (§ 13b UStG) erfordert die USt-IdNr der Kanzlei (Einstellungen → Rechnungsdaten).' };
+      return {
+        ok: false,
+        error:
+          'Reverse-Charge (§ 13b UStG) erfordert die USt-IdNr der Kanzlei (Einstellungen → Rechnungsdaten).',
+      };
     }
   }
 
@@ -182,7 +210,9 @@ export async function createInvoiceAction(input: {
           select: { vatId: true },
         });
         if (!cli?.vatId) {
-          throw new ActionError('Reverse-Charge (§ 13b UStG) erfordert eine hinterlegte USt-IdNr des Mandanten.');
+          throw new ActionError(
+            'Reverse-Charge (§ 13b UStG) erfordert eine hinterlegte USt-IdNr des Mandanten.',
+          );
         }
       }
       // Lückenlose Vergabe in DERSELBEN Tx: scheitert der INSERT, rollt die
@@ -257,10 +287,68 @@ const StatusSchema = z.object({
 
 const ARCHIVE_FAIL_TEXT: Record<string, string> = {
   not_found: 'Rechnung nicht gefunden.',
-  seller_incomplete: 'Kanzlei-Rechnungsabsender unvollständig — Name, Anschrift, E-Mail und Telefon sind Pflicht (Einstellungen → Rechnungsdaten).',
-  reverse_charge_seller_no_vatid: 'Reverse-Charge (§ 13b UStG) erfordert die USt-IdNr der Kanzlei (Einstellungen → Rechnungsdaten).',
+  seller_incomplete:
+    'Kanzlei-Rechnungsabsender unvollständig — Name, Anschrift, E-Mail und Telefon sind Pflicht (Einstellungen → Rechnungsdaten).',
+  reverse_charge_seller_no_vatid:
+    'Reverse-Charge (§ 13b UStG) erfordert die USt-IdNr der Kanzlei (Einstellungen → Rechnungsdaten).',
   buyer_incomplete: 'Mandanten-Anschrift unvollständig (Straße/PLZ/Ort).',
 };
+
+/**
+ * Das Original darf erst dann aus dem Forderungsbestand verschwinden, wenn der
+ * Korrekturbeleg in derselben Transaktion auf SENT festgeschrieben wurde.
+ * Jeder Versandpfad (automatisch oder manuell) läuft durch diesen Helfer.
+ */
+async function cancelOriginalAfterDeliveredStornoTx(
+  tx: TxClient,
+  opts: { stornoId: string | null; originalId: string; staffId: string; tenantId: string },
+): Promise<void> {
+  const original = await tx.invoice.findUnique({
+    where: { id: opts.originalId },
+    select: { id: true, number: true, status: true },
+  });
+  if (!original) throw new ActionError('Originalrechnung zum Korrekturbeleg wurde nicht gefunden.');
+  if (original.status === 'CANCELLED') return;
+  if (!isValidInvoiceTransition(original.status, 'CANCELLED')) {
+    throw new ActionError(
+      `Originalrechnung kann aus Status ${original.status} nicht storniert werden.`,
+    );
+  }
+
+  const claimed = await tx.invoice.updateMany({
+    where: { id: original.id, status: original.status },
+    data: { status: 'CANCELLED' },
+  });
+  if (claimed.count === 0) {
+    throw new ActionError(
+      'Originalrechnung wurde zwischenzeitlich geändert — bitte erneut prüfen.',
+    );
+  }
+
+  // Eine bereits bezahlte Leistung bleibt verbucht; andernfalls darf sie erst
+  // JETZT — nach wirksamer Korrektur — wieder in den Abrechnungspool.
+  const released =
+    original.status === 'PAID'
+      ? { count: 0 }
+      : await tx.timeEntry.updateMany({
+          where: { invoiceId: original.id },
+          data: { invoiceId: null },
+        });
+  await evidenceService.record(tx, {
+    tenantId: opts.tenantId,
+    actorType: 'STAFF',
+    actorId: opts.staffId,
+    action: 'invoice.cancel',
+    resourceType: 'invoice',
+    resourceId: original.id,
+    after: {
+      number: original.number,
+      releasedTimeEntries: released.count,
+      stornoInvoiceId: opts.stornoId,
+      refundDue: original.status === 'PAID',
+    },
+  });
+}
 
 // Festschreibe-Kern des Rechnungsversands, in der übergebenen Transaktion:
 // atomarer DRAFT→SENT-Claim (TOCTOU-Schutz — nur der erste konkurrierende
@@ -273,7 +361,12 @@ const ARCHIVE_FAIL_TEXT: Record<string, string> = {
 // die Sequenz nicht zwischen beiden Pfaden driftet.
 async function finalizeInvoiceSendTx(
   tx: TxClient,
-  opts: { invoiceId: string; staffId: string; tenantId: string; auditExtra?: Record<string, unknown> },
+  opts: {
+    invoiceId: string;
+    staffId: string;
+    tenantId: string;
+    auditExtra?: Record<string, unknown>;
+  },
 ) {
   const res = await tx.invoice.updateMany({
     where: { id: opts.invoiceId, status: 'DRAFT' },
@@ -297,6 +390,14 @@ async function finalizeInvoiceSendTx(
     resourceId: updated.id,
     after: { number: updated.number, sentAt: updated.sentAt, ...opts.auditExtra },
   });
+  if (updated.stornoOfId) {
+    await cancelOriginalAfterDeliveredStornoTx(tx, {
+      stornoId: updated.id,
+      originalId: updated.stornoOfId,
+      staffId: opts.staffId,
+      tenantId: opts.tenantId,
+    });
+  }
   return updated;
 }
 
@@ -309,7 +410,10 @@ export async function markSentAction(
   if (!g.ok) {
     // Befund 9: Guard-Ablehnung strukturiert loggen UND an die UI zurückmelden
     // (früher Form-Action ohne Result-Channel → kommentarlos verschluckt).
-    log.warn({ component: 'invoices', action: 'markSent', err: g.error }, 'markSentAction: Guard abgelehnt');
+    log.warn(
+      { component: 'invoices', action: 'markSent', err: g.error },
+      'markSentAction: Guard abgelehnt',
+    );
     return { ok: false, error: g.error };
   }
   const { tenantId, staffId, ctx } = g;
@@ -405,38 +509,49 @@ export async function markSentAction(
   );
   const recipients = new Map<string, { email: string; fullName: string }>();
   if (client?.invoiceEmail) {
-    recipients.set(client.invoiceEmail.toLowerCase(), { email: client.invoiceEmail, fullName: client.name });
+    recipients.set(client.invoiceEmail.toLowerCase(), {
+      email: client.invoiceEmail,
+      fullName: client.name,
+    });
   }
   for (const contact of client?.contacts ?? []) {
     recipients.set(contact.email.toLowerCase(), contact);
   }
   for (const recipient of recipients.values()) {
-    fireAndForget('sendTemplateMail (invoice-sent)', sendTemplateMail({
-      tenantId,
-      slug: 'invoice-sent',
-      to: recipient.email,
-      vars: {
-        contact: { fullName: recipient.fullName, email: recipient.email },
-        client: { name: client?.name ?? 'Mandant' },
-        invoice: {
-          number: sent.number,
-          total: fmtEUR(Number(sent.totalAmount.toString())),
-          dueDate: sent.dueDate ? fmtDateShort(sent.dueDate) : '—',
+    fireAndForget(
+      'sendTemplateMail (invoice-sent)',
+      sendTemplateMail({
+        tenantId,
+        slug: 'invoice-sent',
+        to: recipient.email,
+        vars: {
+          contact: { fullName: recipient.fullName, email: recipient.email },
+          client: { name: client?.name ?? 'Mandant' },
+          invoice: {
+            number: sent.number,
+            total: fmtEUR(Number(sent.totalAmount.toString())),
+            dueDate: sent.dueDate ? fmtDateShort(sent.dueDate) : '—',
+          },
+          link: `${portalBaseUrl}/portal/invoices`,
         },
-        link: `${portalBaseUrl}/portal/invoices`,
-      },
-      fallback: {
-        subject: 'Neue Rechnung {{invoice.number}}',
-        bodyMd:
-          'Sehr geehrte/r {{contact.fullName}},\n\n' +
-          'eine neue Rechnung ({{invoice.number}}) über {{invoice.total}} steht in Ihrem Mandantenportal bereit.\n' +
-          'Fälligkeit: {{invoice.dueDate}}\n\n' +
-          'Zur Übersicht: {{link}}',
-      },
-    }));
+        fallback: {
+          subject: 'Neue Rechnung {{invoice.number}}',
+          bodyMd:
+            'Sehr geehrte/r {{contact.fullName}},\n\n' +
+            'eine neue Rechnung ({{invoice.number}}) über {{invoice.total}} steht in Ihrem Mandantenportal bereit.\n' +
+            'Fälligkeit: {{invoice.dueDate}}\n\n' +
+            'Zur Übersicht: {{link}}',
+        },
+      }),
+    );
   }
 
-  emitN8nEvent('invoice.due', { tenantId, invoiceId: parsed.data.invoiceId });
+  // Korrekturbelege dürfen niemals den normalen Fälligkeits-/Mahnworkflow
+  // starten. finalizeInvoiceSendTx hat das Original bereits atomar storniert.
+  emitN8nEvent(sent.stornoOfId ? 'invoice.storno' : 'invoice.due', {
+    tenantId,
+    invoiceId: parsed.data.invoiceId,
+  });
   revalidatePath('/staff/invoices');
   revalidatePath(`/staff/invoices/${parsed.data.invoiceId}`);
   return { ok: true };
@@ -451,7 +566,8 @@ export async function markPaidAction(formData: FormData): Promise<void> {
       // iter85: Precondition (UI verbirgt den Button, die Action prüft selbst;
       // der DB-Trigger ist der Backstop).
       const current = await tx.invoice.findUnique({
-        where: { id: parsed.data.invoiceId }, select: { status: true, clientId: true },
+        where: { id: parsed.data.invoiceId },
+        select: { status: true, clientId: true },
       });
       if (!current) return;
       await assertClientAccessTx(tx, session, current.clientId);
@@ -472,7 +588,10 @@ export async function markPaidAction(formData: FormData): Promise<void> {
         after: { number: updated.number, paidAt: updated.paidAt },
       });
     },
-    { requirePermission: 'INVOICE_MANAGE', revalidate: ['/staff/invoices', `/staff/invoices/${parsed.data.invoiceId}`] },
+    {
+      requirePermission: 'INVOICE_MANAGE',
+      revalidate: ['/staff/invoices', `/staff/invoices/${parsed.data.invoiceId}`],
+    },
   );
   // Ablehnung (z. B. unzulässiger Statuswechsel bei veralteter Seite) darf nicht
   // still verpuffen — werfen, damit die UI den Grund zeigt statt eines No-ops.
@@ -487,11 +606,11 @@ export async function cancelInvoiceAction(formData: FormData): Promise<void> {
   if (!parsed.success) return;
   const invoiceId = parsed.data.invoiceId;
 
-  // Tx A: Original prüfen/stornieren + (falls bereits versendet) Storno-DRAFT
-  // mit negierten Beträgen anlegen. Ein reiner DRAFT-Abbruch braucht KEINEN
-  // Korrekturbeleg (nie ausgestellt).
+  // Tx A erzeugt bei einer bereits ausgestellten Rechnung NUR den
+  // Korrekturbeleg-Entwurf. Das Original bleibt aktiv, bis der Beleg unten
+  // revisionssicher erzeugt und auf SENT festgeschrieben ist. Ein nie
+  // ausgestellter DRAFT kann dagegen unmittelbar abgebrochen werden.
   let stornoId: string | null = null;
-  let stornoIsInApp = false;
   try {
     await withTenantContext(ctx, async (tx) => {
       const current = await tx.invoice.findUnique({
@@ -505,135 +624,163 @@ export async function cancelInvoiceAction(formData: FormData): Promise<void> {
       }
 
       const wasPaid = current.status === 'PAID';
-      // Auch eine bereits BEZAHLTE Rechnung wurde zugestellt → sie braucht einen
-      // Korrekturbeleg (§ 14c Abs. 1 i. V. m. § 17 UStG). QW10.
-      const wasDelivered =
-        current.status === 'SENT' || current.status === 'OVERDUE' || wasPaid;
-      if (wasDelivered) {
-        // § 14c Abs. 1 i.V.m. § 17 UStG: Korrekturbeleg (TypeCode 381) mit
-        // eigener lückenloser Nummer und negierten Beträgen.
-        const num = (v: { toString(): string }) => -Number(v.toString());
-        // Nummernkreis-Jahr und issueDate MÜSSEN denselben (Berlin-)Kalendertag
-        // treffen: allocateInvoiceNumber nimmt getUTCFullYear, die Anzeige
-        // formatiert in Europe/Berlin. Mit new Date() bekäme ein Storno am 1.1.
-        // 00:00–02:00 Berlin die Nummer des Vorjahres bei Datum im neuen Jahr.
-        const stornoDate = berlinTodayUtcMidnight();
-        const number = await allocateInvoiceNumber(tx, tenantId, stornoDate);
-        const storno = await tx.invoice.create({
-          data: {
-            tenantId,
-            clientId: current.clientId,
-            number,
-            subject: `Storno zu ${current.number}: ${current.subject}`.slice(0, 500),
-            issueDate: stornoDate,
-            dueDate: stornoDate,
-            status: 'DRAFT',
-            format: current.format,
-            netAmount: num(current.netAmount),
-            vatAmount: num(current.vatAmount),
-            totalAmount: num(current.totalAmount),
-            vatRate: current.vatRate,
-            vatExemptionReason: current.vatExemptionReason,
-            categoryId: current.categoryId,
-            stornoOfId: current.id,
-            // QW10: war das Original bezahlt, die Rückzahlungspflicht auf dem
-            // Korrekturbeleg vermerken (kein automatischer Zahlungsfluss).
-            notes: wasPaid
-              ? 'Original war bereits BEZAHLT — Rückzahlung/Zahlungsrückabwicklung gesondert veranlassen (kein automatischer Zahlungsfluss).'
-              : null,
-            createdByStaff: staffId,
-            positions: {
-              create: current.positions.map((p) => ({
-                position: p.position,
-                description: p.description,
-                quantity: Number(p.quantity.toString()),
-                unitPrice: num(p.unitPrice),
-                unit: p.unit,
-                netAmount: num(p.netAmount),
-                vatRate: Number(p.vatRate.toString()),
-              })),
-            },
-          },
+      const wasDelivered = current.status === 'SENT' || current.status === 'OVERDUE' || wasPaid;
+      if (!wasDelivered) {
+        await cancelOriginalAfterDeliveredStornoTx(tx, {
+          stornoId: null,
+          originalId: invoiceId,
+          staffId,
+          tenantId,
         });
-        stornoId = storno.id;
-        stornoIsInApp = current.format !== 'PDF';
-        await evidenceService.record(tx, {
-          tenantId, actorType: 'STAFF', actorId: staffId,
-          action: 'invoice.storno.create',
-          resourceType: 'invoice',
-          resourceId: storno.id,
-          after: { number, stornoOf: current.number, totalAmount: num(current.totalAmount) },
-        });
+        return;
       }
 
-      // TOCTOU-Schutz gegen Doppel-Storno: den Übergang atomar nur aus dem
-      // gelesenen Status heraus beanspruchen. Zwei nebenläufige Stornos lesen
-      // sonst beide SENT/OVERDUE und legen je einen Korrekturbeleg an; der
-      // Festschreib-Trigger fängt das nicht ab, weil CANCELLED→CANCELLED ein
-      // No-op ist und die Übergangsprüfung überspringt. Bei count===0 rollt die
-      // gesamte Tx zurück — inklusive des oben in derselben Tx erzeugten
-      // Storno-Belegs. Muster wie finalizeInvoiceSendTx.
-      const claimed = await tx.invoice.updateMany({
-        where: { id: invoiceId, status: current.status },
-        data: { status: 'CANCELLED' },
-      });
-      if (claimed.count === 0) {
-        throw new ActionError('Rechnung wurde zwischenzeitlich geändert — bitte Seite neu laden.');
+      // Ein PDF-Original stammt aus dem Fremdsystem. Ohne den dort erzeugten
+      // und hochgeladenen Korrekturbeleg darf die App den offenen Posten nicht
+      // entfernen oder die Zeiten freigeben.
+      if (current.format === 'PDF') {
+        throw new ActionError(
+          'Externe PDF-Rechnung bleibt aktiv. Bitte den Korrekturbeleg zuerst im Fremdsystem ausstellen und dokumentieren.',
+        );
       }
-      // Storno gibt die abgerechneten Zeiteinträge zur Neuabrechnung frei
-      // (Pool-Marker, nicht Teil der festgeschriebenen Positionen). QW10: bei
-      // einem BEZAHLTEN Storno NICHT freigeben — die Leistung ist bezahlt und
-      // darf nicht erneut abgerechnet werden; die Einträge bleiben verknüpft.
-      const released = wasPaid
-        ? { count: 0 }
-        : await tx.timeEntry.updateMany({
-            where: { invoiceId },
-            data: { invoiceId: null },
-          });
+
+      const existing = await tx.invoice.findFirst({
+        where: { tenantId, stornoOfId: current.id },
+        select: { id: true, status: true },
+      });
+      if (existing) {
+        if (existing.status === 'CANCELLED') {
+          throw new ActionError(
+            'Der vorhandene Korrekturbeleg wurde abgebrochen. Bitte fachlich prüfen.',
+          );
+        }
+        stornoId = existing.id;
+        return;
+      }
+
+      const negate = (value: { toString(): string }) => -Number(value.toString());
+      const stornoDate = berlinTodayUtcMidnight();
+      const number = await allocateInvoiceNumber(tx, tenantId, stornoDate);
+      const storno = await tx.invoice.create({
+        data: {
+          tenantId,
+          clientId: current.clientId,
+          number,
+          subject: `Storno zu ${current.number}: ${current.subject}`.slice(0, 500),
+          issueDate: stornoDate,
+          dueDate: stornoDate,
+          servicePeriodStart: current.servicePeriodStart,
+          servicePeriodEnd: current.servicePeriodEnd,
+          status: 'DRAFT',
+          format: current.format,
+          netAmount: negate(current.netAmount),
+          vatAmount: negate(current.vatAmount),
+          totalAmount: negate(current.totalAmount),
+          vatRate: current.vatRate,
+          vatExemptionReason: current.vatExemptionReason,
+          reverseCharge: current.reverseCharge,
+          categoryId: current.categoryId,
+          stornoOfId: current.id,
+          notes: wasPaid
+            ? 'Original war bereits BEZAHLT — Rückzahlung/Zahlungsrückabwicklung gesondert veranlassen (kein automatischer Zahlungsfluss).'
+            : null,
+          createdByStaff: staffId,
+          positions: { create: current.positions.map(toStornoPosition) },
+        },
+      });
+      stornoId = storno.id;
       await evidenceService.record(tx, {
-        tenantId, actorType: 'STAFF', actorId: staffId,
-        action: 'invoice.cancel',
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'invoice.storno.create',
         resourceType: 'invoice',
-        resourceId: invoiceId,
-        after: { number: current.number, releasedTimeEntries: released.count, stornoInvoiceId: stornoId, refundDue: wasPaid },
+        resourceId: storno.id,
+        after: {
+          number,
+          stornoOf: current.number,
+          totalAmount: negate(current.totalAmount),
+        },
       });
     });
   } catch (e) {
-    if (e instanceof ActionError) throw e;
-    throw new ActionError(toActionError(e).error ?? 'Storno fehlgeschlagen.');
+    // Der partielle Unique-Index ist der DB-Backstop für zwei gleichzeitig
+    // angelegte Korrekturbelege. Der Verlierer verwendet sauber den Gewinner,
+    // statt einen technischen P2002 anzuzeigen.
+    if ((e as { code?: string }).code === 'P2002') {
+      const existing = await withTenantContext(ctx, (tx) =>
+        tx.invoice.findFirst({
+          where: { tenantId, stornoOfId: invoiceId },
+          select: { id: true },
+        }),
+      );
+      if (existing) stornoId = existing.id;
+      else
+        throw new ActionError('Korrekturbeleg wurde parallel angelegt — bitte erneut versuchen.');
+    } else {
+      if (e instanceof ActionError) throw e;
+      throw new ActionError(toActionError(e).error ?? 'Storno fehlgeschlagen.');
+    }
   }
 
-  // Tx B: Storno-Beleg (IN_APP) erzeugen + festschreiben + zustellen — über
-  // denselben Festschreib-Kern wie der Normalversand (finalizeInvoiceSendTx).
-  // Best-effort: scheitert das, bleibt der Storno als DRAFT stehen (manuell
-  // versendbar) — der Original-Storno steht bereits fest.
-  //
-  // EXTERNAL (Format PDF, stornoIsInApp=false): der Storno-Beleg besitzt kein
-  // eigenes Generat und wird bewusst NICHT automatisch versendet — er bleibt
-  // als DRAFT-Korrekturbeleg stehen und ist manuell über die Rechnungssoftware
-  // (aus der auch das Original stammt) auszustellen.
-  if (stornoId && stornoIsInApp) {
+  if (stornoId) {
+    let archive;
     try {
-      const archive = await withTimeout(ensureZugferdArchive(ctx, stornoId), 45_000);
-      if (archive.ok || archive.code === 'not_applicable') {
-        const st = await withTenantContext(ctx, (tx) =>
-          finalizeInvoiceSendTx(tx, { invoiceId: stornoId!, staffId, tenantId, auditExtra: { storno: true } }),
-        );
-        // invoice.storno statt invoice.due: ein Gutschrift-/Korrekturbeleg hat
-        // keine fällige Zahlung — Zahlungserinnerungs-Workflows dürfen nicht
-        // anschlagen. Nur bei erfolgreichem Claim (st != null) emittieren.
-        if (st) emitN8nEvent('invoice.storno', { tenantId, invoiceId: stornoId });
-      }
-    } catch (err) {
+      archive = await withTimeout(ensureZugferdArchive(ctx, stornoId), 45_000);
+    } catch (error) {
       log.warn(
-        { component: 'invoices', action: 'storno-send', stornoId, err: (err as Error).message },
-        'cancelInvoiceAction: Storno-Beleg konnte nicht automatisch versendet werden (bleibt DRAFT)',
+        { component: 'invoices', action: 'storno-send', stornoId, err: (error as Error).message },
+        'Korrekturbeleg nicht versendet; Original bleibt aktiv',
       );
+      throw new ActionError(
+        'Korrekturbeleg konnte nicht erzeugt werden. Das Original bleibt aktiv; der Entwurf kann erneut versendet werden.',
+      );
+    }
+    if (!archive.ok) {
+      throw new ActionError(
+        `Korrekturbeleg nicht versendet; Original bleibt aktiv: ${ARCHIVE_FAIL_TEXT[archive.code] ?? archive.code}`,
+      );
+    }
+
+    const result = await withTenantContext(ctx, async (tx) => {
+      const sent = await finalizeInvoiceSendTx(tx, {
+        invoiceId: stornoId!,
+        staffId,
+        tenantId,
+        auditExtra: { storno: true },
+      });
+      if (sent) return { newlySent: true };
+
+      // Retry/Parallelfall: Der Korrekturbeleg kann bereits SENT sein. Dann
+      // wird nur noch idempotent sichergestellt, dass das Original storniert ist.
+      const existing = await tx.invoice.findUnique({
+        where: { id: stornoId! },
+        select: { id: true, status: true, stornoOfId: true },
+      });
+      if (
+        existing?.stornoOfId === invoiceId &&
+        ['SENT', 'OVERDUE', 'PAID'].includes(existing.status)
+      ) {
+        await cancelOriginalAfterDeliveredStornoTx(tx, {
+          stornoId: existing.id,
+          originalId: invoiceId,
+          staffId,
+          tenantId,
+        });
+        return { newlySent: false };
+      }
+      throw new ActionError(
+        'Korrekturbeleg konnte nicht festgeschrieben werden; Original bleibt aktiv.',
+      );
+    });
+    if (result.newlySent) {
+      emitN8nEvent('invoice.storno', { tenantId, invoiceId: stornoId });
     }
   }
 
   revalidatePath('/staff/invoices');
   revalidatePath(`/staff/invoices/${invoiceId}`);
+  if (stornoId) revalidatePath(`/staff/invoices/${stornoId}`);
 }
 
 // ----------------------------------------------------------------------------
@@ -651,9 +798,14 @@ const RESERVED_AUTO_NUMBER = /^\d{4}-\d+$/;
 const UploadExternalSchema = z.object({
   clientId: z.string().uuid(),
   categoryId: z.string().uuid().nullable().optional(),
-  number: z.string().min(1).max(50).refine((n) => !RESERVED_AUTO_NUMBER.test(n), {
-    message: 'Diese Nummer hat das Format des automatischen Nummernkreises (JJJJ-NNNN) und ist reserviert. Bitte die Originalnummer des Fremdsystems verwenden.',
-  }),
+  number: z
+    .string()
+    .min(1)
+    .max(50)
+    .refine((n) => !RESERVED_AUTO_NUMBER.test(n), {
+      message:
+        'Diese Nummer hat das Format des automatischen Nummernkreises (JJJJ-NNNN) und ist reserviert. Bitte die Originalnummer des Fremdsystems verwenden.',
+    }),
   subject: z.string().min(1).max(200),
   issueDate: z.string().date(),
   dueDate: z.string().date(),
@@ -672,7 +824,9 @@ const UploadExternalSchema = z.object({
   }),
 });
 
-export async function uploadExternalInvoiceAction(input: z.infer<typeof UploadExternalSchema>): Promise<{
+export async function uploadExternalInvoiceAction(
+  input: z.infer<typeof UploadExternalSchema>,
+): Promise<{
   ok: boolean;
   error?: string;
   id?: string;
@@ -704,7 +858,7 @@ export async function uploadExternalInvoiceAction(input: z.infer<typeof UploadEx
   if (pdfBytes.length === 0) return { ok: false, error: 'PDF-Daten leer.' };
   if (pdfBytes.length > 10 * 1024 * 1024) return { ok: false, error: 'PDF zu groß (max. 10 MB).' };
 
-  // 1) PDF in Object-Lock (GoBD-Aufbewahrung 10 J.) ablegen
+  // 1) PDF in Object-Lock (Rechnungs-Aufbewahrung 8 J.) ablegen
   let stored: Awaited<ReturnType<typeof commitDocumentFromBytes>>;
   try {
     stored = await commitDocumentFromBytes({
@@ -734,7 +888,13 @@ export async function uploadExternalInvoiceAction(input: z.infer<typeof UploadEx
       await assertClientAccessTx(tx, g.session, data.clientId);
       const cli = await tx.client.findUnique({
         where: { id: data.clientId },
-        select: { name: true, contacts: { where: { active: true, notificationsEnabled: true }, select: { email: true, fullName: true } } },
+        select: {
+          name: true,
+          contacts: {
+            where: { active: true, notificationsEnabled: true },
+            select: { email: true, fullName: true },
+          },
+        },
       });
       if (!cli) throw new ActionError('Mandant nicht gefunden.');
       clientName = cli.name;
@@ -810,34 +970,38 @@ export async function uploadExternalInvoiceAction(input: z.infer<typeof UploadEx
   // 3) Mail mit PDF-Anhang an aktive Kontakte mit Opt-in.
   // fireAndForget (catch + Log) statt still verschlucktem `.catch(() => void 0)`.
   for (const r of recipients) {
-    fireAndForget('sendTemplateMail (external invoice)', sendTemplateMail({
-      tenantId,
-      slug: mailTemplateSlug ?? 'invoice-sent',
-      to: r.email,
-      vars: {
-        contact: { fullName: r.fullName, email: r.email },
-        client: { name: clientName },
-        invoice: {
-          number: input.number,
-          subject: input.subject,
-          totalAmount: input.totalAmount,
-          dueDate: input.dueDate,
+    fireAndForget(
+      'sendTemplateMail (external invoice)',
+      sendTemplateMail({
+        tenantId,
+        slug: mailTemplateSlug ?? 'invoice-sent',
+        to: r.email,
+        vars: {
+          contact: { fullName: r.fullName, email: r.email },
+          client: { name: clientName },
+          invoice: {
+            number: input.number,
+            subject: input.subject,
+            totalAmount: input.totalAmount,
+            dueDate: input.dueDate,
+          },
         },
-      },
-      n8nEvent: 'invoice.due',
-      n8nPayload: { tenantId, invoiceId },
-      fallback: {
-        subject: 'Ihre Rechnung {{invoice.number}}',
-        bodyMd: 'Sehr geehrte/r {{contact.fullName}},\n\nanbei senden wir Ihnen unsere Rechnung Nr. {{invoice.number}} über {{invoice.totalAmount}} €.\n\nMit freundlichen Grüßen\nIhre Steuerkanzlei',
-      },
-      attachments: [
-        {
-          filename: `Rechnung-${input.number}.pdf`,
-          content: pdfBytes,
-          contentType: 'application/pdf',
+        n8nEvent: 'invoice.due',
+        n8nPayload: { tenantId, invoiceId },
+        fallback: {
+          subject: 'Ihre Rechnung {{invoice.number}}',
+          bodyMd:
+            'Sehr geehrte/r {{contact.fullName}},\n\nanbei senden wir Ihnen unsere Rechnung Nr. {{invoice.number}} über {{invoice.totalAmount}} €.\n\nMit freundlichen Grüßen\nIhre Steuerkanzlei',
         },
-      ],
-    }));
+        attachments: [
+          {
+            filename: `Rechnung-${input.number}.pdf`,
+            content: pdfBytes,
+            contentType: 'application/pdf',
+          },
+        ],
+      }),
+    );
   }
 
   revalidatePath('/staff/invoices');

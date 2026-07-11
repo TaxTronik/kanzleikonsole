@@ -12,20 +12,20 @@ kontrollierter Mandanten-Freigabe.
 `sharedWithClientAt`, Soft-Delete-Felder) → `DocumentVersion` (bucket/key,
 SHA-256, Größe, `immutable`, Scan-Status; unique je documentId+versionNo) →
 `DocumentFolder` (Baum; Löschen reparentiert, nie kaskadierend) →
-`DocumentType` (Admin-gepflegt; Schutzstufe bei Anlage fixiert, 7 Kern-Typen
-read-only).
+`DocumentType` (Admin-gepflegt; Schutzstufe und bei GoBD die 6-/8-/10-
+Jahresfrist bei Anlage fixiert, 7 Kern-Typen read-only).
 
 ## Programminterne Kontrollen
 
-| Kontrolle | Umsetzung |
-|---|---|
-| Annahme-Pipeline | zentral `packages/storage/src/service.ts`: ClamAV-Scan **synchron vor** jedem Upload (INFECTED→422, Scanner-Fehler→502, fail-closed — nichts wird gespeichert), SHA-256, Magic-Byte-MIME-Vorrang, 100-MB-Cap (Teilbereiche 10 MB) |
-| Unveränderlichkeit | Object-Lock je Stufe: GOBD→COMPLIANCE 10 J. (§ 147 AO), GWG→GOVERNANCE 5 J. (§ 8 Abs. 4 GwG, Vernichtungspflicht); DB-Trigger `document_version_immutable_protect` (auch Owner); Herabstufung der Schutzstufe blockiert, Höherstufung re-stored in den gelockten Bucket |
-| Soft-Delete | nur Sichtbarkeit (Papierkorb, wiederherstellbar), keine S3-Löschung; endgültige Vernichtung ausschließlich im GwG-Verfahren (Admin-Review-Queue, je Beleg bestätigt, Audit `gwg.evidence.destroy`) |
-| Freigabe | serverseitig erzwungen: Portal-Liste/-Download/-Preview filtern `sharedWithClientAt != null` + Session-clientId; Staff-Freigabe nur für Mandanten-Dokumente, auditiert |
-| Auslieferung | app-proxied (Object-Store nie öffentlich, 127.0.0.1-Bind); Inline-Preview-Whitelist (pdf/Bilder/text-plain; html/svg/js nie inline), `nosniff` + CSP `sandbox` für text/plain, Dateinamen-Header sanitisiert, ZIP-Export mit Größen-/Parallel-Caps und Zip-Slip-Härtung |
-| Zugriff | Staff: Tenant-Filter + RESTRICTED-Zuständigkeit (Liste, Download, Preview, Detailseite); Portal: nur eigene, freigegebene Dokumente |
-| Protokollierung | `document.upload/.download/.preview/.delete/.restore/.retag/.share/.unshare/.move_folder/.acknowledge`, `document.version.add`, Ordner-/Typ-Events, GwG-Vernichtungs-Events |
+| Kontrolle          | Umsetzung                                                                                                                                                                                                                                                                                                     |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Annahme-Pipeline   | zentral `packages/storage/src/service.ts`: ClamAV-Scan **synchron vor** jedem Upload (INFECTED→422, Scanner-Fehler→502, fail-closed — nichts wird gespeichert), SHA-256, Magic-Byte-MIME-Vorrang, 100-MB-Cap (Teilbereiche 10 MB)                                                                             |
+| Unveränderlichkeit | Object-Lock je Stufe: GOBD→COMPLIANCE mit typabhängig 6/8/10 J. (§ 147 AO/§ 14b UStG), GWG→GOVERNANCE und fachlicher Lösch-Queue; DB-Trigger `document_version_immutable_protect` (auch Owner); Herabstufung/Fristverkürzung blockiert, Höherstufung oder Fristverlängerung re-stored in den gelockten Bucket |
+| Soft-Delete        | nur Sichtbarkeit (Papierkorb, wiederherstellbar), keine S3-Löschung; endgültige Vernichtung ausschließlich im GwG-Verfahren (Admin-Review-Queue, je Beleg bestätigt, Audit `gwg.evidence.destroy`)                                                                                                            |
+| Freigabe           | serverseitig erzwungen: Portal-Liste/-Download/-Preview filtern `sharedWithClientAt != null` + Session-clientId; Staff-Freigabe nur für Mandanten-Dokumente, auditiert                                                                                                                                        |
+| Auslieferung       | app-proxied (Object-Store nie öffentlich, 127.0.0.1-Bind); Inline-Preview-Whitelist (pdf/Bilder/text-plain; html/svg/js nie inline), `nosniff` + CSP `sandbox` für text/plain, Dateinamen-Header sanitisiert, ZIP-Export mit Größen-/Parallel-Caps und Zip-Slip-Härtung                                       |
+| Zugriff            | Staff: Tenant-Filter + RESTRICTED-Zuständigkeit (Liste, Download, Preview, Detailseite); Portal: nur eigene, freigegebene Dokumente                                                                                                                                                                           |
+| Protokollierung    | `document.upload/.download/.preview/.delete/.restore/.retag/.share/.unshare/.move_folder/.acknowledge`, `document.version.add`, Ordner-/Typ-Events, GwG-Vernichtungs-Events                                                                                                                                   |
 
 ## Upload-Wege (alle über die zentrale Pipeline)
 
@@ -36,15 +36,15 @@ GwG-Onboarding (anonym per Token, GWG-Bucket), Rechnungs-PDFs
 
 ## Traceability
 
-| Anforderung | Implementierung | Test |
-|---|---|---|
-| Kein Inline-XSS über Dokumente | preview-mime Whitelist + CSP sandbox | `server/storage/__tests__/preview-mime.test.ts` |
-| ZIP-Export sicher + begrenzt | export/zip | `server/export/__tests__/zip.test.ts` |
-| GwG-Fristen + Lösch-Queue | server/gwg/retention | `server/gwg/__tests__/retention.test.ts`, Worker-Test gwg-expiry-check |
-| DSGVO-Anonymisierung respektiert GwG-Belege | dsgvo/client-retention | `server/dsgvo/__tests__/client-retention.test.ts` |
-| Rechnungsarchiv unveränderlich + idempotent | invoicing/archive | `invoicing/__tests__/archive.test.ts` |
-| Mandantentrennung | RLS + Filter | `rls-cross-tenant.test.ts` (Document-Fall) |
-| Scan-/Größen-Fehlerpfade end-to-end | upload-helpers + commit-Routen | Sicherheitsaudit 2026-06 (verifiziert); Unit-Lücke in packages/storage dokumentiert (Gap-Analyse) |
+| Anforderung                                 | Implementierung                      | Test                                                                                              |
+| ------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| Kein Inline-XSS über Dokumente              | preview-mime Whitelist + CSP sandbox | `server/storage/__tests__/preview-mime.test.ts`                                                   |
+| ZIP-Export sicher + begrenzt                | export/zip                           | `server/export/__tests__/zip.test.ts`                                                             |
+| GwG-Fristen + Lösch-Queue                   | server/gwg/retention                 | `server/gwg/__tests__/retention.test.ts`, Worker-Test gwg-expiry-check                            |
+| DSGVO-Anonymisierung respektiert GwG-Belege | dsgvo/client-retention               | `server/dsgvo/__tests__/client-retention.test.ts`                                                 |
+| Rechnungsarchiv unveränderlich + idempotent | invoicing/archive                    | `invoicing/__tests__/archive.test.ts`                                                             |
+| Mandantentrennung                           | RLS + Filter                         | `rls-cross-tenant.test.ts` (Document-Fall)                                                        |
+| Scan-/Größen-Fehlerpfade end-to-end         | upload-helpers + commit-Routen       | Sicherheitsaudit 2026-06 (verifiziert); Unit-Lücke in packages/storage dokumentiert (Gap-Analyse) |
 
 ## Bekannte Grenzen
 

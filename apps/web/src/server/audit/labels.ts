@@ -84,6 +84,8 @@ export const ACTION_LABELS: Record<string, string> = {
   'gwg.id_document.add': 'Ausweisdokument erfasst',
   'gwg.check.verify': 'GwG-Prüfung verifiziert',
   'gwg.check.reject': 'GwG-Prüfung abgelehnt',
+  'gwg.legal_entity_details.update': 'GwG-Register- und Vertretungsdaten aktualisiert',
+  'gwg.evidence.destroy.request': 'Vernichtung von GwG-Belegen angefordert',
   'gwg.evidence.destroy': 'GwG-Beleg vernichtet (§ 8 Abs. 4)',
   'gwg.check.destroy': 'GwG-Aufzeichnungen vernichtet (§ 8 Abs. 4)',
   // RF-8: System-Statuswechsel aus dem Worker (gwg-expiry-check)
@@ -107,6 +109,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'poa.send': 'Vollmacht versendet',
   'poa.sign': 'Vollmacht signiert',
   'poa.revoke': 'Vollmacht widerrufen',
+  'poa.signer.anonymize': 'Unterzeichnerdaten der Vollmacht anonymisiert',
   // RF-8: System-Statuswechsel aus dem Worker (poa-expiry-check)
   'poa.expire': 'Vollmacht abgelaufen (System)',
 

@@ -19,14 +19,14 @@ interface DocType {
   id: string;
   name: string;
   tier: 'NONE' | 'GWG' | 'GOBD';
+  retentionYears: number | null;
   builtin: boolean;
   classificationKey: string | null;
 }
-const TIER_HINT: Record<DocType['tier'], string> = {
-  NONE: '',
-  GWG: 'GwG · 5 Jahre unveränderbar (Object-Lock)',
-  GOBD: 'GoBD · 10 Jahre unveränderbar (Object-Lock)',
-};
+const tierHint = (type: DocType): string =>
+  type.tier === 'NONE'
+    ? ''
+    : `${type.tier === 'GOBD' ? 'GoBD' : 'GwG'} · ${type.retentionYears ?? '?'} Jahre unveränderbar (Object-Lock)`;
 
 export function DocumentUploadButton({
   clientId,
@@ -41,7 +41,9 @@ export function DocumentUploadButton({
   // SSR-Guard: createPortal nutzt document, das im Server-Render nicht
   // existiert. Erst nach Mount portalen — sonst Hydration-Mismatch.
   const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
   const [types, setTypes] = useState<DocType[]>([]);
@@ -65,7 +67,9 @@ export function DocumentUploadButton({
         /* ignore — Upload-Button bleibt nutzbar, Fehler beim Submit */
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [open, types.length]);
 
   // Vorauswahl setzen, sobald Typen da sind und nichts gewählt ist
@@ -146,14 +150,12 @@ export function DocumentUploadButton({
   // hängt das Modal sonst an der nächsten transformierten Karte (springt
   // beim Card-Hover sichtbar). Portal entkoppelt es vom Parent-DOM.
   const modal = open ? (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={close}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={close}
+    >
       <div className="w-full max-w-md card p-6 relative" onClick={(e) => e.stopPropagation()}>
-        <button
-          type="button"
-          onClick={close}
-          className="modal-close"
-          aria-label="Schließen"
-        >
+        <button type="button" onClick={close} className="modal-close" aria-label="Schließen">
           <X className="h-5 w-5" />
         </button>
 
@@ -161,7 +163,9 @@ export function DocumentUploadButton({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="label" htmlFor="upload-file">Datei</label>
+            <label className="label" htmlFor="upload-file">
+              Datei
+            </label>
             <input
               id="upload-file"
               type="file"
@@ -176,7 +180,9 @@ export function DocumentUploadButton({
           </div>
 
           <div>
-            <label className="label" htmlFor="upload-title">Titel</label>
+            <label className="label" htmlFor="upload-title">
+              Titel
+            </label>
             <input
               id="upload-title"
               type="text"
@@ -189,7 +195,9 @@ export function DocumentUploadButton({
           </div>
 
           <div>
-            <label className="label" htmlFor="upload-type">Datei-Typ</label>
+            <label className="label" htmlFor="upload-type">
+              Datei-Typ
+            </label>
             <select
               id="upload-type"
               className="input"
@@ -200,21 +208,21 @@ export function DocumentUploadButton({
               {types.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}
-                  {t.tier !== 'NONE' ? ` — ${t.tier === 'GOBD' ? 'GoBD 10 J.' : 'GwG 5 J.'}` : ''}
+                  {t.tier !== 'NONE'
+                    ? ` — ${t.tier === 'GOBD' ? 'GoBD' : 'GwG'} ${t.retentionYears ?? '?'} J.`
+                    : ''}
                 </option>
               ))}
             </select>
             {(() => {
               const sel = types.find((t) => t.id === typeId);
               return sel && sel.tier !== 'NONE' ? (
-                <p className="mt-1 text-xs text-amber-700">{TIER_HINT[sel.tier]}</p>
+                <p className="mt-1 text-xs text-amber-700">{tierHint(sel)}</p>
               ) : null;
             })()}
           </div>
 
-          {error && (
-            <div className="alert-error-sm">{error}</div>
-          )}
+          {error && <div className="alert-error-sm">{error}</div>}
 
           {progress !== 'idle' && (
             <div className="alert-info-sm">
@@ -233,11 +241,7 @@ export function DocumentUploadButton({
             >
               Abbrechen
             </button>
-            <button
-              type="submit"
-              disabled={isPending || !file}
-              className="btn-primary flex-1"
-            >
+            <button type="submit" disabled={isPending || !file} className="btn-primary flex-1">
               {isPending ? 'Lädt…' : 'Hochladen'}
             </button>
           </div>

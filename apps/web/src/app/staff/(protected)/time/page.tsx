@@ -5,6 +5,8 @@ import { withTenantContext } from '@taxtronik/db';
 import { StartTimerForm } from './start-form';
 import { stopTimerAction, deleteTimeEntryAction } from './actions';
 import { fmtTimeShort } from '@/lib/fmt';
+import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
+import { buildTimePageAccessFilters } from './access';
 
 export default async function TimeTrackingPage() {
   const session = await staffAuth();
@@ -17,15 +19,18 @@ export default async function TimeTrackingPage() {
     async (tx) => {
       const startOfDay = new Date();
       startOfDay.setHours(0, 0, 0, 0);
+      const deniedClientIds = await inaccessibleClientIdsFor(tx, session);
+      const { timeEntryWhere, clientWhere } = buildTimePageAccessFilters(deniedClientIds);
       return Promise.all([
         tx.timeEntry.findFirst({
-          where: { staffId, endedAt: null },
+          where: { staffId, endedAt: null, ...timeEntryWhere },
         }),
         tx.timeEntry.findMany({
-          where: { staffId, startedAt: { gte: startOfDay } },
+          where: { staffId, startedAt: { gte: startOfDay }, ...timeEntryWhere },
           orderBy: { startedAt: 'desc' },
         }),
         tx.client.findMany({
+          where: clientWhere,
           orderBy: { name: 'asc' },
           select: { id: true, name: true },
         }),
@@ -44,9 +49,7 @@ export default async function TimeTrackingPage() {
     <div className="p-8">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-primary mb-1">Zeiterfassung</h1>
-        <p className="text-muted text-sm">
-          Heute: {formatMinutes(totalMinutesToday)}
-        </p>
+        <p className="text-muted text-sm">Heute: {formatMinutes(totalMinutesToday)}</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -63,16 +66,17 @@ export default async function TimeTrackingPage() {
             <ul className="divide-y divide-border-subtle">
               {todayEntries.map((e) => {
                 const end = e.endedAt ?? new Date();
-                const minutes = Math.max(0, Math.floor((end.getTime() - e.startedAt.getTime()) / 60000));
+                const minutes = Math.max(
+                  0,
+                  Math.floor((end.getTime() - e.startedAt.getTime()) / 60000),
+                );
                 const isRunning = !e.endedAt;
                 return (
                   <li key={e.id} className="px-6 py-3">
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          <p className="item-title">
-                            {e.description}
-                          </p>
+                          <p className="item-title">{e.description}</p>
                           {isRunning && <span className="badge-yellow">Läuft</span>}
                           {!e.billable && <span className="badge-gray">nicht abrechenbar</span>}
                         </div>
@@ -112,9 +116,7 @@ export default async function TimeTrackingPage() {
             <>
               <h2 className="text-sm font-medium text-primary mb-3">Läuft gerade</h2>
               <p className="text-sm text-secondary mb-1">{running.description}</p>
-              <p className="text-xs text-muted mb-4">
-                seit {fmtTime(running.startedAt)}
-              </p>
+              <p className="text-xs text-muted mb-4">seit {fmtTime(running.startedAt)}</p>
               <form action={stopTimerAction}>
                 <button type="submit" className="btn-primary w-full">
                   <Square className="h-3.5 w-3.5" />

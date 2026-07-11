@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateXRechnungCii } from '../xrechnung';
+import { generateXRechnungCii, toXRechnungInvoice } from '../xrechnung';
 // Geteilte Fixture (Mischsätze 19/7/0 %) — auch Input der KoSIT-Validierung
 // im CI-Job `e-rechnung` (cli/generate-sample.ts).
 import { SAMPLE_INVOICE, SAMPLE_SELLER, SAMPLE_BUYER } from '../sample-fixture';
@@ -120,6 +120,81 @@ describe('generateXRechnungCii — Storno (iter100, TypeCode 381)', () => {
     const normal = generateXRechnungCii(SAMPLE_INVOICE, SAMPLE_SELLER, SAMPLE_BUYER);
     expect(normal).toContain('<ram:TypeCode>380</ram:TypeCode>');
     expect(normal).not.toContain('<ram:InvoiceReferencedDocument>');
+  });
+
+  it('modelliert negative Zeilen über die Menge, nie über einen negativen BT-146-Preis (BR-27)', () => {
+    const correction = generateXRechnungCii(
+      {
+        ...SAMPLE_INVOICE,
+        typeCode: '381',
+        precedingInvoiceNumber: '2026-0041',
+        netAmount: -100,
+        vatAmount: -19,
+        totalAmount: -119,
+        positions: [
+          {
+            ...SAMPLE_INVOICE.positions[0]!,
+            quantity: -1,
+            unitPrice: 100,
+            netAmount: -100,
+          },
+        ],
+      },
+      SAMPLE_SELLER,
+      SAMPLE_BUYER,
+    );
+    expect(correction).toContain('<ram:ChargeAmount>100.00</ram:ChargeAmount>');
+    expect(correction).toContain('<ram:BilledQuantity unitCode="HUR">-1.00</ram:BilledQuantity>');
+    expect(correction).not.toMatch(/<ram:ChargeAmount>-/);
+  });
+});
+
+describe('toXRechnungInvoice — einheitliche Route-/Archiv-Abbildung', () => {
+  it('erhält Reverse-Charge, Leistungszeitraum und Storno-Referenz gemeinsam', () => {
+    const start = new Date(Date.UTC(2026, 4, 1));
+    const end = new Date(Date.UTC(2026, 4, 31));
+    const mapped = toXRechnungInvoice({
+      number: '2026-0042',
+      issueDate: SAMPLE_INVOICE.issueDate,
+      dueDate: SAMPLE_INVOICE.dueDate,
+      subject: 'RC-Korrektur',
+      notes: null,
+      servicePeriodStart: start,
+      servicePeriodEnd: end,
+      vatExemptionReason: null,
+      reverseCharge: true,
+      stornoOfId: '00000000-0000-0000-0000-000000000001',
+      stornoOf: { number: '2026-0041' },
+      netAmount: -100,
+      vatAmount: 0,
+      totalAmount: -100,
+      positions: [
+        {
+          position: 1,
+          description: 'Beratung',
+          quantity: -1,
+          unit: 'Stunde',
+          unitPrice: 100,
+          netAmount: -100,
+          vatRate: 0,
+        },
+      ],
+    });
+
+    expect(mapped).toMatchObject({
+      reverseCharge: true,
+      typeCode: '381',
+      precedingInvoiceNumber: '2026-0041',
+      servicePeriodStart: start,
+      servicePeriodEnd: end,
+    });
+    const xml = generateXRechnungCii(mapped, SAMPLE_SELLER, {
+      ...SAMPLE_BUYER,
+      vatId: 'DE123456789',
+    });
+    expect(xml).toContain('<ram:CategoryCode>AE</ram:CategoryCode>');
+    expect(xml).toContain('<ram:TypeCode>381</ram:TypeCode>');
+    expect(xml).toContain('<ram:IssuerAssignedID>2026-0041</ram:IssuerAssignedID>');
   });
 });
 

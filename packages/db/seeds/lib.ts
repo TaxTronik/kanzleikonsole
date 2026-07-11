@@ -43,16 +43,59 @@ export async function ensureDefaultDocumentTypes(
   const defaults: Array<{
     name: string;
     tier: 'NONE' | 'GWG' | 'GOBD';
+    retentionYears: number | null;
     classificationKey: string;
     sortOrder: number;
   }> = [
-    { name: 'GoBD Rechnung', tier: 'GOBD', classificationKey: 'GOBD_INVOICE', sortOrder: 10 },
-    { name: 'GoBD Vertrag',  tier: 'GOBD', classificationKey: 'GOBD_CONTRACT', sortOrder: 20 },
-    { name: 'GoBD Steuer',   tier: 'GOBD', classificationKey: 'GOBD_TAX',      sortOrder: 30 },
-    { name: 'GwG Nachweis',  tier: 'GWG',  classificationKey: 'GWG_EVIDENCE',  sortOrder: 40 },
-    { name: 'Personal',      tier: 'NONE', classificationKey: 'PERSONNEL',     sortOrder: 50 },
-    { name: 'Intern',        tier: 'NONE', classificationKey: 'STAFF_PRIVATE', sortOrder: 60 },
-    { name: 'Allgemein',     tier: 'NONE', classificationKey: 'GENERAL',       sortOrder: 70 },
+    {
+      name: 'GoBD Rechnung',
+      tier: 'GOBD',
+      retentionYears: 8,
+      classificationKey: 'GOBD_INVOICE',
+      sortOrder: 10,
+    },
+    {
+      name: 'GoBD Vertrag',
+      tier: 'GOBD',
+      retentionYears: 10,
+      classificationKey: 'GOBD_CONTRACT',
+      sortOrder: 20,
+    },
+    {
+      name: 'GoBD Steuer',
+      tier: 'GOBD',
+      retentionYears: 10,
+      classificationKey: 'GOBD_TAX',
+      sortOrder: 30,
+    },
+    {
+      name: 'GwG Nachweis',
+      tier: 'GWG',
+      retentionYears: 5,
+      classificationKey: 'GWG_EVIDENCE',
+      sortOrder: 40,
+    },
+    {
+      name: 'Personal',
+      tier: 'NONE',
+      retentionYears: null,
+      classificationKey: 'PERSONNEL',
+      sortOrder: 50,
+    },
+    {
+      name: 'Intern',
+      tier: 'NONE',
+      retentionYears: null,
+      classificationKey: 'STAFF_PRIVATE',
+      sortOrder: 60,
+    },
+    {
+      name: 'Allgemein',
+      tier: 'NONE',
+      retentionYears: null,
+      classificationKey: 'GENERAL',
+      sortOrder: 70,
+    },
   ];
   const existing = await prisma.documentType.findMany({
     where: { tenantId },
@@ -69,6 +112,7 @@ export async function ensureDefaultDocumentTypes(
       tenantId,
       name: d.name,
       tier: d.tier,
+      retentionYears: d.retentionYears,
       builtin: true,
       classificationKey: d.classificationKey,
       sortOrder: d.sortOrder,

@@ -24,6 +24,38 @@ if (process.env['CI'] === 'true' && !hasDatabase) {
 
 const describeWithDatabase = hasDatabase ? describe : describe.skip;
 
+const TENANT_CLIENT_PAIR_TABLES = [
+  'appointment',
+  'appointment_request',
+  'bwa_period',
+  'bwa_plan',
+  'client_consent',
+  'client_contact',
+  'client_custom_field_value',
+  'client_handover',
+  'client_master_change_request',
+  'client_reminder',
+  'client_responsibility',
+  'document',
+  'document_folder',
+  'elster_kontoabfrage',
+  'form_submission',
+  'gwg_check',
+  'gwg_onboarding_invite',
+  'invoice',
+  'pending_binder',
+  'phone_note',
+  'power_of_attorney',
+  'request',
+  'risk_analysis',
+  'tax_deadline',
+  'tax_filing',
+  'tax_notice',
+  'tax_schedule_config',
+  'time_entry',
+  'workflow_instance',
+] as const;
+
 // Owner-Client für Test-Setup (BYPASSRLS)
 const owner = new PrismaClient({
   adapter: createPostgresAdapter(optionalDatabaseUrl(process.env['DATABASE_URL'])),
@@ -99,10 +131,30 @@ beforeAll(async () => {
   clientBId = clientB.id;
 
   await owner.gwgCheck.create({
-    data: { tenantId: tenantAId, clientId: clientAId, status: 'VERIFIED', validUntil: null },
+    data: {
+      tenantId: tenantAId,
+      clientId: clientAId,
+      status: 'VERIFIED',
+      validUntil: null,
+      legalForm: 'GmbH',
+      registerNumber: 'HRB RLS-A',
+      registerAuthority: 'Amtsgericht Teststadt',
+      representativeNames: ['Vertretung A'],
+      ownershipStructureNotes: 'Test-Snapshot für die RLS-Regression.',
+    },
   });
   await owner.gwgCheck.create({
-    data: { tenantId: tenantBId, clientId: clientBId, status: 'VERIFIED', validUntil: null },
+    data: {
+      tenantId: tenantBId,
+      clientId: clientBId,
+      status: 'VERIFIED',
+      validUntil: null,
+      legalForm: 'GmbH',
+      registerNumber: 'HRB RLS-B',
+      registerAuthority: 'Amtsgericht Teststadt',
+      representativeNames: ['Vertretung B'],
+      ownershipStructureNotes: 'Test-Snapshot für die RLS-Regression.',
+    },
   });
   await owner.client.update({ where: { id: clientAId }, data: { allowActive: true } });
   await owner.client.update({ where: { id: clientBId }, data: { allowActive: true } });
@@ -260,13 +312,11 @@ describeWithDatabase('Cross-Tenant RLS', () => {
 
   it('Test 4: Cross-Tenant-Update auf Client von B aus Kontext A schlägt fehl', async () => {
     await expect(
-      withTenantContext(
-        { tenantId: tenantAId, actorId: null, actorType: 'SYSTEM' },
-        (tx) =>
-          tx.client.update({
-            where: { id: clientBId },
-            data: { name: 'Manipuliert' },
-          }),
+      withTenantContext({ tenantId: tenantAId, actorId: null, actorType: 'SYSTEM' }, (tx) =>
+        tx.client.update({
+          where: { id: clientBId },
+          data: { name: 'Manipuliert' },
+        }),
       ),
     ).rejects.toThrow(); // RLS-Violation oder Record not found
   });
@@ -324,21 +374,18 @@ describeWithDatabase('Cross-Tenant RLS', () => {
   it('Test 10: Cross-Tenant-Insert wird durch RLS-INSERT-Policy blockiert', async () => {
     // Versuche, im Kontext A einen Mandanten mit tenantId=B anzulegen.
     await expect(
-      withTenantContext(
-        { tenantId: tenantAId, actorId: null, actorType: 'SYSTEM' },
-        (tx) =>
-          tx.client.create({
-            data: { tenantId: tenantBId, kind: 'JURPERS', name: 'Schmuggel', allowActive: false },
-          }),
+      withTenantContext({ tenantId: tenantAId, actorId: null, actorType: 'SYSTEM' }, (tx) =>
+        tx.client.create({
+          data: { tenantId: tenantBId, kind: 'JURPERS', name: 'Schmuggel', allowActive: false },
+        }),
       ),
     ).rejects.toThrow();
   });
 
   it('Test 11: Cross-Tenant-Delete schlägt fehl', async () => {
     await expect(
-      withTenantContext(
-        { tenantId: tenantAId, actorId: null, actorType: 'SYSTEM' },
-        (tx) => tx.client.delete({ where: { id: clientBId } }),
+      withTenantContext({ tenantId: tenantAId, actorId: null, actorType: 'SYSTEM' }, (tx) =>
+        tx.client.delete({ where: { id: clientBId } }),
       ),
     ).rejects.toThrow();
   });
@@ -348,13 +395,11 @@ describeWithDatabase('Cross-Tenant RLS', () => {
     // würde, würde eine Session die andere überschreiben. Prüfen wir, dass
     // beide unabhängig die richtigen Daten sehen.
     const [resA, resB] = await Promise.all([
-      withTenantContext(
-        { tenantId: tenantAId, actorId: null, actorType: 'SYSTEM' },
-        (tx) => tx.client.findMany({ select: { id: true, tenantId: true } }),
+      withTenantContext({ tenantId: tenantAId, actorId: null, actorType: 'SYSTEM' }, (tx) =>
+        tx.client.findMany({ select: { id: true, tenantId: true } }),
       ),
-      withTenantContext(
-        { tenantId: tenantBId, actorId: null, actorType: 'SYSTEM' },
-        (tx) => tx.client.findMany({ select: { id: true, tenantId: true } }),
+      withTenantContext({ tenantId: tenantBId, actorId: null, actorType: 'SYSTEM' }, (tx) =>
+        tx.client.findMany({ select: { id: true, tenantId: true } }),
       ),
     ]);
     expect(resA.every((c) => c.tenantId === tenantAId)).toBe(true);
@@ -364,6 +409,173 @@ describeWithDatabase('Cross-Tenant RLS', () => {
     expect(resA.map((c) => c.id)).not.toContain(clientBId);
     expect(resB.map((c) => c.id)).not.toContain(clientAId);
   });
+
+  it('Test 23: jede tenant_id/client_id-Basistabelle trägt den zentralen Paar-Guard', async () => {
+    const coverage = await owner.$queryRaw<
+      Array<{ table_name: string; guard_count: bigint; enabled_count: bigint }>
+    >`
+      WITH pair_tables AS (
+        SELECT c.table_name
+          FROM information_schema.columns c
+          JOIN information_schema.tables base
+            ON base.table_schema = c.table_schema
+           AND base.table_name = c.table_name
+           AND base.table_type = 'BASE TABLE'
+         WHERE c.table_schema = 'public'
+           AND c.column_name IN ('tenant_id', 'client_id')
+         GROUP BY c.table_name
+        HAVING COUNT(DISTINCT c.column_name) = 2
+      )
+      SELECT pair_tables.table_name,
+             COUNT(t.oid) FILTER (
+               WHERE p.proname = 'enforce_tenant_client_pair_integrity'
+             )::BIGINT AS guard_count,
+             COUNT(t.oid) FILTER (
+               WHERE p.proname = 'enforce_tenant_client_pair_integrity'
+                 AND t.tgenabled <> 'D'
+             )::BIGINT AS enabled_count
+        FROM pair_tables
+        LEFT JOIN pg_class rel
+          ON rel.oid = ('public.' || quote_ident(pair_tables.table_name))::regclass
+        LEFT JOIN pg_trigger t
+          ON t.tgrelid = rel.oid
+         AND NOT t.tgisinternal
+        LEFT JOIN pg_proc p ON p.oid = t.tgfoid
+       GROUP BY pair_tables.table_name
+       ORDER BY pair_tables.table_name
+    `;
+
+    expect(coverage.map((row) => row.table_name)).toEqual([...TENANT_CLIENT_PAIR_TABLES]);
+    expect(coverage.filter((row) => row.guard_count !== 1n || row.enabled_count !== 1n)).toEqual(
+      [],
+    );
+  });
+
+  it('Test 24: App-Role blockiert Cross-Tenant-Paarung bei INSERT auf zuvor ungeschützten Tabellen', async () => {
+    await expect(
+      withTenantContext({ tenantId: tenantAId, actorId: staffAId, actorType: 'STAFF' }, (tx) =>
+        tx.phoneNote.create({
+          data: {
+            tenantId: tenantAId,
+            clientId: clientBId,
+            callerName: 'Cross-Tenant',
+            subject: 'Muss blockieren',
+            body: 'Mandant B darf nicht an Tenant-A-Zeile hängen.',
+            takenByStaff: staffAId,
+          },
+        }),
+      ),
+    ).rejects.toThrow();
+
+    await expect(
+      withTenantContext({ tenantId: tenantAId, actorId: staffAId, actorType: 'STAFF' }, (tx) =>
+        tx.clientReminder.create({
+          data: {
+            tenantId: tenantAId,
+            clientId: clientBId,
+            dueDate: new Date('2026-12-31T00:00:00.000Z'),
+            subject: 'Cross-Tenant Reminder',
+            createdByStaff: staffAId,
+          },
+        }),
+      ),
+    ).rejects.toThrow();
+  });
+
+  it('Test 25: App-Role blockiert Cross-Tenant-Reparenting einer sichtbaren Kindzeile', async () => {
+    const reminder = await withTenantContext(
+      { tenantId: tenantAId, actorId: staffAId, actorType: 'STAFF' },
+      (tx) =>
+        tx.clientReminder.create({
+          data: {
+            tenantId: tenantAId,
+            clientId: clientAId,
+            dueDate: new Date('2026-12-31T00:00:00.000Z'),
+            subject: 'Valide Ausgangszeile',
+            createdByStaff: staffAId,
+          },
+        }),
+    );
+
+    await expect(
+      withTenantContext({ tenantId: tenantAId, actorId: staffAId, actorType: 'STAFF' }, (tx) =>
+        tx.clientReminder.update({
+          where: { id: reminder.id },
+          data: { clientId: clientBId },
+        }),
+      ),
+    ).rejects.toThrow();
+  });
+
+  it('Test 26: Client-ID und Tenant-Zuordnung sind auch für BYPASSRLS unveränderlich', async () => {
+    await expect(
+      owner.client.update({ where: { id: clientAId }, data: { tenantId: tenantBId } }),
+    ).rejects.toThrow(/unveränderliche Scope-Identität/);
+    await expect(
+      owner.client.update({
+        where: { id: clientAId },
+        data: { id: '99999999-9999-4999-8999-999999999999' },
+      }),
+    ).rejects.toThrow(/unveränderliche Scope-Identität/);
+  });
+
+  it('Test 27: Parent-Lock serialisiert Kind-INSERT ohne Deadlock', async () => {
+    let releaseParent!: () => void;
+    let parentLocked!: () => void;
+    let reportPid!: (pid: number) => void;
+    const release = new Promise<void>((resolve) => {
+      releaseParent = resolve;
+    });
+    const locked = new Promise<void>((resolve) => {
+      parentLocked = resolve;
+    });
+    const pidReady = new Promise<number>((resolve) => {
+      reportPid = resolve;
+    });
+
+    const parent = owner.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`
+            SELECT "id" FROM public."client"
+             WHERE "id" = ${clientAId}::uuid
+             FOR UPDATE
+          `;
+        parentLocked();
+        await release;
+      },
+      { timeout: 10_000 },
+    );
+
+    await locked;
+    const child = withTenantContext(
+      { tenantId: tenantAId, actorId: staffAId, actorType: 'STAFF' },
+      async (tx) => {
+        const [backend] = await tx.$queryRaw<Array<{ pid: number }>>`
+            SELECT pg_backend_pid()::integer AS pid
+          `;
+        reportPid(backend!.pid);
+        return tx.phoneNote.create({
+          data: {
+            tenantId: tenantAId,
+            clientId: clientAId,
+            callerName: 'Lock Regression',
+            subject: 'Valides Kind nach Parent-Lock',
+            body: 'Muss nach Freigabe des Parent-Locks erfolgreich sein.',
+            takenByStaff: staffAId,
+          },
+        });
+      },
+    );
+
+    try {
+      expect(await waitForBackendLock(await pidReady)).toBe(true);
+    } finally {
+      releaseParent();
+    }
+
+    await expect(parent).resolves.toBeUndefined();
+    await expect(child).resolves.toMatchObject({ clientId: clientAId, tenantId: tenantAId });
+  }, 15_000);
 
   // ---------------------------------------------------------------------
   // Join-Tabellen ohne eigenes tenant_id (EXISTS-Policy auf Eltern-Tabelle)
@@ -384,25 +596,21 @@ describeWithDatabase('Cross-Tenant RLS', () => {
 
   it('Test 21: BwaPlanLine — Insert an Plan von B aus Kontext A wird blockiert (WITH CHECK)', async () => {
     await expect(
-      withTenantContext(
-        { tenantId: tenantAId, actorId: null, actorType: 'SYSTEM' },
-        (tx) =>
-          tx.bwaPlanLine.create({
-            data: { planId: bwaPlanBId, axis: 'PERSONNEL', amount: '1' },
-          }),
+      withTenantContext({ tenantId: tenantAId, actorId: null, actorType: 'SYSTEM' }, (tx) =>
+        tx.bwaPlanLine.create({
+          data: { planId: bwaPlanBId, axis: 'PERSONNEL', amount: '1' },
+        }),
       ),
     ).rejects.toThrow();
   });
 
   it('Test 22: BwaPlanLine — Cross-Tenant-Update auf Planzeile von B schlägt fehl', async () => {
     await expect(
-      withTenantContext(
-        { tenantId: tenantAId, actorId: null, actorType: 'SYSTEM' },
-        (tx) =>
-          tx.bwaPlanLine.update({
-            where: { id: bwaPlanLineBId },
-            data: { amount: '999999' },
-          }),
+      withTenantContext({ tenantId: tenantAId, actorId: null, actorType: 'SYSTEM' }, (tx) =>
+        tx.bwaPlanLine.update({
+          where: { id: bwaPlanLineBId },
+          data: { amount: '999999' },
+        }),
       ),
     ).rejects.toThrow(); // RLS-Violation oder Record not found
   });
@@ -483,3 +691,16 @@ describeWithDatabase('Cross-Tenant RLS', () => {
     }
   });
 });
+
+async function waitForBackendLock(pid: number): Promise<boolean> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const [activity] = await owner.$queryRaw<Array<{ waiting: boolean }>>`
+      SELECT COALESCE(wait_event_type = 'Lock', FALSE) AS waiting
+        FROM pg_stat_activity
+       WHERE pid = ${pid}
+    `;
+    if (activity?.waiting) return true;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return false;
+}

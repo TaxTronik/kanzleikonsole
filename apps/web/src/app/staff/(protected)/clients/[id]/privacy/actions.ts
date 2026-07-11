@@ -7,8 +7,15 @@ import { evidenceService } from '@/server/container';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
-import { ConsentSelectionsSchema, emptyConsent, countGranted } from '@/server/privacy/consent';
+import {
+  ConsentSelectionsSchema,
+  emptyConsent,
+  countGranted,
+  hasConsentRevocation,
+  parseConsent,
+} from '@/server/privacy/consent';
 import { renderNoticeForTenantTx } from '@/server/privacy/service';
+import { isPrivacyConfigComplete, readPrivacyConfigTx } from '@/server/privacy/notice';
 
 const SaveSchema = z.object({
   clientId: z.string().uuid(),
@@ -57,9 +64,26 @@ export async function saveConsentAction(
           where: { id: d.signedByContact, clientId: d.clientId },
           select: { id: true },
         });
-        if (!contact) throw new Error('Ausgewählte Kontaktperson gehört nicht zu diesem Mandanten.');
+        if (!contact)
+          throw new Error('Ausgewählte Kontaktperson gehört nicht zu diesem Mandanten.');
         signedByContact = contact.id;
       }
+
+      const privacyConfig = await readPrivacyConfigTx(tx, tenantId);
+      if (!isPrivacyConfigComplete(privacyConfig)) {
+        throw new Error(
+          'Datenschutzhinweis unvollständig: Verantwortliche Stelle, Datenschutzkontakt und Aufsichtsbehörde müssen zuerst konfiguriert werden.',
+        );
+      }
+
+      const previous = await tx.clientConsent.findFirst({
+        where: { clientId: d.clientId },
+        select: { consents: true },
+        orderBy: { createdAt: 'desc' },
+      });
+      const isRevocation = previous
+        ? hasConsentRevocation(parseConsent(previous.consents), consents)
+        : false;
 
       // Volltext-Snapshot einfrieren (Nachweis der akzeptierten Fassung).
       const notice = await renderNoticeForTenantTx(tx, tenantId);
@@ -74,7 +98,7 @@ export async function saveConsentAction(
           source: 'STAFF',
           signedByName: d.signedByName.trim(),
           signedByContact,
-          isRevocation: false,
+          isRevocation,
           note: d.note && d.note !== '' ? d.note : null,
           createdBy: staffId,
         },
@@ -83,7 +107,7 @@ export async function saveConsentAction(
         tenantId,
         actorType: 'STAFF',
         actorId: staffId,
-        action: 'privacy.consent.grant',
+        action: isRevocation ? 'privacy.consent.revoke' : 'privacy.consent.grant',
         resourceType: 'client_consent',
         resourceId: row.id,
         after: {
@@ -92,6 +116,7 @@ export async function saveConsentAction(
           grantedCount: countGranted(consents),
           signedByName: d.signedByName.trim(),
           source: 'STAFF',
+          isRevocation,
         },
       });
     });

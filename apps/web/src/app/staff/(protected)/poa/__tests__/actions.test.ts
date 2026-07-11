@@ -42,6 +42,7 @@ const m = vi.hoisted(() => {
     headers: vi.fn(),
     prismaOwner: {
       powerOfAttorney: { findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+      documentVersion: { findFirst: vi.fn() },
       tenant: { findUnique: vi.fn() },
     },
   };
@@ -96,7 +97,10 @@ vi.mock('@/server/db/assert-tenant', () => ({ assertClientInTenant: m.assertClie
 vi.mock('@/server/notifications/service', () => ({ notify: m.notify }));
 
 import {
+  createPoaAction,
+  loadPoaForSigning,
   requestSigningOtpAction,
+  revokePoaAction,
   sendForSignatureAction,
   signPoaAction,
 } from '../actions';
@@ -109,6 +113,30 @@ const RAW_TOKEN = 'poa-signing-token-0123456789abcdef';
 const OTP = '123456';
 const FUTURE = new Date(Date.now() + 60 * 60 * 1000);
 
+function snapshotFields(validUntil: string | null = '2099-12-31') {
+  const snapshot = JSON.stringify({
+    schemaVersion: 1,
+    subject: 'Vollmacht Finanzamt',
+    signerName: 'Sina Signer',
+    signerEmail: 'signer@example.de',
+    validFrom: '2026-01-01',
+    validUntil,
+    scope: 'Vertretung gegenüber dem Finanzamt',
+    document: null,
+  });
+  return {
+    signingContentSnapshot: snapshot,
+    signingContentSha256: createHash('sha256').update(snapshot).digest(),
+    signingDocumentVersionId: null,
+  };
+}
+
+const noSnapshotFields = {
+  signingContentSnapshot: null,
+  signingContentSha256: null,
+  signingDocumentVersionId: null,
+} as const;
+
 function poaRecord(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     id: 'poa-1',
@@ -118,6 +146,10 @@ function poaRecord(overrides: Partial<Record<string, unknown>> = {}) {
     signerEmail: 'signer@example.de',
     signerName: 'Sina Signer',
     subject: 'Vollmacht Finanzamt',
+    scope: 'Vertretung gegenüber dem Finanzamt',
+    validFrom: new Date('2026-01-01T00:00:00.000Z'),
+    validUntil: new Date('2099-12-31T00:00:00.000Z'),
+    documentId: null,
     status: 'SENT',
     signingTokenHash: sha256(RAW_TOKEN),
     signingTokenExpiresAt: FUTURE,
@@ -126,6 +158,7 @@ function poaRecord(overrides: Partial<Record<string, unknown>> = {}) {
     signingOtpAttempts: 0,
     signingOtpAttemptsTotal: 0,
     createdByStaff: 'staff-1',
+    ...snapshotFields(),
     ...overrides,
   };
 }
@@ -142,12 +175,14 @@ beforeEach(() => {
     signingOtpAttemptsTotal: 1,
   });
   m.prismaOwner.powerOfAttorney.updateMany.mockResolvedValue({ count: 1 });
+  m.prismaOwner.tenant.findUnique.mockResolvedValue({ id: 'tenant-1', name: 'Kanzlei X' });
   m.sendTemplateMail.mockResolvedValue(undefined);
   m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
-    fn({}),
+    fn(m.prismaOwner),
   );
   m.evidenceRecord.mockResolvedValue({});
   m.notify.mockResolvedValue(undefined);
+  m.isStaffAdmin.mockReturnValue(true);
 });
 
 // -----------------------------------------------------------------------------
@@ -156,7 +191,7 @@ beforeEach(() => {
 
 describe('signPoaAction — falsches OTP', () => {
   it('inkrementiert BEIDE Zähler (pro-OTP + Lebenszyklus)', async () => {
-    const res = await signPoaAction({ rawToken: RAW_TOKEN, otp: '999999' });
+    const res = await signPoaAction({ rawToken: RAW_TOKEN, otp: '999999', consentAccepted: true });
     expect(res.ok).toBe(false);
     expect(m.prismaOwner.powerOfAttorney.update).toHaveBeenCalledTimes(1);
     expect(m.prismaOwner.powerOfAttorney.update).toHaveBeenCalledWith({
@@ -174,7 +209,7 @@ describe('signPoaAction — falsches OTP', () => {
       signingOtpAttempts: 4,
       signingOtpAttemptsTotal: 14,
     });
-    await signPoaAction({ rawToken: RAW_TOKEN, otp: '999999' });
+    await signPoaAction({ rawToken: RAW_TOKEN, otp: '999999', consentAccepted: true });
     // Nur der Increment-Call — kein zweiter Update zur Invalidierung.
     expect(m.prismaOwner.powerOfAttorney.update).toHaveBeenCalledTimes(1);
   });
@@ -184,7 +219,7 @@ describe('signPoaAction — falsches OTP', () => {
       signingOtpAttempts: 5,
       signingOtpAttemptsTotal: 5,
     });
-    await signPoaAction({ rawToken: RAW_TOKEN, otp: '999999' });
+    await signPoaAction({ rawToken: RAW_TOKEN, otp: '999999', consentAccepted: true });
     expect(m.prismaOwner.powerOfAttorney.update).toHaveBeenCalledTimes(2);
     expect(m.prismaOwner.powerOfAttorney.update).toHaveBeenLastCalledWith({
       where: { id: 'poa-1' },
@@ -205,7 +240,7 @@ describe('signPoaAction — falsches OTP', () => {
       signingOtpAttempts: 1,
       signingOtpAttemptsTotal: 15,
     });
-    await signPoaAction({ rawToken: RAW_TOKEN, otp: '999999' });
+    await signPoaAction({ rawToken: RAW_TOKEN, otp: '999999', consentAccepted: true });
     expect(m.prismaOwner.powerOfAttorney.update).toHaveBeenCalledTimes(2);
     expect(m.prismaOwner.powerOfAttorney.update).toHaveBeenLastCalledWith({
       where: { id: 'poa-1' },
@@ -221,10 +256,10 @@ describe('signPoaAction — falsches OTP', () => {
 
 describe('signPoaAction — korrektes OTP', () => {
   it('signiert atomar und setzt beide Zähler zurück', async () => {
-    const res = await signPoaAction({ rawToken: RAW_TOKEN, otp: OTP });
+    const res = await signPoaAction({ rawToken: RAW_TOKEN, otp: OTP, consentAccepted: true });
     expect(res).toEqual({ ok: true });
     expect(m.prismaOwner.powerOfAttorney.updateMany).toHaveBeenCalledWith({
-      where: { id: 'poa-1', status: 'SENT' },
+      where: { id: 'poa-1', status: 'SENT', signingTokenHash: sha256(RAW_TOKEN) },
       data: expect.objectContaining({
         status: 'SIGNED',
         signingTokenHash: null,
@@ -233,6 +268,87 @@ describe('signPoaAction — korrektes OTP', () => {
         signingOtpAttemptsTotal: 0,
       }),
     });
+    expect(m.evidenceRecord).toHaveBeenCalledTimes(1);
+    expect(m.evidenceRecord.mock.calls[0]![0]).toBe(m.prismaOwner);
+    expect(m.evidenceRecord.mock.calls[0]![1]).toEqual(
+      expect.objectContaining({
+        action: 'poa.sign',
+        after: expect.objectContaining({ explicitContentConsent: true }),
+      }),
+    );
+  });
+});
+
+describe('explizite Inhaltsbestätigung', () => {
+  it('signiert serverseitig nicht ohne ausdrückliche Bestätigung', async () => {
+    const res = await signPoaAction({ rawToken: RAW_TOKEN, otp: OTP, consentAccepted: false });
+    expect(res).toEqual({
+      ok: false,
+      error: 'Bitte bestätigen Sie den Vollmachtsinhalt ausdrücklich.',
+    });
+    expect(m.prismaOwner.powerOfAttorney.findFirst).not.toHaveBeenCalled();
+    expect(m.evidenceRecord).not.toHaveBeenCalled();
+  });
+
+  it('versendet auch den Code nicht ohne ausdrückliche Bestätigung', async () => {
+    const res = await requestSigningOtpAction({
+      rawToken: RAW_TOKEN,
+      consentAccepted: false,
+    });
+    expect(res.ok).toBe(false);
+    expect(m.sendTemplateMail).not.toHaveBeenCalled();
+  });
+});
+
+describe('Ablauf-Gate', () => {
+  it('signiert einen abgelaufenen Versand-Snapshot nicht', async () => {
+    m.prismaOwner.powerOfAttorney.findFirst.mockResolvedValue(
+      poaRecord({
+        validUntil: new Date('2020-01-01T00:00:00.000Z'),
+        ...snapshotFields('2020-01-01'),
+      }),
+    );
+    const res = await signPoaAction({ rawToken: RAW_TOKEN, otp: OTP, consentAccepted: true });
+    expect(res.ok).toBe(false);
+    expect(m.prismaOwner.powerOfAttorney.updateMany).not.toHaveBeenCalled();
+    expect(m.evidenceRecord).not.toHaveBeenCalled();
+  });
+});
+
+describe('loadPoaForSigning — gebundene Anzeige', () => {
+  it('zeigt Snapshot-Werte statt nachträglich veränderter Live-Felder', async () => {
+    m.prismaOwner.powerOfAttorney.findFirst.mockResolvedValue(
+      poaRecord({
+        subject: 'Nachträglich geänderter Betreff',
+        scope: 'Nachträglich geänderter Umfang',
+        signerName: 'Andere Person',
+      }),
+    );
+
+    const result = await loadPoaForSigning(RAW_TOKEN);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('unerwarteter Fehler');
+    expect(result.poa).toEqual(
+      expect.objectContaining({
+        subject: 'Vollmacht Finanzamt',
+        scope: 'Vertretung gegenüber dem Finanzamt',
+        signerName: 'Sina Signer',
+      }),
+    );
+  });
+
+  it('verwirft einen manipulierten Snapshot', async () => {
+    const fields = snapshotFields();
+    m.prismaOwner.powerOfAttorney.findFirst.mockResolvedValue(
+      poaRecord({
+        ...fields,
+        signingContentSnapshot: fields.signingContentSnapshot.replace('Finanzamt', 'Finanzgericht'),
+      }),
+    );
+
+    const result = await loadPoaForSigning(RAW_TOKEN);
+    expect(result.ok).toBe(false);
   });
 });
 
@@ -242,7 +358,7 @@ describe('signPoaAction — korrektes OTP', () => {
 
 describe('requestSigningOtpAction — Re-Issue', () => {
   it('resettet NUR den pro-OTP-Zähler, niemals signingOtpAttemptsTotal', async () => {
-    const res = await requestSigningOtpAction(RAW_TOKEN);
+    const res = await requestSigningOtpAction({ rawToken: RAW_TOKEN, consentAccepted: true });
     expect(res).toEqual({ ok: true });
     expect(m.prismaOwner.powerOfAttorney.update).toHaveBeenCalledTimes(1);
     const { data } = m.prismaOwner.powerOfAttorney.update.mock.calls[0]![0] as {
@@ -271,11 +387,12 @@ describe('sendForSignatureAction', () => {
     });
     const tx = {
       powerOfAttorney: {
-        findUnique: vi.fn().mockResolvedValue(poaRecord({ status: 'DRAFT' })),
+        findUnique: vi.fn().mockResolvedValue(poaRecord({ status: 'DRAFT', ...noSnapshotFields })),
         // Neuer Flow: atomarer Claim via updateMany + Re-Fetch.
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         findUniqueOrThrow: vi.fn().mockResolvedValue(poaRecord({ status: 'SENT' })),
       },
+      documentVersion: { findFirst: vi.fn() },
       tenant: { findUnique: vi.fn().mockResolvedValue({ id: 'tenant-1', name: 'Kanzlei X' }) },
     };
     m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (t: unknown) => unknown) =>
@@ -300,5 +417,194 @@ describe('sendForSignatureAction', () => {
     expect(data.signingOtpAttempts).toBe(0);
     expect(data.signingOtpAttemptsTotal).toBe(0);
     expect(data.signingOtpHash).toBeNull();
+    expect(data.signingContentSnapshot).toEqual(expect.any(String));
+    expect(Buffer.from(data.signingContentSha256 as Uint8Array)).toHaveLength(32);
+  });
+
+  it('verweigert Versand für Nicht-ADMIN/PARTNER', async () => {
+    m.staffActionGuard.mockResolvedValue({
+      ok: true,
+      tenantId: 'tenant-1',
+      staffId: 'staff-1',
+      ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
+      session: {},
+    });
+    m.isStaffAdmin.mockReturnValue(false);
+    const fd = new FormData();
+    fd.set('poaId', '7e6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e6f');
+    const res = await sendForSignatureAction(fd);
+    expect(res.ok).toBe(false);
+    expect(m.withTenantContext).not.toHaveBeenCalled();
+  });
+
+  it('Resend schreibt exakt denselben gebundenen Snapshot erneut', async () => {
+    m.staffActionGuard.mockResolvedValue({
+      ok: true,
+      tenantId: 'tenant-1',
+      staffId: 'staff-1',
+      ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
+      session: {},
+    });
+    const before = poaRecord({ status: 'SENT' });
+    const tx = {
+      powerOfAttorney: {
+        findUnique: vi.fn().mockResolvedValue(before),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        findUniqueOrThrow: vi.fn().mockResolvedValue(before),
+      },
+      documentVersion: { findFirst: vi.fn() },
+      tenant: { findUnique: vi.fn().mockResolvedValue({ id: 'tenant-1', name: 'Kanzlei X' }) },
+    };
+    m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (t: unknown) => unknown) =>
+      fn(tx),
+    );
+    const fd = new FormData();
+    fd.set('poaId', '7e6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e6f');
+
+    const res = await sendForSignatureAction(fd);
+
+    expect(res).toEqual({ ok: true });
+    const data = tx.powerOfAttorney.updateMany.mock.calls[0]![0].data;
+    expect(data.signingContentSnapshot).toBe(before.signingContentSnapshot);
+    expect(Buffer.from(data.signingContentSha256)).toEqual(
+      Buffer.from(before.signingContentSha256 as Uint8Array),
+    );
+    expect(data.signingDocumentVersionId).toBe(before.signingDocumentVersionId);
+  });
+
+  it('bindet beim PDF-Versand die exakte Dokumentversion und deren Hash', async () => {
+    m.staffActionGuard.mockResolvedValue({
+      ok: true,
+      tenantId: 'tenant-1',
+      staffId: 'staff-1',
+      ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
+      session: {},
+    });
+    const documentId = '11111111-1111-4111-8111-111111111111';
+    const versionId = '22222222-2222-4222-8222-222222222222';
+    const documentSha256 = Buffer.alloc(32, 0xab);
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([{ id: documentId }]),
+      powerOfAttorney: {
+        findUnique: vi
+          .fn()
+          .mockResolvedValue(poaRecord({ status: 'DRAFT', documentId, ...noSnapshotFields })),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        findUniqueOrThrow: vi.fn().mockResolvedValue(poaRecord({ status: 'SENT', documentId })),
+      },
+      documentVersion: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: versionId,
+          documentId,
+          sha256: documentSha256,
+        }),
+      },
+      tenant: { findUnique: vi.fn().mockResolvedValue({ id: 'tenant-1', name: 'Kanzlei X' }) },
+    };
+    m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (t: unknown) => unknown) =>
+      fn(tx),
+    );
+    const fd = new FormData();
+    fd.set('poaId', '7e6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e6f');
+
+    const res = await sendForSignatureAction(fd);
+
+    expect(res).toEqual({ ok: true });
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    const data = tx.powerOfAttorney.updateMany.mock.calls[0]![0].data as Record<string, unknown>;
+    expect(data.signingDocumentVersionId).toBe(versionId);
+    expect(JSON.parse(data.signingContentSnapshot as string)).toEqual(
+      expect.objectContaining({
+        document: {
+          documentId,
+          versionId,
+          sha256: documentSha256.toString('hex'),
+        },
+        scope: null,
+      }),
+    );
+  });
+
+  it('versendet eine bereits abgelaufene Vollmacht nicht', async () => {
+    m.staffActionGuard.mockResolvedValue({
+      ok: true,
+      tenantId: 'tenant-1',
+      staffId: 'staff-1',
+      ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
+      session: {},
+    });
+    const tx = {
+      powerOfAttorney: {
+        findUnique: vi.fn().mockResolvedValue(
+          poaRecord({
+            status: 'DRAFT',
+            validUntil: new Date('2020-01-01T00:00:00.000Z'),
+            ...noSnapshotFields,
+          }),
+        ),
+        updateMany: vi.fn(),
+      },
+    };
+    m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (t: unknown) => unknown) =>
+      fn(tx),
+    );
+    const fd = new FormData();
+    fd.set('poaId', '7e6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e6f');
+
+    const res = await sendForSignatureAction(fd);
+
+    expect(res.ok).toBe(false);
+    expect(tx.powerOfAttorney.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('revokePoaAction — Rollen-Gate', () => {
+  it('verweigert Widerruf für Nicht-ADMIN/PARTNER vor dem Datensatz-Lookup', async () => {
+    const tx = {
+      powerOfAttorney: {
+        findUnique: vi.fn(),
+        update: vi.fn(),
+      },
+    };
+    m.isStaffAdmin.mockReturnValue(false);
+    m.withStaff.mockImplementation(async (fn: (txArg: unknown, ctx: unknown) => unknown) =>
+      fn(tx, {
+        tenantId: 'tenant-1',
+        staffId: 'staff-1',
+        session: {},
+      }),
+    );
+    const fd = new FormData();
+    fd.set('poaId', '7e6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e6f');
+    fd.set('reason', 'Mandant hat widerrufen');
+
+    await expect(revokePoaAction(fd)).rejects.toThrow(
+      'Vollmachten dürfen nur von ADMIN/PARTNER widerrufen werden.',
+    );
+    expect(tx.powerOfAttorney.findUnique).not.toHaveBeenCalled();
+  });
+});
+
+describe('createPoaAction — Datumsintervall', () => {
+  it('verweigert validUntil vor validFrom bereits serverseitig', async () => {
+    m.staffActionGuard.mockResolvedValue({
+      ok: true,
+      tenantId: 'tenant-1',
+      staffId: 'staff-1',
+      ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
+      session: {},
+    });
+    const fd = new FormData();
+    fd.set('clientId', '7e6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e6f');
+    fd.set('signerEmail', 'signer@example.de');
+    fd.set('signerName', 'Sina Signer');
+    fd.set('subject', 'Vollmacht');
+    fd.set('scope', 'Vertretung');
+    fd.set('validFrom', '2026-08-10');
+    fd.set('validUntil', '2026-08-09');
+    const res = await createPoaAction(null, fd);
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain('darf nicht vor');
+    expect(m.withTenantContext).not.toHaveBeenCalled();
   });
 });

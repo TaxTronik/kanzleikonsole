@@ -14,7 +14,7 @@
 //     („Bitte neuen Personalausweis hochladen") + Notification an Bearbeiter
 //   - Nur einmal pro Dokument (idempotent über offene Request)
 //
-// GwG-Lösch-Queue (§ 8 Abs. 4 S. 4):
+// GwG-Lösch-Queue (§ 8 Abs. 1 und 4, DSGVO Art. 5 Abs. 1 lit. e):
 //   - Sobald Belege/Aufzeichnungen beendeter Mandate löschreif sind, geht
 //     täglich eine idempotente Notification (GWG_DELETION_DUE) an alle
 //     ADMIN/PARTNER — die Review-Queue (/staff/admin/gwg-retention) war
@@ -123,10 +123,15 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
           let clientDeactivated = false;
           let supersededByValid = false;
           await withWorkerTenantContext(tenantId, async (tx) => {
+            const clientBefore = await tx.client.findUnique({
+              where: { id: check.clientId },
+              select: { allowActive: true },
+            });
             const checkRes = await tx.gwgCheck.updateMany({
               where: { id: check.id, status: 'VERIFIED' },
               data: { status: 'EXPIRED' },
             });
+            if (checkRes.count === 0) return;
             if (checkRes.count > 0) {
               await evidence.record(tx, {
                 tenantId,
@@ -157,7 +162,11 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
               where: { id: check.clientId, allowActive: true },
               data: { allowActive: false },
             });
-            if (clientRes.count > 0) {
+            const clientAfter = await tx.client.findUnique({
+              where: { id: check.clientId },
+              select: { allowActive: true },
+            });
+            if (clientBefore?.allowActive === true && clientAfter?.allowActive === false) {
               clientDeactivated = true;
               await evidence.record(tx, {
                 tenantId,
@@ -167,7 +176,11 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
                 resourceType: 'client',
                 resourceId: check.clientId,
                 before: { allowActive: true },
-                after: { allowActive: false, gwgCheckId: check.id },
+                after: {
+                  allowActive: false,
+                  gwgCheckId: check.id,
+                  deactivatedByDbTrigger: clientRes.count === 0,
+                },
               });
             }
           });
@@ -245,8 +258,7 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
 
         // Notification an Bearbeiter (auch ADMIN/PARTNER als Fallback)
         const respIds = doc.check.client.responsibilities.map((r) => r.staffId);
-        const recipients =
-          respIds.length > 0 ? respIds : adminPartners.map((s) => s.id);
+        const recipients = respIds.length > 0 ? respIds : adminPartners.map((s) => s.id);
         const titleSuffix = isExpired
           ? `seit ${-daysLeft} Tagen abgelaufen`
           : `läuft in ${daysLeft} Tagen ab`;
@@ -294,7 +306,7 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
       }
 
       // ----------------------------------------------------------------------
-      // 3. GwG-Lösch-Queue (§ 8 Abs. 4 S. 4) — tägliche Notification an
+      // 3. GwG-Lösch-Queue (§ 8 Abs. 1 und 4, DSGVO-Speicherbegrenzung) — tägliche Notification an
       //    ADMIN/PARTNER, sobald Einträge löschreif sind.
       //
       //    Fristlogik wie apps/web/src/server/gwg/retention.ts: Frist endet am
@@ -310,14 +322,56 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
             tenantId,
             classification: 'GWG_EVIDENCE',
             deletedAt: null,
-            client: { mandateEndedAt: { lt: gwgDeletionCutoff } },
+            OR: [
+              { client: { mandateEndedAt: { lt: gwgDeletionCutoff } } },
+              {
+                createdAt: { lt: gwgDeletionCutoff },
+                client: { mandateEndedAt: null },
+                gwgOnboardingInvite: {
+                  is: {
+                    OR: [
+                      { status: { in: ['CANCELLED', 'EXPIRED'] } },
+                      { status: { in: ['PENDING', 'STARTED'] }, expiresAt: { lte: now } },
+                      {
+                        status: 'SUBMITTED',
+                        gwgCheck: {
+                          is: {
+                            OR: [{ status: 'REJECTED' }, { status: 'EXPIRED', verifiedAt: null }],
+                          },
+                        },
+                      },
+                    ],
+                  },
+                },
+              },
+              {
+                createdAt: { lt: gwgDeletionCutoff },
+                client: { mandateEndedAt: null },
+                gwgIdDocuments: {
+                  some: {
+                    check: {
+                      OR: [{ status: 'REJECTED' }, { status: 'EXPIRED', verifiedAt: null }],
+                    },
+                  },
+                },
+              },
+            ],
           },
         }),
         prismaOwner.gwgCheck.count({
           where: {
             tenantId,
             destroyedAt: null,
-            client: { mandateEndedAt: { lt: gwgDeletionCutoff } },
+            OR: [
+              { client: { mandateEndedAt: { lt: gwgDeletionCutoff } } },
+              {
+                client: { mandateEndedAt: null },
+                updatedAt: { lt: gwgDeletionCutoff },
+                idDocuments: { none: { createdAt: { gte: gwgDeletionCutoff } } },
+                beneficialOwners: { none: { createdAt: { gte: gwgDeletionCutoff } } },
+                OR: [{ status: 'REJECTED' }, { status: 'EXPIRED', verifiedAt: null }],
+              },
+            ],
           },
         }),
       ]);
@@ -330,7 +384,7 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
           // Tenant-ID als stabiler Schlüssel für den Tages-Dedupe.
           await upsertNotification(tenantId, s.id, {
             kind: 'GWG_DELETION_DUE' as NotificationKind,
-            title: `GwG-Pflichtlöschung: ${itemWord} löschreif`,
+            title: `GwG-Löschprüfung: ${itemWord} löschreif`,
             body:
               'Belege/Aufzeichnungen beendeter Mandate, deren Aufbewahrungsfrist ' +
               '(§ 8 Abs. 4 GwG) abgelaufen ist — bitte Vernichtung in der Review-Queue bestätigen.',
@@ -406,8 +460,12 @@ function recipientsForStage(
   responsibilities: Array<{ staffId: string; role: string }>,
   adminPartners: Array<{ id: string }>,
 ): string[] {
-  const bearbeiter = responsibilities.filter((r) => r.role === 'HAUPTBEARBEITER').map((r) => r.staffId);
-  const berufstraeger = responsibilities.filter((r) => r.role === 'BERUFSTRAEGER').map((r) => r.staffId);
+  const bearbeiter = responsibilities
+    .filter((r) => r.role === 'HAUPTBEARBEITER')
+    .map((r) => r.staffId);
+  const berufstraeger = responsibilities
+    .filter((r) => r.role === 'BERUFSTRAEGER')
+    .map((r) => r.staffId);
 
   let ids: string[];
   if (stage === 'STAGE1') {
@@ -435,7 +493,8 @@ function bodyForStage(stage: Stage, risk: string | null): string {
     return 'Mandant kann keine neuen Vorgänge mehr starten. Bitte erneute Identifizierung anstoßen.';
   }
   const riskNote = risk ? ` Risiko: ${risk}.` : '';
-  if (stage === 'STAGE2') return `Wiederholungsprüfung erforderlich — letzte Eskalationsstufe vor Ablauf.${riskNote}`;
+  if (stage === 'STAGE2')
+    return `Wiederholungsprüfung erforderlich — letzte Eskalationsstufe vor Ablauf.${riskNote}`;
   return `Wiederholungsprüfung in den nächsten 90 Tagen einplanen.${riskNote}`;
 }
 

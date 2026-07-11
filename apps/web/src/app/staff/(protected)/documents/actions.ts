@@ -9,9 +9,11 @@ import {
   fetchObjectBytes,
   commitBytesWithTier,
   classificationToTier,
+  gobdRetentionYears,
   type ProtectionTier,
 } from '@taxtronik/storage';
 import { carrierClassification } from '@/server/storage/document-type';
+import { documentRetagDecision } from '@/server/storage/retag-policy';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { staffActionGuard, withStaff, ActionError } from '@/server/actions/staff-action';
 
@@ -25,20 +27,16 @@ export interface DocActionResult {
 //
 // Stufe steuert Bucket + Object-Lock + Aufbewahrung:
 //   Rang 0: NONE  → kein Lock
-//   Rang 1: GWG   → gwg-Bucket, GOVERNANCE 5 J. (§ 8 Abs. 4 S. 4 GwG erlaubt
-//                   die frühere Vernichtung → GOVERNANCE, nicht COMPLIANCE)
-//   Rang 2: GOBD  → gobd-Bucket, COMPLIANCE 10 J.
+//   Rang 1: GWG   → gwg-Bucket, GOVERNANCE; fachliche Löschung über Queue
+//   Rang 2: GOBD  → gobd-Bucket, COMPLIANCE 6/8/10 J. je Datei-Typ
 //
 //  - neuer Rang  >  alter Rang → Re-Store (Bytes in korrekten Bucket
 //    umkopieren, Version-Pointer + Retention aktualisieren).
-//  - neuer Rang === alter Rang → reine Metadatenänderung.
+//  - gleicher GOBD-Rang, längere Frist → Re-Store mit verlängertem Lock.
+//  - gleicher GOBD-Rang, kürzere Frist → blockiert (bestehender Lock bleibt).
+//  - sonst gleicher Rang → reine Metadatenänderung.
 //  - neuer Rang  <  alter Rang → BLOCKIERT (angewandte Aufbewahrung ist
 //    nicht entfernbar; Bytes sind ohnehin Object-Lock-gehalten).
-// ---------------------------------------------------------------------------
-function tierRank(t: ProtectionTier): 0 | 1 | 2 {
-  return t === 'GOBD' ? 2 : t === 'GWG' ? 1 : 0;
-}
-
 const DeleteSchema = z.object({
   documentId: z.string().uuid(),
   reason: z.string().trim().max(500).optional(),
@@ -102,14 +100,22 @@ export async function restoreDocumentAction(
     async (tx, { tenantId, staffId, session }) => {
       const doc = await tx.document.findFirst({
         where: { id: documentId, tenantId, deletedAt: { not: null } },
-        select: { id: true, title: true, clientId: true },
+        select: { id: true, title: true, clientId: true, gwgDestroyedAt: true },
       });
       if (!doc) throw new ActionError('Dokument nicht gefunden oder nicht gelöscht.');
+      if (doc.gwgDestroyedAt) {
+        throw new ActionError(
+          'Ein endgültig vernichteter GwG-Beleg darf nicht wiederhergestellt werden.',
+        );
+      }
       if (doc.clientId) await assertClientAccessTx(tx, session, doc.clientId);
-      await tx.document.update({
-        where: { id: documentId },
+      const restored = await tx.document.updateMany({
+        where: { id: documentId, deletedAt: { not: null }, gwgDestroyedAt: null },
         data: { deletedAt: null, deletedByStaff: null, deleteReason: null },
       });
+      if (restored.count !== 1) {
+        throw new ActionError('Dokument konnte nicht wiederhergestellt werden.');
+      }
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',
@@ -130,7 +136,15 @@ const RetagSchema = z
     documentId: z.string().uuid(),
     documentTypeId: z.string().uuid().optional(),
     classification: z
-      .enum(['GOBD_INVOICE', 'GOBD_CONTRACT', 'GOBD_TAX', 'GWG_EVIDENCE', 'PERSONNEL', 'STAFF_PRIVATE', 'GENERAL'])
+      .enum([
+        'GOBD_INVOICE',
+        'GOBD_CONTRACT',
+        'GOBD_TAX',
+        'GWG_EVIDENCE',
+        'PERSONNEL',
+        'STAFF_PRIVATE',
+        'GENERAL',
+      ])
       .optional(),
   })
   .refine((d) => d.documentTypeId || d.classification, {
@@ -151,20 +165,21 @@ export async function retagDocumentAction(
 
   // 1. Dokument + aktuellen Typ + neueste Version laden, parallel das
   //    Ziel auflösen (Stufe + Carrier-Klassifikation + Typ-ID).
-  let ctx:
-    | {
-        oldTier: ProtectionTier;
-        oldTypeId: string | null;
-        oldClassification: string;
-        clientId: string | null;
-        versionId: string;
-        bucket: string;
-        key: string;
-        newTier: ProtectionTier;
-        newTypeId: string | null;
-        newClassification: string;
-      }
-    | null = null;
+  let ctx: {
+    oldTier: ProtectionTier;
+    oldTypeId: string | null;
+    oldClassification: string;
+    clientId: string | null;
+    versionId: string;
+    bucket: string;
+    key: string;
+    createdAt: Date;
+    oldRetentionYears: number | null;
+    newTier: ProtectionTier;
+    newTypeId: string | null;
+    newClassification: string;
+    newRetentionYears: number | null;
+  } | null = null;
   try {
     ctx = await withTenantContext(g.ctx, async (tx) => {
       const d = await tx.document.findFirst({
@@ -173,7 +188,8 @@ export async function retagDocumentAction(
           classification: true,
           documentTypeId: true,
           clientId: true,
-          documentType: { select: { tier: true } },
+          createdAt: true,
+          documentType: { select: { tier: true, retentionYears: true } },
           versions: {
             orderBy: { versionNo: 'desc' },
             take: 1,
@@ -189,15 +205,17 @@ export async function retagDocumentAction(
       let newTier: ProtectionTier;
       let newTypeId: string | null;
       let newClassification: string;
+      let newRetentionYears: number | null;
       if (parsed.data.documentTypeId) {
         const t = await tx.documentType.findFirst({
           where: { id: parsed.data.documentTypeId, tenantId, active: true },
-          select: { id: true, tier: true, classificationKey: true },
+          select: { id: true, tier: true, classificationKey: true, retentionYears: true },
         });
         if (!t) throw new ActionError('Datei-Typ nicht gefunden.');
         newTier = t.tier as ProtectionTier;
         newTypeId = t.id;
         newClassification = carrierClassification(t.tier as ProtectionTier, t.classificationKey);
+        newRetentionYears = t.retentionYears;
       } else {
         const cls = parsed.data.classification!;
         const builtin = await tx.documentType.findFirst({
@@ -207,10 +225,13 @@ export async function retagDocumentAction(
         newTier = classificationToTier(cls);
         newTypeId = builtin?.id ?? null;
         newClassification = cls;
+        newRetentionYears =
+          newTier === 'GOBD' ? gobdRetentionYears(cls) : newTier === 'GWG' ? 5 : null;
       }
 
       return {
-        oldTier: (d.documentType?.tier as ProtectionTier | undefined) ??
+        oldTier:
+          (d.documentType?.tier as ProtectionTier | undefined) ??
           classificationToTier(d.classification),
         oldTypeId: d.documentTypeId,
         oldClassification: d.classification,
@@ -218,9 +239,18 @@ export async function retagDocumentAction(
         versionId: d.versions[0].id,
         bucket: d.versions[0].storageBucket,
         key: d.versions[0].storageKey,
+        createdAt: d.createdAt,
+        oldRetentionYears:
+          d.documentType?.retentionYears ??
+          ((d.documentType?.tier ?? classificationToTier(d.classification)) === 'GOBD'
+            ? gobdRetentionYears(d.classification)
+            : (d.documentType?.tier ?? classificationToTier(d.classification)) === 'GWG'
+              ? 5
+              : null),
         newTier,
         newTypeId,
         newClassification,
+        newRetentionYears,
       };
     });
   } catch (e) {
@@ -230,10 +260,14 @@ export async function retagDocumentAction(
 
   if (ctx.newTypeId && ctx.newTypeId === ctx.oldTypeId) return { ok: true }; // No-op.
 
-  const oldR = tierRank(ctx.oldTier);
-  const newR = tierRank(ctx.newTier);
+  const retagDecision = documentRetagDecision({
+    oldTier: ctx.oldTier,
+    newTier: ctx.newTier,
+    oldRetentionYears: ctx.oldRetentionYears,
+    newRetentionYears: ctx.newRetentionYears,
+  });
 
-  if (newR < oldR) {
+  if (retagDecision === 'BLOCK_TIER_DOWNGRADE') {
     return {
       ok: false,
       error:
@@ -243,8 +277,17 @@ export async function retagDocumentAction(
     };
   }
 
+  if (retagDecision === 'BLOCK_RETENTION_SHORTENING') {
+    return {
+      ok: false,
+      error:
+        'Kürzere Aufbewahrungsfrist nicht möglich: Der bestehende COMPLIANCE-Lock ' +
+        `läuft bereits ${ctx.oldRetentionYears} Jahre. Bitte Klassifikation beibehalten.`,
+    };
+  }
+
   try {
-    if (newR === oldR) {
+    if (retagDecision === 'METADATA_ONLY') {
       // Gleiche Stufe → reine Metadatenänderung (Bucket/Lock bleiben).
       await withTenantContext(g.ctx, async (tx) => {
         await tx.document.update({
@@ -273,6 +316,11 @@ export async function retagDocumentAction(
         fileData: bytes,
         tier: ctx.newTier,
         tenantId,
+        classification: ctx.newClassification,
+        ...(ctx.newTier === 'GOBD' && ctx.newRetentionYears
+          ? { retentionYears: ctx.newRetentionYears }
+          : {}),
+        retentionAnchor: ctx.createdAt,
       });
       await withTenantContext(g.ctx, async (tx) => {
         await tx.documentVersion.update({
@@ -305,6 +353,7 @@ export async function retagDocumentAction(
             classification: ctx!.newClassification,
             tier: ctx!.newTier,
             reStored: true,
+            retentionYears: ctx!.newRetentionYears,
             storageBucket: commit.targetBucket,
           },
         });

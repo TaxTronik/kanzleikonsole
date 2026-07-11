@@ -59,31 +59,30 @@ export async function collectVerfahrensdokuData(
     readTsaConfig(ctx).catch(() => null),
   ]);
 
-  const [lastBackup, drillSetting, verifySetting, ...counts] = await withTenantContext(
-    ctx,
-    (tx) =>
-      Promise.all([
-        tx.backupRecord.findFirst({ orderBy: { startedAt: 'desc' } }),
-        tx.tenantSetting.findUnique({
-          where: { tenantId_key: { tenantId: ctx.tenantId, key: BACKUP_DRILL_RESULT_SETTING_KEY } },
-        }),
-        tx.tenantSetting.findUnique({
-          where: { tenantId_key: { tenantId: ctx.tenantId, key: AUDIT_VERIFY_RESULT_SETTING_KEY } },
-        }),
-        tx.staffUser.count({ where: { active: true } }),
-        tx.client.count(),
-        tx.clientContact.count({ where: { active: true } }),
-        tx.document.count({ where: { deletedAt: null } }),
-        tx.auditLog.count(),
-        tx.auditArchive.count(),
-      ]),
+  const [lastBackup, drillSetting, verifySetting, ...counts] = await withTenantContext(ctx, (tx) =>
+    Promise.all([
+      tx.backupRecord.findFirst({ orderBy: { startedAt: 'desc' } }),
+      tx.tenantSetting.findUnique({
+        where: { tenantId_key: { tenantId: ctx.tenantId, key: BACKUP_DRILL_RESULT_SETTING_KEY } },
+      }),
+      tx.tenantSetting.findUnique({
+        where: { tenantId_key: { tenantId: ctx.tenantId, key: AUDIT_VERIFY_RESULT_SETTING_KEY } },
+      }),
+      tx.staffUser.count({ where: { active: true } }),
+      tx.client.count(),
+      tx.clientContact.count({ where: { active: true } }),
+      tx.document.count({ where: { deletedAt: null } }),
+      tx.auditLog.count(),
+      tx.auditArchive.count(),
+    ]),
   );
 
   // TSA-Anzeige: Tenant-Override > ENV-Default > Self-Timestamp.
   let tsaLabel = 'Self-Timestamp (KEIN Drittnachweis — nur Dev/Test zulässig)';
   if (tsa?.providerId === 'custom' && tsa.customUrl) tsaLabel = `Eigene TSA: ${tsa.customUrl}`;
   else if (tsa?.providerId) tsaLabel = getTsaProvider(tsa.providerId)?.label ?? tsa.providerId;
-  else if (process.env['TIMESTAMP_AUTHORITY_URL']) tsaLabel = `RFC-3161-TSA: ${process.env['TIMESTAMP_AUTHORITY_URL']}`;
+  else if (process.env['TIMESTAMP_AUTHORITY_URL'])
+    tsaLabel = `RFC-3161-TSA: ${process.env['TIMESTAMP_AUTHORITY_URL']}`;
 
   return {
     tenantName: tenant.name,
@@ -203,9 +202,11 @@ Mitarbeiter-Konten, ${data.counts.portalContactsActive} aktive Portal-Zugänge.
 - Tagesversiegelung mit Zeitstempel: **${data.tsaLabel}**.
 - ${verifyLine}
 - Steuerlich relevante Dokumente liegen im Object-Store mit
-  **Object-Lock (COMPLIANCE-Mode, 10 Jahre)** — auch Administratoren können
-  sie vor Fristablauf nicht löschen oder ändern. GwG-Unterlagen: 5 Jahre
-  (§ 8 Abs. 4 GwG). Jeder Upload durchläuft vor Annahme einen Virenscan
+  **Object-Lock (COMPLIANCE-Mode, dokumenttypabhängig 6/8/10 Jahre;
+  Rechnungen 8 Jahre)** — auch Administratoren können sie vor Fristablauf
+  nicht löschen oder ändern. GwG-Unterlagen: grundsätzlich 5 Jahre, mögliche
+  längere gesetzliche Pflichten werden geprüft und spätestens nach 10 Jahren
+  wird vernichtet (§ 8 Abs. 4 GwG). Jeder Upload durchläuft vor Annahme einen Virenscan
   (ClamAV); nicht bestandene Dateien werden nicht gespeichert.
 
 ### 2.3 Datensicherung und Wiederherstellbarkeit (GoBD Tz. 10.2)

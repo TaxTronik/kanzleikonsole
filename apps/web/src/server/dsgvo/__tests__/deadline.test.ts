@@ -1,10 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { addCalendarMonths, dsgvoResponseDeadline } from '../deadline';
 
-// Lokale Zeit; Datum als [Y, M(0-basiert), D] konstruieren, um Zeitzonen-
-// Verschiebungen im Vergleich zu vermeiden.
-const d = (y: number, m: number, day: number) => new Date(y, m, day, 9, 30, 0);
-const ymd = (x: Date) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+const d = (y: number, m: number, day: number) => new Date(Date.UTC(y, m, day, 9, 30, 0));
+const ymd = (x: Date) =>
+  `${x.getUTCFullYear()}-${String(x.getUTCMonth() + 1).padStart(2, '0')}-${String(x.getUTCDate()).padStart(2, '0')}`;
 
 describe('addCalendarMonths — monatsende-sicher (§ 188 Abs. 3 BGB)', () => {
   it('31.01. + 1 Monat → 28.02. (kein Überlauf auf 03.03.)', () => {
@@ -29,8 +28,8 @@ describe('addCalendarMonths — monatsende-sicher (§ 188 Abs. 3 BGB)', () => {
 
   it('erhält die Uhrzeit des Ausgangsdatums', () => {
     const out = addCalendarMonths(d(2026, 0, 31), 1);
-    expect(out.getHours()).toBe(9);
-    expect(out.getMinutes()).toBe(30);
+    expect(out.getUTCHours()).toBe(9);
+    expect(out.getUTCMinutes()).toBe(30);
   });
 });
 

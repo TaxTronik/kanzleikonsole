@@ -6,22 +6,22 @@ Orientierungspunkte. Aktuelle Betriebs-, Feature- und Architektur-Doku steht in
 
 ## Was schon steht (Foundation, Iter. 1 — kritische Dateien)
 
-| Datei | Status | Zweck |
-|---|---|---|
-| `package.json`, `pnpm-workspace.yaml`, `turbo.json`, `tsconfig.base.json` | Fertig | Monorepo-Skelett |
-| `.env.example`, `.gitignore`, `.prettierrc`, `.editorconfig`, `.nvmrc` | Fertig | Repo-Config |
-| `infra/compose/docker-compose.yml` + `docker-compose.dev.yml` | Fertig | Stack: Postgres, Redis, SeaweedFS, ClamAV (+ Mailhog dev) |
-| `infra/scripts/postgres-init.sql` | Fertig | DB-Extensions, App-Role |
-| `infra/scripts/init-storage.sh` | Fertig | Buckets mit Object-Lock |
-| `packages/db/prisma/schema.prisma` | Fertig | Iter. 1 Datenmodell |
-| `packages/db/prisma/migrations/.../migration.sql` | Fertig | Initiale Migration mit RLS, Triggern, GwG-Schranke (Stub) |
-| `packages/db/src/{client,tenant-context,index}.ts` | Fertig | Prisma-Client + RLS-Wrapper |
-| `packages/config/src/env.ts` | Fertig | Zod-validiertes ENV |
-| `packages/evidence/src/{service,canonical-json,ports/timestamp}.ts` | Fertig | Hash-Chain + RFC-3161-Adapter |
-| `packages/evidence/src/cli/verify.ts` | Fertig | `pnpm verify:chain` |
-| `apps/web/{package.json,tsconfig.json,next.config.mjs,next-env.d.ts}` | Fertig | Next.js-Setup |
-| `apps/web/src/middleware.ts` | Fertig | Auth-Surface-Routing + Tenant-Header |
-| `docs/architecture.md`, `docs/adr/{0001,0002,0003}.md` | Fertig | Doku |
+| Datei                                                                     | Status | Zweck                                                     |
+| ------------------------------------------------------------------------- | ------ | --------------------------------------------------------- |
+| `package.json`, `pnpm-workspace.yaml`, `turbo.json`, `tsconfig.base.json` | Fertig | Monorepo-Skelett                                          |
+| `.env.example`, `.gitignore`, `.prettierrc`, `.editorconfig`, `.nvmrc`    | Fertig | Repo-Config                                               |
+| `infra/compose/docker-compose.yml` + `docker-compose.dev.yml`             | Fertig | Stack: Postgres, Redis, SeaweedFS, ClamAV (+ Mailhog dev) |
+| `infra/scripts/postgres-init.sql`                                         | Fertig | DB-Extensions, App-Role                                   |
+| `infra/scripts/init-storage.sh`                                           | Fertig | Buckets mit Object-Lock                                   |
+| `packages/db/prisma/schema.prisma`                                        | Fertig | Iter. 1 Datenmodell                                       |
+| `packages/db/prisma/migrations/.../migration.sql`                         | Fertig | Initiale Migration mit RLS, Triggern, GwG-Schranke (Stub) |
+| `packages/db/src/{client,tenant-context,index}.ts`                        | Fertig | Prisma-Client + RLS-Wrapper                               |
+| `packages/config/src/env.ts`                                              | Fertig | Zod-validiertes ENV                                       |
+| `packages/evidence/src/{service,canonical-json,ports/timestamp}.ts`       | Fertig | Hash-Chain + RFC-3161-Adapter                             |
+| `packages/evidence/src/cli/verify.ts`                                     | Fertig | `pnpm verify:chain`                                       |
+| `apps/web/{package.json,tsconfig.json,next.config.mjs,next-env.d.ts}`     | Fertig | Next.js-Setup                                             |
+| `apps/web/src/middleware.ts`                                              | Fertig | Auth-Surface-Routing + Tenant-Header                      |
+| `docs/architecture.md`, `docs/adr/{0001,0002,0003}.md`                    | Fertig | Doku                                                      |
 
 ## Was als Nächstes ansteht — strikte Reihenfolge
 
@@ -99,7 +99,8 @@ shadcn/ui für Komponenten (`pnpm dlx shadcn@latest init` im `apps/web`-Workspac
 - Presigned-PUT für Browser-Upload.
 - Commit-Endpoint: lädt Datei kurz, scannt mit ClamAV (TCP), berechnet SHA-256,
   schreibt `document` + `document_version` (mit `immutable: true` für GoBD-Klassen).
-- Retention: für GoBD-Klassen `retention_until = now() + 10 years` und Object-Lock-Retain.
+- Retention: für GoBD-Klassen dokumenttypabhängig 6, 8 oder 10 Jahre ab dem
+  einschlägigen Jahresende und Object-Lock-Retain; Rechnungen werden acht Jahre aufbewahrt.
 
 ### Schritt 6: Cross-Tenant-RLS-Test
 

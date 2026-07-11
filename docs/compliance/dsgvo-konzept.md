@@ -16,39 +16,39 @@ Stand: 2026-06-10. Dieses Dokument beschreibt für taxtronik:
 
 ### 1.1 Mitarbeiter der Kanzlei (`staff_user`)
 
-| Feld | Zweck | Rechtsgrundlage |
-|---|---|---|
+| Feld                | Zweck                  | Rechtsgrundlage              |
+| ------------------- | ---------------------- | ---------------------------- |
 | `email`, `fullName` | Login + Identifikation | Art. 6 (1) b DSGVO (Vertrag) |
-| `passwordHash` | Authentifizierung | Art. 6 (1) b |
-| `totpSecretEnc` | 2FA-Pflicht | Art. 6 (1) c (§ 32 DSGVO) |
-| `roles` | Zugriffssteuerung | Art. 6 (1) b |
-| `lastLoginAt` | Sicherheits-Monitoring | Art. 6 (1) f |
-| `lockedUntil` | Brute-Force-Schutz | Art. 6 (1) f |
+| `passwordHash`      | Authentifizierung      | Art. 6 (1) b                 |
+| `totpSecretEnc`     | 2FA-Pflicht            | Art. 6 (1) c (§ 32 DSGVO)    |
+| `roles`             | Zugriffssteuerung      | Art. 6 (1) b                 |
+| `lastLoginAt`       | Sicherheits-Monitoring | Art. 6 (1) f                 |
+| `lockedUntil`       | Brute-Force-Schutz     | Art. 6 (1) f                 |
 
 ### 1.2 Mandanten (`client`)
 
-| Feld | Zweck |
-|---|---|
-| Firma, Anschrift, USt-ID | Mandanten-Verwaltung + Rechnungsstellung |
-| DATEV-/Addison-Nr. | Verknüpfung externe Systeme |
-| Stamm-Daten (`vatId`, `kind` etc.) | GwG-relevante Identifizierung |
+| Feld                               | Zweck                                    |
+| ---------------------------------- | ---------------------------------------- |
+| Firma, Anschrift, USt-ID           | Mandanten-Verwaltung + Rechnungsstellung |
+| DATEV-/Addison-Nr.                 | Verknüpfung externe Systeme              |
+| Stamm-Daten (`vatId`, `kind` etc.) | GwG-relevante Identifizierung            |
 
 ### 1.3 Mandanten-Kontakte (`client_contact`)
 
-| Feld | Zweck |
-|---|---|
-| `email`, `fullName` | Portal-Zugang + Kommunikation |
-| `lastLoginAt` | Aktivitätsanzeige |
-| `notificationsEnabled` | Selbstbestimmung Mandant |
+| Feld                   | Zweck                         |
+| ---------------------- | ----------------------------- |
+| `email`, `fullName`    | Portal-Zugang + Kommunikation |
+| `lastLoginAt`          | Aktivitätsanzeige             |
+| `notificationsEnabled` | Selbstbestimmung Mandant      |
 
 ### 1.4 GwG-Daten (besonders schutzbedürftig)
 
-| Feld / Tabelle | Zweck | Rechtsgrundlage |
-|---|---|---|
-| `gwg_check.*` | Geldwäschegesetz-Prüfung | Art. 6 (1) c DSGVO + § 11 GwG |
-| `gwg_id_document` mit Ausweisbildern | Identifizierung gem. § 12 GwG | Art. 6 (1) c |
-| `gwg_beneficial_owner` (Geb.-Datum, Anschrift) | wirtschaftlich Berechtigte | § 11 GwG |
-| `gwg_risk_score` | Risikobewertung | § 10 GwG |
+| Feld / Tabelle                                 | Zweck                         | Rechtsgrundlage               |
+| ---------------------------------------------- | ----------------------------- | ----------------------------- |
+| `gwg_check.*`                                  | Geldwäschegesetz-Prüfung      | Art. 6 (1) c DSGVO + § 11 GwG |
+| `gwg_id_document` mit Ausweisbildern           | Identifizierung gem. § 12 GwG | Art. 6 (1) c                  |
+| `gwg_beneficial_owner` (Geb.-Datum, Anschrift) | wirtschaftlich Berechtigte    | § 11 GwG                      |
+| `gwg_risk_score`                               | Risikobewertung               | § 10 GwG                      |
 
 ### 1.5 Bewegungsdaten
 
@@ -67,20 +67,20 @@ Stand: 2026-06-10. Dieses Dokument beschreibt für taxtronik:
 
 ### 2.1 Gesetzliche Aufbewahrungsfristen
 
-| Datenklasse | Frist | Quelle | Rechtsgrundlage |
-|---|---|---|---|
-| GoBD-Belege (Rechnungen, Verträge, Steuerbelege) | **10 Jahre** Mindestfrist | § 147 AO | Art. 6 (1) lit. c DSGVO i. V. m. § 147 AO |
-| Geschäftsbriefe, sonstige Unterlagen | 6 Jahre Mindestfrist | § 147 AO | Art. 6 (1) lit. c DSGVO i. V. m. § 147 AO |
-| Lohnunterlagen | 6 Jahre Mindestfrist | § 41 EStG | Art. 6 (1) lit. c DSGVO i. V. m. § 41 EStG |
-| **GwG-Identifizierungs-Daten** (Ausweisbilder, wB-Daten) | **5 Jahre Höchstfrist** nach Geschäftsbeendigung | § 8 (4) GwG | Art. 6 (1) lit. c DSGVO i. V. m. § 8 GwG |
-| GwG-Risikoanalysen | 5 Jahre | § 8 (4) GwG | Art. 6 (1) lit. c DSGVO i. V. m. § 8 GwG |
-| Audit-Log + Hash-Chain | 10 Jahre | analog § 147 AO (Verfahrensintegrität) | Art. 6 (1) lit. f DSGVO (berechtigtes Interesse) + § 147 AO analog |
+| Datenklasse                                              | Frist                                                                                                                                      | Quelle                                 | Rechtsgrundlage                                                    |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------- | ------------------------------------------------------------------ |
+| Steuer-/Handelsunterlagen                                | je Dokumentart **6, 8 oder 10 Jahre**; ggf. länger bei offenen Verfahren                                                                   | § 147 AO, § 14b UStG                   | Art. 6 (1) lit. c DSGVO                                            |
+| Geschäftsbriefe, sonstige Unterlagen                     | 6 Jahre Mindestfrist                                                                                                                       | § 147 AO                               | Art. 6 (1) lit. c DSGVO i. V. m. § 147 AO                          |
+| Lohnunterlagen                                           | 6 Jahre Mindestfrist                                                                                                                       | § 41 EStG                              | Art. 6 (1) lit. c DSGVO i. V. m. § 41 EStG                         |
+| **GwG-Identifizierungs-Daten** (Ausweisbilder, wB-Daten) | grundsätzlich **5 Jahre** ab dem gesetzlichen Fristbeginn; andere Vorschriften können länger gelten, spätestens nach 10 Jahren Vernichtung | § 8 (4) GwG                            | Art. 6 (1) lit. c DSGVO i. V. m. § 8 GwG                           |
+| GwG-Risikoanalysen                                       | 5 Jahre                                                                                                                                    | § 8 (4) GwG                            | Art. 6 (1) lit. c DSGVO i. V. m. § 8 GwG                           |
+| Audit-Log + Hash-Chain                                   | 10 Jahre                                                                                                                                   | analog § 147 AO (Verfahrensintegrität) | Art. 6 (1) lit. f DSGVO (berechtigtes Interesse) + § 147 AO analog |
 
-> ⚠ **§ 8 Abs. 4 GwG ist Höchst-, keine Mindestfrist.** Satz 4 verlangt
-> EXPLIZIT „unverzügliche Vernichtung" nach Ablauf. Längere Aufbewahrung
-> ist nach DSGVO Art. 5 Abs. 1 lit. e (Speicherbegrenzung) zusätzlich
-> unzulässig. taxtronik trennt deshalb GwG-Bilder vom GoBD-Bucket ab
-> (siehe technische Durchsetzung unten).
+> ⚠ **§ 8 Abs. 4 GwG differenziert:** grundsätzlich fünf Jahre, soweit keine
+> andere gesetzliche Vorschrift länger verpflichtet; spätestens nach zehn
+> Jahren sind die Aufzeichnungen zu vernichten. taxtronik trennt deshalb
+> GwG-Bilder vom GoBD-Bucket und führt das tatsächliche Fristende über eine
+> fachliche Lösch-Review-Queue.
 
 **Audit-Log-Rechtsgrundlage (B-2):** Der Audit-Log enthält personenbezogene
 Daten (actor_id, ip, user_agent, optional before/after-Werte). Wir leiten die
@@ -108,17 +108,16 @@ sehen — siehe [pen-test-vorbereitung.md](./pen-test-vorbereitung.md).
 
 **Technische Durchsetzung (B-1, Round 13):**
 
-| Klassifikation | Bucket | Object-Lock | Retention |
-|---|---|---|---|
-| `GOBD_INVOICE`, `GOBD_CONTRACT`, `GOBD_TAX` | `gobd` | COMPLIANCE | 10 Jahre + 1 Tag (Jahresende-Logik, § 147 AO) |
-| `GWG_EVIDENCE` | `gwg` (separat!) | **GOVERNANCE** | 5 Jahre + 1 Tag |
-| `GENERAL`, `STAFF_PRIVATE` | jeweils eigener Bucket | — | kein Lock, Lifecycle nach Bedarf |
+| Klassifikation             | Bucket                 | Object-Lock    | Retention                                                        |
+| -------------------------- | ---------------------- | -------------- | ---------------------------------------------------------------- |
+| GoBD-Datei-Typen           | `gobd`                 | COMPLIANCE     | typabhängig 6/8/10 Jahre (Jahresende-Logik, § 147 AO/§ 14b UStG) |
+| `GWG_EVIDENCE`             | `gwg` (separat!)       | **GOVERNANCE** | 5 Jahre + 1 Tag                                                  |
+| `GENERAL`, `STAFF_PRIVATE` | jeweils eigener Bucket | —              | kein Lock, Lifecycle nach Bedarf                                 |
 
-**Warum GOVERNANCE statt COMPLIANCE für GwG?** COMPLIANCE lässt sich vor
-Ablauf von niemandem (auch nicht root) verkürzen — damit wäre die von
-§ 8 Abs. 4 Satz 4 GwG geforderte UNVERZÜGLICHE Vernichtung nach Ende der
-Geschäftsbeziehung technisch nicht erfüllbar (Konflikt mit Art. 5 Abs. 1
-lit. e DSGVO). GOVERNANCE erlaubt die privilegierte Frühlöschung
+**Warum GOVERNANCE statt COMPLIANCE für GwG?** Der technische Upload-Lock
+kann den ereignisabhängigen gesetzlichen Fristbeginn nicht abschließend
+abbilden. GOVERNANCE erlaubt die kontrollierte Löschung am von der
+Retention-Queue ermittelten tatsächlichen Fristende
 (`s3:BypassGovernanceRetention`); für alle ohne dieses Recht bleibt die
 fristgebundene Unveränderbarkeit erhalten. GoBD-Klassen bleiben COMPLIANCE
 (keine Frühlöschung vorgesehen). Siehe `lockModeForTier()` in
@@ -133,26 +132,30 @@ erforderlich, falls Bestandsdaten existieren).
 
 ### 2.2 Maximale Aufbewahrungsdauer (Löschung)
 
-| Datenklasse | Max. Aufbewahrung | Trigger |
-|---|---|---|
-| `client_contact.lastLoginAt` | 2 Jahre nach letztem Login | Worker `dsgvo-retention` (täglich 04:00 UTC) — Feld wird genullt |
-| Inactive `staff_user` (deaktiviert) | 6 Jahre nach Deaktivierung | manuell durch Admin |
-| `phone_note` | 3 Jahre | Worker `dsgvo-retention` (täglich 04:00 UTC) |
-| Anforderungen + Antworten ohne GoBD-Bezug | 6 Jahre (10 J. mit GoBD-Bezug) | Worker `dsgvo-retention` (täglich 04:00 UTC) |
-| Notifications | 1 Jahr nach Erstellung | Worker `dsgvo-retention` (täglich 04:00 UTC) |
-| `magic_link` (verbrauchte oder abgelaufene) | 30 Tage | direkt nach Verbrauch |
-| GwG-Belege + GwG-Aufzeichnungen beendeter Mandate | Mandatsende-Jahresende + 5 Jahre (§ 8 (4) GwG) | Review-Queue `/staff/admin/gwg-retention` — Vernichtung wird vom Berufsträger bestätigt (kein Auto-Delete); Worker `gwg-expiry-check` schickt täglich eine idempotente `GWG_DELETION_DUE`-Notification an ADMIN/PARTNER, sobald Einträge löschreif sind. Details in [gwg.md](./gwg.md) |
-| Mandanten-Stammdaten natürlicher Personen (`client`, `kind = NATPERS`) beendeter Mandate | Mandatsende-Jahresende + **10 Jahre** (längste Frist gewinnt: GoBD 10 J. § 147 AO > GwG 5 J. § 8 (4)) | Review-Queue `/staff/admin/dsgvo-retention` — Anonymisierung wird vom Berufsträger bestätigt (kein Auto-Anonymisieren). Name/Adresse/USt-ID/Notizen/DATEV-Addison-Nr. werden genullt, Custom-Feld-Werte gelöscht, verknüpfte `client_contact`s mit-anonymisiert. Skelett-Datensatz mit Vernichtungsvermerk (`client.anonymized_at`) bleibt. Vorbedingung: GwG-Belege/-Aufzeichnungen des Mandanten sind bereits vernichtet (GwG-Queue). Fristlogik: [`apps/web/src/server/dsgvo/client-retention.ts`](../../apps/web/src/server/dsgvo/client-retention.ts) |
+| Datenklasse                                                                              | Max. Aufbewahrung                                                                                                          | Trigger                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `client_contact.lastLoginAt`                                                             | 2 Jahre nach letztem Login                                                                                                 | Worker `dsgvo-retention` (täglich 04:00 UTC) — Feld wird genullt                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Inactive `staff_user` (deaktiviert)                                                      | 6 Jahre nach Deaktivierung                                                                                                 | manuell durch Admin                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `phone_note`                                                                             | 3 Jahre                                                                                                                    | Worker `dsgvo-retention` (täglich 04:00 UTC)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Anforderungen + Antworten                                                                | grundsätzlich 6 Jahre; bei verknüpften GoBD-Dokumenten längste einschlägige Typfrist (6/8/10 Jahre, Rechnung 8 Jahre)      | Worker `dsgvo-retention` (täglich 04:00 UTC)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Notifications                                                                            | 1 Jahr nach Erstellung                                                                                                     | Worker `dsgvo-retention` (täglich 04:00 UTC)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `magic_link` (verbrauchte oder abgelaufene)                                              | 30 Tage                                                                                                                    | direkt nach Verbrauch                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| GwG-Belege + GwG-Aufzeichnungen beendeter Mandate                                        | Mandatsende-Jahresende + 5 Jahre (§ 8 (4) GwG)                                                                             | Review-Queue `/staff/admin/gwg-retention` — Vernichtung wird vom Berufsträger bestätigt (kein Auto-Delete); Worker `gwg-expiry-check` schickt täglich eine idempotente `GWG_DELETION_DUE`-Notification an ADMIN/PARTNER, sobald Einträge löschreif sind. Details in [gwg.md](./gwg.md)                                                                                                                                                                                                                                                                     |
+| Mandanten-Stammdaten natürlicher Personen (`client`, `kind = NATPERS`) beendeter Mandate | Mandatsende-Jahresende + **10 Jahre** (§ 66 StBerG Handakte; daneben jeweils konkrete Steuer-/Handels-/GwG-Fristen prüfen) | Review-Queue `/staff/admin/dsgvo-retention` — Anonymisierung wird vom Berufsträger bestätigt (kein Auto-Anonymisieren). Name/Adresse/USt-ID/Notizen/DATEV-Addison-Nr. werden genullt, Custom-Feld-Werte gelöscht, verknüpfte `client_contact`s mit-anonymisiert. Skelett-Datensatz mit Vernichtungsvermerk (`client.anonymized_at`) bleibt. Vorbedingung: GwG-Belege/-Aufzeichnungen des Mandanten sind bereits vernichtet (GwG-Queue). Fristlogik: [`apps/web/src/server/dsgvo/client-retention.ts`](../../apps/web/src/server/dsgvo/client-retention.ts) |
 
 > Stand 2026-05-29: Der Worker `dsgvo-retention`
 > ([apps/worker/src/jobs/dsgvo-retention.ts](../../apps/worker/src/jobs/dsgvo-retention.ts))
 > setzt Notifications-, Phone-Note-, lastLoginAt- UND Anforderungs-Retention
 > automatisch durch.
 >
-> **GoBD-Bezug bei Anforderungen**: Ein Request gilt als GoBD-bezogen, sobald
-> eine Antwort ein Dokument mit `documentType.tier = GOBD` bzw. `classification`
-> `GOBD_*` referenziert — dann greift die 10-Jahres-Frist (§ 147 AO) statt der
-> 6-Jahre-DSGVO-Minimierung. Beim Löschen werden die losen Rückverweise
+> **GoBD-Bezug bei Anforderungen**: Referenziert eine Antwort ein Dokument mit
+> `documentType.tier = GOBD`, übernimmt der Request die längste dort gepflegte
+> Typfrist (6, 8 oder 10 Jahre); für Altbestand ohne Typ gilt
+> `GOBD_INVOICE` = 8 Jahre, `GOBD_CONTRACT`/`GOBD_TAX` = 10 Jahre. Der Worker
+> berücksichtigt ausschließlich abgeschlossene/abgebrochene Requests und
+> prüft neben deren Abschluss-/Abbruchdatum auch das Datum der jüngsten Antwort,
+> damit weder offene Vorgänge noch spätere Antworten vorzeitig gelöscht werden.
+> Beim Löschen werden die losen Rückverweise
 > `tax_deadline.request_id` und `form_submission.request_id` in derselben
 > Transaktion genullt; referenzierte Dokumente bleiben (eigene Object-Lock-
 > Retention).
@@ -244,7 +247,8 @@ Daraus folgt für die DSGVO-Löschung:
   personenbezogenen Daten; deren Ansprechpartner bleiben über die
   Contact-Anonymisierung oben einzeln anonymisierbar
 - Trigger: Mandatsende + Ablauf ALLER Aufbewahrungsfristen (längste gewinnt:
-  GoBD 10 J. ab Jahresende > GwG 5 J., siehe § 2.2) — vorher hat die
+  Handakte nach § 66 StBerG 10 J. ab Mandatsende-Jahresende; konkrete
+  Steuer-/Handels-/GwG-Fristen zusätzlich prüfen, siehe § 2.2) — vorher hat die
   Aufbewahrungspflicht Vorrang (Art. 17 (3) b)
 - Review-Queue `/staff/admin/dsgvo-retention` (ADMIN/PARTNER), Bestätigung
   durch den Berufsträger mit Zwei-Schritt-Dialog — kein Auto-Anonymisieren
@@ -321,14 +325,14 @@ Daraus folgt für die DSGVO-Löschung:
 
 Innerhalb von taxtronik werden folgende Auftragsverarbeiter eingesetzt:
 
-| Anbieter | Zweck | AV-Vertrag |
-|---|---|---|
-| Hosting-Provider (durch Kanzlei gewählt) | Server-Betrieb | individuell |
-| ClamAV (lokaler Container) | Virus-Scan | kein externer Drittanbieter |
-| RFC-3161-TSA (z. B. D-Trust) | Audit-Versiegelung | Adapter konfigurierbar |
-| n8n (lokaler Container) | Workflow-Automatisierung | kein externer Drittanbieter — **Achtung**: Sobald die Kanzlei n8n.cloud oder einen externen n8n-Server nutzt, wird n8n zum Auftragsverarbeiter (Art. 28 DSGVO) und ein AVV ist Pflicht. taxtronik gibt das Compose-Setup für lokales n8n vor; die Kanzlei muss eine bewusste Entscheidung treffen, wenn sie davon abweicht (B-4). |
-| (Optional) eIDAS-QES-Provider | qualifizierte Signaturen | Adapter konfigurierbar |
-| Mandanten-eigene Auftragsverarbeiter | im Verzeichnis `/staff/admin/dsgvo/providers` |
+| Anbieter                                 | Zweck                                         | AV-Vertrag                                                                                                                                                                                                                                                                                                                        |
+| ---------------------------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Hosting-Provider (durch Kanzlei gewählt) | Server-Betrieb                                | individuell                                                                                                                                                                                                                                                                                                                       |
+| ClamAV (lokaler Container)               | Virus-Scan                                    | kein externer Drittanbieter                                                                                                                                                                                                                                                                                                       |
+| RFC-3161-TSA (z. B. D-Trust)             | Audit-Versiegelung                            | Adapter konfigurierbar                                                                                                                                                                                                                                                                                                            |
+| n8n (lokaler Container)                  | Workflow-Automatisierung                      | kein externer Drittanbieter — **Achtung**: Sobald die Kanzlei n8n.cloud oder einen externen n8n-Server nutzt, wird n8n zum Auftragsverarbeiter (Art. 28 DSGVO) und ein AVV ist Pflicht. taxtronik gibt das Compose-Setup für lokales n8n vor; die Kanzlei muss eine bewusste Entscheidung treffen, wenn sie davon abweicht (B-4). |
+| (Optional) eIDAS-QES-Provider            | qualifizierte Signaturen                      | Adapter konfigurierbar                                                                                                                                                                                                                                                                                                            |
+| Mandanten-eigene Auftragsverarbeiter     | im Verzeichnis `/staff/admin/dsgvo/providers` |
 
 **Verzeichnis nach Art. 30 DSGVO** wird im Modul „Dienstleister (AVV)"
 gepflegt.
@@ -378,23 +382,24 @@ sind (Identitätsmerkmale + Risikoeinschätzung).
 
 Die DSFA ist NICHT Teil dieses Dokuments — sie wird pro Kanzlei
 individuell durchgeführt mit Vorlagen aus dem Bereich „Steuerberater
-+ DSGVO" (z. B. Vorlagen der Steuerberaterkammern).
+
+- DSGVO" (z. B. Vorlagen der Steuerberaterkammern).
 
 ---
 
 ## 8. Anhang — Mapping „Aktion → Daten-Auswirkung"
 
-| Aktion | Tabellen geschrieben | Audit-Action |
-|---|---|---|
-| Mandant anlegen | `client` | `client.created` |
-| Stammdaten bearbeiten (administrativ) | `client` | `client.update.administrative` |
-| Stammdaten bearbeiten (GwG-relevant) | `client`, `gwg_check` (→ IN_REVIEW) | `client.update.gwg_relevant` |
-| GwG-Onboarding-Submit | `client`, `gwg_check`, `gwg_beneficial_owner`, `gwg_id_document`, `document` | `gwg.onboarding.submit` |
-| Dokument-Upload | `document`, `document_version` | `document.upload` |
-| Rechnung erstellen | `invoice`, `invoice_position` | `invoice.create` |
-| DSGVO-Auskunft | (read) | `dsgvo.export.contact` |
-| DSGVO-Anonymisierung | `client_contact` (Felder anonymisiert) | `dsgvo.anonymize.contact` |
-| Mandant anonymisiert (Art. 17, nach Fristablauf) | `client` (Stammdaten genullt + `anonymized_at`), `client_custom_field_value` + `client_master_change_request` + `gwg_onboarding_invite` + `appointment_request` gelöscht, `client_contact` anonymisiert, Nebentabellen genullt (`power_of_attorney`-Signer, `form_submission.answers`, `appointment`, `client_reminder`, `pending_binder`, `client_handover`, `risk_analysis`-Sachverhalt) — Zähler je Klasse im Event | `client.anonymize` |
-| Mandant deaktiviert (GwG abgelaufen) | `client.allowActive = false` | `gwg.expired` (Worker) |
-| GwG-Datei-Beleg vernichtet (§ 8 (4)) | `document` + `document_version` gelöscht, Bytes vernichtet | `gwg.evidence.destroy` |
-| GwG-Aufzeichnungen vernichtet (§ 8 (4)) | `gwg_beneficial_owner` gelöscht, `gwg_id_document` genullt, `gwg_check` anonymisiert + `destroyedAt` | `gwg.check.destroy` |
+| Aktion                                           | Tabellen geschrieben                                                                                                                                                                                                                                                                                                                                                                                                   | Audit-Action                   |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| Mandant anlegen                                  | `client`                                                                                                                                                                                                                                                                                                                                                                                                               | `client.created`               |
+| Stammdaten bearbeiten (administrativ)            | `client`                                                                                                                                                                                                                                                                                                                                                                                                               | `client.update.administrative` |
+| Stammdaten bearbeiten (GwG-relevant)             | `client`, `gwg_check` (→ IN_REVIEW)                                                                                                                                                                                                                                                                                                                                                                                    | `client.update.gwg_relevant`   |
+| GwG-Onboarding-Submit                            | `client`, `gwg_check`, `gwg_beneficial_owner`, `gwg_id_document`, `document`                                                                                                                                                                                                                                                                                                                                           | `gwg.onboarding.submit`        |
+| Dokument-Upload                                  | `document`, `document_version`                                                                                                                                                                                                                                                                                                                                                                                         | `document.upload`              |
+| Rechnung erstellen                               | `invoice`, `invoice_position`                                                                                                                                                                                                                                                                                                                                                                                          | `invoice.create`               |
+| DSGVO-Auskunft                                   | (read)                                                                                                                                                                                                                                                                                                                                                                                                                 | `dsgvo.export.contact`         |
+| DSGVO-Anonymisierung                             | `client_contact` (Felder anonymisiert)                                                                                                                                                                                                                                                                                                                                                                                 | `dsgvo.anonymize.contact`      |
+| Mandant anonymisiert (Art. 17, nach Fristablauf) | `client` (Stammdaten genullt + `anonymized_at`), `client_custom_field_value` + `client_master_change_request` + `gwg_onboarding_invite` + `appointment_request` gelöscht, `client_contact` anonymisiert, Nebentabellen genullt (`power_of_attorney`-Signer, `form_submission.answers`, `appointment`, `client_reminder`, `pending_binder`, `client_handover`, `risk_analysis`-Sachverhalt) — Zähler je Klasse im Event | `client.anonymize`             |
+| Mandant deaktiviert (GwG abgelaufen)             | `client.allowActive = false`                                                                                                                                                                                                                                                                                                                                                                                           | `gwg.expired` (Worker)         |
+| GwG-Datei-Beleg vernichtet (§ 8 (4))             | `document` + `document_version` gelöscht, Bytes vernichtet                                                                                                                                                                                                                                                                                                                                                             | `gwg.evidence.destroy`         |
+| GwG-Aufzeichnungen vernichtet (§ 8 (4))          | `gwg_beneficial_owner` gelöscht, `gwg_id_document` genullt, `gwg_check` anonymisiert + `destroyedAt`                                                                                                                                                                                                                                                                                                                   | `gwg.check.destroy`            |

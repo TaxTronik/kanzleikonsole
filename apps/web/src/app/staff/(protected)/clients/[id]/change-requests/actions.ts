@@ -5,6 +5,7 @@ import type { Prisma } from '@prisma/client';
 import { evidenceService } from '@/server/container';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
+import { requireGwgReverificationTx } from '@/server/gwg/reverification';
 
 const InputSchema = z.object({
   requestId: z.string().uuid(),
@@ -14,7 +15,13 @@ const InputSchema = z.object({
 });
 
 const ALLOWED_FIELDS = [
-  'name', 'street', 'postalCode', 'city', 'countryIso', 'vatId', 'invoiceEmail',
+  'name',
+  'street',
+  'postalCode',
+  'city',
+  'countryIso',
+  'vatId',
+  'invoiceEmail',
 ] as const;
 const GWG_FIELDS = new Set(['name', 'street', 'postalCode', 'city', 'countryIso', 'vatId']);
 
@@ -66,13 +73,21 @@ export async function decideChangeRequestAction(
         const before = await tx.client.findUnique({
           where: { id: clientId },
           select: {
-            name: true, street: true, postalCode: true,
-            city: true, countryIso: true, vatId: true, invoiceEmail: true,
+            name: true,
+            street: true,
+            postalCode: true,
+            city: true,
+            countryIso: true,
+            vatId: true,
+            invoiceEmail: true,
           },
         });
         if (!before) throw new ActionError('Mandant nicht gefunden.');
 
-        await tx.client.update({ where: { id: clientId }, data: applicable as Prisma.ClientUpdateInput });
+        await tx.client.update({
+          where: { id: clientId },
+          data: applicable as Prisma.ClientUpdateInput,
+        });
 
         // GwG-relevante Änderung erkannt? VERIFIED → IN_REVIEW
         const gwgChanged = (Object.keys(applicable) as ClientField[]).some(
@@ -80,11 +95,8 @@ export async function decideChangeRequestAction(
         );
         let gwgReset = false;
         if (gwgChanged) {
-          const updated = await tx.gwgCheck.updateMany({
-            where: { clientId, status: 'VERIFIED' },
-            data: { status: 'IN_REVIEW' },
-          });
-          gwgReset = updated.count > 0;
+          const reset = await requireGwgReverificationTx(tx, { tenantId, clientId });
+          gwgReset = reset.invalidatedChecks > 0;
         }
 
         await evidenceService.record(tx, {

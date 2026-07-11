@@ -12,6 +12,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   endOfDueDay,
+  berlinCalendarDate,
   generateDeadlines,
   germanHolidays,
   SCHEDULE_LABELS,
@@ -255,7 +256,12 @@ describe('generateDeadlines — Vorauszahlungs-Termine', () => {
     const out = generateDeadlines('EST_VZ', from, to, false);
     const yearOnes = out.filter((d) => d.period.startsWith('2025-'));
     expect(yearOnes.length).toBe(4);
-    expect(yearOnes.map((d) => d.period).sort()).toEqual(['2025-Q1', '2025-Q2', '2025-Q3', '2025-Q4']);
+    expect(yearOnes.map((d) => d.period).sort()).toEqual([
+      '2025-Q1',
+      '2025-Q2',
+      '2025-Q3',
+      '2025-Q4',
+    ]);
   });
 
   it('GewSt-VZ 2025 — § 19 (1) GewStG: 15.02./15.05./15.08./15.11. (nicht 10er)', () => {
@@ -341,7 +347,7 @@ describe('generateDeadlines — Bereichs-Invariante [from, to]', () => {
 
   it('ALLE Ergebnisse liegen in [from, to] — über Arten, Dauerfrist, advised und Regionen', () => {
     const ranges: Array<[Date, Date]> = [
-      [new Date(Date.UTC(2026, 0, 1)), new Date(Date.UTC(2026, 2, 31))],  // 90-Tage-Horizont
+      [new Date(Date.UTC(2026, 0, 1)), new Date(Date.UTC(2026, 2, 31))], // 90-Tage-Horizont
       [new Date(Date.UTC(2025, 5, 15)), new Date(Date.UTC(2025, 8, 13))], // mitten im Jahr
       [new Date(Date.UTC(2025, 0, 1)), new Date(Date.UTC(2026, 11, 31))], // zwei Jahre
       [new Date(Date.UTC(2027, 11, 20)), new Date(Date.UTC(2028, 0, 5))], // kurz, Jahreswechsel
@@ -466,10 +472,21 @@ describe('generateDeadlines — EGAO-Übergangsfristen (Art. 97 § 36 Abs. 3 EGA
   });
 });
 
-describe('endOfDueDay / startOfUtcDay — § 108 (1) AO Tagesgrenzen', () => {
-  it('endOfDueDay liefert 23:59:59.999 UTC des Fälligkeitstags', () => {
+describe('endOfDueDay / berlinCalendarDate / startOfUtcDay — § 108 (1) AO Tagesgrenzen', () => {
+  it('endOfDueDay liefert das Ende des Fälligkeitstags in Europe/Berlin', () => {
     const r = endOfDueDay(new Date(Date.UTC(2026, 2, 10)));
-    expect(r.toISOString()).toBe('2026-03-10T23:59:59.999Z');
+    expect(r.toISOString()).toBe('2026-03-10T22:59:59.999Z');
+    const summer = endOfDueDay(new Date(Date.UTC(2026, 6, 10)));
+    expect(summer.toISOString()).toBe('2026-07-10T21:59:59.999Z');
+  });
+
+  it('berlinCalendarDate kippt an der UTC-/Berlin-Tagesgrenze korrekt', () => {
+    expect(berlinCalendarDate(new Date('2026-07-01T21:59:59.999Z')).toISOString()).toBe(
+      '2026-07-01T00:00:00.000Z',
+    );
+    expect(berlinCalendarDate(new Date('2026-07-01T22:00:00.000Z')).toISOString()).toBe(
+      '2026-07-02T00:00:00.000Z',
+    );
   });
 
   it('heute fälliger Termin ist bis Tagesende NICHT abgelaufen', () => {

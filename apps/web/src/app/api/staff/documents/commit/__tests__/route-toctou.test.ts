@@ -41,7 +41,10 @@ vi.mock('@/server/documents/upload-helpers', () => ({
     NextResponse.json({ error: (e as Error).message }, { status: 500 }),
   createDocumentWithVersion: m.createDocumentWithVersion,
 }));
-vi.mock('@/server/storage/document-type', () => ({ carrierClassification: vi.fn() }));
+vi.mock('@/server/storage/document-type', () => ({
+  carrierClassification: (_tier: string, classificationKey: string | null) =>
+    classificationKey ?? 'GENERAL',
+}));
 vi.mock('@/server/container', () => ({ evidenceService: { record: m.evidenceRecord } }));
 vi.mock('@/server/n8n/emit', () => ({ emitN8nEvent: m.emitN8nEvent }));
 vi.mock('@/server/rate-limit', () => ({ getClientIp: m.getClientIp }));
@@ -95,8 +98,9 @@ describe('POST /api/staff/documents/commit - TOCTOU', () => {
       documentType: {
         findFirst: vi.fn().mockResolvedValue({
           id: DOCUMENT_TYPE_ID,
-          tier: 'NONE',
-          classificationKey: 'GENERAL',
+          tier: 'GOBD',
+          classificationKey: 'GOBD_INVOICE',
+          retentionYears: 8,
         }),
       },
       client: { findFirst: vi.fn().mockResolvedValue({ id: CLIENT_ID }) },
@@ -112,7 +116,9 @@ describe('POST /api/staff/documents/commit - TOCTOU', () => {
     };
 
     m.withTenantContext
-      .mockImplementationOnce(async (_ctx: unknown, fn: (tx: unknown) => unknown) => fn(preStorageTx))
+      .mockImplementationOnce(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+        fn(preStorageTx),
+      )
       .mockImplementationOnce(async (_ctx: unknown, fn: (tx: unknown) => unknown) => fn(finalTx));
 
     const res = await POST(makeRequest());
@@ -123,6 +129,13 @@ describe('POST /api/staff/documents/commit - TOCTOU', () => {
       message: 'Referenz hat sich waehrend des Uploads geaendert.',
     });
     expect(m.commitBytesWithTier).toHaveBeenCalledTimes(1);
+    expect(m.commitBytesWithTier).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tier: 'GOBD',
+        classification: 'GOBD_INVOICE',
+        retentionYears: 8,
+      }),
+    );
     expect(m.createDocumentWithVersion).not.toHaveBeenCalled();
     expect(m.evidenceRecord).not.toHaveBeenCalled();
     expect(m.emitN8nEvent).not.toHaveBeenCalled();

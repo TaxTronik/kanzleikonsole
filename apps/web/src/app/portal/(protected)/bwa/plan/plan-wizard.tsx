@@ -5,7 +5,13 @@ import { Save, ArrowLeft, ArrowRight, AlertCircle } from 'lucide-react';
 import { fmtEURRound } from '@/lib/fmt';
 
 export type PlanAxis =
-  | 'REVENUE' | 'PERSONNEL' | 'OTHER_COSTS' | 'DEPRECIATION' | 'MATERIAL' | 'OTHER_INCOME' | 'TAXES';
+  | 'REVENUE'
+  | 'PERSONNEL'
+  | 'OTHER_COSTS'
+  | 'DEPRECIATION'
+  | 'MATERIAL'
+  | 'OTHER_INCOME'
+  | 'TAXES';
 
 export interface CreatePlanInput {
   name: string;
@@ -16,7 +22,9 @@ export interface CreatePlanInput {
   lines: Array<{ axis: PlanAxis; amount: number; note: string | null }>;
 }
 
-export type CreatePlanFn = (input: CreatePlanInput) => Promise<{ ok: boolean; error?: string; id?: string }>;
+export type CreatePlanFn = (
+  input: CreatePlanInput,
+) => Promise<{ ok: boolean; error?: string; id?: string }>;
 
 interface Base {
   id: string;
@@ -33,7 +41,13 @@ interface Base {
 }
 
 type Axis =
-  | 'REVENUE' | 'PERSONNEL' | 'OTHER_COSTS' | 'DEPRECIATION' | 'MATERIAL' | 'OTHER_INCOME' | 'TAXES';
+  | 'REVENUE'
+  | 'PERSONNEL'
+  | 'OTHER_COSTS'
+  | 'DEPRECIATION'
+  | 'MATERIAL'
+  | 'OTHER_INCOME'
+  | 'TAXES';
 
 const AXIS_LABELS: Record<Axis, string> = {
   REVENUE: 'Erlöse',
@@ -45,23 +59,31 @@ const AXIS_LABELS: Record<Axis, string> = {
   TAXES: 'Steuern (GewSt/KSt/ESt)',
 };
 const ALL_AXES: Axis[] = [
-  'REVENUE', 'OTHER_INCOME', 'PERSONNEL', 'MATERIAL', 'DEPRECIATION', 'OTHER_COSTS', 'TAXES',
+  'REVENUE',
+  'OTHER_INCOME',
+  'PERSONNEL',
+  'MATERIAL',
+  'DEPRECIATION',
+  'OTHER_COSTS',
+  'TAXES',
 ];
 const REVENUE_AXES: Axis[] = ['REVENUE', 'OTHER_INCOME'];
 const COST_AXES: Axis[] = ['PERSONNEL', 'OTHER_COSTS', 'DEPRECIATION', 'MATERIAL'];
 
-
-interface LineState { amount: number; note: string }
+interface LineState {
+  amount: number;
+  note: string;
+}
 
 function emptyLines(): Record<Axis, LineState> {
   return {
-    REVENUE:       { amount: 0, note: '' },
-    PERSONNEL:     { amount: 0, note: '' },
-    OTHER_COSTS:   { amount: 0, note: '' },
-    DEPRECIATION:  { amount: 0, note: '' },
-    MATERIAL:      { amount: 0, note: '' },
-    OTHER_INCOME:  { amount: 0, note: '' },
-    TAXES:         { amount: 0, note: '' },
+    REVENUE: { amount: 0, note: '' },
+    PERSONNEL: { amount: 0, note: '' },
+    OTHER_COSTS: { amount: 0, note: '' },
+    DEPRECIATION: { amount: 0, note: '' },
+    MATERIAL: { amount: 0, note: '' },
+    OTHER_INCOME: { amount: 0, note: '' },
+    TAXES: { amount: 0, note: '' },
   };
 }
 
@@ -102,10 +124,10 @@ export function PlanWizard({
     if (!selectedBase) return;
     const factor = 1 + percentageBump / 100;
     const otherCosts =
-      (selectedBase.costs ?? 0)
-      - (selectedBase.personnelCost ?? 0)
-      - (selectedBase.depreciation ?? 0)
-      - (selectedBase.material ?? 0);
+      (selectedBase.costs ?? 0) -
+      (selectedBase.personnelCost ?? 0) -
+      (selectedBase.depreciation ?? 0) -
+      (selectedBase.material ?? 0);
     const revenue = Math.round((selectedBase.revenue ?? 0) * factor);
     const personnel = Math.round((selectedBase.personnelCost ?? 0) * factor);
     const otherCost = Math.round(otherCosts * factor);
@@ -114,13 +136,16 @@ export function PlanWizard({
     const otherIncome = Math.round((selectedBase.otherIncome ?? 0) * factor);
     const resultBeforeTax = revenue + otherIncome - personnel - otherCost - depr - material;
     setLines({
-      REVENUE:       { amount: revenue,     note: '' },
-      OTHER_INCOME:  { amount: otherIncome, note: '' },
-      PERSONNEL:     { amount: personnel,   note: '' },
-      OTHER_COSTS:   { amount: otherCost,   note: '' },
-      DEPRECIATION:  { amount: depr,        note: '' },
-      MATERIAL:      { amount: material,    note: '' },
-      TAXES:         { amount: estimateTaxes(resultBeforeTax), note: 'Schätzung ~30 % auf Ergebnis vor Steuern' },
+      REVENUE: { amount: revenue, note: '' },
+      OTHER_INCOME: { amount: otherIncome, note: '' },
+      PERSONNEL: { amount: personnel, note: '' },
+      OTHER_COSTS: { amount: otherCost, note: '' },
+      DEPRECIATION: { amount: depr, note: '' },
+      MATERIAL: { amount: material, note: '' },
+      TAXES: {
+        amount: estimateTaxes(resultBeforeTax),
+        note: 'Schätzung ~30 % auf Ergebnis vor Steuern',
+      },
     });
     setLastAppliedPct(percentageBump);
   }
@@ -133,7 +158,11 @@ export function PlanWizard({
 
   const totals = useMemo(() => {
     const revenue = lines.REVENUE.amount + lines.OTHER_INCOME.amount;
-    const costs = lines.PERSONNEL.amount + lines.OTHER_COSTS.amount + lines.DEPRECIATION.amount + lines.MATERIAL.amount;
+    const costs =
+      lines.PERSONNEL.amount +
+      lines.OTHER_COSTS.amount +
+      lines.DEPRECIATION.amount +
+      lines.MATERIAL.amount;
     const resultBeforeTax = revenue - costs;
     const taxes = lines.TAXES.amount;
     return { revenue, costs, resultBeforeTax, taxes, resultAfterTax: resultBeforeTax - taxes };
@@ -218,7 +247,8 @@ export function PlanWizard({
             </select>
             {selectedBase && (
               <p className="text-xs text-muted mt-1">
-                Erlöse {fmtEURRound(selectedBase.revenue ?? 0)} · Ergebnis {fmtEURRound(selectedBase.result ?? 0)}
+                Erlöse {fmtEURRound(selectedBase.revenue ?? 0)} · Ergebnis{' '}
+                {fmtEURRound(selectedBase.result ?? 0)}
               </p>
             )}
             {!selectedBase && (
@@ -231,8 +261,8 @@ export function PlanWizard({
           {selectedBase && (
             <div className="rounded-md bg-brand-50/40 border border-brand-200 p-3 space-y-3">
               <p className="text-xs text-secondary">
-                Werte aus der Basis übernehmen und optional prozentual anpassen
-                — Steuern werden automatisch grob geschätzt:
+                Werte aus der Basis übernehmen und optional prozentual anpassen — Steuern werden
+                automatisch grob geschätzt:
               </p>
               <div className="flex flex-wrap gap-1.5 items-center">
                 {[-10, -5, 0, 5, 10, 20].map((pct) => (
@@ -277,7 +307,10 @@ export function PlanWizard({
                 <div className="border-t border-brand-200 pt-2 mt-2">
                   <p className="text-xs text-muted mb-1.5">
                     Vorbelegung übernommen
-                    {lastAppliedPct !== 0 ? ` (${lastAppliedPct > 0 ? '+' : ''}${lastAppliedPct} %)` : ''}:
+                    {lastAppliedPct !== 0
+                      ? ` (${lastAppliedPct > 0 ? '+' : ''}${lastAppliedPct} %)`
+                      : ''}
+                    :
                   </p>
                   <div className="grid grid-cols-3 gap-2 text-xs">
                     <Preview label="Erlöse" v={lines.REVENUE.amount} />
@@ -310,8 +343,8 @@ export function PlanWizard({
         <div className="card p-6 space-y-4">
           <h2 className="text-sm font-medium text-primary">Schritt 2: Achsen anpassen</h2>
           <p className="text-xs text-muted">
-            Jahreswerte pro Position. Steuern sind grob geschätzt — bei Bedarf
-            mit deinem Steuerberater präzisieren.
+            Jahreswerte pro Position. Steuern sind grob geschätzt — bei Bedarf mit deinem
+            Steuerberater präzisieren.
           </p>
 
           <div>
@@ -336,7 +369,9 @@ export function PlanWizard({
             <p className="text-xs font-medium text-secondary uppercase mb-1.5">Steuern</p>
             <AxisRow axis="TAXES" line={lines.TAXES} onChange={(p) => setAxis('TAXES', p)} />
             <p className="text-xs text-disabled mt-1">
-              Tipp: GewSt + KSt + SolZ liegen bei GmbHs in München (Hebesatz 490 %) zusammen meist bei ca. 31 % vom Gewinn vor Steuern.
+              Planwert, keine Steuerberechnung: Gewerbesteuer hängt insbesondere vom kommunalen
+              Hebesatz ab; Körperschaftsteuer und Solidaritätszuschlag haben eigene
+              Bemessungsgrundlagen. Bitte kanzleiseitig prüfen.
             </p>
           </div>
 
@@ -386,8 +421,8 @@ export function PlanWizard({
                   className="mt-1"
                 />
                 <span>
-                  <strong>Final</strong> — Planung ist fertig und festgehalten.
-                  Kann später noch angepasst werden, dient aber als Referenz.
+                  <strong>Final</strong> — Planung ist fertig und festgehalten. Kann später noch
+                  angepasst werden, dient aber als Referenz.
                 </span>
               </label>
               <label className="flex items-start gap-2 text-sm">
@@ -400,8 +435,7 @@ export function PlanWizard({
                   className="mt-1"
                 />
                 <span>
-                  <strong>Entwurf</strong> — noch in Bearbeitung, nur als
-                  Zwischenstand gedacht.
+                  <strong>Entwurf</strong> — noch in Bearbeitung, nur als Zwischenstand gedacht.
                 </span>
               </label>
             </div>
@@ -409,12 +443,19 @@ export function PlanWizard({
           <div className="rounded-md bg-amber-50/60 border border-amber-200 p-3 text-xs text-amber-900 flex items-start gap-2">
             <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
             <span>
-              Die Planrechnung ist ein <strong>eigener Entwurf</strong> und ersetzt keine fachliche Beratung. Insbesondere die Steuer­schätzung ist ein grober Pauschalwert — Ihre Kanzlei kann das deutlich präziser rechnen.
+              Die Planrechnung ist ein <strong>eigener Entwurf</strong> und ersetzt keine fachliche
+              Beratung. Insbesondere die Steuer­schätzung ist ein grober Pauschalwert — Ihre Kanzlei
+              kann das deutlich präziser rechnen.
             </span>
           </div>
           {error && <div className="alert-error-sm">{error}</div>}
           <div className="flex justify-between">
-            <button type="button" onClick={() => setStep(2)} disabled={isPending} className="btn-secondary">
+            <button
+              type="button"
+              onClick={() => setStep(2)}
+              disabled={isPending}
+              className="btn-secondary"
+            >
               <ArrowLeft className="h-4 w-4" />
               Zurück
             </button>
@@ -485,7 +526,11 @@ function Total({ label, value, accent }: { label: string; value: number; accent?
       <p
         className={
           'text-lg font-bold font-mono ' +
-          (accent && value < 0 ? 'text-red-700' : accent && value > 0 ? 'text-emerald-700' : 'text-primary')
+          (accent && value < 0
+            ? 'text-red-700'
+            : accent && value > 0
+              ? 'text-emerald-700'
+              : 'text-primary')
         }
       >
         {fmtEURRound(value)}

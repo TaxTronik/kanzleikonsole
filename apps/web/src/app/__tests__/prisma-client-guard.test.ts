@@ -62,6 +62,14 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // Festschreibungs-Test (iter85): Owner-Client, um die Rechnungs-Trigger
   // GEGEN den privilegierten Pfad zu beweisen (Schutz gilt auch für Owner).
   'packages/db/src/__tests__/invoice-festschreibung.test.ts',
+  // PoA-Signaturintegrität (iter108): Owner-Client beweist, dass Snapshot- und
+  // Status-Trigger auch den privilegierten BYPASSRLS-Pfad schützen.
+  'packages/db/src/__tests__/poa-signing-integrity.test.ts',
+  // DB-Evidence-Regressionen: Owner-Clients prüfen Constraints/Trigger bewusst
+  // auch gegen den privilegierten BYPASSRLS-Pfad.
+  'packages/db/src/__tests__/dsgvo-evidence.test.ts',
+  'packages/db/src/__tests__/gwg-destruction.test.ts',
+  'packages/db/src/__tests__/tax-notice-evidence.test.ts',
   // Owner-Singleton für System-/Worker-Jobs (laufen via withSystemContext).
   'apps/web/src/server/db/prisma-owner.ts',
   'apps/worker/src/prisma-owner.ts',

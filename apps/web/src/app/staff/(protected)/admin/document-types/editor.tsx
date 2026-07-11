@@ -14,6 +14,7 @@ interface DocType {
   id: string;
   name: string;
   tier: Tier;
+  retentionYears: number | null;
   builtin: boolean;
   active: boolean;
   docCount: number;
@@ -21,8 +22,8 @@ interface DocType {
 
 const TIER_LABEL: Record<Tier, string> = {
   NONE: 'Kein Lock',
-  GWG: 'GwG · 5 Jahre',
-  GOBD: 'GoBD · 10 Jahre',
+  GWG: 'GwG · 5 J. + Prüfung',
+  GOBD: 'GoBD · typabhängig',
 };
 
 function TierBadge({ tier }: { tier: Tier }) {
@@ -47,14 +48,22 @@ export function DocumentTypeEditor({ initial }: { initial: DocType[] }) {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [newTier, setNewTier] = useState<Tier>('NONE');
+  const [newRetentionYears, setNewRetentionYears] = useState<6 | 8 | 10>(10);
   const [editId, setEditId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
 
   function create() {
     setError(null);
     start(async () => {
-      const r = await createDocumentTypeAction({ name: newName.trim(), tier: newTier });
-      if (!r.ok) { setError(r.error ?? 'Fehler.'); return; }
+      const r = await createDocumentTypeAction({
+        name: newName.trim(),
+        tier: newTier,
+        ...(newTier === 'GOBD' ? { retentionYears: newRetentionYears } : {}),
+      });
+      if (!r.ok) {
+        setError(r.error ?? 'Fehler.');
+        return;
+      }
       setCreating(false);
       setNewName('');
       setNewTier('NONE');
@@ -68,13 +77,18 @@ export function DocumentTypeEditor({ initial }: { initial: DocType[] }) {
         name: (editId === t.id ? editName : t.name).trim(),
         active,
       });
-      if (!r.ok) { setError(r.error ?? 'Fehler.'); return; }
+      if (!r.ok) {
+        setError(r.error ?? 'Fehler.');
+        return;
+      }
       setEditId(null);
     });
   }
   function remove(t: DocType) {
     if (t.docCount > 0) {
-      alert(`„${t.name}" wird von ${t.docCount} Dokument(en) genutzt — bitte deaktivieren statt löschen.`);
+      alert(
+        `„${t.name}" wird von ${t.docCount} Dokument(en) genutzt — bitte deaktivieren statt löschen.`,
+      );
       return;
     }
     if (!confirm(`Typ „${t.name}" löschen?`)) return;
@@ -93,10 +107,21 @@ export function DocumentTypeEditor({ initial }: { initial: DocType[] }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-50 border-b border-default">
-              <th className="text-left px-5 py-2.5 text-xs font-medium text-muted uppercase">Typ</th>
-              <th className="text-left px-5 py-2.5 text-xs font-medium text-muted uppercase">Schutzstufe</th>
-              <th className="text-left px-5 py-2.5 text-xs font-medium text-muted uppercase">Dokumente</th>
-              <th className="text-left px-5 py-2.5 text-xs font-medium text-muted uppercase">Status</th>
+              <th className="text-left px-5 py-2.5 text-xs font-medium text-muted uppercase">
+                Typ
+              </th>
+              <th className="text-left px-5 py-2.5 text-xs font-medium text-muted uppercase">
+                Schutzstufe
+              </th>
+              <th className="text-left px-5 py-2.5 text-xs font-medium text-muted uppercase">
+                Aufbewahrung
+              </th>
+              <th className="text-left px-5 py-2.5 text-xs font-medium text-muted uppercase">
+                Dokumente
+              </th>
+              <th className="text-left px-5 py-2.5 text-xs font-medium text-muted uppercase">
+                Status
+              </th>
               <th className="px-5 py-2.5" />
             </tr>
           </thead>
@@ -119,7 +144,12 @@ export function DocumentTypeEditor({ initial }: { initial: DocType[] }) {
                     </span>
                   )}
                 </td>
-                <td className="px-5 py-3"><TierBadge tier={t.tier} /></td>
+                <td className="px-5 py-3">
+                  <TierBadge tier={t.tier} />
+                </td>
+                <td className="px-5 py-3 text-secondary">
+                  {t.retentionYears ? `${t.retentionYears} Jahre` : 'keine feste Frist'}
+                </td>
                 <td className="px-5 py-3 text-muted">
                   <span className="inline-flex items-center gap-1">
                     <FileText className="h-3.5 w-3.5 text-disabled" />
@@ -195,9 +225,11 @@ export function DocumentTypeEditor({ initial }: { initial: DocType[] }) {
 
       {creating ? (
         <div className="card p-4 space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="label" htmlFor="dt-name">Name</label>
+              <label className="label" htmlFor="dt-name">
+                Name
+              </label>
               <input
                 id="dt-name"
                 autoFocus
@@ -209,7 +241,31 @@ export function DocumentTypeEditor({ initial }: { initial: DocType[] }) {
               />
             </div>
             <div>
-              <label className="label" htmlFor="dt-tier">Schutzstufe (danach fix)</label>
+              <label className="label" htmlFor="dt-retention">
+                Aufbewahrung
+              </label>
+              <select
+                id="dt-retention"
+                value={newTier === 'GOBD' ? newRetentionYears : newTier === 'GWG' ? 5 : 0}
+                onChange={(e) => setNewRetentionYears(Number(e.target.value) as 6 | 8 | 10)}
+                className="input"
+                disabled={newTier !== 'GOBD'}
+              >
+                {newTier === 'NONE' && <option value={0}>keine feste Frist</option>}
+                {newTier === 'GWG' && <option value={5}>5 Jahre Grundlock</option>}
+                {newTier === 'GOBD' && (
+                  <>
+                    <option value={6}>6 Jahre</option>
+                    <option value={8}>8 Jahre</option>
+                    <option value={10}>10 Jahre</option>
+                  </>
+                )}
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="dt-tier">
+                Schutzstufe (danach fix)
+              </label>
               <select
                 id="dt-tier"
                 value={newTier}
@@ -217,15 +273,15 @@ export function DocumentTypeEditor({ initial }: { initial: DocType[] }) {
                 className="input"
               >
                 <option value="NONE">Kein Lock</option>
-                <option value="GWG">GwG · 5 Jahre</option>
-                <option value="GOBD">GoBD · 10 Jahre</option>
+                <option value="GWG">GwG · 5 Jahre + fachliche Prüfung</option>
+                <option value="GOBD">GoBD · 6/8/10 Jahre</option>
               </select>
             </div>
           </div>
           <p className="text-xs text-muted">
-            Die Schutzstufe lässt sich nach Anlage nicht mehr ändern (sonst
-            müssten alle bereits abgelegten Dokumente dieses Typs umkopiert
-            werden). Für eine andere Stufe einen neuen Typ anlegen.
+            Schutzstufe und Frist lassen sich nach Anlage nicht mehr ändern (sonst müssten alle
+            bereits abgelegten Dokumente dieses Typs umkopiert werden). Für eine andere Stufe einen
+            neuen Typ anlegen.
           </p>
           <div className="flex gap-2">
             <button

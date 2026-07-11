@@ -3,7 +3,8 @@
 //
 // Getestet werden ausschließlich REINE Funktionen aus service.ts, die ohne
 // S3/ClamAV/Netzwerk laufen:
-//   - gobdRetentionUntil  (10-Jahre-GoBD-Frist, Jahresende-basiert)
+//   - gobdRetentionUntil  (konservativer 10-Jahre-Default, Jahresende-basiert)
+//   - gobdRetentionUntilFor / retentionUntilForYears (exakte 6/8/10-Jahresfrist)
 //   - gwgRetentionUntil   (5-Jahre-GwG-Frist)
 //   - retentionForTier    (Tier → Retain-Until)
 //   - lockModeForTier      (Tier → GOVERNANCE vs. COMPLIANCE)
@@ -19,6 +20,7 @@ import {
   gobdRetentionUntil,
   gobdRetentionUntilFor,
   gobdRetentionYears,
+  retentionUntilForYears,
   gwgRetentionUntil,
   retentionForTier,
   lockModeForTier,
@@ -26,8 +28,8 @@ import {
 import type { ProtectionTier } from '../client';
 
 // Gesetzliches Jahresende (§ 147 Abs. 3 AO): Frist beginnt mit Schluss des
-// Kalenderjahres der letzten Eintragung. Für GoBD (10 J.) muss Retain-Until
-// mindestens bis zu diesem Datum reichen.
+// Kalenderjahres der letzten Eintragung. Für den konservativen 10-Jahres-
+// Default muss Retain-Until mindestens bis zu diesem Datum reichen.
 function gobdLegalDeadline(docDate: Date): Date {
   const endOfCreationYear = Date.UTC(docDate.getUTCFullYear(), 11, 31, 23, 59, 59, 999);
   // 10 volle Jahre nach dem Jahresende.
@@ -38,22 +40,41 @@ describe('gobdRetentionUntilFor — BEG IV, belegart-abhängig (8 J. Rechnungen)
   it('GOBD_INVOICE → 8 Jahre (§ 147 Abs. 3 AO n.F. / § 14b UStG n.F.)', () => {
     expect(gobdRetentionYears('GOBD_INVOICE')).toBe(8);
     // Beleg 2026 → Jahresende 2026 + 8 J. + 1 Tag = 2035-01-01.
-    expect(gobdRetentionUntilFor('GOBD_INVOICE', new Date(Date.UTC(2026, 2, 15))).toISOString())
-      .toBe('2035-01-01T00:00:00.000Z');
+    expect(
+      gobdRetentionUntilFor('GOBD_INVOICE', new Date(Date.UTC(2026, 2, 15))).toISOString(),
+    ).toBe('2035-01-01T00:00:00.000Z');
   });
 
   it('Bücher/Abschlüsse/Verträge bleiben bei 10 Jahren', () => {
     expect(gobdRetentionYears('GOBD_TAX')).toBe(10);
     expect(gobdRetentionYears('GOBD_CONTRACT')).toBe(10);
-    expect(gobdRetentionUntilFor('GOBD_TAX', new Date(Date.UTC(2026, 2, 15))).toISOString())
-      .toBe('2037-01-01T00:00:00.000Z');
+    expect(gobdRetentionUntilFor('GOBD_TAX', new Date(Date.UTC(2026, 2, 15))).toISOString()).toBe(
+      '2037-01-01T00:00:00.000Z',
+    );
   });
 
   it('ohne/unbekannte Klassifikation → 10 Jahre (konservativer Default)', () => {
     expect(gobdRetentionYears()).toBe(10);
     expect(gobdRetentionYears('SONSTIGE')).toBe(10);
-    expect(gobdRetentionUntilFor(undefined, new Date(Date.UTC(2026, 2, 15))).getTime())
-      .toBe(gobdRetentionUntil(new Date(Date.UTC(2026, 2, 15))).getTime());
+    expect(gobdRetentionUntilFor(undefined, new Date(Date.UTC(2026, 2, 15))).getTime()).toBe(
+      gobdRetentionUntil(new Date(Date.UTC(2026, 2, 15))).getTime(),
+    );
+  });
+});
+
+describe('retentionUntilForYears — fachliche 6/8/10-Jahres-Typen', () => {
+  const now = new Date(Date.UTC(2026, 2, 15));
+
+  it.each([
+    [6, '2033-01-01T00:00:00.000Z'],
+    [8, '2035-01-01T00:00:00.000Z'],
+    [10, '2037-01-01T00:00:00.000Z'],
+  ])('%i Jahre → korrekter Jahresende-Stichtag', (years, expected) => {
+    expect(retentionUntilForYears(years, now).toISOString()).toBe(expected);
+  });
+
+  it('weist fachlich unbekannte Intervalle zurück', () => {
+    expect(() => retentionUntilForYears(7, now)).toThrow('INVALID_RETENTION_YEARS');
   });
 });
 
@@ -119,7 +140,7 @@ describe('gwgRetentionUntil — § 8 Abs. 4 GwG, 5 Jahre', () => {
     expect(result.toISOString()).toBe('2032-01-01T00:00:00.000Z');
   });
 
-  it('GwG-Frist (5 J.) ist kürzer als GoBD-Frist (10 J.) für dasselbe Jahr', () => {
+  it('GwG-Frist (5 J.) ist kürzer als der konservative GoBD-Default (10 J.)', () => {
     const now = new Date(Date.UTC(2026, 3, 1));
     expect(gwgRetentionUntil(now).getTime()).toBeLessThan(gobdRetentionUntil(now).getTime());
   });
@@ -133,7 +154,7 @@ describe('gwgRetentionUntil — § 8 Abs. 4 GwG, 5 Jahre', () => {
 });
 
 describe('retentionForTier — Tier → Retain-Until', () => {
-  it('GOBD → gesetzt (10-Jahre-Frist, nicht null)', () => {
+  it('GOBD ohne Datei-Typ → konservativer 10-Jahre-Default', () => {
     const r = retentionForTier('GOBD');
     expect(r).not.toBeNull();
     // 10-11 Jahre in der Zukunft.
@@ -156,13 +177,11 @@ describe('retentionForTier — Tier → Retain-Until', () => {
 });
 
 describe('lockModeForTier — Object-Lock-Modus je Schutzstufe (Review F2 / N-7)', () => {
-  it('GWG → GOVERNANCE (§ 8 Abs. 4 S. 4 GwG: unverzügliche Vernichtung muss möglich bleiben)', () => {
-    // COMPLIANCE würde die privilegierte Frühlöschung technisch verhindern —
-    // das widerspräche der GwG-Pflicht + DSGVO Art. 5 Abs. 1 lit. e.
+  it('GWG → GOVERNANCE (Löschung zum fachlich ermittelten Fristende bleibt möglich)', () => {
     expect(lockModeForTier('GWG')).toBe('GOVERNANCE');
   });
 
-  it('GOBD → COMPLIANCE (10 J. echte, von niemandem aufhebbare Unveränderbarkeit, § 147 AO)', () => {
+  it('GOBD → COMPLIANCE (typabhängig 6/8/10 J., von niemandem aufhebbar)', () => {
     expect(lockModeForTier('GOBD')).toBe('COMPLIANCE');
   });
 

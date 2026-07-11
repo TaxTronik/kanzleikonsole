@@ -4,7 +4,15 @@ import { useState, useTransition } from 'react';
 import { Trash2 } from 'lucide-react';
 import { confirmGwgDeletionAction, confirmGwgCheckDeletionAction } from './actions';
 
-export function GwgDeleteButton({ documentId, label }: { documentId: string; label: string }) {
+export function GwgDeleteButton({
+  documentId,
+  label,
+  destructionPending = false,
+}: {
+  documentId: string;
+  label: string;
+  destructionPending?: boolean;
+}) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -30,7 +38,7 @@ export function GwgDeleteButton({ documentId, label }: { documentId: string; lab
         className="inline-flex items-center gap-1 rounded-md bg-red-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
       >
         <Trash2 className="h-3.5 w-3.5" />
-        {pending ? 'Vernichte…' : 'Vernichten'}
+        {pending ? 'Vernichte…' : destructionPending ? 'Vernichtung fortsetzen' : 'Vernichten'}
       </button>
       {error && <span className="text-xs text-red-600">{error}</span>}
     </div>

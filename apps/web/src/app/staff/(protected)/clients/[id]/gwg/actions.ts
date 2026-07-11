@@ -12,7 +12,13 @@ import { emitN8nEvent } from '@/server/n8n/emit';
 import { notifyClientContacts } from '@/server/mail/dispatch';
 import { fireAndForget } from '@/server/util/fire-and-forget';
 import { portalBaseUrl } from '@taxtronik/config';
-import { staffActionGuard, withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
+import { gwgVerificationErrors } from '@/server/gwg/verification';
+import {
+  staffActionGuard,
+  withStaff,
+  ActionError,
+  type ActionResult as BaseActionResult,
+} from '@/server/actions/staff-action';
 
 // Einheitliches Action-Ergebnis aus der zentralen Quelle — der bestehende
 // Import-Pfad './actions' bleibt für die Form-Komponenten stabil.
@@ -106,6 +112,127 @@ export async function saveRiskAnswersAction(input: {
       });
     },
     { revalidate: `/staff/clients/${clientId}/gwg` },
+  );
+}
+
+const LegalEntityDetailsSchema = z
+  .object({
+    checkId: z.string().uuid(),
+    clientId: z.string().uuid(),
+    legalForm: z.string().trim().min(1).max(100),
+    registerNumber: z.string().trim().max(100).optional().or(z.literal('')),
+    registerAuthority: z.string().trim().max(200).optional().or(z.literal('')),
+    noRegisterEntry: z.boolean(),
+    representativeNamesText: z.string().max(4000),
+    ownershipStructureNotes: z.string().trim().min(1).max(10000),
+  })
+  .superRefine((value, ctx) => {
+    if (!value.noRegisterEntry && !value.registerNumber) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['registerNumber'],
+        message: 'Registernummer erforderlich.',
+      });
+    }
+    if (!value.noRegisterEntry && !value.registerAuthority) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['registerAuthority'],
+        message: 'Register/Registergericht erforderlich.',
+      });
+    }
+    const representatives = value.representativeNamesText
+      .split(/\r?\n/)
+      .map((name) => name.trim())
+      .filter(Boolean);
+    if (representatives.length === 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['representativeNamesText'],
+        message: 'Mindestens ein Vertreter erforderlich.',
+      });
+    }
+  });
+
+export async function saveLegalEntityDetailsAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const parsed = LegalEntityDetailsSchema.safeParse({
+    checkId: formData.get('checkId'),
+    clientId: formData.get('clientId'),
+    legalForm: formData.get('legalForm'),
+    registerNumber: formData.get('registerNumber') ?? '',
+    registerAuthority: formData.get('registerAuthority') ?? '',
+    noRegisterEntry: formData.get('noRegisterEntry') === 'on',
+    representativeNamesText: formData.get('representativeNamesText'),
+    ownershipStructureNotes: formData.get('ownershipStructureNotes'),
+  });
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues.map((i) => i.message).join(' ') };
+  }
+  const data = parsed.data;
+  const representativeNames = Array.from(
+    new Set(
+      data.representativeNamesText
+        .split(/\r?\n/)
+        .map((name) => name.trim())
+        .filter(Boolean),
+    ),
+  );
+
+  return withStaff(
+    async (tx, { tenantId, staffId, session }) => {
+      await assertClientAccessTx(tx, session, data.clientId);
+      const check = await tx.gwgCheck.findFirst({
+        where: { id: data.checkId, clientId: data.clientId },
+        select: {
+          status: true,
+          legalForm: true,
+          registerNumber: true,
+          registerAuthority: true,
+          noRegisterEntry: true,
+          representativeNames: true,
+          ownershipStructureNotes: true,
+          client: { select: { kind: true } },
+        },
+      });
+      if (!check) throw new ActionError('GwG-Check nicht gefunden.');
+      if (check.client.kind !== 'JURPERS' && check.client.kind !== 'PERSGES') {
+        throw new ActionError(
+          'Rechtsträger-Angaben sind nur bei juristischen Personen/Personengesellschaften erforderlich.',
+        );
+      }
+      assertGwgEditable(check.status);
+
+      const after = {
+        legalForm: data.legalForm,
+        registerNumber: data.noRegisterEntry ? null : data.registerNumber || null,
+        registerAuthority: data.noRegisterEntry ? null : data.registerAuthority || null,
+        noRegisterEntry: data.noRegisterEntry,
+        representativeNames,
+        ownershipStructureNotes: data.ownershipStructureNotes,
+      };
+      await tx.gwgCheck.update({ where: { id: data.checkId }, data: after });
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'gwg.legal_entity_details.update',
+        resourceType: 'gwg_check',
+        resourceId: data.checkId,
+        before: {
+          legalForm: check.legalForm,
+          registerNumber: check.registerNumber,
+          registerAuthority: check.registerAuthority,
+          noRegisterEntry: check.noRegisterEntry,
+          representativeNames: check.representativeNames,
+          ownershipStructureNotes: check.ownershipStructureNotes,
+        },
+        after,
+      });
+    },
+    { revalidate: `/staff/clients/${data.clientId}/gwg` },
   );
 }
 
@@ -228,6 +355,23 @@ export async function addIdDocumentAction(
       });
       if (!check) throw new ActionError('GwG-Check nicht gefunden.');
       assertGwgEditable(check.status);
+      if (data.documentId) {
+        const evidenceDocument = await tx.document.findFirst({
+          where: {
+            id: data.documentId,
+            tenantId,
+            clientId: data.clientId,
+            classification: 'GWG_EVIDENCE',
+            deletedAt: null,
+          },
+          select: { id: true },
+        });
+        if (!evidenceDocument) {
+          throw new ActionError(
+            'Der verknüpfte Nachweis muss ein nicht gelöschtes GwG-Dokument desselben Mandanten sein.',
+          );
+        }
+      }
       const idDoc = await tx.gwgIdDocument.create({
         data: {
           gwgCheckId: data.checkId,
@@ -300,7 +444,17 @@ export async function verifyCheckAction(
 
       const check = await tx.gwgCheck.findFirst({
         where: { id: checkId, clientId },
-        include: { idDocuments: true, beneficialOwners: true },
+        include: {
+          client: { select: { kind: true } },
+          beneficialOwners: true,
+          idDocuments: {
+            include: {
+              document: {
+                select: { clientId: true, classification: true, deletedAt: true },
+              },
+            },
+          },
+        },
       });
       if (!check) throw new ActionError('GwG-Check nicht gefunden.');
       if (check.riskScore === null || check.riskLevel === null) {
@@ -342,8 +496,11 @@ export async function verifyCheckAction(
       // (documentId) und — falls ein Ablaufdatum erfasst ist — GÜLTIGER
       // Ausweis (nicht abgelaufen) vorliegen.
       const ID_SUITABLE: string[] = [
-        'PERSONALAUSWEIS', 'REISEPASS', 'HANDELSREGISTERAUSZUG',
-        'GESELLSCHAFTSVERTRAG', 'TRANSPARENZREGISTER_AUSZUG',
+        'PERSONALAUSWEIS',
+        'REISEPASS',
+        'HANDELSREGISTERAUSZUG',
+        'GESELLSCHAFTSVERTRAG',
+        'TRANSPARENZREGISTER_AUSZUG',
       ];
       const heute = new Date();
       const taugliches = check.idDocuments.find(
@@ -361,6 +518,22 @@ export async function verifyCheckAction(
       // MUSS die Risikostufe HIGH sein (jährliche Überwachung). Bei
       // widersprechender Bewertung Verifikation blockieren — die erneute
       // Risikobewertung erzwingt über den PEP-Override HIGH.
+      const verificationErrors = gwgVerificationErrors({
+        clientId,
+        clientKind: check.client.kind,
+        legalForm: check.legalForm,
+        registerNumber: check.registerNumber,
+        registerAuthority: check.registerAuthority,
+        noRegisterEntry: check.noRegisterEntry,
+        representativeNames: check.representativeNames,
+        ownershipStructureNotes: check.ownershipStructureNotes,
+        beneficialOwnerCount: check.beneficialOwners.length,
+        idDocuments: check.idDocuments,
+      });
+      if (verificationErrors.length > 0) {
+        throw new ActionError(verificationErrors.join(' '));
+      }
+
       if (check.beneficialOwners.some((o) => o.isPep) && check.riskLevel !== 'HIGH') {
         throw new ActionError(
           'Wirtschaftlich Berechtigter ist als PEP markiert — bitte die Risikobewertung erneut durchführen (§ 15 GwG: zwingend hohes Risiko, jährliche Aktualisierung).',
@@ -412,21 +585,24 @@ export async function verifyCheckAction(
 
   // Begrüßungs-Mail an alle Mandanten-Kontakte mit Mail-Opt-in (nach Commit).
   // Befund 3: fire-and-forget mit catch+Log statt `void` (unhandled rejection).
-  fireAndForget('notifyClientContacts (gwg-activated)', notifyClientContacts({
-    tenantId,
-    clientId,
-    slug: 'gwg-activated',
-    vars: {
-      portalUrl: `${portalBaseUrl}/portal/dashboard`,
-    },
-    n8nEvent: 'client.created',
-    n8nPayload: { tenantId, clientId, gwgVerified: true },
-    fallback: {
-      subject: 'Willkommen — Ihre Mandantschaft ist nun aktiv',
-      bodyMd:
-        'Sehr geehrte/r {{contact.fullName}},\n\nIhre Mandantschaft ist jetzt vollständig eingerichtet. Loggen Sie sich gerne in Ihr Mandantenportal ein:\n\n{{portalUrl}}',
-    },
-  }));
+  fireAndForget(
+    'notifyClientContacts (gwg-activated)',
+    notifyClientContacts({
+      tenantId,
+      clientId,
+      slug: 'gwg-activated',
+      vars: {
+        portalUrl: `${portalBaseUrl}/portal/dashboard`,
+      },
+      n8nEvent: 'client.created',
+      n8nPayload: { tenantId, clientId, gwgVerified: true },
+      fallback: {
+        subject: 'Willkommen — Ihre Mandantschaft ist nun aktiv',
+        bodyMd:
+          'Sehr geehrte/r {{contact.fullName}},\n\nIhre Mandantschaft ist jetzt vollständig eingerichtet. Loggen Sie sich gerne in Ihr Mandantenportal ein:\n\n{{portalUrl}}',
+      },
+    }),
+  );
   revalidatePath(`/staff/clients/${clientId}`);
   revalidatePath(`/staff/clients/${clientId}/gwg`);
   return { ok: true };

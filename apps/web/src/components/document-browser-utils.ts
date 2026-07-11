@@ -10,21 +10,35 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 
-export interface Crumb { label: string; href: string }
+export interface Crumb {
+  label: string;
+  href: string;
+}
 
 export type Entry =
   | { kind: 'nav'; id: string; name: string; href: string; icon: 'kind' | 'internal' | 'client' }
   | { kind: 'folder'; id: string; name: string; href: string; icon: 'folder' }
   | {
-      kind: 'file'; id: string; name: string; mimeType: string; typeName: string;
-      typeId: string | null; tier: 'NONE' | 'GWG' | 'GOBD';
-      sizeBytes: number; createdAt: string; deletedAt: string | null;
+      kind: 'file';
+      id: string;
+      name: string;
+      mimeType: string;
+      typeName: string;
+      typeId: string | null;
+      tier: 'NONE' | 'GWG' | 'GOBD';
+      sizeBytes: number;
+      createdAt: string;
+      deletedAt: string | null;
       shared: boolean;
     };
 
-export interface FolderNode { id: string; name: string; parentId: string | null }
+export interface FolderNode {
+  id: string;
+  name: string;
+  parentId: string | null;
+}
 
-export const TIER_BADGE = { GWG: 'GwG·5J', GOBD: 'GoBD·10J' } as const;
+export const TIER_BADGE = { GWG: 'GwG·5J+Prüfung', GOBD: 'GoBD·6/8/10J' } as const;
 
 export function fmtBytes(b: number): string {
   if (b < 1024) return `${b} B`;
@@ -33,8 +47,7 @@ export function fmtBytes(b: number): string {
   return `${(b / 1073741824).toFixed(2)} GB`;
 }
 
-export const fmtDate = (iso: string): string =>
-  fmtDateMedium(new Date(iso));
+export const fmtDate = (iso: string): string => fmtDateMedium(new Date(iso));
 
 export function fileIcon(mimeType: string): LucideIcon {
   if (mimeType.startsWith('image/')) return FileImage;
@@ -71,7 +84,8 @@ export async function runChunked<T>(
 /** Nachfahren (inkl. self) — Cycle-Schutz beim Ordner-Verschieben. */
 export function descendants(all: FolderNode[], root: string): Set<string> {
   const byParent = new Map<string | null, FolderNode[]>();
-  for (const folder of all) byParent.set(folder.parentId, [...(byParent.get(folder.parentId) ?? []), folder]);
+  for (const folder of all)
+    byParent.set(folder.parentId, [...(byParent.get(folder.parentId) ?? []), folder]);
   const acc = new Set([root]);
   const stack = [root];
   while (stack.length) {

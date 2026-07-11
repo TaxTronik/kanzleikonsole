@@ -1,6 +1,7 @@
 // =============================================================================
 // Token-gestützte Auslieferung des zu unterzeichnenden PoA-PDFs an den externen
-// Unterzeichner (eIDAS Art. 26: der Signatar muss die signierten Daten sehen).
+// Unterzeichner. Ausgeliefert wird ausschließlich der beim Versand gebundene
+// Dokument-Snapshot.
 //
 // Zugriffsmodell = identisch zur Sign-Seite (loadPoaForSigning): nur der
 // Signatur-Token (256-Bit-Secret in der Magic-Link-URL) autorisiert. Es wird
@@ -24,6 +25,11 @@ import {
   previewDisposition,
   previewSecurityHeaders,
 } from '@/server/storage/preview-mime';
+import {
+  isPoaExpired,
+  readPoaSigningSnapshot,
+  snapshotDocumentMatches,
+} from '@/server/poa/signing-snapshot';
 
 function hashToken(raw: string): string {
   return createHash('sha256').update(raw).digest('hex');
@@ -55,13 +61,34 @@ export async function GET(req: NextRequest) {
   if (!poa || !poa.documentId) return notFound();
   if (!poa.signingTokenExpiresAt || poa.signingTokenExpiresAt < new Date()) return notFound();
   if (poa.status !== 'SENT') return notFound();
+  const snapshot = readPoaSigningSnapshot(poa.signingContentSnapshot, poa.signingContentSha256);
+  if (!snapshot?.document || isPoaExpired(snapshot.validUntil)) return notFound();
+  if (
+    snapshot.document.documentId !== poa.documentId ||
+    snapshot.document.versionId !== poa.signingDocumentVersionId
+  ) {
+    return notFound();
+  }
 
-  const doc = await owner.document.findFirst({
-    where: { id: poa.documentId, tenantId: poa.tenantId, deletedAt: null },
-    include: { versions: { orderBy: { versionNo: 'desc' }, take: 1 } },
+  const version = await owner.documentVersion.findFirst({
+    where: {
+      id: snapshot.document.versionId,
+      documentId: snapshot.document.documentId,
+      document: { tenantId: poa.tenantId, deletedAt: null },
+    },
+    include: { document: true },
   });
-  const version = doc?.versions[0];
-  if (!doc || !version) return notFound();
+  if (
+    !version ||
+    !snapshotDocumentMatches(snapshot, {
+      id: version.id,
+      documentId: version.documentId,
+      sha256: version.sha256,
+    })
+  ) {
+    return notFound();
+  }
+  const doc = version.document;
 
   // Sichere Inline-Auslieferung: effectiveDocumentMime liefert für ein
   // PoA-Dokument application/pdf; previewDisposition/-ContentType erzwingen die

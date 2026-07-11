@@ -20,6 +20,7 @@ import type { TxClient } from '@taxtronik/db';
 import { SCHEDULE_LABELS } from '@taxtronik/tax';
 import type { StaffSession } from '@/server/auth/staff';
 import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
+import { berlinTodayUtcMidnight } from '@/lib/fmt';
 import {
   type FristEintrag,
   taxDeadlineErledigt,
@@ -54,7 +55,7 @@ export async function loadKontrollbuch(
   session: StaffSession,
   opts: KontrollbuchOptions,
 ): Promise<FristEintrag[]> {
-  const heute = new Date();
+  const heute = berlinTodayUtcMidnight();
   const horizont = new Date(heute.getTime() + opts.tage * 86400000);
   const rueckschau = new Date(heute.getTime() - opts.tage * 86400000);
 
@@ -84,7 +85,16 @@ export async function loadKontrollbuch(
             // MUSS mit taxNoticeFristErledigt (eintrag.ts) übereinstimmen —
             // sonst fallen TEILABHILFE/KLAGE-Bescheide ganz aus dem
             // Kontrollbuch (weder offen noch im Erledigungsnachweis).
-            status: { in: ['EINSPRUCH', 'ABGEHOLFEN', 'TEILABHILFE', 'ZURUECKGEWIESEN', 'KLAGE', 'RECHTSKRAEFTIG'] },
+            status: {
+              in: [
+                'EINSPRUCH',
+                'ABGEHOLFEN',
+                'TEILABHILFE',
+                'ZURUECKGEWIESEN',
+                'KLAGE',
+                'RECHTSKRAEFTIG',
+              ],
+            },
             appealDeadline: { gte: rueckschau, lte: horizont },
           },
         ],
@@ -133,7 +143,8 @@ export async function loadKontrollbuch(
   // Verantwortliche: Hauptbearbeiter je Mandant (eine Query) — Wiedervorlagen
   // mit eigener Zuweisung überschreiben das. Namen in einer zweiten Query.
   const clientIds = new Set<string>();
-  for (const r of [...deadlines, ...notices, ...klagen, ...requests, ...reminders]) clientIds.add(r.clientId);
+  for (const r of [...deadlines, ...notices, ...klagen, ...requests, ...reminders])
+    clientIds.add(r.clientId);
   const responsibilities = clientIds.size
     ? await tx.clientResponsibility.findMany({
         where: { clientId: { in: [...clientIds] }, role: 'HAUPTBEARBEITER' },
@@ -146,7 +157,10 @@ export async function loadKontrollbuch(
   for (const sid of hauptbearbeiter.values()) staffIds.add(sid);
   for (const d of deadlines) if (d.completedByStaff) staffIds.add(d.completedByStaff);
   for (const n of notices) if (n.reviewedBy) staffIds.add(n.reviewedBy);
+  for (const n of notices) if (n.appealFiledBy) staffIds.add(n.appealFiledBy);
+  for (const n of notices) if (n.legalFinalBy) staffIds.add(n.legalFinalBy);
   for (const k of klagen) if (k.klageFiledBy) staffIds.add(k.klageFiledBy);
+  for (const k of klagen) if (k.legalFinalBy) staffIds.add(k.legalFinalBy);
   for (const r of reminders) {
     if (r.assigneeStaffId) staffIds.add(r.assigneeStaffId);
     if (r.doneByStaff) staffIds.add(r.doneByStaff);
@@ -189,8 +203,14 @@ export async function loadKontrollbuch(
       clientName: n.client.name,
       faelligAm: n.appealDeadline!,
       erledigt: taxNoticeFristErledigt(n.status),
-      erledigtAm: n.appealFiledAt ?? n.reviewedAt,
-      erledigtVon: n.reviewedBy ? (staffName.get(n.reviewedBy) ?? null) : null,
+      erledigtAm: n.appealFiledAt ?? n.legalFinalAt ?? n.reviewedAt,
+      erledigtVon: n.appealFiledBy
+        ? (staffName.get(n.appealFiledBy) ?? null)
+        : n.legalFinalBy
+          ? (staffName.get(n.legalFinalBy) ?? null)
+          : n.reviewedBy
+            ? (staffName.get(n.reviewedBy) ?? null)
+            : null,
       verantwortlich: verantwortlichId ? (staffName.get(verantwortlichId) ?? null) : null,
       verantwortlichId,
       href: `/staff/clients/${n.clientId}/notices`,
@@ -210,9 +230,14 @@ export async function loadKontrollbuch(
       erledigt: taxNoticeKlageFristErledigt(k.status),
       // #11: Erledigung = tatsächliche Klageeinreichung (wer/wann), nicht die
       // Einspruchsentscheidung (= Fristbeginn) bzw. der Bescheidprüfer. Fallback
-      // auf appealResolvedAt/null nur für Altbestand ohne klageFiled*-Felder.
-      erledigtAm: k.klageFiledAt ?? k.appealResolvedAt,
-      erledigtVon: k.klageFiledBy ? (staffName.get(k.klageFiledBy) ?? null) : null,
+      // auf Abschluss-/Entscheidungsdaten nur für Altbestand ohne die
+      // belastbaren klageFiled*-Felder.
+      erledigtAm: k.klageFiledAt ?? k.legalFinalAt ?? k.appealResolvedAt,
+      erledigtVon: k.klageFiledBy
+        ? (staffName.get(k.klageFiledBy) ?? null)
+        : k.legalFinalBy
+          ? (staffName.get(k.legalFinalBy) ?? null)
+          : null,
       verantwortlich: verantwortlichId ? (staffName.get(verantwortlichId) ?? null) : null,
       verantwortlichId,
       href: `/staff/clients/${k.clientId}/notices`,

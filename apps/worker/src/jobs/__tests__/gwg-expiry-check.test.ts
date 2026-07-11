@@ -31,7 +31,7 @@ const h = vi.hoisted(() => {
   };
   const tx = {
     gwgCheck: { updateMany: vi.fn(), findFirst: vi.fn() },
-    client: { updateMany: vi.fn() },
+    client: { findUnique: vi.fn(), updateMany: vi.fn() },
   };
   const withWorkerTenantContext = vi.fn(
     async (_tenantId: string, fn: (t: unknown) => Promise<unknown>) => fn(tx),
@@ -136,7 +136,12 @@ beforeEach(() => {
   h.tx.gwgCheck.updateMany.mockResolvedValue({ count: 1 });
   // Default: kein neuerer gültiger Check → Alt-Verhalten (Mandant wird deaktiviert).
   h.tx.gwgCheck.findFirst.mockResolvedValue(null);
-  h.tx.client.updateMany.mockResolvedValue({ count: 1 });
+  h.tx.client.findUnique
+    .mockResolvedValueOnce({ allowActive: true })
+    .mockResolvedValue({ allowActive: false });
+  // Realer Pfad mit Migration 034: Das Check-UPDATE deaktiviert bereits über
+  // den AFTER-Trigger; das explizite updateMany trifft deshalb keine Zeile.
+  h.tx.client.updateMany.mockResolvedValue({ count: 0 });
   h.record.mockResolvedValue({});
   h.upsertNotification.mockResolvedValue(undefined);
   h.redisSet.mockResolvedValue('OK');
@@ -162,7 +167,9 @@ describe('Stufenlogik an den Tagesgrenzen', () => {
   });
 
   it('91 Tage Rest → keine Eskalation', async () => {
-    h.prismaOwner.gwgCheck.findMany.mockResolvedValue([gwgCheck(new Date(FIXED_NOW.getTime() + 91 * DAY))]);
+    h.prismaOwner.gwgCheck.findMany.mockResolvedValue([
+      gwgCheck(new Date(FIXED_NOW.getTime() + 91 * DAY)),
+    ]);
 
     const result = await run();
 
@@ -172,7 +179,9 @@ describe('Stufenlogik an den Tagesgrenzen', () => {
   });
 
   it('STAGE1 (90 Tage): nur der Hauptbearbeiter wird informiert', async () => {
-    h.prismaOwner.gwgCheck.findMany.mockResolvedValue([gwgCheck(new Date(FIXED_NOW.getTime() + 90 * DAY))]);
+    h.prismaOwner.gwgCheck.findMany.mockResolvedValue([
+      gwgCheck(new Date(FIXED_NOW.getTime() + 90 * DAY)),
+    ]);
 
     const result = await run();
 
@@ -186,7 +195,9 @@ describe('Stufenlogik an den Tagesgrenzen', () => {
   });
 
   it('STAGE2 (30 Tage): Hauptbearbeiter + Berufsträger', async () => {
-    h.prismaOwner.gwgCheck.findMany.mockResolvedValue([gwgCheck(new Date(FIXED_NOW.getTime() + 30 * DAY))]);
+    h.prismaOwner.gwgCheck.findMany.mockResolvedValue([
+      gwgCheck(new Date(FIXED_NOW.getTime() + 30 * DAY)),
+    ]);
 
     const result = await run();
 
@@ -253,7 +264,7 @@ describe('STAGE3 — Ablauf (RF-8: Statuswechsel + Audit in EINER Tx)', () => {
       action: 'client.deactivate.gwg_expired',
       resourceId: 'client-1',
       before: { allowActive: true },
-      after: expect.objectContaining({ allowActive: false }),
+      after: expect.objectContaining({ allowActive: false, deactivatedByDbTrigger: true }),
     });
 
     // alle relevanten Adressaten, dedupliziert
@@ -280,7 +291,9 @@ describe('STAGE3 — Ablauf (RF-8: Statuswechsel + Audit in EINER Tx)', () => {
   });
 
   it('idempotent: Check/Mandant bereits umgestellt (count=0) → KEIN Audit-Eintrag', async () => {
-    h.prismaOwner.gwgCheck.findMany.mockResolvedValue([gwgCheck(new Date(FIXED_NOW.getTime() - 5 * DAY))]);
+    h.prismaOwner.gwgCheck.findMany.mockResolvedValue([
+      gwgCheck(new Date(FIXED_NOW.getTime() - 5 * DAY)),
+    ]);
     h.tx.gwgCheck.updateMany.mockResolvedValue({ count: 0 });
     h.tx.client.updateMany.mockResolvedValue({ count: 0 });
 
@@ -297,7 +310,9 @@ describe('STAGE3 — Ablauf (RF-8: Statuswechsel + Audit in EINER Tx)', () => {
   it('neuerer gültiger VERIFIED-Check → Alt-Check EXPIRED, aber KEINE Deaktivierung/Eskalation', async () => {
     // Wiederholungsprüfung: der alte Check ist abgelaufen, ein zweiter,
     // noch gültiger VERIFIED-Check existiert für denselben Mandanten.
-    h.prismaOwner.gwgCheck.findMany.mockResolvedValue([gwgCheck(new Date(FIXED_NOW.getTime() - 5 * DAY))]);
+    h.prismaOwner.gwgCheck.findMany.mockResolvedValue([
+      gwgCheck(new Date(FIXED_NOW.getTime() - 5 * DAY)),
+    ]);
     h.tx.gwgCheck.findFirst.mockResolvedValue({ id: 'gwg-2' });
 
     const result = await run();
@@ -398,7 +413,7 @@ describe('Personalausweis-Ablauf (U-5: Idempotenz per FK)', () => {
   });
 });
 
-describe('GwG-Lösch-Queue (§ 8 Abs. 4 S. 4): GWG_DELETION_DUE', () => {
+describe('GwG-Lösch-Queue (§ 8 Abs. 1 und 4): GWG_DELETION_DUE', () => {
   it('löschreife Belege + Aufzeichnungen → tägliche Notification an alle ADMIN/PARTNER', async () => {
     h.prismaOwner.staffUser.findMany.mockResolvedValue([{ id: 'admin-1' }, { id: 'partner-1' }]);
     h.prismaOwner.document.count.mockResolvedValue(2);
@@ -409,19 +424,19 @@ describe('GwG-Lösch-Queue (§ 8 Abs. 4 S. 4): GWG_DELETION_DUE', () => {
     // Frist-Cutoff: Mandatsende vor dem 1.1.(Jahr(now) − 5) — exakt, kein Grobfilter
     const cutoff = new Date(Date.UTC(2021, 0, 1));
     expect(h.prismaOwner.document.count).toHaveBeenCalledWith({
-      where: {
+      where: expect.objectContaining({
         tenantId: TENANT,
         classification: 'GWG_EVIDENCE',
         deletedAt: null,
-        client: { mandateEndedAt: { lt: cutoff } },
-      },
+        OR: expect.arrayContaining([{ client: { mandateEndedAt: { lt: cutoff } } }]),
+      }),
     });
     expect(h.prismaOwner.gwgCheck.count).toHaveBeenCalledWith({
-      where: {
+      where: expect.objectContaining({
         tenantId: TENANT,
         destroyedAt: null,
-        client: { mandateEndedAt: { lt: cutoff } },
-      },
+        OR: expect.arrayContaining([{ client: { mandateEndedAt: { lt: cutoff } } }]),
+      }),
     });
 
     const calls = h.upsertNotification.mock.calls.filter(
@@ -431,7 +446,7 @@ describe('GwG-Lösch-Queue (§ 8 Abs. 4 S. 4): GWG_DELETION_DUE', () => {
     for (const c of calls) {
       expect(c[2]).toMatchObject({
         kind: 'GWG_DELETION_DUE',
-        title: 'GwG-Pflichtlöschung: 3 Einträge löschreif',
+        title: 'GwG-Löschprüfung: 3 Einträge löschreif',
         href: '/staff/admin/gwg-retention',
         // resource_id = Tenant-ID: stabiler Schlüssel für den Tages-Dedupe (iter81)
         resourceType: 'tenant',

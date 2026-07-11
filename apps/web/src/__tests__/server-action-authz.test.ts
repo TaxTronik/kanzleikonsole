@@ -29,7 +29,7 @@ const ALLOWLIST_FILES = [
 // sonst staff-geschützten Dateien — sie autorisieren über Besitz eines Tokens.
 const ALLOWLIST_FNS = new Set([
   // öffentlicher PoA-Signatur-Flow per rawToken (+ OTP) — keine vorgelagerte
-  // Session; autorisiert über Token-Besitz (eIDAS-Signatur durch den Mandanten).
+  // Session; autorisiert über Token-Besitz (elektronischer PoA-Bestätigungsprozess).
   'staff/(protected)/poa/actions.ts::signPoaAction',
   'staff/(protected)/poa/actions.ts::requestSigningOtpAction',
 ]);
@@ -55,10 +55,14 @@ function walkActionFiles(dir: string): string[] {
   return out;
 }
 
-interface Fn { name: string; exported: boolean; body: string }
+interface Fn {
+  name: string;
+  exported: boolean;
+  body: string;
+}
 
 function isExported(node: ts.Node): boolean {
-  return (ts.canHaveModifiers(node) ? ts.getModifiers(node) ?? [] : []).some(
+  return (ts.canHaveModifiers(node) ? (ts.getModifiers(node) ?? []) : []).some(
     (m) => m.kind === ts.SyntaxKind.ExportKeyword,
   );
 }
@@ -85,7 +89,9 @@ function topLevelFns(src: ts.SourceFile): Fn[] {
   return fns;
 }
 
-const files = walkActionFiles(APP_DIR).filter((f) => readFileSync(f, 'utf8').includes("'use server'"));
+const files = walkActionFiles(APP_DIR).filter((f) =>
+  readFileSync(f, 'utf8').includes("'use server'"),
+);
 
 // Erster Pass: Surface sammeln (alle Top-Level-Funktionen je Datei) + Menge
 // der exportierten Action-Namen — das Delegations-Ziel muss darin liegen.

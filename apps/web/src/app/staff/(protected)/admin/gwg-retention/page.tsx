@@ -28,13 +28,13 @@ export default async function GwgRetentionPage() {
   return (
     <div className="p-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-primary mb-1">GwG-Pflichtlöschung</h1>
+        <h1 className="text-2xl font-bold text-primary mb-1">GwG-Löschprüfung</h1>
         <p className="text-muted text-sm max-w-3xl">
-          GwG-Belege beendeter Mandate, deren gesetzliche Aufbewahrungsfrist abgelaufen
-          ist (§ 8 Abs. 4 GwG: 5 Jahre ab Schluss des Kalenderjahres des Mandatsendes).
-          Die Vernichtung bestätigt der Berufsträger manuell und ist unwiderruflich.
-          Ein Mandat wird über „Mandat beenden" auf der Mandanten-Bearbeitungsseite als
-          beendet markiert.
+          GwG-Belege beendeter Mandate sowie abgelehnter, abgebrochener oder abgelaufener
+          Onboardings, deren gesetzliche Aufbewahrungsfrist abgelaufen ist (§ 8 Abs. 4 GwG: 5 Jahre
+          ab Schluss des maßgeblichen Kalenderjahres). Die Vernichtung bestätigt der Berufsträger
+          manuell und ist unwiderruflich. Ein Mandat wird über „Mandat beenden" auf der
+          Mandanten-Bearbeitungsseite als beendet markiert.
         </p>
       </div>
 
@@ -52,7 +52,7 @@ export default async function GwgRetentionPage() {
               <tr className="border-b text-left text-muted">
                 <th className="px-4 py-3 font-medium">Mandant</th>
                 <th className="px-4 py-3 font-medium">Beleg</th>
-                <th className="px-4 py-3 font-medium">Mandatsende</th>
+                <th className="px-4 py-3 font-medium">Fristbeginn</th>
                 <th className="px-4 py-3 font-medium">Frist abgelaufen</th>
                 <th className="px-4 py-3"></th>
               </tr>
@@ -62,11 +62,19 @@ export default async function GwgRetentionPage() {
                 <tr key={item.documentId} className="border-b last:border-0">
                   <td className="px-4 py-3">{item.clientName}</td>
                   <td className="px-4 py-3">{item.title}</td>
-                  <td className="px-4 py-3">{fmtDateShort(item.mandateEndedAt)}</td>
+                  <td className="px-4 py-3">
+                    {fmtDateShort(item.retentionStartedAt)}
+                    <span className="block text-xs text-muted">
+                      {item.retentionReason === 'MANDATE_ENDED'
+                        ? 'Mandatsende'
+                        : 'beendetes Onboarding'}
+                    </span>
+                  </td>
                   <td className="px-4 py-3">{fmtDateShort(item.deletionDeadline)}</td>
                   <td className="px-4 py-3 text-right">
                     <GwgDeleteButton
                       documentId={item.documentId}
+                      destructionPending={item.destructionPending}
                       label={`${item.clientName} — ${item.title}`}
                     />
                   </td>
@@ -81,11 +89,11 @@ export default async function GwgRetentionPage() {
         Aufzeichnungen (DB)
       </h2>
       <p className="text-muted text-xs max-w-3xl mb-3">
-        § 8 Abs. 4 S. 4 GwG verlangt auch die Vernichtung der Aufzeichnungen:
-        wirtschaftlich Berechtigte werden gelöscht, Ausweis-Details und
-        Risikoangaben entfernt. Ein Skelett-Datensatz (Status, Vernichtungsvermerk)
-        bleibt als Nachweis erhalten, dass die Prüfung stattgefunden hat.
-        Voraussetzung: die Datei-Belege des Mandanten sind bereits vernichtet.
+        Die Aufbewahrung nach § 8 Abs. 1 und 4 GwG umfasst auch die Aufzeichnungen: wirtschaftlich
+        Berechtigte werden gelöscht, Ausweis-Details und Risikoangaben entfernt. Ein
+        Skelett-Datensatz (Status, Vernichtungsvermerk) bleibt als Nachweis erhalten, dass die
+        Prüfung stattgefunden hat. Voraussetzung: die Datei-Belege des Mandanten sind bereits
+        vernichtet.
       </p>
       <div className="card overflow-hidden">
         {dueChecks.length === 0 ? (
@@ -98,7 +106,7 @@ export default async function GwgRetentionPage() {
               <tr className="border-b text-left text-muted">
                 <th className="px-4 py-3 font-medium">Mandant</th>
                 <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Mandatsende</th>
+                <th className="px-4 py-3 font-medium">Fristbeginn</th>
                 <th className="px-4 py-3 font-medium">Frist abgelaufen</th>
                 <th className="px-4 py-3"></th>
               </tr>
@@ -108,7 +116,14 @@ export default async function GwgRetentionPage() {
                 <tr key={item.checkId} className="border-b last:border-0">
                   <td className="px-4 py-3">{item.clientName}</td>
                   <td className="px-4 py-3">{CHECK_STATUS_LABELS[item.status] ?? item.status}</td>
-                  <td className="px-4 py-3">{fmtDateShort(item.mandateEndedAt)}</td>
+                  <td className="px-4 py-3">
+                    {fmtDateShort(item.retentionStartedAt)}
+                    <span className="block text-xs text-muted">
+                      {item.retentionReason === 'MANDATE_ENDED'
+                        ? 'Mandatsende'
+                        : 'beendetes Onboarding'}
+                    </span>
+                  </td>
                   <td className="px-4 py-3">{fmtDateShort(item.deletionDeadline)}</td>
                   <td className="px-4 py-3 text-right">
                     <GwgCheckDeleteButton

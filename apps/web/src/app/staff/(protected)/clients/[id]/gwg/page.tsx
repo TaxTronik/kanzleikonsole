@@ -1,4 +1,4 @@
-﻿import { staffAuth } from '@/server/auth/staff';
+import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
@@ -12,7 +12,11 @@ import { InviteSection } from './invite-section';
 import { GwgDecisionForms } from './decision-forms';
 import { fmtDateShort } from '@/lib/fmt';
 import { DocumentPreviewButton } from '@/components/document-preview';
-import { GwgSubmissionSummary, type GwgSubmissionSummaryData } from '@/components/gwg-submission-summary';
+import {
+  GwgSubmissionSummary,
+  type GwgSubmissionSummaryData,
+} from '@/components/gwg-submission-summary';
+import { LegalEntityDetailsForm } from './legal-entity-details-form';
 
 const statusLabels: Record<string, string> = {
   DRAFT: 'Entwurf',
@@ -32,11 +36,7 @@ const idTypeLabels: Record<string, string> = {
   SONSTIGES: 'Sonstiges',
 };
 
-export default async function GwgPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function GwgPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await staffAuth();
   if (!session?.user) redirect('/staff/login');
 
@@ -58,7 +58,7 @@ export default async function GwgPage({
           },
         }),
         tx.document.findMany({
-          where: { clientId },
+          where: { clientId, classification: 'GWG_EVIDENCE', deletedAt: null },
           select: { id: true, title: true },
           orderBy: { createdAt: 'desc' },
         }),
@@ -75,21 +75,25 @@ export default async function GwgPage({
       ]);
       const latestInvite = invites[0] ?? null;
       const uploadedIds = Array.isArray(latestInvite?.uploadedDocumentIds)
-        ? (latestInvite.uploadedDocumentIds as unknown[]).filter((id): id is string => typeof id === 'string')
+        ? (latestInvite.uploadedDocumentIds as unknown[]).filter(
+            (id): id is string => typeof id === 'string',
+          )
         : [];
-      const uploadedDocuments = uploadedIds.length > 0
-        ? await tx.document.findMany({
-            where: { clientId, id: { in: uploadedIds } },
-            select: { id: true, title: true, createdAt: true },
-            orderBy: { createdAt: 'desc' },
-          })
-        : [];
+      const uploadedDocuments =
+        uploadedIds.length > 0
+          ? await tx.document.findMany({
+              where: { clientId, id: { in: uploadedIds } },
+              select: { id: true, title: true, createdAt: true },
+              orderBy: { createdAt: 'desc' },
+            })
+          : [];
       return { client, check, clientDocuments, invites, contacts, uploadedDocuments };
     },
   );
 
   if (!data) notFound();
   const { client, check, clientDocuments, invites, contacts, uploadedDocuments } = data;
+  const isLegalEntity = client.kind === 'JURPERS' || client.kind === 'PERSGES';
   const latestInvite = invites[0] ?? null;
   const submittedSummary: GwgSubmissionSummaryData = {
     client: {
@@ -112,34 +116,36 @@ export default async function GwgPage({
           submittedAt: latestInvite.submittedAt?.toISOString() ?? null,
         }
       : null,
-    owners: check?.beneficialOwners.map((o) => ({
-      id: o.id,
-      fullName: o.fullName,
-      birthDate: o.birthDate?.toISOString() ?? null,
-      birthPlace: o.birthPlace,
-      nationality: o.nationality,
-      residence: o.residence,
-      ownershipPct: o.ownershipPct?.toString() ?? null,
-      isPep: o.isPep,
-      notes: o.notes,
-    })) ?? [],
-    idDocuments: check?.idDocuments.map((d) => ({
-      id: d.id,
-      type: d.type,
-      ownerName: d.ownerName,
-      number: d.number,
-      issuedBy: d.issuedBy,
-      issueDate: d.issueDate?.toISOString() ?? null,
-      expiryDate: d.expiryDate?.toISOString() ?? null,
-      notes: d.notes,
-      document: d.document
-        ? {
-            id: d.document.id,
-            title: d.document.title,
-            createdAt: d.document.createdAt.toISOString(),
-          }
-        : null,
-    })) ?? [],
+    owners:
+      check?.beneficialOwners.map((o) => ({
+        id: o.id,
+        fullName: o.fullName,
+        birthDate: o.birthDate?.toISOString() ?? null,
+        birthPlace: o.birthPlace,
+        nationality: o.nationality,
+        residence: o.residence,
+        ownershipPct: o.ownershipPct?.toString() ?? null,
+        isPep: o.isPep,
+        notes: o.notes,
+      })) ?? [],
+    idDocuments:
+      check?.idDocuments.map((d) => ({
+        id: d.id,
+        type: d.type,
+        ownerName: d.ownerName,
+        number: d.number,
+        issuedBy: d.issuedBy,
+        issueDate: d.issueDate?.toISOString() ?? null,
+        expiryDate: d.expiryDate?.toISOString() ?? null,
+        notes: d.notes,
+        document: d.document
+          ? {
+              id: d.document.id,
+              title: d.document.title,
+              createdAt: d.document.createdAt.toISOString(),
+            }
+          : null,
+      })) ?? [],
     uploadedDocuments: uploadedDocuments.map((d) => ({
       id: d.id,
       title: d.title,
@@ -150,18 +156,25 @@ export default async function GwgPage({
   return (
     <div className="p-8 max-w-4xl">
       <div className="flex items-start gap-4 mb-6">
-        <Link href={`/staff/clients/${client.id}`} className="text-disabled hover:text-secondary mt-1">
+        <Link
+          href={`/staff/clients/${client.id}`}
+          className="text-disabled hover:text-secondary mt-1"
+        >
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-1">
             <h1 className="text-2xl font-bold text-primary">GwG-Prüfung</h1>
             {check && (
-              <span className={
-                check.status === 'VERIFIED' ? 'badge-green'
-                : check.status === 'REJECTED' || check.status === 'EXPIRED' ? 'badge-red'
-                : 'badge-yellow'
-              }>
+              <span
+                className={
+                  check.status === 'VERIFIED'
+                    ? 'badge-green'
+                    : check.status === 'REJECTED' || check.status === 'EXPIRED'
+                      ? 'badge-red'
+                      : 'badge-yellow'
+                }
+              >
                 {statusLabels[check.status]}
               </span>
             )}
@@ -194,12 +207,10 @@ export default async function GwgPage({
       {!check ? (
         <div className="card p-8 text-center">
           <ShieldCheck className="h-12 w-12 text-disabled mx-auto mb-4" />
-          <h2 className="text-lg font-semibold text-primary mb-2">
-            Noch keine GwG-Prüfung
-          </h2>
+          <h2 className="text-lg font-semibold text-primary mb-2">Noch keine GwG-Prüfung</h2>
           <p className="text-sm text-muted mb-6">
-            Sie können die Prüfung selbst starten — oder den Mandanten oben per Einladung
-            einladen, die Stammdaten und Ausweise selbst hochzuladen.
+            Sie können die Prüfung selbst starten — oder den Mandanten oben per Einladung einladen,
+            die Stammdaten und Ausweise selbst hochzuladen.
           </p>
           <form action={openCheckAction}>
             <input type="hidden" name="clientId" value={client.id} />
@@ -216,12 +227,10 @@ export default async function GwgPage({
               <div className="flex items-start gap-3">
                 <ShieldCheck className="h-5 w-5 text-green-600 mt-0.5" />
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-green-900">
-                    Mandant ist verifiziert.
-                  </p>
+                  <p className="text-sm font-medium text-green-900">Mandant ist verifiziert.</p>
                   <p className="text-xs text-green-700 mt-1">
-                    Risiko: <strong>{check.riskLevel}</strong> ·
-                    Gültig bis {fmtDateShort(check.validUntil)}
+                    Risiko: <strong>{check.riskLevel}</strong> · Gültig bis{' '}
+                    {fmtDateShort(check.validUntil)}
                   </p>
                 </div>
               </div>
@@ -234,9 +243,7 @@ export default async function GwgPage({
                 <div className="flex-1">
                   <p className="text-sm font-medium text-red-900">Prüfung abgelehnt.</p>
                   {check.rejectedReason && (
-                    <p className="text-xs text-red-700 mt-1">
-                      Begründung: {check.rejectedReason}
-                    </p>
+                    <p className="text-xs text-red-700 mt-1">Begründung: {check.rejectedReason}</p>
                   )}
                 </div>
               </div>
@@ -245,9 +252,7 @@ export default async function GwgPage({
 
           {/* Schritt 1: Risikobewertung */}
           <section className="card p-6">
-            <h2 className="text-lg font-semibold text-primary mb-1">
-              1. Risikobewertung
-            </h2>
+            <h2 className="text-lg font-semibold text-primary mb-1">1. Risikobewertung</h2>
             <p className="text-sm text-muted mb-4">
               Antworten basierend auf Branche, Sitz, PEP-Status und Geschäftsmodell.
             </p>
@@ -258,14 +263,48 @@ export default async function GwgPage({
               currentAnswers={(check.riskAnswers as Record<string, number>) ?? {}}
               currentScore={check.riskScore ?? null}
               currentLevel={check.riskLevel ?? null}
-              disabled={check.status === 'VERIFIED' || check.status === 'REJECTED' || check.status === 'EXPIRED'}
+              disabled={
+                check.status === 'VERIFIED' ||
+                check.status === 'REJECTED' ||
+                check.status === 'EXPIRED'
+              }
             />
           </section>
+
+          {isLegalEntity && (
+            <section className="card p-6">
+              <h2 className="text-lg font-semibold text-primary mb-1">
+                2. Rechtsträger und Vertretung
+              </h2>
+              <p className="text-sm text-muted mb-4">
+                Pflichtangaben nach § 11 Abs. 4 Nr. 2 GwG. Zusätzlich sind unten
+                Register-/Gründungsnachweis, Transparenzregister-Auszug und der Ausweis mindestens
+                einer vertretungsberechtigten Person zuzuordnen.
+              </p>
+              <LegalEntityDetailsForm
+                checkId={check.id}
+                clientId={client.id}
+                current={{
+                  legalForm: check.legalForm,
+                  registerNumber: check.registerNumber,
+                  registerAuthority: check.registerAuthority,
+                  noRegisterEntry: check.noRegisterEntry,
+                  representativeNames: check.representativeNames,
+                  ownershipStructureNotes: check.ownershipStructureNotes,
+                }}
+                disabled={
+                  check.status === 'VERIFIED' ||
+                  check.status === 'REJECTED' ||
+                  check.status === 'EXPIRED'
+                }
+              />
+            </section>
+          )}
 
           {/* Schritt 2: Wirtschaftlich Berechtigte */}
           <section className="card p-6">
             <h2 className="text-lg font-semibold text-primary mb-1">
-              2. Wirtschaftlich Berechtigte
+              {isLegalEntity ? '3' : '2'}. Wirtschaftlich Berechtigte
             </h2>
             <p className="text-sm text-muted mb-4">
               Personen mit mehr als 25 % Anteil oder vergleichbarer Kontrolle (§ 3 GwG).
@@ -291,19 +330,21 @@ export default async function GwgPage({
               </ul>
             )}
 
-            {check.status !== 'VERIFIED' && check.status !== 'REJECTED' && check.status !== 'EXPIRED' && (
-              <AddBeneficialOwnerForm checkId={check.id} clientId={client.id} />
-            )}
+            {check.status !== 'VERIFIED' &&
+              check.status !== 'REJECTED' &&
+              check.status !== 'EXPIRED' && (
+                <AddBeneficialOwnerForm checkId={check.id} clientId={client.id} />
+              )}
           </section>
 
           {/* Schritt 3: Identitätsdokumente */}
           <section className="card p-6">
             <h2 className="text-lg font-semibold text-primary mb-1">
-              3. Identitätsdokumente
+              {isLegalEntity ? '4' : '3'}. Identitätsdokumente
             </h2>
             <p className="text-sm text-muted mb-4">
-              Personalausweise / Handelsregisterauszüge / Transparenzregister-Auszüge
-              (laden Sie Dokumente erst hoch und ordnen Sie sie hier zu).
+              Personalausweise / Handelsregisterauszüge / Transparenzregister-Auszüge (laden Sie
+              Dokumente erst hoch und ordnen Sie sie hier zu).
             </p>
 
             {check.idDocuments.length > 0 && (
@@ -327,7 +368,10 @@ export default async function GwgPage({
                     {d.document && (
                       <div className="flex items-center gap-1 ml-6 mt-1">
                         <span className="text-xs text-muted">{d.document.title}</span>
-                        <DocumentPreviewButton documentId={d.document.id} documentTitle={d.document.title} />
+                        <DocumentPreviewButton
+                          documentId={d.document.id}
+                          documentTitle={d.document.title}
+                        />
                       </div>
                     )}
                   </li>
@@ -335,20 +379,22 @@ export default async function GwgPage({
               </ul>
             )}
 
-            {check.status !== 'VERIFIED' && check.status !== 'REJECTED' && check.status !== 'EXPIRED' && (
-              <AddIdDocumentForm
-                checkId={check.id}
-                clientId={client.id}
-                clientDocuments={clientDocuments}
-              />
-            )}
+            {check.status !== 'VERIFIED' &&
+              check.status !== 'REJECTED' &&
+              check.status !== 'EXPIRED' && (
+                <AddIdDocumentForm
+                  checkId={check.id}
+                  clientId={client.id}
+                  clientDocuments={clientDocuments}
+                />
+              )}
           </section>
 
           {/* Schritt 4: Verifikation oder Ablehnung */}
           {check.status === 'IN_REVIEW' && (
             <section className="card p-6">
               <h2 className="text-lg font-semibold text-primary mb-3">
-                4. Entscheidung
+                {isLegalEntity ? '5' : '4'}. Entscheidung
               </h2>
               <GwgDecisionForms checkId={check.id} clientId={client.id} />
             </section>

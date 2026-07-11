@@ -16,7 +16,7 @@ import type { TxClient } from '@taxtronik/db';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 
 /** Inhaltliche Version des Standardtextes. Bei Textänderung erhöhen. */
-export const PRIVACY_NOTICE_VERSION = 1;
+export const PRIVACY_NOTICE_VERSION = 2;
 
 const PRIVACY_SETTING_KEY = 'privacy.notice';
 
@@ -97,9 +97,7 @@ export function renderPrivacyNotice(input: NoticeRenderInput): string {
 
   const providerLines =
     providers.length > 0
-      ? providers
-          .map((p) => `- ${p.name}${p.category ? ` (${p.category})` : ''}`)
-          .join('\n')
+      ? providers.map((p) => `- ${p.name}${p.category ? ` (${p.category})` : ''}`).join('\n')
       : '- (Derzeit sind keine Dienstleister mit Datenzugriff erfasst.)';
 
   // Hinweis: Jeder Absatz und jeder Listenpunkt steht bewusst auf EINER Zeile
@@ -149,7 +147,7 @@ Eine Übermittlung in Staaten außerhalb der EU/des EWR erfolgt grundsätzlich n
 
 ## 7. Speicherdauer und Löschung
 
-Daten werden gespeichert, solange dies für Mandatsbearbeitung, Abrechnung, Dokumentation und gesetzliche Pflichten erforderlich ist. Handakten werden grundsätzlich zehn Jahre nach Ablauf des Kalenderjahres der Mandatsbeendigung aufbewahrt (§ 147 AO/GoBD); geldwäsche- oder haftungsbezogene Fristen können eine längere Speicherung erfordern. Danach werden Daten gelöscht oder eingeschränkt.
+Daten werden gespeichert, solange dies für Mandatsbearbeitung, Abrechnung, Dokumentation und gesetzliche Pflichten erforderlich ist. Handakten werden nach § 66 StBerG grundsätzlich zehn Jahre nach Beendigung des Auftrags aufbewahrt. Für steuer- und handelsrechtliche Unterlagen gelten je Datenklasse insbesondere sechs-, acht- oder zehnjährige Fristen; GwG- und laufende Verfahrens-/Haftungsfristen können abweichen. Danach werden Daten gelöscht, anonymisiert oder — solange eine Pflicht fortbesteht — in der Verarbeitung eingeschränkt.
 
 ## 8. Pflicht zur Bereitstellung
 

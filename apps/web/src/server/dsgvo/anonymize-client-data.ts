@@ -3,15 +3,17 @@
 // — innerhalb der bestehenden Anonymisierungs-Tx von
 // /staff/admin/dsgvo-retention (confirmClientAnonymizationAction).
 //
-// Läuft NUR nach Ablauf ALLER Aufbewahrungsfristen (GoBD § 147 AO 10 J. >
-// GwG § 8 Abs. 4 5 J.) — personenbezogene Reste in Nebentabellen haben dann
-// keine Rechtsgrundlage mehr. NOT-NULL-Felder bekommen den Platzhalter
+// Läuft NUR nach Ablauf ALLER einschlägigen Aufbewahrungsfristen (insbesondere
+// Handakte nach § 66 StBerG sowie dokumenttypabhängig 6/8/10 J. nach § 147 AO
+// und grundsätzlich 5 J. nach § 8 Abs. 4 GwG) — personenbezogene Reste in
+// Nebentabellen haben dann keine Rechtsgrundlage mehr. NOT-NULL-Felder bekommen den Platzhalter
 // „Anonymisiert", nullable Felder werden genullt. Keine Schema-Änderungen;
 // GoBD-pflichtige Objekte (invoice, document/Object-Lock, tax_*, bwa_*,
 // time_entry) bleiben bewusst unberührt (eigene Retention-Pfade).
 // =============================================================================
 
 import { Prisma } from '@taxtronik/db/prisma-client';
+import type { Prisma as PrismaTypes } from '@prisma/client';
 import type { TxClient } from '@taxtronik/db';
 
 /** Zähler je Datenklasse — landen im Audit-Event `client.anonymize`. */
@@ -28,6 +30,74 @@ export interface ClientSideTableAnonymization {
   riskMarkingsCleared: number;
 }
 
+/** Exaktes Zielbild der PoA-Personendaten-Redaktion nach Fristablauf. */
+export const POA_RETENTION_REDACTION: PrismaTypes.PowerOfAttorneyUpdateManyMutationInput = {
+  signerContactId: null,
+  signerName: 'Anonymisiert',
+  signerEmail: 'anonymisiert@taxtronik.local',
+  subject: 'Anonymisiert',
+  scope: 'Anonymisiert',
+  signingTokenHash: null,
+  signingTokenExpiresAt: null,
+  signingOtpHash: null,
+  signingOtpExpiresAt: null,
+  signingOtpAttempts: 0,
+  signingOtpAttemptsTotal: 0,
+  signingContentSnapshot: null,
+  signingContentSha256: null,
+  signingDocumentVersionId: null,
+  signedAt: null,
+  signedContentSha256: null,
+  signedDocumentVersionId: null,
+  signedByIp: null,
+  signedByUserAgent: null,
+  documentId: null,
+  revokedReason: null,
+};
+
+/** Erkennt PoAs, in denen noch redaktionspflichtige Personen-/Inhaltsdaten liegen. */
+export const POA_PERSONAL_DATA_PRESENT_WHERE = {
+  OR: [
+    { signerContactId: { not: null } },
+    { signerName: { not: 'Anonymisiert' } },
+    { signerEmail: { not: 'anonymisiert@taxtronik.local' } },
+    { subject: { not: 'Anonymisiert' } },
+    { scope: { not: 'Anonymisiert' } },
+    { signingTokenHash: { not: null } },
+    { signingTokenExpiresAt: { not: null } },
+    { signingOtpHash: { not: null } },
+    { signingOtpExpiresAt: { not: null } },
+    { signingOtpAttempts: { not: 0 } },
+    { signingOtpAttemptsTotal: { not: 0 } },
+    { signingContentSnapshot: { not: null } },
+    { signingContentSha256: { not: null } },
+    { signingDocumentVersionId: { not: null } },
+    { signedAt: { not: null } },
+    { signedContentSha256: { not: null } },
+    { signedDocumentVersionId: { not: null } },
+    { signedByIp: { not: null } },
+    { signedByUserAgent: { not: null } },
+    { documentId: { not: null } },
+    { revokedReason: { not: null } },
+  ],
+} satisfies PrismaTypes.PowerOfAttorneyWhereInput;
+
+/**
+ * Redigiert ausschließlich noch vorhandene PoA-Personendaten. Wird sowohl von
+ * der NATPERS-Gesamtanonymisierung als auch vom separaten Signer-Pfad für
+ * JURPERS/PERSGES verwendet.
+ */
+export async function redactClientPoaPersonalDataInTx(
+  tx: TxClient,
+  clientId: string,
+): Promise<number> {
+  const poa = await tx.powerOfAttorney.updateMany({
+    where: { clientId, AND: [POA_PERSONAL_DATA_PRESENT_WHERE] },
+    data: POA_RETENTION_REDACTION,
+  });
+  return poa.count;
+}
+
 /**
  * Anonymisiert/löscht die personentragenden Nebentabellen eines Mandanten.
  * `contactIds`: die (mit-anonymisierten) Kontakte des Mandanten — für
@@ -39,18 +109,13 @@ export async function anonymizeClientSideTablesInTx(
 ): Promise<ClientSideTableAnonymization> {
   const { clientId, contactIds } = opts;
 
-  // Vollmachten: NUR die DB-Personenfelder — die Vollmachts-DOKUMENTE
-  // unterliegen der Dokument-Retention (Object-Lock), nicht diesem Pfad.
-  // signerName/signerEmail sind NOT NULL → Platzhalter; IP/UA sind nullable.
-  const poa = await tx.powerOfAttorney.updateMany({
-    where: { clientId },
-    data: {
-      signerName: 'Anonymisiert',
-      signerEmail: 'anonymisiert@taxtronik.local',
-      signedByIp: null,
-      signedByUserAgent: null,
-    },
-  });
+  // Vollmachten: Nach Ablauf aller Retentionfristen wird auch der beim Versand
+  // gebundene Personen-/Inhaltssnapshot redigiert. Die Dokumentobjekte selbst
+  // durchlaufen vorher ihren eigenen Retentionpfad; die verbliebene Referenz
+  // wird hier nur gelöst. NOT-NULL-Textfelder bekommen einen Platzhalter.
+  // Das exakte Gesamtmuster ist zugleich die eng begrenzte DB-Trigger-Ausnahme
+  // von der ansonsten dauerhaften PoA-Immutability.
+  const poaSignersAnonymized = await redactClientPoaPersonalDataInTx(tx, clientId);
 
   // GwG-Onboarding-Invites: tragen inviteEmail/-Name + Submit-IP/UA und haben
   // nach Mandatsende + Fristablauf keinen Zweck mehr → löschen (keine
@@ -116,7 +181,7 @@ export async function anonymizeClientSideTablesInTx(
   });
 
   return {
-    poaSignersAnonymized: poa.count,
+    poaSignersAnonymized,
     gwgInvitesDeleted: gwgInvites.count,
     formSubmissionAnswersAnonymized: formSubmissions.count,
     appointmentsAnonymized: appointments.count,

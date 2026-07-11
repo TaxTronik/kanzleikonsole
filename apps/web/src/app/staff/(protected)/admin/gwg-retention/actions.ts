@@ -6,19 +6,27 @@ import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
 import { deleteObject } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
-import { isGwgDeletionDue } from '@/server/gwg/retention';
-import { staffActionGuard, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
+import { gwgDocumentEffectiveStart, isGwgDeletionDue } from '@/server/gwg/retention';
+import {
+  staffActionGuard,
+  type ActionResult as BaseActionResult,
+} from '@/server/actions/staff-action';
 
 export type ActionResult = BaseActionResult;
 
+function safeDestructionError(error: unknown): string {
+  return (error instanceof Error ? error.message : String(error)).slice(0, 500);
+}
+
 /**
- * Bestätigte GwG-Pflichtvernichtung (§ 8 Abs. 4) eines löschreifen Beweis-
- * dokuments — der Berufsträger löst sie aus (Review-Queue, kein Auto-Delete).
- * Defense in Depth: prüft Klassifikation + gesetzliche Frist + Object-Lock
- * erneut server-seitig, bevor irgendetwas gelöscht wird.
+ * Zweiphasige GwG-Pflichtvernichtung. Die Vernichtungsabsicht wird zuerst in
+ * der DB und im Audit-Log festgehalten. Erst danach werden die Object-Store-
+ * Objekte idempotent entfernt und die immutable DB-Versionen kontrolliert
+ * über eine eng begrenzte SECURITY-DEFINER-Funktion gelöscht.
  */
-export async function confirmGwgDeletionAction(input: { documentId: string }): Promise<ActionResult> {
-  // GwG-Vernichtung ist Compliance-Hoheit → ADMIN/PARTNER.
+export async function confirmGwgDeletionAction(input: {
+  documentId: string;
+}): Promise<ActionResult> {
   const g = await staffActionGuard({ requireAdmin: true });
   if (!g.ok) return g;
   const { tenantId, staffId, ctx } = g;
@@ -26,51 +34,176 @@ export async function confirmGwgDeletionAction(input: { documentId: string }): P
   const parsed = z.object({ documentId: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
   const { documentId } = parsed.data;
+  const now = new Date();
 
-  // 1. Beleg laden (+ Mandatsende, Object-Lock-Frist, Versionen).
-  const loaded = await withTenantContext(ctx, (tx) =>
-    tx.document.findFirst({
-      where: { id: documentId, tenantId, classification: 'GWG_EVIDENCE', deletedAt: null },
+  const prepared = await withTenantContext(ctx, async (tx) => {
+    const document = await tx.document.findFirst({
+      where: {
+        id: documentId,
+        tenantId,
+        classification: 'GWG_EVIDENCE',
+        deletedAt: null,
+      },
       select: {
         id: true,
         title: true,
         clientId: true,
+        createdAt: true,
         retentionUntil: true,
+        gwgDestructionRequestedAt: true,
         client: { select: { mandateEndedAt: true } },
+        gwgIdDocuments: {
+          select: {
+            check: { select: { status: true, createdAt: true, verifiedAt: true } },
+          },
+        },
+        gwgOnboardingInvite: {
+          select: {
+            status: true,
+            expiresAt: true,
+            cancelledAt: true,
+            gwgCheck: { select: { status: true, createdAt: true, verifiedAt: true } },
+          },
+        },
+        versions: { select: { id: true, storageBucket: true, storageKey: true } },
+      },
+    });
+    if (!document) return { ok: false as const, error: 'GwG-Beleg nicht gefunden.' };
+
+    const retentionStart = gwgDocumentEffectiveStart(
+      {
+        createdAt: document.createdAt,
+        mandateEndedAt: document.client?.mandateEndedAt ?? null,
+        linkedChecks: document.gwgIdDocuments.map((idDocument) => idDocument.check),
+        invite: document.gwgOnboardingInvite,
+      },
+      now,
+    );
+    if (!isGwgDeletionDue(retentionStart, now)) {
+      return {
+        ok: false as const,
+        error: 'Löschfrist noch nicht abgelaufen – Vernichtung nicht zulässig.',
+      };
+    }
+    if (!document.retentionUntil || document.retentionUntil.getTime() > now.getTime()) {
+      return {
+        ok: false as const,
+        error:
+          'Object-Lock-Aufbewahrungsende fehlt oder läuft noch – Vernichtung ist nicht zulässig.',
+      };
+    }
+
+    if (!document.gwgDestructionRequestedAt) {
+      const requested = await tx.document.updateMany({
+        where: { id: documentId, gwgDestructionRequestedAt: null, gwgDestroyedAt: null },
+        data: {
+          gwgDestructionRequestedAt: now,
+          gwgDestructionRequestedBy: staffId,
+          gwgDestructionError: null,
+        },
+      });
+      if (requested.count === 1) {
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'gwg.evidence.destroy.request',
+          resourceType: 'document',
+          resourceId: documentId,
+          before: {
+            title: document.title,
+            classification: 'GWG_EVIDENCE',
+            clientId: document.clientId,
+          },
+          after: {
+            requestedAt: now.toISOString(),
+            retentionStartedAt: retentionStart?.toISOString() ?? null,
+          },
+        });
+      }
+    }
+
+    // DB-seitiger, tenant-sicherer Eligibility-Claim in derselben Tx wie die
+    // Vormerkung. Nach Commit frieren Trigger alle fristrelevanten Relationen
+    // ein; erst dann dürfen externe Object-Store-Bytes gelöscht werden.
+    await tx.$queryRaw(
+      Prisma.sql`SELECT app.assert_gwg_document_destruction_due(${documentId}::uuid)`,
+    );
+
+    return { ok: true as const, document, retentionStart };
+  }).catch(() => ({
+    ok: false as const,
+    error:
+      'Der DB-seitige Vernichtungsclaim ist nicht zulässig; es wurden keine Datei-Bytes gelöscht.',
+  }));
+  if (!prepared.ok) return prepared;
+
+  // Erst NACH dem committed Claim neu laden. Eine vor dem Claim gelesene
+  // Versionsliste könnte einen konkurrierenden Upload übersehen; ab jetzt
+  // blockiert der DB-Trigger jede neue/änderte Version dauerhaft.
+  const claimed = await withTenantContext(ctx, (tx) =>
+    tx.document.findFirst({
+      where: {
+        id: documentId,
+        tenantId,
+        gwgDestructionRequestedAt: { not: null },
+        gwgDestroyedAt: null,
+        deletedAt: null,
+      },
+      select: {
         versions: { select: { id: true, storageBucket: true, storageKey: true } },
       },
     }),
   );
-  if (!loaded) return { ok: false, error: 'GwG-Beleg nicht gefunden.' };
-
-  // 2. Gesetzliche Löschfrist abgelaufen? (Mandatsende + 5 J., § 8 Abs. 4.)
-  if (!isGwgDeletionDue(loaded.client?.mandateEndedAt ?? null)) {
-    return { ok: false, error: 'Löschfrist noch nicht abgelaufen — Vernichtung nicht zulässig.' };
-  }
-  // 3. Object-Lock-Retain-Until abgelaufen? Sonst verweigert S3 die Löschung —
-  //    wir brechen VOR jedem Byte-Delete ab (kein Halb-Zustand).
-  if (loaded.retentionUntil && loaded.retentionUntil.getTime() > Date.now()) {
-    return { ok: false, error: 'Object-Lock-Aufbewahrung läuft noch — Vernichtung erst nach Fristablauf möglich.' };
+  if (!claimed) {
+    return {
+      ok: false,
+      error: 'Vernichtungsclaim ist nicht mehr ausführbar; es wurden keine Datei-Bytes gelöscht.',
+    };
   }
 
-  // 4. Bytes aus dem Store löschen (alle Versionen). Erst danach die DB-Records,
-  //    damit kein DB-Eintrag ohne tatsächliche Vernichtung „gelöscht" gilt.
   try {
-    for (const v of loaded.versions) {
-      await deleteObject(v.storageBucket, v.storageKey);
+    for (const version of claimed.versions) {
+      await deleteObject(version.storageBucket, version.storageKey);
     }
-  } catch (e) {
-    return { ok: false, error: `Vernichtung im Object-Store fehlgeschlagen: ${(e as Error).message}` };
+  } catch (error) {
+    await withTenantContext(ctx, (tx) =>
+      tx.document.updateMany({
+        where: { id: documentId, gwgDestructionRequestedAt: { not: null }, gwgDestroyedAt: null },
+        data: { gwgDestructionError: safeDestructionError(error) },
+      }),
+    );
+    revalidatePath('/staff/admin/gwg-retention');
+    return {
+      ok: false,
+      error:
+        'Vernichtung im Object-Store fehlgeschlagen. Der Vorgang bleibt vorgemerkt und kann erneut ausgeführt werden.',
+    };
   }
 
-  // 5. DB-Records löschen + Vernichtung auditieren (audit_log ist insert-only →
-  //    der Vernichtungs-Nachweis bleibt dauerhaft erhalten).
   try {
     await withTenantContext(ctx, async (tx) => {
-      // GwG-Ausweis-Verweis entkoppeln, dann Versionen + Document löschen.
-      await tx.gwgIdDocument.updateMany({ where: { documentId }, data: { documentId: null } });
-      await tx.documentVersion.deleteMany({ where: { documentId } });
-      await tx.document.delete({ where: { id: documentId } });
+      const pending = await tx.document.findFirst({
+        where: {
+          id: documentId,
+          tenantId,
+          classification: 'GWG_EVIDENCE',
+          deletedAt: null,
+          gwgDestructionRequestedAt: { not: null },
+          gwgDestroyedAt: null,
+        },
+        select: { id: true },
+      });
+      if (!pending) return;
+
+      await tx.$queryRaw(Prisma.sql`SELECT app.destroy_gwg_document_versions(${documentId}::uuid)`);
+      const destroyed = await tx.document.findUnique({
+        where: { id: documentId },
+        select: { gwgDestroyedAt: true },
+      });
+      if (!destroyed?.gwgDestroyedAt) {
+        throw new Error('GwG-Vernichtungsfunktion hat keinen Abschlussvermerk gesetzt.');
+      }
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',
@@ -78,39 +211,45 @@ export async function confirmGwgDeletionAction(input: { documentId: string }): P
         action: 'gwg.evidence.destroy',
         resourceType: 'document',
         resourceId: documentId,
-        before: { title: loaded.title, classification: 'GWG_EVIDENCE', clientId: loaded.clientId },
+        before: {
+          title: prepared.document.title,
+          classification: 'GWG_EVIDENCE',
+          clientId: prepared.document.clientId,
+        },
         after: {
           destroyed: true,
-          versions: loaded.versions.length,
-          mandateEndedAt: loaded.client?.mandateEndedAt?.toISOString() ?? null,
+          destroyedAt: destroyed.gwgDestroyedAt.toISOString(),
+          versions: claimed.versions.length,
+          retentionStartedAt: prepared.retentionStart?.toISOString() ?? null,
         },
       });
     });
-  } catch (e) {
-    // Bytes sind bereits weg → der Fehler betrifft nur die DB-Buchhaltung.
-    // Generisch melden (kein Roh-Leak); Admin kann den Beleg manuell nachräumen.
-    void e;
-    return { ok: false, error: 'Bytes vernichtet, aber DB-Aufräumen fehlgeschlagen — bitte prüfen.' };
+  } catch (error) {
+    await withTenantContext(ctx, (tx) =>
+      tx.document.updateMany({
+        where: { id: documentId, gwgDestructionRequestedAt: { not: null }, gwgDestroyedAt: null },
+        data: { gwgDestructionError: safeDestructionError(error) },
+      }),
+    );
+    revalidatePath('/staff/admin/gwg-retention');
+    return {
+      ok: false,
+      error:
+        'Datei-Bytes sind vernichtet; der nachweisbare DB-Abschluss ist noch offen. Bitte den Vorgang erneut ausführen.',
+    };
   }
 
   revalidatePath('/staff/admin/gwg-retention');
-  revalidatePath(`/staff/clients/${loaded.clientId}/gwg`);
+  if (prepared.document.clientId) {
+    revalidatePath(`/staff/clients/${prepared.document.clientId}/gwg`);
+  }
   return { ok: true };
 }
 
-/**
- * Bestätigte Vernichtung der GwG-AUFZEICHNUNGEN (§ 8 Abs. 4 S. 4) — das
- * GwgCheck-Aggregat in der DB. Die Datei-Vernichtung oben erfasste nur die
- * Belege; die Aufzeichnungen (riskAnswers/Breakdown/Notes, wirtschaftlich
- * Berechtigte mit Geburtsdaten/PEP, Ausweisnummern) blieben sonst unbegrenzt.
- *
- * Vernichtungs-Semantik: Berechtigte werden GELÖSCHT, Ausweis-Detailfelder
- * genullt (ownerName → 'VERNICHTET', NOT NULL), riskAnswers/notes entfernt.
- * Ein Skelett-Datensatz (Status, Risiko-Stufe, verifiedAt, destroyedAt als
- * Vernichtungsvermerk) bleibt als Nachweis, DASS geprüft wurde.
- */
-export async function confirmGwgCheckDeletionAction(input: { checkId: string }): Promise<ActionResult> {
-  // GwG-Vernichtung ist Compliance-Hoheit → ADMIN/PARTNER.
+/** Vernichtet die personenbezogenen Aufzeichnungen eines fälligen GwG-Checks. */
+export async function confirmGwgCheckDeletionAction(input: {
+  checkId: string;
+}): Promise<ActionResult> {
   const g = await staffActionGuard({ requireAdmin: true });
   if (!g.ok) return g;
   const { tenantId, staffId, ctx } = g;
@@ -121,67 +260,28 @@ export async function confirmGwgCheckDeletionAction(input: { checkId: string }):
 
   let clientId: string | null = null;
   const result = await withTenantContext(ctx, async (tx): Promise<ActionResult> => {
-    // 1. Aggregat laden (+ Mandatsende für die Fristprüfung).
-    const check = await tx.gwgCheck.findFirst({
-      where: { id: checkId, tenantId },
-      select: {
-        id: true,
-        status: true,
-        clientId: true,
-        destroyedAt: true,
-        client: { select: { mandateEndedAt: true } },
-        _count: { select: { beneficialOwners: true, idDocuments: true } },
-      },
-    });
-    if (!check) return { ok: false, error: 'GwG-Prüfung nicht gefunden.' };
-    if (check.destroyedAt) return { ok: false, error: 'Aufzeichnungen wurden bereits vernichtet.' };
-    clientId = check.clientId;
+    type DestroyedCheckRow = {
+      clientId: string;
+      status: string;
+      retentionStartedAt: string;
+      destroyedAt: string;
+      beneficialOwners: number;
+      idDocuments: number;
+    };
+    const rows = await tx.$queryRaw<DestroyedCheckRow[]>(Prisma.sql`
+      SELECT
+        result->>'clientId' AS "clientId",
+        result->>'status' AS "status",
+        result->>'retentionStartedAt' AS "retentionStartedAt",
+        result->>'destroyedAt' AS "destroyedAt",
+        (result->>'beneficialOwners')::INTEGER AS "beneficialOwners",
+        (result->>'idDocuments')::INTEGER AS "idDocuments"
+      FROM (SELECT app.destroy_gwg_check(${checkId}::UUID) AS result) destroyed
+    `);
+    const destroyed = rows[0];
+    if (!destroyed) throw new Error('GwG-Vernichtungsfunktion lieferte keinen Abschlussnachweis.');
+    clientId = destroyed.clientId;
 
-    // 2. Gesetzliche Löschfrist abgelaufen? (Mandatsende + 5 J., § 8 Abs. 4.)
-    if (!isGwgDeletionDue(check.client?.mandateEndedAt ?? null)) {
-      return { ok: false, error: 'Löschfrist noch nicht abgelaufen — Vernichtung nicht zulässig.' };
-    }
-
-    // 3. Datei-Belege zuerst: solange GWG_EVIDENCE-Dateien des Mandanten
-    //    existieren, ist das DB-Aggregat nicht dran (sonst entstünden
-    //    verwaiste Belege ohne zugehörige Aufzeichnung).
-    const openDocs = await tx.document.count({
-      where: { clientId: check.clientId, classification: 'GWG_EVIDENCE', deletedAt: null },
-    });
-    if (openDocs > 0) {
-      return { ok: false, error: 'Es existieren noch GwG-Datei-Belege — bitte zuerst die Belege vernichten.' };
-    }
-
-    // 4. Aggregat vernichten — alles in DIESER Tx (inkl. Audit-Record):
-    //    Berechtigte löschen, Ausweis-Details anonymisieren, Check anonymisieren.
-    await tx.gwgBeneficialOwner.deleteMany({ where: { gwgCheckId: checkId } });
-    await tx.gwgIdDocument.updateMany({
-      where: { gwgCheckId: checkId },
-      data: {
-        // ownerName ist NOT NULL → Platzhalter statt Schema-Änderung.
-        ownerName: 'VERNICHTET',
-        number: null,
-        issuedBy: null,
-        issueDate: null,
-        expiryDate: null,
-        notes: null,
-        documentId: null,
-      },
-    });
-    const destroyedAt = new Date();
-    await tx.gwgCheck.update({
-      where: { id: checkId },
-      data: {
-        riskAnswers: Prisma.DbNull,
-        riskBreakdown: Prisma.DbNull,
-        notes: null,
-        rejectedReason: null,
-        destroyedAt,
-      },
-    });
-
-    // 5. Vernichtung auditieren (audit_log ist insert-only → der Nachweis
-    //    bleibt dauerhaft; bewusst nur Zähler, keine Personendaten im Event).
     await evidenceService.record(tx, {
       tenantId,
       actorType: 'STAFF',
@@ -190,18 +290,22 @@ export async function confirmGwgCheckDeletionAction(input: { checkId: string }):
       resourceType: 'gwg_check',
       resourceId: checkId,
       before: {
-        status: check.status,
-        beneficialOwners: check._count.beneficialOwners,
-        idDocuments: check._count.idDocuments,
+        status: destroyed.status,
+        beneficialOwners: destroyed.beneficialOwners,
+        idDocuments: destroyed.idDocuments,
       },
       after: {
         destroyed: true,
-        destroyedAt: destroyedAt.toISOString(),
-        mandateEndedAt: check.client?.mandateEndedAt?.toISOString() ?? null,
+        destroyedAt: new Date(destroyed.destroyedAt).toISOString(),
+        retentionStartedAt: new Date(destroyed.retentionStartedAt).toISOString(),
       },
     });
     return { ok: true };
-  });
+  }).catch(() => ({
+    ok: false as const,
+    error:
+      'DB-seitige Frist- oder Integritätsprüfung fehlgeschlagen; es wurden keine Check-Aufzeichnungen vernichtet.',
+  }));
 
   if (result.ok) {
     revalidatePath('/staff/admin/gwg-retention');

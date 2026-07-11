@@ -35,9 +35,7 @@ interface Props {
 export function NewInvoiceForm({ clients }: Props) {
   const router = useRouter();
   const today = new Date().toISOString().slice(0, 10);
-  const inThirtyDays = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10);
+  const inThirtyDays = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
   const [clientId, setClientId] = useState(clients[0]?.id ?? '');
   const [subject, setSubject] = useState('');
@@ -124,7 +122,9 @@ export function NewInvoiceForm({ clients }: Props) {
       <div className="card p-6 space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="label" htmlFor="clientId">Mandant</label>
+            <label className="label" htmlFor="clientId">
+              Mandant
+            </label>
             <select
               id="clientId"
               className="input"
@@ -133,7 +133,9 @@ export function NewInvoiceForm({ clients }: Props) {
               required
             >
               {clients.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
               ))}
             </select>
           </div>
@@ -148,7 +150,9 @@ export function NewInvoiceForm({ clients }: Props) {
         </div>
 
         <div>
-          <label className="label" htmlFor="subject">Betreff</label>
+          <label className="label" htmlFor="subject">
+            Betreff
+          </label>
           <input
             id="subject"
             type="text"
@@ -163,7 +167,9 @@ export function NewInvoiceForm({ clients }: Props) {
 
         <div className="grid grid-cols-4 gap-4">
           <div>
-            <label className="label" htmlFor="issueDate">Rechnungsdatum</label>
+            <label className="label" htmlFor="issueDate">
+              Rechnungsdatum
+            </label>
             <input
               id="issueDate"
               type="date"
@@ -174,7 +180,9 @@ export function NewInvoiceForm({ clients }: Props) {
             />
           </div>
           <div>
-            <label className="label" htmlFor="dueDate">Fällig am</label>
+            <label className="label" htmlFor="dueDate">
+              Fällig am
+            </label>
             <input
               id="dueDate"
               type="date"
@@ -185,7 +193,9 @@ export function NewInvoiceForm({ clients }: Props) {
             />
           </div>
           <div>
-            <label className="label" htmlFor="format">Format</label>
+            <label className="label" htmlFor="format">
+              Format
+            </label>
             <select
               id="format"
               className="input"
@@ -197,7 +207,9 @@ export function NewInvoiceForm({ clients }: Props) {
             </select>
           </div>
           <div>
-            <label className="label" htmlFor="servicePeriodStart">Leistung von (optional)</label>
+            <label className="label" htmlFor="servicePeriodStart">
+              Leistung von (optional)
+            </label>
             <input
               id="servicePeriodStart"
               type="date"
@@ -207,7 +219,9 @@ export function NewInvoiceForm({ clients }: Props) {
             />
           </div>
           <div>
-            <label className="label" htmlFor="servicePeriodEnd">Leistung bis (optional)</label>
+            <label className="label" htmlFor="servicePeriodEnd">
+              Leistung bis (optional)
+            </label>
             <input
               id="servicePeriodEnd"
               type="date"
@@ -232,15 +246,17 @@ export function NewInvoiceForm({ clients }: Props) {
           </label>
           {reverseCharge && (
             <p className="text-xs text-muted mt-1">
-              Alle Positionen werden mit 0 % USt (Kategorie AE) ausgewiesen; der
-              Mandant muss eine USt-IdNr hinterlegt haben.
+              Alle Positionen werden mit 0 % USt (Kategorie AE) ausgewiesen; der Mandant muss eine
+              USt-IdNr hinterlegt haben.
             </p>
           )}
         </div>
 
         {!reverseCharge && positions.some((p) => (p.vatRate || 0) === 0) && (
           <div className="mt-3">
-            <label className="label" htmlFor="vatExemptionReason">Befreiungsgrund (Pflicht bei 0 %)</label>
+            <label className="label" htmlFor="vatExemptionReason">
+              Befreiungsgrund (Pflicht bei 0 %)
+            </label>
             <input
               id="vatExemptionReason"
               type="text"
@@ -250,7 +266,9 @@ export function NewInvoiceForm({ clients }: Props) {
               onChange={(e) => setVatExemptionReason(e.target.value)}
               placeholder="z. B. § 19 UStG Kleinunternehmer / steuerfrei nach § 4 …"
             />
-            <p className="text-xs text-muted mt-1">§ 14 Abs. 4 Nr. 8 UStG — Hinweis auf die Steuerbefreiung.</p>
+            <p className="text-xs text-muted mt-1">
+              § 14 Abs. 4 Nr. 8 UStG — Hinweis auf die Steuerbefreiung.
+            </p>
           </div>
         )}
       </div>
@@ -268,7 +286,9 @@ export function NewInvoiceForm({ clients }: Props) {
           {positions.map((p, i) => (
             <div key={p.id} className="grid grid-cols-12 gap-2 items-end">
               <div className="col-span-4">
-                <label className="label" htmlFor={`pos-${i}-description`}>Beschreibung</label>
+                <label className="label" htmlFor={`pos-${i}-description`}>
+                  Beschreibung
+                </label>
                 <input
                   id={`pos-${i}-description`}
                   type="text"
@@ -279,11 +299,14 @@ export function NewInvoiceForm({ clients }: Props) {
                 />
               </div>
               <div className="col-span-2">
-                <label className="label" htmlFor={`pos-${i}-quantity`}>Menge</label>
+                <label className="label" htmlFor={`pos-${i}-quantity`}>
+                  Menge
+                </label>
                 <input
                   id={`pos-${i}-quantity`}
                   type="number"
                   step="0.01"
+                  min="0"
                   className="input"
                   value={p.quantity}
                   onChange={(e) => setPosField(i, 'quantity', Number(e.target.value))}
@@ -291,7 +314,9 @@ export function NewInvoiceForm({ clients }: Props) {
                 />
               </div>
               <div className="col-span-2">
-                <label className="label" htmlFor={`pos-${i}-unit`}>Einheit</label>
+                <label className="label" htmlFor={`pos-${i}-unit`}>
+                  Einheit
+                </label>
                 <input
                   id={`pos-${i}-unit`}
                   type="text"
@@ -301,11 +326,14 @@ export function NewInvoiceForm({ clients }: Props) {
                 />
               </div>
               <div className="col-span-2">
-                <label className="label" htmlFor={`pos-${i}-unitPrice`}>Einzelpreis €</label>
+                <label className="label" htmlFor={`pos-${i}-unitPrice`}>
+                  Einzelpreis €
+                </label>
                 <input
                   id={`pos-${i}-unitPrice`}
                   type="number"
                   step="0.01"
+                  min="0"
                   className="input"
                   value={p.unitPrice}
                   onChange={(e) => setPosField(i, 'unitPrice', Number(e.target.value))}
@@ -313,7 +341,9 @@ export function NewInvoiceForm({ clients }: Props) {
                 />
               </div>
               <div className="col-span-1">
-                <label className="label" htmlFor={`pos-${i}-vatRate`}>USt %</label>
+                <label className="label" htmlFor={`pos-${i}-vatRate`}>
+                  USt %
+                </label>
                 <select
                   id={`pos-${i}-vatRate`}
                   className="input"
@@ -347,12 +377,16 @@ export function NewInvoiceForm({ clients }: Props) {
           <div className="text-right text-secondary">USt:</div>
           <div className="font-mono tabular-nums text-right">{fmtEUR(vatTotal)}</div>
           <div className="text-right text-primary font-bold">Brutto:</div>
-          <div className="font-mono tabular-nums text-right text-primary font-bold">{fmtEUR(grandTotal)}</div>
+          <div className="font-mono tabular-nums text-right text-primary font-bold">
+            {fmtEUR(grandTotal)}
+          </div>
         </div>
       </div>
 
       <div className="card p-6">
-        <label className="label" htmlFor="notes">Notizen</label>
+        <label className="label" htmlFor="notes">
+          Notizen
+        </label>
         <textarea
           id="notes"
           rows={3}
@@ -363,9 +397,7 @@ export function NewInvoiceForm({ clients }: Props) {
         />
       </div>
 
-      {error && (
-        <div className="alert-error-sm">{error}</div>
-      )}
+      {error && <div className="alert-error-sm">{error}</div>}
 
       <div className="flex gap-2">
         <button type="submit" className="btn-primary" disabled={isPending}>

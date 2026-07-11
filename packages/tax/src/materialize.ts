@@ -16,10 +16,9 @@
 
 import type { Prisma, TaxScheduleKind } from '@prisma/client';
 import {
-  endOfDueDay,
+  berlinCalendarDate,
   generateDeadlines,
   SCHEDULE_LABELS,
-  startOfUtcDay,
   type GermanRegion,
 } from './engine';
 
@@ -91,7 +90,8 @@ export async function materializeTenantTaxDeadlines(
   const { tenantId, systemStaffId } = params;
   const now = params.now ?? new Date();
   const horizonDays = params.horizonDays ?? 90;
-  const horizon = new Date(now.getTime() + horizonDays * 24 * 60 * 60 * 1000);
+  const today = berlinCalendarDate(now);
+  const horizon = new Date(today.getTime() + horizonDays * 24 * 60 * 60 * 1000);
 
   const stats: MaterializeStats = {
     configsScanned: 0,
@@ -132,13 +132,21 @@ export async function materializeTenantTaxDeadlines(
     // Übersprungen wenn Mandant nicht freigeschaltet (GwG)
     if (!cfg.client.allowActive) continue;
 
-    const candidates = generateDeadlines(cfg.kind, now, horizon, cfg.hasDauerfrist, region, cfg.advised, bavariaAssumption);
+    const candidates = generateDeadlines(
+      cfg.kind,
+      today,
+      horizon,
+      cfg.hasDauerfrist,
+      region,
+      cfg.advised,
+      bavariaAssumption,
+    );
     for (const c of candidates) {
       // Niemals retrospektiv erzeugen — Mandanten werden oft unterjährig
       // übernommen, alte Perioden gehören dem Vorgänger. „Retrospektiv" ist
       // ein Termin erst NACH Ende seines Fälligkeitstags (§ 108 (1) AO) —
       // ein heute fälliger Termin wird noch angelegt.
-      if (endOfDueDay(c.dueDate).getTime() < now.getTime()) continue;
+      if (c.dueDate.getTime() < today.getTime()) continue;
       candidateRows.push({
         tenantId,
         clientId: cfg.clientId,
@@ -173,7 +181,7 @@ export async function materializeTenantTaxDeadlines(
       // GwG-Freigabe trotzdem eine mandantengerichtete Anforderung auslösen.
       config: { active: true, reminderDaysBefore: { gt: 0 } },
       client: { allowActive: true },
-      dueDate: { lte: new Date(now.getTime() + maxReminderDays * 24 * 60 * 60 * 1000) },
+      dueDate: { lte: new Date(today.getTime() + maxReminderDays * 24 * 60 * 60 * 1000) },
     },
     include: { config: { select: { reminderDaysBefore: true } } },
   });
@@ -181,7 +189,7 @@ export async function materializeTenantTaxDeadlines(
     const remindFrom = new Date(
       dl.dueDate.getTime() - (dl.config?.reminderDaysBefore ?? 0) * 24 * 60 * 60 * 1000,
     );
-    if (remindFrom > now) continue;
+    if (remindFrom > today) continue;
 
     const dueLabel = dateFormatter.format(dl.dueDate);
     const kindLabel = SCHEDULE_LABELS[dl.kind];
@@ -226,12 +234,14 @@ export async function materializeTenantTaxDeadlines(
 
   // 4. Abgelaufene Termine als OVERDUE markieren — erst wenn der
   //    Fälligkeitstag KOMPLETT vorbei ist (§ 108 (1) AO: Frist läuft bis
-  //    Tagesende), also dueDate < UTC-Mitternacht des Stichtags.
+  //    Tagesende), also dueDate < UTC-Mitternacht des heutigen Berlin-
+  //    Kalendertags. Ein UTC-Vergleich gegen `now` wäre im Sommer zwischen
+  //    22:00 und 24:00 Uhr um einen Kalendertag zu spät.
   const overdueResult = await db.taxDeadline.updateMany({
     where: {
       tenantId,
       status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS'] },
-      dueDate: { lt: startOfUtcDay(now) },
+      dueDate: { lt: today },
     },
     data: { status: 'OVERDUE' },
   });

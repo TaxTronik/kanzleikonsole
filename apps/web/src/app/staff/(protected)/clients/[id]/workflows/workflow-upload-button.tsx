@@ -60,10 +60,13 @@ export function WorkflowUploadButton({
 }: Props) {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const [jobs, setJobs] = useState<UploadJob[]>([]);
   const [isPending, start] = useTransition();
   const classLabel = CLASSIFICATION_LABELS[expectedClassification] ?? expectedClassification;
+  const gobdRetentionYears = expectedClassification === 'GOBD_INVOICE' ? 8 : 10;
   const allDone = jobs.length > 0 && jobs.every((j) => j.status === 'done' || j.status === 'error');
 
   function close() {
@@ -137,22 +140,22 @@ export function WorkflowUploadButton({
           <X className="h-5 w-5" />
         </button>
 
-        <h2 className="text-base font-semibold text-primary mb-1">
-          Dokumente hochladen
-        </h2>
+        <h2 className="text-base font-semibold text-primary mb-1">Dokumente hochladen</h2>
         <p className="text-xs text-muted mb-4">
           Workflow-Schritt „{itemTitle}" · Klasse{' '}
           <span className="font-medium text-secondary">{classLabel}</span>
           {expectedClassification.startsWith('GOBD_') && (
             <span className="block text-[10px] text-amber-700 dark:text-amber-400 mt-0.5">
-              Object-Lock COMPLIANCE — 10 Jahre unveränderbar
+              Object-Lock COMPLIANCE — {gobdRetentionYears} Jahre unveränderbar
             </span>
           )}
         </p>
 
         <div className="space-y-3">
           <div>
-            <label className="label" htmlFor={`wf-up-${itemId}`}>Dateien wählen</label>
+            <label className="label" htmlFor={`wf-up-${itemId}`}>
+              Dateien wählen
+            </label>
             <input
               id={`wf-up-${itemId}`}
               type="file"
@@ -172,7 +175,9 @@ export function WorkflowUploadButton({
                 <li key={j.id} className="py-2 flex items-center justify-between gap-3 text-xs">
                   <span className="truncate flex-1 text-secondary">
                     {j.file.name}
-                    <span className="text-disabled ml-2">({(j.file.size / 1024).toFixed(0)} KB)</span>
+                    <span className="text-disabled ml-2">
+                      ({(j.file.size / 1024).toFixed(0)} KB)
+                    </span>
                   </span>
                   <span className="shrink-0">
                     {j.status === 'pending' && <span className="text-disabled">wartet</span>}
@@ -185,7 +190,10 @@ export function WorkflowUploadButton({
                       </span>
                     )}
                     {j.status === 'error' && (
-                      <span className="inline-flex items-center gap-1 text-red-700 dark:text-red-400" title={j.error}>
+                      <span
+                        className="inline-flex items-center gap-1 text-red-700 dark:text-red-400"
+                        title={j.error}
+                      >
                         <AlertCircle className="h-3 w-3" /> Fehler
                       </span>
                     )}

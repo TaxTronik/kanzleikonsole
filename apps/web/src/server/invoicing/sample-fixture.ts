@@ -20,12 +20,36 @@ export const SAMPLE_INVOICE: XRechnungInvoice = {
   vatAmount: 26,
   totalAmount: 276,
   positions: [
-    { position: 1, description: 'Beratung', quantity: 1, unit: 'Stunde', unitPrice: 100, netAmount: 100, vatRate: 19 },
-    { position: 2, description: 'Fachliteratur', quantity: 1, unit: 'Stück', unitPrice: 100, netAmount: 100, vatRate: 7 },
+    {
+      position: 1,
+      description: 'Beratung',
+      quantity: 1,
+      unit: 'Stunde',
+      unitPrice: 100,
+      netAmount: 100,
+      vatRate: 19,
+    },
+    {
+      position: 2,
+      description: 'Fachliteratur',
+      quantity: 1,
+      unit: 'Stück',
+      unitPrice: 100,
+      netAmount: 100,
+      vatRate: 7,
+    },
     // P3-14: KEIN „durchlaufender Posten" (§ 10 Abs. 1 S. 5 UStG — kein Entgelt,
     // gehört nicht als Position aufs Entgelt), sondern eine echte 0 %-Nebenkosten-
     // Position (deckt den Kategorie-Z-Pfad im Test ab).
-    { position: 3, description: 'Nebenkosten (0 % USt)', quantity: 1, unit: 'Pauschal', unitPrice: 50, netAmount: 50, vatRate: 0 },
+    {
+      position: 3,
+      description: 'Nebenkosten (0 % USt)',
+      quantity: 1,
+      unit: 'Pauschal',
+      unitPrice: 50,
+      netAmount: 50,
+      vatRate: 0,
+    },
   ],
 };
 
@@ -69,11 +93,41 @@ export const SAMPLE_RC_INVOICE: XRechnungInvoice = {
   vatAmount: 0,
   totalAmount: 200,
   positions: [
-    { position: 1, description: 'Beratung', quantity: 2, unit: 'Stunde', unitPrice: 100, netAmount: 200, vatRate: 0 },
+    {
+      position: 1,
+      description: 'Beratung',
+      quantity: 2,
+      unit: 'Stunde',
+      unitPrice: 100,
+      netAmount: 200,
+      vatRate: 0,
+    },
   ],
 };
 
 export const SAMPLE_RC_BUYER: XRechnungBuyer = {
   ...SAMPLE_BUYER,
   vatId: 'DE987654321',
+};
+
+// Korrekturrechnung/Storno (TypeCode 381): EN-16931-konform mit negativer
+// Menge und positivem Einzelpreis (BR-27). Dritter KoSIT-Validierungsfall.
+export const SAMPLE_STORNO_INVOICE: XRechnungInvoice = {
+  ...SAMPLE_INVOICE,
+  number: '2026-0044',
+  typeCode: '381',
+  precedingInvoiceNumber: SAMPLE_INVOICE.number,
+  subject: `Korrektur zu ${SAMPLE_INVOICE.number}`,
+  netAmount: -100,
+  vatAmount: -19,
+  totalAmount: -119,
+  positions: [
+    {
+      ...SAMPLE_INVOICE.positions[0]!,
+      quantity: -1,
+      unitPrice: 100,
+      netAmount: -100,
+      vatRate: 19,
+    },
+  ],
 };

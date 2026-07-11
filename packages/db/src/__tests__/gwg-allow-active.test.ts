@@ -70,10 +70,21 @@ async function makeGwgCheck(
   clientId: string,
   status: 'DRAFT' | 'IN_REVIEW' | 'VERIFIED' | 'REJECTED' | 'EXPIRED',
   validUntil: Date | null,
-): Promise<void> {
-  await owner.gwgCheck.create({
-    data: { tenantId, clientId, status, validUntil },
+): Promise<string> {
+  const check = await owner.gwgCheck.create({
+    data: {
+      tenantId,
+      clientId,
+      status,
+      validUntil,
+      legalForm: 'GmbH',
+      registerNumber: 'HRB 12345',
+      registerAuthority: 'Amtsgericht Berlin-Charlottenburg',
+      representativeNames: ['Erika Muster'],
+      ownershipStructureNotes: 'Erika Muster hält sämtliche Geschäftsanteile.',
+    },
   });
+  return check.id;
 }
 
 function activate(clientId: string): Promise<unknown> {
@@ -147,6 +158,14 @@ describeWithDatabase('GwG-Schranke: allow_active erfordert verifizierten gwg_che
     await expect(activate(id)).rejects.toThrow();
   });
 
+  it('VERIFIED-Rechtsträger ohne vollständigen Snapshot bleibt fail-closed', async () => {
+    const id = await makeClient('Legacy ohne Rechtsträger-Snapshot');
+    await owner.gwgCheck.create({
+      data: { tenantId, clientId: id, status: 'VERIFIED', validUntil: null },
+    });
+    await expect(activate(id)).rejects.toThrow();
+  });
+
   it('mit VERIFIED + Gültigkeit in der Zukunft: Aktivierung erlaubt', async () => {
     const id = await makeClient('Verified Valid');
     await makeGwgCheck(id, 'VERIFIED', new Date(Date.now() + 365 * 24 * HOUR));
@@ -159,6 +178,75 @@ describeWithDatabase('GwG-Schranke: allow_active erfordert verifizierten gwg_che
     const id = await makeClient('Verified Unbefristet');
     await makeGwgCheck(id, 'VERIFIED', null);
     await expect(activate(id)).resolves.toBeTruthy();
+  });
+
+  it('wird beim Verlust des letzten VERIFIED-Checks sofort fail-closed deaktiviert', async () => {
+    const id = await makeClient('Letzter Check verloren');
+    const checkId = await makeGwgCheck(id, 'VERIFIED', new Date(Date.now() + HOUR));
+    await activate(id);
+
+    await owner.gwgCheck.update({ where: { id: checkId }, data: { status: 'IN_REVIEW' } });
+
+    const client = await owner.client.findUnique({ where: { id }, select: { allowActive: true } });
+    expect(client?.allowActive).toBe(false);
+  });
+
+  it('bleibt aktiv, solange ein weiterer gueltiger VERIFIED-Check existiert', async () => {
+    const id = await makeClient('Zwei valide Checks');
+    const first = await makeGwgCheck(id, 'VERIFIED', new Date(Date.now() + HOUR));
+    const second = await makeGwgCheck(id, 'VERIFIED', new Date(Date.now() + 2 * HOUR));
+    await activate(id);
+
+    await owner.gwgCheck.update({ where: { id: first }, data: { status: 'EXPIRED' } });
+    expect(
+      (await owner.client.findUnique({ where: { id }, select: { allowActive: true } }))
+        ?.allowActive,
+    ).toBe(true);
+
+    await owner.gwgCheck.update({
+      where: { id: second },
+      data: { validUntil: new Date(Date.now() - HOUR) },
+    });
+    expect(
+      (await owner.client.findUnique({ where: { id }, select: { allowActive: true } }))
+        ?.allowActive,
+    ).toBe(false);
+  });
+
+  it('verhindert das Hard-Delete eines GwG-Checks; das Skelett bleibt Vernichtungsnachweis', async () => {
+    const id = await makeClient('Check Hard-Delete');
+    const checkId = await makeGwgCheck(id, 'VERIFIED', null);
+    await activate(id);
+
+    await expect(owner.gwgCheck.delete({ where: { id: checkId } })).rejects.toThrow();
+
+    expect(
+      (await owner.client.findUnique({ where: { id }, select: { allowActive: true } }))
+        ?.allowActive,
+    ).toBe(true);
+  });
+
+  it('blockiert ein direktes Umgehen des kontrollierten Vernichtungspfads', async () => {
+    const id = await makeClient('Direkter Vernichtungsmarker');
+    const checkId = await makeGwgCheck(id, 'VERIFIED', null);
+    await activate(id);
+
+    await expect(
+      owner.gwgCheck.update({ where: { id: checkId }, data: { legalForm: null } }),
+    ).rejects.toThrow();
+    expect(
+      (await owner.client.findUnique({ where: { id }, select: { allowActive: true } }))
+        ?.allowActive,
+    ).toBe(true);
+
+    await expect(
+      owner.gwgCheck.update({ where: { id: checkId }, data: { destroyedAt: new Date() } }),
+    ).rejects.toThrow();
+
+    expect(
+      (await owner.client.findUnique({ where: { id }, select: { allowActive: true } }))
+        ?.allowActive,
+    ).toBe(true);
   });
 
   it('INSERT mit allow_active=true ohne Check: vom INSERT-Trigger blockiert (iter57)', async () => {

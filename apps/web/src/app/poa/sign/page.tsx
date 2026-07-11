@@ -18,9 +18,7 @@ export default async function PoaSignPage({
         <div className="card p-8 max-w-md w-full text-center">
           <div className="text-3xl font-bold text-brand-700 mb-1">TaxTronik</div>
           <p className="text-sm text-muted mb-6">Vollmacht-Unterschrift</p>
-          <div className="rounded-md bg-red-50 p-4 text-sm text-red-700">
-            {result.error}
-          </div>
+          <div className="rounded-md bg-red-50 p-4 text-sm text-red-700">{result.error}</div>
         </div>
       </div>
     );
@@ -34,7 +32,9 @@ export default async function PoaSignPage({
       <div className="max-w-3xl mx-auto">
         <div className="text-center mb-8">
           <div className="text-3xl font-bold text-brand-700 mb-1">TaxTronik</div>
-          <p className="text-sm text-muted">{tenantName} — Vollmacht zur elektronischen Unterschrift</p>
+          <p className="text-sm text-muted">
+            {tenantName} — Vollmacht zur elektronischen Unterschrift
+          </p>
         </div>
 
         <div className="card p-8 mb-6">
@@ -61,12 +61,12 @@ export default async function PoaSignPage({
           </h2>
           {poa.documentId ? (
             // Extern hinterlegtes PDF: der Vollmachtstext steht im Dokument. Der
-            // Unterzeichner muss es VOR der Signatur ansehen können (Art. 26
-            // eIDAS) — token-gestützte Auslieferung über /poa/sign/document.
+            // Unterzeichner muss exakt den beim Versand gebundenen Inhalt vor
+            // der Bestätigung ansehen können.
             <div className="mb-6 rounded-md border border-default bg-gray-50 p-4">
               <p className="text-sm text-secondary mb-3">
-                Der vollständige Vollmachtstext befindet sich im verknüpften
-                PDF-Dokument. Bitte sehen Sie es vor der Unterschrift an.
+                Der vollständige Vollmachtstext befindet sich im verknüpften PDF-Dokument. Bitte
+                sehen Sie es vor der Unterschrift an.
               </p>
               <a
                 href={`/poa/sign/document?token=${encodeURIComponent(token)}`}

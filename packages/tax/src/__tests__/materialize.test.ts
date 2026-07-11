@@ -172,7 +172,7 @@ describe('Reminder-Pfad — Auto-Anforderung atomar', () => {
         requestId: null,
         config: { active: true, reminderDaysBefore: { gt: 0 } },
         client: { allowActive: true },
-        dueDate: { lte: NOW },
+        dueDate: { lte: new Date(Date.UTC(2026, 5, 9)) },
       },
       include: { config: { select: { reminderDaysBefore: true } } },
     });
@@ -225,9 +225,7 @@ describe('Reminder-Pfad — Auto-Anforderung atomar', () => {
     const arg = db.taxDeadline.findMany.mock.calls[0]![0] as {
       where: { dueDate: { lte: Date } };
     };
-    expect(arg.where.dueDate.lte).toEqual(
-      new Date(NOW.getTime() + 14 * 24 * 60 * 60 * 1000),
-    );
+    expect(arg.where.dueDate.lte).toEqual(new Date(Date.UTC(2026, 5, 23)));
   });
 
   it('Reminder-Fenster noch nicht erreicht → kein Request', async () => {
@@ -277,11 +275,11 @@ describe('Reminder-Pfad — Auto-Anforderung atomar', () => {
 });
 
 describe('OVERDUE — § 108 (1) AO Tagesgrenze', () => {
-  it('markiert nur Termine VOR UTC-Mitternacht des Stichtags (heute fällig ≠ überfällig)', async () => {
+  it('markiert nur Termine vor dem heutigen Berlin-Kalendertag', async () => {
     const { db, deps } = makeHarness({ overdueCount: 3 });
     // Stichtag 10.06. spätabends: ein am 10.06. fälliger Termin hat bis
     // Tagesende Zeit und darf NICHT überfällig werden.
-    const lateEvening = new Date('2026-06-10T22:00:00.000Z');
+    const lateEvening = new Date('2026-06-10T21:59:59.000Z');
 
     const stats = await materializeTenantTaxDeadlines(deps, {
       tenantId: TENANT,
@@ -293,12 +291,27 @@ describe('OVERDUE — § 108 (1) AO Tagesgrenze', () => {
       where: {
         tenantId: TENANT,
         status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS'] },
-        // Grenze = UTC-Mitternacht des Stichtags, NICHT der Zeitstempel selbst
+        // Grenze = UTC-Kodierung des Berlin-Kalendertags, nicht `now`.
         dueDate: { lt: new Date(Date.UTC(2026, 5, 10)) },
       },
       data: { status: 'OVERDUE' },
     });
     expect(stats.markedOverdue).toBe(3);
+  });
+
+  it('wechselt in der Sommerzeit exakt um 00:00 Europe/Berlin auf den Folgetag', async () => {
+    const { db, deps } = makeHarness();
+
+    await materializeTenantTaxDeadlines(deps, {
+      tenantId: TENANT,
+      systemStaffId: STAFF,
+      now: new Date('2026-06-10T22:00:00.000Z'),
+    });
+
+    const arg = db.taxDeadline.updateMany.mock.calls[0]![0] as {
+      where: { dueDate: { lt: Date } };
+    };
+    expect(arg.where.dueDate.lt).toEqual(new Date(Date.UTC(2026, 5, 11)));
   });
 
   it('am Folgetag (nach Tagesende) wandert der Termin in die OVERDUE-Menge', async () => {

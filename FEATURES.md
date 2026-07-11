@@ -133,7 +133,7 @@ Mandanten.
 - Periodische Wiederholung: Hochrisiko jährlich, sonst alle 3 Jahre
 - Worker prüft täglich auf ablaufende Checks, 3-Stufen-Eskalation:
   Bearbeiter @ 90 Tage → +Berufsträger @ 30 Tage → alle Admins
-  + Mandant deaktivieren bei Ablauf
+  - Mandant deaktivieren bei Ablauf
 - Personalausweis-Ablauf-Check (60 Tage vor Expiry: Notification an
   Bearbeiter + Auto-Anforderung an Mandant, idempotent)
 - Re-Verifikation bei GwG-relevanten Stammdaten-Änderungen (sowohl bei
@@ -152,8 +152,9 @@ Mandanten.
   - Kanzlei besorgt nur HR-Auszug + Transparenzregister-Auszug selbst
 - **Pflichtvernichtung nach § 8 Abs. 4 GwG** — Review-Queue unter
   `/staff/admin/gwg-retention` (ADMIN/PARTNER, kein stilles Auto-Delete):
-  - Löschreif ab Jahresende des Mandatsendes + 5 Jahre
-    (`client.mandateEndedAt`)
+  - Prüfung ab Jahresende des Mandatsendes + 5 Jahre (`client.mandateEndedAt`);
+    andere Gesetze können länger verpflichten, spätestens nach 10 Jahren ist
+    zu vernichten
   - **Datei-Belege**: bestätigte Vernichtung löscht Bytes + DB-Records,
     auditiert `gwg.evidence.destroy` (GwG-Belege liegen dafür im eigenen
     `gwg`-Bucket mit Object-Lock GOVERNANCE statt COMPLIANCE)
@@ -216,7 +217,7 @@ Mandanten.
 
 - Jedes Dokument hat einen **Typ**; der Typ trägt die **Schutzstufe**, die
   Bucket + Object-Lock + Aufbewahrung steuert — genau drei, fix:
-  *kein Lock* · *GwG · 5 Jahre* · *GoBD · 10 Jahre*.
+  _kein Lock_ · _GwG · grundsätzlich 5 Jahre_ · _GoBD · typabhängig 6/8/10 Jahre_.
 - 7 gesetzlich fixierte Kern-Typen (read-only). Die Kanzlei kann unter
   **Admin → Datei-Typen** eigene Typen ergänzen (z. B. „Arbeitspapiere")
   und einer Stufe zuweisen (bei Anlage fix).
@@ -238,7 +239,8 @@ Mandanten.
 ### Speicher, Versionierung, Nachweis
 
 - ClamAV-Virus-Scan synchron beim Upload; SeaweedFS-Object-Storage,
-  Object-Lock (GoBD 10 J. COMPLIANCE / GwG 5 J. GOVERNANCE), Store nie
+  Object-Lock (GoBD typabhängig 6/8/10 J. COMPLIANCE / GwG zunächst 5 J.
+  GOVERNANCE mit fachlicher Löschprüfung), Store nie
   öffentlich (App proxied Up-/Downloads).
 - Upload-Limit 100 MB pro Datei; das mitgelieferte
   `infra/clamav/clamd.conf` hebt das clamd-Stream-Limit passend dazu auf
@@ -328,7 +330,7 @@ Modul `appointments`.
 ### Terminanfragen vom Mandanten
 
 - Über `/portal/appointments` schlägt der Mandant 1–3 Wunschtermine vor
-  + Anliegen + optional Wunsch-Bearbeiter
+  - Anliegen + optional Wunsch-Bearbeiter
 - Kanzlei sieht offene Anfragen oben im Kalender als eigene Sektion
 - Inline-Entscheidung: Slot auswählen + Owner zuweisen → Annehmen erzeugt
   `Appointment` mit `fromRequestId`; alternativ Ablehnen mit optionalem Grund
@@ -377,7 +379,7 @@ nebeneinander auf einer Seite.
     `appealFiledAt`, Abschluss `appealResolvedAt`
 - PDF des Bescheids wird verlinkt (über Document-Modul)
 - Verknüpfungs-Indikator zeigt in der Tabelle „↪ aus Erklärung"
-  + „Portal"-Badge, wenn der Mandant die Erklärung sieht
+  - „Portal"-Badge, wenn der Mandant die Erklärung sieht
 
 ### Mandanten-Portal-Sicht
 
@@ -1190,7 +1192,7 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   Feature-Flag-gated — siehe „ELSTER-Anbindung")
 - **Forgejo-Actions-CI** (`.forgejo/workflows/`, self-hosted Runner): `ci.yml`
   (Quality: Lint/Typecheck/Unit · DB: Migrationen/RLS/Drift/verify:chain mit
-  Postgres-Service   · Browser-E2E via Playwright (volle Suite: Smoke, Auth, Search, Rate-Limit)), `security.yml` (pnpm-audit +
+  Postgres-Service · Browser-E2E via Playwright (volle Suite: Smoke, Auth, Search, Rate-Limit)), `security.yml` (pnpm-audit +
   gitleaks-Secret-Scan, wöchentlicher Cron), `build-images.yml` (Web-/Worker-
   Image-Build, build-only); GitHub-Mirror läuft ohne Actions, `dependabot.yml`
   liegt ebenfalls unter `.forgejo/`
@@ -1219,10 +1221,11 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   bis zum eingebetteten GlobalSign-Root R6 _as-of_ genTime, kritische EKU
   timeStamping + ESS-SigningCertificate-Bindung; Adapter-Modus wird im Report
   ausgewiesen, Self-Timestamp im Produktivmodus = harter Fail
-- **Aufbewahrungs-Buckets nach Recht getrennt**: `gobd` (10 J. § 147 AO,
-  Object-Lock COMPLIANCE), `gwg` (5 J. § 8 Abs. 4 GwG — Höchstfrist mit
-  Vernichtungspflicht, deshalb Object-Lock GOVERNANCE mit privilegierter
-  Frühlöschung), `general` / `staff-private` (kein Object-Lock);
+- **Aufbewahrungs-Buckets nach Recht getrennt**: `gobd` (je Datei-Typ 6/8/10 J.
+  nach § 147 AO bzw. § 14b UStG, Object-Lock COMPLIANCE), `gwg` (grundsätzlich
+  5 J. nach § 8 Abs. 4 GwG; andere Gesetze können länger verpflichten,
+  spätestens nach 10 J. ist zu vernichten; deshalb GOVERNANCE-Lock plus
+  fachliche Löschprüfung), `general` / `staff-private` (kein Object-Lock);
   Retain-Until-Logik nach Kalenderjahres-Schluss (Jahresende + N + 1 Tag)
 - **TOTP-Pflicht für Staff** mit lokal generiertem QR-Code (kein Drittanbieter-
   Roundtrip), 8 Backup-Codes als One-Time-Use mit Row-Lock-Konsumption,

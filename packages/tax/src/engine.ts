@@ -29,8 +29,8 @@ import type { TaxScheduleKind } from '@prisma/client';
 
 export interface DeadlineCandidate {
   kind: TaxScheduleKind;
-  period: string;       // YYYY-MM | YYYY-Qn | YYYY
-  dueDate: Date;        // konkretes Datum nach Werktagsverschiebung
+  period: string; // YYYY-MM | YYYY-Qn | YYYY
+  dueDate: Date; // konkretes Datum nach Werktagsverschiebung
 }
 
 /**
@@ -163,7 +163,9 @@ export function generateDeadlines(
         // verlängern nur Monat/Tag, nie über die Jahresgrenze hinaus — die
         // Jahr→Periode-Zuordnung bleibt deshalb auch für sie korrekt.
         const periodYear = advised ? year - 2 : year - 1;
-        const egao = (advised ? EGAO_ERKLAERUNG_BERATEN : EGAO_ERKLAERUNG_NICHT_BERATEN)[periodYear];
+        const egao = (advised ? EGAO_ERKLAERUNG_BERATEN : EGAO_ERKLAERUNG_NICHT_BERATEN)[
+          periodYear
+        ];
         const basis = egao
           ? new Date(Date.UTC(year, egao[0], egao[1]))
           : advised
@@ -276,9 +278,22 @@ function iterateYears(from: Date, to: Date, cb: (year: number) => void): void {
 // ---------------------------------------------------------------------------
 
 export type GermanRegion =
-  | 'DE-BW' | 'DE-BY' | 'DE-BE' | 'DE-BB' | 'DE-HB' | 'DE-HH' | 'DE-HE'
-  | 'DE-MV' | 'DE-NI' | 'DE-NW' | 'DE-RP' | 'DE-SL' | 'DE-SN' | 'DE-ST'
-  | 'DE-SH' | 'DE-TH';
+  | 'DE-BW'
+  | 'DE-BY'
+  | 'DE-BE'
+  | 'DE-BB'
+  | 'DE-HB'
+  | 'DE-HH'
+  | 'DE-HE'
+  | 'DE-MV'
+  | 'DE-NI'
+  | 'DE-NW'
+  | 'DE-RP'
+  | 'DE-SL'
+  | 'DE-SN'
+  | 'DE-ST'
+  | 'DE-SH'
+  | 'DE-TH';
 
 export const REGION_LABELS: Record<GermanRegion, string> = {
   'DE-BW': 'Baden-Württemberg',
@@ -304,7 +319,11 @@ export const REGION_LABELS: Record<GermanRegion, string> = {
  * gesetzliche Feiertage. Wenn `region` gesetzt ist, werden auch die
  * bundeslandspezifischen Feiertage berücksichtigt.
  */
-export function shiftToNextWorkday(date: Date, region?: GermanRegion | null, bavariaAssumption = true): Date {
+export function shiftToNextWorkday(
+  date: Date,
+  region?: GermanRegion | null,
+  bavariaAssumption = true,
+): Date {
   let d = new Date(date.getTime());
   while (isWeekendOrHoliday(d, region ?? null, bavariaAssumption)) {
     d = new Date(d.getTime() + 24 * 60 * 60 * 1000);
@@ -320,12 +339,76 @@ export function shiftToNextWorkday(date: Date, region?: GermanRegion | null, bav
 // retrospektiv noch überfällig.
 // ---------------------------------------------------------------------------
 
-/** Ende des Fälligkeitstags (23:59:59.999 UTC) — bis dahin ist die Frist gewahrt. */
+const berlinDateFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Europe/Berlin',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+const berlinWallClockFormatter = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Europe/Berlin',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+});
+
+/**
+ * UTC-Mitternacht des Berlin-Kalendertags, in dem `instant` liegt. Das ist die
+ * Kodierung unserer `@db.Date`-Spalten und deshalb die sichere Vergleichsgröße
+ * für „heute fällig“/„ab morgen überfällig“ — auch zwischen 22:00 und 24:00 UTC
+ * während der Sommerzeit.
+ */
+export function berlinCalendarDate(instant: Date): Date {
+  const parts = Object.fromEntries(
+    berlinDateFormatter.formatToParts(instant).map((part) => [part.type, part.value]),
+  );
+  return new Date(Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day)));
+}
+
+function berlinUtcOffsetMs(instant: Date): number {
+  const parts = Object.fromEntries(
+    berlinWallClockFormatter.formatToParts(instant).map((part) => [part.type, part.value]),
+  );
+  const wallClockAsUtc = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(parts.hour),
+    Number(parts.minute),
+    Number(parts.second),
+  );
+  const instantAtWholeSecond = Math.floor(instant.getTime() / 1000) * 1000;
+  return wallClockAsUtc - instantAtWholeSecond;
+}
+
+/** Wandelt einen als UTC-Mitternacht kodierten Berlin-Kalendertag in den echten Instant um. */
+function berlinMidnightInstant(calendarDate: Date): Date {
+  const wallClockMidnight = Date.UTC(
+    calendarDate.getUTCFullYear(),
+    calendarDate.getUTCMonth(),
+    calendarDate.getUTCDate(),
+  );
+  // Zweimalige Offset-Auflösung deckt auch den Wechsel CET↔CEST ab. In Berlin
+  // findet der Wechsel nicht um Mitternacht statt; der Zielzeitpunkt ist daher
+  // eindeutig.
+  let instant = new Date(wallClockMidnight - 60 * 60 * 1000);
+  for (let i = 0; i < 2; i += 1) {
+    instant = new Date(wallClockMidnight - berlinUtcOffsetMs(instant));
+  }
+  return instant;
+}
+
+/** Ende des Fälligkeitstags in Europe/Berlin — bis dahin ist die Frist gewahrt. */
 export function endOfDueDay(dueDate: Date): Date {
-  return new Date(Date.UTC(
-    dueDate.getUTCFullYear(), dueDate.getUTCMonth(), dueDate.getUTCDate(),
-    23, 59, 59, 999,
-  ));
+  const nextCalendarDay = new Date(
+    Date.UTC(dueDate.getUTCFullYear(), dueDate.getUTCMonth(), dueDate.getUTCDate() + 1),
+  );
+  return new Date(berlinMidnightInstant(nextCalendarDay).getTime() - 1);
 }
 
 /** UTC-Mitternacht des Tages von `d` — nur Termine mit dueDate DAVOR sind überfällig. */
@@ -388,14 +471,17 @@ export function appealDeadline(
   noticeDate: Date,
   region: GermanRegion | null = null,
   receivedAt: Date | null = null,
+  legalRemedyInstructionValid = true,
 ): Date {
   // 1. Bekanntgabe: + Fiktionstage (datumsabhängig: 3 bis 2024, 4 ab 2025),
   //    dann Werktagsverschiebung.
-  const fiktion = new Date(Date.UTC(
-    noticeDate.getUTCFullYear(),
-    noticeDate.getUTCMonth(),
-    noticeDate.getUTCDate() + bekanntgabeFiktionTage(noticeDate),
-  ));
+  const fiktion = new Date(
+    Date.UTC(
+      noticeDate.getUTCFullYear(),
+      noticeDate.getUTCMonth(),
+      noticeDate.getUTCDate() + bekanntgabeFiktionTage(noticeDate),
+    ),
+  );
   let bekanntgabe = shiftToNextWorkday(fiktion, region);
 
   // Tatsächlich SPÄTER zugegangen → echter Zugangstag ist maßgeblich.
@@ -404,8 +490,43 @@ export function appealDeadline(
     if (received.getTime() > bekanntgabe.getTime()) bekanntgabe = received;
   }
 
-  // 2. + 1 Monat + § 108 (3)-Werktagsverschiebung.
-  return addMonthWithWorkdayShift(bekanntgabe, region);
+  return appealDeadlineFromNotification(bekanntgabe, region, legalRemedyInstructionValid);
+}
+
+/**
+ * Einspruchsfrist ab einem bereits feststehenden Bekanntgabetag. Für
+ * förmliche, persönliche oder anderweitig nachgewiesene Bekanntgaben darf die
+ * Postfiktion nicht aufgeschlagen werden. Bei fehlender/unrichtiger
+ * Rechtsbehelfsbelehrung gilt grundsätzlich die Jahresfrist des § 356 Abs. 2 AO.
+ */
+export function appealDeadlineFromNotification(
+  notificationDate: Date,
+  region: GermanRegion | null = null,
+  legalRemedyInstructionValid = true,
+): Date {
+  const start = startOfUtcDay(notificationDate);
+  return legalRemedyInstructionValid
+    ? addMonthWithWorkdayShift(start, region)
+    : addYearWithWorkdayShift(start, region);
+}
+
+/**
+ * Einspruchsfrist bei postalischer Übermittlung ins Ausland (§ 122 Abs. 2
+ * Nr. 2 AO): Bekanntgabefiktion einen Monat nach Aufgabe zur Post; ein
+ * nachweislich späterer Zugang geht vor.
+ */
+export function appealDeadlineForPostAbroad(
+  sentAt: Date,
+  region: GermanRegion | null = null,
+  receivedAt: Date | null = null,
+  legalRemedyInstructionValid = true,
+): Date {
+  let notificationDate = addMonthWithWorkdayShift(startOfUtcDay(sentAt), region);
+  if (receivedAt) {
+    const received = startOfUtcDay(receivedAt);
+    if (received > notificationDate) notificationDate = received;
+  }
+  return appealDeadlineFromNotification(notificationDate, region, legalRemedyInstructionValid);
 }
 
 /**
@@ -424,8 +545,20 @@ function addMonthWithWorkdayShift(start: Date, region: GermanRegion | null): Dat
   // rollt JS in den übernächsten Monat — dann auf den letzten Tag des
   // Zielmonats (m+1) zurücksetzen. `Date.UTC(y, m+2, 0)` = Tag 0 von (m+2) =
   // letzter Tag von (m+1).
-  if (ende.getUTCMonth() !== ((m + 1) % 12)) {
+  if (ende.getUTCMonth() !== (m + 1) % 12) {
     ende = new Date(Date.UTC(y, m + 2, 0));
+  }
+  return shiftToNextWorkday(ende, region);
+}
+
+function addYearWithWorkdayShift(start: Date, region: GermanRegion | null): Date {
+  const y = start.getUTCFullYear();
+  const m = start.getUTCMonth();
+  const d = start.getUTCDate();
+  let ende = new Date(Date.UTC(y + 1, m, d));
+  // 29.02. → letzter Tag des Februar im Folgejahr.
+  if (ende.getUTCMonth() !== m) {
+    ende = new Date(Date.UTC(y + 1, m + 1, 0));
   }
   return shiftToNextWorkday(ende, region);
 }
@@ -441,11 +574,22 @@ function addMonthWithWorkdayShift(start: Date, region: GermanRegion | null): Dat
  * spät, was bei einem Fristenkontrolltool die gefährliche Richtung ist. Nur
  * + 1 Monat + § 108 Abs. 3 AO-Werktagsverschiebung ab dem Bekanntgabetag.
  */
-export function klageDeadline(bekanntgabe: Date, region: GermanRegion | null = null): Date {
-  return addMonthWithWorkdayShift(startOfUtcDay(bekanntgabe), region);
+export function klageDeadline(
+  bekanntgabe: Date,
+  region: GermanRegion | null = null,
+  legalRemedyInstructionValid = true,
+): Date {
+  const start = startOfUtcDay(bekanntgabe);
+  return legalRemedyInstructionValid
+    ? addMonthWithWorkdayShift(start, region)
+    : addYearWithWorkdayShift(start, region);
 }
 
-function isWeekendOrHoliday(d: Date, region: GermanRegion | null, bavariaAssumption = true): boolean {
+function isWeekendOrHoliday(
+  d: Date,
+  region: GermanRegion | null,
+  bavariaAssumption = true,
+): boolean {
   const day = d.getUTCDay();
   if (day === 0 || day === 6) return true;
   return germanHolidays(d.getUTCFullYear(), region, bavariaAssumption).some(
@@ -462,33 +606,37 @@ function isWeekendOrHoliday(d: Date, region: GermanRegion | null, bavariaAssumpt
  *
  * Quelle: Feiertagsgesetze der Länder, Stand 2025.
  */
-export function germanHolidays(year: number, region: GermanRegion | null, bavariaAssumption = true): Date[] {
+export function germanHolidays(
+  year: number,
+  region: GermanRegion | null,
+  bavariaAssumption = true,
+): Date[] {
   const easter = easterSunday(year);
   const ms = 24 * 60 * 60 * 1000;
 
   // Bundeseinheitliche Feiertage
   const out: Date[] = [
-    new Date(Date.UTC(year, 0, 1)),       // Neujahr
-    new Date(easter.getTime() - 2 * ms),   // Karfreitag
-    new Date(easter.getTime() + ms),       // Ostermontag
-    new Date(Date.UTC(year, 4, 1)),       // Tag der Arbeit
-    new Date(easter.getTime() + 39 * ms),  // Christi Himmelfahrt
-    new Date(easter.getTime() + 50 * ms),  // Pfingstmontag
-    new Date(Date.UTC(year, 9, 3)),       // Tag der Deutschen Einheit
-    new Date(Date.UTC(year, 11, 25)),     // 1. Weihnachtstag
-    new Date(Date.UTC(year, 11, 26)),     // 2. Weihnachtstag
+    new Date(Date.UTC(year, 0, 1)), // Neujahr
+    new Date(easter.getTime() - 2 * ms), // Karfreitag
+    new Date(easter.getTime() + ms), // Ostermontag
+    new Date(Date.UTC(year, 4, 1)), // Tag der Arbeit
+    new Date(easter.getTime() + 39 * ms), // Christi Himmelfahrt
+    new Date(easter.getTime() + 50 * ms), // Pfingstmontag
+    new Date(Date.UTC(year, 9, 3)), // Tag der Deutschen Einheit
+    new Date(Date.UTC(year, 11, 25)), // 1. Weihnachtstag
+    new Date(Date.UTC(year, 11, 26)), // 2. Weihnachtstag
   ];
 
   if (!region) return out;
 
   // Landesspezifisch
-  const epiphany = new Date(Date.UTC(year, 0, 6));            // Heilige Drei Könige
-  const womenDay = new Date(Date.UTC(year, 2, 8));            // Internationaler Frauentag
+  const epiphany = new Date(Date.UTC(year, 0, 6)); // Heilige Drei Könige
+  const womenDay = new Date(Date.UTC(year, 2, 8)); // Internationaler Frauentag
   const corpusChristi = new Date(easter.getTime() + 60 * ms); // Fronleichnam
-  const assumption = new Date(Date.UTC(year, 7, 15));         // Mariä Himmelfahrt
-  const worldChildren = new Date(Date.UTC(year, 8, 20));      // Weltkindertag
-  const reformation = new Date(Date.UTC(year, 9, 31));        // Reformationstag
-  const allSaints = new Date(Date.UTC(year, 10, 1));          // Allerheiligen
+  const assumption = new Date(Date.UTC(year, 7, 15)); // Mariä Himmelfahrt
+  const worldChildren = new Date(Date.UTC(year, 8, 20)); // Weltkindertag
+  const reformation = new Date(Date.UTC(year, 9, 31)); // Reformationstag
+  const allSaints = new Date(Date.UTC(year, 10, 1)); // Allerheiligen
   const repentance = wednesdayBefore(new Date(Date.UTC(year, 10, 23))); // Buß- und Bettag
 
   switch (region) {

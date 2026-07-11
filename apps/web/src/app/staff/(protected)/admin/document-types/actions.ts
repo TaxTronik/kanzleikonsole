@@ -15,16 +15,31 @@ const TIERS = ['NONE', 'GWG', 'GOBD'] as const;
 // re-storen (kaskadierender Compliance-Eingriff). Andere Stufe gewünscht
 // → neuen Typ anlegen.
 // ---------------------------------------------------------------------------
-const CreateSchema = z.object({
-  name: z.string().trim().min(1, 'Name fehlt.').max(120),
-  tier: z.enum(TIERS),
-});
+const CreateSchema = z
+  .object({
+    name: z.string().trim().min(1, 'Name fehlt.').max(120),
+    tier: z.enum(TIERS),
+    retentionYears: z.union([z.literal(6), z.literal(8), z.literal(10)]).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.tier === 'GOBD' && value.retentionYears === undefined) {
+      ctx.addIssue({ code: 'custom', path: ['retentionYears'], message: 'GoBD-Frist fehlt.' });
+    }
+    if (value.tier !== 'GOBD' && value.retentionYears !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['retentionYears'],
+        message: 'Frist passt nicht zur Stufe.',
+      });
+    }
+  });
 
 export async function createDocumentTypeAction(
   input: z.infer<typeof CreateSchema>,
 ): Promise<ActionResult> {
   const parsed = CreateSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
+  if (!parsed.success)
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
   const name = parsed.data.name.trim();
 
   return withStaff(
@@ -38,6 +53,12 @@ export async function createDocumentTypeAction(
           tenantId,
           name,
           tier: parsed.data.tier,
+          retentionYears:
+            parsed.data.tier === 'GOBD'
+              ? parsed.data.retentionYears
+              : parsed.data.tier === 'GWG'
+                ? 5
+                : null,
           builtin: false,
           active: true,
           sortOrder: (last?.sortOrder ?? 0) + 10,
@@ -51,7 +72,16 @@ export async function createDocumentTypeAction(
         action: 'document_type.create',
         resourceType: 'document_type',
         resourceId: created.id,
-        after: { name, tier: parsed.data.tier },
+        after: {
+          name,
+          tier: parsed.data.tier,
+          retentionYears:
+            parsed.data.tier === 'GOBD'
+              ? parsed.data.retentionYears
+              : parsed.data.tier === 'GWG'
+                ? 5
+                : null,
+        },
       });
     },
     { requireAdmin: true, uniqueError: NAME_TAKEN, revalidate: REVALIDATE },
@@ -122,7 +152,9 @@ export async function deleteDocumentTypeAction(input: { id: string }): Promise<A
         where: { tenantId, documentTypeId: parsed.data.id },
       });
       if (inUse > 0) {
-        throw new ActionError(`Typ wird von ${inUse} Dokument(en) genutzt — bitte stattdessen deaktivieren.`);
+        throw new ActionError(
+          `Typ wird von ${inUse} Dokument(en) genutzt — bitte stattdessen deaktivieren.`,
+        );
       }
       await tx.documentType.delete({ where: { id: parsed.data.id } });
       await evidenceService.record(tx, {

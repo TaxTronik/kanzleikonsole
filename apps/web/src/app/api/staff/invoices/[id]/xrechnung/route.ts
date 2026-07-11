@@ -6,14 +6,11 @@ import { withTenantContext } from '@taxtronik/db';
 import { commitBytesWithTier } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
 import { prismaBytes } from '@/server/db/prisma-bytes';
-import { generateXRechnungCii } from '@/server/invoicing/xrechnung';
+import { generateXRechnungCii, toXRechnungInvoice } from '@/server/invoicing/xrechnung';
 import { readSellerInfo } from '@/server/settings/tenant-settings';
 import { isUuid } from '@/lib/uuid';
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await staffAuth();
   if (!session?.user) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
@@ -42,6 +39,7 @@ export async function GET(
       include: {
         client: true,
         positions: { orderBy: { position: 'asc' } },
+        stornoOf: { select: { number: true } },
       },
     });
     if (!inv) return null;
@@ -61,14 +59,29 @@ export async function GET(
   // USt-ID ODER Steuernummer ist bei Standardsatz-Positionen Pflicht
   // (EN-16931 BR-S-02 / BR-CO-26) — ohne sie lehnt KoSIT die Rechnung ab.
   if (
-    !seller.name || !seller.street || !seller.city || !seller.postalCode ||
-    !seller.email || !seller.phone || (!seller.vatId && !seller.taxNumber)
+    !seller.name ||
+    !seller.street ||
+    !seller.city ||
+    !seller.postalCode ||
+    !seller.email ||
+    !seller.phone ||
+    (!seller.vatId && !seller.taxNumber)
   ) {
     return NextResponse.json(
       {
         error: 'seller_incomplete',
         message:
           'Verkäufer-Stammdaten unvollständig. Bitte zuerst unter /staff/admin/settings ergänzen (Name, Straße, PLZ, Ort, E-Mail, Telefon, USt-ID oder Steuernummer).',
+      },
+      { status: 422 },
+    );
+  }
+  if (invoice.reverseCharge && !seller.vatId) {
+    return NextResponse.json(
+      {
+        error: 'reverse_charge_seller_no_vatid',
+        message:
+          'Reverse-Charge (§ 13b UStG) erfordert die USt-IdNr der Kanzlei. Bitte zuerst unter /staff/admin/settings ergänzen.',
       },
       { status: 422 },
     );
@@ -84,43 +97,18 @@ export async function GET(
     );
   }
 
-  const xml = generateXRechnungCii(
-    {
-      number: invoice.number,
-      issueDate: invoice.issueDate,
-      dueDate: invoice.dueDate,
-      subject: invoice.subject,
-      notes: invoice.notes,
-      currency: 'EUR',
-      servicePeriodStart: invoice.servicePeriodStart,
-      servicePeriodEnd: invoice.servicePeriodEnd,
-      vatExemptionReason: invoice.vatExemptionReason,
-      netAmount: Number(invoice.netAmount.toString()),
-      vatAmount: Number(invoice.vatAmount.toString()),
-      totalAmount: Number(invoice.totalAmount.toString()),
-      positions: invoice.positions.map((p) => ({
-        position: p.position,
-        description: p.description,
-        quantity: Number(p.quantity.toString()),
-        unit: p.unit,
-        unitPrice: Number(p.unitPrice.toString()),
-        netAmount: Number(p.netAmount.toString()),
-        vatRate: Number(p.vatRate.toString()),
-      })),
-    },
-    seller,
-    {
-      name: invoice.client.name,
-      street: invoice.client.street,
-      postalCode: invoice.client.postalCode,
-      city: invoice.client.city,
-      countryIso: invoice.client.countryIso ?? 'DE',
-      vatId: invoice.client.vatId,
-      email: invoice.client.invoiceEmail,
-    },
-  );
+  const xml = generateXRechnungCii(toXRechnungInvoice(invoice), seller, {
+    name: invoice.client.name,
+    street: invoice.client.street,
+    postalCode: invoice.client.postalCode,
+    city: invoice.client.city,
+    countryIso: invoice.client.countryIso ?? 'DE',
+    vatId: invoice.client.vatId,
+    email: invoice.client.invoiceEmail,
+  });
 
-  const shareable = invoice.status === 'SENT' || invoice.status === 'PAID' || invoice.status === 'OVERDUE';
+  const shareable =
+    invoice.status === 'SENT' || invoice.status === 'PAID' || invoice.status === 'OVERDUE';
   const xmlTitle = `Rechnung ${invoice.number} (XRechnung)`;
   const existingXml = await withTenantContext(ctx, (tx) =>
     tx.document.findFirst({

@@ -8,7 +8,13 @@ import { z } from 'zod';
 import { staffAuth } from '@/server/auth/staff';
 import { canAccessClientTx } from '@/server/auth/rbac';
 import { assertSameOrigin } from '@/server/http/assert-same-origin';
-import { commitDocumentFromBytes, MAX_UPLOAD_BYTES } from '@taxtronik/storage';
+import {
+  classificationToTier,
+  commitBytesWithTier,
+  gobdRetentionYears,
+  MAX_UPLOAD_BYTES,
+  type ProtectionTier,
+} from '@taxtronik/storage';
 import { withTenantContext } from '@taxtronik/db';
 import { prismaBytes } from '@/server/db/prisma-bytes';
 import {
@@ -23,10 +29,19 @@ const Schema = z.object({
   changeNote: z.string().max(500).optional().or(z.literal('')),
 });
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+class PoaDocumentLockedError extends Error {}
+
+const lockedByPoaResponse = () =>
+  NextResponse.json(
+    {
+      error: 'locked_by_poa',
+      message:
+        'Dieses Dokument ist an eine versendete oder unterschriebene Vollmacht gebunden und kann nicht mehr geändert werden.',
+    },
+    { status: 409 },
+  );
+
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   // CSRF-Defense-in-Depth (zusätzlich zu SameSite=lax): Cross-Origin-POSTs
   // ablehnen, bevor irgendetwas gepuffert oder authentifiziert wird.
   const csrf = assertSameOrigin(req, env.NEXTAUTH_URL);
@@ -70,41 +85,48 @@ export async function POST(
   const loaded = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
-      const d = await tx.document.findFirst({ where: { id: documentId, tenantId } });
+      const d = await tx.document.findFirst({
+        where: { id: documentId, tenantId },
+        select: {
+          id: true,
+          clientId: true,
+          classification: true,
+          documentType: { select: { tier: true, retentionYears: true } },
+        },
+      });
       if (!d) return null;
       if (d.clientId && !(await canAccessClientTx(tx, session, d.clientId))) return null;
-      // eIDAS-Bindung (Art. 26 lit. d): Ist dieses Dokument durch eine bereits
-      // UNTERSCHRIEBENE Vollmacht gebunden, darf keine neue Version nachgeschoben
-      // werden — sonst wäre die signierte Fassung nachträglich austauschbar und
-      // die nachträgliche Änderungserkennbarkeit der Signatur nicht gewahrt.
-      const signedPoa = await tx.powerOfAttorney.findFirst({
-        where: { documentId, status: 'SIGNED' },
+      // Ab Versand ist die konkrete Dokumentversion Bestandteil des
+      // Signatur-Snapshots. Neue Versionen sind deshalb ab SENT gesperrt.
+      const boundPoa = await tx.powerOfAttorney.findFirst({
+        where: {
+          documentId,
+          OR: [{ status: { in: ['SENT', 'SIGNED'] } }, { signingContentSnapshot: { not: null } }],
+        },
         select: { id: true },
       });
-      return { doc: d, lockedBySignedPoa: !!signedPoa };
+      return { doc: d, lockedByPoa: !!boundPoa };
     },
   );
   if (!loaded) return NextResponse.json({ error: 'not_found' }, { status: 404 });
-  if (loaded.lockedBySignedPoa) {
-    return NextResponse.json(
-      {
-        error: 'locked_by_signed_poa',
-        message:
-          'Dieses Dokument ist durch eine unterschriebene Vollmacht gebunden und kann nicht mehr geändert werden.',
-      },
-      { status: 409 },
-    );
-  }
+  if (loaded.lockedByPoa) return lockedByPoaResponse();
   const doc = loaded.doc;
 
   // Storage-Commit (Scan + Upload, intern zu SeaweedFS)
   const fileData = Buffer.from(await file.arrayBuffer());
   let commit;
   try {
-    commit = await commitDocumentFromBytes({
+    const tier = (doc.documentType?.tier ??
+      classificationToTier(doc.classification)) as ProtectionTier;
+    const retentionYears =
+      doc.documentType?.retentionYears ??
+      (tier === 'GOBD' ? gobdRetentionYears(doc.classification) : null);
+    commit = await commitBytesWithTier({
       fileData,
+      tier,
       classification: doc.classification,
       tenantId,
+      ...(tier === 'GOBD' && retentionYears ? { retentionYears } : {}),
     });
   } catch (e) {
     // Befund 12: Mapping zentral (war 3× wortgleich kopiert).
@@ -121,6 +143,22 @@ export async function POST(
     versionNo = await withTenantContext(
       { tenantId, actorId: staffId, actorType: 'STAFF' },
       async (tx) => {
+        // TOCTOU-Gegenstück zur Vorprüfung: Ein Versand kann zwischen Upload
+        // und DB-Insert stattfinden. Dann bleibt das Storage-Objekt verwaist,
+        // die gebundene Dokumenthistorie aber unverändert.
+        await tx.$queryRaw`
+          SELECT id FROM document
+          WHERE id = ${documentId}::uuid
+          FOR UPDATE
+        `;
+        const boundPoa = await tx.powerOfAttorney.findFirst({
+          where: {
+            documentId,
+            OR: [{ status: { in: ['SENT', 'SIGNED'] } }, { signingContentSnapshot: { not: null } }],
+          },
+          select: { id: true },
+        });
+        if (boundPoa) throw new PoaDocumentLockedError();
         const latest = await tx.documentVersion.findFirst({
           where: { documentId },
           orderBy: { versionNo: 'desc' },
@@ -141,6 +179,18 @@ export async function POST(
             createdById: staffId,
           },
         });
+        if (commit.retentionUntil) {
+          // § 147 Abs. 3 AO: eine neue Eintragung/Version kann die Frist neu
+          // ankern. Metadaten nur monoton verlängern; nie eine bestehende
+          // längere Object-Lock-Frist scheinbar verkürzen.
+          await tx.document.updateMany({
+            where: {
+              id: documentId,
+              OR: [{ retentionUntil: null }, { retentionUntil: { lt: commit.retentionUntil } }],
+            },
+            data: { retentionUntil: commit.retentionUntil },
+          });
+        }
         await evidenceService.record(tx, {
           tenantId,
           actorType: 'STAFF',
@@ -154,6 +204,7 @@ export async function POST(
             sha256: commit.sha256.toString('hex'),
             immutable: commit.immutable,
             changeNote: changeNote || null,
+            retentionUntil: commit.retentionUntil?.toISOString() ?? null,
           },
           ip: getClientIp(req.headers),
           userAgent: req.headers.get('user-agent'),
@@ -176,6 +227,7 @@ export async function POST(
       },
       'documents-new-version: DB-Commit nach Storage-Upload fehlgeschlagen — Objekt verwaist',
     );
+    if (e instanceof PoaDocumentLockedError) return lockedByPoaResponse();
     if ((e as { code?: string }).code === 'P2002') {
       return NextResponse.json(
         {

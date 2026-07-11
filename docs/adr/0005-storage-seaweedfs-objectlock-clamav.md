@@ -3,7 +3,8 @@
 **Status**: Akzeptiert (Iteration 1, **MinIO ersetzt 2026-05-12**)
 **Datum**: 2026-05-10 (ursprünglich) · **2026-05-12** (SeaweedFS-Wechsel)
 **Kontext**: GoBD-pflichtige Dokumente (Rechnungen, Verträge, Steuer-Belege)
-müssen 10 Jahre unveränderbar gespeichert werden. Ein-Datei-Pro-Storage
+müssen je Dokumentart 6, 8 oder 10 Jahre unveränderbar gespeichert werden;
+Rechnungen regelmäßig acht Jahre. Ein-Datei-Pro-Storage
 würde GwG/DSGVO-Anforderungen unterlaufen (z. B. selektive Löschung
 auskunftspflichtiger Datensätze).
 
@@ -21,6 +22,7 @@ ist später ohne API-Bruch möglich.
 
 Fünf Buckets — angelegt vom `seaweedfs-init`-Container über die AWS-CLI
 (Stand der ursprünglichen Entscheidung; aktueller Stand siehe Addendum):
+
 - `gobd` mit Object-Lock-Mode `COMPLIANCE` und Default-Retention 10 Jahre
 - `general` (transiente Anhänge, KB-Bilder)
 - `staff-private` (Mitarbeiter-Ablage, mit Versionierung)
@@ -28,6 +30,7 @@ Fünf Buckets — angelegt vom `seaweedfs-init`-Container über die AWS-CLI
 - `backups` (Postgres-Dumps + Audit-Archive, 90-Tage-Lifecycle)
 
 **Upload-Flow** (Defense-in-Depth, unverändert zum SeaweedFS-Setup):
+
 1. Browser holt Presigned-PUT-URL für `quarantine`
 2. Browser PUTet die Datei direkt zum Object-Store
 3. App-Endpoint `commit`:
@@ -55,6 +58,7 @@ Fünf Buckets — angelegt vom `seaweedfs-init`-Container über die AWS-CLI
 ## Konsequenzen
 
 **Vorteile**
+
 - Lizenzklar (Apache-2.0), kein Vendor-Lock-in
 - Single-Binary-Architektur — eine Container-Instanz statt MinIO + mc + Konsole
 - Object-Lock-COMPLIANCE: nicht einmal der Storage-Admin kann GoBD-Dateien
@@ -66,6 +70,7 @@ Fünf Buckets — angelegt vom `seaweedfs-init`-Container über die AWS-CLI
   Anbieter-agnostisch (AWS SDK + `forcePathStyle: true`)
 
 **Nachteile**
+
 - Keine Web-Konsole wie MinIO Console — Verwaltung via Filer-UI (8888) oder
   AWS CLI. Für unsere Buckets-as-Code-Logik ist das ok.
 - SeaweedFS-Object-Lock seit 3.59 (12/2023) stabil, aber jünger als MinIO —
@@ -107,10 +112,9 @@ Zwei Punkte der ursprünglichen Entscheidung sind inzwischen überholt:
 
 1. **Sechster Bucket `gwg`** (B-1): `GWG_EVIDENCE` liegt nicht mehr im
    `gobd`-Bucket, sondern in einem eigenen Bucket `gwg` mit Object-Lock-Mode
-   **GOVERNANCE** und 5 Jahren Retention. Grund: § 8 Abs. 4 GwG ist eine
-   Höchstfrist mit Vernichtungspflicht — COMPLIANCE würde die geforderte
-   unverzügliche Vernichtung nach Mandatsende technisch verhindern;
-   GOVERNANCE erlaubt die privilegierte Frühlöschung
+   **GOVERNANCE** und technischer 5-Jahres-Barriere. Grund: Der tatsächliche
+   Fristbeginn nach § 8 Abs. 4 GwG ist ereignisabhängig; GOVERNANCE erlaubt die
+   kontrollierte Löschung am von der fachlichen Queue ermittelten Fristende
    (`s3:BypassGovernanceRetention`). Siehe `lockModeForTier()` in
    `packages/storage/src/client.ts`/`service.ts` und
    [docs/compliance/gwg.md](../compliance/gwg.md).
@@ -131,3 +135,6 @@ Zwei Punkte der ursprünglichen Entscheidung sind inzwischen überholt:
    Env-Schema (`S3_BUCKET_QUARANTINE`) und dem Code entfernt, damit der
    unscannbare, browser-beschreibbare Pfad nicht versehentlich reaktiviert
    werden kann.
+4. **Dokumenttypabhängige GoBD-Frist**: Der zehnjährige Bucket-Default bleibt
+   als konservativer Fallback bestehen; jeder reguläre Upload setzt jedoch
+   explizit die Frist seines Datei-Typs (6/8/10 Jahre, Rechnung 8 Jahre).

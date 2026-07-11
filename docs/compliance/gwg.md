@@ -39,12 +39,11 @@ bleibt organisatorische Pflicht der Kanzlei.
   `GWG_EVIDENCE` in einem **eigenen Bucket `gwg`** gespeichert —
   Object-Lock-Modus **GOVERNANCE**, Retain-Until 5 Jahre + 1 Tag
   (`gwgRetentionUntil()` in `packages/storage/src/service.ts`).
-- Warum GOVERNANCE statt COMPLIANCE: § 8 Abs. 4 ist eine
-  **Höchstfrist mit Vernichtungspflicht** — COMPLIANCE würde die
-  geforderte unverzügliche Vernichtung technisch verhindern. GOVERNANCE
-  schützt vor regulärer Löschung, erlaubt aber die privilegierte
-  Frühlöschung (`s3:BypassGovernanceRetention`). GoBD-Belege bleiben
-  davon unberührt (COMPLIANCE, 10 Jahre).
+- Warum GOVERNANCE statt COMPLIANCE: Der gesetzliche Fristbeginn hängt unter
+  anderem vom Ende der Geschäftsbeziehung ab. GOVERNANCE schützt vor regulärer
+  Löschung, erlaubt aber die kontrollierte Löschung am von der Review-Queue
+  ermittelten Fristende (`s3:BypassGovernanceRetention`). GoBD-Belege bleiben
+  davon unberührt (COMPLIANCE, je Datei-Typ 6/8/10 Jahre).
 
 ## 3. Vernichtungspflicht (§ 8 Abs. 4 GwG)
 

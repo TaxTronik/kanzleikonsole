@@ -1,61 +1,62 @@
-# ADR 0009 — eIDAS Advanced Electronic Signature (AES) für Vollmachten
+# ADR 0009 — Elektronischer Vollmachtsnachweis via Token und E-Mail-Code
 
-**Status**: Akzeptiert (Iteration 5, MVP-Variante)
-**Datum**: 2026-05-10
-**Kontext**: Vollmachten an die Kanzlei (z. B. Vertretung gegenüber Finanzamt)
-müssen rechtsverbindlich elektronisch unterschrieben werden können.
-Die Anforderung an eine "fortgeschrittene elektronische Signatur" (eIDAS
-Art. 26) verlangt eindeutige Zuordnung, alleinige Kontrolle und
-Manipulations-Erkennbarkeit.
+**Status**: Revidiert (Iteration 107; frühere AES-Einstufung zurückgenommen)
+
+**Datum**: 2026-05-10, revidiert 2026-08-01
+
+**Kontext**: Vollmachtgeber sollen eine konkrete Vollmachtsfassung elektronisch
+bestätigen können. Für eine fortgeschrittene elektronische Signatur verlangt
+Art. 26 eIDAS unter anderem eine belastbare Identifizierung, alleinige Kontrolle
+der Signaturerstellungsdaten und die Erkennbarkeit nachträglicher Änderungen.
 
 ## Entscheidung
 
-**Zwei-Faktor-Verfahren via App + E-Mail-OTP**:
+Die Anwendung stellt einen elektronischen Bestätigungs- und Nachweisprozess
+bereit, stuft ihn aber **nicht als AES oder QES** ein:
 
-1. **Faktor "Was man hat"**: ein 32-Byte-Random-Token, gehasht in
-   `power_of_attorney.signing_token_hash`, im Klartext im Magic-Link an die
-   Mandanten-E-Mail-Adresse versendet (TTL 72h)
-2. **Faktor "Was man weiß"**: ein 6-stelliger OTP, gehasht in
-   `signing_otp_hash`, im Klartext bei Klick auf "Signieren" per separater
-   Mail an dieselbe Adresse (TTL 10 Minuten)
+1. Ein 32-Byte-Zufallstoken wird gehasht gespeichert und als Magic-Link an die
+   hinterlegte E-Mail-Adresse gesendet (TTL 72 Stunden).
+2. Nach ausdrücklicher Bestätigung des angezeigten Inhalts wird ein
+   sechsstelliger Code gehasht gespeichert und separat an dasselbe Postfach
+   gesendet (TTL 10 Minuten).
+3. Bereits beim Versand wird ein unveränderlicher JSON-Snapshot erzeugt. Bei
+   PDF-Vollmachten enthält er die exakte Dokumentversions-ID und deren SHA-256;
+   bei Textvollmachten den vollständigen angezeigten Text. Die öffentliche
+   Ansicht liefert ausschließlich diesen Snapshot.
+4. Beim Abschluss werden Token, Code, Snapshot-Hash, Zeitpunkt, IP und
+   User-Agent geprüft beziehungsweise protokolliert. Statuswechsel und
+   Evidence-Record erfolgen in derselben Datenbanktransaktion.
 
-Der Signatur-Beleg umfasst:
-- IP-Adresse + User-Agent zum Zeitpunkt des Signierens
-- Audit-Eintrag in der Hash-Chain (Action `poa.sign`)
-- `signed_at`-Timestamp
-
-Beim Klick auf "Signieren" wird beides geprüft, der Status atomar auf
-`SIGNED` gesetzt (UPDATE…WHERE status='SENT'), und beide Token entwertet.
+Magic-Link und Code gehen an dasselbe Postfach. Sie sind daher keine
+unabhängigen Faktoren und ersetzen keine belastbare Identitätsfeststellung.
 
 ## Konsequenzen
 
 **Vorteile**
-- Erfüllt eIDAS-AES-Anforderungen ohne Smartcard/Reader
-- Kosten: 0 € (gegenüber QES-Plug-ins ab 1 €/Signatur)
-- 100% web-basiert, kein App-Download für Mandanten
-- Audit-Trail vollständig hash-gechained → manipulationsfest
 
-**Nachteile**
-- Keine **Qualified Electronic Signature** (QES) — für Verträge wie
-  Bürgschaften nach BGB §766 nicht ausreichend (dort braucht's QES nach
-  eIDAS Art. 25 Abs. 2)
-- Mailbox-Kompromittierung des Mandanten reicht zum Signieren
-  → Mitigation: zwei separate Mails (Magic-Link + OTP) mit kurzem
-  OTP-Fenster (10 min)
-- Klartext-Token in der Mail = Sender-Mail-Provider sieht ihn
+- Exakte Bindung an die beim Versand angezeigte Text- oder PDF-Version
+- Serverseitig zwingende ausdrückliche Inhaltsbestätigung
+- Begrenzte Token-/Code-Laufzeit und begrenzte Fehlversuche
+- Hash-verkettete Beweisspur für die abgegebene elektronische Erklärung
+
+**Grenzen**
+
+- Keine bestätigte fortgeschrittene oder qualifizierte elektronische Signatur
+- Kompromittierung des E-Mail-Postfachs kann Link und Code offenlegen
+- Rechtliche Formanforderungen des konkreten Vorgangs müssen außerhalb dieser
+  technischen Funktion bewertet werden
+- Für AES/QES ist ein entsprechend bewerteter Signaturdienst erforderlich
 
 ## Erweiterungspfad
 
-Der `EidasSignaturePort`-Interface ist offen für QES-Plug-ins:
-- D-Trust ID-Card (Smartcard + Lesegerät)
-- swisscom Mobile-ID (mTAN am Mobiltelefon)
-- TR-ESOR konformer Adapter
+Eine zukünftige Integration eines geeigneten Signaturdienstes muss dessen
+Identitätsprüfung, Signaturdaten, Zertifikats-/Validierungsnachweise und die
+Bindung an denselben Inhalts-Snapshot übernehmen. Eine solche Integration ist
+derzeit nicht implementiert.
 
-Die App-Logik bleibt gleich (`status: PENDING_SIGNATURE → SIGNED`),
-nur der "wie wird signiert"-Schritt ist austauschbar.
+## Nicht gewählte Alternativen
 
-## Alternativen verworfen
-
-- Nur Magic-Link, kein OTP (das wäre nur "Simple Electronic Signature")
-- DocuSign-Integration (US-Provider, DSGVO-Risiko, Kosten pro Signatur)
-- Smartcard-Pflicht (UX-killer für Mandanten)
+- Nur Magic-Link ohne zusätzlichen Code
+- Ungeprüfte Behauptung, zwei E-Mails an dasselbe Postfach seien zwei
+  unabhängige Faktoren
+- Produktzusage als AES/QES ohne externe fachliche Konformitätsbewertung

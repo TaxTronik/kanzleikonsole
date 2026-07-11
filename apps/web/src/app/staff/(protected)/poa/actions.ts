@@ -16,8 +16,19 @@ import { headers } from 'next/headers';
 import { staffActionGuard, withStaff, ActionError } from '@/server/actions/staff-action';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { readModules } from '@/server/settings/modules';
-import { commitBytesWithTier, MAX_UPLOAD_BYTES, type CommitDocumentResult } from '@taxtronik/storage';
+import {
+  commitBytesWithTier,
+  MAX_UPLOAD_BYTES,
+  type CommitDocumentResult,
+} from '@taxtronik/storage';
 import { createDocumentWithVersion } from '@/server/documents/upload-helpers';
+import { notify } from '@/server/notifications/service';
+import {
+  buildPoaSigningSnapshot,
+  isPoaExpired,
+  readPoaSigningSnapshot,
+  snapshotDocumentMatches,
+} from '@/server/poa/signing-snapshot';
 
 const SIGNING_TOKEN_TTL_HOURS = 72;
 
@@ -25,18 +36,31 @@ function hashToken(raw: string): string {
   return createHash('sha256').update(raw).digest('hex');
 }
 
-const CreateSchema = z.object({
-  clientId: z.string().uuid(),
-  signerContactId: z.string().uuid().optional().or(z.literal('')),
-  signerEmail: z.string().email().max(255),
-  signerName: z.string().min(1).max(200),
-  subject: z.string().min(1).max(300),
-  scope: z.string().max(20000).optional(),
-  validFrom: z.string().date(),
-  validUntil: z.string().date().optional().or(z.literal('')),
-});
+const CreateSchema = z
+  .object({
+    clientId: z.string().uuid(),
+    signerContactId: z.string().uuid().optional().or(z.literal('')),
+    signerEmail: z.string().email().max(255),
+    signerName: z.string().min(1).max(200),
+    subject: z.string().min(1).max(300),
+    scope: z.string().max(20000).optional(),
+    validFrom: z.string().date(),
+    validUntil: z.string().date().optional().or(z.literal('')),
+  })
+  .superRefine((value, ctx) => {
+    if (value.validUntil && value.validUntil < value.validFrom) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['validUntil'],
+        message: 'Das Gültig-bis-Datum darf nicht vor dem Gültig-ab-Datum liegen.',
+      });
+    }
+  });
 
-export interface ActionResult { ok: boolean; error?: string; }
+export interface ActionResult {
+  ok: boolean;
+  error?: string;
+}
 
 export async function createPoaAction(
   _prev: ActionResult | null,
@@ -52,7 +76,10 @@ export async function createPoaAction(
   // können. ADMIN/PARTNER (in der Praxis: Kanzleileitung + Partner =
   // Berufsträger) als Gate. Für 4-Augen-Workflow später separater Schritt.
   if (!isStaffAdmin(session)) {
-    return { ok: false, error: 'Vollmachten dürfen nur von ADMIN/PARTNER (Berufsträger) angelegt werden.' };
+    return {
+      ok: false,
+      error: 'Vollmachten dürfen nur von ADMIN/PARTNER (Berufsträger) angelegt werden.',
+    };
   }
 
   const parsed = CreateSchema.safeParse({
@@ -98,7 +125,10 @@ export async function createPoaAction(
       return { ok: false, error: 'Nur PDF-Dateien erlaubt.' };
     }
     if (file.size > MAX_UPLOAD_BYTES) {
-      return { ok: false, error: `PDF zu groß (max. ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)} MB).` };
+      return {
+        ok: false,
+        error: `PDF zu groß (max. ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)} MB).`,
+      };
     }
     try {
       const buf = Buffer.from(await file.arrayBuffer());
@@ -165,7 +195,12 @@ export async function createPoaAction(
         action: 'poa.create',
         resourceType: 'power_of_attorney',
         resourceId: poa.id,
-        after: { subject: data.subject, signerEmail: data.signerEmail, externMode, withPdf: !!documentId },
+        after: {
+          subject: data.subject,
+          signerEmail: data.signerEmail,
+          externMode,
+          withPdf: !!documentId,
+        },
       });
       return poa.id;
     });
@@ -185,6 +220,13 @@ export async function sendForSignatureAction(formData: FormData): Promise<Action
   if (!g.ok) return g;
   const { tenantId, staffId, ctx } = g;
 
+  if (!isStaffAdmin(g.session)) {
+    return {
+      ok: false,
+      error: 'Vollmachten dürfen nur von ADMIN/PARTNER zur Unterschrift versendet werden.',
+    };
+  }
+
   const parsed = SendSchema.safeParse({ poaId: formData.get('poaId') });
   if (!parsed.success) return { ok: false, error: 'Ungültig.' };
 
@@ -195,7 +237,10 @@ export async function sendForSignatureAction(formData: FormData): Promise<Action
   const tokenHash = hashToken(rawToken);
   const expiresAt = new Date(Date.now() + SIGNING_TOKEN_TTL_HOURS * 60 * 60 * 1000);
 
-  let sent: { poa: Awaited<ReturnType<typeof prismaOwner.powerOfAttorney.update>>; tenantName: string };
+  let sent: {
+    poa: Awaited<ReturnType<typeof prismaOwner.powerOfAttorney.update>>;
+    tenantName: string;
+  };
   try {
     sent = await withTenantContext(ctx, async (tx) => {
       const before = await tx.powerOfAttorney.findUnique({ where: { id: poaId } });
@@ -204,14 +249,53 @@ export async function sendForSignatureAction(formData: FormData): Promise<Action
       await assertClientAccessTx(tx, g.session, before.clientId);
       if (before.status === 'SIGNED') throw new ActionError('Bereits unterschrieben.');
       if (before.status === 'REVOKED') throw new ActionError('Vollmacht ist widerrufen.');
+      if (before.status === 'EXPIRED' || isPoaExpired(before.validUntil)) {
+        throw new ActionError('Die Vollmacht ist abgelaufen und kann nicht mehr versendet werden.');
+      }
 
       const tenant = await tx.tenant.findUnique({ where: { id: tenantId } });
       if (!tenant) throw new ActionError('Mandant fehlt.');
 
+      if (before.documentId) {
+        // Serialisiert Versand gegen den finalen Insert einer neuen Version.
+        // Gewinnt der Upload, bindet der Snapshot danach dessen neue Version;
+        // gewinnt der Versand, sieht der Upload nach dem Lock den SENT-Status.
+        await tx.$queryRaw`
+          SELECT id FROM document
+          WHERE id = ${before.documentId}::uuid
+          FOR UPDATE
+        `;
+      }
+      const documentVersion = before.documentId
+        ? await tx.documentVersion.findFirst({
+            where: { documentId: before.documentId },
+            orderBy: { versionNo: 'desc' },
+            select: { id: true, documentId: true, sha256: true },
+          })
+        : null;
+      if (before.documentId && !documentVersion) {
+        throw new ActionError('Das zu unterzeichnende Dokument hat keine gültige Version.');
+      }
+      const signingSnapshot = buildPoaSigningSnapshot({
+        subject: before.subject,
+        signerName: before.signerName,
+        signerEmail: before.signerEmail,
+        validFrom: before.validFrom,
+        validUntil: before.validUntil,
+        scope: before.scope,
+        document: documentVersion
+          ? {
+              documentId: documentVersion.documentId,
+              versionId: documentVersion.id,
+              sha256: documentVersion.sha256,
+            }
+          : null,
+      });
+
       // TOCTOU-Schutz: atomarer Claim. Race gegen signPoaAction — ein paralleler
       // Abschluss (→ SIGNED) darf nicht durch ein Re-Send auf SENT zurückgesetzt
       // werden (sonst frischer Signing-Token für eine bereits signierte
-      // Vollmacht → eIDAS-Beweisspur beschädigt).
+      // Vollmacht → Beweisspur beschädigt).
       const claim = await tx.powerOfAttorney.updateMany({
         where: { id: poaId, status: { in: ['DRAFT', 'SENT'] } },
         data: {
@@ -226,6 +310,9 @@ export async function sendForSignatureAction(formData: FormData): Promise<Action
           signingOtpExpiresAt: null,
           signingOtpAttempts: 0,
           signingOtpAttemptsTotal: 0,
+          signingContentSnapshot: signingSnapshot.serialized,
+          signingContentSha256: prismaBytes(signingSnapshot.sha256),
+          signingDocumentVersionId: documentVersion?.id ?? null,
         },
       });
       if (claim.count === 0) {
@@ -240,7 +327,11 @@ export async function sendForSignatureAction(formData: FormData): Promise<Action
         action: 'poa.send',
         resourceType: 'power_of_attorney',
         resourceId: poaId,
-        after: { signerEmail: before.signerEmail },
+        after: {
+          signerEmail: before.signerEmail,
+          contentSha256: signingSnapshot.sha256.toString('hex'),
+          documentVersionId: documentVersion?.id ?? null,
+        },
       });
 
       return { poa: updated, tenantName: tenant.name };
@@ -263,7 +354,8 @@ export async function sendForSignatureAction(formData: FormData): Promise<Action
     },
     fallback: {
       subject: 'Bitte Vollmacht signieren — {{client.name}}',
-      bodyMd: 'Sehr geehrte/r {{contact.fullName}},\n\nbitte signieren Sie die anliegende Vollmacht über folgenden Link:\n\n{{link}}\n\nDer Link ist {{expiresHours}} Stunden gültig.',
+      bodyMd:
+        'Sehr geehrte/r {{contact.fullName}},\n\nbitte signieren Sie die anliegende Vollmacht über folgenden Link:\n\n{{link}}\n\nDer Link ist {{expiresHours}} Stunden gültig.',
     },
   });
 
@@ -286,6 +378,9 @@ export async function revokePoaAction(formData: FormData): Promise<void> {
 
   await withStaff(
     async (tx, { tenantId, staffId, session }) => {
+      if (!isStaffAdmin(session)) {
+        throw new ActionError('Vollmachten dürfen nur von ADMIN/PARTNER widerrufen werden.');
+      }
       const before = await tx.powerOfAttorney.findUnique({
         where: { id: parsed.data.poaId },
         select: { clientId: true, status: true },
@@ -372,7 +467,26 @@ export async function loadPoaForSigning(rawToken: string): Promise<
     if (!poa.signingTokenExpiresAt || poa.signingTokenExpiresAt < new Date()) {
       return { ok: false, error: GENERIC_TOKEN_ERROR };
     }
-    if (poa.status === 'REVOKED' || poa.status === 'EXPIRED' || poa.status === 'SIGNED') {
+    if (poa.status !== 'SENT' || isPoaExpired(poa.validUntil)) {
+      return { ok: false, error: GENERIC_TOKEN_ERROR };
+    }
+    const snapshot = readPoaSigningSnapshot(poa.signingContentSnapshot, poa.signingContentSha256);
+    if (!snapshot || isPoaExpired(snapshot.validUntil)) {
+      return { ok: false, error: GENERIC_TOKEN_ERROR };
+    }
+    if ((snapshot.document?.versionId ?? null) !== poa.signingDocumentVersionId) {
+      return { ok: false, error: GENERIC_TOKEN_ERROR };
+    }
+    const documentVersion = snapshot.document
+      ? await owner.documentVersion.findFirst({
+          where: {
+            id: snapshot.document.versionId,
+            documentId: snapshot.document.documentId,
+          },
+          select: { id: true, documentId: true, sha256: true },
+        })
+      : null;
+    if (!snapshotDocumentMatches(snapshot, documentVersion)) {
       return { ok: false, error: GENERIC_TOKEN_ERROR };
     }
     const tenant = await owner.tenant.findUnique({ where: { id: poa.tenantId } });
@@ -380,14 +494,14 @@ export async function loadPoaForSigning(rawToken: string): Promise<
       ok: true,
       poa: {
         id: poa.id,
-        subject: poa.subject,
-        scope: poa.scope,
-        signerName: poa.signerName,
-        signerEmail: poa.signerEmail,
-        validFrom: poa.validFrom,
-        validUntil: poa.validUntil,
+        subject: snapshot.subject,
+        scope: snapshot.scope ?? '',
+        signerName: snapshot.signerName,
+        signerEmail: snapshot.signerEmail,
+        validFrom: new Date(`${snapshot.validFrom}T00:00:00.000Z`),
+        validUntil: snapshot.validUntil ? new Date(`${snapshot.validUntil}T00:00:00.000Z`) : null,
         status: poa.status,
-        documentId: poa.documentId,
+        documentId: snapshot.document?.documentId ?? null,
       },
       tenantName: tenant?.name ?? 'Ihre Kanzlei',
     };
@@ -399,11 +513,20 @@ export async function loadPoaForSigning(rawToken: string): Promise<
 const SIGNING_OTP_TTL_MINUTES = 10;
 
 /**
- * Schritt 2: Anfordern eines OTPs (zweiter Faktor) für die Signatur.
+ * Schritt 2: Anfordern eines zusätzlichen E-Mail-Codes für die Signatur.
  * Sendet einen 6-stelligen Code per Mail an die hinterlegte Adresse.
  */
-export async function requestSigningOtpAction(rawToken: string): Promise<ActionResult> {
-  if (!rawToken) return { ok: false, error: 'Kein Token.' };
+export async function requestSigningOtpAction(input: {
+  rawToken: string;
+  consentAccepted: boolean;
+}): Promise<ActionResult> {
+  const parsedInput = z
+    .object({ rawToken: z.string().min(1).max(500), consentAccepted: z.literal(true) })
+    .safeParse(input);
+  if (!parsedInput.success) {
+    return { ok: false, error: 'Bitte bestätigen Sie den Vollmachtsinhalt ausdrücklich.' };
+  }
+  const { rawToken } = parsedInput.data;
   const tokenHash = hashToken(rawToken);
 
   // N4: Rate-Limit pro Token gegen Mail-Bombing + OTP-Invalidation-Race.
@@ -431,7 +554,8 @@ export async function requestSigningOtpAction(rawToken: string): Promise<ActionR
   if (!hardCap.ok) {
     return {
       ok: false,
-      error: 'OTP-Limit für diesen Link erreicht. Bitte beim Steuerberater eine neue Signatur-Einladung anfordern.',
+      error:
+        'OTP-Limit für diesen Link erreicht. Bitte beim Steuerberater eine neue Signatur-Einladung anfordern.',
     };
   }
 
@@ -445,6 +569,25 @@ export async function requestSigningOtpAction(rawToken: string): Promise<ActionR
     }
     if (poa.status !== 'SENT') {
       return { ok: false, error: 'Vollmacht ist nicht mehr aktiv.' };
+    }
+    const snapshot = readPoaSigningSnapshot(poa.signingContentSnapshot, poa.signingContentSha256);
+    if (!snapshot || isPoaExpired(snapshot.validUntil)) {
+      return { ok: false, error: 'Vollmacht ist abgelaufen oder der Versandnachweis fehlt.' };
+    }
+    if ((snapshot.document?.versionId ?? null) !== poa.signingDocumentVersionId) {
+      return { ok: false, error: 'Der Versandnachweis ist ungültig.' };
+    }
+    const documentVersion = snapshot.document
+      ? await owner.documentVersion.findFirst({
+          where: {
+            id: snapshot.document.versionId,
+            documentId: snapshot.document.documentId,
+          },
+          select: { id: true, documentId: true, sha256: true },
+        })
+      : null;
+    if (!snapshotDocumentMatches(snapshot, documentVersion)) {
+      return { ok: false, error: 'Das versendete Dokument ist nicht mehr nachweisbar.' };
     }
 
     const otp = String(randomInt(0, 1_000_000)).padStart(6, '0');
@@ -471,16 +614,17 @@ export async function requestSigningOtpAction(rawToken: string): Promise<ActionR
     await sendTemplateMail({
       tenantId: poa.tenantId,
       slug: 'poa-otp',
-      to: poa.signerEmail,
+      to: snapshot.signerEmail,
       vars: {
-        contact: { fullName: poa.signerName, email: poa.signerEmail },
-        subject: poa.subject,
+        contact: { fullName: snapshot.signerName, email: snapshot.signerEmail },
+        subject: snapshot.subject,
         otp,
         expiresMinutes: SIGNING_OTP_TTL_MINUTES,
       },
       fallback: {
         subject: 'Bestätigungscode zur Vollmachts-Signatur',
-        bodyMd: 'Sehr geehrte/r {{contact.fullName}},\n\nIhr Bestätigungscode zur Signatur der Vollmacht „{{subject}}":\n\n**{{otp}}**\n\nDer Code ist {{expiresMinutes}} Minuten gültig.',
+        bodyMd:
+          'Sehr geehrte/r {{contact.fullName}},\n\nIhr Bestätigungscode zur Signatur der Vollmacht „{{subject}}":\n\n**{{otp}}**\n\nDer Code ist {{expiresMinutes}} Minuten gültig.',
       },
     });
 
@@ -497,11 +641,26 @@ export async function requestSigningOtpAction(rawToken: string): Promise<ActionR
 export async function signPoaAction(input: {
   rawToken: string;
   otp: string;
+  consentAccepted: boolean;
 }): Promise<ActionResult> {
-  const { rawToken, otp } = input;
-  if (!rawToken || !otp) return { ok: false, error: 'Token und OTP erforderlich.' };
+  const parsedInput = z
+    .object({
+      rawToken: z.string().min(1).max(500),
+      otp: z.string().regex(/^\d{6}$/),
+      consentAccepted: z.literal(true),
+    })
+    .safeParse(input);
+  if (!parsedInput.success) {
+    return {
+      ok: false,
+      error: input.consentAccepted
+        ? 'Token und ein sechsstelliger Bestätigungscode sind erforderlich.'
+        : 'Bitte bestätigen Sie den Vollmachtsinhalt ausdrücklich.',
+    };
+  }
+  const { rawToken, otp } = parsedInput.data;
 
-  // N1: eIDAS-Compliance — IP und User-Agent für die Signatur-Beweisspur
+  // N1: IP und User-Agent für die technische Signatur-Beweisspur
   // müssen serverseitig erhoben werden. Vorher wurden sie vom Client geliefert
   // (manipulierbar). signedByIp + signedByUserAgent gehen ins audit_log und
   // werden im Staff-UI als forensisches Indiz gerendert.
@@ -530,7 +689,6 @@ export async function signPoaAction(input: {
   const tokenHash = hashToken(rawToken);
   const otpHash = hashToken(otp);
 
-  const owner = prismaOwner;
   const MAX_POA_OTP_ATTEMPTS = 5;
   // Audit 2026-06 Befund 2: Cap über den GESAMTEN Token-Lebenszyklus. Der
   // pro-OTP-Zähler wird beim Re-Issue zurückgesetzt (UX) — mit Issue-Cap 10
@@ -539,105 +697,108 @@ export async function signPoaAction(input: {
   // wie viele frische OTPs angefordert wurden.
   const MAX_POA_OTP_ATTEMPTS_TOTAL = 15;
 
-  try {
-    const poa = await owner.powerOfAttorney.findFirst({ where: { signingTokenHash: tokenHash } });
-    // Generische Fehlermeldung (N5): kein Information-Disclosure über
-    // Token-Lebenszyklus (existiert nicht / abgelaufen / revoked / bereits
-    // signiert / OTP falsch sind alle "ungültig").
-    const GENERIC_ERROR = 'Link oder Code ungültig. Bitte fordern Sie einen neuen Signaturcode an.';
-    if (!poa) return { ok: false, error: GENERIC_ERROR };
-    if (poa.status !== 'SENT') return { ok: false, error: GENERIC_ERROR };
-    if (!poa.signingTokenExpiresAt || poa.signingTokenExpiresAt < new Date()) {
-      return { ok: false, error: GENERIC_ERROR };
-    }
-    if (!poa.signingOtpExpiresAt || poa.signingOtpExpiresAt < new Date()) {
-      return { ok: false, error: GENERIC_ERROR };
-    }
+  // Generische Fehlermeldung (N5): kein Information-Disclosure über den
+  // Token-Lebenszyklus oder den Snapshot-Zustand.
+  const GENERIC_ERROR = 'Link oder Code ungültig. Bitte fordern Sie einen neuen Signaturcode an.';
+  const lookup = await prismaOwner.powerOfAttorney.findFirst({
+    where: { signingTokenHash: tokenHash },
+    select: { id: true, tenantId: true, signerContactId: true },
+  });
+  if (!lookup) return { ok: false, error: GENERIC_ERROR };
 
-    // Falsche OTP → Zähler hochzählen (N1). Bei Erreichen des Limits Token +
-    // OTP entwerten — neue Signatur-Anforderung über Staff-UI nötig.
-    // N2: timingSafeEqual — beide Hex-Strings sind exakt 64 Zeichen
-    // (SHA-256), `===` würde character-by-character vergleichen und per
-    // Timing leaken. Praktisch durch 5-Versuch-Limit gedeckelt, aber konsistent
-    // zur n8n-Signature-Verifikation.
-    const otpMatches =
-      !!poa.signingOtpHash &&
-      poa.signingOtpHash.length === otpHash.length &&
-      timingSafeEqual(Buffer.from(poa.signingOtpHash, 'hex'), Buffer.from(otpHash, 'hex'));
-    if (!otpMatches) {
-      const updated = await owner.powerOfAttorney.update({
-        where: { id: poa.id },
-        data: {
-          signingOtpAttempts: { increment: 1 },
-          signingOtpAttemptsTotal: { increment: 1 },
-        },
-        select: { signingOtpAttempts: true, signingOtpAttemptsTotal: true },
-      });
-      if (
-        updated.signingOtpAttempts >= MAX_POA_OTP_ATTEMPTS ||
-        updated.signingOtpAttemptsTotal >= MAX_POA_OTP_ATTEMPTS_TOTAL
-      ) {
-        await owner.powerOfAttorney.update({
-          where: { id: poa.id },
+  try {
+    return await withTenantContext(
+      {
+        tenantId: lookup.tenantId,
+        actorId: lookup.signerContactId,
+        actorType: lookup.signerContactId ? 'CLIENT_CONTACT' : 'SYSTEM',
+      },
+      async (tx) => {
+        const poa = await tx.powerOfAttorney.findFirst({
+          where: { id: lookup.id, signingTokenHash: tokenHash },
+        });
+        if (!poa || poa.status !== 'SENT') return { ok: false, error: GENERIC_ERROR };
+        if (!poa.signingTokenExpiresAt || poa.signingTokenExpiresAt < new Date()) {
+          return { ok: false, error: GENERIC_ERROR };
+        }
+        if (!poa.signingOtpExpiresAt || poa.signingOtpExpiresAt < new Date()) {
+          return { ok: false, error: GENERIC_ERROR };
+        }
+
+        const snapshot = readPoaSigningSnapshot(
+          poa.signingContentSnapshot,
+          poa.signingContentSha256,
+        );
+        if (!snapshot || isPoaExpired(snapshot.validUntil)) {
+          return { ok: false, error: GENERIC_ERROR };
+        }
+        if ((snapshot.document?.versionId ?? null) !== poa.signingDocumentVersionId) {
+          return { ok: false, error: GENERIC_ERROR };
+        }
+        const documentVersion = snapshot.document
+          ? await tx.documentVersion.findFirst({
+              where: {
+                id: snapshot.document.versionId,
+                documentId: snapshot.document.documentId,
+              },
+              select: { id: true, documentId: true, sha256: true },
+            })
+          : null;
+        if (!snapshotDocumentMatches(snapshot, documentVersion)) {
+          return { ok: false, error: GENERIC_ERROR };
+        }
+
+        const otpMatches =
+          !!poa.signingOtpHash &&
+          poa.signingOtpHash.length === otpHash.length &&
+          timingSafeEqual(Buffer.from(poa.signingOtpHash, 'hex'), Buffer.from(otpHash, 'hex'));
+        if (!otpMatches) {
+          const updated = await tx.powerOfAttorney.update({
+            where: { id: poa.id },
+            data: {
+              signingOtpAttempts: { increment: 1 },
+              signingOtpAttemptsTotal: { increment: 1 },
+            },
+            select: { signingOtpAttempts: true, signingOtpAttemptsTotal: true },
+          });
+          if (
+            updated.signingOtpAttempts >= MAX_POA_OTP_ATTEMPTS ||
+            updated.signingOtpAttemptsTotal >= MAX_POA_OTP_ATTEMPTS_TOTAL
+          ) {
+            await tx.powerOfAttorney.update({
+              where: { id: poa.id },
+              data: {
+                signingTokenHash: null,
+                signingOtpHash: null,
+                signingOtpAttempts: 0,
+                signingOtpAttemptsTotal: 0,
+              },
+            });
+          }
+          return { ok: false, error: GENERIC_ERROR };
+        }
+
+        const signedAt = new Date();
+        const contentSha256 = Buffer.from(poa.signingContentSha256!);
+        const claim = await tx.powerOfAttorney.updateMany({
+          where: { id: poa.id, status: 'SENT', signingTokenHash: tokenHash },
           data: {
+            status: 'SIGNED',
+            signedAt,
+            signedByIp: ip,
+            signedByUserAgent: userAgent,
+            signedContentSha256: prismaBytes(contentSha256),
+            signedDocumentVersionId: poa.signingDocumentVersionId,
             signingTokenHash: null,
             signingOtpHash: null,
             signingOtpAttempts: 0,
             signingOtpAttemptsTotal: 0,
           },
         });
-      }
-      return { ok: false, error: GENERIC_ERROR };
-    }
+        if (claim.count !== 1) return { ok: false, error: GENERIC_ERROR };
 
-    // eIDAS-Bindung (Art. 26 lit. d): den signierten Inhalt kryptografisch an
-    // den Signaturakt binden, damit eine nachträgliche Änderung erkennbar ist.
-    // Extern hinterlegtes PDF → SHA-256 der aktuellen Dokumentversion (deren
-    // Weiterversionierung die new-version-Route nach dem Signieren sperrt);
-    // In-App-Vollmacht → Hash des scope-Textes.
-    let signedContentSha256: Buffer | null = null;
-    let signedDocumentVersionId: string | null = null;
-    if (poa.documentId) {
-      const version = await owner.documentVersion.findFirst({
-        where: { documentId: poa.documentId },
-        orderBy: { versionNo: 'desc' },
-        select: { id: true, sha256: true },
-      });
-      if (version) {
-        signedContentSha256 = Buffer.from(version.sha256);
-        signedDocumentVersionId = version.id;
-      }
-    } else if (poa.scope) {
-      signedContentSha256 = createHash('sha256').update(poa.scope, 'utf8').digest();
-    }
-
-    // Atomar als signiert markieren (nur ein Versuch erfolgreich)
-    const claim = await owner.powerOfAttorney.updateMany({
-      where: { id: poa.id, status: 'SENT' },
-      data: {
-        status: 'SIGNED',
-        signedAt: new Date(),
-        signedByIp: ip,
-        signedByUserAgent: userAgent,
-        signedContentSha256: signedContentSha256 ? prismaBytes(signedContentSha256) : null,
-        signedDocumentVersionId,
-        // Token + OTP entwerten + Counter zurücksetzen
-        signingTokenHash: null,
-        signingOtpHash: null,
-        signingOtpAttempts: 0,
-        signingOtpAttemptsTotal: 0,
-      },
-    });
-    if (claim.count !== 1) {
-      return { ok: false, error: GENERIC_ERROR };
-    }
-
-    // Audit-Eintrag + Notification im Tenant-Kontext
-    const { withTenantContext } = await import('@taxtronik/db');
-    const { notify } = await import('@/server/notifications/service');
-    await withTenantContext(
-      { tenantId: poa.tenantId, actorId: poa.signerContactId, actorType: poa.signerContactId ? 'CLIENT_CONTACT' : 'SYSTEM' },
-      async (tx) => {
+        // Statuswechsel und Evidence-Record liegen absichtlich in derselben
+        // Tenant-Transaktion. Schlägt die Beweisspur fehl, wird SIGNED zurückgerollt.
         await evidenceService.record(tx, {
           tenantId: poa.tenantId,
           actorType: poa.signerContactId ? 'CLIENT_CONTACT' : 'SYSTEM',
@@ -646,33 +807,38 @@ export async function signPoaAction(input: {
           resourceType: 'power_of_attorney',
           resourceId: poa.id,
           after: {
-            signerEmail: poa.signerEmail,
-            signerName: poa.signerName,
-            signedAt: new Date().toISOString(),
-            signedContentSha256: signedContentSha256 ? signedContentSha256.toString('hex') : null,
-            signedDocumentVersionId,
+            signerEmail: snapshot.signerEmail,
+            signerName: snapshot.signerName,
+            signedAt: signedAt.toISOString(),
+            explicitContentConsent: true,
+            signedContentSha256: contentSha256.toString('hex'),
+            signedDocumentVersionId: poa.signingDocumentVersionId,
+            signedDocumentSha256: snapshot.document?.sha256 ?? null,
+            snapshotSchemaVersion: snapshot.schemaVersion,
             ip,
             userAgent,
           },
           ip,
           userAgent,
         });
-        // Benachrichtige den Staff, der die Vollmacht erstellt hat
         await notify(tx, {
           tenantId: poa.tenantId,
           staffId: poa.createdByStaff,
           kind: 'POA_SIGNED',
-          title: `Vollmacht „${poa.subject}" wurde unterschrieben`,
-          body: `${poa.signerName} (${poa.signerEmail}) hat soeben unterzeichnet.`,
+          title: `Vollmacht „${snapshot.subject}" wurde unterschrieben`,
+          body: `${snapshot.signerName} (${snapshot.signerEmail}) hat soeben unterzeichnet.`,
           href: `/staff/poa/${poa.id}`,
           resourceType: 'power_of_attorney',
           resourceId: poa.id,
         });
+
+        return { ok: true };
       },
     );
-
-    return { ok: true };
-  } finally {
-    // Singleton: kein $disconnect — Connection wird wiederverwendet.
+  } catch {
+    return {
+      ok: false,
+      error: 'Die Signatur konnte nicht sicher abgeschlossen werden. Bitte erneut versuchen.',
+    };
   }
 }

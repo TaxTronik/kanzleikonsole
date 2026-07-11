@@ -6,6 +6,7 @@ import { isStaffAdmin, toActionError, assertClientAccessTx } from '@/server/auth
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
+import { requireGwgReverificationTx } from '@/server/gwg/reverification';
 
 export interface ActionResult {
   ok: boolean;
@@ -69,7 +70,15 @@ export async function saveAdminFieldsAction(
       await assertClientAccessTx(tx, session, clientId);
       const before = await tx.client.findUnique({
         where: { id: clientId },
-        select: { datevNo: true, addisonNo: true, steuernummer: true, invoiceEmail: true, priority: true, internalNotes: true, vertraulich: true },
+        select: {
+          datevNo: true,
+          addisonNo: true,
+          steuernummer: true,
+          invoiceEmail: true,
+          priority: true,
+          internalNotes: true,
+          vertraulich: true,
+        },
       });
       if (!before) throw new ActionError('Mandant nicht gefunden.');
 
@@ -151,8 +160,13 @@ export async function saveGwgFieldsAction(
       const before = await tx.client.findUnique({
         where: { id: clientId },
         select: {
-          name: true, kind: true, vatId: true,
-          street: true, postalCode: true, city: true, countryIso: true,
+          name: true,
+          kind: true,
+          vatId: true,
+          street: true,
+          postalCode: true,
+          city: true,
+          countryIso: true,
         },
       });
       if (!before) throw new ActionError('Mandant nicht gefunden.');
@@ -169,7 +183,15 @@ export async function saveGwgFieldsAction(
 
       // Diff: Was hat sich tatsächlich geändert? Wenn nichts → kein Re-Trigger.
       const changed: string[] = [];
-      for (const k of ['name', 'kind', 'vatId', 'street', 'postalCode', 'city', 'countryIso'] as const) {
+      for (const k of [
+        'name',
+        'kind',
+        'vatId',
+        'street',
+        'postalCode',
+        'city',
+        'countryIso',
+      ] as const) {
         if (before[k] !== after[k]) changed.push(k);
       }
 
@@ -178,11 +200,8 @@ export async function saveGwgFieldsAction(
       let gwgReset = false;
       if (changed.length > 0) {
         // Bestehenden VERIFIED-Check auf IN_REVIEW zurücksetzen
-        const verifiedCount = await tx.gwgCheck.updateMany({
-          where: { clientId, status: 'VERIFIED' },
-          data: { status: 'IN_REVIEW' },
-        });
-        gwgReset = verifiedCount.count > 0;
+        const reset = await requireGwgReverificationTx(tx, { tenantId, clientId });
+        gwgReset = reset.invalidatedChecks > 0;
       }
 
       await evidenceService.record(tx, {
@@ -289,8 +308,10 @@ export async function setResponsibilitiesAction(
       }
 
       const changed =
-        berufToAdd.length > 0 || berufToRemove.length > 0 ||
-        toAdd.length > 0 || toRemove.length > 0;
+        berufToAdd.length > 0 ||
+        berufToRemove.length > 0 ||
+        toAdd.length > 0 ||
+        toRemove.length > 0;
       if (changed) {
         await evidenceService.record(tx, {
           tenantId,

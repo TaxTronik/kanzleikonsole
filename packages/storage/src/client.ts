@@ -46,8 +46,9 @@ export function getBucketForClassification(classification: string): string {
     case 'GOBD_TAX':
       return env.S3_BUCKET_GOBD;
     case 'GWG_EVIDENCE':
-      // B-1: Eigener Bucket — GwG-Daten haben 5-Jahre-Höchstaufbewahrung
-      // (§ 8 Abs. 4 GwG), nicht 10 wie GoBD. Separater Lifecycle nötig.
+      // B-1: Eigener Bucket — GwG-Daten haben eine fünfjährige Regelfrist;
+      // andere Gesetze können länger verpflichten, spätestens nach zehn
+      // Jahren ist zu vernichten (§ 8 Abs. 4 GwG). Separater Lifecycle nötig.
       return env.S3_BUCKET_GWG;
     case 'STAFF_PRIVATE':
       return env.S3_BUCKET_STAFF_PRIVATE;
@@ -59,13 +60,13 @@ export function getBucketForClassification(classification: string): string {
 export function isGobdClassification(classification: string): boolean {
   // B-1: GWG_EVIDENCE BEWUSST NICHT mehr GoBD-pflichtig markiert. Vorher
   // landete GWG_EVIDENCE im gobd-Bucket mit 10-Jahre-COMPLIANCE-Lock, was
-  // gegen § 8 Abs. 4 GwG (5-Jahre-Maximum) verstößt.
+  // eine fachliche Vernichtung nach § 8 Abs. 4 GwG verhindern konnte.
   return ['GOBD_INVOICE', 'GOBD_CONTRACT', 'GOBD_TAX'].includes(classification);
 }
 
 /**
- * B-1: Klassifikationen mit verkürzter Aufbewahrung (5 Jahre, § 8 Abs. 4 GwG).
- * Diese Klasse kriegt einen eigenen Bucket mit eigenem Retain-Until-Datum.
+ * B-1: GwG-Klassifikation mit fünfjähriger technischer Grundbarriere. Das
+ * tatsächliche Ende wird fachlich geprüft (längere Gesetze; spätestens 10 J.).
  */
 export function isGwgClassification(classification: string): boolean {
   return classification === 'GWG_EVIDENCE';
@@ -90,8 +91,9 @@ export function getBucketForTier(tier: ProtectionTier): string {
     case 'GOBD':
       return env.S3_BUCKET_GOBD;
     case 'GWG':
-      // Eigener Bucket — GwG-Höchstaufbewahrung 5 J. (§ 8 Abs. 4 GwG),
-      // separater Lifecycle gegenüber GoBD (10 J.).
+      // Eigener Bucket — GwG grundsätzlich 5 J., ggf. längere andere
+      // Pflichten und Vernichtung spätestens nach 10 J. (§ 8 Abs. 4 GwG);
+      // separater Lifecycle gegenüber GoBD (typabhängig 6/8/10 J.).
       return env.S3_BUCKET_GWG;
     default:
       return env.S3_BUCKET_GENERAL;

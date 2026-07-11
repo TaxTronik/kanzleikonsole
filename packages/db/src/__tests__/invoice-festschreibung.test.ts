@@ -61,7 +61,17 @@ beforeAll(async () => {
   });
   clientId = client.id;
   await owner.gwgCheck.create({
-    data: { tenantId, clientId, status: 'VERIFIED', validUntil: FUTURE },
+    data: {
+      tenantId,
+      clientId,
+      status: 'VERIFIED',
+      validUntil: FUTURE,
+      legalForm: 'GmbH',
+      registerNumber: 'HRB RECHNUNG',
+      registerAuthority: 'Amtsgericht Teststadt',
+      representativeNames: ['Test-Geschäftsführung'],
+      ownershipStructureNotes: 'Test-Snapshot für die Rechnungs-Festschreibung.',
+    },
   });
   await owner.client.update({ where: { id: clientId }, data: { allowActive: true } });
 });
@@ -77,11 +87,15 @@ afterAll(async () => {
   await owner.$transaction(async (tx) => {
     await tx.$executeRawUnsafe(`ALTER TABLE "invoice" DISABLE TRIGGER invoice_protect_delete`);
     await tx.$executeRawUnsafe(`ALTER TABLE "invoice" DISABLE TRIGGER invoice_protect_update`);
-    await tx.$executeRawUnsafe(`ALTER TABLE "invoice_position" DISABLE TRIGGER invoice_position_protect`);
+    await tx.$executeRawUnsafe(
+      `ALTER TABLE "invoice_position" DISABLE TRIGGER invoice_position_protect`,
+    );
     await tx.tenant.deleteMany({ where: { id: tenantId } });
     await tx.$executeRawUnsafe(`ALTER TABLE "invoice" ENABLE TRIGGER invoice_protect_delete`);
     await tx.$executeRawUnsafe(`ALTER TABLE "invoice" ENABLE TRIGGER invoice_protect_update`);
-    await tx.$executeRawUnsafe(`ALTER TABLE "invoice_position" ENABLE TRIGGER invoice_position_protect`);
+    await tx.$executeRawUnsafe(
+      `ALTER TABLE "invoice_position" ENABLE TRIGGER invoice_position_protect`,
+    );
   });
   await owner.$disconnect();
 });
@@ -106,110 +120,199 @@ async function makeInvoice(): Promise<string> {
       vatRate: 19,
       createdByStaff: staffId,
       positions: {
-        create: [{ position: 1, description: 'Stunde', quantity: 1, unit: 'Stunde', unitPrice: 100, netAmount: 100, vatRate: 19 }],
+        create: [
+          {
+            position: 1,
+            description: 'Stunde',
+            quantity: 1,
+            unit: 'Stunde',
+            unitPrice: 100,
+            netAmount: 100,
+            vatRate: 19,
+          },
+        ],
       },
     },
   });
   return inv.id;
 }
 
-async function setStatus(id: string, status: 'SENT' | 'PAID' | 'OVERDUE' | 'CANCELLED'): Promise<unknown> {
+async function setStatus(
+  id: string,
+  status: 'SENT' | 'PAID' | 'OVERDUE' | 'CANCELLED',
+): Promise<unknown> {
   return owner.invoice.update({ where: { id }, data: { status } });
 }
 
-describeWithDatabase('Festschreibung: Rechnung nach Versand unveränderlich (iter85-Trigger)', () => {
-  it('DRAFT bleibt voll änderbar (inkl. Betrag und Positionen)', async () => {
-    const id = await makeInvoice();
-    await expect(
-      owner.invoice.update({ where: { id }, data: { subject: 'Geändert', totalAmount: 200 } }),
-    ).resolves.toBeTruthy();
-    const pos = await owner.invoicePosition.findFirstOrThrow({ where: { invoiceId: id } });
-    await expect(
-      owner.invoicePosition.update({ where: { id: pos.id }, data: { netAmount: 200 } }),
-    ).resolves.toBeTruthy();
-  });
+describeWithDatabase(
+  'Festschreibung: Rechnung nach Versand unveränderlich (iter85-Trigger)',
+  () => {
+    it('DRAFT bleibt voll änderbar (inkl. Betrag und Positionen)', async () => {
+      const id = await makeInvoice();
+      await expect(
+        owner.invoice.update({ where: { id }, data: { subject: 'Geändert', totalAmount: 200 } }),
+      ).resolves.toBeTruthy();
+      const pos = await owner.invoicePosition.findFirstOrThrow({ where: { invoiceId: id } });
+      await expect(
+        owner.invoicePosition.update({ where: { id: pos.id }, data: { netAmount: 200 } }),
+      ).resolves.toBeTruthy();
+    });
 
-  it('nach SENT: geschäftliche Felder sind blockiert (Betrag, Nummer, Datum)', async () => {
-    const id = await makeInvoice();
-    await setStatus(id, 'SENT');
-    await expect(
-      owner.invoice.update({ where: { id }, data: { totalAmount: 999 } }),
-    ).rejects.toThrow(/Festschreibung/);
-    await expect(
-      owner.invoice.update({ where: { id }, data: { number: 'MANIPULIERT' } }),
-    ).rejects.toThrow(/Festschreibung/);
-    await expect(
-      owner.invoice.update({ where: { id }, data: { issueDate: new Date('2025-01-01') } }),
-    ).rejects.toThrow(/Festschreibung/);
-  });
+    it('nach SENT: geschäftliche Felder sind blockiert (Betrag, Nummer, Datum)', async () => {
+      const id = await makeInvoice();
+      await setStatus(id, 'SENT');
+      await expect(
+        owner.invoice.update({ where: { id }, data: { totalAmount: 999 } }),
+      ).rejects.toThrow(/Festschreibung/);
+      await expect(
+        owner.invoice.update({ where: { id }, data: { number: 'MANIPULIERT' } }),
+      ).rejects.toThrow(/Festschreibung/);
+      await expect(
+        owner.invoice.update({ where: { id }, data: { issueDate: new Date('2025-01-01') } }),
+      ).rejects.toThrow(/Festschreibung/);
+    });
 
-  it('nach SENT: iter102/107-Felder eingefroren (Leistungszeitraum, USt-Grund, Storno-Bezug, Reverse-Charge)', async () => {
-    const id = await makeInvoice();
-    await setStatus(id, 'SENT');
-    await expect(
-      owner.invoice.update({ where: { id }, data: { reverseCharge: true } }),
-    ).rejects.toThrow(/Festschreibung/);
-    await expect(
-      owner.invoice.update({ where: { id }, data: { servicePeriodStart: new Date('2026-05-01') } }),
-    ).rejects.toThrow(/Festschreibung/);
-    await expect(
-      owner.invoice.update({ where: { id }, data: { servicePeriodEnd: new Date('2026-05-31') } }),
-    ).rejects.toThrow(/Festschreibung/);
-    await expect(
-      owner.invoice.update({ where: { id }, data: { vatExemptionReason: 'Kleinunternehmer § 19 UStG' } }),
-    ).rejects.toThrow(/Festschreibung/);
-    await expect(
-      owner.invoice.update({ where: { id }, data: { stornoOfId: id } }),
-    ).rejects.toThrow(/Festschreibung/);
-  });
+    it('nach SENT: iter102/107-Felder eingefroren (Leistungszeitraum, USt-Grund, Storno-Bezug, Reverse-Charge)', async () => {
+      const id = await makeInvoice();
+      await setStatus(id, 'SENT');
+      await expect(
+        owner.invoice.update({ where: { id }, data: { reverseCharge: true } }),
+      ).rejects.toThrow(/Festschreibung/);
+      await expect(
+        owner.invoice.update({
+          where: { id },
+          data: { servicePeriodStart: new Date('2026-05-01') },
+        }),
+      ).rejects.toThrow(/Festschreibung/);
+      await expect(
+        owner.invoice.update({ where: { id }, data: { servicePeriodEnd: new Date('2026-05-31') } }),
+      ).rejects.toThrow(/Festschreibung/);
+      await expect(
+        owner.invoice.update({
+          where: { id },
+          data: { vatExemptionReason: 'Kleinunternehmer § 19 UStG' },
+        }),
+      ).rejects.toThrow(/Festschreibung/);
+      await expect(
+        owner.invoice.update({ where: { id }, data: { stornoOfId: id } }),
+      ).rejects.toThrow(/Festschreibung/);
+    });
 
-  it('nach SENT: Positionen sind weder änder- noch lösch- noch erweiterbar', async () => {
-    const id = await makeInvoice();
-    await setStatus(id, 'SENT');
-    const pos = await owner.invoicePosition.findFirstOrThrow({ where: { invoiceId: id } });
-    await expect(
-      owner.invoicePosition.update({ where: { id: pos.id }, data: { netAmount: 1 } }),
-    ).rejects.toThrow(/Festschreibung/);
-    await expect(owner.invoicePosition.delete({ where: { id: pos.id } })).rejects.toThrow(/Festschreibung/);
-    await expect(
-      owner.invoicePosition.create({
-        data: { invoiceId: id, position: 2, description: 'Nachschub', quantity: 1, unit: 'Stück', unitPrice: 1, netAmount: 1, vatRate: 19 },
-      }),
-    ).rejects.toThrow(/Festschreibung/);
-  });
+    it('nach SENT: Positionen sind weder änder- noch lösch- noch erweiterbar', async () => {
+      const id = await makeInvoice();
+      await setStatus(id, 'SENT');
+      const pos = await owner.invoicePosition.findFirstOrThrow({ where: { invoiceId: id } });
+      await expect(
+        owner.invoicePosition.update({ where: { id: pos.id }, data: { netAmount: 1 } }),
+      ).rejects.toThrow(/Festschreibung/);
+      await expect(owner.invoicePosition.delete({ where: { id: pos.id } })).rejects.toThrow(
+        /Festschreibung/,
+      );
+      await expect(
+        owner.invoicePosition.create({
+          data: {
+            invoiceId: id,
+            position: 2,
+            description: 'Nachschub',
+            quantity: 1,
+            unit: 'Stück',
+            unitPrice: 1,
+            netAmount: 1,
+            vatRate: 19,
+          },
+        }),
+      ).rejects.toThrow(/Festschreibung/);
+    });
 
-  it('nach SENT: Lebenszyklus-Felder bleiben setzbar (sentAt/paidAt)', async () => {
-    const id = await makeInvoice();
-    await setStatus(id, 'SENT');
-    await expect(
-      owner.invoice.update({ where: { id }, data: { sentAt: new Date() } }),
-    ).resolves.toBeTruthy();
-  });
+    it('nach SENT: Lebenszyklus-Felder bleiben setzbar (sentAt/paidAt)', async () => {
+      const id = await makeInvoice();
+      await setStatus(id, 'SENT');
+      await expect(
+        owner.invoice.update({ where: { id }, data: { sentAt: new Date() } }),
+      ).resolves.toBeTruthy();
+    });
 
-  it('Status-Matrix: Vorwärts-Übergänge + PAID→CANCELLED (QW10), CANCELLED terminal', async () => {
-    const ok = await makeInvoice();
-    await expect(setStatus(ok, 'SENT')).resolves.toBeTruthy();
-    await expect(setStatus(ok, 'OVERDUE')).resolves.toBeTruthy();
-    await expect(setStatus(ok, 'PAID')).resolves.toBeTruthy();
-    // QW10: bezahlte Rechnung ist stornierbar (§ 14c/§ 17 UStG).
-    await expect(setStatus(ok, 'CANCELLED')).resolves.toBeTruthy();
-    // … danach ist CANCELLED terminal.
-    await expect(setStatus(ok, 'SENT')).rejects.toThrow(/Festschreibung/);
+    it('Status-Matrix: Vorwärts-Übergänge + PAID→CANCELLED (QW10), CANCELLED terminal', async () => {
+      const ok = await makeInvoice();
+      await expect(setStatus(ok, 'SENT')).resolves.toBeTruthy();
+      await expect(setStatus(ok, 'OVERDUE')).resolves.toBeTruthy();
+      await expect(setStatus(ok, 'PAID')).resolves.toBeTruthy();
+      // QW10: bezahlte Rechnung ist stornierbar (§ 14c/§ 17 UStG).
+      await expect(setStatus(ok, 'CANCELLED')).resolves.toBeTruthy();
+      // … danach ist CANCELLED terminal.
+      await expect(setStatus(ok, 'SENT')).rejects.toThrow(/Festschreibung/);
 
-    const skip = await makeInvoice();
-    await expect(setStatus(skip, 'PAID')).rejects.toThrow(/Festschreibung/); // DRAFT → PAID verboten
+      const skip = await makeInvoice();
+      await expect(setStatus(skip, 'PAID')).rejects.toThrow(/Festschreibung/); // DRAFT → PAID verboten
 
-    const storno = await makeInvoice();
-    await expect(setStatus(storno, 'CANCELLED')).resolves.toBeTruthy(); // DRAFT-Storno ok
-    await expect(setStatus(storno, 'SENT')).rejects.toThrow(/Festschreibung/); // CANCELLED terminal
-  });
+      const storno = await makeInvoice();
+      await expect(setStatus(storno, 'CANCELLED')).resolves.toBeTruthy(); // DRAFT-Storno ok
+      await expect(setStatus(storno, 'SENT')).rejects.toThrow(/Festschreibung/); // CANCELLED terminal
+    });
 
-  it('DELETE: Entwurf löschbar (inkl. Positions-Cascade), versendete Rechnung nicht', async () => {
-    const draft = await makeInvoice();
-    await expect(owner.invoice.delete({ where: { id: draft } })).resolves.toBeTruthy();
+    it('Parallel-Storno: partieller Unique-Index erlaubt genau einen Korrekturbeleg', async () => {
+      const originalId = await makeInvoice();
+      const makeCorrection = (suffix: string) =>
+        owner.invoice.create({
+          data: {
+            tenantId,
+            clientId,
+            number: `TEST-STORNO-${Date.now()}-${suffix}`,
+            subject: 'Korrektur',
+            issueDate: new Date('2026-06-02'),
+            dueDate: new Date('2026-06-02'),
+            status: 'DRAFT',
+            format: 'XRECHNUNG',
+            netAmount: -100,
+            vatAmount: -19,
+            totalAmount: -119,
+            vatRate: 19,
+            stornoOfId: originalId,
+            createdByStaff: staffId,
+          },
+        });
 
-    const sent = await makeInvoice();
-    await setStatus(sent, 'SENT');
-    await expect(owner.invoice.delete({ where: { id: sent } })).rejects.toThrow(/Festschreibung/);
-  });
-});
+      const outcomes = await Promise.allSettled([makeCorrection('A'), makeCorrection('B')]);
+      expect(outcomes.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+      expect(outcomes.filter((result) => result.status === 'rejected')).toHaveLength(1);
+      await expect(owner.invoice.count({ where: { stornoOfId: originalId } })).resolves.toBe(1);
+    });
+
+    it('Parallel-Abrechnung: invoiceId:null-Claim kann nur von einer Rechnung gewonnen werden', async () => {
+      const invoiceA = await makeInvoice();
+      const invoiceB = await makeInvoice();
+      const entry = await owner.timeEntry.create({
+        data: {
+          tenantId,
+          staffId,
+          clientId,
+          description: 'Parallel abrechenbar',
+          startedAt: new Date('2026-06-01T08:00:00Z'),
+          endedAt: new Date('2026-06-01T08:10:00Z'),
+          billable: true,
+        },
+      });
+
+      const claim = (invoiceId: string) =>
+        owner.$transaction((tx) =>
+          tx.timeEntry.updateMany({
+            where: { id: entry.id, invoiceId: null },
+            data: { invoiceId },
+          }),
+        );
+      const results = await Promise.all([claim(invoiceA), claim(invoiceB)]);
+      expect(results.map((result) => result.count).sort()).toEqual([0, 1]);
+      const linked = await owner.timeEntry.findUniqueOrThrow({ where: { id: entry.id } });
+      expect([invoiceA, invoiceB]).toContain(linked.invoiceId);
+    });
+
+    it('DELETE: Entwurf löschbar (inkl. Positions-Cascade), versendete Rechnung nicht', async () => {
+      const draft = await makeInvoice();
+      await expect(owner.invoice.delete({ where: { id: draft } })).resolves.toBeTruthy();
+
+      const sent = await makeInvoice();
+      await setStatus(sent, 'SENT');
+      await expect(owner.invoice.delete({ where: { id: sent } })).rejects.toThrow(/Festschreibung/);
+    });
+  },
+);

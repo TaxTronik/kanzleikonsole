@@ -4,7 +4,11 @@ import { z } from 'zod';
 import { evidenceService } from '@/server/container';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { assertClientAccessTx } from '@/server/auth/rbac';
-import { withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
+import {
+  withStaff,
+  ActionError,
+  type ActionResult as BaseActionResult,
+} from '@/server/actions/staff-action';
 
 export type ActionResult = BaseActionResult;
 
@@ -33,6 +37,11 @@ export async function startTimerAction(
         await assertClientAccessTx(tx, session, parsed.data.clientId);
       }
       // Wenn ein Timer läuft → erst stoppen
+      const running = await tx.timeEntry.findFirst({
+        where: { staffId, endedAt: null },
+        select: { clientId: true },
+      });
+      if (running?.clientId) await assertClientAccessTx(tx, session, running.clientId);
       await tx.timeEntry.updateMany({
         where: { staffId, endedAt: null },
         data: { endedAt: new Date() },
@@ -64,11 +73,12 @@ export async function startTimerAction(
 
 export async function stopTimerAction(): Promise<void> {
   await withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, session }) => {
       const running = await tx.timeEntry.findFirst({
         where: { staffId, endedAt: null },
       });
       if (!running) return;
+      if (running.clientId) await assertClientAccessTx(tx, session, running.clientId);
       const updated = await tx.timeEntry.update({
         where: { id: running.id },
         data: { endedAt: new Date() },
@@ -80,7 +90,10 @@ export async function stopTimerAction(): Promise<void> {
         action: 'time_entry.stop',
         resourceType: 'time_entry',
         resourceId: updated.id,
-        after: { startedAt: updated.startedAt.toISOString(), endedAt: updated.endedAt?.toISOString() ?? null },
+        after: {
+          startedAt: updated.startedAt.toISOString(),
+          endedAt: updated.endedAt?.toISOString() ?? null,
+        },
       });
     },
     { revalidate: '/staff/time' },
@@ -94,13 +107,16 @@ export async function deleteTimeEntryAction(formData: FormData): Promise<void> {
   const { id } = parsed.data;
 
   await withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, session }) => {
       const before = await tx.timeEntry.findFirst({ where: { id, staffId } });
       if (!before) return;
+      if (before.clientId) await assertClientAccessTx(tx, session, before.clientId);
       // iter85 (GoB, Befund 10): abgerechnete Stunden sind Abrechnungsgrundlage
       // einer Rechnung — Löschen würde den Beleg-Zusammenhang zerstören.
       if (before.invoiceId) {
-        throw new ActionError('Dieser Eintrag ist bereits abgerechnet und kann nicht gelöscht werden.');
+        throw new ActionError(
+          'Dieser Eintrag ist bereits abgerechnet und kann nicht gelöscht werden.',
+        );
       }
       await tx.timeEntry.delete({ where: { id } });
       await evidenceService.record(tx, {

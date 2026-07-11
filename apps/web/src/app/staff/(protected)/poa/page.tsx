@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { ScrollText, Plus } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
-import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
+import { inaccessibleClientIdsFor, isStaffAdmin } from '@/server/auth/rbac';
 import { fmtDateShort } from '@/lib/fmt';
 
 const statusLabels: Record<string, string> = {
@@ -41,13 +41,15 @@ export default async function PoaListPage() {
         <div>
           <h1 className="text-2xl font-bold text-primary mb-1">Vollmachten</h1>
           <p className="text-muted text-sm">
-            Fortgeschrittene elektronische Signatur via Magic-Link + OTP (eIDAS).
+            Elektronischer Bestätigungsprozess mit inhaltsgebundenem Nachweis.
           </p>
         </div>
-        <Link href="/staff/poa/new" className="btn-primary">
-          <Plus className="h-3.5 w-3.5" />
-          Neue Vollmacht
-        </Link>
+        {isStaffAdmin(session) && (
+          <Link href="/staff/poa/new" className="btn-primary">
+            <Plus className="h-3.5 w-3.5" />
+            Neue Vollmacht
+          </Link>
+        )}
       </div>
 
       <div className="card overflow-hidden">
@@ -82,16 +84,24 @@ export default async function PoaListPage() {
                     <span className="text-xs text-disabled">{p.signerEmail}</span>
                   </td>
                   <td className="px-6 py-4">
-                    {p.status === 'DRAFT' && <span className="badge-gray">{statusLabels[p.status]}</span>}
-                    {p.status === 'SENT' && <span className="badge-yellow">{statusLabels[p.status]}</span>}
-                    {p.status === 'SIGNED' && <span className="badge-green">{statusLabels[p.status]}</span>}
-                    {p.status === 'REVOKED' && <span className="badge-red">{statusLabels[p.status]}</span>}
-                    {p.status === 'EXPIRED' && <span className="badge-red">{statusLabels[p.status]}</span>}
+                    {p.status === 'DRAFT' && (
+                      <span className="badge-gray">{statusLabels[p.status]}</span>
+                    )}
+                    {p.status === 'SENT' && (
+                      <span className="badge-yellow">{statusLabels[p.status]}</span>
+                    )}
+                    {p.status === 'SIGNED' && (
+                      <span className="badge-green">{statusLabels[p.status]}</span>
+                    )}
+                    {p.status === 'REVOKED' && (
+                      <span className="badge-red">{statusLabels[p.status]}</span>
+                    )}
+                    {p.status === 'EXPIRED' && (
+                      <span className="badge-red">{statusLabels[p.status]}</span>
+                    )}
                   </td>
                   <td className="px-6 py-4 text-secondary">
-                    {p.signedAt
-                      ? `unterz. ${fmtDateShort(p.signedAt)}`
-                      : fmtDateShort(p.createdAt)}
+                    {p.signedAt ? `unterz. ${fmtDateShort(p.signedAt)}` : fmtDateShort(p.createdAt)}
                   </td>
                 </tr>
               ))}

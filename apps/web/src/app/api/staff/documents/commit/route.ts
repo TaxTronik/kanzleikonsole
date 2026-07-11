@@ -117,10 +117,7 @@ export async function POST(req: NextRequest) {
     analysisId: form.get('analysisId') ?? undefined,
   });
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: 'validation', issues: parsed.error.issues },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: 'validation', issues: parsed.error.issues }, { status: 400 });
   }
 
   const { tenantId, staffId } = session.user;
@@ -134,6 +131,7 @@ export async function POST(req: NextRequest) {
   // scheiterte die Validierung erst danach, blieb ein verwaistes Objekt.
   let tier: ProtectionTier;
   let classification: string;
+  let retentionYears: number | undefined;
   let resolvedTypeId: string | null;
   let effectiveFolderId: string | null;
   try {
@@ -143,17 +141,19 @@ export async function POST(req: NextRequest) {
         let resolved: {
           tier: ProtectionTier;
           classification: string;
+          retentionYears?: number;
           resolvedTypeId: string | null;
         };
         if (parsed.data.documentTypeId) {
           const t = await tx.documentType.findFirst({
             where: { id: parsed.data.documentTypeId, tenantId, active: true },
-            select: { id: true, tier: true, classificationKey: true },
+            select: { id: true, tier: true, classificationKey: true, retentionYears: true },
           });
           if (!t) throw new Error('TYPE_NOT_FOUND: Datei-Typ nicht gefunden.');
           resolved = {
             tier: t.tier as ProtectionTier,
             classification: carrierClassification(t.tier as ProtectionTier, t.classificationKey),
+            retentionYears: t.retentionYears ?? undefined,
             resolvedTypeId: t.id,
           };
         } else {
@@ -184,7 +184,10 @@ export async function POST(req: NextRequest) {
         // Tenant-Sanity für analysisId (analog clientId — der FK prüft nur Existenz,
         // unter RLS sieht findFirst nur Analysen DIESES Tenants).
         if (analysisId) {
-          const a = await tx.riskAnalysis.findFirst({ where: { id: analysisId }, select: { id: true } });
+          const a = await tx.riskAnalysis.findFirst({
+            where: { id: analysisId },
+            select: { id: true },
+          });
           if (!a) {
             throw new Error('ANALYSIS_NOT_FOUND: analysisId nicht in diesem Tenant.');
           }
@@ -227,6 +230,7 @@ export async function POST(req: NextRequest) {
     );
     tier = r.tier;
     classification = r.classification;
+    retentionYears = r.retentionYears;
     resolvedTypeId = r.resolvedTypeId;
     effectiveFolderId = r.effectiveFolderId;
   } catch (e) {
@@ -255,7 +259,13 @@ export async function POST(req: NextRequest) {
   // tier-getrieben (Bucket/Lock/Frist hängen an der Schutzstufe).
   let commit;
   try {
-    commit = await commitBytesWithTier({ fileData, tier, tenantId });
+    commit = await commitBytesWithTier({
+      fileData,
+      tier,
+      tenantId,
+      classification,
+      ...(tier === 'GOBD' && retentionYears ? { retentionYears } : {}),
+    });
   } catch (e) {
     // Befund 12: Mapping zentral (war 3× wortgleich kopiert).
     return storageCommitErrorResponse(e);
@@ -278,7 +288,10 @@ export async function POST(req: NextRequest) {
           }
         }
         if (analysisId) {
-          const a = await tx.riskAnalysis.findFirst({ where: { id: analysisId }, select: { id: true } });
+          const a = await tx.riskAnalysis.findFirst({
+            where: { id: analysisId },
+            select: { id: true },
+          });
           if (!a) {
             throw referenceChanged('analysisId nicht mehr gueltig.');
           }
@@ -297,7 +310,8 @@ export async function POST(req: NextRequest) {
             where: { id: effectiveFolderId, tenantId },
             select: { clientId: true },
           });
-          finalFolderId = f && (f.clientId ?? null) === (clientId ?? null) ? effectiveFolderId : null;
+          finalFolderId =
+            f && (f.clientId ?? null) === (clientId ?? null) ? effectiveFolderId : null;
         }
 
         // M-2: detectedMime aus Magic-Bytes hat Vorrang vor Client-gemeldetem Wert.
@@ -359,7 +373,10 @@ export async function POST(req: NextRequest) {
     );
     if (isReferenceChanged(e)) {
       return NextResponse.json(
-        { error: 'reference_changed', message: 'Referenz hat sich waehrend des Uploads geaendert.' },
+        {
+          error: 'reference_changed',
+          message: 'Referenz hat sich waehrend des Uploads geaendert.',
+        },
         { status: 409 },
       );
     }

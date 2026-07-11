@@ -1,9 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, useTransition } from 'react';
-import {
-  setDocumentFolderAction,
-} from '@/app/staff/(protected)/documents/folder-actions';
+import { setDocumentFolderAction } from '@/app/staff/(protected)/documents/folder-actions';
 import {
   retagDocumentAction,
   softDeleteDocumentAction,
@@ -84,9 +82,18 @@ export function MoveDialog({
 // seitig je Datei abgelehnt und am Ende zusammengefasst).
 // ===========================================================================
 type Tier = 'NONE' | 'GWG' | 'GOBD';
-interface RetagType { id: string; name: string; tier: Tier; builtin: boolean }
+interface RetagType {
+  id: string;
+  name: string;
+  tier: Tier;
+  retentionYears: number | null;
+  builtin: boolean;
+}
 const tierRank = (t: Tier): 0 | 1 | 2 => (t === 'GOBD' ? 2 : t === 'GWG' ? 1 : 0);
-const tierShort = (t: Tier) => (t === 'GOBD' ? 'GoBD 10 J.' : t === 'GWG' ? 'GwG 5 J.' : 'kein Lock');
+const tierShort = (type: RetagType) =>
+  type.tier === 'NONE'
+    ? 'kein Lock'
+    : `${type.tier === 'GOBD' ? 'GoBD' : 'GwG'} ${type.retentionYears ?? '?'} J.`;
 
 export function RetagDialog({
   documentIds,
@@ -122,7 +129,9 @@ export function RetagDialog({
         /* ignore */
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const curRank = currentTier ? tierRank(currentTier) : 0;
@@ -142,9 +151,7 @@ export function RetagDialog({
           : `„${documentTitle}"`}
       </p>
       <div className="space-y-1 mb-3 max-h-64 overflow-auto">
-        {types.length === 0 && (
-          <p className="px-2 py-2 text-xs text-disabled">Lädt Typen…</p>
-        )}
+        {types.length === 0 && <p className="px-2 py-2 text-xs text-disabled">Lädt Typen…</p>}
         {types.map((t) => {
           const down = !multi && tierRank(t.tier) < curRank;
           return (
@@ -163,8 +170,10 @@ export function RetagDialog({
                 onChange={() => setSel(t.id)}
               />
               <span className="flex-1">{t.name}</span>
-              <span className="text-xs text-disabled">{tierShort(t.tier)}</span>
-              {!multi && t.id === currentTypeId && <span className="text-xs text-disabled">aktuell</span>}
+              <span className="text-xs text-disabled">{tierShort(t)}</span>
+              {!multi && t.id === currentTypeId && (
+                <span className="text-xs text-disabled">aktuell</span>
+              )}
               {down && <span className="text-xs text-red-500">gesperrt</span>}
             </label>
           );
@@ -172,15 +181,15 @@ export function RetagDialog({
       </div>
       {isDowngrade && (
         <div className="rounded-md bg-red-50 border border-red-200 p-3 text-xs text-red-700 mb-3">
-          Herabstufung nicht möglich: Eine angewandte gesetzliche Aufbewahrung
-          (Object-Lock) lässt sich nicht entfernen.
+          Herabstufung nicht möglich: Eine angewandte gesetzliche Aufbewahrung (Object-Lock) lässt
+          sich nicht entfernen.
         </div>
       )}
       {isRestore && (
         <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 mb-3">
-          Höherstufung: Die Datei wird in den revisionssicheren Bucket
-          umkopiert (Object-Lock + gesetzliche Aufbewahrung) und erneut
-          virengeprüft. Vorgang wird im Audit-Log protokolliert.
+          Höherstufung: Die Datei wird in den revisionssicheren Bucket umkopiert (Object-Lock +
+          gesetzliche Aufbewahrung) und erneut virengeprüft. Vorgang wird im Audit-Log
+          protokolliert.
         </div>
       )}
       {err && (
@@ -232,7 +241,10 @@ export function RetagDialog({
 // das Ziel zurück; das Verschieben übernimmt der Aufrufer (Bulk/DnD).
 // ===========================================================================
 export function MoveTargetDialog({
-  folders, movingFolderIds, onClose, onPick,
+  folders,
+  movingFolderIds,
+  onClose,
+  onPick,
 }: {
   folders: FolderNode[];
   movingFolderIds: string[];
@@ -261,7 +273,9 @@ export function MoveTargetDialog({
         />
       </div>
       <div className="flex gap-2 mt-4">
-        <button type="button" onClick={onClose} className="btn-secondary flex-1">Abbrechen</button>
+        <button type="button" onClick={onClose} className="btn-secondary flex-1">
+          Abbrechen
+        </button>
         <button type="button" onClick={() => onPick(target)} className="btn-primary flex-1">
           Hierher verschieben
         </button>

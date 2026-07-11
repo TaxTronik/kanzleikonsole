@@ -7,15 +7,14 @@ import { evidenceService } from '@/server/container';
 import { withSystemContext } from '@taxtronik/db';
 import { createDocumentWithVersion } from '@/server/documents/upload-helpers';
 import { toActionError } from '@/server/auth/rbac';
-import {
-  hashInviteToken,
-  prismaOwner,
-} from '@/server/gwg-onboarding/service';
+import { hashInviteToken, prismaOwner } from '@/server/gwg-onboarding/service';
 import { checkRateLimit, checkIpOrGlobalLimit, getClientIp } from '@/server/rate-limit';
 import { log } from '@/server/logger';
 import { notifyMany } from '@/server/notifications/service';
 import { ConsentSelectionsSchema, countGranted } from '@/server/privacy/consent';
 import { renderNoticeForTenantTx } from '@/server/privacy/service';
+import { isPrivacyConfigComplete, readPrivacyConfigTx } from '@/server/privacy/notice';
+import { startFreshGwgReviewTx } from '@/server/gwg/reverification';
 
 // M4: GwG-Uploads sind enger gecappt als der globale MAX_UPLOAD_BYTES (100 MB).
 // Ausweis-Scans sind typischerweise ≤5 MB; 10 MB ist großzügig für hochauflösende
@@ -51,6 +50,13 @@ function toAnonymousActionError(e: unknown): ActionResult {
     return {
       ok: false,
       error: 'Der Virenscan ist derzeit nicht verfügbar. Bitte versuchen Sie es später erneut.',
+    };
+  }
+  if (msg === 'PRIVACY_CONFIG_INCOMPLETE') {
+    return {
+      ok: false,
+      error:
+        'Die Datenschutzhinweise der Kanzlei sind noch unvollständig. Bitte wenden Sie sich an die Kanzlei.',
     };
   }
   return toActionError(e);
@@ -119,14 +125,20 @@ export async function uploadIdImageAction(input: {
     { max: 200, windowSec: 600 },
   );
   if (!ipRl.ok) {
-    return { ok: false, error: `Zu viele Uploads. Bitte ${Math.ceil(ipRl.retryAfter / 60)} Min. warten.` };
+    return {
+      ok: false,
+      error: `Zu viele Uploads. Bitte ${Math.ceil(ipRl.retryAfter / 60)} Min. warten.`,
+    };
   }
   const tokenRl = await checkRateLimit(`gwg-upload-token:${hashInviteToken(token).slice(0, 16)}`, {
     max: 20,
     windowSec: 600,
   });
   if (!tokenRl.ok) {
-    return { ok: false, error: `Zu viele Uploads für diese Einladung. Bitte ${Math.ceil(tokenRl.retryAfter / 60)} Min. warten.` };
+    return {
+      ok: false,
+      error: `Zu viele Uploads für diese Einladung. Bitte ${Math.ceil(tokenRl.retryAfter / 60)} Min. warten.`,
+    };
   }
 
   let invite: Awaited<ReturnType<typeof loadInviteForWrite>>;
@@ -148,7 +160,8 @@ export async function uploadIdImageAction(input: {
     return { ok: false, error: 'Datei überschreitet das globale Upload-Limit.' };
   }
 
-  // Klassifikation: GwG-Nachweise sind GoBD-pflichtig (Object-Lock 10 Jahre).
+  // Eigene GwG-Klassifikation: reguläre Aufbewahrung fünf Jahre nach § 8 Abs. 4
+  // GwG; ausdrücklich nicht pauschal als GoBD-Beleg/10-Jahres-Objekt behandeln.
   const classification = 'GWG_EVIDENCE';
 
   let documentId: string;
@@ -169,6 +182,7 @@ export async function uploadIdImageAction(input: {
           clientId: invite.clientId,
           title: fileName,
           classification,
+          gwgOnboardingInviteId: invite.id,
           // P-3: detectedMime (Magic-Bytes) hat Vorrang vor dem Client-
           // gemeldeten mimeType. Mandant könnte sonst HTML als image/jpeg
           // hochladen und Browser-Sniffing-Missbrauch im Staff-Preview
@@ -277,7 +291,9 @@ const SubmitSchema = z.object({
   }),
 });
 
-export async function submitOnboardingAction(input: z.infer<typeof SubmitSchema>): Promise<ActionResult> {
+export async function submitOnboardingAction(
+  input: z.infer<typeof SubmitSchema>,
+): Promise<ActionResult> {
   const parsed = SubmitSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues.map((i) => i.message).join('; ') };
@@ -326,6 +342,10 @@ export async function submitOnboardingAction(input: z.infer<typeof SubmitSchema>
 
   try {
     await withSystemContext(invite.tenantId, async (tx) => {
+      const privacyConfig = await readPrivacyConfigTx(tx, invite.tenantId);
+      if (!isPrivacyConfigComplete(privacyConfig)) {
+        throw new Error('PRIVACY_CONFIG_INCOMPLETE');
+      }
       // 1. Client-Stammdaten ggf. updaten — und welche Felder geändert wurden
       const before = {
         name: invite.client.name,
@@ -352,27 +372,11 @@ export async function submitOnboardingAction(input: z.infer<typeof SubmitSchema>
       }
 
       // 2. GwG-Check anlegen oder bestehenden auf IN_REVIEW setzen
-      const existingCheck = await tx.gwgCheck.findFirst({
-        where: { clientId: invite.clientId },
-        orderBy: { createdAt: 'desc' },
+      const review = await startFreshGwgReviewTx(tx, {
+        tenantId: invite.tenantId,
+        clientId: invite.clientId,
       });
-      let checkId: string;
-      if (existingCheck) {
-        await tx.gwgCheck.update({
-          where: { id: existingCheck.id },
-          data: { status: 'IN_REVIEW' },
-        });
-        checkId = existingCheck.id;
-      } else {
-        const created = await tx.gwgCheck.create({
-          data: {
-            tenantId: invite.tenantId,
-            clientId: invite.clientId,
-            status: 'IN_REVIEW',
-          },
-        });
-        checkId = created.id;
-      }
+      const checkId = review.reviewCheckId;
 
       // 2b. Datenschutz-Einwilligungen (Teil B) persistieren + Hinweis-Snapshot
       // einfrieren. Leere Array-Zeilen verwerfen. source=PORTAL, kein Staff.
@@ -412,9 +416,7 @@ export async function submitOnboardingAction(input: z.infer<typeof SubmitSchema>
 
       // 3. Wirtschaftlich Berechtigte erfassen
       // Bestehende für diesen Check aufräumen — Mandant gibt aktuelle Liste vor.
-      await tx.gwgBeneficialOwner.deleteMany({ where: { gwgCheckId: checkId } });
       // Bestehende ID-Documents (für diesen Check) aufräumen.
-      await tx.gwgIdDocument.deleteMany({ where: { gwgCheckId: checkId } });
 
       for (const o of owners) {
         // Adresse als residence-Freitext zusammensetzen
@@ -499,6 +501,8 @@ export async function submitOnboardingAction(input: z.infer<typeof SubmitSchema>
           changedFields,
           ownerCount: owners.length,
           gwgCheckId: checkId,
+          invalidatedChecks: review.invalidatedChecks,
+          clientDeactivated: review.clientDeactivated,
         },
         ip,
         userAgent: ua,

@@ -19,6 +19,7 @@ von Vollmachten, Rechnungserstellung mit XRechnung/ZUGFeRD,
 Betriebswirtschaftliche Auswertungen, Steuerschätzung.
 
 **Verantwortlicher**:
+
 - Name der Kanzlei: …
 - Anschrift: …
 - Vertretungsberechtigter: …
@@ -34,22 +35,24 @@ Virenscan. Kein Cloud-Provider, keine US-Datenübermittlung.
 
 ### 2.1 Datenkategorien
 
-| Kategorie | Beispiele | Personenbezug |
-|---|---|---|
-| Mandanten-Stammdaten | Name, Anschrift, USt-ID, DATEV-Nr., Bankverbindung | mittel |
-| Ansprechpartner-Daten | E-Mail, Telefon, Vor-/Nachname | mittel |
-| Identitätsnachweise (GwG) | Personalausweis, Reisepass, Handelsregisterauszug | **hoch** (besondere Kategorien § 23 GwG) |
-| Wirtschaftlich Berechtigte | Geburtsdatum, Geburtsort, Anteil, PEP-Status | **hoch** |
-| Finanzdaten | BWA-Positionen, Rechnungsbeträge, Stundenabrechnungen | mittel-hoch |
-| Korrespondenz | Anforderungen, Antworten, Anhänge | mittel |
-| Telemetriedaten | Login-Zeiten, IP-Adressen, Audit-Log | mittel |
-| Mitarbeiterdaten | Zeiterfassung, Urlaub, Krankmeldung | hoch |
+| Kategorie                  | Beispiele                                             | Personenbezug                            |
+| -------------------------- | ----------------------------------------------------- | ---------------------------------------- |
+| Mandanten-Stammdaten       | Name, Anschrift, USt-ID, DATEV-Nr., Bankverbindung    | mittel                                   |
+| Ansprechpartner-Daten      | E-Mail, Telefon, Vor-/Nachname                        | mittel                                   |
+| Identitätsnachweise (GwG)  | Personalausweis, Reisepass, Handelsregisterauszug     | **hoch** (besondere Kategorien § 23 GwG) |
+| Wirtschaftlich Berechtigte | Geburtsdatum, Geburtsort, Anteil, PEP-Status          | **hoch**                                 |
+| Finanzdaten                | BWA-Positionen, Rechnungsbeträge, Stundenabrechnungen | mittel-hoch                              |
+| Korrespondenz              | Anforderungen, Antworten, Anhänge                     | mittel                                   |
+| Telemetriedaten            | Login-Zeiten, IP-Adressen, Audit-Log                  | mittel                                   |
+| Mitarbeiterdaten           | Zeiterfassung, Urlaub, Krankmeldung                   | hoch                                     |
 
 ### 2.2 Verarbeitungszwecke
 
 - Erfüllung des Steuerberatungsmandats (Art. 6 Abs. 1 lit. b DSGVO)
-- Erfüllung gesetzlicher Pflichten: GoBD (§ 146 AO), GwG (§ 10 ff.),
-  HGB (§ 257), eIDAS (Vollmachten) — Art. 6 Abs. 1 lit. c DSGVO
+- Erfüllung gesetzlicher Pflichten: GoBD (§ 146 AO), GwG (§ 10 ff.) und
+  HGB (§ 257) — Art. 6 Abs. 1 lit. c DSGVO. Die Rechtsgrundlage des
+  Vollmachtsprozesses ist kanzlei- und vorgangsbezogen festzulegen; eIDAS ist
+  keine eigenständige datenschutzrechtliche Rechtsgrundlage.
 - Berechtigtes Interesse: Audit-Log, IT-Sicherheit (Virenscan, Login-Logs) —
   Art. 6 Abs. 1 lit. f
 - Mitarbeiterverwaltung: § 26 BDSG
@@ -65,21 +68,22 @@ Virenscan. Kein Cloud-Provider, keine US-Datenübermittlung.
 
 ### 2.4 Speicherdauer
 
-| Datenkategorie | Aufbewahrung | Rechtsgrundlage |
-|---|---|---|
-| Belege (GoBD-Klassen) | 10 Jahre | § 147 AO |
-| Verträge | 6 Jahre | § 257 HGB |
-| GwG-Nachweise | 5 Jahre nach Ende der Geschäftsbeziehung | § 8 GwG |
-| Audit-Log + Tagesstempel | 10 Jahre (Hash-Chain unveränderlich) | § 146 AO |
-| Magic-Links (Portal) | nach Verbrauch oder 30 Min. | technisch |
-| Mitarbeiter-Zeiterfassung | 2 Jahre nach Ende des Beschäftigungsverhältnisses | § 16 ArbZG |
-| Backups | 90 Tage rolling | technisch |
+| Datenkategorie            | Aufbewahrung                                                                             | Rechtsgrundlage       |
+| ------------------------- | ---------------------------------------------------------------------------------------- | --------------------- |
+| Steuer-/Handelsunterlagen | je Dokumentart 6/8/10 Jahre, ggf. Verfahrensverlängerung                                 | § 147 AO / § 14b UStG |
+| Verträge                  | 6 Jahre                                                                                  | § 257 HGB             |
+| GwG-Nachweise             | grundsätzlich 5 Jahre; andere Gesetze ggf. länger, Vernichtung spätestens nach 10 Jahren | § 8 Abs. 4 GwG        |
+| Audit-Log + Tagesstempel  | 10 Jahre (Hash-Chain unveränderlich)                                                     | § 146 AO              |
+| Magic-Links (Portal)      | nach Verbrauch oder 30 Min.                                                              | technisch             |
+| Mitarbeiter-Zeiterfassung | 2 Jahre nach Ende des Beschäftigungsverhältnisses                                        | § 16 ArbZG            |
+| Backups                   | 90 Tage rolling                                                                          | technisch             |
 
 ---
 
 ## 3. Notwendigkeit & Verhältnismäßigkeit
 
 Die Verarbeitung ist erforderlich, weil:
+
 1. **Steuerberatungsleistung** nicht ohne Mandantendaten erbringbar ist
 2. **GwG-Identifizierung** gesetzlich vorgeschrieben (§ 10 GwG)
 3. **GoBD-Aufbewahrung** mit Manipulationsschutz steuerrechtlich verpflichtend
@@ -92,14 +96,14 @@ sichergestellt.
 
 ## 4. Risiken für betroffene Personen
 
-| Risiko | Eintrittswahrscheinlichkeit | Schwere | Brutto-Risiko |
-|---|---|---|---|
-| Unbefugter Zugriff auf GwG-Identitätsnachweise | gering | hoch | mittel |
-| Manipulation der Buchhaltungs-Belege | gering | hoch | mittel |
-| Identitätsdiebstahl bei Magic-Link-Phishing | gering | mittel | gering |
-| Verlust der GoBD-Daten (z. B. Hardware-Ausfall) | mittel | hoch | hoch |
-| Datenpanne durch Mitarbeiter-Account-Übernahme | gering | hoch | mittel |
-| Ungewollte Weitergabe an Dritte (n8n-Webhook) | gering | mittel | gering |
+| Risiko                                          | Eintrittswahrscheinlichkeit | Schwere | Brutto-Risiko |
+| ----------------------------------------------- | --------------------------- | ------- | ------------- |
+| Unbefugter Zugriff auf GwG-Identitätsnachweise  | gering                      | hoch    | mittel        |
+| Manipulation der Buchhaltungs-Belege            | gering                      | hoch    | mittel        |
+| Identitätsdiebstahl bei Magic-Link-Phishing     | gering                      | mittel  | gering        |
+| Verlust der GoBD-Daten (z. B. Hardware-Ausfall) | mittel                      | hoch    | hoch          |
+| Datenpanne durch Mitarbeiter-Account-Übernahme  | gering                      | hoch    | mittel        |
+| Ungewollte Weitergabe an Dritte (n8n-Webhook)   | gering                      | mittel  | gering        |
 
 ---
 
@@ -107,18 +111,18 @@ sichergestellt.
 
 ### 5.1 Technische Maßnahmen
 
-| Risiko | Maßnahme |
-|---|---|
-| Unbefugter Zugriff | Mitarbeiter: TOTP-2FA Pflicht; Portal: E-Mail-OTP-Magic-Link, kurze Gültigkeit |
-| Cross-Tenant-Datenleck | Postgres Row-Level-Security + App-Filter (doppelte Verteidigung, ADR-0002) |
-| Manipulation Belege | S3 Object-Lock COMPLIANCE 10 Jahre + ClamAV-Virenscan vor Commit |
-| Manipulation Buchführung | Hash-Chain auf Audit-Log + tägliche RFC-3161-TSA-Versiegelung (ADR-0004) |
-| Passwort-Brute-Force | Rate-Limit 10 Versuche / 10 Min auf Passwort-Step, 5 Versuche / 5 Min auf TOTP |
-| Magic-Link-Phishing | Tokens 32 Byte random, gehashed (SHA-256) gespeichert, 30 Min TTL, one-time |
-| Daten in Transit | HTTPS (Reverse-Proxy der Kanzlei), HSTS-Header |
-| Daten at Rest | LUKS/BitLocker auf Server-Storage; Postgres-Verschlüsselung über Filesystem |
-| Datenverlust | Tägliches Postgres-pg_dump nach SeaweedFS `backups`-Bucket, 90 Tage Lifecycle |
-| TOTP-Secret-Kompromittierung | Per-Tenant-HKDF-Key, AES-256-GCM-verschlüsselt in DB |
+| Risiko                       | Maßnahme                                                                            |
+| ---------------------------- | ----------------------------------------------------------------------------------- |
+| Unbefugter Zugriff           | Mitarbeiter: TOTP-2FA Pflicht; Portal: E-Mail-OTP-Magic-Link, kurze Gültigkeit      |
+| Cross-Tenant-Datenleck       | Postgres Row-Level-Security + App-Filter (doppelte Verteidigung, ADR-0002)          |
+| Manipulation Belege          | S3 Object-Lock COMPLIANCE je Dokumenttyp 6/8/10 Jahre + ClamAV-Virenscan vor Commit |
+| Manipulation Buchführung     | Hash-Chain auf Audit-Log + tägliche RFC-3161-TSA-Versiegelung (ADR-0004)            |
+| Passwort-Brute-Force         | Rate-Limit 10 Versuche / 10 Min auf Passwort-Step, 5 Versuche / 5 Min auf TOTP      |
+| Magic-Link-Phishing          | Tokens 32 Byte random, gehashed (SHA-256) gespeichert, 30 Min TTL, one-time         |
+| Daten in Transit             | HTTPS (Reverse-Proxy der Kanzlei), HSTS-Header                                      |
+| Daten at Rest                | LUKS/BitLocker auf Server-Storage; Postgres-Verschlüsselung über Filesystem         |
+| Datenverlust                 | Tägliches Postgres-pg_dump nach SeaweedFS `backups`-Bucket, 90 Tage Lifecycle       |
+| TOTP-Secret-Kompromittierung | Per-Tenant-HKDF-Key, AES-256-GCM-verschlüsselt in DB                                |
 
 ### 5.2 Organisatorische Maßnahmen
 

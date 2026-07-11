@@ -5,10 +5,12 @@ import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { readModules } from '@/server/settings/modules';
 import { NewPoaForm } from './form';
+import { isStaffAdmin } from '@/server/auth/rbac';
 
 export default async function NewPoaPage() {
   const session = await staffAuth();
   if (!session?.user) redirect('/staff/login');
+  if (!isStaffAdmin(session)) redirect('/staff/poa');
 
   const { tenantId, staffId } = session.user;
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
@@ -39,11 +41,18 @@ export default async function NewPoaPage() {
           Keine aktiven Mandanten. Bitte zuerst GwG-Prüfung abschließen.
         </div>
       ) : (
-        <NewPoaForm poaMode={modules.poaMode} clients={clients.map((c) => ({
-          id: c.id,
-          name: c.name,
-          contacts: c.contacts.map((ct) => ({ id: ct.id, fullName: ct.fullName, email: ct.email })),
-        }))} />
+        <NewPoaForm
+          poaMode={modules.poaMode}
+          clients={clients.map((c) => ({
+            id: c.id,
+            name: c.name,
+            contacts: c.contacts.map((ct) => ({
+              id: ct.id,
+              fullName: ct.fullName,
+              email: ct.email,
+            })),
+          }))}
+        />
       )}
     </div>
   );

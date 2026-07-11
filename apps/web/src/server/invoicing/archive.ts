@@ -19,14 +19,22 @@ import { withTenantContext } from '@taxtronik/db';
 import { commitBytesWithTier, type CommitDocumentResult } from '@taxtronik/storage';
 import { prismaBytes } from '@/server/db/prisma-bytes';
 import { evidenceService } from '@/server/container';
-import { generateXRechnungCii } from '@/server/invoicing/xrechnung';
+import { generateXRechnungCii, toXRechnungInvoice } from '@/server/invoicing/xrechnung';
 import { generateZugferdPdf } from '@/server/invoicing/zugferd';
 import { readSellerInfo } from '@/server/settings/tenant-settings';
 import { readBranding } from '@/server/settings/branding';
 
 export type ArchiveResult =
   | { ok: true; bucket: string; key: string; number: string }
-  | { ok: false; code: 'not_found' | 'not_applicable' | 'seller_incomplete' | 'reverse_charge_seller_no_vatid' | 'buyer_incomplete' };
+  | {
+      ok: false;
+      code:
+        | 'not_found'
+        | 'not_applicable'
+        | 'seller_incomplete'
+        | 'reverse_charge_seller_no_vatid'
+        | 'buyer_incomplete';
+    };
 
 /**
  * Liefert die gespeicherte ZUGFeRD-Archiv-PDF einer Rechnung (idempotent).
@@ -34,7 +42,10 @@ export type ArchiveResult =
  * an die Rechnung verknüpft. Validierungsfehler (Adresse unvollständig) kommen
  * als Code zurück — NICHT als Throw (die Aufrufer mappen sie selbst).
  */
-export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string): Promise<ArchiveResult> {
+export async function ensureZugferdArchive(
+  ctx: TenantContext,
+  invoiceId: string,
+): Promise<ArchiveResult> {
   const actorId = ctx.actorId;
   if (!actorId) return { ok: false, code: 'not_found' };
 
@@ -55,12 +66,8 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
   // EXTERNAL (PDF) hat kein ZUGFeRD-Generat — deren documentId ist der Upload.
   if (loaded.format === 'PDF') return { ok: false, code: 'not_applicable' };
 
-  // iter100: Stornorechnung → TypeCode 381 + Referenz auf die Originalrechnung.
-  const stornoFields = loaded.stornoOfId
-    ? { typeCode: '381' as const, precedingInvoiceNumber: loaded.stornoOf?.number ?? null }
-    : {};
-
-  const shareable = loaded.status === 'SENT' || loaded.status === 'PAID' || loaded.status === 'OVERDUE';
+  const shareable =
+    loaded.status === 'SENT' || loaded.status === 'PAID' || loaded.status === 'OVERDUE';
   const xrechnungTitle = `Rechnung ${loaded.number} (XRechnung)`;
 
   // Bereits archiviert? → exakt dieselben Bytes wiederverwenden.
@@ -104,8 +111,13 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
     } else {
       const seller = await readSellerInfo(ctx);
       if (
-        !seller.name || !seller.street || !seller.city || !seller.postalCode ||
-        !seller.email || !seller.phone || (!seller.vatId && !seller.taxNumber)
+        !seller.name ||
+        !seller.street ||
+        !seller.city ||
+        !seller.postalCode ||
+        !seller.email ||
+        !seller.phone ||
+        (!seller.vatId && !seller.taxNumber)
       ) {
         return { ok: false, code: 'seller_incomplete' };
       }
@@ -117,43 +129,15 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
       if (!loaded.client.street || !loaded.client.city || !loaded.client.postalCode) {
         return { ok: false, code: 'buyer_incomplete' };
       }
-      const cii = generateXRechnungCii(
-        {
-          number: loaded.number,
-          issueDate: loaded.issueDate,
-          dueDate: loaded.dueDate,
-          subject: loaded.subject,
-          notes: loaded.notes,
-          currency: 'EUR' as const,
-          servicePeriodStart: loaded.servicePeriodStart,
-          servicePeriodEnd: loaded.servicePeriodEnd,
-          vatExemptionReason: loaded.vatExemptionReason,
-    reverseCharge: loaded.reverseCharge,
-          ...stornoFields,
-          netAmount: Number(loaded.netAmount.toString()),
-          vatAmount: Number(loaded.vatAmount.toString()),
-          totalAmount: Number(loaded.totalAmount.toString()),
-          positions: loaded.positions.map((p) => ({
-            position: p.position,
-            description: p.description,
-            quantity: Number(p.quantity.toString()),
-            unit: p.unit,
-            unitPrice: Number(p.unitPrice.toString()),
-            netAmount: Number(p.netAmount.toString()),
-            vatRate: Number(p.vatRate.toString()),
-          })),
-        },
-        seller,
-        {
-          name: loaded.client.name,
-          street: loaded.client.street,
-          postalCode: loaded.client.postalCode,
-          city: loaded.client.city,
-          countryIso: loaded.client.countryIso ?? 'DE',
-          vatId: loaded.client.vatId,
-          email: loaded.client.invoiceEmail,
-        },
-      );
+      const cii = generateXRechnungCii(toXRechnungInvoice(loaded), seller, {
+        name: loaded.client.name,
+        street: loaded.client.street,
+        postalCode: loaded.client.postalCode,
+        city: loaded.client.city,
+        countryIso: loaded.client.countryIso ?? 'DE',
+        vatId: loaded.client.vatId,
+        email: loaded.client.invoiceEmail,
+      });
       const storedXml = await commitBytesWithTier({
         fileData: Buffer.from(cii, 'utf8'),
         tier: 'GOBD',
@@ -189,7 +173,12 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
         });
       });
     }
-    return { ok: true, bucket: existing.storageBucket, key: existing.storageKey, number: loaded.number };
+    return {
+      ok: true,
+      bucket: existing.storageBucket,
+      key: existing.storageKey,
+      number: loaded.number,
+    };
   }
 
   // 2. Validierung (identisch zur bisherigen Download-Route). E-Mail + Telefon
@@ -198,8 +187,13 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
   // ohne sie würde nicht-konformes XML archiviert, daher fail-closed.
   const seller = await readSellerInfo(ctx);
   if (
-    !seller.name || !seller.street || !seller.city || !seller.postalCode ||
-    !seller.email || !seller.phone || (!seller.vatId && !seller.taxNumber)
+    !seller.name ||
+    !seller.street ||
+    !seller.city ||
+    !seller.postalCode ||
+    !seller.email ||
+    !seller.phone ||
+    (!seller.vatId && !seller.taxNumber)
   ) {
     return { ok: false, code: 'seller_incomplete' };
   }
@@ -212,31 +206,7 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
   }
 
   // 3. Generieren (CPU — bewusst ausserhalb jeder DB-Tx).
-  const xInput = {
-    number: loaded.number,
-    issueDate: loaded.issueDate,
-    dueDate: loaded.dueDate,
-    subject: loaded.subject,
-    notes: loaded.notes,
-    currency: 'EUR' as const,
-    servicePeriodStart: loaded.servicePeriodStart,
-    servicePeriodEnd: loaded.servicePeriodEnd,
-    vatExemptionReason: loaded.vatExemptionReason,
-    reverseCharge: loaded.reverseCharge,
-    ...stornoFields,
-    netAmount: Number(loaded.netAmount.toString()),
-    vatAmount: Number(loaded.vatAmount.toString()),
-    totalAmount: Number(loaded.totalAmount.toString()),
-    positions: loaded.positions.map((p) => ({
-      position: p.position,
-      description: p.description,
-      quantity: Number(p.quantity.toString()),
-      unit: p.unit,
-      unitPrice: Number(p.unitPrice.toString()),
-      netAmount: Number(p.netAmount.toString()),
-      vatRate: Number(p.vatRate.toString()),
-    })),
-  };
+  const xInput = toXRechnungInvoice(loaded);
   const buyer = {
     name: loaded.client.name,
     street: loaded.client.street,
@@ -255,7 +225,9 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
   } catch (e) {
     // Schritt-Kontext im Fehlertext — sonst ist „ZUGFeRD geht nicht" nicht
     // von der PDF-Generierung vs. Ablage unterscheidbar.
-    throw new Error(`ZUGFeRD-PDF-Generierung fehlgeschlagen: ${(e as Error).message}`, { cause: e });
+    throw new Error(`ZUGFeRD-PDF-Generierung fehlgeschlagen: ${(e as Error).message}`, {
+      cause: e,
+    });
   }
 
   // 4. Revisionssicher ablegen (GOBD-Tier, Object-Lock COMPLIANCE im GOBD-Bucket)
@@ -263,18 +235,35 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
   //    ClamAV ist hier sinnlos; die documentVersion wird mit scanStatus 'CLEAN' angelegt.
   let stored: CommitDocumentResult;
   try {
-    stored = await commitBytesWithTier({ fileData: Buffer.from(pdfBytes), tier: 'GOBD', tenantId: ctx.tenantId, skipScan: true, classification: 'GOBD_INVOICE' });
+    stored = await commitBytesWithTier({
+      fileData: Buffer.from(pdfBytes),
+      tier: 'GOBD',
+      tenantId: ctx.tenantId,
+      skipScan: true,
+      classification: 'GOBD_INVOICE',
+    });
   } catch (e) {
-    throw new Error(`ZUGFeRD-Ablage im GOBD-Object-Store fehlgeschlagen: ${(e as Error).message}`, { cause: e });
+    throw new Error(`ZUGFeRD-Ablage im GOBD-Object-Store fehlgeschlagen: ${(e as Error).message}`, {
+      cause: e,
+    });
   }
 
   // XRechnung-XML parallel ablegen — erscheint als eigenständiges Dokument im
   // Mandantenordner (gleiche Generierung, nur XML statt PDF).
   let storedXml: CommitDocumentResult;
   try {
-    storedXml = await commitBytesWithTier({ fileData: Buffer.from(cii, 'utf8'), tier: 'GOBD', tenantId: ctx.tenantId, skipScan: true, classification: 'GOBD_INVOICE' });
+    storedXml = await commitBytesWithTier({
+      fileData: Buffer.from(cii, 'utf8'),
+      tier: 'GOBD',
+      tenantId: ctx.tenantId,
+      skipScan: true,
+      classification: 'GOBD_INVOICE',
+    });
   } catch (e) {
-    throw new Error(`XRechnung-Ablage im GOBD-Object-Store fehlgeschlagen: ${(e as Error).message}`, { cause: e });
+    throw new Error(
+      `XRechnung-Ablage im GOBD-Object-Store fehlgeschlagen: ${(e as Error).message}`,
+      { cause: e },
+    );
   }
 
   // 5. Document + Version anlegen + verknüpfen (Tx).

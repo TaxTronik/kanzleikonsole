@@ -3,7 +3,12 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { evidenceService } from '@/server/container';
-import { withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
+import {
+  withStaff,
+  ActionError,
+  type ActionResult as BaseActionResult,
+} from '@/server/actions/staff-action';
+import { assertClientAccessTx } from '@/server/auth/rbac';
 
 export type ActionResult = BaseActionResult;
 
@@ -15,18 +20,21 @@ export async function acknowledgeDocumentAction(input: {
   documentId: string;
   acknowledged: boolean;
 }): Promise<ActionResult> {
-  const parsed = z.object({
-    documentId: z.string().uuid(),
-    acknowledged: z.boolean(),
-  }).safeParse(input);
+  const parsed = z
+    .object({
+      documentId: z.string().uuid(),
+      acknowledged: z.boolean(),
+    })
+    .safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId }) => {
+  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
     const doc = await tx.document.findUnique({
       where: { id: parsed.data.documentId },
       select: { id: true, title: true, clientId: true },
     });
     if (!doc) throw new ActionError('Dokument nicht gefunden.');
+    if (doc.clientId) await assertClientAccessTx(tx, session, doc.clientId);
 
     await tx.document.update({
       where: { id: parsed.data.documentId },
@@ -35,7 +43,9 @@ export async function acknowledgeDocumentAction(input: {
         : { acknowledgedAt: null, acknowledgedByStaff: null },
     });
     await evidenceService.record(tx, {
-      tenantId, actorType: 'STAFF', actorId: staffId,
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
       action: parsed.data.acknowledged ? 'document.acknowledge' : 'document.unacknowledge',
       resourceType: 'document',
       resourceId: doc.id,

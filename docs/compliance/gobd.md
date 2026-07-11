@@ -4,8 +4,7 @@ Stand: 2026-06-10
 
 Dieses Dokument beschreibt, wie taxtronik die Anforderungen der **Grundsätze
 zur ordnungsmäßigen Führung und Aufbewahrung von Büchern, Aufzeichnungen und
-Unterlagen in elektronischer Form sowie zum Datenzugriff** (BMF-Schreiben vom
-28. November 2019, IV A 4 - S 0316/19/10003 :001 — „GoBD 2019") umsetzt.
+Unterlagen in elektronischer Form sowie zum Datenzugriff** (BMF-Schreiben vom 28. November 2019, IV A 4 - S 0316/19/10003 :001 — „GoBD 2019") umsetzt.
 
 Es ergänzt — ersetzt aber nicht — die kanzleieigene Verfahrensdokumentation
 des einsetzenden Steuerberaters (§ 145 AO, GoBD Rn. 151 ff.). Die Kanzlei
@@ -33,18 +32,19 @@ Aufbewahrungs-Stichtag; eine COMPLIANCE-Über-Aufbewahrung von Rechnungen
 `gobdRetentionUntil()` (10 Jahre) bleibt als konservativer Default erhalten.
 
 **Geltungsbereich**:
+
 - `DocumentClassification = GOBD_INVOICE | GOBD_CONTRACT | GOBD_TAX` werden
   in den Object-Lock-Bucket `gobd` mit COMPLIANCE-Mode geschrieben.
   Vor Ablauf der Retention sind Updates und Deletes von SeaweedFS
   hart-abgelehnt (auch für Owner-Credentials).
 - `GWG_EVIDENCE` liegt in einem **eigenen Bucket `gwg`** mit Object-Lock
-  **GOVERNANCE** und 5 Jahren Retention (`gwgRetentionUntil()`): § 8 Abs. 4
-  GwG ist eine 5-Jahre-Höchstfrist mit Vernichtungspflicht — COMPLIANCE
-  würde die geforderte unverzügliche Vernichtung nach Mandatsende technisch
-  verhindern. Details in [gwg.md](./gwg.md).
+  **GOVERNANCE** und technischer 5-Jahres-Mindestbarriere
+  (`gwgRetentionUntil()`); die Review-Queue ermittelt das tatsächliche
+  ereignisabhängige Fristende nach § 8 Abs. 4 GwG. Details in [gwg.md](./gwg.md).
 - Audit-Archive (siehe Abschnitt 3) werden in den `gobd`-Bucket gelegt.
 
 **Nicht** unter Object-Lock fallen:
+
 - `GENERAL` (Mandanten-Schriftwechsel, Formulare, Notizen) — kürzere
   Aufbewahrung über `retention_until` in der `document`-Tabelle abbildbar,
   aktuell nicht implementiert.
@@ -69,6 +69,7 @@ Aufbewahrungs-Stichtag; eine COMPLIANCE-Über-Aufbewahrung von Rechnungen
    aus älterem Backup würde den nachträglichen Stempel offenbaren.
 
 **Verifikation**:
+
 - `pnpm verify:chain` rechnet die komplette Kette pro Tenant nach,
   prüft jeden TSA-Stempel und re-hashed jeden Archive-Eintrag (U-4).
 - **Täglicher automatischer Lauf** über `audit-verify-check`-Worker um
@@ -90,6 +91,7 @@ Feldern: `actor_type`, `actor_id`, `action`, `resource_type`, `resource_id`,
 Hash ein (R-3 / H-2).
 
 **Wartung**:
+
 - Wöchentliche Auslagerung in NDJSON-Segmente (`audit-rotate`-Worker
   sonntags 03:00 UTC, manueller Trigger unter `/staff/admin/archive`).
   Aktuell nur SOFT-Rotation (Datei wird geschrieben, DB bleibt).
@@ -102,9 +104,9 @@ Hash ein (R-3 / H-2).
 
 - **DATEV-Belege-Export** ([`apps/web/.../datev-belege-export/route.ts`](../../apps/web/src/app/api/staff/clients/[id]/datev-belege-export/route.ts)):
   ZIP mit Original-Dateien + `index.csv` (DATEV-kompatible Begleitliste)
-  + `manifest.txt`. SHA-256 jedes Belegs in `index.csv` für nachträgliche
-  Integritätsprüfung. Hard-Cap 1 GB (T-4); größere Mandanten-Exporte
-  benötigen Datums-Eingrenzung.
+  - `manifest.txt`. SHA-256 jedes Belegs in `index.csv` für nachträgliche
+    Integritätsprüfung. Hard-Cap 1 GB (T-4); größere Mandanten-Exporte
+    benötigen Datums-Eingrenzung.
 - **Verify-CLI** für Wirtschaftsprüfer: `pnpm verify:chain` (s. o.).
 
 ## 5. Schnittstellen / Datensicherheit

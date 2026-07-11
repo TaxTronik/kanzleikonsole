@@ -4,11 +4,16 @@ import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
-import { fmtDateShort, round2 } from '@/lib/fmt';
+import { round2 } from '@/lib/fmt';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { allocateInvoiceNumber } from '@/server/invoicing/number';
 import { readModules } from '@/server/settings/modules';
 import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
+import {
+  buildTimeBillingPositions,
+  claimTimeEntriesForInvoice,
+  validateTimeBillingTax,
+} from '@/server/invoicing/time-billing';
 
 // iter85 (GoB): kein number-Feld — automatische lückenlose Vergabe aus dem
 // Nummernkreis (siehe invoices/actions.ts).
@@ -17,8 +22,17 @@ const CreateSchema = z.object({
   subject: z.string().min(1).max(500),
   issueDate: z.string().date(),
   dueDate: z.string().date(),
-  vatRate: z.coerce.number().min(0).max(99).default(19),
-  format: z.enum(['PDF', 'XRECHNUNG', 'ZUGFERD']).default('XRECHNUNG'),
+  vatRate: z.coerce
+    .number()
+    .refine((rate) => [0, 7, 19].includes(rate), {
+      message: 'Ungültiger USt-Satz (zulässig: 0 %, 7 %, 19 %).',
+    })
+    .default(19),
+  vatExemptionReason: z.string().max(500).optional().or(z.literal('')),
+  reverseCharge: z.boolean().optional().default(false),
+  // Ein In-App-PDF ohne Generat/Dokument ist nicht versendbar. PDF-Belege
+  // gehören ausschließlich in den EXTERNAL-Upload-Pfad.
+  format: z.enum(['XRECHNUNG', 'ZUGFERD']).default('XRECHNUNG'),
   hourlyRate: z.coerce.number().min(0).max(10000).default(120),
   // Welche Strategie:
   //   - 'one-line': eine Position „Beratungsstunden Q3 2025" mit Σ Minuten
@@ -35,7 +49,9 @@ export interface CreateResult {
   invoiceId?: string;
 }
 
-export async function createInvoiceFromTimeEntriesAction(input: z.infer<typeof CreateSchema>): Promise<CreateResult> {
+export async function createInvoiceFromTimeEntriesAction(
+  input: z.infer<typeof CreateSchema>,
+): Promise<CreateResult> {
   // iter87: Stundenabrechnung legt Rechnungs-Entwürfe an → INVOICE_MANAGE.
   const g = await staffActionGuard({ requirePermission: 'INVOICE_MANAGE' });
   if (!g.ok) return g;
@@ -52,11 +68,29 @@ export async function createInvoiceFromTimeEntriesAction(input: z.infer<typeof C
     return { ok: false, error: parsed.error.issues.map((i) => i.message).join('; ') };
   }
   const data = parsed.data;
+  const exemptionReason = data.vatExemptionReason || null;
+  const taxError = validateTimeBillingTax({
+    vatRate: data.vatRate,
+    reverseCharge: data.reverseCharge,
+    vatExemptionReason: exemptionReason,
+  });
+  if (taxError) return { ok: false, error: taxError };
 
   let invoiceId: string;
   try {
     invoiceId = await withTenantContext(ctx, async (tx) => {
       await assertClientAccessTx(tx, session, data.clientId);
+      if (data.reverseCharge) {
+        const client = await tx.client.findUnique({
+          where: { id: data.clientId },
+          select: { vatId: true },
+        });
+        if (!client?.vatId) {
+          throw new ActionError(
+            'Reverse-Charge (§ 13b UStG) erfordert eine hinterlegte USt-IdNr des Mandanten.',
+          );
+        }
+      }
       // 1. Sammle abrechenbare, nicht abgerechnete TimeEntries
       const where = {
         tenantId,
@@ -98,47 +132,15 @@ export async function createInvoiceFromTimeEntriesAction(input: z.infer<typeof C
       const vatAmount = round2((totalNet * data.vatRate) / 100);
       const totalGross = round2(totalNet + vatAmount);
 
-      // 3. Positionen je nach Strategie
-      // iter86: Stundenabrechnung ist einheitlich besteuert — der eine
-      // Formular-Satz gilt für alle erzeugten Positionen.
-      let positions: Array<{
-        position: number;
-        description: string;
-        quantity: number;
-        unit: string;
-        unitPrice: number;
-        netAmount: number;
-        vatRate: number;
-      }>;
-
-      if (data.strategy === 'one-line') {
-        // P3-20: EIN Pauschal-Posten mit quantity=1, damit
-        // quantity × unitPrice === netAmount gilt (EN-16931 BR-CO-10 / PEPPOL
-        // R120). Die Stundensumme steht in der Beschreibung — sonst wich
-        // totalHours × round2(Ø-Satz) an Rundungsgrenzen vom Netto ab.
-        const totalHours = round2(entriesWithMinutes.reduce((s, x) => s + x.hours, 0));
-        positions = [
-          {
-            position: 1,
-            description: `${data.subject} (${totalHours} Std.)`,
-            quantity: 1,
-            unit: 'pauschal',
-            unitPrice: totalNet,
-            netAmount: totalNet,
-            vatRate: data.vatRate,
-          },
-        ];
-      } else {
-        positions = entriesWithMinutes.map((x, i) => ({
-          position: i + 1,
-          description: `${formatDateShort(x.entry.startedAt)} — ${x.entry.description}`,
-          quantity: round2(x.hours),
-          unit: 'Stunde',
-          unitPrice: x.rate,
-          netAmount: x.net,
-          vatRate: data.vatRate,
-        }));
-      }
+      // 3. EN-16931-rechenfeste Positionen. Auch die Detailstrategie nutzt
+      // Menge 1 und schreibt Dauer/Satz in den Text, weil Decimal(10,2) z. B.
+      // 10 Minuten nicht als exakte Stundenmenge darstellen kann.
+      const positions = buildTimeBillingPositions(
+        entriesWithMinutes,
+        data.strategy,
+        data.subject,
+        data.vatRate,
+      );
 
       // 4. Rechnung anlegen — Nummer lückenlos in derselben Tx vergeben
       const number = await allocateInvoiceNumber(tx, tenantId, new Date(data.issueDate));
@@ -152,6 +154,8 @@ export async function createInvoiceFromTimeEntriesAction(input: z.infer<typeof C
           dueDate: new Date(data.dueDate),
           servicePeriodStart,
           servicePeriodEnd,
+          vatExemptionReason: exemptionReason,
+          reverseCharge: data.reverseCharge,
           status: 'DRAFT',
           format: data.format,
           netAmount: totalNet,
@@ -164,11 +168,19 @@ export async function createInvoiceFromTimeEntriesAction(input: z.infer<typeof C
         },
       });
 
-      // 5. TimeEntries verlinken
-      await tx.timeEntry.updateMany({
-        where: { id: { in: entries.map((e) => e.id) } },
-        data: { invoiceId: inv.id },
-      });
+      // 5. TimeEntries atomar beanspruchen. Ein paralleler Lauf darf den zuvor
+      // gelesenen invoiceId:null-Zustand nicht überschreiben; bei Teil-/Nullclaim
+      // rollt die gesamte Tx inklusive Rechnung und Nummernvergabe zurück.
+      const claimed = await claimTimeEntriesForInvoice(
+        tx,
+        entries.map((entry) => entry.id),
+        inv.id,
+      );
+      if (!claimed) {
+        throw new ActionError(
+          'Mindestens ein Zeiteintrag wurde zwischenzeitlich bereits abgerechnet. Bitte neu laden.',
+        );
+      }
 
       await evidenceService.record(tx, {
         tenantId,
@@ -204,8 +216,4 @@ export async function createInvoiceFromTimeEntriesAction(input: z.infer<typeof C
   revalidatePath(`/staff/clients/${data.clientId}`);
   revalidatePath('/staff/invoices');
   return { ok: true, invoiceId };
-}
-
-function formatDateShort(d: Date): string {
-  return fmtDateShort(d);
 }

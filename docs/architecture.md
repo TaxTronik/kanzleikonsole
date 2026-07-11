@@ -74,18 +74,18 @@ Siehe README.md für die vollständige Folder-Übersicht.
 
 ## Compliance-Mapping
 
-| Anforderung | Wo umgesetzt |
-|---|---|
-| § 203 StGB Steuergeheimnis | RLS-Policies in `packages/db/prisma/migrations/.../migration.sql`; `withTenantContext` in `packages/db/src/tenant-context.ts` |
-| GoBD Unveränderlichkeit | SeaweedFS Object-Lock (Bucket `gobd`, COMPLIANCE-Mode, 10 Jahre; Bucket `gwg`, GOVERNANCE-Mode, 5 Jahre — § 8 Abs. 4 GwG); `document_version.immutable` mit DB-Trigger; `audit_log` insert-only mit Trigger |
-| GoBD Nachvollziehbarkeit | Hash-verkettetes `audit_log` (`packages/evidence/src/service.ts`) |
-| GoBD Aufbewahrungsfrist | `document.retention_until` plus Object-Lock-Retention pro Schutzstufe |
-| DSGVO Datensparsamkeit | RLS verhindert "Vergessens-Bug"; explizites Audit nur compliance-relevanter Operationen |
-| GwG Identifizierungspflicht | `gwg_check`-Tabelle + GwG-Onboarding-Wizard (Selbst-Identifizierung des Mandanten); Transparenzregister-Auszug als Dokumenttyp `TRANSPARENZREGISTER_AUSZUG` manuell ablegbar (kein Excel-Import, kein Registerabruf) |
-| GwG Risikoanalyse | `gwg_risk_score`, regelbasierte Engine, Gewichtungen pro Kanzlei |
-| GwG Vorgangs-Block | DB-Trigger auf `client.allow_active = false` plus App-Guard |
-| GwG Vernichtungspflicht (§ 8 Abs. 4) | Review-Queue `/staff/admin/gwg-retention` für Datei-Belege + DB-Aufzeichnungen, tägliche `GWG_DELETION_DUE`-Notification (siehe `docs/compliance/gwg.md`) |
-| eIDAS Vollmachten | Magic-Link + E-Mail-OTP (fortgeschrittene Signatur, ADR-0009); ein `EidasSignaturePort` für QES ist geplant, nicht implementiert |
+| Anforderung                          | Wo umgesetzt                                                                                                                                                                                                                     |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| § 203 StGB Steuergeheimnis           | RLS-Policies in `packages/db/prisma/migrations/.../migration.sql`; `withTenantContext` in `packages/db/src/tenant-context.ts`                                                                                                    |
+| GoBD Unveränderlichkeit              | SeaweedFS Object-Lock (Bucket `gobd`, COMPLIANCE-Mode, typabhängig 6/8/10 Jahre; Bucket `gwg`, GOVERNANCE-Mode plus fachliche Retention-Queue); `document_version.immutable` mit DB-Trigger; `audit_log` insert-only mit Trigger |
+| GoBD Nachvollziehbarkeit             | Hash-verkettetes `audit_log` (`packages/evidence/src/service.ts`)                                                                                                                                                                |
+| GoBD Aufbewahrungsfrist              | `document.retention_until` plus Object-Lock-Retention pro Schutzstufe                                                                                                                                                            |
+| DSGVO Datensparsamkeit               | RLS verhindert "Vergessens-Bug"; explizites Audit nur compliance-relevanter Operationen                                                                                                                                          |
+| GwG Identifizierungspflicht          | `gwg_check`-Tabelle + GwG-Onboarding-Wizard (Selbst-Identifizierung des Mandanten); Transparenzregister-Auszug als Dokumenttyp `TRANSPARENZREGISTER_AUSZUG` manuell ablegbar (kein Excel-Import, kein Registerabruf)             |
+| GwG Risikoanalyse                    | `gwg_risk_score`, regelbasierte Engine, Gewichtungen pro Kanzlei                                                                                                                                                                 |
+| GwG Vorgangs-Block                   | DB-Trigger auf `client.allow_active = false` plus App-Guard                                                                                                                                                                      |
+| GwG Vernichtungspflicht (§ 8 Abs. 4) | Review-Queue `/staff/admin/gwg-retention` für Datei-Belege + DB-Aufzeichnungen, tägliche `GWG_DELETION_DUE`-Notification (siehe `docs/compliance/gwg.md`)                                                                        |
+| Elektronische Vollmachten            | Magic-Link + E-Mail-Code, explizite Inhaltsbestätigung und gebundener Versand-Snapshot (ADR-0009); keine Produktzusage als AES/QES, qualifizierter Anbieter nicht implementiert                                                  |
 
 ## Querverweise
 

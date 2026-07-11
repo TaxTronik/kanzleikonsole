@@ -5,10 +5,14 @@ import {
   clientAnonymizationDeadline,
   isClientAnonymizationDue,
   findDueClientAnonymizations,
+  findDuePoaSignerAnonymizations,
   CLIENT_ANONYMIZATION_YEARS,
-  GOBD_RETENTION_YEARS,
+  HAND_FILE_RETENTION_YEARS,
 } from '../client-retention';
-import { anonymizeClientSideTablesInTx } from '../anonymize-client-data';
+import {
+  anonymizeClientSideTablesInTx,
+  POA_PERSONAL_DATA_PRESENT_WHERE,
+} from '../anonymize-client-data';
 
 describe('clientAnonymizationDeadline — Art. 17 (Jahresende + längste Frist)', () => {
   it('Mandatsende 2026-03-15 → fällig ab 2037-01-01', () => {
@@ -30,8 +34,8 @@ describe('clientAnonymizationDeadline — Art. 17 (Jahresende + längste Frist)'
     );
   });
 
-  it('die längste Aufbewahrungsfrist gewinnt (GoBD 10 J. > GwG 5 J.)', () => {
-    expect(GOBD_RETENTION_YEARS).toBe(10);
+  it('die längste Aufbewahrungsfrist gewinnt (§ 66 StBerG 10 J. > GwG 5 J.)', () => {
+    expect(HAND_FILE_RETENTION_YEARS).toBe(10);
     expect(CLIENT_ANONYMIZATION_YEARS).toBe(10);
   });
 });
@@ -114,6 +118,44 @@ describe('findDueClientAnonymizations — Review-Queue (NATPERS, Fristablauf)', 
   });
 });
 
+describe('findDuePoaSignerAnonymizations — JURPERS/PERSGES-Signer', () => {
+  const NOW = new Date('2037-06-01T00:00:00Z');
+
+  it('listet nur fällige Gesellschaften mit noch vorhandenen PoA-Personendaten', async () => {
+    const mandateEndedAt = new Date('2026-06-01T00:00:00Z');
+    const findMany = vi.fn().mockResolvedValue([
+      {
+        id: 'legal-1',
+        name: 'Muster GmbH',
+        kind: 'JURPERS',
+        mandateEndedAt,
+        _count: { poas: 3 },
+      },
+    ]);
+    const tx = { client: { findMany } } as unknown as TxClient;
+
+    await expect(findDuePoaSignerAnonymizations(tx, NOW)).resolves.toEqual([
+      {
+        clientId: 'legal-1',
+        clientName: 'Muster GmbH',
+        clientKind: 'JURPERS',
+        mandateEndedAt,
+        anonymizationDeadline: new Date('2037-01-01T00:00:00.000Z'),
+        poas: 3,
+      },
+    ]);
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          kind: { in: ['JURPERS', 'PERSGES'] },
+          mandateEndedAt: { lt: new Date(Date.UTC(2027, 0, 1)) },
+          poas: { some: POA_PERSONAL_DATA_PRESENT_WHERE },
+        },
+      }),
+    );
+  });
+});
+
 describe('anonymizeClientSideTablesInTx — personentragende Nebentabellen (eine Tx)', () => {
   const CLIENT_ID = 'client-1';
   const CONTACT_IDS = ['contact-1', 'contact-2'];
@@ -142,15 +184,33 @@ describe('anonymizeClientSideTablesInTx — personentragende Nebentabellen (eine
       contactIds: CONTACT_IDS,
     });
 
-    // Vollmachten: NOT-NULL-Felder → Platzhalter, IP/UA → null; nur DB-Felder
-    // (die Dokumente unterliegen der Dokument-Retention).
+    // Vollmachten: gebundene Personen-/Inhaltskopie und Signaturmetadaten
+    // werden nach Ablauf aller Fristen redigiert; Dokumentobjekte durchlaufen
+    // vorher ihren eigenen Retentionpfad.
     expect(mocks.powerOfAttorney.updateMany).toHaveBeenCalledWith({
-      where: { clientId: CLIENT_ID },
+      where: { clientId: CLIENT_ID, AND: [POA_PERSONAL_DATA_PRESENT_WHERE] },
       data: {
+        signerContactId: null,
         signerName: 'Anonymisiert',
         signerEmail: 'anonymisiert@taxtronik.local',
+        subject: 'Anonymisiert',
+        scope: 'Anonymisiert',
+        signingTokenHash: null,
+        signingTokenExpiresAt: null,
+        signingOtpHash: null,
+        signingOtpExpiresAt: null,
+        signingOtpAttempts: 0,
+        signingOtpAttemptsTotal: 0,
+        signingContentSnapshot: null,
+        signingContentSha256: null,
+        signingDocumentVersionId: null,
+        signedAt: null,
+        signedContentSha256: null,
+        signedDocumentVersionId: null,
         signedByIp: null,
         signedByUserAgent: null,
+        documentId: null,
+        revokedReason: null,
       },
     });
     // GwG-Invites zwecklos nach Fristablauf → löschen.

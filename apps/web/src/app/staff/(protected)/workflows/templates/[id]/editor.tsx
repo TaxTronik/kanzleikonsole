@@ -30,11 +30,28 @@ interface StepDraft {
   n8nEvent: string;
 }
 
-interface Skill { id: string; label: string; }
-interface FormTpl { id: string; name: string; }
-interface NamedTpl { id: string; name: string; category: string | null; }
+interface Skill {
+  id: string;
+  label: string;
+}
+interface FormTpl {
+  id: string;
+  name: string;
+}
+interface NamedTpl {
+  id: string;
+  name: string;
+  category: string | null;
+}
 
-const ALL_KINDS: StepKind[] = ['TASK', 'DOCUMENT_UPLOAD', 'CLIENT_REQUEST', 'CLIENT_FORM', 'CLIENT_EMAIL', 'N8N_TRIGGER'];
+const ALL_KINDS: StepKind[] = [
+  'TASK',
+  'DOCUMENT_UPLOAD',
+  'CLIENT_REQUEST',
+  'CLIENT_FORM',
+  'CLIENT_EMAIL',
+  'N8N_TRIGGER',
+];
 
 function emptyStep(): StepDraft {
   return {
@@ -80,13 +97,27 @@ export function TemplateEditor({
     setSteps((s) => s.map((step, idx) => (idx === i ? { ...step, ...patch } : step)));
   }
   function setConfig(i: number, key: string, value: unknown) {
-    setSteps((s) => s.map((step, idx) => (idx === i ? { ...step, config: { ...step.config, [key]: value } } : step)));
+    setSteps((s) =>
+      s.map((step, idx) =>
+        idx === i ? { ...step, config: { ...step.config, [key]: value } } : step,
+      ),
+    );
   }
   function changeKind(i: number, kind: StepKind) {
-    setSteps((s) => s.map((step, idx) => (idx === i ? { ...step, kind, config: defaultConfigFor(kind) as Record<string, unknown> } : step)));
+    setSteps((s) =>
+      s.map((step, idx) =>
+        idx === i
+          ? { ...step, kind, config: defaultConfigFor(kind) as Record<string, unknown> }
+          : step,
+      ),
+    );
   }
-  function add() { setSteps((s) => [...s, emptyStep()]); }
-  function remove(i: number) { setSteps((s) => s.filter((_, idx) => idx !== i)); }
+  function add() {
+    setSteps((s) => [...s, emptyStep()]);
+  }
+  function remove(i: number) {
+    setSteps((s) => s.filter((_, idx) => idx !== i));
+  }
   function reorder(from: number, to: number) {
     setSteps((s) => {
       const next = [...s];
@@ -119,7 +150,10 @@ export function TemplateEditor({
           n8nEvent: s.n8nEvent.trim() || null,
         })),
       });
-      if (!r.ok) { setError(r.error ?? 'Fehler beim Speichern.'); return; }
+      if (!r.ok) {
+        setError(r.error ?? 'Fehler beim Speichern.');
+        return;
+      }
       setSavedAt(Date.now());
     });
   }
@@ -128,7 +162,9 @@ export function TemplateEditor({
     <div className="space-y-6">
       <div className="card p-6 space-y-4">
         <div>
-          <label className="label" htmlFor="tpl-desc">Beschreibung</label>
+          <label className="label" htmlFor="tpl-desc">
+            Beschreibung
+          </label>
           <textarea
             id="tpl-desc"
             value={description}
@@ -139,7 +175,9 @@ export function TemplateEditor({
           />
         </div>
         <div>
-          <label className="label" htmlFor="tpl-default-skill">Standard-Tätigkeitsbereich</label>
+          <label className="label" htmlFor="tpl-default-skill">
+            Standard-Tätigkeitsbereich
+          </label>
           <select
             id="tpl-default-skill"
             value={defaultSkillId}
@@ -148,7 +186,9 @@ export function TemplateEditor({
           >
             <option value="">— keiner —</option>
             {skills.map((s) => (
-              <option key={s.id} value={s.id}>{s.label}</option>
+              <option key={s.id} value={s.id}>
+                {s.label}
+              </option>
             ))}
           </select>
         </div>
@@ -196,10 +236,14 @@ export function TemplateEditor({
                         className="input"
                       >
                         {ALL_KINDS.map((k) => (
-                          <option key={k} value={k}>{KIND_LABELS[k]}</option>
+                          <option key={k} value={k}>
+                            {KIND_LABELS[k]}
+                          </option>
                         ))}
                       </select>
-                      <p className="text-xs text-muted mt-1 leading-snug">{KIND_DESCRIPTIONS[s.kind]}</p>
+                      <p className="text-xs text-muted mt-1 leading-snug">
+                        {KIND_DESCRIPTIONS[s.kind]}
+                      </p>
                     </div>
                     <div>
                       <label className="block text-xs text-muted mb-1">Empfohlene Tätigkeit</label>
@@ -210,7 +254,9 @@ export function TemplateEditor({
                       >
                         <option value="">— keine —</option>
                         {skills.map((sk) => (
-                          <option key={sk.id} value={sk.id}>{sk.label}</option>
+                          <option key={sk.id} value={sk.id}>
+                            {sk.label}
+                          </option>
                         ))}
                       </select>
                     </div>
@@ -228,7 +274,9 @@ export function TemplateEditor({
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs text-muted mb-1">Fällig nach (Tage ab Start)</label>
+                      <label className="block text-xs text-muted mb-1">
+                        Fällig nach (Tage ab Start)
+                      </label>
                       <input
                         type="number"
                         min={0}
@@ -237,7 +285,8 @@ export function TemplateEditor({
                         value={s.dueAfterDays ?? ''}
                         onChange={(e) =>
                           update(i, {
-                            dueAfterDays: e.target.value === '' ? null : Math.max(0, Number(e.target.value)),
+                            dueAfterDays:
+                              e.target.value === '' ? null : Math.max(0, Number(e.target.value)),
                           })
                         }
                         className="input"
@@ -256,7 +305,8 @@ export function TemplateEditor({
                         className="input"
                       />
                       <p className="text-[10px] text-disabled mt-1">
-                        Wird beim Ausführen als <code>workflow.step.&lt;event&gt;</code> an n8n geschickt.
+                        Wird beim Ausführen als <code>workflow.step.&lt;event&gt;</code> an n8n
+                        geschickt.
                       </p>
                     </div>
                   </div>
@@ -328,11 +378,14 @@ function KindConfigFields({
             className="input"
           >
             {DOCUMENT_CLASSIFICATIONS.map((c) => (
-              <option key={c} value={c}>{c}</option>
+              <option key={c} value={c}>
+                {c}
+              </option>
             ))}
           </select>
           <p className="text-[10px] text-disabled mt-1">
-            GOBD_*-Klassen landen im Object-Lock-Bucket mit 10-Jahres-Aufbewahrung.
+            GOBD_*-Klassen landen im Object-Lock-Bucket mit typabhängiger 6-, 8- oder 10-jähriger
+            Aufbewahrung.
           </p>
         </div>
       );
@@ -354,13 +407,14 @@ function KindConfigFields({
               <option value="">— Inline-Felder verwenden —</option>
               {requestTemplates.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.category ? `[${t.category}] ` : ''}{t.name}
+                  {t.category ? `[${t.category}] ` : ''}
+                  {t.name}
                 </option>
               ))}
             </select>
             <p className="text-[10px] text-disabled mt-1">
-              Wenn eine Vorlage gewählt ist, werden Titel/Beschreibung/Priorität zur
-              Laufzeit aus der Vorlage gelesen — die Felder unten dienen nur als Fallback.
+              Wenn eine Vorlage gewählt ist, werden Titel/Beschreibung/Priorität zur Laufzeit aus
+              der Vorlage gelesen — die Felder unten dienen nur als Fallback.
             </p>
           </div>
           <input
@@ -399,7 +453,13 @@ function KindConfigFields({
               max={365}
               placeholder="Fällig nach Tagen"
               value={cfg['dueAfterDays'] != null ? String(cfg['dueAfterDays']) : ''}
-              onChange={(e) => setConfig(index, 'dueAfterDays', e.target.value === '' ? undefined : Number(e.target.value))}
+              onChange={(e) =>
+                setConfig(
+                  index,
+                  'dueAfterDays',
+                  e.target.value === '' ? undefined : Number(e.target.value),
+                )
+              }
               className="input text-sm"
               disabled={usingTemplate}
             />
@@ -418,7 +478,9 @@ function KindConfigFields({
           >
             <option value="">— Formular auswählen —</option>
             {formTemplates.map((f) => (
-              <option key={f.id} value={f.id}>{f.name}</option>
+              <option key={f.id} value={f.id}>
+                {f.name}
+              </option>
             ))}
           </select>
           {formTemplates.length === 0 && (
@@ -454,13 +516,14 @@ function KindConfigFields({
               <option value="">— Inline-Text verwenden —</option>
               {emailTemplates.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.category ? `[${t.category}] ` : ''}{t.name}
+                  {t.category ? `[${t.category}] ` : ''}
+                  {t.name}
                 </option>
               ))}
             </select>
             <p className="text-[10px] text-disabled mt-1">
-              Vorlagen werden zur Laufzeit gelesen — Änderungen in der Vorlage gelten sofort
-              für alle Workflows. Verwalten unter <em>Admin → E-Mail-Vorlagen</em>.
+              Vorlagen werden zur Laufzeit gelesen — Änderungen in der Vorlage gelten sofort für
+              alle Workflows. Verwalten unter <em>Admin → E-Mail-Vorlagen</em>.
             </p>
           </div>
           <input
@@ -489,8 +552,8 @@ function KindConfigFields({
       return (
         <div className="rounded-md border border-purple-200 dark:border-purple-900/40 bg-purple-50/30 dark:bg-purple-900/10 p-3 text-xs text-purple-900 dark:text-purple-200">
           Dieser Schritt feuert ausschließlich den n8n-Event aus dem Feld unten. Setzen Sie
-          „n8n-Event" auf einen Namen, der zu einem Webhook-Knoten in Ihrer n8n-Instanz passt.
-          Tipp: derselbe Event kann auch zusätzlich bei anderen Step-Typen gefeuert werden.
+          „n8n-Event" auf einen Namen, der zu einem Webhook-Knoten in Ihrer n8n-Instanz passt. Tipp:
+          derselbe Event kann auch zusätzlich bei anderen Step-Typen gefeuert werden.
         </div>
       );
   }

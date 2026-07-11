@@ -13,22 +13,22 @@
  * am LETZTEN Tag des Zielmonats (→ 28./29.02.).
  *
  * Native `Date.setMonth()` rollt beim Überlauf stattdessen in den Folgemonat
- * (31.01. → 03.03.) und täuscht so mehrere Tage zu viel Frist vor. Uhrzeit und
- * lokale Zeitzone des Ausgangsdatums bleiben erhalten.
+ * (31.01. → 03.03.) und täuscht so mehrere Tage zu viel Frist vor. Die
+ * Berechnung nutzt UTC-Felder, weil Eingangs- und Fristtage als `@db.Date`
+ * (UTC-Mitternacht) kodiert sind und nicht von der Prozess-Zeitzone abhängen
+ * dürfen.
  */
 export function addCalendarMonths(from: Date, months: number): Date {
-  const day = from.getDate();
+  const day = from.getUTCDate();
   const target = new Date(from);
   // Tag zuerst auf den 1. setzen, dann Monat verschieben → kein Überlauf.
-  target.setDate(1);
-  target.setMonth(target.getMonth() + months);
+  target.setUTCDate(1);
+  target.setUTCMonth(target.getUTCMonth() + months);
   // Letzter Tag des Zielmonats: Tag 0 des Folgemonats.
   const lastDayOfTargetMonth = new Date(
-    target.getFullYear(),
-    target.getMonth() + 1,
-    0,
-  ).getDate();
-  target.setDate(Math.min(day, lastDayOfTargetMonth));
+    Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  target.setUTCDate(Math.min(day, lastDayOfTargetMonth));
   return target;
 }
 

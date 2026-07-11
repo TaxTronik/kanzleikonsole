@@ -1,6 +1,6 @@
 packages:
-  - "apps/*"
-  - "packages/*"
+  - 'apps/*'
+  - 'packages/*'
 
 # pnpm 11 reads project settings from pnpm-workspace.yaml instead of
 # package.json#pnpm or non-auth .npmrc entries.
@@ -47,29 +47,33 @@ allowBuilds:
 
 peerDependencyRules:
   allowedVersions:
-    eslint: "10"
-    nodemailer: "9"
+    eslint: '10'
+    nodemailer: '9'
 
 overrides:
-  "@hono/node-server": "^1.19.13"
-  hono: "4.12.25"
-  ioredis: "^5.11.0"
-  postcss: "^8.5.15"
+  '@hono/node-server': '^1.19.13'
+  hono: '4.12.25'
+  ioredis: '^5.11.0'
+  postcss: '^8.5.15'
   # esbuild 0.28.0 is vulnerable (GHSA-gv7w-rqvm-qjhr); force the patched release.
-  esbuild: "0.28.1"
+  esbuild: '0.28.1'
   # vite <=8.0.15 is vulnerable (GHSA-fx2h-pf6j-xcff, GHSA-v6wh-96g9-6wx3).
-  vite: "8.0.16"
+  vite: '8.0.16'
   # tmp 0.2.6 is vulnerable (GHSA-7c78-jf6q-g5cm); force the patched release.
-  tmp: "0.2.7"
+  tmp: '0.2.7'
   # js-yaml 4.1.1 is vulnerable (GHSA-h67p-54hq-rp68); force the patched release.
-  js-yaml: "4.2.0"
-  uuid: "^11.1.1"
+  js-yaml: '4.2.0'
+  uuid: '^11.1.1'
   # node-tar: nur transitiv via unpdf>canvas>@mapbox/node-pre-gyp (Install-Tool,
   # Build ohnehin geblockt). 6.x ist EOL/unpatched — Fix nur im 7.5.x-Zweig
   # (GHSA-9ppj-qmqm-q256 u. a.). Force auf den gepatchten Zweig.
-  tar: "7.5.16"
+  tar: '7.5.16'
 
 # pnpm 11: Workspace-Pakete in dependents per echtes Link-Hardlink statt
 # Symlink injizieren. Der Wert steht im Lockfile; muss hier gespiegelt werden,
 # sonst meldet `pnpm install --frozen-lockfile` einen Config-Mismatch.
 injectWorkspacePackages: true
+# Injected workspace packages are physical snapshots. Refresh dependants after
+# a package build so TypeScript/Next never consume stale source copies.
+syncInjectedDepsAfterScripts:
+  - build

@@ -3,8 +3,11 @@ import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { fmtDateShort } from '@/lib/fmt';
-import { findDueClientAnonymizations } from '@/server/dsgvo/client-retention';
-import { ClientAnonymizeButton } from './anonymize-button';
+import {
+  findDueClientAnonymizations,
+  findDuePoaSignerAnonymizations,
+} from '@/server/dsgvo/client-retention';
+import { ClientAnonymizeButton, PoaSignerAnonymizeButton } from './anonymize-button';
 
 export default async function DsgvoRetentionPage() {
   const session = await staffAuth();
@@ -12,9 +15,9 @@ export default async function DsgvoRetentionPage() {
   if (!isStaffAdmin(session)) redirect('/staff/dashboard');
   const { tenantId, staffId } = session.user;
 
-  const due = await withTenantContext(
+  const [due, duePoaSigners] = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
-    (tx) => findDueClientAnonymizations(tx),
+    (tx) => Promise.all([findDueClientAnonymizations(tx), findDuePoaSignerAnonymizations(tx)]),
   );
 
   return (
@@ -22,14 +25,13 @@ export default async function DsgvoRetentionPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-primary mb-1">DSGVO-Anonymisierung (Mandanten)</h1>
         <p className="text-muted text-sm max-w-3xl">
-          Beendete Mandate natürlicher Personen, deren gesetzliche Aufbewahrungsfristen
-          vollständig abgelaufen sind (längste Frist: GoBD 10 Jahre nach § 147 AO ab
-          Schluss des Kalenderjahres des Mandatsendes; GwG 5 Jahre). Danach entfällt
-          die Rechtsgrundlage der Speicherung (DSGVO Art. 17, Art. 5 Abs. 1 lit. e) —
-          Name, Adresse und Custom-Felder werden entfernt, verknüpfte Kontakte
-          mit-anonymisiert. Ein Skelett-Datensatz mit Vernichtungsvermerk bleibt
-          erhalten. Die Anonymisierung bestätigt der Berufsträger manuell und ist
-          unwiderruflich.
+          Beendete Mandate natürlicher Personen, deren gesetzliche Aufbewahrungsfristen vollständig
+          abgelaufen sind (regelmäßig längste Frist: Handakte zehn Jahre nach § 66 StBerG ab Schluss
+          des Mandatsende-Jahres; daneben dokumentartabhängige 6/8/10-Jahres- und GwG-Fristen).
+          Danach entfällt die Rechtsgrundlage der Speicherung (DSGVO Art. 17, Art. 5 Abs. 1 lit. e)
+          — Name, Adresse und Custom-Felder werden entfernt, verknüpfte Kontakte mit-anonymisiert.
+          Ein Skelett-Datensatz mit Vernichtungsvermerk bleibt erhalten. Die Anonymisierung
+          bestätigt der Berufsträger manuell und ist unwiderruflich.
         </p>
       </div>
 
@@ -65,6 +67,53 @@ export default async function DsgvoRetentionPage() {
                           ? `Erst ${item.openGwgItems} GwG-Eintr${item.openGwgItems === 1 ? 'ag' : 'äge'} vernichten (GwG-Pflichtlöschung)`
                           : undefined
                       }
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="mt-8 mb-3">
+        <h2 className="text-lg font-semibold text-primary">PoA-Unterzeichner von Gesellschaften</h2>
+        <p className="text-muted text-sm max-w-3xl">
+          Bei JURPERS und PERSGES bleibt der Mandant selbst erhalten. Personenbezogene Daten
+          natürlicher Vollmachts-Unterzeichner werden nach Ablauf derselben längsten
+          Aufbewahrungsfrist separat redigiert; der Vorgang wird revisionsfest protokolliert.
+        </p>
+      </div>
+      <div className="card overflow-hidden">
+        {duePoaSigners.length === 0 ? (
+          <div className="px-6 py-12 text-center text-muted text-sm">
+            Aktuell keine redaktionsreifen PoA-Unterzeichnerdaten.
+          </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left text-muted">
+                <th className="px-4 py-3 font-medium">Mandant</th>
+                <th className="px-4 py-3 font-medium">Art</th>
+                <th className="px-4 py-3 font-medium">Vollmachten</th>
+                <th className="px-4 py-3 font-medium">Mandatsende</th>
+                <th className="px-4 py-3 font-medium">Frist abgelaufen</th>
+                <th className="px-4 py-3"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {duePoaSigners.map((item) => (
+                <tr key={item.clientId} className="border-b last:border-0">
+                  <td className="px-4 py-3">{item.clientName}</td>
+                  <td className="px-4 py-3">{item.clientKind}</td>
+                  <td className="px-4 py-3">{item.poas}</td>
+                  <td className="px-4 py-3">{fmtDateShort(item.mandateEndedAt)}</td>
+                  <td className="px-4 py-3">{fmtDateShort(item.anonymizationDeadline)}</td>
+                  <td className="px-4 py-3 text-right">
+                    <PoaSignerAnonymizeButton
+                      clientId={item.clientId}
+                      label={item.clientName}
+                      poas={item.poas}
                     />
                   </td>
                 </tr>

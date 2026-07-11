@@ -5,8 +5,14 @@ import { useRouter } from 'next/navigation';
 import { Upload, FileText, Send } from 'lucide-react';
 import { uploadExternalInvoiceAction } from '../actions';
 
-interface ClientOption { id: string; name: string; }
-interface CategoryOption { id: string; name: string; }
+interface ClientOption {
+  id: string;
+  name: string;
+}
+interface CategoryOption {
+  id: string;
+  name: string;
+}
 
 export function ExternalInvoiceForm({
   clients,
@@ -75,20 +81,28 @@ export function ExternalInvoiceForm({
     <form onSubmit={submit} className="card p-6 space-y-4">
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="label" htmlFor="clientId">Mandant <span className="text-red-600">*</span></label>
+          <label className="label" htmlFor="clientId">
+            Mandant <span className="text-red-600">*</span>
+          </label>
           <select id="clientId" name="clientId" required className="input">
             <option value="">— wählen —</option>
             {clients.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
             ))}
           </select>
         </div>
         <div>
-          <label className="label" htmlFor="categoryId">Rechnungstyp</label>
+          <label className="label" htmlFor="categoryId">
+            Rechnungstyp
+          </label>
           <select id="categoryId" name="categoryId" className="input" defaultValue="">
             <option value="">— ohne Typ —</option>
             {categories.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
             ))}
           </select>
         </div>
@@ -96,36 +110,69 @@ export function ExternalInvoiceForm({
 
       <div className="grid grid-cols-3 gap-4">
         <div>
-          <label className="label" htmlFor="number">Rechnungsnummer <span className="text-red-600">*</span></label>
+          <label className="label" htmlFor="number">
+            Rechnungsnummer <span className="text-red-600">*</span>
+          </label>
           {/* EXTERNAL: Nummer kommt aus dem Fremdsystem (kein Vorschlag —
               der interne Nummernkreis gilt nur für In-App-Rechnungen). */}
           <input
-            id="number" name="number" type="text" required maxLength={50}
+            id="number"
+            name="number"
+            type="text"
+            required
+            maxLength={50}
             placeholder="Nummer aus der Rechnungssoftware"
             className="input font-mono"
           />
         </div>
         <div>
-          <label className="label" htmlFor="issueDate">Rechnungsdatum <span className="text-red-600">*</span></label>
-          <input id="issueDate" name="issueDate" type="date" required defaultValue={todayIso} className="input" />
+          <label className="label" htmlFor="issueDate">
+            Rechnungsdatum <span className="text-red-600">*</span>
+          </label>
+          <input
+            id="issueDate"
+            name="issueDate"
+            type="date"
+            required
+            defaultValue={todayIso}
+            className="input"
+          />
         </div>
         <div>
-          <label className="label" htmlFor="dueDate">Fällig am <span className="text-red-600">*</span></label>
-          <input id="dueDate" name="dueDate" type="date" required defaultValue={dueIso} className="input" />
+          <label className="label" htmlFor="dueDate">
+            Fällig am <span className="text-red-600">*</span>
+          </label>
+          <input
+            id="dueDate"
+            name="dueDate"
+            type="date"
+            required
+            defaultValue={dueIso}
+            className="input"
+          />
         </div>
       </div>
 
       <div className="grid grid-cols-4 gap-4">
         <div>
-          <label className="label" htmlFor="totalAmount">Betrag (Brutto, €) <span className="text-red-600">*</span></label>
+          <label className="label" htmlFor="totalAmount">
+            Betrag (Brutto, €) <span className="text-red-600">*</span>
+          </label>
           <input
-            id="totalAmount" name="totalAmount" type="number" step="0.01" min="0" required
+            id="totalAmount"
+            name="totalAmount"
+            type="number"
+            step="0.01"
+            min="0"
+            required
             className="input font-mono"
             placeholder="0,00"
           />
         </div>
         <div>
-          <label className="label" htmlFor="vatRatePct">USt-Satz <span className="text-red-600">*</span></label>
+          <label className="label" htmlFor="vatRatePct">
+            USt-Satz <span className="text-red-600">*</span>
+          </label>
           <select id="vatRatePct" name="vatRatePct" required defaultValue="19" className="input">
             <option value="19">19 %</option>
             <option value="7">7 %</option>
@@ -133,8 +180,15 @@ export function ExternalInvoiceForm({
           </select>
         </div>
         <div className="col-span-2">
-          <label className="label" htmlFor="subject">Betreff <span className="text-red-600">*</span></label>
-          <input id="subject" name="subject" type="text" required maxLength={200}
+          <label className="label" htmlFor="subject">
+            Betreff <span className="text-red-600">*</span>
+          </label>
+          <input
+            id="subject"
+            name="subject"
+            type="text"
+            required
+            maxLength={200}
             className="input"
             placeholder='z. B. „Honorar März 2026"'
           />
@@ -142,10 +196,15 @@ export function ExternalInvoiceForm({
       </div>
 
       <div>
-        <label className="label" htmlFor="pdf">PDF-Datei <span className="text-red-600">*</span></label>
+        <label className="label" htmlFor="pdf">
+          PDF-Datei <span className="text-red-600">*</span>
+        </label>
         <input
           ref={fileInputRef}
-          id="pdf" name="pdf" type="file" accept="application/pdf"
+          id="pdf"
+          name="pdf"
+          type="file"
+          accept="application/pdf"
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           className="input"
         />
@@ -158,23 +217,27 @@ export function ExternalInvoiceForm({
       </div>
 
       <div>
-        <label className="label" htmlFor="notes">Interne Notiz (optional)</label>
+        <label className="label" htmlFor="notes">
+          Interne Notiz (optional)
+        </label>
         <textarea id="notes" name="notes" rows={2} maxLength={1000} className="input" />
       </div>
 
       <p className="text-xs text-muted">
-        Die PDF wird mit Object-Lock COMPLIANCE (10 Jahre, GoBD) abgelegt und
-        landet im Mandanten-Portal unter „Rechnungen". Zusätzlich erhält der
-        Mandant eine Mail mit der PDF als Anhang — der Begleittext kommt aus
-        der dem Rechnungstyp zugeordneten Mail-Vorlage (oder dem Standard).
+        Die PDF wird mit Object-Lock COMPLIANCE (8 Jahre ab dem einschlägigen Jahresende, GoBD)
+        abgelegt und landet im Mandanten-Portal unter „Rechnungen". Zusätzlich erhält der Mandant
+        eine Mail mit der PDF als Anhang — der Begleittext kommt aus der dem Rechnungstyp
+        zugeordneten Mail-Vorlage (oder dem Standard).
       </p>
 
-      {error && (
-        <div className="alert-error-sm">{error}</div>
-      )}
+      {error && <div className="alert-error-sm">{error}</div>}
 
       <div className="flex justify-end gap-2 pt-2">
-        <button type="submit" disabled={isPending || !file} className="btn-primary inline-flex items-center gap-1.5">
+        <button
+          type="submit"
+          disabled={isPending || !file}
+          className="btn-primary inline-flex items-center gap-1.5"
+        >
           {isPending ? (
             <>
               <Upload className="h-4 w-4 animate-pulse" />

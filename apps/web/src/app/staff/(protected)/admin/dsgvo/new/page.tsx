@@ -23,7 +23,9 @@ export default async function NewDsgvoRequestPage() {
 
       <form action={createDsgvoRequestAction} className="card p-6 space-y-4">
         <div>
-          <label className="label" htmlFor="type">Typ der Anfrage</label>
+          <label className="label" htmlFor="type">
+            Typ der Anfrage
+          </label>
           <select id="type" name="type" className="input" required defaultValue="ACCESS">
             <option value="ACCESS">Auskunft (Art. 15)</option>
             <option value="RECTIFICATION">Berichtigung (Art. 16)</option>
@@ -35,8 +37,16 @@ export default async function NewDsgvoRequestPage() {
         </div>
 
         <div>
-          <label className="label" htmlFor="subjectType">Betroffenen-Typ</label>
-          <select id="subjectType" name="subjectType" className="input" required defaultValue="CLIENT_CONTACT">
+          <label className="label" htmlFor="subjectType">
+            Betroffenen-Typ
+          </label>
+          <select
+            id="subjectType"
+            name="subjectType"
+            className="input"
+            required
+            defaultValue="CLIENT_CONTACT"
+          >
             <option value="CLIENT_CONTACT">Mandanten-Ansprechpartner</option>
             <option value="STAFF_USER">Mitarbeiter</option>
             <option value="CLIENT">Mandant (Firma)</option>
@@ -45,7 +55,9 @@ export default async function NewDsgvoRequestPage() {
         </div>
 
         <div>
-          <label className="label" htmlFor="subjectName">Name der betroffenen Person</label>
+          <label className="label" htmlFor="subjectName">
+            Name der betroffenen Person
+          </label>
           <input
             id="subjectName"
             name="subjectName"
@@ -57,7 +69,9 @@ export default async function NewDsgvoRequestPage() {
         </div>
 
         <div>
-          <label className="label" htmlFor="subjectEmail">E-Mail-Adresse</label>
+          <label className="label" htmlFor="subjectEmail">
+            E-Mail-Adresse
+          </label>
           <input
             id="subjectEmail"
             name="subjectEmail"
@@ -69,7 +83,9 @@ export default async function NewDsgvoRequestPage() {
         </div>
 
         <div>
-          <label className="label" htmlFor="subjectRefId">Referenz-ID (optional, falls in System bekannt)</label>
+          <label className="label" htmlFor="subjectRefId">
+            Referenz-ID (optional, falls in System bekannt)
+          </label>
           <input
             id="subjectRefId"
             name="subjectRefId"
@@ -80,7 +96,9 @@ export default async function NewDsgvoRequestPage() {
         </div>
 
         <div>
-          <label className="label" htmlFor="description">Beschreibung der Anfrage</label>
+          <label className="label" htmlFor="description">
+            Beschreibung der Anfrage
+          </label>
           <textarea
             id="description"
             name="description"
@@ -93,12 +111,25 @@ export default async function NewDsgvoRequestPage() {
           />
         </div>
 
-        <div className="text-xs text-muted bg-gray-50 rounded-md p-3">
-          <strong>Frist:</strong> Antwort innerhalb 1 Monat (Art. 12 DSGVO),
-          verlängerbar auf 3 Monate bei komplexen Anfragen (mit Begründung).
+        <div>
+          <label className="label" htmlFor="receivedAt">
+            Tatsächlich eingegangen am
+          </label>
+          <input id="receivedAt" name="receivedAt" type="date" className="input" required />
+          <p className="text-xs text-muted mt-1">
+            Die Monatsfrist wird aus diesem Eingangstag berechnet, nicht aus dem
+            Erfassungszeitpunkt.
+          </p>
         </div>
 
-        <button type="submit" className="btn-primary">Anfrage erfassen</button>
+        <div className="text-xs text-muted bg-gray-50 rounded-md p-3">
+          <strong>Frist:</strong> Antwort innerhalb 1 Monat (Art. 12 DSGVO), verlängerbar auf 3
+          Monate bei komplexen Anfragen (mit Begründung).
+        </div>
+
+        <button type="submit" className="btn-primary">
+          Anfrage erfassen
+        </button>
       </form>
     </div>
   );

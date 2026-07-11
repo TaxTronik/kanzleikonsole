@@ -76,6 +76,72 @@ export interface XRechnungBuyer {
   reference?: string | null;
 }
 
+/**
+ * Kleinster gemeinsame DB-Shape für die Abbildung einer gespeicherten Rechnung
+ * auf das semantische XRechnungsmodell. Sowohl der direkte XML-Download als auch
+ * die ZUGFeRD-/Archiv-Erzeugung MÜSSEN diesen Mapper verwenden; andernfalls
+ * driften insbesondere Storno (BT-3/BG-3) und Reverse-Charge (Kategorie AE).
+ */
+export interface StoredInvoiceForXRechnung {
+  number: string;
+  issueDate: Date;
+  dueDate: Date;
+  subject: string;
+  notes: string | null;
+  servicePeriodStart: Date | null;
+  servicePeriodEnd: Date | null;
+  vatExemptionReason: string | null;
+  reverseCharge: boolean;
+  stornoOfId: string | null;
+  stornoOf?: { number: string } | null;
+  netAmount: number | { toString(): string };
+  vatAmount: number | { toString(): string };
+  totalAmount: number | { toString(): string };
+  positions: Array<{
+    position: number;
+    description: string;
+    quantity: number | { toString(): string };
+    unit: string;
+    unitPrice: number | { toString(): string };
+    netAmount: number | { toString(): string };
+    vatRate: number | { toString(): string };
+  }>;
+}
+
+/** Zentrale, verlustfreie DB→XRechnung-Abbildung. */
+export function toXRechnungInvoice(invoice: StoredInvoiceForXRechnung): XRechnungInvoice {
+  return {
+    number: invoice.number,
+    issueDate: invoice.issueDate,
+    dueDate: invoice.dueDate,
+    subject: invoice.subject,
+    notes: invoice.notes,
+    currency: 'EUR',
+    servicePeriodStart: invoice.servicePeriodStart,
+    servicePeriodEnd: invoice.servicePeriodEnd,
+    vatExemptionReason: invoice.vatExemptionReason,
+    reverseCharge: invoice.reverseCharge,
+    ...(invoice.stornoOfId
+      ? {
+          typeCode: '381' as const,
+          precedingInvoiceNumber: invoice.stornoOf?.number ?? null,
+        }
+      : {}),
+    netAmount: Number(invoice.netAmount.toString()),
+    vatAmount: Number(invoice.vatAmount.toString()),
+    totalAmount: Number(invoice.totalAmount.toString()),
+    positions: invoice.positions.map((position) => ({
+      position: position.position,
+      description: position.description,
+      quantity: Number(position.quantity.toString()),
+      unit: position.unit,
+      unitPrice: Number(position.unitPrice.toString()),
+      netAmount: Number(position.netAmount.toString()),
+      vatRate: Number(position.vatRate.toString()),
+    })),
+  };
+}
+
 function fmtDate(d: Date): string {
   // CII format 102 = YYYYMMDD
   const y = d.getUTCFullYear();
@@ -121,7 +187,6 @@ export function generateXRechnungCii(
   seller: SellerInfo,
   buyer: XRechnungBuyer,
 ): string {
-
   const doc = create({ version: '1.0', encoding: 'UTF-8' });
   const root = doc.ele(RSM, 'rsm:CrossIndustryInvoice', {
     'xmlns:ram': RAM,
@@ -173,10 +238,7 @@ export function generateXRechnungCii(
       .ele(RAM, 'ram:LineID')
       .txt(String(pos.position));
 
-    line
-      .ele(RAM, 'ram:SpecifiedTradeProduct')
-      .ele(RAM, 'ram:Name')
-      .txt(pos.description);
+    line.ele(RAM, 'ram:SpecifiedTradeProduct').ele(RAM, 'ram:Name').txt(pos.description);
 
     line
       .ele(RAM, 'ram:SpecifiedLineTradeAgreement')
@@ -192,7 +254,9 @@ export function generateXRechnungCii(
     const lineSettle = line.ele(RAM, 'ram:SpecifiedLineTradeSettlement');
     const lineTax = lineSettle.ele(RAM, 'ram:ApplicableTradeTax');
     lineTax.ele(RAM, 'ram:TypeCode').txt('VAT');
-    lineTax.ele(RAM, 'ram:CategoryCode').txt(vatCategory(pos.vatRate, !!invoice.vatExemptionReason, !!invoice.reverseCharge));
+    lineTax
+      .ele(RAM, 'ram:CategoryCode')
+      .txt(vatCategory(pos.vatRate, !!invoice.vatExemptionReason, !!invoice.reverseCharge));
     lineTax.ele(RAM, 'ram:RateApplicablePercent').txt(pos.vatRate.toFixed(2));
     lineSettle
       .ele(RAM, 'ram:SpecifiedTradeSettlementLineMonetarySummation')
@@ -207,9 +271,7 @@ export function generateXRechnungCii(
 
   // BT-10 Käuferreferenz (BR-DE-15 Pflicht, KoSIT 2026-06). MUSS als erstes
   // Kind des Agreements stehen (CII-Elementreihenfolge).
-  agreement
-    .ele(RAM, 'ram:BuyerReference')
-    .txt(buyer.reference || buyer.email || buyer.name);
+  agreement.ele(RAM, 'ram:BuyerReference').txt(buyer.reference || buyer.email || buyer.name);
 
   // Seller
   const sellerEl = agreement.ele(RAM, 'ram:SellerTradeParty');
@@ -226,10 +288,7 @@ export function generateXRechnungCii(
       .txt(seller.phone);
   }
   if (seller.email) {
-    contact
-      .ele(RAM, 'ram:EmailURIUniversalCommunication')
-      .ele(RAM, 'ram:URIID')
-      .txt(seller.email);
+    contact.ele(RAM, 'ram:EmailURIUniversalCommunication').ele(RAM, 'ram:URIID').txt(seller.email);
   }
 
   const sellerAddr = sellerEl.ele(RAM, 'ram:PostalTradeAddress');
@@ -343,9 +402,7 @@ export function generateXRechnungCii(
 
   // Zahlungsbedingungen
   const terms = settle.ele(RAM, 'ram:SpecifiedTradePaymentTerms');
-  terms
-    .ele(RAM, 'ram:Description')
-    .txt(`Zahlbar bis ${fmtDateShort(invoice.dueDate)}`);
+  terms.ele(RAM, 'ram:Description').txt(`Zahlbar bis ${fmtDateShort(invoice.dueDate)}`);
   dateTime(terms.ele(RAM, 'ram:DueDateDateTime'), invoice.dueDate);
 
   // Summen

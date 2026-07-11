@@ -26,6 +26,8 @@ import {
   germanHolidays,
   shiftToNextWorkday,
   appealDeadline,
+  appealDeadlineFromNotification,
+  appealDeadlineForPostAbroad,
   klageDeadline,
   bekanntgabeFiktionTage,
   type GermanRegion,
@@ -40,8 +42,22 @@ function utc(s: string): Date {
 }
 
 const ALL_REGIONS: GermanRegion[] = [
-  'DE-BW', 'DE-BY', 'DE-BE', 'DE-BB', 'DE-HB', 'DE-HH', 'DE-HE', 'DE-MV',
-  'DE-NI', 'DE-NW', 'DE-RP', 'DE-SL', 'DE-SN', 'DE-ST', 'DE-SH', 'DE-TH',
+  'DE-BW',
+  'DE-BY',
+  'DE-BE',
+  'DE-BB',
+  'DE-HB',
+  'DE-HH',
+  'DE-HE',
+  'DE-MV',
+  'DE-NI',
+  'DE-NW',
+  'DE-RP',
+  'DE-SL',
+  'DE-SN',
+  'DE-ST',
+  'DE-SH',
+  'DE-TH',
 ];
 
 describe('Gauß-Osterformel — bekannte Ostertermine (Golden)', () => {
@@ -105,7 +121,17 @@ describe('Landesfeiertage — Exklusivität (Feiertagsgesetze der Länder)', () 
   });
 
   it('Reformationstag (31.10.) gilt exakt in BB, HB, HH, MV, NI, SN, ST, SH, TH', () => {
-    const expected = new Set(['DE-BB', 'DE-HB', 'DE-HH', 'DE-MV', 'DE-NI', 'DE-SN', 'DE-ST', 'DE-SH', 'DE-TH']);
+    const expected = new Set([
+      'DE-BB',
+      'DE-HB',
+      'DE-HH',
+      'DE-MV',
+      'DE-NI',
+      'DE-SN',
+      'DE-ST',
+      'DE-SH',
+      'DE-TH',
+    ]);
     for (const region of ALL_REGIONS) {
       const has = germanHolidays(2025, region).map(ymd).includes('2025-10-31');
       expect(has, `Reformationstag in ${region}`).toBe(expected.has(region));
@@ -199,7 +225,7 @@ describe('§ 18 (1)/(2) UStG — USt-VA Q4 über den Jahreswechsel', () => {
   });
 });
 
-describe('Einspruchsfrist § 355 AO + § 122 (2) AO', () => {
+describe('Einspruchsfrist § 355 AO + Bekanntgabefiktionen §§ 122, 122a AO', () => {
   it('Regelfall: +4 Tage Bekanntgabefiktion, dann kalendarischer Monat', () => {
     // Bescheid 01.02.2027 (Mo) → Fiktion 05.02.2027 (Fr) → +1 Monat 05.03.2027 (Fr).
     // Der frühere „+33 Tage"-Code hätte 06.03.2027 gezeigt — einen Tag zu spät.
@@ -267,6 +293,23 @@ describe('Einspruchsfrist § 355 AO + § 122 (2) AO', () => {
     expect(bekanntgabeFiktionTage(utc('2024-12-31'))).toBe(3);
     expect(bekanntgabeFiktionTage(utc('2025-01-01'))).toBe(4);
   });
+
+  it('förmliche/persönliche Bekanntgabe: keine Fiktion aufschlagen', () => {
+    expect(ymd(appealDeadlineFromNotification(utc('2026-07-07')))).toBe('2026-08-07');
+  });
+
+  it('Auslandspost: ein Monat Bekanntgabefiktion plus ein Monat Einspruchsfrist', () => {
+    expect(ymd(appealDeadlineForPostAbroad(utc('2026-01-10')))).toBe('2026-03-10');
+    expect(ymd(appealDeadlineForPostAbroad(utc('2026-01-10'), null, utc('2026-03-01')))).toBe(
+      '2026-04-01',
+    );
+  });
+
+  it('fehlende oder unrichtige Rechtsbehelfsbelehrung → Jahresfrist (§ 356 Abs. 2 AO)', () => {
+    expect(ymd(appealDeadlineFromNotification(utc('2026-07-07'), null, false))).toBe('2027-07-07');
+    // 29.02.2028 + ein Jahr → 28.02.2029; Mittwoch, keine Verschiebung.
+    expect(ymd(appealDeadlineFromNotification(utc('2028-02-29'), null, false))).toBe('2029-02-28');
+  });
 });
 
 describe('Klagefrist § 47 (1) FGO ab Bekanntgabe der Einspruchsentscheidung', () => {
@@ -283,6 +326,10 @@ describe('Klagefrist § 47 (1) FGO ab Bekanntgabe der Einspruchsentscheidung', (
     expect(ymd(klageDeadline(utc('2026-06-30')))).toBe('2026-07-30');
     // Bekanntgabe 05.01.2026 (Mo) → +1 Monat 05.02.2026 (Do, Werktag).
     expect(ymd(klageDeadline(utc('2026-01-05')))).toBe('2026-02-05');
+  });
+
+  it('fehlende/unrichtige Klagebelehrung → Jahresfrist (§ 55 Abs. 2 FGO)', () => {
+    expect(ymd(klageDeadline(utc('2026-07-07'), null, false))).toBe('2027-07-07');
   });
 
   it('Monatsende-Überlauf: 31.01. → 28.02. (Nicht-Schaltjahr)', () => {

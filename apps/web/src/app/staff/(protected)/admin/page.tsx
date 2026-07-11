@@ -195,9 +195,7 @@ export default async function AdminPage() {
                   </>
                 ) : verifyResult.error ? (
                   <>
-                    <p className="text-xs text-red-700 mt-1">
-                      ⚠ Verifikationslauf fehlgeschlagen
-                    </p>
+                    <p className="text-xs text-red-700 mt-1">⚠ Verifikationslauf fehlgeschlagen</p>
                     <p className="text-xs text-muted mt-1">{verifyResult.error}</p>
                   </>
                 ) : (
@@ -444,7 +442,7 @@ export default async function AdminPage() {
           </li>
           <li>
             <Link href="/staff/poa" className="text-brand-700 hover:underline">
-              → Vollmachten (eIDAS AES)
+              → Vollmachten (elektronischer Bestätigungsnachweis)
             </Link>
           </li>
           <li>

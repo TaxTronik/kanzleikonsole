@@ -40,7 +40,11 @@ export function NewVersionForm({ documentId }: Props) {
         });
         if (!commitRes.ok) {
           const body = await commitRes.json().catch(() => ({}));
-          throw new Error((body as { error?: string }).error ?? 'Upload fehlgeschlagen');
+          throw new Error(
+            (body as { message?: string; error?: string }).message ??
+              (body as { error?: string }).error ??
+              'Upload fehlgeschlagen',
+          );
         }
 
         setFile(null);
@@ -57,7 +61,9 @@ export function NewVersionForm({ documentId }: Props) {
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
       <div>
-        <label className="label" htmlFor="version-file">Datei</label>
+        <label className="label" htmlFor="version-file">
+          Datei
+        </label>
         <input
           id="version-file"
           type="file"
@@ -67,7 +73,9 @@ export function NewVersionForm({ documentId }: Props) {
         />
       </div>
       <div>
-        <label className="label" htmlFor="changeNote">Änderungs-Notiz (optional)</label>
+        <label className="label" htmlFor="changeNote">
+          Änderungs-Notiz (optional)
+        </label>
         <input
           id="changeNote"
           type="text"

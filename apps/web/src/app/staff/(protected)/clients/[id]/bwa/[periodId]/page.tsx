@@ -37,13 +37,15 @@ export default async function BwaPeriodDetailPage({
   const period = data;
   const kpis = computeBwaKpis(period.positions);
 
-  const fmtPct = (n: number | null) =>
-    n === null ? '—' : `${(n * 100).toFixed(1)} %`;
+  const fmtPct = (n: number | null) => (n === null ? '—' : `${(n * 100).toFixed(1)} %`);
 
   return (
     <div className="p-8 max-w-4xl">
       <div className="flex items-start gap-4 mb-6">
-        <Link href={`/staff/clients/${clientId}/bwa`} className="text-disabled hover:text-secondary mt-1">
+        <Link
+          href={`/staff/clients/${clientId}/bwa`}
+          className="text-disabled hover:text-secondary mt-1"
+        >
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div>
@@ -51,8 +53,7 @@ export default async function BwaPeriodDetailPage({
           <p className="text-muted text-sm">
             {period.client.name}
             {' · '}
-            {fmtDateShort(period.fromDate)} –{' '}
-            {fmtDateShort(period.toDate)}
+            {fmtDateShort(period.fromDate)} – {fmtDateShort(period.toDate)}
             {' · '}
             {period.source}
             {period.sourceRef ? ` (${period.sourceRef})` : ''}
@@ -63,7 +64,11 @@ export default async function BwaPeriodDetailPage({
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
         <KpiCard label="Erlöse" value={fmtEUR(kpis.revenue)} />
         <KpiCard label="Kosten" value={fmtEUR(kpis.costs)} />
-        <KpiCard label="Ergebnis" value={fmtEUR(kpis.result)} highlight={kpis.result !== null && kpis.result < 0 ? 'red' : 'green'} />
+        <KpiCard
+          label="Ergebnis"
+          value={fmtEUR(kpis.result)}
+          highlight={kpis.result !== null && kpis.result < 0 ? 'red' : 'green'}
+        />
         <KpiCard label="Marge" value={fmtPct(kpis.resultMargin)} />
         <KpiCard label="Personalkosten" value={fmtEUR(kpis.personnelCost)} />
         <KpiCard label="Personalquote" value={fmtPct(kpis.personnelRatio)} />
@@ -71,6 +76,7 @@ export default async function BwaPeriodDetailPage({
 
       {kpis.result !== null && (
         <TaxEstimatorCard
+          taxYear={period.toDate.getUTCFullYear()}
           result={kpis.result}
           resultBeforeTax={kpis.resultBeforeTax}
           revenue={kpis.revenue}
@@ -83,9 +89,11 @@ export default async function BwaPeriodDetailPage({
             return v ? Number(v.amount.toString()) : null;
           })()}
           defaultLegalForm={
-            (period.client.kind === 'JURPERS' ? 'GMBH'
-            : period.client.kind === 'PERSGES' ? 'GBR'
-            : 'EINZELUNTERNEHMEN') as LegalForm
+            (period.client.kind === 'JURPERS'
+              ? 'GMBH'
+              : period.client.kind === 'PERSGES'
+                ? 'GBR'
+                : 'EINZELUNTERNEHMEN') as LegalForm
           }
         />
       )}
@@ -135,7 +143,11 @@ function KpiCard({
   highlight?: 'green' | 'red';
 }) {
   const valueClass =
-    highlight === 'red' ? 'text-red-700' : highlight === 'green' ? 'text-green-700' : 'text-primary';
+    highlight === 'red'
+      ? 'text-red-700'
+      : highlight === 'green'
+        ? 'text-green-700'
+        : 'text-primary';
   return (
     <div className="card p-4">
       <p className="eyebrow">{label}</p>

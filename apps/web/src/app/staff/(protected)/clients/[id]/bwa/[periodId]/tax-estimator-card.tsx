@@ -13,6 +13,7 @@ interface Props {
   inputVat: number | null;
   vatPaid: number | null;
   defaultLegalForm: LegalForm;
+  taxYear: number;
 }
 
 export function TaxEstimatorCard({
@@ -22,6 +23,7 @@ export function TaxEstimatorCard({
   inputVat,
   vatPaid,
   defaultLegalForm,
+  taxYear,
 }: Props) {
   const [legalForm, setLegalForm] = useState<LegalForm>(defaultLegalForm);
   const [hebesatz, setHebesatz] = useState<number>(400);
@@ -39,6 +41,7 @@ export function TaxEstimatorCard({
   const est = useMemo(
     () =>
       estimateTaxes({
+        taxYear,
         legalForm,
         result: basis,
         resultIsAfterTax: resultBeforeTax == null,
@@ -48,9 +51,18 @@ export function TaxEstimatorCard({
         gewerbesteuerHebesatzPct: hebesatz,
         isFreiberufler: freiberuflich,
       }),
-    [legalForm, hebesatz, basis, resultBeforeTax, revenue, inputVat, vatPaid, freiberuflich],
+    [
+      legalForm,
+      hebesatz,
+      basis,
+      resultBeforeTax,
+      revenue,
+      inputVat,
+      vatPaid,
+      freiberuflich,
+      taxYear,
+    ],
   );
-
 
   return (
     <div className="card p-6 mb-6">
@@ -61,18 +73,18 @@ export function TaxEstimatorCard({
       >
         <div className="flex items-center gap-2">
           <Calculator className="h-4 w-4 text-brand-600" />
-          <h2 className="text-sm font-medium text-primary">Steuerschätzung (Beta)</h2>
+          <h2 className="text-sm font-medium text-primary">Steuerschätzung {taxYear} (Beta)</h2>
         </div>
-        <span className="text-xs text-muted">
-          {show ? 'Schließen ▴' : 'Öffnen ▾'}
-        </span>
+        <span className="text-xs text-muted">{show ? 'Schließen ▴' : 'Öffnen ▾'}</span>
       </button>
 
       {show && (
         <div className="mt-4 space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label" htmlFor="legalForm">Rechtsform</label>
+              <label className="label" htmlFor="legalForm">
+                Rechtsform
+              </label>
               <select
                 id="legalForm"
                 className="input"
@@ -89,7 +101,9 @@ export function TaxEstimatorCard({
               </select>
             </div>
             <div>
-              <label className="label" htmlFor="hebesatz">GewSt-Hebesatz (%)</label>
+              <label className="label" htmlFor="hebesatz">
+                GewSt-Hebesatz (%)
+              </label>
               <input
                 id="hebesatz"
                 type="number"
@@ -100,6 +114,9 @@ export function TaxEstimatorCard({
                 value={hebesatz}
                 onChange={(e) => setHebesatz(Number(e.target.value))}
               />
+              <p className="text-xs text-muted mt-1">
+                Mit 400 % vorbelegt — den aktuell geltenden Hebesatz der Gemeinde prüfen.
+              </p>
             </div>
           </div>
 
@@ -117,22 +134,42 @@ export function TaxEstimatorCard({
           <div className="overflow-hidden rounded-md border border-default">
             <table className="w-full text-sm">
               <tbody className="divide-y divide-border-subtle">
-                <Row label="Gewerbesteuer-Bemessung" value={fmtEURRound(est.gewerbesteuerBemessung)} muted />
+                <Row
+                  label="Gewerbesteuer-Bemessung"
+                  value={fmtEURRound(est.gewerbesteuerBemessung)}
+                  muted
+                />
                 {est.gewerbesteuerFreibetrag > 0 && (
-                  <Row label="abzgl. Freibetrag" value={`-${fmtEURRound(est.gewerbesteuerFreibetrag)}`} muted />
+                  <Row
+                    label="abzgl. Freibetrag"
+                    value={`-${fmtEURRound(est.gewerbesteuerFreibetrag)}`}
+                    muted
+                  />
                 )}
                 <Row label="Gewerbesteuer" value={fmtEURRound(est.gewerbesteuer)} bold />
                 {est.koerperschaftsteuer !== null && (
                   <>
-                    <Row label="Körperschaftsteuer (15 %)" value={fmtEURRound(est.koerperschaftsteuer)} />
-                    <Row label="Solidaritätszuschlag (5,5 %)" value={fmtEURRound(est.solidaritaetszuschlag)} />
+                    <Row
+                      label="Körperschaftsteuer (15 %)"
+                      value={fmtEURRound(est.koerperschaftsteuer)}
+                    />
+                    <Row
+                      label="Solidaritätszuschlag (5,5 %)"
+                      value={fmtEURRound(est.solidaritaetszuschlag)}
+                    />
                   </>
                 )}
                 {est.einkommensteuerSchaetzung !== null && (
-                  <Row label="Einkommensteuer (Single, vereinfacht)" value={fmtEURRound(est.einkommensteuerSchaetzung)} />
+                  <Row
+                    label="Einkommensteuer (Single, vereinfacht)"
+                    value={fmtEURRound(est.einkommensteuerSchaetzung)}
+                  />
                 )}
                 {est.ustZahllast !== null && (
-                  <Row label="USt-Zahllast (Jahr, vereinfacht)" value={fmtEURRound(est.ustZahllast)} />
+                  <Row
+                    label="USt-Zahllast (Jahr, vereinfacht)"
+                    value={fmtEURRound(est.ustZahllast)}
+                  />
                 )}
                 {est.ustOffenerSaldo !== null && (
                   <Row label="… davon noch offen" value={fmtEURRound(est.ustOffenerSaldo)} muted />
@@ -166,15 +203,13 @@ function Row({
   bold?: boolean;
   highlight?: boolean;
 }) {
-  const cls = highlight
-    ? 'bg-brand-50'
-    : muted
-    ? 'bg-gray-50'
-    : '';
+  const cls = highlight ? 'bg-brand-50' : muted ? 'bg-gray-50' : '';
   return (
     <tr className={cls}>
       <td className={`px-4 py-2 ${muted ? 'text-muted' : 'text-secondary'}`}>{label}</td>
-      <td className={`px-4 py-2 text-right font-mono tabular-nums ${bold ? 'font-bold text-primary' : muted ? 'text-muted' : 'text-primary'}`}>
+      <td
+        className={`px-4 py-2 text-right font-mono tabular-nums ${bold ? 'font-bold text-primary' : muted ? 'text-muted' : 'text-primary'}`}
+      >
         {value}
       </td>
     </tr>

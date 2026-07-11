@@ -104,9 +104,46 @@ export const MARKETING_LABELS: Record<keyof Omit<MarketingConsent, 'details'>, s
 
 /** Zählt die erteilten Einzeleinwilligungen (für Badges/Übersicht). */
 export function countGranted(c: ConsentSelections): number {
-  const commBools = (['portal', 'emailTls', 'emailE2e', 'phone', 'video', 'sms', 'fax'] as const)
-    .filter((k) => c.communication[k]).length;
-  const mktBools = (['emailNewsletter', 'postal', 'phone', 'sms'] as const)
-    .filter((k) => c.marketing[k]).length;
+  const commBools = (
+    ['portal', 'emailTls', 'emailE2e', 'phone', 'video', 'sms', 'fax'] as const
+  ).filter((k) => c.communication[k]).length;
+  const mktBools = (['emailNewsletter', 'postal', 'phone', 'sms'] as const).filter(
+    (k) => c.marketing[k],
+  ).length;
   return commBools + mktBools + c.thirdParties.length + c.specialists.length;
+}
+
+/**
+ * Erkennt auch einen TEIL-Widerruf: jede zuvor erteilte boolesche Auswahl oder
+ * konkret benannte Freigabe, die im neuen Snapshot fehlt, ist ein Widerruf —
+ * selbst wenn gleichzeitig andere Einwilligungen neu erteilt werden.
+ */
+export function hasConsentRevocation(
+  previous: ConsentSelections,
+  next: ConsentSelections,
+): boolean {
+  const communicationKeys = [
+    'portal',
+    'emailTls',
+    'emailE2e',
+    'phone',
+    'video',
+    'sms',
+    'fax',
+  ] as const;
+  if (communicationKeys.some((key) => previous.communication[key] && !next.communication[key])) {
+    return true;
+  }
+
+  const marketingKeys = ['emailNewsletter', 'postal', 'phone', 'sms'] as const;
+  if (marketingKeys.some((key) => previous.marketing[key] && !next.marketing[key])) {
+    return true;
+  }
+
+  const stable = (value: unknown) => JSON.stringify(value);
+  const nextThirdParties = new Set(next.thirdParties.map(stable));
+  if (previous.thirdParties.some((entry) => !nextThirdParties.has(stable(entry)))) return true;
+
+  const nextSpecialists = new Set(next.specialists.map(stable));
+  return previous.specialists.some((entry) => !nextSpecialists.has(stable(entry)));
 }

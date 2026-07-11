@@ -15,11 +15,11 @@ Dokumenten technisch unveränderbar (Schreibschutz auf Speicherebene).
 **Datei-Typ und Schutzstufe.** Beim Hochladen wird ein Datei-Typ gewählt
 (z. B. „GoBD Rechnung"). Der Typ bestimmt die Schutzstufe:
 
-| Schutzstufe | Bedeutung | Aufbewahrung |
-|---|---|---|
-| GoBD | steuerlich aufbewahrungspflichtig; Versionen sind bis Fristablauf von **niemandem** löschbar oder veränderbar, auch nicht von Administratoren | 10 Jahre (Jahresende + 10 J.) |
-| GwG | Identifizierungs-/Nachweisdokumente nach Geldwäschegesetz; geschützt, aber nach § 8 Abs. 4 GwG fristgerecht zu **vernichten** | 5 Jahre (Jahresende + 5 J.) |
-| Ohne | alle übrigen Unterlagen | keine erzwungene Frist |
+| Schutzstufe | Bedeutung                                                                                                                                     | Aufbewahrung                                                                                                                            |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| GoBD        | steuerlich aufbewahrungspflichtig; Versionen sind bis Fristablauf von **niemandem** löschbar oder veränderbar, auch nicht von Administratoren | je Datei-Typ 6, 8 oder 10 Jahre ab dem einschlägigen Jahresende                                                                         |
+| GwG         | Identifizierungs-/Nachweisdokumente nach Geldwäschegesetz; geschützt, aber nach § 8 Abs. 4 GwG fristgerecht zu **vernichten**                 | grundsätzlich 5 Jahre ab dem gesetzlichen Fristbeginn; andere Gesetze können länger verpflichten, spätestens nach 10 Jahren Vernichtung |
+| Ohne        | alle übrigen Unterlagen                                                                                                                       | keine erzwungene Frist                                                                                                                  |
 
 Eine **Herabstufung** der Schutzstufe ist nicht möglich; eine Höherstufung
 (z. B. „Ohne" → „GoBD") ist jederzeit möglich.
@@ -108,14 +108,14 @@ endgültig und wird im Prüfprotokoll nachgewiesen.
 
 ## 5. Häufige Meldungen
 
-| Meldung/Situation | Bedeutung | Was tun |
-|---|---|---|
-| Datei abgewiesen, Hinweis auf Schadsoftware | Virenscan-Treffer; Datei wurde nicht gespeichert | Quelle prüfen; Datei nicht erneut hochladen |
-| Upload schlägt mit Scan-/Serverfehler fehl | Virenscanner nicht erreichbar (Annahme im Zweifel verweigert) | später erneut versuchen; Administration informieren |
-| „Datei zu groß" | Größenlimit überschritten (100 MB bzw. 10 MB) | Datei verkleinern/aufteilen |
-| „Gleichzeitiger Upload … erneut versuchen" | zwei neue Versionen gleichzeitig hochgeladen | erneut hochladen |
-| „Herabstufung nicht möglich" | Schutzstufe kann nur erhöht werden | ggf. neuen Typ mit höherer Stufe wählen |
-| ZIP-Download abgelehnt (zu groß/ausgelastet) | Auswahl überschreitet das Limit oder es laufen bereits Downloads | Auswahl verkleinern bzw. kurz warten |
+| Meldung/Situation                            | Bedeutung                                                        | Was tun                                             |
+| -------------------------------------------- | ---------------------------------------------------------------- | --------------------------------------------------- |
+| Datei abgewiesen, Hinweis auf Schadsoftware  | Virenscan-Treffer; Datei wurde nicht gespeichert                 | Quelle prüfen; Datei nicht erneut hochladen         |
+| Upload schlägt mit Scan-/Serverfehler fehl   | Virenscanner nicht erreichbar (Annahme im Zweifel verweigert)    | später erneut versuchen; Administration informieren |
+| „Datei zu groß"                              | Größenlimit überschritten (100 MB bzw. 10 MB)                    | Datei verkleinern/aufteilen                         |
+| „Gleichzeitiger Upload … erneut versuchen"   | zwei neue Versionen gleichzeitig hochgeladen                     | erneut hochladen                                    |
+| „Herabstufung nicht möglich"                 | Schutzstufe kann nur erhöht werden                               | ggf. neuen Typ mit höherer Stufe wählen             |
+| ZIP-Download abgelehnt (zu groß/ausgelastet) | Auswahl überschreitet das Limit oder es laufen bereits Downloads | Auswahl verkleinern bzw. kurz warten                |
 
 ## 6. Dokumente im Mandanten-Portal
 

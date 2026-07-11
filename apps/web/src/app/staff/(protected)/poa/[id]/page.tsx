@@ -7,6 +7,8 @@ import { sendForSignatureAction, revokePoaAction } from '../actions';
 import { renderMarkdown } from '@/lib/markdown';
 import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
 import { DocumentPreviewButton } from '@/components/document-preview';
+import { canAccessClientTx, isStaffAdmin } from '@/server/auth/rbac';
+import { isPoaExpired } from '@/server/poa/signing-snapshot';
 
 const statusLabels: Record<string, string> = {
   DRAFT: 'Entwurf',
@@ -16,11 +18,7 @@ const statusLabels: Record<string, string> = {
   EXPIRED: 'Abgelaufen',
 };
 
-export default async function PoaDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function PoaDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await staffAuth();
   if (!session?.user) redirect('/staff/login');
 
@@ -29,16 +27,21 @@ export default async function PoaDetailPage({
 
   const poa = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
-    (tx) =>
-      tx.powerOfAttorney.findUnique({
+    async (tx) => {
+      const row = await tx.powerOfAttorney.findUnique({
         where: { id },
         include: { client: true },
-      }),
+      });
+      if (row && !(await canAccessClientTx(tx, session, row.clientId))) return null;
+      return row;
+    },
   );
 
   if (!poa) notFound();
 
   const html = renderMarkdown(poa.scope);
+  const canManagePoa = isStaffAdmin(session);
+  const expiredByDate = isPoaExpired(poa.validUntil);
 
   return (
     <div className="p-8 max-w-3xl">
@@ -49,11 +52,21 @@ export default async function PoaDetailPage({
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-1">
             <h1 className="text-2xl font-bold text-primary">{poa.subject}</h1>
-            {poa.status === 'DRAFT' && <span className="badge-gray">{statusLabels[poa.status]}</span>}
-            {poa.status === 'SENT' && <span className="badge-yellow">{statusLabels[poa.status]}</span>}
-            {poa.status === 'SIGNED' && <span className="badge-green">{statusLabels[poa.status]}</span>}
-            {poa.status === 'REVOKED' && <span className="badge-red">{statusLabels[poa.status]}</span>}
-            {poa.status === 'EXPIRED' && <span className="badge-red">{statusLabels[poa.status]}</span>}
+            {poa.status === 'DRAFT' && (
+              <span className="badge-gray">{statusLabels[poa.status]}</span>
+            )}
+            {poa.status === 'SENT' && (
+              <span className="badge-yellow">{statusLabels[poa.status]}</span>
+            )}
+            {poa.status === 'SIGNED' && (
+              <span className="badge-green">{statusLabels[poa.status]}</span>
+            )}
+            {poa.status === 'REVOKED' && (
+              <span className="badge-red">{statusLabels[poa.status]}</span>
+            )}
+            {poa.status === 'EXPIRED' && (
+              <span className="badge-red">{statusLabels[poa.status]}</span>
+            )}
           </div>
           <p className="text-muted text-sm">
             <Link href={`/staff/clients/${poa.client.id}`} className="hover:underline">
@@ -71,14 +84,22 @@ export default async function PoaDetailPage({
             <ShieldCheck className="h-5 w-5 text-green-600 mt-0.5" />
             <div className="flex-1">
               <p className="text-sm font-medium text-green-900">
-                Elektronisch unterschrieben am{' '}
-                {poa.signedAt && fmtDateTimeShort(poa.signedAt)}
+                Elektronisch unterschrieben am {poa.signedAt && fmtDateTimeShort(poa.signedAt)}
               </p>
               <p className="text-xs text-green-700 mt-1">
-                Verfahren: Magic-Link + 6-stelliger E-Mail-OTP (eIDAS AES)
+                Verfahren: Magic-Link + 6-stelliger E-Mail-Code mit Inhalts-Hash
               </p>
-              {poa.signedByIp && (
-                <p className="text-xs text-green-700">IP: {poa.signedByIp}</p>
+              {poa.signedByIp && <p className="text-xs text-green-700">IP: {poa.signedByIp}</p>}
+              {poa.signedContentSha256 && (
+                <p className="text-xs text-green-700 break-all mt-1">
+                  Inhaltsnachweis SHA-256:{' '}
+                  <code>{Buffer.from(poa.signedContentSha256).toString('hex')}</code>
+                </p>
+              )}
+              {poa.signedDocumentVersionId && (
+                <p className="text-xs text-green-700 break-all">
+                  Bestätigte Dokumentversion: <code>{poa.signedDocumentVersionId}</code>
+                </p>
               )}
             </div>
           </div>
@@ -94,12 +115,17 @@ export default async function PoaDetailPage({
         </div>
       )}
 
+      {expiredByDate && poa.status !== 'EXPIRED' && (
+        <div className="rounded-md bg-red-50 p-4 border border-red-200 mb-6 text-sm text-red-800">
+          Das Gültigkeitsende ist überschritten. Diese Vollmacht kann nicht mehr versendet oder
+          unterschrieben werden.
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-4 mb-6">
         <div className="card p-4">
           <p className="eyebrow">Gültig ab</p>
-          <p className="text-sm font-medium text-primary">
-            {fmtDateShort(poa.validFrom)}
-          </p>
+          <p className="text-sm font-medium text-primary">{fmtDateShort(poa.validFrom)}</p>
         </div>
         <div className="card p-4">
           <p className="eyebrow">Gültig bis</p>
@@ -110,9 +136,7 @@ export default async function PoaDetailPage({
       </div>
 
       <div className="card p-6 mb-6">
-        <h2 className="text-xs font-medium text-muted uppercase tracking-wide mb-3">
-          Vollmacht
-        </h2>
+        <h2 className="text-xs font-medium text-muted uppercase tracking-wide mb-3">Vollmacht</h2>
         {poa.documentId ? (
           <div className="flex items-center gap-2">
             <DocumentPreviewButton documentId={poa.documentId} documentTitle={poa.subject} />
@@ -127,11 +151,13 @@ export default async function PoaDetailPage({
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {(poa.status === 'DRAFT' || poa.status === 'SENT') && (
-          <form action={async (fd) => {
-            'use server';
-            await sendForSignatureAction(fd);
-          }}>
+        {canManagePoa && !expiredByDate && (poa.status === 'DRAFT' || poa.status === 'SENT') && (
+          <form
+            action={async (fd) => {
+              'use server';
+              await sendForSignatureAction(fd);
+            }}
+          >
             <input type="hidden" name="poaId" value={poa.id} />
             <button type="submit" className="btn-primary">
               <Send className="h-4 w-4" />
@@ -139,7 +165,7 @@ export default async function PoaDetailPage({
             </button>
           </form>
         )}
-        {poa.status !== 'REVOKED' && poa.status !== 'EXPIRED' && (
+        {canManagePoa && poa.status !== 'REVOKED' && poa.status !== 'EXPIRED' && (
           <div>
             <form action={revokePoaAction} className="flex gap-2">
               <input type="hidden" name="poaId" value={poa.id} />
@@ -152,15 +178,18 @@ export default async function PoaDetailPage({
                 minLength={1}
                 maxLength={2000}
               />
-              <button type="submit" className="btn-secondary text-red-700 border-red-300 hover:bg-red-50">
+              <button
+                type="submit"
+                className="btn-secondary text-red-700 border-red-300 hover:bg-red-50"
+              >
                 <X className="h-4 w-4" />
                 Widerrufen
               </button>
             </form>
             <p className="text-xs text-muted mt-2">
-              Hinweis: Der Widerruf wirkt hier app-intern. Gegenüber dem Finanzamt
-              wird er erst mit Zugang wirksam (§ 80 Abs. 1 S. 4 AO) — bei
-              elektronischer Vollmacht bitte die Vollmachtsdatenbank aktualisieren.
+              Hinweis: Der Widerruf wirkt hier app-intern. Gegenüber dem Finanzamt wird er erst mit
+              Zugang wirksam (§ 80 Abs. 1 S. 4 AO) — bei elektronischer Vollmacht bitte die
+              Vollmachtsdatenbank aktualisieren.
             </p>
           </div>
         )}

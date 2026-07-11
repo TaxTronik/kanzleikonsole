@@ -46,27 +46,35 @@ export default async function IntegrationsSettingsPage() {
   if (!session?.user) redirect('/staff/login');
   const { tenantId, staffId } = session.user;
 
-  const [pg, redis, objectStore, clamav, n8n, tsa, smtp, modules, signalEngine] = await Promise.all([
-    checkPostgres(),
-    checkRedis(),
-    checkObjectStore(),
-    checkClamAV(),
-    checkN8nForTenant(tenantId),
-    checkTsaForTenant(tenantId),
-    getSmtpStatus({ tenantId, actorId: staffId, actorType: 'STAFF' }),
-    readModules({ tenantId, actorId: staffId, actorType: 'STAFF' }),
-    checkSignalEngine(),
-  ]);
+  const [pg, redis, objectStore, clamav, n8n, tsa, smtp, modules, signalEngine] = await Promise.all(
+    [
+      checkPostgres(),
+      checkRedis(),
+      checkObjectStore(),
+      checkClamAV(),
+      checkN8nForTenant(tenantId),
+      checkTsaForTenant(tenantId),
+      getSmtpStatus({ tenantId, actorId: staffId, actorType: 'STAFF' }),
+      readModules({ tenantId, actorId: staffId, actorType: 'STAFF' }),
+      checkSignalEngine(),
+    ],
+  );
 
   // S3-Endpoint hostname-only zur Anzeige
   const s3Host = (() => {
-    try { return new URL(env.S3_ENDPOINT).host; } catch { return env.S3_ENDPOINT; }
+    try {
+      return new URL(env.S3_ENDPOINT).host;
+    } catch {
+      return env.S3_ENDPOINT;
+    }
   })();
   const redisHost = (() => {
     try {
       const u = new URL(env.REDIS_URL);
       return `${u.hostname}:${u.port || 6379}`;
-    } catch { return env.REDIS_URL; }
+    } catch {
+      return env.REDIS_URL;
+    }
   })();
 
   const rows: Row[] = [
@@ -82,7 +90,7 @@ export default async function IntegrationsSettingsPage() {
       label: 'Object-Store (SeaweedFS)',
       endpoint: s3Host,
       status: objectStore,
-      hint: 'S3-kompatibler Speicher mit Object-Lock COMPLIANCE für GoBD-Dokumente (10-Jahres-Aufbewahrung).',
+      hint: 'S3-kompatibler Speicher mit Object-Lock COMPLIANCE und dokumenttypabhängiger Aufbewahrung (6, 8 oder 10 Jahre).',
     },
     {
       icon: Zap,
@@ -102,27 +110,35 @@ export default async function IntegrationsSettingsPage() {
       icon: Workflow,
       label: 'n8n',
       endpoint: n8n.url ?? '— nicht gesetzt —',
-      status: n8n.source === 'none'
-        ? { skipped: true, reason: 'Keine n8n-Webhook-URL — in den Einstellungen pflegen' }
-        : (n8n as ServiceStatus),
-      hint: n8n.source === 'tenant'
-        ? 'Konfiguriert in den Einstellungen → n8n-Bridge.'
-        : n8n.source === 'env'
-          ? 'Aus ENV-Vorgabe — kann in den Einstellungen → n8n-Bridge überschrieben werden.'
-          : 'Workflow-Engine für Reminder-Mails, Eskalationen, externe Webhooks.',
+      status:
+        n8n.source === 'none'
+          ? { skipped: true, reason: 'Keine n8n-Webhook-URL — in den Einstellungen pflegen' }
+          : (n8n as ServiceStatus),
+      hint:
+        n8n.source === 'tenant'
+          ? 'Konfiguriert in den Einstellungen → n8n-Bridge.'
+          : n8n.source === 'env'
+            ? 'Aus ENV-Vorgabe — kann in den Einstellungen → n8n-Bridge überschrieben werden.'
+            : 'Workflow-Engine für Reminder-Mails, Eskalationen, externe Webhooks.',
     },
     {
       icon: Clock,
       label: 'Zeitstempel-Behörde (TSA)',
       endpoint: tsa.url ?? '— lokaler Self-Timestamp —',
-      status: tsa.source === 'none'
-        ? { skipped: true, reason: 'Kein externer TSA gewählt — Self-Timestamp aktiv. In den Einstellungen auswählbar.' }
-        : (tsa as ServiceStatus),
-      hint: tsa.source === 'tenant'
-        ? 'Konfiguriert in den Einstellungen → Zeitstempel (TSA). Versiegelt täglich den Tagesspitzen-Hash der Audit-Chain.'
-        : tsa.source === 'env'
-          ? 'Aus ENV-Vorgabe — kann in den Einstellungen → Zeitstempel pro Kanzlei überschrieben werden.'
-          : 'RFC-3161 für die Audit-Hash-Chain. Für Produktivbetrieb wird ein externer Stempel (z. B. D-Trust) empfohlen.',
+      status:
+        tsa.source === 'none'
+          ? {
+              skipped: true,
+              reason:
+                'Kein externer TSA gewählt — Self-Timestamp aktiv. In den Einstellungen auswählbar.',
+            }
+          : (tsa as ServiceStatus),
+      hint:
+        tsa.source === 'tenant'
+          ? 'Konfiguriert in den Einstellungen → Zeitstempel (TSA). Versiegelt täglich den Tagesspitzen-Hash der Audit-Chain.'
+          : tsa.source === 'env'
+            ? 'Aus ENV-Vorgabe — kann in den Einstellungen → Zeitstempel pro Kanzlei überschrieben werden.'
+            : 'RFC-3161 für die Audit-Hash-Chain. Für Produktivbetrieb wird ein externer Stempel (z. B. D-Trust) empfohlen.',
     },
   ];
 
@@ -133,12 +149,11 @@ export default async function IntegrationsSettingsPage() {
     rows.push({
       icon: RadioTower,
       label: 'Signal-Engine',
-      endpoint: riskLayerConfig
-        ? new URL(riskLayerConfig.url).host
-        : '— nicht konfiguriert —',
+      endpoint: riskLayerConfig ? new URL(riskLayerConfig.url).host : '— nicht konfiguriert —',
       status: signalEngine ?? {
         skipped: true,
-        reason: 'Modul aktiv, aber keine Engine konfiguriert — RISK_LAYER_URL/-TOKEN in der Server-.env setzen.',
+        reason:
+          'Modul aktiv, aber keine Engine konfiguriert — RISK_LAYER_URL/-TOKEN in der Server-.env setzen.',
       },
       hint: 'Netzinterne Engine für externe Signale (Rechtsänderungen, Fristen, Anomalien). Bearer-Liveness-Ping auf /v1/health — nutzt dieselbe Engine wie der Subsumtions-Layer (RISK_LAYER_*).',
     });
@@ -157,7 +172,15 @@ export default async function IntegrationsSettingsPage() {
             const ok = !skipped && (r.status as ServiceStatus).ok;
             return (
               <li key={r.label} className="py-3 flex items-start gap-3">
-                <Icon className={ok ? 'h-5 w-5 mt-0.5 text-emerald-600' : skipped ? 'h-5 w-5 mt-0.5 text-disabled' : 'h-5 w-5 mt-0.5 text-red-600'} />
+                <Icon
+                  className={
+                    ok
+                      ? 'h-5 w-5 mt-0.5 text-emerald-600'
+                      : skipped
+                        ? 'h-5 w-5 mt-0.5 text-disabled'
+                        : 'h-5 w-5 mt-0.5 text-red-600'
+                  }
+                />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm font-medium text-primary">{r.label}</p>
@@ -166,7 +189,9 @@ export default async function IntegrationsSettingsPage() {
                         <CheckCircle2 className="h-3.5 w-3.5" />
                         Erreichbar
                         {(r.status as ServiceStatus).latencyMs != null && (
-                          <span className="text-disabled ml-1">({(r.status as ServiceStatus).latencyMs} ms)</span>
+                          <span className="text-disabled ml-1">
+                            ({(r.status as ServiceStatus).latencyMs} ms)
+                          </span>
                         )}
                       </span>
                     ) : skipped ? (
@@ -181,12 +206,8 @@ export default async function IntegrationsSettingsPage() {
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-muted font-mono mt-0.5 truncate">
-                    {r.endpoint}
-                  </p>
-                  {r.hint && (
-                    <p className="text-xs text-muted mt-0.5">{r.hint}</p>
-                  )}
+                  <p className="text-xs text-muted font-mono mt-0.5 truncate">{r.endpoint}</p>
+                  {r.hint && <p className="text-xs text-muted mt-0.5">{r.hint}</p>}
                   {!ok && !skipped && (r.status as ServiceStatus).error && (
                     <p className="text-xs text-red-700 dark:text-red-400 mt-0.5">
                       {(r.status as ServiceStatus).error}
@@ -212,9 +233,20 @@ export default async function IntegrationsSettingsPage() {
           <KvRow label="NEXTAUTH_URL" value={env.NEXTAUTH_URL} mono />
           <KvRow label="AUTH_SECRET" value={mask(env.AUTH_SECRET)} mono />
           <KvRow label="LICENSE_KEY" value={env.LICENSE_KEY ? 'gesetzt' : '— nicht gesetzt —'} />
-          <KvRow label="STAFF_COOKIE_DOMAIN" value={env.STAFF_COOKIE_DOMAIN ?? '— host-only —'} mono />
-          <KvRow label="PORTAL_COOKIE_DOMAIN" value={env.PORTAL_COOKIE_DOMAIN ?? '— host-only —'} mono />
-          <KvRow label="SMTP-Quelle" value={smtp.fromDb ? 'Kanzlei-Konfiguration (UI)' : 'ENV-Vorgabe'} />
+          <KvRow
+            label="STAFF_COOKIE_DOMAIN"
+            value={env.STAFF_COOKIE_DOMAIN ?? '— host-only —'}
+            mono
+          />
+          <KvRow
+            label="PORTAL_COOKIE_DOMAIN"
+            value={env.PORTAL_COOKIE_DOMAIN ?? '— host-only —'}
+            mono
+          />
+          <KvRow
+            label="SMTP-Quelle"
+            value={smtp.fromDb ? 'Kanzlei-Konfiguration (UI)' : 'ENV-Vorgabe'}
+          />
         </dl>
       </SectionCard>
     </div>

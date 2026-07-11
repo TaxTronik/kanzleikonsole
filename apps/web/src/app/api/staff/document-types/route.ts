@@ -16,18 +16,20 @@ export async function GET() {
   }
   const { tenantId, staffId } = session.user;
 
-  const types = await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    (tx) =>
-      tx.documentType.findMany({
-        where: { active: true },
-        orderBy: [{ builtin: 'desc' }, { sortOrder: 'asc' }, { name: 'asc' }],
-        select: { id: true, name: true, tier: true, builtin: true, classificationKey: true },
-      }),
+  const types = await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>
+    tx.documentType.findMany({
+      where: { active: true },
+      orderBy: [{ builtin: 'desc' }, { sortOrder: 'asc' }, { name: 'asc' }],
+      select: {
+        id: true,
+        name: true,
+        tier: true,
+        retentionYears: true,
+        builtin: true,
+        classificationKey: true,
+      },
+    }),
   );
 
-  return NextResponse.json(
-    { types },
-    { headers: { 'cache-control': 'private, no-store' } },
-  );
+  return NextResponse.json({ types }, { headers: { 'cache-control': 'private, no-store' } });
 }

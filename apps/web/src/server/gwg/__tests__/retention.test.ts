@@ -1,152 +1,185 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { TxClient } from '@taxtronik/db';
 import {
-  gwgDeletionDeadline,
-  isGwgDeletionDue,
   findDueGwgCheckDeletions,
-  GWG_RETENTION_YEARS,
+  gwgDeletionDeadline,
+  gwgDocumentEffectiveStart,
+  gwgEffectiveStart,
+  isGwgDeletionDue,
 } from '../retention';
 
-describe('gwgDeletionDeadline — § 8 Abs. 4 (Jahresende + 5 J.)', () => {
-  it('Mandatsende 2026-03-15 → fällig ab 2032-01-01', () => {
-    expect(gwgDeletionDeadline(new Date('2026-03-15T10:00:00Z')).toISOString()).toBe('2032-01-01T00:00:00.000Z');
+describe('GwG-Aufbewahrungsfrist', () => {
+  it('läuft fünf Jahre ab Schluss des Kalenderjahres', () => {
+    expect(gwgDeletionDeadline(new Date('2026-03-15T10:00:00Z')).toISOString()).toBe(
+      '2032-01-01T00:00:00.000Z',
+    );
+    expect(
+      isGwgDeletionDue(new Date('2026-03-15T10:00:00Z'), new Date('2031-12-31T23:59:59Z')),
+    ).toBe(false);
+    expect(
+      isGwgDeletionDue(new Date('2026-03-15T10:00:00Z'), new Date('2032-01-01T00:00:00Z')),
+    ).toBe(true);
   });
 
-  it('Jahresanfang zählt zum Vorjahres-Schluss: 2026-01-01 → 2032-01-01', () => {
-    // Frist beginnt mit Schluss des Kalenderjahres 2026, nicht ab dem Tag.
-    expect(gwgDeletionDeadline(new Date('2026-01-01T00:00:00Z')).toISOString()).toBe('2032-01-01T00:00:00.000Z');
+  it('startet bei REJECTED bzw. nie verifiziertem EXPIRED ohne Mandat ab Feststellung', () => {
+    const createdAt = new Date('2026-03-15T10:00:00Z');
+    expect(gwgEffectiveStart(null, 'REJECTED', createdAt)).toEqual(createdAt);
+    expect(gwgEffectiveStart(null, 'EXPIRED', createdAt, null)).toEqual(createdAt);
   });
 
-  it('Silvester 2026-12-31 → noch Kalenderjahr 2026 → 2032-01-01', () => {
-    expect(gwgDeletionDeadline(new Date('2026-12-31T23:59:00Z')).toISOString()).toBe('2032-01-01T00:00:00.000Z');
+  it('behandelt einen zuvor VERIFIED abgelaufenen Check der laufenden Beziehung nicht als Löschgrund', () => {
+    expect(
+      gwgEffectiveStart(
+        null,
+        'EXPIRED',
+        new Date('2020-01-01T00:00:00Z'),
+        new Date('2020-01-02T00:00:00Z'),
+      ),
+    ).toBeNull();
   });
 
-  it('verwendet GWG_RETENTION_YEARS (5)', () => {
-    expect(GWG_RETENTION_YEARS).toBe(5);
+  it('verwendet bei später Datenerfassung den Terminal-/Updatezeitpunkt statt der Check-Anlage', () => {
+    const terminalAt = new Date('2025-08-01T00:00:00Z');
+    const start = gwgEffectiveStart(null, 'REJECTED', terminalAt, null);
+    expect(start).toEqual(terminalAt);
+    if (!start) throw new Error('Terminaler Check muss einen Fristbeginn liefern.');
+    expect(isGwgDeletionDue(start, new Date('2026-01-01T00:00:00Z'))).toBe(false);
+    expect(gwgDeletionDeadline(start)).toEqual(new Date('2031-01-01T00:00:00Z'));
   });
 });
 
-describe('isGwgDeletionDue', () => {
-  const mandateEnd = new Date('2026-06-01T00:00:00Z'); // fällig ab 2032-01-01
+describe('gwgDocumentEffectiveStart', () => {
+  const createdAt = new Date('2026-05-01T00:00:00Z');
+  const expiresAt = new Date('2026-05-31T00:00:00Z');
 
-  it('false ohne Mandatsende', () => {
-    expect(isGwgDeletionDue(null)).toBe(false);
-    expect(isGwgDeletionDue(undefined)).toBe(false);
+  it.each([
+    ['CANCELLED', new Date('2026-05-10T00:00:00Z')],
+    ['EXPIRED', null],
+    ['PENDING', null],
+    ['STARTED', null],
+  ])('erfasst abgebrochenes/abgelaufenes Onboarding (%s)', (status, cancelledAt) => {
+    expect(
+      gwgDocumentEffectiveStart(
+        {
+          createdAt,
+          mandateEndedAt: null,
+          linkedChecks: [],
+          invite: { status, expiresAt, cancelledAt, gwgCheck: null },
+        },
+        new Date('2026-06-01T00:00:00Z'),
+      ),
+    ).toEqual(createdAt);
   });
 
-  it('false vor dem Stichtag (ein Tag davor)', () => {
-    expect(isGwgDeletionDue(mandateEnd, new Date('2031-12-31T23:59:59Z'))).toBe(false);
-  });
-
-  it('true am Stichtag', () => {
-    expect(isGwgDeletionDue(mandateEnd, new Date('2032-01-01T00:00:00Z'))).toBe(true);
-  });
-
-  it('true lange nach dem Stichtag', () => {
-    expect(isGwgDeletionDue(mandateEnd, new Date('2040-01-01T00:00:00Z'))).toBe(true);
-  });
-});
-
-describe('findDueGwgCheckDeletions — § 8 Abs. 4 S. 4 (DB-Aufzeichnungen)', () => {
-  const NOW = new Date('2032-06-01T00:00:00Z');
-
-  function fakeTx(clients: unknown[]) {
-    const findMany = vi.fn().mockResolvedValue(clients);
-    return { tx: { client: { findMany } } as unknown as TxClient, findMany };
-  }
-
-  it('filtert auf nicht-vernichtete Checks fälliger Mandate (Grobfilter + exakte Frist)', async () => {
-    const mandateEnd = new Date('2026-06-01T00:00:00Z'); // fällig ab 2032-01-01
-    const { tx, findMany } = fakeTx([
-      {
-        id: 'client-1',
-        name: 'Alt GmbH',
-        mandateEndedAt: mandateEnd,
-        gwgChecks: [{ id: 'chk-1', status: 'VERIFIED' }],
-        _count: { documents: 2 },
-      },
-    ]);
-
-    const out = await findDueGwgCheckDeletions(tx, NOW);
-
-    const cutoff = new Date(Date.UTC(2027, 0, 1));
-    expect(findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          gwgChecks: { some: { destroyedAt: null } },
-          OR: [
-            { mandateEndedAt: { lt: cutoff } },
-            {
-              mandateEndedAt: null,
-              gwgChecks: { some: { destroyedAt: null, status: { in: ['REJECTED', 'EXPIRED'] }, createdAt: { lt: cutoff } } },
-            },
-          ],
+  it('erfasst SUBMITTED mit abgelehntem Check', () => {
+    expect(
+      gwgDocumentEffectiveStart({
+        createdAt,
+        mandateEndedAt: null,
+        linkedChecks: [],
+        invite: {
+          status: 'SUBMITTED',
+          expiresAt,
+          cancelledAt: null,
+          gwgCheck: { status: 'REJECTED', createdAt, verifiedAt: null },
         },
       }),
-    );
-    expect(out).toEqual([
+    ).toEqual(createdAt);
+  });
+
+  it('erfasst einen manuell verknüpften abgelehnten Check ohne Invite', () => {
+    expect(
+      gwgDocumentEffectiveStart({
+        createdAt,
+        mandateEndedAt: null,
+        linkedChecks: [{ status: 'REJECTED', createdAt, verifiedAt: null }],
+        invite: null,
+      }),
+    ).toEqual(createdAt);
+  });
+
+  it('löscht einen wiederverwendeten Beleg nicht wegen eines älteren abgelehnten Checks', () => {
+    expect(
+      gwgDocumentEffectiveStart({
+        createdAt,
+        mandateEndedAt: null,
+        linkedChecks: [
+          { status: 'REJECTED', createdAt, verifiedAt: null },
+          { status: 'IN_REVIEW', createdAt: new Date('2027-01-01T00:00:00Z'), verifiedAt: null },
+        ],
+        invite: null,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe('findDueGwgCheckDeletions', () => {
+  it('liefert terminalen Check ohne Mandat und zählt nur seine eigenen offenen Belege', async () => {
+    const findMany = vi.fn().mockResolvedValue([
       {
-        checkId: 'chk-1',
+        id: 'check-1',
         clientId: 'client-1',
-        clientName: 'Alt GmbH',
-        status: 'VERIFIED',
-        mandateEndedAt: mandateEnd,
-        deletionDeadline: new Date('2032-01-01T00:00:00.000Z'),
+        status: 'REJECTED',
+        updatedAt: new Date('2026-03-15T00:00:00Z'),
+        verifiedAt: null,
+        client: { name: 'Abgelehnt GmbH', mandateEndedAt: null },
+        idDocuments: [
+          {
+            createdAt: new Date('2026-03-10T00:00:00Z'),
+            document: { id: 'doc-1', classification: 'GWG_EVIDENCE', gwgDestroyedAt: null },
+          },
+          {
+            createdAt: new Date('2026-03-11T00:00:00Z'),
+            document: {
+              id: 'doc-deleted',
+              classification: 'GWG_EVIDENCE',
+              gwgDestroyedAt: new Date(),
+            },
+          },
+        ],
+        beneficialOwners: [{ createdAt: new Date('2026-03-12T00:00:00Z') }],
+        onboardingInvites: [
+          {
+            uploadedDocuments: [
+              { id: 'doc-1', classification: 'GWG_EVIDENCE', gwgDestroyedAt: null },
+              { id: 'doc-2', classification: 'GWG_EVIDENCE', gwgDestroyedAt: null },
+            ],
+          },
+        ],
+      },
+    ]);
+    const tx = { gwgCheck: { findMany } } as unknown as TxClient;
+
+    expect(await findDueGwgCheckDeletions(tx, new Date('2032-06-01T00:00:00Z'))).toEqual([
+      {
+        checkId: 'check-1',
+        clientId: 'client-1',
+        clientName: 'Abgelehnt GmbH',
+        status: 'REJECTED',
+        retentionStartedAt: new Date('2026-03-15T00:00:00Z'),
+        retentionReason: 'ONBOARDING_TERMINATED',
+        deletionDeadline: new Date('2032-01-01T00:00:00Z'),
         openEvidenceDocs: 2,
       },
     ]);
   });
 
-  it('§ 8 Abs. 4 S. 2: abgelehntes Onboarding ohne Mandat → Frist ab Feststellung', async () => {
-    // Kein mandateEndedAt, aber REJECTED-Check von 2026 → fällig ab 2032-01-01.
-    const { tx } = fakeTx([
+  it('startet die Frist nicht vor einer später hinzugefügten Kindaufzeichnung', async () => {
+    const findMany = vi.fn().mockResolvedValue([
       {
-        id: 'client-3',
-        name: 'Abgelehnt GmbH',
-        mandateEndedAt: null,
-        gwgChecks: [{ id: 'chk-3', status: 'REJECTED', createdAt: new Date('2026-03-15T00:00:00Z') }],
-        _count: { documents: 1 },
-      },
-    ]);
-    const out = await findDueGwgCheckDeletions(tx, NOW);
-    expect(out).toEqual([
-      {
-        checkId: 'chk-3',
-        clientId: 'client-3',
-        clientName: 'Abgelehnt GmbH',
+        id: 'check-recent-child',
+        clientId: 'client-1',
         status: 'REJECTED',
-        mandateEndedAt: new Date('2026-03-15T00:00:00Z'),
-        deletionDeadline: new Date('2032-01-01T00:00:00.000Z'),
-        openEvidenceDocs: 1,
+        updatedAt: new Date('2020-01-01T00:00:00Z'),
+        verifiedAt: null,
+        client: { name: 'Späte Feststellung GmbH', mandateEndedAt: null },
+        idDocuments: [{ createdAt: new Date('2025-08-01T00:00:00Z'), document: null }],
+        beneficialOwners: [],
+        onboardingInvites: [],
       },
     ]);
-  });
+    const tx = { gwgCheck: { findMany } } as unknown as TxClient;
 
-  it('offene (IN_REVIEW) Prüfung ohne Mandat → NICHT fällig (kann noch aktiv werden)', async () => {
-    const { tx } = fakeTx([
-      {
-        id: 'client-4',
-        name: 'Offen GmbH',
-        mandateEndedAt: null,
-        gwgChecks: [{ id: 'chk-4', status: 'IN_REVIEW', createdAt: new Date('2020-01-01T00:00:00Z') }],
-        _count: { documents: 0 },
-      },
-    ]);
-    expect(await findDueGwgCheckDeletions(tx, NOW)).toEqual([]);
-  });
-
-  it('Mandat noch nicht fällig (exakte Jahresende-Rundung) → kein Item', async () => {
-    // Grobfilter könnte den Client liefern; die exakte Prüfung verwirft ihn.
-    const { tx } = fakeTx([
-      {
-        id: 'client-2',
-        name: 'Frisch GmbH',
-        mandateEndedAt: new Date('2027-02-01T00:00:00Z'), // fällig erst ab 2033-01-01
-        gwgChecks: [{ id: 'chk-2', status: 'EXPIRED' }],
-        _count: { documents: 0 },
-      },
-    ]);
-
-    expect(await findDueGwgCheckDeletions(tx, NOW)).toEqual([]);
+    expect(await findDueGwgCheckDeletions(tx, new Date('2026-06-01T00:00:00Z'))).toEqual([]);
   });
 });

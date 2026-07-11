@@ -4,33 +4,52 @@
 // bullmq via mocks/bullmq.ts, Prisma/Tenant-Context/Evidence per vi.mock.
 // Abgedeckt:
 //   - Löschungen laufen PRO TENANT (tenantId in jeder where-Klausel)
-//   - Cutoffs leap-year-korrekt über setFullYear (1/3/2/6/10 Jahre)
+//   - Cutoffs leap-year-korrekt über setFullYear (1/3/2/6/8/10 Jahre)
 //   - Audit-Nachweis: EIN 'dsgvo.retention.run'-Event pro Lauf+Tenant in der
 //     withWorkerTenantContext-Tx (Zähler je Datenklasse + Cutoffs)
 //   - Idempotenz: Lauf ohne Treffer schreibt KEIN Event (kein Chain-Rauschen)
 //   - Request-Purge nullt lose Rückverweise (tax_deadline/form_submission)
-//     vor dem deleteMany in derselben Batch-Tx
+//     vor dem deleteMany in derselben Batch-Tx und revalidiert unter Row-Lock
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const h = vi.hoisted(() => {
+  const tenant = { findMany: vi.fn() };
+  const notification = { deleteMany: vi.fn() };
+  const phoneNote = { deleteMany: vi.fn() };
+  const clientContact = { updateMany: vi.fn() };
+  const request = { findMany: vi.fn(), deleteMany: vi.fn() };
+  const taxDeadline = { updateMany: vi.fn() };
+  const formSubmission = { updateMany: vi.fn() };
+  const retentionTx = {
+    $queryRaw: vi.fn(),
+    request,
+    taxDeadline,
+    formSubmission,
+  };
+  const transaction = vi.fn(async (arg: unknown) => {
+    if (typeof arg === 'function') {
+      return (arg as (tx: typeof retentionTx) => Promise<unknown>)(retentionTx);
+    }
+    return Promise.all(arg as Promise<unknown>[]);
+  });
   const prismaOwner = {
-    tenant: { findMany: vi.fn() },
-    notification: { deleteMany: vi.fn() },
-    phoneNote: { deleteMany: vi.fn() },
-    clientContact: { updateMany: vi.fn() },
-    request: { findMany: vi.fn(), deleteMany: vi.fn() },
-    taxDeadline: { updateMany: vi.fn() },
-    formSubmission: { updateMany: vi.fn() },
-    $transaction: vi.fn(async (ops: Promise<unknown>[]) => Promise.all(ops)),
+    tenant,
+    notification,
+    phoneNote,
+    clientContact,
+    request,
+    taxDeadline,
+    formSubmission,
+    $transaction: transaction,
   };
   const tx = {};
   const withWorkerTenantContext = vi.fn(
     async (_tenantId: string, fn: (t: unknown) => Promise<unknown>) => fn(tx),
   );
   const record = vi.fn();
-  return { prismaOwner, tx, withWorkerTenantContext, record };
+  return { prismaOwner, retentionTx, tx, withWorkerTenantContext, record };
 });
 
 vi.mock('bullmq', () => import('./mocks/bullmq'));
@@ -85,11 +104,15 @@ beforeEach(() => {
   h.prismaOwner.clientContact.updateMany.mockResolvedValue({ count: 0 });
   h.prismaOwner.request.findMany.mockResolvedValue([]);
   h.prismaOwner.request.deleteMany.mockResolvedValue({ count: 0 });
+  h.retentionTx.$queryRaw.mockResolvedValue([]);
   h.prismaOwner.taxDeadline.updateMany.mockResolvedValue({ count: 0 });
   h.prismaOwner.formSubmission.updateMany.mockResolvedValue({ count: 0 });
-  h.prismaOwner.$transaction.mockImplementation(async (ops: Promise<unknown>[]) =>
-    Promise.all(ops),
-  );
+  h.prismaOwner.$transaction.mockImplementation(async (arg: unknown) => {
+    if (typeof arg === 'function') {
+      return (arg as (tx: typeof h.retentionTx) => Promise<unknown>)(h.retentionTx);
+    }
+    return Promise.all(arg as Promise<unknown>[]);
+  });
   h.record.mockResolvedValue({});
 });
 
@@ -111,26 +134,94 @@ describe('Löschungen pro Tenant + Cutoffs', () => {
       where: { tenantId: TENANT, lastLoginAt: { lt: cutoff(2) } },
       data: { lastLoginAt: null },
     });
-    // Request-Purge: 6 Jahre ohne GoBD-Bezug, 10 Jahre mit — beide tenant-scoped.
+    // Request-Purge: Grund-/GoBD-Klassen 6, 8 und 10 Jahre — alle tenant-scoped.
     const requestWheres = h.prismaOwner.request.findMany.mock.calls.map(
       (c) => (c[0] as { where: Record<string, unknown> }).where,
     );
-    expect(requestWheres).toHaveLength(2);
+    expect(requestWheres).toHaveLength(3);
     // Jahresende-Anker (§ 147 Abs. 4 AO), nicht rollierend ab createdAt.
-    expect(requestWheres[0]).toMatchObject({ tenantId: TENANT, createdAt: { lt: reqCutoff(6) } });
-    expect(requestWheres[0]).toHaveProperty('NOT');
-    expect(requestWheres[1]).toMatchObject({ tenantId: TENANT, createdAt: { lt: reqCutoff(10) } });
+    expect(requestWheres[0]).toMatchObject({
+      tenantId: TENANT,
+      AND: [
+        {
+          status: { in: ['CLOSED', 'CANCELLED'] },
+          OR: [
+            { closedAt: { lt: reqCutoff(6) } },
+            { closedAt: null, updatedAt: { lt: reqCutoff(6) } },
+          ],
+          responses: { none: { createdAt: { gte: reqCutoff(6) } } },
+        },
+        { NOT: expect.anything() },
+      ],
+    });
+    expect(requestWheres[1]).toMatchObject({
+      tenantId: TENANT,
+      AND: [
+        {
+          status: { in: ['CLOSED', 'CANCELLED'] },
+          OR: [
+            { closedAt: { lt: reqCutoff(8) } },
+            { closedAt: null, updatedAt: { lt: reqCutoff(8) } },
+          ],
+          responses: { none: { createdAt: { gte: reqCutoff(8) } } },
+        },
+        {
+          responses: {
+            some: {
+              document: {
+                OR: [
+                  { documentType: { tier: 'GOBD', retentionYears: 8 } },
+                  { documentTypeId: null, classification: 'GOBD_INVOICE' },
+                ],
+              },
+            },
+          },
+          NOT: expect.anything(),
+        },
+      ],
+    });
+    expect(requestWheres[2]).toMatchObject({
+      tenantId: TENANT,
+      AND: [
+        {
+          status: { in: ['CLOSED', 'CANCELLED'] },
+          OR: [
+            { closedAt: { lt: reqCutoff(10) } },
+            { closedAt: null, updatedAt: { lt: reqCutoff(10) } },
+          ],
+          responses: { none: { createdAt: { gte: reqCutoff(10) } } },
+        },
+        {
+          responses: {
+            some: {
+              document: {
+                OR: expect.arrayContaining([
+                  { documentTypeId: null, classification: { in: ['GOBD_CONTRACT', 'GOBD_TAX'] } },
+                ]),
+              },
+            },
+          },
+        },
+      ],
+    });
   });
 
-  it('Request-Cutoff ist auf den 1. Januar verankert (nicht ab Erstellungsdatum)', async () => {
+  it('Request-Cutoff ist auf den 1. Januar verankert und verlangt terminalen Abschluss', async () => {
     await run();
     const requestWheres = h.prismaOwner.request.findMany.mock.calls.map(
-      (c) => (c[0] as { where: { createdAt: { lt: Date } } }).where,
+      (c) =>
+        (
+          c[0] as {
+            where: { AND: Array<{ status?: unknown; OR?: Array<{ closedAt?: { lt: Date } }> }> };
+          }
+        ).where,
     );
     // Der GoBD-Cutoff (10 J.) muss der 1.1. sein — ein GoBD-Request vom
     // 15.03.2016 wäre bis 31.12.2026 aufzubewahren und darf 2026 NICHT gelöscht
     // werden. Rollierend (2016-06-09) hätte er ihn erfasst.
-    const gobdCutoff = requestWheres[1]!.createdAt.lt;
+    const tenYearWindow = requestWheres[2]!.AND[0]!;
+    expect(tenYearWindow.status).toEqual({ in: ['CLOSED', 'CANCELLED'] });
+    const gobdCutoff = tenYearWindow.OR![0]!.closedAt!.lt;
     expect(gobdCutoff.getUTCMonth()).toBe(0);
     expect(gobdCutoff.getUTCDate()).toBe(1);
     expect(gobdCutoff.getTime()).toBe(Date.UTC(2016, 0, 1));
@@ -173,13 +264,15 @@ describe('Audit-Nachweis dsgvo.retention.run', () => {
         notificationsDeleted: 3,
         phoneNotesDeleted: 2,
         lastLoginCleared: 1,
-        requestsDeletedNonGobd: 0,
-        requestsDeletedGobd: 0,
+        requestsDeletedSixYear: 0,
+        requestsDeletedEightYear: 0,
+        requestsDeletedTenYear: 0,
         notifCutoff: cutoff(1).toISOString(),
         phoneCutoff: cutoff(3).toISOString(),
         loginCutoff: cutoff(2).toISOString(),
         requestCutoff: reqCutoff(6).toISOString(),
-        requestGobdCutoff: reqCutoff(10).toISOString(),
+        requestGobdInvoiceCutoff: reqCutoff(8).toISOString(),
+        requestGobdLongCutoff: reqCutoff(10).toISOString(),
       },
     });
   });
@@ -196,11 +289,14 @@ describe('Request-Purge', () => {
   it('nullt lose Rückverweise + löscht Requests in derselben Batch-Tx', async () => {
     h.prismaOwner.request.findMany
       .mockResolvedValueOnce([{ id: 'req-1' }, { id: 'req-2' }])
+      .mockResolvedValueOnce([{ id: 'req-1' }, { id: 'req-2' }])
       .mockResolvedValue([]);
+    h.prismaOwner.request.deleteMany.mockResolvedValue({ count: 2 });
 
     await run();
 
     expect(h.prismaOwner.$transaction).toHaveBeenCalledTimes(1);
+    expect(h.retentionTx.$queryRaw).toHaveBeenCalledTimes(1);
     expect(h.prismaOwner.taxDeadline.updateMany).toHaveBeenCalledWith({
       where: { requestId: { in: ['req-1', 'req-2'] } },
       data: { requestId: null },
@@ -210,13 +306,32 @@ describe('Request-Purge', () => {
       data: { requestId: null },
     });
     expect(h.prismaOwner.request.deleteMany).toHaveBeenCalledWith({
-      where: { id: { in: ['req-1', 'req-2'] } },
+      where: {
+        AND: [expect.anything(), { id: { in: ['req-1', 'req-2'] } }],
+      },
     });
     // 2 gelöschte Requests → Audit-Event mit dem Zähler
     expect(h.record).toHaveBeenCalledTimes(1);
     expect(h.record.mock.calls[0]![1]).toMatchObject({
       action: 'dsgvo.retention.run',
-      after: expect.objectContaining({ requestsDeletedNonGobd: 2 }),
+      after: expect.objectContaining({ requestsDeletedSixYear: 2 }),
     });
+  });
+
+  it('löscht fail-closed nichts, wenn der Row-Lock-Recheck den Request ausschließt', async () => {
+    h.prismaOwner.request.findMany
+      .mockResolvedValueOnce([{ id: 'req-1' }])
+      // Recheck innerhalb der gelockten Transaktion: z. B. inzwischen neue
+      // Antwort oder Status wieder IN_PROGRESS.
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([]);
+
+    await run();
+
+    expect(h.retentionTx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(h.prismaOwner.taxDeadline.updateMany).not.toHaveBeenCalled();
+    expect(h.prismaOwner.formSubmission.updateMany).not.toHaveBeenCalled();
+    expect(h.prismaOwner.request.deleteMany).not.toHaveBeenCalled();
+    expect(h.record).not.toHaveBeenCalled();
   });
 });
