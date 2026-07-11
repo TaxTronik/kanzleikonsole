@@ -26,7 +26,7 @@ import { readBranding } from '@/server/settings/branding';
 
 export type ArchiveResult =
   | { ok: true; bucket: string; key: string; number: string }
-  | { ok: false; code: 'not_found' | 'not_applicable' | 'seller_incomplete' | 'buyer_incomplete' };
+  | { ok: false; code: 'not_found' | 'not_applicable' | 'seller_incomplete' | 'reverse_charge_seller_no_vatid' | 'buyer_incomplete' };
 
 /**
  * Liefert die gespeicherte ZUGFeRD-Archiv-PDF einer Rechnung (idempotent).
@@ -108,6 +108,11 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
         !seller.email || !seller.phone || (!seller.vatId && !seller.taxNumber)
       ) {
         return { ok: false, code: 'seller_incomplete' };
+      }
+      // BR-AE-01: Reverse-Charge braucht die USt-IdNr des Absenders (nicht nur
+      // die Steuernummer).
+      if (loaded.reverseCharge && !seller.vatId) {
+        return { ok: false, code: 'reverse_charge_seller_no_vatid' };
       }
       if (!loaded.client.street || !loaded.client.city || !loaded.client.postalCode) {
         return { ok: false, code: 'buyer_incomplete' };
@@ -197,6 +202,10 @@ export async function ensureZugferdArchive(ctx: TenantContext, invoiceId: string
     !seller.email || !seller.phone || (!seller.vatId && !seller.taxNumber)
   ) {
     return { ok: false, code: 'seller_incomplete' };
+  }
+  // BR-AE-01: Reverse-Charge braucht die USt-IdNr des Absenders (nicht nur die Steuernummer).
+  if (loaded.reverseCharge && !seller.vatId) {
+    return { ok: false, code: 'reverse_charge_seller_no_vatid' };
   }
   if (!loaded.client.street || !loaded.client.city || !loaded.client.postalCode) {
     return { ok: false, code: 'buyer_incomplete' };

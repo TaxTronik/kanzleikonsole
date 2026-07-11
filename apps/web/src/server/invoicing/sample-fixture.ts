@@ -53,3 +53,27 @@ export const SAMPLE_BUYER: XRechnungBuyer = {
   vatId: null,
   email: 'buchhaltung@mandant.example',
 };
+
+// Reverse-Charge-Fixture (§ 13b UStG, EN16931-Kategorie AE) — alle Positionen
+// 0 %, Käufer MIT USt-IdNr (BR-AE-01 verlangt Verkäufer- UND Käufer-USt-IdNr).
+// Zweiter KoSIT-Validierungsfall (iter107).
+export const SAMPLE_RC_INVOICE: XRechnungInvoice = {
+  number: '2026-0043',
+  issueDate: new Date('2026-06-10T00:00:00Z'),
+  dueDate: new Date('2026-07-10T00:00:00Z'),
+  subject: 'Beratungsleistung (Reverse-Charge § 13b UStG)',
+  notes: null,
+  currency: 'EUR',
+  reverseCharge: true,
+  netAmount: 200,
+  vatAmount: 0,
+  totalAmount: 200,
+  positions: [
+    { position: 1, description: 'Beratung', quantity: 2, unit: 'Stunde', unitPrice: 100, netAmount: 200, vatRate: 0 },
+  ],
+};
+
+export const SAMPLE_RC_BUYER: XRechnungBuyer = {
+  ...SAMPLE_BUYER,
+  vatId: 'DE987654321',
+};

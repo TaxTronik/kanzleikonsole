@@ -15,6 +15,7 @@ import { ensureZugferdArchive } from '@/server/invoicing/archive';
 import { computeVatTotals } from '@/server/invoicing/vat';
 import { allocateInvoiceNumber, isValidInvoiceTransition } from '@/server/invoicing/number';
 import { readModules, type InvoiceMode } from '@/server/settings/modules';
+import { readSellerInfo } from '@/server/settings/tenant-settings';
 import { round2, fmtEUR, fmtDateShort, berlinTodayUtcMidnight } from '@/lib/fmt';
 import { withTimeout, TimeoutError } from '@/lib/with-timeout';
 import { log } from '@/server/logger';
@@ -157,6 +158,16 @@ export async function createInvoiceAction(input: {
   }));
   const totals = computeVatTotals(positionsWithNet);
 
+  // BR-AE-01: Reverse-Charge braucht auch die USt-IdNr des LEISTENDEN (Kanzlei,
+  // BT-31). Die allgemeine Absender-Vollständigkeit (archive) akzeptiert USt-IdNr
+  // ODER Steuernummer — für die Kategorie AE ist die USt-IdNr zwingend.
+  if (data.reverseCharge) {
+    const seller = await readSellerInfo(ctx);
+    if (!seller.vatId) {
+      return { ok: false, error: 'Reverse-Charge (§ 13b UStG) erfordert die USt-IdNr der Kanzlei (Einstellungen → Rechnungsdaten).' };
+    }
+  }
+
   let invoiceId: string;
   let invoiceNumber: string;
   try {
@@ -247,6 +258,7 @@ const StatusSchema = z.object({
 const ARCHIVE_FAIL_TEXT: Record<string, string> = {
   not_found: 'Rechnung nicht gefunden.',
   seller_incomplete: 'Kanzlei-Rechnungsabsender unvollständig — Name, Anschrift, E-Mail und Telefon sind Pflicht (Einstellungen → Rechnungsdaten).',
+  reverse_charge_seller_no_vatid: 'Reverse-Charge (§ 13b UStG) erfordert die USt-IdNr der Kanzlei (Einstellungen → Rechnungsdaten).',
   buyer_incomplete: 'Mandanten-Anschrift unvollständig (Straße/PLZ/Ort).',
 };
 

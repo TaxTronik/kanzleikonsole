@@ -862,8 +862,8 @@ jobs:
           echo "$SCENARIOS_SHA256  kosit/scenarios.zip" | sha256sum -c -
           unzip -q -o kosit/scenarios.zip -d kosit/config
 
-      - name: Referenz-XRechnung erzeugen (Mischsätze 19/7/0 %)
-        run: pnpm --filter @taxtronik/web exec tsx src/server/invoicing/cli/generate-sample.ts "$GITHUB_WORKSPACE/kosit/sample.xml"
+      - name: Referenz-XRechnungen erzeugen (Mischsätze 19/7/0 % + Reverse-Charge § 13b)
+        run: pnpm --filter @taxtronik/web exec tsx src/server/invoicing/cli/generate-sample.ts "$GITHUB_WORKSPACE/kosit/sample.xml" "$GITHUB_WORKSPACE/kosit/sample-rc.xml"
 
       # Der Validator liefert Exit ≠ 0 sowohl bei inhaltlichem REJECT als auch
       # bei Umgebungs-/Konfigfehlern (z. B. Szenario-Datei fehlt) — beides soll
@@ -874,7 +874,7 @@ jobs:
         run: |
           cd kosit
           set +e
-          java -jar validator.jar -s config/scenarios.xml -r config -o report sample.xml
+          java -jar validator.jar -s config/scenarios.xml -r config -o report sample.xml sample-rc.xml
           rc=$?
           set -e
           # Auf einen NICHT-LEEREN Report-Ordner prüfen statt auf einen festen
