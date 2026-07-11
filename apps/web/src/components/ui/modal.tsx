@@ -35,13 +35,23 @@ export function useDialogA11y(onClose: () => void) {
     const auto = node?.querySelector<HTMLElement>('[autofocus]');
     (auto ?? focusables()[0])?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.preventDefault(); closeRef.current(); return; }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeRef.current();
+        return;
+      }
       if (e.key !== 'Tab') return;
       const f = focusables();
       if (f.length === 0) return;
-      const first = f[0]!, last = f[f.length - 1]!;
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      const first = f[0]!,
+        last = f[f.length - 1]!;
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener('keydown', onKey);
     return () => {
@@ -71,7 +81,10 @@ export function Modal({
 }) {
   const ref = useDialogA11y(onClose);
   const modal = (
-    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
       <div
         ref={ref}
         role="dialog"
@@ -117,7 +130,14 @@ export function ConfirmModal({
     <Modal title={title} onClose={onClose} maxWidth="max-w-sm">
       <h2 className="text-base font-semibold text-primary mb-2">{title}</h2>
       <div className="text-sm text-secondary mb-4 whitespace-pre-line">{message}</div>
-      {err && <div className="rounded bg-red-50 p-2 text-xs text-red-700 mb-3 whitespace-pre-line">{err}</div>}
+      {err && (
+        <div
+          role="alert"
+          className="rounded bg-red-50 p-2 text-xs text-red-700 mb-3 whitespace-pre-line"
+        >
+          {err}
+        </div>
+      )}
       <div className="flex gap-2">
         <button type="button" onClick={onClose} disabled={busy} className="btn-secondary flex-1">
           Abbrechen
@@ -186,7 +206,12 @@ export function InputModal({
         autoFocus
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            submit();
+          }
+        }}
         placeholder={placeholder}
         className="input mb-3"
         maxLength={maxLength}
@@ -196,7 +221,12 @@ export function InputModal({
         <button type="button" onClick={onClose} disabled={busy} className="btn-secondary flex-1">
           Abbrechen
         </button>
-        <button type="button" disabled={busy || !value.trim()} onClick={submit} className="btn-primary flex-1">
+        <button
+          type="button"
+          disabled={busy || !value.trim()}
+          onClick={submit}
+          className="btn-primary flex-1"
+        >
           {busy ? busyLabel : confirmLabel}
         </button>
       </div>

@@ -1,14 +1,14 @@
 ﻿import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Send, X, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, ShieldCheck } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
-import { sendForSignatureAction, revokePoaAction } from '../actions';
 import { renderMarkdown } from '@/lib/markdown';
 import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
 import { DocumentPreviewButton } from '@/components/document-preview';
 import { canAccessClientTx, isStaffAdmin } from '@/server/auth/rbac';
 import { isPoaExpired } from '@/server/poa/signing-snapshot';
+import { RevokePoaForm, SendPoaForm } from './revoke-poa-form';
 
 const statusLabels: Record<string, string> = {
   DRAFT: 'Entwurf',
@@ -152,46 +152,10 @@ export default async function PoaDetailPage({ params }: { params: Promise<{ id: 
 
       <div className="flex flex-wrap gap-2">
         {canManagePoa && !expiredByDate && (poa.status === 'DRAFT' || poa.status === 'SENT') && (
-          <form
-            action={async (fd) => {
-              'use server';
-              await sendForSignatureAction(fd);
-            }}
-          >
-            <input type="hidden" name="poaId" value={poa.id} />
-            <button type="submit" className="btn-primary">
-              <Send className="h-4 w-4" />
-              {poa.status === 'SENT' ? 'Erneut senden' : 'Zur Unterschrift senden'}
-            </button>
-          </form>
+          <SendPoaForm poaId={poa.id} isResend={poa.status === 'SENT'} />
         )}
         {canManagePoa && poa.status !== 'REVOKED' && poa.status !== 'EXPIRED' && (
-          <div>
-            <form action={revokePoaAction} className="flex gap-2">
-              <input type="hidden" name="poaId" value={poa.id} />
-              <input
-                name="reason"
-                type="text"
-                className="input flex-1"
-                placeholder="Widerrufsgrund (Pflicht)"
-                required
-                minLength={1}
-                maxLength={2000}
-              />
-              <button
-                type="submit"
-                className="btn-secondary text-red-700 border-red-300 hover:bg-red-50"
-              >
-                <X className="h-4 w-4" />
-                Widerrufen
-              </button>
-            </form>
-            <p className="text-xs text-muted mt-2">
-              Hinweis: Der Widerruf wirkt hier app-intern. Gegenüber dem Finanzamt wird er erst mit
-              Zugang wirksam (§ 80 Abs. 1 S. 4 AO) — bei elektronischer Vollmacht bitte die
-              Vollmachtsdatenbank aktualisieren.
-            </p>
-          </div>
+          <RevokePoaForm poaId={poa.id} subject={poa.subject} />
         )}
       </div>
     </div>

@@ -8,6 +8,7 @@ const m = vi.hoisted(() => ({
   canAccessClientTx: vi.fn(),
   withTenantContext: vi.fn(),
   commitBytesWithTier: vi.fn(),
+  deleteObject: vi.fn(),
   evidenceRecord: vi.fn(),
   getClientIp: vi.fn(),
   log: { error: vi.fn() },
@@ -24,6 +25,7 @@ vi.mock('@taxtronik/storage', () => ({
   classificationToTier: () => 'GOBD',
   gobdRetentionYears: () => 10,
   commitBytesWithTier: m.commitBytesWithTier,
+  deleteObject: m.deleteObject,
 }));
 vi.mock('@/server/documents/upload-helpers', () => ({
   parseMultipartUpload: async (req: NextRequest) => {
@@ -73,6 +75,7 @@ beforeEach(() => {
     sizeBytes: 12,
     immutable: true,
   });
+  m.deleteObject.mockResolvedValue(undefined);
 });
 
 describe('Neue Dokumentversion — PoA-Snapshot-Sperre', () => {
@@ -124,7 +127,15 @@ describe('Neue Dokumentversion — PoA-Snapshot-Sperre', () => {
       powerOfAttorney: { findFirst: vi.fn().mockResolvedValue(null) },
     };
     const finalTx = {
-      $queryRaw: vi.fn().mockResolvedValue([{ id: DOCUMENT_ID }]),
+      $queryRaw: vi.fn().mockResolvedValue([
+        {
+          id: DOCUMENT_ID,
+          tenantId: 'tenant-1',
+          clientId: document.clientId,
+          classification: document.classification,
+          documentTypeId: null,
+        },
+      ]),
       powerOfAttorney: { findFirst: vi.fn().mockResolvedValue({ id: 'poa-1' }) },
       documentVersion: { findFirst: vi.fn(), create: vi.fn() },
     };
@@ -142,6 +153,113 @@ describe('Neue Dokumentversion — PoA-Snapshot-Sperre', () => {
     expect(m.commitBytesWithTier).toHaveBeenCalledTimes(1);
     expect(finalTx.$queryRaw).toHaveBeenCalledTimes(1);
     expect(finalTx.documentVersion.create).not.toHaveBeenCalled();
+    expect(m.deleteObject).toHaveBeenCalledWith('docs-gobd', 'tenant-1/poa/raced.pdf');
+  });
+
+  it('verhindert das Anhaengen nach zwischenzeitlichem Entzug des Mandantenzugriffs', async () => {
+    m.commitBytesWithTier.mockResolvedValueOnce({
+      targetBucket: 'docs',
+      targetKey: 'tenant-1/general/raced.pdf',
+      sha256: Buffer.alloc(32, 0xef),
+      sizeBytes: 12n,
+      immutable: false,
+      retentionUntil: null,
+      detectedMime: 'application/pdf',
+    });
+    const document = {
+      id: DOCUMENT_ID,
+      clientId: '22222222-2222-4222-8222-222222222222',
+      classification: 'GENERAL',
+      documentTypeId: null,
+      documentType: { tier: 'NONE', retentionYears: null },
+    };
+    const preUploadTx = {
+      document: { findFirst: vi.fn().mockResolvedValue(document) },
+      powerOfAttorney: { findFirst: vi.fn().mockResolvedValue(null) },
+    };
+    const finalTx = {
+      $queryRaw: vi.fn().mockResolvedValue([
+        {
+          id: DOCUMENT_ID,
+          tenantId: 'tenant-1',
+          clientId: document.clientId,
+          classification: document.classification,
+          documentTypeId: document.documentTypeId,
+        },
+      ]),
+      powerOfAttorney: { findFirst: vi.fn() },
+      documentVersion: { findFirst: vi.fn(), create: vi.fn() },
+    };
+    m.canAccessClientTx.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    m.withTenantContext
+      .mockImplementationOnce(async (_ctx: unknown, fn: (arg: unknown) => unknown) =>
+        fn(preUploadTx),
+      )
+      .mockImplementationOnce(async (_ctx: unknown, fn: (arg: unknown) => unknown) => fn(finalTx));
+
+    const response = await POST(makeRequest(), {
+      params: Promise.resolve({ id: DOCUMENT_ID }),
+    });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({ error: 'reference_changed' }),
+    );
+    expect(finalTx.documentVersion.create).not.toHaveBeenCalled();
+    expect(m.canAccessClientTx).toHaveBeenCalledTimes(2);
+    expect(m.deleteObject).toHaveBeenCalledWith('docs', 'tenant-1/general/raced.pdf');
+  });
+
+  it('verwirft den Upload, wenn sich die Schutzpolicy des Dateityps geaendert hat', async () => {
+    const document = {
+      id: DOCUMENT_ID,
+      clientId: '22222222-2222-4222-8222-222222222222',
+      classification: 'GOBD_INVOICE',
+      documentTypeId: '33333333-3333-4333-8333-333333333333',
+      documentType: { tier: 'GOBD', retentionYears: 8 },
+    };
+    const preUploadTx = {
+      document: { findFirst: vi.fn().mockResolvedValue(document) },
+      powerOfAttorney: { findFirst: vi.fn().mockResolvedValue(null) },
+    };
+    const finalTx = {
+      $queryRaw: vi
+        .fn()
+        .mockResolvedValueOnce([
+          {
+            id: DOCUMENT_ID,
+            tenantId: 'tenant-1',
+            clientId: document.clientId,
+            classification: document.classification,
+            documentTypeId: document.documentTypeId,
+          },
+        ])
+        .mockResolvedValueOnce([
+          {
+            id: document.documentTypeId,
+            tier: 'GOBD',
+            retentionYears: 6,
+          },
+        ]),
+      powerOfAttorney: { findFirst: vi.fn() },
+      documentVersion: { findFirst: vi.fn(), create: vi.fn() },
+    };
+    m.withTenantContext
+      .mockImplementationOnce(async (_ctx: unknown, fn: (arg: unknown) => unknown) =>
+        fn(preUploadTx),
+      )
+      .mockImplementationOnce(async (_ctx: unknown, fn: (arg: unknown) => unknown) => fn(finalTx));
+
+    const response = await POST(makeRequest(), {
+      params: Promise.resolve({ id: DOCUMENT_ID }),
+    });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({ error: 'reference_changed' }),
+    );
+    expect(finalTx.documentVersion.create).not.toHaveBeenCalled();
+    expect(m.deleteObject).toHaveBeenCalledWith('docs-gobd', 'tenant-1/poa/raced.pdf');
   });
 
   it('übernimmt typabhängige Frist und verlängert Document-Metadaten monoton', async () => {
@@ -158,6 +276,7 @@ describe('Neue Dokumentversion — PoA-Snapshot-Sperre', () => {
       id: DOCUMENT_ID,
       clientId: '22222222-2222-4222-8222-222222222222',
       classification: 'GOBD_INVOICE',
+      documentTypeId: '33333333-3333-4333-8333-333333333333',
       documentType: { tier: 'GOBD', retentionYears: 8 },
     };
     const preUploadTx = {
@@ -165,7 +284,24 @@ describe('Neue Dokumentversion — PoA-Snapshot-Sperre', () => {
       powerOfAttorney: { findFirst: vi.fn().mockResolvedValue(null) },
     };
     const finalTx = {
-      $queryRaw: vi.fn().mockResolvedValue([{ id: DOCUMENT_ID }]),
+      $queryRaw: vi
+        .fn()
+        .mockResolvedValueOnce([
+          {
+            id: DOCUMENT_ID,
+            tenantId: 'tenant-1',
+            clientId: document.clientId,
+            classification: document.classification,
+            documentTypeId: document.documentTypeId,
+          },
+        ])
+        .mockResolvedValueOnce([
+          {
+            id: document.documentTypeId,
+            tier: document.documentType.tier,
+            retentionYears: document.documentType.retentionYears,
+          },
+        ]),
       powerOfAttorney: { findFirst: vi.fn().mockResolvedValue(null) },
       documentVersion: {
         findFirst: vi.fn().mockResolvedValue({ versionNo: 1 }),

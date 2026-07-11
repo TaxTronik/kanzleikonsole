@@ -1,6 +1,77 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { TxClient } from '@taxtronik/db';
-import { requireGwgReverificationTx, startFreshGwgReviewTx } from '../reverification';
+import {
+  claimGwgOnboardingSubmitTx,
+  lockGwgOnboardingUploadTx,
+  requireGwgReverificationTx,
+  startFreshGwgReviewTx,
+} from '../reverification';
+
+describe('GwG-Onboarding-Submit-Claim', () => {
+  it('sperrt Uploads nur bei exakt passender offener Einladung', async () => {
+    const queryRaw = vi
+      .fn()
+      .mockResolvedValueOnce([{ id: 'invite-1' }])
+      .mockResolvedValueOnce([]);
+    const tx = { $queryRaw: queryRaw } as unknown as TxClient;
+    const now = new Date('2026-07-11T12:00:00.000Z');
+    const input = {
+      inviteId: 'invite-1',
+      tenantId: 'tenant-1',
+      clientId: 'client-1',
+      tokenHash: 'token-hash',
+      now,
+    };
+
+    await expect(lockGwgOnboardingUploadTx(tx, input)).resolves.toBe(true);
+    await expect(lockGwgOnboardingUploadTx(tx, input)).resolves.toBe(false);
+
+    const [fragments, ...values] = queryRaw.mock.calls[0]!;
+    const sql = (fragments as readonly string[]).join('?');
+    expect(sql).toContain('tenant_id = ?::uuid');
+    expect(sql).toContain('client_id = ?::uuid');
+    expect(sql).toContain('token_hash = ?');
+    expect(sql).toContain("status IN ('PENDING'::gwg_invite_status, 'STARTED'::gwg_invite_status)");
+    expect(sql).toContain('expires_at > ?');
+    expect(sql).toContain('FOR UPDATE');
+    expect(values).toEqual(['invite-1', 'tenant-1', 'client-1', 'token-hash', now]);
+  });
+
+  it('beansprucht einen oeffentlichen Submit nur aus einem offenen Status', async () => {
+    const updateMany = vi
+      .fn()
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+    const tx = {
+      gwgOnboardingInvite: { updateMany },
+    } as unknown as TxClient;
+    const submittedAt = new Date('2026-07-11T12:00:00.000Z');
+    const input = {
+      inviteId: 'invite-1',
+      tokenHash: 'token-hash',
+      submittedAt,
+      submittedIp: '192.0.2.1',
+      submittedUa: 'test-agent',
+    };
+
+    await expect(claimGwgOnboardingSubmitTx(tx, input)).resolves.toBe(true);
+    await expect(claimGwgOnboardingSubmitTx(tx, input)).resolves.toBe(false);
+    expect(updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'invite-1',
+        tokenHash: 'token-hash',
+        status: { in: ['PENDING', 'STARTED'] },
+        expiresAt: { gt: submittedAt },
+      },
+      data: {
+        status: 'SUBMITTED',
+        submittedAt,
+        submittedIp: '192.0.2.1',
+        submittedUa: 'test-agent',
+      },
+    });
+  });
+});
 
 describe('GwG-Wiederholungsprüfung', () => {
   it('entwertet VERIFIED-Snapshots, deaktiviert und erhält deren Aggregate', async () => {

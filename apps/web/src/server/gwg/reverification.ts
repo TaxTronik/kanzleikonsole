@@ -7,6 +7,71 @@ export interface ReverificationResult {
 }
 
 /**
+ * Beansprucht einen oeffentlichen Onboarding-Submit atomar. Der Claim liegt in
+ * derselben DB-Transaktion wie Stammdaten, Check, Einwilligung und Nachweise:
+ * scheitert spaeter ein Schritt, wird auch der Statuswechsel zurueckgerollt.
+ *
+ * Das statusgebundene updateMany ist zugleich die Zeilensperre fuer
+ * Parallelaufrufe. Nach dem Warten wertet PostgreSQL die WHERE-Bedingung erneut
+ * aus; genau ein Aufruf kann PENDING/STARTED -> SUBMITTED vollziehen.
+ */
+export async function claimGwgOnboardingSubmitTx(
+  tx: TxClient,
+  input: {
+    inviteId: string;
+    tokenHash: string;
+    submittedAt: Date;
+    submittedIp: string | null;
+    submittedUa: string | null;
+  },
+): Promise<boolean> {
+  const claimed = await tx.gwgOnboardingInvite.updateMany({
+    where: {
+      id: input.inviteId,
+      tokenHash: input.tokenHash,
+      status: { in: ['PENDING', 'STARTED'] },
+      expiresAt: { gt: input.submittedAt },
+    },
+    data: {
+      status: 'SUBMITTED',
+      submittedAt: input.submittedAt,
+      submittedIp: input.submittedIp,
+      submittedUa: input.submittedUa,
+    },
+  });
+  return claimed.count === 1;
+}
+
+/**
+ * Sperrt und revalidiert eine Einladung unmittelbar vor dem DB-Commit eines
+ * bereits gescannten Uploads. So kann ein parallel abgeschlossener Submit
+ * nicht nachtraeglich weitere Dokumente an einen SUBMITTED-Invite haengen.
+ */
+export async function lockGwgOnboardingUploadTx(
+  tx: TxClient,
+  input: {
+    inviteId: string;
+    tenantId: string;
+    clientId: string;
+    tokenHash: string;
+    now: Date;
+  },
+): Promise<boolean> {
+  const rows = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT id
+    FROM gwg_onboarding_invite
+    WHERE id = ${input.inviteId}::uuid
+      AND tenant_id = ${input.tenantId}::uuid
+      AND client_id = ${input.clientId}::uuid
+      AND token_hash = ${input.tokenHash}
+      AND status IN ('PENDING'::gwg_invite_status, 'STARTED'::gwg_invite_status)
+      AND expires_at > ${input.now}
+    FOR UPDATE
+  `;
+  return rows.length === 1;
+}
+
+/**
  * Entwertet abgeschlossene Prüf-Snapshots, ohne deren Substanzdaten zu
  * überschreiben. Sobald die bisherige Identitätsgrundlage nicht mehr gilt,
  * muss der Mandant fail-closed inaktiv sein. Für Staff-Stammdatenänderungen

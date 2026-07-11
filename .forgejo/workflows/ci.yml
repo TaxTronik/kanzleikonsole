@@ -203,6 +203,42 @@ jobs:
       - name: Evidence chain CLI
         run: pnpm verify:chain
 
+      # Der Dev-Seed ist ein eigener Integrationspfad und wird von den DB-Tests
+      # nicht ausgefuehrt. Eine separate Datenbank verhindert, dass Demo-Daten
+      # die vorherigen RLS-/Drift-Gates beeinflussen. Der zweite Lauf beweist,
+      # dass auch ein bereits befuellter Stand idempotent bleibt.
+      - name: Dev seed smoke (fresh database, idempotent)
+        env:
+          ADMIN_PASSWORD: ci-db-seed-smoke-admin-pw
+          SEED_DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:5432/taxtronik_seed_smoke?schema=public
+          SEED_DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@localhost:5432/taxtronik_seed_smoke?schema=public
+        run: |
+          set -euo pipefail
+
+          cleanup_seed_database() {
+            PGPASSWORD=taxtronik psql -h localhost -U taxtronik -d postgres \
+              -v ON_ERROR_STOP=1 \
+              -c 'DROP DATABASE IF EXISTS taxtronik_seed_smoke WITH (FORCE)' \
+              >/dev/null 2>&1 || true
+          }
+          trap cleanup_seed_database EXIT
+
+          cleanup_seed_database
+          PGPASSWORD=taxtronik psql -h localhost -U taxtronik -d postgres \
+            -v ON_ERROR_STOP=1 \
+            -c 'CREATE DATABASE taxtronik_seed_smoke'
+          PGPASSWORD=taxtronik psql -h localhost -U taxtronik -d taxtronik_seed_smoke \
+            -v ON_ERROR_STOP=1 -f packages/db/prisma/init/01_bootstrap.sql
+
+          DATABASE_URL="$SEED_DATABASE_URL" DATABASE_APP_URL="$SEED_DATABASE_APP_URL" \
+            pnpm --filter @taxtronik/db exec prisma migrate deploy
+
+          for run_number in 1 2; do
+            echo "Dev seed smoke run ${run_number}/2"
+            DATABASE_URL="$SEED_DATABASE_URL" DATABASE_APP_URL="$SEED_DATABASE_APP_URL" \
+              pnpm --filter @taxtronik/db seed
+          done
+
   restore:
     name: Backup→Restore Roundtrip
     runs-on: ubuntu-latest

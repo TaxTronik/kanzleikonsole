@@ -59,6 +59,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   'packages/db/src/__tests__/rls-cross-tenant.test.ts',
   // GwG-Schranken-Test konstruiert einen Owner-Client fürs Setup.
   'packages/db/src/__tests__/gwg-allow-active.test.ts',
+  // Dev-Seed-Regression: Owner-Client stellt ein altes unvollständiges
+  // VERIFIED-Fragment her und beweist die fail-closed Reparaturreihenfolge.
+  'packages/db/src/__tests__/dev-seed-gwg.test.ts',
   // Festschreibungs-Test (iter85): Owner-Client, um die Rechnungs-Trigger
   // GEGEN den privilegierten Pfad zu beweisen (Schutz gilt auch für Owner).
   'packages/db/src/__tests__/invoice-festschreibung.test.ts',

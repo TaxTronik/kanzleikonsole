@@ -2,7 +2,12 @@
 
 import { z } from 'zod';
 import { headers } from 'next/headers';
-import { commitDocumentFromBytes, MAX_UPLOAD_BYTES } from '@taxtronik/storage';
+import {
+  commitDocumentFromBytes,
+  deleteObject,
+  MAX_UPLOAD_BYTES,
+  type CommitDocumentResult,
+} from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
 import { withSystemContext } from '@taxtronik/db';
 import { createDocumentWithVersion } from '@/server/documents/upload-helpers';
@@ -14,7 +19,11 @@ import { notifyMany } from '@/server/notifications/service';
 import { ConsentSelectionsSchema, countGranted } from '@/server/privacy/consent';
 import { renderNoticeForTenantTx } from '@/server/privacy/service';
 import { isPrivacyConfigComplete, readPrivacyConfigTx } from '@/server/privacy/notice';
-import { startFreshGwgReviewTx } from '@/server/gwg/reverification';
+import {
+  claimGwgOnboardingSubmitTx,
+  lockGwgOnboardingUploadTx,
+  startFreshGwgReviewTx,
+} from '@/server/gwg/reverification';
 
 // M4: GwG-Uploads sind enger gecappt als der globale MAX_UPLOAD_BYTES (100 MB).
 // Ausweis-Scans sind typischerweise ≤5 MB; 10 MB ist großzügig für hochauflösende
@@ -30,6 +39,8 @@ export interface ActionResult {
   error?: string;
   documentId?: string;
 }
+
+class InviteUploadStateChangedError extends Error {}
 
 // ----------------------------------------------------------------------------
 // Befund 6: Fehler-Mapping für diesen anonymen (Token-)Endpoint. Rohe Prisma-/
@@ -57,6 +68,13 @@ function toAnonymousActionError(e: unknown): ActionResult {
       ok: false,
       error:
         'Die Datenschutzhinweise der Kanzlei sind noch unvollständig. Bitte wenden Sie sich an die Kanzlei.',
+    };
+  }
+  if (e instanceof InviteUploadStateChangedError) {
+    return {
+      ok: false,
+      error:
+        'Die Einladung wurde zwischenzeitlich abgeschlossen oder ist abgelaufen. Die Datei wurde nicht zugeordnet.',
     };
   }
   return toActionError(e);
@@ -165,16 +183,27 @@ export async function uploadIdImageAction(input: {
   const classification = 'GWG_EVIDENCE';
 
   let documentId: string;
+  let stored: CommitDocumentResult | null = null;
   try {
-    const stored = await commitDocumentFromBytes({
+    const committed = await commitDocumentFromBytes({
       fileData,
       classification,
       tenantId: invite.tenantId,
     });
+    stored = committed;
 
     // Dokument + erste Version anlegen — direkt im SYSTEM-Kontext, weil
     // der Mandant keinen Auth-Kontext hat. Audit-Trail via evidence-Service.
     documentId = await withSystemContext(invite.tenantId, async (tx) => {
+      const inviteStillOpen = await lockGwgOnboardingUploadTx(tx, {
+        inviteId: invite.id,
+        tenantId: invite.tenantId,
+        clientId: invite.clientId,
+        tokenHash: hashInviteToken(token),
+        now: new Date(),
+      });
+      if (!inviteStillOpen) throw new InviteUploadStateChangedError();
+
       // Befund 12: Document+Version-Insert zentral (upload-helpers).
       const { document: doc } = await createDocumentWithVersion(tx, {
         documentData: {
@@ -187,9 +216,9 @@ export async function uploadIdImageAction(input: {
           // gemeldeten mimeType. Mandant könnte sonst HTML als image/jpeg
           // hochladen und Browser-Sniffing-Missbrauch im Staff-Preview
           // auslösen.
-          mimeType: stored.detectedMime ?? mimeType,
+          mimeType: committed.detectedMime ?? mimeType,
         },
-        commit: stored,
+        commit: committed,
         // System-Action: erfasst-für, nicht erfasst-von
         createdById: invite.createdByStaff,
       });
@@ -202,28 +231,38 @@ export async function uploadIdImageAction(input: {
         resourceId: doc.id,
         after: { fileName, mimeType, inviteId: invite.id, kind },
       });
+      // Liste und Document werden zusammen committed, waehrend der Invite bis
+      // zum Transaktionsende FOR UPDATE gesperrt bleibt. Ein Submit sieht
+      // damit entweder den kompletten Upload oder wartet und laeuft danach.
+      await tx.$executeRaw`
+        UPDATE gwg_onboarding_invite
+        SET uploaded_document_ids = uploaded_document_ids || ${JSON.stringify([doc.id])}::jsonb,
+            status = CASE
+              WHEN status = 'PENDING'::gwg_invite_status THEN 'STARTED'::gwg_invite_status
+              ELSE status
+            END
+        WHERE id = ${invite.id}::uuid
+      `;
       return doc.id;
     });
-
-    // H-1: Document-ID in invite.uploadedDocumentIds eintragen, damit
-    // submitOnboardingAction später prüfen kann, dass alle referenzierten
-    // Documents wirklich über DIESES Invite hochgeladen wurden.
-    //
-    // N-3: Postgres-natives JSONB-Append (`||`) statt Read-Modify-Write — sonst
-    // verlieren parallele Uploads (Vorder-/Rückseite gleichzeitig) gegenseitig
-    // ihre Einträge. Cast nach jsonb ist nötig, weil $executeRaw den Parameter
-    // sonst als text bindet und der `||`-Operator zwischen jsonb und text
-    // nicht definiert ist.
-    await prismaOwner.$executeRaw`
-      UPDATE gwg_onboarding_invite
-      SET uploaded_document_ids = uploaded_document_ids || ${JSON.stringify([documentId])}::jsonb,
-          status = CASE
-            WHEN status = 'PENDING'::gwg_invite_status THEN 'STARTED'::gwg_invite_status
-            ELSE status
-          END
-      WHERE id = ${invite.id}::uuid
-    `;
   } catch (e) {
+    if (stored && e instanceof InviteUploadStateChangedError) {
+      try {
+        await deleteObject(stored.targetBucket, stored.targetKey);
+      } catch (cleanupError) {
+        log.error(
+          {
+            component: 'gwg-onboarding-upload',
+            inviteId: invite.id,
+            tenantId: invite.tenantId,
+            orphanedBucket: stored.targetBucket,
+            orphanedKey: stored.targetKey,
+            cleanupErr: (cleanupError as Error).message,
+          },
+          'GwG onboarding upload orphan compensation failed',
+        );
+      }
+    }
     // Befund 6: kein Durchreichen roher Prisma-/Storage-Meldungen an Anonyme.
     const err = e as Error;
     log.error(
@@ -342,6 +381,24 @@ export async function submitOnboardingAction(
 
   try {
     await withSystemContext(invite.tenantId, async (tx) => {
+      // Atomarer Einmal-Claim als ERSTE Mutation derselben Transaktion. Zwei
+      // parallele Requests duerfen nicht zwei Reviews, Einwilligungen und
+      // Identitaetssnapshots fuer dieselbe Einladung erzeugen. Bei jedem
+      // spaeteren Fehler rollt PostgreSQL auch diesen Claim vollstaendig zurueck.
+      const submittedAt = new Date();
+      const claimed = await claimGwgOnboardingSubmitTx(tx, {
+        inviteId: invite.id,
+        tokenHash: hashInviteToken(token),
+        submittedAt,
+        submittedIp: ip,
+        submittedUa: ua,
+      });
+      if (!claimed) {
+        throw new Error(
+          'Einladung wurde bereits abgeschickt, ist abgelaufen oder nicht mehr gueltig.',
+        );
+      }
+
       const privacyConfig = await readPrivacyConfigTx(tx, invite.tenantId);
       if (!isPrivacyConfigComplete(privacyConfig)) {
         throw new Error('PRIVACY_CONFIG_INCOMPLETE');
@@ -475,14 +532,11 @@ export async function submitOnboardingAction(
         });
       }
 
-      // 4. Invite-Status setzen
+      // 4. Den bereits atomar beanspruchten Invite mit seinem frischen Check
+      // verknuepfen. Status/Submit-Nachweise wurden beim Claim gesetzt.
       await tx.gwgOnboardingInvite.update({
         where: { id: invite.id },
         data: {
-          status: 'SUBMITTED',
-          submittedAt: new Date(),
-          submittedIp: ip,
-          submittedUa: ua,
           gwgCheckId: checkId,
         },
       });

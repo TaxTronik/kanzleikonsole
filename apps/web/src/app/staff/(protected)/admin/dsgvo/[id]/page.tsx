@@ -4,8 +4,9 @@ import { ArrowLeft, Download, UserX } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
-import { updateStatusAction, anonymizeContactAction } from '../actions';
+import { updateStatusAction } from '../actions';
 import { ExportContactButton } from './export-button';
+import { AnonymizeContactButton } from './anonymize-contact-button';
 import { fmtDateShort } from '@/lib/fmt';
 
 const typeLabels: Record<string, string> = {
@@ -150,16 +151,7 @@ export default async function DsgvoDetailPage({ params }: { params: Promise<{ id
             und gesetzlich aufbewahrungspflichtige Daten sind separat zu löschen, einzuschränken
             oder mit der einschlägigen Ausnahme zu dokumentieren.
           </p>
-          <form action={anonymizeContactAction}>
-            <input type="hidden" name="contactId" value={req.subjectRefId} />
-            <button
-              type="submit"
-              className="btn-secondary text-red-700 border-red-300 hover:bg-red-100"
-            >
-              <UserX className="h-4 w-4" />
-              Portal-Kontakt jetzt anonymisieren
-            </button>
-          </form>
+          <AnonymizeContactButton contactId={req.subjectRefId} subjectName={req.subjectName} />
         </div>
       )}
 

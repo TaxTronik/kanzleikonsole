@@ -11,6 +11,7 @@ import { assertSameOrigin } from '@/server/http/assert-same-origin';
 import {
   classificationToTier,
   commitBytesWithTier,
+  deleteObject,
   gobdRetentionYears,
   MAX_UPLOAD_BYTES,
   type ProtectionTier,
@@ -30,6 +31,7 @@ const Schema = z.object({
 });
 
 class PoaDocumentLockedError extends Error {}
+class DocumentReferenceChangedError extends Error {}
 
 const lockedByPoaResponse = () =>
   NextResponse.json(
@@ -86,11 +88,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
       const d = await tx.document.findFirst({
-        where: { id: documentId, tenantId },
+        where: { id: documentId, tenantId, deletedAt: null },
         select: {
           id: true,
           clientId: true,
           classification: true,
+          documentTypeId: true,
           documentType: { select: { tier: true, retentionYears: true } },
         },
       });
@@ -146,11 +149,70 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // TOCTOU-Gegenstück zur Vorprüfung: Ein Versand kann zwischen Upload
         // und DB-Insert stattfinden. Dann bleibt das Storage-Objekt verwaist,
         // die gebundene Dokumenthistorie aber unverändert.
-        await tx.$queryRaw`
-          SELECT id FROM document
+        const lockedDocuments = await tx.$queryRaw<
+          Array<{
+            id: string;
+            tenantId: string;
+            clientId: string | null;
+            classification: string;
+            documentTypeId: string | null;
+          }>
+        >`
+          SELECT
+            id,
+            tenant_id AS "tenantId",
+            client_id AS "clientId",
+            classification::text AS classification,
+            document_type_id AS "documentTypeId"
+          FROM document
           WHERE id = ${documentId}::uuid
+            AND tenant_id = ${tenantId}::uuid
+            AND deleted_at IS NULL
           FOR UPDATE
         `;
+        const lockedDocument = lockedDocuments[0];
+        if (
+          !lockedDocument ||
+          lockedDocument.tenantId !== tenantId ||
+          lockedDocument.clientId !== (doc.clientId ?? null) ||
+          lockedDocument.classification !== doc.classification ||
+          lockedDocument.documentTypeId !== (doc.documentTypeId ?? null)
+        ) {
+          throw new DocumentReferenceChangedError();
+        }
+        if (lockedDocument.documentTypeId) {
+          const lockedTypes = await tx.$queryRaw<
+            Array<{ id: string; tier: string; retentionYears: number | null }>
+          >`
+            SELECT
+              id,
+              tier::text AS tier,
+              retention_years AS "retentionYears"
+            FROM document_type
+            WHERE id = ${lockedDocument.documentTypeId}::uuid
+              AND tenant_id = ${tenantId}::uuid
+            FOR SHARE
+          `;
+          const lockedType = lockedTypes[0];
+          if (
+            !lockedType ||
+            !doc.documentType ||
+            lockedType.tier !== doc.documentType.tier ||
+            lockedType.retentionYears !== doc.documentType.retentionYears
+          ) {
+            throw new DocumentReferenceChangedError();
+          }
+        }
+        // Der vertrauliche/RESTRICTED-Zugriff kann waehrend des Storage-
+        // Uploads entzogen worden sein. Vor dem Insert im aktuellen Zustand
+        // erneut pruefen; die Dokumentzeilensperre stabilisiert zugleich
+        // Soft-Delete, Retagging und Tenant/Client-Paarung.
+        if (
+          lockedDocument.clientId &&
+          !(await canAccessClientTx(tx, session, lockedDocument.clientId))
+        ) {
+          throw new DocumentReferenceChangedError();
+        }
         const boundPoa = await tx.powerOfAttorney.findFirst({
           where: {
             documentId,
@@ -227,7 +289,40 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       },
       'documents-new-version: DB-Commit nach Storage-Upload fehlgeschlagen — Objekt verwaist',
     );
+    const rejectedBeforeInsert =
+      e instanceof PoaDocumentLockedError ||
+      e instanceof DocumentReferenceChangedError ||
+      (e as { code?: string }).code === 'P2002';
+    if (rejectedBeforeInsert) {
+      // NONE-Objekte koennen sofort entfernt werden. Bei aktivem Object-Lock
+      // wird S3 erwartungsgemaess ablehnen; das strukturierte Log haelt den
+      // verwaisten Key dann fuer den spaeteren Abgleich fest.
+      try {
+        await deleteObject(commit.targetBucket, commit.targetKey);
+      } catch (cleanupError) {
+        log.error(
+          {
+            component: 'documents-new-version',
+            tenantId,
+            documentId,
+            orphanedBucket: commit.targetBucket,
+            orphanedKey: commit.targetKey,
+            cleanupErr: (cleanupError as Error).message,
+          },
+          'documents-new-version: Kompensationsloeschung des verwaisten Objekts fehlgeschlagen',
+        );
+      }
+    }
     if (e instanceof PoaDocumentLockedError) return lockedByPoaResponse();
+    if (e instanceof DocumentReferenceChangedError) {
+      return NextResponse.json(
+        {
+          error: 'reference_changed',
+          message: 'Dokument oder Zugriffsberechtigung hat sich waehrend des Uploads geaendert.',
+        },
+        { status: 409 },
+      );
+    }
     if ((e as { code?: string }).code === 'P2002') {
       return NextResponse.json(
         {

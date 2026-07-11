@@ -4,6 +4,7 @@
   "globalEnv": [
     "NODE_ENV",
     "DATABASE_URL",
+    "DATABASE_APP_URL",
     "REDIS_URL",
     "AUTH_SECRET",
     "NEXTAUTH_URL",

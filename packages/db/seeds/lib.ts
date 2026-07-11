@@ -32,6 +32,104 @@ export function writeAdminCredentials(email: string, password: string): string {
 }
 
 /**
+ * Vollständiger Rechtsträger-Snapshot des ausschließlich lokalen
+ * Dev-Mandanten. Die Werte sind Demodaten; sie dürfen nie für die
+ * Production-Provisionierung verwendet werden.
+ */
+export const DEV_SEED_GWG_LEGAL_ENTITY_SNAPSHOT = {
+  legalForm: 'GmbH',
+  registerNumber: 'HRB 10001',
+  registerAuthority: 'Amtsgericht Musterstadt',
+  noRegisterEntry: false,
+  representativeNames: ['Max Mustermann'],
+  ownershipStructureNotes:
+    'Max Mustermann hält sämtliche Geschäftsanteile und übt die Kontrolle unmittelbar aus.',
+};
+
+type GwgLegalEntitySnapshot = {
+  legalForm: string | null;
+  registerNumber: string | null;
+  registerAuthority: string | null;
+  noRegisterEntry: boolean;
+  representativeNames: string[];
+  ownershipStructureNotes: string | null;
+};
+
+export function hasCompleteGwgLegalEntitySnapshot(snapshot: GwgLegalEntitySnapshot): boolean {
+  return Boolean(
+    snapshot.legalForm?.trim() &&
+    snapshot.representativeNames.some((name) => name.trim().length > 0) &&
+    snapshot.ownershipStructureNotes?.trim() &&
+    (snapshot.noRegisterEntry ||
+      (snapshot.registerNumber?.trim() && snapshot.registerAuthority?.trim())),
+  );
+}
+
+/**
+ * Stellt den für E2E benötigten GwG-Check idempotent her.
+ *
+ * Frühere Seed-Versionen konnten nach der Fail-closed-Härtung einen formal
+ * VERIFIED, aber unvollständigen Rechtsträger-Snapshot hinterlassen. Ein
+ * solcher Check darf weder wiederverwendet noch nachträglich ergänzt werden,
+ * weil verifizierte Snapshots unveränderlich sind. Er wird deshalb korrekt auf
+ * EXPIRED gesetzt und durch einen neuen vollständigen Demodatensatz ersetzt.
+ */
+export async function ensureDevSeedVerifiedGwgCheck(
+  prisma: PrismaClient,
+  input: { tenantId: string; clientId: string; verifiedBy: string; now?: Date },
+): Promise<{ id: string }> {
+  const now = input.now ?? new Date();
+  const candidates = await prisma.gwgCheck.findMany({
+    where: {
+      tenantId: input.tenantId,
+      clientId: input.clientId,
+      status: 'VERIFIED',
+      destroyedAt: null,
+    },
+    select: {
+      id: true,
+      validUntil: true,
+      verifiedAt: true,
+      verifiedBy: true,
+      legalForm: true,
+      registerNumber: true,
+      registerAuthority: true,
+      noRegisterEntry: true,
+      representativeNames: true,
+      ownershipStructureNotes: true,
+    },
+  });
+
+  const isReusable = (check: (typeof candidates)[number]) =>
+    check.verifiedAt !== null &&
+    check.verifiedBy !== null &&
+    (check.validUntil === null || check.validUntil > now) &&
+    hasCompleteGwgLegalEntitySnapshot(check);
+  const reusable = candidates.find(isReusable);
+  const staleIds = candidates.filter((check) => !isReusable(check)).map((check) => check.id);
+  if (staleIds.length > 0) {
+    await prisma.gwgCheck.updateMany({
+      where: { id: { in: staleIds }, status: 'VERIFIED' },
+      data: { status: 'EXPIRED' },
+    });
+  }
+  if (reusable) return { id: reusable.id };
+
+  return prisma.gwgCheck.create({
+    data: {
+      tenantId: input.tenantId,
+      clientId: input.clientId,
+      status: 'VERIFIED',
+      verifiedAt: now,
+      verifiedBy: input.verifiedBy,
+      validUntil: null,
+      ...DEV_SEED_GWG_LEGAL_ENTITY_SNAPSHOT,
+    },
+    select: { id: true },
+  });
+}
+
+/**
  * Stellt sicher, dass die 7 Default-Dokumenttypen für einen Tenant existieren.
  * Idempotent — ergänzt nur fehlende Einträge, fasst vorhandene nicht an
  * (auch wenn der Anwender Name/Sort manuell überschrieben hat).

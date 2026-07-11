@@ -22,7 +22,11 @@ import bcrypt from 'bcryptjs';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createPostgresAdapter, requireDatabaseUrl } from '../src/prisma-adapter';
-import { ensureDefaultDocumentTypes as ensureDocTypes, generateAdminPassword } from './lib';
+import {
+  ensureDefaultDocumentTypes as ensureDocTypes,
+  ensureDevSeedVerifiedGwgCheck,
+  generateAdminPassword,
+} from './lib';
 
 if (process.env['NODE_ENV'] === 'production') {
   console.error('[seed] FATAL: Dev-Seed darf NICHT in Produktion laufen.');
@@ -38,6 +42,13 @@ const prisma = new PrismaClient({
 
 async function main() {
   console.log('[seed] Starte Dev-Seed…');
+
+  const configuredPassword = process.env['ADMIN_PASSWORD'];
+  if (configuredPassword && configuredPassword.length < 8) {
+    throw new Error('ADMIN_PASSWORD muss mindestens 8 Zeichen lang sein.');
+  }
+  const explicitPassword = configuredPassword || undefined;
+  const adminPassword = explicitPassword ?? generateAdminPassword();
 
   // 1. Tenant
   const tenant = await prisma.tenant.upsert({
@@ -61,10 +72,6 @@ async function main() {
   // Kein hartcodiertes Default mehr (U-3). Wir schreiben das frisch erzeugte
   // Passwort zusätzlich in `.admin-credentials.txt` (chmod 600, gitignored)
   // damit es nicht ausschließlich im Terminal-Output landet.
-  const explicitPassword = process.env['ADMIN_PASSWORD'];
-  const adminPassword = explicitPassword && explicitPassword.length >= 8
-    ? explicitPassword
-    : generateAdminPassword();
   const passwordHash = await bcrypt.hash(adminPassword, 12);
 
   const existingAdmin = await prisma.staffUser.findFirst({
@@ -75,7 +82,13 @@ async function main() {
   if (existingAdmin) {
     admin = await prisma.staffUser.update({
       where: { id: existingAdmin.id },
-      data: { passwordHash, active: true, totpSecretEnc: null, totpEnrolledAt: null, totpSetupStartedAt: null },
+      data: {
+        passwordHash,
+        active: true,
+        totpSecretEnc: null,
+        totpEnrolledAt: null,
+        totpSetupStartedAt: null,
+      },
     });
     console.log(`[seed] Admin-User aktualisiert: ${admin.email}`);
   } else {
@@ -93,11 +106,9 @@ async function main() {
 
   if (!explicitPassword) {
     const credPath = resolve(process.cwd(), '.admin-credentials.txt');
-    writeFileSync(
-      credPath,
-      `email=admin@taxtronik.local\npassword=${adminPassword}\n`,
-      { mode: 0o600 },
-    );
+    writeFileSync(credPath, `email=admin@taxtronik.local\npassword=${adminPassword}\n`, {
+      mode: 0o600,
+    });
     console.log('');
     console.log('  ============================================================');
     console.log('  Initiales Admin-Passwort (NUR diesmal sichtbar):');
@@ -125,7 +136,9 @@ async function main() {
     where: {
       tenantId_datevNo: { tenantId: tenant.id, datevNo: '10001' },
     },
-    update: { name: 'Mustermann GmbH' },
+    // Auch ein Wiederholungslauf hält den Mandanten während einer möglichen
+    // Reparatur eines alten, unvollständigen Seed-Checks fail-closed.
+    update: { name: 'Mustermann GmbH', allowActive: false },
     create: {
       tenantId: tenant.id,
       kind: 'JURPERS',
@@ -135,26 +148,20 @@ async function main() {
     },
   });
 
-  // Verifizierten, unbefristeten GwG-Check sicherstellen (idempotent).
-  const existingCheck = await prisma.gwgCheck.findFirst({
-    where: { clientId: client.id, status: 'VERIFIED' },
+  // Verifizierten, unbefristeten und für JURPERS vollständigen GwG-Check
+  // sicherstellen. Alte unvollständige Seed-Fragmente werden dabei EXPIRED,
+  // weil ein VERIFIED-Snapshot nicht nachträglich ergänzt werden darf.
+  await ensureDevSeedVerifiedGwgCheck(prisma, {
+    tenantId: tenant.id,
+    clientId: client.id,
+    verifiedBy: admin.id,
   });
-  if (!existingCheck) {
-    await prisma.gwgCheck.create({
-      data: {
-        tenantId: tenant.id,
-        clientId: client.id,
-        status: 'VERIFIED',
-        verifiedAt: new Date(),
-        verifiedBy: admin.id,
-        validUntil: null,
-      },
-    });
-  }
 
   // Jetzt aktivieren (UPDATE-Trigger ist durch den Check erfüllt).
   await prisma.client.update({ where: { id: client.id }, data: { allowActive: true } });
-  console.log(`[seed] Testmandant: ${client.name} (${client.id}) — GwG-verifiziert + aktiv`);
+  console.log(
+    `[seed] Testmandant: ${client.name} (${client.id}) — Demo-GwG-Snapshot vollständig + aktiv`,
+  );
 
   // 3b. Admin als Hauptbearbeiter zuordnen — damit „Meine Mandanten"-Filter
   // in Mandantenliste/Anforderungen/Steuerterminen sofort Treffer hat.
@@ -179,7 +186,11 @@ async function main() {
   // 4. Beispiel-Portal-Kontakt (für Magic-Link-Test)
   const contact = await prisma.clientContact.upsert({
     where: {
-      tenantId_clientId_email: { tenantId: tenant.id, clientId: client.id, email: 'mandant@taxtronik.local' },
+      tenantId_clientId_email: {
+        tenantId: tenant.id,
+        clientId: client.id,
+        email: 'mandant@taxtronik.local',
+      },
     },
     update: { fullName: 'Max Mustermann', active: true },
     create: {
@@ -214,8 +225,12 @@ async function main() {
   }
 
   console.log('\n[seed] Fertig.');
-  console.log(`  Mitarbeiter-Login: admin@taxtronik.local / ${adminPassword}`);
-  console.log('  (Passwort auch in packages/db/.admin-credentials.txt)');
+  console.log('  Mitarbeiter-Login: admin@taxtronik.local');
+  console.log(
+    explicitPassword
+      ? '  Admin-Passwort: aus $ADMIN_PASSWORD übernommen (nicht ausgegeben).'
+      : '  Admin-Passwort: siehe obige Erstausgabe und .admin-credentials.txt.',
+  );
   console.log('  Portal-Login (Magic-Link): mandant@taxtronik.local');
   console.log('  → Magic-Link-Mail landet in MailHog (http://localhost:8025).');
 }
