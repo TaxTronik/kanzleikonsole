@@ -166,6 +166,28 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
     await page.waitForTimeout(1000);
 
     complianceDocumentTitle = `E2E Compliance Test Dokument ${Date.now()}`;
+    const typeSelect = page.locator('#upload-type');
+    await expect(typeSelect, 'Upload-Dialog muss die fachliche Dokumentart abfragen').toBeVisible({
+      timeout: 4000,
+    });
+    const gobdInvoiceOption = typeSelect.getByRole('option', { name: /^GoBD Rechnung\b/ });
+    await expect(
+      gobdInvoiceOption,
+      'GoBD Rechnung muss als unveränderbarer Kerntyp verfügbar sein',
+    ).toBeAttached({ timeout: 5000 });
+    const gobdInvoiceTypeId = await gobdInvoiceOption.getAttribute('value');
+    expect(gobdInvoiceTypeId, 'GoBD Rechnung muss eine Dokumenttyp-ID besitzen').toMatch(
+      /^[a-f0-9-]{36}$/i,
+    );
+    await typeSelect.selectOption(gobdInvoiceTypeId!);
+    await expect(
+      typeSelect,
+      'Der Compliance-Upload muss explizit als GoBD Rechnung klassifiziert sein',
+    ).toHaveValue(gobdInvoiceTypeId!);
+    await expect(page.getByText(/GoBD · 8 Jahre unveränderbar \(Object-Lock\)/i)).toBeVisible({
+      timeout: 3000,
+    });
+
     const fileInput = page.locator('#upload-file, input[type="file"]').first();
     await expect(fileInput, 'Upload-Dialog muss ein Datei-Feld enthalten').toBeVisible({ timeout: 4000 });
     await fileInput.setInputFiles({
@@ -1318,27 +1340,24 @@ test.describe('Magic Link Security', () => {
     expect(foundToken, 'Magic-Link-Mail muss einen Token-Parameter enthalten').toBe(true);
   });
 
-  test('8.3 Invalid/expired token fails gracefully', async ({ page }) => {
+  test('8.3 Invalid/expired token is rejected after explicit confirmation', async ({ page }) => {
     await page.goto('/portal/login/verify?token=invalid-token-12345');
-    const errorMsg = page.getByText(/ungültig|abgelaufen|fehlgeschlagen|nicht gefunden/i);
-    const terminalState = async (): Promise<'error' | 'login' | 'pending'> => {
-      const pathname = new URL(page.url()).pathname.replace(/\/$/, '');
-      if (pathname === '/portal/login') return 'login';
-      if (await errorMsg.first().isVisible()) return 'error';
-      return 'pending';
-    };
+    const confirmButton = page.getByRole('button', { name: 'Anmelden', exact: true });
+    await expect(
+      confirmButton,
+      'Token-Prüfung darf erst nach expliziter Bestätigung erfolgen',
+    ).toBeVisible();
+    await confirmButton.click();
 
-    await expect.poll(terminalState, {
-      message: 'Ungültiger Token muss eine Fehlermeldung oder einen Login-Redirect auslösen',
-      timeout: 10_000,
-    }).toMatch(/^(error|login)$/);
-
-    const state = await terminalState();
-    if (state === 'error') {
-      await expect(errorMsg.first()).toBeVisible();
-    } else {
-      await expect(page).toHaveURL(/\/portal\/login(?:[/?#]|$)/);
-    }
+    await expect(
+      page,
+      'Ungültiger Token muss ohne Token-Leak in den Fehlerzustand wechseln',
+    ).toHaveURL(/\/portal\/login\/verify\?status=invalid$/, { timeout: 10_000 });
+    await expect(
+      page.getByText('Der Link ist ungültig, abgelaufen oder wurde bereits verwendet.', {
+        exact: true,
+      }),
+    ).toBeVisible();
   });
 
   test('8.4 Rate limiting on magic link requests', async ({ page }) => {
