@@ -1,8 +1,6 @@
 import type { ComponentType } from 'react';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { stat } from 'node:fs/promises';
-import { HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import {
   ShieldCheck,
   Database,
@@ -14,9 +12,7 @@ import {
   CheckCircle2,
   Circle,
   ArrowRight,
-  Download,
 } from 'lucide-react';
-import { env } from '@taxtronik/config';
 import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
@@ -31,13 +27,11 @@ import { getLicenseInfo } from '@/server/license/state';
 import { getSetupStatus } from '@/server/setup/status';
 import { findDueGwgDeletionDocs } from '@/server/gwg/retention';
 import { findDueClientAnonymizations } from '@/server/dsgvo/client-retention';
-import { backupLocalPathForKey } from '@/server/backup/local-path';
 import { LicenseCard } from './license-card';
 import { BackupRunButton } from './backup-run-button';
 import { fmtDateTimeShort } from '@/lib/fmt';
 
 const APP_VERSION = process.env['APP_VERSION'] ?? 'dev';
-type BackupAvailability = { local: boolean; s3: boolean };
 
 export default async function AdminPage() {
   const session = await staffAuth();
@@ -59,6 +53,7 @@ export default async function AdminPage() {
     contactCount,
     gwgDueCount,
     anonDueCount,
+    legacyStorageVersionCount,
   ] = await withTenantContext(ctx, async (tx) =>
     Promise.all([
       // P-1: Chain-Verifikation läuft NICHT im Render-Pfad (SHA-256 über den
@@ -81,10 +76,12 @@ export default async function AdminPage() {
       tx.clientContact.count({ where: { active: true } }),
       findDueGwgDeletionDocs(tx).then((d) => d.length),
       findDueClientAnonymizations(tx).then((d) => d.length),
+      tx.documentVersion.count({
+        where: { immutable: true, storageVersionId: null },
+      }),
     ]),
   );
 
-  const backupAvailability = await checkBackupAvailability(lastBackup);
   const drill = (drillSetting?.value ?? null) as PersistedDrillResult | null;
   const verifyResult = (verifyRow?.value ?? null) as PersistedVerifyResult | null;
 
@@ -106,6 +103,25 @@ export default async function AdminPage() {
 
       {/* Lizenz-Banner ganz oben — sichtbar auch ohne Scrollen */}
       <LicenseCard info={license} />
+
+      {legacyStorageVersionCount > 0 && (
+        <div className="card p-4 mb-6 border-l-4 border-l-yellow-500">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-primary">
+                Storage-Inventur für {legacyStorageVersionCount} geschützte Bestandsversion
+                {legacyStorageVersionCount === 1 ? '' : 'en'} erforderlich
+              </p>
+              <p className="text-xs text-muted mt-1">
+                Diese vor der Versions-ID-Härtung angelegten Dateien bleiben sicher gesperrt, können
+                aber erst nach Zuordnung ihrer konkreten S3-Version nachweisbar vernichtet werden.
+                Bitte vor dem nächsten GwG-Löschlauf durch den Betreiber inventarisieren.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Setup-Checkliste — bleibt sichtbar bis komplett erledigt */}
       {!setup.allDone && (
@@ -284,34 +300,11 @@ export default async function AdminPage() {
               )}
               <div className="mt-3 flex flex-wrap items-start gap-2">
                 <BackupRunButton />
-                {/* Route-Handler-Download (kein <Link> — kein Client-Side-Routing) */}
                 {lastBackup?.status === 'SUCCESS' && lastBackup.key && (
-                  <>
-                    {backupAvailability.local && (
-                      <a
-                        href={`/api/staff/admin/backups/${lastBackup.id}/download?source=local`}
-                        className="btn-secondary text-xs py-1.5 inline-flex items-center gap-1.5"
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                        Lokal
-                      </a>
-                    )}
-                    {backupAvailability.s3 && (
-                      <a
-                        href={`/api/staff/admin/backups/${lastBackup.id}/download?source=s3`}
-                        className="btn-secondary text-xs py-1.5 inline-flex items-center gap-1.5"
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                        S3
-                      </a>
-                    )}
-                    {!backupAvailability.local && !backupAvailability.s3 && (
-                      <p className="basis-full text-xs text-yellow-700">
-                        Download nicht verfügbar: Backup-Datei nicht gefunden. Bitte neues Backup
-                        starten.
-                      </p>
-                    )}
-                  </>
+                  <p className="basis-full text-xs text-yellow-700">
+                    Vollständige Datenbank-Backups enthalten globale Sicherheitsdaten und sind
+                    deshalb nur über den Betreiber-Host beziehungsweise den Backup-Storage abrufbar.
+                  </p>
                 )}
               </div>
             </div>
@@ -504,57 +497,4 @@ function fmtBytes(b: number): string {
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
   if (b < 1024 * 1024 * 1024) return `${(b / 1024 / 1024).toFixed(1)} MB`;
   return `${(b / 1024 / 1024 / 1024).toFixed(2)} GB`;
-}
-
-async function checkBackupAvailability(
-  backup: {
-    status: string;
-    bucket: string | null;
-    key: string | null;
-    sizeBytes: bigint | null;
-  } | null,
-): Promise<BackupAvailability> {
-  if (!backup || backup.status !== 'SUCCESS' || !backup.bucket || !backup.key) {
-    return { local: false, s3: false };
-  }
-
-  const [local, s3] = await Promise.all([
-    isLocalBackupAvailable(backup.key, backup.sizeBytes),
-    isS3BackupAvailable(backup.bucket, backup.key, backup.sizeBytes),
-  ]);
-
-  return { local, s3 };
-}
-
-async function isLocalBackupAvailable(key: string, expectedSize: bigint | null): Promise<boolean> {
-  try {
-    const info = await stat(backupLocalPathForKey(key));
-    if (!info.isFile()) return false;
-    return expectedSize === null || BigInt(info.size) === expectedSize;
-  } catch {
-    return false;
-  }
-}
-
-async function isS3BackupAvailable(
-  bucket: string,
-  key: string,
-  expectedSize: bigint | null,
-): Promise<boolean> {
-  try {
-    const s3 = new S3Client({
-      endpoint: env.S3_ENDPOINT,
-      region: env.S3_REGION,
-      credentials: { accessKeyId: env.S3_ACCESS_KEY, secretAccessKey: env.S3_SECRET_KEY },
-      forcePathStyle: true,
-    });
-    const head = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
-    return (
-      expectedSize === null ||
-      typeof head.ContentLength !== 'number' ||
-      BigInt(head.ContentLength) === expectedSize
-    );
-  } catch {
-    return false;
-  }
 }

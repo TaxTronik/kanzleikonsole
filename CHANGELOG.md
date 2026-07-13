@@ -32,9 +32,20 @@ Versionsabschnitt überführt.
   `pnpm --filter @taxtronik/db provision` legt Tenant, Default-Dokumenttypen
   und ein Admin-Konto an; der Dev-Seed verweigert in Produktion weiterhin,
   Doppel-Provisionierung wird erkannt und abgebrochen
-- Deployment: CI-getestete Registry-Images vorbereitet (Trivy-Gate), Pull statt
-  Build auf dem Server, automatisches Backup vor jeder Migration,
-  dokumentierter Rollback-Pfad
+- Release/Deployment: annotierte SemVer-Tags durchlaufen CI und Security im
+  selben Promotion-DAG; Web und Worker werden erst danach gebaut, gescannt und
+  als write-once Versions-Tags publiziert. Das Ed25519-signierte Manifest bindet
+  Tag-Commit und beide Image-Digests; die Operator-CLI deployt
+  `image:tag@sha256:…` und verwaltet einen vollständigen Last-Good-Vertrag für
+  Rollbacks
+- Release/Deployment: Pending-Verträge bleiben bis zum bestandenen Health- und
+  Readiness-Gate ausschließlich im Prozess; `.env` und `.taxtronik.state`
+  verankern erst danach den Last-Good-Stand. Rollback erkennt abgebrochene
+  Updates, stellt dann `state.current` wieder her und wechselt Checkout, Web-
+  sowie Worker-Artefakt gemeinsam
+- Secret-Härtung: SeaweedFS rendert seine S3-Konfiguration erst beim
+  Containerstart in ein flüchtiges tmpfs (`0400`, UID 1000); historische
+  hostseitige `seaweedfs-s3.generated.json`-Kopien werden entfernt
 - Toolchain: pnpm-Pin auf 11.8.0 angehoben (Root `packageManager` und
   Docker-Builds)
 - Ops-Doku: README, FEATURES, Release-Doku, nginx-Beispiel und n8n-Workflow-Doku
@@ -130,21 +141,41 @@ Versionsabschnitt überführt.
 
 ### Backup, Archiv und Compliance-Nachweise
 
-- **[Scope]** Backup: Admin-Trigger/Download-Routen sind im Build-Kontext
-  enthalten; erfolgreiche Backups bieten getrennte Browser-Downloads für lokale
-  Kopie und S3-Objekt
+- **[Scope]** Backup: Admin-Trigger ist im Build-Kontext enthalten;
+  vollständige Datenbank-Dumps sind wegen ihres installationsweiten Inhalts
+  im Browser nicht herunterladbar und bleiben dem Betreiber-Host/S3 vorbehalten
 - **[Scope]** Backup: Browser-Backup-Verzeichnis wird vor App-Start
   vorbereitet und im Compose-One-Shot auf den Container-`node`-User
-  berechtigt; Kanzleidateien können per `./taxtronik backup-files` bzw.
-  `backup-full` als SeaweedFS-Bucket-Export gesichert werden
+  berechtigt; `./taxtronik backup-files` erstellt weiterhin einen ergänzenden
+  SeaweedFS-Byte-Export
+- **[Scope]** Full-Backup: `./taxtronik backup-full` erstellt unter einem
+  globalen Lock einen quieszierten Recovery Point aus TaxTronik-/n8n-Dumps,
+  Object-Export, Cold-Snapshots von SeaweedFS/Redis/n8n und
+  Recovery-Konfiguration, versiegelt ihn gemeinsam mit age und signiert das
+  SHA-256-Inventar per Ed25519; optionaler Offsite-Upload erzwingt HTTPS,
+  Versioning und Object Lock COMPLIANCE samt Receipt
 - **[Scope]** Restore: `./taxtronik restore` ergänzt den Operator-Pfad für
   `--list`, `--latest`, `--key` und lokale `--file`-Dumps; Container-Fallback
   streamt Host-Dumps korrekt in `pg_restore`
+- **[Scope]** Restore-Härtung: Dumps und Restores erhalten PostgreSQL-ACLs und
+  sicherheitsrelevante REVOKEs; der CI-Roundtrip prüft `taxtronik_app`, RLS,
+  Audit-Tabellen und GwG-SECURITY-DEFINER-Funktionen
 - **[Scope]** Retention-Abnahme: `pnpm demo:retention` erzeugt lokale
   GwG-/Object-Lock-Testfälle für löschreif/nicht löschreif sowie aktiven bzw.
   abgelaufenen Governance-Lock
-- **[Scope]** Backup: monatlicher Restore-Drill mit Chain-Verifikation auf der
-  wiederhergestellten DB; Health-Alarme per E-Mail bei Infrastruktur-Ausfall
+- **[Scope]** Dokumentenarchiv: Object-Lock-Uploads persistieren die konkrete
+  S3-`VersionId`; die bestätigte GwG-Vernichtung löscht und verifiziert genau
+  diese Version und setzt den Governance-Bypass nur im doppelt fristgeprüften
+  Fachpfad. GWG→GOBD-Retagging ist wegen der eigenständigen
+  GwG-Vernichtungsfrist gesperrt
+- **[Scope]** Aufbewahrung: GoBD-Dateitypen unterscheiden nun 6 Jahre für
+  Handels-/Geschäftsbriefe, 8 Jahre für Buchungsbelege und 10 Jahre für
+  Bücher/Abschlüsse bzw. gesondert einzuordnende Steuerunterlagen; längere
+  Einzelfallpflichten bleiben ausdrücklich fachlich zu prüfen
+- **[Scope]** Backup: monatlicher DB-Restore-Drill mit Chain-Verifikation auf
+  der wiederhergestellten Wegwerf-Datenbank; der isolierte Full-Restore-Drill
+  bleibt dokumentierte Betreiberpflicht; Health-Alarme per E-Mail bei
+  Infrastruktur-Ausfall
 - Audit-Archivierung: monatliche Archivläufe, Hash-Chain-Prüfung und
   Admin-UI unter `/staff/admin/archive`; HARD-Modus wird ehrlich auf SOFT
   normalisiert, wenn kein DB-Cleanup erfolgt

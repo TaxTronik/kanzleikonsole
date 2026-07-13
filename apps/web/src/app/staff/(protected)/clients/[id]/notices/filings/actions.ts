@@ -7,15 +7,28 @@ import { commitDocumentFromBytes } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
 import { prismaBytes } from '@/server/db/prisma-bytes';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
-import { staffActionGuard, withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
+import {
+  staffActionGuard,
+  withStaff,
+  ActionError,
+  type ActionResult as BaseActionResult,
+} from '@/server/actions/staff-action';
 
 export interface ActionResult extends BaseActionResult {
   id?: string;
 }
 
 const KIND_VALUES = [
-  'USTA', 'UST_JAHR', 'EST', 'KST', 'GEWST_MESSBESCHEID', 'GEWST',
-  'LSTA', 'FESTSTELLUNG', 'ZERLEGUNG', 'SONSTIGE',
+  'USTA',
+  'UST_JAHR',
+  'EST',
+  'KST',
+  'GEWST_MESSBESCHEID',
+  'GEWST',
+  'LSTA',
+  'FESTSTELLUNG',
+  'ZERLEGUNG',
+  'SONSTIGE',
 ] as const;
 
 const SaveSchema = z.object({
@@ -23,7 +36,10 @@ const SaveSchema = z.object({
   clientId: z.string().uuid(),
   kind: z.enum(KIND_VALUES),
   period: z.string().min(4).max(20),
-  filingDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+  filingDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable(),
   expectedAssessed: z.number().nullable(),
   expectedPrepaid: z.number().nullable(),
   expectedRefund: z.number().nullable(),
@@ -34,7 +50,10 @@ const SaveSchema = z.object({
     .object({
       fileName: z.string().min(1).max(200),
       mimeType: z.string().min(1).max(100),
-      base64: z.string().min(1).max(20 * 1024 * 1024),
+      base64: z
+        .string()
+        .min(1)
+        .max(20 * 1024 * 1024),
     })
     .nullable()
     .optional(),
@@ -48,7 +67,8 @@ export async function saveTaxFilingAction(
   const { tenantId, staffId, ctx, session } = g;
 
   const parsed = SaveSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
+  if (!parsed.success)
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
   const data = parsed.data;
 
   // PDF optional vorab ablegen (vor TX, ClamAV-Scan etc.)
@@ -58,35 +78,41 @@ export async function saveTaxFilingAction(
     if (fileData.length > 10 * 1024 * 1024) {
       return { ok: false, error: 'PDF zu groß (max. 10 MB).' };
     }
-    const stored = await commitDocumentFromBytes({ fileData, classification: 'GOBD_TAX', tenantId });
+    const stored = await commitDocumentFromBytes({
+      fileData,
+      classification: 'GOBD_TAX',
+      tenantId,
+    });
     try {
       documentId = await withTenantContext(ctx, async (tx) => {
         await assertClientAccessTx(tx, session, data.clientId);
         const doc = await tx.document.create({
-        data: {
-          tenantId,
-          clientId: data.clientId,
-          title: data.pdf!.fileName,
-          classification: 'GOBD_TAX',
-          // P-3: Magic-Bytes statt Client-Header — siehe M-2.
-          mimeType: stored.detectedMime ?? data.pdf!.mimeType,
-        },
-      });
-      await tx.documentVersion.create({
-        data: {
-          documentId: doc.id,
-          versionNo: 1,
-          storageBucket: stored.targetBucket,
-          storageKey: stored.targetKey,
-          sha256: prismaBytes(stored.sha256),
-          sizeBytes: stored.sizeBytes,
-          immutable: stored.immutable,
-          scanStatus: 'CLEAN',
-          scanCompletedAt: new Date(),
-          createdById: staffId,
-        },
-      });
-      return doc.id;
+          data: {
+            tenantId,
+            clientId: data.clientId,
+            title: data.pdf!.fileName,
+            classification: 'GOBD_TAX',
+            // P-3: Magic-Bytes statt Client-Header — siehe M-2.
+            mimeType: stored.detectedMime ?? data.pdf!.mimeType,
+            retentionUntil: stored.retentionUntil,
+          },
+        });
+        await tx.documentVersion.create({
+          data: {
+            documentId: doc.id,
+            versionNo: 1,
+            storageBucket: stored.targetBucket,
+            storageKey: stored.targetKey,
+            storageVersionId: stored.storageVersionId,
+            sha256: prismaBytes(stored.sha256),
+            sizeBytes: stored.sizeBytes,
+            immutable: stored.immutable,
+            scanStatus: 'CLEAN',
+            scanCompletedAt: new Date(),
+            createdById: staffId,
+          },
+        });
+        return doc.id;
       });
     } catch (e) {
       return toActionError(e);
@@ -139,7 +165,12 @@ export async function saveTaxFilingAction(
       // Auf vorhandene Erklärung für (client, kind, period) prüfen
       const existing = await tx.taxFiling.findUnique({
         where: {
-          tenantId_clientId_kind_period: { tenantId, clientId: data.clientId, kind: data.kind, period: data.period },
+          tenantId_clientId_kind_period: {
+            tenantId,
+            clientId: data.clientId,
+            kind: data.kind,
+            period: data.period,
+          },
         },
       });
       if (existing) {
@@ -219,7 +250,9 @@ export async function deleteTaxFilingAction(input: {
   filingId: string;
   clientId: string;
 }): Promise<ActionResult> {
-  const parsed = z.object({ filingId: z.string().uuid(), clientId: z.string().uuid() }).safeParse(input);
+  const parsed = z
+    .object({ filingId: z.string().uuid(), clientId: z.string().uuid() })
+    .safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   return withStaff(

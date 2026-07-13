@@ -2,12 +2,14 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { withTenantContext } from '@taxtronik/db';
+import { withTenantContext, type TxClient } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { prismaBytes } from '@/server/db/prisma-bytes';
 import {
   fetchObjectBytes,
   commitBytesWithTier,
+  deleteObject,
+  deleteObjectVersion,
   classificationToTier,
   gobdRetentionYears,
   type ProtectionTier,
@@ -16,6 +18,7 @@ import { carrierClassification } from '@/server/storage/document-type';
 import { documentRetagDecision } from '@/server/storage/retag-policy';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { staffActionGuard, withStaff, ActionError } from '@/server/actions/staff-action';
+import { log } from '@/server/logger';
 
 export interface DocActionResult {
   ok: boolean;
@@ -44,9 +47,9 @@ const DeleteSchema = z.object({
 
 /**
  * Soft-Delete: blendet das Dokument aus den Listen aus. Die Datei im
- * Object-Store bleibt UNANGETASTET — GoBD/GwG-Objekte liegen unter
- * Object-Lock COMPLIANCE und sind ohnehin physisch nicht löschbar
- * (§ 147 AO / § 8 Abs. 4 GwG). Bewusst kein S3-DeleteObject hier:
+ * Object-Store bleibt UNANGETASTET — GoBD liegt unter COMPLIANCE-Lock;
+ * GwG-Nachweise werden im GOVERNANCE-Bucket durch den separaten fachlichen
+ * Vernichtungsprozess behandelt. Bewusst kein S3-DeleteObject hier:
  * "Löschen" ist reine Sichtbarkeit, die Aufbewahrung erzwingt der
  * Object-Store. Wiederherstellbar via restoreDocumentAction.
  */
@@ -171,8 +174,11 @@ export async function retagDocumentAction(
     oldClassification: string;
     clientId: string | null;
     versionId: string;
+    versionNo: number;
     bucket: string;
     key: string;
+    storageVersionId: string | null;
+    immutable: boolean;
     createdAt: Date;
     oldRetentionYears: number | null;
     newTier: ProtectionTier;
@@ -193,7 +199,14 @@ export async function retagDocumentAction(
           versions: {
             orderBy: { versionNo: 'desc' },
             take: 1,
-            select: { id: true, storageBucket: true, storageKey: true },
+            select: {
+              id: true,
+              versionNo: true,
+              storageBucket: true,
+              storageKey: true,
+              storageVersionId: true,
+              immutable: true,
+            },
           },
         },
       });
@@ -219,7 +232,7 @@ export async function retagDocumentAction(
       } else {
         const cls = parsed.data.classification!;
         const builtin = await tx.documentType.findFirst({
-          where: { tenantId, classificationKey: cls },
+          where: { tenantId, classificationKey: cls, active: true },
           select: { id: true },
         });
         newTier = classificationToTier(cls);
@@ -237,8 +250,11 @@ export async function retagDocumentAction(
         oldClassification: d.classification,
         clientId: d.clientId,
         versionId: d.versions[0].id,
+        versionNo: d.versions[0].versionNo,
         bucket: d.versions[0].storageBucket,
         key: d.versions[0].storageKey,
+        storageVersionId: d.versions[0].storageVersionId,
+        immutable: d.versions[0].immutable,
         createdAt: d.createdAt,
         oldRetentionYears:
           d.documentType?.retentionYears ??
@@ -277,6 +293,16 @@ export async function retagDocumentAction(
     };
   }
 
+  if (retagDecision === 'BLOCK_GWG_TIER_CHANGE') {
+    return {
+      ok: false,
+      error:
+        'GwG-Nachweise können nicht in eine andere Schutzstufe umklassifiziert werden: ' +
+        'Ihre eigenständige gesetzliche Vernichtungsfrist muss erhalten bleiben. ' +
+        'Legen Sie eine zusätzlich benötigte GoBD-Fassung als separates Dokument ab.',
+    };
+  }
+
   if (retagDecision === 'BLOCK_RETENTION_SHORTENING') {
     return {
       ok: false,
@@ -286,10 +312,111 @@ export async function retagDocumentAction(
     };
   }
 
+  const lockAndValidateCurrentDocument = async (tx: TxClient, requireLatestSnapshot: boolean) => {
+    const lockedRows = await tx.$queryRaw<
+      Array<{
+        id: string;
+        clientId: string | null;
+        classification: string;
+        documentTypeId: string | null;
+      }>
+    >`
+      SELECT
+        id,
+        client_id AS "clientId",
+        classification::text AS classification,
+        document_type_id AS "documentTypeId"
+      FROM document
+      WHERE id = ${documentId}::uuid
+        AND tenant_id = ${tenantId}::uuid
+        AND deleted_at IS NULL
+      FOR UPDATE
+    `;
+    const locked = lockedRows[0];
+    if (
+      !locked ||
+      locked.clientId !== ctx!.clientId ||
+      locked.classification !== ctx!.oldClassification ||
+      locked.documentTypeId !== ctx!.oldTypeId
+    ) {
+      throw new ActionError(
+        'Dokument wurde während der Umklassifizierung geändert. Bitte erneut versuchen.',
+      );
+    }
+    if (locked.clientId) await assertClientAccessTx(tx, g.session, locked.clientId);
+
+    if (ctx!.newTypeId) {
+      // Der Typ ist Teil der Storage-/Retention-Entscheidung. Ein bloßes
+      // findFirst würde ihn nur lesen; ein paralleles Admin-Update könnte
+      // danach Tier oder Frist ändern, bevor das Dokument committed wird.
+      // FOR SHARE stabilisiert genau diesen geprüften Typ bis Tx-Ende.
+      const targetTypes = await tx.$queryRaw<
+        Array<{
+          tier: string;
+          classificationKey: string;
+          retentionYears: number | null;
+        }>
+      >`
+        SELECT
+          tier::text AS tier,
+          classification_key AS "classificationKey",
+          retention_years AS "retentionYears"
+        FROM document_type
+        WHERE id = ${ctx!.newTypeId}::uuid
+          AND tenant_id = ${tenantId}::uuid
+          AND active = TRUE
+        FOR SHARE
+      `;
+      const targetType = targetTypes[0];
+      if (
+        !targetType ||
+        targetType.tier !== ctx!.newTier ||
+        targetType.retentionYears !== ctx!.newRetentionYears ||
+        carrierClassification(targetType.tier as ProtectionTier, targetType.classificationKey) !==
+          ctx!.newClassification
+      ) {
+        throw new ActionError(
+          'Datei-Typ wurde während der Umklassifizierung geändert. Bitte erneut versuchen.',
+        );
+      }
+    }
+
+    const latest = await tx.documentVersion.findFirst({
+      where: { documentId },
+      orderBy: { versionNo: 'desc' },
+      select: {
+        id: true,
+        versionNo: true,
+        storageBucket: true,
+        storageKey: true,
+        storageVersionId: true,
+        immutable: true,
+      },
+    });
+    if (
+      requireLatestSnapshot &&
+      (!latest ||
+        latest.id !== ctx!.versionId ||
+        latest.versionNo !== ctx!.versionNo ||
+        latest.storageBucket !== ctx!.bucket ||
+        latest.storageKey !== ctx!.key ||
+        latest.storageVersionId !== ctx!.storageVersionId ||
+        latest.immutable !== ctx!.immutable)
+    ) {
+      throw new ActionError(
+        'Neue Dokumentversion während der Umklassifizierung erkannt. Bitte erneut versuchen.',
+      );
+    }
+    return latest;
+  };
+
+  let restagedObject: { bucket: string; key: string; storageVersionId: string | null } | null =
+    null;
   try {
     if (retagDecision === 'METADATA_ONLY') {
       // Gleiche Stufe → reine Metadatenänderung (Bucket/Lock bleiben).
       await withTenantContext(g.ctx, async (tx) => {
+        await lockAndValidateCurrentDocument(tx, false);
         await tx.document.update({
           where: { id: documentId },
           data: {
@@ -322,17 +449,48 @@ export async function retagDocumentAction(
           : {}),
         retentionAnchor: ctx.createdAt,
       });
+      restagedObject = {
+        bucket: commit.targetBucket,
+        key: commit.targetKey,
+        storageVersionId: commit.storageVersionId,
+      };
       await withTenantContext(g.ctx, async (tx) => {
-        await tx.documentVersion.update({
-          where: { id: ctx!.versionId },
-          data: {
-            storageBucket: commit.targetBucket,
-            storageKey: commit.targetKey,
-            immutable: commit.immutable,
-            sha256: prismaBytes(commit.sha256),
-            sizeBytes: commit.sizeBytes,
-          },
-        });
+        const latest = await lockAndValidateCurrentDocument(tx, true);
+        if (!latest) {
+          throw new ActionError('Dokumentversion nicht mehr vorhanden. Bitte erneut versuchen.');
+        }
+        if (ctx!.immutable) {
+          // Bereits geschützte Versionen (z. B. GWG → GoBD) sind DB-seitig
+          // unveränderbar. Die höher geschützte Kopie wird deshalb als neue
+          // Version appendiert; die alte geschützte Historie bleibt erhalten.
+          await tx.documentVersion.create({
+            data: {
+              documentId,
+              versionNo: latest.versionNo + 1,
+              storageBucket: commit.targetBucket,
+              storageKey: commit.targetKey,
+              storageVersionId: commit.storageVersionId,
+              immutable: commit.immutable,
+              sha256: prismaBytes(commit.sha256),
+              sizeBytes: commit.sizeBytes,
+              scanStatus: 'CLEAN',
+              scanCompletedAt: new Date(),
+              createdById: staffId,
+            },
+          });
+        } else {
+          await tx.documentVersion.update({
+            where: { id: ctx!.versionId },
+            data: {
+              storageBucket: commit.targetBucket,
+              storageKey: commit.targetKey,
+              storageVersionId: commit.storageVersionId,
+              immutable: commit.immutable,
+              sha256: prismaBytes(commit.sha256),
+              sizeBytes: commit.sizeBytes,
+            },
+          });
+        }
         await tx.document.update({
           where: { id: documentId },
           data: {
@@ -355,11 +513,51 @@ export async function retagDocumentAction(
             reStored: true,
             retentionYears: ctx!.newRetentionYears,
             storageBucket: commit.targetBucket,
+            appendedVersion: ctx!.immutable,
           },
         });
       });
+
+      // Bei NONE → geschützte Stufe zeigt die bestehende Versionszeile nach
+      // erfolgreichem Commit auf die neue Kopie. Das alte ungeschützte Objekt
+      // darf danach best-effort physisch entfernt werden.
+      if (!ctx.immutable) {
+        try {
+          if (ctx.storageVersionId) {
+            await deleteObjectVersion(ctx.bucket, ctx.key, ctx.storageVersionId);
+          } else {
+            await deleteObject(ctx.bucket, ctx.key);
+          }
+        } catch (cleanupError) {
+          log.error(
+            {
+              component: 'document-retag',
+              tenantId,
+              documentId,
+              orphanedBucket: ctx.bucket,
+              orphanedKey: ctx.key,
+              cleanupErr: (cleanupError as Error).message,
+            },
+            'document-retag: altes ungeschütztes Objekt konnte nicht entfernt werden',
+          );
+        }
+      }
     }
   } catch (e) {
+    if (restagedObject) {
+      log.error(
+        {
+          component: 'document-retag',
+          tenantId,
+          documentId,
+          orphanedBucket: restagedObject.bucket,
+          orphanedKey: restagedObject.key,
+          storageVersionId: restagedObject.storageVersionId,
+          err: (e as Error).message,
+        },
+        'document-retag: DB-Commit nach geschütztem Storage-Upload fehlgeschlagen',
+      );
+    }
     const msg = (e as Error).message;
     if (msg.startsWith('INFECTED')) {
       return { ok: false, error: 'Datei als infiziert markiert — Retag abgebrochen.' };

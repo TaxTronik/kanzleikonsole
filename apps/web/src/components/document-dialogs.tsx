@@ -300,17 +300,19 @@ export function DeleteDocModal({
   const [reason, setReason] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [busy, start] = useTransition();
-  const locked = doc.classification.startsWith('GOBD_') || doc.classification === 'GWG_EVIDENCE';
+  const gobd = doc.classification.startsWith('GOBD_');
+  const gwg = doc.classification === 'GWG_EVIDENCE';
   return (
     <Modal title="Dokument löschen" onClose={onClose}>
       <h2 className="text-lg font-semibold text-primary mb-2">Dokument löschen</h2>
       <p className="text-sm text-secondary mb-3">„{doc.title}" wird aus den Listen ausgeblendet.</p>
       <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 mb-4">
-        Die Datei bleibt im revisionssicheren Object-Store und wird
-        <strong> gesetzlich weiter aufbewahrt</strong>
-        {locked
-          ? ' (Object-Lock COMPLIANCE — physisch nicht löschbar bis Fristende, § 147 AO / § 8 Abs. 4 GwG).'
-          : ' — sie wird nicht physisch entfernt.'}{' '}
+        Die Datei wird hier nur aus den Listen ausgeblendet.
+        {gobd
+          ? ' Der COMPLIANCE-Lock bewahrt sie bis zum hinterlegten Fristende auf.'
+          : gwg
+            ? ' Die endgültige GwG-Vernichtung erfolgt ausschließlich über die Fristenprüfung.'
+            : ' Dieser Vorgang entfernt die gespeicherten Bytes nicht.'}{' '}
         Protokolliert im Audit-Log, wiederherstellbar.
       </div>
       <textarea

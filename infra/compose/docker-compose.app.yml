@@ -18,8 +18,8 @@ x-logging: &logging
   logging:
     driver: json-file
     options:
-      max-size: "10m"
-      max-file: "5"
+      max-size: '10m'
+      max-file: '5'
 
 services:
   app:
@@ -27,7 +27,10 @@ services:
     # Image-Prefix parametrisiert: Default `taxtronik` (lokaler Build via
     # ./taxtronik deploy). Für Registry-Pull in der .env setzen, z. B.
     # TAXTRONIK_IMAGE_PREFIX=git.kanzlei.de/rey → git.kanzlei.de/rey/web:<version>.
-    image: ${TAXTRONIK_IMAGE_PREFIX:-taxtronik}/web:${TAXTRONIK_VERSION:-dev}
+    # Registry-Releases werden von der Operator-CLI mit dem im signierten
+    # Manifest verankerten Digest-Suffix (`@sha256:...`) ergänzt. Im lokalen
+    # Build-/Dev-Modus bleibt der Suffix leer.
+    image: ${TAXTRONIK_IMAGE_PREFIX:-taxtronik}/web:${TAXTRONIK_VERSION:-dev}${TAXTRONIK_WEB_DIGEST_SUFFIX:-}
     container_name: taxtronik-app
     restart: unless-stopped
     mem_limit: ${APP_MEM_LIMIT:-2g}
@@ -139,7 +142,7 @@ services:
       # durch. Falls Port 3000 schon belegt ist, in der .env überschreiben:
       #   APP_BIND_PORT=3001
       # NEXTAUTH_URL bleibt dabei unverändert (zeigt auf die public Subdomain).
-      - "${APP_BIND:-127.0.0.1}:${APP_BIND_PORT:-3000}:3000"
+      - '${APP_BIND:-127.0.0.1}:${APP_BIND_PORT:-3000}:3000'
     volumes:
       # Browser-triggered Backups: lokale Operator-Kopie im Repo-Root unter
       # ./backups, im read-only Container als gezielt schreibbares Volume.
@@ -147,10 +150,10 @@ services:
 
   backup-dir-init:
     <<: [*hardening, *logging]
-    image: ${TAXTRONIK_IMAGE_PREFIX:-taxtronik}/worker:${TAXTRONIK_VERSION:-dev}
+    image: ${TAXTRONIK_IMAGE_PREFIX:-taxtronik}/worker:${TAXTRONIK_VERSION:-dev}${TAXTRONIK_WORKER_DIGEST_SUFFIX:-}
     container_name: taxtronik-backup-dir-init
-    restart: "no"
-    user: "0:0"
+    restart: 'no'
+    user: '0:0'
     cap_add:
       - CHOWN
       - DAC_OVERRIDE
@@ -169,7 +172,7 @@ services:
 
   worker:
     <<: [*hardening, *logging]
-    image: ${TAXTRONIK_IMAGE_PREFIX:-taxtronik}/worker:${TAXTRONIK_VERSION:-dev}
+    image: ${TAXTRONIK_IMAGE_PREFIX:-taxtronik}/worker:${TAXTRONIK_VERSION:-dev}${TAXTRONIK_WORKER_DIGEST_SUFFIX:-}
     container_name: taxtronik-worker
     restart: unless-stopped
     mem_limit: ${WORKER_MEM_LIMIT:-2g}
@@ -258,9 +261,9 @@ services:
   # ===========================================================================
   migrate:
     <<: [*hardening, *logging]
-    image: ${TAXTRONIK_IMAGE_PREFIX:-taxtronik}/worker:${TAXTRONIK_VERSION:-dev}
+    image: ${TAXTRONIK_IMAGE_PREFIX:-taxtronik}/worker:${TAXTRONIK_VERSION:-dev}${TAXTRONIK_WORKER_DIGEST_SUFFIX:-}
     container_name: taxtronik-migrate
-    restart: "no"
+    restart: 'no'
     depends_on:
       postgres:
         condition: service_healthy
@@ -311,12 +314,12 @@ services:
     ports:
       # P-4: n8n-UI hinter Reverse-Proxy. Direkt-Exposition nur über
       # ${N8N_BIND} explizit anschalten.
-      - "${N8N_BIND:-127.0.0.1}:5678:5678"
+      - '${N8N_BIND:-127.0.0.1}:5678:5678'
     # P3-6: einziger Dauer-Service, der bisher keinen Healthcheck hatte —
     # `./taxtronik ps`/doctor konnten einen n8n-Hänger nicht von „läuft"
     # unterscheiden.
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5678/healthz || exit 1"]
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:5678/healthz || exit 1']
       interval: 30s
       timeout: 5s
       retries: 5
@@ -350,7 +353,7 @@ services:
     image: ${RISK_LAYER_IMAGE:-taxtronik/risk-layer:latest}
     container_name: taxtronik-risk-layer
     restart: unless-stopped
-    profiles: ["risk-layer"]
+    profiles: ['risk-layer']
     # LLM-Layer — Limit an das geladene Modell anpassen.
     mem_limit: ${RISK_LAYER_MEM_LIMIT:-4g}
     environment:
@@ -371,9 +374,9 @@ services:
     healthcheck:
       # Python-Image → urllib statt curl/wget (nicht garantiert vorhanden).
       test:
-        - "CMD"
-        - "python"
-        - "-c"
+        - 'CMD'
+        - 'python'
+        - '-c'
         - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/v1/health', timeout=5).status==200 else 1)"
       interval: 15s
       timeout: 8s
@@ -408,7 +411,7 @@ services:
     image: ${ERIC_BRIDGE_IMAGE:-taxtronik/eric-bridge:latest}
     container_name: taxtronik-eric-bridge
     restart: unless-stopped
-    profiles: ["elster"]
+    profiles: ['elster']
     read_only: true
     tmpfs:
       - /tmp:size=64m,mode=1777
@@ -437,9 +440,9 @@ services:
       # Node-Image → fetch statt curl/wget (nicht garantiert vorhanden).
       # ok=false (Bibliothek nicht geladen) gilt als unhealthy.
       test:
-        - "CMD"
-        - "node"
-        - "-e"
+        - 'CMD'
+        - 'node'
+        - '-e'
         - "fetch('http://127.0.0.1:8085/healthz').then((r)=>r.json()).then((j)=>process.exit(j.ok?0:1)).catch(()=>process.exit(1))"
       interval: 30s
       timeout: 8s

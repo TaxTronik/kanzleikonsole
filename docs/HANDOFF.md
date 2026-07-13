@@ -1,5 +1,11 @@
 # Handoff — Projektstand und historische Foundation-Notizen
 
+> **Historisches Archiv, nicht als Setup-, Aufgaben- oder Abnahmeanleitung
+> verwenden.** Die nachfolgenden Pfade, Stubs und „nächsten Schritte" bilden
+> Iteration 1 ab und sind teilweise bewusst vom heutigen Code überholt.
+> Aktueller Einstieg: [README](../README.md), [Funktionsumfang](../FEATURES.md),
+> [Architektur](architecture.md) und [Operations](operations/day-2-operations.md).
+
 Diese Datei dokumentiert den ursprünglichen Foundation-Aufbau und verbleibende
 Orientierungspunkte. Aktuelle Betriebs-, Feature- und Architektur-Doku steht in
 `README.md`, `FEATURES.md`, `docs/architecture.md` und `docs/operations/`.
@@ -23,7 +29,7 @@ Orientierungspunkte. Aktuelle Betriebs-, Feature- und Architektur-Doku steht in
 | `apps/web/src/middleware.ts`                                              | Fertig | Auth-Surface-Routing + Tenant-Header                      |
 | `docs/architecture.md`, `docs/adr/{0001,0002,0003}.md`                    | Fertig | Doku                                                      |
 
-## Was als Nächstes ansteht — strikte Reihenfolge
+## Historischer Iteration-1-Plan — nicht heute ausführen
 
 ### Schritt 1: Stack zum Laufen bringen
 
@@ -121,7 +127,7 @@ Die ursprünglichen Iterationsnotizen sind in der Repo-Doku, den ADRs und den
 aktuellen Issues konsolidiert. Neue Arbeiten sollten an diesen Quellen und der
 vorhandenen Foundation ausgerichtet werden.
 
-## Wichtige Regeln
+## Historische Leitplanken
 
 1. **n8n statt Eigencode** für Kommunikation/Reminder/Cron, wo immer möglich.
 2. **Externe APIs (DATEV/Transparenzregister/ELSTER) NICHT im MVP** — nur
@@ -131,7 +137,7 @@ vorhandenen Foundation ausgerichtet werden.
 4. **Jede DB-Operation MUSS durch `withTenantContext`** — sonst RLS-Block.
 5. **Sprache des Users ist Deutsch** — UI, Doku, Commit-Messages auf Deutsch.
 
-## Verifikation Iter. 1 abgeschlossen
+## Historische Abnahme für Iteration 1
 
 Wenn folgende Checks grün sind, ist Iter. 1 fertig:
 

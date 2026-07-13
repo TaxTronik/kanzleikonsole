@@ -1,4 +1,9 @@
-import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import {
+  PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand,
+  ListObjectVersionsCommand,
+} from '@aws-sdk/client-s3';
 import { createHash } from 'node:crypto';
 import { createConnection } from 'node:net';
 import { Readable } from 'node:stream';
@@ -36,7 +41,10 @@ export function gobdRetentionUntil(now: Date = new Date()): Date {
  */
 const GOBD_RETENTION_YEARS_BY_CLASSIFICATION: Record<string, number> = {
   GOBD_INVOICE: 8, // Rechnung/Buchungsbeleg — BEG IV
-  GOBD_CONTRACT: 10,
+  // Handels-/Geschäftsbriefe und sonstige steuerrelevante Unterlagen fallen
+  // nach § 147 Abs. 3 AO grundsätzlich in die Sechsjahresgruppe. Längere
+  // Spezialfälle werden als eigener Dateityp mit 8/10 Jahren modelliert.
+  GOBD_CONTRACT: 6,
   GOBD_TAX: 10,
 };
 
@@ -112,6 +120,7 @@ export function lockModeForTier(tier: ProtectionTier): 'GOVERNANCE' | 'COMPLIANC
 export interface CommitDocumentResult {
   targetBucket: string;
   targetKey: string;
+  storageVersionId: string | null;
   sha256: Buffer;
   sizeBytes: bigint;
   immutable: boolean;
@@ -345,13 +354,49 @@ export async function fetchObjectBytes(bucket: string, storageKey: string): Prom
 }
 
 /**
- * Löscht ein Objekt aus dem Store. Bei Object-Lock-COMPLIANCE-Buckets (GOBD/GWG)
- * gelingt das NUR, wenn das Retain-Until bereits abgelaufen ist — davor verweigert
- * S3 die Löschung (by design, revisionssicher). Für die GwG-Pflichtlöschung nach
- * Fristablauf (§ 8 Abs. 4) bzw. allgemeine Lifecycle-Bereinigung.
+ * Löscht ein Objekt aus dem Store. GOBD liegt unter COMPLIANCE, GwG unter
+ * GOVERNANCE; ohne Governance-Bypass gelingt die Löschung jeweils erst nach
+ * Retain-Until. Für die GwG-Pflichtlöschung nach Fristablauf (§ 8 Abs. 4)
+ * beziehungsweise allgemeine Lifecycle-Bereinigung.
  */
 export async function deleteObject(bucket: string, storageKey: string): Promise<void> {
   await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: storageKey }));
+}
+
+/**
+ * Löscht exakt die persistierte S3-Objektversion und verifiziert anschließend,
+ * dass für den Schlüssel weder eine Inhaltsversion noch ein Delete Marker
+ * verbleibt. Ohne VersionId wäre ein Delete in versionierten Buckets nur ein
+ * unsichtbar machender Marker und keine physische Vernichtung.
+ */
+export async function deleteObjectVersion(
+  bucket: string,
+  storageKey: string,
+  storageVersionId: string,
+  options: { bypassGovernanceRetention?: boolean } = {},
+): Promise<void> {
+  if (!storageVersionId.trim()) {
+    throw new Error('STORAGE_VERSION_ID_MISSING: Physische Löschung nicht nachweisbar.');
+  }
+
+  await s3.send(
+    new DeleteObjectCommand({
+      Bucket: bucket,
+      Key: storageKey,
+      VersionId: storageVersionId,
+      ...(options.bypassGovernanceRetention ? { BypassGovernanceRetention: true } : {}),
+    }),
+  );
+
+  for await (const page of listObjectVersionPages(bucket, storageKey)) {
+    const exactVersionRemains = page.Versions?.some((item) => item.Key === storageKey) ?? false;
+    const exactMarkerRemains = page.DeleteMarkers?.some((item) => item.Key === storageKey) ?? false;
+    if (exactVersionRemains || exactMarkerRemains) {
+      throw new Error(
+        'STORAGE_DELETE_INCOMPLETE: Objektversion oder Delete Marker ist verblieben.',
+      );
+    }
+  }
 }
 
 export interface ObjectStream {
@@ -472,7 +517,7 @@ async function scanHashAndUpload(
       : retentionForTier(tier);
   const locked = tier !== 'NONE';
 
-  await s3.send(
+  const putResult = await s3.send(
     new PutObjectCommand({
       Bucket: targetBucket,
       Key: targetKey,
@@ -486,16 +531,74 @@ async function scanHashAndUpload(
         : {}),
     }),
   );
+  const storageVersionId = await resolveStorageVersionId(
+    targetBucket,
+    targetKey,
+    putResult.VersionId,
+  );
+  if (locked && !storageVersionId) {
+    throw new Error(
+      'STORAGE_VERSION_ID_MISSING: Object-Lock-Upload lieferte keine nachweisbare VersionId.',
+    );
+  }
 
   return {
     targetBucket,
     targetKey,
+    storageVersionId,
     sha256: Buffer.from(sha256),
     sizeBytes: BigInt(fileData.length),
     immutable: locked,
     retentionUntil,
     detectedMime,
   };
+}
+
+async function resolveStorageVersionId(
+  bucket: string,
+  storageKey: string,
+  putVersionId: string | undefined,
+): Promise<string | null> {
+  if (putVersionId && putVersionId !== 'null') return putVersionId;
+  for await (const page of listObjectVersionPages(bucket, storageKey)) {
+    const exact = page.Versions?.find(
+      (item) =>
+        item.Key === storageKey && item.IsLatest && item.VersionId && item.VersionId !== 'null',
+    );
+    if (exact?.VersionId) return exact.VersionId;
+  }
+  return null;
+}
+
+/**
+ * ListObjectVersions ist paginiert. Gerade bei der Vernichtung darf ein alter
+ * Inhalt auf einer Folgeseite nicht als "gelöscht" übersehen werden. Fehlende
+ * Fortsetzungsmarker bei `IsTruncated=true` sind ebenfalls ein harter Fehler.
+ */
+async function* listObjectVersionPages(bucket: string, storageKey: string) {
+  let keyMarker: string | undefined;
+  let versionIdMarker: string | undefined;
+
+  for (;;) {
+    const page = await s3.send(
+      new ListObjectVersionsCommand({
+        Bucket: bucket,
+        Prefix: storageKey,
+        ...(keyMarker ? { KeyMarker: keyMarker } : {}),
+        ...(versionIdMarker ? { VersionIdMarker: versionIdMarker } : {}),
+      }),
+    );
+    yield page;
+    if (!page.IsTruncated) return;
+    if (!page.NextKeyMarker) {
+      throw new Error('STORAGE_VERSION_LIST_INCOMPLETE: Fortsetzungsmarker fehlt.');
+    }
+    if (page.NextKeyMarker === keyMarker && page.NextVersionIdMarker === versionIdMarker) {
+      throw new Error('STORAGE_VERSION_LIST_INCOMPLETE: Fortsetzungsmarker wiederholt sich.');
+    }
+    keyMarker = page.NextKeyMarker;
+    versionIdMarker = page.NextVersionIdMarker;
+  }
 }
 
 // ---------------------------------------------------------------------------

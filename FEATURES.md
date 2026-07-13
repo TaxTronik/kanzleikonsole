@@ -1,6 +1,6 @@
 # taxtronik — Funktionsumfang
 
-Stand: 2026-07-05. Die mit ⚙ markierten Module sind pro Kanzlei in den
+Stand: 2026-07-13. Die mit ⚙ markierten Module sind pro Kanzlei in den
 Einstellungen ein- bzw. ausschaltbar (Boolean-Toggle unter Admin →
 Einstellungen → Module). Rechnungen und Vollmachten sind keine Toggles,
 sondern Modus-Schalter (`invoiceMode` / `poaMode`) mit `OFF`-Option —
@@ -221,10 +221,11 @@ Mandanten.
 - 7 gesetzlich fixierte Kern-Typen (read-only). Die Kanzlei kann unter
   **Admin → Datei-Typen** eigene Typen ergänzen (z. B. „Arbeitspapiere")
   und einer Stufe zuweisen (bei Anlage fix).
-- **Retagging** compliance-bewusst: Höherstufung kopiert die Datei
+- **Retagging** compliance-bewusst: Höherstufung aus „ohne Lock" kopiert die Datei
   serverseitig in den korrekten Object-Lock-Bucket um (Re-Store, neu
   virengeprüft); gleiche Stufe = Metadaten; Herabstufung gesperrt
-  (angewandte Aufbewahrung ist nicht entfernbar). Auch als Sammel-Aktion.
+  (angewandte Aufbewahrung ist nicht entfernbar). GWG→GOBD bleibt wegen der
+  eigenständigen GwG-Vernichtungsfrist gesperrt. Auch als Sammel-Aktion.
 
 ### Mandanten-Freigabe (Opt-in)
 
@@ -396,14 +397,14 @@ nebeneinander auf einer Seite.
 Modus-Wahl pro Kanzlei:
 
 - **`IN_APP`**: vollständige Erstellung in taxtronik
-  - XRechnung 3.0.2 CII-XML-Generierung (B2G-Pflicht) — besteht den
+  - XRechnung 3.0.2 CII-XML-Generierung für B2G-E-Rechnungen — besteht den
     KoSIT-Validator (Schema + Schematron inkl. BR-DE); CI-Job
     `e-rechnung` validiert gegen den gepinnten Validator
-  - ZUGFeRD/Factur-X PDF/A-3 mit eingebettetem XML
-  - **GoB-fest**: automatische lückenlose Rechnungsnummern je Jahr,
-    DB-seitige Festschreibung nach Versand, Statusübergänge nur
-    vorwärts, GoBD-Archivkopie vor Versand, Schutz abgerechneter
-    Zeiteinträge
+  - ZUGFeRD/Factur-X-Hybrid-PDF mit eingebettetem XML; der aktuelle Generator
+    erhebt keinen Anspruch auf eine strikt validierte PDF/A-3-Datei
+  - **Technische GoB-Kontrollen**: automatische lückenlose Rechnungsnummern
+    je Jahr, DB-seitige Festschreibung nach Versand, Statusübergänge nur
+    vorwärts, GoBD-Archivkopie vor Versand, Schutz abgerechneter Zeiteinträge
   - **USt-Satz je Position** (19 % / 7 % / 0 %) mit Steuerausweis und
     Rundung je Satz-Gruppe in Anzeige, PDF und E-Rechnung
   - Status-Maschine: DRAFT → SENT → PAID / OVERDUE / CANCELLED
@@ -428,8 +429,9 @@ Portal als PDF abrufbar.
 Modus-Wahl pro Kanzlei:
 
 - **`MARKDOWN_OTP`**: Vollmachts-Text als Markdown in der App,
-  Mandant signiert per E-Mail-Magic-Link + 6-stelligem Email-OTP
-  (eIDAS „Advanced Electronic Signature")
+  Mandant bestätigt per E-Mail-Magic-Link + 6-stelligem E-Mail-Code. Der
+  Nachweis wird **nicht** als fortgeschrittene oder qualifizierte elektronische
+  Signatur (AES/QES) zugesagt
 - **`PDF_TEMPLATE`** (Default): Standardtext + PDF-Anhang per Mail an Mandant.
   Konfigurierbarer Subject/Markdown-Body mit Platzhaltern `{name}`, `{client}`.
   Für Kanzleien mit externer Vollmachtsdatenbank
@@ -960,16 +962,30 @@ Kanzlei nicht.
 
 - Postgres-Dump als lokale Operator-Kopie unter `backups/` und Upload in den
   S3-Backup-Bucket — manuell (`./taxtronik backup` /
-  `pnpm --filter @taxtronik/web backup:run`), per Admin-Browser-Button oder per
-  Operator-Cron; jeder Lauf wird als `backup.run` in der Audit-Chain
-  dokumentiert, Browser-Trigger/Downloads zusätzlich als Staff-Ereignisse
+  `pnpm --filter @taxtronik/web backup:run`) oder per Operator-Cron; jeder Lauf
+  wird als `backup.run` in der Audit-Chain dokumentiert
+- Automatischer Worker-Lauf `backup-run` täglich um 01:00 UTC: streamt den
+  Postgres-Dump direkt nach S3 (ohne lokale Air-Gap-Kopie und ohne
+  Dokument-Buckets); Fehlschläge fließen in Backup-Status und Health-Alarm ein
 - Kanzleidateien-Export: `./taxtronik backup-files` schreibt die SeaweedFS-
   Dokument-Buckets (`gobd`, `gwg`, `general`, `staff-private`) nach
-  `backups/object-store/<timestamp>/`; `./taxtronik backup-full` kombiniert
-  Datenbank-Backup und Datei-Byte-Export
+  `backups/object-store/<timestamp>/` (sichtbare Bytes, keine Versions-/Lock-
+  Garantie)
+- Versiegeltes Full-Backup: globaler Lock + Kapazitätsprüfung; App/Worker/n8n
+  werden vor beiden DB-Dumps und Object-Export quiesziert, anschließend Cold-
+  Snapshots von SeaweedFS/Redis/n8n erstellt. Gesamte Nutzlast + `.env` ist
+  age-verschlüsselt; Ed25519-signiertes SHA-256-Inventar mit Key-Fingerprint
+  erkennt fehlende/veränderte Dateien
+- Optionaler Offsite-Vault: nur HTTPS, Bucket-Versioning und Default Object
+  Lock COMPLIANCE mit konfigurierbarer Mindestdauer; Größe, RetainUntil und
+  VersionId aller drei Artefakte werden als Receipt geprüft
+- Recovery-CLI ohne vorhandene Produktiv-`.env`: `backup-verify` mit offline
+  Public Key und `backup-decrypt` mit offline age-Identity in ein leeres Ziel
 - Pre-Flight-DB-Backup vor Migration (`./taxtronik update`/`deploy`)
-- Backup-Records mit Größe, SHA-256 und Status (letzter Stand in der
-  Admin-Übersicht, getrennte Downloads für lokale Kopie und S3-Objekt)
+- Backup-Records mit Größe, SHA-256 und Status; letzter Stand und Restore-Drill
+  sind in der Admin-Übersicht sichtbar. Start und Abruf vollständiger
+  Datenbank-Dumps bleiben dem Betreiber-Host beziehungsweise Backup-Storage
+  vorbehalten
 - **Restore-Mechanismus**: `./taxtronik restore --list`,
   `./taxtronik restore --latest --target-url <postgres-url>` oder
   `./taxtronik restore --file <dump>`; automatischer Smoke-Test, Schutz vor
@@ -992,7 +1008,14 @@ Kanzlei nicht.
 
 ## Update-Mechanik & Lizenzschlüssel
 
-- Admin-UI prüft Update-Server auf neuere Versionen, signiertes Versions-Manifest
+- Admin-UI prüft Update-Server auf neuere Versionen; Manifest v2 bindet
+  Ed25519-signiert den exakten Git-Commit sowie getrennte Web-/Worker-Digests
+- Release-Promotion ist ein Same-run-DAG: exakter annotierter SemVer-Tag auf
+  `main` → vollständige CI + Security → Build/Trivy → Registry-Push →
+  verpflichtendes Manifest; kein Status-/Skip-Fallback
+- Operator-CLI deployt Registry-Images ausschließlich als
+  `image:version@sha256:…`, prüft OCI-Version/Revision und speichert den
+  vollständigen Last-Good-Vertrag für digest-gepinnten Rollback
 - **Lizenzschlüssel-Verifikation** (Ed25519-JWT)
   - Admin-Card mit Status-Banner (gültig/abgelaufen/fehlend)
   - CLI `scripts/license-keygen.ts` zum Erzeugen
@@ -1074,7 +1097,7 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   (Vollmachten, Rechnungen, Bescheinigungen)
 - **Rechtliche Hinweise** (`tenant_setting.legal`) — Impressum-URL +
   Datenschutzerklärung-URL; werden im Footer der Login-Seiten (Staff +
-  Portal) verlinkt (Pflicht nach Telemediengesetz / DSGVO); in
+  Portal) verlinkt (insbesondere § 5 DDG und Art. 12/13 DSGVO); in
   angemeldeten Sitzungen bewusst nicht prominent angezeigt
 - Modul-Aktivierung pro Tenant — 15 Boolean-Module: BWA, Wissensdatenbank,
   Zeiterfassung, Telefonzettel, Steuertermine + Bescheide (`taxNotices`),
@@ -1155,7 +1178,7 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
 - Pro Request: Prisma-Middleware setzt `app.current_tenant_id` /
   `app.current_actor_id` / `app.current_actor_type` via `SET LOCAL`
 - Doppelte Verteidigung: App-Filter + RLS-Policy + DB-Trigger
-- BullMQ-Worker für Hintergrund-Jobs (16 Workers):
+- BullMQ-Worker für Hintergrund-Jobs (17 Worker):
   `evidence-seal`, `gwg-expiry-check`,
   `invoice-overdue-check`, `audit-verify-check`,
   `tax-deadline-materialize`, `audit-rotate`, `tax-news-fetch`
@@ -1165,6 +1188,7 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   `n8n-deliver` + `n8n-outbox-reconcile` (HMAC-signierter Outbox-Versand),
   `magic-link-cleanup`, `dsgvo-retention`, `poa-expiry-check`,
   `risk-analyse-llm` (on-demand LLM-Vertiefung der Subsumtion),
+  `backup-run` (täglicher Postgres-Dump direkt nach S3),
   `backup-drill` (monatlicher Restore-Test mit Chain-Verifikation),
   `health-alert` (5-Minuten-Infrastruktur-Health mit Ops-Mail).
   Ein asynchroner Virus-Scan-Job existiert bewusst nicht — Scans laufen
@@ -1192,7 +1216,8 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   Feature-Flag-gated — siehe „ELSTER-Anbindung")
 - **Forgejo-Actions-CI** (`.forgejo/workflows/`, self-hosted Runner): `ci.yml`
   (Quality: Lint/Typecheck/Unit · DB: Migrationen/RLS/Drift/verify:chain mit
-  Postgres-Service · Browser-E2E via Playwright (volle Suite: Smoke, Auth, Search, Rate-Limit)), `security.yml` (pnpm-audit +
+  Postgres-Service · Browser-E2E via Playwright mit Smoke-, Auth-, Action-,
+  Compliance-, RBAC-, Concurrency- und Upload-Negativtests), `security.yml` (pnpm-audit +
   gitleaks-Secret-Scan, wöchentlicher Cron), `build-images.yml` (Web-/Worker-
   Image-Build, build-only); GitHub-Mirror läuft ohne Actions, `dependabot.yml`
   liegt ebenfalls unter `.forgejo/`
@@ -1209,8 +1234,9 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
 
 ## Sicherheit & Compliance
 
-- **GoBD-konformer Audit-Log**: Hash-Chain pro Tenant, täglicher RFC-3161-
-  TSA-Stempel (`evidence-seal` 02:30 UTC; Default-TSA **GlobalSign** kostenlos/EU,
+- **Manipulationsevidenter Audit-Log zur GoBD-Nachvollziehbarkeit**:
+  Hash-Chain pro Tenant, täglicher RFC-3161-TSA-Stempel (`evidence-seal`
+  02:30 UTC; Default-TSA **GlobalSign** kostenlos/EU,
   pro Tenant umstellbar, D-Trust für eIDAS-qualifiziert), tägliche Verifikation
   (`audit-verify-check` 02:45 UTC) mit `SYSTEM_AUDIT_BREAK`-Notification an
   ADMIN/PARTNER bei Bruch, wöchentliche NDJSON-Auslagerung mit Object-Lock-

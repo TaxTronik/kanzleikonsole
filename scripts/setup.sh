@@ -139,14 +139,9 @@ set_env 'DATABASE_URL'     "postgresql://taxtronik:${PG_PW}@localhost:5432/taxtr
 set_env 'DATABASE_APP_URL' "postgresql://taxtronik_app:${APP_PW}@localhost:5432/taxtronik?schema=public"
 done_ "DATABASE_URL und DATABASE_APP_URL gesetzt."
 
-# SeaweedFS S3-Konfig aus Template rendern
-S3_ACCESS="$(get_env S3_ACCESS_KEY)"
-S3_SECRET="$(get_env S3_SECRET_KEY)"
-sed -e "s|__S3_ACCESS_KEY__|${S3_ACCESS}|g" \
-    -e "s|__S3_SECRET_KEY__|${S3_SECRET}|g" \
-    infra/scripts/seaweedfs-s3.template.json \
-    > infra/scripts/seaweedfs-s3.generated.json
-done_ "SeaweedFS-S3-Konfig gerendert."
+# SeaweedFS rendert die S3-Konfiguration beim Containerstart fluechtig nach
+# /run (UID 1000, 0400). Keine Secret-Kopie mehr im Checkout erzeugen.
+rm -f infra/scripts/seaweedfs-s3.generated.json
 
 # -------------------------------------------------------------------- Docker-Stack
 step "Docker-Stack hochfahren"

@@ -4,12 +4,16 @@ on:
   push:
     branches: [main, develop]
   pull_request:
+  workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Fester Präfix statt github.workflow: in einem wiederverwendbaren Workflow
+  # kann github.workflow den Namen des Callers tragen. Ohne eigenen Präfix
+  # würden sich Quality und Security im Release-Lauf gegenseitig abbrechen.
+  group: quality-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -380,7 +384,14 @@ jobs:
         id: last
         run: |
           git fetch --tags --force 2>/dev/null || true
-          TAG="$(git tag --list 'v*' --sort=-v:refname | head -1)"
+          # Im Release-workflow_call ist der neu gepushte Tag bereits sichtbar.
+          # Er darf nicht als Ausgangspunkt gewählt werden, sonst würde der
+          # vermeintliche Upgrade-Test nur HEAD → HEAD prüfen.
+          CURRENT_TAG=""
+          case "${GITHUB_REF:-}" in
+            refs/tags/v*) CURRENT_TAG="${GITHUB_REF_NAME:-}" ;;
+          esac
+          TAG="$(git tag --list 'v*' --sort=-v:refname | grep -vx "$CURRENT_TAG" | head -1 || true)"
           if [ -z "$TAG" ]; then
             echo "Kein v*-Tag vorhanden — Upgrade-Pfad-Test wird übersprungen."
           else

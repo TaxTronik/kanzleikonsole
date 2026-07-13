@@ -11,6 +11,7 @@ export {
   fetchObjectBytes,
   streamObject,
   deleteObject,
+  deleteObjectVersion,
   putObjectBytes,
   commitDocumentFromBytes,
   commitBytesWithTier,

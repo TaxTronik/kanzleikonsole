@@ -4,6 +4,7 @@ export type RetagDecision =
   | 'METADATA_ONLY'
   | 'RESTORE_WITH_LOCK'
   | 'BLOCK_TIER_DOWNGRADE'
+  | 'BLOCK_GWG_TIER_CHANGE'
   | 'BLOCK_RETENTION_SHORTENING';
 
 const rank = (tier: ProtectionTier): number => (tier === 'GOBD' ? 2 : tier === 'GWG' ? 1 : 0);
@@ -17,6 +18,13 @@ export function documentRetagDecision(input: {
 }): RetagDecision {
   const oldRank = rank(input.oldTier);
   const newRank = rank(input.newTier);
+  // GwG ist keine bloß "schwächere" GoBD-Stufe: § 8 Abs. 4 GwG verlangt die
+  // spätere Vernichtung und eine eigene Review-Queue. Ein Retag GWG → GOBD
+  // würde den alten GwG-Bytebestand aus genau dieser Queue verlieren. Für eine
+  // zusätzliche GoBD-Aufbewahrung muss daher ein separates Dokument entstehen.
+  if (input.oldTier === 'GWG' && input.newTier !== 'GWG') {
+    return 'BLOCK_GWG_TIER_CHANGE';
+  }
   if (newRank < oldRank) return 'BLOCK_TIER_DOWNGRADE';
   if (newRank > oldRank) return 'RESTORE_WITH_LOCK';
 

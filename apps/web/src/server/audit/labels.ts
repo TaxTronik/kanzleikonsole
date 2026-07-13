@@ -283,6 +283,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'backup.trigger': 'Backup manuell gestartet',
   'backup.run': 'Backup-Lauf',
   'backup.download': 'Backup heruntergeladen',
+  'backup.download_denied': 'Backup-Download blockiert',
   'backup.drill.completed': 'Restore-Test erfolgreich (System)',
   'backup.drill.failed': 'Restore-Test fehlgeschlagen (System)',
   'compliance.verfahrensdoku.generated': 'Verfahrensdokumentation erzeugt',

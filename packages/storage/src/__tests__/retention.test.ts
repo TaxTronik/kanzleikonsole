@@ -45,12 +45,18 @@ describe('gobdRetentionUntilFor — BEG IV, belegart-abhängig (8 J. Rechnungen)
     ).toBe('2035-01-01T00:00:00.000Z');
   });
 
-  it('Bücher/Abschlüsse/Verträge bleiben bei 10 Jahren', () => {
+  it('Bücher/Abschlüsse bleiben beim konservativen Zehnjahrestyp', () => {
     expect(gobdRetentionYears('GOBD_TAX')).toBe(10);
-    expect(gobdRetentionYears('GOBD_CONTRACT')).toBe(10);
     expect(gobdRetentionUntilFor('GOBD_TAX', new Date(Date.UTC(2026, 2, 15))).toISOString()).toBe(
       '2037-01-01T00:00:00.000Z',
     );
+  });
+
+  it('Verträge/Geschäftsbriefe fallen grundsätzlich in die Sechsjahresgruppe', () => {
+    expect(gobdRetentionYears('GOBD_CONTRACT')).toBe(6);
+    expect(
+      gobdRetentionUntilFor('GOBD_CONTRACT', new Date(Date.UTC(2026, 2, 15))).toISOString(),
+    ).toBe('2033-01-01T00:00:00.000Z');
   });
 
   it('ohne/unbekannte Klassifikation → 10 Jahre (konservativer Default)', () => {

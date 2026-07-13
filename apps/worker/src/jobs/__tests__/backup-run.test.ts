@@ -14,8 +14,14 @@ import { PassThrough } from 'node:stream';
 const h = vi.hoisted(() => {
   const prismaOwner = {
     tenant: { findMany: vi.fn() },
-    backupRecord: { create: vi.fn(), update: vi.fn(), updateMany: vi.fn(async (_args: unknown) => ({ count: 0 })) },
-    $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn({ backupRecord: { update: vi.fn() } })),
+    backupRecord: {
+      create: vi.fn(),
+      update: vi.fn(),
+      updateMany: vi.fn(async (_args: unknown) => ({ count: 0 })),
+    },
+    $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
+      fn({ backupRecord: { update: vi.fn() } }),
+    ),
   };
   const record = vi.fn();
   const uploadDone = vi.fn(async () => undefined);
@@ -25,13 +31,16 @@ const h = vi.hoisted(() => {
     exitCode: 0 as number,
     stderr: 'boom',
   };
-  return { prismaOwner, record, uploadDone, s3Send, child };
+  const spawnArgs: string[][] = [];
+  return { prismaOwner, record, uploadDone, s3Send, child, spawnArgs };
 });
 
 vi.mock('bullmq', () => import('./mocks/bullmq'));
 vi.mock('../../queues', () => ({ connection: {} }));
 vi.mock('../../prisma-owner', () => ({ prismaOwner: h.prismaOwner }));
-vi.mock('../../logger', () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
+vi.mock('../../logger', () => ({
+  log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
 vi.mock('@taxtronik/config', () => ({
   env: {
     DATABASE_URL: 'postgresql://taxtronik:pw@postgres:5432/taxtronik',
@@ -44,13 +53,19 @@ vi.mock('@taxtronik/config', () => ({
   },
 }));
 vi.mock('@taxtronik/evidence', () => ({
-  EvidenceService: class { record = h.record; },
+  EvidenceService: class {
+    record = h.record;
+  },
   LocalTimestampAdapter: class {},
   Rfc3161HttpAdapter: class {},
 }));
 vi.mock('@aws-sdk/client-s3', () => ({
-  S3Client: class { send = h.s3Send; },
-  DeleteObjectCommand: class { constructor(public input: unknown) {} },
+  S3Client: class {
+    send = h.s3Send;
+  },
+  DeleteObjectCommand: class {
+    constructor(public input: unknown) {}
+  },
 }));
 vi.mock('@aws-sdk/lib-storage', () => ({
   Upload: class {
@@ -62,7 +77,8 @@ vi.mock('@aws-sdk/lib-storage', () => ({
   },
 }));
 vi.mock('node:child_process', () => ({
-  spawn: () => {
+  spawn: (_path: string, args: string[]) => {
+    h.spawnArgs.push(args);
     const cp = new EventEmitter() as EventEmitter & { stdout: PassThrough; stderr: EventEmitter };
     cp.stdout = new PassThrough();
     cp.stderr = new EventEmitter();
@@ -83,11 +99,14 @@ const NOW = new Date('2026-07-07T01:00:00.000Z');
 beforeEach(() => {
   vi.clearAllMocks();
   h.child.exitCode = 0;
+  h.spawnArgs.length = 0;
   h.prismaOwner.tenant.findMany.mockResolvedValue([{ id: 't-1' }, { id: 't-2' }]);
-  h.prismaOwner.backupRecord.create.mockImplementation(async ({ data }: { data: { tenantId: string } }) => ({
-    id: `rec-${data.tenantId}`,
-    tenantId: data.tenantId,
-  }));
+  h.prismaOwner.backupRecord.create.mockImplementation(
+    async ({ data }: { data: { tenantId: string } }) => ({
+      id: `rec-${data.tenantId}`,
+      tenantId: data.tenantId,
+    }),
+  );
   h.prismaOwner.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
     fn({ backupRecord: { update: vi.fn() } }),
   );
@@ -105,11 +124,22 @@ describe('runScheduledBackup', () => {
     expect(r.key).toMatch(/^pgdump\/2026\/07\/07\/taxtronik-20260707-010000-[0-9a-f]{6}\.sql\.gz$/);
     // RUNNING-Records für beide Tenants angelegt.
     expect(h.prismaOwner.backupRecord.create).toHaveBeenCalledTimes(2);
+    expect(h.prismaOwner.backupRecord.create).toHaveBeenNthCalledWith(1, {
+      data: { tenantId: 't-1', status: 'RUNNING' },
+    });
+    expect(h.prismaOwner.backupRecord.create).toHaveBeenNthCalledWith(2, {
+      data: { tenantId: 't-2', status: 'RUNNING' },
+    });
     // Upload wurde aufgerufen (Stream nach S3).
     expect(h.uploadDone).toHaveBeenCalledTimes(1);
+    expect(h.spawnArgs[0]).toContain('--no-owner');
+    expect(h.spawnArgs[0]).not.toContain('--no-privileges');
     // Audit-Event backup.run mit SUCCESS je Tenant.
     expect(h.record).toHaveBeenCalledTimes(2);
-    expect(h.record.mock.calls[0]![1]).toMatchObject({ action: 'backup.run', after: { status: 'SUCCESS' } });
+    expect(h.record.mock.calls[0]![1]).toMatchObject({
+      action: 'backup.run',
+      after: { status: 'SUCCESS' },
+    });
   });
 
   it('Fehler: pg_dump exit ≠ 0 → FAILED + verwaistes Objekt entfernt', async () => {
@@ -121,7 +151,10 @@ describe('runScheduledBackup', () => {
     expect(h.s3Send).toHaveBeenCalledTimes(1);
     // FAILED-Audit je Tenant.
     expect(h.record).toHaveBeenCalledTimes(2);
-    expect(h.record.mock.calls[0]![1]).toMatchObject({ action: 'backup.run', after: { status: 'FAILED' } });
+    expect(h.record.mock.calls[0]![1]).toMatchObject({
+      action: 'backup.run',
+      after: { status: 'FAILED' },
+    });
   });
 
   it('ohne Tenants: no-op ohne Record/Upload', async () => {

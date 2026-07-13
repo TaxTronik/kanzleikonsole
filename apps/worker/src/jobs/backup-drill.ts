@@ -118,19 +118,34 @@ async function restoreIntoDrill(
     pgRestorePath,
     // Identische Flags wie der Produktiv-Restore (restore.ts) — nur ohne
     // Datei-Argument: ohne Pfad liest pg_restore von stdin.
-    ['--clean', '--if-exists', '--no-owner', '--no-privileges', '--single-transaction', '--exit-on-error', ...conn.args],
+    // ACLs/REVOKEs gehoeren zum wiederhergestellten Sicherheitszustand. Die
+    // clusterweite Rolle taxtronik_app existiert in der Produktivinstanz und
+    // muss deshalb auch im Drill-Ziel die archivierten Grants erhalten.
+    [
+      '--clean',
+      '--if-exists',
+      '--no-owner',
+      '--single-transaction',
+      '--exit-on-error',
+      ...conn.args,
+    ],
     { stdio: ['pipe', 'ignore', 'pipe'], env: { ...process.env, ...conn.env } },
   );
   let stderr = '';
-  child.stderr.on('data', (c: Buffer) => { stderr += c.toString('utf8'); });
+  child.stderr.on('data', (c: Buffer) => {
+    stderr += c.toString('utf8');
+  });
   // Spawn-Fehler (ENOENT: pg_restore nicht im PATH / falscher PG_RESTORE_PATH)
   // emittiert 'error' — ohne Listener würde das unbehandelte Event den GESAMTEN
   // Worker-Prozess töten (uncaughtException → process.exit(1) in index.ts).
   // Gleiches Muster wie in backup-run.ts für pg_dump.
-  let spawnErr: Error | null = null;
+  const spawnState: { error: Error | null } = { error: null };
   const exit = new Promise<number>((resolve) => {
     child.on('close', (code) => resolve(code ?? -1));
-    child.on('error', (e) => { spawnErr = e; resolve(-1); });
+    child.on('error', (e) => {
+      spawnState.error = e;
+      resolve(-1);
+    });
   });
 
   const hash = createHash('sha256');
@@ -142,6 +157,9 @@ async function restoreIntoDrill(
     // eigentliche Fehlermeldung (stderr).
   }
   const code = await exit;
+  if (spawnState.error) {
+    throw new Error(`pg_restore konnte nicht gestartet werden: ${spawnState.error.message}`);
+  }
   if (code !== 0) throw new Error(`pg_restore exit ${code}: ${stderr.slice(0, 1500)}`);
 
   if (expectedSha && expectedSha.length === 32) {
@@ -153,10 +171,7 @@ async function restoreIntoDrill(
 }
 
 /** Ergebnis persistieren + in der Produktiv-Chain verankern + ggf. alarmieren. */
-async function persistTenantResult(
-  tenantId: string,
-  result: PersistedDrillResult,
-): Promise<void> {
+async function persistTenantResult(tenantId: string, result: PersistedDrillResult): Promise<void> {
   await withWorkerTenantContext(tenantId, async (tx) => {
     await tx.tenantSetting.upsert({
       where: { tenantId_key: { tenantId, key: BACKUP_DRILL_RESULT_SETTING_KEY } },
@@ -225,7 +240,10 @@ async function runDrill(): Promise<{ ok: boolean; tenants: number }> {
     await restoreIntoDrill(latest.bucket, latest.key, latest.sha256 ?? null);
   } catch (err) {
     const result: PersistedDrillResult = {
-      checkedAt, ...base, ok: false, auditChecked: 0,
+      checkedAt,
+      ...base,
+      ok: false,
+      auditChecked: 0,
       error: `Restore fehlgeschlagen: ${(err as Error).message}`,
     };
     for (const t of tenants) await persistTenantResult(t.id, result);
@@ -242,7 +260,10 @@ async function runDrill(): Promise<{ ok: boolean; tenants: number }> {
     for (const t of tenants) {
       let result: PersistedDrillResult;
       try {
-        const inDrill = await drillPrisma.tenant.findUnique({ where: { id: t.id }, select: { id: true } });
+        const inDrill = await drillPrisma.tenant.findUnique({
+          where: { id: t.id },
+          select: { id: true },
+        });
         if (!inDrill) {
           const missing = missingTenantResult(t.createdAt, latest.finishedAt);
           result = { checkedAt, ...base, ok: missing.ok, auditChecked: 0, error: missing.error };
@@ -254,13 +275,21 @@ async function runDrill(): Promise<{ ok: boolean; tenants: number }> {
             VERIFY_TX_OPTIONS,
           );
           result = {
-            checkedAt, ...base, ok: r.ok, auditChecked: r.checked,
-            error: r.ok ? null : `Audit-Hash-Chain auf der wiederhergestellten DB gebrochen${r.firstBreak ? ` (ab Audit-ID ${r.firstBreak.auditId})` : ''}`,
+            checkedAt,
+            ...base,
+            ok: r.ok,
+            auditChecked: r.checked,
+            error: r.ok
+              ? null
+              : `Audit-Hash-Chain auf der wiederhergestellten DB gebrochen${r.firstBreak ? ` (ab Audit-ID ${r.firstBreak.auditId})` : ''}`,
           };
         }
       } catch (err) {
         result = {
-          checkedAt, ...base, ok: false, auditChecked: 0,
+          checkedAt,
+          ...base,
+          ok: false,
+          auditChecked: 0,
           error: `Drill-Verifikation fehlgeschlagen: ${(err as Error).message}`,
         };
       }

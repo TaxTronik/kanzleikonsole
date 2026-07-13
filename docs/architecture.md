@@ -27,6 +27,8 @@ Feature-Stand und Release-Prozess stehen in `README.md`, `FEATURES.md` und
         │  - Chain-Verify + Audit-Archiv-Rotation        │
         │  - Fristen-/Ablauf-Checks (GwG, PoA, Termine)  │
         │  - Reminder, RSS, DSGVO-Retention, n8n-Outbox  │
+        │  - tägliche S3-DB-Backups + Restore-Drill      │
+        │  - Infrastruktur-Health und Ops-Alarme         │
         └────────────────────────────────────────────────┘
 
         (Virus-Scan läuft SYNCHRON beim Upload-Commit in der App —
@@ -36,8 +38,9 @@ Feature-Stand und Release-Prozess stehen in `README.md`, `FEATURES.md` und
 ## Kern-Prinzipien
 
 1. **Identitätstrennung Mitarbeiter vs Mandant** — zwei separate Tabellen,
-   zwei Auth.js-Instanzen, zwei Cookies (`/staff/*` und `/portal/*`).
-   Siehe ADR 0003.
+   zwei Auth.js-Instanzen und getrennte Cookie-Namen. Die Cookies verwenden
+   aus Sicherheitsgründen `Path=/`; die jeweilige Auth-Surface liest nur ihren
+   eigenen Cookie. Siehe ADR 0003 und 0010.
 
 2. **Doppelte Verteidigung Mandanten-Trennung** — App-Level-Filter UND
    Postgres-RLS. Siehe ADR 0002.
@@ -47,20 +50,22 @@ Feature-Stand und Release-Prozess stehen in `README.md`, `FEATURES.md` und
    Worker versiegelt täglich den Tages-Spitzen-Hash mit RFC-3161. Verifikation
    per CLI (`pnpm verify:chain`).
 
-4. **n8n für Workflows, Code für Compliance** — Reminder, Recherche-Relays und
-   optionale Mail-/Eskalationsstrecken laufen über n8n. Transaktionale
-   Basismails kann die App selbst per SMTP versenden. Auth, Audit, Storage und
-   GwG-Schranke sind eigenständiger Code in der App (zu kritisch für externe
-   Workflow-Engine).
+4. **n8n für konfigurierbare Automation, Code für Kernkontrollen** — optionale
+   Kommunikations-, Recherche- und Eskalationsstrecken können über die
+   HMAC-signierte n8n-Outbox laufen. Fachliche Fristen-, Retention-, Audit- und
+   Backup-Jobs laufen im BullMQ-Worker; transaktionale Basismails kann die App
+   selbst per SMTP versenden.
 
-5. **Externe Integrationen erst nach Process-Proof** — DATEV/Transparenz­register/
-   ELSTER kommen NICHT im MVP. Stattdessen manueller Import (BWA als
-   XLSX/CSV, Belege als PDF/Scan-Upload).
+5. **Externe Integrationen kontrolliert anbinden** — DATEV und
+   Transparenzregister haben derzeit keine direkte Produktiv-API-Anbindung;
+   verfügbar sind Export-/manuelle Ablagepfade. ELSTER besitzt eine
+   feature-gesteuerte Vorstufe über eine private `eric-bridge`, aber keine
+   mitgelieferte amtliche ERiC-Laufzeit oder öffentliche ELSTER-Spezifikation.
 
-6. **GwG-Schranke systemisch** — DB-Trigger (`enforce_client_active_for_document`)
-   plus App-Guard verhindern Mandantenanlage und alle client-bezogenen
-   Operationen, solange `client.allow_active = false`. Wird ab Iter. 4 vom
-   verifizierten `gwg_check` gesetzt.
+6. **GwG-Schranke systemisch** — DB-Trigger und App-Guards blockieren
+   aktivierungsabhängige Folgeoperationen, solange `client.allow_active = false`.
+   Ein Mandant kann und muss zunächst inaktiv angelegt werden; die Freigabe
+   folgt aus einem verifizierten `gwg_check`.
 
 7. **Risk-Layer als internes Backend** — die TCMS-/Subsumtions-Engine ist opt-in,
    zustandslos und wird über `RISK_LAYER_URL` + Bearer-Token angesprochen. Diese
@@ -74,18 +79,18 @@ Siehe README.md für die vollständige Folder-Übersicht.
 
 ## Compliance-Mapping
 
-| Anforderung                          | Wo umgesetzt                                                                                                                                                                                                                     |
-| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| § 203 StGB Steuergeheimnis           | RLS-Policies in `packages/db/prisma/migrations/.../migration.sql`; `withTenantContext` in `packages/db/src/tenant-context.ts`                                                                                                    |
-| GoBD Unveränderlichkeit              | SeaweedFS Object-Lock (Bucket `gobd`, COMPLIANCE-Mode, typabhängig 6/8/10 Jahre; Bucket `gwg`, GOVERNANCE-Mode plus fachliche Retention-Queue); `document_version.immutable` mit DB-Trigger; `audit_log` insert-only mit Trigger |
-| GoBD Nachvollziehbarkeit             | Hash-verkettetes `audit_log` (`packages/evidence/src/service.ts`)                                                                                                                                                                |
-| GoBD Aufbewahrungsfrist              | `document.retention_until` plus Object-Lock-Retention pro Schutzstufe                                                                                                                                                            |
-| DSGVO Datensparsamkeit               | RLS verhindert "Vergessens-Bug"; explizites Audit nur compliance-relevanter Operationen                                                                                                                                          |
-| GwG Identifizierungspflicht          | `gwg_check`-Tabelle + GwG-Onboarding-Wizard (Selbst-Identifizierung des Mandanten); Transparenzregister-Auszug als Dokumenttyp `TRANSPARENZREGISTER_AUSZUG` manuell ablegbar (kein Excel-Import, kein Registerabruf)             |
-| GwG Risikoanalyse                    | `gwg_risk_score`, regelbasierte Engine, Gewichtungen pro Kanzlei                                                                                                                                                                 |
-| GwG Vorgangs-Block                   | DB-Trigger auf `client.allow_active = false` plus App-Guard                                                                                                                                                                      |
-| GwG Vernichtungspflicht (§ 8 Abs. 4) | Review-Queue `/staff/admin/gwg-retention` für Datei-Belege + DB-Aufzeichnungen, tägliche `GWG_DELETION_DUE`-Notification (siehe `docs/compliance/gwg.md`)                                                                        |
-| Elektronische Vollmachten            | Magic-Link + E-Mail-Code, explizite Inhaltsbestätigung und gebundener Versand-Snapshot (ADR-0009); keine Produktzusage als AES/QES, qualifizierter Anbieter nicht implementiert                                                  |
+| Anforderung                                    | Wo umgesetzt                                                                                                                                                                                                                     |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| § 203 StGB Berufsgeheimnis / Mandantentrennung | RLS-Policies in `packages/db/prisma/migrations/.../migration.sql`; `withTenantContext` in `packages/db/src/tenant-context.ts`                                                                                                    |
+| GoBD Unveränderlichkeit                        | SeaweedFS Object-Lock (Bucket `gobd`, COMPLIANCE-Mode, typabhängig 6/8/10 Jahre; Bucket `gwg`, GOVERNANCE-Mode plus fachliche Retention-Queue); `document_version.immutable` mit DB-Trigger; `audit_log` insert-only mit Trigger |
+| GoBD Nachvollziehbarkeit                       | Hash-verkettetes `audit_log` (`packages/evidence/src/service.ts`)                                                                                                                                                                |
+| GoBD Aufbewahrungsfrist                        | `document.retention_until` plus Object-Lock-Retention pro Schutzstufe                                                                                                                                                            |
+| DSGVO Löschung, Auskunft und Zugriffstrennung  | Retention-/Anonymisierungsjobs, Kontakt-Datenexport und RLS-/App-Level-Tenant-Gates; siehe `docs/compliance/dsgvo-konzept.md`                                                                                                    |
+| GwG Identifizierungspflicht                    | `gwg_check`-Tabelle + GwG-Onboarding-Wizard (Selbst-Identifizierung des Mandanten); Transparenzregister-Auszug als Dokumenttyp `TRANSPARENZREGISTER_AUSZUG` manuell ablegbar (kein Excel-Import, kein Registerabruf)             |
+| GwG Risikoanalyse                              | `gwg_risk_score`, regelbasierte Engine, Gewichtungen pro Kanzlei                                                                                                                                                                 |
+| GwG Vorgangs-Block                             | DB-Trigger auf `client.allow_active = false` plus App-Guard                                                                                                                                                                      |
+| GwG Vernichtungspflicht (§ 8 Abs. 4)           | Review-Queue `/staff/admin/gwg-retention` für Datei-Belege + DB-Aufzeichnungen, tägliche `GWG_DELETION_DUE`-Notification (siehe `docs/compliance/gwg.md`)                                                                        |
+| Elektronische Vollmachten                      | Magic-Link + E-Mail-Code, explizite Inhaltsbestätigung und gebundener Versand-Snapshot (ADR-0009); keine Produktzusage als AES/QES, qualifizierter Anbieter nicht implementiert                                                  |
 
 ## Querverweise
 

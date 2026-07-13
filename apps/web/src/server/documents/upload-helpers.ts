@@ -32,7 +32,10 @@ export async function parseMultipartUpload(req: NextRequest): Promise<ParsedUplo
   try {
     form = await req.formData();
   } catch {
-    return { ok: false, response: NextResponse.json({ error: 'invalid_multipart' }, { status: 400 }) };
+    return {
+      ok: false,
+      response: NextResponse.json({ error: 'invalid_multipart' }, { status: 400 }),
+    };
   }
   const file = form.get('file');
   if (!(file instanceof Blob)) {
@@ -51,11 +54,15 @@ export async function parseMultipartUpload(req: NextRequest): Promise<ParsedUplo
  */
 export function storageCommitErrorResponse(e: unknown): NextResponse {
   const msg = (e as Error).message;
-  const status =
-    msg.startsWith('INFECTED') ? 422 :
-    msg.startsWith('TOO_LARGE') ? 413 :
-    msg.startsWith('FORBIDDEN') ? 403 :
-    msg.startsWith('SCAN_ERROR') ? 502 : 500;
+  const status = msg.startsWith('INFECTED')
+    ? 422
+    : msg.startsWith('TOO_LARGE')
+      ? 413
+      : msg.startsWith('FORBIDDEN')
+        ? 403
+        : msg.startsWith('SCAN_ERROR')
+          ? 502
+          : 500;
   if (status === 500) {
     // Unbekannte Errors NIE roh ans UI (Policy, siehe rbac.ts) — die Route wird
     // auch vom Mandanten-Portal genutzt; ein ECONNREFUSED-Text würde interne
@@ -77,19 +84,35 @@ export async function createDocumentWithVersion(
     documentData: Prisma.DocumentUncheckedCreateInput;
     commit: Pick<
       CommitDocumentResult,
-      'targetBucket' | 'targetKey' | 'sha256' | 'sizeBytes' | 'immutable'
+      | 'targetBucket'
+      | 'targetKey'
+      | 'storageVersionId'
+      | 'sha256'
+      | 'sizeBytes'
+      | 'immutable'
+      | 'retentionUntil'
     >;
     /** Staff-ID bzw. Contact-ID, die die Version erfasst hat. */
     createdById: string;
   },
 ) {
-  const document = await tx.document.create({ data: opts.documentData });
+  const document = await tx.document.create({
+    data: {
+      ...opts.documentData,
+      // Die Storage-Schicht ist die einzige Quelle für die tatsächlich am
+      // Objekt gesetzte Frist. Jeder Uploadpfad muss exakt diesen Wert in den
+      // Dokumentmetadaten verankern; Aufrufer dürfen ihn nicht vergessen oder
+      // abweichend neu berechnen.
+      retentionUntil: opts.commit.retentionUntil,
+    },
+  });
   const version = await tx.documentVersion.create({
     data: {
       documentId: document.id,
       versionNo: 1,
       storageBucket: opts.commit.targetBucket,
       storageKey: opts.commit.targetKey,
+      storageVersionId: opts.commit.storageVersionId,
       sha256: prismaBytes(opts.commit.sha256),
       sizeBytes: opts.commit.sizeBytes,
       immutable: opts.commit.immutable,

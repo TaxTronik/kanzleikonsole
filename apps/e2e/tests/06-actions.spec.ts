@@ -5,6 +5,7 @@ import { test, expect } from '@playwright/test';
 import { loginAsAdmin } from './helpers/auth';
 import { expectPortalDashboardReady, loginAsMandant } from './helpers/portal-auth';
 import { execSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -21,12 +22,20 @@ let uploadedDocumentId: string | null = null;
 
 function createMinimalPdf(): Buffer {
   const pdf = [
-    '%PDF-1.4', '1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj',
+    '%PDF-1.4',
+    '1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj',
     '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj',
     '3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R>>endobj',
-    'xref', '0 4', '0000000000 65535 f ',
-    '0000000009 00000 n ', '0000000058 00000 n ', '0000000115 00000 n ',
-    'trailer<</Size 4/Root 1 0 R>>', 'startxref', '190', '%%EOF',
+    'xref',
+    '0 4',
+    '0000000000 65535 f ',
+    '0000000009 00000 n ',
+    '0000000058 00000 n ',
+    '0000000115 00000 n ',
+    'trailer<</Size 4/Root 1 0 R>>',
+    'startxref',
+    '190',
+    '%%EOF',
   ].join('\n');
   return Buffer.from(pdf, 'utf-8');
 }
@@ -42,17 +51,25 @@ async function openMustermannDocuments(page: import('@playwright/test').Page): P
       return page.url();
     }
   }
-  const text = await page.locator('main').innerText().catch(() => '');
-  throw new Error(`Mustermann-Dokumenten-Scope nicht gefunden. Sichtbarer Inhalt: ${text.slice(0, 500)}`);
+  const text = await page
+    .locator('main')
+    .innerText()
+    .catch(() => '');
+  throw new Error(
+    `Mustermann-Dokumenten-Scope nicht gefunden. Sichtbarer Inhalt: ${text.slice(0, 500)}`,
+  );
 }
 
 function psql(query: string): string {
   const oneLine = query.replace(/\r?\n/g, ' ').replace(/"/g, '\\"');
   try {
-    return execSync(`docker exec ${PG_CONTAINER} psql -U ${PG_USER} -d ${PG_DB} -t -A -c "${oneLine}"`, {
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim();
+    return execSync(
+      `docker exec ${PG_CONTAINER} psql -U ${PG_USER} -d ${PG_DB} -t -A -c "${oneLine}"`,
+      {
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      },
+    ).trim();
   } catch {
     return execSync(`psql -h ${PG_HOST} -U ${PG_USER} -d ${PG_DB} -t -A -c "${oneLine}"`, {
       encoding: 'utf-8',
@@ -62,21 +79,23 @@ function psql(query: string): string {
   }
 }
 
-function ensureStartableWorkflowTemplate(): void {
-  const staffRow = psql(`SELECT tenant_id || '|' || id FROM staff_user WHERE email = 'admin@taxtronik.local' LIMIT 1`);
+function ensureStartableWorkflowTemplate(templateName: string): void {
+  const staffRow = psql(
+    `SELECT tenant_id || '|' || id FROM staff_user WHERE email = 'admin@taxtronik.local' LIMIT 1`,
+  );
   const [tenantId, staffId] = staffRow.split('|');
   if (!tenantId || !staffId) throw new Error('Admin-Staff fuer Workflow-Seed nicht gefunden');
   const templateId = psql(`
     WITH upsert AS (
       INSERT INTO workflow_template (tenant_id, name, description, active, created_by_staff, updated_at)
-      VALUES ('${tenantId}', 'E2E Startbarer Workflow', 'Seed fuer Paranoid-E2E', true, '${staffId}', now())
+      VALUES ('${tenantId}', '${templateName}', 'Seed fuer Paranoid-E2E', true, '${staffId}', now())
       ON CONFLICT (tenant_id, name)
       DO UPDATE SET active = true, updated_at = now()
       RETURNING id
     )
     SELECT id FROM upsert
     UNION
-    SELECT id FROM workflow_template WHERE tenant_id = '${tenantId}' AND name = 'E2E Startbarer Workflow'
+    SELECT id FROM workflow_template WHERE tenant_id = '${tenantId}' AND name = '${templateName}'
     LIMIT 1
   `);
   if (!templateId) throw new Error('Workflow-Template-Seed konnte keine ID erzeugen');
@@ -95,14 +114,34 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
   test.beforeAll(() => {
     uploadedDocumentId = null;
     fs.mkdirSync(AUTH_DIR, { recursive: true });
-    try { fs.unlinkSync(STAFF_AUTH); } catch { /* best-effort cleanup */ }
-    try { fs.unlinkSync(MANDANT_AUTH); } catch { /* best-effort cleanup */ }
+    try {
+      fs.unlinkSync(STAFF_AUTH);
+    } catch {
+      /* best-effort cleanup */
+    }
+    try {
+      fs.unlinkSync(MANDANT_AUTH);
+    } catch {
+      /* best-effort cleanup */
+    }
   });
 
   test.afterAll(() => {
-    try { fs.unlinkSync(STAFF_AUTH); } catch { /* best-effort cleanup */ }
-    try { fs.unlinkSync(MANDANT_AUTH); } catch { /* best-effort cleanup */ }
-    try { fs.rmdirSync(AUTH_DIR); } catch { /* best-effort cleanup */ }
+    try {
+      fs.unlinkSync(STAFF_AUTH);
+    } catch {
+      /* best-effort cleanup */
+    }
+    try {
+      fs.unlinkSync(MANDANT_AUTH);
+    } catch {
+      /* best-effort cleanup */
+    }
+    try {
+      fs.rmdirSync(AUTH_DIR);
+    } catch {
+      /* best-effort cleanup */
+    }
   });
 
   // 1. Document Upload
@@ -125,7 +164,11 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
       btnVisible = await uploadBtn.isVisible({ timeout: 3000 }).catch(() => false);
     }
     if (!btnVisible) {
-      uploadBtn = page.locator('button[title*="hochladen" i], button[title*="upload" i], button[aria-label*="hochladen" i], button[aria-label*="upload" i]').first();
+      uploadBtn = page
+        .locator(
+          'button[title*="hochladen" i], button[title*="upload" i], button[aria-label*="hochladen" i], button[aria-label*="upload" i]',
+        )
+        .first();
       btnVisible = await uploadBtn.isVisible({ timeout: 3000 }).catch(() => false);
     }
     if (!btnVisible) {
@@ -133,13 +176,20 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
       btnVisible = await uploadBtn.isVisible({ timeout: 3000 }).catch(() => false);
     }
     if (!btnVisible) {
-      const allButtons = await page.locator('button, a[role="button"]').allInnerTexts().catch(() => [] as string[]);
-      throw new Error(`Upload button not found on /staff/documents. Available buttons: ${allButtons.join(', ') || '(none)'}`);
+      const allButtons = await page
+        .locator('button, a[role="button"]')
+        .allInnerTexts()
+        .catch(() => [] as string[]);
+      throw new Error(
+        `Upload button not found on /staff/documents. Available buttons: ${allButtons.join(', ') || '(none)'}`,
+      );
     }
     await uploadBtn.click();
 
     const fileInput = page.locator('#upload-file, input[type="file"]').first();
-    await expect(fileInput, 'Upload-Dialog muss ein Datei-Feld enthalten').toBeVisible({ timeout: 5000 });
+    await expect(fileInput, 'Upload-Dialog muss ein Datei-Feld enthalten').toBeVisible({
+      timeout: 5000,
+    });
     await fileInput.setInputFiles({
       name: 'test-e2e-document.pdf',
       mimeType: 'application/pdf',
@@ -147,13 +197,18 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     });
 
     const titleInput = page.locator('#upload-title');
-    await expect(titleInput, 'Upload-Dialog muss ein Titel-Feld enthalten').toBeVisible({ timeout: 3000 });
+    await expect(titleInput, 'Upload-Dialog muss ein Titel-Feld enthalten').toBeVisible({
+      timeout: 3000,
+    });
     await titleInput.fill('E2E Test Dokument');
 
     const submitBtn = page.locator('button[type="submit"]').filter({ hasText: /Hochladen/ });
-    await expect(submitBtn, 'Upload-Dialog muss einen Submit-Button enthalten').toBeVisible({ timeout: 5000 });
-    const commitResponse = page.waitForResponse((res) =>
-      res.url().includes('/api/staff/documents/commit') && res.request().method() === 'POST',
+    await expect(submitBtn, 'Upload-Dialog muss einen Submit-Button enthalten').toBeVisible({
+      timeout: 5000,
+    });
+    const commitResponse = page.waitForResponse(
+      (res) =>
+        res.url().includes('/api/staff/documents/commit') && res.request().method() === 'POST',
       { timeout: 30_000 },
     );
     await submitBtn.click();
@@ -187,7 +242,9 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     await ctx.close();
   });
   test('Share a document with the client', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.');
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -199,7 +256,10 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     }
 
     const documentRow = page.locator(`[data-document-id="${uploadedDocumentId}"]`);
-    await expect(documentRow, 'Frisch hochgeladenes Dokument muss eindeutig auffindbar sein').toHaveCount(1);
+    await expect(
+      documentRow,
+      'Frisch hochgeladenes Dokument muss eindeutig auffindbar sein',
+    ).toHaveCount(1);
     await expect(documentRow).toBeVisible({ timeout: 8000 });
 
     const shareBtn = documentRow.getByTitle('Für Mandant freigeben', { exact: true });
@@ -228,7 +288,9 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
 
   // 3. Create Invoice
   test('Create a new invoice', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.');
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -236,12 +298,25 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     await page.waitForLoadState('domcontentloaded');
     expect(page.url()).not.toContain('/staff/login');
 
-    if (await page.getByText(/zentraler Rechnungssoftware/).isVisible({ timeout: 2000 }).catch(() => false)) {
+    if (
+      await page
+        .getByText(/zentraler Rechnungssoftware/)
+        .isVisible({ timeout: 2000 })
+        .catch(() => false)
+    ) {
       const clientSelect = page.locator('#clientId');
-      await expect(clientSelect, 'EXTERNAL-Rechnungsupload braucht aktive Mandanten').toBeVisible({ timeout: 5000 });
+      await expect(clientSelect, 'EXTERNAL-Rechnungsupload braucht aktive Mandanten').toBeVisible({
+        timeout: 5000,
+      });
       const optionCount = await clientSelect.locator('option').count();
-      expect(optionCount, 'EXTERNAL-Rechnungsupload braucht mindestens einen Mandanten').toBeGreaterThan(1);
-      const mustermannOption = clientSelect.locator('option').filter({ hasText: /Mustermann GmbH/i }).first();
+      expect(
+        optionCount,
+        'EXTERNAL-Rechnungsupload braucht mindestens einen Mandanten',
+      ).toBeGreaterThan(1);
+      const mustermannOption = clientSelect
+        .locator('option')
+        .filter({ hasText: /Mustermann GmbH/i })
+        .first();
       const selectedClient =
         (await mustermannOption.getAttribute('value').catch(() => null)) ??
         (await clientSelect.locator('option').nth(1).getAttribute('value'));
@@ -259,9 +334,16 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
       });
       await page.getByRole('button', { name: /Rechnung speichern.*Mandant senden/i }).click();
       await page.waitForURL(/\/staff\/invoices\/[a-f0-9-]+/, { timeout: 15_000 });
-      await expect(page.getByRole('heading', { name: new RegExp(number) }), 'EXTERNAL-Rechnung muss auf Detailseite sichtbar sein').toBeVisible({ timeout: 5000 });
-      await expect(page.getByText(/Versendet/i).first(), 'EXTERNAL-Rechnung muss als versendet gelten').toBeVisible({ timeout: 5000 });
-      await ctx.close(); return;
+      await expect(
+        page.getByRole('heading', { name: new RegExp(number) }),
+        'EXTERNAL-Rechnung muss auf Detailseite sichtbar sein',
+      ).toBeVisible({ timeout: 5000 });
+      await expect(
+        page.getByText(/Versendet/i).first(),
+        'EXTERNAL-Rechnung muss als versendet gelten',
+      ).toBeVisible({ timeout: 5000 });
+      await ctx.close();
+      return;
     }
 
     const heading = page.getByRole('heading', { name: /Neue Rechnung|PDF-Rechnung/ }).first();
@@ -269,25 +351,37 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     if (!headingVisible) {
       // FIX 1: Weder EXTERNAL noch Heading → Seiten-Bug/RBAC-Fehler → FAIL.
       await ctx.close();
-      throw new Error('Invoice creation page heading not found (not in EXTERNAL mode) — page broken or RBAC issue');
+      throw new Error(
+        'Invoice creation page heading not found (not in EXTERNAL mode) — page broken or RBAC issue',
+      );
     }
 
+    const invoiceSubject = `E2E Test Rechnung ${randomUUID().slice(0, 8)}`;
     await page.locator('#clientId').selectOption({ label: 'Mustermann GmbH' });
-    await page.locator('#subject').fill('E2E Test Rechnung');
+    await page.locator('#subject').fill(invoiceSubject);
     await page.locator('[id^="pos-0-description"]').fill('Beratungsleistung');
     await page.locator('[id^="pos-0-unitPrice"]').fill('150.00');
 
     const submitBtn = page.getByRole('button', { name: /Rechnung anlegen/ });
     await expect(submitBtn).toBeVisible({ timeout: 5000 });
     await submitBtn.click();
-    await page.waitForURL(/\/staff\/invoices\//, { timeout: 15_000 });
-    expect(page.url()).toContain('/staff/invoices/');
+    await page.waitForURL(
+      /\/staff\/invoices\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+      { timeout: 15_000 },
+    );
+    await expect(
+      page.getByText(invoiceSubject, { exact: true }),
+      'Neu angelegte Rechnung muss auf ihrer Detailseite den eindeutigen Betreff anzeigen',
+    ).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('Entwurf', { exact: true })).toBeVisible({ timeout: 5000 });
     await ctx.close();
   });
 
   // 4. Create Calendar Appointment
   test('Create a calendar appointment', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.');
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -325,8 +419,11 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
 
   // 5. Start Workflow
   test('Start a workflow for a client', async ({ browser }) => {
-    ensureStartableWorkflowTemplate();
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
+    const workflowName = `E2E Startbarer Workflow ${randomUUID().slice(0, 8)}`;
+    ensureStartableWorkflowTemplate(workflowName);
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.');
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -334,10 +431,19 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     await page.waitForLoadState('domcontentloaded');
     expect(page.url()).not.toContain('/staff/login');
 
-    const startBtn = page.getByRole('button', { name: /Starten/ }).first();
+    const templateRow = page.locator('table tbody tr').filter({
+      has: page.getByRole('link', { name: workflowName, exact: true }),
+    });
+    await expect(
+      templateRow,
+      'Eindeutig erzeugte Workflow-Vorlage muss in der Liste stehen',
+    ).toHaveCount(1);
+    const startBtn = templateRow.getByRole('button', { name: /Starten/ });
     if (!(await startBtn.isVisible({ timeout: 5000 }).catch(() => false))) {
       await ctx.close();
-      throw new Error('No active workflow templates — Paranoid-E2E seed must include at least one startable workflow template');
+      throw new Error(
+        'No active workflow templates — Paranoid-E2E seed must include at least one startable workflow template',
+      );
     }
     await startBtn.click();
 
@@ -345,15 +451,22 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     const startSubmit = page.getByRole('button', { name: /Workflow starten/ });
     await expect(startSubmit).toBeVisible({ timeout: 5000 });
     await startSubmit.click();
-    await page.waitForURL(/\/staff\/workflows|\/staff\/clients\//, { timeout: 15_000 });
-
-    expect(page.url(), 'Workflow-Start muss auf eine valide App-URL fuehren').toMatch(/\/staff\/workflows|\/staff\/clients\//);
+    await page.waitForURL(
+      /\/staff\/clients\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/workflows$/i,
+      { timeout: 15_000 },
+    );
+    await expect(
+      page.getByRole('link', { name: workflowName, exact: true }),
+      'Gestartete Workflow-Instanz muss beim ausgewählten Mandanten sichtbar sein',
+    ).toBeVisible({ timeout: 8000 });
     await ctx.close();
   });
 
   // 6. Create Knowledge Article
   test('Create a knowledge article', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.');
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -365,21 +478,32 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     const titleVisible = await titleEl.isVisible({ timeout: 5000 }).catch(() => false);
     if (!titleVisible) {
       await ctx.close();
-      throw new Error('Knowledge article form not found — /staff/knowledge/new muss im Paranoid-E2E verfuegbar sein');
+      throw new Error(
+        'Knowledge article form not found — /staff/knowledge/new muss im Paranoid-E2E verfuegbar sein',
+      );
     }
-    await titleEl.fill('E2E Test Wissensartikel');
+    const articleTitle = `E2E Test Wissensartikel ${randomUUID().slice(0, 8)}`;
+    await titleEl.fill(articleTitle);
     await page.locator('#body').fill('## E2E Test\n\nAutomatisch erstellter Test-Artikel.');
     const s = page.getByRole('button', { name: /Anlegen/ });
     await expect(s).toBeVisible({ timeout: 5000 });
     await s.click();
-    await page.waitForURL(/knowledge/, { timeout: 15_000 });
-    expect(page.url()).toContain('knowledge');
+    await page.waitForURL(
+      /\/staff\/knowledge\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+      { timeout: 15_000 },
+    );
+    await expect(
+      page.getByRole('heading', { name: articleTitle, exact: true }),
+      'Neu angelegter Wissensartikel muss auf seiner Detailseite erscheinen',
+    ).toBeVisible({ timeout: 5000 });
     await ctx.close();
   });
 
   // 7. Create Form Template
   test('Create a form template', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.');
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -393,18 +517,27 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
 
     const formName = page.locator('#form-name');
     await expect(formName).toBeVisible({ timeout: 5000 });
-    await formName.fill('E2E Test Vorlage');
+    const templateName = `E2E Test Vorlage ${randomUUID().slice(0, 8)}`;
+    await formName.fill(templateName);
     const s = page.getByRole('button', { name: /Vorlage anlegen/ });
     await expect(s).toBeVisible({ timeout: 5000 });
     await s.click();
-    await page.waitForURL(/forms/, { timeout: 15_000 });
-    expect(page.url()).toContain('forms');
+    await page.waitForURL(
+      /\/staff\/forms\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+      { timeout: 15_000 },
+    );
+    await expect(
+      page.getByRole('heading', { name: templateName, exact: true }),
+      'Neu angelegte Formularvorlage muss auf ihrer Editor-Detailseite erscheinen',
+    ).toBeVisible({ timeout: 5000 });
     await ctx.close();
   });
 
   // 8. Add Phone Note
   test('Add a phone note on client detail', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.');
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -421,13 +554,19 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     // Deterministischer Anker statt fixem Sleep: erst wenn die Telefonzettel-
     // Sektion gerendert ist, existiert der "Neu"-Button darunter. Die
     // Mandanten-Detailseite ist groß und rendert die Sektionen progressiv.
-    await expect(page.getByRole('heading', { name: /Telefonzettel/i })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('heading', { name: /Telefonzettel/i })).toBeVisible({
+      timeout: 10_000,
+    });
 
-    const neuBtn = page.getByRole('heading', { name: /Telefonzettel/i }).locator('xpath=following::button[normalize-space()="Neu"][1]');
+    const neuBtn = page
+      .getByRole('heading', { name: /Telefonzettel/i })
+      .locator('xpath=following::button[normalize-space()="Neu"][1]');
     const neuVisible = await neuBtn.isVisible({ timeout: 5000 }).catch(() => false);
     if (!neuVisible) {
       await ctx.close();
-      throw new Error('"Neu" button not found on client detail page — Telefonnotiz-Flow kann nicht getestet werden');
+      throw new Error(
+        '"Neu" button not found on client detail page — Telefonnotiz-Flow kann nicht getestet werden',
+      );
     }
     await neuBtn.click();
 
@@ -439,7 +578,9 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     const s = page.getByRole('button', { name: /Notiz anlegen/ });
     await expect(s).toBeVisible({ timeout: 5000 });
     await s.click();
-    await expect(s, 'Telefonnotiz-Formular muss nach erfolgreicher Anlage schließen').toBeHidden({ timeout: 10_000 });
+    await expect(s, 'Telefonnotiz-Formular muss nach erfolgreicher Anlage schließen').toBeHidden({
+      timeout: 10_000,
+    });
 
     // router.refresh() kann unter CI-Load unzuverlässig sein; nach Form-Schließen
     // die Seite neu laden, damit die Telefonnotiz-Liste garantiert aktuell ist.
@@ -456,7 +597,9 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
 
   // 9. Create POA
   test('Create a power of attorney', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.');
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -464,9 +607,16 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     await page.waitForLoadState('domcontentloaded');
     expect(page.url()).not.toContain('/staff/login');
 
-    if (await page.getByText(/Keine aktiven Mandanten/).isVisible({ timeout: 3000 }).catch(() => false)) {
+    if (
+      await page
+        .getByText(/Keine aktiven Mandanten/)
+        .isVisible({ timeout: 3000 })
+        .catch(() => false)
+    ) {
       await ctx.close();
-      throw new Error('No active clients for POA — Paranoid-E2E seed must include a GwG-verified client');
+      throw new Error(
+        'No active clients for POA — Paranoid-E2E seed must include a GwG-verified client',
+      );
     }
 
     const clientSelect = page.locator('#clientId');
@@ -478,34 +628,51 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     await clientSelect.selectOption({ label: 'Mustermann GmbH' });
     await page.locator('#signerName').fill('E2E Test Unterzeichner');
     await page.locator('#signerEmail').fill('test@example.com');
-    await page.locator('#subject').fill('E2E Test Vollmacht');
+    const poaSubject = `E2E Test Vollmacht ${randomUUID().slice(0, 8)}`;
+    await page.locator('#subject').fill(poaSubject);
     // POA-Modus ist konfigurierbar (Default PDF-Template/extern, alternativ
     // In-App Markdown). Beide Pfade abdecken: Scope-Textarea wenn vorhanden,
     // sonst PDF-Upload über den FileButton (#poaPdf).
-    if (await page.locator('#scope').isVisible().catch(() => false)) {
+    if (
+      await page
+        .locator('#scope')
+        .isVisible()
+        .catch(() => false)
+    ) {
       await page.locator('#scope').fill('## Umfang\n\nHiermit bevollmachtige ich...');
     } else {
       const pdf = Buffer.from(
         '%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n' +
-        '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n' +
-        '3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R>>endobj\n' +
-        'xref\n0 4\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000115 00000 n \n' +
-        'trailer<</Size 4/Root 1 0 R>>\nstartxref\n190\n%%EOF\n',
+          '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n' +
+          '3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R>>endobj\n' +
+          'xref\n0 4\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000115 00000 n \n' +
+          'trailer<</Size 4/Root 1 0 R>>\nstartxref\n190\n%%EOF\n',
         'latin1',
       );
-      await page.locator('#poaPdf').setInputFiles({ name: 'vollmacht.pdf', mimeType: 'application/pdf', buffer: pdf });
+      await page
+        .locator('#poaPdf')
+        .setInputFiles({ name: 'vollmacht.pdf', mimeType: 'application/pdf', buffer: pdf });
     }
     const s = page.getByRole('button', { name: /Anlegen/ });
     await expect(s).toBeVisible({ timeout: 5000 });
     await s.click();
-    await page.waitForURL(/poa/, { timeout: 15_000 });
-    expect(page.url()).toContain('poa');
+    await page.waitForURL(
+      /\/staff\/poa\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+      { timeout: 15_000 },
+    );
+    await expect(
+      page.getByRole('heading', { name: poaSubject, exact: true }),
+      'Neu angelegte Vollmacht muss auf ihrer Detailseite erscheinen',
+    ).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('Entwurf', { exact: true })).toBeVisible({ timeout: 5000 });
     await ctx.close();
   });
 
   // 10. Log Time Entry
   test('Start and stop a time entry', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.');
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -550,7 +717,9 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
 
   // 11. Tenant Isolation
   test('Verify tenant isolation', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.');
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -568,7 +737,9 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
 
   // 12. Audit Trail
   test('Audit trail contains entries', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden.');
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -583,9 +754,9 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
 
     // FIX 2: Statt body-visible — die Audit-Seite MUSS die Audit-Tabelle oder
     // eine Leer-Meldung rendern (konkretes Seiten-Element).
-    const auditContent = page.getByRole('heading', { name: /Audit-Log/i }).or(
-      page.getByText(/Keine Einträge|Hash-Chain/i).first(),
-    );
+    const auditContent = page
+      .getByRole('heading', { name: /Audit-Log/i })
+      .or(page.getByText(/Keine Einträge|Hash-Chain/i).first());
     await expect(auditContent.first()).toBeVisible({ timeout: 5000 });
 
     const rows = page.locator('table tbody tr');
@@ -615,14 +786,19 @@ test.describe.serial('Portal Actions', () => {
       await expectPortalDashboardReady(page);
       await ctx.storageState({ path: MANDANT_AUTH });
     } catch (e) {
-      throw new Error(`Portal login failed — MailHog/SMTP/Magic-Link are mandatory in paranoid E2E: ${(e as Error).message}`, { cause: e });
+      throw new Error(
+        `Portal login failed — MailHog/SMTP/Magic-Link are mandatory in paranoid E2E: ${(e as Error).message}`,
+        { cause: e },
+      );
     } finally {
       await ctx.close();
     }
   });
 
   test('View shared documents in portal', async ({ browser }) => {
-    if (!fs.existsSync(MANDANT_AUTH)) { throw new Error('Portal-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
+    if (!fs.existsSync(MANDANT_AUTH)) {
+      throw new Error('Portal-Login fehlgeschlagen — StorageState nicht vorhanden.');
+    }
     const ctx = await browser.newContext({ storageState: MANDANT_AUTH });
     const page = await ctx.newPage();
 
@@ -631,19 +807,25 @@ test.describe.serial('Portal Actions', () => {
     await expect(page.getByRole('heading', { name: /Dokumente/ })).toBeVisible({ timeout: 8000 });
     // FIX 2: Statt body-visible — die Dokumenten-Seite MUSS eine Tabelle oder
     // Leer-Meldung zeigen (kein bloßer Body-Check).
-    const docsContent = page.locator('table').or(page.getByText(/Keine Dokumente|noch keine Dokumente/i));
+    const docsContent = page
+      .locator('table')
+      .or(page.getByText(/Keine Dokumente|noch keine Dokumente/i));
     await expect(docsContent.first()).toBeVisible({ timeout: 5000 });
     await ctx.close();
   });
 
   test('Portal requests page loads', async ({ browser }) => {
-    if (!fs.existsSync(MANDANT_AUTH)) { throw new Error('Portal-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
+    if (!fs.existsSync(MANDANT_AUTH)) {
+      throw new Error('Portal-Login fehlgeschlagen — StorageState nicht vorhanden.');
+    }
     const ctx = await browser.newContext({ storageState: MANDANT_AUTH });
     const page = await ctx.newPage();
 
     await page.goto('/portal/requests');
     await page.waitForLoadState('domcontentloaded');
-    await expect(page.getByRole('heading', { name: /Anforderungen/ })).toBeVisible({ timeout: 8000 });
+    await expect(page.getByRole('heading', { name: /Anforderungen/ })).toBeVisible({
+      timeout: 8000,
+    });
     // FIX 2: Statt body-visible — die Anforderungs-Seite MUSS konkreten
     // Inhalt (Tabelle/Leer-Meldung) rendern.
     const reqContent = page.locator('table, main ul').or(page.getByText(/Keine Anforder/i));
@@ -652,13 +834,17 @@ test.describe.serial('Portal Actions', () => {
   });
 
   test('Request an appointment as mandant', async ({ browser }) => {
-    if (!fs.existsSync(MANDANT_AUTH)) { throw new Error('Portal-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
+    if (!fs.existsSync(MANDANT_AUTH)) {
+      throw new Error('Portal-Login fehlgeschlagen — StorageState nicht vorhanden.');
+    }
     const ctx = await browser.newContext({ storageState: MANDANT_AUTH });
     const page = await ctx.newPage();
 
     await page.goto('/portal/appointments');
     await page.waitForLoadState('domcontentloaded');
-    await expect(page.getByRole('heading', { name: 'Termine', exact: true })).toBeVisible({ timeout: 8000 });
+    await expect(page.getByRole('heading', { name: 'Termine', exact: true })).toBeVisible({
+      timeout: 8000,
+    });
 
     const anfragenBtn = page.getByRole('button', { name: /Anfragen/ });
     await expect(anfragenBtn).toBeVisible({ timeout: 5000 });
@@ -678,7 +864,10 @@ test.describe.serial('Portal Actions', () => {
     // FIX 2: Statt body-visible — die Terminanfrage MUSS bestätigt werden
     // (Erfolgs-Meldung oder der Betreff erscheint in der Anfrage-Liste).
     const confirmation = page.getByText(/E2E Test Terminanfrage|erfolgreich|versendet|angefragt/i);
-    await expect(confirmation.first(), 'Terminanfrage muss bestätigt oder gelistet werden').toBeVisible({ timeout: 5000 });
+    await expect(
+      confirmation.first(),
+      'Terminanfrage muss bestätigt oder gelistet werden',
+    ).toBeVisible({ timeout: 5000 });
     await ctx.close();
   });
 });

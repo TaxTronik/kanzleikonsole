@@ -57,7 +57,7 @@
 | Rechtsgrundlage        | Art. 6 Abs. 1 lit. c (§ 10 ff. GwG)                                                                                                     |
 | Datenkategorien        | Personalausweis-/Pass-Daten, Geburtsdatum, Staatsangehörigkeit, PEP-Status, wirtschaftlich Berechtigte, Risikobewertung                 |
 | Betroffene Personen    | Mandanten, gesetzliche Vertreter, wirtschaftlich Berechtigte                                                                            |
-| Empfänger              | Intern: Mitarbeiter; extern: BaFin / FIU / Strafverfolgungsbehörden auf Anforderung                                                     |
+| Empfänger              | Intern: berechtigte Mitarbeiter; extern: die im Einzelfall gesetzlich zuständigen Melde-, Aufsichts- oder Strafverfolgungsbehörden      |
 | Drittlandsübermittlung | Keine                                                                                                                                   |
 | Aufbewahrung           | grundsätzlich 5 Jahre nach gesetzlichem Fristbeginn; andere Gesetze ggf. länger, Vernichtung spätestens nach 10 Jahren (§ 8 Abs. 4 GwG) |
 | TOM                    | eigener GwG-Bucket mit GOVERNANCE-Lock, fachliche Vernichtungs-Review-Queue, Hash-Chain, RBAC ADMIN/PARTNER für Verifikation            |
@@ -103,16 +103,16 @@
 
 ### V7 — Mitarbeiterverwaltung (Zeit, Urlaub, Krank)
 
-| Feld                   | Inhalt                                                        |
-| ---------------------- | ------------------------------------------------------------- |
-| Zweck                  | Lohnabrechnung, Urlaubsplanung, AU-Erfassung                  |
-| Rechtsgrundlage        | § 26 BDSG (Beschäftigungsverhältnis)                          |
-| Datenkategorien        | Arbeitszeit pro Mandant, Urlaubsanträge, AU-Bescheinigungen   |
-| Betroffene Personen    | Mitarbeiter                                                   |
-| Empfänger              | Intern: Geschäftsführung, Personalbüro                        |
-| Drittlandsübermittlung | Keine                                                         |
-| Aufbewahrung           | 2 Jahre nach Ende des Beschäftigungsverhältnisses             |
-| TOM                    | RLS, Audit-Log, AU-Bescheinigung verschlüsselt im GoBD-Bucket |
+| Feld                   | Inhalt                                                                                                                                                             |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Zweck                  | Lohnabrechnung, Urlaubsplanung, AU-Erfassung                                                                                                                       |
+| Rechtsgrundlage        | § 26 BDSG (Beschäftigungsverhältnis)                                                                                                                               |
+| Datenkategorien        | Arbeitszeit pro Mandant, Urlaubsanträge, Abwesenheitsart/-zeitraum und vertrauliche Freitextnotiz; verknüpfte Dokumente nur, soweit im konkreten Betrieb verwendet |
+| Betroffene Personen    | Mitarbeiter                                                                                                                                                        |
+| Empfänger              | Intern: Geschäftsführung, Personalbüro                                                                                                                             |
+| Drittlandsübermittlung | Keine                                                                                                                                                              |
+| Aufbewahrung           | je Datenart und Zweck festzulegen; gesetzlich erforderliche Arbeitszeitnachweise mindestens zwei Jahre, Gesundheits-/Abwesenheitsdaten nur solange erforderlich    |
+| TOM                    | RLS, rollenbeschränkte Detailansicht; vertrauliche Abwesenheitsnotizen werden nicht in das Audit-Payload übernommen                                                |
 
 ### V8 — System-Audit & Logging
 
@@ -129,16 +129,16 @@
 
 ### V9 — Backup
 
-| Feld                   | Inhalt                                                                   |
-| ---------------------- | ------------------------------------------------------------------------ |
-| Zweck                  | Wiederherstellbarkeit nach Datenverlust                                  |
-| Rechtsgrundlage        | Art. 6 Abs. 1 lit. c (§ 146 AO) + lit. f                                 |
-| Datenkategorien        | Vollständiger Postgres-Dump                                              |
-| Betroffene Personen    | Alle                                                                     |
-| Empfänger              | Intern: ADMIN                                                            |
-| Drittlandsübermittlung | Keine (sofern Off-Site-Backup auf inländischem Storage)                  |
-| Aufbewahrung           | 90 Tage rolling                                                          |
-| TOM                    | SHA-256-Integritätsprüfung, Off-Site-Replikation (Borg/Restic empfohlen) |
+| Feld                   | Inhalt                                                                                    |
+| ---------------------- | ----------------------------------------------------------------------------------------- |
+| Zweck                  | Wiederherstellbarkeit nach Datenverlust                                                   |
+| Rechtsgrundlage        | Art. 6 Abs. 1 lit. c (§ 146 AO) + lit. f                                                  |
+| Datenkategorien        | Vollständiger Postgres-Dump                                                               |
+| Betroffene Personen    | Alle                                                                                      |
+| Empfänger              | Intern: technischer Betreiber; kein Browser-Download durch Tenant-Admins                  |
+| Drittlandsübermittlung | abhängig vom tatsächlich konfigurierten Off-Site-Ziel                                     |
+| Aufbewahrung           | 90 Tage rolling                                                                           |
+| TOM                    | SHA-256-Integritätsprüfung; verschlüsselte, unveränderbare Off-Site-Kopie durch Betreiber |
 
 ---
 

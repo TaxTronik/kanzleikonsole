@@ -42,4 +42,15 @@ describe('documentRetagDecision', () => {
       }),
     ).toBe('RESTORE_WITH_LOCK');
   });
+
+  it('behandelt GwG nicht als linear schwächere GoBD-Stufe', () => {
+    expect(
+      documentRetagDecision({
+        oldTier: 'GWG',
+        newTier: 'GOBD',
+        oldRetentionYears: null,
+        newRetentionYears: 10,
+      }),
+    ).toBe('BLOCK_GWG_TIER_CHANGE');
+  });
 });

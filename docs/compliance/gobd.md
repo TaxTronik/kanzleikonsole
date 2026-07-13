@@ -100,7 +100,7 @@ Hash ein (R-3 / H-2).
   Lesen ehrlich auf SOFT normalisiert und pro Lauf als Warnung geloggt,
   damit `audit_archive` keinen DB-Cleanup behauptet, der nie stattfand.
 
-## 4. Lesbarmachung / Datenträgerüberlassung (Z3-Recht der FinVerw, § 147 Abs. 6 AO)
+## 4. Lesbarmachung und Datenzugriff (§ 147 Abs. 6 AO)
 
 - **DATEV-Belege-Export** ([`apps/web/.../datev-belege-export/route.ts`](../../apps/web/src/app/api/staff/clients/[id]/datev-belege-export/route.ts)):
   ZIP mit Original-Dateien + `index.csv` (DATEV-kompatible Begleitliste)
@@ -109,14 +109,23 @@ Hash ein (R-3 / H-2).
     benötigen Datums-Eingrenzung.
 - **Verify-CLI** für Wirtschaftsprüfer: `pnpm verify:chain` (s. o.).
 
+Diese beiden Funktionen sind **kein vollständiger Z1-/Z2-/Z3-Nachweis**.
+Insbesondere existiert derzeit kein dedizierter Nur-Lese-Prüferzugang und kein
+vollständiger Export aller aufzeichnungs- und aufbewahrungspflichtigen Daten
+einschließlich der für eine maschinelle Auswertung erforderlichen Struktur-
+und Verknüpfungsinformationen. Die Kanzlei muss den verlangten Datenzugriff
+mit der Finanzverwaltung, dem Vorsystem und gegebenenfalls einem beauftragten
+Dritten für den konkreten Prüfungsumfang organisieren.
+
 ## 5. Schnittstellen / Datensicherheit
 
 - Authentifizierung: Staff mit Passwort + TOTP-Pflicht; Mandanten mit
   Magic-Link (Single-Use, kein zweiter Faktor im Portal).
-- Backups: Postgres-Dump in den S3-Backup-Bucket via
+- Backups: täglicher Postgres-Dump in den S3-Backup-Bucket durch den Worker
+  sowie eine zusätzliche lokale Operator-Kopie bei `./taxtronik backup` via
   [`backup/runner.ts`](../../apps/web/src/server/backup/runner.ts)
-  (Operator-Cron `./taxtronik backup` bzw. manuell; auditiert als
-  `backup.run`). SHA-256 jedes Dumps in `BackupRecord.sha256`; Restore
+  (auditiert als `backup.run`). SHA-256 jedes Dumps in
+  `BackupRecord.sha256`; Restore
   verifiziert diesen Hash vor pg_restore (P-6). Der SeaweedFS-Inhalt
   selbst wird von der App NICHT mitgesichert (siehe nächster Punkt).
 - Off-Site-Replikation des `gobd`-Buckets: NICHT Teil von taxtronik.

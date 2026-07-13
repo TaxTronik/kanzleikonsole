@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react';
+import { createHash } from 'node:crypto';
+import { headers } from 'next/headers';
 // =============================================================================
 // /audit-verify/[token] — öffentliche, read-only Evidence-Verifikation
 //
@@ -14,14 +16,15 @@ import { withSystemContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { verifyAuditToken } from '@/server/audit-access/token';
+import { checkRateLimit, getClientIp } from '@/server/rate-limit';
 import { fmtDateTimeMedium, fmtDateMedium } from '@/lib/fmt';
 
-export default async function AuditVerifyPage({
-  params,
-}: {
-  params: Promise<{ token: string }>;
-}) {
+export default async function AuditVerifyPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
+  const ip = getClientIp(await headers());
+  const ipLimit = await checkRateLimit(`audit-verify-ip:${ip}`, { max: 20, windowSec: 600 });
+  if (!ipLimit.ok) return <RateLimitShell />;
+
   const decoded = verifyAuditToken(token);
 
   if (!decoded) {
@@ -37,6 +40,16 @@ export default async function AuditVerifyPage({
       </Shell>
     );
   }
+
+  // Ein gültiger Link würde sonst pro Abruf die komplette Hash-Kette des
+  // Tenants nachrechnen. Der tokenweite Bucket stoppt auch verteilte Abrufe
+  // über viele IPs; im Browser landet nur ein nicht umkehrbarer Fingerprint.
+  const tokenFingerprint = createHash('sha256').update(token).digest('hex').slice(0, 24);
+  const tokenLimit = await checkRateLimit(`audit-verify-token:${tokenFingerprint}`, {
+    max: 10,
+    windowSec: 600,
+  });
+  if (!tokenLimit.ok) return <RateLimitShell />;
 
   const tenant = await prismaOwner.tenant.findUnique({
     where: { id: decoded.tenantId },
@@ -76,7 +89,10 @@ export default async function AuditVerifyPage({
 
       <dl className="text-sm divide-y divide-border-subtle border-t border-b border-default">
         <Row label="Geprüfte Audit-Einträge" value={result.checked.toLocaleString('de-DE')} />
-        <Row label="Geprüfte Tagesversiegelungen" value={result.sealsChecked.toLocaleString('de-DE')} />
+        <Row
+          label="Geprüfte Tagesversiegelungen"
+          value={result.sealsChecked.toLocaleString('de-DE')}
+        />
         <Row
           label="Versiegelungen mit TSA-Problem"
           value={result.sealBreaks.length.toLocaleString('de-DE')}
@@ -85,9 +101,7 @@ export default async function AuditVerifyPage({
         <Row
           label="Zeitstempel-Modus"
           value={
-            result.tsaMode === 'rfc3161'
-              ? 'externe TSA (RFC 3161)'
-              : 'lokal — keine externe TSA'
+            result.tsaMode === 'rfc3161' ? 'externe TSA (RFC 3161)' : 'lokal — keine externe TSA'
           }
           warn={result.tsaMode !== 'rfc3161'}
         />
@@ -106,10 +120,25 @@ export default async function AuditVerifyPage({
       </dl>
 
       <p className="text-xs text-disabled mt-4">
-        Verifiziert am {fmtDateTimeMedium(verifiedAt)} · Link gültig bis {fmtDateMedium(decoded.expiresAt)}.
-        Diese Seite rechnet die SHA-256-Hash-Kette des Audit-Logs nach und prüft die
-        RFC-3161-Zeitstempel. Es werden keine personenbezogenen Mandantendaten angezeigt.
+        Verifiziert am {fmtDateTimeMedium(verifiedAt)} · Link gültig bis{' '}
+        {fmtDateMedium(decoded.expiresAt)}. Diese Seite rechnet die SHA-256-Hash-Kette des
+        Audit-Logs nach und prüft die RFC-3161-Zeitstempel. Es werden keine personenbezogenen
+        Mandantendaten angezeigt.
       </p>
+    </Shell>
+  );
+}
+
+function RateLimitShell() {
+  return (
+    <Shell>
+      <div className="text-center">
+        <ShieldAlert className="h-10 w-10 text-yellow-500 mx-auto mb-3" />
+        <h1 className="text-lg font-semibold text-primary mb-1">Prüfung vorübergehend begrenzt</h1>
+        <p className="text-sm text-muted">
+          Bitte warten Sie einige Minuten und rufen Sie den Prüf-Link dann erneut auf.
+        </p>
+      </div>
     </Shell>
   );
 }

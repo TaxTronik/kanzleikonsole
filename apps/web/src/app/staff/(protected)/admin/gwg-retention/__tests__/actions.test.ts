@@ -3,14 +3,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const m = vi.hoisted(() => ({
   staffActionGuard: vi.fn(),
   withTenantContext: vi.fn(),
-  deleteObject: vi.fn(),
+  deleteObjectVersion: vi.fn(),
   evidenceRecord: vi.fn(),
   revalidatePath: vi.fn(),
 }));
 
 vi.mock('next/cache', () => ({ revalidatePath: m.revalidatePath }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: m.withTenantContext }));
-vi.mock('@taxtronik/storage', () => ({ deleteObject: m.deleteObject }));
+vi.mock('@taxtronik/storage', () => ({ deleteObjectVersion: m.deleteObjectVersion }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: m.evidenceRecord } }));
 vi.mock('@/server/actions/staff-action', () => ({ staffActionGuard: m.staffActionGuard }));
 
@@ -18,7 +18,10 @@ import { confirmGwgCheckDeletionAction, confirmGwgDeletionAction } from '../acti
 
 const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
 
-function makeTx(claimedStorageKey = 'tenant/doc/version-1') {
+function makeTx(
+  claimedStorageKey = 'tenant/doc/version-1',
+  claimedStorageVersionId: string | null = 'storage-version-claimed',
+) {
   return {
     document: {
       findFirst: vi
@@ -38,12 +41,18 @@ function makeTx(claimedStorageKey = 'tenant/doc/version-1') {
               id: 'version-before-claim',
               storageBucket: 'gwg',
               storageKey: 'tenant/doc/version-1',
+              storageVersionId: 'storage-version-before-claim',
             },
           ],
         })
         .mockResolvedValueOnce({
           versions: [
-            { id: 'version-claimed', storageBucket: 'gwg', storageKey: claimedStorageKey },
+            {
+              id: 'version-claimed',
+              storageBucket: 'gwg',
+              storageKey: claimedStorageKey,
+              storageVersionId: claimedStorageVersionId,
+            },
           ],
         })
         .mockResolvedValueOnce({ id: DOCUMENT_ID }),
@@ -65,7 +74,7 @@ beforeEach(() => {
     ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
   });
   m.evidenceRecord.mockResolvedValue({});
-  m.deleteObject.mockResolvedValue(undefined);
+  m.deleteObjectVersion.mockResolvedValue(undefined);
 });
 
 describe('confirmGwgDeletionAction', () => {
@@ -91,7 +100,7 @@ describe('confirmGwgDeletionAction', () => {
 
     expect(result.ok).toBe(false);
     expect(tx.document.updateMany).not.toHaveBeenCalled();
-    expect(m.deleteObject).not.toHaveBeenCalled();
+    expect(m.deleteObjectVersion).not.toHaveBeenCalled();
   });
 
   it('persistiert die Vernichtungsabsicht vor dem Byte-Delete und finalisiert danach', async () => {
@@ -114,9 +123,9 @@ describe('confirmGwgDeletionAction', () => {
       tx.$queryRaw.mock.invocationCallOrder[0]!,
     );
     expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
-      m.deleteObject.mock.invocationCallOrder[0]!,
+      m.deleteObjectVersion.mock.invocationCallOrder[0]!,
     );
-    expect(m.deleteObject.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(m.deleteObjectVersion.mock.invocationCallOrder[0]).toBeLessThan(
       tx.$queryRaw.mock.invocationCallOrder[1]!,
     );
     expect(tx.document.findUnique).toHaveBeenCalledWith({
@@ -135,7 +144,7 @@ describe('confirmGwgDeletionAction', () => {
     const result = await confirmGwgDeletionAction({ documentId: DOCUMENT_ID });
 
     expect(result.ok).toBe(false);
-    expect(m.deleteObject).not.toHaveBeenCalled();
+    expect(m.deleteObjectVersion).not.toHaveBeenCalled();
     expect(tx.document.update).not.toHaveBeenCalled();
   });
 
@@ -147,8 +156,18 @@ describe('confirmGwgDeletionAction', () => {
 
     expect(await confirmGwgDeletionAction({ documentId: DOCUMENT_ID })).toEqual({ ok: true });
 
-    expect(m.deleteObject).toHaveBeenCalledWith('gwg', 'tenant/doc/concurrently-added');
-    expect(m.deleteObject).not.toHaveBeenCalledWith('gwg', 'tenant/doc/version-1');
+    expect(m.deleteObjectVersion).toHaveBeenCalledWith(
+      'gwg',
+      'tenant/doc/concurrently-added',
+      'storage-version-claimed',
+      { bypassGovernanceRetention: true },
+    );
+    expect(m.deleteObjectVersion).not.toHaveBeenCalledWith(
+      'gwg',
+      'tenant/doc/version-1',
+      expect.anything(),
+      expect.anything(),
+    );
   });
 
   it('behält bei Object-Store-Fehler den wiederaufnehmbaren Pending-Zustand', async () => {
@@ -156,7 +175,7 @@ describe('confirmGwgDeletionAction', () => {
     m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
       fn(tx),
     );
-    m.deleteObject.mockRejectedValueOnce(new Error('S3 unavailable'));
+    m.deleteObjectVersion.mockRejectedValueOnce(new Error('S3 unavailable'));
 
     const result = await confirmGwgDeletionAction({ documentId: DOCUMENT_ID });
 
@@ -172,6 +191,20 @@ describe('confirmGwgDeletionAction', () => {
     });
     expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
     expect(tx.document.update).not.toHaveBeenCalled();
+  });
+
+  it('finalisiert ohne persistierte Storage-VersionId keine GwG-Vernichtung', async () => {
+    const tx = makeTx('tenant/doc/version-1', null);
+    m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+      fn(tx),
+    );
+
+    const result = await confirmGwgDeletionAction({ documentId: DOCUMENT_ID });
+
+    expect(result.ok).toBe(false);
+    expect(m.deleteObjectVersion).not.toHaveBeenCalled();
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.document.findUnique).not.toHaveBeenCalled();
   });
 });
 

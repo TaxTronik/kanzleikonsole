@@ -4,12 +4,12 @@
 #
 # Legt folgende Buckets an (S3-Standard, kompatibel zu jeder S3-Engine):
 #   - gobd            Object-Lock COMPLIANCE, 10 Jahre — GoBD/§ 147 AO
-#   - gwg             Object-Lock COMPLIANCE, 5 Jahre  — § 8 Abs. 4 GwG
+#   - gwg             Object-Lock GOVERNANCE, 5 Jahre  — § 8 Abs. 4 GwG
 #                     B-1: GwG-Daten dürfen NICHT 10 Jahre aufbewahrt werden.
 #                     Eigener Bucket statt gobd, kürzere Default-Retention.
 #   - general         transiente Anhänge, KB-Bilder
 #   - staff-private   privater Mitarbeiter-Storage (mit Versioning)
-#   - backups         DB-Dumps + Audit-Archive (90-Tage-Lifecycle)
+#   - backups         DB-Dumps (90-Tage-Lifecycle; Audit-Archive liegen in gobd)
 #
 # Object-Lock muss bei der Bucket-Anlage aktiviert werden — nachträglich
 # nicht möglich. Das Skript ist idempotent; bestehende Buckets bleiben.
@@ -51,17 +51,19 @@ bucket_exists() {
 ensure_bucket_with_lock() {
   local name="$1"
   local years="$2"
+  local mode="$3"
   if bucket_exists "$name"; then
     echo "[init-storage] Bucket '$name' existiert bereits."
-    return
+  else
+    echo "[init-storage] Erstelle Bucket '$name' mit Object-Lock…"
+    $AWS s3api create-bucket --bucket "$name" --object-lock-enabled-for-bucket
   fi
-  echo "[init-storage] Erstelle Bucket '$name' mit Object-Lock (${years} Jahre)…"
-  $AWS s3api create-bucket --bucket "$name" --object-lock-enabled-for-bucket
-  # GoBD/GwG-Retention ist compliance-kritisch — KEIN || true.
-  # Wenn Object-Lock nicht gesetzt werden kann, ist das ein GoBD-Bruch
-  # und der gesamte Storage-Setup muss fehlschlagen.
+  # Immer setzen, auch bei Bestands-Buckets: frühere Releases hatten für GwG
+  # irrtümlich COMPLIANCE als Default. Die Korrektur wirkt auf neue Objekte;
+  # bestehende Object-Locks bleiben durch S3 unverändert.
+  echo "[init-storage] Setze Default-Retention '$name': ${mode}/${years} Jahre…"
   $AWS s3api put-object-lock-configuration --bucket "$name" \
-    --object-lock-configuration "{\"ObjectLockEnabled\":\"Enabled\",\"Rule\":{\"DefaultRetention\":{\"Mode\":\"COMPLIANCE\",\"Years\":${years}}}}"
+    --object-lock-configuration "{\"ObjectLockEnabled\":\"Enabled\",\"Rule\":{\"DefaultRetention\":{\"Mode\":\"${mode}\",\"Years\":${years}}}}"
 }
 
 ensure_bucket() {
@@ -74,8 +76,8 @@ ensure_bucket() {
   $AWS s3api create-bucket --bucket "$name"
 }
 
-ensure_bucket_with_lock gobd 10
-ensure_bucket_with_lock gwg 5
+ensure_bucket_with_lock gobd 10 COMPLIANCE
+ensure_bucket_with_lock gwg 5 GOVERNANCE
 
 for b in general staff-private backups; do
   ensure_bucket "$b"

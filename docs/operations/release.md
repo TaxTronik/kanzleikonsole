@@ -5,26 +5,58 @@ schiefgeht?
 
 ## 1. Release erstellen (Vendor-Seite)
 
+Das Release bildet einen durchgängigen Vertrag aus Tag-Commit, Web-Digest und
+Worker-Digest. Die Betreiber-CLI löst Registry-Releases ausschließlich über das
+gültig signierte Manifest auf und prüft die gezogenen Images gegen beide
+Digests.
+
 Releases sind Git-Tags nach SemVer (`vMAJOR.MINOR.PATCH`):
 
 ```bash
-git tag v1.4.0
+git tag -a v1.4.0 -m "Release 1.4.0"
 git push forgejo v1.4.0
 ```
 
 Der Tag-Push löst `.forgejo/workflows/release.yml` aus:
 
-1. Baut `web` + `worker` mit `APP_VERSION=1.4.0` und dem Commit-SHA als
+1. Verifiziert einen annotierten, strikten SemVer-Tag, den exakten Event-SHA
+   und dass der Commit Bestandteil von `main` ist.
+2. Ruft im selben Release-DAG die vollständigen Workflows `ci.yml` und
+   `security.yml` auf genau diesem Tag-Commit auf. Damit sind Quality, DB/RLS,
+   Backup→Restore, Upgrade-Pfad ab dem vorherigen Tag, Smoke- und Paranoid-E2E,
+   KoSIT-XRechnung, Deploy-Readiness, Dependency-Audit und Gitleaks zwingende
+   Promotion-Gates.
+3. Baut erst danach `web` + `worker` mit `APP_VERSION=1.4.0` und dem Commit-SHA als
    Build-Args (sichtbar in Admin-UI und `/api/health/detail`).
-2. Trivy-Scan: CRITICAL-CVEs mit verfügbarem Fix brechen das Release ab,
+4. Trivy-Scan: CRITICAL-CVEs mit verfügbarem Fix brechen das Release ab,
    HIGH wird rapportiert.
-3. Push in die Forgejo-Container-Registry:
-   `git.hirschmann-koxha.de/taxtronik/web:1.4.0` (+ `:latest`, analog
-   `worker`).
+5. Push in die Forgejo-Container-Registry:
+   `git.hirschmann-koxha.de/taxtronik/web:1.4.0` und
+   `git.hirschmann-koxha.de/taxtronik/worker:1.4.0`. Ein veränderbares
+   `:latest` wird bewusst nicht als Release- oder Deployment-Vertrag
+   publiziert.
+6. Ermittelt die Registry-Digests beider Images und publiziert erst danach das
+   signierte Manifest mit Tag-Commit, Web-Digest und Worker-Digest.
 
-Vorher sollte der normale CI-Lauf (Quality, DB, Restore-Roundtrip,
-Upgrade-Pfad, E2E) auf dem getaggten Commit grün sein — taggen heißt
-freigeben.
+Der Image-Job besitzt die harte Abhängigkeit
+`needs: [preflight, full-ci, security-gate]` und hat keinen
+`if`-/`continue-on-error`-Bypass. Schlägt irgendeine Prüfung fehl oder passt
+Tag, Checkout, Event-SHA beziehungsweise `main`-Historie nicht exakt, werden
+weder Images gebaut noch Registry-Tags gepusht. Der Build-Job prüft den Tag-SHA
+vor dem Image-Build ein zweites Mal. Die Promotion verlässt sich nicht auf eine
+Status-API oder einen älteren Workflow-Lauf, sondern führt die unveränderten
+normalen CI-/Security-Workflows im selben Tag-Lauf erneut aus.
+
+**Verbleibende Betriebsgrenze:** Registry-Push und Manifest-Publikation sind
+keine gemeinsame Transaktion. Scheitert der Worker-Push nach einem erfolgreichen
+Web-Push oder scheitert anschließend das Manifest-Repo, können bereits
+hochgeladene SemVer-Images beziehungsweise -Tags in der Registry zurückbleiben.
+Ohne gültig publiziertes Manifest gelten sie im verifizierten Update-Pfad
+**nicht als promotet** und werden von der Operator-CLI nicht als Release
+aufgelöst. Weil Versions-Tags absichtlich write-once sind, muss das Release-Team
+solche Teilpublikationen vor einem erneuten Lauf prüfen und gegebenenfalls
+manuell bereinigen; Registry-Retention und Garbage Collection sind ein eigener
+Betreiberprozess.
 
 Vor dem ersten echten Produkt-Release und vor größeren Releases wird zusätzlich
 das [Release-Rehearsal](release-rehearsal.md) auf einem frischen
@@ -34,7 +66,10 @@ Wegwerf-System durchgeführt.
 build-images.yml bereits). Falls der Actions-Auto-Token keine Pakete schreiben
 darf, einen PAT mit `write:package` als Secrets `REGISTRY_USER` +
 `REGISTRY_TOKEN` im Repo hinterlegen. Optional Repo-Variable `REGISTRY`, wenn
-der Registry-Host von der Instanz-URL abweicht.
+der Registry-Host von der Instanz-URL abweicht. Zusätzlich Release-Tags mit dem
+Muster `v*` schützen und ihre Erstellung auf das Release-Team begrenzen; der
+Promotion-Job selbst erhält nur `contents: read`, erst der nachgelagerte
+Image-Job bekommt `packages: write`.
 
 ## 2. Update einspielen (Betreiber-Seite)
 
@@ -52,10 +87,20 @@ Dann:
 ./taxtronik update
 ```
 
-Das Skript zieht Code (`git ff-only`) und Images, macht ein Backup, migriert
-über den One-Shot-`migrate`-Container und startet App/Worker/n8n neu. Die
-Images werden gepullt, **bevor** die alten Container stoppen — die Downtime
-ist der reine Container-Neustart.
+Im Registry-Modus löst die CLI die Zielversion zunächst aus dem signierten
+Manifest auf. Web und Worker werden anschließend als getrennte
+`image:tag@sha256:…`-Referenzen gezogen; Versions- und Revision-Label müssen zum
+Manifest passen. Die Digest-Suffixe werden von der CLI verwaltet und dürfen
+nicht von Hand auf einen bloßen Versions-Tag zurückgesetzt werden.
+
+Das Skript erstellt zuerst ein verpflichtendes Datenbank-Backup vollständig
+mit dem **bisher installierten Checkout und Prisma-Client**. Erst wenn dieses
+Backup erfolgreich abgeschlossen ist, führt es `git fetch` und den
+`git merge --ff-only` aus. Ein Backup-Fehler lässt Code und Arbeitsbaum
+unverändert. Danach vervollständigt es die Konfiguration aus dem neuen Stand,
+baut oder zieht Images, migriert über den One-Shot-`migrate`-Container und
+startet App/Worker/n8n neu. Die Images werden gepullt, **bevor** die alten
+Container stoppen — die Downtime ist der reine Container-Neustart.
 
 Private Registry: einmalig `docker login git.hirschmann-koxha.de` auf dem
 Server (Token mit `read:package` genügt).
@@ -89,18 +134,22 @@ Mitarbeiter, bricht es ab und verändert nichts.
 ## 3. Rollback
 
 **App-Rollback (keine neuen Migrationen seit dem letzten Update):**
-`./taxtronik rollback` (setzt `TAXTRONIK_VERSION` auf den vorherigen Stand aus
-`.taxtronik.state` zurück und startet App/Worker neu). Alternativ den Tag in der
-`.env` von Hand pinnen und `./taxtronik deploy`. Da Images versioniert in der
-Registry liegen, ist das ein reiner Re-Pin.
+`./taxtronik rollback` verwendet den vollständigen vorherigen Last-Good-Vertrag
+aus `.taxtronik.state` (Version, Commit sowie Web- und Worker-Digest) und startet
+App/Worker neu. Bei einem explizit angegebenen anderen Ziel löst die CLI dessen
+signiertes Manifest erneut auf. Ein bloßes manuelles Zurücksetzen des
+Versions-Tags ist im Registry-Modus kein gültiger Rollback-Vertrag.
 
 **Rollback über Migrationen hinweg:** Prisma-Migrationen sind forward-only.
 `./taxtronik deploy`/`update` legen deshalb **vor** jeder Migration ein Backup an.
 Pfad zurück: Backup einspielen (siehe
-[disaster-recovery.md](disaster-recovery.md), Abschnitt 9), dann den
-vorherigen Tag pinnen und `./taxtronik deploy`. Achtung: Daten, die nach dem
-Backup entstanden sind, gehen dabei verloren — Rollback über Migrationen ist
-die letzte Option, nicht der Standardweg.
+[disaster-recovery.md](disaster-recovery.md), Abschnitt 9), dann im
+Registry-Modus `./taxtronik rollback <vorherige-version>` ausführen. Dieser Pfad
+löst den signierten früheren Image-Vertrag auf und startet bewusst **keine**
+Migration. Im Lokalbuild-Modus müssen die früheren Images bereits vorhanden
+sein oder aus dem exakten früheren Checkout gebaut werden. Achtung: Daten, die
+nach dem Backup entstanden sind, gehen dabei verloren — Rollback über
+Migrationen ist die letzte Option, nicht der Standardweg.
 
 ## 4. Migrations-Konvention: Expand/Contract
 
@@ -136,13 +185,24 @@ angezeigt. Es gibt bewusst **kein Auto-Update** — einspielen bleibt
    - öffentlicher Schlüssel → an Kunden verteilen (`UPDATE_PUBLIC_KEY`)
 2. **Öffentliches** Repo für das Manifest anlegen (z. B. `TaxTronik/updates`),
    Schreib-Token als Secret `UPDATE_MANIFEST_TOKEN`, Repo-URL als Variable
-   `UPDATE_MANIFEST_REPO`. Solange die Variable fehlt, überspringt die
-   Pipeline den Manifest-Job.
+   `UPDATE_MANIFEST_REPO`. Alle drei Werte sind Release-Pflicht: Der Preflight
+   validiert URL und Ed25519-Key, klont das Ziel und prüft das Schreibrecht per
+   `git push --dry-run`. Fehlt ein Wert oder ist das Ziel nicht beschreibbar,
+   starten weder die teuren Gates noch der Image-Build.
 3. Kunden-.env: `UPDATE_MANIFEST_URL` auf die Raw-URL des Manifests +
    `UPDATE_PUBLIC_KEY` setzen (siehe `.env.example`).
 
-Release-Notes pflegen heißt: **annotierte Tags** verwenden —
+Release-Tags **müssen annotiert sein**; Lightweight-Tags blockiert das
+Promotion-Gate. Die Annotation wird zugleich als Release-Note verwendet:
 `git tag -a v1.4.0 -m "Kurzbeschreibung fürs Admin-Panel"`.
+
+Das Manifest-Schema bindet den Commit-SHA sowie Web- und Worker-Image jeweils
+an einen SHA-256-Digest. Der Manifest-Job ist nicht optional und macht den
+Release-Lauf bei einem Publikationsfehler rot. Da Registry und Manifest-Repo
+zwei getrennte Systeme sind, können Images in diesem Fehlerfall bereits in der
+Registry liegen; sie gelten ohne erfolgreich publiziertes Manifest nicht als
+freigegeben. Vor dem Wiederholen müssen vorhandene Teilpublikationen wie in
+Abschnitt 1 beschrieben geprüft und gegebenenfalls bereinigt werden.
 
 ## 6. Welcher Stand läuft gerade?
 

@@ -5,16 +5,20 @@
 // einem signierten JSON-Manifest aller Versionen. Die App ruft das Manifest
 // regelmäßig ab (Admin-UI / täglicher Job) und zeigt verfügbare Updates an.
 //
-// Manifest-Format (JSON):
+// Manifest-Format v2 (JSON):
 // {
+//   "schemaVersion": 2,
 //   "current": "1.2.3",
 //   "channel": "stable" | "beta",
 //   "versions": [
 //     {
 //       "version": "1.2.3",
 //       "releasedAt": "2026-05-10T12:00:00Z",
-//       "image": "ghcr.io/vendor/taxtronik:1.2.3",
-//       "imageDigest": "sha256:…",
+//       "commitSha": "<40/64 lowercase hex>",
+//       "artifacts": {
+//         "web": { "image": "…/web:1.2.3", "digest": "sha256:…" },
+//         "worker": { "image": "…/worker:1.2.3", "digest": "sha256:…" }
+//       },
 //       "minPreviousVersion": "1.2.0",
 //       "notes": "Bugfix: …",
 //       "migrationsRequired": true
@@ -30,32 +34,144 @@
 //     manifest.json.sig (scripts/release/build-update-manifest.mjs).
 //   - Public Key in env.UPDATE_PUBLIC_KEY (PEM oder raw 32-Byte base64)
 //
-// MVP: Wir verifizieren die Signatur via Node-Crypto. Falls keine Signatur
-// konfiguriert ist, läuft der Adapter im „insecure"-Modus (Logging-Warnung).
+// Nach der Signaturprüfung wird das Schema strikt validiert. Die alte
+// Single-Image-Form wird auch mit gültiger Signatur abgelehnt: Ein Update darf
+// nur angeboten werden, wenn Web UND Worker digest- und commitgebunden sind.
 // =============================================================================
 
 import { createPublicKey, verify as cryptoVerify } from 'node:crypto';
+import { z } from 'zod';
 import { safeFetch } from '@/server/http/ssrf-guard';
 
 // H4: 1 MB ist großzügig für ein JSON-Manifest mit N Versionen (typisch <50 KB).
 const MAX_MANIFEST_BYTES = 1024 * 1024;
 const MANIFEST_TIMEOUT_MS = 15_000;
+const SEMVER_RE = /^(?:0|[1-9]\d{0,8})\.(?:0|[1-9]\d{0,8})\.(?:0|[1-9]\d{0,8})$/;
+const COMMIT_SHA_RE = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+const SHA256_DIGEST_RE = /^sha256:[0-9a-f]{64}$/;
+const RELEASED_AT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
+const IMAGE_REGISTRY_RE = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::[1-9]\d{0,4})?$/;
+const IMAGE_PATH_SEGMENT_RE = /^[a-z0-9][a-z0-9._-]*$/;
+const IMAGE_TAG_RE = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/;
 
-export interface VersionEntry {
-  version: string;
-  releasedAt: string;
-  image: string;
-  imageDigest?: string;
-  minPreviousVersion?: string;
-  notes?: string;
-  migrationsRequired?: boolean;
+function isTaggedImageReference(value: string): boolean {
+  if (
+    value.length < 3 ||
+    value.length > 512 ||
+    value.includes('@') ||
+    value.includes('://') ||
+    value.startsWith('/')
+  ) {
+    return false;
+  }
+  const lastSlash = value.lastIndexOf('/');
+  const lastColon = value.lastIndexOf(':');
+  if (lastSlash <= 0 || lastColon <= lastSlash + 1 || lastColon >= value.length - 1) return false;
+  const name = value.slice(0, lastColon);
+  const tag = value.slice(lastColon + 1);
+  const [registry, ...path] = name.split('/');
+  return (
+    IMAGE_REGISTRY_RE.test(registry!) &&
+    path.length > 0 &&
+    path.every((segment) => IMAGE_PATH_SEGMENT_RE.test(segment)) &&
+    IMAGE_TAG_RE.test(tag)
+  );
 }
 
-export interface UpdateManifest {
-  current: string;
-  channel: 'stable' | 'beta';
-  versions: VersionEntry[];
+function isUtcIsoTimestamp(value: string): boolean {
+  if (!RELEASED_AT_RE.test(value)) return false;
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return false;
+  const canonical = parsed.toISOString();
+  return value === canonical || value === canonical.replace('.000Z', 'Z');
 }
+
+const semverSchema = z.string().regex(SEMVER_RE);
+const releaseArtifactSchema = z.strictObject({
+  image: z.string().refine(isTaggedImageReference, 'getaggter Image-Repository-Pfad erwartet'),
+  digest: z.string().regex(SHA256_DIGEST_RE),
+});
+
+const versionEntrySchema = z
+  .strictObject({
+    version: semverSchema,
+    releasedAt: z.string().refine(isUtcIsoTimestamp, 'ungültiger UTC-ISO-Zeitpunkt'),
+    commitSha: z.string().regex(COMMIT_SHA_RE),
+    artifacts: z.strictObject({
+      web: releaseArtifactSchema,
+      worker: releaseArtifactSchema,
+    }),
+    minPreviousVersion: semverSchema.optional(),
+    notes: z.string().max(100_000).optional(),
+    migrationsRequired: z.boolean(),
+  })
+  .superRefine((entry, ctx) => {
+    if (!entry.artifacts.web.image.endsWith(`:${entry.version}`)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['artifacts', 'web', 'image'],
+        message: 'Release-Tag stimmt nicht mit version überein',
+      });
+    }
+    if (!entry.artifacts.worker.image.endsWith(`:${entry.version}`)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['artifacts', 'worker', 'image'],
+        message: 'Release-Tag stimmt nicht mit version überein',
+      });
+    }
+    if (entry.artifacts.web.image === entry.artifacts.worker.image) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['artifacts'],
+        message: 'Web- und Worker-Image müssen verschieden sein',
+      });
+    }
+    if (entry.minPreviousVersion && !semverGt(entry.version, entry.minPreviousVersion)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['minPreviousVersion'],
+        message: 'muss kleiner als version sein',
+      });
+    }
+  });
+
+const updateManifestSchema = z
+  .strictObject({
+    schemaVersion: z.literal(2),
+    current: semverSchema,
+    channel: z.enum(['stable', 'beta']),
+    versions: z.array(versionEntrySchema).min(1),
+  })
+  .superRefine((manifest, ctx) => {
+    const seen = new Set<string>();
+    for (let i = 0; i < manifest.versions.length; i++) {
+      const entry = manifest.versions[i]!;
+      if (seen.has(entry.version)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['versions', i, 'version'],
+          message: 'Version doppelt vorhanden',
+        });
+      }
+      seen.add(entry.version);
+      if (i > 0 && !semverGt(manifest.versions[i - 1]!.version, entry.version)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['versions', i],
+          message: 'Versionen müssen streng absteigend sortiert sein',
+        });
+      }
+    }
+    if (manifest.current !== manifest.versions[0]?.version) {
+      ctx.addIssue({ code: 'custom', path: ['current'], message: 'muss versions[0] entsprechen' });
+    }
+  });
+
+export type ReleaseArtifact = z.infer<typeof releaseArtifactSchema>;
+export type VersionEntry = z.infer<typeof versionEntrySchema>;
+
+export type UpdateManifest = z.infer<typeof updateManifestSchema>;
 
 export interface CheckResult {
   ok: boolean;
@@ -136,7 +252,8 @@ export async function checkForUpdates(currentVersion: string): Promise<CheckResu
         error: 'UPDATE_PUBLIC_KEY nicht gesetzt — Manifest-Signatur kann nicht verifiziert werden.',
       };
     }
-    warning = 'UPDATE_PUBLIC_KEY nicht gesetzt — Manifest-Signatur nicht verifiziert (nur in Dev erlaubt)!';
+    warning =
+      'UPDATE_PUBLIC_KEY nicht gesetzt — Manifest-Signatur nicht verifiziert (nur in Dev erlaubt)!';
   } else {
     // Statisches Hosting kann keine Header setzen → Fallback auf die detached
     // Signatur unter <url>.sig. Erst wenn BEIDE Wege fehlen, fail-closed.
@@ -153,12 +270,22 @@ export async function checkForUpdates(currentVersion: string): Promise<CheckResu
     }
   }
 
-  let manifest: UpdateManifest;
+  let decoded: unknown;
   try {
-    manifest = JSON.parse(body);
+    decoded = JSON.parse(body);
   } catch {
     return { ok: false, error: 'Manifest ist kein gültiges JSON.' };
   }
+  const parsed = updateManifestSchema.safeParse(decoded);
+  if (!parsed.success) {
+    const first = parsed.error.issues[0];
+    const path = first?.path.length ? `${first.path.join('.')}: ` : '';
+    return {
+      ok: false,
+      error: `Manifest-Schema ungültig — Update verweigert${first ? ` (${path}${first.message})` : ''}.`,
+    };
+  }
+  const manifest = parsed.data;
 
   const newer = manifest.versions.filter((v) => semverGt(v.version, currentVersion));
   return {
@@ -205,6 +332,7 @@ function verifyManifestSignature(
   const m = signatureHeader.match(/^ed25519:(.+)$/);
   if (!m) return false;
   const sig = Buffer.from(m[1]!, 'base64');
+  if (sig.length !== 64 || sig.toString('base64') !== m[1]) return false;
 
   // Public Key: entweder PEM oder raw 32-Byte base64
   let key;
@@ -214,7 +342,7 @@ function verifyManifestSignature(
     } else {
       // Raw Ed25519 → DER-Wrapper
       const raw = Buffer.from(publicKeyB64, 'base64');
-      if (raw.length !== 32) return false;
+      if (raw.length !== 32 || raw.toString('base64') !== publicKeyB64) return false;
       const der = Buffer.concat([
         Buffer.from([0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00]),
         raw,

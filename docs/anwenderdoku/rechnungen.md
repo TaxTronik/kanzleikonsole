@@ -18,16 +18,19 @@ die Nummer des Fremdsystems eingetragen; doppelte Nummern weist das System ab.
 **Festschreibung.** Mit dem Versand ist eine Rechnung festgeschrieben:
 Beträge, Positionen, Daten und Nummer sind danach **technisch unveränderbar**
 (auf Datenbankebene erzwungen, auch für Administratoren) — Korrekturen
-laufen über Storno + Neuausstellung. Entwürfe (Status „Entwurf") sind frei
-bearbeitbar und löschbar.
+laufen über Storno + Neuausstellung. Auch Entwürfe lassen sich in der
+aktuellen Oberfläche nicht nachträglich bearbeiten oder löschen; ein
+verworfener Entwurf wird storniert, damit seine Nummer nachvollziehbar bleibt.
 
 **Statuslauf.** Entwurf → Versendet → Bezahlt; überfällige Rechnungen werden
 täglich automatisch als „Überfällig" markiert (mit interner Benachrichtigung
-an die anlegende Person). Storno ist aus jedem Status außer „Bezahlt"
-möglich; „Bezahlt" und „Storniert" sind Endzustände.
+an die anlegende Person). Storno ist aus jedem Status außer „Storniert"
+möglich. Bei einer bereits bezahlten Rechnung entsteht ebenfalls ein
+Korrekturbeleg; eine erforderliche Rückzahlung wird außerhalb von TaxTronik
+abgewickelt. „Storniert" ist der Endzustand.
 
 **Archivkopie (GoBD).** Beim Versand einer XRechnung-/ZUGFeRD-Rechnung wird
-die Rechnungsdatei **vor** der Festschreibung revisionssicher abgelegt
+die Rechnungsdatei **vor** der Festschreibung mit Object-Lock abgelegt
 (8 Jahre ab dem einschlägigen Jahresende, schreibgeschützt). Schlägt das fehl — z. B. weil die
 Absenderdaten der Kanzlei unvollständig sind — wird der Versand abgebrochen
 und der Grund angezeigt; die Rechnung bleibt Entwurf.
@@ -43,7 +46,7 @@ XRechnung-/ZUGFeRD-Download werden in der Audit-Hash-Chain festgehalten.
    berechnet der Server). Der USt-Satz wird **je Position** gewählt
    (19 % / 7 % / 0 %) — Mischsätze auf einer Rechnung sind möglich, die
    Steuer wird je Satz gruppiert ausgewiesen und gerundet. Format wählen:
-   XRechnung (Standard), ZUGFeRD oder PDF.
+   XRechnung (Standard) oder ZUGFeRD.
 3. **Anlegen** → die Rechnung erhält ihre Nummer und steht als Entwurf
    auf der Detailseite.
 4. Auf der Detailseite: **Als versendet markieren** (erstellt die
@@ -72,7 +75,7 @@ verknüpft und können nicht mehr gelöscht werden.
 **Rechnungen → Neue Rechnung**: Mandant, Rechnungstyp (von der
 Administration gepflegt, bestimmt die E-Mail-Vorlage), Nummer aus der
 Rechnungssoftware, Daten, Bruttobetrag und das PDF (max. 10 MB). Beim
-Speichern wird das PDF revisionssicher abgelegt (Rechnung/Buchungsbeleg,
+Speichern wird das PDF mit Object-Lock abgelegt (Rechnung/Buchungsbeleg,
 achtjährige Aufbewahrung nach § 147 Abs. 3 AO bzw. § 14b UStG), die
 Rechnung gilt als versendet, und alle aktiven Portal-Kontakte des Mandanten
 mit Benachrichtigungs-Opt-in erhalten eine E-Mail mit dem PDF im Anhang.
@@ -93,10 +96,10 @@ Summen und den Jahresumsatz.
 
 ## 6. Häufige Meldungen
 
-| Meldung                                                                  | Bedeutung                                                                 | Was tun                                                                            |
-| ------------------------------------------------------------------------ | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| „Versand abgebrochen — GoBD-Archivkopie konnte nicht erstellt werden: …" | Absender- oder Mandantendaten unvollständig                               | Kanzlei-Rechnungsdaten bzw. Mandanten-Anschrift vervollständigen, erneut versenden |
-| „Statuswechsel … ist nicht zulässig"                                     | Statuslauf erlaubt den Schritt nicht (z. B. bezahlte Rechnung stornieren) | ggf. Korrektur über neue Rechnung                                                  |
-| „Rechnungsnummer existiert bereits." (Extern-Modus)                      | Nummer des Fremdsystems schon erfasst                                     | Nummer prüfen                                                                      |
-| „Mandant ist nicht aktiv (GwG-Prüfung ausstehend)."                      | Rechnungen nur an GwG-verifizierte Mandanten                              | GwG-Prüfung abschließen                                                            |
-| „Dieser Eintrag ist bereits abgerechnet …"                               | Zeiteintrag hängt an einer Rechnung                                       | Eintrag bleibt als Beleg erhalten                                                  |
+| Meldung                                                                  | Bedeutung                                                                                  | Was tun                                                                            |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| „Versand abgebrochen — GoBD-Archivkopie konnte nicht erstellt werden: …" | Absender- oder Mandantendaten unvollständig                                                | Kanzlei-Rechnungsdaten bzw. Mandanten-Anschrift vervollständigen, erneut versenden |
+| „Statuswechsel … ist nicht zulässig"                                     | Statuslauf erlaubt den Schritt nicht (z. B. bereits stornierte Rechnung erneut stornieren) | Status prüfen; Korrekturbelege über die vorgesehene Storno-Aktion anlegen          |
+| „Rechnungsnummer existiert bereits." (Extern-Modus)                      | Nummer des Fremdsystems schon erfasst                                                      | Nummer prüfen                                                                      |
+| „Mandant ist nicht aktiv (GwG-Prüfung ausstehend)."                      | Rechnungen nur an GwG-verifizierte Mandanten                                               | GwG-Prüfung abschließen                                                            |
+| „Dieser Eintrag ist bereits abgerechnet …"                               | Zeiteintrag hängt an einer Rechnung                                                        | Eintrag bleibt als Beleg erhalten                                                  |

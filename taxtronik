@@ -4,10 +4,13 @@
 #
 #   ./taxtronik bootstrap            Prod-Erstinstall (1 Kommando bis laufende App)
 #   ./taxtronik deploy               bauen/pullen + migrieren + starten + Smoke
-#   ./taxtronik update               git pull + Backup + bauen/pullen + migrieren + starten
+#   ./taxtronik update               Backup + git pull + bauen/pullen + migrieren + starten
 #   ./taxtronik backup               Postgres -> lokale Kopie + S3-Backup-Bucket
 #   ./taxtronik backup-files         Kanzleidateien aus SeaweedFS -> backups/object-store
-#   ./taxtronik backup-full          Datenbank + Kanzleidateien
+#   ./taxtronik backup-full          Versiegeltes Full-Backup inkl. Cold-Volumes
+#   ./taxtronik backup-verify DIR    Signatur + SHA-256-Inventar pruefen
+#   ./taxtronik backup-decrypt D Z [IDENTITY] [PUBLIC_KEY]
+#   ./taxtronik backup-offsite DIR   Verifiziert in immutable Offsite-S3 laden
 #   ./taxtronik restore --list       Backups auflisten / Restore starten
 #   ./taxtronik rollback [<version>] zurueck auf vorherigen Stand (keine Migration)
 #   ./taxtronik reset-admin-password Admin-Passwort neu setzen (Recovery)
@@ -31,10 +34,15 @@ taxtronik — Operator-CLI
 Nutze:
   ./taxtronik bootstrap             Prod-Erstinstall (Infra, Images, Migration, Admin)
   ./taxtronik deploy                bauen/pullen + migrieren + starten + Health-Smoke
-  ./taxtronik update                git pull + Backup + bauen/pullen + migrieren + starten
+  ./taxtronik update                Backup + git pull + bauen/pullen + migrieren + starten
   ./taxtronik backup                Postgres-Backup nach backups/ + S3-Backup-Bucket
   ./taxtronik backup-files          Kanzleidateien aus SeaweedFS nach backups/object-store
-  ./taxtronik backup-full           Datenbank-Backup + Kanzleidateien-Export
+  ./taxtronik backup-full           DB + n8n + Cold-Volumes + age-Recovery versiegeln
+  ./taxtronik backup-verify DIR [PUBLIC_KEY]
+                                    Signatur und alle Hashes pruefen
+  ./taxtronik backup-decrypt D Z [IDENTITY] [PUBLIC_KEY]
+                                    In leeres isoliertes Ziel entschluesseln
+  ./taxtronik backup-offsite DIR    Geprueftes Full-Backup immutable offsite laden
   ./taxtronik restore --list        Backups im S3-Backup-Bucket auflisten
   ./taxtronik restore --latest --target-url <url> [--confirm-overwrite]
   ./taxtronik restore --key <s3-key> | --file <dump>
@@ -62,6 +70,9 @@ case "$cmd" in
   backup)    cmd_backup ;;
   backup-files) cmd_backup_files ;;
   backup-full) cmd_backup_full ;;
+  backup-verify) cmd_backup_verify "${2:-}" "${3:-}" ;;
+  backup-decrypt) cmd_backup_decrypt "${2:-}" "${3:-}" "${4:-}" "${5:-}" ;;
+  backup-offsite) cmd_backup_offsite "${2:-}" ;;
   restore)   shift || true; cmd_restore "$@" ;;
   rollback)  shift || true; cmd_rollback "${1:-}" ;;
   reset-admin-password) cmd_reset_admin_password ;;

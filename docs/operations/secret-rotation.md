@@ -6,29 +6,37 @@ Dieses Runbook beschreibt die Rotation produktiver Geheimnisse. Für
 
 ## Grundregeln
 
-- Vor jeder Rotation: `./taxtronik backup`.
+- Vor jeder Rotation einen aktuellen, erfolgreich verifizierten
+  `./taxtronik backup-full`-Stand erzeugen und bei konfiguriertem Offsite-Ziel
+  dessen Receipt prüfen. Fehlt ein getrenntes Offsite-Ziel, ist das verbleibende
+  Standortausfallrisiko im Betreiberprotokoll festzuhalten. Ein
+  DB-only-`./taxtronik backup` ist nur eine zusätzliche Sicherung und reicht für
+  S3-, n8n- oder Recovery-Schlüssel nicht aus.
 - Nie mehrere unabhängige Secrets gleichzeitig rotieren, außer bei bestätigtem
   Leak.
 - Alte Werte offline und verschlüsselt sichern, bis die Verifikation
-  abgeschlossen ist.
+  abgeschlossen ist und alle damit geschützten Backups ihre Aufbewahrungsfrist
+  verlassen haben.
 - Nach jeder Rotation: `./taxtronik doctor`, Health-Smoke, fachlicher Smoke.
 - Jede Rotation im Betreiberprotokoll dokumentieren: Datum, Grund, betroffene
-  Werte, Verifikation, Rollback-Plan.
+  Werte, zugehörige Backup-/Key-ID, Verifikation und Rollback-Plan.
 
 ## Secret-Matrix
 
-| Secret | Zweck | Rotation | Auswirkung |
-|---|---|---|---|
-| `AUTH_SECRET` | Session-Signing, secret-box, TOTP-Encryption | nur nach Auth-Runbook | Sessions ungültig, Tenant-Secrets/TOTP betroffen |
-| `POSTGRES_PASSWORD` | DB-Owner/Migrationen | Wartungsfenster | App-Owner-Tools, Migrationen |
-| `TAXTRONIK_APP_PASSWORD` | App-DB-Rolle mit RLS | Wartungsfenster | App/Worker DB-Zugriff |
-| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | SeaweedFS S3 | Wartungsfenster | Uploads, Backups, Restore |
-| `N8N_HMAC_SECRET` | App↔n8n Webhook-Signaturen | koordiniert App+n8n | Webhooks schlagen sonst fehl |
-| `N8N_ENCRYPTION_KEY` | n8n Credential-Store | nur mit n8n-Backup | n8n kann Credentials verlieren |
-| `N8N_DB_PASSWORD` | n8n Postgres-Rolle | Wartungsfenster | n8n startet sonst nicht |
-| `SMTP_PASSWORD` | SMTP-Relay | laufend möglich | Mailversand |
-| `RISK_LAYER_TOKEN` | App↔Risk-Layer Bearer Auth | koordiniert App+Engine | Subsumtion/Risk-Layer inaktiv |
-| Update-Manifest Private Key | Release-Manifest-Signatur | Vendor-Prozess | Update-Check fail-closed |
+| Secret                                                    | Zweck                                        | Rotation                       | Auswirkung                                       |
+| --------------------------------------------------------- | -------------------------------------------- | ------------------------------ | ------------------------------------------------ |
+| `AUTH_SECRET`                                             | Session-Signing, secret-box, TOTP-Encryption | nur nach Auth-Runbook          | Sessions ungültig, Tenant-Secrets/TOTP betroffen |
+| `POSTGRES_PASSWORD`                                       | DB-Owner/Migrationen                         | Wartungsfenster                | App-Owner-Tools, Migrationen                     |
+| `TAXTRONIK_APP_PASSWORD`                                  | App-DB-Rolle mit RLS                         | Wartungsfenster                | App/Worker DB-Zugriff                            |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY`                         | SeaweedFS S3                                 | Wartungsfenster                | Uploads, Backups, Restore                        |
+| `N8N_HMAC_SECRET`                                         | App↔n8n Webhook-Signaturen                   | koordiniert App+n8n            | Webhooks schlagen sonst fehl                     |
+| `N8N_ENCRYPTION_KEY`                                      | n8n Credential-Store                         | nur mit n8n-Backup             | n8n kann Credentials verlieren                   |
+| `N8N_DB_PASSWORD`                                         | n8n Postgres-Rolle                           | Wartungsfenster                | n8n startet sonst nicht                          |
+| `SMTP_PASSWORD`                                           | SMTP-Relay                                   | laufend möglich                | Mailversand                                      |
+| `RISK_LAYER_TOKEN`                                        | App↔Risk-Layer Bearer Auth                   | koordiniert App+Engine         | Subsumtion/Risk-Layer inaktiv                    |
+| `BACKUP_OFFSITE_ACCESS_KEY` / `BACKUP_OFFSITE_SECRET_KEY` | getrenntes Offsite-S3                        | mit überlappenden Zugangsdaten | Full-Backup-Upload und Receipt-Prüfung           |
+| Backup-Manifest Private Key                               | Ed25519-Signatur des Full-Backups            | geplante Key-Zeremonie         | alte Public Keys für Altbackups nötig            |
+| Update-Manifest Private Key                               | Release-Manifest-Signatur                    | Vendor-Prozess                 | Update-Check fail-closed                         |
 
 ## Standardablauf
 
@@ -37,7 +45,9 @@ Dieses Runbook beschreibt die Rotation produktiver Geheimnisse. Für
 
 ```bash
 ./taxtronik doctor
-./taxtronik backup
+./taxtronik backup-full
+# Den in der Ausgabe genannten Stand mit getrennt verwahrtem Public Key prüfen:
+./taxtronik backup-verify backups/full/<id> /offline/backup-manifest-public.pem
 ```
 
 3. Neuen Wert erzeugen:
@@ -79,15 +89,29 @@ dann nur `.env` und Health prüfen.
 ## S3-Secrets
 
 SeaweedFS liest seine S3-Konfiguration aus
-`infra/scripts/seaweedfs-s3.generated.json`, das vor Compose-Aufrufen aus
-`.env` gerendert wird.
+den Umgebungsvariablen des Containers. Der Entrypoint rendert sie erst beim
+Containerstart in das flüchtige tmpfs unter `/run/seaweedfs/s3.json` (Owner UID
+1000, Modus `0400`). Eine hostseitige
+`infra/scripts/seaweedfs-s3.generated.json` gibt es nicht mehr; historische
+Kopien werden von Setup und Operator-CLI entfernt. Die `.env` wird auf dem Host
+mit Modus `0600` geschützt.
 
 Reihenfolge:
 
-1. `.env` aktualisieren.
-2. `./taxtronik --infra up -d seaweedfs`.
-3. `./taxtronik deploy`.
-4. Upload, Download und `./taxtronik backup` testen.
+1. Full-Backup mit den alten Zugangsdaten verifizieren und offsite bestätigen.
+2. `S3_ACCESS_KEY` und `S3_SECRET_KEY` gemeinsam in `.env` aktualisieren.
+3. SeaweedFS und den Bucket-Init im Wartungsfenster mit den neuen Werten neu
+   erzeugen:
+
+   ```bash
+   ./taxtronik --infra up -d --force-recreate seaweedfs seaweedfs-init
+   ```
+
+4. `./taxtronik deploy` ausführen, damit App und Worker dieselben Credentials
+   verwenden.
+5. Upload, Download, `./taxtronik backup` und anschließend einen neuen
+   `backup-full`-Lauf testen. Die historische generated-Datei darf danach nicht
+   existieren.
 
 ## n8n-Secrets
 
@@ -95,13 +119,46 @@ Reihenfolge:
 denselben Wert sehen.
 
 `N8N_ENCRYPTION_KEY` ist kritischer: n8n verschlüsselt gespeicherte Credentials
-damit. Vor Rotation:
+damit und hält den wirksamen Wert zusätzlich im persistenten `n8n_data`-Volume.
+Ein bloßes Ändern der `.env` rotiert den Schlüssel daher **nicht**: Die
+Operator-CLI erkennt die Abweichung und stellt zum Schutz bestehender
+Credentials den Volume-Schlüssel in `.env` wieder her.
 
-1. n8n-Workflow-Export sichern.
-2. Credentials dokumentiert neu einspielbar machen.
-3. n8n-Volume sichern.
+Eine Rotation ist nur als geplante n8n-Migration zulässig:
 
-Ohne diese Vorbereitung nicht rotieren.
+1. verifiziertes, offsite vorhandenes `backup-full` erstellen; es enthält
+   n8n-Datenbank, `n8n_data`-Cold-Snapshot und die dazu passende
+   Recovery-Konfiguration,
+2. Workflows exportieren und alle Credentials dokumentiert neu einspielbar
+   machen,
+3. das von der eingesetzten n8n-Version unterstützte Migrations-/Importverfahren
+   zuerst auf einem isolierten Restore-System proben,
+4. erst dann produktiv migrieren und jeden credential-abhängigen Workflow
+   testen.
+
+TaxTronik automatisiert keine In-place-Neuverschlüsselung vorhandener
+n8n-Credentials. Ohne dieses Verfahren nicht rotieren.
+
+## Backup- und Offsite-Schlüssel
+
+`BACKUP_AGE_RECIPIENT` ist öffentlich; die dazugehörige age-Identity gehört
+nicht auf den Produktivhost, sondern getrennt beziehungsweise offline in die
+Recovery-Verwahrung. Bei einem Empfängerwechsel müssen alte age-Identities bis
+zum Ablauf des letzten damit verschlüsselten Backups erhalten bleiben.
+
+Analog gilt für den Ed25519-Manifest-Schlüssel: Nach einer Rotation wird für
+neue Backups der neue Private Key verwendet, während der alte Public Key zur
+Prüfung vorhandener Backups erhalten bleibt. Für jedes Full-Backup muss
+nachvollziehbar sein, mit welcher age-Identity es entschlüsselt und mit welchem
+Public Key es geprüft wird. Nach jeder Key-Rotation sofort ein neues
+`backup-full` erzeugen, mit den neuen Schlüsseln verifizieren und offsite
+bestätigen.
+
+Offsite-Zugangsdaten möglichst überlappend rotieren: neuen Zugang anlegen,
+`./taxtronik backup-offsite <full-backup-verzeichnis>` samt Object-Lock- und
+Receipt-Prüfung erfolgreich durchführen und erst danach den alten Zugang
+widerrufen. Ein erfolgreicher Upload ersetzt keinen isolierten Full-Restore-
+Drill.
 
 ## Risk-Layer-Token
 
@@ -121,5 +178,6 @@ und verlangt ein eigenes Wartungsfenster.
 
 Rollback ist nur zulässig, solange der alte Wert gesichert ist und keine
 Komponente bereits irreversible Daten mit dem neuen Wert erzeugt hat. Bei
-`AUTH_SECRET` und `N8N_ENCRYPTION_KEY` ist Rollback besonders vorsichtig zu
-bewerten.
+`AUTH_SECRET`, `N8N_ENCRYPTION_KEY`, age-Identities und Backup-Signaturschlüsseln
+ist Rollback besonders vorsichtig zu bewerten; bestehende Backups dürfen durch
+die Schlüsselrücknahme nicht unprüfbar oder unentschlüsselbar werden.

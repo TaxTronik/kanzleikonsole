@@ -71,7 +71,46 @@ Schutz allein. Die Sicherheit resultiert aus den dokumentierten Schichten
 
 ## 10. Backups schützen nur, wenn sie getestet wurden
 
-Ein ungetestetes Backup ist kein Backup. Der `backup-drill` Worker-Job testet
-regelmäßig die Restore-Funktionalität gegen eine Wegwerf-Datenbank. Dennoch
-bleibt die Verantwortung für Offsite-Backups und Disaster-Recovery-Pläne bei
-der betreibenden Kanzlei.
+Ein ungetestetes Backup ist kein Backup. Der monatliche `backup-drill`
+Worker-Job lädt den letzten erfolgreichen **Datenbank-Dump**, prüft dessen
+SHA-256-Wert, spielt ihn in eine Wegwerf-Datenbank ein und verifiziert dort die
+Audit-Hash-Chain. Das ist ein wichtiger DB-Nachweis, aber kein isolierter
+Wiederanlauf des Gesamtsystems.
+
+Der automatische Drill entschlüsselt kein versiegeltes `backup-full`, stellt
+keine Cold-Snapshots von SeaweedFS, Redis oder n8n wieder her und prüft weder
+n8n-Credentials noch Dokumentabruf, Login, Release-Images oder die
+Recovery-Konfiguration. Auch `backup-verify` und `backup-decrypt` belegen nur
+Signatur, Hashes, Entschlüsselbarkeit und Archivstruktur. Ein regelmäßig
+dokumentierter **Full-Restore-Drill auf einem isolierten Zielsystem** bleibt
+deshalb Betreiberpflicht. Gleiches gilt für getrennte Offsite-Kopien, die
+Verfügbarkeit der offline verwahrten age-Identity und Public Keys sowie einen
+getesteten Disaster-Recovery-Plan.
+
+## 11. Release-Promotion ist fail-closed, die Publikation nicht transaktional
+
+Der Release-Workflow erzwingt die vollständigen CI- und Security-Workflows im
+selben Lauf für den exakten annotierten Tag-Commit. Das signierte Manifest
+bindet Commit-SHA sowie Web- und Worker-Image an getrennte SHA-256-Digests. Die
+Operator-CLI prüft Checkout und OCI-Labels, deployt beide Images digest-gepinnt
+und bewahrt für Rollbacks einen vollständigen Last-Good-Vertrag auf. Die früher
+dokumentierten CI- und Single-Image-Lücken sind damit keine offenen
+Release-Blocker mehr.
+
+Die Veröffentlichung über Container-Registry und separates Manifest-Repository
+ist jedoch nicht atomar. Wenn ein Image bereits gepusht wurde und ein späterer
+Push oder die Manifest-Publikation fehlschlägt, können partielle SemVer-Artefakte
+in der Registry verbleiben. Ohne erfolgreich publiziertes Manifest werden sie
+vom verifizierten Betreiberpfad nicht promotet oder deployt. Da Release-Tags
+write-once sind, muss das Release-Team solche Reste vor einem Wiederholungslauf
+prüfen und gegebenenfalls manuell bereinigen; automatische Registry-Bereinigung
+und standortübergreifende Transaktionsgarantien bestehen nicht.
+
+## 12. DATEV-Beleg-ZIP ist kein vollständiger GoBD-Datenzugriff
+
+Ein aus TaxTronik erzeugtes DATEV-Beleg-ZIP dient dem strukturierten
+Belegexport. Es weist für sich allein weder einen vollständigen Datenzugriff
+nach den Formen Z1, Z2 und Z3 noch die Vollständigkeit aller steuerlich
+relevanten Vorsystemdaten nach. Auswahl, Bereitstellung und Verfahrensnachweis
+bleiben eine organisatorische Aufgabe der Kanzlei und ihrer angebundenen
+Systeme.

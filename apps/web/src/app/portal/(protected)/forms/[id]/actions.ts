@@ -43,7 +43,9 @@ async function loadSubmissionAndCheck(
   );
 }
 
-export async function saveSubmissionDraftAction(input: z.infer<typeof Schema>): Promise<ActionResult> {
+export async function saveSubmissionDraftAction(
+  input: z.infer<typeof Schema>,
+): Promise<ActionResult> {
   const g = await portalActionGuard();
   if (!g.ok) return g;
   const { tenantId, contactId, clientId, ctx } = g;
@@ -52,7 +54,10 @@ export async function saveSubmissionDraftAction(input: z.infer<typeof Schema>): 
   // werden — Spam-Schutz gegen exzessive Schreiblast.
   const rl = await checkPortalWriteLimit(contactId);
   if (!rl.ok) {
-    return { ok: false, error: `Zu viele Aktionen. Bitte ${Math.ceil(rl.retryAfter / 60)} Min. warten.` };
+    return {
+      ok: false,
+      error: `Zu viele Aktionen. Bitte ${Math.ceil(rl.retryAfter / 60)} Min. warten.`,
+    };
   }
   const parsed = Schema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
@@ -84,7 +89,12 @@ export async function submitSubmissionAction(input: z.infer<typeof Schema>): Pro
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   try {
-    const sub = await loadSubmissionAndCheck(parsed.data.submissionId, tenantId, contactId, clientId);
+    const sub = await loadSubmissionAndCheck(
+      parsed.data.submissionId,
+      tenantId,
+      contactId,
+      clientId,
+    );
 
     // Server-seitige Validierung der Pflichtfelder
     for (const f of sub.template.fields) {
@@ -139,7 +149,10 @@ const UploadSchema = z.object({
   fieldKey: z.string().min(1).max(60),
   fileName: z.string().min(1).max(200),
   mimeType: z.string().min(1).max(100),
-  base64: z.string().min(1).max(20 * 1024 * 1024),
+  base64: z
+    .string()
+    .min(1)
+    .max(20 * 1024 * 1024),
 });
 
 export async function uploadFormFileAction(input: {
@@ -167,18 +180,32 @@ export async function uploadFormFileAction(input: {
   // NEW2: Rate-Limit pro Contact + pro Submission. Schließt Storage-/ClamAV-
   // Sättigung durch authentifizierte Portal-User analog zur GwG-Onboarding-
   // Lücke (H2).
-  const contactRl = await checkRateLimit(`forms-upload-contact:${contactId}`, { max: 20, windowSec: 600 });
+  const contactRl = await checkRateLimit(`forms-upload-contact:${contactId}`, {
+    max: 20,
+    windowSec: 600,
+  });
   if (!contactRl.ok) {
-    return { ok: false, error: `Zu viele Uploads. Bitte ${Math.ceil(contactRl.retryAfter / 60)} Min. warten.` };
+    return {
+      ok: false,
+      error: `Zu viele Uploads. Bitte ${Math.ceil(contactRl.retryAfter / 60)} Min. warten.`,
+    };
   }
-  const subRl = await checkRateLimit(`forms-upload-sub:${parsed.data.submissionId}`, { max: 30, windowSec: 600 });
+  const subRl = await checkRateLimit(`forms-upload-sub:${parsed.data.submissionId}`, {
+    max: 30,
+    windowSec: 600,
+  });
   if (!subRl.ok) {
     return { ok: false, error: 'Zu viele Uploads für dieses Formular.' };
   }
 
   let documentId: string;
   try {
-    const sub = await loadSubmissionAndCheck(parsed.data.submissionId, tenantId, contactId, clientId);
+    const sub = await loadSubmissionAndCheck(
+      parsed.data.submissionId,
+      tenantId,
+      contactId,
+      clientId,
+    );
     // Prüfen, dass das Feld existiert und vom Typ FILE ist
     const field = sub.template.fields.find((f) => f.key === parsed.data.fieldKey);
     if (!field) return { ok: false, error: 'Unbekanntes Feld.' };
@@ -208,6 +235,7 @@ export async function uploadFormFileAction(input: {
           versionNo: 1,
           storageBucket: stored.targetBucket,
           storageKey: stored.targetKey,
+          storageVersionId: stored.storageVersionId,
           sha256: prismaBytes(stored.sha256),
           sizeBytes: stored.sizeBytes,
           immutable: stored.immutable,

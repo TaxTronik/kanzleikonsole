@@ -7,6 +7,16 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 
 # shellcheck source=../ops-lib.sh
 source "$REPO_ROOT/scripts/ops-lib.sh"
+NODE_BIN="$(command -v node 2>/dev/null || command -v node.exe)"
+
+node_host() {
+  local args=() arg
+  for arg in "$@"; do
+    if [[ "$NODE_BIN" == *.exe && "$arg" == /* ]]; then args+=("$(wslpath -w "$arg")")
+    else args+=("$arg"); fi
+  done
+  "$NODE_BIN" "${args[@]}"
+}
 
 TESTS_RUN=0
 
@@ -31,6 +41,53 @@ assert_not_exists_or_empty() {
     cat "$file" >&2
     test_fail "expected file to be absent or empty: $file"
   }
+}
+
+assert_not_contains() {
+  local file="$1" needle="$2"
+  if [[ -f "$file" ]] && grep -Fq "$needle" "$file"; then
+    printf '%s\n' "--- $file ---" >&2
+    cat "$file" >&2
+    test_fail "expected output not to contain: $needle"
+  fi
+}
+
+assert_key_equals() {
+  local file="$1" key="$2" expected="$3" actual
+  actual="$(grep -E "^${key}=" "$file" | head -n1 | cut -d= -f2- || true)"
+  [[ "$actual" == "$expected" ]] || {
+    printf '%s\n' "--- $file ---" >&2
+    cat "$file" >&2
+    test_fail "expected ${key}=${expected}, got ${actual}"
+  }
+}
+
+assert_file_equals() {
+  local file="$1" expected="$2" actual
+  actual="$(cat "$file" 2>/dev/null || true)"
+  [[ "$actual" == "$expected" ]] || {
+    printf '%s\n' "--- $file ---" >&2
+    [[ -f "$file" ]] && cat "$file" >&2
+    test_fail "expected file content '${expected}', got '${actual}'"
+  }
+}
+
+assert_before() {
+  local file="$1" first="$2" second="$3" first_line second_line
+  first_line="$(grep -nF "$first" "$file" | head -n1 | cut -d: -f1 || true)"
+  second_line="$(grep -nF "$second" "$file" | head -n1 | cut -d: -f1 || true)"
+  [[ -n "$first_line" && -n "$second_line" && "$first_line" -lt "$second_line" ]] || {
+    printf '%s\n' "--- $file ---" >&2
+    cat "$file" >&2
+    test_fail "expected '$first' before '$second'"
+  }
+}
+
+file_mode() {
+  local file="$1"
+  if stat -c '%a' "$file" >/dev/null 2>&1; then stat -c '%a' "$file"
+  else stat -f '%Lp' "$file"
+  fi
 }
 
 pass() {
@@ -193,6 +250,314 @@ test_restore_source_detection_skips_s3_for_local_file() {
   pass "restore source detection skips S3 for local files"
 }
 
+test_smoke_health_rejects_degraded() {
+  local out="$TMP_DIR/smoke-degraded.out"
+  if (
+    curl() { printf '{"status":"degraded"}\n'; }
+    sleep() { :; }
+    compose() { :; }
+    app_port() { printf '3000'; }
+    smoke_health
+  ) >"$out" 2>&1; then
+    test_fail "smoke_health accepted degraded as a successful rollout"
+  fi
+  assert_contains "$out" "nur status=ok gilt als bereit"
+  pass "health smoke rejects degraded dependencies"
+}
+
+test_deploy_readiness_rejects_missing_hostports() {
+  local out="$TMP_DIR/readiness-no-ports.out"
+  if (
+    docker() { return 0; }
+    deploy_readiness
+  ) >"$out" 2>&1; then
+    test_fail "deploy_readiness silently skipped missing host ports"
+  fi
+  assert_contains "$out" "Hostports nicht ermittelbar"
+  pass "deploy readiness fails closed when host ports are unavailable"
+}
+
+test_backup_manifest_detects_tampering() {
+  local root="$TMP_DIR/full-backup" keys="$TMP_DIR/manifest-keys" out="$TMP_DIR/manifest.out"
+  mkdir -p "$root"
+  printf 'dump-bytes' >"$root/full-backup.tar.age"
+  node_host "$REPO_ROOT/scripts/backup/manifest.mjs" generate-key --out-dir "$keys" >/dev/null
+  node_host "$REPO_ROOT/scripts/backup/manifest.mjs" create \
+    --root "$root" --private-key "$keys/backup-manifest-private.pem" \
+    --version 1.2.3 --commit 0123456789012345678901234567890123456789 >/dev/null
+  node_host "$REPO_ROOT/scripts/backup/manifest.mjs" verify \
+    --root "$root" --public-key "$keys/backup-manifest-public.pem" >"$out"
+  assert_contains "$out" "Signatur und SHA-256-Inventar gueltig"
+  printf 'tampered' >>"$root/full-backup.tar.age"
+  if node_host "$REPO_ROOT/scripts/backup/manifest.mjs" verify \
+    --root "$root" --public-key "$keys/backup-manifest-public.pem" >"$out" 2>&1; then
+    test_fail "backup manifest accepted modified payload"
+  fi
+  assert_contains "$out" "VERAENDERT: full-backup.tar.age"
+  pass "signed backup manifest detects payload tampering"
+}
+
+run_mock_update() (
+  ROOT="$TMP_DIR/mock-update-root"
+  mkdir -p "$ROOT"
+
+  record_step() { printf '%s\n' "$*" >>"$OPS_SEQUENCE"; }
+  require_cmd() { :; }
+  prepare_env_interactive() { record_step prepare-env; }
+  load_env() { record_step load-env; }
+  preflight_common() { record_step preflight; }
+  assert_production_env() { record_step assert-production; }
+  require_release_version() { record_step require-version; }
+  start_infra() { record_step start-infra; }
+  wait_postgres_healthy() { record_step wait-postgres; }
+  sync_postgres_roles_from_env() { record_step sync-roles; }
+  run_backup() { record_step backup-old-checkout; return "${OPS_BACKUP_STATUS:-0}"; }
+  git() { record_step "git $*"; }
+  deployment_git_remote() { printf 'origin'; }
+  prepare_release_contract() { record_step prepare-release-contract; }
+  provide_images() { record_step provide-images; }
+  run_migrations() { record_step migrate; }
+  start_apps() { record_step start-apps; }
+  smoke_health() { record_step smoke-health; }
+  deploy_readiness() { record_step deploy-readiness; }
+  save_state() { record_step save-state; }
+  commit_release_contract() { record_step commit-release-contract; }
+  image_tag() { printf 'test-version'; }
+
+  cmd_update
+)
+
+test_update_backs_up_old_checkout_before_fetch() {
+  local sequence="$TMP_DIR/update-order.log" out="$TMP_DIR/update-order.out"
+  : >"$sequence"
+  OPS_SEQUENCE="$sequence" run_mock_update >"$out" 2>&1 || test_fail "mock update failed"
+  assert_before "$sequence" "backup-old-checkout" "git fetch origin"
+  assert_before "$sequence" "backup-old-checkout" "git merge --ff-only origin/main"
+  assert_before "$sequence" "git merge --ff-only origin/main" "provide-images"
+  pass "update completes mandatory old-checkout backup before fetch and merge"
+}
+
+test_update_backup_failure_leaves_checkout_untouched() {
+  local sequence="$TMP_DIR/update-backup-fail.log" out="$TMP_DIR/update-backup-fail.out"
+  : >"$sequence"
+  if OPS_SEQUENCE="$sequence" OPS_BACKUP_STATUS=23 run_mock_update >"$out" 2>&1; then
+    test_fail "update continued despite failed mandatory backup"
+  fi
+  assert_contains "$sequence" "backup-old-checkout"
+  assert_not_contains "$sequence" "git fetch"
+  assert_not_contains "$sequence" "git merge"
+  assert_not_contains "$sequence" "provide-images"
+  assert_contains "$out" "Code und Arbeitsbaum bleiben unveraendert"
+  pass "failed mandatory backup prevents every checkout change"
+}
+
+write_release_env() {
+  local file="$1" version="$2" web_suffix="$3" worker_suffix="$4" commit="$5"
+  cat >"$file" <<EOF
+NODE_ENV=production
+TAXTRONIK_IMAGE_PREFIX=registry.example/taxtronik
+TAXTRONIK_VERSION=$version
+TAXTRONIK_WEB_DIGEST_SUFFIX=$web_suffix
+TAXTRONIK_WORKER_DIGEST_SUFFIX=$worker_suffix
+TAXTRONIK_RELEASE_COMMIT=$commit
+TAXTRONIK_RELEASE_MIGRATIONS_REQUIRED=false
+EOF
+}
+
+write_release_state() {
+  local file="$1"
+  cat >"$file" <<EOF
+previous=1.0.0
+previous_web_digest_suffix=@sha256:$(printf '1%.0s' {1..64})
+previous_worker_digest_suffix=@sha256:$(printf '2%.0s' {1..64})
+previous_commit=$(printf 'a%.0s' {1..40})
+current=2.0.0
+current_web_digest_suffix=@sha256:$(printf '3%.0s' {1..64})
+current_worker_digest_suffix=@sha256:$(printf '4%.0s' {1..64})
+current_commit=$(printf 'b%.0s' {1..40})
+EOF
+}
+
+test_release_contract_is_not_persisted_before_health() {
+  local env_file="$TMP_DIR/release-stage.env" out="$TMP_DIR/release-stage.out"
+  local old_web="@sha256:$(printf '7%.0s' {1..64})"
+  local old_worker="@sha256:$(printf '8%.0s' {1..64})"
+  local old_commit="$(printf 'c%.0s' {1..40})"
+  write_release_env "$env_file" 2.0.0 "$old_web" "$old_worker" "$old_commit"
+
+  if (
+    ENVFILE="$env_file"
+    TAXTRONIK_IMAGE_PREFIX=registry.example/taxtronik
+    TAXTRONIK_VERSION=2.0.0
+    load_env() { :; }
+    preflight_common() { :; }
+    assert_production_env() { :; }
+    require_release_version() { :; }
+    images_from_registry() { return 0; }
+    resolve_release_contract() {
+      UPDATE_VERSION=2.0.0
+      UPDATE_COMMIT_SHA="$(printf 'd%.0s' {1..40})"
+      UPDATE_MIGRATIONS_REQUIRED=true
+      UPDATE_MIN_PREVIOUS_VERSION=""
+      UPDATE_WEB_IMAGE=registry.example/taxtronik/web:2.0.0
+      UPDATE_WEB_DIGEST="sha256:$(printf '5%.0s' {1..64})"
+      UPDATE_WORKER_IMAGE=registry.example/taxtronik/worker:2.0.0
+      UPDATE_WORKER_DIGEST="sha256:$(printf '6%.0s' {1..64})"
+    }
+    verify_release_checkout() { :; }
+    start_infra() { :; }
+    wait_postgres_healthy() { :; }
+    sync_postgres_roles_from_env() { :; }
+    provide_images() { :; }
+    backup_before_migrations() { :; }
+    run_migrations() { :; }
+    ensure_provisioned_interactive() { :; }
+    start_apps() { :; }
+    smoke_health() { return 1; }
+    deploy_readiness() { test_fail "readiness must not run after failed health"; }
+    save_state() { test_fail "state must not be saved after failed health"; }
+    _deploy_core
+  ) >"$out" 2>&1; then
+    test_fail "deploy unexpectedly succeeded despite failed health"
+  fi
+
+  assert_key_equals "$env_file" TAXTRONIK_WEB_DIGEST_SUFFIX "$old_web"
+  assert_key_equals "$env_file" TAXTRONIK_WORKER_DIGEST_SUFFIX "$old_worker"
+  assert_key_equals "$env_file" TAXTRONIK_RELEASE_COMMIT "$old_commit"
+  assert_key_equals "$env_file" TAXTRONIK_RELEASE_MIGRATIONS_REQUIRED false
+  pass "release contract is persisted only after successful health/readiness"
+}
+
+run_mock_registry_rollback() (
+  local env_file="$1" state_file="$2" selected_file="$3"
+  ENVFILE="$env_file"
+  STATE="$state_file"
+  require_cmd() { :; }
+  preflight_common() { :; }
+  assert_production_env() { :; }
+  images_from_registry() { return 0; }
+  resolve_release_contract() { test_fail "state-backed rollback unexpectedly resolved the remote manifest"; }
+  fetch_verified_release_tag() { :; }
+  pull_release_images_direct() { :; }
+  require_clean_release_checkout() { :; }
+  start_apps() { printf '%s\n' "$TAXTRONIK_VERSION" >"$selected_file"; }
+  smoke_health() { return 0; }
+  deploy_readiness() { return 0; }
+  save_state() { :; }
+  git() { :; }
+  cmd_rollback
+)
+
+test_failed_update_recovers_state_current() {
+  local env_file="$TMP_DIR/rollback-pending.env" state_file="$TMP_DIR/rollback-pending.state"
+  local selected="$TMP_DIR/rollback-pending.selected"
+  write_release_env "$env_file" 3.0.0 \
+    "@sha256:$(printf '5%.0s' {1..64})" "@sha256:$(printf '6%.0s' {1..64})" \
+    "$(printf 'd%.0s' {1..40})"
+  write_release_state "$state_file"
+
+  run_mock_registry_rollback "$env_file" "$state_file" "$selected" >/dev/null 2>&1 || \
+    test_fail "failed-update recovery rollback failed"
+  assert_file_equals "$selected" 2.0.0
+  pass "failed update recovers the last-good state.current contract"
+}
+
+test_normal_rollback_uses_state_previous() {
+  local env_file="$TMP_DIR/rollback-normal.env" state_file="$TMP_DIR/rollback-normal.state"
+  local selected="$TMP_DIR/rollback-normal.selected"
+  write_release_env "$env_file" 2.0.0 \
+    "@sha256:$(printf '3%.0s' {1..64})" "@sha256:$(printf '4%.0s' {1..64})" \
+    "$(printf 'b%.0s' {1..40})"
+  write_release_state "$state_file"
+
+  run_mock_registry_rollback "$env_file" "$state_file" "$selected" >/dev/null 2>&1 || \
+    test_fail "normal rollback failed"
+  assert_file_equals "$selected" 1.0.0
+  pass "normal rollback selects state.previous"
+}
+
+test_identical_redeploy_preserves_previous_state() {
+  local state_file="$TMP_DIR/redeploy.state"
+  write_release_state "$state_file"
+  (
+    STATE="$state_file"
+    TAXTRONIK_VERSION=2.0.0
+    TAXTRONIK_WEB_DIGEST_SUFFIX="@sha256:$(printf '3%.0s' {1..64})"
+    TAXTRONIK_WORKER_DIGEST_SUFFIX="@sha256:$(printf '4%.0s' {1..64})"
+    TAXTRONIK_RELEASE_COMMIT="$(printf 'b%.0s' {1..40})"
+    save_state
+  )
+
+  assert_key_equals "$state_file" previous 1.0.0
+  assert_key_equals "$state_file" previous_web_digest_suffix \
+    "@sha256:$(printf '1%.0s' {1..64})"
+  assert_key_equals "$state_file" previous_worker_digest_suffix \
+    "@sha256:$(printf '2%.0s' {1..64})"
+  assert_key_equals "$state_file" previous_commit "$(printf 'a%.0s' {1..40})"
+  pass "identical redeploy preserves the real previous release contract"
+}
+
+test_min_previous_without_state_fails_for_existing_installation() {
+  local manifest="$TMP_DIR/min-previous-manifest.json" signature
+  local out="$TMP_DIR/min-previous.out" missing_state="$TMP_DIR/no-release.state"
+  signature="${manifest}.sig"
+  printf '{}\n' >"$manifest"
+  printf 'ed25519:test\n' >"$signature"
+
+  if (
+    STATE="$missing_state"
+    ROOT="$REPO_ROOT"
+    TAXTRONIK_IMAGE_PREFIX=registry.example/taxtronik
+    TAXTRONIK_VERSION=2.0.0
+    UPDATE_PUBLIC_KEY=test-public-key
+    UPDATE_MANIFEST_FILE="$manifest"
+    UPDATE_MANIFEST_SIGNATURE_FILE="$signature"
+    images_from_registry() { return 0; }
+    _n8n_container_id() { printf 'existing-container-id\n'; }
+    _app_container_id() { printf 'existing-container-id\n'; }
+    existing_installation_detected() { return 0; }
+    node() {
+      cat <<EOF
+UPDATE_VERSION=2.0.0
+UPDATE_COMMIT_SHA=$(printf 'd%.0s' {1..40})
+UPDATE_MIGRATIONS_REQUIRED=true
+UPDATE_MIN_PREVIOUS_VERSION=1.5.0
+UPDATE_WEB_IMAGE=registry.example/taxtronik/web:2.0.0
+UPDATE_WEB_DIGEST=sha256:$(printf '5%.0s' {1..64})
+UPDATE_WORKER_IMAGE=registry.example/taxtronik/worker:2.0.0
+UPDATE_WORKER_DIGEST=sha256:$(printf '6%.0s' {1..64})
+EOF
+    }
+    resolve_release_contract
+  ) >"$out" 2>&1; then
+    test_fail "minPreviousVersion was accepted for an existing installation without state"
+  fi
+  assert_contains "$out" "minPreviousVersion"
+  assert_contains "$out" "fehlt bei bestehender Installation"
+  pass "existing installation without state cannot bypass minPreviousVersion"
+}
+
+test_secret_files_are_mode_0600() {
+  local env_file="$TMP_DIR/private.env"
+  local generated="$TMP_DIR/s3.generated.json" umask_file="$TMP_DIR/umask-created"
+  printf 'S3_ACCESS_KEY=test-access\nS3_SECRET_KEY=test-secret\n' >"$env_file"
+  printf 'stale-secret\n' >"$generated"
+  chmod 0644 "$env_file" "$generated"
+
+  (
+    ENVFILE="$env_file"
+    S3_GENERATED="$generated"
+    set_env AUTH_SECRET test-auth-secret
+    render_s3_config
+    : >"$umask_file"
+  )
+
+  [[ "$(file_mode "$env_file")" == "600" ]] || test_fail ".env mode is not 0600"
+  [[ ! -e "$generated" ]] || test_fail "obsolete host-side S3 secret config was not removed"
+  [[ "$(file_mode "$umask_file")" == "600" ]] || test_fail "operator umask does not create mode 0600"
+  pass "operator secrets use mode 0600/umask 077 without host-side S3 copy"
+}
+
 test_doctor_accepts_prod_smtp
 test_doctor_rejects_mailhog
 test_doctor_rejects_loopback_mailhog_port
@@ -203,5 +568,16 @@ test_prune_build_cache_can_be_disabled
 test_prune_build_cache_failure_is_non_blocking
 test_restore_source_detection_uses_s3_for_bucket_sources
 test_restore_source_detection_skips_s3_for_local_file
+test_smoke_health_rejects_degraded
+test_deploy_readiness_rejects_missing_hostports
+test_backup_manifest_detects_tampering
+test_update_backs_up_old_checkout_before_fetch
+test_update_backup_failure_leaves_checkout_untouched
+test_release_contract_is_not_persisted_before_health
+test_failed_update_recovers_state_current
+test_normal_rollback_uses_state_previous
+test_identical_redeploy_preserves_previous_state
+test_min_previous_without_state_fails_for_existing_installation
+test_secret_files_are_mode_0600
 
 printf '\n%s ops-lib tests passed.\n' "$TESTS_RUN"

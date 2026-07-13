@@ -24,12 +24,15 @@ function auditKey(): Buffer {
 }
 
 export function signAuditToken(tenantId: string, expiresAtMs: number): string {
-  const payload = Buffer.from(JSON.stringify({ t: tenantId, e: expiresAtMs })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({ t: tenantId, e: expiresAtMs })).toString(
+    'base64url',
+  );
   const sig = createHmac('sha256', auditKey()).update(payload).digest('base64url');
   return `${payload}.${sig}`;
 }
 
 export function verifyAuditToken(token: string): { tenantId: string; expiresAt: Date } | null {
+  if (token.length > 512) return null;
   const dot = token.indexOf('.');
   if (dot <= 0) return null;
   const payload = token.slice(0, dot);

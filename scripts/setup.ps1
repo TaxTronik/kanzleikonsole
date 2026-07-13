@@ -149,15 +149,10 @@ Write-Done "DATABASE_URL und DATABASE_APP_URL gesetzt."
 
 Set-Content .env -Value $envContent -Encoding utf8 -NoNewline
 
-# SeaweedFS S3-Konfig aus Template rendern
-$tplPath = Join-Path $RepoRoot 'infra\scripts\seaweedfs-s3.template.json'
+# SeaweedFS rendert die S3-Konfiguration beim Containerstart fluechtig nach
+# /run. Historische Secret-Kopie aus dem Checkout entfernen.
 $outPath = Join-Path $RepoRoot 'infra\scripts\seaweedfs-s3.generated.json'
-$s3Access = Get-EnvVar 'S3_ACCESS_KEY'
-$s3Secret = Get-EnvVar 'S3_SECRET_KEY'
-$tpl = Get-Content $tplPath -Raw
-$tpl = $tpl.Replace('__S3_ACCESS_KEY__', $s3Access).Replace('__S3_SECRET_KEY__', $s3Secret)
-Set-Content $outPath -Value $tpl -Encoding utf8 -NoNewline
-Write-Done "SeaweedFS-S3-Konfig gerendert."
+if (Test-Path -LiteralPath $outPath) { Remove-Item -LiteralPath $outPath -Force }
 
 # -------------------------------------------------------------------- Docker-Stack
 Write-Step "Docker-Stack hochfahren (Postgres, Redis, SeaweedFS, ClamAV, Mailhog, n8n)"

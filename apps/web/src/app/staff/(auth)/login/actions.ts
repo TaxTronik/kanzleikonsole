@@ -19,6 +19,7 @@ import { evidenceService } from '@/server/container';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import {
   checkIpOrGlobalLimit,
+  checkRateLimit,
   checkStaffPasswordAccountLimit,
   getClientIp,
   resetRateLimit,
@@ -32,6 +33,12 @@ const { compare, hash } = bcrypt;
 // 32 Zeichen → 5 Bit pro Zeichen. 10 Zeichen = 50 Bit Entropie pro Backup-Code.
 const BACKUP_CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTVWXYZ';
 const BACKUP_CODE_LENGTH = 10;
+const TOTP_SETUP_TTL_MS = 60 * 60 * 1000;
+const TOTP_ENROLLMENT_LIMIT = { max: 5, windowSec: 300 } as const;
+
+function totpEnrollmentAccountRateLimitKey(staffUserId: string): string {
+  return `staff-totp-enroll-account:${staffUserId}`;
+}
 
 function generateBackupCode(): string {
   // Rejection-Sampling: nur Bytes < 240 verwenden (240 = 8 * 30) → uniforme
@@ -162,11 +169,10 @@ export async function checkPasswordAction(
   // Versuch abgelehnt — Account muss vom Admin neu provisioniert werden
   // (Out-of-Band). Verhindert, dass ein Angreifer mit Initialpasswort nach
   // Stunden/Tagen den QR-Code abruft.
-  const SETUP_TTL_MS = 60 * 60 * 1000;
   if (
     staffUser.totpSecretEnc &&
     staffUser.totpSetupStartedAt &&
-    Date.now() - staffUser.totpSetupStartedAt.getTime() > SETUP_TTL_MS
+    Date.now() - staffUser.totpSetupStartedAt.getTime() > TOTP_SETUP_TTL_MS
   ) {
     return {
       ok: false,
@@ -239,6 +245,15 @@ export async function confirmTotpEnrollmentAction(
   // neben checkPasswordAction und MUSS dieselben Schranken tragen — sonst
   // verteiltes Brute-Force / bcrypt-CPU-Erschöpfung über bekannte E-Mails.
   const ip = getClientIp(await headers());
+  const enrollmentIpRl = await checkIpOrGlobalLimit(
+    'staff-totp-enroll',
+    ip,
+    TOTP_ENROLLMENT_LIMIT,
+    { max: 50, windowSec: 300 },
+  );
+  if (!enrollmentIpRl.ok) {
+    return { ok: false, error: 'Zu viele Bestätigungsversuche. Bitte kurz warten.' };
+  }
   const rl = await checkIpOrGlobalLimit(
     'staff-pw',
     ip,
@@ -246,7 +261,10 @@ export async function confirmTotpEnrollmentAction(
     { max: 200, windowSec: 600 },
   );
   if (!rl.ok) {
-    return { ok: false, error: `Zu viele Versuche. Bitte ${Math.ceil(rl.retryAfter / 60)} Min. warten.` };
+    return {
+      ok: false,
+      error: `Zu viele Versuche. Bitte ${Math.ceil(rl.retryAfter / 60)} Min. warten.`,
+    };
   }
 
   const tenant = await prismaOwner.tenant.findFirst({ where: { slug: tenantSlug } });
@@ -276,12 +294,27 @@ export async function confirmTotpEnrollmentAction(
     return { ok: false, error: 'Ungültige Daten.' };
   }
 
-  // Passwort korrekt → Zähler zurücksetzen (IP-RL + Account-Counter).
-  await resetRateLimit(ip ? `staff-pw:${ip}` : 'staff-pw:global');
-  await resetRateLimit(staffPasswordAccountRateLimitKey(staffUser.id));
-  resetFailedLogin(prismaOwner, staffUser.id).catch(() => void 0);
+  // Erst nach korrektem Passwort accountgebunden zählen. Sonst könnte ein
+  // Fremder allein mit einer bekannten E-Mail das offene Erst-Setup sperren.
+  const enrollmentAccountKey = totpEnrollmentAccountRateLimitKey(staffUser.id);
+  const enrollmentAccountRl = await checkRateLimit(enrollmentAccountKey, TOTP_ENROLLMENT_LIMIT);
+  if (!enrollmentAccountRl.ok) {
+    return { ok: false, error: 'Zu viele Bestätigungsversuche. Bitte kurz warten.' };
+  }
 
-  if (!staffUser.totpSecretEnc) return { ok: false, error: 'Kein TOTP-Secret gefunden.' };
+  // Enrollment ist ausschließlich für das noch offene Erst-Setup zulässig.
+  // Ein bereits eingeschriebenes Konto darf über diese öffentliche Action
+  // insbesondere keine neuen Backup-Codes erzeugen.
+  if (staffUser.totpEnrolledAt) {
+    return { ok: false, error: 'TOTP ist bereits eingerichtet.' };
+  }
+  if (!staffUser.totpSecretEnc || !staffUser.totpSetupStartedAt) {
+    return { ok: false, error: 'Kein offenes TOTP-Setup gefunden.' };
+  }
+  const setupCutoff = new Date(Date.now() - TOTP_SETUP_TTL_MS);
+  if (staffUser.totpSetupStartedAt < setupCutoff) {
+    return { ok: false, error: 'TOTP-Setup-Fenster abgelaufen.' };
+  }
 
   const authSecret = env.AUTH_SECRET;
   const { decryptTotpSecret } = await import('@/server/auth/totp');
@@ -300,14 +333,26 @@ export async function confirmTotpEnrollmentAction(
 
   // RF-12: das TOTP-Enrollment ist die Wurzel der 2FA-Vertrauenskette → in
   // DERSELBEN Tx wie die Mutation in die Audit-Hash-Chain (auth.totp.enroll).
-  await prismaOwner.$transaction(async (tx) => {
-    await tx.staffUser.update({
-      where: { id: staffUser.id },
+  const enrolled = await prismaOwner.$transaction(async (tx) => {
+    // Conditional Update ist der atomare Einmal-Claim: parallele Requests und
+    // ein zwischenzeitliches Admin-Reset können das Enrollment nicht zweimal
+    // abschließen oder einen neueren Setup-Stand überschreiben.
+    const claimed = await tx.staffUser.updateMany({
+      where: {
+        id: staffUser.id,
+        tenantId: tenant.id,
+        active: true,
+        totpEnrolledAt: null,
+        totpSecretEnc: staffUser.totpSecretEnc,
+        totpSetupStartedAt: { gte: setupCutoff },
+      },
       data: {
         totpEnrolledAt: new Date(),
+        totpSetupStartedAt: null,
         totpBackupCodes: hashedBackupCodes,
       },
     });
+    if (claimed.count !== 1) return false;
     await evidenceService.record(tx, {
       tenantId: tenant.id,
       actorType: 'STAFF',
@@ -317,7 +362,19 @@ export async function confirmTotpEnrollmentAction(
       resourceId: staffUser.id,
       after: { email: staffUser.email, backupCodesIssued: backupCodes.length },
     });
+    return true;
   });
+  if (!enrolled) {
+    return { ok: false, error: 'TOTP-Setup wurde bereits abgeschlossen oder geändert.' };
+  }
+
+  // Erst der vollständig erfolgreiche Einmal-Claim darf die Versuchszähler
+  // leeren. Bei falschem TOTP bleiben alle Buckets erhalten.
+  await resetRateLimit(ip ? `staff-pw:${ip}` : 'staff-pw:global');
+  await resetRateLimit(staffPasswordAccountRateLimitKey(staffUser.id));
+  await resetRateLimit(ip ? `staff-totp-enroll:${ip}` : 'staff-totp-enroll:global');
+  await resetRateLimit(enrollmentAccountKey);
+  resetFailedLogin(prismaOwner, staffUser.id).catch(() => void 0);
 
   // V-1: Rohe Codes EINMAL an den Client zurück. Vorher waren sie tot in der
   // DB — User wussten nichts davon, Phone-Verlust = dauerhaft ausgesperrt,

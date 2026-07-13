@@ -27,6 +27,7 @@ import { generateZugferdPdf } from '@/server/invoicing/zugferd';
 import { evidenceService } from '@/server/container';
 
 const ctx = { tenantId: 't1', actorId: 's1', actorType: 'STAFF' as const };
+const RETENTION_UNTIL = new Date('2035-01-01T00:00:00.000Z');
 
 const COMPLETE_SELLER = {
   name: 'Kanzlei',
@@ -92,9 +93,11 @@ beforeEach(() => {
   vi.mocked(commitBytesWithTier).mockResolvedValue({
     targetBucket: 'gobd',
     targetKey: 'k-new',
+    storageVersionId: 's3-version-1',
     sha256: Buffer.from([9]),
     sizeBytes: 3,
     immutable: true,
+    retentionUntil: RETENTION_UNTIL,
   } as never);
 });
 
@@ -246,6 +249,8 @@ describe('ensureZugferdArchive', () => {
     expect(generateZugferdPdf).toHaveBeenCalledTimes(1);
     expect(commitBytesWithTier).toHaveBeenCalledTimes(2);
     expect(tx.document.create).toHaveBeenCalledTimes(2);
+    expect(tx.document.create.mock.calls[0]![0]!.data.retentionUntil).toEqual(RETENTION_UNTIL);
+    expect(tx.document.create.mock.calls[1]![0]!.data.retentionUntil).toEqual(RETENTION_UNTIL);
     expect(tx.documentVersion.create).toHaveBeenCalledTimes(2);
     expect(tx.invoice.update).toHaveBeenCalledWith({
       where: { id: 'inv1' },

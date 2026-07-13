@@ -8,11 +8,11 @@ werden hier im selben Commit nachgezogen.
 
 ## 1. Rollen und Verantwortung
 
-| Rolle | Wer | Verantwortung |
-|---|---|---|
-| Verantwortlicher Entwickler / Produktverantwortung | Rey Koxha | fachliche Anforderungen, Architektur-Entscheidungen, Code-Review, Freigabe jedes Releases |
-| KI-Assistenz | agentenbasiertes Entwicklerwerkzeug | Werkzeug zur Implementierung, Analyse und Dokumentation — **kein** eigenständiger Freigeber; jede Änderung durchläuft die maschinellen Gates (Abschnitt 4) und die menschliche Freigabe |
-| Externe Prüfinstanzen | CI-Pipeline (Forgejo Actions), adversariale Security-Reviews | maschinelle bzw. strukturierte unabhängige Kontrolle vor Merge/Release |
+| Rolle                                              | Wer                                                          | Verantwortung                                                                                                                                                                           |
+| -------------------------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Verantwortlicher Entwickler / Produktverantwortung | Rey Koxha                                                    | fachliche Anforderungen, Architektur-Entscheidungen, Code-Review, Freigabe jedes Releases                                                                                               |
+| KI-Assistenz                                       | agentenbasiertes Entwicklerwerkzeug                          | Werkzeug zur Implementierung, Analyse und Dokumentation — **kein** eigenständiger Freigeber; jede Änderung durchläuft die maschinellen Gates (Abschnitt 4) und die menschliche Freigabe |
+| Externe Prüfinstanzen                              | CI-Pipeline (Forgejo Actions), adversariale Security-Reviews | maschinelle bzw. strukturierte unabhängige Kontrolle vor Merge/Release                                                                                                                  |
 
 Personelles Schlüsselrisiko (Einzelperson) ist bekannt und wird durch
 konsequente Dokumentation gemildert: Architektur-Entscheidungen in
@@ -46,8 +46,8 @@ Jede Änderung — Feature, Fehlerbehebung, Härtung — folgt demselben Weg:
 
 1. **Anlass festhalten:** fachliche Anforderung, Fehlerbild oder
    Review-/Audit-Befund (Befunde erhalten eine Kennung und werden im
-   jeweiligen Dokument unter `docs/` geführt, z. B.
-   [docs/security/](../security/)).
+   jeweiligen Dokument unter `docs/` geführt, z. B. im
+   [Assurance- und Bedrohungsmodell](../assurance/assurance-model.md)).
 2. **Implementierung** auf `main` bzw. Arbeitszweig; Migrationsänderungen
    ausschließlich additiv-vorwärts als neue, datierte Prisma-Migration
    (Expand/Contract-Konvention, siehe
@@ -84,16 +84,16 @@ gebaute Registry-Images (siehe Abschnitt 5).
 
 CI-Pipeline (`.forgejo/workflows/ci.yml`), läuft bei jedem Push/PR:
 
-| Gate | Inhalt |
-|---|---|
-| `quality` | Lint, Typecheck, vollständige Unit-/Komponententests aller Pakete (außer DB-gebundenen), Operator-CLI-Tests (`pnpm test:ops`), Schutzprüfung gegen reale DATEV-Kennungen in Testdaten |
-| `db` | Migrationen auf frischer DB, RLS-Cross-Tenant-Tests, Schema-Drift-Check (Schema ↔ Migrationshistorie), Audit-Chain-CLI |
-| `restore` | echter Backup→Restore-Roundtrip mit Zeilenzahl-Assertions und Chain-Verifikation auf der wiederhergestellten DB |
-| `upgrade-path` | Migrationsstand des letzten Releases → aktuelle Migrationen → RLS-Tests (simuliert das Kunden-Update) |
-| `e2e-smoke` | Browser-Smoke-Tests (Playwright) gegen die gebaute App |
-| `e2e-paranoid` | umfangreiche Browser-Regression gegen Auth/RBAC, Tenant-Isolation, Compliance, Differential, Concurrency und Upload-Fuzz |
-| `security.yml` | wöchentlich + je Push: Dependency-Audit, Secret-Scanning (gitleaks), Logs als Artefakte |
-| `build-images.yml` | Validierung der Produktions-Image-Builds |
+| Gate               | Inhalt                                                                                                                                                                                |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `quality`          | Lint, Typecheck, vollständige Unit-/Komponententests aller Pakete (außer DB-gebundenen), Operator-CLI-Tests (`pnpm test:ops`), Schutzprüfung gegen reale DATEV-Kennungen in Testdaten |
+| `db`               | Migrationen auf frischer DB, RLS-Cross-Tenant-Tests, Schema-Drift-Check (Schema ↔ Migrationshistorie), Audit-Chain-CLI                                                                |
+| `restore`          | echter Backup→Restore-Roundtrip mit Zeilenzahl-Assertions und Chain-Verifikation auf der wiederhergestellten DB                                                                       |
+| `upgrade-path`     | Migrationsstand des letzten Releases → aktuelle Migrationen → RLS-Tests (simuliert das Kunden-Update)                                                                                 |
+| `e2e-smoke`        | Browser-Smoke-Tests (Playwright) gegen die gebaute App                                                                                                                                |
+| `e2e-paranoid`     | umfangreiche Browser-Regression gegen Auth/RBAC, Tenant-Isolation, Compliance, Differential, Concurrency und Upload-Fuzz                                                              |
+| `security.yml`     | wöchentlich + je Push: Dependency-Audit, Secret-Scanning (gitleaks), Logs als Artefakte                                                                                               |
+| `build-images.yml` | Validierung der Produktions-Image-Builds                                                                                                                                              |
 
 Zusätzlich **Guard-Tests**, die Verfahrensregeln maschinell erzwingen
 (Beispiele: keine ungeprüfte `PrismaClient`-Instanz außerhalb der Allowlist;
@@ -130,8 +130,8 @@ werden als CI-Artefakte archiviert (siehe
 ## 6. Fehlermanagement
 
 1. Eingang (Betreiber-Meldung, Monitoring-Alarm, eigener Befund) →
-   Bewertung nach Schwere: *kritisch* (Datenintegrität/Sicherheit/Ausfall) →
-   Hotfix-Pfad; *normal* → nächstes reguläres Release.
+   Bewertung nach Schwere: _kritisch_ (Datenintegrität/Sicherheit/Ausfall) →
+   Hotfix-Pfad; _normal_ → nächstes reguläres Release.
 2. Reproduktion als Test **vor** dem Fix (Regressionsnachweis).
 3. Fix + Test durchlaufen alle Gates; der Fix erscheint im CHANGELOG.
 4. Compliance-relevante Vorfälle (z. B. Chain-Bruch, Restore-Fehlschlag)

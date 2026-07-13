@@ -39,6 +39,9 @@ infra/compose/.volumes/
 # Lokale Operator-Backups (Postgres-Dumps)
 /backups/
 
+# Atomarer Last-Good-Releasevertrag der lokalen Installation.
+/.taxtronik.state
+
 # Setup-gerenderte Config-Dateien (enthalten Secrets aus .env)
 infra/scripts/seaweedfs-s3.generated.json
 

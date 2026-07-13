@@ -17,15 +17,21 @@
 # =============================================================================
 set -euo pipefail
 
+# Operator-Konfigurationen enthalten produktive Zugangsdaten. Neue Dateien
+# duerfen deshalb auch waehrend ihrer Erzeugung nie ueber Gruppen-/World-Rechte
+# verfuegen; explizitere chmod-Aufrufe unten haerten auch bereits vorhandene
+# Installationen nach.
+umask 077
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENVFILE="$ROOT/.env"
 BASE="$ROOT/infra/compose/docker-compose.yml"
 APP="$ROOT/infra/compose/docker-compose.app.yml"
 DEV="$ROOT/infra/compose/docker-compose.dev.yml"
-S3_TEMPLATE="$ROOT/infra/scripts/seaweedfs-s3.template.json"
 S3_GENERATED="$ROOT/infra/scripts/seaweedfs-s3.generated.json"
 STATE="$ROOT/.taxtronik.state"
 AWS_CLI_IMAGE_DEFAULT="amazon/aws-cli:latest@sha256:c95ab0642137f55a12b95b6956dd03cefdbd73e760e0e7b870afc9b47f9c8150"
+ALPINE_BACKUP_IMAGE_DEFAULT="alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc"
 
 # ---------------------------------------------------------------------------
 # Ausgabe-Helper
@@ -40,6 +46,7 @@ require_cmd() { command -v "$1" >/dev/null 2>&1 || die "Command '$1' nicht gefun
 # ---------------------------------------------------------------------------
 load_env() {
   [[ -f "$ENVFILE" ]] || die "$ENVFILE nicht gefunden. Prod: ./taxtronik bootstrap. Dev: ./scripts/setup.sh"
+  chmod 0600 "$ENVFILE" || die "Dateirechte fuer $ENVFILE konnten nicht auf 0600 gesetzt werden."
   local line key value
   while IFS= read -r line || [[ -n "$line" ]]; do
     line="${line%$'\r'}"
@@ -48,6 +55,10 @@ load_env() {
     key="${line%%=*}"; value="${line#*=}"
     key="${key#"${key%%[![:space:]]*}"}"; key="${key%"${key##*[![:space:]]}"}"
     [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+    # Interne Ablauf-Flags duerfen niemals ueber eine persistierte .env einen
+    # Sicherheitscheck umgehen. Sie existieren ausschliesslich im laufenden
+    # deploy/update/rollback-Prozess.
+    [[ "$key" == _TAXTRONIK_INTERNAL_* ]] && continue
     value="${value#"${value%%[![:space:]]*}"}"; value="${value%"${value##*[![:space:]]}"}"
     if [[ "$value" == \"*\" && "$value" == *\" ]]; then value="${value:1:${#value}-2}"
     elif [[ "$value" == \'*\' && "$value" == *\' ]]; then value="${value:1:${#value}-2}"; fi
@@ -97,6 +108,7 @@ set_env() {
   else
     printf '%s=%s\n' "$key" "$value" >> "$ENVFILE"
   fi
+  chmod 0600 "$ENVFILE" || die "Dateirechte fuer $ENVFILE konnten nicht auf 0600 gesetzt werden."
 }
 
 ensure_secret() {
@@ -110,27 +122,56 @@ ensure_secret() {
 # ---------------------------------------------------------------------------
 # docker-compose-Wrapper (ehemals ./dc)
 # ---------------------------------------------------------------------------
-# SeaweedFS-S3-Config aus .env rendern. Docker macht aus einem fehlenden
-# Bind-Mount-Source ein leeres Verzeichnis — SeaweedFS stirbt sonst mit
-# "s3.json: is a directory". Idempotent, läuft bei jedem compose-Aufruf (<10ms).
+# SeaweedFS rendert seine S3-Config seit dem Runtime-Secret-Hardening erst im
+# Container nach /run (Owner UID 1000, 0400). Host-seitig darf keine lesbare
+# Secret-Kopie uebrig bleiben. Der historische Funktionsname bleibt, weil alle
+# Compose-Pfade ihn zentral aufrufen.
 render_s3_config() {
-  [[ -f "$S3_TEMPLATE" ]] || die "$S3_TEMPLATE fehlt."
-  if [[ -d "$S3_GENERATED" ]]; then rmdir "$S3_GENERATED" 2>/dev/null || rm -rf "$S3_GENERATED"; fi
   local ak sk
   ak="$(get_env S3_ACCESS_KEY)"; sk="$(get_env S3_SECRET_KEY)"
   [[ -n "$ak" && -n "$sk" ]] || die "S3_ACCESS_KEY/S3_SECRET_KEY nicht in .env."
-  sed -e "s|__S3_ACCESS_KEY__|${ak}|" -e "s|__S3_SECRET_KEY__|${sk}|" "$S3_TEMPLATE" > "$S3_GENERATED"
-  chmod 644 "$S3_GENERATED"   # unprivilegierter Container-User muss (ro) lesen
+  [[ "$ak$sk" =~ ^[A-Za-z0-9._-]+$ ]] || \
+    die "S3_ACCESS_KEY/S3_SECRET_KEY duerfen nur A-Z, a-z, 0-9, Punkt, Unterstrich und Bindestrich enthalten."
+  if [[ -d "$S3_GENERATED" ]]; then rmdir "$S3_GENERATED" 2>/dev/null || true; fi
+  [[ ! -f "$S3_GENERATED" ]] || rm -f -- "$S3_GENERATED"
 }
 
 # compose [--infra] <docker-compose-subcommand> ...
 #   --infra: nur Basis-Services (Postgres/Redis/SeaweedFS/ClamAV), ohne app/worker/n8n
+ensure_compose_image_pinning() {
+  local prefix version web_suffix worker_suffix commit
+  prefix="${TAXTRONIK_IMAGE_PREFIX:-$(get_env TAXTRONIK_IMAGE_PREFIX)}"
+  [[ -z "$prefix" ]] && prefix="taxtronik"
+  [[ "$prefix" == */* ]] || return 0
+  version="${TAXTRONIK_VERSION:-$(get_env TAXTRONIK_VERSION)}"
+  web_suffix="${TAXTRONIK_WEB_DIGEST_SUFFIX:-$(get_env TAXTRONIK_WEB_DIGEST_SUFFIX)}"
+  worker_suffix="${TAXTRONIK_WORKER_DIGEST_SUFFIX:-$(get_env TAXTRONIK_WORKER_DIGEST_SUFFIX)}"
+  commit="${TAXTRONIK_RELEASE_COMMIT:-$(get_env TAXTRONIK_RELEASE_COMMIT)}"
+  [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || \
+    die "Registry-Compose verweigert: TAXTRONIK_VERSION muss X.Y.Z sein."
+  [[ "$web_suffix" =~ ^@sha256:[0-9a-f]{64}$ ]] || \
+    die "Registry-Compose verweigert: TAXTRONIK_WEB_DIGEST_SUFFIX fehlt/ist ungueltig. Erst signierten Release-Vertrag via deploy/update aufloesen."
+  [[ "$worker_suffix" =~ ^@sha256:[0-9a-f]{64}$ ]] || \
+    die "Registry-Compose verweigert: TAXTRONIK_WORKER_DIGEST_SUFFIX fehlt/ist ungueltig. Erst signierten Release-Vertrag via deploy/update aufloesen."
+  [[ "$commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || \
+    die "Registry-Compose verweigert: TAXTRONIK_RELEASE_COMMIT fehlt/ist ungueltig."
+  if [[ "${_TAXTRONIK_INTERNAL_RELEASE_CONTRACT_STAGED:-0}" != "1" ]]; then
+    [[ -f "$STATE" ]] || die "Registry-Compose verweigert: $STATE mit verifiziertem Last-Good-Vertrag fehlt. Erst deploy/update ausfuehren."
+    [[ "$version" == "$(state_value current)" && \
+       "$web_suffix" == "$(state_value current_web_digest_suffix)" && \
+       "$worker_suffix" == "$(state_value current_worker_digest_suffix)" && \
+       "$commit" == "$(state_value current_commit)" ]] || \
+      die "Registry-Compose verweigert: .env/Prozessvertrag weicht vom verifizierten Last-Good-State ab. deploy/update/rollback verwenden."
+  fi
+}
+
 compose() {
   render_s3_config
   if [[ "${1:-}" == "--infra" ]]; then
     shift
     docker compose -f "$BASE" --env-file "$ENVFILE" "$@"
   else
+    ensure_compose_image_pinning
     if [[ "${1:-}" == "up" ]]; then
       reconcile_n8n_encryption_key_from_volume
     fi
@@ -147,6 +188,191 @@ image_tag() { printf '%s' "${TAXTRONIK_VERSION:-latest}"; }
 # Registry-Pull-Modus: TAXTRONIK_IMAGE_PREFIX mit '/' => fertige Release-Images
 # aus der Registry (CI-gebaut). Ohne '/' (Default `taxtronik`) => Lokalbuild.
 images_from_registry() { [[ "${TAXTRONIK_IMAGE_PREFIX:-taxtronik}" == */* ]]; }
+
+semver_ge() {
+  local left="$1" right="$2" l1 l2 l3 r1 r2 r3
+  IFS=. read -r l1 l2 l3 <<<"$left"
+  IFS=. read -r r1 r2 r3 <<<"$right"
+  (( 10#$l1 > 10#$r1 )) && return 0
+  (( 10#$l1 < 10#$r1 )) && return 1
+  (( 10#$l2 > 10#$r2 )) && return 0
+  (( 10#$l2 < 10#$r2 )) && return 1
+  (( 10#$l3 >= 10#$r3 ))
+}
+
+current_installed_version() {
+  local value=""
+  if [[ -f "$STATE" ]]; then
+    value="$(grep -E '^current=' "$STATE" | head -n1 | cut -d= -f2- || true)"
+  fi
+  printf '%s' "$value"
+}
+
+resolve_release_contract() {
+  images_from_registry || return 0
+  [[ "${TAXTRONIK_VERSION:-}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || \
+    die "Registry-Releases brauchen TAXTRONIK_VERSION=X.Y.Z."
+  [[ -n "${UPDATE_PUBLIC_KEY:-}" ]] || die "UPDATE_PUBLIC_KEY fehlt; Registry-Release wird ohne Signatur nicht aufgeloest."
+
+  local tmp manifest signature manifest_file="${UPDATE_MANIFEST_FILE:-}" signature_file="${UPDATE_MANIFEST_SIGNATURE_FILE:-}"
+  tmp="$(mktemp -d)" || die "Temp-Verzeichnis fuer Release-Manifest konnte nicht erstellt werden."
+  manifest="$tmp/manifest.json"
+  signature="$tmp/manifest.json.sig"
+
+  if [[ -n "$manifest_file" ]]; then
+    [[ -f "$manifest_file" ]] || die "UPDATE_MANIFEST_FILE nicht gefunden: $manifest_file"
+    [[ -z "$signature_file" ]] && signature_file="${manifest_file}.sig"
+    [[ -f "$signature_file" ]] || die "UPDATE_MANIFEST_SIGNATURE_FILE nicht gefunden: $signature_file"
+    cp "$manifest_file" "$manifest"
+    cp "$signature_file" "$signature"
+  else
+    [[ "${UPDATE_MANIFEST_URL:-}" == https://* ]] || \
+      die "UPDATE_MANIFEST_URL muss HTTPS verwenden (oder UPDATE_MANIFEST_FILE fuer Air-Gap setzen)."
+    curl --fail --silent --show-error --proto '=https' --tlsv1.2 \
+      --connect-timeout 10 --max-time 30 "$UPDATE_MANIFEST_URL" | head -c 1048577 > "$manifest" || \
+      die "Signiertes Update-Manifest konnte nicht geladen werden."
+    curl --fail --silent --show-error --proto '=https' --tlsv1.2 \
+      --connect-timeout 10 --max-time 30 "${UPDATE_MANIFEST_URL}.sig" | head -c 4097 > "$signature" || \
+      die "Detached Update-Manifest-Signatur konnte nicht geladen werden."
+  fi
+  [[ "$(wc -c < "$manifest")" -le 1048576 ]] || die "Update-Manifest ist groesser als 1 MiB."
+  [[ "$(wc -c < "$signature")" -le 4096 ]] || die "Update-Manifest-Signatur ist groesser als 4 KiB."
+
+  local contract key value
+  contract="$(UPDATE_PUBLIC_KEY="$UPDATE_PUBLIC_KEY" node "$ROOT/scripts/release/verify-update-manifest.mjs" \
+    --manifest "$manifest" --signature "$signature" --version "$TAXTRONIK_VERSION" --format env)" || \
+    die "Update-Manifest/Signatur/Release-Vertrag ungueltig."
+  rm -f "$manifest" "$signature"
+  rmdir "$tmp" 2>/dev/null || true
+
+  UPDATE_VERSION=""; UPDATE_COMMIT_SHA=""; UPDATE_MIGRATIONS_REQUIRED=""
+  UPDATE_MIN_PREVIOUS_VERSION=""; UPDATE_WEB_IMAGE=""; UPDATE_WEB_DIGEST=""
+  UPDATE_WORKER_IMAGE=""; UPDATE_WORKER_DIGEST=""
+  while IFS='=' read -r key value; do
+    case "$key" in
+      UPDATE_VERSION|UPDATE_COMMIT_SHA|UPDATE_MIGRATIONS_REQUIRED|UPDATE_MIN_PREVIOUS_VERSION|UPDATE_WEB_IMAGE|UPDATE_WEB_DIGEST|UPDATE_WORKER_IMAGE|UPDATE_WORKER_DIGEST)
+        printf -v "$key" '%s' "$value"
+        ;;
+    esac
+  done <<<"$contract"
+
+  local expected_prefix="${TAXTRONIK_IMAGE_PREFIX%/}" installed
+  [[ "$UPDATE_VERSION" == "$TAXTRONIK_VERSION" ]] || die "Manifest-Version stimmt nicht mit TAXTRONIK_VERSION ueberein."
+  [[ "$UPDATE_WEB_IMAGE" == "$expected_prefix/web:$TAXTRONIK_VERSION" ]] || \
+    die "Manifest-Web-Image gehoert nicht zum konfigurierten TAXTRONIK_IMAGE_PREFIX."
+  [[ "$UPDATE_WORKER_IMAGE" == "$expected_prefix/worker:$TAXTRONIK_VERSION" ]] || \
+    die "Manifest-Worker-Image gehoert nicht zum konfigurierten TAXTRONIK_IMAGE_PREFIX."
+  [[ "$UPDATE_COMMIT_SHA" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || die "Manifest-Commit ungueltig."
+  [[ "$UPDATE_WEB_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || die "Manifest-Web-Digest ungueltig."
+  [[ "$UPDATE_WORKER_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || die "Manifest-Worker-Digest ungueltig."
+
+  installed="$(current_installed_version)"
+  if [[ -n "$installed" && -n "$UPDATE_MIN_PREVIOUS_VERSION" ]]; then
+    [[ "$installed" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "Installierte Version in $STATE ist kein SemVer: $installed"
+    semver_ge "$installed" "$UPDATE_MIN_PREVIOUS_VERSION" || \
+      die "Update $TAXTRONIK_VERSION erfordert mindestens $UPDATE_MIN_PREVIOUS_VERSION (installiert: $installed)."
+  elif [[ -z "$installed" && -n "$UPDATE_MIN_PREVIOUS_VERSION" && -n "$(_app_container_id)" ]]; then
+    # Ein bestehender Stack ohne State darf den Mindeststand nicht still
+    # umgehen. Einmal die aktuell installierte Version via `deploy` gegen ihr
+    # Manifest verankern; eine echte Erstinstallation hat noch keine Container.
+    die "$STATE fehlt bei bestehender Installation; minPreviousVersion kann nicht sicher geprueft werden. Zuerst aktuellen Release-Vertrag per deploy verankern."
+  fi
+}
+
+# Staged den verifizierten Vertrag nur fuer den laufenden Prozess. Compose
+# bekommt damit exakt die signierten Digests, waehrend .env und STATE bis zum
+# bestandenen Health-/Readiness-Gate unveraendert Last-Good bleiben.
+stage_release_contract() {
+  if images_from_registry; then
+    [[ "$UPDATE_WEB_DIGEST" =~ ^sha256:[0-9a-f]{64}$ && \
+       "$UPDATE_WORKER_DIGEST" =~ ^sha256:[0-9a-f]{64}$ && \
+       "$UPDATE_COMMIT_SHA" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || \
+      die "Release-Vertrag kann nicht gestaged werden: Digest/Commit ungueltig."
+    export TAXTRONIK_WEB_DIGEST_SUFFIX="@$UPDATE_WEB_DIGEST"
+    export TAXTRONIK_WORKER_DIGEST_SUFFIX="@$UPDATE_WORKER_DIGEST"
+    export TAXTRONIK_RELEASE_COMMIT="$UPDATE_COMMIT_SHA"
+    export TAXTRONIK_RELEASE_MIGRATIONS_REQUIRED="${UPDATE_MIGRATIONS_REQUIRED:-}"
+  else
+    # Explizit leere Prozesswerte verhindern, dass Compose bei einem Wechsel
+    # vom Registry- zum Lokalbuild-Modus alte Digest-Suffixe weiterverwendet.
+    export TAXTRONIK_WEB_DIGEST_SUFFIX=""
+    export TAXTRONIK_WORKER_DIGEST_SUFFIX=""
+    export TAXTRONIK_RELEASE_COMMIT=""
+    export TAXTRONIK_RELEASE_MIGRATIONS_REQUIRED=""
+  fi
+  export _TAXTRONIK_INTERNAL_RELEASE_CONTRACT_STAGED=1
+}
+
+# Persistiert ausschliesslich einen bereits erfolgreichen Last-Good-Vertrag.
+# save_state wird davor atomar geschrieben; scheitert ein einzelnes .env-Update,
+# blockiert ensure_compose_image_pinning jeden spaeteren Mischbetrieb fail-closed.
+commit_release_contract() {
+  set_env TAXTRONIK_VERSION "${TAXTRONIK_VERSION:-}"
+  set_env TAXTRONIK_WEB_DIGEST_SUFFIX "${TAXTRONIK_WEB_DIGEST_SUFFIX:-}"
+  set_env TAXTRONIK_WORKER_DIGEST_SUFFIX "${TAXTRONIK_WORKER_DIGEST_SUFFIX:-}"
+  set_env TAXTRONIK_RELEASE_COMMIT "${TAXTRONIK_RELEASE_COMMIT:-}"
+  set_env TAXTRONIK_RELEASE_MIGRATIONS_REQUIRED "${TAXTRONIK_RELEASE_MIGRATIONS_REQUIRED:-}"
+  unset _TAXTRONIK_INTERNAL_RELEASE_CONTRACT_STAGED
+}
+
+prepare_release_contract() {
+  if images_from_registry; then
+    resolve_release_contract
+    verify_release_checkout
+    stage_release_contract
+  else
+    stage_release_contract
+  fi
+}
+
+verify_release_checkout() {
+  images_from_registry || return 0
+  local checkout
+  checkout="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)"
+  [[ "$checkout" == "$UPDATE_COMMIT_SHA" ]] || \
+    die "Checkout $checkout entspricht nicht dem signierten Release-Commit $UPDATE_COMMIT_SHA."
+  git -C "$ROOT" diff --quiet && git -C "$ROOT" diff --cached --quiet || \
+    die "Registry-Deploy verweigert: getrackte lokale Aenderungen im Deployment-Checkout."
+}
+
+deployment_git_remote() {
+  local branch remote
+  branch="$(git -C "$ROOT" branch --show-current 2>/dev/null || true)"
+  remote="$(git -C "$ROOT" config --get "branch.${branch}.remote" 2>/dev/null || true)"
+  if [[ -z "$remote" || "$remote" == "." ]]; then
+    if git -C "$ROOT" remote get-url origin >/dev/null 2>&1; then remote=origin
+    elif git -C "$ROOT" remote get-url forgejo >/dev/null 2>&1; then remote=forgejo
+    else die "Kein Git-Remote fuer Updates konfiguriert."; fi
+  fi
+  printf '%s' "${TAXTRONIK_GIT_REMOTE:-$remote}"
+}
+
+fetch_verified_release_tag() {
+  local version="$1" expected_commit="$2" remote target_ref
+  [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "Release-Tag braucht SemVer X.Y.Z: $version"
+  [[ "$expected_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || die "Release-Commit ungueltig: $expected_commit"
+  remote="$(deployment_git_remote)"
+  target_ref="refs/tags/v${version}"
+  git -C "$ROOT" fetch --no-tags "$remote" "$target_ref:$target_ref"
+  [[ "$(git -C "$ROOT" cat-file -t "$target_ref" 2>/dev/null || true)" == "tag" ]] || \
+    die "Release-Tag v${version} fehlt oder ist nicht annotiert."
+  [[ "$(git -C "$ROOT" rev-parse "${target_ref}^{commit}")" == "$expected_commit" ]] || \
+    die "Release-Tag v${version} und signierter Release-Vertrag zeigen auf verschiedene Commits."
+}
+
+require_clean_release_checkout() {
+  git -C "$ROOT" diff --quiet && git -C "$ROOT" diff --cached --quiet || \
+    die "Release-Checkout enthaelt getrackte lokale Aenderungen; sicherer Checkout-Wechsel verweigert."
+}
+
+pull_release_images_direct() {
+  local prefix="${TAXTRONIK_IMAGE_PREFIX%/}" version
+  version="$(image_tag)"
+  info "Digest-gepinnte Rollback-Images direkt ziehen: ${prefix}/{web,worker}:$version"
+  docker pull "${prefix}/web:${version}${TAXTRONIK_WEB_DIGEST_SUFFIX}"
+  docker pull "${prefix}/worker:${version}${TAXTRONIK_WORKER_DIGEST_SUFFIX}"
+  verify_release_image_labels
+}
 
 prune_build_cache() {
   local mode until
@@ -166,6 +392,10 @@ prune_build_cache() {
 require_release_version() {
   [[ -n "${TAXTRONIK_VERSION:-}" ]] || \
     die "TAXTRONIK_VERSION fehlt in .env. Auf ein Release pinnen (z. B. TAXTRONIK_VERSION=1.4.0) — oder './taxtronik bootstrap' bzw. 'doctor --fix' fuer ein Erstdeploy."
+  if images_from_registry; then
+    [[ "$TAXTRONIK_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || \
+      die "Registry-Modus akzeptiert nur striktes SemVer X.Y.Z (aktuell: $TAXTRONIK_VERSION)."
+  fi
 }
 
 assert_production_env() {
@@ -211,6 +441,10 @@ smtp_points_to_dev_mailhog() {
 
 _n8n_container_id() {
   docker ps -aq --filter 'name=^/taxtronik-n8n$' 2>/dev/null | head -n1 || true
+}
+
+_app_container_id() {
+  docker ps -aq --filter 'name=^/taxtronik-app$' 2>/dev/null | head -n1 || true
 }
 
 _n8n_home_volume() {
@@ -477,8 +711,26 @@ build_images() {
 }
 
 pull_images() {
-  info "Images aus Registry ziehen: ${TAXTRONIK_IMAGE_PREFIX}/{web,worker}:$(image_tag)"
+  info "Digest-gepinnte Images aus Registry ziehen: ${TAXTRONIK_IMAGE_PREFIX}/{web,worker}:$(image_tag)"
   compose pull app worker
+  verify_release_image_labels
+}
+
+verify_release_image_labels() {
+  images_from_registry || return 0
+  local role suffix ref revision version
+  for role in web worker; do
+    if [[ "$role" == "web" ]]; then suffix="$TAXTRONIK_WEB_DIGEST_SUFFIX"
+    else suffix="$TAXTRONIK_WORKER_DIGEST_SUFFIX"; fi
+    ref="${TAXTRONIK_IMAGE_PREFIX%/}/$role:$(image_tag)$suffix"
+    revision="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$ref" 2>/dev/null || true)"
+    version="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' "$ref" 2>/dev/null || true)"
+    [[ "$revision" == "$TAXTRONIK_RELEASE_COMMIT" ]] || \
+      die "$role-Image-Label revision=$revision stimmt nicht mit signiertem Commit $TAXTRONIK_RELEASE_COMMIT ueberein."
+    [[ "$version" == "$(image_tag)" ]] || \
+      die "$role-Image-Label version=$version stimmt nicht mit Release $(image_tag) ueberein."
+  done
+  info "OCI-Labels fuer Web + Worker stimmen mit signiertem Release-Vertrag ueberein."
 }
 
 # Pull-before-Stop: Images beschaffen, waehrend der alte Stand noch laeuft —
@@ -545,16 +797,17 @@ smoke_health() {
   url="http://127.0.0.1:$(app_port)/api/health"
   info "Health-Smoke: $url"
   for _ in {1..30}; do
-    # KEIN curl -f: der Health-Endpoint liefert bei 'degraded' bewusst HTTP 503
-    # mit JSON-Body. Mit -f wuerde curl den Body verwerfen und 'degraded' waere
-    # nie als Erfolg erkennbar.
+    # KEIN curl -f: wir lesen den JSON-Status selbst. `degraded` bedeutet, dass
+    # mindestens eine produktive Abhaengigkeit ausgefallen ist, und darf einen
+    # Deploy/Update deshalb NICHT als erfolgreich markieren.
     status="$(curl -sS "$url" 2>/dev/null | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>{try{console.log(JSON.parse(s).status||'')}catch{process.exit(1)}})" 2>/dev/null || true)"
-    if [[ "$status" == "ok" || "$status" == "degraded" ]]; then echo "Health: $status"; return 0; fi
+    if [[ "$status" == "ok" ]]; then echo "Health: ok"; return 0; fi
     sleep 2
   done
   compose ps
   compose logs app --tail 80 || true
-  die "Health-Smoke fehlgeschlagen."
+  warn "Health-Smoke fehlgeschlagen (nur status=ok gilt als bereit)."
+  return 1
 }
 
 # Prod-Konfigurations-Gate NACH dem Deploy. smoke_health prueft nur die
@@ -571,8 +824,8 @@ deploy_readiness() {
   s3_hp="$(docker port taxtronik-seaweedfs 8333 2>/dev/null | head -n1 || true)"
   clam_hp="$(docker port taxtronik-clamav 3310 2>/dev/null | head -n1 || true)"
   if [[ -z "$s3_hp" || -z "$clam_hp" ]]; then
-    warn "Deploy-Readiness uebersprungen: SeaweedFS/ClamAV-Hostports nicht ermittelbar."
-    return 0
+    warn "Deploy-Readiness fehlgeschlagen: SeaweedFS/ClamAV-Hostports nicht ermittelbar."
+    return 1
   fi
   s3_endpoint="http://${s3_hp/0.0.0.0/127.0.0.1}"
   clam_host="${clam_hp%%:*}"; clam_host="${clam_host/0.0.0.0/127.0.0.1}"
@@ -592,7 +845,8 @@ deploy_readiness() {
       sleep 20
     fi
   done
-  die "Deploy-Readiness fehlgeschlagen — Prod-Konfiguration nicht bereit (S3-Buckets/Object-Lock/ClamAV/Roundtrip). Siehe Ausgabe oben; nach Fix erneut deployen."
+  warn "Deploy-Readiness fehlgeschlagen — Prod-Konfiguration nicht bereit (S3-Buckets/Object-Lock/ClamAV/Roundtrip)."
+  return 1
 }
 
 resolve_prisma_cli() {
@@ -656,7 +910,7 @@ run_backup() {
   # .prisma/client fuer den Host-tsx-Runner erzeugen. pnpm 11 + Monorepo führt
   # den @prisma/client-Postinstall nicht zuverlässig aus (Schema liegt in
   # packages/db) — sonst "Cannot find module '.prisma/client/default'".
-  generate_prisma_client_for_host_tools
+  generate_prisma_client_for_host_tools || return $?
   # pg_dump-Escape-Hatch: falls der Host kein postgresql-client hat (Standard
   # bei Docker-Compose-Only-Setup), pg_dump aus dem laufenden Postgres-Container
   # nutzen. Client-Major passt dann garantiert zum Server (kein apt/Papierkram).
@@ -665,7 +919,7 @@ run_backup() {
     export PG_DUMP_PATH="$ROOT/infra/scripts/pg_dump-via-container.sh"
     info "pg_dump fehlt auf dem Host -> nutze pg_dump aus dem Postgres-Container (PG_DUMP_PATH)."
   fi
-  ensure_s3_ready_for_backup
+  ensure_s3_ready_for_backup || return $?
   ( cd "$ROOT" && pnpm --filter @taxtronik/web backup:run )
 }
 
@@ -675,7 +929,7 @@ run_backup() {
 # Wiederherstellung manuell: pg_restore -h 127.0.0.1 -U n8n -d n8n <dump>
 # (plus n8n_data-Volume; N8N_ENCRYPTION_KEY muss zum Dump passen).
 run_backup_n8n() {
-  local dest="${BACKUP_LOCAL_DIR:-$ROOT/backups}"
+  local dest="${1:-${BACKUP_LOCAL_DIR:-$ROOT/backups}}"
   mkdir -p "$dest"
   local out="$dest/n8n-db-$(date -u +'%Y%m%dT%H%M%SZ').dump"
   info "n8n-Datenbank sichern -> $out"
@@ -695,7 +949,7 @@ run_backup_files() {
   prepare_backup_host_dir
   host_dir="$(resolve_backup_host_dir)"
   stamp="$(date -u +'%Y%m%d-%H%M%S')"
-  dest="$host_dir/object-store/$stamp"
+  dest="${1:-$host_dir/object-store/$stamp}"
   mkdir -p "$dest" || die "Object-Store-Backup-Ziel konnte nicht angelegt werden: $dest"
   chmod 0700 "$dest" 2>/dev/null || true
 
@@ -733,6 +987,236 @@ run_backup_files() {
     paste -sd, "$buckets_file"
   } > "$dest/manifest.txt"
   info "Kanzleidateien-Export fertig: $dest"
+}
+
+container_named_volume() {
+  local container="$1" destination="$2"
+  docker inspect -f "{{range .Mounts}}{{if eq .Destination \"$destination\"}}{{.Name}}{{end}}{{end}}" \
+    "$container" 2>/dev/null || true
+}
+
+snapshot_named_volume() {
+  local volume="$1" output_dir="$2" archive_name="$3"
+  [[ -n "$volume" ]] || { warn "Docker-Volume fuer $archive_name nicht gefunden."; return 1; }
+  mkdir -p "$output_dir"
+  info "Cold-Snapshot Docker-Volume $volume -> $archive_name"
+  docker run --rm \
+    -v "$volume:/source:ro" \
+    -v "$output_dir:/backup" \
+    "${TAXTRONIK_ALPINE_BACKUP_IMAGE:-$ALPINE_BACKUP_IMAGE_DEFAULT}" \
+    tar -C /source -czf "/backup/$archive_name" .
+}
+
+# Konsistenter Cold-Snapshot der nicht-relationalen, zustandsbehafteten Volumes.
+# Der kurze Stop ist bewusst: Nur so bleiben SeaweedFS-Versionen/Object-Lock-
+# Metadaten und Redis-AOF zusammen mit dem n8n-Volume auf einem definierten
+# Zeitpunkt. Die DB-Dumps entstehen separat transaktionskonsistent via pg_dump.
+run_cold_volume_snapshots() {
+  local dest="$1" seaweed_volume redis_volume n8n_volume snapshot_rc=0 restart_rc=0
+  seaweed_volume="$(container_named_volume taxtronik-seaweedfs /data)"
+  redis_volume="$(container_named_volume taxtronik-redis /data)"
+  n8n_volume="$(container_named_volume taxtronik-n8n /home/node/.n8n)"
+  if [[ -z "$seaweed_volume" || -z "$redis_volume" || -z "$n8n_volume" ]]; then
+    warn "Full-Backup kann benoetigte Volumes nicht aufloesen (SeaweedFS/Redis/n8n)."
+    restart_backup_infra || true
+    return 1
+  fi
+
+  info "SeaweedFS/Redis fuer konsistenten Volume-Snapshot stoppen (Schreibdienste sind bereits quiesziert)"
+  if ! compose --infra stop seaweedfs redis; then
+    restart_backup_infra || true
+    return 1
+  fi
+
+  snapshot_named_volume "$seaweed_volume" "$dest" seaweedfs-data.tar.gz || snapshot_rc=$?
+  snapshot_named_volume "$redis_volume" "$dest" redis-data.tar.gz || snapshot_rc=$?
+  snapshot_named_volume "$n8n_volume" "$dest" n8n-data.tar.gz || snapshot_rc=$?
+
+  restart_backup_infra || restart_rc=$?
+  if [[ $restart_rc -ne 0 ]]; then
+    warn "Dienste konnten nach dem Cold-Snapshot nicht vollstaendig gestartet werden. Sofort manuell pruefen."
+    return 1
+  fi
+  if [[ $snapshot_rc -ne 0 ]]; then
+    warn "Mindestens ein Volume-Snapshot ist fehlgeschlagen; Dienste wurden wieder gestartet."
+    return 1
+  fi
+}
+
+restart_backup_infra() {
+  info "SeaweedFS/Redis nach Cold-Snapshot wieder starten"
+  compose --infra up -d --wait redis seaweedfs
+}
+
+restart_after_full_backup() {
+  local rc=0
+  info "Infra und Anwendungen nach Full-Backup wieder starten"
+  restart_backup_infra || rc=$?
+  if [[ $rc -eq 0 ]]; then start_apps || rc=$?; fi
+  if [[ $rc -eq 0 ]]; then smoke_health || rc=$?; fi
+  return "$rc"
+}
+
+_FULL_BACKUP_STAGING=""
+_FULL_BACKUP_SERVICES_QUIESCED=0
+
+full_backup_exit_cleanup() {
+  local original_rc="${1:-1}"
+  trap - EXIT INT TERM
+  if [[ "$_FULL_BACKUP_SERVICES_QUIESCED" == "1" ]]; then
+    restart_after_full_backup || warn "Notfall-Wiederanlauf nach abgebrochenem Full-Backup fehlgeschlagen."
+  fi
+  if [[ -n "$_FULL_BACKUP_STAGING" && -d "$_FULL_BACKUP_STAGING" ]]; then
+    remove_full_backup_staging "$_FULL_BACKUP_STAGING" || warn "Plaintext-Staging konnte nicht entfernt werden: $_FULL_BACKUP_STAGING"
+  fi
+  exit "$original_rc"
+}
+
+cleanup_abandoned_full_backup_staging() {
+  local full_root candidate
+  full_root="$(resolve_backup_host_dir)/full"
+  [[ -d "$full_root" ]] || return 0
+  while IFS= read -r candidate; do
+    [[ "$candidate" == "$full_root"/*/.staging ]] || die "Unsicheres Staging-Cleanup verweigert: $candidate"
+    warn "Verwaistes Plaintext-Staging eines abgebrochenen Full-Backups entfernen: $candidate"
+    rm -rf -- "$candidate"
+  done < <(find "$full_root" -mindepth 2 -maxdepth 2 -type d -name .staging -print)
+}
+
+named_volume_size_kib() {
+  local volume="$1"
+  docker run --rm -v "$volume:/source:ro" \
+    "${TAXTRONIK_ALPINE_BACKUP_IMAGE:-$ALPINE_BACKUP_IMAGE_DEFAULT}" \
+    du -sk /source 2>/dev/null | awk 'NR==1 { print $1 }'
+}
+
+full_backup_capacity_preflight() {
+  local host_dir="$1" seaweed_volume redis_volume n8n_volume seaweed_kib redis_kib n8n_kib db_kib available_kib required_kib
+  seaweed_volume="$(container_named_volume taxtronik-seaweedfs /data)"
+  redis_volume="$(container_named_volume taxtronik-redis /data)"
+  n8n_volume="$(container_named_volume taxtronik-n8n /home/node/.n8n)"
+  [[ -n "$seaweed_volume" && -n "$redis_volume" && -n "$n8n_volume" ]] || \
+    die "Kapazitaets-Preflight kann Docker-Volumes nicht aufloesen."
+  seaweed_kib="$(named_volume_size_kib "$seaweed_volume")"
+  redis_kib="$(named_volume_size_kib "$redis_volume")"
+  n8n_kib="$(named_volume_size_kib "$n8n_volume")"
+  db_kib="$(docker exec taxtronik-postgres psql -U taxtronik -d taxtronik -tAc \
+    "SELECT CEIL((pg_database_size('taxtronik') + pg_database_size('n8n')) / 1024.0)::bigint" | tr -d '[:space:]')"
+  available_kib="$(df -Pk "$host_dir" | awk 'NR==2 { print $4 }')"
+  [[ "$seaweed_kib" =~ ^[0-9]+$ && "$redis_kib" =~ ^[0-9]+$ && "$n8n_kib" =~ ^[0-9]+$ && \
+     "$db_kib" =~ ^[0-9]+$ && "$available_kib" =~ ^[0-9]+$ ]] || \
+    die "Kapazitaets-Preflight konnte Groessen/freien Platz nicht belastbar ermitteln."
+  # Peak: Byte-Export + Raw-Volume-Tars + parallel entstehendes age-Archiv.
+  # Konservativ ohne Kompressionsgewinn, plus 1 GiB Arbeitsreserve.
+  required_kib=$(( seaweed_kib * 5 + (redis_kib + n8n_kib + db_kib) * 3 + 1048576 ))
+  (( available_kib >= required_kib )) || \
+    die "Zu wenig freier Platz fuer Full-Backup: benoetigt konservativ ${required_kib} KiB, frei ${available_kib} KiB. BACKUP_HOST_DIR auf separates Backup-Dateisystem legen."
+  info "Full-Backup-Kapazitaets-Preflight OK (frei ${available_kib} KiB, konservativer Bedarf ${required_kib} KiB)."
+}
+
+encrypt_full_backup_payload() {
+  local payload="$1" dest="$2" recipient="${BACKUP_AGE_RECIPIENT:-}" root_files=(.env)
+  require_cmd age
+  [[ -n "$recipient" ]] || die "BACKUP_AGE_RECIPIENT fehlt. Full-Backup darf Konfiguration/Schluessel nur age-verschluesselt sichern."
+  [[ -f "$STATE" ]] && root_files+=(.taxtronik.state)
+  info "Gesamtes Full-Backup inklusive Recovery-Konfiguration age-verschluesseln"
+  tar -cf - -C "$payload" . -C "$ROOT" "${root_files[@]}" | \
+    age --recipient "$recipient" --output "$dest/full-backup.tar.age"
+  chmod 0600 "$dest/full-backup.tar.age" 2>/dev/null || true
+}
+
+remove_full_backup_staging() {
+  local staging="$1" expected_parent
+  expected_parent="$(resolve_backup_host_dir)/full/"
+  case "$staging" in
+    "$expected_parent"*/.staging) rm -rf -- "$staging" ;;
+    *) die "Unsicheres Staging-Cleanup verweigert: $staging" ;;
+  esac
+}
+
+seal_full_backup() {
+  local dest="$1" private_key="${BACKUP_MANIFEST_PRIVATE_KEY_FILE:-}" public_key="${BACKUP_MANIFEST_PUBLIC_KEY_FILE:-}"
+  [[ -n "$private_key" && -f "$private_key" ]] || \
+    die "BACKUP_MANIFEST_PRIVATE_KEY_FILE fehlt/ist unlesbar. Schluessel: node scripts/backup/manifest.mjs generate-key --out-dir <offline-pfad>"
+  [[ -n "$public_key" && -f "$public_key" ]] || \
+    die "BACKUP_MANIFEST_PUBLIC_KEY_FILE fehlt/ist unlesbar (Kopie getrennt/offline aufbewahren)."
+  node "$ROOT/scripts/backup/manifest.mjs" create \
+    --root "$dest" \
+    --private-key "$private_key" \
+    --version "$(image_tag)" \
+    --commit "$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
+  node "$ROOT/scripts/backup/manifest.mjs" verify \
+    --root "$dest" \
+    --public-key "$public_key"
+}
+
+offsite_backup_configured() {
+  [[ -n "${BACKUP_OFFSITE_ENDPOINT:-}" && -n "${BACKUP_OFFSITE_BUCKET:-}" && \
+     -n "${BACKUP_OFFSITE_ACCESS_KEY:-}" && -n "${BACKUP_OFFSITE_SECRET_KEY:-}" ]]
+}
+
+upload_full_backup_offsite() {
+  local dest="$1" endpoint="${BACKUP_OFFSITE_ENDPOINT:-}" bucket="${BACKUP_OFFSITE_BUCKET:-}" prefix receipt min_days
+  offsite_backup_configured || die "Offsite-Backup nicht vollstaendig konfiguriert (ENDPOINT/BUCKET/ACCESS_KEY/SECRET_KEY)."
+  [[ "$endpoint" == https://* ]] || die "BACKUP_OFFSITE_ENDPOINT muss HTTPS verwenden."
+  [[ "$endpoint" != "${S3_ENDPOINT:-}" && "$endpoint" != *"seaweedfs"* ]] || \
+    die "Offsite-Ziel darf nicht der lokale TaxTronik-Object-Store sein."
+  min_days="${BACKUP_OFFSITE_MIN_RETENTION_DAYS:-90}"
+  [[ "$min_days" =~ ^[1-9][0-9]*$ ]] || die "BACKUP_OFFSITE_MIN_RETENTION_DAYS muss eine positive Ganzzahl sein."
+  prefix="${BACKUP_OFFSITE_PREFIX:-taxtronik/full}/$(basename "$dest")"
+  info "Signiertes Full-Backup in immutable Offsite-Bucket hochladen: s3://$bucket/$prefix"
+
+  BACKUP_OFFSITE_ENDPOINT="$endpoint" \
+  BACKUP_OFFSITE_BUCKET="$bucket" \
+  BACKUP_OFFSITE_PREFIX="$prefix" \
+  BACKUP_OFFSITE_MIN_RETENTION_DAYS="$min_days" \
+  BACKUP_OFFSITE_ACCESS_KEY="$BACKUP_OFFSITE_ACCESS_KEY" \
+  BACKUP_OFFSITE_SECRET_KEY="$BACKUP_OFFSITE_SECRET_KEY" \
+  BACKUP_OFFSITE_REGION="${BACKUP_OFFSITE_REGION:-eu-central-1}" \
+  docker run --rm \
+    -e BACKUP_OFFSITE_ENDPOINT \
+    -e BACKUP_OFFSITE_BUCKET \
+    -e BACKUP_OFFSITE_PREFIX \
+    -e BACKUP_OFFSITE_MIN_RETENTION_DAYS \
+    -e BACKUP_OFFSITE_ACCESS_KEY \
+    -e BACKUP_OFFSITE_SECRET_KEY \
+    -e BACKUP_OFFSITE_REGION \
+    -v "$dest:/backup:ro" \
+    --entrypoint /bin/sh \
+    "${TAXTRONIK_AWS_CLI_IMAGE:-$AWS_CLI_IMAGE_DEFAULT}" -ec '
+      export AWS_ACCESS_KEY_ID="$BACKUP_OFFSITE_ACCESS_KEY"
+      export AWS_SECRET_ACCESS_KEY="$BACKUP_OFFSITE_SECRET_KEY"
+      export AWS_DEFAULT_REGION="$BACKUP_OFFSITE_REGION"
+      aws_offsite() { aws --endpoint-url "$BACKUP_OFFSITE_ENDPOINT" "$@"; }
+      MODE="$(aws_offsite s3api get-object-lock-configuration --bucket "$BACKUP_OFFSITE_BUCKET" --query ObjectLockConfiguration.Rule.DefaultRetention.Mode --output text)"
+      DAYS="$(aws_offsite s3api get-object-lock-configuration --bucket "$BACKUP_OFFSITE_BUCKET" --query ObjectLockConfiguration.Rule.DefaultRetention.Days --output text)"
+      YEARS="$(aws_offsite s3api get-object-lock-configuration --bucket "$BACKUP_OFFSITE_BUCKET" --query ObjectLockConfiguration.Rule.DefaultRetention.Years --output text)"
+      VERSIONING="$(aws_offsite s3api get-bucket-versioning --bucket "$BACKUP_OFFSITE_BUCKET" --query Status --output text)"
+      test "$VERSIONING" = Enabled
+      test "$MODE" = COMPLIANCE
+      EFFECTIVE_DAYS=0
+      case "$DAYS" in None|"") : ;; *) EFFECTIVE_DAYS="$DAYS" ;; esac
+      case "$YEARS" in None|"") : ;; *) EFFECTIVE_DAYS=$((YEARS * 365)) ;; esac
+      test "$EFFECTIVE_DAYS" -ge "$BACKUP_OFFSITE_MIN_RETENTION_DAYS"
+
+      for FILE in full-backup.tar.age manifest.json manifest.json.sig; do
+        test -f "/backup/$FILE"
+        aws_offsite s3 cp "/backup/$FILE" "s3://$BACKUP_OFFSITE_BUCKET/$BACKUP_OFFSITE_PREFIX/$FILE" --only-show-errors
+        HEAD="$(aws_offsite s3api head-object --bucket "$BACKUP_OFFSITE_BUCKET" \
+          --key "$BACKUP_OFFSITE_PREFIX/$FILE" \
+          --query "[ContentLength,ObjectLockMode,ObjectLockRetainUntilDate,VersionId,ETag]" --output text)"
+        set -- $HEAD
+        test "$1" = "$(wc -c < "/backup/$FILE" | tr -d " ")"
+        test "$2" = COMPLIANCE
+        test "$3" != None && test -n "$3"
+        test "$4" != None && test -n "$4"
+        printf "%s\t%s\t%s\t%s\t%s\n" "$FILE" "$1" "$3" "$4" "$5"
+      done
+    ' > "${dest}.offsite-receipt.txt"
+  chmod 0600 "${dest}.offsite-receipt.txt" 2>/dev/null || true
+  receipt="${dest}.offsite-receipt.txt"
+  [[ "$(wc -l < "$receipt")" -eq 3 ]] || die "Offsite-Receipt unvollstaendig."
+  info "Offsite-Upload fuer alle 3 Artefakte mit VersionId, Groesse und COMPLIANCE-Retention verifiziert (Receipt: $receipt)."
 }
 
 restore_needs_s3() {
@@ -799,7 +1283,7 @@ sync_postgres_roles_from_env() {
   info "Postgres-Rollenpasswoerter mit .env synchronisieren"
   {
     printf 'ALTER ROLE taxtronik WITH PASSWORD %s;\n' "$pg_pw"
-    printf "DO \$\$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'taxtronik_app') THEN EXECUTE format('ALTER ROLE taxtronik_app WITH PASSWORD %%L', %s); END IF; END \$\$;\n" "$app_pw"
+    printf "DO \$\$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'taxtronik_app') THEN EXECUTE format('ALTER ROLE taxtronik_app WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD %%L', %s); ELSE EXECUTE format('CREATE ROLE taxtronik_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD %%L', %s); END IF; END \$\$;\n" "$app_pw" "$app_pw"
     printf "DO \$\$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'n8n') THEN EXECUTE format('ALTER ROLE n8n WITH PASSWORD %%L', %s); END IF; END \$\$;\n" "$n8n_pw"
   } | docker exec -i taxtronik-postgres psql -U taxtronik -d taxtronik -v ON_ERROR_STOP=1
 }
@@ -966,12 +1450,66 @@ configure_surface_domains_interactive() {
   fi
 }
 
-# Schreibt Last-Good-Version fuer rollback. previous = alter current-Stand.
+state_value() {
+  local key="$1"
+  [[ -f "$STATE" ]] || return 0
+  grep -E "^${key}=" "$STATE" | head -n1 | cut -d= -f2- || true
+}
+
+# Schreibt den vollstaendigen Last-Good-Artefaktvertrag fuer Rollback.
+# `previous` ist der zuvor erfolgreiche current-Stand; ein fehlgeschlagener
+# Deploy erreicht diese Funktion nie und kann den Last-Good-Zeiger nicht
+# ueberschreiben.
 save_state() {
-  local new prev=""
-  new="$(image_tag)"
-  if [[ -f "$STATE" ]]; then prev="$(grep -E '^current=' "$STATE" | head -n1 | cut -d= -f2- || true)"; fi
-  printf 'previous=%s\ncurrent=%s\n' "${prev:-}" "$new" > "$STATE"
+  local tmp new_version new_web new_worker new_commit
+  local old_current old_web old_worker old_commit
+  local previous previous_web previous_worker previous_commit
+  new_version="$(image_tag)"
+  new_web="${TAXTRONIK_WEB_DIGEST_SUFFIX:-}"
+  new_worker="${TAXTRONIK_WORKER_DIGEST_SUFFIX:-}"
+  new_commit="${TAXTRONIK_RELEASE_COMMIT:-$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)}"
+  old_current="$(state_value current)"
+  old_web="$(state_value current_web_digest_suffix)"
+  old_worker="$(state_value current_worker_digest_suffix)"
+  old_commit="$(state_value current_commit)"
+
+  if [[ "$new_version" == "$old_current" && "$new_web" == "$old_web" && \
+        "$new_worker" == "$old_worker" && "$new_commit" == "$old_commit" ]]; then
+    # Ein idempotenter Redeploy darf den echten N-1-Rollbackzeiger nicht durch
+    # current=current zerstoeren.
+    previous="$(state_value previous)"
+    previous_web="$(state_value previous_web_digest_suffix)"
+    previous_worker="$(state_value previous_worker_digest_suffix)"
+    previous_commit="$(state_value previous_commit)"
+  else
+    previous="$old_current"
+    previous_web="$old_web"
+    previous_worker="$old_worker"
+    previous_commit="$old_commit"
+  fi
+
+  tmp="$(mktemp "${STATE}.tmp.XXXXXX")" || die "Release-State konnte nicht angelegt werden."
+  {
+    printf 'previous=%s\n' "$previous"
+    printf 'previous_web_digest_suffix=%s\n' "$previous_web"
+    printf 'previous_worker_digest_suffix=%s\n' "$previous_worker"
+    printf 'previous_commit=%s\n' "$previous_commit"
+    printf 'current=%s\n' "$new_version"
+    printf 'current_web_digest_suffix=%s\n' "$new_web"
+    printf 'current_worker_digest_suffix=%s\n' "$new_worker"
+    printf 'current_commit=%s\n' "$new_commit"
+  } > "$tmp"
+  chmod 0600 "$tmp" || { rm -f "$tmp"; die "Release-State konnte nicht auf 0600 gehaertet werden."; }
+  mv -f "$tmp" "$STATE"
+  chmod 0600 "$STATE" || die "Release-State konnte nicht auf 0600 gehaertet werden."
+}
+
+finalize_release_contract() {
+  # Beide Aufrufe liegen bewusst erst hinter Health + Readiness. STATE ist der
+  # massgebliche Last-Good-Zeiger und wird atomar vor den .env-Eintraegen
+  # aktualisiert; jeder Zwischenzustand wird vom Compose-Guard abgewiesen.
+  save_state
+  commit_release_contract
 }
 
 # ---------------------------------------------------------------------------
@@ -1004,6 +1542,7 @@ prepare_env_interactive() {
     [[ -f "$ROOT/.env.example" ]] || die ".env.example fehlt."
     cp "$ROOT/.env.example" "$ENVFILE"
   fi
+  chmod 0600 "$ENVFILE" || die "Dateirechte fuer $ENVFILE konnten nicht auf 0600 gesetzt werden."
   # Prod-Default (NODE_ENV, TAXTRONIK_VERSION) + fehlende Secrets generieren.
   doctor --fix >/dev/null || true
   bake_db_urls_into_env
@@ -1096,6 +1635,7 @@ cmd_reset_admin_password() {
 # Erkennung, sodass deploy eine frische Installation komplett abdeckt.
 _deploy_core() {
   load_env; preflight_common; assert_production_env; require_release_version
+  prepare_release_contract
   start_infra
   wait_postgres_healthy
   sync_postgres_roles_from_env
@@ -1104,9 +1644,9 @@ _deploy_core() {
   run_migrations
   ensure_provisioned_interactive
   start_apps
-  smoke_health
-  deploy_readiness
-  save_state
+  smoke_health || die "Deploy abgebrochen: Anwendung ist nicht vollstaendig healthy."
+  deploy_readiness || die "Deploy abgebrochen: Produktivkonfiguration ist nicht bereit."
+  finalize_release_contract
 }
 
 # ---------------------------------------------------------------------------
@@ -1121,24 +1661,52 @@ cmd_deploy() {
 
 cmd_update() {
   require_cmd docker; require_cmd node; require_cmd curl; require_cmd git
-  info "Code aktualisieren (git ff-only)"
+
+  # Das Pflichtbackup muss vollstaendig mit dem bisher installierten Checkout
+  # und dessen Prisma-Client laufen. Neuer Anwendungscode darf das noch alte
+  # DB-Schema vor dessen Migration nicht abfragen. Erst ein erfolgreiches
+  # Backup autorisiert daher ueberhaupt fetch/merge und damit eine Aenderung des
+  # Arbeitsbaums.
+  prepare_env_interactive
+  load_env; preflight_common; assert_production_env; require_release_version
+  if images_from_registry; then resolve_release_contract; fi
+  start_infra
+  wait_postgres_healthy
+  sync_postgres_roles_from_env
+  run_backup || die "Pflichtbackup fehlgeschlagen — Code und Arbeitsbaum bleiben unveraendert."
+
+  info "Code auf den freigegebenen Stand aktualisieren (git ff-only)"
   cd "$ROOT"
-  git fetch origin
-  git merge --ff-only "${TAXTRONIK_UPDATE_REF:-origin/main}"
+  local remote target_ref
+  remote="$(deployment_git_remote)"
+  if images_from_registry; then
+    fetch_verified_release_tag "$TAXTRONIK_VERSION" "$UPDATE_COMMIT_SHA"
+    git merge --ff-only "$UPDATE_COMMIT_SHA"
+  else
+    git fetch "$remote"
+    target_ref="${TAXTRONIK_UPDATE_REF:-$remote/main}"
+    git merge --ff-only "$target_ref"
+  fi
   # .env ggfs. aus dem aktualisierten Stand neu vervollstaendigen (Prod-Defaults,
   # fehlende Secrets, NEXTAUTH_URL) — wie bei deploy ohne Hand-Editiererei.
   prepare_env_interactive
   load_env; preflight_common; assert_production_env; require_release_version
+  if images_from_registry; then
+    verify_release_checkout
+    stage_release_contract
+  else
+    prepare_release_contract
+  fi
+  # Der neue Checkout kann auch die Infra-Definition erweitert haben.
   start_infra
   wait_postgres_healthy
   sync_postgres_roles_from_env
-  run_backup
   provide_images
   run_migrations
   start_apps
-  smoke_health
-  deploy_readiness
-  save_state
+  smoke_health || die "Update fehlgeschlagen: Anwendung ist nicht vollstaendig healthy; letzter erfolgreicher Stand bleibt in $STATE vermerkt."
+  deploy_readiness || die "Update fehlgeschlagen: Produktivkonfiguration ist nicht bereit; letzter erfolgreicher Stand bleibt in $STATE vermerkt."
+  finalize_release_contract
   info "Update fertig. Version: $(image_tag)"
 }
 
@@ -1162,10 +1730,114 @@ cmd_backup_files() {
 }
 
 cmd_backup_full() {
-  cmd_backup
-  run_backup_n8n
-  cmd_backup_files
-  info "Vollbackup fertig (Datenbank + n8n-DB + Kanzleidateien-Byte-Export)."
+  load_env; preflight_common; assert_production_env
+  require_cmd age
+  require_cmd flock
+  start_infra
+  wait_postgres_healthy
+  wait_seaweedfs_healthy
+  sync_postgres_roles_from_env
+  compose up -d n8n
+
+  local host_dir dest staging
+  host_dir="$(resolve_backup_host_dir)"
+  prepare_backup_host_dir
+  exec 9>"$host_dir/.full-backup.lock"
+  flock -n 9 || die "Ein anderes Full-Backup laeuft bereits."
+  cleanup_abandoned_full_backup_staging
+  full_backup_capacity_preflight "$host_dir"
+  dest="$host_dir/full/$(date -u +'%Y%m%dT%H%M%SZ')"
+  staging="$dest/.staging"
+  _FULL_BACKUP_STAGING="$staging"
+  mkdir -p "$staging/database" "$staging/object-store-byte-export" "$staging/volumes"
+  chmod 0700 "$dest" 2>/dev/null || true
+  trap 'full_backup_exit_cleanup $?' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+
+  # Ein Full-Backup ist ein zusammengehoeriger Wiederanlaufpunkt. App, Worker
+  # und n8n werden VOR DB-Dumps und Object-Export gestoppt, damit keine DB-
+  # Referenz zwischen Dump und SeaweedFS-Snapshot neu entsteht/verschwindet.
+  info "Schreibdienste fuer konsistenten Full-Backup-Wiederanlaufpunkt quieszieren"
+  _FULL_BACKUP_SERVICES_QUIESCED=1
+  compose stop app worker n8n || die "Schreibdienste konnten nicht vollstaendig gestoppt werden."
+  if ! BACKUP_LOCAL_DIR="$staging/database" run_backup; then
+    die "TaxTronik-DB-Dump im Full-Backup fehlgeschlagen."
+  fi
+  if ! run_backup_n8n "$staging/database"; then
+    die "n8n-DB-Dump im Full-Backup fehlgeschlagen."
+  fi
+  if ! run_backup_files "$staging/object-store-byte-export"; then
+    die "Object-Store-Byte-Export im Full-Backup fehlgeschlagen."
+  fi
+  run_cold_volume_snapshots "$staging/volumes" || die "Cold-Volume-Snapshot oder Wiederanlauf fehlgeschlagen."
+  encrypt_full_backup_payload "$staging" "$dest"
+  remove_full_backup_staging "$staging"
+  _FULL_BACKUP_STAGING=""
+  seal_full_backup "$dest"
+  restart_after_full_backup || die "Full-Backup ist versiegelt, aber der Wiederanlauf der Dienste ist fehlgeschlagen."
+  _FULL_BACKUP_SERVICES_QUIESCED=0
+  trap - EXIT INT TERM
+  flock -u 9
+  exec 9>&-
+
+  if offsite_backup_configured; then
+    upload_full_backup_offsite "$dest"
+  elif [[ "${BACKUP_OFFSITE_REQUIRED:-false}" == "true" ]]; then
+    die "Lokales Full-Backup erstellt, aber BACKUP_OFFSITE_REQUIRED=true und kein vollstaendiges Offsite-Ziel konfiguriert: $dest"
+  else
+    warn "Full-Backup ist lokal versiegelt, aber noch nicht offsite: $dest"
+  fi
+  info "Vollbackup fertig: DB + n8n-DB + Byte-Export + Cold-Volumes + Recovery-Konfiguration gemeinsam age-verschluesselt; signiertes SHA-256-Manifest ($dest)."
+}
+
+cmd_backup_verify() {
+  local dest="${1:-}" public_key="${2:-${BACKUP_MANIFEST_PUBLIC_KEY_FILE:-}}"
+  [[ -n "$dest" && -d "$dest" ]] || die "Nutzung: ./taxtronik backup-verify <full-backup-verzeichnis>"
+  require_cmd node
+  [[ -n "$public_key" ]] || public_key="$(get_env BACKUP_MANIFEST_PUBLIC_KEY_FILE)"
+  [[ -n "$public_key" && -f "$public_key" ]] || \
+    die "Public Key fehlt. Als 2. Argument oder BACKUP_MANIFEST_PUBLIC_KEY_FILE uebergeben."
+  node "$ROOT/scripts/backup/manifest.mjs" verify \
+    --root "$dest" \
+    --public-key "$public_key"
+}
+
+cmd_backup_decrypt() {
+  local dest="${1:-}" target="${2:-}" identity="${3:-${BACKUP_AGE_IDENTITY_FILE:-}}" public_key="${4:-${BACKUP_MANIFEST_PUBLIC_KEY_FILE:-}}"
+  [[ -n "$dest" && -d "$dest" && -f "$dest/full-backup.tar.age" ]] || \
+    die "Nutzung: ./taxtronik backup-decrypt <full-backup-verzeichnis> <leeres-zielverzeichnis>"
+  [[ -n "$target" ]] || die "Zielverzeichnis fuer entschluesselte Recovery-Artefakte fehlt."
+  require_cmd age
+  require_cmd tar
+  [[ -n "$identity" ]] || identity="$(get_env BACKUP_AGE_IDENTITY_FILE)"
+  [[ -n "$public_key" ]] || public_key="$(get_env BACKUP_MANIFEST_PUBLIC_KEY_FILE)"
+  [[ -n "$identity" && -f "$identity" ]] || \
+    die "age-Identity fehlt. Als 3. Argument oder BACKUP_AGE_IDENTITY_FILE am isolierten Restore-System uebergeben."
+  if [[ -e "$target" && -n "$(find "$target" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]]; then
+    die "Restore-Ziel muss leer sein: $target"
+  fi
+  mkdir -p "$target"
+  chmod 0700 "$target" 2>/dev/null || true
+  cmd_backup_verify "$dest" "$public_key"
+  info "Full-Backup in isoliertes Ziel entschluesseln: $target"
+  age --decrypt --identity "$identity" "$dest/full-backup.tar.age" | \
+    tar --extract --file - --directory "$target" --no-same-owner --no-same-permissions
+  [[ -d "$target/database" && -f "$target/volumes/seaweedfs-data.tar.gz" && \
+     -f "$target/volumes/redis-data.tar.gz" && -f "$target/volumes/n8n-data.tar.gz" && \
+     -f "$target/.env" ]] || die "Entschluesseltes Full-Backup ist unvollstaendig."
+  tar -tzf "$target/volumes/seaweedfs-data.tar.gz" >/dev/null
+  tar -tzf "$target/volumes/redis-data.tar.gz" >/dev/null
+  tar -tzf "$target/volumes/n8n-data.tar.gz" >/dev/null
+  info "Entschluesselung + Archiv-Strukturpruefung erfolgreich. Restore ausschliesslich nach DR-Runbook auf isoliertem Ziel fortsetzen."
+}
+
+cmd_backup_offsite() {
+  local dest="${1:-}"
+  [[ -n "$dest" && -d "$dest" ]] || die "Nutzung: ./taxtronik backup-offsite <full-backup-verzeichnis>"
+  load_env
+  cmd_backup_verify "$dest"
+  upload_full_backup_offsite "$dest"
 }
 
 cmd_restore() {
@@ -1180,34 +1852,157 @@ cmd_restore() {
   info "Restore fertig."
 }
 
-# Rollback auf einen frueheren Image-Stand. KEINE DB-Migration (Prisma ist
-# forward-only) — Schema-Aenderungen bleiben zurueck. Bewusst nur App/Worker,
-# nicht n8n/Infra.
-cmd_rollback() {
-  load_env; preflight_common; assert_production_env
-  local target="${1:-}"
-  if [[ -z "$target" && -f "$STATE" ]]; then
-    target="$(grep -E '^previous=' "$STATE" | head -n1 | cut -d= -f2- || true)"
+# Wird nur als EXIT-Recovery waehrend der Aktivierung eines Rollbacks gesetzt.
+# .env und STATE sind zu diesem Zeitpunkt noch Last-Good; wir stellen zusaetzlich
+# dessen Checkout und Container best-effort wieder her.
+rollback_failure_recover() {
+  local rc="${1:-1}" restore_commit="${_TAXTRONIK_ROLLBACK_LAST_GOOD_COMMIT:-}"
+  trap - EXIT INT TERM
+  [[ "${_TAXTRONIK_ROLLBACK_CHECKOUT_CHANGED:-0}" == "1" ]] || exit "$rc"
+  set +e
+  warn "Rollback-Aktivierung fehlgeschlagen; Last-Good-Checkout und -Container werden wiederhergestellt."
+  if [[ -z "$restore_commit" ]]; then restore_commit="${_TAXTRONIK_ROLLBACK_SOURCE_COMMIT:-}"; fi
+  if [[ -n "${_TAXTRONIK_ROLLBACK_SOURCE_BRANCH:-}" && \
+        "$restore_commit" == "${_TAXTRONIK_ROLLBACK_SOURCE_COMMIT:-}" ]]; then
+    git -C "$ROOT" switch "$_TAXTRONIK_ROLLBACK_SOURCE_BRANCH" >/dev/null 2>&1
+  else
+    git -C "$ROOT" switch --detach "$restore_commit" >/dev/null 2>&1
   fi
-  [[ -n "$target" ]] || die "Kein Rollback-Ziel. Nutzung: ./taxtronik rollback <version> (oder .taxtronik.state vorhanden?)."
 
-  local prefix="${TAXTRONIK_IMAGE_PREFIX:-taxtronik}" img
-  for img in web worker; do
-    if ! docker image inspect "$prefix/$img:$target" >/dev/null 2>&1; then
-      if images_from_registry; then
-        info "Pull $prefix/$img:$target"
-        docker pull "$prefix/$img:$target" || die "Pull fehlgeschlagen: $prefix/$img:$target"
-      else
-        die "Image $prefix/$img:$target nicht lokal vorhanden (Lokalbuild-Modus). Erst './taxtronik deploy' mit TAXTRONIK_VERSION=$target ausfuehren."
-      fi
+  if [[ -n "${_TAXTRONIK_ROLLBACK_LAST_GOOD_VERSION:-}" ]]; then
+    export TAXTRONIK_VERSION="$_TAXTRONIK_ROLLBACK_LAST_GOOD_VERSION"
+    export TAXTRONIK_WEB_DIGEST_SUFFIX="${_TAXTRONIK_ROLLBACK_LAST_GOOD_WEB:-}"
+    export TAXTRONIK_WORKER_DIGEST_SUFFIX="${_TAXTRONIK_ROLLBACK_LAST_GOOD_WORKER:-}"
+    if [[ "${_TAXTRONIK_ROLLBACK_REGISTRY_MODE:-0}" == "1" ]]; then
+      export TAXTRONIK_RELEASE_COMMIT="$restore_commit"
+    else
+      export TAXTRONIK_RELEASE_COMMIT=""
     fi
-  done
+    export _TAXTRONIK_INTERNAL_RELEASE_CONTRACT_STAGED=1
+    if ! start_apps; then
+      warn "Automatischer Last-Good-Containerstart fehlgeschlagen; .env/STATE bleiben unveraendert und blockieren einen Mischbetrieb."
+    fi
+  fi
+  exit "$rc"
+}
 
-  set_env TAXTRONIK_VERSION "$target"
+# Rollback auf einen frueheren Artefakt- UND Code-Stand. KEINE DB-Migration
+# (Prisma ist forward-only) — Schema-Aenderungen bleiben zurueck. Bei einem
+# zuvor fehlgeschlagenen Update zeigt .env auf einen Pending-Stand; ohne
+# Argument wird dann bewusst state.current (Last-Good) statt N-1 aktiviert.
+cmd_rollback() {
+  require_cmd docker; require_cmd node; require_cmd curl; require_cmd git
+  load_env; preflight_common; assert_production_env
+  local requested="${1:-}" target="" state_target="" state_web="" state_worker="" state_commit=""
+  local current current_web current_worker current_commit previous previous_web previous_worker previous_commit
+  local env_matches_current=0 prefix="${TAXTRONIK_IMAGE_PREFIX:-taxtronik}" img registry_mode=0
+  [[ -f "$STATE" ]] || die "Kein verifizierter Release-State in $STATE; Rollback wird verweigert."
+  current="$(state_value current)"
+  current_web="$(state_value current_web_digest_suffix)"
+  current_worker="$(state_value current_worker_digest_suffix)"
+  current_commit="$(state_value current_commit)"
+  previous="$(state_value previous)"
+  previous_web="$(state_value previous_web_digest_suffix)"
+  previous_worker="$(state_value previous_worker_digest_suffix)"
+  previous_commit="$(state_value previous_commit)"
+
+  if images_from_registry; then
+    registry_mode=1
+    [[ "$current" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && \
+       "$current_web" =~ ^@sha256:[0-9a-f]{64}$ && \
+       "$current_worker" =~ ^@sha256:[0-9a-f]{64}$ && \
+       "$current_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || \
+      die "Current-Vertrag in $STATE ist unvollstaendig/ungueltig; Rollback wird fail-closed verweigert."
+    if [[ "${TAXTRONIK_VERSION:-}" == "$current" && \
+          "${TAXTRONIK_WEB_DIGEST_SUFFIX:-}" == "$current_web" && \
+          "${TAXTRONIK_WORKER_DIGEST_SUFFIX:-}" == "$current_worker" && \
+          "${TAXTRONIK_RELEASE_COMMIT:-}" == "$current_commit" ]]; then
+      env_matches_current=1
+    fi
+  else
+    # Im Lokalbuild-Modus gibt es keine signierten Digest-Felder, also ist nur
+    # die persistierte Version fuer die Pending-Erkennung relevant.
+    [[ -n "$current" && "$current_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || \
+      die "Current-Vertrag in $STATE ist unvollstaendig/ungueltig; Rollback wird fail-closed verweigert."
+    [[ "${TAXTRONIK_VERSION:-}" == "$current" ]] && env_matches_current=1
+  fi
+
+  if [[ -n "$requested" ]]; then
+    target="$requested"
+  elif [[ $env_matches_current -eq 0 ]]; then
+    target="$current"
+    warn ".env/Prozessvertrag weicht von Last-Good ab; Rollback stellt state.current=$current wieder her."
+  else
+    target="$previous"
+  fi
+  [[ -n "$target" ]] || die "Kein Rollback-Ziel. Nutzung: ./taxtronik rollback <version> (oder gueltiges previous in $STATE)."
+
+  if [[ "$target" == "$current" ]]; then
+    state_target="$current"; state_web="$current_web"; state_worker="$current_worker"; state_commit="$current_commit"
+  elif [[ "$target" == "$previous" ]]; then
+    state_target="$previous"; state_web="$previous_web"; state_worker="$previous_worker"; state_commit="$previous_commit"
+  fi
+
   export TAXTRONIK_VERSION="$target"
+  if [[ $registry_mode -eq 1 ]]; then
+    [[ "$target" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "Registry-Rollback braucht SemVer X.Y.Z: $target"
+    if [[ "$target" == "$state_target" && "$state_web" =~ ^@sha256:[0-9a-f]{64}$ && \
+          "$state_worker" =~ ^@sha256:[0-9a-f]{64}$ && \
+          "$state_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]]; then
+      UPDATE_WEB_DIGEST="${state_web#@}"
+      UPDATE_WORKER_DIGEST="${state_worker#@}"
+      UPDATE_COMMIT_SHA="$state_commit"
+      UPDATE_MIGRATIONS_REQUIRED=""
+    else
+      resolve_release_contract
+      state_commit="$UPDATE_COMMIT_SHA"
+    fi
+    stage_release_contract
+    fetch_verified_release_tag "$target" "$UPDATE_COMMIT_SHA"
+    # Images und OCI-Labels werden vor dem Checkout-Wechsel validiert. Dadurch
+    # bleibt ein Pull-/Registry-Fehler vollstaendig ohne Aktivierungswirkung.
+    pull_release_images_direct
+  else
+    [[ "$target" == "$state_target" && "$state_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || \
+      die "Lokalbuild-Rollback ist nur auf current/previous aus $STATE mit verifiziertem Commit moeglich."
+    git -C "$ROOT" cat-file -e "${state_commit}^{commit}" 2>/dev/null || \
+      die "Rollback-Commit $state_commit ist im lokalen Repository nicht vorhanden."
+    stage_release_contract
+    for img in web worker; do
+      if ! docker image inspect "$prefix/$img:$target" >/dev/null 2>&1; then
+        die "Image $prefix/$img:$target nicht lokal vorhanden (Lokalbuild-Modus)."
+      fi
+    done
+  fi
+
+  require_clean_release_checkout
+  git -C "$ROOT" cat-file -e "${current_commit}^{commit}" 2>/dev/null || \
+    die "Last-Good-Commit $current_commit ist lokal nicht vorhanden; sichere Rollback-Recovery nicht moeglich."
+  export _TAXTRONIK_ROLLBACK_SOURCE_COMMIT
+  export _TAXTRONIK_ROLLBACK_SOURCE_BRANCH
+  export _TAXTRONIK_ROLLBACK_LAST_GOOD_VERSION="$current"
+  export _TAXTRONIK_ROLLBACK_LAST_GOOD_WEB="$current_web"
+  export _TAXTRONIK_ROLLBACK_LAST_GOOD_WORKER="$current_worker"
+  export _TAXTRONIK_ROLLBACK_LAST_GOOD_COMMIT="$current_commit"
+  export _TAXTRONIK_ROLLBACK_REGISTRY_MODE="$registry_mode"
+  export _TAXTRONIK_ROLLBACK_CHECKOUT_CHANGED=0
+  _TAXTRONIK_ROLLBACK_SOURCE_COMMIT="$(git -C "$ROOT" rev-parse HEAD)"
+  _TAXTRONIK_ROLLBACK_SOURCE_BRANCH="$(git -C "$ROOT" branch --show-current 2>/dev/null || true)"
+  trap 'rollback_failure_recover $?' EXIT
+  trap 'exit 130' INT TERM
+  git -C "$ROOT" switch --detach "$state_commit"
+  export _TAXTRONIK_ROLLBACK_CHECKOUT_CHANGED=1
+
   warn "Rollback auf $target — KEINE DB-Migration (Prisma forward-only). Schema-Aenderungen bleiben zurueck."
   start_apps
-  smoke_health
+  smoke_health || die "Rollback-Container sind gestartet, aber nicht healthy."
+  deploy_readiness || die "Rollback-Container sind gestartet, aber die Produktivkonfiguration ist nicht bereit."
+
+  # Die Aktivierung ist fachlich erfolgreich. Ab hier keinen automatischen
+  # Ruecksprung mehr; STATE/.env werden als neuer Last-Good-Stand verankert.
+  trap - EXIT INT TERM
+  finalize_release_contract
+  unset _TAXTRONIK_ROLLBACK_CHECKOUT_CHANGED
   info "Rollback fertig. Version: $target"
 }
 

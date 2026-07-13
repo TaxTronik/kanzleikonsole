@@ -68,15 +68,15 @@ Virenscan. Kein Cloud-Provider, keine US-Datenübermittlung.
 
 ### 2.4 Speicherdauer
 
-| Datenkategorie            | Aufbewahrung                                                                             | Rechtsgrundlage       |
-| ------------------------- | ---------------------------------------------------------------------------------------- | --------------------- |
-| Steuer-/Handelsunterlagen | je Dokumentart 6/8/10 Jahre, ggf. Verfahrensverlängerung                                 | § 147 AO / § 14b UStG |
-| Verträge                  | 6 Jahre                                                                                  | § 257 HGB             |
-| GwG-Nachweise             | grundsätzlich 5 Jahre; andere Gesetze ggf. länger, Vernichtung spätestens nach 10 Jahren | § 8 Abs. 4 GwG        |
-| Audit-Log + Tagesstempel  | 10 Jahre (Hash-Chain unveränderlich)                                                     | § 146 AO              |
-| Magic-Links (Portal)      | nach Verbrauch oder 30 Min.                                                              | technisch             |
-| Mitarbeiter-Zeiterfassung | 2 Jahre nach Ende des Beschäftigungsverhältnisses                                        | § 16 ArbZG            |
-| Backups                   | 90 Tage rolling                                                                          | technisch             |
+| Datenkategorie                                | Aufbewahrung                                                                                                                                  | Rechtsgrundlage                                  |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| Steuer-/Handelsunterlagen                     | je Dokumentart 6/8/10 Jahre, ggf. Verfahrensverlängerung                                                                                      | § 147 AO / § 14b UStG                            |
+| Verträge                                      | 6 Jahre                                                                                                                                       | § 257 HGB                                        |
+| GwG-Nachweise                                 | grundsätzlich 5 Jahre; andere Gesetze ggf. länger, Vernichtung spätestens nach 10 Jahren                                                      | § 8 Abs. 4 GwG                                   |
+| Audit-Log + Tagesstempel                      | 10 Jahre (Hash-Chain unveränderlich)                                                                                                          | § 146 AO                                         |
+| Magic-Links (Portal)                          | nach Verbrauch oder 30 Min.                                                                                                                   | technisch                                        |
+| Gesetzlich erforderliche Arbeitszeitnachweise | mindestens 2 Jahre ab Aufzeichnung; weitere Lohn-/Steuer- und Verjährungsfristen gesondert prüfen                                             | § 16 ArbZG und weitere einschlägige Vorschriften |
+| Backups                                       | S3-Bucket auf 90 Tage konfiguriert; tatsächliche Lifecycle-Wirksamkeit sowie lokale/Off-Site-Fristen betreiberseitig prüfen und dokumentieren | technisch / Löschkonzept                         |
 
 ---
 
@@ -87,7 +87,10 @@ Die Verarbeitung ist erforderlich, weil:
 1. **Steuerberatungsleistung** nicht ohne Mandantendaten erbringbar ist
 2. **GwG-Identifizierung** gesetzlich vorgeschrieben (§ 10 GwG)
 3. **GoBD-Aufbewahrung** mit Manipulationsschutz steuerrechtlich verpflichtend
-4. **Elektronische Rechnung** (XRechnung) für B2B ab 2025 verpflichtend
+4. **Elektronische Rechnung**: Inländische Unternehmer müssen seit 2025
+   E-Rechnungen empfangen können. Für die Ausstellung im inländischen
+   B2B-Bereich gelten die Voraussetzungen und Übergangsfristen der
+   §§ 14, 27 Abs. 38 UStG; TaxTronik unterstützt dafür strukturierte Formate.
 
 Datenminimierung wird durch RBAC, RLS und kategorisierte Aufbewahrungsfristen
 sichergestellt.
@@ -111,18 +114,18 @@ sichergestellt.
 
 ### 5.1 Technische Maßnahmen
 
-| Risiko                       | Maßnahme                                                                            |
-| ---------------------------- | ----------------------------------------------------------------------------------- |
-| Unbefugter Zugriff           | Mitarbeiter: TOTP-2FA Pflicht; Portal: E-Mail-OTP-Magic-Link, kurze Gültigkeit      |
-| Cross-Tenant-Datenleck       | Postgres Row-Level-Security + App-Filter (doppelte Verteidigung, ADR-0002)          |
-| Manipulation Belege          | S3 Object-Lock COMPLIANCE je Dokumenttyp 6/8/10 Jahre + ClamAV-Virenscan vor Commit |
-| Manipulation Buchführung     | Hash-Chain auf Audit-Log + tägliche RFC-3161-TSA-Versiegelung (ADR-0004)            |
-| Passwort-Brute-Force         | Rate-Limit 10 Versuche / 10 Min auf Passwort-Step, 5 Versuche / 5 Min auf TOTP      |
-| Magic-Link-Phishing          | Tokens 32 Byte random, gehashed (SHA-256) gespeichert, 30 Min TTL, one-time         |
-| Daten in Transit             | HTTPS (Reverse-Proxy der Kanzlei), HSTS-Header                                      |
-| Daten at Rest                | LUKS/BitLocker auf Server-Storage; Postgres-Verschlüsselung über Filesystem         |
-| Datenverlust                 | Tägliches Postgres-pg_dump nach SeaweedFS `backups`-Bucket, 90 Tage Lifecycle       |
-| TOTP-Secret-Kompromittierung | Per-Tenant-HKDF-Key, AES-256-GCM-verschlüsselt in DB                                |
+| Risiko                       | Maßnahme                                                                                                                                               |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Unbefugter Zugriff           | Mitarbeiter: TOTP-2FA Pflicht; Portal: E-Mail-OTP-Magic-Link, kurze Gültigkeit                                                                         |
+| Cross-Tenant-Datenleck       | Postgres Row-Level-Security + App-Filter (doppelte Verteidigung, ADR-0002)                                                                             |
+| Manipulation Belege          | S3 Object-Lock COMPLIANCE je Dokumenttyp 6/8/10 Jahre + ClamAV-Virenscan vor Commit                                                                    |
+| Manipulation Buchführung     | Hash-Chain auf Audit-Log + tägliche RFC-3161-TSA-Versiegelung (ADR-0004)                                                                               |
+| Passwort-Brute-Force         | Rate-Limit 10 Versuche / 10 Min auf Passwort-Step, 5 Versuche / 5 Min auf TOTP                                                                         |
+| Magic-Link-Phishing          | Tokens 32 Byte random, gehashed (SHA-256) gespeichert, 30 Min TTL, one-time                                                                            |
+| Daten in Transit             | HTTPS (Reverse-Proxy der Kanzlei), HSTS-Header                                                                                                         |
+| Daten at Rest                | LUKS/BitLocker auf Server-Storage; Postgres-Verschlüsselung über Filesystem                                                                            |
+| Datenverlust                 | Täglicher Postgres-Dump in den `backups`-Bucket, monatlicher DB-Restore-Drill sowie getrennte, verschlüsselte Off-Site-Sicherung nach Betreiberkonzept |
+| TOTP-Secret-Kompromittierung | Per-Tenant-HKDF-Key, AES-256-GCM-verschlüsselt in DB                                                                                                   |
 
 ### 5.2 Organisatorische Maßnahmen
 
@@ -139,12 +142,21 @@ sichergestellt.
 
 ## 6. Bewertung des Restrisikos
 
-Nach Anwendung der TOM verbleibt ein **niedriges Restrisiko** für die
-betroffenen Personen. Die Datenverarbeitung ist verhältnismäßig zum Zweck
-und mit dem Mandatsverhältnis zwingend verbunden.
+> **Auszufüllen durch den Verantwortlichen:** Die Software kann die konkrete
+> Risikobewertung der Kanzlei nicht vorwegnehmen. Eintrittswahrscheinlichkeit,
+> Schadensschwere und Wirksamkeit der TOM sind für den tatsächlichen Betrieb,
+> Datenumfang, Nutzerkreis und alle aktivierten Drittanbieter zu bewerten.
 
-**Eine Konsultation der Aufsichtsbehörde nach Art. 36 DSGVO ist nicht
-erforderlich.**
+- Verbleibendes Restrisiko: \_\_\_\_\_\_
+- Begründung und verwendete Nachweise: \_\_\_\_\_\_
+- Stellungnahme des Datenschutzbeauftragten, soweit benannt: \_\_\_\_\_\_
+- Freigabe durch den Verantwortlichen (Name, Datum): \_\_\_\_\_\_
+
+Ergibt die DSFA trotz der vorgesehenen Maßnahmen weiterhin ein hohes Risiko,
+ist **vor Beginn der Verarbeitung** die zuständige Aufsichtsbehörde nach
+Art. 36 DSGVO zu konsultieren. Die Entscheidung „Konsultation erforderlich /
+nicht erforderlich“ ist hier mit ihrer Begründung zu dokumentieren:
+\_\_\_\_\_\_
 
 ---
 

@@ -44,8 +44,8 @@ direkt verlinkt:
    Kanzleisoftware) oder **Aus**.
 6. **Erster Mandant** — anlegen und die GwG-Prüfung abschließen; erst
    dann wird der Mandant „aktiv" und kann Anforderungen und Rechnungen
-   erhalten (gesetzliche Schranke, von der Datenbank erzwungen).
-7. **Portal-Kontakt** — in der Mandantenakte unter *Kontakte* einladen;
+   erhalten (produktseitige GwG-Schranke, von der Datenbank erzwungen).
+7. **Portal-Kontakt** — in der Mandantenakte unter _Kontakte_ einladen;
    Mandanten melden sich ausschließlich per E-Mail-Link an.
 
 ## 3. Team einrichten (≈ 10 min)
@@ -53,8 +53,8 @@ direkt verlinkt:
 Unter **Administration → Benutzer**: Konten für die Mitarbeiter anlegen
 (jede Person richtet ihre Zwei-Faktor-Anmeldung selbst ein). Für
 Mitarbeiter ohne Admin-/Partner-Rolle die **Berechtigungen** setzen —
-*Rechnungen anlegen/bearbeiten*, *Rechnungen versenden* und *Urlaub
-entscheiden* sind Einzelrechte; neue Konten starten ohne
+_Rechnungen anlegen/bearbeiten_, _Rechnungen versenden_ und _Urlaub
+entscheiden_ sind Einzelrechte; neue Konten starten ohne
 (siehe [Administration](administration.md)). Zuständigkeiten je Mandant
 (Berufsträger/Hauptbearbeiter) pflegen Sie in der Mandantenakte; ob
 Mitarbeiter alle oder nur zugeordnete Mandanten sehen, steuert das
@@ -66,7 +66,7 @@ Zugriffsmodell in den Einstellungen.
   eingeladener Kontakt) beantworten — so sehen Sie beide Seiten.
 - Eine **Rechnung** im Entwurf anlegen und versenden: Die Nummer wird
   automatisch lückenlos vergeben, beim Versand entsteht die
-  revisionssichere Archivkopie und die Rechnung wird festgeschrieben
+  mit Object-Lock geschützte Archivkopie und die Rechnung wird festgeschrieben
   ([Rechnungen](rechnungen.md)).
 - **Administration → Übersicht** zeigt dauerhaft den Compliance-Status:
   Prüfprotokoll-Kette, letztes Backup, monatlicher Wiederherstellungstest.

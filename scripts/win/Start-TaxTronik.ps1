@@ -30,7 +30,6 @@ Set-Location $Root
 $EnvFile     = Join-Path $Root '.env'
 $Base        = 'infra\compose\docker-compose.yml'
 $App         = 'infra\compose\docker-compose.app.yml'
-$S3Template  = Join-Path $Root 'infra\scripts\seaweedfs-s3.template.json'
 $S3Generated = Join-Path $Root 'infra\scripts\seaweedfs-s3.generated.json'
 
 function Info($m){ Write-Host "==> $m" -ForegroundColor Cyan }
@@ -136,13 +135,9 @@ Set-EnvVal 'DATABASE_URL'     "postgresql://taxtronik:$pgpw@localhost:5432/taxtr
 Set-EnvVal 'DATABASE_APP_URL' "postgresql://taxtronik_app:$apw@localhost:5432/taxtronik?schema=public"
 Ok ".env bereit."
 
-# --- 3. SeaweedFS-S3-Config rendern (sonst stirbt der Container) --------------
-Info "SeaweedFS-S3-Config rendern"
-$m = Read-EnvMap
-$tpl = Get-Content -LiteralPath $S3Template -Raw
-$tpl = $tpl.Replace('__S3_ACCESS_KEY__', (Get-EnvVal $m 'S3_ACCESS_KEY')).Replace('__S3_SECRET_KEY__', (Get-EnvVal $m 'S3_SECRET_KEY'))
-[System.IO.File]::WriteAllText($S3Generated, $tpl, (New-Object System.Text.UTF8Encoding($false)))
-Ok "s3.generated.json gerendert."
+# --- 3. Historische Host-Secret-Datei entfernen -------------------------------
+# SeaweedFS rendert die Config im Container nach /run (UID 1000, 0400).
+if (Test-Path -LiteralPath $S3Generated) { Remove-Item -LiteralPath $S3Generated -Force }
 
 # --- 4. Images sicherstellen -------------------------------------------------
 $m = Read-EnvMap

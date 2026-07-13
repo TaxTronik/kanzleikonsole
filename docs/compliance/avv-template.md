@@ -14,17 +14,22 @@ durch einen Rechtsanwalt prüfen lassen.
 Jeder externe Dienstleister, der **personenbezogene Daten** der Kanzlei (oder
 ihrer Mandanten) im Auftrag verarbeitet. Typische Fälle:
 
-| Dienstleister | AVV nötig? | Begründung |
-|---|---|---|
-| Hosting-Provider (Hetzner, IONOS, AWS, …) | **JA** | Speichert die taxtronik-DB + Object-Store |
-| Backup-Off-Site-Provider (Wasabi, Borg-Repo, …) | **JA** | Verschlüsselte Backups enthalten Mandanten-Daten |
-| SMTP-Provider (Sendgrid, Postmark, IONOS-Mail, …) | **JA** | Sieht Empfänger-E-Mails + Mail-Body |
-| TSA-Provider (D-Trust, SwissSign, …) | **NEIN** | Nur Hash-Werte werden gestempelt, keine personenbezogenen Daten |
-| eIDAS-QES-Provider (D-Trust QES, …) | **JA** | Signaturkette enthält Identitätsdaten |
-| n8n (lokaler Container im Compose-Stack) | **NEIN** | Selbst gehostet, kein externer Dienstleister |
-| n8n.cloud / externer n8n-Server | **JA** | Externer Dienstleister, Workflow-Trigger enthalten Mandanten-Daten |
-| externe Buchhaltung der Kanzlei (DATEV, Addison) | **NEIN** | Berufstypische Hilfsdienste, kein AVV nach Art. 28 (1) lit. f) |
-| externes Pen-Test-Unternehmen | **JA** | Sieht Live-Daten während des Tests |
+| Dienstleister                                     | Typischer Prüfpunkt                          | Hinweise für die Einzelfallprüfung                                                                        |
+| ------------------------------------------------- | -------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Hosting-Provider (Hetzner, IONOS, AWS, …)         | regelmäßig Art. 28 prüfen                    | Speichert oder administriert DB und Object-Store                                                          |
+| Backup-Off-Site-Provider (Wasabi, Borg-Repo, …)   | regelmäßig Art. 28 prüfen                    | Auch verschlüsselte Backups bleiben für die Kanzlei personenbezogene Daten                                |
+| SMTP-Provider (Sendgrid, Postmark, IONOS-Mail, …) | regelmäßig Art. 28 prüfen                    | Verarbeitet Empfängeradressen und gegebenenfalls Mail-Inhalte                                             |
+| TSA-Provider (D-Trust, SwissSign, …)              | Rolle und übermittelte Daten prüfen          | Hashwerte allein schließen einen Personenbezug im konkreten Kontext nicht automatisch aus                 |
+| externer QES-/Signatur-Provider, falls eingesetzt | regelmäßig Art. 28 und weitere Rollen prüfen | Kann Identitäts- und Signaturnachweise verarbeiten; TaxTronik selbst integriert derzeit keinen QES-Dienst |
+| n8n (lokaler Container im Compose-Stack)          | kein eigener externer Anbieter               | Externe Administration oder externes Hosting gesondert bewerten                                           |
+| n8n.cloud / externer n8n-Server                   | regelmäßig Art. 28 prüfen                    | Workflow-Daten können personenbezogene Inhalte enthalten                                                  |
+| DATEV, Addison oder externe Buchhaltung           | Rolle vertragsspezifisch prüfen              | Keine pauschale Einordnung; Leistung, Weisungsbindung und Eigenverantwortung sind entscheidend            |
+| externes Pen-Test-Unternehmen                     | Zugriff und Rolle prüfen                     | Möglichst Testdaten verwenden; Live-Datenzugriff, Weisungen und Geheimnisschutz vertraglich regeln        |
+
+Die Tabelle ist keine abschließende rechtliche Einordnung. Entscheidend sind
+die konkrete Leistung, die tatsächlichen Datenzugriffe und die Rollen der
+Beteiligten; neben der DSGVO sind insbesondere die berufsrechtlichen
+Verschwiegenheitspflichten zu berücksichtigen.
 
 ## Pflichtelemente eines AVV (Art. 28 Abs. 3 DSGVO)
 
@@ -148,6 +153,7 @@ Storage) bereitstellt und keinen Anwendungs-Zugriff hat (verschlüsselte
 Volumes, eigenes Schlüssel-Management beim Kunden), liegt theoretisch
 „technisch-organisatorische Verfügbarkeit, keine AV" vor (BSI / DSK-
 Auslegung). Praxis: trotzdem AVV abschließen, weil:
+
 - Hosting-Mitarbeiter könnten in Notfällen Zugriff bekommen.
 - Restore aus Hosting-Backup ist eine Auftragsverarbeitung.
 - AVV ist günstig zu haben und beseitigt Streitpunkt im DSGVO-Audit.
@@ -156,7 +162,7 @@ Auslegung). Praxis: trotzdem AVV abschließen, weil:
 
 Falls verschlüsselte Backups mit kundenseitiger Schlüssel-Verwaltung
 (borg/restic/duplicity) zu einem reinen Storage-Provider (Wasabi, S3
-Glacier) gehen: AVV ist trotzdem nötig, weil Schlüssel-Verlust beim
-Kunden zum Daten-Zugriff durch den Provider führen könnte. Backup-Datei
-zählt als personenbezogene Daten, solange die Möglichkeit einer
-Re-Identifizierung besteht.
+Glacier) gehen, ist die Rollen- und Vertragsprüfung nicht allein wegen der
+Verschlüsselung entbehrlich. Der Provider speichert die Daten im Auftrag; die
+Verschlüsselung ist dabei eine wichtige technische Schutzmaßnahme. Ob und in
+welcher Form Art. 28 DSGVO greift, ist für den konkreten Dienst zu prüfen.

@@ -5,9 +5,9 @@
 # Die App und der Worker laufen lokal via `pnpm dev` (Iteration 1) bzw. werden
 # über Override-Files dazugeschaltet (siehe docker-compose.app.yml).
 #
-# Object-Store: SeaweedFS mit S3-API + Object-Lock COMPLIANCE-Mode für GoBD-
-# konforme Aufbewahrung (10 Jahre). Dieser Stack startet ausschließlich
-# SeaweedFS als S3-kompatiblen Object-Store.
+# Object-Store: SeaweedFS mit S3-API + Object-Lock COMPLIANCE für GoBD-
+# Unterlagen und GOVERNANCE für GwG-Nachweise.
+# Dieser Stack startet ausschließlich SeaweedFS als S3-kompatiblen Object-Store.
 #
 # Dev-Komfort (Mailhog, n8n) liegt in docker-compose.dev.yml.
 #
@@ -41,8 +41,8 @@ x-logging: &logging
   logging:
     driver: json-file
     options:
-      max-size: "10m"
-      max-file: "5"
+      max-size: '10m'
+      max-file: '5'
 
 services:
   postgres:
@@ -85,7 +85,7 @@ services:
       TAXTRONIK_APP_PASSWORD: ${TAXTRONIK_APP_PASSWORD:?TAXTRONIK_APP_PASSWORD nicht gesetzt}
       N8N_DB_PASSWORD: ${N8N_DB_PASSWORD:-n8n}
     ports:
-      - "127.0.0.1:5432:5432"
+      - '127.0.0.1:5432:5432'
     volumes:
       # Postgres 18+ erwartet den Mount auf /var/lib/postgresql (nicht
       # mehr /var/lib/postgresql/data wie bei 16/17). PG legt darunter
@@ -94,7 +94,7 @@ services:
       - postgres_data:/var/lib/postgresql
       - ../scripts/postgres-init.sh:/docker-entrypoint-initdb.d/01-init.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U taxtronik -d taxtronik"]
+      test: ['CMD-SHELL', 'pg_isready -U taxtronik -d taxtronik']
       interval: 5s
       timeout: 5s
       retries: 10
@@ -116,21 +116,21 @@ services:
       - SETUID
       - SETGID
       - DAC_OVERRIDE
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ['redis-server', '--appendonly', 'yes']
     ports:
       # Host-Port 6380 statt 6379, weil oft schon ein System-Redis-Daemon
       # auf 6379 läuft. Container-intern bleibt 6379, daher REDIS_URL
       # innerhalb des Compose-Netzes unverändert: redis://redis:6379
-      - "127.0.0.1:6380:6379"
+      - '127.0.0.1:6380:6379'
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
       timeout: 3s
       retries: 10
 
-  # SeaweedFS — S3-kompatibler Object-Store mit Object-Lock COMPLIANCE.
+  # SeaweedFS — S3-kompatibler Object-Store mit Object-Lock.
   # Single-Node-Server bündelt Master + Volume + Filer + S3-Gateway. Für
   # produktive Skalierung können diese in separate Services aufgeteilt werden;
   # für die Kanzlei-Größe (10–500 Mitarbeiter) reicht der Single-Node-Setup.
@@ -152,45 +152,51 @@ services:
       - FOWNER
       - FSETID
     command:
-      - "server"
-      - "-dir=/data"
-      - "-master.volumeSizeLimitMB=2048"
+      - 'server'
+      - '-dir=/data'
+      - '-master.volumeSizeLimitMB=2048'
       # -volume.max: maximale Anzahl Volumes pro Volume-Server. Der Master
       # vergibt neue Volumes nur an Datenknoten mit freien Slots (max > belegt).
       # Ein Wert von 0 wird als „0 freie Slots" gemeldet → der Master findet
       # „Not enough data nodes found" / „0 node candidates" und JEDE Collection
       # ohne bestehende Volumes (z. B. gobd) kann nicht mehr wachsen. 500 × 2 GB
       # = 1 TB — für die Kanzlei-Größe praktisch unbegrenzt.
-      - "-volume.max=500"
-      - "-s3"
-      - "-s3.config=/etc/seaweedfs/s3.json"
-      - "-s3.port=8333"
-      - "-master.port=9333"
-      - "-volume.port=8080"
-      - "-filer"
-      - "-filer.port=8888"
-      - "-metricsPort=9091"
+      - '-volume.max=500'
+      - '-s3'
+      - '-s3.config=/run/seaweedfs/s3.json'
+      - '-s3.port=8333'
+      - '-master.port=9333'
+      - '-volume.port=8080'
+      - '-filer'
+      - '-filer.port=8888'
+      - '-metricsPort=9091'
     ports:
       # P-4: SeaweedFS-Admin-UIs haben keine Authentication. NICHT 0.0.0.0.
       # Host-Ports überschreibbar, weil Windows den 9000er-Bereich reserviert
       # (Hyper-V/WSL: 9167–9766 sind blockiert) — Default bleibt für Linux.
-      - "127.0.0.1:${SEAWEED_S3_PORT:-8333}:8333"        # S3-API
-      - "127.0.0.1:${SEAWEED_MASTER_PORT:-9333}:9333"    # Master UI / API
-      - "127.0.0.1:${SEAWEED_FILER_PORT:-8888}:8888"     # Filer UI
+      - '127.0.0.1:${SEAWEED_S3_PORT:-8333}:8333' # S3-API
+      - '127.0.0.1:${SEAWEED_MASTER_PORT:-9333}:9333' # Master UI / API
+      - '127.0.0.1:${SEAWEED_FILER_PORT:-8888}:8888' # Filer UI
     volumes:
       - seaweed_data:/data
-      # Wird vom Setup-Skript aus seaweedfs-s3.template.json gerendert
-      - ../scripts/seaweedfs-s3.generated.json:/etc/seaweedfs/s3.json:ro
+      - ../scripts/seaweedfs-s3.template.json:/etc/seaweedfs/s3.template.json:ro
+      - ../scripts/seaweedfs-entrypoint.sh:/usr/local/bin/taxtronik-seaweedfs-entrypoint.sh:ro
+    entrypoint: ['/usr/local/bin/taxtronik-seaweedfs-entrypoint.sh']
+    environment:
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?S3_ACCESS_KEY nicht gesetzt}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?S3_SECRET_KEY nicht gesetzt}
+    tmpfs:
+      - /run/seaweedfs:size=1m,mode=0755
     healthcheck:
       # localhost → ::1 wäre IPv6, SeaweedFS bindet nur IPv4 → "Connection refused".
       # Daher 127.0.0.1 explizit.
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9333/cluster/healthz"]
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:9333/cluster/healthz']
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 20s
 
-  # Einmal-Init-Container: legt Buckets mit Object-Lock COMPLIANCE an.
+  # Einmal-Init-Container: legt GoBD (COMPLIANCE) und GwG (GOVERNANCE) an.
   # Läuft via amazon/aws-cli, weil SeaweedFS keine `mc`-Variante hat — die
   # AWS-CLI spricht den S3-Standard nativ.
   seaweedfs-init:
@@ -207,8 +213,8 @@ services:
       S3_ENDPOINT: http://seaweedfs:8333
     volumes:
       - ../scripts/init-storage.sh:/init-storage.sh:ro
-    entrypoint: ["/bin/sh", "/init-storage.sh"]
-    restart: "no"
+    entrypoint: ['/bin/sh', '/init-storage.sh']
+    restart: 'no'
 
   clamav:
     <<: [*hardening, *logging]
@@ -224,7 +230,7 @@ services:
       - SETGID
       - DAC_OVERRIDE
     ports:
-      - "127.0.0.1:3310:3310"
+      - '127.0.0.1:3310:3310'
     volumes:
       - clamav_data:/var/lib/clamav
       # RF-14: Stock-Conf des Images limitiert INSTREAM auf 25 MB — die App
@@ -235,11 +241,11 @@ services:
       # Das Image-Skript nutzt `nc localhost 3310`; je nach Host-/nc-Variante
       # kann `localhost` trotz laufendem clamd unzuverlaessig sein. Direkt IPv4
       # pingen, passend zur App-Konfiguration (CLAMAV_HOST=clamav, Port 3310).
-      test: ["CMD-SHELL", "echo PING | nc 127.0.0.1 3310 | grep -qx PONG"]
+      test: ['CMD-SHELL', 'echo PING | nc 127.0.0.1 3310 | grep -qx PONG']
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 120s   # ClamAV braucht beim Erststart lange für DB-Download
+      start_period: 120s # ClamAV braucht beim Erststart lange für DB-Download
 
 volumes:
   postgres_data:

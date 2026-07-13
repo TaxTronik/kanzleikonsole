@@ -692,17 +692,17 @@ model DsgvoRequest {
 }
 
 model BackupRecord {
-  id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId   String       @map("tenant_id") @db.Uuid
-  startedAt  DateTime     @default(now()) @map("started_at")
-  finishedAt DateTime?    @map("finished_at")
-  status     BackupStatus @default(RUNNING)
-  sizeBytes  BigInt?      @map("size_bytes")
-  bucket     String?
-  key        String?
-  sha256     Bytes?
-  errorMsg   String?      @map("error_msg")
-  tenant     Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id                    String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId              String       @map("tenant_id") @db.Uuid
+  startedAt             DateTime     @default(now()) @map("started_at")
+  finishedAt            DateTime?    @map("finished_at")
+  status                BackupStatus @default(RUNNING)
+  sizeBytes             BigInt?      @map("size_bytes")
+  bucket                String?
+  key                   String?
+  sha256                Bytes?
+  errorMsg              String?      @map("error_msg")
+  tenant                Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, startedAt])
   @@index([tenantId, status])
@@ -1163,6 +1163,7 @@ model DocumentVersion {
   versionNo       Int       @map("version_no")
   storageBucket   String    @map("storage_bucket")
   storageKey      String    @map("storage_key")
+  storageVersionId String?  @map("storage_version_id")
   sha256          Bytes
   sizeBytes       BigInt    @map("size_bytes")
   immutable       Boolean   @default(false)

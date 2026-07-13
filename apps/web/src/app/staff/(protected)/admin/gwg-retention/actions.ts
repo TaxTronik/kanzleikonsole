@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { Prisma } from '@taxtronik/db/prisma-client';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
-import { deleteObject } from '@taxtronik/storage';
+import { deleteObjectVersion } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
 import { gwgDocumentEffectiveStart, isGwgDeletionDue } from '@/server/gwg/retention';
 import {
@@ -65,7 +65,14 @@ export async function confirmGwgDeletionAction(input: {
             gwgCheck: { select: { status: true, createdAt: true, verifiedAt: true } },
           },
         },
-        versions: { select: { id: true, storageBucket: true, storageKey: true } },
+        versions: {
+          select: {
+            id: true,
+            storageBucket: true,
+            storageKey: true,
+            storageVersionId: true,
+          },
+        },
       },
     });
     if (!document) return { ok: false as const, error: 'GwG-Beleg nicht gefunden.' };
@@ -151,7 +158,14 @@ export async function confirmGwgDeletionAction(input: {
         deletedAt: null,
       },
       select: {
-        versions: { select: { id: true, storageBucket: true, storageKey: true } },
+        versions: {
+          select: {
+            id: true,
+            storageBucket: true,
+            storageKey: true,
+            storageVersionId: true,
+          },
+        },
       },
     }),
   );
@@ -164,7 +178,20 @@ export async function confirmGwgDeletionAction(input: {
 
   try {
     for (const version of claimed.versions) {
-      await deleteObject(version.storageBucket, version.storageKey);
+      if (!version.storageVersionId) {
+        throw new Error(
+          `STORAGE_VERSION_ID_MISSING: DocumentVersion ${version.id} kann nicht physisch verifiziert gelöscht werden.`,
+        );
+      }
+      await deleteObjectVersion(
+        version.storageBucket,
+        version.storageKey,
+        version.storageVersionId,
+        // Ausschließlich dieser doppelt fristgeprüfte und atomar geclaimte
+        // Fachpfad darf den GOVERNANCE-Lock am tatsächlichen gesetzlichen
+        // Fristende übersteuern. Alle übrigen Löschpfade bleiben ohne Bypass.
+        { bypassGovernanceRetention: true },
+      );
     }
   } catch (error) {
     await withTenantContext(ctx, (tx) =>

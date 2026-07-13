@@ -1,9 +1,15 @@
 # TCMS nach IDW PS 980: Einordnung, Fähigkeiten-Mapping und Teilbereich Organschaft
 
-Arbeitsstand: 2026-06-10. Bezugsrahmen ist der IDW PS 980 n.F. (09.2022);
+Arbeitsstand: 2026-07-13. Bezugsrahmen ist der IDW PS 980 n.F. (09.2022);
 alle Tz.-Angaben verweisen auf diesen Standard. Fachliche Grundlage des
 Organschafts-Teils: Koxha, Steuerartenübergreifende Risikosteuerung der
 Organschaft, DStR (im Erscheinen).
+
+> **Standabgrenzung:** Abschnitt 2 beschreibt den implementierten allgemeinen
+> Subsumtions-/TCMS-Workspace. Abschnitt 3 ist dagegen ein fachliches
+> **Zielbild** für einen spezialisierten Organschafts-Kontrollkreis. Die dort
+> genannten `Organschaft*`-Modelle, Kontrollzyklen und das fünfstufige
+> Assessment sind nicht Bestandteil des aktuellen Datenmodells oder der UI.
 
 ## 1. Einordnung: Was geprüft wird — und was TaxTronik dabei ist
 
@@ -28,15 +34,15 @@ den gesamten Wirksamkeitszeitraum.
 
 ## 2. Mapping: Grundelemente (vgl. Tz. 27) ↔ TaxTronik-Bausteine
 
-| Grundelement | Was der Standard erwartet (sinngemäß) | TaxTronik heute |
-|---|---|---|
-| Compliance-Kultur | Grundhaltung des Managements, Verankerung der Regelbeachtung | Organisatorisch, nicht Software. Unterstützend: erzwungene Vier-Augen-Prinzipien (Urlaubsentscheidung, Katalog-Review), Festschreibungs- und GwG-Schranken, die sich auch von Admins nicht umgehen lassen |
-| Compliance-Ziele | Festlegung der Regelungsbereiche und einzuhaltenden Regeln | Modul-/Mandantenkonfiguration je Tenant; Risiko-/Normenkatalog der Signal-Engine mit auditiertem Freigabe-Workflow |
-| Compliance-Risiken | Systematische Identifikation und Bewertung, inkl. Interdependenzen | Subsumtions-Workspace (deterministisch + semantisch + LLM, on-prem), Governance-Matrix je Markierung; **Lücke:** kein strukturiertes Risikoinventar mit Brutto-/Netto-Logik je Mandantenstruktur (→ Abschnitt 3) |
-| Compliance-Programm | Regelungen zur Risikobegrenzung inkl. Konsequenzen bei Verstößen, dokumentiert | Workflows/Vorlagen, Anforderungen mit Fristen, Steuertermin-Engine, GoBD-Festschreibung, DB-erzwungene Schranken; Verfahrensdokumentation auf Knopfdruck aus dem IST-Zustand |
-| Compliance-Organisation | Klare Rollen/Verantwortlichkeiten, Ressourcen, dokumentiert | Rollen + granulare Einzelrechte (iter87, auditiert), Mandanten-Zuständigkeiten (Berufsträger/Hauptbearbeiter), Zugriffsmodelle OPEN/RESTRICTED, Vertretungsansicht bei Abwesenheit |
-| Compliance-Kommunikation | Information/Schulung der Betroffenen, Berichtswege für Risiken und Verstöße | Gezielte interne Benachrichtigungen (Entscheidungsträger-Adressierung), Eskalationen (GwG-Fristen, Überfälligkeiten), Portal-Kommunikation; Anwenderdoku versioniert mit der Software |
-| Compliance-Überwachung und Verbesserung | Überwachung auf Basis ausreichender Dokumentation, Mängelberichtswege | Audit-Hash-Chain (RFC-3161-verankert) als manipulationssicheres Protokoll, Chain-Verifikation im Admin-Panel + CI, monatlicher Restore-Drill als Wirksamkeitsnachweis, Testberichte je CI-Lauf |
+| Grundelement                            | Was der Standard erwartet (sinngemäß)                                          | TaxTronik heute                                                                                                                                                                                                  |
+| --------------------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Compliance-Kultur                       | Grundhaltung des Managements, Verankerung der Regelbeachtung                   | Organisatorisch, nicht Software. Unterstützend: erzwungene Vier-Augen-Prinzipien (Urlaubsentscheidung, Katalog-Review), Festschreibungs- und GwG-Schranken, die sich auch von Admins nicht umgehen lassen        |
+| Compliance-Ziele                        | Festlegung der Regelungsbereiche und einzuhaltenden Regeln                     | Modul-/Mandantenkonfiguration je Tenant; Risiko-/Normenkatalog der Signal-Engine mit auditiertem Freigabe-Workflow                                                                                               |
+| Compliance-Risiken                      | Systematische Identifikation und Bewertung, inkl. Interdependenzen             | Subsumtions-Workspace (deterministisch + semantisch + LLM, on-prem), Governance-Matrix je Markierung; **Lücke:** kein strukturiertes Risikoinventar mit Brutto-/Netto-Logik je Mandantenstruktur (→ Abschnitt 3) |
+| Compliance-Programm                     | Regelungen zur Risikobegrenzung inkl. Konsequenzen bei Verstößen, dokumentiert | Workflows/Vorlagen, Anforderungen mit Fristen, Steuertermin-Engine, GoBD-Festschreibung, DB-erzwungene Schranken; Verfahrensdokumentation auf Knopfdruck aus dem IST-Zustand                                     |
+| Compliance-Organisation                 | Klare Rollen/Verantwortlichkeiten, Ressourcen, dokumentiert                    | Rollen + granulare Einzelrechte (iter87, auditiert), Mandanten-Zuständigkeiten (Berufsträger/Hauptbearbeiter), Zugriffsmodelle OPEN/RESTRICTED, Vertretungsansicht bei Abwesenheit                               |
+| Compliance-Kommunikation                | Information/Schulung der Betroffenen, Berichtswege für Risiken und Verstöße    | Gezielte interne Benachrichtigungen (Entscheidungsträger-Adressierung), Eskalationen (GwG-Fristen, Überfälligkeiten), Portal-Kommunikation; Anwenderdoku versioniert mit der Software                            |
+| Compliance-Überwachung und Verbesserung | Überwachung auf Basis ausreichender Dokumentation, Mängelberichtswege          | Audit-Hash-Chain (RFC-3161-verankert) als manipulationsevidentes Protokoll, Chain-Verifikation im Admin-Panel + CI, monatlicher Restore-Drill als Wirksamkeitsnachweis, Testberichte je CI-Lauf                  |
 
 Querschnittsbefund: Die Stärken liegen in **Programm, Organisation und
 Überwachung** — dort, wo Software Regelungen erzwingen und Nachweise
@@ -53,12 +59,13 @@ verkettet und überwiegend regelhaft kontrollierbar sind — die methodische
 Grundlage liefert das vierdimensionale Risikomodell nebst fünfstufigem
 Prüfraster von Koxha (DStR, im Erscheinen).
 
-### 3.1 Übersetzung des Modells in Software (Konzept iter88)
+### 3.1 Zielbild für eine Übersetzung des Modells in Software
 
-Kerngedanke der Vorlage: Tatbestandsmerkmale werden zu Prüfpunkten,
+Dieser Abschnitt ist ein nicht implementiertes Fachkonzept. Kerngedanke der
+Vorlage: Tatbestandsmerkmale werden zu Prüfpunkten,
 Fehlerquellen zu Risikosignalen, Governance-Typen zu Prüfzyklen, inhärente
-Restrisiken zu dokumentierten Aufklärungspflichten. Das bildet TaxTronik
-so ab:
+Restrisiken zu dokumentierten Aufklärungspflichten. Eine künftige Umsetzung
+könnte dies wie folgt abbilden:
 
 **Datenmodell**
 
@@ -83,17 +90,18 @@ so ab:
   Entscheidung in der Audit-Hash-Chain.
 
 **Trigger statt Stichtag.** Die kritischen USt-Fehlerquellen verlangen
-anlassbezogene Überwachung. TaxTronik kennt die Auslöser bereits oder kann
-sie melden: Geschäftsführerwechsel (Mandanten-Stammdatenänderung →
+anlassbezogene Überwachung. Ein spezialisierter Kontrollkreis müsste die
+Auslöser aus vorhandenen oder zusätzlich zu erfassenden Daten ableiten:
+Geschäftsführerwechsel (Mandanten-Stammdatenänderung →
 Re-Check organisatorische Eingliederung), Strukturmaßnahmen (neues
 Assessment Pflicht), Insolvenzanzeichen (manueller Trigger + Checkliste).
 Trigger erzeugen gezielte Benachrichtigungen an die fachlich Zuständigen
 (Berufsträger des Organträger-Mandats) und setzen den betroffenen
 Kontrollpunkt auf „prüfen".
 
-**Nachweisführung.** Jede Kontrolle erzeugt einen Audit-Eintrag mit
-Ergebnis; Prüfprotokolle und Risikoaufklärungen liegen als GoBD-archivierte
-Dokumente am Mandanten. Damit entsteht genau die personenunabhängige,
+**Nachweisführung.** In diesem Zielbild erzeugt jede Kontrolle einen
+Audit-Eintrag mit Ergebnis; Prüfprotokolle und Risikoaufklärungen liegen als
+geschützte Dokumente am Mandanten. Damit entstünde die personenunabhängige,
 zeitraumbezogene Dokumentation, die eine Wirksamkeitsprüfung des
 Teilbereichs voraussetzt (vgl. Tz. 16, 25, 61).
 
@@ -108,20 +116,23 @@ Organkreis überschreibbar (mit Begründung, auditiert).
 
 ## 4. Maßnahmenplan
 
-| # | Maßnahme | Status |
-|---|---|---|
-| P1 | Dieses Einordnungs-/Mapping-Dokument | ✅ |
-| P2 | iter88: Datenmodell + Risikoinventar + Netto-Berechnung (reine Funktion + Wahrheitstabellen-Test) | offen |
-| P3 | iter88: Kontrollzyklen (FP-Wiedervorlagen, FF-Trigger, IN-Aufklärungsdokument) + Benachrichtigungen | offen |
-| P4 | iter88: Fünfstufiges Assessment als geführter Ablauf mit Audit-Chain-Anbindung | offen |
-| P5 | Modulbeschreibung + Anwenderdoku-Kapitel, Traceability-Tabelle | offen |
-| P6 | Muster-Baustein „CMS-Beschreibung Teilbereich Organschaft" (Textgerüst, das die Kanzlei je Mandant befüllt — Verantwortung bleibt gem. Tz. 16 bei den gesetzlichen Vertretern) | offen |
+| #   | Maßnahme                                                                                                                                                                       | Status                                  |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------- |
+| P1  | Dieses Einordnungs-/Mapping-Dokument                                                                                                                                           | ✅                                      |
+| P2  | Datenmodell + Risikoinventar + Netto-Berechnung (reine Funktion + Wahrheitstabellen-Test)                                                                                      | Zielbild, nicht implementiert           |
+| P3  | Kontrollzyklen (FP-Wiedervorlagen, FF-Trigger, IN-Aufklärungsdokument) + Benachrichtigungen                                                                                    | Zielbild, nicht implementiert           |
+| P4  | Fünfstufiges Assessment als geführter Ablauf mit Audit-Chain-Anbindung                                                                                                         | Zielbild, nicht implementiert           |
+| P5  | Modulbeschreibung + Anwenderdoku-Kapitel, Traceability-Tabelle                                                                                                                 | erst nach Produktentscheidung/Umsetzung |
+| P6  | Muster-Baustein „CMS-Beschreibung Teilbereich Organschaft" (Textgerüst, das die Kanzlei je Mandant befüllt — Verantwortung bleibt gem. Tz. 16 bei den gesetzlichen Vertretern) | fachliches Backlog                      |
 
 ## 5. Realistische Einschätzung
 
-Für eine Angemessenheitsprüfung des Teilbereichs Organschaft (vgl. Tz. 19)
-liefert TaxTronik nach iter88 die Implementierungs- und Dokumentationsbasis;
-projektbegleitend ist das schon während des Aufbaus prüfbar (vgl. Tz. 20).
+Der aktuelle allgemeine Subsumtions-/TCMS-Workspace liefert noch keine
+vollständige Implementierungs- und Dokumentationsbasis für eine
+Angemessenheitsprüfung des spezialisierten Teilbereichs Organschaft (vgl.
+Tz. 19). Das wäre erst nach fachlicher Produktentscheidung und Umsetzung des
+Zielbilds aus Abschnitt 3 belastbar; projektbegleitend könnte der Aufbau dann
+geprüft werden (vgl. Tz. 20).
 Eine Wirksamkeitsprüfung setzt gelebte Kontrollen über mindestens ein
 halbes Geschäftsjahr voraus (vgl. Tz. 61) — der Nachweiszeitraum beginnt
 also erst mit produktiver Nutzung der Kontrollzyklen. Unverändert gilt:

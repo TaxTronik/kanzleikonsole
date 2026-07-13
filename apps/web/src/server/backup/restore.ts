@@ -45,10 +45,14 @@ function buildPgConnArgs(dbUrl: string): {
 } {
   const u = new URL(dbUrl);
   const args = [
-    '-h', u.hostname,
-    '-p', u.port || '5432',
-    '-U', decodeURIComponent(u.username),
-    '-d', u.pathname.slice(1) || decodeURIComponent(u.username),
+    '-h',
+    u.hostname,
+    '-p',
+    u.port || '5432',
+    '-U',
+    decodeURIComponent(u.username),
+    '-d',
+    u.pathname.slice(1) || decodeURIComponent(u.username),
   ];
   const sslmode = u.searchParams.get('sslmode');
   const e: Record<string, string> = {
@@ -71,7 +75,10 @@ interface CliArgs {
 function parseArgs(): CliArgs {
   const argv = process.argv.slice(2);
   const out: CliArgs = {
-    list: false, latest: false, confirmOverwrite: false, smokeTest: true,
+    list: false,
+    latest: false,
+    confirmOverwrite: false,
+    smokeTest: true,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -191,6 +198,43 @@ async function targetIsEmpty(targetUrl: string): Promise<boolean> {
   }
 }
 
+/**
+ * ACLs/REVOKEs sind Teil des Backups. PostgreSQL kann sie nur einspielen,
+ * wenn die referenzierte App-Rolle clusterweit bereits existiert. Der
+ * Operator-Wrapper synchronisiert sie aus der .env; direkte CLI-Aufrufe
+ * erhalten hier einen klaren Fehler statt eines halben Restore-Versuchs.
+ */
+async function assertRestoreRolesPresent(targetUrl: string): Promise<void> {
+  const probe = new PrismaClient({ adapter: createPostgresAdapter(targetUrl) });
+  try {
+    const rows = await probe.$queryRaw<{ present: boolean; safe: boolean }[]>`
+      SELECT
+        EXISTS (
+          SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'taxtronik_app'
+        ) AS present,
+        EXISTS (
+          SELECT 1
+            FROM pg_catalog.pg_roles
+           WHERE rolname = 'taxtronik_app'
+             AND NOT rolsuper
+             AND NOT rolcreatedb
+             AND NOT rolcreaterole
+             AND NOT rolreplication
+             AND NOT rolbypassrls
+        ) AS safe
+    `;
+    if (!rows[0]?.present || !rows[0]?.safe) {
+      throw new Error(
+        'Restore-Voraussetzung fehlt: PostgreSQL-Rolle taxtronik_app existiert nicht ' +
+          'oder besitzt unzulässige Clusterrechte. Zuerst ./taxtronik restore verwenden ' +
+          'oder die Rolle aus der .env sicher bootstrapen.',
+      );
+    }
+  } finally {
+    await probe.$disconnect();
+  }
+}
+
 async function runPgRestore(filePath: string, targetUrl: string): Promise<void> {
   // P-2: Passwort via PGPASSWORD, nicht via --dbname=postgresql://user:pw@…
   const connArgs = buildPgConnArgs(targetUrl);
@@ -203,7 +247,6 @@ async function runPgRestore(filePath: string, targetUrl: string): Promise<void> 
     '--clean',
     '--if-exists',
     '--no-owner',
-    '--no-privileges',
     '--single-transaction',
     '--exit-on-error',
     ...connArgs.args,
@@ -215,13 +258,19 @@ async function runPgRestore(filePath: string, targetUrl: string): Promise<void> 
     env: { ...process.env, ...connArgs.env },
   });
   let stderr = '';
-  child.stderr.on('data', (c: Buffer) => { stderr += c.toString('utf8'); });
-  child.stdout.on('data', () => { /* swallow */ });
+  child.stderr.on('data', (c: Buffer) => {
+    stderr += c.toString('utf8');
+  });
+  child.stdout.on('data', () => {
+    /* swallow */
+  });
   // 'error' abfangen: bei Startfehlern (ENOENT etc.) feuert 'exit' nie —
   // ohne Listener wäre das eine uncaught exception plus ein ewig hängendes await.
   const code: number = await new Promise((res, rej) => {
     child.on('exit', (c) => res(c ?? -1));
-    child.on('error', (err) => rej(new Error(`pg_restore konnte nicht gestartet werden: ${err.message}`)));
+    child.on('error', (err) =>
+      rej(new Error(`pg_restore konnte nicht gestartet werden: ${err.message}`)),
+    );
   });
   if (code !== 0) {
     throw new Error(`pg_restore exit ${code}: ${stderr.slice(0, 2000)}`);
@@ -233,7 +282,9 @@ async function smokeTest(targetUrl: string): Promise<void> {
   try {
     const tenants = await probe.tenant.count();
     const audits = await probe.auditLog.count();
-    process.stdout.write(`  Smoke-Test: ${tenants} Tenants, ${audits} Audit-Einträge erreichbar.\n`);
+    process.stdout.write(
+      `  Smoke-Test: ${tenants} Tenants, ${audits} Audit-Einträge erreichbar.\n`,
+    );
     // Hash-Chain stichprobenartig prüfen — letzten Eintrag pro Tenant
     if (tenants > 0 && audits > 0) {
       const sample = await probe.auditLog.findFirst({
@@ -241,7 +292,9 @@ async function smokeTest(targetUrl: string): Promise<void> {
         select: { id: true, prevHash: true, thisHash: true },
       });
       if (sample) {
-        process.stdout.write(`  Letzter Audit-Eintrag #${String(sample.id)} mit Hash ${Buffer.from(sample.thisHash).toString('hex').slice(0, 16)}…\n`);
+        process.stdout.write(
+          `  Letzter Audit-Eintrag #${String(sample.id)} mit Hash ${Buffer.from(sample.thisHash).toString('hex').slice(0, 16)}…\n`,
+        );
       }
     }
   } finally {
@@ -260,7 +313,9 @@ async function main() {
     }
     process.stdout.write(`Verfügbare Backups (${backups.length}, neueste zuerst):\n`);
     for (const b of backups.slice(0, 50)) {
-      process.stdout.write(`  ${b.modified.toISOString()}  ${(b.size / 1024 / 1024).toFixed(2)} MB  ${b.key}\n`);
+      process.stdout.write(
+        `  ${b.modified.toISOString()}  ${(b.size / 1024 / 1024).toFixed(2)} MB  ${b.key}\n`,
+      );
     }
     process.exit(0);
   }
@@ -268,7 +323,9 @@ async function main() {
   // --file und --key/--latest schließen sich gegenseitig aus: entweder lokale
   // Datei-Quelle (kein S3, kein Record) ODER S3-Objekt (mit Hash-Verifikation).
   if (args.file && (args.key || args.latest)) {
-    process.stderr.write('--file und --key/--latest schließen sich aus. Bitte nur eine Quelle angeben.\n');
+    process.stderr.write(
+      '--file und --key/--latest schließen sich aus. Bitte nur eine Quelle angeben.\n',
+    );
     process.exit(1);
   }
 
@@ -277,6 +334,8 @@ async function main() {
     process.stderr.write(`Kein DATABASE_URL und kein --target-url angegeben.\n`);
     process.exit(1);
   }
+
+  await assertRestoreRolesPresent(targetUrl);
 
   // Quelle bestimmen: entweder lokale Datei oder S3-Objekt.
   // `path`     = Pfad der Dump-Datei, die pg_restore liest.
@@ -315,7 +374,9 @@ async function main() {
 
     process.stdout.write(`Lade Backup ${key} aus dem Object-Store …\n`);
     const dl = await fetchToTempFile(key);
-    process.stdout.write(`  ${(dl.size / 1024 / 1024).toFixed(2)} MB, sha256=${dl.sha.slice(0, 16)}…\n`);
+    process.stdout.write(
+      `  ${(dl.size / 1024 / 1024).toFixed(2)} MB, sha256=${dl.sha.slice(0, 16)}…\n`,
+    );
 
     // P-6: Tampering-Schutz. BackupRecord enthält den am Schreibzeitpunkt
     // berechneten Hash; weicht der heruntergeladene davon ab, hat jemand
@@ -323,10 +384,14 @@ async function main() {
     const expectedSha = await getExpectedSha(key);
     if (expectedSha) {
       if (expectedSha !== dl.sha) {
-        try { unlinkSync(dl.path); } catch { console.warn('[restore] Temp-Datei konnte nicht gelöscht werden:', dl.path); }
+        try {
+          unlinkSync(dl.path);
+        } catch {
+          console.warn('[restore] Temp-Datei konnte nicht gelöscht werden:', dl.path);
+        }
         throw new Error(
           `Hash-Mismatch: erwartet ${expectedSha.slice(0, 16)}…, gelesen ${dl.sha.slice(0, 16)}…. ` +
-          'Backup wurde nach Erstellung verändert (Tampering oder Storage-Defekt). Restore abgebrochen.',
+            'Backup wurde nach Erstellung verändert (Tampering oder Storage-Defekt). Restore abgebrochen.',
         );
       }
       process.stdout.write(`  Hash gegen BackupRecord verifiziert ✓\n`);
@@ -341,10 +406,16 @@ async function main() {
 
   const empty = await targetIsEmpty(targetUrl);
   if (!empty && !args.confirmOverwrite) {
-    if (cleanup) { try { unlinkSync(path); } catch { console.warn('[restore] Temp-Datei konnte nicht gelöscht werden:', path); } }
+    if (cleanup) {
+      try {
+        unlinkSync(path);
+      } catch {
+        console.warn('[restore] Temp-Datei konnte nicht gelöscht werden:', path);
+      }
+    }
     process.stderr.write(
       'ZIEL-DB IST NICHT LEER. Restore würde bestehende Tabellen droppen+ersetzen.\n' +
-      'Bitte erneut mit --confirm-overwrite aufrufen, wenn das gewollt ist.\n',
+        'Bitte erneut mit --confirm-overwrite aufrufen, wenn das gewollt ist.\n',
     );
     process.exit(1);
   }
@@ -355,7 +426,13 @@ async function main() {
   } finally {
     // Nur heruntergeladene Temp-Dateien löschen — die --file-Quelle gehört dem
     // Anwender und bleibt erhalten.
-    if (cleanup) { try { unlinkSync(path); } catch { console.warn('[restore] Temp-Datei konnte nicht gelöscht werden:', path); } }
+    if (cleanup) {
+      try {
+        unlinkSync(path);
+      } catch {
+        console.warn('[restore] Temp-Datei konnte nicht gelöscht werden:', path);
+      }
+    }
   }
   process.stdout.write(`✓ Restore abgeschlossen.\n`);
 
@@ -365,9 +442,9 @@ async function main() {
 
   process.stdout.write(
     '\nNächste Schritte:\n' +
-    '  1. pnpm verify:chain    (Hash-Chain + Archive prüfen)\n' +
-    '  2. App neu starten      (Caches leeren)\n' +
-    '  3. Manuell anmelden + Smoke-Test der wichtigsten Module\n',
+      '  1. pnpm verify:chain    (Hash-Chain + Archive prüfen)\n' +
+      '  2. App neu starten      (Caches leeren)\n' +
+      '  3. Manuell anmelden + Smoke-Test der wichtigsten Module\n',
   );
 }
 

@@ -25,11 +25,7 @@ import { DeleteObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { Worker } from 'bullmq';
 import { env } from '@taxtronik/config';
-import {
-  EvidenceService,
-  LocalTimestampAdapter,
-  Rfc3161HttpAdapter,
-} from '@taxtronik/evidence';
+import { EvidenceService, LocalTimestampAdapter, Rfc3161HttpAdapter } from '@taxtronik/evidence';
 import { connection, type ChecksJob } from '../queues';
 import { prismaOwner } from '../prisma-owner';
 import { pgConnArgs, prismaBytes } from '../pg-conn';
@@ -80,7 +76,9 @@ async function markAll(
 /** Ab diesem Alter gilt ein RUNNING-Record als verwaist (Hard-Crash/OOM). */
 const STALE_RUNNING_MS = 6 * 60 * 60 * 1000;
 
-export async function runScheduledBackup(now: Date = new Date()): Promise<{ ok: boolean; key?: string; error?: string }> {
+export async function runScheduledBackup(
+  now: Date = new Date(),
+): Promise<{ ok: boolean; key?: string; error?: string }> {
   const dumpUrl = env.DATABASE_URL;
   const tenants = await prismaOwner.tenant.findMany({ select: { id: true } });
   if (tenants.length === 0) return { ok: true }; // nichts zu sichern
@@ -93,14 +91,25 @@ export async function runScheduledBackup(now: Date = new Date()): Promise<{ ok: 
   const staleBefore = new Date(now.getTime() - STALE_RUNNING_MS);
   const reconciled = await prismaOwner.backupRecord.updateMany({
     where: { status: 'RUNNING', startedAt: { lt: staleBefore } },
-    data: { status: 'FAILED', finishedAt: now, errorMsg: 'Abgebrochen (verwaister RUNNING-Record, vermutlich Prozess-Crash).' },
+    data: {
+      status: 'FAILED',
+      finishedAt: now,
+      errorMsg: 'Abgebrochen (verwaister RUNNING-Record, vermutlich Prozess-Crash).',
+    },
   });
   if (reconciled.count > 0) {
-    log.warn({ count: reconciled.count }, 'backup-run: verwaiste RUNNING-Records auf FAILED gesetzt');
+    log.warn(
+      { count: reconciled.count },
+      'backup-run: verwaiste RUNNING-Records auf FAILED gesetzt',
+    );
   }
 
   const records: BackupRecordRef[] = await Promise.all(
-    tenants.map((t) => prismaOwner.backupRecord.create({ data: { tenantId: t.id, status: 'RUNNING' } })),
+    tenants.map((t) =>
+      prismaOwner.backupRecord.create({
+        data: { tenantId: t.id, status: 'RUNNING' },
+      }),
+    ),
   );
 
   const yyyy = now.getUTCFullYear();
@@ -121,20 +130,33 @@ export async function runScheduledBackup(now: Date = new Date()): Promise<{ ok: 
     conn = pgConnArgs(dumpUrl);
   } catch (e) {
     const err = `DATABASE_URL nicht parsebar: ${(e as Error).message}`;
-    await markAll(records, { status: 'FAILED', finishedAt: new Date(), errorMsg: err }, { status: 'FAILED', error: err });
+    await markAll(
+      records,
+      { status: 'FAILED', finishedAt: new Date(), errorMsg: err },
+      { status: 'FAILED', error: err },
+    );
     return { ok: false, error: err };
   }
 
-  const args = ['--format=custom', '--no-owner', '--no-privileges', '--compress=6', ...conn.args];
+  // ACLs sind Teil des sicherheitsrelevanten Datenbankzustands: insbesondere
+  // REVOKEs auf Audit-Tabellen und SECURITY-DEFINER-Funktionen sowie die
+  // gezielten Grants an taxtronik_app. Nur Ownership wird portabel gemacht;
+  // Privilegien muessen im Dump erhalten bleiben.
+  const args = ['--format=custom', '--no-owner', '--compress=6', ...conn.args];
   const pgDumpPath = process.env['PG_DUMP_PATH'] ?? 'pg_dump';
   const child = spawn(pgDumpPath, args, { env: { ...process.env, ...conn.env } });
 
   const hash = createHash('sha256');
   let sizeBytes = 0;
   let stderrBuf = '';
-  child.stderr.on('data', (c: Buffer) => { stderrBuf += c.toString('utf8'); });
+  child.stderr.on('data', (c: Buffer) => {
+    stderrBuf += c.toString('utf8');
+  });
   const body = new PassThrough();
-  child.stdout.on('data', (c: Buffer) => { hash.update(c); sizeBytes += c.length; });
+  child.stdout.on('data', (c: Buffer) => {
+    hash.update(c);
+    sizeBytes += c.length;
+  });
   child.stdout.pipe(body);
 
   // Ein Spawn-Fehler (ENOENT: pg_dump nicht im PATH, falscher PG_DUMP_PATH,
@@ -146,13 +168,21 @@ export async function runScheduledBackup(now: Date = new Date()): Promise<{ ok: 
   // mit -1, damit keine unbehandelte Promise-Rejection entsteht.
   const exit = new Promise<number>((resolve) => {
     child.on('exit', (code) => resolve(code ?? -1));
-    child.on('error', (e) => { body.destroy(e as Error); resolve(-1); });
+    child.on('error', (e) => {
+      body.destroy(e as Error);
+      resolve(-1);
+    });
   });
 
   try {
     const upload = new Upload({
       client: s3,
-      params: { Bucket: BACKUP_BUCKET, Key: key, Body: body, ContentType: 'application/octet-stream' },
+      params: {
+        Bucket: BACKUP_BUCKET,
+        Key: key,
+        Body: body,
+        ContentType: 'application/octet-stream',
+      },
       queueSize: 4,
       partSize: 5 * 1024 * 1024,
     });
@@ -167,15 +197,28 @@ export async function runScheduledBackup(now: Date = new Date()): Promise<{ ok: 
     if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM');
     if (!body.destroyed) body.destroy();
     // Verwaistes (evtl. unvollständiges) Objekt best-effort entfernen.
-    await s3.send(new DeleteObjectCommand({ Bucket: BACKUP_BUCKET, Key: key })).catch(() => undefined);
-    await markAll(records, { status: 'FAILED', finishedAt: new Date(), errorMsg: err }, { status: 'FAILED', error: err });
+    await s3
+      .send(new DeleteObjectCommand({ Bucket: BACKUP_BUCKET, Key: key }))
+      .catch(() => undefined);
+    await markAll(
+      records,
+      { status: 'FAILED', finishedAt: new Date(), errorMsg: err },
+      { status: 'FAILED', error: err },
+    );
     return { ok: false, error: err };
   }
 
   const sha = hash.digest();
   await markAll(
     records,
-    { status: 'SUCCESS', finishedAt: new Date(), sizeBytes: BigInt(sizeBytes), bucket: BACKUP_BUCKET, key, sha256: prismaBytes(sha) },
+    {
+      status: 'SUCCESS',
+      finishedAt: new Date(),
+      sizeBytes: BigInt(sizeBytes),
+      bucket: BACKUP_BUCKET,
+      key,
+      sha256: prismaBytes(sha),
+    },
     { status: 'SUCCESS', sizeBytes, bucket: BACKUP_BUCKET, key, sha256: sha.toString('hex') },
   );
   log.info({ key, sizeBytes }, 'backup-run: Backup erfolgreich nach S3 gestreamt');

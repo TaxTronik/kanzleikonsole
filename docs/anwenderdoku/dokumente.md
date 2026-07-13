@@ -21,8 +21,16 @@ Dokumenten technisch unveränderbar (Schreibschutz auf Speicherebene).
 | GwG         | Identifizierungs-/Nachweisdokumente nach Geldwäschegesetz; geschützt, aber nach § 8 Abs. 4 GwG fristgerecht zu **vernichten**                 | grundsätzlich 5 Jahre ab dem gesetzlichen Fristbeginn; andere Gesetze können länger verpflichten, spätestens nach 10 Jahren Vernichtung |
 | Ohne        | alle übrigen Unterlagen                                                                                                                       | keine erzwungene Frist                                                                                                                  |
 
-Eine **Herabstufung** der Schutzstufe ist nicht möglich; eine Höherstufung
-(z. B. „Ohne" → „GoBD") ist jederzeit möglich.
+Eine **Herabstufung** der Schutzstufe ist nicht möglich; eine Höherstufung aus
+„Ohne" (z. B. „Ohne" → „GoBD") ist möglich. GwG-Nachweise können nicht nach
+GoBD umklassifiziert werden, weil ihre eigenständige gesetzliche
+Vernichtungsfrist und Review-Queue erhalten bleiben müssen. Falls dieselben
+Bytes zusätzlich GoBD-relevant sind, legen Sie dafür ein separates Dokument an.
+
+Bei den mitgelieferten GoBD-Typen gelten aktuell: **Vertrag 6 Jahre**,
+**Rechnung/Buchungsbeleg 8 Jahre** und **Steuerunterlage 10 Jahre**. Ob eine
+Unterlage im Einzelfall anders einzuordnen oder länger aufzubewahren ist,
+bleibt fachlich zu prüfen.
 
 **Virenscan.** Jede hochgeladene Datei wird **vor** der Annahme auf
 Schadsoftware geprüft. Eine auffällige Datei wird abgewiesen und nirgends
@@ -85,9 +93,9 @@ Prüfprotokoll festgehalten.
 ### Löschen und Papierkorb
 
 „Löschen" blendet ein Dokument aus (Papierkorb-Ansicht über den Filter
-„Gelöschte anzeigen"), die Datei bleibt revisionssicher aufbewahrt und ist
-wiederherstellbar. Ein endgültiges Vernichten gibt es nur im gesetzlich
-geregelten GwG-Verfahren (Abschnitt 4).
+„Gelöschte anzeigen"), die Datei bleibt unter dem konfigurierten Object-Lock
+aufbewahrt und ist wiederherstellbar. Ein endgültiges Vernichten gibt es nur
+im gesetzlich geregelten GwG-Verfahren (Abschnitt 4).
 
 ## 3. Datei-Typen verwalten (Administration)
 

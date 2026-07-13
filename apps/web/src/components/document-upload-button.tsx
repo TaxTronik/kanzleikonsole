@@ -26,7 +26,9 @@ interface DocType {
 const tierHint = (type: DocType): string =>
   type.tier === 'NONE'
     ? ''
-    : `${type.tier === 'GOBD' ? 'GoBD' : 'GwG'} · ${type.retentionYears ?? '?'} Jahre unveränderbar (Object-Lock)`;
+    : type.tier === 'GOBD'
+      ? `GoBD · ${type.retentionYears ?? '?'} Jahre COMPLIANCE-Lock`
+      : 'GwG · GOVERNANCE-Schutz; Löschfrist wird fachlich geprüft';
 
 export function DocumentUploadButton({
   clientId,

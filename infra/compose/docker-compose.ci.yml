@@ -26,7 +26,9 @@ services:
       context: ../scripts
       dockerfile_inline: |
         FROM chrislusf/seaweedfs:latest@sha256:e14ad400e28c811fe8426dc08abf248ec722b9f017713290a9b84a54557f45c2
-        COPY seaweedfs-s3.generated.json /etc/seaweedfs/s3.json
+        COPY seaweedfs-s3.template.json /etc/seaweedfs/s3.template.json
+        COPY seaweedfs-entrypoint.sh /usr/local/bin/taxtronik-seaweedfs-entrypoint.sh
+        RUN chmod 0555 /usr/local/bin/taxtronik-seaweedfs-entrypoint.sh
     image: taxtronik-seaweedfs-ci:latest
     volumes: !override
       - seaweed_data:/data

@@ -72,22 +72,71 @@ Vor jedem Update:
 ./taxtronik backup
 ```
 
+Das manuell gestartete Backup ist der zusätzliche Betreiber-Nachweis. Auch
+`./taxtronik update` selbst erzwingt unmittelbar vor jeder Codeänderung ein
+weiteres Backup mit dem noch installierten Release.
+
 `./taxtronik backup` schreibt den Dump zuerst lokal unter `backups/` (bzw.
 `BACKUP_HOST_DIR`/`BACKUP_LOCAL_DIR`) und lädt dieselbe Datei danach in den
-S3-Backup-Bucket. Der gleiche Lauf kann in der Admin-Übersicht per Browser
-gestartet werden; erfolgreiche `BackupRecord`-Einträge bieten getrennte
-Downloads für die lokale Kopie und das S3-Objekt.
+S3-Backup-Bucket. Zusätzlich streamt der Worker täglich um 01:00 UTC einen
+Dump direkt nach S3; dieser Tagesjob erzeugt keine lokale Kopie. Der manuelle
+Lauf kann in einer Single-Tenant-Installation auch in der Admin-Übersicht
+gestartet werden. Vollständige Datenbank-Dumps sind dort absichtlich nicht
+herunterladbar; Download und Restore bleiben Operator-Aufgaben am Host/S3.
+
+Die normalen DB-Dumps aus `backup`/Tagesjob werden von TaxTronik nicht selbst
+verschlüsselt. `backups` hat eine 90-Tage-Lifecycle-Regel, aber keinen Object
+Lock. Für einen verschlüsselten, zusammenhängenden Wiederanlaufpunkt dient
+deshalb `backup-full` (unten); DB-only-Sicherungen benötigen weiterhin ein
+verschlüsseltes Betreiber-Dateisystem bzw. extern verschlüsselte Replikation.
 
 Die Kanzleidateien selbst liegen nicht in Postgres, sondern in SeaweedFS.
 Zusätzlich sichern:
 
 ```bash
 ./taxtronik backup-files   # Datei-Buckets nach backups/object-store/<timestamp>
-./taxtronik backup-full    # Datenbank + Datei-Byte-Export
+./taxtronik backup-full    # konsistentes, verschlüsseltes und signiertes Full-Backup
 ```
 
-Für volle Object-Lock-/Versioning-Treue ist zusätzlich SeaweedFS-Replikation
-oder ein Volume-Snapshot nötig (siehe Disaster-Recovery-Runbook).
+`backup-full` ist bewusst ein Wartungsfenster: Ein globaler Lock verhindert
+parallele Läufe; App, Worker und n8n werden vor DB-Dumps und Object-Export
+gestoppt. Anschließend werden `seaweed_data`, `redis_data` und `n8n_data` cold
+gesichert. Erst nach gemeinsamer age-Verschlüsselung, Löschen des
+Klartext-Stagings und Ed25519-Signatur/SHA-256-Inventar starten die
+Schreibdienste wieder. Ein Kapazitäts-Preflight rechnet konservativ ohne
+Kompressionsgewinn. Abbruchsignale lösen Wiederanlauf und Staging-Cleanup aus;
+ein Host-Crash muss dennoch extern überwacht werden.
+
+Einrichten (Private Keys/age-Identity getrennt bzw. offline verwahren):
+
+```bash
+node scripts/backup/manifest.mjs generate-key --out-dir /sicher/offline
+# BACKUP_AGE_RECIPIENT, BACKUP_MANIFEST_PRIVATE_KEY_FILE und
+# BACKUP_MANIFEST_PUBLIC_KEY_FILE gemäß .env.example setzen
+```
+
+Ist ein getrennt administriertes `BACKUP_OFFSITE_*`-Ziel konfiguriert, lädt
+`backup-full` die drei Artefakte automatisch hoch. Zulässig sind nur HTTPS,
+Bucket-Versioning und Default Object Lock **COMPLIANCE** mit mindestens
+`BACKUP_OFFSITE_MIN_RETENTION_DAYS` (Default 90). Größe, Retention und
+VersionId jedes Objekts werden geprüft und in einem lokalen Offsite-Receipt
+festgehalten. Mit `BACKUP_OFFSITE_REQUIRED=true` gilt eine nur lokale Sicherung
+als Fehler.
+
+Verifikation und Entschlüsselung funktionieren auf einem frischen
+Restore-System auch ohne vorhandene Produktiv-`.env`:
+
+```bash
+./taxtronik backup-verify backups/full/<id> /offline/backup-manifest-public.pem
+./taxtronik backup-decrypt backups/full/<id> /restore/staging \
+  /offline/age-identity.txt /offline/backup-manifest-public.pem
+```
+
+`backup-files` bleibt eine praktische Byte-Kopie, bewahrt für sich aber keine
+S3-Version-IDs, Delete Marker oder Retention-Metadaten. Im Full-Backup liefert
+der zusätzliche Cold-Snapshot des kompletten SeaweedFS-Volumes die
+versionstreue Quelle; ihr tatsächlicher Wiederanlauf muss im isolierten
+Vollsystem-Drill nach dem DR-Runbook geprüft werden.
 
 Restore läuft über den Operator-Wrapper:
 
@@ -103,9 +152,22 @@ Dann:
 ./taxtronik update
 ```
 
-Das Update zieht Code per `git merge --ff-only`, legt vor Migrationen ein
-Backup an, baut oder zieht Images, migriert und startet neu. Kein
-`git reset --hard`: Lokale Abweichungen müssen bewusst aufgelöst werden.
+Das Update löst im Registry-Modus zuerst das Ed25519-signierte Manifest für die
+Zielversion auf. Erst nach dem Pflichtbackup mit altem Checkout wird exakt der
+annotierte `vX.Y.Z`-Tag geholt und per `ff-only` auf den signierten Commit
+gebracht. Web und Worker werden als getrennte `image:tag@sha256:…`-Referenzen
+gezogen; OCI-Version/Revision müssen zum Manifest passen. Mutable Tags oder ein
+abweichender Checkout werden verweigert. Danach folgen Migration, Start,
+strikter Health-Smoke (`degraded` ist Fehler) und Deploy-Readiness ohne
+Skip-Pfad. Kein `git reset --hard`: Lokale Abweichungen müssen bewusst
+aufgelöst werden.
+
+Die Operator-CLI setzt für neu erzeugte Dateien `umask 077` und härtet `.env`
+auf Modus `0600`. Eine hostseitige `seaweedfs-s3.generated.json` gibt es nicht
+mehr: SeaweedFS rendert die Konfiguration beim Containerstart flüchtig unter
+`/run` als UID 1000 mit Modus `0400`. Historische generierte Dateien werden
+entfernt. Die CLI muss unter dem Dateieigentümer des Deployment-Checkouts
+ausgeführt werden.
 
 ## SMTP
 
@@ -164,14 +226,14 @@ Bei Fehlern:
 
 ## Incident-Kurzpfad
 
-| Signal | Sofortmaßnahme | Danach |
-|---|---|---|
-| Audit-Chain-Bruch | Schreibzugriffe stoppen, Backup sichern | `verify:chain` Report sichern, Ursache isolieren |
-| Restore fehlgeschlagen | Keine weiteren Migrationen | letztes intaktes Backup suchen, `disaster-recovery.md` |
-| SMTP down | Betreiber informieren, Relay prüfen | Test-Mail, Worker-Logs |
-| n8n HMAC invalid | Webhooks pausieren | Secret-/Volume-Abgleich |
-| Speicher fast voll | Builds stoppen, `docker system df` | Build-Cache prune, Log-Rotation prüfen |
-| Verdacht auf Secret-Leak | Sessions invalidieren | [`secret-rotation.md`](secret-rotation.md) |
+| Signal                   | Sofortmaßnahme                          | Danach                                                 |
+| ------------------------ | --------------------------------------- | ------------------------------------------------------ |
+| Audit-Chain-Bruch        | Schreibzugriffe stoppen, Backup sichern | `verify:chain` Report sichern, Ursache isolieren       |
+| Restore fehlgeschlagen   | Keine weiteren Migrationen              | letztes intaktes Backup suchen, `disaster-recovery.md` |
+| SMTP down                | Betreiber informieren, Relay prüfen     | Test-Mail, Worker-Logs                                 |
+| n8n HMAC invalid         | Webhooks pausieren                      | Secret-/Volume-Abgleich                                |
+| Speicher fast voll       | Builds stoppen, `docker system df`      | Build-Cache prune, Log-Rotation prüfen                 |
+| Verdacht auf Secret-Leak | Sessions invalidieren                   | [`secret-rotation.md`](secret-rotation.md)             |
 
 ## Nachweise ablegen
 

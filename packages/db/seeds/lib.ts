@@ -153,9 +153,9 @@ export async function ensureDefaultDocumentTypes(
       sortOrder: 10,
     },
     {
-      name: 'GoBD Vertrag',
+      name: 'Vertrag / Geschäftsbrief',
       tier: 'GOBD',
-      retentionYears: 10,
+      retentionYears: 6,
       classificationKey: 'GOBD_CONTRACT',
       sortOrder: 20,
     },

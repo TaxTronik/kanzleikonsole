@@ -107,6 +107,7 @@ beforeAll(async () => {
       versionNo: 1,
       storageBucket: 'gwg-test',
       storageKey: `gwg-test/${documentId}`,
+      storageVersionId: `version-${documentId}`,
       sha256: Buffer.alloc(32, 1),
       sizeBytes: 42n,
       immutable: true,
@@ -163,6 +164,23 @@ afterAll(async () => {
 });
 
 describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
+  it('erzwingt für jede neue immutable Version eine konkrete Storage-VersionId', async () => {
+    await expect(
+      owner.documentVersion.create({
+        data: {
+          documentId,
+          versionNo: 2,
+          storageBucket: 'gwg-test',
+          storageKey: `gwg-test/${documentId}/missing-storage-version`,
+          sha256: Buffer.alloc(32, 4),
+          sizeBytes: 42n,
+          immutable: true,
+          createdById: staffId,
+        },
+      }),
+    ).rejects.toThrow(/document_version_locked_storage_version_check|check constraint/i);
+  });
+
   it('blockiert direkte Löschung und Funktionsaufruf ohne protokollierte Absicht', async () => {
     await expect(owner.documentVersion.delete({ where: { id: versionId } })).rejects.toThrow();
     await expect(expectDestroyCheckFunction()).rejects.toThrow();
@@ -590,6 +608,7 @@ describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
             versionNo: 1,
             storageBucket: 'gwg-test',
             storageKey: `gwg-test/${document.id}/race`,
+            storageVersionId: `version-${document.id}-race`,
             sha256: Buffer.alloc(32, 9),
             sizeBytes: 42n,
             immutable: true,
@@ -667,6 +686,7 @@ describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
           versionNo: 2,
           storageBucket: 'gwg-test',
           storageKey: `gwg-test/${documentId}/2`,
+          storageVersionId: `version-${documentId}-2`,
           sha256: Buffer.alloc(32, 2),
           sizeBytes: 42n,
           immutable: true,
@@ -706,6 +726,7 @@ describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
           versionNo: 3,
           storageBucket: 'gwg-test',
           storageKey: `gwg-test/${documentId}/3`,
+          storageVersionId: `version-${documentId}-3`,
           sha256: Buffer.alloc(32, 3),
           sizeBytes: 42n,
           immutable: true,

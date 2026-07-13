@@ -52,24 +52,24 @@ verknüpft. Neue Module MÜSSEN vor Merge ihre Invarianten hier eintragen.
 
 Fünf harte Schichten, die ein Angreifer überwinden muss:
 
-| Schicht                | Technologie                                  | Durchbruch-Schutz                                                                                                                               |
-| ---------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Proxy (Middleware)** | Next.js Middleware, Edge Runtime             | Surface-Detection, Rate-Limit-Pre-Check                                                                                                         |
-| **App-Gate**           | `staffActionGuard`, `portalActionGuard`      | RBAC, Object-Gates, `decideStaffGuard`                                                                                                          |
-| **Tenant-Kontext**     | `withTenantContext` (Postgres `SET LOCAL`)   | Session-scoped RLS-Kontext pro Transaction                                                                                                      |
-| **RLS (Datenbank)**    | Postgres `ENABLE + FORCE ROW LEVEL SECURITY` | `taxtronik_app` Role, Policy pro Tabelle                                                                                                        |
-| **Storage**            | SeaweedFS S3 + Object-Lock                   | GoBD typabhängig 6/8/10 J.; GwG grundsätzlich 5 J. plus Prüfung längerer Pflichten und Vernichtung spätestens nach 10 J.; Versioning, Lifecycle |
+| Schicht             | Technologie                                  | Durchbruch-Schutz                                                                                                                               |
+| ------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Proxy**           | Next.js 16 `proxy.ts`                        | Surface-Detection, Session-/Host-Routing                                                                                                        |
+| **App-Gate**        | `staffActionGuard`, `portalActionGuard`      | RBAC, Object-Gates, `decideStaffGuard`                                                                                                          |
+| **Tenant-Kontext**  | `withTenantContext` (Postgres `SET LOCAL`)   | Session-scoped RLS-Kontext pro Transaction                                                                                                      |
+| **RLS (Datenbank)** | Postgres `ENABLE + FORCE ROW LEVEL SECURITY` | `taxtronik_app` Role, Policy pro Tabelle                                                                                                        |
+| **Storage**         | SeaweedFS S3 + Object-Lock                   | GoBD typabhängig 6/8/10 J.; GwG grundsätzlich 5 J. plus Prüfung längerer Pflichten und Vernichtung spätestens nach 10 J.; Versioning, Lifecycle |
 
 **Verteidigung in der Tiefe:** App-Filter UND RLS filtern unabhängig. Ein
 Fehler in einer Schicht wird von der anderen abgefangen.
 
 ## 3. Policy Model
 
-| Entscheidung          | Reine Funktion                     | Property-Based Test                                   |
-| --------------------- | ---------------------------------- | ----------------------------------------------------- |
-| Admin/Permission-Gate | `decideStaffGuard`                 | `staff-action-policy.property.test.ts` (5 Properties) |
-| Mandanten-Zugriff     | `decideClientAccess`               | `access-policy.property.test.ts` (6 Properties)       |
-| RLS-Policy            | Postgres `app.current_tenant_id()` | `rls-cross-tenant.test.ts` (22 Tests)                 |
+| Entscheidung          | Reine Funktion                     | Property-Based Test                    |
+| --------------------- | ---------------------------------- | -------------------------------------- |
+| Admin/Permission-Gate | `decideStaffGuard`                 | `staff-action-policy.property.test.ts` |
+| Mandanten-Zugriff     | `decideClientAccess`               | `access-policy.property.test.ts`       |
+| RLS-Policy            | Postgres `app.current_tenant_id()` | `rls-cross-tenant.test.ts`             |
 
 **Zentralisierungsregel:** Admin-Checks NIE verstreut im Code. ESLint-Regel
 (`no-restricted-syntax`) verbietet `roles?.some(... === 'ADMIN')` — zwingt
@@ -78,17 +78,17 @@ zu `isStaffAdmin(session)`. AST-Guard (`server-action-authz.test.ts`)
 
 ## 4. Test Layers
 
-| Layer                      | Tool                        | Anzahl                                        | Trigger                         |
-| -------------------------- | --------------------------- | --------------------------------------------- | ------------------------------- |
-| **Unit**                   | vitest                      | ~533 (web) + ~70 (packages)                   | Jeder Commit (`turbo run test`) |
-| **Property-Based**         | fast-check                  | 18 Properties                                 | Jeder Commit (in vitest)        |
-| **Operator CLI**           | Bash                        | `doctor`, SMTP, Risk-Layer, Build-Cache-Prune | CI `quality` Job                |
-| **Integration (DB)**       | vitest + Postgres           | ~22 (RLS, Festschreibung, GwG)                | CI `db` Job                     |
-| **E2E Smoke**              | Playwright                  | 1 Spec                                        | CI `e2e-smoke` Job              |
-| **E2E Paranoid (Release)** | Playwright                  | 10 Specs (122 Tests)                          | CI `e2e-paranoid` Job           |
-| **Differential**           | Playwright + Referenz       | 1 Spec                                        | In paranoid Suite               |
-| **Concurrency**            | Playwright + `Promise.all`  | 1 Spec                                        | In paranoid Suite               |
-| **Upload Fuzz**            | Playwright + Negative Cases | 1 Spec                                        | In paranoid Suite               |
+| Layer                      | Tool                        | Umfang                                                         | Trigger                         |
+| -------------------------- | --------------------------- | -------------------------------------------------------------- | ------------------------------- |
+| **Unit**                   | vitest                      | Web, Worker und Packages                                       | Jeder Commit (`turbo run test`) |
+| **Property-Based**         | fast-check                  | Policy-, Hash- und Fachinvarianten                             | Jeder Commit (in vitest)        |
+| **Operator CLI**           | Bash                        | `doctor`, SMTP, Risk-Layer, Build-Cache-Prune                  | CI `quality` Job                |
+| **Integration (DB)**       | vitest + Postgres           | RLS, Festschreibung, GwG und Concurrency                       | CI `db` Job                     |
+| **E2E Smoke**              | Playwright                  | separate öffentliche/authentifizierte Smoke-Suite              | CI `e2e-smoke` Job              |
+| **E2E Paranoid (Release)** | Playwright                  | Auth, Actions, Compliance, RBAC, Differential und Negativfälle | CI `e2e-paranoid` Job           |
+| **Differential**           | Playwright + Referenz       | API-/DB-/Storage-/UI-Invarianten                               | In paranoid Suite               |
+| **Concurrency**            | Playwright + `Promise.all`  | parallele Dokument- und Versionsschreibvorgänge                | In paranoid Suite               |
+| **Upload Fuzz**            | Playwright + Negative Cases | Upload-Validierung, Header- und Origin-Negativfälle            | In paranoid Suite               |
 
 ## 5. Release Gates (CI)
 
@@ -101,7 +101,7 @@ zu `isStaffAdmin(session)`. AST-Guard (`server-action-authz.test.ts`)
 | **Audit-Chain**      | `pnpm verify:chain`                    | Hash-Chain recompute, TSA-Verify, Archive                                                                                       | `db`               |
 | **Secret-Scan**      | `gitleaks detect`                      | Vollständige Git-Historie, Log als Artefakt                                                                                     | `security`         |
 | **Dependency-Audit** | `pnpm audit --prod --audit-level high` | Bekannte Vulnerabilitäten, Log als Artefakt                                                                                     | `security`         |
-| **Paranoid E2E**     | 10 Specs, 122 Tests                    | Auth, RBAC, Tenant-Isolation, Compliance                                                                                        | `e2e-paranoid`     |
+| **Paranoid E2E**     | Playwright-Suite                       | Auth, RBAC, Tenant-Isolation, Compliance                                                                                        | `e2e-paranoid`     |
 | **XRechnung**        | KoSIT Validator                        | Schematron + BR-DE Konformität                                                                                                  | `e-rechnung`       |
 | **Container-Scan**   | Trivy                                  | CRITICAL-with-fix blockiert Release                                                                                             | `release`          |
 | **Backup-Restore**   | pg_dump/pg_restore Roundtrip           | Backup ist wiederherstellbar                                                                                                    | `restore`          |
@@ -113,14 +113,14 @@ zu `isStaffAdmin(session)`. AST-Guard (`server-action-authz.test.ts`)
 
 ## 6. Evidence / Audit Guaranties
 
-| Garantie                   | Mechanismus                                                                     | Verify-Pfad                                     |
-| -------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------- |
-| **Unveränderlichkeit**     | `prevent_modification()` Trigger auf `audit_log`, `audit_seal`, `audit_archive` | Trigger wirft `restrict_violation`              |
-| **Hash-Chain-Integrität**  | SHA-256(prev_hash \|\| canonicalEvent)                                          | `verify:chain` CLI recompute, vergleicht mit DB |
-| **Externes Timestamp**     | RFC 3161 TSA (GlobalSign)                                                       | `rfc3161-verify.test.ts`, TSA-Root-Pinning      |
-| **Chain-Verifikation**     | Recompute, nicht Trust-Stored-Column                                            | `service-verifychain.test.ts` (7 Fälle)         |
-| **Audit-Pflicht-Coverage** | AST-Scan aller `evidenceService.record` Calls                                   | `audit-label-coverage.test.ts`                  |
-| **Archive-Verify**         | NDJSON in S3, SHA-256 vs DB                                                     | `verify:chain` CLI prüft Archive-Segmente       |
+| Garantie                  | Mechanismus                                                                     | Verify-Pfad                                     |
+| ------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------- |
+| **Unveränderlichkeit**    | `prevent_modification()` Trigger auf `audit_log`, `audit_seal`, `audit_archive` | Trigger wirft `restrict_violation`              |
+| **Hash-Chain-Integrität** | SHA-256(prev_hash \|\| canonicalEvent)                                          | `verify:chain` CLI recompute, vergleicht mit DB |
+| **Externes Timestamp**    | RFC 3161 TSA (GlobalSign)                                                       | `rfc3161-verify.test.ts`, TSA-Root-Pinning      |
+| **Chain-Verifikation**    | Recompute, nicht Trust-Stored-Column                                            | `service-verifychain.test.ts`                   |
+| **Audit-Label-Coverage**  | AST-Scan der statisch emittierten `evidenceService.record`-Action-Keys          | `audit-label-coverage.test.ts`                  |
+| **Archive-Verify**        | NDJSON in S3, SHA-256 vs DB                                                     | `verify:chain` CLI prüft Archive-Segmente       |
 
 **Hash-Chain Property Tests:** Determinismus (C1), Key-Reihenfolge-Egal (C2),
 undefined/null-Handling (C3-C4), Event-Hash-Determinismus (H1),

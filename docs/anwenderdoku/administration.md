@@ -9,14 +9,14 @@ beschriebenen Bereiche erfordern die Rolle ADMIN oder PARTNER.
 Tätigkeitsbereichen, 2FA-Status, letztem Login und Aktiv-Status.
 
 - **Anlegen:** Name, E-Mail, Startpasswort (mindestens 12 Zeichen). Rollen:
-  *Mitarbeiter* (immer), optional *Partner* und/oder *Admin* (beide gelten
+  _Mitarbeiter_ (immer), optional _Partner_ und/oder _Admin_ (beide gelten
   als Administratoren). Mindestens eine Rolle ist Pflicht; die eigenen
   Rollen und der eigene Aktiv-Status sind nicht änderbar (Selbstschutz).
 - **Berechtigungen (Einzelrechte):** Für Mitarbeiter ohne Admin-/Partner-
-  Rolle steuern drei Schalter, was sie zusätzlich dürfen: *Rechnungen
-  anlegen/bearbeiten*, *Rechnungen versenden* (löst die unveränderliche
+  Rolle steuern drei Schalter, was sie zusätzlich dürfen: _Rechnungen
+  anlegen/bearbeiten_, _Rechnungen versenden_ (löst die unveränderliche
   Festschreibung aus; umfasst auch den PDF-Upload im Extern-Modus) und
-  *Urlaub entscheiden* (entscheidet Urlaubsanträge und erhält Urlaubs-/
+  _Urlaub entscheiden_ (entscheidet Urlaubsanträge und erhält Urlaubs-/
   Abwesenheitsmeldungen). Admin/Partner haben immer alle Rechte. **Neu
   angelegte Mitarbeiter starten ohne Rechnungs-Rechte**; bestehende
   Mitarbeiter behalten beim Update ihre bisherigen Möglichkeiten und
@@ -38,14 +38,14 @@ Tätigkeitsbereichen, 2FA-Status, letztem Login und Aktiv-Status.
   Prüfprotokoll.
 
 **Mandanten-Zugänge (Portal):** werden in der jeweiligen Mandantenakte
-unter *Kontakte* gepflegt (einladen, bearbeiten, deaktivieren — letzteres
+unter _Kontakte_ gepflegt (einladen, bearbeiten, deaktivieren — letzteres
 beendet die Portal-Sitzung sofort). Mandanten melden sich ausschließlich
 per E-Mail-Anmeldelink an (30 Minuten gültig, einmal verwendbar); Mandanten
 ohne GwG-Freigabe erhalten keinen Zugang.
 
-**Zugriffssteuerung auf Mandanten:** Unter Einstellungen wählbar: *Offen*
+**Zugriffssteuerung auf Mandanten:** Unter Einstellungen wählbar: _Offen_
 (jeder aktive Mitarbeiter sieht alle nicht-vertraulichen Mandanten) oder
-*Eingeschränkt* (nur zuständige Mitarbeiter laut Zuständigkeitsliste);
+_Eingeschränkt_ (nur zuständige Mitarbeiter laut Zuständigkeitsliste);
 Administratoren sehen immer alles.
 
 ## 2. Prüfprotokoll (Audit)
@@ -80,18 +80,39 @@ Administratoren sehen immer alles.
 
 **Administration (Startseite), Karte „Letztes Backup":**
 
-- zeigt Zeitpunkt, Status und Größe der letzten Sicherung sowie das
+- zeigt Zeitpunkt, Status und Größe der letzten **Datenbanksicherung** sowie das
   Ergebnis des **monatlichen Restore-Tests** (1. des Monats): „erfolgreich
   (N Audit-Einträge verifiziert)" bedeutet, dass das letzte Backup real in
   eine Prüfdatenbank eingespielt und die Audit-Kette darauf verifiziert
   wurde. Ein Fehlschlag erzeugt eine Benachrichtigung an alle
-  Administratoren und erfordert sofortige Klärung.
-- **Wichtig (Betreiber-Pflicht):** Die *tägliche* Sicherung selbst wird vom
-  Server-Betreiber eingerichtet (`./taxtronik backup` per Cron) — sie
-  läuft nicht automatisch aus der Anwendung. `./taxtronik update`/`deploy`
-  sichern zusätzlich vor jeder Datenbankmigration automatisch.
-- Wiederherstellung im Ernstfall: siehe Disaster-Recovery-Runbook
-  (Betriebsdokumentation); Kurzbefehle stehen auf der Admin-Karte.
+  Administratoren und erfordert sofortige Klärung. Die Karte ist kein Nachweis
+  über den Stand eines Full- oder Offsite-Backups.
+- **Tägliche Datenbanksicherung:** Der Worker erstellt um 01:00 UTC
+  automatisch einen Postgres-Dump im S3-Backup-Bucket. Der Betreiber muss
+  Ausführung und Restore-Tests überwachen und zusätzlich lokale beziehungsweise
+  externe Kopien vorsehen: `./taxtronik backup` erzeugt die lokale
+  Operator-Kopie. Diese normalen DB-Dumps werden von TaxTronik nicht selbst
+  verschlüsselt; `update`/`deploy` sichern außerdem vor jeder
+  Datenbankmigration.
+- **Full-Backup (Betreiber-Aufgabe):** `./taxtronik backup-full` erzeugt in
+  einem Wartungsfenster einen gemeinsamen Wiederanlaufpunkt aus TaxTronik- und
+  n8n-Datenbank, Cold-Snapshots der SeaweedFS-, Redis- und n8n-Volumes sowie der
+  Recovery-Konfiguration. Das Klartext-Staging wird anschließend gelöscht; das
+  Ergebnis ist ein age-verschlüsseltes Archiv mit signiertem SHA-256-Manifest.
+  Ein getrennt administriertes, versionsfähiges Offsite-Ziel mit Object Lock
+  ist für den Standortausfall vorzusehen. `backup-files` ist nur eine
+  ergänzende Byte-Kopie der Dokument-Buckets und kein Ersatz für diesen
+  Recovery Point.
+- **Grenze des Monats-Tests:** Der automatische Drill stellt nur den
+  Datenbank-Dump wieder her und prüft die Audit-Kette. Er entschlüsselt kein
+  Full-Backup, restauriert keine Cold-Volumes und prüft weder n8n-Credentials
+  noch Login oder Dokumentabruf. Ein regelmäßig dokumentierter Full-Restore auf
+  einem **isolierten Zielsystem** bleibt Betreiberpflicht.
+- Installationsweite Datenbank- und Full-Backups sind aus dem Browser bewusst
+  nicht herunterladbar. Verifikation, Offsite-Kopie und Wiederherstellung
+  erfolgen durch den Server-Betreiber. Verfahren und Kurzbefehle stehen in den
+  Runbooks [Day-2 Operations](../operations/day-2-operations.md) und
+  [Disaster Recovery](../operations/disaster-recovery.md).
 
 ## 4. Weitere Admin-Bereiche (Verweise)
 

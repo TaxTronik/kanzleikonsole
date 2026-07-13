@@ -30,6 +30,7 @@ import { prismaBytes } from '@/server/db/prisma-bytes';
 import { prismaOwner as ownerSingleton } from '@/server/db/prisma-owner';
 import { evidenceService } from '@/server/container';
 import { ensureBackupLocalPathForKey } from './local-path';
+import { matchesSingleTenantBackupScope } from './scope';
 
 const BACKUP_BUCKET = process.env['S3_BUCKET_BACKUPS'] ?? 'backups';
 
@@ -46,10 +47,14 @@ function buildPgConnArgs(dbUrl: string): {
 } {
   const u = new URL(dbUrl);
   const args = [
-    '-h', u.hostname,
-    '-p', u.port || '5432',
-    '-U', decodeURIComponent(u.username),
-    '-d', u.pathname.slice(1) || decodeURIComponent(u.username),
+    '-h',
+    u.hostname,
+    '-p',
+    u.port || '5432',
+    '-U',
+    decodeURIComponent(u.username),
+    '-d',
+    u.pathname.slice(1) || decodeURIComponent(u.username),
   ];
   // SSL-Mode aus Query-String übernehmen, falls gesetzt (postgresql://...?sslmode=require)
   const sslmode = u.searchParams.get('sslmode');
@@ -77,13 +82,7 @@ export interface BackupResult {
  * exakt denselben Dump-Code-Pfad testet, der auch in Produktion läuft.
  */
 function buildPgDumpArgs(connArgs: string[]): string[] {
-  return [
-    '--format=custom',
-    '--no-owner',
-    '--no-privileges',
-    '--compress=6',
-    ...connArgs,
-  ];
+  return ['--format=custom', '--no-owner', '--compress=6', ...connArgs];
 }
 
 /**
@@ -92,7 +91,10 @@ function buildPgDumpArgs(connArgs: string[]): string[] {
  * (S3-Upload bzw. lokale Datei). `result()` blockt bis pg_dump beendet ist und
  * gibt Hash + Größe zurück oder wirft bei Exit-Code ≠ 0.
  */
-function spawnPgDump(connEnv: Record<string, string>, args: string[]): {
+function spawnPgDump(
+  connEnv: Record<string, string>,
+  args: string[],
+): {
   stream: PassThrough;
   result: () => Promise<{ sha: Buffer; sizeBytes: number }>;
 } {
@@ -123,7 +125,9 @@ function spawnPgDump(connEnv: Record<string, string>, args: string[]): {
   // uncaught exception, und 'exit' feuert danach nie (result() hinge ewig).
   let dumpExitCode: number | null = null;
   let spawnError: Error | null = null;
-  child.on('exit', (code) => { dumpExitCode = code ?? -1; });
+  child.on('exit', (code) => {
+    dumpExitCode = code ?? -1;
+  });
   child.on('error', (err) => {
     spawnError = err;
     // Sink-Seite abbrechen, sonst wartet pipeline() endlos auf Daten.
@@ -133,7 +137,10 @@ function spawnPgDump(connEnv: Record<string, string>, args: string[]): {
   const result = async (): Promise<{ sha: Buffer; sizeBytes: number }> => {
     if (spawnError === null && dumpExitCode === null) {
       await new Promise<void>((resolve) => {
-        child.on('exit', (code) => { dumpExitCode = code ?? -1; resolve(); });
+        child.on('exit', (code) => {
+          dumpExitCode = code ?? -1;
+          resolve();
+        });
         child.on('error', () => resolve());
       });
     }
@@ -157,11 +164,20 @@ function spawnPgDump(connEnv: Record<string, string>, args: string[]): {
  * Der Dump enthält ALLE Daten der DB — wir verlinken ihn aber pro Tenant
  * im BackupRecord, damit jeder Tenant „sein" Backup-Status sieht.
  */
-export async function runBackup(): Promise<BackupResult> {
+export async function runBackup(options: { singleTenantId?: string } = {}): Promise<BackupResult> {
   const prismaOwner = ownerSingleton;
 
   // Für alle Tenants ein RUNNING-Record anlegen
   const tenants = await prismaOwner.tenant.findMany({ select: { id: true } });
+  if (
+    options.singleTenantId &&
+    !matchesSingleTenantBackupScope(
+      tenants.map((tenant) => tenant.id),
+      options.singleTenantId,
+    )
+  ) {
+    return { ok: false, error: 'backup_scope_not_allowed' };
+  }
   const records = await Promise.all(
     tenants.map((t) =>
       prismaOwner.backupRecord.create({
@@ -375,7 +391,10 @@ async function dumpToFile(outFile: string): Promise<BackupResult> {
   try {
     await pipeline(dump.stream, createWriteStream(outFile, { mode: 0o600 }));
   } catch (e) {
-    return { ok: false, error: `Schreiben nach ${outFile} fehlgeschlagen: ${(e as Error).message}` };
+    return {
+      ok: false,
+      error: `Schreiben nach ${outFile} fehlgeschlagen: ${(e as Error).message}`,
+    };
   }
 
   let sha: Buffer;
@@ -402,7 +421,9 @@ async function main() {
       console.error(`[backup] FEHLER: ${r.error}`);
       process.exit(1);
     }
-    console.log(`[backup] OK — ${r.sizeBytes} Bytes, sha256=${r.sha256?.slice(0, 16)}…, datei=${outFile}`);
+    console.log(
+      `[backup] OK — ${r.sizeBytes} Bytes, sha256=${r.sha256?.slice(0, 16)}…, datei=${outFile}`,
+    );
     return;
   }
 
@@ -412,7 +433,9 @@ async function main() {
     console.error(`[backup] FEHLER: ${r.error}`);
     process.exit(1);
   }
-  console.log(`[backup] OK — ${r.sizeBytes} Bytes, sha256=${r.sha256?.slice(0, 16)}…, key=${r.key}, lokal=${r.localPath}`);
+  console.log(
+    `[backup] OK — ${r.sizeBytes} Bytes, sha256=${r.sha256?.slice(0, 16)}…, key=${r.key}, lokal=${r.localPath}`,
+  );
 }
 
 if (process.argv[1]?.endsWith('runner.ts') || process.argv[1]?.endsWith('runner.js')) {

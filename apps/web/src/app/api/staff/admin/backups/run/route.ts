@@ -40,22 +40,23 @@ export async function POST(req: NextRequest) {
   // Null-Check und starten runBackup() doppelt: beide Läufe schreiben dann
   // denselben minutengenauen S3-Key/lokalen Pfad und überschreiben sich.
   runningBackup = (async (): Promise<BackupResult> => {
-    await withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
-      (tx) =>
-        evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
-          action: 'backup.trigger',
-          resourceType: 'tenant',
-          resourceId: tenantId,
-          ip: getClientIp(req.headers),
-          userAgent: req.headers.get('user-agent'),
-          after: { source: 'admin-browser' },
-        }),
+    await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>
+      evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'backup.trigger',
+        resourceType: 'tenant',
+        resourceId: tenantId,
+        ip: getClientIp(req.headers),
+        userAgent: req.headers.get('user-agent'),
+        after: { source: 'admin-browser' },
+      }),
     );
-    return runBackup();
+    // Ein Browser-Admin ist tenantgebunden. Der vollständige pg_dump darf
+    // deshalb nur in einer nachweislichen Single-Tenant-Installation starten;
+    // globale Multi-Tenant-Backups bleiben reine Betreiber-/Worker-Aufgabe.
+    return runBackup({ singleTenantId: tenantId });
   })().finally(() => {
     runningBackup = null;
   });
@@ -69,16 +70,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'backup_failed' }, { status: 500 });
   }
   if (!result.ok) {
+    if (result.error === 'backup_scope_not_allowed') {
+      return NextResponse.json({ error: result.error }, { status: 403 });
+    }
     return NextResponse.json({ error: result.error ?? 'backup_failed' }, { status: 500 });
   }
 
   return NextResponse.json({
     ok: true,
     recordId: result.recordId,
-    sizeBytes: result.sizeBytes,
-    bucket: result.bucket,
-    key: result.key,
-    sha256: result.sha256,
-    localPath: result.localPath,
   });
 }

@@ -19,16 +19,16 @@ Vollständige Architektur: [docs/architecture.md](docs/architecture.md)
 
 ## Tech-Stack
 
-| Schicht | Wahl |
-|---|---|
-| Web/App | Next.js 16 App Router, React 19, TypeScript |
-| Auth | Auth.js v5, Mitarbeiter mit Passwort + TOTP, Mandanten mit Magic-Link |
-| Datenbank | Postgres 18, Prisma, Row-Level Security |
-| Storage | SeaweedFS S3-API, Object-Lock, ClamAV-Scan vor Commit |
-| Jobs | BullMQ Worker, Redis |
-| Workflows | n8n für Reminder, Kommunikation und Cron-Automation |
-| Risk / TCMS | optionale on-prem Risk-Layer-Engine (`/v1/*`) |
-| Deploy | Docker Compose, On-Premise, Reverse Proxy davor |
+| Schicht     | Wahl                                                                  |
+| ----------- | --------------------------------------------------------------------- |
+| Web/App     | Next.js 16 App Router, React 19, TypeScript                           |
+| Auth        | Auth.js v5, Mitarbeiter mit Passwort + TOTP, Mandanten mit Magic-Link |
+| Datenbank   | Postgres 18, Prisma, Row-Level Security                               |
+| Storage     | SeaweedFS S3-API, Object-Lock, ClamAV-Scan vor Commit                 |
+| Jobs        | BullMQ Worker, Redis                                                  |
+| Workflows   | n8n für Reminder, Kommunikation und Cron-Automation                   |
+| Risk / TCMS | optionale on-prem Risk-Layer-Engine (`/v1/*`)                         |
+| Deploy      | Docker Compose, On-Premise, Reverse Proxy davor                       |
 
 ## Entwicklung
 
@@ -78,12 +78,12 @@ wird TOTP eingerichtet. Danach die Credentials-Datei löschen.
 
 Nützliche lokale Dienste:
 
-| Dienst | URL |
-|---|---|
-| Mailhog | <http://localhost:8025> |
-| n8n | <http://localhost:5678> |
+| Dienst           | URL                     |
+| ---------------- | ----------------------- |
+| Mailhog          | <http://localhost:8025> |
+| n8n              | <http://localhost:5678> |
 | SeaweedFS Master | <http://localhost:9333> |
-| SeaweedFS Filer | <http://localhost:8888> |
+| SeaweedFS Filer  | <http://localhost:8888> |
 
 Optionaler Risk-Layer lokal:
 
@@ -122,9 +122,10 @@ PowerShell:
 ## Produktivbetrieb
 
 Produktiv läuft der Stack über die Operator-CLI [`./taxtronik`](taxtronik). Sie
-wählt immer die richtigen Compose-Dateien, nutzt die Root-`.env`, rendert vor
-jedem Aufruf die SeaweedFS-S3-Konfiguration und validiert die `.env` vorab
-(`doctor`) statt mitten im Deploy abzubrechen.
+wählt immer die richtigen Compose-Dateien, nutzt die Root-`.env` und validiert
+sie vorab (`doctor`) statt mitten im Deploy abzubrechen. Die SeaweedFS-S3-
+Konfiguration entsteht erst im Container flüchtig unter `/run`; es gibt keine
+hostseitige Klartext-Konfigurationskopie mehr.
 
 Erstinstall (eine Kanzlei, ein Server, ein Kommando bis zur laufenden App):
 
@@ -139,7 +140,9 @@ Im Normalfall danach:
 ./taxtronik update      # git ff-only + Backup + bauen/pullen + migrieren + starten
 ./taxtronik backup      # manuelles Postgres-Backup nach backups/ + S3-Backup-Bucket
 ./taxtronik backup-files # Kanzleidateien aus SeaweedFS nach backups/object-store
-./taxtronik backup-full # Datenbank + Kanzleidateien-Byte-Export
+./taxtronik backup-full # quiesziertes, age-verschlüsseltes und signiertes Full-Backup
+./taxtronik backup-verify <dir> [public-key]
+./taxtronik backup-decrypt <dir> <leeres-ziel> [age-identity] [public-key]
 ./taxtronik restore --list
 ./taxtronik restore --latest --target-url <postgres-url>
 ./taxtronik restore --file backups/<dump> --target-url <postgres-url>
@@ -147,14 +150,17 @@ Im Normalfall danach:
 ./taxtronik rollback    # zurück auf den vorherigen Stand (keine Migration)
 ```
 
-Releases entstehen über Git-Tags (`v1.4.0`): der Forgejo-Workflow
-`release.yml` baut die Images, scannt sie mit Trivy und pusht sie in die
-Forgejo-Container-Registry. Auf dem Server zeigt
+Releases entstehen über **annotierte**, geschützte SemVer-Tags (`v1.4.0`). Der
+Forgejo-Workflow führt für exakt den Tag-Commit im selben Release-DAG die
+vollständige CI- und Security-Suite aus; erst danach baut/scant/pusht er Web und
+Worker und veröffentlicht verpflichtend das Ed25519-signierte Manifest v2 mit
+Commit- sowie beiden Image-Digests. Auf dem Server zeigt
 `TAXTRONIK_IMAGE_PREFIX=git.hirschmann-koxha.de/taxtronik` auf die Registry,
-`TAXTRONIK_VERSION` pinnt das Release — die Skripte ziehen dann fertige,
-CI-getestete Images statt lokal zu bauen. `TAXTRONIK_VERSION` ist in
-Produktion Pflicht (kein `latest`-Fallback), damit Deploy-Stand und Rollback
-immer eindeutig sind. Details und Rollback-Pfad:
+`TAXTRONIK_VERSION` auf das Release. Die Operator-CLI verifiziert Manifest,
+Tag und Checkout und deployt getrennte
+`web:version@sha256:…`-/`worker:version@sha256:…`-Referenzen; auch die OCI-
+Revision muss stimmen. Mutable Tags werden nicht als Release-Vertrag
+akzeptiert. Details und Rollback-Pfad:
 [docs/operations/release.md](docs/operations/release.md)
 
 Bei lokalen Image-Builds (`TAXTRONIK_IMAGE_PREFIX` ohne Registry-Slash) räumt
@@ -163,12 +169,21 @@ die Operator-CLI nach erfolgreichem Build ungenutzten Docker-BuildKit-Cache auf
 oder per `TAXTRONIK_BUILD_CACHE_PRUNE_UNTIL=336h` anpassen. Registry-Deploys
 pullen fertige Images und führen keinen Build-Cache-Prune aus.
 
-Backup-Scope: `./taxtronik backup` sichert die Postgres-Datenbank
-(Mandanten, Audit, Metadaten, Dokument-Verweise). Die eigentlichen Kanzlei-
-dateien liegen in SeaweedFS. Für eine lokale Byte-Kopie der Datei-Buckets:
-`./taxtronik backup-files`; beides zusammen: `./taxtronik backup-full`.
-Für volle Object-Lock-/Versioning-Treue zusätzlich SeaweedFS-Replikation oder
-Volume-Snapshots einrichten (siehe Disaster-Recovery-Runbook).
+Backup-Scope: `./taxtronik backup` sichert nur Postgres; `backup-files` erzeugt
+nur eine sichtbare Byte-Kopie der SeaweedFS-Buckets. `backup-full` erstellt
+dagegen einen zusammenhängenden Wiederanlaufpunkt: Schreibdienste werden
+quiesziert, beide DBs sowie Byte-Export gesichert und SeaweedFS-/Redis-/n8n-
+Volumes cold gesnapshottet. Die gesamte Nutzlast einschließlich `.env` wird
+age-verschlüsselt und durch ein Ed25519-signiertes SHA-256-Inventar versiegelt;
+ein getrenntes S3-Offsite-Ziel kann nur mit Versioning + Object Lock COMPLIANCE
+verwendet werden. Voraussetzungen und Restore-Drill:
+[docs/operations/disaster-recovery.md](docs/operations/disaster-recovery.md).
+
+Der Worker erstellt zusätzlich täglich um 01:00 UTC einen Postgres-Dump und
+streamt ihn direkt in den S3-Backup-Bucket. Dieser automatische Lauf erzeugt
+keine lokale Air-Gap-Kopie und sichert nicht die SeaweedFS-Dokument-Buckets;
+dafür ist regelmäßig `./taxtronik backup-full` beziehungsweise eine getestete
+externe SeaweedFS-Replikation erforderlich.
 
 `./taxtronik update` macht bewusst kein `git reset --hard`. Wenn lokale
 Änderungen oder ein nicht-fast-forward Stand existieren, bricht das Kommando ab.
@@ -284,8 +299,9 @@ Hinweise:
   und die Packages (u. a. `tax`, `evidence`, `db`, `crypto`, `http-utils`,
   `rss`, `n8n-shared`), inkl. Auth-Suiten für TOTP, Magic-Link und Lockout.
 - `pnpm test:ops` prüft die Operator-CLI-Gates (`doctor`, Prod-SMTP ohne
-  Mailhog, Risk-Layer-Paarung, Build-Cache-Prune, Restore-Quellwahl) ohne
-  echten Deploy.
+  Mailhog, Risk-Layer-Paarung, Build-Cache-Prune, Restore-Quellwahl), die
+  fail-closed Update-/Backup-Reihenfolge und restriktive Secret-Dateirechte
+  ohne echten Deploy.
 - E2E-Login-Tests brauchen `E2E_TOTP_SECRET`.
 - RLS-Cross-Tenant-Tests skippen lokal ohne DB-URLs, schlagen in CI aber fehl,
   wenn `DATABASE_URL` oder `DATABASE_APP_URL` fehlt.
@@ -303,7 +319,7 @@ Hinweise:
 ```text
 apps/
   web/       Next.js UI, API-Routen, Server Actions, Backup/Restore
-  worker/    BullMQ Worker für Scan, Reminder, Audit, n8n-Outbox
+  worker/    BullMQ Worker für Reminder, Audit, n8n-Outbox, Backup und Wartung
   e2e/       Playwright-Tests
 
 packages/
@@ -340,7 +356,8 @@ TaxTronik ist für regulatorisch sensible Kanzleidaten gebaut:
 - DSGVO: Lösch-/Auskunftskonzepte, Portal-/Staff-Trennung, minimale
   öffentliche Angriffsfläche.
 - GwG: Verifizierungs-Workflows und systemische Schranken.
-- eIDAS: Signatur- und Zeitstempel-Adapter.
+- eIDAS: RFC-3161-Zeitstempel-Adapter; die PoA-Bestätigung per Magic-Link und
+  E-Mail-Code wird nicht als fortgeschrittene oder qualifizierte Signatur zugesagt.
 
 Sicherheitslücken vertraulich melden: siehe [SECURITY.md](SECURITY.md).
 

@@ -1,24 +1,11 @@
 # =============================================================================
-# Release Images — baut web + worker und pusht sie in die Forgejo-Container-
-# Registry. Ausgelöst durch einen Versions-Tag:
+# Release Images — vollständige Same-run-Promotion für exakt den Tag-Commit,
+# danach web + worker bauen/scannen/pushen und das signierte Manifest zwingend
+# veröffentlichen. Kein Status-API-Polling und kein optionaler Gate-Pfad.
 #
-#   git tag v1.4.0 && git push forgejo v1.4.0
+#   git tag -a v1.4.0 -m "Release 1.4.0"
+#   git push forgejo v1.4.0
 #
-# Ergebnis: <registry>/<owner>/web:1.4.0 + :latest (analog worker). Der
-# Registry-Host wird aus der Instanz-URL abgeleitet (GITHUB_SERVER_URL,
-# z. B. git.hirschmann-koxha.de); via Repo-Variable REGISTRY übersteuerbar.
-#
-# Auth: Default ist der Actions-Auto-Token (GITHUB_TOKEN). Falls die Instanz
-# dem Auto-Token kein write:package erlaubt, einen PAT mit write:package als
-# Secrets REGISTRY_USER + REGISTRY_TOKEN hinterlegen — die werden bevorzugt.
-#
-# Trivy-Gate: CRITICAL-CVEs mit verfügbarem Fix blockieren den Push. HIGH wird
-# nur rapportiert — Alpine-Basis-CVEs ohne Fix würden sonst jedes Release
-# aufhalten.
-#
-# Zielmaschine (.env), danach ./taxtronik update:
-#   TAXTRONIK_IMAGE_PREFIX=git.hirschmann-koxha.de/taxtronik
-#   TAXTRONIK_VERSION=1.4.0
 # Prozess-Doku: docs/operations/release.md
 # =============================================================================
 name: Release Images
@@ -29,18 +16,115 @@ on:
 
 permissions:
   contents: read
-  packages: write
+
+# Derselbe Versions-Tag darf nie parallel publiziert werden. Nicht abbrechen:
+# der erste Lauf muss seinen Manifest-Commit sauber beenden koennen.
+concurrency:
+  group: release-promotion
+  cancel-in-progress: false
 
 jobs:
+  preflight:
+    name: Release-Preflight (Tag, SHA, Manifest-Ziel)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+
+      - name: Exakten annotierten Tag-Commit auf main verifizieren
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          RELEASE_BASE_REF=refs/remotes/origin/main sh scripts/release/verify-tag-checkout.sh
+
+      - name: Release-Gate-Implementierung statisch verifizieren
+        run: |
+          set -euo pipefail
+          node scripts/release/check-release-gates.mjs
+          node scripts/release/tests/check-release-gates.test.mjs
+          node scripts/release/tests/verify-release-config.test.mjs
+          bash scripts/release/tests/verify-tag-checkout.test.sh
+
+      - name: Manifest-Konfiguration und Schreibrecht fail-closed prüfen
+        env:
+          UPDATE_MANIFEST_REPO: ${{ vars.UPDATE_MANIFEST_REPO }}
+          UPDATE_MANIFEST_TOKEN: ${{ secrets.UPDATE_MANIFEST_TOKEN }}
+          UPDATE_MANIFEST_PRIVATE_KEY: ${{ secrets.UPDATE_MANIFEST_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          node scripts/release/verify-release-config.mjs
+
+          REPO_NOSCHEME="${UPDATE_MANIFEST_REPO#https://}"
+          CHECKOUT="/tmp/manifest-preflight-${GITHUB_RUN_ID:-$$}"
+          ASKPASS="/tmp/manifest-askpass-${GITHUB_RUN_ID:-$$}.sh"
+          printf '%s\n' '#!/bin/sh' 'case "$1" in *Username*) echo x;; *) printf "%s\\n" "$UPDATE_MANIFEST_TOKEN";; esac' > "$ASKPASS"
+          chmod 0700 "$ASKPASS"
+          export GIT_ASKPASS="$ASKPASS" GIT_ASKPASS_REQUIRE=force GIT_TERMINAL_PROMPT=0
+          trap 'rm -rf "$CHECKOUT"; rm -f "$ASKPASS"' EXIT
+          git clone --depth 1 "https://x@${REPO_NOSCHEME}" "$CHECKOUT"
+          git -C "$CHECKOUT" push --dry-run origin HEAD:refs/heads/main
+          if [ -f "$CHECKOUT/manifest.json" ] || [ -f "$CHECKOUT/manifest.json.sig" ]; then
+            test -f "$CHECKOUT/manifest.json" && test -f "$CHECKOUT/manifest.json.sig"
+            PUBLIC_KEY="$(node --input-type=module -e '
+              import { createPrivateKey, createPublicKey } from "node:crypto";
+              const raw = process.env.UPDATE_MANIFEST_PRIVATE_KEY;
+              const pem = raw.includes("\\n") ? raw.replaceAll("\\n", "\n") : raw;
+              process.stdout.write(createPublicKey(createPrivateKey(pem)).export({format:"pem",type:"spki"}));
+            ')"
+            UPDATE_PUBLIC_KEY="$PUBLIC_KEY" node scripts/release/verify-update-manifest.mjs \
+              --manifest "$CHECKOUT/manifest.json" \
+              --signature "$CHECKOUT/manifest.json.sig"
+          fi
+
+  # Lokale reusable Workflows: dadurch laufen dieselben Quality-/DB-/Restore-/
+  # Upgrade-/E2E-/KoSIT-/Readiness- und Security-Jobs erneut für den Event-SHA.
+  # `needs` verbindet sie im selben DAG; ein älterer Branch-Status genügt nicht.
+  full-ci:
+    name: Vollständige CI-Promotion
+    needs: preflight
+    runs-on: ubuntu-latest
+    uses: ./.forgejo/workflows/ci.yml
+
+  security-gate:
+    name: Security-Promotion
+    needs: preflight
+    runs-on: ubuntu-latest
+    uses: ./.forgejo/workflows/security.yml
+
   release:
+    name: Images bauen, scannen und publizieren
+    needs: [preflight, full-ci, security-gate]
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
     outputs:
       version: ${{ steps.meta.outputs.version }}
       prefix: ${{ steps.meta.outputs.prefix }}
+      commit_sha: ${{ steps.meta.outputs.commit_sha }}
       web_digest: ${{ steps.push.outputs.web_digest }}
+      worker_digest: ${{ steps.push.outputs.worker_digest }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Exakten Tag-Commit vor dem Build erneut verifizieren
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          RELEASE_BASE_REF=refs/remotes/origin/main sh scripts/release/verify-tag-checkout.sh
 
       - name: Guard pnpm supply-chain policy
         run: sh scripts/check-pnpm-supply-chain.sh
@@ -58,7 +142,9 @@ jobs:
             echo "version=$VERSION"
             echo "registry=$REGISTRY"
             echo "prefix=$REGISTRY/$OWNER"
-            echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "commit_sha=$GITHUB_SHA"
+            # Re-run-stabil: kein Wall-Clock-Wert, sondern Commit-Zeitpunkt.
+            echo "created=$(git show -s --format=%cI "$GITHUB_SHA")"
           } >> "$GITHUB_OUTPUT"
 
       - name: Registry-Login
@@ -68,9 +154,8 @@ jobs:
           username: ${{ secrets.REGISTRY_USER || github.actor }}
           password: ${{ secrets.REGISTRY_TOKEN || secrets.GITHUB_TOKEN }}
 
-      # push: false + load: true — erst nach dem Trivy-Gate pushen. Kein
-      # setup-buildx: der Docker-Driver legt die Images direkt im lokalen
-      # Daemon ab, wo Trivy und `docker push` sie finden.
+      # push: false + load: true — die Release-Images werden erst nach dem
+      # Trivy-Gate publiziert. Dieser Job beginnt erst nach allen Same-run-Gates.
       - name: web — bauen
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
@@ -80,7 +165,6 @@ jobs:
           load: true
           tags: |
             ${{ steps.meta.outputs.prefix }}/web:${{ steps.meta.outputs.version }}
-            ${{ steps.meta.outputs.prefix }}/web:latest
           build-args: |
             APP_VERSION=${{ steps.meta.outputs.version }}
             GIT_SHA=${{ github.sha }}
@@ -99,7 +183,6 @@ jobs:
           load: true
           tags: |
             ${{ steps.meta.outputs.prefix }}/worker:${{ steps.meta.outputs.version }}
-            ${{ steps.meta.outputs.prefix }}/worker:latest
           build-args: |
             APP_VERSION=${{ steps.meta.outputs.version }}
             GIT_SHA=${{ github.sha }}
@@ -115,13 +198,11 @@ jobs:
           mkdir -p "$HOME/.cache/trivy"
           for img in web worker; do
             ref="${{ steps.meta.outputs.prefix }}/$img:${{ steps.meta.outputs.version }}"
-            # Pass 1: HIGH+CRITICAL rapportieren (informativ, blockt nicht)
             docker run --rm \
               -v /var/run/docker.sock:/var/run/docker.sock \
               -v "$HOME/.cache/trivy:/root/.cache/trivy" \
               aquasec/trivy:latest@sha256:2a335d3a73d4e1d52d73c8ef417ab0f91f86ba0a912caf8227665b988a6f4015 image \
               --severity HIGH,CRITICAL --ignore-unfixed --exit-code 0 "$ref"
-            # Pass 2: CRITICAL mit Fix → Release abbrechen
             docker run --rm \
               -v /var/run/docker.sock:/var/run/docker.sock \
               -v "$HOME/.cache/trivy:/root/.cache/trivy" \
@@ -129,78 +210,105 @@ jobs:
               --severity CRITICAL --ignore-unfixed --exit-code 1 --quiet "$ref"
           done
 
-      - name: Push in die Registry
+      - name: Push in die Registry und Digests binden
         id: push
         run: |
           set -euo pipefail
+          # Versions-Tags sind write-once. Ein Re-run oder paralleler Lauf darf
+          # nie ein bereits veroeffentlichtes Artefakt unter gleichem SemVer
+          # ersetzen; orphaned Partial-Releases werden bewusst manuell geklaert.
+          for img in web worker; do
+            ref="${{ steps.meta.outputs.prefix }}/$img:${{ steps.meta.outputs.version }}"
+            if INSPECT_OUTPUT="$(docker manifest inspect "$ref" 2>&1)"; then
+              echo "::error::Immutable Release-Referenz existiert bereits: $ref"
+              exit 1
+            elif [ "$INSPECT_OUTPUT" = "no such manifest: $ref" ] ||
+              [ "$INSPECT_OUTPUT" = "manifest unknown" ] ||
+              [ "$INSPECT_OUTPUT" = "manifest unknown: manifest unknown" ]; then
+              : # Explizites Registry-Negativresultat: Versions-Tag ist frei.
+            else
+              printf '%s\n' "$INSPECT_OUTPUT" >&2
+              echo "::error::Registry-Status fuer $ref ist nicht eindeutig; Push wird fail-closed blockiert"
+              exit 1
+            fi
+          done
           for img in web worker; do
             docker push "${{ steps.meta.outputs.prefix }}/$img:${{ steps.meta.outputs.version }}"
-            docker push "${{ steps.meta.outputs.prefix }}/$img:latest"
           done
-          # Digest des gepushten web-Images fürs Update-Manifest (RepoDigests
-          # ist erst NACH dem Push befüllt).
-          DIGEST="$(docker inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' \
-            "${{ steps.meta.outputs.prefix }}/web:${{ steps.meta.outputs.version }}" \
-            | grep -F "${{ steps.meta.outputs.prefix }}/web@" | head -1 | cut -d@ -f2)"
-          test -n "$DIGEST"
-          echo "web_digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
-  # ===========================================================================
-  # Signiertes Update-Manifest publizieren — die Admin-UI jeder Installation
-  # zeigt dann „Update verfügbar" (apps/web/src/server/update/manifest.ts
-  # verifiziert die Ed25519-Signatur fail-closed).
-  #
-  # Erst aktiv, wenn das Publishing-Ziel konfiguriert ist:
-  #   vars.UPDATE_MANIFEST_REPO          = PUBLIC Repo, z. B.
-  #       https://git.hirschmann-koxha.de/TaxTronik/updates.git
-  #   secrets.UPDATE_MANIFEST_TOKEN      = Token mit Schreibrecht auf das Repo
-  #   secrets.UPDATE_MANIFEST_PRIVATE_KEY= Ed25519 PKCS8-PEM
-  #       (einmalig erzeugen: node scripts/release/generate-update-key.mjs)
-  # Kunden-.env: UPDATE_MANIFEST_URL auf die Raw-URL des Manifests,
-  #   z. B. https://git.hirschmann-koxha.de/TaxTronik/updates/raw/branch/main/manifest.json
-  # plus UPDATE_PUBLIC_KEY (Ausgabe des Key-Skripts).
-  # ===========================================================================
+          repo_digest() {
+            image="$1"
+            docker inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' \
+              "${{ steps.meta.outputs.prefix }}/$image:${{ steps.meta.outputs.version }}" \
+              | grep -F "${{ steps.meta.outputs.prefix }}/$image@" | head -1 | cut -d@ -f2
+          }
+          WEB_DIGEST="$(repo_digest web)"
+          WORKER_DIGEST="$(repo_digest worker)"
+          test -n "$WEB_DIGEST"
+          test -n "$WORKER_DIGEST"
+          {
+            echo "web_digest=$WEB_DIGEST"
+            echo "worker_digest=$WORKER_DIGEST"
+          } >> "$GITHUB_OUTPUT"
+
+  # Pflichtbestandteil des Release-DAG: kein `if`, kein stilles Überspringen.
   manifest:
+    name: Signiertes Update-Manifest publizieren
     needs: release
-    if: vars.UPDATE_MANIFEST_REPO != ''
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+
+      - name: Exakten Tag-Commit vor der Manifest-Publikation erneut verifizieren
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          RELEASE_BASE_REF=refs/remotes/origin/main sh scripts/release/verify-tag-checkout.sh
 
       - name: Manifest bauen, signieren und publizieren
         env:
           UPDATE_MANIFEST_PRIVATE_KEY: ${{ secrets.UPDATE_MANIFEST_PRIVATE_KEY }}
-          MANIFEST_REPO: ${{ vars.UPDATE_MANIFEST_REPO }}
-          MANIFEST_TOKEN: ${{ secrets.UPDATE_MANIFEST_TOKEN }}
+          UPDATE_MANIFEST_REPO: ${{ vars.UPDATE_MANIFEST_REPO }}
+          UPDATE_MANIFEST_TOKEN: ${{ secrets.UPDATE_MANIFEST_TOKEN }}
           VERSION: ${{ needs.release.outputs.version }}
-          IMAGE: ${{ needs.release.outputs.prefix }}/web:${{ needs.release.outputs.version }}
-          DIGEST: ${{ needs.release.outputs.web_digest }}
+          COMMIT_SHA: ${{ needs.release.outputs.commit_sha }}
+          PREFIX: ${{ needs.release.outputs.prefix }}
+          WEB_DIGEST: ${{ needs.release.outputs.web_digest }}
+          WORKER_DIGEST: ${{ needs.release.outputs.worker_digest }}
         run: |
           set -euo pipefail
-          test -n "$MANIFEST_TOKEN" || { echo "secrets.UPDATE_MANIFEST_TOKEN fehlt"; exit 1; }
-          test -n "$UPDATE_MANIFEST_PRIVATE_KEY" || { echo "secrets.UPDATE_MANIFEST_PRIVATE_KEY fehlt"; exit 1; }
-          git fetch --tags --force 2>/dev/null || true
+          node scripts/release/verify-release-config.mjs
+          git fetch --tags --force
           TAG="$GITHUB_REF_NAME"
 
-          # migrationsRequired: haben sich die Migrationen seit dem vorherigen
-          # Release geändert? Erstes Release → konservativ true.
           PREV="$(git tag --list 'v*' --sort=-v:refname | grep -vx "$TAG" | head -1 || true)"
           MIG=true
           if [ -n "$PREV" ] && git diff --quiet "$PREV" "$TAG" -- packages/db/prisma/migrations; then
             MIG=false
           fi
-
-          # Release-Notes = Tag-Annotation (bei lightweight Tags die Commit-Message).
           git tag -l --format='%(contents)' "$TAG" > /tmp/notes.txt
 
-          # Bestehendes Manifest fortschreiben.
-          REPO_NOSCHEME="${MANIFEST_REPO#https://}"
-          git clone --depth 1 "https://x:${MANIFEST_TOKEN}@${REPO_NOSCHEME}" /tmp/updates
+          REPO_NOSCHEME="${UPDATE_MANIFEST_REPO#https://}"
+          ASKPASS="/tmp/manifest-askpass-${GITHUB_RUN_ID:-$$}.sh"
+          printf '%s\n' '#!/bin/sh' 'case "$1" in *Username*) echo x;; *) printf "%s\\n" "$UPDATE_MANIFEST_TOKEN";; esac' > "$ASKPASS"
+          chmod 0700 "$ASKPASS"
+          export GIT_ASKPASS="$ASKPASS" GIT_ASKPASS_REQUIRE=force GIT_TERMINAL_PROMPT=0
+          trap 'rm -rf /tmp/updates; rm -f "$ASKPASS"' EXIT
+          git clone --depth 1 "https://x@${REPO_NOSCHEME}" /tmp/updates
 
-          ARGS=(--version "$VERSION" --image "$IMAGE" --image-digest "$DIGEST"
+          ARGS=(--version "$VERSION" --commit-sha "$COMMIT_SHA"
+                --web-image "$PREFIX/web:$VERSION" --web-image-digest "$WEB_DIGEST"
+                --worker-image "$PREFIX/worker:$VERSION" --worker-image-digest "$WORKER_DIGEST"
                 --migrations-required "$MIG" --notes-file /tmp/notes.txt --out-dir /tmp/updates)
           if [ -f /tmp/updates/manifest.json ]; then ARGS+=(--in /tmp/updates/manifest.json); fi
           node scripts/release/build-update-manifest.mjs "${ARGS[@]}"

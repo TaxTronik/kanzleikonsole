@@ -233,6 +233,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             versionNo: nextVersionNo,
             storageBucket: commit.targetBucket,
             storageKey: commit.targetKey,
+            storageVersionId: commit.storageVersionId,
             sha256: prismaBytes(commit.sha256),
             sizeBytes: commit.sizeBytes,
             immutable: commit.immutable,

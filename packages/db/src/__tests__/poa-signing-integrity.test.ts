@@ -166,6 +166,14 @@ async function sendValid(poa: Awaited<ReturnType<typeof makeDraft>>) {
   return { sent, snapshot };
 }
 
+function signedAtAfterSend(sent: { sentAt: Date | null }): Date {
+  if (!sent.sentAt) throw new Error('Test-Fixture: sentAt fehlt nach DRAFT -> SENT.');
+  // PostgreSQL kann sent_at mit höherer Sub-Millisekunden-Präzision halten,
+  // als JavaScript Date beim Roundtrip abbildet. Ein klarer +1s-Abstand stellt
+  // sicher, dass der Fixture-Zeitpunkt auch unter Last wirklich danach liegt.
+  return new Date(sent.sentAt.getTime() + 1_000);
+}
+
 async function makeLegacy(
   status: 'SENT' | 'SIGNED',
   opts: { prepopulatedEvidence?: boolean } = {},
@@ -483,13 +491,13 @@ describeWithDatabase('PoA-DB-Invarianten: Signatur und Terminalstatus', () => {
 
   it('erzwingt beim SENT -> SIGNED denselben Hash und dieselbe Dokumentversion', async () => {
     const poa = await makeDraft({ external: true });
-    const { snapshot } = await sendValid(poa);
+    const { sent, snapshot } = await sendValid(poa);
     await expect(
       owner.powerOfAttorney.update({
         where: { id: poa.id },
         data: {
           status: 'SIGNED',
-          signedAt: new Date(),
+          signedAt: signedAtAfterSend(sent),
           signedContentSha256: Buffer.alloc(32, 0xcd),
           signedDocumentVersionId: versionId,
         },
@@ -500,7 +508,7 @@ describeWithDatabase('PoA-DB-Invarianten: Signatur und Terminalstatus', () => {
         where: { id: poa.id },
         data: {
           status: 'SIGNED',
-          signedAt: new Date(),
+          signedAt: signedAtAfterSend(sent),
           signedContentSha256: snapshot.sha256,
           signedDocumentVersionId: '33333333-3333-4333-8333-333333333333',
         },
@@ -511,7 +519,7 @@ describeWithDatabase('PoA-DB-Invarianten: Signatur und Terminalstatus', () => {
         where: { id: poa.id },
         data: {
           status: 'SIGNED',
-          signedAt: new Date(),
+          signedAt: signedAtAfterSend(sent),
           signedContentSha256: snapshot.sha256,
           signedDocumentVersionId: versionId,
         },
@@ -539,7 +547,7 @@ describeWithDatabase('PoA-DB-Invarianten: Signatur und Terminalstatus', () => {
       where: { id: poa.id },
       data: {
         status: 'SIGNED',
-        signedAt: new Date(),
+        signedAt: signedAtAfterSend(sent),
         signedByIp: '203.0.113.10',
         signedByUserAgent: 'PoA-Test/1.0',
         signedContentSha256: snapshot.sha256,
@@ -563,8 +571,8 @@ describeWithDatabase('PoA-DB-Invarianten: Signatur und Terminalstatus', () => {
 
   it('friert Signaturnachweis und gebundene Unterzeichnerdaten bis zur Retention ein', async () => {
     const poa = await makeDraft();
-    const { snapshot } = await sendValid(poa);
-    const signedAt = new Date();
+    const { sent, snapshot } = await sendValid(poa);
+    const signedAt = signedAtAfterSend(sent);
     await owner.powerOfAttorney.update({
       where: { id: poa.id },
       data: {
@@ -597,12 +605,12 @@ describeWithDatabase('PoA-DB-Invarianten: Signatur und Terminalstatus', () => {
     const recentClient = await makeNaturalPersonForRetention('2025-06-30T00:00:00.000Z');
 
     const duePoa = await makeDraft({ forClientId: dueClient.id });
-    const { snapshot: dueSnapshot } = await sendValid(duePoa);
+    const { sent: dueSent, snapshot: dueSnapshot } = await sendValid(duePoa);
     await owner.powerOfAttorney.update({
       where: { id: duePoa.id },
       data: {
         status: 'SIGNED',
-        signedAt: new Date(),
+        signedAt: signedAtAfterSend(dueSent),
         signedContentSha256: dueSnapshot.sha256,
       },
     });
@@ -616,12 +624,12 @@ describeWithDatabase('PoA-DB-Invarianten: Signatur und Terminalstatus', () => {
     ).rejects.toThrow(/Inhaltsfelder/);
 
     const recentPoa = await makeDraft({ forClientId: recentClient.id });
-    const { snapshot: recentSnapshot } = await sendValid(recentPoa);
+    const { sent: recentSent, snapshot: recentSnapshot } = await sendValid(recentPoa);
     await owner.powerOfAttorney.update({
       where: { id: recentPoa.id },
       data: {
         status: 'SIGNED',
-        signedAt: new Date(),
+        signedAt: signedAtAfterSend(recentSent),
         signedContentSha256: recentSnapshot.sha256,
       },
     });
@@ -637,12 +645,12 @@ describeWithDatabase('PoA-DB-Invarianten: Signatur und Terminalstatus', () => {
     ).rejects.toThrow(/Inhaltsfelder|Versand-Snapshot|Signaturnachweis|Signer-Retention/);
 
     const otherPoa = await makeDraft();
-    const { snapshot: otherSnapshot } = await sendValid(otherPoa);
+    const { sent: otherSent, snapshot: otherSnapshot } = await sendValid(otherPoa);
     await owner.powerOfAttorney.update({
       where: { id: otherPoa.id },
       data: {
         status: 'SIGNED',
-        signedAt: new Date(),
+        signedAt: signedAtAfterSend(otherSent),
         signedContentSha256: otherSnapshot.sha256,
       },
     });
@@ -684,12 +692,12 @@ describeWithDatabase('PoA-DB-Invarianten: Signatur und Terminalstatus', () => {
       },
     });
     const poa = await makeDraft({ forClientId: legalClient.id });
-    const { snapshot } = await sendValid(poa);
+    const { sent, snapshot } = await sendValid(poa);
     await owner.powerOfAttorney.update({
       where: { id: poa.id },
       data: {
         status: 'SIGNED',
-        signedAt: new Date(),
+        signedAt: signedAtAfterSend(sent),
         signedContentSha256: snapshot.sha256,
       },
     });
@@ -819,10 +827,14 @@ describeWithDatabase('PoA-DB-Invarianten: Signatur und Terminalstatus', () => {
     ).rejects.toThrow(/Statuswechsel/);
 
     const signed = await makeDraft();
-    const { snapshot } = await sendValid(signed);
+    const { sent, snapshot } = await sendValid(signed);
     await owner.powerOfAttorney.update({
       where: { id: signed.id },
-      data: { status: 'SIGNED', signedAt: new Date(), signedContentSha256: snapshot.sha256 },
+      data: {
+        status: 'SIGNED',
+        signedAt: signedAtAfterSend(sent),
+        signedContentSha256: snapshot.sha256,
+      },
     });
     await expect(
       owner.powerOfAttorney.update({ where: { id: signed.id }, data: { status: 'EXPIRED' } }),

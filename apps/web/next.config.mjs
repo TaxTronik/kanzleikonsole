@@ -114,11 +114,17 @@ const nextConfig = {
           // einem HTTPS-Reverse-Proxy, dort ist HSTS korrekt.
           ...(isDev
             ? []
-            : [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }]),
+            : [
+                {
+                  key: 'Strict-Transport-Security',
+                  value: 'max-age=63072000; includeSubDomains; preload',
+                },
+              ]),
           { key: 'Content-Security-Policy', value: csp },
         ],
       },
-      // H-3: Magic-Link-/POA-/GwG-Verify-URLs tragen den Token im Query-String.
+      // H-3: Magic-Link-/PoA-/GwG-/Audit-Verify-URLs tragen Capability-Tokens
+      // im Query-String oder Pfad.
       // `no-referrer` verhindert, dass der Token via Referer-Header an
       // externe Origins leakt (z. B. wenn der User auf einen externen Link
       // klickt oder die Page externe Ressourcen lädt).
@@ -132,6 +138,10 @@ const nextConfig = {
       },
       {
         source: '/gwg-onboarding/:path*',
+        headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }],
+      },
+      {
+        source: '/audit-verify/:path*',
         headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }],
       },
     ];

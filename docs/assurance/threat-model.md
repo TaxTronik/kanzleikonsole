@@ -6,17 +6,17 @@
 
 Die Assets, deren Vertraulichkeit, Integrität oder Verfügbarkeit existenzbedrohend wären, wenn kompromittiert:
 
-| Asset                | Schutzziel                  | Begründung                                                   |
-| -------------------- | --------------------------- | ------------------------------------------------------------ |
-| **Mandantendaten**   | Vertraulichkeit             | §203 StGB, §62 StBerG — Berufsverschwiegenheit               |
-| **Tenant-Isolation** | Vertraulichkeit             | Mandant A darf NIEMALS Daten von Mandant B sehen             |
-| **GwG-Daten**        | Integrität, Vertraulichkeit | §10-12 GwG —\_identifizierung, Vefizierung, Aufbewahrung     |
-| **Audit-Chain**      | Integrität, Verfügbarkeit   | GoBD §147 AO — Revisionssicherheit, Unveränderlichkeit       |
-| **Evidence Packs**   | Integrität                  | Hash-Chain + RFC 3161 TSA — kryptographischer Beweis         |
-| **Rollen/Rechte**    | Integrität                  | RBAC — Admin ist nicht Gott, Principle of Least Privilege    |
-| **Exportpfade**      | Vertraulichkeit             | GoBD-Export, DATEV, XRechnung — keine Restricted-Daten-Lecks |
-| **Portalzugänge**    | Vertraulichkeit, Integrität | Magic-Link-Auth, Mandanten-Self-Service                      |
-| **Admin-Funktionen** | Integrität                  | DSGVO-Anonymisierung, Audit-Archivierung, Backups            |
+| Asset                | Schutzziel                  | Begründung                                                      |
+| -------------------- | --------------------------- | --------------------------------------------------------------- |
+| **Mandantendaten**   | Vertraulichkeit             | §203 StGB, §62 StBerG — Berufsverschwiegenheit                  |
+| **Tenant-Isolation** | Vertraulichkeit             | Mandant A darf NIEMALS Daten von Mandant B sehen                |
+| **GwG-Daten**        | Integrität, Vertraulichkeit | §§ 8, 10–12 GwG — Identifizierung, Verifizierung, Aufbewahrung  |
+| **Audit-Chain**      | Integrität, Verfügbarkeit   | § 146 Abs. 4 AO / GoBD — Nachvollziehbarkeit, Unveränderbarkeit |
+| **Evidence Packs**   | Integrität                  | Hash-Chain + RFC 3161 TSA — kryptographischer Beweis            |
+| **Rollen/Rechte**    | Integrität                  | RBAC — Admin ist nicht Gott, Principle of Least Privilege       |
+| **Exportpfade**      | Vertraulichkeit             | GoBD-Export, DATEV, XRechnung — keine Restricted-Daten-Lecks    |
+| **Portalzugänge**    | Vertraulichkeit, Integrität | Magic-Link-Auth, Mandanten-Self-Service                         |
+| **Admin-Funktionen** | Integrität                  | DSGVO-Anonymisierung, Audit-Archivierung, Backups               |
 
 ## 2. Bedrohungen (Threats) — "Was muss niemals passieren"
 
@@ -31,12 +31,12 @@ Die Assets, deren Vertraulichkeit, Integrität oder Verfügbarkeit existenzbedro
 
 ### 2.2 Audit-Chain / GoBD
 
-| ID      | Was muss niemals passieren                              | Schicht                          | Test                                                                                 |
-| ------- | ------------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------ |
-| T-AUD-1 | Eine audit-pflichtige Mutation erzeugt kein Audit-Event | `evidenceService.record`         | `audit-label-coverage.test.ts` (AST-Guard)                                           |
-| T-AUD-2 | Die Hash-Chain ist inkonsistent (Manipulation erkannt)  | SHA-256 + RFC 3161               | `verify:chain` CLI, `service-verifychain.test.ts`, `canonical-json.property.test.ts` |
-| T-AUD-3 | Ein Audit-Eintrag wird nachträglich geändert            | `prevent_modification()` Trigger | RLS-Cross-Tenant Test #22                                                            |
-| T-AUD-4 | Ein Replay-Lauf ist nicht reproduzierbar                | Sampling/Replay-Engine           | `packages/tax` Tests, `08-differential.spec.ts`                                      |
+| ID      | Was muss niemals passieren                              | Schicht                                  | Test                                                                                 |
+| ------- | ------------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------ |
+| T-AUD-1 | Eine audit-pflichtige Mutation erzeugt kein Audit-Event | transaktionales `evidenceService.record` | Modulspezifische Action-Tests; kein vollständiger globaler AST-Nachweis              |
+| T-AUD-2 | Die Hash-Chain ist inkonsistent (Manipulation erkannt)  | SHA-256 + RFC 3161                       | `verify:chain` CLI, `service-verifychain.test.ts`, `canonical-json.property.test.ts` |
+| T-AUD-3 | Ein Audit-Eintrag wird nachträglich geändert            | `prevent_modification()` Trigger         | `rls-cross-tenant.test.ts`                                                           |
+| T-AUD-4 | Ein Replay-Lauf ist nicht reproduzierbar                | Sampling/Replay-Engine                   | `packages/tax` Tests, `08-differential.spec.ts`                                      |
 
 ### 2.3 Authentifizierung & Berechtigungen
 
@@ -57,33 +57,33 @@ Die Assets, deren Vertraulichkeit, Integrität oder Verfügbarkeit existenzbedro
 
 ### 2.5 Infrastruktur
 
-| ID        | Was muss niemals passieren                                                         | Schicht                                         | Test                                                      |
-| --------- | ---------------------------------------------------------------------------------- | ----------------------------------------------- | --------------------------------------------------------- |
-| T-INFRA-1 | Ein Secret wird committet                                                          | gitleaks, Pre-Commit                            | `security.yml` (gitleaks scan)                            |
-| T-INFRA-2 | Eine bekannte Vulnerability (high+) in Prod-Dependencies                           | `pnpm audit`                                    | `security.yml` (weekly + PR)                              |
-| T-INFRA-3 | CI-Images oder Actions sind nicht gepinnt                                          | SHA/Digest-Pinning                              | `check-ci-images-pinned.sh`, `check-ci-actions-pinned.sh` |
-| T-INFRA-4 | Allgemeine Server-Fetches erreichen interne/private Ziele                          | `safeFetch`, DNS-Rebinding-Schutz, Allowlist    | `@taxtronik/http-utils` Tests                             |
-| T-INFRA-5 | Risk-Layer-Konfiguration ist halb gesetzt oder nutzt ein falsches Vertrauensmodell | `doctor`, dedizierter trusted Risk-Layer-Client | `pnpm test:ops`, Risk-Layer Client Tests                  |
-| T-INFRA-6 | n8n-Webhooks werden gefälscht oder replayed                                        | HMAC, Timestamp-Fenster, Nonce                  | n8n Verify Tests, E2E/Workflow-Smoke                      |
-| T-INFRA-7 | Produktion startet mit Dev-Mailhog-Defaults                                        | Compose `${VAR:?}`, `doctor` SMTP-Gate          | `pnpm test:ops`                                           |
-| T-INFRA-8 | Backup existiert, ist aber nicht wiederherstellbar                                 | Restore-Roundtrip, Backup-Drill                 | CI `restore`, `backup-drill`, `disaster-recovery.md`      |
-| T-INFRA-9 | Lokaler Build-Cache füllt den Server                                               | automatischer BuildKit-Prune nach Lokalbuild    | `pnpm test:ops`, Day-2 Runbook                            |
+| ID        | Was muss niemals passieren                                                         | Schicht                                         | Test                                                           |
+| --------- | ---------------------------------------------------------------------------------- | ----------------------------------------------- | -------------------------------------------------------------- |
+| T-INFRA-1 | Ein Secret wird committet                                                          | gitleaks, Pre-Commit                            | `security.yml` (gitleaks scan)                                 |
+| T-INFRA-2 | Eine bekannte Vulnerability (high+) in Prod-Dependencies                           | `pnpm audit`                                    | `security.yml` (weekly + PR)                                   |
+| T-INFRA-3 | CI-Images oder Actions sind nicht gepinnt                                          | SHA/Digest-Pinning                              | `check-ci-images-pinned.sh`, `check-ci-actions-pinned.sh`      |
+| T-INFRA-4 | Allgemeine Server-Fetches erreichen interne/private Ziele                          | `safeFetch`, DNS-Rebinding-Schutz, Allowlist    | `@taxtronik/http-utils` Tests                                  |
+| T-INFRA-5 | Risk-Layer-Konfiguration ist halb gesetzt oder nutzt ein falsches Vertrauensmodell | `doctor`, dedizierter trusted Risk-Layer-Client | `pnpm test:ops`, Risk-Layer Client Tests                       |
+| T-INFRA-6 | n8n-Webhooks werden gefälscht oder replayed                                        | HMAC, Timestamp-Fenster, Nonce                  | `server/n8n/__tests__/verify.test.ts`, Workflow-Contract-Tests |
+| T-INFRA-7 | Produktion startet mit Dev-Mailhog-Defaults                                        | Compose `${VAR:?}`, `doctor` SMTP-Gate          | `pnpm test:ops`                                                |
+| T-INFRA-8 | Backup existiert, ist aber nicht wiederherstellbar                                 | Restore-Roundtrip, Backup-Drill                 | CI `restore`, `backup-drill`, `disaster-recovery.md`           |
+| T-INFRA-9 | Lokaler Build-Cache füllt den Server                                               | automatischer BuildKit-Prune nach Lokalbuild    | `pnpm test:ops`, Day-2 Runbook                                 |
 
 ## 3. Angriffsvektoren
 
-| Vektor                   | Beispiel                                           | Gegenmaßnahme                                                     |
-| ------------------------ | -------------------------------------------------- | ----------------------------------------------------------------- |
-| **Direct DB Access**     | Angreifer umgeht App, greift direkt auf DB zu      | RLS (FORCE + Policy), `taxtronik_app` Role                        |
-| **TOCTOU Race**          | Berechtigung gilt beim Precheck, nicht beim Commit | Advisory Locks, `$transaction`                                    |
-| **Mass Assignment**      | Angreifer sendet versteckte Felder mit             | Zod-Schemas pro Action, `decideStaffGuard`                        |
-| **CSRF**                 | Angreifer forciert POST aus fremdem Origin         | SameSite=Lax, CSRF-Token (NextAuth)                               |
-| **XSS**                  | Angreifer injiziert Script in Mandantendaten       | React-Default-Escaping, CSP, E2E 07 (9.1)                         |
-| **SQL Injection**        | Angreifer injiziert SQL in Search/Filter           | Prisma-Parameterized-Queries, E2E 07 (9.2)                        |
-| **File Upload Malware**  | EICAR-Testdatei, Double-Extension                  | ClamAV, MIME-Check, E2E 07 (10.1-10.3)                            |
-| **Brute Force**          | Passwort- oder TOTP-Brute-Force                    | IP-RL + Account-Lockout, E2E 04                                   |
-| **SSRF / DNS-Rebinding** | Admin-konfigurierte URLs zeigen auf interne Netze  | `safeFetch`, gepinnter Lookup, `INTERNAL_FETCH_HOSTS` nur bewusst |
-| **Webhook Replay**       | alter n8n-Callback wird erneut gesendet            | HMAC + Timestamp + Redis-Nonce                                    |
-| **Dev-Config in Prod**   | Mailhog oder Dev-Secrets gelangen in Production    | ENV-Denylist, Compose-Pflichtvariablen, `doctor`                  |
+| Vektor                   | Beispiel                                           | Gegenmaßnahme                                                       |
+| ------------------------ | -------------------------------------------------- | ------------------------------------------------------------------- |
+| **Direct DB Access**     | Angreifer umgeht App, greift direkt auf DB zu      | RLS (FORCE + Policy), `taxtronik_app` Role                          |
+| **TOCTOU Race**          | Berechtigung gilt beim Precheck, nicht beim Commit | Advisory Locks, `$transaction`                                      |
+| **Mass Assignment**      | Angreifer sendet versteckte Felder mit             | Zod-Schemas pro Action, `decideStaffGuard`                          |
+| **CSRF**                 | Angreifer forciert POST aus fremdem Origin         | SameSite=Lax, Origin-/Fetch-Metadata-Checks, Auth.js/Next.js-Schutz |
+| **XSS**                  | Angreifer injiziert Script in Mandantendaten       | React-Default-Escaping, CSP, E2E 07 (9.1)                           |
+| **SQL Injection**        | Angreifer injiziert SQL in Search/Filter           | Prisma-Parameterized-Queries, E2E 07 (9.2)                          |
+| **File Upload Malware**  | EICAR-Testdatei, Double-Extension                  | ClamAV, MIME-Check, E2E 07 (10.1-10.3)                              |
+| **Brute Force**          | Passwort- oder TOTP-Brute-Force                    | IP-RL + Account-Lockout, E2E 04                                     |
+| **SSRF / DNS-Rebinding** | Admin-konfigurierte URLs zeigen auf interne Netze  | `safeFetch`, gepinnter Lookup, `INTERNAL_FETCH_HOSTS` nur bewusst   |
+| **Webhook Replay**       | alter n8n-Callback wird erneut gesendet            | HMAC + Timestamp + Redis-Nonce                                      |
+| **Dev-Config in Prod**   | Mailhog oder Dev-Secrets gelangen in Production    | ENV-Denylist, Compose-Pflichtvariablen, `doctor`                    |
 
 ## 4. Vertrauensgrenzen (Trust Boundaries)
 
@@ -92,7 +92,7 @@ Die Assets, deren Vertraulichkeit, Integrität oder Verfügbarkeit existenzbedro
 │ Internet (Null-Trust)                                │
 │  ├── Portal-User (Magic-Link)                        │
 │  └── Angreifer                                        │
-├─────────── Proxy (Middleware) ──────────────────────┤
+├─────────── Proxy (`proxy.ts`) ──────────────────────┤
 │  ├── Surface-Detection (/staff, /portal, /api/...)   │
 │  ├── Cookie-Reading (tolerant prefixes)              │
 │  └── Rate-Limit-Pre-Check                             │

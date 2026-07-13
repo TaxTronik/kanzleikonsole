@@ -4,14 +4,16 @@
 #
 # Fährt den ECHTEN Code-Pfad: runner.ts (--out-file) erzeugt einen pg_dump,
 # restore.ts (--file) spielt ihn via pg_restore in eine frische Ziel-DB ein.
-# Anschließend zwei Integritäts-Assertions:
+# Anschließend drei Integritäts-Assertions:
 #   A) Zeilenzahl-Vergleich Quelle↔Ziel für die wichtigsten Tabellen
-#   B) verify:chain auf der wiederhergestellten DB (Audit-Hash-Chain intakt?)
+#   B) App-Rolle + sicherheitskritische Grants/REVOKEs sind wiederhergestellt
+#   C) verify:chain auf der wiederhergestellten DB (Audit-Hash-Chain intakt?)
 #
 # Läuft eigenständig — KEINE Prod-.env nötig. Quelle = $DATABASE_URL, das Ziel
 # wird daraus abgeleitet (gleiche Verbindung, DB-Name `taxtronik_restore`).
 #
-# Lokal:   DATABASE_URL=postgresql://… bash scripts/restore-selftest.sh
+# Lokal:   DATABASE_URL=postgresql://… DATABASE_APP_URL=postgresql://… \
+#            bash scripts/restore-selftest.sh
 # In CI:   eigener Job `restore` (siehe .forgejo/workflows/ci.yml).
 # =============================================================================
 
@@ -34,8 +36,10 @@ require_cmd pnpm
 require_cmd node
 
 [[ -n "${DATABASE_URL:-}" ]] || die "DATABASE_URL nicht gesetzt (Quelle des Selbsttests)."
+[[ -n "${DATABASE_APP_URL:-}" ]] || die "DATABASE_APP_URL nicht gesetzt (App-Rollen-Pruefung des Selbsttests)."
 
 SRC_URL="$DATABASE_URL"
+APP_URL="$DATABASE_APP_URL"
 TARGET_DB="taxtronik_restore"
 
 # -----------------------------------------------------------------------------
@@ -60,19 +64,26 @@ url_part() {
     }[process.argv[2]];
     if (part === undefined) { console.error("url_part: unbekannter Teil"); process.exit(1); }
     process.stdout.write(part);
-  ' "$SRC_URL" "$1"
+  ' "$1" "$2"
 }
 
-PG_HOST="$(url_part host)"
-PG_PORT="$(url_part port)"
-PG_USER="$(url_part user)"
-SRC_DBNAME="$(url_part dbname)"
+PG_HOST="$(url_part "$SRC_URL" host)"
+PG_PORT="$(url_part "$SRC_URL" port)"
+PG_USER="$(url_part "$SRC_URL" user)"
+SRC_DBNAME="$(url_part "$SRC_URL" dbname)"
 # Getrennt zuweisen + exportieren: `export VAR=$(cmd)` würde unter set -e einen
 # Fehler von cmd verschlucken (Exit-Status des export zählt).
-PG_PASSWORD="$(url_part password)"
+PG_PASSWORD="$(url_part "$SRC_URL" password)"
 export PGPASSWORD="$PG_PASSWORD"
-PG_SSLMODE="$(url_part sslmode)"
+PG_SSLMODE="$(url_part "$SRC_URL" sslmode)"
 if [[ -n "$PG_SSLMODE" ]]; then export PGSSLMODE="$PG_SSLMODE"; fi
+
+APP_PG_HOST="$(url_part "$APP_URL" host)"
+APP_PG_PORT="$(url_part "$APP_URL" port)"
+APP_PG_USER="$(url_part "$APP_URL" user)"
+APP_PG_PASSWORD="$(url_part "$APP_URL" password)"
+APP_PG_SSLMODE="$(url_part "$APP_URL" sslmode)"
+[[ "$APP_PG_USER" == "taxtronik_app" ]] || die "DATABASE_APP_URL muss fuer den Selftest die Rolle taxtronik_app verwenden."
 
 [[ "$SRC_DBNAME" != "$TARGET_DB" ]] || die "Quelle ist bereits '$TARGET_DB' — Abbruch (würde Quelle zerstören)."
 
@@ -86,6 +97,17 @@ TARGET_URL="${SRC_BASE%/*}/${TARGET_DB}${SRC_QUERY}"
 psql_db() {
   local db="$1"; shift
   psql -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$db" -v ON_ERROR_STOP=1 "$@"
+}
+
+psql_app_db() {
+  local db="$1"; shift
+  if [[ -n "$APP_PG_SSLMODE" ]]; then
+    PGPASSWORD="$APP_PG_PASSWORD" PGSSLMODE="$APP_PG_SSLMODE" \
+      psql -h "$APP_PG_HOST" -p "$APP_PG_PORT" -U "$APP_PG_USER" -d "$db" -v ON_ERROR_STOP=1 "$@"
+  else
+    PGPASSWORD="$APP_PG_PASSWORD" \
+      psql -h "$APP_PG_HOST" -p "$APP_PG_PORT" -U "$APP_PG_USER" -d "$db" -v ON_ERROR_STOP=1 "$@"
+  fi
 }
 
 TMP="$(mktemp -d)"
@@ -162,11 +184,72 @@ done
 [[ "$ASSERT_OK" -eq 1 ]] || die "Zeilenzahl-Vergleich fehlgeschlagen — Restore unvollständig."
 
 # -----------------------------------------------------------------------------
-# 6. Assertion B (compliance-kritisch) — Audit-Hash-Chain auf der Ziel-DB.
+# 6. Assertion B — ACL-/RLS-Sicherheitszustand auf der Ziel-DB.
+# Ein vollständiger fachlicher Restore muss nicht nur Daten/DDL, sondern auch
+# die PostgreSQL-Privilegien erhalten. Insbesondere dürfen die REVOKEs auf
+# Audit-Tabellen und SECURITY-DEFINER-Funktionen nicht verloren gehen.
+# -----------------------------------------------------------------------------
+info "Assertion B: App-Rolle und sicherheitskritische ACLs prüfen…"
+
+ACL_STATE="$(psql_db "$TARGET_DB" -tA <<'SQL'
+SELECT concat_ws('|',
+  (EXISTS (
+    SELECT 1 FROM pg_catalog.pg_roles
+     WHERE rolname = 'taxtronik_app'
+       AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole
+       AND NOT rolreplication AND NOT rolbypassrls
+  ))::text,
+  has_schema_privilege('taxtronik_app', 'app', 'USAGE')::text,
+  has_function_privilege('taxtronik_app', 'app.current_tenant_id()', 'EXECUTE')::text,
+  has_function_privilege('taxtronik_app', 'app.destroy_gwg_check(uuid)', 'EXECUTE')::text,
+  has_function_privilege('taxtronik_app', 'app.destroy_gwg_document_versions(uuid)', 'EXECUTE')::text,
+  has_table_privilege('taxtronik_app', 'audit_log', 'SELECT')::text,
+  (NOT has_table_privilege('taxtronik_app', 'audit_log', 'UPDATE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'audit_log', 'DELETE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'audit_log', 'TRUNCATE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'audit_seal', 'UPDATE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'audit_seal', 'DELETE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'audit_seal', 'TRUNCATE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'audit_archive', 'UPDATE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'audit_archive', 'DELETE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'audit_archive', 'TRUNCATE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'document_version', 'DELETE'))::text,
+  (NOT EXISTS (
+    SELECT 1
+      FROM pg_catalog.pg_proc p
+      CROSS JOIN LATERAL pg_catalog.aclexplode(
+        COALESCE(p.proacl, pg_catalog.acldefault('f', p.proowner))
+      ) acl
+     WHERE p.oid IN (
+       'app.destroy_gwg_check(uuid)'::regprocedure,
+       'app.assert_gwg_document_destruction_due(uuid)'::regprocedure,
+       'app.destroy_gwg_document_versions(uuid)'::regprocedure
+     )
+       AND acl.grantee = 0
+       AND acl.privilege_type = 'EXECUTE'
+  ))::text
+);
+SQL
+)"
+EXPECTED_ACL_STATE="true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true"
+[[ "$ACL_STATE" == "$EXPECTED_ACL_STATE" ]] || \
+  die "ACL-/REVOKE-Pruefung fehlgeschlagen: $ACL_STATE"
+
+# Wirklich als eingeschränkte Rolle verbinden: Schema/Funktion müssen
+# nutzbar sein, RLS muss ohne Tenant-Kontext gleichzeitig alle Tenant-Zeilen
+# ausblenden.
+APP_PROBE="$(psql_app_db "$TARGET_DB" -tA -c \
+  "SELECT current_user || '|' || COALESCE(app.current_tenant_id()::text, 'NULL') || '|' || (SELECT count(*) FROM tenant)::text")"
+[[ "$APP_PROBE" == "taxtronik_app|NULL|0" ]] || \
+  die "App-Rollen-/RLS-Probe fehlgeschlagen: $APP_PROBE"
+echo "  ✓ taxtronik_app funktionsfähig; kritische Grants/REVOKEs und RLS intakt"
+
+# -----------------------------------------------------------------------------
+# 7. Assertion C (compliance-kritisch) — Audit-Hash-Chain auf der Ziel-DB.
 #    Bricht die Chain auf der wiederhergestellten DB, ist das Backup für GoBD
 #    wertlos. Daher harter Fehler.
 # -----------------------------------------------------------------------------
-info "Assertion B: verify:chain auf '$TARGET_DB'…"
+info "Assertion C: verify:chain auf '$TARGET_DB'…"
 ( cd "$ROOT" && DATABASE_URL="$TARGET_URL" pnpm verify:chain )
 
 # -----------------------------------------------------------------------------

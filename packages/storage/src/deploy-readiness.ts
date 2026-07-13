@@ -32,10 +32,10 @@ import {
 import { env } from '@taxtronik/config';
 import { s3 } from './client';
 import { fetchObjectBytes, deleteObject, scanBytes, MAX_UPLOAD_BYTES } from './service';
+import { evaluateObjectLockConfiguration, type RequiredLockMode } from './object-lock-policy';
 
 /** Standard-EICAR-Testsignatur — von jeder AV-Engine mit Signaturen erkannt. */
-const EICAR =
-  'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*';
+const EICAR = 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*';
 
 export type CheckStatus = 'ok' | 'warn' | 'fail';
 
@@ -98,29 +98,25 @@ async function checkBucketExists(bucket: string): Promise<ReadinessCheck> {
   });
 }
 
-async function checkObjectLock(bucket: string): Promise<ReadinessCheck> {
+async function checkObjectLock(
+  bucket: string,
+  expected: { mode: RequiredLockMode; years: number },
+): Promise<ReadinessCheck> {
   return timed(`object-lock:${bucket}`, async () => {
     try {
       const res = await s3.send(new GetObjectLockConfigurationCommand({ Bucket: bucket }));
-      const enabled = res.ObjectLockConfiguration?.ObjectLockEnabled === 'Enabled';
-      if (enabled) {
-        const rule = res.ObjectLockConfiguration?.Rule?.DefaultRetention;
-        const mode = rule?.Mode ?? '—';
-        const years = rule?.Years ?? rule?.Days ?? '—';
-        return { status: 'ok' as const, detail: `Enabled (Default ${mode}/${years})` };
-      }
-      // Explizit NICHT aktiv → GoBD-/GwG-Revisionssicherheit fehlt → harter Fail.
+      const evaluation = evaluateObjectLockConfiguration(res.ObjectLockConfiguration, expected);
       return {
-        status: 'fail' as const,
-        detail: 'Object-Lock NICHT aktiv — Bucket muss mit --object-lock-enabled-for-bucket angelegt werden (nachträglich nicht möglich).',
+        status: evaluation.ok ? ('ok' as const) : ('fail' as const),
+        detail: evaluation.detail,
       };
     } catch (e) {
-      // Manche S3-Engines (SeaweedFS) beantworten die Konfig-Abfrage nicht,
-      // erzwingen die Retention aber trotzdem beim PUT. Kein harter Fail, aber
-      // sichtbar: die Object-Lock-Konfiguration ließ sich nicht verifizieren.
+      // Ein nicht verifizierbarer Modus darf das Deployment nicht grün
+      // verlassen: COMPLIANCE statt GOVERNANCE würde die fristgerechte
+      // GwG-Vernichtung technisch blockieren.
       return {
-        status: 'warn' as const,
-        detail: `Object-Lock-Konfiguration nicht abfragbar (${(e as Error).message}) — Engine unterstützt die Abfrage evtl. nicht; Retention manuell verifizieren.`,
+        status: 'fail' as const,
+        detail: `Object-Lock-Konfiguration nicht verifizierbar (${(e as Error).message}).`,
       };
     }
   });
@@ -156,7 +152,8 @@ async function checkClamavEicar(): Promise<ReadinessCheck> {
     if (result === 'CLEAN') {
       return {
         status: 'fail',
-        detail: 'EICAR NICHT erkannt — ClamAV hat keine Signaturen geladen (freshclam?). Jeder Scan liefe „clean", Malware käme durch.',
+        detail:
+          'EICAR NICHT erkannt — ClamAV hat keine Signaturen geladen (freshclam?). Jeder Scan liefe „clean", Malware käme durch.',
       };
     }
     return { status: 'fail', detail: `EICAR-Scan fehlgeschlagen: ${result}` };
@@ -182,7 +179,10 @@ async function checkStorageRoundtrip(): Promise<ReadinessCheck> {
     try {
       const read = await fetchObjectBytes(bucket, key);
       if (!read.equals(payload)) {
-        return { status: 'fail' as const, detail: 'Gelesene Bytes weichen von den geschriebenen ab.' };
+        return {
+          status: 'fail' as const,
+          detail: 'Gelesene Bytes weichen von den geschriebenen ab.',
+        };
       }
       return { status: 'ok' as const, detail: `put→get→delete ok (${bucket})` };
     } finally {
@@ -198,9 +198,7 @@ async function checkStorageRoundtrip(): Promise<ReadinessCheck> {
  * `fail` ist. Reihenfolge: erst die günstigen Read-Checks (Buckets, Lock,
  * Roundtrip, EICAR), zuletzt der teure Größen-Scan.
  */
-export async function checkDeployReadiness(
-  opts: ReadinessOptions = {},
-): Promise<ReadinessReport> {
+export async function checkDeployReadiness(opts: ReadinessOptions = {}): Promise<ReadinessReport> {
   const appBuckets = [
     env.S3_BUCKET_GOBD,
     env.S3_BUCKET_GWG,
@@ -211,8 +209,8 @@ export async function checkDeployReadiness(
 
   const checks: ReadinessCheck[] = [];
   for (const b of appBuckets) checks.push(await checkBucketExists(b));
-  checks.push(await checkObjectLock(env.S3_BUCKET_GOBD));
-  checks.push(await checkObjectLock(env.S3_BUCKET_GWG));
+  checks.push(await checkObjectLock(env.S3_BUCKET_GOBD, { mode: 'COMPLIANCE', years: 10 }));
+  checks.push(await checkObjectLock(env.S3_BUCKET_GWG, { mode: 'GOVERNANCE', years: 5 }));
   checks.push(await checkStorageRoundtrip());
   checks.push(await checkClamavEicar());
   checks.push(await checkClamavSize(opts.clamavScanBytes ?? MAX_UPLOAD_BYTES));

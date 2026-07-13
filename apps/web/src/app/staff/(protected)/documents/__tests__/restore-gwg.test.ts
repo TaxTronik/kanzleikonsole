@@ -21,6 +21,8 @@ vi.mock('@taxtronik/db', () => ({ withTenantContext: vi.fn() }));
 vi.mock('@taxtronik/storage', () => ({
   fetchObjectBytes: vi.fn(),
   commitBytesWithTier: vi.fn(),
+  deleteObject: vi.fn(),
+  deleteObjectVersion: vi.fn(),
   classificationToTier: vi.fn(),
   gobdRetentionYears: vi.fn(),
 }));
@@ -28,6 +30,7 @@ vi.mock('@/server/container', () => ({ evidenceService: { record: h.evidenceReco
 vi.mock('@/server/db/prisma-bytes', () => ({ prismaBytes: vi.fn() }));
 vi.mock('@/server/storage/document-type', () => ({ carrierClassification: vi.fn() }));
 vi.mock('@/server/storage/retag-policy', () => ({ documentRetagDecision: vi.fn() }));
+vi.mock('@/server/logger', () => ({ log: { error: vi.fn() } }));
 vi.mock('@/server/auth/rbac', () => ({
   assertClientAccessTx: h.assertClientAccessTx,
   toActionError: (error: unknown) => ({

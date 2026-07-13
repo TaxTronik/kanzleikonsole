@@ -32,12 +32,20 @@ const BASE_ORIGIN = process.env['E2E_BASE_URL'] ?? 'http://localhost:3000';
 
 function createMinimalPdf(): Buffer {
   const pdf = [
-    '%PDF-1.4', '1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj',
+    '%PDF-1.4',
+    '1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj',
     '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj',
     '3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R>>endobj',
-    'xref', '0 4', '0000000000 65535 f ',
-    '0000000009 00000 n ', '0000000058 00000 n ', '0000000115 00000 n ',
-    'trailer<</Size 4/Root 1 0 R>>', 'startxref', '190', '%%EOF',
+    'xref',
+    '0 4',
+    '0000000000 65535 f ',
+    '0000000009 00000 n ',
+    '0000000058 00000 n ',
+    '0000000115 00000 n ',
+    'trailer<</Size 4/Root 1 0 R>>',
+    'startxref',
+    '190',
+    '%%EOF',
   ].join('\n');
   return Buffer.from(pdf, 'utf-8');
 }
@@ -53,8 +61,13 @@ async function openMustermannDocuments(page: Page): Promise<string> {
       return page.url();
     }
   }
-  const text = await page.locator('main').innerText().catch(() => '');
-  throw new Error(`Mustermann-Dokumenten-Scope nicht gefunden. Sichtbarer Inhalt: ${text.slice(0, 500)}`);
+  const text = await page
+    .locator('main')
+    .innerText()
+    .catch(() => '');
+  throw new Error(
+    `Mustermann-Dokumenten-Scope nicht gefunden. Sichtbarer Inhalt: ${text.slice(0, 500)}`,
+  );
 }
 
 function createEicarBuffer(): Buffer {
@@ -78,10 +91,13 @@ const PG_PASSWORD = process.env['E2E_POSTGRES_PASSWORD'] ?? 'taxtronik';
 function psql(query: string): string {
   const oneLine = query.replace(/\r?\n/g, ' ').replace(/"/g, '\\"');
   try {
-    return execSync(`docker exec ${PG_CONTAINER} psql -U ${PG_USER} -d ${PG_DB} -t -A -c "${oneLine}"`, {
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim();
+    return execSync(
+      `docker exec ${PG_CONTAINER} psql -U ${PG_USER} -d ${PG_DB} -t -A -c "${oneLine}"`,
+      {
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      },
+    ).trim();
   } catch {
     return execSync(`psql -h ${PG_HOST} -U ${PG_USER} -d ${PG_DB} -t -A -c "${oneLine}"`, {
       encoding: 'utf-8',
@@ -109,10 +125,16 @@ async function readAuditActionsFiltered(page: Page, action: string): Promise<str
   }
   await expect(page.getByRole('heading', { name: /Audit-Log/i })).toBeVisible({ timeout: 10_000 });
   await expect(
-    page.locator('table tbody tr').or(page.getByText(/Keine Einträge|Keine Eintraege/i)).first(),
+    page
+      .locator('table tbody tr')
+      .or(page.getByText(/Keine Einträge|Keine Eintraege/i))
+      .first(),
     `Audit-Filter fuer ${action} muss Tabelle oder Leerzustand rendern`,
   ).toBeVisible({ timeout: 10_000 });
-  const texts = await page.locator('table tbody tr td:nth-child(4)').allInnerTexts().catch(() => [] as string[]);
+  const texts = await page
+    .locator('table tbody tr td:nth-child(4)')
+    .allInnerTexts()
+    .catch(() => [] as string[]);
   return texts.map((t) => t.trim()).filter(Boolean);
 }
 
@@ -122,7 +144,11 @@ async function readAuditActionsFiltered(page: Page, action: string): Promise<str
 test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
   test.beforeAll(() => {
     fs.mkdirSync(AUTH_DIR, { recursive: true });
-    try { fs.unlinkSync(STAFF_AUTH); } catch { /* best-effort cleanup */ }
+    try {
+      fs.unlinkSync(STAFF_AUTH);
+    } catch {
+      /* best-effort cleanup */
+    }
   });
 
   test('Login as admin', async ({ browser }) => {
@@ -137,7 +163,11 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
 
   test('1.1 Upload a PDF document', async ({ browser }) => {
     test.setTimeout(60_000);
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -152,11 +182,18 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
       if (btnVisible) {
         await uploadBtn2.click();
       } else {
-        const uploadLink = page.getByRole('link', { name: /Hochladen|Dokument.*hochladen|Upload/i }).first();
+        const uploadLink = page
+          .getByRole('link', { name: /Hochladen|Dokument.*hochladen|Upload/i })
+          .first();
         btnVisible = await uploadLink.isVisible({ timeout: 3000 }).catch(() => false);
         if (!btnVisible) {
-          const allButtons = await page.locator('button, a[role="button"]').allInnerTexts().catch(() => [] as string[]);
-          throw new Error(`Upload button not found on /staff/documents. Available buttons: ${allButtons.join(', ') || '(none)'}`);
+          const allButtons = await page
+            .locator('button, a[role="button"]')
+            .allInnerTexts()
+            .catch(() => [] as string[]);
+          throw new Error(
+            `Upload button not found on /staff/documents. Available buttons: ${allButtons.join(', ') || '(none)'}`,
+          );
         }
         await uploadLink.click();
       }
@@ -189,7 +226,9 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
     });
 
     const fileInput = page.locator('#upload-file, input[type="file"]').first();
-    await expect(fileInput, 'Upload-Dialog muss ein Datei-Feld enthalten').toBeVisible({ timeout: 4000 });
+    await expect(fileInput, 'Upload-Dialog muss ein Datei-Feld enthalten').toBeVisible({
+      timeout: 4000,
+    });
     await fileInput.setInputFiles({
       name: `e2e-compliance-${Date.now()}.pdf`,
       mimeType: 'application/pdf',
@@ -198,19 +237,27 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
     await page.waitForTimeout(500);
 
     const titleInput = page.locator('#upload-title, input[name="title"]');
-    await expect(titleInput, 'Upload-Dialog muss ein Titel-Feld enthalten').toBeVisible({ timeout: 2000 });
+    await expect(titleInput, 'Upload-Dialog muss ein Titel-Feld enthalten').toBeVisible({
+      timeout: 2000,
+    });
     await titleInput.fill(complianceDocumentTitle);
 
     const submitBtn = page.locator('button[type="submit"]').filter({ hasText: /Hochladen/ });
-    await expect(submitBtn, 'Upload-Dialog muss einen Submit-Button enthalten').toBeVisible({ timeout: 3000 });
-    const commitResponse = page.waitForResponse((res) =>
-      res.url().includes('/api/staff/documents/commit') && res.request().method() === 'POST',
+    await expect(submitBtn, 'Upload-Dialog muss einen Submit-Button enthalten').toBeVisible({
+      timeout: 3000,
+    });
+    const commitResponse = page.waitForResponse(
+      (res) =>
+        res.url().includes('/api/staff/documents/commit') && res.request().method() === 'POST',
       { timeout: 30_000 },
     );
     await submitBtn.click();
     const uploadRes = await commitResponse;
     const uploadBody = await uploadRes.json().catch(() => ({}));
-    expect(uploadRes.status(), `Dokumenten-Commit muss erfolgreich sein: ${JSON.stringify(uploadBody)}`).toBe(200);
+    expect(
+      uploadRes.status(),
+      `Dokumenten-Commit muss erfolgreich sein: ${JSON.stringify(uploadBody)}`,
+    ).toBe(200);
     complianceDocumentId = String(uploadBody.documentId ?? '');
     expect(complianceDocumentId, 'Commit-Response muss die Dokument-ID enthalten').toBeTruthy();
 
@@ -227,7 +274,11 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
   });
 
   test('1.2 Verify uploaded document appears in list', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -243,8 +294,14 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
     await ctx.close();
   });
 
-  test('1.3 Soft-delete a document and verify it is hidden but recoverable', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+  test('1.3 Soft-delete a document and verify it is hidden but recoverable', async ({
+    browser,
+  }) => {
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -253,17 +310,27 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
     await expect(page).not.toHaveURL(/\/staff\/login/);
 
     const documentRow = page.locator(`[data-document-id="${complianceDocumentId}"]`);
-    await expect(documentRow, 'Das gerade hochgeladene Dokument muss vor dem Soft-Delete eindeutig sichtbar sein').toBeVisible({ timeout: 8000 });
+    await expect(
+      documentRow,
+      'Das gerade hochgeladene Dokument muss vor dem Soft-Delete eindeutig sichtbar sein',
+    ).toBeVisible({ timeout: 8000 });
     await documentRow.hover();
 
     const trashBtn = documentRow.getByTitle('Löschen', { exact: true });
-    await expect(trashBtn, 'Das konkrete Dokument muss eine Löschaktion anbieten').toBeVisible({ timeout: 5000 });
+    await expect(trashBtn, 'Das konkrete Dokument muss eine Löschaktion anbieten').toBeVisible({
+      timeout: 5000,
+    });
     await trashBtn.click();
 
     const dialog = page.getByRole('dialog', { name: /Dokument.*löschen/i });
-    await expect(dialog, 'Soft-Delete muss einen bestaetigenden Dialog anzeigen').toBeVisible({ timeout: 5000 });
+    await expect(dialog, 'Soft-Delete muss einen bestaetigenden Dialog anzeigen').toBeVisible({
+      timeout: 5000,
+    });
     await dialog.getByRole('button', { name: /Löschen/i }).click();
-    await expect(documentRow, 'Soft-geloeschtes Dokument darf in der aktiven Liste nicht mehr sichtbar sein').toBeHidden({ timeout: 10_000 });
+    await expect(
+      documentRow,
+      'Soft-geloeschtes Dokument darf in der aktiven Liste nicht mehr sichtbar sein',
+    ).toBeHidden({ timeout: 10_000 });
 
     const deletedUrl = new URL(scopedDocumentsUrl);
     deletedUrl.searchParams.set('deleted', '1');
@@ -271,37 +338,65 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
     await expect(page).not.toHaveURL(/\/staff\/login/);
 
     const deletedRow = page.locator(`[data-document-id="${complianceDocumentId}"]`);
-    await expect(deletedRow, 'Genau das soft-geloeschte Dokument muss im Papierkorb wiederauffindbar sein').toBeVisible({ timeout: 8000 });
+    await expect(
+      deletedRow,
+      'Genau das soft-geloeschte Dokument muss im Papierkorb wiederauffindbar sein',
+    ).toBeVisible({ timeout: 8000 });
     await deletedRow.hover();
     const restoreBtn = deletedRow.getByTitle('Wiederherstellen', { exact: true });
-    await expect(restoreBtn, 'Das soft-geloeschte Dokument muss wiederherstellbar sein').toBeVisible({ timeout: 5000 });
+    await expect(
+      restoreBtn,
+      'Das soft-geloeschte Dokument muss wiederherstellbar sein',
+    ).toBeVisible({ timeout: 5000 });
     await restoreBtn.click();
-    await expect(deletedRow, 'Das wiederhergestellte Dokument muss aus dem Papierkorb verschwinden').toBeHidden({ timeout: 10_000 });
+    await expect(
+      deletedRow,
+      'Das wiederhergestellte Dokument muss aus dem Papierkorb verschwinden',
+    ).toBeHidden({ timeout: 10_000 });
 
     await page.goto(scopedDocumentsUrl);
-    await expect(page.locator(`[data-document-id="${complianceDocumentId}"]`), 'Das wiederhergestellte Dokument muss erneut in der aktiven Liste stehen').toBeVisible({ timeout: 8000 });
+    await expect(
+      page.locator(`[data-document-id="${complianceDocumentId}"]`),
+      'Das wiederhergestellte Dokument muss erneut in der aktiven Liste stehen',
+    ).toBeVisible({ timeout: 8000 });
     await ctx.close();
   });
 
   test('1.4 Object-Lock metadata validation (retention date)', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
-    expect(complianceDocumentId, 'Kein Dokument fuer Object-Lock-Check — Test 1.1 muss die ID gesetzt haben').toBeTruthy();
+    expect(
+      complianceDocumentId,
+      'Kein Dokument fuer Object-Lock-Check — Test 1.1 muss die ID gesetzt haben',
+    ).toBeTruthy();
     await page.goto(`/staff/documents/${complianceDocumentId}`);
     await page.waitForLoadState('domcontentloaded');
     await expect(page).toHaveURL(/\/staff\/documents\/[a-f0-9-]+/);
     const retentionText = page.getByText(/Aufbewahrung bis \d{1,2}\.\d{1,2}\.\d{4}/i);
-    await expect(retentionText.first(), 'GoBD-Dokument muss ein sichtbares Aufbewahrungsdatum ausweisen').toBeVisible({ timeout: 8000 });
+    await expect(
+      retentionText.first(),
+      'GoBD-Dokument muss ein sichtbares Aufbewahrungsdatum ausweisen',
+    ).toBeVisible({ timeout: 8000 });
     const shaText = page.getByText(/SHA-256/);
     await expect(shaText).toBeVisible({ timeout: 5000 });
 
     await ctx.close();
   });
 
-  test('1.5 Upload ohne classification/documentTypeId wird mit 400 abgelehnt', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+  test('1.5 Upload ohne classification/documentTypeId wird mit 400 abgelehnt', async ({
+    browser,
+  }) => {
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -327,23 +422,39 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
   });
 
   test('1.6 Upload new version of existing document', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
-    expect(complianceDocumentId, 'Kein Dokument fuer Version-Upload — Test 1.1 muss die ID gesetzt haben').toBeTruthy();
+    expect(
+      complianceDocumentId,
+      'Kein Dokument fuer Version-Upload — Test 1.1 muss die ID gesetzt haben',
+    ).toBeTruthy();
     await page.goto(`/staff/documents/${complianceDocumentId}`);
     await page.waitForLoadState('domcontentloaded');
     expect(page.url()).not.toContain('/staff/login');
 
-    const versionsList = page.getByRole('heading', { name: 'Versionen', exact: true }).locator('xpath=following::ul[1]');
-    await expect(versionsList, 'Versionshistorie muss sichtbar sein').toBeVisible({ timeout: 5000 });
+    const versionsList = page
+      .getByRole('heading', { name: 'Versionen', exact: true })
+      .locator('xpath=following::ul[1]');
+    await expect(versionsList, 'Versionshistorie muss sichtbar sein').toBeVisible({
+      timeout: 5000,
+    });
     const versionRows = versionsList.locator('li');
     const versionsBefore = await versionRows.count();
-    expect(versionsBefore, 'Ausgangsdokument muss mindestens eine Version haben').toBeGreaterThan(0);
+    expect(versionsBefore, 'Ausgangsdokument muss mindestens eine Version haben').toBeGreaterThan(
+      0,
+    );
 
     const versionFile = page.locator('#version-file');
-    await expect(versionFile, 'Formular für eine neue Dokumentversion muss sichtbar sein').toBeVisible({ timeout: 8000 });
+    await expect(
+      versionFile,
+      'Formular für eine neue Dokumentversion muss sichtbar sein',
+    ).toBeVisible({ timeout: 8000 });
     await versionFile.setInputFiles({
       name: 'updated-e2e-compliance.pdf',
       mimeType: 'application/pdf',
@@ -360,17 +471,34 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
     );
     await submitBtn.click();
     const versionResponse = await commitResponse;
-    const versionBody = (await versionResponse.json().catch(() => null)) as { versionNo?: unknown; error?: unknown } | null;
-    expect(versionResponse.status(), `Neuversion-Commit muss erfolgreich sein: ${JSON.stringify(versionBody)}`).toBe(200);
-    expect(versionBody?.versionNo, 'API muss die neue fortlaufende Versionsnummer liefern').toBe(versionsBefore + 1);
+    const versionBody = (await versionResponse.json().catch(() => null)) as {
+      versionNo?: unknown;
+      error?: unknown;
+    } | null;
+    expect(
+      versionResponse.status(),
+      `Neuversion-Commit muss erfolgreich sein: ${JSON.stringify(versionBody)}`,
+    ).toBe(200);
+    expect(versionBody?.versionNo, 'API muss die neue fortlaufende Versionsnummer liefern').toBe(
+      versionsBefore + 1,
+    );
 
-    await expect(versionRows, 'Nach dem Upload muss die Versionshistorie exakt um einen Eintrag wachsen').toHaveCount(versionsBefore + 1, { timeout: 15_000 });
+    await expect(
+      versionRows,
+      'Nach dem Upload muss die Versionshistorie exakt um einen Eintrag wachsen',
+    ).toHaveCount(versionsBefore + 1, { timeout: 15_000 });
     await expect(versionRows.first()).toContainText(`v${versionsBefore + 1}`);
     await ctx.close();
   });
 
-  test('1.7 Content-Length-Präfix-Check: >100MB+1MB wird mit 413 abgelehnt', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+  test('1.7 Content-Length-Präfix-Check: >100MB+1MB wird mit 413 abgelehnt', async ({
+    browser,
+  }) => {
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -402,7 +530,11 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
 // =============================================================================
 test.describe.serial('GwG §10-12 — Geldwäschegesetz-Compliance', () => {
   test('2.1 GwG retention page loads', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -410,7 +542,8 @@ test.describe.serial('GwG §10-12 — Geldwäschegesetz-Compliance', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
-    // FIX 1: Admin MUSS die GwG-Pflichtlöschungs-Seite sehen (§ 8 GwG).
+    // Die TaxTronik-GwG-Retention-Funktion muss für Administratoren erreichbar
+    // sein; § 8 GwG gibt die Aufbewahrung vor, nicht die konkrete UI.
     // Eine Umleitung auf Dashboard/Login ist ein RBAC-/Session-Fehler → FAIL.
     if (page.url().includes('/staff/dashboard') || page.url().includes('/staff/login')) {
       await ctx.close();
@@ -420,7 +553,11 @@ test.describe.serial('GwG §10-12 — Geldwäschegesetz-Compliance', () => {
     const heading = page.getByRole('heading', { name: /GwG-Pflichtlöschung/i });
     const headingVisible = await heading.isVisible({ timeout: 5000 }).catch(() => false);
     if (!headingVisible) {
-      const hasContent = await page.getByText(/GwG|Belege|löschreif/i).first().isVisible({ timeout: 5000 }).catch(() => false);
+      const hasContent = await page
+        .getByText(/GwG|Belege|löschreif/i)
+        .first()
+        .isVisible({ timeout: 5000 })
+        .catch(() => false);
       if (!hasContent) {
         await ctx.close();
         throw new Error('GwG retention page loaded but rendered no GwG content — page broken');
@@ -430,13 +567,20 @@ test.describe.serial('GwG §10-12 — Geldwäschegesetz-Compliance', () => {
     // FIX 4: Die Aufbewahrungsfrist MUSS „5 Jahre" (GwG § 8 Abs. 4) lauten —
     // nicht irgendein GwG-Text. Eine abweichende Frist wäre ein Compliance-Bug.
     const retentionYearText = page.getByText(/5\s?Jahre/);
-    await expect(retentionYearText.first(), 'GwG retention period must be "5 Jahre" (§ 8 Abs. 4 GwG)').toBeVisible({ timeout: 5000 });
+    await expect(
+      retentionYearText.first(),
+      'GwG retention period must be "5 Jahre" (§ 8 Abs. 4 GwG)',
+    ).toBeVisible({ timeout: 5000 });
 
     await ctx.close();
   });
 
   test('2.2 Client detail shows GwG status badge', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -469,7 +613,11 @@ test.describe.serial('GwG §10-12 — Geldwäschegesetz-Compliance', () => {
   });
 
   test('2.4 GwG verification workflow states are visible', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -484,7 +632,10 @@ test.describe.serial('GwG §10-12 — Geldwäschegesetz-Compliance', () => {
     }
 
     const gwgContent = page.getByText(/GwG|Geldwäsche/i);
-    const gwgVisible = await gwgContent.first().isVisible({ timeout: 5000 }).catch(() => false);
+    const gwgVisible = await gwgContent
+      .first()
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
     if (gwgVisible) {
       await expect(gwgContent.first()).toBeVisible();
     }
@@ -498,7 +649,11 @@ test.describe.serial('GwG §10-12 — Geldwäschegesetz-Compliance', () => {
 // =============================================================================
 test.describe.serial('DSGVO — Datenschutz-Grundverordnung', () => {
   test('3.1 DSGVO requests page loads', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -515,7 +670,11 @@ test.describe.serial('DSGVO — Datenschutz-Grundverordnung', () => {
     const heading = page.getByRole('heading', { name: /DSGVO-Anfragen/i });
     const headingVisible = await heading.isVisible({ timeout: 5000 }).catch(() => false);
     if (!headingVisible) {
-      const hasContent = await page.getByText(/DSGVO|Auskunft|Löschung|Art\./i).first().isVisible({ timeout: 5000 }).catch(() => false);
+      const hasContent = await page
+        .getByText(/DSGVO|Auskunft|Löschung|Art\./i)
+        .first()
+        .isVisible({ timeout: 5000 })
+        .catch(() => false);
       if (hasContent) {
         await expect(page.getByText(/DSGVO|Auskunft/i).first()).toBeVisible();
       } else {
@@ -530,7 +689,11 @@ test.describe.serial('DSGVO — Datenschutz-Grundverordnung', () => {
   });
 
   test('3.2 Client anonymization UI exists', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -538,7 +701,8 @@ test.describe.serial('DSGVO — Datenschutz-Grundverordnung', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
-    // FIX 1: DSGVO-Retention-Anonymisierung — Admin MUSS zugreifen (Art. 17).
+    // Die konfigurierte TaxTronik-Anonymisierungsfunktion muss für
+    // Administratoren erreichbar sein; Art. 17 DSGVO schreibt keine konkrete UI vor.
     if (page.url().includes('/staff/dashboard') || page.url().includes('/staff/login')) {
       await ctx.close();
       throw new Error('Admin cannot access DSGVO retention page — RBAC or session issue');
@@ -547,7 +711,11 @@ test.describe.serial('DSGVO — Datenschutz-Grundverordnung', () => {
     const heading = page.getByRole('heading', { name: /Anonymisierung/i });
     const headingVisible = await heading.isVisible({ timeout: 5000 }).catch(() => false);
     if (!headingVisible) {
-      const hasContent = await page.getByText(/anonymisierungsrei|Anonymisierung|Mandant/i).first().isVisible({ timeout: 5000 }).catch(() => false);
+      const hasContent = await page
+        .getByText(/anonymisierungsrei|Anonymisierung|Mandant/i)
+        .first()
+        .isVisible({ timeout: 5000 })
+        .catch(() => false);
       if (hasContent) {
         await expect(page.getByText(/anonymisierungsrei|Anonymisierung/i).first()).toBeVisible();
       } else {
@@ -557,7 +725,10 @@ test.describe.serial('DSGVO — Datenschutz-Grundverordnung', () => {
     } else {
       await expect(heading).toBeVisible();
       const legalText = page.getByText(/unwiderruflich|Art\. 17|Art\. 5/i);
-      const legalVisible = await legalText.first().isVisible({ timeout: 3000 }).catch(() => false);
+      const legalVisible = await legalText
+        .first()
+        .isVisible({ timeout: 3000 })
+        .catch(() => false);
       if (legalVisible) {
         await expect(legalText.first()).toBeVisible();
       }
@@ -567,7 +738,11 @@ test.describe.serial('DSGVO — Datenschutz-Grundverordnung', () => {
   });
 
   test('3.3 Consent/DSGVO settings in admin sidebar', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -582,7 +757,10 @@ test.describe.serial('DSGVO — Datenschutz-Grundverordnung', () => {
     }
 
     const dsgvoLink = page.getByRole('link', { name: /DSGVO/i });
-    const dsgvoVisible = await dsgvoLink.first().isVisible({ timeout: 5000 }).catch(() => false);
+    const dsgvoVisible = await dsgvoLink
+      .first()
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
     if (dsgvoVisible) {
       await expect(dsgvoLink.first()).toBeVisible();
     }
@@ -602,7 +780,11 @@ test.describe.serial('DSGVO — Datenschutz-Grundverordnung', () => {
 // =============================================================================
 test.describe.serial('Audit Trail — GoBD-Revisionssicherheit', () => {
   test('4.1 Audit log page loads', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -610,7 +792,8 @@ test.describe.serial('Audit Trail — GoBD-Revisionssicherheit', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
-    // FIX 1: Audit-Log ist GoBD-pflichtig — Admin MUSS zugreifen.
+    // Das Audit-Log ist ein TaxTronik-Kontrollmechanismus zur Unterstützung der
+    // GoBD-Nachvollziehbarkeit; der Admin-Zugriff ist eine Produktinvariante.
     if (page.url().includes('/staff/dashboard') || page.url().includes('/staff/login')) {
       await ctx.close();
       throw new Error('Admin cannot access audit log page — RBAC or session issue');
@@ -619,7 +802,11 @@ test.describe.serial('Audit Trail — GoBD-Revisionssicherheit', () => {
     const heading = page.getByRole('heading', { name: /Audit-Log/i });
     const headingVisible = await heading.isVisible({ timeout: 6000 }).catch(() => false);
     if (!headingVisible) {
-      const hasContent = await page.getByText(/Hash-Chain|Prüfer-Link|Noch kein/).first().isVisible({ timeout: 5000 }).catch(() => false);
+      const hasContent = await page
+        .getByText(/Hash-Chain|Prüfer-Link|Noch kein/)
+        .first()
+        .isVisible({ timeout: 5000 })
+        .catch(() => false);
       if (!hasContent) {
         await ctx.close();
         throw new Error('Audit page loaded but rendered no audit content — page broken');
@@ -630,7 +817,11 @@ test.describe.serial('Audit Trail — GoBD-Revisionssicherheit', () => {
   });
 
   test('4.2 Audit entries have timestamps and actor IDs', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -666,9 +857,13 @@ test.describe.serial('Audit Trail — GoBD-Revisionssicherheit', () => {
 
   // FIX 4: Konkrete Action-Labels prüfen. Frühere Tests (Login, Document-Upload)
   // erzeugen Audit-Einträge mit definierten Action-Typen. Diese MÜSSEN in der
-  // Tabelle auftauchen — sonst ist die Audit-Trail lückenhaft (GoBD-Verstoß).
+  // Tabelle auftauchen — sonst ist der konfigurierte TaxTronik-Audit-Trail lückenhaft.
   test('4.2b Audit log contains specific action types from earlier tests', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -684,16 +879,32 @@ test.describe.serial('Audit Trail — GoBD-Revisionssicherheit', () => {
       hasLogin,
       `Audit-Log muss auth.login.success enthalten (sichtbare gefilterte Actions: ${loginActions.join(', ') || 'keine'})`,
     ).toBe(true);
-    // document.upload nur, falls der Upload in 1.1 erfolgreich war (siehe 1.2).
-    if (hasUpload) {
-      // ok — zusätzlicher Beweis, dass der Audit-Trail Actions korrekt loggt.
-    }
+    expect(
+      hasUpload,
+      `Audit-Log muss document.upload enthalten (sichtbare gefilterte Actions: ${uploadActions.join(', ') || 'keine'})`,
+    ).toBe(true);
+    expect(complianceDocumentId, 'Upload-Test 1.1 muss eine Dokument-ID hinterlegt haben').toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    const uploadAuditRow = page
+      .locator('table tbody tr')
+      .filter({ has: page.getByText('document.upload', { exact: true }) })
+      .filter({ hasText: `document:${complianceDocumentId.slice(0, 8)}` });
+    await expect(
+      uploadAuditRow,
+      'Audit-Log muss den Upload des in Test 1.1 erzeugten Dokuments eindeutig enthalten',
+    ).toHaveCount(1);
+    await expect(uploadAuditRow).toBeVisible();
 
     await ctx.close();
   });
 
   test('4.3 Audit log is NOT modifiable (no edit/delete buttons)', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -705,8 +916,12 @@ test.describe.serial('Audit Trail — GoBD-Revisionssicherheit', () => {
       throw new Error('Admin cannot access audit log page — RBAC or session issue');
     }
 
-    const editButtons = page.locator('table tbody').getByRole('button', { name: /Bearbeiten|Edit|Ändern/i });
-    const deleteButtons = page.locator('table tbody').getByRole('button', { name: /Löschen|Delete|Trash/i });
+    const editButtons = page
+      .locator('table tbody')
+      .getByRole('button', { name: /Bearbeiten|Edit|Ändern/i });
+    const deleteButtons = page
+      .locator('table tbody')
+      .getByRole('button', { name: /Löschen|Delete|Trash/i });
 
     const editCount = await editButtons.count().catch(() => 0);
     const deleteCount = await deleteButtons.count().catch(() => 0);
@@ -717,7 +932,11 @@ test.describe.serial('Audit Trail — GoBD-Revisionssicherheit', () => {
   });
 
   test('4.4 Hash-Chain integrity banner is visible', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -729,16 +948,23 @@ test.describe.serial('Audit Trail — GoBD-Revisionssicherheit', () => {
       throw new Error('Admin cannot access audit log page — RBAC or session issue');
     }
 
-    // FIX 1: Hash-Chain-Banner ist GoBD-pflichtig — fehlt es, ist die Seite
-    // kaputt (kein Skip, sondern FAIL).
-    const hashBanner = page.getByText(/Hash-Chain|Noch kein Prüfergebnis|Prüfer-Link/i);
-    await expect(hashBanner.first(), 'Hash-Chain/Prüfergebnis-Banner muss auf Audit-Seite stehen').toBeVisible({ timeout: 5000 });
+    // Der Hash-Chain-Status ist ein TaxTronik-Integritätskontrollmechanismus.
+    // Die GoBD schreiben die Schutzziele, aber keine konkrete UI oder Hash-Technik vor.
+    const hashBanner = page.getByText(/^(?:Hash-Chain intakt|Noch kein Prüfergebnis)/i);
+    await expect(
+      hashBanner.first(),
+      'Hash-Chain-Status muss intakt oder als noch nicht geprüft ausgewiesen sein',
+    ).toBeVisible({ timeout: 5000 });
 
     await ctx.close();
   });
 
   test('4.5 Prüfer-Link (audit token) section exists', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -750,10 +976,13 @@ test.describe.serial('Audit Trail — GoBD-Revisionssicherheit', () => {
       throw new Error('Admin cannot access audit log page — RBAC or session issue');
     }
 
-    // FIX 1: Prüfer-Link-Sektion ist Bestandteil der Audit-Seite. Fehlt sie,
-    // ist die Seite unvollständig → FAIL (kein Skip).
+    // Der read-only Prüfer-Link ist eine konfigurierte TaxTronik-Produktfunktion,
+    // keine gesetzlich vorgegebene technische Form des Datenzugriffs.
     const prueferLink = page.getByText(/Prüfer-Link/i);
-    await expect(prueferLink, 'Prüfer-Link-Sektion muss auf Audit-Seite vorhanden sein').toBeVisible({ timeout: 5000 });
+    await expect(
+      prueferLink,
+      'Prüfer-Link-Sektion muss auf Audit-Seite vorhanden sein',
+    ).toBeVisible({ timeout: 5000 });
 
     await ctx.close();
   });
@@ -803,7 +1032,11 @@ test.describe.serial('Tenant Isolation — §203 StGB Mandantentrennung', () => 
   });
 
   test('5.1 Admin only sees own tenant clients', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -816,14 +1049,21 @@ test.describe.serial('Tenant Isolation — §203 StGB Mandantentrennung', () => 
     if (TENANT_B_CLIENT_ID) {
       const foreignLeak = page.getByText('Fremd Mandant GmbH');
       const leaked = await foreignLeak.isVisible({ timeout: 2000 }).catch(() => false);
-      expect(leaked, 'Fremder Mandant (Tenant B) darf in Tenant As Client-Liste nicht sichtbar sein').toBe(false);
+      expect(
+        leaked,
+        'Fremder Mandant (Tenant B) darf in Tenant As Client-Liste nicht sichtbar sein',
+      ).toBe(false);
     }
 
     await ctx.close();
   });
 
   test('5.2 Cross-tenant access via fabricated UUID returns 404', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -847,7 +1087,11 @@ test.describe.serial('Tenant Isolation — §203 StGB Mandantentrennung', () => 
   });
 
   test('5.3 Cross-tenant API call returns 403/404', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const request = ctx.request;
 
@@ -864,19 +1108,26 @@ test.describe.serial('Tenant Isolation — §203 StGB Mandantentrennung', () => 
   // FIX 3: Der echte Cross-Tenant-Test. Tenant B hat einen existierenden
   // Mandanten (oben per psql angelegt). Admin (Tenant A) darf ihn über UI UND
   // API nicht sehen — sonst §203 StGB-Verstoß (Datenleck an fremde Kanzlei).
-  test('5.3b Real cross-tenant access to existing Tenant-B client is blocked', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+  test('5.3b Real cross-tenant access to existing Tenant-B client is blocked', async ({
+    browser,
+  }) => {
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     // Tenant-Isolation ist Kernschutz (§203 StGB). Wenn der Tenant-B-Seed
     // nicht klappt, ist das ein Fehler — kein Skip.
     if (!TENANT_B_CLIENT_ID) {
-      TENANT_B_CLIENT_ID = psql(
-        `SELECT c.id FROM client c JOIN tenant t ON t.id = c.tenant_id WHERE t.slug = 'fremd-kanzlei' AND c.name = 'Fremd Mandant GmbH' ORDER BY c.created_at DESC LIMIT 1`,
-      ) || null;
+      TENANT_B_CLIENT_ID =
+        psql(
+          `SELECT c.id FROM client c JOIN tenant t ON t.id = c.tenant_id WHERE t.slug = 'fremd-kanzlei' AND c.name = 'Fremd Mandant GmbH' ORDER BY c.created_at DESC LIMIT 1`,
+        ) || null;
     }
     if (!TENANT_B_CLIENT_ID) {
       throw new Error(
         'Tenant-B-Setup fehlgeschlagen — Tenant-Isolation kann nicht getestet werden. ' +
-        'psql-Verbindung prüfen (docker exec oder localhost).',
+          'psql-Verbindung prüfen (docker exec oder localhost).',
       );
     }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
@@ -889,7 +1140,10 @@ test.describe.serial('Tenant Isolation — §203 StGB Mandantentrennung', () => 
     // Next App Router kann in Dev eine 404-Shell mit HTTP 200 ausliefern.
     // Sicherheitsrelevant ist: niemals 200 mit Fremddaten. Daher ist 200 nur
     // erlaubt, wenn die sichtbare Seite eindeutig Not Found ist.
-    expect([200, 403, 404, 302], 'UI muss blocken oder eine Not-Found-Shell rendern (§203 StGB)').toContain(uiStatus);
+    expect(
+      [200, 403, 404, 302],
+      'UI muss blocken oder eine Not-Found-Shell rendern (§203 StGB)',
+    ).toContain(uiStatus);
 
     // Falls kein Redirect: sicherstellen, dass KEINE Fremddaten gerendert werden.
     if (!page.url().includes('/staff/login') && !page.url().includes('/staff/dashboard')) {
@@ -904,14 +1158,20 @@ test.describe.serial('Tenant Isolation — §203 StGB Mandantentrennung', () => 
     const apiRes = await page.request.get(`/api/staff/clients/${TENANT_B_CLIENT_ID}/export`, {
       headers: { Origin: BASE_ORIGIN },
     });
-    expect(apiRes.status(), 'API darf fremden Mandanten nicht exportieren (§203 StGB)').not.toBe(200);
+    expect(apiRes.status(), 'API darf fremden Mandanten nicht exportieren (§203 StGB)').not.toBe(
+      200,
+    );
     expect([401, 403, 404]).toContain(apiRes.status());
 
     await ctx.close();
   });
 
   test('5.4 Health endpoint shows DB connectivity (indirect RLS check)', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const request = ctx.request;
 
@@ -1008,7 +1268,11 @@ let complianceInvoiceHref: string | null = null;
 
 test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
   test('7.1 New invoice page loads', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -1022,27 +1286,42 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
     if (headingVisible) {
       await expect(heading).toBeVisible();
 
-      const external = await page.getByText(/zentraler Rechnungssoftware/).isVisible({ timeout: 2000 }).catch(() => false);
+      const external = await page
+        .getByText(/zentraler Rechnungssoftware/)
+        .isVisible({ timeout: 2000 })
+        .catch(() => false);
       if (external) {
         invoiceModeUnderTest = 'EXTERNAL';
-        await expect(page.locator('#pdf'), 'EXTERNAL-Modus muss den PDF-Upload anzeigen').toBeVisible({ timeout: 5000 });
+        await expect(
+          page.locator('#pdf'),
+          'EXTERNAL-Modus muss den PDF-Upload anzeigen',
+        ).toBeVisible({ timeout: 5000 });
       } else {
         invoiceModeUnderTest = 'IN_APP';
         await expect(
-          page.locator('#subject').or(page.getByText(/Keine aktiven Mandanten/i)).first(),
+          page
+            .locator('#subject')
+            .or(page.getByText(/Keine aktiven Mandanten/i))
+            .first(),
           'IN_APP-Modus muss Formular oder harte GwG-Precondition anzeigen',
         ).toBeVisible({ timeout: 5000 });
       }
     } else {
       await ctx.close();
-      throw new Error('Invoice creation page not accessible for admin and not in EXTERNAL mode — page broken or RBAC issue');
+      throw new Error(
+        'Invoice creation page not accessible for admin and not in EXTERNAL mode — page broken or RBAC issue',
+      );
     }
 
     await ctx.close();
   });
 
   test('7.2 Create invoice with line items', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -1054,20 +1333,36 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
     // admin gesperrt) ist ein Fehler — kein Skip. EXTERNAL wird unten geprüft.
     if (page.url().includes('/staff/login') || page.url().includes('/staff/dashboard')) {
       await ctx.close();
-      throw new Error('Admin cannot access invoice creation page — RBAC/session/feature-flag issue');
+      throw new Error(
+        'Admin cannot access invoice creation page — RBAC/session/feature-flag issue',
+      );
     }
 
     const isExternal =
-      (await page.getByText(/zentraler Rechnungssoftware/).isVisible({ timeout: 2000 }).catch(() => false)) ||
-      (await page.getByText(/PDF-Rechnung hochladen/).isVisible({ timeout: 2000 }).catch(() => false));
+      (await page
+        .getByText(/zentraler Rechnungssoftware/)
+        .isVisible({ timeout: 2000 })
+        .catch(() => false)) ||
+      (await page
+        .getByText(/PDF-Rechnung hochladen/)
+        .isVisible({ timeout: 2000 })
+        .catch(() => false));
     if (isExternal) {
       invoiceModeUnderTest = 'EXTERNAL';
       const clientSelect = page.locator('#clientId');
-      await expect(clientSelect, 'EXTERNAL-Rechnungsupload braucht aktive Mandanten').toBeVisible({ timeout: 5000 });
+      await expect(clientSelect, 'EXTERNAL-Rechnungsupload braucht aktive Mandanten').toBeVisible({
+        timeout: 5000,
+      });
 
       const optionCount = await clientSelect.locator('option').count();
-      expect(optionCount, 'EXTERNAL-Rechnungsupload braucht mindestens einen auswählbaren Mandanten').toBeGreaterThan(1);
-      const mustermannOption = clientSelect.locator('option').filter({ hasText: /Mustermann GmbH/i }).first();
+      expect(
+        optionCount,
+        'EXTERNAL-Rechnungsupload braucht mindestens einen auswählbaren Mandanten',
+      ).toBeGreaterThan(1);
+      const mustermannOption = clientSelect
+        .locator('option')
+        .filter({ hasText: /Mustermann GmbH/i })
+        .first();
       const selectedClient =
         (await mustermannOption.getAttribute('value').catch(() => null)) ??
         (await clientSelect.locator('option').nth(1).getAttribute('value'));
@@ -1086,16 +1381,24 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
       await page.getByRole('button', { name: /Rechnung speichern.*Mandant senden/i }).click();
       await page.waitForURL(/\/staff\/invoices\/[a-f0-9-]+/, { timeout: 15_000 });
       complianceInvoiceHref = new URL(page.url()).pathname;
-      await expect(page.getByRole('heading', { name: new RegExp(externalNumber) })).toBeVisible({ timeout: 5000 });
+      await expect(page.getByRole('heading', { name: new RegExp(externalNumber) })).toBeVisible({
+        timeout: 5000,
+      });
       await expect(page.getByText(/Versendet/i).first()).toBeVisible({ timeout: 5000 });
 
-      await ctx.close(); return;
+      await ctx.close();
+      return;
     }
 
-    const noClients = await page.getByText(/Keine aktiven Mandanten/).isVisible({ timeout: 2000 }).catch(() => false);
+    const noClients = await page
+      .getByText(/Keine aktiven Mandanten/)
+      .isVisible({ timeout: 2000 })
+      .catch(() => false);
     if (noClients) {
       await ctx.close();
-      throw new Error('No active clients for invoice creation — paranoid E2E seed must include a GwG-verified client');
+      throw new Error(
+        'No active clients for invoice creation — paranoid E2E seed must include a GwG-verified client',
+      );
     }
 
     const subjectInput = page.locator('#subject');
@@ -1103,14 +1406,19 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
     if (!subjectReady) {
       // FIX 1: Weder EXTERNAL noch „keine Mandanten", aber #subject fehlt → Bug.
       await ctx.close();
-      throw new Error('Invoice form #subject field not found (not EXTERNAL, clients exist) — form regression');
+      throw new Error(
+        'Invoice form #subject field not found (not EXTERNAL, clients exist) — form regression',
+      );
     }
 
-    await page.locator('#clientId').selectOption({ label: 'Mustermann GmbH' }).catch(async () => {
-      const firstValue = await page.locator('#clientId option').first().getAttribute('value');
-      expect(firstValue, 'Mandanten-Select muss eine echte Option enthalten').toBeTruthy();
-      await page.locator('#clientId').selectOption(firstValue!);
-    });
+    await page
+      .locator('#clientId')
+      .selectOption({ label: 'Mustermann GmbH' })
+      .catch(async () => {
+        const firstValue = await page.locator('#clientId option').first().getAttribute('value');
+        expect(firstValue, 'Mandanten-Select muss eine echte Option enthalten').toBeTruthy();
+        await page.locator('#clientId').selectOption(firstValue!);
+      });
     await subjectInput.fill('E2E Compliance Test Rechnung');
 
     const descInput = page.locator('[id^="pos-0-description"]');
@@ -1149,7 +1457,11 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
   });
 
   test('7.3 Invoice list shows sequential numbers', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -1170,14 +1482,20 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
       }
     } else {
       await ctx.close();
-      throw new Error('Keine Rechnungen vorhanden — Test 7.2 muss deterministisch eine Rechnung anlegen');
+      throw new Error(
+        'Keine Rechnungen vorhanden — Test 7.2 muss deterministisch eine Rechnung anlegen',
+      );
     }
 
     await ctx.close();
   });
 
   test('7.4 Configured invoice export/archive is verifiable', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
     const request = ctx.request;
@@ -1197,7 +1515,9 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
 
     if (!invVisible) {
       await ctx.close();
-      throw new Error('Keine Rechnung für Export-/Archivprüfung gefunden — Test 7.2 muss deterministisch eine Rechnung anlegen');
+      throw new Error(
+        'Keine Rechnung für Export-/Archivprüfung gefunden — Test 7.2 muss deterministisch eine Rechnung anlegen',
+      );
     }
 
     const href = await firstInvLink.getAttribute('href').catch(() => null);
@@ -1208,14 +1528,22 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
 
     if (invoiceModeUnderTest === 'EXTERNAL') {
       await firstInvLink.click();
-      await expect(page.getByText(/application\/pdf/i), 'EXTERNAL-Rechnung muss eine GoBD-archivierte PDF anzeigen').toBeVisible({ timeout: 5000 });
-      await expect(page.getByText(/Versendet/i).first(), 'EXTERNAL-Rechnung muss nach Upload als versendet gelten').toBeVisible({ timeout: 5000 });
+      await expect(
+        page.getByText(/application\/pdf/i),
+        'EXTERNAL-Rechnung muss eine GoBD-archivierte PDF anzeigen',
+      ).toBeVisible({ timeout: 5000 });
+      await expect(
+        page.getByText(/Versendet/i).first(),
+        'EXTERNAL-Rechnung muss nach Upload als versendet gelten',
+      ).toBeVisible({ timeout: 5000 });
       await ctx.close();
       return;
     }
 
     const res = await request.get(`/api/staff/invoices/${invId}/xrechnung`);
-    expect(res.status(), 'XRechnung-Endpoint darf keine Auth-/Server-/Setup-Fehler liefern').toBe(200);
+    expect(res.status(), 'XRechnung-Endpoint darf keine Auth-/Server-/Setup-Fehler liefern').toBe(
+      200,
+    );
     const xml = await res.text();
     expect(xml).toContain('<?xml');
     expect(xml).toContain('<rsm:CrossIndustryInvoice');
@@ -1224,7 +1552,11 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
   });
 
   test('7.5 Mark invoice as sent and verify', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -1238,21 +1570,30 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
     }
 
     if (invoiceModeUnderTest === 'EXTERNAL') {
-      await expect(page.getByText(/Versendet/i).first(), 'EXTERNAL-Rechnung muss bereits als versendet gelten').toBeVisible({ timeout: 5000 });
-      await ctx.close(); return;
+      await expect(
+        page.getByText(/Versendet/i).first(),
+        'EXTERNAL-Rechnung muss bereits als versendet gelten',
+      ).toBeVisible({ timeout: 5000 });
+      await ctx.close();
+      return;
     }
 
-    let onDetail = page.url().includes('/staff/invoices/') && !page.url().endsWith('/staff/invoices');
+    let onDetail =
+      page.url().includes('/staff/invoices/') && !page.url().endsWith('/staff/invoices');
     if (!onDetail) {
       const draftBadge = page.locator('.badge-gray').filter({ hasText: /Entwurf/ });
       const draftCount = await draftBadge.count().catch(() => 0);
       if (draftCount === 0) {
         await ctx.close();
-        throw new Error('No DRAFT invoice to test sending — Test 7.2 must create a draft invoice in IN_APP mode');
+        throw new Error(
+          'No DRAFT invoice to test sending — Test 7.2 must create a draft invoice in IN_APP mode',
+        );
       }
       const draftRow = draftBadge.first().locator('..');
       const link = draftRow.locator('a').first();
-      await expect(link, 'DRAFT invoice row must contain a detail link').toBeVisible({ timeout: 3000 });
+      await expect(link, 'DRAFT invoice row must contain a detail link').toBeVisible({
+        timeout: 3000,
+      });
       await link.click();
       await page.waitForURL(/\/staff\/invoices\/[a-f0-9-]+/, { timeout: 10_000 });
       onDetail = true;
@@ -1260,7 +1601,9 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
 
     expect(onDetail, 'Rechnungsdetailseite muss erreichbar sein').toBe(true);
     const sendBtn = page.getByRole('button', { name: /an mandant übergeben/i });
-    await expect(sendBtn, 'DRAFT-Rechnung muss einen Versand-Button anzeigen').toBeVisible({ timeout: 5000 });
+    await expect(sendBtn, 'DRAFT-Rechnung muss einen Versand-Button anzeigen').toBeVisible({
+      timeout: 5000,
+    });
     await sendBtn.click();
     await page.waitForTimeout(3000);
     const sentBadge = page.locator('.badge-yellow').filter({ hasText: /Versendet/i });
@@ -1301,11 +1644,13 @@ test.describe('Magic Link Security', () => {
     const res = await request.get(`${mailhogUrl}/api/v2/messages?limit=5`);
     expect(res.ok(), 'MailHog API muss antworten').toBe(true);
     const data = await res.json();
-    const found = (data.items ?? []).some((msg: { Content?: { Headers?: Record<string, string[]> } }) => {
-      const headers = msg.Content?.Headers ?? {};
-      const to = Array.isArray(headers['To']) ? headers['To'].join(' ') : headers['To'] ?? '';
-      return to.includes(PORTAL_EMAIL);
-    });
+    const found = (data.items ?? []).some(
+      (msg: { Content?: { Headers?: Record<string, string[]> } }) => {
+        const headers = msg.Content?.Headers ?? {};
+        const to = Array.isArray(headers['To']) ? headers['To'].join(' ') : (headers['To'] ?? '');
+        return to.includes(PORTAL_EMAIL);
+      },
+    );
     expect(found, 'Magic-Link-Mail muss in MailHog für PORTAL_EMAIL ankommen').toBe(true);
   });
 
@@ -1391,7 +1736,11 @@ test.describe('Magic Link Security', () => {
 // =============================================================================
 test.describe.serial('Input Validation — XSS/SQL Injection', () => {
   test('9.1 XSS in client name field is escaped', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -1421,7 +1770,10 @@ test.describe.serial('Input Validation — XSS/SQL Injection', () => {
 
     // After search, the DOM must NOT contain raw <script> tags in rendered content.
     // Note: bodyHTML may contain Next.js state/scripts — only check rendered text.
-    const bodyText = await page.locator('body').innerText().catch(() => '');
+    const bodyText = await page
+      .locator('body')
+      .innerText()
+      .catch(() => '');
     // The raw XSS payload should not appear in visible text
     expect(bodyText).not.toContain('<script>alert(1)</script>');
     expect(bodyText).not.toContain('alert(1)');
@@ -1430,7 +1782,11 @@ test.describe.serial('Input Validation — XSS/SQL Injection', () => {
   });
 
   test('9.2 SQL injection patterns in search are escaped', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -1447,20 +1803,31 @@ test.describe.serial('Input Validation — XSS/SQL Injection', () => {
     await page.waitForTimeout(2000);
 
     const dbError = page.getByText(/SQL|syntax error|pg_|database error/i);
-    const dbErrVisible = await dbError.first().isVisible({ timeout: 2000 }).catch(() => false);
+    const dbErrVisible = await dbError
+      .first()
+      .isVisible({ timeout: 2000 })
+      .catch(() => false);
     expect(dbErrVisible).toBe(false);
 
     await searchInput.fill("'; DROP TABLE clients; --");
     await searchInput.press('Enter');
     await page.waitForTimeout(1500);
-    const dbErr2 = await page.getByText(/SQL|syntax error/i).first().isVisible({ timeout: 2000 }).catch(() => false);
+    const dbErr2 = await page
+      .getByText(/SQL|syntax error/i)
+      .first()
+      .isVisible({ timeout: 2000 })
+      .catch(() => false);
     expect(dbErr2).toBe(false);
 
     await ctx.close();
   });
 
   test('9.3 Very long inputs are handled gracefully', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -1480,9 +1847,14 @@ test.describe.serial('Input Validation — XSS/SQL Injection', () => {
     // FIX 2: Statt body-visible — die Suche darf keinen Server-Fehler auslösen
     // und die Mandanten-Seite muss funktionsfähig bleiben (keine Leerseite).
     const crashError = page.getByText(/SQL|syntax error|pg_|Something went wrong|Internal Server/i);
-    const crashed = await crashError.first().isVisible({ timeout: 2000 }).catch(() => false);
+    const crashed = await crashError
+      .first()
+      .isVisible({ timeout: 2000 })
+      .catch(() => false);
     expect(crashed, 'Sehr lange Eingabe darf keinen Server-Fehler auslösen').toBe(false);
-    await expect(page.getByRole('heading', { name: /Mandanten|Clients/i }).first()).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('heading', { name: /Mandanten|Clients/i }).first()).toBeVisible({
+      timeout: 5000,
+    });
 
     await ctx.close();
   });
@@ -1493,7 +1865,11 @@ test.describe.serial('Input Validation — XSS/SQL Injection', () => {
 // =============================================================================
 test.describe.serial('File Upload Security — ClamAV & Validation', () => {
   test('10.1 EICAR-Testdatei wird von ClamAV abgelehnt (422, nicht 200)', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -1530,8 +1906,14 @@ test.describe.serial('File Upload Security — ClamAV & Validation', () => {
     await ctx.close();
   });
 
-  test('10.2 Double-Extension-Datei (invoice.pdf.exe) wird nicht als .exe gespeichert', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+  test('10.2 Double-Extension-Datei (invoice.pdf.exe) wird nicht als .exe gespeichert', async ({
+    browser,
+  }) => {
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -1561,7 +1943,10 @@ test.describe.serial('File Upload Security — ClamAV & Validation', () => {
       expect(body.documentId, 'Commit-Response muss die Dokument-ID enthalten').toBeTruthy();
       securityDocumentId = String(body.documentId);
       const preview = await page.request.get(`/api/staff/documents/${body.documentId}/preview-url`);
-      expect(preview.status(), 'Preview-Metadaten fuer Double-Extension-Dokument muessen abrufbar sein').toBe(200);
+      expect(
+        preview.status(),
+        'Preview-Metadaten fuer Double-Extension-Dokument muessen abrufbar sein',
+      ).toBe(200);
       const previewBody = await preview.json();
       expect(previewBody.mimeType ?? '').toContain('pdf');
       expect(previewBody.mimeType ?? '').not.toMatch(/msdownload|executable|octet-stream/i);
@@ -1571,12 +1956,19 @@ test.describe.serial('File Upload Security — ClamAV & Validation', () => {
   });
 
   test('10.3 Dokument-Detailseite zeigt SHA-256-Hash', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
     const documentId = complianceDocumentId || securityDocumentId;
-    expect(documentId, 'Kein Dokument fuer SHA-Check — vorheriger Upload muss die ID gesetzt haben').toBeTruthy();
+    expect(
+      documentId,
+      'Kein Dokument fuer SHA-Check — vorheriger Upload muss die ID gesetzt haben',
+    ).toBeTruthy();
     await page.goto(`/staff/documents/${documentId}`);
     await page.waitForLoadState('domcontentloaded');
     expect(page.url()).not.toContain('/staff/login');
@@ -1646,9 +2038,13 @@ test.describe('Authorization & RBAC', () => {
 // =============================================================================
 // SECTION 12: Backup & Restore
 // =============================================================================
-test.describe.serial('Backup & Restore — §147 AO Compliance', () => {
+test.describe.serial('Backup & Restore — betriebliche Aufbewahrungskontrollen', () => {
   test('12.1 Admin dashboard shows backup info', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -1656,21 +2052,29 @@ test.describe.serial('Backup & Restore — §147 AO Compliance', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
-    // FIX 1: Admin-Seite — Umleitung = Fehler (§147 AO Backup-Transparenz).
+    // Die konfigurierte Backup-Übersicht muss für Administratoren erreichbar sein.
     if (page.url().includes('/staff/dashboard') || page.url().includes('/staff/login')) {
       await ctx.close();
       throw new Error('Admin cannot access admin dashboard — RBAC or session issue');
     }
 
-    // FIX 1: Backup-Info ist §147 AO-pflichtig — fehlt sie ganz, FAIL statt Skip.
+    // Die sichtbare Backup-Information ist eine TaxTronik-Betriebskontrolle;
+    // § 147 AO schreibt keine konkrete Dashboard-Darstellung vor.
     const backupText = page.getByText(/Backup|Sicherung|gesichert|Restore/i);
-    await expect(backupText.first(), 'Admin-Dashboard muss Backup/Restore-Info zeigen (§147 AO)').toBeVisible({ timeout: 5000 });
+    await expect(
+      backupText.first(),
+      'Admin-Dashboard muss die konfigurierte Backup/Restore-Info zeigen',
+    ).toBeVisible({ timeout: 5000 });
 
     await ctx.close();
   });
 
   test('12.2 Audit archive page shows archive segments', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
@@ -1678,7 +2082,7 @@ test.describe.serial('Backup & Restore — §147 AO Compliance', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
-    // FIX 1: Audit-Archiv ist GoBD-pflichtig — Umleitung = Fehler.
+    // Das konfigurierte Audit-Archiv muss für Administratoren erreichbar sein.
     if (page.url().includes('/staff/dashboard') || page.url().includes('/staff/login')) {
       await ctx.close();
       throw new Error('Admin cannot access audit archive page — RBAC or session issue');
@@ -1686,13 +2090,21 @@ test.describe.serial('Backup & Restore — §147 AO Compliance', () => {
 
     // FIX 1: Archiv-Heading muss da sein — kein Skip bei „nicht gefunden".
     const heading = page.getByRole('heading', { name: /Archiv|Audit-Archiv/i });
-    await expect(heading.first(), 'Audit-Archiv muss eine Archiv-Überschrift haben').toBeVisible({ timeout: 5000 });
+    await expect(heading.first(), 'Audit-Archiv muss eine Archiv-Überschrift haben').toBeVisible({
+      timeout: 5000,
+    });
 
     await ctx.close();
   });
 
-  test('12.3 Health detail shows S3/Object-Store connectivity (backup storage)', async ({ browser }) => {
-    if (!fs.existsSync(STAFF_AUTH)) { throw new Error('Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.'); }
+  test('12.3 Health detail shows S3/Object-Store connectivity (backup storage)', async ({
+    browser,
+  }) => {
+    if (!fs.existsSync(STAFF_AUTH)) {
+      throw new Error(
+        'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
+      );
+    }
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const request = ctx.request;
 
@@ -1723,9 +2135,21 @@ test.describe.serial('Backup & Restore — §147 AO Compliance', () => {
 // =============================================================================
 test.describe.serial('Portal Compliance — DSGVO Export & Consent', () => {
   test.afterAll(() => {
-    try { fs.unlinkSync(STAFF_AUTH); } catch { /* best-effort cleanup */ }
-    try { fs.unlinkSync(MANDANT_AUTH); } catch { /* best-effort cleanup */ }
-    try { fs.rmdirSync(AUTH_DIR); } catch { /* best-effort cleanup */ }
+    try {
+      fs.unlinkSync(STAFF_AUTH);
+    } catch {
+      /* best-effort cleanup */
+    }
+    try {
+      fs.unlinkSync(MANDANT_AUTH);
+    } catch {
+      /* best-effort cleanup */
+    }
+    try {
+      fs.rmdirSync(AUTH_DIR);
+    } catch {
+      /* best-effort cleanup */
+    }
   });
 
   test('Portal login for compliance tests', async ({ browser }) => {
@@ -1740,14 +2164,19 @@ test.describe.serial('Portal Compliance — DSGVO Export & Consent', () => {
     } catch (e) {
       // MailHog/SMTP sind Pflichtservices im Paranoid-CI.
       // Wenn der Portal-Login fehlschlägt, ist das ein Fehler, kein Skip.
-      throw new Error(`Portal-Login fehlgeschlagen (MailHog/SMTP Pflichtservice): ${(e as Error).message}`, { cause: e });
+      throw new Error(
+        `Portal-Login fehlgeschlagen (MailHog/SMTP Pflichtservice): ${(e as Error).message}`,
+        { cause: e },
+      );
     } finally {
       await ctx.close();
     }
   });
 
   test('13.1 Portal settings page loads (consent/DSGVO settings)', async ({ browser }) => {
-    if (!fs.existsSync(MANDANT_AUTH)) { throw new Error('Portal-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
+    if (!fs.existsSync(MANDANT_AUTH)) {
+      throw new Error('Portal-Login fehlgeschlagen — StorageState nicht vorhanden.');
+    }
     const ctx = await browser.newContext({ storageState: MANDANT_AUTH });
     const page = await ctx.newPage();
 
@@ -1756,15 +2185,23 @@ test.describe.serial('Portal Compliance — DSGVO Export & Consent', () => {
     await page.waitForTimeout(3000);
 
     const settingsContent = page.getByText(/Einstellung|Benachrichtigung|DSGVO/i);
-    const contentVisible = await settingsContent.first().isVisible({ timeout: 5000 }).catch(() => false);
-    expect(contentVisible, 'Portal settings content must be visible for consent/DSGVO settings').toBe(true);
+    const contentVisible = await settingsContent
+      .first()
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
+    expect(
+      contentVisible,
+      'Portal settings content must be visible for consent/DSGVO settings',
+    ).toBe(true);
     await expect(settingsContent.first()).toBeVisible();
 
     await ctx.close();
   });
 
   test('13.2 Portal document page verifies shared docs access', async ({ browser }) => {
-    if (!fs.existsSync(MANDANT_AUTH)) { throw new Error('Portal-Login fehlgeschlagen — StorageState nicht vorhanden.'); }
+    if (!fs.existsSync(MANDANT_AUTH)) {
+      throw new Error('Portal-Login fehlgeschlagen — StorageState nicht vorhanden.');
+    }
     const ctx = await browser.newContext({ storageState: MANDANT_AUTH });
     const page = await ctx.newPage();
 

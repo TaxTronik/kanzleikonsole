@@ -151,7 +151,7 @@ erforderlich, falls Bestandsdaten existieren).
 > **GoBD-Bezug bei Anforderungen**: Referenziert eine Antwort ein Dokument mit
 > `documentType.tier = GOBD`, übernimmt der Request die längste dort gepflegte
 > Typfrist (6, 8 oder 10 Jahre); für Altbestand ohne Typ gilt
-> `GOBD_INVOICE` = 8 Jahre, `GOBD_CONTRACT`/`GOBD_TAX` = 10 Jahre. Der Worker
+> `GOBD_INVOICE` = 8 Jahre, `GOBD_CONTRACT` = 6 Jahre und `GOBD_TAX` = 10 Jahre. Der Worker
 > berücksichtigt ausschließlich abgeschlossene/abgebrochene Requests und
 > prüft neben deren Abschluss-/Abbruchdatum auch das Datum der jüngsten Antwort,
 > damit weder offene Vorgänge noch spätere Antworten vorzeitig gelöscht werden.
@@ -325,14 +325,14 @@ Daraus folgt für die DSGVO-Löschung:
 
 Innerhalb von taxtronik werden folgende Auftragsverarbeiter eingesetzt:
 
-| Anbieter                                 | Zweck                                         | AV-Vertrag                                                                                                                                                                                                                                                                                                                        |
-| ---------------------------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Hosting-Provider (durch Kanzlei gewählt) | Server-Betrieb                                | individuell                                                                                                                                                                                                                                                                                                                       |
-| ClamAV (lokaler Container)               | Virus-Scan                                    | kein externer Drittanbieter                                                                                                                                                                                                                                                                                                       |
-| RFC-3161-TSA (z. B. D-Trust)             | Audit-Versiegelung                            | Adapter konfigurierbar                                                                                                                                                                                                                                                                                                            |
-| n8n (lokaler Container)                  | Workflow-Automatisierung                      | kein externer Drittanbieter — **Achtung**: Sobald die Kanzlei n8n.cloud oder einen externen n8n-Server nutzt, wird n8n zum Auftragsverarbeiter (Art. 28 DSGVO) und ein AVV ist Pflicht. taxtronik gibt das Compose-Setup für lokales n8n vor; die Kanzlei muss eine bewusste Entscheidung treffen, wenn sie davon abweicht (B-4). |
-| (Optional) eIDAS-QES-Provider            | qualifizierte Signaturen                      | Adapter konfigurierbar                                                                                                                                                                                                                                                                                                            |
-| Mandanten-eigene Auftragsverarbeiter     | im Verzeichnis `/staff/admin/dsgvo/providers` |
+| Anbieter                                       | Zweck                                                                               | AV-Vertrag                                                                                                                                                                                                                                                                                                                        |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Hosting-Provider (durch Kanzlei gewählt)       | Server-Betrieb                                                                      | individuell                                                                                                                                                                                                                                                                                                                       |
+| ClamAV (lokaler Container)                     | Virus-Scan                                                                          | kein externer Drittanbieter                                                                                                                                                                                                                                                                                                       |
+| RFC-3161-TSA (z. B. D-Trust)                   | Audit-Versiegelung                                                                  | Adapter konfigurierbar                                                                                                                                                                                                                                                                                                            |
+| n8n (lokaler Container)                        | Workflow-Automatisierung                                                            | kein externer Drittanbieter — **Achtung**: Sobald die Kanzlei n8n.cloud oder einen externen n8n-Server nutzt, wird n8n zum Auftragsverarbeiter (Art. 28 DSGVO) und ein AVV ist Pflicht. taxtronik gibt das Compose-Setup für lokales n8n vor; die Kanzlei muss eine bewusste Entscheidung treffen, wenn sie davon abweicht (B-4). |
+| Externer eIDAS-QES-Provider (nicht integriert) | qualifizierte Signaturen, falls die Kanzlei hierfür einen separaten Dienst einsetzt | derzeit kein TaxTronik-Adapter; vor einer künftigen Anbindung Rollen, Vertrag und Datenflüsse gesondert bewerten                                                                                                                                                                                                                  |
+| Mandanten-eigene Auftragsverarbeiter           | im Verzeichnis `/staff/admin/dsgvo/providers`                                       |
 
 **Verzeichnis nach Art. 30 DSGVO** wird im Modul „Dienstleister (AVV)"
 gepflegt.
@@ -359,10 +359,14 @@ gepflegt.
 
 ### Verfügbarkeit
 
-- Postgres-Dump in den S3-Backup-Bucket via Operator-Cron bzw. manuell
-  (`./taxtronik backup` / `pnpm --filter @taxtronik/web backup:run`);
+- Täglicher Postgres-Dump um 01:00 UTC durch den Worker direkt in den
+  S3-Backup-Bucket; zusätzliche manuelle Sicherung samt lokaler Kopie über
+  `./taxtronik backup` bzw. den Single-Tenant-Admin-Trigger;
   jeder Lauf wird auditiert (`backup.run`) und als `BackupRecord` mit
   Status + SHA-256 erfasst, die Admin-Übersicht zeigt den letzten Stand.
+  Dumps sind im Browser absichtlich nicht herunterladbar. Sie werden von der
+  App nicht selbst verschlüsselt; verschlüsselter Datenträger und eine
+  unveränderbare, getrennte Off-Site-Kopie sind Betreiberpflicht.
   Kein automatischer SeaweedFS-Sync durch die App — die Off-Site-
   Replikation des Object-Stores ist Operator-Aufgabe (siehe gobd.md § 5)
 - Pre-Flight-Backup vor jeder Migration (`./taxtronik update`/`deploy`)

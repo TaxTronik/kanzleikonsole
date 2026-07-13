@@ -15,22 +15,22 @@ Vor Verwendung von einer/einem WP oder Steuerberater-Anwältin prüfen lassen.
 
 ### 1.1 Verantwortliche Personen
 
-| Rolle                                   | Name               | E-Mail             | Vertretung         |
-| --------------------------------------- | ------------------ | ------------------ | ------------------ |
-| Geschäftsführer / Inhaber               | ******\_\_\_****** | ******\_\_\_****** | ******\_\_\_****** |
-| Datenschutzbeauftragte/r                | ******\_\_\_****** | ******\_\_\_****** | ******\_\_\_****** |
-| GwG-Verantwortliche/r (§ 7 GwG)         | ******\_\_\_****** | ******\_\_\_****** | ******\_\_\_****** |
-| IT-Administration (taxtronik-Custodian) | ******\_\_\_****** | ******\_\_\_****** | ******\_\_\_****** |
-| WP / Wirtschafts­prüfer/in (extern)     | ******\_\_\_****** | ******\_\_\_****** | —                  |
+| Rolle                                   | Name                   | E-Mail                 | Vertretung             |
+| --------------------------------------- | ---------------------- | ---------------------- | ---------------------- |
+| Geschäftsführer / Inhaber               | **\*\***\_\_\_**\*\*** | **\*\***\_\_\_**\*\*** | **\*\***\_\_\_**\*\*** |
+| Datenschutzbeauftragte/r                | **\*\***\_\_\_**\*\*** | **\*\***\_\_\_**\*\*** | **\*\***\_\_\_**\*\*** |
+| GwG-Verantwortliche/r (§ 7 GwG)         | **\*\***\_\_\_**\*\*** | **\*\***\_\_\_**\*\*** | **\*\***\_\_\_**\*\*** |
+| IT-Administration (taxtronik-Custodian) | **\*\***\_\_\_**\*\*** | **\*\***\_\_\_**\*\*** | **\*\***\_\_\_**\*\*** |
+| WP / Wirtschafts­prüfer/in (extern)     | **\*\***\_\_\_**\*\*** | **\*\***\_\_\_**\*\*** | —                      |
 
 ### 1.2 IT-Infrastruktur
 
 - **taxtronik-Installation**: ☐ On-Premise im eigenen Serverraum
   ☐ On-Premise im externen Rechenzentrum
-  ☐ Co-Located bei: ******\_\_\_******
-- **Hosting-Provider** (falls anwendbar): ******\_\_\_****** (AVV abgeschlossen am **\_\_\_**)
-- **Reverse-Proxy**: ☐ NGINX ☐ Caddy ☐ Traefik ☐ Sonstiger: ******\_\_\_******
-- **TSA-Provider**: ☐ D-Trust ☐ SwissSign ☐ Sonstiger: ******\_\_\_******
+  ☐ Co-Located bei: **\*\***\_\_\_**\*\***
+- **Hosting-Provider** (falls anwendbar): **\*\***\_\_\_**\*\*** (AVV abgeschlossen am **\_\_\_**)
+- **Reverse-Proxy**: ☐ NGINX ☐ Caddy ☐ Traefik ☐ Sonstiger: **\*\***\_\_\_**\*\***
+- **TSA-Provider**: ☐ D-Trust ☐ SwissSign ☐ Sonstiger: **\*\***\_\_\_**\*\***
 
 ## 2. Belegfluss und Klassifikation
 
@@ -61,27 +61,36 @@ Beispiel:
 
 ## 3. Backup-Konzept
 
-| Aspekt              | Beschreibung                                  | Frequenz           | Verantwortlich       |
-| ------------------- | --------------------------------------------- | ------------------ | -------------------- |
-| Postgres-Dump       | pg_dump custom-format, komprimiert, SHA-256   | täglich 23:00      | Worker (automatisch) |
-| Object-Store-Backup | S3-Replikation zu Off-Site-Bucket             | täglich            | ******\_\_\_******   |
-| Off-Site-Ziel       | ******\_\_\_****** (Provider, Region)         | ******\_\_\_****** | ******\_\_\_******   |
-| Verschlüsselung     | ******\_\_\_****** (Borg/Restic/serverseitig) | —                  | ******\_\_\_******   |
-| Restore-Drill       | Test-Restore aus Backup in Sandbox            | quartalsweise      | ******\_\_\_******   |
-| Letzter Drill       | TT.MM.JJJJ                                    | —                  | ******\_\_\_******   |
+| Aspekt              | Beschreibung                                      | Frequenz                | Verantwortlich         |
+| ------------------- | ------------------------------------------------- | ----------------------- | ---------------------- |
+| Postgres-Dump       | pg_dump custom-format, komprimiert, SHA-256       | täglich 01:00 UTC       | Worker (automatisch)   |
+| Object-Store-Backup | S3-Replikation zu Off-Site-Bucket                 | täglich                 | **\*\***\_\_\_**\*\*** |
+| Off-Site-Ziel       | **\*\***\_\_\_**\*\*** (Provider, Region)         | **\*\***\_\_\_**\*\***  | **\*\***\_\_\_**\*\*** |
+| Verschlüsselung     | **\*\***\_\_\_**\*\*** (Borg/Restic/serverseitig) | —                       | **\*\***\_\_\_**\*\*** |
+| DB-Restore-Drill    | Test-Restore aus Backup in Sandbox                | monatlich, 1. 05:00 UTC | Worker (automatisch)   |
+| Vollsystem-Drill    | DB + Dokument-Store + Konfiguration/n8n           | quartalsweise           | **\*\***\_\_\_**\*\*** |
+| Letzter Drill       | TT.MM.JJJJ                                        | —                       | **\*\***\_\_\_**\*\*** |
 
 Backup-Aufbewahrung: **_ Tage rolling + _** Tage Monats-Snapshots + \_\_\_ Jahre
 Jahres-Snapshots.
 
-## 4. Datenzugriff / Z3-Recht der Finanzverwaltung
+## 4. Datenzugriff der Finanzverwaltung
 
-Die Kanzlei kann der Betriebsprüfung Daten in den folgenden Formaten zur
-Verfügung stellen:
+Die Finanzverwaltung entscheidet im Rahmen des § 147 Abs. 6 AO über die Form
+des Datenzugriffs. Die Kanzlei dokumentiert hier, wie sie den angeforderten
+Zugriff organisatorisch und technisch bereitstellt:
 
-- **Z1 (Online-Zugriff)**: ☐ ja (Read-only-Account für Prüfer) ☐ nein
-- **Z2 (Maschinelle Auswertung)**: ☐ ja, taxtronik-Admin-UI ☐ nein
-- **Z3 (Datenträgerüberlassung)**: ☐ ja, via `pnpm export:datev` oder
-  `/staff/clients/<id>/datev-belege-export`
+- **Z1 (unmittelbarer Nur-Lesezugriff)**: Verfahren / eingesetztes
+  Vorsystem / Berechtigungskonzept: \_\_\_\_\_\_
+- **Z2 (Auswertung nach Vorgaben der Finanzverwaltung)**: zuständige Person,
+  vorhandene Auswertungsmöglichkeiten und Übergabeformat: \_\_\_\_\_\_
+- **Z3 (Datenüberlassung)**: Datenumfang, maschinell auswertbares Format,
+  Strukturinformationen und sicherer Übergabeweg: \_\_\_\_\_\_
+
+TaxTronik stellt mandantenbezogene DATEV-Beleg-ZIPs unter
+`/staff/clients/<id>/datev-belege-export` bereit. Dieser Belegexport ersetzt
+für sich allein **keinen** vollständigen Z3-Export aller relevanten Daten und
+Strukturinformationen.
 
 Verfahren bei Prüfer-Anfrage:
 
@@ -92,14 +101,14 @@ Verfahren bei Prüfer-Anfrage:
 
 ## 5. Internes Kontrollsystem (IKS)
 
-| Kontrolle                                                        | Frequenz            | Verantwortlich        |
-| ---------------------------------------------------------------- | ------------------- | --------------------- |
-| Audit-Hash-Chain-Verifikation (automatisch via verify:chain)     | täglich 02:45 UTC   | Worker                |
-| Audit-Hash-Chain-Verifikation (manuell, beim Quartalsabschluss)  | quartalsweise       | Berufsträger          |
-| Backup-Integrität (Hash-Match in BackupRecord)                   | täglich automatisch | Restore-Routine       |
-| TSA-Stempel-Coverage (kein NULL in audit_seal.tsa_response_blob) | wöchentlich         | ******\_\_\_******    |
-| GoBD-Stichproben aus DATEV-Export                                | quartalsweise       | Berufsträger          |
-| GwG-Auswertung Risikoanalysen                                    | jährlich            | GwG-Verantwortliche/r |
+| Kontrolle                                                        | Frequenz             | Verantwortlich         |
+| ---------------------------------------------------------------- | -------------------- | ---------------------- |
+| Audit-Hash-Chain-Verifikation (automatisch via verify:chain)     | täglich 02:45 UTC    | Worker                 |
+| Audit-Hash-Chain-Verifikation (manuell, beim Quartalsabschluss)  | quartalsweise        | Berufsträger           |
+| Backup-Integrität (Hash-Match in BackupRecord)                   | monatlicher DB-Drill | Worker                 |
+| TSA-Stempel-Coverage (kein NULL in audit_seal.tsa_response_blob) | wöchentlich          | **\*\***\_\_\_**\*\*** |
+| GoBD-Stichproben aus DATEV-Export                                | quartalsweise        | Berufsträger           |
+| GwG-Auswertung Risikoanalysen                                    | jährlich             | GwG-Verantwortliche/r  |
 
 ## 6. Wiederanlauf (Disaster Recovery)
 
@@ -109,7 +118,7 @@ für die technische Anleitung. Organisatorisch:
 - **RTO** (Recovery Time Objective): \_\_\_ Stunden
 - **RPO** (Recovery Point Objective): \_\_\_ Stunden (= max. Datenverlust)
 - **Eskalations­kette**: 1. **\_\_\_** → 2. **\_\_\_** → 3. **\_\_\_**
-- **Externe Unterstützung im Notfall**: ******\_\_\_****** (Vendor-Support
+- **Externe Unterstützung im Notfall**: **\*\***\_\_\_**\*\*** (Vendor-Support
   oder externe IT-Firma)
 
 ## 7. Schulungen und Dokumentation
@@ -123,7 +132,7 @@ für die technische Anleitung. Organisatorisch:
 
 ## 8. Änderungs-Protokoll dieser Doku
 
-| Datum      | Wer                | Was wurde geändert |
-| ---------- | ------------------ | ------------------ |
-| TT.MM.JJJJ | ******\_\_\_****** | Erstausstellung    |
-|            |                    |                    |
+| Datum      | Wer                    | Was wurde geändert |
+| ---------- | ---------------------- | ------------------ |
+| TT.MM.JJJJ | **\*\***\_\_\_**\*\*** | Erstausstellung    |
+|            |                        |                    |
