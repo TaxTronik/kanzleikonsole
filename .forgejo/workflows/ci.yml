@@ -808,7 +808,7 @@ jobs:
                 expected_years="$3"
                 lock_config="$($AWS s3api get-object-lock-configuration \
                   --bucket "$bucket" \
-                  --query "Rule.DefaultRetention.[Mode,Years]" \
+                  --query "ObjectLockConfiguration.Rule.DefaultRetention.[Mode,Years]" \
                   --output text)"
                 set -- $lock_config
                 actual_mode="${1:-FEHLT}"

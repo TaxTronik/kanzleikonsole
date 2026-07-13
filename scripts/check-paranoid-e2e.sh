@@ -50,6 +50,12 @@ require_lock_policy() {
 require_lock_policy gobd COMPLIANCE 10
 require_lock_policy gwg GOVERNANCE 5
 
+LOCK_QUERY='--query "ObjectLockConfiguration.Rule.DefaultRetention.[Mode,Years]"'
+if ! grep -Fq -- "$LOCK_QUERY" "$WORKFLOW"; then
+  echo "FEHLER: Object-Lock-Query muss bei ObjectLockConfiguration.Rule beginnen." >&2
+  FAIL=1
+fi
+
 FORBIDDEN_PATTERN='(^|[^A-Za-z0-9_])(test|it|describe)\.(only|skip|fixme)([^A-Za-z0-9_]|$)'
 HITS="$(grep -RInE "$FORBIDDEN_PATTERN" apps/e2e/tests --include='*.ts' 2>/dev/null || true)"
 if [ -n "$HITS" ]; then
@@ -64,4 +70,4 @@ if [ "$FAIL" -ne 0 ]; then
   exit 1
 fi
 
-echo "OK: Paranoid-E2E ist vollstaendig verdrahtet und enthaelt keine skip/only/fixme Marker."
+echo "OK: Paranoid-E2E und Object-Lock-Pruefung sind vollstaendig und konsistent verdrahtet."
