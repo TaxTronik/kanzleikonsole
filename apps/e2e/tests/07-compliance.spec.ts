@@ -221,7 +221,7 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
       typeSelect,
       'Der Compliance-Upload muss explizit als GoBD Rechnung klassifiziert sein',
     ).toHaveValue(gobdInvoiceTypeId!);
-    await expect(page.getByText(/GoBD · 8 Jahre unveränderbar \(Object-Lock\)/i)).toBeVisible({
+    await expect(page.getByText(/GoBD · 8 Jahre COMPLIANCE-Lock/i)).toBeVisible({
       timeout: 3000,
     });
 
