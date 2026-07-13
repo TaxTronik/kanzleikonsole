@@ -31,6 +31,25 @@ for spec in $REQUIRED_SPECS; do
   fi
 done
 
+# Die E2E-Infrastruktur muss dieselben Lock-Modi prüfen, die init-storage und
+# Deploy-Readiness erzwingen. Insbesondere darf GwG nicht wieder auf COMPLIANCE
+# driften: Dann wäre die bestätigte Vernichtung nach Fristablauf blockiert.
+require_lock_policy() {
+  bucket="$1"
+  expected_mode="$2"
+  expected_years="$3"
+  any_count="$(grep -Ec "^[[:space:]]*assert_lock[[:space:]]+${bucket}[[:space:]]+" "$WORKFLOW" || true)"
+  expected_count="$(grep -Ec "^[[:space:]]*assert_lock[[:space:]]+${bucket}[[:space:]]+${expected_mode}[[:space:]]+${expected_years}[[:space:]]*$" "$WORKFLOW" || true)"
+
+  if [ "$any_count" -ne 1 ] || [ "$expected_count" -ne 1 ]; then
+    echo "FEHLER: Object-Lock-Prüfung für ${bucket} muss exakt ${expected_mode}/${expected_years} Jahre erwarten." >&2
+    FAIL=1
+  fi
+}
+
+require_lock_policy gobd COMPLIANCE 10
+require_lock_policy gwg GOVERNANCE 5
+
 FORBIDDEN_PATTERN='(^|[^A-Za-z0-9_])(test|it|describe)\.(only|skip|fixme)([^A-Za-z0-9_]|$)'
 HITS="$(grep -RInE "$FORBIDDEN_PATTERN" apps/e2e/tests --include='*.ts' 2>/dev/null || true)"
 if [ -n "$HITS" ]; then

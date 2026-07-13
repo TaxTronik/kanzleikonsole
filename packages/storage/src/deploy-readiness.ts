@@ -7,8 +7,9 @@
 // (z. B. der GwG-Upload, der nach einem Deploy still nicht mehr ging):
 //
 //   1. Alle S3-Buckets existieren (gobd, gwg, general, staff-private, backups).
-//   2. Object-Lock ist auf den Compliance-Buckets (gobd, gwg) aktiv — sonst
-//      keine Revisionssicherheit (§ 147 AO / § 8 Abs. 4 GwG).
+//   2. Object-Lock folgt exakt der fachlichen Policy: gobd COMPLIANCE/10 Jahre,
+//      gwg GOVERNANCE/5 Jahre mit kontrolliertem Bypass nur im bestätigten
+//      Vernichtungsworkflow. Jede Abweichung ist ein Retention-Fehler.
 //   3. ClamAV akzeptiert Uploads in App-Größe: ein Scan über MAX_UPLOAD_BYTES
 //      muss durchlaufen (clamd `StreamMaxLength` >= Cap, N-6) — sonst scheitern
 //      Uploads zwischen 25 und 100 MB still als SCAN_ERROR.
@@ -18,9 +19,10 @@
 //   5. Echter Storage-Roundtrip (put → get → delete) im `general`-Bucket —
 //      beweist Schreiben/Lesen/Löschen mit den konfigurierten Credentials.
 //
-// Read-only bei den Compliance-Buckets: es wird NIE in gobd/gwg geschrieben
-// (dort entstünde ein jahrelang unlöschbares Objekt). Der Roundtrip nutzt den
-// lock-freien `general`-Bucket.
+// Read-only bei den geschützten Buckets: Es wird NIE in gobd/gwg geschrieben,
+// weil Testobjekte dort eine langfristige Retention erhielten. Der kontrollierte
+// GwG-Bypass gehört ausschließlich in den Vernichtungsworkflow; der Roundtrip
+// nutzt den lock-freien `general`-Bucket.
 // =============================================================================
 
 import { randomUUID } from 'node:crypto';

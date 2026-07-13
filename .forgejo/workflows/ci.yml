@@ -776,8 +776,8 @@ jobs:
 
       - name: Create S3 buckets with Object-Lock (SeaweedFS, production-parity)
         run: |
-          # Buckets mit Object-Lock (COMPLIANCE für GoBD/GwG).
-          # Kein || true — wenn Object-Lock fehlschlägt, ist das ein GoBD-Bruch.
+          # Buckets mit Object-Lock: COMPLIANCE für GoBD, GOVERNANCE für GwG.
+          # Kein || true — wenn Object-Lock fehlschlägt, ist die Retention nicht belastbar.
           WORKSPACE_DIR="${GITHUB_WORKSPACE:-$PWD}"
           INIT_STORAGE="$WORKSPACE_DIR/infra/scripts/init-storage.sh"
           if [ ! -f "$INIT_STORAGE" ]; then
@@ -802,13 +802,30 @@ jobs:
             --entrypoint /bin/sh \
             amazon/aws-cli:latest@sha256:c95ab0642137f55a12b95b6956dd03cefdbd73e760e0e7b870afc9b47f9c8150 -ec '
               AWS="aws --endpoint-url http://localhost:8333"
+              assert_lock() {
+                bucket="$1"
+                expected_mode="$2"
+                expected_years="$3"
+                lock_config="$($AWS s3api get-object-lock-configuration \
+                  --bucket "$bucket" \
+                  --query "Rule.DefaultRetention.[Mode,Years]" \
+                  --output text)"
+                set -- $lock_config
+                actual_mode="${1:-FEHLT}"
+                actual_years="${2:-FEHLT}"
+                if [ "$actual_mode" != "$expected_mode" ] || [ "$actual_years" != "$expected_years" ]; then
+                  echo "::error::Object-Lock für Bucket $bucket falsch: erwartet ${expected_mode}/${expected_years} Jahre, erhalten ${actual_mode}/${actual_years}."
+                  $AWS s3api get-object-lock-configuration --bucket "$bucket" || true
+                  exit 1
+                fi
+                echo "Object-Lock $bucket: ${actual_mode}/${actual_years} Jahre"
+              }
+
               for bucket in gobd gwg general staff-private backups; do
                 $AWS s3api head-bucket --bucket "$bucket"
               done
-              $AWS s3api get-object-lock-configuration --bucket gobd | grep -q "\"Mode\": \"COMPLIANCE\""
-              $AWS s3api get-object-lock-configuration --bucket gobd | grep -q "\"Years\": 10"
-              $AWS s3api get-object-lock-configuration --bucket gwg | grep -q "\"Mode\": \"COMPLIANCE\""
-              $AWS s3api get-object-lock-configuration --bucket gwg | grep -q "\"Years\": 5"
+              assert_lock gobd COMPLIANCE 10
+              assert_lock gwg GOVERNANCE 5
             '
 
       - name: Build web app
@@ -1011,8 +1028,8 @@ jobs:
           $COMPOSE up -d --wait seaweedfs clamav
 
       - name: Create buckets with Object-Lock (real init-storage.sh)
-        # Der ECHTE Bucket-Init: legt gobd/gwg mit Object-Lock COMPLIANCE an
-        # (kein || true — bricht der Object-Lock, ist das ein GoBD-Verstoß).
+        # Der ECHTE Bucket-Init: gobd mit COMPLIANCE, gwg mit GOVERNANCE
+        # (kein || true — bricht der Object-Lock, ist die Retention nicht belastbar).
         run: $COMPOSE run --rm seaweedfs-init
 
       - name: Deploy-Readiness-Check (S3-Buckets/Object-Lock/ClamAV/Roundtrip)

@@ -1019,9 +1019,9 @@ model Document {
   analysisId                String?                @map("analysis_id") @db.Uuid
   acknowledgedAt            DateTime?              @map("acknowledged_at") @db.Timestamptz(6)
   acknowledgedByStaff       String?                @map("acknowledged_by_staff") @db.Uuid
-  // Soft-Delete: GoBD/GwG-Objekte liegen unter Object-Lock COMPLIANCE und sind
-  // physisch 10/5 Jahre nicht löschbar (gesetzliche Aufbewahrung). "Löschen"
-  // blendet daher nur aus — Bytes bleiben, Audit-Eintrag, wiederherstellbar.
+  // Soft-Delete: GoBD-Objekte liegen unter COMPLIANCE, GwG-Objekte unter
+  // GOVERNANCE plus bestätigtem Vernichtungsworkflow. Reguläres "Löschen"
+  // blendet nur aus — physische Vernichtung erfolgt ausschließlich regelkonform.
   deletedAt                 DateTime?              @map("deleted_at") @db.Timestamptz(6)
   deletedByStaff            String?                @map("deleted_by_staff") @db.Uuid
   deleteReason              String?                @map("delete_reason")
