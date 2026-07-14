@@ -3,9 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "rule": {
-          "interval": [{ "field": "cronExpression", "expression": "0 9 * * 1-5" }]
-        }
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 9 * * 1-5" }] }
       },
       "id": "cron-trigger",
       "name": "Werktags 09:00",
@@ -15,25 +13,26 @@
     },
     {
       "parameters": {
-        "url": "={{ $env.TAXTRONIK_API_URL }}/api/n8n/overdue-requests",
+        "url": "__TAXTRONIK_API_URL__/api/integrations/n8n/v1/overdue-requests",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-taxtronik-key-id", "value": "__TAXTRONIK_CALLBACK_KEY_ID__" },
+            { "name": "x-taxtronik-request-id", "value": "={{ 'overdue-' + $execution.id }}" }
+          ]
+        },
         "options": {}
       },
       "id": "fetch-overdue",
-      "name": "Fetch überfällige Requests",
+      "name": "Tenantgebundene Requests abrufen",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [460, 300],
-      "credentials": {
-        "httpHeaderAuth": { "id": "taxtronik-hmac", "name": "Taxtronik HMAC Auth" }
-      }
+      "position": [460, 300]
     },
     {
-      "parameters": {
-        "fieldToSplitOut": "requests",
-        "options": {}
-      },
+      "parameters": { "fieldToSplitOut": "requests", "options": {} },
       "id": "split-requests",
       "name": "Pro Request iterieren",
       "type": "n8n-nodes-base.splitOut",
@@ -42,27 +41,24 @@
     },
     {
       "parameters": {
-        "fromEmail": "={{ $env.SMTP_FROM }}",
+        "fromEmail": "__SMTP_FROM__",
         "toEmail": "={{ $json.signerEmail }}",
         "subject": "Erinnerung: {{ $json.title }}",
-        "text": "Hallo {{ $json.contactName }},\n\nfolgende Anforderung Ihrer Kanzlei ist seit {{ $json.daysOverdue }} Tag(en) offen:\n\n  {{ $json.title }}\n\nBitte loggen Sie sich im Mandantenportal ein, um zu antworten:\n  {{ $env.TAXTRONIK_API_URL }}/portal/requests/{{ $json.id }}\n\nFreundliche Grüße\nIhre Kanzlei",
+        "text": "Hallo {{ $json.contactName }},\n\nfolgende Anforderung Ihrer Kanzlei ist seit {{ $json.daysOverdue }} Tag(en) offen:\n\n  {{ $json.title }}\n\nBitte öffnen Sie das Mandantenportal über Ihren gewohnten Zugang. Aus Sicherheitsgründen enthält diese E-Mail keinen direkten internen Link.\n\nFreundliche Grüße\nIhre Kanzlei",
         "options": {}
       },
       "id": "send-reminder-mail",
       "name": "Reminder-Mail senden",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
-      "position": [900, 300],
-      "credentials": {
-        "smtp": { "id": "smtp-credential", "name": "Kanzlei SMTP" }
-      }
+      "position": [900, 300]
     }
   ],
   "connections": {
     "Werktags 09:00": {
-      "main": [[{ "node": "Fetch überfällige Requests", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Tenantgebundene Requests abrufen", "type": "main", "index": 0 }]]
     },
-    "Fetch überfällige Requests": {
+    "Tenantgebundene Requests abrufen": {
       "main": [[{ "node": "Pro Request iterieren", "type": "main", "index": 0 }]]
     },
     "Pro Request iterieren": {
@@ -72,11 +68,10 @@
   "active": false,
   "settings": {
     "executionOrder": "v1",
-    "saveDataSuccessExecution": "all",
-    "saveExecutionProgress": true
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "saveExecutionProgress": false,
+    "saveManualExecutions": false
   },
-  "versionId": "1.0",
-  "meta": {
-    "instanceId": "taxtronik-default"
-  }
+  "versionId": "2.0"
 }

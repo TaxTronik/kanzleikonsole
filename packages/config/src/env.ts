@@ -126,7 +126,16 @@ const envSchema = z.object({
     (v) => (v === '' ? undefined : v),
     z.string().url().optional(),
   ),
-  N8N_HMAC_SECRET: z.string().optional(),
+  N8N_HMAC_SECRET: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
+  // Globale /api/n8n/*-Callbacks sind ein reiner Migrationspfad und deshalb
+  // standardmäßig vollständig unsichtbar. Nur die exakten Strings true/false
+  // sind zulässig; Werte wie 1, yes oder TRUE dürfen nicht truthy werden.
+  N8N_LEGACY_CALLBACKS_ENABLED: z
+    .preprocess(
+      (v) => (v === '' || v === undefined ? undefined : v),
+      z.union([z.literal('true'), z.literal('false')]).optional(),
+    )
+    .transform((value) => value === 'true'),
   // Liefer-Modus für ausgehende Webhooks. Default leitet sich aus NODE_ENV ab
   // (siehe `n8nDeliveryMode`): dev → 'test' (nur n8n-Test-Hooks, trifft NIE die
   // Produktiv-Workflows — sicheres Debugging), prod → 'production'. 'log' = nicht
@@ -239,8 +248,18 @@ function parseEnv(): Env {
         '[config] DATABASE_APP_URL ist in Produktion Pflicht (RLS-Backstop). Owner-Verbindung darf nicht von der App genutzt werden.',
       );
     }
-    if (!parsed.data.N8N_HMAC_SECRET || parsed.data.N8N_HMAC_SECRET.length < 32) {
-      throw new Error('[config] N8N_HMAC_SECRET ist in Produktion Pflicht (mind. 32 Zeichen).');
+    const globalN8nHmacRequired = Boolean(
+      parsed.data.N8N_LEGACY_CALLBACKS_ENABLED || parsed.data.N8N_WEBHOOK_BASE_URL,
+    );
+    if (globalN8nHmacRequired && !parsed.data.N8N_HMAC_SECRET) {
+      throw new Error(
+        '[config] N8N_HMAC_SECRET ist bei N8N_LEGACY_CALLBACKS_ENABLED oder N8N_WEBHOOK_BASE_URL in Produktion Pflicht (mind. 32 Zeichen).',
+      );
+    }
+    if (parsed.data.N8N_HMAC_SECRET && parsed.data.N8N_HMAC_SECRET.length < 32) {
+      throw new Error(
+        '[config] N8N_HMAC_SECRET muss in Produktion mindestens 32 Zeichen lang sein.',
+      );
     }
     // Audit Round 14, Finding 7: Bekannte Dev-Defaults dürfen niemals
     // produktiv eingesetzt werden. Wer das .env-Template direkt übernimmt

@@ -9,13 +9,18 @@
 
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
-import { verifyN8nSignature, n8nRejectResponse } from '@/server/n8n/verify';
-import { prismaOwner } from '@/server/db/prisma-owner';
+import { n8nRejectResponse, runReservedN8nRequest, verifyN8nSignature } from '@/server/n8n/verify';
+import { getRequestDetailForTenant } from '@/server/n8n/operations';
 import { log } from '@/server/logger';
+import { legacyN8nCallbackDisabledResponse } from '@/server/n8n/legacy-access';
 
 const TenantIdSchema = z.string().uuid();
+const RequestIdSchema = z.string().uuid();
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const disabled = legacyN8nCallbackDisabledResponse();
+  if (disabled) return disabled;
+
   const ver = await verifyN8nSignature(req);
   if (!ver.ok) {
     log.warn({ component: 'n8n', reason: ver.error }, 'n8n-verify: rejected');
@@ -24,41 +29,22 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
   const { id } = await params;
 
+  const requestId = RequestIdSchema.safeParse(id);
+  if (!requestId.success) {
+    return NextResponse.json({ error: 'invalid request id' }, { status: 400 });
+  }
+
   const tenantId = TenantIdSchema.safeParse(req.nextUrl.searchParams.get('tenantId'));
   if (!tenantId.success) {
     return NextResponse.json({ error: 'tenantId query parameter required' }, { status: 400 });
   }
 
-  const r = await prismaOwner.request.findFirst({
-    where: { id, tenantId: tenantId.data },
-    include: {
-      client: {
-        include: {
-          contacts: { where: { active: true }, orderBy: { fullName: 'asc' } },
-        },
-      },
-    },
-  });
-  if (!r) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  return runReservedN8nRequest(ver, async () => {
+    const r = await getRequestDetailForTenant(tenantId.data, requestId.data);
+    if (!r) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
-  const contact = r.client.contacts[0];
-  // Empfänger, die Mails möchten — n8n-Workflows MÜSSEN diesen Filter
-  // respektieren (siehe ClientContact.notificationsEnabled).
-  const notifiableContacts = r.client.contacts
-    .filter((c) => c.notificationsEnabled)
-    .map((c) => ({ id: c.id, fullName: c.fullName, email: c.email }));
-
-  return NextResponse.json({
-    id: r.id,
-    tenantId: r.tenantId,
-    title: r.title,
-    description: r.description,
-    priority: r.priority,
-    status: r.status,
-    dueAt: r.dueAt,
-    clientName: r.client.name,
-    contactName: contact?.fullName ?? null,
-    contactEmail: contact?.email ?? null,
-    notifiableContacts,
+    // Empfänger, die Mails möchten — n8n-Workflows MÜSSEN diesen Filter
+    // respektieren (siehe ClientContact.notificationsEnabled).
+    return NextResponse.json(r);
   });
 }

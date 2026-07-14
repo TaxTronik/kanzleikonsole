@@ -10,17 +10,18 @@ Funktionen aktualisieren das betroffene Kapitel im selben Commit
 
 ## Kapitel
 
-| Kapitel                              | Inhalt                                                                                                                             | Zielgruppe                  |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
-| [Erste Schritte](erste-schritte.md)  | Inbetriebnahme in 30 Minuten: Erstlogin/2FA, geführte Checkliste, Team + Berechtigungen, erste Arbeitsschritte                     | Admin/Partner               |
-| [Dokumente und Archiv](dokumente.md) | Explorer, Upload/Virenscan, Schutzstufen/Aufbewahrung, Versionen, Freigabe, GwG-Vernichtung, Portal-Sicht                          | Mitarbeiter, Admin, Mandant |
-| [Rechnungen](rechnungen.md)          | In-App-/Extern-Modus, automatische Nummernvergabe, Festschreibung, E-Rechnung (XRechnung/ZUGFeRD), Stundenabrechnung, Portal-Sicht | Mitarbeiter, Admin, Mandant |
-| [Administration](administration.md)  | Benutzer/Rollen/2FA, Prüfprotokoll & Zeitstempel, Backup & Restore-Test, Verweise                                                  | Admin/Partner               |
+| Kapitel                                           | Inhalt                                                                                                                             | Zielgruppe                      |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| [Erste Schritte](erste-schritte.md)               | Inbetriebnahme in 30 Minuten: Erstlogin/2FA, geführte Checkliste, Team + Berechtigungen, erste Arbeitsschritte                     | Admin/Partner                   |
+| [Dokumente und Archiv](dokumente.md)              | Explorer, Upload/Virenscan, Schutzstufen/Aufbewahrung, Versionen, Freigabe, GwG-Vernichtung, Portal-Sicht                          | Mitarbeiter, Admin, Mandant     |
+| [Rechnungen](rechnungen.md)                       | In-App-/Extern-Modus, automatische Nummernvergabe, Festschreibung, E-Rechnung (XRechnung/ZUGFeRD), Stundenabrechnung, Portal-Sicht | Mitarbeiter, Admin, Mandant     |
+| [n8n-Automatisierungen](n8n-automatisierungen.md) | Geführtes Setup, workflow-spezifische Ziele, eigene Workflows, Eventkatalog, Datenschutz und Fehlerdiagnose                        | Admin, Workflow-Verantwortliche |
+| [Administration](administration.md)               | Benutzer/Rollen/2FA, Prüfprotokoll & Zeitstempel, Backup & Restore-Test, Verweise                                                  | Admin/Partner                   |
 
 Geltungsbereich: Die Kapitel decken die Module des
 Prüfungs-Scopes ab (vgl.
 [Gap-Analyse Prüfungsbereitschaft](../compliance/idw-ps880-pruefungsbereitschaft.md),
-Abschnitt 2). Weitere Module (BWA, Workflows, Subsumtion/TCMS, Formulare,
+Abschnitt 2). Weitere Module (BWA, interne Fachworkflows, Subsumtion/TCMS, Formulare,
 Kalender …) werden sukzessive ergänzt; bis dahin gilt für sie die
 Funktionsübersicht in [FEATURES.md](../../FEATURES.md) und die in-App-Hilfe.
 

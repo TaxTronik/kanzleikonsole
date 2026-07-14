@@ -3,9 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "rule": {
-          "interval": [{ "field": "cronExpression", "expression": "0 8 * * *" }]
-        }
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 8 * * *" }] }
       },
       "id": "cron-trigger",
       "name": "Täglich 08:00",
@@ -15,23 +13,25 @@
     },
     {
       "parameters": {
-        "url": "={{ $env.TAXTRONIK_API_URL }}/api/n8n/expiring-gwg-checks",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [{ "name": "withinDays", "value": "30" }]
-        },
+        "url": "__TAXTRONIK_API_URL__/api/integrations/n8n/v1/expiring-gwg-checks",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-taxtronik-key-id", "value": "__TAXTRONIK_CALLBACK_KEY_ID__" },
+            { "name": "x-taxtronik-request-id", "value": "={{ 'gwg-expiry-' + $execution.id }}" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": { "parameters": [{ "name": "withinDays", "value": "30" }] },
         "options": {}
       },
       "id": "fetch-expiring",
-      "name": "Bald ablaufende GwG-Prüfungen",
+      "name": "Tenantgebundene GwG-Prüfungen abrufen",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [460, 300],
-      "credentials": {
-        "httpHeaderAuth": { "id": "taxtronik-hmac", "name": "Taxtronik HMAC Auth" }
-      }
+      "position": [460, 300]
     },
     {
       "parameters": {
@@ -56,27 +56,24 @@
     },
     {
       "parameters": {
-        "fromEmail": "={{ $env.SMTP_FROM }}",
-        "toEmail": "={{ $env.GWG_OFFICER_EMAIL }}",
+        "fromEmail": "__SMTP_FROM__",
+        "toEmail": "__GWG_OFFICER_EMAIL__",
         "subject": "{{ $json.checks.length }} GwG-Prüfungen laufen in <30 Tagen ab",
-        "text": "Folgende GwG-Prüfungen laufen demnächst ab und müssen erneuert werden:\n\n{{ $json.checks.map(c => '- ' + c.clientName + ': gültig bis ' + c.validUntil).join('\\n') }}\n\nDirekt-Link zur Übersicht:\n{{ $env.TAXTRONIK_API_URL }}/staff/clients\n\n— taxtronik",
+        "text": "Folgende GwG-Prüfungen laufen demnächst ab und müssen erneuert werden:\n\n{{ $json.checks.map(c => '- ' + c.clientName + ': gültig bis ' + c.validUntil).join('\\n') }}\n\nBitte öffnen Sie die GwG-Übersicht über Ihren gewohnten TaxTronik-Zugang.\n\n— TaxTronik",
         "options": {}
       },
       "id": "send-warning-mail",
       "name": "Warn-Mail an GwG-Beauftragten",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
-      "position": [900, 200],
-      "credentials": {
-        "smtp": { "id": "smtp-credential", "name": "Kanzlei SMTP" }
-      }
+      "position": [900, 200]
     }
   ],
   "connections": {
     "Täglich 08:00": {
-      "main": [[{ "node": "Bald ablaufende GwG-Prüfungen", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Tenantgebundene GwG-Prüfungen abrufen", "type": "main", "index": 0 }]]
     },
-    "Bald ablaufende GwG-Prüfungen": {
+    "Tenantgebundene GwG-Prüfungen abrufen": {
       "main": [[{ "node": "Nur wenn etwas zu melden", "type": "main", "index": 0 }]]
     },
     "Nur wenn etwas zu melden": {
@@ -84,6 +81,12 @@
     }
   },
   "active": false,
-  "settings": { "executionOrder": "v1" },
-  "versionId": "1.0"
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "saveExecutionProgress": false,
+    "saveManualExecutions": false
+  },
+  "versionId": "2.0"
 }

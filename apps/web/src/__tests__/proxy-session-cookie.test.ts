@@ -77,3 +77,37 @@ describe('proxy session cookie gate', () => {
     expect(response.headers.get('x-request-id')).toBeTruthy();
   });
 });
+
+describe('proxy legacy n8n gate', () => {
+  it.each([undefined, 'false', 'TRUE', '1'])(
+    'hides every legacy path and method unless the flag is exact true (%s)',
+    async (flag) => {
+      const { proxy } = await loadProxy({
+        NODE_ENV: 'test',
+        N8N_LEGACY_CALLBACKS_ENABLED: flag,
+      });
+
+      const response = proxy(
+        new NextRequest('https://staff.example.test/api/n8n/unknown-handler', {
+          method: 'OPTIONS',
+        }),
+      );
+
+      expect(response.status).toBe(404);
+      expect(response.headers.get('cache-control')).toBe('no-store');
+      await expect(response.text()).resolves.toBe('');
+    },
+  );
+
+  it('forwards legacy paths only with explicit true so the HMAC handler can authenticate', async () => {
+    const { proxy } = await loadProxy({
+      NODE_ENV: 'test',
+      N8N_LEGACY_CALLBACKS_ENABLED: 'true',
+    });
+
+    const response = proxy(new NextRequest('https://staff.example.test/api/n8n/overdue-requests'));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-request-id')).toBeTruthy();
+  });
+});

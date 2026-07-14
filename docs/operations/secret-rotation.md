@@ -30,7 +30,9 @@ Dieses Runbook beschreibt die Rotation produktiver Geheimnisse. Für
 | `POSTGRES_PASSWORD`                                       | DB-Owner/Migrationen              | Wartungsfenster                | App-Owner-Tools, Migrationen           |
 | `TAXTRONIK_APP_PASSWORD`                                  | App-DB-Rolle mit RLS              | Wartungsfenster                | App/Worker DB-Zugriff                  |
 | `S3_ACCESS_KEY` / `S3_SECRET_KEY`                         | SeaweedFS S3                      | Wartungsfenster                | Uploads, Backups, Restore              |
-| `N8N_HMAC_SECRET`                                         | App↔n8n Webhook-Signaturen        | koordiniert App+n8n            | Webhooks schlagen sonst fehl           |
+| Outbound-HMAC je Tenant; `N8N_HMAC_SECRET` nur Legacy     | TaxTronik→n8n Event-Signaturen    | koordiniert App/Worker+n8n     | Event-Webhooks schlagen sonst fehl     |
+| n8n Callback-Key/-Token                                   | n8n→TaxTronik Scoped Callback     | ohne Dual-Token-Fenster        | Callbacks schlagen sonst fehl          |
+| n8n API-Key (Tenant-Einstellung)                          | Workflow-Verwaltung via `/api/v1` | überlappender Key-Wechsel      | Import/Status gestört, Webhooks laufen |
 | `N8N_ENCRYPTION_KEY`                                      | n8n Credential-Store              | nur mit n8n-Backup             | n8n kann Credentials verlieren         |
 | `N8N_DB_PASSWORD`                                         | n8n Postgres-Rolle                | Wartungsfenster                | n8n startet sonst nicht                |
 | `SMTP_PASSWORD`                                           | SMTP-Relay                        | laufend möglich                | Mailversand                            |
@@ -116,8 +118,104 @@ Reihenfolge:
 
 ## n8n-Secrets
 
-`N8N_HMAC_SECRET` kann koordiniert rotiert werden: App/Worker und n8n müssen
-denselben Wert sehen.
+### HMAC-Secret
+
+Das verschlüsselt in der Tenant-Connection gespeicherte HMAC-Secret schützt den
+Outbound-Pfad: App/Worker signieren Events an n8n, die dortige HMAC-Prüfung
+verifiziert sie. `N8N_HMAC_SECRET` ist nur der globale Fallback für
+Installationen ohne normalisierte Connection. Das scoped Callback-Credential
+in Gegenrichtung ist davon unabhängig. Globale
+Legacy-Callbacks unter `/api/n8n/*` sind default-off; nur wenn
+`N8N_LEGACY_CALLBACKS_ENABLED=true` gesetzt ist, verwenden sie das globale
+HMAC-Secret bis zu ihrer Migration. Unabhängig davon nutzt auch ein gesetztes
+`N8N_WEBHOOK_BASE_URL` dasselbe Secret für ausgehende Legacy-Events. In
+Produktion erzwingt TaxTronik für beide Opt-ins mindestens 32 Zeichen; bleiben
+beide deaktiviert, wird das globale Secret nicht benötigt.
+
+Es gibt kein automatisches Alt-/Neu-Secret-Fenster. Die Rotation erfolgt daher
+koordiniert:
+
+1. Aktuellen n8n-Zustand, offene `PENDING`-/`FAILED`-Zustellungen
+   und letzte erfolgreiche Outbound-Zustellungen dokumentieren. Full-Backup nach
+   Standardablauf erstellen und verifizieren.
+2. Event-Webhook-Workflows und gegebenenfalls noch vorhandene Legacy-
+   HMAC-Callback-Workflows pausieren. Den TaxTronik-Worker stoppen, damit
+   Outbox-Einträge nicht mit gemischten Secrets zugestellt werden.
+   TaxTronik-Kernfunktionen dürfen weiterlaufen; die Outbox sammelt neue Events.
+3. Neuen Wert in den zugeordneten n8n-Crypto-Credentials aller
+   Event-Webhook-Workflows hinterlegen. Secret niemals in Workflow-JSON,
+   Variables, Node-Notizen oder Logs schreiben.
+4. Denselben Wert in der Tenant-Konfiguration unter
+   **Administration → Einstellungen → n8n-Automatisierung** setzen. Nutzt die
+   Installation noch den ENV-Fallback, zusätzlich `N8N_HMAC_SECRET`
+   in `.env` ändern und App/Worker mit `./taxtronik deploy`
+   neu starten.
+5. Systemuhren prüfen, Workflows wieder veröffentlichen/aktivieren und den
+   Worker starten. Zuerst `taxtronik.ping` gegen dessen
+   Production-Ziel prüfen; fachliche Event-Ziele ausschließlich über die
+   getrennte Test-URL mit synthetischem Payload testen. Legacy-Callbacks,
+   solange vorhanden und ausdrücklich aktiviert, getrennt synthetisch prüfen.
+6. Outbox beobachten: keine neuen HMAC-Fehler, Rückstau wird abgearbeitet,
+   Fan-out-Ziele enden in `DELIVERED`. Erst danach den alten Wert aus
+   der verschlüsselten Rollback-Verwahrung entfernen.
+
+Kann Schritt 4 nicht im selben Wartungsfenster erfolgen, bleiben Workflows und
+Worker pausiert. Nicht abwechselnd alte und neue Secrets testen: Retries würden
+sonst uneindeutige Zustände erzeugen.
+
+### Scoped Callback-Key und -Token
+
+Neue n8n → TaxTronik-Aufrufe verwenden
+`/api/integrations/n8n/v1/*` mit
+`x-taxtronik-key-id`, Bearer-Token, einem minimalen Scope und einer
+einmaligen `x-taxtronik-request-id`. Das Token wird nur bei der
+Erzeugung angezeigt und nur gehasht gespeichert. Eine Neuerzeugung macht das
+alte Token sofort ungültig; parallele Alt-/Neu-Tokens werden nicht akzeptiert.
+
+1. Betroffene Callback-Workflows pausieren und ihre benötigten Scopes
+   dokumentieren: `requests:read`, `gwg:read`,
+   `research:write` und/oder `inbound-mail:write`.
+2. Unter **Administration → Einstellungen → n8n-Automatisierung** einen neuen
+   Callback-Zugang mit genau diesen Scopes erzeugen. Das nur einmal angezeigte
+   Token sofort als `Authorization: Bearer <token>` in das Generic-
+   Header-Credential **TaxTronik Callback** übernehmen. Materialisierte
+   App-Basis und Key-ID in den Nodes mit dem Assistentenwert abgleichen; bei
+   einer neuen Connection die verwalteten Workflows erneut kontrolliert
+   importieren. Secrets niemals in Platzhalter oder Workflow-JSON schreiben.
+3. Für jeden freigegebenen Scope einen synthetischen Aufruf mit neuer
+   `x-taxtronik-request-id` testen. Erwartung: fachlich zulässige
+   Antwort; ein zweiter Read mit derselben ID ergibt `409`, ein Retry eines
+   erfolgreich abgeschlossenen Writes `200` mit `duplicate: true`.
+   `503` bedeutet, dass der Redis-Replay-Speicher nicht verfügbar ist
+   und muss vor Wiederaufnahme behoben werden.
+4. Workflows wieder aktivieren, Callback-Fehler beobachten und den alten Wert
+   aus der n8n-Credential-Historie sowie temporären Notizen entfernen.
+
+Keinen HMAC-Wert oder n8n-Management-API-Key als Callback-Token
+wiederverwenden. Die alten HMAC-Callbacks unter `/api/n8n/*` sind ein
+default-off geschalteter Migrationspfad und erhalten keine Callback-Scopes.
+
+### n8n-Management-API-Key
+
+Der API-Key ist vom HMAC-Secret unabhängig. Ein API-Ausfall verhindert Import
+und Statusabfrage, aber nicht die Zustellung an bereits gespeicherte
+Production-Webhooks. Rotation möglichst ohne Unterbrechung:
+
+1. In n8n einen neuen, ablaufenden Key anlegen. Wenn unterstützt, nur
+   `workflow:list`, `workflow:read` und
+   `workflow:create` erlauben. TaxTronik veröffentlicht Vorlagen
+   nicht selbst; `workflow:update` und `workflow:activate`
+   sind nicht erforderlich.
+2. Neuen Key in TaxTronik speichern und Workflow-Liste sowie einen
+   synthetischen Test abrufen. Webhook-HMAC separat kontrollieren.
+3. Alten Key in n8n widerrufen und den Wechsel protokollieren.
+
+n8n-Editionen ohne Scoped API Keys behandeln den Schlüssel wie einen
+weitreichenden Admin-Zugang: dedizierten Service-Account/Projekt nutzen und
+kurze Laufzeit wählen. Offizielle Hinweise:
+[n8n API authentication](https://docs.n8n.io/api/authentication/).
+
+### n8n-Credential-Verschlüsselung
 
 `N8N_ENCRYPTION_KEY` ist kritischer: n8n verschlüsselt gespeicherte Credentials
 damit und hält den wirksamen Wert zusätzlich im persistenten `n8n_data`-Volume.

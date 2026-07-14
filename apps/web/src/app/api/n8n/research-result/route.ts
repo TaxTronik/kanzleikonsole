@@ -14,9 +14,10 @@
 
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
-import { verifyN8nSignature, n8nRejectResponse } from '@/server/n8n/verify';
+import { n8nRejectResponse, runReservedN8nRequest, verifyN8nSignature } from '@/server/n8n/verify';
 import { receiveResearchResult } from '@/server/risk';
 import { log } from '@/server/logger';
+import { legacyN8nCallbackDisabledResponse } from '@/server/n8n/legacy-access';
 
 const Schema = z.object({
   researchRequestId: z.string().uuid().optional(),
@@ -27,6 +28,9 @@ const Schema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const disabled = legacyN8nCallbackDisabledResponse();
+  if (disabled) return disabled;
+
   const ver = await verifyN8nSignature(req);
   if (!ver.ok) {
     log.warn({ component: 'n8n', reason: ver.error }, 'n8n-verify: rejected (research-result)');
@@ -48,9 +52,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'missing_correlation' }, { status: 400 });
   }
 
-  const res = await receiveResearchResult(parsed.data);
-  if (!res) {
-    return NextResponse.json({ error: 'not_assignable' }, { status: 422 });
-  }
-  return NextResponse.json({ ok: true, resultId: res.resultId });
+  return runReservedN8nRequest(ver, async () => {
+    const res = await receiveResearchResult(parsed.data);
+    if (!res) {
+      return NextResponse.json({ error: 'not_assignable' }, { status: 422 });
+    }
+    return NextResponse.json({ ok: true, resultId: res.resultId });
+  });
 }

@@ -95,7 +95,11 @@ export async function addPortalResponseAction(formData: FormData): Promise<Actio
     return toActionError(e);
   }
 
-  emitN8nEvent('request.responded', { tenantId, requestId, by: 'CLIENT_CONTACT' });
+  await emitN8nEvent(
+    'request.responded',
+    { tenantId, requestId, by: 'CLIENT_CONTACT' },
+    { tenantId },
+  );
   revalidatePath(`/portal/requests/${requestId}`);
   revalidatePath('/portal/requests');
   return { ok: true };

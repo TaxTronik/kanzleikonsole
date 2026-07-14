@@ -61,8 +61,8 @@ const SECTIONS: SectionLink[] = [
   },
   {
     href: '/staff/admin/settings/n8n',
-    label: 'n8n-Bridge',
-    description: 'Webhooks, HMAC, Workflow-Import',
+    label: 'n8n-Automatisierung',
+    description: 'Setup, Event-Routen, Zustellung',
     icon: Workflow,
   },
   {

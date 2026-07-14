@@ -112,13 +112,15 @@ export default async function IntegrationsSettingsPage() {
       endpoint: n8n.url ?? '— nicht gesetzt —',
       status:
         n8n.source === 'none'
-          ? { skipped: true, reason: 'Keine n8n-Webhook-URL — in den Einstellungen pflegen' }
-          : (n8n as ServiceStatus),
+          ? { skipped: true, reason: 'Keine n8n-Verbindung — in den Einstellungen einrichten' }
+          : n8n.error === 'n8n-Integration bewusst deaktiviert'
+            ? { skipped: true, reason: n8n.error }
+            : (n8n as ServiceStatus),
       hint:
         n8n.source === 'tenant'
-          ? 'Konfiguriert in den Einstellungen → n8n-Bridge.'
+          ? 'Konfiguriert unter Einstellungen → Automatisierungen mit n8n.'
           : n8n.source === 'env'
-            ? 'Aus ENV-Vorgabe — kann in den Einstellungen → n8n-Bridge überschrieben werden.'
+            ? 'Legacy-ENV-Vorgabe — kann unter Einstellungen → n8n-Automatisierung migriert werden.'
             : 'Workflow-Engine für Reminder-Mails, Eskalationen, externe Webhooks.',
     },
     {
@@ -163,7 +165,7 @@ export default async function IntegrationsSettingsPage() {
     <div className="space-y-6">
       <SectionCard
         title="Integrationen"
-        description="Status der externen Dienste. Diese Werte sind ENV-gepflegt (docker-compose.yml / .env) und können hier nur eingesehen werden."
+        description="Status externer Dienste. Betreiberwerte kommen aus Docker/ENV; tenantfähige Integrationen wie n8n lassen sich in den jeweiligen Einstellungen verwalten."
       >
         <ul className="divide-y divide-border-subtle">
           {rows.map((r) => {

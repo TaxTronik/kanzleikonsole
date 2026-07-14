@@ -19,9 +19,10 @@ import { createHmac } from 'node:crypto';
 
 // vi.mock-Factories werden ans Datei-Top gehoist — keine Top-Level-Variablen
 // im Factory-Body verwenden. Wir nutzen vi.hoisted() für das Shared-State.
-const { TEST_SECRET, consumeNonceMock } = vi.hoisted(() => ({
+const { TEST_SECRET, reserveNonceMock, releaseNonceMock } = vi.hoisted(() => ({
   TEST_SECRET: 'unit-test-hmac-secret-with-at-least-32-chars',
-  consumeNonceMock: vi.fn(),
+  reserveNonceMock: vi.fn(),
+  releaseNonceMock: vi.fn(),
 }));
 
 vi.mock('@taxtronik/config', () => ({
@@ -29,16 +30,18 @@ vi.mock('@taxtronik/config', () => ({
 }));
 
 vi.mock('../nonce-store', () => ({
-  consumeNonce: (...args: unknown[]) => consumeNonceMock(...args),
+  reserveNonce: (...args: unknown[]) => reserveNonceMock(...args),
+  releaseNonce: (...args: unknown[]) => releaseNonceMock(...args),
 }));
 
-import { NextRequest } from 'next/server';
-import { verifyN8nSignature } from '../verify';
+import { NextRequest, NextResponse } from 'next/server';
+import { runReservedN8nRequest, verifyN8nSignature } from '../verify';
 
 beforeEach(() => {
-  consumeNonceMock.mockReset();
-  // Default: Nonce wird erfolgreich konsumiert (Happy Path).
-  consumeNonceMock.mockResolvedValue(true);
+  reserveNonceMock.mockReset();
+  releaseNonceMock.mockReset();
+  reserveNonceMock.mockResolvedValue({ key: 'n8n-nonce:test', owner: 'owner-1' });
+  releaseNonceMock.mockResolvedValue(true);
 });
 
 // -----------------------------------------------------------------------------
@@ -84,12 +87,13 @@ function buildRequest(opts: BuildOpts): NextRequest {
 // -----------------------------------------------------------------------------
 
 describe('verifyN8nSignature — Happy Path', () => {
-  it('GET mit valider Signatur und Query → ok', async () => {
+  it('GET mit valider Signatur und Query → ok, ohne die Nonce vor Validierung zu reservieren', async () => {
     const req = buildRequest({
       url: 'http://localhost/api/n8n/overdue-requests?tenantId=abc-123',
     });
     const r = await verifyN8nSignature(req);
     expect(r.ok).toBe(true);
+    expect(reserveNonceMock).not.toHaveBeenCalled();
   });
 
   it('POST mit valider Body-Signatur → ok, body wird zurückgegeben', async () => {
@@ -101,6 +105,7 @@ describe('verifyN8nSignature — Happy Path', () => {
     });
     const r = await verifyN8nSignature(req);
     expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error(`Signatur unerwartet abgelehnt: ${r.error}`);
     expect(r.body).toBe(body);
   });
 });
@@ -115,6 +120,7 @@ describe('verifyN8nSignature — Manipulationen werden erkannt', () => {
     });
     const r = await verifyN8nSignature(req);
     expect(r.ok).toBe(false);
+    if (r.ok) throw new Error('Manipulierte Query wurde unerwartet akzeptiert');
     expect(r.error).toMatch(/mismatch/i);
   });
 
@@ -145,7 +151,7 @@ describe('verifyN8nSignature — Manipulationen werden erkannt', () => {
   });
 });
 
-describe('verifyN8nSignature — Replay-Schutz', () => {
+describe('verifyN8nSignature — Replay-Fenster', () => {
   it('Timestamp 10 min in der Vergangenheit → replay window', async () => {
     const req = buildRequest({
       url: 'http://localhost/api/n8n/x',
@@ -153,6 +159,7 @@ describe('verifyN8nSignature — Replay-Schutz', () => {
     });
     const r = await verifyN8nSignature(req);
     expect(r.ok).toBe(false);
+    if (r.ok) throw new Error('Abgelaufener Timestamp wurde unerwartet akzeptiert');
     expect(r.error).toMatch(/replay window/i);
   });
 
@@ -163,30 +170,85 @@ describe('verifyN8nSignature — Replay-Schutz', () => {
     });
     expect((await verifyN8nSignature(req)).ok).toBe(false);
   });
+});
 
-  it('Nonce schon konsumiert → replay detected', async () => {
-    consumeNonceMock.mockResolvedValue(false);
-    const req = buildRequest({ url: 'http://localhost/api/n8n/x' });
-    const r = await verifyN8nSignature(req);
-    expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/replay detected/i);
+describe('runReservedN8nRequest — Replay-Schutz', () => {
+  async function verifiedRequest() {
+    const verification = await verifyN8nSignature(
+      buildRequest({ url: 'http://localhost/api/n8n/x' }),
+    );
+    if (!verification.ok) throw new Error(verification.error);
+    return verification;
+  }
+
+  it('reserviert erst unmittelbar vor der Operation und behält erfolgreiche Nonces', async () => {
+    const verification = await verifiedRequest();
+    const operation = vi.fn(async () => NextResponse.json({ ok: true }));
+
+    const response = await runReservedN8nRequest(verification, operation);
+
+    expect(response.status).toBe(200);
+    expect(reserveNonceMock).toHaveBeenCalledWith(verification.replayId);
+    expect(operation).toHaveBeenCalledOnce();
+    expect(releaseNonceMock).not.toHaveBeenCalled();
   });
 
-  it('Nonce-Store nicht erreichbar → 503 fail-CLOSED (NICHT pass-through)', async () => {
-    consumeNonceMock.mockResolvedValue(null);
-    const req = buildRequest({ url: 'http://localhost/api/n8n/x' });
-    const r = await verifyN8nSignature(req);
-    expect(r.ok).toBe(false);
-    expect(r.status).toBe(503);
-    expect(r.error).toMatch(/replay-store unavailable/);
+  it('blockiert ein paralleles Duplikat atomar', async () => {
+    const verification = await verifiedRequest();
+    reserveNonceMock
+      .mockResolvedValueOnce({ key: 'n8n-nonce:test', owner: 'owner-1' })
+      .mockResolvedValueOnce(false);
+    let finishFirst!: (response: NextResponse) => void;
+    const first = runReservedN8nRequest(
+      verification,
+      () => new Promise<NextResponse>((resolve) => (finishFirst = resolve)),
+    );
+    await vi.waitFor(() => expect(reserveNonceMock).toHaveBeenCalledTimes(1));
+
+    const duplicateOperation = vi.fn(async () => NextResponse.json({ ok: true }));
+    const duplicate = await runReservedN8nRequest(verification, duplicateOperation);
+
+    expect(duplicate.status).toBe(401);
+    expect(duplicateOperation).not.toHaveBeenCalled();
+    finishFirst(NextResponse.json({ ok: true }));
+    expect((await first).status).toBe(200);
   });
 
-  it('Nonce-Wert ist die signature → derselbe Request darf zweimal geprüft werden, der Store unterscheidet', async () => {
-    consumeNonceMock.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
-    const req1 = buildRequest({ url: 'http://localhost/api/n8n/x', ts: Date.now() });
-    const req2 = buildRequest({ url: 'http://localhost/api/n8n/x', ts: Date.now() });
-    expect((await verifyN8nSignature(req1)).ok).toBe(true);
-    expect((await verifyN8nSignature(req2)).ok).toBe(false);
+  it('schließt bei ausgefallenem Replay-Store fail-closed', async () => {
+    const verification = await verifiedRequest();
+    reserveNonceMock.mockResolvedValue(null);
+    const operation = vi.fn(async () => NextResponse.json({ ok: true }));
+
+    const response = await runReservedN8nRequest(verification, operation);
+
+    expect(response.status).toBe(503);
+    expect(operation).not.toHaveBeenCalled();
+  });
+
+  it('gibt die eigene Reservation bei 5xx frei', async () => {
+    const verification = await verifiedRequest();
+    const reservation = { key: 'n8n-nonce:test', owner: 'owner-1' };
+    reserveNonceMock.mockResolvedValue(reservation);
+
+    const response = await runReservedN8nRequest(verification, async () =>
+      NextResponse.json({ error: 'write_failed' }, { status: 503 }),
+    );
+
+    expect(response.status).toBe(503);
+    expect(releaseNonceMock).toHaveBeenCalledWith(reservation);
+  });
+
+  it('gibt die eigene Reservation bei einem geworfenen Write-Fehler frei', async () => {
+    const verification = await verifiedRequest();
+    const reservation = { key: 'n8n-nonce:test', owner: 'owner-1' };
+    reserveNonceMock.mockResolvedValue(reservation);
+
+    await expect(
+      runReservedN8nRequest(verification, async () => {
+        throw new Error('transaction rolled back');
+      }),
+    ).rejects.toThrow('transaction rolled back');
+    expect(releaseNonceMock).toHaveBeenCalledWith(reservation);
   });
 });
 
@@ -198,6 +260,7 @@ describe('verifyN8nSignature — Header-Validierung', () => {
     });
     const r = await verifyN8nSignature(req);
     expect(r.ok).toBe(false);
+    if (r.ok) throw new Error('Anfrage ohne Signatur wurde unerwartet akzeptiert');
     expect(r.status).toBe(401);
     expect(r.error).toMatch(/missing x-taxtronik-signature/);
   });
@@ -209,6 +272,7 @@ describe('verifyN8nSignature — Header-Validierung', () => {
     });
     const r = await verifyN8nSignature(req);
     expect(r.ok).toBe(false);
+    if (r.ok) throw new Error('Anfrage ohne Timestamp wurde unerwartet akzeptiert');
     expect(r.error).toMatch(/missing x-taxtronik-timestamp/);
   });
 
@@ -222,6 +286,7 @@ describe('verifyN8nSignature — Header-Validierung', () => {
     });
     const r = await verifyN8nSignature(req);
     expect(r.ok).toBe(false);
+    if (r.ok) throw new Error('Ungültiger Timestamp wurde unerwartet akzeptiert');
     expect(r.error).toMatch(/invalid timestamp/);
   });
 
@@ -236,6 +301,7 @@ describe('verifyN8nSignature — Header-Validierung', () => {
     });
     const r = await verifyN8nSignature(req);
     expect(r.ok).toBe(false);
+    if (r.ok) throw new Error('Signatur falscher Länge wurde unerwartet akzeptiert');
     expect(r.error).toMatch(/length mismatch/);
   });
 });

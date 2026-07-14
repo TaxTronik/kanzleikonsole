@@ -5,12 +5,11 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "request.opened",
-        "options": {
-          "rawBody": true
-        }
+        "responseMode": "responseNode",
+        "options": { "rawBody": true }
       },
       "id": "webhook",
-      "name": "Webhook von taxtronik",
+      "name": "Webhook von TaxTronik",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [240, 300],
@@ -18,60 +17,60 @@
     },
     {
       "parameters": {
-        "jsCode": "// HMAC-Signatur pruefen: App/Worker signieren event\\ntimestamp\\nnonce\\nbody.\nimport crypto from 'crypto';\nconst secret = $env.N8N_HMAC_SECRET;\nconst headers = $input.item.json.headers || {};\nconst body = typeof $input.item.json.body === 'string'\n  ? $input.item.json.body\n  : JSON.stringify($input.item.json.body ?? {});\nconst sig = headers['x-taxtronik-signature'] || headers['X-Taxtronik-Signature'] || '';\nconst ts = headers['x-taxtronik-timestamp'] || headers['X-Taxtronik-Timestamp'] || '';\nconst event = headers['x-taxtronik-event'] || headers['X-Taxtronik-Event'] || '';\nconst nonce = headers['x-taxtronik-nonce'] || headers['X-Taxtronik-Nonce'] || '';\nif (!sig || !ts || !event || !nonce) {\n  throw new Error('HMAC-Header fehlen');\n}\nconst tsNumber = Number(ts);\nif (!Number.isFinite(tsNumber) || Math.abs(Date.now() - tsNumber) > 5 * 60 * 1000) {\n  throw new Error('HMAC-Timestamp ungueltig');\n}\nconst expected = 'sha256=' + crypto.createHmac('sha256', secret).update(`${event}\\n${ts}\\n${nonce}\\n${body}`).digest('hex');\nif (sig !== expected) {\n  throw new Error('HMAC-Signatur ungueltig');\n}\nreturn $input.item;"
+        "action": "hmac",
+        "binaryData": false,
+        "type": "SHA256",
+        "value": "={{ [$json.headers['x-taxtronik-event'], $json.headers['x-taxtronik-timestamp'], $json.headers['x-taxtronik-nonce'], (typeof $json.body === 'string' ? $json.body : JSON.stringify($json.body ?? {}))].join('\\n') }}",
+        "dataPropertyName": "expectedSignature",
+        "encoding": "hex"
       },
-      "id": "verify-hmac",
-      "name": "HMAC verifizieren",
-      "type": "n8n-nodes-base.code",
+      "id": "calculate-hmac",
+      "name": "HMAC mit Credential berechnen",
+      "type": "n8n-nodes-base.crypto",
       "typeVersion": 2,
       "position": [460, 300]
     },
     {
       "parameters": {
-        "url": "={{ $env.TAXTRONIK_API_URL + '/api/n8n/request-detail/' + $json.body.payload.requestId + '?tenantId=' + ($json.body.tenantId || $json.body.payload.tenantId) }}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "options": {}
+        "jsCode": "const input = $input.first().json;\nconst headers = Object.fromEntries(Object.entries(input.headers ?? {}).map(([key, value]) => [key.toLowerCase(), String(value)]));\nconst event = headers['x-taxtronik-event'] ?? '';\nconst timestamp = headers['x-taxtronik-timestamp'] ?? '';\nconst nonce = headers['x-taxtronik-nonce'] ?? '';\nconst signature = headers['x-taxtronik-signature'] ?? '';\nif (event !== 'request.opened') throw new Error('Unerwarteter TaxTronik-Event');\nif (!/^\\d{13}$/.test(timestamp) || Math.abs(Date.now() - Number(timestamp)) > 300000) throw new Error('TaxTronik-Timestamp ungueltig');\nif (!/^[A-Za-z0-9._:-]{16,200}$/.test(nonce)) throw new Error('TaxTronik-Nonce ungueltig');\nconst expected = 'sha256=' + String(input.expectedSignature ?? '');\nif (!/^sha256=[a-f0-9]{64}$/i.test(signature) || signature.length !== expected.length) throw new Error('TaxTronik-Signatur ungueltig');\nlet mismatch = 0;\nfor (let i = 0; i < signature.length; i++) mismatch |= signature.charCodeAt(i) ^ expected.charCodeAt(i);\nif (mismatch !== 0) throw new Error('TaxTronik-Signatur ungueltig');\nlet body;\ntry { body = typeof input.body === 'string' ? JSON.parse(input.body) : input.body; } catch { throw new Error('TaxTronik-Body ist kein JSON'); }\nif (!body || body.event !== 'request.opened') throw new Error('Event in Body und Header stimmen nicht ueberein');\nconst deliveryId = String(body.deliveryId ?? '');\nif (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(deliveryId)) throw new Error('TaxTronik-Delivery-ID ungueltig');\nif (headers['x-taxtronik-delivery-id'] !== deliveryId) throw new Error('Delivery-ID in Body und Header stimmen nicht ueberein');\nreturn [{ json: { ...input, headers, body } }];"
       },
-      "id": "fetch-detail",
-      "name": "Request-Details holen",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [680, 300],
-      "credentials": {
-        "httpHeaderAuth": { "id": "taxtronik-hmac", "name": "Taxtronik HMAC Auth" }
-      }
+      "id": "validate-envelope",
+      "name": "Event und Signatur validieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
     },
     {
       "parameters": {
-        "fromEmail": "={{ $env.SMTP_FROM }}",
-        "toEmail": "={{ $json.contactEmail }}",
-        "subject": "Neue Anforderung Ihrer Kanzlei: {{ $json.title }}",
-        "text": "Hallo {{ $json.contactName }},\n\nIhre Kanzlei hat eine neue Anforderung an Sie gesendet:\n\n  {{ $json.title }}\n\n{{ $json.description }}\n\n{{ $json.dueAt ? 'Bitte bis spätestens ' + $json.dueAt + ' beantworten.\\n\\n' : '' }}Antworten Sie bequem im Mandantenportal:\n  {{ $env.TAXTRONIK_API_URL }}/portal/requests/{{ $json.id }}\n\nFreundliche Grüße\nIhre Kanzlei",
-        "options": {}
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, event: $json.body.event, accepted: true } }}",
+        "options": { "responseCode": 200 }
       },
-      "id": "send-notify",
-      "name": "Benachrichtigung an Mandant",
-      "type": "n8n-nodes-base.emailSend",
-      "typeVersion": 2.1,
-      "position": [900, 300],
-      "credentials": {
-        "smtp": { "id": "smtp-credential", "name": "Kanzlei SMTP" }
-      }
+      "id": "respond",
+      "name": "Event bestätigen",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [1120, 300]
     }
   ],
   "connections": {
-    "Webhook von taxtronik": {
-      "main": [[{ "node": "HMAC verifizieren", "type": "main", "index": 0 }]]
+    "Webhook von TaxTronik": {
+      "main": [[{ "node": "HMAC mit Credential berechnen", "type": "main", "index": 0 }]]
     },
-    "HMAC verifizieren": {
-      "main": [[{ "node": "Request-Details holen", "type": "main", "index": 0 }]]
+    "HMAC mit Credential berechnen": {
+      "main": [[{ "node": "Event und Signatur validieren", "type": "main", "index": 0 }]]
     },
-    "Request-Details holen": {
-      "main": [[{ "node": "Benachrichtigung an Mandant", "type": "main", "index": 0 }]]
+    "Event und Signatur validieren": {
+      "main": [[{ "node": "Event bestätigen", "type": "main", "index": 0 }]]
     }
   },
   "active": false,
-  "settings": { "executionOrder": "v1" },
-  "versionId": "1.0"
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "saveExecutionProgress": false,
+    "saveManualExecutions": false
+  },
+  "versionId": "2.0"
 }

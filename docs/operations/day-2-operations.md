@@ -59,7 +59,9 @@ Keine Volumes löschen, solange kein Restore-/Migrationsplan vorliegt.
 1. Restore-Drill ausführen oder den automatischen Drill-Nachweis prüfen.
 2. `pnpm verify:chain` gegen den aktuellen Stand ausführen.
 3. SMTP-Test-Mail aus der Admin-Konfiguration auslösen.
-4. n8n-Credentials und Workflow-Import prüfen.
+4. n8n-Ziele prüfen: Workflows veröffentlicht, letzter synthetischer Test
+   erfolgreich, keine unerklärten `FAILED`, `PARTIAL` oder `UNROUTED`-Events;
+   API-Key-Ablauf und Credential-Berechtigungen kontrollieren.
 5. Reverse-Proxy-Zertifikate und Ablaufdaten prüfen.
 6. Freien Plattenplatz, Docker-Volumes und Backup-Bucket-Retention prüfen.
 
@@ -201,17 +203,176 @@ Bei Mail-Ausfall:
 
 ## n8n
 
-n8n ist Produktionsbestandteil, Mailhog nicht. n8n läuft intern im Compose-Netz
-und ruft App-Endpunkte per HMAC auf.
+n8n ist im Stack enthalten; sobald die Kanzlei die Integration aktiviert,
+gehört es zum überwachten Produktionsbetrieb. Im bewusst deaktivierten Modus
+bleiben die TaxTronik-Kernfunktionen unabhängig. Mailhog ist dagegen nie ein
+Produktionsdienst. Die Integration besitzt zwei getrennte Ebenen:
 
-Prüfen:
+1. **Instanzverwaltung:** UI-URL und optional API-URL/API-Key zum Auflisten,
+   Prüfen und selektiven Importieren von Workflows. TaxTronik veröffentlicht
+   oder überschreibt bestehende Workflows nicht.
+2. **Event-Routing:** exakte Production-Webhook-URL je Workflow und die dazu
+   aktivierten Event-Abonnements. Ein Event kann an mehrere Ziele gehen.
 
-- `N8N_HMAC_SECRET` ist in App/Worker/n8n identisch.
+Instanz-UI (`https://n8n.example`), API-URL
+(`http://n8n:5678/api/v1`), Webhook-Präfix
+(`http://n8n:5678/webhook`) und exakte Production-URL
+(`http://n8n:5678/webhook/<workflow-route>`) nicht verwechseln.
+`N8N_WEBHOOK_BASE_URL` ist nur noch der Legacy-Pfad
+`<Präfix>/<event>`; neue Installationen und eigene Workflows nutzen
+workflow-spezifische Ziele im Routing-Modus `EXPLICIT`. Production-Compose
+lässt den ENV-Fallback standardmäßig leer. Sobald er für eine Migration gesetzt
+ist, verlangt TaxTronik auch bei deaktivierten Legacy-Callbacks ein mindestens
+32 Zeichen langes `N8N_HMAC_SECRET` für die Outbound-Signaturen.
+
+Globale eingehende Legacy-Callbacks `/api/n8n/*` sind unabhängig davon
+default-off und liefern `404`. Eine befristete Migration erfordert exakt
+`N8N_LEGACY_CALLBACKS_ENABLED=true` sowie in Produktion ein mindestens
+32 Zeichen langes `N8N_HMAC_SECRET`. Aktivierung, betroffene Workflows und
+Abschaltdatum im Betriebsjournal festhalten; nach der Migration wieder
+`false` setzen und App/Worker neu starten.
+
+Neue Routen und Routen mit geänderter Production-URL, Test-URL oder
+Eventauswahl werden immer als deaktivierter Entwurf gespeichert. Der Test ist
+für tenantgebundene Entwürfe erlaubt. Erst nach einem erfolgreichen
+synthetischen Test kann der Betreiber die unveränderte Route in einem zweiten
+Speichervorgang aktivieren; jede weitere relevante Änderung setzt
+Prüfnachweis und Aktivierung zurück.
+
+### Tägliche und monatliche Kontrolle
+
+- `./taxtronik doctor` sowie App-/Worker-/n8n-Logs prüfen.
+- Unter **Administration → Einstellungen → n8n-Automatisierung** den Zustand jedes
+  Ziels prüfen. `PARTIAL` heißt: mindestens ein Fan-out-Ziel fehlgeschlagen;
+  `UNROUTED`: für ein ausdrücklich konfiguriertes Event existiert derzeit kein
+  aktives Abonnement. Nie abonnierte Events enden dagegen ohne Alarm als
+  `SKIPPED`. Nach Korrektur
+  der Route nur fachlich freigegebene offene Events über **Jetzt zuordnen**
+  nach Bestätigung von Alter und Datenschutzrisiko nachholen; es gibt kein
+  automatisches Replay auf ein später angelegtes Ziel. Nicht mehr gewünschte
+  Events mit **Nicht senden** auditiert als `SKIPPED` abschließen.
+- Wiederholte `FAILED`-Zustellungen anhand ihrer stabilen `deliveryId`
+  untersuchen. Nicht durch manuelle Workflow-Ausführung „beheben", bevor die
+  Idempotenz geklärt ist. Die UI zeigt offene Fehler unabhängig von neueren
+  Erfolgen zuerst und lädt sie seitenweise nach. Einen Retry nur bei weiterhin
+  identischer Route, URL und Secret-Zuordnung auslösen. Veraltete oder fachlich
+  verworfene Altfehler bewusst mit **Quittieren** ohne HTTP-Versand als
+  `SKIPPED` abschließen; TaxTronik protokolliert die Admin-Entscheidung in der
+  Evidence-Chain.
+- Monatlich jedes aktive Ziel mit dem synthetischen Event-Beispiel über seine
+  separate Test-URL prüfen und anschließend die n8n-Execution kontrollieren.
+  Nur `taxtronik.ping` darf zusätzlich gegen eine veröffentlichte
+  Production-URL laufen; fachliche Events niemals. Keine Echtdaten als
+  Testinput.
+- Der tägliche Job `n8n-retention` läuft um 03:45 UTC. Er löscht terminale
+  Outbox-Payloads samt Zustellhistorie nach 90 Tagen (`DELIVERED`, `SKIPPED`,
+  `UNROUTED`) bzw. 180 Tagen (`FAILED`, `PARTIAL`). `PENDING` und `PROCESSING`
+  werden nie gelöscht. Gehashte Callback-Idempotenzbelege werden nach 180
+  Tagen gelöscht. Lauf und alle Löschzähler im Worker-Log überwachen.
+- Prüfen, ob Workflows nach Änderungen tatsächlich **veröffentlicht** wurden.
+  Gespeicherte Entwürfe ändern die Production-Ausführung nicht.
+- Ablauf und Scopes des n8n-API-Keys kontrollieren. Wenn die Edition keine
+  Scoped Keys unterstützt, den weitreichenden Schlüssel in einem dedizierten
+  Service-Account/Projekt führen und kurz befristen.
+- n8n-Ausführungsdaten und Fehler-Payloads gemäß Löschkonzept bereinigen;
+  Zugriff auf die n8n-UI und Credentials regelmäßig rezertifizieren.
+- Das Production-Compose setzt `N8N_DIAGNOSTICS_ENABLED=false` und deaktiviert
+  außerdem den externen Template-Katalog sowie n8n-Versionsabrufe. Updates
+  werden über den im TaxTronik-Release gepinnten Image-Digest eingespielt. Eine
+  abweichende Freigabe externer Abrufe ist als Datenfluss zu dokumentieren;
+  Telemetrie bleibt wegen § 203 StGB und Datenminimierung deaktiviert. Referenz:
+  [n8n Deployment-Umgebungsvariablen](https://docs.n8n.io/hosting/configuration/environment-variables/deployment/).
+
+Die Zustellung ist at least once. `eventId` bleibt über Fan-out und Retries
+stabil; `deliveryId` bleibt für ein einzelnes Ziel über Retries stabil. Jeder
+Ein fachlicher Workflow muss Seiteneffekte dauerhaft und fehlertolerant nach
+`deliveryId` idempotent machen. Ein begrenzter n8n-**Remove Duplicates**-Knoten
+genügt nicht: Er kann volllaufen und vor einem fehlgeschlagenen Seiteneffekt
+bereits den Schlüssel verbrauchen. Die Nonce im HMAC-Header ist nur
+Replay-Schutz eines HTTP-Versuchs und kein fachlicher Idempotenzschlüssel.
+
+### Verbindungs- und Credential-Prüfung
+
+- Das pro Tenant verschlüsselt gespeicherte HMAC-Secret ist im
+  n8n-Crypto-Credential der eingehenden TaxTronik-Events identisch. Das globale
+  `N8N_HMAC_SECRET` wird nur noch für ausdrücklich aktivierte Legacy-Callbacks
+  oder den ausdrücklich gesetzten Outbound-Fallback
+  `N8N_WEBHOOK_BASE_URL` benötigt. Sobald einer der Pfade aktiv ist, erzwingt
+  die Produktionskonfiguration mindestens 32 Zeichen.
 - `N8N_ENCRYPTION_KEY` passt zum bestehenden n8n-Volume.
-- `TAXTRONIK_API_URL` zeigt intern auf App oder bewusst auf den Proxy.
+- Der TaxTronik-Import materialisiert die erreichbare App-Basis und
+  tenantgebundene Callback-Key-ID als nicht geheime Node-Konfiguration. Nach
+  URL-, Domain- oder Tenant-Wechsel die verwalteten Workflows kontrolliert
+  aktualisieren; neue Workflows rufen ausschließlich
+  `/api/integrations/n8n/v1/*` auf und haben keinen Datenbankzugriff.
+- Die App-Basis kommt aus dem separat gespeicherten Feld
+  **TaxTronik-Adresse aus n8n**. Für `BUNDLED` ist der Standard
+  in Produktion `http://app:3000`, im lokalen Dev-Stack
+  `http://host.docker.internal:3000`; für `SELF_HOSTED`/`CLOUD` muss die URL
+  aus der n8n-Laufzeit erreichbar sein. Sie ist nicht automatisch mit der
+  Browser-/`NEXTAUTH_URL` identisch.
+- In veröffentlichten Workflows dürfen keine
+  `__TAXTRONIK_API_URL__`-,
+  `__TAXTRONIK_CALLBACK_KEY_ID__`-, `__SMTP_FROM__`- oder
+  `__GWG_OFFICER_EMAIL__`-Platzhalter übrig sein. Bei manuellem
+  Dateiimport die Nicht-Geheimnisse direkt in den betroffenen Nodefeldern
+  pflegen.
+- Das Credential **TaxTronik Callback** ist Generic Header Auth und enthält
+  ausschließlich `Authorization: Bearer <token>`. Nur tatsächlich
+  benötigte Scopes
+  (`requests:read`, `gwg:read`,
+  `research:write`, `inbound-mail:write`) freigeben.
+  Jeder fachliche Aufruf braucht eine eindeutige
+  `x-taxtronik-request-id`, die über seine HTTP-Retries stabil bleibt.
+- Der mitgelieferte Container blockiert `$env`-Zugriff aus Nodes.
+  Die materialisierten Nicht-Geheimnisse liegen in den konkreten Nodes;
+  Secrets gehören nur in Credentials. Dadurch benötigen die Workflows keine
+  editionsabhängigen Custom Variables und laufen mit n8n Community.
+- Die API-URL endet auf `/api/v1`; die Event-Ziele dagegen auf einer konkreten
+  `/webhook/<route>`. Ein Ausfall der Management-API bedeutet nicht zwingend,
+  dass gespeicherte Webhook-Ziele ausfallen.
+- Außerhalb des isolierten Compose-Netzes TLS erzwingen. Outbound-HMAC und
+  Callback-Token authentisieren, verschlüsseln aber keine
+  §-203-/Personendaten.
 
-Bei HMAC-Fehlern: Secrets nicht blind neu generieren. Erst prüfen, ob n8n noch
-ein altes Volume mit anderem Encryption Key nutzt.
+Bei Auth-Fehlern Secrets nicht blind neu generieren. Erst Richtung und
+Credential unterscheiden: TaxTronik → n8n verwendet HMAC mit
+Timestamp/Nonce; n8n → TaxTronik verwendet Key-ID, Bearer-Token, Scope und
+eindeutige Request-ID. Beim Outbound-Pfad
+`x-taxtronik-event`, `x-taxtronik-delivery-id`, Nonce und
+Body prüfen. Beim Callback bedeuten `401` ungültige Zugangsdaten,
+`403` fehlenden Scope, `409` einen noch laufenden parallelen Aufruf
+(oder einen wiederholten Read) und `503` einen nicht verfügbaren
+Replay-Speicher. Ein Retry eines bereits erfolgreich abgeschlossenen
+`research-result`- oder `request-inbound`-Writes antwortet idempotent mit
+`200` und `duplicate: true`.
+Rotation erfolgt ausschließlich nach
+[`secret-rotation.md`](secret-rotation.md#n8n-secrets).
+
+### Fehlerbilder
+
+| Signal                               | Ursache/Prüfung                                                                      |
+| ------------------------------------ | ------------------------------------------------------------------------------------ |
+| `404`                                | Test-URL oder falsche Route gespeichert; Workflow nicht veröffentlicht               |
+| `401`/`403`                          | Outbound-HMAC, Callback-Key/-Token/-Scope oder Management-API-Key falsch             |
+| Callback `409`                       | Gleiche Request-ID läuft noch oder wiederholter Read; `Retry-After` beachten         |
+| Callback `503`                       | Redis-/Replay-Speicher nicht verfügbar; Callback schlägt fail-closed fehl            |
+| API rot, Webhooks grün               | Management-URL/-Key gestört; Zustellpfad separat bewerten                            |
+| alle Ziele rot                       | n8n/Netz/TLS/Outbound-HMAC prüfen                                                    |
+| genau ein Ziel rot                   | exakte URL, Veröffentlichung und letzte Execution dieses Workflows prüfen            |
+| `200`, aber fachlich ohne Wirkung    | Nachgelagerte Nodes/Callback-Credentials prüfen; Transportstatus ist kein Fachstatus |
+| Duplikate                            | Dauerhafte, transaktionale Idempotenz nach stabiler `deliveryId` fehlt               |
+| Route bleibt deaktiviert             | Entwurf noch nicht erfolgreich getestet oder beim Aktivieren inhaltlich geändert     |
+| Container erreicht `localhost` nicht | Compose-Service-DNS (`n8n`, `app`) statt Loopback verwenden                          |
+
+Bei Reverse Proxy `WEBHOOK_URL`, `N8N_PROXY_HOPS` und Forwarded-Header passend
+setzen; offizielle Anleitung:
+[n8n hinter einem Reverse Proxy](https://docs.n8n.io/hosting/configuration/configuration-examples/webhook-url/).
+Test- und Production-URLs sowie Publish-Semantik beschreibt die
+[Webhook-Dokumentation](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.webhook/).
+
+Die fachliche Einrichtung und der vollständige Eventkatalog stehen in
+[n8n-Automatisierungen](../anwenderdoku/n8n-automatisierungen.md).
 
 ## Risk-Layer
 

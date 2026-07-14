@@ -548,10 +548,14 @@ export async function markSentAction(
 
   // Korrekturbelege dürfen niemals den normalen Fälligkeits-/Mahnworkflow
   // starten. finalizeInvoiceSendTx hat das Original bereits atomar storniert.
-  emitN8nEvent(sent.stornoOfId ? 'invoice.storno' : 'invoice.due', {
-    tenantId,
-    invoiceId: parsed.data.invoiceId,
-  });
+  await emitN8nEvent(
+    sent.stornoOfId ? 'invoice.storno' : 'invoice.due',
+    {
+      tenantId,
+      invoiceId: parsed.data.invoiceId,
+    },
+    { tenantId },
+  );
   revalidatePath('/staff/invoices');
   revalidatePath(`/staff/invoices/${parsed.data.invoiceId}`);
   return { ok: true };
@@ -774,7 +778,7 @@ export async function cancelInvoiceAction(formData: FormData): Promise<void> {
       );
     });
     if (result.newlySent) {
-      emitN8nEvent('invoice.storno', { tenantId, invoiceId: stornoId });
+      await emitN8nEvent('invoice.storno', { tenantId, invoiceId: stornoId }, { tenantId });
     }
   }
 

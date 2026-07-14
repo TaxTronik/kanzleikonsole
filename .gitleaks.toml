@@ -52,3 +52,20 @@ condition = "AND"
 regexTarget = "match"
 paths = ['''(^|/)\.env\.example$''']
 regexes = ['''^S3_SECRET_KEY=\r?\nS3_BUCKET_GOBD=''']
+
+[[rules.allowlists]]
+description = "quelltextgenaue Gitleaks-Gegenbeispiele im Regressionstest"
+condition = "AND"
+regexTarget = "line"
+paths = ['''(^|/)scripts/tests/gitleaks-config\.test\.sh$''']
+regexes = [
+  '''S3_BUCKET_GOBD=gobd' > "\$REPO/\.env\.example"''',
+  '''^\s*'S3_SECRET_KEY=Q7vN4mZ8pL2xR6cT9wK3dF5hJ1sB0yU4aE7qI6oP'\s*\\$''',
+]
+
+[[rules.allowlists]]
+description = "quelltextgenauer synthetischer n8n-Key des Release-Image-Smokes"
+condition = "AND"
+regexTarget = "line"
+paths = ['''(^|/)scripts/release/smoke-release-images\.sh$''']
+regexes = ['''N8N_ENCRYPTION_KEY=smoke-n8n-encryption-key-32-chars''']

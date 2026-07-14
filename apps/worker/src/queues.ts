@@ -45,9 +45,10 @@ export interface ChecksJob {
   requestId?: string;
 }
 
-export interface N8nDeliverJob {
-  outboxId: string;
-}
+/** Neue Jobs adressieren eine Delivery; outboxId toleriert bereits liegende Altjobs. */
+export type N8nDeliverJob =
+  | { deliveryId: string; outboxId?: never }
+  | { outboxId: string; deliveryId?: never };
 
 export interface RiskAnalyseLlmJob {
   tenantId: string;
@@ -97,6 +98,10 @@ export const n8nOutboxReconcileQueue = new Queue<Record<string, never>, void, st
   'n8n-outbox-reconcile',
   { connection, defaultJobOptions },
 );
+export const n8nRetentionQueue = new Queue<Record<string, never>, void, string>('n8n-retention', {
+  connection,
+  defaultJobOptions,
+});
 export const magicLinkCleanupQueue = new Queue<ChecksJob, void, string>('magic-link-cleanup', {
   connection,
   defaultJobOptions,

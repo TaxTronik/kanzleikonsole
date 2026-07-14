@@ -114,7 +114,39 @@ Administratoren sehen immer alles.
   Runbooks [Day-2 Operations](../operations/day-2-operations.md) und
   [Disaster Recovery](../operations/disaster-recovery.md).
 
-## 4. Weitere Admin-Bereiche (Verweise)
+## 4. n8n-Automatisierung
+
+Unter **Administration → Einstellungen → n8n-Automatisierung** wird n8n nicht mehr als
+eine einzige, globale Webhook-URL behandelt. Administratoren verbinden dort
+optional die n8n-Instanz zur Workflow-Verwaltung und erfassen anschließend pro
+Workflow dessen exakte Production-Webhook-URL plus abonnierte Events. Mehrere
+Ziele für dasselbe Event sind möglich und werden unabhängig zugestellt.
+
+Der Status unterscheidet deshalb:
+
+- die optionale n8n-API-Verbindung für Import und Verwaltung,
+- den fail-closed Ablauf **Entwurf → synthetischer Test → unveränderte
+  Aktivierung** jedes einzelnen Workflow-Ziels; URL- oder Eventänderungen
+  deaktivieren das Ziel wieder und verwerfen den Prüfnachweis,
+- den Zustellstatus je Ziel sowie das aggregierte Ergebnis eines Events,
+- und die bewusste Entscheidung **Deaktiviert**, wenn die Kanzlei n8n nicht
+  einsetzen möchte.
+
+Das Outbound-HMAC-Secret, der optionale n8n-Management-API-Key und das
+tenantgebundene Callback-Credential sind drei unterschiedliche Zugangsdaten.
+Das Callback-Token wird nur bei seiner Erzeugung angezeigt und besitzt
+explizite Lese-/Schreib-Scopes. Secrets werden nach dem Speichern nicht erneut
+angezeigt. Die separat gespeicherte **TaxTronik-Adresse aus n8n** ist beim
+mitgelieferten Compose-Betrieb in Produktion normalerweise
+`http://app:3000`, im lokalen Dev-Stack
+`http://host.docker.internal:3000`; eine externe n8n-Instanz benötigt
+stattdessen die aus ihrer Laufzeit erreichbare TaxTronik-Adresse.
+Einrichtung, eigene Workflows, Eventkatalog, Datenschutz und Fehlerdiagnose
+stehen im Kapitel
+[n8n-Automatisierungen](n8n-automatisierungen.md). Secret-Rotation und
+Netzwerkbetrieb bleiben Betreiberaufgaben.
+
+## 5. Weitere Admin-Bereiche (Verweise)
 
 - **Datei-Typen & Schutzstufen**, **GwG-Pflichtlöschung** → Kapitel
   [Dokumente](dokumente.md)

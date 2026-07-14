@@ -129,11 +129,15 @@ export async function submitSubmissionAction(input: z.infer<typeof Schema>): Pro
     return toActionError(e);
   }
 
-  emitN8nEvent('request.responded', {
-    tenantId,
-    formSubmissionId: parsed.data.submissionId,
-    clientId,
-  });
+  await emitN8nEvent(
+    'request.responded',
+    {
+      tenantId,
+      formSubmissionId: parsed.data.submissionId,
+      clientId,
+    },
+    { tenantId },
+  );
 
   revalidatePath(`/portal/forms/${parsed.data.submissionId}`);
   revalidatePath('/portal/forms');

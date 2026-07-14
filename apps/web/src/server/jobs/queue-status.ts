@@ -41,6 +41,7 @@ const QUEUES: Array<{ name: string; expectedEveryHours: number | null }> = [
   { name: 'health-alert', expectedEveryHours: null },
   { name: 'n8n-deliver', expectedEveryHours: null },
   { name: 'n8n-outbox-reconcile', expectedEveryHours: null },
+  { name: 'n8n-retention', expectedEveryHours: 24 },
   { name: 'risk-analyse-llm', expectedEveryHours: null },
 ];
 

@@ -676,7 +676,7 @@ export async function rejectCheckAction(
     await revokeAllSessions('portal', contactId);
   }
 
-  emitN8nEvent('gwg.expired', { tenantId, clientId, reason: 'rejected' });
+  await emitN8nEvent('gwg.expired', { tenantId, clientId, reason: 'rejected' }, { tenantId });
   revalidatePath(`/staff/clients/${clientId}`);
   revalidatePath(`/staff/clients/${clientId}/gwg`);
   return { ok: true };

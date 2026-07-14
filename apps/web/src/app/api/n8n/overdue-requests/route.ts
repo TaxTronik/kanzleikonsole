@@ -17,13 +17,17 @@
 
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
-import { verifyN8nSignature, n8nRejectResponse } from '@/server/n8n/verify';
-import { prismaOwner } from '@/server/db/prisma-owner';
+import { n8nRejectResponse, runReservedN8nRequest, verifyN8nSignature } from '@/server/n8n/verify';
+import { getOverdueRequestsForTenant } from '@/server/n8n/operations';
 import { log } from '@/server/logger';
+import { legacyN8nCallbackDisabledResponse } from '@/server/n8n/legacy-access';
 
 const TenantIdSchema = z.string().uuid();
 
 export async function GET(req: NextRequest) {
+  const disabled = legacyN8nCallbackDisabledResponse();
+  if (disabled) return disabled;
+
   const ver = await verifyN8nSignature(req);
   if (!ver.ok) {
     // Audit 2: generische Antwort, Detail nur ins Log.
@@ -37,41 +41,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'tenantId query parameter required' }, { status: 400 });
   }
 
-  const now = new Date();
-  const rows = await prismaOwner.request.findMany({
-    where: {
-      tenantId: tenantId.data,
-      status: { in: ['OPEN', 'IN_PROGRESS'] },
-      dueAt: { not: null, lt: now },
-    },
-    include: {
-      client: {
-        include: {
-          contacts: { where: { active: true }, take: 1, orderBy: { fullName: 'asc' } },
-        },
-      },
-    },
-  });
-
-  const requests = rows
-    .filter((r) => r.client.contacts.length > 0)
-    .map((r) => {
-      const c = r.client.contacts[0]!;
-      const days = Math.floor(
-        (now.getTime() - (r.dueAt as Date).getTime()) / (24 * 60 * 60 * 1000),
-      );
-      return {
-        id: r.id,
-        tenantId: r.tenantId,
-        clientName: r.client.name,
-        contactEmail: c.email,
-        contactName: c.fullName,
-        signerEmail: c.email,
-        title: r.title,
-        dueAt: r.dueAt,
-        daysOverdue: days,
-      };
-    });
-
-  return NextResponse.json({ count: requests.length, requests });
+  return runReservedN8nRequest(ver, async () =>
+    NextResponse.json(await getOverdueRequestsForTenant(tenantId.data)),
+  );
 }

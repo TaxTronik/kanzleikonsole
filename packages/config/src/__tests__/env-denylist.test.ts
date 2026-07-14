@@ -116,19 +116,78 @@ describe('ENV — Dev-Default-Denylist (Audit Round 14, Finding 7)', () => {
     expect(() => parseEnvFrom(broken)).toThrow(/DATABASE_APP_URL/);
   });
 
-  it('production OHNE N8N_HMAC_SECRET → throw', () => {
-    const broken = { ...PROD_BASE };
-    delete broken.N8N_HMAC_SECRET;
-    expect(() => parseEnvFrom(broken)).toThrow(/N8N_HMAC_SECRET/);
+  it('production ohne globalen Legacy-Pfad benötigt kein globales N8N_HMAC_SECRET', () => {
+    const current = { ...PROD_BASE };
+    delete current.N8N_HMAC_SECRET;
+    delete current.N8N_WEBHOOK_BASE_URL;
+    expect(parseEnvFrom(current).N8N_LEGACY_CALLBACKS_ENABLED).toBe(false);
   });
 
-  it('production MIT zu kurzem N8N_HMAC_SECRET → throw', () => {
+  it('production mit Legacy-Callbacks verlangt N8N_HMAC_SECRET', () => {
+    const broken: NodeJS.ProcessEnv = {
+      ...PROD_BASE,
+      N8N_LEGACY_CALLBACKS_ENABLED: 'true',
+    };
+    delete broken.N8N_HMAC_SECRET;
+    expect(() => parseEnvFrom(broken)).toThrow(/N8N_HMAC_SECRET.*N8N_LEGACY_CALLBACKS_ENABLED/);
+  });
+
+  it('production mit Legacy-Callbacks und zu kurzem N8N_HMAC_SECRET → throw', () => {
     expect(() =>
       parseEnvFrom({
         ...PROD_BASE,
+        N8N_LEGACY_CALLBACKS_ENABLED: 'true',
         N8N_HMAC_SECRET: 'short',
       }),
     ).toThrow(/N8N_HMAC_SECRET/);
+  });
+
+  it('production mit Outbound-Legacy-Präfix verlangt ein starkes N8N_HMAC_SECRET', () => {
+    const missing: NodeJS.ProcessEnv = {
+      ...PROD_BASE,
+      N8N_WEBHOOK_BASE_URL: 'https://n8n.example.test/webhook',
+    };
+    delete missing.N8N_HMAC_SECRET;
+    expect(() => parseEnvFrom(missing)).toThrow(/N8N_HMAC_SECRET.*N8N_WEBHOOK_BASE_URL/);
+    expect(() =>
+      parseEnvFrom({
+        ...missing,
+        N8N_HMAC_SECRET: 'short',
+      }),
+    ).toThrow(/mindestens 32 Zeichen/);
+    expect(() =>
+      parseEnvFrom({
+        ...missing,
+        N8N_HMAC_SECRET: 'a-securely-generated-hmac-secret-of-at-least-32-chars',
+      }),
+    ).not.toThrow();
+  });
+
+  it('lehnt jedes gesetzte kurze Production-N8N_HMAC_SECRET auch ohne aktiven Legacy-Pfad ab', () => {
+    expect(() =>
+      parseEnvFrom({
+        ...PROD_BASE,
+        N8N_LEGACY_CALLBACKS_ENABLED: 'false',
+        N8N_WEBHOOK_BASE_URL: '',
+        N8N_HMAC_SECRET: 'short',
+      }),
+    ).toThrow(/N8N_HMAC_SECRET.*mindestens 32 Zeichen/);
+  });
+
+  it('parst das Legacy-Opt-in strikt als exaktes true/false', () => {
+    expect(
+      parseEnvFrom({ ...VALID_BASE, N8N_LEGACY_CALLBACKS_ENABLED: 'true' })
+        .N8N_LEGACY_CALLBACKS_ENABLED,
+    ).toBe(true);
+    expect(
+      parseEnvFrom({ ...VALID_BASE, N8N_LEGACY_CALLBACKS_ENABLED: 'false' })
+        .N8N_LEGACY_CALLBACKS_ENABLED,
+    ).toBe(false);
+    for (const invalid of ['1', 'yes', 'TRUE', 'on']) {
+      expect(() => parseEnvFrom({ ...VALID_BASE, N8N_LEGACY_CALLBACKS_ENABLED: invalid })).toThrow(
+        /ENV-Validierung/,
+      );
+    }
   });
 
   it('production OHNE NEXTAUTH_TRUST_HOST → throw (Host-Header-Smuggling-Schutz)', () => {

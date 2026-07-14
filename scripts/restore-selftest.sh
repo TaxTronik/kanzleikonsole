@@ -163,7 +163,8 @@ info "Dump der Quelle erzeugen (runner.ts --out-file)…"
 info "Restore in '$TARGET_DB' (restore.ts --file)…"
 ( cd "$ROOT/apps/web" && DATABASE_URL="$TARGET_URL" \
     pnpm exec tsx --env-file-if-exists=../../.env \
-      src/server/backup/restore.ts --file "$DUMP_FILE" --confirm-overwrite )
+      src/server/backup/restore.ts --file "$DUMP_FILE" \
+        --target-url "$TARGET_URL" --confirm-overwrite )
 
 # -----------------------------------------------------------------------------
 # 5. Assertion A — Zeilenzahl-Vergleich für die wichtigsten Tabellen.

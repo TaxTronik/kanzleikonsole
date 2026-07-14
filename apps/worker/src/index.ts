@@ -15,6 +15,7 @@ import { auditRotateWorker } from './jobs/audit-rotate';
 import { taxNewsFetchWorker } from './jobs/tax-news-fetch';
 import { remindersDailyWorker } from './jobs/reminders-daily';
 import { n8nDeliverWorker, n8nOutboxReconcileWorker } from './jobs/n8n-deliver';
+import { n8nRetentionWorker } from './jobs/n8n-retention';
 import { magicLinkCleanupWorker } from './jobs/magic-link-cleanup';
 import { dsgvoRetentionWorker } from './jobs/dsgvo-retention';
 import { poaExpiryWorker } from './jobs/poa-expiry-check';
@@ -42,6 +43,7 @@ const ALL_WORKERS = [
   remindersDailyWorker,
   n8nDeliverWorker,
   n8nOutboxReconcileWorker,
+  n8nRetentionWorker,
   magicLinkCleanupWorker,
   dsgvoRetentionWorker,
   poaExpiryWorker,

@@ -388,13 +388,17 @@ export async function POST(req: NextRequest) {
   }
 
   // 3. n8n-Event (fire-and-forget)
-  emitN8nEvent('document.uploaded', {
-    tenantId,
-    documentId: docRow.id,
-    classification,
-    clientId: clientId ?? null,
-    isGobd: isGobdClassification(classification),
-  });
+  await emitN8nEvent(
+    'document.uploaded',
+    {
+      tenantId,
+      documentId: docRow.id,
+      classification,
+      clientId: clientId ?? null,
+      isGobd: isGobdClassification(classification),
+    },
+    { tenantId },
+  );
 
   return NextResponse.json({
     ok: true,

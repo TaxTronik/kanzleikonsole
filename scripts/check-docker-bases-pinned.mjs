@@ -12,7 +12,7 @@ export const REQUIRED_RECURSIVE_DOCKERIGNORE_PATTERNS = [
   '**/out',
   '**/coverage',
 ];
-export const REQUIRED_COMPOSE_SECRETS = ['AUTH_SECRET', 'N8N_HMAC_SECRET', 'N8N_ENCRYPTION_KEY'];
+export const REQUIRED_COMPOSE_SECRETS = ['AUTH_SECRET', 'N8N_ENCRYPTION_KEY'];
 
 export function unpinnedFromLines(source, fileName = '<Dockerfile>') {
   return source
@@ -64,6 +64,32 @@ export function checkRequiredComposeSecrets(source) {
         `Produktiv-Compose muss ${secret} per \${${secret}:?...} bereits bei der Interpolation erzwingen.`,
       );
     }
+  }
+
+  if (!source.includes('${N8N_LEGACY_CALLBACKS_ENABLED:-false}')) {
+    throw new Error(
+      'Produktiv-Compose muss N8N_LEGACY_CALLBACKS_ENABLED explizit mit Default false durchreichen.',
+    );
+  }
+  const legacyWebhookReferences = source.match(/\$\{N8N_WEBHOOK_BASE_URL(?::[^}]*)?\}/g) ?? [];
+  if (
+    legacyWebhookReferences.length === 0 ||
+    legacyWebhookReferences.some((reference) => reference !== '${N8N_WEBHOOK_BASE_URL:-}')
+  ) {
+    throw new Error(
+      'Produktiv-Compose muss N8N_WEBHOOK_BASE_URL als default-leeren Legacy-Opt-in durchreichen.',
+    );
+  }
+  const hmacReferences = source.match(/\$\{N8N_HMAC_SECRET(?::[^}]*)?\}/g) ?? [];
+  if (hmacReferences.length === 0) {
+    throw new Error(
+      'Produktiv-Compose referenziert den optionalen N8N_HMAC_SECRET-Legacy-Fallback nicht.',
+    );
+  }
+  if (hmacReferences.some((reference) => reference.startsWith('${N8N_HMAC_SECRET:?'))) {
+    throw new Error(
+      'Produktiv-Compose darf N8N_HMAC_SECRET bei default-off Legacy-Callbacks nicht global erzwingen.',
+    );
   }
   return true;
 }

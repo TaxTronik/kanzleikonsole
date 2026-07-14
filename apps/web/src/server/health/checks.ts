@@ -93,17 +93,70 @@ export async function checkN8n(): Promise<ServiceStatus> {
   return checkN8nUrl(env.N8N_WEBHOOK_BASE_URL ?? null);
 }
 
-/** Tenant-spezifisch: nimmt die URL aus `tenant_setting.integrations.n8n`. */
+/** Tenant-spezifisch: bevorzugt die normalisierte n8n-Verbindung. */
 export async function checkN8nForTenant(
   tenantId: string,
 ): Promise<ServiceStatus & { url?: string | null; source?: 'tenant' | 'env' | 'none' }> {
-  const row = await withTenantContext({ tenantId, actorId: null, actorType: 'SYSTEM' }, (tx) =>
-    tx.tenantSetting.findUnique({
-      where: { tenantId_key: { tenantId, key: 'integrations.n8n' } },
-      select: { value: true },
-    }),
+  const stored = await withTenantContext(
+    { tenantId, actorId: null, actorType: 'SYSTEM' },
+    async (tx) => {
+      const connection = await tx.n8nConnection.findUnique({
+        where: { tenantId },
+        select: {
+          enabled: true,
+          routingMode: true,
+          uiBaseUrl: true,
+          apiBaseUrl: true,
+          webhookBaseUrl: true,
+          endpoints: {
+            where: { enabled: true },
+            orderBy: { name: 'asc' },
+            take: 1,
+            select: { productionUrl: true },
+          },
+        },
+      });
+      if (connection) return { connection, legacyUrl: '' };
+      const row = await tx.tenantSetting.findUnique({
+        where: { tenantId_key: { tenantId, key: 'integrations.n8n' } },
+        select: { value: true },
+      });
+      return {
+        connection: null,
+        legacyUrl: row ? ((row.value as { webhookBaseUrl?: string }).webhookBaseUrl ?? '') : '',
+      };
+    },
   );
-  const dbUrl = row ? ((row.value as { webhookBaseUrl?: string }).webhookBaseUrl ?? '') : '';
+  if (stored.connection) {
+    // Die UI-Adresse ist ausschließlich ein Browser-Link. Für den
+    // serverseitigen Healthcheck verwenden wir nur Ziele, die TaxTronik selbst
+    // anspricht; dadurch wird eine reine UI-URL nie zum SSRF-/Health-Ziel.
+    const connectionUrl =
+      stored.connection.apiBaseUrl ??
+      stored.connection.webhookBaseUrl ??
+      stored.connection.endpoints[0]?.productionUrl ??
+      '';
+    if (!stored.connection.enabled || stored.connection.routingMode === 'DISABLED') {
+      return {
+        ok: false,
+        url: connectionUrl || null,
+        source: 'tenant',
+        error: 'n8n-Integration bewusst deaktiviert',
+      };
+    }
+    if (!connectionUrl) {
+      return {
+        ok: false,
+        url: null,
+        source: 'tenant',
+        error: 'Keine n8n-Instanz-URL gespeichert',
+      };
+    }
+    const result = await checkN8nUrl(connectionUrl);
+    return { ...result, url: connectionUrl, source: 'tenant' };
+  }
+
+  const dbUrl = stored.legacyUrl;
   if (dbUrl) {
     const r = await checkN8nUrl(dbUrl);
     return { ...r, url: dbUrl, source: 'tenant' };
@@ -126,6 +179,7 @@ async function checkN8nUrl(rawUrl: string | null): Promise<ServiceStatus> {
     // kein TOCTOU-Fenster zwischen Check und Verbindung.
     // M-6: redirect:'error' verhindert 302 zu internen Adressen.
     const res = await safeFetch(url.toString(), { signal: ctrl.signal, redirect: 'error' });
+    await res.text(); // Body konsumieren, damit safeFetch seinen gepinnten Agent schließt.
     clearTimeout(to);
     if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
     return { ok: true, latencyMs: Date.now() - start };

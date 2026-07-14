@@ -1,0 +1,6 @@
+# Ausschließlich historische, synthetische CI-Fixtures aus dem Release-Commit.
+# Die Fingerprints sind absichtlich commit-, pfad-, regel- und zeilengenau;
+# neue oder geänderte Treffer bleiben dadurch weiterhin sichtbar.
+de230584b271805f370e5363a1fdd26ca84195e3:scripts/tests/gitleaks-config.test.sh:generic-api-key:22
+de230584b271805f370e5363a1fdd26ca84195e3:scripts/tests/gitleaks-config.test.sh:generic-api-key:32
+de230584b271805f370e5363a1fdd26ca84195e3:scripts/release/smoke-release-images.sh:generic-api-key:76

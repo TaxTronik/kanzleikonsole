@@ -16,17 +16,24 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { NextResponse, type NextRequest } from 'next/server';
 import { env } from '@taxtronik/config';
-import { consumeNonce } from './nonce-store';
+import { releaseNonce, reserveNonce } from './nonce-store';
 
 const REPLAY_WINDOW_MS = 5 * 60 * 1000;
 
-export interface VerifyResult {
-  ok: boolean;
-  body?: string;
-  error?: string;
-  /** Bei `ok=false` HTTP-Status, den der Caller zurückgeben sollte. */
-  status?: number;
+export interface VerifySuccess {
+  ok: true;
+  body: string;
+  replayId: string;
 }
+
+export interface VerifyFailure {
+  ok: false;
+  error: string;
+  /** Bei `ok=false` HTTP-Status, den der Caller zurückgeben sollte. */
+  status: number;
+}
+
+export type VerifyResult = VerifySuccess | VerifyFailure;
 
 /**
  * Befund 10: Einheitliche Reject-Response für fehlgeschlagene
@@ -37,7 +44,7 @@ export interface VerifyResult {
  * → generisches 401 ohne Detail-Leak (Audit Round 14, Finding 2 — kein
  * Side-Channel über Schlüssel-/Zeit-/Replay-Status). Details loggt der Caller.
  */
-export function n8nRejectResponse(ver: VerifyResult): NextResponse {
+export function n8nRejectResponse(ver: VerifyFailure): NextResponse {
   const status = ver.status === 503 || ver.status === 500 ? ver.status : 401;
   return NextResponse.json({ error: status === 401 ? 'unauthorized' : 'unavailable' }, { status });
 }
@@ -80,15 +87,40 @@ export async function verifyN8nSignature(req: NextRequest): Promise<VerifyResult
     return { ok: false, error: 'signature mismatch', status: 401 };
   }
 
-  // Replay-Schutz: Signatur als Nonce reservieren. Bei nicht erreichbarem
-  // Redis fail-closed (503) — Security darf nicht stillschweigend kippen.
-  const consumed = await consumeNonce(provided);
-  if (consumed === null) {
-    return { ok: false, error: 'replay-store unavailable', status: 503 };
+  // Die Replay-ID wird absichtlich erst nach Query-/Body-Validierung durch
+  // runReservedN8nRequest reserviert. So verbraucht ein korrigierbarer 400er
+  // keine Nonce, während parallele gültige Aufrufe atomar blockiert bleiben.
+  return { ok: true, body, replayId: provided };
+}
+
+/**
+ * Reserviert den verifizierten Legacy-Request unmittelbar vor der Operation.
+ * Erfolgreiche Antworten behalten die Nonce. Bei Exceptions oder nicht
+ * erfolgreichen Antworten wird sie owner-sicher freigegeben und kann erneut
+ * zugestellt werden.
+ */
+export async function runReservedN8nRequest(
+  verification: VerifySuccess,
+  operation: () => Promise<NextResponse>,
+): Promise<NextResponse> {
+  const reservation = await reserveNonce(verification.replayId);
+  if (reservation === null) {
+    return n8nRejectResponse({
+      ok: false,
+      error: 'replay-store unavailable',
+      status: 503,
+    });
   }
-  if (!consumed) {
-    return { ok: false, error: 'replay detected', status: 401 };
+  if (!reservation) {
+    return n8nRejectResponse({ ok: false, error: 'replay detected', status: 401 });
   }
 
-  return { ok: true, body };
+  try {
+    const response = await operation();
+    if (response.status < 200 || response.status >= 300) await releaseNonce(reservation);
+    return response;
+  } catch (error) {
+    await releaseNonce(reservation);
+    throw error;
+  }
 }

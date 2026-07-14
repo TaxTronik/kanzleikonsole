@@ -32,7 +32,7 @@ services:
 
   n8n:
     <<: *hardening
-    image: n8nio/n8n:latest@sha256:1872cce3548bf4dcfe5aceaf3d9293f4499635823fbdea0ee726bd222d2e44b8
+    image: n8nio/n8n:2.25.7@sha256:761374d4eb841b0a22771d6bd68f0e8d827b4979ae4e490045517b13fc1259dd
     container_name: taxtronik-n8n
     restart: unless-stopped
     # n8n läuft als node-User; braucht CHOWN für /home/node/.n8n.
@@ -47,12 +47,20 @@ services:
       N8N_PROTOCOL: http
       WEBHOOK_URL: http://localhost:5678/
       GENERIC_TIMEZONE: Europe/Berlin
-      # Im Dev erreicht n8n die App vom Host aus (Container-Bridge bietet
-      # `host.docker.internal` auf Docker Desktop). Für produktives Setup wird
-      # `app` als Service-Name in docker-compose.app.yml referenziert.
-      TAXTRONIK_API_URL: http://host.docker.internal:3000
-      N8N_HMAC_SECRET: ${N8N_HMAC_SECRET:-dev-only-hmac-secret-min-32-chars-long-xxx}
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-dev-only-n8n-encryption-key-xxxxxxxx}
+      # Auch lokal Secrets nur als n8n-Credentials pflegen.
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: 'true'
+      N8N_BLOCK_FILE_ACCESS_TO_N8N_FILES: 'true'
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: 'true'
+      N8N_COMMUNITY_PACKAGES_ENABLED: 'false'
+      NODES_EXCLUDE: '["n8n-nodes-base.executeCommand","n8n-nodes-base.readWriteFile","n8n-nodes-base.localFileTrigger"]'
+      EXECUTIONS_DATA_SAVE_ON_SUCCESS: none
+      EXECUTIONS_DATA_SAVE_ON_ERROR: none
+      EXECUTIONS_DATA_SAVE_ON_PROGRESS: 'false'
+      EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS: 'false'
+      EXECUTIONS_DATA_PRUNE: 'true'
+      EXECUTIONS_DATA_MAX_AGE: 24
+      EXECUTIONS_DATA_PRUNE_MAX_COUNT: 1000
       # SQLite-Default — keine Postgres-Konfiguration nötig. Für Production
       # nutzt docker-compose.app.yml einen separaten n8n-DB-User in Postgres.
       DB_TYPE: sqlite

@@ -120,12 +120,16 @@ export async function createVacationRequestAction(
   // R-5: dediziertes Event. Vorher als staff.locked → n8n-Workflows mit
   // „Account-gesperrt"-Reflex (Slack-Alert etc.) wären hier fälschlich
   // ausgelöst.
-  emitN8nEvent('staff.vacation_requested', {
-    tenantId,
-    requestId: id,
-    staffId,
-    workdays,
-  });
+  await emitN8nEvent(
+    'staff.vacation_requested',
+    {
+      tenantId,
+      requestId: id,
+      staffId,
+      workdays,
+    },
+    { tenantId },
+  );
   revalidatePath('/staff/absences');
   return { ok: true };
 }

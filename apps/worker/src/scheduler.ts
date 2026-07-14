@@ -21,6 +21,7 @@ import {
   taxNewsFetchQueue,
   remindersDailyQueue,
   n8nOutboxReconcileQueue,
+  n8nRetentionQueue,
   magicLinkCleanupQueue,
   dsgvoRetentionQueue,
   poaExpiryQueue,
@@ -107,6 +108,13 @@ export async function setupSchedules(): Promise<void> {
     { every: 5 * 60_000 },
     { name: 'n8n-outbox-reconcile', data: {} },
   );
+  // Begrenzte n8n-Historie: normale Terminal-Events 90 Tage, Fehler/Partial
+  // 180 Tage. Der Worker löscht nur weiterhin terminale Reihen in Batches.
+  await n8nRetentionQueue.upsertJobScheduler(
+    'daily-n8n-retention',
+    { pattern: '45 3 * * *' },
+    { name: 'n8n-retention', data: {}, opts: DAILY_RETRY },
+  );
   // H6: Magic-Link-Cleanup täglich 03:30 UTC — Tabelle wächst sonst unbegrenzt.
   await magicLinkCleanupQueue.upsertJobScheduler(
     'daily-magic-link-cleanup',
@@ -171,6 +179,7 @@ export async function setupSchedules(): Promise<void> {
         'tax-news-fetch @ 06:30 Berlin daily',
         'reminders-daily @ 07:45 Berlin daily',
         'n8n-outbox-reconcile @ every 5 min',
+        'n8n-retention @ 03:45 UTC daily',
         'magic-link-cleanup @ 03:30 UTC daily',
         'dsgvo-retention @ 04:00 UTC daily',
         'poa-expiry-check @ 07:20 Berlin daily',

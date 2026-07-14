@@ -1,0 +1,76 @@
+{
+  "name": "00 — TaxTronik Verbindungstest",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "taxtronik.ping",
+        "responseMode": "responseNode",
+        "options": { "rawBody": true }
+      },
+      "id": "webhook",
+      "name": "Webhook von TaxTronik",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "taxtronik-connection-test"
+    },
+    {
+      "parameters": {
+        "action": "hmac",
+        "binaryData": false,
+        "type": "SHA256",
+        "value": "={{ [$json.headers['x-taxtronik-event'], $json.headers['x-taxtronik-timestamp'], $json.headers['x-taxtronik-nonce'], (typeof $json.body === 'string' ? $json.body : JSON.stringify($json.body ?? {}))].join('\\n') }}",
+        "dataPropertyName": "expectedSignature",
+        "encoding": "hex"
+      },
+      "id": "calculate-hmac",
+      "name": "HMAC mit Credential berechnen",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst headers = Object.fromEntries(Object.entries(input.headers ?? {}).map(([key, value]) => [key.toLowerCase(), String(value)]));\nconst event = headers['x-taxtronik-event'] ?? '';\nconst timestamp = headers['x-taxtronik-timestamp'] ?? '';\nconst nonce = headers['x-taxtronik-nonce'] ?? '';\nconst signature = headers['x-taxtronik-signature'] ?? '';\nif (event !== 'taxtronik.ping') throw new Error('Unerwarteter TaxTronik-Event');\nif (!/^\\d{13}$/.test(timestamp) || Math.abs(Date.now() - Number(timestamp)) > 300000) throw new Error('TaxTronik-Timestamp ungueltig');\nif (!/^[A-Za-z0-9._:-]{16,200}$/.test(nonce)) throw new Error('TaxTronik-Nonce ungueltig');\nconst expected = 'sha256=' + String(input.expectedSignature ?? '');\nif (!/^sha256=[a-f0-9]{64}$/i.test(signature) || signature.length !== expected.length) throw new Error('TaxTronik-Signatur ungueltig');\nlet mismatch = 0;\nfor (let i = 0; i < signature.length; i++) mismatch |= signature.charCodeAt(i) ^ expected.charCodeAt(i);\nif (mismatch !== 0) throw new Error('TaxTronik-Signatur ungueltig');\nlet body;\ntry { body = typeof input.body === 'string' ? JSON.parse(input.body) : input.body; } catch { throw new Error('TaxTronik-Body ist kein JSON'); }\nif (!body || body.event !== 'taxtronik.ping') throw new Error('Event in Body und Header stimmen nicht ueberein');\nconst deliveryId = String(body.deliveryId ?? '');\nif (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(deliveryId)) throw new Error('TaxTronik-Delivery-ID ungueltig');\nif (headers['x-taxtronik-delivery-id'] !== deliveryId) throw new Error('Delivery-ID in Body und Header stimmen nicht ueberein');\nreturn [{ json: { ...input, headers, body } }];"
+      },
+      "id": "validate-envelope",
+      "name": "Event und Signatur validieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, challenge: 'taxtronik-connection-ok', event: $json.body.event } }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "respond",
+      "name": "Synthetische Challenge antworten",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [1120, 300]
+    }
+  ],
+  "connections": {
+    "Webhook von TaxTronik": {
+      "main": [[{ "node": "HMAC mit Credential berechnen", "type": "main", "index": 0 }]]
+    },
+    "HMAC mit Credential berechnen": {
+      "main": [[{ "node": "Event und Signatur validieren", "type": "main", "index": 0 }]]
+    },
+    "Event und Signatur validieren": {
+      "main": [[{ "node": "Synthetische Challenge antworten", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "saveExecutionProgress": false,
+    "saveManualExecutions": false
+  },
+  "versionId": "2.0"
+}

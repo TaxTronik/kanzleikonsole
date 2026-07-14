@@ -42,10 +42,17 @@ direkt verlinkt:
    Voreinstellung passt. Wichtigste Entscheidung: Rechnungen **In-App**
    (Positionen + E-Rechnung in TaxTronik), **Extern** (PDF-Ablage aus der
    Kanzleisoftware) oder **Aus**.
-6. **Erster Mandant** — anlegen und die GwG-Prüfung abschließen; erst
+6. **n8n-Automatisierungen** — unter _Einstellungen → n8n-Automatisierung_ entweder
+   den geführten Assistenten abschließen, jedes benötigte Workflow-Ziel als
+   Entwurf speichern, mit synthetischen Daten testen und danach unverändert
+   aktivieren oder n8n ausdrücklich deaktivieren. Eine
+   Instanz-URL allein genügt nicht: jeder Workflow benötigt seine exakte
+   Production-Webhook-URL
+   ([n8n-Automatisierungen](n8n-automatisierungen.md)).
+7. **Erster Mandant** — anlegen und die GwG-Prüfung abschließen; erst
    dann wird der Mandant „aktiv" und kann Anforderungen und Rechnungen
    erhalten (produktseitige GwG-Schranke, von der Datenbank erzwungen).
-7. **Portal-Kontakt** — in der Mandantenakte unter _Kontakte_ einladen;
+8. **Portal-Kontakt** — in der Mandantenakte unter _Kontakte_ einladen;
    Mandanten melden sich ausschließlich per E-Mail-Link an.
 
 ## 3. Team einrichten (≈ 10 min)

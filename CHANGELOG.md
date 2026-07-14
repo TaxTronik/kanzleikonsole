@@ -18,12 +18,33 @@ vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
 
 ## [Unreleased]
 
-Noch keine Änderungen.
+- n8n auf den verifizierten Stable-Release 2.25.7 aktualisiert; globale
+  Legacy-Callbacks sind nun standardmäßig deaktiviert und Production-n8n
+  sendet keine Telemetrie oder automatischen Katalog-/Versionsabrufe.
 
 ## [0.2.0] - 2026-07-14
 
 ### Betrieb, Deployment und Dokumentation
 
+- n8n-Integration: geführte Einrichtung trennt Instanz-UI, Management-API,
+  Legacy-Webhook-Präfix und exakte Production-Webhook-URLs. Verwaltete und
+  eigene Workflows erhalten explizite Event-Abonnements, unabhängigen Fan-out,
+  einen fail-closed Ablauf aus Entwurf, synthetischem Test und unveränderter
+  Aktivierung sowie eine bewusste Deaktivierungsoption; selektiver
+  Vorlagenimport materialisiert die separat aus n8n erreichbare App-Basis und
+  weitere Nicht-Geheimnisse Community-kompatibel,
+  während Bearer-, HMAC- und SMTP-Secrets n8n-Credentials bleiben
+- n8n-Zustellung: versionierter Envelope mit stabiler `eventId` und
+  zielbezogener `deliveryId`, Status je Zustellung sowie
+  `PARTIAL`/`UNROUTED`-Aggregat machen Retry, Deduplizierung und Fehlerbilder
+  nachvollziehbar; Legacy-Routing bleibt als Übergangspfad erhalten
+- n8n-Dokumentation: neues Anwenderkapitel mit vollständigem Eventkatalog,
+  eigenen Workflows, Publish-/Test-URL-Erklärung, §-203-/DSGVO-Hinweisen und
+  Troubleshooting; Day-2-, Subdomain- und Secret-Rotation-Runbooks wurden um
+  API-Key-/Callback-Credential- und Multi-Workflow-Betrieb ergänzt
+- n8n-Legacy-Sicherheit: `expiring-gwg-checks` akzeptiert keinen globalen
+  Cross-Tenant-Abruf mehr; bestehende Legacy-Aufrufer müssen `tenantId`
+  mitsignieren oder auf den tenantgebundenen v1-Callback wechseln
 - Release-Gate: Die final geladenen Web-/Worker-Images werden vor jedem Push
   als vollständiger Compose-Stack inklusive Migration, Readiness,
   Worker-Heartbeat, Image-ID und OCI-Commit-Label gestartet und geprüft

@@ -12,9 +12,14 @@ import { Queue } from 'bullmq';
 import { env } from '@taxtronik/config';
 import { log } from '@/server/logger';
 
-export interface N8nDeliverJob {
-  outboxId: string;
-}
+/**
+ * Neue Jobs adressieren genau eine Delivery. `outboxId` bleibt als
+ * Rolling-Deploy-/Altjob-Variante erhalten; der Worker materialisiert daraus
+ * einmalig eine Legacy-Delivery.
+ */
+export type N8nDeliverJob =
+  | { deliveryId: string; outboxId?: never }
+  | { outboxId: string; deliveryId?: never };
 
 declare global {
   // `var` is intentional for ambient globalThis augmentation.

@@ -80,8 +80,14 @@ export async function bulkCloseRequestsAction(input: { ids: string[] }): Promise
   // Über die rohe Eingabe (parsed.data.ids) zu feuern würde request.closed auch
   // für bereits geschlossene, nicht existierende oder RLS-gefilterte IDs auslösen
   // → spurious, client-wirksame Downstream-Notifications.
-  for (const id of closedIds) {
-    emitN8nEvent('request.closed', { tenantId, requestId: id });
+  // Der Bulk-Endpunkt verarbeitet bis zu 200 Anforderungen. Kleine Batches
+  // begrenzen gleichzeitige Outbox-Transaktionen und damit den DB-Pool-Druck.
+  for (let offset = 0; offset < closedIds.length; offset += 10) {
+    await Promise.all(
+      closedIds
+        .slice(offset, offset + 10)
+        .map((id) => emitN8nEvent('request.closed', { tenantId, requestId: id }, { tenantId })),
+    );
   }
   revalidatePath('/staff/requests');
   return failed

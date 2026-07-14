@@ -60,7 +60,12 @@ model Tenant {
   kbArticles                 KbArticle[]
   kbCategories               KbCategory[]
   magicLinks                 MagicLink[]
+  n8nConnection              N8nConnection?
+  n8nCallbackReceipts        N8nCallbackReceipt[]
+  n8nDeliveries              N8nDelivery[]
+  n8nEventSubscriptions      N8nEventSubscription[]
   n8nOutbox                  N8nOutbox[]
+  n8nWebhookEndpoints        N8nWebhookEndpoint[]
   notifications              Notification[]
   pendingBinders             PendingBinder[]
   phoneNotes                 PhoneNote[]
@@ -333,7 +338,9 @@ model PowerOfAttorney {
   createdByStaff           String    @map("created_by_staff") @db.Uuid
   revokedAt                DateTime? @map("revoked_at")
   revokedReason            String?   @map("revoked_reason")
-  createdAt                DateTime  @default(now()) @map("created_at")
+  /// Muss vom PostgreSQL-Server stammen: Prisma materialisiert `now()` sonst
+  /// clientseitig, wodurch geringe Host-/DB-Uhrabweichungen sent_at < created_at erzeugen.
+  createdAt                DateTime  @default(dbgenerated("statement_timestamp()")) @map("created_at")
   updatedAt                DateTime  @updatedAt @map("updated_at")
   signingOtpAttempts       Int       @default(0) @map("signing_otp_attempts")
   // Audit 2026-06 Befund 2: lebenszyklus-weiter Fehlversuchszähler. Anders als
@@ -365,10 +372,149 @@ model N8nOutbox {
   createdAt   DateTime        @default(now()) @map("created_at")
   updatedAt   DateTime        @updatedAt @map("updated_at")
   tenant      Tenant?         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deliveries  N8nDelivery[]
 
   @@index([status, createdAt])
+  @@index([status, updatedAt], map: "n8n_outbox_status_updated_idx")
   @@index([tenantId])
   @@map("n8n_outbox")
+}
+
+/// Eine tenant-spezifische n8n-Instanz. `tenantId` ist unique: im ersten
+/// Release gibt es genau eine Sicherheits-/API-Domäne pro Kanzlei. Mehrere
+/// konkrete Workflow-Webhooks hängen als benannte Endpoints darunter.
+model N8nConnection {
+  id                     String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId               String               @unique(map: "n8n_connection_tenant_id_key") @map("tenant_id") @db.Uuid
+  name                   String
+  kind                   N8nConnectionKind    @default(BUNDLED)
+  routingMode            N8nRoutingMode       @default(LEGACY) @map("routing_mode")
+  uiBaseUrl              String?              @map("ui_base_url")
+  apiBaseUrl             String?              @map("api_base_url")
+  webhookBaseUrl         String?              @map("webhook_base_url")
+  callbackBaseUrl        String?              @map("callback_base_url")
+  apiKeyEncrypted        String?              @map("api_key_encrypted")
+  signingSecretEncrypted String?              @map("signing_secret_encrypted")
+  callbackKeyId          String               @unique(map: "n8n_connection_callback_key_id_key") @default(dbgenerated("gen_random_uuid()")) @map("callback_key_id") @db.Uuid
+  callbackTokenHash      String?              @map("callback_token_hash")
+  callbackScopes         String[]             @default([]) @map("callback_scopes")
+  enabled                Boolean              @default(true)
+  healthCheckedAt        DateTime?            @map("health_checked_at") @db.Timestamptz(6)
+  healthOk               Boolean?             @map("health_ok")
+  healthError            String?              @map("health_error")
+  createdAt              DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant                 Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "n8n_connection_tenant_fkey")
+  endpoints              N8nWebhookEndpoint[]
+  callbackReceipts       N8nCallbackReceipt[]
+
+  @@unique([id, tenantId], map: "n8n_connection_id_tenant_key")
+  @@map("n8n_connection")
+}
+
+/// Dauerhafter Idempotenzbeleg fuer schreibende n8n-Callbacks. Die Zeile wird
+/// in derselben Transaktion wie der fachliche Side Effect angelegt: sichtbar
+/// bedeutet daher immer, dass der Write vollstaendig committed wurde.
+model N8nCallbackReceipt {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String        @map("tenant_id") @db.Uuid
+  connectionId  String        @map("connection_id") @db.Uuid
+  requestIdHash String        @map("request_id_hash") @db.VarChar(64)
+  operation     String        @db.VarChar(64)
+  resultId      String?       @map("result_id") @db.Uuid
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "n8n_callback_receipt_tenant_fkey")
+  connection    N8nConnection @relation(fields: [connectionId, tenantId], references: [id, tenantId], onDelete: Cascade, onUpdate: NoAction, map: "n8n_callback_receipt_connection_fkey")
+
+  @@unique([connectionId, requestIdHash], map: "n8n_callback_receipt_connection_request_key")
+  @@index([tenantId, createdAt], map: "n8n_callback_receipt_tenant_created_idx")
+  @@map("n8n_callback_receipt")
+}
+
+/// Ein konkreter Webhook-Knoten eines n8n-Workflows. Produktions- und
+/// Test-URL werden getrennt gespeichert, damit Dev/Test niemals versehentlich
+/// einen produktiven Workflow auslöst.
+model N8nWebhookEndpoint {
+  id                String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String                 @map("tenant_id") @db.Uuid
+  connectionId      String                 @map("connection_id") @db.Uuid
+  name              String
+  productionUrl     String                 @map("production_url")
+  testUrl           String?                @map("test_url")
+  workflowId        String?                @map("workflow_id")
+  workflowName      String?                @map("workflow_name")
+  workflowNodeId    String?                @map("workflow_node_id")
+  source            N8nEndpointSource      @default(CUSTOM)
+  enabled           Boolean                @default(true)
+  verifiedAt        DateTime?              @map("verified_at") @db.Timestamptz(6)
+  verificationOk    Boolean?               @map("verification_ok")
+  verificationError String?                @map("verification_error")
+  createdAt         DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant            Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "n8n_webhook_endpoint_tenant_fkey")
+  connection        N8nConnection          @relation(fields: [connectionId, tenantId], references: [id, tenantId], onDelete: Cascade, onUpdate: NoAction, map: "n8n_webhook_endpoint_connection_fkey")
+  subscriptions     N8nEventSubscription[]
+  deliveries        N8nDelivery[]
+
+  @@unique([id, tenantId], map: "n8n_webhook_endpoint_id_tenant_key")
+  @@unique([connectionId, name], map: "n8n_webhook_endpoint_connection_name_key")
+  @@index([tenantId, enabled], map: "n8n_webhook_endpoint_tenant_enabled_idx")
+  @@map("n8n_webhook_endpoint")
+}
+
+/// Explizite Zuordnung eines TaxTronik-Events zu einem konkreten n8n-Webhook.
+/// Ein Event darf mehrere Endpoints bedienen (Fan-out), ein Endpoint mehrere
+/// Events abonnieren. Fachliche Filter bleiben im n8n-Workflow.
+model N8nEventSubscription {
+  id         String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String             @map("tenant_id") @db.Uuid
+  endpointId String             @map("endpoint_id") @db.Uuid
+  event      String
+  enabled    Boolean            @default(true)
+  createdAt  DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant     Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "n8n_event_subscription_tenant_fkey")
+  endpoint   N8nWebhookEndpoint @relation(fields: [endpointId, tenantId], references: [id, tenantId], onDelete: Cascade, onUpdate: NoAction, map: "n8n_event_subscription_endpoint_fkey")
+
+  @@unique([endpointId, event], map: "n8n_event_subscription_endpoint_event_key")
+  @@index([tenantId, event, enabled], map: "n8n_event_subscription_route_idx")
+  @@map("n8n_event_subscription")
+}
+
+/// Ein konkreter Zustellversuch eines Outbox-Events an genau einen Endpoint.
+/// URL und Name sind Snapshots: spätere Endpoint-Änderungen dürfen bereits
+/// eingeplante Events nicht unbemerkt an ein anderes Ziel umleiten.
+model N8nDelivery {
+  id                   String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId             String?             @map("tenant_id") @db.Uuid
+  outboxId             String              @map("outbox_id") @db.Uuid
+  endpointId           String?             @map("endpoint_id") @db.Uuid
+  connectionIdSnapshot String?             @map("connection_id_snapshot") @db.Uuid
+  endpointNameSnapshot String              @map("endpoint_name_snapshot")
+  targetUrl            String?             @map("target_url")
+  status               N8nDeliveryStatus   @default(PENDING)
+  leaseToken           String?             @map("lease_token") @db.Uuid
+  leaseExpiresAt       DateTime?           @map("lease_expires_at") @db.Timestamptz(6)
+  attempts             Int                 @default(0)
+  httpStatus           Int?                @map("http_status")
+  latencyMs            Int?                @map("latency_ms")
+  lastError            String?             @map("last_error")
+  firstAttemptAt       DateTime?           @map("first_attempt_at") @db.Timestamptz(6)
+  lastAttemptAt        DateTime?           @map("last_attempt_at") @db.Timestamptz(6)
+  deliveredAt          DateTime?           @map("delivered_at") @db.Timestamptz(6)
+  createdAt            DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant               Tenant?             @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "n8n_delivery_tenant_fkey")
+  outbox               N8nOutbox           @relation(fields: [outboxId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "n8n_delivery_outbox_fkey")
+  endpoint             N8nWebhookEndpoint? @relation(fields: [endpointId, tenantId], references: [id, tenantId], onDelete: SetNull, onUpdate: NoAction, map: "n8n_delivery_endpoint_fkey")
+
+  @@unique([outboxId, endpointId], map: "n8n_delivery_outbox_endpoint_key")
+  @@index([status, createdAt], map: "n8n_delivery_status_created_idx")
+  @@index([status, leaseExpiresAt], map: "n8n_delivery_status_lease_idx")
+  @@index([tenantId, createdAt], map: "n8n_delivery_tenant_created_idx")
+  @@index([tenantId, status, createdAt, id], map: "n8n_delivery_tenant_status_created_id_idx")
+  @@index([endpointId, status], map: "n8n_delivery_endpoint_status_idx")
+  @@map("n8n_delivery")
 }
 
 model KbCategory {
@@ -692,17 +838,17 @@ model DsgvoRequest {
 }
 
 model BackupRecord {
-  id                    String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId              String       @map("tenant_id") @db.Uuid
-  startedAt             DateTime     @default(now()) @map("started_at")
-  finishedAt            DateTime?    @map("finished_at")
-  status                BackupStatus @default(RUNNING)
-  sizeBytes             BigInt?      @map("size_bytes")
-  bucket                String?
-  key                   String?
-  sha256                Bytes?
-  errorMsg              String?      @map("error_msg")
-  tenant                Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String       @map("tenant_id") @db.Uuid
+  startedAt  DateTime     @default(now()) @map("started_at")
+  finishedAt DateTime?    @map("finished_at")
+  status     BackupStatus @default(RUNNING)
+  sizeBytes  BigInt?      @map("size_bytes")
+  bucket     String?
+  key        String?
+  sha256     Bytes?
+  errorMsg   String?      @map("error_msg")
+  tenant     Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, startedAt])
   @@index([tenantId, status])
@@ -1158,20 +1304,20 @@ model DocumentFolder {
 }
 
 model DocumentVersion {
-  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  documentId      String    @map("document_id") @db.Uuid
-  versionNo       Int       @map("version_no")
-  storageBucket   String    @map("storage_bucket")
-  storageKey      String    @map("storage_key")
-  storageVersionId String?  @map("storage_version_id")
-  sha256          Bytes
-  sizeBytes       BigInt    @map("size_bytes")
-  immutable       Boolean   @default(false)
-  scanStatus      String    @default("PENDING") @map("scan_status")
-  scanCompletedAt DateTime? @map("scan_completed_at")
-  createdById     String    @map("created_by_id") @db.Uuid
-  createdAt       DateTime  @default(now()) @map("created_at")
-  document        Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentId       String    @map("document_id") @db.Uuid
+  versionNo        Int       @map("version_no")
+  storageBucket    String    @map("storage_bucket")
+  storageKey       String    @map("storage_key")
+  storageVersionId String?   @map("storage_version_id")
+  sha256           Bytes
+  sizeBytes        BigInt    @map("size_bytes")
+  immutable        Boolean   @default(false)
+  scanStatus       String    @default("PENDING") @map("scan_status")
+  scanCompletedAt  DateTime? @map("scan_completed_at")
+  createdById      String    @map("created_by_id") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at")
+  document         Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@unique([documentId, versionNo])
   @@index([documentId])
@@ -2334,6 +2480,36 @@ enum N8nOutboxStatus {
   PENDING
   DELIVERED
   FAILED
+  PARTIAL
+  UNROUTED
+  SKIPPED
+}
+
+enum N8nConnectionKind {
+  BUNDLED
+  SELF_HOSTED
+  CLOUD
+}
+
+enum N8nRoutingMode {
+  DISABLED
+  LEGACY
+  EXPLICIT
+}
+
+enum N8nEndpointSource {
+  MANAGED
+  DISCOVERED
+  CUSTOM
+  LEGACY
+}
+
+enum N8nDeliveryStatus {
+  PENDING
+  PROCESSING
+  DELIVERED
+  FAILED
+  SKIPPED
 }
 
 enum InvoiceStatus {

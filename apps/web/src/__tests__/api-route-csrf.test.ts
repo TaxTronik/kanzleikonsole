@@ -25,6 +25,17 @@ const ALTERNATIVE_MUTATION_GUARDS: Record<string, string[]> = {
   'api/n8n/[...path]/route.ts': ['verifyN8nSignature'],
   'api/n8n/request-inbound/route.ts': ['verifyN8nSignature'],
   'api/n8n/research-result/route.ts': ['verifyN8nSignature'],
+  // Versionierte n8n-Callbacks sind ebenfalls nicht cookie-authentifiziert:
+  // verbindungsgebundene Key-ID + Bearer-Token/Scope ersetzen CSRF, die
+  // reservierte Request-ID verhindert Replay-Ausfuehrungen.
+  'api/integrations/n8n/v1/request-inbound/route.ts': [
+    'authenticateN8nCallback',
+    'runReservedN8nCallback',
+  ],
+  'api/integrations/n8n/v1/research-result/route.ts': [
+    'authenticateN8nCallback',
+    'runReservedN8nCallback',
+  ],
   // Logout muss auch bei defekter Session funktionieren; Fetch-Metadata blockt Cross-Site.
   'api/staff/force-logout/route.ts': ['sec-fetch-site', 'staffSignOut'],
 };

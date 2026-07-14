@@ -48,8 +48,8 @@ export function MailDispatchForm({ initial }: { initial: MailDispatchConfig }) {
             <p className="text-xs text-secondary dark:text-disabled">
               Die App verschickt die Mail wie oben — zusätzlich wird ein signierter Webhook an n8n
               geschickt, damit dort weitere Aktionen folgen können (Slack-Ping ans Team, CRM-Sync,
-              externe Eskalation). n8n übernimmt NICHT den Mail-Versand. Voraussetzung: n8n-Bridge
-              unten konfiguriert.
+              externe Eskalation). n8n übernimmt NICHT den Mail-Versand. Voraussetzung: unter
+              „n8n-Automatisierung“ ist eine aktive Event-Route eingerichtet.
             </p>
           </div>
         </label>

@@ -218,14 +218,20 @@ TRUST_PROXY_REQUIRED=true
 POSTGRES_PASSWORD=...
 TAXTRONIK_APP_PASSWORD=...
 AUTH_SECRET=...
-N8N_HMAC_SECRET=...
 N8N_ENCRYPTION_KEY=...
 S3_SECRET_KEY=...
+
+# Ausschließlich für die befristete Migration alter /api/n8n/*-Callbacks:
+N8N_LEGACY_CALLBACKS_ENABLED=false
+# N8N_HMAC_SECRET=... # bei Callback-Flag oder Outbound-Legacy-URL Pflicht, >= 32 Zeichen
 
 # Optional: n8n-UI/API hinter eigenem Reverse-Proxy
 N8N_HOST=n8n.example.de
 N8N_WEBHOOK_URL=https://n8n.example.de/
 N8N_BIND=127.0.0.1
+# Nur für Migration bestehender Installationen; neue Routen werden pro
+# Workflow in Administration → Einstellungen → n8n-Automatisierung gepflegt:
+# N8N_WEBHOOK_BASE_URL=http://n8n:5678/webhook
 
 # Optional: Risk-Layer / TCMS
 RISK_LAYER_URL=http://risk-layer:8000
@@ -247,9 +253,55 @@ Mailhog ist ausschließlich Teil des lokalen Dev-Stacks. In Produktion müssen
 `SMTP_HOST`, `SMTP_PORT` und `SMTP_FROM` auf ein echtes SMTP-Relay zeigen;
 `./taxtronik doctor` blockt `mailhog` sowie `localhost:1025`/`127.0.0.1:1025`.
 
+### n8n-Integration
+
+TaxTronik trennt die n8n-Instanz von den eigentlichen Workflow-Zielen:
+Instanz-UI, Management-API (`/api/v1`), Webhook-Präfix
+(`/webhook`) und exakte Production-Webhook-URL eines veröffentlichten
+Workflows sind verschiedene Adressen. Neue und eigene Workflows werden unter
+**Administration → Einstellungen → n8n-Automatisierung** mit ihrer exakten
+Production-URL registriert und abonnieren nur die benötigten Events. Mehrere
+Ziele pro Event werden unabhängig zugestellt. Neue oder geänderte Ziele
+bleiben zunächst deaktivierte Entwürfe: erst synthetisch testen, dann
+unverändert in einem zweiten Speichervorgang aktivieren.
+
+`N8N_WEBHOOK_URL` bestimmt die von n8n angezeigte externe
+Webhook-Basis. `N8N_WEBHOOK_BASE_URL` ist dagegen nur der
+TaxTronik-Legacy-Fallback `<basis>/<event>` und soll bei neuen
+Installationen leer bleiben; der Production-Compose-Default ist deshalb leer.
+Wird er für eine Bestandsmigration gesetzt, ist wie beim Legacy-Callback-Flag
+ein mindestens 32 Zeichen langes `N8N_HMAC_SECRET` Pflicht. Der Wert ersetzt
+keine konkreten Workflow-Ziele.
+Test-URLs mit `/webhook-test/` sind nicht produktionsfähig; der
+Workflow muss in n8n veröffentlicht sein.
+
+Für die Gegenrichtung erzeugt der Assistent ein separates, tenantgebundenes
+Callback-Credential aus Key-ID, einmal angezeigtem Bearer-Token und minimalen
+Scopes. Neue Workflows rufen damit ausschließlich
+`/api/integrations/n8n/v1/*` auf. Der n8n-Management-API-Key und
+das pro Tenant gespeicherte Outbound-HMAC-Secret sind davon unabhängige
+Zugangsdaten. Die globalen Legacy-Callbacks `/api/n8n/*` liefern standardmäßig
+vor jeder Authentifizierung `404`. Nur für eine befristete Bestandsmigration
+werden sie mit `N8N_LEGACY_CALLBACKS_ENABLED=true` und einem mindestens
+32 Zeichen langen `N8N_HMAC_SECRET` freigeschaltet. Beim
+Workflow-Import materialisiert TaxTronik App-Basis, Key-ID und
+Mail-Nicht-Geheimnisse interaktiv; Bearer-, HMAC- und SMTP-Secrets bleiben
+n8n-Credentials. Die App-Basis wird getrennt als **TaxTronik-Adresse aus
+n8n** gespeichert (`BUNDLED`: in Produktion `http://app:3000`, im lokalen
+Dev-Stack `http://host.docker.internal:3000`; extern: eine aus der
+n8n-Laufzeit erreichbare öffentliche Adresse). Die Vorlagen benötigen weder
+`$env` noch die
+editionsabhängigen `$vars` und sind mit n8n Community kompatibel.
+
+Geführtes Setup, eigene Workflows, Eventkatalog und Datenschutz:
+[n8n-Automatisierungen](docs/anwenderdoku/n8n-automatisierungen.md).
+Betrieb und Fehlerdiagnose:
+[Day-2 Operations](docs/operations/day-2-operations.md#n8n).
+
 Reverse Proxy und TLS liegen vor der App. Die Compose-Ports sind auf localhost
 gebunden; der Object-Store bleibt intern. Das nginx-Beispiel enthält den
-Single-Host-Default, Hinweise für `/api/n8n/*`, ein optionales n8n-UI-VHost und
+Single-Host-Default, Hinweise für `/api/integrations/n8n/v1/*` und
+Legacy-`/api/n8n/*`, ein optionales n8n-UI-VHost und
 ein Staff-/Portal-Split-Setup:
 [infra/nginx/taxtronik.conf.example](infra/nginx/taxtronik.conf.example)
 
@@ -260,11 +312,14 @@ Für getrennte Staff-/Mandanten-Domains:
   Mandanten-Magic-Links, PoA- und GwG-Onboarding-Links genutzt.
 - `STAFF_COOKIE_DOMAIN` und `PORTAL_COOKIE_DOMAIN` sind Subdomain-spezifisch,
   nie die Parent-Domain.
-- n8n ruft App-Endpunkte unter `/api/n8n/*` mit HMAC-Signatur auf; `TAXTRONIK_API_URL`
-  in n8n zeigt auf die intern oder per Proxy erreichbare App-Basis-URL.
+- n8n ruft neue App-Endpunkte unter `/api/integrations/n8n/v1/*` mit
+  tenantgebundenem, scoped Callback-Credential auf; TaxTronik materialisiert
+  die intern oder per Proxy erreichbare App-Basis beim Import in die
+  ausgewählten Vorlagen.
 
-Details: [docs/operations/subdomain-trennung.md](docs/operations/subdomain-trennung.md)
-und [infra/n8n/workflows/README.md](infra/n8n/workflows/README.md).
+Details: [docs/operations/subdomain-trennung.md](docs/operations/subdomain-trennung.md),
+[n8n-Anwenderdokumentation](docs/anwenderdoku/n8n-automatisierungen.md) und
+[infra/n8n/workflows/README.md](infra/n8n/workflows/README.md).
 
 Weitere Betriebsrunbooks:
 
@@ -334,7 +389,7 @@ packages/
   db/          Prisma-Schema, Migrationen, RLS/Tenant-Kontext
   evidence/    Audit-Hash-Chain, Archive, Verify-CLI
   http-utils/  Safe Fetch, SSRF-Guards, Netzwerk-Utilities
-  n8n-shared/  HMAC-Signatur für App/Worker -> n8n
+  n8n-shared/  Eventkatalog und HMAC-Signatur für App/Worker -> n8n
   risk-layer/  Zustandsloser §4-Engine-Client (Risk Analysis)
   rss/         RSS-Fetching und Parser
   storage/     S3/SeaweedFS-Client, Retention, Scan-Pipeline

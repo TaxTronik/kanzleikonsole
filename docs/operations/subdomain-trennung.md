@@ -11,7 +11,8 @@ Kanzlei-LAN).
 │ ────────────────────────     │       │ ────────────────────────     │
 │ /staff/* + /api/staff/*      │       │ /portal/* + /api/portal/*    │
 │ /api/auth/staff/*            │       │ /api/auth/portal/*           │
-│ /api/n8n/* (HMAC)            │       │ /poa/sign, /gwg-onboarding   │
+│ /api/integrations/n8n/v1/*   │       │ /poa/sign, /gwg-onboarding   │
+│ /api/n8n/* (Legacy-HMAC)     │       │                              │
 └──────────────┬───────────────┘       └──────────────┬───────────────┘
                │                                      │
                └────────────┬─────────────────────────┘
@@ -43,7 +44,7 @@ portal.kanzlei.example.de.  IN A   <server-ip>
 staff.kanzlei.example.de {
   encode gzip
   # Nur Staff-Pfade durchreichen — Portal-Pfade werfen 404
-  @staffPaths path /staff/* /api/staff/* /api/auth/staff/* /api/n8n/* /api/health /_next/* /favicon.* /static/*
+  @staffPaths path /staff/* /api/staff/* /api/auth/staff/* /api/integrations/n8n/v1/* /api/n8n/* /api/health /_next/* /favicon.* /static/*
   handle @staffPaths {
     reverse_proxy localhost:3000
   }
@@ -111,24 +112,74 @@ fällt nur im Single-Host-Setup auf `NEXTAUTH_URL` zurück.
 ### 4.1 n8n
 
 n8n kann als lokaler Compose-Service laufen oder hinter einem eigenen VHost
-stehen. Für die App ist entscheidend:
+stehen. Dabei vier Adressen getrennt behandeln:
+
+| Adresse             | Beispiel                                     | Sichtbarkeit                                     |
+| ------------------- | -------------------------------------------- | ------------------------------------------------ |
+| Instanz-UI          | `https://n8n.kanzlei.example.de`             | Browserzugriff für berechtigte Workflow-Admins   |
+| Management-API      | `http://n8n:5678/api/v1`                     | App → n8n; bevorzugt nur intern                  |
+| Webhook-Präfix      | `http://n8n:5678/webhook`                    | nur technischer Präfix/Legacy                    |
+| Exakte Workflow-URL | `http://n8n:5678/webhook/taxtronik-anfragen` | App/Worker → genau ein veröffentlichter Workflow |
+
+Für neue Konfigurationen werden die exakten Production-URLs in TaxTronik pro
+Workflow gespeichert. Der globale Wert ist nur ein Legacy-Fallback und bleibt
+bei neuen Installationen leer:
 
 ```env
+# Nur befristet für Outbound-Bestandsmigrationen:
 N8N_WEBHOOK_BASE_URL=http://n8n:5678/webhook
-N8N_HMAC_SECRET=<identisch in App, Worker und n8n>
+# Globaler Callback-Migrationspfad bleibt standardmäßig unsichtbar:
+N8N_LEGACY_CALLBACKS_ENABLED=false
+# Pflicht, sobald die Legacy-URL oder das Callback-Flag aktiv ist (mind. 32 Zeichen):
+N8N_HMAC_SECRET=<starkes zufälliges Secret>
 ```
 
-In n8n selbst:
+Beim Import materialisiert TaxTronik das separat gespeicherte Feld
+**TaxTronik-Adresse aus n8n** als App-Basis
+(`__TAXTRONIK_API_URL__`) und die tenantgebundene Callback-Key-ID
+(`__TAXTRONIK_CALLBACK_KEY_ID__`) automatisch in den ausgewählten
+Workflow-Vorlagen. Die App-Basis muss aus dem n8n-Container erreichbar sein;
+für den Betriebsmodus `BUNDLED` ist in Produktion `http://app:3000` der
+Standard. Im lokalen Dev-Stack, in dem die App auf dem Host läuft, ist es
+`http://host.docker.internal:3000`. Externe oder Cloud-Instanzen verwenden die
+aus ihrer Laufzeit erreichbare Staff-/API-Subdomain. Das Feld ist bewusst
+unabhängig von `NEXTAUTH_URL` und der n8n-Browser-URL. Neue n8n-Callbacks gehen
+nur auf
+`/api/integrations/n8n/v1/*` und verwenden das tenantgebundene
+Callback-Credential aus Key-ID, Bearer-Token und minimalen Scopes. Die
+Legacy-HMAC-Endpunkte `/api/n8n/*` antworten default-off mit `404`. Nur für eine
+befristete Bestandsmigration dürfen sie mit
+`N8N_LEGACY_CALLBACKS_ENABLED=true` und starkem HMAC-Secret aktiviert werden.
+Beide Pfade gehören im Split-Setup auf die Staff/API-Seite, nicht auf das
+öffentliche Mandantenportal.
 
-```env
-TAXTRONIK_API_URL=https://staff.kanzlei.example.de
-N8N_HMAC_SECRET=<identisch>
-```
+Das Bearer-Token selbst gehört als
+`Authorization: Bearer <token>` in ein n8n-Credential vom Typ
+**Generic Header Auth**, nicht in Importfelder oder Workflow-JSON. Der
+mitgelieferte Container blockiert `$env`-Zugriffe aus Nodes; die
+Vorlagen benötigen auch keine editionsabhängigen `$vars` und bleiben
+damit Community-kompatibel.
 
-`TAXTRONIK_API_URL` darf auch eine interne URL sein (z. B.
-`http://app:3000` im Compose-Netz). Extern erreichbare n8n-Calls gehen nur auf
-`/api/n8n/*`; diese Endpunkte sind HMAC-signiert und gehören im Split-Setup auf
-die Staff/API-Seite, nicht auf das öffentliche Mandantenportal.
+Die n8n-UI/API benötigt einen eigenen VHost; sie darf nicht unter der
+Portal-Subdomain veröffentlicht werden. Für den Compose-Service setzt
+`N8N_HOST=n8n.kanzlei.example.de` und
+`N8N_WEBHOOK_URL=https://n8n.kanzlei.example.de/` die von n8n
+angezeigte externe Webhook-Basis. Hinter einem Proxy zusätzlich die
+vertrauenswürdigen Proxy-Hops und `X-Forwarded-For`,
+`X-Forwarded-Host` sowie `X-Forwarded-Proto` korrekt
+konfigurieren. Anleitung:
+[n8n Webhook URL hinter Reverse Proxy](https://docs.n8n.io/hosting/configuration/configuration-examples/webhook-url/).
+
+Wenn App und n8n dasselbe Compose-Netz nutzen, dürfen die in TaxTronik
+gespeicherten Ziele die interne URL `http://n8n:5678/webhook/...`
+verwenden, auch wenn n8n in der UI eine öffentliche Production-URL anzeigt.
+Pfad und Workflow müssen identisch sein. Außerhalb eines isolierten internen
+Netzes ist HTTPS Pflicht; HMAC verschlüsselt den Payload nicht.
+
+Der optionale n8n-API-Key dient nur der Workflow-Verwaltung. Er ist weder das
+Outbound-`N8N_HMAC_SECRET` noch das tenantgebundene Callback-Token.
+API-Zugriff bevorzugt intern halten und auf minimale Workflow-Scopes
+begrenzen.
 
 ### 5. Firewall (optional)
 

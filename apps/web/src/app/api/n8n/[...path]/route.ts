@@ -7,13 +7,17 @@
 // =============================================================================
 
 import { NextResponse, type NextRequest } from 'next/server';
-import { verifyN8nSignature, n8nRejectResponse } from '@/server/n8n/verify';
+import { n8nRejectResponse, runReservedN8nRequest, verifyN8nSignature } from '@/server/n8n/verify';
 import { log } from '@/server/logger';
+import { legacyN8nCallbackDisabledResponse } from '@/server/n8n/legacy-access';
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
+  const disabled = legacyN8nCallbackDisabledResponse();
+  if (disabled) return disabled;
+
   const ver = await verifyN8nSignature(request);
   if (!ver.ok) {
     // Audit Round 14, Finding 2: Generische Antwort, damit der Client nicht
@@ -51,8 +55,10 @@ export async function POST(
   // Handler bekommen `payload` als zweites Argument — KEIN erneutes
   // request.json()/request.text() im Handler-Body!
   void payload;
-  return NextResponse.json(
-    { error: `Handler für '${action}' noch nicht implementiert.` },
-    { status: 501 },
+  return runReservedN8nRequest(ver, async () =>
+    NextResponse.json(
+      { error: `Handler für '${action}' noch nicht implementiert.` },
+      { status: 501 },
+    ),
   );
 }

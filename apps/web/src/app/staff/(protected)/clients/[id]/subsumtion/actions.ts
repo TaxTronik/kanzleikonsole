@@ -6,6 +6,7 @@ import { headers } from 'next/headers';
 import {
   requireSubsumtionAccess,
   requireStaffSession,
+  ActionError,
   ForbiddenError,
   toActionError,
   type ActionErrorResult,
@@ -589,13 +590,27 @@ const SendResearchSchema = ResearchSchema.extend({ finalText: z.string().min(1).
 /** Sendet den (geprüften) anonymisierten Auftrag an n8n. */
 export async function sendResearchAction(
   input: z.infer<typeof SendResearchSchema>,
-): Promise<OkActionResult<{ requestId: string }>> {
+): Promise<OkActionResult<{ requestId: string; eventId: string; deliveryStatus: 'PENDING' }>> {
   try {
     const parsed = SendResearchSchema.parse(input);
     const { ctx, clientId } = await guardAnalysis(parsed.analysisId);
     const res = await sendResearchToN8n(ctx, parsed);
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${parsed.analysisId}`);
-    return { ok: true, requestId: res.requestId };
+    if (res.delivery.status !== 'PENDING' || !res.delivery.eventId) {
+      const message =
+        res.delivery.status === 'UNROUTED'
+          ? 'Kein aktiver n8n-Workflow ist dem Recherche-Event zugeordnet. Bitte das n8n-Setup prüfen.'
+          : res.delivery.status === 'SKIPPED'
+            ? 'Die n8n-Integration ist deaktiviert oder unvollständig konfiguriert.'
+            : 'Der Rechercheauftrag wurde gespeichert, konnte aber nicht zur n8n-Zustellung eingeplant werden.';
+      throw new ActionError(message);
+    }
+    return {
+      ok: true,
+      requestId: res.requestId,
+      eventId: res.delivery.eventId,
+      deliveryStatus: res.delivery.status,
+    };
   } catch (e) {
     return toActionError(e);
   }

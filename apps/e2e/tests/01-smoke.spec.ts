@@ -40,9 +40,9 @@ test.describe('Smoke', () => {
     await expect(page.getByLabel('E-Mail-Adresse')).toBeVisible();
   });
 
-  test('n8n-Endpoint blockt ohne HMAC mit 401', async ({ request }) => {
+  test('globale Legacy-n8n-Endpunkte sind standardmäßig unsichtbar', async ({ request }) => {
     const res = await request.get('/api/n8n/overdue-requests');
-    expect(res.status()).toBe(401);
+    expect(res.status()).toBe(404);
   });
 
   test('Geschützte Staff-Route ohne Login → Redirect zu /staff/login', async ({ page }) => {

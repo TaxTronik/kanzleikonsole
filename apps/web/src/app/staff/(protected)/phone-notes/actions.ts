@@ -116,12 +116,16 @@ export async function createPhoneNoteAction(
   }
 
   if (data.forwardToStaff) {
-    emitN8nEvent('phone_note.created', {
-      tenantId,
-      noteId,
-      forwardToStaff: data.forwardToStaff,
-      subject: data.subject,
-    });
+    await emitN8nEvent(
+      'phone_note.created',
+      {
+        tenantId,
+        noteId,
+        forwardToStaff: data.forwardToStaff,
+        subject: data.subject,
+      },
+      { tenantId },
+    );
   }
 
   revalidatePath('/staff/phone-notes');

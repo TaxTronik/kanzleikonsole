@@ -561,6 +561,7 @@ describe('sendForSignatureAction', () => {
 describe('revokePoaAction — Rollen-Gate', () => {
   it('verweigert Widerruf für Nicht-ADMIN/PARTNER vor dem Datensatz-Lookup', async () => {
     const tx = {
+      $queryRaw: vi.fn(),
       powerOfAttorney: {
         findUnique: vi.fn(),
         update: vi.fn(),
@@ -581,7 +582,79 @@ describe('revokePoaAction — Rollen-Gate', () => {
     await expect(revokePoaAction(fd)).rejects.toThrow(
       'Vollmachten dürfen nur von ADMIN/PARTNER widerrufen werden.',
     );
+    expect(tx.$queryRaw).not.toHaveBeenCalled();
     expect(tx.powerOfAttorney.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('schreibt den Widerrufszeitpunkt atomar mit der PostgreSQL-Uhr', async () => {
+    const poaId = '7e6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e6f';
+    const queryRaw = vi
+      .fn()
+      .mockResolvedValueOnce([{ clientId: 'client-1', status: 'SENT' }])
+      .mockResolvedValueOnce([{ id: poaId }]);
+    const update = vi.fn();
+    const tx = {
+      $queryRaw: queryRaw,
+      powerOfAttorney: {
+        findUnique: vi.fn().mockResolvedValue({ clientId: 'client-1', status: 'SENT' }),
+        update,
+      },
+    };
+    m.withStaff.mockImplementation(async (fn: (txArg: unknown, ctx: unknown) => unknown) =>
+      fn(tx, {
+        tenantId: 'tenant-1',
+        staffId: 'staff-1',
+        session: {},
+      }),
+    );
+    const fd = new FormData();
+    fd.set('poaId', poaId);
+    fd.set('reason', 'Mandant hat widerrufen');
+
+    await revokePoaAction(fd);
+
+    expect(queryRaw).toHaveBeenCalledTimes(2);
+    const lockSql = (queryRaw.mock.calls[0]![0] as TemplateStringsArray).join('');
+    const updateSql = (queryRaw.mock.calls[1]![0] as TemplateStringsArray).join('');
+    expect(lockSql).toContain('FOR UPDATE');
+    expect(lockSql).toContain('"tenant_id" =');
+    expect(updateSql).toContain('"revoked_at" = statement_timestamp()');
+    expect(updateSql).toContain('"status" = \'REVOKED\'');
+    expect(updateSql).toContain('"status" <> \'REVOKED\'');
+    expect(updateSql).toContain('"tenant_id" =');
+    expect(update).not.toHaveBeenCalled();
+    expect(m.evidenceRecord).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        action: 'poa.revoke',
+        resourceId: poaId,
+      }),
+    );
+  });
+
+  it('bricht ohne Evidenz ab, wenn das atomare UPDATE keine Zeile liefert', async () => {
+    const poaId = '7e6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e6f';
+    const tx = {
+      $queryRaw: vi
+        .fn()
+        .mockResolvedValueOnce([{ clientId: 'client-1', status: 'SENT' }])
+        .mockResolvedValueOnce([]),
+    };
+    m.withStaff.mockImplementation(async (fn: (txArg: unknown, ctx: unknown) => unknown) =>
+      fn(tx, {
+        tenantId: 'tenant-1',
+        staffId: 'staff-1',
+        session: {},
+      }),
+    );
+    const fd = new FormData();
+    fd.set('poaId', poaId);
+    fd.set('reason', 'Mandant hat widerrufen');
+
+    await expect(revokePoaAction(fd)).rejects.toThrow(
+      'Vollmacht konnte nicht widerrufen werden. Bitte laden Sie neu.',
+    );
+    expect(m.evidenceRecord).not.toHaveBeenCalled();
   });
 });
 

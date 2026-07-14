@@ -202,7 +202,7 @@ export async function closeRequestAction(formData: FormData): Promise<void> {
     });
   });
 
-  emitN8nEvent('request.closed', { tenantId, requestId });
+  await emitN8nEvent('request.closed', { tenantId, requestId }, { tenantId });
   revalidatePath('/staff/requests');
 }
 

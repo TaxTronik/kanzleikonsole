@@ -381,24 +381,41 @@ export async function revokePoaAction(formData: FormData): Promise<void> {
       if (!isStaffAdmin(session)) {
         throw new ActionError('Vollmachten dürfen nur von ADMIN/PARTNER widerrufen werden.');
       }
-      const before = await tx.powerOfAttorney.findUnique({
-        where: { id: parsed.data.poaId },
-        select: { clientId: true, status: true },
-      });
+      // Die Zeile wird vor Berechtigungsprüfung und Widerruf gesperrt. So
+      // startet das folgende UPDATE erst nach einem eventuell konkurrierenden
+      // Signatur-/Widerrufsvorgang und seine statement_timestamp()-Zeit kann
+      // nicht hinter einem gerade geschriebenen signed_at liegen.
+      const [before] = await tx.$queryRaw<Array<{ clientId: string; status: string }>>`
+        SELECT "client_id" AS "clientId", "status"::text AS "status"
+          FROM "power_of_attorney"
+         WHERE "id" = ${parsed.data.poaId}::uuid
+           AND "tenant_id" = ${tenantId}::uuid
+         FOR UPDATE
+      `;
       if (!before) throw new ActionError('Vollmacht nicht gefunden.');
       await assertClientAccessTx(tx, session, before.clientId);
       if (before.status === 'REVOKED') throw new ActionError('Bereits widerrufen.');
-      const updated = await tx.powerOfAttorney.update({
-        where: { id: parsed.data.poaId },
-        data: {
-          status: 'REVOKED',
-          revokedAt: new Date(),
-          revokedReason: parsed.data.reason,
-          // Token entwerten
-          signingTokenHash: null,
-          signingOtpHash: null,
-        },
-      });
+      // Der Trigger vergleicht revoked_at mit DB-generierten Lebenszykluszeiten.
+      // Deshalb muss auch der Widerruf in genau diesem UPDATE von der DB-Uhr
+      // stammen; eine JS-Date würde bei Host-/DB-Uhrabweichung sporadisch als
+      // rückdatiert erscheinen. Das einzelne Statement bleibt zugleich
+      // atomar mit Statuswechsel, Begründung und Token-Entwertung.
+      const [updated] = await tx.$queryRaw<Array<{ id: string }>>`
+        UPDATE "power_of_attorney"
+           SET "status" = 'REVOKED',
+               "revoked_at" = statement_timestamp(),
+               "revoked_reason" = ${parsed.data.reason},
+               "signing_token_hash" = NULL,
+               "signing_otp_hash" = NULL,
+               "updated_at" = statement_timestamp()
+         WHERE "id" = ${parsed.data.poaId}::uuid
+           AND "tenant_id" = ${tenantId}::uuid
+           AND "status" <> 'REVOKED'
+         RETURNING "id"
+      `;
+      if (!updated) {
+        throw new ActionError('Vollmacht konnte nicht widerrufen werden. Bitte laden Sie neu.');
+      }
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',

@@ -136,14 +136,18 @@ export async function POST(req: NextRequest) {
     },
   );
 
-  emitN8nEvent('document.uploaded', {
-    tenantId,
-    documentId: docRow.id,
-    classification: 'GENERAL',
-    clientId,
-    isGobd: false,
-    source: 'portal',
-  });
+  await emitN8nEvent(
+    'document.uploaded',
+    {
+      tenantId,
+      documentId: docRow.id,
+      classification: 'GENERAL',
+      clientId,
+      isGobd: false,
+      source: 'portal',
+    },
+    { tenantId },
+  );
 
   return NextResponse.json({
     ok: true,

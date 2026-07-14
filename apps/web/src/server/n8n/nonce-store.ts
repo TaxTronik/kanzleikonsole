@@ -11,29 +11,59 @@
 // nicht stillschweigend übergangen werden.
 // =============================================================================
 
-// L-5: Singleton-Redis.
+import { randomUUID } from 'node:crypto';
 import { log } from '@/server/logger';
 import { getRedis } from '@/server/redis';
 
-const NONCE_TTL_SEC = 600; // 10 Minuten — > Timestamp-Fenster (2 × 5 min)
+const NONCE_TTL_SEC = 600;
+const RELEASE_IF_OWNED_SCRIPT = `
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+end
+return 0
+`;
+
+export interface N8nNonceReservation {
+  key: string;
+  owner: string;
+}
 
 /**
- * Prüft + reserviert eine Signatur als bereits gesehen. Returnt:
- *  - `consumed: true` beim ersten Mal (Request darf passieren)
- *  - `consumed: false` beim Replay (Request muss abgewiesen werden)
+ * Reserviert eine bereits authentifizierte Signatur unmittelbar vor der
+ * Operation. Returnt die owner-gebundene Reservation beim ersten Aufruf,
+ * `false` beim Replay und `null`, wenn Redis nicht erreichbar ist.
  *
  * Wenn Redis nicht erreichbar ist, returnt `null` — Caller entscheidet
  * dann strikt: 503 zurück, kein Pass-Through.
  */
-export async function consumeNonce(signature: string): Promise<boolean | null> {
+export async function reserveNonce(signature: string): Promise<N8nNonceReservation | false | null> {
   const r = getRedis();
   if (!r) return null;
+
+  const reservation = {
+    key: `n8n-nonce:${signature}`,
+    owner: randomUUID(),
+  };
+
   try {
-    // SET key value NX EX <ttl> — atomar, gibt 'OK' nur beim ersten Aufruf zurück
-    const result = await r.set(`n8n-nonce:${signature}`, '1', 'EX', NONCE_TTL_SEC, 'NX');
-    return result === 'OK';
+    const result = await r.set(reservation.key, reservation.owner, 'EX', NONCE_TTL_SEC, 'NX');
+    return result === 'OK' ? reservation : false;
   } catch (e) {
-    log.warn({ component: 'n8n-nonce', err: (e as Error).message }, 'consume failed');
+    log.warn({ component: 'n8n-nonce', err: (e as Error).message }, 'reserve failed');
     return null;
+  }
+}
+
+/** Gibt ausschliesslich die von diesem Aufruf gehaltene Reservation frei. */
+export async function releaseNonce(reservation: N8nNonceReservation): Promise<boolean> {
+  const r = getRedis();
+  if (!r) return false;
+
+  try {
+    const result = await r.eval(RELEASE_IF_OWNED_SCRIPT, 1, reservation.key, reservation.owner);
+    return result === 1;
+  } catch (e) {
+    log.warn({ component: 'n8n-nonce', err: (e as Error).message }, 'release failed');
+    return false;
   }
 }

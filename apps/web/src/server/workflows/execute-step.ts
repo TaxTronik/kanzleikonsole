@@ -300,7 +300,9 @@ export async function executeWorkflowStep(opts: ExecuteOpts): Promise<ExecuteRes
 
   // M-N2: n8n-Events erst nach erfolgreichem Commit feuern.
   if (result.ok) {
-    for (const ev of n8nEvents) emitN8nEvent(ev.event, ev.payload, { tenantId });
+    await Promise.all(
+      n8nEvents.map((event) => emitN8nEvent(event.event, event.payload, { tenantId })),
+    );
   }
 
   // Befund 4: Versand NACH dem Commit. allSettled-Ergebnisse werden jetzt

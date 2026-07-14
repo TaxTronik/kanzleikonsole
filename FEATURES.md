@@ -817,7 +817,8 @@ Kanzlei nicht.
   hervorgehobenen, **editierbaren Vorschau**; das Platzhalter→Original-Mapping
   verlässt die Kanzlei nie (RLS-geschützt gespeichert)
 - **Kanzleiweite, selbst anlegbare Prompt-Vorlagen**
-- **Rechercheergebnisse-Ablage**: signierter n8n-Inbound (HMAC + Replay-Nonce);
+- **Rechercheergebnisse-Ablage**: tenantgebundener n8n-Callback
+  (Bearer-Credential, `research:write`-Scope, einmalige Request-ID);
   per Korrelations-Token automatische Zuordnung zur Ursprungs-Markierung +
   De-Anonymisierung, sonst heuristischer Zuordnungs-Vorschlag (Normanker-/
   Begriff-Overlap)
@@ -1108,7 +1109,8 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   Terminanfragen, BWA-Ansicht, BWA-Planung, Dokument-Upload,
   Stammdaten-Self-Service, Anlieferungs-Status
 - **Inbetriebnahme-Checkliste** — prüft Kanzlei-Kontaktdaten,
-  Modul-/Rechnungsmodus-Entscheidung und ersten GwG-aktiven Mandanten;
+  Modul-/Rechnungsmodus-Entscheidung, den eingerichteten oder bewusst
+  deaktivierten n8n-Pfad und den ersten GwG-aktiven Mandanten;
   begleitendes Anwenderdoku-Kapitel „Erste Schritte"
 - **Zugriffsmodell** (`OPEN` / `RESTRICTED`) — `OPEN` (Default): jeder aktive
   Mitarbeiter darf mandantenübergreifend arbeiten (Audit-Log trägt die
@@ -1140,7 +1142,18 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
 - Status-Maschinen-Definitionen
 - SMTP-Konfiguration + Test-Mail
 - TSA-Konfiguration (RFC-3161)
-- n8n-Bridge (HMAC-Secret, Workflow-Import)
+- **Geführte n8n-Automatisierung** — getrennte Instanz-UI/API-Verbindung,
+  workflow-spezifische Production-Webhook-Ziele und Event-Abonnements;
+  verwaltete sowie eigene Workflows, synthetische Tests, Fan-out,
+  Routing-Modi `DISABLED`/`LEGACY`/`EXPLICIT`
+  und differenzierte Zustell-/Aggregatstatus; der selektive Import
+  materialisiert die separat gespeicherte, aus n8n erreichbare App-URL,
+  Callback-Key-ID und Mail-Nicht-Geheimnisse ohne editionsabhängige n8n Custom
+  Variables, Secrets bleiben Credentials; neue/geänderte Routen durchlaufen
+  fail-closed **Entwurf → Test → unveränderte Aktivierung**
+- Zentraler n8n-Eventkatalog mit deutschem Label, Kategorie, Beschreibung,
+  Schutzklasse/PII-Hinweis und synthetischem Beispielpayload für alle
+  statischen Events
 
 ## UI-Querschnitt
 
@@ -1185,7 +1198,9 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   (05:30 UTC, holt alle aktiven RSS-Feeds aus `rss_feed`),
   `reminders-daily` (06:45 UTC, schickt Notifications für
   Einspruchsfristen, fällige Wiedervorlagen, überfällige Pendelordner),
-  `n8n-deliver` + `n8n-outbox-reconcile` (HMAC-signierter Outbox-Versand),
+  `n8n-deliver` + `n8n-outbox-reconcile` (HMAC-signierter,
+  workflow-spezifischer Outbox-Versand mit stabiler Event-/Delivery-ID,
+  Fan-out und Retry),
   `magic-link-cleanup`, `dsgvo-retention`, `poa-expiry-check`,
   `risk-analyse-llm` (on-demand LLM-Vertiefung der Subsumtion),
   `backup-run` (täglicher Postgres-Dump direkt nach S3),
@@ -1195,12 +1210,16 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   ausschließlich synchron beim Upload-Commit in `@taxtronik/storage`.
   Die Worker-Jobs haben eigene Unit-Tests
   (`apps/worker/src/jobs/__tests__/`)
-- n8n als Workflow-Engine für Mail-Versand und Eskalationen (signierte
-  HMAC-Webhooks, n8n liest via `/api/n8n/*` mit Token,
-  respektiert Portal-Notification-Setting per `notifiableContacts`-Array)
+- n8n als Workflow-Engine für Mail-Versand und Eskalationen: App → n8n ist
+  HMAC-signiert; n8n → `/api/integrations/n8n/v1/*` nutzt ein
+  tenantgebundenes Bearer-Credential mit minimalen Scopes und einmaliger
+  Request-ID. n8n hat keinen direkten Datenbankzugriff; optionale
+  n8n-Management-API nur für Workflow-Verwaltung,
+  respektiert Portal-Notification-Setting per `notifiableContacts`-Array
 - Getrenntes Staff-/Mandantenportal-Setup über `NEXTAUTH_URL`,
   `PORTAL_PUBLIC_URL`, `STAFF_COOKIE_DOMAIN` und `PORTAL_COOKIE_DOMAIN`;
-  `/api/n8n/*` gehört dabei auf die Staff/API-Seite oder eine interne App-URL
+  `/api/integrations/n8n/v1/*` sowie Legacy-`/api/n8n/*`
+  gehören dabei auf die Staff/API-Seite oder eine interne App-URL
 - SeaweedFS für Document-Storage mit Object-Lock-Buckets
 - ClamAV-Synchron-Scan + Helper `commitDocumentFromBytes` für Public-Wizard-
   Uploads
@@ -1209,7 +1228,8 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   `@taxtronik/crypto` (AES-256-GCM Secret-Box mit HKDF-domain-getrenntem Key),
   `@taxtronik/http-utils` (SSRF-Guard + DNS-pinning-safeFetch via undici),
   `@taxtronik/rss` (Parser + Streaming-Body-Cap),
-  `@taxtronik/n8n-shared` (Event-Whitelist + HMAC-Sign mit Replay-Nonce),
+  `@taxtronik/n8n-shared` (driftfreier Eventkatalog/Whitelist +
+  HMAC-Sign mit Replay-Nonce),
   `@taxtronik/risk-layer` (zustandsloser §4-Engine-Client: Schema/Mapping/
   Resilienz mit Circuit-Breaker, reiner Transport),
   `@taxtronik/elster` (typisierter Client zur privaten eric-bridge,
@@ -1283,7 +1303,9 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   Token-Probing-Orakel)
 - **Reverse-Proxy-Trust-Boundary**: `TRUST_PROXY_REQUIRED`-ENV gate für
   `getClientIp` — kein blindes XFF-Vertrauen ohne explizite Operator-Zusage
-- **Mail-Pipeline**: HMAC-Outbound für n8n inkl. event + 128-Bit-Nonce,
+- **Mail-Pipeline**: HMAC-Outbound für n8n inkl. Event, stabiler
+  `eventId`/`deliveryId` + 128-Bit-Nonce; Empfänger
+  deduplizieren at-least-once-Retries nach `deliveryId`,
   SMTP mit `requireTLS` + `minVersion TLSv1.2`, `from`/`to`/`subject`/
   `replyTo` durch CRLF-Stripping, Markdown-Renderer escapt user-supplied
   Variablen vor `{{var}}`-Substitution
@@ -1291,15 +1313,16 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   Subsumtion werden vor dem n8n-Relay deterministisch (bekannte Stammdaten) +
   heuristisch (Firma/IBAN/Steuernummer/Betrag/Datum/E-Mail) geschwärzt,
   editierbare Vorschau, das Platzhalter→Original-Mapping bleibt RLS-lokal;
-  signierter n8n-Inbound (HMAC + Timestamp-Fenster + Redis-Replay-Nonce,
-  fail-closed)
+  scoped n8n-Inbound (tenantgebundene Key-ID + Bearer-Token + einmalige
+  Request-ID im Redis-Replay-Store, fail-closed)
 - **Security Policy**: `SECURITY.md` mit vertraulichem Reporting-Kanal
   (E-Mail), Response-SLA (2/5 Werktage), Scope-Definition und Hinweis auf
   ADR-0002–0010 als Secure-by-Design-Grundlage
 - **Container-Hardening**: `cap_drop: ALL` + `no-new-privileges` + `read_only`-
   Root-FS auf App/Worker mit `tmpfs:/tmp`, alle Infra-Ports an `127.0.0.1`,
   App/n8n hinter Reverse-Proxy (NGINX-Beispiel-Konfig in `infra/nginx/`;
-  mit Hinweisen für `/api/n8n/*`, separaten n8n-VHost und Staff-/Portal-Split);
+  mit Hinweisen für `/api/integrations/n8n/v1/*`,
+  Legacy-`/api/n8n/*`, separaten n8n-VHost und Staff-/Portal-Split);
   das Beispiel setzt bewusst keine eigenen Security-`add_header`-Zeilen — die
   Header kommen aus der App, ein nginx-seitiges `add_header` würde u. a. die
   token-spezifische `no-referrer`-Policy überschreiben)

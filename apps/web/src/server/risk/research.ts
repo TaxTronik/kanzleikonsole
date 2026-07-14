@@ -18,7 +18,12 @@ import {
   type TxClient,
 } from '@taxtronik/db';
 import { prismaOwner } from '@/server/db/prisma-owner';
-import { enqueueN8nEvent } from '@/server/n8n/outbox';
+import { enqueueN8nEvent, type N8nEnqueueResult } from '@/server/n8n/outbox';
+import {
+  claimN8nCallbackReceipt,
+  setN8nCallbackReceiptResult,
+  type N8nCallbackReceiptKey,
+} from '@/server/n8n/callback-receipts';
 import { evidenceService } from '@/server/container';
 import { notify } from '@/server/notifications/service';
 import { anonymize, deanonymize } from './anonymize';
@@ -162,7 +167,7 @@ export async function previewResearch(
 export async function sendResearchToN8n(
   ctx: TenantContext,
   input: ResearchInput & { finalText: string },
-): Promise<{ requestId: string; sentText: string }> {
+): Promise<{ requestId: string; sentText: string; delivery: N8nEnqueueResult }> {
   const prepared = await withTenantContext(ctx, async (tx) => {
     const { analysis, marking, client, contacts, rawText, rechtsfrage, normAnker, governanceTyp } =
       await buildRaw(tx, ctx.tenantId, input);
@@ -228,13 +233,26 @@ export async function sendResearchToN8n(
 
   // Event NACH dem Commit einreihen. researchRequestId = opaker Korrelations-
   // Token; der Payload enthält KEINE Klartext-Mandantendaten.
-  await enqueueN8nEvent(
+  const delivery = await enqueueN8nEvent(
     'risk.research_requested',
     { researchRequestId: prepared.requestId, ...prepared.payload },
     { tenantId: ctx.tenantId },
   );
 
-  return { requestId: prepared.requestId, sentText: prepared.sentText };
+  // Der explizite Benutzerbefehl darf UNROUTED/SKIPPED nicht als erfolgreich
+  // darstellen. Der Auftrag bleibt als nachvollziehbare Historie erhalten,
+  // bekommt aber einen ehrlichen FAILED-Status; die Action zeigt die konkrete
+  // Setup-Ursache an. PENDING ist bereits durable und wird ggf. reconciled.
+  if (delivery.status !== 'PENDING') {
+    await withTenantContext(ctx, (tx) =>
+      tx.riskResearchRequest.update({
+        where: { id: prepared.requestId },
+        data: { status: 'FAILED' },
+      }),
+    );
+  }
+
+  return { requestId: prepared.requestId, sentText: prepared.sentText, delivery };
 }
 
 // --- Inbound (von n8n) -------------------------------------------------------
@@ -254,7 +272,8 @@ export interface InboundResult {
  */
 export async function receiveResearchResult(
   input: InboundResult,
-): Promise<{ resultId: string } | null> {
+  callbackReceipt?: N8nCallbackReceiptKey,
+): Promise<{ resultId: string; duplicate: boolean } | null> {
   let tenantId = input.tenantId ?? null;
   let markingId: string | null = null;
   let body = input.body;
@@ -290,6 +309,19 @@ export async function receiveResearchResult(
 
   // Schreiben unter SYSTEM-Kontext → RLS-WITH-CHECK greift (Defense in Depth).
   const result = await withSystemContext(tenantId, async (tx) => {
+    if (callbackReceipt) {
+      const receipt = await claimN8nCallbackReceipt(tx, {
+        ...callbackReceipt,
+        tenantId,
+      });
+      if (receipt.duplicate) {
+        if (!receipt.resultId) {
+          throw new Error('completed research callback receipt has no result id');
+        }
+        return { id: receipt.resultId, duplicate: true };
+      }
+    }
+
     if (input.researchRequestId) {
       await tx.riskResearchRequest.updateMany({
         where: { id: input.researchRequestId, tenantId },
@@ -308,6 +340,9 @@ export async function receiveResearchResult(
       },
       select: { id: true },
     });
+    if (callbackReceipt) {
+      await setN8nCallbackReceiptResult(tx, { ...callbackReceipt, tenantId }, created.id);
+    }
     // Inbound von n8n — kein User. SYSTEM-Akteur in unserer Chain.
     await evidenceService.record(tx, {
       tenantId,
@@ -339,9 +374,9 @@ export async function receiveResearchResult(
       resourceType: 'risk_research_result',
       resourceId: created.id,
     });
-    return created;
+    return { id: created.id, duplicate: false };
   });
-  return { resultId: result.id };
+  return { resultId: result.id, duplicate: result.duplicate };
 }
 
 // --- Intelligente Zuordnung (für die Ablage-UI) ------------------------------

@@ -177,6 +177,24 @@ function signedAtAfterSend(sent: { sentAt: Date | null }): Date {
   return new Date(sent.sentAt.getTime() + 1_000);
 }
 
+async function revokeWithDatabaseClock(id: string, reason: string) {
+  const [revoked] = await owner.$queryRaw<Array<{ id: string; revokedAt: Date }>>(Prisma.sql`
+    UPDATE "power_of_attorney"
+       SET "status" = 'REVOKED',
+           "revoked_at" = statement_timestamp(),
+           "revoked_reason" = ${reason},
+           "signing_token_hash" = NULL,
+           "signing_otp_hash" = NULL,
+           "updated_at" = statement_timestamp()
+     WHERE "id" = ${id}::uuid
+       AND "tenant_id" = ${tenantId}::uuid
+       AND "status" <> 'REVOKED'
+     RETURNING "id", "revoked_at" AS "revokedAt"
+  `);
+  if (!revoked) throw new Error('Test-Fixture: Widerruf hat keine Zeile aktualisiert.');
+  return revoked;
+}
+
 async function makeLegacy(
   status: 'SENT' | 'SIGNED',
   opts: { prepopulatedEvidence?: boolean } = {},
@@ -835,12 +853,8 @@ describeWithDatabase('PoA-DB-Invarianten: Signatur und Terminalstatus', () => {
     ).rejects.toThrow(/Widerruf/);
 
     const revokedDraft = await makeDraft();
-    await expect(
-      owner.powerOfAttorney.update({
-        where: { id: revokedDraft.id },
-        data: { status: 'REVOKED', revokedAt: new Date(), revokedReason: 'Widerruf' },
-      }),
-    ).resolves.toBeTruthy();
+    const revoked = await revokeWithDatabaseClock(revokedDraft.id, 'Widerruf');
+    expect(revoked.revokedAt.getTime()).toBeGreaterThanOrEqual(revokedDraft.createdAt.getTime());
     await expect(
       owner.powerOfAttorney.update({
         where: { id: revokedDraft.id },
@@ -850,6 +864,18 @@ describeWithDatabase('PoA-DB-Invarianten: Signatur und Terminalstatus', () => {
     await expect(
       owner.powerOfAttorney.update({ where: { id: revokedDraft.id }, data: { status: 'DRAFT' } }),
     ).rejects.toThrow(/Statuswechsel/);
+
+    const backdatedRevoke = await makeDraft();
+    await expect(
+      owner.powerOfAttorney.update({
+        where: { id: backdatedRevoke.id },
+        data: {
+          status: 'REVOKED',
+          revokedAt: new Date(backdatedRevoke.createdAt.getTime() - 1_000),
+          revokedReason: 'Rueckdatierter Widerruf',
+        },
+      }),
+    ).rejects.toThrow(/Widerrufszeitpunkt/);
 
     const signed = await makeDraft();
     const { sent, snapshot } = await sendValid(signed);
@@ -879,12 +905,7 @@ describeWithDatabase('PoA-DB-Invarianten: Legacy-Kompatibilität', () => {
         data: { signingOtpHash: 'legacy-otp', signingOtpAttempts: 1 },
       }),
     ).resolves.toBeTruthy();
-    await expect(
-      owner.powerOfAttorney.update({
-        where: { id: poa.id },
-        data: { status: 'REVOKED', revokedAt: new Date(), revokedReason: 'Legacy-Widerruf' },
-      }),
-    ).resolves.toBeTruthy();
+    await expect(revokeWithDatabaseClock(poa.id, 'Legacy-Widerruf')).resolves.toBeTruthy();
   });
 
   it('Legacy-SENT muss separat neu versendet werden, bevor SIGNED zulässig ist', async () => {

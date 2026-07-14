@@ -57,15 +57,25 @@ const PUBLIC_PATHS = new Set<string>([
   '/api/auth', // Auth.js-Routen (alles unter /api/auth/*)
 ]);
 
-// Pfade, die n8n via signiertem HMAC-Token erreicht (eigener Auth-Pfad).
+// Default-off Legacy-Pfad; nur explizit migrierte Alt-Workflows erreichen
+// dahinter noch den globalen HMAC-Auth-Handler.
 const N8N_PATH_PREFIX = '/api/n8n';
 
 export function proxy(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
   const requestId = crypto.randomUUID();
 
-  // 1. n8n-Webhook-Endpoints umgehen die Auth-Cookie-Logik (HMAC im Handler).
-  if (pathname.startsWith(N8N_PATH_PREFIX)) {
+  // 1. Globale Legacy-Callbacks sind default-off und werden bereits vor dem
+  // Route-Handler für jede HTTP-Methode als 404 verborgen. Der Handler-Gate
+  // bleibt als Defense in Depth bestehen. Nur der exakte String "true" darf
+  // den alten HMAC-Auth-Pfad erreichen.
+  if (pathname === N8N_PATH_PREFIX || pathname.startsWith(`${N8N_PATH_PREFIX}/`)) {
+    if (process.env['N8N_LEGACY_CALLBACKS_ENABLED'] !== 'true') {
+      return new NextResponse(null, {
+        status: 404,
+        headers: { 'cache-control': 'no-store' },
+      });
+    }
     return forwardWithHeaders(request, { requestId });
   }
 

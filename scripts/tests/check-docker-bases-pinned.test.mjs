@@ -60,9 +60,12 @@ assert.throws(
   /\/opt\/yarn-/,
 );
 
-const guardedComposeSecrets = REQUIRED_COMPOSE_SECRETS.map(
-  (secret) => `${secret}: \${${secret}:?${secret} nicht gesetzt}`,
-).join('\n');
+const guardedComposeSecrets = [
+  ...REQUIRED_COMPOSE_SECRETS.map((secret) => `${secret}: \${${secret}:?${secret} nicht gesetzt}`),
+  "N8N_LEGACY_CALLBACKS_ENABLED: '${N8N_LEGACY_CALLBACKS_ENABLED:-false}'",
+  'N8N_WEBHOOK_BASE_URL: ${N8N_WEBHOOK_BASE_URL:-}',
+  'N8N_HMAC_SECRET: ${N8N_HMAC_SECRET:-}',
+].join('\n');
 assert.equal(checkRequiredComposeSecrets(guardedComposeSecrets), true);
 assert.throws(
   () =>
@@ -81,5 +84,26 @@ assert.throws(
     ),
   /N8N_ENCRYPTION_KEY nicht/,
 );
+assert.throws(
+  () =>
+    checkRequiredComposeSecrets(
+      guardedComposeSecrets.replace('${N8N_LEGACY_CALLBACKS_ENABLED:-false}', 'false'),
+    ),
+  /N8N_LEGACY_CALLBACKS_ENABLED.*Default false/,
+);
+assert.throws(
+  () =>
+    checkRequiredComposeSecrets(
+      guardedComposeSecrets.replace('${N8N_HMAC_SECRET:-}', '${N8N_HMAC_SECRET:?required}'),
+    ),
+  /N8N_HMAC_SECRET.*nicht global erzwingen/,
+);
+assert.throws(
+  () =>
+    checkRequiredComposeSecrets(
+      guardedComposeSecrets.replace('${N8N_WEBHOOK_BASE_URL:-}', 'http://n8n:5678/webhook'),
+    ),
+  /N8N_WEBHOOK_BASE_URL.*default-leeren/,
+);
 
-process.stdout.write('13 Docker base/context/runtime/compose tests passed.\n');
+process.stdout.write('16 Docker base/context/runtime/compose tests passed.\n');

@@ -118,7 +118,9 @@ export async function sendTemplateMail(
     // Weder Template noch Fallback — Mail nicht versendet, n8n trotzdem
     // ansprechen falls aktiv (nutzt bestehende Workflows).
     if (dispatch.mode === 'BOTH' && opts.n8nEvent) {
-      emitN8nEvent(opts.n8nEvent, opts.n8nPayload ?? opts.vars, { tenantId: opts.tenantId });
+      await emitN8nEvent(opts.n8nEvent, opts.n8nPayload ?? opts.vars, {
+        tenantId: opts.tenantId,
+      });
     }
     return { ok: false, sentViaTemplate: false };
   }
@@ -137,13 +139,17 @@ export async function sendTemplateMail(
     log.error({ slug: opts.slug, err: (err as Error).message }, 'mail: template send failed');
     // n8n trotzdem ansprechen — der könnte Slack-Ping o.ä. auslösen
     if (dispatch.mode === 'BOTH' && opts.n8nEvent) {
-      emitN8nEvent(opts.n8nEvent, opts.n8nPayload ?? opts.vars, { tenantId: opts.tenantId });
+      await emitN8nEvent(opts.n8nEvent, opts.n8nPayload ?? opts.vars, {
+        tenantId: opts.tenantId,
+      });
     }
     return { ok: false, sentViaTemplate };
   }
 
   if (dispatch.mode === 'BOTH' && opts.n8nEvent) {
-    emitN8nEvent(opts.n8nEvent, opts.n8nPayload ?? opts.vars, { tenantId: opts.tenantId });
+    await emitN8nEvent(opts.n8nEvent, opts.n8nPayload ?? opts.vars, {
+      tenantId: opts.tenantId,
+    });
   }
   return { ok: true, sentViaTemplate };
 }
