@@ -36,9 +36,17 @@ const Schema = z.object({
   art: z.enum(['I', 'O', 'ZS']),
   steuerart: z.enum(STEUERARTEN).optional().or(z.literal('')),
   /** ZS: vierstelliges Jahr. */
-  jahr: z.string().regex(/^[0-9]{4}$/).optional().or(z.literal('')),
+  jahr: z
+    .string()
+    .regex(/^[0-9]{4}$/)
+    .optional()
+    .or(z.literal('')),
   /** I: Wertstellungsdatum TTMMJJJJ. */
-  wertstellungsdatum: z.string().regex(/^[0-9]{8}$/).optional().or(z.literal('')),
+  wertstellungsdatum: z
+    .string()
+    .regex(/^[0-9]{8}$/)
+    .optional()
+    .or(z.literal('')),
   wertstellungsdatumOption: z.enum(['J', 'V']).optional().or(z.literal('')),
   /** PIN des Portalzertifikats — nur durchgereicht, nie gespeichert. */
   pin: z.string().min(1).max(200),
@@ -62,9 +70,15 @@ export async function kontoabfrageAction(
   if (!rlUser.ok) {
     return { ok: false, error: 'Zu viele ELSTER-Abfragen — bitte einige Minuten warten.' };
   }
-  const rlTenant = await checkRateLimit(`elster-konto-tenant:${tenantId}`, { max: 20, windowSec: 600 });
+  const rlTenant = await checkRateLimit(`elster-konto-tenant:${tenantId}`, {
+    max: 20,
+    windowSec: 600,
+  });
   if (!rlTenant.ok) {
-    return { ok: false, error: 'Zu viele ELSTER-Abfragen in der Kanzlei — bitte einige Minuten warten.' };
+    return {
+      ok: false,
+      error: 'Zu viele ELSTER-Abfragen in der Kanzlei — bitte einige Minuten warten.',
+    };
   }
 
   const parsed = Schema.safeParse({
@@ -82,7 +96,10 @@ export async function kontoabfrageAction(
   const d = parsed.data;
 
   if (!d.echtfall && !d.testmerker) {
-    return { ok: false, error: 'Test-Übertragung braucht einen Testmerker (oder Echtfall explizit bestätigen).' };
+    return {
+      ok: false,
+      error: 'Test-Übertragung braucht einen Testmerker (oder Echtfall explizit bestätigen).',
+    };
   }
 
   // Teil-Abfrage strukturiert bauen; die fachliche Validierung (Steuernummer-
@@ -108,17 +125,22 @@ export async function kontoabfrageAction(
   if (!stammdaten.steuernummer) {
     return {
       ok: false,
-      error: 'Keine Steuernummer hinterlegt — bitte zuerst unter „Bearbeiten" erfassen (13-stelliges ELSTER-Format).',
+      error:
+        'Keine Steuernummer hinterlegt — bitte zuerst unter „Bearbeiten" erfassen (13-stelliges ELSTER-Format).',
     };
   }
 
   const steuernummer = stammdaten.steuernummer;
   if (d.art === 'ZS') {
-    if (!d.steuerart || !d.jahr) return { ok: false, error: 'Sollstellungen brauchen Steuerart und Jahr.' };
+    if (!d.steuerart || !d.jahr)
+      return { ok: false, error: 'Sollstellungen brauchen Steuerart und Jahr.' };
     teil = { art: 'ZS', steuernummer, steuerart: d.steuerart, zeitraum: d.jahr };
   } else if (d.art === 'I') {
     if (!d.wertstellungsdatum || !d.wertstellungsdatumOption) {
-      return { ok: false, error: 'Istbuchungen brauchen Wertstellungsdatum (TTMMJJJJ) und Option.' };
+      return {
+        ok: false,
+        error: 'Istbuchungen brauchen Wertstellungsdatum (TTMMJJJJ) und Option.',
+      };
     }
     teil = {
       art: 'I',
@@ -147,7 +169,10 @@ export async function kontoabfrageAction(
     });
   } catch (e) {
     if (e instanceof ElsterNotConfiguredError) {
-      return { ok: false, error: 'ELSTER-Bridge ist nicht konfiguriert (ELSTER_BRIDGE_URL/TOKEN).' };
+      return {
+        ok: false,
+        error: 'ELSTER-Bridge ist nicht konfiguriert (ELSTER_BRIDGE_URL/TOKEN).',
+      };
     }
     if (e instanceof ElsterKontoabfrageInputError) {
       return { ok: false, error: e.message };
@@ -168,7 +193,7 @@ export async function kontoabfrageAction(
         tenantId,
         clientId: d.clientId,
         art: d.art,
-        steuerart: d.art === 'O' ? null : (d.steuerart || (d.art === 'I' ? 'alle' : null)),
+        steuerart: d.art === 'O' ? null : d.steuerart || (d.art === 'I' ? 'alle' : null),
         zeitraum: d.art === 'ZS' ? d.jahr! : d.art === 'I' ? d.wertstellungsdatum! : null,
         echtfall: d.echtfall,
         ok: response.ok,

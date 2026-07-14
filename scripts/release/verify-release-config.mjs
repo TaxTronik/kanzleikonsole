@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createPrivateKey } from 'node:crypto';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, URL } from 'node:url';
 
 export function verifyReleaseConfig(env = process.env) {
   const manifestRepo = env.UPDATE_MANIFEST_REPO?.trim();
@@ -14,8 +14,8 @@ export function verifyReleaseConfig(env = process.env) {
   let repoUrl;
   try {
     repoUrl = new URL(manifestRepo);
-  } catch {
-    throw new Error('UPDATE_MANIFEST_REPO ist keine gültige URL');
+  } catch (error) {
+    throw new Error('UPDATE_MANIFEST_REPO ist keine gültige URL', { cause: error });
   }
   if (repoUrl.protocol !== 'https:') {
     throw new Error('UPDATE_MANIFEST_REPO muss HTTPS verwenden');
@@ -34,6 +34,7 @@ export function verifyReleaseConfig(env = process.env) {
   } catch (error) {
     throw new Error(
       `UPDATE_MANIFEST_PRIVATE_KEY ist kein gültiger PEM-Schlüssel: ${error.message}`,
+      { cause: error },
     );
   }
   if (privateKey.asymmetricKeyType !== 'ed25519') {

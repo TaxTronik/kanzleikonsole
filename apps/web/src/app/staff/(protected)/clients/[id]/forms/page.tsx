@@ -17,7 +17,6 @@ const STATUS_LABELS: Record<string, string> = {
   REVIEWED: 'Geprüft',
 };
 
-
 export default async function ClientFormsPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await staffAuth();
   if (!session?.user) redirect('/staff/login');
@@ -75,10 +74,18 @@ export default async function ClientFormsPage({ params }: { params: Promise<{ id
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-default">
-                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Vorlage</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Versendet</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Eingegangen</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Status</th>
+                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+                  Vorlage
+                </th>
+                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+                  Versendet
+                </th>
+                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+                  Eingegangen
+                </th>
+                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+                  Status
+                </th>
                 <th className="text-right px-6 py-3"></th>
               </tr>
             </thead>
@@ -91,13 +98,24 @@ export default async function ClientFormsPage({ params }: { params: Promise<{ id
                     {s.submittedAt ? fmtDateTimeShort(s.submittedAt) : '—'}
                   </td>
                   <td className="px-6 py-3">
-                    {s.status === 'PENDING' && <span className="badge-yellow">{STATUS_LABELS[s.status]}</span>}
-                    {s.status === 'DRAFT' && <span className="badge-yellow">{STATUS_LABELS[s.status]}</span>}
-                    {s.status === 'SUBMITTED' && <span className="badge-green">{STATUS_LABELS[s.status]}</span>}
-                    {s.status === 'REVIEWED' && <span className="badge-gray">{STATUS_LABELS[s.status]}</span>}
+                    {s.status === 'PENDING' && (
+                      <span className="badge-yellow">{STATUS_LABELS[s.status]}</span>
+                    )}
+                    {s.status === 'DRAFT' && (
+                      <span className="badge-yellow">{STATUS_LABELS[s.status]}</span>
+                    )}
+                    {s.status === 'SUBMITTED' && (
+                      <span className="badge-green">{STATUS_LABELS[s.status]}</span>
+                    )}
+                    {s.status === 'REVIEWED' && (
+                      <span className="badge-gray">{STATUS_LABELS[s.status]}</span>
+                    )}
                   </td>
                   <td className="px-6 py-3 text-right">
-                    <Link href={`/staff/forms/submissions/${s.id}`} className="text-xs text-brand-700 hover:underline">
+                    <Link
+                      href={`/staff/forms/submissions/${s.id}`}
+                      className="text-xs text-brand-700 hover:underline"
+                    >
                       Öffnen
                     </Link>
                   </td>

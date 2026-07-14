@@ -7,7 +7,12 @@ import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
-import { readSmtpConfig, writeSmtpConfig, deleteSmtpConfig, type SmtpConfig } from '@/server/settings/smtp';
+import {
+  readSmtpConfig,
+  writeSmtpConfig,
+  deleteSmtpConfig,
+  type SmtpConfig,
+} from '@/server/settings/smtp';
 import { sendTestMail } from '@/server/mail/send';
 import { writeMailDispatch, type MailDispatchConfig } from '@/server/settings/mail-dispatch';
 import { staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
@@ -46,7 +51,10 @@ export async function saveSmtpAction(
     keepPassword: formData.get('keepPassword') === 'on',
   });
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ') };
+    return {
+      ok: false,
+      error: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
+    };
   }
 
   let password = parsed.data.password ?? '';

@@ -1,15 +1,7 @@
 ﻿'use client';
 
 import { useActionState, useState, useTransition } from 'react';
-import {
-  CheckCircle2,
-  AlertCircle,
-  Send,
-  RefreshCw,
-  Workflow,
-  Plug,
-  Download,
-} from 'lucide-react';
+import { CheckCircle2, AlertCircle, Send, RefreshCw, Workflow, Plug, Download } from 'lucide-react';
 import {
   saveN8nAction,
   resetN8nAction,
@@ -30,7 +22,6 @@ interface Props {
   };
 }
 
-
 interface WorkflowRow {
   id: string;
   name: string;
@@ -40,7 +31,9 @@ interface WorkflowRow {
 
 export function N8nForm({ initial, envHints }: Props) {
   const hasInitial = Boolean(initial);
-  const [webhookBaseUrl, setWebhookBaseUrl] = useState(initial?.webhookBaseUrl ?? envHints.webhookBaseUrl);
+  const [webhookBaseUrl, setWebhookBaseUrl] = useState(
+    initial?.webhookBaseUrl ?? envHints.webhookBaseUrl,
+  );
   const [hmacSecret, setHmacSecret] = useState('');
   const [keepHmac, setKeepHmac] = useState(Boolean(initial?.hmacSecret));
   const [apiBaseUrl, setApiBaseUrl] = useState(initial?.apiBaseUrl ?? '');
@@ -111,7 +104,12 @@ export function N8nForm({ initial, envHints }: Props) {
     });
   }
   function onReset() {
-    if (!confirm('n8n-Konfiguration zurücksetzen? Outbound-Events laufen danach wieder über die ENV-Vorgabe.')) return;
+    if (
+      !confirm(
+        'n8n-Konfiguration zurücksetzen? Outbound-Events laufen danach wieder über die ENV-Vorgabe.',
+      )
+    )
+      return;
     startPing(async () => {
       await resetN8nAction();
       window.location.reload();
@@ -122,8 +120,7 @@ export function N8nForm({ initial, envHints }: Props) {
     <div className="space-y-6">
       {!hasInitial && (
         <div className="rounded-md border border-blue-200 dark:border-blue-900/60 bg-blue-50 dark:bg-blue-900/20 px-4 py-3 text-xs text-blue-900 dark:text-blue-200">
-          Aktuell aktiv: <strong>ENV-Vorgabe</strong>{' '}
-          (
+          Aktuell aktiv: <strong>ENV-Vorgabe</strong> (
           {envHints.webhookBaseUrl || '— Webhook-URL nicht gesetzt —'}
           {', '}
           HMAC: {envHints.hasHmacSecret ? 'gesetzt' : '— fehlt —'}
@@ -143,7 +140,9 @@ export function N8nForm({ initial, envHints }: Props) {
         </p>
 
         <div>
-          <label className="label" htmlFor="webhookBaseUrl">Webhook-Basis-URL</label>
+          <label className="label" htmlFor="webhookBaseUrl">
+            Webhook-Basis-URL
+          </label>
           <input
             id="webhookBaseUrl"
             name="webhookBaseUrl"
@@ -159,15 +158,22 @@ export function N8nForm({ initial, envHints }: Props) {
         </div>
 
         <div>
-          <label className="label" htmlFor="hmacSecret">HMAC-Secret</label>
+          <label className="label" htmlFor="hmacSecret">
+            HMAC-Secret
+          </label>
           <input
             id="hmacSecret"
             name="hmacSecret"
             type="password"
             className="input"
             value={hmacSecret}
-            onChange={(e) => { setHmacSecret(e.target.value); if (e.target.value) setKeepHmac(false); }}
-            placeholder={hasStoredHmac && keepHmac ? '⬢⬢⬢⬢⬢⬢⬢⬢' : 'zufälliger String, mind. 32 Zeichen'}
+            onChange={(e) => {
+              setHmacSecret(e.target.value);
+              if (e.target.value) setKeepHmac(false);
+            }}
+            placeholder={
+              hasStoredHmac && keepHmac ? '⬢⬢⬢⬢⬢⬢⬢⬢' : 'zufälliger String, mind. 32 Zeichen'
+            }
             autoComplete="new-password"
           />
           {hasStoredHmac && (
@@ -175,7 +181,10 @@ export function N8nForm({ initial, envHints }: Props) {
               <input
                 type="checkbox"
                 checked={keepHmac}
-                onChange={(e) => { setKeepHmac(e.target.checked); if (e.target.checked) setHmacSecret(''); }}
+                onChange={(e) => {
+                  setKeepHmac(e.target.checked);
+                  if (e.target.checked) setHmacSecret('');
+                }}
               />
               Gespeichertes Secret beibehalten
             </label>
@@ -191,12 +200,14 @@ export function N8nForm({ initial, envHints }: Props) {
           REST-API — Workflows verwalten
         </h3>
         <p className="text-xs text-muted">
-          Wird benutzt, um Workflows aus der App heraus zu listen, zu importieren und zu
-          aktivieren. API-Key in der n8n-UI unter <em>Settings → API</em> erzeugen.
+          Wird benutzt, um Workflows aus der App heraus zu listen, zu importieren und zu aktivieren.
+          API-Key in der n8n-UI unter <em>Settings → API</em> erzeugen.
         </p>
 
         <div>
-          <label className="label" htmlFor="apiBaseUrl">API-Basis-URL</label>
+          <label className="label" htmlFor="apiBaseUrl">
+            API-Basis-URL
+          </label>
           <input
             id="apiBaseUrl"
             name="apiBaseUrl"
@@ -209,14 +220,19 @@ export function N8nForm({ initial, envHints }: Props) {
         </div>
 
         <div>
-          <label className="label" htmlFor="apiKey">API-Key</label>
+          <label className="label" htmlFor="apiKey">
+            API-Key
+          </label>
           <input
             id="apiKey"
             name="apiKey"
             type="password"
             className="input"
             value={apiKey}
-            onChange={(e) => { setApiKey(e.target.value); if (e.target.value) setKeepApiKey(false); }}
+            onChange={(e) => {
+              setApiKey(e.target.value);
+              if (e.target.value) setKeepApiKey(false);
+            }}
             placeholder={hasStoredApiKey && keepApiKey ? '⬢⬢⬢⬢⬢⬢⬢⬢' : 'n8n-API-Key (lang)'}
             autoComplete="new-password"
           />
@@ -225,7 +241,10 @@ export function N8nForm({ initial, envHints }: Props) {
               <input
                 type="checkbox"
                 checked={keepApiKey}
-                onChange={(e) => { setKeepApiKey(e.target.checked); if (e.target.checked) setApiKey(''); }}
+                onChange={(e) => {
+                  setKeepApiKey(e.target.checked);
+                  if (e.target.checked) setApiKey('');
+                }}
               />
               Gespeicherten API-Key beibehalten
             </label>
@@ -336,16 +355,16 @@ export function N8nForm({ initial, envHints }: Props) {
           </div>
 
           {importResult?.ok && (
-            <div className="text-xs text-emerald-700 dark:text-emerald-400">{importResult.message}</div>
+            <div className="text-xs text-emerald-700 dark:text-emerald-400">
+              {importResult.message}
+            </div>
           )}
           {importResult && !importResult.ok && (
             <div className="text-xs text-red-700 dark:text-red-400 whitespace-pre-wrap">
               {importResult.error ?? importResult.message}
             </div>
           )}
-          {listError && (
-            <div className="text-xs text-red-700 dark:text-red-400">{listError}</div>
-          )}
+          {listError && <div className="text-xs text-red-700 dark:text-red-400">{listError}</div>}
 
           {workflows && workflows.length === 0 && (
             <p className="text-xs text-muted">

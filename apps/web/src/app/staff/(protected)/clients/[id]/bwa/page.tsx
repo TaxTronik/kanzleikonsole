@@ -8,11 +8,7 @@ import { BwaImportForm } from './import-form';
 import { deleteBwaPeriodAction } from './actions';
 
 import { fmtDateShort, fmtEURRound } from '@/lib/fmt';
-export default async function ClientBwaPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function ClientBwaPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await staffAuth();
   if (!session?.user) redirect('/staff/login');
 
@@ -33,7 +29,14 @@ export default async function ClientBwaPage({
         tx.bwaPlan.findMany({
           where: { clientId },
           orderBy: [{ year: 'desc' }, { updatedAt: 'desc' }],
-          select: { id: true, name: true, year: true, status: true, updatedAt: true, createdByType: true },
+          select: {
+            id: true,
+            name: true,
+            year: true,
+            status: true,
+            updatedAt: true,
+            createdByType: true,
+          },
         }),
       ]);
       return { client, periods, plans };
@@ -49,7 +52,10 @@ export default async function ClientBwaPage({
   return (
     <div className="p-8 max-w-5xl">
       <div className="flex items-start gap-4 mb-6">
-        <Link href={`/staff/clients/${client.id}`} className="text-disabled hover:text-secondary mt-1">
+        <Link
+          href={`/staff/clients/${client.id}`}
+          className="text-disabled hover:text-secondary mt-1"
+        >
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div className="flex-1">
@@ -64,8 +70,8 @@ export default async function ClientBwaPage({
       <div className="card p-6 mb-6">
         <h2 className="text-sm font-medium text-primary mb-3">Import</h2>
         <p className="text-xs text-muted mb-4">
-          Unterstützt Addison-CSV und DATEV-XLSX-Vorjahresvergleich.
-          Existierende Perioden (gleicher Schlüssel) werden übersprungen.
+          Unterstützt Addison-CSV und DATEV-XLSX-Vorjahresvergleich. Existierende Perioden (gleicher
+          Schlüssel) werden übersprungen.
         </p>
         <BwaImportForm clientId={client.id} />
       </div>
@@ -117,10 +123,12 @@ export default async function ClientBwaPage({
                         className="flex-1 hover:underline"
                       >
                         <p className="text-sm font-medium text-primary">
-                          {p.name} <span className="text-xs text-muted font-normal">· {p.year}</span>
+                          {p.name}{' '}
+                          <span className="text-xs text-muted font-normal">· {p.year}</span>
                         </p>
                         <p className="text-xs text-muted">
-                          {p.createdByType === 'CLIENT_CONTACT' ? 'vom Mandant' : 'von der Kanzlei'} · zuletzt geändert {fmtDateShort(p.updatedAt)}
+                          {p.createdByType === 'CLIENT_CONTACT' ? 'vom Mandant' : 'von der Kanzlei'}{' '}
+                          · zuletzt geändert {fmtDateShort(p.updatedAt)}
                         </p>
                       </Link>
                       {p.status === 'FINAL' ? (
@@ -176,7 +184,11 @@ export default async function ClientBwaPage({
 function PeriodComparisonTable({
   periods,
 }: {
-  periods: Array<{ id: string; periodKey: string; positions: Array<{ number: number; amount: { toString(): string } }> }>;
+  periods: Array<{
+    id: string;
+    periodKey: string;
+    positions: Array<{ number: number; amount: { toString(): string } }>;
+  }>;
 }) {
   const rows = periods.slice(0, 4).map((p) => ({
     id: p.id,
@@ -184,9 +196,7 @@ function PeriodComparisonTable({
     kpis: computeBwaKpis(p.positions),
   }));
 
-
-  const fmtPct = (n: number | null) =>
-    n === null ? '—' : `${(n * 100).toFixed(1)} %`;
+  const fmtPct = (n: number | null) => (n === null ? '—' : `${(n * 100).toFixed(1)} %`);
 
   return (
     <table className="w-full text-sm">

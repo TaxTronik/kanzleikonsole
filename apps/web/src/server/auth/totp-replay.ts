@@ -33,7 +33,13 @@ export async function consumeTotpCode(staffId: string, code: string): Promise<bo
   const r = getRedis();
   if (!r) return null;
   try {
-    const result = await r.set(`totp-used:${staffId}:${code}`, '1', 'EX', TOTP_REPLAY_TTL_SEC, 'NX');
+    const result = await r.set(
+      `totp-used:${staffId}:${code}`,
+      '1',
+      'EX',
+      TOTP_REPLAY_TTL_SEC,
+      'NX',
+    );
     return result === 'OK';
   } catch (e) {
     log.warn({ component: 'totp-replay', err: (e as Error).message }, 'consume failed');

@@ -7,13 +7,7 @@
 
 import type { ModuleConfig } from '@/server/settings/modules';
 
-export type StepKey =
-  | 'master_data'
-  | 'contact'
-  | 'gwg'
-  | 'poa'
-  | 'first_request'
-  | 'done';
+export type StepKey = 'master_data' | 'contact' | 'gwg' | 'poa' | 'first_request' | 'done';
 
 export interface StepDef {
   key: StepKey;
@@ -24,8 +18,8 @@ export interface StepDef {
 export function stepsForTenant(modules: ModuleConfig): StepDef[] {
   const steps: StepDef[] = [
     { key: 'master_data', label: 'Stammdaten', required: true },
-    { key: 'contact',     label: 'Ansprechpartner + Portal-Zugang', required: false },
-    { key: 'gwg',         label: 'GwG-Onboarding', required: true },
+    { key: 'contact', label: 'Ansprechpartner + Portal-Zugang', required: false },
+    { key: 'gwg', label: 'GwG-Onboarding', required: true },
   ];
   if (modules.poaMode !== 'OFF') {
     steps.push({ key: 'poa', label: 'Vollmacht', required: false });

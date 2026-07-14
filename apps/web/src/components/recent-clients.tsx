@@ -28,7 +28,9 @@ function readRecent(): RecentClient[] {
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
     return parsed
-      .filter((e): e is RecentClient => !!e && typeof e.id === 'string' && typeof e.name === 'string')
+      .filter(
+        (e): e is RecentClient => !!e && typeof e.id === 'string' && typeof e.name === 'string',
+      )
       .slice(0, MAX_RECENT);
   } catch {
     return [];

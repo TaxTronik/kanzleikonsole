@@ -45,7 +45,11 @@ describe('setKatalogReviewStatus', () => {
   it('ruft die Engine mit pruefer=actorId und verankert den Übergang in der Chain', async () => {
     const client = {
       katalogReview: vi.fn(async () => ({
-        ok: true, id: 'b1', alter_status: 'entwurf', neuer_status: 'geprüft', pruefer: 's1',
+        ok: true,
+        id: 'b1',
+        alter_status: 'entwurf',
+        neuer_status: 'geprüft',
+        pruefer: 's1',
       })),
     };
     const res = await setKatalogReviewStatus(
@@ -54,11 +58,18 @@ describe('setKatalogReviewStatus', () => {
       client as unknown as Client,
     );
 
-    expect(client.katalogReview).toHaveBeenCalledWith({ id: 'b1', status: 'geprüft', pruefer: 's1' });
+    expect(client.katalogReview).toHaveBeenCalledWith({
+      id: 'b1',
+      status: 'geprüft',
+      pruefer: 's1',
+    });
     expect(res).toEqual({ alterStatus: 'entwurf', neuerStatus: 'geprüft' });
     expect(h.record).toHaveBeenCalledTimes(1);
     const ev = h.record.mock.calls[0]![1] as {
-      action: string; resourceId: string; before: unknown; after: unknown;
+      action: string;
+      resourceId: string;
+      before: unknown;
+      after: unknown;
     };
     expect(ev.action).toBe('risk.catalog.reviewed');
     expect(ev.resourceId).toBe('b1');
@@ -72,20 +83,33 @@ describe('setKatalogReviewStatus', () => {
         throw new RiskLayerHttpError(
           400,
           '/v1/katalog/review',
-          JSON.stringify({ ok: false, fehler: 'Rückwärts-Übergang geprüft → entwurf ist nicht erlaubt' }),
+          JSON.stringify({
+            ok: false,
+            fehler: 'Rückwärts-Übergang geprüft → entwurf ist nicht erlaubt',
+          }),
         );
       }),
     };
     await expect(
-      setKatalogReviewStatus(ctx, { begriffId: 'b1', status: 'entwurf' }, client as unknown as Client),
+      setKatalogReviewStatus(
+        ctx,
+        { begriffId: 'b1', status: 'entwurf' },
+        client as unknown as Client,
+      ),
     ).rejects.toThrow('Rückwärts-Übergang geprüft → entwurf ist nicht erlaubt');
     expect(h.record).not.toHaveBeenCalled();
   });
 
   it('wirft CatalogReviewFailedError bei ok:false und auditiert NICHT', async () => {
-    const client = { katalogReview: vi.fn(async () => ({ ok: false, fehler: 'kein geteilter Eintrag' })) };
+    const client = {
+      katalogReview: vi.fn(async () => ({ ok: false, fehler: 'kein geteilter Eintrag' })),
+    };
     await expect(
-      setKatalogReviewStatus(ctx, { begriffId: 'bX', status: 'freigegeben' }, client as unknown as Client),
+      setKatalogReviewStatus(
+        ctx,
+        { begriffId: 'bX', status: 'freigegeben' },
+        client as unknown as Client,
+      ),
     ).rejects.toBeInstanceOf(CatalogReviewFailedError);
     expect(h.record).not.toHaveBeenCalled();
   });
@@ -94,7 +118,11 @@ describe('setKatalogReviewStatus', () => {
     h.definedBy = { actorId: 's1' }; // = ctx.actorId
     const client = { katalogReview: vi.fn() };
     await expect(
-      setKatalogReviewStatus(ctx, { begriffId: 'b1', status: 'freigegeben' }, client as unknown as Client),
+      setKatalogReviewStatus(
+        ctx,
+        { begriffId: 'b1', status: 'freigegeben' },
+        client as unknown as Client,
+      ),
     ).rejects.toThrow('Vier-Augen-Prinzip');
     expect(client.katalogReview).not.toHaveBeenCalled();
     expect(h.record).not.toHaveBeenCalled();
@@ -104,7 +132,11 @@ describe('setKatalogReviewStatus', () => {
     h.definedBy = { actorId: 'jemand-anderes' };
     const client = {
       katalogReview: vi.fn(async () => ({
-        ok: true, id: 'b1', alter_status: 'geprüft', neuer_status: 'freigegeben', pruefer: 's1',
+        ok: true,
+        id: 'b1',
+        alter_status: 'geprüft',
+        neuer_status: 'freigegeben',
+        pruefer: 's1',
       })),
     };
     const res = await setKatalogReviewStatus(
@@ -123,7 +155,11 @@ describe('setKatalogReviewStatus', () => {
       }),
     };
     await expect(
-      setKatalogReviewStatus(ctx, { begriffId: 'b1', status: 'geprüft' }, client as unknown as Client),
+      setKatalogReviewStatus(
+        ctx,
+        { begriffId: 'b1', status: 'geprüft' },
+        client as unknown as Client,
+      ),
     ).rejects.toBeInstanceOf(RiskLayerHttpError);
     expect(h.record).not.toHaveBeenCalled();
   });

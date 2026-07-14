@@ -4,15 +4,19 @@ import { reflowProse } from '../reflow';
 describe('reflowProse', () => {
   it('führt hart umbrochene Zeilen (jede ~Zeile ein Absatz) zu Fließtext zusammen', () => {
     // Synthetisch: ein Satz über drei „Absätze" hart umbrochen.
-    const frag = 'Beide Gesellschaften werden von derselben Person geführt; in der Firma\n\nkann diese Person jede Entscheidung\n\nvon vornherein unterbinden.';
+    const frag =
+      'Beide Gesellschaften werden von derselben Person geführt; in der Firma\n\nkann diese Person jede Entscheidung\n\nvon vornherein unterbinden.';
     expect(reflowProse(frag)).toBe(
       'Beide Gesellschaften werden von derselben Person geführt; in der Firma kann diese Person jede Entscheidung von vornherein unterbinden.',
     );
   });
 
   it('lässt einen Absatzumbruch bei Satzende stehen', () => {
-    const t = 'Erster Satz endet hier.\n\nZweiter Gedanke ohne Satzende am Zeilenende\n\ngeht weiter bis zum Punkt.';
-    expect(reflowProse(t)).toBe('Erster Satz endet hier.\n\nZweiter Gedanke ohne Satzende am Zeilenende geht weiter bis zum Punkt.');
+    const t =
+      'Erster Satz endet hier.\n\nZweiter Gedanke ohne Satzende am Zeilenende\n\ngeht weiter bis zum Punkt.';
+    expect(reflowProse(t)).toBe(
+      'Erster Satz endet hier.\n\nZweiter Gedanke ohne Satzende am Zeilenende geht weiter bis zum Punkt.',
+    );
   });
 
   it('ist ein No-Op für bereits sauberen Mehrabsatz-Text', () => {

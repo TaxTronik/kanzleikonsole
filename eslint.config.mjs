@@ -27,7 +27,7 @@ export default [
     files: ['**/*.{ts,tsx}'],
     rules: {
       // Guardrail für künftige Beiträge: `any` wird als Fehler gewertet.
-      // Einzelfälle (z. B. ASN.1-Parsing) können via eslint-disable gerechtfertigt werden.
+      // Einzelfälle (z. B. ASN.1-Parsing) können via eslint-disable gerechtfertigt werden.
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-unused-vars': [
         'warn',

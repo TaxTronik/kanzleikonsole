@@ -76,8 +76,10 @@ if ($Reset) {
 
 # -------------------------------------------------------------------- .env
 Write-Step ".env vorbereiten"
+$envCreated = $false
 if (-not (Test-Path .env)) {
   Copy-Item .env.example .env
+  $envCreated = $true
   Write-Done ".env aus .env.example angelegt."
 }
 
@@ -103,6 +105,11 @@ function Ensure-Secret([string]$key, [int]$bytes) {
 
 # Auth / HMAC / Verschlüsselung
 Ensure-Secret 'AUTH_SECRET'           32
+if ($envCreated) {
+  Ensure-Secret 'SECRET_BOX_KEY'      32
+} elseif (-not (Get-EnvVar 'SECRET_BOX_KEY')) {
+  Write-Warn 'SECRET_BOX_KEY fehlt in bestehender .env; vor dem Setzen Bestands-Secrets migrieren (docs/operations/secret-rotation.md).'
+}
 Ensure-Secret 'N8N_HMAC_SECRET'       32
 Ensure-Secret 'N8N_ENCRYPTION_KEY'    24
 

@@ -11,7 +11,12 @@
 // suggestMarkingsForResult / assignResultToMarking: intelligente Zuordnung.
 // =============================================================================
 
-import { withTenantContext, withSystemContext, type TenantContext, type TxClient } from '@taxtronik/db';
+import {
+  withTenantContext,
+  withSystemContext,
+  type TenantContext,
+  type TxClient,
+} from '@taxtronik/db';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { enqueueN8nEvent } from '@/server/n8n/outbox';
 import { evidenceService } from '@/server/container';
@@ -58,7 +63,15 @@ async function buildRaw(tx: TxClient, tenantId: string, input: ResearchInput) {
 
   const client = await tx.client.findFirst({
     where: { id: clientId, tenantId },
-    select: { name: true, datevNo: true, addisonNo: true, vatId: true, street: true, postalCode: true, city: true },
+    select: {
+      name: true,
+      datevNo: true,
+      addisonNo: true,
+      vatId: true,
+      street: true,
+      postalCode: true,
+      city: true,
+    },
   });
   if (!client) throw new Error('Mandant nicht gefunden.');
   const contacts = await tx.clientContact.findMany({
@@ -66,11 +79,25 @@ async function buildRaw(tx: TxClient, tenantId: string, input: ResearchInput) {
     select: { fullName: true, email: true, phone: true },
   });
 
-  let marking: { id: string; begriff: string; normAnker: string[]; governanceTyp: string | null; start: number; end: number } | null = null;
+  let marking: {
+    id: string;
+    begriff: string;
+    normAnker: string[];
+    governanceTyp: string | null;
+    start: number;
+    end: number;
+  } | null = null;
   if (input.markingId) {
     marking = await tx.riskMarking.findFirst({
       where: { id: input.markingId, analysisId: analysis.id },
-      select: { id: true, begriff: true, normAnker: true, governanceTyp: true, start: true, end: true },
+      select: {
+        id: true,
+        begriff: true,
+        normAnker: true,
+        governanceTyp: true,
+        start: true,
+        end: true,
+      },
     });
     if (!marking) throw new Error('Markierung nicht gefunden.');
   }
@@ -84,7 +111,10 @@ async function buildRaw(tx: TxClient, tenantId: string, input: ResearchInput) {
   if (input.sachverhalt === 'full') {
     parts.push('Sachverhalt:\n' + reflowProse(analysis.sourceText));
   } else if (input.sachverhalt === 'excerpt' && marking) {
-    parts.push('Sachverhalt-Auszug:\n' + reflowProse(excerpt(analysis.sourceText, marking.start, marking.end)));
+    parts.push(
+      'Sachverhalt-Auszug:\n' +
+        reflowProse(excerpt(analysis.sourceText, marking.start, marking.end)),
+    );
   }
   for (const s of input.snippets ?? []) if (s.trim()) parts.push(s.trim());
   if (input.prompt && input.prompt.trim()) parts.push('Auftrag: ' + input.prompt.trim());
@@ -102,7 +132,10 @@ async function buildRaw(tx: TxClient, tenantId: string, input: ResearchInput) {
 }
 
 /** Baut + anonymisiert den Auftrag, OHNE zu persistieren/senden (Vorschau). */
-export async function previewResearch(ctx: TenantContext, input: ResearchInput): Promise<ResearchPreview> {
+export async function previewResearch(
+  ctx: TenantContext,
+  input: ResearchInput,
+): Promise<ResearchPreview> {
   return withTenantContext(ctx, async (tx) => {
     const { client, contacts, rawText, rechtsfrage, normAnker, governanceTyp } = await buildRaw(
       tx,
@@ -110,7 +143,13 @@ export async function previewResearch(ctx: TenantContext, input: ResearchInput):
       input,
     );
     const anon = anonymize(rawText, { client, contacts });
-    return { rechtsfrage, normAnker, governanceTyp, anonymizedText: anon.text, heuristicHits: anon.heuristicHits };
+    return {
+      rechtsfrage,
+      normAnker,
+      governanceTyp,
+      anonymizedText: anon.text,
+      heuristicHits: anon.heuristicHits,
+    };
   });
 }
 
@@ -213,7 +252,9 @@ export interface InboundResult {
  * prismaOwner. Korrelation über researchRequestId: automatische Zuordnung +
  * De-Anonymisierung. Ohne Korrelation: NEU in der Ablage (Tenant aus Payload).
  */
-export async function receiveResearchResult(input: InboundResult): Promise<{ resultId: string } | null> {
+export async function receiveResearchResult(
+  input: InboundResult,
+): Promise<{ resultId: string } | null> {
   let tenantId = input.tenantId ?? null;
   let markingId: string | null = null;
   let body = input.body;
@@ -227,8 +268,11 @@ export async function receiveResearchResult(input: InboundResult): Promise<{ res
     const req = await prismaOwner.riskResearchRequest.findUnique({
       where: { id: input.researchRequestId },
       select: {
-        tenantId: true, markingId: true, mapping: true,
-        createdById: true, analysisId: true,
+        tenantId: true,
+        markingId: true,
+        mapping: true,
+        createdById: true,
+        analysisId: true,
         analysis: { select: { clientId: true } },
       },
     });
@@ -288,9 +332,10 @@ export async function receiveResearchResult(input: InboundResult): Promise<{ res
       kind: 'REQUEST_RESPONDED',
       title: `Rechercheergebnis eingegangen${input.title ? ': ' + input.title : ''}`,
       body: input.source ? `Quelle: ${input.source}` : null,
-      href: hrefClientId && hrefAnalysisId
-        ? `/staff/clients/${hrefClientId}/subsumtion/${hrefAnalysisId}`
-        : null,
+      href:
+        hrefClientId && hrefAnalysisId
+          ? `/staff/clients/${hrefClientId}/subsumtion/${hrefAnalysisId}`
+          : null,
       resourceType: 'risk_research_result',
       resourceId: created.id,
     });

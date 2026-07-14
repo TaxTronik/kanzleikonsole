@@ -204,8 +204,9 @@ async function hydrateStaffSessionFromToken(session: Session, token: unknown): P
 
 const staffConfig: NextAuthConfig = {
   basePath: '/api/auth/staff',
-  // S9: in Produktion explizit per env opt-in. Dev: implizit true für Komfort.
-  trustHost: env.NEXTAUTH_TRUST_HOST ?? (env.NODE_ENV !== 'production'),
+  // Auth.js v5 verlangt trustHost=true. Der vorgeschaltete Proxy pinnt den
+  // Host auf den konfigurierten VHost; Production-Config erzwingt das Opt-in.
+  trustHost: env.NEXTAUTH_TRUST_HOST ?? true,
   secret: env.AUTH_SECRET,
 
   providers: [
@@ -245,7 +246,10 @@ const staffConfig: NextAuthConfig = {
           { max: 200, windowSec: 600 },
         );
         if (!rl.ok) {
-          log.warn({ ip, bucket: ip ? 'per-ip' : 'global' }, 'staff-auth: authorize-rate-limit hit');
+          log.warn(
+            { ip, bucket: ip ? 'per-ip' : 'global' },
+            'staff-auth: authorize-rate-limit hit',
+          );
           return null;
         }
 
@@ -340,7 +344,9 @@ const staffConfig: NextAuthConfig = {
         // aber das ist der Recovery-Pfad — Latenz ist hier akzeptabel.
         // totpBackupCodes ist im Schema Json? — wir holen die String-Liste raus.
         const backupCodes: string[] = Array.isArray(staffUser.totpBackupCodes)
-          ? (staffUser.totpBackupCodes as unknown[]).filter((x): x is string => typeof x === 'string')
+          ? (staffUser.totpBackupCodes as unknown[]).filter(
+              (x): x is string => typeof x === 'string',
+            )
           : [];
         let usedBackupIndex = -1;
         if (!totpValid && backupCodes.length > 0) {
@@ -373,7 +379,10 @@ const staffConfig: NextAuthConfig = {
           // Redis-Ausfall (kein Redis → kein TOTP-Login).
           const fresh = await consumeTotpCode(staffUser.id, totpCode);
           if (fresh === null) {
-            log.warn({ staffId: staffUser.id }, 'staff-auth: TOTP-Replay-Store nicht erreichbar — Login abgewiesen');
+            log.warn(
+              { staffId: staffUser.id },
+              'staff-auth: TOTP-Replay-Store nicht erreichbar — Login abgewiesen',
+            );
             return null;
           }
           if (!fresh) {
@@ -645,9 +654,9 @@ export const staffAuth = cache(async (): Promise<StaffSession | null> => {
 
   const baseSession: Session = {
     user: {
-      id: typeof token.sub === 'string' ? token.sub : token.staffId ?? '',
+      id: typeof token.sub === 'string' ? token.sub : (token.staffId ?? ''),
       email: typeof token.email === 'string' ? token.email : '',
-      name: typeof token.name === 'string' ? token.name : token.fullName ?? '',
+      name: typeof token.name === 'string' ? token.name : (token.fullName ?? ''),
       fullName: '',
       tenantId: '',
     },

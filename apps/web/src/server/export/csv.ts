@@ -23,7 +23,10 @@ export const MAX_EXPORT_ROWS = 10_000;
  * `maxRows` zurückgekommen, existieren weitere → auf `maxRows` trimmen und
  * `truncated` melden.
  */
-export function applyRowCap<T>(rows: T[], maxRows: number = MAX_EXPORT_ROWS): { rows: T[]; truncated: boolean } {
+export function applyRowCap<T>(
+  rows: T[],
+  maxRows: number = MAX_EXPORT_ROWS,
+): { rows: T[]; truncated: boolean } {
   const truncated = rows.length > maxRows;
   return { rows: truncated ? rows.slice(0, maxRows) : rows, truncated };
 }
@@ -87,7 +90,11 @@ export function truncationNote(maxRows: number): string {
   return `EXPORT UNVOLLSTÄNDIG: auf ${maxRows.toLocaleString('de-DE')} Zeilen begrenzt — es existieren weitere Zeilen. Bitte den Abruf weiter eingrenzen (z. B. Zeitraum/Status).`;
 }
 
-export function csvResponse(filename: string, csv: string, opts?: { truncated?: boolean }): Response {
+export function csvResponse(
+  filename: string,
+  csv: string,
+  opts?: { truncated?: boolean },
+): Response {
   const safe = filename.replace(/[^A-Za-z0-9_-]/g, '_');
   const headers: Record<string, string> = {
     'Content-Type': 'text/csv; charset=utf-8',

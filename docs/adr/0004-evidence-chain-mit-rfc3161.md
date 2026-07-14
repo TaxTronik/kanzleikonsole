@@ -32,12 +32,14 @@ Drei-Schicht-Modell:
 ## Konsequenzen
 
 **Vorteile**
+
 - Manipulation am Audit-Log durch Owner ist sichtbar (Hash-Chain bricht).
 - Manipulation an `audit_seal` ist für die Vergangenheit unmöglich, weil die
   TSA eine externe vertrauenswürdige Quelle ist.
 - Wirtschaftsprüfer können die Kette unabhängig nachrechnen.
 
 **Nachteile**
+
 - TSA-Anbindung in Produktion ist Pflicht (sonst: Self-Stempel = nicht
   beweiskräftig vor Gericht).
 - Schreibtransaktionen werden serialisiert (Lock pro Tenant) → bei extremen

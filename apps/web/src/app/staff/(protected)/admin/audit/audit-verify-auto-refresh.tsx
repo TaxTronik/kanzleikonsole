@@ -63,8 +63,8 @@ export function AuditVerifyAutoRefresh({
   if (!timedOut) return null;
   return (
     <div className="rounded-md border border-yellow-200 bg-yellow-50 p-3 mb-4 text-xs text-yellow-800">
-      Es liegt noch kein neues Prüfergebnis vor. Läuft der Hintergrund-Dienst
-      (Worker)? Lade die Seite später neu, um den aktuellen Stand zu sehen.
+      Es liegt noch kein neues Prüfergebnis vor. Läuft der Hintergrund-Dienst (Worker)? Lade die
+      Seite später neu, um den aktuellen Stand zu sehen.
     </div>
   );
 }

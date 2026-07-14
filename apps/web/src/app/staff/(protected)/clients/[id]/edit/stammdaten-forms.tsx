@@ -34,7 +34,11 @@ function useRefreshOnSuccess(state: ActionResult | null): void {
 }
 
 /** Save-Button mit Pending-Label. */
-function SaveButton({ isPending, label, savingLabel }: {
+function SaveButton({
+  isPending,
+  label,
+  savingLabel,
+}: {
   isPending: boolean;
   label: string;
   savingLabel?: string;
@@ -51,13 +55,7 @@ function SaveButton({ isPending, label, savingLabel }: {
  * Children = die echten Form-Felder, vom Server-Component übergeben (damit der
  * Initialwert serverseitig vorgehalten wird).
  */
-export function AdminFieldsForm({
-  clientId,
-  children,
-}: {
-  clientId: string;
-  children: ReactNode;
-}) {
+export function AdminFieldsForm({ clientId, children }: { clientId: string; children: ReactNode }) {
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
     saveAdminFieldsAction,
     null,
@@ -70,9 +68,7 @@ export function AdminFieldsForm({
       <input type="hidden" name="clientId" value={clientId} />
       {children}
       {state?.error && <p className="alert-error-sm mt-4">{state.error}</p>}
-      {state?.ok && (
-        <p className="alert-success-sm mt-4">Verwaltungsdaten gespeichert.</p>
-      )}
+      {state?.ok && <p className="alert-success-sm mt-4">Verwaltungsdaten gespeichert.</p>}
       <div className="flex justify-end mt-4">
         <SaveButton isPending={isPending} label="Speichern" />
       </div>
@@ -97,16 +93,14 @@ export function ResponsibilitiesForm({
     <form action={formAction} className="card p-6 mb-6">
       <h2 className="text-sm font-medium text-primary mb-1">Zuständigkeit</h2>
       <p className="text-xs text-muted mb-4">
-        Berufsträger: verantwortliche/r Steuerberater/in (§ 32 StBerG) — mehrere
-        möglich bei geteilten Mandaten. Bearbeiter: Mitarbeiter, die den
-        Mandanten betreuen und in „Meine Mandanten" sehen.
+        Berufsträger: verantwortliche/r Steuerberater/in (§ 32 StBerG) — mehrere möglich bei
+        geteilten Mandaten. Bearbeiter: Mitarbeiter, die den Mandanten betreuen und in „Meine
+        Mandanten" sehen.
       </p>
       <input type="hidden" name="clientId" value={clientId} />
       {children}
       {state?.error && <p className="alert-error-sm mt-4">{state.error}</p>}
-      {state?.ok && (
-        <p className="alert-success-sm mt-4">Zuordnung gespeichert.</p>
-      )}
+      {state?.ok && <p className="alert-success-sm mt-4">Zuordnung gespeichert.</p>}
       <div className="flex justify-end mt-4">
         <SaveButton isPending={isPending} label="Zuordnung speichern" />
       </div>
@@ -136,17 +130,16 @@ export function MandateForm({
     <form action={formAction} className="card p-6 mb-6 border-amber-200">
       <h2 className="text-sm font-medium text-primary mb-1">Mandatsende (GwG-Aufbewahrung)</h2>
       <p className="text-xs text-muted mb-4">
-        Markiert das Ende der Geschäftsbeziehung und startet die 5-Jahres-Lösch-Uhr
-        (§ 8 Abs. 4 GwG) für die GwG-Belege. Nach Fristablauf erscheinen sie unter
-        Admin → GwG-Pflichtlöschung zur bestätigten Vernichtung.
+        Markiert das Ende der Geschäftsbeziehung und startet die 5-Jahres-Lösch-Uhr (§ 8 Abs. 4 GwG)
+        für die GwG-Belege. Nach Fristablauf erscheinen sie unter Admin → GwG-Pflichtlöschung zur
+        bestätigten Vernichtung.
       </p>
       <input type="hidden" name="clientId" value={clientId} />
       <input type="hidden" name="ended" value={ended ? '0' : '1'} />
       <p className="text-sm">
         {ended ? (
           <>
-            Mandat beendet seit{' '}
-            <strong>{fmtDateShort(new Date(mandateEndedAt!))}</strong>.
+            Mandat beendet seit <strong>{fmtDateShort(new Date(mandateEndedAt!))}</strong>.
           </>
         ) : (
           <span className="text-muted">Mandat ist aktiv.</span>
@@ -155,19 +148,16 @@ export function MandateForm({
       {state?.error && <p className="alert-error-sm mt-4">{state.error}</p>}
       {state?.ok && <p className="alert-success-sm mt-4">Gespeichert.</p>}
       <div className="flex justify-end mt-4">
-        <SaveButton isPending={isPending} label={ended ? 'Mandat wieder aufnehmen' : 'Mandat beenden'} />
+        <SaveButton
+          isPending={isPending}
+          label={ended ? 'Mandat wieder aufnehmen' : 'Mandat beenden'}
+        />
       </div>
     </form>
   );
 }
 
-export function GwgFieldsForm({
-  clientId,
-  children,
-}: {
-  clientId: string;
-  children: ReactNode;
-}) {
+export function GwgFieldsForm({ clientId, children }: { clientId: string; children: ReactNode }) {
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
     saveGwgFieldsAction,
     null,
@@ -181,8 +171,8 @@ export function GwgFieldsForm({
       {state?.error && <p className="alert-error-sm mt-4">{state.error}</p>}
       {state?.ok && (
         <p className="alert-success-sm mt-4">
-          GwG-Stammdaten gespeichert. Wenn relevante Felder geändert wurden, ist die
-          GwG-Prüfung auf <strong>IN_REVIEW</strong> zurückgesetzt.
+          GwG-Stammdaten gespeichert. Wenn relevante Felder geändert wurden, ist die GwG-Prüfung auf{' '}
+          <strong>IN_REVIEW</strong> zurückgesetzt.
         </p>
       )}
       <div className="flex justify-end mt-4">

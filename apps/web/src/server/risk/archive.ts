@@ -76,7 +76,10 @@ export async function archiveAnalysis(
   const bucket = getBucketForTier('GOBD');
   const key = archiveKeyFor(ctx.tenantId, analysisId);
   // Object-Lock COMPLIANCE → unveränderlich bis gobdRetentionUntil (10 J.).
-  await putObjectBytes(bucket, key, gz, { contentType: 'application/gzip', retainUntil: gobdRetentionUntil() });
+  await putObjectBytes(bucket, key, gz, {
+    contentType: 'application/gzip',
+    retainUntil: gobdRetentionUntil(),
+  });
 
   await withTenantContext(ctx, async (tx) => {
     await tx.riskAnalysis.update({

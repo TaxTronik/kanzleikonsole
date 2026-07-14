@@ -14,7 +14,11 @@ const CreateSchema = z.object({
   clientId: z.string().uuid(),
   label: z.string().min(1).max(200),
   contents: z.string().max(4000).optional().or(z.literal('')),
-  expectedReturnAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal('')),
+  expectedReturnAt: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional()
+    .or(z.literal('')),
 });
 
 export async function createBinderAction(
@@ -27,7 +31,8 @@ export async function createBinderAction(
     contents: formData.get('contents') ?? '',
     expectedReturnAt: formData.get('expectedReturnAt') ?? '',
   });
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
+  if (!parsed.success)
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
 
   return withStaff(
     async (tx, { tenantId, staffId, session }) => {
@@ -40,12 +45,16 @@ export async function createBinderAction(
           clientId: parsed.data.clientId,
           label: parsed.data.label.trim(),
           contents: parsed.data.contents?.trim() || null,
-          expectedReturnAt: parsed.data.expectedReturnAt ? new Date(parsed.data.expectedReturnAt) : null,
+          expectedReturnAt: parsed.data.expectedReturnAt
+            ? new Date(parsed.data.expectedReturnAt)
+            : null,
           createdByStaff: staffId,
         },
       });
       await evidenceService.record(tx, {
-        tenantId, actorType: 'STAFF', actorId: staffId,
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
         action: 'pending_binder.create',
         resourceType: 'pending_binder',
         resourceId: b.id,
@@ -79,7 +88,9 @@ export async function updateBinderStatusAction(input: {
 
     await tx.pendingBinder.update({ where: { id: parsed.data.id }, data });
     await evidenceService.record(tx, {
-      tenantId, actorType: 'STAFF', actorId: staffId,
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
       action: 'pending_binder.status_change',
       resourceType: 'pending_binder',
       resourceId: parsed.data.id,
@@ -96,12 +107,17 @@ export async function deleteBinderAction(input: { id: string }): Promise<ActionR
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
-    const b = await tx.pendingBinder.findUnique({ where: { id: parsed.data.id }, select: { label: true, clientId: true } });
+    const b = await tx.pendingBinder.findUnique({
+      where: { id: parsed.data.id },
+      select: { label: true, clientId: true },
+    });
     if (!b) throw new ActionError('Pendelordner nicht gefunden.');
     await assertClientAccessTx(tx, session, b.clientId);
     await tx.pendingBinder.delete({ where: { id: parsed.data.id } });
     await evidenceService.record(tx, {
-      tenantId, actorType: 'STAFF', actorId: staffId,
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
       action: 'pending_binder.delete',
       resourceType: 'pending_binder',
       resourceId: parsed.data.id,

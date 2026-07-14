@@ -9,7 +9,7 @@
 # erzeugt Symlinks auf quell-lose Pakete; siehe Dockerfile.web).
 # =============================================================================
 
-FROM node:22-alpine AS builder
+FROM node:24-alpine3.23@sha256:595398b0081eacda8e1c4c5b97b76cd1020e4d58a8ebcb4843b9bca1e79e7436 AS builder
 RUN apk add --no-cache libc6-compat openssl
 WORKDIR /repo
 RUN corepack enable && corepack prepare pnpm@11.8.0 --activate
@@ -24,8 +24,7 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile --ignore-scripts --filter @taxtronik/worker... --filter @taxtronik/db
 
 RUN pnpm rebuild -r --filter @taxtronik/worker... \
-      @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver \
-    || true
+      @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver
 
 # pnpm 11 umgehen — siehe Dockerfile.web. cd packages/db: @prisma/client
 # (Generate-Ziel) + prisma/config (für prisma.config.ts) dort auflösbar.
@@ -41,9 +40,9 @@ RUN cd packages/db && \
 # verkleinert den Angriffsvektor. tsx wird zur Laufzeit per find lokalisiert
 # (pnpm-Store-Layout legt es nicht unter node_modules/.bin/ ab).
 # Runner explizit auf Alpine 3.23 gepinnt: postgresql18-client liegt erst ab
-# 3.23 in main (v3.22 hat nur 17) — ein floatendes node:22-alpine könnte je
+# 3.23 in main (v3.22 hat nur 17) — ein floatendes node:24-alpine könnte je
 # nach Upstream-Stand ohne pg18 dastehen und der apk add unten bräche.
-FROM node:22-alpine3.23 AS runner
+FROM node:24-alpine3.23@sha256:595398b0081eacda8e1c4c5b97b76cd1020e4d58a8ebcb4843b9bca1e79e7436 AS runner
 # Versions-Metadaten — siehe Dockerfile.web (Release-Workflow setzt Tag + Commit).
 ARG APP_VERSION=dev
 ARG GIT_SHA=unknown
@@ -53,7 +52,10 @@ LABEL org.opencontainers.image.title="taxtronik-worker" \
 # postgresql18-client: pg_restore für den monatlichen Restore-Drill
 # (jobs/backup-drill.ts). Client-Major MUSS >= Server-Major (18) sein —
 # ein älterer pg_restore kann 18er-Dumps nicht lesen.
-RUN apk add --no-cache openssl postgresql18-client tzdata
+RUN apk add --no-cache openssl postgresql18-client tzdata && \
+    rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /opt/yarn-* && \
+    rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+      /usr/local/bin/yarn /usr/local/bin/yarnpkg
 WORKDIR /app
 
 ENV NODE_ENV=production \

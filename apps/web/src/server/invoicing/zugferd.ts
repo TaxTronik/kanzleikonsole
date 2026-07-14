@@ -64,13 +64,18 @@ function wrapText(text: string, maxChars: number): string[] {
   let line = '';
   for (const word of text.split(/\s+/)) {
     if (word.length > maxChars) {
-      if (line) { out.push(line); line = ''; }
+      if (line) {
+        out.push(line);
+        line = '';
+      }
       for (let i = 0; i < word.length; i += maxChars) out.push(word.slice(i, i + maxChars));
       continue;
     }
     const candidate = line ? `${line} ${word}` : word;
-    if (candidate.length > maxChars) { out.push(line); line = word; }
-    else line = candidate;
+    if (candidate.length > maxChars) {
+      out.push(line);
+      line = word;
+    } else line = candidate;
   }
   if (line) out.push(line);
   return out.length ? out : [''];
@@ -83,7 +88,13 @@ function newPageIfNeeded(ctx: PageContext, neededHeight: number): void {
   }
 }
 
-function drawText(ctx: PageContext, text: string, x: number, y: number, opts: { bold?: boolean; size?: number; color?: ReturnType<typeof rgb> } = {}): void {
+function drawText(
+  ctx: PageContext,
+  text: string,
+  x: number,
+  y: number,
+  opts: { bold?: boolean; size?: number; color?: ReturnType<typeof rgb> } = {},
+): void {
   const size = opts.size ?? FONT_SIZE_NORMAL;
   const font = opts.bold ? ctx.fontBold : ctx.font;
   ctx.page.drawText(text, {
@@ -162,13 +173,9 @@ export async function generateZugferdPdf(
     ctx.y -= 10;
   }
   if (seller.postalCode || seller.city) {
-    drawText(
-      ctx,
-      `${seller.postalCode ?? ''} ${seller.city ?? ''}`.trim(),
-      margin,
-      ctx.y,
-      { size: FONT_SIZE_SMALL },
-    );
+    drawText(ctx, `${seller.postalCode ?? ''} ${seller.city ?? ''}`.trim(), margin, ctx.y, {
+      size: FONT_SIZE_SMALL,
+    });
     ctx.y -= 10;
   }
   if (seller.email) {
@@ -180,7 +187,10 @@ export async function generateZugferdPdf(
   ctx.y -= 30;
   drawText(ctx, buyer.name, margin, ctx.y, { bold: true });
   ctx.y -= 12;
-  if (buyer.street) { drawText(ctx, buyer.street, margin, ctx.y); ctx.y -= 11; }
+  if (buyer.street) {
+    drawText(ctx, buyer.street, margin, ctx.y);
+    ctx.y -= 11;
+  }
   if (buyer.postalCode || buyer.city) {
     drawText(ctx, `${buyer.postalCode ?? ''} ${buyer.city ?? ''}`.trim(), margin, ctx.y);
     ctx.y -= 11;
@@ -193,18 +203,30 @@ export async function generateZugferdPdf(
   // Datum + Nummer (rechts)
   const rightCol = pageWidth - margin - 200;
   let yRight = pageHeight - margin - 60;
-  drawText(ctx, 'Rechnungsnummer', rightCol, yRight, { size: FONT_SIZE_SMALL, color: rgb(0.5, 0.5, 0.5) });
+  drawText(ctx, 'Rechnungsnummer', rightCol, yRight, {
+    size: FONT_SIZE_SMALL,
+    color: rgb(0.5, 0.5, 0.5),
+  });
   drawText(ctx, invoice.number, rightCol + 100, yRight, { bold: true });
   yRight -= 14;
-  drawText(ctx, 'Rechnungsdatum', rightCol, yRight, { size: FONT_SIZE_SMALL, color: rgb(0.5, 0.5, 0.5) });
+  drawText(ctx, 'Rechnungsdatum', rightCol, yRight, {
+    size: FONT_SIZE_SMALL,
+    color: rgb(0.5, 0.5, 0.5),
+  });
   drawText(ctx, fmtDate(invoice.issueDate), rightCol + 100, yRight);
   yRight -= 14;
-  drawText(ctx, 'Fällig am', rightCol, yRight, { size: FONT_SIZE_SMALL, color: rgb(0.5, 0.5, 0.5) });
+  drawText(ctx, 'Fällig am', rightCol, yRight, {
+    size: FONT_SIZE_SMALL,
+    color: rgb(0.5, 0.5, 0.5),
+  });
   drawText(ctx, fmtDate(invoice.dueDate), rightCol + 100, yRight);
   yRight -= 14;
   // iter98: Leistungszeitraum (§ 14 Abs. 4 Nr. 6 UStG), wenn erfasst.
   if (invoice.servicePeriodStart && invoice.servicePeriodEnd) {
-    drawText(ctx, 'Leistungszeitraum', rightCol, yRight, { size: FONT_SIZE_SMALL, color: rgb(0.5, 0.5, 0.5) });
+    drawText(ctx, 'Leistungszeitraum', rightCol, yRight, {
+      size: FONT_SIZE_SMALL,
+      color: rgb(0.5, 0.5, 0.5),
+    });
     drawText(
       ctx,
       `${fmtDate(invoice.servicePeriodStart)} – ${fmtDate(invoice.servicePeriodEnd)}`,
@@ -217,10 +239,16 @@ export async function generateZugferdPdf(
   // P2-9: USt-ID ODER (falls nicht vorhanden) Steuernummer — § 14 Abs. 4 Nr. 2
   // UStG verlangt eine der beiden im menschenlesbaren Teil.
   if (seller.vatId) {
-    drawText(ctx, 'USt-ID Verkäufer', rightCol, yRight, { size: FONT_SIZE_SMALL, color: rgb(0.5, 0.5, 0.5) });
+    drawText(ctx, 'USt-ID Verkäufer', rightCol, yRight, {
+      size: FONT_SIZE_SMALL,
+      color: rgb(0.5, 0.5, 0.5),
+    });
     drawText(ctx, seller.vatId, rightCol + 100, yRight, { size: FONT_SIZE_SMALL });
   } else if (seller.taxNumber) {
-    drawText(ctx, 'Steuernummer', rightCol, yRight, { size: FONT_SIZE_SMALL, color: rgb(0.5, 0.5, 0.5) });
+    drawText(ctx, 'Steuernummer', rightCol, yRight, {
+      size: FONT_SIZE_SMALL,
+      color: rgb(0.5, 0.5, 0.5),
+    });
     drawText(ctx, seller.taxNumber, rightCol + 100, yRight, { size: FONT_SIZE_SMALL });
   }
 
@@ -228,7 +256,10 @@ export async function generateZugferdPdf(
   ctx.y -= 30;
   drawText(ctx, `Rechnung ${invoice.number}`, margin, ctx.y, { bold: true, size: FONT_SIZE_TITLE });
   ctx.y -= 22;
-  drawText(ctx, invoice.subject, margin, ctx.y, { size: FONT_SIZE_HEADING, color: rgb(0.4, 0.4, 0.4) });
+  drawText(ctx, invoice.subject, margin, ctx.y, {
+    size: FONT_SIZE_HEADING,
+    color: rgb(0.4, 0.4, 0.4),
+  });
   ctx.y -= 25;
 
   // Positions-Tabelle
@@ -280,13 +311,20 @@ export async function generateZugferdPdf(
   drawLine(ctx, ctx.y, rgb(0.4, 0.4, 0.4));
   ctx.y -= 14;
   drawText(ctx, 'Brutto', sumCol1, ctx.y, { bold: true, size: FONT_SIZE_HEADING });
-  drawText(ctx, fmtEUR(invoice.totalAmount), sumCol2, ctx.y, { bold: true, size: FONT_SIZE_HEADING });
+  drawText(ctx, fmtEUR(invoice.totalAmount), sumCol2, ctx.y, {
+    bold: true,
+    size: FONT_SIZE_HEADING,
+  });
   ctx.y -= 30;
 
   // Notizen
   if (invoice.notes) {
     newPageIfNeeded(ctx, 60);
-    drawText(ctx, 'Hinweise', margin, ctx.y, { bold: true, size: FONT_SIZE_SMALL, color: rgb(0.5, 0.5, 0.5) });
+    drawText(ctx, 'Hinweise', margin, ctx.y, {
+      bold: true,
+      size: FONT_SIZE_SMALL,
+      color: rgb(0.5, 0.5, 0.5),
+    });
     ctx.y -= 12;
     // P3-26: Wort-erhaltendes Umbrechen statt hartem slice(0,100) — kein
     // Inhaltsverlust in der revisionssicher archivierten PDF.
@@ -303,23 +341,46 @@ export async function generateZugferdPdf(
   // Bankverbindung / Zahlungshinweis
   if (seller.iban) {
     newPageIfNeeded(ctx, 60);
-    drawText(ctx, 'Zahlung bitte auf folgendes Konto:', margin, ctx.y, { size: FONT_SIZE_SMALL, color: rgb(0.5, 0.5, 0.5) });
+    drawText(ctx, 'Zahlung bitte auf folgendes Konto:', margin, ctx.y, {
+      size: FONT_SIZE_SMALL,
+      color: rgb(0.5, 0.5, 0.5),
+    });
     ctx.y -= 12;
-    if (seller.bankName) { drawText(ctx, seller.bankName, margin, ctx.y); ctx.y -= 11; }
-    drawText(ctx, `IBAN: ${seller.iban}`, margin, ctx.y); ctx.y -= 11;
-    if (seller.bic) { drawText(ctx, `BIC: ${seller.bic}`, margin, ctx.y); ctx.y -= 11; }
-    drawText(ctx, `Verwendungszweck: ${invoice.number}`, margin, ctx.y); ctx.y -= 11;
+    if (seller.bankName) {
+      drawText(ctx, seller.bankName, margin, ctx.y);
+      ctx.y -= 11;
+    }
+    drawText(ctx, `IBAN: ${seller.iban}`, margin, ctx.y);
+    ctx.y -= 11;
+    if (seller.bic) {
+      drawText(ctx, `BIC: ${seller.bic}`, margin, ctx.y);
+      ctx.y -= 11;
+    }
+    drawText(ctx, `Verwendungszweck: ${invoice.number}`, margin, ctx.y);
+    ctx.y -= 11;
   }
 
   // Footer auf JEDER Seite: Kanzlei + ZUGFeRD-Hinweis + Seitenzahl.
   const pages = doc.getPages();
   const pageCount = pages.length;
   const sellerLine =
-    `${seller.name}${seller.postalCode || seller.city ? ' · ' : ''}${(seller.postalCode ?? '')} ${seller.city ?? ''}`.trim();
+    `${seller.name}${seller.postalCode || seller.city ? ' · ' : ''}${seller.postalCode ?? ''} ${seller.city ?? ''}`.trim();
   pages.forEach((p, i) => {
     p.drawText(sellerLine, { x: margin, y: margin - 4, size: 7, font, color: rgb(0.5, 0.5, 0.5) });
-    p.drawText(`Seite ${i + 1} von ${pageCount}`, { x: pageWidth - margin - 60, y: margin - 4, size: 7, font, color: rgb(0.5, 0.5, 0.5) });
-    p.drawText('Diese PDF enthält eine maschinenlesbare ZUGFeRD/Factur-X-XML (Profil EN 16931).', { x: margin, y: margin - 14, size: 7, font, color: rgb(0.5, 0.5, 0.5) });
+    p.drawText(`Seite ${i + 1} von ${pageCount}`, {
+      x: pageWidth - margin - 60,
+      y: margin - 4,
+      size: 7,
+      font,
+      color: rgb(0.5, 0.5, 0.5),
+    });
+    p.drawText('Diese PDF enthält eine maschinenlesbare ZUGFeRD/Factur-X-XML (Profil EN 16931).', {
+      x: margin,
+      y: margin - 14,
+      size: 7,
+      font,
+      color: rgb(0.5, 0.5, 0.5),
+    });
   });
 
   // ----- XML-Anhang einbetten ----------------------------------------------

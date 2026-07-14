@@ -34,12 +34,11 @@ const STATUS_LABELS: Record<string, string> = {
   SKIPPED: 'Übersprungen',
 };
 
-
 interface Search {
   view?: 'month' | 'list';
   scope?: 'mine' | 'all';
   month?: string; // YYYY-MM
-  q?: string;     // Mandantenname / DATEV-Nr / Addison-Nr (Substring, case-insensitive)
+  q?: string; // Mandantenname / DATEV-Nr / Addison-Nr (Substring, case-insensitive)
   queued?: string; // '1' nach „Neu berechnen" — Materialisierung läuft im Hintergrund
 }
 
@@ -206,7 +205,10 @@ async function renderMonth(
             </div>
           ))}
         </div>
-        <div className="grid grid-cols-7 gap-px mt-px" style={{ backgroundColor: 'rgb(var(--border-default))' }}>
+        <div
+          className="grid grid-cols-7 gap-px mt-px"
+          style={{ backgroundColor: 'rgb(var(--border-default))' }}
+        >
           {cells.map((cell, i) => {
             const k = cell.date.toISOString().slice(0, 10);
             const groups = byDay.get(k);
@@ -222,7 +224,13 @@ async function renderMonth(
                     : 'bg-surface-page min-h-[110px] p-1.5 flex flex-col gap-1 text-xs text-disabled'
                 }
               >
-                <div className={isToday ? 'self-start font-bold text-brand-700 bg-brand-50 px-1.5 py-0.5 rounded' : 'self-start text-secondary'}>
+                <div
+                  className={
+                    isToday
+                      ? 'self-start font-bold text-brand-700 bg-brand-50 px-1.5 py-0.5 rounded'
+                      : 'self-start text-secondary'
+                  }
+                >
                   {cell.date.getUTCDate()}
                 </div>
                 {groupArr.slice(0, 4).map((g) => {
@@ -240,7 +248,10 @@ async function renderMonth(
                       title={`${SCHEDULE_LABELS[g.kind as keyof typeof SCHEDULE_LABELS]} ${g.period} — ${g.open}/${g.total} offen`}
                     >
                       <span className="font-medium">{shortKind(g.kind)}</span>
-                      <span className="opacity-70"> · {g.open}/{g.total}</span>
+                      <span className="opacity-70">
+                        {' '}
+                        · {g.open}/{g.total}
+                      </span>
                     </Link>
                   );
                 })}
@@ -279,7 +290,11 @@ async function renderList(
           take: 100,
         }),
         tx.taxDeadline.findMany({
-          where: { ...clientFilter, ...notDenied, status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS', 'SUBMITTED'] } },
+          where: {
+            ...clientFilter,
+            ...notDenied,
+            status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS', 'SUBMITTED'] },
+          },
           orderBy: { dueDate: 'asc' },
           include: { client: { select: { id: true, name: true } } },
           take: 200,
@@ -353,13 +368,30 @@ function PageHeader({
           </h1>
           <p className="text-muted text-sm">
             {scope === 'mine' ? 'Nur meine Mandanten.' : 'Alle Mandanten der Kanzlei.'}
-            {q && <span> · Suche: <strong className="text-primary">{q}</strong></span>}
+            {q && (
+              <span>
+                {' '}
+                · Suche: <strong className="text-primary">{q}</strong>
+              </span>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <div className="toggle-group">
-            <ScopeLink active={scope === 'all'} scope="all" view={view} q={q} label="Alle Mandanten" />
-            <ScopeLink active={scope === 'mine'} scope="mine" view={view} q={q} label="Meine Mandanten" />
+            <ScopeLink
+              active={scope === 'all'}
+              scope="all"
+              view={view}
+              q={q}
+              label="Alle Mandanten"
+            />
+            <ScopeLink
+              active={scope === 'mine'}
+              scope="mine"
+              view={view}
+              q={q}
+              label="Meine Mandanten"
+            />
           </div>
           <div className="toggle-group">
             <ViewLink active={view === 'month'} view="month" scope={scope} q={q} label="Monat" />
@@ -379,15 +411,11 @@ function PageHeader({
       </div>
       {queued && (
         <div className="mb-3 rounded-md border border-brand-200 bg-brand-50 px-4 py-2 text-sm text-brand-700">
-          Berechnung angestoßen — die Steuertermine werden im Hintergrund
-          aktualisiert und erscheinen hier in Kürze.
+          Berechnung angestoßen — die Steuertermine werden im Hintergrund aktualisiert und
+          erscheinen hier in Kürze.
         </div>
       )}
-      <form
-        method="get"
-        action="/staff/tax-deadlines"
-        className="flex items-center gap-2"
-      >
+      <form method="get" action="/staff/tax-deadlines" className="flex items-center gap-2">
         <input type="hidden" name="view" value={view} />
         <input type="hidden" name="scope" value={scope} />
         <input
@@ -398,7 +426,9 @@ function PageHeader({
           className="input flex-1 text-sm"
           maxLength={120}
         />
-        <button type="submit" className="btn-secondary text-xs">Filtern</button>
+        <button type="submit" className="btn-secondary text-xs">
+          Filtern
+        </button>
         {q && (
           <Link href={qs({ view, scope })} className="btn-secondary text-xs">
             Zurücksetzen
@@ -413,8 +443,18 @@ function PageHeader({
 }
 
 function ScopeLink({
-  active, scope, view, q, label,
-}: { active: boolean; scope: 'all' | 'mine'; view: 'month' | 'list'; q: string; label: string }) {
+  active,
+  scope,
+  view,
+  q,
+  label,
+}: {
+  active: boolean;
+  scope: 'all' | 'mine';
+  view: 'month' | 'list';
+  q: string;
+  label: string;
+}) {
   return (
     <Link
       href={qs({ scope, view, q })}
@@ -430,8 +470,18 @@ function ScopeLink({
 }
 
 function ViewLink({
-  active, view, scope, q, label,
-}: { active: boolean; view: 'month' | 'list'; scope: 'all' | 'mine'; q: string; label: string }) {
+  active,
+  view,
+  scope,
+  q,
+  label,
+}: {
+  active: boolean;
+  view: 'month' | 'list';
+  scope: 'all' | 'mine';
+  q: string;
+  label: string;
+}) {
   return (
     <Link
       href={qs({ view, scope, q })}
@@ -456,7 +506,15 @@ function qs(p: { view?: string; scope?: string; month?: string; q?: string }): s
   return s ? `/staff/tax-deadlines?${s}` : '/staff/tax-deadlines';
 }
 
-function Stat({ label, value, accent }: { label: string; value: number; accent?: 'red' | 'emerald' }) {
+function Stat({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: number;
+  accent?: 'red' | 'emerald';
+}) {
   const tone =
     accent === 'red' ? 'text-red-700' : accent === 'emerald' ? 'text-emerald-700' : 'text-primary';
   return (
@@ -497,7 +555,10 @@ function DeadlineTable({
           {rows.map((d) => (
             <tr key={d.id} className="hover:bg-gray-50">
               <td className="px-6 py-3">
-                <Link href={`/staff/clients/${d.client.id}`} className="text-secondary hover:underline">
+                <Link
+                  href={`/staff/clients/${d.client.id}`}
+                  className="text-secondary hover:underline"
+                >
                   {d.client.name}
                 </Link>
               </td>
@@ -507,16 +568,29 @@ function DeadlineTable({
               <td className="px-6 py-3 text-secondary">{d.period}</td>
               <td className="px-6 py-3 text-secondary">{fmtDateShort(d.dueDate)}</td>
               <td className="px-6 py-3">
-                {d.status === 'OVERDUE' && <span className="badge-red">{STATUS_LABELS[d.status]}</span>}
-                {d.status === 'REMINDED' && <span className="badge-yellow">{STATUS_LABELS[d.status]}</span>}
-                {d.status === 'PLANNED' && <span className="badge-gray">{STATUS_LABELS[d.status]}</span>}
-                {d.status === 'IN_PROGRESS' && <span className="badge-yellow">{STATUS_LABELS[d.status]}</span>}
-                {d.status === 'SUBMITTED' && <span className="badge-green">{STATUS_LABELS[d.status]}</span>}
+                {d.status === 'OVERDUE' && (
+                  <span className="badge-red">{STATUS_LABELS[d.status]}</span>
+                )}
+                {d.status === 'REMINDED' && (
+                  <span className="badge-yellow">{STATUS_LABELS[d.status]}</span>
+                )}
+                {d.status === 'PLANNED' && (
+                  <span className="badge-gray">{STATUS_LABELS[d.status]}</span>
+                )}
+                {d.status === 'IN_PROGRESS' && (
+                  <span className="badge-yellow">{STATUS_LABELS[d.status]}</span>
+                )}
+                {d.status === 'SUBMITTED' && (
+                  <span className="badge-green">{STATUS_LABELS[d.status]}</span>
+                )}
               </td>
               <td className="px-6 py-3 text-right">
                 <div className="flex items-center justify-end gap-2">
                   {d.requestId && (
-                    <Link href={`/staff/requests/${d.requestId}`} className="text-xs text-brand-700 hover:underline">
+                    <Link
+                      href={`/staff/requests/${d.requestId}`}
+                      className="text-xs text-brand-700 hover:underline"
+                    >
                       Anforderung
                     </Link>
                   )}
@@ -535,4 +609,3 @@ function DeadlineTable({
     </div>
   );
 }
-

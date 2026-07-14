@@ -24,7 +24,8 @@ async function main() {
   const adminEmail = process.env['ADMIN_EMAIL']?.trim().toLowerCase();
   const slug = process.env['TENANT_SLUG']?.trim().toLowerCase();
   const explicitPasswordRaw = process.env['ADMIN_PASSWORD'];
-  const explicitPassword = explicitPasswordRaw && explicitPasswordRaw.trim() ? explicitPasswordRaw : undefined;
+  const explicitPassword =
+    explicitPasswordRaw && explicitPasswordRaw.trim() ? explicitPasswordRaw : undefined;
 
   if (adminEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) {
     fail('ADMIN_EMAIL ist keine gueltige E-Mail-Adresse.');
@@ -52,13 +53,13 @@ async function main() {
 
   if (candidates.length === 0) {
     fail(
-      adminEmail || slug
-        ? 'Kein passendes ADMIN-Konto gefunden.'
-        : 'Kein ADMIN-Konto gefunden.',
+      adminEmail || slug ? 'Kein passendes ADMIN-Konto gefunden.' : 'Kein ADMIN-Konto gefunden.',
     );
   }
   if (candidates.length > 1) {
-    console.error('[reset-admin-password] Mehrere ADMIN-Konten gefunden. Bitte mit ADMIN_EMAIL oder TENANT_SLUG eindeutig machen:');
+    console.error(
+      '[reset-admin-password] Mehrere ADMIN-Konten gefunden. Bitte mit ADMIN_EMAIL oder TENANT_SLUG eindeutig machen:',
+    );
     for (const c of candidates) {
       console.error(`  TENANT_SLUG=${c.tenant.slug} ADMIN_EMAIL=${c.email} (${c.tenant.name})`);
     }
@@ -85,7 +86,9 @@ async function main() {
     },
   });
 
-  console.log(`[reset-admin-password] Passwort gesetzt: ${staff.email} (Tenant: ${staff.tenant.slug})`);
+  console.log(
+    `[reset-admin-password] Passwort gesetzt: ${staff.email} (Tenant: ${staff.tenant.slug})`,
+  );
   console.log('[reset-admin-password] TOTP wird beim naechsten Login neu eingerichtet.');
 
   const credPath = writeAdminCredentials(staff.email, adminPassword);
@@ -99,7 +102,9 @@ async function main() {
     console.log('  ============================================================');
     console.log('');
   } else {
-    console.log(`  Admin-Passwort aus $ADMIN_PASSWORD uebernommen und gespeichert in: ${credPath} (chmod 600).`);
+    console.log(
+      `  Admin-Passwort aus $ADMIN_PASSWORD uebernommen und gespeichert in: ${credPath} (chmod 600).`,
+    );
   }
 }
 

@@ -21,6 +21,7 @@ App — sonst ist Drift garantiert.
 ## Konsequenzen
 
 **Positiv**
+
 - Eine Quelle der Wahrheit für Schemas, Types, Compliance-Logik.
 - Atomare Commits über Schema- und App-Änderungen.
 - Turbo-Caching beschleunigt CI deutlich (nur geänderte Pakete).
@@ -28,9 +29,10 @@ App — sonst ist Drift garantiert.
   Cross-Modul-Logik zu brechen.
 
 **Negativ**
+
 - Höhere Initial-Komplexität als ein einzelnes Next.js-Projekt.
 - pnpm-Setup muss bei jeder neuen Maschine korrekt installiert sein
-  (Node 20+, `corepack enable`).
+  (Node 24 LTS, `corepack enable`).
 
 ## Alternativen
 

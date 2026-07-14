@@ -95,7 +95,10 @@ const LOGO_DATAURL_RE = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
 
 const BrandingSchema = z.object({
   displayName: z.string().min(1).max(100),
-  accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Hex-Farbe wie #2563eb').transform((s) => s.toLowerCase()),
+  accentColor: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, 'Hex-Farbe wie #2563eb')
+    .transform((s) => s.toLowerCase()),
   subtitle: z.string().max(100).optional().or(z.literal('')),
   logoDataUrl: z.string().max(MAX_LOGO_DATAURL_LEN).optional().or(z.literal('')),
   logoDataUrlDark: z.string().max(MAX_LOGO_DATAURL_LEN).optional().or(z.literal('')),

@@ -6,10 +6,21 @@ import { redirect } from 'next/navigation';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
-import { staffActionGuard, withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
+import {
+  staffActionGuard,
+  withStaff,
+  ActionError,
+  type ActionResult,
+} from '@/server/actions/staff-action';
 
 const AXES = [
-  'REVENUE', 'PERSONNEL', 'OTHER_COSTS', 'DEPRECIATION', 'MATERIAL', 'OTHER_INCOME', 'TAXES',
+  'REVENUE',
+  'PERSONNEL',
+  'OTHER_COSTS',
+  'DEPRECIATION',
+  'MATERIAL',
+  'OTHER_INCOME',
+  'TAXES',
 ] as const;
 type Axis = (typeof AXES)[number];
 
@@ -19,13 +30,15 @@ const CreateSchema = z.object({
   basePeriodId: z.string().uuid().nullable().optional(),
   notes: z.string().max(5000).nullable().optional(),
   status: z.enum(['DRAFT', 'FINAL']).default('FINAL'),
-  lines: z.array(
-    z.object({
-      axis: z.enum(AXES),
-      amount: z.number(),
-      note: z.string().max(300).nullable().optional(),
-    }),
-  ).max(20),
+  lines: z
+    .array(
+      z.object({
+        axis: z.enum(AXES),
+        amount: z.number(),
+        note: z.string().max(300).nullable().optional(),
+      }),
+    )
+    .max(20),
 });
 
 // clientId wird per `.bind(null, clientId)` aus der Page als erstes Argument
@@ -38,7 +51,8 @@ export async function createStaffPlanAction(
   const g = await staffActionGuard();
   if (!g.ok) return g;
   const { tenantId, staffId, ctx, session } = g;
-  if (!z.string().uuid().safeParse(clientId).success) return { ok: false, error: 'Mandant ungültig.' };
+  if (!z.string().uuid().safeParse(clientId).success)
+    return { ok: false, error: 'Mandant ungültig.' };
   const parsed = CreateSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
@@ -78,7 +92,12 @@ export async function createStaffPlanAction(
         action: 'bwa_plan.create',
         resourceType: 'bwa_plan',
         resourceId: plan.id,
-        after: { name: parsed.data.name, year: parsed.data.year, lineCount: lines.length, createdByType: 'STAFF' },
+        after: {
+          name: parsed.data.name,
+          year: parsed.data.year,
+          lineCount: lines.length,
+          createdByType: 'STAFF',
+        },
       });
       return plan.id;
     });
@@ -94,20 +113,23 @@ const UpdateSchema = z.object({
   name: z.string().min(1).max(120),
   notes: z.string().max(5000).nullable().optional(),
   status: z.enum(['DRAFT', 'FINAL']),
-  lines: z.array(
-    z.object({
-      axis: z.enum(AXES),
-      amount: z.number(),
-      note: z.string().max(300).nullable().optional(),
-    }),
-  ).max(20),
+  lines: z
+    .array(
+      z.object({
+        axis: z.enum(AXES),
+        amount: z.number(),
+        note: z.string().max(300).nullable().optional(),
+      }),
+    )
+    .max(20),
 });
 
 export async function updateStaffPlanAction(
   clientId: string,
   input: z.infer<typeof UpdateSchema>,
 ): Promise<ActionResult> {
-  if (!z.string().uuid().safeParse(clientId).success) return { ok: false, error: 'Mandant ungültig.' };
+  if (!z.string().uuid().safeParse(clientId).success)
+    return { ok: false, error: 'Mandant ungültig.' };
   const parsed = UpdateSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
   const { planId } = parsed.data;
@@ -142,7 +164,12 @@ export async function updateStaffPlanAction(
         action: 'bwa_plan.update',
         resourceType: 'bwa_plan',
         resourceId: planId,
-        after: { name: parsed.data.name, status: parsed.data.status, lineCount: parsed.data.lines.length, updatedByType: 'STAFF' },
+        after: {
+          name: parsed.data.name,
+          status: parsed.data.status,
+          lineCount: parsed.data.lines.length,
+          updatedByType: 'STAFF',
+        },
       });
     },
     {
@@ -160,7 +187,8 @@ export async function deleteStaffPlanAction(
   clientId: string,
   input: { planId: string },
 ): Promise<ActionResult> {
-  if (!z.string().uuid().safeParse(clientId).success) return { ok: false, error: 'Mandant ungültig.' };
+  if (!z.string().uuid().safeParse(clientId).success)
+    return { ok: false, error: 'Mandant ungültig.' };
   const parsed = z.object({ planId: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
   const { planId } = parsed.data;

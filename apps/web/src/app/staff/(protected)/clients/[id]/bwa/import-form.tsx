@@ -111,9 +111,7 @@ export function BwaImportForm({ clientId }: { clientId: string }) {
         </button>
       </div>
 
-      {error && (
-        <div className="alert-error-sm">{error}</div>
-      )}
+      {error && <div className="alert-error-sm">{error}</div>}
       {result?.ok && (
         <div className="alert-success-sm">
           {result.imported} Periode{result.imported === 1 ? '' : 'n'} importiert

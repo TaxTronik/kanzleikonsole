@@ -80,7 +80,12 @@ export async function writeAccessPolicy(ctx: TenantContext, cfg: AccessPolicy): 
   await withTenantContext(ctx, async (tx) => {
     await tx.tenantSetting.upsert({
       where: { tenantId_key: { tenantId: ctx.tenantId, key: KEY_ACCESS } },
-      create: { tenantId: ctx.tenantId, key: KEY_ACCESS, value: cfg as object, updatedBy: ctx.actorId ?? undefined },
+      create: {
+        tenantId: ctx.tenantId,
+        key: KEY_ACCESS,
+        value: cfg as object,
+        updatedBy: ctx.actorId ?? undefined,
+      },
       update: { value: cfg as object, updatedBy: ctx.actorId ?? undefined },
     });
   });

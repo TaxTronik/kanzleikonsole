@@ -74,11 +74,18 @@ export default async function DsgvoPage() {
             </thead>
             <tbody className="divide-y divide-border-subtle">
               {requests.map((r) => {
-                const overdue = r.dueDate && r.dueDate < new Date() && r.status !== 'COMPLETED' && r.status !== 'REJECTED';
+                const overdue =
+                  r.dueDate &&
+                  r.dueDate < new Date() &&
+                  r.status !== 'COMPLETED' &&
+                  r.status !== 'REJECTED';
                 return (
                   <tr key={r.id} className="hover:bg-gray-50">
                     <td className="px-6 py-3">
-                      <Link href={`/staff/admin/dsgvo/${r.id}`} className="font-medium text-primary hover:underline">
+                      <Link
+                        href={`/staff/admin/dsgvo/${r.id}`}
+                        className="font-medium text-primary hover:underline"
+                      >
                         {typeLabels[r.type]}
                       </Link>
                     </td>
@@ -87,10 +94,18 @@ export default async function DsgvoPage() {
                       <p className="text-xs text-muted">{r.subjectEmail}</p>
                     </td>
                     <td className="px-6 py-3">
-                      {r.status === 'RECEIVED' && <span className="badge-yellow">{statusLabels[r.status]}</span>}
-                      {r.status === 'IN_PROGRESS' && <span className="badge-yellow">{statusLabels[r.status]}</span>}
-                      {r.status === 'COMPLETED' && <span className="badge-green">{statusLabels[r.status]}</span>}
-                      {r.status === 'REJECTED' && <span className="badge-gray">{statusLabels[r.status]}</span>}
+                      {r.status === 'RECEIVED' && (
+                        <span className="badge-yellow">{statusLabels[r.status]}</span>
+                      )}
+                      {r.status === 'IN_PROGRESS' && (
+                        <span className="badge-yellow">{statusLabels[r.status]}</span>
+                      )}
+                      {r.status === 'COMPLETED' && (
+                        <span className="badge-green">{statusLabels[r.status]}</span>
+                      )}
+                      {r.status === 'REJECTED' && (
+                        <span className="badge-gray">{statusLabels[r.status]}</span>
+                      )}
                     </td>
                     <td className={overdue ? 'px-6 py-3 text-red-700' : 'px-6 py-3 text-secondary'}>
                       <div className="flex items-center gap-1">
@@ -98,9 +113,7 @@ export default async function DsgvoPage() {
                         {r.dueDate ? fmtDateShort(r.dueDate) : '—'}
                       </div>
                     </td>
-                    <td className="px-6 py-3 text-secondary">
-                      {fmtDateShort(r.createdAt)}
-                    </td>
+                    <td className="px-6 py-3 text-secondary">{fmtDateShort(r.createdAt)}</td>
                   </tr>
                 );
               })}

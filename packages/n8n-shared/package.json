@@ -1,6 +1,7 @@
 {
   "name": "@taxtronik/n8n-shared",
   "version": "0.0.0",
+  "license": "AGPL-3.0-only",
   "private": true,
   "type": "module",
   "main": "./src/index.ts",
@@ -13,7 +14,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@types/node": "^25.9.1",
+    "@types/node": "^24.13.2",
     "typescript": "^6.0.3",
     "vite": "^8.0.14",
     "vitest": "^4.1.7"

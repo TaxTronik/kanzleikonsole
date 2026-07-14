@@ -13,7 +13,9 @@ export function LetterheadForm({ initial }: { initial: LetterheadConfig }) {
   return (
     <form action={formAction} className="space-y-4">
       <div>
-        <label className="label" htmlFor="lh-org">Kanzlei-Name</label>
+        <label className="label" htmlFor="lh-org">
+          Kanzlei-Name
+        </label>
         <input
           id="lh-org"
           name="organisationName"
@@ -26,7 +28,9 @@ export function LetterheadForm({ initial }: { initial: LetterheadConfig }) {
       </div>
 
       <div>
-        <label className="label" htmlFor="lh-addr">Adresse (mehrzeilig)</label>
+        <label className="label" htmlFor="lh-addr">
+          Adresse (mehrzeilig)
+        </label>
         <textarea
           id="lh-addr"
           name="addressLines"
@@ -39,7 +43,9 @@ export function LetterheadForm({ initial }: { initial: LetterheadConfig }) {
       </div>
 
       <div>
-        <label className="label" htmlFor="lh-contact">Kontakt-Zeile</label>
+        <label className="label" htmlFor="lh-contact">
+          Kontakt-Zeile
+        </label>
         <input
           id="lh-contact"
           name="contactLine"
@@ -52,7 +58,9 @@ export function LetterheadForm({ initial }: { initial: LetterheadConfig }) {
       </div>
 
       <div>
-        <label className="label" htmlFor="lh-foot">Fußnote</label>
+        <label className="label" htmlFor="lh-foot">
+          Fußnote
+        </label>
         <textarea
           id="lh-foot"
           name="footnote"
@@ -60,13 +68,15 @@ export function LetterheadForm({ initial }: { initial: LetterheadConfig }) {
           maxLength={1000}
           className="input font-mono text-sm"
           defaultValue={initial.footnote}
-          placeholder={'Steuerberaterkammer Berlin · USt-ID DE123456789\nGeschäftsführer Max Mustermann (Steuerberater)'}
+          placeholder={
+            'Steuerberaterkammer Berlin · USt-ID DE123456789\nGeschäftsführer Max Mustermann (Steuerberater)'
+          }
         />
       </div>
 
       <p className="text-xs text-muted">
-        Wird in ausgehende PDFs eingebunden (Vollmachten, Rechnungen, Bescheinigungen).
-        Logo + Akzentfarbe oben in den Erscheinungsbild-Settings.
+        Wird in ausgehende PDFs eingebunden (Vollmachten, Rechnungen, Bescheinigungen). Logo +
+        Akzentfarbe oben in den Erscheinungsbild-Settings.
       </p>
 
       <div className="flex items-center gap-3 pt-2">

@@ -12,10 +12,7 @@ export default async function N8nSettingsPage() {
   if (!session?.user) redirect('/staff/login');
   const { tenantId, staffId } = session.user;
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
-  const [cfg, dispatch] = await Promise.all([
-    readN8nConfig(ctx),
-    readMailDispatch(ctx),
-  ]);
+  const [cfg, dispatch] = await Promise.all([readN8nConfig(ctx), readMailDispatch(ctx)]);
 
   return (
     <div className="space-y-6">

@@ -8,7 +8,13 @@ import { fmtDateShort, fmtEUR } from '@/lib/fmt';
 // Statuse, ab denen wir den Bescheid dem Mandant zeigen — vorher
 // (NEU) ist er noch nicht von der Kanzlei geprüft, daher zurückhalten.
 const VISIBLE_NOTICE_STATUSES = new Set([
-  'GEPRUEFT', 'EINSPRUCH', 'ABGEHOLFEN', 'TEILABHILFE', 'ZURUECKGEWIESEN', 'KLAGE', 'RECHTSKRAEFTIG',
+  'GEPRUEFT',
+  'EINSPRUCH',
+  'ABGEHOLFEN',
+  'TEILABHILFE',
+  'ZURUECKGEWIESEN',
+  'KLAGE',
+  'RECHTSKRAEFTIG',
 ]);
 
 const NOTICE_STATUS_LABELS: Record<string, string> = {
@@ -33,7 +39,6 @@ const KIND_LABELS: Record<string, string> = {
   ZERLEGUNG: 'Zerlegungsbescheid',
   SONSTIGE: 'Sonstige',
 };
-
 
 export default async function PortalSteuerPage() {
   const session = await portalAuth();
@@ -70,17 +75,14 @@ export default async function PortalSteuerPage() {
     <div className="p-8 max-w-4xl">
       <h1 className="text-2xl font-bold text-primary mb-1">Steuererklärungen</h1>
       <p className="text-muted text-sm mb-6">
-        Was Ihre Kanzlei für Sie übermittelt hat. Die endgültigen Bescheide
-        kommen vom Finanzamt — die hier angegebenen Beträge sind die in
-        DATEV/Addison vorgerechneten Werte.
+        Was Ihre Kanzlei für Sie übermittelt hat. Die endgültigen Bescheide kommen vom Finanzamt —
+        die hier angegebenen Beträge sind die in DATEV/Addison vorgerechneten Werte.
       </p>
 
       {filings.length === 0 ? (
         <div className="card p-10 text-center">
           <Info className="h-10 w-10 text-disabled mx-auto mb-3" />
-          <p className="text-sm text-disabled">
-            Aktuell sind keine Erklärungen freigegeben.
-          </p>
+          <p className="text-sm text-disabled">Aktuell sind keine Erklärungen freigegeben.</p>
         </div>
       ) : (
         <ul className="space-y-4">
@@ -130,7 +132,11 @@ export default async function PortalSteuerPage() {
                 </dl>
 
                 {saldo !== null && (
-                  <div className={'text-sm font-medium ' + (saldo >= 0 ? 'text-emerald-700' : 'text-red-700')}>
+                  <div
+                    className={
+                      'text-sm font-medium ' + (saldo >= 0 ? 'text-emerald-700' : 'text-red-700')
+                    }
+                  >
                     Saldo: {fmtEUR({ toString: () => String(saldo) })}
                   </div>
                 )}
@@ -143,7 +149,9 @@ export default async function PortalSteuerPage() {
 
                 {(() => {
                   const notice = f.notices[0];
-                  const expectedAssessedNum = f.expectedAssessed ? Number(f.expectedAssessed.toString()) : null;
+                  const expectedAssessedNum = f.expectedAssessed
+                    ? Number(f.expectedAssessed.toString())
+                    : null;
                   if (!notice) {
                     return (
                       <p className="mt-3 text-xs text-disabled">
@@ -160,7 +168,9 @@ export default async function PortalSteuerPage() {
                       </div>
                     );
                   }
-                  const assessedNum = notice.assessedAmount ? Number(notice.assessedAmount.toString()) : null;
+                  const assessedNum = notice.assessedAmount
+                    ? Number(notice.assessedAmount.toString())
+                    : null;
                   const delta =
                     assessedNum !== null && expectedAssessedNum !== null
                       ? assessedNum - expectedAssessedNum
@@ -192,7 +202,10 @@ export default async function PortalSteuerPage() {
                         )}
                       </div>
                       <dl className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
-                        <KV label="Festgesetzte Steuer (Ist)" value={fmtEUR(notice.assessedAmount)} />
+                        <KV
+                          label="Festgesetzte Steuer (Ist)"
+                          value={fmtEUR(notice.assessedAmount)}
+                        />
                         <KV
                           label="Erstattung"
                           value={fmtEUR(notice.refundAmount)}
@@ -205,18 +218,23 @@ export default async function PortalSteuerPage() {
                         />
                       </dl>
                       {delta !== null && Math.abs(delta) >= 0.01 && (
-                        <p className={'mt-2 text-xs ' + (delta > 0 ? 'text-red-700' : 'text-emerald-700')}>
+                        <p
+                          className={
+                            'mt-2 text-xs ' + (delta > 0 ? 'text-red-700' : 'text-emerald-700')
+                          }
+                        >
                           Abweichung zur Erklärung: {delta > 0 ? '+' : ''}
                           {fmtEUR({ toString: () => String(delta) })}
                           {delta > 0 ? ' höher als geschätzt' : ' niedriger als geschätzt'}
                         </p>
                       )}
-                      {notice.appealDeadline && ['GEPRUEFT', 'EINSPRUCH'].includes(notice.status) && (
-                        <p className="mt-2 text-xs text-amber-700 flex items-center gap-1">
-                          <AlertCircle className="h-3 w-3" />
-                          Einspruchsfrist bis {fmtDateShort(notice.appealDeadline)}
-                        </p>
-                      )}
+                      {notice.appealDeadline &&
+                        ['GEPRUEFT', 'EINSPRUCH'].includes(notice.status) && (
+                          <p className="mt-2 text-xs text-amber-700 flex items-center gap-1">
+                            <AlertCircle className="h-3 w-3" />
+                            Einspruchsfrist bis {fmtDateShort(notice.appealDeadline)}
+                          </p>
+                        )}
                     </div>
                   );
                 })()}
@@ -244,7 +262,11 @@ function KV({
       <dd
         className={
           'font-medium ' +
-          (accent === 'positive' ? 'text-emerald-700' : accent === 'negative' ? 'text-red-700' : 'text-primary')
+          (accent === 'positive'
+            ? 'text-emerald-700'
+            : accent === 'negative'
+              ? 'text-red-700'
+              : 'text-primary')
         }
       >
         {value}

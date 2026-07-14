@@ -20,7 +20,11 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 function safeFilename(title: string, ext: string): string {
-  const base = (title || 'Subsumtion').replace(/[^\p{L}\p{N} _.-]+/gu, '_').slice(0, 80).trim() || 'Subsumtion';
+  const base =
+    (title || 'Subsumtion')
+      .replace(/[^\p{L}\p{N} _.-]+/gu, '_')
+      .slice(0, 80)
+      .trim() || 'Subsumtion';
   return `${base}.${ext}`;
 }
 
@@ -53,12 +57,15 @@ export async function GET(
   const a = await withTenantContext(ctx, (tx) =>
     tx.riskAnalysis.findUnique({ where: { id: analysisId }, select: { clientId: true } }),
   );
-  if (!a?.clientId || a.clientId !== id) return NextResponse.json({ error: 'not found' }, { status: 404 });
+  if (!a?.clientId || a.clientId !== id)
+    return NextResponse.json({ error: 'not found' }, { status: 404 });
   try {
     await requireSubsumtionAccess(a.clientId);
   } catch (e) {
-    if (e instanceof ForbiddenError) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
-    if (e instanceof UnauthorizedError) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+    if (e instanceof ForbiddenError)
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+    if (e instanceof UnauthorizedError)
+      return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
     throw e;
   }
 
@@ -66,7 +73,11 @@ export async function GET(
   // Fremde/ungültige IDs filtert buildReportModel via Schnittmenge weg (RLS-scoped).
   const marksParam = req.nextUrl.searchParams.get('marks');
   const markingIds = marksParam
-    ? marksParam.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 1000)
+    ? marksParam
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .slice(0, 1000)
     : undefined;
 
   const model = await buildReportModel(ctx, analysisId, markingIds ? { markingIds } : undefined);

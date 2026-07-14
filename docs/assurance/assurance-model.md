@@ -94,7 +94,8 @@ zu `isStaffAdmin(session)`. AST-Guard (`server-action-authz.test.ts`)
 
 | Gate                 | Befehl                                 | Was prüft es                                                                                                                    | CI Job             |
 | -------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
-| **Lint + TypeCheck** | `turbo run lint typecheck`             | ESLint, `no-explicit-any: error`, tsc strict                                                                                    | `quality`          |
+| **Format**           | `pnpm format:check`                    | Reproduzierbare Prettier-Baseline für TypeScript, JavaScript, JSON und Markdown                                                 | `quality`          |
+| **Lint + TypeCheck** | `pnpm lint && pnpm typecheck`          | Repository-weites ESLint, `no-explicit-any: error`, tsc strict                                                                  | `quality`          |
 | **Operator CLI**     | `pnpm test:ops`                        | Prod-Env-Gates, Mailhog-Verbot, Risk-Layer-Paarung, Build-Cache-Prune                                                           | `quality`          |
 | **Schema-Drift**     | `pnpm verify:schema-drift`             | schema.prisma vs Migrationen                                                                                                    | `db`               |
 | **RLS-Drift**        | `pnpm verify:rls`                      | Jede Tabelle hat ENABLE+FORCE RLS + Policy                                                                                      | `db`               |
@@ -104,12 +105,14 @@ zu `isStaffAdmin(session)`. AST-Guard (`server-action-authz.test.ts`)
 | **Paranoid E2E**     | Playwright-Suite                       | Auth, RBAC, Tenant-Isolation, Compliance                                                                                        | `e2e-paranoid`     |
 | **XRechnung**        | KoSIT Validator                        | Schematron + BR-DE Konformität                                                                                                  | `e-rechnung`       |
 | **Container-Scan**   | Trivy                                  | CRITICAL-with-fix blockiert Release                                                                                             | `release`          |
+| **Image-Runtime**    | Release-Compose-Smoke                  | Finale Web-/Worker-Images, Migration, Readiness, Heartbeat, Image-ID und OCI-Commit vor Push                                    | `release`          |
+| **Image-SBOM**       | Trivy CycloneDX                        | Komponenten-Inventar getrennt für die finalen Web-/Worker-Images                                                                | `release`          |
 | **Backup-Restore**   | pg_dump/pg_restore Roundtrip           | Backup ist wiederherstellbar                                                                                                    | `restore`          |
 | **Deploy-Readiness** | `pnpm verify:deploy-readiness`         | Prod-Konfig gegen echte Compose-Infra: S3-Buckets + Object-Lock, ClamAV-StreamMaxLength + Signaturen (EICAR), Storage-Roundtrip | `deploy-readiness` |
 
 **Pre-Commit Guards:** `check-no-focused-tests`, `check-paranoid-e2e`,
 `check-ci-images-pinned`, `check-ci-actions-pinned`, `check-no-real-datev`,
-`check-no-eric-spec`.
+`check-no-eric-spec`, `check-docker-bases-pinned`.
 
 ## 6. Evidence / Audit Guaranties
 
@@ -135,14 +138,15 @@ fachliche Würdigung" bis "RLS ist die letzte Barriere, nicht die einzige".
 
 ## 8. External Review Roadmap
 
-| Phase                | Maßnahme                                              | Status                                               |
-| -------------------- | ----------------------------------------------------- | ---------------------------------------------------- |
-| **Jetzt**            | `SECURITY.md` für Responsible Disclosure              | [`SECURITY.md`](../../SECURITY.md)                   |
-| **Nächstes Quartal** | Externer Code-Audit für Kernmodule (RLS, Audit, RBAC) | Geplant                                              |
-| **Pre-Launch**       | Penetrationstest (OWASP Top 10, API, Auth)            | Roadmap                                              |
-| **Pre-Launch**       | PS 880 Readiness Dokumentation                        | `docs/compliance/idw-ps880-pruefungsbereitschaft.md` |
-| **Post-Launch**      | Supply-Chain-Review (SBOM, Dependency-Provenance)     | Roadmap                                              |
-| **Post-Launch**      | Annual Security Re-Review                             | Roadmap                                              |
+| Phase                | Maßnahme                                                | Status                                               |
+| -------------------- | ------------------------------------------------------- | ---------------------------------------------------- |
+| **Jetzt**            | `SECURITY.md` für Responsible Disclosure                | [`SECURITY.md`](../../SECURITY.md)                   |
+| **Jetzt**            | CycloneDX-SBOM pro finalem Release-Image                | In `release.yml` implementiert                       |
+| **Nächstes Quartal** | Externer Code-Audit für Kernmodule (RLS, Audit, RBAC)   | Geplant                                              |
+| **Pre-Launch**       | Penetrationstest (OWASP Top 10, API, Auth)              | Roadmap                                              |
+| **Pre-Launch**       | PS 880 Readiness Dokumentation                          | `docs/compliance/idw-ps880-pruefungsbereitschaft.md` |
+| **Post-Launch**      | Erweiterter Supply-Chain-Review (Dependency-Provenance) | Roadmap                                              |
+| **Post-Launch**      | Annual Security Re-Review                               | Roadmap                                              |
 
 ---
 

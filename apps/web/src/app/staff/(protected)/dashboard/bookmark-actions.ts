@@ -40,7 +40,9 @@ const ToggleSchema = z.object({
  *   → löschen.
  * Sonst neu anlegen.
  */
-export async function toggleBookmarkAction(input: z.infer<typeof ToggleSchema>): Promise<ActionResult> {
+export async function toggleBookmarkAction(
+  input: z.infer<typeof ToggleSchema>,
+): Promise<ActionResult> {
   const parsed = ToggleSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
   const { resourceType, resourceId, label, href } = parsed.data;

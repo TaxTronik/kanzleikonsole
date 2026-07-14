@@ -48,22 +48,16 @@ export default async function ClientTaxSchedulePage({
 
   return (
     <div className="p-8 max-w-3xl">
-      <Link
-        href={`/staff/clients/${clientId}`}
-        className="back-link"
-      >
+      <Link href={`/staff/clients/${clientId}`} className="back-link">
         <ArrowLeft className="h-4 w-4" /> Zurück
       </Link>
 
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-primary mb-1">
-          Steuertermin-Konfiguration
-        </h1>
+        <h1 className="text-2xl font-bold text-primary mb-1">Steuertermin-Konfiguration</h1>
         <p className="text-muted text-sm">{client.name}</p>
         <p className="text-xs text-muted mt-2">
-          Beim Deaktivieren einer Termin-Art werden alle noch offenen
-          Termine dieser Art aus dem Kalender entfernt. Bereits erledigte
-          Termine bleiben aus Audit-Gründen erhalten.
+          Beim Deaktivieren einer Termin-Art werden alle noch offenen Termine dieser Art aus dem
+          Kalender entfernt. Bereits erledigte Termine bleiben aus Audit-Gründen erhalten.
         </p>
       </div>
 

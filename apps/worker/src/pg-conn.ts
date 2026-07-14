@@ -16,10 +16,14 @@
 export function pgConnArgs(dbUrl: string): { args: string[]; env: Record<string, string> } {
   const u = new URL(dbUrl);
   const args = [
-    '-h', u.hostname,
-    '-p', u.port || '5432',
-    '-U', decodeURIComponent(u.username),
-    '-d', u.pathname.slice(1) || decodeURIComponent(u.username),
+    '-h',
+    u.hostname,
+    '-p',
+    u.port || '5432',
+    '-U',
+    decodeURIComponent(u.username),
+    '-d',
+    u.pathname.slice(1) || decodeURIComponent(u.username),
   ];
   const e: Record<string, string> = { PGPASSWORD: decodeURIComponent(u.password) };
   const sslmode = u.searchParams.get('sslmode');

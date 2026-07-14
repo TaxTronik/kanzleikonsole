@@ -27,7 +27,6 @@ import { withTenantContext } from '@taxtronik/db';
 import { SkillBadge } from '@/components/skill-badge';
 import { fmtDateTimeShort } from '@/lib/fmt';
 
-
 const KIND_LABEL: Record<string, string> = {
   TASK: 'Aufgabe',
   DOCUMENT_UPLOAD: 'Dokument',
@@ -99,10 +98,7 @@ export default async function WorkflowInstanceDetail({
 
   return (
     <div className="p-8 max-w-4xl">
-      <Link
-        href={`/staff/clients/${clientId}/workflows`}
-        className="back-link"
-      >
+      <Link href={`/staff/clients/${clientId}/workflows`} className="back-link">
         <ArrowLeft className="h-4 w-4" /> Zurück zu Workflows
       </Link>
 
@@ -114,14 +110,26 @@ export default async function WorkflowInstanceDetail({
               {inst.name}
             </h1>
             <p className="text-sm text-secondary">
-              Mandant: <Link href={`/staff/clients/${clientId}`} className="hover:underline">{inst.client.name}</Link>
+              Mandant:{' '}
+              <Link href={`/staff/clients/${clientId}`} className="hover:underline">
+                {inst.client.name}
+              </Link>
               {inst.template ? (
                 <>
                   {' · '}
-                  Vorlage: <Link href={`/staff/workflows/templates/${inst.template.id}`} className="hover:underline">{inst.template.name}</Link>
+                  Vorlage:{' '}
+                  <Link
+                    href={`/staff/workflows/templates/${inst.template.id}`}
+                    className="hover:underline"
+                  >
+                    {inst.template.name}
+                  </Link>
                 </>
               ) : (
-                <> · <span className="text-disabled">Eigener Workflow</span></>
+                <>
+                  {' '}
+                  · <span className="text-disabled">Eigener Workflow</span>
+                </>
               )}
             </p>
           </div>
@@ -129,7 +137,11 @@ export default async function WorkflowInstanceDetail({
             {isCompleted ? (
               <span className="badge-green inline-flex items-center gap-1">
                 <CheckCircle2 className="h-3 w-3" />
-                {inst.status === 'COMPLETED' ? 'Abgeschlossen' : inst.status === 'CANCELLED' ? 'Abgebrochen' : inst.status}
+                {inst.status === 'COMPLETED'
+                  ? 'Abgeschlossen'
+                  : inst.status === 'CANCELLED'
+                    ? 'Abgebrochen'
+                    : inst.status}
               </span>
             ) : (
               <span className="badge-yellow">Laufend</span>
@@ -144,12 +156,14 @@ export default async function WorkflowInstanceDetail({
           </div>
           <div className="inline-flex items-center gap-1.5">
             <UserIcon className="h-3.5 w-3.5 text-disabled" />
-            Von: <strong className="text-primary">{staffName.get(inst.startedByStaff) ?? '—'}</strong>
+            Von:{' '}
+            <strong className="text-primary">{staffName.get(inst.startedByStaff) ?? '—'}</strong>
           </div>
           {inst.completedAt && (
             <div className="inline-flex items-center gap-1.5">
               <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-              Erledigt: <strong className="text-primary">{fmtDateTimeShort(inst.completedAt)}</strong>
+              Erledigt:{' '}
+              <strong className="text-primary">{fmtDateTimeShort(inst.completedAt)}</strong>
             </div>
           )}
         </div>
@@ -158,13 +172,19 @@ export default async function WorkflowInstanceDetail({
           <div className="h-2 flex-1 rounded-full bg-gray-100 overflow-hidden">
             <div className="h-full bg-brand-600" style={{ width: `${pct}%` }} />
           </div>
-          <span className="text-xs text-muted shrink-0">{doneCount} / {total} erledigt</span>
+          <span className="text-xs text-muted shrink-0">
+            {doneCount} / {total} erledigt
+          </span>
         </div>
 
         {inst.notes && (
           <div className="mt-4 rounded-md bg-amber-50/40 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 p-3">
-            <p className="text-xs font-semibold text-amber-900 dark:text-amber-200 mb-1">Notiz zur Instanz</p>
-            <p className="text-sm text-amber-900 dark:text-amber-100 whitespace-pre-wrap">{inst.notes}</p>
+            <p className="text-xs font-semibold text-amber-900 dark:text-amber-200 mb-1">
+              Notiz zur Instanz
+            </p>
+            <p className="text-sm text-amber-900 dark:text-amber-100 whitespace-pre-wrap">
+              {inst.notes}
+            </p>
           </div>
         )}
       </div>
@@ -191,7 +211,13 @@ export default async function WorkflowInstanceDetail({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <KindIcon className="h-3.5 w-3.5 text-disabled shrink-0" />
-                    <span className={done ? 'text-sm text-muted line-through' : 'text-sm font-medium text-primary'}>
+                    <span
+                      className={
+                        done
+                          ? 'text-sm text-muted line-through'
+                          : 'text-sm font-medium text-primary'
+                      }
+                    >
                       {it.title}
                     </span>
                     {it.kind !== 'TASK' && (
@@ -208,13 +234,20 @@ export default async function WorkflowInstanceDetail({
                     )}
                   </div>
                   {it.description && (
-                    <p className="text-xs text-secondary mt-1 whitespace-pre-wrap">{it.description}</p>
+                    <p className="text-xs text-secondary mt-1 whitespace-pre-wrap">
+                      {it.description}
+                    </p>
                   )}
 
                   {/* Verlauf-Zeile */}
                   <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted">
                     {it.assigneeStaffId && (
-                      <span>Zuständig: <strong className="text-secondary">{staffName.get(it.assigneeStaffId) ?? '—'}</strong></span>
+                      <span>
+                        Zuständig:{' '}
+                        <strong className="text-secondary">
+                          {staffName.get(it.assigneeStaffId) ?? '—'}
+                        </strong>
+                      </span>
                     )}
                     {it.startedAt && !done && (
                       <span>Angestoßen {fmtDateTimeShort(it.startedAt)}</span>
@@ -244,7 +277,11 @@ export default async function WorkflowInstanceDetail({
                         >
                           <Inbox className="h-3 w-3" />
                           {r.title}
-                          {r.closedAt && <span className="text-disabled">(geschlossen {fmtDateTimeShort(r.closedAt)})</span>}
+                          {r.closedAt && (
+                            <span className="text-disabled">
+                              (geschlossen {fmtDateTimeShort(r.closedAt)})
+                            </span>
+                          )}
                           <ExternalLink className="h-2.5 w-2.5" />
                         </Link>
                       ))}
@@ -253,10 +290,17 @@ export default async function WorkflowInstanceDetail({
                   {it.triggeredSubmissions.length > 0 && (
                     <div className="mt-2 text-xs">
                       {it.triggeredSubmissions.map((s) => (
-                        <span key={s.id} className="inline-flex items-center gap-1 text-secondary mr-3">
+                        <span
+                          key={s.id}
+                          className="inline-flex items-center gap-1 text-secondary mr-3"
+                        >
                           <FileText className="h-3 w-3" />
                           Formular „{s.name}"
-                          {s.submittedAt && <span className="text-emerald-700 dark:text-emerald-400">(ausgefüllt {fmtDateTimeShort(s.submittedAt)})</span>}
+                          {s.submittedAt && (
+                            <span className="text-emerald-700 dark:text-emerald-400">
+                              (ausgefüllt {fmtDateTimeShort(s.submittedAt)})
+                            </span>
+                          )}
                         </span>
                       ))}
                     </div>

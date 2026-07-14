@@ -41,7 +41,6 @@ import { prismaOwner } from '../prisma-owner';
 import { prismaBytes } from '../pg-conn';
 import { assertPublicHost } from '../http/ssrf-guard';
 
-
 const BATCH = Number(process.env['AUDIT_ARCHIVE_BATCH'] ?? '5000');
 const MIN_AGE_DAYS = Number(process.env['AUDIT_ARCHIVE_MIN_AGE_DAYS'] ?? '90');
 const MODE_RAW = (process.env['AUDIT_ARCHIVE_MODE'] ?? 'SOFT') as 'SOFT' | 'HARD';
@@ -155,8 +154,10 @@ export const auditRotateWorker = new Worker<ChecksJob>(
         );
       } catch (err) {
         // NotFound ist erwartet — alles andere ist ein echter S3-Fehler und propagiert
-        const name = (err as Error & { name?: string; $metadata?: { httpStatusCode?: number } }).name;
-        const status = (err as Error & { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
+        const name = (err as Error & { name?: string; $metadata?: { httpStatusCode?: number } })
+          .name;
+        const status = (err as Error & { $metadata?: { httpStatusCode?: number } }).$metadata
+          ?.httpStatusCode;
         if (name !== 'NotFound' && status !== 404) throw err;
       }
 
@@ -235,7 +236,13 @@ export const auditRotateWorker = new Worker<ChecksJob>(
       //    MODE-Normalisierung oben (RF-13). totalDeleted bleibt ehrlich 0.
 
       log.info(
-        { tenantId, from: String(ser.fromAuditId), to: String(ser.toAuditId), count: ser.entryCount, storageKey },
+        {
+          tenantId,
+          from: String(ser.fromAuditId),
+          to: String(ser.toAuditId),
+          count: ser.entryCount,
+          storageKey,
+        },
         'audit-rotate: Segment archiviert',
       );
     }

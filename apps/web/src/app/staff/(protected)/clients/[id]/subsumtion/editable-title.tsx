@@ -56,10 +56,22 @@ export function EditableAnalysisTitle({
             maxLength={200}
             className="flex-1 min-w-0 rounded-md border border-default bg-surface px-3 py-1.5 text-xl font-bold text-primary"
           />
-          <button type="button" onClick={save} disabled={pending} className="btn-primary text-sm shrink-0" title="Speichern">
+          <button
+            type="button"
+            onClick={save}
+            disabled={pending}
+            className="btn-primary text-sm shrink-0"
+            title="Speichern"
+          >
             {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
           </button>
-          <button type="button" onClick={() => setEditing(false)} disabled={pending} className="btn-secondary text-sm shrink-0" title="Abbrechen">
+          <button
+            type="button"
+            onClick={() => setEditing(false)}
+            disabled={pending}
+            className="btn-secondary text-sm shrink-0"
+            title="Abbrechen"
+          >
             <X className="h-4 w-4" />
           </button>
         </div>

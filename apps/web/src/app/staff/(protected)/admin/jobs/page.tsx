@@ -20,17 +20,17 @@ export default async function AdminJobsPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-primary mb-1">System → Jobs</h1>
         <p className="text-muted text-sm max-w-3xl">
-          Verarbeitungsstatus der Hintergrund-Jobs (BullMQ). „Veraltet" = der letzte
-          erfolgreiche Lauf liegt über dem 1,5-fachen des Soll-Intervalls zurück —
-          ein Hinweis, dass ein täglicher Job ausgefallen ist. Fehlgeschlagene Jobs
-          (`failed`) sollten geprüft werden; die letzte Fehlermeldung steht rechts.
+          Verarbeitungsstatus der Hintergrund-Jobs (BullMQ). „Veraltet" = der letzte erfolgreiche
+          Lauf liegt über dem 1,5-fachen des Soll-Intervalls zurück — ein Hinweis, dass ein
+          täglicher Job ausgefallen ist. Fehlgeschlagene Jobs (`failed`) sollten geprüft werden; die
+          letzte Fehlermeldung steht rechts.
         </p>
       </div>
 
       {problems.length > 0 && (
         <div className="alert-warning mb-4 text-sm">
-          <strong>{problems.length}</strong> Queue(s) mit veraltetem Lauf oder Fehlern —
-          siehe rot markierte Zeilen.
+          <strong>{problems.length}</strong> Queue(s) mit veraltetem Lauf oder Fehlern — siehe rot
+          markierte Zeilen.
         </div>
       )}
 
@@ -58,13 +58,18 @@ export default async function AdminJobsPage() {
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums">{q.waiting}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{q.active}</td>
-                    <td className={`px-4 py-3 text-right tabular-nums ${q.failed > 0 ? 'text-red-700 font-medium' : 'text-muted'}`}>
+                    <td
+                      className={`px-4 py-3 text-right tabular-nums ${q.failed > 0 ? 'text-red-700 font-medium' : 'text-muted'}`}
+                    >
                       {q.failed}
                     </td>
                     <td className="px-4 py-3 text-secondary">
                       {q.lastCompletedAt ? fmtDateTimeShort(new Date(q.lastCompletedAt)) : '—'}
                     </td>
-                    <td className="px-4 py-3 text-xs text-red-700 max-w-xs truncate" title={q.lastFailedReason ?? ''}>
+                    <td
+                      className="px-4 py-3 text-xs text-red-700 max-w-xs truncate"
+                      title={q.lastFailedReason ?? ''}
+                    >
                       {q.lastFailedReason
                         ? `${q.lastFailedReason}${q.lastFailedAt ? ` (${fmtDateTimeShort(new Date(q.lastFailedAt))})` : ''}`
                         : '—'}

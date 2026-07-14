@@ -30,8 +30,18 @@ APP="$ROOT/infra/compose/docker-compose.app.yml"
 DEV="$ROOT/infra/compose/docker-compose.dev.yml"
 S3_GENERATED="$ROOT/infra/scripts/seaweedfs-s3.generated.json"
 STATE="$ROOT/.taxtronik.state"
+MIGRATION_PENDING="$ROOT/.taxtronik.migration-pending"
+DB_RESTORE_AUTHORIZATION="$ROOT/.taxtronik.database-restored"
 AWS_CLI_IMAGE_DEFAULT="amazon/aws-cli:latest@sha256:c95ab0642137f55a12b95b6956dd03cefdbd73e760e0e7b870afc9b47f9c8150"
 ALPINE_BACKUP_IMAGE_DEFAULT="alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc"
+
+# Interne Autorisierungen gelten nur im dynamischen Scope der unten definierten
+# Aktivierungs-Wrapper. Geerbte Shell-Variablen duerfen einen Operator-Aufruf
+# niemals autorisieren (auch nicht den bestehenden Release-Contract-Guard).
+while IFS= read -r _taxtronik_internal_name; do
+  unset "$_taxtronik_internal_name"
+done < <(compgen -A variable _TAXTRONIK_INTERNAL_ || true)
+unset _taxtronik_internal_name
 
 # ---------------------------------------------------------------------------
 # Ausgabe-Helper
@@ -166,11 +176,15 @@ ensure_compose_image_pinning() {
 }
 
 compose() {
-  render_s3_config
   if [[ "${1:-}" == "--infra" ]]; then
     shift
+    render_s3_config
     docker compose -f "$BASE" --env-file "$ENVFILE" "$@"
   else
+    case "${1:-}" in
+      up|start|restart) assert_writer_start_authorized ;;
+    esac
+    render_s3_config
     ensure_compose_image_pinning
     if [[ "${1:-}" == "up" ]]; then
       reconcile_n8n_encryption_key_from_volume
@@ -575,13 +589,11 @@ doctor() {
   if [[ $fix -eq 1 ]]; then
     info "doctor --fix: Secrets + Prod-Defaults ergaenzen"
     [[ "$(get_env NODE_ENV)" != "production" ]] && { set_env NODE_ENV production; info "NODE_ENV=production gesetzt."; }
-    [[ -z "$(get_env TAXTRONIK_VERSION)" ]] && { set_env TAXTRONIK_VERSION "$(date +%Y-%m-%d)"; info "TAXTRONIK_VERSION=$(date +%Y-%m-%d) gesetzt (spater auf Release pinnen)."; }
     [[ -z "$(get_env TIMESTAMP_AUTHORITY_URL)" ]] && { set_env TIMESTAMP_AUTHORITY_URL "http://timestamp.globalsign.com/tsa/r6advanced1"; info "TIMESTAMP_AUTHORITY_URL=GlobalSign gesetzt."; }
-    # NEXTAUTH_TRUST_HOST ist in Produktion Pflicht (env.ts:238). Default true:
-    # der Stack steht ohnehin hinter einem Reverse-Proxy (P-4), der die Host-
-    # Header setzt/filtert. Wer ohne Proxy direkt ins Netz bindet, muss das
-    # nachtraeglich auf false setzen.
-    [[ -z "$(get_env NEXTAUTH_TRUST_HOST)" ]] && { set_env NEXTAUTH_TRUST_HOST true; info "NEXTAUTH_TRUST_HOST=true gesetzt (Prod hinter Reverse-Proxy)."; }
+    # Host-/Proxy-Trust nie erraten. Der sichere Default ignoriert Forwarded-
+    # Header; ein korrekt konfigurierter Reverse-Proxy ist bewusstes Opt-in.
+    [[ -z "$(get_env NEXTAUTH_TRUST_HOST)" ]] && { set_env NEXTAUTH_TRUST_HOST true; info "NEXTAUTH_TRUST_HOST=true gesetzt (Auth.js-Pflicht; Proxy muss Host pinnen)."; }
+    [[ -z "$(get_env TRUST_PROXY_REQUIRED)" ]] && { set_env TRUST_PROXY_REQUIRED false; info "TRUST_PROXY_REQUIRED=false gesetzt (sicherer Default)."; }
     ensure_secret AUTH_SECRET 32
     ensure_secret N8N_HMAC_SECRET 32
     ensure_secret N8N_ENCRYPTION_KEY 24
@@ -596,6 +608,12 @@ doctor() {
   info "doctor — .env-Validierung ($(basename "$ENVFILE"))"
 
   _dr_secret AUTH_SECRET 32
+  if [[ -z "${SECRET_BOX_KEY:-}" ]]; then
+    _dr_row "WARN" "SECRET_BOX_KEY" "Legacy-Fallback auf AUTH_SECRET; vor Produktivdaten separat provisionieren"
+    _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
+  else
+    _dr_secret SECRET_BOX_KEY 32
+  fi
   _dr_secret N8N_HMAC_SECRET 32
   _dr_secret N8N_ENCRYPTION_KEY 24
   _doctor_n8n_volume_key
@@ -627,10 +645,15 @@ doctor() {
     _dr_row "WARN" "NEXTAUTH_URL" "=$NEXTAUTH_URL (oeffentliche URL setzen)"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
   else _dr_row "OK" "NEXTAUTH_URL" "$NEXTAUTH_URL"; fi
 
-  # NEXTAUTH_TRUST_HOST ist in Produktion Pflicht (env.ts-Cross-Field-Check).
-  if [[ "${NODE_ENV:-}" == "production" && -z "${NEXTAUTH_TRUST_HOST:-}" ]]; then
-    _dr_row "FEHLT" "NEXTAUTH_TRUST_HOST" "in Prod Pflicht (true/false)"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  # Auth.js v5 blockiert bei false jede Anfrage. Production braucht true und
+  # einen Reverse-Proxy, der Host/X-Forwarded-Host kanonisch setzt.
+  if [[ "${NODE_ENV:-}" == "production" && "${NEXTAUTH_TRUST_HOST:-}" != "true" ]]; then
+    _dr_row "FEHLT" "NEXTAUTH_TRUST_HOST" "in Prod exakt true; Proxy muss Host pinnen"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
   else _dr_row "OK" "NEXTAUTH_TRUST_HOST" "${NEXTAUTH_TRUST_HOST:-true}"; fi
+
+  if [[ "${TRUST_PROXY_REQUIRED:-}" != "true" && "${TRUST_PROXY_REQUIRED:-}" != "false" ]]; then
+    _dr_row "FEHLT" "TRUST_PROXY_REQUIRED" "explizit true/false setzen"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  else _dr_row "OK" "TRUST_PROXY_REQUIRED" "$TRUST_PROXY_REQUIRED"; fi
 
   # Risk-Layer (optional): URL und Token MUSS als Paar gesetzt werden (beide
   # oder keines), sonst wirft die ENV-Validierung. Token min 32 (Secret32).
@@ -770,6 +793,7 @@ run_migrations() {
   # One-Shot-Container statt Host-Prisma: das Worker-Image enthaelt Prisma-CLI
   # + Migrationen. Der Server braucht fuer Migrationen weder node_modules noch
   # einen publizierten Postgres-Port.
+  begin_migration_transition
   info "DB-Migrationen anwenden (migrate-Container)"
   compose run --rm migrate
 }
@@ -787,9 +811,22 @@ backup_before_migrations() {
 
 start_infra() { info "Infra starten"; compose --infra up -d; }
 start_apps()  {
+  assert_writer_start_authorized
   info "App, Worker und n8n starten/neu erzeugen"
   run_backup_dir_init
   compose up -d --force-recreate --no-deps app worker n8n
+}
+
+# Bash-`local` ist dynamisch sichtbar: start_apps und der darin aufgerufene
+# Compose-Wrapper sehen diese Werte, ohne dass eine vom Operator setzbare
+# Umgebungsvariable exportiert werden muss.
+start_apps_for_activation() {
+  local _TAXTRONIK_INTERNAL_WRITER_START_REASON="${1:-}"
+  local _TAXTRONIK_INTERNAL_WRITER_START_TARGET="${2:-}"
+  [[ -n "$_TAXTRONIK_INTERNAL_WRITER_START_REASON" && \
+     -n "$_TAXTRONIK_INTERNAL_WRITER_START_TARGET" ]] || \
+    die "Interne Writer-Aktivierung braucht Grund und Zielversion."
+  start_apps
 }
 
 smoke_health() {
@@ -1219,6 +1256,89 @@ upload_full_backup_offsite() {
   info "Offsite-Upload fuer alle 3 Artefakte mit VersionId, Groesse und COMPLIANCE-Retention verifiziert (Receipt: $receipt)."
 }
 
+PRODUCTION_RESTORE_CONFIRMATION="RESTORE_TAXTRONIK_PRODUCTION_DATABASE"
+RESTORE_LIST_ONLY=0
+RESTORE_PRODUCTION_TARGET=0
+RESTORE_RELEASE_VERSION=""
+
+# Validiert den Restore-Aufruf VOR jedem start/stop und damit vor jeder
+# Seitenauswirkung des Operator-Wrappers. restore.ts prueft dieselben Regeln
+# nochmals fuer direkte TypeScript-Aufrufe.
+validate_restore_args() {
+  local seen=" " option_count=0 source_count=0 target_count=0
+  local list_only=0 production_target=0 production_confirmation="" release_version="" arg value
+
+  while (( $# > 0 )); do
+    arg="$1"
+    case " $seen " in
+      *" $arg "*) die "Restore-Option doppelt angegeben: $arg" ;;
+    esac
+
+    case "$arg" in
+      --list)
+        seen+="$arg "; option_count=$((option_count + 1)); list_only=1; shift
+        ;;
+      --latest)
+        seen+="$arg "; option_count=$((option_count + 1)); source_count=$((source_count + 1)); shift
+        ;;
+      --key|--file)
+        [[ $# -ge 2 && -n "${2:-}" && "$2" != --* ]] || die "$arg erwartet genau einen nicht-leeren Wert."
+        seen+="$arg "; option_count=$((option_count + 1)); source_count=$((source_count + 1)); shift 2
+        ;;
+      --target-url)
+        [[ $# -ge 2 && -n "${2:-}" && "$2" != --* ]] || die "$arg erwartet genau einen nicht-leeren Wert."
+        value="$2"
+        [[ "$value" == postgres://* || "$value" == postgresql://* ]] || \
+          die "--target-url muss mit postgres:// oder postgresql:// beginnen."
+        seen+="$arg "; option_count=$((option_count + 1)); target_count=$((target_count + 1)); shift 2
+        ;;
+      --production-target)
+        seen+="$arg "; option_count=$((option_count + 1)); target_count=$((target_count + 1)); production_target=1; shift
+        ;;
+      --confirm-production-restore)
+        [[ $# -ge 2 && -n "${2:-}" && "$2" != --* ]] || die "$arg erwartet genau einen nicht-leeren Wert."
+        production_confirmation="$2"
+        seen+="$arg "; option_count=$((option_count + 1)); shift 2
+        ;;
+      --release-version)
+        [[ $# -ge 2 && -n "${2:-}" && "$2" != --* ]] || die "$arg erwartet genau einen nicht-leeren Wert."
+        release_version="$2"
+        seen+="$arg "; option_count=$((option_count + 1)); shift 2
+        ;;
+      --confirm-overwrite|--no-smoke-test)
+        seen+="$arg "; option_count=$((option_count + 1)); shift
+        ;;
+      *)
+        die "Unbekannte Restore-Option: $arg"
+        ;;
+    esac
+  done
+
+  if (( list_only == 1 )); then
+    (( option_count == 1 )) || die "--list ist read-only und darf nicht mit weiteren Optionen kombiniert werden."
+  else
+    (( source_count == 1 )) || \
+      die "Genau eine Restore-Quelle ist Pflicht: --latest, --key <s3-key> oder --file <pfad>."
+    (( target_count == 1 )) || \
+      die "Genau ein Restore-Ziel ist Pflicht: --target-url <postgres-url> oder --production-target."
+    if (( production_target == 1 )); then
+      [[ "$production_confirmation" == "$PRODUCTION_RESTORE_CONFIRMATION" ]] || \
+        die "--production-target erfordert die exakte Bestaetigung: --confirm-production-restore $PRODUCTION_RESTORE_CONFIRMATION"
+      [[ "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || \
+        die "--production-target erfordert --release-version X.Y.Z passend zum wiederhergestellten Backup."
+    else
+      [[ -z "$production_confirmation" ]] || \
+        die "--confirm-production-restore ist nur zusammen mit --production-target erlaubt."
+      [[ -z "$release_version" ]] || \
+        die "--release-version ist nur zusammen mit --production-target erlaubt."
+    fi
+  fi
+
+  RESTORE_LIST_ONLY="$list_only"
+  RESTORE_PRODUCTION_TARGET="$production_target"
+  RESTORE_RELEASE_VERSION="$release_version"
+}
+
 restore_needs_s3() {
   local arg
   for arg in "$@"; do
@@ -1236,7 +1356,14 @@ run_restore() {
     info "pg_restore fehlt auf dem Host -> nutze pg_restore aus dem Postgres-Container (PG_RESTORE_PATH)."
   fi
   if restore_needs_s3 "$@"; then
-    ensure_s3_ready_for_backup
+    if [[ "${RESTORE_LIST_ONLY:-0}" == "1" ]]; then
+      # --list ist strikt read-only: keine Container starten, keine Credentials
+      # neu laden und keine Buckets initialisieren. Ist S3 nicht erreichbar,
+      # endet der Aufruf mit einer klaren Betriebsanweisung.
+      s3_preflight || die "Read-only Restore-Liste konnte S3 nicht erreichen. Stack zuerst separat starten; --list veraendert keinen Dienstzustand."
+    else
+      ensure_s3_ready_for_backup
+    fi
   fi
   ( cd "$ROOT" && pnpm --filter @taxtronik/web backup:restore -- "$@" )
 }
@@ -1456,13 +1583,219 @@ state_value() {
   grep -E "^${key}=" "$STATE" | head -n1 | cut -d= -f2- || true
 }
 
+pending_migration_value() {
+  local key="$1"
+  [[ -f "$MIGRATION_PENDING" ]] || return 0
+  grep -E "^${key}=" "$MIGRATION_PENDING" | head -n1 | cut -d= -f2- || true
+}
+
+# Ermittelt am echten DB-Migrationsjournal, ob `migrate deploy` mindestens eine
+# Migration anwenden wird. Jeder Probe-Fehler wird als unknown behandelt; ein
+# Rollback darf dann später nicht optimistisch alten Code starten.
+pending_database_migration_requirement() {
+  local applied migration name query_out
+  query_out="$(compose --infra exec -T postgres psql -U taxtronik -d taxtronik -Atc \
+    'SELECT migration_name FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL' \
+    2>/dev/null)" || { printf 'unknown'; return 0; }
+  applied=$'\n'"$query_out"$'\n'
+  for migration in "$ROOT"/packages/db/prisma/migrations/*; do
+    [[ -d "$migration" ]] || continue
+    name="${migration##*/}"
+    [[ "$applied" == *$'\n'"$name"$'\n'* ]] || { printf 'true'; return 0; }
+  done
+  printf 'false'
+}
+
+active_writer_release_commit() {
+  if [[ -n "${TAXTRONIK_RELEASE_COMMIT:-}" ]]; then
+    printf '%s' "$TAXTRONIK_RELEASE_COMMIT"
+  else
+    git -C "$ROOT" rev-parse HEAD 2>/dev/null || true
+  fi
+}
+
+# Zentraler Start-Guard fuer alle Writer (app, worker, n8n). Infrastruktur
+# bleibt separat ueber `compose --infra` startbar. Ein Produktionsrestore kann
+# ausschliesslich durch den exakt passenden Rollback aktiviert werden. Ein
+# offener Migrationsvertrag erlaubt nur den passenden internen Deploy-Start
+# oder, falls garantiert keine Migration ausstand, den exakten Quell-Rollback.
+assert_writer_start_authorized() {
+  local reason="${_TAXTRONIK_INTERNAL_WRITER_START_REASON:-}"
+  local target="${_TAXTRONIK_INTERNAL_WRITER_START_TARGET:-}"
+  local restored_target restored_status pending_requirement pending_source pending_source_commit
+  local pending_target pending_target_commit active_commit
+
+  if [[ -f "$DB_RESTORE_AUTHORIZATION" && -f "$MIGRATION_PENDING" ]]; then
+    die "Writer-Start blockiert: DB-Restore- und Migrations-Pending-Marker existieren gleichzeitig. Markerzustand vor jeder Aktivierung klaeren."
+  fi
+
+  if [[ -f "$DB_RESTORE_AUTHORIZATION" ]]; then
+    restored_target="$(database_restore_authorized_target)"
+    restored_status="$(database_restore_authorization_status)"
+    [[ "$restored_target" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || \
+      die "Writer-Start blockiert: DB-Restore-Autorisierung ist ungueltig."
+    [[ "$restored_status" == "ready" ]] || \
+      die "Writer-Start blockiert: Produktions-DB-Restore ist nicht nachweislich erfolgreich abgeschlossen (Status: ${restored_status:-ungueltig})."
+    [[ "$reason" == "rollback" && "$target" == "$restored_target" ]] || \
+      die "Writer-Start blockiert: Die restaurierte Produktions-DB darf nur mit './taxtronik rollback $restored_target' aktiviert werden."
+    return 0
+  fi
+
+  [[ -f "$MIGRATION_PENDING" ]] || return 0
+  pending_requirement="$(pending_migration_value requires_db_restore)"
+  pending_source="$(pending_migration_value source_version)"
+  pending_source_commit="$(pending_migration_value source_commit)"
+  pending_target="$(pending_migration_value target_version)"
+  pending_target_commit="$(pending_migration_value target_commit)"
+  [[ "$pending_requirement" == "true" || "$pending_requirement" == "false" || \
+     "$pending_requirement" == "unknown" ]] || \
+    die "Writer-Start blockiert: Migrations-Pending-Marker enthaelt keinen gueltigen Restore-Status."
+  [[ -n "$pending_target" && "$pending_target_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || \
+    die "Writer-Start blockiert: Migrations-Pending-Zielvertrag ist unvollstaendig oder ungueltig."
+  active_commit="$(active_writer_release_commit)"
+
+  if [[ "$reason" == "deploy" && "$target" == "$pending_target" && \
+        "$active_commit" == "$pending_target_commit" ]]; then
+    return 0
+  fi
+  if [[ "$reason" == "rollback" && "$pending_requirement" == "false" && \
+        -n "$pending_source" && "$target" == "$pending_source" && \
+        "$pending_source_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ && \
+        "$active_commit" == "$pending_source_commit" ]]; then
+    return 0
+  fi
+
+  die "Writer-Start blockiert: Nicht finalisierter Migrationsvertrag (${pending_source:-Erstinstallation} -> $pending_target, Restore-Status: $pending_requirement). deploy/update bzw. den sicheren Restore-/Rollback-Pfad verwenden."
+}
+
+assert_no_database_restore_pending() {
+  local restored_target
+  [[ -f "$DB_RESTORE_AUTHORIZATION" ]] || return 0
+  restored_target="$(database_restore_authorized_target)"
+  [[ "$restored_target" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || \
+    die "DB-Restore-Autorisierung ist ungueltig; Deploy/Update bleibt blockiert."
+  die "Produktions-DB wurde restauriert. Deploy/Update ist bis zur Aktivierung durch './taxtronik rollback $restored_target' blockiert."
+}
+
+merge_migration_restore_requirement() {
+  local existing="$1" fresh="$2"
+  [[ "$existing" == "true" || "$existing" == "false" || "$existing" == "unknown" ]] || \
+    existing="unknown"
+  [[ "$fresh" == "true" || "$fresh" == "false" || "$fresh" == "unknown" ]] || \
+    fresh="unknown"
+  if [[ "$existing" == "true" || "$fresh" == "true" ]]; then
+    printf 'true'
+  elif [[ "$existing" == "unknown" || "$fresh" == "unknown" ]]; then
+    printf 'unknown'
+  else
+    printf 'false'
+  fi
+}
+
+begin_migration_transition() {
+  local tmp source_version source_commit target_version target_commit requirement
+  local existing_source existing_source_commit existing_target existing_target_commit existing_requirement
+  assert_no_database_restore_pending
+  source_version="$(state_value current)"
+  source_commit="$(state_value current_commit)"
+  target_version="$(image_tag)"
+  target_commit="${TAXTRONIK_RELEASE_COMMIT:-$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)}"
+  requirement="$(pending_database_migration_requirement)"
+  [[ "$requirement" == "true" || "$requirement" == "false" || "$requirement" == "unknown" ]] || \
+    requirement="unknown"
+
+  if [[ -f "$MIGRATION_PENDING" ]]; then
+    existing_source="$(pending_migration_value source_version)"
+    existing_source_commit="$(pending_migration_value source_commit)"
+    existing_target="$(pending_migration_value target_version)"
+    existing_target_commit="$(pending_migration_value target_commit)"
+    existing_requirement="$(pending_migration_value requires_db_restore)"
+    [[ "$existing_source" == "$source_version" && \
+       "$existing_source_commit" == "$source_commit" && \
+       "$existing_target" == "$target_version" && \
+       "$existing_target_commit" == "$target_commit" ]] || \
+      die "Migrations-Pending-Marker gehoert zu einem anderen Release-Uebergang (${existing_source:-Erstinstallation} -> ${existing_target:-unbekannt}) und wird nicht ueberschrieben. Erst bestehenden Fehlerzustand sicher aufloesen."
+    requirement="$(merge_migration_restore_requirement "$existing_requirement" "$requirement")"
+  fi
+
+  tmp="$(mktemp "${MIGRATION_PENDING}.tmp.XXXXXX")" || \
+    die "Migrations-Pending-Marker konnte nicht angelegt werden."
+  {
+    printf 'source_version=%s\n' "$source_version"
+    printf 'source_commit=%s\n' "$source_commit"
+    printf 'target_version=%s\n' "$target_version"
+    printf 'target_commit=%s\n' "$target_commit"
+    printf 'requires_db_restore=%s\n' "$requirement"
+  } > "$tmp"
+  chmod 0600 "$tmp" || { rm -f "$tmp"; die "Migrations-Pending-Marker konnte nicht gehaertet werden."; }
+  mv -f "$tmp" "$MIGRATION_PENDING"
+  chmod 0600 "$MIGRATION_PENDING" || die "Migrations-Pending-Marker konnte nicht gehaertet werden."
+  info "Migrationsvertrag vorgemerkt (DB-Restore bei Ruecksprung: $requirement)."
+}
+
+clear_migration_transition() {
+  [[ ! -e "$MIGRATION_PENDING" ]] || rm -f -- "$MIGRATION_PENDING"
+}
+
+write_database_restore_authorization() {
+  local version="$1" status="$2" tmp
+  [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || \
+    die "Restore-Autorisierung braucht eine SemVer-Release-Version."
+  [[ "$status" == "pending" || "$status" == "ready" ]] || \
+    die "Restore-Autorisierung braucht einen gueltigen Status."
+  tmp="$(mktemp "${DB_RESTORE_AUTHORIZATION}.tmp.XXXXXX")" || \
+    die "DB-Restore-Autorisierung konnte nicht angelegt werden."
+  {
+    printf 'target_version=%s\n' "$version"
+    printf 'status=%s\n' "$status"
+    printf 'created_at=%s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+  } > "$tmp"
+  chmod 0600 "$tmp" || { rm -f "$tmp"; die "DB-Restore-Autorisierung konnte nicht gehaertet werden."; }
+  mv -f "$tmp" "$DB_RESTORE_AUTHORIZATION"
+  chmod 0600 "$DB_RESTORE_AUTHORIZATION" || die "DB-Restore-Autorisierung konnte nicht gehaertet werden."
+}
+
+begin_database_restore_authorization() {
+  local version="$1"
+  # Vor der ersten moeglichen Restore-Seitenauswirkung persistieren. Bleibt der
+  # Restore teilweise oder vollstaendig erfolglos, blockiert `pending` jeden
+  # spaeteren Writer-Start bis zu einem erneut erfolgreichen Restore.
+  write_database_restore_authorization "$version" pending
+  # Die wiederhergestellte Datenbank liegt per Definition vor dem zuvor
+  # vorgemerkten Migrationsversuch; dessen Marker darf nicht weiter blockieren.
+  clear_migration_transition
+}
+
+authorize_database_restore_release() {
+  local version="$1" existing_target existing_status
+  existing_target="$(database_restore_authorized_target)"
+  existing_status="$(database_restore_authorization_status)"
+  [[ "$existing_target" == "$version" && "$existing_status" == "pending" ]] || \
+    die "Restore-Autorisierung kann nicht finalisiert werden: passender Pending-Marker fehlt."
+  write_database_restore_authorization "$version" ready
+}
+
+database_restore_authorized_target() {
+  [[ -f "$DB_RESTORE_AUTHORIZATION" ]] || return 0
+  grep -E '^target_version=' "$DB_RESTORE_AUTHORIZATION" | head -n1 | cut -d= -f2- || true
+}
+
+database_restore_authorization_status() {
+  [[ -f "$DB_RESTORE_AUTHORIZATION" ]] || return 0
+  grep -E '^status=' "$DB_RESTORE_AUTHORIZATION" | head -n1 | cut -d= -f2- || true
+}
+
+clear_database_restore_authorization() {
+  [[ ! -e "$DB_RESTORE_AUTHORIZATION" ]] || rm -f -- "$DB_RESTORE_AUTHORIZATION"
+}
+
 # Schreibt den vollstaendigen Last-Good-Artefaktvertrag fuer Rollback.
 # `previous` ist der zuvor erfolgreiche current-Stand; ein fehlgeschlagener
 # Deploy erreicht diese Funktion nie und kann den Last-Good-Zeiger nicht
 # ueberschreiben.
 save_state() {
-  local tmp new_version new_web new_worker new_commit
-  local old_current old_web old_worker old_commit
+  local tmp new_version new_web new_worker new_commit new_restore_requirement
+  local old_current old_web old_worker old_commit old_restore_requirement
   local previous previous_web previous_worker previous_commit
   new_version="$(image_tag)"
   new_web="${TAXTRONIK_WEB_DIGEST_SUFFIX:-}"
@@ -1472,6 +1805,9 @@ save_state() {
   old_web="$(state_value current_web_digest_suffix)"
   old_worker="$(state_value current_worker_digest_suffix)"
   old_commit="$(state_value current_commit)"
+  old_restore_requirement="$(state_value current_rollback_requires_db_restore)"
+  [[ "$old_restore_requirement" == "true" || "$old_restore_requirement" == "false" ]] || \
+    old_restore_requirement="unknown"
 
   if [[ "$new_version" == "$old_current" && "$new_web" == "$old_web" && \
         "$new_worker" == "$old_worker" && "$new_commit" == "$old_commit" ]]; then
@@ -1481,11 +1817,26 @@ save_state() {
     previous_web="$(state_value previous_web_digest_suffix)"
     previous_worker="$(state_value previous_worker_digest_suffix)"
     previous_commit="$(state_value previous_commit)"
+    # Der Stand selbst und sein echter N-1-Zeiger ändern sich nicht.
+    new_restore_requirement="$old_restore_requirement"
   else
     previous="$old_current"
     previous_web="$old_web"
     previous_worker="$old_worker"
     previous_commit="$old_commit"
+    new_restore_requirement="${TAXTRONIK_ROLLBACK_REQUIRES_DB_RESTORE:-$(pending_migration_value requires_db_restore)}"
+    [[ "$new_restore_requirement" == "true" || "$new_restore_requirement" == "false" ]] || \
+      new_restore_requirement="unknown"
+  fi
+
+  # Nach einem Produktions-DB-Restore ist nur die eben autorisierte ältere
+  # Version mit dem restaurierten Schema bewiesen. Der automatisch entstehende
+  # Rückweg zu `previous` (typischerweise neuerer Code) braucht mindestens
+  # Migrationen und darf niemals als kompatibler Rollback markiert werden.
+  # Der Restore-Marker bleibt bis nach save_state bestehen und macht diesen
+  # Reverse-Pfad deshalb bewusst fail-closed.
+  if [[ -e "$DB_RESTORE_AUTHORIZATION" ]]; then
+    new_restore_requirement="unknown"
   fi
 
   tmp="$(mktemp "${STATE}.tmp.XXXXXX")" || die "Release-State konnte nicht angelegt werden."
@@ -1498,6 +1849,7 @@ save_state() {
     printf 'current_web_digest_suffix=%s\n' "$new_web"
     printf 'current_worker_digest_suffix=%s\n' "$new_worker"
     printf 'current_commit=%s\n' "$new_commit"
+    printf 'current_rollback_requires_db_restore=%s\n' "$new_restore_requirement"
   } > "$tmp"
   chmod 0600 "$tmp" || { rm -f "$tmp"; die "Release-State konnte nicht auf 0600 gehaertet werden."; }
   mv -f "$tmp" "$STATE"
@@ -1510,6 +1862,8 @@ finalize_release_contract() {
   # aktualisiert; jeder Zwischenzustand wird vom Compose-Guard abgewiesen.
   save_state
   commit_release_contract
+  clear_migration_transition
+  clear_database_restore_authorization
 }
 
 # ---------------------------------------------------------------------------
@@ -1537,15 +1891,33 @@ bake_db_urls_into_env() {
 
 # Interaktive .env-Vorbereitung fuer deploy/update/bootstrap.
 prepare_env_interactive() {
+  local env_created=0
   if [[ ! -f "$ENVFILE" ]]; then
     info ".env fehlt — aus Vorlage anlegen"
     [[ -f "$ROOT/.env.example" ]] || die ".env.example fehlt."
     cp "$ROOT/.env.example" "$ENVFILE"
+    env_created=1
   fi
   chmod 0600 "$ENVFILE" || die "Dateirechte fuer $ENVFILE konnten nicht auf 0600 gesetzt werden."
   # Prod-Default (NODE_ENV, TAXTRONIK_VERSION) + fehlende Secrets generieren.
   doctor --fix >/dev/null || true
+  # Nur bei einer soeben neu angelegten Installation automatisch trennen.
+  # Bei Legacy-Daten würde ein neuer Box-Key bestehende Ciphertexte unlesbar
+  # machen; dort ist zuerst ein kontrollierter Re-Wrap erforderlich.
+  [[ $env_created -eq 1 ]] && ensure_secret SECRET_BOX_KEY 32
   bake_db_urls_into_env
+
+  # Eine Release-Version ist Identität, kein generierbarer Default. Frühere
+  # Datumswerte scheiterten später zu Recht am SemVer-Gate.
+  if [[ -z "$(get_env TAXTRONIK_VERSION)" ]]; then
+    if [[ -t 0 ]]; then
+      local release_version=""
+      read -rp "Freigegebene Release-Version (SemVer, z. B. 0.2.0): " release_version || true
+      [[ -n "$release_version" ]] && set_env TAXTRONIK_VERSION "$release_version"
+    else
+      warn "TAXTRONIK_VERSION fehlt (kein TTY) — explizit auf einen Release setzen."
+    fi
+  fi
 
   # Einzige Angabe, die wir nicht raten duerfen: die oeffentliche Staff-URL.
   # Nur nachfragen, falls leer/localhost UND stdin ein TTY ist (CI vorher setzen).
@@ -1635,6 +2007,7 @@ cmd_reset_admin_password() {
 # Erkennung, sodass deploy eine frische Installation komplett abdeckt.
 _deploy_core() {
   load_env; preflight_common; assert_production_env; require_release_version
+  assert_no_database_restore_pending
   prepare_release_contract
   start_infra
   wait_postgres_healthy
@@ -1643,7 +2016,7 @@ _deploy_core() {
   backup_before_migrations
   run_migrations
   ensure_provisioned_interactive
-  start_apps
+  start_apps_for_activation deploy "$(image_tag)"
   smoke_health || die "Deploy abgebrochen: Anwendung ist nicht vollstaendig healthy."
   deploy_readiness || die "Deploy abgebrochen: Produktivkonfiguration ist nicht bereit."
   finalize_release_contract
@@ -1669,6 +2042,7 @@ cmd_update() {
   # Arbeitsbaums.
   prepare_env_interactive
   load_env; preflight_common; assert_production_env; require_release_version
+  assert_no_database_restore_pending
   if images_from_registry; then resolve_release_contract; fi
   start_infra
   wait_postgres_healthy
@@ -1703,7 +2077,7 @@ cmd_update() {
   sync_postgres_roles_from_env
   provide_images
   run_migrations
-  start_apps
+  start_apps_for_activation deploy "$(image_tag)"
   smoke_health || die "Update fehlgeschlagen: Anwendung ist nicht vollstaendig healthy; letzter erfolgreicher Stand bleibt in $STATE vermerkt."
   deploy_readiness || die "Update fehlgeschlagen: Produktivkonfiguration ist nicht bereit; letzter erfolgreicher Stand bleibt in $STATE vermerkt."
   finalize_release_contract
@@ -1840,16 +2214,56 @@ cmd_backup_offsite() {
   upload_full_backup_offsite "$dest"
 }
 
+assert_restore_writers_stopped() {
+  local container running
+  for container in taxtronik-app taxtronik-worker taxtronik-n8n; do
+    running="$(docker inspect --format '{{.State.Running}}' "$container" 2>/dev/null || true)"
+    [[ "$running" != "true" ]] || die "Produktions-Restore verweigert: $container laeuft weiterhin."
+  done
+}
+
 cmd_restore() {
+  local restore_rc=0
+  # Muss vor load_env/preflight/start_infra laufen: fehlerhafte oder
+  # widerspruechliche Argumente duerfen keinerlei Betriebszustand veraendern.
+  validate_restore_args "$@"
   load_env; preflight_common; assert_production_env
+  unset TAXTRONIK_PRODUCTION_RESTORE_QUIESCED
+
+  if [[ "$RESTORE_LIST_ONLY" == "1" ]]; then
+    run_restore "$@" || { restore_rc=$?; return "$restore_rc"; }
+    info "Restore-Liste gelesen (read-only)."
+    return 0
+  fi
+
+  if [[ "$RESTORE_PRODUCTION_TARGET" == "1" ]]; then
+    begin_database_restore_authorization "$RESTORE_RELEASE_VERSION"
+    warn "PRODUKTIONS-RESTORE: App, Worker und n8n werden jetzt quiesziert und bleiben auch nach Erfolg/Fehler gestoppt."
+    compose stop app worker n8n || die "Schreibdienste konnten vor dem Produktions-Restore nicht vollstaendig gestoppt werden."
+    assert_restore_writers_stopped
+    export TAXTRONIK_PRODUCTION_RESTORE_QUIESCED=1
+  fi
+
   start_infra
   wait_postgres_healthy
   if restore_needs_s3 "$@"; then
     wait_seaweedfs_healthy
   fi
   sync_postgres_roles_from_env
-  run_restore "$@"
-  info "Restore fertig."
+
+  run_restore "$@" || {
+    restore_rc=$?
+    if [[ "$RESTORE_PRODUCTION_TARGET" == "1" ]]; then
+      warn "Produktions-Restore fehlgeschlagen (Exit $restore_rc). App, Worker und n8n bleiben zur sicheren Diagnose gestoppt."
+    fi
+    return "$restore_rc"
+  }
+  if [[ "$RESTORE_PRODUCTION_TARGET" == "1" ]]; then
+    authorize_database_restore_release "$RESTORE_RELEASE_VERSION"
+    warn "Produktions-Restore fertig. App, Worker und n8n bleiben absichtlich gestoppt; passenden Release-Vertrag pruefen und erst danach starten."
+  else
+    info "Restore in explizites Ziel fertig."
+  fi
 }
 
 # Wird nur als EXIT-Recovery waehrend der Aktivierung eines Rollbacks gesetzt.
@@ -1879,11 +2293,73 @@ rollback_failure_recover() {
       export TAXTRONIK_RELEASE_COMMIT=""
     fi
     export _TAXTRONIK_INTERNAL_RELEASE_CONTRACT_STAGED=1
-    if ! start_apps; then
-      warn "Automatischer Last-Good-Containerstart fehlgeschlagen; .env/STATE bleiben unveraendert und blockieren einen Mischbetrieb."
+    # In einer Subshell ausfuehren, weil der zentrale Guard bewusst via `die`
+    # fail-closed beendet. Ist Last-Good nach Restore/Migration nicht mehr
+    # autorisiert, werden auch bereits teilweise gestartete Ziel-Writer
+    # gestoppt, statt sie nach der fehlgeschlagenen Aktivierung weiterlaufen zu
+    # lassen.
+    if ! ( start_apps_for_activation rollback "$_TAXTRONIK_ROLLBACK_LAST_GOOD_VERSION" ); then
+      warn "Automatischer Last-Good-Containerstart fehlgeschlagen; Writer werden gestoppt und .env/STATE bleiben unveraendert."
+      compose stop app worker n8n || \
+        warn "Writer konnten nach fehlgeschlagener Rollback-Aktivierung nicht vollstaendig gestoppt werden."
     fi
   fi
   exit "$rc"
+}
+
+assert_rollback_database_compatible() {
+  local target="$1" current="$2" previous="$3" current_requirement="$4"
+  local pending_requirement pending_source restored_target restored_status
+
+  if [[ -f "$DB_RESTORE_AUTHORIZATION" && -f "$MIGRATION_PENDING" ]]; then
+    die "Rollback blockiert: DB-Restore- und Migrations-Pending-Marker existieren gleichzeitig. Markerzustand vor jeder Aktivierung klaeren."
+  fi
+
+  if [[ -f "$DB_RESTORE_AUTHORIZATION" ]]; then
+    restored_target="$(database_restore_authorized_target)"
+    restored_status="$(database_restore_authorization_status)"
+    [[ "$restored_target" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || \
+      die "Rollback blockiert: DB-Restore-Autorisierung ist ungueltig."
+    [[ "$restored_status" == "ready" ]] || \
+      die "Rollback blockiert: Produktions-DB-Restore ist nicht erfolgreich finalisiert (Status: ${restored_status:-ungueltig})."
+    [[ "$target" == "$restored_target" ]] || \
+      die "Rollback blockiert: Die restaurierte Produktions-DB ist ausschliesslich fuer Release $restored_target autorisiert."
+    warn "Rollback-Ziel $target ist durch den unmittelbar vorherigen Produktions-DB-Restore autorisiert."
+    return 0
+  fi
+
+  if [[ -f "$MIGRATION_PENDING" ]]; then
+    pending_requirement="$(pending_migration_value requires_db_restore)"
+    pending_source="$(pending_migration_value source_version)"
+    [[ "$pending_requirement" == "false" ]] || \
+      die "Rollback blockiert: Ein nicht finalisierter Migrationslauf kann das Schema vorwaerts veraendert haben (Status: ${pending_requirement:-unknown}). Vor-Migrations-Backup wiederherstellen oder den Ziel-Release vorwaerts reparieren."
+    [[ -n "$pending_source" && "$target" == "$pending_source" ]] || \
+      die "Rollback blockiert: Nach einer abgebrochenen Aktivierung ohne DB-Migration ist nur der vorgemerkte Quellstand '$pending_source' zulaessig."
+    return 0
+  fi
+
+  # current ist keine Code-Rueckstufung, sondern nur Recovery eines
+  # abweichenden .env-/Prozessvertrags.
+  [[ "$target" == "$current" ]] && return 0
+  [[ -n "$previous" && "$target" == "$previous" ]] || \
+    die "Rollback blockiert: Ohne verifizierten State oder passende DB-Restore-Autorisierung ist nur das exakt gespeicherte previous-Ziel zulaessig."
+  [[ "$current_requirement" == "false" ]] || \
+    die "Rollback blockiert: Kompatibilitaet des aktuellen DB-Schemas mit previous ist '${current_requirement:-unknown}'. Vor-Migrations-Backup wiederherstellen statt alten Code zu starten."
+}
+
+assert_database_restore_rollback_request() {
+  local requested="$1" restored_target restored_status
+  [[ -f "$DB_RESTORE_AUTHORIZATION" ]] || return 0
+  restored_target="$(database_restore_authorized_target)"
+  restored_status="$(database_restore_authorization_status)"
+  [[ "$restored_target" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || \
+    die "Rollback blockiert: DB-Restore-Autorisierung ist ungueltig."
+  [[ "$restored_status" == "ready" ]] || \
+    die "Rollback blockiert: Produktions-DB-Restore ist nicht erfolgreich finalisiert (Status: ${restored_status:-ungueltig})."
+  [[ -n "$requested" ]] || \
+    die "Nach Produktions-DB-Restore ist die Zielversion Pflicht: ./taxtronik rollback $restored_target"
+  [[ "$requested" == "$restored_target" ]] || \
+    die "Rollback blockiert: explizit angefordert wurde '$requested', restauriert und autorisiert ist ausschliesslich '$restored_target'."
 }
 
 # Rollback auf einen frueheren Artefakt- UND Code-Stand. KEINE DB-Migration
@@ -1894,13 +2370,18 @@ cmd_rollback() {
   require_cmd docker; require_cmd node; require_cmd curl; require_cmd git
   load_env; preflight_common; assert_production_env
   local requested="${1:-}" target="" state_target="" state_web="" state_worker="" state_commit=""
-  local current current_web current_worker current_commit previous previous_web previous_worker previous_commit
+  local current current_web current_worker current_commit current_restore_requirement
+  local previous previous_web previous_worker previous_commit
   local env_matches_current=0 prefix="${TAXTRONIK_IMAGE_PREFIX:-taxtronik}" img registry_mode=0
+  assert_database_restore_rollback_request "$requested"
   [[ -f "$STATE" ]] || die "Kein verifizierter Release-State in $STATE; Rollback wird verweigert."
   current="$(state_value current)"
   current_web="$(state_value current_web_digest_suffix)"
   current_worker="$(state_value current_worker_digest_suffix)"
   current_commit="$(state_value current_commit)"
+  current_restore_requirement="$(state_value current_rollback_requires_db_restore)"
+  [[ "$current_restore_requirement" == "true" || "$current_restore_requirement" == "false" ]] || \
+    current_restore_requirement="unknown"
   previous="$(state_value previous)"
   previous_web="$(state_value previous_web_digest_suffix)"
   previous_worker="$(state_value previous_worker_digest_suffix)"
@@ -1936,6 +2417,10 @@ cmd_rollback() {
     target="$previous"
   fi
   [[ -n "$target" ]] || die "Kein Rollback-Ziel. Nutzung: ./taxtronik rollback <version> (oder gueltiges previous in $STATE)."
+
+  # Vor Manifest-Auflösung, Pull, Checkout-Wechsel oder Containerstart prüfen.
+  assert_rollback_database_compatible \
+    "$target" "$current" "$previous" "$current_restore_requirement"
 
   if [[ "$target" == "$current" ]]; then
     state_target="$current"; state_web="$current_web"; state_worker="$current_worker"; state_commit="$current_commit"
@@ -1993,15 +2478,17 @@ cmd_rollback() {
   git -C "$ROOT" switch --detach "$state_commit"
   export _TAXTRONIK_ROLLBACK_CHECKOUT_CHANGED=1
 
-  warn "Rollback auf $target — KEINE DB-Migration (Prisma forward-only). Schema-Aenderungen bleiben zurueck."
-  start_apps
+  warn "Rollback auf $target — DB-Kompatibilitaet wurde fail-closed aus dem Release-State bestaetigt."
+  start_apps_for_activation rollback "$target"
   smoke_health || die "Rollback-Container sind gestartet, aber nicht healthy."
   deploy_readiness || die "Rollback-Container sind gestartet, aber die Produktivkonfiguration ist nicht bereit."
 
   # Die Aktivierung ist fachlich erfolgreich. Ab hier keinen automatischen
   # Ruecksprung mehr; STATE/.env werden als neuer Last-Good-Stand verankert.
   trap - EXIT INT TERM
+  export TAXTRONIK_ROLLBACK_REQUIRES_DB_RESTORE=false
   finalize_release_contract
+  unset TAXTRONIK_ROLLBACK_REQUIRES_DB_RESTORE
   unset _TAXTRONIK_ROLLBACK_CHECKOUT_CHANGED
   info "Rollback fertig. Version: $target"
 }

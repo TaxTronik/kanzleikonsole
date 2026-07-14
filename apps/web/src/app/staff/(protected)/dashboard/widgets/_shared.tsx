@@ -32,9 +32,9 @@ export interface RenderCtx {
  * stattdessen die OR-Variante inline nutzen, damit Einträge ohne
  * Mandantenbezug sichtbar bleiben.
  */
-export function notDeniedClient(
-  deniedClientIds: string[] | undefined,
-): { clientId?: { notIn: string[] } } {
+export function notDeniedClient(deniedClientIds: string[] | undefined): {
+  clientId?: { notIn: string[] };
+} {
   return deniedClientIds?.length ? { clientId: { notIn: deniedClientIds } } : {};
 }
 
@@ -118,16 +118,12 @@ export async function kpi(
       <div className="flex items-center justify-between">
         <Icon
           className={
-            accent === 'yellow' && value > 0
-              ? 'h-4 w-4 text-yellow-600'
-              : 'h-4 w-4 text-disabled'
+            accent === 'yellow' && value > 0 ? 'h-4 w-4 text-yellow-600' : 'h-4 w-4 text-disabled'
           }
         />
       </div>
       <div>
-        <p className="text-xs font-medium text-muted uppercase tracking-wide truncate">
-          {label}
-        </p>
+        <p className="text-xs font-medium text-muted uppercase tracking-wide truncate">{label}</p>
         <p className="text-2xl font-bold text-primary">{value}</p>
       </div>
     </Link>

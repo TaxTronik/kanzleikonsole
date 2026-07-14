@@ -12,7 +12,6 @@ import {
 } from './actions';
 import type { ActionResult } from '@/server/actions/staff-action';
 
-
 interface Reminder {
   id: string;
   dueDate: string; // ISO
@@ -25,7 +24,10 @@ interface Reminder {
   researchMarkingId: string | null;
 }
 
-interface StaffOption { id: string; fullName: string; }
+interface StaffOption {
+  id: string;
+  fullName: string;
+}
 
 export function RemindersBlock({
   clientId,
@@ -58,8 +60,12 @@ export function RemindersBlock({
   function submitResult(reminderId: string) {
     startMut(async () => {
       const res = await submitResearchResultAction({ reminderId, clientId, body: resultBody });
-      if (res.ok) { setSubmitFor(null); setResultBody(''); setSubmitError(null); router.refresh(); }
-      else setSubmitError(res.error ?? 'Konnte nicht eingereicht werden.');
+      if (res.ok) {
+        setSubmitFor(null);
+        setResultBody('');
+        setSubmitError(null);
+        router.refresh();
+      } else setSubmitError(res.error ?? 'Konnte nicht eingereicht werden.');
     });
   }
   function remove(id: string) {
@@ -72,7 +78,8 @@ export function RemindersBlock({
 
   const open_items = initial.filter((r) => !r.doneAt);
   const done_items = initial.filter((r) => r.doneAt);
-  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
   return (
     <div className="card overflow-hidden">
@@ -92,7 +99,10 @@ export function RemindersBlock({
       </div>
 
       {open && (
-        <form action={formAction} className="p-4 border-b border-default bg-gray-50/50 dark:bg-gray-900/30 space-y-2">
+        <form
+          action={formAction}
+          className="p-4 border-b border-default bg-gray-50/50 dark:bg-gray-900/30 space-y-2"
+        >
           <input type="hidden" name="clientId" value={clientId} />
           <div className="grid grid-cols-3 gap-2">
             <input
@@ -119,10 +129,16 @@ export function RemindersBlock({
             className="input text-sm"
           />
           <div className="flex items-center gap-2">
-            <select name="assigneeStaffId" defaultValue={currentStaffId} className="input text-sm flex-1">
+            <select
+              name="assigneeStaffId"
+              defaultValue={currentStaffId}
+              className="input text-sm flex-1"
+            >
               <option value="">— niemand zugewiesen —</option>
               {staffOptions.map((s) => (
-                <option key={s.id} value={s.id}>{s.fullName}</option>
+                <option key={s.id} value={s.id}>
+                  {s.fullName}
+                </option>
               ))}
             </select>
             <button
@@ -161,16 +177,20 @@ export function RemindersBlock({
                 </button>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-primary">{r.subject}</p>
-                  <p className={overdue ? 'text-xs text-red-700 font-medium' : 'text-xs text-muted'}>
+                  <p
+                    className={overdue ? 'text-xs text-red-700 font-medium' : 'text-xs text-muted'}
+                  >
                     fällig {fmtDateShort(due)}
                     {overdue && ' · überfällig'}
-                    {r.assigneeName && <span className="ml-2 text-disabled">· {r.assigneeName}</span>}
+                    {r.assigneeName && (
+                      <span className="ml-2 text-disabled">· {r.assigneeName}</span>
+                    )}
                   </p>
                   {r.notes && (
                     <p className="text-xs text-secondary mt-1 whitespace-pre-wrap">{r.notes}</p>
                   )}
-                  {r.researchMarkingId && (
-                    submitFor === r.id ? (
+                  {r.researchMarkingId &&
+                    (submitFor === r.id ? (
                       <div className="mt-2 space-y-1.5">
                         <textarea
                           value={resultBody}
@@ -193,7 +213,11 @@ export function RemindersBlock({
                           </button>
                           <button
                             type="button"
-                            onClick={() => { setSubmitFor(null); setResultBody(''); setSubmitError(null); }}
+                            onClick={() => {
+                              setSubmitFor(null);
+                              setResultBody('');
+                              setSubmitError(null);
+                            }}
                             disabled={isMutating}
                             className="btn-secondary text-xs"
                           >
@@ -201,19 +225,23 @@ export function RemindersBlock({
                           </button>
                         </div>
                         <p className="text-[11px] text-muted">
-                          Wird der Markierung im Recherche-Hub zugeordnet und erledigt diese Wiedervorlage.
+                          Wird der Markierung im Recherche-Hub zugeordnet und erledigt diese
+                          Wiedervorlage.
                         </p>
                       </div>
                     ) : (
                       <button
                         type="button"
-                        onClick={() => { setSubmitFor(r.id); setResultBody(''); setSubmitError(null); }}
+                        onClick={() => {
+                          setSubmitFor(r.id);
+                          setResultBody('');
+                          setSubmitError(null);
+                        }}
                         className="mt-1.5 text-xs text-brand-600 hover:underline inline-flex items-center gap-1"
                       >
                         <Send className="h-3 w-3" /> Ergebnis einreichen
                       </button>
-                    )
-                  )}
+                    ))}
                 </div>
                 <button
                   type="button"

@@ -25,10 +25,7 @@ import { EvidenceService } from '../service.js';
 import { LocalTimestampAdapter } from '../ports/timestamp.js';
 import { createRfc3161Adapter } from '../ports/rfc3161-http.js';
 import { parseArchive, verifyArchiveChain } from '../archive.js';
-import {
-  AUDIT_VERIFY_RESULT_SETTING_KEY,
-  type PersistedVerifyResult,
-} from '../verify-status.js';
+import { AUDIT_VERIFY_RESULT_SETTING_KEY, type PersistedVerifyResult } from '../verify-status.js';
 
 const s3 = new S3Client({
   endpoint: process.env['S3_ENDPOINT'],
@@ -77,8 +74,7 @@ async function main() {
 
   // Produktivmodus → externe TSA verpflichtend (Self-Timestamp = harter Fail).
   const requireExternalTsa =
-    process.env['NODE_ENV'] === 'production' ||
-    process.env['EVIDENCE_REQUIRE_TSA'] === 'true';
+    process.env['NODE_ENV'] === 'production' || process.env['EVIDENCE_REQUIRE_TSA'] === 'true';
 
   const tenants = await prisma.tenant.findMany({ select: { id: true, name: true, slug: true } });
 
@@ -115,7 +111,9 @@ async function main() {
         process.stdout.write(`    Vorgefunden:${result.firstBreak.actualHash}\n`);
       }
       for (const b of result.sealBreaks) {
-        process.stdout.write(`  ✗ TSA-Bruch am ${b.sealDate.toISOString().slice(0, 10)}: ${b.reason}\n`);
+        process.stdout.write(
+          `  ✗ TSA-Bruch am ${b.sealDate.toISOString().slice(0, 10)}: ${b.reason}\n`,
+        );
       }
     } else if (result.checked === 0) {
       // N-3: Eine leere Kette ist KEIN Integritätsnachweis. Ohne persistierten
@@ -193,7 +191,8 @@ async function main() {
           allOk = false;
           process.stdout.write(
             `  ✗ Archiv ${a.id} (${String(a.fromAuditId)}-${String(a.toAuditId)}): ${check.reason}` +
-            (check.brokenAtId ? ` bei ID ${check.brokenAtId}` : '') + '\n',
+              (check.brokenAtId ? ` bei ID ${check.brokenAtId}` : '') +
+              '\n',
           );
         } else {
           process.stdout.write(

@@ -59,9 +59,7 @@ export function QuickPhoneNote({
 
   function onCallerNameChange(value: string) {
     setCallerName(value);
-    const match = contacts.find(
-      (c) => c.fullName.toLowerCase() === value.trim().toLowerCase(),
-    );
+    const match = contacts.find((c) => c.fullName.toLowerCase() === value.trim().toLowerCase());
     if (match?.phone && !callerPhone) setCallerPhone(match.phone);
   }
 
@@ -98,7 +96,9 @@ export function QuickPhoneNote({
           <input type="hidden" name="clientId" value={clientId} />
           <datalist id={datalistId}>
             {contacts.map((c) => (
-              <option key={c.fullName} value={c.fullName}>{c.phone ?? ''}</option>
+              <option key={c.fullName} value={c.fullName}>
+                {c.phone ?? ''}
+              </option>
             ))}
           </datalist>
 
@@ -116,7 +116,9 @@ export function QuickPhoneNote({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label" htmlFor="qpn-caller">Anrufer</label>
+              <label className="label" htmlFor="qpn-caller">
+                Anrufer
+              </label>
               <input
                 id="qpn-caller"
                 name="callerName"
@@ -131,7 +133,9 @@ export function QuickPhoneNote({
               />
             </div>
             <div>
-              <label className="label" htmlFor="qpn-phone">Telefonnummer</label>
+              <label className="label" htmlFor="qpn-phone">
+                Telefonnummer
+              </label>
               <input
                 id="qpn-phone"
                 name="callerPhone"
@@ -145,7 +149,9 @@ export function QuickPhoneNote({
           </div>
 
           <div>
-            <label className="label" htmlFor="qpn-subject">Betreff</label>
+            <label className="label" htmlFor="qpn-subject">
+              Betreff
+            </label>
             <input
               id="qpn-subject"
               name="subject"
@@ -157,7 +163,9 @@ export function QuickPhoneNote({
           </div>
 
           <div>
-            <label className="label" htmlFor="qpn-body">Notiz</label>
+            <label className="label" htmlFor="qpn-body">
+              Notiz
+            </label>
             <textarea
               id="qpn-body"
               name="body"
@@ -169,7 +177,9 @@ export function QuickPhoneNote({
           </div>
 
           <div>
-            <label className="label" htmlFor="qpn-forward">Weiterleiten an</label>
+            <label className="label" htmlFor="qpn-forward">
+              Weiterleiten an
+            </label>
             <select
               id="qpn-forward"
               name="forwardToStaff"
@@ -178,7 +188,9 @@ export function QuickPhoneNote({
             >
               <option value="">— niemand —</option>
               {staff.map((s) => (
-                <option key={s.id} value={s.id}>{s.fullName}</option>
+                <option key={s.id} value={s.id}>
+                  {s.fullName}
+                </option>
               ))}
             </select>
           </div>

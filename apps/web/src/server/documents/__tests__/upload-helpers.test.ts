@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('@taxtronik/storage', () => ({ MAX_UPLOAD_BYTES: 100 * 1024 * 1024 }));
+vi.mock('@taxtronik/storage', () => ({ MAX_UPLOAD_BYTES: 25 * 1024 * 1024 }));
 vi.mock('@/server/db/prisma-bytes', () => ({ prismaBytes: (value: unknown) => value }));
 vi.mock('@/server/logger', () => ({ log: { error: vi.fn() } }));
 

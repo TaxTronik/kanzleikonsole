@@ -37,14 +37,28 @@ export function MarkingList({
           className="inline-flex items-center gap-1 text-sm font-medium text-primary"
           aria-expanded={open}
         >
-          {open ? <ChevronDown className="h-4 w-4 text-disabled" /> : <ChevronRight className="h-4 w-4 text-disabled" />}
+          {open ? (
+            <ChevronDown className="h-4 w-4 text-disabled" />
+          ) : (
+            <ChevronRight className="h-4 w-4 text-disabled" />
+          )}
           Markierungen <span className="badge-gray text-[10px]">{markings.length}</span>
         </button>
         <div className="inline-flex items-center gap-0.5">
-          <button type="button" onClick={onPrev} className="p-1 text-disabled hover:text-secondary" title="Vorherige Markierung (Alt+↑)">
+          <button
+            type="button"
+            onClick={onPrev}
+            className="p-1 text-disabled hover:text-secondary"
+            title="Vorherige Markierung (Alt+↑)"
+          >
             <ArrowUp className="h-3.5 w-3.5" />
           </button>
-          <button type="button" onClick={onNext} className="p-1 text-disabled hover:text-secondary" title="Nächste Markierung (Alt+↓)">
+          <button
+            type="button"
+            onClick={onNext}
+            className="p-1 text-disabled hover:text-secondary"
+            title="Nächste Markierung (Alt+↓)"
+          >
             <ArrowDown className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -64,7 +78,9 @@ export function MarkingList({
                   aria-current={active ? 'true' : undefined}
                   className={
                     'w-full text-left rounded px-2 py-1 flex items-start gap-2 ' +
-                    (active ? 'bg-indigo-50 dark:bg-indigo-950/40' : 'hover:bg-gray-50 dark:hover:bg-gray-900/40')
+                    (active
+                      ? 'bg-indigo-50 dark:bg-indigo-950/40'
+                      : 'hover:bg-gray-50 dark:hover:bg-gray-900/40')
                   }
                 >
                   <span
@@ -73,7 +89,9 @@ export function MarkingList({
                     aria-hidden
                   />
                   <span className="min-w-0 flex-1">
-                    <span className="block text-xs font-medium text-primary truncate">{m.begriff || '(ohne Begriff)'}</span>
+                    <span className="block text-xs font-medium text-primary truncate">
+                      {m.begriff || '(ohne Begriff)'}
+                    </span>
                     {sub && <span className="block text-[11px] text-muted truncate">„{sub}"</span>}
                   </span>
                   <span className="badge-gray text-[10px] shrink-0">{STATUS_LABEL[m.status]}</span>

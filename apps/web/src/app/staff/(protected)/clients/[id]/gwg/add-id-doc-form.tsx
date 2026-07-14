@@ -31,61 +31,94 @@ export function AddIdDocumentForm({ checkId, clientId, clientDocuments }: Props)
   }, [state]);
 
   return (
-    <form ref={formRef} action={formAction} className="space-y-3 p-4 border border-dashed border-strong rounded-md">
+    <form
+      ref={formRef}
+      action={formAction}
+      className="space-y-3 p-4 border border-dashed border-strong rounded-md"
+    >
       <p className="text-xs text-muted uppercase tracking-wide">Identitätsdokument hinzufügen</p>
       <input type="hidden" name="checkId" value={checkId} />
       <input type="hidden" name="clientId" value={clientId} />
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="label" htmlFor="id-type">Typ</label>
-          <select id="id-type" name="type" className="input" required defaultValue="PERSONALAUSWEIS">
+          <label className="label" htmlFor="id-type">
+            Typ
+          </label>
+          <select
+            id="id-type"
+            name="type"
+            className="input"
+            required
+            defaultValue="PERSONALAUSWEIS"
+          >
             {types.map((t) => (
-              <option key={t.value} value={t.value}>{t.label}</option>
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
             ))}
           </select>
         </div>
         <div>
-          <label className="label" htmlFor="id-ownerName">Inhaber</label>
-          <input id="id-ownerName" name="ownerName" type="text" className="input" required maxLength={200} />
+          <label className="label" htmlFor="id-ownerName">
+            Inhaber
+          </label>
+          <input
+            id="id-ownerName"
+            name="ownerName"
+            type="text"
+            className="input"
+            required
+            maxLength={200}
+          />
         </div>
       </div>
 
       <div className="grid grid-cols-3 gap-3">
         <div>
-          <label className="label" htmlFor="id-number">Nummer</label>
+          <label className="label" htmlFor="id-number">
+            Nummer
+          </label>
           <input id="id-number" name="number" type="text" className="input" maxLength={100} />
         </div>
         <div>
-          <label className="label" htmlFor="id-issueDate">Ausgestellt am</label>
+          <label className="label" htmlFor="id-issueDate">
+            Ausgestellt am
+          </label>
           <input id="id-issueDate" name="issueDate" type="date" className="input" />
         </div>
         <div>
-          <label className="label" htmlFor="id-expiryDate">Gültig bis</label>
+          <label className="label" htmlFor="id-expiryDate">
+            Gültig bis
+          </label>
           <input id="id-expiryDate" name="expiryDate" type="date" className="input" />
         </div>
       </div>
 
       <div>
-        <label className="label" htmlFor="id-issuedBy">Ausstellende Behörde</label>
+        <label className="label" htmlFor="id-issuedBy">
+          Ausstellende Behörde
+        </label>
         <input id="id-issuedBy" name="issuedBy" type="text" className="input" maxLength={200} />
       </div>
 
       {clientDocuments.length > 0 && (
         <div>
-          <label className="label" htmlFor="id-documentId">Verknüpftes hochgeladenes Dokument (optional)</label>
+          <label className="label" htmlFor="id-documentId">
+            Verknüpftes hochgeladenes Dokument (optional)
+          </label>
           <select id="id-documentId" name="documentId" className="input" defaultValue="">
             <option value="">— keines —</option>
             {clientDocuments.map((d) => (
-              <option key={d.id} value={d.id}>{d.title}</option>
+              <option key={d.id} value={d.id}>
+                {d.title}
+              </option>
             ))}
           </select>
         </div>
       )}
 
-      {state?.error && (
-        <div className="alert-error-sm">{state.error}</div>
-      )}
+      {state?.error && <div className="alert-error-sm">{state.error}</div>}
 
       <button type="submit" className="btn-primary text-sm" disabled={isPending}>
         {isPending ? 'Speichert…' : 'Hinzufügen'}

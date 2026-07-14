@@ -19,7 +19,7 @@ export interface ZipEntry {
 /**
  * T-4: Hard-Cap auf Gesamt-Bytes. Vorher konnte buildZip eine 10-Jahre-Belege-
  * Sammlung (mehrere GB) komplett in den RAM laden → OOM. Per-Datei greift zwar
- * MAX_UPLOAD_BYTES = 100 MB, aber kein Summen-Cap. Wir werfen ein klares Error
+ * MAX_UPLOAD_BYTES = 25 MiB, aber kein Summen-Cap. Wir werfen ein klares Error
  * mit Empfehlung, kleinere Datumsbereiche zu wählen — bessere UX als ein
  * OOM-Crash der ganzen Web-Instanz.
  *
@@ -44,7 +44,7 @@ export class ZipTooManyEntriesError extends Error {
   constructor(entryCount: number, limit: number) {
     super(
       `ZIP enthält ${entryCount} Dateien und überschreitet das Limit von ${limit} ` +
-      `Einträgen. Bitte den Datumsbereich enger fassen.`,
+        `Einträgen. Bitte den Datumsbereich enger fassen.`,
     );
     this.name = 'ZipTooManyEntriesError';
     this.entryCount = entryCount;
@@ -58,7 +58,7 @@ export class ZipTooLargeError extends Error {
   constructor(totalBytes: number, limitBytes: number) {
     super(
       `ZIP-Größe ${(totalBytes / 1024 / 1024).toFixed(1)} MB überschreitet das Limit ` +
-      `(${(limitBytes / 1024 / 1024).toFixed(0)} MB). Bitte den Datumsbereich enger fassen.`,
+        `(${(limitBytes / 1024 / 1024).toFixed(0)} MB). Bitte den Datumsbereich enger fassen.`,
     );
     this.name = 'ZipTooLargeError';
     this.totalBytes = totalBytes;
@@ -194,10 +194,8 @@ export function buildZip(entries: ZipEntry[]): Buffer {
 }
 
 function toDosDateTime(d: Date): { date: number; time: number } {
-  const time =
-    (d.getHours() << 11) | (d.getMinutes() << 5) | Math.floor(d.getSeconds() / 2);
-  const date =
-    ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+  const time = (d.getHours() << 11) | (d.getMinutes() << 5) | Math.floor(d.getSeconds() / 2);
+  const date = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
   return { date, time };
 }
 

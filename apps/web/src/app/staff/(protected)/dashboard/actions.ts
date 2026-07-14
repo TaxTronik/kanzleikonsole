@@ -31,7 +31,9 @@ export async function saveDashboardLayoutAction(layout: DashboardLayout): Promis
   // Unknown widget types raus
   const cleaned: DashboardLayout = {
     version: 2,
-    widgets: parsed.data.widgets.filter((w) => w.type in WIDGET_BY_TYPE) as DashboardLayout['widgets'],
+    widgets: parsed.data.widgets.filter(
+      (w) => w.type in WIDGET_BY_TYPE,
+    ) as DashboardLayout['widgets'],
   };
 
   return withStaff(

@@ -1,10 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import {
-  setFormActiveAction,
-  deleteFormTemplateAction,
-} from './actions';
+import { setFormActiveAction, deleteFormTemplateAction } from './actions';
 
 export function FormRowActions({
   id,
@@ -28,7 +25,9 @@ export function FormRowActions({
   function remove() {
     setError(null);
     if (submissions > 0) {
-      setError(`${submissions} Anfrage${submissions === 1 ? '' : 'n'} vorhanden — bitte deaktivieren.`);
+      setError(
+        `${submissions} Anfrage${submissions === 1 ? '' : 'n'} vorhanden — bitte deaktivieren.`,
+      );
       return;
     }
     if (!confirm(`Vorlage „${name}" wirklich löschen? Alle Felder werden mit gelöscht.`)) return;

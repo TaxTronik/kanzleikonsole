@@ -9,7 +9,12 @@ import { sendTemplateMail } from '@/server/mail/dispatch';
 import { fireAndForget } from '@/server/util/fire-and-forget';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
-import { withStaff, staffActionGuard, ActionError, type ActionResult } from '@/server/actions/staff-action';
+import {
+  withStaff,
+  staffActionGuard,
+  ActionError,
+  type ActionResult,
+} from '@/server/actions/staff-action';
 
 const StatusEnum = z.enum(['RECEIVED', 'IN_PROGRESS', 'READY', 'PICKED_UP']);
 
@@ -28,7 +33,8 @@ export async function createHandoverAction(
     label: formData.get('label'),
     contents: formData.get('contents') ?? '',
   });
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
+  if (!parsed.success)
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
 
   return withStaff(
     async (tx, { tenantId, staffId, session }) => {
@@ -45,7 +51,9 @@ export async function createHandoverAction(
         },
       });
       await evidenceService.record(tx, {
-        tenantId, actorType: 'STAFF', actorId: staffId,
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
         action: 'client_handover.create',
         resourceType: 'client_handover',
         resourceId: h.id,
@@ -69,14 +77,21 @@ export async function updateHandoverStatusAction(input: {
   const parsed = z.object({ id: z.string().uuid(), status: StatusEnum }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  let notifyPayload: { clientId: string; label: string; contactEmail: string | null; contactName: string | null } | null = null;
+  let notifyPayload: {
+    clientId: string;
+    label: string;
+    contactEmail: string | null;
+    contactName: string | null;
+  } | null = null;
 
   try {
     await withTenantContext(ctx, async (tx) => {
       const before = await tx.clientHandover.findUnique({
         where: { id: parsed.data.id },
         select: {
-          status: true, clientId: true, label: true,
+          status: true,
+          clientId: true,
+          label: true,
           client: {
             select: {
               name: true,
@@ -115,13 +130,18 @@ export async function updateHandoverStatusAction(input: {
       await tx.clientHandover.update({ where: { id: parsed.data.id }, data });
 
       const auditAction =
-        parsed.data.status === 'IN_PROGRESS' ? 'client_handover.start' :
-        parsed.data.status === 'READY' ? 'client_handover.ready' :
-        parsed.data.status === 'PICKED_UP' ? 'client_handover.picked_up' :
-        'client_handover.status_change';
+        parsed.data.status === 'IN_PROGRESS'
+          ? 'client_handover.start'
+          : parsed.data.status === 'READY'
+            ? 'client_handover.ready'
+            : parsed.data.status === 'PICKED_UP'
+              ? 'client_handover.picked_up'
+              : 'client_handover.status_change';
 
       await evidenceService.record(tx, {
-        tenantId, actorType: 'STAFF', actorId: g.staffId,
+        tenantId,
+        actorType: 'STAFF',
+        actorId: g.staffId,
         action: auditAction,
         resourceType: 'client_handover',
         resourceId: parsed.data.id,
@@ -136,32 +156,41 @@ export async function updateHandoverStatusAction(input: {
   // Mail an Mandanten bei READY — App-Versand via Template (n8n-Event
   // automatisch via Dispatch-Mode BOTH dazugeschickt, falls aktiv).
   if (notifyPayload) {
-    const p = notifyPayload as { clientId: string; label: string; contactEmail: string | null; contactName: string | null };
+    const p = notifyPayload as {
+      clientId: string;
+      label: string;
+      contactEmail: string | null;
+      contactName: string | null;
+    };
     if (p.contactEmail) {
       // Befund 3: fire-and-forget mit catch+Log statt `void ….catch(() => void 0)`.
-      fireAndForget('sendTemplateMail (handover-ready)', sendTemplateMail({
-        tenantId,
-        slug: 'handover-ready',
-        to: p.contactEmail,
-        vars: {
-          contact: { fullName: p.contactName ?? '', email: p.contactEmail },
-          label: p.label,
-          handoverId: parsed.data.id,
-        },
-        n8nEvent: 'client.handover.ready',
-        n8nPayload: {
+      fireAndForget(
+        'sendTemplateMail (handover-ready)',
+        sendTemplateMail({
           tenantId,
-          clientId: p.clientId,
-          handoverId: parsed.data.id,
-          label: p.label,
-          contactEmail: p.contactEmail,
-          contactName: p.contactName,
-        },
-        fallback: {
-          subject: 'Ihre Unterlagen können abgeholt werden — {{label}}',
-          bodyMd: 'Sehr geehrte/r {{contact.fullName}},\n\nIhre bei uns hinterlegten Unterlagen ({{label}}) sind fertig bearbeitet und können in unseren Geschäftsräumen abgeholt werden.\n\nMit freundlichen Grüßen\nIhre Steuerkanzlei',
-        },
-      }));
+          slug: 'handover-ready',
+          to: p.contactEmail,
+          vars: {
+            contact: { fullName: p.contactName ?? '', email: p.contactEmail },
+            label: p.label,
+            handoverId: parsed.data.id,
+          },
+          n8nEvent: 'client.handover.ready',
+          n8nPayload: {
+            tenantId,
+            clientId: p.clientId,
+            handoverId: parsed.data.id,
+            label: p.label,
+            contactEmail: p.contactEmail,
+            contactName: p.contactName,
+          },
+          fallback: {
+            subject: 'Ihre Unterlagen können abgeholt werden — {{label}}',
+            bodyMd:
+              'Sehr geehrte/r {{contact.fullName}},\n\nIhre bei uns hinterlegten Unterlagen ({{label}}) sind fertig bearbeitet und können in unseren Geschäftsräumen abgeholt werden.\n\nMit freundlichen Grüßen\nIhre Steuerkanzlei',
+          },
+        }),
+      );
     }
   }
 
@@ -175,12 +204,17 @@ export async function deleteHandoverAction(input: { id: string }): Promise<Actio
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
-    const h = await tx.clientHandover.findUnique({ where: { id: parsed.data.id }, select: { label: true, clientId: true } });
+    const h = await tx.clientHandover.findUnique({
+      where: { id: parsed.data.id },
+      select: { label: true, clientId: true },
+    });
     if (!h) throw new ActionError('Anlieferung nicht gefunden.');
     await assertClientAccessTx(tx, session, h.clientId);
     await tx.clientHandover.delete({ where: { id: parsed.data.id } });
     await evidenceService.record(tx, {
-      tenantId, actorType: 'STAFF', actorId: staffId,
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
       action: 'client_handover.delete',
       resourceType: 'client_handover',
       resourceId: parsed.data.id,

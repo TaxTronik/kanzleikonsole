@@ -46,10 +46,7 @@ export default async function StateMachineEditPage({
 
   return (
     <div className="p-8 max-w-4xl">
-      <Link
-        href="/staff/admin/state-machines"
-        className="back-link mb-3"
-      >
+      <Link href="/staff/admin/state-machines" className="back-link mb-3">
         <ArrowLeft className="h-3 w-3" />
         Status-Maschinen
       </Link>

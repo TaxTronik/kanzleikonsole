@@ -41,7 +41,9 @@ export const markColor = (m: MarkingDTO) => (m.streitig ? '#ef4444' : herkunftCo
  * über die ganze Spanne gleich → die Linie ist durchgehend.
  */
 export function assignTracks(marks: MarkingDTO[]): Map<string, number> {
-  const sorted = [...marks].sort((a, b) => a.start - b.start || b.end - a.end || a.id.localeCompare(b.id));
+  const sorted = [...marks].sort(
+    (a, b) => a.start - b.start || b.end - a.end || a.id.localeCompare(b.id),
+  );
   const trackEnds: number[] = [];
   const tracks = new Map<string, number>();
   for (const m of sorted) {
@@ -84,7 +86,9 @@ export function segmentStyle(
   const positions: string[] = [];
   for (const { m, track } of covering) {
     const l = lineLayer(m, track);
-    images.push(l.image); sizes.push(l.size); positions.push(l.pos);
+    images.push(l.image);
+    sizes.push(l.size);
+    positions.push(l.pos);
   }
   const hov = covering.find((c) => c.m.id === hoveredId)?.m;
   const sel = covering.find((c) => c.m.id === selectedId)?.m;
@@ -123,11 +127,15 @@ export function buildSegments(
 ): Array<{ start: number; end: number; covering: CoveringMark[] }> {
   const tracks = assignTracks(marks);
   const bounds = new Set<number>();
-  for (const m of marks) { bounds.add(m.start); bounds.add(m.end); }
+  for (const m of marks) {
+    bounds.add(m.start);
+    bounds.add(m.end);
+  }
   const points = [...bounds].sort((x, y) => x - y);
   const segs: Array<{ start: number; end: number; covering: CoveringMark[] }> = [];
   for (let i = 0; i < points.length - 1; i++) {
-    const a = points[i]!, b = points[i + 1]!;
+    const a = points[i]!,
+      b = points[i + 1]!;
     if (b <= a) continue;
     const covering = marks
       .filter((m) => m.start <= a && m.end >= b)

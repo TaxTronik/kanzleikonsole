@@ -153,17 +153,19 @@ export async function requestMagicLink(input: {
     return { ok: true };
   }
 
-  const contacts = (input.contactId
-    ? await prismaOwner.clientContact.findMany({
-        where: { id: input.contactId, tenantId: input.tenantId, email: emailKey, active: true },
-        include: { client: { select: { name: true, allowActive: true, anonymizedAt: true } } },
-        orderBy: { createdAt: 'asc' },
-      })
-    : await prismaOwner.clientContact.findMany({
-        where: { tenantId: input.tenantId, email: emailKey, active: true },
-        include: { client: { select: { name: true, allowActive: true, anonymizedAt: true } } },
-        orderBy: { createdAt: 'asc' },
-      })) as MagicLinkContact[];
+  const contacts = (
+    input.contactId
+      ? await prismaOwner.clientContact.findMany({
+          where: { id: input.contactId, tenantId: input.tenantId, email: emailKey, active: true },
+          include: { client: { select: { name: true, allowActive: true, anonymizedAt: true } } },
+          orderBy: { createdAt: 'asc' },
+        })
+      : await prismaOwner.clientContact.findMany({
+          where: { tenantId: input.tenantId, email: emailKey, active: true },
+          include: { client: { select: { name: true, allowActive: true, anonymizedAt: true } } },
+          orderBy: { createdAt: 'asc' },
+        })
+  ) as MagicLinkContact[];
 
   const eligibleContacts = contacts.filter(
     (contact) => contact.client.allowActive && contact.client.anonymizedAt === null,
@@ -197,15 +199,17 @@ export async function verifyMagicLink(rawToken: string): Promise<{
   if (link.consumedAt) return null;
   if (link.expiresAt < new Date()) return null;
 
-  const contact = (link.contactId
-    ? await prismaOwner.clientContact.findUnique({
-        where: { id: link.contactId },
-        include: { client: { select: { allowActive: true, anonymizedAt: true } } },
-      })
-    : await prismaOwner.clientContact.findFirst({
-        where: { tenantId: link.tenantId, email: link.email, active: true },
-        include: { client: { select: { allowActive: true, anonymizedAt: true } } },
-      })) as
+  const contact = (
+    link.contactId
+      ? await prismaOwner.clientContact.findUnique({
+          where: { id: link.contactId },
+          include: { client: { select: { allowActive: true, anonymizedAt: true } } },
+        })
+      : await prismaOwner.clientContact.findFirst({
+          where: { tenantId: link.tenantId, email: link.email, active: true },
+          include: { client: { select: { allowActive: true, anonymizedAt: true } } },
+        })
+  ) as
     | (Omit<MagicLinkContact, 'client'> & {
         active: boolean;
         client: { allowActive: boolean; anonymizedAt: Date | null };

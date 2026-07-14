@@ -67,7 +67,8 @@ export async function withPortalContext<T extends Record<string, unknown> = Reco
   if (!guard.ok) return guard as R;
   try {
     const data = await withTenantContext(guard.ctx, (tx) => fn(tx, guard));
-    if (opts.revalidate) for (const p of ([] as string[]).concat(opts.revalidate)) revalidatePath(p);
+    if (opts.revalidate)
+      for (const p of ([] as string[]).concat(opts.revalidate)) revalidatePath(p);
     return { ok: true, ...(data ?? {}) } as R;
   } catch (e) {
     return toActionError(e) as R;

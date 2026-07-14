@@ -22,16 +22,11 @@ import { NewAppointmentDialog } from './new-appointment-dialog';
 import { RequestDecision, type RequestRow } from './request-decision';
 import { fmtMonthYear, fmtTimeShort, fmtWeekdayShort, berlinYmd } from '@/lib/fmt';
 
-
 interface Search {
   month?: string;
 }
 
-export default async function CalendarPage({
-  searchParams,
-}: {
-  searchParams: Promise<Search>;
-}) {
+export default async function CalendarPage({ searchParams }: { searchParams: Promise<Search> }) {
   const session = await staffAuth();
   if (!session?.user) redirect('/staff/login');
 
@@ -49,7 +44,15 @@ export default async function CalendarPage({
       // Render, an alle mandantengebundenen Queries durchgereicht.
       const denied = await inaccessibleClientIdsFor(tx, session);
       const notDenied = denied.length ? { clientId: { notIn: denied } } : {};
-      const [deadlines, appointments, pendingRequests, staffList, clientsList, vacations, absences] = await Promise.all([
+      const [
+        deadlines,
+        appointments,
+        pendingRequests,
+        staffList,
+        clientsList,
+        vacations,
+        absences,
+      ] = await Promise.all([
         tx.taxDeadline.findMany({
           where: { dueDate: { gte: start, lte: end }, ...notDenied },
           orderBy: { dueDate: 'asc' },
@@ -61,9 +64,7 @@ export default async function CalendarPage({
             endsAt: { gte: start },
             status: { not: 'CANCELLED' },
             // clientId nullable: Termine ohne Mandantenbezug bleiben sichtbar.
-            ...(denied.length
-              ? { OR: [{ clientId: null }, { clientId: { notIn: denied } }] }
-              : {}),
+            ...(denied.length ? { OR: [{ clientId: null }, { clientId: { notIn: denied } }] } : {}),
           },
           orderBy: { startsAt: 'asc' },
           include: {
@@ -95,20 +96,43 @@ export default async function CalendarPage({
         tx.vacationRequest.findMany({
           // Nur aktive Mitarbeiter — sonst tauchen Namen deaktivierter Konten im
           // Kanzleikalender auf (der Wandkalender filtert über staffList genauso).
-          where: { status: 'APPROVED', staff: { active: true }, startDate: { lte: end }, endDate: { gte: start } },
+          where: {
+            status: 'APPROVED',
+            staff: { active: true },
+            startDate: { lte: end },
+            endDate: { gte: start },
+          },
           select: { startDate: true, endDate: true, staff: { select: { fullName: true } } },
         }),
         tx.absence.findMany({
-          where: { staff: { active: true }, startDate: { lte: end }, OR: [{ endDate: null }, { endDate: { gte: start } }] },
+          where: {
+            staff: { active: true },
+            startDate: { lte: end },
+            OR: [{ endDate: null }, { endDate: { gte: start } }],
+          },
           select: { startDate: true, endDate: true, staff: { select: { fullName: true } } },
         }),
       ]);
-      return { deadlines, appointments, pendingRequests, staffList, clientsList, vacations, absences };
+      return {
+        deadlines,
+        appointments,
+        pendingRequests,
+        staffList,
+        clientsList,
+        vacations,
+        absences,
+      };
     },
   );
 
   // Gruppieren der Steuertermine pro Tag (wie in der alten Page)
-  type DeadlineGroup = { kind: string; period: string; total: number; open: number; overdue: boolean };
+  type DeadlineGroup = {
+    kind: string;
+    period: string;
+    total: number;
+    open: number;
+    overdue: boolean;
+  };
   const deadlineByDay = new Map<string, Map<string, DeadlineGroup>>();
   for (const d of data.deadlines) {
     const dayKey = d.dueDate.toISOString().slice(0, 10);
@@ -130,7 +154,7 @@ export default async function CalendarPage({
   }
 
   // Termine pro Tag (am Start-Tag eingruppiert; mehrtägige zeigen wir am Anfangstag)
-  const apptByDay = new Map<string, Array<typeof data.appointments[number]>>();
+  const apptByDay = new Map<string, Array<(typeof data.appointments)[number]>>();
   for (const a of data.appointments) {
     // Berlin-Kalendertag (nicht UTC): startsAt ist ein echter Instant; die Pille
     // zeigt die Berlin-Uhrzeit, also muss die Zelle auch der Berlin-Tag sein.
@@ -151,7 +175,9 @@ export default async function CalendarPage({
     const clampedFrom = from < start ? start : from;
     const clampedTo = to > end ? end : to;
     for (
-      let d = new Date(Date.UTC(clampedFrom.getUTCFullYear(), clampedFrom.getUTCMonth(), clampedFrom.getUTCDate()));
+      let d = new Date(
+        Date.UTC(clampedFrom.getUTCFullYear(), clampedFrom.getUTCMonth(), clampedFrom.getUTCDate()),
+      );
       d.getTime() <= clampedTo.getTime();
       d = new Date(d.getTime() + 24 * 60 * 60 * 1000)
     ) {
@@ -283,7 +309,10 @@ export default async function CalendarPage({
             </div>
           ))}
         </div>
-        <div className="grid grid-cols-7 gap-px mt-px" style={{ backgroundColor: 'rgb(var(--border-default))' }}>
+        <div
+          className="grid grid-cols-7 gap-px mt-px"
+          style={{ backgroundColor: 'rgb(var(--border-default))' }}
+        >
           {cells.map((cell, i) => {
             const k = cell.date.toISOString().slice(0, 10);
             const dlGroups = deadlineByDay.get(k);
@@ -301,7 +330,13 @@ export default async function CalendarPage({
                     : 'bg-surface-page min-h-[120px] p-1.5 flex flex-col gap-1 text-xs text-disabled'
                 }
               >
-                <div className={isToday ? 'self-start font-bold text-brand-700 bg-brand-50 dark:bg-brand-900/40 dark:text-brand-200 px-1.5 py-0.5 rounded' : 'self-start text-secondary'}>
+                <div
+                  className={
+                    isToday
+                      ? 'self-start font-bold text-brand-700 bg-brand-50 dark:bg-brand-900/40 dark:text-brand-200 px-1.5 py-0.5 rounded'
+                      : 'self-start text-secondary'
+                  }
+                >
                   {cell.date.getUTCDate()}
                 </div>
                 {absentToday.slice(0, 2).map((label, idx) => (
@@ -317,9 +352,7 @@ export default async function CalendarPage({
                     title={`${fmtTimeShort(a.startsAt)} – ${fmtTimeShort(a.endsAt)}: ${a.title}${a.client ? ' · ' + a.client.name : ''}`}
                   >
                     <span className="font-medium">{fmtTimeShort(a.startsAt)}</span>
-                    {a.client && (
-                      <span> · {a.client.name}</span>
-                    )}
+                    {a.client && <span> · {a.client.name}</span>}
                     <span className="opacity-70"> · {a.title}</span>
                   </Link>
                 ))}
@@ -338,13 +371,20 @@ export default async function CalendarPage({
                       title={`${SCHEDULE_LABELS[g.kind as keyof typeof SCHEDULE_LABELS]} ${g.period} — ${g.open}/${g.total} offen`}
                     >
                       <span className="font-medium">{shortKind(g.kind)}</span>
-                      <span className="opacity-70"> · {g.open}/{g.total}</span>
+                      <span className="opacity-70">
+                        {' '}
+                        · {g.open}/{g.total}
+                      </span>
                     </Link>
                   );
                 })}
                 {(appts.length > 3 || dlArr.length > 3 || absentToday.length > 2) && (
                   <div className="text-[10px] text-muted">
-                    +{Math.max(0, appts.length - 3) + Math.max(0, dlArr.length - 3) + Math.max(0, absentToday.length - 2)} weitere
+                    +
+                    {Math.max(0, appts.length - 3) +
+                      Math.max(0, dlArr.length - 3) +
+                      Math.max(0, absentToday.length - 2)}{' '}
+                    weitere
                   </div>
                 )}
               </div>

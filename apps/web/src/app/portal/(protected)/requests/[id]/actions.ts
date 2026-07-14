@@ -25,7 +25,10 @@ export async function addPortalResponseAction(formData: FormData): Promise<Actio
   // hier nicht (jede Response-ID ist neu) — Symmetrie zu NEW4.
   const rl = await checkPortalWriteLimit(contactId);
   if (!rl.ok) {
-    return { ok: false, error: `Zu viele Aktionen. Bitte ${Math.ceil(rl.retryAfter / 60)} Min. warten.` };
+    return {
+      ok: false,
+      error: `Zu viele Aktionen. Bitte ${Math.ceil(rl.retryAfter / 60)} Min. warten.`,
+    };
   }
 
   const parsed = ResponseSchema.safeParse({
@@ -47,7 +50,10 @@ export async function addPortalResponseAction(formData: FormData): Promise<Actio
       // Anfrage hängen — UUID-Raten ist zwar unwahrscheinlich, aber die
       // Prüfung kostet eine Zeile und schließt die Lücke definitiv.
       if (documentId) {
-        const doc = await tx.document.findFirst({ where: { id: documentId, clientId }, select: { id: true } });
+        const doc = await tx.document.findFirst({
+          where: { id: documentId, clientId },
+          select: { id: true },
+        });
         if (!doc) throw new ActionError('Dokument nicht gefunden.');
       }
 

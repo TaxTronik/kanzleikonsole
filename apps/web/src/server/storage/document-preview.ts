@@ -15,7 +15,10 @@ export interface PreviewDocumentSource {
   isPoaDocument: boolean;
 }
 
-export function documentPreviewMetadata(doc: PreviewDocumentSource): { mimeType: string; title: string } {
+export function documentPreviewMetadata(doc: PreviewDocumentSource): {
+  mimeType: string;
+  title: string;
+} {
   return { mimeType: effectiveDocumentMime(doc), title: doc.title };
 }
 
@@ -26,7 +29,9 @@ export async function loadDocumentPreview(doc: PreviewDocumentSource): Promise<{
   const metadataMime = effectiveDocumentMime(doc);
   const bytes = await fetchObjectBytes(doc.bucket, doc.key);
   const detected = detectMimeFromMagicBytes(bytes);
-  const detectedMime = detected ? previewContentType(detected, doc.title) : 'application/octet-stream';
+  const detectedMime = detected
+    ? previewContentType(detected, doc.title)
+    : 'application/octet-stream';
   const contentType = detectedMime !== 'application/octet-stream' ? detectedMime : metadataMime;
   const dispositionMime = contentType === 'application/octet-stream' ? doc.mimeType : contentType;
 

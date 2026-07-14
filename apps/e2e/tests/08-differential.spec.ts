@@ -47,23 +47,26 @@ const CASES = [
 ] as const;
 
 function createPdf(marker: string): Buffer {
-  return Buffer.from([
-    '%PDF-1.4',
-    '1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj',
-    '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj',
-    '3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R>>endobj',
-    `% Differential marker: ${marker}`,
-    'xref',
-    '0 4',
-    '0000000000 65535 f ',
-    '0000000009 00000 n ',
-    '0000000058 00000 n ',
-    '0000000115 00000 n ',
-    'trailer<</Size 4/Root 1 0 R>>',
-    'startxref',
-    '190',
-    '%%EOF',
-  ].join('\n'), 'utf-8');
+  return Buffer.from(
+    [
+      '%PDF-1.4',
+      '1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj',
+      '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj',
+      '3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R>>endobj',
+      `% Differential marker: ${marker}`,
+      'xref',
+      '0 4',
+      '0000000000 65535 f ',
+      '0000000009 00000 n ',
+      '0000000058 00000 n ',
+      '0000000115 00000 n ',
+      'trailer<</Size 4/Root 1 0 R>>',
+      'startxref',
+      '190',
+      '%%EOF',
+    ].join('\n'),
+    'utf-8',
+  );
 }
 
 function sha256Hex(buf: Buffer): string {
@@ -73,10 +76,13 @@ function sha256Hex(buf: Buffer): string {
 function psql(query: string): string {
   const oneLine = query.replace(/\r?\n/g, ' ').replace(/"/g, '\\"');
   try {
-    return execSync(`docker exec ${PG_CONTAINER} psql -U ${PG_USER} -d ${PG_DB} -t -A -c "${oneLine}"`, {
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim();
+    return execSync(
+      `docker exec ${PG_CONTAINER} psql -U ${PG_USER} -d ${PG_DB} -t -A -c "${oneLine}"`,
+      {
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      },
+    ).trim();
   } catch {
     return execSync(`psql -h ${PG_HOST} -U ${PG_USER} -d ${PG_DB} -t -A -c "${oneLine}"`, {
       encoding: 'utf-8',
@@ -87,7 +93,9 @@ function psql(query: string): string {
 }
 
 test.describe.serial('Differential invariants', () => {
-  test('document uploads match API, DB, audit, download bytes and UI across protection tiers', async ({ page }) => {
+  test('document uploads match API, DB, audit, download bytes and UI across protection tiers', async ({
+    page,
+  }) => {
     test.setTimeout(180_000);
 
     await loginAsAdmin(page);
@@ -186,7 +194,8 @@ test.describe.serial('Differential invariants', () => {
           : String(Date.UTC(storageYear + c.expectedRetentionYears + 1, 0, 1));
       expect(dbRetentionEpochMs).toBe(expectedRetentionEpochMs);
 
-      const auditRows = Number(psql(`
+      const auditRows = Number(
+        psql(`
         SELECT count(*)
         FROM audit_log
         WHERE resource_type = 'document'
@@ -194,8 +203,12 @@ test.describe.serial('Differential invariants', () => {
           AND action = 'document.upload'
           AND after->>'sha256' = '${expectedSha}'
           AND after->>'classification' = '${c.classification}'
-      `));
-      expect(auditRows, `${c.label} upload audit log must contain exact classification and SHA-256`).toBeGreaterThanOrEqual(1);
+      `),
+      );
+      expect(
+        auditRows,
+        `${c.label} upload audit log must contain exact classification and SHA-256`,
+      ).toBeGreaterThanOrEqual(1);
 
       const preview = await page.request.get(`/api/staff/documents/${documentId}/preview-url`);
       expect(preview.status()).toBe(200);
@@ -213,10 +226,14 @@ test.describe.serial('Differential invariants', () => {
       await page.goto(`/staff/documents/${documentId}`);
       await page.waitForLoadState('domcontentloaded');
       await expect(page.getByRole('heading', { name: title })).toBeVisible({ timeout: 8_000 });
-      await expect(page.getByText(`SHA-256: ${expectedSha.slice(0, 12)}`).first()).toBeVisible({ timeout: 5_000 });
+      await expect(page.getByText(`SHA-256: ${expectedSha.slice(0, 12)}`).first()).toBeVisible({
+        timeout: 5_000,
+      });
       await expect(page.getByText(/v1/).first()).toBeVisible({ timeout: 5_000 });
       if (c.expectedImmutable) {
-        await expect(page.getByText(/GoBD-immutable|Aufbewahrung bis/).first()).toBeVisible({ timeout: 5_000 });
+        await expect(page.getByText(/GoBD-immutable|Aufbewahrung bis/).first()).toBeVisible({
+          timeout: 5_000,
+        });
       }
     }
   });

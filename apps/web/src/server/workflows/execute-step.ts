@@ -96,11 +96,13 @@ export async function executeWorkflowStep(opts: ExecuteOpts): Promise<ExecuteRes
       case 'CLIENT_REQUEST': {
         // Vorlage hat Vorrang. Inline-Werte greifen nur, wenn keine
         // Vorlage gewählt ist oder die referenzierte Vorlage gelöscht wurde.
-        const requestTemplateId = typeof config['requestTemplateId'] === 'string' ? config['requestTemplateId'] : null;
+        const requestTemplateId =
+          typeof config['requestTemplateId'] === 'string' ? config['requestTemplateId'] : null;
         let title = String(config['requestTitle'] ?? item.title);
         let description = String(config['requestDescription'] ?? item.description ?? '');
         let priority = (config['priority'] as 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT') ?? 'NORMAL';
-        let dueAfterDays = typeof config['dueAfterDays'] === 'number' ? config['dueAfterDays'] : null;
+        let dueAfterDays =
+          typeof config['dueAfterDays'] === 'number' ? config['dueAfterDays'] : null;
         let formSubmissionId: string | null = null;
 
         if (requestTemplateId) {
@@ -129,9 +131,8 @@ export async function executeWorkflowStep(opts: ExecuteOpts): Promise<ExecuteRes
           }
         }
 
-        const dueAt = dueAfterDays != null
-          ? new Date(Date.now() + dueAfterDays * 24 * 60 * 60 * 1000)
-          : null;
+        const dueAt =
+          dueAfterDays != null ? new Date(Date.now() + dueAfterDays * 24 * 60 * 60 * 1000) : null;
 
         const req = await tx.request.create({
           data: {
@@ -193,7 +194,8 @@ export async function executeWorkflowStep(opts: ExecuteOpts): Promise<ExecuteRes
       }
 
       case 'CLIENT_EMAIL': {
-        const emailTemplateId = typeof config['emailTemplateId'] === 'string' ? config['emailTemplateId'] : null;
+        const emailTemplateId =
+          typeof config['emailTemplateId'] === 'string' ? config['emailTemplateId'] : null;
         let subjectTpl = String(config['subject'] ?? item.title);
         let bodyTpl = String(config['bodyMd'] ?? '');
         if (emailTemplateId) {
@@ -203,13 +205,19 @@ export async function executeWorkflowStep(opts: ExecuteOpts): Promise<ExecuteRes
             bodyTpl = tpl.bodyMd;
           }
         }
-        const client = await tx.client.findUnique({ where: { id: clientId }, select: { name: true } });
+        const client = await tx.client.findUnique({
+          where: { id: clientId },
+          select: { name: true },
+        });
         const contacts = await tx.clientContact.findMany({
           where: { clientId, active: true, notificationsEnabled: true, email: { not: '' } },
           select: { email: true, fullName: true },
         });
         if (contacts.length === 0) {
-          return { ok: false, error: 'Mandant hat keinen aktiven Portal-Kontakt mit E-Mail-Opt-in.' };
+          return {
+            ok: false,
+            error: 'Mandant hat keinen aktiven Portal-Kontakt mit E-Mail-Opt-in.',
+          };
         }
         // Pro Kontakt mit eigenen Vars rendern (contact.fullName ist
         // empfänger-spezifisch, alles andere identisch). Befund 4: hier nur
@@ -299,9 +307,7 @@ export async function executeWorkflowStep(opts: ExecuteOpts): Promise<ExecuteRes
   // ausgewertet — Fehlschläge strukturiert loggen statt stillschweigend zu
   // verwerfen (vorher: alle Mails fehlgeschlagen → Item trotzdem done, kein Log).
   if (result.ok && mailJobs.length > 0) {
-    const settled = await Promise.allSettled(
-      mailJobs.map((j) => sendMail({ ...j, tenantId })),
-    );
+    const settled = await Promise.allSettled(mailJobs.map((j) => sendMail({ ...j, tenantId })));
     const failures = settled
       .map((s, i) => ({ s, to: mailJobs[i]!.to }))
       .filter((x): x is { s: PromiseRejectedResult; to: string } => x.s.status === 'rejected');
@@ -332,11 +338,7 @@ export async function executeWorkflowStep(opts: ExecuteOpts): Promise<ExecuteRes
  * meist Plaintext sind.
  */
 function markdownToInlineHtml(md: string): string {
-  const esc = md
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+  const esc = md.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const paragraphs = esc.split(/\n\n+/).map((p) => `<p>${p.replace(/\n/g, '<br>')}</p>`);
   return `<!doctype html><html><body>${paragraphs.join('')}</body></html>`;
 }
-

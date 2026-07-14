@@ -101,6 +101,7 @@ write_prod_env() {
 NODE_ENV=production
 TAXTRONIK_VERSION=2026.06.17-test
 AUTH_SECRET=auth-secret-with-at-least-thirty-two-chars
+SECRET_BOX_KEY=secret-box-key-with-at-least-thirty-two-chars
 N8N_HMAC_SECRET=n8n-hmac-secret-with-at-least-thirty-two-chars
 N8N_ENCRYPTION_KEY=aaaaaaaaaaaaaaaaaaaaaaaa
 POSTGRES_PASSWORD=postgres-password-24chars
@@ -112,6 +113,7 @@ DATABASE_URL=postgresql://taxtronik:owner@localhost:5432/taxtronik?schema=public
 DATABASE_APP_URL=postgresql://taxtronik_app:app@localhost:5432/taxtronik?schema=public
 NEXTAUTH_URL=https://kanzlei.example.de
 NEXTAUTH_TRUST_HOST=true
+TRUST_PROXY_REQUIRED=true
 SMTP_HOST=smtp.example.de
 SMTP_PORT=587
 SMTP_FROM=TaxTronik <noreply@example.de>
@@ -121,12 +123,15 @@ EOF
 run_doctor_with_env() {
   local env_file="$1" output="$2"
   (
-    unset AUTH_SECRET N8N_HMAC_SECRET N8N_ENCRYPTION_KEY POSTGRES_PASSWORD
+    unset AUTH_SECRET SECRET_BOX_KEY N8N_HMAC_SECRET N8N_ENCRYPTION_KEY POSTGRES_PASSWORD
     unset TAXTRONIK_APP_PASSWORD S3_ACCESS_KEY S3_SECRET_KEY N8N_DB_PASSWORD
     unset DATABASE_URL DATABASE_APP_URL NODE_ENV TAXTRONIK_VERSION NEXTAUTH_URL
-    unset NEXTAUTH_TRUST_HOST RISK_LAYER_URL RISK_LAYER_TOKEN SMTP_HOST SMTP_PORT
+    unset NEXTAUTH_TRUST_HOST TRUST_PROXY_REQUIRED RISK_LAYER_URL RISK_LAYER_TOKEN SMTP_HOST SMTP_PORT
     unset SMTP_FROM PORTAL_PUBLIC_URL STAFF_COOKIE_DOMAIN PORTAL_COOKIE_DOMAIN
     ENVFILE="$env_file"
+    # Unit-Test darf nicht vom zufällig vorhandenen lokalen Docker-Volume
+    # beziehungsweise dessen echtem n8n-Key abhängen.
+    _doctor_n8n_volume_key() { :; }
     doctor
   ) >"$output" 2>&1
 }
@@ -134,7 +139,10 @@ run_doctor_with_env() {
 test_doctor_accepts_prod_smtp() {
   local env_file="$TMP_DIR/prod.env" out="$TMP_DIR/doctor-ok.out"
   write_prod_env "$env_file"
-  run_doctor_with_env "$env_file" "$out" || test_fail "doctor rejected a valid prod SMTP config"
+  run_doctor_with_env "$env_file" "$out" || {
+    cat "$out" >&2
+    test_fail "doctor rejected a valid prod SMTP config"
+  }
   assert_contains "$out" "OK       SMTP_HOST"
   assert_contains "$out" "Bereit zum Deploy"
   pass "doctor accepts real production SMTP"
@@ -162,6 +170,17 @@ test_doctor_rejects_loopback_mailhog_port() {
   fi
   assert_contains "$out" "Dev-Mailhog-Default (127.0.0.1:1025)"
   pass "doctor rejects loopback:1025 in production"
+}
+
+test_doctor_rejects_disabled_auth_host_trust() {
+  local env_file="$TMP_DIR/auth-host.env" out="$TMP_DIR/doctor-auth-host.out"
+  write_prod_env "$env_file"
+  set_env_file_value "$env_file" NEXTAUTH_TRUST_HOST false
+  if run_doctor_with_env "$env_file" "$out"; then
+    test_fail "doctor accepted NEXTAUTH_TRUST_HOST=false although Auth.js rejects it"
+  fi
+  assert_contains "$out" "in Prod exakt true"
+  pass "doctor rejects disabled Auth.js host trust in production"
 }
 
 test_doctor_accepts_internal_risk_layer_without_fetch_allowlist() {
@@ -248,6 +267,178 @@ test_restore_source_detection_skips_s3_for_local_file() {
     test_fail "restore --file should not require S3"
   fi
   pass "restore source detection skips S3 for local files"
+}
+
+test_restore_validation_requires_explicit_target() {
+  local out="$TMP_DIR/restore-missing-target.out"
+  if (validate_restore_args --latest) >"$out" 2>&1; then
+    test_fail "restore validation accepted a mutating call without explicit target"
+  fi
+  assert_contains "$out" "Genau ein Restore-Ziel ist Pflicht"
+  pass "restore validation requires an explicit target"
+}
+
+test_restore_validation_rejects_unknown_and_conflicting_args() {
+  local unknown="$TMP_DIR/restore-unknown.out" conflict="$TMP_DIR/restore-conflict.out"
+  if (validate_restore_args --latest --target-url postgresql://example/db --unknown) >"$unknown" 2>&1; then
+    test_fail "restore validation accepted an unknown option"
+  fi
+  assert_contains "$unknown" "Unbekannte Restore-Option"
+
+  if (
+    validate_restore_args --latest --key pgdump/demo.dump \
+      --target-url postgresql://example/db
+  ) >"$conflict" 2>&1; then
+    test_fail "restore validation accepted conflicting sources"
+  fi
+  assert_contains "$conflict" "Genau eine Restore-Quelle ist Pflicht"
+  pass "restore validation rejects unknown and conflicting arguments"
+}
+
+test_restore_list_does_not_change_service_state() {
+  local sequence="$TMP_DIR/restore-list.sequence"
+  : >"$sequence"
+  (
+    record_step() { printf '%s\n' "$*" >>"$sequence"; }
+    load_env() { record_step load-env; }
+    preflight_common() { record_step preflight; }
+    assert_production_env() { record_step assert-production; }
+    start_infra() { record_step start-infra; }
+    compose() { record_step "compose $*"; }
+    run_restore() { record_step "run-restore $*"; }
+    cmd_restore --list
+  ) >/dev/null 2>&1 || test_fail "read-only restore list failed"
+
+  assert_contains "$sequence" "run-restore --list"
+  assert_not_contains "$sequence" "start-infra"
+  assert_not_contains "$sequence" "compose stop"
+  pass "restore list remains read-only and does not start or stop services"
+}
+
+test_production_restore_requires_exact_confirmation_before_side_effects() {
+  local sequence="$TMP_DIR/restore-prod-reject.sequence" out="$TMP_DIR/restore-prod-reject.out"
+  : >"$sequence"
+  if (
+    load_env() { printf '%s\n' load-env >>"$sequence"; }
+    start_infra() { printf '%s\n' start-infra >>"$sequence"; }
+    compose() { printf '%s\n' "compose $*" >>"$sequence"; }
+    run_restore() { printf '%s\n' run-restore >>"$sequence"; }
+    cmd_restore --latest --production-target --confirm-production-restore yes \
+      --release-version 1.0.0 --confirm-overwrite
+  ) >"$out" 2>&1; then
+    test_fail "production restore accepted a weak confirmation"
+  fi
+
+  assert_contains "$out" "$PRODUCTION_RESTORE_CONFIRMATION"
+  assert_not_exists_or_empty "$sequence"
+  pass "production restore rejects weak confirmation before side effects"
+}
+
+test_production_restore_stops_writers_and_leaves_them_stopped() {
+  local sequence="$TMP_DIR/restore-prod.sequence"
+  : >"$sequence"
+  (
+    record_step() { printf '%s\n' "$*" >>"$sequence"; }
+    load_env() { record_step load-env; }
+    preflight_common() { record_step preflight; }
+    assert_production_env() { record_step assert-production; }
+    start_infra() { record_step start-infra; }
+    wait_postgres_healthy() { record_step wait-postgres; }
+    wait_seaweedfs_healthy() { record_step wait-seaweedfs; }
+    sync_postgres_roles_from_env() { record_step sync-roles; }
+    compose() { record_step "compose $*"; }
+    docker() {
+      if [[ "${1:-}" == "inspect" ]]; then printf 'false\n'; return 0; fi
+      record_step "docker $*"
+    }
+    run_restore() {
+      record_step "run-restore quiesced=${TAXTRONIK_PRODUCTION_RESTORE_QUIESCED:-0} $*"
+    }
+    begin_database_restore_authorization() { record_step "begin-authorize $*"; }
+    authorize_database_restore_release() { record_step "authorize-release $*"; }
+    cmd_restore --latest --production-target \
+      --confirm-production-restore "$PRODUCTION_RESTORE_CONFIRMATION" \
+      --release-version 1.0.0 \
+      --confirm-overwrite
+  ) >/dev/null 2>&1 || test_fail "confirmed production restore failed"
+
+  assert_before "$sequence" "begin-authorize 1.0.0" "compose stop app worker n8n"
+  assert_before "$sequence" "compose stop app worker n8n" "run-restore quiesced=1"
+  assert_contains "$sequence" "run-restore quiesced=1 --latest --production-target"
+  assert_contains "$sequence" "authorize-release 1.0.0"
+  assert_not_contains "$sequence" "start-apps"
+  assert_not_contains "$sequence" "compose start"
+  assert_not_contains "$sequence" "compose up"
+  pass "production restore quiesces writers and never restarts them"
+}
+
+test_failed_production_restore_also_leaves_writers_stopped() {
+  local sequence="$TMP_DIR/restore-prod-fail.sequence" out="$TMP_DIR/restore-prod-fail.out"
+  local marker="$TMP_DIR/restore-prod-fail.authorization" guard_out="$TMP_DIR/restore-prod-fail.guard.out"
+  : >"$sequence"
+  if (
+    DB_RESTORE_AUTHORIZATION="$marker"
+    MIGRATION_PENDING="$TMP_DIR/restore-prod-fail.no-migration"
+    record_step() { printf '%s\n' "$*" >>"$sequence"; }
+    load_env() { :; }
+    preflight_common() { :; }
+    assert_production_env() { :; }
+    start_infra() { :; }
+    wait_postgres_healthy() { :; }
+    wait_seaweedfs_healthy() { :; }
+    sync_postgres_roles_from_env() { :; }
+    compose() { record_step "compose $*"; }
+    docker() {
+      [[ "${1:-}" == "inspect" ]] && { printf 'false\n'; return 0; }
+      return 0
+    }
+    run_restore() { record_step run-restore-failed; return 17; }
+    authorize_database_restore_release() { test_fail "failed restore must not authorize a release"; }
+    cmd_restore --latest --production-target \
+      --confirm-production-restore "$PRODUCTION_RESTORE_CONFIRMATION" \
+      --release-version 1.0.0 \
+      --confirm-overwrite
+  ) >"$out" 2>&1; then
+    test_fail "failed production restore unexpectedly succeeded"
+  fi
+
+  assert_before "$sequence" "compose stop app worker n8n" "run-restore-failed"
+  assert_not_contains "$sequence" "start-apps"
+  assert_not_contains "$sequence" "compose start"
+  assert_not_contains "$sequence" "compose up"
+  assert_key_equals "$marker" target_version 1.0.0
+  assert_key_equals "$marker" status pending
+  if (
+    DB_RESTORE_AUTHORIZATION="$marker"
+    MIGRATION_PENDING="$TMP_DIR/restore-prod-fail.no-migration"
+    assert_writer_start_authorized
+  ) >"$guard_out" 2>&1; then
+    test_fail "a failed production restore did not leave a persistent writer barrier"
+  fi
+  assert_contains "$guard_out" "nicht nachweislich erfolgreich abgeschlossen"
+  pass "failed production restore persists a writer-start barrier"
+}
+
+test_isolated_restore_does_not_stop_production_writers() {
+  local sequence="$TMP_DIR/restore-isolated.sequence"
+  : >"$sequence"
+  (
+    record_step() { printf '%s\n' "$*" >>"$sequence"; }
+    load_env() { :; }
+    preflight_common() { :; }
+    assert_production_env() { :; }
+    start_infra() { record_step start-infra; }
+    wait_postgres_healthy() { :; }
+    wait_seaweedfs_healthy() { :; }
+    sync_postgres_roles_from_env() { :; }
+    compose() { record_step "compose $*"; }
+    run_restore() { record_step "run-restore $*"; }
+    cmd_restore --latest --target-url postgresql://example/restore
+  ) >/dev/null 2>&1 || test_fail "isolated restore failed"
+
+  assert_contains "$sequence" "run-restore --latest --target-url postgresql://example/restore"
+  assert_not_contains "$sequence" "compose stop"
+  pass "isolated restore leaves production writers running"
 }
 
 test_smoke_health_rejects_degraded() {
@@ -375,6 +566,7 @@ current=2.0.0
 current_web_digest_suffix=@sha256:$(printf '3%.0s' {1..64})
 current_worker_digest_suffix=@sha256:$(printf '4%.0s' {1..64})
 current_commit=$(printf 'b%.0s' {1..40})
+current_rollback_requires_db_restore=false
 EOF
 }
 
@@ -429,7 +621,7 @@ test_release_contract_is_not_persisted_before_health() {
 }
 
 run_mock_registry_rollback() (
-  local env_file="$1" state_file="$2" selected_file="$3"
+  local env_file="$1" state_file="$2" selected_file="$3" requested="${4:-}"
   ENVFILE="$env_file"
   STATE="$state_file"
   require_cmd() { :; }
@@ -445,7 +637,7 @@ run_mock_registry_rollback() (
   deploy_readiness() { return 0; }
   save_state() { :; }
   git() { :; }
-  cmd_rollback
+  cmd_rollback "$requested"
 )
 
 test_failed_update_recovers_state_current() {
@@ -474,6 +666,419 @@ test_normal_rollback_uses_state_previous() {
     test_fail "normal rollback failed"
   assert_file_equals "$selected" 1.0.0
   pass "normal rollback selects state.previous"
+}
+
+test_rollback_blocks_migration_boundary_and_legacy_state() {
+  local out_true="$TMP_DIR/rollback-migration-true.out"
+  local out_unknown="$TMP_DIR/rollback-migration-unknown.out"
+  if ( assert_rollback_database_compatible 1.0.0 2.0.0 1.0.0 true ) >"$out_true" 2>&1; then
+    test_fail "rollback crossed a known migration boundary"
+  fi
+  assert_contains "$out_true" "DB-Schemas mit previous ist 'true'"
+
+  if ( assert_rollback_database_compatible 1.0.0 2.0.0 1.0.0 unknown ) >"$out_unknown" 2>&1; then
+    test_fail "rollback accepted a legacy/unknown compatibility state"
+  fi
+  assert_contains "$out_unknown" "DB-Schemas mit previous ist 'unknown'"
+  pass "rollback blocks known and unknown migration boundaries"
+}
+
+test_pending_migration_blocks_failed_update_recovery() {
+  local marker="$TMP_DIR/migration-pending-danger" out="$TMP_DIR/migration-pending-danger.out"
+  cat >"$marker" <<EOF
+source_version=2.0.0
+source_commit=$(printf 'b%.0s' {1..40})
+target_version=3.0.0
+target_commit=$(printf 'd%.0s' {1..40})
+requires_db_restore=true
+EOF
+  if (
+    MIGRATION_PENDING="$marker"
+    assert_rollback_database_compatible 2.0.0 2.0.0 1.0.0 false
+  ) >"$out" 2>&1; then
+    test_fail "failed-update recovery started old code after a pending migration"
+  fi
+  assert_contains "$out" "nicht finalisierter Migrationslauf"
+  pass "pending migration blocks failed-update recovery"
+}
+
+test_pending_non_migration_allows_only_source_recovery() {
+  local marker="$TMP_DIR/migration-pending-safe" out="$TMP_DIR/migration-pending-safe.out"
+  cat >"$marker" <<EOF
+source_version=2.0.0
+source_commit=$(printf 'b%.0s' {1..40})
+target_version=3.0.0
+target_commit=$(printf 'd%.0s' {1..40})
+requires_db_restore=false
+EOF
+  (
+    MIGRATION_PENDING="$marker"
+    assert_rollback_database_compatible 2.0.0 2.0.0 1.0.0 false
+  ) || test_fail "safe pending activation did not allow its exact source recovery"
+  if (
+    MIGRATION_PENDING="$marker"
+    assert_rollback_database_compatible 1.0.0 2.0.0 1.0.0 false
+  ) >"$out" 2>&1; then
+    test_fail "safe pending activation allowed an arbitrary older target"
+  fi
+  assert_contains "$out" "nur der vorgemerkte Quellstand '2.0.0'"
+  pass "pending non-migration activation allows only exact source recovery"
+}
+
+test_state_persists_migration_rollback_requirement() {
+  local state_file="$TMP_DIR/migration-state" marker="$TMP_DIR/migration-state.pending"
+  write_release_state "$state_file"
+  cat >"$marker" <<'EOF'
+source_version=2.0.0
+target_version=3.0.0
+requires_db_restore=true
+EOF
+  (
+    STATE="$state_file"
+    MIGRATION_PENDING="$marker"
+    TAXTRONIK_VERSION=3.0.0
+    TAXTRONIK_WEB_DIGEST_SUFFIX="@sha256:$(printf '5%.0s' {1..64})"
+    TAXTRONIK_WORKER_DIGEST_SUFFIX="@sha256:$(printf '6%.0s' {1..64})"
+    TAXTRONIK_RELEASE_COMMIT="$(printf 'd%.0s' {1..40})"
+    save_state
+  )
+  assert_key_equals "$state_file" current_rollback_requires_db_restore true
+  pass "release state persists migration rollback requirement"
+}
+
+test_restored_rollback_blocks_unmigrated_reverse_path() {
+  local state_file="$TMP_DIR/restored-reverse.state"
+  local marker="$TMP_DIR/restored-reverse.authorization" out="$TMP_DIR/restored-reverse.out"
+  write_release_state "$state_file"
+  cat >"$marker" <<'EOF'
+target_version=1.0.0
+status=ready
+created_at=2026-07-14T00:00:00Z
+EOF
+
+  (
+    STATE="$state_file"
+    DB_RESTORE_AUTHORIZATION="$marker"
+    TAXTRONIK_VERSION=1.0.0
+    TAXTRONIK_WEB_DIGEST_SUFFIX="@sha256:$(printf '1%.0s' {1..64})"
+    TAXTRONIK_WORKER_DIGEST_SUFFIX="@sha256:$(printf '2%.0s' {1..64})"
+    TAXTRONIK_RELEASE_COMMIT="$(printf 'a%.0s' {1..40})"
+    TAXTRONIK_ROLLBACK_REQUIRES_DB_RESTORE=false
+    save_state
+  )
+
+  assert_key_equals "$state_file" current 1.0.0
+  assert_key_equals "$state_file" previous 2.0.0
+  assert_key_equals "$state_file" current_rollback_requires_db_restore unknown
+  rm -f "$marker"
+  if (
+    STATE="$state_file"
+    DB_RESTORE_AUTHORIZATION="$marker"
+    MIGRATION_PENDING="$TMP_DIR/restored-reverse.no-migration"
+    assert_rollback_database_compatible 2.0.0 1.0.0 2.0.0 unknown
+  ) >"$out" 2>&1; then
+    test_fail "restored schema allowed reverse activation without migrations"
+  fi
+  assert_contains "$out" "DB-Schemas mit previous ist 'unknown'"
+  pass "database restore blocks an unmigrated reverse rollback"
+}
+
+test_database_restore_authorizes_only_declared_release() {
+  local marker="$TMP_DIR/database-restored" out="$TMP_DIR/database-restored.out"
+  cat >"$marker" <<'EOF'
+target_version=1.0.0
+status=ready
+created_at=2026-07-14T00:00:00Z
+EOF
+  (
+    DB_RESTORE_AUTHORIZATION="$marker"
+    assert_rollback_database_compatible 1.0.0 2.0.0 1.5.0 true
+  ) || test_fail "matching restored release was not authorized"
+  if (
+    DB_RESTORE_AUTHORIZATION="$marker"
+    assert_rollback_database_compatible 1.5.0 2.0.0 1.5.0 true
+  ) >"$out" 2>&1; then
+    test_fail "restore authorization was reused for a different release"
+  fi
+  assert_contains "$out" "ausschliesslich fuer Release 1.0.0 autorisiert"
+  pass "database restore authorizes only its declared release"
+}
+
+test_migration_transition_preserves_strongest_requirement() {
+  local state_file="$TMP_DIR/transition-monotonic.state"
+  local marker="$TMP_DIR/transition-monotonic.pending"
+  local source_commit target_commit
+  source_commit="$(printf 'b%.0s' {1..40})"
+  target_commit="$(printf 'd%.0s' {1..40})"
+  write_release_state "$state_file"
+
+  cat >"$marker" <<EOF
+source_version=2.0.0
+source_commit=$source_commit
+target_version=3.0.0
+target_commit=$target_commit
+requires_db_restore=true
+EOF
+  (
+    STATE="$state_file"
+    MIGRATION_PENDING="$marker"
+    DB_RESTORE_AUTHORIZATION="$TMP_DIR/transition-monotonic.no-restore"
+    TAXTRONIK_VERSION=3.0.0
+    TAXTRONIK_RELEASE_COMMIT="$target_commit"
+    pending_database_migration_requirement() { printf 'false'; }
+    begin_migration_transition
+  ) >/dev/null
+  assert_key_equals "$marker" requires_db_restore true
+
+  sed -i 's/requires_db_restore=true/requires_db_restore=unknown/' "$marker"
+  (
+    STATE="$state_file"
+    MIGRATION_PENDING="$marker"
+    DB_RESTORE_AUTHORIZATION="$TMP_DIR/transition-monotonic.no-restore"
+    TAXTRONIK_VERSION=3.0.0
+    TAXTRONIK_RELEASE_COMMIT="$target_commit"
+    pending_database_migration_requirement() { printf 'false'; }
+    begin_migration_transition
+  ) >/dev/null
+  assert_key_equals "$marker" requires_db_restore unknown
+
+  sed -i 's/requires_db_restore=unknown/requires_db_restore=false/' "$marker"
+  (
+    STATE="$state_file"
+    MIGRATION_PENDING="$marker"
+    DB_RESTORE_AUTHORIZATION="$TMP_DIR/transition-monotonic.no-restore"
+    TAXTRONIK_VERSION=3.0.0
+    TAXTRONIK_RELEASE_COMMIT="$target_commit"
+    pending_database_migration_requirement() { printf 'true'; }
+    begin_migration_transition
+  ) >/dev/null
+  assert_key_equals "$marker" requires_db_restore true
+  pass "migration retry preserves or strengthens the original restore barrier"
+}
+
+test_migration_transition_never_replaces_another_contract() {
+  local state_file="$TMP_DIR/transition-conflict.state"
+  local marker="$TMP_DIR/transition-conflict.pending" before="$TMP_DIR/transition-conflict.before"
+  local out="$TMP_DIR/transition-conflict.out" source_commit old_target_commit new_target_commit
+  source_commit="$(printf 'b%.0s' {1..40})"
+  old_target_commit="$(printf 'c%.0s' {1..40})"
+  new_target_commit="$(printf 'd%.0s' {1..40})"
+  write_release_state "$state_file"
+  cat >"$marker" <<EOF
+source_version=2.0.0
+source_commit=$source_commit
+target_version=2.5.0
+target_commit=$old_target_commit
+requires_db_restore=unknown
+EOF
+  cp "$marker" "$before"
+  if (
+    STATE="$state_file"
+    MIGRATION_PENDING="$marker"
+    DB_RESTORE_AUTHORIZATION="$TMP_DIR/transition-conflict.no-restore"
+    TAXTRONIK_VERSION=3.0.0
+    TAXTRONIK_RELEASE_COMMIT="$new_target_commit"
+    pending_database_migration_requirement() { printf 'false'; }
+    begin_migration_transition
+  ) >"$out" 2>&1; then
+    test_fail "a pending migration contract was replaced by another transition"
+  fi
+  cmp -s "$marker" "$before" || test_fail "conflicting transition modified the original marker"
+  assert_contains "$out" "anderen Release-Uebergang"
+  pass "migration retry refuses to replace a different pending contract"
+}
+
+test_compose_writer_passthrough_is_blocked_by_recovery_markers() {
+  local restore_marker="$TMP_DIR/compose-guard.restore" pending_marker="$TMP_DIR/compose-guard.pending"
+  local missing_restore="$TMP_DIR/compose-guard.no-restore" missing_pending="$TMP_DIR/compose-guard.no-pending"
+  local target_commit side out command kind
+  target_commit="$(printf 'd%.0s' {1..40})"
+  cat >"$restore_marker" <<'EOF'
+target_version=1.0.0
+status=ready
+created_at=2026-07-14T00:00:00Z
+EOF
+  cat >"$pending_marker" <<EOF
+source_version=2.0.0
+source_commit=$(printf 'b%.0s' {1..40})
+target_version=3.0.0
+target_commit=$target_commit
+requires_db_restore=true
+EOF
+
+  for kind in restore pending; do
+    for command in up restart; do
+      side="$TMP_DIR/compose-guard-${kind}-${command}.side"
+      out="$TMP_DIR/compose-guard-${kind}-${command}.out"
+      if (
+        if [[ "$kind" == "restore" ]]; then
+          DB_RESTORE_AUTHORIZATION="$restore_marker"; MIGRATION_PENDING="$missing_pending"
+        else
+          DB_RESTORE_AUTHORIZATION="$missing_restore"; MIGRATION_PENDING="$pending_marker"
+          TAXTRONIK_RELEASE_COMMIT="$target_commit"
+        fi
+        render_s3_config() { printf 'render\n' >>"$side"; }
+        ensure_compose_image_pinning() { printf 'pinning\n' >>"$side"; }
+        reconcile_n8n_encryption_key_from_volume() { printf 'reconcile\n' >>"$side"; }
+        docker() { printf 'docker %s\n' "$*" >>"$side"; }
+        compose "$command" -d
+      ) >"$out" 2>&1; then
+        test_fail "compose $command bypassed the $kind writer barrier"
+      fi
+      assert_not_exists_or_empty "$side"
+      assert_contains "$out" "Writer-Start blockiert"
+    done
+  done
+  pass "CLI compose up/restart cannot bypass restore or migration barriers"
+}
+
+test_internal_writer_activation_is_bound_to_exact_contract() {
+  local pending_marker="$TMP_DIR/writer-activation.pending" restore_marker="$TMP_DIR/writer-activation.restore"
+  local missing_restore="$TMP_DIR/writer-activation.no-restore" missing_pending="$TMP_DIR/writer-activation.no-pending"
+  local source_commit target_commit side out
+  source_commit="$(printf 'b%.0s' {1..40})"
+  target_commit="$(printf 'd%.0s' {1..40})"
+  cat >"$pending_marker" <<EOF
+source_version=2.0.0
+source_commit=$source_commit
+target_version=3.0.0
+target_commit=$target_commit
+requires_db_restore=true
+EOF
+  side="$TMP_DIR/writer-activation.allowed.side"
+  (
+    MIGRATION_PENDING="$pending_marker"
+    DB_RESTORE_AUTHORIZATION="$missing_restore"
+    TAXTRONIK_RELEASE_COMMIT="$target_commit"
+    run_backup_dir_init() { printf 'backup-dir-init\n' >>"$side"; }
+    compose() { printf 'compose %s\n' "$*" >>"$side"; }
+    start_apps_for_activation deploy 3.0.0
+  ) >/dev/null
+  assert_contains "$side" "backup-dir-init"
+  assert_contains "$side" "compose up"
+
+  side="$TMP_DIR/writer-activation-denied.side"
+  out="$TMP_DIR/writer-activation-denied.out"
+  if (
+    MIGRATION_PENDING="$pending_marker"
+    DB_RESTORE_AUTHORIZATION="$missing_restore"
+    TAXTRONIK_RELEASE_COMMIT="$target_commit"
+    run_backup_dir_init() { printf 'backup-dir-init\n' >>"$side"; }
+    compose() { printf 'compose\n' >>"$side"; }
+    start_apps_for_activation deploy 3.0.1
+  ) >"$out" 2>&1; then
+    test_fail "a mismatching deploy contract started writers"
+  fi
+  assert_not_exists_or_empty "$side"
+  assert_contains "$out" "Nicht finalisierter Migrationsvertrag"
+
+  cat >"$restore_marker" <<'EOF'
+target_version=1.0.0
+status=ready
+created_at=2026-07-14T00:00:00Z
+EOF
+  side="$TMP_DIR/writer-restore-allowed.side"
+  (
+    DB_RESTORE_AUTHORIZATION="$restore_marker"
+    MIGRATION_PENDING="$missing_pending"
+    run_backup_dir_init() { printf 'backup-dir-init\n' >>"$side"; }
+    compose() { printf 'compose %s\n' "$*" >>"$side"; }
+    start_apps_for_activation rollback 1.0.0
+  ) >/dev/null
+  assert_contains "$side" "compose up"
+
+  side="$TMP_DIR/writer-restore-denied.side"
+  if (
+    DB_RESTORE_AUTHORIZATION="$restore_marker"
+    MIGRATION_PENDING="$missing_pending"
+    run_backup_dir_init() { printf 'backup-dir-init\n' >>"$side"; }
+    compose() { printf 'compose\n' >>"$side"; }
+    start_apps_for_activation deploy 1.0.0
+  ) >"$out" 2>&1; then
+    test_fail "a deploy activated a restored production database"
+  fi
+  assert_not_exists_or_empty "$side"
+  assert_contains "$out" "nur mit './taxtronik rollback 1.0.0'"
+  pass "internal writer activation is bound to the exact deploy or restored rollback contract"
+}
+
+test_full_backup_cannot_start_n8n_behind_restore_barrier() {
+  local marker="$TMP_DIR/full-backup.restore" missing_pending="$TMP_DIR/full-backup.no-pending"
+  local side="$TMP_DIR/full-backup-guard.side" out="$TMP_DIR/full-backup-guard.out"
+  cat >"$marker" <<'EOF'
+target_version=1.0.0
+status=ready
+created_at=2026-07-14T00:00:00Z
+EOF
+  if (
+    DB_RESTORE_AUTHORIZATION="$marker"
+    MIGRATION_PENDING="$missing_pending"
+    load_env() { :; }
+    preflight_common() { :; }
+    assert_production_env() { :; }
+    require_cmd() { :; }
+    start_infra() { :; }
+    wait_postgres_healthy() { :; }
+    wait_seaweedfs_healthy() { :; }
+    sync_postgres_roles_from_env() { :; }
+    render_s3_config() { printf 'render\n' >>"$side"; }
+    ensure_compose_image_pinning() { printf 'pinning\n' >>"$side"; }
+    reconcile_n8n_encryption_key_from_volume() { printf 'reconcile\n' >>"$side"; }
+    docker() { printf 'docker %s\n' "$*" >>"$side"; }
+    cmd_backup_full
+  ) >"$out" 2>&1; then
+    test_fail "backup-full started n8n behind a restore barrier"
+  fi
+  assert_not_exists_or_empty "$side"
+  assert_contains "$out" "Writer-Start blockiert"
+  pass "backup-full cannot start n8n behind a restore barrier"
+}
+
+test_restore_rollback_requires_explicit_matching_version() {
+  local marker="$TMP_DIR/rollback-explicit.restore" missing_pending="$TMP_DIR/rollback-explicit.no-pending"
+  local env_file="$TMP_DIR/rollback-explicit.env" state_file="$TMP_DIR/rollback-explicit.state"
+  local selected="$TMP_DIR/rollback-explicit.selected" out="$TMP_DIR/rollback-explicit.out"
+  cat >"$marker" <<'EOF'
+target_version=1.0.0
+status=ready
+created_at=2026-07-14T00:00:00Z
+EOF
+  write_release_env "$env_file" 2.0.0 \
+    "@sha256:$(printf '3%.0s' {1..64})" "@sha256:$(printf '4%.0s' {1..64})" \
+    "$(printf 'b%.0s' {1..40})"
+  write_release_state "$state_file"
+
+  if DB_RESTORE_AUTHORIZATION="$marker" MIGRATION_PENDING="$missing_pending" \
+    run_mock_registry_rollback "$env_file" "$state_file" "$selected" >"$out" 2>&1; then
+    test_fail "restore rollback inferred its target without an explicit version"
+  fi
+  assert_not_exists_or_empty "$selected"
+  assert_contains "$out" "Zielversion Pflicht"
+
+  if DB_RESTORE_AUTHORIZATION="$marker" MIGRATION_PENDING="$missing_pending" \
+    run_mock_registry_rollback "$env_file" "$state_file" "$selected" 1.5.0 >"$out" 2>&1; then
+    test_fail "restore rollback accepted a mismatching explicit version"
+  fi
+  assert_not_exists_or_empty "$selected"
+  assert_contains "$out" "autorisiert ist ausschliesslich '1.0.0'"
+
+  DB_RESTORE_AUTHORIZATION="$marker" MIGRATION_PENDING="$missing_pending" \
+    run_mock_registry_rollback "$env_file" "$state_file" "$selected" 1.0.0 >/dev/null 2>&1 || \
+    test_fail "matching explicit restore rollback failed"
+  assert_file_equals "$selected" 1.0.0
+  [[ ! -e "$marker" ]] || test_fail "successful restored rollback did not consume its authorization"
+  pass "restored database requires an explicit exactly matching rollback version"
+}
+
+test_inherited_internal_authorization_is_sanitized() {
+  local out="$TMP_DIR/internal-env-sanitized.out"
+  _TAXTRONIK_INTERNAL_WRITER_START_REASON=deploy \
+  _TAXTRONIK_INTERNAL_WRITER_START_TARGET=3.0.0 \
+  _TAXTRONIK_INTERNAL_RELEASE_CONTRACT_STAGED=1 \
+    bash -c 'source "$1"; printf "%s|%s|%s\n" "${_TAXTRONIK_INTERNAL_WRITER_START_REASON:-unset}" "${_TAXTRONIK_INTERNAL_WRITER_START_TARGET:-unset}" "${_TAXTRONIK_INTERNAL_RELEASE_CONTRACT_STAGED:-unset}"' \
+      _ "$REPO_ROOT/scripts/ops-lib.sh" >"$out"
+  assert_file_equals "$out" "unset|unset|unset"
+  pass "inherited internal authorization flags are sanitized"
 }
 
 test_identical_redeploy_preserves_previous_state() {
@@ -561,6 +1166,7 @@ test_secret_files_are_mode_0600() {
 test_doctor_accepts_prod_smtp
 test_doctor_rejects_mailhog
 test_doctor_rejects_loopback_mailhog_port
+test_doctor_rejects_disabled_auth_host_trust
 test_doctor_accepts_internal_risk_layer_without_fetch_allowlist
 test_doctor_rejects_incomplete_risk_layer_pair
 test_prune_build_cache_calls_docker_builder_prune
@@ -568,6 +1174,13 @@ test_prune_build_cache_can_be_disabled
 test_prune_build_cache_failure_is_non_blocking
 test_restore_source_detection_uses_s3_for_bucket_sources
 test_restore_source_detection_skips_s3_for_local_file
+test_restore_validation_requires_explicit_target
+test_restore_validation_rejects_unknown_and_conflicting_args
+test_restore_list_does_not_change_service_state
+test_production_restore_requires_exact_confirmation_before_side_effects
+test_production_restore_stops_writers_and_leaves_them_stopped
+test_failed_production_restore_also_leaves_writers_stopped
+test_isolated_restore_does_not_stop_production_writers
 test_smoke_health_rejects_degraded
 test_deploy_readiness_rejects_missing_hostports
 test_backup_manifest_detects_tampering
@@ -576,6 +1189,19 @@ test_update_backup_failure_leaves_checkout_untouched
 test_release_contract_is_not_persisted_before_health
 test_failed_update_recovers_state_current
 test_normal_rollback_uses_state_previous
+test_rollback_blocks_migration_boundary_and_legacy_state
+test_pending_migration_blocks_failed_update_recovery
+test_pending_non_migration_allows_only_source_recovery
+test_state_persists_migration_rollback_requirement
+test_restored_rollback_blocks_unmigrated_reverse_path
+test_database_restore_authorizes_only_declared_release
+test_migration_transition_preserves_strongest_requirement
+test_migration_transition_never_replaces_another_contract
+test_compose_writer_passthrough_is_blocked_by_recovery_markers
+test_internal_writer_activation_is_bound_to_exact_contract
+test_full_backup_cannot_start_n8n_behind_restore_barrier
+test_restore_rollback_requires_explicit_matching_version
+test_inherited_internal_authorization_is_sanitized
 test_identical_redeploy_preserves_previous_state
 test_min_previous_without_state_fails_for_existing_installation
 test_secret_files_are_mode_0600

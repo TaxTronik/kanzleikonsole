@@ -61,19 +61,19 @@ rollenbasierte Berechtigungen, Mandantentrennung in Tiefenstaffelung
 
 ## Traceability
 
-| Anforderung | Implementierung | Test |
-|---|---|---|
-| Cross-Tenant unmöglich (DB-Ebene) | RLS-Policies | `rls-cross-tenant.test.ts` (CI-Pflicht) |
-| Kein Owner-Fallback | db/client fail-closed | `client-fail-closed.test.ts` |
-| Magic-Link-Lebenszyklus | auth/magic-link | `magic-link.test.ts` + Security-Audit 2026-06 (One-Time/Replay/Prefetch verifiziert) |
-| Lockout ohne Fremd-Aussperrung | auth/lockout | `lockout.test.ts` |
-| TOTP-Helfer | auth/totp | `totp.test.ts` |
-| Zugriffspolicy-Wahrheitstabelle | settings/access-policy | `access-policy.test.ts` |
-| Einzelrechte (implizit/Grant/fail-closed) | rbac.hasStaffPermission + decideStaffGuard | `rbac.test.ts` + `staff-action.test.ts` (Wahrheitstabellen) |
-| Fehler ohne Internals | rbac.toActionError | `rbac.test.ts` |
-| Open-Redirect-Schutz | safePortalReturnTo | `safe-return-to.test.ts` |
-| GwG-Sperre Portal-Zugang | DB-Trigger + Session-Check | `gwg-allow-active.test.ts` + portal.ts-Revalidierung |
-| Alle Actions geguarded | AST-Scan | `server-action-authz.test.ts` |
+| Anforderung                               | Implementierung                            | Test                                                                                 |
+| ----------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------ |
+| Cross-Tenant unmöglich (DB-Ebene)         | RLS-Policies                               | `rls-cross-tenant.test.ts` (CI-Pflicht)                                              |
+| Kein Owner-Fallback                       | db/client fail-closed                      | `client-fail-closed.test.ts`                                                         |
+| Magic-Link-Lebenszyklus                   | auth/magic-link                            | `magic-link.test.ts` + Security-Audit 2026-06 (One-Time/Replay/Prefetch verifiziert) |
+| Lockout ohne Fremd-Aussperrung            | auth/lockout                               | `lockout.test.ts`                                                                    |
+| TOTP-Helfer                               | auth/totp                                  | `totp.test.ts`                                                                       |
+| Zugriffspolicy-Wahrheitstabelle           | settings/access-policy                     | `access-policy.test.ts`                                                              |
+| Einzelrechte (implizit/Grant/fail-closed) | rbac.hasStaffPermission + decideStaffGuard | `rbac.test.ts` + `staff-action.test.ts` (Wahrheitstabellen)                          |
+| Fehler ohne Internals                     | rbac.toActionError                         | `rbac.test.ts`                                                                       |
+| Open-Redirect-Schutz                      | safePortalReturnTo                         | `safe-return-to.test.ts`                                                             |
+| GwG-Sperre Portal-Zugang                  | DB-Trigger + Session-Check                 | `gwg-allow-active.test.ts` + portal.ts-Revalidierung                                 |
+| Alle Actions geguarded                    | AST-Scan                                   | `server-action-authz.test.ts`                                                        |
 
 ## Bekannte Grenzen
 

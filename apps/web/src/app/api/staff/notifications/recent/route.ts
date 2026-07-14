@@ -11,23 +11,21 @@ export async function GET() {
   }
   const { tenantId, staffId } = session.user;
 
-  const items = await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    (tx) =>
-      tx.notification.findMany({
-        where: { OR: [{ staffId }, { staffId: null }] },
-        orderBy: { createdAt: 'desc' },
-        take: LIMIT,
-        select: {
-          id: true,
-          kind: true,
-          title: true,
-          body: true,
-          href: true,
-          createdAt: true,
-          readAt: true,
-        },
-      }),
+  const items = await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>
+    tx.notification.findMany({
+      where: { OR: [{ staffId }, { staffId: null }] },
+      orderBy: { createdAt: 'desc' },
+      take: LIMIT,
+      select: {
+        id: true,
+        kind: true,
+        title: true,
+        body: true,
+        href: true,
+        createdAt: true,
+        readAt: true,
+      },
+    }),
   );
 
   const unreadCount = await withTenantContext(

@@ -6,10 +6,18 @@ import { SCHEDULE_LABELS } from '@taxtronik/tax';
 import { saveScheduleConfigAction, type ActionResult } from './actions';
 
 const ALL_KINDS: TaxScheduleKind[] = [
-  'USTA_MONATLICH', 'USTA_QUARTAL', 'USTA_JAEHRLICH',
-  'LSTA_MONATLICH', 'LSTA_QUARTAL', 'LSTA_JAEHRLICH',
-  'EST_VZ', 'KST_VZ', 'GEWST_VZ',
-  'EST_ERKLAERUNG', 'KST_ERKLAERUNG', 'GEWST_ERKLAERUNG',
+  'USTA_MONATLICH',
+  'USTA_QUARTAL',
+  'USTA_JAEHRLICH',
+  'LSTA_MONATLICH',
+  'LSTA_QUARTAL',
+  'LSTA_JAEHRLICH',
+  'EST_VZ',
+  'KST_VZ',
+  'GEWST_VZ',
+  'EST_ERKLAERUNG',
+  'KST_ERKLAERUNG',
+  'GEWST_ERKLAERUNG',
 ];
 
 export interface ScheduleConfigDto {
@@ -24,7 +32,10 @@ export interface ScheduleConfigDto {
 // Folgejahres) gilt nur für ERKLÄRUNGEN — nicht für Anmeldungen (auch nicht
 // die LSt-Jahresanmeldung) und nicht für Vorauszahlungen.
 const ADVISED_KINDS = new Set<TaxScheduleKind>([
-  'USTA_JAEHRLICH', 'EST_ERKLAERUNG', 'KST_ERKLAERUNG', 'GEWST_ERKLAERUNG',
+  'USTA_JAEHRLICH',
+  'EST_ERKLAERUNG',
+  'KST_ERKLAERUNG',
+  'GEWST_ERKLAERUNG',
 ]);
 
 export function TaxScheduleForm({
@@ -47,13 +58,24 @@ export function TaxScheduleForm({
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-surface-raised border-b border-default">
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">Aktiv</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">Termin</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">Dauerfrist</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase" title="Beratene Erklärungsfrist § 149 Abs. 3 AO — Ende Februar des zweiten Folgejahres">
+              <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">
+                Aktiv
+              </th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">
+                Termin
+              </th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">
+                Dauerfrist
+              </th>
+              <th
+                className="text-left px-4 py-3 text-xs font-medium text-muted uppercase"
+                title="Beratene Erklärungsfrist § 149 Abs. 3 AO — Ende Februar des zweiten Folgejahres"
+              >
                 Beraten (§ 149 (3))
               </th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">Reminder (Tage)</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">
+                Reminder (Tage)
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border-subtle">
@@ -74,9 +96,7 @@ export function TaxScheduleForm({
                       className="rounded border-strong text-brand-600"
                     />
                   </td>
-                  <td className="px-4 py-3 font-medium text-primary">
-                    {SCHEDULE_LABELS[kind]}
-                  </td>
+                  <td className="px-4 py-3 font-medium text-primary">{SCHEDULE_LABELS[kind]}</td>
                   <td className="px-4 py-3">
                     {usesDauerfrist ? (
                       <input

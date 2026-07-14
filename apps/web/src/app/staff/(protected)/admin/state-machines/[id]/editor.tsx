@@ -45,13 +45,15 @@ export function MachineEditor({
   const [isPending, start] = useTransition();
 
   function updateState(i: number, patch: Partial<StateDraft>) {
-    setStates((s) => s.map((st, idx) => {
-      if (idx !== i) {
-        if (patch.isInitial && st.isInitial) return { ...st, isInitial: false };
-        return st;
-      }
-      return { ...st, ...patch };
-    }));
+    setStates((s) =>
+      s.map((st, idx) => {
+        if (idx !== i) {
+          if (patch.isInitial && st.isInitial) return { ...st, isInitial: false };
+          return st;
+        }
+        return { ...st, ...patch };
+      }),
+    );
   }
   function addState() {
     setStates((s) => [
@@ -79,11 +81,16 @@ export function MachineEditor({
     if (states.length < 1) return;
     setTransitions((t) => [
       ...t,
-      { fromKey: states[0]!.key, toKey: states[states.length - 1]!.key, label: '', conditionNote: '' },
+      {
+        fromKey: states[0]!.key,
+        toKey: states[states.length - 1]!.key,
+        label: '',
+        conditionNote: '',
+      },
     ]);
   }
   function updateTransition(i: number, patch: Partial<TransitionDraft>) {
-    setTransitions((t) => t.map((tr, idx) => idx === i ? { ...tr, ...patch } : tr));
+    setTransitions((t) => t.map((tr, idx) => (idx === i ? { ...tr, ...patch } : tr)));
   }
   function removeTransition(i: number) {
     setTransitions((t) => t.filter((_, idx) => idx !== i));
@@ -92,11 +99,13 @@ export function MachineEditor({
   function save() {
     setError(null);
     // Auto-slug aus Label, wenn key leer
-    const cleaned: StateDraft[] = states.map((s) => ({
-      ...s,
-      label: s.label.trim(),
-      key: s.key.trim() || slugify(s.label),
-    })).filter((s) => s.label || s.key);
+    const cleaned: StateDraft[] = states
+      .map((s) => ({
+        ...s,
+        label: s.label.trim(),
+        key: s.key.trim() || slugify(s.label),
+      }))
+      .filter((s) => s.label || s.key);
     if (cleaned.length > 0 && cleaned.filter((s) => s.isInitial).length !== 1) {
       setError('Genau ein Anfangszustand erforderlich.');
       return;
@@ -176,7 +185,9 @@ export function MachineEditor({
                       className="input col-span-2 text-xs"
                     >
                       {COLORS.map((c) => (
-                        <option key={c || 'none'} value={c}>{c || '— Farbe —'}</option>
+                        <option key={c || 'none'} value={c}>
+                          {c || '— Farbe —'}
+                        </option>
                       ))}
                     </select>
                     <label className="flex items-center gap-1 text-xs col-span-1.5">
@@ -242,7 +253,9 @@ export function MachineEditor({
                     className="input col-span-3 text-sm"
                   >
                     {states.map((s) => (
-                      <option key={s.key || `idx-${i}`} value={s.key}>{s.label || s.key}</option>
+                      <option key={s.key || `idx-${i}`} value={s.key}>
+                        {s.label || s.key}
+                      </option>
                     ))}
                   </select>
                   <div className="col-span-1 text-center text-disabled">
@@ -254,7 +267,9 @@ export function MachineEditor({
                     className="input col-span-3 text-sm"
                   >
                     {states.map((s) => (
-                      <option key={s.key || `idx-${i}-to`} value={s.key}>{s.label || s.key}</option>
+                      <option key={s.key || `idx-${i}-to`} value={s.key}>
+                        {s.label || s.key}
+                      </option>
                     ))}
                   </select>
                   <input

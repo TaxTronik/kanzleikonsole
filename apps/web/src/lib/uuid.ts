@@ -8,8 +8,7 @@
 // filtert die offensichtlich ungültige Eingabe VOR dem DB-Roundtrip heraus.
 // =============================================================================
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** True, wenn `s` ein kanonisches UUID-Format hat (Version-agnostisch). */
 export function isUuid(s: string): boolean {

@@ -3,7 +3,10 @@ import { extractNormRefs, scoreMarkingSuggestions, type ScoreableMarking } from 
 
 describe('extractNormRefs', () => {
   it('zieht §-Zitate heraus, ignoriert losen Text', () => {
-    expect(extractNormRefs('Prüfe § 8 KStG und § 42 AO sowie irgendwas.')).toEqual(['§ 8 KStG', '§ 42 AO']);
+    expect(extractNormRefs('Prüfe § 8 KStG und § 42 AO sowie irgendwas.')).toEqual([
+      '§ 8 KStG',
+      '§ 42 AO',
+    ]);
   });
 });
 
@@ -19,7 +22,11 @@ describe('scoreMarkingSuggestions', () => {
       { title: null, body: 'Hier liegt ein Gestaltungsmissbrauch nach § 42 AO vor.' },
       marks,
     );
-    expect(res[0]).toMatchObject({ markingId: 'a', score: 5, reason: '1 gemeinsame Normanker · Begriff erwähnt' });
+    expect(res[0]).toMatchObject({
+      markingId: 'a',
+      score: 5,
+      reason: '1 gemeinsame Normanker · Begriff erwähnt',
+    });
     expect(res.find((r) => r.markingId === 'c')).toBeUndefined(); // KONTROLLIERT ausgeschlossen
   });
 
@@ -29,6 +36,8 @@ describe('scoreMarkingSuggestions', () => {
   });
 
   it('kein Treffer → leer', () => {
-    expect(scoreMarkingSuggestions({ title: null, body: 'Völlig anderes Thema.' }, marks)).toEqual([]);
+    expect(scoreMarkingSuggestions({ title: null, body: 'Völlig anderes Thema.' }, marks)).toEqual(
+      [],
+    );
   });
 });

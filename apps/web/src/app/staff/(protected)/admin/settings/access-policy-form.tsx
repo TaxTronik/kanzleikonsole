@@ -47,7 +47,9 @@ export function AccessPolicyForm({ initial }: { initial: AccessPolicy }) {
 
       {state?.error && <div className="alert-error-sm">{state.error}</div>}
       {state?.ok && (
-        <div className="alert-success-sm">Zugriffsmodell gespeichert. Wirkt ab dem nächsten Seitenaufruf.</div>
+        <div className="alert-success-sm">
+          Zugriffsmodell gespeichert. Wirkt ab dem nächsten Seitenaufruf.
+        </div>
       )}
 
       <button type="submit" className="btn-primary" disabled={isPending}>

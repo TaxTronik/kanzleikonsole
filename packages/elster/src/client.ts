@@ -174,7 +174,10 @@ export class ElsterBridgeClient {
 
   /** `GET /healthz` — Bridge erreichbar, ERiC geladen, Zertifikat/Hersteller-ID gesetzt? */
   async health(): Promise<BridgeHealth> {
-    const raw = await this.request('GET', '/healthz', { timeoutMs: HEALTH_TIMEOUT_MS, auth: false });
+    const raw = await this.request('GET', '/healthz', {
+      timeoutMs: HEALTH_TIMEOUT_MS,
+      auth: false,
+    });
     return BridgeHealthSchema.parse(raw);
   }
 

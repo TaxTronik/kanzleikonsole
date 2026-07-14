@@ -31,7 +31,9 @@ export function CreateSkillForm() {
     <form ref={ref} action={formAction} className="space-y-3">
       <div className="grid grid-cols-3 gap-3">
         <div>
-          <label className="label" htmlFor="skill-slug">Kürzel</label>
+          <label className="label" htmlFor="skill-slug">
+            Kürzel
+          </label>
           <input
             id="skill-slug"
             name="slug"
@@ -46,7 +48,9 @@ export function CreateSkillForm() {
           />
         </div>
         <div className="col-span-2">
-          <label className="label" htmlFor="skill-label">Anzeige-Name</label>
+          <label className="label" htmlFor="skill-label">
+            Anzeige-Name
+          </label>
           <input
             id="skill-label"
             name="label"
@@ -60,20 +64,20 @@ export function CreateSkillForm() {
         </div>
       </div>
       <div>
-        <label className="label" htmlFor="skill-color">Farbe</label>
+        <label className="label" htmlFor="skill-color">
+          Farbe
+        </label>
         <select id="skill-color" name="color" className="input">
           {COLOR_OPTIONS.map((c) => (
-            <option key={c.value} value={c.value}>{c.label}</option>
+            <option key={c.value} value={c.value}>
+              {c.label}
+            </option>
           ))}
         </select>
       </div>
 
-      {state?.error && (
-        <div className="alert-error-sm">{state.error}</div>
-      )}
-      {state?.ok && (
-        <div className="alert-success-sm">Tätigkeitsbereich angelegt.</div>
-      )}
+      {state?.error && <div className="alert-error-sm">{state.error}</div>}
+      {state?.ok && <div className="alert-success-sm">Tätigkeitsbereich angelegt.</div>}
 
       <button type="submit" className="btn-primary" disabled={isPending}>
         {isPending ? 'Speichert…' : 'Anlegen'}

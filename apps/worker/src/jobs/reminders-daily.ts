@@ -22,7 +22,6 @@ import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
 import { withWorkerTenantContext } from '../tenant-context';
 
-
 function startOfDay(d: Date): Date {
   const r = new Date(d);
   r.setHours(0, 0, 0, 0);
@@ -103,7 +102,10 @@ export const remindersDailyWorker = new Worker<ChecksJob>(
           status: { notIn: ['EINSPRUCH', 'ABGEHOLFEN', 'ZURUECKGEWIESEN', 'RECHTSKRAEFTIG'] },
         },
         select: {
-          id: true, kind: true, period: true, appealDeadline: true,
+          id: true,
+          kind: true,
+          period: true,
+          appealDeadline: true,
           client: { select: { id: true, name: true } },
           reviewedBy: true,
         },
@@ -135,7 +137,11 @@ export const remindersDailyWorker = new Worker<ChecksJob>(
           dueDate: { lte: today },
         },
         select: {
-          id: true, dueDate: true, subject: true, assigneeStaffId: true, createdByStaff: true,
+          id: true,
+          dueDate: true,
+          subject: true,
+          assigneeStaffId: true,
+          createdByStaff: true,
           client: { select: { id: true, name: true } },
         },
       });
@@ -163,7 +169,10 @@ export const remindersDailyWorker = new Worker<ChecksJob>(
           expectedReturnAt: { not: null, lt: today },
         },
         select: {
-          id: true, label: true, expectedReturnAt: true, createdByStaff: true,
+          id: true,
+          label: true,
+          expectedReturnAt: true,
+          createdByStaff: true,
           client: { select: { id: true, name: true } },
         },
       });

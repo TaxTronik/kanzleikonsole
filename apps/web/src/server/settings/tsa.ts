@@ -12,8 +12,8 @@ import type { TenantContext } from '@taxtronik/db';
 const KEY = 'evidence.tsa';
 
 export interface TsaConfig {
-  providerId: string;        // 'freetsa' | 'digicert' | 'dtrust' | 'custom' | …
-  customUrl: string;         // nur relevant wenn providerId === 'custom'
+  providerId: string; // 'freetsa' | 'digicert' | 'dtrust' | 'custom' | …
+  customUrl: string; // nur relevant wenn providerId === 'custom'
 }
 
 export const DEFAULT_TSA: TsaConfig = {

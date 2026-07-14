@@ -122,7 +122,11 @@ async function main() {
 
       // Nur Engine-Markierungen ohne bereits gesetzte normRefs.
       const markings = await prisma.riskMarking.findMany({
-        where: { analysisId: a.id, herkunft: { not: 'BERATER' }, normRefs: { equals: Prisma.DbNull } },
+        where: {
+          analysisId: a.id,
+          herkunft: { not: 'BERATER' },
+          normRefs: { equals: Prisma.DbNull },
+        },
         select: { id: true, start: true, end: true, begriff: true },
       });
       for (const m of markings) {

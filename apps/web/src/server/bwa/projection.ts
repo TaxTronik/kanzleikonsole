@@ -21,8 +21,7 @@
 
 import { computeBwaKpis, type BwaKpis } from './addison-parser';
 
-export type Axis =
-  | 'revenue' | 'costs' | 'result' | 'resultBeforeTax' | 'personnelCost';
+export type Axis = 'revenue' | 'costs' | 'result' | 'resultBeforeTax' | 'personnelCost';
 
 export interface ProjectionRange {
   estimate: number;
@@ -35,10 +34,10 @@ export interface YearProjection {
   strategy: 'linear' | 'trend-regression';
   revenue: ProjectionRange | null;
   costs: ProjectionRange | null;
-  result: ProjectionRange | null;             // Ergebnis VOR Ertragsteuern (KPI resultBeforeTax)
+  result: ProjectionRange | null; // Ergebnis VOR Ertragsteuern (KPI resultBeforeTax)
   personnelCost: ProjectionRange | null;
-  taxes: ProjectionRange | null;              // grobe Pauschal-Schätzung
-  resultAfterTax: ProjectionRange | null;     // Ergebnis nach Steuern
+  taxes: ProjectionRange | null; // grobe Pauschal-Schätzung
+  resultAfterTax: ProjectionRange | null; // Ergebnis nach Steuern
   basis: string;
 }
 
@@ -51,7 +50,7 @@ export interface YearProjection {
  */
 function estimateTaxRange(resultBeforeTax: ProjectionRange | null): ProjectionRange | null {
   if (!resultBeforeTax) return null;
-  const mid = resultBeforeTax.estimate <= 0 ? 0 : resultBeforeTax.estimate * 0.30;
+  const mid = resultBeforeTax.estimate <= 0 ? 0 : resultBeforeTax.estimate * 0.3;
   const low = Math.max(0, resultBeforeTax.low) * 0.25;
   const high = Math.max(0, resultBeforeTax.high) * 0.35;
   return { estimate: mid, low, high };

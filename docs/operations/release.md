@@ -136,20 +136,47 @@ Mitarbeiter, bricht es ab und verändert nichts.
 **App-Rollback (keine neuen Migrationen seit dem letzten Update):**
 `./taxtronik rollback` verwendet den vollständigen vorherigen Last-Good-Vertrag
 aus `.taxtronik.state` (Version, Commit sowie Web- und Worker-Digest) und startet
-App/Worker neu. Bei einem explizit angegebenen anderen Ziel löst die CLI dessen
-signiertes Manifest erneut auf. Ein bloßes manuelles Zurücksetzen des
-Versions-Tags ist im Registry-Modus kein gültiger Rollback-Vertrag.
+App/Worker neu. Der State enthält zusätzlich, ob beim Übergang in den aktuellen
+Stand DB-Migrationen angewendet wurden. Nur ein explizit als kompatibel
+gespeicherter Übergang darf alten Code starten; Legacy-/Fehlerzustände gelten
+als `unknown` und werden blockiert. Ein beliebiger älterer Tag ist ohne vorher
+verifizierten Produktions-DB-Restore kein gültiger Rollback-Vertrag.
 
 **Rollback über Migrationen hinweg:** Prisma-Migrationen sind forward-only.
 `./taxtronik deploy`/`update` legen deshalb **vor** jeder Migration ein Backup an.
-Pfad zurück: Backup einspielen (siehe
-[disaster-recovery.md](disaster-recovery.md), Abschnitt 9), dann im
-Registry-Modus `./taxtronik rollback <vorherige-version>` ausführen. Dieser Pfad
-löst den signierten früheren Image-Vertrag auf und startet bewusst **keine**
-Migration. Im Lokalbuild-Modus müssen die früheren Images bereits vorhanden
-sein oder aus dem exakten früheren Checkout gebaut werden. Achtung: Daten, die
+Vor `migrate deploy` schreibt die CLI atomar
+`.taxtronik.migration-pending`; der Marker bleibt bei einem abgebrochenen
+Update bestehen. Ein Wiederholungsdeploy darf den gespeicherten Status
+`true`/`unknown` nicht durch eine spätere, nach bereits angewandter Migration
+erfolgreiche Probe auf `false` abschwächen; unterschiedliche Quell-/Zielverträge
+werden ebenfalls nicht überschrieben. Solange der Marker existiert, blockiert
+die CLI jeden manuellen Writer-Start über `up`, `restart`, `start_apps` und
+`backup-full`. Zulässig sind nur die interne Fortsetzung von `deploy`/`update`
+mit exakt passender Zielversion und passendem Commit oder — ausschließlich bei
+`requires_db_restore=false` — der exakte Quell-Rollback.
+Pfad zurück: Vor-Migrations-Backup mit `--production-target` und der dazu
+passenden `--release-version` einspielen (siehe
+[disaster-recovery.md](disaster-recovery.md)), dann im Registry-Modus
+`./taxtronik rollback <release-version>` ausführen. Die einmalige
+Restore-Autorisierung wird vor dem Restore zunächst als `pending` persistiert.
+Nur ein erfolgreich beendeter Restore setzt sie auf `ready`; anschließend ist
+ausschließlich der explizite, exakt passende Befehl
+`./taxtronik rollback <release-version>` zulässig. Die Autorisierung wird erst
+nach erfolgreichem Health-/Readiness-Gate entfernt. Der dadurch entstehende
+Rückweg zum zuvor neueren Code wird im Release-State bewusst als `unknown`
+gespeichert und bleibt gesperrt, bis dessen Migrationen regulär ausgeführt
+wurden. Ein fehlgeschlagener oder teilweiser Restore lässt die Writer gesperrt.
+Im Lokalbuild-Modus müssen die früheren Images bereits vorhanden sein oder aus
+dem exakten früheren Checkout gebaut werden. Achtung: Daten, die
 nach dem Backup entstanden sind, gehen dabei verloren — Rollback über
 Migrationen ist die letzte Option, nicht der Standardweg.
+
+Der Guard gilt für `./taxtronik` und alle internen Aufrufe des gemeinsamen
+Compose-Wrappers. Ein direkter Aufruf von `docker compose` umgeht die
+Operator-CLI technisch und ist bei vorhandenem `.taxtronik.migration-pending`
+oder `.taxtronik.database-restored` betrieblich verboten; Marker niemals
+manuell löschen, sondern den dokumentierten Deploy-/Restore-/Rollback-Pfad
+abschließen.
 
 ## 4. Migrations-Konvention: Expand/Contract
 

@@ -21,7 +21,9 @@ const real = {
       via: 'muster',
       herkunft: { schicht: '1b', methode: 'deterministisch' },
       norm_anker: [{ zitat: '§ 146 AO', ids: ['norm:AO:146'] }, { zitat: '§ 158 AO' }],
-      normketten: [{ glieder: ['§ 146 AO', '§ 158 AO'], verknuepfung: '→', hinweis: 'Ordnungsmangel' }],
+      normketten: [
+        { glieder: ['§ 146 AO', '§ 158 AO'], verknuepfung: '→', hinweis: 'Ordnungsmangel' },
+      ],
     },
     {
       start: 79,
@@ -114,7 +116,9 @@ describe('mapAnalyse (echte Engine-Form)', () => {
       risiken: [
         {
           ...real.risiken[0],
-          norm_vorschlag: [{ zitat: '§ 8 KStG', id: 'norm:KStG:8', titel: 'Ermittlung des Einkommens' }],
+          norm_vorschlag: [
+            { zitat: '§ 8 KStG', id: 'norm:KStG:8', titel: 'Ermittlung des Einkommens' },
+          ],
         },
       ],
     });
@@ -127,7 +131,13 @@ describe('mapAnalyse (echte Engine-Form)', () => {
     // Risiko: singular id + titel durchgereicht.
     const ri = r.markings.find((m) => m.start === 36)!;
     expect(ri.normRefs).toEqual([
-      { zitat: '§ 8 KStG', id: 'norm:KStG:8', titel: 'Ermittlung des Einkommens', quelle: 'ENGINE', verworfen: false },
+      {
+        zitat: '§ 8 KStG',
+        id: 'norm:KStG:8',
+        titel: 'Ermittlung des Einkommens',
+        quelle: 'ENGINE',
+        verworfen: false,
+      },
     ]);
   });
 
@@ -139,8 +149,14 @@ describe('mapAnalyse (echte Engine-Form)', () => {
       text_hash: 'h',
       karten: [
         {
-          start: 0, end: 5, matched_text: 'Schätzung', begriff: 'Schätzung', begriff_id: 'ao_schaetzung',
-          status: 'treffer', via: 'muster', herkunft: { schicht: '1b' },
+          start: 0,
+          end: 5,
+          matched_text: 'Schätzung',
+          begriff: 'Schätzung',
+          begriff_id: 'ao_schaetzung',
+          status: 'treffer',
+          via: 'muster',
+          herkunft: { schicht: '1b' },
           norm_anker: [
             { zitat: '§ 162 AO', ids: ['norm:AO:162'], quelle: 'katalog', verworfen: true },
             { zitat: '§ 90 AO', ids: ['norm:AO:90'], quelle: 'berater', verworfen: false },

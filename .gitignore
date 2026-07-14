@@ -41,6 +41,10 @@ infra/compose/.volumes/
 
 # Atomarer Last-Good-Releasevertrag der lokalen Installation.
 /.taxtronik.state
+# Atomarer Marker zwischen Migrationsstart und bestandenem Readiness-Gate.
+/.taxtronik.migration-pending
+# Einmalige Autorisierung nach explizitem Produktions-DB-Restore.
+/.taxtronik.database-restored
 
 # Setup-gerenderte Config-Dateien (enthalten Secrets aus .env)
 infra/scripts/seaweedfs-s3.generated.json

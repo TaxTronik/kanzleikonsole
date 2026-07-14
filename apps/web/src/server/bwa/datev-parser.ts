@@ -20,8 +20,19 @@ import ExcelJS from 'exceljs';
 import type { ParsedBwa, ParsedBwaPeriod, ParsedBwaPosition } from './addison-parser';
 
 const MONTH_DE: Record<string, number> = {
-  jan: 1, feb: 2, mär: 3, mar: 3, apr: 4, mai: 5, jun: 6,
-  jul: 7, aug: 8, sep: 9, okt: 10, nov: 11, dez: 12,
+  jan: 1,
+  feb: 2,
+  mär: 3,
+  mar: 3,
+  apr: 4,
+  mai: 5,
+  jun: 6,
+  jul: 7,
+  aug: 8,
+  sep: 9,
+  okt: 10,
+  nov: 11,
+  dez: 12,
 };
 
 interface DatevColumnSpec {
@@ -90,7 +101,11 @@ function cellNumber(cell: ExcelJS.Cell): number | null {
     const n = Number(cleaned);
     return Number.isFinite(n) ? n : null;
   }
-  if (typeof v === 'object' && 'result' in v && typeof (v as { result?: unknown }).result === 'number') {
+  if (
+    typeof v === 'object' &&
+    'result' in v &&
+    typeof (v as { result?: unknown }).result === 'number'
+  ) {
     return (v as { result: number }).result;
   }
   return null;
@@ -101,7 +116,8 @@ function cellString(cell: ExcelJS.Cell): string {
   if (v === null || v === undefined) return '';
   if (typeof v === 'string') return v.trim();
   if (typeof v === 'number') return String(v);
-  if (typeof v === 'object' && 'text' in v) return String((v as { text?: unknown }).text ?? '').trim();
+  if (typeof v === 'object' && 'text' in v)
+    return String((v as { text?: unknown }).text ?? '').trim();
   return String(v).trim();
 }
 

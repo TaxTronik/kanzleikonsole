@@ -2,15 +2,12 @@
 import type { LicenseInfo } from '@/server/license/verify';
 import { fmtDateShort } from '@/lib/fmt';
 
-
 export function LicenseCard({ info }: { info: LicenseInfo }) {
   const tone = toneFor(info.status);
   const Icon = iconFor(info.status);
 
   return (
-    <div
-      className={`rounded-lg border p-4 mb-6 flex items-start gap-3 ${tone.container}`}
-    >
+    <div className={`rounded-lg border p-4 mb-6 flex items-start gap-3 ${tone.container}`}>
       <Icon className={`h-5 w-5 mt-0.5 shrink-0 ${tone.icon}`} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-3 flex-wrap">
@@ -27,9 +24,11 @@ export function LicenseCard({ info }: { info: LicenseInfo }) {
         {info.validUntil && (
           <p className="text-xs text-secondary mt-1">
             Gültig bis {fmtDateShort(info.validUntil)}
-            {typeof info.daysRemaining === 'number' && info.daysRemaining >= 0 &&
+            {typeof info.daysRemaining === 'number' &&
+              info.daysRemaining >= 0 &&
               ` (noch ${info.daysRemaining} Tage)`}
-            {typeof info.daysRemaining === 'number' && info.daysRemaining < 0 &&
+            {typeof info.daysRemaining === 'number' &&
+              info.daysRemaining < 0 &&
               ` (${-info.daysRemaining} Tage abgelaufen)`}
           </p>
         )}
@@ -43,7 +42,8 @@ export function LicenseCard({ info }: { info: LicenseInfo }) {
         )}
         {info.status === 'UNCONFIGURED' && (
           <p className="text-xs text-muted mt-2">
-            Lizenz konfigurieren via <code>LICENSE_KEY</code> + <code>LICENSE_PUBLIC_KEY</code> in der .env.
+            Lizenz konfigurieren via <code>LICENSE_KEY</code> + <code>LICENSE_PUBLIC_KEY</code> in
+            der .env.
           </p>
         )}
       </div>
@@ -87,10 +87,14 @@ function toneFor(s: LicenseInfo['status']) {
 
 function iconFor(s: LicenseInfo['status']) {
   switch (s) {
-    case 'VALID': return CheckCircle2;
-    case 'EXPIRED': return AlertTriangle;
-    case 'INVALID': return XCircle;
+    case 'VALID':
+      return CheckCircle2;
+    case 'EXPIRED':
+      return AlertTriangle;
+    case 'INVALID':
+      return XCircle;
     case 'UNCONFIGURED':
-    default: return KeyRound;
+    default:
+      return KeyRound;
   }
 }

@@ -8,7 +8,12 @@ describe('computeVatTotals', () => {
       { netAmount: 50, vatRate: 19 },
     ]);
     expect(t.groups).toEqual([{ rate: 19, net: 150, vat: 28.5 }]);
-    expect(t).toMatchObject({ netAmount: 150, vatAmount: 28.5, totalAmount: 178.5, uniformRate: 19 });
+    expect(t).toMatchObject({
+      netAmount: 150,
+      vatAmount: 28.5,
+      totalAmount: 178.5,
+      uniformRate: 19,
+    });
   });
 
   it('Mischsätze: Gruppen je Satz (absteigend), uniformRate null', () => {
@@ -38,7 +43,11 @@ describe('computeVatTotals', () => {
 
   it('leere Positionsliste: Null-Summen ohne Gruppen', () => {
     expect(computeVatTotals([])).toEqual({
-      groups: [], netAmount: 0, vatAmount: 0, totalAmount: 0, uniformRate: null,
+      groups: [],
+      netAmount: 0,
+      vatAmount: 0,
+      totalAmount: 0,
+      uniformRate: null,
     });
   });
 });

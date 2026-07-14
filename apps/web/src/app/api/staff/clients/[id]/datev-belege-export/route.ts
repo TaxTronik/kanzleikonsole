@@ -33,8 +33,14 @@ import { escapeCsvCell } from '@/server/export/csv';
 import { fmtDateShort, fmtDateTimeLong } from '@/lib/fmt';
 
 const QuerySchema = z.object({
-  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  from: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+  to: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
 });
 
 const GOBD_CLASSIFICATIONS = ['GOBD_INVOICE', 'GOBD_CONTRACT', 'GOBD_TAX'] as const;
@@ -66,10 +72,7 @@ function mimeToExtension(mime: string): string {
 // Apostroph-Prefix), die hier sonst fehlen würde. Mandantenname wie
 // `=cmd|'/c calc'!A0` hätte in Excel Code-Ausführung beim Öffnen.
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await staffAuth();
   if (!session?.user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
@@ -171,7 +174,12 @@ export async function GET(
   if (expectedBytes > BigInt(ZIP_MAX_TOTAL_BYTES)) {
     const e = new ZipTooLargeError(Number(expectedBytes), ZIP_MAX_TOTAL_BYTES);
     return NextResponse.json(
-      { error: 'zip_too_large', message: e.message, totalBytes: e.totalBytes, limitBytes: e.limitBytes },
+      {
+        error: 'zip_too_large',
+        message: e.message,
+        totalBytes: e.totalBytes,
+        limitBytes: e.limitBytes,
+      },
       { status: 413 },
     );
   }
@@ -191,7 +199,16 @@ export async function GET(
     const fileEntries: ZipEntry[] = [];
     const indexRows: string[] = [];
     indexRows.push(
-      ['Lfd-Nr', 'Datum', 'Belegart', 'Titel', 'Belegnummer', 'Betrag (EUR)', 'Dateiname', 'SHA-256']
+      [
+        'Lfd-Nr',
+        'Datum',
+        'Belegart',
+        'Titel',
+        'Belegnummer',
+        'Betrag (EUR)',
+        'Dateiname',
+        'SHA-256',
+      ]
         .map(escapeCsvCell)
         .join(';'),
     );
@@ -235,7 +252,12 @@ export async function GET(
       if (loadedBytes > ZIP_MAX_TOTAL_BYTES) {
         const e = new ZipTooLargeError(loadedBytes, ZIP_MAX_TOTAL_BYTES);
         return NextResponse.json(
-          { error: 'zip_too_large', message: e.message, totalBytes: e.totalBytes, limitBytes: e.limitBytes },
+          {
+            error: 'zip_too_large',
+            message: e.message,
+            totalBytes: e.totalBytes,
+            limitBytes: e.limitBytes,
+          },
           { status: 413 },
         );
       }

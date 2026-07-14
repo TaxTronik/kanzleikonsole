@@ -3,7 +3,11 @@
 // =============================================================================
 import { test, expect } from '@playwright/test';
 import { loginAsAdmin, ADMIN_EMAIL } from './helpers/auth';
-import { expectPortalDashboardReady, loginAsMandant, requestMagicLink } from './helpers/portal-auth';
+import {
+  expectPortalDashboardReady,
+  loginAsMandant,
+  requestMagicLink,
+} from './helpers/portal-auth';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -48,7 +52,10 @@ test.describe.serial('Staff: Core-Flows', () => {
       await page.goto('/staff/clients'); // Clients-Seite hat immer Such-Input
     }
     const input = page.getByPlaceholder(/Mandanten|Suche|Suchen/i).first();
-    await expect(input, 'Globale Suche oder Mandanten-Suche muss nach Login verfuegbar sein').toBeVisible({ timeout: 10_000 });
+    await expect(
+      input,
+      'Globale Suche oder Mandanten-Suche muss nach Login verfuegbar sein',
+    ).toBeVisible({ timeout: 10_000 });
     await input.click().catch(() => {});
     await input.fill('Mustermann');
     await expect(page.getByText('Mustermann GmbH').first()).toBeVisible({ timeout: 5000 });
@@ -61,14 +68,20 @@ test.describe.serial('Staff: Core-Flows', () => {
 
   test('Mandanten-Detail: Cockpit-Blöcke', async ({ page }) => {
     await page.goto('/staff/clients');
-    await page.getByRole('link', { name: /Mustermann GmbH/i }).first().click();
+    await page
+      .getByRole('link', { name: /Mustermann GmbH/i })
+      .first()
+      .click();
     await expect(page).toHaveURL(/\/staff\/clients\//);
     await expect(page.getByRole('heading', { name: 'Stammdaten' })).toBeVisible();
   });
 
   test('Mandant bearbeiten: Formular öffnet', async ({ page }) => {
     await page.goto('/staff/clients');
-    await page.getByRole('link', { name: /Mustermann GmbH/i }).first().click();
+    await page
+      .getByRole('link', { name: /Mustermann GmbH/i })
+      .first()
+      .click();
     await expect(page).toHaveURL(/\/staff\/clients\//);
     await page.getByRole('link', { name: /Stammdaten bearbeiten/i }).click();
     // Client-Edit-Seite hat input-Felder
@@ -77,8 +90,15 @@ test.describe.serial('Staff: Core-Flows', () => {
 
   test('Dokumente: Explorer mit Sidebar', async ({ page }) => {
     await page.goto('/staff/documents');
-    await expect(page.getByRole('navigation').filter({ hasText: /Dokumente/i }).first()).toBeVisible({ timeout: 5000 });
-    await expect(page.getByRole('link', { name: /Juristische Personen/i })).toBeVisible({ timeout: 5000 });
+    await expect(
+      page
+        .getByRole('navigation')
+        .filter({ hasText: /Dokumente/i })
+        .first(),
+    ).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('link', { name: /Juristische Personen/i })).toBeVisible({
+      timeout: 5000,
+    });
   });
 
   test('Rechnungen: Neue Rechnung Formular', async ({ page }) => {
@@ -162,7 +182,9 @@ test.describe.serial('Staff: Admin & Konfiguration', () => {
 
   test('Kanzlei-Einstellungen', async ({ page }) => {
     await page.goto('/staff/admin/settings');
-    await expect(page.getByText(/Allgemein|Kanzlei|SMTP|Module/i).first()).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/Allgemein|Kanzlei|SMTP|Module/i).first()).toBeVisible({
+      timeout: 5000,
+    });
   });
 
   test('Benachrichtigungen & Abmelden', async ({ page }) => {
@@ -231,7 +253,9 @@ test.describe.serial('Portal: Mandanten-Login & Features', () => {
   test('Portal: Einstellungen', async ({ page }) => {
     await loginAsMandant(page, page.request);
     await page.goto('/portal/settings');
-    await expect(page.getByText(/Einstellung|Benachrichtigung/i).first()).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/Einstellung|Benachrichtigung/i).first()).toBeVisible({
+      timeout: 5000,
+    });
   });
 });
 

@@ -25,7 +25,9 @@ export function TaxRegionForm({
   return (
     <form action={formAction} className="space-y-4">
       <div>
-        <label className="label" htmlFor="tax-region">Bundesland der Kanzlei</label>
+        <label className="label" htmlFor="tax-region">
+          Bundesland der Kanzlei
+        </label>
         <select
           id="tax-region"
           name="region"
@@ -35,13 +37,14 @@ export function TaxRegionForm({
         >
           <option value="">— nur bundesweite Feiertage —</option>
           {sortedRegions.map(([code, label]) => (
-            <option key={code} value={code}>{label}</option>
+            <option key={code} value={code}>
+              {label}
+            </option>
           ))}
         </select>
         <p className="text-xs text-muted mt-1">
-          Beispiel: bei „Nordrhein-Westfalen" werden Fronleichnam und
-          Allerheiligen als Feiertage berücksichtigt — Fälligkeiten verschieben
-          sich auf den nächsten Werktag.
+          Beispiel: bei „Nordrhein-Westfalen" werden Fronleichnam und Allerheiligen als Feiertage
+          berücksichtigt — Fälligkeiten verschieben sich auf den nächsten Werktag.
         </p>
       </div>
       {region === 'DE-BY' && (
@@ -56,23 +59,21 @@ export function TaxRegionForm({
             <span>
               Sitz-Gemeinde begeht <strong>Mariä Himmelfahrt</strong> (15.08.) als Feiertag.
               <span className="block text-xs text-muted mt-0.5">
-                In Bayern nur in überwiegend katholisch geprägten Gemeinden gesetzlich
-                (Art. 1 Abs. 1 BayFTG). Abwählen, wenn der Kanzleisitz ihn nicht begeht —
-                sonst werden Steuertermine am 15.08. fälschlich auf den nächsten Werktag
-                verschoben (Frist zu spät).
+                In Bayern nur in überwiegend katholisch geprägten Gemeinden gesetzlich (Art. 1 Abs.
+                1 BayFTG). Abwählen, wenn der Kanzleisitz ihn nicht begeht — sonst werden
+                Steuertermine am 15.08. fälschlich auf den nächsten Werktag verschoben (Frist zu
+                spät).
               </span>
             </span>
           </label>
         </div>
       )}
 
-      {state?.error && (
-        <div className="alert-error-sm">{state.error}</div>
-      )}
+      {state?.error && <div className="alert-error-sm">{state.error}</div>}
       {state?.ok && (
         <div className="alert-success-sm">
-          Gespeichert. Neu angelegte Termine berücksichtigen das Bundesland;
-          bereits bestehende Termine werden nicht automatisch neu berechnet.
+          Gespeichert. Neu angelegte Termine berücksichtigen das Bundesland; bereits bestehende
+          Termine werden nicht automatisch neu berechnet.
         </div>
       )}
       <button type="submit" className="btn-primary" disabled={isPending}>

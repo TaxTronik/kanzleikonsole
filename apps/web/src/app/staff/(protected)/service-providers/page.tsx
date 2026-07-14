@@ -48,9 +48,7 @@ export default async function ServiceProvidersPage() {
                       {p.contractFromDate
                         ? ` · Vertrag seit ${fmtDateShort(p.contractFromDate)}`
                         : ''}
-                      {p.contractToDate
-                        ? ` · bis ${fmtDateShort(p.contractToDate)}`
-                        : ''}
+                      {p.contractToDate ? ` · bis ${fmtDateShort(p.contractToDate)}` : ''}
                     </p>
                     {p.notes && (
                       <p className="text-xs text-secondary mt-2 whitespace-pre-wrap">{p.notes}</p>

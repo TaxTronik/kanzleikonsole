@@ -15,7 +15,13 @@ export async function fetchAndPersistTaxNews(): Promise<{
   feeds: number;
   fetched: number;
   inserted: number;
-  newItems: Array<{ id: string; source: string; title: string; link: string; publishedAt: Date | null }>;
+  newItems: Array<{
+    id: string;
+    source: string;
+    title: string;
+    link: string;
+    publishedAt: Date | null;
+  }>;
   errors: string[];
 }> {
   const activeFeeds = await prismaOwner.rssFeed.findMany({
@@ -35,7 +41,13 @@ export async function fetchAndPersistTaxNews(): Promise<{
     }
   }
 
-  const newItems: Array<{ id: string; source: string; title: string; link: string; publishedAt: Date | null }> = [];
+  const newItems: Array<{
+    id: string;
+    source: string;
+    title: string;
+    link: string;
+    publishedAt: Date | null;
+  }> = [];
   for (const item of all) {
     try {
       const created = await prismaOwner.taxNewsItem.create({
@@ -62,5 +74,11 @@ export async function fetchAndPersistTaxNews(): Promise<{
     }
   }
 
-  return { feeds: activeFeeds.length, fetched: all.length, inserted: newItems.length, newItems, errors };
+  return {
+    feeds: activeFeeds.length,
+    fetched: all.length,
+    inserted: newItems.length,
+    newItems,
+    errors,
+  };
 }

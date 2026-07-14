@@ -8,7 +8,12 @@ import { executeWorkflowStep, type ExecuteResult } from '@/server/workflows/exec
 import { parseStepConfig } from '@/server/workflows/step-config';
 import { assertClientInTenant, assertStaffInTenant } from '@/server/db/assert-tenant';
 import { assertClientAccessTx, toActionError } from '@/server/auth/rbac';
-import { staffActionGuard, withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
+import {
+  staffActionGuard,
+  withStaff,
+  ActionError,
+  type ActionResult as BaseActionResult,
+} from '@/server/actions/staff-action';
 
 // Einheitliches Action-Ergebnis aus der zentralen Quelle.
 export type ActionResult = BaseActionResult;
@@ -146,10 +151,7 @@ export async function startInstanceAction(input: {
  * Setzt die Mitglieder einer Workflow-Instanz neu. Macht ein Diff und legt
  * neue Member an / entfernt entfernte. Starter kann nie entfernt werden.
  */
-export async function setWorkflowMembersAction(input: {
-  instanceId: string;
-  memberIds: string[];
-}) {
+export async function setWorkflowMembersAction(input: { instanceId: string; memberIds: string[] }) {
   const parsed = z
     .object({
       instanceId: z.string().uuid(),
@@ -199,7 +201,9 @@ export async function setWorkflowMembersAction(input: {
     }
     if (toAdd.length > 0 || toRemove.length > 0) {
       await evidenceService.record(tx, {
-        tenantId, actorType: 'STAFF', actorId: staffId,
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
         action: 'workflow.instance.members_update',
         resourceType: 'workflow_instance',
         resourceId: parsed.data.instanceId,
@@ -287,10 +291,7 @@ export async function setItemDueDateAction(input: {
   return r;
 }
 
-export async function setItemAssigneeAction(input: {
-  id: string;
-  staffId: string | null;
-}) {
+export async function setItemAssigneeAction(input: { id: string; staffId: string | null }) {
   const parsed = z
     .object({
       id: z.string().uuid(),
@@ -325,10 +326,7 @@ export async function setItemAssigneeAction(input: {
  * erhalten (Historie); offene Items werden NICHT mehr als „offen" gezählt,
  * weil die Instanz nicht mehr ACTIVE ist.
  */
-export async function cancelInstanceAction(input: {
-  instanceId: string;
-  reason: string;
-}) {
+export async function cancelInstanceAction(input: { instanceId: string; reason: string }) {
   const parsed = z
     .object({
       instanceId: z.string().uuid(),
@@ -359,7 +357,8 @@ export async function cancelInstanceAction(input: {
         notes: merged,
       },
     });
-    if (claim.count === 0) throw new ActionError('Workflow-Status hat sich geändert — bitte Seite neu laden.');
+    if (claim.count === 0)
+      throw new ActionError('Workflow-Status hat sich geändert — bitte Seite neu laden.');
 
     await evidenceService.record(tx, {
       tenantId,
@@ -383,9 +382,7 @@ export async function cancelInstanceAction(input: {
  * Wiederherstellen aus dem Papierkorb: CANCELLED → ACTIVE. Notiz mit
  * Wiederherstellungs-Grund wird angehängt.
  */
-export async function restoreInstanceAction(input: {
-  instanceId: string;
-}) {
+export async function restoreInstanceAction(input: { instanceId: string }) {
   const parsed = z.object({ instanceId: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
@@ -393,7 +390,8 @@ export async function restoreInstanceAction(input: {
     const inst = await tx.workflowInstance.findUnique({ where: { id: parsed.data.instanceId } });
     if (!inst) throw new ActionError('Workflow nicht gefunden.');
     await assertClientAccessTx(tx, session, inst.clientId);
-    if (inst.status !== 'CANCELLED') throw new ActionError('Nur abgebrochene Workflows lassen sich wiederherstellen.');
+    if (inst.status !== 'CANCELLED')
+      throw new ActionError('Nur abgebrochene Workflows lassen sich wiederherstellen.');
 
     const line = `[Wiederhergestellt am ${new Date().toISOString().slice(0, 16).replace('T', ' ')}]`;
     // TOCTOU-Schutz: nur aus CANCELLED heraus wiederherstellen.
@@ -405,9 +403,12 @@ export async function restoreInstanceAction(input: {
         notes: inst.notes ? `${inst.notes}\n\n${line}` : line,
       },
     });
-    if (claim.count === 0) throw new ActionError('Workflow-Status hat sich geändert — bitte Seite neu laden.');
+    if (claim.count === 0)
+      throw new ActionError('Workflow-Status hat sich geändert — bitte Seite neu laden.');
     await evidenceService.record(tx, {
-      tenantId, actorType: 'STAFF', actorId: staffId,
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
       action: 'workflow.instance.restore',
       resourceType: 'workflow_instance',
       resourceId: inst.id,
@@ -436,7 +437,10 @@ export async function pauseInstanceAction(input: {
     .object({
       instanceId: z.string().uuid(),
       reason: z.string().max(2000).optional().or(z.literal('')),
-      until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+      until: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .nullable(),
     })
     .safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
@@ -445,7 +449,8 @@ export async function pauseInstanceAction(input: {
     const inst = await tx.workflowInstance.findUnique({ where: { id: parsed.data.instanceId } });
     if (!inst) throw new ActionError('Workflow nicht gefunden.');
     await assertClientAccessTx(tx, session, inst.clientId);
-    if (inst.status !== 'ACTIVE') throw new ActionError('Nur aktive Workflows können pausiert werden.');
+    if (inst.status !== 'ACTIVE')
+      throw new ActionError('Nur aktive Workflows können pausiert werden.');
 
     const reasonText = (parsed.data.reason ?? '').trim();
     const until = parsed.data.until;
@@ -461,9 +466,12 @@ export async function pauseInstanceAction(input: {
         notes: inst.notes ? `${inst.notes}\n\n${reasonLine}` : reasonLine,
       },
     });
-    if (claim.count === 0) throw new ActionError('Workflow-Status hat sich geändert — bitte Seite neu laden.');
+    if (claim.count === 0)
+      throw new ActionError('Workflow-Status hat sich geändert — bitte Seite neu laden.');
     await evidenceService.record(tx, {
-      tenantId, actorType: 'STAFF', actorId: staffId,
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
       action: 'workflow.instance.pause',
       resourceType: 'workflow_instance',
       resourceId: inst.id,
@@ -488,16 +496,20 @@ export async function resumeInstanceAction(input: { instanceId: string }) {
     const inst = await tx.workflowInstance.findUnique({ where: { id: parsed.data.instanceId } });
     if (!inst) throw new ActionError('Workflow nicht gefunden.');
     await assertClientAccessTx(tx, session, inst.clientId);
-    if (inst.status !== 'PAUSED') throw new ActionError('Nur pausierte Workflows können fortgesetzt werden.');
+    if (inst.status !== 'PAUSED')
+      throw new ActionError('Nur pausierte Workflows können fortgesetzt werden.');
 
     // TOCTOU-Schutz: nur aus PAUSED heraus fortsetzen.
     const claim = await tx.workflowInstance.updateMany({
       where: { id: parsed.data.instanceId, status: 'PAUSED' },
       data: { status: 'ACTIVE', pausedUntil: null },
     });
-    if (claim.count === 0) throw new ActionError('Workflow-Status hat sich geändert — bitte Seite neu laden.');
+    if (claim.count === 0)
+      throw new ActionError('Workflow-Status hat sich geändert — bitte Seite neu laden.');
     await evidenceService.record(tx, {
-      tenantId, actorType: 'STAFF', actorId: staffId,
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
       action: 'workflow.instance.resume',
       resourceType: 'workflow_instance',
       resourceId: inst.id,
@@ -522,7 +534,13 @@ export async function addItemToInstanceAction(input: {
   title: string;
   description?: string;
   dueDate?: string | null;
-  kind?: 'TASK' | 'DOCUMENT_UPLOAD' | 'CLIENT_REQUEST' | 'CLIENT_FORM' | 'CLIENT_EMAIL' | 'N8N_TRIGGER';
+  kind?:
+    | 'TASK'
+    | 'DOCUMENT_UPLOAD'
+    | 'CLIENT_REQUEST'
+    | 'CLIENT_FORM'
+    | 'CLIENT_EMAIL'
+    | 'N8N_TRIGGER';
   config?: unknown;
   n8nEvent?: string | null;
   assigneeStaffId?: string | null;
@@ -532,8 +550,21 @@ export async function addItemToInstanceAction(input: {
       instanceId: z.string().uuid(),
       title: z.string().min(1).max(200),
       description: z.string().max(1000).optional(),
-      dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-      kind: z.enum(['TASK', 'DOCUMENT_UPLOAD', 'CLIENT_REQUEST', 'CLIENT_FORM', 'CLIENT_EMAIL', 'N8N_TRIGGER']).default('TASK'),
+      dueDate: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .nullable()
+        .optional(),
+      kind: z
+        .enum([
+          'TASK',
+          'DOCUMENT_UPLOAD',
+          'CLIENT_REQUEST',
+          'CLIENT_FORM',
+          'CLIENT_EMAIL',
+          'N8N_TRIGGER',
+        ])
+        .default('TASK'),
       config: z.unknown().optional(),
       n8nEvent: z.string().max(100).nullable().optional(),
       assigneeStaffId: z.string().uuid().nullable().optional(),
@@ -562,7 +593,8 @@ export async function addItemToInstanceAction(input: {
         position: nextPos,
         title: parsed.data.title,
         description: parsed.data.description ?? null,
-        assigneeStaffId: parsed.data.assigneeStaffId === undefined ? staffId : parsed.data.assigneeStaffId,
+        assigneeStaffId:
+          parsed.data.assigneeStaffId === undefined ? staffId : parsed.data.assigneeStaffId,
         dueDate: parsed.data.dueDate ? new Date(parsed.data.dueDate) : null,
         kind,
         config: configResult.value as object,
@@ -570,7 +602,9 @@ export async function addItemToInstanceAction(input: {
       },
     });
     await evidenceService.record(tx, {
-      tenantId, actorType: 'STAFF', actorId: staffId,
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
       action: 'workflow.item.add',
       resourceType: 'workflow_item',
       resourceId: item.id,
@@ -634,7 +668,9 @@ export async function handoverItemAction(input: {
       },
     });
     await evidenceService.record(tx, {
-      tenantId, actorType: 'STAFF', actorId: staffId,
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
       action: 'workflow.item.handover',
       resourceType: 'workflow_item',
       resourceId: item.id,
@@ -649,10 +685,7 @@ export async function handoverItemAction(input: {
 /**
  * Kommentar zu einem Workflow-Item anlegen.
  */
-export async function addItemCommentAction(input: {
-  itemId: string;
-  body: string;
-}) {
+export async function addItemCommentAction(input: { itemId: string; body: string }) {
   const parsed = z
     .object({
       itemId: z.string().uuid(),
@@ -710,9 +743,7 @@ export async function addItemCommentAction(input: {
  * Form-Submissions werden NICHT gelöscht — deren workflow_item_id wird per
  * onDelete SetNull genullt.
  */
-export async function deleteCancelledInstanceAction(input: {
-  instanceId: string;
-}) {
+export async function deleteCancelledInstanceAction(input: { instanceId: string }) {
   const parsed = z.object({ instanceId: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
@@ -762,7 +793,9 @@ export async function deleteCancelledInstanceAction(input: {
  *   - DOCUMENT_UPLOAD: markiert nur als „angestoßen"; die eigentliche
  *     Erledigung passiert über den Upload-Flow.
  */
-export async function executeItemAction(input: { id: string }): Promise<ActionResult & ExecuteResult> {
+export async function executeItemAction(input: {
+  id: string;
+}): Promise<ActionResult & ExecuteResult> {
   const g = await staffActionGuard();
   if (!g.ok) return g;
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);

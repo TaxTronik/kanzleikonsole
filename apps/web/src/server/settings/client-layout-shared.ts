@@ -54,7 +54,10 @@ export interface ClientLayoutConfig {
   items: ClientGridItem[];
 }
 
-export const BLOCK_SIZE: Record<ClientBlockKey, { w: number; h: number; minW: number; minH: number }> = {
+export const BLOCK_SIZE: Record<
+  ClientBlockKey,
+  { w: number; h: number; minW: number; minH: number }
+> = {
   contacts: { w: 12, h: 6, minW: 6, minH: 4 },
   master_data: { w: 6, h: 8, minW: 4, minH: 5 },
   gwg_status: { w: 6, h: 5, minW: 4, minH: 4 },

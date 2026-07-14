@@ -39,10 +39,7 @@ export interface VerifyResult {
  */
 export function n8nRejectResponse(ver: VerifyResult): NextResponse {
   const status = ver.status === 503 || ver.status === 500 ? ver.status : 401;
-  return NextResponse.json(
-    { error: status === 401 ? 'unauthorized' : 'unavailable' },
-    { status },
-  );
+  return NextResponse.json({ error: status === 401 ? 'unauthorized' : 'unavailable' }, { status });
 }
 
 export async function verifyN8nSignature(req: NextRequest): Promise<VerifyResult> {

@@ -37,10 +37,7 @@ export async function POST(req: NextRequest) {
   // Uploads sättigen sonst Storage + ClamAV ohne jede Begrenzung.
   const rl = await checkPortalWriteLimit(session.user.contactId);
   if (!rl.ok) {
-    return NextResponse.json(
-      { error: 'rate_limited', retryAfter: rl.retryAfter },
-      { status: 429 },
-    );
+    return NextResponse.json({ error: 'rate_limited', retryAfter: rl.retryAfter }, { status: 429 });
   }
 
   // Befund 13 (analog Staff-Route): ehrlich deklarierte Über-Größe ablehnen,
@@ -62,10 +59,7 @@ export async function POST(req: NextRequest) {
     mimeType: form.get('mimeType') ?? undefined,
   });
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: 'validation', issues: parsed.error.issues },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: 'validation', issues: parsed.error.issues }, { status: 400 });
   }
 
   const { tenantId, contactId, clientId } = session.user;

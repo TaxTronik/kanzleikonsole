@@ -2,9 +2,24 @@
 
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
-import { Check, User, Play, Mail, FileText, Inbox, ListChecks, Zap, ExternalLink } from 'lucide-react';
+import {
+  Check,
+  User,
+  Play,
+  Mail,
+  FileText,
+  Inbox,
+  ListChecks,
+  Zap,
+  ExternalLink,
+} from 'lucide-react';
 import { SkillBadge } from '@/components/skill-badge';
-import { toggleItemDoneAction, setItemAssigneeAction, setItemDueDateAction, executeItemAction } from './actions';
+import {
+  toggleItemDoneAction,
+  setItemAssigneeAction,
+  setItemDueDateAction,
+  executeItemAction,
+} from './actions';
 import { WorkflowUploadButton } from './workflow-upload-button';
 import { WorkflowItemComments } from './comments';
 import { HandoverButton } from './handover-button';
@@ -36,8 +51,14 @@ const KIND_LABEL: Record<StepKind, string> = {
   N8N_TRIGGER: 'n8n-Webhook auslösen',
 };
 
-interface Skill { label: string; color: string | null; }
-interface StaffOption { id: string; fullName: string; }
+interface Skill {
+  label: string;
+  color: string | null;
+}
+interface StaffOption {
+  id: string;
+  fullName: string;
+}
 
 interface Props {
   id: string;
@@ -58,7 +79,6 @@ interface Props {
   comments: { id: string; authorName: string; body: string; createdAt: string }[];
   documents: { id: string; title: string; createdAt: string }[];
 }
-
 
 export function WorkflowItemRow(p: Props) {
   const [done, setDone] = useState(Boolean(p.doneAt));
@@ -81,7 +101,10 @@ export function WorkflowItemRow(p: Props) {
     setError(null);
     start(async () => {
       const r = await executeItemAction({ id: p.id });
-      if (!r.ok) { setError(r.error ?? 'Aktion fehlgeschlagen.'); return; }
+      if (!r.ok) {
+        setError(r.error ?? 'Aktion fehlgeschlagen.');
+        return;
+      }
       if (r.itemMarkedDone) setDone(true);
       else setStarted(true);
       if (r.createdRequestId) setTriggeredRequestId(r.createdRequestId);
@@ -113,7 +136,8 @@ export function WorkflowItemRow(p: Props) {
   // Wann zeigen wir den Häkchen-Checkmark vs. einen Action-Button?
   const isTaskLike = p.kind === 'TASK';
   const isUpload = p.kind === 'DOCUMENT_UPLOAD';
-  const waitsForExternal = (p.kind === 'CLIENT_REQUEST' || p.kind === 'CLIENT_FORM') && started && !done;
+  const waitsForExternal =
+    (p.kind === 'CLIENT_REQUEST' || p.kind === 'CLIENT_FORM') && started && !done;
   // Upload bekommt seinen eigenen Inline-Button — kein generischer „Anstoßen"
   const canExecute = !started && !done && !isTaskLike && !isUpload;
   // Upload bleibt immer möglich (auch nach Erledigung) — Mitarbeiter kann
@@ -133,7 +157,13 @@ export function WorkflowItemRow(p: Props) {
             : 'mt-0.5 w-5 h-5 rounded border-2 border-strong hover:border-brand-600 shrink-0 disabled:cursor-not-allowed disabled:opacity-50'
         }
         aria-label={done ? 'Erledigt — klicken zum Zurücksetzen' : 'Als erledigt markieren'}
-        title={isTaskLike ? 'Manuelle Aufgabe — direkt abhaken' : done ? 'Erledigt — zum Zurücksetzen klicken' : 'Diese Art Schritt wird über den Button rechts angestoßen'}
+        title={
+          isTaskLike
+            ? 'Manuelle Aufgabe — direkt abhaken'
+            : done
+              ? 'Erledigt — zum Zurücksetzen klicken'
+              : 'Diese Art Schritt wird über den Button rechts angestoßen'
+        }
       >
         {done && <Check className="h-3 w-3" />}
       </button>
@@ -141,7 +171,11 @@ export function WorkflowItemRow(p: Props) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <KindIcon className="h-3.5 w-3.5 text-disabled shrink-0" />
-          <p className={done ? 'text-sm text-disabled line-through' : 'text-sm font-medium text-primary'}>
+          <p
+            className={
+              done ? 'text-sm text-disabled line-through' : 'text-sm font-medium text-primary'
+            }
+          >
             {p.title}
           </p>
           {!isTaskLike && (
@@ -181,18 +215,21 @@ export function WorkflowItemRow(p: Props) {
             </button>
           )}
         </div>
-        {p.description && !done && (
-          <p className="text-xs text-muted mt-1">{p.description}</p>
-        )}
+        {p.description && !done && <p className="text-xs text-muted mt-1">{p.description}</p>}
         {waitsForExternal && (
           <p className="text-xs text-amber-700 dark:text-amber-400 mt-1 inline-flex items-center gap-1">
             wartet —
             {triggeredRequestId && (
-              <Link href={`/staff/requests/${triggeredRequestId}`} className="hover:underline inline-flex items-center gap-0.5">
+              <Link
+                href={`/staff/requests/${triggeredRequestId}`}
+                className="hover:underline inline-flex items-center gap-0.5"
+              >
                 Anforderung öffnen <ExternalLink className="h-3 w-3" />
               </Link>
             )}
-            {!triggeredRequestId && p.kind === 'DOCUMENT_UPLOAD' && <span>Dokument-Upload offen</span>}
+            {!triggeredRequestId && p.kind === 'DOCUMENT_UPLOAD' && (
+              <span>Dokument-Upload offen</span>
+            )}
           </p>
         )}
         {error && <p className="text-xs text-red-700 mt-1">{error}</p>}
@@ -263,7 +300,9 @@ export function WorkflowItemRow(p: Props) {
         >
           <option value="">— niemand —</option>
           {p.staffOptions.map((s) => (
-            <option key={s.id} value={s.id}>{s.fullName}</option>
+            <option key={s.id} value={s.id}>
+              {s.fullName}
+            </option>
           ))}
         </select>
         {!done && (

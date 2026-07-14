@@ -23,7 +23,9 @@ describe('backup local path helpers', () => {
     process.env['BACKUP_LOCAL_DIR'] = resolve('tmp-backups');
 
     expect(() => backupLocalPathForKey('../secret.dump')).toThrow(/Ungueltiger Backup-Key/);
-    expect(() => backupLocalPathForKey('pgdump/../../secret.dump')).toThrow(/Ungueltiger Backup-Key/);
+    expect(() => backupLocalPathForKey('pgdump/../../secret.dump')).toThrow(
+      /Ungueltiger Backup-Key/,
+    );
   });
 
   it('liefert einen stabilen Download-Dateinamen aus dem Key', () => {

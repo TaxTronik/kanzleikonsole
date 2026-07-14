@@ -18,26 +18,45 @@ import type { ReportMarking, ReportToken, ReportModel } from './report-types';
 export type { ReportMarking, ReportToken, ReportModel } from './report-types';
 
 const HERKUNFT_LABEL: Record<string, string> = {
-  WOERTLICH: 'wörtlich', MUSTER: 'Muster', TRIGGER: 'Trigger',
-  EMBEDDING: 'Heuristik', LLM: 'LLM', BERATER: 'Berater',
+  WOERTLICH: 'wörtlich',
+  MUSTER: 'Muster',
+  TRIGGER: 'Trigger',
+  EMBEDDING: 'Heuristik',
+  LLM: 'LLM',
+  BERATER: 'Berater',
 };
 const HERKUNFT_COLOR: Record<string, string> = {
-  WOERTLICH: '#10b981', MUSTER: '#3b82f6', TRIGGER: '#0ea5e9',
-  EMBEDDING: '#f59e0b', LLM: '#f97316', BERATER: '#14b8a6',
+  WOERTLICH: '#10b981',
+  MUSTER: '#3b82f6',
+  TRIGGER: '#0ea5e9',
+  EMBEDDING: '#f59e0b',
+  LLM: '#f97316',
+  BERATER: '#14b8a6',
 };
 const STATUS_LABEL: Record<string, string> = {
-  OFFEN: 'Offen', IN_PRUEFUNG: 'In Prüfung', KONTROLLIERT: 'Kontrolliert', AKZEPTIERT: 'Akzeptiert',
+  OFFEN: 'Offen',
+  IN_PRUEFUNG: 'In Prüfung',
+  KONTROLLIERT: 'Kontrolliert',
+  AKZEPTIERT: 'Akzeptiert',
 };
 const GOV_LABEL: Record<string, string> = {
-  FP: 'Festsetzung (FP)', FF: 'Feststellung (FF)', IN: 'Information (IN)',
+  FP: 'Festsetzung (FP)',
+  FF: 'Feststellung (FF)',
+  IN: 'Information (IN)',
 };
 const STUFE_LABEL: Record<string, string> = { NIEDRIG: 'Niedrig', MITTEL: 'Mittel', HOCH: 'Hoch' };
 const WK_LABEL: Record<string, string> = {
-  SELTEN: 'Selten', MOEGLICH: 'Möglich', WAHRSCHEINLICH: 'Wahrscheinlich', HAEUFIG: 'Häufig',
+  SELTEN: 'Selten',
+  MOEGLICH: 'Möglich',
+  WAHRSCHEINLICH: 'Wahrscheinlich',
+  HAEUFIG: 'Häufig',
 };
 const ENGINE_STATUS_LABEL: Record<string, string> = {
-  treffer: 'Treffer', luecke: 'Lücke', kandidat: 'Kandidat',
-  unknown_risiko: 'Unknown-Risiko', berater: 'Berater-Definition',
+  treffer: 'Treffer',
+  luecke: 'Lücke',
+  kandidat: 'Kandidat',
+  unknown_risiko: 'Unknown-Risiko',
+  berater: 'Berater-Definition',
 };
 const STREIT_COLOR = '#ef4444';
 const FALLBACK_COLOR = '#6b7280';
@@ -80,7 +99,12 @@ function buildTokens(text: string, marks: PositionedMarking[]): ReportToken[] {
           if (!top || m.end - m.start < top.end - top.start) top = m;
         }
       }
-      tokens.push({ kind: 'text', text: text.slice(a, b), color: top ? top.color : null, streitig: top?.streitig ?? false });
+      tokens.push({
+        kind: 'text',
+        text: text.slice(a, b),
+        color: top ? top.color : null,
+        streitig: top?.streitig ?? false,
+      });
     }
     // Marker für alle Markierungen, die an Punkt b enden.
     const ending = endsAt.get(b);
@@ -116,7 +140,9 @@ export async function buildReportModel(
     const chosen = sel ? a.markings.filter((m) => sel.has(m.id)) : a.markings;
 
     // Deterministische Reihenfolge (Position) → laufende Nr. für Text + Tabelle.
-    const ordered = [...chosen].sort((m1, m2) => m1.start - m2.start || m1.end - m2.end || m1.id.localeCompare(m2.id));
+    const ordered = [...chosen].sort(
+      (m1, m2) => m1.start - m2.start || m1.end - m2.end || m1.id.localeCompare(m2.id),
+    );
 
     const markings: ReportMarking[] = ordered.map((m, i) => ({
       nr: i + 1,
@@ -124,12 +150,18 @@ export async function buildReportModel(
       begriff: m.begriff,
       herkunftLabel: HERKUNFT_LABEL[m.herkunft] ?? m.herkunft,
       herkunftColor: HERKUNFT_COLOR[m.herkunft] ?? FALLBACK_COLOR,
-      engineStatusLabel: m.engineStatus ? (ENGINE_STATUS_LABEL[m.engineStatus] ?? m.engineStatus) : null,
+      engineStatusLabel: m.engineStatus
+        ? (ENGINE_STATUS_LABEL[m.engineStatus] ?? m.engineStatus)
+        : null,
       streitig: m.streitig,
       normAnker: m.normAnker,
       governanceLabel: m.governanceTyp ? (GOV_LABEL[m.governanceTyp] ?? m.governanceTyp) : null,
-      schadenLabel: m.schadensintensitaet ? (STUFE_LABEL[m.schadensintensitaet] ?? m.schadensintensitaet) : null,
-      wahrscheinlichkeitLabel: m.wahrscheinlichkeit ? (WK_LABEL[m.wahrscheinlichkeit] ?? m.wahrscheinlichkeit) : null,
+      schadenLabel: m.schadensintensitaet
+        ? (STUFE_LABEL[m.schadensintensitaet] ?? m.schadensintensitaet)
+        : null,
+      wahrscheinlichkeitLabel: m.wahrscheinlichkeit
+        ? (WK_LABEL[m.wahrscheinlichkeit] ?? m.wahrscheinlichkeit)
+        : null,
       statusLabel: STATUS_LABEL[m.status] ?? m.status,
       kontrolle: m.kontrolle,
       notiz: m.notiz,

@@ -15,6 +15,7 @@ relevant für Defense in Depth.
 [portal.ts](../../apps/web/src/server/auth/portal.ts)).
 
 **Begründung**:
+
 - JWT-Sessions sind in NextAuth v5 der Default und für die meisten
   on-premise-Installationen ausreichend.
 - Database-Sessions würden pro Request eine Postgres-Query auf
@@ -26,6 +27,7 @@ relevant für Defense in Depth.
 
 **Bekannter Trade-off**: Bei gestohlenem Token gibt es serverseitig keinen
 sofortigen Revoke. Mitigations:
+
 - TTL des JWT: 24h (NextAuth Default)
 - `AUTH_SECRET` rotieren entwertet alle Tokens sofort (kickt alle aus, aber
   funktioniert als Emergency-Reset).
@@ -41,6 +43,7 @@ v5 kann zwischen jwt/database umschalten.
 ### Cookie-Scope: `path: '/'` statt `/staff`/`/portal`
 
 **Begründung**:
+
 - `SameSite=Lax` mitigiert Top-Level-CSRF bereits — der zweite Cookie ist
   durch Auth.js's CSRF-Token zusätzlich abgesichert.
 - Beide Cookies haben **separate Namen** (`__taxtronik_staff_session` vs

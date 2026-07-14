@@ -19,9 +19,15 @@ import { AutoRefresh } from '@/components/auto-refresh';
 
 // Vollständige Liste — wird im Layout pro Tenant gefiltert (Module-Toggles).
 type ModuleKey =
-  | 'bwa' | 'knowledge' | 'timeTracking' | 'phoneNotes' | 'taxNotices'
-  | 'workflows' | 'forms'
-  | 'poa' | 'invoices';
+  | 'bwa'
+  | 'knowledge'
+  | 'timeTracking'
+  | 'phoneNotes'
+  | 'taxNotices'
+  | 'workflows'
+  | 'forms'
+  | 'poa'
+  | 'invoices';
 
 type NavConfig = NavItem & { moduleKey?: ModuleKey };
 
@@ -29,8 +35,20 @@ const allNavItems: NavConfig[] = [
   { href: '/staff/dashboard', label: 'Dashboard', icon: 'LayoutDashboard' },
   { href: '/staff/clients', label: 'Mandanten', icon: 'Users' },
   { href: '/staff/requests', label: 'Anforderungen', icon: 'Inbox' },
-  { href: '/staff/workflows', label: 'Workflows', icon: 'Workflow', exact: true, moduleKey: 'workflows' },
-  { href: '/staff/calendar', label: 'Kanzleikalender', icon: 'CalendarDays', moduleKey: 'taxNotices', altPaths: ['/staff/tax-deadlines'] },
+  {
+    href: '/staff/workflows',
+    label: 'Workflows',
+    icon: 'Workflow',
+    exact: true,
+    moduleKey: 'workflows',
+  },
+  {
+    href: '/staff/calendar',
+    label: 'Kanzleikalender',
+    icon: 'CalendarDays',
+    moduleKey: 'taxNotices',
+    altPaths: ['/staff/tax-deadlines'],
+  },
   { href: '/staff/fristen', label: 'Fristen', icon: 'AlarmClock' },
   { href: '/staff/invoices', label: 'Rechnungen', icon: 'Receipt', moduleKey: 'invoices' },
   { href: '/staff/poa', label: 'Vollmachten', icon: 'ScrollText', moduleKey: 'poa' },
@@ -48,7 +66,12 @@ const allAdminNavItems: AdminNavConfig[] = [
   { href: '/staff/admin', label: 'Übersicht', icon: 'Shield', exact: true },
   { href: '/staff/admin/users', label: 'Benutzer', icon: 'Users' },
   { href: '/staff/admin/skills', label: 'Tätigkeiten', icon: 'Tags' },
-  { href: '/staff/workflows/templates', label: 'Workflow-Vorlagen', icon: 'Workflow', moduleKey: 'workflows' },
+  {
+    href: '/staff/workflows/templates',
+    label: 'Workflow-Vorlagen',
+    icon: 'Workflow',
+    moduleKey: 'workflows',
+  },
   { href: '/staff/forms', label: 'Formular-Vorlagen', icon: 'ClipboardList', moduleKey: 'forms' },
   { href: '/staff/admin/request-templates', label: 'Anforderungs-Vorlagen', icon: 'Inbox' },
   { href: '/staff/admin/email-templates', label: 'E-Mail-Vorlagen', icon: 'Mail' },
@@ -89,17 +112,26 @@ export default async function StaffLayout({ children }: { children: ReactNode })
       if (it.moduleKey === 'invoices') return modules.invoiceMode !== 'OFF';
       return modules[it.moduleKey];
     })
-    .map((it) => ({ href: it.href, label: it.label, icon: it.icon, exact: it.exact, altPaths: it.altPaths }));
+    .map((it) => ({
+      href: it.href,
+      label: it.label,
+      icon: it.icon,
+      exact: it.exact,
+      altPaths: it.altPaths,
+    }));
 
   const adminNavItems: NavItem[] = allAdminNavItems
     .filter((it) => !it.moduleKey || modules[it.moduleKey])
-    .map((it) => ({ href: it.href, label: it.label, icon: it.icon, exact: it.exact, altPaths: it.altPaths }));
+    .map((it) => ({
+      href: it.href,
+      label: it.label,
+      icon: it.icon,
+      exact: it.exact,
+      altPaths: it.altPaths,
+    }));
 
   return (
-    <div
-      className="flex h-screen bg-surface-page"
-      style={brandPaletteStyle(branding.accentColor)}
-    >
+    <div className="flex h-screen bg-surface-page" style={brandPaletteStyle(branding.accentColor)}>
       <AutoRefresh />
       {/* Sidebar */}
       <aside className="app-sidebar w-64 bg-white dark:bg-gray-900 border-r border-default flex flex-col">
@@ -146,9 +178,7 @@ export default async function StaffLayout({ children }: { children: ReactNode })
               {session.user.fullName?.[0]?.toUpperCase() ?? '?'}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="item-title">
-                {session.user.fullName}
-              </p>
+              <p className="item-title">{session.user.fullName}</p>
               <p className="text-xs text-muted truncate">{session.user.email}</p>
             </div>
           </div>

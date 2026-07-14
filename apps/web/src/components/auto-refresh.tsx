@@ -24,7 +24,12 @@ export function isUserTyping(): boolean {
   const ae = document.activeElement;
   if (!ae) return false;
   const tag = (ae.tagName ?? '').toLowerCase();
-  return tag === 'input' || tag === 'textarea' || tag === 'select' || (ae as HTMLElement).isContentEditable;
+  return (
+    tag === 'input' ||
+    tag === 'textarea' ||
+    tag === 'select' ||
+    (ae as HTMLElement).isContentEditable
+  );
 }
 
 export function AutoRefresh() {

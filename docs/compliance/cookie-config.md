@@ -10,10 +10,10 @@ dokumentiert.
 
 ## Session-Cookies (Authentifizierung)
 
-| Name | Surface | HttpOnly | Secure | SameSite | Path | Domain | Max-Age | Inhalt |
-|---|---|---|---|---|---|---|---|---|
-| `__Host-taxtronik_staff_session` ¹ | Staff (`/staff/*`, `/api/staff/*`) | ✓ | nur in Production | `lax` | `/` | optional `STAFF_COOKIE_DOMAIN` (sonst implizit Host) | 24 h (W-1) | JWT mit `staffId`, `tenantId`, `fullName`, `roles[]`, `iat` |
-| `__Host-taxtronik_portal_session` ¹ | Portal (`/portal/*`, `/api/portal/*`) | ✓ | nur in Production | `lax` | `/` | optional `PORTAL_COOKIE_DOMAIN` (sonst implizit Host) | 24 h (W-1) | JWT mit `contactId`, `tenantId`, `clientId`, `fullName`, `iat` |
+| Name                                | Surface                               | HttpOnly | Secure            | SameSite | Path | Domain                                                | Max-Age    | Inhalt                                                         |
+| ----------------------------------- | ------------------------------------- | -------- | ----------------- | -------- | ---- | ----------------------------------------------------- | ---------- | -------------------------------------------------------------- |
+| `__Host-taxtronik_staff_session` ¹  | Staff (`/staff/*`, `/api/staff/*`)    | ✓        | nur in Production | `lax`    | `/`  | optional `STAFF_COOKIE_DOMAIN` (sonst implizit Host)  | 24 h (W-1) | JWT mit `staffId`, `tenantId`, `fullName`, `roles[]`, `iat`    |
+| `__Host-taxtronik_portal_session` ¹ | Portal (`/portal/*`, `/api/portal/*`) | ✓        | nur in Production | `lax`    | `/`  | optional `PORTAL_COOKIE_DOMAIN` (sonst implizit Host) | 24 h (W-1) | JWT mit `contactId`, `tenantId`, `clientId`, `fullName`, `iat` |
 
 ¹ **Cookie-Präfix-Logik** (`apps/web/src/server/auth/session-cookie.ts`): In
 Production ohne konfigurierte Cookie-Domain (Default, host-only) heißen die
@@ -51,6 +51,7 @@ nicht gesetzt.
 ## Sonstige Cookies
 
 taxtronik setzt **keine** Tracking-, Analytics- oder Werbe-Cookies.
+
 - Kein Google Analytics, Matomo o. ä.
 - Kein A/B-Test-Framework.
 - Keine Drittanbieter-Embeds (alle Assets stammen vom eigenen Host).

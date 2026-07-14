@@ -66,13 +66,15 @@ export default async function StaffClientBwaDashboardPage({
           year: p.year,
           status: p.status,
           updatedAt: p.updatedAt,
-          createdByType: (p.createdByType === 'STAFF' ? 'STAFF' : 'CLIENT_CONTACT') as 'STAFF' | 'CLIENT_CONTACT',
+          createdByType: (p.createdByType === 'STAFF' ? 'STAFF' : 'CLIENT_CONTACT') as
+            | 'STAFF'
+            | 'CLIENT_CONTACT',
           updatedByType:
             p.updatedByType === 'STAFF'
               ? 'STAFF'
               : p.updatedByType === 'CLIENT_CONTACT'
-              ? 'CLIENT_CONTACT'
-              : null,
+                ? 'CLIENT_CONTACT'
+                : null,
           lines: p.lines.map((l) => ({ axis: l.axis, amount: l.amount })),
         }))}
         linkPrefix={`/staff/clients/${clientId}/bwa/plans`}

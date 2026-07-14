@@ -54,9 +54,13 @@ export async function enqueueTaxDeadlineMaterialize(tenantId: string): Promise<v
   // ein Lauf aussteht sind No-Ops (ID existiert); alte Jobs vorher räumen.
   const jobId = `tax-deadline-manual-${tenantId}`;
   await queue.remove(jobId).catch(() => {});
-  await queue.add('tax-deadline-materialize', { tenantId }, {
-    jobId,
-    removeOnComplete: 20,
-    removeOnFail: 20,
-  });
+  await queue.add(
+    'tax-deadline-materialize',
+    { tenantId },
+    {
+      jobId,
+      removeOnComplete: 20,
+      removeOnFail: 20,
+    },
+  );
 }

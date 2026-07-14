@@ -4,13 +4,8 @@ import { useActionState, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Inbox, Plus, Trash2, ArrowRight, Check, Mail } from 'lucide-react';
 import { fmtDateShort } from '@/lib/fmt';
-import {
-  createHandoverAction,
-  updateHandoverStatusAction,
-  deleteHandoverAction,
-} from './actions';
+import { createHandoverAction, updateHandoverStatusAction, deleteHandoverAction } from './actions';
 import type { ActionResult } from '@/server/actions/staff-action';
-
 
 type HandoverStatus = 'RECEIVED' | 'IN_PROGRESS' | 'READY' | 'PICKED_UP';
 
@@ -54,13 +49,7 @@ const NEXT_LABEL: Record<HandoverStatus, string> = {
   PICKED_UP: '',
 };
 
-export function HandoversBlock({
-  clientId,
-  initial,
-}: {
-  clientId: string;
-  initial: Handover[];
-}) {
+export function HandoversBlock({ clientId, initial }: { clientId: string; initial: Handover[] }) {
   const router = useRouter();
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
     createHandoverAction,
@@ -70,7 +59,11 @@ export function HandoversBlock({
   const [open, setOpen] = useState(false);
 
   function advance(id: string, next: HandoverStatus, label: string) {
-    if (next === 'READY' && !confirm(`„${label}" als abholbereit melden? Der Mandant wird per E-Mail informiert.`)) return;
+    if (
+      next === 'READY' &&
+      !confirm(`„${label}" als abholbereit melden? Der Mandant wird per E-Mail informiert.`)
+    )
+      return;
     startMut(async () => {
       await updateHandoverStatusAction({ id, status: next });
       router.refresh();
@@ -160,16 +153,22 @@ export function HandoversBlock({
                       </span>
                     </p>
                     {h.contents && (
-                      <p className="text-xs text-secondary mt-1 whitespace-pre-wrap">{h.contents}</p>
+                      <p className="text-xs text-secondary mt-1 whitespace-pre-wrap">
+                        {h.contents}
+                      </p>
                     )}
                     <p className="text-[11px] text-muted mt-1 flex flex-wrap gap-x-3">
                       <span>eingegangen {fmtDateShort(new Date(h.receivedAt))}</span>
-                      {h.startedAt && <span>bearbeitet seit {fmtDateShort(new Date(h.startedAt))}</span>}
+                      {h.startedAt && (
+                        <span>bearbeitet seit {fmtDateShort(new Date(h.startedAt))}</span>
+                      )}
                       {h.readyAt && (
                         <span className="inline-flex items-center gap-1 text-emerald-700">
                           <Mail className="h-3 w-3" />
                           abholbereit {fmtDateShort(new Date(h.readyAt))}
-                          {h.notifiedContactEmail && <span className="text-disabled">· {h.notifiedContactEmail}</span>}
+                          {h.notifiedContactEmail && (
+                            <span className="text-disabled">· {h.notifiedContactEmail}</span>
+                          )}
                         </span>
                       )}
                     </p>
@@ -183,7 +182,11 @@ export function HandoversBlock({
                         className="btn-secondary text-[11px] py-1 inline-flex items-center gap-1"
                         title={NEXT_LABEL[h.status]}
                       >
-                        {next === 'PICKED_UP' ? <Check className="h-3 w-3" /> : <ArrowRight className="h-3 w-3" />}
+                        {next === 'PICKED_UP' ? (
+                          <Check className="h-3 w-3" />
+                        ) : (
+                          <ArrowRight className="h-3 w-3" />
+                        )}
                         {NEXT_LABEL[h.status]}
                       </button>
                     )}
@@ -213,7 +216,9 @@ export function HandoversBlock({
             {done.map((h) => (
               <li key={h.id} className="px-6 py-2 text-sm text-muted flex justify-between gap-2">
                 <span className="truncate">{h.label}</span>
-                {h.pickedUpAt && <span className="text-xs">{fmtDateShort(new Date(h.pickedUpAt))}</span>}
+                {h.pickedUpAt && (
+                  <span className="text-xs">{fmtDateShort(new Date(h.pickedUpAt))}</span>
+                )}
               </li>
             ))}
           </ul>

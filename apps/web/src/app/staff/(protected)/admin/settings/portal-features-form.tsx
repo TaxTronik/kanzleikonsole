@@ -13,33 +13,39 @@ const FEATURES: Array<{
   {
     key: 'appointmentRequests',
     label: 'Terminanfragen senden',
-    description: 'Mandant kann über /portal/appointments eigene Wunschtermine anfragen. Ohne dieses Recht sieht der Mandant seine bestätigten Termine, kann aber keine neuen anfragen.',
+    description:
+      'Mandant kann über /portal/appointments eigene Wunschtermine anfragen. Ohne dieses Recht sieht der Mandant seine bestätigten Termine, kann aber keine neuen anfragen.',
   },
   {
     key: 'bwaView',
     label: 'BWA-Auswertungen ansehen',
-    description: 'Mandant sieht Liquiditäts-Indikatoren, Jahres-Hochrechnung und seine importierten BWA-Perioden im Portal.',
+    description:
+      'Mandant sieht Liquiditäts-Indikatoren, Jahres-Hochrechnung und seine importierten BWA-Perioden im Portal.',
   },
   {
     key: 'bwaPlanning',
     label: 'Eigene BWA-Planung anlegen',
-    description: 'Mandant darf zusätzlich eine eigene Planrechnung anlegen (7-Achsen-Wizard). Setzt „BWA ansehen" voraus.',
+    description:
+      'Mandant darf zusätzlich eine eigene Planrechnung anlegen (7-Achsen-Wizard). Setzt „BWA ansehen" voraus.',
     dependsOn: 'bwaView',
   },
   {
     key: 'documentUpload',
     label: 'Dokumente hochladen',
-    description: 'Mandant darf eigene Dokumente ins Portal hochladen (Belege, Verträge, …). Ohne dieses Recht kann er nur antworten und ansehen.',
+    description:
+      'Mandant darf eigene Dokumente ins Portal hochladen (Belege, Verträge, …). Ohne dieses Recht kann er nur antworten und ansehen.',
   },
   {
     key: 'stammdatenSelfService',
     label: 'Stammdaten-Änderungen vorschlagen',
-    description: 'Mandant kann unter /portal/stammdaten Änderungen seiner Stammdaten beantragen. Genehmigung läuft weiter über die Kanzlei.',
+    description:
+      'Mandant kann unter /portal/stammdaten Änderungen seiner Stammdaten beantragen. Genehmigung läuft weiter über die Kanzlei.',
   },
   {
     key: 'handoversView',
     label: 'Hinterlegte Unterlagen ansehen',
-    description: 'Mandant sieht unter /portal/handovers den Status seiner physisch hinterlegten Unterlagen (eingegangen, in Bearbeitung, abholbereit).',
+    description:
+      'Mandant sieht unter /portal/handovers den Status seiner physisch hinterlegten Unterlagen (eingegangen, in Bearbeitung, abholbereit).',
   },
 ];
 
@@ -78,9 +84,9 @@ export function PortalFeaturesForm({ initial }: { initial: PortalFeatures }) {
       </div>
 
       <p className="text-xs text-muted pt-3 border-t border-subtle">
-        Diese Einstellungen wirken zusätzlich zu den Tenant-weiten Modul-Toggles.
-        Wenn z. B. das BWA-Modul global deaktiviert ist, sind alle BWA-bezogenen
-        Portal-Features automatisch wirkungslos.
+        Diese Einstellungen wirken zusätzlich zu den Tenant-weiten Modul-Toggles. Wenn z. B. das
+        BWA-Modul global deaktiviert ist, sind alle BWA-bezogenen Portal-Features automatisch
+        wirkungslos.
       </p>
 
       <div className="flex items-center gap-3 pt-2">

@@ -251,7 +251,12 @@ export async function zieheLosStichprobe(
     await withTenantContext(ctx, async (tx) => {
       await tx.tenantSetting.upsert({
         where: { tenantId_key: { tenantId: ctx.tenantId, key: PENDING_KEY } },
-        create: { tenantId: ctx.tenantId, key: PENDING_KEY, value: pending as object, updatedBy: ctx.actorId ?? undefined },
+        create: {
+          tenantId: ctx.tenantId,
+          key: PENDING_KEY,
+          value: pending as object,
+          updatedBy: ctx.actorId ?? undefined,
+        },
         update: { value: pending as object, updatedBy: ctx.actorId ?? undefined },
       });
       // Auch die BEANTRAGUNG ist chain-verankert (wer hat wann mit welchem
@@ -263,13 +268,27 @@ export async function zieheLosStichprobe(
         action: 'risk.los.beantragt',
         resourceType: 'quantenlos',
         resourceId: res.commitment,
-        after: { jobId: res.job_id, backend: res.backend, k: res.k, n: rahmen.length, zeitraum: input.zeitraum, rahmenTyp },
+        after: {
+          jobId: res.job_id,
+          backend: res.backend,
+          k: res.k,
+          n: rahmen.length,
+          zeitraum: input.zeitraum,
+          rahmenTyp,
+        },
       });
     });
     return { status: 'wartet', pending };
   }
 
-  const ziehung = await finalisiereZiehung(ctx, res.nachweis, rahmen, input.zeitraum, null, rahmenTyp);
+  const ziehung = await finalisiereZiehung(
+    ctx,
+    res.nachweis,
+    rahmen,
+    input.zeitraum,
+    null,
+    rahmenTyp,
+  );
   return { status: 'fertig', ziehung };
 }
 
@@ -283,7 +302,10 @@ export async function getPendingLos(ctx: TenantContext): Promise<PendingLos | nu
   if (!row) return null;
   const parsed = PendingLosSchema.safeParse(row.value);
   if (!parsed.success) {
-    log.warn({ component: 'los', tenantId: ctx.tenantId }, 'getPendingLos: ungültiger pending-Eintrag verworfen');
+    log.warn(
+      { component: 'los', tenantId: ctx.tenantId },
+      'getPendingLos: ungültiger pending-Eintrag verworfen',
+    );
     return null;
   }
   return parsed.data as unknown as PendingLos;
@@ -312,7 +334,11 @@ export async function holeLosAb(
   if (res.status === 'wartet') return { status: 'wartet', pending };
 
   const ziehung = await finalisiereZiehung(
-    ctx, res.nachweis, pending.rahmen, pending.zeitraum, pending.jobId,
+    ctx,
+    res.nachweis,
+    pending.rahmen,
+    pending.zeitraum,
+    pending.jobId,
     pending.rahmenTyp ?? 'subsumtion',
   );
   return { status: 'fertig', ziehung };
@@ -334,10 +360,14 @@ async function finalisiereZiehung(
   const rahmenSet = new Set(rahmen);
   const fremd = nachweis.stichprobe.filter((id) => !rahmenSet.has(id));
   if (fremd.length > 0) {
-    throw new LosNachweisInkonsistentError(`Stichproben-Einträge außerhalb des Rahmens (${fremd.length}).`);
+    throw new LosNachweisInkonsistentError(
+      `Stichproben-Einträge außerhalb des Rahmens (${fremd.length}).`,
+    );
   }
   if (nachweis.rahmen.n !== rahmen.length) {
-    throw new LosNachweisInkonsistentError(`n=${nachweis.rahmen.n} ≠ Rahmengröße ${rahmen.length}.`);
+    throw new LosNachweisInkonsistentError(
+      `n=${nachweis.rahmen.n} ≠ Rahmengröße ${rahmen.length}.`,
+    );
   }
   const staffId = ctx.actorId;
   if (!staffId) throw new Error('Quantenlos erfordert einen Staff-Kontext (actorId).');
@@ -366,7 +396,12 @@ async function finalisiereZiehung(
 
       eintraege = nachweis.stichprobe.map((id) => {
         const a = byId.get(id);
-        return { analysisId: id, titel: a?.title ?? null, clientId: a?.clientId ?? null, geloescht: !a };
+        return {
+          analysisId: id,
+          titel: a?.title ?? null,
+          clientId: a?.clientId ?? null,
+          geloescht: !a,
+        };
       });
 
       // Review-Aufgabe je Treffer — als ClientReminder (Repo-Muster für interne
@@ -387,7 +422,11 @@ async function finalisiereZiehung(
             tenantId: ctx.tenantId,
             clientId: e.clientId,
             dueDate: due,
-            subject: `Quantenlos-Review: ${e.titel ?? `Subsumtion ${e.analysisId.slice(0, 8)}…`}`.slice(0, 200),
+            subject:
+              `Quantenlos-Review: ${e.titel ?? `Subsumtion ${e.analysisId.slice(0, 8)}…`}`.slice(
+                0,
+                200,
+              ),
             notes:
               `Blind gezogene Compliance-Stichprobe (Quantenlos, Commitment ${nachweis.rahmen.commitment.slice(0, 16)}…). ` +
               `Bitte fachlich reviewen: /staff/clients/${e.clientId}/subsumtion/${e.analysisId}`,
@@ -437,23 +476,30 @@ export async function listLosZiehungen(ctx: TenantContext, limit = 10): Promise<
 
     const parsed = rows.flatMap((row) => {
       const after = row.after as {
-        nachweis?: unknown; rahmen?: unknown; zeitraum?: unknown; rahmenTyp?: unknown;
+        nachweis?: unknown;
+        rahmen?: unknown;
+        zeitraum?: unknown;
+        rahmenTyp?: unknown;
       } | null;
       const nachweis = LosNachweisSchema.safeParse(after?.nachweis);
       if (!nachweis.success) return [];
       // Alt-Events (vor Audit-Nachschau) tragen kein rahmenTyp ⇒ 'subsumtion'.
       const rahmenTyp: LosRahmenTyp = after?.rahmenTyp === 'audit' ? 'audit' : 'subsumtion';
-      return [{
-        id: row.id,
-        nachweis: nachweis.data,
-        zeitraum: (after?.zeitraum ?? null) as LosZeitraum | null,
-        rahmenTyp,
-      }];
+      return [
+        {
+          id: row.id,
+          nachweis: nachweis.data,
+          zeitraum: (after?.zeitraum ?? null) as LosZeitraum | null,
+          rahmenTyp,
+        },
+      ];
     });
 
-    const analyseIds = [...new Set(
-      parsed.filter((p) => p.rahmenTyp === 'subsumtion').flatMap((p) => p.nachweis.stichprobe),
-    )];
+    const analyseIds = [
+      ...new Set(
+        parsed.filter((p) => p.rahmenTyp === 'subsumtion').flatMap((p) => p.nachweis.stichprobe),
+      ),
+    ];
     const analysen = analyseIds.length
       ? await tx.riskAnalysis.findMany({
           where: { id: { in: analyseIds } },
@@ -471,9 +517,16 @@ export async function listLosZiehungen(ctx: TenantContext, limit = 10): Promise<
       }
       const eintraege: LosStichprobeEintrag[] = p.nachweis.stichprobe.map((id) => {
         const a = byId.get(id);
-        return { analysisId: id, titel: a?.title ?? null, clientId: a?.clientId ?? null, geloescht: !a };
+        return {
+          analysisId: id,
+          titel: a?.title ?? null,
+          clientId: a?.clientId ?? null,
+          geloescht: !a,
+        };
       });
-      ziehungen.push(toZiehung(String(p.id), 'subsumtion', p.nachweis, p.zeitraum, eintraege, [], []));
+      ziehungen.push(
+        toZiehung(String(p.id), 'subsumtion', p.nachweis, p.zeitraum, eintraege, [], []),
+      );
     }
     return ziehungen;
   });
@@ -532,8 +585,12 @@ async function ladeNachschauEintraege(
     ? await tx.auditLog.findMany({
         where: { id: { in: ids.map((s) => BigInt(s)) } },
         select: {
-          id: true, action: true, occurredAt: true,
-          actorType: true, actorId: true, resourceType: true,
+          id: true,
+          action: true,
+          occurredAt: true,
+          actorType: true,
+          actorId: true,
+          resourceType: true,
         },
       })
     : [];

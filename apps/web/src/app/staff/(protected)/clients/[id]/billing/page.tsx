@@ -7,11 +7,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { BillingForm } from './billing-form';
 import { fmtDateShort } from '@/lib/fmt';
 
-export default async function ClientBillingPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function ClientBillingPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await staffAuth();
   if (!session?.user) redirect('/staff/login');
 
@@ -60,7 +56,10 @@ export default async function ClientBillingPage({
   return (
     <div className="p-8 max-w-4xl">
       <div className="flex items-start gap-4 mb-6">
-        <Link href={`/staff/clients/${client.id}`} className="text-disabled hover:text-secondary mt-1">
+        <Link
+          href={`/staff/clients/${client.id}`}
+          className="text-disabled hover:text-secondary mt-1"
+        >
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div className="flex-1">
@@ -84,9 +83,7 @@ export default async function ClientBillingPage({
       {pendingEntries.length === 0 ? (
         <div className="card p-12 text-center">
           <Clock className="h-12 w-12 text-disabled mx-auto mb-3" />
-          <p className="text-sm text-disabled">
-            Keine abrechenbaren, unabgerechneten Stunden.
-          </p>
+          <p className="text-sm text-disabled">Keine abrechenbaren, unabgerechneten Stunden.</p>
         </div>
       ) : (
         <>
@@ -98,17 +95,30 @@ export default async function ClientBillingPage({
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-default">
-                  <th className="text-left px-6 py-2 text-xs font-medium text-muted uppercase tracking-wide">Datum</th>
-                  <th className="text-left px-6 py-2 text-xs font-medium text-muted uppercase tracking-wide">Beschreibung</th>
-                  <th className="text-left px-6 py-2 text-xs font-medium text-muted uppercase tracking-wide">Mitarbeiter</th>
-                  <th className="text-right px-6 py-2 text-xs font-medium text-muted uppercase tracking-wide">Stunden</th>
-                  <th className="text-right px-6 py-2 text-xs font-medium text-muted uppercase tracking-wide">Stundensatz</th>
+                  <th className="text-left px-6 py-2 text-xs font-medium text-muted uppercase tracking-wide">
+                    Datum
+                  </th>
+                  <th className="text-left px-6 py-2 text-xs font-medium text-muted uppercase tracking-wide">
+                    Beschreibung
+                  </th>
+                  <th className="text-left px-6 py-2 text-xs font-medium text-muted uppercase tracking-wide">
+                    Mitarbeiter
+                  </th>
+                  <th className="text-right px-6 py-2 text-xs font-medium text-muted uppercase tracking-wide">
+                    Stunden
+                  </th>
+                  <th className="text-right px-6 py-2 text-xs font-medium text-muted uppercase tracking-wide">
+                    Stundensatz
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border-subtle">
                 {pendingEntries.map((e) => {
                   const minutes = e.endedAt
-                    ? Math.max(0, Math.floor((e.endedAt.getTime() - e.startedAt.getTime()) / 60_000))
+                    ? Math.max(
+                        0,
+                        Math.floor((e.endedAt.getTime() - e.startedAt.getTime()) / 60_000),
+                      )
                     : 0;
                   const hours = minutes / 60;
                   return (
@@ -118,9 +128,13 @@ export default async function ClientBillingPage({
                       </td>
                       <td className="px-6 py-2 text-primary truncate max-w-md">{e.description}</td>
                       <td className="px-6 py-2 text-secondary">{e.staff.fullName}</td>
-                      <td className="px-6 py-2 text-right font-mono tabular-nums">{hours.toFixed(2)}</td>
+                      <td className="px-6 py-2 text-right font-mono tabular-nums">
+                        {hours.toFixed(2)}
+                      </td>
                       <td className="px-6 py-2 text-right font-mono tabular-nums text-muted">
-                        {e.hourlyRate ? `${Number(e.hourlyRate.toString()).toFixed(2)} €` : 'Default'}
+                        {e.hourlyRate
+                          ? `${Number(e.hourlyRate.toString()).toFixed(2)} €`
+                          : 'Default'}
                       </td>
                     </tr>
                   );

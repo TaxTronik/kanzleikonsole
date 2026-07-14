@@ -81,6 +81,10 @@ export function setNormVerworfen(
   return persistNorms(ctx, markingId, (refs) => applyVerworfen(refs, target, verworfen));
 }
 
-export function removeBeraterNorm(ctx: TenantContext, markingId: string, target: NormTarget): Promise<void> {
+export function removeBeraterNorm(
+  ctx: TenantContext,
+  markingId: string,
+  target: NormTarget,
+): Promise<void> {
   return persistNorms(ctx, markingId, (refs) => applyRemoveBerater(refs, target));
 }

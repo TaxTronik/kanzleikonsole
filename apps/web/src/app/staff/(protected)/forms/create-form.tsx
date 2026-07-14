@@ -22,12 +22,31 @@ export function CreateFormForm() {
   return (
     <form ref={ref} action={formAction} className="space-y-3">
       <div>
-        <label className="label" htmlFor="form-name">Name</label>
-        <input id="form-name" name="name" type="text" className="input" required minLength={2} maxLength={100} placeholder="Steuerunterlagen 2025" />
+        <label className="label" htmlFor="form-name">
+          Name
+        </label>
+        <input
+          id="form-name"
+          name="name"
+          type="text"
+          className="input"
+          required
+          minLength={2}
+          maxLength={100}
+          placeholder="Steuerunterlagen 2025"
+        />
       </div>
       <div>
-        <label className="label" htmlFor="form-description">Beschreibung</label>
-        <textarea id="form-description" name="description" rows={2} maxLength={500} className="input" />
+        <label className="label" htmlFor="form-description">
+          Beschreibung
+        </label>
+        <textarea
+          id="form-description"
+          name="description"
+          rows={2}
+          maxLength={500}
+          className="input"
+        />
       </div>
       {state?.error && <div className="alert-error-sm">{state.error}</div>}
       <button type="submit" className="btn-primary" disabled={isPending}>

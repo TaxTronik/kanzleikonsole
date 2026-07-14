@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Download, Eye, Loader2 } from 'lucide-react';
 import { OfficeViewer } from './office-viewer';
+import { detectInlineOfficeKind } from './document-preview-kind';
 
 type ApiPrefix = '/api/staff' | '/api/portal';
 
@@ -11,7 +12,9 @@ type ApiPrefix = '/api/staff' | '/api/portal';
  * Steuerbares Vorschau-Modal. Render-Pfad je MIME:
  *  - image/*                          → <img>
  *  - application/pdf                  → <iframe>
- *  - …wordprocessingml/…spreadsheetml → Office-Inline-Viewer
+ *  - …spreadsheetml                  → XLSX-Inline-Viewer
+ *  - DOCX                            → Download-Fallback (kein fremdes OOXML
+ *                                      im privilegierten App-DOM)
  *  - sonst                            → Download-Fallback
  */
 export function DocumentPreviewModal({
@@ -26,7 +29,9 @@ export function DocumentPreviewModal({
   onClose: () => void;
 }) {
   const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const [url, setUrl] = useState<string | null>(null);
   const [mimeType, setMimeType] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -64,7 +69,7 @@ export function DocumentPreviewModal({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const officeKind = detectOfficeKind(mimeType, documentTitle);
+  const officeKind = detectInlineOfficeKind(mimeType, documentTitle);
   const isImage = mimeType?.startsWith('image/');
   const isPdf = mimeType === 'application/pdf' || mimeType?.endsWith('pdf');
 
@@ -78,9 +83,7 @@ export function DocumentPreviewModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-6 py-3 border-b border-default">
-          <h2 className="text-sm font-medium text-primary truncate flex-1">
-            {documentTitle}
-          </h2>
+          <h2 className="text-sm font-medium text-primary truncate flex-1">{documentTitle}</h2>
           <div className="flex items-center gap-2">
             <a
               href={`${apiPrefix}/documents/${documentId}/download`}
@@ -115,14 +118,20 @@ export function DocumentPreviewModal({
             <>
               {isImage ? (
                 // eslint-disable-next-line @next/next/no-img-element -- Document previews use short-lived blob URLs from the authenticated API.
-                <img src={url} alt={documentTitle} className="w-full h-full object-contain bg-white" />
+                <img
+                  src={url}
+                  alt={documentTitle}
+                  className="w-full h-full object-contain bg-white"
+                />
               ) : isPdf ? (
                 <iframe src={url} className="w-full h-full border-0" title={documentTitle} />
               ) : officeKind ? (
-                <OfficeViewer url={url} kind={officeKind} />
+                <OfficeViewer url={url} />
               ) : (
                 <div className="h-full flex flex-col items-center justify-center gap-3 text-muted">
-                  <p className="text-sm">Keine Inline-Vorschau für {mimeType ?? 'diesen Dateityp'}.</p>
+                  <p className="text-sm">
+                    Keine Inline-Vorschau für {mimeType ?? 'diesen Dateityp'}.
+                  </p>
                   <a href={`${apiPrefix}/documents/${documentId}/download`} className="btn-primary">
                     <Download className="h-4 w-4" />
                     Herunterladen
@@ -170,13 +179,4 @@ export function DocumentPreviewButton({
       )}
     </>
   );
-}
-
-function detectOfficeKind(mimeType: string | null, fileName: string): 'docx' | 'xlsx' | null {
-  if (mimeType?.includes('wordprocessingml.document')) return 'docx';
-  if (mimeType?.includes('spreadsheetml.sheet')) return 'xlsx';
-  const lower = fileName.toLowerCase();
-  if (lower.endsWith('.docx')) return 'docx';
-  if (lower.endsWith('.xlsx')) return 'xlsx';
-  return null;
 }

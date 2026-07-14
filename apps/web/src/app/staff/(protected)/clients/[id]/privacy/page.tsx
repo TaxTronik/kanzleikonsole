@@ -14,18 +14,19 @@ import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { fmtDateTimeShort } from '@/lib/fmt';
-import { parseConsent, countGranted, COMMUNICATION_LABELS, MARKETING_LABELS } from '@/server/privacy/consent';
+import {
+  parseConsent,
+  countGranted,
+  COMMUNICATION_LABELS,
+  MARKETING_LABELS,
+} from '@/server/privacy/consent';
 import { renderNoticeForTenantTx } from '@/server/privacy/service';
 import { readPrivacyConfigTx, isPrivacyConfigComplete } from '@/server/privacy/notice';
 import { NoticeView } from '@/components/notice-view';
 import { ConsentEditor } from './consent-editor';
 import { revokeAllConsentAction } from './actions';
 
-export default async function ClientPrivacyPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function ClientPrivacyPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await staffAuth();
   if (!session?.user) redirect('/staff/login');
   const { id: clientId } = await params;
@@ -84,10 +85,12 @@ export default async function ClientPrivacyPage({
       {!configComplete && (
         <div className="rounded-md border border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950/40 p-4 mb-6 text-sm text-yellow-800 dark:text-yellow-300">
           Die Kanzlei-Datenschutzangaben (verantwortliche Stelle, Aufsichtsbehörde,
-          Datenschutz-Kontakt) sind noch nicht vollständig hinterlegt — der
-          Hinweistext bleibt bis dahin lückenhaft.{' '}
+          Datenschutz-Kontakt) sind noch nicht vollständig hinterlegt — der Hinweistext bleibt bis
+          dahin lückenhaft.{' '}
           {admin ? (
-            <Link href="/staff/admin/privacy" className="underline font-medium">Jetzt ergänzen</Link>
+            <Link href="/staff/admin/privacy" className="underline font-medium">
+              Jetzt ergänzen
+            </Link>
           ) : (
             <span>Bitte von einem Administrator ergänzen lassen.</span>
           )}
@@ -107,17 +110,26 @@ export default async function ClientPrivacyPage({
               <span className="text-disabled">
                 ({current.source === 'PORTAL' ? 'Mandant über Portal' : 'Kanzlei'})
               </span>
-              {' · '}{countGranted(currentConsent)} Einzeleinwilligung(en) aktiv
+              {' · '}
+              {countGranted(currentConsent)} Einzeleinwilligung(en) aktiv
             </p>
             <ul className="text-xs text-muted grid grid-cols-1 sm:grid-cols-2 gap-x-6">
               {(Object.keys(COMMUNICATION_LABELS) as Array<keyof typeof COMMUNICATION_LABELS>)
                 .filter((k) => currentConsent.communication[k])
-                .map((k) => <li key={`c-${k}`}>✓ {COMMUNICATION_LABELS[k]}</li>)}
+                .map((k) => (
+                  <li key={`c-${k}`}>✓ {COMMUNICATION_LABELS[k]}</li>
+                ))}
               {(Object.keys(MARKETING_LABELS) as Array<keyof typeof MARKETING_LABELS>)
                 .filter((k) => currentConsent.marketing[k])
-                .map((k) => <li key={`m-${k}`}>✓ {MARKETING_LABELS[k]}</li>)}
-              {currentConsent.thirdParties.map((t, i) => <li key={`t-${i}`}>✓ Dritte: {t.recipient}</li>)}
-              {currentConsent.specialists.map((s, i) => <li key={`s-${i}`}>✓ Spezialist: {s.entity}</li>)}
+                .map((k) => (
+                  <li key={`m-${k}`}>✓ {MARKETING_LABELS[k]}</li>
+                ))}
+              {currentConsent.thirdParties.map((t, i) => (
+                <li key={`t-${i}`}>✓ Dritte: {t.recipient}</li>
+              ))}
+              {currentConsent.specialists.map((s, i) => (
+                <li key={`s-${i}`}>✓ Spezialist: {s.entity}</li>
+              ))}
             </ul>
           </div>
         )}
@@ -128,9 +140,8 @@ export default async function ClientPrivacyPage({
         {current ? 'Einwilligungsstand aktualisieren' : 'Einwilligungen erfassen'}
       </h2>
       <p className="text-xs text-muted mb-3">
-        Speichern legt einen neuen, unveränderlichen Nachweis-Snapshot an (der
-        vorige bleibt in der Historie). Nicht angekreuzte Optionen gelten als
-        nicht erteilt.
+        Speichern legt einen neuen, unveränderlichen Nachweis-Snapshot an (der vorige bleibt in der
+        Historie). Nicht angekreuzte Optionen gelten als nicht erteilt.
       </p>
       <ConsentEditor
         clientId={clientId}
@@ -146,13 +157,27 @@ export default async function ClientPrivacyPage({
             Alle freiwilligen Einwilligungen widerrufen
           </h3>
           <p className="text-xs text-muted mb-3">
-            Wirkung für die Zukunft (Art. 7 Abs. 3 DSGVO). Die mandatsnotwendige
-            Verarbeitung bleibt auf gesetzlicher/vertraglicher Grundlage zulässig.
+            Wirkung für die Zukunft (Art. 7 Abs. 3 DSGVO). Die mandatsnotwendige Verarbeitung bleibt
+            auf gesetzlicher/vertraglicher Grundlage zulässig.
           </p>
           <div className="flex flex-col sm:flex-row gap-2">
-            <input name="signedByName" required maxLength={300} placeholder="Name der widerrufenden Person *" className="input text-sm sm:flex-1" />
-            <input name="note" maxLength={2000} placeholder="Grund (optional)" className="input text-sm sm:flex-1" />
-            <button type="submit" className="btn-primary !bg-red-600 hover:!bg-red-700 text-sm shrink-0">
+            <input
+              name="signedByName"
+              required
+              maxLength={300}
+              placeholder="Name der widerrufenden Person *"
+              className="input text-sm sm:flex-1"
+            />
+            <input
+              name="note"
+              maxLength={2000}
+              placeholder="Grund (optional)"
+              className="input text-sm sm:flex-1"
+            />
+            <button
+              type="submit"
+              className="btn-primary !bg-red-600 hover:!bg-red-700 text-sm shrink-0"
+            >
               Widerrufen
             </button>
           </div>
@@ -167,11 +192,21 @@ export default async function ClientPrivacyPage({
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-surface-raised border-b border-default">
-                  <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">Zeitpunkt</th>
-                  <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">Art</th>
-                  <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">Person</th>
-                  <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">Quelle</th>
-                  <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">Aktiv</th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">
+                    Zeitpunkt
+                  </th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">
+                    Art
+                  </th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">
+                    Person
+                  </th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">
+                    Quelle
+                  </th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">
+                    Aktiv
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border-subtle">
@@ -179,13 +214,19 @@ export default async function ClientPrivacyPage({
                   <tr key={h.id}>
                     <td className="px-4 py-2 text-secondary">{fmtDateTimeShort(h.createdAt)}</td>
                     <td className="px-4 py-2">
-                      {h.isRevocation
-                        ? <span className="badge badge-red">Widerruf</span>
-                        : <span className="badge badge-green">Erteilung</span>}
+                      {h.isRevocation ? (
+                        <span className="badge badge-red">Widerruf</span>
+                      ) : (
+                        <span className="badge badge-green">Erteilung</span>
+                      )}
                     </td>
                     <td className="px-4 py-2 text-secondary">{h.signedByName}</td>
-                    <td className="px-4 py-2 text-secondary">{h.source === 'PORTAL' ? 'Portal' : 'Kanzlei'}</td>
-                    <td className="px-4 py-2 text-muted">{countGranted(parseConsent(h.consents))}</td>
+                    <td className="px-4 py-2 text-secondary">
+                      {h.source === 'PORTAL' ? 'Portal' : 'Kanzlei'}
+                    </td>
+                    <td className="px-4 py-2 text-muted">
+                      {countGranted(parseConsent(h.consents))}
+                    </td>
                   </tr>
                 ))}
               </tbody>

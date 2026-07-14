@@ -17,7 +17,6 @@ import { IcalSubscribe } from './ical-subscribe';
 import { signIcalToken } from '@/server/ical/feed';
 import { fmtDateMedium, fmtDateTimeMedium } from '@/lib/fmt';
 
-
 const STATUS_LABELS: Record<string, string> = {
   PENDING: 'Wird geprüft',
   ACCEPTED: 'Bestätigt',
@@ -30,7 +29,11 @@ export default async function PortalAppointmentsPage() {
   if (!session?.user) redirect('/portal/login');
 
   const { tenantId, contactId, clientId } = session.user;
-  const features = await readPortalFeatures({ tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' });
+  const features = await readPortalFeatures({
+    tenantId,
+    actorId: contactId,
+    actorType: 'CLIENT_CONTACT',
+  });
 
   const data = await withTenantContext(
     { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' },
@@ -119,7 +122,9 @@ export default async function PortalAppointmentsPage() {
                     {a.location && <span className="ml-2">· {a.location}</span>}
                   </p>
                   {a.notes && (
-                    <p className="text-xs text-secondary dark:text-disabled mt-1 whitespace-pre-wrap">{a.notes}</p>
+                    <p className="text-xs text-secondary dark:text-disabled mt-1 whitespace-pre-wrap">
+                      {a.notes}
+                    </p>
                   )}
                 </li>
               );
@@ -170,22 +175,24 @@ export default async function PortalAppointmentsPage() {
                       <ul className="mt-1 text-xs text-secondary dark:text-disabled space-y-0.5">
                         {slots.map((s, i) => (
                           <li key={i}>
-                            {fmtDateTimeMedium(new Date(s.startsAt))} – {fmtDateTimeMedium(new Date(s.endsAt))}
+                            {fmtDateTimeMedium(new Date(s.startsAt))} –{' '}
+                            {fmtDateTimeMedium(new Date(s.endsAt))}
                           </li>
                         ))}
                       </ul>
                       {r.status === 'ACCEPTED' && r.acceptedSlot && (
                         <p className="text-xs text-emerald-700 mt-1">
-                          Bestätigt für: {fmtDateTimeMedium(new Date((r.acceptedSlot as { startsAt: string }).startsAt))}
+                          Bestätigt für:{' '}
+                          {fmtDateTimeMedium(
+                            new Date((r.acceptedSlot as { startsAt: string }).startsAt),
+                          )}
                         </p>
                       )}
                       {r.status === 'REJECTED' && r.rejectionReason && (
                         <p className="text-xs text-red-700 mt-1">Grund: {r.rejectionReason}</p>
                       )}
                     </div>
-                    {r.status === 'PENDING' && (
-                      <CancelRequestButton id={r.id} />
-                    )}
+                    {r.status === 'PENDING' && <CancelRequestButton id={r.id} />}
                   </div>
                 </li>
               );

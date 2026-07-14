@@ -15,9 +15,7 @@ export function ToggleActiveForm({ id, active }: { id: string; active: boolean }
         });
       }}
       className={
-        active
-          ? 'text-xs text-red-700 hover:underline'
-          : 'text-xs text-emerald-700 hover:underline'
+        active ? 'text-xs text-red-700 hover:underline' : 'text-xs text-emerald-700 hover:underline'
       }
     >
       {active ? 'Deaktivieren' : 'Aktivieren'}
@@ -59,7 +57,9 @@ export function DeleteTemplateForm({
         onClick={handleClick}
         disabled={isPending || instances > 0}
         className="text-xs text-red-700 hover:underline disabled:opacity-40"
-        title={instances > 0 ? 'Mit Instanzen nicht löschbar — bitte deaktivieren' : 'Vorlage löschen'}
+        title={
+          instances > 0 ? 'Mit Instanzen nicht löschbar — bitte deaktivieren' : 'Vorlage löschen'
+        }
       >
         {isPending ? '…' : 'Löschen'}
       </button>

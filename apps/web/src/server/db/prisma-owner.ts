@@ -14,7 +14,10 @@
 // @taxtronik/db verwenden.
 // =============================================================================
 
-import { PrismaClient as PrismaClientCtor, type PrismaClientInstance } from '@taxtronik/db/prisma-client';
+import {
+  PrismaClient as PrismaClientCtor,
+  type PrismaClientInstance,
+} from '@taxtronik/db/prisma-client';
 import { createPostgresAdapter, requireDatabaseUrl } from '@taxtronik/db/prisma-adapter';
 
 type PrismaClient = PrismaClientInstance;

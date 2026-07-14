@@ -11,7 +11,12 @@
 
 export type { ActionResult } from '@/server/actions/staff-action';
 
-export { saveSellerInfoAction, saveBrandingAction, saveLetterheadAction, saveLegalAction } from './branding-actions';
+export {
+  saveSellerInfoAction,
+  saveBrandingAction,
+  saveLetterheadAction,
+  saveLegalAction,
+} from './branding-actions';
 export {
   saveModulesAction,
   saveAccessPolicyAction,
@@ -19,5 +24,10 @@ export {
   resetClientLayoutAction,
   savePortalFeaturesAction,
 } from './modules-actions';
-export { saveSmtpAction, resetSmtpAction, sendTestMailAction, saveMailDispatchAction } from './mail-actions';
+export {
+  saveSmtpAction,
+  resetSmtpAction,
+  sendTestMailAction,
+  saveMailDispatchAction,
+} from './mail-actions';
 export { saveTaxRegionAction, saveTsaAction, testTsaAction } from './infra-actions';

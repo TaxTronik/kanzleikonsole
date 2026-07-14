@@ -7,7 +7,8 @@ import type { LlmStatusDTO } from '@/server/risk/llm';
 function queueText(q: LlmStatusDTO['queue']): string | null {
   if (!q) return null;
   if (q.slotsGesamt != null) return `${q.aktiv ?? 0}/${q.slotsGesamt} Slots aktiv`;
-  if (q.aktiv != null || q.wartend != null) return `${q.aktiv ?? 0} aktiv · ${q.wartend ?? 0} wartend`;
+  if (q.aktiv != null || q.wartend != null)
+    return `${q.aktiv ?? 0} aktiv · ${q.wartend ?? 0} wartend`;
   return null;
 }
 
@@ -18,28 +19,42 @@ function LlmIndicator({ s, starting }: { s: LlmStatusDTO; starting: boolean }) {
   const q = queueText(s.queue);
   if (s.verfuegbar) {
     return (
-      <span className="text-xs text-emerald-600 inline-flex items-center gap-1" title="LLM-Server bereit">
-        <span className="h-2 w-2 rounded-full bg-emerald-500" /> KI verfügbar{q ? <span className="text-muted"> · {q}</span> : null}
+      <span
+        className="text-xs text-emerald-600 inline-flex items-center gap-1"
+        title="LLM-Server bereit"
+      >
+        <span className="h-2 w-2 rounded-full bg-emerald-500" /> KI verfügbar
+        {q ? <span className="text-muted"> · {q}</span> : null}
       </span>
     );
   }
   if (s.binaryVorhanden === false) {
     return (
-      <span className="text-xs text-muted inline-flex items-center gap-1" title="In der Engine ist kein LLM-Binary konfiguriert">
+      <span
+        className="text-xs text-muted inline-flex items-center gap-1"
+        title="In der Engine ist kein LLM-Binary konfiguriert"
+      >
         <span className="h-2 w-2 rounded-full bg-gray-400" /> KI nicht installiert
       </span>
     );
   }
   if (starting || s.vonUnsGestartet) {
     return (
-      <span className="text-xs text-amber-600 inline-flex items-center gap-1" title="LLM-Server startet / lädt das Modell">
-        <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" /> KI lädt …{q ? <span className="text-muted"> · {q}</span> : null}
+      <span
+        className="text-xs text-amber-600 inline-flex items-center gap-1"
+        title="LLM-Server startet / lädt das Modell"
+      >
+        <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" /> KI lädt …
+        {q ? <span className="text-muted"> · {q}</span> : null}
       </span>
     );
   }
   // Binary vorhanden, aber Server läuft nicht und wurde nicht angestoßen.
   return (
-    <span className="text-xs text-muted inline-flex items-center gap-1" title="Der LLM-Server läuft nicht — „LLM dazuschalten“ startet ihn bei Bedarf.">
+    <span
+      className="text-xs text-muted inline-flex items-center gap-1"
+      title="Der LLM-Server läuft nicht — „LLM dazuschalten“ startet ihn bei Bedarf."
+    >
       <span className="h-2 w-2 rounded-full bg-gray-400" /> KI aus
     </span>
   );
@@ -102,10 +117,16 @@ export function StatsBar({
             className="btn-secondary text-xs"
             title="LLM-Schicht asynchron dazuschalten (startet den Server bei Bedarf selbst)"
           >
-            {(pending || llmStarting) ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
+            {pending || llmStarting ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Wand2 className="h-3.5 w-3.5" />
+            )}
             {llmStarting ? 'Vertiefung läuft …' : 'LLM dazuschalten +'}
           </button>
-          {engineConfigured && llmStatus ? <LlmIndicator s={llmStatus} starting={!!llmStarting} /> : null}
+          {engineConfigured && llmStatus ? (
+            <LlmIndicator s={llmStatus} starting={!!llmStarting} />
+          ) : null}
         </div>
       )}
 

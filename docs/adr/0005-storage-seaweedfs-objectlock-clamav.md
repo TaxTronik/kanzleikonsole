@@ -65,7 +65,7 @@ Fünf Buckets — angelegt vom `seaweedfs-init`-Container über die AWS-CLI
   löschen. Der einzige Weg ist Bucket-Destruction (= Total-Loss)
 - Zwei-Phasen-Upload (Quarantine → Target) verhindert „infizierter Upload
   überschreibt sauberes Dokument"
-- Presigned-URL = App muss nicht 100MB-Streams puffern
+- Presigned-URL = App müsste keine großen Streams puffern
 - Identische S3-API zur AWS — der Code in `packages/storage` ist
   Anbieter-agnostisch (AWS SDK + `forcePathStyle: true`)
 

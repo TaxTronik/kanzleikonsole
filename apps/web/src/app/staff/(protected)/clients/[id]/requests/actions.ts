@@ -100,7 +100,10 @@ export async function createRequestAction(
 
       // Submission jetzt nachträglich auf den Request verlinken (für UI-Lookup)
       if (formSubmissionId) {
-        await tx.formSubmission.update({ where: { id: formSubmissionId }, data: { requestId: req.id } });
+        await tx.formSubmission.update({
+          where: { id: formSubmissionId },
+          data: { requestId: req.id },
+        });
       }
 
       await evidenceService.record(tx, {
@@ -130,21 +133,36 @@ export async function createRequestAction(
 
   const portalUrl = `${portalBaseUrl}/portal/requests/${createdId}`;
   // Befund 3: fire-and-forget mit catch+Log statt `void` (unhandled rejection).
-  fireAndForget('notifyClientContacts (request-opened)', notifyClientContacts({
-    tenantId,
-    clientId: data.clientId,
-    slug: 'request-opened',
-    vars: {
-      request: { id: createdId, title: data.title, description: data.description, priority: data.priority },
-      portalUrl,
-    },
-    n8nEvent: 'request.opened',
-    n8nPayload: { tenantId, requestId: createdId, clientId: data.clientId, priority: data.priority, dueAt: data.dueAt ?? null },
-    fallback: {
-      subject: 'Neue Anforderung von Ihrer Kanzlei: {{request.title}}',
-      bodyMd: 'Sehr geehrte/r {{contact.fullName}},\n\nin Ihrem Mandantenportal liegt eine neue Anforderung für Sie bereit:\n\n**{{request.title}}**\n\n{{request.description}}\n\nBitte öffnen Sie das Portal:\n{{portalUrl}}',
-    },
-  }));
+  fireAndForget(
+    'notifyClientContacts (request-opened)',
+    notifyClientContacts({
+      tenantId,
+      clientId: data.clientId,
+      slug: 'request-opened',
+      vars: {
+        request: {
+          id: createdId,
+          title: data.title,
+          description: data.description,
+          priority: data.priority,
+        },
+        portalUrl,
+      },
+      n8nEvent: 'request.opened',
+      n8nPayload: {
+        tenantId,
+        requestId: createdId,
+        clientId: data.clientId,
+        priority: data.priority,
+        dueAt: data.dueAt ?? null,
+      },
+      fallback: {
+        subject: 'Neue Anforderung von Ihrer Kanzlei: {{request.title}}',
+        bodyMd:
+          'Sehr geehrte/r {{contact.fullName}},\n\nin Ihrem Mandantenportal liegt eine neue Anforderung für Sie bereit:\n\n**{{request.title}}**\n\n{{request.description}}\n\nBitte öffnen Sie das Portal:\n{{portalUrl}}',
+      },
+    }),
+  );
 
   revalidatePath(`/staff/clients/${data.clientId}`);
   revalidatePath('/staff/requests');
@@ -208,7 +226,10 @@ export async function addStaffResponseAction(formData: FormData): Promise<Action
   let reqInfo: { clientId: string; title: string } | null;
   try {
     reqInfo = await withTenantContext(ctx, async (tx) => {
-      const req = await tx.request.findUnique({ where: { id: requestId }, select: { clientId: true } });
+      const req = await tx.request.findUnique({
+        where: { id: requestId },
+        select: { clientId: true },
+      });
       if (!req) throw new ActionError('Anforderung nicht gefunden.');
       await assertClientAccessTx(tx, session, req.clientId);
       const resp = await tx.requestResponse.create({
@@ -224,7 +245,10 @@ export async function addStaffResponseAction(formData: FormData): Promise<Action
         resourceId: resp.id,
         after: { requestId, length: message.length },
       });
-      return tx.request.findUnique({ where: { id: requestId }, select: { clientId: true, title: true } });
+      return tx.request.findUnique({
+        where: { id: requestId },
+        select: { clientId: true, title: true },
+      });
     });
   } catch (e) {
     return toActionError(e);
@@ -233,21 +257,25 @@ export async function addStaffResponseAction(formData: FormData): Promise<Action
   if (reqInfo) {
     const portalUrl = `${portalBaseUrl}/portal/requests/${requestId}`;
     // Befund 3: fire-and-forget mit catch+Log statt `void`.
-    fireAndForget('notifyClientContacts (request-staff-replied)', notifyClientContacts({
-      tenantId,
-      clientId: reqInfo.clientId,
-      slug: 'request-staff-replied',
-      vars: {
-        request: { id: requestId, title: reqInfo.title },
-        portalUrl,
-      },
-      n8nEvent: 'request.responded',
-      n8nPayload: { tenantId, requestId, by: 'STAFF' },
-      fallback: {
-        subject: 'Antwort von Ihrer Kanzlei: {{request.title}}',
-        bodyMd: 'Sehr geehrte/r {{contact.fullName}},\n\nIhre Kanzlei hat auf Ihre Anforderung „{{request.title}}" geantwortet.\n\nDie Antwort können Sie im Mandantenportal einsehen:\n{{portalUrl}}',
-      },
-    }));
+    fireAndForget(
+      'notifyClientContacts (request-staff-replied)',
+      notifyClientContacts({
+        tenantId,
+        clientId: reqInfo.clientId,
+        slug: 'request-staff-replied',
+        vars: {
+          request: { id: requestId, title: reqInfo.title },
+          portalUrl,
+        },
+        n8nEvent: 'request.responded',
+        n8nPayload: { tenantId, requestId, by: 'STAFF' },
+        fallback: {
+          subject: 'Antwort von Ihrer Kanzlei: {{request.title}}',
+          bodyMd:
+            'Sehr geehrte/r {{contact.fullName}},\n\nIhre Kanzlei hat auf Ihre Anforderung „{{request.title}}" geantwortet.\n\nDie Antwort können Sie im Mandantenportal einsehen:\n{{portalUrl}}',
+        },
+      }),
+    );
   }
   revalidatePath('/staff/requests');
   return { ok: true };

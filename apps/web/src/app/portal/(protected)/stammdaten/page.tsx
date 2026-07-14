@@ -10,7 +10,11 @@ export default async function PortalStammdatenPage() {
   const session = await portalAuth();
   if (!session?.user) redirect('/portal/login');
   const { tenantId, contactId, clientId } = session.user;
-  const features = await readPortalFeatures({ tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' });
+  const features = await readPortalFeatures({
+    tenantId,
+    actorId: contactId,
+    actorType: 'CLIENT_CONTACT',
+  });
   if (!features.stammdatenSelfService) redirect('/portal/dashboard');
 
   const [client, requests] = await withTenantContext(
@@ -20,8 +24,14 @@ export default async function PortalStammdatenPage() {
         tx.client.findUnique({
           where: { id: clientId },
           select: {
-            id: true, name: true, street: true, postalCode: true,
-            city: true, countryIso: true, vatId: true, invoiceEmail: true,
+            id: true,
+            name: true,
+            street: true,
+            postalCode: true,
+            city: true,
+            countryIso: true,
+            vatId: true,
+            invoiceEmail: true,
           },
         }),
         tx.clientMasterChangeRequest.findMany({
@@ -39,9 +49,8 @@ export default async function PortalStammdatenPage() {
     <div className="p-8 max-w-3xl">
       <h1 className="text-2xl font-bold text-primary mb-1">Stammdaten</h1>
       <p className="text-muted text-sm mb-6">
-        Hier können Sie Änderungen an Ihren Stammdaten vorschlagen. Jede
-        Änderung wird von Ihrer Kanzlei geprüft und nach Bestätigung
-        übernommen.
+        Hier können Sie Änderungen an Ihren Stammdaten vorschlagen. Jede Änderung wird von Ihrer
+        Kanzlei geprüft und nach Bestätigung übernommen.
       </p>
 
       {pending && (
@@ -49,13 +58,10 @@ export default async function PortalStammdatenPage() {
           <div className="flex items-start gap-2">
             <Clock className="h-4 w-4 text-yellow-700 mt-0.5" />
             <div className="text-sm">
-              <p className="font-medium text-yellow-900">
-                Änderung in Prüfung
-              </p>
+              <p className="font-medium text-yellow-900">Änderung in Prüfung</p>
               <p className="text-yellow-800 text-xs mt-1">
-                Eingereicht am{' '}
-                {fmtDateTimeShort(pending.createdAt)}
-                . Weitere Änderungen sind erst nach Entscheidung möglich.
+                Eingereicht am {fmtDateTimeShort(pending.createdAt)}. Weitere Änderungen sind erst
+                nach Entscheidung möglich.
               </p>
             </div>
           </div>
@@ -86,20 +92,12 @@ export default async function PortalStammdatenPage() {
                   <StatusIcon status={r.status} />
                   <div className="flex-1">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium text-primary">
-                        {statusLabel(r.status)}
-                      </span>
-                      <span className="text-xs text-disabled">
-                        {fmtDateNumeric(r.createdAt)}
-                      </span>
+                      <span className="font-medium text-primary">{statusLabel(r.status)}</span>
+                      <span className="text-xs text-disabled">{fmtDateNumeric(r.createdAt)}</span>
                     </div>
-                    <p className="text-xs text-muted mt-0.5">
-                      {summarize(r.fields)}
-                    </p>
+                    <p className="text-xs text-muted mt-0.5">{summarize(r.fields)}</p>
                     {r.decisionNote && (
-                      <p className="text-xs text-secondary mt-1 italic">
-                        „{r.decisionNote}"
-                      </p>
+                      <p className="text-xs text-secondary mt-1 italic">„{r.decisionNote}"</p>
                     )}
                   </div>
                 </div>
@@ -120,11 +118,16 @@ function StatusIcon({ status }: { status: string }) {
 
 function statusLabel(s: string): string {
   switch (s) {
-    case 'PENDING': return 'In Prüfung';
-    case 'APPROVED': return 'Genehmigt';
-    case 'REJECTED': return 'Abgelehnt';
-    case 'WITHDRAWN': return 'Zurückgezogen';
-    default: return s;
+    case 'PENDING':
+      return 'In Prüfung';
+    case 'APPROVED':
+      return 'Genehmigt';
+    case 'REJECTED':
+      return 'Abgelehnt';
+    case 'WITHDRAWN':
+      return 'Zurückgezogen';
+    default:
+      return s;
   }
 }
 

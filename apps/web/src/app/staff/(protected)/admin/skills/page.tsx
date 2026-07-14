@@ -33,13 +33,11 @@ export default async function SkillsAdminPage() {
   }
   const { tenantId, staffId } = session.user;
 
-  const skills = await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    (tx) =>
-      tx.staffSkill.findMany({
-        orderBy: [{ isSystem: 'desc' }, { sortOrder: 'asc' }, { label: 'asc' }],
-        include: { _count: { select: { assignments: true } } },
-      }),
+  const skills = await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>
+    tx.staffSkill.findMany({
+      orderBy: [{ isSystem: 'desc' }, { sortOrder: 'asc' }, { label: 'asc' }],
+      include: { _count: { select: { assignments: true } } },
+    }),
   );
 
   return (
@@ -54,8 +52,8 @@ export default async function SkillsAdminPage() {
             Tätigkeitsbereiche
           </h1>
           <p className="text-muted text-sm">
-            Skills wie Finanzbuchhaltung, Lohnabrechnung, Jahresabschluss. Mitarbeiter
-            werden in der Benutzer-Verwaltung diesen Bereichen zugeordnet.
+            Skills wie Finanzbuchhaltung, Lohnabrechnung, Jahresabschluss. Mitarbeiter werden in der
+            Benutzer-Verwaltung diesen Bereichen zugeordnet.
           </p>
         </div>
       </div>
@@ -73,10 +71,18 @@ export default async function SkillsAdminPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-50 border-b border-default">
-              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Bereich</th>
-              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Kürzel</th>
-              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Farbe</th>
-              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Mitarbeiter</th>
+              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+                Bereich
+              </th>
+              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+                Kürzel
+              </th>
+              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+                Farbe
+              </th>
+              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+                Mitarbeiter
+              </th>
               <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Typ</th>
               <th className="text-right px-6 py-3"></th>
             </tr>
@@ -91,7 +97,7 @@ export default async function SkillsAdminPage() {
                 color={s.color}
                 isSystem={s.isSystem}
                 assignments={s._count.assignments}
-                colorHint={s.color ? COLOR_HINT[s.color] ?? s.color : '—'}
+                colorHint={s.color ? (COLOR_HINT[s.color] ?? s.color) : '—'}
               />
             ))}
           </tbody>
@@ -99,8 +105,8 @@ export default async function SkillsAdminPage() {
       </div>
 
       <p className="text-xs text-disabled mt-4">
-        System-Bereiche sind vorbelegt (FiBu, Lohn, Jahresabschluss, Steuer, Beratung)
-        und können nur umbenannt werden, aber nicht gelöscht.
+        System-Bereiche sind vorbelegt (FiBu, Lohn, Jahresabschluss, Steuer, Beratung) und können
+        nur umbenannt werden, aber nicht gelöscht.
       </p>
     </div>
   );

@@ -83,7 +83,9 @@ export function renderTemplate(
 // referenzieren wir nur das Re-Export.
 const markdownToHtml = renderSafeMarkdown;
 
-export async function sendTemplateMail(opts: DispatchOptions): Promise<{ ok: boolean; sentViaTemplate: boolean }> {
+export async function sendTemplateMail(
+  opts: DispatchOptions,
+): Promise<{ ok: boolean; sentViaTemplate: boolean }> {
   const dispatch = await readMailDispatch({
     tenantId: opts.tenantId,
     actorId: null,
@@ -155,9 +157,11 @@ export async function sendTemplateMail(opts: DispatchOptions): Promise<{ ok: boo
  * hat — kein Fehler, weil das eine valide Konfiguration ist (Mandant ohne
  * Portal-Zugang).
  */
-export async function notifyClientContacts(opts: Omit<DispatchOptions, 'to'> & {
-  clientId: string;
-}): Promise<{ ok: boolean; recipients: number }> {
+export async function notifyClientContacts(
+  opts: Omit<DispatchOptions, 'to'> & {
+    clientId: string;
+  },
+): Promise<{ ok: boolean; recipients: number }> {
   const contacts = await prismaOwner.clientContact.findMany({
     where: {
       tenantId: opts.tenantId,

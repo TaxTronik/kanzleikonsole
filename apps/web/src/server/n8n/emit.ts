@@ -74,7 +74,11 @@ export async function pingN8nWebhook(
     payload: { from: 'taxtronik-settings-ui' },
     occurredAt: new Date().toISOString(),
   });
-  const { signature, timestamp, event, nonce } = signOutboundN8n('taxtronik.ping', body, hmacSecret);
+  const { signature, timestamp, event, nonce } = signOutboundN8n(
+    'taxtronik.ping',
+    body,
+    hmacSecret,
+  );
 
   const ctrl = new AbortController();
   const to = setTimeout(() => ctrl.abort(), 8_000);

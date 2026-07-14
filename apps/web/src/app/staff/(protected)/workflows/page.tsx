@@ -23,7 +23,6 @@ interface SearchParams {
   clientId?: string;
 }
 
-
 export default async function ActiveWorkflowsPage({
   searchParams,
 }: {
@@ -48,7 +47,9 @@ export default async function ActiveWorkflowsPage({
       const baseWhere = {
         status: 'ACTIVE' as const,
         ...(filter === 'mineStart' ? { startedByStaff: staffId } : {}),
-        ...(filter === 'mine' ? { items: { some: { assigneeStaffId: staffId, doneAt: null } } } : {}),
+        ...(filter === 'mine'
+          ? { items: { some: { assigneeStaffId: staffId, doneAt: null } } }
+          : {}),
         AND: [
           ...(clientFilterId ? [{ clientId: clientFilterId }] : []),
           ...(denied.length ? [{ clientId: { notIn: denied } }] : []),
@@ -97,15 +98,15 @@ export default async function ActiveWorkflowsPage({
   // KPI-Box: schnelle Zahlen ganz oben
   const totalCount = instances.length;
   const myItemCount = instances.reduce(
-    (sum, inst) => sum + inst.items.filter((it) => it.assigneeStaffId === staffId && !it.doneAt).length,
+    (sum, inst) =>
+      sum + inst.items.filter((it) => it.assigneeStaffId === staffId && !it.doneAt).length,
     0,
   );
   const overdueCount = instances.reduce(
     (sum, inst) =>
       sum +
-      inst.items.filter(
-        (it) => !it.doneAt && it.dueDate && it.dueDate.getTime() < Date.now(),
-      ).length,
+      inst.items.filter((it) => !it.doneAt && it.dueDate && it.dueDate.getTime() < Date.now())
+        .length,
     0,
   );
 
@@ -132,15 +133,30 @@ export default async function ActiveWorkflowsPage({
       {/* KPIs */}
       <div className="grid grid-cols-3 gap-3 mb-4">
         <KpiCard label="Laufende Workflows" value={totalCount} icon={Activity} />
-        <KpiCard label="Mir zugewiesen, offen" value={myItemCount} icon={UserIcon} highlight={myItemCount > 0} />
-        <KpiCard label="Überfällig" value={overdueCount} icon={AlertCircle} highlight={overdueCount > 0} tone="red" />
+        <KpiCard
+          label="Mir zugewiesen, offen"
+          value={myItemCount}
+          icon={UserIcon}
+          highlight={myItemCount > 0}
+        />
+        <KpiCard
+          label="Überfällig"
+          value={overdueCount}
+          icon={AlertCircle}
+          highlight={overdueCount > 0}
+          tone="red"
+        />
       </div>
 
       {/* Filter-Bar */}
       <div className="flex items-center gap-2 flex-wrap mb-4">
         <FilterPill href={filterLink('all')} active={filter === 'all'} label="Alle" />
         <FilterPill href={filterLink('mine')} active={filter === 'mine'} label="Mir zugewiesen" />
-        <FilterPill href={filterLink('mineStart')} active={filter === 'mineStart'} label="Von mir gestartet" />
+        <FilterPill
+          href={filterLink('mineStart')}
+          active={filter === 'mineStart'}
+          label="Von mir gestartet"
+        />
         {allClients.length > 0 && (
           <form action="/staff/workflows" method="get" className="ml-2 flex items-center gap-1">
             {filter !== 'all' && <input type="hidden" name="filter" value={filter} />}
@@ -151,10 +167,14 @@ export default async function ActiveWorkflowsPage({
             >
               <option value="">— alle Mandanten —</option>
               {allClients.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
               ))}
             </select>
-            <button type="submit" className="btn-secondary text-xs">Filtern</button>
+            <button type="submit" className="btn-secondary text-xs">
+              Filtern
+            </button>
             {clientFilterId && (
               <Link href={filterLink(filter)} className="text-xs text-muted hover:underline ml-1">
                 ×
@@ -172,7 +192,10 @@ export default async function ActiveWorkflowsPage({
               ? 'Keine laufenden Workflows.'
               : 'Keine Treffer für den gewählten Filter.'}
           </p>
-          <Link href="/staff/workflows/templates" className="btn-secondary text-xs inline-flex items-center gap-1.5">
+          <Link
+            href="/staff/workflows/templates"
+            className="btn-secondary text-xs inline-flex items-center gap-1.5"
+          >
             <Plus className="h-3 w-3" />
             Vorlage wählen und starten
           </Link>
@@ -215,10 +238,16 @@ export default async function ActiveWorkflowsPage({
                       <p className="text-xs text-secondary mt-1">
                         Nächster Schritt: <span className="font-medium">{nextItem.title}</span>
                         {nextItem.assigneeStaffId && (
-                          <span className="text-muted"> — zugewiesen an {staffName.get(nextItem.assigneeStaffId) ?? '—'}</span>
+                          <span className="text-muted">
+                            {' '}
+                            — zugewiesen an {staffName.get(nextItem.assigneeStaffId) ?? '—'}
+                          </span>
                         )}
                         {nextItem.dueDate && (
-                          <span className="text-muted"> — fällig {fmtDateShort(nextItem.dueDate)}</span>
+                          <span className="text-muted">
+                            {' '}
+                            — fällig {fmtDateShort(nextItem.dueDate)}
+                          </span>
                         )}
                       </p>
                     )}
@@ -226,10 +255,7 @@ export default async function ActiveWorkflowsPage({
                   <div className="text-right text-xs text-muted shrink-0 min-w-[6rem]">
                     {doneItems} / {total} erledigt
                     <div className="mt-1 h-1.5 w-24 rounded-full bg-gray-100 overflow-hidden">
-                      <div
-                        className="h-full bg-brand-600"
-                        style={{ width: `${pct}%` }}
-                      />
+                      <div className="h-full bg-brand-600" style={{ width: `${pct}%` }} />
                     </div>
                   </div>
                 </div>
@@ -242,15 +268,7 @@ export default async function ActiveWorkflowsPage({
   );
 }
 
-function FilterPill({
-  href,
-  active,
-  label,
-}: {
-  href: string;
-  active: boolean;
-  label: string;
-}) {
+function FilterPill({ href, active, label }: { href: string; active: boolean; label: string }) {
   return (
     <Link
       href={href}
@@ -278,16 +296,25 @@ function KpiCard({
   highlight?: boolean;
   tone?: 'red';
 }) {
-  const accent = tone === 'red'
-    ? highlight ? 'text-red-700 dark:text-red-400' : 'text-disabled'
-    : highlight ? 'text-brand-700 dark:text-brand-300' : 'text-disabled';
+  const accent =
+    tone === 'red'
+      ? highlight
+        ? 'text-red-700 dark:text-red-400'
+        : 'text-disabled'
+      : highlight
+        ? 'text-brand-700 dark:text-brand-300'
+        : 'text-disabled';
   return (
     <div className="card p-4">
       <div className="flex items-center gap-2 mb-1">
         <Icon className={`h-4 w-4 ${accent}`} />
-        <p className="text-[11px] font-medium text-muted uppercase tracking-wide truncate">{label}</p>
+        <p className="text-[11px] font-medium text-muted uppercase tracking-wide truncate">
+          {label}
+        </p>
       </div>
-      <p className={`text-2xl font-bold ${tone === 'red' && highlight ? 'text-red-700 dark:text-red-400' : 'text-primary'}`}>
+      <p
+        className={`text-2xl font-bold ${tone === 'red' && highlight ? 'text-red-700 dark:text-red-400' : 'text-primary'}`}
+      >
         {value}
       </p>
     </div>

@@ -3,8 +3,17 @@
 // =============================================================================
 
 import {
-  Document, Packer, Paragraph, TextRun, HeadingLevel,
-  Table, TableRow, TableCell, WidthType, BorderStyle, UnderlineType,
+  Document,
+  Packer,
+  Paragraph,
+  TextRun,
+  HeadingLevel,
+  Table,
+  TableRow,
+  TableCell,
+  WidthType,
+  BorderStyle,
+  UnderlineType,
 } from 'docx';
 import { type ReportModel, type ReportToken } from './report-types';
 import { fmtDateShort } from '@/lib/fmt';
@@ -28,11 +37,16 @@ function meta(model: ReportModel): string {
 function sachverhaltParagraphs(tokens: ReportToken[]): Paragraph[] {
   const paragraphs: Paragraph[] = [];
   let runs: TextRun[] = [];
-  const flush = () => { paragraphs.push(new Paragraph({ children: runs, spacing: { after: 120 } })); runs = []; };
+  const flush = () => {
+    paragraphs.push(new Paragraph({ children: runs, spacing: { after: 120 } }));
+    runs = [];
+  };
 
   for (const tok of tokens) {
     if (tok.kind === 'marker') {
-      runs.push(new TextRun({ text: `[${tok.nr}]`, superScript: true, bold: true, color: hex(tok.color) }));
+      runs.push(
+        new TextRun({ text: `[${tok.nr}]`, superScript: true, bold: true, color: hex(tok.color) }),
+      );
       continue;
     }
     const lines = tok.text.split('\n');
@@ -44,7 +58,10 @@ function sachverhaltParagraphs(tokens: ReportToken[]): Paragraph[] {
         new TextRun({
           text: t,
           underline: tok.color
-            ? { type: tok.streitig ? UnderlineType.WAVE : UnderlineType.SINGLE, color: hex(tok.color) }
+            ? {
+                type: tok.streitig ? UnderlineType.WAVE : UnderlineType.SINGLE,
+                color: hex(tok.color),
+              }
             : undefined,
         }),
       );
@@ -60,15 +77,32 @@ function cell(lines: string[], opts: { header?: boolean; color?: string } = {}):
     children: lines.map(
       (l) =>
         new Paragraph({
-          children: [new TextRun({ text: l, bold: opts.header, size: 17, color: opts.color ? hex(opts.color) : undefined })],
+          children: [
+            new TextRun({
+              text: l,
+              bold: opts.header,
+              size: 17,
+              color: opts.color ? hex(opts.color) : undefined,
+            }),
+          ],
         }),
     ),
   });
 }
 
 function markingsTable(model: ReportModel): Table {
-  const headers = ['Nr.', 'Fundstelle (markierter Text)', 'Begriff · Norm', 'Herkunft · Status', 'Governance · Risiko', 'Notiz · Maßnahme'];
-  const header = new TableRow({ tableHeader: true, children: headers.map((h) => cell([h], { header: true })) });
+  const headers = [
+    'Nr.',
+    'Fundstelle (markierter Text)',
+    'Begriff · Norm',
+    'Herkunft · Status',
+    'Governance · Risiko',
+    'Notiz · Maßnahme',
+  ];
+  const header = new TableRow({
+    tableHeader: true,
+    children: headers.map((h) => cell([h], { header: true })),
+  });
 
   const rows = model.markings.map((m) => {
     const begriffLines = [m.begriff + (m.streitig ? '  ⚠ streitig' : '')];
@@ -80,7 +114,9 @@ function markingsTable(model: ReportModel): Table {
     const govRisiko = [m.governanceLabel ?? '—'];
     if (risiko) govRisiko.push('Risiko: ' + risiko);
 
-    const notiz = [m.notiz, m.kontrolle ? 'Maßnahme: ' + m.kontrolle : null].filter(Boolean) as string[];
+    const notiz = [m.notiz, m.kontrolle ? 'Maßnahme: ' + m.kontrolle : null].filter(
+      Boolean,
+    ) as string[];
 
     return new TableRow({
       children: [
@@ -112,19 +148,37 @@ function markingsTable(model: ReportModel): Table {
 export async function renderDocx(model: ReportModel): Promise<Buffer> {
   const children: (Paragraph | Table)[] = [
     new Paragraph({ text: model.title, heading: HeadingLevel.HEADING_1 }),
-    new Paragraph({ children: [new TextRun({ text: meta(model), size: 18, color: '666666' })], spacing: { after: 240 } }),
+    new Paragraph({
+      children: [new TextRun({ text: meta(model), size: 18, color: '666666' })],
+      spacing: { after: 240 },
+    }),
     new Paragraph({ text: 'Sachverhalt', heading: HeadingLevel.HEADING_2 }),
     new Paragraph({
-      children: [new TextRun({ text: 'Markierte Stellen sind unterstrichen und mit [Nr.] nummeriert — dieselbe Nr. findet sich in der Tabelle „Markierungen".', size: 16, color: '888888', italics: true })],
+      children: [
+        new TextRun({
+          text: 'Markierte Stellen sind unterstrichen und mit [Nr.] nummeriert — dieselbe Nr. findet sich in der Tabelle „Markierungen".',
+          size: 16,
+          color: '888888',
+          italics: true,
+        }),
+      ],
       spacing: { after: 120 },
     }),
     ...sachverhaltParagraphs(model.tokens),
-    new Paragraph({ text: 'Markierungen', heading: HeadingLevel.HEADING_2, spacing: { before: 240 } }),
+    new Paragraph({
+      text: 'Markierungen',
+      heading: HeadingLevel.HEADING_2,
+      spacing: { before: 240 },
+    }),
   ];
   if (model.markings.length > 0) {
     children.push(markingsTable(model));
   } else {
-    children.push(new Paragraph({ children: [new TextRun({ text: 'Keine Markierungen.', italics: true, color: '666666' })] }));
+    children.push(
+      new Paragraph({
+        children: [new TextRun({ text: 'Keine Markierungen.', italics: true, color: '666666' })],
+      }),
+    );
   }
 
   const doc = new Document({ sections: [{ children }] });

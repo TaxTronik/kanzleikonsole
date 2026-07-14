@@ -85,6 +85,10 @@ export async function bulkCloseRequestsAction(input: { ids: string[] }): Promise
   }
   revalidatePath('/staff/requests');
   return failed
-    ? { ok: false, affected: closedIds.length, error: 'Teilweise abgeschlossen — bitte erneut versuchen.' }
+    ? {
+        ok: false,
+        affected: closedIds.length,
+        error: 'Teilweise abgeschlossen — bitte erneut versuchen.',
+      }
     : { ok: true, affected: closedIds.length };
 }

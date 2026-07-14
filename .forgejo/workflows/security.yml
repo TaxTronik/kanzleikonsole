@@ -16,8 +16,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GITLEAKS_VERSION: 8.24.3
-  GITLEAKS_LINUX_X64_SHA256: 9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c
+  GITLEAKS_VERSION: 8.29.0
+  GITLEAKS_LINUX_X64_SHA256: 39e07ad810336fd0ae80d0bd61c60d0521f628173e7583583b5df4a38738522c
 
 jobs:
   dependencies:
@@ -31,7 +31,7 @@ jobs:
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       - name: Guard pnpm supply-chain policy
@@ -71,10 +71,13 @@ jobs:
           tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
           chmod +x /tmp/gitleaks
 
+      - name: Gitleaks-Allowlist gegen Gegenbeispiel prüfen
+        run: bash scripts/tests/gitleaks-config.test.sh /tmp/gitleaks
+
       - name: Scan repository
         run: |
           set -o pipefail
-          /tmp/gitleaks detect --source . --config .gitleaks.toml --redact --verbose 2>&1 | tee security-gitleaks.log
+          /tmp/gitleaks git --config .gitleaks.toml --redact --verbose . 2>&1 | tee security-gitleaks.log
 
       - name: Secret-scan evidence upload
         if: always()

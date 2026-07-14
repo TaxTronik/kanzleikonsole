@@ -7,11 +7,7 @@ import { deleteArticleAction } from '../actions';
 import { renderMarkdown } from '@/lib/markdown';
 import { fmtDateShort } from '@/lib/fmt';
 
-export default async function KbArticlePage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function KbArticlePage({ params }: { params: Promise<{ id: string }> }) {
   const session = await staffAuth();
   if (!session?.user) redirect('/staff/login');
 

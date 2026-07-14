@@ -44,8 +44,8 @@ describe('slugify', () => {
   });
 
   it('handles mixed-case + special chars + length limit together', () => {
-    expect(
-      slugify('GmbH "Schöne Straße" Kontaktpersonen', { separator: '-', maxLength: 30 }),
-    ).toBe('gmbh-schoene-strasse-kontaktpe');
+    expect(slugify('GmbH "Schöne Straße" Kontaktpersonen', { separator: '-', maxLength: 30 })).toBe(
+      'gmbh-schoene-strasse-kontaktpe',
+    );
   });
 });

@@ -115,7 +115,7 @@ export async function resolveN8nConfig(ctx: TenantContext): Promise<N8nConfig> {
   return {
     webhookBaseUrl: env.N8N_WEBHOOK_BASE_URL ?? '',
     hmacSecret: env.N8N_HMAC_SECRET ?? '',
-    apiBaseUrl: '',  // ENV hat keinen separaten API-Key, das geht nur über UI
+    apiBaseUrl: '', // ENV hat keinen separaten API-Key, das geht nur über UI
     apiKey: '',
   };
 }

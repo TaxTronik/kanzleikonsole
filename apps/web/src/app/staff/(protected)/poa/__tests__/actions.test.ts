@@ -57,7 +57,7 @@ vi.mock('@taxtronik/db', () => ({ withTenantContext: m.withTenantContext }));
 // abdeckt — deren ENV-Validierung würfe ohne vollständige ENV beim Import.
 vi.mock('@taxtronik/storage', () => ({
   commitBytesWithTier: vi.fn(),
-  MAX_UPLOAD_BYTES: 100 * 1024 * 1024,
+  MAX_UPLOAD_BYTES: 25 * 1024 * 1024,
 }));
 vi.mock('@taxtronik/config', () => ({
   portalBaseUrl: 'https://portal.example.de',

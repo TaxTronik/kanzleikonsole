@@ -254,7 +254,11 @@ export async function importWorkflowsAction(): Promise<ActionResult> {
         continue;
       }
       const created = await client.createWorkflow(wf);
-      try { await client.activateWorkflow(created.id); } catch { /* Aktivieren ist optional */ }
+      try {
+        await client.activateWorkflow(created.id);
+      } catch {
+        /* Aktivieren ist optional */
+      }
       imported.push(name);
     } catch (e) {
       errors.push(`${file}: ${(e as Error).message}`);

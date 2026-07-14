@@ -25,10 +25,7 @@ export default async function NewArticlePage() {
         <h1 className="text-2xl font-bold text-primary">Neuer Artikel</h1>
       </div>
 
-      <ArticleEditor
-        action={createArticleAction}
-        categories={categories}
-      />
+      <ArticleEditor action={createArticleAction} categories={categories} />
     </div>
   );
 }

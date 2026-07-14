@@ -110,9 +110,8 @@ export async function requireStaffAdmin(): Promise<StaffSession> {
 export async function canAccessClient(session: StaffSession, clientId: string): Promise<boolean> {
   if (isStaffAdmin(session)) return true;
   const { tenantId, staffId } = session.user;
-  return withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    (tx) => canAccessClientTx(tx, session, clientId),
+  return withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>
+    canAccessClientTx(tx, session, clientId),
   );
 }
 
@@ -269,5 +268,8 @@ export function toActionError(e: unknown): ActionErrorResult {
     { component: 'action-error', name: err?.name, err: err?.message, stack: err?.stack },
     'toActionError: unbehandelte Exception',
   );
-  return { ok: false, error: 'Unerwarteter Fehler. Bitte erneut versuchen oder Admin kontaktieren.' };
+  return {
+    ok: false,
+    error: 'Unerwarteter Fehler. Bitte erneut versuchen oder Admin kontaktieren.',
+  };
 }

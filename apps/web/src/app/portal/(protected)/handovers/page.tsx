@@ -14,7 +14,6 @@ import { withTenantContext } from '@taxtronik/db';
 import { readPortalFeatures } from '@/server/settings/portal-features';
 import { fmtDateShort } from '@/lib/fmt';
 
-
 const STATUS_LABELS = {
   RECEIVED: 'Eingegangen',
   IN_PROGRESS: 'In Bearbeitung',
@@ -27,7 +26,11 @@ export default async function PortalHandoversPage() {
   if (!session?.user) redirect('/portal/login');
 
   const { tenantId, contactId, clientId } = session.user;
-  const features = await readPortalFeatures({ tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' });
+  const features = await readPortalFeatures({
+    tenantId,
+    actorId: contactId,
+    actorType: 'CLIENT_CONTACT',
+  });
   if (!features.handoversView) redirect('/portal/dashboard');
 
   const handovers = await withTenantContext(
@@ -69,7 +72,9 @@ export default async function PortalHandoversPage() {
               <li key={h.id} className="px-6 py-3">
                 <p className="text-sm font-medium text-primary">{h.label}</p>
                 {h.contents && (
-                  <p className="text-xs text-secondary dark:text-disabled mt-1 whitespace-pre-wrap">{h.contents}</p>
+                  <p className="text-xs text-secondary dark:text-disabled mt-1 whitespace-pre-wrap">
+                    {h.contents}
+                  </p>
                 )}
                 <p className="text-xs text-emerald-700 mt-1">
                   {h.readyAt ? `seit ${fmtDateShort(h.readyAt)}` : ''}
@@ -96,11 +101,11 @@ export default async function PortalHandoversPage() {
                   <span className="badge-yellow text-[10px]">{STATUS_LABELS[h.status]}</span>
                 </p>
                 {h.contents && (
-                  <p className="text-xs text-secondary dark:text-disabled mt-1 whitespace-pre-wrap">{h.contents}</p>
+                  <p className="text-xs text-secondary dark:text-disabled mt-1 whitespace-pre-wrap">
+                    {h.contents}
+                  </p>
                 )}
-                <p className="text-xs text-muted mt-1">
-                  abgegeben am {fmtDateShort(h.receivedAt)}
-                </p>
+                <p className="text-xs text-muted mt-1">abgegeben am {fmtDateShort(h.receivedAt)}</p>
               </li>
             ))}
           </ul>

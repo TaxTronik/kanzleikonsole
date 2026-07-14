@@ -30,7 +30,10 @@ export function SkillRow(p: Props) {
   }
 
   function remove() {
-    if (!confirm(`„${p.label}" wirklich löschen? ${p.assignments} Zuordnungen werden mit gelöscht.`)) return;
+    if (
+      !confirm(`„${p.label}" wirklich löschen? ${p.assignments} Zuordnungen werden mit gelöscht.`)
+    )
+      return;
     start(async () => {
       await deleteSkillAction({ id: p.id });
     });
@@ -60,7 +63,9 @@ export function SkillRow(p: Props) {
             className="input text-xs"
           >
             {COLOR_OPTIONS.map((c) => (
-              <option key={c} value={c}>{c || '— Keine —'}</option>
+              <option key={c} value={c}>
+                {c || '— Keine —'}
+              </option>
             ))}
           </select>
         ) : (
@@ -89,7 +94,11 @@ export function SkillRow(p: Props) {
               </button>
               <button
                 type="button"
-                onClick={() => { setEditing(false); setLabel(p.label); setColor(p.color ?? ''); }}
+                onClick={() => {
+                  setEditing(false);
+                  setLabel(p.label);
+                  setColor(p.color ?? '');
+                }}
                 className="text-xs text-muted hover:underline"
               >
                 Abbrechen

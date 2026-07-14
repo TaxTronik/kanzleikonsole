@@ -18,12 +18,7 @@
 // =============================================================================
 
 import { NextResponse } from 'next/server';
-import {
-  checkPostgres,
-  checkRedis,
-  checkObjectStore,
-  checkClamAV,
-} from '@/server/health/checks';
+import { checkPostgres, checkRedis, checkObjectStore, checkClamAV } from '@/server/health/checks';
 
 const CACHE_TTL_MS = 5_000;
 

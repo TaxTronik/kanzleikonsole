@@ -79,7 +79,10 @@ export async function saveAnalysis(
         rawResultBucket: raw.bucket,
         rawResultKey: raw.key,
         markings: {
-          create: input.result.markings.map((m) => ({ tenantId: ctx.tenantId, ...markingCreateFields(m) })),
+          create: input.result.markings.map((m) => ({
+            tenantId: ctx.tenantId,
+            ...markingCreateFields(m),
+          })),
         },
       },
       select: { id: true, _count: { select: { markings: true } } },

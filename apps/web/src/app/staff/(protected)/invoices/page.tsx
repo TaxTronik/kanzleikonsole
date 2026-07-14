@@ -26,9 +26,10 @@ export default async function InvoicesPage({
   if (!session?.user) redirect('/staff/login');
 
   const sp = await searchParams;
-  const filterStatus = sp.status && Object.keys(statusLabels).includes(sp.status)
-    ? (sp.status as keyof typeof statusLabels)
-    : null;
+  const filterStatus =
+    sp.status && Object.keys(statusLabels).includes(sp.status)
+      ? (sp.status as keyof typeof statusLabels)
+      : null;
 
   const { tenantId, staffId } = session.user;
 
@@ -122,62 +123,73 @@ export default async function InvoicesPage({
           </div>
         ) : (
           <>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 border-b border-default">
-                <th className="th">Nr.</th>
-                <th className="th">Mandant</th>
-                <th className="th">Datum</th>
-                <th className="th">Fällig</th>
-                <th className="th th-right">Brutto</th>
-                <th className="th">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border-subtle">
-              {visible.map((i) => {
-                const overdue =
-                  i.status === 'SENT' && i.dueDate < new Date();
-                return (
-                  <tr key={i.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 font-medium text-primary">
-                      <Link href={`/staff/invoices/${i.id}`} className="hover:underline">
-                        {i.number}
-                      </Link>
-                    </td>
-                    <td className="px-6 py-4 text-secondary">{i.client.name}</td>
-                    <td className="px-6 py-4 text-secondary">
-                      {fmtDateShort(i.issueDate)}
-                    </td>
-                    <td className={overdue ? 'px-6 py-4 text-red-700' : 'px-6 py-4 text-secondary'}>
-                      {fmtDateShort(i.dueDate)}
-                    </td>
-                    <td className="px-6 py-4 text-right font-mono tabular-nums">
-                      {fmtEUR(i.totalAmount)}
-                    </td>
-                    <td className="px-6 py-4">
-                      {i.status === 'DRAFT' && <span className="badge-gray">{statusLabels[i.status]}</span>}
-                      {i.status === 'SENT' && (overdue ? <span className="badge-red">Überfällig</span> : <span className="badge-yellow">{statusLabels[i.status]}</span>)}
-                      {i.status === 'PAID' && <span className="badge-green">{statusLabels[i.status]}</span>}
-                      {i.status === 'OVERDUE' && <span className="badge-red">{statusLabels[i.status]}</span>}
-                      {i.status === 'CANCELLED' && <span className="badge-gray">{statusLabels[i.status]}</span>}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          <Pagination
-            basePath="/staff/invoices"
-            baseQs={baseQs}
-            currentCursor={sp.cursor ?? null}
-            nextCursor={nextCursor}
-            totalCount={totalCount}
-            shownCount={visible.length}
-          />
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 border-b border-default">
+                  <th className="th">Nr.</th>
+                  <th className="th">Mandant</th>
+                  <th className="th">Datum</th>
+                  <th className="th">Fällig</th>
+                  <th className="th th-right">Brutto</th>
+                  <th className="th">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border-subtle">
+                {visible.map((i) => {
+                  const overdue = i.status === 'SENT' && i.dueDate < new Date();
+                  return (
+                    <tr key={i.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 font-medium text-primary">
+                        <Link href={`/staff/invoices/${i.id}`} className="hover:underline">
+                          {i.number}
+                        </Link>
+                      </td>
+                      <td className="px-6 py-4 text-secondary">{i.client.name}</td>
+                      <td className="px-6 py-4 text-secondary">{fmtDateShort(i.issueDate)}</td>
+                      <td
+                        className={overdue ? 'px-6 py-4 text-red-700' : 'px-6 py-4 text-secondary'}
+                      >
+                        {fmtDateShort(i.dueDate)}
+                      </td>
+                      <td className="px-6 py-4 text-right font-mono tabular-nums">
+                        {fmtEUR(i.totalAmount)}
+                      </td>
+                      <td className="px-6 py-4">
+                        {i.status === 'DRAFT' && (
+                          <span className="badge-gray">{statusLabels[i.status]}</span>
+                        )}
+                        {i.status === 'SENT' &&
+                          (overdue ? (
+                            <span className="badge-red">Überfällig</span>
+                          ) : (
+                            <span className="badge-yellow">{statusLabels[i.status]}</span>
+                          ))}
+                        {i.status === 'PAID' && (
+                          <span className="badge-green">{statusLabels[i.status]}</span>
+                        )}
+                        {i.status === 'OVERDUE' && (
+                          <span className="badge-red">{statusLabels[i.status]}</span>
+                        )}
+                        {i.status === 'CANCELLED' && (
+                          <span className="badge-gray">{statusLabels[i.status]}</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <Pagination
+              basePath="/staff/invoices"
+              baseQs={baseQs}
+              currentCursor={sp.cursor ?? null}
+              nextCursor={nextCursor}
+              totalCount={totalCount}
+              shownCount={visible.length}
+            />
           </>
         )}
       </div>
     </div>
   );
 }
-

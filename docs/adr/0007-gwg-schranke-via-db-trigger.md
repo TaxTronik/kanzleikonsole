@@ -27,11 +27,13 @@ die DB den Mandanten nicht scharf.
 ## Konsequenzen
 
 **Vorteile**
+
 - Doppelte Verteidigung — App-Bug wird vom Trigger gefangen
 - Konsistenz garantiert: kein "halb-aktiver" Mandant denkbar
 - Beweisbar in Audits (DB-Trigger ist im Schema dokumentiert)
 
 **Nachteile**
+
 - Trigger-Errors müssen in der App freundlich gefangen werden
   (sonst „RAISE EXCEPTION" als 500)
 - Trigger erschwert Massen-Migrationen (Workaround: temporär als

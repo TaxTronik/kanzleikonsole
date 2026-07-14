@@ -87,9 +87,7 @@ export function SidebarNav({ items }: Props) {
   // Hilfsfunktion: matcht item.href oder einen seiner altPaths gegen pathname.
   const matches = (i: NavItem): boolean => {
     if (pathname === i.href || pathname.startsWith(i.href + '/')) return true;
-    return (i.altPaths ?? []).some(
-      (p) => pathname === p || pathname.startsWith(p + '/'),
-    );
+    return (i.altPaths ?? []).some((p) => pathname === p || pathname.startsWith(p + '/'));
   };
 
   // Längsten Prefix-Match über alle Items dieser Liste finden. So leuchtet

@@ -4,9 +4,7 @@
     {
       "parameters": {
         "rule": {
-          "interval": [
-            { "field": "cronExpression", "expression": "0 9 * * 1-5" }
-          ]
+          "interval": [{ "field": "cronExpression", "expression": "0 9 * * 1-5" }]
         }
       },
       "id": "cron-trigger",

@@ -89,7 +89,13 @@ export async function loadAbsenceCoverage(tx: TxClient, selfId: string): Promise
   // Offene Anforderungen dieser Mandanten.
   const requests = await tx.request.findMany({
     where: { clientId: { in: clientIds }, status: { in: ['OPEN', 'IN_PROGRESS', 'RESPONDED'] } },
-    select: { id: true, title: true, clientId: true, dueAt: true, client: { select: { name: true } } },
+    select: {
+      id: true,
+      title: true,
+      clientId: true,
+      dueAt: true,
+      client: { select: { name: true } },
+    },
     orderBy: [{ dueAt: { sort: 'asc', nulls: 'last' } }, { createdAt: 'desc' }],
     take: 200,
   });

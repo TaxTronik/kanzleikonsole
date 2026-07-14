@@ -23,10 +23,7 @@ import { createPostgresAdapter, optionalDatabaseUrl } from '../src/prisma-adapte
 //
 // Jeder Eintrag hier muss einen dokumentierten Grund haben. Ohne Grund → RLS.
 // ---------------------------------------------------------------------------
-const RLS_EXEMPT = new Set<string>([
-  '_prisma_migrations',
-  'tax_news_item',
-]);
+const RLS_EXEMPT = new Set<string>(['_prisma_migrations', 'tax_news_item']);
 
 interface TableInfo {
   table: string;
@@ -86,16 +83,12 @@ async function main() {
       if (t.policyCount === 0) issues.push('keine Policy vorhanden');
 
       if (issues.length > 0) {
-        violations.push(
-          `  ❌ ${t.table} (tenant_id=${t.hasTenantId}): ${issues.join(', ')}`,
-        );
+        violations.push(`  ❌ ${t.table} (tenant_id=${t.hasTenantId}): ${issues.join(', ')}`);
       }
     }
 
     if (violations.length > 0) {
-      console.error(
-        '\n[verify:rls] ❌ RLS-Drift erkannt — folgende Tabellen sind ungeschützt:\n',
-      );
+      console.error('\n[verify:rls] ❌ RLS-Drift erkannt — folgende Tabellen sind ungeschützt:\n');
       for (const v of violations) console.error(v);
       console.error(
         `\n${violations.length} von ${checked} Tabellen ohne vollständiges RLS.\n` +

@@ -10,7 +10,6 @@ import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { fmtDateTimeShort } from '@/lib/fmt';
 
-
 export default async function AuditArchivePage() {
   const session = await staffAuth();
   if (!session?.user) redirect('/staff/login');
@@ -52,9 +51,9 @@ export default async function AuditArchivePage() {
             Audit-Archiv
           </h1>
           <p className="text-muted text-sm">
-            Segmentweise ausgelagerte Audit-Log-Einträge — hash-versiegelt
-            und mit Object-Lock COMPLIANCE für 10 Jahre in SeaweedFS gespeichert. Die Rotation
-            läuft vom Worker automatisch (wöchentlich, sobald Einträge älter als 90 Tage sind).
+            Segmentweise ausgelagerte Audit-Log-Einträge — hash-versiegelt und mit Object-Lock
+            COMPLIANCE für 10 Jahre in SeaweedFS gespeichert. Die Rotation läuft vom Worker
+            automatisch (wöchentlich, sobald Einträge älter als 90 Tage sind).
           </p>
         </div>
       </div>
@@ -66,19 +65,27 @@ export default async function AuditArchivePage() {
         </div>
         <div className="card p-4">
           <p className="text-xs text-muted uppercase">Archivierte Einträge</p>
-          <p className="text-3xl font-bold text-primary mt-1">{data.totalArchived.toLocaleString('de-DE')}</p>
+          <p className="text-3xl font-bold text-primary mt-1">
+            {data.totalArchived.toLocaleString('de-DE')}
+          </p>
         </div>
         <div className="card p-4">
           <p className="text-xs text-muted uppercase">Im DB-Log offen</p>
-          <p className="text-3xl font-bold text-primary mt-1">{data.pendingCount.toLocaleString('de-DE')}</p>
+          <p className="text-3xl font-bold text-primary mt-1">
+            {data.pendingCount.toLocaleString('de-DE')}
+          </p>
           <p className="text-xs text-disabled mt-1">noch nicht archiviert</p>
         </div>
       </div>
 
       <div className="card overflow-hidden">
         <div className="px-6 py-3 border-b border-default text-xs text-muted flex items-center justify-between">
-          <span>{data.archives.length} Segmente · {(data.totalBytes / 1024 / 1024).toFixed(2)} MB gesamt</span>
-          <span>Verifizieren via <code>pnpm verify:chain</code></span>
+          <span>
+            {data.archives.length} Segmente · {(data.totalBytes / 1024 / 1024).toFixed(2)} MB gesamt
+          </span>
+          <span>
+            Verifizieren via <code>pnpm verify:chain</code>
+          </span>
         </div>
         {data.archives.length === 0 ? (
           <p className="px-6 py-16 text-sm text-disabled text-center">
@@ -88,12 +95,24 @@ export default async function AuditArchivePage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-default">
-                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Segment</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Einträge</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Zeitraum</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Größe</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Modus</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Datei-SHA-256</th>
+                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+                  Segment
+                </th>
+                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+                  Einträge
+                </th>
+                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+                  Zeitraum
+                </th>
+                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+                  Größe
+                </th>
+                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+                  Modus
+                </th>
+                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+                  Datei-SHA-256
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border-subtle">
@@ -102,7 +121,9 @@ export default async function AuditArchivePage() {
                   <td className="px-6 py-3 font-mono text-xs text-secondary">
                     #{String(a.fromAuditId)}–{String(a.toAuditId)}
                   </td>
-                  <td className="px-6 py-3 text-secondary">{a.entryCount.toLocaleString('de-DE')}</td>
+                  <td className="px-6 py-3 text-secondary">
+                    {a.entryCount.toLocaleString('de-DE')}
+                  </td>
                   <td className="px-6 py-3 text-xs text-secondary">
                     {fmtDateTimeShort(a.fromOccurredAt)}
                     <br />
@@ -130,10 +151,10 @@ export default async function AuditArchivePage() {
 
       <p className="text-xs text-disabled mt-4 flex items-center gap-2">
         <ShieldCheck className="h-3 w-3" />
-        Jedes Segment ist als NDJSON-Datei in SeaweedFS archiviert (Object-Lock
-        COMPLIANCE 10 Jahre); bei konfigurierter TSA zusätzlich mit
-        RFC-3161-Zeitstempel versehen. Die <code>verify:chain</code>-CLI prüft bei
-        jedem Lauf die Datei-Integrität gegen die Hash-Anker.
+        Jedes Segment ist als NDJSON-Datei in SeaweedFS archiviert (Object-Lock COMPLIANCE 10
+        Jahre); bei konfigurierter TSA zusätzlich mit RFC-3161-Zeitstempel versehen. Die{' '}
+        <code>verify:chain</code>-CLI prüft bei jedem Lauf die Datei-Integrität gegen die
+        Hash-Anker.
       </p>
     </div>
   );

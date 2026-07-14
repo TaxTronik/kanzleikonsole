@@ -6,11 +6,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { ArticleEditor } from '../../article-editor';
 import { updateArticleAction } from '../../actions';
 
-export default async function EditArticlePage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function EditArticlePage({ params }: { params: Promise<{ id: string }> }) {
   const session = await staffAuth();
   if (!session?.user) redirect('/staff/login');
 
@@ -31,7 +27,10 @@ export default async function EditArticlePage({
   return (
     <div className="p-8 max-w-3xl">
       <div className="flex items-start gap-4 mb-6">
-        <Link href={`/staff/knowledge/${article.id}`} className="text-disabled hover:text-secondary mt-1">
+        <Link
+          href={`/staff/knowledge/${article.id}`}
+          className="text-disabled hover:text-secondary mt-1"
+        >
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <h1 className="text-2xl font-bold text-primary">Bearbeiten</h1>

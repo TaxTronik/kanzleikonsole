@@ -2,9 +2,10 @@
 
 ## Unterstützte Versionen
 
-Nur die jeweils aktuelle stabile Version (aktuelles `main`-Branch-Release) wird
-mit Sicherheits-Updates versorgt. Ältere Versionen werden nicht gepatcht —
-Anwender müssen auf das aktuelle Release aktualisieren.
+Nur die jeweils neueste veröffentlichte stabile Version wird mit
+Sicherheits-Updates versorgt. Der `main`-Branch ist Entwicklungsstand und keine
+unterstützte Produktversion. Ältere Releases werden nicht gepatcht — Anwender
+müssen auf den aktuellen Release aktualisieren.
 
 ## Sicherheitslücke melden
 
@@ -14,8 +15,9 @@ Stattdessen per E-Mail an:
 
 **security@taxtronik.de**
 
-Verschlüsselung (PGP) ist erwünscht, aber nicht zwingend. Der öffentliche
-Schlüssel folgt in Kürze unter <https://taxtronik.de/.well-known/security-pgp.txt>.
+Transportverschlüsselung erfolgt über den empfangenden Mailserver. Einen
+veröffentlichten PGP-Meldeschlüssel gibt es derzeit nicht; sensible Anhänge
+bitte erst nach der Eingangsbestätigung und Kanalabstimmung senden.
 
 ### Was gehört in die Meldung?
 
@@ -56,6 +58,9 @@ Sicherheits-Scope umfasst:
 TaxTronik setzt zwingend voraus:
 
 - `AUTH_SECRET`: mindestens 32 Zeichen, zufällig generiert (siehe `./taxtronik bootstrap` bzw. `scripts/setup.sh`)
+- `SECRET_BOX_KEY`: eigener, mindestens 32 Zeichen langer Schlüssel für
+  gespeicherte Integrations-Secrets; bei Neuinstallationen automatisch erzeugt
+  und getrennt vom `AUTH_SECRET` zu sichern
 - `DATABASE_APP_URL`: separater, RLS-beschränkter DB-Nutzer — in Produktion **Pflicht**
 - `N8N_HMAC_SECRET`: mindestens 32 Zeichen
 - TLS via Reverse Proxy vor der App (Ports nur an localhost)

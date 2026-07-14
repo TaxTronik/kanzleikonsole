@@ -23,7 +23,11 @@ test.describe.serial('Upload API fuzz and negative cases', () => {
     const res = await page.request.post('/api/staff/documents/commit', {
       headers: { Origin: BASE_ORIGIN },
       multipart: {
-        file: { name: 'missing-classification.pdf', mimeType: 'application/pdf', buffer: createPdf() },
+        file: {
+          name: 'missing-classification.pdf',
+          mimeType: 'application/pdf',
+          buffer: createPdf(),
+        },
         title: 'missing classification',
       },
     });

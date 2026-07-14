@@ -22,23 +22,27 @@ export function CategoryForm({ categories }: { categories: Array<{ id: string; n
   return (
     <form ref={formRef} action={formAction} className="space-y-3">
       <div>
-        <label className="label" htmlFor="name">Name</label>
+        <label className="label" htmlFor="name">
+          Name
+        </label>
         <input id="name" name="name" type="text" className="input" required maxLength={200} />
       </div>
 
       <div>
-        <label className="label" htmlFor="parentId">Übergeordnete Kategorie (optional)</label>
+        <label className="label" htmlFor="parentId">
+          Übergeordnete Kategorie (optional)
+        </label>
         <select id="parentId" name="parentId" className="input" defaultValue="">
           <option value="">— keine —</option>
           {categories.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
           ))}
         </select>
       </div>
 
-      {state?.error && (
-        <div className="alert-error-sm">{state.error}</div>
-      )}
+      {state?.error && <div className="alert-error-sm">{state.error}</div>}
 
       <button type="submit" className="btn-primary" disabled={isPending}>
         {isPending ? 'Speichert…' : 'Anlegen'}

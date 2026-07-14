@@ -11,7 +11,7 @@ describe('computeBwaKpis — Vor-/Nach-Steuer-Trennung', () => {
     const kpi = computeBwaKpis([
       { number: 1051, amount: 500_000 },
       { number: 1345, amount: 100_000 }, // vor Steuern
-      { number: 1380, amount: 60_000 },  // nach Steuern
+      { number: 1380, amount: 60_000 }, // nach Steuern
     ]);
     expect(kpi.result).toBe(60_000);
     expect(kpi.resultBeforeTax).toBe(100_000);
@@ -40,7 +40,7 @@ describe('linearSeasonalProjection — keine Doppelbesteuerung (Regression #9)',
       positions: [
         { number: 1051, amount: 250_000 },
         { number: 1345, amount: 100_000 }, // vor Steuern
-        { number: 1380, amount: 60_000 },  // nach Steuern (darf NICHT die Basis sein)
+        { number: 1380, amount: 60_000 }, // nach Steuern (darf NICHT die Basis sein)
       ],
     };
 

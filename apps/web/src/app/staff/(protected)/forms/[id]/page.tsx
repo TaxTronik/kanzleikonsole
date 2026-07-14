@@ -15,13 +15,11 @@ export default async function FormEditorPage({ params }: { params: Promise<{ id:
   const { id } = await params;
   const { tenantId, staffId } = session.user;
 
-  const tpl = await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    (tx) =>
-      tx.formTemplate.findUnique({
-        where: { id },
-        include: { fields: { orderBy: { position: 'asc' } } },
-      }),
+  const tpl = await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>
+    tx.formTemplate.findUnique({
+      where: { id },
+      include: { fields: { orderBy: { position: 'asc' } } },
+    }),
   );
   if (!tpl) notFound();
 
@@ -32,8 +30,8 @@ export default async function FormEditorPage({ params }: { params: Promise<{ id:
       </Link>
       <h1 className="text-2xl font-bold text-primary mb-1">{tpl.name}</h1>
       <p className="text-muted text-sm mb-6">
-        Felder definieren und speichern. Bei Versand pro Mandant wird das Formular
-        im Portal mit den hier definierten Feldern angezeigt.
+        Felder definieren und speichern. Bei Versand pro Mandant wird das Formular im Portal mit den
+        hier definierten Feldern angezeigt.
       </p>
 
       <FormEditor

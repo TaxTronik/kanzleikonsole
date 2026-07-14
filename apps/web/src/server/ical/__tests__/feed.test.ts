@@ -109,6 +109,8 @@ describe('verifyIcalToken — Format-Grenzfälle', () => {
     expect(verifyIcalToken(`${CONTACT_ID}.x.${forgeSig(`${CONTACT_ID}.x`)}`)).toBeNull();
     expect(verifyIcalToken(`${CONTACT_ID}.-1.${forgeSig(`${CONTACT_ID}.-1`)}`)).toBeNull();
     const huge = '1234567890'; // 10 Stellen > Limit
-    expect(verifyIcalToken(`${CONTACT_ID}.${huge}.${forgeSig(`${CONTACT_ID}.${huge}`)}`)).toBeNull();
+    expect(
+      verifyIcalToken(`${CONTACT_ID}.${huge}.${forgeSig(`${CONTACT_ID}.${huge}`)}`),
+    ).toBeNull();
   });
 });

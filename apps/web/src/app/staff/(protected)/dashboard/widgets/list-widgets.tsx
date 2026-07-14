@@ -7,14 +7,7 @@ import type { ReactNode } from 'react';
 // =============================================================================
 
 import Link from 'next/link';
-import {
-  Activity,
-  CalendarDays,
-  FileWarning,
-  Phone,
-  Plus,
-  ShieldAlert,
-} from 'lucide-react';
+import { Activity, CalendarDays, FileWarning, Phone, Plus, ShieldAlert } from 'lucide-react';
 import { SCHEDULE_LABELS } from '@taxtronik/tax';
 import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
 import { GWG_EXPIRY_WINDOW_MS } from '@/lib/consts';
@@ -57,10 +50,16 @@ export async function RecentActivity({ tx }: RenderCtx): Promise<ReactNode> {
   ];
   const [staffRows, contactRows] = await Promise.all([
     staffIds.length
-      ? tx.staffUser.findMany({ where: { id: { in: staffIds } }, select: { id: true, fullName: true } })
+      ? tx.staffUser.findMany({
+          where: { id: { in: staffIds } },
+          select: { id: true, fullName: true },
+        })
       : Promise.resolve([]),
     contactIds.length
-      ? tx.clientContact.findMany({ where: { id: { in: contactIds } }, select: { id: true, fullName: true } })
+      ? tx.clientContact.findMany({
+          where: { id: { in: contactIds } },
+          select: { id: true, fullName: true },
+        })
       : Promise.resolve([]),
   ]);
   const nameById = new Map<string, string>();
@@ -68,7 +67,11 @@ export async function RecentActivity({ tx }: RenderCtx): Promise<ReactNode> {
   for (const c of contactRows) nameById.set(c.id, c.fullName);
   const actorLabel = (a: { actorType: string; actorId: string | null }): string => {
     const role =
-      a.actorType === 'STAFF' ? 'Mitarbeiter' : a.actorType === 'CLIENT_CONTACT' ? 'Mandant' : 'System';
+      a.actorType === 'STAFF'
+        ? 'Mitarbeiter'
+        : a.actorType === 'CLIENT_CONTACT'
+          ? 'Mandant'
+          : 'System';
     const name = a.actorId ? nameById.get(a.actorId) : undefined;
     return name ? `${role} · ${name}` : role;
   };
@@ -125,7 +128,11 @@ export async function UpcomingRequests({ tx, deniedClientIds }: RenderCtx): Prom
     include: { client: { select: { id: true, name: true } } },
   });
   return (
-    <ListShell title="Fällige Anforderungen" isEmpty={items.length === 0} emptyText="Keine fälligen Anforderungen.">
+    <ListShell
+      title="Fällige Anforderungen"
+      isEmpty={items.length === 0}
+      emptyText="Keine fälligen Anforderungen."
+    >
       {items.map(
         (r: { id: string; title: string; dueAt: Date | null; client: { name: string } }) => (
           <li key={r.id} className="px-5 py-2.5">
@@ -163,10 +170,15 @@ export async function GwgExpiring({ tx, deniedClientIds }: RenderCtx): Promise<R
       {checks.map(
         (c: { id: string; validUntil: Date | null; client: { id: string; name: string } }) => (
           <li key={c.id} className="px-5 py-2.5">
-            <Link href={`/staff/clients/${c.client.id}/gwg`} className="block hover:bg-gray-50 -mx-5 px-5">
+            <Link
+              href={`/staff/clients/${c.client.id}/gwg`}
+              className="block hover:bg-gray-50 -mx-5 px-5"
+            >
               <p className="item-title">{c.client.name}</p>
               <p className="text-xs text-muted truncate">
-                {c.validUntil ? `Gültig bis ${fmtDateShort(c.validUntil)}` : 'ohne Gültigkeitsdatum'}
+                {c.validUntil
+                  ? `Gültig bis ${fmtDateShort(c.validUntil)}`
+                  : 'ohne Gültigkeitsdatum'}
               </p>
             </Link>
           </li>
@@ -193,9 +205,17 @@ export async function UnreviewedNotices({ tx, deniedClientIds }: RenderCtx): Pro
       emptyText="Alle Bescheide geprüft."
     >
       {items.map(
-        (n: { id: string; kind: string; createdAt: Date; client: { id: string; name: string } }) => (
+        (n: {
+          id: string;
+          kind: string;
+          createdAt: Date;
+          client: { id: string; name: string };
+        }) => (
           <li key={n.id} className="px-5 py-2.5">
-            <Link href={`/staff/clients/${n.client.id}/notices`} className="block hover:bg-gray-50 -mx-5 px-5">
+            <Link
+              href={`/staff/clients/${n.client.id}/notices`}
+              className="block hover:bg-gray-50 -mx-5 px-5"
+            >
               <p className="item-title">{n.client.name}</p>
               <p className="text-xs text-muted truncate">
                 {NOTICE_KIND_LABELS[n.kind] ?? n.kind} · eingegangen {fmtDateShort(n.createdAt)}
@@ -273,7 +293,10 @@ export async function PhoneNotesWidget({ tx, deniedClientIds }: RenderCtx): Prom
       isEmpty={items.length === 0}
       emptyText="Keine Telefonzettel."
       footer={
-        <Link href="/staff/phone-notes" className="inline-flex items-center gap-1 text-brand-700 hover:underline">
+        <Link
+          href="/staff/phone-notes"
+          className="inline-flex items-center gap-1 text-brand-700 hover:underline"
+        >
           <Plus className="h-3.5 w-3.5" />
           Neuen Telefonzettel anlegen
         </Link>
@@ -295,7 +318,10 @@ export async function PhoneNotesWidget({ tx, deniedClientIds }: RenderCtx): Prom
             id={p.id}
             className={'px-5 py-2.5 ' + (p.readAt ? '' : 'bg-yellow-50/30 dark:bg-yellow-900/10')}
           >
-            <Link href="/staff/phone-notes" className="block hover:bg-gray-50 -my-1 py-1 -mr-2 pr-2 rounded">
+            <Link
+              href="/staff/phone-notes"
+              className="block hover:bg-gray-50 -my-1 py-1 -mr-2 pr-2 rounded"
+            >
               <div className="flex items-center justify-between gap-2">
                 <p className="item-title">{p.subject}</p>
                 {!p.readAt && <span className="badge-yellow text-[10px]">neu</span>}

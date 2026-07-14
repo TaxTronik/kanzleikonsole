@@ -20,10 +20,15 @@ const SaveSchema = z.object({
   active: z.boolean(),
 });
 
-export async function saveInvoiceCategoryAction(input: z.infer<typeof SaveSchema>): Promise<ActionResult> {
+export async function saveInvoiceCategoryAction(
+  input: z.infer<typeof SaveSchema>,
+): Promise<ActionResult> {
   const parsed = SaveSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const slug = parsed.data.slug && parsed.data.slug.trim() ? slugify(parsed.data.slug) : slugify(parsed.data.name);
+  const slug =
+    parsed.data.slug && parsed.data.slug.trim()
+      ? slugify(parsed.data.slug)
+      : slugify(parsed.data.name);
   if (!slug) return { ok: false, error: 'Slug konnte nicht erzeugt werden.' };
 
   return withStaff(
@@ -39,7 +44,9 @@ export async function saveInvoiceCategoryAction(input: z.infer<typeof SaveSchema
           },
         });
         await evidenceService.record(tx, {
-          tenantId, actorType: 'STAFF', actorId: staffId,
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
           action: 'invoice_category.update',
           resourceType: 'invoice_category',
           resourceId: parsed.data.id,
@@ -61,7 +68,9 @@ export async function saveInvoiceCategoryAction(input: z.infer<typeof SaveSchema
           },
         });
         await evidenceService.record(tx, {
-          tenantId, actorType: 'STAFF', actorId: staffId,
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
           action: 'invoice_category.create',
           resourceType: 'invoice_category',
           resourceId: created.id,
@@ -82,7 +91,9 @@ export async function deleteInvoiceCategoryAction(input: { id: string }): Promis
       const c = await tx.invoiceCategory.findUnique({ where: { id: parsed.data.id } });
       await tx.invoiceCategory.delete({ where: { id: parsed.data.id } });
       await evidenceService.record(tx, {
-        tenantId, actorType: 'STAFF', actorId: staffId,
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
         action: 'invoice_category.delete',
         resourceType: 'invoice_category',
         resourceId: parsed.data.id,

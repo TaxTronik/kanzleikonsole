@@ -42,15 +42,15 @@ täglicher RFC-3161-Versiegelung und unveränderlicher Langzeit-Archivierung.
 
 ## Traceability
 
-| Anforderung | Implementierung | Test |
-|---|---|---|
-| Ketten-Integrität + Bruch-Erkennung | chain/service | `hash-chain.test.ts`, `service-verifychain.test.ts` |
-| Record==Verify für alle Werttypen | canonical-json/chain | `chain.test.ts`, `canonical-json.test.ts` |
-| RFC-3161 kryptografisch korrekt | rfc3161-verify | echtes Fixture + synthetische Negativ-CA + Differenztest gegen `openssl ts` |
-| Versiegelungs-Backfill | evidence-seal-Worker | `evidence-seal.test.ts` |
-| Archiv-Segmente unveränderlich + verifizierbar | audit-rotate | `archive.test.ts`, `audit-rotate.test.ts` |
-| Jede record-Action hat ein Label | labels.ts | `audit-label-coverage.test.ts` (AST-Guard) |
-| Restore-Beweis auf wiederhergestellter DB | backup-drill + restore-selftest | CI-Job `restore` + Drill-E2E (verifiziert 2026-06-10) |
+| Anforderung                                    | Implementierung                 | Test                                                                        |
+| ---------------------------------------------- | ------------------------------- | --------------------------------------------------------------------------- |
+| Ketten-Integrität + Bruch-Erkennung            | chain/service                   | `hash-chain.test.ts`, `service-verifychain.test.ts`                         |
+| Record==Verify für alle Werttypen              | canonical-json/chain            | `chain.test.ts`, `canonical-json.test.ts`                                   |
+| RFC-3161 kryptografisch korrekt                | rfc3161-verify                  | echtes Fixture + synthetische Negativ-CA + Differenztest gegen `openssl ts` |
+| Versiegelungs-Backfill                         | evidence-seal-Worker            | `evidence-seal.test.ts`                                                     |
+| Archiv-Segmente unveränderlich + verifizierbar | audit-rotate                    | `archive.test.ts`, `audit-rotate.test.ts`                                   |
+| Jede record-Action hat ein Label               | labels.ts                       | `audit-label-coverage.test.ts` (AST-Guard)                                  |
+| Restore-Beweis auf wiederhergestellter DB      | backup-drill + restore-selftest | CI-Job `restore` + Drill-E2E (verifiziert 2026-06-10)                       |
 
 ## Bekannte Grenzen
 

@@ -60,8 +60,10 @@ fi
 
 # -------------------------------------------------------------------- .env
 step ".env vorbereiten"
+ENV_CREATED=0
 if [[ ! -f .env ]]; then
   cp .env.example .env
+  ENV_CREATED=1
   done_ ".env aus .env.example angelegt."
 fi
 
@@ -93,6 +95,11 @@ ensure_secret() {
 
 # Auth / HMAC / Verschlüsselung
 ensure_secret 'AUTH_SECRET'         32
+if [[ $ENV_CREATED -eq 1 ]]; then
+  ensure_secret 'SECRET_BOX_KEY'    32
+elif [[ -z "$(get_env SECRET_BOX_KEY)" ]]; then
+  warn "SECRET_BOX_KEY fehlt in bestehender .env; vor dem Setzen Bestands-Secrets migrieren (docs/operations/secret-rotation.md)."
+fi
 ensure_secret 'N8N_HMAC_SECRET'     32
 ensure_secret 'N8N_ENCRYPTION_KEY'  24
 

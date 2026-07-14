@@ -31,7 +31,10 @@ describe('buildKatalogOverlay + katalogStatus', () => {
   });
 
   it('verworfen hat Vorrang, falls dieselbe Norm verworfen UND ergänzt gelistet wäre', () => {
-    const o = buildKatalogOverlay({ verworfen: ['norm:X'], ergaenzt: [{ zitat: 'X', id: 'norm:X' }] });
+    const o = buildKatalogOverlay({
+      verworfen: ['norm:X'],
+      ergaenzt: [{ zitat: 'X', id: 'norm:X' }],
+    });
     expect(katalogStatus({ id: 'norm:X', zitat: 'X' }, o)).toBe('verworfen');
   });
 });

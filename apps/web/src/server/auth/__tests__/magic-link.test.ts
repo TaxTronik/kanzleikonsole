@@ -80,8 +80,8 @@ beforeEach(() => {
   m.prismaOwner.magicLink.updateMany.mockResolvedValue({ count: 1 });
   // RF-12: der Consume läuft in einer Tx (updateMany + Audit-Record) —
   // der Mock reicht prismaOwner selbst als Tx-Client durch.
-  m.prismaOwner.$transaction.mockImplementation(
-    async (fn: (tx: unknown) => unknown) => fn(m.prismaOwner),
+  m.prismaOwner.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
+    fn(m.prismaOwner),
   );
   m.evidenceRecord.mockResolvedValue({});
   m.prismaOwner.magicLink.deleteMany.mockResolvedValue({ count: 1 });
@@ -159,10 +159,12 @@ describe('requestMagicLink — Anti-Enumeration (immer ok:true)', () => {
   it('Mandant GwG-deaktiviert (allowActive=false) → ok:true, KEIN Token, KEINE Mail', async () => {
     // GwG-Schranke (§ 11 GwG): identisches Verhalten wie „Contact unbekannt" —
     // kein unterscheidbarer Fehler, sonst wäre der Sperr-Status enumerierbar.
-    m.prismaOwner.clientContact.findMany.mockResolvedValue([{
-      ...CONTACT,
-      client: { name: 'Muster GmbH', allowActive: false, anonymizedAt: null },
-    }]);
+    m.prismaOwner.clientContact.findMany.mockResolvedValue([
+      {
+        ...CONTACT,
+        client: { name: 'Muster GmbH', allowActive: false, anonymizedAt: null },
+      },
+    ]);
     const res = await withTimersFlushed(
       requestMagicLink({ tenantId: 'tenant-1', email: 'mandant@example.de' }),
     );
@@ -216,7 +218,13 @@ describe('requestMagicLink — Happy Path', () => {
 
     expect(m.prismaOwner.magicLink.create).toHaveBeenCalledTimes(1);
     const createArgs = m.prismaOwner.magicLink.create.mock.calls[0]![0] as {
-      data: { tenantId: string; contactId: string; email: string; tokenHash: string; expiresAt: Date };
+      data: {
+        tenantId: string;
+        contactId: string;
+        email: string;
+        tokenHash: string;
+        expiresAt: Date;
+      };
     };
     expect(createArgs.data.tenantId).toBe('tenant-1');
     expect(createArgs.data.contactId).toBe(CONTACT.id);

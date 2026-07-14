@@ -57,13 +57,13 @@ ersten Produktivstart bei einer Kanzlei.
 
 ## 4. Test-Konten
 
-| Tenant | Rolle | Login | Passwort |
-|---|---|---|---|
-| Alpha | ADMIN | admin@alpha.test | (bei Übergabe) |
-| Alpha | EMPLOYEE | bea@alpha.test | (bei Übergabe) |
-| Alpha | Portal-Kontakt | mandant1@alpha-clients.test | (Magic-Link) |
-| Beta | ADMIN | admin@beta.test | (bei Übergabe) |
-| Beta | EMPLOYEE | klaus@beta.test | (bei Übergabe) |
+| Tenant | Rolle          | Login                       | Passwort       |
+| ------ | -------------- | --------------------------- | -------------- |
+| Alpha  | ADMIN          | admin@alpha.test            | (bei Übergabe) |
+| Alpha  | EMPLOYEE       | bea@alpha.test              | (bei Übergabe) |
+| Alpha  | Portal-Kontakt | mandant1@alpha-clients.test | (Magic-Link)   |
+| Beta   | ADMIN          | admin@beta.test             | (bei Übergabe) |
+| Beta   | EMPLOYEE       | klaus@beta.test             | (bei Übergabe) |
 
 TOTP-Secrets liegen in einem separaten verschlüsselten Übergabe-Dokument.
 

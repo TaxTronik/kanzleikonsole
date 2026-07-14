@@ -73,7 +73,10 @@ export async function reanalyzeAnalysis(
       },
     });
 
-    log.info({ component: 'risk', analysisId, added: fresh.length, total: result.markings.length }, 'risk: neu analysiert (zusammenführend)');
+    log.info(
+      { component: 'risk', analysisId, added: fresh.length, total: result.markings.length },
+      'risk: neu analysiert (zusammenführend)',
+    );
     return { added: fresh.length, total: result.markings.length };
   });
 }

@@ -54,7 +54,10 @@ export default async function PhoneNotesPage() {
     },
   );
 
-  const callerMap = new Map<string, { name: string; phone: string | null; clientId: string | null }>();
+  const callerMap = new Map<
+    string,
+    { name: string; phone: string | null; clientId: string | null }
+  >();
   for (const c of callerHistory) {
     const key = c.callerName.trim().toLowerCase();
     if (!key) continue;
@@ -78,9 +81,7 @@ export default async function PhoneNotesPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
           <div className="mb-3 flex items-center gap-3 text-sm text-secondary dark:text-disabled">
-            <span className="font-medium text-primary">
-              {openCount} offen
-            </span>
+            <span className="font-medium text-primary">{openCount} offen</span>
             {unreadCount > 0 && (
               <span className="text-yellow-700 dark:text-yellow-400">
                 · {unreadCount} ungelesen

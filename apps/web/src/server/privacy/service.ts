@@ -3,11 +3,7 @@
 // =============================================================================
 
 import type { TxClient } from '@taxtronik/db';
-import {
-  readPrivacyConfigTx,
-  renderPrivacyNotice,
-  PRIVACY_NOTICE_VERSION,
-} from './notice';
+import { readPrivacyConfigTx, renderPrivacyNotice, PRIVACY_NOTICE_VERSION } from './notice';
 import { parseConsent, type ConsentSelections } from './consent';
 
 /** Ergebnis eines Renderings: Volltext + zugehörige Standardtext-Version. */

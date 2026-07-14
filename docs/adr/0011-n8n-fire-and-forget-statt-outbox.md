@@ -17,6 +17,7 @@ weil sie die Trade-offs erklärt, die das pull-basierte n8n-Setup auch nach
 der Outbox-Einführung weiter rechtfertigen.
 
 **Aktueller Stand (Iter. 45 / S15)**:
+
 - Jedes `emitN8nEvent` schreibt in `n8n_outbox` (RLS, FORCE) und reiht einen
   BullMQ-Job in `n8n-deliver` ein
 - Worker [jobs/n8n-deliver.ts](../../apps/worker/src/jobs/n8n-deliver.ts) liefert
@@ -70,6 +71,7 @@ n8n-Downtime nicht toleriert. Aktuell hat kein Tenant so einen Workflow.
 ## Konsequenzen der Outbox-Umsetzung
 
 **Was wir tun**
+
 - `emitN8nEvent` schreibt jetzt in `n8n_outbox` + reiht BullMQ-Job ein.
   Geschäftslogik bleibt nicht-blockierend (BullMQ-Add ist ~ms).
 - Verlorene Events sind ausgeschlossen, sofern die Outbox-Tabelle geschrieben
@@ -82,6 +84,7 @@ n8n-Downtime nicht toleriert. Aktuell hat kein Tenant so einen Workflow.
   Vorgänge beim nächsten täglichen Pull.
 
 **Warum trotzdem pull-first bleibt**
+
 - n8n-Ausfall > 1h ist real (Wartung, Crash, Tenant-Misconfig). Pull-Pfad
   fängt das, Push-Outbox alleine nicht.
 - DSGVO-Lösch-/Vergessen-Operationen sollen nicht via Event-Replay reaktiviert

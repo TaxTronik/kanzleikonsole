@@ -9,7 +9,11 @@ export default async function PortalBwaPage() {
   if (!session?.user) redirect('/portal/login');
 
   const { tenantId, contactId, clientId } = session.user;
-  const features = await readPortalFeatures({ tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' });
+  const features = await readPortalFeatures({
+    tenantId,
+    actorId: contactId,
+    actorType: 'CLIENT_CONTACT',
+  });
   if (!features.bwaView) redirect('/portal/dashboard');
 
   const { periods, plans } = await withTenantContext(
@@ -48,13 +52,15 @@ export default async function PortalBwaPage() {
           year: p.year,
           status: p.status,
           updatedAt: p.updatedAt,
-          createdByType: (p.createdByType === 'STAFF' ? 'STAFF' : 'CLIENT_CONTACT') as 'STAFF' | 'CLIENT_CONTACT',
+          createdByType: (p.createdByType === 'STAFF' ? 'STAFF' : 'CLIENT_CONTACT') as
+            | 'STAFF'
+            | 'CLIENT_CONTACT',
           updatedByType:
             p.updatedByType === 'STAFF'
               ? 'STAFF'
               : p.updatedByType === 'CLIENT_CONTACT'
-              ? 'CLIENT_CONTACT'
-              : null,
+                ? 'CLIENT_CONTACT'
+                : null,
           lines: p.lines.map((l) => ({ axis: l.axis, amount: l.amount })),
         }))}
         linkPrefix="/portal/bwa/plan"

@@ -25,6 +25,15 @@ const nextConfig = {
   // nichts mehr aus node_modules separat kopieren.
   outputFileTracingRoot: path.join(__dirname, '../../'),
 
+  // Der Backup-Runner arbeitet ausschließlich mit Operator-/ENV-bestimmten
+  // Laufzeitpfaden. Turbopack deutet diese als Projekt-Glob und würde dadurch
+  // den gesamten Web-Quellbaum in genau dieses Route-Artefakt aufnehmen. Die
+  // Route läuft aus den kompilierten Chunks; TypeScript-Quellen werden zur
+  // Laufzeit nicht gelesen. Eng auf den manuellen Backup-Endpunkt begrenzen.
+  outputFileTracingExcludes: {
+    '/api/staff/admin/backups/run': ['src/**/*'],
+  },
+
   // Workspace-Pakete transpilieren. WICHTIG für `output: 'standalone'`:
   // nur was hier steht, landet im production-Bundle.
   transpilePackages: [

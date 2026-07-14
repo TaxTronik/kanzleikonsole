@@ -58,7 +58,12 @@ function requireAskpass(block, name) {
   );
 }
 
-export function checkReleaseGates({ release, ci, security }) {
+export function checkReleaseGates({ release, ci, security, smoke }) {
+  invariant(
+    /docker compose --project-name "\$SMOKE_PROJECT_NAME"/.test(smoke) &&
+      /down -v --remove-orphans/.test(smoke),
+    'Release-Image-Smoke braucht einen eindeutigen Compose-Projektnamen vor destruktivem Cleanup',
+  );
   requireWorkflowCall(ci, 'ci.yml');
   requireWorkflowCall(security, 'security.yml');
   invariant(
@@ -130,8 +135,14 @@ export function checkReleaseGates({ release, ci, security }) {
   invariant(/needs: release/.test(manifest), 'manifest muss release benötigen');
 
   invariant(
-    /verify-tag-checkout\.sh/.test(preflight) && /verify-release-config\.mjs/.test(preflight),
-    'preflight prüft Tag oder Manifest-Konfiguration nicht',
+    /verify-tag-checkout\.sh/.test(preflight) &&
+      /verify-release-config\.mjs/.test(preflight) &&
+      /verify-release-version\.mjs/.test(preflight),
+    'preflight prüft Tag, Version oder Manifest-Konfiguration nicht',
+  );
+  invariant(
+    /check-docker-bases-pinned\.mjs/.test(preflight),
+    'preflight prüft die Digest-Pins der Docker-Basisimages nicht',
   );
   invariant(
     /UPDATE_MANIFEST_REPO/.test(preflight) &&
@@ -147,10 +158,24 @@ export function checkReleaseGates({ release, ci, security }) {
   requireAskpass(preflight, 'preflight');
 
   invariant(/worker_digest:/.test(publish), 'release exportiert keinen Worker-Digest');
+  const runtimeSmoke = publish.indexOf('smoke-release-images.sh');
+  const sbomGeneration = publish.indexOf('--format cyclonedx');
+  const sbomUpload = publish.indexOf('release-sbom-${{ steps.meta.outputs.version }}');
   const immutableCheck = publish.indexOf('docker manifest inspect');
   const firstDockerPush = publish.indexOf('docker push');
   const immutableGateStart = publish.lastIndexOf('if INSPECT_OUTPUT', immutableCheck);
   const immutableGate = publish.slice(immutableGateStart, firstDockerPush);
+  invariant(
+    runtimeSmoke >= 0 && runtimeSmoke < firstDockerPush,
+    'finale Release-Images werden nicht vor dem Registry-Push als Stack getestet',
+  );
+  invariant(
+    sbomGeneration >= 0 &&
+      sbomUpload > sbomGeneration &&
+      sbomUpload < firstDockerPush &&
+      /test -s "release-sbom\/\$\{img\}\.cdx\.json"/.test(publish),
+    'Release erzeugt und archiviert keine CycloneDX-SBOMs vor dem Registry-Push',
+  );
   invariant(
     immutableCheck >= 0 &&
       firstDockerPush >= 0 &&
@@ -202,6 +227,7 @@ function main() {
       release: readFileSync('.forgejo/workflows/release.yml', 'utf8'),
       ci: readFileSync('.forgejo/workflows/ci.yml', 'utf8'),
       security: readFileSync('.forgejo/workflows/security.yml', 'utf8'),
+      smoke: readFileSync('scripts/release/smoke-release-images.sh', 'utf8'),
     });
     process.stdout.write('Release-Gate-Struktur verifiziert.\n');
   } catch (error) {

@@ -11,7 +11,13 @@ interface Template {
   _count: { fields: number };
 }
 
-export function SendFormButton({ clientId, templates }: { clientId: string; templates: Template[] }) {
+export function SendFormButton({
+  clientId,
+  templates,
+}: {
+  clientId: string;
+  templates: Template[];
+}) {
   const [open, setOpen] = useState(false);
   const [tplId, setTplId] = useState('');
   const [isPending, start] = useTransition();
@@ -59,10 +65,19 @@ export function SendFormButton({ clientId, templates }: { clientId: string; temp
           </select>
           {error && <p className="text-xs text-red-700">{error}</p>}
           <div className="flex justify-end gap-2">
-            <button type="button" onClick={() => setOpen(false)} className="text-xs text-muted hover:underline">
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="text-xs text-muted hover:underline"
+            >
               Abbrechen
             </button>
-            <button type="button" onClick={submit} disabled={isPending} className="btn-primary text-xs">
+            <button
+              type="button"
+              onClick={submit}
+              disabled={isPending}
+              className="btn-primary text-xs"
+            >
               {isPending ? 'Sendet…' : 'Senden'}
             </button>
           </div>

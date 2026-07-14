@@ -29,13 +29,26 @@ import {
 
 describe('isInlineSafeMime', () => {
   it('Whitelist: PDF, Bilder, text/plain → true', () => {
-    for (const m of ['application/pdf', 'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'text/plain']) {
+    for (const m of [
+      'application/pdf',
+      'image/png',
+      'image/jpeg',
+      'image/gif',
+      'image/webp',
+      'text/plain',
+    ]) {
       expect(isInlineSafeMime(m)).toBe(true);
     }
   });
 
   it('aktive Inhalte: text/html, SVG, JS, XML → false', () => {
-    for (const m of ['text/html', 'application/xhtml+xml', 'image/svg+xml', 'application/javascript', 'application/xml']) {
+    for (const m of [
+      'text/html',
+      'application/xhtml+xml',
+      'image/svg+xml',
+      'application/javascript',
+      'application/xml',
+    ]) {
       expect(isInlineSafeMime(m)).toBe(false);
     }
   });
@@ -55,7 +68,9 @@ describe('isInlineSafeMime', () => {
 
 describe('previewDisposition / previewContentType', () => {
   it('sichere MIME → inline mit Original-Content-Type', () => {
-    expect(previewDisposition('application/pdf', 'Bescheid')).toBe('inline; filename="Bescheid.pdf"');
+    expect(previewDisposition('application/pdf', 'Bescheid')).toBe(
+      'inline; filename="Bescheid.pdf"',
+    );
     expect(previewContentType('application/pdf')).toBe('application/pdf');
   });
 
@@ -66,7 +81,9 @@ describe('previewDisposition / previewContentType', () => {
 
   it('alte/falsch gespeicherte PDFs werden anhand MIME-Variante oder Dateiname inline dargestellt', () => {
     expect(previewContentType('application/x-pdf', 'Vollmacht')).toBe('application/pdf');
-    expect(previewDisposition('application/octet-stream', 'Vollmacht.pdf')).toBe('inline; filename="Vollmacht.pdf"');
+    expect(previewDisposition('application/octet-stream', 'Vollmacht.pdf')).toBe(
+      'inline; filename="Vollmacht.pdf"',
+    );
     expect(previewContentType('application/octet-stream', 'Vollmacht.pdf')).toBe('application/pdf');
   });
 });
@@ -80,11 +97,15 @@ describe('effectiveDocumentMime', () => {
         classification: 'GOBD_CONTRACT',
       }),
     ).toBe('application/pdf');
-    expect(effectiveDocumentMime({ mimeType: null, title: 'sonstiges', isPoaDocument: true })).toBe('application/pdf');
+    expect(effectiveDocumentMime({ mimeType: null, title: 'sonstiges', isPoaDocument: true })).toBe(
+      'application/pdf',
+    );
   });
 
   it('wendet die Vollmacht-Heuristik nicht auf beliebige GoBD-Vertraege an', () => {
-    expect(isLikelyPoaPdf({ title: 'Beratungsvertrag', classification: 'GOBD_CONTRACT' })).toBe(false);
+    expect(isLikelyPoaPdf({ title: 'Beratungsvertrag', classification: 'GOBD_CONTRACT' })).toBe(
+      false,
+    );
     expect(
       effectiveDocumentMime({
         mimeType: 'text/html',

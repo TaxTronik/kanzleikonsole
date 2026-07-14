@@ -2,7 +2,13 @@ import { describe, it, expect, vi } from 'vitest';
 import { RiskLayerClient, RiskLayerHttpError } from '../index';
 
 const config = { url: 'http://risk-layer:8000', token: 'x'.repeat(32) };
-const analysePayload = { text_hash: 'h', katalog_version: 'k', engineVersion: 'e', karten: [], risiken: [] };
+const analysePayload = {
+  text_hash: 'h',
+  katalog_version: 'k',
+  engineVersion: 'e',
+  karten: [],
+  risiken: [],
+};
 
 function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -17,7 +23,9 @@ describe('RiskLayerClient', () => {
     const originalNodeEnv = process.env['NODE_ENV'];
     process.env['NODE_ENV'] = 'production';
     delete process.env['INTERNAL_FETCH_HOSTS'];
-    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse({ ok: true }));
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) =>
+      jsonResponse({ ok: true }),
+    );
     vi.stubGlobal('fetch', fetchMock);
     try {
       const client = new RiskLayerClient({
@@ -29,7 +37,9 @@ describe('RiskLayerClient', () => {
       const [url, init] = fetchMock.mock.calls[0]!;
       expect(url).toBe('http://127.0.0.1:8000/v1/health');
       expect(init!.redirect).toBe('error');
-      expect((init!.headers as Record<string, string>).authorization).toBe(`Bearer ${config.token}`);
+      expect((init!.headers as Record<string, string>).authorization).toBe(
+        `Bearer ${config.token}`,
+      );
     } finally {
       vi.unstubAllGlobals();
       if (originalHosts === undefined) delete process.env['INTERNAL_FETCH_HOSTS'];
@@ -40,7 +50,9 @@ describe('RiskLayerClient', () => {
   });
 
   it('setzt Bearer-Header, ruft den richtigen Pfad und sendet mitLLM:false default', async () => {
-    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse(analysePayload));
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) =>
+      jsonResponse(analysePayload),
+    );
     const client = new RiskLayerClient({ config, fetchImpl });
 
     const r = await client.analyse({ text: 'foo' });
@@ -54,7 +66,9 @@ describe('RiskLayerClient', () => {
   });
 
   it('wirft RiskLayerHttpError bei 4xx und retried NICHT', async () => {
-    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse({ error: 'bad' }, 400));
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) =>
+      jsonResponse({ error: 'bad' }, 400),
+    );
     const client = new RiskLayerClient({ config, fetchImpl });
 
     await expect(client.analyse({ text: 'x' })).rejects.toBeInstanceOf(RiskLayerHttpError);
@@ -76,34 +90,49 @@ describe('RiskLayerClient', () => {
     const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse({}, 503));
     const client = new RiskLayerClient({ config, fetchImpl });
 
-    await expect(
-      client.katalogDefiniere({ begriff: 'b', definition: 'd' }),
-    ).rejects.toBeInstanceOf(RiskLayerHttpError);
+    await expect(client.katalogDefiniere({ begriff: 'b', definition: 'd' })).rejects.toBeInstanceOf(
+      RiskLayerHttpError,
+    );
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it('katalogReview postet id/status/pruefer und parst den vollständigen Übergang', async () => {
     const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) =>
-      jsonResponse({ ok: true, id: 'b1', alter_status: 'entwurf', neuer_status: 'geprüft', pruefer: 's1' }),
+      jsonResponse({
+        ok: true,
+        id: 'b1',
+        alter_status: 'entwurf',
+        neuer_status: 'geprüft',
+        pruefer: 's1',
+      }),
     );
     const client = new RiskLayerClient({ config, fetchImpl });
 
     const r = await client.katalogReview({ id: 'b1', status: 'geprüft', pruefer: 's1' });
-    expect(r).toMatchObject({ ok: true, alter_status: 'entwurf', neuer_status: 'geprüft', pruefer: 's1' });
+    expect(r).toMatchObject({
+      ok: true,
+      alter_status: 'entwurf',
+      neuer_status: 'geprüft',
+      pruefer: 's1',
+    });
 
     const [url, init] = fetchImpl.mock.calls[0]!;
     expect(url).toBe('http://risk-layer:8000/v1/katalog/review');
     expect(init!.method).toBe('POST');
-    expect(JSON.parse(init!.body as string)).toEqual({ id: 'b1', status: 'geprüft', pruefer: 's1' });
+    expect(JSON.parse(init!.body as string)).toEqual({
+      id: 'b1',
+      status: 'geprüft',
+      pruefer: 's1',
+    });
   });
 
   it('katalogReview wird bei 503 NICHT retried (Schreiben)', async () => {
     const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse({}, 503));
     const client = new RiskLayerClient({ config, fetchImpl });
 
-    await expect(
-      client.katalogReview({ id: 'b1', status: 'freigegeben' }),
-    ).rejects.toBeInstanceOf(RiskLayerHttpError);
+    await expect(client.katalogReview({ id: 'b1', status: 'freigegeben' })).rejects.toBeInstanceOf(
+      RiskLayerHttpError,
+    );
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
@@ -122,9 +151,19 @@ describe('RiskLayerClient', () => {
   it('llmStatus liest Verfügbarkeit + Queue (/slots) am richtigen Pfad', async () => {
     const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) =>
       jsonResponse({
-        url: 'http://127.0.0.1:8080', verfuegbar: true, modell_geladen: true,
-        binary_vorhanden: true, von_uns_gestartet: true, engineVersion: '1.0.0',
-        queue: { quelle: 'slots', slots_gesamt: 4, aktiv: 1, frei: 3, slots: [{ id: 0, aktiv: true }] },
+        url: 'http://127.0.0.1:8080',
+        verfuegbar: true,
+        modell_geladen: true,
+        binary_vorhanden: true,
+        von_uns_gestartet: true,
+        engineVersion: '1.0.0',
+        queue: {
+          quelle: 'slots',
+          slots_gesamt: 4,
+          aktiv: 1,
+          frei: 3,
+          slots: [{ id: 0, aktiv: true }],
+        },
       }),
     );
     const client = new RiskLayerClient({ config, fetchImpl });
@@ -140,7 +179,13 @@ describe('RiskLayerClient', () => {
 
   it('llmStatus verkraftet einen nicht laufenden Server (queue=null, verfuegbar default false)', async () => {
     const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) =>
-      jsonResponse({ url: null, queue: null, binary_vorhanden: true, modell_geladen: false, von_uns_gestartet: false }),
+      jsonResponse({
+        url: null,
+        queue: null,
+        binary_vorhanden: true,
+        modell_geladen: false,
+        von_uns_gestartet: false,
+      }),
     );
     const client = new RiskLayerClient({ config, fetchImpl });
 

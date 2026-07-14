@@ -2,10 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
-import {
-  AUDIT_VERIFY_RESULT_SETTING_KEY,
-  type PersistedVerifyResult,
-} from '@taxtronik/evidence';
+import { AUDIT_VERIFY_RESULT_SETTING_KEY, type PersistedVerifyResult } from '@taxtronik/evidence';
 
 export async function GET(req: NextRequest) {
   const session = await staffAuth();

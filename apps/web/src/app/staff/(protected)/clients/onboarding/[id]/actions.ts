@@ -12,7 +12,10 @@ import { generateInviteToken, INVITE_TTL_DAYS } from '@/server/gwg-onboarding/se
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
 
-export interface WizardResult { ok: boolean; error?: string; }
+export interface WizardResult {
+  ok: boolean;
+  error?: string;
+}
 
 function redirectToContact(clientId: string, error?: string): never {
   const suffix = error ? `&error=${encodeURIComponent(error)}` : '';
@@ -36,7 +39,8 @@ export async function onboardingAddContactAction(formData: FormData) {
   const g = await staffActionGuard();
   if (!g.ok) redirect('/staff/login'); // redirect wirft (never) — außerhalb try/catch
   const { tenantId, staffId, ctx } = g;
-  const rawClientId = typeof formData.get('clientId') === 'string' ? String(formData.get('clientId')) : '';
+  const rawClientId =
+    typeof formData.get('clientId') === 'string' ? String(formData.get('clientId')) : '';
 
   const parsed = ContactSchema.safeParse({
     clientId: formData.get('clientId'),
@@ -81,7 +85,9 @@ export async function onboardingAddContactAction(formData: FormData) {
           },
         });
         await evidenceService.record(tx, {
-          tenantId, actorType: 'STAFF', actorId: staffId,
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
           action: 'client_contact.update',
           resourceType: 'client_contact',
           resourceId: existing.id,
@@ -101,7 +107,9 @@ export async function onboardingAddContactAction(formData: FormData) {
         },
       });
       await evidenceService.record(tx, {
-        tenantId, actorType: 'STAFF', actorId: staffId,
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
         action: 'client_contact.create',
         resourceType: 'client_contact',
         resourceId: c.id,
@@ -169,7 +177,9 @@ export async function onboardingSendGwgAction(formData: FormData) {
       },
     });
     await evidenceService.record(tx, {
-      tenantId, actorType: 'STAFF', actorId: staffId,
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
       action: 'gwg.onboarding.invite',
       resourceType: 'gwg_onboarding_invite',
       resourceId: inv.id,
@@ -184,32 +194,36 @@ export async function onboardingSendGwgAction(formData: FormData) {
 
   const link = `${portalBaseUrl}/gwg-onboarding?token=${encodeURIComponent(raw)}`;
   // Befund 3: fire-and-forget mit catch+Log statt `void ….catch(() => void 0)`.
-  fireAndForget('sendTemplateMail (gwg-onboarding wizard)', sendTemplateMail({
-    tenantId,
-    slug: 'gwg-onboarding',
-    to: parsed.data.inviteEmail,
-    vars: {
-      inviteName: parsed.data.inviteName,
-      inviteEmail: parsed.data.inviteEmail,
-      link,
-      clientId: parsed.data.clientId,
-      gwgInviteId: inviteId,
-    },
-    n8nEvent: 'client.created',
-    n8nPayload: {
+  fireAndForget(
+    'sendTemplateMail (gwg-onboarding wizard)',
+    sendTemplateMail({
       tenantId,
-      clientId: parsed.data.clientId,
-      gwgInviteId: inviteId,
-      inviteEmail: parsed.data.inviteEmail,
-      inviteName: parsed.data.inviteName,
-      link,
-      kind: 'gwg-onboarding',
-    },
-    fallback: {
-      subject: 'Identifizierung für Ihre Mandantschaft',
-      bodyMd: 'Sehr geehrte/r {{inviteName}},\n\nbitte identifizieren Sie sich über folgenden Link: {{link}}',
-    },
-  }));
+      slug: 'gwg-onboarding',
+      to: parsed.data.inviteEmail,
+      vars: {
+        inviteName: parsed.data.inviteName,
+        inviteEmail: parsed.data.inviteEmail,
+        link,
+        clientId: parsed.data.clientId,
+        gwgInviteId: inviteId,
+      },
+      n8nEvent: 'client.created',
+      n8nPayload: {
+        tenantId,
+        clientId: parsed.data.clientId,
+        gwgInviteId: inviteId,
+        inviteEmail: parsed.data.inviteEmail,
+        inviteName: parsed.data.inviteName,
+        link,
+        kind: 'gwg-onboarding',
+      },
+      fallback: {
+        subject: 'Identifizierung für Ihre Mandantschaft',
+        bodyMd:
+          'Sehr geehrte/r {{inviteName}},\n\nbitte identifizieren Sie sich über folgenden Link: {{link}}',
+      },
+    }),
+  );
 
   redirect(`/staff/clients/onboarding/${parsed.data.clientId}?step=poa`);
 }
@@ -248,7 +262,9 @@ export async function onboardingCompleteAction(formData: FormData) {
   await withTenantContext(ctx, async (tx) => {
     await assertClientAccessTx(tx, g.session, clientId);
     await evidenceService.record(tx, {
-      tenantId, actorType: 'STAFF', actorId: staffId,
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
       action: 'client.onboarding.complete',
       resourceType: 'client',
       resourceId: clientId,

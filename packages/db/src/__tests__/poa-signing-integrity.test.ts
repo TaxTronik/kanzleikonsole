@@ -101,7 +101,9 @@ afterAll(async () => {
 
 let sequence = 0;
 
-async function makeDraft(opts: { external?: boolean; forClientId?: string } = {}) {
+async function makeDraft(
+  opts: { external?: boolean; forClientId?: string; createdAt?: Date } = {},
+) {
   sequence += 1;
   return owner.powerOfAttorney.create({
     data: {
@@ -116,6 +118,7 @@ async function makeDraft(opts: { external?: boolean; forClientId?: string } = {}
       status: 'DRAFT',
       createdByStaff: staffId,
       documentId: opts.external ? documentId : null,
+      ...(opts.createdAt ? { createdAt: opts.createdAt } : {}),
     },
   });
 }
@@ -435,6 +438,28 @@ describeWithDatabase('PoA-DB-Invarianten: Versand-Snapshot', () => {
         data: { sentAt: new Date('2000-01-01T00:00:00.000Z') },
       }),
     ).rejects.toThrow(/Versandzeitpunkt/);
+  });
+
+  it('rundet sent_at wie created_at, ohne zukünftige Erstellzeiten zu übernehmen', async () => {
+    const poa = await makeDraft();
+    const { sent } = await sendValid(poa);
+    const [precision] = await owner.$queryRaw<Array<{ millisecondAligned: boolean }>>(
+      Prisma.sql`
+        SELECT "sent_at" = date_trunc('milliseconds', "sent_at") AS "millisecondAligned"
+          FROM "power_of_attorney"
+         WHERE "id" = ${poa.id}::uuid
+      `,
+    );
+
+    expect(sent.sentAt).not.toBeNull();
+    expect(sent.sentAt!.getTime()).toBeGreaterThanOrEqual(poa.createdAt.getTime());
+
+    // created_at ist normalerweise DB-seitig gesetzt. Ein manipuliertes Datum
+    // darf die Versandprovenienz weder in die Zukunft ziehen noch den CHECK
+    // umgehen, der sent_at an die Erstellzeit bindet.
+    const future = await makeDraft({ createdAt: new Date(Date.now() + 60_000) });
+    await expect(sendValid(future)).rejects.toThrow(/poa_sent_at_after_created_check/);
+    expect(precision?.millisecondAligned).toBe(true);
   });
 });
 

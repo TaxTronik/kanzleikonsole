@@ -55,13 +55,18 @@ export default async function SubsumtionListPage({ params }: { params: Promise<{
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-primary truncate inline-flex items-center gap-2">
                         {a.title || 'Subsumtion'}
-                        {a.llmEnrichedAt && <span className="badge-purple text-[10px]">KI-vertieft</span>}
+                        {a.llmEnrichedAt && (
+                          <span className="badge-purple text-[10px]">KI-vertieft</span>
+                        )}
                       </p>
                       <p className="text-[11px] text-muted">
-                        {fmtDateTimeShort(a.createdAt)} · Katalog {a.katalogVersion} · Engine {a.engineVersion}
+                        {fmtDateTimeShort(a.createdAt)} · Katalog {a.katalogVersion} · Engine{' '}
+                        {a.engineVersion}
                       </p>
                     </div>
-                    <span className="badge-gray text-xs shrink-0">{a._count.markings} Markierungen</span>
+                    <span className="badge-gray text-xs shrink-0">
+                      {a._count.markings} Markierungen
+                    </span>
                   </div>
                 </Link>
               </li>

@@ -27,11 +27,7 @@ const formatLabels: Record<string, string> = {
   ZUGFERD: 'ZUGFeRD/Factur-X (Hybrid-PDF, EN 16931)',
 };
 
-export default async function InvoiceDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await staffAuth();
   if (!session?.user) redirect('/staff/login');
 
@@ -57,7 +53,9 @@ export default async function InvoiceDetailPage({
       if (!row) return null;
 
       const artifactOr: Array<{ id: string } | { title: { in: string[] } }> = [
-        { title: { in: [`Rechnung ${row.number} (ZUGFeRD)`, `Rechnung ${row.number} (XRechnung)`] } },
+        {
+          title: { in: [`Rechnung ${row.number} (ZUGFeRD)`, `Rechnung ${row.number} (XRechnung)`] },
+        },
       ];
       if (row.documentId) artifactOr.push({ id: row.documentId });
 
@@ -80,13 +78,12 @@ export default async function InvoiceDetailPage({
   if (!data) notFound();
   const inv = data.invoice;
   const invoiceDocuments = data.artifacts;
-  const hasXRechnung = invoiceDocuments.some((d) =>
-    d.title === `Rechnung ${inv.number} (XRechnung)` ||
-    d.mimeType.toLowerCase().includes('xml'),
+  const hasXRechnung = invoiceDocuments.some(
+    (d) =>
+      d.title === `Rechnung ${inv.number} (XRechnung)` || d.mimeType.toLowerCase().includes('xml'),
   );
-  const hasZugferd = invoiceDocuments.some((d) =>
-    d.id === inv.documentId ||
-    d.title === `Rechnung ${inv.number} (ZUGFeRD)`,
+  const hasZugferd = invoiceDocuments.some(
+    (d) => d.id === inv.documentId || d.title === `Rechnung ${inv.number} (ZUGFeRD)`,
   );
   const canGenerateFormats = inv.format !== 'PDF';
 
@@ -108,21 +105,31 @@ export default async function InvoiceDetailPage({
         </Link>
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-1">
-            <h1 className="text-2xl font-bold text-primary">
-              Rechnung {inv.number}
-            </h1>
-            {inv.status === 'DRAFT' && <span className="badge-gray">{statusLabels[inv.status]}</span>}
-            {inv.status === 'SENT' && <span className="badge-yellow">{statusLabels[inv.status]}</span>}
-            {inv.status === 'PAID' && <span className="badge-green">{statusLabels[inv.status]}</span>}
-            {inv.status === 'OVERDUE' && <span className="badge-red">{statusLabels[inv.status]}</span>}
-            {inv.status === 'CANCELLED' && <span className="badge-gray">{statusLabels[inv.status]}</span>}
+            <h1 className="text-2xl font-bold text-primary">Rechnung {inv.number}</h1>
+            {inv.status === 'DRAFT' && (
+              <span className="badge-gray">{statusLabels[inv.status]}</span>
+            )}
+            {inv.status === 'SENT' && (
+              <span className="badge-yellow">{statusLabels[inv.status]}</span>
+            )}
+            {inv.status === 'PAID' && (
+              <span className="badge-green">{statusLabels[inv.status]}</span>
+            )}
+            {inv.status === 'OVERDUE' && (
+              <span className="badge-red">{statusLabels[inv.status]}</span>
+            )}
+            {inv.status === 'CANCELLED' && (
+              <span className="badge-gray">{statusLabels[inv.status]}</span>
+            )}
             {inv.stornoOfId && <span className="badge-red">Stornorechnung</span>}
             {inv.reverseCharge && <span className="badge-gray">Reverse-Charge § 13b</span>}
           </div>
           {inv.stornoOf && (
             <p className="text-xs text-red-700">
               Storno zu Rechnung{' '}
-              <Link href={`/staff/invoices/${inv.stornoOf.id}`} className="underline">{inv.stornoOf.number}</Link>
+              <Link href={`/staff/invoices/${inv.stornoOf.id}`} className="underline">
+                {inv.stornoOf.number}
+              </Link>
             </p>
           )}
           {inv.stornoBy.length > 0 && (
@@ -131,7 +138,9 @@ export default async function InvoiceDetailPage({
               {inv.stornoBy.map((s, i) => (
                 <span key={s.id}>
                   {i > 0 && ', '}
-                  <Link href={`/staff/invoices/${s.id}`} className="underline">{s.number}</Link>
+                  <Link href={`/staff/invoices/${s.id}`} className="underline">
+                    {s.number}
+                  </Link>
                   {s.status === 'DRAFT' && (
                     <span className="font-medium"> (Entwurf — noch nicht zugestellt)</span>
                   )}
@@ -141,7 +150,8 @@ export default async function InvoiceDetailPage({
           )}
           {inv.reverseCharge && (
             <p className="text-xs text-secondary">
-              Steuerschuldnerschaft des Leistungsempfängers (§ 13b UStG) — die USt schuldet der Mandant.
+              Steuerschuldnerschaft des Leistungsempfängers (§ 13b UStG) — die USt schuldet der
+              Mandant.
             </p>
           )}
           <p className="text-muted text-sm">
@@ -157,25 +167,18 @@ export default async function InvoiceDetailPage({
 
       {inv.stornoOfId && inv.status === 'DRAFT' && (
         <div className="rounded-md border border-amber-300 bg-amber-50 p-4 mb-6 text-sm text-amber-800">
-          <strong>Korrekturbeleg noch nicht zugestellt.</strong> Dieser Storno-/
-          Korrekturbeleg ist ein Entwurf und wurde (noch) nicht an den Mandanten
-          versendet. Die Umsatzsteuer-Berichtigung wird erst mit der Zustellung
-          wirksam (§ 14c Abs. 1 i. V. m. § 17 UStG) — bitte den Beleg{' '}
-          {canSend ? 'unten versenden' : 'manuell versenden'} bzw. bei einer
+          <strong>Korrekturbeleg noch nicht zugestellt.</strong> Dieser Storno-/ Korrekturbeleg ist
+          ein Entwurf und wurde (noch) nicht an den Mandanten versendet. Die
+          Umsatzsteuer-Berichtigung wird erst mit der Zustellung wirksam (§ 14c Abs. 1 i. V. m. § 17
+          UStG) — bitte den Beleg {canSend ? 'unten versenden' : 'manuell versenden'} bzw. bei einer
           Fremdsystem-Rechnung dort ausstellen.
         </div>
       )}
 
       <div className="grid grid-cols-3 gap-4 mb-6">
         <KV label="Betreff" value={inv.subject} />
-        <KV
-          label="Rechnungsdatum"
-          value={fmtDateShort(inv.issueDate)}
-        />
-        <KV
-          label="Fällig"
-          value={fmtDateShort(inv.dueDate)}
-        />
+        <KV label="Rechnungsdatum" value={fmtDateShort(inv.issueDate)} />
+        <KV label="Fällig" value={fmtDateShort(inv.dueDate)} />
       </div>
 
       <div className="card overflow-hidden mb-6">
@@ -198,19 +201,15 @@ export default async function InvoiceDetailPage({
                 <td className="px-6 py-3 text-right font-mono tabular-nums text-secondary">
                   {Number(p.quantity).toLocaleString('de-DE')} {p.unit}
                 </td>
-                <td className="td-num">
-                  {fmtEUR(p.unitPrice)}
-                </td>
-                <td className="td-num">
-                  {Number(p.vatRate).toLocaleString('de-DE')}
-                </td>
-                <td className="td-num">
-                  {fmtEUR(p.netAmount)}
-                </td>
+                <td className="td-num">{fmtEUR(p.unitPrice)}</td>
+                <td className="td-num">{Number(p.vatRate).toLocaleString('de-DE')}</td>
+                <td className="td-num">{fmtEUR(p.netAmount)}</td>
               </tr>
             ))}
             <tr className="bg-gray-50">
-              <td colSpan={5} className="px-6 py-3 text-right text-secondary">Netto</td>
+              <td colSpan={5} className="px-6 py-3 text-right text-secondary">
+                Netto
+              </td>
               <td className="td-num">{fmtEUR(inv.netAmount)}</td>
             </tr>
             {/* iter86: USt-Ausweis je Steuersatz-Gruppe (§ 14 Abs. 4 Nr. 8 UStG) */}
@@ -223,8 +222,12 @@ export default async function InvoiceDetailPage({
               </tr>
             ))}
             <tr className="bg-gray-100 font-bold">
-              <td colSpan={5} className="px-6 py-3 text-right text-primary">Brutto</td>
-              <td className="px-6 py-3 text-right font-mono tabular-nums text-primary">{fmtEUR(inv.totalAmount)}</td>
+              <td colSpan={5} className="px-6 py-3 text-right text-primary">
+                Brutto
+              </td>
+              <td className="px-6 py-3 text-right font-mono tabular-nums text-primary">
+                {fmtEUR(inv.totalAmount)}
+              </td>
             </tr>
           </tbody>
         </table>
@@ -239,10 +242,15 @@ export default async function InvoiceDetailPage({
 
       {invoiceDocuments.length > 0 && (
         <div className="card p-4 mb-6">
-          <h3 className="text-xs font-medium text-muted uppercase tracking-wide mb-3">Rechnungsdateien</h3>
+          <h3 className="text-xs font-medium text-muted uppercase tracking-wide mb-3">
+            Rechnungsdateien
+          </h3>
           <div className="divide-y divide-border-subtle">
             {invoiceDocuments.map((doc) => (
-              <div key={doc.id} className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
+              <div
+                key={doc.id}
+                className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
+              >
                 <div className="min-w-0 flex items-center gap-3">
                   <FileText className="h-4 w-4 text-muted shrink-0" />
                   <div className="min-w-0">
@@ -277,9 +285,7 @@ export default async function InvoiceDetailPage({
             title="ZUGFeRD/Factur-X PDF (mit eingebetteter XRechnung-XML) herunterladen"
           />
         )}
-        {inv.status === 'DRAFT' && canSend && (
-          <MarkSentForm invoiceId={inv.id} />
-        )}
+        {inv.status === 'DRAFT' && canSend && <MarkSentForm invoiceId={inv.id} />}
         {canManage && (
           <InvoiceStatusActions
             invoiceId={inv.id}

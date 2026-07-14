@@ -7,7 +7,12 @@ import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { seedDefaultRssFeeds } from '@/server/rss/defaults';
 import { assertPublicHost } from '@/server/http/ssrf-guard';
-import { staffActionGuard, withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
+import {
+  staffActionGuard,
+  withStaff,
+  ActionError,
+  type ActionResult as BaseActionResult,
+} from '@/server/actions/staff-action';
 
 export type ActionResult = BaseActionResult;
 
@@ -41,7 +46,8 @@ export async function addRssFeedAction(
     url: formData.get('url'),
     color: formData.get('color') ?? '',
   });
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
+  if (!parsed.success)
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
   const urlClean = parsed.data.url.trim();
 
   // R-1: SSRF-Guard schon beim Speichern. Vorher prüfte nur der Worker beim
@@ -85,7 +91,9 @@ export async function addRssFeedAction(
         },
       });
       await evidenceService.record(tx, {
-        tenantId, actorType: 'STAFF', actorId: staffId,
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
         action: 'rss_feed.add',
         resourceType: 'rss_feed',
         resourceId: f.id,
@@ -102,7 +110,10 @@ export async function addRssFeedAction(
   return { ok: true };
 }
 
-export async function toggleRssFeedAction(input: { id: string; active: boolean }): Promise<ActionResult> {
+export async function toggleRssFeedAction(input: {
+  id: string;
+  active: boolean;
+}): Promise<ActionResult> {
   const parsed = z.object({ id: z.string().uuid(), active: z.boolean() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
@@ -113,7 +124,9 @@ export async function toggleRssFeedAction(input: { id: string; active: boolean }
         data: { active: parsed.data.active },
       });
       await evidenceService.record(tx, {
-        tenantId, actorType: 'STAFF', actorId: staffId,
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
         action: parsed.data.active ? 'rss_feed.enable' : 'rss_feed.disable',
         resourceType: 'rss_feed',
         resourceId: parsed.data.id,
@@ -135,7 +148,9 @@ export async function deleteRssFeedAction(input: { id: string }): Promise<Action
       });
       await tx.rssFeed.delete({ where: { id: parsed.data.id } });
       await evidenceService.record(tx, {
-        tenantId, actorType: 'STAFF', actorId: staffId,
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
         action: 'rss_feed.delete',
         resourceType: 'rss_feed',
         resourceId: parsed.data.id,
@@ -151,7 +166,9 @@ export async function resetRssFeedDefaultsAction(): Promise<ActionResult> {
     async (tx, { tenantId, staffId }) => {
       await seedDefaultRssFeeds(tx, tenantId, staffId);
       await evidenceService.record(tx, {
-        tenantId, actorType: 'STAFF', actorId: staffId,
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
         action: 'rss_feed.reset_defaults',
         resourceType: 'staff_user',
         resourceId: staffId,

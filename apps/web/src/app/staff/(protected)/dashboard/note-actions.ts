@@ -1,7 +1,11 @@
 'use server';
 
 import { z } from 'zod';
-import { withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
+import {
+  withStaff,
+  ActionError,
+  type ActionResult as BaseActionResult,
+} from '@/server/actions/staff-action';
 
 export interface ActionResult extends BaseActionResult {
   id?: string;

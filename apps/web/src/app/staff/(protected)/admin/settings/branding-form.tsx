@@ -29,7 +29,11 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
   // Gemeinsamer Lese+Validierungs-Pfad für hell/dunkel-Logo. Das File-Input
   // selbst wird NICHT übermittelt — die Daten-URL fließt via FileReader in den
   // React-State und von dort ins versteckte Feld (s. FileButton ohne name).
-  function readLogo(file: File, onError: (m: string | null) => void, onData: (d: string) => void): void {
+  function readLogo(
+    file: File,
+    onError: (m: string | null) => void,
+    onData: (d: string) => void,
+  ): void {
     onError(null);
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
       onError('Nur PNG, JPG oder WebP erlaubt.');
@@ -49,7 +53,9 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
   return (
     <form action={formAction} className="space-y-4">
       <div>
-        <label className="label" htmlFor="displayName">Anzeige-Name</label>
+        <label className="label" htmlFor="displayName">
+          Anzeige-Name
+        </label>
         <input
           id="displayName"
           name="displayName"
@@ -64,7 +70,9 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
       </div>
 
       <div>
-        <label className="label" htmlFor="subtitle">Untertitel (optional)</label>
+        <label className="label" htmlFor="subtitle">
+          Untertitel (optional)
+        </label>
         <input
           id="subtitle"
           name="subtitle"
@@ -78,7 +86,9 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
       </div>
 
       <div>
-        <label className="label" htmlFor="accentColor">Akzent-Farbe</label>
+        <label className="label" htmlFor="accentColor">
+          Akzent-Farbe
+        </label>
         <div className="flex items-center gap-3">
           <input
             id="accentColor"
@@ -117,7 +127,11 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
         {logo && (
           <div className="mt-2 flex items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element -- Logo previews are tenant-provided data URLs. */}
-            <img src={logo} alt="Logo-Vorschau hell" className="h-12 max-w-[200px] object-contain border border-default rounded" />
+            <img
+              src={logo}
+              alt="Logo-Vorschau hell"
+              className="h-12 max-w-[200px] object-contain border border-default rounded"
+            />
             <button
               type="button"
               onClick={() => setLogo(null)}
@@ -146,7 +160,11 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
           <div className="mt-2 flex items-center gap-3">
             <div className="rounded p-1 bg-gray-900">
               {/* eslint-disable-next-line @next/next/no-img-element -- Logo previews are tenant-provided data URLs. */}
-              <img src={logoDark} alt="Logo-Vorschau dunkel" className="h-12 max-w-[200px] object-contain" />
+              <img
+                src={logoDark}
+                alt="Logo-Vorschau dunkel"
+                className="h-12 max-w-[200px] object-contain"
+              />
             </div>
             <button
               type="button"
@@ -157,25 +175,34 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
             </button>
           </div>
         ) : (
-          <p className="text-xs text-muted mt-1">Ohne Dark-Logo gilt das hell-Logo in beiden Themes.</p>
+          <p className="text-xs text-muted mt-1">
+            Ohne Dark-Logo gilt das hell-Logo in beiden Themes.
+          </p>
         )}
       </div>
 
-      <div className="rounded-md p-4 border border-default" style={{ backgroundColor: `${previewAccent}15` }}>
+      <div
+        className="rounded-md p-4 border border-default"
+        style={{ backgroundColor: `${previewAccent}15` }}
+      >
         <p className="text-xs text-muted uppercase tracking-wide mb-2">Vorschau</p>
         <div className="flex items-center gap-3">
           {logo || logoDark ? (
-            <TenantLogo branding={{ logoDataUrl: logo, logoDataUrlDark: logoDark }} alt={displayName} className="h-9 object-contain" />
+            <TenantLogo
+              branding={{ logoDataUrl: logo, logoDataUrlDark: logoDark }}
+              alt={displayName}
+              className="h-9 object-contain"
+            />
           ) : (
-            <span className="text-xl font-bold" style={{ color: previewAccent }}>{displayName}</span>
+            <span className="text-xl font-bold" style={{ color: previewAccent }}>
+              {displayName}
+            </span>
           )}
           {subtitle && <span className="text-sm text-muted">{subtitle}</span>}
         </div>
       </div>
 
-      {state?.error && (
-        <div className="alert-error-sm">{state.error}</div>
-      )}
+      {state?.error && <div className="alert-error-sm">{state.error}</div>}
       {state?.ok && (
         <div className="alert-success-sm">
           Gespeichert. Die Änderung wird beim nächsten Pageload sichtbar.

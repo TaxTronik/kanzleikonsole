@@ -80,10 +80,30 @@ const CONCORDANT: Array<{ name: string; data: string; tsr: string; ca: string }>
   { name: 'GlobalSign echt, korrekt', data: GS_PAY, tsr: GS_TSR, ca: GS_ROOT },
   // falscher Payload (synthetic ≠ globalsign) → Imprint passt nicht
   { name: 'GlobalSign, falscher Payload', data: SY_PAY, tsr: GS_TSR, ca: GS_ROOT },
-  { name: 'Synthetik good vs eigener Root', data: SY_PAY, tsr: fp('synthetic-good.tsr'), ca: SY_ROOT },
-  { name: 'Synthetik good vs GlobalSign-Root (Pinning)', data: SY_PAY, tsr: fp('synthetic-good.tsr'), ca: GS_ROOT },
-  { name: 'Synthetik nicht-kritische EKU', data: SY_PAY, tsr: fp('synthetic-noncrit-eku.tsr'), ca: SY_ROOT },
-  { name: 'Synthetik falscher EKU-Zweck', data: SY_PAY, tsr: fp('synthetic-wrong-eku.tsr'), ca: SY_ROOT },
+  {
+    name: 'Synthetik good vs eigener Root',
+    data: SY_PAY,
+    tsr: fp('synthetic-good.tsr'),
+    ca: SY_ROOT,
+  },
+  {
+    name: 'Synthetik good vs GlobalSign-Root (Pinning)',
+    data: SY_PAY,
+    tsr: fp('synthetic-good.tsr'),
+    ca: GS_ROOT,
+  },
+  {
+    name: 'Synthetik nicht-kritische EKU',
+    data: SY_PAY,
+    tsr: fp('synthetic-noncrit-eku.tsr'),
+    ca: SY_ROOT,
+  },
+  {
+    name: 'Synthetik falscher EKU-Zweck',
+    data: SY_PAY,
+    tsr: fp('synthetic-wrong-eku.tsr'),
+    ca: SY_ROOT,
+  },
   { name: 'Synthetik ohne ESS', data: SY_PAY, tsr: fp('synthetic-no-ess.tsr'), ca: SY_ROOT },
 ];
 

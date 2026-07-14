@@ -17,18 +17,14 @@ export default async function SettingsLayout({ children }: { children: ReactNode
   return (
     <div className="p-8 max-w-6xl">
       <div className="flex items-start gap-4 mb-6">
-        <Link
-          href="/staff/admin"
-          className="text-disabled hover:text-secondary mt-1"
-        >
+        <Link href="/staff/admin" className="text-disabled hover:text-secondary mt-1">
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-primary mb-1">
-            Einstellungen
-          </h1>
+          <h1 className="text-2xl font-bold text-primary mb-1">Einstellungen</h1>
           <p className="text-muted text-sm">
-            Grundkonfiguration der Kanzlei — Erscheinungsbild, Module, E-Mail-Versand, Integrationen.
+            Grundkonfiguration der Kanzlei — Erscheinungsbild, Module, E-Mail-Versand,
+            Integrationen.
           </p>
         </div>
       </div>

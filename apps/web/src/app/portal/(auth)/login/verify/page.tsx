@@ -43,7 +43,11 @@ export default async function VerifyMagicLinkPage({ searchParams }: PageProps) {
             ? 'Der Link ist ungültig, abgelaufen oder wurde bereits verwendet.'
             : 'Kein Token in der URL.'}
         </div>
-        <Link href="/portal/login" referrerPolicy="no-referrer" className="btn-primary inline-block">
+        <Link
+          href="/portal/login"
+          referrerPolicy="no-referrer"
+          className="btn-primary inline-block"
+        >
           Neuen Link anfordern
         </Link>
       </Shell>
@@ -53,8 +57,8 @@ export default async function VerifyMagicLinkPage({ searchParams }: PageProps) {
   return (
     <Shell>
       <p className="text-sm text-secondary">
-        Klicken Sie auf <strong>Anmelden</strong>, um sich in das
-        Mandantenportal einzuloggen. Der Link ist einmalig gültig.
+        Klicken Sie auf <strong>Anmelden</strong>, um sich in das Mandantenportal einzuloggen. Der
+        Link ist einmalig gültig.
       </p>
       <form action={confirmMagicLinkAction}>
         <input type="hidden" name="token" value={token} />
@@ -63,7 +67,11 @@ export default async function VerifyMagicLinkPage({ searchParams }: PageProps) {
           Anmelden
         </button>
       </form>
-      <Link href="/portal/login" referrerPolicy="no-referrer" className="text-xs text-disabled hover:underline">
+      <Link
+        href="/portal/login"
+        referrerPolicy="no-referrer"
+        className="text-xs text-disabled hover:underline"
+      >
         Neuen Link anfordern
       </Link>
     </Shell>

@@ -6,7 +6,10 @@ import { useRouter } from 'next/navigation';
 import { ArrowRightLeft, X } from 'lucide-react';
 import { handoverItemAction } from './actions';
 
-interface StaffOption { id: string; fullName: string; }
+interface StaffOption {
+  id: string;
+  fullName: string;
+}
 
 /**
  * „Übergabe" — Schritt-Bearbeiter wechseln + automatischer Kommentar.
@@ -28,7 +31,9 @@ export function HandoverButton({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const [toStaffId, setToStaffId] = useState('');
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -38,11 +43,19 @@ export function HandoverButton({
 
   function submit() {
     setError(null);
-    if (!toStaffId) { setError('Bitte Empfänger wählen.'); return; }
+    if (!toStaffId) {
+      setError('Bitte Empfänger wählen.');
+      return;
+    }
     start(async () => {
       const r = await handoverItemAction({ itemId, toStaffId, note: note.trim() });
-      if (!r.ok) { setError(r.error ?? 'Fehler.'); return; }
-      setOpen(false); setNote(''); setToStaffId('');
+      if (!r.ok) {
+        setError(r.error ?? 'Fehler.');
+        return;
+      }
+      setOpen(false);
+      setNote('');
+      setToStaffId('');
       router.refresh();
     });
   }
@@ -55,7 +68,11 @@ export function HandoverButton({
             <ArrowRightLeft className="h-4 w-4 text-brand-600" />
             Schritt übergeben
           </h2>
-          <button type="button" onClick={() => setOpen(false)} className="text-disabled hover:text-secondary">
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="text-disabled hover:text-secondary"
+          >
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -72,7 +89,9 @@ export function HandoverButton({
           >
             <option value="">— Empfänger wählen —</option>
             {candidates.map((s) => (
-              <option key={s.id} value={s.id}>{s.fullName}</option>
+              <option key={s.id} value={s.id}>
+                {s.fullName}
+              </option>
             ))}
           </select>
         </div>
@@ -87,11 +106,11 @@ export function HandoverButton({
             className="input text-sm"
           />
         </div>
-        {error && (
-          <div className="alert-error-sm text-xs p-2">{error}</div>
-        )}
+        {error && <div className="alert-error-sm text-xs p-2">{error}</div>}
         <div className="form-actions">
-          <button type="button" onClick={() => setOpen(false)} className="btn-secondary text-sm">Abbrechen</button>
+          <button type="button" onClick={() => setOpen(false)} className="btn-secondary text-sm">
+            Abbrechen
+          </button>
           <button
             type="button"
             onClick={submit}

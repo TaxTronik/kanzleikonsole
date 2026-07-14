@@ -121,11 +121,11 @@ Ablage umbauen, nur der Scanner-/Einwurfpfad ist neu.
 Wer zusätzlich aus bestehenden Strukturen einliefern will, pflegt
 Pfadregeln (longest-prefix-Match) in einer Admin-Tabelle:
 
-| Pfadmuster | Bedeutung |
-|---|---|
-| `Hauptmandate/Gruppe 1/Firma 2/**` | Mandant 10017 |
-| `ESt-Mandate/**` | keine Mandanten-Zuordnung, Kategorie „ESt einfach" |
-| `Scan/Allgemein/**` | wie `_allgemein` |
+| Pfadmuster                         | Bedeutung                                          |
+| ---------------------------------- | -------------------------------------------------- |
+| `Hauptmandate/Gruppe 1/Firma 2/**` | Mandant 10017                                      |
+| `ESt-Mandate/**`                   | keine Mandanten-Zuordnung, Kategorie „ESt einfach" |
+| `Scan/Allgemein/**`                | wie `_allgemein`                                   |
 
 Unzugeordnetes landet als „unzugeordnet" in der Triage — nichts geht
 verloren, nichts wird geraten.
@@ -147,22 +147,26 @@ Jede Stufe ist ein eigener Pipeline-Schritt; ein Item durchläuft nur die
 Stufen, die es braucht. Billig vor teuer:
 
 ### Stufe 0 — deterministisch (kostenlos)
+
 Pfad-Mapping (3.2), Dateiname, Absender ↔ Portal-Kontakt, sha256-Dedup,
 MIME-Typ. Liefert: Mandanten-(Vor-)Zuordnung, ggf. Kategorie.
 
 ### Stufe 1 — Text geboren (billig)
+
 PDFs mit Textebene (unpdf, vorhanden) und Office-Dateien (mammoth):
 extrahierter Text → kleines **Text-LLM** (vorhandener llama-server)
 klassifiziert Dokumenttyp (vorhandene classificationKeys), Absender,
 Steuernummer, Datumsfelder, Bescheid-Indikator.
 
 ### Stufe 2 — OCR (mittel)
+
 Scans ohne Textebene: **ocrmypdf/Tesseract-Container** (CPU, kein VRAM!)
 erzeugt durchsuchbare PDFs → zurück in Stufe 1. Für saubere
 Maschinen-Scans (Briefe, Bescheide) reicht das vollständig — die teure
 Vision-Stufe bleibt diesen Dokumenten erspart.
 
 ### Stufe 3 — Vision (teuer, gezielt)
+
 Für **Beleg-Scans und Fotos**, bei denen Layout/Struktur zählt
 (Kassenbons, Eingangsrechnungen, Handschriftliches, abfotografierte
 Belege) und für Items, bei denen Stufe 1/2 mit niedriger Konfidenz endet:
@@ -245,13 +249,13 @@ Kanäle, Status-Maschine nur vorwärts. Staging-Räumung nach Frist
 
 ## 8. Ausbaustufen (revidiert)
 
-| Stufe | Inhalt | Wert |
-|---|---|---|
-| 1 | InboxItem + Staging + **UNC-Connector** (Soll-Struktur + Mapping-Tabelle) + Triage-UI; nur Stufe-0-Zuordnung; Virenscan | Scan-to-Archiv, sofort nutzbar |
-| 2 | OCR-Container (CPU) + **Text-LLM-Klassifikation** (Stufe 1+2) | Vorschläge statt Handarbeit für Briefe/Bescheide |
-| 3 | **Vision-Beleg-Pipeline** + Belegliste + XLSX-Export (Stufe 3, Batch/GPU-Scheduling) | Das „riesen Thema": Belege sortiert + Zahlen als Arbeitspapier |
-| 4 | **Outlook**: zentrales Postfach (Graph) + **Add-In** (Pairing, persönliche Postfächer) | Der größte Kanal, M365-Regelfall |
-| 5 | Bescheid-Autoerkennung → vorausgefüllter Bescheid → Einspruchsfrist → **Fristenkontrollbuch** | Schließt den Kreis |
+| Stufe | Inhalt                                                                                                                  | Wert                                                           |
+| ----- | ----------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| 1     | InboxItem + Staging + **UNC-Connector** (Soll-Struktur + Mapping-Tabelle) + Triage-UI; nur Stufe-0-Zuordnung; Virenscan | Scan-to-Archiv, sofort nutzbar                                 |
+| 2     | OCR-Container (CPU) + **Text-LLM-Klassifikation** (Stufe 1+2)                                                           | Vorschläge statt Handarbeit für Briefe/Bescheide               |
+| 3     | **Vision-Beleg-Pipeline** + Belegliste + XLSX-Export (Stufe 3, Batch/GPU-Scheduling)                                    | Das „riesen Thema": Belege sortiert + Zahlen als Arbeitspapier |
+| 4     | **Outlook**: zentrales Postfach (Graph) + **Add-In** (Pairing, persönliche Postfächer)                                  | Der größte Kanal, M365-Regelfall                               |
+| 5     | Bescheid-Autoerkennung → vorausgefüllter Bescheid → Einspruchsfrist → **Fristenkontrollbuch**                           | Schließt den Kreis                                             |
 
 ## 9. Offene Entscheidungen
 

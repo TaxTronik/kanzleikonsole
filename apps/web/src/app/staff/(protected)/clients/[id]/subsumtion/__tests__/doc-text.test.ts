@@ -2,9 +2,14 @@ import { describe, it, expect } from 'vitest';
 import { plainRangeToPm, pmPosToPlain, jsonDocToText, type TextRange } from '../doc-text';
 
 // Tiptap-JSON-Bausteine.
-const p = (...content: unknown[]) => ({ type: 'paragraph', ...(content.length ? { content } : {}) });
+const p = (...content: unknown[]) => ({
+  type: 'paragraph',
+  ...(content.length ? { content } : {}),
+});
 const t = (text: string, ...marks: string[]) =>
-  marks.length ? { type: 'text', text, marks: marks.map((type) => ({ type })) } : { type: 'text', text };
+  marks.length
+    ? { type: 'text', text, marks: marks.map((type) => ({ type })) }
+    : { type: 'text', text };
 const h2 = (text: string) => ({ type: 'heading', attrs: { level: 2 }, content: [t(text)] });
 const li = (text: string) => ({ type: 'listItem', content: [p(t(text))] });
 const doc = (...content: unknown[]) => ({ type: 'doc', content });
@@ -25,7 +30,9 @@ describe('jsonDocToText (Server-Serialisierung, muss docToText spiegeln)', () =>
   it('Formatierung (marks) ändert den Text NICHT', () => {
     expect(jsonDocToText(doc(p(t('Sehr '), t('wichtig', 'bold'))))).toBe('Sehr wichtig');
     // bit-identisch zum unformatierten Pendant → Format-Edit gilt als „nur Format".
-    expect(jsonDocToText(doc(p(t('Sehr '), t('wichtig', 'bold'))))).toBe(jsonDocToText(doc(p(t('Sehr wichtig')))));
+    expect(jsonDocToText(doc(p(t('Sehr '), t('wichtig', 'bold'))))).toBe(
+      jsonDocToText(doc(p(t('Sehr wichtig')))),
+    );
   });
   it('leerer Absatz am Ende erzeugt denselben Separator wie docToText', () => {
     expect(jsonDocToText(doc(p(t('A')), p()))).toBe('A\n\n');

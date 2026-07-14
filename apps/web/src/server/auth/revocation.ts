@@ -38,10 +38,7 @@ function key(surface: SessionSurface, userId: string): string {
  *  - Passwort-Reset
  *  - Admin-Aktion „alle Sessions ausloggen"
  */
-export async function revokeAllSessions(
-  surface: SessionSurface,
-  userId: string,
-): Promise<void> {
+export async function revokeAllSessions(surface: SessionSurface, userId: string): Promise<void> {
   const r = getRedis();
   if (!r) return;
   try {

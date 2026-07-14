@@ -19,11 +19,28 @@ type StepKind =
   | 'CLIENT_EMAIL'
   | 'N8N_TRIGGER';
 
-const ALL_KINDS: StepKind[] = ['TASK', 'DOCUMENT_UPLOAD', 'CLIENT_REQUEST', 'CLIENT_FORM', 'CLIENT_EMAIL', 'N8N_TRIGGER'];
+const ALL_KINDS: StepKind[] = [
+  'TASK',
+  'DOCUMENT_UPLOAD',
+  'CLIENT_REQUEST',
+  'CLIENT_FORM',
+  'CLIENT_EMAIL',
+  'N8N_TRIGGER',
+];
 
-interface StaffOption { id: string; fullName: string; }
-interface FormTpl { id: string; name: string; }
-interface NamedTpl { id: string; name: string; category: string | null; }
+interface StaffOption {
+  id: string;
+  fullName: string;
+}
+interface FormTpl {
+  id: string;
+  name: string;
+}
+interface NamedTpl {
+  id: string;
+  name: string;
+  category: string | null;
+}
 
 export function AddStepForm({
   instanceId,
@@ -60,7 +77,10 @@ export function AddStepForm({
 
   function submit() {
     setError(null);
-    if (!title.trim()) { setError('Titel ist Pflicht.'); return; }
+    if (!title.trim()) {
+      setError('Titel ist Pflicht.');
+      return;
+    }
     start(async () => {
       const r = await addItemToInstanceAction({
         instanceId,
@@ -72,14 +92,22 @@ export function AddStepForm({
         n8nEvent: n8nEvent.trim() || null,
         assigneeStaffId: assigneeStaffId || null,
       });
-      if (!r.ok) { setError(r.error ?? 'Fehler.'); return; }
+      if (!r.ok) {
+        setError(r.error ?? 'Fehler.');
+        return;
+      }
       reset();
       router.refresh();
     });
   }
   function reset() {
-    setTitle(''); setDescription(''); setDueDate('');
-    setAssigneeStaffId(''); setKind('TASK'); setConfig({}); setN8nEvent('');
+    setTitle('');
+    setDescription('');
+    setDueDate('');
+    setAssigneeStaffId('');
+    setKind('TASK');
+    setConfig({});
+    setN8nEvent('');
     setOpen(false);
   }
 
@@ -127,7 +155,9 @@ export function AddStepForm({
             className="input text-sm"
           >
             {ALL_KINDS.map((k) => (
-              <option key={k} value={k}>{KIND_LABELS[k]}</option>
+              <option key={k} value={k}>
+                {KIND_LABELS[k]}
+              </option>
             ))}
           </select>
           <p className="text-[10px] text-disabled mt-1 leading-snug">{KIND_DESCRIPTIONS[kind]}</p>
@@ -141,7 +171,9 @@ export function AddStepForm({
           >
             <option value="">— ich (Standard) —</option>
             {staffOptions.map((s) => (
-              <option key={s.id} value={s.id}>{s.fullName}</option>
+              <option key={s.id} value={s.id}>
+                {s.fullName}
+              </option>
             ))}
           </select>
         </div>
@@ -182,9 +214,7 @@ export function AddStepForm({
         </div>
       </div>
 
-      {error && (
-        <div className="alert-error-sm text-xs p-2">{error}</div>
-      )}
+      {error && <div className="alert-error-sm text-xs p-2">{error}</div>}
       <div className="flex items-center justify-end gap-2 pt-1">
         <button type="button" onClick={reset} className="text-xs text-muted hover:underline">
           Abbrechen
@@ -232,7 +262,9 @@ function KindFields({
             className="input text-sm"
           >
             {DOCUMENT_CLASSIFICATIONS.map((c) => (
-              <option key={c} value={c}>{c}</option>
+              <option key={c} value={c}>
+                {c}
+              </option>
             ))}
           </select>
         </div>
@@ -249,7 +281,10 @@ function KindFields({
           >
             <option value="">— Inline-Felder verwenden —</option>
             {requestTemplates.map((t) => (
-              <option key={t.id} value={t.id}>{t.category ? `[${t.category}] ` : ''}{t.name}</option>
+              <option key={t.id} value={t.id}>
+                {t.category ? `[${t.category}] ` : ''}
+                {t.name}
+              </option>
             ))}
           </select>
           <input
@@ -284,7 +319,9 @@ function KindFields({
           >
             <option value="">— Formular auswählen —</option>
             {formTemplates.map((f) => (
-              <option key={f.id} value={f.id}>{f.name}</option>
+              <option key={f.id} value={f.id}>
+                {f.name}
+              </option>
             ))}
           </select>
         </div>
@@ -301,7 +338,10 @@ function KindFields({
           >
             <option value="">— Inline-Text verwenden —</option>
             {emailTemplates.map((t) => (
-              <option key={t.id} value={t.id}>{t.category ? `[${t.category}] ` : ''}{t.name}</option>
+              <option key={t.id} value={t.id}>
+                {t.category ? `[${t.category}] ` : ''}
+                {t.name}
+              </option>
             ))}
           </select>
           <input

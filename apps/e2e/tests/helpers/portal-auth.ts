@@ -53,7 +53,10 @@ export async function expectPortalDashboardReady(page: Page, timeout = 20_000): 
     ).toBeVisible({ timeout });
     await expect(page.getByRole('link', { name: /Dokumente/i })).toBeVisible({ timeout: 10_000 });
   } catch (e) {
-    const body = await page.locator('body').innerText({ timeout: 1000 }).catch(() => '');
+    const body = await page
+      .locator('body')
+      .innerText({ timeout: 1000 })
+      .catch(() => '');
     throw new Error(
       `Portal-Dashboard wurde nicht fertig gerendert. url=${page.url()} body=${body.replace(/\s+/g, ' ').slice(0, 800)} cause=${(e as Error).message}`,
       { cause: e },
@@ -81,10 +84,12 @@ async function fetchMagicLink(request: APIRequestContext, email: string): Promis
   // Sort by newest first using item index (higher index = newer in reversed array)
   for (const msg of items) {
     const headers = msg.Content?.Headers ?? {};
-    const to = Array.isArray(headers['To']) ? headers['To'].join(' ') : headers['To'] ?? '';
+    const to = Array.isArray(headers['To']) ? headers['To'].join(' ') : (headers['To'] ?? '');
     if (!to.includes(email)) continue;
 
-    const bodies = [msg.Content?.Body, ...(msg.MIME?.Parts ?? []).map((p) => p.Body)].filter(Boolean) as string[];
+    const bodies = [msg.Content?.Body, ...(msg.MIME?.Parts ?? []).map((p) => p.Body)].filter(
+      Boolean,
+    ) as string[];
     for (let body of bodies) {
       // Remove soft line breaks (quoted-printable = at end of line)
       body = body.replace(/=\r?\n/g, '');

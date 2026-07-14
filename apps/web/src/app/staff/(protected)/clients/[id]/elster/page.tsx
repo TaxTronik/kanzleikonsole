@@ -21,11 +21,7 @@ const ART_LABELS: Record<string, string> = {
   I: 'Istbuchungen',
 };
 
-export default async function ElsterPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function ElsterPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await staffAuth();
   if (!session?.user) redirect('/staff/login');
   const { id: clientId } = await params;
@@ -64,7 +60,10 @@ export default async function ElsterPage({
           <p className="text-muted text-sm">
             {client.name}
             {client.steuernummer ? (
-              <> · StNr <span className="font-mono">{client.steuernummer}</span></>
+              <>
+                {' '}
+                · StNr <span className="font-mono">{client.steuernummer}</span>
+              </>
             ) : null}
           </p>
         </div>
@@ -73,8 +72,8 @@ export default async function ElsterPage({
       {!configured ? (
         <div className="rounded-md border border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950/40 p-4 text-sm text-yellow-800 dark:text-yellow-300">
           Die ELSTER-Bridge ist nicht konfiguriert (<code>ELSTER_BRIDGE_URL</code>/
-          <code>ELSTER_BRIDGE_TOKEN</code>). Ohne Bridge bleibt das Steuerkonto
-          inaktiv — Deployment siehe eric-bridge-Doku.
+          <code>ELSTER_BRIDGE_TOKEN</code>). Ohne Bridge bleibt das Steuerkonto inaktiv — Deployment
+          siehe eric-bridge-Doku.
         </div>
       ) : !client.steuernummer ? (
         <div className="rounded-md border border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950/40 p-4 text-sm text-yellow-800 dark:text-yellow-300">
@@ -98,12 +97,24 @@ export default async function ElsterPage({
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-surface-raised border-b border-default">
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">Zeitpunkt</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">Art</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">Steuerart</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">Zeitraum</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">Modus</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">Status</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">
+                  Zeitpunkt
+                </th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">
+                  Art
+                </th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">
+                  Steuerart
+                </th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">
+                  Zeitraum
+                </th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">
+                  Modus
+                </th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">
+                  Status
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border-subtle">
@@ -124,10 +135,7 @@ export default async function ElsterPage({
                     {a.ok ? (
                       <span className="badge badge-green">OK</span>
                     ) : (
-                      <span
-                        className="badge badge-red"
-                        title={a.errorText ?? undefined}
-                      >
+                      <span className="badge badge-red" title={a.errorText ?? undefined}>
                         Fehler ({a.returnCode})
                       </span>
                     )}

@@ -25,11 +25,7 @@ const actorTypeLabels: Record<string, string> = {
   SYSTEM: 'System',
 };
 
-export default async function AuditEntryPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function AuditEntryPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await staffAuth();
   if (!session?.user) redirect('/staff/login');
   if (!isStaffAdmin(session)) {
@@ -146,16 +142,16 @@ export default async function AuditEntryPage({
         <dl className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm">
           <div>
             <dt className="text-xs text-muted uppercase tracking-wide">Zeitpunkt</dt>
-            <dd className="text-primary font-mono">
-              {fmtDateTimeSeconds(entry.occurredAt)}
-            </dd>
+            <dd className="text-primary font-mono">{fmtDateTimeSeconds(entry.occurredAt)}</dd>
           </div>
           <div>
             <dt className="text-xs text-muted uppercase tracking-wide">Akteur</dt>
             <dd className="text-primary">
               {actorTypeLabels[entry.actorType] ?? entry.actorType}
               {entry.actorId && (
-                <span className="text-muted font-mono ml-2 text-xs">{entry.actorId.slice(0, 12)}…</span>
+                <span className="text-muted font-mono ml-2 text-xs">
+                  {entry.actorId.slice(0, 12)}…
+                </span>
               )}
             </dd>
           </div>
@@ -173,7 +169,9 @@ export default async function AuditEntryPage({
             <dd className="text-xs font-mono space-y-1 mt-1">
               <p>
                 <span className="text-muted">prev:</span>{' '}
-                <span className="text-secondary">{Buffer.from(entry.prevHash).toString('hex')}</span>
+                <span className="text-secondary">
+                  {Buffer.from(entry.prevHash).toString('hex')}
+                </span>
               </p>
               <p>
                 <span className="text-muted">this:</span>{' '}
@@ -247,7 +245,11 @@ function renderDiff(before: string | null, after: string | null): DiffLine[] {
 
   // gemeinsamer Präfix
   let head = 0;
-  while (head < beforeLines.length && head < afterLines.length && beforeLines[head] === afterLines[head]) {
+  while (
+    head < beforeLines.length &&
+    head < afterLines.length &&
+    beforeLines[head] === afterLines[head]
+  ) {
     head++;
   }
   // gemeinsamer Suffix
@@ -262,8 +264,10 @@ function renderDiff(before: string | null, after: string | null): DiffLine[] {
 
   const out: DiffLine[] = [];
   for (let i = 0; i < head; i++) out.push({ kind: 'eq', text: beforeLines[i] ?? '' });
-  for (let i = head; i < beforeLines.length - tail; i++) out.push({ kind: 'del', text: beforeLines[i] ?? '' });
-  for (let i = head; i < afterLines.length - tail; i++) out.push({ kind: 'add', text: afterLines[i] ?? '' });
+  for (let i = head; i < beforeLines.length - tail; i++)
+    out.push({ kind: 'del', text: beforeLines[i] ?? '' });
+  for (let i = head; i < afterLines.length - tail; i++)
+    out.push({ kind: 'add', text: afterLines[i] ?? '' });
   for (let i = beforeLines.length - tail; i < beforeLines.length; i++) {
     out.push({ kind: 'eq', text: beforeLines[i] ?? '' });
   }

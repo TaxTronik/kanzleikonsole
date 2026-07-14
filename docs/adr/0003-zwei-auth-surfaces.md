@@ -7,15 +7,16 @@
 
 taxtronik hat zwei sehr unterschiedliche Identitätstypen:
 
-| | Mitarbeiter (Staff) | Mandant (Client Contact) |
-|---|---|---|
-| Login-Methode | E-Mail + Passwort + TOTP (Pflicht) | Magic-Link (E-Mail) + opt. 2FA |
-| Häufigkeit | Tägliche Nutzung | Sporadisch (Alle paar Wochen) |
-| Compliance-Klasse | Personalakte | § 203 StGB Mandantendaten |
-| Routing | `/staff/*` | `/portal/*` |
-| Datenzugriff | Eigener Kanzlei-Mandant | Nur die ihm zugeordneten Daten |
+|                   | Mitarbeiter (Staff)                | Mandant (Client Contact)       |
+| ----------------- | ---------------------------------- | ------------------------------ |
+| Login-Methode     | E-Mail + Passwort + TOTP (Pflicht) | Magic-Link (E-Mail) + opt. 2FA |
+| Häufigkeit        | Tägliche Nutzung                   | Sporadisch (Alle paar Wochen)  |
+| Compliance-Klasse | Personalakte                       | § 203 StGB Mandantendaten      |
+| Routing           | `/staff/*`                         | `/portal/*`                    |
+| Datenzugriff      | Eigener Kanzlei-Mandant            | Nur die ihm zugeordneten Daten |
 
 Eine gemeinsame `users`-Tabelle mit `role`-Discriminator wäre möglich, aber:
+
 - Magic-Link-Tokens dürften niemals für Staff-Konten ausgegeben werden.
 - Audit-Logs lesen sich klarer mit getrennten FKs.
 - Cookie-Verwechslung muss strukturell ausgeschlossen sein.
@@ -43,12 +44,14 @@ Eine gemeinsame `users`-Tabelle mit `role`-Discriminator wäre möglich, aber:
 ## Konsequenzen
 
 **Positiv**
+
 - Strukturell sicher gegen Cookie-/Token-Verwechslung.
 - Audit-Log-Spalten `actor_type ∈ {STAFF, CLIENT_CONTACT, SYSTEM}` sind klar.
 - Auth.js-Konfigurationen können unabhängig erweitert werden (z. B. Passkeys
   für Staff, ohne Portal-Flow zu beeinflussen).
 
 **Negativ**
+
 - Mehr Boilerplate als ein Single-Auth-Setup.
 - "Unified Login" (selbe E-Mail in beiden Welten) ist NICHT vorgesehen —
   bei Bedarf später als explizites Feature mit Verknüpfungstabelle.
@@ -62,6 +65,7 @@ Eine gemeinsame `users`-Tabelle mit `role`-Discriminator wäre möglich, aber:
 ## Verifikation
 
 E2E-Test (folgt in Iter. 2):
+
 1. Staff-Login setzt nur Staff-Cookie, nicht Portal.
 2. Mit Staff-Cookie auf `/portal/*` → Redirect zu `/portal/login`.
 3. Mit Portal-Cookie auf `/staff/*` → Redirect zu `/staff/login`.

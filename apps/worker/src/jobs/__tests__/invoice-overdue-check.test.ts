@@ -117,7 +117,12 @@ describe('U-1/RF-8: Statuswechsel + Audit + Notification in einer Tx', () => {
     // (Zahlung am Fälligkeitstag ist rechtzeitig → nicht überfällig).
     expect(h.prismaOwner.invoice.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { tenantId: TENANT, status: 'SENT', dueDate: { lt: TODAY_MIDNIGHT }, stornoOfId: null },
+        where: {
+          tenantId: TENANT,
+          status: 'SENT',
+          dueDate: { lt: TODAY_MIDNIGHT },
+          stornoOfId: null,
+        },
       }),
     );
     expect(h.withWorkerTenantContext).toHaveBeenCalledTimes(1);

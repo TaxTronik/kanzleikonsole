@@ -1,9 +1,4 @@
-import {
-  hkdfSync,
-  createCipheriv,
-  createDecipheriv,
-  randomBytes,
-} from 'node:crypto';
+import { hkdfSync, createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { generateSecret, generateURI, verifySync } from 'otplib';
 
 // IV (12 Byte) || AuthTag (16 Byte) || Ciphertext
@@ -21,27 +16,16 @@ function deriveKey(tenantId: string, authSecret: string): Buffer {
   return Buffer.from(result);
 }
 
-export function encryptTotpSecret(
-  secret: string,
-  tenantId: string,
-  authSecret: string,
-): string {
+export function encryptTotpSecret(secret: string, tenantId: string, authSecret: string): string {
   const key = deriveKey(tenantId, authSecret);
   const iv = randomBytes(IV_LEN);
   const cipher = createCipheriv('aes-256-gcm', key, iv);
-  const ciphertext = Buffer.concat([
-    cipher.update(secret, 'utf8'),
-    cipher.final(),
-  ]);
+  const ciphertext = Buffer.concat([cipher.update(secret, 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
   return Buffer.concat([iv, tag, ciphertext]).toString('base64');
 }
 
-export function decryptTotpSecret(
-  encoded: string,
-  tenantId: string,
-  authSecret: string,
-): string {
+export function decryptTotpSecret(encoded: string, tenantId: string, authSecret: string): string {
   const key = deriveKey(tenantId, authSecret);
   const buf = Buffer.from(encoded, 'base64');
   const iv = buf.subarray(0, IV_LEN);
@@ -56,11 +40,7 @@ export function generateTotpSecret(): string {
   return generateSecret({ length: 20 });
 }
 
-export function buildTotpUri(
-  email: string,
-  secret: string,
-  issuer = 'taxtronik',
-): string {
+export function buildTotpUri(email: string, secret: string, issuer = 'taxtronik'): string {
   return generateURI({ issuer, label: email, secret });
 }
 

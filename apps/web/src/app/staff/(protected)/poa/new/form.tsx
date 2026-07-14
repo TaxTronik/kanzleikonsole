@@ -10,7 +10,13 @@ interface Client {
   contacts: Array<{ id: string; fullName: string; email: string }>;
 }
 
-export function NewPoaForm({ clients, poaMode }: { clients: Client[]; poaMode: 'MARKDOWN_OTP' | 'PDF_TEMPLATE' }) {
+export function NewPoaForm({
+  clients,
+  poaMode,
+}: {
+  clients: Client[];
+  poaMode: 'MARKDOWN_OTP' | 'PDF_TEMPLATE';
+}) {
   const today = new Date().toISOString().slice(0, 10);
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
     createPoaAction,
@@ -38,7 +44,9 @@ export function NewPoaForm({ clients, poaMode }: { clients: Client[]; poaMode: '
     <form action={formAction} className="card p-6 space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="label" htmlFor="clientId">Mandant</label>
+          <label className="label" htmlFor="clientId">
+            Mandant
+          </label>
           <select
             id="clientId"
             name="clientId"
@@ -53,12 +61,16 @@ export function NewPoaForm({ clients, poaMode }: { clients: Client[]; poaMode: '
             required
           >
             {clients.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
             ))}
           </select>
         </div>
         <div>
-          <label className="label" htmlFor="signerContactId">Bestehender Kontakt (optional)</label>
+          <label className="label" htmlFor="signerContactId">
+            Bestehender Kontakt (optional)
+          </label>
           <select
             id="signerContactId"
             name="signerContactId"
@@ -68,7 +80,9 @@ export function NewPoaForm({ clients, poaMode }: { clients: Client[]; poaMode: '
           >
             <option value="">— manuell eingeben —</option>
             {client?.contacts.map((c) => (
-              <option key={c.id} value={c.id}>{c.fullName} ({c.email})</option>
+              <option key={c.id} value={c.id}>
+                {c.fullName} ({c.email})
+              </option>
             ))}
           </select>
         </div>
@@ -76,7 +90,9 @@ export function NewPoaForm({ clients, poaMode }: { clients: Client[]; poaMode: '
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="label" htmlFor="signerName">Unterzeichner-Name</label>
+          <label className="label" htmlFor="signerName">
+            Unterzeichner-Name
+          </label>
           <input
             id="signerName"
             name="signerName"
@@ -89,7 +105,9 @@ export function NewPoaForm({ clients, poaMode }: { clients: Client[]; poaMode: '
           />
         </div>
         <div>
-          <label className="label" htmlFor="signerEmail">Unterzeichner-E-Mail</label>
+          <label className="label" htmlFor="signerEmail">
+            Unterzeichner-E-Mail
+          </label>
           <input
             id="signerEmail"
             name="signerEmail"
@@ -103,7 +121,9 @@ export function NewPoaForm({ clients, poaMode }: { clients: Client[]; poaMode: '
       </div>
 
       <div>
-        <label className="label" htmlFor="subject">Betreff</label>
+        <label className="label" htmlFor="subject">
+          Betreff
+        </label>
         <input
           id="subject"
           name="subject"
@@ -117,7 +137,9 @@ export function NewPoaForm({ clients, poaMode }: { clients: Client[]; poaMode: '
 
       {poaMode === 'MARKDOWN_OTP' ? (
         <div>
-          <label className="label" htmlFor="scope">Umfang (Markdown)</label>
+          <label className="label" htmlFor="scope">
+            Umfang (Markdown)
+          </label>
           <textarea
             id="scope"
             name="scope"
@@ -133,7 +155,9 @@ export function NewPoaForm({ clients, poaMode }: { clients: Client[]; poaMode: '
         <div>
           <span className="label">Vollmacht als PDF</span>
           <div className="mt-1">
-            <FileButton id="poaPdf" name="poaPdf" accept="application/pdf">PDF auswählen</FileButton>
+            <FileButton id="poaPdf" name="poaPdf" accept="application/pdf">
+              PDF auswählen
+            </FileButton>
           </div>
           <p className="text-xs text-muted mt-1">
             Die PDF wird revisionssicher (GoBD) abgelegt und am Vollmacht-Datensatz verknüpft.
@@ -143,7 +167,9 @@ export function NewPoaForm({ clients, poaMode }: { clients: Client[]; poaMode: '
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="label" htmlFor="validFrom">Gültig ab</label>
+          <label className="label" htmlFor="validFrom">
+            Gültig ab
+          </label>
           <input
             id="validFrom"
             name="validFrom"
@@ -154,13 +180,10 @@ export function NewPoaForm({ clients, poaMode }: { clients: Client[]; poaMode: '
           />
         </div>
         <div>
-          <label className="label" htmlFor="validUntil">Gültig bis (optional)</label>
-          <input
-            id="validUntil"
-            name="validUntil"
-            type="date"
-            className="input"
-          />
+          <label className="label" htmlFor="validUntil">
+            Gültig bis (optional)
+          </label>
+          <input id="validUntil" name="validUntil" type="date" className="input" />
         </div>
       </div>
 
@@ -169,7 +192,9 @@ export function NewPoaForm({ clients, poaMode }: { clients: Client[]; poaMode: '
           {isPending ? 'Lege an …' : 'Anlegen'}
         </button>
         <p className="text-xs text-muted self-center">
-          {poaMode === 'MARKDOWN_OTP' ? 'Nach Anlegen können Sie die Vollmacht zur Unterschrift senden.' : 'Nach Anlegen können Sie die Vollmacht bei Bedarf zur Unterschrift weiterleiten.'}
+          {poaMode === 'MARKDOWN_OTP'
+            ? 'Nach Anlegen können Sie die Vollmacht zur Unterschrift senden.'
+            : 'Nach Anlegen können Sie die Vollmacht bei Bedarf zur Unterschrift weiterleiten.'}
         </p>
       </div>
       {state && !state.ok && (

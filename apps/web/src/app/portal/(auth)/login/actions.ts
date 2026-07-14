@@ -113,9 +113,7 @@ export async function verifyMagicLinkAction(token: string): Promise<VerifyResult
  */
 export async function confirmMagicLinkAction(formData: FormData): Promise<void> {
   const token = String(formData.get('token') ?? '');
-  const returnTo = safePortalReturnTo(
-    (formData.get('returnTo') as string | null) ?? undefined,
-  );
+  const returnTo = safePortalReturnTo((formData.get('returnTo') as string | null) ?? undefined);
   const r = await verifyMagicLinkAction(token);
   // redirect() wirft NEXT_REDIRECT — muss AUSSERHALB des try/catch von
   // verifyMagicLinkAction laufen (tut es hier).

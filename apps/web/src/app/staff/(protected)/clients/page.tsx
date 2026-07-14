@@ -90,10 +90,7 @@ export default async function ClientsPage({
   } else if (sp.onboarding === 'in_progress') {
     where.AND = [
       {
-        OR: [
-          { allowActive: false },
-          { contacts: { none: { active: true } } },
-        ],
+        OR: [{ allowActive: false }, { contacts: { none: { active: true } } }],
       },
       {
         OR: [
@@ -164,8 +161,8 @@ export default async function ClientsPage({
     <div className="p-8">
       {sp.denied === '1' && (
         <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
-          Kein Zugriff auf diesen Mandanten — er ist als vertraulich markiert
-          oder Ihnen nicht zugeordnet.
+          Kein Zugriff auf diesen Mandanten — er ist als vertraulich markiert oder Ihnen nicht
+          zugeordnet.
         </div>
       )}
       <div className="flex items-center justify-between mb-6">
@@ -245,9 +242,13 @@ export default async function ClientsPage({
           </label>
           <div className="flex gap-2">
             {(sp.q || sp.status || sort !== 'name' || dir !== 'asc' || mine) && (
-              <Link href="/staff/clients" className="btn-secondary">Reset</Link>
+              <Link href="/staff/clients" className="btn-secondary">
+                Reset
+              </Link>
             )}
-            <button type="submit" className="btn-primary">Anwenden</button>
+            <button type="submit" className="btn-primary">
+              Anwenden
+            </button>
           </div>
         </div>
       </form>
@@ -308,9 +309,15 @@ export default async function ClientsPage({
                       {client.name}
                     </Link>
                   </td>
-                  <td className="px-6 py-3 text-secondary">{kindLabels[client.kind] ?? client.kind}</td>
-                  <td className="px-6 py-3 text-secondary font-mono text-xs">{client.datevNo ?? '—'}</td>
-                  <td className="px-6 py-3 text-secondary font-mono text-xs">{client.addisonNo ?? '—'}</td>
+                  <td className="px-6 py-3 text-secondary">
+                    {kindLabels[client.kind] ?? client.kind}
+                  </td>
+                  <td className="px-6 py-3 text-secondary font-mono text-xs">
+                    {client.datevNo ?? '—'}
+                  </td>
+                  <td className="px-6 py-3 text-secondary font-mono text-xs">
+                    {client.addisonNo ?? '—'}
+                  </td>
                   <td className="px-6 py-3">
                     {client.allowActive ? (
                       <span className="badge-green">Aktiv</span>

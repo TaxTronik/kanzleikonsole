@@ -14,9 +14,9 @@ export interface SellerInfo {
   street: string | null;
   postalCode: string | null;
   city: string | null;
-  countryIso: string;        // Default: DE
-  vatId: string | null;      // USt-ID
-  taxNumber: string | null;  // Steuernummer
+  countryIso: string; // Default: DE
+  vatId: string | null; // USt-ID
+  taxNumber: string | null; // Steuernummer
   email: string | null;
   phone: string | null;
   iban: string | null;
@@ -66,10 +66,7 @@ export async function readSellerInfo(ctx: TenantContext): Promise<SellerInfo> {
   });
 }
 
-export async function writeSellerInfo(
-  ctx: TenantContext,
-  info: SellerInfo,
-): Promise<void> {
+export async function writeSellerInfo(ctx: TenantContext, info: SellerInfo): Promise<void> {
   await withTenantContext(ctx, async (tx) => {
     await tx.tenantSetting.upsert({
       where: { tenantId_key: { tenantId: ctx.tenantId, key: KEY_SELLER } },

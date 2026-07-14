@@ -165,8 +165,9 @@ export type PortalSession = Session & {
 
 const portalConfig: NextAuthConfig = {
   basePath: '/api/auth/portal',
-  // S9: in Produktion explizit per env opt-in. Dev: implizit true für Komfort.
-  trustHost: env.NEXTAUTH_TRUST_HOST ?? (env.NODE_ENV !== 'production'),
+  // Auth.js v5 verlangt trustHost=true. Der vorgeschaltete Proxy pinnt den
+  // Host auf den konfigurierten VHost; Production-Config erzwingt das Opt-in.
+  trustHost: env.NEXTAUTH_TRUST_HOST ?? true,
   secret: env.AUTH_SECRET,
 
   providers: [
@@ -197,7 +198,10 @@ const portalConfig: NextAuthConfig = {
           { max: 200, windowSec: 600 },
         );
         if (!rl.ok) {
-          log.warn({ ip, bucket: ip ? 'per-ip' : 'global' }, 'portal-auth: authorize-rate-limit hit');
+          log.warn(
+            { ip, bucket: ip ? 'per-ip' : 'global' },
+            'portal-auth: authorize-rate-limit hit',
+          );
           return null;
         }
 
@@ -349,9 +353,9 @@ export const portalAuth = cache(async (): Promise<PortalSession | null> => {
 
   const baseSession: Session = {
     user: {
-      id: typeof token.sub === 'string' ? token.sub : token.contactId ?? '',
+      id: typeof token.sub === 'string' ? token.sub : (token.contactId ?? ''),
       email: typeof token.email === 'string' ? token.email : '',
-      name: typeof token.name === 'string' ? token.name : token.fullName ?? '',
+      name: typeof token.name === 'string' ? token.name : (token.fullName ?? ''),
       fullName: '',
       tenantId: '',
     },

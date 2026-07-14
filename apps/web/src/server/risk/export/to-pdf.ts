@@ -34,9 +34,16 @@ function drawAnnotated(
   const spaceW = doc.widthOfString(' ');
   const ctx = { x: left, y: doc.y };
 
-  const newline = (n = 1) => { ctx.x = left; ctx.y += lineHeight * n; };
+  const newline = (n = 1) => {
+    ctx.x = left;
+    ctx.y += lineHeight * n;
+  };
   const ensure = () => {
-    if (ctx.y + lineHeight > bottom) { doc.addPage(); ctx.y = doc.page.margins.top; ctx.x = left; }
+    if (ctx.y + lineHeight > bottom) {
+      doc.addPage();
+      ctx.y = doc.page.margins.top;
+      ctx.x = left;
+    }
   };
   const piece = (s: string, color: string, bold: boolean) => {
     doc.font(bold ? 'Helvetica-Bold' : 'Helvetica');
@@ -90,16 +97,30 @@ export async function renderPdf(model: ReportModel): Promise<Buffer> {
   const bottom = doc.page.height - doc.page.margins.bottom;
 
   // --- Kopf ---
-  doc.font('Helvetica-Bold').fontSize(18).fillColor('#111111').text(model.title, { width: contentWidth });
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(18)
+    .fillColor('#111111')
+    .text(model.title, { width: contentWidth });
   doc.moveDown(0.3);
-  doc.font('Helvetica').fontSize(8).fillColor('#666666').text(metaLine(model), { width: contentWidth });
+  doc
+    .font('Helvetica')
+    .fontSize(8)
+    .fillColor('#666666')
+    .text(metaLine(model), { width: contentWidth });
   doc.moveDown(0.9);
 
   // --- Sachverhalt (annotiert: markierte Stellen farbig + Marker [n]) ---
   doc.font('Helvetica-Bold').fontSize(13).fillColor('#111111').text('Sachverhalt');
   doc.moveDown(0.2);
-  doc.font('Helvetica-Oblique').fontSize(8).fillColor('#888888')
-    .text('Markierte Stellen sind farbig und mit [Nr.] nummeriert — dieselbe Nr. steht in der Tabelle „Markierungen".', { width: contentWidth });
+  doc
+    .font('Helvetica-Oblique')
+    .fontSize(8)
+    .fillColor('#888888')
+    .text(
+      'Markierte Stellen sind farbig und mit [Nr.] nummeriert — dieselbe Nr. steht in der Tabelle „Markierungen".',
+      { width: contentWidth },
+    );
   doc.moveDown(0.3);
 
   drawAnnotated(doc, model.tokens, { left, right, bottom, fontSize: 10 });
@@ -126,7 +147,10 @@ export async function renderPdf(model: ReportModel): Promise<Buffer> {
   ].map((c) => ({ ...c, width: c.w * contentWidth }));
   const xs: number[] = [];
   let acc = left;
-  for (const c of cols) { xs.push(acc); acc += c.width; }
+  for (const c of cols) {
+    xs.push(acc);
+    acc += c.width;
+  }
   const pad = 4;
 
   const drawHeader = (y: number): number => {
@@ -137,7 +161,11 @@ export async function renderPdf(model: ReportModel): Promise<Buffer> {
       doc.text(c.title, xs[i]! + pad, y + pad, { width: c.width - 2 * pad });
     });
     const rowH = h + 2 * pad;
-    doc.moveTo(left, y + rowH).lineTo(right, y + rowH).strokeColor('#999999').stroke();
+    doc
+      .moveTo(left, y + rowH)
+      .lineTo(right, y + rowH)
+      .strokeColor('#999999')
+      .stroke();
     return y + rowH;
   };
 
@@ -176,7 +204,11 @@ export async function renderPdf(model: ReportModel): Promise<Buffer> {
       doc.text(t, xs[i]! + pad, y + pad, { width: cols[i]!.width - 2 * pad });
     });
     doc.font('Helvetica').fillColor('#222222');
-    doc.moveTo(left, y + rowH).lineTo(right, y + rowH).strokeColor('#DDDDDD').stroke();
+    doc
+      .moveTo(left, y + rowH)
+      .lineTo(right, y + rowH)
+      .strokeColor('#DDDDDD')
+      .stroke();
     y += rowH;
   }
 

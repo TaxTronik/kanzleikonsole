@@ -39,10 +39,7 @@ export async function GET(req: NextRequest) {
   // Per-User-Rate-Limit (Defense in Depth): Exporte sind teuer + datenreich.
   const rl = await checkStaffExportLimit('audit', staffId);
   if (!rl.ok) {
-    return NextResponse.json(
-      { error: 'rate_limited', retryAfter: rl.retryAfter },
-      { status: 429 },
-    );
+    return NextResponse.json({ error: 'rate_limited', retryAfter: rl.retryAfter }, { status: 429 });
   }
 
   const sp = req.nextUrl.searchParams;
@@ -54,10 +51,7 @@ export async function GET(req: NextRequest) {
     to: sp.get('to') || undefined,
   });
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: 'validation', issues: parsed.error.issues },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: 'validation', issues: parsed.error.issues }, { status: 400 });
   }
   const q = parsed.data;
 

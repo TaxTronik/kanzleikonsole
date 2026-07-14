@@ -38,14 +38,16 @@ interface NotifyInput {
  * Parser zu sein.
  */
 function sanitizeText(s: string): string {
-  return s
-    // Control characters (außer Newline/Tab) raus — Zero-Width-Joiner, BiDi-
-    // Overrides etc. können sonst die UI verzerren.
-    // eslint-disable-next-line no-control-regex, no-irregular-whitespace
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F​-‏‪-‮⁦-⁩]/g, '')
-    // `<` neutralisieren — kein vollständiges HTML-Escape, weil UIs den Text
-    // direkt anzeigen.
-    .replace(/</g, '‹');
+  return (
+    s
+      // Control characters (außer Newline/Tab) raus — Zero-Width-Joiner, BiDi-
+      // Overrides etc. können sonst die UI verzerren.
+      // eslint-disable-next-line no-control-regex, no-irregular-whitespace
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F​-‏‪-‮⁦-⁩]/g, '')
+      // `<` neutralisieren — kein vollständiges HTML-Escape, weil UIs den Text
+      // direkt anzeigen.
+      .replace(/</g, '‹')
+  );
 }
 
 export async function notify(tx: TxClient, input: NotifyInput): Promise<void> {

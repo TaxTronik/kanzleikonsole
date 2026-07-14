@@ -8,7 +8,17 @@ import type { ReactNode } from 'react';
 // =============================================================================
 
 import { useEditorState, type Editor } from '@tiptap/react';
-import { Bold, Italic, Heading2, Heading3, List, ListOrdered, Undo2, Redo2, AlignJustify } from 'lucide-react';
+import {
+  Bold,
+  Italic,
+  Heading2,
+  Heading3,
+  List,
+  ListOrdered,
+  Undo2,
+  Redo2,
+  AlignJustify,
+} from 'lucide-react';
 
 function Btn({
   active,
@@ -46,7 +56,15 @@ function Btn({
  *  „Absätze zusammenführen"-Button ein — nur im Compose sinnvoll, da er den
  *  Plaintext verändert (im Review-Format-Modus darf der Text unverändert bleiben).
  *  `bordered={false}` lässt den unteren Rand weg (für die schwebende Flyover-Leiste). */
-export function FormatToolbar({ editor, onReflow, bordered = true }: { editor: Editor; onReflow?: () => void; bordered?: boolean }) {
+export function FormatToolbar({
+  editor,
+  onReflow,
+  bordered = true,
+}: {
+  editor: Editor;
+  onReflow?: () => void;
+  bordered?: boolean;
+}) {
   const s = useEditorState({
     editor,
     selector: ({ editor }) => ({
@@ -62,23 +80,76 @@ export function FormatToolbar({ editor, onReflow, bordered = true }: { editor: E
   });
 
   return (
-    <div className={'flex items-center gap-0.5 p-1 flex-wrap' + (bordered ? ' border-b border-default' : '')}>
-      <Btn active={s?.bold} onClick={() => editor.chain().focus().toggleBold().run()} title="Fett"><Bold className="h-4 w-4" /></Btn>
-      <Btn active={s?.italic} onClick={() => editor.chain().focus().toggleItalic().run()} title="Kursiv"><Italic className="h-4 w-4" /></Btn>
+    <div
+      className={
+        'flex items-center gap-0.5 p-1 flex-wrap' + (bordered ? ' border-b border-default' : '')
+      }
+    >
+      <Btn active={s?.bold} onClick={() => editor.chain().focus().toggleBold().run()} title="Fett">
+        <Bold className="h-4 w-4" />
+      </Btn>
+      <Btn
+        active={s?.italic}
+        onClick={() => editor.chain().focus().toggleItalic().run()}
+        title="Kursiv"
+      >
+        <Italic className="h-4 w-4" />
+      </Btn>
       <span className="mx-1 h-5 w-px bg-border-subtle" />
-      <Btn active={s?.h2} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} title="Überschrift"><Heading2 className="h-4 w-4" /></Btn>
-      <Btn active={s?.h3} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} title="Unter-Überschrift"><Heading3 className="h-4 w-4" /></Btn>
-      <Btn active={s?.bullet} onClick={() => editor.chain().focus().toggleBulletList().run()} title="Aufzählung"><List className="h-4 w-4" /></Btn>
-      <Btn active={s?.ordered} onClick={() => editor.chain().focus().toggleOrderedList().run()} title="Nummerierte Liste"><ListOrdered className="h-4 w-4" /></Btn>
+      <Btn
+        active={s?.h2}
+        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+        title="Überschrift"
+      >
+        <Heading2 className="h-4 w-4" />
+      </Btn>
+      <Btn
+        active={s?.h3}
+        onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
+        title="Unter-Überschrift"
+      >
+        <Heading3 className="h-4 w-4" />
+      </Btn>
+      <Btn
+        active={s?.bullet}
+        onClick={() => editor.chain().focus().toggleBulletList().run()}
+        title="Aufzählung"
+      >
+        <List className="h-4 w-4" />
+      </Btn>
+      <Btn
+        active={s?.ordered}
+        onClick={() => editor.chain().focus().toggleOrderedList().run()}
+        title="Nummerierte Liste"
+      >
+        <ListOrdered className="h-4 w-4" />
+      </Btn>
       {onReflow && (
         <>
           <span className="mx-1 h-5 w-px bg-border-subtle" />
-          <Btn onClick={onReflow} title="Absätze zusammenführen — harte Zeilenumbrüche zu Fließtext glätten (gegen Import-Fragmentierung)"><AlignJustify className="h-4 w-4" /></Btn>
+          <Btn
+            onClick={onReflow}
+            title="Absätze zusammenführen — harte Zeilenumbrüche zu Fließtext glätten (gegen Import-Fragmentierung)"
+          >
+            <AlignJustify className="h-4 w-4" />
+          </Btn>
         </>
       )}
       <span className="ml-auto" />
-      <Btn disabled={!s?.canUndo} onClick={() => editor.chain().focus().undo().run()} title="Rückgängig"><Undo2 className="h-4 w-4" /></Btn>
-      <Btn disabled={!s?.canRedo} onClick={() => editor.chain().focus().redo().run()} title="Wiederholen"><Redo2 className="h-4 w-4" /></Btn>
+      <Btn
+        disabled={!s?.canUndo}
+        onClick={() => editor.chain().focus().undo().run()}
+        title="Rückgängig"
+      >
+        <Undo2 className="h-4 w-4" />
+      </Btn>
+      <Btn
+        disabled={!s?.canRedo}
+        onClick={() => editor.chain().focus().redo().run()}
+        title="Wiederholen"
+      >
+        <Redo2 className="h-4 w-4" />
+      </Btn>
     </div>
   );
 }

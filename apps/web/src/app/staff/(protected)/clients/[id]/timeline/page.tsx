@@ -28,28 +28,27 @@ import { buildClientTimeline, type TimelineEvent } from '@/server/timeline/build
 import { fmtDateTimeMedium, fmtDateWeekdayLong } from '@/lib/fmt';
 
 const ICON_MAP: Record<TimelineEvent['kind'], { icon: typeof FileText; tone: string }> = {
-  document_uploaded:        { icon: FileText,        tone: 'text-blue-600 bg-blue-50' },
-  request_opened:           { icon: Inbox,           tone: 'text-yellow-700 bg-yellow-50' },
-  request_closed:           { icon: CheckCircle2,    tone: 'text-secondary bg-gray-100' },
-  request_response_staff:   { icon: MessageSquare,   tone: 'text-brand-700 bg-brand-50' },
-  request_response_client:  { icon: MessageSquare,   tone: 'text-emerald-700 bg-emerald-50' },
-  phone_note:               { icon: Phone,           tone: 'text-purple-700 bg-purple-50' },
-  invoice_created:          { icon: Receipt,         tone: 'text-secondary bg-gray-100' },
-  invoice_sent:             { icon: Send,            tone: 'text-blue-700 bg-blue-50' },
-  invoice_paid:             { icon: CreditCard,      tone: 'text-emerald-700 bg-emerald-50' },
-  gwg_created:              { icon: Shield,          tone: 'text-yellow-700 bg-yellow-50' },
-  gwg_verified:             { icon: ShieldCheck,     tone: 'text-emerald-700 bg-emerald-50' },
-  gwg_rejected:             { icon: ShieldAlert,     tone: 'text-red-700 bg-red-50' },
-  poa_created:              { icon: ScrollText,      tone: 'text-secondary bg-gray-100' },
-  poa_signed:               { icon: PenLine,         tone: 'text-emerald-700 bg-emerald-50' },
-  poa_revoked:              { icon: Ban,             tone: 'text-red-700 bg-red-50' },
-  tax_notice_received:      { icon: FileWarning,     tone: 'text-amber-700 bg-amber-50' },
-  tax_deadline_completed:   { icon: CalendarCheck,   tone: 'text-emerald-700 bg-emerald-50' },
-  workflow_item_done:       { icon: ListChecks,      tone: 'text-emerald-700 bg-emerald-50' },
-  risk_analysis_created:    { icon: Fingerprint,     tone: 'text-indigo-700 bg-indigo-50' },
-  risk_analysis_archived:   { icon: Lock,            tone: 'text-secondary bg-gray-100' },
+  document_uploaded: { icon: FileText, tone: 'text-blue-600 bg-blue-50' },
+  request_opened: { icon: Inbox, tone: 'text-yellow-700 bg-yellow-50' },
+  request_closed: { icon: CheckCircle2, tone: 'text-secondary bg-gray-100' },
+  request_response_staff: { icon: MessageSquare, tone: 'text-brand-700 bg-brand-50' },
+  request_response_client: { icon: MessageSquare, tone: 'text-emerald-700 bg-emerald-50' },
+  phone_note: { icon: Phone, tone: 'text-purple-700 bg-purple-50' },
+  invoice_created: { icon: Receipt, tone: 'text-secondary bg-gray-100' },
+  invoice_sent: { icon: Send, tone: 'text-blue-700 bg-blue-50' },
+  invoice_paid: { icon: CreditCard, tone: 'text-emerald-700 bg-emerald-50' },
+  gwg_created: { icon: Shield, tone: 'text-yellow-700 bg-yellow-50' },
+  gwg_verified: { icon: ShieldCheck, tone: 'text-emerald-700 bg-emerald-50' },
+  gwg_rejected: { icon: ShieldAlert, tone: 'text-red-700 bg-red-50' },
+  poa_created: { icon: ScrollText, tone: 'text-secondary bg-gray-100' },
+  poa_signed: { icon: PenLine, tone: 'text-emerald-700 bg-emerald-50' },
+  poa_revoked: { icon: Ban, tone: 'text-red-700 bg-red-50' },
+  tax_notice_received: { icon: FileWarning, tone: 'text-amber-700 bg-amber-50' },
+  tax_deadline_completed: { icon: CalendarCheck, tone: 'text-emerald-700 bg-emerald-50' },
+  workflow_item_done: { icon: ListChecks, tone: 'text-emerald-700 bg-emerald-50' },
+  risk_analysis_created: { icon: Fingerprint, tone: 'text-indigo-700 bg-indigo-50' },
+  risk_analysis_archived: { icon: Lock, tone: 'text-secondary bg-gray-100' },
 };
-
 
 function formatRelative(d: Date, now: Date): string {
   const diff = now.getTime() - d.getTime();
@@ -80,7 +79,9 @@ function TimelineEntry({ event, now }: { event: TimelineEvent; now: Date }) {
   const { icon: Icon, tone } = ICON_MAP[event.kind];
   return (
     <li className="ml-6">
-      <span className={`absolute -left-3 flex h-6 w-6 items-center justify-center rounded-full ring-4 ring-white ${tone}`}>
+      <span
+        className={`absolute -left-3 flex h-6 w-6 items-center justify-center rounded-full ring-4 ring-white ${tone}`}
+      >
         <Icon className="h-3.5 w-3.5" />
       </span>
       <div className="card px-4 py-3">
@@ -93,7 +94,9 @@ function TimelineEntry({ event, now }: { event: TimelineEvent; now: Date }) {
             ) : (
               <p className="text-sm font-medium text-primary">{event.title}</p>
             )}
-            {event.detail && <p className="text-xs text-muted mt-0.5 break-words">{event.detail}</p>}
+            {event.detail && (
+              <p className="text-xs text-muted mt-0.5 break-words">{event.detail}</p>
+            )}
           </div>
           <time
             dateTime={event.occurredAt.toISOString()}
@@ -124,7 +127,6 @@ function TimelineDay({ day, events, now }: { day: string; events: TimelineEvent[
   );
 }
 
-
 export default async function ClientTimelinePage({
   params,
   searchParams,
@@ -140,13 +142,11 @@ export default async function ClientTimelinePage({
   const limit = Math.min(Math.max(Number(sp.limit ?? '100'), 20), 500);
   const { tenantId, staffId } = session.user;
 
-  const client = await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    (tx) =>
-      tx.client.findUnique({
-        where: { id },
-        select: { id: true, name: true, datevNo: true },
-      }),
+  const client = await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>
+    tx.client.findUnique({
+      where: { id },
+      select: { id: true, name: true, datevNo: true },
+    }),
   );
   if (!client) notFound();
 
@@ -160,10 +160,7 @@ export default async function ClientTimelinePage({
 
   return (
     <div className="p-8 max-w-4xl">
-      <Link
-        href={`/staff/clients/${id}`}
-        className="back-link"
-      >
+      <Link href={`/staff/clients/${id}`} className="back-link">
         <ArrowLeft className="h-4 w-4" /> Zurück zum Mandanten
       </Link>
 

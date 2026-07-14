@@ -39,10 +39,15 @@ monatlich per Restore-Drill (Art. 32 Abs. 1 lit. d DSGVO).
   auf einem frischen System ohne Produktiv-`.env`, wenn offline Public Key und
   age-Identity als Argument/Prozess-ENV übergeben werden.
 - **Restore-CLI** (`./taxtronik restore`, intern `restore.ts`):
-  `--list/--latest/--key/--file`;
+  strikter Parser für `--list/--latest/--key/--file`; mutierende Aufrufe
+  verlangen genau ein explizites Ziel (`--target-url` oder stark bestätigtes
+  `--production-target`); der Produktionspfad bindet das Backup über
+  `--release-version X.Y.Z` an genau den anschließend erlaubten Release-Vertrag;
   S3-Restores verifizieren den SHA-256 **gegen den BackupRecord**, sofern die
   Referenz-DB noch verfügbar ist (Abbruch bei Abweichung, sonst Warnung);
-  Ziel-DB-Leer-Check mit explizitem `--confirm-overwrite`;
+  fail-closed Ziel-DB-Leer-Check über alle User-Relationen mit explizitem
+  `--confirm-overwrite`; Produktionsrestore quiesziert App/Worker/n8n und lässt
+  sie gestoppt;
   `pg_restore --single-transaction --exit-on-error` (ganz oder gar nicht);
   setzt die vorab aus der Betreiberkonfiguration angelegte Cluster-Rolle
   `taxtronik_app` voraus; Smoke-Test (Tenants/Audit-Zählung) nach Restore.

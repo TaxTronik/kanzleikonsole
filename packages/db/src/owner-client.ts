@@ -34,8 +34,7 @@ function buildOwnerClient(): PrismaClient {
   });
 }
 
-export const prismaOwner: PrismaClient =
-  globalThis.__taxtronikPrismaOwner ?? buildOwnerClient();
+export const prismaOwner: PrismaClient = globalThis.__taxtronikPrismaOwner ?? buildOwnerClient();
 
 if (process.env['NODE_ENV'] !== 'production') {
   globalThis.__taxtronikPrismaOwner = prismaOwner;

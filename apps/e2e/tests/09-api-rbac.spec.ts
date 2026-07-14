@@ -40,7 +40,9 @@ test.describe.serial('API RBAC matrix', () => {
     const staffSearch = await ctx.request.get('/api/staff/search?q=Mustermann');
     expect(staffSearch.status()).toBe(401);
 
-    const staffDocument = await ctx.request.get(`/api/staff/documents/${STAFF_DOC_UUID}/preview-url`);
+    const staffDocument = await ctx.request.get(
+      `/api/staff/documents/${STAFF_DOC_UUID}/preview-url`,
+    );
     expect(staffDocument.status()).toBe(401);
 
     await ctx.close();
@@ -56,13 +58,17 @@ test.describe.serial('API RBAC matrix', () => {
     expectNotOk(portalDocs.status());
     expect([401, 404, 405]).toContain(portalDocs.status());
 
-    const portalPreview = await ctx.request.get(`/api/portal/documents/${STAFF_DOC_UUID}/preview-url`);
+    const portalPreview = await ctx.request.get(
+      `/api/portal/documents/${STAFF_DOC_UUID}/preview-url`,
+    );
     expect(portalPreview.status()).toBe(401);
 
     await ctx.close();
   });
 
-  test('staff document commit rejects cross-origin POST before upload semantics', async ({ page }) => {
+  test('staff document commit rejects cross-origin POST before upload semantics', async ({
+    page,
+  }) => {
     test.setTimeout(60_000);
     await loginAsAdmin(page);
 

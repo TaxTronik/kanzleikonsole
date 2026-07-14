@@ -66,7 +66,8 @@ describe('htmlToText', () => {
   });
 
   it('macht aus Absätzen/Listen/Tabellen lesbaren Text', () => {
-    const html = '<p>Absatz eins.</p><ul><li>Punkt A</li><li>Punkt B</li></ul><table><tr><td>Zelle1</td><td>Zelle2</td></tr></table>';
+    const html =
+      '<p>Absatz eins.</p><ul><li>Punkt A</li><li>Punkt B</li></ul><table><tr><td>Zelle1</td><td>Zelle2</td></tr></table>';
     const out = cleanup(htmlToText(html));
     expect(out).toContain('Absatz eins.');
     expect(out).toContain('- Punkt A');

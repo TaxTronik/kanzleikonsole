@@ -4,11 +4,7 @@ import { useState, useTransition, type ReactNode, type ChangeEvent } from 'react
 import { FileText, Upload, X } from 'lucide-react';
 import type { FormFieldType } from '@prisma/client';
 import { fmtTimeMedium } from '@/lib/fmt';
-import {
-  saveSubmissionDraftAction,
-  submitSubmissionAction,
-  uploadFormFileAction,
-} from './actions';
+import { saveSubmissionDraftAction, submitSubmissionAction, uploadFormFileAction } from './actions';
 
 interface FieldDef {
   id: string;
@@ -118,7 +114,10 @@ export function PortalFormFiller({
       {fields.map((f) => {
         if (f.type === 'INFO_TEXT') {
           return (
-            <div key={f.id} className="card p-4 bg-gray-50 text-sm text-secondary whitespace-pre-wrap">
+            <div
+              key={f.id}
+              className="card p-4 bg-gray-50 text-sm text-secondary whitespace-pre-wrap"
+            >
               {f.label}
             </div>
           );
@@ -243,7 +242,9 @@ function renderField(
         >
           <option value="">— bitte wählen —</option>
           {(f.options ?? []).map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
           ))}
         </select>
       );
@@ -383,12 +384,7 @@ function FileUploadField({
       >
         <Upload className="h-4 w-4" />
         {uploading ? 'Lädt hoch…' : 'Datei auswählen'}
-        <input
-          type="file"
-          className="hidden"
-          onChange={onPick}
-          disabled={disabled || uploading}
-        />
+        <input type="file" className="hidden" onChange={onPick} disabled={disabled || uploading} />
       </label>
       {uploadError && <div className="text-xs text-red-700">{uploadError}</div>}
       <p className="text-xs text-muted">Max. 10 MB.</p>

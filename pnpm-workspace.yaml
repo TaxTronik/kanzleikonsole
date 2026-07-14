@@ -51,6 +51,9 @@ peerDependencyRules:
     nodemailer: '9'
 
 overrides:
+  # Runtime und Typoberfläche müssen dieselbe LTS-Linie verwenden. Ohne Override
+  # zieht Vite seinen optionalen Peer sonst auf die jeweils neueste Node-Major.
+  '@types/node': '24.13.2'
   '@hono/node-server': '^1.19.13'
   hono: '4.12.25'
   ioredis: '^5.11.0'

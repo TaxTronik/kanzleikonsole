@@ -8,13 +8,7 @@ import type { ReactNode } from 'react';
 // =============================================================================
 
 import Link from 'next/link';
-import {
-  BookmarkCheck,
-  CalendarClock,
-  ListChecks,
-  StickyNote,
-  Workflow,
-} from 'lucide-react';
+import { BookmarkCheck, CalendarClock, ListChecks, StickyNote, Workflow } from 'lucide-react';
 import { fmtDateShort } from '@/lib/fmt';
 import { resourceLabel } from '@/server/audit/labels';
 import { BookmarkRemoveButton } from '../bookmark-remove-button';
@@ -37,33 +31,41 @@ export async function Bookmarks({ tx, staffId }: RenderCtx): Promise<ReactNode> 
       isEmpty={items.length === 0}
       emptyText="Noch nichts gemerkt. In anderen Widgets das Lesezeichen-Icon klicken."
     >
-      {items.map((b: { id: string; label: string; href: string | null; resourceType: string; createdAt: Date }) => (
-        <li key={b.id} className="px-5 py-2.5 flex items-start gap-2">
-          <div className="flex-1 min-w-0">
-            {b.href ? (
-              <a
-                href={b.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block hover:bg-gray-50 -ml-5 pl-5 -mr-2 pr-2 py-0.5 rounded"
-              >
-                <p className="text-sm font-medium text-primary line-clamp-2">{b.label}</p>
-                <p className="text-[10px] text-disabled mt-0.5">
-                  {resourceLabel(b.resourceType)} · gemerkt {fmtDateShort(b.createdAt)}
-                </p>
-              </a>
-            ) : (
-              <div>
-                <p className="text-sm font-medium text-primary line-clamp-2">{b.label}</p>
-                <p className="text-[10px] text-disabled mt-0.5">
-                  {resourceLabel(b.resourceType)} · gemerkt {fmtDateShort(b.createdAt)}
-                </p>
-              </div>
-            )}
-          </div>
-          <BookmarkRemoveButton id={b.id} />
-        </li>
-      ))}
+      {items.map(
+        (b: {
+          id: string;
+          label: string;
+          href: string | null;
+          resourceType: string;
+          createdAt: Date;
+        }) => (
+          <li key={b.id} className="px-5 py-2.5 flex items-start gap-2">
+            <div className="flex-1 min-w-0">
+              {b.href ? (
+                <a
+                  href={b.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block hover:bg-gray-50 -ml-5 pl-5 -mr-2 pr-2 py-0.5 rounded"
+                >
+                  <p className="text-sm font-medium text-primary line-clamp-2">{b.label}</p>
+                  <p className="text-[10px] text-disabled mt-0.5">
+                    {resourceLabel(b.resourceType)} · gemerkt {fmtDateShort(b.createdAt)}
+                  </p>
+                </a>
+              ) : (
+                <div>
+                  <p className="text-sm font-medium text-primary line-clamp-2">{b.label}</p>
+                  <p className="text-[10px] text-disabled mt-0.5">
+                    {resourceLabel(b.resourceType)} · gemerkt {fmtDateShort(b.createdAt)}
+                  </p>
+                </div>
+              )}
+            </div>
+            <BookmarkRemoveButton id={b.id} />
+          </li>
+        ),
+      )}
     </ListShell>
   );
 }
@@ -108,7 +110,9 @@ export async function MyDay({ tx, staffId, deniedClientIds }: RenderCtx): Promis
       id: true,
       title: true,
       dueDate: true,
-      instance: { select: { id: true, clientId: true, name: true, client: { select: { name: true } } } },
+      instance: {
+        select: { id: true, clientId: true, name: true, client: { select: { name: true } } },
+      },
     },
   });
   const today = new Date();
@@ -121,34 +125,38 @@ export async function MyDay({ tx, staffId, deniedClientIds }: RenderCtx): Promis
       isEmpty={items.length === 0}
       emptyText="Keine offenen Workflow-Schritte für Sie."
     >
-      {items.map((it: {
-        id: string;
-        title: string;
-        dueDate: Date | null;
-        instance: { id: string; clientId: string; name: string; client: { name: string } };
-      }) => {
-        const overdue = it.dueDate && it.dueDate.getTime() < today.getTime();
-        return (
-          <li key={it.id} className="px-5 py-2.5 flex items-start gap-3">
-            <MyDayToggle id={it.id} />
-            <Link
-              href={`/staff/clients/${it.instance.clientId}/workflows`}
-              className="flex-1 min-w-0 block hover:bg-gray-50 -my-1 py-1 -mr-2 pr-2 rounded"
-            >
-              <p className="item-title">{it.title}</p>
-              <p className="text-xs text-muted truncate">
-                {it.instance.client.name} · {it.instance.name}
-              </p>
-              {it.dueDate && (
-                <p className={overdue ? 'text-xs text-red-700 font-medium' : 'text-xs text-muted'}>
-                  fällig {fmtDateShort(it.dueDate)}
-                  {overdue && ' · überfällig'}
+      {items.map(
+        (it: {
+          id: string;
+          title: string;
+          dueDate: Date | null;
+          instance: { id: string; clientId: string; name: string; client: { name: string } };
+        }) => {
+          const overdue = it.dueDate && it.dueDate.getTime() < today.getTime();
+          return (
+            <li key={it.id} className="px-5 py-2.5 flex items-start gap-3">
+              <MyDayToggle id={it.id} />
+              <Link
+                href={`/staff/clients/${it.instance.clientId}/workflows`}
+                className="flex-1 min-w-0 block hover:bg-gray-50 -my-1 py-1 -mr-2 pr-2 rounded"
+              >
+                <p className="item-title">{it.title}</p>
+                <p className="text-xs text-muted truncate">
+                  {it.instance.client.name} · {it.instance.name}
                 </p>
-              )}
-            </Link>
-          </li>
-        );
-      })}
+                {it.dueDate && (
+                  <p
+                    className={overdue ? 'text-xs text-red-700 font-medium' : 'text-xs text-muted'}
+                  >
+                    fällig {fmtDateShort(it.dueDate)}
+                    {overdue && ' · überfällig'}
+                  </p>
+                )}
+              </Link>
+            </li>
+          );
+        },
+      )}
     </ListShell>
   );
 }
@@ -188,40 +196,47 @@ export async function MyWorkflows({ tx, staffId, deniedClientIds }: RenderCtx): 
         ) : undefined
       }
     >
-      {instances.map((inst: {
-        id: string;
-        name: string;
-        startedAt: Date;
-        startedByStaff: string;
-        client: { id: string; name: string };
-        _count: { items: number };
-        items: { id: string }[];
-      }) => {
-        const done = inst.items.length;
-        const total = inst._count.items;
-        const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-        const startedByMe = inst.startedByStaff === staffId;
-        return (
-          <li key={inst.id} className="px-5 py-2.5">
-            <Link href={`/staff/clients/${inst.client.id}/workflows`} className="block hover:bg-gray-50 -mx-5 px-5">
-              <div className="flex items-center justify-between gap-2">
-                <p className="item-title">{inst.name}</p>
-                <span className="text-[10px] text-disabled shrink-0">
-                  {done}/{total}
-                </span>
-              </div>
-              <p className="text-xs text-muted truncate">
-                {inst.client.name}
-                {startedByMe && <span className="ml-1 text-brand-700 dark:text-brand-300">· von mir</span>}
-                <span className="ml-1">· {fmtDateShort(inst.startedAt)}</span>
-              </p>
-              <div className="mt-1 h-1 rounded-full bg-gray-100 overflow-hidden">
-                <div className="h-full bg-brand-600" style={{ width: `${pct}%` }} />
-              </div>
-            </Link>
-          </li>
-        );
-      })}
+      {instances.map(
+        (inst: {
+          id: string;
+          name: string;
+          startedAt: Date;
+          startedByStaff: string;
+          client: { id: string; name: string };
+          _count: { items: number };
+          items: { id: string }[];
+        }) => {
+          const done = inst.items.length;
+          const total = inst._count.items;
+          const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+          const startedByMe = inst.startedByStaff === staffId;
+          return (
+            <li key={inst.id} className="px-5 py-2.5">
+              <Link
+                href={`/staff/clients/${inst.client.id}/workflows`}
+                className="block hover:bg-gray-50 -mx-5 px-5"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <p className="item-title">{inst.name}</p>
+                  <span className="text-[10px] text-disabled shrink-0">
+                    {done}/{total}
+                  </span>
+                </div>
+                <p className="text-xs text-muted truncate">
+                  {inst.client.name}
+                  {startedByMe && (
+                    <span className="ml-1 text-brand-700 dark:text-brand-300">· von mir</span>
+                  )}
+                  <span className="ml-1">· {fmtDateShort(inst.startedAt)}</span>
+                </p>
+                <div className="mt-1 h-1 rounded-full bg-gray-100 overflow-hidden">
+                  <div className="h-full bg-brand-600" style={{ width: `${pct}%` }} />
+                </div>
+              </Link>
+            </li>
+          );
+        },
+      )}
     </ListShell>
   );
 }
@@ -233,10 +248,7 @@ export async function MyReminders({ tx, staffId, deniedClientIds }: RenderCtx): 
     where: {
       doneAt: null,
       ...notDeniedClient(deniedClientIds),
-      OR: [
-        { assigneeStaffId: staffId },
-        { assigneeStaffId: null, createdByStaff: staffId },
-      ],
+      OR: [{ assigneeStaffId: staffId }, { assigneeStaffId: null, createdByStaff: staffId }],
     },
     orderBy: { dueDate: 'asc' },
     take: 20,
@@ -252,21 +264,35 @@ export async function MyReminders({ tx, staffId, deniedClientIds }: RenderCtx): 
       isEmpty={reminders.length === 0}
       emptyText="Keine offenen Wiedervorlagen."
     >
-      {reminders.map((r: { id: string; dueDate: Date; subject: string; client: { id: string; name: string } }) => {
-        const overdue = r.dueDate.getTime() < today.getTime();
-        return (
-          <li key={r.id} className="px-5 py-2.5">
-            <Link href={`/staff/clients/${r.client.id}`} className="block hover:bg-gray-50 -mx-5 px-5">
-              <p className="item-title">{r.subject}</p>
-              <p className="text-xs text-muted truncate">{r.client.name}</p>
-              <p className={overdue ? 'text-[11px] text-red-700 font-medium' : 'text-[11px] text-muted'}>
-                fällig {fmtDateShort(r.dueDate)}
-                {overdue && ' · überfällig'}
-              </p>
-            </Link>
-          </li>
-        );
-      })}
+      {reminders.map(
+        (r: {
+          id: string;
+          dueDate: Date;
+          subject: string;
+          client: { id: string; name: string };
+        }) => {
+          const overdue = r.dueDate.getTime() < today.getTime();
+          return (
+            <li key={r.id} className="px-5 py-2.5">
+              <Link
+                href={`/staff/clients/${r.client.id}`}
+                className="block hover:bg-gray-50 -mx-5 px-5"
+              >
+                <p className="item-title">{r.subject}</p>
+                <p className="text-xs text-muted truncate">{r.client.name}</p>
+                <p
+                  className={
+                    overdue ? 'text-[11px] text-red-700 font-medium' : 'text-[11px] text-muted'
+                  }
+                >
+                  fällig {fmtDateShort(r.dueDate)}
+                  {overdue && ' · überfällig'}
+                </p>
+              </Link>
+            </li>
+          );
+        },
+      )}
     </ListShell>
   );
 }

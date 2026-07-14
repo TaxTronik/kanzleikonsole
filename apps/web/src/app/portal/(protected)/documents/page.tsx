@@ -88,9 +88,7 @@ export default async function PortalDocumentsPage() {
                     <td className="px-6 py-4 text-secondary">
                       {v ? formatBytes(Number(v.sizeBytes)) : '—'}
                     </td>
-                    <td className="px-6 py-4 text-secondary">
-                      {fmtDateShort(d.createdAt)}
-                    </td>
+                    <td className="px-6 py-4 text-secondary">{fmtDateShort(d.createdAt)}</td>
                   </tr>
                 );
               })}

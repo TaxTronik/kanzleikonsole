@@ -2,10 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { Plus, Trash2, Save, X, FileText, Pencil } from 'lucide-react';
-import {
-  saveRequestTemplateAction,
-  deleteRequestTemplateAction,
-} from './actions';
+import { saveRequestTemplateAction, deleteRequestTemplateAction } from './actions';
 
 type Priority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
 
@@ -100,7 +97,10 @@ export function RequestTemplateEditor({
                 <div className="flex items-center gap-1 shrink-0">
                   <button
                     type="button"
-                    onClick={() => { setError(null); setEditing(t); }}
+                    onClick={() => {
+                      setError(null);
+                      setEditing(t);
+                    }}
                     className="btn-secondary text-xs py-1"
                   >
                     <Pencil className="h-3.5 w-3.5" />
@@ -124,7 +124,10 @@ export function RequestTemplateEditor({
       {!editing && (
         <button
           type="button"
-          onClick={() => { setError(null); setEditing(emptyDraft()); }}
+          onClick={() => {
+            setError(null);
+            setEditing(emptyDraft());
+          }}
           className="btn-primary"
         >
           <Plus className="h-4 w-4" />
@@ -163,8 +166,7 @@ function Form({
   const [isPending, start] = useTransition();
   const isNew = !t.id;
 
-  const set = <K extends keyof Template>(k: K, v: Template[K]) =>
-    setT((s) => ({ ...s, [k]: v }));
+  const set = <K extends keyof Template>(k: K, v: Template[K]) => setT((s) => ({ ...s, [k]: v }));
 
   function save() {
     setError(null);
@@ -257,7 +259,9 @@ function Form({
             className="input"
           >
             {(Object.keys(PRIORITY_LABELS) as Priority[]).map((p) => (
-              <option key={p} value={p}>{PRIORITY_LABELS[p]}</option>
+              <option key={p} value={p}>
+                {PRIORITY_LABELS[p]}
+              </option>
             ))}
           </select>
         </div>
@@ -268,7 +272,12 @@ function Form({
             min={0}
             max={365}
             value={t.dueAfterDays ?? ''}
-            onChange={(e) => set('dueAfterDays', e.target.value === '' ? null : Math.max(0, Number(e.target.value)))}
+            onChange={(e) =>
+              set(
+                'dueAfterDays',
+                e.target.value === '' ? null : Math.max(0, Number(e.target.value)),
+              )
+            }
             placeholder="leer = keine Fälligkeit"
             className="input"
           />
@@ -296,12 +305,14 @@ function Form({
         >
           <option value="">— kein Formular —</option>
           {formTemplates.map((f) => (
-            <option key={f.id} value={f.id}>{f.name}</option>
+            <option key={f.id} value={f.id}>
+              {f.name}
+            </option>
           ))}
         </select>
         <p className="text-xs text-muted mt-1">
-          Wenn gesetzt: beim Erstellen der Anforderung wird automatisch eine
-          Formular-Submission angelegt und mitgeschickt.
+          Wenn gesetzt: beim Erstellen der Anforderung wird automatisch eine Formular-Submission
+          angelegt und mitgeschickt.
         </p>
       </div>
 

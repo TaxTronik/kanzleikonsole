@@ -41,10 +41,16 @@ const jsonValueArb: fc.Arbitrary<unknown> = fc.oneof(
 
 /** Ein Objekt mit 2-5 String-Keys und zufälligen Werten — in zufälliger Reihenfolge. */
 const shuffledObjectArb = fc
-  .array(fc.tuple(fc.string({ minLength: 1, maxLength: 8 }).filter((s) => !s.includes('"')), jsonValueArb), {
-    minLength: 2,
-    maxLength: 5,
-  })
+  .array(
+    fc.tuple(
+      fc.string({ minLength: 1, maxLength: 8 }).filter((s) => !s.includes('"')),
+      jsonValueArb,
+    ),
+    {
+      minLength: 2,
+      maxLength: 5,
+    },
+  )
   .map((entries) => {
     const obj: Record<string, unknown> = {};
     for (const [k, v] of entries) obj[k] = v;
@@ -91,12 +97,16 @@ describe('canonicalJson — Property-Based', () => {
 
   it('C3: undefined wird ausgelassen, null bleibt erhalten', () => {
     fc.assert(
-      fc.property(fc.string({ minLength: 1, maxLength: 10 }), fc.string({ minLength: 1, maxLength: 10 }), (key1, key2) => {
-        fc.pre(key1 !== key2);
-        const withUndefined = { [key1]: 'value', [key2]: undefined };
-        const withoutKey = { [key1]: 'value' };
-        expect(canonicalJson(withUndefined)).toBe(canonicalJson(withoutKey));
-      }),
+      fc.property(
+        fc.string({ minLength: 1, maxLength: 10 }),
+        fc.string({ minLength: 1, maxLength: 10 }),
+        (key1, key2) => {
+          fc.pre(key1 !== key2);
+          const withUndefined = { [key1]: 'value', [key2]: undefined };
+          const withoutKey = { [key1]: 'value' };
+          expect(canonicalJson(withUndefined)).toBe(canonicalJson(withoutKey));
+        },
+      ),
     );
   });
 
@@ -127,16 +137,12 @@ describe('eventHash — Property-Based', () => {
 
   it('H2: Unterschiedlicher action → unterschiedlicher Hash', () => {
     fc.assert(
-      fc.property(
-        chainEventArb,
-        fc.stringMatching(/[a-z]{5,20}/),
-        (baseEvent, otherAction) => {
-          fc.pre(otherAction !== baseEvent.action);
-          const hashA = eventHash(FIXED_PREV_HASH, baseEvent);
-          const hashB = eventHash(FIXED_PREV_HASH, { ...baseEvent, action: otherAction });
-          expect(hashA.equals(hashB)).toBe(false);
-        },
-      ),
+      fc.property(chainEventArb, fc.stringMatching(/[a-z]{5,20}/), (baseEvent, otherAction) => {
+        fc.pre(otherAction !== baseEvent.action);
+        const hashA = eventHash(FIXED_PREV_HASH, baseEvent);
+        const hashB = eventHash(FIXED_PREV_HASH, { ...baseEvent, action: otherAction });
+        expect(hashA.equals(hashB)).toBe(false);
+      }),
     );
   });
 
@@ -145,7 +151,9 @@ describe('eventHash — Property-Based', () => {
     // Die Chain-Integrität ist eine fundamentale Eigenschaft von SHA-256 und
     // wird zusätzlich in chain.test.ts und hash-chain.test.ts geprüft.
     for (let i = 0; i < 50; i++) {
-      const prevA = Array.from(crypto.randomBytes(32), (b) => b.toString(16).padStart(2, '0')).join('');
+      const prevA = Array.from(crypto.randomBytes(32), (b) => b.toString(16).padStart(2, '0')).join(
+        '',
+      );
       let prevB: string;
       do {
         prevB = Array.from(crypto.randomBytes(32), (b) => b.toString(16).padStart(2, '0')).join('');

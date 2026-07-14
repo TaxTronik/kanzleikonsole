@@ -171,7 +171,11 @@ export class RiskLayerClient {
    */
   async analyse(input: ZweiphasenAnalyseInput): Promise<RiskAnalysisResult> {
     const mitLLM = input.mitLLM ?? false;
-    const body: Record<string, unknown> = { text: input.text, mitLLM, optionen: input.optionen ?? {} };
+    const body: Record<string, unknown> = {
+      text: input.text,
+      mitLLM,
+      optionen: input.optionen ?? {},
+    };
     if (input.nutzer) body.nutzer = input.nutzer;
     const raw = await this.request('POST', '/v1/analyse', {
       body,
@@ -258,7 +262,10 @@ export class RiskLayerClient {
    * Begriffs (verworfene Norm-IDs + ergänzte Normen) zum Überlagern der Anzeige.
    * Read-only/idempotent → retrybar.
    */
-  async katalogKuratierungBegriff(input: { katalogId: string; nutzer?: string }): Promise<KatalogKuratierungBegriff> {
+  async katalogKuratierungBegriff(input: {
+    katalogId: string;
+    nutzer?: string;
+  }): Promise<KatalogKuratierungBegriff> {
     const query: Record<string, string> = { katalog_id: input.katalogId };
     if (input.nutzer) query.nutzer = input.nutzer;
     const raw = await this.request('GET', '/v1/katalog/kuratierung', { query, retry: FAST_RETRY });
@@ -320,7 +327,11 @@ export class RiskLayerClient {
     backend: LosBackend;
     ibmToken?: string;
   }): Promise<LosErgebnis> {
-    const body: Record<string, unknown> = { rahmen: input.rahmen, k: input.k, backend: input.backend };
+    const body: Record<string, unknown> = {
+      rahmen: input.rahmen,
+      k: input.k,
+      backend: input.backend,
+    };
     if (input.ibmToken) body.ibm_token = input.ibmToken;
     const raw = await this.request('POST', '/v1/los/ziehen', {
       body,

@@ -47,7 +47,11 @@ async function resolveN8nConfig(tenantId: string | null): Promise<N8nConfig> {
       const v = row.value as N8nStored;
       let hmac = '';
       if (v.hmacEncrypted && looksEncrypted(v.hmacEncrypted)) {
-        try { hmac = decryptSecret(v.hmacEncrypted); } catch { hmac = ''; }
+        try {
+          hmac = decryptSecret(v.hmacEncrypted);
+        } catch {
+          hmac = '';
+        }
       } else if (typeof v.hmacSecret === 'string') {
         hmac = v.hmacSecret;
       }
@@ -77,7 +81,10 @@ async function deliver(outboxId: string): Promise<void> {
     return;
   }
   if (!isAllowedN8nEvent(row.event)) {
-    log.error({ outboxId, event: row.event }, 'n8n-deliver: event not in whitelist, marking FAILED');
+    log.error(
+      { outboxId, event: row.event },
+      'n8n-deliver: event not in whitelist, marking FAILED',
+    );
     await prismaOwner.n8nOutbox.update({
       where: { id: outboxId },
       data: { status: 'FAILED', lastError: `Event '${row.event}' nicht in Whitelist.` },
@@ -96,7 +103,11 @@ async function deliver(outboxId: string): Promise<void> {
     // analog zur alten fire-and-forget-Semantik).
     await prismaOwner.n8nOutbox.update({
       where: { id: outboxId },
-      data: { status: 'DELIVERED', deliveredAt: new Date(), lastError: 'n8n nicht konfiguriert (silent skip)' },
+      data: {
+        status: 'DELIVERED',
+        deliveredAt: new Date(),
+        lastError: 'n8n nicht konfiguriert (silent skip)',
+      },
     });
     return;
   }
@@ -105,7 +116,8 @@ async function deliver(outboxId: string): Promise<void> {
   // — die Produktiv-Workflows (echte Mails/Eskalationen) werden NIE getroffen.
   // Test-Hook = trailing /webhook → /webhook-test (n8n „Listen for test event").
   const base = cfg.webhookBaseUrl.replace(/\/$/, '');
-  const targetBase = n8nDeliveryMode === 'test' ? base.replace(/\/webhook$/, '/webhook-test') : base;
+  const targetBase =
+    n8nDeliveryMode === 'test' ? base.replace(/\/webhook$/, '/webhook-test') : base;
   // N7: row.event ist whitelisted (isAllowedEvent), aber ein direkter DB-
   // Manipulator könnte exotische Zeichen einschleusen — Defense in Depth via
   // encodeURIComponent. `.`/`-`/`_` bleiben dabei unverändert (RFC 3986
@@ -130,7 +142,11 @@ async function deliver(outboxId: string): Promise<void> {
     );
     await prismaOwner.n8nOutbox.update({
       where: { id: outboxId },
-      data: { status: 'DELIVERED', deliveredAt: new Date(), lastError: 'log-only (N8N_DELIVERY_MODE=log)' },
+      data: {
+        status: 'DELIVERED',
+        deliveredAt: new Date(),
+        lastError: 'log-only (N8N_DELIVERY_MODE=log)',
+      },
     });
     return;
   }

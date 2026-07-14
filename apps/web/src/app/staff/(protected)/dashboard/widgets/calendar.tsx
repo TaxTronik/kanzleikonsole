@@ -162,7 +162,9 @@ export async function CalendarWidget({ tx, deniedClientIds }: RenderCtx): Promis
                 </p>
                 <span
                   className={
-                    r.overdue ? 'text-xs text-red-700 font-medium shrink-0' : 'text-xs text-muted shrink-0'
+                    r.overdue
+                      ? 'text-xs text-red-700 font-medium shrink-0'
+                      : 'text-xs text-muted shrink-0'
                   }
                 >
                   {fmtDateShort(r.date)}

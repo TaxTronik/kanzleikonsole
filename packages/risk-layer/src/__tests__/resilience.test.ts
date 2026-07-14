@@ -1,10 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import {
-  CircuitBreaker,
-  CircuitOpenError,
-  executeResilient,
-  withRetry,
-} from '../resilience';
+import { CircuitBreaker, CircuitOpenError, executeResilient, withRetry } from '../resilience';
 
 describe('CircuitBreaker', () => {
   it('öffnet nach failureThreshold aufeinanderfolgenden Fehlern', () => {
@@ -53,7 +48,9 @@ describe('withRetry', () => {
     const fn = vi.fn(async () => {
       throw new Error('nope');
     });
-    await expect(withRetry(fn, { retries: 5, baseDelayMs: 0 }, () => false)).rejects.toThrow('nope');
+    await expect(withRetry(fn, { retries: 5, baseDelayMs: 0 }, () => false)).rejects.toThrow(
+      'nope',
+    );
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
@@ -79,7 +76,9 @@ describe('executeResilient', () => {
     const cb = new CircuitBreaker({ failureThreshold: 2, resetTimeoutMs: 1000, now: () => 0 });
     cb.onFailure();
     const fn = vi.fn(async () => 'ok');
-    await expect(executeResilient(cb, { retries: 0, baseDelayMs: 0 }, () => true, fn)).resolves.toBe('ok');
+    await expect(
+      executeResilient(cb, { retries: 0, baseDelayMs: 0 }, () => true, fn),
+    ).resolves.toBe('ok');
     expect(cb.getState()).toBe('closed');
   });
 });

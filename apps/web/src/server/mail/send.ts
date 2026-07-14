@@ -166,9 +166,8 @@ export async function sendMail(opts: MailOptions): Promise<void> {
   }
   const useDb = Boolean(dbCfg && dbCfg.host && dbCfg.from);
   const finalCfg: SmtpConfig = useDb && dbCfg ? dbCfg : envSmtp();
-  const t = useDb && opts.tenantId
-    ? getTenantTransporter(opts.tenantId, finalCfg)
-    : getEnvTransporter();
+  const t =
+    useDb && opts.tenantId ? getTenantTransporter(opts.tenantId, finalCfg) : getEnvTransporter();
 
   const safeReplyTo = opts.replyTo
     ? stripHeaderInjection(opts.replyTo)

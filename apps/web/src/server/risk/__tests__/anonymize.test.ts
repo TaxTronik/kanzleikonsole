@@ -10,7 +10,9 @@ const client = {
   postalCode: '80331',
   city: 'München',
 };
-const contacts = [{ fullName: 'Erika Beispiel', email: 'erika@example.test', phone: '+49 89 1234567' }];
+const contacts = [
+  { fullName: 'Erika Beispiel', email: 'erika@example.test', phone: '+49 89 1234567' },
+];
 
 const sachverhalt =
   'Die Mustermann Holding GmbH (USt-ID DE123456789, DATEV 548211) in München wird von ' +

@@ -71,9 +71,10 @@ export default async function RequestsOverviewPage({
   if (!session?.user) redirect('/staff/login');
 
   const sp = await searchParams;
-  const filterStatus = sp.status && Object.keys(statusLabels).includes(sp.status)
-    ? (sp.status as keyof typeof statusLabels)
-    : null;
+  const filterStatus =
+    sp.status && Object.keys(statusLabels).includes(sp.status)
+      ? (sp.status as keyof typeof statusLabels)
+      : null;
   const { sort, dir } = parseSort(sp);
   const page = Math.max(1, Number.parseInt(sp.page ?? '1', 10) || 1);
   const mine = sp.mine === '1';
@@ -150,9 +151,7 @@ export default async function RequestsOverviewPage({
       <div className="flex items-end justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-primary mb-1">Anforderungen</h1>
-          <p className="text-muted text-sm">
-            Alle laufenden Anforderungen an Mandanten.
-          </p>
+          <p className="text-muted text-sm">Alle laufenden Anforderungen an Mandanten.</p>
         </div>
         <a
           href={`/api/staff/requests/export${baseQs.toString() ? '?' + baseQs.toString() : ''}`}
@@ -224,11 +223,16 @@ export default async function RequestsOverviewPage({
           </label>
           <div className="flex gap-2">
             {(sp.q || sort !== 'created' || dir !== 'desc' || mine) && (
-              <Link href={filterStatus ? `/staff/requests?status=${filterStatus}` : '/staff/requests'} className="btn-secondary">
+              <Link
+                href={filterStatus ? `/staff/requests?status=${filterStatus}` : '/staff/requests'}
+                className="btn-secondary"
+              >
                 Reset
               </Link>
             )}
-            <button type="submit" className="btn-primary">Anwenden</button>
+            <button type="submit" className="btn-primary">
+              Anwenden
+            </button>
           </div>
         </div>
       </form>
@@ -270,7 +274,10 @@ export default async function RequestsOverviewPage({
                         )}
                       </td>
                       <td className="px-6 py-3">
-                        <Link href={`/staff/clients/${r.client.id}`} className="text-secondary hover:underline">
+                        <Link
+                          href={`/staff/clients/${r.client.id}`}
+                          className="text-secondary hover:underline"
+                        >
                           {r.client.name}
                         </Link>
                       </td>
@@ -284,17 +291,35 @@ export default async function RequestsOverviewPage({
                         </Link>
                       </td>
                       <td className="px-6 py-3">
-                        {r.status === 'OPEN' && <span className="badge-yellow">{statusLabels[r.status]}</span>}
-                        {r.status === 'IN_PROGRESS' && <span className="badge-yellow">{statusLabels[r.status]}</span>}
-                        {r.status === 'RESPONDED' && <span className="badge-green">{statusLabels[r.status]}</span>}
-                        {r.status === 'CLOSED' && <span className="badge-gray">{statusLabels[r.status]}</span>}
-                        {r.status === 'CANCELLED' && <span className="badge-gray">{statusLabels[r.status]}</span>}
+                        {r.status === 'OPEN' && (
+                          <span className="badge-yellow">{statusLabels[r.status]}</span>
+                        )}
+                        {r.status === 'IN_PROGRESS' && (
+                          <span className="badge-yellow">{statusLabels[r.status]}</span>
+                        )}
+                        {r.status === 'RESPONDED' && (
+                          <span className="badge-green">{statusLabels[r.status]}</span>
+                        )}
+                        {r.status === 'CLOSED' && (
+                          <span className="badge-gray">{statusLabels[r.status]}</span>
+                        )}
+                        {r.status === 'CANCELLED' && (
+                          <span className="badge-gray">{statusLabels[r.status]}</span>
+                        )}
                       </td>
                       <td className="px-6 py-3">
-                        {r.priority === 'URGENT' && <span className="badge-red">{priorityLabels[r.priority]}</span>}
-                        {r.priority === 'HIGH' && <span className="badge-yellow">{priorityLabels[r.priority]}</span>}
-                        {r.priority === 'NORMAL' && <span className="text-secondary">{priorityLabels[r.priority]}</span>}
-                        {r.priority === 'LOW' && <span className="text-disabled">{priorityLabels[r.priority]}</span>}
+                        {r.priority === 'URGENT' && (
+                          <span className="badge-red">{priorityLabels[r.priority]}</span>
+                        )}
+                        {r.priority === 'HIGH' && (
+                          <span className="badge-yellow">{priorityLabels[r.priority]}</span>
+                        )}
+                        {r.priority === 'NORMAL' && (
+                          <span className="text-secondary">{priorityLabels[r.priority]}</span>
+                        )}
+                        {r.priority === 'LOW' && (
+                          <span className="text-disabled">{priorityLabels[r.priority]}</span>
+                        )}
                       </td>
                       <td className="px-6 py-3 text-secondary">{r._count.responses}</td>
                       <td className="px-6 py-3 text-secondary">

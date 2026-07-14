@@ -15,19 +15,13 @@ function post(headers: Record<string, string> = {}) {
 describe('assertSameOrigin', () => {
   it('akzeptiert exakt gleiche Origin', () => {
     expect(
-      assertSameOrigin(
-        post({ origin: 'https://staff.example.de' }),
-        'https://staff.example.de',
-      ),
+      assertSameOrigin(post({ origin: 'https://staff.example.de' }), 'https://staff.example.de'),
     ).toBeNull();
   });
 
   it('akzeptiert Origin passend zum Request-Host fuer Multi-Host-Deploys', () => {
     expect(
-      assertSameOrigin(
-        post({ origin: 'http://staff.example.test' }),
-        'https://staff.example.de',
-      ),
+      assertSameOrigin(post({ origin: 'http://staff.example.test' }), 'https://staff.example.de'),
     ).toBeNull();
   });
 
@@ -51,16 +45,11 @@ describe('assertSameOrigin', () => {
 
   it('akzeptiert fehlenden Origin nur mit eindeutig same-site Fetch-Metadata', () => {
     expect(
-      assertSameOrigin(
-        post({ 'sec-fetch-site': 'same-site' }),
-        'https://staff.example.de',
-      ),
+      assertSameOrigin(post({ 'sec-fetch-site': 'same-site' }), 'https://staff.example.de'),
     ).toBeNull();
     expect(
-      assertSameOrigin(
-        post({ 'sec-fetch-site': 'cross-site' }),
-        'https://staff.example.de',
-      )?.status,
+      assertSameOrigin(post({ 'sec-fetch-site': 'cross-site' }), 'https://staff.example.de')
+        ?.status,
     ).toBe(403);
   });
 });

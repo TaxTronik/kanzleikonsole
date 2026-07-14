@@ -6,9 +6,19 @@ const workflows = {
   release: readFileSync('.forgejo/workflows/release.yml', 'utf8'),
   ci: readFileSync('.forgejo/workflows/ci.yml', 'utf8'),
   security: readFileSync('.forgejo/workflows/security.yml', 'utf8'),
+  smoke: readFileSync('scripts/release/smoke-release-images.sh', 'utf8'),
 };
 
 assert.equal(checkReleaseGates(workflows), true);
+
+assert.throws(
+  () =>
+    checkReleaseGates({
+      ...workflows,
+      smoke: workflows.smoke.replace('--project-name "$SMOKE_PROJECT_NAME"', ''),
+    }),
+  /eindeutigen Compose-Projektnamen/,
+);
 
 assert.throws(
   () =>
@@ -127,4 +137,22 @@ assert.throws(
   /preflight: Manifest-Token darf nicht in einer Git-URL stehen/,
 );
 
-process.stdout.write('12 release-gate structure tests passed.\n');
+assert.throws(
+  () =>
+    checkReleaseGates({
+      ...workflows,
+      release: workflows.release.replace('bash scripts/release/smoke-release-images.sh', 'true'),
+    }),
+  /nicht vor dem Registry-Push als Stack getestet/,
+);
+
+assert.throws(
+  () =>
+    checkReleaseGates({
+      ...workflows,
+      release: workflows.release.replace('--format cyclonedx', '--format table'),
+    }),
+  /keine CycloneDX-SBOMs/,
+);
+
+process.stdout.write('15 release-gate structure tests passed.\n');

@@ -4,9 +4,7 @@
     {
       "parameters": {
         "rule": {
-          "interval": [
-            { "field": "cronExpression", "expression": "0 8 * * *" }
-          ]
+          "interval": [{ "field": "cronExpression", "expression": "0 8 * * *" }]
         }
       },
       "id": "cron-trigger",
@@ -20,9 +18,7 @@
         "url": "={{ $env.TAXTRONIK_API_URL }}/api/n8n/expiring-gwg-checks",
         "sendQuery": true,
         "queryParameters": {
-          "parameters": [
-            { "name": "withinDays", "value": "30" }
-          ]
+          "parameters": [{ "name": "withinDays", "value": "30" }]
         },
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
@@ -84,10 +80,7 @@
       "main": [[{ "node": "Nur wenn etwas zu melden", "type": "main", "index": 0 }]]
     },
     "Nur wenn etwas zu melden": {
-      "main": [
-        [{ "node": "Warn-Mail an GwG-Beauftragten", "type": "main", "index": 0 }],
-        []
-      ]
+      "main": [[{ "node": "Warn-Mail an GwG-Beauftragten", "type": "main", "index": 0 }], []]
     }
   },
   "active": false,

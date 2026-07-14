@@ -11,10 +11,20 @@ import {
 } from '../norms-core';
 
 const engine = (zitat: string, extra: Partial<CuratedNormRef> = {}): CuratedNormRef => ({
-  zitat, id: null, titel: null, quelle: 'ENGINE', verworfen: false, ...extra,
+  zitat,
+  id: null,
+  titel: null,
+  quelle: 'ENGINE',
+  verworfen: false,
+  ...extra,
 });
 const berater = (zitat: string, extra: Partial<CuratedNormRef> = {}): CuratedNormRef => ({
-  zitat, id: null, titel: null, quelle: 'BERATER', verworfen: false, ...extra,
+  zitat,
+  id: null,
+  titel: null,
+  quelle: 'BERATER',
+  verworfen: false,
+  ...extra,
 });
 
 describe('readNormRefs', () => {
@@ -29,7 +39,13 @@ describe('readNormRefs', () => {
       [],
     );
     expect(refs).toEqual([
-      { zitat: '§ 8 KStG', id: 'norm:KStG:8', titel: 'Einkommen', quelle: 'ENGINE', verworfen: false },
+      {
+        zitat: '§ 8 KStG',
+        id: 'norm:KStG:8',
+        titel: 'Einkommen',
+        quelle: 'ENGINE',
+        verworfen: false,
+      },
       { zitat: '§ 42 AO', id: null, titel: null, quelle: 'BERATER', verworfen: false },
       { zitat: '§ 146 AO', id: null, titel: null, quelle: 'ENGINE', verworfen: true },
     ]);
@@ -48,16 +64,31 @@ describe('readNormRefs', () => {
 
 describe('effectiveAnker', () => {
   it('lässt verworfene weg, dedupliziert, erhält die Reihenfolge', () => {
-    const refs = [engine('§ 8 KStG'), engine('§ 146 AO', { verworfen: true }), berater('§ 42 AO'), engine('§ 8 KStG')];
+    const refs = [
+      engine('§ 8 KStG'),
+      engine('§ 146 AO', { verworfen: true }),
+      berater('§ 42 AO'),
+      engine('§ 8 KStG'),
+    ];
     expect(effectiveAnker(refs)).toEqual(['§ 8 KStG', '§ 42 AO']);
   });
 });
 
 describe('applyAddBerater', () => {
   it('hängt eine Berater-Norm mit id/titel an', () => {
-    const out = applyAddBerater([engine('§ 8 KStG')], { zitat: ' § 42 AO ', id: 'norm:AO:42', titel: 'Missbrauch' });
+    const out = applyAddBerater([engine('§ 8 KStG')], {
+      zitat: ' § 42 AO ',
+      id: 'norm:AO:42',
+      titel: 'Missbrauch',
+    });
     expect(out).toHaveLength(2);
-    expect(out[1]).toEqual({ zitat: '§ 42 AO', id: 'norm:AO:42', titel: 'Missbrauch', quelle: 'BERATER', verworfen: false });
+    expect(out[1]).toEqual({
+      zitat: '§ 42 AO',
+      id: 'norm:AO:42',
+      titel: 'Missbrauch',
+      quelle: 'BERATER',
+      verworfen: false,
+    });
   });
 
   it('weist leeres Zitat ab', () => {
@@ -65,7 +96,9 @@ describe('applyAddBerater', () => {
   });
 
   it('weist Duplikate ab (gleiches, nicht verworfenes Zitat)', () => {
-    expect(() => applyAddBerater([engine('§ 42 AO')], { zitat: '§ 42 AO' })).toThrow(InvalidNormError);
+    expect(() => applyAddBerater([engine('§ 42 AO')], { zitat: '§ 42 AO' })).toThrow(
+      InvalidNormError,
+    );
   });
 
   it('erlaubt Hinzufügen, wenn das gleiche Zitat nur als verworfen existiert', () => {
@@ -87,8 +120,12 @@ describe('applyVerworfen', () => {
 
   it('wirft bei Index/Zitat-Abweichung (Liste hat sich geändert)', () => {
     const refs = [engine('§ 8 KStG')];
-    expect(() => applyVerworfen(refs, { index: 0, zitat: '§ 9 KStG' }, true)).toThrow(NormListChangedError);
-    expect(() => applyVerworfen(refs, { index: 5, zitat: '§ 8 KStG' }, true)).toThrow(NormListChangedError);
+    expect(() => applyVerworfen(refs, { index: 0, zitat: '§ 9 KStG' }, true)).toThrow(
+      NormListChangedError,
+    );
+    expect(() => applyVerworfen(refs, { index: 5, zitat: '§ 8 KStG' }, true)).toThrow(
+      NormListChangedError,
+    );
   });
 });
 
@@ -100,11 +137,15 @@ describe('applyRemoveBerater', () => {
 
   it('verweigert das Löschen eines Engine-Vorschlags (nur verwerfen erlaubt)', () => {
     const refs = [engine('§ 8 KStG')];
-    expect(() => applyRemoveBerater(refs, { index: 0, zitat: '§ 8 KStG' })).toThrow(InvalidNormError);
+    expect(() => applyRemoveBerater(refs, { index: 0, zitat: '§ 8 KStG' })).toThrow(
+      InvalidNormError,
+    );
   });
 
   it('wirft bei Zitat-Abweichung', () => {
     const refs = [berater('§ 42 AO')];
-    expect(() => applyRemoveBerater(refs, { index: 0, zitat: '§ 43 AO' })).toThrow(NormListChangedError);
+    expect(() => applyRemoveBerater(refs, { index: 0, zitat: '§ 43 AO' })).toThrow(
+      NormListChangedError,
+    );
   });
 });

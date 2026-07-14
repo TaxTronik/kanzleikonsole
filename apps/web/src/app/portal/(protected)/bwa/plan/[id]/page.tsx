@@ -31,10 +31,7 @@ export default async function PortalPlanDetailPage({
 
   return (
     <div className="p-8 max-w-3xl">
-      <Link
-        href="/portal/bwa"
-        className="back-link mb-3"
-      >
+      <Link href="/portal/bwa" className="back-link mb-3">
         <ArrowLeft className="h-3 w-3" />
         Auswertungen
       </Link>
@@ -53,7 +50,14 @@ export default async function PortalPlanDetailPage({
           notes: plan.notes ?? '',
           status: plan.status === 'FINAL' ? 'FINAL' : 'DRAFT',
           lines: plan.lines.map((l) => ({
-            axis: l.axis as 'REVENUE' | 'PERSONNEL' | 'OTHER_COSTS' | 'DEPRECIATION' | 'MATERIAL' | 'OTHER_INCOME' | 'TAXES',
+            axis: l.axis as
+              | 'REVENUE'
+              | 'PERSONNEL'
+              | 'OTHER_COSTS'
+              | 'DEPRECIATION'
+              | 'MATERIAL'
+              | 'OTHER_INCOME'
+              | 'TAXES',
             amount: Number(l.amount.toString()),
             note: l.note ?? '',
           })),

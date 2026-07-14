@@ -58,7 +58,10 @@ export async function createAuditRecoveryCheckpointAction(formData: FormData): P
   const g = await staffActionGuard({ requireAdmin: true });
   if (!g.ok) throw new ActionError(g.error);
   const { tenantId, staffId, ctx } = g;
-  const reason = String(formData.get('reason') ?? '').trim().slice(0, 500) || null;
+  const reason =
+    String(formData.get('reason') ?? '')
+      .trim()
+      .slice(0, 500) || null;
 
   await withTenantContext(ctx, async (tx) => {
     const verifyRow = await tx.tenantSetting.findUnique({
@@ -69,7 +72,9 @@ export async function createAuditRecoveryCheckpointAction(formData: FormData): P
       throw new ActionError('Noch kein Audit-Prüfergebnis vorhanden. Bitte zuerst prüfen.');
     }
     if (verifyResult.ok) {
-      throw new ActionError('Die Hash-Chain ist aktuell intakt; ein Recovery-Checkpoint ist nicht nötig.');
+      throw new ActionError(
+        'Die Hash-Chain ist aktuell intakt; ein Recovery-Checkpoint ist nicht nötig.',
+      );
     }
 
     const ev = await evidenceService.record(tx, {
@@ -102,7 +107,12 @@ export async function createAuditRecoveryCheckpointAction(formData: FormData): P
 
     await tx.tenantSetting.upsert({
       where: { tenantId_key: { tenantId, key: AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY } },
-      create: { tenantId, key: AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY, value: checkpoint as object, updatedBy: staffId },
+      create: {
+        tenantId,
+        key: AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY,
+        value: checkpoint as object,
+        updatedBy: staffId,
+      },
       update: { value: checkpoint as object, updatedBy: staffId },
     });
   });

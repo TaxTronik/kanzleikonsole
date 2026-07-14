@@ -2,7 +2,7 @@
 # gitleaks — Secret-Scan-Konfiguration
 #
 # Erbt die Default-Rules und blendet kalibrierte False-Positives aus:
-# - .env.example: Platzhalter, keine echten Secrets
+# - .env.example: nur konkret benannte Platzhalterzeilen, niemals der ganze Pfad
 # - S3-Client-Aufrufe: gitleaks deutet den Variablennamen S3_ACCESS_KEY
 #   selbst als Secret, der Inhalt kommt jedoch aus process.env
 # - docs/operations/lizenz.md: gestumpfter Beispiel-JWT
@@ -14,11 +14,10 @@
 [extend]
 useDefault = true
 
-[allowlist]
+[[allowlists]]
 description = "taxtronik-spezifische False-Positives"
 
 paths = [
-  '''(^|/)\.env\.example$''',
   '''(^|/)docs/operations/lizenz\.md$''',
   '''(^|/)apps/web/src/server/auth/__tests__/totp\.test\.ts$''',
 ]
@@ -28,6 +27,9 @@ paths = [
 # weil derselbe Bezeichner auch echte Treffer maskieren könnte).
 regexTarget = "line"
 regexes = [
+  # Leere Secret-Platzhalter im ENV-Template. Die Pfad-Allowlist wurde bewusst
+  # entfernt, damit ein versehentlich eingetragener echter Wert erkannt wird.
+  '''^(AUTH_SECRET|SECRET_BOX_KEY|POSTGRES_PASSWORD|TAXTRONIK_APP_PASSWORD|S3_SECRET_KEY|N8N_HMAC_SECRET|N8N_ENCRYPTION_KEY|N8N_DB_PASSWORD)=$''',
   # S3-Client-Konstruktor: Variablen-Reference, kein hartkodiertes Secret.
   '''secretAccessKey:\s*env\.S3_SECRET_KEY''',
   # Synthetische Fixture-Werte aus scripts/tests/ops-lib.test.sh. Diese Werte
@@ -36,3 +38,17 @@ regexes = [
   '''N8N_ENCRYPTION_KEY=n8n-encryption-key-24chars''',
   '''S3_SECRET_KEY=s3-secret-with-at-least-thirty-two-chars''',
 ]
+
+# gitleaks verbindet beim generic-api-key-Pattern im Erst-Commit die
+# leere S3-Zeile mit dem Namen der direkt folgenden Bucket-Variable. Die
+# Allowlist gilt nur für diese Regel, diesen Pfad UND genau die wertlose
+# Zwei-Zeilen-Sequenz. Jeder nicht-leere S3_SECRET_KEY bleibt sichtbar.
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+description = "leerer S3-Platzhalter vor Bucket-Name"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(^|/)\.env\.example$''']
+regexes = ['''^S3_SECRET_KEY=\r?\nS3_BUCKET_GOBD=''']

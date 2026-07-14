@@ -61,8 +61,8 @@ export function ResearchView(props: {
           )}
         </div>
         <p className="text-xs text-muted mt-1">
-          Eigene/allgemeine Frage zum Sachverhalt an n8n — anonymisiert, mit editierbarer
-          Vorschau. Die Antwort landet unten in der Ablage.
+          Eigene/allgemeine Frage zum Sachverhalt an n8n — anonymisiert, mit editierbarer Vorschau.
+          Die Antwort landet unten in der Ablage.
         </p>
         {composing && (
           <div className="mt-3">
@@ -75,7 +75,10 @@ export function ResearchView(props: {
               onClose={() => setComposing(false)}
               onDone={(r) => {
                 props.onFlash(r, 'Anonymisierter Auftrag (ganzer Fall) an n8n gesendet.');
-                if (r.ok) { setComposing(false); router.refresh(); }
+                if (r.ok) {
+                  setComposing(false);
+                  router.refresh();
+                }
               }}
             />
           </div>
@@ -108,9 +111,12 @@ export function ResearchView(props: {
                     ) : (
                       <span className="text-sm text-secondary">Ganzer Fall</span>
                     )}
-                    {req.prompt && <p className="text-xs text-muted mt-0.5 line-clamp-2">{req.prompt}</p>}
+                    {req.prompt && (
+                      <p className="text-xs text-muted mt-0.5 line-clamp-2">{req.prompt}</p>
+                    )}
                     <p className="text-[11px] text-disabled mt-0.5">
-                      {staffById[req.createdById] ?? 'Mitarbeiter'} · {fmtDateShort(new Date(req.createdAt))}
+                      {staffById[req.createdById] ?? 'Mitarbeiter'} ·{' '}
+                      {fmtDateShort(new Date(req.createdAt))}
                       {req.includeSachverhalt ? ' · mit Sachverhalt' : ''}
                       {req.resultCount > 0 ? ` · ${req.resultCount} Antwort(en)` : ''}
                     </p>

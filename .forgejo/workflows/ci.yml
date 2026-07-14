@@ -23,7 +23,7 @@ env:
   REDIS_URL: redis://localhost:6379
   AUTH_SECRET: ci-auth-secret-with-at-least-thirty-two-chars
   NEXTAUTH_URL: http://localhost:3000
-  NEXTAUTH_TRUST_HOST: 'false'
+  NEXTAUTH_TRUST_HOST: 'true'
   TRUST_PROXY_REQUIRED: 'false'
   S3_ENDPOINT: http://localhost:8333
   S3_REGION: us-east-1
@@ -36,7 +36,7 @@ env:
 
 jobs:
   quality:
-    name: Lint, Typecheck, Unit Tests
+    name: Format, Lint, Typecheck, Unit Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -46,7 +46,7 @@ jobs:
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       - name: Guard pnpm supply-chain policy
@@ -54,6 +54,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Format-Baseline prüfen
+        run: pnpm format:check
 
       - name: Rebuild approved native packages
         run: pnpm rebuild -r @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver
@@ -75,6 +78,11 @@ jobs:
 
       - name: Guard pinned CI service images
         run: sh scripts/check-ci-images-pinned.sh
+
+      - name: Guard pinned Docker base images
+        run: |
+          node scripts/check-docker-bases-pinned.mjs
+          node scripts/tests/check-docker-bases-pinned.test.mjs
 
       - name: Guard pinned CI actions
         run: sh scripts/check-ci-actions-pinned.sh
@@ -148,7 +156,7 @@ jobs:
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
@@ -275,7 +283,7 @@ jobs:
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
@@ -405,7 +413,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         if: steps.last.outputs.tag != ''
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
@@ -513,7 +521,7 @@ jobs:
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
@@ -659,7 +667,7 @@ jobs:
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
@@ -897,7 +905,7 @@ jobs:
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
@@ -1001,7 +1009,7 @@ jobs:
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies

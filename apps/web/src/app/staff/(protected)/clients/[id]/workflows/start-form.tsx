@@ -11,7 +11,10 @@ interface Template {
   _count: { steps: number };
 }
 
-interface StaffOption { id: string; fullName: string; }
+interface StaffOption {
+  id: string;
+  fullName: string;
+}
 
 // Sentinel für „eigener Workflow (einmalig)" — kein Vorlagen-UUID.
 const BLANK = '__blank__';
@@ -47,8 +50,14 @@ export function StartWorkflowForm({
 
   function submit() {
     setError(null);
-    if (!choice) { setError('„Eigener Workflow" oder eine Vorlage wählen.'); return; }
-    if (isBlank && !name.trim()) { setError('Bitte einen Namen für den Workflow angeben.'); return; }
+    if (!choice) {
+      setError('„Eigener Workflow" oder eine Vorlage wählen.');
+      return;
+    }
+    if (isBlank && !name.trim()) {
+      setError('Bitte einen Namen für den Workflow angeben.');
+      return;
+    }
     start(async () => {
       const r = await startInstanceAction({
         clientId,
@@ -56,8 +65,14 @@ export function StartWorkflowForm({
         ...(analysisId ? { analysisId } : {}),
         ...(isBlank ? { name: name.trim() } : { templateId: choice }),
       });
-      if (!r.ok) { setError(r.error ?? 'Fehler.'); return; }
-      setOpen(false); setChoice(''); setName(''); setMemberIds(new Set());
+      if (!r.ok) {
+        setError(r.error ?? 'Fehler.');
+        return;
+      }
+      setOpen(false);
+      setChoice('');
+      setName('');
+      setMemberIds(new Set());
     });
   }
 
@@ -73,7 +88,10 @@ export function StartWorkflowForm({
             <label className="label">Workflow</label>
             <select
               value={choice}
-              onChange={(e) => { setChoice(e.target.value); setError(null); }}
+              onChange={(e) => {
+                setChoice(e.target.value);
+                setError(null);
+              }}
               className="input"
             >
               <option value="">— wählen —</option>
@@ -90,9 +108,11 @@ export function StartWorkflowForm({
             </select>
             {templates.length === 0 && (
               <p className="text-xs text-muted mt-1">
-                Keine Vorlagen vorhanden — als <strong>eigener Workflow</strong> starten und die Schritte
-                danach hinzufügen.{' '}
-                <Link href="/staff/workflows/templates" className="text-brand hover:underline">Vorlagen anlegen →</Link>
+                Keine Vorlagen vorhanden — als <strong>eigener Workflow</strong> starten und die
+                Schritte danach hinzufügen.{' '}
+                <Link href="/staff/workflows/templates" className="text-brand hover:underline">
+                  Vorlagen anlegen →
+                </Link>
               </p>
             )}
           </div>
@@ -109,7 +129,9 @@ export function StartWorkflowForm({
                 className="input"
                 autoFocus
               />
-              <p className="text-xs text-muted mt-1">Leerer Workflow — Schritte fügst du anschließend hinzu.</p>
+              <p className="text-xs text-muted mt-1">
+                Leerer Workflow — Schritte fügst du anschließend hinzu.
+              </p>
             </div>
           )}
 
@@ -117,7 +139,8 @@ export function StartWorkflowForm({
             <div>
               <label className="label inline-flex items-center gap-1">
                 <Users className="h-3 w-3 text-disabled" />
-                Team <span className="text-disabled font-normal">(optional, ich bin immer dabei)</span>
+                Team{' '}
+                <span className="text-disabled font-normal">(optional, ich bin immer dabei)</span>
               </label>
               <ul className="space-y-0.5 max-h-40 overflow-y-auto border border-default rounded p-1">
                 {staffOptions.map((s) => (
@@ -138,10 +161,19 @@ export function StartWorkflowForm({
 
           {error && <p className="text-xs text-red-700">{error}</p>}
           <div className="flex justify-end gap-2">
-            <button type="button" onClick={() => setOpen(false)} className="text-xs text-muted hover:underline">
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="text-xs text-muted hover:underline"
+            >
               Abbrechen
             </button>
-            <button type="button" onClick={submit} disabled={isPending} className="btn-primary text-xs">
+            <button
+              type="button"
+              onClick={submit}
+              disabled={isPending}
+              className="btn-primary text-xs"
+            >
               {isPending ? 'Startet…' : 'Starten'}
             </button>
           </div>

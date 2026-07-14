@@ -24,7 +24,14 @@ describe('Erledigt-Wahrheitstabellen', () => {
   it('Einspruchsfrist: GEPRUEFT ist NICHT erledigt (Entscheidung steht aus)', () => {
     expect(taxNoticeFristErledigt('NEU')).toBe(false);
     expect(taxNoticeFristErledigt('GEPRUEFT')).toBe(false);
-    for (const done of ['EINSPRUCH', 'ABGEHOLFEN', 'TEILABHILFE', 'ZURUECKGEWIESEN', 'KLAGE', 'RECHTSKRAEFTIG']) {
+    for (const done of [
+      'EINSPRUCH',
+      'ABGEHOLFEN',
+      'TEILABHILFE',
+      'ZURUECKGEWIESEN',
+      'KLAGE',
+      'RECHTSKRAEFTIG',
+    ]) {
       expect(taxNoticeFristErledigt(done), done).toBe(true);
     }
   });
@@ -64,9 +71,18 @@ describe('bucketFor (UTC-Tagesgrenzen)', () => {
 
 function eintrag(over: Partial<FristEintrag>): FristEintrag {
   return {
-    quelle: 'WIEDERVORLAGE', id: 'x', titel: 'T', clientId: 'c', clientName: 'C',
-    faelligAm: new Date('2026-06-10'), erledigt: false, erledigtAm: null,
-    erledigtVon: null, verantwortlich: null, verantwortlichId: null, href: '/x',
+    quelle: 'WIEDERVORLAGE',
+    id: 'x',
+    titel: 'T',
+    clientId: 'c',
+    clientName: 'C',
+    faelligAm: new Date('2026-06-10'),
+    erledigt: false,
+    erledigtAm: null,
+    erledigtVon: null,
+    verantwortlich: null,
+    verantwortlichId: null,
+    href: '/x',
     ...over,
   };
 }

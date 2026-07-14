@@ -23,6 +23,16 @@ on:
       - 'apps/**'
       - 'packages/**'
       - 'infra/docker/**'
+      - 'scripts/check-docker-bases-pinned.mjs'
+      - 'pnpm-lock.yaml'
+      - 'package.json'
+      - '.forgejo/workflows/build-images.yml'
+  pull_request:
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - 'infra/docker/**'
+      - 'scripts/check-docker-bases-pinned.mjs'
       - 'pnpm-lock.yaml'
       - 'package.json'
       - '.forgejo/workflows/build-images.yml'
@@ -37,8 +47,15 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+
       - name: Guard pnpm supply-chain policy
         run: sh scripts/check-pnpm-supply-chain.sh
+
+      - name: Guard pinned Docker base images
+        run: node scripts/check-docker-bases-pinned.mjs
 
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
 

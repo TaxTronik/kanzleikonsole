@@ -43,7 +43,7 @@ in dem Fall später erneut versuchen und ggf. die Administration informieren.
 ein Dokument im Mandanten-Portal sichtbar. Vom Mandanten selbst hochgeladene
 Dateien sind für ihn automatisch sichtbar.
 
-**Maximale Dateigröße:** 100 MB pro Datei (in einzelnen Bereichen wie
+**Maximale Dateigröße:** 25 MiB pro Datei (in einzelnen Bereichen wie
 Formular-Anhängen oder Rechnungs-PDFs: 10 MB).
 
 ## 2. Der Dokumenten-Explorer (Kanzlei)
@@ -120,7 +120,7 @@ endgültig und wird im Prüfprotokoll nachgewiesen.
 | -------------------------------------------- | ---------------------------------------------------------------- | --------------------------------------------------- |
 | Datei abgewiesen, Hinweis auf Schadsoftware  | Virenscan-Treffer; Datei wurde nicht gespeichert                 | Quelle prüfen; Datei nicht erneut hochladen         |
 | Upload schlägt mit Scan-/Serverfehler fehl   | Virenscanner nicht erreichbar (Annahme im Zweifel verweigert)    | später erneut versuchen; Administration informieren |
-| „Datei zu groß"                              | Größenlimit überschritten (100 MB bzw. 10 MB)                    | Datei verkleinern/aufteilen                         |
+| „Datei zu groß"                              | Größenlimit überschritten (25 MiB bzw. 10 MiB)                   | Datei verkleinern/aufteilen                         |
 | „Gleichzeitiger Upload … erneut versuchen"   | zwei neue Versionen gleichzeitig hochgeladen                     | erneut hochladen                                    |
 | „Herabstufung nicht möglich"                 | Schutzstufe kann nur erhöht werden                               | ggf. neuen Typ mit höherer Stufe wählen             |
 | ZIP-Download abgelehnt (zu groß/ausgelastet) | Auswahl überschreitet das Limit oder es laufen bereits Downloads | Auswahl verkleinern bzw. kurz warten                |

@@ -64,7 +64,8 @@ interface GuardResult {
 
 async function requireRiskModule(ctx: TenantContext): Promise<void> {
   const modules = await readModules(ctx);
-  if (!modules.risk) throw new ForbiddenError('Das Subsumtions-Modul ist für diese Kanzlei deaktiviert.');
+  if (!modules.risk)
+    throw new ForbiddenError('Das Subsumtions-Modul ist für diese Kanzlei deaktiviert.');
 }
 
 // Gemeinsamer Guard: Zugang (Admin/Partner oder zuständig für DIESEN Mandanten) +
@@ -94,10 +95,15 @@ async function sessionCtx(): Promise<{ ctx: TenantContext; staffId: string }> {
 async function guardAnalysis(analysisId: string): Promise<GuardResult> {
   const { ctx, staffId } = await sessionCtx();
   const analysis = await withTenantContext(ctx, (tx) =>
-    tx.riskAnalysis.findUnique({ where: { id: analysisId }, select: { clientId: true, archivedAt: true } }),
+    tx.riskAnalysis.findUnique({
+      where: { id: analysisId },
+      select: { clientId: true, archivedAt: true },
+    }),
   );
-  if (!analysis?.clientId) throw new ForbiddenError('Analyse nicht gefunden oder ohne Mandantenbezug.');
-  if (analysis.archivedAt) throw new ForbiddenError('Diese Subsumtion ist archiviert (schreibgeschützt).');
+  if (!analysis?.clientId)
+    throw new ForbiddenError('Analyse nicht gefunden oder ohne Mandantenbezug.');
+  if (analysis.archivedAt)
+    throw new ForbiddenError('Diese Subsumtion ist archiviert (schreibgeschützt).');
   await requireSubsumtionAccess(analysis.clientId);
   return { ctx, staffId, clientId: analysis.clientId };
 }
@@ -114,7 +120,8 @@ async function guardMarking(markingId: string): Promise<GuardResult & { analysis
   );
   const clientId = marking?.analysis.clientId;
   if (!clientId) throw new ForbiddenError('Markierung nicht gefunden oder ohne Mandantenbezug.');
-  if (marking!.analysis.archivedAt) throw new ForbiddenError('Diese Subsumtion ist archiviert (schreibgeschützt).');
+  if (marking!.analysis.archivedAt)
+    throw new ForbiddenError('Diese Subsumtion ist archiviert (schreibgeschützt).');
   await requireSubsumtionAccess(clientId);
   return { ctx, staffId, clientId, analysisId: marking!.analysis.id };
 }
@@ -132,7 +139,8 @@ async function guardResult(resultId: string): Promise<GuardResult & { analysisId
     }),
   );
   const analysis = result?.request?.analysis ?? result?.marking?.analysis ?? null;
-  if (!analysis?.clientId) throw new ForbiddenError('Ergebnis nicht gefunden oder ohne Mandantenbezug.');
+  if (!analysis?.clientId)
+    throw new ForbiddenError('Ergebnis nicht gefunden oder ohne Mandantenbezug.');
   await requireSubsumtionAccess(analysis.clientId);
   return { ctx, staffId, clientId: analysis.clientId, analysisId: analysis.id };
 }
@@ -259,16 +267,31 @@ export async function archiveAnalysisAction(input: {
  *  (`enrichedAt`). Der Engine-Status ist best-effort (Fehler ⇒ null), damit die
  *  Fertig-Erkennung (reiner DB-Read) auch bei wackliger Engine funktioniert. */
 // BullMQ-Zustände, die einen laufenden/wartenden LLM-Job bedeuten (= „läuft").
-const LLM_JOB_RUNNING_STATES = new Set(['active', 'waiting', 'delayed', 'waiting-children', 'prioritized']);
+const LLM_JOB_RUNNING_STATES = new Set([
+  'active',
+  'waiting',
+  'delayed',
+  'waiting-children',
+  'prioritized',
+]);
 
-export async function llmStatusAction(input: {
-  clientId: string;
-  analysisId?: string;
-}): Promise<OkActionResult<{ status: LlmStatusDTO | null; enrichedAt: string | null; jobRunning: boolean; jobFailed: boolean; jobError: string | null }>> {
+export async function llmStatusAction(input: { clientId: string; analysisId?: string }): Promise<
+  OkActionResult<{
+    status: LlmStatusDTO | null;
+    enrichedAt: string | null;
+    jobRunning: boolean;
+    jobFailed: boolean;
+    jobError: string | null;
+  }>
+> {
   try {
     const { ctx } = await guard(input.clientId);
     let status: LlmStatusDTO | null = null;
-    try { status = await getLlmStatus(); } catch { status = null; }
+    try {
+      status = await getLlmStatus();
+    } catch {
+      status = null;
+    }
     let enrichedAt: string | null = null;
     let jobRunning = false;
     let jobFailed = false;
@@ -294,7 +317,9 @@ export async function llmStatusAction(input: {
           } else if (jobState && LLM_JOB_RUNNING_STATES.has(jobState.state)) {
             jobRunning = true;
           }
-        } catch { /* Queue nicht erreichbar → kein Signal, normaler Poll-Lauf */ }
+        } catch {
+          /* Queue nicht erreichbar → kein Signal, normaler Poll-Lauf */
+        }
       }
     }
     return { ok: true, status, enrichedAt, jobRunning, jobFailed, jobError };
@@ -369,7 +394,11 @@ const ManualMarkingSchema = z.object({
   // Strikt Hex (#rrggbb) — die UI sendet feste Swatches; verhindert, dass ein
   // beliebiger String gespeichert wird (Daten-Integrität + Defense gegen ein
   // späteres CSS-Interpolieren der Farbe).
-  farbe: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Ungültige Farbe.').nullable().optional(),
+  farbe: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, 'Ungültige Farbe.')
+    .nullable()
+    .optional(),
   label: z.string().max(100).nullable().optional(),
   notiz: z.string().max(4000).nullable().optional(),
   normAnker: z.array(z.string().max(200)).max(50).optional(),
@@ -396,7 +425,10 @@ const UpdateMarkingSchema = z.object({
   markingId: z.string().uuid(),
   governanceTyp: z.enum(['FP', 'FF', 'IN']).nullable().optional(),
   schadensintensitaet: z.enum(['NIEDRIG', 'MITTEL', 'HOCH']).nullable().optional(),
-  wahrscheinlichkeit: z.enum(['SELTEN', 'MOEGLICH', 'WAHRSCHEINLICH', 'HAEUFIG']).nullable().optional(),
+  wahrscheinlichkeit: z
+    .enum(['SELTEN', 'MOEGLICH', 'WAHRSCHEINLICH', 'HAEUFIG'])
+    .nullable()
+    .optional(),
   kaskadenreichweite: z.number().int().min(0).max(99).nullable().optional(),
   kontrolle: z.string().max(2000).nullable().optional(),
   status: z.enum(['OFFEN', 'IN_PRUEFUNG', 'KONTROLLIERT', 'AKZEPTIERT']).optional(),
@@ -405,7 +437,11 @@ const UpdateMarkingSchema = z.object({
   // Strikt Hex (#rrggbb) — die UI sendet feste Swatches; verhindert, dass ein
   // beliebiger String gespeichert wird (Daten-Integrität + Defense gegen ein
   // späteres CSS-Interpolieren der Farbe).
-  farbe: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Ungültige Farbe.').nullable().optional(),
+  farbe: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, 'Ungültige Farbe.')
+    .nullable()
+    .optional(),
   label: z.string().max(100).nullable().optional(),
 });
 
@@ -524,7 +560,10 @@ export async function createPromptTemplateAction(
   try {
     const parsed = CreatePromptTemplateSchema.parse(input);
     const { ctx } = await guard(parsed.clientId);
-    const template = await createPromptTemplate(ctx, { title: parsed.title.trim(), body: parsed.body.trim() });
+    const template = await createPromptTemplate(ctx, {
+      title: parsed.title.trim(),
+      body: parsed.body.trim(),
+    });
     return { ok: true, template };
   } catch (e) {
     return toActionError(e);
@@ -574,7 +613,10 @@ export async function assignResultAction(input: {
     // ließe sich ein Ergebnis quer auf eine fremde Markierung verlinken.
     if (input.markingId) {
       const target = await withTenantContext(ctx, (tx) =>
-        tx.riskMarking.findUnique({ where: { id: input.markingId! }, select: { analysisId: true } }),
+        tx.riskMarking.findUnique({
+          where: { id: input.markingId! },
+          select: { analysisId: true },
+        }),
       );
       if (!target || target.analysisId !== analysisId) {
         return { ok: false, error: 'Markierung gehört nicht zu dieser Analyse.' };
@@ -672,7 +714,11 @@ export async function addBeraterNormAction(
   try {
     const parsed = AddNormSchema.parse(input);
     const { ctx, clientId, analysisId } = await guardMarking(parsed.markingId);
-    await addBeraterNorm(ctx, parsed.markingId, { zitat: parsed.zitat, id: parsed.normId ?? null, titel: parsed.titel ?? null });
+    await addBeraterNorm(ctx, parsed.markingId, {
+      zitat: parsed.zitat,
+      id: parsed.normId ?? null,
+      titel: parsed.titel ?? null,
+    });
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId}`);
     return { ok: true };
   } catch (e) {
@@ -694,7 +740,12 @@ export async function setNormVerworfenAction(
   try {
     const parsed = VerwerfNormSchema.parse(input);
     const { ctx, clientId, analysisId } = await guardMarking(parsed.markingId);
-    await setNormVerworfen(ctx, parsed.markingId, { index: parsed.index, zitat: parsed.zitat }, parsed.verworfen);
+    await setNormVerworfen(
+      ctx,
+      parsed.markingId,
+      { index: parsed.index, zitat: parsed.zitat },
+      parsed.verworfen,
+    );
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId}`);
     return { ok: true };
   } catch (e) {
@@ -763,7 +814,9 @@ const KatalogKuratierungSchema = z.object({
  *  anfragenden Berater. */
 export async function katalogKuratierungAction(
   input: z.infer<typeof KatalogKuratierungSchema>,
-): Promise<OkActionResult<{ verworfen: string[]; ergaenzt: { zitat: string; id: string | null }[] }>> {
+): Promise<
+  OkActionResult<{ verworfen: string[]; ergaenzt: { zitat: string; id: string | null }[] }>
+> {
   try {
     const parsed = KatalogKuratierungSchema.parse(input);
     const { staffId } = await guard(parsed.clientId);
@@ -846,7 +899,12 @@ export async function importClientDocAction(
     const doc = await withTenantContext(ctx, async (tx) => {
       // Defense in Depth: expliziter Tenant-/Client-Filter zusätzlich zu RLS.
       const d = await tx.document.findFirst({
-        where: { id: parsed.documentId, clientId: parsed.clientId, tenantId: ctx.tenantId, deletedAt: null },
+        where: {
+          id: parsed.documentId,
+          clientId: parsed.clientId,
+          tenantId: ctx.tenantId,
+          deletedAt: null,
+        },
         include: { versions: { orderBy: { versionNo: 'desc' }, take: 1 } },
       });
       const v = d?.versions[0];
@@ -868,7 +926,8 @@ export async function importClientDocAction(
     // App-proxied: Bytes intern aus SeaweedFS holen (Store nie öffentlich).
     const bytes = await fetchObjectBytes(doc.bucket, doc.key);
     const text = await extractText(bytes, doc.mimeType || 'application/octet-stream');
-    if (!text.trim()) return { ok: false, error: 'Das Dokument enthält keinen extrahierbaren Text.' };
+    if (!text.trim())
+      return { ok: false, error: 'Das Dokument enthält keinen extrahierbaren Text.' };
     return { ok: true, text, suggestedTitle: doc.title?.trim() || null };
   } catch (e) {
     if (e instanceof UnsupportedDocumentTypeError) return { ok: false, error: e.message };
@@ -887,9 +946,13 @@ export async function importDocTextAction(
     if (!(file instanceof File)) return { ok: false, error: 'Keine Datei übergeben.' };
     const bytes = Buffer.from(await file.arrayBuffer());
     const text = await extractText(bytes, file.type || 'application/octet-stream');
-    if (!text.trim()) return { ok: false, error: 'Das Dokument enthält keinen extrahierbaren Text.' };
+    if (!text.trim())
+      return { ok: false, error: 'Das Dokument enthält keinen extrahierbaren Text.' };
     // Dateiname ohne Endung als Titel-Vorschlag (Pfadanteile/Extension entfernt).
-    const base = (file.name || '').replace(/\.[^.]+$/, '').replace(/[\\/]/g, ' ').trim();
+    const base = (file.name || '')
+      .replace(/\.[^.]+$/, '')
+      .replace(/[\\/]/g, ' ')
+      .trim();
     return { ok: true, text, suggestedTitle: base || null };
   } catch (e) {
     if (e instanceof UnsupportedDocumentTypeError) return { ok: false, error: e.message };

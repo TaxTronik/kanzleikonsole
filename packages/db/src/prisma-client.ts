@@ -30,6 +30,8 @@ function readPrismaExport<K extends keyof PrismaClientNamespace>(
     : undefined;
 }
 
-export const PrismaClient = readPrismaExport('PrismaClient') as PrismaClientNamespace['PrismaClient'];
+export const PrismaClient = readPrismaExport(
+  'PrismaClient',
+) as PrismaClientNamespace['PrismaClient'];
 export const Prisma = readPrismaExport('Prisma') as PrismaClientNamespace['Prisma'];
 export type PrismaClientInstance = InstanceType<typeof PrismaClient>;

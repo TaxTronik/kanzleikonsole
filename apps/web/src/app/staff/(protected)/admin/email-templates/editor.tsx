@@ -47,7 +47,10 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
         bodyMd: editing.bodyMd.trim(),
         active: editing.active,
       });
-      if (!r.ok) { setError(r.error ?? 'Fehler.'); return; }
+      if (!r.ok) {
+        setError(r.error ?? 'Fehler.');
+        return;
+      }
       setEditing(null);
     });
   }
@@ -72,7 +75,10 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
                     )}
                     <span className="font-medium text-primary">{t.name}</span>
                     {t.slug && (
-                      <span className="badge-yellow text-[10px]" title="System-Vorlage — nicht löschbar, Texte editierbar">
+                      <span
+                        className="badge-yellow text-[10px]"
+                        title="System-Vorlage — nicht löschbar, Texte editierbar"
+                      >
                         System · {t.slug}
                       </span>
                     )}
@@ -163,7 +169,7 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
               value={editing.subject}
               onChange={(e) => setEditing({ ...editing, subject: e.target.value })}
               maxLength={200}
-              placeholder='Wird im Mail-Betreff angezeigt'
+              placeholder="Wird im Mail-Betreff angezeigt"
             />
           </div>
 
@@ -175,10 +181,13 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
               value={editing.bodyMd}
               onChange={(e) => setEditing({ ...editing, bodyMd: e.target.value })}
               maxLength={10_000}
-              placeholder={'Sehr geehrte Damen und Herren,\n\nbitte reichen Sie uns die Belege für …\n\nMit freundlichen Grüßen\nIhre Kanzlei'}
+              placeholder={
+                'Sehr geehrte Damen und Herren,\n\nbitte reichen Sie uns die Belege für …\n\nMit freundlichen Grüßen\nIhre Kanzlei'
+              }
             />
             <p className="text-xs text-muted mt-1">
-              Platzhalter: <code>{'{{client.name}}'}</code> wird zur Laufzeit durch den Mandantennamen ersetzt.
+              Platzhalter: <code>{'{{client.name}}'}</code> wird zur Laufzeit durch den
+              Mandantennamen ersetzt.
             </p>
           </div>
 
@@ -194,11 +203,20 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
           {error && <div className="alert-error-sm">{error}</div>}
 
           <div className="flex items-center gap-2">
-            <button type="button" onClick={save} disabled={isPending} className="btn-primary inline-flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={save}
+              disabled={isPending}
+              className="btn-primary inline-flex items-center gap-1.5"
+            >
               <Save className="h-4 w-4" />
               {isPending ? 'Speichere…' : 'Speichern'}
             </button>
-            <button type="button" onClick={() => setEditing(null)} className="btn-secondary inline-flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setEditing(null)}
+              className="btn-secondary inline-flex items-center gap-1.5"
+            >
               <X className="h-4 w-4" />
               Abbrechen
             </button>

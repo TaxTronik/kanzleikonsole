@@ -6,7 +6,12 @@ import { redirect } from 'next/navigation';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { toActionError } from '@/server/auth/rbac';
-import { staffActionGuard, withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
+import {
+  staffActionGuard,
+  withStaff,
+  ActionError,
+  type ActionResult,
+} from '@/server/actions/staff-action';
 
 const LIST = '/staff/admin/state-machines';
 const SLUG_RE = /^[a-z][a-z0-9_]{1,40}$/;
@@ -18,12 +23,15 @@ const CreateSchema = z.object({
   appliesTo: z.string().max(60).nullable().optional(),
 });
 
-export async function createStateMachineAction(input: z.infer<typeof CreateSchema>): Promise<ActionResult> {
+export async function createStateMachineAction(
+  input: z.infer<typeof CreateSchema>,
+): Promise<ActionResult> {
   const g = await staffActionGuard({ requireAdmin: true });
   if (!g.ok) return g;
   const { tenantId, staffId, ctx } = g;
   const parsed = CreateSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
+  if (!parsed.success)
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
 
   let id: string;
   try {
@@ -160,7 +168,8 @@ export async function saveMachineDefinitionAction(
   input: z.infer<typeof SaveDefinitionSchema>,
 ): Promise<ActionResult> {
   const parsed = SaveDefinitionSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
+  if (!parsed.success)
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
   const { machineId, states, transitions } = parsed.data;
 
   // Validierungen
@@ -174,8 +183,10 @@ export async function saveMachineDefinitionAction(
     return { ok: false, error: 'Genau ein Anfangszustand erforderlich.' };
   }
   for (const t of transitions) {
-    if (!keys.has(t.fromKey)) return { ok: false, error: `Übergang verweist auf unbekannten Zustand: ${t.fromKey}` };
-    if (!keys.has(t.toKey)) return { ok: false, error: `Übergang verweist auf unbekannten Zustand: ${t.toKey}` };
+    if (!keys.has(t.fromKey))
+      return { ok: false, error: `Übergang verweist auf unbekannten Zustand: ${t.fromKey}` };
+    if (!keys.has(t.toKey))
+      return { ok: false, error: `Übergang verweist auf unbekannten Zustand: ${t.toKey}` };
   }
 
   return withStaff(
@@ -206,9 +217,13 @@ export async function saveMachineDefinitionAction(
         } else {
           const created = await tx.stateMachineState.create({
             data: {
-              tenantId, machineId,
-              key: s.key, label: s.label, color: s.color,
-              isInitial: s.isInitial, isTerminal: s.isTerminal,
+              tenantId,
+              machineId,
+              key: s.key,
+              label: s.label,
+              color: s.color,
+              isInitial: s.isInitial,
+              isTerminal: s.isTerminal,
               position: position++,
             },
           });
@@ -228,7 +243,8 @@ export async function saveMachineDefinitionAction(
       for (const t of transitions) {
         await tx.stateMachineTransition.create({
           data: {
-            tenantId, machineId,
+            tenantId,
+            machineId,
             fromStateId: stateIdByKey.get(t.fromKey)!,
             toStateId: stateIdByKey.get(t.toKey)!,
             label: t.label,

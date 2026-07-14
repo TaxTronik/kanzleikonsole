@@ -17,15 +17,29 @@ function model(): ReportModel {
       { kind: 'text', text: 'Erster Absatz mit einer ', color: null, streitig: false },
       { kind: 'text', text: 'markierten Stelle', color: '#14b8a6', streitig: false },
       { kind: 'marker', nr: 1, color: '#14b8a6' },
-      { kind: 'text', text: '.\n\nZweiter Absatz nach einer Leerzeile.', color: null, streitig: false },
+      {
+        kind: 'text',
+        text: '.\n\nZweiter Absatz nach einer Leerzeile.',
+        color: null,
+        streitig: false,
+      },
     ],
     markings: [
       {
-        nr: 1, fundstelle: 'markierten Stelle', begriff: 'Begriff',
-        herkunftLabel: 'Berater', herkunftColor: '#14b8a6', engineStatusLabel: null,
-        streitig: false, normAnker: ['§ 1 AO'], governanceLabel: null,
-        schadenLabel: null, wahrscheinlichkeitLabel: null, statusLabel: 'Offen',
-        kontrolle: null, notiz: null,
+        nr: 1,
+        fundstelle: 'markierten Stelle',
+        begriff: 'Begriff',
+        herkunftLabel: 'Berater',
+        herkunftColor: '#14b8a6',
+        engineStatusLabel: null,
+        streitig: false,
+        normAnker: ['§ 1 AO'],
+        governanceLabel: null,
+        schadenLabel: null,
+        wahrscheinlichkeitLabel: null,
+        statusLabel: 'Offen',
+        kontrolle: null,
+        notiz: null,
       },
     ],
     counts: { gesamt: 1, eigen: 1 },
@@ -41,14 +55,16 @@ describe('renderPdf', () => {
 
   it('bricht lange Absätze sauber um (kein continued-Overlap, mehrere Seiten)', async () => {
     const m = model();
-    m.tokens = [{ kind: 'text', text: ('Wort '.repeat(800)).trim(), color: null, streitig: false }];
+    m.tokens = [{ kind: 'text', text: 'Wort '.repeat(800).trim(), color: null, streitig: false }];
     const buf = await renderPdf(m);
     expect(buf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
   });
 
   it('rendert auch ohne Markierungen', async () => {
     const m = model();
-    m.tokens = [{ kind: 'text', text: 'Nur Fließtext ohne Markierung.', color: null, streitig: false }];
+    m.tokens = [
+      { kind: 'text', text: 'Nur Fließtext ohne Markierung.', color: null, streitig: false },
+    ];
     m.markings = [];
     m.counts = { gesamt: 0, eigen: 0 };
     const buf = await renderPdf(m);

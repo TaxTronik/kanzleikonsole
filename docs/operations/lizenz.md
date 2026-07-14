@@ -3,12 +3,12 @@
 taxtronik prüft beim Start (und alle 60 Minuten) einen optionalen
 Lizenzschlüssel. Verhalten:
 
-| Status | Bedeutung | Auswirkung |
-|---|---|---|
-| `VALID` | Token gültig, nicht abgelaufen | grünes Banner im Admin-Bereich |
-| `EXPIRED` | Signatur ok, aber `exp` < jetzt | gelbes Warn-Banner, App läuft weiter |
-| `INVALID` | Signatur falsch / Token kaputt | rotes Banner |
-| `UNCONFIGURED` | Kein Token oder Public-Key konfiguriert | grauer Hinweis |
+| Status         | Bedeutung                               | Auswirkung                           |
+| -------------- | --------------------------------------- | ------------------------------------ |
+| `VALID`        | Token gültig, nicht abgelaufen          | grünes Banner im Admin-Bereich       |
+| `EXPIRED`      | Signatur ok, aber `exp` < jetzt         | gelbes Warn-Banner, App läuft weiter |
+| `INVALID`      | Signatur falsch / Token kaputt          | rotes Banner                         |
+| `UNCONFIGURED` | Kein Token oder Public-Key konfiguriert | grauer Hinweis                       |
 
 > **Kein Hard-Stop bei abgelaufener Lizenz.** Eine On-Premise-Software, die
 > sich selbst abschaltet, wenn die Lizenz abläuft, ist ein Albtraum für den

@@ -16,7 +16,12 @@ import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { CustomFieldsForm } from './custom-fields-form';
-import { AdminFieldsForm, ResponsibilitiesForm, GwgFieldsForm, MandateForm } from './stammdaten-forms';
+import {
+  AdminFieldsForm,
+  ResponsibilitiesForm,
+  GwgFieldsForm,
+  MandateForm,
+} from './stammdaten-forms';
 
 const KIND_LABELS: Record<string, string> = {
   NATPERS: 'Natürliche Person',
@@ -142,11 +147,13 @@ export default async function ClientEditPage({ params }: { params: Promise<{ id:
             <div>
               <div className="text-sm font-medium text-primary">Vertraulicher Mandant</div>
               <div className="text-xs text-muted">
-                Im offenen Zugriffsmodell bleibt dieser Mandant trotzdem auf Admin/Partner
-                und die zugeordneten Berufsträger/Hauptbearbeiter beschränkt (Konflikt-/
+                Im offenen Zugriffsmodell bleibt dieser Mandant trotzdem auf Admin/Partner und die
+                zugeordneten Berufsträger/Hauptbearbeiter beschränkt (Konflikt-/
                 Geheimhaltungsfälle).
                 {!isAdmin && (
-                  <span className="block text-disabled mt-0.5">Nur Admin/Partner kann das ändern.</span>
+                  <span className="block text-disabled mt-0.5">
+                    Nur Admin/Partner kann das ändern.
+                  </span>
                 )}
               </div>
             </div>

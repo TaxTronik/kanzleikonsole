@@ -65,7 +65,12 @@ export async function writeIbmToken(ctx: TenantContext, token: string): Promise<
   await withTenantContext(ctx, async (tx) => {
     await tx.tenantSetting.upsert({
       where: { tenantId_key: { tenantId: ctx.tenantId, key: KEY } },
-      create: { tenantId: ctx.tenantId, key: KEY, value: stored as object, updatedBy: ctx.actorId ?? undefined },
+      create: {
+        tenantId: ctx.tenantId,
+        key: KEY,
+        value: stored as object,
+        updatedBy: ctx.actorId ?? undefined,
+      },
       update: { value: stored as object, updatedBy: ctx.actorId ?? undefined },
     });
   });

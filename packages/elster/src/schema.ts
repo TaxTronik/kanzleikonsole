@@ -75,9 +75,7 @@ function isValidTtmmjjjj(s: string): boolean {
   if (mm < 1 || mm > 12) return false;
   // Schaltjahr-korrekt über UTC-Date-Rollover: gültiger Tag ⇒ Date bleibt gleich.
   const d = new Date(Date.UTC(jjjj, mm - 1, tt));
-  return (
-    d.getUTCFullYear() === jjjj && d.getUTCMonth() === mm - 1 && d.getUTCDate() === tt
-  );
+  return d.getUTCFullYear() === jjjj && d.getUTCMonth() === mm - 1 && d.getUTCDate() === tt;
 }
 
 /** I-Abfrage: Istbuchungen ab/zu einem Wertstellungsdatum. */

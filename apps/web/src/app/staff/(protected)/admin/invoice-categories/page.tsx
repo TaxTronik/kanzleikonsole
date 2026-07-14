@@ -37,10 +37,9 @@ export default async function InvoiceCategoriesPage() {
       </Link>
       <h1 className="text-2xl font-bold text-primary mb-1">Rechnungstypen</h1>
       <p className="text-muted text-sm mb-6">
-        Im EXTERNAL-Rechnungsmodus wählst du beim Hochladen einer Rechnung
-        einen Typ aus. Jeder Typ kann eine eigene E-Mail-Vorlage referenzieren
-        — so wird der Mandant je nach Anlass (Honorar / Mahnung / Beratung …)
-        passend angeschrieben.
+        Im EXTERNAL-Rechnungsmodus wählst du beim Hochladen einer Rechnung einen Typ aus. Jeder Typ
+        kann eine eigene E-Mail-Vorlage referenzieren — so wird der Mandant je nach Anlass (Honorar
+        / Mahnung / Beratung …) passend angeschrieben.
       </p>
       <InvoiceCategoryEditor
         initial={categories.map((c) => ({

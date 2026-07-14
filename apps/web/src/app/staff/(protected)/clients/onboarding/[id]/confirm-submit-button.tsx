@@ -34,7 +34,10 @@ export function ConfirmSubmitButton({
             <AlertTriangle className="h-5 w-5" />
           </div>
           <div className="min-w-0 flex-1">
-            <h2 id="gwg-review-confirm-title" className="text-base font-semibold text-red-700 dark:text-red-300">
+            <h2
+              id="gwg-review-confirm-title"
+              className="text-base font-semibold text-red-700 dark:text-red-300"
+            >
               GwG-Prüfung bestätigen
             </h2>
             <p id="gwg-review-confirm-message" className="mt-2 text-sm text-secondary">

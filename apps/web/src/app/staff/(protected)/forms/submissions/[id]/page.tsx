@@ -19,7 +19,6 @@ const STATUS_LABELS: Record<string, string> = {
   REVIEWED: 'Geprüft',
 };
 
-
 function renderValue(type: FormFieldType, value: unknown, fieldOptions: unknown): ReactNode {
   if (value === null || value === undefined || value === '') {
     return <span className="text-disabled">—</span>;
@@ -72,24 +71,26 @@ function labelForOption(opts: unknown, value: string): string {
   return value;
 }
 
-export default async function SubmissionDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function SubmissionDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const session = await staffAuth();
   if (!session?.user) redirect('/staff/login');
   const { id } = await params;
   const { tenantId, staffId } = session.user;
 
-  const sub = await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    (tx) =>
-      tx.formSubmission.findUnique({
-        where: { id },
-        include: {
-          client: { select: { id: true, name: true } },
-          template: {
-            include: { fields: { orderBy: { position: 'asc' } } },
-          },
+  const sub = await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>
+    tx.formSubmission.findUnique({
+      where: { id },
+      include: {
+        client: { select: { id: true, name: true } },
+        template: {
+          include: { fields: { orderBy: { position: 'asc' } } },
         },
-      }),
+      },
+    }),
   );
   if (!sub) notFound();
 
@@ -108,10 +109,18 @@ export default async function SubmissionDetailPage({ params }: { params: Promise
           {sub.submittedAt && ` · eingegangen ${fmtDateTimeMedium(sub.submittedAt)}`}
         </p>
         <div className="mt-2">
-          {sub.status === 'PENDING' && <span className="badge-yellow">{STATUS_LABELS[sub.status]}</span>}
-          {sub.status === 'DRAFT' && <span className="badge-yellow">{STATUS_LABELS[sub.status]}</span>}
-          {sub.status === 'SUBMITTED' && <span className="badge-green">{STATUS_LABELS[sub.status]}</span>}
-          {sub.status === 'REVIEWED' && <span className="badge-gray">{STATUS_LABELS[sub.status]}</span>}
+          {sub.status === 'PENDING' && (
+            <span className="badge-yellow">{STATUS_LABELS[sub.status]}</span>
+          )}
+          {sub.status === 'DRAFT' && (
+            <span className="badge-yellow">{STATUS_LABELS[sub.status]}</span>
+          )}
+          {sub.status === 'SUBMITTED' && (
+            <span className="badge-green">{STATUS_LABELS[sub.status]}</span>
+          )}
+          {sub.status === 'REVIEWED' && (
+            <span className="badge-gray">{STATUS_LABELS[sub.status]}</span>
+          )}
         </div>
       </div>
 

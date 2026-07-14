@@ -5,8 +5,12 @@ import { decideStaffGuard } from '../staff-action-policy';
 // in 162/63 handkopierten Stellen.
 describe('decideStaffGuard', () => {
   it('keine Session → „Nicht eingeloggt."', () => {
-    expect(decideStaffGuard({ hasUser: false, isAdmin: false, requireAdmin: false })).toBe('Nicht eingeloggt.');
-    expect(decideStaffGuard({ hasUser: false, isAdmin: true, requireAdmin: true })).toBe('Nicht eingeloggt.');
+    expect(decideStaffGuard({ hasUser: false, isAdmin: false, requireAdmin: false })).toBe(
+      'Nicht eingeloggt.',
+    );
+    expect(decideStaffGuard({ hasUser: false, isAdmin: true, requireAdmin: true })).toBe(
+      'Nicht eingeloggt.',
+    );
   });
 
   it('eingeloggt, kein Admin nötig → erlaubt', () => {
@@ -14,7 +18,9 @@ describe('decideStaffGuard', () => {
   });
 
   it('Admin verlangt, aber kein Admin → „Nur ADMIN/PARTNER."', () => {
-    expect(decideStaffGuard({ hasUser: true, isAdmin: false, requireAdmin: true })).toBe('Nur ADMIN/PARTNER.');
+    expect(decideStaffGuard({ hasUser: true, isAdmin: false, requireAdmin: true })).toBe(
+      'Nur ADMIN/PARTNER.',
+    );
   });
 
   it('Admin verlangt und Admin → erlaubt', () => {
@@ -26,8 +32,11 @@ describe('decideStaffGuard', () => {
   it('Einzelrecht verlangt, nicht vorhanden → Meldung mit Rechtename', () => {
     expect(
       decideStaffGuard({
-        hasUser: true, isAdmin: false, requireAdmin: false,
-        requiredPermission: 'INVOICE_SEND', hasPermission: false,
+        hasUser: true,
+        isAdmin: false,
+        requireAdmin: false,
+        requiredPermission: 'INVOICE_SEND',
+        hasPermission: false,
       }),
     ).toBe('Keine Berechtigung (INVOICE_SEND).');
   });
@@ -35,8 +44,11 @@ describe('decideStaffGuard', () => {
   it('Einzelrecht verlangt und vorhanden → erlaubt', () => {
     expect(
       decideStaffGuard({
-        hasUser: true, isAdmin: false, requireAdmin: false,
-        requiredPermission: 'INVOICE_MANAGE', hasPermission: true,
+        hasUser: true,
+        isAdmin: false,
+        requireAdmin: false,
+        requiredPermission: 'INVOICE_MANAGE',
+        hasPermission: true,
       }),
     ).toBeNull();
   });
@@ -45,8 +57,11 @@ describe('decideStaffGuard', () => {
     // Kein-Session-Fall dominiert weiterhin alles.
     expect(
       decideStaffGuard({
-        hasUser: false, isAdmin: true, requireAdmin: false,
-        requiredPermission: 'ABSENCE_DECIDE', hasPermission: true,
+        hasUser: false,
+        isAdmin: true,
+        requireAdmin: false,
+        requiredPermission: 'ABSENCE_DECIDE',
+        hasPermission: true,
       }),
     ).toBe('Nicht eingeloggt.');
   });

@@ -52,7 +52,9 @@ export async function readKatalogKuratierung(
 
 export class NotACatalogMarkingError extends Error {
   constructor() {
-    super('Katalog-Kuratierung ist nur für Begriffs-Karten möglich (Trigger-/LLM-/eigene Markierungen werden pro Fall kuratiert).');
+    super(
+      'Katalog-Kuratierung ist nur für Begriffs-Karten möglich (Trigger-/LLM-/eigene Markierungen werden pro Fall kuratiert).',
+    );
     this.name = 'NotACatalogMarkingError';
   }
 }
@@ -98,7 +100,10 @@ export async function kuratiereKatalogNorm(
     scope: input.scope,
     autor: input.autor,
   });
-  if (!res.ok) throw new CatalogCurationFailedError(res.fehler || 'Die Katalog-Kuratierung ist fehlgeschlagen.');
+  if (!res.ok)
+    throw new CatalogCurationFailedError(
+      res.fehler || 'Die Katalog-Kuratierung ist fehlgeschlagen.',
+    );
 
   await withTenantContext(ctx, (tx) =>
     evidenceService.record(tx, {
@@ -108,7 +113,13 @@ export async function kuratiereKatalogNorm(
       action: 'risk.catalog.norm_curated',
       resourceType: 'risk_catalog',
       resourceId: katalogId,
-      after: { markingId: input.markingId, katalogId, norm: input.norm, aktion: input.aktion, scope: input.scope },
+      after: {
+        markingId: input.markingId,
+        katalogId,
+        norm: input.norm,
+        aktion: input.aktion,
+        scope: input.scope,
+      },
     }),
   );
 }

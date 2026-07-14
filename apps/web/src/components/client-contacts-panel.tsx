@@ -45,11 +45,10 @@ export function ClientContactsPanel({ clientId, contacts }: Props) {
     <div className="card overflow-hidden mb-6">
       <div className="flex items-center justify-between px-5 py-3 border-b border-default">
         <div>
-          <h2 className="text-sm font-medium text-primary">
-            Ansprechpartner ({contacts.length})
-          </h2>
+          <h2 className="text-sm font-medium text-primary">Ansprechpartner ({contacts.length})</h2>
           <p className="text-xs text-muted mt-0.5">
-            Kontaktpersonen beim Mandanten. Per E-Mail bekommen sie Portal-Zugang und Benachrichtigungen.
+            Kontaktpersonen beim Mandanten. Per E-Mail bekommen sie Portal-Zugang und
+            Benachrichtigungen.
           </p>
         </div>
         <button
@@ -68,29 +67,56 @@ export function ClientContactsPanel({ clientId, contacts }: Props) {
             <input type="hidden" name="clientId" value={clientId} />
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="label" htmlFor="contact-fullName">Name</label>
-                <input id="contact-fullName" name="fullName" type="text" className="input" required minLength={2} maxLength={200} />
+                <label className="label" htmlFor="contact-fullName">
+                  Name
+                </label>
+                <input
+                  id="contact-fullName"
+                  name="fullName"
+                  type="text"
+                  className="input"
+                  required
+                  minLength={2}
+                  maxLength={200}
+                />
               </div>
               <div>
-                <label className="label" htmlFor="contact-role">Rolle (optional)</label>
-                <input id="contact-role" name="role" type="text" className="input" maxLength={80} placeholder="z. B. Geschäftsführer" />
+                <label className="label" htmlFor="contact-role">
+                  Rolle (optional)
+                </label>
+                <input
+                  id="contact-role"
+                  name="role"
+                  type="text"
+                  className="input"
+                  maxLength={80}
+                  placeholder="z. B. Geschäftsführer"
+                />
               </div>
               <div>
-                <label className="label" htmlFor="contact-email">E-Mail</label>
+                <label className="label" htmlFor="contact-email">
+                  E-Mail
+                </label>
                 <input id="contact-email" name="email" type="email" className="input" required />
               </div>
               <div>
-                <label className="label" htmlFor="contact-phone">Telefon (optional)</label>
-                <input id="contact-phone" name="phone" type="tel" className="input" maxLength={50} />
+                <label className="label" htmlFor="contact-phone">
+                  Telefon (optional)
+                </label>
+                <input
+                  id="contact-phone"
+                  name="phone"
+                  type="tel"
+                  className="input"
+                  maxLength={50}
+                />
               </div>
             </div>
             <label className="flex items-center gap-2 text-sm text-secondary">
               <input type="checkbox" name="sendInvite" value="1" defaultChecked />
               Login-Link per E-Mail senden
             </label>
-            {state?.error && (
-              <div className="alert-error-sm">{state.error}</div>
-            )}
+            {state?.error && <div className="alert-error-sm">{state.error}</div>}
             <button type="submit" className="btn-primary text-sm" disabled={isPending}>
               {isPending ? 'Speichert…' : 'Anlegen'}
             </button>
@@ -147,13 +173,17 @@ function ContactRow({
         </div>
         <div className="min-w-0 flex items-center gap-1.5 text-xs text-secondary">
           <Mail className="h-3.5 w-3.5 text-disabled shrink-0" />
-          <a href={`mailto:${contact.email}`} className="truncate hover:underline">{contact.email}</a>
+          <a href={`mailto:${contact.email}`} className="truncate hover:underline">
+            {contact.email}
+          </a>
         </div>
         <div className="min-w-0 flex items-center gap-1.5 text-xs text-secondary">
           {contact.phone ? (
             <>
               <Phone className="h-3.5 w-3.5 text-disabled shrink-0" />
-              <a href={`tel:${contact.phone}`} className="truncate hover:underline">{contact.phone}</a>
+              <a href={`tel:${contact.phone}`} className="truncate hover:underline">
+                {contact.phone}
+              </a>
             </>
           ) : (
             <span className="text-disabled">—</span>
@@ -180,7 +210,11 @@ function ContactRow({
         <form action={deactivateContactAction}>
           <input type="hidden" name="contactId" value={contact.id} />
           <input type="hidden" name="clientId" value={clientId} />
-          <button type="submit" className="text-disabled hover:text-red-600 p-1.5" title="Deaktivieren">
+          <button
+            type="submit"
+            className="text-disabled hover:text-red-600 p-1.5"
+            title="Deaktivieren"
+          >
             <UserX className="h-4 w-4" />
           </button>
         </form>
@@ -271,15 +305,25 @@ function EditRow({
         />
       </div>
       <p className="text-xs text-muted mb-2">
-        Die E-Mail ist die Portal-Login-Identität — eine Änderung wirkt sich auf
-        künftige Magic-Link-Anmeldungen aus.
+        Die E-Mail ist die Portal-Login-Identität — eine Änderung wirkt sich auf künftige
+        Magic-Link-Anmeldungen aus.
       </p>
       {error && <div className="rounded-md bg-red-50 p-2 text-xs text-red-700 mb-2">{error}</div>}
       <div className="flex items-center gap-2">
-        <button type="button" onClick={save} disabled={isPending} className="btn-primary text-xs py-1">
+        <button
+          type="button"
+          onClick={save}
+          disabled={isPending}
+          className="btn-primary text-xs py-1"
+        >
           {isPending ? 'Speichert…' : 'Speichern'}
         </button>
-        <button type="button" onClick={onDone} disabled={isPending} className="btn-secondary text-xs py-1">
+        <button
+          type="button"
+          onClick={onDone}
+          disabled={isPending}
+          className="btn-secondary text-xs py-1"
+        >
           Abbrechen
         </button>
       </div>

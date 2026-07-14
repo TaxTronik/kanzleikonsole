@@ -23,11 +23,18 @@ function feedWith(itemsXml: string): string {
 <rss version="2.0"><channel><title>Test</title>${itemsXml}</channel></rss>`;
 }
 
-function item(fields: { title?: string; link?: string; description?: string; guid?: string; pubDate?: string }): string {
+function item(fields: {
+  title?: string;
+  link?: string;
+  description?: string;
+  guid?: string;
+  pubDate?: string;
+}): string {
   const tags: string[] = [];
   if (fields.title !== undefined) tags.push(`<title>${fields.title}</title>`);
   if (fields.link !== undefined) tags.push(`<link>${fields.link}</link>`);
-  if (fields.description !== undefined) tags.push(`<description>${fields.description}</description>`);
+  if (fields.description !== undefined)
+    tags.push(`<description>${fields.description}</description>`);
   if (fields.guid !== undefined) tags.push(`<guid>${fields.guid}</guid>`);
   if (fields.pubDate !== undefined) tags.push(`<pubDate>${fields.pubDate}</pubDate>`);
   return `<item>${tags.join('')}</item>`;

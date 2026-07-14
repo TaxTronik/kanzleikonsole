@@ -30,7 +30,13 @@ import { sendOpsMail } from '../mailer';
 import { log } from '../logger';
 
 export type ServiceName =
-  | 'postgres' | 'redis' | 'objectStore' | 'clamav' | 'backup' | 'app' | 'n8n';
+  | 'postgres'
+  | 'redis'
+  | 'objectStore'
+  | 'clamav'
+  | 'backup'
+  | 'app'
+  | 'n8n';
 
 const SERVICE_LABEL: Record<ServiceName, string> = {
   postgres: 'Postgres (Datenbank)',
@@ -89,7 +95,10 @@ function withTimeout<T>(p: Promise<T>, label: string): Promise<T> {
   return Promise.race([
     p,
     new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`${label}: Timeout nach ${CHECK_TIMEOUT_MS} ms`)), CHECK_TIMEOUT_MS).unref(),
+      setTimeout(
+        () => reject(new Error(`${label}: Timeout nach ${CHECK_TIMEOUT_MS} ms`)),
+        CHECK_TIMEOUT_MS,
+      ).unref(),
     ),
   ]);
 }

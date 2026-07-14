@@ -20,7 +20,9 @@ export function DeleteWorkflowButton({ instanceId, instanceName }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const [confirmation, setConfirmation] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isPending, start] = useTransition();
@@ -29,10 +31,16 @@ export function DeleteWorkflowButton({ instanceId, instanceName }: Props) {
 
   function submit() {
     setError(null);
-    if (!ready) { setError('Bitte den Workflow-Namen zur Bestätigung eingeben.'); return; }
+    if (!ready) {
+      setError('Bitte den Workflow-Namen zur Bestätigung eingeben.');
+      return;
+    }
     start(async () => {
       const r = await deleteCancelledInstanceAction({ instanceId });
-      if (!r.ok) { setError(r.error ?? 'Fehler.'); return; }
+      if (!r.ok) {
+        setError(r.error ?? 'Fehler.');
+        return;
+      }
       setOpen(false);
       setConfirmation('');
       router.refresh();
@@ -40,10 +48,7 @@ export function DeleteWorkflowButton({ instanceId, instanceName }: Props) {
   }
 
   const modal = open ? (
-    <div
-      className="modal-overlay"
-      onClick={() => setOpen(false)}
-    >
+    <div className="modal-overlay" onClick={() => setOpen(false)}>
       <div
         className="card w-full max-w-md p-5 space-y-3 border-2 border-red-300 dark:border-red-900/60"
         onClick={(e) => e.stopPropagation()}
@@ -53,7 +58,11 @@ export function DeleteWorkflowButton({ instanceId, instanceName }: Props) {
             <AlertTriangle className="h-4 w-4" />
             Endgültig löschen
           </h2>
-          <button type="button" onClick={() => setOpen(false)} className="text-disabled hover:text-secondary">
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="text-disabled hover:text-secondary"
+          >
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -72,11 +81,7 @@ export function DeleteWorkflowButton({ instanceId, instanceName }: Props) {
           className="input text-sm"
           autoFocus
         />
-        {error && (
-          <div className="alert-error-sm text-xs p-2">
-            {error}
-          </div>
-        )}
+        {error && <div className="alert-error-sm text-xs p-2">{error}</div>}
         <div className="form-actions">
           <button type="button" onClick={() => setOpen(false)} className="btn-secondary text-sm">
             Behalten
@@ -99,7 +104,11 @@ export function DeleteWorkflowButton({ instanceId, instanceName }: Props) {
     <>
       <button
         type="button"
-        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen(true); }}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen(true);
+        }}
         className="text-xs text-disabled hover:text-red-700 dark:hover:text-red-400 inline-flex items-center gap-1"
         title="Endgültig löschen"
       >

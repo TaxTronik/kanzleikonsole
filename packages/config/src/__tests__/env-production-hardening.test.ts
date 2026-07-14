@@ -42,31 +42,35 @@ describe('ENV production hardening', () => {
     expect(() => parseEnvFrom(PROD_BASE)).not.toThrow();
   });
 
+  it('verwirft NEXTAUTH_TRUST_HOST=false, weil Auth.js damit jede Anfrage blockiert', () => {
+    expect(() => parseEnvFrom({ ...PROD_BASE, NEXTAUTH_TRUST_HOST: 'false' })).toThrow();
+  });
+
   it('verlangt HTTPS fuer NEXTAUTH_URL und PORTAL_PUBLIC_URL', () => {
-    expect(() =>
-      parseEnvFrom({ ...PROD_BASE, NEXTAUTH_URL: 'http://staff.example.de' }),
-    ).toThrow(/NEXTAUTH_URL.*HTTPS/);
+    expect(() => parseEnvFrom({ ...PROD_BASE, NEXTAUTH_URL: 'http://staff.example.de' })).toThrow(
+      /NEXTAUTH_URL.*HTTPS/,
+    );
     expect(() =>
       parseEnvFrom({ ...PROD_BASE, PORTAL_PUBLIC_URL: 'http://portal.example.de' }),
     ).toThrow(/PORTAL_PUBLIC_URL.*HTTPS/);
   });
 
   it('blockt bekannte oder kurze S3-Secrets in production', () => {
-    expect(() =>
-      parseEnvFrom({ ...PROD_BASE, S3_SECRET_KEY: 'seaweedfs12345' }),
-    ).toThrow(/S3_SECRET_KEY.*Dev-Default/);
-    expect(() =>
-      parseEnvFrom({ ...PROD_BASE, S3_SECRET_KEY: 'short-storage-secret' }),
-    ).toThrow(/S3_SECRET_KEY/);
+    expect(() => parseEnvFrom({ ...PROD_BASE, S3_SECRET_KEY: 'seaweedfs12345' })).toThrow(
+      /S3_SECRET_KEY.*Dev-Default/,
+    );
+    expect(() => parseEnvFrom({ ...PROD_BASE, S3_SECRET_KEY: 'short-storage-secret' })).toThrow(
+      /S3_SECRET_KEY/,
+    );
   });
 
   it('erlaubt in production keinen test/log n8n-Liefermodus', () => {
-    expect(() =>
-      parseEnvFrom({ ...PROD_BASE, N8N_DELIVERY_MODE: 'test' }),
-    ).toThrow(/N8N_DELIVERY_MODE/);
-    expect(() =>
-      parseEnvFrom({ ...PROD_BASE, N8N_DELIVERY_MODE: 'log' }),
-    ).toThrow(/N8N_DELIVERY_MODE/);
+    expect(() => parseEnvFrom({ ...PROD_BASE, N8N_DELIVERY_MODE: 'test' })).toThrow(
+      /N8N_DELIVERY_MODE/,
+    );
+    expect(() => parseEnvFrom({ ...PROD_BASE, N8N_DELIVERY_MODE: 'log' })).toThrow(
+      /N8N_DELIVERY_MODE/,
+    );
   });
 
   it('verlangt Risk-Layer-URL und Token als Paar', () => {
@@ -82,9 +86,9 @@ describe('ENV production hardening', () => {
   });
 
   it('blockt Parent-Domain-Cookie-Scope', () => {
-    expect(() =>
-      parseEnvFrom({ ...PROD_BASE, STAFF_COOKIE_DOMAIN: '.example.de' }),
-    ).toThrow(/Parent-Domain/);
+    expect(() => parseEnvFrom({ ...PROD_BASE, STAFF_COOKIE_DOMAIN: '.example.de' })).toThrow(
+      /Parent-Domain/,
+    );
   });
 
   it('verlangt PORTAL_PUBLIC_URL fuer Cookie-Domain-Trennung', () => {

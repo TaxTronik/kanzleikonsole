@@ -40,7 +40,10 @@ export function staffPasswordAccountRateLimitKey(staffUserId: string): string {
 export async function checkStaffPasswordAccountLimit(
   staffUserId: string,
 ): Promise<RateLimitResult> {
-  return checkRateLimit(staffPasswordAccountRateLimitKey(staffUserId), STAFF_PASSWORD_ACCOUNT_LIMIT);
+  return checkRateLimit(
+    staffPasswordAccountRateLimitKey(staffUserId),
+    STAFF_PASSWORD_ACCOUNT_LIMIT,
+  );
 }
 
 /**
@@ -156,10 +159,7 @@ end
 return {count, ttl}
 `;
 
-export async function checkRateLimit(
-  key: string,
-  cfg: RateLimitConfig,
-): Promise<RateLimitResult> {
+export async function checkRateLimit(key: string, cfg: RateLimitConfig): Promise<RateLimitResult> {
   const r = getRedis();
   if (!r) {
     return failedRedisResult('unreachable', key, cfg.max);
@@ -167,7 +167,10 @@ export async function checkRateLimit(
 
   const fullKey = `rl:${key}`;
   try {
-    const res = (await r.eval(INCR_EXPIRE_LUA, 1, fullKey, String(cfg.windowSec))) as [number, number];
+    const res = (await r.eval(INCR_EXPIRE_LUA, 1, fullKey, String(cfg.windowSec))) as [
+      number,
+      number,
+    ];
     const count = Number(res[0]);
     const ttl = Number(res[1]);
     const remaining = Math.max(0, cfg.max - count);

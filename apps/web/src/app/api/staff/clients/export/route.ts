@@ -21,10 +21,7 @@ export async function GET(req: NextRequest) {
   // Per-User-Rate-Limit (Defense in Depth): Exporte sind teuer + datenreich.
   const rl = await checkStaffExportLimit('clients', staffId);
   if (!rl.ok) {
-    return NextResponse.json(
-      { error: 'rate_limited', retryAfter: rl.retryAfter },
-      { status: 429 },
-    );
+    return NextResponse.json({ error: 'rate_limited', retryAfter: rl.retryAfter }, { status: 429 });
   }
 
   const { rows, truncated } = await withTenantContext(
@@ -37,7 +34,11 @@ export async function GET(req: NextRequest) {
         where: denied.length ? { id: { notIn: denied } } : undefined,
         orderBy: { name: 'asc' },
         take: MAX_EXPORT_ROWS + 1, // +1 zur Trunkierungs-Erkennung
-        include: { _count: { select: { documents: { where: { deletedAt: null } }, invoices: true, requests: true } } },
+        include: {
+          _count: {
+            select: { documents: { where: { deletedAt: null } }, invoices: true, requests: true },
+          },
+        },
       });
       const { rows: out, truncated } = applyRowCap(list);
       await evidenceService.record(tx, {

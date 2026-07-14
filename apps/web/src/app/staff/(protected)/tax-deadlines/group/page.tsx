@@ -28,12 +28,19 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const VALID_KINDS: TaxScheduleKind[] = [
-  'USTA_MONATLICH', 'USTA_QUARTAL', 'USTA_JAEHRLICH',
-  'LSTA_MONATLICH', 'LSTA_QUARTAL', 'LSTA_JAEHRLICH',
-  'EST_VZ', 'KST_VZ', 'GEWST_VZ',
-  'EST_ERKLAERUNG', 'KST_ERKLAERUNG', 'GEWST_ERKLAERUNG',
+  'USTA_MONATLICH',
+  'USTA_QUARTAL',
+  'USTA_JAEHRLICH',
+  'LSTA_MONATLICH',
+  'LSTA_QUARTAL',
+  'LSTA_JAEHRLICH',
+  'EST_VZ',
+  'KST_VZ',
+  'GEWST_VZ',
+  'EST_ERKLAERUNG',
+  'KST_ERKLAERUNG',
+  'GEWST_ERKLAERUNG',
 ];
-
 
 export default async function TaxDeadlineGroupPage({
   searchParams,
@@ -101,10 +108,7 @@ export default async function TaxDeadlineGroupPage({
 
   return (
     <div className="p-8 max-w-5xl">
-      <Link
-        href={`/staff/tax-deadlines?scope=${scope}`}
-        className="back-link"
-      >
+      <Link href={`/staff/tax-deadlines?scope=${scope}`} className="back-link">
         <ArrowLeft className="h-4 w-4" /> Zurück zum Kalender
       </Link>
 
@@ -120,15 +124,16 @@ export default async function TaxDeadlineGroupPage({
               {dueDate && ` · fällig am ${fmtDateShort(dueDate)}`}
               {' · '}
               {deadlines.length} Mandanten
-              {q && <span> · Suche: <strong className="text-primary">{q}</strong></span>}
+              {q && (
+                <span>
+                  {' '}
+                  · Suche: <strong className="text-primary">{q}</strong>
+                </span>
+              )}
             </p>
           </div>
         </div>
-        <form
-          method="get"
-          action="/staff/tax-deadlines/group"
-          className="flex items-center gap-2"
-        >
+        <form method="get" action="/staff/tax-deadlines/group" className="flex items-center gap-2">
           <input type="hidden" name="kind" value={kind} />
           <input type="hidden" name="period" value={period} />
           <input type="hidden" name="scope" value={scope} />
@@ -140,7 +145,9 @@ export default async function TaxDeadlineGroupPage({
             className="input flex-1 text-sm"
             maxLength={120}
           />
-          <button type="submit" className="btn-secondary text-xs">Filtern</button>
+          <button type="submit" className="btn-secondary text-xs">
+            Filtern
+          </button>
           {q && (
             <Link
               href={`/staff/tax-deadlines/group?kind=${kind}&period=${encodeURIComponent(period)}&scope=${scope}`}
@@ -174,7 +181,10 @@ export default async function TaxDeadlineGroupPage({
 }
 
 function Section({
-  title, rows, accent, selectable,
+  title,
+  rows,
+  accent,
+  selectable,
 }: {
   title: string;
   rows: Array<{
@@ -190,7 +200,9 @@ function Section({
   if (rows.length === 0) {
     return (
       <section className="mb-6">
-        <h2 className={`text-sm font-semibold mb-3 ${accent === 'red' ? 'text-red-700' : accent === 'emerald' ? 'text-emerald-700' : 'text-primary'}`}>
+        <h2
+          className={`text-sm font-semibold mb-3 ${accent === 'red' ? 'text-red-700' : accent === 'emerald' ? 'text-emerald-700' : 'text-primary'}`}
+        >
           {title} <span className="text-disabled font-normal">(0)</span>
         </h2>
         <div className="card p-6 text-center text-sm text-disabled">Keine Einträge.</div>
@@ -199,7 +211,9 @@ function Section({
   }
   return (
     <section className="mb-6">
-      <h2 className={`text-sm font-semibold mb-3 ${accent === 'red' ? 'text-red-700' : accent === 'emerald' ? 'text-emerald-700' : 'text-primary'}`}>
+      <h2
+        className={`text-sm font-semibold mb-3 ${accent === 'red' ? 'text-red-700' : accent === 'emerald' ? 'text-emerald-700' : 'text-primary'}`}
+      >
         {title} <span className="text-disabled font-normal">({rows.length})</span>
       </h2>
       <div className="card overflow-hidden">
@@ -219,18 +233,35 @@ function Section({
                   </td>
                 )}
                 <td className="px-6 py-3">
-                  <Link href={`/staff/clients/${d.client.id}`} className="text-primary font-medium hover:underline">
+                  <Link
+                    href={`/staff/clients/${d.client.id}`}
+                    className="text-primary font-medium hover:underline"
+                  >
                     {d.client.name}
                   </Link>
                 </td>
                 <td className="px-6 py-3">
-                  {d.status === 'OVERDUE' && <span className="badge-red">{STATUS_LABELS[d.status]}</span>}
-                  {d.status === 'REMINDED' && <span className="badge-yellow">{STATUS_LABELS[d.status]}</span>}
-                  {d.status === 'PLANNED' && <span className="badge-gray">{STATUS_LABELS[d.status]}</span>}
-                  {d.status === 'IN_PROGRESS' && <span className="badge-yellow">{STATUS_LABELS[d.status]}</span>}
-                  {d.status === 'SUBMITTED' && <span className="badge-green">{STATUS_LABELS[d.status]}</span>}
-                  {d.status === 'DONE' && <span className="badge-green">{STATUS_LABELS[d.status]}</span>}
-                  {d.status === 'SKIPPED' && <span className="badge-gray">{STATUS_LABELS[d.status]}</span>}
+                  {d.status === 'OVERDUE' && (
+                    <span className="badge-red">{STATUS_LABELS[d.status]}</span>
+                  )}
+                  {d.status === 'REMINDED' && (
+                    <span className="badge-yellow">{STATUS_LABELS[d.status]}</span>
+                  )}
+                  {d.status === 'PLANNED' && (
+                    <span className="badge-gray">{STATUS_LABELS[d.status]}</span>
+                  )}
+                  {d.status === 'IN_PROGRESS' && (
+                    <span className="badge-yellow">{STATUS_LABELS[d.status]}</span>
+                  )}
+                  {d.status === 'SUBMITTED' && (
+                    <span className="badge-green">{STATUS_LABELS[d.status]}</span>
+                  )}
+                  {d.status === 'DONE' && (
+                    <span className="badge-green">{STATUS_LABELS[d.status]}</span>
+                  )}
+                  {d.status === 'SKIPPED' && (
+                    <span className="badge-gray">{STATUS_LABELS[d.status]}</span>
+                  )}
                 </td>
                 <td className="px-6 py-3 text-xs text-muted">
                   {d.completedAt ? `am ${fmtDateShort(d.completedAt)}` : ''}
@@ -238,7 +269,10 @@ function Section({
                 <td className="px-6 py-3 text-right">
                   <div className="flex items-center justify-end gap-2">
                     {d.requestId && (
-                      <Link href={`/staff/requests/${d.requestId}`} className="text-xs text-brand-700 hover:underline">
+                      <Link
+                        href={`/staff/requests/${d.requestId}`}
+                        className="text-xs text-brand-700 hover:underline"
+                      >
                         Anforderung
                       </Link>
                     )}

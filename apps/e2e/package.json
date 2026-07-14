@@ -1,6 +1,7 @@
 {
   "name": "@taxtronik/e2e",
   "version": "0.0.0",
+  "license": "AGPL-3.0-only",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,7 +14,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
-    "@types/node": "^25.9.1",
+    "@types/node": "^24.13.2",
     "otplib": "^13.4.0",
     "typescript": "^6.0.3"
   }

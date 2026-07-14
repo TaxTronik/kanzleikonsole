@@ -20,7 +20,9 @@ export function PauseWorkflowButton({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const [reason, setReason] = useState('');
   const [until, setUntil] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +36,10 @@ export function PauseWorkflowButton({
         reason: reason.trim(),
         until: until || null,
       });
-      if (!r.ok) { setError(r.error ?? 'Fehler.'); return; }
+      if (!r.ok) {
+        setError(r.error ?? 'Fehler.');
+        return;
+      }
       setOpen(false);
       setReason('');
       setUntil('');
@@ -50,13 +55,17 @@ export function PauseWorkflowButton({
             <Pause className="h-4 w-4 text-amber-600" />
             Workflow pausieren
           </h2>
-          <button type="button" onClick={() => setOpen(false)} className="text-disabled hover:text-secondary">
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="text-disabled hover:text-secondary"
+          >
             <X className="h-4 w-4" />
           </button>
         </div>
         <p className="text-xs text-secondary">
-          <strong>{instanceName}</strong> wird angehalten. Offene Schritte bleiben sichtbar,
-          werden aber nicht mehr in den „Mein Tag"-Listen geführt.
+          <strong>{instanceName}</strong> wird angehalten. Offene Schritte bleiben sichtbar, werden
+          aber nicht mehr in den „Mein Tag"-Listen geführt.
         </p>
         <div>
           <label className="label">Wiederaufnahme am (optional)</label>
@@ -68,8 +77,8 @@ export function PauseWorkflowButton({
             className="input text-sm"
           />
           <p className="text-[10px] text-muted mt-1">
-            Wenn gesetzt, wird der Workflow ab diesem Tag automatisch wieder aktiv.
-            Leer = unbefristet pausiert, muss manuell fortgesetzt werden.
+            Wenn gesetzt, wird der Workflow ab diesem Tag automatisch wieder aktiv. Leer =
+            unbefristet pausiert, muss manuell fortgesetzt werden.
           </p>
         </div>
         <div>
@@ -83,11 +92,7 @@ export function PauseWorkflowButton({
             className="input text-sm"
           />
         </div>
-        {error && (
-          <div className="alert-error-sm text-xs p-2">
-            {error}
-          </div>
-        )}
+        {error && <div className="alert-error-sm text-xs p-2">{error}</div>}
         <div className="form-actions">
           <button type="button" onClick={() => setOpen(false)} className="btn-secondary text-sm">
             Abbrechen

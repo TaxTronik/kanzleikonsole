@@ -14,7 +14,6 @@
 >    `n8n_outbox` und reiht einen BullMQ-Job ein, der mit Exponential-
 >    Backoff zustellt. Code: [outbox.ts](../../apps/web/src/server/n8n/outbox.ts),
 >    [jobs/n8n-deliver.ts](../../apps/worker/src/jobs/n8n-deliver.ts).
->
 > 2. **HMAC-Formel ist um einen Timestamp erweitert** (Replay-Schutz, S3-Fix).
 >    Die unten genannte Formel `hmac(METHOD pathname?search\nbody)` ist
 >    historisch und stimmt nicht mehr mit dem Code überein. Aktuelle
@@ -41,6 +40,7 @@ UI für Workflow-Anpassung… mehrere Mannmonate Wartung pro Jahr.
 **n8n** läuft als eigener Container im Docker-Compose-Stack.
 
 Verantwortungsabgrenzung:
+
 - **App-Eigencode** macht nur synchrone, sicherheits-/integritäts-kritische
   Operationen: Hash-Chain-Audit, ClamAV-Scan, GwG-Trigger, RLS, Auth, PDF-
   Generierung. Plus: transaktionale Mails, die direkt aus dem Code raus
@@ -50,6 +50,7 @@ Verantwortungsabgrenzung:
   (zukünftig: DATEV-API, Mahn-Dienste).
 
 App ↔ n8n via signiertem HMAC:
+
 - **App → n8n** (Webhook): bei Events `client.created`, `request.opened`,
   `gwg.expired`, `invoice.due` → fire-and-forget POST an n8n
 - **n8n → App** (HTTP-API): n8n liest/schreibt nur über `/api/n8n/*`-Endpunkte
@@ -62,12 +63,14 @@ Workflows liegen als JSON in `infra/n8n/workflows/` versioniert im Repo;
 ## Konsequenzen
 
 **Vorteile**
+
 - 0 Zeilen TypeScript für Reminder-Cron-Logik
 - Kanzlei kann Workflows selbst anpassen (Mailtext, Schwellwerte) ohne
   Re-Deployment
 - Bewährte Engine, gute UI, große Community
 
 **Nachteile**
+
 - Ein zusätzlicher Container (RAM ~150MB, Postgres-DB `n8n`)
 - HMAC-Auth muss überall stimmen (typisches Setup-Stolperstein)
 - n8n-Workflows sind nicht versionsgetestet wie unser TS-Code

@@ -47,14 +47,16 @@ export function BookmarkButton({
       disabled={isPending}
       className={
         'p-1 rounded transition-colors shrink-0 ' +
-        (bookmarked
-          ? 'text-amber-500 hover:text-amber-600'
-          : 'text-gray-300 hover:text-amber-500')
+        (bookmarked ? 'text-amber-500 hover:text-amber-600' : 'text-gray-300 hover:text-amber-500')
       }
       title={bookmarked ? 'Lesezeichen entfernen' : 'Merken'}
       aria-label={bookmarked ? 'Lesezeichen entfernen' : 'Merken'}
     >
-      {bookmarked ? <BookmarkCheck className="h-3.5 w-3.5" /> : <Bookmark className="h-3.5 w-3.5" />}
+      {bookmarked ? (
+        <BookmarkCheck className="h-3.5 w-3.5" />
+      ) : (
+        <Bookmark className="h-3.5 w-3.5" />
+      )}
     </button>
   );
 }

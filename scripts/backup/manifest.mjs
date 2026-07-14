@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash, createPrivateKey, createPublicKey, sign, verify } from 'node:crypto';
+import { Buffer } from 'node:buffer';
 import { createReadStream } from 'node:fs';
 import { lstat, mkdir, readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises';
 import { basename, relative, resolve, sep } from 'node:path';

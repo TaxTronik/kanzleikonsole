@@ -68,19 +68,34 @@ export function ConsentFields({
   const mktKeys = Object.keys(MARKETING_LABELS) as Array<keyof typeof MARKETING_LABELS>;
 
   function addThird() {
-    setC((s) => ({ ...s, thirdParties: [...s.thirdParties, { recipient: '', purpose: '', data: '', channel: '' }] }));
+    setC((s) => ({
+      ...s,
+      thirdParties: [...s.thirdParties, { recipient: '', purpose: '', data: '', channel: '' }],
+    }));
   }
   function patchThird(i: number, patch: Partial<ThirdParty>) {
-    setC((s) => ({ ...s, thirdParties: s.thirdParties.map((t, idx) => (idx === i ? { ...t, ...patch } : t)) }));
+    setC((s) => ({
+      ...s,
+      thirdParties: s.thirdParties.map((t, idx) => (idx === i ? { ...t, ...patch } : t)),
+    }));
   }
   function removeThird(i: number) {
     setC((s) => ({ ...s, thirdParties: s.thirdParties.filter((_, idx) => idx !== i) }));
   }
   function addSpec() {
-    setC((s) => ({ ...s, specialists: [...s.specialists, { entity: '', service: '', accessType: '', requirements: '' }] }));
+    setC((s) => ({
+      ...s,
+      specialists: [
+        ...s.specialists,
+        { entity: '', service: '', accessType: '', requirements: '' },
+      ],
+    }));
   }
   function patchSpec(i: number, patch: Partial<Specialist>) {
-    setC((s) => ({ ...s, specialists: s.specialists.map((t, idx) => (idx === i ? { ...t, ...patch } : t)) }));
+    setC((s) => ({
+      ...s,
+      specialists: s.specialists.map((t, idx) => (idx === i ? { ...t, ...patch } : t)),
+    }));
   }
   function removeSpec(i: number) {
     setC((s) => ({ ...s, specialists: s.specialists.filter((_, idx) => idx !== i) }));
@@ -97,8 +112,8 @@ export function ConsentFields({
           1. Elektronische Kommunikation
         </legend>
         <p className="text-xs text-muted mb-2">
-          Über welche Kanäle darf die Kanzlei mandatsbezogen kommunizieren und
-          Unterlagen bereitstellen/entgegennehmen?
+          Über welche Kanäle darf die Kanzlei mandatsbezogen kommunizieren und Unterlagen
+          bereitstellen/entgegennehmen?
         </p>
         {commKeys.map((k) => (
           <Check
@@ -111,7 +126,9 @@ export function ConsentFields({
         <input
           type="text"
           value={c.communication.details}
-          onChange={(e) => setC((s) => ({ ...s, communication: { ...s.communication, details: e.target.value } }))}
+          onChange={(e) =>
+            setC((s) => ({ ...s, communication: { ...s.communication, details: e.target.value } }))
+          }
           placeholder="Details (Portal-Name, E-Mail-Adressen, Faxnummer, Video-System …)"
           maxLength={1000}
           className="input w-full mt-2 text-sm"
@@ -123,8 +140,8 @@ export function ConsentFields({
           2. Informationen außerhalb des Mandats / Kanzleimarketing
         </legend>
         <p className="text-xs text-muted mb-2">
-          Freiwillig, jederzeit widerrufbar — betrifft Newsletter/Veranstaltungen
-          über das konkrete Mandat hinaus.
+          Freiwillig, jederzeit widerrufbar — betrifft Newsletter/Veranstaltungen über das konkrete
+          Mandat hinaus.
         </p>
         {mktKeys.map((k) => (
           <Check
@@ -137,7 +154,9 @@ export function ConsentFields({
         <input
           type="text"
           value={c.marketing.details}
-          onChange={(e) => setC((s) => ({ ...s, marketing: { ...s.marketing, details: e.target.value } }))}
+          onChange={(e) =>
+            setC((s) => ({ ...s, marketing: { ...s.marketing, details: e.target.value } }))
+          }
           placeholder="Details (z. B. abweichende E-Mail-Adresse)"
           maxLength={1000}
           className="input w-full mt-2 text-sm"
@@ -153,16 +172,45 @@ export function ConsentFields({
         </p>
         {c.thirdParties.map((t, i) => (
           <div key={i} className="grid grid-cols-1 sm:grid-cols-4 gap-2 mb-2">
-            <input value={t.recipient} onChange={(e) => patchThird(i, { recipient: e.target.value })} placeholder="Empfänger *" className="input text-sm" />
-            <input value={t.purpose} onChange={(e) => patchThird(i, { purpose: e.target.value })} placeholder="Zweck" className="input text-sm" />
-            <input value={t.data} onChange={(e) => patchThird(i, { data: e.target.value })} placeholder="Daten/Unterlagen" className="input text-sm" />
+            <input
+              value={t.recipient}
+              onChange={(e) => patchThird(i, { recipient: e.target.value })}
+              placeholder="Empfänger *"
+              className="input text-sm"
+            />
+            <input
+              value={t.purpose}
+              onChange={(e) => patchThird(i, { purpose: e.target.value })}
+              placeholder="Zweck"
+              className="input text-sm"
+            />
+            <input
+              value={t.data}
+              onChange={(e) => patchThird(i, { data: e.target.value })}
+              placeholder="Daten/Unterlagen"
+              className="input text-sm"
+            />
             <div className="flex gap-2">
-              <input value={t.channel} onChange={(e) => patchThird(i, { channel: e.target.value })} placeholder="Weg" className="input text-sm flex-1" />
-              <button type="button" onClick={() => removeThird(i)} className="btn-secondary text-xs px-2" aria-label="Zeile entfernen">×</button>
+              <input
+                value={t.channel}
+                onChange={(e) => patchThird(i, { channel: e.target.value })}
+                placeholder="Weg"
+                className="input text-sm flex-1"
+              />
+              <button
+                type="button"
+                onClick={() => removeThird(i)}
+                className="btn-secondary text-xs px-2"
+                aria-label="Zeile entfernen"
+              >
+                ×
+              </button>
             </div>
           </div>
         ))}
-        <button type="button" onClick={addThird} className="btn-secondary text-xs">+ Empfänger</button>
+        <button type="button" onClick={addThird} className="btn-secondary text-xs">
+          + Empfänger
+        </button>
       </fieldset>
 
       <fieldset>
@@ -170,21 +218,50 @@ export function ConsentFields({
           4. Mandatsbezogene Spezialdienstleister
         </legend>
         <p className="text-xs text-muted mb-2">
-          Externe Spezialisten mit Zugang zu Berufsgeheimnissen — nur mit
-          Einwilligung. Ohne Eintrag erfolgt keine Einwilligung.
+          Externe Spezialisten mit Zugang zu Berufsgeheimnissen — nur mit Einwilligung. Ohne Eintrag
+          erfolgt keine Einwilligung.
         </p>
         {c.specialists.map((t, i) => (
           <div key={i} className="grid grid-cols-1 sm:grid-cols-4 gap-2 mb-2">
-            <input value={t.entity} onChange={(e) => patchSpec(i, { entity: e.target.value })} placeholder="Person/Stelle *" className="input text-sm" />
-            <input value={t.service} onChange={(e) => patchSpec(i, { service: e.target.value })} placeholder="Leistung" className="input text-sm" />
-            <input value={t.accessType} onChange={(e) => patchSpec(i, { accessType: e.target.value })} placeholder="Art des Zugangs" className="input text-sm" />
+            <input
+              value={t.entity}
+              onChange={(e) => patchSpec(i, { entity: e.target.value })}
+              placeholder="Person/Stelle *"
+              className="input text-sm"
+            />
+            <input
+              value={t.service}
+              onChange={(e) => patchSpec(i, { service: e.target.value })}
+              placeholder="Leistung"
+              className="input text-sm"
+            />
+            <input
+              value={t.accessType}
+              onChange={(e) => patchSpec(i, { accessType: e.target.value })}
+              placeholder="Art des Zugangs"
+              className="input text-sm"
+            />
             <div className="flex gap-2">
-              <input value={t.requirements} onChange={(e) => patchSpec(i, { requirements: e.target.value })} placeholder="Besondere Vorgaben" className="input text-sm flex-1" />
-              <button type="button" onClick={() => removeSpec(i)} className="btn-secondary text-xs px-2" aria-label="Zeile entfernen">×</button>
+              <input
+                value={t.requirements}
+                onChange={(e) => patchSpec(i, { requirements: e.target.value })}
+                placeholder="Besondere Vorgaben"
+                className="input text-sm flex-1"
+              />
+              <button
+                type="button"
+                onClick={() => removeSpec(i)}
+                className="btn-secondary text-xs px-2"
+                aria-label="Zeile entfernen"
+              >
+                ×
+              </button>
             </div>
           </div>
         ))}
-        <button type="button" onClick={addSpec} className="btn-secondary text-xs">+ Spezialdienstleister</button>
+        <button type="button" onClick={addSpec} className="btn-secondary text-xs">
+          + Spezialdienstleister
+        </button>
       </fieldset>
     </div>
   );

@@ -24,13 +24,10 @@ export default function PortalError({
           Seite konnte nicht geladen werden
         </h2>
         <p className="text-sm text-secondary mb-6">
-          Ein unerwarteter Fehler ist aufgetreten. Bitte versuchen Sie es
-          erneut — bleibt das Problem bestehen, wenden Sie sich an Ihre
-          Steuerkanzlei.
+          Ein unerwarteter Fehler ist aufgetreten. Bitte versuchen Sie es erneut — bleibt das
+          Problem bestehen, wenden Sie sich an Ihre Steuerkanzlei.
           {error.digest && (
-            <span className="block mt-2 text-xs text-muted">
-              Fehler-Code: {error.digest}
-            </span>
+            <span className="block mt-2 text-xs text-muted">Fehler-Code: {error.digest}</span>
           )}
         </p>
         <button type="button" onClick={reset} className="btn-primary">

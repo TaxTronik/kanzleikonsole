@@ -54,7 +54,9 @@ function getHandle(): { conn: IORedis; queues: Map<string, Queue> } {
   const existing = globalThis.__taxtronik_queue_status;
   if (existing) return existing;
   const conn = new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
-  conn.on('error', (err) => log.warn({ component: 'queue-status', err: err.message }, 'redis error'));
+  conn.on('error', (err) =>
+    log.warn({ component: 'queue-status', err: err.message }, 'redis error'),
+  );
   const queues = new Map<string, Queue>();
   for (const { name } of QUEUES) queues.set(name, new Queue(name, { connection: conn }));
   const handle = { conn, queues };
@@ -107,10 +109,22 @@ export async function getQueuesStatus(now: number = Date.now()): Promise<QueueSt
           stale,
         };
       } catch (err) {
-        log.warn({ component: 'queue-status', queue: name, err: (err as Error).message }, 'status read failed');
+        log.warn(
+          { component: 'queue-status', queue: name, err: (err as Error).message },
+          'status read failed',
+        );
         return {
-          name, expectedEveryHours, waiting: 0, active: 0, completed: 0, failed: 0, delayed: 0,
-          lastCompletedAt: null, lastFailedAt: null, lastFailedReason: 'Status nicht lesbar', stale: true,
+          name,
+          expectedEveryHours,
+          waiting: 0,
+          active: 0,
+          completed: 0,
+          failed: 0,
+          delayed: 0,
+          lastCompletedAt: null,
+          lastFailedAt: null,
+          lastFailedReason: 'Status nicht lesbar',
+          stale: true,
         };
       }
     }),

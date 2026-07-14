@@ -46,7 +46,9 @@ export const ONBOARDING_STATUS_LABEL: Record<OnboardingStatus, string> = {
  * Nächster sinnvoller Step im Wizard, wenn ein Berater "Weiter" klickt.
  * Greift dieselbe Logik wie das Wizard-UI auf.
  */
-export function resumeStep(input: OnboardingCountsInput): 'contact' | 'gwg' | 'poa' | 'first_request' | 'done' {
+export function resumeStep(
+  input: OnboardingCountsInput,
+): 'contact' | 'gwg' | 'poa' | 'first_request' | 'done' {
   if (input.contactsActive === 0) return 'contact';
   if (!input.allowActive && (input.gwgInvites ?? 0) === 0 && input.gwgChecks === 0) return 'gwg';
   if (!input.allowActive) return 'gwg'; // GwG läuft, aber noch nicht verifiziert

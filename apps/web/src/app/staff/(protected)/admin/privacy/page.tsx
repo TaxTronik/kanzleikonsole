@@ -29,11 +29,13 @@ export default async function AdminPrivacyPage() {
         <div>
           <h1 className="text-2xl font-bold text-primary mb-1">Kanzlei-Datenschutzangaben</h1>
           <p className="text-muted text-sm">
-            Diese Angaben füllen die Datenschutzhinweise (Teil A, Standardtext
-            Version {PRIVACY_NOTICE_VERSION}), die Mandanten bei der Einwilligung
-            angezeigt und als Nachweis eingefroren werden. Die Empfängerliste
-            (Abschnitt 5) stammt automatisch aus{' '}
-            <Link href="/staff/service-providers" className="underline">Dienstleister (AVV)</Link>.
+            Diese Angaben füllen die Datenschutzhinweise (Teil A, Standardtext Version{' '}
+            {PRIVACY_NOTICE_VERSION}), die Mandanten bei der Einwilligung angezeigt und als Nachweis
+            eingefroren werden. Die Empfängerliste (Abschnitt 5) stammt automatisch aus{' '}
+            <Link href="/staff/service-providers" className="underline">
+              Dienstleister (AVV)
+            </Link>
+            .
           </p>
         </div>
       </div>

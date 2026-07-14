@@ -29,7 +29,7 @@ export function CockpitGrid({
 }) {
   // Items in Render-Reihenfolge: erst nach y, dann nach x — so dass das Grid
   // die Karten von oben nach unten und links nach rechts packt.
-  const sorted = [...items].sort((a, b) => (a.y - b.y) || (a.x - b.x));
+  const sorted = [...items].sort((a, b) => a.y - b.y || a.x - b.x);
   const visible = sorted.filter((it) => blocks[it.id] !== null && blocks[it.id] !== undefined);
 
   return (

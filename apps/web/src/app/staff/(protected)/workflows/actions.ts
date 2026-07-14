@@ -5,7 +5,11 @@ import { revalidatePath } from 'next/cache';
 import { evidenceService } from '@/server/container';
 import { parseStepConfig } from '@/server/workflows/step-config';
 import { startInstanceAction } from '../clients/[id]/workflows/actions';
-import { withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
+import {
+  withStaff,
+  ActionError,
+  type ActionResult as BaseActionResult,
+} from '@/server/actions/staff-action';
 
 export interface ActionResult extends BaseActionResult {
   id?: string;
@@ -33,7 +37,9 @@ export async function createTemplateAction(
     async (tx, { tenantId, staffId }) => {
       // S7: expliziter tenantId-Filter zusätzlich zur RLS — Defense in Depth
       // und liest sich klarer als „RLS macht den Rest".
-      const dup = await tx.workflowTemplate.findFirst({ where: { tenantId, name: parsed.data.name } });
+      const dup = await tx.workflowTemplate.findFirst({
+        where: { tenantId, name: parsed.data.name },
+      });
       if (dup) throw new ActionError('Vorlage mit diesem Namen existiert bereits.');
       const t = await tx.workflowTemplate.create({
         data: {
@@ -58,13 +64,19 @@ export async function createTemplateAction(
   );
 }
 
-export async function setTemplateActiveAction(input: { id: string; active: boolean }): Promise<ActionResult> {
+export async function setTemplateActiveAction(input: {
+  id: string;
+  active: boolean;
+}): Promise<ActionResult> {
   const parsed = z.object({ id: z.string().uuid(), active: z.boolean() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   return withStaff(
     async (tx) => {
-      await tx.workflowTemplate.update({ where: { id: parsed.data.id }, data: { active: parsed.data.active } });
+      await tx.workflowTemplate.update({
+        where: { id: parsed.data.id },
+        data: { active: parsed.data.active },
+      });
     },
     { requireAdmin: true, revalidate: '/staff/workflows/templates' },
   );
@@ -107,37 +119,49 @@ export async function deleteTemplateAction(input: { id: string }): Promise<Actio
 // ----------------------------------------------------------------------------
 
 const StepKindSchema = z.enum([
-  'TASK', 'DOCUMENT_UPLOAD', 'CLIENT_REQUEST', 'CLIENT_FORM', 'CLIENT_EMAIL', 'N8N_TRIGGER',
+  'TASK',
+  'DOCUMENT_UPLOAD',
+  'CLIENT_REQUEST',
+  'CLIENT_FORM',
+  'CLIENT_EMAIL',
+  'N8N_TRIGGER',
 ]);
 
 const SaveStepsSchema = z.object({
   templateId: z.string().uuid(),
   description: z.string().max(500).nullable(),
   defaultSkillId: z.string().uuid().nullable(),
-  steps: z.array(
-    z.object({
-      title: z.string().min(1).max(200),
-      description: z.string().max(1000).optional(),
-      dueAfterDays: z.number().int().min(0).max(365).nullable(),
-      skillId: z.string().uuid().nullable(),
-      kind: StepKindSchema.default('TASK'),
-      config: z.unknown().optional(),
-      // F8: strikte Validierung. Wird via emitN8nEvent als URL-Path-Segment
-      // an n8n geschickt — `?`, `#`, `/` würden die URL-Semantik ändern
-      // (Query, Fragment, Path-Traversal).
-      // L-7: zusätzlich kein Punkt erlaubt — sonst entstehen Sub-Hierarchien
-      // wie `workflow.step.foo.bar.baz`, die in n8n als verschachtelte
-      // Path-Segment-Trigger missrouten könnten. Erlaubt: lowercase + digits + _ -
-      n8nEvent: z
-        .string()
-        .regex(/^[a-z][a-z0-9_-]{0,40}$/, 'Nur Kleinbuchstaben, Ziffern, _- erlaubt (Start: Buchstabe, max. 41 Zeichen)')
-        .nullable()
-        .optional(),
-    }),
-  ).min(1),
+  steps: z
+    .array(
+      z.object({
+        title: z.string().min(1).max(200),
+        description: z.string().max(1000).optional(),
+        dueAfterDays: z.number().int().min(0).max(365).nullable(),
+        skillId: z.string().uuid().nullable(),
+        kind: StepKindSchema.default('TASK'),
+        config: z.unknown().optional(),
+        // F8: strikte Validierung. Wird via emitN8nEvent als URL-Path-Segment
+        // an n8n geschickt — `?`, `#`, `/` würden die URL-Semantik ändern
+        // (Query, Fragment, Path-Traversal).
+        // L-7: zusätzlich kein Punkt erlaubt — sonst entstehen Sub-Hierarchien
+        // wie `workflow.step.foo.bar.baz`, die in n8n als verschachtelte
+        // Path-Segment-Trigger missrouten könnten. Erlaubt: lowercase + digits + _ -
+        n8nEvent: z
+          .string()
+          .regex(
+            /^[a-z][a-z0-9_-]{0,40}$/,
+            'Nur Kleinbuchstaben, Ziffern, _- erlaubt (Start: Buchstabe, max. 41 Zeichen)',
+          )
+          .nullable()
+          .optional(),
+      }),
+    )
+    .min(1),
 });
 
-export async function saveTemplateAction(input: z.infer<typeof SaveStepsSchema>): Promise<ActionResult> {
+export async function saveTemplateAction(
+  input: z.infer<typeof SaveStepsSchema>,
+): Promise<ActionResult> {
   const parsed = SaveStepsSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 

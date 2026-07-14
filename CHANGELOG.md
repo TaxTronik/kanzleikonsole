@@ -1,11 +1,11 @@
 # Changelog
 
-Vor-Release-Änderungsjournal für TaxTronik.
+Änderungsjournal für TaxTronik.
 
-Es gibt derzeit noch kein freigegebenes Produkt-Release. Bis zum ersten
-ausgelieferten/tagged Release beschreibt `[Unreleased]` den aktuellen
-Arbeitsstand. Ein eigener Versionsabschnitt wird erst beim ersten echten
-Release-Tag eröffnet.
+`v0.1.0` wurde am 10. Juni 2026 als erster versionierter interner Stand
+markiert. Der hier vorbereitete `v0.2.0`-Stand ist der erste umfassend
+gehärtete Release-Kandidat für Installation und Betrieb; neue Änderungen
+landen danach wieder unter `[Unreleased]`.
 
 Einträge, die Module des Prüfungs-Scopes betreffen (Fakturierung,
 Dokumentenarchiv, Audit-Protokollierung, Zugriffsschutz, Backup/Restore; siehe
@@ -13,14 +13,39 @@ Dokumentenarchiv, Audit-Protokollierung, Zugriffsschutz, Backup/Restore; siehe
 sind mit **[Scope]** gekennzeichnet. Diese Markierung dient später der
 Abgrenzung zwischen bereits geprüfter Version und neuen Änderungen.
 
-Pflegeregel: Änderungen werden hier im selben Arbeitsstand dokumentiert. Beim
-ersten echten Release wird der bis dahin gültige `[Unreleased]`-Stand in einen
-Versionsabschnitt überführt.
+Pflegeregel: Änderungen werden hier im selben Arbeitsstand dokumentiert und
+vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
 
 ## [Unreleased]
 
+Noch keine Änderungen.
+
+## [0.2.0] - 2026-07-14
+
 ### Betrieb, Deployment und Dokumentation
 
+- Release-Gate: Die final geladenen Web-/Worker-Images werden vor jedem Push
+  als vollständiger Compose-Stack inklusive Migration, Readiness,
+  Worker-Heartbeat, Image-ID und OCI-Commit-Label gestartet und geprüft
+- Rollback-Härtung: Ein atomarer Migrations-Pending-Marker und der persistierte
+  DB-Kompatibilitätsstatus verhindern, dass alter Code nach einer möglichen
+  Vorwärtsmigration startet; Legacy-/Probe-Fehler gelten fail-closed als
+  `unknown`
+- Restore-Härtung: mutierende Restores verlangen ein explizites Ziel;
+  Produktionsrestores brauchen starke Bestätigung plus passende
+  `--release-version`, stoppen alle Writer und autorisieren nur diesen einen
+  signierten Release-Vertrag für den Wiederanlauf
+- Container: Node-Basisimages sind per Digest gepinnt, native Rebuild-Fehler
+  nicht mehr unterdrückt, der Standalone-Server bindet healthcheck-erreichbar
+  auf alle Container-Interfaces und Docker-Liveness ist von
+  Dependency-Readiness getrennt; ungenutzte npm/Corepack/Yarn-Werkzeuge sind
+  aus den Runtime-Images entfernt
+- Toolchain/Qualität: Node 24 LTS ist durchgängig, der Root-Lint erfasst das gesamte
+  Repository, CI erzwingt eine einmalig bereinigte Prettier-Baseline und binäre
+  TSA-Fixtures sind vor Zeilenende-Konvertierung geschützt
+- Distribution: SPDX-Lizenzmetadatum ergänzt und Release-Version auf `0.2.0`
+  angehoben; die finalen Web-/Worker-Images erhalten vor der Veröffentlichung
+  archivierte CycloneDX-SBOMs
 - Deployment: lokale `./taxtronik deploy`-/`update`-Builds räumen nach
   erfolgreichem Build ungenutzten Docker-BuildKit-Cache auf
   (`TAXTRONIK_BUILD_CACHE_PRUNE_UNTIL`, Default 168h), damit Server nicht
@@ -82,6 +107,20 @@ Versionsabschnitt überführt.
 
 ### Sicherheit, Auth und Plattform
 
+- Dokumentvorschau: unsichere DOCX-HTML-Inline-Darstellung entfernt; DOCX
+  nutzt ausschließlich den authentifizierten Download-Pfad
+- Upload-Schutz: Browser-Limit auf 25 MiB reduziert und nginx begrenzt
+  gleichzeitige Uploads pro IP sowie global
+- Secrets/Proxy: Neuinstallationen erhalten einen getrennten
+  `SECRET_BOX_KEY`; Auth.js-Host-Trust ist verpflichtend und der nginx-VHost
+  pinnt Host-/Forwarded-Host kanonisch, während Client-IP-Proxy-Trust
+  standardmäßig deaktiviert bleibt
+- Log-/Scan-Hygiene: Magic-Link-URLs werden zuverlässig redigiert; Gitleaks ist
+  auf 8.29.0 aktualisiert und ignoriert nicht länger pauschal die gesamte
+  `.env.example`
+- Vollmachts-Provenienz: der DB-generierte Versandzeitpunkt nutzt dieselbe
+  monotone Millisekundenpräzision wie das Legacy-Erstellungsfeld; manipulierte
+  zukünftige Erstellungszeiten bleiben durch die Integritätsprüfung blockiert
 - Session-/Cookie-Härtung: Produktions-Cookies mit `__Host-`/`__Secure-`
   Präfixen, strengere Host-/Proxy-Annahmen und Dokumentation des einmaligen
   Re-Login-Effekts beim Wechsel
@@ -185,3 +224,11 @@ Versionsabschnitt überführt.
 - Anwenderdokumentation für Scope-Module (`docs/anwenderdoku/`) und technische
   Modulbeschreibungen mit Traceability (`docs/development/module/`)
 - Entwicklungsverfahren, Testkonzept und IDW-PS-880-Gap-Analyse dokumentiert
+
+## [0.1.0] - 2026-06-10
+
+Erster versionierter interner Stand. Enthielt unter anderem CI-geprüfte
+Registry-Images, signierte Update-Manifeste, Backup vor Migrationen,
+monatlichen Restore-Drill, GoBD-Verfahrensdokumentation und die damalige
+Portal-Härtungsrunde. Der annotierte Git-Tag bleibt die maßgebliche historische
+Quelle für die vollständigen Release-Notizen.

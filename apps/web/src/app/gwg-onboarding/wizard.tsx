@@ -32,20 +32,20 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 interface BeneficialOwner {
-  id: string;              // nur clientseitig (React-Key), wird nicht übermittelt
+  id: string; // nur clientseitig (React-Key), wird nicht übermittelt
   fullName: string;
-  birthDate: string;       // YYYY-MM-DD
+  birthDate: string; // YYYY-MM-DD
   birthPlace: string;
   nationality: string;
   street: string;
   postalCode: string;
   city: string;
   countryIso: string;
-  sharePercent: string;    // String für freie Eingabe „>25%"
+  sharePercent: string; // String für freie Eingabe „>25%"
   idNumber: string;
   idIssuedBy: string;
-  idIssueDate: string;     // YYYY-MM-DD
-  idExpiryDate: string;    // YYYY-MM-DD
+  idIssueDate: string; // YYYY-MM-DD
+  idExpiryDate: string; // YYYY-MM-DD
   // Hochgeladene Ausweis-Bilder (server-seitige documentId)
   idFront: { documentId: string; fileName: string } | null;
   idBack: { documentId: string; fileName: string } | null;
@@ -127,11 +127,7 @@ export function OnboardingWizard({
     setOwners((s) => s.filter((_, idx) => idx !== i));
   }
 
-  async function handleIdUpload(
-    ownerId: string,
-    side: 'front' | 'back',
-    file: File,
-  ) {
+  async function handleIdUpload(ownerId: string, side: 'front' | 'back', file: File) {
     setIdError(ownerId, side, null);
     if (file.size > MAX_UPLOAD_BYTES) {
       setIdError(ownerId, side, `Datei zu groß (max. ${MAX_UPLOAD_LABEL}).`);
@@ -164,7 +160,11 @@ export function OnboardingWizard({
         ),
       );
     } catch {
-      setIdError(ownerId, side, 'Upload fehlgeschlagen — bitte Verbindung prüfen und erneut versuchen.');
+      setIdError(
+        ownerId,
+        side,
+        'Upload fehlgeschlagen — bitte Verbindung prüfen und erneut versuchen.',
+      );
     }
   }
 
@@ -207,7 +207,8 @@ export function OnboardingWizard({
         if (!o.birthDate) return `Person ${i + 1}: Geburtsdatum fehlt.`;
         // § 11 Abs. 4 GwG: Geburtsort, Staatsangehörigkeit, Wohnanschrift Pflicht.
         if (!o.birthPlace.trim()) return `Person ${i + 1}: Geburtsort fehlt (§ 11 Abs. 4 GwG).`;
-        if (!o.nationality.trim()) return `Person ${i + 1}: Staatsangehörigkeit fehlt (§ 11 Abs. 4 GwG).`;
+        if (!o.nationality.trim())
+          return `Person ${i + 1}: Staatsangehörigkeit fehlt (§ 11 Abs. 4 GwG).`;
         if (!o.street.trim() || !o.postalCode.trim() || !o.city.trim()) {
           return `Person ${i + 1}: Wohnanschrift (Straße, PLZ, Ort) fehlt (§ 11 Abs. 4 GwG).`;
         }
@@ -216,7 +217,8 @@ export function OnboardingWizard({
       }
     }
     if (STEPS[step]?.key === 'privacy') {
-      if (!noticeAck) return 'Bitte bestätigen Sie, dass Sie die Datenschutzhinweise zur Kenntnis genommen haben.';
+      if (!noticeAck)
+        return 'Bitte bestätigen Sie, dass Sie die Datenschutzhinweise zur Kenntnis genommen haben.';
       if (!signedByName.trim()) return 'Bitte geben Sie den Namen der erklärenden Person an.';
     }
     return null;
@@ -285,8 +287,8 @@ export function OnboardingWizard({
         </div>
         <h2 className="text-xl font-bold text-primary mb-2">Vielen Dank!</h2>
         <p className="text-sm text-secondary">
-          Ihre Angaben wurden an die Steuerkanzlei übermittelt. Sie können dieses
-          Fenster nun schließen.
+          Ihre Angaben wurden an die Steuerkanzlei übermittelt. Sie können dieses Fenster nun
+          schließen.
         </p>
       </div>
     );
@@ -312,7 +314,11 @@ export function OnboardingWizard({
               >
                 {done ? <Check className="h-4 w-4" /> : i + 1}
               </div>
-              <span className={current ? 'ml-2 text-sm font-medium text-primary' : 'ml-2 text-sm text-muted'}>
+              <span
+                className={
+                  current ? 'ml-2 text-sm font-medium text-primary' : 'ml-2 text-sm text-muted'
+                }
+              >
                 {s.label}
               </span>
               {i < STEPS.length - 1 && <div className="flex-1 h-px bg-gray-200 mx-3" />}
@@ -347,9 +353,9 @@ export function OnboardingWizard({
           <div className="card p-6">
             <h2 className="text-lg font-semibold text-primary">Wirtschaftlich Berechtigte</h2>
             <p className="text-sm text-muted mt-1">
-              Bitte erfassen Sie alle Personen, die direkt oder indirekt mehr als 25 %
-              der Anteile halten oder Kontrolle ausüben. Pro Person bitte den
-              Personalausweis (Vorder- und Rückseite) hochladen.
+              Bitte erfassen Sie alle Personen, die direkt oder indirekt mehr als 25 % der Anteile
+              halten oder Kontrolle ausüben. Pro Person bitte den Personalausweis (Vorder- und
+              Rückseite) hochladen.
             </p>
           </div>
           {owners.map((o, i) => (
@@ -359,7 +365,9 @@ export function OnboardingWizard({
               owner={o}
               onPatch={(p) => patchOwner(i, p)}
               onRemove={owners.length > 1 ? () => removeOwner(i) : null}
-              onUpload={(side, file) => { void handleIdUpload(o.id, side, file); }}
+              onUpload={(side, file) => {
+                void handleIdUpload(o.id, side, file);
+              }}
               frontError={idUploadErrors[`${o.id}:front`] ?? null}
               backError={idUploadErrors[`${o.id}:back`] ?? null}
             />
@@ -375,9 +383,9 @@ export function OnboardingWizard({
         <div className="card p-6 space-y-4">
           <h2 className="text-lg font-semibold text-primary">Sonstige Dokumente (optional)</h2>
           <p className="text-sm text-muted">
-            Falls Sie schon einen Handelsregisterauszug oder andere relevante Unterlagen
-            haben, können Sie diese hier hochladen. Wenn nicht: kein Problem — die
-            Kanzlei besorgt HR-Auszug und Transparenzregister-Auszug selbst.
+            Falls Sie schon einen Handelsregisterauszug oder andere relevante Unterlagen haben,
+            können Sie diese hier hochladen. Wenn nicht: kein Problem — die Kanzlei besorgt
+            HR-Auszug und Transparenzregister-Auszug selbst.
           </p>
           <div>
             <label className="block">
@@ -394,9 +402,7 @@ export function OnboardingWizard({
                 }}
               />
             </label>
-            {extraUploadError && (
-              <p className="text-xs text-red-700 mt-2">{extraUploadError}</p>
-            )}
+            {extraUploadError && <p className="text-xs text-red-700 mt-2">{extraUploadError}</p>}
           </div>
           {extraDocs.length > 0 && (
             <ul className="divide-y divide-border-subtle border border-default rounded">
@@ -417,9 +423,9 @@ export function OnboardingWizard({
           <div>
             <h2 className="text-lg font-semibold text-primary">Datenschutzhinweise</h2>
             <p className="text-xs text-muted mt-1">
-              Bitte lesen Sie die Hinweise Ihrer Kanzlei (Fassung {noticeVersion}).
-              Die zur Mandatsbearbeitung nötige Verarbeitung ist auch ohne
-              Einwilligung zulässig; die folgenden Einwilligungen sind freiwillig.
+              Bitte lesen Sie die Hinweise Ihrer Kanzlei (Fassung {noticeVersion}). Die zur
+              Mandatsbearbeitung nötige Verarbeitung ist auch ohne Einwilligung zulässig; die
+              folgenden Einwilligungen sind freiwillig.
             </p>
           </div>
           <div className="max-h-72 overflow-y-auto rounded-md border border-default bg-surface-raised p-4">
@@ -428,7 +434,9 @@ export function OnboardingWizard({
 
           <div>
             <h3 className="text-sm font-semibold text-primary mb-1">Freiwillige Einwilligungen</h3>
-            <p className="text-xs text-muted mb-3">Nur ankreuzen, was Sie wünschen. Nichts anzukreuzen ist möglich.</p>
+            <p className="text-xs text-muted mb-3">
+              Nur ankreuzen, was Sie wünschen. Nichts anzukreuzen ist möglich.
+            </p>
             <ConsentFields onChange={setConsent} />
           </div>
 
@@ -441,9 +449,9 @@ export function OnboardingWizard({
                 className="mt-0.5 rounded border-strong text-brand-600"
               />
               <span className="text-secondary">
-                Ich habe die Datenschutzhinweise zur Kenntnis genommen. Die
-                vorstehenden Einwilligungen erteile ich freiwillig; nicht
-                angekreuzte Optionen gelten als nicht erteilt.
+                Ich habe die Datenschutzhinweise zur Kenntnis genommen. Die vorstehenden
+                Einwilligungen erteile ich freiwillig; nicht angekreuzte Optionen gelten als nicht
+                erteilt.
               </span>
             </label>
             <div>
@@ -468,14 +476,27 @@ export function OnboardingWizard({
             <SummaryRow label="Firma" value={companyName} />
             <SummaryRow label="Adresse" value={`${street}, ${postalCode} ${city}, ${countryIso}`} />
             {vatId && <SummaryRow label="USt-ID" value={vatId} />}
-            <SummaryRow label="Wirtschaftlich Berechtigte" value={`${owners.length} Person${owners.length === 1 ? '' : 'en'}`} />
-            <SummaryRow label="Ausweisangaben" value={`${owners.filter((o) => o.idNumber || o.idExpiryDate).length} erfasst`} />
+            <SummaryRow
+              label="Wirtschaftlich Berechtigte"
+              value={`${owners.length} Person${owners.length === 1 ? '' : 'en'}`}
+            />
+            <SummaryRow
+              label="Ausweisangaben"
+              value={`${owners.filter((o) => o.idNumber || o.idExpiryDate).length} erfasst`}
+            />
             <SummaryRow label="Sonstige Dokumente" value={`${extraDocs.length} hochgeladen`} />
           </dl>
           {submitError && <div className="alert-error-sm">{submitError}</div>}
-          <button type="button" onClick={submit} disabled={isPending} className="btn-primary w-full">
+          <button
+            type="button"
+            onClick={submit}
+            disabled={isPending}
+            className="btn-primary w-full"
+          >
             {isPending ? (
-              <><Loader className="h-4 w-4 animate-spin" /> Wird übermittelt…</>
+              <>
+                <Loader className="h-4 w-4 animate-spin" /> Wird übermittelt…
+              </>
             ) : (
               'Jetzt übermitteln'
             )}
@@ -488,7 +509,12 @@ export function OnboardingWizard({
 
       {/* Navigation */}
       <div className="flex items-center justify-between mt-6">
-        <button type="button" onClick={prev} disabled={step === 0} className="btn-secondary disabled:opacity-30">
+        <button
+          type="button"
+          onClick={prev}
+          disabled={step === 0}
+          className="btn-secondary disabled:opacity-30"
+        >
           <ArrowLeft className="h-4 w-4" /> Zurück
         </button>
         {step < STEPS.length - 1 && (
@@ -523,7 +549,12 @@ function emptyOwner(name: string): BeneficialOwner {
 }
 
 function Field({
-  label, value, onChange, type = 'text', required, placeholder,
+  label,
+  value,
+  onChange,
+  type = 'text',
+  required,
+  placeholder,
 }: {
   label: string;
   value: string;
@@ -560,7 +591,13 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 }
 
 function OwnerCard({
-  index, owner, onPatch, onRemove, onUpload, frontError, backError,
+  index,
+  owner,
+  onPatch,
+  onRemove,
+  onUpload,
+  frontError,
+  backError,
 }: {
   index: number;
   owner: BeneficialOwner;
@@ -575,22 +612,54 @@ function OwnerCard({
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-primary">Person {index + 1}</h3>
         {onRemove && (
-          <button type="button" onClick={onRemove} className="text-disabled hover:text-red-700 text-xs inline-flex items-center gap-1">
+          <button
+            type="button"
+            onClick={onRemove}
+            className="text-disabled hover:text-red-700 text-xs inline-flex items-center gap-1"
+          >
             <Trash2 className="h-3 w-3" /> entfernen
           </button>
         )}
       </div>
-      <Field label="Vollständiger Name" value={owner.fullName} onChange={(v) => onPatch({ fullName: v })} required />
+      <Field
+        label="Vollständiger Name"
+        value={owner.fullName}
+        onChange={(v) => onPatch({ fullName: v })}
+        required
+      />
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Geburtsdatum" type="date" value={owner.birthDate} onChange={(v) => onPatch({ birthDate: v })} required />
-        <Field label="Geburtsort" value={owner.birthPlace} onChange={(v) => onPatch({ birthPlace: v })} />
+        <Field
+          label="Geburtsdatum"
+          type="date"
+          value={owner.birthDate}
+          onChange={(v) => onPatch({ birthDate: v })}
+          required
+        />
+        <Field
+          label="Geburtsort"
+          value={owner.birthPlace}
+          onChange={(v) => onPatch({ birthPlace: v })}
+        />
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Staatsangehörigkeit" value={owner.nationality} onChange={(v) => onPatch({ nationality: v })} placeholder="DE" />
-        <Field label={'Anteil (z. B. 50% oder „Alleingesellschafter")'} value={owner.sharePercent} onChange={(v) => onPatch({ sharePercent: v })} />
+        <Field
+          label="Staatsangehörigkeit"
+          value={owner.nationality}
+          onChange={(v) => onPatch({ nationality: v })}
+          placeholder="DE"
+        />
+        <Field
+          label={'Anteil (z. B. 50% oder „Alleingesellschafter")'}
+          value={owner.sharePercent}
+          onChange={(v) => onPatch({ sharePercent: v })}
+        />
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Straße + Hausnr." value={owner.street} onChange={(v) => onPatch({ street: v })} />
+        <Field
+          label="Straße + Hausnr."
+          value={owner.street}
+          onChange={(v) => onPatch({ street: v })}
+        />
         <Field label="Land" value={owner.countryIso} onChange={(v) => onPatch({ countryIso: v })} />
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -606,12 +675,30 @@ function OwnerCard({
           </p>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Ausweisnummer" value={owner.idNumber} onChange={(v) => onPatch({ idNumber: v })} />
-          <Field label="Ausstellende Behörde" value={owner.idIssuedBy} onChange={(v) => onPatch({ idIssuedBy: v })} />
+          <Field
+            label="Ausweisnummer"
+            value={owner.idNumber}
+            onChange={(v) => onPatch({ idNumber: v })}
+          />
+          <Field
+            label="Ausstellende Behörde"
+            value={owner.idIssuedBy}
+            onChange={(v) => onPatch({ idIssuedBy: v })}
+          />
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Ausgestellt am" type="date" value={owner.idIssueDate} onChange={(v) => onPatch({ idIssueDate: v })} />
-          <Field label="Gültig bis" type="date" value={owner.idExpiryDate} onChange={(v) => onPatch({ idExpiryDate: v })} />
+          <Field
+            label="Ausgestellt am"
+            type="date"
+            value={owner.idIssueDate}
+            onChange={(v) => onPatch({ idIssueDate: v })}
+          />
+          <Field
+            label="Gültig bis"
+            type="date"
+            value={owner.idExpiryDate}
+            onChange={(v) => onPatch({ idExpiryDate: v })}
+          />
         </div>
       </div>
 
@@ -634,7 +721,10 @@ function OwnerCard({
 }
 
 function IdUploadField({
-  label, file, onUpload, error,
+  label,
+  file,
+  onUpload,
+  error,
 }: {
   label: string;
   file: { documentId: string; fileName: string } | null;

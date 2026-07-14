@@ -35,13 +35,10 @@ export async function checkRedis(): Promise<ServiceStatus> {
   return new Promise((resolve) => {
     const start = Date.now();
     const url = new URL(env.REDIS_URL);
-    const socket = createConnection(
-      { host: url.hostname, port: Number(url.port) || 6379 },
-      () => {
-        socket.destroy();
-        resolve({ ok: true, latencyMs: Date.now() - start });
-      },
-    );
+    const socket = createConnection({ host: url.hostname, port: Number(url.port) || 6379 }, () => {
+      socket.destroy();
+      resolve({ ok: true, latencyMs: Date.now() - start });
+    });
     socket.on('error', (e) => resolve({ ok: false, error: e.message }));
     socket.setTimeout(3000, () => {
       socket.destroy();
@@ -73,12 +70,9 @@ export async function checkObjectStore(): Promise<ServiceStatus> {
 export async function checkClamAV(): Promise<ServiceStatus> {
   return new Promise((resolve) => {
     const start = Date.now();
-    const socket = createConnection(
-      { host: env.CLAMAV_HOST, port: env.CLAMAV_PORT },
-      () => {
-        socket.write('PING\n');
-      },
-    );
+    const socket = createConnection({ host: env.CLAMAV_HOST, port: env.CLAMAV_PORT }, () => {
+      socket.write('PING\n');
+    });
     let response = '';
     socket.on('data', (d: Buffer) => {
       response += d.toString();
@@ -100,14 +94,14 @@ export async function checkN8n(): Promise<ServiceStatus> {
 }
 
 /** Tenant-spezifisch: nimmt die URL aus `tenant_setting.integrations.n8n`. */
-export async function checkN8nForTenant(tenantId: string): Promise<ServiceStatus & { url?: string | null; source?: 'tenant' | 'env' | 'none' }> {
-  const row = await withTenantContext(
-    { tenantId, actorId: null, actorType: 'SYSTEM' },
-    (tx) =>
-      tx.tenantSetting.findUnique({
-        where: { tenantId_key: { tenantId, key: 'integrations.n8n' } },
-        select: { value: true },
-      }),
+export async function checkN8nForTenant(
+  tenantId: string,
+): Promise<ServiceStatus & { url?: string | null; source?: 'tenant' | 'env' | 'none' }> {
+  const row = await withTenantContext({ tenantId, actorId: null, actorType: 'SYSTEM' }, (tx) =>
+    tx.tenantSetting.findUnique({
+      where: { tenantId_key: { tenantId, key: 'integrations.n8n' } },
+      select: { value: true },
+    }),
   );
   const dbUrl = row ? ((row.value as { webhookBaseUrl?: string }).webhookBaseUrl ?? '') : '';
   if (dbUrl) {
@@ -245,13 +239,11 @@ export async function checkTsa(): Promise<TsaCheck> {
 export async function checkTsaForTenant(tenantId: string): Promise<TsaCheck> {
   // RLS-Backstop: tenant_setting ist mandantenscharf — Read über
   // withTenantContext, sonst gibt die App-Verbindung keine Zeilen aus.
-  const row = await withTenantContext(
-    { tenantId, actorId: null, actorType: 'SYSTEM' },
-    (tx) =>
-      tx.tenantSetting.findUnique({
-        where: { tenantId_key: { tenantId, key: 'evidence.tsa' } },
-        select: { value: true },
-      }),
+  const row = await withTenantContext({ tenantId, actorId: null, actorType: 'SYSTEM' }, (tx) =>
+    tx.tenantSetting.findUnique({
+      where: { tenantId_key: { tenantId, key: 'evidence.tsa' } },
+      select: { value: true },
+    }),
   );
   if (row) {
     const v = row.value as { providerId?: string; customUrl?: string };

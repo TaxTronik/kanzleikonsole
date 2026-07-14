@@ -55,10 +55,9 @@ export async function createOnboardingClientAction(formData: FormData) {
   let clientId: string;
   try {
     clientId = await withTenantContext(ctx, async (tx) => {
-      const assignedStaffIds = Array.from(new Set([
-        ...parsed.data.berufstraegerIds,
-        ...parsed.data.hauptbearbeiterIds,
-      ]));
+      const assignedStaffIds = Array.from(
+        new Set([...parsed.data.berufstraegerIds, ...parsed.data.hauptbearbeiterIds]),
+      );
       const activeStaffCount = await tx.staffUser.count({
         where: { tenantId, id: { in: assignedStaffIds }, active: true },
       });
@@ -95,7 +94,9 @@ export async function createOnboardingClientAction(formData: FormData) {
       }
 
       await evidenceService.record(tx, {
-        tenantId, actorType: 'STAFF', actorId: staffId,
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
         action: 'client.created',
         resourceType: 'client',
         resourceId: client.id,

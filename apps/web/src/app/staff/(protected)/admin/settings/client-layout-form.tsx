@@ -2,13 +2,25 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { GridLayout, useContainerWidth, type Layout, type LayoutItem } from 'react-grid-layout';
 import {
-  GridLayout,
-  useContainerWidth,
-  type Layout,
-  type LayoutItem,
-} from 'react-grid-layout';
-import { RotateCcw, Plus, X, Check, Settings2, CalendarDays, Workflow, CalendarClock, FolderInput, Inbox, Phone, Users, IdCard, ShieldCheck, ListChecks, FileText } from 'lucide-react';
+  RotateCcw,
+  Plus,
+  X,
+  Check,
+  Settings2,
+  CalendarDays,
+  Workflow,
+  CalendarClock,
+  FolderInput,
+  Inbox,
+  Phone,
+  Users,
+  IdCard,
+  ShieldCheck,
+  ListChecks,
+  FileText,
+} from 'lucide-react';
 import { saveClientLayoutAction, resetClientLayoutAction } from './actions';
 import {
   ALL_CLIENT_BLOCKS,
@@ -55,7 +67,10 @@ function findFreeSlot(
       let fits = true;
       for (let ix = x; ix < x + w; ix++) {
         for (let iy = y; iy < y + h; iy++) {
-          if (occupied.has(`${ix},${iy}`)) { fits = false; break; }
+          if (occupied.has(`${ix},${iy}`)) {
+            fits = false;
+            break;
+          }
         }
         if (!fits) break;
       }
@@ -149,8 +164,12 @@ export function ClientLayoutForm({ initial }: { initial: ClientLayoutConfig }) {
     const def = BLOCK_SIZE[it.id];
     return {
       i: it.id,
-      x: it.x, y: it.y, w: it.w, h: it.h,
-      minW: def.minW, minH: def.minH,
+      x: it.x,
+      y: it.y,
+      w: it.w,
+      h: it.h,
+      minW: def.minW,
+      minH: def.minH,
     };
   });
 
@@ -162,9 +181,9 @@ export function ClientLayoutForm({ initial }: { initial: ClientLayoutConfig }) {
       <div className="flex items-start justify-between gap-2">
         <p className="text-xs text-muted flex-1">
           Tenant-globales Layout für das Mandanten-Cockpit (Block-Bereich auf
-          <code className="mx-1 px-1 rounded bg-gray-100">/staff/clients/:id</code>).
-          Anpassungen gelten für alle Mitarbeiter. Deaktivierte Module erscheinen
-          nicht — die Position bleibt aber gespeichert.
+          <code className="mx-1 px-1 rounded bg-gray-100">/staff/clients/:id</code>). Anpassungen
+          gelten für alle Mitarbeiter. Deaktivierte Module erscheinen nicht — die Position bleibt
+          aber gespeichert.
         </p>
         <div className="flex items-center gap-2 shrink-0">
           {editMode && (
@@ -181,7 +200,11 @@ export function ClientLayoutForm({ initial }: { initial: ClientLayoutConfig }) {
           <button
             type="button"
             onClick={() => setEditMode((v) => !v)}
-            className={editMode ? 'btn-primary text-xs inline-flex items-center gap-1' : 'btn-secondary text-xs inline-flex items-center gap-1'}
+            className={
+              editMode
+                ? 'btn-primary text-xs inline-flex items-center gap-1'
+                : 'btn-secondary text-xs inline-flex items-center gap-1'
+            }
           >
             {editMode ? <Check className="h-3.5 w-3.5" /> : <Settings2 className="h-3.5 w-3.5" />}
             {editMode ? 'Fertig' : 'Anpassen'}
@@ -193,9 +216,7 @@ export function ClientLayoutForm({ initial }: { initial: ClientLayoutConfig }) {
 
       {editMode && available.length > 0 && (
         <div className="card p-3">
-          <p className="text-xs font-medium text-secondary mb-2">
-            Block hinzufügen
-          </p>
+          <p className="text-xs font-medium text-secondary mb-2">Block hinzufügen</p>
           <div className="flex flex-wrap gap-2">
             {available.map((k) => {
               const Icon = ICONS[k];
@@ -223,7 +244,10 @@ export function ClientLayoutForm({ initial }: { initial: ClientLayoutConfig }) {
             layout={rglLayout}
             gridConfig={{ cols: 12, rowHeight: 30, margin: [16, 16], containerPadding: [0, 0] }}
             dragConfig={{ enabled: editMode, cancel: '.block-remove' }}
-            resizeConfig={{ enabled: editMode, handles: ['se', 'sw', 'ne', 'nw', 'e', 'w', 's', 'n'] }}
+            resizeConfig={{
+              enabled: editMode,
+              handles: ['se', 'sw', 'ne', 'nw', 'e', 'w', 's', 'n'],
+            }}
             onLayoutChange={onLayoutChange}
           >
             {items.map((it) => {
@@ -249,9 +273,7 @@ export function ClientLayoutForm({ initial }: { initial: ClientLayoutConfig }) {
                   )}
                   <div className="flex flex-col items-center gap-2 px-4 text-center">
                     <Icon className="h-6 w-6 text-disabled" />
-                    <span className="font-medium text-primary">
-                      {CLIENT_BLOCK_LABELS[it.id]}
-                    </span>
+                    <span className="font-medium text-primary">{CLIENT_BLOCK_LABELS[it.id]}</span>
                     <span className="text-[10px] text-disabled font-mono">
                       {it.w} × {it.h}
                     </span>

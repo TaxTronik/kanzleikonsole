@@ -29,7 +29,9 @@ describe('safePortalReturnTo', () => {
   });
 
   it('lehnt absolute URLs ab', () => {
-    expect(safePortalReturnTo('https://evil.example.de/portal/dashboard')).toBe('/portal/dashboard');
+    expect(safePortalReturnTo('https://evil.example.de/portal/dashboard')).toBe(
+      '/portal/dashboard',
+    );
     expect(safePortalReturnTo('http://localhost:3000/portal/dashboard')).toBe('/portal/dashboard');
   });
 

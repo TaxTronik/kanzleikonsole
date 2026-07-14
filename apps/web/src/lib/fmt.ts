@@ -61,7 +61,9 @@ const eurRoundFormatter = new Intl.NumberFormat(LOCALE, {
 });
 
 /** Wie `fmtEUR`, aber ohne Cent-Stellen (für große BWA-Beträge in Übersichten). */
-export function fmtEURRound(n: number | string | { toString(): string } | null | undefined): string {
+export function fmtEURRound(
+  n: number | string | { toString(): string } | null | undefined,
+): string {
   if (n === null || n === undefined) return '—';
   const num = typeof n === 'number' ? n : Number(typeof n === 'string' ? n : n.toString());
   if (!Number.isFinite(num)) return '—';
@@ -105,54 +107,132 @@ export function fmtPercent(n: number | null | undefined): string {
 // --- Datum / Zeit --------------------------------------------------------------
 
 const dateShortFormatter = new Intl.DateTimeFormat(LOCALE, { timeZone: TIME_ZONE });
-const dateNumericFormatter = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'short', timeZone: TIME_ZONE });
-const dateMediumFormatter = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'medium', timeZone: TIME_ZONE });
-const dateLongFormatter = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'long', timeZone: TIME_ZONE });
-const dateWeekdayLongFormatter = new Intl.DateTimeFormat(LOCALE, { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', timeZone: TIME_ZONE });
-const timeShortFormatter = new Intl.DateTimeFormat(LOCALE, { hour: '2-digit', minute: '2-digit', timeZone: TIME_ZONE });
-const timeMediumFormatter = new Intl.DateTimeFormat(LOCALE, { timeStyle: 'medium', timeZone: TIME_ZONE });
-const dateTimeShortFormatter = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'short', timeStyle: 'short', timeZone: TIME_ZONE });
-const dateTimeMediumFormatter = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'medium', timeStyle: 'short', timeZone: TIME_ZONE });
-const dateTimeLongFormatter = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'long', timeStyle: 'medium', timeZone: TIME_ZONE });
-const dateTimeSecondsFormatter = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'short', timeStyle: 'medium', timeZone: TIME_ZONE });
-const weekdayShortFormatter = new Intl.DateTimeFormat(LOCALE, { weekday: 'short', timeZone: TIME_ZONE });
+const dateNumericFormatter = new Intl.DateTimeFormat(LOCALE, {
+  dateStyle: 'short',
+  timeZone: TIME_ZONE,
+});
+const dateMediumFormatter = new Intl.DateTimeFormat(LOCALE, {
+  dateStyle: 'medium',
+  timeZone: TIME_ZONE,
+});
+const dateLongFormatter = new Intl.DateTimeFormat(LOCALE, {
+  dateStyle: 'long',
+  timeZone: TIME_ZONE,
+});
+const dateWeekdayLongFormatter = new Intl.DateTimeFormat(LOCALE, {
+  weekday: 'long',
+  day: '2-digit',
+  month: 'long',
+  year: 'numeric',
+  timeZone: TIME_ZONE,
+});
+const timeShortFormatter = new Intl.DateTimeFormat(LOCALE, {
+  hour: '2-digit',
+  minute: '2-digit',
+  timeZone: TIME_ZONE,
+});
+const timeMediumFormatter = new Intl.DateTimeFormat(LOCALE, {
+  timeStyle: 'medium',
+  timeZone: TIME_ZONE,
+});
+const dateTimeShortFormatter = new Intl.DateTimeFormat(LOCALE, {
+  dateStyle: 'short',
+  timeStyle: 'short',
+  timeZone: TIME_ZONE,
+});
+const dateTimeMediumFormatter = new Intl.DateTimeFormat(LOCALE, {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+  timeZone: TIME_ZONE,
+});
+const dateTimeLongFormatter = new Intl.DateTimeFormat(LOCALE, {
+  dateStyle: 'long',
+  timeStyle: 'medium',
+  timeZone: TIME_ZONE,
+});
+const dateTimeSecondsFormatter = new Intl.DateTimeFormat(LOCALE, {
+  dateStyle: 'short',
+  timeStyle: 'medium',
+  timeZone: TIME_ZONE,
+});
+const weekdayShortFormatter = new Intl.DateTimeFormat(LOCALE, {
+  weekday: 'short',
+  timeZone: TIME_ZONE,
+});
 const dayFormatter = new Intl.DateTimeFormat(LOCALE, { day: '2-digit', timeZone: TIME_ZONE });
-const monthShortFormatter = new Intl.DateTimeFormat(LOCALE, { month: 'short', timeZone: TIME_ZONE });
-const monthYearFormatter = new Intl.DateTimeFormat(LOCALE, { month: 'long', year: 'numeric', timeZone: TIME_ZONE });
+const monthShortFormatter = new Intl.DateTimeFormat(LOCALE, {
+  month: 'short',
+  timeZone: TIME_ZONE,
+});
+const monthYearFormatter = new Intl.DateTimeFormat(LOCALE, {
+  month: 'long',
+  year: 'numeric',
+  timeZone: TIME_ZONE,
+});
 
 /** `12.5.2026` (numerisch, ohne Null-Padding) */
-export function fmtDateShort(d: Date): string { return dateShortFormatter.format(d); }
+export function fmtDateShort(d: Date): string {
+  return dateShortFormatter.format(d);
+}
 /** `12.05.26` (numerisch, zweistellig gepaddet, 2-stelliges Jahr) */
-export function fmtDateNumeric(d: Date): string { return dateNumericFormatter.format(d); }
+export function fmtDateNumeric(d: Date): string {
+  return dateNumericFormatter.format(d);
+}
 /** `12. Mai 2026` */
-export function fmtDateMedium(d: Date): string { return dateMediumFormatter.format(d); }
+export function fmtDateMedium(d: Date): string {
+  return dateMediumFormatter.format(d);
+}
 /** `12. Mai 2026` (Long-Variante, ähnlich Medium im de-DE) */
-export function fmtDateLong(d: Date): string { return dateLongFormatter.format(d); }
+export function fmtDateLong(d: Date): string {
+  return dateLongFormatter.format(d);
+}
 /** `Montag, 12. Mai 2026` */
-export function fmtDateWeekdayLong(d: Date): string { return dateWeekdayLongFormatter.format(d); }
+export function fmtDateWeekdayLong(d: Date): string {
+  return dateWeekdayLongFormatter.format(d);
+}
 
 /** `14:35` */
-export function fmtTimeShort(d: Date): string { return timeShortFormatter.format(d); }
+export function fmtTimeShort(d: Date): string {
+  return timeShortFormatter.format(d);
+}
 /** `14:35:21` */
-export function fmtTimeMedium(d: Date): string { return timeMediumFormatter.format(d); }
+export function fmtTimeMedium(d: Date): string {
+  return timeMediumFormatter.format(d);
+}
 
 /** `12.05.26, 14:35` */
-export function fmtDateTimeShort(d: Date): string { return dateTimeShortFormatter.format(d); }
+export function fmtDateTimeShort(d: Date): string {
+  return dateTimeShortFormatter.format(d);
+}
 /** `12. Mai 2026, 14:35` */
-export function fmtDateTimeMedium(d: Date): string { return dateTimeMediumFormatter.format(d); }
+export function fmtDateTimeMedium(d: Date): string {
+  return dateTimeMediumFormatter.format(d);
+}
 /** `12. Mai 2026 um 14:35:21` */
-export function fmtDateTimeLong(d: Date): string { return dateTimeLongFormatter.format(d); }
+export function fmtDateTimeLong(d: Date): string {
+  return dateTimeLongFormatter.format(d);
+}
 /** `12.05.26, 14:35:21` */
-export function fmtDateTimeSeconds(d: Date): string { return dateTimeSecondsFormatter.format(d); }
+export function fmtDateTimeSeconds(d: Date): string {
+  return dateTimeSecondsFormatter.format(d);
+}
 
 /** `Mo`, `Di`, … */
-export function fmtWeekdayShort(d: Date): string { return weekdayShortFormatter.format(d); }
+export function fmtWeekdayShort(d: Date): string {
+  return weekdayShortFormatter.format(d);
+}
 /** `12` (Tag, zweistellig) */
-export function fmtDay(d: Date): string { return dayFormatter.format(d); }
+export function fmtDay(d: Date): string {
+  return dayFormatter.format(d);
+}
 /** `Mai` (Monat, Kurzform) */
-export function fmtMonthShort(d: Date): string { return monthShortFormatter.format(d); }
+export function fmtMonthShort(d: Date): string {
+  return monthShortFormatter.format(d);
+}
 /** `Mai 2026` */
-export function fmtMonthYear(d: Date): string { return monthYearFormatter.format(d); }
+export function fmtMonthYear(d: Date): string {
+  return monthYearFormatter.format(d);
+}
 
 // --- Zeitzonen-Tagesgrenzen ----------------------------------------------------
 // Wandelt einen `YYYY-MM-DD`-Kalendertag (Europe/Berlin) in die zugehörigen
@@ -164,15 +244,23 @@ function berlinOffsetMs(instant: Date): number {
   const dtf = new Intl.DateTimeFormat('en-US', {
     timeZone: TIME_ZONE,
     hour12: false,
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
   });
   const p = Object.fromEntries(dtf.formatToParts(instant).map((x) => [x.type, x.value]));
   // `hour` kann bei Mitternacht als '24' formatiert werden → auf 0 normalisieren.
   const hour = p.hour === '24' ? 0 : Number(p.hour);
   const asUtc = Date.UTC(
-    Number(p.year), Number(p.month) - 1, Number(p.day),
-    hour, Number(p.minute), Number(p.second),
+    Number(p.year),
+    Number(p.month) - 1,
+    Number(p.day),
+    hour,
+    Number(p.minute),
+    Number(p.second),
   );
   return asUtc - instant.getTime();
 }
@@ -213,15 +301,22 @@ export function berlinWallClockToUtc(s: string): Date | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(s);
   if (!m) return null;
   const guess = Date.UTC(
-    Number(m[1]), Number(m[2]) - 1, Number(m[3]),
-    Number(m[4]), Number(m[5]), Number(m[6] ?? '0'), 0,
+    Number(m[1]),
+    Number(m[2]) - 1,
+    Number(m[3]),
+    Number(m[4]),
+    Number(m[5]),
+    Number(m[6] ?? '0'),
+    0,
   );
   return new Date(guess - berlinOffsetMs(new Date(guess)));
 }
 
 const ymdBerlinFormatter = new Intl.DateTimeFormat('en-CA', {
   timeZone: TIME_ZONE,
-  year: 'numeric', month: '2-digit', day: '2-digit',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
 });
 
 /**
@@ -240,9 +335,7 @@ export function berlinYmd(d: Date): string {
  * „überfällig ab Folgetag"-Vergleiche: `dueDate < berlinTodayUtcMidnight()`.
  */
 export function berlinTodayUtcMidnight(now: Date = new Date()): Date {
-  const p = Object.fromEntries(
-    ymdBerlinFormatter.formatToParts(now).map((x) => [x.type, x.value]),
-  );
+  const p = Object.fromEntries(ymdBerlinFormatter.formatToParts(now).map((x) => [x.type, x.value]));
   return new Date(Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day)));
 }
 

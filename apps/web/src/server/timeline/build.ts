@@ -63,137 +63,148 @@ export async function buildClientTimeline(
   const beforeFilter = before ? { lt: before } : undefined;
 
   return withTenantContext(ctx, async (tx) => {
-    const [docs, requests, responses, phoneNotes, invoices, gwgChecks, poas, taxNotices, taxDeadlines, workflowItems, riskAnalyses] =
-      await Promise.all([
-        tx.document.findMany({
-          where: { clientId, ...(beforeFilter ? { createdAt: beforeFilter } : {}) },
-          orderBy: { createdAt: 'desc' },
-          take: limit,
-          select: { id: true, title: true, classification: true, createdAt: true },
-        }),
-        tx.request.findMany({
-          where: { clientId, ...(beforeFilter ? { createdAt: beforeFilter } : {}) },
-          orderBy: { createdAt: 'desc' },
-          take: limit,
-          select: {
-            id: true,
-            title: true,
-            status: true,
-            priority: true,
-            createdAt: true,
-            closedAt: true,
-          },
-        }),
-        loadResponses(tx, clientId, limit, beforeFilter),
-        tx.phoneNote.findMany({
-          where: { clientId, ...(beforeFilter ? { createdAt: beforeFilter } : {}) },
-          orderBy: { createdAt: 'desc' },
-          take: limit,
-          select: {
-            id: true,
-            subject: true,
-            callerName: true,
-            createdAt: true,
-          },
-        }),
-        tx.invoice.findMany({
-          where: { clientId, ...(beforeFilter ? { createdAt: beforeFilter } : {}) },
-          orderBy: { createdAt: 'desc' },
-          take: limit,
-          select: {
-            id: true,
-            number: true,
-            subject: true,
-            totalAmount: true,
-            createdAt: true,
-            sentAt: true,
-            paidAt: true,
-          },
-        }),
-        tx.gwgCheck.findMany({
-          where: { clientId, ...(beforeFilter ? { createdAt: beforeFilter } : {}) },
-          orderBy: { createdAt: 'desc' },
-          take: limit,
-          select: {
-            id: true,
-            status: true,
-            riskLevel: true,
-            createdAt: true,
-            verifiedAt: true,
-            rejectedReason: true,
-          },
-        }),
-        tx.powerOfAttorney.findMany({
-          where: { clientId, ...(beforeFilter ? { createdAt: beforeFilter } : {}) },
-          orderBy: { createdAt: 'desc' },
-          take: limit,
-          select: {
-            id: true,
-            subject: true,
-            signerName: true,
-            createdAt: true,
-            signedAt: true,
-            revokedAt: true,
-            revokedReason: true,
-          },
-        }),
-        tx.taxNotice.findMany({
-          where: { clientId, ...(beforeFilter ? { createdAt: beforeFilter } : {}) },
-          orderBy: { createdAt: 'desc' },
-          take: limit,
-          select: {
-            id: true,
-            kind: true,
-            period: true,
-            createdAt: true,
-            assessedAmount: true,
-            expectedAmount: true,
-          },
-        }),
-        tx.taxDeadline.findMany({
-          where: {
-            clientId,
-            status: 'DONE',
-            completedAt: { not: null, ...(beforeFilter ? beforeFilter : {}) },
-          },
-          orderBy: { completedAt: 'desc' },
-          take: limit,
-          select: {
-            id: true,
-            kind: true,
-            period: true,
-            completedAt: true,
-          },
-        }),
-        tx.workflowItem.findMany({
-          where: {
-            instance: { clientId },
-            doneAt: { not: null, ...(beforeFilter ? beforeFilter : {}) },
-          },
-          orderBy: { doneAt: 'desc' },
-          take: limit,
-          select: {
-            id: true,
-            title: true,
-            doneAt: true,
-            instance: { select: { id: true, name: true } },
-          },
-        }),
-        tx.riskAnalysis.findMany({
-          where: { clientId, ...(beforeFilter ? { createdAt: beforeFilter } : {}) },
-          orderBy: { createdAt: 'desc' },
-          take: limit,
-          select: {
-            id: true,
-            title: true,
-            textHash: true,
-            katalogVersion: true,
-            createdAt: true,
-            archivedAt: true,
-            _count: { select: { markings: true } },
-          },
-        }),
-      ]);
+    const [
+      docs,
+      requests,
+      responses,
+      phoneNotes,
+      invoices,
+      gwgChecks,
+      poas,
+      taxNotices,
+      taxDeadlines,
+      workflowItems,
+      riskAnalyses,
+    ] = await Promise.all([
+      tx.document.findMany({
+        where: { clientId, ...(beforeFilter ? { createdAt: beforeFilter } : {}) },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        select: { id: true, title: true, classification: true, createdAt: true },
+      }),
+      tx.request.findMany({
+        where: { clientId, ...(beforeFilter ? { createdAt: beforeFilter } : {}) },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          priority: true,
+          createdAt: true,
+          closedAt: true,
+        },
+      }),
+      loadResponses(tx, clientId, limit, beforeFilter),
+      tx.phoneNote.findMany({
+        where: { clientId, ...(beforeFilter ? { createdAt: beforeFilter } : {}) },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        select: {
+          id: true,
+          subject: true,
+          callerName: true,
+          createdAt: true,
+        },
+      }),
+      tx.invoice.findMany({
+        where: { clientId, ...(beforeFilter ? { createdAt: beforeFilter } : {}) },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        select: {
+          id: true,
+          number: true,
+          subject: true,
+          totalAmount: true,
+          createdAt: true,
+          sentAt: true,
+          paidAt: true,
+        },
+      }),
+      tx.gwgCheck.findMany({
+        where: { clientId, ...(beforeFilter ? { createdAt: beforeFilter } : {}) },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        select: {
+          id: true,
+          status: true,
+          riskLevel: true,
+          createdAt: true,
+          verifiedAt: true,
+          rejectedReason: true,
+        },
+      }),
+      tx.powerOfAttorney.findMany({
+        where: { clientId, ...(beforeFilter ? { createdAt: beforeFilter } : {}) },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        select: {
+          id: true,
+          subject: true,
+          signerName: true,
+          createdAt: true,
+          signedAt: true,
+          revokedAt: true,
+          revokedReason: true,
+        },
+      }),
+      tx.taxNotice.findMany({
+        where: { clientId, ...(beforeFilter ? { createdAt: beforeFilter } : {}) },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        select: {
+          id: true,
+          kind: true,
+          period: true,
+          createdAt: true,
+          assessedAmount: true,
+          expectedAmount: true,
+        },
+      }),
+      tx.taxDeadline.findMany({
+        where: {
+          clientId,
+          status: 'DONE',
+          completedAt: { not: null, ...(beforeFilter ? beforeFilter : {}) },
+        },
+        orderBy: { completedAt: 'desc' },
+        take: limit,
+        select: {
+          id: true,
+          kind: true,
+          period: true,
+          completedAt: true,
+        },
+      }),
+      tx.workflowItem.findMany({
+        where: {
+          instance: { clientId },
+          doneAt: { not: null, ...(beforeFilter ? beforeFilter : {}) },
+        },
+        orderBy: { doneAt: 'desc' },
+        take: limit,
+        select: {
+          id: true,
+          title: true,
+          doneAt: true,
+          instance: { select: { id: true, name: true } },
+        },
+      }),
+      tx.riskAnalysis.findMany({
+        where: { clientId, ...(beforeFilter ? { createdAt: beforeFilter } : {}) },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        select: {
+          id: true,
+          title: true,
+          textHash: true,
+          katalogVersion: true,
+          createdAt: true,
+          archivedAt: true,
+          _count: { select: { markings: true } },
+        },
+      }),
+    ]);
 
     const events: TimelineEvent[] = [];
 
@@ -232,7 +243,10 @@ export async function buildClientTimeline(
       events.push({
         id: `res:${res.id}`,
         occurredAt: res.createdAt,
-        kind: res.authorType === 'CLIENT_CONTACT' ? 'request_response_client' : 'request_response_staff',
+        kind:
+          res.authorType === 'CLIENT_CONTACT'
+            ? 'request_response_client'
+            : 'request_response_staff',
         title:
           res.authorType === 'CLIENT_CONTACT'
             ? `Mandant antwortete auf "${res.requestTitle}"`
@@ -418,20 +432,34 @@ export async function buildClientTimeline(
 
 function noticeKindLabel(k: string): string {
   const m: Record<string, string> = {
-    USTA: 'USt-VA', UST_JAHR: 'USt-Jahr', EST: 'ESt', KST: 'KSt',
-    GEWST_MESSBESCHEID: 'GewSt-Mess', GEWST: 'GewSt', LSTA: 'LSt-Anmeldung',
-    FESTSTELLUNG: 'Feststellung', ZERLEGUNG: 'Zerlegung', SONSTIGE: 'Sonstiger Bescheid',
+    USTA: 'USt-VA',
+    UST_JAHR: 'USt-Jahr',
+    EST: 'ESt',
+    KST: 'KSt',
+    GEWST_MESSBESCHEID: 'GewSt-Mess',
+    GEWST: 'GewSt',
+    LSTA: 'LSt-Anmeldung',
+    FESTSTELLUNG: 'Feststellung',
+    ZERLEGUNG: 'Zerlegung',
+    SONSTIGE: 'Sonstiger Bescheid',
   };
   return m[k] ?? k;
 }
 
 function scheduleKindLabel(k: string): string {
   const m: Record<string, string> = {
-    USTA_MONATLICH: 'USt-VA monatlich', USTA_QUARTAL: 'USt-VA quartalsw.',
-    USTA_JAEHRLICH: 'USt-Jahr', LSTA_MONATLICH: 'LSt monatlich',
-    LSTA_QUARTAL: 'LSt quartalsw.', LSTA_JAEHRLICH: 'LSt-Jahr',
-    EST_VZ: 'ESt-VZ', KST_VZ: 'KSt-VZ', GEWST_VZ: 'GewSt-VZ',
-    EST_ERKLAERUNG: 'ESt-Erkl.', KST_ERKLAERUNG: 'KSt-Erkl.', GEWST_ERKLAERUNG: 'GewSt-Erkl.',
+    USTA_MONATLICH: 'USt-VA monatlich',
+    USTA_QUARTAL: 'USt-VA quartalsw.',
+    USTA_JAEHRLICH: 'USt-Jahr',
+    LSTA_MONATLICH: 'LSt monatlich',
+    LSTA_QUARTAL: 'LSt quartalsw.',
+    LSTA_JAEHRLICH: 'LSt-Jahr',
+    EST_VZ: 'ESt-VZ',
+    KST_VZ: 'KSt-VZ',
+    GEWST_VZ: 'GewSt-VZ',
+    EST_ERKLAERUNG: 'ESt-Erkl.',
+    KST_ERKLAERUNG: 'KSt-Erkl.',
+    GEWST_ERKLAERUNG: 'GewSt-Erkl.',
   };
   return m[k] ?? k;
 }

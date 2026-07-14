@@ -121,9 +121,9 @@ werden als CI-Artefakte archiviert (siehe
   ausschließlich manuell über das dokumentierte Update-Verfahren mit
   automatischem Backup vor jeder Migration und definiertem Rollback-Pfad
   (siehe [docs/operations/release.md](../operations/release.md)).
-- **Änderungsdokumentation:** [CHANGELOG.md](../../CHANGELOG.md) führt bis
-  zum ersten echten Release den `[Unreleased]`-Arbeitsstand und ab dem ersten
-  Release je Version die Änderungen mit Kennzeichnung der für den
+- **Änderungsdokumentation:** [CHANGELOG.md](../../CHANGELOG.md) führt den
+  `[Unreleased]`-Arbeitsstand und je Release einen versionierten Abschnitt mit
+  Kennzeichnung der für den
   Prüfungs-Scope relevanten Einträge (Grundlage für Folgeprüfungen, vgl.
   IDW PS 880 n.F. (01.2022), Tz. 110).
 

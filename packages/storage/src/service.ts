@@ -137,10 +137,11 @@ export interface CommitDocumentResult {
 export type ScanResult = 'CLEAN' | 'INFECTED' | 'ERROR';
 
 // Upload-Cap. Begrenzt sowohl Buffer-in-Memory (OOM-Schutz beim ClamAV-Scan)
-// als auch Storage-/Bandbreitenmissbrauch. 100 MB ist großzügig für typische
-// Belege, BWA-PDFs, Scans — größere Pakete sollten via Dokumenten-Upload-Job
-// (Worker) oder DATEV-Schnittstelle laufen, nicht über den Browser-Upload.
-export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+// als auch Storage-/Bandbreitenmissbrauch. Die App puffert Multipart und Datei
+// derzeit noch im Prozess; 25 MiB begrenzen deshalb den OOM-Radius. Größere
+// Pakete gehören in einen künftig streamingfähigen Import-Job, nicht in den
+// synchronen Browser-Upload.
+export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 // M-2: Magic-Number-Validierung. Verhindert, dass jemand image/jpeg deklariert,
 // aber tatsächlich HTML hochlädt — moderne Browser sniffen unter Umständen
@@ -198,9 +199,9 @@ async function scanWithClamAV(data: Buffer): Promise<ScanResult> {
       //
       // N-6: clamd bricht den Stream mit INSTREAM size limit exceeded ab, sobald
       // die Gesamtmenge StreamMaxLength (clamd.conf-Default 25 MB) übersteigt —
-      // MAX_UPLOAD_BYTES ist aber 100 MB. Damit Uploads zwischen 25 und 100 MB
-      // nicht deterministisch als SCAN_ERROR abgelehnt werden, MUSS clamd mit
-      // StreamMaxLength >= MAX_UPLOAD_BYTES (>= 100M) deployt werden. Diese
+      // MAX_UPLOAD_BYTES liegt bei 25 MiB. Damit Grenzfälle inklusive Protokoll-
+      // Overhead nicht als SCAN_ERROR enden, MUSS clamd mit StreamMaxLength
+      // oberhalb dieses Limits deployt werden. Diese
       // Deploy-Konfig lebt außerhalb dieses Pakets (clamd.conf), darf beim
       // Rollout aber nicht vergessen werden.
       //

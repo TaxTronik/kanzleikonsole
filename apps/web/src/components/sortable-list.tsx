@@ -52,7 +52,9 @@ export function SortableList({ count, onReorder, renderItem, className }: Props)
 
     function onMove(ev: globalThis.PointerEvent) {
       if (!containerRef.current) return;
-      const items = Array.from(containerRef.current.querySelectorAll<HTMLElement>('[data-sortable-index]'));
+      const items = Array.from(
+        containerRef.current.querySelectorAll<HTMLElement>('[data-sortable-index]'),
+      );
       let target = index;
       for (const el of items) {
         const r = el.getBoundingClientRect();
@@ -110,9 +112,7 @@ export function SortableList({ count, onReorder, renderItem, className }: Props)
             className={
               'transition-shadow ' +
               (isDragging ? 'opacity-50 ' : '') +
-              (isDropTarget
-                ? 'ring-2 ring-brand-500 rounded-lg '
-                : '')
+              (isDropTarget ? 'ring-2 ring-brand-500 rounded-lg ' : '')
             }
           >
             {renderItem(i, handle)}

@@ -24,13 +24,13 @@ const DATEV_DEPRECIATION = 1200;
 
 export interface LiquidityKpis {
   monthsCovered: number;
-  cashflowProxy: number | null;            // Ergebnis + Abschreibungen, Jahresbasis
-  cashflowMonthly: number | null;          // /Monat
-  marginPct: number | null;                // Ergebnis / Erlöse
-  personnelRatioPct: number | null;        // Personalkosten / Erlöse
+  cashflowProxy: number | null; // Ergebnis + Abschreibungen, Jahresbasis
+  cashflowMonthly: number | null; // /Monat
+  marginPct: number | null; // Ergebnis / Erlöse
+  personnelRatioPct: number | null; // Personalkosten / Erlöse
   marginTrend: 'up' | 'down' | 'flat' | null;
   personnelTrend: 'up' | 'down' | 'flat' | null;
-  warning: string | null;                  // z. B. Hinweis auf Liquiditätsrisiko
+  warning: string | null; // z. B. Hinweis auf Liquiditätsrisiko
 }
 
 export interface PeriodInput {
@@ -78,10 +78,8 @@ export function computeLiquidity(
   const currDep = depreciation(current.positions);
   const months = monthsCovered(current);
 
-  const cashflowProxy =
-    currKpi.result !== null ? currKpi.result + currDep : null;
-  const cashflowMonthly =
-    cashflowProxy !== null && months > 0 ? cashflowProxy / months : null;
+  const cashflowProxy = currKpi.result !== null ? currKpi.result + currDep : null;
+  const cashflowMonthly = cashflowProxy !== null && months > 0 ? cashflowProxy / months : null;
   const marginPct =
     currKpi.revenue && currKpi.revenue > 0 && currKpi.result !== null
       ? (currKpi.result / currKpi.revenue) * 100
@@ -112,11 +110,9 @@ export function computeLiquidity(
     warning =
       'Negativer operativer Cashflow — wir empfehlen eine kurzfristige Liquiditätsplanung mit Ihrer Kanzlei.';
   } else if (marginPct !== null && marginPct < 5 && marginTrend === 'down') {
-    warning =
-      'Marge unter 5 % und rückläufig — Frühwarnsignal für Liquiditätsdruck.';
+    warning = 'Marge unter 5 % und rückläufig — Frühwarnsignal für Liquiditätsdruck.';
   } else if (personnelRatioPct !== null && personnelRatioPct > 55 && personnelTrend === 'up') {
-    warning =
-      'Personalkostenquote über 55 % und steigend — Liquiditätspuffer prüfen.';
+    warning = 'Personalkostenquote über 55 % und steigend — Liquiditätspuffer prüfen.';
   }
 
   return {

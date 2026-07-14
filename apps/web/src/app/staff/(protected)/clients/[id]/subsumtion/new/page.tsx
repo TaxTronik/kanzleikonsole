@@ -18,7 +18,10 @@ export default async function NewSubsumtionPage({ params }: { params: Promise<{ 
   return (
     <div className="p-8 max-w-5xl">
       <div className="flex items-center gap-3 mb-6">
-        <Link href={`/staff/clients/${id}/subsumtion`} className="text-disabled hover:text-secondary">
+        <Link
+          href={`/staff/clients/${id}/subsumtion`}
+          className="text-disabled hover:text-secondary"
+        >
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <h1 className="text-2xl font-bold text-primary">Neue Subsumtion</h1>

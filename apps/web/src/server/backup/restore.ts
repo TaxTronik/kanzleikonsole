@@ -7,14 +7,15 @@
 //
 // Aufruf:
 //   pnpm tsx apps/web/src/server/backup/restore.ts --list
-//   pnpm tsx apps/web/src/server/backup/restore.ts --key <s3-key> [--target-url postgres://...]
-//   pnpm tsx apps/web/src/server/backup/restore.ts --latest
+//   pnpm tsx apps/web/src/server/backup/restore.ts --key <s3-key> --target-url postgres://...
+//   pnpm tsx apps/web/src/server/backup/restore.ts --latest --target-url postgres://...
 //   pnpm tsx apps/web/src/server/backup/restore.ts --file <pfad>   (lokale Dump-Datei,
 //     z. B. aus `runner --out-file`; KEINE S3-/BackupRecord-Hash-Verifikation)
 //
 // Sicherheits-Voraussetzungen:
-//   - DATABASE_URL des Restore-Ziels MUSS eine FRISCHE Datenbank sein
-//     (sonst: bestehende Daten werden überschrieben)
+//   - Mutierende Aufrufe verlangen explizit --target-url oder --production-target.
+//     Es gibt keinen stillen DATABASE_URL-Fallback.
+//   - --production-target wird nur vom quieszierten Operator-Wrapper akzeptiert.
 //   - Skript verlangt explizit `--confirm-overwrite`, wenn es Tabellen findet
 //   - pg_restore muss im PATH sein
 // =============================================================================
@@ -23,9 +24,10 @@ import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { PassThrough } from 'node:stream';
+import { pathToFileURL } from 'node:url';
 import { GetObjectCommand, ListObjectsV2Command, S3Client } from '@aws-sdk/client-s3';
 import type { Readable } from 'node:stream';
 import { PrismaClient } from '@taxtronik/db/prisma-client';
@@ -62,34 +64,145 @@ function buildPgConnArgs(dbUrl: string): {
   return { args, env: e };
 }
 
-interface CliArgs {
+export const PRODUCTION_RESTORE_CONFIRMATION = 'RESTORE_TAXTRONIK_PRODUCTION_DATABASE';
+
+export interface CliArgs {
   list: boolean;
   latest: boolean;
   key?: string;
   file?: string;
   targetUrl?: string;
+  productionTarget: boolean;
+  productionConfirmation?: string;
+  releaseVersion?: string;
   confirmOverwrite: boolean;
   smokeTest: boolean;
 }
 
-function parseArgs(): CliArgs {
-  const argv = process.argv.slice(2);
+function requiredOptionValue(argv: string[], index: number, option: string): string {
+  const value = argv[index + 1];
+  if (!value || value.startsWith('--')) {
+    throw new Error(`${option} erwartet genau einen nicht-leeren Wert.`);
+  }
+  return value;
+}
+
+function assertPostgresTargetUrl(value: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error('--target-url ist keine gueltige URL.');
+  }
+  if (parsed.protocol !== 'postgres:' && parsed.protocol !== 'postgresql:') {
+    throw new Error('--target-url muss mit postgres:// oder postgresql:// beginnen.');
+  }
+}
+
+/**
+ * Strikter, side-effect-freier Parser. Der Operator-Wrapper validiert dieselben
+ * Invarianten vor jedem Containerstart/-stop; diese zweite Schicht schuetzt
+ * direkte CLI-Aufrufe und verhindert, dass unbekannte Optionen still ignoriert
+ * werden.
+ */
+export function parseRestoreArgs(argv: string[]): CliArgs {
   const out: CliArgs = {
     list: false,
     latest: false,
+    productionTarget: false,
     confirmOverwrite: false,
     smokeTest: true,
   };
+  const seen = new Set<string>();
+  const claim = (option: string): void => {
+    if (seen.has(option)) throw new Error(`Option doppelt angegeben: ${option}`);
+    seen.add(option);
+  };
+
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--list') out.list = true;
-    else if (a === '--latest') out.latest = true;
-    else if (a === '--key') out.key = argv[++i];
-    else if (a === '--file') out.file = argv[++i];
-    else if (a === '--target-url') out.targetUrl = argv[++i];
-    else if (a === '--confirm-overwrite') out.confirmOverwrite = true;
-    else if (a === '--no-smoke-test') out.smokeTest = false;
+    if (a === '--list') {
+      claim(a);
+      out.list = true;
+    } else if (a === '--latest') {
+      claim(a);
+      out.latest = true;
+    } else if (a === '--key') {
+      claim(a);
+      out.key = requiredOptionValue(argv, i, a);
+      i++;
+    } else if (a === '--file') {
+      claim(a);
+      out.file = requiredOptionValue(argv, i, a);
+      i++;
+    } else if (a === '--target-url') {
+      claim(a);
+      out.targetUrl = requiredOptionValue(argv, i, a);
+      assertPostgresTargetUrl(out.targetUrl);
+      i++;
+    } else if (a === '--production-target') {
+      claim(a);
+      out.productionTarget = true;
+    } else if (a === '--confirm-production-restore') {
+      claim(a);
+      out.productionConfirmation = requiredOptionValue(argv, i, a);
+      i++;
+    } else if (a === '--release-version') {
+      claim(a);
+      out.releaseVersion = requiredOptionValue(argv, i, a);
+      i++;
+    } else if (a === '--confirm-overwrite') {
+      claim(a);
+      out.confirmOverwrite = true;
+    } else if (a === '--no-smoke-test') {
+      claim(a);
+      out.smokeTest = false;
+    } else {
+      throw new Error(`Unbekannte Restore-Option: ${a ?? '<leer>'}`);
+    }
   }
+
+  if (out.list) {
+    if (seen.size !== 1) {
+      throw new Error(
+        '--list ist read-only und darf nicht mit weiteren Optionen kombiniert werden.',
+      );
+    }
+    return out;
+  }
+
+  const sourceCount = Number(out.latest) + Number(Boolean(out.key)) + Number(Boolean(out.file));
+  if (sourceCount !== 1) {
+    throw new Error('Genau eine Quelle ist Pflicht: --latest, --key <s3-key> oder --file <pfad>.');
+  }
+
+  const targetCount = Number(Boolean(out.targetUrl)) + Number(out.productionTarget);
+  if (targetCount !== 1) {
+    throw new Error(
+      'Genau ein Ziel ist Pflicht: --target-url <postgres-url> oder --production-target.',
+    );
+  }
+
+  if (out.productionTarget) {
+    if (out.productionConfirmation !== PRODUCTION_RESTORE_CONFIRMATION) {
+      throw new Error(
+        '--production-target erfordert die exakte Bestaetigung ' +
+          `--confirm-production-restore ${PRODUCTION_RESTORE_CONFIRMATION}.`,
+      );
+    }
+    if (!out.releaseVersion || !/^\d+\.\d+\.\d+$/.test(out.releaseVersion)) {
+      throw new Error(
+        '--production-target erfordert --release-version X.Y.Z passend zum wiederhergestellten Backup.',
+      );
+    }
+  } else if (out.productionConfirmation !== undefined) {
+    throw new Error(
+      '--confirm-production-restore ist nur zusammen mit --production-target erlaubt.',
+    );
+  } else if (out.releaseVersion !== undefined) {
+    throw new Error('--release-version ist nur zusammen mit --production-target erlaubt.');
+  }
+
   return out;
 }
 
@@ -183,16 +296,40 @@ async function getExpectedSha(key: string): Promise<string | null> {
   }
 }
 
-async function targetIsEmpty(targetUrl: string): Promise<boolean> {
-  // Ein „leeres" Ziel hat noch keine `_prisma_migrations`-Tabelle.
-  const probe = new PrismaClient({ adapter: createPostgresAdapter(targetUrl) });
+interface TargetProbe {
+  $queryRaw<T>(query: TemplateStringsArray): Promise<T>;
+  $disconnect(): Promise<void>;
+}
+
+type TargetProbeFactory = (targetUrl: string) => TargetProbe;
+
+export async function targetIsEmpty(
+  targetUrl: string,
+  probeFactory: TargetProbeFactory = (url) =>
+    new PrismaClient({ adapter: createPostgresAdapter(url) }) as unknown as TargetProbe,
+): Promise<boolean> {
+  const probe = probeFactory(targetUrl);
   try {
-    const rows = await probe.$queryRaw<{ exists: boolean }[]>`
-      SELECT to_regclass('public._prisma_migrations') IS NOT NULL AS exists
+    // Nicht nur Prisma betrachten: Auch eine fremd/vorher manuell angelegte
+    // Tabelle, View oder Sequenz macht `pg_restore --clean` destruktiv. System-
+    // Schemas und TOAST-Interna sind die einzigen Ausnahmen.
+    const rows = await probe.$queryRaw<{ hasUserObjects: boolean }[]>`
+      SELECT EXISTS (
+        SELECT 1
+          FROM pg_catalog.pg_class AS c
+          JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
+         WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+           AND n.nspname NOT LIKE 'pg_toast%'
+           AND c.relkind IN ('r', 'p', 'v', 'm', 'S', 'f')
+      ) AS "hasUserObjects"
     `;
-    return !rows[0]?.exists;
-  } catch {
-    return true;
+    if (typeof rows[0]?.hasUserObjects !== 'boolean') {
+      throw new Error('Ziel-DB-Leerheitspruefung lieferte kein gueltiges Ergebnis.');
+    }
+    return !rows[0].hasUserObjects;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Ziel-DB-Leerheitspruefung fehlgeschlagen: ${message}`, { cause: error });
   } finally {
     await probe.$disconnect();
   }
@@ -303,7 +440,7 @@ async function smokeTest(targetUrl: string): Promise<void> {
 }
 
 async function main() {
-  const args = parseArgs();
+  const args = parseRestoreArgs(process.argv.slice(2));
 
   if (args.list) {
     const backups = await listBackups();
@@ -320,19 +457,15 @@ async function main() {
     process.exit(0);
   }
 
-  // --file und --key/--latest schließen sich gegenseitig aus: entweder lokale
-  // Datei-Quelle (kein S3, kein Record) ODER S3-Objekt (mit Hash-Verifikation).
-  if (args.file && (args.key || args.latest)) {
-    process.stderr.write(
-      '--file und --key/--latest schließen sich aus. Bitte nur eine Quelle angeben.\n',
+  if (args.productionTarget && process.env['TAXTRONIK_PRODUCTION_RESTORE_QUIESCED'] !== '1') {
+    throw new Error(
+      '--production-target darf nur über `./taxtronik restore` nach verifiziertem Stop von App, Worker und n8n ausgeführt werden.',
     );
-    process.exit(1);
   }
 
   const targetUrl = args.targetUrl ?? process.env['DATABASE_URL'];
   if (!targetUrl) {
-    process.stderr.write(`Kein DATABASE_URL und kein --target-url angegeben.\n`);
-    process.exit(1);
+    throw new Error('DATABASE_URL fehlt für das explizit gewählte --production-target.');
   }
 
   await assertRestoreRolesPresent(targetUrl);
@@ -404,24 +537,16 @@ async function main() {
     cleanup = true;
   }
 
-  const empty = await targetIsEmpty(targetUrl);
-  if (!empty && !args.confirmOverwrite) {
-    if (cleanup) {
-      try {
-        unlinkSync(path);
-      } catch {
-        console.warn('[restore] Temp-Datei konnte nicht gelöscht werden:', path);
-      }
-    }
-    process.stderr.write(
-      'ZIEL-DB IST NICHT LEER. Restore würde bestehende Tabellen droppen+ersetzen.\n' +
-        'Bitte erneut mit --confirm-overwrite aufrufen, wenn das gewollt ist.\n',
-    );
-    process.exit(1);
-  }
-
-  process.stdout.write(`Spiele in DB ein …\n`);
   try {
+    const empty = await targetIsEmpty(targetUrl);
+    if (!empty && !args.confirmOverwrite) {
+      throw new Error(
+        'ZIEL-DB IST NICHT LEER. Restore würde bestehende Tabellen droppen+ersetzen. ' +
+          'Bitte erneut mit --confirm-overwrite aufrufen, wenn das gewollt ist.',
+      );
+    }
+
+    process.stdout.write(`Spiele in DB ein …\n`);
     await runPgRestore(path, targetUrl);
   } finally {
     // Nur heruntergeladene Temp-Dateien löschen — die --file-Quelle gehört dem
@@ -440,15 +565,29 @@ async function main() {
     await smokeTest(targetUrl);
   }
 
-  process.stdout.write(
-    '\nNächste Schritte:\n' +
-      '  1. pnpm verify:chain    (Hash-Chain + Archive prüfen)\n' +
-      '  2. App neu starten      (Caches leeren)\n' +
-      '  3. Manuell anmelden + Smoke-Test der wichtigsten Module\n',
-  );
+  if (args.productionTarget) {
+    process.stdout.write(
+      '\nPRODUKTIONS-RESTORE ABGESCHLOSSEN — App, Worker und n8n bleiben absichtlich gestoppt.\n' +
+        '  1. Audit-Chain, RLS/Rollen und Migrationsstand prüfen.\n' +
+        '  2. Den zum Backup passenden signierten Release-Vertrag aktivieren.\n' +
+        '  3. Erst danach Dienste starten und Login-/Modul-Smoke durchführen.\n',
+    );
+  } else {
+    process.stdout.write(
+      '\nNächste Schritte für das isolierte Ziel:\n' +
+        '  1. pnpm verify:chain    (Hash-Chain + Archive prüfen)\n' +
+        '  2. RLS/Rollen und Migrationsstand gegen den vorgesehenen Release prüfen.\n' +
+        '  3. Manuell anmelden + Smoke-Test der wichtigsten Module\n',
+    );
+  }
 }
 
-main().catch((err) => {
-  process.stderr.write(`Restore fehlgeschlagen: ${(err as Error).message}\n`);
-  process.exit(1);
-});
+const invokedAsCli =
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
+
+if (invokedAsCli) {
+  main().catch((err) => {
+    process.stderr.write(`Restore fehlgeschlagen: ${(err as Error).message}\n`);
+    process.exit(1);
+  });
+}

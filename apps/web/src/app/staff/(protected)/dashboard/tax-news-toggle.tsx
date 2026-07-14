@@ -2,10 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { Bell, BellOff, RefreshCw } from 'lucide-react';
-import {
-  toggleTaxNewsNotifyAction,
-  triggerTaxNewsFetchAction,
-} from './tax-news-actions';
+import { toggleTaxNewsNotifyAction, triggerTaxNewsFetchAction } from './tax-news-actions';
 
 export function TaxNewsToggle({
   enabled,

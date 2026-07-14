@@ -87,11 +87,11 @@ function fmtMaybeDateTime(value: string | null): string {
 }
 
 function address(client: GwgSummaryClient): string {
-  return [
-    client.street,
-    [client.postalCode, client.city].filter(Boolean).join(' '),
-    client.countryIso,
-  ].filter(Boolean).join(', ') || '—';
+  return (
+    [client.street, [client.postalCode, client.city].filter(Boolean).join(' '), client.countryIso]
+      .filter(Boolean)
+      .join(', ') || '—'
+  );
 }
 
 function Field({ label, value }: { label: string; value: string | null | undefined }) {
@@ -131,7 +131,10 @@ export function GwgSubmissionSummary({
 
       {data.invite && (
         <dl className="grid grid-cols-1 md:grid-cols-3 gap-3 rounded-md border border-default bg-gray-50 p-3">
-          <Field label="Eingeladen" value={`${data.invite.inviteName} · ${data.invite.inviteEmail}`} />
+          <Field
+            label="Eingeladen"
+            value={`${data.invite.inviteName} · ${data.invite.inviteEmail}`}
+          />
           <Field label="Gültig bis" value={fmtMaybeDateTime(data.invite.expiresAt)} />
           <Field label="Übermittelt" value={fmtMaybeDateTime(data.invite.submittedAt)} />
         </dl>
@@ -171,7 +174,10 @@ export function GwgSubmissionSummary({
                   <Field label="Geburtsort" value={owner.birthPlace} />
                   <Field label="Staatsangehörigkeit" value={owner.nationality} />
                   <Field label="Wohnadresse" value={owner.residence} />
-                  <Field label="Anteil" value={owner.ownershipPct ? `${owner.ownershipPct} %` : null} />
+                  <Field
+                    label="Anteil"
+                    value={owner.ownershipPct ? `${owner.ownershipPct} %` : null}
+                  />
                   <Field label="Notiz" value={owner.notes} />
                 </dl>
               </div>
@@ -191,7 +197,9 @@ export function GwgSubmissionSummary({
               <li key={doc.id} className="p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <FileCheck className="h-4 w-4 text-green-600" />
-                  <span className="font-medium text-primary">{idTypeLabels[doc.type] ?? doc.type}</span>
+                  <span className="font-medium text-primary">
+                    {idTypeLabels[doc.type] ?? doc.type}
+                  </span>
                   <span className="text-xs text-muted">für {doc.ownerName}</span>
                   {doc.expiryDate && new Date(doc.expiryDate) < new Date() && (
                     <span className="badge-red">abgelaufen</span>
@@ -208,7 +216,10 @@ export function GwgSubmissionSummary({
                   {doc.document && (
                     <div className="flex items-center gap-1">
                       <span className="text-muted truncate">{doc.document.title}</span>
-                      <DocumentPreviewButton documentId={doc.document.id} documentTitle={doc.document.title} />
+                      <DocumentPreviewButton
+                        documentId={doc.document.id}
+                        documentTitle={doc.document.title}
+                      />
                     </div>
                   )}
                 </div>
@@ -220,13 +231,20 @@ export function GwgSubmissionSummary({
 
       {data.uploadedDocuments.length > 0 && (
         <div>
-          <h3 className="text-sm font-semibold text-primary mb-3">Hochgeladene Unterlagen aus der Einladung</h3>
+          <h3 className="text-sm font-semibold text-primary mb-3">
+            Hochgeladene Unterlagen aus der Einladung
+          </h3>
           <ul className="divide-y divide-border-subtle border border-default rounded-md">
             {data.uploadedDocuments.map((doc) => (
-              <li key={doc.id} className="px-4 py-3 flex items-center justify-between gap-3 text-sm">
+              <li
+                key={doc.id}
+                className="px-4 py-3 flex items-center justify-between gap-3 text-sm"
+              >
                 <div className="min-w-0">
                   <p className="font-medium text-primary truncate">{doc.title}</p>
-                  <p className="text-xs text-muted">{doc.createdAt ? fmtDateTimeShort(new Date(doc.createdAt)) : '—'}</p>
+                  <p className="text-xs text-muted">
+                    {doc.createdAt ? fmtDateTimeShort(new Date(doc.createdAt)) : '—'}
+                  </p>
                 </div>
                 <DocumentPreviewButton documentId={doc.id} documentTitle={doc.title} />
               </li>

@@ -2,21 +2,23 @@
 
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
-import {
-  Plus, FileText, Eye, EyeOff, Trash2, Save, X, Pencil, ArrowRight,
-} from 'lucide-react';
-import {
-  saveTaxFilingAction,
-  shareTaxFilingAction,
-  deleteTaxFilingAction,
-} from './actions';
+import { Plus, FileText, Eye, EyeOff, Trash2, Save, X, Pencil, ArrowRight } from 'lucide-react';
+import { saveTaxFilingAction, shareTaxFilingAction, deleteTaxFilingAction } from './actions';
 
 import { fmtDateShort, fmtEUR } from '@/lib/fmt';
 const KIND_KEYS = [
-  'USTA', 'UST_JAHR', 'EST', 'KST', 'GEWST_MESSBESCHEID', 'GEWST',
-  'LSTA', 'FESTSTELLUNG', 'ZERLEGUNG', 'SONSTIGE',
+  'USTA',
+  'UST_JAHR',
+  'EST',
+  'KST',
+  'GEWST_MESSBESCHEID',
+  'GEWST',
+  'LSTA',
+  'FESTSTELLUNG',
+  'ZERLEGUNG',
+  'SONSTIGE',
 ] as const;
-type Kind = typeof KIND_KEYS[number];
+type Kind = (typeof KIND_KEYS)[number];
 
 const KIND_LABELS: Record<Kind, string> = {
   USTA: 'USt-Voranmeldung',
@@ -48,14 +50,7 @@ interface Filing {
   matchedNoticeId: string | null;
 }
 
-
-export function FilingsSection({
-  clientId,
-  filings,
-}: {
-  clientId: string;
-  filings: Filing[];
-}) {
+export function FilingsSection({ clientId, filings }: { clientId: string; filings: Filing[] }) {
   const [editing, setEditing] = useState<Filing | null | 'NEW'>(null);
   const [isPending, start] = useTransition();
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -74,7 +69,12 @@ export function FilingsSection({
   }
 
   function remove(filing: Filing) {
-    if (!confirm(`Erklärung ${(KIND_LABELS[filing.kind as Kind] ?? filing.kind)} ${filing.period} wirklich löschen?`)) return;
+    if (
+      !confirm(
+        `Erklärung ${KIND_LABELS[filing.kind as Kind] ?? filing.kind} ${filing.period} wirklich löschen?`,
+      )
+    )
+      return;
     setBusyId(filing.id);
     start(async () => {
       const r = await deleteTaxFilingAction({ filingId: filing.id, clientId });
@@ -87,11 +87,10 @@ export function FilingsSection({
     <div className="card overflow-hidden mb-6">
       <div className="px-5 py-3 border-b border-default flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-medium text-primary">
-            Steuererklärungen / Vor-Bescheide
-          </h2>
+          <h2 className="text-sm font-medium text-primary">Steuererklärungen / Vor-Bescheide</h2>
           <p className="text-xs text-muted mt-0.5">
-            Was wir in DATEV/Addison übermittelt haben — optional dem Mandant vorab im Portal freigeben.
+            Was wir in DATEV/Addison übermittelt haben — optional dem Mandant vorab im Portal
+            freigeben.
           </p>
         </div>
         {editing === null && (
@@ -123,11 +122,21 @@ export function FilingsSection({
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-50 border-b border-default">
-              <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">Erklärung</th>
-              <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">Eingereicht</th>
-              <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">Erwartet (festges.)</th>
-              <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">Saldo</th>
-              <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">Portal</th>
+              <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">
+                Erklärung
+              </th>
+              <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">
+                Eingereicht
+              </th>
+              <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">
+                Erwartet (festges.)
+              </th>
+              <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">
+                Saldo
+              </th>
+              <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">
+                Portal
+              </th>
               <th></th>
             </tr>
           </thead>
@@ -158,10 +167,18 @@ export function FilingsSection({
                   <td className="px-4 py-3 text-primary font-medium">
                     {fmtEUR(f.expectedAssessed)}
                   </td>
-                  <td className={'px-4 py-3 font-medium ' + (saldo !== null && saldo < 0 ? 'text-red-700' : 'text-emerald-700')}>
+                  <td
+                    className={
+                      'px-4 py-3 font-medium ' +
+                      (saldo !== null && saldo < 0 ? 'text-red-700' : 'text-emerald-700')
+                    }
+                  >
                     {saldo !== null ? fmtEUR(saldo) : '—'}
                     {f.matchedNoticeId && (
-                      <Link href={`/staff/clients/${clientId}/notices`} className="block text-xs text-brand-700 hover:underline mt-1 inline-flex items-center gap-1">
+                      <Link
+                        href={`/staff/clients/${clientId}/notices`}
+                        className="block text-xs text-brand-700 hover:underline mt-1 inline-flex items-center gap-1"
+                      >
                         <ArrowRight className="h-3 w-3" /> Bescheid erfasst
                       </Link>
                     )}
@@ -301,7 +318,9 @@ function FilingForm({
             disabled={!!initial}
           >
             {KIND_KEYS.map((k) => (
-              <option key={k} value={k}>{KIND_LABELS[k]}</option>
+              <option key={k} value={k}>
+                {KIND_LABELS[k]}
+              </option>
             ))}
           </select>
         </div>

@@ -12,7 +12,10 @@ interface Category {
   active: boolean;
 }
 
-interface TemplateOption { slug: string; name: string; }
+interface TemplateOption {
+  slug: string;
+  name: string;
+}
 
 function emptyDraft(): Category {
   return { id: '', name: '', slug: '', emailTemplateSlug: null, active: true };
@@ -30,7 +33,12 @@ export function InvoiceCategoryEditor({
   const [error, setError] = useState<string | null>(null);
 
   function remove(id: string) {
-    if (!confirm('Rechnungstyp wirklich löschen? Bestehende Rechnungen behalten ihren Typ als „— gelöscht —".')) return;
+    if (
+      !confirm(
+        'Rechnungstyp wirklich löschen? Bestehende Rechnungen behalten ihren Typ als „— gelöscht —".',
+      )
+    )
+      return;
     start(async () => {
       const r = await deleteInvoiceCategoryAction({ id });
       if (!r.ok) setError(r.error ?? 'Fehler.');
@@ -48,7 +56,10 @@ export function InvoiceCategoryEditor({
         emailTemplateSlug: editing.emailTemplateSlug ?? '',
         active: editing.active,
       });
-      if (!r.ok) { setError(r.error ?? 'Fehler.'); return; }
+      if (!r.ok) {
+        setError(r.error ?? 'Fehler.');
+        return;
+      }
       setEditing(null);
     });
   }
@@ -134,7 +145,8 @@ export function InvoiceCategoryEditor({
             </div>
             <div>
               <label className="label">
-                Slug <span className="text-xs font-normal text-muted">(optional, sonst aus Name)</span>
+                Slug{' '}
+                <span className="text-xs font-normal text-muted">(optional, sonst aus Name)</span>
               </label>
               <input
                 type="text"
@@ -152,16 +164,20 @@ export function InvoiceCategoryEditor({
             <select
               className="input"
               value={editing.emailTemplateSlug ?? ''}
-              onChange={(e) => setEditing({ ...editing, emailTemplateSlug: e.target.value || null })}
+              onChange={(e) =>
+                setEditing({ ...editing, emailTemplateSlug: e.target.value || null })
+              }
             >
               <option value="">— Standard-Rechnungstemplate —</option>
               {emailTemplates.map((t) => (
-                <option key={t.slug} value={t.slug}>{t.name} ({t.slug})</option>
+                <option key={t.slug} value={t.slug}>
+                  {t.name} ({t.slug})
+                </option>
               ))}
             </select>
             <p className="text-xs text-muted mt-1">
-              Pro Rechnungstyp eine eigene Mail-Vorlage. Ohne Auswahl wird das
-              allgemeine Rechnungs-Template aus den Einstellungen verwendet.
+              Pro Rechnungstyp eine eigene Mail-Vorlage. Ohne Auswahl wird das allgemeine
+              Rechnungs-Template aus den Einstellungen verwendet.
             </p>
           </div>
 
@@ -178,10 +194,19 @@ export function InvoiceCategoryEditor({
           {error && <div className="rounded-md bg-red-50 p-2 text-xs text-red-700">{error}</div>}
 
           <div className="flex items-center gap-2 pt-2">
-            <button type="button" onClick={save} disabled={isPending} className="btn-primary text-sm">
+            <button
+              type="button"
+              onClick={save}
+              disabled={isPending}
+              className="btn-primary text-sm"
+            >
               {isPending ? 'Speichere…' : 'Speichern'}
             </button>
-            <button type="button" onClick={() => setEditing(null)} className="btn-secondary text-sm">
+            <button
+              type="button"
+              onClick={() => setEditing(null)}
+              className="btn-secondary text-sm"
+            >
               Abbrechen
             </button>
           </div>

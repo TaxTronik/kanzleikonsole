@@ -106,7 +106,12 @@ export function RssReaderManage({ feeds }: { feeds: FeedRow[] }) {
                     title={f.active ? 'Deaktivieren' : 'Aktivieren'}
                   />
                   <div className="flex-1 min-w-0">
-                    <p className={'text-sm truncate ' + (f.active ? 'text-primary' : 'text-disabled line-through')}>
+                    <p
+                      className={
+                        'text-sm truncate ' +
+                        (f.active ? 'text-primary' : 'text-disabled line-through')
+                      }
+                    >
                       {f.name}
                     </p>
                     <p className="text-[10px] text-disabled truncate">{f.url}</p>
@@ -138,7 +143,9 @@ export function RssReaderManage({ feeds }: { feeds: FeedRow[] }) {
               />
               <select name="color" className="input text-xs">
                 {COLOR_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
                 ))}
               </select>
             </div>
@@ -152,7 +159,11 @@ export function RssReaderManage({ feeds }: { feeds: FeedRow[] }) {
             />
             {state && !state.ok && <p className="text-[11px] text-red-700">{state.error}</p>}
             <div className="flex justify-end">
-              <button type="submit" disabled={isPending} className="btn-primary text-xs inline-flex items-center gap-1">
+              <button
+                type="submit"
+                disabled={isPending}
+                className="btn-primary text-xs inline-flex items-center gap-1"
+              >
                 <Plus className="h-3 w-3" />
                 {isPending ? 'Lege an…' : 'Hinzufügen'}
               </button>

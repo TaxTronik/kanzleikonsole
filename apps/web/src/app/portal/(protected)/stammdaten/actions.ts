@@ -48,7 +48,9 @@ export async function submitMasterChangeAction(
     return { ok: false, error: (e as Error).message };
   }
 
-  const fieldEntries = Object.entries(parsed.data.fields).filter(([, v]) => v !== undefined && v !== null);
+  const fieldEntries = Object.entries(parsed.data.fields).filter(
+    ([, v]) => v !== undefined && v !== null,
+  );
   if (fieldEntries.length === 0) {
     return { ok: false, error: 'Keine Änderungen.' };
   }

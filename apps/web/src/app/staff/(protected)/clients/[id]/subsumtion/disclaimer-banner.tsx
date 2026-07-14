@@ -8,8 +8,8 @@ export function DisclaimerBanner() {
       <p>
         <strong>Das System lenkt Aufmerksamkeit, es übernimmt keine Subsumtion.</strong>{' '}
         Markierungen sind Hinweise auf definitions- und subsumtionsbedürftige Stellen — keine
-        Rechtsfolgenbestimmung. Die Bewertung schuldet der Berufsträger höchstpersönlich
-        (§§ 33, 57 StBerG).
+        Rechtsfolgenbestimmung. Die Bewertung schuldet der Berufsträger höchstpersönlich (§§ 33, 57
+        StBerG).
       </p>
     </div>
   );

@@ -110,7 +110,9 @@ export function NewRequestForm({ clientId, disabled, templates, formTemplates }:
       )}
 
       <div>
-        <label className="label" htmlFor="title">Titel</label>
+        <label className="label" htmlFor="title">
+          Titel
+        </label>
         <input
           id="title"
           name="title"
@@ -130,7 +132,9 @@ export function NewRequestForm({ clientId, disabled, templates, formTemplates }:
       </div>
 
       <div>
-        <label className="label" htmlFor="description">Beschreibung</label>
+        <label className="label" htmlFor="description">
+          Beschreibung
+        </label>
         <textarea
           id="description"
           name="description"
@@ -151,7 +155,9 @@ export function NewRequestForm({ clientId, disabled, templates, formTemplates }:
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="label" htmlFor="priority">Priorität</label>
+          <label className="label" htmlFor="priority">
+            Priorität
+          </label>
           <select
             id="priority"
             name="priority"
@@ -168,7 +174,9 @@ export function NewRequestForm({ clientId, disabled, templates, formTemplates }:
         </div>
 
         <div>
-          <label className="label" htmlFor="dueAt">Fällig am</label>
+          <label className="label" htmlFor="dueAt">
+            Fällig am
+          </label>
           <input
             id="dueAt"
             name="dueAt"
@@ -191,7 +199,9 @@ export function NewRequestForm({ clientId, disabled, templates, formTemplates }:
         >
           <option value="">— kein Formular —</option>
           {formTemplates.map((f) => (
-            <option key={f.id} value={f.id}>{f.name}</option>
+            <option key={f.id} value={f.id}>
+              {f.name}
+            </option>
           ))}
         </select>
         {formTemplateId && (
@@ -202,9 +212,7 @@ export function NewRequestForm({ clientId, disabled, templates, formTemplates }:
         )}
       </div>
 
-      {state?.error && (
-        <div className="alert-error-sm">{state.error}</div>
-      )}
+      {state?.error && <div className="alert-error-sm">{state.error}</div>}
 
       <button type="submit" className="btn-primary" disabled={isPending || disabled}>
         {isPending ? 'Wird gespeichert…' : 'Anforderung erstellen'}

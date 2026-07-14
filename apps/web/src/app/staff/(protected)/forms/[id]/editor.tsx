@@ -8,8 +8,18 @@ import { SortableList, DragHandle } from '@/components/sortable-list';
 import { fmtTimeMedium } from '@/lib/fmt';
 
 type FieldType =
-  | 'TEXT' | 'TEXTAREA' | 'NUMBER' | 'MONEY' | 'DATE' | 'EMAIL' | 'PHONE'
-  | 'SELECT' | 'MULTISELECT' | 'CHECKBOX' | 'FILE' | 'INFO_TEXT';
+  | 'TEXT'
+  | 'TEXTAREA'
+  | 'NUMBER'
+  | 'MONEY'
+  | 'DATE'
+  | 'EMAIL'
+  | 'PHONE'
+  | 'SELECT'
+  | 'MULTISELECT'
+  | 'CHECKBOX'
+  | 'FILE'
+  | 'INFO_TEXT';
 
 const TYPE_LABELS: Record<FieldType, string> = {
   TEXT: 'Text (einzeilig)',
@@ -92,8 +102,12 @@ export function FormEditor({
   function update(i: number, patch: Partial<FieldDraft>) {
     setFields((s) => s.map((f, idx) => (idx === i ? { ...f, ...patch } : f)));
   }
-  function add() { setFields((s) => [...s, emptyField()]); }
-  function remove(i: number) { setFields((s) => s.filter((_, idx) => idx !== i)); }
+  function add() {
+    setFields((s) => [...s, emptyField()]);
+  }
+  function remove(i: number) {
+    setFields((s) => s.filter((_, idx) => idx !== i));
+  }
   function reorder(from: number, to: number) {
     setFields((s) => {
       const next = [...s];
@@ -140,10 +154,7 @@ export function FormEditor({
           defaultValue: f.defaultValue.trim() || null,
           minValue: f.minValue.trim() || null,
           maxValue: f.maxValue.trim() || null,
-          options:
-            f.type === 'SELECT' || f.type === 'MULTISELECT'
-              ? parseOptions(f.options)
-              : null,
+          options: f.type === 'SELECT' || f.type === 'MULTISELECT' ? parseOptions(f.options) : null,
         })),
       });
       if (!r.ok) {
@@ -159,7 +170,13 @@ export function FormEditor({
       <div className="card p-6 space-y-4">
         <div>
           <label className="label">Beschreibung (intern)</label>
-          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} maxLength={500} className="input" />
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={2}
+            maxLength={500}
+            className="input"
+          />
         </div>
         <div>
           <label className="label">Intro für den Mandanten (Markdown, optional)</label>
@@ -180,117 +197,135 @@ export function FormEditor({
         renderItem={(i, handle) => {
           const f = fields[i]!;
           return (
-          <div className="card p-4">
-            <div className="flex items-start gap-3">
-              <div className="flex flex-col items-center pt-1 gap-1">
-                <span className="w-6 h-6 rounded-full bg-brand-100 text-brand-700 text-xs font-bold flex items-center justify-center">
-                  {i + 1}
-                </span>
-                <DragHandle handle={handle} />
-              </div>
-              <div className="flex-1 space-y-3">
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="col-span-2">
-                    <label className="block text-xs text-muted mb-1">Bezeichnung</label>
-                    <input
-                      type="text"
-                      placeholder={f.type === 'INFO_TEXT' ? 'Hinweistext (wird angezeigt)' : 'z. B. Familienstand'}
-                      value={f.label}
-                      onChange={(e) => update(i, { label: e.target.value })}
-                      maxLength={200}
-                      className="input"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-muted mb-1">Typ</label>
-                    <select value={f.type} onChange={(e) => update(i, { type: e.target.value as FieldType })} className="input">
-                      {Object.entries(TYPE_LABELS).map(([v, l]) => (
-                        <option key={v} value={v}>{l}</option>
-                      ))}
-                    </select>
-                  </div>
+            <div className="card p-4">
+              <div className="flex items-start gap-3">
+                <div className="flex flex-col items-center pt-1 gap-1">
+                  <span className="w-6 h-6 rounded-full bg-brand-100 text-brand-700 text-xs font-bold flex items-center justify-center">
+                    {i + 1}
+                  </span>
+                  <DragHandle handle={handle} />
                 </div>
-                {f.type !== 'INFO_TEXT' && (
+                <div className="flex-1 space-y-3">
                   <div className="grid grid-cols-3 gap-3">
+                    <div className="col-span-2">
+                      <label className="block text-xs text-muted mb-1">Bezeichnung</label>
+                      <input
+                        type="text"
+                        placeholder={
+                          f.type === 'INFO_TEXT'
+                            ? 'Hinweistext (wird angezeigt)'
+                            : 'z. B. Familienstand'
+                        }
+                        value={f.label}
+                        onChange={(e) => update(i, { label: e.target.value })}
+                        maxLength={200}
+                        className="input"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-muted mb-1">Typ</label>
+                      <select
+                        value={f.type}
+                        onChange={(e) => update(i, { type: e.target.value as FieldType })}
+                        className="input"
+                      >
+                        {Object.entries(TYPE_LABELS).map(([v, l]) => (
+                          <option key={v} value={v}>
+                            {l}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  {f.type !== 'INFO_TEXT' && (
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs text-muted mb-1">
+                          Schlüssel <span className="text-disabled font-normal">(autom.)</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={f.key}
+                          onChange={(e) => update(i, { key: e.target.value })}
+                          maxLength={60}
+                          placeholder={slugify(f.label)}
+                          className="input font-mono text-xs"
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-xs text-muted mb-1">Hilfetext</label>
+                        <input
+                          type="text"
+                          value={f.helpText}
+                          onChange={(e) => update(i, { helpText: e.target.value })}
+                          maxLength={300}
+                          className="input text-sm"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {(f.type === 'SELECT' || f.type === 'MULTISELECT') && (
                     <div>
                       <label className="block text-xs text-muted mb-1">
-                        Schlüssel <span className="text-disabled font-normal">(autom.)</span>
+                        Optionen{' '}
+                        <span className="text-disabled font-normal">
+                          (eine pro Zeile, Format „wert" oder „wert=Anzeige")
+                        </span>
                       </label>
-                      <input
-                        type="text"
-                        value={f.key}
-                        onChange={(e) => update(i, { key: e.target.value })}
-                        maxLength={60}
-                        placeholder={slugify(f.label)}
-                        className="input font-mono text-xs"
+                      <textarea
+                        value={f.options}
+                        onChange={(e) => update(i, { options: e.target.value })}
+                        rows={4}
+                        maxLength={2000}
+                        placeholder={'verheiratet=Verheiratet\nledig=Ledig\ngeschieden=Geschieden'}
+                        className="input font-mono text-sm"
                       />
                     </div>
-                    <div className="col-span-2">
-                      <label className="block text-xs text-muted mb-1">Hilfetext</label>
-                      <input
-                        type="text"
-                        value={f.helpText}
-                        onChange={(e) => update(i, { helpText: e.target.value })}
-                        maxLength={300}
-                        className="input text-sm"
-                      />
+                  )}
+                  {(f.type === 'NUMBER' || f.type === 'MONEY' || f.type === 'DATE') && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-muted mb-1">Min</label>
+                        <input
+                          type="text"
+                          value={f.minValue}
+                          onChange={(e) => update(i, { minValue: e.target.value })}
+                          className="input"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-muted mb-1">Max</label>
+                        <input
+                          type="text"
+                          value={f.maxValue}
+                          onChange={(e) => update(i, { maxValue: e.target.value })}
+                          className="input"
+                        />
+                      </div>
                     </div>
-                  </div>
-                )}
-                {(f.type === 'SELECT' || f.type === 'MULTISELECT') && (
-                  <div>
-                    <label className="block text-xs text-muted mb-1">
-                      Optionen <span className="text-disabled font-normal">(eine pro Zeile, Format „wert" oder „wert=Anzeige")</span>
+                  )}
+                  {f.type !== 'INFO_TEXT' && (
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={f.required}
+                        onChange={(e) => update(i, { required: e.target.checked })}
+                        className="rounded border-strong text-brand-600"
+                      />
+                      <span>Pflichtfeld</span>
                     </label>
-                    <textarea
-                      value={f.options}
-                      onChange={(e) => update(i, { options: e.target.value })}
-                      rows={4}
-                      maxLength={2000}
-                      placeholder={'verheiratet=Verheiratet\nledig=Ledig\ngeschieden=Geschieden'}
-                      className="input font-mono text-sm"
-                    />
-                  </div>
-                )}
-                {(f.type === 'NUMBER' || f.type === 'MONEY' || f.type === 'DATE') && (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs text-muted mb-1">Min</label>
-                      <input
-                        type="text"
-                        value={f.minValue}
-                        onChange={(e) => update(i, { minValue: e.target.value })}
-                        className="input"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-muted mb-1">Max</label>
-                      <input
-                        type="text"
-                        value={f.maxValue}
-                        onChange={(e) => update(i, { maxValue: e.target.value })}
-                        className="input"
-                      />
-                    </div>
-                  </div>
-                )}
-                {f.type !== 'INFO_TEXT' && (
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={f.required}
-                      onChange={(e) => update(i, { required: e.target.checked })}
-                      className="rounded border-strong text-brand-600"
-                    />
-                    <span>Pflichtfeld</span>
-                  </label>
-                )}
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => remove(i)}
+                  className="text-disabled hover:text-red-700 p-1"
+                  title="Feld entfernen"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
               </div>
-              <button type="button" onClick={() => remove(i)} className="text-disabled hover:text-red-700 p-1" title="Feld entfernen">
-                <Trash2 className="h-4 w-4" />
-              </button>
             </div>
-          </div>
           );
         }}
       />

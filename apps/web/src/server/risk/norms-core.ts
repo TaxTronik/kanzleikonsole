@@ -67,7 +67,13 @@ export function readNormRefs(raw: unknown, normAnker: string[]): CuratedNormRef[
   return normAnker
     .map((z) => s(z))
     .filter((z): z is string => z != null)
-    .map((zitat) => ({ zitat, id: null, titel: null, quelle: 'ENGINE' as const, verworfen: false }));
+    .map((zitat) => ({
+      zitat,
+      id: null,
+      titel: null,
+      quelle: 'ENGINE' as const,
+      verworfen: false,
+    }));
 }
 
 /** Effektive (nicht verworfene) Zitatliste — dedupliziert, Reihenfolge erhalten. */
@@ -95,7 +101,10 @@ export function applyAddBerater(
   if (refs.some((r) => !r.verworfen && r.zitat === zitat)) {
     throw new InvalidNormError('Diese Norm ist bereits hinterlegt.');
   }
-  return [...refs, { zitat, id: s(input.id), titel: s(input.titel), quelle: 'BERATER', verworfen: false }];
+  return [
+    ...refs,
+    { zitat, id: s(input.id), titel: s(input.titel), quelle: 'BERATER', verworfen: false },
+  ];
 }
 
 function assertTarget(refs: CuratedNormRef[], t: NormTarget): CuratedNormRef {
@@ -105,7 +114,11 @@ function assertTarget(refs: CuratedNormRef[], t: NormTarget): CuratedNormRef {
 }
 
 /** Setzt das Verwerfen-Flag eines Eintrags (Engine-Vorschlag verwerfen/zurückholen). */
-export function applyVerworfen(refs: CuratedNormRef[], t: NormTarget, verworfen: boolean): CuratedNormRef[] {
+export function applyVerworfen(
+  refs: CuratedNormRef[],
+  t: NormTarget,
+  verworfen: boolean,
+): CuratedNormRef[] {
   assertTarget(refs, t);
   return refs.map((r, i) => (i === t.index ? { ...r, verworfen } : r));
 }

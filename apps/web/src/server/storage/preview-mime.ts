@@ -51,7 +51,10 @@ const MIME_TO_EXT: Readonly<Record<string, string>> = {
   'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
 };
 
-function normalizedMimeType(mimeType: string | null | undefined, fileName?: string | null): string | null {
+function normalizedMimeType(
+  mimeType: string | null | undefined,
+  fileName?: string | null,
+): string | null {
   const normalized = mimeType?.split(';')[0]?.trim().toLowerCase() || null;
   if (
     normalized === 'application/pdf' ||
@@ -63,7 +66,9 @@ function normalizedMimeType(mimeType: string | null | undefined, fileName?: stri
     return 'application/pdf';
   }
   if (
-    (normalized === null || normalized === 'application/octet-stream' || normalized === 'binary/octet-stream') &&
+    (normalized === null ||
+      normalized === 'application/octet-stream' ||
+      normalized === 'binary/octet-stream') &&
     fileName?.trim().toLowerCase().endsWith('.pdf')
   ) {
     return 'application/pdf';
@@ -85,7 +90,10 @@ export function filenameWithExtension(name: string, mimeType: string | null | un
   return `${base}.${ext}`;
 }
 
-export function isInlineSafeMime(mimeType: string | null | undefined, fileName?: string | null): boolean {
+export function isInlineSafeMime(
+  mimeType: string | null | undefined,
+  fileName?: string | null,
+): boolean {
   const normalized = normalizedMimeType(mimeType, fileName);
   if (!normalized) return false;
   return INLINE_MIME_WHITELIST.has(normalized);
@@ -133,7 +141,9 @@ export function previewDisposition(mimeType: string, fileName: string): string {
  */
 export function previewContentType(mimeType: string, fileName?: string | null): string {
   const normalized = normalizedMimeType(mimeType, fileName);
-  return normalized && isInlineSafeMime(normalized, fileName) ? normalized : 'application/octet-stream';
+  return normalized && isInlineSafeMime(normalized, fileName)
+    ? normalized
+    : 'application/octet-stream';
 }
 
 /**
@@ -148,7 +158,10 @@ export function previewContentType(mimeType: string, fileName?: string | null): 
  * Browser-Viewer, den `sandbox` in Chromium blockieren kann; Bilder sind
  * magic-byte-validiert und führen nichts aus.
  */
-export function previewSecurityHeaders(mimeType: string, fileName?: string | null): Record<string, string> {
+export function previewSecurityHeaders(
+  mimeType: string,
+  fileName?: string | null,
+): Record<string, string> {
   const normalized = normalizedMimeType(mimeType, fileName);
   if (normalized === 'text/plain') {
     return { 'content-security-policy': 'sandbox' };

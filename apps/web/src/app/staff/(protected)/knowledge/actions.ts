@@ -8,7 +8,12 @@ import { revalidatePath } from 'next/cache';
 import { Prisma } from '@taxtronik/db/prisma-client';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
-import { staffActionGuard, withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
+import {
+  staffActionGuard,
+  withStaff,
+  ActionError,
+  type ActionResult as BaseActionResult,
+} from '@/server/actions/staff-action';
 
 export type ActionResult = BaseActionResult;
 
@@ -246,9 +251,7 @@ function sanitizeSearchSnippet(raw: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
-  return escaped
-    .replace(/&lt;mark&gt;/g, '<mark>')
-    .replace(/&lt;\/mark&gt;/g, '</mark>');
+  return escaped.replace(/&lt;mark&gt;/g, '<mark>').replace(/&lt;\/mark&gt;/g, '</mark>');
 }
 
 /**
@@ -263,7 +266,14 @@ export async function searchArticles(query: string): Promise<SearchHit[]> {
 
   return withTenantContext(g.ctx, async (tx) => {
     const rows = await tx.$queryRaw<
-      Array<{ id: string; title: string; slug: string; snippet: string; rank: number; category_name: string | null }>
+      Array<{
+        id: string;
+        title: string;
+        slug: string;
+        snippet: string;
+        rank: number;
+        category_name: string | null;
+      }>
     >`
       SELECT
         a.id,

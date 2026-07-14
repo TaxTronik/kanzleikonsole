@@ -35,7 +35,7 @@ Vollständige Architektur: [docs/architecture.md](docs/architecture.md)
 Voraussetzungen:
 
 - Docker Desktop oder Docker Engine
-- Node.js >= 22.13
+- Node.js 24 LTS (`>=24.11.0 <25`)
 - Corepack/pnpm 11: `corepack enable`
 
 Einmaliges Setup:
@@ -149,6 +149,12 @@ Im Normalfall danach:
 ./taxtronik doctor      # .env prüfen (--fix generiert fehlende Secrets)
 ./taxtronik rollback    # zurück auf den vorherigen Stand (keine Migration)
 ```
+
+Mutierende Restores haben bewusst keinen impliziten `DATABASE_URL`-Fallback.
+Ein In-place-Produktionsrestore ist nur über den expliziten
+`--production-target`-Pfad im DR-Runbook möglich; dieser stoppt App, Worker und
+n8n und lässt sie bis zur Prüfung des über `--release-version` gebundenen
+Release-Vertrags gestoppt.
 
 Releases entstehen über **annotierte**, geschützte SemVer-Tags (`v1.4.0`). Der
 Forgejo-Workflow führt für exakt den Tag-Commit im selben Release-DAG die
@@ -363,3 +369,8 @@ Sicherheitslücken vertraulich melden: siehe [SECURITY.md](SECURITY.md).
 
 Vor Produktivstart sollte ein externer Penetrationstest und ein Restore-Test
 aus einem echten Backup erfolgen.
+
+## Lizenz
+
+Der Projektquellcode steht unter der GNU Affero General Public License,
+Version 3. Der vollständige Lizenztext liegt in [LICENSE](LICENSE).

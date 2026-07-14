@@ -34,10 +34,7 @@ export async function GET(req: NextRequest) {
   // Per-User-Rate-Limit (Defense in Depth gegen Scraping/DB-Last).
   const rl = await checkStaffSearchLimit(session.user.staffId);
   if (!rl.ok) {
-    return NextResponse.json(
-      { error: 'rate_limited', retryAfter: rl.retryAfter },
-      { status: 429 },
-    );
+    return NextResponse.json({ error: 'rate_limited', retryAfter: rl.retryAfter }, { status: 429 });
   }
 
   const parsed = QuerySchema.safeParse({ q: req.nextUrl.searchParams.get('q') });
@@ -97,7 +94,12 @@ export async function GET(req: NextRequest) {
             // clientId = null (Kanzlei-Dokumente) bleibt sichtbar.
             ...(denied.length ? { OR: [{ clientId: null }, { clientId: { notIn: denied } }] } : {}),
           },
-          select: { id: true, title: true, classification: true, client: { select: { name: true } } },
+          select: {
+            id: true,
+            title: true,
+            classification: true,
+            client: { select: { name: true } },
+          },
           take: 5,
           orderBy: { createdAt: 'desc' },
         }),

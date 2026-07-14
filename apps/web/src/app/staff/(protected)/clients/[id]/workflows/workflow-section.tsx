@@ -12,7 +12,11 @@ import { CheckCircle2 } from 'lucide-react';
 import { WorkflowItemRow } from './item-row';
 import { CancelWorkflowButton } from './cancel-button';
 import { DeleteWorkflowButton } from './delete-button';
-import { PauseWorkflowButton, ResumeWorkflowButton, RestoreWorkflowButton } from './pause-restore-buttons';
+import {
+  PauseWorkflowButton,
+  ResumeWorkflowButton,
+  RestoreWorkflowButton,
+} from './pause-restore-buttons';
 import { AddStepForm } from './add-step-form';
 import { TeamEditorButton } from './team-editor';
 import { fmtDateShort } from '@/lib/fmt';
@@ -61,7 +65,10 @@ export function WorkflowSection({
             }
             const team = staffList.filter((s) => involvedIds.has(s.id));
             return (
-              <div key={inst.id} className={`card overflow-hidden ${inst.status === 'PAUSED' ? 'opacity-80' : ''}`}>
+              <div
+                key={inst.id}
+                className={`card overflow-hidden ${inst.status === 'PAUSED' ? 'opacity-80' : ''}`}
+              >
                 <div className="px-6 py-4 border-b border-default flex items-center justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -81,9 +88,16 @@ export function WorkflowSection({
                       gestartet am {fmtDateShort(inst.startedAt)} · {doneCount}/{total} erledigt
                     </p>
                     <div className="mt-1.5 flex items-center gap-1 flex-wrap">
-                      <span className="text-[10px] uppercase tracking-wide text-disabled mr-1">Team:</span>
+                      <span className="text-[10px] uppercase tracking-wide text-disabled mr-1">
+                        Team:
+                      </span>
                       {team.map((s) => {
-                        const initials = s.fullName.split(/\s+/).slice(0, 2).map((p) => p[0]).join('').toUpperCase();
+                        const initials = s.fullName
+                          .split(/\s+/)
+                          .slice(0, 2)
+                          .map((p) => p[0])
+                          .join('')
+                          .toUpperCase();
                         return (
                           <span
                             key={s.id}
@@ -108,13 +122,21 @@ export function WorkflowSection({
                     {inst.status === 'ACTIVE' && (
                       <>
                         <PauseWorkflowButton instanceId={inst.id} instanceName={inst.name} />
-                        <CancelWorkflowButton instanceId={inst.id} instanceName={inst.name} variant="full" />
+                        <CancelWorkflowButton
+                          instanceId={inst.id}
+                          instanceName={inst.name}
+                          variant="full"
+                        />
                       </>
                     )}
                     {inst.status === 'PAUSED' && (
                       <>
                         <ResumeWorkflowButton instanceId={inst.id} />
-                        <CancelWorkflowButton instanceId={inst.id} instanceName={inst.name} variant="full" />
+                        <CancelWorkflowButton
+                          instanceId={inst.id}
+                          instanceName={inst.name}
+                          variant="full"
+                        />
                       </>
                     )}
                   </div>
@@ -171,7 +193,8 @@ export function WorkflowSection({
         <details className="card overflow-hidden">
           <summary className="px-6 py-4 border-b border-default cursor-pointer text-sm text-secondary flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-            {done.length} abgeschlossene{done.length === 1 ? 'r' : ''} / abgebrochene Workflow{done.length === 1 ? '' : 's'} — Archiv
+            {done.length} abgeschlossene{done.length === 1 ? 'r' : ''} / abgebrochene Workflow
+            {done.length === 1 ? '' : 's'} — Archiv
           </summary>
           <ul className="divide-y divide-border-subtle">
             {done.map((inst) => {
@@ -179,7 +202,10 @@ export function WorkflowSection({
               const doneI = inst.items.filter((it) => it.doneAt).length;
               const cancelled = inst.status === 'CANCELLED';
               return (
-                <li key={inst.id} className="flex items-center justify-between gap-3 px-6 py-3 hover:bg-gray-50">
+                <li
+                  key={inst.id}
+                  className="flex items-center justify-between gap-3 px-6 py-3 hover:bg-gray-50"
+                >
                   <Link
                     href={`/staff/clients/${clientId}/workflows/${inst.id}`}
                     className="flex-1 min-w-0 -my-3 py-3"

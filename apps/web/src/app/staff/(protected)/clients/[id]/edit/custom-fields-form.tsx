@@ -4,8 +4,7 @@ import { useState, useTransition, type ReactNode } from 'react';
 import { saveCustomFieldValuesAction } from '../../../admin/custom-fields/actions';
 import { fmtTimeMedium } from '@/lib/fmt';
 
-type FieldType =
-  | 'TEXT' | 'TEXTAREA' | 'NUMBER' | 'MONEY' | 'DATE' | 'SELECT' | 'CHECKBOX' | 'URL';
+type FieldType = 'TEXT' | 'TEXTAREA' | 'NUMBER' | 'MONEY' | 'DATE' | 'SELECT' | 'CHECKBOX' | 'URL';
 
 interface FieldDef {
   id: string;
@@ -133,14 +132,12 @@ function renderInput(d: FieldDef, v: Value, set: (v: Value) => void): ReactNode 
       );
     case 'SELECT':
       return (
-        <select
-          value={(v as string) ?? ''}
-          onChange={(e) => set(e.target.value)}
-          className="input"
-        >
+        <select value={(v as string) ?? ''} onChange={(e) => set(e.target.value)} className="input">
           <option value="">— bitte wählen —</option>
           {(d.options ?? []).map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
           ))}
         </select>
       );

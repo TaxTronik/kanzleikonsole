@@ -38,7 +38,10 @@ test.describe('Rate-Limit', () => {
     await expect(page.getByText(/Zu viele Anfragen/i)).toBeVisible({ timeout: 10_000 });
 
     // Verify no success message is shown concurrently
-    const successVisible = await page.getByText(/Login-Link verschickt/i).isVisible().catch(() => false);
+    const successVisible = await page
+      .getByText(/Login-Link verschickt/i)
+      .isVisible()
+      .catch(() => false);
     expect(successVisible).toBe(false);
   });
 });

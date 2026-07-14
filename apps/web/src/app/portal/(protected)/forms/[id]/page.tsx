@@ -10,7 +10,11 @@ import { withTenantContext } from '@taxtronik/db';
 import { renderSafeMarkdown } from '@/server/markdown';
 import { PortalFormFiller } from './filler';
 
-export default async function PortalFormFillerPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function PortalFormFillerPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const session = await portalAuth();
   if (!session?.user) redirect('/portal/login');
   const { id } = await params;

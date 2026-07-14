@@ -22,7 +22,11 @@ const createClientSchema = z
     countryIso: z.string().length(2).optional().or(z.literal('')),
     vatId: z.string().max(50).optional().or(z.literal('')),
     // 13-stelliges ELSTER-Bundesformat (konsistent zur Edit-Action/@taxtronik/elster).
-    steuernummer: z.string().regex(/^[0-9]{13}$/, 'Steuernummer: 13 Ziffern (ELSTER-Format).').optional().or(z.literal('')),
+    steuernummer: z
+      .string()
+      .regex(/^[0-9]{13}$/, 'Steuernummer: 13 Ziffern (ELSTER-Format).')
+      .optional()
+      .or(z.literal('')),
     invoiceEmail: z.string().email().max(255).optional().or(z.literal('')),
     berufstraegerIds: z.array(z.string().uuid()).min(1, 'Mindestens ein Berufsträger ist Pflicht.'),
     hauptbearbeiterIds: z.array(z.string().uuid()),
@@ -32,10 +36,18 @@ const createClientSchema = z
     const iso = (d.countryIso || 'DE').toUpperCase();
     if (iso === 'DE') {
       if (d.postalCode && !/^\d{5}$/.test(d.postalCode)) {
-        ctx.addIssue({ code: 'custom', path: ['postalCode'], message: 'PLZ (DE): genau 5 Ziffern.' });
+        ctx.addIssue({
+          code: 'custom',
+          path: ['postalCode'],
+          message: 'PLZ (DE): genau 5 Ziffern.',
+        });
       }
       if (d.vatId && !/^DE\d{9}$/.test(d.vatId)) {
-        ctx.addIssue({ code: 'custom', path: ['vatId'], message: 'USt-IdNr (DE): Format DE + 9 Ziffern.' });
+        ctx.addIssue({
+          code: 'custom',
+          path: ['vatId'],
+          message: 'USt-IdNr (DE): Format DE + 9 Ziffern.',
+        });
       }
     }
   });
@@ -103,8 +115,12 @@ export async function createClientAction(formData: FormData) {
           where: {
             tenantId,
             OR: [
-              ...(postalCode ? [{ name: { equals: name, mode: 'insensitive' as const }, postalCode }] : []),
-              ...(invoiceEmail ? [{ invoiceEmail: { equals: invoiceEmail, mode: 'insensitive' as const } }] : []),
+              ...(postalCode
+                ? [{ name: { equals: name, mode: 'insensitive' as const }, postalCode }]
+                : []),
+              ...(invoiceEmail
+                ? [{ invoiceEmail: { equals: invoiceEmail, mode: 'insensitive' as const } }]
+                : []),
             ],
           },
           select: { name: true },

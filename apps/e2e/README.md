@@ -58,12 +58,12 @@ Wenn nicht gesetzt, muss lokal `DEV_SKIP_TOTP=true` aktiv sein.
 
 ## Konfiguration via ENV
 
-| Variable | Default |
-|---|---|
-| `E2E_BASE_URL` | `http://localhost:3000` |
-| `E2E_ADMIN_EMAIL` | `admin@taxtronik.local` |
-| `E2E_ADMIN_PASSWORD` | `dev-password-123` |
-| `E2E_TOTP_SECRET` | (leer, wenn `DEV_SKIP_TOTP=true`; sonst erforderlich) |
+| Variable             | Default                                               |
+| -------------------- | ----------------------------------------------------- |
+| `E2E_BASE_URL`       | `http://localhost:3000`                               |
+| `E2E_ADMIN_EMAIL`    | `admin@taxtronik.local`                               |
+| `E2E_ADMIN_PASSWORD` | `dev-password-123`                                    |
+| `E2E_TOTP_SECRET`    | (leer, wenn `DEV_SKIP_TOTP=true`; sonst erforderlich) |
 
 ## CI-Guard
 

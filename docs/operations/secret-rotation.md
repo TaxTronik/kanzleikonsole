@@ -23,20 +23,21 @@ Dieses Runbook beschreibt die Rotation produktiver Geheimnisse. Für
 
 ## Secret-Matrix
 
-| Secret                                                    | Zweck                                        | Rotation                       | Auswirkung                                       |
-| --------------------------------------------------------- | -------------------------------------------- | ------------------------------ | ------------------------------------------------ |
-| `AUTH_SECRET`                                             | Session-Signing, secret-box, TOTP-Encryption | nur nach Auth-Runbook          | Sessions ungültig, Tenant-Secrets/TOTP betroffen |
-| `POSTGRES_PASSWORD`                                       | DB-Owner/Migrationen                         | Wartungsfenster                | App-Owner-Tools, Migrationen                     |
-| `TAXTRONIK_APP_PASSWORD`                                  | App-DB-Rolle mit RLS                         | Wartungsfenster                | App/Worker DB-Zugriff                            |
-| `S3_ACCESS_KEY` / `S3_SECRET_KEY`                         | SeaweedFS S3                                 | Wartungsfenster                | Uploads, Backups, Restore                        |
-| `N8N_HMAC_SECRET`                                         | App↔n8n Webhook-Signaturen                   | koordiniert App+n8n            | Webhooks schlagen sonst fehl                     |
-| `N8N_ENCRYPTION_KEY`                                      | n8n Credential-Store                         | nur mit n8n-Backup             | n8n kann Credentials verlieren                   |
-| `N8N_DB_PASSWORD`                                         | n8n Postgres-Rolle                           | Wartungsfenster                | n8n startet sonst nicht                          |
-| `SMTP_PASSWORD`                                           | SMTP-Relay                                   | laufend möglich                | Mailversand                                      |
-| `RISK_LAYER_TOKEN`                                        | App↔Risk-Layer Bearer Auth                   | koordiniert App+Engine         | Subsumtion/Risk-Layer inaktiv                    |
-| `BACKUP_OFFSITE_ACCESS_KEY` / `BACKUP_OFFSITE_SECRET_KEY` | getrenntes Offsite-S3                        | mit überlappenden Zugangsdaten | Full-Backup-Upload und Receipt-Prüfung           |
-| Backup-Manifest Private Key                               | Ed25519-Signatur des Full-Backups            | geplante Key-Zeremonie         | alte Public Keys für Altbackups nötig            |
-| Update-Manifest Private Key                               | Release-Manifest-Signatur                    | Vendor-Prozess                 | Update-Check fail-closed                         |
+| Secret                                                    | Zweck                             | Rotation                       | Auswirkung                             |
+| --------------------------------------------------------- | --------------------------------- | ------------------------------ | -------------------------------------- |
+| `AUTH_SECRET`                                             | Session-Signing, TOTP-Encryption  | nur nach Auth-Runbook          | Sessions ungültig, TOTP betroffen      |
+| `SECRET_BOX_KEY`                                          | Tenant-/Integrations-Secrets      | nur mit Re-Wrap                | gespeicherte Secrets sonst unlesbar    |
+| `POSTGRES_PASSWORD`                                       | DB-Owner/Migrationen              | Wartungsfenster                | App-Owner-Tools, Migrationen           |
+| `TAXTRONIK_APP_PASSWORD`                                  | App-DB-Rolle mit RLS              | Wartungsfenster                | App/Worker DB-Zugriff                  |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY`                         | SeaweedFS S3                      | Wartungsfenster                | Uploads, Backups, Restore              |
+| `N8N_HMAC_SECRET`                                         | App↔n8n Webhook-Signaturen        | koordiniert App+n8n            | Webhooks schlagen sonst fehl           |
+| `N8N_ENCRYPTION_KEY`                                      | n8n Credential-Store              | nur mit n8n-Backup             | n8n kann Credentials verlieren         |
+| `N8N_DB_PASSWORD`                                         | n8n Postgres-Rolle                | Wartungsfenster                | n8n startet sonst nicht                |
+| `SMTP_PASSWORD`                                           | SMTP-Relay                        | laufend möglich                | Mailversand                            |
+| `RISK_LAYER_TOKEN`                                        | App↔Risk-Layer Bearer Auth        | koordiniert App+Engine         | Subsumtion/Risk-Layer inaktiv          |
+| `BACKUP_OFFSITE_ACCESS_KEY` / `BACKUP_OFFSITE_SECRET_KEY` | getrenntes Offsite-S3             | mit überlappenden Zugangsdaten | Full-Backup-Upload und Receipt-Prüfung |
+| Backup-Manifest Private Key                               | Ed25519-Signatur des Full-Backups | geplante Key-Zeremonie         | alte Public Keys für Altbackups nötig  |
+| Update-Manifest Private Key                               | Release-Manifest-Signatur         | Vendor-Prozess                 | Update-Check fail-closed               |
 
 ## Standardablauf
 
@@ -169,10 +170,18 @@ Drill.
 
 ## AUTH_SECRET
 
-`AUTH_SECRET` ist kein normales Rotationsthema. Es schützt Sessions, TOTP-Seeds
-und secret-box-Werte. Das Verfahren steht in
+`AUTH_SECRET` ist kein normales Rotationsthema. Es schützt Sessions und
+TOTP-Seeds. Secret-box-Werte nutzen bei Neuinstallationen den getrennten
+`SECRET_BOX_KEY`; Legacy-Installationen ohne diesen Wert fallen weiterhin auf
+`AUTH_SECRET` zurück. Das Verfahren steht in
 [`../compliance/auth-secret-rotation.md`](../compliance/auth-secret-rotation.md)
 und verlangt ein eigenes Wartungsfenster.
+
+`SECRET_BOX_KEY` nie durch bloßes Ändern der `.env` rotieren. Alle damit
+verschlüsselten Werte müssen in einem Wartungsfenster mit dem alten Schlüssel
+entschlüsselt und atomisch mit dem neuen rewrapped werden. Fehlt der Wert in
+einer bestehenden Installation, gilt das erstmalige Setzen ebenfalls als
+Rotation vom Legacy-Fallback (`AUTH_SECRET`) auf den neuen Schlüssel.
 
 ## Rollback
 

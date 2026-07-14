@@ -8,7 +8,9 @@ test.describe('Search + Reports', () => {
     await search.click();
     await search.fill('Mustermann');
     // Treffer im Dropdown sollte erscheinen
-    await expect(page.getByRole('button').filter({ hasText: 'Mustermann GmbH' }).first()).toBeVisible({ timeout: 5_000 });
+    await expect(
+      page.getByRole('button').filter({ hasText: 'Mustermann GmbH' }).first(),
+    ).toBeVisible({ timeout: 5_000 });
   });
 
   test('Globale Suche findet Test-Anforderung', async ({ page }) => {
@@ -25,7 +27,9 @@ test.describe('Search + Reports', () => {
     await expect(page.getByRole('heading', { name: /Auswertungen/i })).toBeVisible();
     // Demo-Seed enthält nicht zwingend alle KPIs — prüfe nur, dass
     // mindestens eine KPI-Kachel vorhanden ist.
-    const kpi = page.locator('text=/Antwortrate|Avg\\. Antwortzeit|Umsatz YTD|Ø Bearbeitungszeit/i').first();
+    const kpi = page
+      .locator('text=/Antwortrate|Avg\\. Antwortzeit|Umsatz YTD|Ø Bearbeitungszeit/i')
+      .first();
     await expect(kpi).toBeVisible();
   });
 

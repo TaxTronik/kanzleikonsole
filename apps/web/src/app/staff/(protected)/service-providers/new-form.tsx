@@ -27,12 +27,16 @@ export function NewProviderForm() {
   return (
     <form ref={formRef} action={formAction} className="space-y-3">
       <div>
-        <label className="label" htmlFor="sp-name">Name</label>
+        <label className="label" htmlFor="sp-name">
+          Name
+        </label>
         <input id="sp-name" name="name" type="text" className="input" required maxLength={200} />
       </div>
 
       <div>
-        <label className="label" htmlFor="sp-category">Kategorie</label>
+        <label className="label" htmlFor="sp-category">
+          Kategorie
+        </label>
         <input
           id="sp-category"
           name="category"
@@ -42,22 +46,36 @@ export function NewProviderForm() {
           maxLength={100}
         />
         <datalist id="categories">
-          {categories.map((c) => <option key={c} value={c} />)}
+          {categories.map((c) => (
+            <option key={c} value={c} />
+          ))}
         </datalist>
       </div>
 
       <div>
-        <label className="label" htmlFor="sp-contactEmail">Kontakt-E-Mail</label>
-        <input id="sp-contactEmail" name="contactEmail" type="email" className="input" maxLength={255} />
+        <label className="label" htmlFor="sp-contactEmail">
+          Kontakt-E-Mail
+        </label>
+        <input
+          id="sp-contactEmail"
+          name="contactEmail"
+          type="email"
+          className="input"
+          maxLength={255}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="label" htmlFor="sp-from">Vertrag seit</label>
+          <label className="label" htmlFor="sp-from">
+            Vertrag seit
+          </label>
           <input id="sp-from" name="contractFromDate" type="date" className="input" />
         </div>
         <div>
-          <label className="label" htmlFor="sp-to">bis</label>
+          <label className="label" htmlFor="sp-to">
+            bis
+          </label>
           <input id="sp-to" name="contractToDate" type="date" className="input" />
         </div>
       </div>
@@ -68,18 +86,14 @@ export function NewProviderForm() {
       </label>
 
       <div>
-        <label className="label" htmlFor="sp-notes">Notizen</label>
+        <label className="label" htmlFor="sp-notes">
+          Notizen
+        </label>
         <textarea id="sp-notes" name="notes" rows={3} className="input" maxLength={5000} />
       </div>
 
-      {state?.error && (
-        <div className="alert-error-sm">{state.error}</div>
-      )}
-      {state?.ok && (
-        <div className="alert-success-sm">
-          Dienstleister angelegt.
-        </div>
-      )}
+      {state?.error && <div className="alert-error-sm">{state.error}</div>}
+      {state?.ok && <div className="alert-success-sm">Dienstleister angelegt.</div>}
 
       <button type="submit" className="btn-primary w-full" disabled={isPending}>
         {isPending ? 'Speichert…' : 'Anlegen'}

@@ -8,10 +8,16 @@ import { sendTemplateMail, type DispatchOptions } from '@/server/mail/dispatch';
 import { fireAndForget } from '@/server/util/fire-and-forget';
 import { assertClientInTenant, assertStaffInTenant } from '@/server/db/assert-tenant';
 import { assertClientAccessTx } from '@/server/auth/rbac';
-import { withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
+import {
+  withStaff,
+  ActionError,
+  type ActionResult as BaseActionResult,
+} from '@/server/actions/staff-action';
 import { fmtDateTimeShort, fmtDateTimeMedium, berlinWallClockToUtc } from '@/lib/fmt';
 
-export interface ActionResult extends BaseActionResult { id?: string; }
+export interface ActionResult extends BaseActionResult {
+  id?: string;
+}
 
 const KindEnum = z.enum(['CLIENT_MEETING', 'INTERNAL', 'PRIVATE']);
 const StatusEnum = z.enum(['PLANNED', 'CONFIRMED', 'CANCELLED', 'DONE']);
@@ -51,10 +57,12 @@ export async function createAppointmentAction(
     location: formData.get('location') ?? '',
     notes: formData.get('notes') ?? '',
   });
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
+  if (!parsed.success)
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
   const startsAt = parseLocal(parsed.data.startsAt);
   const endsAt = parseLocal(parsed.data.endsAt);
-  if (endsAt.getTime() <= startsAt.getTime()) return { ok: false, error: 'Ende muss nach dem Start liegen.' };
+  if (endsAt.getTime() <= startsAt.getTime())
+    return { ok: false, error: 'Ende muss nach dem Start liegen.' };
 
   return withStaff(
     async (tx, { tenantId, staffId, session }) => {
@@ -91,7 +99,9 @@ export async function createAppointmentAction(
         },
       });
       await evidenceService.record(tx, {
-        tenantId, actorType: 'STAFF', actorId: staffId,
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
         action: 'appointment.create',
         resourceType: 'appointment',
         resourceId: appt.id,
@@ -138,10 +148,12 @@ export async function updateAppointmentAction(
     location: formData.get('location') ?? '',
     notes: formData.get('notes') ?? '',
   });
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
+  if (!parsed.success)
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
   const startsAt = parseLocal(parsed.data.startsAt);
   const endsAt = parseLocal(parsed.data.endsAt);
-  if (endsAt.getTime() <= startsAt.getTime()) return { ok: false, error: 'Ende muss nach dem Start liegen.' };
+  if (endsAt.getTime() <= startsAt.getTime())
+    return { ok: false, error: 'Ende muss nach dem Start liegen.' };
 
   return withStaff(
     async (tx, { tenantId, staffId, session }) => {
@@ -172,7 +184,9 @@ export async function updateAppointmentAction(
         },
       });
       await evidenceService.record(tx, {
-        tenantId, actorType: 'STAFF', actorId: staffId,
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
         action: 'appointment.update',
         resourceType: 'appointment',
         resourceId: parsed.data.id,
@@ -202,7 +216,9 @@ export async function deleteAppointmentAction(input: { id: string }): Promise<Ac
       if (before?.clientId) await assertClientAccessTx(tx, session, before.clientId);
       await tx.appointment.delete({ where: { id: parsed.data.id } });
       await evidenceService.record(tx, {
-        tenantId, actorType: 'STAFF', actorId: staffId,
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
         action: 'appointment.delete',
         resourceType: 'appointment',
         resourceId: parsed.data.id,
@@ -243,10 +259,17 @@ export async function acceptAppointmentRequestAction(input: {
       const req = await tx.appointmentRequest.findUnique({
         where: { id: parsed.data.requestId },
         select: {
-          id: true, clientId: true, subject: true, notes: true, status: true,
-          proposedSlots: true, createdByContact: true,
+          id: true,
+          clientId: true,
+          subject: true,
+          notes: true,
+          status: true,
+          proposedSlots: true,
+          createdByContact: true,
           client: { select: { name: true } },
-          createdByContactRel: { select: { fullName: true, email: true, notificationsEnabled: true, active: true } },
+          createdByContactRel: {
+            select: { fullName: true, email: true, notificationsEnabled: true, active: true },
+          },
         },
       });
       if (!req) throw new ActionError('Anfrage nicht gefunden.');
@@ -301,14 +324,18 @@ export async function acceptAppointmentRequestAction(input: {
       });
 
       await evidenceService.record(tx, {
-        tenantId, actorType: 'STAFF', actorId: staffId,
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
         action: 'appointment_request.accept',
         resourceType: 'appointment_request',
         resourceId: req.id,
         after: { appointmentId: appt.id, slotIndex: parsed.data.slotIndex },
       });
       await evidenceService.record(tx, {
-        tenantId, actorType: 'STAFF', actorId: staffId,
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
         action: 'appointment.create',
         resourceType: 'appointment',
         resourceId: appt.id,
@@ -356,7 +383,8 @@ export async function acceptAppointmentRequestAction(input: {
           },
           fallback: {
             subject: 'Termin-Bestätigung: {{appointment.title}}',
-            bodyMd: 'Sehr geehrte/r {{contact.fullName}},\n\nwir bestätigen Ihren Termin:\n\n**{{appointment.title}}**\n{{appointment.startsAt}}',
+            bodyMd:
+              'Sehr geehrte/r {{contact.fullName}},\n\nwir bestätigen Ihren Termin:\n\n**{{appointment.title}}**\n{{appointment.startsAt}}',
           },
         };
       }
@@ -392,8 +420,13 @@ export async function rejectAppointmentRequestAction(input: {
       const req = await tx.appointmentRequest.findUnique({
         where: { id: parsed.data.requestId },
         select: {
-          id: true, status: true, subject: true, clientId: true,
-          createdByContactRel: { select: { fullName: true, email: true, notificationsEnabled: true, active: true } },
+          id: true,
+          status: true,
+          subject: true,
+          clientId: true,
+          createdByContactRel: {
+            select: { fullName: true, email: true, notificationsEnabled: true, active: true },
+          },
         },
       });
       if (!req) throw new ActionError('Anfrage nicht gefunden.');
@@ -412,7 +445,9 @@ export async function rejectAppointmentRequestAction(input: {
       });
       if (claim.count === 0) throw new ActionError('Anfrage bereits entschieden.');
       await evidenceService.record(tx, {
-        tenantId, actorType: 'STAFF', actorId: staffId,
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
         action: 'appointment_request.reject',
         resourceType: 'appointment_request',
         resourceId: req.id,
@@ -428,7 +463,9 @@ export async function rejectAppointmentRequestAction(input: {
           vars: {
             contact: { fullName: contact.fullName, email: contact.email },
             request: { subject: req.subject },
-            rejectionReason: parsed.data.reason?.trim() || 'Bitte schlagen Sie über das Portal alternative Zeiten vor.',
+            rejectionReason:
+              parsed.data.reason?.trim() ||
+              'Bitte schlagen Sie über das Portal alternative Zeiten vor.',
           },
           // Befund 7 (Bug-Klasse R-5): vorher fälschlich 'client.created'.
           n8nEvent: 'appointment.responded',
@@ -439,7 +476,8 @@ export async function rejectAppointmentRequestAction(input: {
           },
           fallback: {
             subject: 'Ihre Termin-Anfrage konnten wir leider nicht annehmen',
-            bodyMd: 'Sehr geehrte/r {{contact.fullName}},\n\nleider können wir Ihre Termin-Anfrage „{{request.subject}}" nicht annehmen.\n\n{{rejectionReason}}',
+            bodyMd:
+              'Sehr geehrte/r {{contact.fullName}},\n\nleider können wir Ihre Termin-Anfrage „{{request.subject}}" nicht annehmen.\n\n{{rejectionReason}}',
           },
         };
       }

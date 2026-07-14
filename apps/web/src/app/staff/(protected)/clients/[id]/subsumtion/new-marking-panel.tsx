@@ -30,9 +30,18 @@ export function NewMarkingPanel(props: {
 
   function submit() {
     const sel = props.selection;
-    if (!sel) { props.onDone({ ok: false, error: 'Bitte zuerst eine Textstelle markieren.' }); return; }
-    if (!begriff.trim()) { props.onDone({ ok: false, error: 'Bitte einen Begriff angeben.' }); return; }
-    const normAnker = norm.split(/[,;\n]/).map((s) => s.trim()).filter(Boolean);
+    if (!sel) {
+      props.onDone({ ok: false, error: 'Bitte zuerst eine Textstelle markieren.' });
+      return;
+    }
+    if (!begriff.trim()) {
+      props.onDone({ ok: false, error: 'Bitte einen Begriff angeben.' });
+      return;
+    }
+    const normAnker = norm
+      .split(/[,;\n]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
     props.start(async () => {
       const r = await addManualMarkingAction({
         clientId: props.clientId,
@@ -46,7 +55,12 @@ export function NewMarkingPanel(props: {
         normAnker,
       });
       props.onDone(r);
-      if (r.ok) { setBegriff(''); setLabel(''); setNotiz(''); setNorm(''); }
+      if (r.ok) {
+        setBegriff('');
+        setLabel('');
+        setNotiz('');
+        setNorm('');
+      }
     });
   }
 
@@ -59,7 +73,9 @@ export function NewMarkingPanel(props: {
         {props.selection ? (
           <div className="rounded border border-default bg-surface px-2 py-1.5">
             „{props.selection.text}"{' '}
-            <span className="text-muted text-xs">({props.selection.start}–{props.selection.end})</span>
+            <span className="text-muted text-xs">
+              ({props.selection.start}–{props.selection.end})
+            </span>
           </div>
         ) : (
           <p className="text-xs text-disabled">Im Dokument über eine Textstelle ziehen …</p>
@@ -67,8 +83,16 @@ export function NewMarkingPanel(props: {
       </div>
 
       <label className="block text-xs">
-        <span className="text-muted">Begriff <span className="text-disabled">(vorbefüllt mit dem markierten Text — anpassbar)</span></span>
-        <input value={begriff} onChange={(e) => setBegriff(e.target.value)} placeholder="Begriff der markierten Stelle" className="mt-0.5 w-full rounded border border-default bg-surface px-2 py-1" />
+        <span className="text-muted">
+          Begriff{' '}
+          <span className="text-disabled">(vorbefüllt mit dem markierten Text — anpassbar)</span>
+        </span>
+        <input
+          value={begriff}
+          onChange={(e) => setBegriff(e.target.value)}
+          placeholder="Begriff der markierten Stelle"
+          className="mt-0.5 w-full rounded border border-default bg-surface px-2 py-1"
+        />
       </label>
 
       <div>
@@ -79,7 +103,10 @@ export function NewMarkingPanel(props: {
               key={c}
               type="button"
               onClick={() => setFarbe(c)}
-              className={'h-6 w-6 rounded-full border-2 ' + (farbe === c ? 'border-primary' : 'border-transparent')}
+              className={
+                'h-6 w-6 rounded-full border-2 ' +
+                (farbe === c ? 'border-primary' : 'border-transparent')
+              }
               style={{ backgroundColor: c }}
               aria-label={c}
             >
@@ -91,20 +118,41 @@ export function NewMarkingPanel(props: {
 
       <label className="block text-xs">
         <span className="text-muted">Label / Kategorie</span>
-        <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="z. B. kritisch, offen, Mandantenfrage" className="mt-0.5 w-full rounded border border-default bg-surface px-2 py-1" />
+        <input
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          placeholder="z. B. kritisch, offen, Mandantenfrage"
+          className="mt-0.5 w-full rounded border border-default bg-surface px-2 py-1"
+        />
       </label>
 
       <label className="block text-xs">
         <span className="text-muted">Notiz</span>
-        <textarea value={notiz} onChange={(e) => setNotiz(e.target.value)} rows={2} placeholder="optional" className="mt-0.5 w-full rounded border border-default bg-surface px-2 py-1" />
+        <textarea
+          value={notiz}
+          onChange={(e) => setNotiz(e.target.value)}
+          rows={2}
+          placeholder="optional"
+          className="mt-0.5 w-full rounded border border-default bg-surface px-2 py-1"
+        />
       </label>
 
       <label className="block text-xs">
         <span className="text-muted">Norm (optional — Komma-getrennt)</span>
-        <input value={norm} onChange={(e) => setNorm(e.target.value)} placeholder="z. B. § 162 AO, § 158 AO" className="mt-0.5 w-full rounded border border-default bg-surface px-2 py-1" />
+        <input
+          value={norm}
+          onChange={(e) => setNorm(e.target.value)}
+          placeholder="z. B. § 162 AO, § 158 AO"
+          className="mt-0.5 w-full rounded border border-default bg-surface px-2 py-1"
+        />
       </label>
 
-      <button type="button" onClick={submit} disabled={props.pending || !props.selection} className="btn-primary text-xs w-full justify-center">
+      <button
+        type="button"
+        onClick={submit}
+        disabled={props.pending || !props.selection}
+        className="btn-primary text-xs w-full justify-center"
+      >
         <Plus className="h-3.5 w-3.5" /> Markierung speichern
       </button>
       <p className="text-[11px] text-muted">

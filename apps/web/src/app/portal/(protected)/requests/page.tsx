@@ -42,7 +42,9 @@ export default async function PortalRequestsPage() {
                   <div className="flex items-center gap-3 mb-1">
                     <span className="font-medium text-primary">{r.title}</span>
                     {r.status === 'OPEN' && <span className="badge-yellow">Offen</span>}
-                    {r.status === 'IN_PROGRESS' && <span className="badge-yellow">In Bearbeitung</span>}
+                    {r.status === 'IN_PROGRESS' && (
+                      <span className="badge-yellow">In Bearbeitung</span>
+                    )}
                     {r.status === 'RESPONDED' && <span className="badge-green">Beantwortet</span>}
                     {r.status === 'CLOSED' && <span className="badge-gray">Geschlossen</span>}
                     {r.status === 'CANCELLED' && <span className="badge-gray">Abgebrochen</span>}

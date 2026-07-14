@@ -15,7 +15,11 @@ import { describe, it, expect } from 'vitest';
 import { createHash } from 'node:crypto';
 import { EvidenceService } from '../service';
 import { eventHash } from '../chain';
-import { LocalTimestampAdapter, type TimestampPort, type TimestampResult } from '../ports/timestamp';
+import {
+  LocalTimestampAdapter,
+  type TimestampPort,
+  type TimestampResult,
+} from '../ports/timestamp';
 
 // ----- Helpers ---------------------------------------------------------------
 
@@ -125,7 +129,12 @@ describe('verifyChain — Bindung an die rekonstruierte Kette (Review Punkt 2)',
     const t = 'tenant-a';
     const { rows, top } = buildChain(t, 3);
     const seals: SealRow[] = [
-      { seal_date: new Date(Date.UTC(2026, 0, 1)), top_audit_id: 3n, top_hash: top, tsa_response_blob: sha256(top) },
+      {
+        seal_date: new Date(Date.UTC(2026, 0, 1)),
+        top_audit_id: 3n,
+        top_hash: top,
+        tsa_response_blob: sha256(top),
+      },
     ];
     const r = await new EvidenceService(new StubTsa()).verifyChain(makeTx(rows, seals), t);
     expect(r.ok).toBe(true);
@@ -163,9 +172,17 @@ describe('verifyChain — Bindung an die rekonstruierte Kette (Review Punkt 2)',
     const { rows } = buildChain(t, 3);
     const staleColumn = sha256('alter-top-vor-umschreibung');
     const seals: SealRow[] = [
-      { seal_date: new Date(Date.UTC(2026, 0, 3)), top_audit_id: 3n, top_hash: staleColumn, tsa_response_blob: null },
+      {
+        seal_date: new Date(Date.UTC(2026, 0, 3)),
+        top_audit_id: 3n,
+        top_hash: staleColumn,
+        tsa_response_blob: null,
+      },
     ];
-    const r = await new EvidenceService(new LocalTimestampAdapter()).verifyChain(makeTx(rows, seals), t);
+    const r = await new EvidenceService(new LocalTimestampAdapter()).verifyChain(
+      makeTx(rows, seals),
+      t,
+    );
     expect(r.ok).toBe(false);
     expect(reason0(r)).toMatch(/top_hash weicht vom rekonstruierten/);
   });
@@ -174,7 +191,12 @@ describe('verifyChain — Bindung an die rekonstruierte Kette (Review Punkt 2)',
     const t = 'tenant-d';
     const { rows, top } = buildChain(t, 2);
     const seals: SealRow[] = [
-      { seal_date: new Date(Date.UTC(2026, 0, 4)), top_audit_id: 999n, top_hash: top, tsa_response_blob: sha256(top) },
+      {
+        seal_date: new Date(Date.UTC(2026, 0, 4)),
+        top_audit_id: 999n,
+        top_hash: top,
+        tsa_response_blob: sha256(top),
+      },
     ];
     const r = await new EvidenceService(new StubTsa()).verifyChain(makeTx(rows, seals), t);
     expect(r.ok).toBe(false);
@@ -203,17 +225,28 @@ describe('verifyChain — Adapter-Modus & Produktiv-Guard (Review Fall 7)', () =
 
   it('Modus wird IMMER ausgewiesen (local)', async () => {
     const { rows, top } = fresh();
-    const seals: SealRow[] = [{ seal_date: new Date(), top_audit_id: 1n, top_hash: top, tsa_response_blob: null }];
-    const r = await new EvidenceService(new LocalTimestampAdapter()).verifyChain(makeTx(rows, seals), t);
+    const seals: SealRow[] = [
+      { seal_date: new Date(), top_audit_id: 1n, top_hash: top, tsa_response_blob: null },
+    ];
+    const r = await new EvidenceService(new LocalTimestampAdapter()).verifyChain(
+      makeTx(rows, seals),
+      t,
+    );
     expect(r.tsaMode).toBe('local');
   });
 
   it('Self-Timestamp im Produktivmodus → harter FAIL + policyBreak', async () => {
     const { rows, top } = fresh();
-    const seals: SealRow[] = [{ seal_date: new Date(), top_audit_id: 1n, top_hash: top, tsa_response_blob: null }];
-    const r = await new EvidenceService(new LocalTimestampAdapter()).verifyChain(makeTx(rows, seals), t, {
-      requireExternalTsa: true,
-    });
+    const seals: SealRow[] = [
+      { seal_date: new Date(), top_audit_id: 1n, top_hash: top, tsa_response_blob: null },
+    ];
+    const r = await new EvidenceService(new LocalTimestampAdapter()).verifyChain(
+      makeTx(rows, seals),
+      t,
+      {
+        requireExternalTsa: true,
+      },
+    );
     expect(r.ok).toBe(false);
     expect(r.tsaMode).toBe('local');
     expect(r.policyBreaks.join(' ')).toMatch(/Produktivmodus/);
@@ -221,17 +254,25 @@ describe('verifyChain — Adapter-Modus & Produktiv-Guard (Review Fall 7)', () =
 
   it('Self-Timestamp im Dev-Modus (requireExternalTsa:false) → kein Policy-Fail', async () => {
     const { rows, top } = fresh();
-    const seals: SealRow[] = [{ seal_date: new Date(), top_audit_id: 1n, top_hash: top, tsa_response_blob: null }];
-    const r = await new EvidenceService(new LocalTimestampAdapter()).verifyChain(makeTx(rows, seals), t, {
-      requireExternalTsa: false,
-    });
+    const seals: SealRow[] = [
+      { seal_date: new Date(), top_audit_id: 1n, top_hash: top, tsa_response_blob: null },
+    ];
+    const r = await new EvidenceService(new LocalTimestampAdapter()).verifyChain(
+      makeTx(rows, seals),
+      t,
+      {
+        requireExternalTsa: false,
+      },
+    );
     expect(r.policyBreaks).toHaveLength(0);
     expect(r.ok).toBe(true);
   });
 
   it('externe TSA im Produktivmodus → kein Policy-Fail', async () => {
     const { rows, top } = fresh();
-    const seals: SealRow[] = [{ seal_date: new Date(), top_audit_id: 1n, top_hash: top, tsa_response_blob: sha256(top) }];
+    const seals: SealRow[] = [
+      { seal_date: new Date(), top_audit_id: 1n, top_hash: top, tsa_response_blob: sha256(top) },
+    ];
     const r = await new EvidenceService(new StubTsa()).verifyChain(makeTx(rows, seals), t, {
       requireExternalTsa: true,
     });

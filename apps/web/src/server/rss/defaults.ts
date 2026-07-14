@@ -7,7 +7,12 @@
 
 import type { Prisma, PrismaClient } from '@prisma/client';
 
-export const DEFAULT_RSS_FEEDS: Array<{ name: string; url: string; color: string; sortOrder: number }> = [
+export const DEFAULT_RSS_FEEDS: Array<{
+  name: string;
+  url: string;
+  color: string;
+  sortOrder: number;
+}> = [
   {
     name: 'BMF',
     url: 'https://www.bundesfinanzministerium.de/SiteGlobals/Functions/RSSFeed/DE/Steuern/RSSSteuern.xml',
@@ -30,7 +35,14 @@ export async function seedDefaultRssFeeds(
   for (const f of DEFAULT_RSS_FEEDS) {
     try {
       await tx.rssFeed.create({
-        data: { tenantId, staffId, name: f.name, url: f.url, color: f.color, sortOrder: f.sortOrder },
+        data: {
+          tenantId,
+          staffId,
+          name: f.name,
+          url: f.url,
+          color: f.color,
+          sortOrder: f.sortOrder,
+        },
       });
     } catch (e) {
       // P2002 = (staffId, url) bereits vorhanden — idempotent, ignorieren

@@ -43,13 +43,17 @@ Nutze:
   ./taxtronik backup-decrypt D Z [IDENTITY] [PUBLIC_KEY]
                                     In leeres isoliertes Ziel entschluesseln
   ./taxtronik backup-offsite DIR    Geprueftes Full-Backup immutable offsite laden
-  ./taxtronik restore --list        Backups im S3-Backup-Bucket auflisten
-  ./taxtronik restore --latest --target-url <url> [--confirm-overwrite]
-  ./taxtronik restore --key <s3-key> | --file <dump>
-  ./taxtronik rollback [<version>]  zurueck auf frueheren Stand (ohne DB-Migration)
+  ./taxtronik restore --list        Backups im S3-Backup-Bucket read-only auflisten
+  ./taxtronik restore (--latest | --key <s3-key> | --file <dump>) \
+      --target-url <postgres-url> [--confirm-overwrite]
+  ./taxtronik restore --latest --production-target --confirm-overwrite \
+      --confirm-production-restore RESTORE_TAXTRONIK_PRODUCTION_DATABASE \
+      --release-version X.Y.Z
+                                    Prod-Writer stoppen; bleiben danach gestoppt
+  ./taxtronik rollback [<version>]  zurueck; nach Prod-Restore ist <version> Pflicht
   ./taxtronik reset-admin-password  Admin-Passwort neu setzen (Recovery)
   ./taxtronik doctor [--fix]        .env-Validierung; --fix generiert fehlende Secrets
-  ./taxtronik up|down|ps|logs|exec|pull ...   docker-compose-Passthrough (ganzer Stack)
+  ./taxtronik up|down|ps|logs|exec|pull ...   Compose-Passthrough (Writer-Start mit Recovery-Guard)
   ./taxtronik --infra <cmd>                    nur Infra-Services
   ./taxtronik help                 diese Hilfe
 EOF
@@ -74,7 +78,11 @@ case "$cmd" in
   backup-decrypt) cmd_backup_decrypt "${2:-}" "${3:-}" "${4:-}" "${5:-}" ;;
   backup-offsite) cmd_backup_offsite "${2:-}" ;;
   restore)   shift || true; cmd_restore "$@" ;;
-  rollback)  shift || true; cmd_rollback "${1:-}" ;;
+  rollback)
+    shift || true
+    [[ $# -le 1 ]] || die "Nutzung: ./taxtronik rollback [<version>]"
+    cmd_rollback "${1:-}"
+    ;;
   reset-admin-password) cmd_reset_admin_password ;;
   doctor)    shift || true; doctor "$@" ;;
   up|down|stop|restart|ps|logs|exec|pull|top|config|port|images|stats)

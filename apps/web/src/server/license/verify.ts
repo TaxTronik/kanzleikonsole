@@ -155,9 +155,7 @@ async function decodeExpiredToken(
     : undefined;
   return {
     status: 'EXPIRED',
-    message: validUntil
-      ? `Lizenz seit ${dateOnly(validUntil)} abgelaufen.`
-      : 'Lizenz abgelaufen.',
+    message: validUntil ? `Lizenz seit ${dateOnly(validUntil)} abgelaufen.` : 'Lizenz abgelaufen.',
     kanzleiName: typeof claims.kanzleiName === 'string' ? claims.kanzleiName : undefined,
     plan: typeof claims.plan === 'string' ? claims.plan : undefined,
     validUntil,

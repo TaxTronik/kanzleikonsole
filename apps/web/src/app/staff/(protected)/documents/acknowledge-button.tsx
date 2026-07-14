@@ -6,7 +6,6 @@ import { CheckCircle2, Circle } from 'lucide-react';
 import { acknowledgeDocumentAction } from './acknowledge-actions';
 import { fmtDateTimeShort } from '@/lib/fmt';
 
-
 export function AcknowledgeButton({
   documentId,
   acknowledgedAt,
@@ -36,9 +35,10 @@ export function AcknowledgeButton({
     });
   }
 
-  const tooltip = done && doneAt
-    ? `Empfang bestätigt am ${fmtDateTimeShort(new Date(doneAt))}${acknowledgedByName ? ' von ' + acknowledgedByName : ''}`
-    : 'Empfang bestätigen';
+  const tooltip =
+    done && doneAt
+      ? `Empfang bestätigt am ${fmtDateTimeShort(new Date(doneAt))}${acknowledgedByName ? ' von ' + acknowledgedByName : ''}`
+      : 'Empfang bestätigen';
 
   const iconSize = size === 'md' ? 'h-5 w-5' : 'h-4 w-4';
 
@@ -57,9 +57,7 @@ export function AcknowledgeButton({
     >
       {done ? <CheckCircle2 className={iconSize} /> : <Circle className={iconSize} />}
       {size === 'md' && (
-        <span className="text-xs">
-          {done ? 'Empfang bestätigt' : 'Empfang bestätigen'}
-        </span>
+        <span className="text-xs">{done ? 'Empfang bestätigt' : 'Empfang bestätigen'}</span>
       )}
     </button>
   );

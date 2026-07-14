@@ -1,16 +1,17 @@
 {
   "name": "taxtronik",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Kanzlei- und Mandanten-Dashboard für deutsche Steuerberater",
+  "license": "AGPL-3.0-only",
   "engines": {
-    "node": ">=22.13"
+    "node": ">=24.11.0 <25"
   },
   "packageManager": "pnpm@11.8.0",
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
-    "lint": "turbo run lint",
+    "lint": "eslint .",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:ops": "bash scripts/tests/ops-lib.test.sh",
@@ -33,6 +34,7 @@
     "guard:paranoid-e2e": "sh scripts/check-paranoid-e2e.sh",
     "guard:no-focused-tests": "sh scripts/check-no-focused-tests.sh",
     "guard:ci-images": "sh scripts/check-ci-images-pinned.sh",
+    "guard:docker-bases": "node scripts/check-docker-bases-pinned.mjs",
     "guard:ci-actions": "sh scripts/check-ci-actions-pinned.sh",
     "guard:supply-chain": "sh scripts/check-pnpm-supply-chain.sh"
   },
@@ -40,7 +42,7 @@
     "@eslint/eslintrc": "^3.3.5",
     "@eslint/js": "^10.0.1",
     "@next/eslint-plugin-next": "^16.2.9",
-    "@types/node": "^25.9.1",
+    "@types/node": "^24.13.2",
     "dotenv": "^17.4.2",
     "eslint": "^10.4.0",
     "eslint-plugin-react-hooks": "^7.1.1",

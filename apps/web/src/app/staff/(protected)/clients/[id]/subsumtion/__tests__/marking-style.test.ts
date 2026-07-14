@@ -3,13 +3,36 @@ import { assignTracks, buildSegments, segmentStyle, hexToRgba } from '../marking
 import type { MarkingDTO } from '../_ui';
 
 // Minimal-Markierung (nur die für das Styling relevanten Felder gefüllt).
-function mk(id: string, start: number, end: number, herkunft: MarkingDTO['herkunft'], streitig = false): MarkingDTO {
+function mk(
+  id: string,
+  start: number,
+  end: number,
+  herkunft: MarkingDTO['herkunft'],
+  streitig = false,
+): MarkingDTO {
   return {
-    id, start, end, matchedText: '', herkunft, engineStatus: null, streitig,
-    begriffId: null, begriff: '', normAnker: [], normRefs: null, normketten: null,
-    governanceTyp: null, schadensintensitaet: null, wahrscheinlichkeit: null,
-    kaskadenreichweite: null, kontrolle: null, status: 'OFFEN', notiz: null,
-    verantwortlichId: null, farbe: null, label: null,
+    id,
+    start,
+    end,
+    matchedText: '',
+    herkunft,
+    engineStatus: null,
+    streitig,
+    begriffId: null,
+    begriff: '',
+    normAnker: [],
+    normRefs: null,
+    normketten: null,
+    governanceTyp: null,
+    schadensintensitaet: null,
+    wahrscheinlichkeit: null,
+    kaskadenreichweite: null,
+    kontrolle: null,
+    status: 'OFFEN',
+    notiz: null,
+    verantwortlichId: null,
+    farbe: null,
+    label: null,
   };
 }
 
@@ -34,10 +57,17 @@ describe('assignTracks (Container oben)', () => {
 describe('buildSegments', () => {
   it('verschachtelt → 3 Segmente; Überlappung trägt beide Markierungen', () => {
     const segs = buildSegments([mk('outer', 0, 100, 'EMBEDDING'), mk('inner', 10, 20, 'TRIGGER')]);
-    expect(segs.map((s) => [s.start, s.end])).toEqual([[0, 10], [10, 20], [20, 100]]);
+    expect(segs.map((s) => [s.start, s.end])).toEqual([
+      [0, 10],
+      [10, 20],
+      [20, 100],
+    ]);
     expect(segs[0]!.covering.map((c) => c.m.id)).toEqual(['outer']);
     // Überlappungs-Segment: Spur 0 = outer (umschließend), Spur 1 = inner.
-    expect(segs[1]!.covering.map((c) => [c.m.id, c.track])).toEqual([['outer', 0], ['inner', 1]]);
+    expect(segs[1]!.covering.map((c) => [c.m.id, c.track])).toEqual([
+      ['outer', 0],
+      ['inner', 1],
+    ]);
     expect(segs[2]!.covering.map((c) => c.m.id)).toEqual(['outer']);
   });
 });
@@ -61,7 +91,14 @@ describe('segmentStyle', () => {
   });
 
   it('Überlappung: zwei gestapelte Linien, Container näher am Text', () => {
-    const s = segmentStyle([{ m: outer, track: 0 }, { m: inner, track: 1 }], null, null);
+    const s = segmentStyle(
+      [
+        { m: outer, track: 0 },
+        { m: inner, track: 1 },
+      ],
+      null,
+      null,
+    );
     expect(s).toContain('0 calc(100% - calc(7px * var(--tt-zoom, 1)))'); // Spur 0 (outer) bei +2px
     expect(s).toContain('0 calc(100% - calc(4.5px * var(--tt-zoom, 1)))'); // Spur 1 (inner) bei +4.5px → tiefer
     // drei Layer: zwei Linien + eine Füllung.

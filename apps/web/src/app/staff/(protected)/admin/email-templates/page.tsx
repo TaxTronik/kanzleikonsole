@@ -24,19 +24,15 @@ export default async function EmailTemplatesPage() {
 
   return (
     <div className="p-8 max-w-4xl">
-      <Link
-        href="/staff/admin"
-        className="back-link mb-3"
-      >
+      <Link href="/staff/admin" className="back-link mb-3">
         <ArrowLeft className="h-3 w-3" />
         Administration
       </Link>
       <h1 className="text-2xl font-bold text-primary mb-1">E-Mail-Vorlagen</h1>
       <p className="text-muted text-sm mb-6">
-        Wiederverwendbare Mail-Bausteine (Erinnerungen, Begleitschreiben,
-        Jahresabschluss-Vorlage). Werden vom Workflow-Schritt „E-Mail an Mandant"
-        referenziert — Änderungen wirken sofort auf alle Workflows, die diese
-        Vorlage benutzen.
+        Wiederverwendbare Mail-Bausteine (Erinnerungen, Begleitschreiben, Jahresabschluss-Vorlage).
+        Werden vom Workflow-Schritt „E-Mail an Mandant" referenziert — Änderungen wirken sofort auf
+        alle Workflows, die diese Vorlage benutzen.
       </p>
 
       <EmailTemplateEditor

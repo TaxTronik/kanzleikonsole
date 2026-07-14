@@ -39,7 +39,9 @@ export function Stepper({
                 </span>
               )}
               {s.label}
-              {!s.required && !current && <span className="text-[10px] opacity-70">(optional)</span>}
+              {!s.required && !current && (
+                <span className="text-[10px] opacity-70">(optional)</span>
+              )}
             </span>
             {i < steps.length - 1 && <span className="mx-1 text-disabled">›</span>}
           </li>

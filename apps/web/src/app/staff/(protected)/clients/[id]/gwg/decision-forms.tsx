@@ -10,13 +10,7 @@ import { verifyCheckAction, rejectCheckAction, type ActionResult } from './actio
  * (z. B. wenn der eingeloggte ADMIN nicht Berufsträger für diesen Mandanten
  * ist — das soll als sichtbare Meldung erscheinen, nicht als 500).
  */
-export function GwgDecisionForms({
-  checkId,
-  clientId,
-}: {
-  checkId: string;
-  clientId: string;
-}) {
+export function GwgDecisionForms({ checkId, clientId }: { checkId: string; clientId: string }) {
   const [verifyState, verifyAction, verifyPending] = useActionState<ActionResult | null, FormData>(
     verifyCheckAction,
     null,

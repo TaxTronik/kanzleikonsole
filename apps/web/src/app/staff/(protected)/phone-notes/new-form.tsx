@@ -49,12 +49,16 @@ export function NewPhoneNoteForm({ clients, staff, currentStaffId, callers }: Pr
     <form ref={formRef} action={formAction} className="space-y-3">
       <datalist id={datalistId}>
         {callers.map((c) => (
-          <option key={c.name} value={c.name}>{c.phone ?? ''}</option>
+          <option key={c.name} value={c.name}>
+            {c.phone ?? ''}
+          </option>
         ))}
       </datalist>
 
       <div>
-        <label className="label" htmlFor="callerName">Anrufer</label>
+        <label className="label" htmlFor="callerName">
+          Anrufer
+        </label>
         <input
           id="callerName"
           name="callerName"
@@ -75,7 +79,9 @@ export function NewPhoneNoteForm({ clients, staff, currentStaffId, callers }: Pr
       </div>
 
       <div>
-        <label className="label" htmlFor="callerPhone">Telefonnummer (optional)</label>
+        <label className="label" htmlFor="callerPhone">
+          Telefonnummer (optional)
+        </label>
         <input
           id="callerPhone"
           name="callerPhone"
@@ -88,31 +94,23 @@ export function NewPhoneNoteForm({ clients, staff, currentStaffId, callers }: Pr
       </div>
 
       <div>
-        <label className="label" htmlFor="subject">Betreff</label>
-        <input
-          id="subject"
-          name="subject"
-          type="text"
-          className="input"
-          required
-          maxLength={200}
-        />
+        <label className="label" htmlFor="subject">
+          Betreff
+        </label>
+        <input id="subject" name="subject" type="text" className="input" required maxLength={200} />
       </div>
 
       <div>
-        <label className="label" htmlFor="body">Notiz</label>
-        <textarea
-          id="body"
-          name="body"
-          rows={4}
-          className="input"
-          required
-          maxLength={5000}
-        />
+        <label className="label" htmlFor="body">
+          Notiz
+        </label>
+        <textarea id="body" name="body" rows={4} className="input" required maxLength={5000} />
       </div>
 
       <div>
-        <label className="label" htmlFor="clientId">Mandant (optional)</label>
+        <label className="label" htmlFor="clientId">
+          Mandant (optional)
+        </label>
         <select
           id="clientId"
           name="clientId"
@@ -122,13 +120,17 @@ export function NewPhoneNoteForm({ clients, staff, currentStaffId, callers }: Pr
         >
           <option value="">— kein Mandant —</option>
           {clients.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
           ))}
         </select>
       </div>
 
       <div>
-        <label className="label" htmlFor="forwardToStaff">Weiterleiten an</label>
+        <label className="label" htmlFor="forwardToStaff">
+          Weiterleiten an
+        </label>
         <select
           id="forwardToStaff"
           name="forwardToStaff"
@@ -137,19 +139,15 @@ export function NewPhoneNoteForm({ clients, staff, currentStaffId, callers }: Pr
         >
           <option value="">— niemand —</option>
           {staff.map((s) => (
-            <option key={s.id} value={s.id}>{s.fullName}</option>
+            <option key={s.id} value={s.id}>
+              {s.fullName}
+            </option>
           ))}
         </select>
       </div>
 
-      {state?.error && (
-        <div className="alert-error-sm">{state.error}</div>
-      )}
-      {state?.ok && (
-        <div className="alert-success-sm">
-          Notiz angelegt.
-        </div>
-      )}
+      {state?.error && <div className="alert-error-sm">{state.error}</div>}
+      {state?.ok && <div className="alert-success-sm">Notiz angelegt.</div>}
 
       <button type="submit" className="btn-primary w-full" disabled={isPending}>
         {isPending ? 'Speichert…' : 'Notiz anlegen'}

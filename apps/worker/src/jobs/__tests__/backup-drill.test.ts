@@ -41,7 +41,10 @@ import { withDbName, missingTenantResult } from '../backup-drill';
 describe('withDbName', () => {
   it('tauscht nur den DB-Namen und erhält Query-Parameter (?schema=)', () => {
     expect(
-      withDbName('postgresql://taxtronik:pw@postgres:5432/taxtronik?schema=public', 'taxtronik_drill'),
+      withDbName(
+        'postgresql://taxtronik:pw@postgres:5432/taxtronik?schema=public',
+        'taxtronik_drill',
+      ),
     ).toBe('postgresql://taxtronik:pw@postgres:5432/taxtronik_drill?schema=public');
   });
 

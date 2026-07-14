@@ -59,7 +59,8 @@ export default async function UsersAdminPage() {
         <div>
           <h1 className="text-2xl font-bold text-primary mb-1">Benutzer</h1>
           <p className="text-muted text-sm">
-            Mitarbeiter, Rollen und Status. TOTP richtet jeder Benutzer beim ersten Login selbst ein.
+            Mitarbeiter, Rollen und Status. TOTP richtet jeder Benutzer beim ersten Login selbst
+            ein.
           </p>
         </div>
       </div>
@@ -79,13 +80,25 @@ export default async function UsersAdminPage() {
           <thead>
             <tr className="bg-gray-50 border-b border-default">
               <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Name</th>
-              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">E-Mail</th>
-              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Rollen</th>
-              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Berechtigungen</th>
-              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Tätigkeiten</th>
+              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+                E-Mail
+              </th>
+              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+                Rollen
+              </th>
+              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+                Berechtigungen
+              </th>
+              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+                Tätigkeiten
+              </th>
               <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">2FA</th>
-              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Letzter Login</th>
-              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Status</th>
+              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+                Letzter Login
+              </th>
+              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+                Status
+              </th>
               <th className="text-right px-6 py-3"></th>
             </tr>
           </thead>
@@ -113,7 +126,12 @@ export default async function UsersAdminPage() {
                     {/* iter87: ADMIN/PARTNER haben implizit alles — Chips nur
                         für EMPLOYEE-only-Benutzer (und nicht für sich selbst). */}
                     {roleNames.includes('ADMIN') || roleNames.includes('PARTNER') ? (
-                      <span className="text-xs text-disabled" title="ADMIN/PARTNER haben implizit alle Berechtigungen">alle (implizit)</span>
+                      <span
+                        className="text-xs text-disabled"
+                        title="ADMIN/PARTNER haben implizit alle Berechtigungen"
+                      >
+                        alle (implizit)
+                      </span>
                     ) : isSelf ? (
                       <span className="text-xs text-disabled">—</span>
                     ) : (
@@ -137,7 +155,11 @@ export default async function UsersAdminPage() {
                       <SetSkillsForm
                         userId={u.id}
                         currentSkillIds={skillIds}
-                        allSkills={allSkills.map((s) => ({ id: s.id, label: s.label, color: s.color }))}
+                        allSkills={allSkills.map((s) => ({
+                          id: s.id,
+                          label: s.label,
+                          color: s.color,
+                        }))}
                       />
                     </div>
                   </td>
@@ -152,9 +174,7 @@ export default async function UsersAdminPage() {
                     )}
                   </td>
                   <td className="px-6 py-3 text-xs text-muted">
-                    {u.lastLoginAt
-                      ? fmtDateNumeric(u.lastLoginAt)
-                      : '—'}
+                    {u.lastLoginAt ? fmtDateNumeric(u.lastLoginAt) : '—'}
                   </td>
                   <td className="px-6 py-3">
                     {u.active ? (
@@ -164,9 +184,7 @@ export default async function UsersAdminPage() {
                     )}
                   </td>
                   <td className="px-6 py-3 text-right">
-                    {!isSelf && (
-                      <ToggleActiveForm userId={u.id} active={u.active} />
-                    )}
+                    {!isSelf && <ToggleActiveForm userId={u.id} active={u.active} />}
                   </td>
                 </tr>
               );
@@ -176,8 +194,11 @@ export default async function UsersAdminPage() {
       </div>
 
       <p className="text-xs text-disabled mt-4">
-        Verfügbare Rollen: {Object.values(ROLE_LABELS).join(', ')}.
-        Tätigkeitsbereiche werden in <Link href="/staff/admin/skills" className="text-brand-700 hover:underline">/admin/skills</Link> verwaltet.
+        Verfügbare Rollen: {Object.values(ROLE_LABELS).join(', ')}. Tätigkeitsbereiche werden in{' '}
+        <Link href="/staff/admin/skills" className="text-brand-700 hover:underline">
+          /admin/skills
+        </Link>{' '}
+        verwaltet.
       </p>
     </div>
   );

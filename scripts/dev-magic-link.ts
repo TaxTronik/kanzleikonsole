@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 // Dev-only: erzeugt einen Magic-Link für einen Mandanten-Kontakt und gibt
 // die URL in der Konsole aus. NUR im Dev-Modus benutzen — in Produktion
 // muss der Link über Mail/SMS zugestellt werden.

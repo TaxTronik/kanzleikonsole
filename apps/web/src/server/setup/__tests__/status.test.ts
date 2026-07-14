@@ -28,7 +28,13 @@ describe('buildSetupItems', () => {
   it('frische Installation → alle 7 Punkte offen, in Einrichtungs-Reihenfolge', () => {
     const items = buildSetupItems(NONE_DONE);
     expect(items.map((i) => i.key)).toEqual([
-      'branding', 'region', 'seller', 'smtp', 'modules', 'client', 'contacts',
+      'branding',
+      'region',
+      'seller',
+      'smtp',
+      'modules',
+      'client',
+      'contacts',
     ]);
     expect(items.every((i) => !i.done)).toBe(true);
     // Jeder offene Punkt führt irgendwohin und erklärt sich.

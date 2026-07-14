@@ -22,7 +22,8 @@ export interface ScoreableMarking {
 /** §-Zitate aus einem Text extrahieren (für die Normanker-Heuristik). */
 export function extractNormRefs(text: string): string[] {
   const out = new Set<string>();
-  const re = /§+\s?\d+[a-z]?(?:\s?Abs\.?\s?\d+)?(?:\s?(?:S\.|Satz)\s?\d+)?\s?[A-ZÄÖÜ][A-Za-zÄÖÜ]{1,6}/g;
+  const re =
+    /§+\s?\d+[a-z]?(?:\s?Abs\.?\s?\d+)?(?:\s?(?:S\.|Satz)\s?\d+)?\s?[A-ZÄÖÜ][A-Za-zÄÖÜ]{1,6}/g;
   for (const m of text.matchAll(re)) out.add(m[0].replace(/\s+/g, ' ').trim());
   return [...out];
 }
@@ -44,7 +45,9 @@ export function scoreMarkingSuggestions(
   for (const m of markings) {
     if (m.status !== 'OFFEN' && m.status !== 'IN_PRUEFUNG') continue;
     const ankerLower = m.normAnker.map((a) => a.toLowerCase());
-    const normOverlap = ankerLower.filter((a) => refs.some((r) => r.includes(a) || a.includes(r))).length;
+    const normOverlap = ankerLower.filter((a) =>
+      refs.some((r) => r.includes(a) || a.includes(r)),
+    ).length;
     const begriffHit = m.begriff && text.includes(m.begriff.toLowerCase()) ? 1 : 0;
     const score = normOverlap * 3 + begriffHit * 2;
     if (score > 0) {

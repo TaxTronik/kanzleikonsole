@@ -114,3 +114,17 @@ nach den Formen Z1, Z2 und Z3 noch die Vollständigkeit aller steuerlich
 relevanten Vorsystemdaten nach. Auswahl, Bereitstellung und Verfahrensnachweis
 bleiben eine organisatorische Aufgabe der Kanzlei und ihrer angebundenen
 Systeme.
+
+## 13. Dokument-Uploads sind größenbegrenzt, aber noch nicht vollständig gestreamt
+
+Die dokumentierten Upload-Routen parsen Multipart-Daten derzeit im
+Web-Prozess. Eine einzelne Datei ist deshalb auf 25 MiB begrenzt; der
+mitgelieferte nginx begrenzt den Request auf 26 MiB und parallele
+Dokument-Uploads zusätzlich pro IP und für den gesamten Virtual Host. Diese
+Schranken reduzieren den Speicher- und DoS-Radius, machen den Parser aber nicht
+zu einem O(1)-Streaming-Pfad.
+
+Ein eigener oder umgangener Reverse Proxy muss mindestens gleichwertige Body-
+und Parallelitätsgrenzen setzen. Für größere Dateien oder höhere parallele Last
+ist vor einer Kapazitätsfreigabe ein Streaming-Multipart-Parser beziehungsweise
+ein isolierter Import-Job erforderlich.

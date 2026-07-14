@@ -234,7 +234,7 @@ services:
     volumes:
       - clamav_data:/var/lib/clamav
       # RF-14: Stock-Conf des Images limitiert INSTREAM auf 25 MB — die App
-      # erlaubt aber 100-MB-Uploads (MAX_UPLOAD_BYTES). Override hebt
+      # erlaubt 25-MiB-Uploads (MAX_UPLOAD_BYTES). Override hält
       # StreamMaxLength/MaxFileSize/MaxScanSize über das App-Limit.
       - ../clamav/clamd.conf:/etc/clamav/clamd.conf:ro
     healthcheck:

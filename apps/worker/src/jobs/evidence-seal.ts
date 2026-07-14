@@ -152,7 +152,10 @@ export const evidenceSealWorker = new Worker<EvidenceSealJob>(
           // Idempotenz/Race-Sicherheit liegt jetzt in sealDay selbst.
           const r = await service.sealDay(prismaOwner, tenantId, sealDate);
           results.push({ tenantId, ...r });
-          log.info({ tenantId, sealDate: sealDate.toISOString().slice(0, 10), ...r }, 'evidence-seal: tenant');
+          log.info(
+            { tenantId, sealDate: sealDate.toISOString().slice(0, 10), ...r },
+            'evidence-seal: tenant',
+          );
         }
       } catch (err) {
         log.error({ tenantId, err: (err as Error).message }, 'evidence-seal: tenant failed');

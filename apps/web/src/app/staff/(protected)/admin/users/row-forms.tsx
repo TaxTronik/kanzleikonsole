@@ -19,9 +19,7 @@ export function ToggleActiveForm({ userId, active }: { userId: string; active: b
         });
       }}
       className={
-        active
-          ? 'text-xs text-red-700 hover:underline'
-          : 'text-xs text-emerald-700 hover:underline'
+        active ? 'text-xs text-red-700 hover:underline' : 'text-xs text-emerald-700 hover:underline'
       }
     >
       {active ? 'Deaktivieren' : 'Aktivieren'}
@@ -30,7 +28,7 @@ export function ToggleActiveForm({ userId, active }: { userId: string; active: b
 }
 
 const ROLE_OPTIONS = ['EMPLOYEE', 'PARTNER', 'ADMIN'] as const;
-type Role = typeof ROLE_OPTIONS[number];
+type Role = (typeof ROLE_OPTIONS)[number];
 
 export function SetRolesForm({
   userId,
@@ -129,7 +127,10 @@ export function SetPermissionsForm({
 
   function save() {
     start(async () => {
-      const res = await setPermissionsAction({ userId, permissions: Array.from(perms) as Permission[] });
+      const res = await setPermissionsAction({
+        userId,
+        permissions: Array.from(perms) as Permission[],
+      });
       // Nur bei Erfolg als gespeichert markieren — sonst bleibt „Speichern"
       // sichtbar und der Fehler wird angezeigt (vorher: stiller Falsch-Erfolg).
       if (res.ok) {
@@ -242,9 +243,7 @@ export function SetSkillsForm({
           </div>
           <div className="max-h-72 overflow-y-auto p-2 space-y-1">
             {allSkills.length === 0 ? (
-              <p className="px-2 py-3 text-xs text-disabled">
-                Noch keine Bereiche definiert.
-              </p>
+              <p className="px-2 py-3 text-xs text-disabled">Noch keine Bereiche definiert.</p>
             ) : (
               allSkills.map((s) => (
                 <label

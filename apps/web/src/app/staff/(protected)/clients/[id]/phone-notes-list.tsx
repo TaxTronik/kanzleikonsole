@@ -12,7 +12,6 @@ import {
   phoneNoteToReminderAction,
 } from '@/app/staff/(protected)/phone-notes/actions';
 
-
 export interface PhoneNoteItem {
   id: string;
   subject: string;
@@ -28,7 +27,10 @@ export interface PhoneNoteItem {
   client?: { id: string; name: string } | null;
 }
 
-interface StaffOption { id: string; fullName: string; }
+interface StaffOption {
+  id: string;
+  fullName: string;
+}
 
 export function PhoneNotesList({
   notes,
@@ -41,7 +43,10 @@ export function PhoneNotesList({
 }) {
   const router = useRouter();
   const [isMutating, startMut] = useTransition();
-  const [activePanel, setActivePanel] = useState<{ id: string; kind: 'forward' | 'reminder' } | null>(null);
+  const [activePanel, setActivePanel] = useState<{
+    id: string;
+    kind: 'forward' | 'reminder';
+  } | null>(null);
   const staffName = new Map(staffOptions.map((s) => [s.id, s.fullName]));
 
   function markDone(id: string) {
@@ -104,7 +109,9 @@ export function PhoneNotesList({
               onReminderOpen={() => setActivePanel({ id: p.id, kind: 'reminder' })}
               onClosePanel={() => setActivePanel(null)}
               onForward={(toStaffId) => forwardTo(p.id, toStaffId)}
-              onToReminder={(dueDate, assigneeStaffId) => toReminder(p.id, dueDate, assigneeStaffId)}
+              onToReminder={(dueDate, assigneeStaffId) =>
+                toReminder(p.id, dueDate, assigneeStaffId)
+              }
               staffOptions={staffOptions}
             />
           ))}
@@ -171,7 +178,8 @@ function PhoneNoteRow({
   staffOptions: StaffOption[];
 }) {
   const forwarded_to = note.forwardToStaff ? staffName.get(note.forwardToStaff) : null;
-  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
   const defaultDue = tomorrow.toISOString().slice(0, 10);
 
   return (
@@ -254,7 +262,9 @@ function PhoneNoteRow({
                 {staffOptions
                   .filter((s) => s.id !== note.forwardToStaff)
                   .map((s) => (
-                    <option key={s.id} value={s.id}>{s.fullName}</option>
+                    <option key={s.id} value={s.id}>
+                      {s.fullName}
+                    </option>
                   ))}
               </select>
               <button
@@ -291,11 +301,17 @@ function PhoneNoteRow({
                 className="input text-xs"
               >
                 {staffOptions.map((s) => (
-                  <option key={s.id} value={s.id}>{s.fullName}</option>
+                  <option key={s.id} value={s.id}>
+                    {s.fullName}
+                  </option>
                 ))}
               </select>
               <div className="flex items-center gap-1">
-                <button type="submit" disabled={isMutating} className="btn-primary text-[11px] py-1 flex-1">
+                <button
+                  type="submit"
+                  disabled={isMutating}
+                  className="btn-primary text-[11px] py-1 flex-1"
+                >
                   Anlegen
                 </button>
                 <button

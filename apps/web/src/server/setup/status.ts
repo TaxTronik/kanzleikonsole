@@ -56,8 +56,13 @@ export async function getSetupStatus(ctx: TenantContext): Promise<SetupStatus> {
     // (seller_incomplete, fail-closed), damit die Checkliste nicht „erledigt"
     // meldet, während die E-Rechnungs-Erzeugung noch verweigert.
     sellerComplete: Boolean(
-      seller.name && seller.street && seller.postalCode && seller.city &&
-      (seller.vatId || seller.taxNumber) && seller.email && seller.phone,
+      seller.name &&
+      seller.street &&
+      seller.postalCode &&
+      seller.city &&
+      (seller.vatId || seller.taxNumber) &&
+      seller.email &&
+      seller.phone,
     ),
     smtpConfigured: smtp.configured,
     modulesConfigured: counts.modulesConfigured,

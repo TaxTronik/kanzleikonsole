@@ -45,12 +45,17 @@ export default async function PortalFormsPage() {
 
       {open.length > 0 && (
         <section className="mb-8">
-          <h2 className="text-sm font-semibold text-primary mb-3">Offene Formulare ({open.length})</h2>
+          <h2 className="text-sm font-semibold text-primary mb-3">
+            Offene Formulare ({open.length})
+          </h2>
           <ul className="card divide-y divide-border-subtle">
             {open.map((s) => (
               <li key={s.id} className="px-6 py-4 flex items-center justify-between">
                 <div>
-                  <Link href={`/portal/forms/${s.id}`} className="font-medium text-primary hover:underline">
+                  <Link
+                    href={`/portal/forms/${s.id}`}
+                    className="font-medium text-primary hover:underline"
+                  >
                     {s.name}
                   </Link>
                   <p className="text-xs text-muted">
@@ -76,7 +81,8 @@ export default async function PortalFormsPage() {
       {done.length > 0 && (
         <details>
           <summary className="cursor-pointer text-sm text-secondary">
-            {done.length} abgeschlossene{done.length === 1 ? 's' : ''} Formular{done.length === 1 ? '' : 'e'}
+            {done.length} abgeschlossene{done.length === 1 ? 's' : ''} Formular
+            {done.length === 1 ? '' : 'e'}
           </summary>
           <ul className="card divide-y divide-border-subtle mt-3">
             {done.map((s) => (

@@ -43,7 +43,12 @@ async function run(
 ): Promise<RunAnalysisOutput> {
   const c = client ?? new RiskLayerClient();
   // nutzer = auslösender Berater → personal-scoped Katalog-Kuratierung greift.
-  const result = await c.analyse({ text: input.text, mitLLM, optionen: input.optionen, nutzer: input.staffId });
+  const result = await c.analyse({
+    text: input.text,
+    mitLLM,
+    optionen: input.optionen,
+    nutzer: input.staffId,
+  });
   const saved = await saveAnalysis(ctx, {
     result,
     sourceText: input.text,

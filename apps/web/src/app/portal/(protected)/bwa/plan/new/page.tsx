@@ -12,7 +12,11 @@ export default async function NewPlanPage() {
   const session = await portalAuth();
   if (!session?.user) redirect('/portal/login');
   const { tenantId, contactId, clientId } = session.user;
-  const features = await readPortalFeatures({ tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' });
+  const features = await readPortalFeatures({
+    tenantId,
+    actorId: contactId,
+    actorType: 'CLIENT_CONTACT',
+  });
   if (!features.bwaPlanning) redirect('/portal/bwa');
 
   const periods = await withTenantContext(
@@ -50,10 +54,7 @@ export default async function NewPlanPage() {
 
   return (
     <div className="p-8 max-w-3xl">
-      <Link
-        href="/portal/bwa"
-        className="back-link mb-3"
-      >
+      <Link href="/portal/bwa" className="back-link mb-3">
         <ArrowLeft className="h-3 w-3" />
         Auswertungen
       </Link>
@@ -61,11 +62,7 @@ export default async function NewPlanPage() {
       <p className="text-muted text-sm mb-6">
         Drei Schritte: Basis wählen — Achsen anpassen — speichern.
       </p>
-      <PlanWizard
-        bases={bases}
-        defaultYear={currentYear + 1}
-        onCreate={createPlanAction}
-      />
+      <PlanWizard bases={bases} defaultYear={currentYear + 1} onCreate={createPlanAction} />
     </div>
   );
 }

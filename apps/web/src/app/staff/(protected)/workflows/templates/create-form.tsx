@@ -22,16 +22,33 @@ export function CreateTemplateForm() {
   return (
     <form ref={ref} action={formAction} className="space-y-3">
       <div>
-        <label className="label" htmlFor="tpl-name">Name</label>
-        <input id="tpl-name" name="name" type="text" className="input" required minLength={2} maxLength={100} placeholder="Neuer Mandant" />
+        <label className="label" htmlFor="tpl-name">
+          Name
+        </label>
+        <input
+          id="tpl-name"
+          name="name"
+          type="text"
+          className="input"
+          required
+          minLength={2}
+          maxLength={100}
+          placeholder="Neuer Mandant"
+        />
       </div>
       <div>
-        <label className="label" htmlFor="tpl-description">Beschreibung</label>
-        <textarea id="tpl-description" name="description" rows={2} maxLength={500} className="input" />
+        <label className="label" htmlFor="tpl-description">
+          Beschreibung
+        </label>
+        <textarea
+          id="tpl-description"
+          name="description"
+          rows={2}
+          maxLength={500}
+          className="input"
+        />
       </div>
-      {state?.error && (
-        <div className="alert-error-sm">{state.error}</div>
-      )}
+      {state?.error && <div className="alert-error-sm">{state.error}</div>}
       <button type="submit" className="btn-primary" disabled={isPending}>
         {isPending ? 'Speichert…' : 'Vorlage anlegen'}
       </button>

@@ -8,10 +8,21 @@ import { evidenceService } from '@/server/container';
 import { assertPortalFeature } from '@/server/settings/portal-features';
 import { checkPortalWriteLimit } from '@/server/rate-limit';
 import { toActionError } from '@/server/auth/rbac';
-import { portalActionGuard, withPortalContext, ActionError, type ActionResult } from '@/server/actions/portal-action';
+import {
+  portalActionGuard,
+  withPortalContext,
+  ActionError,
+  type ActionResult,
+} from '@/server/actions/portal-action';
 
 const AXES = [
-  'REVENUE', 'PERSONNEL', 'OTHER_COSTS', 'DEPRECIATION', 'MATERIAL', 'OTHER_INCOME', 'TAXES',
+  'REVENUE',
+  'PERSONNEL',
+  'OTHER_COSTS',
+  'DEPRECIATION',
+  'MATERIAL',
+  'OTHER_INCOME',
+  'TAXES',
 ] as const;
 type Axis = (typeof AXES)[number];
 
@@ -21,13 +32,15 @@ const CreateSchema = z.object({
   basePeriodId: z.string().uuid().nullable().optional(),
   notes: z.string().max(5000).nullable().optional(),
   status: z.enum(['DRAFT', 'FINAL']).default('FINAL'),
-  lines: z.array(
-    z.object({
-      axis: z.enum(AXES),
-      amount: z.number(),
-      note: z.string().max(300).nullable().optional(),
-    }),
-  ).max(20),
+  lines: z
+    .array(
+      z.object({
+        axis: z.enum(AXES),
+        amount: z.number(),
+        note: z.string().max(300).nullable().optional(),
+      }),
+    )
+    .max(20),
 });
 
 export async function createPlanAction(input: z.infer<typeof CreateSchema>): Promise<ActionResult> {
@@ -38,7 +51,10 @@ export async function createPlanAction(input: z.infer<typeof CreateSchema>): Pro
   // S4: Portal-Schreib-Backstop.
   const rl = await checkPortalWriteLimit(contactId);
   if (!rl.ok) {
-    return { ok: false, error: `Zu viele Aktionen. Bitte ${Math.ceil(rl.retryAfter / 60)} Min. warten.` };
+    return {
+      ok: false,
+      error: `Zu viele Aktionen. Bitte ${Math.ceil(rl.retryAfter / 60)} Min. warten.`,
+    };
   }
   const parsed = CreateSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
@@ -109,13 +125,15 @@ const UpdateSchema = z.object({
   name: z.string().min(1).max(120),
   notes: z.string().max(5000).nullable().optional(),
   status: z.enum(['DRAFT', 'FINAL']),
-  lines: z.array(
-    z.object({
-      axis: z.enum(AXES),
-      amount: z.number(),
-      note: z.string().max(300).nullable().optional(),
-    }),
-  ).max(20),
+  lines: z
+    .array(
+      z.object({
+        axis: z.enum(AXES),
+        amount: z.number(),
+        note: z.string().max(300).nullable().optional(),
+      }),
+    )
+    .max(20),
 });
 
 export async function updatePlanAction(input: z.infer<typeof UpdateSchema>): Promise<ActionResult> {
@@ -126,7 +144,10 @@ export async function updatePlanAction(input: z.infer<typeof UpdateSchema>): Pro
   // S4: Portal-Schreib-Backstop.
   const rl = await checkPortalWriteLimit(contactId);
   if (!rl.ok) {
-    return { ok: false, error: `Zu viele Aktionen. Bitte ${Math.ceil(rl.retryAfter / 60)} Min. warten.` };
+    return {
+      ok: false,
+      error: `Zu viele Aktionen. Bitte ${Math.ceil(rl.retryAfter / 60)} Min. warten.`,
+    };
   }
   const parsed = UpdateSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
@@ -161,7 +182,11 @@ export async function updatePlanAction(input: z.infer<typeof UpdateSchema>): Pro
         action: 'bwa_plan.update',
         resourceType: 'bwa_plan',
         resourceId: planId,
-        after: { name: parsed.data.name, status: parsed.data.status, lineCount: parsed.data.lines.length },
+        after: {
+          name: parsed.data.name,
+          status: parsed.data.status,
+          lineCount: parsed.data.lines.length,
+        },
       });
     });
   } catch (e) {

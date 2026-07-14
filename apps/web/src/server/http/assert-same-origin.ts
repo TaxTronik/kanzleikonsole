@@ -18,12 +18,8 @@ import { NextResponse, type NextRequest } from 'next/server';
  * Liefert bei Cross-Origin eine fertige 403-Response, sonst null
  * (Aufrufer fährt normal fort).
  */
-export function assertSameOrigin(
-  req: NextRequest,
-  expectedBaseUrl: string,
-): NextResponse | null {
-  const mismatch = () =>
-    NextResponse.json({ error: 'origin_mismatch' }, { status: 403 });
+export function assertSameOrigin(req: NextRequest, expectedBaseUrl: string): NextResponse | null {
+  const mismatch = () => NextResponse.json({ error: 'origin_mismatch' }, { status: 403 });
 
   const origin = req.headers.get('origin');
   if (origin) {
@@ -40,9 +36,7 @@ export function assertSameOrigin(
     // Reverse-Proxy gepinnt, siehe infra/nginx). Deckt Multi-Subdomain-/
     // Dev-Setups ab, deren Host nicht wörtlich in der env-URL steht — ein
     // CSRF-Origin (fremde Site) matched weder env-URL noch eigenen Host.
-    const reqHost = (
-      req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? ''
-    )
+    const reqHost = (req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? '')
       .split(',')[0]!
       .trim()
       .toLowerCase();

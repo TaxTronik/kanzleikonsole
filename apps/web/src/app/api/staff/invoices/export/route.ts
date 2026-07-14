@@ -21,10 +21,7 @@ export async function GET(req: NextRequest) {
   // Per-User-Rate-Limit (Defense in Depth): Exporte sind teuer + datenreich.
   const rl = await checkStaffExportLimit('invoices', staffId);
   if (!rl.ok) {
-    return NextResponse.json(
-      { error: 'rate_limited', retryAfter: rl.retryAfter },
-      { status: 429 },
-    );
+    return NextResponse.json({ error: 'rate_limited', retryAfter: rl.retryAfter }, { status: 429 });
   }
 
   const sp = req.nextUrl.searchParams;
@@ -74,7 +71,11 @@ export async function GET(req: NextRequest) {
     { key: 'netAmount', label: 'Netto', accessor: (r) => Number(r.netAmount.toString()) },
     // iter86: NULL = Mischsätze (Satz lebt an den Positionen) oder
     // EXTERNAL-PDF (Ausweis in der Datei) → leere Zelle statt falscher 0.
-    { key: 'vatRate', label: 'USt-Satz %', accessor: (r) => (r.vatRate === null ? '' : Number(r.vatRate.toString())) },
+    {
+      key: 'vatRate',
+      label: 'USt-Satz %',
+      accessor: (r) => (r.vatRate === null ? '' : Number(r.vatRate.toString())),
+    },
     { key: 'vatAmount', label: 'USt', accessor: (r) => Number(r.vatAmount.toString()) },
     { key: 'totalAmount', label: 'Brutto', accessor: (r) => Number(r.totalAmount.toString()) },
     { key: 'sentAt', label: 'Versendet', accessor: (r) => r.sentAt },

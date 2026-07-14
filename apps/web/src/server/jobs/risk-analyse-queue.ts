@@ -21,7 +21,9 @@ export interface RiskAnalyseLlmJob {
 declare global {
   // `var` is intentional for ambient globalThis augmentation.
   // noinspection ES6ConvertVarToLetConst
-  var __taxtronik_risk_analyse_queue: { conn: IORedis; queue: Queue<RiskAnalyseLlmJob> } | undefined;
+  var __taxtronik_risk_analyse_queue:
+    | { conn: IORedis; queue: Queue<RiskAnalyseLlmJob> }
+    | undefined;
 }
 
 function init(): { conn: IORedis; queue: Queue<RiskAnalyseLlmJob> } {

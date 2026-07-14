@@ -40,11 +40,9 @@ export function BulkToolbar({ closableIds }: Props) {
 
   function selectAll() {
     setSelected(new Set(closableIds));
-    document
-      .querySelectorAll<HTMLInputElement>('[data-bulk-id]')
-      .forEach((el) => {
-        if (closableIds.includes(el.dataset['bulkId']!)) el.checked = true;
-      });
+    document.querySelectorAll<HTMLInputElement>('[data-bulk-id]').forEach((el) => {
+      if (closableIds.includes(el.dataset['bulkId']!)) el.checked = true;
+    });
   }
 
   function clearSelection() {
@@ -57,7 +55,8 @@ export function BulkToolbar({ closableIds }: Props) {
   function closeSelected() {
     setError(null);
     if (selected.size === 0) return;
-    if (!confirm(`${selected.size} Anforderung${selected.size === 1 ? '' : 'en'} schließen?`)) return;
+    if (!confirm(`${selected.size} Anforderung${selected.size === 1 ? '' : 'en'} schließen?`))
+      return;
     startTransition(async () => {
       const r = await bulkCloseRequestsAction({ ids: Array.from(selected) });
       if (!r.ok) {
@@ -78,7 +77,11 @@ export function BulkToolbar({ closableIds }: Props) {
           <>
             <CheckSquare className="h-4 w-4 text-brand-600" />
             <span className="font-medium text-primary">{selected.size} ausgewählt</span>
-            <button type="button" onClick={clearSelection} className="text-muted hover:text-primary flex items-center gap-1 text-xs">
+            <button
+              type="button"
+              onClick={clearSelection}
+              className="text-muted hover:text-primary flex items-center gap-1 text-xs"
+            >
               <X className="h-3 w-3" />
               Auswahl aufheben
             </button>
@@ -86,7 +89,11 @@ export function BulkToolbar({ closableIds }: Props) {
         ) : (
           <>
             <Square className="h-4 w-4 text-disabled" />
-            <button type="button" onClick={selectAll} className="text-brand-700 hover:underline text-xs">
+            <button
+              type="button"
+              onClick={selectAll}
+              className="text-brand-700 hover:underline text-xs"
+            >
               Alle {closableIds.length} schließbaren auswählen
             </button>
           </>

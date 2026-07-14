@@ -45,10 +45,9 @@ export const ClientRequestConfig = z
     dueAfterDays: z.number().int().min(0).max(365).optional(),
   })
   .strict()
-  .refine(
-    (v) => v.requestTemplateId || v.requestTitle.trim().length > 0,
-    { message: 'Vorlage wählen oder Titel angeben.' },
-  );
+  .refine((v) => v.requestTemplateId || v.requestTitle.trim().length > 0, {
+    message: 'Vorlage wählen oder Titel angeben.',
+  });
 export const ClientFormConfig = z
   .object({
     formTemplateId: z.string().uuid(),
@@ -65,10 +64,9 @@ export const ClientEmailConfig = z
     bodyMd: z.string().max(10_000).default(''),
   })
   .strict()
-  .refine(
-    (v) => v.emailTemplateId || (v.subject.trim().length > 0 && v.bodyMd.trim().length > 0),
-    { message: 'Vorlage wählen oder Betreff + Text inline angeben.' },
-  );
+  .refine((v) => v.emailTemplateId || (v.subject.trim().length > 0 && v.bodyMd.trim().length > 0), {
+    message: 'Vorlage wählen oder Betreff + Text inline angeben.',
+  });
 export const N8nTriggerConfig = z
   .object({
     payload: z.record(z.string(), z.unknown()).optional(),
@@ -76,12 +74,12 @@ export const N8nTriggerConfig = z
   .strict();
 
 export type WorkflowStepConfig =
-  | { kind: 'TASK';            config: z.infer<typeof TaskConfig> }
+  | { kind: 'TASK'; config: z.infer<typeof TaskConfig> }
   | { kind: 'DOCUMENT_UPLOAD'; config: z.infer<typeof DocumentUploadConfig> }
-  | { kind: 'CLIENT_REQUEST';  config: z.infer<typeof ClientRequestConfig> }
-  | { kind: 'CLIENT_FORM';     config: z.infer<typeof ClientFormConfig> }
-  | { kind: 'CLIENT_EMAIL';    config: z.infer<typeof ClientEmailConfig> }
-  | { kind: 'N8N_TRIGGER';     config: z.infer<typeof N8nTriggerConfig> };
+  | { kind: 'CLIENT_REQUEST'; config: z.infer<typeof ClientRequestConfig> }
+  | { kind: 'CLIENT_FORM'; config: z.infer<typeof ClientFormConfig> }
+  | { kind: 'CLIENT_EMAIL'; config: z.infer<typeof ClientEmailConfig> }
+  | { kind: 'N8N_TRIGGER'; config: z.infer<typeof N8nTriggerConfig> };
 
 const SCHEMA_BY_KIND = {
   TASK: TaskConfig,
@@ -95,15 +93,15 @@ const SCHEMA_BY_KIND = {
 export function parseStepConfig(
   kind: keyof typeof SCHEMA_BY_KIND,
   raw: unknown,
-):
-  | { ok: true; value: unknown }
-  | { ok: false; error: string } {
+): { ok: true; value: unknown } | { ok: false; error: string } {
   const schema = SCHEMA_BY_KIND[kind];
   const parsed = schema.safeParse(raw ?? {});
   if (!parsed.success) {
     return {
       ok: false,
-      error: parsed.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; '),
+      error: parsed.error.issues
+        .map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)
+        .join('; '),
     };
   }
   return { ok: true, value: parsed.data };
@@ -111,12 +109,27 @@ export function parseStepConfig(
 
 export function defaultConfigFor(kind: keyof typeof SCHEMA_BY_KIND): unknown {
   switch (kind) {
-    case 'TASK': return {};
-    case 'DOCUMENT_UPLOAD': return { expectedClassification: 'GENERAL' };
-    case 'CLIENT_REQUEST': return { requestTemplateId: undefined, requestTitle: '', requestDescription: '', priority: 'NORMAL' };
-    case 'CLIENT_FORM': return { formTemplateId: '', requestTitle: 'Bitte Formular ausfüllen', requestDescription: '' };
-    case 'CLIENT_EMAIL': return { emailTemplateId: undefined, subject: '', bodyMd: '' };
-    case 'N8N_TRIGGER': return {};
+    case 'TASK':
+      return {};
+    case 'DOCUMENT_UPLOAD':
+      return { expectedClassification: 'GENERAL' };
+    case 'CLIENT_REQUEST':
+      return {
+        requestTemplateId: undefined,
+        requestTitle: '',
+        requestDescription: '',
+        priority: 'NORMAL',
+      };
+    case 'CLIENT_FORM':
+      return {
+        formTemplateId: '',
+        requestTitle: 'Bitte Formular ausfüllen',
+        requestDescription: '',
+      };
+    case 'CLIENT_EMAIL':
+      return { emailTemplateId: undefined, subject: '', bodyMd: '' };
+    case 'N8N_TRIGGER':
+      return {};
   }
 }
 
@@ -131,9 +144,12 @@ export const KIND_LABELS: Record<keyof typeof SCHEMA_BY_KIND, string> = {
 
 export const KIND_DESCRIPTIONS: Record<keyof typeof SCHEMA_BY_KIND, string> = {
   TASK: 'Reine Checkliste — Mitarbeiter hakt ab, wenn erledigt.',
-  DOCUMENT_UPLOAD: 'Mitarbeiter lädt ein Dokument hoch. Die Klassifizierung ist vorgegeben — das Dokument landet automatisch im richtigen Bucket.',
-  CLIENT_REQUEST: 'Beim Anstoßen wird eine Anforderung an den Mandanten erzeugt. Der Schritt ist erledigt, sobald die Anforderung geschlossen wird.',
-  CLIENT_FORM: 'Beim Anstoßen wird ein Formular an den Mandanten geschickt. Erledigt, sobald der Mandant es abgeschickt hat.',
+  DOCUMENT_UPLOAD:
+    'Mitarbeiter lädt ein Dokument hoch. Die Klassifizierung ist vorgegeben — das Dokument landet automatisch im richtigen Bucket.',
+  CLIENT_REQUEST:
+    'Beim Anstoßen wird eine Anforderung an den Mandanten erzeugt. Der Schritt ist erledigt, sobald die Anforderung geschlossen wird.',
+  CLIENT_FORM:
+    'Beim Anstoßen wird ein Formular an den Mandanten geschickt. Erledigt, sobald der Mandant es abgeschickt hat.',
   CLIENT_EMAIL: 'Sendet eine vordefinierte E-Mail an alle aktiven Portal-Kontakte des Mandanten.',
   N8N_TRIGGER: 'Feuert ausschließlich den hinterlegten n8n-Webhook. Was dort passiert, regelt n8n.',
 };

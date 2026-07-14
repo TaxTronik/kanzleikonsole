@@ -15,13 +15,13 @@ Steuerberater-Kanzlei** konzipiert. Multi-Tenant-Hosting (SaaS, mehrere
 Kanzleien auf einer Installation) ist technisch möglich, aber an mehreren
 Stellen mit eingeschränktem Funktionsumfang:
 
-| Pfad | Verhalten | Single-Tenant | Multi-Tenant |
-|---|---|---|---|
-| Magic-Link-URL | `NEXTAUTH_URL` ist global | ✓ | ✗ Alle Kanzleien teilen sich eine URL |
-| `TaxNewsItem` | Cache ohne `tenant_id` (S-3) | ✓ Geteilter Feed-Cache spart Worker | ⚠ Tenants sehen denselben Cache (jeder filtert per `source IN active_urls`, aber DB-direkt-Zugriff sieht alles) |
-| Subdomain-Tenancy | `extractTenantSlug` in [`proxy.ts`](../../apps/web/src/proxy.ts) ist implementiert | ungenutzt | aktiv |
-| Update-Manifest | Eine globale Signatur, ein globaler Public-Key | ✓ | ✓ — aber Update-Schritt erfordert dann Operator-Koordination |
-| n8n-Inbound-HMAC | Ein globales Secret (`N8N_HMAC_SECRET` in [`verify.ts`](../../apps/web/src/server/n8n/verify.ts)), `tenantId` ist nur Parameter | ✓ | ⚠ Wer das Secret kennt, kann für JEDEN Tenant signieren — bei Multi-Tenant-Hosting auf per-Tenant-Secret aus `tenant_setting` umstellen |
+| Pfad              | Verhalten                                                                                                                       | Single-Tenant                       | Multi-Tenant                                                                                                                            |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Magic-Link-URL    | `NEXTAUTH_URL` ist global                                                                                                       | ✓                                   | ✗ Alle Kanzleien teilen sich eine URL                                                                                                   |
+| `TaxNewsItem`     | Cache ohne `tenant_id` (S-3)                                                                                                    | ✓ Geteilter Feed-Cache spart Worker | ⚠ Tenants sehen denselben Cache (jeder filtert per `source IN active_urls`, aber DB-direkt-Zugriff sieht alles)                         |
+| Subdomain-Tenancy | `extractTenantSlug` in [`proxy.ts`](../../apps/web/src/proxy.ts) ist implementiert                                              | ungenutzt                           | aktiv                                                                                                                                   |
+| Update-Manifest   | Eine globale Signatur, ein globaler Public-Key                                                                                  | ✓                                   | ✓ — aber Update-Schritt erfordert dann Operator-Koordination                                                                            |
+| n8n-Inbound-HMAC  | Ein globales Secret (`N8N_HMAC_SECRET` in [`verify.ts`](../../apps/web/src/server/n8n/verify.ts)), `tenantId` ist nur Parameter | ✓                                   | ⚠ Wer das Secret kennt, kann für JEDEN Tenant signieren — bei Multi-Tenant-Hosting auf per-Tenant-Secret aus `tenant_setting` umstellen |
 
 > **Empfehlung für Operator**: Wenn der Use-Case Multi-Tenant erfordert,
 > Installation pro Kanzlei separieren (eigene Docker-Compose, eigene

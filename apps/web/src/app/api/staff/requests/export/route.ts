@@ -21,10 +21,7 @@ export async function GET(req: NextRequest) {
   // Per-User-Rate-Limit (Defense in Depth): Exporte sind teuer + datenreich.
   const rl = await checkStaffExportLimit('requests', staffId);
   if (!rl.ok) {
-    return NextResponse.json(
-      { error: 'rate_limited', retryAfter: rl.retryAfter },
-      { status: 429 },
-    );
+    return NextResponse.json({ error: 'rate_limited', retryAfter: rl.retryAfter }, { status: 429 });
   }
 
   const sp = req.nextUrl.searchParams;

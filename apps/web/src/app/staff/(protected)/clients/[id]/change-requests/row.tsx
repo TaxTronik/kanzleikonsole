@@ -3,13 +3,7 @@
 import { useState, useTransition } from 'react';
 import { decideChangeRequestAction } from './actions';
 
-export function ChangeRequestRow({
-  requestId,
-  clientId,
-}: {
-  requestId: string;
-  clientId: string;
-}) {
+export function ChangeRequestRow({ requestId, clientId }: { requestId: string; clientId: string }) {
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isPending, start] = useTransition();

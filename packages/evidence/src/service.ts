@@ -388,7 +388,8 @@ export class EvidenceService {
         result.ok = false;
         result.sealBreaks.push({
           sealDate: s.seal_date,
-          reason: 'gespeicherter top_hash weicht vom rekonstruierten Ketten-Hash ab (DB-Manipulationsverdacht)',
+          reason:
+            'gespeicherter top_hash weicht vom rekonstruierten Ketten-Hash ab (DB-Manipulationsverdacht)',
         });
         continue;
       }
@@ -400,7 +401,8 @@ export class EvidenceService {
         s.tsa_response_blob ? Buffer.from(s.tsa_response_blob) : null,
       );
       if (sealRes.trustAnchored !== null) {
-        result.sealsTrustAnchored = (result.sealsTrustAnchored ?? 0) + (sealRes.trustAnchored ? 1 : 0);
+        result.sealsTrustAnchored =
+          (result.sealsTrustAnchored ?? 0) + (sealRes.trustAnchored ? 1 : 0);
       }
       if (!sealRes.ok) {
         result.ok = false;
@@ -473,7 +475,9 @@ export class EvidenceService {
     `;
     if (anchor.length === 0) {
       result.ok = false;
-      result.policyBreaks.push(`Recovery-Checkpoint Audit-ID ${checkpointAuditId} existiert nicht mehr.`);
+      result.policyBreaks.push(
+        `Recovery-Checkpoint Audit-ID ${checkpointAuditId} existiert nicht mehr.`,
+      );
       return result;
     }
 
@@ -571,7 +575,8 @@ export class EvidenceService {
         s.tsa_response_blob ? Buffer.from(s.tsa_response_blob) : null,
       );
       if (sealRes.trustAnchored !== null) {
-        result.sealsTrustAnchored = (result.sealsTrustAnchored ?? 0) + (sealRes.trustAnchored ? 1 : 0);
+        result.sealsTrustAnchored =
+          (result.sealsTrustAnchored ?? 0) + (sealRes.trustAnchored ? 1 : 0);
       }
       if (!sealRes.ok) {
         result.ok = false;
@@ -626,10 +631,7 @@ async function fetchAuditBatch(
 }
 
 function genesisHash(tenantId: string): Buffer {
-  return createHash('sha256')
-    .update(GENESIS_PREFIX)
-    .update(Buffer.from(tenantId, 'utf8'))
-    .digest();
+  return createHash('sha256').update(GENESIS_PREFIX).update(Buffer.from(tenantId, 'utf8')).digest();
 }
 
 function dateOnly(d: Date): string {

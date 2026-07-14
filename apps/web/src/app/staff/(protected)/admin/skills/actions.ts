@@ -7,7 +7,16 @@ import { withStaff, ActionError, type ActionResult } from '@/server/actions/staf
 
 const REVALIDATE = '/staff/admin/skills';
 const SLUG_RE = /^[A-Z0-9_]+$/;
-const COLOR_VALUES = ['blue', 'amber', 'emerald', 'purple', 'pink', 'red', 'yellow', 'gray'] as const;
+const COLOR_VALUES = [
+  'blue',
+  'amber',
+  'emerald',
+  'purple',
+  'pink',
+  'red',
+  'yellow',
+  'gray',
+] as const;
 
 const CreateSchema = z.object({
   slug: z.string().min(2).max(40).regex(SLUG_RE),
@@ -24,16 +33,25 @@ export async function createSkillAction(
     label: formData.get('label'),
     color: formData.get('color') ?? '',
   });
-  if (!parsed.success) return { ok: false, error: parsed.error.issues.map((i) => i.message).join('; ') };
+  if (!parsed.success)
+    return { ok: false, error: parsed.error.issues.map((i) => i.message).join('; ') };
   const color =
-    parsed.data.color && (COLOR_VALUES as readonly string[]).includes(parsed.data.color) ? parsed.data.color : null;
+    parsed.data.color && (COLOR_VALUES as readonly string[]).includes(parsed.data.color)
+      ? parsed.data.color
+      : null;
 
   return withStaff(
     async (tx, { tenantId, staffId }) => {
       const dup = await tx.staffSkill.findFirst({ where: { slug: parsed.data.slug } });
       if (dup) throw new ActionError('Kürzel bereits vergeben.');
       const created = await tx.staffSkill.create({
-        data: { tenantId, slug: parsed.data.slug, label: parsed.data.label, color, isSystem: false },
+        data: {
+          tenantId,
+          slug: parsed.data.slug,
+          label: parsed.data.label,
+          color,
+          isSystem: false,
+        },
       });
       await evidenceService.record(tx, {
         tenantId,
@@ -55,7 +73,11 @@ export async function updateSkillAction(input: {
   color: string | null;
 }): Promise<ActionResult> {
   const parsed = z
-    .object({ id: z.string().uuid(), label: z.string().min(2).max(100), color: z.enum(COLOR_VALUES).nullable() })
+    .object({
+      id: z.string().uuid(),
+      label: z.string().min(2).max(100),
+      color: z.enum(COLOR_VALUES).nullable(),
+    })
     .safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
@@ -134,7 +156,9 @@ export async function setStaffSkillsAction(input: {
         if (!skill) throw new ActionError('Unbekannter Tätigkeitsbereich.');
       }
 
-      const before = await tx.staffSkillAssignment.findMany({ where: { staffId: parsed.data.staffId } });
+      const before = await tx.staffSkillAssignment.findMany({
+        where: { staffId: parsed.data.staffId },
+      });
       const beforeIds = new Set(before.map((b) => b.skillId));
       const afterIds = new Set(parsed.data.skillIds);
       const toAdd = parsed.data.skillIds.filter((id) => !beforeIds.has(id));
@@ -146,7 +170,9 @@ export async function setStaffSkillsAction(input: {
         });
       }
       for (const sid of toAdd) {
-        await tx.staffSkillAssignment.create({ data: { staffId: parsed.data.staffId, skillId: sid } });
+        await tx.staffSkillAssignment.create({
+          data: { staffId: parsed.data.staffId, skillId: sid },
+        });
       }
       if (toAdd.length > 0 || toRemove.length > 0) {
         await evidenceService.record(tx, {

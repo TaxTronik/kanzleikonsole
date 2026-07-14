@@ -9,8 +9,8 @@ import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface Props {
-  basePath: string;          // z. B. "/staff/clients"
-  baseQs: URLSearchParams;   // alle aktiven Filter ohne `cursor`
+  basePath: string; // z. B. "/staff/clients"
+  baseQs: URLSearchParams; // alle aktiven Filter ohne `cursor`
   currentCursor: string | null;
   nextCursor: string | null;
   totalCount: number;

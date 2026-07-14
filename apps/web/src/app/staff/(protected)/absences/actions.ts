@@ -8,14 +8,22 @@ import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { notify, notifyMany } from '@/server/notifications/service';
-import { staffActionGuard, withStaff, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
+import {
+  staffActionGuard,
+  withStaff,
+  type ActionResult as BaseActionResult,
+} from '@/server/actions/staff-action';
 
 export type ActionResult = BaseActionResult;
 
 // iter87: Entscheidungsträger = ADMIN/PARTNER (implizit) + Inhaber des
 // Einzelrechts ABSENCE_DECIDE — ohne die meldende Person selbst. Gezielte
 // Adressierung statt Broadcast: andere Mitarbeiter sehen die Meldung nicht.
-async function absenceDeciderIds(tx: TxClient, tenantId: string, excludeStaffId: string): Promise<string[]> {
+async function absenceDeciderIds(
+  tx: TxClient,
+  tenantId: string,
+  excludeStaffId: string,
+): Promise<string[]> {
   const deciders = await tx.staffUser.findMany({
     where: {
       // Expliziter tenantId-Filter zusätzlich zur RLS (Defense in Depth, wie
@@ -187,7 +195,9 @@ export async function decideVacationAction(formData: FormData): Promise<void> {
 
 export async function cancelVacationAction(formData: FormData): Promise<void> {
   // F6: UUID-Validation.
-  const parsed = z.object({ requestId: z.string().uuid() }).safeParse({ requestId: formData.get('requestId') });
+  const parsed = z
+    .object({ requestId: z.string().uuid() })
+    .safeParse({ requestId: formData.get('requestId') });
   if (!parsed.success) return;
   const { requestId: id } = parsed.data;
 
@@ -269,7 +279,11 @@ export async function reportAbsenceAction(
         resourceId: absence.id,
         // Bewusst ohne notes — der Grund gehört nicht in die (für Admins
         // einsehbare) Audit-Ansicht hinein; Art + Zeitraum genügen als Beleg.
-        after: { kind: parsed.data.kind, startDate: parsed.data.startDate, endDate: parsed.data.endDate || null },
+        after: {
+          kind: parsed.data.kind,
+          startDate: parsed.data.startDate,
+          endDate: parsed.data.endDate || null,
+        },
       });
       // iter87: Entscheidungsträger informieren — sie dürfen Art + Grund sehen.
       await notifyMany(tx, await absenceDeciderIds(tx, tenantId, staffId), {
@@ -295,7 +309,9 @@ export async function endAbsenceAction(formData: FormData): Promise<void> {
 
   await withStaff(
     async (tx, { tenantId, staffId }) => {
-      const before = await tx.absence.findFirst({ where: { id: parsed.data.id, tenantId, staffId } });
+      const before = await tx.absence.findFirst({
+        where: { id: parsed.data.id, tenantId, staffId },
+      });
       if (!before || before.endDate) return;
       // Enddatum nie vor dem Beginn: bei einer zukunftsdatierten offenen Meldung,
       // die sofort beendet wird, würde „heute" < startDate ergeben (start > end →
@@ -325,7 +341,9 @@ export async function deleteAbsenceAction(formData: FormData): Promise<void> {
 
   await withStaff(
     async (tx, { tenantId, staffId }) => {
-      const before = await tx.absence.findFirst({ where: { id: parsed.data.id, tenantId, staffId } });
+      const before = await tx.absence.findFirst({
+        where: { id: parsed.data.id, tenantId, staffId },
+      });
       if (!before) return;
       await tx.absence.delete({ where: { id: parsed.data.id } });
       await evidenceService.record(tx, {

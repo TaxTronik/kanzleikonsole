@@ -36,6 +36,10 @@ upstream taxtronik_n8n {
 limit_req_zone $binary_remote_addr zone=taxtronik_health:1m rate=20r/s;
 limit_req_zone $binary_remote_addr zone=taxtronik_login:1m rate=5r/s;
 limit_req_zone $binary_remote_addr zone=taxtronik_api:10m rate=50r/s;
+limit_conn_zone $binary_remote_addr zone=taxtronik_upload_per_ip:10m;
+# Konstanter VHost-Key: schützt den einzelnen 2-GiB-App-Container zusätzlich
+# vor vielen parallelen Quell-IPs.
+limit_conn_zone $server_name zone=taxtronik_upload_global:1m;
 
 # -----------------------------------------------------------------------------
 # HTTP → HTTPS-Redirect
@@ -51,7 +55,8 @@ server {
     }
 
     location / {
-        return 301 https://$host$request_uri;
+        # Kein client-kontrolliertes $host in Redirects verwenden.
+        return 301 https://$server_name$request_uri;
     }
 }
 
@@ -77,8 +82,8 @@ server {
     ssl_stapling_verify on;
     resolver 1.1.1.1 9.9.9.9 valid=60s;
 
-    # ---- Body-Limit (matched MAX_UPLOAD_BYTES = 100 MB in storage/service.ts) ----
-    client_max_body_size 100M;
+    # ---- Body-Limit (25 MiB Nutzlast + Multipart-Overhead) ----
+    client_max_body_size 26M;
     # Vorab-Buffer für Form-Submits klein halten, damit kleine Requests
     # nicht auf die Disk gehen.
     client_body_buffer_size 16k;
@@ -89,10 +94,11 @@ server {
     # NGINX überschreibt den Header und hängt nur $remote_addr an.
     proxy_set_header X-Forwarded-For $remote_addr;
     proxy_set_header X-Real-IP       $remote_addr;
-    # Host-Header gegen Smuggling/Spoofing pinnen (sonst NEXTAUTH-Callback
-    # könnte auf gefälschten Host umgelenkt werden, S-9).
-    proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-Host $host;
+    # Auth.js benötigt trustHost=true. Deshalb Host und X-Forwarded-Host auf
+    # den konfigurierten VHost pinnen, nie den client-kontrollierten $host
+    # weiterreichen (sonst Callback-Umleitung/Host-Smuggling, S-9).
+    proxy_set_header Host $server_name;
+    proxy_set_header X-Forwarded-Host $server_name;
     proxy_set_header X-Forwarded-Proto $scheme;
     # Body-Streaming
     proxy_http_version 1.1;
@@ -131,6 +137,18 @@ server {
         limit_req zone=taxtronik_api burst=20 nodelay;
         proxy_pass http://taxtronik_app;
         proxy_read_timeout 120s;
+    }
+
+    # Multipart wird in der App derzeit gepuffert. Begrenze deshalb parallel
+    # aktive Uploads pro Quell-IP und über den gesamten VHost. nginx puffert den
+    # Request-Body standardmäßig vor dem Proxying auf Disk; maximal sechs
+    # 25-MiB-Dateien gelangen gleichzeitig in den Node-Prozess.
+    location ~ ^/api/(staff/documents(?:/[^/]+/new-version)?|portal/documents)/commit$ {
+        limit_conn taxtronik_upload_per_ip 2;
+        limit_conn taxtronik_upload_global 6;
+        limit_req zone=taxtronik_api burst=6 nodelay;
+        proxy_pass http://taxtronik_app;
+        proxy_read_timeout 300s;
     }
 
     location /api/ {

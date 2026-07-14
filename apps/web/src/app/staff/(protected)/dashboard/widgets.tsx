@@ -8,14 +8,7 @@ import type { ReactNode } from 'react';
  * Editieren immer das gesamte Widget-Universum laden ließ.
  */
 
-import {
-  Users,
-  Inbox,
-  FileText,
-  Phone,
-  IdCard,
-  Workflow,
-} from 'lucide-react';
+import { Users, Inbox, FileText, Phone, IdCard, Workflow } from 'lucide-react';
 import type { WidgetType } from '@/server/dashboard/widgets';
 import { kpi, type RenderCtx } from './widgets/_shared';
 import {
@@ -28,13 +21,7 @@ import {
 } from './widgets/list-widgets';
 import { CalendarWidget } from './widgets/calendar';
 import { TaxNews } from './widgets/tax-news';
-import {
-  Bookmarks,
-  PersonalNotes,
-  MyDay,
-  MyWorkflows,
-  MyReminders,
-} from './widgets/personal';
+import { Bookmarks, PersonalNotes, MyDay, MyWorkflows, MyReminders } from './widgets/personal';
 
 export async function renderWidget(type: WidgetType, ctx: RenderCtx): Promise<ReactNode> {
   switch (type) {

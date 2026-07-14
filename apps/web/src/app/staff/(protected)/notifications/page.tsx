@@ -50,9 +50,7 @@ export default async function NotificationsPage() {
         <div>
           <h1 className="text-2xl font-bold text-primary mb-1">Benachrichtigungen</h1>
           <p className="text-muted text-sm">
-            {unreadCount > 0
-              ? `${unreadCount} ungelesen`
-              : 'Alles gelesen.'}
+            {unreadCount > 0 ? `${unreadCount} ungelesen` : 'Alles gelesen.'}
           </p>
         </div>
         {unreadCount > 0 && (
@@ -74,10 +72,7 @@ export default async function NotificationsPage() {
         ) : (
           <ul className="divide-y divide-border-subtle">
             {notifications.map((n) => (
-              <li
-                key={n.id}
-                className={n.readAt ? 'px-6 py-4' : 'px-6 py-4 bg-yellow-50/30'}
-              >
+              <li key={n.id} className={n.readAt ? 'px-6 py-4' : 'px-6 py-4 bg-yellow-50/30'}>
                 <div className="flex items-start gap-3">
                   <div
                     className={
@@ -91,9 +86,7 @@ export default async function NotificationsPage() {
                       <span className="font-medium text-primary">{n.title}</span>
                       <span className="badge-gray text-[10px]">{kindLabels[n.kind] ?? n.kind}</span>
                     </div>
-                    {n.body && (
-                      <p className="text-sm text-secondary mt-1">{n.body}</p>
-                    )}
+                    {n.body && <p className="text-sm text-secondary mt-1">{n.body}</p>}
                     <p className="text-xs text-disabled mt-1">
                       {fmtDateTimeShort(n.createdAt)}
                       {n.href && (

@@ -115,14 +115,21 @@ export function parseArchive(ndjson: Buffer): ParsedArchiveRow[] {
       tenantId: String(obj['tenantId']),
       occurredAt: new Date(String(obj['occurredAt'])),
       actorType: String(obj['actorType']),
-      actorId: obj['actorId'] === undefined || obj['actorId'] === null ? null : String(obj['actorId']),
+      actorId:
+        obj['actorId'] === undefined || obj['actorId'] === null ? null : String(obj['actorId']),
       action: String(obj['action']),
       resourceType: String(obj['resourceType']),
-      resourceId: obj['resourceId'] === undefined || obj['resourceId'] === null ? null : String(obj['resourceId']),
+      resourceId:
+        obj['resourceId'] === undefined || obj['resourceId'] === null
+          ? null
+          : String(obj['resourceId']),
       before: obj['before'] ?? null,
       after: obj['after'] ?? null,
       ip: obj['ip'] === undefined || obj['ip'] === null ? null : String(obj['ip']),
-      userAgent: obj['userAgent'] === undefined || obj['userAgent'] === null ? null : String(obj['userAgent']),
+      userAgent:
+        obj['userAgent'] === undefined || obj['userAgent'] === null
+          ? null
+          : String(obj['userAgent']),
       prevHash: hexFromTagged(obj['prevHash']),
       thisHash: hexFromTagged(obj['thisHash']),
     });
@@ -180,7 +187,11 @@ export function verifyArchiveChain(
     if (i > 0) {
       const prev = rows[i - 1]!;
       if (!cur.prevHash.equals(prev.thisHash)) {
-        return { ok: false, brokenAtId: cur.id, reason: 'prev_hash zeigt nicht auf vorigen this_hash' };
+        return {
+          ok: false,
+          brokenAtId: cur.id,
+          reason: 'prev_hash zeigt nicht auf vorigen this_hash',
+        };
       }
     }
     const computed = computeRowHash(cur.prevHash, cur);
@@ -188,7 +199,8 @@ export function verifyArchiveChain(
       return {
         ok: false,
         brokenAtId: cur.id,
-        reason: 'this_hash entspricht nicht SHA-256(prev_hash || canonicalJson(event)) — Event-Body manipuliert',
+        reason:
+          'this_hash entspricht nicht SHA-256(prev_hash || canonicalJson(event)) — Event-Body manipuliert',
       };
     }
   }

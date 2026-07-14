@@ -30,7 +30,9 @@ export interface ReformatInput {
 export type ReformatResult = { changed: 'format' } | { changed: 'text' };
 
 function docHash(doc: unknown): string {
-  return createHash('sha256').update(JSON.stringify(doc ?? null), 'utf8').digest('hex');
+  return createHash('sha256')
+    .update(JSON.stringify(doc ?? null), 'utf8')
+    .digest('hex');
 }
 
 export async function reformatSourceDoc(

@@ -18,15 +18,33 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import * as asn1js from 'asn1js';
 import {
-  Certificate, AttributeTypeAndValue, Extension, BasicConstraints, ExtKeyUsage,
-  AlgorithmIdentifier, TSTInfo, MessageImprint, SignedData, SignerInfo,
-  IssuerAndSerialNumber, EncapsulatedContentInfo, ContentInfo, TimeStampResp,
-  PKIStatusInfo, Attribute, SignedAndUnsignedAttributes, CryptoEngine, setEngine,
+  Certificate,
+  AttributeTypeAndValue,
+  Extension,
+  BasicConstraints,
+  ExtKeyUsage,
+  AlgorithmIdentifier,
+  TSTInfo,
+  MessageImprint,
+  SignedData,
+  SignerInfo,
+  IssuerAndSerialNumber,
+  EncapsulatedContentInfo,
+  ContentInfo,
+  TimeStampResp,
+  PKIStatusInfo,
+  Attribute,
+  SignedAndUnsignedAttributes,
+  CryptoEngine,
+  setEngine,
 } from 'pkijs';
 import { verifyTimestampResponse } from '../src/ports/rfc3161-verify';
 
 const crypto = webcrypto as unknown as Crypto;
-setEngine('gen', new CryptoEngine({ name: 'gen', crypto }) as unknown as Parameters<typeof setEngine>[1]);
+setEngine(
+  'gen',
+  new CryptoEngine({ name: 'gen', crypto }) as unknown as Parameters<typeof setEngine>[1],
+);
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fxDir = join(here, '..', 'src', '__tests__', 'fixtures');
@@ -41,7 +59,12 @@ function ab(u: Uint8Array): ArrayBuffer {
 
 async function genRsa(): Promise<CryptoKeyPair> {
   return crypto.subtle.generateKey(
-    { name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' },
+    {
+      name: 'RSASSA-PKCS1-v1_5',
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: 'SHA-256',
+    },
     true,
     ['sign', 'verify'],
   ) as Promise<CryptoKeyPair>;
@@ -65,10 +88,16 @@ async function makeCert(o: CertOpts): Promise<Certificate> {
   cert.version = 2;
   cert.serialNumber = new asn1js.Integer({ value: o.serial });
   cert.issuer.typesAndValues.push(
-    new AttributeTypeAndValue({ type: '2.5.4.3', value: new asn1js.Utf8String({ value: o.issuerCN }) }),
+    new AttributeTypeAndValue({
+      type: '2.5.4.3',
+      value: new asn1js.Utf8String({ value: o.issuerCN }),
+    }),
   );
   cert.subject.typesAndValues.push(
-    new AttributeTypeAndValue({ type: '2.5.4.3', value: new asn1js.Utf8String({ value: o.subjectCN }) }),
+    new AttributeTypeAndValue({
+      type: '2.5.4.3',
+      value: new asn1js.Utf8String({ value: o.subjectCN }),
+    }),
   );
   cert.notBefore.value = o.notBefore;
   cert.notAfter.value = o.notAfter;
@@ -76,12 +105,22 @@ async function makeCert(o: CertOpts): Promise<Certificate> {
   cert.extensions = [];
   const bc = new BasicConstraints({ cA: o.isCa });
   cert.extensions.push(
-    new Extension({ extnID: '2.5.29.19', critical: true, extnValue: bc.toSchema().toBER(false), parsedValue: bc }),
+    new Extension({
+      extnID: '2.5.29.19',
+      critical: true,
+      extnValue: bc.toSchema().toBER(false),
+      parsedValue: bc,
+    }),
   );
   if (o.eku) {
     const eku = new ExtKeyUsage({ keyPurposes: o.eku });
     cert.extensions.push(
-      new Extension({ extnID: '2.5.29.37', critical: !!o.ekuCritical, extnValue: eku.toSchema().toBER(false), parsedValue: eku }),
+      new Extension({
+        extnID: '2.5.29.37',
+        critical: !!o.ekuCritical,
+        extnValue: eku.toSchema().toBER(false),
+        parsedValue: eku,
+      }),
     );
   }
   await cert.sign(o.issuerPrivateKey, 'SHA-256');
@@ -101,7 +140,10 @@ async function makeToken(
     version: 1,
     policy: '1.2.3.4.1',
     messageImprint: new MessageImprint({
-      hashAlgorithm: new AlgorithmIdentifier({ algorithmId: SHA256_OID, algorithmParams: new asn1js.Null() }),
+      hashAlgorithm: new AlgorithmIdentifier({
+        algorithmId: SHA256_OID,
+        algorithmParams: new asn1js.Null(),
+      }),
       hashedMessage: new asn1js.OctetString({ valueHex: ab(imprint) }),
     }),
     serialNumber: new asn1js.Integer({ value: serial }),
@@ -114,16 +156,29 @@ async function makeToken(
   const messageDigest = await crypto.subtle.digest('SHA-256', tstDer);
   const certDer = leafCert.toSchema().toBER(false);
   const certHash = createHash('sha256').update(Buffer.from(certDer)).digest();
-  const essCertIdV2 = new asn1js.Sequence({ value: [new asn1js.OctetString({ valueHex: ab(new Uint8Array(certHash)) })] });
-  const signingCertV2 = new asn1js.Sequence({ value: [new asn1js.Sequence({ value: [essCertIdV2] })] });
+  const essCertIdV2 = new asn1js.Sequence({
+    value: [new asn1js.OctetString({ valueHex: ab(new Uint8Array(certHash)) })],
+  });
+  const signingCertV2 = new asn1js.Sequence({
+    value: [new asn1js.Sequence({ value: [essCertIdV2] })],
+  });
 
   const signedAttrs = withEss
     ? new SignedAndUnsignedAttributes({
         type: 0,
         attributes: [
-          new Attribute({ type: '1.2.840.113549.1.9.3', values: [new asn1js.ObjectIdentifier({ value: '1.2.840.113549.1.9.16.1.4' })] }),
-          new Attribute({ type: '1.2.840.113549.1.9.5', values: [new asn1js.UTCTime({ valueDate: genTime })] }),
-          new Attribute({ type: '1.2.840.113549.1.9.4', values: [new asn1js.OctetString({ valueHex: messageDigest })] }),
+          new Attribute({
+            type: '1.2.840.113549.1.9.3',
+            values: [new asn1js.ObjectIdentifier({ value: '1.2.840.113549.1.9.16.1.4' })],
+          }),
+          new Attribute({
+            type: '1.2.840.113549.1.9.5',
+            values: [new asn1js.UTCTime({ valueDate: genTime })],
+          }),
+          new Attribute({
+            type: '1.2.840.113549.1.9.4',
+            values: [new asn1js.OctetString({ valueHex: messageDigest })],
+          }),
           new Attribute({ type: '1.2.840.113549.1.9.16.2.47', values: [signingCertV2] }),
         ],
       })
@@ -132,12 +187,18 @@ async function makeToken(
   const signerInfo = signedAttrs
     ? new SignerInfo({
         version: 1,
-        sid: new IssuerAndSerialNumber({ issuer: leafCert.issuer, serialNumber: leafCert.serialNumber }),
+        sid: new IssuerAndSerialNumber({
+          issuer: leafCert.issuer,
+          serialNumber: leafCert.serialNumber,
+        }),
         signedAttrs,
       })
     : new SignerInfo({
         version: 1,
-        sid: new IssuerAndSerialNumber({ issuer: leafCert.issuer, serialNumber: leafCert.serialNumber }),
+        sid: new IssuerAndSerialNumber({
+          issuer: leafCert.issuer,
+          serialNumber: leafCert.serialNumber,
+        }),
       });
 
   const signedData = new SignedData({
@@ -157,7 +218,10 @@ async function makeToken(
   (signedData.encapContentInfo as unknown as { eContent: asn1js.OctetString }).eContent =
     new asn1js.OctetString({ valueHex: tstDer });
 
-  const cms = new ContentInfo({ contentType: '1.2.840.113549.1.7.2', content: signedData.toSchema(true) });
+  const cms = new ContentInfo({
+    contentType: '1.2.840.113549.1.7.2',
+    content: signedData.toSchema(true),
+  });
   const resp = new TimeStampResp({ status: new PKIStatusInfo({ status: 0 }), timeStampToken: cms });
   return new Uint8Array(resp.toSchema().toBER(false));
 }
@@ -172,38 +236,63 @@ async function main() {
   const payload = new TextEncoder().encode('taxtronik-synthetic-fixture-payload');
 
   const rootKp = await genRsa();
-  const wide = { notBefore: new Date('2015-01-01T00:00:00Z'), notAfter: new Date('2035-01-01T00:00:00Z') };
+  const wide = {
+    notBefore: new Date('2015-01-01T00:00:00Z'),
+    notAfter: new Date('2035-01-01T00:00:00Z'),
+  };
   const rootCert = await makeCert({
-    subjectCN: 'taxtronik Test Root CA', issuerCN: 'taxtronik Test Root CA',
-    subjectPublicKey: rootKp.publicKey, issuerPrivateKey: rootKp.privateKey,
-    isCa: true, serial: 1, ...wide,
+    subjectCN: 'taxtronik Test Root CA',
+    issuerCN: 'taxtronik Test Root CA',
+    subjectPublicKey: rootKp.publicKey,
+    issuerPrivateKey: rootKp.privateKey,
+    isCa: true,
+    serial: 1,
+    ...wide,
   });
   const rootPem = toPem(rootCert);
 
   // Leaf A — gültige TSA: EKU timeStamping KRITISCH, breite Gültigkeit.
   const goodKp = await genRsa();
   const goodLeaf = await makeCert({
-    subjectCN: 'taxtronik Test TSA (good)', issuerCN: 'taxtronik Test Root CA',
-    subjectPublicKey: goodKp.publicKey, issuerPrivateKey: rootKp.privateKey,
-    isCa: false, eku: [EKU_TIMESTAMPING], ekuCritical: true, serial: 2, ...wide,
+    subjectCN: 'taxtronik Test TSA (good)',
+    issuerCN: 'taxtronik Test Root CA',
+    subjectPublicKey: goodKp.publicKey,
+    issuerPrivateKey: rootKp.privateKey,
+    isCa: false,
+    eku: [EKU_TIMESTAMPING],
+    ekuCritical: true,
+    serial: 2,
+    ...wide,
   });
   const goodTsr = await makeToken(goodLeaf, goodKp.privateKey, payload, new Date(), 1001);
 
   // Leaf B — EKU timeStamping NICHT kritisch → muss abgelehnt werden (RFC 3161 §2.3).
   const ncKp = await genRsa();
   const ncLeaf = await makeCert({
-    subjectCN: 'taxtronik Test TSA (noncrit-eku)', issuerCN: 'taxtronik Test Root CA',
-    subjectPublicKey: ncKp.publicKey, issuerPrivateKey: rootKp.privateKey,
-    isCa: false, eku: [EKU_TIMESTAMPING], ekuCritical: false, serial: 3, ...wide,
+    subjectCN: 'taxtronik Test TSA (noncrit-eku)',
+    issuerCN: 'taxtronik Test Root CA',
+    subjectPublicKey: ncKp.publicKey,
+    issuerPrivateKey: rootKp.privateKey,
+    isCa: false,
+    eku: [EKU_TIMESTAMPING],
+    ekuCritical: false,
+    serial: 3,
+    ...wide,
   });
   const ncTsr = await makeToken(ncLeaf, ncKp.privateKey, payload, new Date(), 1002);
 
   // Leaf C — falscher EKU-Zweck (codeSigning, kritisch) → kein TSA-Cert → ablehnen.
   const wrongKp = await genRsa();
   const wrongLeaf = await makeCert({
-    subjectCN: 'taxtronik Test TSA (codesigning)', issuerCN: 'taxtronik Test Root CA',
-    subjectPublicKey: wrongKp.publicKey, issuerPrivateKey: rootKp.privateKey,
-    isCa: false, eku: [EKU_CODESIGNING], ekuCritical: true, serial: 4, ...wide,
+    subjectCN: 'taxtronik Test TSA (codesigning)',
+    issuerCN: 'taxtronik Test Root CA',
+    subjectPublicKey: wrongKp.publicKey,
+    issuerPrivateKey: rootKp.privateKey,
+    isCa: false,
+    eku: [EKU_CODESIGNING],
+    ekuCritical: true,
+    serial: 4,
+    ...wide,
   });
   const wrongTsr = await makeToken(wrongLeaf, wrongKp.privateKey, payload, new Date(), 1003);
 
@@ -211,12 +300,24 @@ async function main() {
   // Muss PASSEN (Prüfung gegen genTime, nicht Date.now).
   const pastKp = await genRsa();
   const pastLeaf = await makeCert({
-    subjectCN: 'taxtronik Test TSA (past-valid)', issuerCN: 'taxtronik Test Root CA',
-    subjectPublicKey: pastKp.publicKey, issuerPrivateKey: rootKp.privateKey,
-    isCa: false, eku: [EKU_TIMESTAMPING], ekuCritical: true, serial: 5,
-    notBefore: new Date('2020-01-01T00:00:00Z'), notAfter: new Date('2020-12-31T23:59:59Z'),
+    subjectCN: 'taxtronik Test TSA (past-valid)',
+    issuerCN: 'taxtronik Test Root CA',
+    subjectPublicKey: pastKp.publicKey,
+    issuerPrivateKey: rootKp.privateKey,
+    isCa: false,
+    eku: [EKU_TIMESTAMPING],
+    ekuCritical: true,
+    serial: 5,
+    notBefore: new Date('2020-01-01T00:00:00Z'),
+    notAfter: new Date('2020-12-31T23:59:59Z'),
   });
-  const pastTsr = await makeToken(pastLeaf, pastKp.privateKey, payload, new Date('2020-06-01T12:00:00Z'), 1004);
+  const pastTsr = await makeToken(
+    pastLeaf,
+    pastKp.privateKey,
+    payload,
+    new Date('2020-06-01T12:00:00Z'),
+    1004,
+  );
 
   // Token OHNE ESS-Attribut (gültiges TSA-Cert, aber keine SigningCertificate-Bindung)
   // → muss abgelehnt werden (RFC 3161 §2.4.1; OpenSSL lehnt es ebenfalls ab).
@@ -232,18 +333,32 @@ async function main() {
   writeFileSync(join(fxDir, 'synthetic-no-ess.tsr'), noEssTsr);
 
   // Self-Check: jede Erwartung sofort gegen die echte verify() prüfen.
-  const expect = async (name: string, tsr: Uint8Array, roots: string[], want: boolean, field?: 'chainTrusted') => {
+  const expect = async (
+    name: string,
+    tsr: Uint8Array,
+    roots: string[],
+    want: boolean,
+    field?: 'chainTrusted',
+  ) => {
     const r = await verifyTimestampResponse(payload, tsr, roots);
     const got = field ? r[field] : r.valid;
     const ok = got === want;
-    console.log(`${ok ? 'OK ' : 'FAIL'}  ${name}: want ${field ?? 'valid'}=${want}, got=${got}${r.reason ? ` (${r.reason})` : ''}`);
+    console.log(
+      `${ok ? 'OK ' : 'FAIL'}  ${name}: want ${field ?? 'valid'}=${want}, got=${got}${r.reason ? ` (${r.reason})` : ''}`,
+    );
     if (!ok) process.exitCode = 1;
   };
 
   console.log('--- Self-Check ---');
   await expect('good vs eigener Root', goodTsr, [rootPem], true);
   await expect('good vs GlobalSign-Root (Fall 3: Pinning)', goodTsr, [GLOBALSIGN], false);
-  await expect('good vs GlobalSign-Root chainTrusted=false', goodTsr, [GLOBALSIGN], false, 'chainTrusted');
+  await expect(
+    'good vs GlobalSign-Root chainTrusted=false',
+    goodTsr,
+    [GLOBALSIGN],
+    false,
+    'chainTrusted',
+  );
   await expect('noncrit-eku vs eigener Root (Fall 4)', ncTsr, [rootPem], false);
   await expect('wrong-eku vs eigener Root (Fall 4b)', wrongTsr, [rootPem], false);
   await expect('past-valid vs eigener Root HEUTE geprüft (Fall 5)', pastTsr, [rootPem], true);

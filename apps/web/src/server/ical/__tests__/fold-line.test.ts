@@ -25,9 +25,7 @@ function unfold(folded: string): string {
 
 /** Größte Oktett-Länge über alle physischen Zeilen. */
 function maxOctets(folded: string): number {
-  return Math.max(
-    ...folded.split('\r\n').map((l) => Buffer.byteLength(l, 'utf8')),
-  );
+  return Math.max(...folded.split('\r\n').map((l) => Buffer.byteLength(l, 'utf8')));
 }
 
 describe('foldLine', () => {

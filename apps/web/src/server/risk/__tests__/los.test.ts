@@ -15,11 +15,19 @@ const h = vi.hoisted(() => {
     // Chain-Ereignisse für den Audit-Rahmen (Betriebs-Nachschau): zeitraum-
     // Query (occurredAt) liefert alle, id-in-Query die angefragten.
     chainRows: [] as {
-      id: bigint; action: string; occurredAt: Date;
-      actorType: string; actorId: string | null; resourceType: string;
+      id: bigint;
+      action: string;
+      occurredAt: Date;
+      actorType: string;
+      actorId: string | null;
+      resourceType: string;
     }[],
-    record: vi.fn(async (_tx: unknown, _event: unknown) =>
-      ({ id: 77n, occurredAt: new Date(), prevHash: Buffer.alloc(0), thisHash: Buffer.alloc(0) })),
+    record: vi.fn(async (_tx: unknown, _event: unknown) => ({
+      id: 77n,
+      occurredAt: new Date(),
+      prevHash: Buffer.alloc(0),
+      thisHash: Buffer.alloc(0),
+    })),
     reminderCreate: vi.fn(async (_args: unknown) => ({ id: 'rem-1' })),
     settingUpsert: vi.fn(async (_args: unknown) => ({})),
     settingDeleteMany: vi.fn(async (_args: unknown) => ({ count: 1 })),
@@ -27,7 +35,9 @@ const h = vi.hoisted(() => {
   const tx = {
     riskAnalysis: {
       findMany: async (args: { where: { createdAt?: unknown; id?: { in: string[] } } }) =>
-        args.where.id ? state.analysen.filter((a) => args.where.id!.in.includes(a.id)) : state.rahmenRows,
+        args.where.id
+          ? state.analysen.filter((a) => args.where.id!.in.includes(a.id))
+          : state.rahmenRows,
     },
     clientReminder: { create: state.reminderCreate },
     tenantSetting: {
@@ -36,7 +46,9 @@ const h = vi.hoisted(() => {
       deleteMany: state.settingDeleteMany,
     },
     auditLog: {
-      findMany: async (args?: { where?: { id?: { in: bigint[] }; occurredAt?: unknown; action?: string } }) => {
+      findMany: async (args?: {
+        where?: { id?: { in: bigint[] }; occurredAt?: unknown; action?: string };
+      }) => {
         if (args?.where?.id?.in) {
           const gesucht = args.where.id.in.map(String);
           return state.chainRows.filter((r) => gesucht.includes(String(r.id)));
@@ -70,7 +82,14 @@ vi.mock('@taxtronik/risk-layer', async () => {
       rahmen: z.object({ commitment: z.string(), n: z.number().int() }).catchall(z.unknown()),
       k: z.number().int(),
       stichprobe: z.array(z.string()),
-      entropie: z.object({ quelle_klasse: z.string(), backend: z.string(), job_id: z.string().nullish(), roh_counts_sha256: z.string().nullish() }).catchall(z.unknown()),
+      entropie: z
+        .object({
+          quelle_klasse: z.string(),
+          backend: z.string(),
+          job_id: z.string().nullish(),
+          roh_counts_sha256: z.string().nullish(),
+        })
+        .catchall(z.unknown()),
       ableitung: z.object({ extraktor: z.string(), drbg: z.string() }).catchall(z.unknown()),
     })
     .catchall(z.unknown());
@@ -117,7 +136,11 @@ beforeEach(() => {
 
 describe('zieheLosStichprobe', () => {
   it('fertig-Fall: Engine bekommt NUR IDs, Nachweis+Rahmen landen in der Chain, Review-Aufgabe je Mandanten-Treffer', async () => {
-    const losZiehen = vi.fn(async () => ({ ok: true as const, status: 'fertig' as const, nachweis }));
+    const losZiehen = vi.fn(async () => ({
+      ok: true as const,
+      status: 'fertig' as const,
+      nachweis,
+    }));
     const r = await zieheLosStichprobe(ctx, { zeitraum, k: 2, backend: 'csprng' }, { losZiehen });
 
     // Engine-Call: deterministischer Rahmen (nur UUIDs), k, backend.
@@ -135,7 +158,9 @@ describe('zieheLosStichprobe', () => {
 
     // Genau EINE Review-Wiedervorlage (nur a1 hat clientId), dem Ziehenden zugewiesen.
     expect(h.state.reminderCreate).toHaveBeenCalledTimes(1);
-    const remArgs = h.state.reminderCreate.mock.calls[0]![0] as unknown as { data: Record<string, unknown> };
+    const remArgs = h.state.reminderCreate.mock.calls[0]![0] as unknown as {
+      data: Record<string, unknown>;
+    };
     expect(remArgs.data).toMatchObject({
       clientId: 'cl-1',
       createdByStaff: 's1',
@@ -146,34 +171,56 @@ describe('zieheLosStichprobe', () => {
     // Chain-Event trägt Nachweis UND Rahmen (Re-Verifikation braucht beide).
     expect(h.state.record).toHaveBeenCalledTimes(1);
     const ev = h.state.record.mock.calls[0]![1] as unknown as {
-      action: string; resourceType: string; resourceId: string; after: Record<string, unknown>;
+      action: string;
+      resourceType: string;
+      resourceId: string;
+      after: Record<string, unknown>;
     };
     expect(ev.action).toBe('risk.los.gezogen');
     expect(ev.resourceType).toBe('quantenlos');
     expect(ev.resourceId).toBe('c0ffee');
-    expect(ev.after).toMatchObject({ nachweis, rahmen: ['a1', 'b2', 'c3'], zeitraum, reviewAufgaben: ['rem-1'] });
+    expect(ev.after).toMatchObject({
+      nachweis,
+      rahmen: ['a1', 'b2', 'c3'],
+      zeitraum,
+      reviewAufgaben: ['rem-1'],
+    });
   });
 
   it('wartet-Fall (QPU-Queue): persistiert den Pending-Job + auditiert die Beantragung, KEINE Aufgaben', async () => {
     const losZiehen = vi.fn(async () => ({
-      ok: true as const, status: 'wartet' as const,
-      job_id: 'ibm-job-42', backend: 'qpu', commitment: 'c0ffee', k: 2,
+      ok: true as const,
+      status: 'wartet' as const,
+      job_id: 'ibm-job-42',
+      backend: 'qpu',
+      commitment: 'c0ffee',
+      k: 2,
     }));
     const r = await zieheLosStichprobe(ctx, { zeitraum, k: 2, backend: 'qpu' }, { losZiehen });
 
     expect(r.status).toBe('wartet');
     if (r.status !== 'wartet') return;
-    expect(r.pending).toMatchObject({ jobId: 'ibm-job-42', backend: 'qpu', commitment: 'c0ffee', k: 2, rahmen: ['a1', 'b2', 'c3'], zeitraum });
+    expect(r.pending).toMatchObject({
+      jobId: 'ibm-job-42',
+      backend: 'qpu',
+      commitment: 'c0ffee',
+      k: 2,
+      rahmen: ['a1', 'b2', 'c3'],
+      zeitraum,
+    });
 
     expect(h.state.settingUpsert).toHaveBeenCalledTimes(1);
     const up = h.state.settingUpsert.mock.calls[0]![0] as unknown as {
-      where: { tenantId_key: { key: string } }; create: { value: Record<string, unknown> };
+      where: { tenantId_key: { key: string } };
+      create: { value: Record<string, unknown> };
     };
     expect(up.where.tenantId_key.key).toBe('quantenlos.pending');
     expect(up.create.value).toMatchObject({ jobId: 'ibm-job-42', rahmen: ['a1', 'b2', 'c3'] });
 
     expect(h.state.record).toHaveBeenCalledTimes(1);
-    expect((h.state.record.mock.calls[0]![1] as unknown as { action: string }).action).toBe('risk.los.beantragt');
+    expect((h.state.record.mock.calls[0]![1] as unknown as { action: string }).action).toBe(
+      'risk.los.beantragt',
+    );
     expect(h.state.reminderCreate).not.toHaveBeenCalled();
   });
 
@@ -196,7 +243,11 @@ describe('zieheLosStichprobe', () => {
 
   it('Stichprobe außerhalb des Rahmens → LosNachweisInkonsistentError, NICHTS wird geschrieben', async () => {
     const kaputt = { ...nachweis, stichprobe: ['a1', 'FREMD'] };
-    const losZiehen = vi.fn(async () => ({ ok: true as const, status: 'fertig' as const, nachweis: kaputt }));
+    const losZiehen = vi.fn(async () => ({
+      ok: true as const,
+      status: 'fertig' as const,
+      nachweis: kaputt,
+    }));
     await expect(
       zieheLosStichprobe(ctx, { zeitraum, k: 2, backend: 'csprng' }, { losZiehen }),
     ).rejects.toBeInstanceOf(LosNachweisInkonsistentError);
@@ -208,8 +259,12 @@ describe('zieheLosStichprobe', () => {
 describe('zieheLosStichprobe — IBM-Token-Durchreichung', () => {
   it('reicht ibmToken an den Engine-Client durch (zentrale Config, qpu)', async () => {
     const losZiehen = vi.fn(async () => ({
-      ok: true as const, status: 'wartet' as const,
-      job_id: 'ibm-job-42', backend: 'qpu', commitment: 'c0ffee', k: 2,
+      ok: true as const,
+      status: 'wartet' as const,
+      job_id: 'ibm-job-42',
+      backend: 'qpu',
+      commitment: 'c0ffee',
+      k: 2,
     }));
     await zieheLosStichprobe(
       ctx,
@@ -217,23 +272,51 @@ describe('zieheLosStichprobe — IBM-Token-Durchreichung', () => {
       { losZiehen },
     );
     expect(losZiehen).toHaveBeenCalledWith({
-      rahmen: ['a1', 'b2', 'c3'], k: 2, backend: 'qpu', ibmToken: 'ibm-tok',
+      rahmen: ['a1', 'b2', 'c3'],
+      k: 2,
+      backend: 'qpu',
+      ibmToken: 'ibm-tok',
     });
   });
 });
 
 describe('zieheLosStichprobe — Rahmen-Typ audit (Betriebs-Nachschau)', () => {
   const chain = [
-    { id: 1n, action: 'client.created', occurredAt: new Date('2026-05-02T10:00:00Z'), actorType: 'STAFF', actorId: 's1', resourceType: 'client' },
-    { id: 2n, action: 'document.upload', occurredAt: new Date('2026-05-03T10:00:00Z'), actorType: 'STAFF', actorId: 's2', resourceType: 'document' },
+    {
+      id: 1n,
+      action: 'client.created',
+      occurredAt: new Date('2026-05-02T10:00:00Z'),
+      actorType: 'STAFF',
+      actorId: 's1',
+      resourceType: 'client',
+    },
+    {
+      id: 2n,
+      action: 'document.upload',
+      occurredAt: new Date('2026-05-03T10:00:00Z'),
+      actorType: 'STAFF',
+      actorId: 's2',
+      resourceType: 'document',
+    },
     // Unbekannte Action ⇒ Label-Fallback auf den Rohstring.
-    { id: 3n, action: 'sonder.aktion', occurredAt: new Date('2026-05-04T10:00:00Z'), actorType: 'SYSTEM', actorId: null, resourceType: 'invoice' },
+    {
+      id: 3n,
+      action: 'sonder.aktion',
+      occurredAt: new Date('2026-05-04T10:00:00Z'),
+      actorType: 'SYSTEM',
+      actorId: null,
+      resourceType: 'invoice',
+    },
   ];
 
   it('Rahmen = Chain-IDs, Treffer als Nachschau-Einträge, KEINE Wiedervorlagen', async () => {
     h.state.chainRows = chain;
     const auditNachweis = { ...nachweis, stichprobe: ['1', '3'] };
-    const losZiehen = vi.fn(async () => ({ ok: true as const, status: 'fertig' as const, nachweis: auditNachweis }));
+    const losZiehen = vi.fn(async () => ({
+      ok: true as const,
+      status: 'fertig' as const,
+      nachweis: auditNachweis,
+    }));
 
     const r = await zieheLosStichprobe(
       ctx,
@@ -250,14 +333,24 @@ describe('zieheLosStichprobe — Rahmen-Typ audit (Betriebs-Nachschau)', () => {
     expect(r.ziehung.stichprobe).toEqual([]);
     expect(r.ziehung.nachschau).toEqual([
       {
-        auditId: '1', action: 'client.created', label: 'Mandant angelegt',
-        occurredAt: '2026-05-02T10:00:00.000Z', actorType: 'STAFF', actorId: 's1',
-        resourceType: 'client', fehlt: false,
+        auditId: '1',
+        action: 'client.created',
+        label: 'Mandant angelegt',
+        occurredAt: '2026-05-02T10:00:00.000Z',
+        actorType: 'STAFF',
+        actorId: 's1',
+        resourceType: 'client',
+        fehlt: false,
       },
       {
-        auditId: '3', action: 'sonder.aktion', label: 'sonder.aktion',
-        occurredAt: '2026-05-04T10:00:00.000Z', actorType: 'SYSTEM', actorId: null,
-        resourceType: 'invoice', fehlt: false,
+        auditId: '3',
+        action: 'sonder.aktion',
+        label: 'sonder.aktion',
+        occurredAt: '2026-05-04T10:00:00.000Z',
+        actorType: 'SYSTEM',
+        actorId: null,
+        resourceType: 'invoice',
+        fehlt: false,
       },
     ]);
 
@@ -267,14 +360,22 @@ describe('zieheLosStichprobe — Rahmen-Typ audit (Betriebs-Nachschau)', () => {
 
     // Chain-Event trägt den Rahmen-Typ (Re-Verifikation + Anzeige).
     const ev = h.state.record.mock.calls[0]![1] as unknown as { after: Record<string, unknown> };
-    expect(ev.after).toMatchObject({ rahmenTyp: 'audit', rahmen: ['1', '2', '3'], reviewAufgaben: [] });
+    expect(ev.after).toMatchObject({
+      rahmenTyp: 'audit',
+      rahmen: ['1', '2', '3'],
+      reviewAufgaben: [],
+    });
   });
 
   it('leerer Audit-Rahmen → LosRahmenLeerError mit Audit-Wortlaut', async () => {
     h.state.chainRows = [];
     const losZiehen = vi.fn();
     await expect(
-      zieheLosStichprobe(ctx, { zeitraum, k: 1, backend: 'csprng', rahmenTyp: 'audit' }, { losZiehen }),
+      zieheLosStichprobe(
+        ctx,
+        { zeitraum, k: 1, backend: 'csprng', rahmenTyp: 'audit' },
+        { losZiehen },
+      ),
     ).rejects.toThrow('keine Audit-Ereignisse');
     expect(losZiehen).not.toHaveBeenCalled();
   });
@@ -282,10 +383,12 @@ describe('zieheLosStichprobe — Rahmen-Typ audit (Betriebs-Nachschau)', () => {
   it('listLosZiehungen erkennt audit-Events und meldet fehlende Chain-Einträge', async () => {
     h.state.chainRows = chain.slice(0, 1); // nur #1 existiert (noch)
     const auditNachweis = { ...nachweis, stichprobe: ['1', '3'] };
-    h.state.auditRows = [{
-      id: 88n,
-      after: { nachweis: auditNachweis, rahmen: ['1', '2', '3'], zeitraum, rahmenTyp: 'audit' },
-    }];
+    h.state.auditRows = [
+      {
+        id: 88n,
+        after: { nachweis: auditNachweis, rahmen: ['1', '2', '3'], zeitraum, rahmenTyp: 'audit' },
+      },
+    ];
     const list = await listLosZiehungen(ctx);
     expect(list).toHaveLength(1);
     expect(list[0]).toMatchObject({ auditId: '88', rahmenTyp: 'audit', stichprobe: [] });
@@ -298,22 +401,38 @@ describe('zieheLosStichprobe — Rahmen-Typ audit (Betriebs-Nachschau)', () => {
 
 describe('holeLosAb', () => {
   const pending = {
-    jobId: 'ibm-job-42', backend: 'qpu', commitment: 'c0ffee', k: 2,
-    rahmen: ['a1', 'b2', 'c3'], zeitraum, beantragtAm: '2026-06-10T07:00:00Z', beantragtVon: 's1',
+    jobId: 'ibm-job-42',
+    backend: 'qpu',
+    commitment: 'c0ffee',
+    k: 2,
+    rahmen: ['a1', 'b2', 'c3'],
+    zeitraum,
+    beantragtAm: '2026-06-10T07:00:00Z',
+    beantragtVon: 's1',
   };
 
   it('ohne Pending-Job → Fehler', async () => {
-    await expect(holeLosAb(ctx, { losAbholen: vi.fn() })).rejects.toThrow('Kein wartender Quantenlos-Job');
+    await expect(holeLosAb(ctx, { losAbholen: vi.fn() })).rejects.toThrow(
+      'Kein wartender Quantenlos-Job',
+    );
   });
 
   it('wartet weiter → Pending bleibt unverändert liegen', async () => {
     h.state.pendingRow = { value: pending };
     const losAbholen = vi.fn(async () => ({
-      ok: true as const, status: 'wartet' as const,
-      job_id: 'ibm-job-42', backend: 'qpu', commitment: 'c0ffee', k: 2,
+      ok: true as const,
+      status: 'wartet' as const,
+      job_id: 'ibm-job-42',
+      backend: 'qpu',
+      commitment: 'c0ffee',
+      k: 2,
     }));
     const r = await holeLosAb(ctx, { losAbholen });
-    expect(losAbholen).toHaveBeenCalledWith({ jobId: 'ibm-job-42', rahmen: ['a1', 'b2', 'c3'], k: 2 });
+    expect(losAbholen).toHaveBeenCalledWith({
+      jobId: 'ibm-job-42',
+      rahmen: ['a1', 'b2', 'c3'],
+      k: 2,
+    });
     expect(r.status).toBe('wartet');
     expect(h.state.settingDeleteMany).not.toHaveBeenCalled();
     expect(h.state.record).not.toHaveBeenCalled();
@@ -322,12 +441,19 @@ describe('holeLosAb', () => {
   it('reicht ibmToken an losAbholen durch (zentrale Config)', async () => {
     h.state.pendingRow = { value: pending };
     const losAbholen = vi.fn(async () => ({
-      ok: true as const, status: 'wartet' as const,
-      job_id: 'ibm-job-42', backend: 'qpu', commitment: 'c0ffee', k: 2,
+      ok: true as const,
+      status: 'wartet' as const,
+      job_id: 'ibm-job-42',
+      backend: 'qpu',
+      commitment: 'c0ffee',
+      k: 2,
     }));
     await holeLosAb(ctx, { losAbholen }, { ibmToken: 'ibm-tok' });
     expect(losAbholen).toHaveBeenCalledWith({
-      jobId: 'ibm-job-42', rahmen: ['a1', 'b2', 'c3'], k: 2, ibmToken: 'ibm-tok',
+      jobId: 'ibm-job-42',
+      rahmen: ['a1', 'b2', 'c3'],
+      k: 2,
+      ibmToken: 'ibm-tok',
     });
   });
 
@@ -335,9 +461,18 @@ describe('holeLosAb', () => {
     h.state.pendingRow = { value: pending };
     const qpuNachweis = {
       ...nachweis,
-      entropie: { quelle_klasse: 'qpu', backend: 'ibm_torino', job_id: 'ibm-job-42', roh_counts_sha256: 'cd'.repeat(32) },
+      entropie: {
+        quelle_klasse: 'qpu',
+        backend: 'ibm_torino',
+        job_id: 'ibm-job-42',
+        roh_counts_sha256: 'cd'.repeat(32),
+      },
     };
-    const losAbholen = vi.fn(async () => ({ ok: true as const, status: 'fertig' as const, nachweis: qpuNachweis }));
+    const losAbholen = vi.fn(async () => ({
+      ok: true as const,
+      status: 'fertig' as const,
+      nachweis: qpuNachweis,
+    }));
     const r = await holeLosAb(ctx, { losAbholen });
 
     expect(r.status).toBe('fertig');
@@ -354,7 +489,10 @@ describe('pruefeLosNachweis / listLosZiehungen', () => {
   it('prüft Nachweis+Rahmen aus dem Audit-Event gegen die Engine', async () => {
     h.state.auditRows = [{ id: 77n, after: { nachweis, rahmen: ['a1', 'b2', 'c3'], zeitraum } }];
     const losPruefen = vi.fn(async () => ({
-      ok: true as const, gueltig: true, geprueft: ['commitment'], hinweise: [],
+      ok: true as const,
+      gueltig: true,
+      geprueft: ['commitment'],
+      hinweise: [],
     }));
     const r = await pruefeLosNachweis(ctx, '77', { online: true }, { losPruefen });
     expect(losPruefen).toHaveBeenCalledWith({ nachweis, rahmen: ['a1', 'b2', 'c3'], online: true });
@@ -364,17 +502,25 @@ describe('pruefeLosNachweis / listLosZiehungen', () => {
   it('reicht ibmToken an losPruefen durch (Online-Refetch)', async () => {
     h.state.auditRows = [{ id: 77n, after: { nachweis, rahmen: ['a1', 'b2', 'c3'], zeitraum } }];
     const losPruefen = vi.fn(async () => ({
-      ok: true as const, gueltig: true, geprueft: [], hinweise: [],
+      ok: true as const,
+      gueltig: true,
+      geprueft: [],
+      hinweise: [],
     }));
     await pruefeLosNachweis(ctx, '77', { online: true, ibmToken: 'ibm-tok' }, { losPruefen });
     expect(losPruefen).toHaveBeenCalledWith({
-      nachweis, rahmen: ['a1', 'b2', 'c3'], online: true, ibmToken: 'ibm-tok',
+      nachweis,
+      rahmen: ['a1', 'b2', 'c3'],
+      online: true,
+      ibmToken: 'ibm-tok',
     });
   });
 
   it('unbekannte auditId → Fehler ohne Engine-Call', async () => {
     const losPruefen = vi.fn();
-    await expect(pruefeLosNachweis(ctx, '99', {}, { losPruefen })).rejects.toThrow('Ziehung nicht gefunden');
+    await expect(pruefeLosNachweis(ctx, '99', {}, { losPruefen })).rejects.toThrow(
+      'Ziehung nicht gefunden',
+    );
     expect(losPruefen).not.toHaveBeenCalled();
   });
 

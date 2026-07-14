@@ -38,7 +38,7 @@ jobs:
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: 22
+          node-version: 24
 
       - name: Exakten annotierten Tag-Commit auf main verifizieren
         run: |
@@ -52,6 +52,10 @@ jobs:
           node scripts/release/check-release-gates.mjs
           node scripts/release/tests/check-release-gates.test.mjs
           node scripts/release/tests/verify-release-config.test.mjs
+          node scripts/release/verify-release-version.mjs --tag "$GITHUB_REF_NAME"
+          node scripts/release/tests/verify-release-version.test.mjs
+          node scripts/check-docker-bases-pinned.mjs
+          node scripts/tests/check-docker-bases-pinned.test.mjs
           bash scripts/release/tests/verify-tag-checkout.test.sh
 
       - name: Manifest-Konfiguration und Schreibrecht fail-closed prüfen
@@ -210,6 +214,36 @@ jobs:
               --severity CRITICAL --ignore-unfixed --exit-code 1 --quiet "$ref"
           done
 
+      - name: CycloneDX-SBOMs aus den finalen Images erzeugen
+        run: |
+          set -euo pipefail
+          mkdir -p release-sbom
+          for img in web worker; do
+            ref="${{ steps.meta.outputs.prefix }}/$img:${{ steps.meta.outputs.version }}"
+            docker run --rm \
+              -v /var/run/docker.sock:/var/run/docker.sock \
+              -v "$PWD/release-sbom:/out" \
+              -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+              aquasec/trivy:latest@sha256:2a335d3a73d4e1d52d73c8ef417ab0f91f86ba0a912caf8227665b988a6f4015 image \
+              --format cyclonedx --output "/out/${img}.cdx.json" "$ref"
+            test -s "release-sbom/${img}.cdx.json"
+          done
+
+      - name: Release-SBOMs hochladen
+        uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5
+        with:
+          name: release-sbom-${{ steps.meta.outputs.version }}
+          path: release-sbom/*.cdx.json
+          if-no-files-found: error
+
+      - name: Release-Images als echten Stack starten und prüfen
+        run: |
+          set -euo pipefail
+          bash scripts/release/smoke-release-images.sh \
+            --web-image "${{ steps.meta.outputs.prefix }}/web:${{ steps.meta.outputs.version }}" \
+            --worker-image "${{ steps.meta.outputs.prefix }}/worker:${{ steps.meta.outputs.version }}" \
+            --expected-revision "${{ github.sha }}"
+
       - name: Push in die Registry und Digests binden
         id: push
         run: |
@@ -267,7 +301,7 @@ jobs:
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: 22
+          node-version: 24
 
       - name: Exakten Tag-Commit vor der Manifest-Publikation erneut verifizieren
         run: |

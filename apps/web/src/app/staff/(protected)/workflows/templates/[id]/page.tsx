@@ -12,11 +12,7 @@ import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { TemplateEditor } from './editor';
 
-export default async function TemplateEditorPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function TemplateEditorPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await staffAuth();
   if (!session?.user) redirect('/staff/login');
   const { id } = await params;
@@ -56,17 +52,14 @@ export default async function TemplateEditorPage({
 
   return (
     <div className="p-8 max-w-4xl">
-      <Link
-        href="/staff/workflows/templates"
-        className="back-link"
-      >
+      <Link href="/staff/workflows/templates" className="back-link">
         <ArrowLeft className="h-4 w-4" /> Zurück zu Vorlagen
       </Link>
 
       <h1 className="text-2xl font-bold text-primary mb-1">{template.name}</h1>
       <p className="text-muted text-sm mb-6">
-        Schritte definieren und speichern. Beim Start einer Instanz pro Mandant
-        werden die Schritte als ToDo-Liste erzeugt.
+        Schritte definieren und speichern. Beim Start einer Instanz pro Mandant werden die Schritte
+        als ToDo-Liste erzeugt.
       </p>
 
       <TemplateEditor

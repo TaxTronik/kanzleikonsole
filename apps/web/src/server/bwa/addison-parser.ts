@@ -115,7 +115,11 @@ export function parseAddisonBwaCsv(csv: string): ParsedBwa {
   // Spalten-Indices der Periodenwerte: jede „Periode" ist eine Datenspalte (€)
   // gefolgt von einer Anteils-Spalte (% — meist „in %"). Wir suchen Spalten,
   // deren periodCols-Eintrag zu parsePeriodHeader passt.
-  const periodSpec: Array<{ valueCol: number; shareCol: number | null; meta: ReturnType<typeof parsePeriodHeader>; }> = [];
+  const periodSpec: Array<{
+    valueCol: number;
+    shareCol: number | null;
+    meta: ReturnType<typeof parsePeriodHeader>;
+  }> = [];
   for (let i = 0; i < periodCols.length; i++) {
     const m = parsePeriodHeader(periodCols[i] ?? '');
     if (m) {
@@ -155,7 +159,7 @@ export function parseAddisonBwaCsv(csv: string): ParsedBwa {
       const valueRaw = cols[spec.valueCol] ?? '';
       const amount = parseGermanDecimal(valueRaw);
       if (amount === null) return;
-      const shareRaw = spec.shareCol !== null ? cols[spec.shareCol] ?? '' : '';
+      const shareRaw = spec.shareCol !== null ? (cols[spec.shareCol] ?? '') : '';
       const sharePct = spec.shareCol !== null ? parseGermanDecimal(shareRaw) : null;
       periods[pi]!.positions.push({ number, label, amount, sharePct });
     });
@@ -193,8 +197,8 @@ const ADDISON_COSTS = 3150;
 const ADDISON_RESULT = 3250;
 const ADDISON_PERSONNEL = 3030;
 
-const DATEV_REVENUE = 1051;       // Gesamtleistung
-const DATEV_RESULT = 1380;        // Vorläufiges Ergebnis (nach Steuern)
+const DATEV_REVENUE = 1051; // Gesamtleistung
+const DATEV_RESULT = 1380; // Vorläufiges Ergebnis (nach Steuern)
 const DATEV_RESULT_BEFORE_TAX = 1345; // Ergebnis vor Steuern
 const DATEV_PERSONNEL = 1100;
 const DATEV_OPERATING_RESULT = 1300; // Betriebsergebnis (vor Ertragsteuern)
@@ -235,18 +239,28 @@ export function parseAddisonBwaCompactCsv(csv: string): ParsedBwa {
   for (let i = 0; i < headerCols.length; i++) {
     const raw = (headerCols[i] ?? '').toLowerCase();
     const norm = raw
-      .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
+      .replace(/ä/g, 'ae')
+      .replace(/ö/g, 'oe')
+      .replace(/ü/g, 'ue')
+      .replace(/ß/g, 'ss')
       .replace(/[^a-z]/g, '');
-    if (norm.includes('summeerl')) colToNumber.push({ col: i, number: ADDISON_REVENUE, label: 'Summe Erlöse' });
-    else if (norm.includes('betriebseinnahmen')) colToNumber.push({ col: i, number: 2995, label: 'Betriebseinnahmen' });
-    else if (norm.includes('summepersonalkosten')) colToNumber.push({ col: i, number: ADDISON_PERSONNEL, label: 'Personalkosten' });
-    else if (norm.includes('summederkosten')) colToNumber.push({ col: i, number: ADDISON_COSTS, label: 'Summe der Kosten' });
+    if (norm.includes('summeerl'))
+      colToNumber.push({ col: i, number: ADDISON_REVENUE, label: 'Summe Erlöse' });
+    else if (norm.includes('betriebseinnahmen'))
+      colToNumber.push({ col: i, number: 2995, label: 'Betriebseinnahmen' });
+    else if (norm.includes('summepersonalkosten'))
+      colToNumber.push({ col: i, number: ADDISON_PERSONNEL, label: 'Personalkosten' });
+    else if (norm.includes('summederkosten'))
+      colToNumber.push({ col: i, number: ADDISON_COSTS, label: 'Summe der Kosten' });
     else if (norm.includes('vorlaeufigesergebnis') || norm.includes('vorlergebnis')) {
       colToNumber.push({ col: i, number: ADDISON_RESULT, label: 'Vorläufiges Ergebnis' });
     }
   }
   if (colToNumber.length === 0) {
-    return { periods: [], warnings: ['Keine bekannten Spalten erkannt (Summe Erlöse, Personalkosten, …).'] };
+    return {
+      periods: [],
+      warnings: ['Keine bekannten Spalten erkannt (Summe Erlöse, Personalkosten, …).'],
+    };
   }
 
   // Periodenzeilen ab headerIdx+1: erste Spalte enthält Label + Periode
@@ -287,7 +301,9 @@ export function parseAddisonBwaCompactCsv(csv: string): ParsedBwa {
   return { periods, warnings };
 }
 
-export function computeBwaKpis(positions: Array<{ number: number; amount: number | { toString(): string } }>): BwaKpis {
+export function computeBwaKpis(
+  positions: Array<{ number: number; amount: number | { toString(): string } }>,
+): BwaKpis {
   const map = new Map<number, number>();
   for (const p of positions) {
     map.set(p.number, typeof p.amount === 'number' ? p.amount : Number(p.amount.toString()));

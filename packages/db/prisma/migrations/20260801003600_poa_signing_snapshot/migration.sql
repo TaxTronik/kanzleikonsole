@@ -140,7 +140,11 @@ BEGIN
         AND NEW."signing_content_snapshot" IS NOT NULL
       )
     ) THEN
-      NEW."sent_at" := statement_timestamp();
+      -- created_at is legacy TIMESTAMP(3). Round the later statement timestamp
+      -- to the same precision so a fast transition cannot appear earlier due
+      -- solely to different rounding. Do not clamp to created_at: an invalid,
+      -- future creation time must still fail poa_sent_at_after_created_check.
+      NEW."sent_at" := statement_timestamp()::TIMESTAMPTZ(3);
     ELSIF NEW."sent_at" IS DISTINCT FROM OLD."sent_at" THEN
       RAISE EXCEPTION 'PoA-Versandzeitpunkt ist unveränderlich.'
         USING ERRCODE = 'restrict_violation';

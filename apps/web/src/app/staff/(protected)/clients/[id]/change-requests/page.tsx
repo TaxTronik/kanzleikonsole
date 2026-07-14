@@ -41,8 +41,14 @@ export default async function ClientChangeRequestsPage({
       const client = await tx.client.findUnique({
         where: { id: clientId },
         select: {
-          id: true, name: true, street: true, postalCode: true,
-          city: true, countryIso: true, vatId: true, invoiceEmail: true,
+          id: true,
+          name: true,
+          street: true,
+          postalCode: true,
+          city: true,
+          countryIso: true,
+          vatId: true,
+          invoiceEmail: true,
         },
       });
       if (!client) return null;
@@ -62,16 +68,11 @@ export default async function ClientChangeRequestsPage({
 
   return (
     <div className="p-8 max-w-4xl">
-      <Link
-        href={`/staff/clients/${client.id}`}
-        className="back-link mb-3"
-      >
+      <Link href={`/staff/clients/${client.id}`} className="back-link mb-3">
         <ArrowLeft className="h-3 w-3" />
         Mandant
       </Link>
-      <h1 className="text-2xl font-bold text-primary mb-1">
-        Stammdaten-Änderungen
-      </h1>
+      <h1 className="text-2xl font-bold text-primary mb-1">Stammdaten-Änderungen</h1>
       <p className="text-muted text-sm mb-6">{client.name}</p>
 
       {requests.length === 0 ? (
@@ -95,17 +96,13 @@ export default async function ClientChangeRequestsPage({
                   <div>
                     <div className="flex items-center gap-2 mb-1">
                       <StatusBadge status={r.status} />
-                      <span className="text-xs text-muted">
-                        {fmtDateTimeShort(r.createdAt)}
-                      </span>
+                      <span className="text-xs text-muted">{fmtDateTimeShort(r.createdAt)}</span>
                     </div>
                     <p className="text-sm text-secondary">
                       {r.contact.fullName}{' '}
                       <span className="text-xs text-disabled">({r.contact.email})</span>
                     </p>
-                    {r.note && (
-                      <p className="text-xs text-secondary italic mt-1">„{r.note}"</p>
-                    )}
+                    {r.note && <p className="text-xs text-secondary italic mt-1">„{r.note}"</p>}
                   </div>
                 </div>
 

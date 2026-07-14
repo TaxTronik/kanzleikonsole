@@ -55,9 +55,7 @@ describe('session cookie JWT salts', () => {
 
     const salts = await import('../session-cookie');
 
-    expect(salts.STAFF_SESSION_JWT_SALT).toBe(
-      'taxtronik_staff_session:https://kanzlei.example.de',
-    );
+    expect(salts.STAFF_SESSION_JWT_SALT).toBe('taxtronik_staff_session:https://kanzlei.example.de');
     expect(salts.PORTAL_SESSION_JWT_SALT).toBe(
       'taxtronik_portal_session:https://kanzlei.example.de',
     );

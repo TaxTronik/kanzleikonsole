@@ -55,8 +55,4 @@ export {
 } from './schema';
 
 export { CircuitBreaker, CircuitOpenError, executeResilient, withRetry } from './resilience';
-export type {
-  CircuitState,
-  CircuitBreakerOptions,
-  RetryOptions,
-} from './resilience';
+export type { CircuitState, CircuitBreakerOptions, RetryOptions } from './resilience';

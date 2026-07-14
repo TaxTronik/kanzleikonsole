@@ -34,8 +34,8 @@ export default async function FormsListPage() {
           Formulare
         </h1>
         <p className="text-muted text-sm">
-          Eigene Anfrage-Formulare für Mandanten — z. B. „Steuerunterlagen 2025",
-          „Fahrtenbuch", „Homeoffice-Erfassung". Mandanten füllen sie im Portal aus.
+          Eigene Anfrage-Formulare für Mandanten — z. B. „Steuerunterlagen 2025", „Fahrtenbuch",
+          „Homeoffice-Erfassung". Mandanten füllen sie im Portal aus.
         </p>
       </div>
 
@@ -58,10 +58,18 @@ export default async function FormsListPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-default">
-                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Vorlage</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Felder</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Anfragen</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Status</th>
+                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+                  Vorlage
+                </th>
+                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+                  Felder
+                </th>
+                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+                  Anfragen
+                </th>
+                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+                  Status
+                </th>
                 <th className="text-right px-6 py-3"></th>
               </tr>
             </thead>
@@ -69,7 +77,10 @@ export default async function FormsListPage() {
               {templates.map((t) => (
                 <tr key={t.id} className={t.active ? 'hover:bg-gray-50' : 'opacity-60'}>
                   <td className="px-6 py-3">
-                    <Link href={`/staff/forms/${t.id}`} className="font-medium text-primary hover:underline">
+                    <Link
+                      href={`/staff/forms/${t.id}`}
+                      className="font-medium text-primary hover:underline"
+                    >
                       {t.name}
                     </Link>
                     {t.description && (
@@ -79,7 +90,11 @@ export default async function FormsListPage() {
                   <td className="px-6 py-3 text-secondary">{t._count.fields}</td>
                   <td className="px-6 py-3 text-secondary">{t._count.submissions}</td>
                   <td className="px-6 py-3">
-                    {t.active ? <span className="badge-green">Aktiv</span> : <span className="badge-gray">Deaktiviert</span>}
+                    {t.active ? (
+                      <span className="badge-green">Aktiv</span>
+                    ) : (
+                      <span className="badge-gray">Deaktiviert</span>
+                    )}
                   </td>
                   <td className="px-6 py-3 text-right">
                     <FormRowActions

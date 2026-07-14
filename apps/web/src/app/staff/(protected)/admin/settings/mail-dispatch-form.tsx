@@ -28,9 +28,9 @@ export function MailDispatchForm({ initial }: { initial: MailDispatchConfig }) {
               Nur App-eigener Versand <span className="text-xs text-muted">(Default)</span>
             </p>
             <p className="text-xs text-secondary dark:text-disabled">
-              Alle Mails werden direkt über das SMTP-Modul mit den
-              EmailTemplate-Vorlagen verschickt. n8n bleibt deaktiviert.
-              Empfohlen für Kanzleien ohne externe Workflow-Engine.
+              Alle Mails werden direkt über das SMTP-Modul mit den EmailTemplate-Vorlagen
+              verschickt. n8n bleibt deaktiviert. Empfohlen für Kanzleien ohne externe
+              Workflow-Engine.
             </p>
           </div>
         </label>
@@ -44,15 +44,12 @@ export function MailDispatchForm({ initial }: { initial: MailDispatchConfig }) {
             className="mt-1 h-4 w-4 text-brand-600 border-strong focus:ring-brand-500"
           />
           <div>
-            <p className="text-sm font-medium text-primary">
-              App + n8n-Event parallel
-            </p>
+            <p className="text-sm font-medium text-primary">App + n8n-Event parallel</p>
             <p className="text-xs text-secondary dark:text-disabled">
-              Die App verschickt die Mail wie oben — zusätzlich wird ein
-              signierter Webhook an n8n geschickt, damit dort weitere
-              Aktionen folgen können (Slack-Ping ans Team, CRM-Sync, externe
-              Eskalation). n8n übernimmt NICHT den Mail-Versand. Voraussetzung:
-              n8n-Bridge unten konfiguriert.
+              Die App verschickt die Mail wie oben — zusätzlich wird ein signierter Webhook an n8n
+              geschickt, damit dort weitere Aktionen folgen können (Slack-Ping ans Team, CRM-Sync,
+              externe Eskalation). n8n übernimmt NICHT den Mail-Versand. Voraussetzung: n8n-Bridge
+              unten konfiguriert.
             </p>
           </div>
         </label>

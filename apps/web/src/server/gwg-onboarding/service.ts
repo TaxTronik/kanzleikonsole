@@ -35,7 +35,10 @@ export interface LoadedInvite {
   inviteEmail: string;
   status: 'PENDING' | 'STARTED' | 'SUBMITTED' | 'EXPIRED' | 'CANCELLED';
   expiresAt: Date;
-  client: Pick<Client, 'id' | 'name' | 'kind' | 'street' | 'postalCode' | 'city' | 'countryIso' | 'vatId'>;
+  client: Pick<
+    Client,
+    'id' | 'name' | 'kind' | 'street' | 'postalCode' | 'city' | 'countryIso' | 'vatId'
+  >;
   tenant: Pick<Tenant, 'id' | 'name' | 'slug'>;
 }
 
@@ -47,10 +50,9 @@ export interface LoadedInvite {
 // Pfad der Page dieselbe Ansicht rendert (kein Token-Probing-Orakel).
 export const GENERIC_TOKEN_ERROR = 'Einladung ungültig oder nicht mehr verfügbar.';
 
-export async function loadInviteByRawToken(rawToken: string): Promise<
-  | { ok: true; invite: LoadedInvite }
-  | { ok: false; error: string }
-> {
+export async function loadInviteByRawToken(
+  rawToken: string,
+): Promise<{ ok: true; invite: LoadedInvite } | { ok: false; error: string }> {
   if (!rawToken || rawToken.length < 10) {
     return { ok: false, error: GENERIC_TOKEN_ERROR };
   }
@@ -60,8 +62,14 @@ export async function loadInviteByRawToken(rawToken: string): Promise<
     include: {
       client: {
         select: {
-          id: true, name: true, kind: true,
-          street: true, postalCode: true, city: true, countryIso: true, vatId: true,
+          id: true,
+          name: true,
+          kind: true,
+          street: true,
+          postalCode: true,
+          city: true,
+          countryIso: true,
+          vatId: true,
         },
       },
       tenant: { select: { id: true, name: true, slug: true } },

@@ -21,11 +21,11 @@ const KEY = 'mail.smtp';
 export interface SmtpConfig {
   host: string;
   port: number;
-  secure: boolean;     // True für Port 465 (TLS), sonst STARTTLS opportunistisch
-  user: string;        // Login (oft = From-Adresse)
-  password: string;    // Klartext (im DB-Roundtrip verschlüsselt)
-  from: string;        // "Kanzlei Mustermann <kanzlei@example.de>"
-  replyTo: string;     // Optional
+  secure: boolean; // True für Port 465 (TLS), sonst STARTTLS opportunistisch
+  user: string; // Login (oft = From-Adresse)
+  password: string; // Klartext (im DB-Roundtrip verschlüsselt)
+  from: string; // "Kanzlei Mustermann <kanzlei@example.de>"
+  replyTo: string; // Optional
 }
 
 export const DEFAULT_SMTP_CONFIG: SmtpConfig = {
@@ -50,8 +50,8 @@ interface SmtpStored {
 }
 
 export interface SmtpStatus {
-  configured: boolean;  // host + from gesetzt
-  fromDb: boolean;      // Quelle ist tenant_setting (sonst ENV-Fallback)
+  configured: boolean; // host + from gesetzt
+  fromDb: boolean; // Quelle ist tenant_setting (sonst ENV-Fallback)
 }
 
 export async function readSmtpConfig(ctx: TenantContext): Promise<SmtpConfig | null> {
@@ -63,7 +63,11 @@ export async function readSmtpConfig(ctx: TenantContext): Promise<SmtpConfig | n
     const stored = row.value as Partial<SmtpStored> & { password?: string };
     // Legacy-Klartext (stored.password) als Fallback; Decrypt-Fehler wird
     // geloggt statt still zu '' (Key-Rotation ohne Re-Wrap).
-    const password = readEncryptedSetting(stored.passwordEncrypted, stored.password, 'smtp.password');
+    const password = readEncryptedSetting(
+      stored.passwordEncrypted,
+      stored.password,
+      'smtp.password',
+    );
     return {
       host: stored.host ?? '',
       port: typeof stored.port === 'number' ? stored.port : 587,

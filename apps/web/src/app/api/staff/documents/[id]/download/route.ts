@@ -8,10 +8,7 @@ import { effectiveDocumentMime, filenameWithExtension } from '@/server/storage/p
 import { evidenceService } from '@/server/container';
 import { isUuid } from '@/lib/uuid';
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await staffAuth();
   if (!session?.user) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });

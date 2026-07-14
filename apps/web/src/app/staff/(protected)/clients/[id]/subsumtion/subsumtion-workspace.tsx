@@ -1,22 +1,65 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode, type ChangeEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+  type ReactNode,
+  type ChangeEvent,
+} from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Sparkles, Upload, Loader2, FileDown, FolderOpen, ClipboardList, Webhook, Archive, Lock, RefreshCw, X, AlertTriangle } from 'lucide-react';
-import { analyzeAction, importDocTextAction, importClientDocAction, requestLlmAction, archiveAnalysisAction, reformatAnalysisAction, llmStatusAction, reanalyzeAction } from './actions';
+import {
+  Sparkles,
+  Upload,
+  Loader2,
+  FileDown,
+  FolderOpen,
+  ClipboardList,
+  Webhook,
+  Archive,
+  Lock,
+  RefreshCw,
+  X,
+  AlertTriangle,
+} from 'lucide-react';
+import {
+  analyzeAction,
+  importDocTextAction,
+  importClientDocAction,
+  requestLlmAction,
+  archiveAnalysisAction,
+  reformatAnalysisAction,
+  llmStatusAction,
+  reanalyzeAction,
+} from './actions';
 import type { LlmStatusDTO } from '@/server/risk/llm';
 import { DisclaimerBanner } from './disclaimer-banner';
 import { StatsBar } from './stats-bar';
 import { HerkunftLegende } from './herkunft-legende';
-import { SubsumtionDocument, type SubsumtionDocumentHandle, type ManualSelection } from './subsumtion-document';
+import {
+  SubsumtionDocument,
+  type SubsumtionDocumentHandle,
+  type ManualSelection,
+} from './subsumtion-document';
 import { MarkingPanel, ResearchComposer } from './marking-panel';
 import { NewMarkingPanel } from './new-marking-panel';
 import { ExportPanel } from './export-panel';
 import { MarkingList } from './marking-list';
 import { ResearchView } from './research-view';
 import { fmtDateShort } from '@/lib/fmt';
-import { type AnalysisDTO, type ResearchResultDTO, type ResearchRequestDTO, type MarkingDTO, FILTER_KEYS, type FilterKey, isVisible } from './_ui';
+import {
+  type AnalysisDTO,
+  type ResearchResultDTO,
+  type ResearchRequestDTO,
+  type MarkingDTO,
+  FILTER_KEYS,
+  type FilterKey,
+  isVisible,
+} from './_ui';
 
 /** Skeleton im Panel, während die LLM-Phase läuft — statt eines harten Reloads:
  *  „lade, du kannst weiterarbeiten". Die fertigen Markierungen kommen automatisch. */
@@ -28,7 +71,9 @@ function LlmDeepeningCard({ status }: { status: LlmStatusDTO | null }) {
         <Loader2 className="h-4 w-4 animate-spin text-brand-600" />
         <span>{label}</span>
       </div>
-      <p className="text-xs text-muted">Neue KI-Markierungen erscheinen automatisch — du kannst in der Zwischenzeit weiterarbeiten.</p>
+      <p className="text-xs text-muted">
+        Neue KI-Markierungen erscheinen automatisch — du kannst in der Zwischenzeit weiterarbeiten.
+      </p>
       <div className="space-y-2 animate-pulse" aria-hidden>
         <div className="h-3 rounded bg-gray-200 dark:bg-gray-700 w-3/4" />
         <div className="h-3 rounded bg-gray-200 dark:bg-gray-700 w-1/2" />
@@ -54,7 +99,17 @@ interface Props {
 
 const EMPTY_MARKINGS: MarkingDTO[] = [];
 
-export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, researchResults = [], researchRequests = [], aufgaben, aktenregal, engineConfigured, initial }: Props) {
+export function SubsumtionWorkspace({
+  clientId,
+  staffOptions,
+  clientDocuments,
+  researchResults = [],
+  researchRequests = [],
+  aufgaben,
+  aktenregal,
+  engineConfigured,
+  initial,
+}: Props) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -78,12 +133,16 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
   const [filters, setFilters] = useState<Set<FilterKey>>(() => new Set(FILTER_KEYS));
   const [manualSel, setManualSel] = useState<ManualSelection | null>(null);
   const [showCaseResearch, setShowCaseResearch] = useState(false);
-  const [view, setView] = useState<'subsumtion' | 'recherche' | 'aufgaben' | 'aktenregal'>('subsumtion');
+  const [view, setView] = useState<'subsumtion' | 'recherche' | 'aufgaben' | 'aktenregal'>(
+    'subsumtion',
+  );
   // Vollbild der Subsumtions-Fläche (Dokument + Panel als Overlay). Esc verlässt es.
   const [expanded, setExpanded] = useState(false);
   useEffect(() => {
     if (!expanded) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setExpanded(false); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setExpanded(false);
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [expanded]);
@@ -120,13 +179,18 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
   }, [enriched]);
 
   useEffect(() => {
-    if (!engineConfigured) { setLlm(null); return; }
+    if (!engineConfigured) {
+      setLlm(null);
+      return;
+    }
     let active = true;
     const tick = () => {
       void (async () => {
         if (pollLlm && Date.now() > pollDeadlineRef.current) {
           setPollLlm(false);
-          setInfo('Die KI-Vertiefung läuft im Hintergrund weiter — die Markierungen erscheinen beim nächsten Öffnen.');
+          setInfo(
+            'Die KI-Vertiefung läuft im Hintergrund weiter — die Markierungen erscheinen beim nächsten Öffnen.',
+          );
           return;
         }
         const r = await llmStatusAction({ clientId, analysisId: initial?.id });
@@ -156,17 +220,32 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
     tick();
     // Ohne aktiven Lauf: nur der eine Mount-Tick (erkennt einen ggf. laufenden
     // Job) — kein 5-s-Intervall.
-    if (!pollLlm) return () => { active = false; };
+    if (!pollLlm)
+      return () => {
+        active = false;
+      };
     const iv = setInterval(tick, 5000);
-    return () => { active = false; clearInterval(iv); };
+    return () => {
+      active = false;
+      clearInterval(iv);
+    };
   }, [beginLlmRun, clientId, engineConfigured, enriched, pollLlm, initial?.id, router]);
 
   // Cursor in einer Markierung → inspizieren; Auswahl (Ziehen) → eigene Markierung.
-  function selectMarking(id: string | null) { setSelectedId(id); if (id) setManualSel(null); }
-  function selectForMarking(sel: ManualSelection | null) { setManualSel(sel); if (sel) setSelectedId(null); }
+  function selectMarking(id: string | null) {
+    setSelectedId(id);
+    if (id) setManualSel(null);
+  }
+  function selectForMarking(sel: ManualSelection | null) {
+    setManualSel(sel);
+    if (sel) setSelectedId(null);
+  }
 
   const markings = initial?.markings ?? EMPTY_MARKINGS;
-  const visibleMarkings = useMemo(() => markings.filter((m) => isVisible(m, filters)), [markings, filters]);
+  const visibleMarkings = useMemo(
+    () => markings.filter((m) => isVisible(m, filters)),
+    [markings, filters],
+  );
   const selected = markings.find((m) => m.id === selectedId) ?? null;
   const ownCount = markings.filter((m) => m.herkunft === 'BERATER').length;
   const newResultCount = researchResults.filter((r) => r.status === 'NEU').length;
@@ -176,7 +255,10 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
   );
   // Sichtbare Markierungen in Lese-Reihenfolge (für Liste + Alt+↑/↓-Stepping).
   const orderedVisible = useMemo(
-    () => [...visibleMarkings].sort((a, b) => a.start - b.start || a.end - b.end || a.id.localeCompare(b.id)),
+    () =>
+      [...visibleMarkings].sort(
+        (a, b) => a.start - b.start || a.end - b.end || a.id.localeCompare(b.id),
+      ),
     [visibleMarkings],
   );
 
@@ -193,7 +275,9 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
     const idx = orderedVisible.findIndex((m) => m.id === selectedId);
     const next =
       idx === -1
-        ? dir === 1 ? orderedVisible[0] : orderedVisible[orderedVisible.length - 1]
+        ? dir === 1
+          ? orderedVisible[0]
+          : orderedVisible[orderedVisible.length - 1]
         : orderedVisible[(idx + dir + orderedVisible.length) % orderedVisible.length];
     if (next) selectAndReveal(next.id);
   }
@@ -205,8 +289,13 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!e.altKey) return;
-      if (e.key === 'ArrowDown') { e.preventDefault(); stepRef.current(1); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); stepRef.current(-1); }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        stepRef.current(1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        stepRef.current(-1);
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -231,14 +320,22 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
   }, [enriched, markings, manualSel, selectedId]);
 
   function flash(r: { ok: boolean; error?: string }, okMsg?: string) {
-    if (!r.ok) { setError(r.error ?? 'Fehler.'); setInfo(null); }
-    else { setInfo(okMsg ?? null); setError(null); }
+    if (!r.ok) {
+      setError(r.error ?? 'Fehler.');
+      setInfo(null);
+    } else {
+      setInfo(okMsg ?? null);
+      setError(null);
+    }
   }
-  function refresh() { router.refresh(); }
+  function refresh() {
+    router.refresh();
+  }
 
   // --- Compose-Aktionen ---
   function analyze() {
-    setError(null); setInfo(null);
+    setError(null);
+    setInfo(null);
     start(async () => {
       const r = await analyzeAction({
         clientId,
@@ -246,7 +343,10 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
         title: title.trim() || undefined,
         doc: editorRef.current?.getDoc() ?? undefined,
       });
-      if (!r.ok) { setError(r.error); return; }
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
       router.push(`/staff/clients/${clientId}/subsumtion/${r.analysisId}`);
     });
   }
@@ -254,13 +354,17 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-    setError(null); setInfo(null);
+    setError(null);
+    setInfo(null);
     start(async () => {
       const fd = new FormData();
       fd.set('clientId', clientId);
       fd.set('file', file);
       const r = await importDocTextAction(fd);
-      if (!r.ok) { setError(r.error); return; }
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
       appendToEditor(r.text);
       // Titel-Vorschlag nur übernehmen, wenn noch keiner gesetzt ist.
       if (r.suggestedTitle && !title.trim()) setTitle(r.suggestedTitle);
@@ -269,10 +373,14 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
   }
   function importExisting() {
     if (!docId) return;
-    setError(null); setInfo(null);
+    setError(null);
+    setInfo(null);
     start(async () => {
       const r = await importClientDocAction({ clientId, documentId: docId });
-      if (!r.ok) { setError(r.error); return; }
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
       appendToEditor(r.text);
       if (r.suggestedTitle && !title.trim()) setTitle(r.suggestedTitle);
       setInfo('Text aus Mandanten-Dokument übernommen.');
@@ -286,13 +394,17 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
     beginLlmRun(); // Status engmaschig pollen + Fertig-Erkennung scharf stellen
     start(async () => {
       const r = await requestLlmAction({ clientId, analysisId: initial.id });
-      flash(r, 'KI-Vertiefung gestartet — der Server fährt bei Bedarf hoch; die neuen Markierungen erscheinen hier automatisch, sobald der Lauf fertig ist.');
+      flash(
+        r,
+        'KI-Vertiefung gestartet — der Server fährt bei Bedarf hoch; die neuen Markierungen erscheinen hier automatisch, sobald der Lauf fertig ist.',
+      );
     });
   }
   function toggleFilter(k: FilterKey) {
     setFilters((prev) => {
       const next = new Set(prev);
-      if (next.has(k)) next.delete(k); else next.add(k);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
       return next;
     });
   }
@@ -307,23 +419,33 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
   }
   function reanalyze() {
     if (!initial) return;
-    setError(null); setInfo(null);
+    setError(null);
+    setInfo(null);
     beginLlmRun(); // KI-Phase wird serverseitig mit angestoßen → Skeleton/Polling an
     start(async () => {
       const r = await reanalyzeAction({ clientId, analysisId: initial.id });
-      if (!r.ok) { setError(r.error); setPollLlm(false); return; }
+      if (!r.ok) {
+        setError(r.error);
+        setPollLlm(false);
+        return;
+      }
       setInfo(
         (r.added > 0
           ? `Neu analysiert — ${r.added} neue Markierung(en) ergänzt`
-          : 'Neu analysiert — keine neuen deterministischen Markierungen')
-        + '; KI-Vertiefung läuft … (Bewertungen bleiben).',
+          : 'Neu analysiert — keine neuen deterministischen Markierungen') +
+          '; KI-Vertiefung läuft … (Bewertungen bleiben).',
       );
       refresh(); // deterministische Ergänzungen sofort zeigen; KI folgt automatisch
     });
   }
   function archive() {
     if (!initial) return;
-    if (!window.confirm('Subsumtion revisionssicher archivieren? Danach ist sie schreibgeschützt (GoBD-Snapshot, Object-Lock).')) return;
+    if (
+      !window.confirm(
+        'Subsumtion revisionssicher archivieren? Danach ist sie schreibgeschützt (GoBD-Snapshot, Object-Lock).',
+      )
+    )
+      return;
     setError(null);
     start(async () => {
       const r = await archiveAnalysisAction({ clientId, analysisId: initial.id });
@@ -354,32 +476,70 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
           className="w-full rounded-md border border-default bg-surface px-3 py-2 text-sm"
         />
         <p className="text-xs text-muted">
-          Sachverhalt erfassen oder aus einem Dokument importieren — formatieren, bei
-          fragmentierten Importen „Absätze zusammenführen" nutzen. Beim Analysieren zählt
-          der reine Text.
+          Sachverhalt erfassen oder aus einem Dokument importieren — formatieren, bei fragmentierten
+          Importen „Absätze zusammenführen" nutzen. Beim Analysieren zählt der reine Text.
         </p>
-        <SubsumtionDocument ref={editorRef} analyzed={false} canEdit initialDoc={null} initialText="" onTextChange={setText} />
+        <SubsumtionDocument
+          ref={editorRef}
+          analyzed={false}
+          canEdit
+          initialDoc={null}
+          initialText=""
+          onTextChange={setText}
+        />
         <div className="flex items-center gap-2 flex-wrap">
-          <button type="button" onClick={analyze} disabled={pending || !engineConfigured || !text.trim()} className="btn-primary text-sm">
-            {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          <button
+            type="button"
+            onClick={analyze}
+            disabled={pending || !engineConfigured || !text.trim()}
+            className="btn-primary text-sm"
+          >
+            {pending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4" />
+            )}
             Analysieren
           </button>
-          <button type="button" onClick={() => fileRef.current?.click()} disabled={pending} className="btn-secondary text-sm">
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={pending}
+            className="btn-secondary text-sm"
+          >
             <Upload className="h-4 w-4" />
             Aus Dokument importieren
           </button>
-          <input ref={fileRef} type="file" accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" onChange={onFile} className="hidden" />
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+            onChange={onFile}
+            className="hidden"
+          />
           <span className="text-xs text-muted ml-auto">{text.length} Zeichen</span>
         </div>
         {clientDocuments.length > 0 && (
           <div className="flex items-center gap-2">
-            <select value={docId} onChange={(e) => setDocId(e.target.value)} className="rounded-md border border-default bg-surface px-2 py-1.5 text-sm max-w-[60%] truncate">
+            <select
+              value={docId}
+              onChange={(e) => setDocId(e.target.value)}
+              className="rounded-md border border-default bg-surface px-2 py-1.5 text-sm max-w-[60%] truncate"
+            >
               <option value="">Aus Mandanten-Dokument (SeaweedFS) wählen …</option>
               {clientDocuments.map((d) => (
-                <option key={d.id} value={d.id}>{d.title}{d.typeName ? ` (${d.typeName})` : ''}</option>
+                <option key={d.id} value={d.id}>
+                  {d.title}
+                  {d.typeName ? ` (${d.typeName})` : ''}
+                </option>
               ))}
             </select>
-            <button type="button" onClick={importExisting} disabled={pending || !docId} className="btn-secondary text-sm">
+            <button
+              type="button"
+              onClick={importExisting}
+              disabled={pending || !docId}
+              className="btn-secondary text-sm"
+            >
               <FileDown className="h-4 w-4" /> Übernehmen
             </button>
           </div>
@@ -410,14 +570,23 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
         <button
           type="button"
           onClick={() => setView('subsumtion')}
-          className={view === 'subsumtion' ? 'px-3 py-1.5 bg-brand-600 text-white font-medium' : 'px-3 py-1.5 text-secondary hover:bg-gray-50 dark:hover:bg-gray-800'}
+          className={
+            view === 'subsumtion'
+              ? 'px-3 py-1.5 bg-brand-600 text-white font-medium'
+              : 'px-3 py-1.5 text-secondary hover:bg-gray-50 dark:hover:bg-gray-800'
+          }
         >
           Subsumtion
         </button>
         <button
           type="button"
           onClick={() => setView('recherche')}
-          className={'inline-flex items-center gap-1.5 ' + (view === 'recherche' ? 'px-3 py-1.5 bg-brand-600 text-white font-medium' : 'px-3 py-1.5 text-secondary hover:bg-gray-50 dark:hover:bg-gray-800')}
+          className={
+            'inline-flex items-center gap-1.5 ' +
+            (view === 'recherche'
+              ? 'px-3 py-1.5 bg-brand-600 text-white font-medium'
+              : 'px-3 py-1.5 text-secondary hover:bg-gray-50 dark:hover:bg-gray-800')
+          }
         >
           <Webhook className="h-3.5 w-3.5" /> Recherche
           {newResultCount > 0 && <span className="badge-yellow text-[10px]">{newResultCount}</span>}
@@ -425,14 +594,24 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
         <button
           type="button"
           onClick={() => setView('aufgaben')}
-          className={'inline-flex items-center gap-1.5 ' + (view === 'aufgaben' ? 'px-3 py-1.5 bg-brand-600 text-white font-medium' : 'px-3 py-1.5 text-secondary hover:bg-gray-50 dark:hover:bg-gray-800')}
+          className={
+            'inline-flex items-center gap-1.5 ' +
+            (view === 'aufgaben'
+              ? 'px-3 py-1.5 bg-brand-600 text-white font-medium'
+              : 'px-3 py-1.5 text-secondary hover:bg-gray-50 dark:hover:bg-gray-800')
+          }
         >
           <ClipboardList className="h-3.5 w-3.5" /> Aufgaben
         </button>
         <button
           type="button"
           onClick={() => setView('aktenregal')}
-          className={'inline-flex items-center gap-1.5 ' + (view === 'aktenregal' ? 'px-3 py-1.5 bg-brand-600 text-white font-medium' : 'px-3 py-1.5 text-secondary hover:bg-gray-50 dark:hover:bg-gray-800')}
+          className={
+            'inline-flex items-center gap-1.5 ' +
+            (view === 'aktenregal'
+              ? 'px-3 py-1.5 bg-brand-600 text-white font-medium'
+              : 'px-3 py-1.5 text-secondary hover:bg-gray-50 dark:hover:bg-gray-800')
+          }
         >
           <FolderOpen className="h-3.5 w-3.5" /> Aktenregal
         </button>
@@ -456,7 +635,10 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
           pending={pending}
           start={start}
           onFlash={flash}
-          onSelectMarking={(id) => { setView('subsumtion'); selectAndReveal(id); }}
+          onSelectMarking={(id) => {
+            setView('subsumtion');
+            selectAndReveal(id);
+          }}
         />
       </div>
 
@@ -465,173 +647,225 @@ export function SubsumtionWorkspace({ clientId, staffOptions, clientDocuments, r
       <div className={view === 'aktenregal' ? '' : 'hidden'}>{aktenregal}</div>
 
       <div className={view === 'subsumtion' ? 'space-y-3' : 'hidden'}>
-
-      {/* Toolbar — bestehende TaxTronik-Features verlinkt */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <Link href={`/staff/clients/${clientId}/subsumtion/new`} className="btn-secondary text-xs">‹ Neue Analyse</Link>
-        <ExportPanel clientId={clientId} analysisId={initial.id} markings={markings} />
-        {initial.archivedAt ? (
-          <span className="badge-gray text-xs inline-flex items-center gap-1 ml-auto" title="Revisionssicher archiviert (Object-Lock)">
-            <Lock className="h-3.5 w-3.5" /> Archiviert {fmtDateShort(new Date(initial.archivedAt))}
-          </span>
-        ) : (
-          <>
-            <button type="button" onClick={reanalyze} disabled={pending || !engineConfigured || pollLlm} className="btn-secondary text-xs ml-auto" title="Engine erneut (deterministisch) laufen lassen — ergänzt nur neue Markierungen, deine Bewertungen bleiben">
-              {(pending || pollLlm) ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Neu analysieren
-            </button>
-            <button type="button" onClick={archive} disabled={pending} className="btn-secondary text-xs" title="Revisionssicher archivieren (GoBD, schreibgeschützt)">
-              <Archive className="h-3.5 w-3.5" /> Archivieren
-            </button>
-            <button type="button" onClick={() => setShowCaseResearch((v) => !v)} className="btn-secondary text-xs">
-              <Webhook className="h-3.5 w-3.5" /> Ganzer Fall an KI
-            </button>
-          </>
-        )}
-      </div>
-
-      {initial.archivedAt && (
-        <div className="rounded-md border border-default bg-gray-50 dark:bg-gray-900/40 px-3 py-2 text-xs text-secondary inline-flex items-center gap-2">
-          <Lock className="h-3.5 w-3.5 text-disabled shrink-0" />
-          Diese Subsumtion ist <strong>revisionssicher archiviert</strong> (GoBD-Snapshot, Object-Lock) und <strong>schreibgeschützt</strong> — Markierungen/Bewertungen lassen sich nicht mehr ändern. Ansicht + Export bleiben verfügbar.
-        </div>
-      )}
-
-      {showCaseResearch && (
-        <div>
-          <ResearchComposer
-            clientId={clientId}
-            analysisId={initial.id}
-            markingId={null}
-            pending={pending}
-            start={start}
-            onClose={() => setShowCaseResearch(false)}
-            onDone={(r) => { flash(r, 'Anonymisierter Auftrag (ganzer Fall) an n8n gesendet.'); if (r.ok) setShowCaseResearch(false); }}
-          />
-        </div>
-      )}
-
-      <HerkunftLegende />
-
-      {/* Flying Pill: fixed → immer sichtbar, egal ob ein Marking-Panel offen ist
-          oder wie weit gescrollt wurde (auch über dem Vollbild-Dokument, z-50). */}
-      {pollLlm && !llmFailed && (
-        <div
-          className="fixed bottom-6 right-6 z-50 inline-flex items-center gap-2 rounded-full border border-purple-300 dark:border-purple-700 bg-purple-50/95 dark:bg-purple-900/90 px-4 py-2 text-sm text-purple-800 dark:text-purple-100 shadow-lg backdrop-blur"
-          role="status"
-          aria-live="polite"
-          title="Die neuen Markierungen erscheinen automatisch, sobald der Lauf fertig ist. Du kannst weiterarbeiten."
-        >
-          <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-          <span>
-            <strong>KI-Vertiefung läuft …</strong>{' '}
-            <span className="font-normal text-purple-600 dark:text-purple-300">~15–30 s, im Hintergrund</span>
-          </span>
-        </div>
-      )}
-      {llmFailed && (
-        <div className="alert-error-sm flex items-start justify-between gap-3">
-          <span className="inline-flex items-start gap-1.5">
-            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-            <span><strong>KI-Vertiefung fehlgeschlagen.</strong> {llmFailed}</span>
-          </span>
-          <span className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => { setLlmFailed(null); requestLlm(); }}
-              disabled={pending || !engineConfigured || !!initial.archivedAt || pollLlm}
-              className="btn-secondary text-xs"
+        {/* Toolbar — bestehende TaxTronik-Features verlinkt */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Link
+            href={`/staff/clients/${clientId}/subsumtion/new`}
+            className="btn-secondary text-xs"
+          >
+            ‹ Neue Analyse
+          </Link>
+          <ExportPanel clientId={clientId} analysisId={initial.id} markings={markings} />
+          {initial.archivedAt ? (
+            <span
+              className="badge-gray text-xs inline-flex items-center gap-1 ml-auto"
+              title="Revisionssicher archiviert (Object-Lock)"
             >
-              <RefreshCw className="h-3.5 w-3.5" /> Erneut versuchen
-            </button>
-            <button type="button" onClick={() => setLlmFailed(null)} className="text-disabled hover:text-secondary" title="Schließen">
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </span>
+              <Lock className="h-3.5 w-3.5" /> Archiviert{' '}
+              {fmtDateShort(new Date(initial.archivedAt))}
+            </span>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={reanalyze}
+                disabled={pending || !engineConfigured || pollLlm}
+                className="btn-secondary text-xs ml-auto"
+                title="Engine erneut (deterministisch) laufen lassen — ergänzt nur neue Markierungen, deine Bewertungen bleiben"
+              >
+                {pending || pollLlm ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3.5 w-3.5" />
+                )}{' '}
+                Neu analysieren
+              </button>
+              <button
+                type="button"
+                onClick={archive}
+                disabled={pending}
+                className="btn-secondary text-xs"
+                title="Revisionssicher archivieren (GoBD, schreibgeschützt)"
+              >
+                <Archive className="h-3.5 w-3.5" /> Archivieren
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowCaseResearch((v) => !v)}
+                className="btn-secondary text-xs"
+              >
+                <Webhook className="h-3.5 w-3.5" /> Ganzer Fall an KI
+              </button>
+            </>
+          )}
         </div>
-      )}
 
-      <div
-        className={
-          expanded
-            ? 'fixed inset-0 z-40 overflow-auto bg-surface-page p-4 grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-4'
-            : 'grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-4'
-        }
-      >
-        {/* EINE Fläche: immer formatiert + editierbar. Klicken = Markierung prüfen,
+        {initial.archivedAt && (
+          <div className="rounded-md border border-default bg-gray-50 dark:bg-gray-900/40 px-3 py-2 text-xs text-secondary inline-flex items-center gap-2">
+            <Lock className="h-3.5 w-3.5 text-disabled shrink-0" />
+            Diese Subsumtion ist <strong>revisionssicher archiviert</strong> (GoBD-Snapshot,
+            Object-Lock) und <strong>schreibgeschützt</strong> — Markierungen/Bewertungen lassen
+            sich nicht mehr ändern. Ansicht + Export bleiben verfügbar.
+          </div>
+        )}
+
+        {showCaseResearch && (
+          <div>
+            <ResearchComposer
+              clientId={clientId}
+              analysisId={initial.id}
+              markingId={null}
+              pending={pending}
+              start={start}
+              onClose={() => setShowCaseResearch(false)}
+              onDone={(r) => {
+                flash(r, 'Anonymisierter Auftrag (ganzer Fall) an n8n gesendet.');
+                if (r.ok) setShowCaseResearch(false);
+              }}
+            />
+          </div>
+        )}
+
+        <HerkunftLegende />
+
+        {/* Flying Pill: fixed → immer sichtbar, egal ob ein Marking-Panel offen ist
+          oder wie weit gescrollt wurde (auch über dem Vollbild-Dokument, z-50). */}
+        {pollLlm && !llmFailed && (
+          <div
+            className="fixed bottom-6 right-6 z-50 inline-flex items-center gap-2 rounded-full border border-purple-300 dark:border-purple-700 bg-purple-50/95 dark:bg-purple-900/90 px-4 py-2 text-sm text-purple-800 dark:text-purple-100 shadow-lg backdrop-blur"
+            role="status"
+            aria-live="polite"
+            title="Die neuen Markierungen erscheinen automatisch, sobald der Lauf fertig ist. Du kannst weiterarbeiten."
+          >
+            <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+            <span>
+              <strong>KI-Vertiefung läuft …</strong>{' '}
+              <span className="font-normal text-purple-600 dark:text-purple-300">
+                ~15–30 s, im Hintergrund
+              </span>
+            </span>
+          </div>
+        )}
+        {llmFailed && (
+          <div className="alert-error-sm flex items-start justify-between gap-3">
+            <span className="inline-flex items-start gap-1.5">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>
+                <strong>KI-Vertiefung fehlgeschlagen.</strong> {llmFailed}
+              </span>
+            </span>
+            <span className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setLlmFailed(null);
+                  requestLlm();
+                }}
+                disabled={pending || !engineConfigured || !!initial.archivedAt || pollLlm}
+                className="btn-secondary text-xs"
+              >
+                <RefreshCw className="h-3.5 w-3.5" /> Erneut versuchen
+              </button>
+              <button
+                type="button"
+                onClick={() => setLlmFailed(null)}
+                className="text-disabled hover:text-secondary"
+                title="Schließen"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </span>
+          </div>
+        )}
+
+        <div
+          className={
+            expanded
+              ? 'fixed inset-0 z-40 overflow-auto bg-surface-page p-4 grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-4'
+              : 'grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-4'
+          }
+        >
+          {/* EINE Fläche: immer formatiert + editierbar. Klicken = Markierung prüfen,
             Ziehen = eigene Markierung, Toolbar = formatieren. Alt-Analysen ohne
             sourceDoc werden aus dem Plaintext geseedet (offsets bleiben gleich). */}
-        <SubsumtionDocument
-          ref={editorRef}
-          analyzed
-          canEdit={!initial.archivedAt}
-          initialDoc={initial.sourceDoc ?? null}
-          initialText={initial.sourceText}
-          sourceText={initial.sourceText}
-          textHash={initial.textHash}
-          totalCount={markings.length}
-          ownCount={ownCount}
-          visibleMarkings={visibleMarkings}
-          filters={filters}
-          onToggleFilter={toggleFilter}
-          selectedId={selectedId}
-          onSelectMarking={selectMarking}
-          onSelectionForMarking={selectForMarking}
-          onSaveFormat={saveFormat}
-          expanded={expanded}
-          onToggleExpand={() => setExpanded((v) => !v)}
-        />
+          <SubsumtionDocument
+            ref={editorRef}
+            analyzed
+            canEdit={!initial.archivedAt}
+            initialDoc={initial.sourceDoc ?? null}
+            initialText={initial.sourceText}
+            sourceText={initial.sourceText}
+            textHash={initial.textHash}
+            totalCount={markings.length}
+            ownCount={ownCount}
+            visibleMarkings={visibleMarkings}
+            filters={filters}
+            onToggleFilter={toggleFilter}
+            selectedId={selectedId}
+            onSelectMarking={selectMarking}
+            onSelectionForMarking={selectForMarking}
+            onSaveFormat={saveFormat}
+            expanded={expanded}
+            onToggleExpand={() => setExpanded((v) => !v)}
+          />
 
-        {/* Sticky: Panel bleibt beim Scrollen sichtbar — Klick auf eine Markierung
+          {/* Sticky: Panel bleibt beim Scrollen sichtbar — Klick auf eine Markierung
             weit unten muss nicht zurück nach oben gescrollt werden. self-start
             verhindert das Grid-Stretching (sonst greift sticky nicht); bei langem
             Panel scrollt es intern. */}
-        <div className="lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto space-y-3">
-          <MarkingList
-            markings={orderedVisible}
-            selectedId={selectedId}
-            onSelect={selectAndReveal}
-            onPrev={() => stepMarking(-1)}
-            onNext={() => stepMarking(1)}
-          />
-          {manualSel ? (
-            <NewMarkingPanel
-              clientId={clientId}
-              analysisId={initial.id}
-              selection={manualSel}
-              pending={pending}
-              start={start}
-              onDone={(r) => { flash(r, 'Markierung hinzugefügt.'); if (r.ok) { setManualSel(null); refresh(); } }}
+          <div className="lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto space-y-3">
+            <MarkingList
+              markings={orderedVisible}
+              selectedId={selectedId}
+              onSelect={selectAndReveal}
+              onPrev={() => stepMarking(-1)}
+              onNext={() => stepMarking(1)}
             />
-          ) : selected ? (
-            <MarkingPanel
-              // Das Panel leitet sein Formular einmalig aus `marking` ab. „Zuweisen"
-              // (Delegation) ändert status/verantwortlichId aber serverseitig hinter
-              // dem offenen Panel — diese Felder in den Key aufnehmen, damit das Panel
-              // nach dem Refresh neu mountet und den Server-Stand übernimmt (sonst
-              // würde ein späteres „Speichern" die Zuweisung überschreiben).
-              key={`${selected.id}:${selected.status}:${selected.verantwortlichId ?? ''}`}
-              clientId={clientId}
-              analysisId={initial.id}
-              marking={selected}
-              staffOptions={staffOptions}
-              engineConfigured={engineConfigured}
-              pending={pending}
-              start={start}
-              onChanged={refresh}
-              onClose={() => setSelectedId(null)}
-              flash={flash}
-            />
-          ) : pollLlm ? (
-            <LlmDeepeningCard status={llm} />
-          ) : (
-            <div className="card p-4 text-sm text-muted">
-              <strong>Klicken</strong> Sie eine Markierung im Text an, um sie zu bewerten, zu delegieren
-              oder zu definieren — oder <strong>ziehen</strong> Sie über eine Stelle, um eine eigene
-              Markierung zu setzen.
-            </div>
-          )}
+            {manualSel ? (
+              <NewMarkingPanel
+                clientId={clientId}
+                analysisId={initial.id}
+                selection={manualSel}
+                pending={pending}
+                start={start}
+                onDone={(r) => {
+                  flash(r, 'Markierung hinzugefügt.');
+                  if (r.ok) {
+                    setManualSel(null);
+                    refresh();
+                  }
+                }}
+              />
+            ) : selected ? (
+              <MarkingPanel
+                // Das Panel leitet sein Formular einmalig aus `marking` ab. „Zuweisen"
+                // (Delegation) ändert status/verantwortlichId aber serverseitig hinter
+                // dem offenen Panel — diese Felder in den Key aufnehmen, damit das Panel
+                // nach dem Refresh neu mountet und den Server-Stand übernimmt (sonst
+                // würde ein späteres „Speichern" die Zuweisung überschreiben).
+                key={`${selected.id}:${selected.status}:${selected.verantwortlichId ?? ''}`}
+                clientId={clientId}
+                analysisId={initial.id}
+                marking={selected}
+                staffOptions={staffOptions}
+                engineConfigured={engineConfigured}
+                pending={pending}
+                start={start}
+                onChanged={refresh}
+                onClose={() => setSelectedId(null)}
+                flash={flash}
+              />
+            ) : pollLlm ? (
+              <LlmDeepeningCard status={llm} />
+            ) : (
+              <div className="card p-4 text-sm text-muted">
+                <strong>Klicken</strong> Sie eine Markierung im Text an, um sie zu bewerten, zu
+                delegieren oder zu definieren — oder <strong>ziehen</strong> Sie über eine Stelle,
+                um eine eigene Markierung zu setzen.
+              </div>
+            )}
+          </div>
         </div>
-      </div>
       </div>
     </div>
   );

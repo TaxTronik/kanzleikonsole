@@ -49,7 +49,8 @@ describe('geschuetzte API-Routes sind autorisiert (Struktur-Guardrail)', () => {
 
     it(`${rel}: referenziert ${expectedPrimitive} oder dokumentierte Alternative`, () => {
       const hasExpected = source.includes(expectedPrimitive);
-      const hasAlternative = alternatives.length > 0 && alternatives.every((a) => source.includes(a));
+      const hasAlternative =
+        alternatives.length > 0 && alternatives.every((a) => source.includes(a));
       expect(
         hasExpected || hasAlternative,
         `${rel} muss ${expectedPrimitive} oder eine explizit dokumentierte Alternative nutzen.`,

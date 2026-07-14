@@ -1,6 +1,4 @@
 Contact: mailto:security@taxtronik.de
+Expires: 2027-07-14T23:59:59Z
 Preferred-Languages: de, en
 Canonical: https://taxtronik.de/.well-known/security.txt
-Policy: https://taxtronik.de/sicherheitsrichtlinie
-Acknowledgments: https://git.hirschmann-koxha.de/TaxTronik/kanzleikonsole/src/branch/main/docs/security
-Hiring: https://taxtronik.de/karriere

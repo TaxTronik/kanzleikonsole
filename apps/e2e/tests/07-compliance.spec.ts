@@ -491,7 +491,7 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
     await ctx.close();
   });
 
-  test('1.7 Content-Length-Präfix-Check: >100MB+1MB wird mit 413 abgelehnt', async ({
+  test('1.7 Content-Length-Präfix-Check: >25MiB+1MiB wird mit 413 abgelehnt', async ({
     browser,
   }) => {
     if (!fs.existsSync(STAFF_AUTH)) {
@@ -503,10 +503,10 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
     const page = await ctx.newPage();
 
     // Der Commit-Endpoint prüft deklarierte Content-Length VOR dem Puffern.
-    // MAX_UPLOAD_BYTES = 100 * 1024 * 1024. Mit +1MB Marge → bei >101MB 413.
+    // MAX_UPLOAD_BYTES = 25 * 1024 * 1024. Mit +1 MiB Marge greift der Präfix-Check.
     // Wir schicken einen winzigen Body, lügen aber beim Content-Length-Header.
     // Der Server lehnt VOR dem Lesen ab → 413 (DoS-Schutz).
-    const fakeLargeLen = String(100 * 1024 * 1024 + 2 * 1024 * 1024);
+    const fakeLargeLen = String(25 * 1024 * 1024 + 2 * 1024 * 1024);
     const res = await page.request.post('/api/staff/documents/commit', {
       headers: {
         Origin: BASE_ORIGIN,

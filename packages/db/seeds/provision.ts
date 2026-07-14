@@ -37,7 +37,8 @@ async function main() {
   const adminEmail = process.env['ADMIN_EMAIL']?.trim().toLowerCase();
   const slug = (process.env['TENANT_SLUG']?.trim() || 'default').toLowerCase();
   const explicitPasswordRaw = process.env['ADMIN_PASSWORD'];
-  const explicitPassword = explicitPasswordRaw && explicitPasswordRaw.trim() ? explicitPasswordRaw : undefined;
+  const explicitPassword =
+    explicitPasswordRaw && explicitPasswordRaw.trim() ? explicitPasswordRaw : undefined;
 
   if (!tenantName) fail('TENANT_NAME fehlt (Anzeigename der Kanzlei).');
   if (!adminEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) {
@@ -96,7 +97,9 @@ async function main() {
     console.log('  ============================================================');
     console.log('');
   } else {
-    console.log(`  Admin-Passwort aus $ADMIN_PASSWORD uebernommen und gespeichert in: ${credPath} (chmod 600).`);
+    console.log(
+      `  Admin-Passwort aus $ADMIN_PASSWORD uebernommen und gespeichert in: ${credPath} (chmod 600).`,
+    );
   }
 
   console.log('[provision] Fertig — keine Demodaten angelegt.');

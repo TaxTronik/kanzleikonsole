@@ -13,7 +13,11 @@ import { toActionError } from '@/server/auth/rbac';
 import { portalActionGuard, withPortalContext, ActionError } from '@/server/actions/portal-action';
 import { berlinWallClockToUtc } from '@/lib/fmt';
 
-export interface ActionResult { ok: boolean; error?: string; id?: string; }
+export interface ActionResult {
+  ok: boolean;
+  error?: string;
+  id?: string;
+}
 
 const SlotSchema = z.object({
   startsAt: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/),
@@ -71,7 +75,8 @@ export async function createAppointmentRequestAction(
     preferredStaffId: formData.get('preferredStaffId') || null,
     slots,
   });
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
+  if (!parsed.success)
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
 
   for (const s of parsed.data.slots) {
     // Zeitzonenlose Berlin-Wanduhr-Strings — als Berlin→UTC prüfen, damit der
@@ -91,47 +96,66 @@ export async function createAppointmentRequestAction(
 
   let createdId = '';
   try {
-    await withTenantContext(
-      ctx,
-      async (tx) => {
-        // P-7 (Befund 5): preferredStaffId ist Portal-User-kontrolliert und
-        // wurde ungeprüft persistiert + benotified — FK prüft nur Existenz im
-        // DB-Cluster, nicht den Tenant-Match.
-        if (parsed.data.preferredStaffId) {
-          await assertStaffInTenant(tx, parsed.data.preferredStaffId);
-        }
-        const req = await tx.appointmentRequest.create({
-          data: {
-            tenantId,
-            clientId,
-            createdByContact: contactId,
-            preferredStaffId: parsed.data.preferredStaffId ?? null,
-            subject: parsed.data.subject.trim(),
-            notes: parsed.data.notes?.trim() || null,
-            proposedSlots: parsed.data.slots as unknown as Prisma.InputJsonValue,
-          },
-        });
-        createdId = req.id;
+    await withTenantContext(ctx, async (tx) => {
+      // P-7 (Befund 5): preferredStaffId ist Portal-User-kontrolliert und
+      // wurde ungeprüft persistiert + benotified — FK prüft nur Existenz im
+      // DB-Cluster, nicht den Tenant-Match.
+      if (parsed.data.preferredStaffId) {
+        await assertStaffInTenant(tx, parsed.data.preferredStaffId);
+      }
+      const req = await tx.appointmentRequest.create({
+        data: {
+          tenantId,
+          clientId,
+          createdByContact: contactId,
+          preferredStaffId: parsed.data.preferredStaffId ?? null,
+          subject: parsed.data.subject.trim(),
+          notes: parsed.data.notes?.trim() || null,
+          proposedSlots: parsed.data.slots as unknown as Prisma.InputJsonValue,
+        },
+      });
+      createdId = req.id;
 
-        await evidenceService.record(tx, {
-          tenantId, actorType: 'CLIENT_CONTACT', actorId: contactId,
-          action: 'appointment_request.create',
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'CLIENT_CONTACT',
+        actorId: contactId,
+        action: 'appointment_request.create',
+        resourceType: 'appointment_request',
+        resourceId: req.id,
+        after: {
+          clientId,
+          subject: parsed.data.subject,
+          slots: parsed.data.slots.length,
+          preferredStaffId: parsed.data.preferredStaffId ?? null,
+        },
+      });
+
+      // Notification an präferierten Mitarbeiter — oder, wenn keiner gewählt,
+      // an alle Bearbeiter mit Verantwortung für diesen Mandanten.
+      if (parsed.data.preferredStaffId) {
+        await notify(tx, {
+          tenantId,
+          staffId: parsed.data.preferredStaffId,
+          kind: 'APPOINTMENT_REQUESTED',
+          title: `Terminanfrage: ${parsed.data.subject}`,
+          body: `${parsed.data.slots.length} Wunschtermin(e)`,
+          href: '/staff/calendar',
           resourceType: 'appointment_request',
           resourceId: req.id,
-          after: {
-            clientId,
-            subject: parsed.data.subject,
-            slots: parsed.data.slots.length,
-            preferredStaffId: parsed.data.preferredStaffId ?? null,
-          },
         });
-
-        // Notification an präferierten Mitarbeiter — oder, wenn keiner gewählt,
-        // an alle Bearbeiter mit Verantwortung für diesen Mandanten.
-        if (parsed.data.preferredStaffId) {
+      } else {
+        const responsibles = await tx.clientResponsibility.findMany({
+          where: { clientId, role: { in: ['BERUFSTRAEGER', 'HAUPTBEARBEITER'] } },
+          select: { staffId: true },
+        });
+        const seen = new Set<string>();
+        for (const r of responsibles) {
+          if (seen.has(r.staffId)) continue;
+          seen.add(r.staffId);
           await notify(tx, {
             tenantId,
-            staffId: parsed.data.preferredStaffId,
+            staffId: r.staffId,
             kind: 'APPOINTMENT_REQUESTED',
             title: `Terminanfrage: ${parsed.data.subject}`,
             body: `${parsed.data.slots.length} Wunschtermin(e)`,
@@ -139,29 +163,9 @@ export async function createAppointmentRequestAction(
             resourceType: 'appointment_request',
             resourceId: req.id,
           });
-        } else {
-          const responsibles = await tx.clientResponsibility.findMany({
-            where: { clientId, role: { in: ['BERUFSTRAEGER', 'HAUPTBEARBEITER'] } },
-            select: { staffId: true },
-          });
-          const seen = new Set<string>();
-          for (const r of responsibles) {
-            if (seen.has(r.staffId)) continue;
-            seen.add(r.staffId);
-            await notify(tx, {
-              tenantId,
-              staffId: r.staffId,
-              kind: 'APPOINTMENT_REQUESTED',
-              title: `Terminanfrage: ${parsed.data.subject}`,
-              body: `${parsed.data.slots.length} Wunschtermin(e)`,
-              href: '/staff/calendar',
-              resourceType: 'appointment_request',
-              resourceId: req.id,
-            });
-          }
         }
-      },
-    );
+      }
+    });
   } catch (e) {
     return toActionError(e);
   }
@@ -189,7 +193,9 @@ export async function cancelAppointmentRequestAction(input: { id: string }): Pro
         data: { status: 'CANCELLED', decidedAt: new Date() },
       });
       await evidenceService.record(tx, {
-        tenantId, actorType: 'CLIENT_CONTACT', actorId: contactId,
+        tenantId,
+        actorType: 'CLIENT_CONTACT',
+        actorId: contactId,
         action: 'appointment_request.cancel',
         resourceType: 'appointment_request',
         resourceId: parsed.data.id,

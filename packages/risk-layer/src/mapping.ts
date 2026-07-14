@@ -145,7 +145,10 @@ function deriveHerkunft(opts: {
  * dieses würden sie nicht über „Streit" markiert.
  */
 function isStreitig(x: { ist_streitig?: boolean | null; streit_signal?: string | null }): boolean {
-  return x.ist_streitig === true || (typeof x.streit_signal === 'string' && x.streit_signal.trim() !== '');
+  return (
+    x.ist_streitig === true ||
+    (typeof x.streit_signal === 'string' && x.streit_signal.trim() !== '')
+  );
 }
 
 /**
@@ -154,8 +157,12 @@ function isStreitig(x: { ist_streitig?: boolean | null; streit_signal?: string |
  */
 function toNormRefs(
   refs: Array<{
-    zitat: string; id?: string | null; ids?: string[] | null; titel?: string | null;
-    quelle?: string | null; verworfen?: boolean | null;
+    zitat: string;
+    id?: string | null;
+    ids?: string[] | null;
+    titel?: string | null;
+    quelle?: string | null;
+    verworfen?: boolean | null;
   }>,
 ): NormRef[] {
   return refs
@@ -176,7 +183,12 @@ function mapKarte(k: Karte): RiskMarkingInput {
     start: k.start,
     end: k.end,
     matchedText: k.matched_text,
-    herkunft: deriveHerkunft({ via: k.via, schicht: k.herkunft?.schicht, methode: k.herkunft?.methode, fallback: 'MUSTER' }),
+    herkunft: deriveHerkunft({
+      via: k.via,
+      schicht: k.herkunft?.schicht,
+      methode: k.herkunft?.methode,
+      fallback: 'MUSTER',
+    }),
     begriffId: k.begriff_id ?? null,
     begriff: k.begriff || k.matched_text,
     // Effektive Liste (katalogweit verworfene Vorschläge ausgenommen) — treibt
@@ -201,7 +213,13 @@ function mapRisiko(r: Risiko): RiskMarkingInput {
     start: r.start,
     end: r.end,
     matchedText: r.matched_text,
-    herkunft: deriveHerkunft({ via: r.via, schicht: r.herkunft?.schicht, methode: r.herkunft?.methode, quelle: r.quelle, fallback: 'TRIGGER' }),
+    herkunft: deriveHerkunft({
+      via: r.via,
+      schicht: r.herkunft?.schicht,
+      methode: r.herkunft?.methode,
+      quelle: r.quelle,
+      fallback: 'TRIGGER',
+    }),
     begriffId: null,
     begriff: r.titel || r.matched_text,
     normAnker: refs.filter((rf) => !rf.verworfen).map((rf) => rf.zitat),

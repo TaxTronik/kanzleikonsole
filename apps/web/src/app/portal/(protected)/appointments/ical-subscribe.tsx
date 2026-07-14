@@ -23,10 +23,9 @@ export function IcalSubscribe({ url }: { url: string }) {
         Kalender abonnieren
       </h2>
       <p className="text-xs text-muted mb-3">
-        Fügen Sie diesen Link in Outlook, Apple Kalender oder Google Kalender als
-        Abo-Kalender hinzu — Ihre Termine und Steuerfristen erscheinen dann
-        automatisch und aktualisieren sich. Behandeln Sie den Link wie ein
-        Passwort: Wer ihn hat, sieht Ihre Termine.
+        Fügen Sie diesen Link in Outlook, Apple Kalender oder Google Kalender als Abo-Kalender hinzu
+        — Ihre Termine und Steuerfristen erscheinen dann automatisch und aktualisieren sich.
+        Behandeln Sie den Link wie ein Passwort: Wer ihn hat, sieht Ihre Termine.
       </p>
       <div className="flex gap-2">
         <input

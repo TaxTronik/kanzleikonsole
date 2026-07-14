@@ -6,7 +6,12 @@ import { hasStaffPermission } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { VacationForm } from './vacation-form';
 import { AbsenceForm } from './absence-form';
-import { decideVacationAction, cancelVacationAction, endAbsenceAction, deleteAbsenceAction } from './actions';
+import {
+  decideVacationAction,
+  cancelVacationAction,
+  endAbsenceAction,
+  deleteAbsenceAction,
+} from './actions';
 import { loadAbsenceCoverage } from '@/server/absences/coverage';
 import { fmtDateShort } from '@/lib/fmt';
 
@@ -33,50 +38,50 @@ export default async function AbsencesPage() {
   const today = new Date();
   const recentWindow = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-  const { myVacations, allPendingVacations, myAbsences, teamAbsences, staff, coverage } = await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
-      const [myVacations, allPendingVacations, myAbsences, teamAbsences, staff] = await Promise.all([
-        tx.vacationRequest.findMany({
-          where: { staffId },
-          orderBy: { startDate: 'desc' },
-          take: 30,
-        }),
-        canDecide
-          ? tx.vacationRequest.findMany({
-              where: { status: 'PENDING' },
-              orderBy: { startDate: 'asc' },
-              include: { staff: { select: { fullName: true } } },
-              take: 30,
-            })
-          : Promise.resolve([]),
-        tx.absence.findMany({
-          where: { staffId },
-          orderBy: { startDate: 'desc' },
-          take: 30,
-        }),
-        // Grund/Art sind vertraulich: Team-Meldungen sieht NUR, wer
-        // entscheiden darf — alle anderen sehen im Kalender nur „abw.".
-        canDecide
-          ? tx.absence.findMany({
-              where: {
-                staffId: { not: staffId },
-                OR: [{ endDate: null }, { endDate: { gte: recentWindow } }],
-              },
-              orderBy: { startDate: 'desc' },
-              include: { staff: { select: { fullName: true } } },
-              take: 30,
-            })
-          : Promise.resolve([]),
-        tx.staffUser.findMany({
-          where: { active: true },
-          select: { id: true, fullName: true },
-        }),
-      ]);
+  const { myVacations, allPendingVacations, myAbsences, teamAbsences, staff, coverage } =
+    await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, async (tx) => {
+      const [myVacations, allPendingVacations, myAbsences, teamAbsences, staff] = await Promise.all(
+        [
+          tx.vacationRequest.findMany({
+            where: { staffId },
+            orderBy: { startDate: 'desc' },
+            take: 30,
+          }),
+          canDecide
+            ? tx.vacationRequest.findMany({
+                where: { status: 'PENDING' },
+                orderBy: { startDate: 'asc' },
+                include: { staff: { select: { fullName: true } } },
+                take: 30,
+              })
+            : Promise.resolve([]),
+          tx.absence.findMany({
+            where: { staffId },
+            orderBy: { startDate: 'desc' },
+            take: 30,
+          }),
+          // Grund/Art sind vertraulich: Team-Meldungen sieht NUR, wer
+          // entscheiden darf — alle anderen sehen im Kalender nur „abw.".
+          canDecide
+            ? tx.absence.findMany({
+                where: {
+                  staffId: { not: staffId },
+                  OR: [{ endDate: null }, { endDate: { gte: recentWindow } }],
+                },
+                orderBy: { startDate: 'desc' },
+                include: { staff: { select: { fullName: true } } },
+                take: 30,
+              })
+            : Promise.resolve([]),
+          tx.staffUser.findMany({
+            where: { active: true },
+            select: { id: true, fullName: true },
+          }),
+        ],
+      );
       const coverage = await loadAbsenceCoverage(tx, staffId);
       return { myVacations, allPendingVacations, myAbsences, teamAbsences, staff, coverage };
-    },
-  );
+    });
 
   const staffById = new Map(staff.map((s) => [s.id, s.fullName]));
 
@@ -118,15 +123,24 @@ export default async function AbsencesPage() {
                   </span>
                 </div>
                 {c.requests.length === 0 ? (
-                  <p className="text-xs text-disabled">Keine offenen Anforderungen bei betreuten Mandanten.</p>
+                  <p className="text-xs text-disabled">
+                    Keine offenen Anforderungen bei betreuten Mandanten.
+                  </p>
                 ) : (
                   <ul className="space-y-1">
                     {c.requests.slice(0, 8).map((r) => (
                       <li key={r.id} className="text-sm flex items-center justify-between gap-3">
-                        <Link href={`/staff/requests/${r.id}`} className="text-secondary hover:text-primary hover:underline truncate">
+                        <Link
+                          href={`/staff/requests/${r.id}`}
+                          className="text-secondary hover:text-primary hover:underline truncate"
+                        >
                           {r.title} <span className="text-muted">· {r.clientName}</span>
                         </Link>
-                        {r.dueAt && <span className="text-xs text-muted shrink-0">fällig {fmtDateShort(r.dueAt)}</span>}
+                        {r.dueAt && (
+                          <span className="text-xs text-muted shrink-0">
+                            fällig {fmtDateShort(r.dueAt)}
+                          </span>
+                        )}
                       </li>
                     ))}
                     {c.requests.length > 8 && (
@@ -181,9 +195,7 @@ export default async function AbsencesPage() {
                       {' · '}
                       {v.workdays} Werktage
                     </p>
-                    {v.reason && (
-                      <p className="text-sm text-secondary mt-1">{v.reason}</p>
-                    )}
+                    {v.reason && <p className="text-sm text-secondary mt-1">{v.reason}</p>}
                   </div>
                   <div className="flex gap-2">
                     <form action={decideVacationAction}>
@@ -230,14 +242,24 @@ export default async function AbsencesPage() {
                       {' – '}
                       {fmtDateShort(v.endDate)}
                     </span>
-                    {v.status === 'PENDING' && <span className="badge-yellow">{statusLabels[v.status]}</span>}
-                    {v.status === 'APPROVED' && <span className="badge-green">{statusLabels[v.status]}</span>}
-                    {v.status === 'REJECTED' && <span className="badge-red">{statusLabels[v.status]}</span>}
-                    {v.status === 'CANCELLED' && <span className="badge-gray">{statusLabels[v.status]}</span>}
+                    {v.status === 'PENDING' && (
+                      <span className="badge-yellow">{statusLabels[v.status]}</span>
+                    )}
+                    {v.status === 'APPROVED' && (
+                      <span className="badge-green">{statusLabels[v.status]}</span>
+                    )}
+                    {v.status === 'REJECTED' && (
+                      <span className="badge-red">{statusLabels[v.status]}</span>
+                    )}
+                    {v.status === 'CANCELLED' && (
+                      <span className="badge-gray">{statusLabels[v.status]}</span>
+                    )}
                   </div>
                   <p className="text-xs text-muted">
                     {v.workdays} Werktage
-                    {v.decidedBy && staffById.get(v.decidedBy) ? ` · entschieden von ${staffById.get(v.decidedBy)}` : ''}
+                    {v.decidedBy && staffById.get(v.decidedBy)
+                      ? ` · entschieden von ${staffById.get(v.decidedBy)}`
+                      : ''}
                     {v.decisionNote ? ` · ${v.decisionNote}` : ''}
                   </p>
                 </div>
@@ -278,12 +300,16 @@ export default async function AbsencesPage() {
                   {!s.endDate && (
                     <form action={endAbsenceAction}>
                       <input type="hidden" name="id" value={s.id} />
-                      <button type="submit" className="text-xs text-brand-700 hover:underline">Beenden</button>
+                      <button type="submit" className="text-xs text-brand-700 hover:underline">
+                        Beenden
+                      </button>
                     </form>
                   )}
                   <form action={deleteAbsenceAction}>
                     <input type="hidden" name="id" value={s.id} />
-                    <button type="submit" className="text-xs text-red-700 hover:underline">Löschen</button>
+                    <button type="submit" className="text-xs text-red-700 hover:underline">
+                      Löschen
+                    </button>
                   </form>
                 </div>
               </li>

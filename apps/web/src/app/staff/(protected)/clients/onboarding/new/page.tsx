@@ -25,9 +25,8 @@ export default async function OnboardingStartPage({
 
   const [modules, staff] = await Promise.all([
     readModules({ tenantId, actorId: staffId, actorType: 'STAFF' }),
-    withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
-      (tx) => tx.staffUser.findMany({
+    withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>
+      tx.staffUser.findMany({
         where: { active: true },
         orderBy: { fullName: 'asc' },
         select: { id: true, fullName: true, email: true },
@@ -38,10 +37,7 @@ export default async function OnboardingStartPage({
 
   return (
     <div className="p-8 max-w-3xl">
-      <Link
-        href="/staff/clients"
-        className="back-link"
-      >
+      <Link href="/staff/clients" className="back-link">
         <ArrowLeft className="h-4 w-4" /> Zurück zur Mandantenliste
       </Link>
 
@@ -64,11 +60,15 @@ export default async function OnboardingStartPage({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
-              <label className="label" htmlFor="name">Name / Firma <span className="text-red-600">*</span></label>
+              <label className="label" htmlFor="name">
+                Name / Firma <span className="text-red-600">*</span>
+              </label>
               <input id="name" name="name" type="text" required maxLength={200} className="input" />
             </div>
             <div>
-              <label className="label" htmlFor="kind">Typ <span className="text-red-600">*</span></label>
+              <label className="label" htmlFor="kind">
+                Typ <span className="text-red-600">*</span>
+              </label>
               <select id="kind" name="kind" required defaultValue="JURPERS" className="input">
                 <option value="NATPERS">Natürliche Person</option>
                 <option value="JURPERS">Juristische Person</option>
@@ -76,36 +76,78 @@ export default async function OnboardingStartPage({
               </select>
             </div>
             <div>
-              <label className="label" htmlFor="datevNo">DATEV-Nummer</label>
+              <label className="label" htmlFor="datevNo">
+                DATEV-Nummer
+              </label>
               <input id="datevNo" name="datevNo" type="text" maxLength={40} className="input" />
             </div>
             <div>
-              <label className="label" htmlFor="addisonNo">Addison-Nummer</label>
+              <label className="label" htmlFor="addisonNo">
+                Addison-Nummer
+              </label>
               <input id="addisonNo" name="addisonNo" type="text" maxLength={40} className="input" />
             </div>
             <div>
-              <label className="label" htmlFor="vatId">USt-ID</label>
-              <input id="vatId" name="vatId" type="text" maxLength={50} className="input" placeholder="DE123456789" />
+              <label className="label" htmlFor="vatId">
+                USt-ID
+              </label>
+              <input
+                id="vatId"
+                name="vatId"
+                type="text"
+                maxLength={50}
+                className="input"
+                placeholder="DE123456789"
+              />
             </div>
             <div className="col-span-2">
-              <label className="label" htmlFor="street">Straße</label>
+              <label className="label" htmlFor="street">
+                Straße
+              </label>
               <input id="street" name="street" type="text" maxLength={200} className="input" />
             </div>
             <div>
-              <label className="label" htmlFor="postalCode">PLZ</label>
-              <input id="postalCode" name="postalCode" type="text" maxLength={20} className="input" />
+              <label className="label" htmlFor="postalCode">
+                PLZ
+              </label>
+              <input
+                id="postalCode"
+                name="postalCode"
+                type="text"
+                maxLength={20}
+                className="input"
+              />
             </div>
             <div>
-              <label className="label" htmlFor="city">Ort</label>
+              <label className="label" htmlFor="city">
+                Ort
+              </label>
               <input id="city" name="city" type="text" maxLength={100} className="input" />
             </div>
             <div>
-              <label className="label" htmlFor="countryIso">Land (ISO-2)</label>
-              <input id="countryIso" name="countryIso" type="text" maxLength={2} defaultValue="DE" className="input" />
+              <label className="label" htmlFor="countryIso">
+                Land (ISO-2)
+              </label>
+              <input
+                id="countryIso"
+                name="countryIso"
+                type="text"
+                maxLength={2}
+                defaultValue="DE"
+                className="input"
+              />
             </div>
             <div>
-              <label className="label" htmlFor="invoiceEmail">Rechnungs-E-Mail</label>
-              <input id="invoiceEmail" name="invoiceEmail" type="email" maxLength={255} className="input" />
+              <label className="label" htmlFor="invoiceEmail">
+                Rechnungs-E-Mail
+              </label>
+              <input
+                id="invoiceEmail"
+                name="invoiceEmail"
+                type="email"
+                maxLength={255}
+                className="input"
+              />
             </div>
           </div>
 

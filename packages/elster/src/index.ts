@@ -8,18 +8,10 @@
 // docs/development/eric-integration.md).
 // =============================================================================
 
-export {
-  ElsterBridgeClient,
-  ElsterBridgeHttpError,
-  ElsterKontoabfrageInputError,
-} from './client';
+export { ElsterBridgeClient, ElsterBridgeHttpError, ElsterKontoabfrageInputError } from './client';
 export type { ElsterBridgeClientOptions, KontoabfrageInput, Uebertragung } from './client';
 
-export {
-  isElsterConfigured,
-  requireElsterConfig,
-  ElsterNotConfiguredError,
-} from './config';
+export { isElsterConfigured, requireElsterConfig, ElsterNotConfiguredError } from './config';
 export type { ElsterConfig } from './config';
 
 export {

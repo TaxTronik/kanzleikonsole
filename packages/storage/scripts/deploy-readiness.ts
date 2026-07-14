@@ -17,13 +17,13 @@ import { checkDeployReadiness } from '../src/deploy-readiness';
 const ICON: Record<string, string> = { ok: '✅', warn: '⚠️ ', fail: '❌' };
 
 async function main() {
-  // Optionaler schnellerer Größen-Scan via ENV (CI/lokal), Default = 100 MB.
+  // Optionaler schnellerer Größen-Scan via ENV (CI/lokal), Default = 25 MiB.
   const overrideMib = process.env['DEPLOY_READINESS_CLAMAV_MIB'];
-  const clamavScanBytes = overrideMib
-    ? Math.max(1, Number(overrideMib)) * 1024 * 1024
-    : undefined;
+  const clamavScanBytes = overrideMib ? Math.max(1, Number(overrideMib)) * 1024 * 1024 : undefined;
 
-  process.stdout.write('[verify:deploy] Prüfe Prod-Konfiguration (S3/Object-Lock/ClamAV/Roundtrip)…\n');
+  process.stdout.write(
+    '[verify:deploy] Prüfe Prod-Konfiguration (S3/Object-Lock/ClamAV/Roundtrip)…\n',
+  );
   const report = await checkDeployReadiness({ clamavScanBytes });
 
   for (const c of report.checks) {

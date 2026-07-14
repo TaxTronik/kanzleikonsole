@@ -15,9 +15,8 @@ export default async function NewClientPage({
   if (!session?.user) redirect('/staff/login');
   const sp = await searchParams;
   const { tenantId, staffId } = session.user;
-  const staff = await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    (tx) => tx.staffUser.findMany({
+  const staff = await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>
+    tx.staffUser.findMany({
       where: { active: true },
       orderBy: { fullName: 'asc' },
       select: { id: true, fullName: true, email: true },
@@ -38,7 +37,9 @@ export default async function NewClientPage({
           {sp.error && <div className="alert-error-sm">{sp.error}</div>}
 
           <div>
-            <label className="label" htmlFor="name">Name / Firma *</label>
+            <label className="label" htmlFor="name">
+              Name / Firma *
+            </label>
             <input
               id="name"
               name="name"
@@ -50,9 +51,13 @@ export default async function NewClientPage({
           </div>
 
           <div>
-            <label className="label" htmlFor="kind">Mandantentyp *</label>
+            <label className="label" htmlFor="kind">
+              Mandantentyp *
+            </label>
             <select id="kind" name="kind" className="input" required defaultValue="">
-              <option value="" disabled>Bitte wählen…</option>
+              <option value="" disabled>
+                Bitte wählen…
+              </option>
               <option value="NATPERS">Natürliche Person</option>
               <option value="JURPERS">Juristische Person</option>
               <option value="PERSGES">Personengesellschaft</option>
@@ -60,14 +65,10 @@ export default async function NewClientPage({
           </div>
 
           <div>
-            <label className="label" htmlFor="datevNo">DATEV-Nummer (optional)</label>
-            <input
-              id="datevNo"
-              name="datevNo"
-              type="text"
-              className="input"
-              placeholder="12345"
-            />
+            <label className="label" htmlFor="datevNo">
+              DATEV-Nummer (optional)
+            </label>
+            <input id="datevNo" name="datevNo" type="text" className="input" placeholder="12345" />
           </div>
 
           <fieldset className="border border-default rounded-md p-4 space-y-3">
@@ -76,39 +77,86 @@ export default async function NewClientPage({
             </legend>
             <div className="grid grid-cols-3 gap-3">
               <div className="col-span-2">
-                <label className="label" htmlFor="street">Straße + Hausnr.</label>
+                <label className="label" htmlFor="street">
+                  Straße + Hausnr.
+                </label>
                 <input id="street" name="street" type="text" className="input" maxLength={200} />
               </div>
               <div>
-                <label className="label" htmlFor="postalCode">PLZ</label>
-                <input id="postalCode" name="postalCode" type="text" className="input" maxLength={20} />
+                <label className="label" htmlFor="postalCode">
+                  PLZ
+                </label>
+                <input
+                  id="postalCode"
+                  name="postalCode"
+                  type="text"
+                  className="input"
+                  maxLength={20}
+                />
               </div>
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div className="col-span-2">
-                <label className="label" htmlFor="city">Ort</label>
+                <label className="label" htmlFor="city">
+                  Ort
+                </label>
                 <input id="city" name="city" type="text" className="input" maxLength={100} />
               </div>
               <div>
-                <label className="label" htmlFor="countryIso">Land (ISO 2)</label>
-                <input id="countryIso" name="countryIso" type="text" className="input"
-                       minLength={2} maxLength={2} pattern="[A-Za-z]{2}" defaultValue="DE" />
+                <label className="label" htmlFor="countryIso">
+                  Land (ISO 2)
+                </label>
+                <input
+                  id="countryIso"
+                  name="countryIso"
+                  type="text"
+                  className="input"
+                  minLength={2}
+                  maxLength={2}
+                  pattern="[A-Za-z]{2}"
+                  defaultValue="DE"
+                />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="label" htmlFor="vatId">USt-ID (optional)</label>
-                <input id="vatId" name="vatId" type="text" className="input" maxLength={50}
-                       placeholder="DE123456789" />
+                <label className="label" htmlFor="vatId">
+                  USt-ID (optional)
+                </label>
+                <input
+                  id="vatId"
+                  name="vatId"
+                  type="text"
+                  className="input"
+                  maxLength={50}
+                  placeholder="DE123456789"
+                />
               </div>
               <div>
-                <label className="label" htmlFor="steuernummer">Steuernummer (optional)</label>
-                <input id="steuernummer" name="steuernummer" type="text" className="input"
-                       inputMode="numeric" maxLength={13} placeholder="13-stellig (ELSTER)" />
+                <label className="label" htmlFor="steuernummer">
+                  Steuernummer (optional)
+                </label>
+                <input
+                  id="steuernummer"
+                  name="steuernummer"
+                  type="text"
+                  className="input"
+                  inputMode="numeric"
+                  maxLength={13}
+                  placeholder="13-stellig (ELSTER)"
+                />
               </div>
               <div>
-                <label className="label" htmlFor="invoiceEmail">Rechnungs-E-Mail</label>
-                <input id="invoiceEmail" name="invoiceEmail" type="email" className="input" maxLength={255} />
+                <label className="label" htmlFor="invoiceEmail">
+                  Rechnungs-E-Mail
+                </label>
+                <input
+                  id="invoiceEmail"
+                  name="invoiceEmail"
+                  type="email"
+                  className="input"
+                  maxLength={255}
+                />
               </div>
             </div>
           </fieldset>
@@ -117,8 +165,8 @@ export default async function NewClientPage({
 
           <div className="alert-warning">
             <strong>Hinweis:</strong> Der Mandant wird zunächst mit dem Status{' '}
-            <em>GwG ausstehend</em> angelegt. Er kann erst aktiviert werden, wenn die
-            GwG-Prüfung abgeschlossen ist.
+            <em>GwG ausstehend</em> angelegt. Er kann erst aktiviert werden, wenn die GwG-Prüfung
+            abgeschlossen ist.
           </div>
 
           <label className="flex items-center gap-2 text-sm text-muted">

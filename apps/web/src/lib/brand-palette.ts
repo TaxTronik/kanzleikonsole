@@ -10,8 +10,16 @@
 // Sättigung bleibt erhalten, Hue auch — gibt einen "tonalen Match".
 // =============================================================================
 
-interface RGB { r: number; g: number; b: number; }
-interface HSL { h: number; s: number; l: number; }
+interface RGB {
+  r: number;
+  g: number;
+  b: number;
+}
+interface HSL {
+  h: number;
+  s: number;
+  l: number;
+}
 
 function hexToRgb(hex: string): RGB {
   const m = hex.replace('#', '').match(/^([\da-f]{6})$/i);
@@ -33,9 +41,15 @@ function rgbToHsl({ r, g, b }: RGB): HSL {
     const d = max - min;
     s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
     switch (max) {
-      case rn: h = (gn - bn) / d + (gn < bn ? 6 : 0); break;
-      case gn: h = (bn - rn) / d + 2; break;
-      case bn: h = (rn - gn) / d + 4; break;
+      case rn:
+        h = (gn - bn) / d + (gn < bn ? 6 : 0);
+        break;
+      case gn:
+        h = (bn - rn) / d + 2;
+        break;
+      case bn:
+        h = (rn - gn) / d + 4;
+        break;
     }
     h *= 60;
   }

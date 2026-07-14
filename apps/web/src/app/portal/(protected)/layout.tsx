@@ -18,8 +18,7 @@ import { AutoRefresh } from '@/components/auto-refresh';
 // (Staff + Portal). Portal-Feature-Toggles erlauben darüber hinaus, einzelne
 // Bereiche speziell im Mandantenportal auszublenden — z. B. BWA-Ansicht
 // behalten, aber Mandanten-Planung sperren.
-type PortalModuleKey =
-  | 'forms' | 'appointments' | 'handovers' | 'bwa' | 'taxNotices' | 'invoices';
+type PortalModuleKey = 'forms' | 'appointments' | 'handovers' | 'bwa' | 'taxNotices' | 'invoices';
 
 type PortalNavConfig = NavItem & {
   moduleKey?: PortalModuleKey;
@@ -30,13 +29,40 @@ const allPortalNavItems: PortalNavConfig[] = [
   { href: '/portal/dashboard', label: 'Übersicht', icon: 'LayoutDashboard' },
   { href: '/portal/requests', label: 'Anforderungen', icon: 'Inbox' },
   { href: '/portal/forms', label: 'Formulare', icon: 'ClipboardList', moduleKey: 'forms' },
-  { href: '/portal/appointments', label: 'Termine', icon: 'CalendarDays', moduleKey: 'appointments' },
-  { href: '/portal/handovers', label: 'Hinterlegt', icon: 'Inbox', moduleKey: 'handovers', portalFeature: 'handoversView' },
-  { href: '/portal/bwa', label: 'Auswertungen', icon: 'BarChart3', moduleKey: 'bwa', portalFeature: 'bwaView' },
-  { href: '/portal/steuer', label: 'Steuererklärungen', icon: 'ScrollText', moduleKey: 'taxNotices' },
+  {
+    href: '/portal/appointments',
+    label: 'Termine',
+    icon: 'CalendarDays',
+    moduleKey: 'appointments',
+  },
+  {
+    href: '/portal/handovers',
+    label: 'Hinterlegt',
+    icon: 'Inbox',
+    moduleKey: 'handovers',
+    portalFeature: 'handoversView',
+  },
+  {
+    href: '/portal/bwa',
+    label: 'Auswertungen',
+    icon: 'BarChart3',
+    moduleKey: 'bwa',
+    portalFeature: 'bwaView',
+  },
+  {
+    href: '/portal/steuer',
+    label: 'Steuererklärungen',
+    icon: 'ScrollText',
+    moduleKey: 'taxNotices',
+  },
   { href: '/portal/invoices', label: 'Rechnungen', icon: 'Receipt', moduleKey: 'invoices' },
   { href: '/portal/documents', label: 'Dokumente', icon: 'FileText' },
-  { href: '/portal/stammdaten', label: 'Stammdaten', icon: 'IdCard', portalFeature: 'stammdatenSelfService' },
+  {
+    href: '/portal/stammdaten',
+    label: 'Stammdaten',
+    icon: 'IdCard',
+    portalFeature: 'stammdatenSelfService',
+  },
   { href: '/portal/settings', label: 'Einstellungen', icon: 'Settings' },
 ];
 
@@ -49,9 +75,8 @@ export default async function PortalLayout({ children }: { children: ReactNode }
   const { tenantId, contactId, clientId } = session.user;
 
   const [client, branding, modules, portalFeatures] = await Promise.all([
-    withTenantContext(
-      { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' },
-      (tx) => tx.client.findUnique({ where: { id: clientId }, select: { name: true } }),
+    withTenantContext({ tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' }, (tx) =>
+      tx.client.findUnique({ where: { id: clientId }, select: { name: true } }),
     ),
     readBranding({ tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' }),
     readModules({ tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' }),
@@ -60,7 +85,8 @@ export default async function PortalLayout({ children }: { children: ReactNode }
 
   const navItems: NavItem[] = allPortalNavItems
     .filter((it) => {
-      const moduleEnabled = !it.moduleKey ||
+      const moduleEnabled =
+        !it.moduleKey ||
         (it.moduleKey === 'invoices' ? modules.invoiceMode !== 'OFF' : modules[it.moduleKey]);
       const portalFeatureEnabled = !it.portalFeature || portalFeatures[it.portalFeature];
       return moduleEnabled && portalFeatureEnabled;
@@ -68,10 +94,7 @@ export default async function PortalLayout({ children }: { children: ReactNode }
     .map((it) => ({ href: it.href, label: it.label, icon: it.icon, exact: it.exact }));
 
   return (
-    <div
-      className="flex h-screen bg-surface-page"
-      style={brandPaletteStyle(branding.accentColor)}
-    >
+    <div className="flex h-screen bg-surface-page" style={brandPaletteStyle(branding.accentColor)}>
       <AutoRefresh />
       <aside className="app-sidebar w-64 bg-white dark:bg-gray-900 border-r border-default flex flex-col">
         <div className="h-16 flex flex-col justify-center px-6 border-b border-default">

@@ -151,7 +151,9 @@ export async function updateContactAction(
           select: { clientId: true },
         });
         if (clash) {
-          throw new ActionError('E-Mail bereits einem anderen Ansprechpartner dieses Mandanten zugeordnet.');
+          throw new ActionError(
+            'E-Mail bereits einem anderen Ansprechpartner dieses Mandanten zugeordnet.',
+          );
         }
       }
       await tx.clientContact.update({

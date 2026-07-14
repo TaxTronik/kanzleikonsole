@@ -28,11 +28,7 @@ const isKind = (s: string | undefined): s is ClientKind =>
 // Truncation-Hinweis (truncated/totalCount).
 const DOCS_CAP = 1000;
 
-export default async function DocumentsPage({
-  searchParams,
-}: {
-  searchParams: Promise<Search>;
-}) {
+export default async function DocumentsPage({ searchParams }: { searchParams: Promise<Search> }) {
   const session = await staffAuth();
   if (!session?.user) redirect('/staff/login');
   const { tenantId, staffId } = session.user;
@@ -41,10 +37,8 @@ export default async function DocumentsPage({
   const deleted = sp.deleted === '1';
   const q = (sp.q ?? '').trim();
   const typeParam = sp.type;
-  const clientId =
-    sp.client && /^[0-9a-f-]{36}$/i.test(sp.client) ? sp.client : undefined;
-  const folderId =
-    sp.folder && /^[0-9a-f-]{36}$/i.test(sp.folder) ? sp.folder : undefined;
+  const clientId = sp.client && /^[0-9a-f-]{36}$/i.test(sp.client) ? sp.client : undefined;
+  const folderId = sp.folder && /^[0-9a-f-]{36}$/i.test(sp.folder) ? sp.folder : undefined;
 
   const base = (params: Record<string, string | undefined>) => {
     const u = new URLSearchParams();
@@ -190,10 +184,7 @@ export default async function DocumentsPage({
   const { clientRow, folders, docs, docsTotal } = data;
   const childFolders = folders.filter((f) => (f.parentId ?? null) === (folderId ?? null));
 
-  const tierOf = (
-    cls: string,
-    t: DocumentProtectionTier | undefined,
-  ): 'NONE' | 'GWG' | 'GOBD' =>
+  const tierOf = (cls: string, t: DocumentProtectionTier | undefined): 'NONE' | 'GWG' | 'GOBD' =>
     t ??
     (['GOBD_INVOICE', 'GOBD_CONTRACT', 'GOBD_TAX'].includes(cls)
       ? 'GOBD'
@@ -231,7 +222,10 @@ export default async function DocumentsPage({
   // Breadcrumb inkl. Ordner-Vorfahren
   const crumbs: Crumb[] = [{ label: 'Dokumente', href: '/staff/documents' }];
   if (typeParam === 'INTERNAL') {
-    crumbs.push({ label: KIND_LABEL.INTERNAL ?? 'Kanzlei-intern', href: base({ type: 'INTERNAL' }) });
+    crumbs.push({
+      label: KIND_LABEL.INTERNAL ?? 'Kanzlei-intern',
+      href: base({ type: 'INTERNAL' }),
+    });
   } else {
     const kindKey = clientRow?.kind ?? (isKind(typeParam) ? typeParam : 'NATPERS');
     crumbs.push({ label: KIND_LABEL[kindKey] ?? kindKey, href: base({ type: kindKey }) });

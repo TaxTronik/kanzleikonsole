@@ -13,7 +13,7 @@
 # node-linker=hoisted + shamefully-hoist=true für die flache Auflösung.
 # =============================================================================
 
-FROM node:22-alpine AS builder
+FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS builder
 RUN apk add --no-cache libc6-compat openssl
 WORKDIR /repo
 # pnpm 11 — Lockfile-Format ab Round 11 enthält settings.injectWorkspacePackages,
@@ -47,8 +47,7 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
       --filter @taxtronik/web... --filter @taxtronik/web --filter @taxtronik/db
 
 RUN pnpm rebuild -r --filter @taxtronik/web... --filter @taxtronik/web \
-      @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver \
-    || true
+      @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver
 
 # pnpm 11 löst bei JEDEM Aufruf einen impliziten Deps-Status-Check aus
 # (ERR_PNPM_IGNORED_BUILDS, nicht abschaltbar) → pnpm umgehen, Binaries direkt mit
@@ -72,7 +71,7 @@ RUN --mount=type=cache,target=/repo/apps/web/.next/cache \
     node "$NEXT" build
 
 # ----- Runtime ---------------------------------------------------------------
-FROM node:22-alpine AS runner
+FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS runner
 # Versions-Metadaten: setzt der Release-Workflow (release.yml) aus Tag + Commit,
 # lokale Builds lassen die Defaults stehen. Landen als ENV im Container —
 # Admin-Seite und /api/health/detail zeigen sie an; Compose darf APP_VERSION
@@ -86,11 +85,15 @@ LABEL org.opencontainers.image.title="taxtronik-web" \
 # mit; ~270 KB Overhead sind gegenüber dem Operability-Gewinn vernachlässigbar.
 # tzdata: ohne zoneinfo kann musl libc TZ=Europe/Berlin nicht auflösen, Date-
 # Lokalzeit bliebe UTC (Intl funktioniert dank Node-ICU unabhängig davon).
-RUN apk add --no-cache openssl wget postgresql18-client tzdata
+RUN apk add --no-cache openssl wget postgresql18-client tzdata && \
+    rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /opt/yarn-* && \
+    rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+      /usr/local/bin/yarn /usr/local/bin/yarnpkg
 WORKDIR /app
 
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
+    HOSTNAME=0.0.0.0 \
     PORT=3000 \
     TZ=Europe/Berlin \
     APP_VERSION=${APP_VERSION} \
@@ -106,12 +109,10 @@ COPY --from=builder /repo/apps/web/public ./apps/web/public
 EXPOSE 3000
 USER node
 
-# T-3: HEALTHCHECK über den /api/health-Endpoint. Erkennt hängende
-# Next.js-Prozesse (Prisma-Pool-Exhaust, deadlocked Server-Action) — Docker
-# restartet dann automatisch, statt den Container in "running but unresponsive"
-# zu belassen. start-period großzügig, weil Next.js + Prisma einige Sekunden
-# zum initial-bind brauchen.
+# Docker prüft ausschließlich die Prozess-Liveness. Abhängigkeiten werden über
+# /api/health als Readiness geprüft; ein DB-/Redis-/S3-Ausfall darf keinen
+# Restart-Loop des ansonsten gesunden Web-Prozesses auslösen.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
-  CMD wget --quiet --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1
+  CMD wget --quiet --tries=1 --spider http://127.0.0.1:3000/api/live || exit 1
 
 CMD ["node", "apps/web/server.js"]

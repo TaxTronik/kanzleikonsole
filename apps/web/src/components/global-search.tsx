@@ -1,8 +1,24 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type ComponentType, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentType,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Loader2, Users, Inbox, FileText, BookOpen, Receipt, ArrowRight } from 'lucide-react';
+import {
+  Search,
+  Loader2,
+  Users,
+  Inbox,
+  FileText,
+  BookOpen,
+  Receipt,
+  ArrowRight,
+} from 'lucide-react';
 
 interface SearchResult {
   type: 'client' | 'request' | 'document' | 'kb_article' | 'invoice' | 'nav';
@@ -41,7 +57,13 @@ export function GlobalSearch({ navItems = [] }: { navItems?: { label: string; hr
     return navItems
       .filter((n) => n.label.toLowerCase().includes(q))
       .slice(0, 6)
-      .map((n) => ({ type: 'nav' as const, id: `nav:${n.href}`, title: n.label, subtitle: 'Seite öffnen', href: n.href }));
+      .map((n) => ({
+        type: 'nav' as const,
+        id: `nav:${n.href}`,
+        title: n.label,
+        subtitle: 'Seite öffnen',
+        href: n.href,
+      }));
   }, [query, navItems]);
 
   // Gemeinsame Trefferliste: Nav-Kommandos zuerst, dann Datensätze.

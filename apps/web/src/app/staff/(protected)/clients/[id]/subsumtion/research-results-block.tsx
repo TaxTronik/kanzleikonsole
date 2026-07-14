@@ -19,7 +19,12 @@ export function ResearchResultsBlock(props: {
 
   function assign(resultId: string, markingId: string | null) {
     props.start(async () => {
-      const r = await assignResultAction({ clientId: props.clientId, analysisId: props.analysisId, resultId, markingId });
+      const r = await assignResultAction({
+        clientId: props.clientId,
+        analysisId: props.analysisId,
+        resultId,
+        markingId,
+      });
       props.onFlash(r, markingId ? 'Ergebnis zugeordnet.' : 'Ergebnis verworfen.');
       if (r.ok) router.refresh();
     });
@@ -37,7 +42,9 @@ export function ResearchResultsBlock(props: {
           return (
             <li key={res.id} className="py-3 space-y-1.5">
               <div className="flex items-center justify-between gap-2 flex-wrap">
-                <span className="text-sm font-medium text-primary">{res.title || 'Recherche-Ergebnis'}</span>
+                <span className="text-sm font-medium text-primary">
+                  {res.title || 'Recherche-Ergebnis'}
+                </span>
                 {res.status === 'ZUGEORDNET' && assignedTo ? (
                   <span className="badge-green text-[10px]">→ {assignedTo.begriff}</span>
                 ) : (
@@ -70,7 +77,12 @@ export function ResearchResultsBlock(props: {
                   ) : (
                     <span className="text-[11px] text-disabled">kein Vorschlag</span>
                   )}
-                  <button type="button" onClick={() => assign(res.id, null)} disabled={props.pending} className="text-[11px] text-disabled hover:text-secondary ml-1">
+                  <button
+                    type="button"
+                    onClick={() => assign(res.id, null)}
+                    disabled={props.pending}
+                    className="text-[11px] text-disabled hover:text-secondary ml-1"
+                  >
                     verwerfen
                   </button>
                 </div>

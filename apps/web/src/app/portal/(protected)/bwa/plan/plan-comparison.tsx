@@ -5,7 +5,13 @@ import Link from 'next/link';
 import { fmtDateTimeShort, fmtEURRound } from '@/lib/fmt';
 
 type Axis =
-  | 'REVENUE' | 'PERSONNEL' | 'OTHER_COSTS' | 'DEPRECIATION' | 'MATERIAL' | 'OTHER_INCOME' | 'TAXES';
+  | 'REVENUE'
+  | 'PERSONNEL'
+  | 'OTHER_COSTS'
+  | 'DEPRECIATION'
+  | 'MATERIAL'
+  | 'OTHER_INCOME'
+  | 'TAXES';
 
 const AXIS_LABELS: Record<Axis, string> = {
   REVENUE: 'Erlöse',
@@ -16,8 +22,15 @@ const AXIS_LABELS: Record<Axis, string> = {
   OTHER_COSTS: 'Sonstige Kosten',
   TAXES: 'Steuern',
 };
-const ORDER: Axis[] = ['REVENUE', 'OTHER_INCOME', 'PERSONNEL', 'MATERIAL', 'DEPRECIATION', 'OTHER_COSTS', 'TAXES'];
-
+const ORDER: Axis[] = [
+  'REVENUE',
+  'OTHER_INCOME',
+  'PERSONNEL',
+  'MATERIAL',
+  'DEPRECIATION',
+  'OTHER_COSTS',
+  'TAXES',
+];
 
 export interface PlanForCompare {
   id: string;
@@ -135,8 +148,8 @@ export function PlanListWithCompare({
                     <ActorBadge createdByType={p.createdByType} updatedByType={p.updatedByType} />
                   </p>
                   <p className="text-xs text-muted">
-                    Erg. nach Steuern: {fmtEURRound(totals(p).resultAfterTax)} ·
-                    zuletzt geändert {fmtDateTimeShort(p.updatedAt)}
+                    Erg. nach Steuern: {fmtEURRound(totals(p).resultAfterTax)} · zuletzt geändert{' '}
+                    {fmtDateTimeShort(p.updatedAt)}
                   </p>
                 </div>
                 {p.status === 'FINAL' ? (
@@ -196,10 +209,10 @@ function ComparisonTable({
     ? {
         revenue: (projection.revenue ?? 0) + (projection.otherIncome ?? 0),
         costs:
-          (projection.personnelCost ?? 0)
-          + (projection.material ?? 0)
-          + (projection.depreciation ?? 0)
-          + (projection.otherCosts ?? 0),
+          (projection.personnelCost ?? 0) +
+          (projection.material ?? 0) +
+          (projection.depreciation ?? 0) +
+          (projection.otherCosts ?? 0),
         taxes: projection.taxes ?? 0,
         resultBeforeTax: 0,
         resultAfterTax: 0,
@@ -226,13 +239,20 @@ function ComparisonTable({
   function cellProjection(axis: Axis): number {
     if (!projection) return 0;
     switch (axis) {
-      case 'REVENUE': return projection.revenue ?? 0;
-      case 'OTHER_INCOME': return projection.otherIncome ?? 0;
-      case 'PERSONNEL': return projection.personnelCost ?? 0;
-      case 'MATERIAL': return projection.material ?? 0;
-      case 'DEPRECIATION': return projection.depreciation ?? 0;
-      case 'OTHER_COSTS': return projection.otherCosts ?? 0;
-      case 'TAXES': return projection.taxes ?? 0;
+      case 'REVENUE':
+        return projection.revenue ?? 0;
+      case 'OTHER_INCOME':
+        return projection.otherIncome ?? 0;
+      case 'PERSONNEL':
+        return projection.personnelCost ?? 0;
+      case 'MATERIAL':
+        return projection.material ?? 0;
+      case 'DEPRECIATION':
+        return projection.depreciation ?? 0;
+      case 'OTHER_COSTS':
+        return projection.otherCosts ?? 0;
+      case 'TAXES':
+        return projection.taxes ?? 0;
     }
   }
 
@@ -307,13 +327,25 @@ function ComparisonTable({
             {[
               { label: 'Erträge', key: 'revenue' as const, accent: false },
               { label: 'Aufwendungen', key: 'costs' as const, accent: false },
-              { label: 'Ergebnis vor Steuern', key: 'resultBeforeTax' as const, accent: true, semibold: false },
-              { label: 'Ergebnis nach Steuern', key: 'resultAfterTax' as const, accent: true, semibold: true },
+              {
+                label: 'Ergebnis vor Steuern',
+                key: 'resultBeforeTax' as const,
+                accent: true,
+                semibold: false,
+              },
+              {
+                label: 'Ergebnis nach Steuern',
+                key: 'resultAfterTax' as const,
+                accent: true,
+                semibold: true,
+              },
             ].map((row) => (
               <tr key={row.key}>
                 <td
                   className={
-                    (row.semibold ? 'px-4 py-2 text-primary font-semibold' : 'px-4 py-1.5 text-secondary font-medium')
+                    row.semibold
+                      ? 'px-4 py-2 text-primary font-semibold'
+                      : 'px-4 py-1.5 text-secondary font-medium'
                   }
                 >
                   {row.label}
@@ -327,8 +359,8 @@ function ComparisonTable({
                     row.accent && v < 0
                       ? 'text-red-700 dark:text-red-300'
                       : row.accent && v > 0
-                      ? 'text-emerald-700 dark:text-emerald-300'
-                      : 'text-primary';
+                        ? 'text-emerald-700 dark:text-emerald-300'
+                        : 'text-primary';
                   return (
                     <td
                       key={`tot-${i}-${row.key}`}

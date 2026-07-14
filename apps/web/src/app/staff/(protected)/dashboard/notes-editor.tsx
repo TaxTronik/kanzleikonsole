@@ -11,7 +11,6 @@ interface Note {
   updatedAt: Date;
 }
 
-
 export function NotesEditor({ initial }: { initial: Note[] }) {
   const [notes, setNotes] = useState<Note[]>(initial);
   const [adding, setAdding] = useState(false);
@@ -32,10 +31,7 @@ export function NotesEditor({ initial }: { initial: Note[] }) {
         return;
       }
       // Optimistic local update, server reload kommt per revalidatePath
-      setNotes((s) => [
-        { id: r.id ?? `tmp-${Date.now()}`, body, updatedAt: new Date() },
-        ...s,
-      ]);
+      setNotes((s) => [{ id: r.id ?? `tmp-${Date.now()}`, body, updatedAt: new Date() }, ...s]);
       setNewBody('');
       setAdding(false);
     });
@@ -58,9 +54,7 @@ export function NotesEditor({ initial }: { initial: Note[] }) {
         setError(r.error ?? 'Fehler.');
         return;
       }
-      setNotes((s) =>
-        s.map((n) => (n.id === id ? { ...n, body, updatedAt: new Date() } : n)),
-      );
+      setNotes((s) => s.map((n) => (n.id === id ? { ...n, body, updatedAt: new Date() } : n)));
       setEditingId(null);
       setEditingBody('');
     });
@@ -127,9 +121,7 @@ export function NotesEditor({ initial }: { initial: Note[] }) {
         )}
       </div>
 
-      {error && (
-        <div className="px-5 py-1 text-[10px] text-red-700 dark:text-red-300">{error}</div>
-      )}
+      {error && <div className="px-5 py-1 text-[10px] text-red-700 dark:text-red-300">{error}</div>}
 
       {notes.length === 0 ? (
         <div className="px-5 py-8 text-sm text-disabled text-center flex-1">
@@ -175,11 +167,11 @@ export function NotesEditor({ initial }: { initial: Note[] }) {
                 </div>
               ) : (
                 <div className="group">
-                  <p className="text-sm text-primary whitespace-pre-wrap break-words">
-                    {n.body}
-                  </p>
+                  <p className="text-sm text-primary whitespace-pre-wrap break-words">{n.body}</p>
                   <div className="flex items-center justify-between gap-2 mt-1">
-                    <span className="text-[10px] text-disabled">{fmtDateTimeShort(n.updatedAt)}</span>
+                    <span className="text-[10px] text-disabled">
+                      {fmtDateTimeShort(n.updatedAt)}
+                    </span>
                     <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
                         type="button"

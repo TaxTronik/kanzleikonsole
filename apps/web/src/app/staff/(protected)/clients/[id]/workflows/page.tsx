@@ -41,7 +41,10 @@ export default async function ClientWorkflowsPage({
   if (!client) notFound();
 
   const { instances, templates, staffList, formTemplates, requestTemplates, emailTemplates } =
-    await loadClientWorkflows(ctx, { clientId, mineStaffId: filter === 'mine' ? staffId : undefined });
+    await loadClientWorkflows(ctx, {
+      clientId,
+      mineStaffId: filter === 'mine' ? staffId : undefined,
+    });
 
   return (
     <div className="p-8 max-w-5xl">

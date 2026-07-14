@@ -75,26 +75,30 @@ export async function sendInviteAction(input: {
 
   // Befund 3: fire-and-forget mit catch+Log statt `void ….catch(() => void 0)`
   // (Fehler wurden vorher stillschweigend verschluckt).
-  fireAndForget('sendTemplateMail (gwg-onboarding invite)', sendTemplateMail({
-    tenantId,
-    slug: 'gwg-onboarding',
-    to: inviteEmail,
-    vars: { inviteName, inviteEmail, link, clientId, gwgInviteId: inviteId },
-    n8nEvent: 'client.created',
-    n8nPayload: {
+  fireAndForget(
+    'sendTemplateMail (gwg-onboarding invite)',
+    sendTemplateMail({
       tenantId,
-      clientId,
-      gwgInviteId: inviteId,
-      inviteEmail,
-      inviteName,
-      link,
-      kind: 'gwg-onboarding',
-    },
-    fallback: {
-      subject: 'Identifizierung für Ihre Mandantschaft',
-      bodyMd: 'Sehr geehrte/r {{inviteName}},\n\num Sie als Mandant aufzunehmen, sind wir gesetzlich verpflichtet, Ihre Identität nach dem Geldwäschegesetz zu prüfen.\n\nBitte füllen Sie das kurze Online-Formular über folgenden Link aus:\n\n{{link}}\n\nDer Link ist 14 Tage gültig.',
-    },
-  }));
+      slug: 'gwg-onboarding',
+      to: inviteEmail,
+      vars: { inviteName, inviteEmail, link, clientId, gwgInviteId: inviteId },
+      n8nEvent: 'client.created',
+      n8nPayload: {
+        tenantId,
+        clientId,
+        gwgInviteId: inviteId,
+        inviteEmail,
+        inviteName,
+        link,
+        kind: 'gwg-onboarding',
+      },
+      fallback: {
+        subject: 'Identifizierung für Ihre Mandantschaft',
+        bodyMd:
+          'Sehr geehrte/r {{inviteName}},\n\num Sie als Mandant aufzunehmen, sind wir gesetzlich verpflichtet, Ihre Identität nach dem Geldwäschegesetz zu prüfen.\n\nBitte füllen Sie das kurze Online-Formular über folgenden Link aus:\n\n{{link}}\n\nDer Link ist 14 Tage gültig.',
+      },
+    }),
+  );
 
   revalidatePath(`/staff/clients/${clientId}/gwg`);
   return { ok: true, link };
@@ -107,7 +111,8 @@ export async function cancelInviteAction(input: { id: string }): Promise<InviteR
   const r = await withStaff(async (tx, { tenantId, staffId }) => {
     const inv = await tx.gwgOnboardingInvite.findUnique({ where: { id: parsed.data.id } });
     if (!inv) return;
-    if (inv.status === 'SUBMITTED') throw new ActionError('Bereits abgeschickt — kann nicht zurückgezogen werden.');
+    if (inv.status === 'SUBMITTED')
+      throw new ActionError('Bereits abgeschickt — kann nicht zurückgezogen werden.');
     await tx.gwgOnboardingInvite.update({
       where: { id: parsed.data.id },
       data: {

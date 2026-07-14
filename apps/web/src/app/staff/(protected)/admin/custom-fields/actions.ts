@@ -9,7 +9,14 @@ import { withStaff, ActionError, type ActionResult } from '@/server/actions/staf
 const REVALIDATE = '/staff/admin/custom-fields';
 
 const FIELD_TYPES = [
-  'TEXT', 'TEXTAREA', 'NUMBER', 'MONEY', 'DATE', 'SELECT', 'CHECKBOX', 'URL',
+  'TEXT',
+  'TEXTAREA',
+  'NUMBER',
+  'MONEY',
+  'DATE',
+  'SELECT',
+  'CHECKBOX',
+  'URL',
 ] as const;
 
 const KIND_VALUES = ['NATPERS', 'JURPERS', 'PERSGES'] as const;
@@ -27,11 +34,10 @@ const SaveSchema = z.object({
   active: z.boolean(),
 });
 
-export async function saveFieldDefAction(
-  input: z.infer<typeof SaveSchema>,
-): Promise<ActionResult> {
+export async function saveFieldDefAction(input: z.infer<typeof SaveSchema>): Promise<ActionResult> {
   const parsed = SaveSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
+  if (!parsed.success)
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
   const data = parsed.data;
 
   if (data.type === 'SELECT' && (!data.options || data.options.length === 0)) {
@@ -44,7 +50,14 @@ export async function saveFieldDefAction(
         // UPDATE — Typ bleibt fest, key auch (vermeidet Daten-Drift)
         const before = await tx.clientCustomFieldDef.findUnique({
           where: { id: data.id },
-          select: { label: true, type: true, helpText: true, appliesTo: true, options: true, active: true },
+          select: {
+            label: true,
+            type: true,
+            helpText: true,
+            appliesTo: true,
+            options: true,
+            active: true,
+          },
         });
         if (!before) throw new ActionError('Feld nicht gefunden.');
         await tx.clientCustomFieldDef.update({
@@ -53,7 +66,9 @@ export async function saveFieldDefAction(
             label: data.label,
             helpText: data.helpText,
             appliesTo: data.appliesTo,
-            options: (data.options ?? null) as Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue,
+            options: (data.options ?? null) as
+              | Prisma.NullableJsonNullValueInput
+              | Prisma.InputJsonValue,
             active: data.active,
           },
         });
@@ -65,7 +80,13 @@ export async function saveFieldDefAction(
           resourceType: 'client_custom_field_def',
           resourceId: data.id,
           before,
-          after: { label: data.label, helpText: data.helpText, appliesTo: data.appliesTo, options: data.options, active: data.active },
+          after: {
+            label: data.label,
+            helpText: data.helpText,
+            appliesTo: data.appliesTo,
+            options: data.options,
+            active: data.active,
+          },
         });
       } else {
         const dup = await tx.clientCustomFieldDef.findFirst({ where: { key: data.key } });
@@ -82,7 +103,9 @@ export async function saveFieldDefAction(
             type: data.type,
             helpText: data.helpText,
             appliesTo: data.appliesTo,
-            options: (data.options ?? null) as Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue,
+            options: (data.options ?? null) as
+              | Prisma.NullableJsonNullValueInput
+              | Prisma.InputJsonValue,
             active: data.active,
             position: (last?.position ?? 0) + 10,
           },
@@ -95,8 +118,11 @@ export async function saveFieldDefAction(
           resourceType: 'client_custom_field_def',
           resourceId: created.id,
           after: {
-            key: data.key, label: data.label, type: data.type,
-            appliesTo: data.appliesTo, options: data.options,
+            key: data.key,
+            label: data.label,
+            type: data.type,
+            appliesTo: data.appliesTo,
+            options: data.options,
           },
         });
       }
@@ -178,7 +204,9 @@ export async function saveCustomFieldValuesAction(
         await tx.clientCustomFieldValue.upsert({
           where: { clientId_fieldId: { clientId, fieldId: def.id } },
           create: {
-            tenantId, clientId, fieldId: def.id,
+            tenantId,
+            clientId,
+            fieldId: def.id,
             value: normalized as Prisma.InputJsonValue,
             updatedBy: staffId,
           },
@@ -233,9 +261,7 @@ function normalizeValue(
       const d = new Date(s);
       if (Number.isNaN(d.getTime())) return null;
       // Nur den Datumsteil persistieren (keine Zeitzonen-Verzerrung).
-      return s.length === 10 && /^\d{4}-\d{2}-\d{2}$/.test(s)
-        ? s
-        : d.toISOString().slice(0, 10);
+      return s.length === 10 && /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : d.toISOString().slice(0, 10);
     }
     case 'SELECT': {
       const s = String(raw);
@@ -247,7 +273,12 @@ function normalizeValue(
         allowed = opts
           .map((o) => {
             if (typeof o === 'string') return o;
-            if (o && typeof o === 'object' && 'value' in o && typeof (o as { value: unknown }).value === 'string') {
+            if (
+              o &&
+              typeof o === 'object' &&
+              'value' in o &&
+              typeof (o as { value: unknown }).value === 'string'
+            ) {
               return (o as { value: string }).value;
             }
             return null;

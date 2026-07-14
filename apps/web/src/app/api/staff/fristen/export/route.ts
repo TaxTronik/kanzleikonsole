@@ -53,13 +53,21 @@ export async function GET(req: NextRequest) {
   );
 
   const columns: CsvColumn<FristEintrag>[] = [
-    { key: 'faelligAm', label: 'Faellig am', accessor: (e) => e.faelligAm.toISOString().slice(0, 10) },
+    {
+      key: 'faelligAm',
+      label: 'Faellig am',
+      accessor: (e) => e.faelligAm.toISOString().slice(0, 10),
+    },
     { key: 'art', label: 'Art', accessor: (e) => QUELLE_LABELS[e.quelle] },
     { key: 'frist', label: 'Frist', accessor: (e) => e.titel },
     { key: 'mandant', label: 'Mandant', accessor: (e) => e.clientName },
     { key: 'verantwortlich', label: 'Verantwortlich', accessor: (e) => e.verantwortlich ?? '' },
     { key: 'status', label: 'Status', accessor: (e) => (e.erledigt ? 'erledigt' : 'offen') },
-    { key: 'erledigtAm', label: 'Erledigt am', accessor: (e) => (e.erledigtAm ? e.erledigtAm.toISOString().slice(0, 10) : '') },
+    {
+      key: 'erledigtAm',
+      label: 'Erledigt am',
+      accessor: (e) => (e.erledigtAm ? e.erledigtAm.toISOString().slice(0, 10) : ''),
+    },
     { key: 'erledigtVon', label: 'Erledigt von', accessor: (e) => e.erledigtVon ?? '' },
   ];
 

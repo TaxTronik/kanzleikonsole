@@ -93,7 +93,8 @@ function toQuantenlosActionError(e: unknown): ActionResult {
   if (e instanceof CircuitOpenError) {
     return {
       ok: false,
-      error: 'Risk-Engine ist vorübergehend gesperrt, weil mehrere Aufrufe fehlgeschlagen sind. Bitte später erneut versuchen.',
+      error:
+        'Risk-Engine ist vorübergehend gesperrt, weil mehrere Aufrufe fehlgeschlagen sind. Bitte später erneut versuchen.',
     };
   }
   if (e instanceof z.ZodError) {
@@ -114,10 +115,15 @@ function toQuantenlosActionError(e: unknown): ActionResult {
   if (e instanceof Error) {
     const msg = e.message;
     const code = errorCauseCode(e);
-    if (e.name === 'AbortError' || msg.includes('timed out') || msg.includes('The operation was aborted')) {
+    if (
+      e.name === 'AbortError' ||
+      msg.includes('timed out') ||
+      msg.includes('The operation was aborted')
+    ) {
       return {
         ok: false,
-        error: 'Risk-Engine hat nicht rechtzeitig geantwortet. Bitte Engine-Status und Logs prüfen.',
+        error:
+          'Risk-Engine hat nicht rechtzeitig geantwortet. Bitte Engine-Status und Logs prüfen.',
       };
     }
     if (msg === 'fetch failed' || code) {
@@ -140,13 +146,18 @@ function toQuantenlosActionError(e: unknown): ActionResult {
   return toActionError(e);
 }
 
-async function guard(): Promise<{ ok: true; ctx: TenantContext } | ({ ok: false } & { error: string })> {
+async function guard(): Promise<
+  { ok: true; ctx: TenantContext } | ({ ok: false } & { error: string })
+> {
   const g = await staffActionGuard({ requireAdmin: true });
   if (!g.ok) return g;
   const modules = await readModules(g.ctx);
-  if (!modules.risk) throw new ForbiddenError('Das Subsumtions-Modul ist für diese Kanzlei deaktiviert.');
+  if (!modules.risk)
+    throw new ForbiddenError('Das Subsumtions-Modul ist für diese Kanzlei deaktiviert.');
   if (!isRiskLayerConfigured()) {
-    throw new ForbiddenError('Die Risk-Engine ist nicht konfiguriert — Quantenlos derzeit nicht möglich.');
+    throw new ForbiddenError(
+      'Die Risk-Engine ist nicht konfiguriert — Quantenlos derzeit nicht möglich.',
+    );
   }
   return { ok: true, ctx: g.ctx };
 }
@@ -187,7 +198,8 @@ export async function losZiehenAction(
     const g = await guard();
     if (!g.ok) return g;
     // Token nur lesen, wenn die IBM-Seite ihn überhaupt braucht (qpu).
-    const ibmToken = parsed.backend === 'qpu' ? (await readIbmToken(g.ctx)) ?? undefined : undefined;
+    const ibmToken =
+      parsed.backend === 'qpu' ? ((await readIbmToken(g.ctx)) ?? undefined) : undefined;
     const ergebnis = await zieheLosStichprobe(g.ctx, {
       zeitraum: { von: parsed.von, bis: parsed.bis },
       k: parsed.k,
@@ -202,7 +214,9 @@ export async function losZiehenAction(
   }
 }
 
-export async function losAbholenAction(): Promise<ActionResult & { ergebnis?: LosZiehungErgebnis }> {
+export async function losAbholenAction(): Promise<
+  ActionResult & { ergebnis?: LosZiehungErgebnis }
+> {
   try {
     const g = await guard();
     if (!g.ok) return g;
@@ -227,7 +241,7 @@ export async function losPruefenAction(
     const parsed = PruefenSchema.parse(input);
     const g = await guard();
     if (!g.ok) return g;
-    const ibmToken = parsed.online ? (await readIbmToken(g.ctx)) ?? undefined : undefined;
+    const ibmToken = parsed.online ? ((await readIbmToken(g.ctx)) ?? undefined) : undefined;
     const ergebnis = await pruefeLosNachweis(g.ctx, parsed.auditId, {
       online: parsed.online,
       ibmToken,
@@ -273,7 +287,9 @@ export async function ibmTokenSpeichernAction(
   }
 }
 
-export async function ibmTokenEntfernenAction(): Promise<ActionResult & { status?: IbmTokenStatus }> {
+export async function ibmTokenEntfernenAction(): Promise<
+  ActionResult & { status?: IbmTokenStatus }
+> {
   try {
     const g = await guard();
     if (!g.ok) return g;

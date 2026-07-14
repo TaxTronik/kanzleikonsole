@@ -13,14 +13,7 @@ interface Comment {
   createdAt: string; // ISO
 }
 
-
-export function WorkflowItemComments({
-  itemId,
-  initial,
-}: {
-  itemId: string;
-  initial: Comment[];
-}) {
+export function WorkflowItemComments({ itemId, initial }: { itemId: string; initial: Comment[] }) {
   const router = useRouter();
   const [open, setOpen] = useState(initial.length > 0);
   const [body, setBody] = useState('');
@@ -32,7 +25,10 @@ export function WorkflowItemComments({
     if (!body.trim()) return;
     start(async () => {
       const r = await addItemCommentAction({ itemId, body: body.trim() });
-      if (!r.ok) { setError(r.error ?? 'Fehler.'); return; }
+      if (!r.ok) {
+        setError(r.error ?? 'Fehler.');
+        return;
+      }
       setBody('');
       router.refresh();
     });

@@ -45,9 +45,13 @@ function setCookieHeaders(response: APIResponse): string[] {
   return headers;
 }
 
-async function ensureStaffSessionCookieFromResponse(page: Page, response: APIResponse): Promise<boolean> {
+async function ensureStaffSessionCookieFromResponse(
+  page: Page,
+  response: APIResponse,
+): Promise<boolean> {
   const existing = await page.context().cookies();
-  if (existing.some((cookie) => isStaffSessionCookieName(cookie.name) && cookie.value.length > 0)) return true;
+  if (existing.some((cookie) => isStaffSessionCookieName(cookie.name) && cookie.value.length > 0))
+    return true;
 
   for (const header of setCookieHeaders(response)) {
     const match = header.match(/(__(?:Host-|Secure-)?taxtronik_staff_session)=([^;,]+)/);
@@ -110,14 +114,16 @@ export async function loginAsAdmin(page: Page): Promise<void> {
       return;
     }
 
-    const response = await page.context().request.post('/staff/login/password?returnTo=%2Fstaff%2Fdashboard', {
-      form: {
-        email: ADMIN_EMAIL,
-        password: ADMIN_PASSWORD,
-        tenantSlug: 'default',
-      },
-      maxRedirects: 0,
-    });
+    const response = await page
+      .context()
+      .request.post('/staff/login/password?returnTo=%2Fstaff%2Fdashboard', {
+        form: {
+          email: ADMIN_EMAIL,
+          password: ADMIN_PASSWORD,
+          tenantSlug: 'default',
+        },
+        maxRedirects: 0,
+      });
     const location = response.headers()['location'] ?? '';
     const hasSessionCookie = await ensureStaffSessionCookieFromResponse(page, response);
     if (response.status() !== 303 || !/\/staff\/dashboard$/.test(location) || !hasSessionCookie) {
@@ -161,7 +167,9 @@ export async function loginAsAdmin(page: Page): Promise<void> {
   }
 
   const errorText = await page
-    .locator('[role="alert"], .alert-error-sm, .alert-error, .text-red-600, .text-red-500, .text-red-700')
+    .locator(
+      '[role="alert"], .alert-error-sm, .alert-error, .text-red-600, .text-red-500, .text-red-700',
+    )
     .first()
     .textContent()
     .catch(() => '');
@@ -196,13 +204,22 @@ export async function loginAsAdmin(page: Page): Promise<void> {
 
   const secret = process.env['E2E_TOTP_SECRET'];
   if (!secret) {
-    const bodyText = await page.locator('body').innerText().catch(() => '');
-    if (/Mitarbeiter-Login/i.test(bodyText) && /Passwort/i.test(bodyText) && /Weiter/i.test(bodyText)) {
+    const bodyText = await page
+      .locator('body')
+      .innerText()
+      .catch(() => '');
+    if (
+      /Mitarbeiter-Login/i.test(bodyText) &&
+      /Passwort/i.test(bodyText) &&
+      /Weiter/i.test(bodyText)
+    ) {
       throw new Error(
         `Passwort-Login blieb auf Schritt 1 stehen. DEV_SKIP_TOTP/Passwort/Server-Action pruefen. URL: ${page.url()}. Text: ${bodyText.slice(0, 500)}`,
       );
     }
-    throw new Error('TOTP-Secret unbekannt. Setze E2E_TOTP_SECRET oder lass den Admin im UI neu enrollen.');
+    throw new Error(
+      'TOTP-Secret unbekannt. Setze E2E_TOTP_SECRET oder lass den Admin im UI neu enrollen.',
+    );
   }
 
   const code = generateSync({ secret });

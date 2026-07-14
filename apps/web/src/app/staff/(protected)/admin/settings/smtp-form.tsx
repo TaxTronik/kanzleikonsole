@@ -2,12 +2,7 @@
 
 import { useActionState, useState, useTransition, type SubmitEvent } from 'react';
 import { Send, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
-import {
-  saveSmtpAction,
-  sendTestMailAction,
-  resetSmtpAction,
-  type ActionResult,
-} from './actions';
+import { saveSmtpAction, sendTestMailAction, resetSmtpAction, type ActionResult } from './actions';
 import type { SmtpConfig } from '@/server/settings/smtp';
 
 interface Props {
@@ -21,12 +16,12 @@ interface Props {
 }
 
 const COMMON_PRESETS: Array<{ label: string; host: string; port: number; secure: boolean }> = [
-  { label: 'Gmail (SMTP-Relay)',       host: 'smtp.gmail.com',          port: 587, secure: false },
-  { label: 'Microsoft 365 / Exchange', host: 'smtp.office365.com',      port: 587, secure: false },
-  { label: 'mailbox.org',              host: 'smtp.mailbox.org',        port: 465, secure: true  },
-  { label: 'IONOS (1&1)',              host: 'smtp.ionos.de',           port: 587, secure: false },
-  { label: 'Strato',                   host: 'smtp.strato.de',          port: 465, secure: true  },
-  { label: 'Telekom',                  host: 'securesmtp.t-online.de',  port: 465, secure: true  },
+  { label: 'Gmail (SMTP-Relay)', host: 'smtp.gmail.com', port: 587, secure: false },
+  { label: 'Microsoft 365 / Exchange', host: 'smtp.office365.com', port: 587, secure: false },
+  { label: 'mailbox.org', host: 'smtp.mailbox.org', port: 465, secure: true },
+  { label: 'IONOS (1&1)', host: 'smtp.ionos.de', port: 587, secure: false },
+  { label: 'Strato', host: 'smtp.strato.de', port: 465, secure: true },
+  { label: 'Telekom', host: 'securesmtp.t-online.de', port: 465, secure: true },
 ];
 
 export function SmtpForm({ initial, envFallback, defaultTestTo }: Props) {
@@ -49,7 +44,7 @@ export function SmtpForm({ initial, envFallback, defaultTestTo }: Props) {
     null,
   );
 
-  function applyPreset(p: typeof COMMON_PRESETS[number]) {
+  function applyPreset(p: (typeof COMMON_PRESETS)[number]) {
     setHost(p.host);
     setPort(p.port);
     setSecure(p.secure);
@@ -77,7 +72,8 @@ export function SmtpForm({ initial, envFallback, defaultTestTo }: Props) {
   }
 
   function onReset() {
-    if (!confirm('Konfiguration zurücksetzen? Mails laufen danach wieder über die ENV-Vorgabe.')) return;
+    if (!confirm('Konfiguration zurücksetzen? Mails laufen danach wieder über die ENV-Vorgabe.'))
+      return;
     startReset(async () => {
       await resetSmtpAction();
       window.location.reload();
@@ -88,17 +84,16 @@ export function SmtpForm({ initial, envFallback, defaultTestTo }: Props) {
     <div className="space-y-6">
       {!initial && (
         <div className="rounded-md border border-blue-200 dark:border-blue-900/60 bg-blue-50 dark:bg-blue-900/20 px-4 py-3 text-xs text-blue-900 dark:text-blue-200">
-          Aktuell aktiv: <strong>ENV-Vorgabe</strong> ({envFallback.host}:{envFallback.port}, Absender {envFallback.from}).
-          Sobald Sie hier speichern, wird stattdessen die Kanzlei-Konfiguration verwendet.
+          Aktuell aktiv: <strong>ENV-Vorgabe</strong> ({envFallback.host}:{envFallback.port},
+          Absender {envFallback.from}). Sobald Sie hier speichern, wird stattdessen die
+          Kanzlei-Konfiguration verwendet.
         </div>
       )}
 
       <form action={saveAction} className="space-y-4">
         {/* Anbieter-Presets */}
         <div>
-          <div className="text-xs text-muted mb-1.5">
-            Anbieter-Schnellwahl
-          </div>
+          <div className="text-xs text-muted mb-1.5">Anbieter-Schnellwahl</div>
           <div className="flex flex-wrap gap-2">
             {COMMON_PRESETS.map((p) => (
               <button
@@ -115,7 +110,9 @@ export function SmtpForm({ initial, envFallback, defaultTestTo }: Props) {
 
         <div className="grid grid-cols-3 gap-3">
           <div className="col-span-2">
-            <label className="label" htmlFor="host">SMTP-Server</label>
+            <label className="label" htmlFor="host">
+              SMTP-Server
+            </label>
             <input
               id="host"
               name="host"
@@ -128,7 +125,9 @@ export function SmtpForm({ initial, envFallback, defaultTestTo }: Props) {
             />
           </div>
           <div>
-            <label className="label" htmlFor="port">Port</label>
+            <label className="label" htmlFor="port">
+              Port
+            </label>
             <input
               id="port"
               name="port"
@@ -155,7 +154,9 @@ export function SmtpForm({ initial, envFallback, defaultTestTo }: Props) {
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="label" htmlFor="user">Benutzername</label>
+            <label className="label" htmlFor="user">
+              Benutzername
+            </label>
             <input
               id="user"
               name="user"
@@ -168,7 +169,9 @@ export function SmtpForm({ initial, envFallback, defaultTestTo }: Props) {
             />
           </div>
           <div>
-            <label className="label" htmlFor="password">Passwort</label>
+            <label className="label" htmlFor="password">
+              Passwort
+            </label>
             <input
               id="password"
               name="password"
@@ -201,7 +204,9 @@ export function SmtpForm({ initial, envFallback, defaultTestTo }: Props) {
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="label" htmlFor="from">Absender (From-Header)</label>
+            <label className="label" htmlFor="from">
+              Absender (From-Header)
+            </label>
             <input
               id="from"
               name="from"
@@ -209,12 +214,14 @@ export function SmtpForm({ initial, envFallback, defaultTestTo }: Props) {
               className="input"
               value={from}
               onChange={(e) => setFrom(e.target.value)}
-              placeholder='Kanzlei Mustermann <kanzlei@example.de>'
+              placeholder="Kanzlei Mustermann <kanzlei@example.de>"
               required
             />
           </div>
           <div>
-            <label className="label" htmlFor="replyTo">Antwort-an (optional)</label>
+            <label className="label" htmlFor="replyTo">
+              Antwort-an (optional)
+            </label>
             <input
               id="replyTo"
               name="replyTo"
@@ -228,11 +235,7 @@ export function SmtpForm({ initial, envFallback, defaultTestTo }: Props) {
         </div>
 
         <div className="flex items-center justify-between pt-2">
-          <button
-            type="submit"
-            className="btn-primary"
-            disabled={isSaving}
-          >
+          <button type="submit" className="btn-primary" disabled={isSaving}>
             {isSaving ? 'Speichere…' : 'Speichern'}
           </button>
           {saveState?.ok && (
@@ -256,16 +259,16 @@ export function SmtpForm({ initial, envFallback, defaultTestTo }: Props) {
         data-settings-no-track
         className="rounded-md border border-default bg-surface-raised p-4 space-y-2"
       >
-        <div className="text-sm font-medium text-primary">
-          Test-Mail senden
-        </div>
+        <div className="text-sm font-medium text-primary">Test-Mail senden</div>
         <p className="text-xs text-muted">
-          Schickt eine Test-Mail mit den aktuellen Eingaben (ohne zu speichern). So
-          prüfen Sie Server und Anmeldedaten, bevor Sie übernehmen.
+          Schickt eine Test-Mail mit den aktuellen Eingaben (ohne zu speichern). So prüfen Sie
+          Server und Anmeldedaten, bevor Sie übernehmen.
         </p>
         <div className="flex flex-wrap items-end gap-2">
           <div className="flex-1 min-w-[14rem]">
-            <label className="label" htmlFor="testTo">Empfänger</label>
+            <label className="label" htmlFor="testTo">
+              Empfänger
+            </label>
             <input
               id="testTo"
               name="testTo"

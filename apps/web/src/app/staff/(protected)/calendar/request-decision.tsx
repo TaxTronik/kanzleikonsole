@@ -6,8 +6,10 @@ import { Check, X, Calendar } from 'lucide-react';
 import { acceptAppointmentRequestAction, rejectAppointmentRequestAction } from './actions';
 import { fmtDateTimeShort } from '@/lib/fmt';
 
-
-interface StaffOption { id: string; fullName: string; }
+interface StaffOption {
+  id: string;
+  fullName: string;
+}
 
 export interface RequestRow {
   id: string;
@@ -73,10 +75,14 @@ export function RequestDecision({
           <p className="text-xs text-muted">
             {request.clientName}
             {request.contactName && ` · ${request.contactName}`}
-            <span className="ml-2 text-disabled">{fmtDateTimeShort(new Date(request.createdAt))}</span>
+            <span className="ml-2 text-disabled">
+              {fmtDateTimeShort(new Date(request.createdAt))}
+            </span>
           </p>
           {request.notes && (
-            <p className="text-xs text-secondary dark:text-disabled mt-1 whitespace-pre-wrap line-clamp-3">{request.notes}</p>
+            <p className="text-xs text-secondary dark:text-disabled mt-1 whitespace-pre-wrap line-clamp-3">
+              {request.notes}
+            </p>
           )}
           <ul className="mt-2 space-y-1">
             {request.slots.map((s, i) => (
@@ -138,7 +144,9 @@ export function RequestDecision({
                 className="input text-xs mt-1"
               >
                 {staffOptions.map((s) => (
-                  <option key={s.id} value={s.id}>{s.fullName}</option>
+                  <option key={s.id} value={s.id}>
+                    {s.fullName}
+                  </option>
                 ))}
               </select>
             </label>

@@ -92,7 +92,13 @@ export async function importAddisonCsvAction(input: {
           action: 'bwa.import',
           resourceType: 'bwa_period',
           resourceId: bp.id,
-          after: { clientId, periodKey: period.periodKey, source: 'ADDISON', fileName, positionCount: period.positions.length },
+          after: {
+            clientId,
+            periodKey: period.periodKey,
+            source: 'ADDISON',
+            fileName,
+            positionCount: period.positions.length,
+          },
         });
         imported++;
       }
@@ -185,7 +191,13 @@ export async function importDatevXlsxAction(input: {
           action: 'bwa.import',
           resourceType: 'bwa_period',
           resourceId: bp.id,
-          after: { clientId, periodKey: period.periodKey, source: 'DATEV', fileName, positionCount: period.positions.length },
+          after: {
+            clientId,
+            periodKey: period.periodKey,
+            source: 'DATEV',
+            fileName,
+            positionCount: period.positions.length,
+          },
         });
         imported++;
       }

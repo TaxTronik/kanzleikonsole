@@ -63,7 +63,13 @@ vi.mock('@taxtronik/http-utils', () => ({
   SsrfGuardError: h.SsrfGuardError,
 }));
 
-import { processors, workerEvents, queueAdds, queueCloses, resetQueueRecords } from './mocks/bullmq';
+import {
+  processors,
+  workerEvents,
+  queueAdds,
+  queueCloses,
+  resetQueueRecords,
+} from './mocks/bullmq';
 import '../n8n-deliver';
 
 const FIXED_NOW = new Date('2026-06-09T10:00:00.000Z');
@@ -90,7 +96,11 @@ beforeEach(() => {
   vi.resetAllMocks();
   resetQueueRecords();
   h.isAllowedN8nEvent.mockReturnValue(true);
-  h.signOutboundN8n.mockReturnValue({ signature: 'sig-1', timestamp: '1780000000', nonce: 'nonce-1' });
+  h.signOutboundN8n.mockReturnValue({
+    signature: 'sig-1',
+    timestamp: '1780000000',
+    nonce: 'nonce-1',
+  });
   h.looksEncrypted.mockReturnValue(false);
   h.prismaOwner.n8nOutbox.findUnique.mockResolvedValue({ ...OUTBOX_ROW });
   h.prismaOwner.n8nOutbox.update.mockResolvedValue({});

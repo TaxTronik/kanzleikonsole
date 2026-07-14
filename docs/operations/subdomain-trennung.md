@@ -98,12 +98,12 @@ Magic-Links für Portal-Login, GwG-Onboarding-Einladungen, PoA-Signatur etc.
 nutzen `PORTAL_PUBLIC_URL` als Basis. `NEXTAUTH_URL` bleibt die Staff-/App-Basis
 für Server-Callbacks und das Kanzlei-UI:
 
-| Mail | Empfänger | Basis-URL |
-|---|---|---|
-| Magic-Link Portal-Login | Mandant | `PORTAL_PUBLIC_URL` |
-| GwG-Onboarding | Mandant | `PORTAL_PUBLIC_URL` |
-| PoA-Sign | Mandant | `PORTAL_PUBLIC_URL` |
-| Staff-Reset-Link (zukünftig) | Mitarbeiter | Staff-Subdomain |
+| Mail                         | Empfänger   | Basis-URL           |
+| ---------------------------- | ----------- | ------------------- |
+| Magic-Link Portal-Login      | Mandant     | `PORTAL_PUBLIC_URL` |
+| GwG-Onboarding               | Mandant     | `PORTAL_PUBLIC_URL` |
+| PoA-Sign                     | Mandant     | `PORTAL_PUBLIC_URL` |
+| Staff-Reset-Link (zukünftig) | Mitarbeiter | Staff-Subdomain     |
 
 Der aktuelle Code nutzt `PORTAL_PUBLIC_URL` für mandantengerichtete Links und
 fällt nur im Single-Host-Setup auf `NEXTAUTH_URL` zurück.

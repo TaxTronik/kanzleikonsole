@@ -6,7 +6,13 @@ import { Save, Trash2 } from 'lucide-react';
 import { fmtEURRound, fmtTimeMedium } from '@/lib/fmt';
 
 export type PlanAxis =
-  | 'REVENUE' | 'PERSONNEL' | 'OTHER_COSTS' | 'DEPRECIATION' | 'MATERIAL' | 'OTHER_INCOME' | 'TAXES';
+  | 'REVENUE'
+  | 'PERSONNEL'
+  | 'OTHER_COSTS'
+  | 'DEPRECIATION'
+  | 'MATERIAL'
+  | 'OTHER_INCOME'
+  | 'TAXES';
 
 export type UpdatePlanFn = (input: {
   planId: string;
@@ -19,7 +25,13 @@ export type UpdatePlanFn = (input: {
 export type DeletePlanFn = (input: { planId: string }) => Promise<{ ok: boolean; error?: string }>;
 
 type Axis =
-  | 'REVENUE' | 'PERSONNEL' | 'OTHER_COSTS' | 'DEPRECIATION' | 'MATERIAL' | 'OTHER_INCOME' | 'TAXES';
+  | 'REVENUE'
+  | 'PERSONNEL'
+  | 'OTHER_COSTS'
+  | 'DEPRECIATION'
+  | 'MATERIAL'
+  | 'OTHER_INCOME'
+  | 'TAXES';
 
 const AXIS_LABELS: Record<Axis, string> = {
   REVENUE: 'Erlöse',
@@ -31,7 +43,13 @@ const AXIS_LABELS: Record<Axis, string> = {
   TAXES: 'Steuern (GewSt/KSt/ESt)',
 };
 const ALL_AXES: Axis[] = [
-  'REVENUE', 'OTHER_INCOME', 'PERSONNEL', 'MATERIAL', 'DEPRECIATION', 'OTHER_COSTS', 'TAXES',
+  'REVENUE',
+  'OTHER_INCOME',
+  'PERSONNEL',
+  'MATERIAL',
+  'DEPRECIATION',
+  'OTHER_COSTS',
+  'TAXES',
 ];
 
 interface Line {
@@ -73,7 +91,11 @@ export function PlanEditor({
 
   const totals = useMemo(() => {
     const revenue = lines.REVENUE.amount + lines.OTHER_INCOME.amount;
-    const costs = lines.PERSONNEL.amount + lines.OTHER_COSTS.amount + lines.DEPRECIATION.amount + lines.MATERIAL.amount;
+    const costs =
+      lines.PERSONNEL.amount +
+      lines.OTHER_COSTS.amount +
+      lines.DEPRECIATION.amount +
+      lines.MATERIAL.amount;
     const resultBeforeTax = revenue - costs;
     const taxes = lines.TAXES.amount;
     return { revenue, costs, resultBeforeTax, taxes, resultAfterTax: resultBeforeTax - taxes };
@@ -158,7 +180,9 @@ export function PlanEditor({
                     onChange={(e) => setAxis(a, { amount: Number(e.target.value) || 0 })}
                     className="input pr-8 text-sm font-mono"
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted">€</span>
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted">
+                    €
+                  </span>
                 </div>
                 <input
                   type="text"
@@ -198,7 +222,13 @@ export function PlanEditor({
             <Save className="h-4 w-4" />
             {isPending ? 'Speichert…' : 'Speichern'}
           </button>
-          <button type="button" onClick={remove} disabled={isPending} className="text-disabled hover:text-red-700 p-2 ml-auto" title="Planung löschen">
+          <button
+            type="button"
+            onClick={remove}
+            disabled={isPending}
+            className="text-disabled hover:text-red-700 p-2 ml-auto"
+            title="Planung löschen"
+          >
             <Trash2 className="h-4 w-4" />
           </button>
           {savedAt && (
@@ -219,7 +249,11 @@ function Total({ label, value, accent }: { label: string; value: number; accent?
       <p
         className={
           'text-lg font-bold font-mono ' +
-          (accent && value < 0 ? 'text-red-700' : accent && value > 0 ? 'text-emerald-700' : 'text-primary')
+          (accent && value < 0
+            ? 'text-red-700'
+            : accent && value > 0
+              ? 'text-emerald-700'
+              : 'text-primary')
         }
       >
         {fmtEURRound(value)}

@@ -55,9 +55,9 @@ export default async function QuantenlosPage() {
         <h1 className="text-2xl font-bold text-primary mb-1">Quantenlos — blinde Stichprobe</h1>
         <p className="text-muted text-sm dark:text-white">
           Beweisbar blinde Review-Stichprobe — wahlweise über die Subsumtionen eines Zeitraums
-          (Risk-Review) oder über die Audit-Ereignisse (Betriebs-Nachschau). Die Engine
-          committet auf den ID-Rahmen, BEVOR sie zieht — die Auswahl ist nachweislich nicht
-          steuerbar. Der Nachweis wird in der Audit-Hash-Chain verankert.
+          (Risk-Review) oder über die Audit-Ereignisse (Betriebs-Nachschau). Die Engine committet
+          auf den ID-Rahmen, BEVOR sie zieht — die Auswahl ist nachweislich nicht steuerbar. Der
+          Nachweis wird in der Audit-Hash-Chain verankert.
         </p>
       </div>
 
@@ -68,7 +68,9 @@ export default async function QuantenlosPage() {
             {!modules.risk ? (
               <p>
                 Das Subsumtions-Modul ist deaktiviert — Quantenlos setzt es voraus.{' '}
-                <Link href="/staff/admin/settings" className="underline">Zu den Einstellungen</Link>
+                <Link href="/staff/admin/settings" className="underline">
+                  Zu den Einstellungen
+                </Link>
               </p>
             ) : (
               <p>

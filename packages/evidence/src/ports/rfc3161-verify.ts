@@ -29,7 +29,12 @@ import { TimeStampResp, SignedData, TSTInfo, Certificate, CryptoEngine, setEngin
 // ML-KEM-Methoden) — zur Laufzeit korrekt.
 setEngine(
   'node-evidence',
-  new CryptoEngine({ name: 'node-evidence', crypto: webcrypto as unknown as Crypto }) as unknown as Parameters<typeof setEngine>[1],
+  new CryptoEngine({
+    name: 'node-evidence',
+    crypto: webcrypto,
+  } as unknown as ConstructorParameters<typeof CryptoEngine>[0]) as unknown as Parameters<
+    typeof setEngine
+  >[1],
 );
 
 const SHA256_OID = '2.16.840.1.101.3.4.2.1';
@@ -114,13 +119,19 @@ function octetStringBytes(os: asn1js.OctetString): Uint8Array {
  * Cert in die SignedData-Zertifikatsmenge schmuggeln. OpenSSL `ts -verify`
  * erzwingt das ebenfalls — wir bleiben so streng wie die unabhängige Referenz.
  */
-function checkEssSigningCert(signedData: SignedData, signerCert: Certificate): { ok: boolean; reason?: string } {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const attrs = ((signedData.signerInfos?.[0]?.signedAttrs?.attributes ?? []) as Array<{ type: string; values: any[] }>);
+function checkEssSigningCert(
+  signedData: SignedData,
+  signerCert: Certificate,
+): { ok: boolean; reason?: string } {
+  const attrs = (signedData.signerInfos?.[0]?.signedAttrs?.attributes ?? []) as Array<{
+    type: string;
+    values: unknown[];
+  }>;
   const v2 = attrs.find((a) => a.type === ID_AA_SIGNING_CERT_V2);
   const v1 = attrs.find((a) => a.type === ID_AA_SIGNING_CERT);
   const attr = v2 ?? v1;
-  if (!attr) return { ok: false, reason: 'Kein ESS signingCertificate(V2)-Attribut (RFC 3161 §2.4.1)' };
+  if (!attr)
+    return { ok: false, reason: 'Kein ESS signingCertificate(V2)-Attribut (RFC 3161 §2.4.1)' };
   const isV2 = attr === v2;
   // SigningCertificate[V2] ::= SEQ { certs SEQ OF ESSCertID[V2], policies OPTIONAL }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -141,7 +152,10 @@ function checkEssSigningCert(signedData: SignedData, signerCert: Certificate): {
   const certDer = Buffer.from(signerCert.toSchema().toBER(false));
   const computed = Uint8Array.from(createHash(algo).update(certDer).digest());
   if (!eqBytes(new Uint8Array(essHash), computed)) {
-    return { ok: false, reason: 'ESS certHash bindet nicht an den Signer-Cert (Cert-Substitution?)' };
+    return {
+      ok: false,
+      reason: 'ESS certHash bindet nicht an den Signer-Cert (Cert-Substitution?)',
+    };
   }
   return { ok: true };
 }
@@ -187,7 +201,9 @@ function parseTimestampToken(responseBytes: Uint8Array): ParsedToken {
 }
 
 /** Nur die TSA-Metadaten (echte genTime + Seriennummer) — für timestamp(). */
-export function extractTsaMeta(responseBytes: Uint8Array): { genTime: Date; serialHex: string } | null {
+export function extractTsaMeta(
+  responseBytes: Uint8Array,
+): { genTime: Date; serialHex: string } | null {
   try {
     const t = parseTimestampToken(responseBytes);
     return { genTime: t.genTime, serialHex: t.serialHex };
@@ -205,17 +221,39 @@ export async function verifyTimestampResponse(
   try {
     token = parseTimestampToken(responseBytes);
   } catch (e) {
-    return { valid: false, signatureValid: false, chainTrusted: false, cryptoOk: false, reason: (e as Error).message };
+    return {
+      valid: false,
+      signatureValid: false,
+      chainTrusted: false,
+      cryptoOk: false,
+      reason: (e as Error).message,
+    };
   }
   const { signedData, tstInfo, genTime, serialHex } = token;
 
   // 2. messageImprint == sha256(payload) (explizit; pkijs prüft es zusätzlich).
   if (tstInfo.messageImprint.hashAlgorithm.algorithmId !== SHA256_OID) {
-    return { valid: false, signatureValid: false, chainTrusted: false, cryptoOk: false, reason: 'messageImprint-Hash ist nicht SHA-256', genTime, serialHex };
+    return {
+      valid: false,
+      signatureValid: false,
+      chainTrusted: false,
+      cryptoOk: false,
+      reason: 'messageImprint-Hash ist nicht SHA-256',
+      genTime,
+      serialHex,
+    };
   }
   const expected = Uint8Array.from(createHash('sha256').update(payload).digest());
   if (!eqBytes(tstInfo.messageImprint.hashedMessage.valueBlock.valueHexView, expected)) {
-    return { valid: false, signatureValid: false, chainTrusted: false, cryptoOk: false, reason: 'messageImprint bindet nicht an payload (Token gehört zu anderen Daten)', genTime, serialHex };
+    return {
+      valid: false,
+      signatureValid: false,
+      chainTrusted: false,
+      cryptoOk: false,
+      reason: 'messageImprint bindet nicht an payload (Token gehört zu anderen Daten)',
+      genTime,
+      serialHex,
+    };
   }
 
   // 3. CMS-Signatur (checkChain:false isoliert die Signatur von der Vertrauenskette).
@@ -228,10 +266,26 @@ export async function verifyTimestampResponse(
     signatureValid = sig.signatureVerified === true;
     signerCert = sig.signerCertificate ?? undefined;
   } catch (e) {
-    return { valid: false, signatureValid: false, chainTrusted: false, cryptoOk: false, reason: 'Signatur-/TSTInfo-Verifikation fehlgeschlagen: ' + (e as Error).message, genTime, serialHex };
+    return {
+      valid: false,
+      signatureValid: false,
+      chainTrusted: false,
+      cryptoOk: false,
+      reason: 'Signatur-/TSTInfo-Verifikation fehlgeschlagen: ' + (e as Error).message,
+      genTime,
+      serialHex,
+    };
   }
   if (!signatureValid) {
-    return { valid: false, signatureValid: false, chainTrusted: false, cryptoOk: false, reason: 'CMS-Signatur ungültig oder messageImprint bindet nicht', genTime, serialHex };
+    return {
+      valid: false,
+      signatureValid: false,
+      chainTrusted: false,
+      cryptoOk: false,
+      reason: 'CMS-Signatur ungültig oder messageImprint bindet nicht',
+      genTime,
+      serialHex,
+    };
   }
 
   // 4. Cert-Kette bis zu einem VERTRAUTEN Root, AS-OF genTime.
@@ -239,7 +293,14 @@ export async function verifyTimestampResponse(
   const certs = trustedRootsPem.map(pemToCertificate);
   if (certs.length > 0) {
     try {
-      const chain = await signedData.verify({ signer: 0, data: ab(payload), trustedCerts: certs, checkChain: true, checkDate: genTime, extendedMode: true });
+      const chain = await signedData.verify({
+        signer: 0,
+        data: ab(payload),
+        trustedCerts: certs,
+        checkChain: true,
+        checkDate: genTime,
+        extendedMode: true,
+      });
       chainTrusted = chain.signatureVerified === true;
       signerCert = chain.signerCertificate ?? signerCert;
     } catch {

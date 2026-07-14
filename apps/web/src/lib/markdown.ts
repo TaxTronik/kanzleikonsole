@@ -33,14 +33,11 @@ function inline(s: string): string {
   // Italic
   out = out.replace(/\*([^*]+)\*/g, '<em>$1</em>');
   // Links
-  out = out.replace(
-    /\[([^\]]+)\]\(([^)]+)\)/g,
-    (_m, text: string, url: string) => {
-      // nur http(s) und mailto erlauben
-      const safe = /^(https?:|mailto:|\/)/i.test(url) ? url : '#';
-      return `<a href="${esc(safe)}">${text}</a>`;
-    },
-  );
+  out = out.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, text: string, url: string) => {
+    // nur http(s) und mailto erlauben
+    const safe = /^(https?:|mailto:|\/)/i.test(url) ? url : '#';
+    return `<a href="${esc(safe)}">${text}</a>`;
+  });
   return out;
 }
 
@@ -118,7 +115,13 @@ export function renderMarkdown(md: string): string {
     while (i < lines.length && (lines[i] ?? '').trim() !== '') {
       const cur = lines[i] ?? '';
       // Stop if we hit another block element
-      if (cur.startsWith('```') || /^#{1,6}\s/.test(cur) || cur.startsWith('> ') || /^[-*]\s/.test(cur) || /^\d+\.\s/.test(cur)) {
+      if (
+        cur.startsWith('```') ||
+        /^#{1,6}\s/.test(cur) ||
+        cur.startsWith('> ') ||
+        /^[-*]\s/.test(cur) ||
+        /^\d+\.\s/.test(cur)
+      ) {
         break;
       }
       para.push(cur);

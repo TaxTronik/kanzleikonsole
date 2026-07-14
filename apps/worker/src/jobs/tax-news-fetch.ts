@@ -72,7 +72,9 @@ export const taxNewsFetchWorker = new Worker<ChecksJob>(
       for (const item of existing) existingKeys.add(itemKey(item.source, item.guid));
     }
 
-    const toInsert = uniqueFetched.filter((item) => !existingKeys.has(itemKey(item.source, item.guid)));
+    const toInsert = uniqueFetched.filter(
+      (item) => !existingKeys.has(itemKey(item.source, item.guid)),
+    );
     let inserted = 0;
     for (const batch of chunks(toInsert, DB_BATCH_SIZE)) {
       try {
@@ -107,7 +109,10 @@ export const taxNewsFetchWorker = new Worker<ChecksJob>(
       (item) => item.publishedAt === null || item.publishedAt.getTime() >= notifyCutoff,
     );
     if (notifyCandidates.length === 0) {
-      log.info({ feeds: activeFeeds.length, fetched: all.length, inserted }, 'tax-news-fetch: no items to notify');
+      log.info(
+        { feeds: activeFeeds.length, fetched: all.length, inserted },
+        'tax-news-fetch: no items to notify',
+      );
       return { feeds: activeFeeds.length, fetched: all.length, inserted, notifications: 0 };
     }
 
@@ -169,7 +174,10 @@ export const taxNewsFetchWorker = new Worker<ChecksJob>(
     let notifications = 0;
     const notificationsByTenant = new Map<string, typeof notificationRows>();
     for (const row of notificationRows) {
-      notificationsByTenant.set(row.tenantId, [...(notificationsByTenant.get(row.tenantId) ?? []), row]);
+      notificationsByTenant.set(row.tenantId, [
+        ...(notificationsByTenant.get(row.tenantId) ?? []),
+        row,
+      ]);
     }
     for (const [tenantId, rows] of notificationsByTenant) {
       await withWorkerTenantContext(tenantId, async (tx) => {

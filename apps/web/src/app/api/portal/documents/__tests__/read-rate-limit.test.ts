@@ -46,7 +46,8 @@ vi.mock('@taxtronik/storage', () => ({
   sanitizeFilenameForHeader: (s: string) => s,
 }));
 vi.mock('@/server/storage/preview-mime', () => ({
-  effectiveDocumentMime: (doc: { mimeType: string | null }) => doc.mimeType ?? 'application/octet-stream',
+  effectiveDocumentMime: (doc: { mimeType: string | null }) =>
+    doc.mimeType ?? 'application/octet-stream',
   filenameWithExtension: (title: string) => title,
   previewContentType: (mime: string | null) => mime ?? 'application/octet-stream',
   previewDisposition: () => 'inline',

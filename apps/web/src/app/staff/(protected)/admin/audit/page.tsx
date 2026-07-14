@@ -165,8 +165,10 @@ export default async function AuditLogPage({
   const nextCursor = hasNext ? String(visibleEntries[visibleEntries.length - 1]!.id) : null;
   const auditLinkExpiresAt = (() => {
     const now = new Date();
-    return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
-      + AUDIT_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000;
+    return (
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) +
+      AUDIT_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000
+    );
   })();
 
   // Filter-Query-String für Pagination-Links
@@ -181,9 +183,7 @@ export default async function AuditLogPage({
 
   return (
     <div className="p-8">
-      {pollVerify && (
-        <AuditVerifyAutoRefresh requestId={sp.requestId} queuedAt={sp.queuedAt} />
-      )}
+      {pollVerify && <AuditVerifyAutoRefresh requestId={sp.requestId} queuedAt={sp.queuedAt} />}
       <div className="flex items-end justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-primary mb-1">Audit-Log</h1>
@@ -204,8 +204,9 @@ export default async function AuditLogPage({
       <div className="card p-4 mb-6">
         <h2 className="text-sm font-medium text-primary mb-1">Prüfer-Link (read-only)</h2>
         <p className="text-xs text-muted mb-3">
-          Geben Sie diesen Link an einen Wirtschaftsprüfer weiter — er rechnet die Hash-Chain
-          und die TSA-Versiegelungen nach, OHNE Zugriff auf Mandantendaten. Gültig {AUDIT_TOKEN_TTL_DAYS} Tage.
+          Geben Sie diesen Link an einen Wirtschaftsprüfer weiter — er rechnet die Hash-Chain und
+          die TSA-Versiegelungen nach, OHNE Zugriff auf Mandantendaten. Gültig{' '}
+          {AUDIT_TOKEN_TTL_DAYS} Tage.
         </p>
         <CopyField
           value={`${env.NEXTAUTH_URL.replace(/\/$/, '')}/audit-verify/${signAuditToken(
@@ -237,20 +238,23 @@ export default async function AuditLogPage({
           ) : (
             <ShieldAlert
               className={
-                chainStatus === 'none' ? 'h-5 w-5 text-disabled mt-0.5' : 'h-5 w-5 text-red-600 mt-0.5'
+                chainStatus === 'none'
+                  ? 'h-5 w-5 text-disabled mt-0.5'
+                  : 'h-5 w-5 text-red-600 mt-0.5'
               }
             />
           )}
           <div className="flex-1">
             {!verifyResult ? (
               <p className="text-sm text-secondary">
-                Noch kein Prüfergebnis — der tägliche Integritäts-Job ist noch nicht
-                gelaufen. „Jetzt prüfen" stößt eine Verifikation an.
+                Noch kein Prüfergebnis — der tägliche Integritäts-Job ist noch nicht gelaufen.
+                „Jetzt prüfen" stößt eine Verifikation an.
               </p>
             ) : verifyResult.ok ? (
               <>
                 <p className="text-sm font-medium text-green-900">
-                  Hash-Chain intakt — {verifyResult.checked.toLocaleString('de-DE')} Einträge geprüft
+                  Hash-Chain intakt — {verifyResult.checked.toLocaleString('de-DE')} Einträge
+                  geprüft
                 </p>
                 <p className="text-xs text-green-700 mt-1">
                   {verifyResult.sealsChecked} Tagesversiegelungen geprüft
@@ -259,8 +263,8 @@ export default async function AuditLogPage({
                 {verifyResult.tsaMode === 'local' && (
                   <p className="text-xs text-amber-700 mt-1">
                     ⚠ Zeitstempel-Modus: lokal — keine externe TSA. Der Seal-Check ist
-                    gegenstandslos; nur die SHA-256-Kette trägt. Für revisionssichere
-                    externe Verankerung eine RFC-3161-TSA konfigurieren.
+                    gegenstandslos; nur die SHA-256-Kette trägt. Für revisionssichere externe
+                    Verankerung eine RFC-3161-TSA konfigurieren.
                   </p>
                 )}
                 {verifyResult.tsaMode === 'rfc3161' && (
@@ -276,10 +280,14 @@ export default async function AuditLogPage({
                     Zeitstempel-Modus: externe TSA (RFC 3161).
                     {verifyResult.sealsChecked > 0 && (
                       <>
-                        {' '}Trust-verankert: {verifyResult.sealsTrustAnchored ?? 0}/
+                        {' '}
+                        Trust-verankert: {verifyResult.sealsTrustAnchored ?? 0}/
                         {verifyResult.sealsChecked}.
                         {(verifyResult.sealsTrustAnchored ?? 0) < verifyResult.sealsChecked && (
-                          <> Übrige nur kryptografisch (cryptoOk) — Produktiv-TSA-Root hinterlegen.</>
+                          <>
+                            {' '}
+                            Übrige nur kryptografisch (cryptoOk) — Produktiv-TSA-Root hinterlegen.
+                          </>
                         )}
                       </>
                     )}
@@ -294,14 +302,14 @@ export default async function AuditLogPage({
                 {verifyResult.firstBreak && (
                   <p className="text-xs text-yellow-800 mt-1 font-mono">
                     Befund bei Audit-ID {verifyResult.firstBreak.auditId} (
-                    {fmtDateTimeSeconds(new Date(verifyResult.firstBreak.occurredAt))}) — historisch,
-                    durch Checkpoint abgegrenzt.
+                    {fmtDateTimeSeconds(new Date(verifyResult.firstBreak.occurredAt))}) —
+                    historisch, durch Checkpoint abgegrenzt.
                   </p>
                 )}
                 {checkpoint && (
                   <p className="text-xs text-yellow-800 mt-1">
-                    Recovery-Checkpoint ab Audit-ID {checkpoint.auditId} gesetzt — der
-                    historische Bruch bleibt abgegrenzt.
+                    Recovery-Checkpoint ab Audit-ID {checkpoint.auditId} gesetzt — der historische
+                    Bruch bleibt abgegrenzt.
                   </p>
                 )}
                 <p className="text-xs text-yellow-700 mt-1">
@@ -316,8 +324,7 @@ export default async function AuditLogPage({
                 {verifyResult.firstBreak && (
                   <p className="text-xs text-red-700 mt-1 font-mono">
                     Erster Bruch bei Audit-ID {verifyResult.firstBreak.auditId} (
-                    {fmtDateTimeSeconds(new Date(verifyResult.firstBreak.occurredAt))}
-                    )
+                    {fmtDateTimeSeconds(new Date(verifyResult.firstBreak.occurredAt))})
                   </p>
                 )}
                 {verifyResult.sealBreaks > 0 && (
@@ -326,7 +333,9 @@ export default async function AuditLogPage({
                   </p>
                 )}
                 {(verifyResult.policyBreaks ?? []).map((b) => (
-                  <p key={b} className="text-xs text-red-700 mt-1">{b}</p>
+                  <p key={b} className="text-xs text-red-700 mt-1">
+                    {b}
+                  </p>
                 ))}
                 {verifyResult.error && (
                   <p className="text-xs text-red-700 mt-1">Fehler: {verifyResult.error}</p>
@@ -334,13 +343,14 @@ export default async function AuditLogPage({
                 <p className="text-xs text-red-700 mt-1">
                   Geprüft {fmtDateTimeSeconds(new Date(verifyResult.checkedAt))}
                 </p>
-                <form action={createAuditRecoveryCheckpointAction} className="mt-3 rounded-md border border-red-300 bg-white/70 p-3">
-                  <p className="text-xs font-medium text-red-900">
-                    Wiederaufnahme markieren
-                  </p>
+                <form
+                  action={createAuditRecoveryCheckpointAction}
+                  className="mt-3 rounded-md border border-red-300 bg-white/70 p-3"
+                >
+                  <p className="text-xs font-medium text-red-900">Wiederaufnahme markieren</p>
                   <p className="text-xs text-red-700 mt-1">
-                    Legt einen Recovery-Checkpoint an: das historische Rot wird damit
-                    bernstein abgegrenzt und die Break-Benachrichtigung verstummt.
+                    Legt einen Recovery-Checkpoint an: das historische Rot wird damit bernstein
+                    abgegrenzt und die Break-Benachrichtigung verstummt.
                   </p>
                   <div className="mt-2 flex flex-col gap-2 sm:flex-row">
                     <input
@@ -349,7 +359,10 @@ export default async function AuditLogPage({
                       maxLength={500}
                       placeholder="Begründung, z. B. TSA-Fehlkonfiguration behoben"
                     />
-                    <button type="submit" className="btn-primary !bg-red-600 text-xs hover:!bg-red-700">
+                    <button
+                      type="submit"
+                      className="btn-primary !bg-red-600 text-xs hover:!bg-red-700"
+                    >
                       Recovery-Checkpoint anlegen
                     </button>
                   </div>
@@ -358,14 +371,12 @@ export default async function AuditLogPage({
             )}
             {pendingVerify && (
               <p className="text-xs text-secondary mt-2">
-                Prüfung angestoßen — das Ergebnis erscheint hier, sobald der
-                Hintergrund-Job abgeschlossen ist.
+                Prüfung angestoßen — das Ergebnis erscheint hier, sobald der Hintergrund-Job
+                abgeschlossen ist.
               </p>
             )}
             {sp.checkpoint === 'created' && (
-              <p className="text-xs text-secondary mt-2">
-                Recovery-Checkpoint angelegt.
-              </p>
+              <p className="text-xs text-secondary mt-2">Recovery-Checkpoint angelegt.</p>
             )}
           </div>
           <form action={triggerAuditVerifyAction}>
@@ -377,9 +388,15 @@ export default async function AuditLogPage({
       </div>
 
       {/* Filter */}
-      <form action="/staff/admin/audit" method="get" className="card p-4 mb-6 grid grid-cols-2 md:grid-cols-5 gap-3">
+      <form
+        action="/staff/admin/audit"
+        method="get"
+        className="card p-4 mb-6 grid grid-cols-2 md:grid-cols-5 gap-3"
+      >
         <div>
-          <label className="label" htmlFor="action">Action</label>
+          <label className="label" htmlFor="action">
+            Action
+          </label>
           <input
             id="action"
             name="action"
@@ -390,8 +407,15 @@ export default async function AuditLogPage({
           />
         </div>
         <div>
-          <label className="label" htmlFor="actorType">Akteur</label>
-          <select id="actorType" name="actorType" className="input text-xs" defaultValue={sp.actorType ?? ''}>
+          <label className="label" htmlFor="actorType">
+            Akteur
+          </label>
+          <select
+            id="actorType"
+            name="actorType"
+            className="input text-xs"
+            defaultValue={sp.actorType ?? ''}
+          >
             <option value="">Alle</option>
             <option value="STAFF">Mitarbeiter</option>
             <option value="CLIENT_CONTACT">Mandant</option>
@@ -399,25 +423,54 @@ export default async function AuditLogPage({
           </select>
         </div>
         <div>
-          <label className="label" htmlFor="resourceType">Ressource</label>
-          <select id="resourceType" name="resourceType" className="input text-xs" defaultValue={sp.resourceType ?? ''}>
+          <label className="label" htmlFor="resourceType">
+            Ressource
+          </label>
+          <select
+            id="resourceType"
+            name="resourceType"
+            className="input text-xs"
+            defaultValue={sp.resourceType ?? ''}
+          >
             <option value="">Alle</option>
             {resourceTypeRows.map((r) => (
-              <option key={r.resourceType} value={r.resourceType}>{r.resourceType}</option>
+              <option key={r.resourceType} value={r.resourceType}>
+                {r.resourceType}
+              </option>
             ))}
           </select>
         </div>
         <div>
-          <label className="label" htmlFor="from">Von</label>
-          <input id="from" name="from" type="date" className="input text-xs" defaultValue={sp.from ?? ''} />
+          <label className="label" htmlFor="from">
+            Von
+          </label>
+          <input
+            id="from"
+            name="from"
+            type="date"
+            className="input text-xs"
+            defaultValue={sp.from ?? ''}
+          />
         </div>
         <div>
-          <label className="label" htmlFor="to">Bis</label>
-          <input id="to" name="to" type="date" className="input text-xs" defaultValue={sp.to ?? ''} />
+          <label className="label" htmlFor="to">
+            Bis
+          </label>
+          <input
+            id="to"
+            name="to"
+            type="date"
+            className="input text-xs"
+            defaultValue={sp.to ?? ''}
+          />
         </div>
         <div className="col-span-2 md:col-span-5 flex gap-2">
-          <button type="submit" className="btn-primary text-xs">Filtern</button>
-          <Link href="/staff/admin/audit" className="btn-secondary text-xs">Zurücksetzen</Link>
+          <button type="submit" className="btn-primary text-xs">
+            Filtern
+          </button>
+          <Link href="/staff/admin/audit" className="btn-secondary text-xs">
+            Zurücksetzen
+          </Link>
         </div>
       </form>
 
@@ -440,19 +493,34 @@ export default async function AuditLogPage({
           <table className="w-full text-xs">
             <thead>
               <tr className="bg-gray-50 border-b border-default">
-                <th className="text-left px-6 py-2 text-xs font-medium text-muted uppercase tracking-wide">ID</th>
-                <th className="text-left px-6 py-2 text-xs font-medium text-muted uppercase tracking-wide">Zeit</th>
-                <th className="text-left px-6 py-2 text-xs font-medium text-muted uppercase tracking-wide">Akteur</th>
-                <th className="text-left px-6 py-2 text-xs font-medium text-muted uppercase tracking-wide">Action</th>
-                <th className="text-left px-6 py-2 text-xs font-medium text-muted uppercase tracking-wide">Ressource</th>
-                <th className="text-left px-6 py-2 text-xs font-medium text-muted uppercase tracking-wide">Hash</th>
+                <th className="text-left px-6 py-2 text-xs font-medium text-muted uppercase tracking-wide">
+                  ID
+                </th>
+                <th className="text-left px-6 py-2 text-xs font-medium text-muted uppercase tracking-wide">
+                  Zeit
+                </th>
+                <th className="text-left px-6 py-2 text-xs font-medium text-muted uppercase tracking-wide">
+                  Akteur
+                </th>
+                <th className="text-left px-6 py-2 text-xs font-medium text-muted uppercase tracking-wide">
+                  Action
+                </th>
+                <th className="text-left px-6 py-2 text-xs font-medium text-muted uppercase tracking-wide">
+                  Ressource
+                </th>
+                <th className="text-left px-6 py-2 text-xs font-medium text-muted uppercase tracking-wide">
+                  Hash
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border-subtle">
               {visibleEntries.map((e) => (
                 <tr key={String(e.id)} className="hover:bg-gray-50">
                   <td className="px-6 py-2 font-mono text-muted">
-                    <Link href={`/staff/admin/audit/${e.id}`} className="hover:underline text-brand-700">
+                    <Link
+                      href={`/staff/admin/audit/${e.id}`}
+                      className="hover:underline text-brand-700"
+                    >
                       {String(e.id)}
                     </Link>
                   </td>

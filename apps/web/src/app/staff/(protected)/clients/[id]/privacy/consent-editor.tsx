@@ -29,21 +29,34 @@ export function ConsentEditor({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-default pt-4">
         <div>
           <label className="label-sm">Unterschrift / Name der erklärenden Person *</label>
-          <input name="signedByName" required maxLength={300} className="input w-full" placeholder="z. B. Erika Mustermann (Geschäftsführerin)" />
+          <input
+            name="signedByName"
+            required
+            maxLength={300}
+            className="input w-full"
+            placeholder="z. B. Erika Mustermann (Geschäftsführerin)"
+          />
         </div>
         <div>
           <label className="label-sm">Zugeordnete Kontaktperson (optional)</label>
           <select name="signedByContact" className="input w-full" defaultValue="">
             <option value="">— keine —</option>
             {contacts.map((k) => (
-              <option key={k.id} value={k.id}>{k.fullName}</option>
+              <option key={k.id} value={k.id}>
+                {k.fullName}
+              </option>
             ))}
           </select>
         </div>
       </div>
       <div>
         <label className="label-sm">Notiz (optional)</label>
-        <input name="note" maxLength={2000} className="input w-full" placeholder="z. B. bei Mandatsannahme unterschrieben, Papierformular in Akte" />
+        <input
+          name="note"
+          maxLength={2000}
+          className="input w-full"
+          placeholder="z. B. bei Mandatsannahme unterschrieben, Papierformular in Akte"
+        />
       </div>
 
       {state && !state.ok && state.error && (

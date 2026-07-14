@@ -42,9 +42,7 @@ export default async function GwgOnboardingPage({
         <div className="card p-8 max-w-md w-full text-center">
           <div className="text-3xl font-bold text-brand-700 mb-1">TaxTronik</div>
           <p className="text-sm text-muted mb-6">GwG-Identifizierung</p>
-          <div className="rounded-md bg-red-50 p-4 text-sm text-red-700">
-            {result.error}
-          </div>
+          <div className="rounded-md bg-red-50 p-4 text-sm text-red-700">{result.error}</div>
         </div>
       </div>
     );

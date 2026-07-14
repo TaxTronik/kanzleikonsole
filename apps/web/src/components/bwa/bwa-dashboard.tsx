@@ -12,11 +12,13 @@
 // =============================================================================
 
 import Link from 'next/link';
-import {
-  BarChart3, Plus, TrendingUp, TrendingDown, Minus, AlertCircle, Info,
-} from 'lucide-react';
+import { BarChart3, Plus, TrendingUp, TrendingDown, Minus, AlertCircle, Info } from 'lucide-react';
 import { computeBwaKpis } from '@/server/bwa/addison-parser';
-import { projectCurrentYear, type ProjectionRange, type YearProjection } from '@/server/bwa/projection';
+import {
+  projectCurrentYear,
+  type ProjectionRange,
+  type YearProjection,
+} from '@/server/bwa/projection';
 import { computeLiquidity } from '@/server/bwa/liquidity';
 import {
   PlanListWithCompare,
@@ -26,8 +28,7 @@ import {
 import { PlanVsProjection } from '@/app/portal/(protected)/bwa/plan/plan-vs-projection';
 
 import { fmtEURRound } from '@/lib/fmt';
-const fmtPct = (n: number | null) =>
-  n === null ? '—' : `${n.toFixed(1)} %`;
+const fmtPct = (n: number | null) => (n === null ? '—' : `${n.toFixed(1)} %`);
 const fmtRange = (r: ProjectionRange | null) => {
   if (!r) return '—';
   return `${fmtEURRound(r.low)} – ${fmtEURRound(r.high)}`;
@@ -85,9 +86,9 @@ export function BwaDashboard({
 
   const latest = periodsForEngine[0] ?? null;
   const previous = latest
-    ? periodsForEngine.find(
+    ? (periodsForEngine.find(
         (p) => p.periodType === latest.periodType && p.periodKey !== latest.periodKey,
-      ) ?? null
+      ) ?? null)
     : null;
   const liquidity = latest ? computeLiquidity(latest, previous) : null;
 
@@ -109,12 +110,14 @@ export function BwaDashboard({
       .find((p) => {
         const m =
           (p.toDate.getUTCFullYear() - p.fromDate.getUTCFullYear()) * 12 +
-          (p.toDate.getUTCMonth() - p.fromDate.getUTCMonth()) + 1;
+          (p.toDate.getUTCMonth() - p.fromDate.getUTCMonth()) +
+          1;
         return m < 12;
       });
     const ytdMonths = ytdPeriod
       ? (ytdPeriod.toDate.getUTCFullYear() - ytdPeriod.fromDate.getUTCFullYear()) * 12 +
-        (ytdPeriod.toDate.getUTCMonth() - ytdPeriod.fromDate.getUTCMonth()) + 1
+        (ytdPeriod.toDate.getUTCMonth() - ytdPeriod.fromDate.getUTCMonth()) +
+        1
       : 12;
     const factor = ytdPeriod ? 12 / ytdMonths : 1;
 
@@ -190,10 +193,13 @@ export function BwaDashboard({
             <section>
               <h2 className="text-lg font-semibold text-primary mb-1 flex items-center gap-2">
                 Liquiditäts-Indikatoren
-                <span className="text-xs text-disabled font-normal">· Basis: {latest!.periodKey}</span>
+                <span className="text-xs text-disabled font-normal">
+                  · Basis: {latest!.periodKey}
+                </span>
               </h2>
               <p className="text-xs text-muted mb-3">
-                Aus PNL-Werten abgeleitete Indikatoren — keine Bilanz-Kennzahlen. Sie ersetzen keine fachliche Liquiditätsplanung.
+                Aus PNL-Werten abgeleitete Indikatoren — keine Bilanz-Kennzahlen. Sie ersetzen keine
+                fachliche Liquiditätsplanung.
               </p>
               {liquidity.warning && (
                 <div className="card p-4 mb-3 border-amber-200 bg-amber-50/40">
@@ -208,15 +214,32 @@ export function BwaDashboard({
                   label="Operativer Cashflow (Näherung)"
                   value={fmtEURRound(liquidity.cashflowProxy)}
                   hint={`Ergebnis + Abschreibungen · ${liquidity.monthsCovered}/12 Monate`}
-                  accent={liquidity.cashflowProxy !== null && liquidity.cashflowProxy < 0 ? 'negative' : undefined}
+                  accent={
+                    liquidity.cashflowProxy !== null && liquidity.cashflowProxy < 0
+                      ? 'negative'
+                      : undefined
+                  }
                 />
                 <KpiBox
                   label="Cashflow / Monat"
                   value={fmtEURRound(liquidity.cashflowMonthly)}
-                  accent={liquidity.cashflowMonthly !== null && liquidity.cashflowMonthly < 0 ? 'negative' : undefined}
+                  accent={
+                    liquidity.cashflowMonthly !== null && liquidity.cashflowMonthly < 0
+                      ? 'negative'
+                      : undefined
+                  }
                 />
-                <KpiBox label="Marge" value={fmtPct(liquidity.marginPct)} trend={liquidity.marginTrend} />
-                <KpiBox label="Personalkostenquote" value={fmtPct(liquidity.personnelRatioPct)} trend={liquidity.personnelTrend} trendInvert />
+                <KpiBox
+                  label="Marge"
+                  value={fmtPct(liquidity.marginPct)}
+                  trend={liquidity.marginTrend}
+                />
+                <KpiBox
+                  label="Personalkostenquote"
+                  value={fmtPct(liquidity.personnelRatioPct)}
+                  trend={liquidity.personnelTrend}
+                  trendInvert
+                />
               </div>
             </section>
           )}
@@ -228,7 +251,8 @@ export function BwaDashboard({
               </h2>
               <p className="text-xs text-muted mb-3 flex items-start gap-2">
                 <Info className="h-3.5 w-3.5 mt-0.5 shrink-0 text-brand-600" />
-                Zwei Modelle nebeneinander, jeweils mit Spannweite — eine BWA ist <strong>kein Abschluss</strong>.
+                Zwei Modelle nebeneinander, jeweils mit Spannweite — eine BWA ist{' '}
+                <strong>kein Abschluss</strong>.
               </p>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <ProjectionCard p={projection.linear} title="Linear + Saisonalität" />
@@ -251,7 +275,8 @@ export function BwaDashboard({
               <div>
                 <h2 className="text-lg font-semibold text-primary">Planrechnung</h2>
                 <p className="text-xs text-muted">
-                  Beliebig viele Versionen pro Jahr. Plan-Spalten lassen sich vergleichen und chronologisch ordnen.
+                  Beliebig viele Versionen pro Jahr. Plan-Spalten lassen sich vergleichen und
+                  chronologisch ordnen.
                 </p>
               </div>
               {newPlanHref && (
@@ -313,7 +338,11 @@ function KpiBox({
         <p
           className={
             'text-xl font-bold ' +
-            (accent === 'negative' ? 'text-red-700' : accent === 'positive' ? 'text-emerald-700' : 'text-primary')
+            (accent === 'negative'
+              ? 'text-red-700'
+              : accent === 'positive'
+                ? 'text-emerald-700'
+                : 'text-primary')
           }
         >
           {value}
@@ -379,8 +408,8 @@ function ProjectionRow({
     accent && v && v.estimate < 0
       ? 'text-red-700'
       : accent && v && v.estimate > 0
-      ? 'text-emerald-700'
-      : 'text-primary';
+        ? 'text-emerald-700'
+        : 'text-primary';
   const weightCls = strong ? 'font-semibold' : '';
   return (
     <tr className={strong ? 'border-t border-default' : ''}>
@@ -398,7 +427,11 @@ function HistorySection({
   periods,
 }: {
   title: string;
-  periods: Array<{ id: string; periodKey: string; positions: Array<{ number: number; amount: { toString(): string } }> }>;
+  periods: Array<{
+    id: string;
+    periodKey: string;
+    positions: Array<{ number: number; amount: { toString(): string } }>;
+  }>;
 }) {
   return (
     <section>
@@ -422,7 +455,9 @@ function HistorySection({
                   <td className="px-6 py-3 font-medium text-primary">{p.periodKey}</td>
                   <td className="td-num">{fmtEURRound(k.revenue)}</td>
                   <td className="td-num">{fmtEURRound(k.costs)}</td>
-                  <td className={`px-6 py-3 text-right font-mono tabular-nums ${k.result !== null && k.result < 0 ? 'text-red-700' : 'text-primary'}`}>
+                  <td
+                    className={`px-6 py-3 text-right font-mono tabular-nums ${k.result !== null && k.result < 0 ? 'text-red-700' : 'text-primary'}`}
+                  >
                     {fmtEURRound(k.result)}
                   </td>
                   <td className="td-num">

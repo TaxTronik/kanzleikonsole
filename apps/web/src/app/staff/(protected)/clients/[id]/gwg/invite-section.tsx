@@ -13,7 +13,6 @@ const STATUS_LABELS: Record<string, string> = {
   CANCELLED: 'Abgebrochen',
 };
 
-
 interface Contact {
   fullName: string;
   email: string;
@@ -134,7 +133,12 @@ export function InviteSection({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label">Name</label>
-              <input value={name} onChange={(e) => setName(e.target.value)} className="input" maxLength={200} />
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="input"
+                maxLength={200}
+              />
             </div>
             <div>
               <label className="label">E-Mail</label>
@@ -154,8 +158,8 @@ export function InviteSection({
           {createdLink && (
             <div className="rounded-md bg-green-50 p-3 space-y-2">
               <p className="text-sm text-green-800">
-                Einladung erstellt. Mandant erhält gleich eine Mail mit dem Link.
-                Sie können den Link aber auch manuell weiterleiten:
+                Einladung erstellt. Mandant erhält gleich eine Mail mit dem Link. Sie können den
+                Link aber auch manuell weiterleiten:
               </p>
               <div className="flex items-center gap-2">
                 <input
@@ -210,7 +214,9 @@ export function InviteSection({
               <ul className="mt-2 space-y-1">
                 {otherInvites.map((i) => (
                   <li key={i.id} className="flex items-center justify-between">
-                    <span>{i.inviteName} · {i.inviteEmail}</span>
+                    <span>
+                      {i.inviteName} · {i.inviteEmail}
+                    </span>
                     <span>
                       {STATUS_LABELS[i.status]}
                       {i.submittedAt && ` · ${fmtDateTimeShort(new Date(i.submittedAt))}`}

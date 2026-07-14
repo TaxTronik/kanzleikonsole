@@ -8,7 +8,17 @@
 
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
-import { Dices, ShieldCheck, ShieldAlert, RefreshCw, Hourglass, KeyRound, Trash2, Copy, Check } from 'lucide-react';
+import {
+  Dices,
+  ShieldCheck,
+  ShieldAlert,
+  RefreshCw,
+  Hourglass,
+  KeyRound,
+  Trash2,
+  Copy,
+  Check,
+} from 'lucide-react';
 import { fmtDateTimeShort } from '@/lib/fmt';
 import { ThemeSync } from '@/components/theme-sync';
 import type { LosZiehung, PendingLos, LosPruefErgebnis, LosRahmenTyp } from '@/server/risk';
@@ -30,7 +40,8 @@ const BACKENDS: { value: Backend; label: string; hinweis: string }[] = [
   {
     value: 'qpu',
     label: 'QPU — IBM-Quantenprozessor',
-    hinweis: 'Echte Quanten-Entropie, öffentlich attestierbar über die IBM-Job-ID. Kann in der Queue warten.',
+    hinweis:
+      'Echte Quanten-Entropie, öffentlich attestierbar über die IBM-Job-ID. Kann in der Queue warten.',
   },
   {
     value: 'simulator',
@@ -40,15 +51,22 @@ const BACKENDS: { value: Backend; label: string; hinweis: string }[] = [
   {
     value: 'csprng',
     label: 'CSPRNG — Fallback',
-    hinweis: 'Kryptografischer Pseudozufall des Engine-Hosts: nicht quantenbasiert, nicht extern attestierbar.',
+    hinweis:
+      'Kryptografischer Pseudozufall des Engine-Hosts: nicht quantenbasiert, nicht extern attestierbar.',
   },
 ];
 
-const RAHMEN_TYPEN: { value: LosRahmenTyp; label: string; hinweis: string; einheit: [string, string] }[] = [
+const RAHMEN_TYPEN: {
+  value: LosRahmenTyp;
+  label: string;
+  hinweis: string;
+  einheit: [string, string];
+}[] = [
   {
     value: 'subsumtion',
     label: 'Subsumtionen — Risk-Review',
-    hinweis: 'Rahmen: die Subsumtionen des Zeitraums. Je Treffer entsteht eine Review-Wiedervorlage (+14 Tage).',
+    hinweis:
+      'Rahmen: die Subsumtionen des Zeitraums. Je Treffer entsteht eine Review-Wiedervorlage (+14 Tage).',
     einheit: ['Subsumtion', 'Subsumtionen'],
   },
   {
@@ -62,14 +80,17 @@ const RAHMEN_TYPEN: { value: LosRahmenTyp; label: string; hinweis: string; einhe
 
 function QuelleBadge({ quelleKlasse }: { quelleKlasse: string }) {
   if (quelleKlasse === 'qpu') return <span className="badge badge-purple">QPU (attestierbar)</span>;
-  if (quelleKlasse === 'simulator') return <span className="badge badge-yellow">Simulator — Test</span>;
+  if (quelleKlasse === 'simulator')
+    return <span className="badge badge-yellow">Simulator — Test</span>;
   return <span className="badge badge-gray">CSPRNG — Fallback</span>;
 }
 
 function RahmenTypBadge({ typ }: { typ: LosRahmenTyp }) {
-  return typ === 'audit'
-    ? <span className="badge badge-green">Betriebs-Nachschau</span>
-    : <span className="badge badge-gray">Risk-Review</span>;
+  return typ === 'audit' ? (
+    <span className="badge badge-green">Betriebs-Nachschau</span>
+  ) : (
+    <span className="badge badge-gray">Risk-Review</span>
+  );
 }
 
 // Langer kryptografischer Wert (Commitment/Hash/Job-ID) — VOLLSTÄNDIG und
@@ -80,7 +101,9 @@ function HashWert({ label, value }: { label: string; value: string }) {
   const [kopiert, setKopiert] = useState(false);
   return (
     <div className="min-w-0">
-      <div className="text-[11px] uppercase tracking-wide text-secondary dark:text-white mb-1">{label}</div>
+      <div className="text-[11px] uppercase tracking-wide text-secondary dark:text-white mb-1">
+        {label}
+      </div>
       <div className="flex items-start gap-1.5">
         <code className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 font-mono text-sm leading-relaxed text-gray-900 break-all dark:border-gray-600 dark:bg-gray-900 dark:text-white">
           {value}
@@ -114,7 +137,13 @@ interface Props {
   initialIbmToken: IbmTokenStatus;
 }
 
-export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, initialZiehungen, initialIbmToken }: Props) {
+export function QuantenlosPanel({
+  initialZeitraum,
+  initialN,
+  initialPending,
+  initialZiehungen,
+  initialIbmToken,
+}: Props) {
   const [von, setVon] = useState(initialZeitraum.von);
   const [bis, setBis] = useState(initialZeitraum.bis);
   const [rahmenTyp, setRahmenTyp] = useState<LosRahmenTyp>('subsumtion');
@@ -145,7 +174,7 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
     start(async () => {
       const r = await rahmenVorschauAction({ von: nextVon, bis: nextBis, rahmenTyp: nextTyp });
       if (r.ok && r.n !== undefined) setN(r.n);
-      else setFehler(r.ok ? null : r.error ?? 'Rahmen-Vorschau fehlgeschlagen.');
+      else setFehler(r.ok ? null : (r.error ?? 'Rahmen-Vorschau fehlgeschlagen.'));
     });
   }
 
@@ -155,7 +184,7 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
     start(async () => {
       const r = await losZiehenAction({ von, bis, k, backend, rahmenTyp });
       if (!r.ok || !r.ergebnis) {
-        setFehler(!r.ok ? r.error ?? 'Ziehung fehlgeschlagen.' : 'Ziehung fehlgeschlagen.');
+        setFehler(!r.ok ? (r.error ?? 'Ziehung fehlgeschlagen.') : 'Ziehung fehlgeschlagen.');
         return;
       }
       const erg = r.ergebnis;
@@ -176,7 +205,7 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
     start(async () => {
       const r = await losAbholenAction();
       if (!r.ok || !r.ergebnis) {
-        setFehler(!r.ok ? r.error ?? 'Abholen fehlgeschlagen.' : 'Abholen fehlgeschlagen.');
+        setFehler(!r.ok ? (r.error ?? 'Abholen fehlgeschlagen.') : 'Abholen fehlgeschlagen.');
         return;
       }
       const erg = r.ergebnis;
@@ -245,13 +274,19 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
           {ibmToken.hinterlegt ? (
             <>
               <span className="badge badge-green">Token hinterlegt</span>
-              <code className="font-mono text-xs text-secondary dark:text-white">***{ibmToken.suffix ?? ''}</code>
+              <code className="font-mono text-xs text-secondary dark:text-white">
+                ***{ibmToken.suffix ?? ''}
+              </code>
               {ibmToken.gesetztAm && (
                 <span className="text-xs text-muted dark:text-white">
                   gesetzt {fmtDateTimeShort(new Date(ibmToken.gesetztAm))}
                 </span>
               )}
-              <button onClick={tokenEntfernen} disabled={tokenBusy} className="btn-secondary text-xs">
+              <button
+                onClick={tokenEntfernen}
+                disabled={tokenBusy}
+                className="btn-secondary text-xs"
+              >
                 <Trash2 className="h-3.5 w-3.5" />
                 Entfernen
               </button>
@@ -283,7 +318,9 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
             {tokenBusy ? 'Speichert …' : 'Speichern'}
           </button>
         </div>
-        {tokenFehler && <p className="text-xs text-red-600 dark:text-red-300 mt-2">{tokenFehler}</p>}
+        {tokenFehler && (
+          <p className="text-xs text-red-600 dark:text-red-300 mt-2">{tokenFehler}</p>
+        )}
       </div>
 
       {/* Ziehungs-Formular */}
@@ -294,9 +331,13 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
         </h2>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <div>
-            <label className="label dark:!text-white" htmlFor="rahmenTyp">Prüfrahmen</label>
+            <label className="label dark:!text-white" htmlFor="rahmenTyp">
+              Prüfrahmen
+            </label>
             <select
-              id="rahmenTyp" className="input text-xs" value={rahmenTyp}
+              id="rahmenTyp"
+              className="input text-xs"
+              value={rahmenTyp}
               onChange={(e) => {
                 const typ = e.target.value as LosRahmenTyp;
                 setRahmenTyp(typ);
@@ -304,39 +345,70 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
               }}
             >
               {RAHMEN_TYPEN.map((t) => (
-                <option key={t.value} value={t.value}>{t.label}</option>
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
               ))}
             </select>
           </div>
           <div>
-            <label className="label dark:!text-white" htmlFor="von">Zeitraum von</label>
+            <label className="label dark:!text-white" htmlFor="von">
+              Zeitraum von
+            </label>
             <input
-              id="von" type="date" className="input text-xs" value={von}
-              onChange={(e) => { setVon(e.target.value); aktualisiereVorschau(e.target.value, bis, rahmenTyp); }}
+              id="von"
+              type="date"
+              className="input text-xs"
+              value={von}
+              onChange={(e) => {
+                setVon(e.target.value);
+                aktualisiereVorschau(e.target.value, bis, rahmenTyp);
+              }}
             />
           </div>
           <div>
-            <label className="label dark:!text-white" htmlFor="bis">Zeitraum bis</label>
+            <label className="label dark:!text-white" htmlFor="bis">
+              Zeitraum bis
+            </label>
             <input
-              id="bis" type="date" className="input text-xs" value={bis}
-              onChange={(e) => { setBis(e.target.value); aktualisiereVorschau(von, e.target.value, rahmenTyp); }}
+              id="bis"
+              type="date"
+              className="input text-xs"
+              value={bis}
+              onChange={(e) => {
+                setBis(e.target.value);
+                aktualisiereVorschau(von, e.target.value, rahmenTyp);
+              }}
             />
           </div>
           <div>
-            <label className="label dark:!text-white" htmlFor="k">Stichprobe (k)</label>
+            <label className="label dark:!text-white" htmlFor="k">
+              Stichprobe (k)
+            </label>
             <input
-              id="k" type="number" min={1} max={n ?? 500} className="input text-xs" value={k}
+              id="k"
+              type="number"
+              min={1}
+              max={n ?? 500}
+              className="input text-xs"
+              value={k}
               onChange={(e) => setK(Math.max(1, Number(e.target.value) || 1))}
             />
           </div>
           <div>
-            <label className="label dark:!text-white" htmlFor="backend">Zufallsquelle</label>
+            <label className="label dark:!text-white" htmlFor="backend">
+              Zufallsquelle
+            </label>
             <select
-              id="backend" className="input text-xs" value={backend}
+              id="backend"
+              className="input text-xs"
+              value={backend}
               onChange={(e) => setBackend(e.target.value as Backend)}
             >
               {BACKENDS.map((b) => (
-                <option key={b.value} value={b.value}>{b.label}</option>
+                <option key={b.value} value={b.value}>
+                  {b.label}
+                </option>
               ))}
             </select>
           </div>
@@ -347,7 +419,8 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
           {backendInfo.hinweis}
           {backend === 'qpu' && !ibmToken.hinterlegt && (
             <span className="text-yellow-700 dark:text-yellow-300">
-              {' '}Kein Token hinterlegt — die Ziehung gelingt nur, wenn der Engine-Host eigene
+              {' '}
+              Kein Token hinterlegt — die Ziehung gelingt nur, wenn der Engine-Host eigene
               IBM-Credentials hat (sonst klare Ablehnung, keine stille Degradation).
             </span>
           )}
@@ -361,8 +434,8 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
             ) : (
               <>
                 <span className="font-semibold">{n}</span>{' '}
-                {n === 1 ? typInfo.einheit[0] : typInfo.einheit[1]} im Zeitraum
-                — es werden ausschließlich IDs an die Engine übertragen.
+                {n === 1 ? typInfo.einheit[0] : typInfo.einheit[1]} im Zeitraum — es werden
+                ausschließlich IDs an die Engine übertragen.
               </>
             )}
           </p>
@@ -385,7 +458,9 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
           <div className="flex items-start gap-3">
             <Hourglass className="h-5 w-5 text-yellow-600 mt-0.5 dark:text-yellow-300" />
             <div className="flex-1 text-sm">
-              <p className="font-medium text-yellow-900 dark:text-yellow-100">QPU-Job wartet in der IBM-Queue</p>
+              <p className="font-medium text-yellow-900 dark:text-yellow-100">
+                QPU-Job wartet in der IBM-Queue
+              </p>
               <p className="text-xs text-yellow-800 mt-1 dark:text-yellow-200">
                 k={pending.k} aus n={pending.rahmen.length} · beantragt{' '}
                 {fmtDateTimeShort(new Date(pending.beantragtAm))}
@@ -394,7 +469,9 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
                 <HashWert label="IBM-Job-ID" value={pending.jobId} />
                 <HashWert label="Commitment" value={pending.commitment} />
               </div>
-              {queueHinweis && <p className="text-xs text-yellow-800 mt-1 dark:text-yellow-200">{queueHinweis}</p>}
+              {queueHinweis && (
+                <p className="text-xs text-yellow-800 mt-1 dark:text-yellow-200">{queueHinweis}</p>
+              )}
             </div>
             <button onClick={abholen} disabled={busy} className="btn-secondary text-xs">
               <RefreshCw className="h-3.5 w-3.5" />
@@ -410,11 +487,16 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
           <h2 className="text-sm font-semibold text-primary">Ziehungen</h2>
           <p className="text-xs text-secondary dark:text-white">
             Jede Ziehung ist als Audit-Event in der Hash-Chain verankert (Aktion{' '}
-            <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-primary dark:bg-gray-900 dark:text-white">risk.los.gezogen</code>).
+            <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-primary dark:bg-gray-900 dark:text-white">
+              risk.los.gezogen
+            </code>
+            ).
           </p>
         </div>
         {ziehungen.length === 0 ? (
-          <p className="px-5 py-12 text-sm text-disabled text-center dark:text-white">Noch keine Ziehungen.</p>
+          <p className="px-5 py-12 text-sm text-disabled text-center dark:text-white">
+            Noch keine Ziehungen.
+          </p>
         ) : (
           <ul className="divide-y divide-border-subtle bg-white dark:bg-gray-900">
             {ziehungen.map((z) => {
@@ -444,9 +526,13 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
                       <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1.5 mt-1">
                         <HashWert label="Commitment" value={z.commitment} />
                         {z.jobId && <HashWert label="IBM-Job-ID" value={z.jobId} />}
-                        {z.rohCountsSha256 && <HashWert label="Roh-Counts (SHA-256)" value={z.rohCountsSha256} />}
+                        {z.rohCountsSha256 && (
+                          <HashWert label="Roh-Counts (SHA-256)" value={z.rohCountsSha256} />
+                        )}
                         <div className="min-w-0">
-                          <div className="text-[11px] uppercase tracking-wide text-secondary dark:text-white mb-1">Extraktor / DRBG</div>
+                          <div className="text-[11px] uppercase tracking-wide text-secondary dark:text-white mb-1">
+                            Extraktor / DRBG
+                          </div>
                           <div className="inline-flex rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-900 dark:text-white">
                             {z.extraktor} &rarr; {z.drbg}
                           </div>
@@ -466,10 +552,16 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
                         <span
                           className={`flex items-center gap-1 text-xs ${pruef.gueltig ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}
                         >
-                          {pruef.gueltig ? <ShieldCheck className="h-3.5 w-3.5" /> : <ShieldAlert className="h-3.5 w-3.5" />}
+                          {pruef.gueltig ? (
+                            <ShieldCheck className="h-3.5 w-3.5" />
+                          ) : (
+                            <ShieldAlert className="h-3.5 w-3.5" />
+                          )}
                           {pruef.gueltig ? 'gültig' : 'UNGÜLTIG'}
                           {pruef.geprueft.length > 0 && (
-                            <span className="text-secondary dark:text-white">({pruef.geprueft.join(', ')})</span>
+                            <span className="text-secondary dark:text-white">
+                              ({pruef.geprueft.join(', ')})
+                            </span>
                           )}
                         </span>
                       )}
@@ -484,20 +576,33 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
                           key={e.auditId}
                           className="flex items-center gap-2 flex-wrap rounded-md border border-gray-100 bg-gray-50 px-2.5 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-900"
                         >
-                          <span className="font-mono text-gray-500 dark:text-white">#{e.auditId}</span>
+                          <span className="font-mono text-gray-500 dark:text-white">
+                            #{e.auditId}
+                          </span>
                           {e.fehlt ? (
-                            <span className="badge badge-red" title="Chain-Einträge sind unlöschbar — ein fehlender Eintrag ist ein Befund.">
+                            <span
+                              className="badge badge-red"
+                              title="Chain-Einträge sind unlöschbar — ein fehlender Eintrag ist ein Befund."
+                            >
                               Eintrag fehlt!
                             </span>
                           ) : (
                             <>
                               <span className="font-medium text-primary">{e.label}</span>
                               {e.occurredAt && (
-                                <span className="text-secondary dark:text-white">{fmtDateTimeShort(new Date(e.occurredAt))}</span>
+                                <span className="text-secondary dark:text-white">
+                                  {fmtDateTimeShort(new Date(e.occurredAt))}
+                                </span>
                               )}
-                              {e.resourceType && <span className="badge badge-gray">{e.resourceType}</span>}
+                              {e.resourceType && (
+                                <span className="badge badge-gray">{e.resourceType}</span>
+                              )}
                               <span className="text-secondary dark:text-white">
-                                {e.actorType === 'STAFF' ? 'Staff' : e.actorType === 'CLIENT' ? 'Mandant' : 'System'}
+                                {e.actorType === 'STAFF'
+                                  ? 'Staff'
+                                  : e.actorType === 'CLIENT'
+                                    ? 'Mandant'
+                                    : 'System'}
                               </span>
                             </>
                           )}
@@ -511,7 +616,9 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
                           key={s.analysisId}
                           className="flex items-center gap-2 rounded-md border border-gray-100 bg-gray-50 px-2.5 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-900"
                         >
-                          <span className="font-mono text-gray-500 dark:text-white">{s.analysisId.slice(0, 8)}…</span>
+                          <span className="font-mono text-gray-500 dark:text-white">
+                            {s.analysisId.slice(0, 8)}…
+                          </span>
                           {s.clientId && !s.geloescht ? (
                             <Link
                               href={`/staff/clients/${s.clientId}/subsumtion/${s.analysisId}`}
@@ -534,7 +641,9 @@ export function QuantenlosPanel({ initialZeitraum, initialN, initialPending, ini
                   {(z.hinweise.length > 0 || (pruef && pruef.hinweise.length > 0)) && (
                     <ul className="mt-2 space-y-0.5">
                       {[...z.hinweise, ...(pruef?.hinweise ?? [])].map((hint, i) => (
-                        <li key={i} className="text-xs text-secondary dark:text-white">· {hint}</li>
+                        <li key={i} className="text-xs text-secondary dark:text-white">
+                          · {hint}
+                        </li>
                       ))}
                     </ul>
                   )}

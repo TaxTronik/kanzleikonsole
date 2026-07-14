@@ -59,10 +59,7 @@ export function renderSafeMarkdown(md: string): string {
   // Renderer direkt mit potenziell unsicherem Input füttert — escape sollte
   // davor laufen, aber wir verlassen uns nicht darauf).
   const scrubbed = md.replace(/[-]/g, '');
-  const escaped = scrubbed
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+  const escaped = scrubbed.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   // M-2: Backslash-escapte Marker via Sentinels schützen, sodass die
   // Inline-Replacements sie nicht treffen.
   const protectedText = escaped
@@ -74,7 +71,11 @@ export function renderSafeMarkdown(md: string): string {
   const withInline = protectedText
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-    .replace(/(https?:\/\/[^\s<"'`]+)/g, (_, u: string) => `<a href="${safeHref(u)}" target="_blank" rel="noopener noreferrer">${u}</a>`);
+    .replace(
+      /(https?:\/\/[^\s<"'`]+)/g,
+      (_, u: string) =>
+        `<a href="${safeHref(u)}" target="_blank" rel="noopener noreferrer">${u}</a>`,
+    );
   // M-2: Sentinel-Restore. SENT_SCHEME_SEP wird rückstandslos entfernt —
   // der eingefügte Disarm-Marker hinterlässt keine sichtbare Spur.
   const restored = withInline

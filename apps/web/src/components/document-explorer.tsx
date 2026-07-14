@@ -21,9 +21,21 @@ import { useMemo, useState, useTransition, useEffect, type SubmitEvent } from 'r
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  Folder, FileText, ChevronRight, Search, FolderPlus,
-  Download, RotateCcw, Trash2, Pencil, FolderInput, Tag, X, CornerLeftUp,
-  Share2, EyeOff,
+  Folder,
+  FileText,
+  ChevronRight,
+  Search,
+  FolderPlus,
+  Download,
+  RotateCcw,
+  Trash2,
+  Pencil,
+  FolderInput,
+  Tag,
+  X,
+  CornerLeftUp,
+  Share2,
+  EyeOff,
 } from 'lucide-react';
 import { DocumentPreviewModal } from '@/components/document-preview';
 import { DocumentUploadButton } from '@/components/document-upload-button';
@@ -107,7 +119,11 @@ interface RetagState {
   typeId?: string | null;
   onDone?: () => void;
 }
-interface CreateFolderState { parentId: string | null; title: string; placeholder: string }
+interface CreateFolderState {
+  parentId: string | null;
+  title: string;
+  placeholder: string;
+}
 
 function useDocumentOps() {
   const router = useRouter();
@@ -124,26 +140,37 @@ function useDocumentOps() {
     start(async () => {
       setOpError(null);
       const r = await setDocumentShareAction({ documentId: id, share });
-      if (!r.ok) setOpError(r.error ?? 'Fehler.'); else router.refresh();
+      if (!r.ok) setOpError(r.error ?? 'Fehler.');
+      else router.refresh();
     });
   }
   function restoreDoc(id: string) {
     start(async () => {
       setOpError(null);
       const r = await restoreDocumentAction({ documentId: id });
-      if (!r.ok) setOpError(r.error ?? 'Fehler.'); else router.refresh();
+      if (!r.ok) setOpError(r.error ?? 'Fehler.');
+      else router.refresh();
     });
   }
 
   return {
-    router, busy, start,
-    opError, setOpError,
-    previewDoc, setPreviewDoc,
-    retag, setRetag,
-    renameTarget, setRenameTarget,
-    createFolder, setCreateFolder,
-    confirmState, setConfirmState,
-    toggleShare, restoreDoc,
+    router,
+    busy,
+    start,
+    opError,
+    setOpError,
+    previewDoc,
+    setPreviewDoc,
+    retag,
+    setRetag,
+    renameTarget,
+    setRenameTarget,
+    createFolder,
+    setCreateFolder,
+    confirmState,
+    setConfirmState,
+    toggleShare,
+    restoreDoc,
   };
 }
 type DocumentOps = ReturnType<typeof useDocumentOps>;
@@ -216,7 +243,9 @@ function SharedDialogs({ ops, scopeClientId }: { ops: DocumentOps; scopeClientId
           busyLabel="Legt an…"
           onSubmit={async (name) => {
             const r = await createFolderAction({
-              clientId: scopeClientId, parentId: ops.createFolder!.parentId, name,
+              clientId: scopeClientId,
+              parentId: ops.createFolder!.parentId,
+              name,
             });
             if (r.ok) router.refresh();
             return r;
@@ -288,8 +317,8 @@ function TruncationHint({ shown, totalCount }: { shown: number; totalCount?: num
   return (
     <p className="mb-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-3 py-1.5 text-xs text-amber-900 dark:text-amber-100">
       Zeige die neuesten {shown.toLocaleString('de-DE')} Dokumente
-      {totalCount ? ` von ${totalCount.toLocaleString('de-DE')}` : ''} — ältere bitte über
-      Ordner oder Suche eingrenzen.
+      {totalCount ? ` von ${totalCount.toLocaleString('de-DE')}` : ''} — ältere bitte über Ordner
+      oder Suche eingrenzen.
     </p>
   );
 }
@@ -300,9 +329,11 @@ export function DocumentExplorer(props: BrowserProps | EmbeddedProps) {
     props.variant === 'browser' ? (props.scope?.clientId ?? null) : props.clientId;
   return (
     <>
-      {props.variant === 'browser'
-        ? <BrowserView {...props} ops={ops} />
-        : <EmbeddedView {...props} ops={ops} />}
+      {props.variant === 'browser' ? (
+        <BrowserView {...props} ops={ops} />
+      ) : (
+        <EmbeddedView {...props} ops={ops} />
+      )}
       <SharedDialogs ops={ops} scopeClientId={scopeClientId} />
     </>
   );
@@ -315,8 +346,17 @@ export function DocumentExplorer(props: BrowserProps | EmbeddedProps) {
 type Sel = { kind: 'file' | 'folder'; id: string };
 
 function BrowserView({
-  crumbs, entries, scope, folders, currentFolderId, deleted, q, toggleDeletedHref,
-  truncated, totalCount, ops,
+  crumbs,
+  entries,
+  scope,
+  folders,
+  currentFolderId,
+  deleted,
+  q,
+  toggleDeletedHref,
+  truncated,
+  totalCount,
+  ops,
 }: Omit<BrowserProps, 'variant'> & { ops: DocumentOps }) {
   const { router, busy, start } = ops;
   const [search, setSearch] = useState(q);
@@ -345,7 +385,9 @@ function BrowserView({
     setSel((prev) => {
       const has = prev.some((s) => s.kind === kind && s.id === id);
       if (additive) {
-        return has ? prev.filter((s) => !(s.kind === kind && s.id === id)) : [...prev, { kind, id }];
+        return has
+          ? prev.filter((s) => !(s.kind === kind && s.id === id))
+          : [...prev, { kind, id }];
       }
       return has && prev.length === 1 ? [] : [{ kind, id }];
     });
@@ -402,8 +444,13 @@ function BrowserView({
   function onDropInto(target: string | null, payloadRaw: string) {
     try {
       const items = JSON.parse(payloadRaw) as Sel[];
-      moveSet(items.filter((i) => !(i.kind === 'folder' && i.id === target)), target);
-    } catch { console.warn('[doc-explorer] Drag-Drop-Payload konnte nicht geparst werden'); }
+      moveSet(
+        items.filter((i) => !(i.kind === 'folder' && i.id === target)),
+        target,
+      );
+    } catch {
+      console.warn('[doc-explorer] Drag-Drop-Payload konnte nicht geparst werden');
+    }
   }
 
   function softDelete(id: string, name: string) {
@@ -471,10 +518,16 @@ function BrowserView({
           typeId =
             d.types.find((t) => t.classificationKey === 'GENERAL')?.id ??
             d.types.find((t) => t.tier === 'NONE')?.id ??
-            d.types[0]?.id ?? '';
+            d.types[0]?.id ??
+            '';
         }
-      } catch { console.warn('[doc-explorer] Datei-Typ-Ermittlung fehlgeschlagen'); }
-      if (!typeId) { ops.setOpError('Kein Datei-Typ verfügbar.'); return; }
+      } catch {
+        console.warn('[doc-explorer] Datei-Typ-Ermittlung fehlgeschlagen');
+      }
+      if (!typeId) {
+        ops.setOpError('Kein Datei-Typ verfügbar.');
+        return;
+      }
       start(() => {
         void (async () => {
           ops.setOpError(null);
@@ -507,13 +560,14 @@ function BrowserView({
   }
   // Unterscheidet OS-Datei-Drop (dataTransfer.types enthält 'Files') vom
   // internen Verschieben (text/plain mit unserer Payload).
-  const isOsFileDrag = (dt: DataTransfer) =>
-    Array.from(dt.types).includes('Files');
+  const isOsFileDrag = (dt: DataTransfer) => Array.from(dt.types).includes('Files');
 
   return (
     <div
       className="p-8 relative"
-      onContextMenu={(e) => { if (ctx) e.preventDefault(); }}
+      onContextMenu={(e) => {
+        if (ctx) e.preventDefault();
+      }}
       onDragOver={(e) => {
         if (scope && !deleted && isOsFileDrag(e.dataTransfer)) {
           e.preventDefault();
@@ -546,7 +600,9 @@ function BrowserView({
             {i === crumbs.length - 1 ? (
               <span className="font-semibold text-primary">{c.label}</span>
             ) : (
-              <Link href={c.href} className="hover:text-brand-700 hover:underline">{c.label}</Link>
+              <Link href={c.href} className="hover:text-brand-700 hover:underline">
+                {c.label}
+              </Link>
             )}
           </span>
         ))}
@@ -557,7 +613,12 @@ function BrowserView({
         {sel.length > 0 ? (
           <>
             <span className="text-sm font-medium text-secondary">{sel.length} ausgewählt</span>
-            <button type="button" onClick={() => setMoveOpen(true)} disabled={busy} className="btn-secondary text-xs py-1.5">
+            <button
+              type="button"
+              onClick={() => setMoveOpen(true)}
+              disabled={busy}
+              className="btn-secondary text-xs py-1.5"
+            >
               <FolderInput className="h-4 w-4" /> Verschieben
             </button>
             <button
@@ -570,7 +631,9 @@ function BrowserView({
               className="btn-secondary text-xs py-1.5"
             >
               <Download className="h-4 w-4" />
-              {sel.length > 1 || sel.some((s) => s.kind === 'folder') ? 'Als ZIP laden' : 'Herunterladen'}
+              {sel.length > 1 || sel.some((s) => s.kind === 'folder')
+                ? 'Als ZIP laden'
+                : 'Herunterladen'}
             </button>
             {sel.every((s) => s.kind === 'file') && !deleted && (
               <button
@@ -635,7 +698,11 @@ function BrowserView({
                 <Trash2 className="h-4 w-4" /> Löschen
               </button>
             )}
-            <button type="button" onClick={clearSel} className="text-xs text-muted hover:text-secondary">
+            <button
+              type="button"
+              onClick={clearSel}
+              className="text-xs text-muted hover:text-secondary"
+            >
               Aufheben
             </button>
           </>
@@ -660,7 +727,12 @@ function BrowserView({
                     {deleted ? 'Gelöschte (an)' : 'Gelöschte zeigen'}
                   </Link>
                 )}
-                <button type="button" onClick={newFolder} disabled={busy} className="btn-secondary text-xs py-1.5">
+                <button
+                  type="button"
+                  onClick={newFolder}
+                  disabled={busy}
+                  className="btn-secondary text-xs py-1.5"
+                >
                   <FolderPlus className="h-4 w-4" /> Neuer Ordner
                 </button>
                 {!deleted && (
@@ -689,11 +761,19 @@ function BrowserView({
       {/* „Eine Ebene hoch" als Drop-Ziel (Wurzel des Scopes) */}
       {scope && currentFolderId && (
         <div
-          onDragOver={(e) => { e.preventDefault(); setDropTarget('root'); }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDropTarget('root');
+          }}
           onDragLeave={() => setDropTarget(null)}
-          onDrop={(e) => { setDropTarget(null); onDropInto(null, e.dataTransfer.getData('text/plain')); }}
+          onDrop={(e) => {
+            setDropTarget(null);
+            onDropInto(null, e.dataTransfer.getData('text/plain'));
+          }}
           className={`mb-2 flex items-center gap-2 rounded-md border border-dashed px-3 py-1.5 text-xs ${
-            dropTarget === 'root' ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-default text-disabled'
+            dropTarget === 'root'
+              ? 'border-brand-500 bg-brand-50 text-brand-700'
+              : 'border-default text-disabled'
           }`}
         >
           <CornerLeftUp className="h-3.5 w-3.5" />
@@ -705,7 +785,9 @@ function BrowserView({
       {entries.length === 0 ? (
         <div className="card px-6 py-16 text-center">
           <Folder className="h-12 w-12 text-disabled mx-auto mb-3" />
-          <p className="text-sm text-disabled">{deleted ? 'Keine gelöschten Dokumente hier.' : 'Dieser Ordner ist leer.'}</p>
+          <p className="text-sm text-disabled">
+            {deleted ? 'Keine gelöschten Dokumente hier.' : 'Dieser Ordner ist leer.'}
+          </p>
         </div>
       ) : (
         <div className="card overflow-hidden divide-y divide-border-subtle">
@@ -714,8 +796,11 @@ function BrowserView({
             const selectedRow = sk && isSel(e.kind as 'file' | 'folder', e.id);
             const isDrop = e.kind === 'folder' && dropTarget === e.id;
             const Icon =
-              e.kind === 'file' ? fileIcon(e.mimeType)
-              : e.kind === 'folder' ? Folder : navIcon(e.icon);
+              e.kind === 'file'
+                ? fileIcon(e.mimeType)
+                : e.kind === 'folder'
+                  ? Folder
+                  : navIcon(e.icon);
             return (
               <div
                 key={`${e.kind}-${e.id}`}
@@ -728,24 +813,35 @@ function BrowserView({
                 }}
                 onDragOver={
                   e.kind === 'folder'
-                    ? (ev) => { ev.preventDefault(); setDropTarget(e.id); }
+                    ? (ev) => {
+                        ev.preventDefault();
+                        setDropTarget(e.id);
+                      }
                     : undefined
                 }
                 onDragLeave={e.kind === 'folder' ? () => setDropTarget(null) : undefined}
                 onDrop={
                   e.kind === 'folder'
-                    ? (ev) => { ev.preventDefault(); setDropTarget(null); onDropInto(e.id, ev.dataTransfer.getData('text/plain')); }
+                    ? (ev) => {
+                        ev.preventDefault();
+                        setDropTarget(null);
+                        onDropInto(e.id, ev.dataTransfer.getData('text/plain'));
+                      }
                     : undefined
                 }
                 onContextMenu={(ev) => {
                   if (e.kind === 'nav') return;
                   ev.preventDefault();
-                  if (sk && !isSel(e.kind as 'file' | 'folder', e.id)) toggle(e.kind as 'file' | 'folder', e.id, false);
+                  if (sk && !isSel(e.kind as 'file' | 'folder', e.id))
+                    toggle(e.kind as 'file' | 'folder', e.id, false);
                   setCtx({ x: ev.clientX, y: ev.clientY, e });
                 }}
                 className={`flex items-center gap-3 px-5 py-3 group ${
-                  isDrop ? 'bg-brand-50 ring-1 ring-inset ring-brand-300'
-                  : selectedRow ? 'bg-brand-50/60' : 'hover:bg-gray-50'
+                  isDrop
+                    ? 'bg-brand-50 ring-1 ring-inset ring-brand-300'
+                    : selectedRow
+                      ? 'bg-brand-50/60'
+                      : 'hover:bg-gray-50'
                 }`}
               >
                 {sk && (
@@ -772,11 +868,17 @@ function BrowserView({
                     <Icon className="h-5 w-5 text-disabled shrink-0" />
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium text-primary truncate hover:underline">{e.name}</span>
+                        <span className="font-medium text-primary truncate hover:underline">
+                          {e.name}
+                        </span>
                         {e.tier !== 'NONE' && (
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
-                            e.tier === 'GOBD' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-amber-50 text-amber-700 border-amber-200'
-                          }`}>
+                          <span
+                            className={`text-[10px] px-1.5 py-0.5 rounded border ${
+                              e.tier === 'GOBD'
+                                ? 'bg-red-50 text-red-700 border-red-200'
+                                : 'bg-amber-50 text-amber-700 border-amber-200'
+                            }`}
+                          >
                             {TIER_BADGE[e.tier]}
                           </span>
                         )}
@@ -791,11 +893,21 @@ function BrowserView({
                 )}
                 {e.kind === 'file' && (
                   <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100">
-                    <a href={`/api/staff/documents/${e.id}/download`} className="text-disabled hover:text-primary p-1.5 inline-flex items-center" title="Herunterladen">
+                    <a
+                      href={`/api/staff/documents/${e.id}/download`}
+                      className="text-disabled hover:text-primary p-1.5 inline-flex items-center"
+                      title="Herunterladen"
+                    >
                       <Download className="h-4 w-4" />
                     </a>
                     {e.deletedAt ? (
-                      <button type="button" disabled={busy} title="Wiederherstellen" onClick={() => ops.restoreDoc(e.id)} className="icon-btn">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        title="Wiederherstellen"
+                        onClick={() => ops.restoreDoc(e.id)}
+                        className="icon-btn"
+                      >
                         <RotateCcw className="h-4 w-4" />
                       </button>
                     ) : (
@@ -804,20 +916,54 @@ function BrowserView({
                           <button
                             type="button"
                             disabled={busy}
-                            title={e.shared ? 'Freigabe für Mandant zurückziehen' : 'Für Mandant freigeben'}
+                            title={
+                              e.shared
+                                ? 'Freigabe für Mandant zurückziehen'
+                                : 'Für Mandant freigeben'
+                            }
                             onClick={() => ops.toggleShare(e.id, !e.shared)}
                             className={`p-1.5 ${e.shared ? 'text-green-600 hover:text-green-700' : 'text-disabled hover:text-brand-700'}`}
                           >
-                            {e.shared ? <Share2 className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                            {e.shared ? (
+                              <Share2 className="h-4 w-4" />
+                            ) : (
+                              <EyeOff className="h-4 w-4" />
+                            )}
                           </button>
                         )}
-                        <button type="button" title="Typ ändern" onClick={() => ops.setRetag({ ids: [e.id], title: e.name, tier: e.tier, typeId: e.typeId })} className="icon-btn">
+                        <button
+                          type="button"
+                          title="Typ ändern"
+                          onClick={() =>
+                            ops.setRetag({
+                              ids: [e.id],
+                              title: e.name,
+                              tier: e.tier,
+                              typeId: e.typeId,
+                            })
+                          }
+                          className="icon-btn"
+                        >
                           <Tag className="h-4 w-4" />
                         </button>
-                        <button type="button" title="Verschieben" onClick={() => { toggle('file', e.id, false); setMoveOpen(true); }} className="icon-btn">
+                        <button
+                          type="button"
+                          title="Verschieben"
+                          onClick={() => {
+                            toggle('file', e.id, false);
+                            setMoveOpen(true);
+                          }}
+                          className="icon-btn"
+                        >
                           <FolderInput className="h-4 w-4" />
                         </button>
-                        <button type="button" title="Löschen" disabled={busy} onClick={() => softDelete(e.id, e.name)} className="text-disabled hover:text-red-600 p-1.5">
+                        <button
+                          type="button"
+                          title="Löschen"
+                          disabled={busy}
+                          onClick={() => softDelete(e.id, e.name)}
+                          className="text-disabled hover:text-red-600 p-1.5"
+                        >
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </>
@@ -850,26 +996,100 @@ function BrowserView({
         >
           {ctx.e.kind === 'folder' && (
             <>
-              <MenuItem icon={Folder} label="Öffnen" onClick={() => router.push((ctx.e as { href: string }).href)} />
-              <MenuItem icon={Download} label="Als ZIP laden" onClick={() => { window.location.href = dlUrl([], [ctx.e.id]); setCtx(null); }} />
-              <MenuItem icon={Pencil} label="Umbenennen" onClick={() => { ops.setRenameTarget({ id: ctx.e.id, name: ctx.e.name }); setCtx(null); }} />
-              <MenuItem icon={FolderInput} label="Verschieben" onClick={() => { setMoveOpen(true); setCtx(null); }} />
-              <MenuItem icon={Trash2} label="Löschen" danger onClick={() => { deleteFolder(ctx.e.id, ctx.e.name); setCtx(null); }} />
+              <MenuItem
+                icon={Folder}
+                label="Öffnen"
+                onClick={() => router.push((ctx.e as { href: string }).href)}
+              />
+              <MenuItem
+                icon={Download}
+                label="Als ZIP laden"
+                onClick={() => {
+                  window.location.href = dlUrl([], [ctx.e.id]);
+                  setCtx(null);
+                }}
+              />
+              <MenuItem
+                icon={Pencil}
+                label="Umbenennen"
+                onClick={() => {
+                  ops.setRenameTarget({ id: ctx.e.id, name: ctx.e.name });
+                  setCtx(null);
+                }}
+              />
+              <MenuItem
+                icon={FolderInput}
+                label="Verschieben"
+                onClick={() => {
+                  setMoveOpen(true);
+                  setCtx(null);
+                }}
+              />
+              <MenuItem
+                icon={Trash2}
+                label="Löschen"
+                danger
+                onClick={() => {
+                  deleteFolder(ctx.e.id, ctx.e.name);
+                  setCtx(null);
+                }}
+              />
             </>
           )}
           {ctx.e.kind === 'file' && (
             <>
-              <MenuItem icon={FileText} label="Details" onClick={() => router.push(`/staff/documents/${ctx.e.id}`)} />
-              <MenuItem icon={Download} label="Herunterladen" onClick={() => { window.location.href = `/api/staff/documents/${ctx.e.id}/download`; setCtx(null); }} />
+              <MenuItem
+                icon={FileText}
+                label="Details"
+                onClick={() => router.push(`/staff/documents/${ctx.e.id}`)}
+              />
+              <MenuItem
+                icon={Download}
+                label="Herunterladen"
+                onClick={() => {
+                  window.location.href = `/api/staff/documents/${ctx.e.id}/download`;
+                  setCtx(null);
+                }}
+              />
               {!('deletedAt' in ctx.e && ctx.e.deletedAt) && (
                 <>
-                  <MenuItem icon={FolderInput} label="Verschieben" onClick={() => { setMoveOpen(true); setCtx(null); }} />
-                  <MenuItem icon={Tag} label="Typ ändern" onClick={() => { const f = ctx.e as Extract<Entry, { kind: 'file' }>; ops.setRetag({ ids: [f.id], title: f.name, tier: f.tier, typeId: f.typeId }); setCtx(null); }} />
-                  <MenuItem icon={Trash2} label="Löschen" danger onClick={() => { softDelete(ctx.e.id, ctx.e.name); setCtx(null); }} />
+                  <MenuItem
+                    icon={FolderInput}
+                    label="Verschieben"
+                    onClick={() => {
+                      setMoveOpen(true);
+                      setCtx(null);
+                    }}
+                  />
+                  <MenuItem
+                    icon={Tag}
+                    label="Typ ändern"
+                    onClick={() => {
+                      const f = ctx.e as Extract<Entry, { kind: 'file' }>;
+                      ops.setRetag({ ids: [f.id], title: f.name, tier: f.tier, typeId: f.typeId });
+                      setCtx(null);
+                    }}
+                  />
+                  <MenuItem
+                    icon={Trash2}
+                    label="Löschen"
+                    danger
+                    onClick={() => {
+                      softDelete(ctx.e.id, ctx.e.name);
+                      setCtx(null);
+                    }}
+                  />
                 </>
               )}
               {'deletedAt' in ctx.e && ctx.e.deletedAt && (
-                <MenuItem icon={RotateCcw} label="Wiederherstellen" onClick={() => { ops.restoreDoc(ctx.e.id); setCtx(null); }} />
+                <MenuItem
+                  icon={RotateCcw}
+                  label="Wiederherstellen"
+                  onClick={() => {
+                    ops.restoreDoc(ctx.e.id);
+                    setCtx(null);
+                  }}
+                />
               )}
             </>
           )}
@@ -889,8 +1109,16 @@ function BrowserView({
 }
 
 function MenuItem({
-  icon: Icon, label, onClick, danger,
-}: { icon: typeof Folder; label: string; onClick: () => void; danger?: boolean }) {
+  icon: Icon,
+  label,
+  onClick,
+  danger,
+}: {
+  icon: typeof Folder;
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+}) {
   return (
     <button
       type="button"
@@ -907,8 +1135,15 @@ function MenuItem({
 // ---------------------------------------------------------------------------
 
 function EmbeddedView({
-  clientId, folders, documents, scopeLabel, canUpload = true, analysisId,
-  truncated, totalCount, ops,
+  clientId,
+  folders,
+  documents,
+  scopeLabel,
+  canUpload = true,
+  analysisId,
+  truncated,
+  totalCount,
+  ops,
 }: Omit<EmbeddedProps, 'variant'> & { ops: DocumentOps }) {
   const { router, busy } = ops;
   const [sel, setSel] = useState<string | 'all' | 'none'>('all');
@@ -1014,9 +1249,7 @@ function EmbeddedView({
       {/* ---- Ordnerbaum ---- */}
       <div className="card p-2 self-start">
         <div className="flex items-center justify-between px-2 py-1.5 mb-1">
-          <span className="text-xs font-semibold text-muted uppercase tracking-wide">
-            Ordner
-          </span>
+          <span className="text-xs font-semibold text-muted uppercase tracking-wide">Ordner</span>
           <button
             type="button"
             title="Ordner anlegen"
@@ -1063,7 +1296,9 @@ function EmbeddedView({
             <FolderTreePicker
               folders={folders}
               value={sel !== 'all' && sel !== 'none' ? sel : null}
-              onSelect={(id) => { if (id) setSel(id); }}
+              onSelect={(id) => {
+                if (id) setSel(id);
+              }}
               indent={14}
               rowExtra={folderRowExtra}
             />
@@ -1090,12 +1325,16 @@ function EmbeddedView({
               showDeleted ? 'bg-brand-50 text-brand-700' : 'text-muted hover:text-secondary'
             }`}
           >
-            {showDeleted ? `Gelöscht (${deleted.length})` : `Gelöschte anzeigen (${deleted.length})`}
+            {showDeleted
+              ? `Gelöscht (${deleted.length})`
+              : `Gelöschte anzeigen (${deleted.length})`}
           </button>
           {canUpload && (
             <DocumentUploadButton
               clientId={clientId ?? undefined}
-              folderId={typeof sel === 'string' && sel !== 'all' && sel !== 'none' ? sel : undefined}
+              folderId={
+                typeof sel === 'string' && sel !== 'all' && sel !== 'none' ? sel : undefined
+              }
               analysisId={analysisId}
               defaultClassification={clientId ? 'GOBD_INVOICE' : 'GENERAL'}
               buttonLabel="Hochladen"
@@ -1120,10 +1359,18 @@ function EmbeddedView({
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-default">
-                  <th className="text-left px-5 py-2.5 text-xs font-medium text-muted uppercase">Titel</th>
-                  <th className="text-left px-5 py-2.5 text-xs font-medium text-muted uppercase">Klassifikation</th>
-                  <th className="text-left px-5 py-2.5 text-xs font-medium text-muted uppercase">Größe</th>
-                  <th className="text-left px-5 py-2.5 text-xs font-medium text-muted uppercase">Datum</th>
+                  <th className="text-left px-5 py-2.5 text-xs font-medium text-muted uppercase">
+                    Titel
+                  </th>
+                  <th className="text-left px-5 py-2.5 text-xs font-medium text-muted uppercase">
+                    Klassifikation
+                  </th>
+                  <th className="text-left px-5 py-2.5 text-xs font-medium text-muted uppercase">
+                    Größe
+                  </th>
+                  <th className="text-left px-5 py-2.5 text-xs font-medium text-muted uppercase">
+                    Datum
+                  </th>
                   <th className="px-5 py-2.5" />
                 </tr>
               </thead>
@@ -1154,16 +1401,31 @@ function EmbeddedView({
                           <button
                             type="button"
                             disabled={busy}
-                            title={d.shared ? 'Freigabe für Mandant zurückziehen' : 'Für Mandant freigeben'}
+                            title={
+                              d.shared
+                                ? 'Freigabe für Mandant zurückziehen'
+                                : 'Für Mandant freigeben'
+                            }
                             onClick={() => ops.toggleShare(d.id, !d.shared)}
                             className={`p-1.5 ${d.shared ? 'text-green-600 hover:text-green-700' : 'text-disabled hover:text-brand-700'}`}
                           >
-                            {d.shared ? <Share2 className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                            {d.shared ? (
+                              <Share2 className="h-4 w-4" />
+                            ) : (
+                              <EyeOff className="h-4 w-4" />
+                            )}
                           </button>
                           <button
                             type="button"
                             title="Typ ändern"
-                            onClick={() => ops.setRetag({ ids: [d.id], title: d.title, tier: d.tier, typeId: d.typeId })}
+                            onClick={() =>
+                              ops.setRetag({
+                                ids: [d.id],
+                                title: d.title,
+                                tier: d.tier,
+                                typeId: d.typeId,
+                              })
+                            }
                             className="icon-btn"
                           >
                             <Tag className="h-4 w-4" />
@@ -1213,9 +1475,8 @@ function EmbeddedView({
           )}
         </div>
         <p className="mt-2 text-xs text-disabled">
-          {scopeLabel} · Klassifikation (GoBD/GwG) und Aufbewahrung sind
-          unabhängig von der Ordnerablage. Löschen blendet nur aus — die Datei
-          bleibt revisionssicher aufbewahrt.
+          {scopeLabel} · Klassifikation (GoBD/GwG) und Aufbewahrung sind unabhängig von der
+          Ordnerablage. Löschen blendet nur aus — die Datei bleibt revisionssicher aufbewahrt.
         </p>
       </div>
 

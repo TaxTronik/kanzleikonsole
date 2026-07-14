@@ -11,7 +11,13 @@ import { evidenceService } from '@/server/container';
 import { staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
 import { writeModules, type ModuleConfig } from '@/server/settings/modules';
 import { writeAccessPolicy, type ClientAccessMode } from '@/server/settings/access-policy';
-import { writeClientLayout, ALL_CLIENT_BLOCKS, DEFAULT_CLIENT_LAYOUT, type ClientBlockKey, type ClientGridItem } from '@/server/settings/client-layout';
+import {
+  writeClientLayout,
+  ALL_CLIENT_BLOCKS,
+  DEFAULT_CLIENT_LAYOUT,
+  type ClientBlockKey,
+  type ClientGridItem,
+} from '@/server/settings/client-layout';
 import { writePortalFeatures, type PortalFeatures } from '@/server/settings/portal-features';
 
 // ----------------------------------------------------------------------------
@@ -143,7 +149,9 @@ export async function saveAccessPolicyAction(
   const g = await staffActionGuard({ requireAdmin: true });
   if (!g.ok) return g;
 
-  const parsed = AccessPolicySchema.safeParse({ clientAccessMode: formData.get('clientAccessMode') });
+  const parsed = AccessPolicySchema.safeParse({
+    clientAccessMode: formData.get('clientAccessMode'),
+  });
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   const { tenantId, staffId, ctx } = g;
@@ -173,18 +181,23 @@ export async function saveAccessPolicyAction(
 const BlockKeyEnum = z.enum(ALL_CLIENT_BLOCKS as [ClientBlockKey, ...ClientBlockKey[]]);
 
 const ClientLayoutSchema = z.object({
-  items: z.array(
-    z.object({
-      id: BlockKeyEnum,
-      x: z.number().int().min(0).max(11),
-      y: z.number().int().min(0).max(200),
-      w: z.number().int().min(2).max(12),
-      h: z.number().int().min(2).max(40),
-    }),
-  ).min(1).max(20),
+  items: z
+    .array(
+      z.object({
+        id: BlockKeyEnum,
+        x: z.number().int().min(0).max(11),
+        y: z.number().int().min(0).max(200),
+        w: z.number().int().min(2).max(12),
+        h: z.number().int().min(2).max(40),
+      }),
+    )
+    .min(1)
+    .max(20),
 });
 
-export async function saveClientLayoutAction(input: { items: ClientGridItem[] }): Promise<ActionResult> {
+export async function saveClientLayoutAction(input: {
+  items: ClientGridItem[];
+}): Promise<ActionResult> {
   const g = await staffActionGuard({ requireAdmin: true });
   if (!g.ok) return g;
   const parsed = ClientLayoutSchema.safeParse(input);

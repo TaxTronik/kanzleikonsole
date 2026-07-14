@@ -57,7 +57,9 @@ export async function GET(req: NextRequest) {
     .filter((r) => r.client.contacts.length > 0)
     .map((r) => {
       const c = r.client.contacts[0]!;
-      const days = Math.floor((now.getTime() - (r.dueAt as Date).getTime()) / (24 * 60 * 60 * 1000));
+      const days = Math.floor(
+        (now.getTime() - (r.dueAt as Date).getTime()) / (24 * 60 * 60 * 1000),
+      );
       return {
         id: r.id,
         tenantId: r.tenantId,

@@ -2,11 +2,7 @@
 
 import { useActionState, useState, useTransition } from 'react';
 import { CheckCircle2, AlertCircle, ShieldCheck, ExternalLink, Send } from 'lucide-react';
-import {
-  saveTsaAction,
-  testTsaAction,
-  type ActionResult,
-} from './actions';
+import { saveTsaAction, testTsaAction, type ActionResult } from './actions';
 import type { TsaConfig } from '@/server/settings/tsa';
 import type { TsaProvider } from '@taxtronik/evidence';
 
@@ -29,9 +25,7 @@ export function TsaForm({ initial, providers, envFallback, production }: Props) 
   );
 
   const selected = providers.find((p) => p.id === providerId);
-  const envProvider = envFallback
-    ? providers.find((p) => p.url === envFallback)
-    : undefined;
+  const envProvider = envFallback ? providers.find((p) => p.url === envFallback) : undefined;
   const isCustom = providerId === 'custom';
   const resolvedUrl = !providerId
     ? null
@@ -55,21 +49,21 @@ export function TsaForm({ initial, providers, envFallback, production }: Props) 
       {!initial.providerId && envFallback && (
         <div className="rounded-md border border-blue-200 dark:border-blue-900/60 bg-blue-50 dark:bg-blue-900/20 px-4 py-3 text-xs text-blue-900 dark:text-blue-200">
           Aktuell aktiv: <strong>ENV-Vorgabe</strong>
-          {envProvider ? <> — {envProvider.label}</> : null} ({envFallback}). Sobald Sie
-          hier einen Anbieter auswählen und speichern, wird stattdessen dieser benutzt.
+          {envProvider ? <> — {envProvider.label}</> : null} ({envFallback}). Sobald Sie hier einen
+          Anbieter auswählen und speichern, wird stattdessen dieser benutzt.
         </div>
       )}
       {!initial.providerId && !envFallback && (
         <div className="rounded-md border border-yellow-200 dark:border-yellow-900/60 bg-yellow-50 dark:bg-yellow-900/20 px-4 py-3 text-xs text-yellow-900 dark:text-yellow-200">
-          Aktuell läuft ein <strong>lokaler Self-Timestamp</strong>. Für den produktiven
-          Einsatz wird ein externer Zeitstempeldienst empfohlen — sonst hat die
-          Hash-Chain nur Selbstauskunft, keinen unabhängigen Drittnachweis.
+          Aktuell läuft ein <strong>lokaler Self-Timestamp</strong>. Für den produktiven Einsatz
+          wird ein externer Zeitstempeldienst empfohlen — sonst hat die Hash-Chain nur
+          Selbstauskunft, keinen unabhängigen Drittnachweis.
         </div>
       )}
       {production && (
         <div className="rounded-md border border-red-300 dark:border-red-900/60 bg-red-50 dark:bg-red-950/30 px-4 py-3 text-xs text-red-900 dark:text-red-200">
-          <strong>Produktionsschutz:</strong> Self-Timestamp ist gesperrt. Die Audit-Hash-Chain
-          muss mit einer externen RFC-3161-TSA versiegelt werden.
+          <strong>Produktionsschutz:</strong> Self-Timestamp ist gesperrt. Die Audit-Hash-Chain muss
+          mit einer externen RFC-3161-TSA versiegelt werden.
         </div>
       )}
 
@@ -96,11 +90,10 @@ export function TsaForm({ initial, providers, envFallback, production }: Props) 
                   className="mt-1"
                 />
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-primary">
-                    Lokaler Self-Timestamp
-                  </div>
+                  <div className="text-sm font-medium text-primary">Lokaler Self-Timestamp</div>
                   <div className="text-xs text-muted">
-                    Kein externer Dienst — Server-Uhrzeit als Stempel. {production ? 'In Produktion nicht zulässig.' : 'Nur für Dev/Test.'}
+                    Kein externer Dienst — Server-Uhrzeit als Stempel.{' '}
+                    {production ? 'In Produktion nicht zulässig.' : 'Nur für Dev/Test.'}
                   </div>
                 </div>
               </div>
@@ -158,7 +151,9 @@ export function TsaForm({ initial, providers, envFallback, production }: Props) 
 
         {isCustom && (
           <div>
-            <label className="label" htmlFor="customUrl">TSA-URL</label>
+            <label className="label" htmlFor="customUrl">
+              TSA-URL
+            </label>
             <input
               id="customUrl"
               name="customUrl"
@@ -175,9 +170,7 @@ export function TsaForm({ initial, providers, envFallback, production }: Props) 
             </p>
           </div>
         )}
-        {!isCustom && (
-          <input type="hidden" name="customUrl" value={customUrl} />
-        )}
+        {!isCustom && <input type="hidden" name="customUrl" value={customUrl} />}
 
         <div className="flex items-center justify-between pt-2">
           <button type="submit" className="btn-primary" disabled={isSaving}>
@@ -200,16 +193,12 @@ export function TsaForm({ initial, providers, envFallback, production }: Props) 
 
       {/* Test-Roundtrip */}
       <div className="rounded-md border border-default bg-surface-raised p-4 space-y-2">
-        <div className="text-sm font-medium text-primary">
-          Verbindung testen
-        </div>
+        <div className="text-sm font-medium text-primary">Verbindung testen</div>
         <p className="text-xs text-muted">
-          Schickt eine echte TimeStampReq (mit zufälligem Hash) an den ausgewählten
-          Server und prüft, ob ein granted Response zurückkommt.
+          Schickt eine echte TimeStampReq (mit zufälligem Hash) an den ausgewählten Server und
+          prüft, ob ein granted Response zurückkommt.
         </p>
-        {resolvedUrl && (
-          <p className="text-xs text-muted font-mono break-all">{resolvedUrl}</p>
-        )}
+        {resolvedUrl && <p className="text-xs text-muted font-mono break-all">{resolvedUrl}</p>}
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -236,10 +225,9 @@ export function TsaForm({ initial, providers, envFallback, production }: Props) 
       </div>
 
       <p className="text-xs text-muted">
-        Hintergrund: Die Audit-Hash-Chain wird täglich versiegelt. Mit einem
-        externen RFC-3161-Stempel bestätigt eine unabhängige Stelle, dass der
-        Tages-Spitzen-Hash zu einem bestimmten Zeitpunkt existierte — Voraussetzung
-        für gerichtsfeste Beweisführung.{' '}
+        Hintergrund: Die Audit-Hash-Chain wird täglich versiegelt. Mit einem externen
+        RFC-3161-Stempel bestätigt eine unabhängige Stelle, dass der Tages-Spitzen-Hash zu einem
+        bestimmten Zeitpunkt existierte — Voraussetzung für gerichtsfeste Beweisführung.{' '}
         <a
           href="https://www.rfc-editor.org/rfc/rfc3161"
           target="_blank"

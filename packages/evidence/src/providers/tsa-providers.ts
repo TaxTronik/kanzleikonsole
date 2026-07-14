@@ -12,7 +12,7 @@ export interface TsaProvider {
   url: string;
   cost: 'free' | 'commercial';
   jurisdiction: string;
-  qualified: boolean;    // eIDAS-qualifizierte TSA?
+  qualified: boolean; // eIDAS-qualifizierte TSA?
   hint: string;
 }
 

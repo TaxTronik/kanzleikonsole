@@ -167,8 +167,12 @@ export default async function AbsencesCalendarPage({
                   <div className="text-[10px] text-disabled leading-none pt-1">
                     {monthBoundaries[i] ? fmtMonthShort(d) : ''}
                   </div>
-                  <div className="text-[10px] text-muted leading-none">{fmtWeekdayShort(d).slice(0, 2)}</div>
-                  <div className={isWeekend(d) ? 'text-disabled' : 'text-secondary'}>{fmtDay(d)}</div>
+                  <div className="text-[10px] text-muted leading-none">
+                    {fmtWeekdayShort(d).slice(0, 2)}
+                  </div>
+                  <div className={isWeekend(d) ? 'text-disabled' : 'text-secondary'}>
+                    {fmtDay(d)}
+                  </div>
                 </th>
               ))}
             </tr>
@@ -183,16 +187,24 @@ export default async function AbsencesCalendarPage({
                   const key = `${s.id}:${d.toISOString().slice(0, 10)}`;
                   const cell = cellMap.get(key);
                   const weekend = isWeekend(d);
-                  const cls = cell === 'U'
-                    ? 'bg-emerald-200'
-                    : cell === 'A'
-                      ? 'bg-red-200'
-                      : cell === 'UA'
-                        ? 'bg-amber-300'
-                        : weekend
-                          ? 'bg-gray-50'
+                  const cls =
+                    cell === 'U'
+                      ? 'bg-emerald-200'
+                      : cell === 'A'
+                        ? 'bg-red-200'
+                        : cell === 'UA'
+                          ? 'bg-amber-300'
+                          : weekend
+                            ? 'bg-gray-50'
+                            : '';
+                  const title =
+                    cell === 'U'
+                      ? 'Urlaub'
+                      : cell === 'A'
+                        ? 'abw.'
+                        : cell === 'UA'
+                          ? 'Urlaub + abw.'
                           : '';
-                  const title = cell === 'U' ? 'Urlaub' : cell === 'A' ? 'abw.' : cell === 'UA' ? 'Urlaub + abw.' : '';
                   return (
                     <td
                       key={i}
@@ -203,9 +215,15 @@ export default async function AbsencesCalendarPage({
                       }
                       title={title ? `${s.fullName} · ${fmtDateMedium(d)} · ${title}` : ''}
                     >
-                      {cell === 'U' && <span className="text-[10px] text-emerald-900 font-medium">U</span>}
-                      {cell === 'A' && <span className="text-[10px] text-red-900 font-medium">A</span>}
-                      {cell === 'UA' && <span className="text-[10px] text-amber-900 font-medium">UA</span>}
+                      {cell === 'U' && (
+                        <span className="text-[10px] text-emerald-900 font-medium">U</span>
+                      )}
+                      {cell === 'A' && (
+                        <span className="text-[10px] text-red-900 font-medium">A</span>
+                      )}
+                      {cell === 'UA' && (
+                        <span className="text-[10px] text-amber-900 font-medium">UA</span>
+                      )}
                     </td>
                   );
                 })}
@@ -220,10 +238,12 @@ export default async function AbsencesCalendarPage({
           <span className="inline-block w-3 h-3 rounded bg-emerald-200" /> Urlaub (genehmigt)
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block w-3 h-3 rounded bg-red-200" /> abwesend (krank, Fortbildung …)
+          <span className="inline-block w-3 h-3 rounded bg-red-200" /> abwesend (krank, Fortbildung
+          …)
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block w-3 h-3 rounded bg-gray-50 border border-default" /> Wochenende
+          <span className="inline-block w-3 h-3 rounded bg-gray-50 border border-default" />{' '}
+          Wochenende
         </span>
       </div>
     </div>

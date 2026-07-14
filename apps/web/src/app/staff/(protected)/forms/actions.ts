@@ -10,15 +10,30 @@ import { fireAndForget } from '@/server/util/fire-and-forget';
 import { portalBaseUrl } from '@taxtronik/config';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
-import { staffActionGuard, withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
+import {
+  staffActionGuard,
+  withStaff,
+  ActionError,
+  type ActionResult as BaseActionResult,
+} from '@/server/actions/staff-action';
 
 export interface ActionResult extends BaseActionResult {
   id?: string;
 }
 
 const FIELD_TYPES: FormFieldType[] = [
-  'TEXT', 'TEXTAREA', 'NUMBER', 'MONEY', 'DATE', 'EMAIL', 'PHONE',
-  'SELECT', 'MULTISELECT', 'CHECKBOX', 'FILE', 'INFO_TEXT',
+  'TEXT',
+  'TEXTAREA',
+  'NUMBER',
+  'MONEY',
+  'DATE',
+  'EMAIL',
+  'PHONE',
+  'SELECT',
+  'MULTISELECT',
+  'CHECKBOX',
+  'FILE',
+  'INFO_TEXT',
 ];
 
 // ----------------------------------------------------------------------------
@@ -71,13 +86,19 @@ export async function createFormTemplateAction(
   );
 }
 
-export async function setFormActiveAction(input: { id: string; active: boolean }): Promise<ActionResult> {
+export async function setFormActiveAction(input: {
+  id: string;
+  active: boolean;
+}): Promise<ActionResult> {
   const parsed = z.object({ id: z.string().uuid(), active: z.boolean() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   return withStaff(
     async (tx) => {
-      await tx.formTemplate.update({ where: { id: parsed.data.id }, data: { active: parsed.data.active } });
+      await tx.formTemplate.update({
+        where: { id: parsed.data.id },
+        data: { active: parsed.data.active },
+      });
     },
     { requireAdmin: true, revalidate: '/staff/forms' },
   );
@@ -95,7 +116,9 @@ export async function deleteFormTemplateAction(input: { id: string }): Promise<A
       });
       if (!t) throw new ActionError('Vorlage nicht gefunden.');
       if (t._count.submissions > 0) {
-        throw new ActionError(`${t._count.submissions} Anfrage${t._count.submissions === 1 ? '' : 'n'} vorhanden.`);
+        throw new ActionError(
+          `${t._count.submissions} Anfrage${t._count.submissions === 1 ? '' : 'n'} vorhanden.`,
+        );
       }
       await tx.formTemplate.delete({ where: { id: parsed.data.id } });
       await evidenceService.record(tx, {
@@ -117,7 +140,11 @@ export async function deleteFormTemplateAction(input: { id: string }): Promise<A
 // ----------------------------------------------------------------------------
 
 const FieldSchema = z.object({
-  key: z.string().min(1).max(60).regex(/^[a-z0-9_]+$/),
+  key: z
+    .string()
+    .min(1)
+    .max(60)
+    .regex(/^[a-z0-9_]+$/),
   label: z.string().min(1).max(200),
   type: z.enum(FIELD_TYPES as [FormFieldType, ...FormFieldType[]]),
   required: z.boolean(),
@@ -125,7 +152,9 @@ const FieldSchema = z.object({
   defaultValue: z.string().max(500).nullable(),
   minValue: z.string().max(50).nullable(),
   maxValue: z.string().max(50).nullable(),
-  options: z.array(z.object({ value: z.string().min(1).max(100), label: z.string().min(1).max(200) })).nullable(),
+  options: z
+    .array(z.object({ value: z.string().min(1).max(100), label: z.string().min(1).max(200) }))
+    .nullable(),
 });
 
 const SaveTemplateSchema = z.object({
@@ -135,7 +164,9 @@ const SaveTemplateSchema = z.object({
   fields: z.array(FieldSchema).min(1),
 });
 
-export async function saveFormTemplateAction(input: z.infer<typeof SaveTemplateSchema>): Promise<ActionResult> {
+export async function saveFormTemplateAction(
+  input: z.infer<typeof SaveTemplateSchema>,
+): Promise<ActionResult> {
   const parsed = SaveTemplateSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues.map((i) => i.message).join('; ') };
@@ -192,7 +223,9 @@ const CreateSubmissionSchema = z.object({
   clientId: z.string().uuid(),
 });
 
-export async function createSubmissionAction(input: z.infer<typeof CreateSubmissionSchema>): Promise<ActionResult> {
+export async function createSubmissionAction(
+  input: z.infer<typeof CreateSubmissionSchema>,
+): Promise<ActionResult> {
   const g = await staffActionGuard();
   if (!g.ok) return g;
   const { tenantId, staffId, ctx } = g;
@@ -238,25 +271,29 @@ export async function createSubmissionAction(input: z.infer<typeof CreateSubmiss
   }
 
   // Befund 3: fire-and-forget mit catch+Log statt `void` (unhandled rejection).
-  fireAndForget('notifyClientContacts (form-sent)', notifyClientContacts({
-    tenantId,
-    clientId: parsed.data.clientId,
-    slug: 'request-opened',
-    vars: {
-      request: { id, title: 'Neues Formular zum Ausfüllen', description: '' },
-      portalUrl: `${portalBaseUrl}/portal/forms/${id}`,
-    },
-    n8nEvent: 'request.opened',
-    n8nPayload: {
+  fireAndForget(
+    'notifyClientContacts (form-sent)',
+    notifyClientContacts({
       tenantId,
-      formSubmissionId: id,
       clientId: parsed.data.clientId,
-    },
-    fallback: {
-      subject: 'Neues Formular von Ihrer Kanzlei',
-      bodyMd: 'Sehr geehrte/r {{contact.fullName}},\n\nin Ihrem Mandantenportal liegt ein neues Formular zum Ausfüllen bereit.\n\nBitte öffnen Sie das Portal:\n{{portalUrl}}',
-    },
-  }));
+      slug: 'request-opened',
+      vars: {
+        request: { id, title: 'Neues Formular zum Ausfüllen', description: '' },
+        portalUrl: `${portalBaseUrl}/portal/forms/${id}`,
+      },
+      n8nEvent: 'request.opened',
+      n8nPayload: {
+        tenantId,
+        formSubmissionId: id,
+        clientId: parsed.data.clientId,
+      },
+      fallback: {
+        subject: 'Neues Formular von Ihrer Kanzlei',
+        bodyMd:
+          'Sehr geehrte/r {{contact.fullName}},\n\nin Ihrem Mandantenportal liegt ein neues Formular zum Ausfüllen bereit.\n\nBitte öffnen Sie das Portal:\n{{portalUrl}}',
+      },
+    }),
+  );
 
   revalidatePath(`/staff/clients/${parsed.data.clientId}`);
   revalidatePath('/staff/forms');

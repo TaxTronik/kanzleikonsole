@@ -12,7 +12,7 @@
 //      Vernichtungsworkflow. Jede Abweichung ist ein Retention-Fehler.
 //   3. ClamAV akzeptiert Uploads in App-Größe: ein Scan über MAX_UPLOAD_BYTES
 //      muss durchlaufen (clamd `StreamMaxLength` >= Cap, N-6) — sonst scheitern
-//      Uploads zwischen 25 und 100 MB still als SCAN_ERROR.
+//      Browser-Uploads am konfigurierten 25-MiB-Limit als SCAN_ERROR.
 //   4. ClamAV hat Signaturen geladen: der EICAR-Testvirus MUSS als INFECTED
 //      erkannt werden — ohne Signaturen liefe jeder Scan „clean" und echte
 //      Malware landete im GwG-/GoBD-Store.
@@ -56,7 +56,7 @@ export interface ReadinessReport {
 
 export interface ReadinessOptions {
   /**
-   * Payload-Größe für den ClamAV-Größen-Scan. Default MAX_UPLOAD_BYTES (100 MB)
+   * Payload-Größe für den ClamAV-Größen-Scan. Default MAX_UPLOAD_BYTES (25 MiB)
    * — das beweist, dass clamd Uploads in voller App-Größe akzeptiert. In Tests
    * kleiner setzbar (schneller), sollte in CI/Prod aber beim Default bleiben.
    */

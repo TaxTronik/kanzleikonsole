@@ -39,10 +39,7 @@ export default async function WorkflowsPage() {
 
   return (
     <div className="p-8 max-w-5xl">
-      <Link
-        href="/staff/admin"
-        className="back-link mb-3"
-      >
+      <Link href="/staff/admin" className="back-link mb-3">
         <ArrowLeft className="h-3 w-3" />
         Administration
       </Link>
@@ -52,9 +49,12 @@ export default async function WorkflowsPage() {
           Workflow-Vorlagen
         </h1>
         <p className="text-muted text-sm">
-          Wiederkehrende Prozesse als Vorlage definieren — pro Mandant
-          instanziierbar, Schritte werden Mitarbeitern zugewiesen und abgehakt.
-          Laufende Vorgänge unter <Link href="/staff/workflows" className="text-brand-700 hover:underline">Workflows</Link>.
+          Wiederkehrende Prozesse als Vorlage definieren — pro Mandant instanziierbar, Schritte
+          werden Mitarbeitern zugewiesen und abgehakt. Laufende Vorgänge unter{' '}
+          <Link href="/staff/workflows" className="text-brand-700 hover:underline">
+            Workflows
+          </Link>
+          .
         </p>
       </div>
 
@@ -80,11 +80,21 @@ export default async function WorkflowsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-default">
-                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Vorlage</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Schritte</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Bereich</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Instanzen</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Status</th>
+                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+                  Vorlage
+                </th>
+                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+                  Schritte
+                </th>
+                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+                  Bereich
+                </th>
+                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+                  Instanzen
+                </th>
+                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+                  Status
+                </th>
                 <th className="text-right px-6 py-3"></th>
               </tr>
             </thead>
@@ -92,7 +102,10 @@ export default async function WorkflowsPage() {
               {templates.map((t) => (
                 <tr key={t.id} className={t.active ? 'hover:bg-gray-50' : 'opacity-60'}>
                   <td className="px-6 py-3">
-                    <Link href={`/staff/workflows/templates/${t.id}`} className="font-medium text-primary hover:underline">
+                    <Link
+                      href={`/staff/workflows/templates/${t.id}`}
+                      className="font-medium text-primary hover:underline"
+                    >
                       {t.name}
                     </Link>
                     {t.description && (
@@ -100,10 +113,16 @@ export default async function WorkflowsPage() {
                     )}
                   </td>
                   <td className="px-6 py-3 text-secondary">{t._count.steps}</td>
-                  <td className="px-6 py-3 text-xs text-secondary">{t.defaultSkill?.label ?? '—'}</td>
+                  <td className="px-6 py-3 text-xs text-secondary">
+                    {t.defaultSkill?.label ?? '—'}
+                  </td>
                   <td className="px-6 py-3 text-secondary">{t._count.instances}</td>
                   <td className="px-6 py-3">
-                    {t.active ? <span className="badge-green">Aktiv</span> : <span className="badge-gray">Deaktiviert</span>}
+                    {t.active ? (
+                      <span className="badge-green">Aktiv</span>
+                    ) : (
+                      <span className="badge-gray">Deaktiviert</span>
+                    )}
                   </td>
                   <td className="px-6 py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
@@ -114,7 +133,10 @@ export default async function WorkflowsPage() {
                           clients={clients}
                         />
                       )}
-                      <Link href={`/staff/workflows/templates/${t.id}`} className="text-xs text-brand-700 hover:underline">
+                      <Link
+                        href={`/staff/workflows/templates/${t.id}`}
+                        className="text-xs text-brand-700 hover:underline"
+                      >
                         Bearbeiten
                       </Link>
                       <ToggleActiveForm id={t.id} active={t.active} />

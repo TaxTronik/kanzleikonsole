@@ -42,7 +42,9 @@ export default async function WorkflowStatsPage() {
 
   const rows = data.map((tpl) => {
     const total = tpl.instances.length;
-    const active = tpl.instances.filter((i) => i.status === 'ACTIVE' || i.status === 'PAUSED').length;
+    const active = tpl.instances.filter(
+      (i) => i.status === 'ACTIVE' || i.status === 'PAUSED',
+    ).length;
     const completed = tpl.instances.filter((i) => i.status === 'COMPLETED');
     const cancelled = tpl.instances.filter((i) => i.status === 'CANCELLED').length;
 
@@ -70,7 +72,11 @@ export default async function WorkflowStatsPage() {
       }
     }
     const positions = Array.from(byPosition.entries())
-      .map(([pos, x]) => ({ pos, title: x.title, avgDays: x.totalMs / x.count / (24 * 60 * 60 * 1000) }))
+      .map(([pos, x]) => ({
+        pos,
+        title: x.title,
+        avgDays: x.totalMs / x.count / (24 * 60 * 60 * 1000),
+      }))
       .sort((a, b) => b.avgDays - a.avgDays);
     const bottleneck = positions[0];
 
@@ -89,10 +95,7 @@ export default async function WorkflowStatsPage() {
 
   return (
     <div className="p-8 max-w-6xl">
-      <Link
-        href="/staff/workflows"
-        className="back-link"
-      >
+      <Link href="/staff/workflows" className="back-link">
         <ArrowLeft className="h-4 w-4" /> Zurück zu Workflows
       </Link>
 
@@ -102,8 +105,8 @@ export default async function WorkflowStatsPage() {
           Workflow-Auswertungen
         </h1>
         <p className="text-muted text-sm">
-          Durchschnittliche Durchlaufzeit pro Vorlage und der Schritt mit der
-          längsten durchschnittlichen Bearbeitungszeit (Engpass).
+          Durchschnittliche Durchlaufzeit pro Vorlage und der Schritt mit der längsten
+          durchschnittlichen Bearbeitungszeit (Engpass).
         </p>
       </div>
 
@@ -116,13 +119,20 @@ export default async function WorkflowStatsPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-default">
               <tr>
-                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Vorlage</th>
-                <th className="text-right px-6 py-3 text-xs font-medium text-muted uppercase">Laufend</th>
-                <th className="text-right px-6 py-3 text-xs font-medium text-muted uppercase">Abgeschlossen</th>
-                <th className="text-right px-6 py-3 text-xs font-medium text-muted uppercase">Abgebrochen</th>
+                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+                  Vorlage
+                </th>
                 <th className="text-right px-6 py-3 text-xs font-medium text-muted uppercase">
-                  <Clock className="h-3 w-3 inline mr-1" />
-                  Ø Durchlaufzeit
+                  Laufend
+                </th>
+                <th className="text-right px-6 py-3 text-xs font-medium text-muted uppercase">
+                  Abgeschlossen
+                </th>
+                <th className="text-right px-6 py-3 text-xs font-medium text-muted uppercase">
+                  Abgebrochen
+                </th>
+                <th className="text-right px-6 py-3 text-xs font-medium text-muted uppercase">
+                  <Clock className="h-3 w-3 inline mr-1" />Ø Durchlaufzeit
                 </th>
                 <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
                   <AlertTriangle className="h-3 w-3 inline mr-1" />
@@ -168,8 +178,8 @@ export default async function WorkflowStatsPage() {
       )}
 
       <p className="text-xs text-muted mt-4">
-        Durchlaufzeit zählt nur abgeschlossene Instanzen (Start → COMPLETED).
-        Engpass-Analyse nur erledigte Items pro Position über alle Instanzen einer Vorlage.
+        Durchlaufzeit zählt nur abgeschlossene Instanzen (Start → COMPLETED). Engpass-Analyse nur
+        erledigte Items pro Position über alle Instanzen einer Vorlage.
       </p>
     </div>
   );

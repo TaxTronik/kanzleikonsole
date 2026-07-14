@@ -2,7 +2,12 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { guardSubsumtionPage } from '../_guard';
-import { loadAnalysis, loadResearchResults, loadResearchRequests, scoreMarkingSuggestions } from '@/server/risk';
+import {
+  loadAnalysis,
+  loadResearchResults,
+  loadResearchRequests,
+  scoreMarkingSuggestions,
+} from '@/server/risk';
 import { loadClientWorkflows } from '@/server/workflows/queries';
 import { SubsumtionWorkspace } from '../subsumtion-workspace';
 import { EditableAnalysisTitle } from '../editable-title';
@@ -11,7 +16,13 @@ import { StartWorkflowForm } from '../../workflows/start-form';
 import { withTenantContext } from '@taxtronik/db';
 import { loadAnalysisDocuments } from '@/server/documents/managed-docs';
 import { DocumentExplorer } from '@/components/document-explorer';
-import type { AnalysisDTO, MarkingDTO, NormRefDTO, ResearchResultDTO, ResearchRequestDTO } from '../_ui';
+import type {
+  AnalysisDTO,
+  MarkingDTO,
+  NormRefDTO,
+  ResearchResultDTO,
+  ResearchRequestDTO,
+} from '../_ui';
 
 export default async function AnalysisPage({
   params,
@@ -72,9 +83,15 @@ export default async function AnalysisPage({
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <p className="text-sm text-muted max-w-xl">
-          Workflows zu diesem Sachverhalt — bauen + ausführen wie im Workflow-Builder, aber nur für diese Analyse.
+          Workflows zu diesem Sachverhalt — bauen + ausführen wie im Workflow-Builder, aber nur für
+          diese Analyse.
         </p>
-        <StartWorkflowForm clientId={id} templates={wf.templates} staffOptions={wf.staffList} analysisId={analysisId} />
+        <StartWorkflowForm
+          clientId={id}
+          templates={wf.templates}
+          staffOptions={wf.staffList}
+          analysisId={analysisId}
+        />
       </div>
       <WorkflowSection
         clientId={id}
@@ -141,10 +158,17 @@ export default async function AnalysisPage({
   return (
     <div className="p-8 max-w-6xl">
       <div className="flex items-center gap-3 mb-6">
-        <Link href={`/staff/clients/${id}/subsumtion`} className="text-disabled hover:text-secondary shrink-0">
+        <Link
+          href={`/staff/clients/${id}/subsumtion`}
+          className="text-disabled hover:text-secondary shrink-0"
+        >
           <ArrowLeft className="h-5 w-5" />
         </Link>
-        <EditableAnalysisTitle clientId={id} analysisId={analysisId} initialTitle={analysis.title} />
+        <EditableAnalysisTitle
+          clientId={id}
+          analysisId={analysisId}
+          initialTitle={analysis.title}
+        />
       </div>
       <SubsumtionWorkspace
         clientId={id}

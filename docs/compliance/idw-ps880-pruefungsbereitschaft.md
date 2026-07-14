@@ -91,11 +91,11 @@ Status: ✅ vorhanden und prüfungstauglich · 🟡 vorhanden, aber formalisiere
 
 ### 3.4 Prüfungsorganisatorisches (vgl. Tz. 44 f., 56, 88 f.)
 
-| Anforderung                                  | Status | Befund                                                                                                                                                                                                                                                   |
-| -------------------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Definiertes Testsystem mit Stammdatenbestand | 🟡     | setup.sh + Demo-Seed existieren; als „Prüfumgebung" beschreiben (Hardware/OS/DB-Angaben für den Bericht, vgl. Tz. 89) und Seed ggf. um prüfungsrelevante Fälle erweitern (vgl. Tz. 56).                                                                  |
-| Änderungsdokumentation                       | ✅     | `CHANGELOG.md` führt bis zum ersten echten Release den `[Unreleased]`-Arbeitsstand und danach versionierte Abschnitte; scope-relevante Änderungen sind mit `[Scope]` gekennzeichnet (Pflegeregel: Eintrag entsteht mit der Änderung; vgl. Tz. 110, 113). |
-| Vollständigkeitserklärung, Auftragsinhalte   | —      | Sache der Beauftragung (vgl. Tz. 44); kein Repo-Artefakt.                                                                                                                                                                                                |
+| Anforderung                                  | Status | Befund                                                                                                                                                                                                     |
+| -------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Definiertes Testsystem mit Stammdatenbestand | 🟡     | setup.sh + Demo-Seed existieren; als „Prüfumgebung" beschreiben (Hardware/OS/DB-Angaben für den Bericht, vgl. Tz. 89) und Seed ggf. um prüfungsrelevante Fälle erweitern (vgl. Tz. 56).                    |
+| Änderungsdokumentation                       | ✅     | `CHANGELOG.md` führt `[Unreleased]` und versionierte Release-Abschnitte; scope-relevante Änderungen sind mit `[Scope]` gekennzeichnet (Pflegeregel: Eintrag entsteht mit der Änderung; vgl. Tz. 110, 113). |
+| Vollständigkeitserklärung, Auftragsinhalte   | —      | Sache der Beauftragung (vgl. Tz. 44); kein Repo-Artefakt.                                                                                                                                                  |
 
 ## 4. Maßnahmenstand und verbleibende Arbeiten
 

@@ -80,11 +80,12 @@ export default async function KnowledgePage({
             <ul className="divide-y divide-border-subtle">
               {searchHits.map((h) => (
                 <li key={h.id} className="px-6 py-4">
-                  <Link href={`/staff/knowledge/${h.id}`} className="block hover:bg-gray-50 -mx-6 px-6">
+                  <Link
+                    href={`/staff/knowledge/${h.id}`}
+                    className="block hover:bg-gray-50 -mx-6 px-6"
+                  >
                     <p className="font-medium text-primary">{h.title}</p>
-                    {h.categoryName && (
-                      <p className="text-xs text-muted mb-2">{h.categoryName}</p>
-                    )}
+                    {h.categoryName && <p className="text-xs text-muted mb-2">{h.categoryName}</p>}
                     <p
                       className="text-sm text-secondary [&_mark]:bg-yellow-200 [&_mark]:px-0.5"
                       dangerouslySetInnerHTML={{ __html: h.snippet }}

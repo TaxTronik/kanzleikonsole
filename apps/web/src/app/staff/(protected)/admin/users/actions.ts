@@ -95,7 +95,10 @@ export async function createUserAction(
 // Aktiv/Inaktiv
 // ----------------------------------------------------------------------------
 
-export async function setActiveAction(input: { userId: string; active: boolean }): Promise<ActionResult> {
+export async function setActiveAction(input: {
+  userId: string;
+  active: boolean;
+}): Promise<ActionResult> {
   const g = await staffActionGuard({ requireAdmin: true });
   if (!g.ok) return g;
   const { tenantId, staffId, ctx } = g;
@@ -143,7 +146,10 @@ export async function setActiveAction(input: { userId: string; active: boolean }
 // Rollen setzen
 // ----------------------------------------------------------------------------
 
-export async function setRolesAction(input: { userId: string; roles: string[] }): Promise<ActionResult> {
+export async function setRolesAction(input: {
+  userId: string;
+  roles: string[];
+}): Promise<ActionResult> {
   const g = await staffActionGuard({ requireAdmin: true });
   if (!g.ok) return g;
   const { tenantId, staffId, ctx } = g;
@@ -153,9 +159,7 @@ export async function setRolesAction(input: { userId: string; roles: string[] })
       userId: z.string().uuid(),
       // Befund 14: min(1) — ein leeres Array würde sonst ALLE Rollen entfernen
       // und den User effektiv funktionslos machen.
-      roles: z
-        .array(z.enum(ROLE_VALUES))
-        .min(1, 'Mindestens eine Rolle muss zugewiesen bleiben.'),
+      roles: z.array(z.enum(ROLE_VALUES)).min(1, 'Mindestens eine Rolle muss zugewiesen bleiben.'),
     })
     .safeParse(input);
   if (!parsed.success) {

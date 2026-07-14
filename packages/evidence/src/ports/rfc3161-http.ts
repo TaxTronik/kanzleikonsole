@@ -67,11 +67,7 @@ function encodeTimeStampReq(sha256Hash: Uint8Array): Uint8Array {
   // AlgorithmIdentifier ::= SEQ { OID, NULL }
   const algId = derSequence(concat(SHA256_OID_DER, ASN1_NULL));
   // hashedMessage as OCTET STRING
-  const hashOctet = concat(
-    new Uint8Array([0x04]),
-    derLength(sha256Hash.length),
-    sha256Hash,
-  );
+  const hashOctet = concat(new Uint8Array([0x04]), derLength(sha256Hash.length), sha256Hash);
   // MessageImprint ::= SEQ { algId, hashedMessage }
   const messageImprint = derSequence(concat(algId, hashOctet));
   // version INTEGER (1)

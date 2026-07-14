@@ -27,12 +27,12 @@ anpassen.
 
 ## Workflows
 
-| Datei | Trigger | Zweck |
-|---|---|---|
-| `01-request-reminder.json` | Cron Mo–Fr 09:00 | Erinnerungs-Mail an Mandanten für überfällige Anforderungen |
-| `02-gwg-expiry-check.json` | Cron täglich 08:00 | Warn-Mail an GwG-Beauftragten für GwG-Prüfungen, die in <30 Tagen ablaufen |
-| `03-request-opened.json` | Webhook `request.opened` | Sendet Benachrichtigungs-Mail an Mandanten, wenn die App eine neue Anforderung anlegt |
-| `04-risk-research.json` | Webhook `risk.research_requested` | Empfängt einen (anonymisierten) Rechercheauftrag aus dem Subsumtions-Workspace, **Platzhalter** für die eigentliche Recherche (LLM/Websuche/KB), und postet das Ergebnis zurück an `/api/n8n/research-result`. Die `researchRequestId` MUSS unverändert zurück (Korrelations-Token für die automatische Zuordnung zur Markierung). |
+| Datei                      | Trigger                           | Zweck                                                                                                                                                                                                                                                                                                                              |
+| -------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `01-request-reminder.json` | Cron Mo–Fr 09:00                  | Erinnerungs-Mail an Mandanten für überfällige Anforderungen                                                                                                                                                                                                                                                                        |
+| `02-gwg-expiry-check.json` | Cron täglich 08:00                | Warn-Mail an GwG-Beauftragten für GwG-Prüfungen, die in <30 Tagen ablaufen                                                                                                                                                                                                                                                         |
+| `03-request-opened.json`   | Webhook `request.opened`          | Sendet Benachrichtigungs-Mail an Mandanten, wenn die App eine neue Anforderung anlegt                                                                                                                                                                                                                                              |
+| `04-risk-research.json`    | Webhook `risk.research_requested` | Empfängt einen (anonymisierten) Rechercheauftrag aus dem Subsumtions-Workspace, **Platzhalter** für die eigentliche Recherche (LLM/Websuche/KB), und postet das Ergebnis zurück an `/api/n8n/research-result`. Die `researchRequestId` MUSS unverändert zurück (Korrelations-Token für die automatische Zuordnung zur Markierung). |
 
 ## API-Endpunkte (von der App bereitgestellt)
 
@@ -63,6 +63,7 @@ Portal-Basis-URL hart codieren.
 ## Versionierung
 
 Diese Datei wird im Repo gepflegt. Beim Ändern eines Workflows in n8n:
+
 1. Workflow exportieren (3-Punkt-Menü → Download)
 2. Datei hier ersetzen
 3. Commit + PR

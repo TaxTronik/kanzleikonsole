@@ -62,14 +62,10 @@ describe('globals.css @apply guard', () => {
       // `text-mutedish` oder als Teil von `dark:text-muted`.
       // (Tailwind erlaubt Modifier wie `hover:`/`dark:` davor — das wäre auch
       // ein @apply-Problem, also auch fangen.)
-      const pattern = new RegExp(
-        String.raw`(^|\s|:)${forbidden.replace(/-/g, '\\-')}(?=\s|$)`,
-      );
+      const pattern = new RegExp(String.raw`(^|\s|:)${forbidden.replace(/-/g, '\\-')}(?=\s|$)`);
       const hits = applyStatements.filter((s) => pattern.test(s.body));
       if (hits.length > 0) {
-        const details = hits
-          .map((h) => `  Line ${h.line}: @apply ${h.body.trim()};`)
-          .join('\n');
+        const details = hits.map((h) => `  Line ${h.line}: @apply ${h.body.trim()};`).join('\n');
         throw new Error(
           `'\`${forbidden}\`' wird via @apply benutzt — Tailwind v4 löst Custom-Tokens nicht über @apply auf.\n` +
             `Setze die CSS-Property stattdessen direkt (z. B. \`color: rgb(var(--text-muted))\`).\n\n` +

@@ -21,7 +21,9 @@ export default async function PortalDashboardPage() {
             where: { clientId, status: { in: ['OPEN', 'IN_PROGRESS'] } },
           }),
           // Portal-Sicht: nur freigegebene & nicht soft-gelöschte Dokumente.
-          tx.document.count({ where: { clientId, deletedAt: null, sharedWithClientAt: { not: null } } }),
+          tx.document.count({
+            where: { clientId, deletedAt: null, sharedWithClientAt: { not: null } },
+          }),
           tx.request.findMany({
             where: { clientId },
             orderBy: { createdAt: 'desc' },
@@ -58,18 +60,14 @@ export default async function PortalDashboardPage() {
       <h1 className="text-2xl font-bold text-primary mb-1">
         Hallo {session.user.fullName?.split(' ')[0] ?? ''}
       </h1>
-      <p className="text-muted text-sm mb-8">
-        Übersicht über offene Anforderungen Ihrer Kanzlei.
-      </p>
+      <p className="text-muted text-sm mb-8">Übersicht über offene Anforderungen Ihrer Kanzlei.</p>
 
       {/* Das brauchen wir von Ihnen — alle offenen To-Dos gebündelt */}
       <div className="card overflow-hidden mb-8">
         <div className="px-6 py-4 border-b border-default flex items-center gap-2">
           <ClipboardList className="h-4 w-4 text-brand-600" />
           <h2 className="text-sm font-medium text-primary">Das brauchen wir von Ihnen</h2>
-          {todoCount > 0 && (
-            <span className="badge-yellow ml-auto">{todoCount} offen</span>
-          )}
+          {todoCount > 0 && <span className="badge-yellow ml-auto">{todoCount} offen</span>}
         </div>
         {todoCount === 0 ? (
           <div className="px-6 py-10 text-center">
@@ -80,7 +78,10 @@ export default async function PortalDashboardPage() {
           <ul className="divide-y divide-border-subtle">
             {todoRequests.map((r) => (
               <li key={`req-${r.id}`} className="px-6 py-3 flex items-center justify-between gap-3">
-                <Link href={`/portal/requests/${r.id}`} className="flex items-center gap-3 min-w-0 hover:underline">
+                <Link
+                  href={`/portal/requests/${r.id}`}
+                  className="flex items-center gap-3 min-w-0 hover:underline"
+                >
                   <Inbox className="h-4 w-4 text-yellow-600 shrink-0" />
                   <span className="text-sm text-primary truncate">{r.title}</span>
                 </Link>
@@ -90,8 +91,14 @@ export default async function PortalDashboardPage() {
               </li>
             ))}
             {todoForms.map((f) => (
-              <li key={`form-${f.id}`} className="px-6 py-3 flex items-center justify-between gap-3">
-                <Link href={`/portal/forms/${f.id}`} className="flex items-center gap-3 min-w-0 hover:underline">
+              <li
+                key={`form-${f.id}`}
+                className="px-6 py-3 flex items-center justify-between gap-3"
+              >
+                <Link
+                  href={`/portal/forms/${f.id}`}
+                  className="flex items-center gap-3 min-w-0 hover:underline"
+                >
                   <ClipboardList className="h-4 w-4 text-brand-600 shrink-0" />
                   <span className="text-sm text-primary truncate">{f.template.name}</span>
                 </Link>
@@ -113,9 +120,7 @@ export default async function PortalDashboardPage() {
         <KpiCard
           icon={Clock}
           label="Letzter Login"
-          value={
-            session.user.email ? '—' : '—'
-          }
+          value={session.user.email ? '—' : '—'}
           accent="gray"
           large={false}
         />
@@ -126,9 +131,7 @@ export default async function PortalDashboardPage() {
           <div className="flex items-center gap-2">
             <Receipt className="h-4 w-4 text-brand-600" />
             <h2 className="text-sm font-medium text-primary">Offene Rechnungen</h2>
-            {openInvoices.length > 0 && (
-              <span className="badge-yellow">{openInvoices.length}</span>
-            )}
+            {openInvoices.length > 0 && <span className="badge-yellow">{openInvoices.length}</span>}
           </div>
           <Link href="/portal/invoices" className="text-sm text-brand-700 hover:underline">
             Alle anzeigen
@@ -143,7 +146,10 @@ export default async function PortalDashboardPage() {
           <ul className="divide-y divide-border-subtle">
             {openInvoices.map((inv) => (
               <li key={inv.id} className="px-6 py-3 flex items-center justify-between gap-3">
-                <Link href="/portal/invoices" className="flex items-center gap-3 min-w-0 hover:underline">
+                <Link
+                  href="/portal/invoices"
+                  className="flex items-center gap-3 min-w-0 hover:underline"
+                >
                   <Receipt className="h-4 w-4 text-muted shrink-0" />
                   <span className="text-sm text-primary truncate">Rechnung {inv.number}</span>
                 </Link>
@@ -166,9 +172,7 @@ export default async function PortalDashboardPage() {
           </Link>
         </div>
         {recentRequests.length === 0 ? (
-          <div className="px-6 py-10 text-center text-sm text-disabled">
-            Keine Anforderungen.
-          </div>
+          <div className="px-6 py-10 text-center text-sm text-disabled">Keine Anforderungen.</div>
         ) : (
           <ul className="divide-y divide-border-subtle">
             {recentRequests.map((r) => (
@@ -205,10 +209,14 @@ function KpiCard({
   return (
     <div className="card p-6">
       <div className="flex items-center gap-3 mb-2">
-        <Icon className={accent === 'yellow' ? 'h-4 w-4 text-yellow-600' : 'h-4 w-4 text-disabled'} />
+        <Icon
+          className={accent === 'yellow' ? 'h-4 w-4 text-yellow-600' : 'h-4 w-4 text-disabled'}
+        />
         <span className="text-xs font-medium text-muted uppercase tracking-wide">{label}</span>
       </div>
-      <p className={large ? 'text-3xl font-bold text-primary' : 'text-lg font-semibold text-primary'}>
+      <p
+        className={large ? 'text-3xl font-bold text-primary' : 'text-lg font-semibold text-primary'}
+      >
         {value}
       </p>
     </div>

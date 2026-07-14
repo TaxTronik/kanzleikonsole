@@ -6,11 +6,7 @@
 // =============================================================================
 
 import { env } from '@taxtronik/config';
-import {
-  EvidenceService,
-  LocalTimestampAdapter,
-  createRfc3161Adapter,
-} from '@taxtronik/evidence';
+import { EvidenceService, LocalTimestampAdapter, createRfc3161Adapter } from '@taxtronik/evidence';
 
 // C2: Stub-Adapter wirft unbedingt — der echte HTTP-Adapter ist seit Iter. 18
 // produktionsreif (siehe evidence-seal.ts). Bei konfigurierter TSA-URL den

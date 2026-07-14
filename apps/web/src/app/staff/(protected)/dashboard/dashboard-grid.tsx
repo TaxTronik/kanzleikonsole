@@ -2,12 +2,7 @@
 
 import { useState, useRef, useEffect, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  GridLayout,
-  useContainerWidth,
-  type Layout,
-  type LayoutItem,
-} from 'react-grid-layout';
+import { GridLayout, useContainerWidth, type Layout, type LayoutItem } from 'react-grid-layout';
 import { Plus, Settings2, RotateCcw, Check, X } from 'lucide-react';
 import {
   WIDGETS,
@@ -49,7 +44,10 @@ function findFreeSlot(
       let fits = true;
       for (let ix = x; ix < x + w; ix++) {
         for (let iy = y; iy < y + h; iy++) {
-          if (occupied.has(`${ix},${iy}`)) { fits = false; break; }
+          if (occupied.has(`${ix},${iy}`)) {
+            fits = false;
+            break;
+          }
         }
         if (!fits) break;
       }
@@ -183,8 +181,12 @@ export function DashboardGrid({
     const def = DEFAULT_SIZE[w.type];
     return {
       i: w.id,
-      x: w.x, y: w.y, w: w.w, h: w.h,
-      minW: def?.minW ?? 2, minH: def?.minH ?? 2,
+      x: w.x,
+      y: w.y,
+      w: w.w,
+      h: w.h,
+      minW: def?.minW ?? 2,
+      minH: def?.minH ?? 2,
     };
   });
 
@@ -219,7 +221,8 @@ export function DashboardGrid({
       <div
         ref={containerRef}
         className={
-          (editMode ? 'dashboard-edit relative' : 'relative') + (settled ? '' : ' dashboard-grid-initial')
+          (editMode ? 'dashboard-edit relative' : 'relative') +
+          (settled ? '' : ' dashboard-grid-initial')
         }
         style={settled ? undefined : { visibility: 'hidden' }}
       >
@@ -229,15 +232,16 @@ export function DashboardGrid({
             layout={rglLayout}
             gridConfig={{ cols: 12, rowHeight: 30, margin: [16, 16], containerPadding: [0, 0] }}
             dragConfig={{ enabled: editMode, cancel: '.widget-remove' }}
-            resizeConfig={{ enabled: editMode, handles: ['se', 'sw', 'ne', 'nw', 'e', 'w', 's', 'n'] }}
+            resizeConfig={{
+              enabled: editMode,
+              handles: ['se', 'sw', 'ne', 'nw', 'e', 'w', 's', 'n'],
+            }}
             onLayoutChange={onLayoutChange}
           >
             {visible.map((w) => (
               <div
                 key={w.id}
-                className={
-                  'relative ' + (editMode ? 'ring-2 ring-brand-300 rounded-xl' : '')
-                }
+                className={'relative ' + (editMode ? 'ring-2 ring-brand-300 rounded-xl' : '')}
               >
                 {editMode && (
                   <button
@@ -282,9 +286,7 @@ function AddWidgetBar({
       <p className="text-xs font-medium text-secondary mb-2">
         Widget hinzufügen
         {available.length === 0 && (
-          <span className="ml-2 font-normal text-muted">
-            — alle bereits auf dem Dashboard
-          </span>
+          <span className="ml-2 font-normal text-muted">— alle bereits auf dem Dashboard</span>
         )}
       </p>
       {available.length > 0 && (

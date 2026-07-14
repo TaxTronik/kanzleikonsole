@@ -22,16 +22,16 @@ function isPrivateIPv4(ip: string): boolean {
   const parts = ip.split('.').map(Number);
   if (parts.length !== 4 || parts.some((n) => Number.isNaN(n) || n < 0 || n > 255)) return true;
   const [a, b] = parts as [number, number, number, number];
-  if (a === 10) return true;                                  // 10.0.0.0/8
-  if (a === 127) return true;                                 // 127.0.0.0/8 (loopback)
-  if (a === 169 && b === 254) return true;                    // 169.254.0.0/16 (link-local incl. AWS-IMDS)
-  if (a === 172 && b >= 16 && b <= 31) return true;           // 172.16.0.0/12
-  if (a === 192 && b === 168) return true;                    // 192.168.0.0/16
-  if (a === 0) return true;                                   // 0.0.0.0/8
-  if (a >= 224) return true;                                  // 224.0.0.0/4 (multicast) + 240.0.0.0/4 (reserved)
+  if (a === 10) return true; // 10.0.0.0/8
+  if (a === 127) return true; // 127.0.0.0/8 (loopback)
+  if (a === 169 && b === 254) return true; // 169.254.0.0/16 (link-local incl. AWS-IMDS)
+  if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
+  if (a === 192 && b === 168) return true; // 192.168.0.0/16
+  if (a === 0) return true; // 0.0.0.0/8
+  if (a >= 224) return true; // 224.0.0.0/4 (multicast) + 240.0.0.0/4 (reserved)
   // M-5: CGNAT (RFC 6598) — wird von ISPs für Multi-Customer-NAT genutzt;
   // für interne Origins „nicht öffentlich".
-  if (a === 100 && b >= 64 && b <= 127) return true;          // 100.64.0.0/10
+  if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10
   return false;
 }
 
@@ -53,9 +53,11 @@ function isPrivateIPv6(ip: string): boolean {
   const v = ip.toLowerCase();
   if (v === '::1' || v === '::') return true;
   if (v.startsWith('fc') || v.startsWith('fd')) return true;
-  if (v.startsWith('fe8') || v.startsWith('fe9') || v.startsWith('fea') || v.startsWith('feb')) return true;
+  if (v.startsWith('fe8') || v.startsWith('fe9') || v.startsWith('fea') || v.startsWith('feb'))
+    return true;
   // M-5: deprecated site-local fec0::/10, NAT64 64:ff9b::/96, 6to4 2002::/16.
-  if (v.startsWith('fec') || v.startsWith('fed') || v.startsWith('fee') || v.startsWith('fef')) return true;
+  if (v.startsWith('fec') || v.startsWith('fed') || v.startsWith('fee') || v.startsWith('fef'))
+    return true;
   // N-9: Multicast ff00::/8 (IANA Special-Purpose Registry). Deckt ff02::/link-
   // local, ff05:: etc. mit ab. Muss NACH fe8-fef stehen, kollidiert aber nicht,
   // da dort nur fe*/fec* geprüft wird — ff* fällt sonst durch als „öffentlich".
@@ -256,10 +258,9 @@ export async function safeFetch(url: string, init?: RequestInit): Promise<Respon
       //   TypeError [ERR_INVALID_IP_ADDRESS]: Invalid IP address: undefined
       lookup: (_hostname, opts, cb) => {
         if (opts && (opts as { all?: boolean }).all) {
-          (cb as (err: NodeJS.ErrnoException | null, addresses: LookupAddress[]) => void)(
-            null,
-            [{ address: pinned.address, family: pinned.family }],
-          );
+          (cb as (err: NodeJS.ErrnoException | null, addresses: LookupAddress[]) => void)(null, [
+            { address: pinned.address, family: pinned.family },
+          ]);
         } else {
           cb(null, pinned.address, pinned.family);
         }

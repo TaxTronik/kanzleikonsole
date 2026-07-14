@@ -21,8 +21,22 @@ import { staffActionGuard, type ActionResult } from '@/server/actions/staff-acti
 // ----------------------------------------------------------------------------
 
 const VALID_REGIONS: GermanRegion[] = [
-  'DE-BW','DE-BY','DE-BE','DE-BB','DE-HB','DE-HH','DE-HE','DE-MV',
-  'DE-NI','DE-NW','DE-RP','DE-SL','DE-SN','DE-ST','DE-SH','DE-TH',
+  'DE-BW',
+  'DE-BY',
+  'DE-BE',
+  'DE-BB',
+  'DE-HB',
+  'DE-HH',
+  'DE-HE',
+  'DE-MV',
+  'DE-NI',
+  'DE-NW',
+  'DE-RP',
+  'DE-SL',
+  'DE-SN',
+  'DE-ST',
+  'DE-SH',
+  'DE-TH',
 ];
 
 const TaxRegionSchema = z.object({
@@ -45,8 +59,7 @@ export async function saveTaxRegionAction(
   // Mariä Himmelfahrt (nur DE-BY relevant, gemeindeabhängig): Checkbox nur dort
   // sichtbar. Für andere Länder immer Default true speichern (irrelevant), damit
   // ein Regionswechsel den Bayern-Wert nicht als false verschluckt.
-  const assumptionHoliday =
-    region === 'DE-BY' ? formData.get('assumptionHoliday') !== null : true;
+  const assumptionHoliday = region === 'DE-BY' ? formData.get('assumptionHoliday') !== null : true;
 
   const { tenantId, staffId, ctx } = g;
   await writeTaxRegion(ctx, region, assumptionHoliday);

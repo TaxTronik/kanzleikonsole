@@ -5,11 +5,7 @@ import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { NewRequestForm } from './form';
 
-export default async function NewRequestPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function NewRequestPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await staffAuth();
   if (!session?.user) redirect('/staff/login');
 
@@ -55,8 +51,7 @@ export default async function NewRequestPage({
 
       {!client.allowActive && (
         <div className="rounded-md bg-yellow-50 p-4 text-sm text-yellow-800 mb-4">
-          Mandant ist nicht aktiv. Anforderungen sind erst nach abgeschlossener
-          GwG-Prüfung möglich.
+          Mandant ist nicht aktiv. Anforderungen sind erst nach abgeschlossener GwG-Prüfung möglich.
         </div>
       )}
 

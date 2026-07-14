@@ -56,8 +56,9 @@ ausführen — ein Hash-Chain-Bruch zeigt manipulierte Audit-Einträge auf.
 ### Vorbereitung
 
 Frische Postgres-Instanz hochziehen (z. B. via docker-compose, leere DB).
-Für Proberestores immer `--target-url` verwenden, damit nicht versehentlich
-die produktive `DATABASE_URL` aus `.env` überschrieben wird.
+Jeder mutierende Restore verlangt entweder ein explizites `--target-url` oder
+den gesondert bestätigten `--production-target`-Pfad. Einen impliziten Fallback
+auf die produktive `DATABASE_URL` aus `.env` gibt es nicht.
 
 Der Dump enthält PostgreSQL-ACLs und sicherheitsrelevante REVOKEs. Die
 clusterweite Rolle `taxtronik_app` muss deshalb **vor** `pg_restore` aus der
@@ -121,7 +122,38 @@ soll, läuft der Restore bewusst ohne S3-Preflight:
   --target-url postgresql://taxtronik:...@localhost:5432/taxtronik_restore
 ```
 
-### Schritt 3.5 — Smoke-Test
+### Schritt 3.5 — In-place-Produktionsrestore (nur DR)
+
+Nur wenn ein isolierter Restore nicht genügt, darf die konfigurierte
+Produktivdatenbank explizit gewählt werden:
+
+```bash
+./taxtronik restore --latest \
+  --production-target \
+  --confirm-overwrite \
+  --confirm-production-restore RESTORE_TAXTRONIK_PRODUCTION_DATABASE \
+  --release-version 1.2.3
+```
+
+Der Wrapper stoppt App, Worker und n8n vor `pg_restore`, verifiziert deren
+Stillstand und lässt alle drei Dienste auch bei Fehler oder Erfolg gestoppt.
+`--release-version` ist die explizite Betreiberbestätigung, zu welchem
+Release-Vertrag das gewählte Backup gehört. Noch vor der Restore-Mutation wird
+`.taxtronik.database-restored` mit Status `pending` angelegt. Ein Fehler lässt
+diese persistente Writer-Sperre bestehen; nur ein vollständig erfolgreicher
+Restore setzt den Status auf `ready`.
+
+Nach dem Restore zuerst Audit-Chain, RLS/Rollen und Migrationsstand prüfen;
+anschließend aktiviert `./taxtronik rollback 1.2.3` genau diesen einmalig
+autorisierten, signierten Release-Vertrag. Das Rollback-Kommando startet
+App/Worker/n8n selbst und entfernt die Autorisierung erst nach bestandenem
+Health-/Readiness-Gate. Die Zielversion darf nach einem Restore nicht
+weggelassen oder abweichend angegeben werden. `./taxtronik up`, `restart`,
+`backup-full` und `deploy`/`update` bleiben bis dahin gesperrt. Direkte
+`docker compose`-Aufrufe liegen außerhalb des CLI-Guards und sind in diesem
+Zustand ausdrücklich verboten; den Marker nicht manuell löschen.
+
+### Schritt 3.6 — Smoke-Test
 
 Nach dem Restore prüft das Skript automatisch (kann mit `--no-smoke-test`
 übersprungen werden):
@@ -447,8 +479,10 @@ N−1-Code.
 (Skip nur beim Erstdeploy). Pfad zurück:
 
 1. Backup von **vor** der Migration einspielen (Abschnitt 3; bei gefüllter
-   Ziel-DB `--confirm-overwrite`)
-2. `./taxtronik rollback <vorherige-version>` ausführen; die CLI prüft Tag,
+   Produktiv-DB ausschließlich mit `--production-target`, exakter
+   Produktionsbestätigung, `--confirm-overwrite` und passender
+   `--release-version`)
+2. `./taxtronik rollback <vorherige-version>` explizit ausführen; die CLI prüft Tag,
    Commit sowie Web- und Worker-Digest gemeinsam und startet keine Migration
 3. `pnpm verify:chain` — Audit-Kette muss intakt sein
 

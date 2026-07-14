@@ -16,11 +16,7 @@ const statusLabels: Record<string, string> = {
   CANCELLED: 'Abgebrochen',
 };
 
-export default async function RequestDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function RequestDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await staffAuth();
   if (!session?.user) redirect('/staff/login');
 
@@ -62,11 +58,15 @@ export default async function RequestDetailPage({
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-1">
             <h1 className="text-2xl font-bold text-primary">{reqRow.title}</h1>
-            <span className={
-              reqRow.status === 'CLOSED' ? 'badge-gray'
-              : reqRow.status === 'RESPONDED' ? 'badge-green'
-              : 'badge-yellow'
-            }>
+            <span
+              className={
+                reqRow.status === 'CLOSED'
+                  ? 'badge-gray'
+                  : reqRow.status === 'RESPONDED'
+                    ? 'badge-green'
+                    : 'badge-yellow'
+              }
+            >
               {statusLabels[reqRow.status]}
             </span>
           </div>
@@ -78,7 +78,9 @@ export default async function RequestDetailPage({
       </div>
 
       <div className="card p-6 mb-6">
-        <h2 className="text-sm font-medium text-muted uppercase tracking-wide mb-2">Beschreibung</h2>
+        <h2 className="text-sm font-medium text-muted uppercase tracking-wide mb-2">
+          Beschreibung
+        </h2>
         <p className="text-sm text-primary whitespace-pre-wrap">{reqRow.description}</p>
       </div>
 
@@ -100,15 +102,11 @@ export default async function RequestDetailPage({
                   <span className={r.authorType === 'STAFF' ? 'badge-gray' : 'badge-green'}>
                     {r.authorType === 'STAFF' ? 'Mitarbeiter' : 'Mandant'}
                   </span>
-                  <span className="text-xs text-disabled">
-                    {fmtDateTimeShort(r.createdAt)}
-                  </span>
+                  <span className="text-xs text-disabled">{fmtDateTimeShort(r.createdAt)}</span>
                 </div>
                 <p className="text-sm text-primary whitespace-pre-wrap">{r.message}</p>
                 {r.document && (
-                  <p className="mt-2 text-xs text-muted">
-                    Dokument: {r.document.title}
-                  </p>
+                  <p className="mt-2 text-xs text-muted">Dokument: {r.document.title}</p>
                 )}
               </div>
             ))

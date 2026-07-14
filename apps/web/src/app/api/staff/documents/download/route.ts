@@ -36,10 +36,20 @@ export async function GET(req: NextRequest) {
   // `{ id: { in: ids } }` und würde von der @db.Uuid-Spalte mit P2023 → 500
   // quittiert (statt schlicht nichts zu matchen).
   const ids = [
-    ...new Set((req.nextUrl.searchParams.get('ids') ?? '').split(',').map((s) => s.trim()).filter(isUuid)),
+    ...new Set(
+      (req.nextUrl.searchParams.get('ids') ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(isUuid),
+    ),
   ].slice(0, 500);
   const folderIds = [
-    ...new Set((req.nextUrl.searchParams.get('folders') ?? '').split(',').map((s) => s.trim()).filter(isUuid)),
+    ...new Set(
+      (req.nextUrl.searchParams.get('folders') ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(isUuid),
+    ),
   ].slice(0, 200);
   if (ids.length === 0 && folderIds.length === 0) {
     return NextResponse.json({ error: 'no_ids' }, { status: 400 });
@@ -139,23 +149,20 @@ export async function GET(req: NextRequest) {
   // der Audit-Trail behauptete Downloads, die nie stattfanden). Auditiert
   // werden nur Dokumente, die tatsächlich ausgeliefert werden (usable).
   const recordDownloadAudits = (docs: { id: string }[]) =>
-    withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
-      async (tx) => {
-        for (const d of docs) {
-          await evidenceService.record(tx, {
-            tenantId,
-            actorType: 'STAFF',
-            actorId: staffId,
-            action: 'document.download',
-            resourceType: 'document',
-            resourceId: d.id,
-            ip: getClientIp(req.headers),
-            userAgent: req.headers.get('user-agent'),
-          });
-        }
-      },
-    );
+    withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, async (tx) => {
+      for (const d of docs) {
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'document.download',
+          resourceType: 'document',
+          resourceId: d.id,
+          ip: getClientIp(req.headers),
+          userAgent: req.headers.get('user-agent'),
+        });
+      }
+    });
 
   // Genau eine lose Datei, keine Ordner → unkomprimiert durchstreamen (O(1)).
   if (usableLoose.length === 1 && usableFolder.length === 0 && folderIds.length === 0) {
@@ -207,7 +214,11 @@ export async function GET(req: NextRequest) {
     const entries: ZipEntry[] = [];
     const addEntry = async (
       prefix: string,
-      d: { title: string; mimeType: string; versions: { storageBucket: string; storageKey: string }[] },
+      d: {
+        title: string;
+        mimeType: string;
+        versions: { storageBucket: string; storageKey: string }[];
+      },
     ) => {
       const v = d.versions[0]!;
       const bytes = await fetchObjectBytes(v.storageBucket, v.storageKey);

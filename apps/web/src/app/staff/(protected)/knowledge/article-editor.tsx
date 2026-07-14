@@ -23,7 +23,9 @@ export function ArticleEditor({ action, categories, initial }: Props) {
       {initial && <input type="hidden" name="id" value={initial.id} />}
 
       <div>
-        <label className="label" htmlFor="title">Titel</label>
+        <label className="label" htmlFor="title">
+          Titel
+        </label>
         <input
           id="title"
           name="title"
@@ -37,7 +39,9 @@ export function ArticleEditor({ action, categories, initial }: Props) {
       </div>
 
       <div>
-        <label className="label" htmlFor="categoryId">Kategorie</label>
+        <label className="label" htmlFor="categoryId">
+          Kategorie
+        </label>
         <select
           id="categoryId"
           name="categoryId"
@@ -46,14 +50,18 @@ export function ArticleEditor({ action, categories, initial }: Props) {
         >
           <option value="">— Ohne Kategorie —</option>
           {categories.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
           ))}
         </select>
       </div>
 
       <div>
         <div className="flex items-center justify-between mb-1">
-          <label className="label" htmlFor="body">Inhalt (Markdown)</label>
+          <label className="label" htmlFor="body">
+            Inhalt (Markdown)
+          </label>
           <button
             type="button"
             onClick={() => setShowPreview((v) => !v)}

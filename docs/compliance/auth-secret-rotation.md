@@ -1,25 +1,26 @@
 # AUTH_SECRET-Rotation und bekannte Schlüssel-Abhängigkeiten
 
-Stand: 2026-05-14
+Stand: 2026-07-14
 
-`AUTH_SECRET` ist die zentrale 32-Byte-Geheimnis-Wurzel der taxtronik-
-Installation. Diese Datei dokumentiert, **wo** der Wert hingeleitet wird,
-und **wie** eine Rotation operativ aussieht — solange kein dediziertes
-Rotations-Tooling existiert.
+`AUTH_SECRET` ist die Schlüsselwurzel für Sessions und TOTP. Frische
+Installationen erzeugen zusätzlich einen unabhängigen `SECRET_BOX_KEY` für
+gespeicherte Tenant-/Integrations-Secrets. Bestehende Installationen ohne
+`SECRET_BOX_KEY` nutzen aus Kompatibilitätsgründen weiterhin `AUTH_SECRET` als
+Fallback. Diese Datei dokumentiert die Rotation, solange kein dediziertes
+Re-Wrap-Tooling existiert.
 
 ---
 
 ## Wo AUTH_SECRET verwendet wird
 
-Alle drei Pfade nutzen HKDF mit unterschiedlichem `info`-Label
-(Domain-Trennung) — ein Leak von AUTH_SECRET kompromittiert aber alle
-gleichzeitig.
+Die Pfade nutzen getrennte Ableitungen. Mit provisioniertem `SECRET_BOX_KEY`
+kompromittiert ein Leak von `AUTH_SECRET` die Secret-box-Werte nicht mehr.
 
-| Konsument | Derivation | Was wird geschützt |
-|---|---|---|
-| Auth.js JWT-Signing | `Auth.js intern, info=NextAuth-Generated-Encryption-Key` | Session-Token (24 h TTL nach W-1) |
-| `@taxtronik/crypto` v2 secret-box (M-1) | `hkdfSync('sha256', secret, salt, info='taxtronik-secret-box-v2', 32)` | `tenant_setting.value`-Felder (SMTP-Passwörter, n8n-HMAC-Secrets, n8n-API-Keys) |
-| TOTP-Encryption (`apps/web/src/server/auth/totp.ts`) | `hkdfSync('sha256', secret, salt=tenantId, info='taxtronik-totp', 32)` | `staff_user.totp_secret_enc` |
+| Konsument                                            | Derivation                                                                                    | Was wird geschützt                                                              |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Auth.js JWT-Signing                                  | `Auth.js intern, info=NextAuth-Generated-Encryption-Key`                                      | Session-Token (24 h TTL nach W-1)                                               |
+| `@taxtronik/crypto` v2 secret-box (M-1)              | `hkdfSync('sha256', SECRET_BOX_KEY ?? AUTH_SECRET, salt, info='taxtronik-secret-box-v2', 32)` | `tenant_setting.value`-Felder (SMTP-Passwörter, n8n-HMAC-Secrets, n8n-API-Keys) |
+| TOTP-Encryption (`apps/web/src/server/auth/totp.ts`) | `hkdfSync('sha256', secret, salt=tenantId, info='taxtronik-totp', 32)`                        | `staff_user.totp_secret_enc`                                                    |
 
 ## Was bei Leak passiert
 
@@ -27,8 +28,8 @@ gleichzeitig.
    vollständige Account-Übernahme jedes Staff/Portal-Users (max. 24 h
    bis zur natürlichen TTL-Expiry, oder sofort über `revokeAllSessions`
    wenn Operator den Vorfall bemerkt).
-2. **Secret-Box-Decryption**: Alle in `tenant_setting` verschlüsselten
-   Werte (SMTP-Passwörter, n8n-HMAC, …) lesbar.
+2. **Secret-Box-Decryption (nur Legacy-Fallback)**: Ohne separaten
+   `SECRET_BOX_KEY` sind alle in `tenant_setting` verschlüsselten Werte lesbar.
 3. **TOTP-Decryption**: Alle `totp_secret_enc` lesbar → Angreifer kennt
    die TOTP-Seeds und kann gültige Codes generieren. Backup-Codes-Hashes
    sind bcrypt-gehasht — nicht decrypt-bar, aber pro Code in vertretbarer
@@ -52,16 +53,18 @@ grep '^AUTH_SECRET=' .env > /secure-backup/auth-secret-pre-rotation.txt
 openssl rand -base64 32 | tr '+/' '-_' | tr -d '='
 ```
 
-### Schritt 2 — Re-Encrypt aller secret-box-Werte (vor dem Switch!)
+### Schritt 2 — Nur bei Legacy-Fallback: Secret-box-Werte rewrappen
 
-Ein Migrations-Skript (TODO, noch nicht implementiert) müsste:
+Ist `SECRET_BOX_KEY` bereits gesetzt, entfällt dieser Schritt bei einer reinen
+`AUTH_SECRET`-Rotation. Andernfalls müsste ein Migrations-Skript (TODO):
 
 1. Mit altem `AUTH_SECRET` alle `tenant_setting.value`-Felder dechiffrieren.
-2. Mit neuem `AUTH_SECRET` neu verschlüsseln.
+2. Mit einem neu generierten `SECRET_BOX_KEY` neu verschlüsseln.
 3. Beide Werte in einer Transaktion atomisch ersetzen.
 
-Bis das Tooling existiert: Operator muss jedes secret-box-Feld manuell
-über die Admin-UI neu setzen, **bevor** AUTH_SECRET getauscht wird.
+Bis das Tooling existiert: Operator muss jedes secret-box-Feld manuell über die
+Admin-UI neu setzen und verifizieren, **bevor** `AUTH_SECRET` getauscht bzw.
+`SECRET_BOX_KEY` erstmals gesetzt wird.
 
 ### Schritt 3 — TOTP-Secrets unbrauchbar machen
 
@@ -69,7 +72,7 @@ TOTP-Secrets können nicht ohne Mitwirkung des Users re-encryptet werden
 (neu generieren + per Authenticator-App scannen). Optionen:
 
 1. **Force re-enroll**: alle `staff_user.totp_enrolled_at = NULL,
-   totp_secret_enc = NULL`. Beim nächsten Login muss der User das TOTP
+totp_secret_enc = NULL`. Beim nächsten Login muss der User das TOTP
    neu einrichten. Bestehende Backup-Codes funktionieren in dem Fall NICHT
    (sind gegen einen jetzt unbrauchbaren TOTP-Secret-Hash gebunden).
 2. **Maintenance-Login-Modus**: Tooling-TODO — User loggt sich mit

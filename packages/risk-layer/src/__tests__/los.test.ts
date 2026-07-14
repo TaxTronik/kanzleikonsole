@@ -45,7 +45,9 @@ function jsonResponse(data: unknown, status = 200): Response {
 
 describe('RiskLayerClient — Quantenlos', () => {
   it('losZiehen postet rahmen/k/backend mit Bearer an /v1/los/ziehen und parst die fertig-Form', async () => {
-    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse(fertigFixture));
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) =>
+      jsonResponse(fertigFixture),
+    );
     const client = new RiskLayerClient({ config, fetchImpl });
 
     const r = await client.losZiehen({ rahmen: ['a1', 'b2', 'c3'], k: 2, backend: 'csprng' });
@@ -60,11 +62,17 @@ describe('RiskLayerClient — Quantenlos', () => {
     expect(url).toBe('http://risk-layer:8000/v1/los/ziehen');
     expect(init!.method).toBe('POST');
     expect((init!.headers as Record<string, string>).authorization).toBe(`Bearer ${config.token}`);
-    expect(JSON.parse(init!.body as string)).toEqual({ rahmen: ['a1', 'b2', 'c3'], k: 2, backend: 'csprng' });
+    expect(JSON.parse(init!.body as string)).toEqual({
+      rahmen: ['a1', 'b2', 'c3'],
+      k: 2,
+      backend: 'csprng',
+    });
   });
 
   it('losZiehen liefert die wartet-Form (QPU-Queue) mit job_id durch', async () => {
-    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse(wartetFixture));
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) =>
+      jsonResponse(wartetFixture),
+    );
     const client = new RiskLayerClient({ config, fetchImpl });
 
     const r = await client.losZiehen({ rahmen: ['a1', 'b2', 'c3'], k: 2, backend: 'qpu' });
@@ -83,9 +91,9 @@ describe('RiskLayerClient — Quantenlos', () => {
     );
     const client = new RiskLayerClient({ config, fetchImpl });
 
-    await expect(
-      client.losZiehen({ rahmen: ['a1'], k: 1, backend: 'qpu' }),
-    ).rejects.toBeInstanceOf(RiskLayerHttpError);
+    await expect(client.losZiehen({ rahmen: ['a1'], k: 1, backend: 'qpu' })).rejects.toBeInstanceOf(
+      RiskLayerHttpError,
+    );
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
@@ -104,7 +112,9 @@ describe('RiskLayerClient — Quantenlos', () => {
         roh_counts_sha256: 'cd'.repeat(32),
       },
     };
-    fetchImpl.mockResolvedValueOnce(jsonResponse({ ok: true, status: 'fertig', nachweis: qpuNachweis }));
+    fetchImpl.mockResolvedValueOnce(
+      jsonResponse({ ok: true, status: 'fertig', nachweis: qpuNachweis }),
+    );
     const client = new RiskLayerClient({ config, fetchImpl });
 
     const erst = await client.losAbholen({ jobId: 'ibm-job-42', rahmen: ['a1', 'b2', 'c3'], k: 2 });
@@ -119,7 +129,11 @@ describe('RiskLayerClient — Quantenlos', () => {
 
     const [url, init] = fetchImpl.mock.calls[0]!;
     expect(url).toBe('http://risk-layer:8000/v1/los/abholen');
-    expect(JSON.parse(init!.body as string)).toEqual({ job_id: 'ibm-job-42', rahmen: ['a1', 'b2', 'c3'], k: 2 });
+    expect(JSON.parse(init!.body as string)).toEqual({
+      job_id: 'ibm-job-42',
+      rahmen: ['a1', 'b2', 'c3'],
+      k: 2,
+    });
   });
 
   it('losAbholen retried bei 503 (idempotenter Poll) und liefert dann', async () => {
@@ -173,7 +187,12 @@ describe('RiskLayerClient — Quantenlos', () => {
 
     await client.losZiehen({ rahmen: ['a1'], k: 1, backend: 'qpu', ibmToken: 'ibm-tok' });
     await client.losAbholen({ jobId: 'ibm-job-42', rahmen: ['a1'], k: 1, ibmToken: 'ibm-tok' });
-    await client.losPruefen({ nachweis: nachweisFixture, rahmen: ['a1'], online: true, ibmToken: 'ibm-tok' });
+    await client.losPruefen({
+      nachweis: nachweisFixture,
+      rahmen: ['a1'],
+      online: true,
+      ibmToken: 'ibm-tok',
+    });
 
     for (const [, init] of fetchImpl.mock.calls) {
       expect(JSON.parse(init!.body as string)).toMatchObject({ ibm_token: 'ibm-tok' });

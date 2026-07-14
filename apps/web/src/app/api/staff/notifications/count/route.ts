@@ -9,12 +9,10 @@ export async function GET() {
   }
   const { tenantId, staffId } = session.user;
 
-  const unread = await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    (tx) =>
-      tx.notification.count({
-        where: { OR: [{ staffId }, { staffId: null }], readAt: null },
-      }),
+  const unread = await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>
+    tx.notification.count({
+      where: { OR: [{ staffId }, { staffId: null }], readAt: null },
+    }),
   );
 
   return NextResponse.json(

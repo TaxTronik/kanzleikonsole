@@ -19,3 +19,5 @@ infra/scripts/*   text eol=lf
 *.jpg             binary
 *.pdf             binary
 *.ico             binary
+*.bin             binary
+*.tsr             binary

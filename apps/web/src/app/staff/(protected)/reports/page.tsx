@@ -164,7 +164,8 @@ export default async function ReportsPage() {
   // Ableitungen
   const requestStatusMap = new Map(data.requestStatusCounts.map((r) => [r.status, r._count._all]));
   const totalRequests = Array.from(requestStatusMap.values()).reduce((s, n) => s + n, 0);
-  const responded = (requestStatusMap.get('RESPONDED') ?? 0) + (requestStatusMap.get('CLOSED') ?? 0);
+  const responded =
+    (requestStatusMap.get('RESPONDED') ?? 0) + (requestStatusMap.get('CLOSED') ?? 0);
   const responseRate = totalRequests > 0 ? (responded / totalRequests) * 100 : 0;
 
   const invoiceMap = new Map(data.invoiceStatusSums.map((i) => [i.status, i]));
@@ -205,7 +206,11 @@ export default async function ReportsPage() {
         <Kpi
           icon={TrendingUp}
           label="Avg. Zahlungsdauer"
-          value={fmtDuration(data.paidInvoicesAvgPaymentDays === null ? null : data.paidInvoicesAvgPaymentDays * 86400)}
+          value={fmtDuration(
+            data.paidInvoicesAvgPaymentDays === null
+              ? null
+              : data.paidInvoicesAvgPaymentDays * 86400,
+          )}
           subtitle="Bezahlt-Rechnungen 90 Tage"
         />
       </div>
@@ -250,21 +255,27 @@ export default async function ReportsPage() {
           {data.overdueRequests > 0 && (
             <p className="mt-4 text-sm text-yellow-700 flex items-center gap-2">
               <AlertCircle className="h-4 w-4" />
-              {data.overdueRequests} überfällige offene Anforderung{data.overdueRequests === 1 ? '' : 'en'}
+              {data.overdueRequests} überfällige offene Anforderung
+              {data.overdueRequests === 1 ? '' : 'en'}
             </p>
           )}
         </div>
 
         {/* Top Mandanten nach Stunden */}
         <div className="card p-6">
-          <h2 className="text-sm font-medium text-primary mb-4">Top-Mandanten — Stunden (90 Tage)</h2>
+          <h2 className="text-sm font-medium text-primary mb-4">
+            Top-Mandanten — Stunden (90 Tage)
+          </h2>
           {data.topClientsByHours.length === 0 ? (
             <p className="text-sm text-disabled">Keine Daten.</p>
           ) : (
             <ul className="space-y-2">
               {data.topClientsByHours.map((c) => (
                 <li key={c.client_id} className="flex justify-between text-sm">
-                  <Link href={`/staff/clients/${c.client_id}`} className="text-secondary hover:underline truncate">
+                  <Link
+                    href={`/staff/clients/${c.client_id}`}
+                    className="text-secondary hover:underline truncate"
+                  >
                     {c.name}
                   </Link>
                   <span className="font-mono text-primary">{fmtMin(c.minutes)}</span>
@@ -276,14 +287,19 @@ export default async function ReportsPage() {
 
         {/* Top Mandanten nach Umsatz */}
         <div className="card p-6">
-          <h2 className="text-sm font-medium text-primary mb-4">Top-Mandanten — Umsatz im lfd. Jahr</h2>
+          <h2 className="text-sm font-medium text-primary mb-4">
+            Top-Mandanten — Umsatz im lfd. Jahr
+          </h2>
           {data.topClientsByRevenue.length === 0 ? (
             <p className="text-sm text-disabled">Keine Daten.</p>
           ) : (
             <ul className="space-y-2">
               {data.topClientsByRevenue.map((c) => (
                 <li key={c.client_id} className="flex justify-between text-sm">
-                  <Link href={`/staff/clients/${c.client_id}`} className="text-secondary hover:underline truncate">
+                  <Link
+                    href={`/staff/clients/${c.client_id}`}
+                    className="text-secondary hover:underline truncate"
+                  >
                     {c.name}
                   </Link>
                   <span className="font-mono text-primary">{fmtEURRound(c.revenue)}</span>
@@ -330,7 +346,8 @@ export default async function ReportsPage() {
           {overdueInvoices && (overdueInvoices._count._all ?? 0) > 0 && (
             <p className="text-sm text-red-700 flex items-center gap-2 mt-3">
               <AlertCircle className="h-4 w-4" />
-              {overdueInvoices._count._all} überfällig: {fmtEURRound(Number(overdueInvoices._sum.totalAmount ?? 0))}
+              {overdueInvoices._count._all} überfällig:{' '}
+              {fmtEURRound(Number(overdueInvoices._sum.totalAmount ?? 0))}
             </p>
           )}
         </div>
@@ -355,7 +372,9 @@ function Kpi({
   return (
     <div className="card p-5">
       <div className="flex items-center gap-2 mb-2">
-        <Icon className={accent === 'yellow' ? 'h-4 w-4 text-yellow-600' : 'h-4 w-4 text-disabled'} />
+        <Icon
+          className={accent === 'yellow' ? 'h-4 w-4 text-yellow-600' : 'h-4 w-4 text-disabled'}
+        />
         <p className="text-xs font-medium text-muted uppercase tracking-wide">{label}</p>
       </div>
       <p className="text-2xl font-bold text-primary">{value}</p>

@@ -14,7 +14,12 @@ const isListItem = (s: string) => /^([-*•·–]|\(?\d+[.)]|[a-zA-Z][.)])\s/.te
 export function reflowProse(text: string): string {
   const blocks = text
     .split(/\n{2,}/)
-    .map((p) => p.replace(/[ \t]*\n[ \t]*/g, ' ').replace(/\s{2,}/g, ' ').trim())
+    .map((p) =>
+      p
+        .replace(/[ \t]*\n[ \t]*/g, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim(),
+    )
     .filter(Boolean);
   const out: string[] = [];
   for (const block of blocks) {

@@ -31,10 +31,7 @@ export function backupLocalDir(): string {
 
 export function backupLocalPathForKey(key: string): string {
   const root = backupLocalDir();
-  const parts = key
-    .replace(/\\/g, '/')
-    .split('/')
-    .filter(Boolean);
+  const parts = key.replace(/\\/g, '/').split('/').filter(Boolean);
 
   if (parts.length === 0 || parts.some((part) => part === '..' || part.includes('\0'))) {
     throw new Error('Ungueltiger Backup-Key.');

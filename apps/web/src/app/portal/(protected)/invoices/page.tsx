@@ -33,9 +33,7 @@ export default async function PortalInvoicesPage() {
   return (
     <div className="p-8">
       <h1 className="text-2xl font-bold text-primary mb-1">Rechnungen</h1>
-      <p className="text-muted text-sm mb-6">
-        Rechnungen Ihrer Kanzlei.
-      </p>
+      <p className="text-muted text-sm mb-6">Rechnungen Ihrer Kanzlei.</p>
 
       <div className="card overflow-hidden">
         {invoices.length === 0 ? (
@@ -65,9 +63,7 @@ export default async function PortalInvoicesPage() {
                   <tr key={i.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 font-medium text-primary">{i.number}</td>
                     <td className="px-6 py-4 text-secondary">{i.subject}</td>
-                    <td className="px-6 py-4 text-secondary">
-                      {fmtDateShort(i.issueDate)}
-                    </td>
+                    <td className="px-6 py-4 text-secondary">{fmtDateShort(i.issueDate)}</td>
                     <td className={overdue ? 'px-6 py-4 text-red-700' : 'px-6 py-4 text-secondary'}>
                       {fmtDateShort(i.dueDate)}
                     </td>
@@ -75,10 +71,21 @@ export default async function PortalInvoicesPage() {
                       {fmtEUR(i.totalAmount)}
                     </td>
                     <td className="px-6 py-4">
-                      {i.status === 'SENT' && (overdue ? <span className="badge-red">Überfällig</span> : <span className="badge-yellow">{statusLabels[i.status]}</span>)}
-                      {i.status === 'PAID' && <span className="badge-green">{statusLabels[i.status]}</span>}
-                      {i.status === 'OVERDUE' && <span className="badge-red">{statusLabels[i.status]}</span>}
-                      {i.status === 'CANCELLED' && <span className="badge-gray">{statusLabels[i.status]}</span>}
+                      {i.status === 'SENT' &&
+                        (overdue ? (
+                          <span className="badge-red">Überfällig</span>
+                        ) : (
+                          <span className="badge-yellow">{statusLabels[i.status]}</span>
+                        ))}
+                      {i.status === 'PAID' && (
+                        <span className="badge-green">{statusLabels[i.status]}</span>
+                      )}
+                      {i.status === 'OVERDUE' && (
+                        <span className="badge-red">{statusLabels[i.status]}</span>
+                      )}
+                      {i.status === 'CANCELLED' && (
+                        <span className="badge-gray">{statusLabels[i.status]}</span>
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       {i.document ? (
@@ -102,4 +109,3 @@ export default async function PortalInvoicesPage() {
     </div>
   );
 }
-

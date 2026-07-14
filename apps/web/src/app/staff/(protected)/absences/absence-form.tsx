@@ -21,7 +21,9 @@ export function AbsenceForm() {
   return (
     <form ref={formRef} action={formAction} className="space-y-3">
       <div>
-        <label className="label" htmlFor="absence-kind">Art</label>
+        <label className="label" htmlFor="absence-kind">
+          Art
+        </label>
         <select
           id="absence-kind"
           name="kind"
@@ -35,29 +37,35 @@ export function AbsenceForm() {
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="label" htmlFor="absence-startDate">Erster Tag</label>
+          <label className="label" htmlFor="absence-startDate">
+            Erster Tag
+          </label>
           <input id="absence-startDate" name="startDate" type="date" className="input" required />
         </div>
         <div>
-          <label className="label" htmlFor="absence-endDate">Letzter (optional)</label>
+          <label className="label" htmlFor="absence-endDate">
+            Letzter (optional)
+          </label>
           <input id="absence-endDate" name="endDate" type="date" className="input" />
         </div>
       </div>
       <div>
-        <label className="label" htmlFor="absence-notes">Grund/Notizen (optional)</label>
+        <label className="label" htmlFor="absence-notes">
+          Grund/Notizen (optional)
+        </label>
         <textarea id="absence-notes" name="notes" rows={2} className="input" maxLength={1000} />
         <p className="text-[11px] text-disabled mt-1">
           Nur für Sie und Entscheidungsträger sichtbar — im Kalender erscheint nur „abw.".
         </p>
       </div>
-      {state?.error && (
-        <div className="alert-error-sm">{state.error}</div>
-      )}
-      {state?.ok && (
-        <div className="alert-success-sm">Eingetragen.</div>
-      )}
+      {state?.error && <div className="alert-error-sm">{state.error}</div>}
+      {state?.ok && <div className="alert-success-sm">Eingetragen.</div>}
       <button type="submit" className="btn-primary w-full" disabled={isPending}>
-        {isPending ? 'Speichert…' : kind === 'SICKNESS' ? 'Krankmeldung speichern' : 'Abwesenheit melden'}
+        {isPending
+          ? 'Speichert…'
+          : kind === 'SICKNESS'
+            ? 'Krankmeldung speichern'
+            : 'Abwesenheit melden'}
       </button>
     </form>
   );

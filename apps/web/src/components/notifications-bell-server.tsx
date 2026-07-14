@@ -10,12 +10,10 @@ export async function NotificationsBellServer() {
   const session = await staffAuth();
   if (!session?.user) return null;
   const { tenantId, staffId } = session.user;
-  const unread = await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    (tx) =>
-      tx.notification.count({
-        where: { OR: [{ staffId }, { staffId: null }], readAt: null },
-      }),
+  const unread = await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>
+    tx.notification.count({
+      where: { OR: [{ staffId }, { staffId: null }], readAt: null },
+    }),
   );
   return <NotificationsBell initialUnread={unread} />;
 }

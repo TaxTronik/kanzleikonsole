@@ -77,12 +77,12 @@ export function StammdatenForm({
   return (
     <div className="card p-6 space-y-4">
       {fieldDef.map(([k, label]) => {
-        const isChanged =
-          !disabled &&
-          (current[k] ?? '').trim() !== (draft[k] ?? '').trim();
+        const isChanged = !disabled && (current[k] ?? '').trim() !== (draft[k] ?? '').trim();
         return (
           <div key={k}>
-            <label className="label" htmlFor={`f-${k}`}>{label}</label>
+            <label className="label" htmlFor={`f-${k}`}>
+              {label}
+            </label>
             <input
               id={`f-${k}`}
               type={k === 'invoiceEmail' ? 'email' : 'text'}
@@ -90,22 +90,19 @@ export function StammdatenForm({
               onChange={(e) => set(k, e.target.value)}
               disabled={disabled || isPending}
               maxLength={k === 'countryIso' ? 2 : 255}
-              className={
-                'input' +
-                (isChanged ? ' ring-2 ring-yellow-400 border-yellow-400' : '')
-              }
+              className={'input' + (isChanged ? ' ring-2 ring-yellow-400 border-yellow-400' : '')}
             />
             {isChanged && (
-              <p className="text-xs text-yellow-700 mt-1">
-                Bisher: {current[k] || '—'}
-              </p>
+              <p className="text-xs text-yellow-700 mt-1">Bisher: {current[k] || '—'}</p>
             )}
           </div>
         );
       })}
 
       <div>
-        <label className="label" htmlFor="note">Nachricht an die Kanzlei (optional)</label>
+        <label className="label" htmlFor="note">
+          Nachricht an die Kanzlei (optional)
+        </label>
         <textarea
           id="note"
           value={note}
@@ -121,8 +118,8 @@ export function StammdatenForm({
       {error && <div className="alert-error-sm">{error}</div>}
       {success && (
         <div className="rounded-md bg-emerald-50 p-3 text-sm text-emerald-800">
-          Ihre Änderung wurde an die Kanzlei übermittelt. Sie erhalten eine
-          Nachricht, sobald sie geprüft wurde.
+          Ihre Änderung wurde an die Kanzlei übermittelt. Sie erhalten eine Nachricht, sobald sie
+          geprüft wurde.
         </div>
       )}
 

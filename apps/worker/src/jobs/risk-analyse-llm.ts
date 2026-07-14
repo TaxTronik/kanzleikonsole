@@ -64,7 +64,10 @@ export const riskAnalyseLlmWorker = new Worker<RiskAnalyseLlmJob, void, string>(
     // Schicht 2 bei Bedarf hochfahren + auf Bereitschaft warten (auto, on-demand).
     const ready = await ensureLlmReady(client, { analysisId, tenantId });
     if (ready === 'no-capability') {
-      log.warn({ analysisId, tenantId }, 'risk-analyse-llm: kein LLM-Binary in der Engine — Anreicherung übersprungen');
+      log.warn(
+        { analysisId, tenantId },
+        'risk-analyse-llm: kein LLM-Binary in der Engine — Anreicherung übersprungen',
+      );
       return; // Job sauber abschließen (kein sinnvoller Retry).
     }
     if (ready === 'timeout') {
@@ -82,7 +85,9 @@ export const riskAnalyseLlmWorker = new Worker<RiskAnalyseLlmJob, void, string>(
         // u. U. noch einen llama-Slot (Engine bricht ihn beim Client-Abbruch nicht ab);
         // ein paralleler Retry ergäbe „2 aktiv" + doppelte GPU-Last. Re-Trigger erfolgt
         // manuell (Button) — der alte Job wird beim Enqueue geräumt.
-        throw new UnrecoverableError('LLM-Analyse-Timeout — kein automatischer Retry (Slot-Doppelbelegung vermeiden).');
+        throw new UnrecoverableError(
+          'LLM-Analyse-Timeout — kein automatischer Retry (Slot-Doppelbelegung vermeiden).',
+        );
       }
       throw e; // andere (transiente) Fehler dürfen im Rahmen von attempts retryen
     }
@@ -92,11 +97,17 @@ export const riskAnalyseLlmWorker = new Worker<RiskAnalyseLlmJob, void, string>(
       // Job-Payload darf nicht allein über die Zugehörigkeit entscheiden.
       const analysis = await tx.riskAnalysis.findFirst({
         where: { id: analysisId, tenantId },
-        select: { id: true, markings: { select: { start: true, end: true, herkunft: true, begriff: true } } },
+        select: {
+          id: true,
+          markings: { select: { start: true, end: true, herkunft: true, begriff: true } },
+        },
       });
       if (!analysis) {
         // Analyse wurde zwischenzeitlich gelöscht — nicht erneut versuchen.
-        log.warn({ analysisId, tenantId }, 'risk-analyse-llm: Analyse nicht mehr vorhanden, übersprungen');
+        log.warn(
+          { analysisId, tenantId },
+          'risk-analyse-llm: Analyse nicht mehr vorhanden, übersprungen',
+        );
         return;
       }
 
@@ -139,7 +150,11 @@ export const riskAnalyseLlmWorker = new Worker<RiskAnalyseLlmJob, void, string>(
         action: 'risk.analysis.llm_enriched',
         resourceType: 'risk_analysis',
         resourceId: analysisId,
-        after: { added: fresh.length, total: result.markings.length, engineVersion: result.engineVersion },
+        after: {
+          added: fresh.length,
+          total: result.markings.length,
+          engineVersion: result.engineVersion,
+        },
       });
 
       log.info(

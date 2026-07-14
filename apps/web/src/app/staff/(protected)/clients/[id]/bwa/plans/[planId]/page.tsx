@@ -8,7 +8,6 @@ import { ActorBadge } from '@/app/portal/(protected)/bwa/plan/plan-comparison';
 import { updateStaffPlanAction, deleteStaffPlanAction } from '../actions';
 import { fmtDateTimeShort } from '@/lib/fmt';
 
-
 export default async function StaffPlanDetailPage({
   params,
 }: {
@@ -31,20 +30,27 @@ export default async function StaffPlanDetailPage({
       });
       if (!p) return null;
       // Created/Updated-By Namen auflösen
-      const [createdByContact, updatedByContact, createdByStaff, updatedByStaff] = await Promise.all([
-        p.createdByType === 'CLIENT_CONTACT'
-          ? tx.clientContact.findUnique({ where: { id: p.createdBy }, select: { fullName: true } })
-          : Promise.resolve(null),
-        p.updatedByType === 'CLIENT_CONTACT' && p.updatedBy
-          ? tx.clientContact.findUnique({ where: { id: p.updatedBy }, select: { fullName: true } })
-          : Promise.resolve(null),
-        p.createdByType === 'STAFF'
-          ? tx.staffUser.findUnique({ where: { id: p.createdBy }, select: { fullName: true } })
-          : Promise.resolve(null),
-        p.updatedByType === 'STAFF' && p.updatedBy
-          ? tx.staffUser.findUnique({ where: { id: p.updatedBy }, select: { fullName: true } })
-          : Promise.resolve(null),
-      ]);
+      const [createdByContact, updatedByContact, createdByStaff, updatedByStaff] =
+        await Promise.all([
+          p.createdByType === 'CLIENT_CONTACT'
+            ? tx.clientContact.findUnique({
+                where: { id: p.createdBy },
+                select: { fullName: true },
+              })
+            : Promise.resolve(null),
+          p.updatedByType === 'CLIENT_CONTACT' && p.updatedBy
+            ? tx.clientContact.findUnique({
+                where: { id: p.updatedBy },
+                select: { fullName: true },
+              })
+            : Promise.resolve(null),
+          p.createdByType === 'STAFF'
+            ? tx.staffUser.findUnique({ where: { id: p.createdBy }, select: { fullName: true } })
+            : Promise.resolve(null),
+          p.updatedByType === 'STAFF' && p.updatedBy
+            ? tx.staffUser.findUnique({ where: { id: p.updatedBy }, select: { fullName: true } })
+            : Promise.resolve(null),
+        ]);
       return {
         ...p,
         createdByName: createdByContact?.fullName ?? createdByStaff?.fullName ?? '—',
@@ -62,8 +68,8 @@ export default async function StaffPlanDetailPage({
           plan.updatedByType === 'STAFF'
             ? 'STAFF'
             : plan.updatedByType === 'CLIENT_CONTACT'
-            ? 'CLIENT_CONTACT'
-            : null
+              ? 'CLIENT_CONTACT'
+              : null
         }
       />
       <div className="text-xs text-secondary">
@@ -71,7 +77,8 @@ export default async function StaffPlanDetailPage({
         {plan.updatedBy && plan.updatedBy !== plan.createdBy && (
           <>
             {' · '}
-            zuletzt geändert von <strong>{plan.updatedByName}</strong> am {fmtDateTimeShort(plan.updatedAt)}
+            zuletzt geändert von <strong>{plan.updatedByName}</strong> am{' '}
+            {fmtDateTimeShort(plan.updatedAt)}
           </>
         )}
       </div>
@@ -80,10 +87,7 @@ export default async function StaffPlanDetailPage({
 
   return (
     <div className="p-8 max-w-3xl">
-      <Link
-        href={`/staff/clients/${clientId}/bwa/plans`}
-        className="back-link mb-3"
-      >
+      <Link href={`/staff/clients/${clientId}/bwa/plans`} className="back-link mb-3">
         <ArrowLeft className="h-3 w-3" />
         Auswertungen
       </Link>
@@ -102,7 +106,14 @@ export default async function StaffPlanDetailPage({
           notes: plan.notes ?? '',
           status: plan.status === 'FINAL' ? 'FINAL' : 'DRAFT',
           lines: plan.lines.map((l) => ({
-            axis: l.axis as 'REVENUE' | 'PERSONNEL' | 'OTHER_COSTS' | 'DEPRECIATION' | 'MATERIAL' | 'OTHER_INCOME' | 'TAXES',
+            axis: l.axis as
+              | 'REVENUE'
+              | 'PERSONNEL'
+              | 'OTHER_COSTS'
+              | 'DEPRECIATION'
+              | 'MATERIAL'
+              | 'OTHER_INCOME'
+              | 'TAXES',
             amount: Number(l.amount.toString()),
             note: l.note ?? '',
           })),

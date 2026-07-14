@@ -9,10 +9,7 @@ import { ensureZugferdArchive } from '@/server/invoicing/archive';
 import { withTimeout, TimeoutError } from '@/lib/with-timeout';
 import { isUuid } from '@/lib/uuid';
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await staffAuth();
   if (!session?.user) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
@@ -57,7 +54,10 @@ export async function GET(
   } catch (err) {
     if (err instanceof TimeoutError) {
       return NextResponse.json(
-        { error: 'timeout', message: 'Zeitüberschreitung beim Erzeugen der ZUGFeRD-PDF — bitte erneut versuchen.' },
+        {
+          error: 'timeout',
+          message: 'Zeitüberschreitung beim Erzeugen der ZUGFeRD-PDF — bitte erneut versuchen.',
+        },
         { status: 504 },
       );
     }
@@ -65,21 +65,24 @@ export async function GET(
     // ensureZugferdArchive: PDF-Generierung vs. GOBD-Ablage) — sonst raten
     // wir bei „ZUGFeRD geht nicht" nur über die Ursache.
     const detail = err instanceof Error ? err.message : String(err);
-    return NextResponse.json(
-      { error: 'generation_failed', message: detail },
-      { status: 502 },
-    );
+    return NextResponse.json({ error: 'generation_failed', message: detail }, { status: 502 });
   }
   if (!archive.ok) {
     if (archive.code === 'seller_incomplete') {
       return NextResponse.json(
-        { error: 'seller_incomplete', message: 'Verkäufer-Stammdaten unvollständig (Name, Straße, PLZ, Ort, E-Mail, Telefon).' },
+        {
+          error: 'seller_incomplete',
+          message: 'Verkäufer-Stammdaten unvollständig (Name, Straße, PLZ, Ort, E-Mail, Telefon).',
+        },
         { status: 422 },
       );
     }
     if (archive.code === 'buyer_incomplete') {
       return NextResponse.json(
-        { error: 'buyer_incomplete', message: 'Mandanten-Adresse unvollständig (Straße, PLZ, Ort).' },
+        {
+          error: 'buyer_incomplete',
+          message: 'Mandanten-Adresse unvollständig (Straße, PLZ, Ort).',
+        },
         { status: 422 },
       );
     }

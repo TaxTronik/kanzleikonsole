@@ -20,15 +20,11 @@ export default function GlobalError({
     <div className="min-h-[60vh] flex items-center justify-center p-8">
       <div className="card p-10 text-center max-w-md">
         <AlertTriangle className="h-10 w-10 text-amber-500 mx-auto mb-4" />
-        <h2 className="text-lg font-semibold text-primary mb-2">
-          Etwas ist schiefgelaufen
-        </h2>
+        <h2 className="text-lg font-semibold text-primary mb-2">Etwas ist schiefgelaufen</h2>
         <p className="text-sm text-secondary mb-6">
           Ein unerwarteter Fehler ist aufgetreten. Bitte versuchen Sie es erneut.
           {error.digest && (
-            <span className="block mt-2 text-xs text-muted">
-              Fehler-Code: {error.digest}
-            </span>
+            <span className="block mt-2 text-xs text-muted">Fehler-Code: {error.digest}</span>
           )}
         </p>
         <button type="button" onClick={reset} className="btn-primary">

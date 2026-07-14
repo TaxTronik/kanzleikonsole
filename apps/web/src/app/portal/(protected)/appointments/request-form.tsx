@@ -6,7 +6,10 @@ import { Plus, X, CalendarPlus, Trash2 } from 'lucide-react';
 import { DateTimePicker } from '@/components/datetime-picker';
 import { createAppointmentRequestAction, type ActionResult } from './actions';
 
-interface StaffOption { id: string; fullName: string; }
+interface StaffOption {
+  id: string;
+  fullName: string;
+}
 
 function defaultStartFor(slotIndex: number): Date {
   const d = new Date();
@@ -22,11 +25,7 @@ function defaultEndFor(slotIndex: number): Date {
   return d;
 }
 
-export function AppointmentRequestForm({
-  staffOptions,
-}: {
-  staffOptions: StaffOption[];
-}) {
+export function AppointmentRequestForm({ staffOptions }: { staffOptions: StaffOption[] }) {
   const router = useRouter();
   const [slotCount, setSlotCount] = useState(1);
   const [open, setOpen] = useState(false);
@@ -84,7 +83,9 @@ export function AppointmentRequestForm({
             <select name="preferredStaffId" defaultValue="" className="input">
               <option value="">— egal —</option>
               {staffOptions.map((s) => (
-                <option key={s.id} value={s.id}>{s.fullName}</option>
+                <option key={s.id} value={s.id}>
+                  {s.fullName}
+                </option>
               ))}
             </select>
             <p className="text-[11px] text-muted mt-1">
@@ -100,9 +101,7 @@ export function AppointmentRequestForm({
                 className="rounded-md border border-default p-3 space-y-2 bg-gray-50/40 dark:bg-gray-900/30"
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-secondary">
-                    Wunsch {i + 1}
-                  </span>
+                  <span className="text-xs font-medium text-secondary">Wunsch {i + 1}</span>
                   {i > 0 && (
                     <button
                       type="button"
@@ -160,12 +159,19 @@ export function AppointmentRequestForm({
           </div>
 
           {state && !state.ok && <p className="text-xs text-red-700">{state.error}</p>}
-          {state && state.ok && <p className="text-xs text-emerald-700">Anfrage verschickt — die Kanzlei meldet sich.</p>}
+          {state && state.ok && (
+            <p className="text-xs text-emerald-700">
+              Anfrage verschickt — die Kanzlei meldet sich.
+            </p>
+          )}
 
           <div className="flex justify-end gap-2 pt-2">
             <button
               type="button"
-              onClick={() => { setOpen(false); setSlotCount(1); }}
+              onClick={() => {
+                setOpen(false);
+                setSlotCount(1);
+              }}
               className="btn-secondary text-sm inline-flex items-center gap-1"
             >
               <X className="h-3.5 w-3.5" />

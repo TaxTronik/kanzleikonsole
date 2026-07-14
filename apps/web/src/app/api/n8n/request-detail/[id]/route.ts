@@ -15,10 +15,7 @@ import { log } from '@/server/logger';
 
 const TenantIdSchema = z.string().uuid();
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const ver = await verifyN8nSignature(req);
   if (!ver.ok) {
     log.warn({ component: 'n8n', reason: ver.error }, 'n8n-verify: rejected');

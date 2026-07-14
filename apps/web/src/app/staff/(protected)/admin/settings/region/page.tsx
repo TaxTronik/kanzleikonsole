@@ -15,7 +15,10 @@ export default async function RegionSettingsPage() {
       title="Bundesland"
       description="Bestimmt, welche landesspezifischen Feiertage für die Werktagsverschiebung von Steuerterminen berücksichtigt werden."
     >
-      <TaxRegionForm initial={taxRegion.region} initialAssumptionHoliday={taxRegion.assumptionHoliday} />
+      <TaxRegionForm
+        initial={taxRegion.region}
+        initialAssumptionHoliday={taxRegion.assumptionHoliday}
+      />
     </SectionCard>
   );
 }

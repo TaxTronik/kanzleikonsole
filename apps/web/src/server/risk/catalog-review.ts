@@ -104,7 +104,9 @@ export async function setKatalogReviewStatus(
     throw e;
   }
   if (!res.ok) {
-    throw new CatalogReviewFailedError(res.fehler || 'Die Engine hat den Review-Übergang abgelehnt.');
+    throw new CatalogReviewFailedError(
+      res.fehler || 'Die Engine hat den Review-Übergang abgelehnt.',
+    );
   }
 
   const alterStatus = res.alter_status ?? 'unbekannt';

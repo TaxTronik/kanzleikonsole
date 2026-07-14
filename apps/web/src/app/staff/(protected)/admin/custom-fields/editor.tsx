@@ -5,8 +5,7 @@ import { slugify as slugifyLib } from '@/lib/slugify';
 import { Plus, Trash2, Save, X } from 'lucide-react';
 import { saveFieldDefAction, deleteFieldDefAction } from './actions';
 
-type FieldType =
-  | 'TEXT' | 'TEXTAREA' | 'NUMBER' | 'MONEY' | 'DATE' | 'SELECT' | 'CHECKBOX' | 'URL';
+type FieldType = 'TEXT' | 'TEXTAREA' | 'NUMBER' | 'MONEY' | 'DATE' | 'SELECT' | 'CHECKBOX' | 'URL';
 type Kind = 'NATPERS' | 'JURPERS' | 'PERSGES';
 
 const TYPE_LABELS: Record<FieldType, string> = {
@@ -77,7 +76,7 @@ export function CustomFieldsEditor({ initial }: { initial: FieldDef[] }) {
   function save() {
     if (!editing) return;
     setError(null);
-    const key = editing.id ? editing.key : (editing.key.trim() || slugify(editing.label));
+    const key = editing.id ? editing.key : editing.key.trim() || slugify(editing.label);
     if (!key) {
       setError('Bezeichnung oder Schlüssel erforderlich.');
       return;
@@ -138,9 +137,7 @@ export function CustomFieldsEditor({ initial }: { initial: FieldDef[] }) {
                       ? 'alle Mandantentypen'
                       : f.appliesTo.map((k) => KIND_LABELS[k]).join(', ')}
                   </p>
-                  {f.helpText && (
-                    <p className="text-xs text-disabled mt-1 italic">{f.helpText}</p>
-                  )}
+                  {f.helpText && <p className="text-xs text-disabled mt-1 italic">{f.helpText}</p>}
                 </div>
                 <div className="flex items-center gap-2">
                   <button
@@ -201,8 +198,7 @@ function FieldForm({
   isPending: boolean;
   error: string | null;
 }) {
-  const set = <K extends keyof FieldDef>(k: K, v: FieldDef[K]) =>
-    onChange({ ...draft, [k]: v });
+  const set = <K extends keyof FieldDef>(k: K, v: FieldDef[K]) => onChange({ ...draft, [k]: v });
   const isNew = !draft.id;
 
   return (
@@ -252,12 +248,12 @@ function FieldForm({
             disabled={!isNew}
           >
             {(Object.keys(TYPE_LABELS) as FieldType[]).map((t) => (
-              <option key={t} value={t}>{TYPE_LABELS[t]}</option>
+              <option key={t} value={t}>
+                {TYPE_LABELS[t]}
+              </option>
             ))}
           </select>
-          {!isNew && (
-            <p className="text-xs text-disabled mt-1">Typ ist nach Anlage fest.</p>
-          )}
+          {!isNew && <p className="text-xs text-disabled mt-1">Typ ist nach Anlage fest.</p>}
         </div>
         <div>
           <label className="label">Status</label>
@@ -286,9 +282,7 @@ function FieldForm({
 
       <div>
         <label className="label">Gültig für Mandantentyp</label>
-        <p className="text-xs text-muted mb-2">
-          Keine Auswahl = gilt für alle Typen.
-        </p>
+        <p className="text-xs text-muted mb-2">Keine Auswahl = gilt für alle Typen.</p>
         <div className="flex gap-3 flex-wrap">
           {(['NATPERS', 'JURPERS', 'PERSGES'] as Kind[]).map((k) => {
             const checked = draft.appliesTo.includes(k);
@@ -299,7 +293,11 @@ function FieldForm({
                   checked={checked}
                   onChange={(e) => {
                     if (e.target.checked) set('appliesTo', [...draft.appliesTo, k]);
-                    else set('appliesTo', draft.appliesTo.filter((x) => x !== k));
+                    else
+                      set(
+                        'appliesTo',
+                        draft.appliesTo.filter((x) => x !== k),
+                      );
                   }}
                   className="rounded border-strong text-brand-600"
                 />
@@ -319,7 +317,9 @@ function FieldForm({
             </span>
           </label>
           <textarea
-            value={(draft.options ?? []).map((o) => o.value === o.label ? o.value : `${o.value}=${o.label}`).join('\n')}
+            value={(draft.options ?? [])
+              .map((o) => (o.value === o.label ? o.value : `${o.value}=${o.label}`))
+              .join('\n')}
             onChange={(e) => set('options', parseOptions(e.target.value))}
             rows={5}
             maxLength={2000}
@@ -332,21 +332,11 @@ function FieldForm({
       {error && <div className="alert-error-sm">{error}</div>}
 
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={onSave}
-          disabled={isPending}
-          className="btn-primary"
-        >
+        <button type="button" onClick={onSave} disabled={isPending} className="btn-primary">
           <Save className="h-4 w-4" />
           {isPending ? 'Speichert…' : 'Speichern'}
         </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={isPending}
-          className="btn-secondary"
-        >
+        <button type="button" onClick={onCancel} disabled={isPending} className="btn-secondary">
           <X className="h-4 w-4" />
           Abbrechen
         </button>

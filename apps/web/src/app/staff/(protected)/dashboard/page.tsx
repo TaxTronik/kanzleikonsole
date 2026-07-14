@@ -91,7 +91,11 @@ export default async function DashboardPage() {
               Erste Schritte zur Inbetriebnahme — {setup.doneCount} von {setup.totalCount} erledigt
             </p>
             <p className="text-xs text-muted truncate">
-              Offen: {setup.items.filter((i) => !i.done).map((i) => i.label).join(' · ')}
+              Offen:{' '}
+              {setup.items
+                .filter((i) => !i.done)
+                .map((i) => i.label)
+                .join(' · ')}
             </p>
           </div>
           <ArrowRight className="h-4 w-4 text-disabled group-hover:text-muted shrink-0" />

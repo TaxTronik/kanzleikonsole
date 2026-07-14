@@ -15,7 +15,13 @@ import { AlarmClock, FileDown, ExternalLink } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { loadKontrollbuch } from '@/server/fristen/kontrollbuch';
-import { bucketFor, BUCKET_LABELS, QUELLE_LABELS, type FristBucket, type FristEintrag } from '@/server/fristen/eintrag';
+import {
+  bucketFor,
+  BUCKET_LABELS,
+  QUELLE_LABELS,
+  type FristBucket,
+  type FristEintrag,
+} from '@/server/fristen/eintrag';
 import { fmtDateShort, berlinTodayUtcMidnight } from '@/lib/fmt';
 
 const RANGES = [7, 30, 90] as const;
@@ -23,7 +29,7 @@ const RANGES = [7, 30, 90] as const;
 interface Search {
   tage?: string;
   filter?: string; // 'offen' (default) | 'alle'
-  wer?: string;    // 'alle' (default) | 'meine'
+  wer?: string; // 'alle' (default) | 'meine'
 }
 
 export default async function FristenPage({ searchParams }: { searchParams: Promise<Search> }) {
@@ -83,8 +89,10 @@ export default async function FristenPage({ searchParams }: { searchParams: Prom
           </h1>
           <p className="text-muted text-sm">
             Steuertermine, Einspruchsfristen, Anforderungen und Wiedervorlagen — {offeneCount} offen
-            {ueberfaellig > 0 && <span className="text-red-700 font-medium">, davon {ueberfaellig} überfällig</span>}.
-            Erledigt wird im jeweiligen Modul.
+            {ueberfaellig > 0 && (
+              <span className="text-red-700 font-medium">, davon {ueberfaellig} überfällig</span>
+            )}
+            . Erledigt wird im jeweiligen Modul.
           </p>
         </div>
         <a
@@ -103,25 +111,57 @@ export default async function FristenPage({ searchParams }: { searchParams: Prom
             <Link
               key={t}
               href={qs({ tage: String(t) })}
-              className={t === tage ? 'px-3 py-1.5 bg-brand-600 text-white' : 'px-3 py-1.5 text-secondary hover:bg-gray-50'}
+              className={
+                t === tage
+                  ? 'px-3 py-1.5 bg-brand-600 text-white'
+                  : 'px-3 py-1.5 text-secondary hover:bg-gray-50'
+              }
             >
               {t} Tage
             </Link>
           ))}
         </div>
         <div className="toggle-group">
-          <Link href={qs({ filter: 'offen' })} className={nurOffene ? 'px-3 py-1.5 bg-brand-600 text-white' : 'px-3 py-1.5 text-secondary hover:bg-gray-50'}>
+          <Link
+            href={qs({ filter: 'offen' })}
+            className={
+              nurOffene
+                ? 'px-3 py-1.5 bg-brand-600 text-white'
+                : 'px-3 py-1.5 text-secondary hover:bg-gray-50'
+            }
+          >
             Offen
           </Link>
-          <Link href={qs({ filter: 'alle' })} className={!nurOffene ? 'px-3 py-1.5 bg-brand-600 text-white' : 'px-3 py-1.5 text-secondary hover:bg-gray-50'}>
+          <Link
+            href={qs({ filter: 'alle' })}
+            className={
+              !nurOffene
+                ? 'px-3 py-1.5 bg-brand-600 text-white'
+                : 'px-3 py-1.5 text-secondary hover:bg-gray-50'
+            }
+          >
             Mit Erledigten
           </Link>
         </div>
         <div className="toggle-group">
-          <Link href={qs({ wer: 'alle' })} className={!nurMeine ? 'px-3 py-1.5 bg-brand-600 text-white' : 'px-3 py-1.5 text-secondary hover:bg-gray-50'}>
+          <Link
+            href={qs({ wer: 'alle' })}
+            className={
+              !nurMeine
+                ? 'px-3 py-1.5 bg-brand-600 text-white'
+                : 'px-3 py-1.5 text-secondary hover:bg-gray-50'
+            }
+          >
             Alle
           </Link>
-          <Link href={qs({ wer: 'meine' })} className={nurMeine ? 'px-3 py-1.5 bg-brand-600 text-white' : 'px-3 py-1.5 text-secondary hover:bg-gray-50'}>
+          <Link
+            href={qs({ wer: 'meine' })}
+            className={
+              nurMeine
+                ? 'px-3 py-1.5 bg-brand-600 text-white'
+                : 'px-3 py-1.5 text-secondary hover:bg-gray-50'
+            }
+          >
             Meine
           </Link>
         </div>
@@ -146,7 +186,11 @@ export default async function FristenPage({ searchParams }: { searchParams: Prom
             );
           })}
           {erledigte.length > 0 && (
-            <FristenTabelle titel={`Erledigt — letzte ${tage} Tage (${erledigte.length})`} rows={erledigte} akzent={null} />
+            <FristenTabelle
+              titel={`Erledigt — letzte ${tage} Tage (${erledigte.length})`}
+              rows={erledigte}
+              akzent={null}
+            />
           )}
         </>
       )}
@@ -154,11 +198,25 @@ export default async function FristenPage({ searchParams }: { searchParams: Prom
   );
 }
 
-function FristenTabelle({ titel, rows, akzent }: { titel: string; rows: FristEintrag[]; akzent: 'rot' | 'gelb' | null }) {
+function FristenTabelle({
+  titel,
+  rows,
+  akzent,
+}: {
+  titel: string;
+  rows: FristEintrag[];
+  akzent: 'rot' | 'gelb' | null;
+}) {
   return (
-    <div className={`card overflow-hidden mb-6 ${akzent === 'rot' ? 'border-l-4 border-l-red-500' : akzent === 'gelb' ? 'border-l-4 border-l-yellow-500' : ''}`}>
+    <div
+      className={`card overflow-hidden mb-6 ${akzent === 'rot' ? 'border-l-4 border-l-red-500' : akzent === 'gelb' ? 'border-l-4 border-l-yellow-500' : ''}`}
+    >
       <div className="px-6 py-3 border-b border-default">
-        <h2 className={`text-sm font-semibold ${akzent === 'rot' ? 'text-red-800 dark:text-red-300' : 'text-primary'}`}>{titel}</h2>
+        <h2
+          className={`text-sm font-semibold ${akzent === 'rot' ? 'text-red-800 dark:text-red-300' : 'text-primary'}`}
+        >
+          {titel}
+        </h2>
       </div>
       <table className="w-full text-sm">
         <thead>
@@ -175,20 +233,34 @@ function FristenTabelle({ titel, rows, akzent }: { titel: string; rows: FristEin
         <tbody className="divide-y divide-border-subtle">
           {rows.map((e) => (
             <tr key={`${e.quelle}-${e.id}`} className="hover:bg-gray-50">
-              <td className="px-6 py-2.5 whitespace-nowrap font-medium text-primary">{fmtDateShort(e.faelligAm)}</td>
-              <td className="px-4 py-2.5"><span className="badge-gray text-[10px]">{QUELLE_LABELS[e.quelle]}</span></td>
-              <td className="px-4 py-2.5 text-secondary max-w-[26rem] truncate" title={e.titel}>{e.titel}</td>
-              <td className="px-4 py-2.5 text-secondary whitespace-nowrap">
-                <Link href={`/staff/clients/${e.clientId}`} className="hover:underline">{e.clientName}</Link>
+              <td className="px-6 py-2.5 whitespace-nowrap font-medium text-primary">
+                {fmtDateShort(e.faelligAm)}
               </td>
-              <td className="px-4 py-2.5 text-muted whitespace-nowrap">{e.verantwortlich ?? '—'}</td>
+              <td className="px-4 py-2.5">
+                <span className="badge-gray text-[10px]">{QUELLE_LABELS[e.quelle]}</span>
+              </td>
+              <td className="px-4 py-2.5 text-secondary max-w-[26rem] truncate" title={e.titel}>
+                {e.titel}
+              </td>
+              <td className="px-4 py-2.5 text-secondary whitespace-nowrap">
+                <Link href={`/staff/clients/${e.clientId}`} className="hover:underline">
+                  {e.clientName}
+                </Link>
+              </td>
+              <td className="px-4 py-2.5 text-muted whitespace-nowrap">
+                {e.verantwortlich ?? '—'}
+              </td>
               <td className="px-4 py-2.5 text-muted whitespace-nowrap">
                 {e.erledigt
                   ? `${e.erledigtAm ? fmtDateShort(e.erledigtAm) : 'ja'}${e.erledigtVon ? ` · ${e.erledigtVon}` : ''}`
                   : '—'}
               </td>
               <td className="px-4 py-2.5 text-right">
-                <Link href={e.href} className="text-disabled hover:text-brand-700" title="Zum Vorgang">
+                <Link
+                  href={e.href}
+                  className="text-disabled hover:text-brand-700"
+                  title="Zum Vorgang"
+                >
                   <ExternalLink className="h-4 w-4 inline" />
                 </Link>
               </td>

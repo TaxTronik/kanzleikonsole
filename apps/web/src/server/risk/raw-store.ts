@@ -32,7 +32,10 @@ export async function storeRawResult(
   const bucket = getBucketForTier('GOBD');
   const key = rawResultKey(tenantId, analysisId);
   const gz = gzipSync(Buffer.from(JSON.stringify(rawResult ?? null), 'utf8'));
-  await putObjectBytes(bucket, key, gz, { contentType: 'application/gzip', retainUntil: gobdRetentionUntil() });
+  await putObjectBytes(bucket, key, gz, {
+    contentType: 'application/gzip',
+    retainUntil: gobdRetentionUntil(),
+  });
   return { bucket, key };
 }
 

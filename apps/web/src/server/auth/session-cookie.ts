@@ -41,7 +41,8 @@ export const PORTAL_SESSION_COOKIE_BASE = 'taxtronik_portal_session';
 function deploymentSaltNamespace(): string {
   const explicit = process.env['TAXTRONIK_SESSION_NAMESPACE'];
   if (explicit?.trim()) return explicit.trim();
-  const rawUrl = process.env['NEXTAUTH_URL'] || process.env['AUTH_URL'] || process.env['E2E_BASE_URL'];
+  const rawUrl =
+    process.env['NEXTAUTH_URL'] || process.env['AUTH_URL'] || process.env['E2E_BASE_URL'];
   if (!rawUrl) return 'local';
   try {
     return new URL(rawUrl).origin.toLowerCase();

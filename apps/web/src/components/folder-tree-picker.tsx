@@ -88,9 +88,17 @@ export function FolderTreePicker({
             tabIndex={kids.length ? 0 : -1}
             className={kids.length ? 'text-disabled' : 'invisible'}
           >
-            {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+            {open ? (
+              <ChevronDown className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5" />
+            )}
           </button>
-          {isSel ? <FolderOpen className="h-4 w-4 shrink-0" /> : <Folder className="h-4 w-4 shrink-0" />}
+          {isSel ? (
+            <FolderOpen className="h-4 w-4 shrink-0" />
+          ) : (
+            <Folder className="h-4 w-4 shrink-0" />
+          )}
           <span className="truncate flex-1">{f.name}</span>
           {rowExtra?.(f)}
           {showCheck && isSel && <Check className="h-3.5 w-3.5" />}
@@ -119,9 +127,7 @@ export function FolderTreePicker({
         </div>
       )}
       {(childrenOf.get(null) ?? []).map((f) => row(f, 0))}
-      {folders.length === 0 && (
-        <p className="px-2 py-3 text-xs text-disabled">{emptyLabel}</p>
-      )}
+      {folders.length === 0 && <p className="px-2 py-3 text-xs text-disabled">{emptyLabel}</p>}
     </div>
   );
 }

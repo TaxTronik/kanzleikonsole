@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+GITLEAKS="${1:-}"
+
+[[ -n "$GITLEAKS" && -x "$GITLEAKS" ]] || {
+  echo "Nutzung: $0 /pfad/zu/gitleaks" >&2
+  exit 2
+}
+
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+REPO="$TMP/repo"
+mkdir -p "$REPO"
+git -C "$REPO" init -q
+git -C "$REPO" config user.email test@example.invalid
+git -C "$REPO" config user.name "Gitleaks Config Test"
+
+# Kalibrierter historischer False-Positive: ein leerer Secret-Platzhalter vor
+# dem Bucket-Namen ist kein Secret und muss ohne Pfad-Komplettausnahme bestehen.
+printf '%s\n' 'S3_SECRET_KEY=' 'S3_BUCKET_GOBD=gobd' > "$REPO/.env.example"
+git -C "$REPO" add .env.example
+git -C "$REPO" commit -qm "empty placeholder fixture"
+"$GITLEAKS" git --config "$ROOT/.gitleaks.toml" --redact --no-banner "$REPO" \
+  --report-format json --report-path "$TMP/empty.json" >/dev/null 2>&1
+grep -qx '\[\]' "$TMP/empty.json"
+
+# Gegenbeweis: derselbe Pfad mit einem nicht-leeren, rein synthetischen Wert
+# muss weiterhin vom generic-api-key-Detektor blockiert werden.
+printf '%s\n' \
+  'S3_SECRET_KEY=Q7vN4mZ8pL2xR6cT9wK3dF5hJ1sB0yU4aE7qI6oP' \
+  'S3_BUCKET_GOBD=gobd' > "$REPO/.env.example"
+git -C "$REPO" add .env.example
+git -C "$REPO" commit -qm "non-empty synthetic secret fixture"
+
+set +e
+"$GITLEAKS" git --config "$ROOT/.gitleaks.toml" --redact --no-banner "$REPO" \
+  --report-format json --report-path "$TMP/non-empty.json" >/dev/null 2>&1
+rc=$?
+set -e
+[[ $rc -eq 1 ]] || {
+  echo "Nicht-leerer S3-Testwert wurde nicht mit dem erwarteten Leak-Exit 1 blockiert (Exit $rc)." >&2
+  exit 1
+}
+grep -q '"RuleID": "generic-api-key"' "$TMP/non-empty.json"
+
+echo "2 gitleaks allowlist regression tests passed."

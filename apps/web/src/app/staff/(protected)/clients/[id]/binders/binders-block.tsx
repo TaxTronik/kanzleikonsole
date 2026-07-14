@@ -4,13 +4,8 @@ import { useActionState, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { FolderInput, Plus, Trash2, ArrowRight, Check } from 'lucide-react';
 import { fmtDateShort } from '@/lib/fmt';
-import {
-  createBinderAction,
-  updateBinderStatusAction,
-  deleteBinderAction,
-} from './actions';
+import { createBinderAction, updateBinderStatusAction, deleteBinderAction } from './actions';
 import type { ActionResult } from '@/server/actions/staff-action';
-
 
 type BinderStatus = 'PREPARED' | 'WITH_CLIENT' | 'RETURNED' | 'COMPLETED';
 
@@ -52,13 +47,7 @@ const NEXT_LABEL: Record<BinderStatus, string> = {
   COMPLETED: '',
 };
 
-export function BindersBlock({
-  clientId,
-  initial,
-}: {
-  clientId: string;
-  initial: Binder[];
-}) {
+export function BindersBlock({ clientId, initial }: { clientId: string; initial: Binder[] }) {
   const router = useRouter();
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
     createBinderAction,
@@ -82,7 +71,8 @@ export function BindersBlock({
     });
   }
 
-  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
   const active = initial.filter((b) => b.status !== 'COMPLETED');
   const completed = initial.filter((b) => b.status === 'COMPLETED');
 
@@ -156,7 +146,8 @@ export function BindersBlock({
         <ul className="divide-y divide-border-subtle">
           {active.map((b) => {
             const due = b.expectedReturnAt ? new Date(b.expectedReturnAt) : null;
-            const overdue = b.status === 'WITH_CLIENT' && due !== null && due.getTime() < today.getTime();
+            const overdue =
+              b.status === 'WITH_CLIENT' && due !== null && due.getTime() < today.getTime();
             const next = NEXT_STATUS[b.status];
             return (
               <li key={b.id} className="px-6 py-3">
@@ -170,7 +161,9 @@ export function BindersBlock({
                       {overdue && <span className="badge-red text-[10px]">überfällig</span>}
                     </p>
                     {b.contents && (
-                      <p className="text-xs text-secondary mt-1 whitespace-pre-wrap">{b.contents}</p>
+                      <p className="text-xs text-secondary mt-1 whitespace-pre-wrap">
+                        {b.contents}
+                      </p>
                     )}
                     <p className="text-[11px] text-muted mt-1 flex flex-wrap gap-x-3">
                       {b.sentAt && <span>ausgegeben {fmtDateShort(new Date(b.sentAt))}</span>}
@@ -191,7 +184,11 @@ export function BindersBlock({
                         className="btn-secondary text-[11px] py-1 inline-flex items-center gap-1"
                         title={`Status: ${NEXT_LABEL[b.status]}`}
                       >
-                        {next === 'COMPLETED' ? <Check className="h-3 w-3" /> : <ArrowRight className="h-3 w-3" />}
+                        {next === 'COMPLETED' ? (
+                          <Check className="h-3 w-3" />
+                        ) : (
+                          <ArrowRight className="h-3 w-3" />
+                        )}
                         {NEXT_LABEL[b.status]}
                       </button>
                     )}
@@ -221,7 +218,9 @@ export function BindersBlock({
             {completed.map((b) => (
               <li key={b.id} className="px-6 py-2 text-sm text-muted flex justify-between gap-2">
                 <span className="truncate">{b.label}</span>
-                {b.returnedAt && <span className="text-xs">{fmtDateShort(new Date(b.returnedAt))}</span>}
+                {b.returnedAt && (
+                  <span className="text-xs">{fmtDateShort(new Date(b.returnedAt))}</span>
+                )}
               </li>
             ))}
           </ul>

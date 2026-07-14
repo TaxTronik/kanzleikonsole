@@ -43,7 +43,9 @@ describe('resolveAppDatasourceUrl — fail-closed RLS-Backstop', () => {
   });
 
   it('Test/CI ohne DATABASE_APP_URL: kein Wurf, Fallback auf vorhandene URL', () => {
-    expect(() => resolveAppDatasourceUrl({ NODE_ENV: 'test', DATABASE_URL: OWNER_URL })).not.toThrow();
+    expect(() =>
+      resolveAppDatasourceUrl({ NODE_ENV: 'test', DATABASE_URL: OWNER_URL }),
+    ).not.toThrow();
   });
 
   it('Ohne NODE_ENV (undefined): kein Production-Zwang', () => {

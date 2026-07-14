@@ -8,7 +8,12 @@ import { emitN8nEvent } from '@/server/n8n/emit';
 import { notify } from '@/server/notifications/service';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { assertStaffInTenant } from '@/server/db/assert-tenant';
-import { staffActionGuard, withStaff, ActionError, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
+import {
+  staffActionGuard,
+  withStaff,
+  ActionError,
+  type ActionResult as BaseActionResult,
+} from '@/server/actions/staff-action';
 import { fmtDateShort } from '@/lib/fmt';
 
 export type ActionResult = BaseActionResult;
@@ -128,7 +133,9 @@ export async function markNoteReadAction(formData: FormData): Promise<void> {
   const g = await staffActionGuard();
   if (!g.ok) return;
   // S2: UUID-Validation (symmetrisch zu markNotificationReadAction).
-  const parsed = z.object({ noteId: z.string().uuid() }).safeParse({ noteId: formData.get('noteId') });
+  const parsed = z
+    .object({ noteId: z.string().uuid() })
+    .safeParse({ noteId: formData.get('noteId') });
   if (!parsed.success) return;
   await markPhoneNoteRead(parsed.data.noteId, g.tenantId, g.staffId);
   revalidatePath('/staff/phone-notes');
@@ -146,13 +153,11 @@ export async function markPhoneNoteReadById(id: string): Promise<ActionResult> {
 
 // Interner Helfer (kein UI-Action): erhält bereits autorisierten Kontext.
 async function markPhoneNoteRead(id: string, tenantId: string, staffId: string): Promise<void> {
-  await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    (tx) =>
-      tx.phoneNote.updateMany({
-        where: { id, readAt: null },
-        data: { readAt: new Date() },
-      }),
+  await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>
+    tx.phoneNote.updateMany({
+      where: { id, readAt: null },
+      data: { readAt: new Date() },
+    }),
   );
 }
 
@@ -171,7 +176,9 @@ export async function markPhoneNoteDoneAction(input: { id: string }): Promise<Ac
       data: { doneAt: new Date(), doneByStaff: staffId, readAt: new Date() },
     });
     await evidenceService.record(tx, {
-      tenantId, actorType: 'STAFF', actorId: staffId,
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
       action: 'phone_note.done',
       resourceType: 'phone_note',
       resourceId: parsed.data.id,
@@ -195,7 +202,9 @@ export async function undoPhoneNoteDoneAction(input: { id: string }): Promise<Ac
       data: { doneAt: null, doneByStaff: null },
     });
     await evidenceService.record(tx, {
-      tenantId, actorType: 'STAFF', actorId: staffId,
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
       action: 'phone_note.undone',
       resourceType: 'phone_note',
       resourceId: parsed.data.id,
@@ -212,16 +221,24 @@ export async function forwardPhoneNoteAction(input: {
   id: string;
   toStaffId: string;
 }): Promise<ActionResult> {
-  const parsed = z.object({
-    id: z.string().uuid(),
-    toStaffId: z.string().uuid(),
-  }).safeParse(input);
+  const parsed = z
+    .object({
+      id: z.string().uuid(),
+      toStaffId: z.string().uuid(),
+    })
+    .safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   const r = await withStaff(async (tx, { tenantId, staffId }) => {
     const note = await tx.phoneNote.findUnique({
       where: { id: parsed.data.id },
-      select: { forwardToStaff: true, subject: true, callerName: true, callerPhone: true, doneAt: true },
+      select: {
+        forwardToStaff: true,
+        subject: true,
+        callerName: true,
+        callerPhone: true,
+        doneAt: true,
+      },
     });
     if (!note) throw new ActionError('Telefonzettel nicht gefunden.');
     if (note.doneAt) throw new ActionError('Erledigte Zettel können nicht übertragen werden.');
@@ -235,7 +252,9 @@ export async function forwardPhoneNoteAction(input: {
       data: { forwardToStaff: parsed.data.toStaffId, readAt: null },
     });
     await evidenceService.record(tx, {
-      tenantId, actorType: 'STAFF', actorId: staffId,
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
       action: 'phone_note.forward',
       resourceType: 'phone_note',
       resourceId: parsed.data.id,
@@ -268,24 +287,32 @@ export async function phoneNoteToReminderAction(input: {
   dueDate: string;
   assigneeStaffId?: string | null;
 }): Promise<ActionResult> {
-  const parsed = z.object({
-    id: z.string().uuid(),
-    dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    assigneeStaffId: z.string().uuid().nullable().optional(),
-  }).safeParse(input);
+  const parsed = z
+    .object({
+      id: z.string().uuid(),
+      dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      assigneeStaffId: z.string().uuid().nullable().optional(),
+    })
+    .safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
     const note = await tx.phoneNote.findUnique({
       where: { id: parsed.data.id },
       select: {
-        clientId: true, subject: true, callerName: true, callerPhone: true,
-        body: true, forwardToStaff: true, doneAt: true,
+        clientId: true,
+        subject: true,
+        callerName: true,
+        callerPhone: true,
+        body: true,
+        forwardToStaff: true,
+        doneAt: true,
       },
     });
     if (!note) throw new ActionError('Telefonzettel nicht gefunden.');
     if (note.doneAt) throw new ActionError('Bereits erledigt.');
-    if (!note.clientId) throw new ActionError('Telefonzettel ohne Mandantenbezug — Wiedervorlage nicht möglich.');
+    if (!note.clientId)
+      throw new ActionError('Telefonzettel ohne Mandantenbezug — Wiedervorlage nicht möglich.');
     await assertClientAccessTx(tx, session, note.clientId);
 
     // P-7 (Befund 5): vom Aufrufer übergebene assigneeStaffId Tenant-Sanity.
@@ -312,18 +339,26 @@ export async function phoneNoteToReminderAction(input: {
     });
 
     await evidenceService.record(tx, {
-      tenantId, actorType: 'STAFF', actorId: staffId,
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
       action: 'phone_note.to_reminder',
       resourceType: 'phone_note',
       resourceId: parsed.data.id,
       after: { reminderId: reminder.id, dueDate: parsed.data.dueDate },
     });
     await evidenceService.record(tx, {
-      tenantId, actorType: 'STAFF', actorId: staffId,
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
       action: 'client_reminder.create',
       resourceType: 'client_reminder',
       resourceId: reminder.id,
-      after: { clientId: note.clientId, dueDate: parsed.data.dueDate, fromPhoneNote: parsed.data.id },
+      after: {
+        clientId: note.clientId,
+        dueDate: parsed.data.dueDate,
+        fromPhoneNote: parsed.data.id,
+      },
     });
   });
   if (r.ok) {

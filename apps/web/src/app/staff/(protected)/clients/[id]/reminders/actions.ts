@@ -27,7 +27,8 @@ export async function createReminderAction(
     notes: formData.get('notes') ?? '',
     assigneeStaffId: formData.get('assigneeStaffId') || null,
   });
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
+  if (!parsed.success)
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
 
   return withStaff(
     async (tx, { tenantId, staffId, session }) => {
@@ -49,11 +50,17 @@ export async function createReminderAction(
         },
       });
       await evidenceService.record(tx, {
-        tenantId, actorType: 'STAFF', actorId: staffId,
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
         action: 'client_reminder.create',
         resourceType: 'client_reminder',
         resourceId: r.id,
-        after: { clientId: parsed.data.clientId, dueDate: parsed.data.dueDate, subject: parsed.data.subject },
+        after: {
+          clientId: parsed.data.clientId,
+          dueDate: parsed.data.dueDate,
+          subject: parsed.data.subject,
+        },
       });
     },
     { revalidate: [`/staff/clients/${parsed.data.clientId}`, '/staff/dashboard'] },
@@ -65,7 +72,10 @@ export async function markReminderDoneAction(input: { id: string }): Promise<Act
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
-    const rem = await tx.clientReminder.findUnique({ where: { id: parsed.data.id }, select: { clientId: true } });
+    const rem = await tx.clientReminder.findUnique({
+      where: { id: parsed.data.id },
+      select: { clientId: true },
+    });
     if (!rem) throw new ActionError('Wiedervorlage nicht gefunden.');
     await assertClientAccessTx(tx, session, rem.clientId);
     await tx.clientReminder.update({
@@ -73,7 +83,9 @@ export async function markReminderDoneAction(input: { id: string }): Promise<Act
       data: { doneAt: new Date(), doneByStaff: staffId },
     });
     await evidenceService.record(tx, {
-      tenantId, actorType: 'STAFF', actorId: staffId,
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
       action: 'client_reminder.done',
       resourceType: 'client_reminder',
       resourceId: parsed.data.id,
@@ -102,7 +114,8 @@ export async function submitResearchResultAction(input: {
   body: string;
 }): Promise<ActionResult> {
   const parsed = SubmitResearchResultSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
+  if (!parsed.success)
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
 
   const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
     await assertClientAccessTx(tx, session, parsed.data.clientId);
@@ -110,16 +123,22 @@ export async function submitResearchResultAction(input: {
     const reminder = await tx.clientReminder.findUnique({
       where: { id: parsed.data.reminderId },
       select: {
-        id: true, clientId: true, createdByStaff: true,
+        id: true,
+        clientId: true,
+        createdByStaff: true,
         riskMarkings: { select: { id: true, analysisId: true }, take: 1 },
       },
     });
-    if (!reminder || reminder.clientId !== parsed.data.clientId) throw new Error('Wiedervorlage nicht gefunden.');
+    if (!reminder || reminder.clientId !== parsed.data.clientId)
+      throw new Error('Wiedervorlage nicht gefunden.');
     const markingId = reminder.riskMarkings[0]?.id ?? null;
     const analysisId = reminder.riskMarkings[0]?.analysisId ?? null;
     if (!markingId) throw new Error('Diese Wiedervorlage ist kein Rechercheauftrag.');
 
-    const me = await tx.staffUser.findUnique({ where: { id: staffId }, select: { fullName: true } });
+    const me = await tx.staffUser.findUnique({
+      where: { id: staffId },
+      select: { fullName: true },
+    });
     const result = await tx.riskResearchResult.create({
       data: {
         tenantId,
@@ -139,7 +158,9 @@ export async function submitResearchResultAction(input: {
     });
 
     await evidenceService.record(tx, {
-      tenantId, actorType: 'STAFF', actorId: staffId,
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
       action: 'risk.research.submitted',
       resourceType: 'risk_research_result',
       resourceId: result.id,
@@ -172,12 +193,17 @@ export async function deleteReminderAction(input: { id: string }): Promise<Actio
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
-    const rem = await tx.clientReminder.findUnique({ where: { id: parsed.data.id }, select: { subject: true, clientId: true } });
+    const rem = await tx.clientReminder.findUnique({
+      where: { id: parsed.data.id },
+      select: { subject: true, clientId: true },
+    });
     if (!rem) throw new ActionError('Wiedervorlage nicht gefunden.');
     await assertClientAccessTx(tx, session, rem.clientId);
     await tx.clientReminder.delete({ where: { id: parsed.data.id } });
     await evidenceService.record(tx, {
-      tenantId, actorType: 'STAFF', actorId: staffId,
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
       action: 'client_reminder.delete',
       resourceType: 'client_reminder',
       resourceId: parsed.data.id,

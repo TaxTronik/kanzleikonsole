@@ -6,7 +6,10 @@ import { useRouter } from 'next/navigation';
 import { Users, X } from 'lucide-react';
 import { setWorkflowMembersAction } from './actions';
 
-interface StaffOption { id: string; fullName: string; }
+interface StaffOption {
+  id: string;
+  fullName: string;
+}
 
 /**
  * Team-Editor pro Workflow-Instanz. Multi-Select aus aktiven Mitarbeitern.
@@ -26,7 +29,9 @@ export function TeamEditorButton({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const [selected, setSelected] = useState<Set<string>>(new Set(currentMemberIds));
   const [error, setError] = useState<string | null>(null);
   const [isPending, start] = useTransition();
@@ -53,7 +58,10 @@ export function TeamEditorButton({
         instanceId,
         memberIds: Array.from(selected),
       });
-      if (!r.ok) { setError(r.error ?? 'Fehler.'); return; }
+      if (!r.ok) {
+        setError(r.error ?? 'Fehler.');
+        return;
+      }
       setOpen(false);
       router.refresh();
     });
@@ -67,13 +75,17 @@ export function TeamEditorButton({
             <Users className="h-4 w-4 text-brand-600" />
             Team bearbeiten
           </h2>
-          <button type="button" onClick={() => setOpen(false)} className="text-disabled hover:text-secondary">
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="text-disabled hover:text-secondary"
+          >
             <X className="h-4 w-4" />
           </button>
         </div>
         <p className="text-xs text-secondary">
-          Wählen Sie die Mitarbeiter, die am Workflow beteiligt sind. Die Übergabe einzelner Schritte
-          bleibt davon unberührt. Der Starter ist immer Mitglied.
+          Wählen Sie die Mitarbeiter, die am Workflow beteiligt sind. Die Übergabe einzelner
+          Schritte bleibt davon unberührt. Der Starter ist immer Mitglied.
         </p>
         <ul className="space-y-1 max-h-64 overflow-y-auto border border-default rounded-md p-2">
           {staffOptions.map((s) => {
@@ -105,13 +117,15 @@ export function TeamEditorButton({
             );
           })}
         </ul>
-        {error && (
-          <div className="alert-error-sm text-xs p-2">{error}</div>
-        )}
+        {error && <div className="alert-error-sm text-xs p-2">{error}</div>}
         <div className="form-actions">
-          <button type="button" onClick={() => setOpen(false)} className="btn-secondary text-sm">Abbrechen</button>
+          <button type="button" onClick={() => setOpen(false)} className="btn-secondary text-sm">
+            Abbrechen
+          </button>
           <button type="button" onClick={save} disabled={isPending} className="btn-primary text-sm">
-            {isPending ? 'Speichere…' : `${selected.size} Mitglied${selected.size === 1 ? '' : 'er'} speichern`}
+            {isPending
+              ? 'Speichere…'
+              : `${selected.size} Mitglied${selected.size === 1 ? '' : 'er'} speichern`}
           </button>
         </div>
       </div>

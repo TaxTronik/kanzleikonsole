@@ -12,10 +12,19 @@ import { baseEditorExtensions } from '../editor-extensions';
 const schema = getSchema(baseEditorExtensions);
 const fromJson = (json: unknown) => PMNode.fromJSON(schema, json as Record<string, unknown>);
 
-const p = (...content: unknown[]) => ({ type: 'paragraph', ...(content.length ? { content } : {}) });
+const p = (...content: unknown[]) => ({
+  type: 'paragraph',
+  ...(content.length ? { content } : {}),
+});
 const t = (text: string, ...marks: string[]) =>
-  marks.length ? { type: 'text', text, marks: marks.map((type) => ({ type })) } : { type: 'text', text };
-const h = (level: number, text: string) => ({ type: 'heading', attrs: { level }, content: [t(text)] });
+  marks.length
+    ? { type: 'text', text, marks: marks.map((type) => ({ type })) }
+    : { type: 'text', text };
+const h = (level: number, text: string) => ({
+  type: 'heading',
+  attrs: { level },
+  content: [t(text)],
+});
 const li = (...content: unknown[]) => ({ type: 'listItem', content });
 const doc = (...content: unknown[]) => ({ type: 'doc', content });
 
@@ -25,10 +34,20 @@ const CASES: Array<[string, unknown]> = [
   ['Überschrift + Absatz', doc(h(2, 'Titel'), p(t('Fließtext')))],
   ['Unter-Überschrift', doc(h(3, 'Unter'), p(t('x')))],
   ['hardBreak im Absatz', doc(p(t('Zeile1'), { type: 'hardBreak' }, t('Zeile2')))],
-  ['Formatierung (marks) ändert Text nicht', doc(p(t('Sehr '), t('wichtig', 'bold'), t(' und '), t('kursiv', 'italic')))],
+  [
+    'Formatierung (marks) ändert Text nicht',
+    doc(p(t('Sehr '), t('wichtig', 'bold'), t(' und '), t('kursiv', 'italic'))),
+  ],
   ['leerer Absatz zwischen Text', doc(p(t('A')), p(), p(t('B')))],
   ['leerer Absatz am Ende', doc(p(t('A')), p())],
-  ['Aufzählung (bulletList)', doc(p(t('Davor.')), { type: 'bulletList', content: [li(p(t('Eins'))), li(p(t('Zwei')))] }, p(t('Danach.')))],
+  [
+    'Aufzählung (bulletList)',
+    doc(
+      p(t('Davor.')),
+      { type: 'bulletList', content: [li(p(t('Eins'))), li(p(t('Zwei')))] },
+      p(t('Danach.')),
+    ),
+  ],
   ['nummerierte Liste', doc({ type: 'orderedList', content: [li(p(t('A'))), li(p(t('B')))] })],
   ['blockquote', doc({ type: 'blockquote', content: [p(t('Zitat'))] }, p(t('Normal')))],
   ['codeBlock', doc({ type: 'codeBlock', content: [t('const x = 1')] }, p(t('Text')))],

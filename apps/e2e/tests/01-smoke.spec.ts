@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Smoke', () => {
-  test('Public Health-Endpoint liefert minimalen Status (keine internen Details)', async ({ request }) => {
+  test('Public Health-Endpoint liefert minimalen Status (keine internen Details)', async ({
+    request,
+  }) => {
     const res = await request.get('/api/health');
     // Healthy oder degraded — beides ist eine gültige Antwort. Wichtig:
     // KEIN 5xx (Endpoint selbst muss leben).

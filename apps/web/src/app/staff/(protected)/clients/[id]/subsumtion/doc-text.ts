@@ -27,13 +27,22 @@ export interface DocText {
   ranges: TextRange[];
 }
 
-function walk(node: PMNode, contentStart: number, ctx: { text: string; ranges: TextRange[] }): void {
+function walk(
+  node: PMNode,
+  contentStart: number,
+  ctx: { text: string; ranges: TextRange[] },
+): void {
   node.forEach((child, offset) => {
     const pos = contentStart + offset; // absolute PM-Position VOR dem Kind
     if (child.isText && child.text) {
       const plainStart = ctx.text.length;
       ctx.text += child.text;
-      ctx.ranges.push({ from: pos, to: pos + child.text.length, plainStart, plainEnd: ctx.text.length });
+      ctx.ranges.push({
+        from: pos,
+        to: pos + child.text.length,
+        plainStart,
+        plainEnd: ctx.text.length,
+      });
     } else if (child.type.name === 'hardBreak') {
       ctx.text += '\n';
     } else if (child.isBlock) {
@@ -107,9 +116,15 @@ export function pmPosToPlain(ranges: TextRange[], pos: number): number | null {
   let best: number | null = null;
   let bestDist = Infinity;
   for (const r of ranges) {
-    for (const [p, plain] of [[r.from, r.plainStart], [r.to, r.plainEnd]] as const) {
+    for (const [p, plain] of [
+      [r.from, r.plainStart],
+      [r.to, r.plainEnd],
+    ] as const) {
       const d = Math.abs(p - pos);
-      if (d < bestDist) { bestDist = d; best = plain; }
+      if (d < bestDist) {
+        bestDist = d;
+        best = plain;
+      }
     }
   }
   return best;

@@ -51,8 +51,8 @@ const PUBLIC_PATHS = new Set<string>([
   '/staff/login',
   '/portal/login',
   '/portal/login/verify', // Magic-Link-Callback
-  '/poa/sign',            // Public PoA-Signatur-Seite (Auth via Token)
-  '/gwg-onboarding',      // Public GwG-Onboarding-Wizard (Auth via Token)
+  '/poa/sign', // Public PoA-Signatur-Seite (Auth via Token)
+  '/gwg-onboarding', // Public GwG-Onboarding-Wizard (Auth via Token)
   '/api/health',
   '/api/auth', // Auth.js-Routen (alles unter /api/auth/*)
 ]);
@@ -189,12 +189,14 @@ function detectSurface(pathname: string): Surface | null {
 
 function isPublicPath(pathname: string): boolean {
   // Trailing-slash-Varianten und Auth.js-Routen durchlassen.
-  return PUBLIC_PATHS.has(pathname) ||
+  return (
+    PUBLIC_PATHS.has(pathname) ||
     pathname.startsWith('/api/auth/') ||
     pathname.startsWith('/staff/login') ||
     pathname.startsWith('/portal/login') ||
     pathname.startsWith('/poa/sign') ||
-    pathname.startsWith('/gwg-onboarding');
+    pathname.startsWith('/gwg-onboarding')
+  );
 }
 
 function extractTenantSlug(request: NextRequest): string | null {

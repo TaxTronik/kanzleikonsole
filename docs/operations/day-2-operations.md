@@ -107,6 +107,14 @@ Schreibdienste wieder. Ein Kapazitäts-Preflight rechnet konservativ ohne
 Kompressionsgewinn. Abbruchsignale lösen Wiederanlauf und Staging-Cleanup aus;
 ein Host-Crash muss dennoch extern überwacht werden.
 
+Existiert nach einem abgebrochenen Deploy oder Produktionsrestore
+`.taxtronik.migration-pending` beziehungsweise `.taxtronik.database-restored`,
+verweigert `backup-full` den anfänglichen n8n-Start und damit den gesamten Lauf.
+Das ist ein Sicherheits-Gate, kein zu löschender Lock: zuerst den dokumentierten
+Deploy-/Restore-/Rollback-Pfad abschließen. Dasselbe gilt für manuelle
+`./taxtronik up`-/`restart`-Aufrufe; direktes `docker compose` darf nicht als
+Umgehung verwendet werden.
+
 Einrichten (Private Keys/age-Identity getrennt bzw. offline verwahren):
 
 ```bash
@@ -145,6 +153,11 @@ Restore läuft über den Operator-Wrapper:
 ./taxtronik restore --latest --target-url <postgres-url>
 ./taxtronik restore --file backups/<dump> --target-url <postgres-url>
 ```
+
+Jeder mutierende Restore verlangt ein explizites Ziel; einen stillen Fallback
+auf die produktive `DATABASE_URL` gibt es nicht. Der In-place-Produktionspfad
+ist ausschließlich für den kontrollierten DR-Fall vorgesehen und im
+Disaster-Recovery-Runbook beschrieben.
 
 Dann:
 

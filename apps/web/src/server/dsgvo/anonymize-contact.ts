@@ -57,10 +57,7 @@ export async function anonymizeContactInTx(
     where: {
       tenantId,
       consumedAt: null,
-      OR: [
-        { contactId },
-        { contactId: null, email: before.email },
-      ],
+      OR: [{ contactId }, { contactId: null, email: before.email }],
     },
     data: { consumedAt: new Date() },
   });

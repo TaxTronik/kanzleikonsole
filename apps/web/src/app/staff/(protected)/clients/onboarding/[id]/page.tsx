@@ -8,7 +8,15 @@
 
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Wand2, ShieldCheck, ScrollText, Inbox, Check, ExternalLink } from 'lucide-react';
+import {
+  ArrowLeft,
+  Wand2,
+  ShieldCheck,
+  ScrollText,
+  Inbox,
+  Check,
+  ExternalLink,
+} from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { canAccessClient } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
@@ -22,9 +30,15 @@ import {
   onboardingCompleteAction,
 } from './actions';
 import { ConfirmSubmitButton } from './confirm-submit-button';
-import { GwgSubmissionSummary, type GwgSubmissionSummaryData } from '@/components/gwg-submission-summary';
+import {
+  GwgSubmissionSummary,
+  type GwgSubmissionSummaryData,
+} from '@/components/gwg-submission-summary';
 
-interface Search { step?: string; error?: string; }
+interface Search {
+  step?: string;
+  error?: string;
+}
 
 const VALID_STEPS: StepKey[] = ['contact', 'gwg', 'poa', 'first_request', 'done'];
 
@@ -52,73 +66,91 @@ export default async function OnboardingStepPage({
 
   const [modules, data] = await Promise.all([
     readModules({ tenantId, actorId: staffId, actorType: 'STAFF' }),
-    withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
-      async (tx) => {
-        const client = await tx.client.findUnique({
-          where: { id },
+    withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, async (tx) => {
+      const client = await tx.client.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          name: true,
+          kind: true,
+          street: true,
+          postalCode: true,
+          city: true,
+          countryIso: true,
+          vatId: true,
+          allowActive: true,
+        },
+      });
+      if (!client) return null;
+      const [contactCount, gwgInvite, gwgCheck, poaCount, requestCount] = await Promise.all([
+        tx.clientContact.count({ where: { clientId: id, active: true } }),
+        tx.gwgOnboardingInvite.findFirst({
+          where: { clientId: id },
+          orderBy: { createdAt: 'desc' },
           select: {
             id: true,
-            name: true,
-            kind: true,
-            street: true,
-            postalCode: true,
-            city: true,
-            countryIso: true,
-            vatId: true,
-            allowActive: true,
+            inviteEmail: true,
+            inviteName: true,
+            status: true,
+            createdAt: true,
+            expiresAt: true,
+            submittedAt: true,
+            uploadedDocumentIds: true,
           },
-        });
-        if (!client) return null;
-        const [contactCount, gwgInvite, gwgCheck, poaCount, requestCount] = await Promise.all([
-          tx.clientContact.count({ where: { clientId: id, active: true } }),
-          tx.gwgOnboardingInvite.findFirst({
-            where: { clientId: id },
-            orderBy: { createdAt: 'desc' },
-            select: {
-              id: true,
-              inviteEmail: true,
-              inviteName: true,
-              status: true,
-              createdAt: true,
-              expiresAt: true,
-              submittedAt: true,
-              uploadedDocumentIds: true,
-            },
-          }),
-          tx.gwgCheck.findFirst({
-            where: { clientId: id },
-            orderBy: { createdAt: 'desc' },
-            include: {
-              beneficialOwners: { orderBy: { createdAt: 'asc' } },
-              idDocuments: { orderBy: { createdAt: 'asc' }, include: { document: true } },
-            },
-          }),
-          tx.powerOfAttorney.count({ where: { clientId: id } }),
-          tx.request.count({ where: { clientId: id } }),
-        ]);
-        const uploadedIds = Array.isArray(gwgInvite?.uploadedDocumentIds)
-          ? (gwgInvite.uploadedDocumentIds as unknown[]).filter((docId): docId is string => typeof docId === 'string')
-          : [];
-        const uploadedDocuments = uploadedIds.length > 0
+        }),
+        tx.gwgCheck.findFirst({
+          where: { clientId: id },
+          orderBy: { createdAt: 'desc' },
+          include: {
+            beneficialOwners: { orderBy: { createdAt: 'asc' } },
+            idDocuments: { orderBy: { createdAt: 'asc' }, include: { document: true } },
+          },
+        }),
+        tx.powerOfAttorney.count({ where: { clientId: id } }),
+        tx.request.count({ where: { clientId: id } }),
+      ]);
+      const uploadedIds = Array.isArray(gwgInvite?.uploadedDocumentIds)
+        ? (gwgInvite.uploadedDocumentIds as unknown[]).filter(
+            (docId): docId is string => typeof docId === 'string',
+          )
+        : [];
+      const uploadedDocuments =
+        uploadedIds.length > 0
           ? await tx.document.findMany({
               where: { clientId: id, id: { in: uploadedIds } },
               select: { id: true, title: true, createdAt: true },
               orderBy: { createdAt: 'desc' },
             })
           : [];
-        const firstContact = await tx.clientContact.findFirst({
-          where: { clientId: id, active: true },
-          orderBy: { createdAt: 'asc' },
-          select: { fullName: true, email: true },
-        });
-        return { client, contactCount, gwgInvite, gwgCheck, poaCount, requestCount, firstContact, uploadedDocuments };
-      },
-    ),
+      const firstContact = await tx.clientContact.findFirst({
+        where: { clientId: id, active: true },
+        orderBy: { createdAt: 'asc' },
+        select: { fullName: true, email: true },
+      });
+      return {
+        client,
+        contactCount,
+        gwgInvite,
+        gwgCheck,
+        poaCount,
+        requestCount,
+        firstContact,
+        uploadedDocuments,
+      };
+    }),
   ]);
 
   if (!data) notFound();
-  const { client, contactCount, gwgInvite, gwgCheck, poaCount, requestCount, firstContact, uploadedDocuments } = data;
+  const {
+    client,
+    contactCount,
+    gwgInvite,
+    gwgCheck,
+    poaCount,
+    requestCount,
+    firstContact,
+    uploadedDocuments,
+  } = data;
   const gwgSummary: GwgSubmissionSummaryData = {
     client: {
       name: client.name,
@@ -140,34 +172,36 @@ export default async function OnboardingStepPage({
           submittedAt: gwgInvite.submittedAt?.toISOString() ?? null,
         }
       : null,
-    owners: gwgCheck?.beneficialOwners.map((o) => ({
-      id: o.id,
-      fullName: o.fullName,
-      birthDate: o.birthDate?.toISOString() ?? null,
-      birthPlace: o.birthPlace,
-      nationality: o.nationality,
-      residence: o.residence,
-      ownershipPct: o.ownershipPct?.toString() ?? null,
-      isPep: o.isPep,
-      notes: o.notes,
-    })) ?? [],
-    idDocuments: gwgCheck?.idDocuments.map((d) => ({
-      id: d.id,
-      type: d.type,
-      ownerName: d.ownerName,
-      number: d.number,
-      issuedBy: d.issuedBy,
-      issueDate: d.issueDate?.toISOString() ?? null,
-      expiryDate: d.expiryDate?.toISOString() ?? null,
-      notes: d.notes,
-      document: d.document
-        ? {
-            id: d.document.id,
-            title: d.document.title,
-            createdAt: d.document.createdAt.toISOString(),
-          }
-        : null,
-    })) ?? [],
+    owners:
+      gwgCheck?.beneficialOwners.map((o) => ({
+        id: o.id,
+        fullName: o.fullName,
+        birthDate: o.birthDate?.toISOString() ?? null,
+        birthPlace: o.birthPlace,
+        nationality: o.nationality,
+        residence: o.residence,
+        ownershipPct: o.ownershipPct?.toString() ?? null,
+        isPep: o.isPep,
+        notes: o.notes,
+      })) ?? [],
+    idDocuments:
+      gwgCheck?.idDocuments.map((d) => ({
+        id: d.id,
+        type: d.type,
+        ownerName: d.ownerName,
+        number: d.number,
+        issuedBy: d.issuedBy,
+        issueDate: d.issueDate?.toISOString() ?? null,
+        expiryDate: d.expiryDate?.toISOString() ?? null,
+        notes: d.notes,
+        document: d.document
+          ? {
+              id: d.document.id,
+              title: d.document.title,
+              createdAt: d.document.createdAt.toISOString(),
+            }
+          : null,
+      })) ?? [],
     uploadedDocuments: uploadedDocuments.map((d) => ({
       id: d.id,
       title: d.title,
@@ -194,10 +228,7 @@ export default async function OnboardingStepPage({
 
   return (
     <div className="p-8 max-w-3xl">
-      <Link
-        href={`/staff/clients/${client.id}`}
-        className="back-link"
-      >
+      <Link href={`/staff/clients/${client.id}`} className="back-link">
         <ArrowLeft className="h-4 w-4" /> Zur Mandantenakte
       </Link>
 
@@ -206,9 +237,7 @@ export default async function OnboardingStepPage({
           <Wand2 className="h-6 w-6 text-brand-600" />
           Onboarding: {client.name}
         </h1>
-        <p className="text-muted text-sm">
-          Restliche Schritte zum vollständigen Erstkontakt.
-        </p>
+        <p className="text-muted text-sm">Restliche Schritte zum vollständigen Erstkontakt.</p>
       </div>
 
       <Stepper steps={steps} currentKey={activeStep} doneKeys={doneKeys} />
@@ -281,30 +310,68 @@ function ContactStep({
     <div className="card p-6">
       <h2 className="text-sm font-medium text-primary mb-1">Ansprechpartner + Portal-Zugang</h2>
       <p className="text-xs text-muted mb-4">
-        Mindestens ein Ansprechpartner ermöglicht später Portal-Login, Anforderungen und Magic-Link-Mails.
+        Mindestens ein Ansprechpartner ermöglicht später Portal-Login, Anforderungen und
+        Magic-Link-Mails.
       </p>
       <form action={onboardingAddContactAction} className="space-y-4">
         {error && <div className="alert-error-sm">{error}</div>}
         <input type="hidden" name="clientId" value={clientId} />
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="label" htmlFor="fullName">Name <span className="text-red-600">*</span></label>
-            <input id="fullName" name="fullName" type="text" required maxLength={200} defaultValue={contactName} className="input" />
+            <label className="label" htmlFor="fullName">
+              Name <span className="text-red-600">*</span>
+            </label>
+            <input
+              id="fullName"
+              name="fullName"
+              type="text"
+              required
+              maxLength={200}
+              defaultValue={contactName}
+              className="input"
+            />
           </div>
           <div>
-            <label className="label" htmlFor="email">E-Mail <span className="text-red-600">*</span></label>
-            <input id="email" name="email" type="email" required maxLength={255} defaultValue={contactEmail} className="input" />
+            <label className="label" htmlFor="email">
+              E-Mail <span className="text-red-600">*</span>
+            </label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              required
+              maxLength={255}
+              defaultValue={contactEmail}
+              className="input"
+            />
           </div>
           <div>
-            <label className="label" htmlFor="phone">Telefon</label>
+            <label className="label" htmlFor="phone">
+              Telefon
+            </label>
             <input id="phone" name="phone" type="tel" maxLength={50} className="input" />
           </div>
           <div>
-            <label className="label" htmlFor="role">Rolle</label>
-            <input id="role" name="role" type="text" maxLength={80} className="input" placeholder='z. B. „Geschäftsführer"' />
+            <label className="label" htmlFor="role">
+              Rolle
+            </label>
+            <input
+              id="role"
+              name="role"
+              type="text"
+              maxLength={80}
+              className="input"
+              placeholder='z. B. „Geschäftsführer"'
+            />
           </div>
         </div>
-        <label className={allowActive ? 'flex items-center gap-2 text-sm' : 'flex items-start gap-2 text-sm text-muted'}>
+        <label
+          className={
+            allowActive
+              ? 'flex items-center gap-2 text-sm'
+              : 'flex items-start gap-2 text-sm text-muted'
+          }
+        >
           <input
             type="checkbox"
             name="sendPortalInvite"
@@ -316,14 +383,17 @@ function ContactStep({
             Magic-Link für Portal-Zugang jetzt versenden
             {!allowActive && (
               <span className="block text-xs text-muted mt-0.5">
-                Erst nach abgeschlossener GwG-Verifikation möglich. Im nächsten Schritt wird der GwG-Onboarding-Link versendet.
+                Erst nach abgeschlossener GwG-Verifikation möglich. Im nächsten Schritt wird der
+                GwG-Onboarding-Link versendet.
               </span>
             )}
           </span>
         </label>
         <div className="flex justify-end gap-2 pt-3 border-t border-subtle">
           <SkipButton clientId={clientId} next="gwg" label="Überspringen" />
-          <button type="submit" className="btn-primary text-sm">Anlegen &amp; weiter</button>
+          <button type="submit" className="btn-primary text-sm">
+            Anlegen &amp; weiter
+          </button>
         </div>
       </form>
     </div>
@@ -357,7 +427,8 @@ function GwgStep({
 
       {existingInvite && (
         <div className="mb-4 p-3 rounded-md bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 text-xs text-emerald-800 dark:text-emerald-200">
-          GwG-Einladung bereits an {existingInvite.inviteEmail} verschickt (Status: {existingInvite.status}).
+          GwG-Einladung bereits an {existingInvite.inviteEmail} verschickt (Status:{' '}
+          {existingInvite.status}).
         </div>
       )}
 
@@ -365,12 +436,32 @@ function GwgStep({
         <input type="hidden" name="clientId" value={clientId} />
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="label" htmlFor="inviteName">Name des Mandanten <span className="text-red-600">*</span></label>
-            <input id="inviteName" name="inviteName" type="text" required maxLength={200} defaultValue={defaultName} className="input" />
+            <label className="label" htmlFor="inviteName">
+              Name des Mandanten <span className="text-red-600">*</span>
+            </label>
+            <input
+              id="inviteName"
+              name="inviteName"
+              type="text"
+              required
+              maxLength={200}
+              defaultValue={defaultName}
+              className="input"
+            />
           </div>
           <div>
-            <label className="label" htmlFor="inviteEmail">E-Mail <span className="text-red-600">*</span></label>
-            <input id="inviteEmail" name="inviteEmail" type="email" required maxLength={255} defaultValue={defaultEmail} className="input" />
+            <label className="label" htmlFor="inviteEmail">
+              E-Mail <span className="text-red-600">*</span>
+            </label>
+            <input
+              id="inviteEmail"
+              name="inviteEmail"
+              type="email"
+              required
+              maxLength={255}
+              defaultValue={defaultEmail}
+              className="input"
+            />
           </div>
         </div>
       </form>
@@ -401,7 +492,15 @@ function GwgStep({
   );
 }
 
-function PoaStep({ clientId, poaCount, nextStep }: { clientId: string; poaCount: number; nextStep: string }) {
+function PoaStep({
+  clientId,
+  poaCount,
+  nextStep,
+}: {
+  clientId: string;
+  poaCount: number;
+  nextStep: string;
+}) {
   return (
     <div className="card p-6">
       <h2 className="text-sm font-medium text-primary mb-1 flex items-center gap-2">
@@ -409,8 +508,8 @@ function PoaStep({ clientId, poaCount, nextStep }: { clientId: string; poaCount:
         Vollmacht erstellen
       </h2>
       <p className="text-xs text-muted mb-4">
-        Optional. Die Vollmacht wird im Vollmachten-Modul angelegt und signiert — der Wizard
-        wartet hier nicht auf eine Unterschrift.
+        Optional. Die Vollmacht wird im Vollmachten-Modul angelegt und signiert — der Wizard wartet
+        hier nicht auf eine Unterschrift.
       </p>
       {poaCount > 0 ? (
         <div className="mb-4 p-3 rounded-md bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 text-xs text-emerald-800 dark:text-emerald-200 inline-flex items-center gap-1">
@@ -418,7 +517,11 @@ function PoaStep({ clientId, poaCount, nextStep }: { clientId: string; poaCount:
         </div>
       ) : null}
       <div className="flex justify-end gap-2 pt-3 border-t border-subtle">
-        <SkipButton clientId={clientId} next={nextStep} label={poaCount > 0 ? 'Weiter' : 'Überspringen'} />
+        <SkipButton
+          clientId={clientId}
+          next={nextStep}
+          label={poaCount > 0 ? 'Weiter' : 'Überspringen'}
+        />
         <Link
           href={`/staff/poa/new?clientId=${clientId}&from=onboarding`}
           className="btn-primary text-sm inline-flex items-center gap-1"
@@ -439,16 +542,21 @@ function FirstRequestStep({ clientId, requestCount }: { clientId: string; reques
         Erste Anforderung
       </h2>
       <p className="text-xs text-muted mb-4">
-        Z. B. Eröffnungsbilanz-Belege, Verträge oder Zugangsdaten. Anforderung erscheint
-        im Portal des Mandanten.
+        Z. B. Eröffnungsbilanz-Belege, Verträge oder Zugangsdaten. Anforderung erscheint im Portal
+        des Mandanten.
       </p>
       {requestCount > 0 ? (
         <div className="mb-4 p-3 rounded-md bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 text-xs text-emerald-800 dark:text-emerald-200 inline-flex items-center gap-1">
-          <Check className="h-3 w-3" /> {requestCount} Anforderung{requestCount === 1 ? '' : 'en'} angelegt.
+          <Check className="h-3 w-3" /> {requestCount} Anforderung{requestCount === 1 ? '' : 'en'}{' '}
+          angelegt.
         </div>
       ) : null}
       <div className="flex justify-end gap-2 pt-3 border-t border-subtle">
-        <SkipButton clientId={clientId} next="done" label={requestCount > 0 ? 'Weiter' : 'Überspringen'} />
+        <SkipButton
+          clientId={clientId}
+          next="done"
+          label={requestCount > 0 ? 'Weiter' : 'Überspringen'}
+        />
         <Link
           href={`/staff/clients/${clientId}/requests/new?from=onboarding`}
           className="btn-primary text-sm inline-flex items-center gap-1"
@@ -466,7 +574,13 @@ function DoneStep({
   summary,
 }: {
   clientId: string;
-  summary: { contactCount: number; hasGwgInvite: boolean; poaCount: number; requestCount: number; allowActive: boolean };
+  summary: {
+    contactCount: number;
+    hasGwgInvite: boolean;
+    poaCount: number;
+    requestCount: number;
+    allowActive: boolean;
+  };
 }) {
   return (
     <div className="card p-6">
@@ -505,8 +619,8 @@ function DoneStep({
 
       {!summary.hasGwgInvite && (
         <p className="text-xs text-amber-700 mb-4">
-          ⚠ Pflichtschritt „GwG-Onboarding" ist noch nicht abgeschlossen.
-          Der Mandant kann erst nach GwG-Verifikation aktiv geschaltet werden.
+          ⚠ Pflichtschritt „GwG-Onboarding" ist noch nicht abgeschlossen. Der Mandant kann erst nach
+          GwG-Verifikation aktiv geschaltet werden.
         </p>
       )}
 
@@ -527,7 +641,9 @@ function SkipButton({ clientId, next, label }: { clientId: string; next: string;
     <form action={onboardingSkipAction} className="inline">
       <input type="hidden" name="clientId" value={clientId} />
       <input type="hidden" name="next" value={next} />
-      <button type="submit" className="btn-secondary text-sm">{label}</button>
+      <button type="submit" className="btn-secondary text-sm">
+        {label}
+      </button>
     </form>
   );
 }

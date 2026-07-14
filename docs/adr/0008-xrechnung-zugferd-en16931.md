@@ -28,11 +28,13 @@ Empfänger-Stammdaten in `client` (Migration `20260520`).
 ## Konsequenzen
 
 **Vorteile**
+
 - Beide Formate aus einer Datenquelle (keine Drift möglich)
 - Server-side, kein User-Eingriff (Datei wird beim Klick generiert)
 - Tax-Codes laut UN/CEFACT (HUR/DAY/MON/KGM/MTR/LS/C62)
 
 **Nachteile**
+
 - ZUGFeRD-PDF ist nicht streng PDF/A-3-validiert (würde Ghostscript-
   Postprocessing brauchen). Für die meisten Empfänger dennoch akzeptabel,
   weil die XML korrekt eingebettet ist und die XMP-Metadaten Factur-X

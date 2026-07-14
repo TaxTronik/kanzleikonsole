@@ -5,33 +5,21 @@ import { Loader2 } from 'lucide-react';
 import { fmtDateTimeShort } from '@/lib/fmt';
 
 /**
- * Inline-Viewer für Word- und Excel-Dateien direkt im Browser, ohne
+ * Inline-Viewer für Excel-Dateien direkt im Browser, ohne
  * Drittanbieter (kein MS Office Online, kein Google Viewer). Daten bleiben
  * im Mandanten-Netz — wichtig für GoBD-/§-203-StGB-relevante Dokumente.
  *
- *  - DOCX:  rendert via `docx-preview` zu HTML.
  *  - XLSX:  parst mit `exceljs` und zeigt das erste Arbeitsblatt als HTML-Tabelle.
  *
  * Beide Libraries werden dynamisch geladen (kein Bundle-Bloat im Hauptpfad).
  */
-export function OfficeViewer({
-  url,
-  kind,
-}: {
-  url: string;
-  kind: 'docx' | 'xlsx';
-}) {
-  // Callback-Ref als State: Der Effekt läuft erst, wenn der Container im DOM
-  // ist (kein Busy-Wait/Polling nötig).
-  const [container, setContainer] = useState<HTMLDivElement | null>(null);
+export function OfficeViewer({ url }: { url: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sheets, setSheets] = useState<XlsxSheet[]>([]);
   const [activeSheet, setActiveSheet] = useState(0);
 
   useEffect(() => {
-    // DOCX braucht den DOM-Container — erst rendern, wenn er gemountet ist.
-    if (kind === 'docx' && !container) return;
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -43,37 +31,24 @@ export function OfficeViewer({
         const buf = await res.arrayBuffer();
         if (cancelled) return;
 
-        if (kind === 'docx') {
-          if (!container) return;
-          const mod = await import('docx-preview');
-          container.innerHTML = '';
-          await mod.renderAsync(buf, container, undefined, {
-            className: 'docx-rendered',
-            inWrapper: true,
-            ignoreWidth: false,
-            ignoreHeight: false,
-            useBase64URL: true,
-          });
-        } else {
-          const ExcelJS = (await import('exceljs')).default;
-          const wb = new ExcelJS.Workbook();
-          await wb.xlsx.load(buf);
-          const result: XlsxSheet[] = [];
-          wb.eachSheet((ws) => {
-            const rows: string[][] = [];
-            ws.eachRow({ includeEmpty: true }, (row) => {
-              const cells: string[] = [];
-              row.eachCell({ includeEmpty: true }, (cell) => {
-                cells.push(formatCell(cell.value));
-              });
-              rows.push(cells);
+        const ExcelJS = (await import('exceljs')).default;
+        const wb = new ExcelJS.Workbook();
+        await wb.xlsx.load(buf);
+        const result: XlsxSheet[] = [];
+        wb.eachSheet((ws) => {
+          const rows: string[][] = [];
+          ws.eachRow({ includeEmpty: true }, (row) => {
+            const cells: string[] = [];
+            row.eachCell({ includeEmpty: true }, (cell) => {
+              cells.push(formatCell(cell.value));
             });
-            result.push({ name: ws.name, rows });
+            rows.push(cells);
           });
-          if (cancelled) return;
-          setSheets(result);
-          setActiveSheet(0);
-        }
+          result.push({ name: ws.name, rows });
+        });
+        if (cancelled) return;
+        setSheets(result);
+        setActiveSheet(0);
       } catch (e) {
         console.error('[OfficeViewer]', e);
         if (!cancelled) setError((e as Error).message);
@@ -85,29 +60,7 @@ export function OfficeViewer({
     return () => {
       cancelled = true;
     };
-  }, [url, kind, container]);
-
-  // DOCX: Container ist IMMER gerendert, Spinner ist Overlay
-  if (kind === 'docx') {
-    return (
-      <div className="relative h-full bg-white">
-        <div className="h-full overflow-y-auto p-6">
-          <div ref={setContainer} className="docx-viewer" />
-        </div>
-        {loading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm">
-            <Loader2 className="h-6 w-6 text-disabled animate-spin" />
-            <span className="ml-2 text-sm text-secondary">Lade Word-Vorschau…</span>
-          </div>
-        )}
-        {error && !loading && (
-          <div className="absolute inset-0 flex items-center justify-center text-sm text-red-700 px-6 text-center bg-white">
-            Vorschau konnte nicht geladen werden: {error}
-          </div>
-        )}
-      </div>
-    );
-  }
+  }, [url]);
 
   // XLSX: erst Loader, dann Sheets
   if (loading) {
@@ -154,7 +107,10 @@ export function OfficeViewer({
   );
 }
 
-interface XlsxSheet { name: string; rows: string[][]; }
+interface XlsxSheet {
+  name: string;
+  rows: string[][];
+}
 
 function XlsxTable({ rows }: { rows: string[][] }) {
   if (rows.length === 0) return <p className="text-sm text-disabled">Leere Tabelle.</p>;
@@ -164,7 +120,10 @@ function XlsxTable({ rows }: { rows: string[][] }) {
       <thead className="bg-gray-100 sticky top-0">
         <tr>
           {head!.map((c, i) => (
-            <th key={i} className="border border-default px-2 py-1 text-left font-medium text-secondary whitespace-nowrap">
+            <th
+              key={i}
+              className="border border-default px-2 py-1 text-left font-medium text-secondary whitespace-nowrap"
+            >
               {c}
             </th>
           ))}
@@ -196,7 +155,13 @@ function formatCell(value: unknown): string {
   if (typeof value === 'boolean') return value ? 'Ja' : 'Nein';
   if (value instanceof Date) return fmtDateTimeShort(value);
   if (typeof value === 'object') {
-    const o = value as { text?: unknown; richText?: { text?: unknown }[]; result?: unknown; formula?: unknown; hyperlink?: unknown };
+    const o = value as {
+      text?: unknown;
+      richText?: { text?: unknown }[];
+      result?: unknown;
+      formula?: unknown;
+      hyperlink?: unknown;
+    };
     if (typeof o.text === 'string') return o.text;
     if (Array.isArray(o.richText)) {
       return o.richText.map((p) => (typeof p.text === 'string' ? p.text : '')).join('');

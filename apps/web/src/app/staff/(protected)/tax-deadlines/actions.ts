@@ -41,9 +41,7 @@ export async function markDeadlineDoneAction(formData: FormData): Promise<void> 
 }
 
 export async function markDeadlinesDoneAction(formData: FormData): Promise<void> {
-  const ids = z
-    .array(z.string().uuid())
-    .parse(formData.getAll('ids').map((v) => String(v)));
+  const ids = z.array(z.string().uuid()).parse(formData.getAll('ids').map((v) => String(v)));
   if (ids.length === 0) return;
 
   await withStaff(

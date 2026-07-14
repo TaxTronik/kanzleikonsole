@@ -51,7 +51,10 @@ export async function updateMarking(
   fields: UpdateMarkingInput,
 ): Promise<void> {
   await withTenantContext(ctx, async (tx) => {
-    const before = await tx.riskMarking.findUnique({ where: { id: markingId }, select: DECISION_SELECT });
+    const before = await tx.riskMarking.findUnique({
+      where: { id: markingId },
+      select: DECISION_SELECT,
+    });
     if (!before) throw new Error('Markierung nicht gefunden.');
     // Verantwortliche:r muss aktiver Mitarbeiter DIESES Tenants sein (keine
     // hängende Zuweisung an fremde/ungültige Staff-IDs).
@@ -111,8 +114,10 @@ export async function addManualMarking(
     });
     if (!analysis) throw new Error('Analyse nicht gefunden.');
     const len = analysis.sourceText.length;
-    if (!Number.isInteger(input.start) || !Number.isInteger(input.end)) throw new InvalidMarkingRangeError();
-    if (input.start < 0 || input.end > len || input.end <= input.start) throw new InvalidMarkingRangeError();
+    if (!Number.isInteger(input.start) || !Number.isInteger(input.end))
+      throw new InvalidMarkingRangeError();
+    if (input.start < 0 || input.end > len || input.end <= input.start)
+      throw new InvalidMarkingRangeError();
     const matchedText = analysis.sourceText.slice(input.start, input.end);
 
     const created = await tx.riskMarking.create({

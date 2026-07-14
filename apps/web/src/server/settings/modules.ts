@@ -23,20 +23,20 @@ export type InvoiceMode = 'OFF' | 'IN_APP' | 'EXTERNAL';
 
 export interface ModuleConfig {
   // Kernfeatures (Default an)
-  bwa: boolean;          // BWA-Auswertungen
-  knowledge: boolean;    // Wissensdatenbank
+  bwa: boolean; // BWA-Auswertungen
+  knowledge: boolean; // Wissensdatenbank
   timeTracking: boolean; // Zeiterfassung
-  phoneNotes: boolean;   // Telefonzettel
-  taxNotices: boolean;   // Bescheide + Steuertermine (= Kanzleikalender)
-  workflows: boolean;    // Workflow-Vorlagen + Instanzen
-  forms: boolean;        // Formular-Builder
-  reminders: boolean;    // Wiedervorlagen (Block am Mandanten + Widget)
-  binders: boolean;      // Pendelordner (Kanzlei → Mandant)
-  handovers: boolean;    // Anlieferungen (Mandant → Kanzlei)
+  phoneNotes: boolean; // Telefonzettel
+  taxNotices: boolean; // Bescheide + Steuertermine (= Kanzleikalender)
+  workflows: boolean; // Workflow-Vorlagen + Instanzen
+  forms: boolean; // Formular-Builder
+  reminders: boolean; // Wiedervorlagen (Block am Mandanten + Widget)
+  binders: boolean; // Pendelordner (Kanzlei → Mandant)
+  handovers: boolean; // Anlieferungen (Mandant → Kanzlei)
   appointments: boolean; // Kanzleikalender-Termine + Portal-Anfragen
-  rssReader: boolean;    // RSS-Reader-Widget
-  inboundMail: boolean;  // E-Mail-Antworten von Mandanten → Anforderungs-Antwort (via n8n)
-  risk: boolean;         // Subsumtions-Workspace / TCMS (braucht zusätzlich die Risk-Engine)
+  rssReader: boolean; // RSS-Reader-Widget
+  inboundMail: boolean; // E-Mail-Antworten von Mandanten → Anforderungs-Antwort (via n8n)
+  risk: boolean; // Subsumtions-Workspace / TCMS (braucht zusätzlich die Risk-Engine)
   signalEngine: boolean; // Signal-Engine-Integration (externe Signale; braucht zusätzlich signalEngineConfig)
 
   // Vollmachten-Modus

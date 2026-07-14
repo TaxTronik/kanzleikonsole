@@ -142,7 +142,8 @@ export function katalogStatus(
 ): 'verworfen' | 'ergaenzt' | null {
   if (!overlay) return null;
   if (ref.id && overlay.verworfen.has(ref.id)) return 'verworfen';
-  if ((ref.id && overlay.ergaenztIds.has(ref.id)) || overlay.ergaenztZitate.has(ref.zitat)) return 'ergaenzt';
+  if ((ref.id && overlay.ergaenztIds.has(ref.id)) || overlay.ergaenztZitate.has(ref.zitat))
+    return 'ergaenzt';
   return null;
 }
 

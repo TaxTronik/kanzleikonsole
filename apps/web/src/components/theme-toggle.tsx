@@ -54,9 +54,11 @@ export function ThemeToggle() {
 
   const Icon = pref === 'dark' ? Moon : pref === 'light' ? Sun : Monitor;
   const title =
-    pref === 'dark' ? 'Dunkel — klicken für System' :
-    pref === 'light' ? 'Hell — klicken für Dunkel' :
-    'System — klicken für Hell';
+    pref === 'dark'
+      ? 'Dunkel — klicken für System'
+      : pref === 'light'
+        ? 'Hell — klicken für Dunkel'
+        : 'System — klicken für Hell';
 
   return (
     <button

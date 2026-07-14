@@ -22,7 +22,8 @@ export async function saveRequestTemplateAction(
   input: z.infer<typeof SaveSchema>,
 ): Promise<ActionResult> {
   const parsed = SaveSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
+  if (!parsed.success)
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
   const data = parsed.data;
 
   return withStaff(

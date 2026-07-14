@@ -1,6 +1,7 @@
 {
   "name": "@taxtronik/web",
   "version": "0.0.0",
+  "license": "AGPL-3.0-only",
   "private": true,
   "type": "module",
   "scripts": {
@@ -36,7 +37,6 @@
     "bullmq": "^5.77.4",
     "date-fns": "^4.3.0",
     "docx": "^9.7.1",
-    "docx-preview": "^0.3.7",
     "exceljs": "^4.4.0",
     "ioredis": "^5.11.0",
     "jose": "^6.2.3",
@@ -62,7 +62,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.0",
-    "@types/node": "^25.9.1",
+    "@types/node": "^24.13.2",
     "@types/nodemailer": "^8.0.0",
     "@types/pdfkit": "^0.17.6",
     "@types/qrcode": "^1.5.6",

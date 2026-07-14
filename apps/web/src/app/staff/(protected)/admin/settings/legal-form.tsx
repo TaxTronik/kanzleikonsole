@@ -13,7 +13,9 @@ export function LegalForm({ initial }: { initial: LegalLinks }) {
   return (
     <form action={formAction} className="space-y-4">
       <div>
-        <label className="label" htmlFor="legal-impressum">Impressum-URL</label>
+        <label className="label" htmlFor="legal-impressum">
+          Impressum-URL
+        </label>
         <input
           id="legal-impressum"
           name="impressumUrl"
@@ -26,7 +28,9 @@ export function LegalForm({ initial }: { initial: LegalLinks }) {
       </div>
 
       <div>
-        <label className="label" htmlFor="legal-privacy">Datenschutzerklärung-URL</label>
+        <label className="label" htmlFor="legal-privacy">
+          Datenschutzerklärung-URL
+        </label>
         <input
           id="legal-privacy"
           name="privacyUrl"
@@ -39,9 +43,9 @@ export function LegalForm({ initial }: { initial: LegalLinks }) {
       </div>
 
       <p className="text-xs text-muted">
-        Beide Links werden im Footer der Login-Seiten (Mitarbeiter + Mandantenportal)
-        angezeigt — Pflicht nach Telemediengesetz und DSGVO. In angemeldeten
-        Sitzungen werden die Links nicht prominent angezeigt.
+        Beide Links werden im Footer der Login-Seiten (Mitarbeiter + Mandantenportal) angezeigt —
+        Pflicht nach Telemediengesetz und DSGVO. In angemeldeten Sitzungen werden die Links nicht
+        prominent angezeigt.
       </p>
 
       <div className="flex items-center gap-3 pt-2">

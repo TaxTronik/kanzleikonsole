@@ -11,6 +11,7 @@ ein Strafbestand, nicht „nur" ein Bug. Reine App-Level-Filter sind
 fragil gegenüber Refactorings, Copy-Paste-Fehlern und vergessenen Joins.
 
 Reine Postgres-RLS ist robuster, aber:
+
 - Prisma kennt RLS-Kontext nicht nativ.
 - Pagination/Joins/Performance sind ohne explizite App-Filter unbequem.
 - Lese-Pfade ohne RLS-Kontext (z. B. CLI, Worker-System-Jobs) müssen
@@ -38,6 +39,7 @@ Reine Postgres-RLS ist robuster, aber:
 ## Konsequenzen
 
 **Positiv**
+
 - Vergessener App-Filter wird durch RLS abgefangen — App-Role sieht NICHTS,
   wenn Tenant-Kontext fehlt (statt fremder Daten zu leaken).
 - Vergessene RLS-Policy auf neuer Tabelle wird durch CI-Cross-Tenant-Test
@@ -46,6 +48,7 @@ Reine Postgres-RLS ist robuster, aber:
   Mechanismus, dokumentiert.
 
 **Negativ**
+
 - Jede DB-Operation MUSS durch den Wrapper. Direkter `prisma.x.findMany()`
   ohne Wrapper liefert leeres Ergebnis (für die App-Role) — anfangs irritierend,
   langfristig sicher.

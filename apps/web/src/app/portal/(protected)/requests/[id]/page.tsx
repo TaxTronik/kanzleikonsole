@@ -55,18 +55,20 @@ export default async function PortalRequestDetailPage({
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-1">
             <h1 className="text-2xl font-bold text-primary">{reqRow.title}</h1>
-            <span className={
-              reqRow.status === 'CLOSED' ? 'badge-gray'
-              : reqRow.status === 'RESPONDED' ? 'badge-green'
-              : 'badge-yellow'
-            }>
+            <span
+              className={
+                reqRow.status === 'CLOSED'
+                  ? 'badge-gray'
+                  : reqRow.status === 'RESPONDED'
+                    ? 'badge-green'
+                    : 'badge-yellow'
+              }
+            >
               {statusLabels[reqRow.status]}
             </span>
           </div>
           {reqRow.dueAt && (
-            <p className="text-sm text-muted">
-              fällig {fmtDateShort(reqRow.dueAt)}
-            </p>
+            <p className="text-sm text-muted">fällig {fmtDateShort(reqRow.dueAt)}</p>
           )}
         </div>
       </div>
@@ -88,26 +90,22 @@ export default async function PortalRequestDetailPage({
                 <ClipboardList className="h-5 w-5 text-brand-600 mt-0.5 shrink-0" />
               )}
               <div>
-                <h2 className="text-sm font-medium text-primary">
-                  Formular zur Anforderung
-                </h2>
-                <p className="text-sm text-secondary mt-0.5">
-                  {reqRow.formSubmission.name}
-                </p>
+                <h2 className="text-sm font-medium text-primary">Formular zur Anforderung</h2>
+                <p className="text-sm text-secondary mt-0.5">{reqRow.formSubmission.name}</p>
                 {reqRow.formSubmission.submittedAt ? (
                   <p className="text-xs text-emerald-700 mt-1">
                     Abgesendet am {fmtDateTimeShort(reqRow.formSubmission.submittedAt)}
                   </p>
                 ) : (
-                  <p className="text-xs text-brand-700 mt-1">
-                    Bitte ausfüllen und absenden.
-                  </p>
+                  <p className="text-xs text-brand-700 mt-1">Bitte ausfüllen und absenden.</p>
                 )}
               </div>
             </div>
             <Link
               href={`/portal/forms/${reqRow.formSubmission.id}`}
-              className={reqRow.formSubmission.submittedAt ? 'btn-secondary text-sm' : 'btn-primary text-sm'}
+              className={
+                reqRow.formSubmission.submittedAt ? 'btn-secondary text-sm' : 'btn-primary text-sm'
+              }
             >
               {reqRow.formSubmission.submittedAt ? 'Ansehen' : 'Formular öffnen'}
             </Link>
@@ -127,9 +125,7 @@ export default async function PortalRequestDetailPage({
                   <span className={r.authorType === 'STAFF' ? 'badge-gray' : 'badge-green'}>
                     {r.authorType === 'STAFF' ? 'Kanzlei' : 'Sie'}
                   </span>
-                  <span className="text-xs text-disabled">
-                    {fmtDateTimeShort(r.createdAt)}
-                  </span>
+                  <span className="text-xs text-disabled">{fmtDateTimeShort(r.createdAt)}</span>
                 </div>
                 <p className="text-sm text-primary whitespace-pre-wrap">{r.message}</p>
                 {r.document && (

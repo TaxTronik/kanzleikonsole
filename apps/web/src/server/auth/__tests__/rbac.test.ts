@@ -86,7 +86,9 @@ describe('toActionError', () => {
   });
 
   it('Unbekannte Exception → generische Meldung, NIE die original-Message', () => {
-    const e = new Error('Internal: connection to redis at 10.0.0.5:6379 timed out at /app/src/server/redis.ts:42');
+    const e = new Error(
+      'Internal: connection to redis at 10.0.0.5:6379 timed out at /app/src/server/redis.ts:42',
+    );
     const r = toActionError(e);
     expect(r.ok).toBe(false);
     expect(r.error).not.toMatch(/redis/);
@@ -157,9 +159,9 @@ describe('hasStaffPermission', () => {
   it('keine Session / fehlende Felder → fail-closed', () => {
     expect(hasStaffPermission(null, 'INVOICE_SEND')).toBe(false);
     expect(hasStaffPermission(undefined, 'INVOICE_SEND')).toBe(false);
-    expect(
-      hasStaffPermission({ user: { roles: ['EMPLOYEE'] } } as never, 'INVOICE_SEND'),
-    ).toBe(false);
+    expect(hasStaffPermission({ user: { roles: ['EMPLOYEE'] } } as never, 'INVOICE_SEND')).toBe(
+      false,
+    );
   });
 });
 
@@ -184,9 +186,7 @@ function makeTx(cfg: StubTxConfig) {
   const responsibilityFindFirst = vi.fn(async () => (cfg.responsible ? { id: 'r1' } : null));
   const tx = {
     tenantSetting: {
-      findUnique: vi.fn(async () =>
-        cfg.mode ? { value: { clientAccessMode: cfg.mode } } : null,
-      ),
+      findUnique: vi.fn(async () => (cfg.mode ? { value: { clientAccessMode: cfg.mode } } : null)),
     },
     client: {
       findUnique: vi.fn(async () => cfg.client ?? null),

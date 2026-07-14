@@ -35,7 +35,9 @@ const NBSP = '\u00a0';
 // Unsichtbare Zeichen (Zero-Width + Soft-Hyphen) per Code-Point gebaut, damit
 // die Quelle ASCII bleibt (keine literalen Steuerzeichen im Code).
 const INVISIBLE = new RegExp(
-  '[' + [0x200b, 0x200c, 0x200d, 0x2060, 0xfeff, 0x00ad].map((c) => String.fromCharCode(c)).join('') + ']',
+  '[' +
+    [0x200b, 0x200c, 0x200d, 0x2060, 0xfeff, 0x00ad].map((c) => String.fromCharCode(c)).join('') +
+    ']',
   'g',
 );
 
@@ -73,26 +75,28 @@ export function htmlToText(html: string): string {
  * Leerzeilen-Ketten. Bewusst KEIN aggressives Reflow (s. Modul-Kopf).
  */
 export function cleanup(text: string): string {
-  return text
-    .replace(/\r\n?/g, '\n')
-    .split(NBSP)
-    .join(' ')
-    .replace(INVISIBLE, '')
-    // Form-Feed / Vertical-Tab (Seitenumbruch) → Absatz.
-    .replace(/[\f\v]+/g, '\n\n')
-    // Am Zeilenende getrenntes Wort wieder zusammensetzen (nur klein-klein,
-    // konservativ — vermeidet das Verschmelzen echter Bindestrich-Komposita).
-    .replace(/(\p{Ll})-\n(\p{Ll})/gu, '$1$2')
-    // Trailing Whitespace je Zeile.
-    .replace(/[ \t]+$/gm, '')
-    // Mehrfach-Leerzeichen (PDF-Layout) → eins.
-    .replace(/ {2,}/g, ' ')
-    // Reine Seitenzahl-Zeilen entfernen ("12", "- 12 -", "Seite 12 von 34").
-    .replace(/^[ \t]*(?:seite\s+)?\d{1,4}(?:\s+von\s+\d{1,4})?[ \t]*$/gim, '')
-    .replace(/^[ \t]*[-–—][ \t]*\d{1,4}[ \t]*[-–—][ \t]*$/gm, '')
-    // Leerzeilen-Ketten (Seitenumbruch-Lücken) → max. eine Leerzeile.
-    .replace(/\n[ \t]*\n(?:[ \t]*\n)+/g, '\n\n')
-    .trim();
+  return (
+    text
+      .replace(/\r\n?/g, '\n')
+      .split(NBSP)
+      .join(' ')
+      .replace(INVISIBLE, '')
+      // Form-Feed / Vertical-Tab (Seitenumbruch) → Absatz.
+      .replace(/[\f\v]+/g, '\n\n')
+      // Am Zeilenende getrenntes Wort wieder zusammensetzen (nur klein-klein,
+      // konservativ — vermeidet das Verschmelzen echter Bindestrich-Komposita).
+      .replace(/(\p{Ll})-\n(\p{Ll})/gu, '$1$2')
+      // Trailing Whitespace je Zeile.
+      .replace(/[ \t]+$/gm, '')
+      // Mehrfach-Leerzeichen (PDF-Layout) → eins.
+      .replace(/ {2,}/g, ' ')
+      // Reine Seitenzahl-Zeilen entfernen ("12", "- 12 -", "Seite 12 von 34").
+      .replace(/^[ \t]*(?:seite\s+)?\d{1,4}(?:\s+von\s+\d{1,4})?[ \t]*$/gim, '')
+      .replace(/^[ \t]*[-–—][ \t]*\d{1,4}[ \t]*[-–—][ \t]*$/gm, '')
+      // Leerzeilen-Ketten (Seitenumbruch-Lücken) → max. eine Leerzeile.
+      .replace(/\n[ \t]*\n(?:[ \t]*\n)+/g, '\n\n')
+      .trim()
+  );
 }
 
 export async function extractText(bytes: Buffer, mime: string): Promise<string> {

@@ -7,11 +7,7 @@ import { computeBwaKpis } from '@/server/bwa/addison-parser';
 import { PlanWizard } from '@/app/portal/(protected)/bwa/plan/plan-wizard';
 import { createStaffPlanAction } from '../actions';
 
-export default async function StaffNewPlanPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function StaffNewPlanPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await staffAuth();
   if (!session?.user) redirect('/staff/login');
   const { id: clientId } = await params;
@@ -59,10 +55,7 @@ export default async function StaffNewPlanPage({
 
   return (
     <div className="p-8 max-w-3xl">
-      <Link
-        href={`/staff/clients/${clientId}/bwa/plans`}
-        className="back-link mb-3"
-      >
+      <Link href={`/staff/clients/${clientId}/bwa/plans`} className="back-link mb-3">
         <ArrowLeft className="h-3 w-3" />
         Auswertungen
       </Link>

@@ -19,27 +19,21 @@ const classificationLabels: Record<string, string> = {
   GENERAL: 'Allgemein',
 };
 
-export default async function DocumentDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function DocumentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await staffAuth();
   if (!session?.user) redirect('/staff/login');
 
   const { id } = await params;
   const { tenantId, staffId } = session.user;
 
-  const doc = await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    (tx) =>
-      tx.document.findUnique({
-        where: { id },
-        include: {
-          versions: { orderBy: { versionNo: 'desc' } },
-          client: { select: { id: true, name: true } },
-        },
-      }),
+  const doc = await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>
+    tx.document.findUnique({
+      where: { id },
+      include: {
+        versions: { orderBy: { versionNo: 'desc' } },
+        client: { select: { id: true, name: true } },
+      },
+    }),
   );
 
   if (!doc) notFound();
@@ -59,13 +53,11 @@ export default async function DocumentDetailPage({
   // Name des Bestätigers nachladen (optional; vermeidet zusätzlichen Join)
   let acknowledgedByName: string | null = null;
   if (doc.acknowledgedByStaff) {
-    const ack = await withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
-      (tx) =>
-        tx.staffUser.findUnique({
-          where: { id: doc.acknowledgedByStaff! },
-          select: { fullName: true },
-        }),
+    const ack = await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>
+      tx.staffUser.findUnique({
+        where: { id: doc.acknowledgedByStaff! },
+        select: { fullName: true },
+      }),
     );
     acknowledgedByName = ack?.fullName ?? null;
   }
@@ -181,12 +173,13 @@ export default async function DocumentDetailPage({
           {isGobd ? (
             <>
               <Shield className="h-3 w-3 inline mr-1" />
-              Bestehende Versionen bleiben unverändert (Object-Lock COMPLIANCE).
-              Die neue Version wird zusätzlich als v{(doc.versions[0]?.versionNo ?? 0) + 1} gespeichert.
+              Bestehende Versionen bleiben unverändert (Object-Lock COMPLIANCE). Die neue Version
+              wird zusätzlich als v{(doc.versions[0]?.versionNo ?? 0) + 1} gespeichert.
             </>
           ) : (
             <>
-              Die neue Version wird als v{(doc.versions[0]?.versionNo ?? 0) + 1} gespeichert. Vorgängerversionen bleiben erhalten.
+              Die neue Version wird als v{(doc.versions[0]?.versionNo ?? 0) + 1} gespeichert.
+              Vorgängerversionen bleiben erhalten.
             </>
           )}
         </p>

@@ -31,11 +31,7 @@ export default async function MailSettingsPage() {
       title="E-Mail-Versand"
       description="SMTP-Konfiguration für transaktionale Mails (Magic-Link-Login, Vollmachten-Einladung, Anforderungs-Reminder). Wenn nichts gespeichert ist, fällt der Versand auf die ENV-Vorgabe zurück."
     >
-      <SmtpForm
-        initial={smtp}
-        envFallback={envFallback}
-        defaultTestTo={ownerEmail?.email ?? ''}
-      />
+      <SmtpForm initial={smtp} envFallback={envFallback} defaultTestTo={ownerEmail?.email ?? ''} />
     </SectionCard>
   );
 }

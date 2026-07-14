@@ -31,7 +31,11 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const uiMode = jar.get('ui_mode')?.value;
 
   return (
-    <html lang="de" className={uiMode === 'modern' ? 'ui-modern' : undefined} suppressHydrationWarning>
+    <html
+      lang="de"
+      className={uiMode === 'modern' ? 'ui-modern' : undefined}
+      suppressHydrationWarning
+    >
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_JS }} />
       </head>

@@ -18,23 +18,26 @@ const PG_HOST = process.env['E2E_POSTGRES_HOST'] ?? 'localhost';
 const PG_PASSWORD = process.env['E2E_POSTGRES_PASSWORD'] ?? 'taxtronik';
 
 function createPdf(marker: string): Buffer {
-  return Buffer.from([
-    '%PDF-1.4',
-    '1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj',
-    '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj',
-    '3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R>>endobj',
-    `% Concurrency marker: ${marker}`,
-    'xref',
-    '0 4',
-    '0000000000 65535 f ',
-    '0000000009 00000 n ',
-    '0000000058 00000 n ',
-    '0000000115 00000 n ',
-    'trailer<</Size 4/Root 1 0 R>>',
-    'startxref',
-    '190',
-    '%%EOF',
-  ].join('\n'), 'utf-8');
+  return Buffer.from(
+    [
+      '%PDF-1.4',
+      '1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj',
+      '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj',
+      '3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R>>endobj',
+      `% Concurrency marker: ${marker}`,
+      'xref',
+      '0 4',
+      '0000000000 65535 f ',
+      '0000000009 00000 n ',
+      '0000000058 00000 n ',
+      '0000000115 00000 n ',
+      'trailer<</Size 4/Root 1 0 R>>',
+      'startxref',
+      '190',
+      '%%EOF',
+    ].join('\n'),
+    'utf-8',
+  );
 }
 
 function sha256Hex(buf: Buffer): string {
@@ -44,10 +47,13 @@ function sha256Hex(buf: Buffer): string {
 function psql(query: string): string {
   const oneLine = query.replace(/\r?\n/g, ' ').replace(/"/g, '\\"');
   try {
-    return execSync(`docker exec ${PG_CONTAINER} psql -U ${PG_USER} -d ${PG_DB} -t -A -c "${oneLine}"`, {
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim();
+    return execSync(
+      `docker exec ${PG_CONTAINER} psql -U ${PG_USER} -d ${PG_DB} -t -A -c "${oneLine}"`,
+      {
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      },
+    ).trim();
   } catch {
     return execSync(`psql -h ${PG_HOST} -U ${PG_USER} -d ${PG_DB} -t -A -c "${oneLine}"`, {
       encoding: 'utf-8',
@@ -57,7 +63,11 @@ function psql(query: string): string {
   }
 }
 
-async function uploadDocument(request: import('@playwright/test').APIRequestContext, title: string, bytes: Buffer) {
+async function uploadDocument(
+  request: import('@playwright/test').APIRequestContext,
+  title: string,
+  bytes: Buffer,
+) {
   return request.post('/api/staff/documents/commit', {
     headers: { Origin: BASE_ORIGIN },
     multipart: {
@@ -69,7 +79,9 @@ async function uploadDocument(request: import('@playwright/test').APIRequestCont
 }
 
 test.describe.serial('Document write concurrency', () => {
-  test('parallel document commits create unique documents, versions and audit rows', async ({ page }) => {
+  test('parallel document commits create unique documents, versions and audit rows', async ({
+    page,
+  }) => {
     test.setTimeout(120_000);
     await loginAsAdmin(page);
 
@@ -80,11 +92,16 @@ test.describe.serial('Document write concurrency', () => {
       return { title, bytes, sha: sha256Hex(bytes) };
     });
 
-    const responses = await Promise.all(inputs.map((i) => uploadDocument(page.request, i.title, i.bytes)));
+    const responses = await Promise.all(
+      inputs.map((i) => uploadDocument(page.request, i.title, i.bytes)),
+    );
     const bodies = await Promise.all(responses.map((r) => r.json().catch(() => ({}))));
 
     for (let i = 0; i < responses.length; i++) {
-      expect(responses[i]!.status(), `parallel commit ${i} failed: ${JSON.stringify(bodies[i])}`).toBe(200);
+      expect(
+        responses[i]!.status(),
+        `parallel commit ${i} failed: ${JSON.stringify(bodies[i])}`,
+      ).toBe(200);
       expect(bodies[i].sha256).toBe(inputs[i]!.sha);
       expect(bodies[i].immutable).toBe(true);
     }
@@ -116,7 +133,9 @@ test.describe.serial('Document write concurrency', () => {
     expect(auditCount).toBe(inputs.length);
   });
 
-  test('parallel new-version commits never produce duplicate version numbers or 500s', async ({ page }) => {
+  test('parallel new-version commits never produce duplicate version numbers or 500s', async ({
+    page,
+  }) => {
     test.setTimeout(120_000);
     await loginAsAdmin(page);
 
@@ -139,7 +158,10 @@ test.describe.serial('Document write concurrency', () => {
 
     const responses = await Promise.all(attempts);
     const statuses = responses.map((r) => r.status());
-    expect(statuses, 'parallel version commits must be explicit success/conflict, never crash').not.toContain(500);
+    expect(
+      statuses,
+      'parallel version commits must be explicit success/conflict, never crash',
+    ).not.toContain(500);
     for (const status of statuses) expect([200, 409]).toContain(status);
     expect(statuses.filter((s) => s === 200).length).toBeGreaterThanOrEqual(1);
 
@@ -148,7 +170,10 @@ test.describe.serial('Document write concurrency', () => {
       FROM document_version
       WHERE document_id = '${documentId}'
       ORDER BY version_no ASC
-    `).split('\n').filter(Boolean).map(Number);
+    `)
+      .split('\n')
+      .filter(Boolean)
+      .map(Number);
     expect(new Set(rows).size).toBe(rows.length);
     expect(rows[0]).toBe(1);
     for (let i = 1; i < rows.length; i++) {

@@ -46,16 +46,23 @@ function getHandle(): { conn: IORedis; queue: Queue<AuditVerifyJob> } {
 }
 
 /** Reiht eine manuelle Chain-Verifikation für EINEN Tenant ein und liefert die Lauf-ID. */
-export async function enqueueAuditVerify(tenantId: string, requestedByStaffId?: string): Promise<string> {
+export async function enqueueAuditVerify(
+  tenantId: string,
+  requestedByStaffId?: string,
+): Promise<string> {
   const { queue } = getHandle();
   // Die UI wartet exakt auf diese requestId. Eine feste jobId pro Tenant kann
   // ein altes Persistenz-Ergebnis wie einen frischen Lauf aussehen lassen.
   const requestId = randomUUID();
   const jobId = `audit-verify-manual-${tenantId}-${requestId}`;
-  await queue.add('audit-verify-check', { tenantId, requestedByStaffId, requestId }, {
-    jobId,
-    removeOnComplete: 20,
-    removeOnFail: 20,
-  });
+  await queue.add(
+    'audit-verify-check',
+    { tenantId, requestedByStaffId, requestId },
+    {
+      jobId,
+      removeOnComplete: 20,
+      removeOnFail: 20,
+    },
+  );
   return requestId;
 }

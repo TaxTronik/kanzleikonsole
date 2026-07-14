@@ -61,16 +61,16 @@ const envSchema = z.object({
     (v) => (v === '' || v === undefined ? undefined : v),
     z.string().url().optional(),
   ),
-  // Auth.js v5: vertraue dem Host-Header (für Reverse-Proxy-Setups Pflicht).
-  // In Produktion MUSS der Reverse-Proxy `X-Forwarded-Host` filtern, sonst
-  // ist Host-Header-Smuggling für Callback-URLs theoretisch möglich (S9).
-  // Default true in dev für Komfort, in production explizit opt-in.
+  // Auth.js v5 verarbeitet Anfragen nur mit trustHost=true. In Produktion
+  // MUSS deshalb der Reverse-Proxy Host/X-Forwarded-Host auf den kanonischen
+  // VHost pinnen; `false` würde nicht härten, sondern jede Auth-Anfrage mit
+  // UntrustedHost abschalten.
   NEXTAUTH_TRUST_HOST: z
     .preprocess(
       (v) => (v === '' || v === undefined ? undefined : v),
       z
-        .union([z.literal('true'), z.literal('false')])
-        .transform((s) => s === 'true')
+        .literal('true')
+        .transform(() => true)
         .optional(),
     )
     .optional(),
@@ -284,8 +284,8 @@ function parseEnv(): Env {
     }
     if (parsed.data.NEXTAUTH_TRUST_HOST === undefined) {
       throw new Error(
-        '[config] NEXTAUTH_TRUST_HOST muss in Produktion explizit gesetzt sein (true/false). ' +
-          'Setze `true` nur, wenn der Reverse-Proxy `X-Forwarded-Host` filtert/setzt — sonst Host-Header-Smuggling möglich (S9).',
+        '[config] NEXTAUTH_TRUST_HOST muss in Produktion explizit `true` sein. ' +
+          'Der Reverse-Proxy muss Host und X-Forwarded-Host auf den kanonischen VHost pinnen — sonst Host-Header-Smuggling möglich (S9).',
       );
     }
     // S12: Cookie-Isolation. Path-Scoping ist technisch nicht möglich (NextAuth

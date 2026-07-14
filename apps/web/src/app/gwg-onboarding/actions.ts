@@ -25,7 +25,7 @@ import {
   startFreshGwgReviewTx,
 } from '@/server/gwg/reverification';
 
-// M4: GwG-Uploads sind enger gecappt als der globale MAX_UPLOAD_BYTES (100 MB).
+// M4: GwG-Uploads sind enger gecappt als der globale MAX_UPLOAD_BYTES (25 MiB).
 // Ausweis-Scans sind typischerweise ≤5 MB; 10 MB ist großzügig für hochauflösende
 // PDFs. Das base64-Limit entspricht binär ~7.5 MB; binäre Prüfung darunter
 // erzwingt die echte Grenze.

@@ -1,9 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import {
-  ElsterBridgeClient,
-  ElsterBridgeHttpError,
-  ElsterKontoabfrageInputError,
-} from '../client';
+import { ElsterBridgeClient, ElsterBridgeHttpError, ElsterKontoabfrageInputError } from '../client';
 import { ElsterNotConfiguredError, isElsterConfigured } from '../config';
 import type { KontoabfrageTeil } from '../schema';
 
@@ -29,7 +25,12 @@ describe('config gating', () => {
 describe('health', () => {
   it('parst den Bridge-Zustand und ruft /healthz ohne Bearer auf', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
-      jsonResponse({ ok: true, eric: 'geladen', cert: 'konfiguriert', herstellerId: 'konfiguriert' }),
+      jsonResponse({
+        ok: true,
+        eric: 'geladen',
+        cert: 'konfiguriert',
+        herstellerId: 'konfiguriert',
+      }),
     );
     const client = new ElsterBridgeClient({ config: CONFIG, fetchImpl });
 
@@ -45,9 +46,11 @@ describe('health', () => {
 
 describe('validate', () => {
   it('sendet xml + datenartVersion mit Bearer-Token', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(
-      jsonResponse({ ok: true, returnCode: 0, result: '<ok/>', errorText: null }),
-    );
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse({ ok: true, returnCode: 0, result: '<ok/>', errorText: null }),
+      );
     const client = new ElsterBridgeClient({ config: CONFIG, fetchImpl });
 
     const r = await client.validate({ xml: '<x/>', datenartVersion: 'UStVA_2026' });
@@ -190,9 +193,11 @@ describe('kontoabfrage', () => {
 describe('ElsterBridgeHttpError (kein Body-Leak in der Message)', () => {
   it('übernimmt KEINEN rohen Body-Ausschnitt in die Fehler-Message', async () => {
     const secret = 'Steuernummer 2657086132381 Betrag 12345,67 EUR';
-    const fetchImpl = vi.fn().mockResolvedValue(
-      new Response(secret, { status: 500, headers: { 'content-type': 'text/plain' } }),
-    );
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(secret, { status: 500, headers: { 'content-type': 'text/plain' } }),
+      );
     const client = new ElsterBridgeClient({ config: CONFIG, fetchImpl });
 
     const err = (await client
@@ -209,12 +214,14 @@ describe('ElsterBridgeHttpError (kein Body-Leak in der Message)', () => {
   });
 
   it('übernimmt nur ein strukturiertes Fehlerfeld, nicht die Nutzdaten', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(
-      jsonResponse(
-        { error: 'unauthorized', returnCode: 610001002, steuernummer: '2657086132381' },
-        401,
-      ),
-    );
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse(
+          { error: 'unauthorized', returnCode: 610001002, steuernummer: '2657086132381' },
+          401,
+        ),
+      );
     const client = new ElsterBridgeClient({ config: CONFIG, fetchImpl });
 
     const err = (await client

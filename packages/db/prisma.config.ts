@@ -15,9 +15,7 @@ export default defineConfig({
   schema: 'prisma/schema.prisma',
   migrations: {
     path: 'prisma/migrations',
-    ...(skipSeed
-      ? {}
-      : { seed: 'tsx --env-file-if-exists=../../.env seeds/dev.ts' }),
+    ...(skipSeed ? {} : { seed: 'tsx --env-file-if-exists=../../.env seeds/dev.ts' }),
   },
   datasource: {
     url: env('DATABASE_URL'),

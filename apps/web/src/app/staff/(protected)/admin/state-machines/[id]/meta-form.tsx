@@ -41,7 +41,10 @@ export function MachineMetaForm({
   }
 
   function remove() {
-    if (!confirm('Status-Maschine wirklich löschen? Alle Zustände und Übergänge werden mit gelöscht.')) return;
+    if (
+      !confirm('Status-Maschine wirklich löschen? Alle Zustände und Übergänge werden mit gelöscht.')
+    )
+      return;
     setError(null);
     start(async () => {
       const r = await deleteMachineAction({ id: machineId });

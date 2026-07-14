@@ -44,10 +44,16 @@ export function KontoabfrageForm({ clientId }: { clientId: string }) {
               Steuerart {art === 'ZS' ? '*' : ''}
               {art === 'I' && <span className="text-disabled font-normal"> (leer = alle)</span>}
             </label>
-            <select name="steuerart" className="input w-full" defaultValue={art === 'ZS' ? 'ESt' : ''}>
+            <select
+              name="steuerart"
+              className="input w-full"
+              defaultValue={art === 'ZS' ? 'ESt' : ''}
+            >
               {art === 'I' && <option value="">— alle —</option>}
               {STEUERARTEN.map((s) => (
-                <option key={s} value={s}>{s}</option>
+                <option key={s} value={s}>
+                  {s}
+                </option>
               ))}
             </select>
           </div>
@@ -96,13 +102,7 @@ export function KontoabfrageForm({ clientId }: { clientId: string }) {
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="label-sm">PIN des Portalzertifikats *</label>
-          <input
-            type="password"
-            name="pin"
-            autoComplete="off"
-            className="input w-full"
-            required
-          />
+          <input type="password" name="pin" autoComplete="off" className="input w-full" required />
           <p className="text-xs text-muted mt-1">
             Wird nur für diesen Vorgang an die Bridge durchgereicht — nie gespeichert.
           </p>
@@ -135,8 +135,7 @@ export function KontoabfrageForm({ clientId }: { clientId: string }) {
         <span>
           <strong className="text-red-800 dark:text-red-300">Echtfall</strong>{' '}
           <span className="text-red-700 dark:text-red-400">
-            — echter Vorgang beim ELSTER-Server (kein Test). Ohne Häkchen wird
-            als Test übertragen.
+            — echter Vorgang beim ELSTER-Server (kein Test). Ohne Häkchen wird als Test übertragen.
           </span>
         </span>
       </label>

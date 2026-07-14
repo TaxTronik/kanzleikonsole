@@ -86,7 +86,9 @@ async function main() {
   writeFileSync(privPath, privatePem, { mode: 0o600 });
   process.stdout.write(`# Lizenz-Private-Key geschrieben nach: ${privPath}\n`);
   process.stdout.write(`#   chmod 600 (only-owner-read). NICHT in Git, NICHT verteilen.\n`);
-  process.stdout.write(`#   Empfehlung: in HSM/Vault verschieben und Datei sicher löschen (shred).\n\n`);
+  process.stdout.write(
+    `#   Empfehlung: in HSM/Vault verschieben und Datei sicher löschen (shred).\n\n`,
+  );
 
   process.stdout.write('# Lizenz-Token für den Kunden (LICENSE_KEY in der Kunden-Env):\n');
   process.stdout.write(`LICENSE_KEY="${token}"\n`);

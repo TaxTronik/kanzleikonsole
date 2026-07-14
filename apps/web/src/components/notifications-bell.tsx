@@ -37,7 +37,6 @@ interface Props {
   initialUnread: number;
 }
 
-
 function relativeTime(iso: string, now: number): string {
   const t = Date.parse(iso);
   const diff = now - t;
@@ -174,7 +173,9 @@ export function NotificationsBell({ initialUnread }: Props) {
       fd.append('id', n.id);
       await markNotificationReadAction(fd);
       setItems((prev) =>
-        prev ? prev.map((p) => (p.id === n.id ? { ...p, readAt: new Date().toISOString() } : p)) : prev,
+        prev
+          ? prev.map((p) => (p.id === n.id ? { ...p, readAt: new Date().toISOString() } : p))
+          : prev,
       );
       setUnread((u) => {
         const next = Math.max(0, u - 1);
@@ -219,9 +220,7 @@ export function NotificationsBell({ initialUnread }: Props) {
           <div className="px-4 py-3 border-b border-default flex items-center justify-between">
             <h3 className="text-sm font-medium text-primary">
               Benachrichtigungen
-              {unread > 0 && (
-                <span className="ml-2 text-xs text-muted">({unread} neu)</span>
-              )}
+              {unread > 0 && <span className="ml-2 text-xs text-muted">({unread} neu)</span>}
             </h3>
             {unread > 0 && (
               <button
@@ -239,7 +238,9 @@ export function NotificationsBell({ initialUnread }: Props) {
             {items === null ? (
               <p className="px-4 py-8 text-sm text-disabled text-center">Lade…</p>
             ) : items.length === 0 ? (
-              <p className="px-4 py-8 text-sm text-disabled text-center">Keine Benachrichtigungen.</p>
+              <p className="px-4 py-8 text-sm text-disabled text-center">
+                Keine Benachrichtigungen.
+              </p>
             ) : (
               <ul className="divide-y divide-border-subtle">
                 {items.map((n) => {
@@ -258,20 +259,16 @@ export function NotificationsBell({ initialUnread }: Props) {
                         >
                           {n.title}
                         </p>
-                        {n.body && (
-                          <p className="text-xs text-muted line-clamp-2">{n.body}</p>
-                        )}
-                        <p className="text-[10px] text-disabled mt-0.5">{relativeTime(n.createdAt, now)}</p>
+                        {n.body && <p className="text-xs text-muted line-clamp-2">{n.body}</p>}
+                        <p className="text-[10px] text-disabled mt-0.5">
+                          {relativeTime(n.createdAt, now)}
+                        </p>
                       </div>
                     </div>
                   );
                   return n.href ? (
                     <li key={n.id}>
-                      <Link
-                        href={n.href}
-                        onClick={() => handleItemClick(n)}
-                        className="block"
-                      >
+                      <Link href={n.href} onClick={() => handleItemClick(n)} className="block">
                         {inner}
                       </Link>
                     </li>
