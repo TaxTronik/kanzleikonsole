@@ -200,49 +200,55 @@ model Absence {
 }
 
 model GwgCheck {
-  id                      String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId                String                @map("tenant_id") @db.Uuid
-  clientId                String                @map("client_id") @db.Uuid
-  status                  GwgStatus             @default(DRAFT)
-  riskLevel               GwgRiskLevel?         @map("risk_level")
-  riskScore               Int?                  @map("risk_score")
-  riskBreakdown           Json?                 @map("risk_breakdown")
-  riskAnswers             Json?                 @map("risk_answers")
-  validUntil              DateTime?             @map("valid_until")
-  verifiedAt              DateTime?             @map("verified_at")
-  verifiedBy              String?               @map("verified_by") @db.Uuid
-  rejectedReason          String?               @map("rejected_reason")
-  notes                   String?
+  id                         String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                   String                @map("tenant_id") @db.Uuid
+  clientId                   String                @map("client_id") @db.Uuid
+  status                     GwgStatus             @default(DRAFT)
+  riskLevel                  GwgRiskLevel?         @map("risk_level")
+  riskScore                  Int?                  @map("risk_score")
+  riskBreakdown              Json?                 @map("risk_breakdown")
+  riskAnswers                Json?                 @map("risk_answers")
+  validUntil                 DateTime?             @map("valid_until")
+  verifiedAt                 DateTime?             @map("verified_at")
+  verifiedBy                 String?               @map("verified_by") @db.Uuid
+  rejectedReason             String?               @map("rejected_reason")
+  notes                      String?
   /// Snapshot der Identifizierungsangaben juristischer Personen/
   /// Personengesellschaften (§ 11 Abs. 4 Nr. 2 GwG). Die Angaben leben am
   /// Check statt am Client, damit eine abgeschlossene Prüfung unverändert
   /// erhalten bleibt und eine Wiederholungsprüfung einen neuen Snapshot erhält.
-  legalForm               String?               @map("legal_form")
-  registerNumber          String?               @map("register_number")
-  registerAuthority       String?               @map("register_authority")
-  noRegisterEntry         Boolean               @default(false) @map("no_register_entry")
-  representativeNames     String[]              @default([]) @map("representative_names")
-  ownershipStructureNotes String?               @map("ownership_structure_notes")
+  legalForm                  String?               @map("legal_form")
+  registerNumber             String?               @map("register_number")
+  registerAuthority          String?               @map("register_authority")
+  noRegisterEntry            Boolean               @default(false) @map("no_register_entry")
+  representativeNames        String[]              @default([]) @map("representative_names")
+  ownershipStructureNotes    String?               @map("ownership_structure_notes")
+  /// Nur bereits vor Einfuehrung der stabilen 1:1-Identitaetszuordnung
+  /// verifizierte Bestandschecks werden durch die Migration auf false gesetzt.
+  /// Neue und offene Checks bleiben fail-closed und muessen vor VERIFIED eine
+  /// explizit bestaetigte Subject-Fremdschluessel-Zuordnung besitzen.
+  identityAssignmentRequired Boolean               @default(true) @map("identity_assignment_required")
   /// Explizite Übergabe der durch Mitarbeitende vorbereiteten Prüfung an den
   /// verantwortlichen Berufsträger. DRAFT bleibt während der Bearbeitung;
   /// IN_REVIEW beginnt erst mit dieser nachvollziehbaren Übergabe.
-  reviewSubmittedAt       DateTime?             @map("review_submitted_at") @db.Timestamptz(6)
-  reviewSubmittedBy       String?               @map("review_submitted_by") @db.Uuid
+  reviewSubmittedAt          DateTime?             @map("review_submitted_at") @db.Timestamptz(6)
+  reviewSubmittedBy          String?               @map("review_submitted_by") @db.Uuid
   /// GwG § 8 Abs. 1 und 4 (iter81): Vernichtungsvermerk. Gesetzt, wenn die
   /// Aufzeichnungen des Checks vernichtet wurden (Berechtigte gelöscht,
   /// Ausweis-Details genullt, riskAnswers/notes entfernt). Der Skelett-
   /// Datensatz bleibt als Nachweis, DASS geprüft wurde.
-  destroyedAt             DateTime?             @map("destroyed_at")
-  createdAt               DateTime              @default(now()) @map("created_at")
-  updatedAt               DateTime              @updatedAt @map("updated_at")
-  beneficialOwners        GwgBeneficialOwner[]
+  destroyedAt                DateTime?             @map("destroyed_at")
+  createdAt                  DateTime              @default(now()) @map("created_at")
+  updatedAt                  DateTime              @updatedAt @map("updated_at")
+  beneficialOwners           GwgBeneficialOwner[]
+  representatives            GwgRepresentative[]
   // RF-15 (iter79): NoAction statt Cascade — ein Client-Hard-Delete darf
   // GwG-Akten (5-Jahres-Pflicht, § 8 GwG) nicht mitlöschen. NoAction (statt
   // Restrict), damit die Tenant-Kaskade weiterhin funktioniert.
-  client                  Client                @relation(fields: [clientId], references: [id], onDelete: NoAction)
-  tenant                  Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  idDocuments             GwgIdDocument[]
-  onboardingInvites       GwgOnboardingInvite[]
+  client                     Client                @relation(fields: [clientId], references: [id], onDelete: NoAction)
+  tenant                     Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  idDocuments                GwgIdDocument[]
+  onboardingInvites          GwgOnboardingInvite[]
 
   @@index([tenantId, clientId])
   @@index([tenantId, status])
@@ -250,40 +256,82 @@ model GwgCheck {
 }
 
 model GwgIdDocument {
-  id             String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  gwgCheckId     String            @map("gwg_check_id") @db.Uuid
-  type           GwgIdDocumentType
-  ownerName      String            @map("owner_name")
-  documentId     String?           @map("document_id") @db.Uuid
-  number         String?
-  issuedBy       String?           @map("issued_by")
-  issueDate      DateTime?         @map("issue_date") @db.Date
-  expiryDate     DateTime?         @map("expiry_date") @db.Date
-  verifiedAt     DateTime?         @map("verified_at")
-  notes          String?
-  createdAt      DateTime          @default(now()) @map("created_at")
-  document       Document?         @relation(fields: [documentId], references: [id])
-  check          GwgCheck          @relation(fields: [gwgCheckId], references: [id], onDelete: Cascade)
-  linkedRequests Request[]
+  id                            String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gwgCheckId                    String              @map("gwg_check_id") @db.Uuid
+  type                          GwgIdDocumentType
+  ownerName                     String              @map("owner_name")
+  documentId                    String?             @map("document_id") @db.Uuid
+  /// Persistente Gruppe fuer zusammengehoerige Dateien, beispielsweise
+  /// Vorder- und Rueckseite desselben Ausweises. Legacy-Zeilen erhalten je
+  /// eine eigene Gruppe und werden nie heuristisch zusammengefuehrt.
+  documentSetId                 String              @default(dbgenerated("gen_random_uuid()")) @map("document_set_id") @db.Uuid
+  /// Echte 1:1-Zuordnung: genau hoechstens eine der drei Subject-Referenzen
+  /// darf gesetzt sein. ownerName bleibt nur der unveraenderliche Anzeigesnapshot.
+  naturalClientSubjectId        String?             @map("natural_client_subject_id") @db.Uuid
+  beneficialOwnerSubjectId      String?             @map("beneficial_owner_subject_id") @db.Uuid
+  representativeSubjectId       String?             @map("representative_subject_id") @db.Uuid
+  identityAssignmentConfirmedAt DateTime?           @map("identity_assignment_confirmed_at") @db.Timestamptz(6)
+  identityAssignmentConfirmedBy String?             @map("identity_assignment_confirmed_by") @db.Uuid
+  number                        String?
+  issuedBy                      String?             @map("issued_by")
+  issueDate                     DateTime?           @map("issue_date") @db.Date
+  expiryDate                    DateTime?           @map("expiry_date") @db.Date
+  verifiedAt                    DateTime?           @map("verified_at")
+  notes                         String?
+  createdAt                     DateTime            @default(now()) @map("created_at")
+  document                      Document?           @relation(fields: [documentId], references: [id])
+  check                         GwgCheck            @relation(fields: [gwgCheckId], references: [id], onDelete: Cascade)
+  naturalClientSubject          Client?             @relation("gwg_natural_client_subject", fields: [naturalClientSubjectId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  beneficialOwnerSubject        GwgBeneficialOwner? @relation(fields: [beneficialOwnerSubjectId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  representativeSubject         GwgRepresentative?  @relation(fields: [representativeSubjectId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  linkedRequests                Request[]
 
+  // PostgreSQL erlaubt mehrere NULL-Werte: Ein konkreter Aktenbeleg kann je
+  // Check aber nur genau einem Ausweissatz/Nachweis zugeordnet sein.
+  @@unique([gwgCheckId, documentId])
   @@index([gwgCheckId])
+  @@index([gwgCheckId, documentSetId])
   @@index([documentId])
+  @@index([naturalClientSubjectId])
+  @@index([beneficialOwnerSubjectId])
+  @@index([representativeSubjectId])
   @@map("gwg_id_document")
 }
 
+/// Stabil identifizierbarer Vertreter im Snapshot einer GwG-Pruefung.
+/// `representativeNames` bleibt vorerst als Legacy-/Anzeige-Snapshot bestehen;
+/// neue Identitaetszuordnungen referenzieren ausschliesslich diese UUID.
+model GwgRepresentative {
+  id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gwgCheckId  String          @map("gwg_check_id") @db.Uuid
+  fullName    String          @map("full_name")
+  position    Int
+  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  check       GwgCheck        @relation(fields: [gwgCheckId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  idDocuments GwgIdDocument[]
+
+  // Homonyme Vertreter sind fachlich verschiedene Personen und behalten
+  // deshalb getrennte UUIDs. Die Position bildet nur die stabile Reihenfolge.
+  @@unique([gwgCheckId, position])
+  @@index([gwgCheckId])
+  @@map("gwg_representative")
+}
+
 model GwgBeneficialOwner {
-  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  gwgCheckId   String    @map("gwg_check_id") @db.Uuid
-  fullName     String    @map("full_name")
-  birthDate    DateTime? @map("birth_date") @db.Date
-  birthPlace   String?   @map("birth_place")
+  id           String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gwgCheckId   String          @map("gwg_check_id") @db.Uuid
+  fullName     String          @map("full_name")
+  birthDate    DateTime?       @map("birth_date") @db.Date
+  birthPlace   String?         @map("birth_place")
   residence    String?
   nationality  String?
-  ownershipPct Decimal?  @map("ownership_pct") @db.Decimal(5, 2)
-  isPep        Boolean   @default(false) @map("is_pep")
+  ownershipPct Decimal?        @map("ownership_pct") @db.Decimal(5, 2)
+  isPep        Boolean         @default(false) @map("is_pep")
   notes        String?
-  createdAt    DateTime  @default(now()) @map("created_at")
-  check        GwgCheck  @relation(fields: [gwgCheckId], references: [id], onDelete: Cascade)
+  createdAt    DateTime        @default(now()) @map("created_at")
+  check        GwgCheck        @relation(fields: [gwgCheckId], references: [id], onDelete: Cascade)
+  idDocuments  GwgIdDocument[]
 
   @@index([gwgCheckId])
   @@map("gwg_beneficial_owner")
@@ -1021,6 +1069,7 @@ model Client {
   elsterKontoabfragen     ElsterKontoabfrage[]
   formSubmissions         FormSubmission[]
   gwgChecks               GwgCheck[]
+  gwgIdentityDocuments    GwgIdDocument[]             @relation("gwg_natural_client_subject")
   gwgInvites              GwgOnboardingInvite[]
   invoices                Invoice[]
   pendingBinders          PendingBinder[]

@@ -135,7 +135,10 @@ describe('confirmGwgDeletionAction', () => {
   it('persistiert die Vernichtungsabsicht vor dem Byte-Delete und finalisiert danach', async () => {
     const tx = makeTx();
     m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
-      fn(tx),
+      // Jede withTenantContext-Ausführung ist eine eigene Transaktion und
+      // erhält in Prisma auch einen eigenen Tx-Client. Die neue Objektidentität
+      // bildet das ab, während die Spies für die Ablaufprüfung geteilt bleiben.
+      fn({ ...tx }),
     );
 
     expect(await confirmGwgDeletionAction({ documentId: DOCUMENT_ID })).toEqual({ ok: true });

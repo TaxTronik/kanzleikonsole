@@ -7,6 +7,7 @@
 // =============================================================================
 
 import { redirect, notFound } from 'next/navigation';
+import { randomUUID } from 'node:crypto';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -33,6 +34,12 @@ import {
   GwgSubmissionSummary,
   type GwgSubmissionSummaryData,
 } from '@/components/gwg-submission-summary';
+import { QuickRequestDialog } from '@/components/quick-request-dialog';
+import { readRequestCreationOptionsTx } from '@/server/request-creation-options';
+import type {
+  RequestFormTemplateOption,
+  RequestTemplateOption,
+} from '@/app/staff/(protected)/clients/[id]/requests/new/form';
 
 interface Search {
   step?: string;
@@ -82,33 +89,45 @@ export default async function OnboardingStepPage({
         },
       });
       if (!client) return null;
-      const [contactCount, gwgInvite, gwgCheck, poaCount, requestCount] = await Promise.all([
-        tx.clientContact.count({ where: { clientId: id, active: true } }),
-        tx.gwgOnboardingInvite.findFirst({
-          where: { clientId: id },
-          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-          select: {
-            id: true,
-            inviteEmail: true,
-            inviteName: true,
-            status: true,
-            createdAt: true,
-            expiresAt: true,
-            submittedAt: true,
-            uploadedDocumentIds: true,
-          },
-        }),
-        tx.gwgCheck.findFirst({
-          where: { clientId: id },
-          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-          include: {
-            beneficialOwners: { orderBy: { createdAt: 'asc' } },
-            idDocuments: { orderBy: { createdAt: 'asc' }, include: { document: true } },
-          },
-        }),
-        tx.powerOfAttorney.count({ where: { clientId: id } }),
-        tx.request.count({ where: { clientId: id } }),
-      ]);
+      const [contactCount, gwgInvite, gwgCheck, poaCount, requestCount, requestCreationOptions] =
+        await Promise.all([
+          tx.clientContact.count({ where: { clientId: id, active: true } }),
+          tx.gwgOnboardingInvite.findFirst({
+            where: { clientId: id },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            select: {
+              id: true,
+              inviteEmail: true,
+              inviteName: true,
+              status: true,
+              createdAt: true,
+              expiresAt: true,
+              submittedAt: true,
+              uploadedDocumentIds: true,
+            },
+          }),
+          tx.gwgCheck.findFirst({
+            where: { clientId: id },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            include: {
+              beneficialOwners: { orderBy: { createdAt: 'asc' } },
+              idDocuments: { orderBy: { createdAt: 'asc' }, include: { document: true } },
+            },
+          }),
+          tx.powerOfAttorney.count({ where: { clientId: id } }),
+          tx.request.count({ where: { clientId: id } }),
+          // Bei deaktiviertem Vollmachtsmodul wird `poa` weiter unten direkt
+          // auf `first_request` abgebildet. Die Vorlagen müssen deshalb schon
+          // für beide möglichen Roh-Schritte bereitstehen.
+          step === 'first_request' || step === 'poa'
+            ? readRequestCreationOptionsTx(tx)
+            : Promise.resolve({
+                requestTemplates: [],
+                requestFormTemplates: [],
+                templatesLimited: false,
+                formTemplatesLimited: false,
+              }),
+        ]);
       const uploadedIds = Array.isArray(gwgInvite?.uploadedDocumentIds)
         ? (gwgInvite.uploadedDocumentIds as unknown[]).filter(
             (docId): docId is string => typeof docId === 'string',
@@ -134,6 +153,7 @@ export default async function OnboardingStepPage({
         gwgCheck,
         poaCount,
         requestCount,
+        requestCreationOptions,
         firstContact,
         uploadedDocuments,
       };
@@ -148,6 +168,7 @@ export default async function OnboardingStepPage({
     gwgCheck,
     poaCount,
     requestCount,
+    requestCreationOptions,
     firstContact,
     uploadedDocuments,
   } = data;
@@ -273,7 +294,14 @@ export default async function OnboardingStepPage({
       )}
 
       {activeStep === 'first_request' && (
-        <FirstRequestStep clientId={client.id} requestCount={requestCount} />
+        <FirstRequestStep
+          client={client}
+          requestCount={requestCount}
+          templates={requestCreationOptions.requestTemplates}
+          formTemplates={requestCreationOptions.requestFormTemplates}
+          templatesLimited={requestCreationOptions.templatesLimited}
+          formTemplatesLimited={requestCreationOptions.formTemplatesLimited}
+        />
       )}
 
       {activeStep === 'done' && (
@@ -535,7 +563,25 @@ function PoaStep({
   );
 }
 
-function FirstRequestStep({ clientId, requestCount }: { clientId: string; requestCount: number }) {
+function FirstRequestStep({
+  client,
+  requestCount,
+  templates,
+  formTemplates,
+  templatesLimited,
+  formTemplatesLimited,
+}: {
+  client: {
+    id: string;
+    name: string;
+    allowActive: boolean;
+  };
+  requestCount: number;
+  templates: RequestTemplateOption[];
+  formTemplates: RequestFormTemplateOption[];
+  templatesLimited: boolean;
+  formTemplatesLimited: boolean;
+}) {
   return (
     <div className="card p-6">
       <h2 className="text-sm font-medium text-primary mb-1 flex items-center gap-2">
@@ -554,17 +600,26 @@ function FirstRequestStep({ clientId, requestCount }: { clientId: string; reques
       ) : null}
       <div className="flex justify-end gap-2 pt-3 border-t border-subtle">
         <SkipButton
-          clientId={clientId}
+          clientId={client.id}
           next="done"
           label={requestCount > 0 ? 'Weiter' : 'Überspringen'}
         />
-        <Link
-          href={`/staff/clients/${clientId}/requests/new?from=onboarding`}
-          className="btn-primary text-sm inline-flex items-center gap-1"
-        >
-          <ExternalLink className="h-3.5 w-3.5" />
-          Anforderung anlegen
-        </Link>
+        <QuickRequestDialog
+          requestId={randomUUID()}
+          client={{
+            id: client.id,
+            name: client.name,
+            datevNo: null,
+            addisonNo: null,
+            allowActive: client.allowActive,
+          }}
+          templates={templates}
+          formTemplates={formTemplates}
+          templatesLimited={templatesLimited}
+          formTemplatesLimited={formTemplatesLimited}
+          buttonLabel="Anforderung anlegen"
+          buttonClassName="btn-primary text-sm"
+        />
       </div>
     </div>
   );

@@ -1,11 +1,12 @@
 'use server';
 
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { revokeAllSessions } from '@/server/auth/revocation';
 import { withTenantContext, type TxClient } from '@taxtronik/db';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { evidenceService } from '@/server/container';
 import { computeRiskScore, riskValidForDays, DEFAULT_FACTORS } from '@/server/gwg/risk-score';
 import { emitN8nEvent } from '@/server/n8n/emit';
@@ -15,6 +16,21 @@ import { portalBaseUrl } from '@taxtronik/config';
 import { gwgVerificationErrors } from '@/server/gwg/verification';
 import { lockGwgCheckLifecycleTx, startFreshGwgReviewTx } from '@/server/gwg/reverification';
 import { notifyMany } from '@/server/notifications/service';
+import {
+  identityAssignmentForSubject,
+  resolveIdentitySubject,
+  type IdentitySubjectSource,
+} from '@/server/gwg/identity-subject';
+import {
+  findCleanGwgEvidenceDocumentsTx,
+  lockCleanGwgEvidenceDocumentsTx,
+} from '@/server/gwg/evidence-documents';
+import {
+  gwgBeneficialOwnerRevision,
+  gwgIdentityDocumentSetRevision,
+  gwgLegalEntityRevision,
+  gwgRiskRevision,
+} from '@/server/gwg/revisions';
 import {
   staffActionGuard,
   withStaff,
@@ -121,6 +137,7 @@ async function startCheckCycle(formData: FormData): Promise<ActionResult> {
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         include: {
           beneficialOwners: true,
+          representatives: { orderBy: [{ position: 'asc' }, { id: 'asc' }] },
           idDocuments: {
             include: {
               document: {
@@ -169,6 +186,7 @@ async function startCheckCycle(formData: FormData): Promise<ActionResult> {
       // Bestandsdaten.
       const snapshotSource = latest && latest.destroyedAt === null ? latest : null;
       const ownersToCopy = snapshotSource?.beneficialOwners ?? [];
+      const copiedDocumentSetIds = new Map<string, string>();
       const documentsToCopy =
         snapshotSource?.idDocuments.map((document) => {
           const evidence = document.document;
@@ -183,6 +201,11 @@ async function startCheckCycle(formData: FormData): Promise<ActionResult> {
             evidence.gwgDestroyedAt === null
               ? evidence.id
               : null;
+          let copiedDocumentSetId = copiedDocumentSetIds.get(document.documentSetId);
+          if (!copiedDocumentSetId) {
+            copiedDocumentSetId = randomUUID();
+            copiedDocumentSetIds.set(document.documentSetId, copiedDocumentSetId);
+          }
           return {
             gwgCheckId: checkId,
             type: document.type,
@@ -192,6 +215,10 @@ async function startCheckCycle(formData: FormData): Promise<ActionResult> {
             issuedBy: document.issuedBy,
             issueDate: document.issueDate,
             expiryDate: document.expiryDate,
+            // Sets sind absichtlich check-lokal. Vorder-/Rückseite behalten
+            // innerhalb des neuen Checks dieselbe Gruppe, die UUID des
+            // unveränderlichen Altchecks wird aber niemals wiederverwendet.
+            documentSetId: copiedDocumentSetId,
             notes: document.notes,
           };
         }) ?? [];
@@ -213,6 +240,15 @@ async function startCheckCycle(formData: FormData): Promise<ActionResult> {
             ownershipStructureNotes: snapshotSource.ownershipStructureNotes,
           },
         });
+        if (snapshotSource.representatives.length > 0) {
+          await tx.gwgRepresentative.createMany({
+            data: snapshotSource.representatives.map((representative) => ({
+              gwgCheckId: checkId,
+              fullName: representative.fullName,
+              position: representative.position,
+            })),
+          });
+        }
         if (ownersToCopy.length > 0) {
           await tx.gwgBeneficialOwner.createMany({
             data: ownersToCopy.map((owner) => ({
@@ -286,12 +322,14 @@ const AnswersSchema = z.object({
   checkId: z.string().uuid(),
   clientId: z.string().uuid(),
   answers: z.record(z.string(), z.coerce.number().int().min(0).max(3)),
+  expectedRevision: z.string().min(2).max(20_000),
 });
 
 export async function saveRiskAnswersAction(input: {
   checkId: string;
   clientId: string;
   answers: Record<string, number>;
+  expectedRevision: string;
 }) {
   const parsed = AnswersSchema.safeParse(input);
   if (!parsed.success) {
@@ -304,39 +342,57 @@ export async function saveRiskAnswersAction(input: {
   const { checkId, clientId, answers } = parsed.data;
   const result = computeRiskScore(answers);
 
-  return withStaff(
-    async (tx, { tenantId, staffId, session }) => {
-      await assertClientAccessTx(tx, session, clientId);
-      const before = await tx.gwgCheck.findFirst({ where: { id: checkId, clientId } });
-      if (!before) throw new ActionError('GwG-Check nicht gefunden.');
-      assertGwgEditable(before.status);
-      await claimCheckMutation(tx, {
-        checkId,
-        clientId,
-        expectedStatus: before.status,
-      });
-      const updated = await tx.gwgCheck.update({
-        where: { id: checkId },
-        data: {
-          riskAnswers: answers,
-          riskScore: result.score,
-          riskLevel: result.level,
-          riskBreakdown: { factors: result.breakdown } as unknown as Prisma.InputJsonValue,
-        },
-      });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'gwg.check.assess',
-        resourceType: 'gwg_check',
-        resourceId: checkId,
-        before: { riskScore: before.riskScore, riskLevel: before.riskLevel },
-        after: { riskScore: updated.riskScore, riskLevel: updated.riskLevel },
-      });
-    },
-    { revalidate: `/staff/clients/${clientId}/gwg` },
-  );
+  return withStaff(async (tx, { tenantId, staffId, session }) => {
+    await assertClientAccessTx(tx, session, clientId);
+    await lockGwgCheckLifecycleTx(tx, { tenantId, clientId });
+    const before = await tx.gwgCheck.findFirst({ where: { id: checkId, clientId } });
+    if (!before) throw new ActionError('GwG-Check nicht gefunden.');
+    assertGwgEditable(before.status);
+    if (gwgRiskRevision(before) !== parsed.data.expectedRevision) {
+      throw new ActionError(
+        'Die Risikobewertung wurde zwischenzeitlich geändert. Bitte Seite neu laden; Ihre Eingabe wurde nicht überschrieben.',
+      );
+    }
+    // Status-CAS und fachliches Update in einem Statement. Der alte Pfad
+    // schrieb zuerst nur den Review-Reset und danach die Bewertung; auf der
+    // bewusst serialisierten Tenant-Tx war das ein kompletter DB-Roundtrip
+    // mehr pro Klick.
+    const updated = await tx.gwgCheck.updateMany({
+      where: { id: checkId, clientId, status: before.status },
+      data: {
+        status: 'DRAFT',
+        reviewSubmittedAt: null,
+        reviewSubmittedBy: null,
+        riskAnswers: answers,
+        riskScore: result.score,
+        riskLevel: result.level,
+        riskBreakdown: { factors: result.breakdown } as unknown as Prisma.InputJsonValue,
+      },
+    });
+    if (updated.count === 0) {
+      throw new ActionError(
+        'Der Pr\u00fcfstatus wurde parallel ge\u00e4ndert. Ihre Eingabe wurde nicht gespeichert; bitte Seite neu laden.',
+      );
+    }
+    await evidenceService.record(tx, {
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
+      action: 'gwg.check.assess',
+      resourceType: 'gwg_check',
+      resourceId: checkId,
+      before: { riskScore: before.riskScore, riskLevel: before.riskLevel },
+      after: { riskScore: result.score, riskLevel: result.level },
+    });
+    return {
+      reviewReset: before.status === 'IN_REVIEW',
+      revision: gwgRiskRevision({
+        riskAnswers: answers,
+        riskScore: result.score,
+        riskLevel: result.level,
+      }),
+    };
+  });
 }
 
 const LegalEntityDetailsSchema = z
@@ -349,6 +405,7 @@ const LegalEntityDetailsSchema = z
     noRegisterEntry: z.boolean(),
     representativeNamesText: z.string().max(4000),
     ownershipStructureNotes: z.string().trim().min(1).max(10000),
+    expectedRevision: z.string().min(2).max(20_000),
   })
   .superRefine((value, ctx) => {
     if (!value.noRegisterEntry && !value.registerNumber) {
@@ -381,7 +438,9 @@ const LegalEntityDetailsSchema = z
 export async function saveLegalEntityDetailsAction(
   _prev: ActionResult | null,
   formData: FormData,
-): Promise<ActionResult> {
+): Promise<
+  ActionResult & { reviewReset?: boolean; representativesChanged?: boolean; revision?: string }
+> {
   const parsed = LegalEntityDetailsSchema.safeParse({
     checkId: formData.get('checkId'),
     clientId: formData.get('clientId'),
@@ -391,81 +450,130 @@ export async function saveLegalEntityDetailsAction(
     noRegisterEntry: formData.get('noRegisterEntry') === 'on',
     representativeNamesText: formData.get('representativeNamesText'),
     ownershipStructureNotes: formData.get('ownershipStructureNotes'),
+    expectedRevision: formData.get('expectedRevision'),
   });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues.map((i) => i.message).join(' ') };
   }
   const data = parsed.data;
-  const representativeNames = Array.from(
-    new Set(
-      data.representativeNamesText
-        .split(/\r?\n/)
-        .map((name) => name.trim())
-        .filter(Boolean),
-    ),
-  );
+  const representativeNames = data.representativeNamesText
+    .split(/\r?\n/)
+    .map((name) => name.trim().replace(/\s+/g, ' '))
+    .filter(Boolean);
 
-  return withStaff(
-    async (tx, { tenantId, staffId, session }) => {
-      await assertClientAccessTx(tx, session, data.clientId);
-      const check = await tx.gwgCheck.findFirst({
-        where: { id: data.checkId, clientId: data.clientId },
-        select: {
-          status: true,
-          legalForm: true,
-          registerNumber: true,
-          registerAuthority: true,
-          noRegisterEntry: true,
-          representativeNames: true,
-          ownershipStructureNotes: true,
-          client: { select: { kind: true } },
+  return withStaff(async (tx, { tenantId, staffId, session }) => {
+    await assertClientAccessTx(tx, session, data.clientId);
+    await lockGwgCheckLifecycleTx(tx, { tenantId, clientId: data.clientId });
+    const check = await tx.gwgCheck.findFirst({
+      where: { id: data.checkId, clientId: data.clientId },
+      select: {
+        status: true,
+        legalForm: true,
+        registerNumber: true,
+        registerAuthority: true,
+        noRegisterEntry: true,
+        representativeNames: true,
+        representatives: {
+          select: { id: true, fullName: true, position: true },
+          orderBy: [{ position: 'asc' }, { id: 'asc' }],
+        },
+        ownershipStructureNotes: true,
+        client: { select: { kind: true } },
+      },
+    });
+    if (!check) throw new ActionError('GwG-Check nicht gefunden.');
+    if (check.client.kind !== 'JURPERS' && check.client.kind !== 'PERSGES') {
+      throw new ActionError(
+        'Rechtsträger-Angaben sind nur bei juristischen Personen/Personengesellschaften erforderlich.',
+      );
+    }
+    assertGwgEditable(check.status);
+    if (gwgLegalEntityRevision(check) !== data.expectedRevision) {
+      throw new ActionError(
+        'Die Rechtsträger-Angaben wurden zwischenzeitlich geändert. Bitte Seite neu laden; Ihre Eingabe wurde nicht überschrieben.',
+      );
+    }
+    const after = {
+      legalForm: data.legalForm,
+      registerNumber: data.noRegisterEntry ? null : data.registerNumber || null,
+      registerAuthority: data.noRegisterEntry ? null : data.registerAuthority || null,
+      noRegisterEntry: data.noRegisterEntry,
+      representativeNames,
+      ownershipStructureNotes: data.ownershipStructureNotes,
+    };
+    const representativesChanged =
+      check.representatives.length !== representativeNames.length ||
+      check.representatives.some(
+        (representative, index) =>
+          representative.position !== index ||
+          representative.fullName !== representativeNames[index],
+      );
+    // Wie bei der Risikobewertung: Review-Reset + Fachwerte atomar in einem
+    // CAS-Update statt in zwei seriellen Statements speichern.
+    const updated = await tx.gwgCheck.updateMany({
+      where: { id: data.checkId, clientId: data.clientId, status: check.status },
+      data: {
+        status: 'DRAFT',
+        reviewSubmittedAt: null,
+        reviewSubmittedBy: null,
+        ...after,
+      },
+    });
+    if (updated.count === 0) {
+      throw new ActionError(
+        'Der Pr\u00fcfstatus wurde parallel ge\u00e4ndert. Ihre Eingabe wurde nicht gespeichert; bitte Seite neu laden.',
+      );
+    }
+    let invalidatedIdentityDocuments = 0;
+    if (representativesChanged) {
+      // Eine Aenderung der Vertreterliste darf niemals eine alte UUID-Zuordnung
+      // stillschweigend auf eine andere Person umdeuten. Alle betroffenen
+      // Ausweissaetze werden deshalb vor dem Neuaufbau explizit entbestaetigt.
+      const invalidated = await tx.gwgIdDocument.updateMany({
+        where: {
+          gwgCheckId: data.checkId,
+          representativeSubjectId: { not: null },
+        },
+        data: {
+          representativeSubjectId: null,
+          identityAssignmentConfirmedAt: null,
+          identityAssignmentConfirmedBy: null,
+          verifiedAt: null,
         },
       });
-      if (!check) throw new ActionError('GwG-Check nicht gefunden.');
-      if (check.client.kind !== 'JURPERS' && check.client.kind !== 'PERSGES') {
-        throw new ActionError(
-          'Rechtsträger-Angaben sind nur bei juristischen Personen/Personengesellschaften erforderlich.',
-        );
-      }
-      assertGwgEditable(check.status);
-      await claimCheckMutation(tx, {
-        checkId: data.checkId,
-        clientId: data.clientId,
-        expectedStatus: check.status,
+      invalidatedIdentityDocuments = invalidated.count;
+      await tx.gwgRepresentative.deleteMany({ where: { gwgCheckId: data.checkId } });
+      await tx.gwgRepresentative.createMany({
+        data: representativeNames.map((fullName, position) => ({
+          gwgCheckId: data.checkId,
+          fullName,
+          position,
+        })),
       });
-
-      const after = {
-        legalForm: data.legalForm,
-        registerNumber: data.noRegisterEntry ? null : data.registerNumber || null,
-        registerAuthority: data.noRegisterEntry ? null : data.registerAuthority || null,
-        noRegisterEntry: data.noRegisterEntry,
-        representativeNames,
-        ownershipStructureNotes: data.ownershipStructureNotes,
-      };
-      await tx.gwgCheck.update({
-        where: { id: data.checkId },
-        data: after,
-      });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'gwg.legal_entity_details.update',
-        resourceType: 'gwg_check',
-        resourceId: data.checkId,
-        before: {
-          legalForm: check.legalForm,
-          registerNumber: check.registerNumber,
-          registerAuthority: check.registerAuthority,
-          noRegisterEntry: check.noRegisterEntry,
-          representativeNames: check.representativeNames,
-          ownershipStructureNotes: check.ownershipStructureNotes,
-        },
-        after,
-      });
-    },
-    { revalidate: `/staff/clients/${data.clientId}/gwg` },
-  );
+    }
+    await evidenceService.record(tx, {
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
+      action: 'gwg.legal_entity_details.update',
+      resourceType: 'gwg_check',
+      resourceId: data.checkId,
+      before: {
+        legalForm: check.legalForm,
+        registerNumber: check.registerNumber,
+        registerAuthority: check.registerAuthority,
+        noRegisterEntry: check.noRegisterEntry,
+        representativeNames: check.representativeNames,
+        ownershipStructureNotes: check.ownershipStructureNotes,
+      },
+      after: { ...after, invalidatedIdentityDocuments },
+    });
+    return {
+      reviewReset: check.status === 'IN_REVIEW',
+      representativesChanged,
+      revision: gwgLegalEntityRevision(after),
+    };
+  });
 }
 
 const AddOwnerSchema = z.object({
@@ -501,6 +609,7 @@ export async function addBeneficialOwnerAction(
   return withStaff(
     async (tx, { tenantId, staffId, session }) => {
       await assertClientAccessTx(tx, session, data.clientId);
+      await lockGwgCheckLifecycleTx(tx, { tenantId, clientId: data.clientId });
       // Check laden + Status prüfen. Das Scope {id, clientId} bindet die checkId
       // an den autorisierten Mandanten (kein Cross-Check-Write über fremde ID).
       const check = await tx.gwgCheck.findFirst({
@@ -555,6 +664,7 @@ const UpdateOwnerSchema = z.object({
   nationality: z.string().trim().min(1).max(100),
   ownershipPct: z.coerce.number().min(0).max(100).optional(),
   isPep: z.enum(['true', 'false']).transform((value) => value === 'true'),
+  expectedRevision: z.string().min(2).max(20_000),
 });
 
 /**
@@ -566,7 +676,7 @@ const UpdateOwnerSchema = z.object({
 export async function updateBeneficialOwnerAction(
   _prev: ActionResult | null,
   formData: FormData,
-): Promise<ActionResult> {
+): Promise<ActionResult & { revision?: string }> {
   const parsed = UpdateOwnerSchema.safeParse({
     ownerId: formData.get('ownerId'),
     checkId: formData.get('checkId'),
@@ -578,6 +688,7 @@ export async function updateBeneficialOwnerAction(
     nationality: formData.get('nationality') ?? '',
     ownershipPct: formData.get('ownershipPct') || undefined,
     isPep: formData.get('isPep'),
+    expectedRevision: formData.get('expectedRevision'),
   });
   if (!parsed.success) return { ok: false, error: 'Ungültige Angaben zur Person.' };
   const data = parsed.data;
@@ -585,6 +696,7 @@ export async function updateBeneficialOwnerAction(
   return withStaff(
     async (tx, { tenantId, staffId, session }) => {
       await assertClientAccessTx(tx, session, data.clientId);
+      await lockGwgCheckLifecycleTx(tx, { tenantId, clientId: data.clientId });
       const check = await tx.gwgCheck.findFirst({
         where: { id: data.checkId, clientId: data.clientId },
         select: {
@@ -608,12 +720,38 @@ export async function updateBeneficialOwnerAction(
       const owner = check.beneficialOwners[0];
       if (!owner) throw new ActionError('Wirtschaftlich Berechtigter nicht gefunden.');
       assertGwgEditable(check.status);
+      if (gwgBeneficialOwnerRevision(owner) !== data.expectedRevision) {
+        throw new ActionError(
+          'Die Personendaten wurden zwischenzeitlich geändert. Bitte Seite neu laden; Ihre Eingabe wurde nicht überschrieben.',
+        );
+      }
+      const identityFieldsChanged =
+        owner.fullName !== data.fullName ||
+        owner.birthDate?.toISOString().slice(0, 10) !== data.birthDate ||
+        (owner.birthPlace ?? '') !== data.birthPlace ||
+        (owner.residence ?? '') !== data.residence ||
+        (owner.nationality ?? '') !== data.nationality;
 
       await claimCheckMutation(tx, {
         checkId: data.checkId,
         clientId: data.clientId,
         expectedStatus: check.status,
       });
+      let invalidatedIdentityDocuments = 0;
+      if (identityFieldsChanged) {
+        const invalidated = await tx.gwgIdDocument.updateMany({
+          where: {
+            gwgCheckId: data.checkId,
+            beneficialOwnerSubjectId: data.ownerId,
+          },
+          data: {
+            identityAssignmentConfirmedAt: null,
+            identityAssignmentConfirmedBy: null,
+            verifiedAt: null,
+          },
+        });
+        invalidatedIdentityDocuments = invalidated.count;
+      }
       await tx.gwgBeneficialOwner.update({
         where: { id: data.ownerId },
         data: {
@@ -650,8 +788,21 @@ export async function updateBeneficialOwnerAction(
           nationality: data.nationality || null,
           ownershipPct: data.ownershipPct ?? null,
           isPep: data.isPep,
+          invalidatedIdentityDocuments,
         },
       });
+      return {
+        revision: gwgBeneficialOwnerRevision({
+          id: data.ownerId,
+          fullName: data.fullName,
+          birthDate: data.birthDate,
+          birthPlace: data.birthPlace || null,
+          residence: data.residence || null,
+          nationality: data.nationality || null,
+          ownershipPct: data.ownershipPct ?? null,
+          isPep: data.isPep,
+        }),
+      };
     },
     { revalidate: `/staff/clients/${data.clientId}/gwg` },
   );
@@ -670,41 +821,127 @@ const AddIdDocSchema = z
       'TRANSPARENZREGISTER_AUSZUG',
       'SONSTIGES',
     ]),
-    ownerName: z.string().max(200).optional().or(z.literal('')),
+    subjectKey: z.string().max(500).optional().or(z.literal('')),
     number: z.string().max(100).optional().or(z.literal('')),
     issuedBy: z.string().max(200).optional().or(z.literal('')),
     issueDate: z.string().date().optional().or(z.literal('')),
     expiryDate: z.string().date().optional().or(z.literal('')),
-    documentId: z.string().uuid(),
+    documentIds: z
+      .array(z.string().uuid())
+      .min(1, 'Mindestens ein Aktenbeleg ist erforderlich.')
+      .max(4, 'Ein Ausweissatz darf höchstens vier Dateien enthalten.'),
   })
   .superRefine((value, ctx) => {
-    if (!isPersonalIdType(value.type)) return;
-    for (const [field, message] of [
-      ['ownerName', 'Name der identifizierten Person ist erforderlich.'],
-      ['number', 'Ausweisnummer ist erforderlich.'],
-      ['issuedBy', 'Ausstellende Behörde ist erforderlich.'],
-      ['expiryDate', 'Gültigkeitsdatum ist erforderlich.'],
-    ] as const) {
-      if (!value[field]?.trim()) {
-        ctx.addIssue({ code: 'custom', path: [field], message });
-      }
+    if (new Set(value.documentIds).size !== value.documentIds.length) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['documentIds'],
+        message: 'Jeder Aktenbeleg darf im Satz nur einmal vorkommen.',
+      });
+    }
+    if (!isPersonalIdType(value.type) && value.documentIds.length !== 1) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['documentIds'],
+        message: 'Ein Rechtsträgernachweis besteht aus genau einem Aktenbeleg.',
+      });
+    }
+    if (isPersonalIdType(value.type) && !value.subjectKey?.trim()) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['subjectKey'],
+        message: 'Identifizierte Person ist erforderlich.',
+      });
     }
   });
+
+const SearchGwgDocumentsSchema = z.object({
+  checkId: z.string().uuid(),
+  clientId: z.string().uuid(),
+  query: z.string().trim().min(2).max(100),
+});
+
+export interface GwgDocumentSearchResult {
+  id: string;
+  title: string;
+  createdAt: string;
+}
+
+/**
+ * Durchsucht die gesamte Mandantenakte serverseitig. Die initiale Seite lädt
+ * bewusst nur die jüngsten Belege; ältere Treffer bleiben über diese Suche
+ * erreichbar. Bereits in diesem Check verknüpfte Dateien werden hier nicht
+ * erneut angeboten (Alt-Sätze stellt die Review-Karte separat zum Merge dar).
+ */
+export async function searchUnlinkedGwgDocumentsAction(input: {
+  checkId: string;
+  clientId: string;
+  query: string;
+}): Promise<
+  ActionResult & {
+    documents?: GwgDocumentSearchResult[];
+    limited?: boolean;
+  }
+> {
+  const parsed = SearchGwgDocumentsSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'Bitte mindestens zwei Zeichen eingeben.' };
+  const data = parsed.data;
+
+  return withStaff(async (tx, { tenantId, session }) => {
+    await assertClientAccessTx(tx, session, data.clientId);
+    const check = await tx.gwgCheck.findFirst({
+      where: { id: data.checkId, clientId: data.clientId },
+      select: { id: true },
+    });
+    if (!check) throw new ActionError('GwG-Check nicht gefunden.');
+
+    const matches = await findCleanGwgEvidenceDocumentsTx(tx, {
+      tenantId,
+      clientId: data.clientId,
+      query: data.query,
+      excludeLinkedCheckId: data.checkId,
+      limit: 51,
+    });
+    return {
+      documents: matches.slice(0, 50).map((document) => ({
+        id: document.id,
+        title: document.title,
+        createdAt: document.createdAt.toISOString(),
+      })),
+      limited: matches.length > 50,
+    };
+  });
+}
+
+function isDateOnOrAfterToday(value: string, now: Date = new Date()): boolean {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return Number.isFinite(date.getTime()) && date.getTime() >= today;
+}
 
 export async function addIdDocumentAction(
   _prev: { ok: boolean; error?: string } | null,
   formData: FormData,
 ) {
+  const selectedDocumentIds = formData
+    .getAll('documentIds')
+    .filter((value): value is string => typeof value === 'string' && value.length > 0);
+  if (selectedDocumentIds.length === 0) {
+    const legacyDocumentId = formData.get('documentId');
+    if (typeof legacyDocumentId === 'string' && legacyDocumentId) {
+      selectedDocumentIds.push(legacyDocumentId);
+    }
+  }
   const parsed = AddIdDocSchema.safeParse({
     checkId: formData.get('checkId'),
     clientId: formData.get('clientId'),
     type: formData.get('type'),
-    ownerName: formData.get('ownerName') ?? '',
+    subjectKey: formData.get('subjectKey') ?? '',
     number: formData.get('number') ?? '',
     issuedBy: formData.get('issuedBy') ?? '',
     issueDate: formData.get('issueDate') ?? '',
     expiryDate: formData.get('expiryDate') ?? '',
-    documentId: formData.get('documentId') ?? '',
+    documentIds: selectedDocumentIds,
   });
   if (!parsed.success) {
     return {
@@ -717,10 +954,193 @@ export async function addIdDocumentAction(
   return withStaff(
     async (tx, { tenantId, staffId, session }) => {
       await assertClientAccessTx(tx, session, data.clientId);
+      await lockGwgCheckLifecycleTx(tx, { tenantId, clientId: data.clientId });
       // Check laden + Status prüfen (bindet checkId an den autorisierten Mandanten).
       const check = await tx.gwgCheck.findFirst({
         where: { id: data.checkId, clientId: data.clientId },
-        select: { status: true, client: { select: { name: true, kind: true } } },
+        select: {
+          status: true,
+          client: { select: { id: true, name: true, kind: true } },
+          representatives: {
+            select: { id: true, fullName: true, position: true },
+            orderBy: [{ position: 'asc' }, { id: 'asc' }],
+          },
+          beneficialOwners: {
+            select: { id: true, fullName: true, birthDate: true },
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          },
+        },
+      });
+      if (!check) throw new ActionError('GwG-Check nicht gefunden.');
+      assertGwgEditable(check.status);
+
+      const subjectSource: IdentitySubjectSource = {
+        clientId: check.client.id,
+        clientName: check.client.name,
+        clientKind: check.client.kind,
+        representatives: check.representatives,
+        beneficialOwners: check.beneficialOwners,
+      };
+      const subject = isPersonalIdType(data.type)
+        ? resolveIdentitySubject(subjectSource, data.subjectKey ?? '')
+        : null;
+      if (isPersonalIdType(data.type) && !subject) {
+        throw new ActionError(
+          'Die identifizierte Person gehört nicht mehr zu den erfassten Mandanten-, Vertretungs- oder Eigentümerdaten. Bitte Person neu auswählen.',
+        );
+      }
+
+      await claimCheckMutation(tx, {
+        checkId: data.checkId,
+        clientId: data.clientId,
+        expectedStatus: check.status,
+      });
+      if (
+        !(await lockCleanGwgEvidenceDocumentsTx(tx, {
+          tenantId,
+          clientId: data.clientId,
+          documentIds: data.documentIds,
+        }))
+      ) {
+        throw new ActionError(
+          'Alle verknüpften Nachweise müssen verfügbare GwG-Belege mit vollständig geprüfter, sauberer Dateiversion desselben Mandanten sein.',
+        );
+      }
+
+      const alreadyLinked = await tx.gwgIdDocument.findFirst({
+        where: {
+          gwgCheckId: data.checkId,
+          documentId:
+            data.documentIds.length === 1 ? data.documentIds[0] : { in: data.documentIds },
+        },
+        select: { id: true, type: true },
+      });
+      if (alreadyLinked) {
+        throw new ActionError(
+          'Dieser Aktenbeleg ist dieser GwG-Prüfung bereits zugeordnet. Bitte den vorhandenen Nachweis aufklappen und dort bearbeiten.',
+        );
+      }
+
+      const assignmentConfirmedAt =
+        isPersonalIdType(data.type) &&
+        data.number?.trim() &&
+        data.issuedBy?.trim() &&
+        data.issueDate &&
+        data.expiryDate &&
+        isDateOnOrAfterToday(data.expiryDate)
+          ? new Date()
+          : null;
+      const assignment = subject
+        ? identityAssignmentForSubject(subject)
+        : {
+            naturalClientSubjectId: null,
+            beneficialOwnerSubjectId: null,
+            representativeSubjectId: null,
+          };
+      const documentSetId = randomUUID();
+      const sharedData = {
+        gwgCheckId: data.checkId,
+        type: data.type,
+        ownerName: isPersonalIdType(data.type) ? subject!.name : check.client.name,
+        number: isPersonalIdType(data.type) ? data.number || null : null,
+        issuedBy: isPersonalIdType(data.type) ? data.issuedBy || null : null,
+        issueDate: isPersonalIdType(data.type) && data.issueDate ? new Date(data.issueDate) : null,
+        expiryDate:
+          isPersonalIdType(data.type) && data.expiryDate ? new Date(data.expiryDate) : null,
+        documentSetId,
+        ...assignment,
+        identityAssignmentConfirmedAt: assignmentConfirmedAt,
+        identityAssignmentConfirmedBy: assignmentConfirmedAt ? staffId : null,
+        verifiedAt: assignmentConfirmedAt,
+      };
+      let resourceId: string = documentSetId;
+      if (data.documentIds.length === 1) {
+        const idDoc = await tx.gwgIdDocument.create({
+          data: { ...sharedData, documentId: data.documentIds[0]! },
+        });
+        resourceId = idDoc.id;
+      } else {
+        await tx.gwgIdDocument.createMany({
+          data: data.documentIds.map((documentId) => ({ ...sharedData, documentId })),
+        });
+      }
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: isPersonalIdType(data.type) ? 'gwg.id_document.add' : 'gwg.evidence.add',
+        resourceType: data.documentIds.length === 1 ? 'gwg_id_document' : 'gwg_id_document_set',
+        resourceId,
+        after: {
+          type: data.type,
+          ownerName: isPersonalIdType(data.type) ? subject!.name : null,
+          subjectKey: isPersonalIdType(data.type) ? data.subjectKey : null,
+          documentIds: data.documentIds,
+          identityAssignmentConfirmedAt: assignmentConfirmedAt?.toISOString() ?? null,
+          verifiedAt: assignmentConfirmedAt?.toISOString() ?? null,
+        },
+      });
+    },
+    { revalidate: `/staff/clients/${data.clientId}/gwg` },
+  );
+}
+
+const ExtendIdentityDocumentSetSchema = z
+  .object({
+    checkId: z.string().uuid(),
+    clientId: z.string().uuid(),
+    targetDocumentSetId: z.string().uuid(),
+    documentIds: z
+      .array(z.string().uuid())
+      .min(1, 'Mindestens eine Datei ist erforderlich.')
+      .max(4, 'Es können höchstens vier Dateien auf einmal ergänzt werden.'),
+  })
+  .superRefine((value, ctx) => {
+    if (new Set(value.documentIds).size !== value.documentIds.length) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['documentIds'],
+        message: 'Jede Datei darf nur einmal ausgewählt werden.',
+      });
+    }
+  });
+
+/**
+ * Ergänzt einen bestehenden Ausweissatz direkt aus der Akte. Unverknüpfte
+ * Dateien werden angelegt; ein anderer, noch unbestätigter Alt-Satz wird als
+ * Ganzes verschoben. Jede strukturelle Änderung entwertet die bisherige
+ * Bestätigung des Ziels, damit Vorder-/Rückseite anschließend gemeinsam erneut
+ * geprüft werden müssen.
+ */
+export async function extendIdentityDocumentSetAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult & { reviewReset?: boolean }> {
+  const documentIds = formData
+    .getAll('documentIds')
+    .filter((value): value is string => typeof value === 'string' && value.length > 0);
+  const parsed = ExtendIdentityDocumentSetSchema.safeParse({
+    checkId: formData.get('checkId'),
+    clientId: formData.get('clientId'),
+    targetDocumentSetId: formData.get('targetDocumentSetId'),
+    documentIds,
+  });
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues.map((issue) => issue.message).join(' '),
+    };
+  }
+  const data = parsed.data;
+
+  return withStaff(
+    async (tx, { tenantId, staffId, session }) => {
+      await assertClientAccessTx(tx, session, data.clientId);
+      await lockGwgCheckLifecycleTx(tx, { tenantId, clientId: data.clientId });
+
+      const check = await tx.gwgCheck.findFirst({
+        where: { id: data.checkId, clientId: data.clientId },
+        select: { status: true },
       });
       if (!check) throw new ActionError('GwG-Check nicht gefunden.');
       assertGwgEditable(check.status);
@@ -729,53 +1149,454 @@ export async function addIdDocumentAction(
         clientId: data.clientId,
         expectedStatus: check.status,
       });
-      if (data.documentId) {
-        const evidenceDocument = await tx.document.findFirst({
-          where: {
-            id: data.documentId,
-            tenantId,
-            clientId: data.clientId,
-            classification: 'GWG_EVIDENCE',
-            deletedAt: null,
+
+      const targetLockKey = `gwg-document-set:${data.targetDocumentSetId}`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${targetLockKey}, 0))`;
+
+      // Erst nach Parent- und Set-Lock lesen. Dadurch basiert Kapazität,
+      // Bestätigungsstatus und Quellsatz-Auflösung auf einem stabilen Zustand.
+      const existingDocuments = await tx.gwgIdDocument.findMany({
+        where: { gwgCheckId: data.checkId },
+        select: {
+          id: true,
+          documentSetId: true,
+          type: true,
+          ownerName: true,
+          documentId: true,
+          number: true,
+          issuedBy: true,
+          issueDate: true,
+          expiryDate: true,
+          naturalClientSubjectId: true,
+          beneficialOwnerSubjectId: true,
+          representativeSubjectId: true,
+          identityAssignmentConfirmedAt: true,
+          identityAssignmentConfirmedBy: true,
+          verifiedAt: true,
+          document: {
+            select: {
+              tenantId: true,
+              clientId: true,
+              classification: true,
+              deletedAt: true,
+              gwgDestructionRequestedAt: true,
+              gwgDestroyedAt: true,
+            },
           },
-          select: { id: true },
-        });
-        if (!evidenceDocument) {
-          throw new ActionError(
-            'Der verknüpfte Nachweis muss ein nicht gelöschtes GwG-Dokument desselben Mandanten sein.',
-          );
-        }
-      }
-      const idDoc = await tx.gwgIdDocument.create({
-        data: {
-          gwgCheckId: data.checkId,
-          type: data.type,
-          ownerName: isPersonalIdType(data.type) ? data.ownerName!.trim() : check.client.name,
-          number: isPersonalIdType(data.type) ? data.number || null : null,
-          issuedBy: isPersonalIdType(data.type) ? data.issuedBy || null : null,
-          issueDate:
-            isPersonalIdType(data.type) && data.issueDate ? new Date(data.issueDate) : null,
-          expiryDate:
-            isPersonalIdType(data.type) && data.expiryDate ? new Date(data.expiryDate) : null,
-          documentId: data.documentId,
         },
       });
+      const targetDocuments = existingDocuments.filter(
+        (entry) => entry.documentSetId === data.targetDocumentSetId,
+      );
+      if (
+        targetDocuments.length === 0 ||
+        targetDocuments.some((entry) => !isPersonalIdType(entry.type))
+      ) {
+        throw new ActionError(
+          'Der Ziel-Ausweissatz ist nicht mehr vorhanden oder enthält keinen Personalausweis/Reisepass.',
+        );
+      }
+
+      const selectedIds = new Set(data.documentIds);
+      const selectedLinked = existingDocuments.filter(
+        (entry) => entry.documentId !== null && selectedIds.has(entry.documentId),
+      );
+      if (selectedLinked.some((entry) => entry.documentSetId === data.targetDocumentSetId)) {
+        throw new ActionError(
+          'Mindestens eine ausgewählte Datei gehört bereits zum Ziel-Ausweissatz.',
+        );
+      }
+      if (selectedLinked.some((entry) => !isPersonalIdType(entry.type))) {
+        throw new ActionError(
+          'Ein Rechtsträgernachweis kann nicht als Ausweisseite zusammengeführt werden.',
+        );
+      }
+
+      const sourceSetIds = new Set(selectedLinked.map((entry) => entry.documentSetId));
+      const sourceDocuments = existingDocuments.filter((entry) =>
+        sourceSetIds.has(entry.documentSetId),
+      );
+      if (
+        sourceDocuments.some(
+          (entry) =>
+            !isPersonalIdType(entry.type) ||
+            entry.verifiedAt !== null ||
+            entry.identityAssignmentConfirmedAt !== null ||
+            entry.identityAssignmentConfirmedBy !== null,
+        )
+      ) {
+        throw new ActionError(
+          'Ein bereits bestätigter Ausweissatz kann nicht mit einem anderen Satz zusammengeführt werden.',
+        );
+      }
+
+      const selectedLinkedIds = new Set(
+        selectedLinked
+          .map((entry) => entry.documentId)
+          .filter((documentId): documentId is string => documentId !== null),
+      );
+      const unlinkedDocumentIds = data.documentIds.filter(
+        (documentId) => !selectedLinkedIds.has(documentId),
+      );
+      const finalDocumentCount =
+        targetDocuments.length + sourceDocuments.length + unlinkedDocumentIds.length;
+      if (finalDocumentCount > 4) {
+        throw new ActionError(
+          `Der zusammengeführte Ausweissatz hätte ${finalDocumentCount} Dateien. Zulässig sind höchstens vier.`,
+        );
+      }
+
+      const fullExistingSet = [...targetDocuments, ...sourceDocuments];
+      const allDocumentIds = [
+        ...fullExistingSet.map((entry) => entry.documentId),
+        ...unlinkedDocumentIds,
+      ];
+      if (allDocumentIds.some((documentId) => documentId === null)) {
+        throw new ActionError(
+          'Der Ziel- oder Quellsatz enthält eine nicht mehr verfügbare Datei und kann nicht zusammengeführt werden.',
+        );
+      }
+      const uniqueDocumentIds = [
+        ...new Set(
+          allDocumentIds.filter((documentId): documentId is string => documentId !== null),
+        ),
+      ].sort();
+      if (
+        !(await lockCleanGwgEvidenceDocumentsTx(tx, {
+          tenantId,
+          clientId: data.clientId,
+          documentIds: uniqueDocumentIds,
+        }))
+      ) {
+        throw new ActionError(
+          'Alle Dateien des Ziel-/Quellsatzes und der Auswahl müssen verfügbare GwG-Belege mit vollständig geprüfter, sauberer Dateiversion desselben Mandanten sein.',
+        );
+      }
+
+      const first = targetDocuments[0]!;
+      const sharedData = {
+        documentSetId: data.targetDocumentSetId,
+        type: first.type,
+        ownerName: first.ownerName,
+        number: first.number,
+        issuedBy: first.issuedBy,
+        issueDate: first.issueDate,
+        expiryDate: first.expiryDate,
+        naturalClientSubjectId: first.naturalClientSubjectId,
+        beneficialOwnerSubjectId: first.beneficialOwnerSubjectId,
+        representativeSubjectId: first.representativeSubjectId,
+        identityAssignmentConfirmedAt: null,
+        identityAssignmentConfirmedBy: null,
+        verifiedAt: null,
+      };
+      const rowsToNormalize = [...targetDocuments, ...sourceDocuments];
+      const normalized = await tx.gwgIdDocument.updateMany({
+        where: {
+          gwgCheckId: data.checkId,
+          id: { in: rowsToNormalize.map((entry) => entry.id) },
+          documentSetId: {
+            in: [data.targetDocumentSetId, ...sourceSetIds],
+          },
+        },
+        data: sharedData,
+      });
+      if (normalized.count !== rowsToNormalize.length) {
+        throw new ActionError(
+          'Ein Ausweissatz wurde parallel geändert. Bitte Seite neu laden und erneut versuchen.',
+        );
+      }
+      if (unlinkedDocumentIds.length > 0) {
+        await tx.gwgIdDocument.createMany({
+          data: unlinkedDocumentIds.map((documentId) => ({
+            gwgCheckId: data.checkId,
+            documentId,
+            ...sharedData,
+            notes: 'Ausweissatz durch Kanzlei ergänzt',
+          })),
+        });
+      }
+
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',
         actorId: staffId,
-        action: isPersonalIdType(data.type) ? 'gwg.id_document.add' : 'gwg.evidence.add',
-        resourceType: 'gwg_id_document',
-        resourceId: idDoc.id,
+        action: 'gwg.id_document.set_files_update',
+        resourceType: 'gwg_id_document_set',
+        resourceId: data.targetDocumentSetId,
+        before: {
+          targetDocumentIds: targetDocuments.map((entry) => entry.documentId),
+          sourceDocumentSetIds: [...sourceSetIds],
+          targetWasConfirmed: targetDocuments.some(
+            (entry) => entry.verifiedAt !== null || entry.identityAssignmentConfirmedAt !== null,
+          ),
+        },
         after: {
-          type: data.type,
-          ownerName: isPersonalIdType(data.type) ? data.ownerName : null,
-          documentId: data.documentId,
+          documentIds: [
+            ...targetDocuments.map((entry) => entry.documentId),
+            ...sourceDocuments.map((entry) => entry.documentId),
+            ...unlinkedDocumentIds,
+          ],
+          mergedDocumentSetIds: [...sourceSetIds],
+          identityAssignmentRequiresConfirmation: true,
         },
       });
+      return { reviewReset: check.status === 'IN_REVIEW' };
     },
-    { revalidate: `/staff/clients/${data.clientId}/gwg` },
+    {
+      revalidate: `/staff/clients/${data.clientId}/gwg`,
+      uniqueError:
+        'Mindestens eine Datei wurde zwischenzeitlich bereits zugeordnet. Bitte Seite neu laden.',
+    },
   );
+}
+
+const UpdateIdDocumentsSchema = z.object({
+  checkId: z.string().uuid(),
+  clientId: z.string().uuid(),
+  documentSetId: z.string().uuid(),
+  type: z.enum(['PERSONALAUSWEIS', 'REISEPASS']),
+  subjectKey: z.string().min(1).max(500),
+  number: z.string().trim().min(1).max(100),
+  issuedBy: z.string().trim().min(1).max(200),
+  issueDate: z.string().date(),
+  expiryDate: z.string().date(),
+  expectedRevision: z.string().min(2).max(50_000),
+});
+
+/**
+ * Bestätigt oder korrigiert einen zusammengehörigen Ausweissatz (z. B.
+ * Vorder- und Rückseite) in einem atomaren Schritt. Die Person kommt niemals
+ * aus Freitext, sondern wird gegen den aktuellen GwG-Snapshot aufgelöst.
+ */
+export async function updateIdDocumentsAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<
+  ActionResult & {
+    reviewReset?: boolean;
+    saved?: {
+      type: 'PERSONALAUSWEIS' | 'REISEPASS';
+      subjectKey: string;
+      ownerName: string;
+      number: string;
+      issuedBy: string;
+      issueDate: string;
+      expiryDate: string;
+    };
+    revision?: string;
+  }
+> {
+  const parsed = UpdateIdDocumentsSchema.safeParse({
+    checkId: formData.get('checkId'),
+    clientId: formData.get('clientId'),
+    documentSetId: formData.get('documentSetId'),
+    type: formData.get('type'),
+    subjectKey: formData.get('subjectKey'),
+    number: formData.get('number'),
+    issuedBy: formData.get('issuedBy'),
+    issueDate: formData.get('issueDate') ?? '',
+    expiryDate: formData.get('expiryDate'),
+    expectedRevision: formData.get('expectedRevision'),
+  });
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues.map((issue) => issue.message).join(' '),
+    };
+  }
+  const data = parsed.data;
+
+  return withStaff(async (tx, { tenantId, staffId, session }) => {
+    await assertClientAccessTx(tx, session, data.clientId);
+    await lockGwgCheckLifecycleTx(tx, { tenantId, clientId: data.clientId });
+    const check = await tx.gwgCheck.findFirst({
+      where: { id: data.checkId, clientId: data.clientId },
+      select: {
+        status: true,
+        client: { select: { id: true, name: true, kind: true } },
+        representatives: {
+          select: { id: true, fullName: true, position: true },
+          orderBy: [{ position: 'asc' }, { id: 'asc' }],
+        },
+        beneficialOwners: {
+          select: { id: true, fullName: true, birthDate: true },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        },
+        idDocuments: {
+          where: { documentSetId: data.documentSetId },
+          select: {
+            id: true,
+            gwgCheckId: true,
+            documentId: true,
+            type: true,
+            ownerName: true,
+            number: true,
+            issuedBy: true,
+            issueDate: true,
+            expiryDate: true,
+            verifiedAt: true,
+            documentSetId: true,
+            naturalClientSubjectId: true,
+            beneficialOwnerSubjectId: true,
+            representativeSubjectId: true,
+            identityAssignmentConfirmedAt: true,
+            identityAssignmentConfirmedBy: true,
+            document: {
+              select: {
+                id: true,
+                tenantId: true,
+                clientId: true,
+                classification: true,
+                deletedAt: true,
+                gwgDestructionRequestedAt: true,
+                gwgDestroyedAt: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!check) throw new ActionError('GwG-Check nicht gefunden.');
+    assertGwgEditable(check.status);
+    if (
+      check.idDocuments.length === 0 ||
+      check.idDocuments.some((document) => !isPersonalIdType(document.type))
+    ) {
+      throw new ActionError(
+        'Der Ausweissatz ist unvollständig oder gehört nicht zu dieser GwG-Prüfung.',
+      );
+    }
+    if (gwgIdentityDocumentSetRevision(check.idDocuments) !== data.expectedRevision) {
+      throw new ActionError(
+        'Der Ausweissatz wurde zwischenzeitlich geändert. Bitte Seite neu laden; Ihre Eingabe wurde nicht überschrieben.',
+      );
+    }
+    if (
+      check.idDocuments.some(
+        (entry) =>
+          !entry.document ||
+          entry.document.id === null ||
+          entry.document.tenantId !== tenantId ||
+          entry.document.clientId !== data.clientId ||
+          entry.document.classification !== 'GWG_EVIDENCE' ||
+          entry.document.deletedAt !== null ||
+          entry.document.gwgDestructionRequestedAt !== null ||
+          entry.document.gwgDestroyedAt !== null,
+      )
+    ) {
+      throw new ActionError(
+        'Mindestens eine Datei dieses Ausweissatzes ist nicht mehr als GwG-Nachweis verfügbar.',
+      );
+    }
+    if (!isDateOnOrAfterToday(data.expiryDate)) {
+      throw new ActionError(
+        'Der Ausweis ist abgelaufen. Bitte ein gültiges Ablaufdatum oder einen neuen Ausweis erfassen.',
+      );
+    }
+
+    const subject = resolveIdentitySubject(
+      {
+        clientId: check.client.id,
+        clientName: check.client.name,
+        clientKind: check.client.kind,
+        representatives: check.representatives,
+        beneficialOwners: check.beneficialOwners,
+      },
+      data.subjectKey,
+    );
+    if (!subject) {
+      throw new ActionError(
+        'Die identifizierte Person gehört nicht mehr zu den erfassten Mandanten-, Vertretungs- oder Eigentümerdaten. Bitte Person neu auswählen.',
+      );
+    }
+
+    await claimCheckMutation(tx, {
+      checkId: data.checkId,
+      clientId: data.clientId,
+      expectedStatus: check.status,
+    });
+    if (
+      !(await lockCleanGwgEvidenceDocumentsTx(tx, {
+        tenantId,
+        clientId: data.clientId,
+        documentIds: check.idDocuments.map((entry) => entry.document!.id),
+      }))
+    ) {
+      throw new ActionError(
+        'Mindestens eine Datei dieses Ausweissatzes besitzt keine vollständig geprüfte, saubere neueste Dateiversion.',
+      );
+    }
+    const verifiedAt = new Date();
+    const assignment = identityAssignmentForSubject(subject);
+    const update = await tx.gwgIdDocument.updateMany({
+      where: { documentSetId: data.documentSetId, gwgCheckId: data.checkId },
+      data: {
+        type: data.type,
+        ownerName: subject.name,
+        number: data.number,
+        issuedBy: data.issuedBy,
+        issueDate: new Date(data.issueDate),
+        expiryDate: new Date(data.expiryDate),
+        ...assignment,
+        identityAssignmentConfirmedAt: verifiedAt,
+        identityAssignmentConfirmedBy: staffId,
+        verifiedAt,
+      },
+    });
+    if (update.count !== check.idDocuments.length) {
+      throw new ActionError(
+        'Der Ausweissatz wurde parallel geändert. Bitte Seite neu laden und erneut prüfen.',
+      );
+    }
+    await evidenceService.record(tx, {
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
+      action: 'gwg.id_document.update',
+      resourceType: 'gwg_id_document_set',
+      resourceId: data.documentSetId,
+      before: { documents: check.idDocuments },
+      after: {
+        documentSetId: data.documentSetId,
+        documentIds: check.idDocuments.map((document) => document.id),
+        type: data.type,
+        ownerName: subject.name,
+        subjectKey: data.subjectKey,
+        number: data.number,
+        issuedBy: data.issuedBy,
+        issueDate: data.issueDate,
+        expiryDate: data.expiryDate,
+        verifiedAt: verifiedAt.toISOString(),
+      },
+    });
+    return {
+      reviewReset: check.status === 'IN_REVIEW',
+      saved: {
+        type: data.type,
+        subjectKey: data.subjectKey,
+        ownerName: subject.name,
+        number: data.number,
+        issuedBy: data.issuedBy,
+        issueDate: data.issueDate,
+        expiryDate: data.expiryDate,
+      },
+      revision: gwgIdentityDocumentSetRevision(
+        check.idDocuments.map((document) => ({
+          ...document,
+          type: data.type,
+          ownerName: subject.name,
+          number: data.number,
+          issuedBy: data.issuedBy,
+          issueDate: data.issueDate,
+          expiryDate: data.expiryDate,
+          ...assignment,
+          identityAssignmentConfirmedAt: verifiedAt,
+          identityAssignmentConfirmedBy: staffId,
+          verifiedAt,
+        })),
+      ),
+    };
+  });
 }
 
 const VerifySchema = z.object({
@@ -809,12 +1630,24 @@ export async function submitCheckForReviewAction(
       const check = await tx.gwgCheck.findFirst({
         where: { id: checkId, clientId },
         include: {
-          client: { select: { kind: true, name: true } },
+          client: { select: { id: true, kind: true, name: true } },
           beneficialOwners: true,
+          representatives: { orderBy: [{ position: 'asc' }, { id: 'asc' }] },
           idDocuments: {
             include: {
               document: {
-                select: { clientId: true, classification: true, deletedAt: true },
+                select: {
+                  clientId: true,
+                  classification: true,
+                  deletedAt: true,
+                  gwgDestructionRequestedAt: true,
+                  gwgDestroyedAt: true,
+                  versions: {
+                    orderBy: { versionNo: 'desc' },
+                    take: 1,
+                    select: { scanStatus: true, scanCompletedAt: true },
+                  },
+                },
               },
             },
           },
@@ -837,6 +1670,7 @@ export async function submitCheckForReviewAction(
       }
 
       const verificationErrors = gwgVerificationErrors({
+        checkId,
         clientId,
         clientKind: check.client.kind,
         legalForm: check.legalForm,
@@ -844,6 +1678,7 @@ export async function submitCheckForReviewAction(
         registerAuthority: check.registerAuthority,
         noRegisterEntry: check.noRegisterEntry,
         representativeNames: check.representativeNames,
+        representatives: check.representatives,
         ownershipStructureNotes: check.ownershipStructureNotes,
         beneficialOwners: check.beneficialOwners,
         idDocuments: check.idDocuments,
@@ -951,12 +1786,24 @@ export async function verifyCheckAction(
       const check = await tx.gwgCheck.findFirst({
         where: { id: checkId, clientId },
         include: {
-          client: { select: { kind: true } },
+          client: { select: { id: true, kind: true } },
           beneficialOwners: true,
+          representatives: { orderBy: [{ position: 'asc' }, { id: 'asc' }] },
           idDocuments: {
             include: {
               document: {
-                select: { clientId: true, classification: true, deletedAt: true },
+                select: {
+                  clientId: true,
+                  classification: true,
+                  deletedAt: true,
+                  gwgDestructionRequestedAt: true,
+                  gwgDestroyedAt: true,
+                  versions: {
+                    orderBy: { versionNo: 'desc' },
+                    take: 1,
+                    select: { scanStatus: true, scanCompletedAt: true },
+                  },
+                },
               },
             },
           },
@@ -983,49 +1830,12 @@ export async function verifyCheckAction(
       if (check.idDocuments.length === 0) {
         throw new ActionError('Mindestens ein Identitätsdokument erforderlich.');
       }
-      // P2-2 / § 10 Abs. 1 Nr. 2, § 3 GwG: Bei juristischen Personen und
-      // Personengesellschaften ist mindestens EIN wirtschaftlich Berechtigter
-      // zu ermitteln (fiktiv-wB, wenn keiner > 25 % hält).
-      const clientKind = await tx.client.findUnique({
-        where: { id: clientId },
-        select: { kind: true },
-      });
-      if (
-        (clientKind?.kind === 'JURPERS' || clientKind?.kind === 'PERSGES') &&
-        check.beneficialOwners.length === 0
-      ) {
-        throw new ActionError(
-          'Bei juristischen Personen/Personengesellschaften ist mindestens ein wirtschaftlich Berechtigter zu erfassen (§ 10 Abs. 1 Nr. 2 GwG).',
-        );
-      }
-      // P2-3 / § 12 Abs. 1, § 8 GwG: Es muss mindestens EIN identifikations-
-      // taugliches Dokument (kein VOLLMACHT/SONSTIGES) mit hinterlegter Kopie
-      // (documentId) und — falls ein Ablaufdatum erfasst ist — GÜLTIGER
-      // Ausweis (nicht abgelaufen) vorliegen.
-      const ID_SUITABLE: string[] = [
-        'PERSONALAUSWEIS',
-        'REISEPASS',
-        'HANDELSREGISTERAUSZUG',
-        'GESELLSCHAFTSVERTRAG',
-        'TRANSPARENZREGISTER_AUSZUG',
-      ];
-      const heute = new Date();
-      const taugliches = check.idDocuments.find(
-        (d) =>
-          ID_SUITABLE.includes(d.type) &&
-          d.documentId != null &&
-          (d.expiryDate == null || d.expiryDate.getTime() >= heute.getTime()),
-      );
-      if (!taugliches) {
-        throw new ActionError(
-          'Kein gültiges, identifikationstaugliches Ausweisdokument mit hinterlegter Kopie (§ 12 Abs. 1 GwG). Bitte amtlichen Ausweis/Registerauszug mit Datei und gültigem Ablaufdatum erfassen.',
-        );
-      }
       // H-2 / § 15 GwG: Ist ein wirtschaftlich Berechtigter als PEP markiert,
       // MUSS die Risikostufe HIGH sein (jährliche Überwachung). Bei
       // widersprechender Bewertung Verifikation blockieren — die erneute
       // Risikobewertung erzwingt über den PEP-Override HIGH.
       const verificationErrors = gwgVerificationErrors({
+        checkId,
         clientId,
         clientKind: check.client.kind,
         legalForm: check.legalForm,
@@ -1033,6 +1843,7 @@ export async function verifyCheckAction(
         registerAuthority: check.registerAuthority,
         noRegisterEntry: check.noRegisterEntry,
         representativeNames: check.representativeNames,
+        representatives: check.representatives,
         ownershipStructureNotes: check.ownershipStructureNotes,
         beneficialOwners: check.beneficialOwners,
         idDocuments: check.idDocuments,

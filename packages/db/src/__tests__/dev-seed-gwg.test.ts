@@ -11,6 +11,31 @@ let tenantId: string;
 let clientId: string;
 let staffId: string;
 
+async function createGrandfatheredLegacyFragment(verifiedAt: Date) {
+  return owner.$transaction(async (tx) => {
+    // Simulates a row that existed before migration 043. The disable is scoped
+    // to this transaction; rollback would restore the trigger automatically.
+    await tx.$executeRawUnsafe(
+      'ALTER TABLE "gwg_check" DISABLE TRIGGER "00_gwg_check_identity_verification_guard"',
+    );
+    const fragment = await tx.gwgCheck.create({
+      data: {
+        tenantId,
+        clientId,
+        status: 'VERIFIED',
+        verifiedAt,
+        verifiedBy: staffId,
+        validUntil: null,
+        identityAssignmentRequired: false,
+      },
+    });
+    await tx.$executeRawUnsafe(
+      'ALTER TABLE "gwg_check" ENABLE TRIGGER "00_gwg_check_identity_verification_guard"',
+    );
+    return fragment;
+  });
+}
+
 beforeAll(async () => {
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const tenant = await owner.tenant.create({
@@ -39,16 +64,7 @@ afterAll(async () => {
 
 describe('Dev-Seed GwG-Fail-closed-Reihenfolge', () => {
   it('ersetzt ein altes unvollständiges VERIFIED-Fragment und bleibt beim zweiten Lauf idempotent', async () => {
-    const fragment = await owner.gwgCheck.create({
-      data: {
-        tenantId,
-        clientId,
-        status: 'VERIFIED',
-        verifiedAt: new Date('2026-01-01T00:00:00.000Z'),
-        verifiedBy: staffId,
-        validUntil: null,
-      },
-    });
+    const fragment = await createGrandfatheredLegacyFragment(new Date('2026-01-01T00:00:00.000Z'));
 
     await expect(
       owner.client.update({ where: { id: clientId }, data: { allowActive: true } }),
@@ -75,9 +91,48 @@ describe('Dev-Seed GwG-Fail-closed-Reihenfolge', () => {
           noRegisterEntry: true,
           representativeNames: true,
           ownershipStructureNotes: true,
+          identityAssignmentRequired: true,
+          idDocuments: {
+            select: {
+              representativeSubjectId: true,
+              identityAssignmentConfirmedAt: true,
+              identityAssignmentConfirmedBy: true,
+              documentId: true,
+              document: {
+                select: {
+                  versions: {
+                    orderBy: { versionNo: 'desc' },
+                    take: 1,
+                    select: { versionNo: true, scanStatus: true, scanCompletedAt: true },
+                  },
+                },
+              },
+            },
+          },
         },
       }),
-    ).toEqual({ status: 'VERIFIED', ...DEV_SEED_GWG_LEGAL_ENTITY_SNAPSHOT });
+    ).toMatchObject({
+      status: 'VERIFIED',
+      ...DEV_SEED_GWG_LEGAL_ENTITY_SNAPSHOT,
+      identityAssignmentRequired: true,
+      idDocuments: [
+        {
+          representativeSubjectId: expect.any(String),
+          identityAssignmentConfirmedAt: expect.any(Date),
+          identityAssignmentConfirmedBy: staffId,
+          documentId: expect.any(String),
+          document: {
+            versions: [
+              {
+                versionNo: 1,
+                scanStatus: 'CLEAN',
+                scanCompletedAt: expect.any(Date),
+              },
+            ],
+          },
+        },
+      ],
+    });
 
     await expect(
       owner.client.update({ where: { id: clientId }, data: { allowActive: true } }),
@@ -96,15 +151,9 @@ describe('Dev-Seed GwG-Fail-closed-Reihenfolge', () => {
 
     // Auch ein später hinzugekommenes Altfragment darf nicht als formal
     // VERIFIED neben dem weiterhin wiederverwendbaren Vollcheck stehen bleiben.
-    const laterFragment = await owner.gwgCheck.create({
-      data: {
-        tenantId,
-        clientId,
-        status: 'VERIFIED',
-        verifiedAt: new Date('2026-07-12T12:00:00.000Z'),
-        verifiedBy: staffId,
-      },
-    });
+    const laterFragment = await createGrandfatheredLegacyFragment(
+      new Date('2026-07-12T12:00:00.000Z'),
+    );
     const thirdRun = await ensureDevSeedVerifiedGwgCheck(owner, {
       tenantId,
       clientId,

@@ -15,7 +15,7 @@
 // =============================================================================
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { PrismaClient } from '../prisma-client';
+import { Prisma, PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 
 const hasDatabase = Boolean(process.env['DATABASE_URL']);
@@ -75,7 +75,7 @@ async function makeGwgCheck(
     data: {
       tenantId,
       clientId,
-      status,
+      status: status === 'VERIFIED' ? 'DRAFT' : status,
       validUntil,
       legalForm: 'GmbH',
       registerNumber: 'HRB 12345',
@@ -84,7 +84,70 @@ async function makeGwgCheck(
       ownershipStructureNotes: 'Erika Muster hält sämtliche Geschäftsanteile.',
     },
   });
+  if (status === 'VERIFIED') {
+    await attachConfirmedRepresentativeIdentity(check.id, clientId, 'Erika Muster');
+    await owner.gwgCheck.update({
+      where: { id: check.id },
+      data: { status: 'VERIFIED', verifiedAt: new Date() },
+    });
+  }
   return check.id;
+}
+
+async function attachConfirmedRepresentativeIdentity(
+  checkId: string,
+  clientId: string,
+  fullName: string,
+): Promise<void> {
+  const representative = await owner.gwgRepresentative.create({
+    data: { gwgCheckId: checkId, fullName, position: 0 },
+  });
+  const document = await owner.$transaction(async (tx) => {
+    await tx.$queryRaw(Prisma.sql`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`);
+    await tx.$queryRaw(Prisma.sql`SELECT set_config('app.current_actor_type', 'STAFF', true)`);
+    await tx.$queryRaw(Prisma.sql`SELECT set_config('app.current_actor_id', ${staffId}, true)`);
+    const document = await tx.document.create({
+      data: {
+        tenantId,
+        clientId,
+        title: `Identity-${checkId}`,
+        classification: 'GWG_EVIDENCE',
+        mimeType: 'image/jpeg',
+      },
+    });
+    await tx.documentVersion.create({
+      data: {
+        documentId: document.id,
+        versionNo: 1,
+        storageBucket: 'gwg-allow-active-test',
+        storageKey: `gwg-allow-active-test/${document.id}/v1`,
+        sha256: Buffer.alloc(32, 0x41),
+        sizeBytes: 1n,
+        immutable: false,
+        scanStatus: 'CLEAN',
+        scanCompletedAt: new Date(),
+        createdById: staffId,
+      },
+    });
+    return document;
+  });
+  const confirmedAt = new Date();
+  await owner.gwgIdDocument.create({
+    data: {
+      gwgCheckId: checkId,
+      type: 'PERSONALAUSWEIS',
+      ownerName: fullName,
+      documentId: document.id,
+      representativeSubjectId: representative.id,
+      identityAssignmentConfirmedAt: confirmedAt,
+      identityAssignmentConfirmedBy: staffId,
+      number: `ID-${checkId}`,
+      issuedBy: 'Berlin',
+      issueDate: new Date('2020-01-01'),
+      expiryDate: new Date('2099-12-31'),
+      verifiedAt: confirmedAt,
+    },
+  });
 }
 
 function activate(clientId: string): Promise<unknown> {
@@ -160,8 +223,19 @@ describeWithDatabase('GwG-Schranke: allow_active erfordert verifizierten gwg_che
 
   it('VERIFIED-Rechtsträger ohne vollständigen Snapshot bleibt fail-closed', async () => {
     const id = await makeClient('Legacy ohne Rechtsträger-Snapshot');
-    await owner.gwgCheck.create({
-      data: { tenantId, clientId: id, status: 'VERIFIED', validUntil: null },
+    const check = await owner.gwgCheck.create({
+      data: {
+        tenantId,
+        clientId: id,
+        status: 'DRAFT',
+        validUntil: null,
+        representativeNames: ['Erika Muster'],
+      },
+    });
+    await attachConfirmedRepresentativeIdentity(check.id, id, 'Erika Muster');
+    await owner.gwgCheck.update({
+      where: { id: check.id },
+      data: { status: 'VERIFIED', verifiedAt: new Date() },
     });
     await expect(activate(id)).rejects.toThrow();
   });

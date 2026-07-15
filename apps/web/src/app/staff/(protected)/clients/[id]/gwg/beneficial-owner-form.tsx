@@ -18,16 +18,18 @@ export function BeneficialOwnerForm({
   checkId,
   clientId,
   value,
+  revision,
 }: {
   ownerId: string;
   checkId: string;
   clientId: string;
   value: BeneficialOwnerFormValue;
+  revision: string;
 }) {
-  const [state, action, pending] = useActionState<ActionResult | null, FormData>(
-    updateBeneficialOwnerAction,
-    null,
-  );
+  const [state, action, pending] = useActionState<
+    (ActionResult & { revision?: string }) | null,
+    FormData
+  >(updateBeneficialOwnerAction, null);
   const id = (field: string) => `owner-${ownerId}-${field}`;
 
   return (
@@ -39,6 +41,11 @@ export function BeneficialOwnerForm({
         <input type="hidden" name="ownerId" value={ownerId} />
         <input type="hidden" name="checkId" value={checkId} />
         <input type="hidden" name="clientId" value={clientId} />
+        <input
+          type="hidden"
+          name="expectedRevision"
+          value={state?.ok && state.revision ? state.revision : revision}
+        />
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div>

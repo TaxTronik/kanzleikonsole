@@ -31,6 +31,7 @@ const Schema = z.object({
 });
 
 class PoaDocumentLockedError extends Error {}
+class GwgEvidenceLockedError extends Error {}
 class DocumentReferenceChangedError extends Error {}
 
 const lockedByPoaResponse = () =>
@@ -39,6 +40,16 @@ const lockedByPoaResponse = () =>
       error: 'locked_by_poa',
       message:
         'Dieses Dokument ist an eine versendete oder unterschriebene Vollmacht gebunden und kann nicht mehr geändert werden.',
+    },
+    { status: 409 },
+  );
+
+const lockedByGwgResponse = () =>
+  NextResponse.json(
+    {
+      error: 'locked_by_gwg_snapshot',
+      message:
+        'Dieser Nachweis ist bereits einer GwG-Prüfung zugeordnet und unveränderlich. Bitte ein neues Dokument hochladen und ausdrücklich neu zuordnen.',
     },
     { status: 409 },
   );
@@ -95,6 +106,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           classification: true,
           documentTypeId: true,
           documentType: { select: { tier: true, retentionYears: true } },
+          gwgIdDocuments: {
+            take: 1,
+            select: { id: true },
+          },
         },
       });
       if (!d) return null;
@@ -108,11 +123,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         },
         select: { id: true },
       });
-      return { doc: d, lockedByPoa: !!boundPoa };
+      return {
+        doc: d,
+        lockedByPoa: !!boundPoa,
+        lockedByGwg: !!d.gwgIdDocuments?.length,
+      };
     },
   );
   if (!loaded) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   if (loaded.lockedByPoa) return lockedByPoaResponse();
+  if (loaded.lockedByGwg) return lockedByGwgResponse();
   const doc = loaded.doc;
 
   // Storage-Commit (Scan + Upload, intern zu SeaweedFS)
@@ -156,19 +176,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             clientId: string | null;
             classification: string;
             documentTypeId: string | null;
+            lockedByGwg: boolean;
           }>
         >`
           SELECT
-            id,
-            tenant_id AS "tenantId",
-            client_id AS "clientId",
-            classification::text AS classification,
-            document_type_id AS "documentTypeId"
-          FROM document
-          WHERE id = ${documentId}::uuid
-            AND tenant_id = ${tenantId}::uuid
-            AND deleted_at IS NULL
-          FOR UPDATE
+            d.id,
+            d.tenant_id AS "tenantId",
+            d.client_id AS "clientId",
+            d.classification::text AS classification,
+            d.document_type_id AS "documentTypeId",
+            EXISTS (
+              SELECT 1
+                FROM gwg_id_document gid
+               WHERE gid.document_id = d.id
+            ) AS "lockedByGwg"
+          FROM document d
+          WHERE d.id = ${documentId}::uuid
+            AND d.tenant_id = ${tenantId}::uuid
+            AND d.deleted_at IS NULL
+          FOR UPDATE OF d
         `;
         const lockedDocument = lockedDocuments[0];
         if (
@@ -180,6 +206,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         ) {
           throw new DocumentReferenceChangedError();
         }
+        if (lockedDocument.lockedByGwg) throw new GwgEvidenceLockedError();
         if (lockedDocument.documentTypeId) {
           const lockedTypes = await tx.$queryRaw<
             Array<{ id: string; tier: string; retentionYears: number | null }>
@@ -290,8 +317,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       },
       'documents-new-version: DB-Commit nach Storage-Upload fehlgeschlagen — Objekt verwaist',
     );
+    const gwgEvidenceLocked =
+      e instanceof GwgEvidenceLockedError ||
+      (e instanceof Error && e.message.includes('Zugeordneter GwG-Beweisinhalt'));
     const rejectedBeforeInsert =
       e instanceof PoaDocumentLockedError ||
+      gwgEvidenceLocked ||
       e instanceof DocumentReferenceChangedError ||
       (e as { code?: string }).code === 'P2002';
     if (rejectedBeforeInsert) {
@@ -315,6 +346,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }
     }
     if (e instanceof PoaDocumentLockedError) return lockedByPoaResponse();
+    if (gwgEvidenceLocked) return lockedByGwgResponse();
     if (e instanceof DocumentReferenceChangedError) {
       return NextResponse.json(
         {

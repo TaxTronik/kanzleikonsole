@@ -1,6 +1,7 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { saveLegalEntityDetailsAction, type ActionResult } from './actions';
 
 interface Props {
@@ -14,19 +15,41 @@ interface Props {
     representativeNames: string[];
     ownershipStructureNotes: string | null;
   };
+  currentRevision: string;
   disabled: boolean;
 }
 
-export function LegalEntityDetailsForm({ checkId, clientId, current, disabled }: Props) {
-  const [state, action, pending] = useActionState<ActionResult | null, FormData>(
-    saveLegalEntityDetailsAction,
-    null,
-  );
+export function LegalEntityDetailsForm({
+  checkId,
+  clientId,
+  current,
+  currentRevision,
+  disabled,
+}: Props) {
+  const router = useRouter();
+  const [state, action, pending] = useActionState<
+    | (ActionResult & {
+        reviewReset?: boolean;
+        representativesChanged?: boolean;
+        revision?: string;
+      })
+    | null,
+    FormData
+  >(saveLegalEntityDetailsAction, null);
+
+  useEffect(() => {
+    if (state?.ok && (state.reviewReset || state.representativesChanged)) router.refresh();
+  }, [router, state]);
 
   return (
     <form action={action} className="space-y-4">
       <input type="hidden" name="checkId" value={checkId} />
       <input type="hidden" name="clientId" value={clientId} />
+      <input
+        type="hidden"
+        name="expectedRevision"
+        value={state?.ok && state.revision ? state.revision : currentRevision}
+      />
 
       <div className="grid grid-cols-2 gap-3">
         <div>

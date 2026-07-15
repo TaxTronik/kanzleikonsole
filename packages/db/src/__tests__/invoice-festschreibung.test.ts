@@ -20,6 +20,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
+import { createVerifiedLegalEntityGwgFixture } from './gwg-test-fixture';
 
 const hasDatabase = Boolean(process.env['DATABASE_URL']);
 
@@ -60,18 +61,14 @@ beforeAll(async () => {
     data: { tenantId, kind: 'JURPERS', name: 'Festschreibungs-Mandant', allowActive: false },
   });
   clientId = client.id;
-  await owner.gwgCheck.create({
-    data: {
-      tenantId,
-      clientId,
-      status: 'VERIFIED',
-      validUntil: FUTURE,
-      legalForm: 'GmbH',
-      registerNumber: 'HRB RECHNUNG',
-      registerAuthority: 'Amtsgericht Teststadt',
-      representativeNames: ['Test-Geschäftsführung'],
-      ownershipStructureNotes: 'Test-Snapshot für die Rechnungs-Festschreibung.',
-    },
+  await createVerifiedLegalEntityGwgFixture(owner, {
+    tenantId,
+    clientId,
+    verifiedBy: staffId,
+    validUntil: FUTURE,
+    registerNumber: 'HRB RECHNUNG',
+    representativeNames: ['Test-Geschäftsführung'],
+    ownershipStructureNotes: 'Test-Snapshot für die Rechnungs-Festschreibung.',
   });
   await owner.client.update({ where: { id: clientId }, data: { allowActive: true } });
 });

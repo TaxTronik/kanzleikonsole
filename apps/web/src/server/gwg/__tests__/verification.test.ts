@@ -6,23 +6,38 @@ import {
 } from '../verification';
 
 const NOW = new Date('2026-07-11T14:00:00Z');
+const CHECK_ID = 'check-1';
+const CLIENT_ID = 'client-1';
+const REPRESENTATIVE_ID = 'representative-1';
 
 function evidence(
   type: string,
-  ownerName = 'Erika Muster',
   overrides: Partial<VerificationDocument> = {},
 ): VerificationDocument {
+  const personal = type === 'PERSONALAUSWEIS' || type === 'REISEPASS';
   return {
+    gwgCheckId: CHECK_ID,
+    documentSetId: `set-${type}`,
     type,
-    ownerName,
-    number: type === 'PERSONALAUSWEIS' ? 'L01X00T47' : null,
-    issuedBy: type === 'PERSONALAUSWEIS' ? 'Stadt Berlin' : null,
-    expiryDate: type === 'PERSONALAUSWEIS' ? new Date('2027-01-01T00:00:00Z') : null,
+    ownerName: personal ? 'Erika Muster' : 'Muster GmbH',
+    number: personal ? 'L01X00T47' : null,
+    issuedBy: personal ? 'Stadt Berlin' : null,
+    issueDate: personal ? new Date('2020-01-01T00:00:00Z') : null,
+    expiryDate: personal ? new Date('2027-01-01T00:00:00Z') : null,
+    verifiedAt: personal ? NOW : null,
+    naturalClientSubjectId: null,
+    beneficialOwnerSubjectId: null,
+    representativeSubjectId: personal ? REPRESENTATIVE_ID : null,
+    identityAssignmentConfirmedAt: personal ? NOW : null,
+    identityAssignmentConfirmedBy: personal ? 'staff-1' : null,
     documentId: `doc-${type}`,
     document: {
-      clientId: 'client-1',
+      clientId: CLIENT_ID,
       classification: 'GWG_EVIDENCE',
       deletedAt: null,
+      gwgDestructionRequestedAt: null,
+      gwgDestroyedAt: null,
+      versions: [{ scanStatus: 'CLEAN', scanCompletedAt: NOW }],
     },
     ...overrides,
   };
@@ -30,20 +45,29 @@ function evidence(
 
 function legalSnapshot(overrides: Partial<GwgVerificationSnapshot> = {}): GwgVerificationSnapshot {
   return {
-    clientId: 'client-1',
+    checkId: CHECK_ID,
+    clientId: CLIENT_ID,
     clientKind: 'JURPERS',
     legalForm: 'GmbH',
     registerNumber: 'HRB 12345',
     registerAuthority: 'Amtsgericht Berlin-Charlottenburg',
     noRegisterEntry: false,
     representativeNames: ['Erika Muster'],
-    ownershipStructureNotes: 'Erika Muster hält 100 % der Geschäftsanteile.',
+    representatives: [
+      {
+        id: REPRESENTATIVE_ID,
+        gwgCheckId: CHECK_ID,
+        fullName: 'Erika Muster',
+        position: 0,
+      },
+    ],
+    ownershipStructureNotes: 'Erika Muster haelt 100 % der Geschaeftsanteile.',
     beneficialOwners: [
       {
         fullName: 'Erika Muster',
         birthDate: new Date('1980-01-02T00:00:00Z'),
         birthPlace: 'Berlin',
-        residence: 'Musterstraße 1, 10115 Berlin',
+        residence: 'Musterstrasse 1, 10115 Berlin',
         nationality: 'deutsch',
       },
     ],
@@ -57,11 +81,11 @@ function legalSnapshot(overrides: Partial<GwgVerificationSnapshot> = {}): GwgVer
 }
 
 describe('gwgVerificationErrors', () => {
-  it('akzeptiert einen vollständigen Rechtsträger-Snapshot', () => {
+  it('akzeptiert einen vollstaendigen Rechtstraeger-Snapshot mit bestaetigter Vertreter-UUID', () => {
     expect(gwgVerificationErrors(legalSnapshot(), NOW)).toEqual([]);
   });
 
-  it('akzeptiert eine nicht registerpflichtige GbR mit Gesellschaftsvertrag statt Transparenzregister-Auszug', () => {
+  it('akzeptiert eine nicht registerpflichtige GbR mit Gesellschaftsvertrag', () => {
     expect(
       gwgVerificationErrors(
         legalSnapshot({
@@ -84,6 +108,7 @@ describe('gwgVerificationErrors', () => {
         registerNumber: null,
         registerAuthority: null,
         representativeNames: [],
+        representatives: [],
         ownershipStructureNotes: null,
         beneficialOwners: [],
         idDocuments: [],
@@ -93,61 +118,154 @@ describe('gwgVerificationErrors', () => {
     expect(errors.length).toBeGreaterThanOrEqual(8);
   });
 
-  it('wertet fremde, gelöschte oder falsch klassifizierte Dateien nicht als Nachweis', () => {
+  it('wertet fremde, geloeschte, pending oder falsch klassifizierte Dateien nicht als Nachweis', () => {
     const invalid = legalSnapshot({
       idDocuments: [
-        evidence('PERSONALAUSWEIS', 'Erika Muster', {
-          document: { clientId: 'client-2', classification: 'GWG_EVIDENCE', deletedAt: null },
+        evidence('PERSONALAUSWEIS', {
+          document: {
+            clientId: 'client-2',
+            classification: 'GWG_EVIDENCE',
+            deletedAt: null,
+            gwgDestructionRequestedAt: null,
+            gwgDestroyedAt: null,
+            versions: [{ scanStatus: 'CLEAN', scanCompletedAt: NOW }],
+          },
         }),
-        evidence('HANDELSREGISTERAUSZUG', 'Erika Muster', {
-          document: { clientId: 'client-1', classification: 'GENERAL', deletedAt: null },
+        evidence('HANDELSREGISTERAUSZUG', {
+          document: {
+            clientId: CLIENT_ID,
+            classification: 'GENERAL',
+            deletedAt: null,
+            gwgDestructionRequestedAt: null,
+            gwgDestroyedAt: null,
+            versions: [{ scanStatus: 'CLEAN', scanCompletedAt: NOW }],
+          },
         }),
-        evidence('TRANSPARENZREGISTER_AUSZUG', 'Erika Muster', {
-          document: { clientId: 'client-1', classification: 'GWG_EVIDENCE', deletedAt: NOW },
+        evidence('TRANSPARENZREGISTER_AUSZUG', {
+          document: {
+            clientId: CLIENT_ID,
+            classification: 'GWG_EVIDENCE',
+            deletedAt: null,
+            gwgDestructionRequestedAt: NOW,
+            gwgDestroyedAt: null,
+            versions: [{ scanStatus: 'CLEAN', scanCompletedAt: NOW }],
+          },
         }),
       ],
     });
     expect(gwgVerificationErrors(invalid, NOW)).toHaveLength(3);
   });
 
-  it('akzeptiert einen Ausweis bis einschließlich seines Ablaufdatums', () => {
-    const snapshot = legalSnapshot({
-      clientKind: 'NATPERS',
-      idDocuments: [
-        evidence('PERSONALAUSWEIS', 'Erika Muster', {
-          expiryDate: new Date('2026-07-11T00:00:00Z'),
-        }),
-      ],
+  it('akzeptiert bei NATPERS nur den exakt zugeordneten Mandanten bis einschliesslich Ablaufdatum', () => {
+    const valid = evidence('PERSONALAUSWEIS', {
+      naturalClientSubjectId: CLIENT_ID,
+      representativeSubjectId: null,
+      expiryDate: new Date('2026-07-11T00:00:00Z'),
     });
-    expect(gwgVerificationErrors(snapshot, NOW)).toEqual([]);
+    expect(
+      gwgVerificationErrors(legalSnapshot({ clientKind: 'NATPERS', idDocuments: [valid] }), NOW),
+    ).toEqual([]);
+
+    const wrongOwner = {
+      ...valid,
+      naturalClientSubjectId: null,
+      beneficialOwnerSubjectId: 'owner-1',
+    };
+    expect(
+      gwgVerificationErrors(
+        legalSnapshot({ clientKind: 'NATPERS', idDocuments: [wrongOwner] }),
+        NOW,
+      ),
+    ).toHaveLength(1);
   });
 
-  it('verlangt bei juristischen Personen den Ausweis einer benannten Vertretung', () => {
+  it('akzeptiert einen gleichnamigen UBO nicht als Vertreter', () => {
+    const uboOnly = evidence('PERSONALAUSWEIS', {
+      representativeSubjectId: null,
+      beneficialOwnerSubjectId: 'owner-1',
+    });
     const errors = gwgVerificationErrors(
-      legalSnapshot({ representativeNames: ['Max Vertreter'] }),
+      legalSnapshot({
+        idDocuments: [
+          uboOnly,
+          evidence('HANDELSREGISTERAUSZUG'),
+          evidence('TRANSPARENZREGISTER_AUSZUG'),
+        ],
+      }),
       NOW,
     );
     expect(errors.some((error) => error.includes('vertretungsberechtigte Person'))).toBe(true);
   });
 
-  it('blockiert unvollständige Identifizierungsdaten wirtschaftlich Berechtigter', () => {
+  it('verlangt verifiedAt und die explizite Bestaetigung gleichzeitig', () => {
+    const missingConfirmation = evidence('PERSONALAUSWEIS', {
+      identityAssignmentConfirmedAt: null,
+      identityAssignmentConfirmedBy: null,
+    });
+    const missingVerification = evidence('PERSONALAUSWEIS', { verifiedAt: null });
+    for (const document of [missingConfirmation, missingVerification]) {
+      const errors = gwgVerificationErrors(
+        legalSnapshot({
+          idDocuments: [
+            document,
+            evidence('HANDELSREGISTERAUSZUG'),
+            evidence('TRANSPARENZREGISTER_AUSZUG'),
+          ],
+        }),
+        NOW,
+      );
+      expect(errors.some((error) => error.includes('vertretungsberechtigte Person'))).toBe(true);
+    }
+  });
+
+  it('wertet keine Metadatenhuelle und keine noch ungepruefte neueste Dateiversion als Nachweis', () => {
+    for (const versions of [
+      [],
+      [{ scanStatus: 'CLEAN', scanCompletedAt: null }],
+      [{ scanStatus: 'PENDING', scanCompletedAt: null }],
+      [{ scanStatus: 'INFECTED', scanCompletedAt: NOW }],
+    ]) {
+      const personal = evidence('PERSONALAUSWEIS', {
+        document: {
+          clientId: CLIENT_ID,
+          classification: 'GWG_EVIDENCE',
+          deletedAt: null,
+          gwgDestructionRequestedAt: null,
+          gwgDestroyedAt: null,
+          versions,
+        },
+      });
+      const errors = gwgVerificationErrors(
+        legalSnapshot({
+          idDocuments: [
+            personal,
+            evidence('HANDELSREGISTERAUSZUG'),
+            evidence('TRANSPARENZREGISTER_AUSZUG'),
+          ],
+        }),
+        NOW,
+      );
+      expect(errors.some((error) => error.includes('vertretungsberechtigte Person'))).toBe(true);
+    }
+  });
+
+  it('blockiert inkonsistente Metadaten innerhalb derselben Dokumentgruppe', () => {
+    const front = evidence('PERSONALAUSWEIS', { documentId: 'front' });
+    const back = evidence('PERSONALAUSWEIS', {
+      documentId: 'back',
+      number: 'ANDERE-NUMMER',
+    });
     const errors = gwgVerificationErrors(
       legalSnapshot({
-        beneficialOwners: [
-          {
-            fullName: 'Erika Muster',
-            birthDate: null,
-            birthPlace: null,
-            residence: null,
-            nationality: null,
-          },
+        idDocuments: [
+          front,
+          back,
+          evidence('HANDELSREGISTERAUSZUG'),
+          evidence('TRANSPARENZREGISTER_AUSZUG'),
         ],
       }),
       NOW,
     );
-
-    expect(errors).toContain(
-      'Wirtschaftlich Berechtigter 1: Geburtsdatum, Geburtsort, Wohnsitz, Staatsangehörigkeit fehlen (§ 11 Abs. 5 GwG).',
-    );
+    expect(errors.some((error) => error.includes('vertretungsberechtigte Person'))).toBe(true);
   });
 });

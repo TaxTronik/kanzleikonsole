@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useTransition, useEffect, type SubmitEvent } from 'react';
+import { useState, useTransition, useEffect, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { Upload, X } from 'lucide-react';
@@ -13,6 +13,11 @@ interface Props {
   defaultClassification?: string;
   buttonLabel?: string;
   buttonClassName?: string;
+  disabled?: boolean;
+  /** Begrenzt den Uploaddialog auf Typen derselben Schutzstufe. */
+  requiredTier?: DocType['tier'];
+  /** Kombinierte Fachdialoge können das neue Dokument sofort weiterverarbeiten. */
+  onUploaded?: (document: { id: string; title: string }) => void | Promise<void>;
 }
 
 interface DocType {
@@ -37,6 +42,9 @@ export function DocumentUploadButton({
   defaultClassification = 'GENERAL',
   buttonLabel = 'Hochladen',
   buttonClassName = 'btn-primary text-xs py-1.5',
+  disabled = false,
+  requiredTier,
+  onUploaded,
 }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -64,7 +72,9 @@ export function DocumentUploadButton({
         if (!res.ok) return;
         const data = (await res.json()) as { types: DocType[] };
         if (cancelled) return;
-        setTypes(data.types);
+        setTypes(
+          requiredTier ? data.types.filter((type) => type.tier === requiredTier) : data.types,
+        );
       } catch {
         /* ignore — Upload-Button bleibt nutzbar, Fehler beim Submit */
       }
@@ -72,7 +82,7 @@ export function DocumentUploadButton({
     return () => {
       cancelled = true;
     };
-  }, [open, types.length]);
+  }, [open, requiredTier, types.length]);
 
   // Vorauswahl setzen, sobald Typen da sind und nichts gewählt ist
   // (greift auch beim Wieder-Öffnen nach reset()).
@@ -99,8 +109,11 @@ export function DocumentUploadButton({
     setOpen(false);
   }
 
-  async function handleSubmit(e: SubmitEvent<HTMLFormElement>) {
-    e.preventDefault();
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    // Das Portal kann logisch unter einem anderen Fachformular liegen. Der
+    // Upload-Submit darf deshalb nicht bis zu diesem Elternformular bubbelen.
+    event.stopPropagation();
     setError(null);
     if (!file) {
       setError('Bitte eine Datei auswählen.');
@@ -135,10 +148,19 @@ export function DocumentUploadButton({
           throw new Error((body as { error?: string }).error ?? 'Upload fehlgeschlagen');
         }
 
-        // Refresh
+        const response = (await commitRes.json()) as { documentId?: unknown };
+        if (typeof response.documentId !== 'string') {
+          throw new Error('Upload-Antwort enthält keine Dokument-ID. Bitte Seite neu laden.');
+        }
+        const uploadedDocument = { id: response.documentId, title: title || file.name };
+
+        // Fachdialoge erhalten die ID direkt und können die Zuordnung im
+        // selben Nutzerfluss abschließen. Alle bisherigen Aufrufer behalten
+        // das Refresh-Verhalten unverändert.
+        if (onUploaded) await onUploaded(uploadedDocument);
         reset();
         setOpen(false);
-        router.refresh();
+        if (!onUploaded) router.refresh();
       } catch (err) {
         setError((err as Error).message);
         setProgress('idle');
@@ -216,6 +238,11 @@ export function DocumentUploadButton({
                 </option>
               ))}
             </select>
+            {requiredTier && types.length === 0 && (
+              <p className="mt-1 text-xs text-amber-700">
+                Für die benötigte Schutzstufe ist kein aktiver Datei-Typ eingerichtet.
+              </p>
+            )}
             {(() => {
               const sel = types.find((t) => t.id === typeId);
               return sel && sel.tier !== 'NONE' ? (
@@ -243,7 +270,11 @@ export function DocumentUploadButton({
             >
               Abbrechen
             </button>
-            <button type="submit" disabled={isPending || !file} className="btn-primary flex-1">
+            <button
+              type="submit"
+              disabled={isPending || !file || !typeId}
+              className="btn-primary flex-1"
+            >
               {isPending ? 'Lädt…' : 'Hochladen'}
             </button>
           </div>
@@ -254,7 +285,12 @@ export function DocumentUploadButton({
 
   return (
     <>
-      <button type="button" className={buttonClassName} onClick={() => setOpen(true)}>
+      <button
+        type="button"
+        className={buttonClassName}
+        onClick={() => setOpen(true)}
+        disabled={disabled}
+      >
         <Upload className="h-3.5 w-3.5" />
         {buttonLabel}
       </button>

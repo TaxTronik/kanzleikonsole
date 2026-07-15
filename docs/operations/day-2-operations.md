@@ -177,6 +177,19 @@ strikter Health-Smoke (`degraded` ist Fehler) und Deploy-Readiness ohne
 Skip-Pfad. Kein `git reset --hard`: Lokale Abweichungen müssen bewusst
 aufgelöst werden.
 
+Die Deploy-Readiness prüft dabei nicht nur Storage und Virenscanner, sondern
+auch den zum Checkout gehörenden GwG-Datenbankschutz. Ab Migration `04300` /
+`04400` müssen insbesondere die stabile Vertretertabelle, Subject- und
+Dokumentsatz-Spalten, das exakte Identity-Gate sowie alle zugehörigen
+Verification- und Invalidierungs-Trigger tatsächlich in PostgreSQL vorhanden
+und aktiv sein. `04400` weist außerdem die Sperre jeder Version-Mutation eines
+bereits zugeordneten GwG-Belegs nach. Ein lediglich per
+`prisma migrate resolve --applied` geschlossenes Journal reicht weder für
+Readiness noch für die Recovery eines Pending-Vertrags aus. Der Nachweis
+läuft unmittelbar nach `migrate deploy` vor der Aktivierung neuer Writer und
+nochmals in der Deploy-Readiness; bei Abweichungen bleibt die Aktivierung
+fail-closed.
+
 ### Recovery des GwG-Migrationsfehlers `03400` (P3018/42883)
 
 Eine vor dem ersten Release kurzzeitig auf `main` vorhandene Fassung von

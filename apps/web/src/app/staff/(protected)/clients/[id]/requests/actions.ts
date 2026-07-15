@@ -10,7 +10,7 @@ import { emitN8nEvent } from '@/server/n8n/emit';
 import { notifyClientContacts } from '@/server/mail/dispatch';
 import { fireAndForget } from '@/server/util/fire-and-forget';
 import { portalBaseUrl } from '@taxtronik/config';
-import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
+import { toActionError, assertClientAccessTx, accessibleClientsWhereFor } from '@/server/auth/rbac';
 import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
 
 const CreateSchema = z.object({
@@ -26,6 +26,22 @@ const CreateSchema = z.object({
   formTemplateId: z.string().uuid().optional().or(z.literal('')),
 });
 
+const RequestClientSearchSchema = z.string().trim().max(100);
+const REQUEST_CLIENT_SEARCH_LIMIT = 20;
+
+export interface RequestClientSearchResult {
+  ok: boolean;
+  error?: string;
+  clients?: Array<{
+    id: string;
+    name: string;
+    datevNo: string | null;
+    addisonNo: string | null;
+    allowActive: boolean;
+  }>;
+  limited?: boolean;
+}
+
 export interface ActionResult {
   ok: boolean;
   error?: string;
@@ -33,6 +49,64 @@ export interface ActionResult {
   requestId?: string;
   clientId?: string;
   nextRequestId?: string;
+}
+
+/**
+ * Mandantensuche fuer den Quick-Dialog. Die Suche laeuft serverseitig statt
+ * gegen eine beim Seitenaufruf abgeschnittene Liste. So sind auch Kanzleien
+ * mit mehr als 250 Mandanten vollstaendig durchsuchbar. Noch nicht aktive
+ * Mandanten werden bewusst mit Status geliefert, damit sie nicht scheinbar
+ * verschwinden; die GwG-Schranke bleibt beim Erstellen unveraendert bestehen.
+ */
+export async function searchRequestClientsAction(
+  query: string,
+): Promise<RequestClientSearchResult> {
+  const parsed = RequestClientSearchSchema.safeParse(query);
+  if (!parsed.success) {
+    return { ok: false, error: 'Der Suchbegriff ist zu lang.' };
+  }
+
+  const g = await staffActionGuard();
+  if (!g.ok) return g;
+
+  try {
+    const clients = await withTenantContext(g.ctx, async (tx) => {
+      const accessWhere = await accessibleClientsWhereFor(tx, g.session);
+      const q = parsed.data;
+      return tx.client.findMany({
+        where: {
+          AND: [accessWhere],
+          anonymizedAt: null,
+          ...(q
+            ? {
+                OR: [
+                  { name: { contains: q, mode: 'insensitive' } },
+                  { datevNo: { contains: q, mode: 'insensitive' } },
+                  { addisonNo: { contains: q, mode: 'insensitive' } },
+                ],
+              }
+            : {}),
+        },
+        orderBy: [{ allowActive: 'desc' }, { name: 'asc' }],
+        take: REQUEST_CLIENT_SEARCH_LIMIT + 1,
+        select: {
+          id: true,
+          name: true,
+          datevNo: true,
+          addisonNo: true,
+          allowActive: true,
+        },
+      });
+    });
+
+    return {
+      ok: true,
+      clients: clients.slice(0, REQUEST_CLIENT_SEARCH_LIMIT),
+      limited: clients.length > REQUEST_CLIENT_SEARCH_LIMIT,
+    };
+  } catch (error) {
+    return toActionError(error);
+  }
 }
 
 async function createRequestCore(formData: FormData): Promise<ActionResult> {

@@ -79,6 +79,80 @@ beforeEach(() => {
 });
 
 describe('Neue Dokumentversion — PoA-Snapshot-Sperre', () => {
+  it('sperrt bereits zugeordnete GwG-Belege vor dem Storage-Upload', async () => {
+    const tx = {
+      document: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: DOCUMENT_ID,
+          clientId: '22222222-2222-4222-8222-222222222222',
+          classification: 'GWG_EVIDENCE',
+          documentTypeId: null,
+          documentType: null,
+          gwgIdDocuments: [{ id: 'gwg-id-document-1' }],
+        }),
+      },
+      powerOfAttorney: { findFirst: vi.fn().mockResolvedValue(null) },
+    };
+    m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (arg: unknown) => unknown) =>
+      fn(tx),
+    );
+
+    const response = await POST(makeRequest(), {
+      params: Promise.resolve({ id: DOCUMENT_ID }),
+    });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({ error: 'locked_by_gwg_snapshot' }),
+    );
+    expect(m.commitBytesWithTier).not.toHaveBeenCalled();
+  });
+
+  it('verhindert auch eine GwG-Zuordnung zwischen Vorpruefung und Versionsinsert', async () => {
+    const document = {
+      id: DOCUMENT_ID,
+      clientId: '22222222-2222-4222-8222-222222222222',
+      classification: 'GWG_EVIDENCE',
+      documentTypeId: null,
+      documentType: null,
+      gwgIdDocuments: [],
+    };
+    const preUploadTx = {
+      document: { findFirst: vi.fn().mockResolvedValue(document) },
+      powerOfAttorney: { findFirst: vi.fn().mockResolvedValue(null) },
+    };
+    const finalTx = {
+      $queryRaw: vi.fn().mockResolvedValue([
+        {
+          id: DOCUMENT_ID,
+          tenantId: 'tenant-1',
+          clientId: document.clientId,
+          classification: document.classification,
+          documentTypeId: null,
+          lockedByGwg: true,
+        },
+      ]),
+      powerOfAttorney: { findFirst: vi.fn() },
+      documentVersion: { findFirst: vi.fn(), create: vi.fn() },
+    };
+    m.withTenantContext
+      .mockImplementationOnce(async (_ctx: unknown, fn: (arg: unknown) => unknown) =>
+        fn(preUploadTx),
+      )
+      .mockImplementationOnce(async (_ctx: unknown, fn: (arg: unknown) => unknown) => fn(finalTx));
+
+    const response = await POST(makeRequest(), {
+      params: Promise.resolve({ id: DOCUMENT_ID }),
+    });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({ error: 'locked_by_gwg_snapshot' }),
+    );
+    expect(finalTx.documentVersion.create).not.toHaveBeenCalled();
+    expect(m.deleteObject).toHaveBeenCalledWith('docs-gobd', 'tenant-1/poa/raced.pdf');
+  });
+
   it('sperrt bereits ab SENT und lädt keine neuen Bytes in den Speicher', async () => {
     const tx = {
       document: {

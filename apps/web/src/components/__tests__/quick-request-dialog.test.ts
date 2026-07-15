@@ -21,6 +21,9 @@ describe('Quick-Anforderungsdialog', () => {
 
     expect(source).toContain("mode === 'quick' ? createQuickRequestAction : createRequestAction");
     expect(source).toContain('Mandant suchen');
+    expect(source).toContain('role="combobox"');
+    expect(source).toContain('searchRequestClientsAction(clientSearch)');
+    expect(source).toContain('Noch nicht auswählbar: GwG-Prüfung ausstehend');
     expect(source).toContain('name="clientId"');
     expect(source).toContain('name="requestId"');
     expect(source).toContain('name="title"');
@@ -30,14 +33,18 @@ describe('Quick-Anforderungsdialog', () => {
     expect(source).toContain('disabled={isPending || disabled || !selectedClientId}');
   });
 
-  it('bindet den Dialog global und auf der Mandantenakte ohne Navigationslink ein', () => {
+  it('bindet den Dialog direkt an Anforderungen, Mandanten und Onboarding ein', () => {
     const overview = read('app/staff/(protected)/requests/page.tsx');
+    const clientsPage = read('app/staff/(protected)/clients/page.tsx');
     const clientPage = read('app/staff/(protected)/clients/[id]/page.tsx');
+    const onboarding = read('app/staff/(protected)/clients/onboarding/[id]/page.tsx');
 
     expect(overview).toContain('<QuickRequestDialog');
-    expect(overview).toContain('allowActive: true');
-    expect(overview).toContain('id: { notIn: denied }');
+    expect(clientsPage).toContain('<QuickRequestDialog');
     expect(clientPage).toContain('<QuickRequestDialog');
+    expect(clientPage).toContain('allowActive: client.allowActive');
     expect(clientPage).not.toContain('href={`/staff/clients/${client.id}/requests/new`}');
+    expect(onboarding).toContain('<QuickRequestDialog');
+    expect(onboarding).not.toContain('requests/new?from=onboarding');
   });
 });

@@ -72,6 +72,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // auch gegen den privilegierten BYPASSRLS-Pfad.
   'packages/db/src/__tests__/dsgvo-evidence.test.ts',
   'packages/db/src/__tests__/gwg-destruction.test.ts',
+  // GwG-Zuordnungsinvarianten: eigener Owner-Client gegen eine isolierte
+  // Test-DB, damit auch direkte SQL-Umgehungsversuche geprüft werden.
+  'packages/db/src/__tests__/gwg-identity-assignment.test.ts',
   'packages/db/src/__tests__/tax-notice-evidence.test.ts',
   // Owner-Singleton für System-/Worker-Jobs (laufen via withSystemContext).
   'apps/web/src/server/db/prisma-owner.ts',

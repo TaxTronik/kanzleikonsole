@@ -520,7 +520,7 @@ export async function submitOnboardingAction(
           },
         });
         // Vorder + Rückseite als zwei GwgIdDocument-Einträge
-        await tx.gwgIdDocument.create({
+        const frontIdDocument = await tx.gwgIdDocument.create({
           data: {
             gwgCheckId: checkId,
             type: 'PERSONALAUSWEIS',
@@ -536,6 +536,7 @@ export async function submitOnboardingAction(
         await tx.gwgIdDocument.create({
           data: {
             gwgCheckId: checkId,
+            documentSetId: frontIdDocument.documentSetId,
             type: 'PERSONALAUSWEIS',
             ownerName: o.fullName.trim(),
             documentId: o.idBackDocumentId,

@@ -97,16 +97,38 @@ export async function ensureDevSeedVerifiedGwgCheck(
       noRegisterEntry: true,
       representativeNames: true,
       ownershipStructureNotes: true,
+      identityAssignmentRequired: true,
     },
   });
 
-  const isReusable = (check: (typeof candidates)[number]) =>
+  const hasReusableSnapshot = (check: (typeof candidates)[number]) =>
     check.verifiedAt !== null &&
     check.verifiedBy !== null &&
     (check.validUntil === null || check.validUntil > now) &&
     hasCompleteGwgLegalEntitySnapshot(check);
-  const reusable = candidates.find(isReusable);
-  const staleIds = candidates.filter((check) => !isReusable(check)).map((check) => check.id);
+
+  let reusable: (typeof candidates)[number] | undefined;
+  for (const check of candidates) {
+    if (!hasReusableSnapshot(check)) continue;
+
+    // Legacy checks are reusable only through the explicit migration
+    // grandfathering flag. Post-cutover checks must still satisfy the exact
+    // DB gate at the time the seed runs (including evidence and expiry).
+    if (!check.identityAssignmentRequired) {
+      reusable = check;
+      break;
+    }
+    const [identity] = await prisma.$queryRawUnsafe<Array<{ has_identity: boolean }>>(
+      'SELECT app.gwg_check_has_confirmed_identity($1::uuid) AS has_identity',
+      check.id,
+    );
+    if (identity?.has_identity) {
+      reusable = check;
+      break;
+    }
+  }
+
+  const staleIds = candidates.filter((check) => check.id !== reusable?.id).map((check) => check.id);
   if (staleIds.length > 0) {
     await prisma.gwgCheck.updateMany({
       where: { id: { in: staleIds }, status: 'VERIFIED' },
@@ -115,17 +137,83 @@ export async function ensureDevSeedVerifiedGwgCheck(
   }
   if (reusable) return { id: reusable.id };
 
-  return prisma.gwgCheck.create({
-    data: {
-      tenantId: input.tenantId,
-      clientId: input.clientId,
-      status: 'VERIFIED',
-      verifiedAt: now,
-      verifiedBy: input.verifiedBy,
-      validUntil: null,
-      ...DEV_SEED_GWG_LEGAL_ENTITY_SNAPSHOT,
-    },
-    select: { id: true },
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRawUnsafe(
+      "SELECT set_config('app.current_tenant_id', $1, true)",
+      input.tenantId,
+    );
+    await tx.$queryRawUnsafe("SELECT set_config('app.current_actor_type', 'STAFF', true)");
+    await tx.$queryRawUnsafe(
+      "SELECT set_config('app.current_actor_id', $1, true)",
+      input.verifiedBy,
+    );
+    const check = await tx.gwgCheck.create({
+      data: {
+        tenantId: input.tenantId,
+        clientId: input.clientId,
+        status: 'DRAFT',
+        validUntil: null,
+        ...DEV_SEED_GWG_LEGAL_ENTITY_SNAPSHOT,
+      },
+      select: { id: true },
+    });
+    const representative = await tx.gwgRepresentative.create({
+      data: {
+        gwgCheckId: check.id,
+        fullName: DEV_SEED_GWG_LEGAL_ENTITY_SNAPSHOT.representativeNames[0]!,
+        position: 0,
+      },
+      select: { id: true, fullName: true },
+    });
+    const evidence = await tx.document.create({
+      data: {
+        tenantId: input.tenantId,
+        clientId: input.clientId,
+        title: 'Dev-Seed Identitätsnachweis Max Mustermann',
+        classification: 'GWG_EVIDENCE',
+        mimeType: 'image/jpeg',
+      },
+      select: { id: true },
+    });
+    await tx.documentVersion.create({
+      data: {
+        documentId: evidence.id,
+        versionNo: 1,
+        storageBucket: 'dev-seed',
+        storageKey: `dev-seed/${evidence.id}/v1`,
+        sha256: Buffer.alloc(32, 0x6d),
+        sizeBytes: 1n,
+        immutable: false,
+        scanStatus: 'CLEAN',
+        scanCompletedAt: now,
+        createdById: input.verifiedBy,
+      },
+    });
+    await tx.gwgIdDocument.create({
+      data: {
+        gwgCheckId: check.id,
+        type: 'PERSONALAUSWEIS',
+        ownerName: representative.fullName,
+        documentId: evidence.id,
+        representativeSubjectId: representative.id,
+        identityAssignmentConfirmedAt: now,
+        identityAssignmentConfirmedBy: input.verifiedBy,
+        number: `DEV-SEED-${check.id}`,
+        issuedBy: 'Bürgeramt Musterstadt',
+        issueDate: new Date('2024-01-01T00:00:00.000Z'),
+        expiryDate: new Date('2099-12-31T00:00:00.000Z'),
+        verifiedAt: now,
+      },
+    });
+    return tx.gwgCheck.update({
+      where: { id: check.id },
+      data: {
+        status: 'VERIFIED',
+        verifiedAt: now,
+        verifiedBy: input.verifiedBy,
+      },
+      select: { id: true },
+    });
   });
 }
 

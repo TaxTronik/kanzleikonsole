@@ -1,4 +1,5 @@
 ﻿import { staffAuth } from '@/server/auth/staff';
+import { randomUUID } from 'node:crypto';
 import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { redirect } from 'next/navigation';
@@ -9,6 +10,8 @@ import type { Prisma } from '@prisma/client';
 import { computeOnboardingStatus, type OnboardingStatus } from '@/server/onboarding/status';
 import { RecentClients } from '@/components/recent-clients';
 import { SavedViews } from '@/components/saved-views';
+import { QuickRequestDialog } from '@/components/quick-request-dialog';
+import { readRequestCreationOptionsTx } from '@/server/request-creation-options';
 
 const PAGE_SIZE = 50;
 
@@ -103,7 +106,7 @@ export default async function ClientsPage({
     ];
   }
 
-  const [clients, totalCount] = await withTenantContext(
+  const [clients, totalCount, requestCreationOptions] = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
       // Zugriffsmodell (vertraulich-Flag / RESTRICTED): gesperrte Mandanten
@@ -139,9 +142,12 @@ export default async function ClientsPage({
           },
         }),
         tx.client.count({ where }),
+        readRequestCreationOptionsTx(tx),
       ]);
     },
   );
+  const { requestTemplates, requestFormTemplates, templatesLimited, formTemplatesLimited } =
+    requestCreationOptions;
 
   const baseQs = new URLSearchParams();
   if (sp.q) baseQs.set('q', sp.q);
@@ -171,6 +177,14 @@ export default async function ClientsPage({
           <p className="text-muted mt-1">{totalCount.toLocaleString('de-DE')} Treffer</p>
         </div>
         <div className="flex gap-2">
+          <QuickRequestDialog
+            requestId={randomUUID()}
+            templates={requestTemplates}
+            formTemplates={requestFormTemplates}
+            templatesLimited={templatesLimited}
+            formTemplatesLimited={formTemplatesLimited}
+            buttonClassName="btn-secondary"
+          />
           <a
             href={`/api/staff/clients/export${baseQs.toString() ? '?' + baseQs.toString() : ''}`}
             className="btn-secondary"

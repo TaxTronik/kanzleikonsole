@@ -25,6 +25,59 @@ export interface DocActionResult {
   error?: string;
 }
 
+const GWG_ASSOCIATED_VISIBILITY_ERROR =
+  'Dieser Nachweis ist bereits einer GwG-Prüfung zugeordnet und unveränderlich. ' +
+  'Ändern Sie die Zuordnung direkt in der GwG-Prüfung; für die endgültige Löschung ' +
+  'verwenden Sie den vorgesehenen GwG-Vernichtungsprozess.';
+
+type LockedDocumentVisibility = {
+  id: string;
+  title: string;
+  classification: string;
+  clientId: string | null;
+  deletedAt: Date | null;
+  gwgDestroyedAt: Date | null;
+};
+
+/**
+ * Sperrt zuerst ausschließlich die Dokumentzeile. Eine nachfolgende
+ * Zuordnungsprüfung muss ein eigenes Statement sein: Falls FOR UPDATE auf
+ * einen parallelen Zuordnungs-Commit warten musste, sieht erst dieses zweite
+ * Statement unter READ COMMITTED den frisch committeten Zustand.
+ */
+async function lockDocumentVisibility(
+  tx: TxClient,
+  documentId: string,
+  tenantId: string,
+): Promise<LockedDocumentVisibility | null> {
+  const rows = await tx.$queryRaw<LockedDocumentVisibility[]>`
+    SELECT
+      d.id,
+      d.title,
+      d.classification::text AS classification,
+      d.client_id AS "clientId",
+      d.deleted_at AS "deletedAt",
+      d.gwg_destroyed_at AS "gwgDestroyedAt"
+    FROM document d
+    WHERE d.id = ${documentId}::uuid
+      AND d.tenant_id = ${tenantId}::uuid
+    FOR UPDATE OF d
+  `;
+  return rows[0] ?? null;
+}
+
+async function isDocumentLinkedToGwg(tx: TxClient, documentId: string): Promise<boolean> {
+  const rows = await tx.$queryRaw<Array<{ linked: boolean }>>`
+    SELECT EXISTS (
+      SELECT 1
+        FROM gwg_id_document gid
+       WHERE gid.document_id = ${documentId}::uuid
+    ) AS linked
+  `;
+  if (!rows[0]) throw new ActionError('GwG-Zuordnung des Dokuments konnte nicht geprüft werden.');
+  return rows[0].linked;
+}
+
 // ---------------------------------------------------------------------------
 // Retagging — Schutzstufen-Logik (iter55: Stufe statt roher Klassifikation)
 //
@@ -63,14 +116,17 @@ export async function softDeleteDocumentAction(
 
   return withStaff(
     async (tx, { tenantId, staffId, session }) => {
-      // Defense in Depth: expliziter Tenant-Filter zusätzlich zu RLS.
-      const doc = await tx.document.findFirst({
-        where: { id: documentId, tenantId, deletedAt: null },
-        select: { id: true, title: true, classification: true, clientId: true },
-      });
-      if (!doc) throw new ActionError('Dokument nicht gefunden oder bereits gelöscht.');
+      // Expliziter Tenant-Filter plus Zeilensperre: GwG-Zuordnung und
+      // Soft-Delete werden atomar gegeneinander serialisiert.
+      const doc = await lockDocumentVisibility(tx, documentId, tenantId);
+      if (!doc || doc.deletedAt) {
+        throw new ActionError('Dokument nicht gefunden oder bereits gelöscht.');
+      }
       // Vertraulich-/RESTRICTED-Ventil für Mandanten-Dokumente.
       if (doc.clientId) await assertClientAccessTx(tx, session, doc.clientId);
+      if (await isDocumentLinkedToGwg(tx, documentId)) {
+        throw new ActionError(GWG_ASSOCIATED_VISIBILITY_ERROR);
+      }
       await tx.document.update({
         where: { id: documentId },
         data: { deletedAt: new Date(), deletedByStaff: staffId, deleteReason: reason },
@@ -101,11 +157,10 @@ export async function restoreDocumentAction(
 
   return withStaff(
     async (tx, { tenantId, staffId, session }) => {
-      const doc = await tx.document.findFirst({
-        where: { id: documentId, tenantId, deletedAt: { not: null } },
-        select: { id: true, title: true, clientId: true, gwgDestroyedAt: true },
-      });
-      if (!doc) throw new ActionError('Dokument nicht gefunden oder nicht gelöscht.');
+      const doc = await lockDocumentVisibility(tx, documentId, tenantId);
+      if (!doc || !doc.deletedAt) {
+        throw new ActionError('Dokument nicht gefunden oder nicht gelöscht.');
+      }
       if (doc.gwgDestroyedAt) {
         throw new ActionError(
           'Ein endgültig vernichteter GwG-Beleg darf nicht wiederhergestellt werden.',

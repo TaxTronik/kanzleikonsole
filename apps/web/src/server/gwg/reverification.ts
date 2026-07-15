@@ -1,7 +1,15 @@
 import type { TxClient } from '@taxtronik/db';
 
+// Derselbe transaktionsgebundene Lifecycle-Lock wird aus mehreren
+// Defense-in-Depth-Schichten angefordert. Ein WeakMap-Eintrag lebt exakt so
+// lange wie der Tx-Client und verhindert den ansonsten redundanten zweiten
+// SQL-Roundtrip, ohne den Lock an einem Aufrufpfad wegzulassen. Auch parallele
+// Aufrufe auf derselben Tx teilen sich dieselbe Acquisition-Promise.
+const lifecycleLockAcquisitions = new WeakMap<object, Map<string, Promise<void>>>();
+
 export interface ReverificationResult {
   invalidatedChecks: number;
+  invalidatedIdentityDocuments: number;
   reviewCheckId: string | null;
   clientDeactivated: boolean;
 }
@@ -18,18 +26,22 @@ async function nextGwgCheckCreatedAtTx(
   tx: TxClient,
   input: { tenantId: string; clientId: string },
 ): Promise<Date> {
-  const [clock] = await tx.$queryRaw<Array<{ statementTimestamp: Date }>>`
-    SELECT statement_timestamp() AS "statementTimestamp"
+  const [clock] = await tx.$queryRaw<
+    Array<{ statementTimestamp: Date; latestCreatedAt: Date | null }>
+  >`
+    SELECT
+      statement_timestamp() AS "statementTimestamp",
+      MAX(created_at) AS "latestCreatedAt"
+    FROM gwg_check
+    WHERE tenant_id = ${input.tenantId}::uuid
+      AND client_id = ${input.clientId}::uuid
   `;
   if (!clock?.statementTimestamp) {
     throw new Error('Datenbankzeit für GwG-Prüfzyklus konnte nicht ermittelt werden.');
   }
-  const latest = await tx.gwgCheck.findFirst({
-    where: { tenantId: input.tenantId, clientId: input.clientId },
-    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-    select: { createdAt: true },
-  });
-  const previousNext = latest ? latest.createdAt.getTime() + 1 : Number.NEGATIVE_INFINITY;
+  const previousNext = clock.latestCreatedAt
+    ? clock.latestCreatedAt.getTime() + 1
+    : Number.NEGATIVE_INFINITY;
   return new Date(Math.max(clock.statementTimestamp.getTime(), previousNext));
 }
 
@@ -62,7 +74,26 @@ export async function lockGwgCheckLifecycleTx(
   input: { tenantId: string; clientId: string },
 ): Promise<void> {
   const lockKey = `gwg-check-lifecycle:${input.tenantId}:${input.clientId}`;
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+  let acquisitions = lifecycleLockAcquisitions.get(tx as object);
+  if (!acquisitions) {
+    acquisitions = new Map();
+    lifecycleLockAcquisitions.set(tx as object, acquisitions);
+  }
+  const existing = acquisitions.get(lockKey);
+  if (existing) return existing;
+
+  const acquisition = (async () => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+  })();
+  acquisitions.set(lockKey, acquisition);
+  try {
+    await acquisition;
+  } catch (error) {
+    // Ein fehlgeschlagener Versuch darf einen späteren Retry auf derselben Tx
+    // nicht fälschlich als gehaltenen Lock behandeln.
+    if (acquisitions.get(lockKey) === acquisition) acquisitions.delete(lockKey);
+    throw error;
+  }
 }
 
 /**
@@ -160,6 +191,22 @@ export async function requireGwgReverificationTx(
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     select: { id: true, status: true },
   });
+  const invalidatedIdentityDocuments = existing
+    ? await tx.gwgIdDocument.updateMany({
+        where: {
+          gwgCheckId: existing.id,
+          type: { in: ['PERSONALAUSWEIS', 'REISEPASS'] },
+        },
+        data: {
+          naturalClientSubjectId: null,
+          beneficialOwnerSubjectId: null,
+          representativeSubjectId: null,
+          identityAssignmentConfirmedAt: null,
+          identityAssignmentConfirmedBy: null,
+          verifiedAt: null,
+        },
+      })
+    : { count: 0 };
   const review = existing
     ? await tx.gwgCheck.update({
         where: { id: existing.id },
@@ -170,6 +217,7 @@ export async function requireGwgReverificationTx(
 
   return {
     invalidatedChecks: invalidated.count,
+    invalidatedIdentityDocuments: invalidatedIdentityDocuments.count,
     reviewCheckId: review.id,
     // Der DB-Trigger kann bereits beim Statuswechsel deaktiviert haben; dann
     // trifft das explizite updateMany keine Zeile mehr.
@@ -208,6 +256,7 @@ export async function startFreshGwgReviewTx(
 
   return {
     invalidatedChecks: invalidated.count,
+    invalidatedIdentityDocuments: 0,
     reviewCheckId: review.id,
     clientDeactivated: invalidated.count > 0 || deactivated.count > 0,
   };

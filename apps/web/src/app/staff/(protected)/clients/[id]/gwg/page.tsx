@@ -16,9 +16,25 @@ import {
   type GwgSubmissionSummaryData,
 } from '@/components/gwg-submission-summary';
 import { LegalEntityDetailsForm } from './legal-entity-details-form';
-import { DocumentUploadButton } from '@/components/document-upload-button';
 import { BeneficialOwnerForm } from './beneficial-owner-form';
 import { StartCheckCycleForm } from './start-check-cycle-form';
+import {
+  identitySubjectOptions,
+  subjectKeyForAssignment,
+  type IdentitySubjectOption,
+} from '@/server/gwg/identity-subject';
+import {
+  IdentityDocumentReview,
+  type IdentityReviewDocument,
+  type IdentityReviewGroup,
+} from './identity-document-review';
+import { findCleanGwgEvidenceDocumentsTx } from '@/server/gwg/evidence-documents';
+import {
+  gwgBeneficialOwnerRevision,
+  gwgIdentityDocumentSetRevision,
+  gwgLegalEntityRevision,
+  gwgRiskRevision,
+} from '@/server/gwg/revisions';
 
 const statusLabels: Record<string, string> = {
   DRAFT: 'Entwurf',
@@ -38,7 +54,7 @@ const idTypeLabels: Record<string, string> = {
   SONSTIGES: 'Sonstiges',
 };
 
-function isPersonalIdType(type: string): boolean {
+function isPersonalIdType(type: string): type is 'PERSONALAUSWEIS' | 'REISEPASS' {
   return type === 'PERSONALAUSWEIS' || type === 'REISEPASS';
 }
 
@@ -67,22 +83,39 @@ export default async function GwgPage({
             where: { clientId },
             orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
             include: {
-              beneficialOwners: { orderBy: { createdAt: 'asc' } },
+              beneficialOwners: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
+              representatives: { orderBy: [{ position: 'asc' }, { id: 'asc' }] },
               idDocuments: {
                 orderBy: { createdAt: 'asc' },
                 include: {
                   document: {
-                    select: { id: true, title: true, createdAt: true, classification: true },
+                    select: {
+                      id: true,
+                      title: true,
+                      createdAt: true,
+                      tenantId: true,
+                      clientId: true,
+                      classification: true,
+                      deletedAt: true,
+                      gwgDestructionRequestedAt: true,
+                      gwgDestroyedAt: true,
+                      versions: {
+                        orderBy: { versionNo: 'desc' },
+                        take: 1,
+                        select: { scanStatus: true, scanCompletedAt: true },
+                      },
+                    },
                   },
                 },
               },
             },
           }),
-          tx.document.findMany({
-            where: { clientId, classification: 'GWG_EVIDENCE', deletedAt: null },
-            select: { id: true, title: true },
-            orderBy: { createdAt: 'desc' },
-            take: 200,
+          findCleanGwgEvidenceDocumentsTx(tx, {
+            tenantId,
+            clientId,
+            // Kleine Startmenge für schnelle GwG-Seite; der Dateimanager
+            // durchsucht ältere Belege bei Eingabe serverseitig vollständig.
+            limit: 50,
           }),
           tx.gwgOnboardingInvite.findMany({
             where: { clientId },
@@ -134,10 +167,71 @@ export default async function GwgPage({
   if (!data) notFound();
   const { client, check, clientDocuments, invites, contacts, uploadedDocuments, canVerify } = data;
   const isLegalEntity = client.kind === 'JURPERS' || client.kind === 'PERSGES';
-  const identityDocuments = check?.idDocuments.filter((document) =>
-    isPersonalIdType(document.type),
+  const sanitizedDocuments = check?.idDocuments.map((entry) => {
+    const document = entry.document;
+    const available =
+      document !== null &&
+      document.tenantId === tenantId &&
+      document.clientId === clientId &&
+      document.classification === 'GWG_EVIDENCE' &&
+      document.deletedAt === null &&
+      document.gwgDestructionRequestedAt === null &&
+      document.gwgDestroyedAt === null &&
+      document.versions.length === 1 &&
+      document.versions[0]?.scanStatus === 'CLEAN' &&
+      document.versions[0].scanCompletedAt !== null;
+    return {
+      ...entry,
+      document: available
+        ? {
+            id: document.id,
+            title: document.title,
+            createdAt: document.createdAt.toISOString(),
+          }
+        : null,
+    };
+  });
+  const identityDocuments = sanitizedDocuments
+    ? sanitizedDocuments
+        .filter((document) => isPersonalIdType(document.type))
+        .map((document) => ({
+          ...document,
+          type: document.type as 'PERSONALAUSWEIS' | 'REISEPASS',
+        }))
+    : undefined;
+  const entityDocuments = sanitizedDocuments?.filter(
+    (document) => !isPersonalIdType(document.type),
   );
-  const entityDocuments = check?.idDocuments.filter((document) => !isPersonalIdType(document.type));
+  const subjectOptions = check
+    ? identitySubjectOptions({
+        clientId: client.id,
+        clientName: client.name,
+        clientKind: client.kind,
+        representatives: check.representatives.map((representative) => ({
+          id: representative.id,
+          fullName: representative.fullName,
+          position: representative.position,
+        })),
+        beneficialOwners: check.beneficialOwners.map((owner) => ({
+          id: owner.id,
+          fullName: owner.fullName,
+          birthDate: owner.birthDate,
+        })),
+      })
+    : [];
+  const identityDocumentGroups = groupIdentityDocuments(identityDocuments ?? [], subjectOptions);
+  const linkedDocumentIds = new Set(
+    check?.idDocuments
+      .map((document) => document.documentId)
+      .filter((documentId): documentId is string => documentId !== null) ?? [],
+  );
+  const selectableDocuments = clientDocuments
+    .filter((document) => !linkedDocumentIds.has(document.id))
+    .map((document) => ({
+      id: document.id,
+      title: document.title,
+      createdAt: document.createdAt.toISOString(),
+    }));
   const latestInvite = invites[0] ?? null;
   const submittedSummary: GwgSubmissionSummaryData = {
     client: {
@@ -346,6 +440,7 @@ export default async function GwgPage({
               currentAnswers={(check.riskAnswers as Record<string, number>) ?? {}}
               currentScore={check.riskScore ?? null}
               currentLevel={check.riskLevel ?? null}
+              currentRevision={gwgRiskRevision(check)}
               disabled={
                 check.status === 'VERIFIED' ||
                 check.status === 'REJECTED' ||
@@ -376,6 +471,7 @@ export default async function GwgPage({
                   representativeNames: check.representativeNames,
                   ownershipStructureNotes: check.ownershipStructureNotes,
                 }}
+                currentRevision={gwgLegalEntityRevision(check)}
                 disabled={
                   check.status === 'VERIFIED' ||
                   check.status === 'REJECTED' ||
@@ -384,7 +480,7 @@ export default async function GwgPage({
               />
 
               <div className="mt-6 border-t border-default pt-5">
-                <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+                <div className="mb-3">
                   <div>
                     <h3 className="text-sm font-semibold text-primary">Rechtsträgernachweise</h3>
                     <p className="text-xs text-muted mt-1">
@@ -393,16 +489,6 @@ export default async function GwgPage({
                       Gültigkeitsdatum.
                     </p>
                   </div>
-                  {check.status !== 'VERIFIED' &&
-                    check.status !== 'REJECTED' &&
-                    check.status !== 'EXPIRED' && (
-                      <DocumentUploadButton
-                        clientId={client.id}
-                        defaultClassification="GWG_EVIDENCE"
-                        buttonLabel="Nachweis hochladen"
-                        buttonClassName="btn-secondary text-xs"
-                      />
-                    )}
                 </div>
                 <GwgDocumentList documents={entityDocuments ?? []} />
                 {check.status !== 'VERIFIED' &&
@@ -411,8 +497,7 @@ export default async function GwgPage({
                     <AddIdDocumentForm
                       checkId={check.id}
                       clientId={client.id}
-                      clientName={client.name}
-                      clientDocuments={clientDocuments}
+                      clientDocuments={selectableDocuments}
                       variant="entity"
                     />
                   )}
@@ -457,6 +542,7 @@ export default async function GwgPage({
                             ownershipPct: o.ownershipPct?.toString() ?? '',
                             isPep: o.isPep,
                           }}
+                          revision={gwgBeneficialOwnerRevision(o)}
                         />
                       )}
                     </div>
@@ -474,29 +560,33 @@ export default async function GwgPage({
 
           {/* Schritt 3: Identitätsdokumente */}
           <section className="card p-6">
-            <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+            <div className="mb-4">
               <div>
                 <h2 className="text-lg font-semibold text-primary mb-1">
                   {isLegalEntity ? '4' : '3'}. Identitätsdokumente
                 </h2>
                 <p className="text-sm text-muted">
-                  Amtliche Ausweise der natürlichen beziehungsweise vertretungsberechtigten
-                  Personen. Rechtsträgerunterlagen werden getrennt in Schritt 2 erfasst.
+                  Vorder- und Rückseite gemeinsam ansehen, die erfasste Person eindeutig zuordnen
+                  und die ausgelesenen Angaben direkt darunter korrigieren oder bestätigen.
                 </p>
               </div>
-              {check.status !== 'VERIFIED' &&
-                check.status !== 'REJECTED' &&
-                check.status !== 'EXPIRED' && (
-                  <DocumentUploadButton
-                    clientId={client.id}
-                    defaultClassification="GWG_EVIDENCE"
-                    buttonLabel="Ausweiskopie hochladen"
-                    buttonClassName="btn-secondary text-xs"
-                  />
-                )}
             </div>
 
-            <GwgDocumentList documents={identityDocuments ?? []} />
+            <IdentityDocumentReview
+              checkId={check.id}
+              clientId={client.id}
+              groups={identityDocumentGroups}
+              subjectOptions={subjectOptions}
+              clientDocuments={selectableDocuments}
+              grandfathered={
+                check.status === 'VERIFIED' && check.identityAssignmentRequired === false
+              }
+              disabled={
+                check.status === 'VERIFIED' ||
+                check.status === 'REJECTED' ||
+                check.status === 'EXPIRED'
+              }
+            />
 
             {check.status !== 'VERIFIED' &&
               check.status !== 'REJECTED' &&
@@ -504,9 +594,9 @@ export default async function GwgPage({
                 <AddIdDocumentForm
                   checkId={check.id}
                   clientId={client.id}
-                  clientName={client.name}
-                  clientDocuments={clientDocuments}
+                  clientDocuments={selectableDocuments}
                   variant="identity"
+                  subjectOptions={subjectOptions}
                 />
               )}
           </section>
@@ -541,6 +631,81 @@ interface DisplayGwgDocument {
   document: { id: string; title: string } | null;
 }
 
+interface IdentityDocumentSource {
+  id: string;
+  gwgCheckId: string;
+  documentSetId: string;
+  documentId: string | null;
+  type: 'PERSONALAUSWEIS' | 'REISEPASS';
+  ownerName: string;
+  number: string | null;
+  issuedBy: string | null;
+  issueDate: Date | null;
+  expiryDate: Date | null;
+  verifiedAt: Date | null;
+  naturalClientSubjectId: string | null;
+  beneficialOwnerSubjectId: string | null;
+  representativeSubjectId: string | null;
+  identityAssignmentConfirmedAt: Date | null;
+  identityAssignmentConfirmedBy: string | null;
+  notes: string | null;
+  document: { id: string; title: string; createdAt: string } | null;
+}
+
+function groupIdentityDocuments(
+  documents: IdentityDocumentSource[],
+  subjects: IdentitySubjectOption[],
+): IdentityReviewGroup[] {
+  const groups = new Map<string, IdentityReviewDocument[]>();
+
+  for (const document of documents) {
+    // Nur die persistierte Satz-ID darf Dateien verbinden. Weder Name noch
+    // Ausweisnummer oder Onboarding-Notiz sind eine eindeutige Identität.
+    const groupingKey = document.documentSetId;
+    const current = groups.get(groupingKey) ?? [];
+    current.push({
+      id: document.id,
+      gwgCheckId: document.gwgCheckId,
+      documentSetId: document.documentSetId,
+      documentId: document.documentId,
+      type: document.type,
+      ownerName: document.ownerName,
+      number: document.number,
+      issuedBy: document.issuedBy,
+      issueDate: document.issueDate?.toISOString().slice(0, 10) ?? null,
+      expiryDate: document.expiryDate?.toISOString().slice(0, 10) ?? null,
+      verifiedAt: document.verifiedAt?.toISOString() ?? null,
+      naturalClientSubjectId: document.naturalClientSubjectId,
+      beneficialOwnerSubjectId: document.beneficialOwnerSubjectId,
+      representativeSubjectId: document.representativeSubjectId,
+      identityAssignmentConfirmedAt: document.identityAssignmentConfirmedAt?.toISOString() ?? null,
+      identityAssignmentConfirmedBy: document.identityAssignmentConfirmedBy,
+      notes: document.notes,
+      document: document.document,
+    });
+    groups.set(groupingKey, current);
+  }
+
+  return [...groups.values()].map((entries) => {
+    const first = entries[0]!;
+    const persistedSubjectKey = subjectKeyForAssignment({
+      naturalClientSubjectId: first.naturalClientSubjectId,
+      beneficialOwnerSubjectId: first.beneficialOwnerSubjectId,
+      representativeSubjectId: first.representativeSubjectId,
+    });
+    return {
+      key: first.documentSetId,
+      documentSetId: first.documentSetId,
+      documents: entries,
+      subjectKey:
+        persistedSubjectKey && subjects.some((subject) => subject.key === persistedSubjectKey)
+          ? persistedSubjectKey
+          : null,
+      revision: gwgIdentityDocumentSetRevision(entries),
+    };
+  });
+}
+
 function GwgDocumentList({ documents }: { documents: DisplayGwgDocument[] }) {
   if (documents.length === 0) {
     return <p className="text-xs text-disabled mb-4">Noch kein Nachweis zugeordnet.</p>;
@@ -551,13 +716,18 @@ function GwgDocumentList({ documents }: { documents: DisplayGwgDocument[] }) {
       {documents.map((document) => (
         <li key={document.id} className="px-4 py-3">
           <div className="flex items-center gap-2 mb-1">
-            <FileCheck className="h-4 w-4 text-green-600" />
+            {document.document ? (
+              <FileCheck className="h-4 w-4 text-green-600" />
+            ) : (
+              <AlertTriangle className="h-4 w-4 text-red-600" />
+            )}
             <span className="font-medium text-primary">
               {idTypeLabels[document.type] ?? document.type}
             </span>
             {document.expiryDate && document.expiryDate < new Date() && (
               <span className="badge-red">abgelaufen</span>
             )}
+            {!document.document && <span className="badge-red">Datei nicht verfügbar</span>}
           </div>
           {isPersonalIdType(document.type) && (
             <p className="text-xs text-muted ml-6">

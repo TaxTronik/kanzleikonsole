@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { useState, useTransition, type SubmitEvent } from 'react';
+import { useRouter } from 'next/navigation';
 import { computeRiskScore, type RiskFactor } from '@/server/gwg/risk-score';
 import { saveRiskAnswersAction } from './actions';
 
@@ -11,6 +12,7 @@ interface Props {
   currentAnswers: Record<string, number>;
   currentScore: number | null;
   currentLevel: 'LOW' | 'MEDIUM' | 'HIGH' | null;
+  currentRevision: string;
   disabled?: boolean;
 }
 
@@ -21,11 +23,14 @@ export function RiskAssessmentForm({
   currentAnswers,
   currentScore,
   currentLevel,
+  currentRevision,
   disabled,
 }: Props) {
+  const router = useRouter();
   const [answers, setAnswers] = useState<Record<string, number>>(currentAnswers);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [revision, setRevision] = useState(currentRevision);
   const [isPending, startTransition] = useTransition();
 
   function setAnswer(key: string, value: number) {
@@ -37,9 +42,21 @@ export function RiskAssessmentForm({
     setError(null);
     setSaved(false);
     startTransition(async () => {
-      const r = await saveRiskAnswersAction({ checkId, clientId, answers });
+      const r = await saveRiskAnswersAction({
+        checkId,
+        clientId,
+        answers,
+        expectedRevision: revision,
+      });
       if (r.error) setError(r.error);
-      else setSaved(true);
+      else {
+        if (r.revision) setRevision(r.revision);
+        setSaved(true);
+        // Ein normaler DRAFT-Save braucht keinen teuren Vollreload. Nur wenn
+        // die Bearbeitung eine bereits eingereichte Pr\u00fcfung bewusst wieder in
+        // den Entwurf setzt, muss der restliche Entscheidungsbereich nachziehen.
+        if (r.reviewReset) router.refresh();
+      }
     });
   }
 

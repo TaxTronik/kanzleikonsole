@@ -115,7 +115,9 @@ export class EvidenceService {
     const lockKey = computeLockKey(event.tenantId);
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKey})`;
 
-    // 2. Vorgänger-Hash holen (oder Genesis).
+    // 2. Vorgänger-Hash erst NACH dem Lock in einem neuen Statement holen.
+    //    Unter READ COMMITTED erhält nur dieses zweite Statement einen neuen
+    //    MVCC-Snapshot und sieht dadurch den Commit eines vorherigen Writers.
     const prevRows = await tx.$queryRaw<{ this_hash: Buffer }[]>`
       SELECT this_hash FROM audit_log
       WHERE tenant_id = ${event.tenantId}::uuid

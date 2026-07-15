@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   staffActionGuard: vi.fn(),
   withTenantContext: vi.fn(),
   assertClientAccessTx: vi.fn(),
+  accessibleClientsWhereFor: vi.fn(),
   evidenceRecord: vi.fn(),
   notifyClientContacts: vi.fn(),
   fireAndForget: vi.fn(),
@@ -21,6 +22,7 @@ vi.mock('@/server/mail/dispatch', () => ({ notifyClientContacts: mocks.notifyCli
 vi.mock('@/server/util/fire-and-forget', () => ({ fireAndForget: mocks.fireAndForget }));
 vi.mock('@/server/auth/rbac', () => ({
   assertClientAccessTx: mocks.assertClientAccessTx,
+  accessibleClientsWhereFor: mocks.accessibleClientsWhereFor,
   toActionError: (error: unknown) => ({
     ok: false,
     error: error instanceof Error ? error.message : 'Fehler',
@@ -31,7 +33,11 @@ vi.mock('@/server/actions/staff-action', () => ({
   staffActionGuard: mocks.staffActionGuard,
 }));
 
-import { createQuickRequestAction, createRequestAction } from '../actions';
+import {
+  createQuickRequestAction,
+  createRequestAction,
+  searchRequestClientsAction,
+} from '../actions';
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111';
 const REQUEST_ID = '22222222-2222-4222-8222-222222222222';
@@ -56,6 +62,7 @@ function makeTx() {
     formTemplate: { findFirst: vi.fn() },
     formSubmission: { create: vi.fn(), update: vi.fn() },
     auditLog: { findFirst: vi.fn() },
+    client: { findMany: vi.fn() },
     request: {
       findFirst: vi.fn(),
       create: vi.fn().mockResolvedValue({ id: REQUEST_ID }),
@@ -74,6 +81,84 @@ beforeEach(() => {
   });
   mocks.evidenceRecord.mockResolvedValue({});
   mocks.notifyClientContacts.mockResolvedValue(undefined);
+  mocks.accessibleClientsWhereFor.mockResolvedValue({});
+});
+
+describe('Mandantensuche für Quick-Anforderungen', () => {
+  it('sucht serverseitig und liefert aktive wie GwG-ausstehende Mandanten mit Status', async () => {
+    const tx = makeTx();
+    tx.client.findMany.mockResolvedValue([
+      {
+        id: CLIENT_ID,
+        name: 'Aktive GmbH',
+        datevNo: '1001',
+        addisonNo: null,
+        allowActive: true,
+      },
+      {
+        id: '44444444-4444-4444-8444-444444444444',
+        name: 'Onboarding GbR',
+        datevNo: null,
+        addisonNo: null,
+        allowActive: false,
+      },
+    ]);
+    const accessWhere = {
+      responsibilities: { some: { staffId: 'staff-1' } },
+    };
+    mocks.accessibleClientsWhereFor.mockResolvedValue(accessWhere);
+    mocks.withTenantContext.mockImplementation(
+      async (_ctx: unknown, fn: (transaction: ReturnType<typeof makeTx>) => unknown) => fn(tx),
+    );
+
+    const result = await searchRequestClientsAction('gmbh');
+
+    expect(result).toEqual({
+      ok: true,
+      clients: [
+        {
+          id: CLIENT_ID,
+          name: 'Aktive GmbH',
+          datevNo: '1001',
+          addisonNo: null,
+          allowActive: true,
+        },
+        {
+          id: '44444444-4444-4444-8444-444444444444',
+          name: 'Onboarding GbR',
+          datevNo: null,
+          addisonNo: null,
+          allowActive: false,
+        },
+      ],
+      limited: false,
+    });
+    expect(mocks.accessibleClientsWhereFor).toHaveBeenCalledWith(tx, expect.anything());
+    expect(tx.client.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          anonymizedAt: null,
+          AND: [accessWhere],
+          OR: [
+            { name: { contains: 'gmbh', mode: 'insensitive' } },
+            { datevNo: { contains: 'gmbh', mode: 'insensitive' } },
+            { addisonNo: { contains: 'gmbh', mode: 'insensitive' } },
+          ],
+        }),
+        orderBy: [{ allowActive: 'desc' }, { name: 'asc' }],
+        take: 21,
+        select: expect.objectContaining({ allowActive: true }),
+      }),
+    );
+  });
+
+  it('weist überlange Suchbegriffe vor Auth und Datenbankzugriff ab', async () => {
+    const result = await searchRequestClientsAction('x'.repeat(101));
+
+    expect(result).toEqual({ ok: false, error: 'Der Suchbegriff ist zu lang.' });
+    expect(mocks.staffActionGuard).not.toHaveBeenCalled();
+    expect(mocks.withTenantContext).not.toHaveBeenCalled();
+  });
 });
 
 describe('Quick-Anforderung', () => {

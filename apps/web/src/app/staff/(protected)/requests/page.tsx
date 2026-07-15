@@ -13,7 +13,6 @@ import { QuickRequestDialog } from '@/components/quick-request-dialog';
 import { readRequestCreationOptionsTx } from '@/server/request-creation-options';
 
 const PAGE_SIZE = 50;
-const QUICK_CLIENTS_CAP = 250;
 const statusLabels: Record<string, string> = {
   OPEN: 'Offen',
   IN_PROGRESS: 'In Bearbeitung',
@@ -103,7 +102,7 @@ export default async function RequestsOverviewPage({
     where.client = clientFilters.length === 1 ? clientFilters[0] : { AND: clientFilters };
   }
 
-  const [requests, totalCount, requestClients, requestCreationOptions] = await withTenantContext(
+  const [requests, totalCount, requestCreationOptions] = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
       // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Anforderungen
@@ -122,15 +121,6 @@ export default async function RequestsOverviewPage({
           },
         }),
         tx.request.count({ where }),
-        tx.client.findMany({
-          where: {
-            allowActive: true,
-            ...(denied.length > 0 ? { id: { notIn: denied } } : {}),
-          },
-          orderBy: { name: 'asc' },
-          take: QUICK_CLIENTS_CAP + 1,
-          select: { id: true, name: true, datevNo: true, addisonNo: true },
-        }),
         readRequestCreationOptionsTx(tx),
       ]);
     },
@@ -179,8 +169,6 @@ export default async function RequestsOverviewPage({
           </a>
           <QuickRequestDialog
             requestId={randomUUID()}
-            clients={requestClients.slice(0, QUICK_CLIENTS_CAP)}
-            clientsLimited={requestClients.length > QUICK_CLIENTS_CAP}
             templates={requestTemplates}
             formTemplates={requestFormTemplates}
             templatesLimited={templatesLimited}

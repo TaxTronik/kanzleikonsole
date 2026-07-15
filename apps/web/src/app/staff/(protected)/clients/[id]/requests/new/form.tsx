@@ -1,8 +1,13 @@
 'use client';
 
-import { useActionState, useEffect, useId, useMemo, useState } from 'react';
-import { FileText, Sparkles } from 'lucide-react';
-import { createQuickRequestAction, createRequestAction, type ActionResult } from '../actions';
+import { useActionState, useEffect, useId, useState } from 'react';
+import { FileText, LoaderCircle, Sparkles } from 'lucide-react';
+import {
+  createQuickRequestAction,
+  createRequestAction,
+  searchRequestClientsAction,
+  type ActionResult,
+} from '../actions';
 
 export type RequestPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
 
@@ -27,12 +32,12 @@ export interface RequestClientOption {
   name: string;
   datevNo: string | null;
   addisonNo: string | null;
+  allowActive: boolean;
 }
 
 interface Props {
   requestId: string;
   clientId?: string;
-  clients?: RequestClientOption[];
   disabled?: boolean;
   templates: RequestTemplateOption[];
   formTemplates: RequestFormTemplateOption[];
@@ -55,7 +60,6 @@ function isoLocalForDate(d: Date): string {
 export function NewRequestForm({
   requestId,
   clientId,
-  clients = [],
   disabled,
   templates,
   formTemplates,
@@ -74,7 +78,12 @@ export function NewRequestForm({
 
   const idPrefix = useId();
   const [clientSearch, setClientSearch] = useState('');
-  const [selectedClientId, setSelectedClientId] = useState(clientId ?? '');
+  const [clientOptions, setClientOptions] = useState<RequestClientOption[]>([]);
+  const [selectedClient, setSelectedClient] = useState<RequestClientOption | null>(null);
+  const [clientSearchPending, setClientSearchPending] = useState(false);
+  const [clientSearchError, setClientSearchError] = useState<string | null>(null);
+  const [clientSearchLimited, setClientSearchLimited] = useState(false);
+  const [showClientSuggestions, setShowClientSuggestions] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -82,18 +91,44 @@ export function NewRequestForm({
   const [dueAt, setDueAt] = useState('');
   const [formTemplateId, setFormTemplateId] = useState('');
 
-  const filteredClients = useMemo(() => {
-    const query = clientSearch.trim().toLocaleLowerCase('de-DE');
-    if (!query) return clients;
-    const matches = clients.filter((client) =>
-      [client.name, client.datevNo ?? '', client.addisonNo ?? ''].some((value) =>
-        value.toLocaleLowerCase('de-DE').includes(query),
-      ),
-    );
-    const selected = clients.find((client) => client.id === selectedClientId);
-    if (selected && !matches.some((client) => client.id === selected.id)) matches.unshift(selected);
-    return matches;
-  }, [clientSearch, clients, selectedClientId]);
+  const selectedClientId = clientId ?? selectedClient?.id ?? '';
+
+  useEffect(() => {
+    if (clientId || selectedClient) return;
+
+    let ignore = false;
+    const timeout = window.setTimeout(() => {
+      setClientSearchPending(true);
+      setClientSearchError(null);
+      setClientOptions([]);
+      setClientSearchLimited(false);
+      void searchRequestClientsAction(clientSearch)
+        .then((result) => {
+          if (ignore) return;
+          setClientSearchPending(false);
+          if (!result.ok) {
+            setClientSearchError(result.error ?? 'Mandantensuche fehlgeschlagen.');
+            setClientOptions([]);
+            setClientSearchLimited(false);
+            return;
+          }
+          setClientOptions(result.clients ?? []);
+          setClientSearchLimited(Boolean(result.limited));
+        })
+        .catch(() => {
+          if (ignore) return;
+          setClientSearchPending(false);
+          setClientSearchError('Mandantensuche fehlgeschlagen. Bitte erneut versuchen.');
+          setClientOptions([]);
+          setClientSearchLimited(false);
+        });
+    }, 250);
+
+    return () => {
+      ignore = true;
+      window.clearTimeout(timeout);
+    };
+  }, [clientId, clientSearch, selectedClient]);
 
   useEffect(() => onPendingChange?.(isPending), [isPending, onPendingChange]);
   useEffect(() => {
@@ -151,46 +186,147 @@ export function NewRequestForm({
         <input type="hidden" name="clientId" value={clientId} />
       ) : (
         <div className="rounded-md border border-default p-3 space-y-3">
+          <input type="hidden" name="clientId" value={selectedClientId} />
           <div>
             <label className="label" htmlFor={`${idPrefix}-client-search`}>
               Mandant suchen
             </label>
-            <input
-              id={`${idPrefix}-client-search`}
-              type="search"
-              value={clientSearch}
-              onChange={(event) => setClientSearch(event.target.value)}
-              className="input"
-              placeholder="Name, DATEV- oder Addison-Nr."
-              autoFocus={autoFocus}
-              disabled={disabled || isPending}
-            />
-          </div>
-          <div>
-            <label className="label" htmlFor={`${idPrefix}-client`}>
-              Mandant
-            </label>
-            <select
-              id={`${idPrefix}-client`}
-              name="clientId"
-              value={selectedClientId}
-              onChange={(event) => setSelectedClientId(event.target.value)}
-              className="input"
-              required
-              disabled={disabled || isPending}
-            >
-              <option value="">— bitte auswählen —</option>
-              {filteredClients.map((client) => (
-                <option key={client.id} value={client.id}>
-                  {client.name}
-                  {client.datevNo ? ` · DATEV ${client.datevNo}` : ''}
-                  {client.addisonNo ? ` · Addison ${client.addisonNo}` : ''}
-                </option>
-              ))}
-            </select>
-            {filteredClients.length === 0 && (
-              <p className="text-xs text-muted mt-1">Kein zugänglicher aktiver Mandant gefunden.</p>
+            <div className="relative">
+              <input
+                id={`${idPrefix}-client-search`}
+                type="search"
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded={showClientSuggestions && !selectedClient}
+                aria-controls={`${idPrefix}-client-options`}
+                value={clientSearch}
+                onFocus={() => setShowClientSuggestions(true)}
+                onChange={(event) => {
+                  setClientSearch(event.target.value);
+                  setSelectedClient(null);
+                  // Treffer gehören immer exakt zum sichtbaren Suchbegriff.
+                  // Alte Resultate dürfen während Debounce/Fehler nicht mehr
+                  // anklickbar bleiben, sonst droht eine Anforderung an den
+                  // zuvor gesuchten Mandanten.
+                  setClientOptions([]);
+                  setClientSearchLimited(false);
+                  setClientSearchError(null);
+                  setClientSearchPending(true);
+                  setShowClientSuggestions(true);
+                }}
+                className="input pr-9"
+                placeholder="Name, DATEV- oder Addison-Nr."
+                maxLength={100}
+                autoComplete="off"
+                autoFocus={autoFocus}
+                disabled={disabled || isPending}
+              />
+              {clientSearchPending && (
+                <LoaderCircle
+                  className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted"
+                  aria-label="Mandanten werden gesucht"
+                />
+              )}
+            </div>
+
+            {selectedClient ? (
+              <div className="mt-2 flex items-center justify-between gap-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm dark:border-emerald-800 dark:bg-emerald-900/20">
+                <div>
+                  <span className="font-medium text-primary">{selectedClient.name}</span>
+                  <span className="ml-2 text-xs text-emerald-700 dark:text-emerald-300">Aktiv</span>
+                </div>
+                <button
+                  type="button"
+                  className="text-xs text-brand-700 hover:underline"
+                  onClick={() => {
+                    setSelectedClient(null);
+                    setClientSearch('');
+                    setShowClientSuggestions(true);
+                  }}
+                  disabled={disabled || isPending}
+                >
+                  Ändern
+                </button>
+              </div>
+            ) : (
+              showClientSuggestions && (
+                <div
+                  id={`${idPrefix}-client-options`}
+                  role="listbox"
+                  aria-label="Mandantenvorschläge"
+                  className="mt-2 max-h-64 overflow-y-auto rounded-md border border-default bg-surface shadow-sm"
+                >
+                  {clientOptions.map((option) =>
+                    option.allowActive ? (
+                      <button
+                        key={option.id}
+                        type="button"
+                        role="option"
+                        aria-selected="false"
+                        className="flex w-full items-center justify-between gap-3 border-b border-subtle px-3 py-2 text-left last:border-b-0 hover:bg-gray-50 dark:hover:bg-gray-800"
+                        onClick={() => {
+                          setSelectedClient(option);
+                          setClientSearch(option.name);
+                          setClientSearchPending(false);
+                          setShowClientSuggestions(false);
+                        }}
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium text-primary">
+                            {option.name}
+                          </span>
+                          {(option.datevNo || option.addisonNo) && (
+                            <span className="block truncate text-xs text-muted">
+                              {option.datevNo ? `DATEV ${option.datevNo}` : ''}
+                              {option.datevNo && option.addisonNo ? ' · ' : ''}
+                              {option.addisonNo ? `Addison ${option.addisonNo}` : ''}
+                            </span>
+                          )}
+                        </span>
+                        <span className="badge-green shrink-0">Aktiv</span>
+                      </button>
+                    ) : (
+                      <div
+                        key={option.id}
+                        role="option"
+                        aria-selected="false"
+                        aria-disabled="true"
+                        className="flex items-center justify-between gap-3 border-b border-subtle bg-amber-50/60 px-3 py-2 last:border-b-0 dark:bg-amber-900/10"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium text-secondary">
+                            {option.name}
+                          </span>
+                          <span className="block text-xs text-amber-700 dark:text-amber-300">
+                            Noch nicht auswählbar: GwG-Prüfung ausstehend
+                          </span>
+                        </span>
+                        <span className="badge-yellow shrink-0">GwG ausstehend</span>
+                      </div>
+                    ),
+                  )}
+                  {!clientSearchPending && clientOptions.length === 0 && (
+                    <p className="px-3 py-3 text-sm text-muted">
+                      Kein zugänglicher Mandant gefunden.
+                    </p>
+                  )}
+                </div>
+              )
             )}
+            {clientSearchLimited && !selectedClient && (
+              <p className="mt-1 text-xs text-muted">
+                Weitere Treffer vorhanden — Suchbegriff bitte genauer eingeben.
+              </p>
+            )}
+            {clientSearchError && (
+              <p role="alert" className="mt-1 text-xs text-red-600">
+                {clientSearchError}
+              </p>
+            )}
+            <p className="mt-1 text-xs text-muted">
+              Mandanten mit ausstehender GwG-Prüfung werden angezeigt, können aber noch keine
+              Portal-Anforderung erhalten.
+            </p>
             {state?.fieldErrors?.['clientId'] && (
               <p className="text-xs text-red-600 mt-1">{state.fieldErrors['clientId']}</p>
             )}

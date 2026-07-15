@@ -11,6 +11,7 @@ import { createHash } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Prisma, PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
+import { createVerifiedLegalEntityGwgFixture } from './gwg-test-fixture';
 
 const hasDatabase = Boolean(process.env['DATABASE_URL']);
 
@@ -51,18 +52,15 @@ beforeAll(async () => {
     data: { tenantId, kind: 'JURPERS', name: 'PoA Testmandant', allowActive: false },
   });
   clientId = client.id;
-  await owner.gwgCheck.create({
-    data: {
-      tenantId,
-      clientId,
-      status: 'VERIFIED',
-      validUntil: new Date('2099-12-31T00:00:00.000Z'),
-      legalForm: 'GmbH',
-      registerNumber: 'HRB 12345',
-      registerAuthority: 'Amtsgericht Berlin',
-      representativeNames: ['Erika Muster'],
-      ownershipStructureNotes: 'Teststruktur',
-    },
+  await createVerifiedLegalEntityGwgFixture(owner, {
+    tenantId,
+    clientId,
+    verifiedBy: staffId,
+    validUntil: new Date('2099-12-31T00:00:00.000Z'),
+    registerNumber: 'HRB 12345',
+    registerAuthority: 'Amtsgericht Berlin',
+    representativeNames: ['Erika Muster'],
+    ownershipStructureNotes: 'Teststruktur',
   });
   await owner.client.update({ where: { id: clientId }, data: { allowActive: true } });
 

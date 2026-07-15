@@ -16,6 +16,7 @@
 // =============================================================================
 
 import { Prisma } from '@taxtronik/db/prisma-client';
+import type { Prisma as PrismaTypes } from '@prisma/client';
 // Subpath statt Barrel: vermeidet, dass owner-client (verlangt DATABASE_URL beim
 // Import) in reine Unit-Tests gezogen wird, die rbac.ts transitiv importieren.
 import { withTenantContext } from '@taxtronik/db/tenant-context';
@@ -179,6 +180,29 @@ export async function inaccessibleClientIdsFor(
     select: { id: true },
   });
   return rows.map((r) => r.id);
+}
+
+/**
+ * Positive Prisma-Bedingung für skalierbare Mandanten-Suchen. Anders als
+ * `inaccessibleClientIdsFor` materialisiert sie im RESTRICTED-Modus nicht den
+ * nahezu gesamten Bestand als tausende `NOT IN`-Parameter, sondern lässt
+ * PostgreSQL die vorhandene Responsibility-Relation direkt filtern.
+ */
+export async function accessibleClientsWhereFor(
+  tx: TxClient,
+  session: StaffSession,
+): Promise<PrismaTypes.ClientWhereInput> {
+  if (isStaffAdmin(session)) return {};
+  const { tenantId, staffId } = session.user;
+  const policy = await readAccessPolicyTx(tx, tenantId);
+  const responsibility: PrismaTypes.ClientWhereInput = {
+    responsibilities: {
+      some: { staffId, role: { in: ['BERUFSTRAEGER', 'HAUPTBEARBEITER'] } },
+    },
+  };
+  return policy.clientAccessMode === 'RESTRICTED'
+    ? responsibility
+    : { OR: [{ vertraulich: false }, responsibility] };
 }
 
 /** Wirft `ForbiddenError`, wenn kein Zugriff auf den Mandanten besteht. */

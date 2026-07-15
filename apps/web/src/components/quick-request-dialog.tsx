@@ -14,8 +14,6 @@ import {
 interface Props {
   requestId: string;
   client?: RequestClientOption;
-  clients?: RequestClientOption[];
-  clientsLimited?: boolean;
   templates: RequestTemplateOption[];
   formTemplates: RequestFormTemplateOption[];
   templatesLimited?: boolean;
@@ -32,8 +30,6 @@ interface Props {
 export function QuickRequestDialog({
   requestId,
   client,
-  clients = [],
-  clientsLimited = false,
   templates,
   formTemplates,
   templatesLimited = false,
@@ -89,20 +85,16 @@ export function QuickRequestDialog({
           <div className="max-h-[calc(100vh-5rem)] overflow-y-auto pr-1">
             <h2 className="text-lg font-semibold text-primary mb-1">Anforderung erstellen</h2>
             <p className="text-sm text-muted mb-4">
-              {client
+              {client?.allowActive
                 ? `An ${client.name}. Prüfen Sie die Angaben vor dem Erstellen.`
-                : 'Wählen Sie einen zugänglichen aktiven Mandanten und prüfen Sie die Angaben vor dem Erstellen.'}
+                : client
+                  ? `${client.name} ist noch nicht aktiv. Eine Portal-Anforderung ist erst nach abgeschlossener GwG-Prüfung möglich.`
+                  : 'Suchen und wählen Sie den Mandanten direkt aus. Mandanten mit offener GwG-Prüfung werden mit ihrem Status angezeigt.'}
             </p>
-            {!client && clientsLimited && (
-              <p className="text-xs text-muted mb-3">
-                Die Auswahl zeigt höchstens 250 aktive Mandanten. Falls ein Mandant fehlt, öffnen
-                Sie seine Mandantenakte und starten die Anforderung dort.
-              </p>
-            )}
             <NewRequestForm
               requestId={currentRequestId}
               clientId={client?.id}
-              clients={client ? undefined : clients}
+              disabled={client ? !client.allowActive : false}
               templates={templates}
               formTemplates={formTemplates}
               templatesLimited={templatesLimited}

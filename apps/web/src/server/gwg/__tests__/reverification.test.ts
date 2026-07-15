@@ -90,6 +90,17 @@ describe('GwG-Wiederholungsprüfung', () => {
     expect(values).toEqual(['gwg-check-lifecycle:tenant-1:client-1']);
   });
 
+  it('führt wiederholte Defense-in-Depth-Lockaufrufe auf derselben Tx nur einmal aus', async () => {
+    const executeRaw = vi.fn().mockResolvedValue(0);
+    const tx = { $executeRaw: executeRaw } as unknown as TxClient;
+    const input = { tenantId: 'tenant-1', clientId: 'client-1' };
+
+    await Promise.all([lockGwgCheckLifecycleTx(tx, input), lockGwgCheckLifecycleTx(tx, input)]);
+    await lockGwgCheckLifecycleTx(tx, input);
+
+    expect(executeRaw).toHaveBeenCalledTimes(1);
+  });
+
   it('entwertet VERIFIED-Snapshots, deaktiviert und erhält deren Aggregate', async () => {
     const executeRaw = vi.fn().mockResolvedValue(0);
     const invalidateChecks = vi.fn().mockResolvedValue({ count: 1 });
@@ -103,7 +114,10 @@ describe('GwG-Wiederholungsprüfung', () => {
         deleteMany: vi.fn(),
       },
       gwgBeneficialOwner: { deleteMany: vi.fn() },
-      gwgIdDocument: { deleteMany: vi.fn() },
+      gwgIdDocument: {
+        deleteMany: vi.fn(),
+        updateMany: vi.fn().mockResolvedValue({ count: 2 }),
+      },
       client: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
     } as unknown as TxClient;
 
@@ -122,6 +136,7 @@ describe('GwG-Wiederholungsprüfung', () => {
     });
     expect(result).toEqual({
       invalidatedChecks: 1,
+      invalidatedIdentityDocuments: 2,
       reviewCheckId: 'open-review',
       clientDeactivated: true,
     });
@@ -133,6 +148,20 @@ describe('GwG-Wiederholungsprüfung', () => {
     expect(tx.gwgCheck.deleteMany).not.toHaveBeenCalled();
     expect(tx.gwgBeneficialOwner.deleteMany).not.toHaveBeenCalled();
     expect(tx.gwgIdDocument.deleteMany).not.toHaveBeenCalled();
+    expect(tx.gwgIdDocument.updateMany).toHaveBeenCalledWith({
+      where: {
+        gwgCheckId: 'open-review',
+        type: { in: ['PERSONALAUSWEIS', 'REISEPASS'] },
+      },
+      data: {
+        naturalClientSubjectId: null,
+        beneficialOwnerSubjectId: null,
+        representativeSubjectId: null,
+        identityAssignmentConfirmedAt: null,
+        identityAssignmentConfirmedBy: null,
+        verifiedAt: null,
+      },
+    });
     expect(executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
       invalidateChecks.mock.invocationCallOrder[0]!,
     );
@@ -147,6 +176,7 @@ describe('GwG-Wiederholungsprüfung', () => {
         update: vi.fn().mockResolvedValue({ id: 'open-review' }),
         create: vi.fn(),
       },
+      gwgIdDocument: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
       client: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
     } as unknown as TxClient;
 
@@ -163,6 +193,7 @@ describe('GwG-Wiederholungsprüfung', () => {
     expect(tx.gwgCheck.create).not.toHaveBeenCalled();
     expect(result).toEqual({
       invalidatedChecks: 0,
+      invalidatedIdentityDocuments: 1,
       reviewCheckId: 'open-review',
       clientDeactivated: false,
     });
@@ -171,15 +202,16 @@ describe('GwG-Wiederholungsprüfung', () => {
   it('legt B mit monotonem Zeitstempel frisch an und terminalisiert den älteren Review A', async () => {
     const executeRaw = vi.fn().mockResolvedValue(0);
     const createReview = vi.fn().mockResolvedValue({ id: 'new-review' });
-    const queryRaw = vi
-      .fn()
-      .mockResolvedValue([{ statementTimestamp: new Date('2026-07-15T12:00:00.000Z') }]);
-    const previousCreatedAt = new Date('2026-07-15T12:00:00.000Z');
+    const queryRaw = vi.fn().mockResolvedValue([
+      {
+        statementTimestamp: new Date('2026-07-15T12:00:00.000Z'),
+        latestCreatedAt: new Date('2026-07-15T12:00:00.000Z'),
+      },
+    ]);
     const tx = {
       $executeRaw: executeRaw,
       $queryRaw: queryRaw,
       gwgCheck: {
-        findFirst: vi.fn().mockResolvedValue({ createdAt: previousCreatedAt }),
         create: createReview,
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
@@ -200,13 +232,11 @@ describe('GwG-Wiederholungsprüfung', () => {
       },
       select: { id: true },
     });
-    expect(tx.gwgCheck.findFirst).toHaveBeenCalledWith({
-      where: { tenantId: 'tenant-1', clientId: 'client-1' },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      select: { createdAt: true },
-    });
-    const [clockFragments] = queryRaw.mock.calls[0]!;
-    expect((clockFragments as readonly string[]).join('?')).toContain('statement_timestamp()');
+    const [clockFragments, ...clockValues] = queryRaw.mock.calls[0]!;
+    const clockSql = (clockFragments as readonly string[]).join('?');
+    expect(clockSql).toContain('statement_timestamp()');
+    expect(clockSql).toContain('MAX(created_at)');
+    expect(clockValues).toEqual(['tenant-1', 'client-1']);
     expect(tx.gwgCheck.updateMany).toHaveBeenCalledWith({
       where: {
         tenantId: 'tenant-1',
@@ -218,6 +248,7 @@ describe('GwG-Wiederholungsprüfung', () => {
     });
     expect(result).toEqual({
       invalidatedChecks: 1,
+      invalidatedIdentityDocuments: 0,
       reviewCheckId: 'new-review',
       clientDeactivated: true,
     });

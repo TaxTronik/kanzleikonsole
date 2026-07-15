@@ -12,6 +12,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import { withTenantContext } from '../tenant-context';
+import { createVerifiedLegalEntityGwgFixture } from './gwg-test-fixture';
 
 const hasDatabase = Boolean(process.env['DATABASE_URL'] && process.env['DATABASE_APP_URL']);
 
@@ -130,31 +131,21 @@ beforeAll(async () => {
   clientAId = clientA.id;
   clientBId = clientB.id;
 
-  await owner.gwgCheck.create({
-    data: {
-      tenantId: tenantAId,
-      clientId: clientAId,
-      status: 'VERIFIED',
-      validUntil: null,
-      legalForm: 'GmbH',
-      registerNumber: 'HRB RLS-A',
-      registerAuthority: 'Amtsgericht Teststadt',
-      representativeNames: ['Vertretung A'],
-      ownershipStructureNotes: 'Test-Snapshot für die RLS-Regression.',
-    },
+  await createVerifiedLegalEntityGwgFixture(owner, {
+    tenantId: tenantAId,
+    clientId: clientAId,
+    verifiedBy: staffAId,
+    registerNumber: 'HRB RLS-A',
+    representativeNames: ['Vertretung A'],
+    ownershipStructureNotes: 'Test-Snapshot für die RLS-Regression.',
   });
-  await owner.gwgCheck.create({
-    data: {
-      tenantId: tenantBId,
-      clientId: clientBId,
-      status: 'VERIFIED',
-      validUntil: null,
-      legalForm: 'GmbH',
-      registerNumber: 'HRB RLS-B',
-      registerAuthority: 'Amtsgericht Teststadt',
-      representativeNames: ['Vertretung B'],
-      ownershipStructureNotes: 'Test-Snapshot für die RLS-Regression.',
-    },
+  await createVerifiedLegalEntityGwgFixture(owner, {
+    tenantId: tenantBId,
+    clientId: clientBId,
+    verifiedBy: staffBId,
+    registerNumber: 'HRB RLS-B',
+    representativeNames: ['Vertretung B'],
+    ownershipStructureNotes: 'Test-Snapshot für die RLS-Regression.',
   });
   await owner.client.update({ where: { id: clientAId }, data: { allowActive: true } });
   await owner.client.update({ where: { id: clientBId }, data: { allowActive: true } });
@@ -576,6 +567,32 @@ describeWithDatabase('Cross-Tenant RLS', () => {
     await expect(parent).resolves.toBeUndefined();
     await expect(child).resolves.toMatchObject({ clientId: clientAId, tenantId: tenantAId });
   }, 15_000);
+
+  it('Test 28: App-Role besitzt expliziten CRUD-Zugriff auf beide BWA-Plantabellen', async () => {
+    const privileges = await owner.$queryRaw<Array<{ table_name: string; all_granted: boolean }>>`
+      WITH expected(table_name, privilege) AS (
+        SELECT table_name, privilege
+          FROM unnest(ARRAY['bwa_plan', 'bwa_plan_line']) AS tables(table_name)
+         CROSS JOIN unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE']) AS rights(privilege)
+      )
+      SELECT table_name,
+             bool_and(
+               has_table_privilege(
+                 'taxtronik_app',
+                 format('public.%I', table_name),
+                 privilege
+               )
+             ) AS all_granted
+        FROM expected
+       GROUP BY table_name
+       ORDER BY table_name
+    `;
+
+    expect(privileges).toEqual([
+      { table_name: 'bwa_plan', all_granted: true },
+      { table_name: 'bwa_plan_line', all_granted: true },
+    ]);
+  });
 
   // ---------------------------------------------------------------------
   // Join-Tabellen ohne eigenes tenant_id (EXISTS-Policy auf Eltern-Tabelle)

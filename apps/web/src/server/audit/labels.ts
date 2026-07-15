@@ -84,6 +84,8 @@ export const ACTION_LABELS: Record<string, string> = {
   'gwg.owner.add': 'Wirtschaftlich Berechtigter erfasst',
   'gwg.owner.update': 'Wirtschaftlich Berechtigten aktualisiert',
   'gwg.id_document.add': 'Ausweisdokument erfasst',
+  'gwg.id_document.update': 'Ausweisangaben geprüft und aktualisiert',
+  'gwg.id_document.set_files_update': 'Dateien eines Ausweissatzes aktualisiert',
   'gwg.check.verify': 'GwG-Prüfung verifiziert',
   'gwg.check.reject': 'GwG-Prüfung abgelehnt',
   'gwg.evidence.add': 'GwG-Rechtsträgernachweis zugeordnet',

@@ -26,6 +26,7 @@ let versionId: string;
 let checkId: string;
 let linkedIdDocumentId: string;
 let beneficialOwnerId: string;
+let representativeId: string;
 let inviteId: string;
 
 beforeAll(async () => {
@@ -61,6 +62,11 @@ beforeAll(async () => {
     },
   });
   checkId = check.id;
+  representativeId = (
+    await owner.gwgRepresentative.create({
+      data: { gwgCheckId: checkId, fullName: 'Erika Muster', position: 0 },
+    })
+  ).id;
   const [document, nullRetentionDocument, futureRetentionDocument] = await owner.$transaction(
     async (tx) => {
       await tx.$queryRaw(Prisma.sql`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`);
@@ -111,6 +117,8 @@ beforeAll(async () => {
       sha256: Buffer.alloc(32, 1),
       sizeBytes: 42n,
       immutable: true,
+      scanStatus: 'CLEAN',
+      scanCompletedAt: new Date(),
       createdById: staffId,
     },
   });
@@ -122,6 +130,14 @@ beforeAll(async () => {
         type: 'PERSONALAUSWEIS',
         ownerName: 'Erika Muster',
         documentId,
+        representativeSubjectId: representativeId,
+        identityAssignmentConfirmedAt: new Date(),
+        identityAssignmentConfirmedBy: staffId,
+        number: 'DESTROY-ID-1',
+        issuedBy: 'Berlin',
+        issueDate: new Date('2020-01-01'),
+        expiryDate: new Date('2099-12-31'),
+        verifiedAt: new Date(),
       },
     })
   ).id;
@@ -163,15 +179,70 @@ afterAll(async () => {
   await owner.$disconnect();
 });
 
+async function attachConfirmedNaturalIdentity(
+  checkIdForIdentity: string,
+  clientIdForIdentity: string,
+  ownerName: string,
+): Promise<void> {
+  const document = await owner.$transaction(async (tx) => {
+    await tx.$queryRaw(Prisma.sql`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`);
+    await tx.$queryRaw(Prisma.sql`SELECT set_config('app.current_actor_type', 'STAFF', true)`);
+    await tx.$queryRaw(Prisma.sql`SELECT set_config('app.current_actor_id', ${staffId}, true)`);
+    const document = await tx.document.create({
+      data: {
+        tenantId,
+        clientId: clientIdForIdentity,
+        title: `Natural Identity ${checkIdForIdentity}`,
+        classification: 'GWG_EVIDENCE',
+        mimeType: 'image/jpeg',
+      },
+    });
+    await tx.documentVersion.create({
+      data: {
+        documentId: document.id,
+        versionNo: 1,
+        storageBucket: 'gwg-destruction-test',
+        storageKey: `gwg-destruction-test/${document.id}/v1`,
+        sha256: Buffer.alloc(32, 0x44),
+        sizeBytes: 1n,
+        immutable: false,
+        scanStatus: 'CLEAN',
+        scanCompletedAt: new Date(),
+        createdById: staffId,
+      },
+    });
+    return document;
+  });
+  const confirmedAt = new Date();
+  await owner.gwgIdDocument.create({
+    data: {
+      gwgCheckId: checkIdForIdentity,
+      type: 'PERSONALAUSWEIS',
+      ownerName,
+      documentId: document.id,
+      naturalClientSubjectId: clientIdForIdentity,
+      identityAssignmentConfirmedAt: confirmedAt,
+      identityAssignmentConfirmedBy: staffId,
+      number: `NAT-${checkIdForIdentity}`,
+      issuedBy: 'Berlin',
+      issueDate: new Date('2020-01-01'),
+      expiryDate: new Date('2099-12-31'),
+      verifiedAt: confirmedAt,
+    },
+  });
+}
+
 describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
   it('erzwingt für jede neue immutable Version eine konkrete Storage-VersionId', async () => {
     await expect(
       owner.documentVersion.create({
         data: {
-          documentId,
-          versionNo: 2,
+          // Unverknuepfter Beleg: Hier soll gezielt der Storage-Version-Guard
+          // und nicht die neue GwG-Snapshot-Sperre ausloesen.
+          documentId: nullRetentionDocumentId,
+          versionNo: 1,
           storageBucket: 'gwg-test',
-          storageKey: `gwg-test/${documentId}/missing-storage-version`,
+          storageKey: `gwg-test/${nullRetentionDocumentId}/missing-storage-version`,
           sha256: Buffer.alloc(32, 4),
           sizeBytes: 42n,
           immutable: true,
@@ -276,7 +347,7 @@ describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
                      WHERE "id" = ${linkedIdDocumentId}::uuid`,
         );
       }),
-    ).rejects.toThrow(/unveränderlich/);
+    ).rejects.toThrow(/unver(?:ä|ae)nderlich/);
   });
 
   it('bricht die Client-Check-Gegenlock-Race fail-fast statt per Deadlock ab', async () => {
@@ -293,10 +364,14 @@ describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
       data: {
         tenantId,
         clientId: dueClient.id,
-        status: 'VERIFIED',
-        verifiedAt: new Date('2010-01-01T00:00:00.000Z'),
+        status: 'DRAFT',
         validUntil: new Date('2099-01-01T00:00:00.000Z'),
       },
+    });
+    await attachConfirmedNaturalIdentity(dueCheck.id, dueClient.id, dueClient.name);
+    await owner.gwgCheck.update({
+      where: { id: dueCheck.id },
+      data: { status: 'VERIFIED', verifiedAt: new Date('2010-01-01T00:00:00.000Z') },
     });
     await owner.client.update({ where: { id: dueClient.id }, data: { allowActive: true } });
 
@@ -437,7 +512,7 @@ describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
     }
 
     await expect(destroy).resolves.toBeTruthy();
-    await expect(insert).rejects.toThrow(/unveränderlich/);
+    await expect(insert).rejects.toThrow(/unver(?:ä|ae)nderlich/);
     expect(await owner.gwgBeneficialOwner.count({ where: { gwgCheckId: dueCheck.id } })).toBe(0);
   }, 15_000);
 
@@ -486,12 +561,12 @@ describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
       owner.gwgBeneficialOwner.create({
         data: { gwgCheckId: dueCheck.id, fullName: 'Unzulässiger Berechtigter' },
       }),
-    ).rejects.toThrow(/unveränderlich/);
+    ).rejects.toThrow(/unver(?:ä|ae)nderlich/);
     await expect(
       owner.gwgIdDocument.create({
         data: { gwgCheckId: dueCheck.id, type: 'PERSONALAUSWEIS', ownerName: 'Unzulässig' },
       }),
-    ).rejects.toThrow(/unveränderlich/);
+    ).rejects.toThrow(/unver(?:ä|ae)nderlich/);
     await expect(
       owner.gwgOnboardingInvite.create({
         data: {
@@ -744,6 +819,7 @@ describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
     expect(destroyedCheck?.legalForm).toBeNull();
     expect(destroyedCheck?.representativeNames).toEqual([]);
     expect(await owner.gwgBeneficialOwner.count({ where: { gwgCheckId: checkId } })).toBe(0);
+    expect(await owner.gwgRepresentative.count({ where: { gwgCheckId: checkId } })).toBe(0);
     expect(
       (
         await owner.gwgIdDocument.findUnique({
@@ -757,16 +833,16 @@ describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
     ).rejects.toThrow();
     await expect(
       owner.document.update({ where: { id: documentId }, data: { title: 'Manipuliert' } }),
-    ).rejects.toThrow(/unveränderlich/);
+    ).rejects.toThrow(/unver(?:ä|ae)nderlich/);
     await expect(
       owner.gwgCheck.update({ where: { id: checkId }, data: { status: 'REJECTED' } }),
-    ).rejects.toThrow(/unveränderlich/);
+    ).rejects.toThrow(/unver(?:ä|ae)nderlich/);
     await expect(
       owner.gwgOnboardingInvite.update({
         where: { id: inviteId },
         data: { gwgCheckId: null },
       }),
-    ).rejects.toThrow(/unveränderlich/);
+    ).rejects.toThrow(/unver(?:ä|ae)nderlich/);
     await expect(
       owner.document.update({ where: { id: documentId }, data: { updatedAt: new Date() } }),
     ).resolves.toBeTruthy();

@@ -36,6 +36,7 @@ import {
   UnauthorizedError,
   ForbiddenError,
   canAccessClientTx,
+  accessibleClientsWhereFor,
   inaccessibleClientIdsFor,
   hasStaffPermission,
 } from '../rbac';
@@ -266,5 +267,41 @@ describe('inaccessibleClientIdsFor', () => {
     const where = clientFindMany.mock.calls[0]![0]!.where;
     expect(where).not.toHaveProperty('vertraulich');
     expect(where.responsibilities.none.role.in).toContain('HAUPTBEARBEITER');
+  });
+});
+
+describe('accessibleClientsWhereFor', () => {
+  it('Admin/Partner erhalten keinen zusätzlichen Filter', async () => {
+    const { tx } = makeTx({});
+    await expect(accessibleClientsWhereFor(tx, makeSession(['ADMIN']))).resolves.toEqual({});
+  });
+
+  it('OPEN erlaubt öffentliche Mandanten oder eine eigene Verantwortung', async () => {
+    const { tx } = makeTx({ mode: 'OPEN' });
+    await expect(accessibleClientsWhereFor(tx, makeSession(['STAFF']))).resolves.toEqual({
+      OR: [
+        { vertraulich: false },
+        {
+          responsibilities: {
+            some: {
+              staffId: 's1',
+              role: { in: ['BERUFSTRAEGER', 'HAUPTBEARBEITER'] },
+            },
+          },
+        },
+      ],
+    });
+  });
+
+  it('RESTRICTED filtert positiv auf eigene Verantwortungen', async () => {
+    const { tx } = makeTx({ mode: 'RESTRICTED' });
+    await expect(accessibleClientsWhereFor(tx, makeSession(['STAFF']))).resolves.toEqual({
+      responsibilities: {
+        some: {
+          staffId: 's1',
+          role: { in: ['BERUFSTRAEGER', 'HAUPTBEARBEITER'] },
+        },
+      },
+    });
   });
 });

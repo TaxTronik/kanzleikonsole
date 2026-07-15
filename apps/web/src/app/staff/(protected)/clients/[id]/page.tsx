@@ -378,12 +378,26 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
             );
           })()}
         </div>
-        <Link
-          href={`/staff/clients/${client.id}/edit`}
-          className="btn-primary text-xs py-1.5 shrink-0"
-        >
-          Stammdaten bearbeiten
-        </Link>
+        <div className="flex shrink-0 items-center gap-2">
+          <QuickRequestDialog
+            requestId={randomUUID()}
+            client={{
+              id: client.id,
+              name: client.name,
+              datevNo: client.datevNo,
+              addisonNo: client.addisonNo,
+              allowActive: client.allowActive,
+            }}
+            templates={requestTemplates}
+            formTemplates={requestFormTemplates}
+            templatesLimited={templatesLimited}
+            formTemplatesLimited={formTemplatesLimited}
+            buttonClassName="btn-secondary text-xs py-1.5"
+          />
+          <Link href={`/staff/clients/${client.id}/edit`} className="btn-primary text-xs py-1.5">
+            Stammdaten bearbeiten
+          </Link>
+        </div>
       </div>
 
       {(() => {
@@ -945,22 +959,6 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
                   >
                     Alle Anforderungen →
                   </Link>
-                  {client.allowActive && (
-                    <QuickRequestDialog
-                      requestId={randomUUID()}
-                      client={{
-                        id: client.id,
-                        name: client.name,
-                        datevNo: client.datevNo,
-                        addisonNo: client.addisonNo,
-                      }}
-                      templates={requestTemplates}
-                      formTemplates={requestFormTemplates}
-                      templatesLimited={templatesLimited}
-                      formTemplatesLimited={formTemplatesLimited}
-                      buttonClassName="btn-primary text-xs py-1.5"
-                    />
-                  )}
                 </div>
               </div>
               {client.requests.length === 0 ? (

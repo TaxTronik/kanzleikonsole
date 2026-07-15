@@ -459,6 +459,7 @@ test_smoke_health_rejects_degraded() {
 test_deploy_readiness_rejects_missing_hostports() {
   local out="$TMP_DIR/readiness-no-ports.out"
   if (
+    database_has_gwg_invariants_for_checkout() { return 0; }
     docker() { return 0; }
     deploy_readiness
   ) >"$out" 2>&1; then
@@ -466,6 +467,40 @@ test_deploy_readiness_rejects_missing_hostports() {
   fi
   assert_contains "$out" "Hostports nicht ermittelbar"
   pass "deploy readiness fails closed when host ports are unavailable"
+}
+
+test_deploy_readiness_rejects_gwg_schema_drift() {
+  local out="$TMP_DIR/readiness-gwg-drift.out"
+  if (
+    database_has_gwg_invariants_for_checkout() { return 1; }
+    docker() { test_fail "host ports must not be inspected after GwG schema drift"; }
+    deploy_readiness
+  ) >"$out" 2>&1; then
+    test_fail "deploy_readiness accepted an incomplete GwG protection schema"
+  fi
+  assert_contains "$out" "GwG-Datenbankschutz entspricht nicht dem Migrationsstand"
+  pass "deploy readiness fails closed on GwG schema drift"
+}
+
+test_run_migrations_blocks_incomplete_gwg_schema_before_writer_start() {
+  local out="$TMP_DIR/migrate-gwg-drift.out" steps="$TMP_DIR/migrate-gwg-drift.steps"
+  if (
+    begin_migration_transition() { printf 'pending\n' >>"$steps"; }
+    compose() { printf 'migrate\n' >>"$steps"; }
+    database_has_gwg_invariants_for_checkout() {
+      printf 'gwg-integrity\n' >>"$steps"
+      return 1
+    }
+    run_migrations
+    printf 'writer-start\n' >>"$steps"
+  ) >"$out" 2>&1; then
+    test_fail "run_migrations accepted an incomplete GwG protection schema"
+  fi
+
+  assert_file_equals "$steps" $'pending\nmigrate\ngwg-integrity'
+  assert_contains "$out" "GwG-Datenbankschutz ist unvollstaendig; neue Writer werden nicht aktiviert"
+  assert_not_contains "$steps" "writer-start"
+  pass "migration flow validates GwG guards before any writer can start"
 }
 
 test_backup_manifest_detects_tampering() {
@@ -1043,6 +1078,139 @@ test_manual_gwg_034_resolution_requires_schema_invariants() {
   pass "manual GwG 034 resolution requires the real schema while pre-034 targets remain valid"
 }
 
+test_gwg_identity_invariant_contract_covers_schema_and_guards() {
+  local query="$TMP_DIR/gwg-identity-invariants.sql"
+
+  (
+    compose() {
+      printf '%s\n' "$*" >"$query"
+      printf 'yes\n'
+    }
+    database_has_gwg_identity_invariants
+  ) || test_fail "complete GwG identity invariant probe was rejected"
+
+  assert_contains "$query" "gwg_043_schema_invariants"
+  assert_contains "$query" "identity_assignment_required"
+  assert_contains "$query" "document_set_id"
+  assert_contains "$query" "natural_client_subject_id"
+  assert_contains "$query" "beneficial_owner_subject_id"
+  assert_contains "$query" "representative_subject_id"
+  assert_contains "$query" "identity_assignment_confirmed_at"
+  assert_contains "$query" "identity_assignment_confirmed_by"
+  assert_contains "$query" "public.gwg_representative"
+  assert_contains "$query" "app.guard_gwg_id_document_subject_and_set()"
+  assert_contains "$query" "app.enforce_gwg_document_set_consistency()"
+  assert_contains "$query" "app.gwg_check_has_confirmed_identity(uuid)"
+  assert_contains "$query" "app.enforce_gwg_identity_assignment_on_verification()"
+  assert_contains "$query" "app.invalidate_gwg_beneficial_owner_identity_assignment()"
+  assert_contains "$query" "gwg_id_document_subject_and_set_guard"
+  assert_contains "$query" "gwg_document_set_consistency"
+  assert_contains "$query" "00_gwg_check_identity_verification_guard"
+  assert_contains "$query" "gwg_beneficial_owner_identity_assignment_invalidate"
+
+  if (
+    compose() { printf 'no\n'; }
+    database_has_gwg_identity_invariants
+  ); then
+    test_fail "GwG identity invariant probe accepted a negative database result"
+  fi
+
+  pass "GwG identity invariant contract covers schema, functions and active guards"
+}
+
+test_gwg_044_invariant_requires_immutable_evidence_versions() {
+  local query="$TMP_DIR/gwg-044-invariants.sql"
+
+  (
+    compose() {
+      printf '%s\n' "$*" >"$query"
+      printf 'yes\n'
+    }
+    database_has_gwg_044_invariants
+  ) || test_fail "complete GwG 044 invariant probe was rejected"
+
+  assert_contains "$query" "gwg_044_schema_invariants"
+  assert_contains "$query" "app.block_version_during_gwg_destruction()"
+  assert_contains "$query" "public.\"gwg_id_document\""
+  assert_contains "$query" "app.gwg_destroy_document_id"
+  assert_contains "$query" "authorized_delete"
+  assert_contains "$query" "FOR UPDATE"
+  assert_contains "$query" "document_version_block_gwg_destruction"
+
+  if (
+    compose() { printf 'no\n'; }
+    database_has_gwg_044_invariants
+  ); then
+    test_fail "GwG 044 invariant probe accepted the legacy evidence-version guard"
+  fi
+
+  pass "GwG 044 invariant requires immutable assigned evidence versions"
+}
+
+test_manual_gwg_identity_resolution_requires_schema_invariants() {
+  local target_commit reached_044="$TMP_DIR/gwg-044-recovery-reached"
+  target_commit="$(printf 'c%.0s' {1..40})"
+
+  if (
+    git() {
+      printf '%s\n' \
+        20260801003400_gwg_fail_closed_and_destruction \
+        20260801004300_gwg_identity_subjects_and_document_sets \
+        20260801004400_legacy_gwg_guard_recovery
+    }
+    compose() {
+      if [[ "$*" == *"finished_at IS NULL"* ]]; then
+        printf 'no\n'
+      elif [[ "$*" == *"SELECT migration_name"* ]]; then
+        printf '%s\n' \
+          20260801003400_gwg_fail_closed_and_destruction \
+          20260801004300_gwg_identity_subjects_and_document_sets \
+          20260801004400_legacy_gwg_guard_recovery
+      elif [[ "$*" == *"gwg_034_schema_invariants"* ]]; then
+        printf 'yes\n'
+      elif [[ "$*" == *"gwg_043_schema_invariants"* ]]; then
+        printf 'no\n'
+      else
+        return 1
+      fi
+    }
+    database_is_fully_migrated_for_commit "$target_commit"
+  ); then
+    test_fail "finished GwG 043/044 journal without identity schema invariants was accepted"
+  fi
+
+  (
+    git() {
+      printf '%s\n' \
+        20260801003400_gwg_fail_closed_and_destruction \
+        20260801004300_gwg_identity_subjects_and_document_sets \
+        20260801004400_legacy_gwg_guard_recovery
+    }
+    compose() {
+      if [[ "$*" == *"finished_at IS NULL"* ]]; then
+        printf 'no\n'
+      elif [[ "$*" == *"SELECT migration_name"* ]]; then
+        printf '%s\n' \
+          20260801003400_gwg_fail_closed_and_destruction \
+          20260801004300_gwg_identity_subjects_and_document_sets \
+          20260801004400_legacy_gwg_guard_recovery
+      elif [[ "$*" == *"gwg_034_schema_invariants"* ||
+              "$*" == *"gwg_043_schema_invariants"* ]]; then
+        printf 'yes\n'
+      elif [[ "$*" == *"gwg_044_schema_invariants"* ]]; then
+        printf 'seen\n' >"$reached_044"
+        printf 'yes\n'
+      else
+        return 1
+      fi
+    }
+    database_is_fully_migrated_for_commit "$target_commit"
+  ) || test_fail "complete GwG 043/044 schema invariants were rejected"
+  [[ -s "$reached_044" ]] || test_fail "GwG 044 recovery skipped its version-guard invariant"
+
+  pass "manual GwG 043/044 resolution requires the real identity protection schema"
+}
+
 test_gwg_034_retarget_requires_exact_forward_state() {
   local source_commit old_target_commit new_target_commit other_source_commit
   source_commit="$(printf 'b%.0s' {1..40})"
@@ -1505,6 +1673,8 @@ test_failed_production_restore_also_leaves_writers_stopped
 test_isolated_restore_does_not_stop_production_writers
 test_smoke_health_rejects_degraded
 test_deploy_readiness_rejects_missing_hostports
+test_deploy_readiness_rejects_gwg_schema_drift
+test_run_migrations_blocks_incomplete_gwg_schema_before_writer_start
 test_backup_manifest_detects_tampering
 test_update_backs_up_old_checkout_before_fetch
 test_update_backup_failure_leaves_checkout_untouched
@@ -1523,6 +1693,9 @@ test_migration_transition_retargets_only_verified_gwg_034_recovery
 test_migration_transition_retargets_manually_recovered_legacy_target_before_new_migration
 test_migration_transition_captures_legacy_update_source_commit
 test_manual_gwg_034_resolution_requires_schema_invariants
+test_gwg_identity_invariant_contract_covers_schema_and_guards
+test_gwg_044_invariant_requires_immutable_evidence_versions
+test_manual_gwg_identity_resolution_requires_schema_invariants
 test_gwg_034_retarget_requires_exact_forward_state
 test_compose_writer_passthrough_is_blocked_by_recovery_markers
 test_internal_writer_activation_is_bound_to_exact_contract
