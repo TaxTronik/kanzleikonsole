@@ -575,7 +575,7 @@ export function OnboardingWizard({
             <p className="text-xs text-muted mb-3">
               Nur ankreuzen, was Sie wünschen. Nichts anzukreuzen ist möglich.
             </p>
-            <ConsentFields options={consentOptions} onChange={setConsent} />
+            <ConsentFields options={consentOptions} onChange={setConsent} mode="catalog-only" />
           </div>
 
           <div className="border-t border-default pt-4 space-y-3">

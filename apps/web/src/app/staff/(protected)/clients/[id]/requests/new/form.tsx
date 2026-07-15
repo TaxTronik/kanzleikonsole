@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useId, useState } from 'react';
 import { FileText, LoaderCircle, Sparkles } from 'lucide-react';
+import { DateTimePicker } from '@/components/datetime-picker';
 import {
   createQuickRequestAction,
   createRequestAction,
@@ -52,7 +53,7 @@ interface Props {
 }
 
 function isoLocalForDate(d: Date): string {
-  // Liefert YYYY-MM-DDTHH:mm für <input type="datetime-local"> in lokaler TZ
+  // Liefert den lokalen Picker-Wert im Format YYYY-MM-DDTHH:mm.
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
@@ -335,14 +336,6 @@ export function NewRequestForm({
       )}
       {selectedTemplateId && <input type="hidden" name="templateId" value={selectedTemplateId} />}
       <input type="hidden" name="formTemplateId" value={formTemplateId} />
-      <input
-        type="hidden"
-        name="dueAt"
-        value={
-          dueAt && !Number.isNaN(new Date(dueAt).getTime()) ? new Date(dueAt).toISOString() : ''
-        }
-      />
-
       {templates.length > 0 && (
         <div className="rounded-md border border-brand-200 bg-brand-50/30 p-3">
           <label className="label flex items-center gap-1.5" htmlFor="template">
@@ -445,12 +438,12 @@ export function NewRequestForm({
           <label className="label" htmlFor="dueAt">
             Fällig am
           </label>
-          <input
+          <DateTimePicker
             id="dueAt"
-            type="datetime-local"
+            name="dueAt"
             value={dueAt}
-            onChange={(e) => setDueAt(e.target.value)}
-            className="input"
+            onChange={setDueAt}
+            output="utc"
             disabled={disabled || isPending}
           />
         </div>

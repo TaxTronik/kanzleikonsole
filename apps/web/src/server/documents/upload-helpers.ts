@@ -15,7 +15,11 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import type { TxClient } from '@taxtronik/db';
-import { MAX_UPLOAD_BYTES, type CommitDocumentResult } from '@taxtronik/storage';
+import {
+  MAX_UPLOAD_BYTES,
+  type CommitDocumentResult,
+  type PreparedBytesCommit,
+} from '@taxtronik/storage';
 import { prismaBytes } from '@/server/db/prisma-bytes';
 import { log } from '@/server/logger';
 
@@ -122,4 +126,78 @@ export async function createDocumentWithVersion(
     },
   });
   return { document, version };
+}
+
+/**
+ * Persistiert die auffindbare Upload-Absicht vor einem geschützten S3-Write.
+ * Der feste Bucket/Key und der erwartete Hash bleiben dadurch auch bei einem
+ * Prozessabbruch oder einer später zurückgerollten Fachtransaktion erhalten.
+ */
+export async function createPendingDocumentWithVersion(
+  tx: TxClient,
+  opts: {
+    documentData: Prisma.DocumentUncheckedCreateInput;
+    prepared: PreparedBytesCommit;
+    createdById: string;
+  },
+) {
+  const document = await tx.document.create({
+    data: {
+      ...opts.documentData,
+      retentionUntil: opts.prepared.retentionUntil,
+    },
+  });
+  const version = await tx.documentVersion.create({
+    data: {
+      documentId: document.id,
+      versionNo: 1,
+      storageBucket: opts.prepared.targetBucket,
+      storageKey: opts.prepared.targetKey,
+      storageVersionId: null,
+      sha256: prismaBytes(opts.prepared.sha256),
+      sizeBytes: opts.prepared.sizeBytes,
+      // Die PENDING-Zeile ist bereits immutable: Bucket, Key und Hash dürfen
+      // zwischen Journal und Object-Store-Write nie umgebogen werden. Eine DB-
+      // Constraint/Trigger-Ausnahme erlaubt ausschließlich den engen Übergang
+      // PENDING/null -> CLEAN/storageVersionId bei identischer Storage-Identität.
+      immutable: opts.prepared.immutable,
+      scanStatus: 'PENDING',
+      scanCompletedAt: null,
+      createdById: opts.createdById,
+    },
+  });
+  return { document, version };
+}
+
+/** Finalisiert ausschließlich genau die zuvor persistierte PENDING-Version. */
+export async function finalizePendingDocumentVersion(
+  tx: TxClient,
+  opts: {
+    documentId: string;
+    versionId: string;
+    commit: CommitDocumentResult;
+  },
+): Promise<void> {
+  if (opts.commit.immutable && !opts.commit.storageVersionId) {
+    throw new Error('DOCUMENT_UPLOAD_VERSION_MISSING');
+  }
+  const finalized = await tx.documentVersion.updateMany({
+    where: {
+      id: opts.versionId,
+      documentId: opts.documentId,
+      storageBucket: opts.commit.targetBucket,
+      storageKey: opts.commit.targetKey,
+      scanStatus: 'PENDING',
+      immutable: opts.commit.immutable,
+    },
+    data: {
+      storageVersionId: opts.commit.storageVersionId,
+      immutable: opts.commit.immutable,
+      scanStatus: 'CLEAN',
+      scanCompletedAt: new Date(),
+    },
+  });
+  if (finalized.count !== 1) {
+    throw new Error('DOCUMENT_UPLOAD_FINALIZE_CONFLICT');
+  }
 }

@@ -246,10 +246,52 @@ describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
           sha256: Buffer.alloc(32, 4),
           sizeBytes: 42n,
           immutable: true,
+          scanStatus: 'CLEAN',
+          scanCompletedAt: new Date(),
           createdById: staffId,
         },
       }),
     ).rejects.toThrow(/document_version_locked_storage_version_check|check constraint/i);
+  });
+
+  it('erlaubt nur den engen immutable PENDING-zu-CLEAN-Abschluss und friert die VersionId ein', async () => {
+    await expect(
+      owner.$transaction(async (tx) => {
+        const pending = await tx.documentVersion.create({
+          data: {
+            documentId: nullRetentionDocumentId,
+            versionNo: 1,
+            storageBucket: 'gwg-test',
+            storageKey: `gwg-test/${nullRetentionDocumentId}/pending-intent`,
+            storageVersionId: null,
+            sha256: Buffer.alloc(32, 5),
+            sizeBytes: 43n,
+            immutable: true,
+            scanStatus: 'PENDING',
+            scanCompletedAt: null,
+            createdById: staffId,
+          },
+        });
+
+        const finalized = await tx.documentVersion.update({
+          where: { id: pending.id },
+          data: {
+            storageVersionId: 'pending-intent-version-1',
+            scanStatus: 'CLEAN',
+            scanCompletedAt: new Date(),
+          },
+        });
+        expect(finalized.storageVersionId).toBe('pending-intent-version-1');
+        expect(finalized.scanStatus).toBe('CLEAN');
+
+        // Der absichtlich letzte, verbotene Schreibversuch bricht die ganze
+        // Testtransaktion ab. So bleibt keine immutable Testversion zurueck.
+        await tx.documentVersion.update({
+          where: { id: pending.id },
+          data: { storageVersionId: 'pending-intent-version-2' },
+        });
+      }),
+    ).rejects.toThrow(/immutable|restrict|dürfen nicht geändert/i);
   });
 
   it('blockiert direkte Löschung und Funktionsaufruf ohne protokollierte Absicht', async () => {

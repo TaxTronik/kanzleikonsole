@@ -10,6 +10,7 @@ const ALL_DONE: SetupState = {
   sellerComplete: true,
   smtpConfigured: true,
   modulesConfigured: true,
+  privacyComplete: true,
   activeClientCount: 1,
   contactCount: 1,
 };
@@ -20,12 +21,13 @@ const NONE_DONE: SetupState = {
   sellerComplete: false,
   smtpConfigured: false,
   modulesConfigured: false,
+  privacyComplete: false,
   activeClientCount: 0,
   contactCount: 0,
 };
 
 describe('buildSetupItems', () => {
-  it('frische Installation → alle 7 Punkte offen, in Einrichtungs-Reihenfolge', () => {
+  it('frische Installation → alle 8 Punkte offen, in Einrichtungs-Reihenfolge', () => {
     const items = buildSetupItems(NONE_DONE);
     expect(items.map((i) => i.key)).toEqual([
       'branding',
@@ -33,6 +35,7 @@ describe('buildSetupItems', () => {
       'seller',
       'smtp',
       'modules',
+      'privacy',
       'client',
       'contacts',
     ]);
@@ -53,6 +56,7 @@ describe('buildSetupItems', () => {
       [{ sellerComplete: false }, 'seller'],
       [{ smtpConfigured: false }, 'smtp'],
       [{ modulesConfigured: false }, 'modules'],
+      [{ privacyComplete: false }, 'privacy'],
       [{ activeClientCount: 0 }, 'client'],
       [{ contactCount: 0 }, 'contacts'],
     ];

@@ -1,9 +1,8 @@
 ﻿'use client';
 
 import { useState, useRef, useEffect, type ReactNode } from 'react';
-import { useRouter } from 'next/navigation';
 import { GridLayout, useContainerWidth, type Layout, type LayoutItem } from 'react-grid-layout';
-import { Plus, Settings2, RotateCcw, Check, X } from 'lucide-react';
+import { Plus, Settings2, RotateCcw, Check, X, Loader2 } from 'lucide-react';
 import {
   WIDGETS,
   WIDGET_BY_TYPE,
@@ -12,7 +11,12 @@ import {
   type LayoutWidget,
   type WidgetType,
 } from '@/server/dashboard/widgets';
-import { saveDashboardLayoutAction, resetDashboardLayoutAction } from './actions';
+import {
+  addDashboardWidgetAction,
+  saveDashboardLayoutAction,
+  resetDashboardLayoutAction,
+} from './actions';
+import { createDashboardMutationQueue } from './mutation-queue';
 
 // IDs für neu hinzugefügte Widgets. Wird nur in Click-Handlern aufgerufen
 // (kein Render-Pfad → keine Hydration-Differenz möglich). crypto.randomUUID
@@ -70,9 +74,10 @@ export function DashboardGrid({
   initialLayout: DashboardLayout;
   initialRendered: RenderedWidget[];
 }) {
-  const router = useRouter();
   const [editMode, setEditMode] = useState(false);
   const [widgets, setWidgets] = useState<LayoutWidget[]>(initialLayout.widgets);
+  const [renderedWidgets, setRenderedWidgets] = useState(initialRendered);
+  const [pendingWidgetIds, setPendingWidgetIds] = useState<Set<string>>(() => new Set());
   // Synchroner Spiegel des Widget-States: Click-Handler lesen die aktuellste
   // Liste auch bei schnellen Mehrfach-Klicks (vor dem nächsten Render), ohne
   // Seitenwirkungen in setWidgets-Updatern absetzen zu müssen. Fixt das
@@ -90,10 +95,19 @@ export function DashboardGrid({
   // `transition`-CSS sonst einen Frame vor der Suppression-Klasse ankommen).
   // Danach auf true → Drag/Resize animieren wieder normal.
   const [settled, setSettled] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const resettingRef = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Layout-Actions schreiben jeweils einen vollstaendigen Snapshot. Deshalb
+  // muessen Add/Remove/Drag in Aufrufreihenfolge beim Server ankommen: Bei
+  // parallelen Requests koennte sonst ein langsamer alter Snapshot einen
+  // bereits gespeicherten neueren Stand wieder ueberschreiben.
+  const [mutationQueue] = useState(createDashboardMutationQueue);
   const { width, containerRef, mounted } = useContainerWidth();
 
-  const renderById = new Map(initialRendered.map((r) => [r.widget.id, r.node]));
+  const renderById = new Map(
+    renderedWidgets.map((rendered) => [rendered.widget.id, rendered.node]),
+  );
 
   useEffect(() => {
     return () => {
@@ -107,16 +121,26 @@ export function DashboardGrid({
     return () => cancelAnimationFrame(id);
   }, [mounted]);
 
-  function persist(next: LayoutWidget[]) {
+  function enqueueMutation(task: () => Promise<void>): Promise<void> {
+    return mutationQueue.enqueue(task);
+  }
+
+  function persist() {
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(async () => {
-      const r = await saveDashboardLayoutAction({ version: 2, widgets: next });
-      if (!r.ok) setError(r.error ?? 'Fehler beim Speichern.');
+    saveTimer.current = setTimeout(() => {
+      void enqueueMutation(async () => {
+        // Erst bei Ausfuehrung lesen: Waerend des Debounce oder einer zuvor
+        // laufenden Add-Action kann das Layout bereits weitergeaendert sein.
+        const snapshot = [...widgetsRef.current];
+        const r = await saveDashboardLayoutAction({ version: 2, widgets: snapshot });
+        if (!r.ok) setError(r.error ?? 'Fehler beim Speichern.');
+      });
     }, 600);
   }
 
   function onLayoutChange(next: Layout) {
     setWidgets((current) => {
+      if (resettingRef.current) return current;
       const byId = new Map(current.map((w) => [w.id, w]));
       const updated: LayoutWidget[] = [];
       for (const l of next) {
@@ -131,12 +155,16 @@ export function DashboardGrid({
           const c = current[i];
           return c && c.id === u.id && c.x === u.x && c.y === u.y && c.w === u.w && c.h === u.h;
         });
-      if (!same && editMode) persist(updated);
+      if (!same && editMode) {
+        widgetsRef.current = updated;
+        persist();
+      }
       return updated;
     });
   }
 
   function add(type: WidgetType) {
+    if (resettingRef.current) return;
     // Gegen veraltete Closures: gegen den synchronen Ref prüfen, nicht gegen
     // den Render-Snapshot `widgets` (sonst verschwinden Widgets bei schnellen
     // Mehrfach-Klicks und tauchen wieder als hinzufügbar auf).
@@ -144,39 +172,84 @@ export function DashboardGrid({
     if (current.some((w) => w.type === type)) return;
     const def = DEFAULT_SIZE[type];
     const pos = findFreeSlot(current, def.w, def.h);
-    const next: LayoutWidget[] = [
-      ...current,
-      { id: uid(), type, x: pos.x, y: pos.y, w: def.w, h: def.h },
-    ];
+    const widget: LayoutWidget = { id: uid(), type, x: pos.x, y: pos.y, w: def.w, h: def.h };
+    const next: LayoutWidget[] = [...current, widget];
     widgetsRef.current = next;
     setWidgets(next);
-    // Widgets sind server-gerendert — sofort speichern + Server neu laden,
-    // damit der neue Widget-Knoten ohne manuellen Reload an der gefundenen
-    // Position erscheint (vorher tauchte er erst nach Reload auf).
-    void saveDashboardLayoutAction({ version: 2, widgets: next })
-      .then((r) => {
-        if (!r.ok) setError(r.error ?? 'Fehler beim Speichern.');
-        router.refresh();
+    setPendingWidgetIds((pending) => new Set(pending).add(widget.id));
+    void enqueueMutation(async () => {
+      const currentWidget = widgetsRef.current.find((entry) => entry.id === widget.id);
+      if (!currentWidget) return;
+      const r = await addDashboardWidgetAction(
+        { version: 2, widgets: [...widgetsRef.current] },
+        widget.id,
+      );
+      if (!r.ok || !r.rendered) {
+        setError(r.error ?? 'Fehler beim Speichern.');
+        const rolledBack = widgetsRef.current.filter((entry) => entry.id !== widget.id);
+        widgetsRef.current = rolledBack;
+        setWidgets(rolledBack);
+        return;
+      }
+      setRenderedWidgets((currentRendered) => [
+        ...currentRendered.filter((entry) => entry.widget.id !== widget.id),
+        r.rendered!,
+      ]);
+    })
+      .catch(() => {
+        setError('Fehler beim Speichern — bitte erneut versuchen.');
+        const rolledBack = widgetsRef.current.filter((entry) => entry.id !== widget.id);
+        widgetsRef.current = rolledBack;
+        setWidgets(rolledBack);
       })
-      .catch(() => setError('Fehler beim Speichern — bitte erneut versuchen.'));
+      .finally(() => {
+        setPendingWidgetIds((pending) => {
+          const nextPending = new Set(pending);
+          nextPending.delete(widget.id);
+          return nextPending;
+        });
+      });
   }
 
   function remove(id: string) {
+    if (resettingRef.current) return;
     const current = widgetsRef.current;
     const next = current.filter((w) => w.id !== id);
     widgetsRef.current = next;
     setWidgets(next);
-    persist(next);
+    setRenderedWidgets((rendered) => rendered.filter((entry) => entry.widget.id !== id));
+    persist();
   }
 
   async function reset() {
+    if (resettingRef.current) return;
     if (!confirm('Standard-Layout wiederherstellen?')) return;
-    const r = await resetDashboardLayoutAction();
-    if (!r.ok) setError(r.error ?? 'Fehler.');
-    else window.location.reload();
+    resettingRef.current = true;
+    setResetting(true);
+    setEditMode(false);
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    try {
+      await enqueueMutation(async () => {
+        const r = await resetDashboardLayoutAction();
+        if (!r.ok) {
+          resettingRef.current = false;
+          setResetting(false);
+          setError(r.error ?? 'Fehler.');
+          return;
+        }
+        window.location.reload();
+      });
+    } catch {
+      resettingRef.current = false;
+      setResetting(false);
+      setError('Standard-Layout konnte nicht wiederhergestellt werden.');
+    }
   }
 
-  const visible = widgets.filter((w) => renderById.has(w.id));
+  const visible = widgets.filter((w) => renderById.has(w.id) || pendingWidgetIds.has(w.id));
   const rglLayout: LayoutItem[] = visible.map((w) => {
     const def = DEFAULT_SIZE[w.type];
     return {
@@ -199,6 +272,7 @@ export function DashboardGrid({
             onClick={reset}
             className="btn-secondary text-xs"
             title="Auf Standard zurücksetzen"
+            disabled={resetting}
           >
             <RotateCcw className="h-3.5 w-3.5" />
             Standard
@@ -254,7 +328,13 @@ export function DashboardGrid({
                     <X className="h-3 w-3" />
                   </button>
                 )}
-                <div className="h-full widget-shell">{renderById.get(w.id)}</div>
+                <div className="h-full widget-shell">
+                  {renderById.get(w.id) ?? (
+                    <div className="card flex h-full items-center justify-center gap-2 text-sm text-muted">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Widget wird geladen …
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
           </GridLayout>

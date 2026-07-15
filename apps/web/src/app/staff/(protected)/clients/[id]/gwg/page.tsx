@@ -17,6 +17,8 @@ import {
 } from '@/components/gwg-submission-summary';
 import { LegalEntityDetailsForm } from './legal-entity-details-form';
 import { BeneficialOwnerForm } from './beneficial-owner-form';
+import { GwgIdentitySubjectsProvider } from './identity-subjects-context';
+import { GwgEditStateProvider, GwgLiveStatusBadge } from './edit-state-context';
 import { StartCheckCycleForm } from './start-check-cycle-form';
 import {
   identitySubjectOptions,
@@ -35,14 +37,6 @@ import {
   gwgLegalEntityRevision,
   gwgRiskRevision,
 } from '@/server/gwg/revisions';
-
-const statusLabels: Record<string, string> = {
-  DRAFT: 'Entwurf',
-  IN_REVIEW: 'In Prüfung',
-  VERIFIED: 'Verifiziert',
-  REJECTED: 'Abgelehnt',
-  EXPIRED: 'Abgelaufen',
-};
 
 const idTypeLabels: Record<string, string> = {
   PERSONALAUSWEIS: 'Personalausweis',
@@ -124,7 +118,7 @@ export default async function GwgPage({
           }),
           tx.clientContact.findMany({
             where: { clientId, active: true },
-            select: { fullName: true, email: true },
+            select: { id: true, fullName: true, email: true, role: true },
             orderBy: { fullName: 'asc' },
           }),
           tx.clientResponsibility.findFirst({
@@ -292,205 +286,318 @@ export default async function GwgPage({
   };
 
   return (
-    <div className="p-8 max-w-4xl">
-      <div className="flex items-start gap-4 mb-6">
-        <Link
-          href={
-            from === 'onboarding'
-              ? `/staff/clients/onboarding/${client.id}?step=gwg`
-              : `/staff/clients/${client.id}`
-          }
-          className="text-disabled hover:text-secondary mt-1"
-          aria-label={from === 'onboarding' ? 'Zurück zum Onboarding' : 'Zurück zum Mandanten'}
-          title={from === 'onboarding' ? 'Zurück zum Onboarding' : 'Zurück zum Mandanten'}
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Link>
-        <div className="flex-1">
-          <div className="flex items-center gap-3 mb-1">
-            <h1 className="text-2xl font-bold text-primary">GwG-Prüfung</h1>
-            {check && (
-              <span
-                className={
-                  check.status === 'VERIFIED'
-                    ? 'badge-green'
-                    : check.status === 'REJECTED' || check.status === 'EXPIRED'
-                      ? 'badge-red'
-                      : 'badge-yellow'
-                }
-              >
-                {statusLabels[check.status]}
-              </span>
-            )}
+    <GwgEditStateProvider initialStatus={check?.status ?? 'DRAFT'}>
+      <div className="p-8 max-w-4xl">
+        <div className="flex items-start gap-4 mb-6">
+          <Link
+            href={
+              from === 'onboarding'
+                ? `/staff/clients/onboarding/${client.id}?step=gwg`
+                : `/staff/clients/${client.id}`
+            }
+            className="text-disabled hover:text-secondary mt-1"
+            aria-label={from === 'onboarding' ? 'Zurück zum Onboarding' : 'Zurück zum Mandanten'}
+            title={from === 'onboarding' ? 'Zurück zum Onboarding' : 'Zurück zum Mandanten'}
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Link>
+          <div className="flex-1">
+            <div className="flex items-center gap-3 mb-1">
+              <h1 className="text-2xl font-bold text-primary">GwG-Prüfung</h1>
+              {check && <GwgLiveStatusBadge />}
+            </div>
+            <p className="text-muted text-sm">{client.name}</p>
           </div>
-          <p className="text-muted text-sm">{client.name}</p>
         </div>
-      </div>
 
-      <div className="mb-6">
-        <InviteSection
-          clientId={client.id}
-          clientName={client.name}
-          contacts={contacts}
-          invites={invites.map((i) => ({
-            id: i.id,
-            inviteName: i.inviteName,
-            inviteEmail: i.inviteEmail,
-            status: i.status,
-            createdAt: i.createdAt.toISOString(),
-            expiresAt: i.expiresAt.toISOString(),
-            submittedAt: i.submittedAt?.toISOString() ?? null,
-          }))}
-        />
-      </div>
-
-      <div className="mb-6">
-        <GwgSubmissionSummary data={submittedSummary} />
-      </div>
-
-      {!check ? (
-        <div className="card p-8 text-center">
-          <ShieldCheck className="h-12 w-12 text-disabled mx-auto mb-4" />
-          <h2 className="text-lg font-semibold text-primary mb-2">Noch keine GwG-Prüfung</h2>
-          <p className="text-sm text-muted mb-6">
-            Sie können die Prüfung selbst starten — oder den Mandanten oben per Einladung einladen,
-            die Stammdaten und Ausweise selbst hochzuladen.
-          </p>
-          <StartCheckCycleForm clientId={client.id} status={null} />
+        <div className="mb-6">
+          <InviteSection
+            clientId={client.id}
+            clientName={client.name}
+            contacts={contacts}
+            invites={invites.map((i) => ({
+              id: i.id,
+              inviteName: i.inviteName,
+              inviteEmail: i.inviteEmail,
+              status: i.status,
+              createdAt: i.createdAt.toISOString(),
+              expiresAt: i.expiresAt.toISOString(),
+              submittedAt: i.submittedAt?.toISOString() ?? null,
+            }))}
+          />
         </div>
-      ) : (
-        <div className="space-y-6">
-          {/* Status-Banner */}
-          {check.status === 'VERIFIED' && check.validUntil && (
-            <div className="rounded-md bg-green-50 p-4 border border-green-200">
-              <div className="flex items-start gap-3">
-                <ShieldCheck className="h-5 w-5 text-green-600 mt-0.5" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-green-900">Mandant ist verifiziert.</p>
-                  <p className="text-xs text-green-700 mt-1">
-                    Risiko: <strong>{check.riskLevel}</strong> · Gültig bis{' '}
-                    {fmtDateShort(check.validUntil)}
-                  </p>
-                  {from === 'onboarding' && (
-                    <Link
-                      href={`/staff/clients/onboarding/${client.id}?step=poa`}
-                      className="btn-primary text-xs mt-3 inline-flex"
-                    >
-                      Im Onboarding weiter
-                    </Link>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-          {check.status === 'REJECTED' && (
-            <div className="rounded-md bg-red-50 p-4 border border-red-200">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-red-900">Prüfung abgelehnt.</p>
-                  {check.rejectedReason && (
-                    <p className="text-xs text-red-700 mt-1">Begründung: {check.rejectedReason}</p>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-          {check.status === 'EXPIRED' && (
-            <div className="rounded-md border border-amber-200 bg-amber-50 p-4">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-amber-900">Prüfung ist abgelaufen.</p>
-                  <p className="text-xs text-amber-700 mt-1">
-                    Für die erneute Freigabe ist ein aktueller Prüfsnapshot erforderlich.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
 
-          {(check.status === 'VERIFIED' ||
-            check.status === 'REJECTED' ||
-            check.status === 'EXPIRED') && (
-            <section className="card p-5">
-              <h2 className="text-sm font-semibold text-primary mb-1">
-                {check.status === 'REJECTED' ? 'Korrekturprüfung' : 'Wiederholungsprüfung'}
-              </h2>
-              <p className="text-xs text-muted mb-4">
-                Noch aufbewahrte Identifizierungsangaben werden in einen neuen, bearbeitbaren
-                Entwurf übernommen. Gelöschte oder zur Vernichtung vorgemerkte Nachweise werden
-                nicht erneut verknüpft. Die alte Pflichtaufzeichnung bleibt unverändert; die
-                Risikobewertung ist erneut durchzuführen.
-              </p>
-              <StartCheckCycleForm clientId={client.id} checkId={check.id} status={check.status} />
-            </section>
-          )}
+        <div className="mb-6">
+          <GwgSubmissionSummary data={submittedSummary} />
+        </div>
 
-          {/* Schritt 1: Risikobewertung */}
-          <section className="card p-6">
-            <h2 className="text-lg font-semibold text-primary mb-1">1. Risikobewertung</h2>
-            <p className="text-sm text-muted mb-4">
-              Antworten basierend auf Branche, Sitz, PEP-Status und Geschäftsmodell.
+        {!check ? (
+          <div className="card p-8 text-center">
+            <ShieldCheck className="h-12 w-12 text-disabled mx-auto mb-4" />
+            <h2 className="text-lg font-semibold text-primary mb-2">Noch keine GwG-Prüfung</h2>
+            <p className="text-sm text-muted mb-6">
+              Sie können die Prüfung selbst starten — oder den Mandanten oben per Einladung
+              einladen, die Stammdaten und Ausweise selbst hochzuladen.
             </p>
-            <RiskAssessmentForm
-              checkId={check.id}
-              clientId={client.id}
-              factors={DEFAULT_FACTORS}
-              currentAnswers={(check.riskAnswers as Record<string, number>) ?? {}}
-              currentScore={check.riskScore ?? null}
-              currentLevel={check.riskLevel ?? null}
-              currentRevision={gwgRiskRevision(check)}
-              disabled={
-                check.status === 'VERIFIED' ||
-                check.status === 'REJECTED' ||
-                check.status === 'EXPIRED'
-              }
-            />
-          </section>
+            <StartCheckCycleForm clientId={client.id} status={null} />
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Status-Banner */}
+            {check.status === 'VERIFIED' && check.validUntil && (
+              <div className="rounded-md bg-green-50 p-4 border border-green-200">
+                <div className="flex items-start gap-3">
+                  <ShieldCheck className="h-5 w-5 text-green-600 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-green-900">Mandant ist verifiziert.</p>
+                    <p className="text-xs text-green-700 mt-1">
+                      Risiko: <strong>{check.riskLevel}</strong> · Gültig bis{' '}
+                      {fmtDateShort(check.validUntil)}
+                    </p>
+                    {from === 'onboarding' && (
+                      <Link
+                        href={`/staff/clients/onboarding/${client.id}?step=poa`}
+                        className="btn-primary text-xs mt-3 inline-flex"
+                      >
+                        Im Onboarding weiter
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+            {check.status === 'REJECTED' && (
+              <div className="rounded-md bg-red-50 p-4 border border-red-200">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-red-900">Prüfung abgelehnt.</p>
+                    {check.rejectedReason && (
+                      <p className="text-xs text-red-700 mt-1">
+                        Begründung: {check.rejectedReason}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+            {check.status === 'EXPIRED' && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-4">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-amber-900">Prüfung ist abgelaufen.</p>
+                    <p className="text-xs text-amber-700 mt-1">
+                      Für die erneute Freigabe ist ein aktueller Prüfsnapshot erforderlich.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
-          {isLegalEntity && (
+            {(check.status === 'VERIFIED' ||
+              check.status === 'REJECTED' ||
+              check.status === 'EXPIRED') && (
+              <section className="card p-5">
+                <h2 className="text-sm font-semibold text-primary mb-1">
+                  {check.status === 'REJECTED' ? 'Korrekturprüfung' : 'Wiederholungsprüfung'}
+                </h2>
+                <p className="text-xs text-muted mb-4">
+                  Noch aufbewahrte Identifizierungsangaben werden in einen neuen, bearbeitbaren
+                  Entwurf übernommen. Gelöschte oder zur Vernichtung vorgemerkte Nachweise werden
+                  nicht erneut verknüpft. Die alte Pflichtaufzeichnung bleibt unverändert; die
+                  Risikobewertung ist erneut durchzuführen.
+                </p>
+                <StartCheckCycleForm
+                  clientId={client.id}
+                  checkId={check.id}
+                  status={check.status}
+                />
+              </section>
+            )}
+
+            {/* Schritt 1: Risikobewertung */}
             <section className="card p-6">
-              <h2 className="text-lg font-semibold text-primary mb-1">
-                2. Rechtsträger und Vertretung
-              </h2>
+              <h2 className="text-lg font-semibold text-primary mb-1">1. Risikobewertung</h2>
               <p className="text-sm text-muted mb-4">
-                Pflichtangaben nach § 11 Abs. 4 Nr. 2 GwG. Zusätzlich sind unten der
-                Register-/Gründungsnachweis und der Ausweis mindestens einer vertretungsberechtigten
-                Person zuzuordnen. Ein Transparenzregister-Auszug ist nur im Registerfall
-                erforderlich.
+                Antworten basierend auf Branche, Sitz, PEP-Status und Geschäftsmodell.
               </p>
-              <LegalEntityDetailsForm
+              <RiskAssessmentForm
                 checkId={check.id}
                 clientId={client.id}
-                current={{
-                  legalForm: check.legalForm,
-                  registerNumber: check.registerNumber,
-                  registerAuthority: check.registerAuthority,
-                  noRegisterEntry: check.noRegisterEntry,
-                  representativeNames: check.representativeNames,
-                  ownershipStructureNotes: check.ownershipStructureNotes,
-                }}
-                currentRevision={gwgLegalEntityRevision(check)}
+                factors={DEFAULT_FACTORS}
+                currentAnswers={(check.riskAnswers as Record<string, number>) ?? {}}
+                currentScore={check.riskScore ?? null}
+                currentLevel={check.riskLevel ?? null}
+                currentRevision={gwgRiskRevision(check)}
                 disabled={
                   check.status === 'VERIFIED' ||
                   check.status === 'REJECTED' ||
                   check.status === 'EXPIRED'
                 }
               />
+            </section>
 
-              <div className="mt-6 border-t border-default pt-5">
-                <div className="mb-3">
+            <GwgIdentitySubjectsProvider initialOptions={subjectOptions}>
+              {isLegalEntity && (
+                <section className="card p-6">
+                  <h2 className="text-lg font-semibold text-primary mb-1">
+                    2. Rechtsträger und Vertretung
+                  </h2>
+                  <p className="text-sm text-muted mb-4">
+                    Pflichtangaben nach § 11 Abs. 4 Nr. 2 GwG. Zusätzlich sind unten der
+                    Register-/Gründungsnachweis und der Ausweis mindestens einer
+                    vertretungsberechtigten Person zuzuordnen. Ein Transparenzregister-Auszug ist
+                    nur im Registerfall erforderlich.
+                  </p>
+                  <LegalEntityDetailsForm
+                    checkId={check.id}
+                    clientId={client.id}
+                    current={{
+                      legalForm: check.legalForm,
+                      registerNumber: check.registerNumber,
+                      registerAuthority: check.registerAuthority,
+                      noRegisterEntry: check.noRegisterEntry,
+                      representatives: check.representatives.map((representative) => ({
+                        id: representative.id,
+                        fullName: representative.fullName,
+                        position: representative.position,
+                      })),
+                      ownershipStructureNotes: check.ownershipStructureNotes,
+                    }}
+                    knownPeople={[
+                      ...contacts.map((contact) => ({
+                        key: `contact:${contact.id}`,
+                        fullName: contact.fullName,
+                        sourceLabel: contact.role?.trim() || 'Mandantenkontakt',
+                      })),
+                      ...check.beneficialOwners.map((owner) => ({
+                        key: `owner:${owner.id}`,
+                        fullName: owner.fullName,
+                        sourceLabel: 'Wirtschaftlich berechtigt',
+                      })),
+                    ]}
+                    currentRevision={gwgLegalEntityRevision(check)}
+                    disabled={
+                      check.status === 'VERIFIED' ||
+                      check.status === 'REJECTED' ||
+                      check.status === 'EXPIRED'
+                    }
+                  />
+
+                  <div className="mt-6 border-t border-default pt-5">
+                    <div className="mb-3">
+                      <div>
+                        <h3 className="text-sm font-semibold text-primary">
+                          Rechtsträgernachweise
+                        </h3>
+                        <p className="text-xs text-muted mt-1">
+                          Register-/Gründungsnachweis, gegebenenfalls Transparenzregister und
+                          Vertretungsvollmachten gehören hierher — ohne Ausweisnummer oder
+                          Gültigkeitsdatum.
+                        </p>
+                      </div>
+                    </div>
+                    <GwgDocumentList documents={entityDocuments ?? []} />
+                    {check.status !== 'VERIFIED' &&
+                      check.status !== 'REJECTED' &&
+                      check.status !== 'EXPIRED' && (
+                        <AddIdDocumentForm
+                          checkId={check.id}
+                          clientId={client.id}
+                          clientDocuments={selectableDocuments}
+                          variant="entity"
+                        />
+                      )}
+                  </div>
+                </section>
+              )}
+
+              {/* Schritt 2: Wirtschaftlich Berechtigte */}
+              <section className="card p-6">
+                <h2 className="text-lg font-semibold text-primary mb-1">
+                  {isLegalEntity ? '3' : '2'}. Wirtschaftlich Berechtigte
+                </h2>
+                <p className="text-sm text-muted mb-4">
+                  Personen mit mehr als 25 % Anteil oder vergleichbarer Kontrolle (§ 3 GwG).
+                </p>
+
+                {check.beneficialOwners.length > 0 && (
+                  <ul className="divide-y divide-border-subtle mb-4 border border-default rounded-md">
+                    {check.beneficialOwners.map((o) => (
+                      <li key={o.id} className="px-4 py-3 flex items-center justify-between">
+                        {check.status === 'DRAFT' || check.status === 'IN_REVIEW' ? (
+                          <BeneficialOwnerForm
+                            ownerId={o.id}
+                            checkId={check.id}
+                            clientId={client.id}
+                            value={{
+                              fullName: o.fullName,
+                              birthDate: o.birthDate?.toISOString().slice(0, 10) ?? '',
+                              birthPlace: o.birthPlace ?? '',
+                              residence: o.residence ?? '',
+                              nationality: o.nationality ?? '',
+                              ownershipPct: o.ownershipPct?.toString() ?? '',
+                              isPep: o.isPep,
+                            }}
+                            revision={gwgBeneficialOwnerRevision(o)}
+                          />
+                        ) : (
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-primary">{o.fullName}</span>
+                              {o.isPep && <span className="badge-red">PEP</span>}
+                            </div>
+                            <p className="text-xs text-muted">
+                              {o.ownershipPct ? `${Number(o.ownershipPct).toFixed(2)} % · ` : ''}
+                              {o.nationality ?? ''}
+                              {o.residence ? ` · ${o.residence}` : ''}
+                            </p>
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {check.status !== 'VERIFIED' &&
+                  check.status !== 'REJECTED' &&
+                  check.status !== 'EXPIRED' && (
+                    <AddBeneficialOwnerForm checkId={check.id} clientId={client.id} />
+                  )}
+              </section>
+
+              {/* Schritt 3: Identitätsdokumente */}
+              <section className="card p-6">
+                <div className="mb-4">
                   <div>
-                    <h3 className="text-sm font-semibold text-primary">Rechtsträgernachweise</h3>
-                    <p className="text-xs text-muted mt-1">
-                      Register-/Gründungsnachweis, gegebenenfalls Transparenzregister und
-                      Vertretungsvollmachten gehören hierher — ohne Ausweisnummer oder
-                      Gültigkeitsdatum.
+                    <h2 className="text-lg font-semibold text-primary mb-1">
+                      {isLegalEntity ? '4' : '3'}. Identitätsdokumente
+                    </h2>
+                    <p className="text-sm text-muted">
+                      Vorder- und Rückseite gemeinsam ansehen, die erfasste Person eindeutig
+                      zuordnen und die ausgelesenen Angaben direkt darunter korrigieren oder
+                      bestätigen.
                     </p>
                   </div>
                 </div>
-                <GwgDocumentList documents={entityDocuments ?? []} />
+
+                <IdentityDocumentReview
+                  checkId={check.id}
+                  clientId={client.id}
+                  groups={identityDocumentGroups}
+                  subjectOptions={subjectOptions}
+                  clientDocuments={selectableDocuments}
+                  grandfathered={
+                    check.status === 'VERIFIED' && check.identityAssignmentRequired === false
+                  }
+                  disabled={
+                    check.status === 'VERIFIED' ||
+                    check.status === 'REJECTED' ||
+                    check.status === 'EXPIRED'
+                  }
+                />
+
                 {check.status !== 'VERIFIED' &&
                   check.status !== 'REJECTED' &&
                   check.status !== 'EXPIRED' && (
@@ -498,127 +605,32 @@ export default async function GwgPage({
                       checkId={check.id}
                       clientId={client.id}
                       clientDocuments={selectableDocuments}
-                      variant="entity"
+                      variant="identity"
+                      subjectOptions={subjectOptions}
                     />
                   )}
-              </div>
-            </section>
-          )}
+              </section>
+            </GwgIdentitySubjectsProvider>
 
-          {/* Schritt 2: Wirtschaftlich Berechtigte */}
-          <section className="card p-6">
-            <h2 className="text-lg font-semibold text-primary mb-1">
-              {isLegalEntity ? '3' : '2'}. Wirtschaftlich Berechtigte
-            </h2>
-            <p className="text-sm text-muted mb-4">
-              Personen mit mehr als 25 % Anteil oder vergleichbarer Kontrolle (§ 3 GwG).
-            </p>
-
-            {check.beneficialOwners.length > 0 && (
-              <ul className="divide-y divide-border-subtle mb-4 border border-default rounded-md">
-                {check.beneficialOwners.map((o) => (
-                  <li key={o.id} className="px-4 py-3 flex items-center justify-between">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-primary">{o.fullName}</span>
-                        {o.isPep && <span className="badge-red">PEP</span>}
-                      </div>
-                      <p className="text-xs text-muted">
-                        {o.ownershipPct ? `${Number(o.ownershipPct).toFixed(2)} % · ` : ''}
-                        {o.nationality ?? ''}
-                        {o.residence ? ` · ${o.residence}` : ''}
-                      </p>
-                      {(check.status === 'DRAFT' || check.status === 'IN_REVIEW') && (
-                        <BeneficialOwnerForm
-                          ownerId={o.id}
-                          checkId={check.id}
-                          clientId={client.id}
-                          value={{
-                            fullName: o.fullName,
-                            birthDate: o.birthDate?.toISOString().slice(0, 10) ?? '',
-                            birthPlace: o.birthPlace ?? '',
-                            residence: o.residence ?? '',
-                            nationality: o.nationality ?? '',
-                            ownershipPct: o.ownershipPct?.toString() ?? '',
-                            isPep: o.isPep,
-                          }}
-                          revision={gwgBeneficialOwnerRevision(o)}
-                        />
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            {check.status !== 'VERIFIED' &&
-              check.status !== 'REJECTED' &&
-              check.status !== 'EXPIRED' && (
-                <AddBeneficialOwnerForm checkId={check.id} clientId={client.id} />
-              )}
-          </section>
-
-          {/* Schritt 3: Identitätsdokumente */}
-          <section className="card p-6">
-            <div className="mb-4">
-              <div>
-                <h2 className="text-lg font-semibold text-primary mb-1">
-                  {isLegalEntity ? '4' : '3'}. Identitätsdokumente
+            {/* Schritt 4: Verifikation oder Ablehnung */}
+            {(check.status === 'DRAFT' || check.status === 'IN_REVIEW') && (
+              <section className="card p-6">
+                <h2 className="text-lg font-semibold text-primary mb-3">
+                  {isLegalEntity ? '5' : '4'}. Entscheidung
                 </h2>
-                <p className="text-sm text-muted">
-                  Vorder- und Rückseite gemeinsam ansehen, die erfasste Person eindeutig zuordnen
-                  und die ausgelesenen Angaben direkt darunter korrigieren oder bestätigen.
-                </p>
-              </div>
-            </div>
-
-            <IdentityDocumentReview
-              checkId={check.id}
-              clientId={client.id}
-              groups={identityDocumentGroups}
-              subjectOptions={subjectOptions}
-              clientDocuments={selectableDocuments}
-              grandfathered={
-                check.status === 'VERIFIED' && check.identityAssignmentRequired === false
-              }
-              disabled={
-                check.status === 'VERIFIED' ||
-                check.status === 'REJECTED' ||
-                check.status === 'EXPIRED'
-              }
-            />
-
-            {check.status !== 'VERIFIED' &&
-              check.status !== 'REJECTED' &&
-              check.status !== 'EXPIRED' && (
-                <AddIdDocumentForm
+                <GwgDecisionForms
                   checkId={check.id}
                   clientId={client.id}
-                  clientDocuments={selectableDocuments}
-                  variant="identity"
-                  subjectOptions={subjectOptions}
+                  status={check.status}
+                  reviewSubmittedAt={check.reviewSubmittedAt?.toISOString() ?? null}
+                  canVerify={canVerify}
                 />
-              )}
-          </section>
-
-          {/* Schritt 4: Verifikation oder Ablehnung */}
-          {(check.status === 'DRAFT' || check.status === 'IN_REVIEW') && (
-            <section className="card p-6">
-              <h2 className="text-lg font-semibold text-primary mb-3">
-                {isLegalEntity ? '5' : '4'}. Entscheidung
-              </h2>
-              <GwgDecisionForms
-                checkId={check.id}
-                clientId={client.id}
-                status={check.status}
-                reviewSubmittedAt={check.reviewSubmittedAt?.toISOString() ?? null}
-                canVerify={canVerify}
-              />
-            </section>
-          )}
-        </div>
-      )}
-    </div>
+              </section>
+            )}
+          </div>
+        )}
+      </div>
+    </GwgEditStateProvider>
   );
 }
 

@@ -3,13 +3,20 @@
 // =============================================================================
 
 import type { TxClient } from '@taxtronik/db';
-import { readPrivacyConfigTx, renderPrivacyNotice, PRIVACY_NOTICE_VERSION } from './notice';
+import {
+  isPrivacyConfigComplete,
+  readPrivacyConfigTx,
+  renderPrivacyNotice,
+  PRIVACY_NOTICE_VERSION,
+} from './notice';
 import { parseConsent, type ConsentSelections } from './consent';
 
 /** Ergebnis eines Renderings: Volltext + zugehörige Standardtext-Version. */
 export interface RenderedNotice {
   version: number;
   body: string;
+  /** Pflichtangaben sind vollständig und der Hinweis darf bestätigt werden. */
+  complete: boolean;
 }
 
 /**
@@ -35,7 +42,7 @@ export async function renderNoticeForTenantTx(
     config,
     providers,
   });
-  return { version: PRIVACY_NOTICE_VERSION, body };
+  return { version: PRIVACY_NOTICE_VERSION, body, complete: isPrivacyConfigComplete(config) };
 }
 
 /** Aktueller (neuester) Einwilligungsstand eines Mandanten oder null. */

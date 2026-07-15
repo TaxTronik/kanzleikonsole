@@ -16,6 +16,8 @@ import { readSellerInfo } from '@/server/settings/tenant-settings';
 import { readBranding } from '@/server/settings/branding';
 import { readTaxRegion } from '@/server/settings/tax-region';
 import { getSmtpStatus } from '@/server/settings/smtp';
+import { readLegal } from '@/server/settings/legal';
+import { isPrivacyConfigComplete, readPrivacyConfig } from '@/server/privacy/notice';
 import { buildSetupItems, type SetupItem } from './checklist';
 
 export type { SetupItem } from './checklist';
@@ -28,11 +30,13 @@ export interface SetupStatus {
 }
 
 export async function getSetupStatus(ctx: TenantContext): Promise<SetupStatus> {
-  const [seller, branding, region, smtp, counts] = await Promise.all([
+  const [seller, branding, region, smtp, privacyConfig, legal, counts] = await Promise.all([
     readSellerInfo(ctx),
     readBranding(ctx),
     readTaxRegion(ctx),
     getSmtpStatus(ctx),
+    readPrivacyConfig(ctx),
+    readLegal(ctx),
     withTenantContext(ctx, async (tx) => {
       const [contactCount, activeClientCount, modulesRow] = await Promise.all([
         tx.clientContact.count({ where: { active: true } }),
@@ -66,6 +70,7 @@ export async function getSetupStatus(ctx: TenantContext): Promise<SetupStatus> {
     ),
     smtpConfigured: smtp.configured,
     modulesConfigured: counts.modulesConfigured,
+    privacyComplete: isPrivacyConfigComplete(privacyConfig) && legal.privacyUrl !== '',
     activeClientCount: counts.activeClientCount,
     contactCount: counts.contactCount,
   });

@@ -1,9 +1,9 @@
 ﻿'use client';
 
 import { useState, useTransition, type SubmitEvent } from 'react';
-import { useRouter } from 'next/navigation';
 import { computeRiskScore, type RiskFactor } from '@/server/gwg/risk-score';
 import { saveRiskAnswersAction } from './actions';
+import { useGwgEditState } from './edit-state-context';
 
 interface Props {
   checkId: string;
@@ -26,10 +26,11 @@ export function RiskAssessmentForm({
   currentRevision,
   disabled,
 }: Props) {
-  const router = useRouter();
+  const { markDraft } = useGwgEditState();
   const [answers, setAnswers] = useState<Record<string, number>>(currentAnswers);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [reviewReset, setReviewReset] = useState(false);
   const [revision, setRevision] = useState(currentRevision);
   const [isPending, startTransition] = useTransition();
 
@@ -41,6 +42,7 @@ export function RiskAssessmentForm({
     e.preventDefault();
     setError(null);
     setSaved(false);
+    setReviewReset(false);
     startTransition(async () => {
       const r = await saveRiskAnswersAction({
         checkId,
@@ -52,10 +54,10 @@ export function RiskAssessmentForm({
       else {
         if (r.revision) setRevision(r.revision);
         setSaved(true);
-        // Ein normaler DRAFT-Save braucht keinen teuren Vollreload. Nur wenn
-        // die Bearbeitung eine bereits eingereichte Pr\u00fcfung bewusst wieder in
-        // den Entwurf setzt, muss der restliche Entscheidungsbereich nachziehen.
-        if (r.reviewReset) router.refresh();
+        if (r.reviewReset) {
+          markDraft();
+          setReviewReset(true);
+        }
       }
     });
   }
@@ -117,7 +119,12 @@ export function RiskAssessmentForm({
       )}
 
       {error && <div className="alert-error-sm">{error}</div>}
-      {saved && <div className="alert-success-sm">Risikobewertung gespeichert.</div>}
+      {saved && (
+        <div className="alert-success-sm">
+          Risikobewertung gespeichert.
+          {reviewReset ? ' Die laufende Prüfung wurde zur erneuten Freigabe zurückgesetzt.' : ''}
+        </div>
+      )}
 
       {!disabled && (
         <div>

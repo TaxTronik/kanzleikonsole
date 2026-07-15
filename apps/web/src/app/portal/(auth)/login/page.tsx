@@ -32,6 +32,10 @@ export default function PortalLoginPage() {
             <p className="text-sm text-secondary text-center mb-2">
               Wir senden Ihnen einen Login-Link per E-Mail.
             </p>
+            <p className="text-xs text-muted text-center">
+              Ist Ihre Adresse mehreren Mandaten zugeordnet, wählen Sie das gewünschte Profil nach
+              dem Klick auf den Link aus.
+            </p>
 
             <div>
               <label className="label" htmlFor="email">

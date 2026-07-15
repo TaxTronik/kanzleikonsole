@@ -250,5 +250,6 @@ export async function saveLegalAction(
     });
   });
   revalidatePath('/staff/admin/settings/branding');
+  revalidatePath('/staff/admin/privacy');
   return { ok: true };
 }

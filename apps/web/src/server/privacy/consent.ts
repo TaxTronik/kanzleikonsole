@@ -328,6 +328,48 @@ export const ConsentSelectionsSchema = z.object({
 });
 export type ConsentSelections = z.infer<typeof ConsentSelectionsSchema>;
 
+/**
+ * Im Mandantenportal darf nur aus dem von der Kanzlei gepflegten Katalog
+ * ausgewählt werden. Freitexte, konkrete Empfänger und Spezialdienstleister
+ * sind Kanzlei-Stammdaten und dürfen nicht über einen öffentlichen
+ * Onboarding-Link eingeschleust werden.
+ *
+ * Die zusätzliche Server-Validierung ist bewusst unabhängig von der UI:
+ * ausgeblendete Felder allein wären bei manipulierten Requests kein Schutz.
+ */
+export const PortalConsentSelectionsSchema = ConsentSelectionsSchema.superRefine(
+  (selections, ctx) => {
+    if (selections.communication.details.trim() !== '') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['communication', 'details'],
+        message: 'Eigene Kommunikationsangaben können nur durch die Kanzlei erfasst werden.',
+      });
+    }
+    if (selections.marketing.details.trim() !== '') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['marketing', 'details'],
+        message: 'Eigene Marketingangaben können nur durch die Kanzlei erfasst werden.',
+      });
+    }
+    if (selections.thirdParties.length > 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['thirdParties'],
+        message: 'Empfänger werden ausschließlich durch die Kanzlei festgelegt.',
+      });
+    }
+    if (selections.specialists.length > 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['specialists'],
+        message: 'Spezialdienstleister werden ausschließlich durch die Kanzlei festgelegt.',
+      });
+    }
+  },
+);
+
 /** Leerer Einwilligungsstand (nichts angekreuzt = nichts eingewilligt). */
 export function emptyConsent(): ConsentSelections {
   return ConsentSelectionsSchema.parse({});

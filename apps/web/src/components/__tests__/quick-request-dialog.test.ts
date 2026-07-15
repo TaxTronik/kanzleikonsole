@@ -30,6 +30,9 @@ describe('Quick-Anforderungsdialog', () => {
     expect(source).toContain('name="description"');
     expect(source).toContain('name="priority"');
     expect(source).toContain('name="dueAt"');
+    expect(source).toContain('<DateTimePicker');
+    expect(source).toContain('output="utc"');
+    expect(source).not.toContain('type="datetime-local"');
     expect(source).toContain('disabled={isPending || disabled || !selectedClientId}');
   });
 

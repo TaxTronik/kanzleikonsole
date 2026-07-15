@@ -1187,6 +1187,7 @@ model ClientContact {
 
   @@unique([tenantId, clientId, email])
   @@index([tenantId, clientId])
+  @@index([tenantId, email], map: "client_contact_tenant_email_idx")
   @@map("client_contact")
 }
 
@@ -1199,7 +1200,7 @@ model MagicLink {
   expiresAt  DateTime       @map("expires_at")
   consumedAt DateTime?      @map("consumed_at")
   createdAt  DateTime       @default(now()) @map("created_at")
-  contact    ClientContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  contact    ClientContact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
   tenant     Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tokenHash])

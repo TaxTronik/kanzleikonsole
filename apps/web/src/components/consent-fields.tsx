@@ -6,7 +6,9 @@
 // Wird von der Staff-Erfassung UND dem Portal-Onboarding genutzt. Hält den
 // Einwilligungsstand im State und schreibt ihn als JSON in ein verstecktes
 // Feld `consentsJson`, das die Server-Action gegen ConsentSelectionsSchema
-// parst. Die dynamischen Listen (Dritte/Spezialisten) sind zeilenweise editierbar.
+// parst. Die dynamischen Listen (Dritte/Spezialisten) sind nur in der
+// Kanzlei-Erfassung editierbar; das Portal darf ausschließlich Katalogoptionen
+// auswählen.
 // =============================================================================
 
 import { useRef, useState } from 'react';
@@ -59,12 +61,19 @@ export function ConsentFields({
   initial,
   onChange,
   options,
+  mode = 'staff',
 }: {
   initial?: ConsentSelections;
   /** Optional: meldet jede Änderung nach oben (Wizard hält State ohne <form>). */
   onChange?: (c: ConsentSelections) => void;
   /** Serverseitig aufgelöster, tenant-spezifischer Optionskatalog. */
   options?: ResolvedConsentOption[];
+  /**
+   * Im Portal werden ausschließlich Kanzlei-Optionen ausgewählt. Freitexte,
+   * konkrete Empfänger und Spezialdienstleister bleiben der Kanzlei-Erfassung
+   * vorbehalten und werden zusätzlich serverseitig abgewiesen.
+   */
+  mode?: 'staff' | 'catalog-only';
 }) {
   const [c, setInner] = useState<ConsentSelections>(initial ?? emptyConsent());
   // Ref-Spiegel des aktuellen Stands: `onChange` (Parent-setState) darf NICHT
@@ -226,19 +235,21 @@ export function ConsentFields({
               hint={optionHint(option)}
             />
           ))}
-          <input
-            type="text"
-            value={c.communication.details}
-            onChange={(e) =>
-              setC((s) => ({
-                ...s,
-                communication: { ...s.communication, details: e.target.value },
-              }))
-            }
-            placeholder="Details (Portal-Name, E-Mail-Adressen, Faxnummer, Video-System …)"
-            maxLength={1000}
-            className="input w-full mt-2 text-sm"
-          />
+          {mode === 'staff' && (
+            <input
+              type="text"
+              value={c.communication.details}
+              onChange={(e) =>
+                setC((s) => ({
+                  ...s,
+                  communication: { ...s.communication, details: e.target.value },
+                }))
+              }
+              placeholder="Details (Portal-Name, E-Mail-Adressen, Faxnummer, Video-System …)"
+              maxLength={1000}
+              className="input w-full mt-2 text-sm"
+            />
+          )}
         </fieldset>
       )}
 
@@ -260,16 +271,18 @@ export function ConsentFields({
               hint={optionHint(option)}
             />
           ))}
-          <input
-            type="text"
-            value={c.marketing.details}
-            onChange={(e) =>
-              setC((s) => ({ ...s, marketing: { ...s.marketing, details: e.target.value } }))
-            }
-            placeholder="Details (z. B. abweichende E-Mail-Adresse)"
-            maxLength={1000}
-            className="input w-full mt-2 text-sm"
-          />
+          {mode === 'staff' && (
+            <input
+              type="text"
+              value={c.marketing.details}
+              onChange={(e) =>
+                setC((s) => ({ ...s, marketing: { ...s.marketing, details: e.target.value } }))
+              }
+              placeholder="Details (z. B. abweichende E-Mail-Adresse)"
+              maxLength={1000}
+              className="input w-full mt-2 text-sm"
+            />
+          )}
         </fieldset>
       )}
 
@@ -293,106 +306,117 @@ export function ConsentFields({
         </fieldset>
       )}
 
-      <fieldset>
-        <legend className="text-sm font-semibold text-primary mb-1">
-          {otherOptions.length > 0 ? '4.' : '3.'} Übermittlung an konkret benannte Dritte
-        </legend>
-        <p className="text-xs text-muted mb-2">
-          Ohne Eintrag erfolgt keine Einwilligung. Nur Zeilen mit Empfänger zählen.
-        </p>
-        {c.thirdParties.map((t, i) => (
-          <div key={i} className="grid grid-cols-1 sm:grid-cols-4 gap-2 mb-2">
-            <input
-              value={t.recipient}
-              onChange={(e) => patchThird(i, { recipient: e.target.value })}
-              placeholder="Empfänger *"
-              className="input text-sm"
-            />
-            <input
-              value={t.purpose}
-              onChange={(e) => patchThird(i, { purpose: e.target.value })}
-              placeholder="Zweck"
-              className="input text-sm"
-            />
-            <input
-              value={t.data}
-              onChange={(e) => patchThird(i, { data: e.target.value })}
-              placeholder="Daten/Unterlagen"
-              className="input text-sm"
-            />
-            <div className="flex gap-2">
+      {mode === 'staff' && (
+        <fieldset>
+          <legend className="text-sm font-semibold text-primary mb-1">
+            {otherOptions.length > 0 ? '4.' : '3.'} Übermittlung an konkret benannte Dritte
+          </legend>
+          <p className="text-xs text-muted mb-2">
+            Ohne Eintrag erfolgt keine Einwilligung. Nur Zeilen mit Empfänger zählen.
+          </p>
+          {c.thirdParties.map((t, i) => (
+            <div key={i} className="grid grid-cols-1 sm:grid-cols-4 gap-2 mb-2">
               <input
-                value={t.channel}
-                onChange={(e) => patchThird(i, { channel: e.target.value })}
-                placeholder="Weg"
-                className="input text-sm flex-1"
+                value={t.recipient}
+                onChange={(e) => patchThird(i, { recipient: e.target.value })}
+                placeholder="Empfänger *"
+                className="input text-sm"
               />
-              <button
-                type="button"
-                onClick={() => removeThird(i)}
-                className="btn-secondary text-xs px-2"
-                aria-label="Zeile entfernen"
-              >
-                ×
-              </button>
+              <input
+                value={t.purpose}
+                onChange={(e) => patchThird(i, { purpose: e.target.value })}
+                placeholder="Zweck"
+                className="input text-sm"
+              />
+              <input
+                value={t.data}
+                onChange={(e) => patchThird(i, { data: e.target.value })}
+                placeholder="Daten/Unterlagen"
+                className="input text-sm"
+              />
+              <div className="flex gap-2">
+                <input
+                  value={t.channel}
+                  onChange={(e) => patchThird(i, { channel: e.target.value })}
+                  placeholder="Weg"
+                  className="input text-sm flex-1"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeThird(i)}
+                  className="btn-secondary text-xs px-2"
+                  aria-label="Zeile entfernen"
+                >
+                  ×
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
-        <button type="button" onClick={addThird} className="btn-secondary text-xs">
-          + Empfänger
-        </button>
-      </fieldset>
+          ))}
+          <button type="button" onClick={addThird} className="btn-secondary text-xs">
+            + Empfänger
+          </button>
+        </fieldset>
+      )}
 
-      <fieldset>
-        <legend className="text-sm font-semibold text-primary mb-1">
-          {otherOptions.length > 0 ? '5.' : '4.'} Mandatsbezogene Spezialdienstleister
-        </legend>
-        <p className="text-xs text-muted mb-2">
-          Externe Spezialisten mit Zugang zu Berufsgeheimnissen — nur mit Einwilligung. Ohne Eintrag
-          erfolgt keine Einwilligung.
-        </p>
-        {c.specialists.map((t, i) => (
-          <div key={i} className="grid grid-cols-1 sm:grid-cols-4 gap-2 mb-2">
-            <input
-              value={t.entity}
-              onChange={(e) => patchSpec(i, { entity: e.target.value })}
-              placeholder="Person/Stelle *"
-              className="input text-sm"
-            />
-            <input
-              value={t.service}
-              onChange={(e) => patchSpec(i, { service: e.target.value })}
-              placeholder="Leistung"
-              className="input text-sm"
-            />
-            <input
-              value={t.accessType}
-              onChange={(e) => patchSpec(i, { accessType: e.target.value })}
-              placeholder="Art des Zugangs"
-              className="input text-sm"
-            />
-            <div className="flex gap-2">
+      {mode === 'staff' && (
+        <fieldset>
+          <legend className="text-sm font-semibold text-primary mb-1">
+            {otherOptions.length > 0 ? '5.' : '4.'} Mandatsbezogene Spezialdienstleister
+          </legend>
+          <p className="text-xs text-muted mb-2">
+            Externe Spezialisten mit Zugang zu Berufsgeheimnissen — nur mit Einwilligung. Ohne
+            Eintrag erfolgt keine Einwilligung.
+          </p>
+          {c.specialists.map((t, i) => (
+            <div key={i} className="grid grid-cols-1 sm:grid-cols-4 gap-2 mb-2">
               <input
-                value={t.requirements}
-                onChange={(e) => patchSpec(i, { requirements: e.target.value })}
-                placeholder="Besondere Vorgaben"
-                className="input text-sm flex-1"
+                value={t.entity}
+                onChange={(e) => patchSpec(i, { entity: e.target.value })}
+                placeholder="Person/Stelle *"
+                className="input text-sm"
               />
-              <button
-                type="button"
-                onClick={() => removeSpec(i)}
-                className="btn-secondary text-xs px-2"
-                aria-label="Zeile entfernen"
-              >
-                ×
-              </button>
+              <input
+                value={t.service}
+                onChange={(e) => patchSpec(i, { service: e.target.value })}
+                placeholder="Leistung"
+                className="input text-sm"
+              />
+              <input
+                value={t.accessType}
+                onChange={(e) => patchSpec(i, { accessType: e.target.value })}
+                placeholder="Art des Zugangs"
+                className="input text-sm"
+              />
+              <div className="flex gap-2">
+                <input
+                  value={t.requirements}
+                  onChange={(e) => patchSpec(i, { requirements: e.target.value })}
+                  placeholder="Besondere Vorgaben"
+                  className="input text-sm flex-1"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeSpec(i)}
+                  className="btn-secondary text-xs px-2"
+                  aria-label="Zeile entfernen"
+                >
+                  ×
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
-        <button type="button" onClick={addSpec} className="btn-secondary text-xs">
-          + Spezialdienstleister
-        </button>
-      </fieldset>
+          ))}
+          <button type="button" onClick={addSpec} className="btn-secondary text-xs">
+            + Spezialdienstleister
+          </button>
+        </fieldset>
+      )}
+
+      {mode === 'catalog-only' && (
+        <p className="rounded-md border border-default bg-surface-raised p-3 text-xs text-muted">
+          Empfänger, Kommunikationsdetails und Spezialdienstleister werden zentral durch Ihre
+          Kanzlei gepflegt. Hier können Sie nur die angebotenen Einwilligungen auswählen.
+        </p>
+      )}
     </div>
   );
 }

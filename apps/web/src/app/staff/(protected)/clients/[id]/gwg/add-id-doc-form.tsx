@@ -14,6 +14,7 @@ import {
   useUnlinkedGwgDocumentSearch,
   type SelectableGwgDocument,
 } from './use-gwg-document-search';
+import { useGwgIdentitySubjects } from './identity-subjects-context';
 
 const identityTypes = [
   { value: 'PERSONALAUSWEIS', label: 'Personalausweis' },
@@ -45,6 +46,7 @@ export function AddIdDocumentForm({
   variant,
   subjectOptions = EMPTY_SUBJECT_OPTIONS,
 }: Props) {
+  const { subjectOptions: availableSubjects } = useGwgIdentitySubjects(subjectOptions);
   const formRef = useRef<HTMLFormElement>(null);
   const primaryDocumentIdRef = useRef<HTMLInputElement>(null);
   const submittingRef = useRef(false);
@@ -54,9 +56,8 @@ export function AddIdDocumentForm({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [query, setQuery] = useState('');
-  const [availableSubjects, setAvailableSubjects] = useState(subjectOptions);
   const [selectedSubjectKey, setSelectedSubjectKey] = useState(
-    subjectOptions.length === 1 ? subjectOptions[0]!.key : '',
+    availableSubjects.length === 1 ? availableSubjects[0]!.key : '',
   );
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
     addIdDocumentAction,
@@ -65,15 +66,14 @@ export function AddIdDocumentForm({
 
   useEffect(() => setMounted(true), []);
   useEffect(() => {
-    setAvailableSubjects(subjectOptions);
     setSelectedSubjectKey((current) =>
-      subjectOptions.some((option) => option.key === current)
+      availableSubjects.some((option) => option.key === current)
         ? current
-        : subjectOptions.length === 1
-          ? subjectOptions[0]!.key
+        : availableSubjects.length === 1
+          ? availableSubjects[0]!.key
           : '',
     );
-  }, [subjectOptions]);
+  }, [availableSubjects]);
   useEffect(() => {
     if (!state?.ok) return;
     formRef.current?.reset();

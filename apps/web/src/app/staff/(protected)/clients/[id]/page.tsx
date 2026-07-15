@@ -457,6 +457,14 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
         <Link href={`/staff/clients/${client.id}/privacy`} className="btn-secondary text-xs py-1">
           Datenschutz
         </Link>
+        {(modules.poaMode !== 'OFF' || client._count.poas > 0) && (
+          <Link href={`/staff/poa?clientId=${client.id}`} className="btn-secondary text-xs py-1">
+            Vollmachten
+            {client._count.poas > 0 && (
+              <span className="badge-gray ml-2">{client._count.poas}</span>
+            )}
+          </Link>
+        )}
         {modules.risk && canSubsumtion && (
           <Link
             href={`/staff/clients/${client.id}/subsumtion`}

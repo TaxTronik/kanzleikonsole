@@ -6,6 +6,7 @@ import {
   hasConsentRevocation,
   normalizeConsentOptionsCatalog,
   parseConsent,
+  PortalConsentSelectionsSchema,
 } from '../consent';
 
 const CUSTOM_ID = 'c8ecfcf4-aa72-47b5-a67e-d42fdc736dcc';
@@ -107,6 +108,59 @@ describe('ConsentSelections V1/V2', () => {
       contractFromDate: null,
       contractToDate: null,
     });
+  });
+});
+
+describe('PortalConsentSelectionsSchema', () => {
+  it('erlaubt ausschließlich Auswahlen aus dem Kanzlei-Katalog', () => {
+    const consent = emptyConsent();
+    consent.communication.portal = true;
+    consent.optionSelections = [
+      {
+        optionId: CUSTOM_ID,
+        labelSnapshot: 'Kanzlei-Option',
+        section: 'OTHER',
+        serviceProviderSnapshot: null,
+      },
+    ];
+
+    expect(PortalConsentSelectionsSchema.safeParse(consent).success).toBe(true);
+  });
+
+  it.each([
+    [
+      'Kommunikationsfreitext',
+      (consent: ReturnType<typeof emptyConsent>) => {
+        consent.communication.details = 'Private E-Mail-Adresse';
+      },
+    ],
+    [
+      'Marketingfreitext',
+      (consent: ReturnType<typeof emptyConsent>) => {
+        consent.marketing.details = 'Zusätzliche Adresse';
+      },
+    ],
+    [
+      'eigene Empfänger',
+      (consent: ReturnType<typeof emptyConsent>) => {
+        consent.thirdParties = [
+          { recipient: 'Eigener Empfänger', purpose: '', data: '', channel: '' },
+        ];
+      },
+    ],
+    [
+      'eigene Spezialdienstleister',
+      (consent: ReturnType<typeof emptyConsent>) => {
+        consent.specialists = [
+          { entity: 'Eigener Dienstleister', service: '', accessType: '', requirements: '' },
+        ];
+      },
+    ],
+  ])('weist %s im Mandantenportal zurück', (_label, mutate) => {
+    const consent = emptyConsent();
+    mutate(consent);
+
+    expect(PortalConsentSelectionsSchema.safeParse(consent).success).toBe(false);
   });
 });
 

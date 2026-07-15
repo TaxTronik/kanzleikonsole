@@ -17,6 +17,7 @@ export interface SetupState {
   sellerComplete: boolean;
   smtpConfigured: boolean;
   modulesConfigured: boolean;
+  privacyComplete: boolean;
   activeClientCount: number;
   contactCount: number;
 }
@@ -58,6 +59,13 @@ export function buildSetupItems(state: SetupState): SetupItem[] {
       done: state.modulesConfigured,
       href: '/staff/admin/settings/modules',
       hint: 'Einmal bewusst speichern — auch wenn die Voreinstellung passt (Rechnungsmodus: In-App, Extern oder Aus).',
+    },
+    {
+      key: 'privacy',
+      label: 'Datenschutzangaben vollständig',
+      done: state.privacyComplete,
+      href: '/staff/admin/privacy',
+      hint: 'Pflichtangaben fürs Onboarding und die öffentliche Datenschutzerklärung zentral hinterlegen.',
     },
     {
       key: 'client',

@@ -4,7 +4,7 @@ import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto
 import { z } from 'zod';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { withTenantContext } from '@taxtronik/db';
+import { withTenantContext, type TxClient } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { sendTemplateMail } from '@/server/mail/dispatch';
 import { portalBaseUrl } from '@taxtronik/config';
@@ -14,14 +14,19 @@ import { checkRateLimit, checkIpOrGlobalLimit, getClientIp } from '@/server/rate
 import { isStaffAdmin, toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { headers } from 'next/headers';
 import { staffActionGuard, withStaff, ActionError } from '@/server/actions/staff-action';
-import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { readModules } from '@/server/settings/modules';
+import type { StaffSession } from '@/server/auth/staff';
 import {
-  commitBytesWithTier,
+  commitPreparedBytes,
   MAX_UPLOAD_BYTES,
-  type CommitDocumentResult,
+  prepareBytesCommitWithTier,
+  recoverPreparedBytesCommit,
+  type PreparedBytesCommit,
 } from '@taxtronik/storage';
-import { createDocumentWithVersion } from '@/server/documents/upload-helpers';
+import {
+  createPendingDocumentWithVersion,
+  finalizePendingDocumentVersion,
+} from '@/server/documents/upload-helpers';
 import { notify } from '@/server/notifications/service';
 import {
   buildPoaSigningSnapshot,
@@ -46,6 +51,8 @@ const CreateSchema = z
     scope: z.string().max(20000).optional(),
     validFrom: z.string().date(),
     validUntil: z.string().date().optional().or(z.literal('')),
+    pendingDocumentId: z.string().uuid().optional().or(z.literal('')),
+    uploadIntentId: z.string().uuid().optional().or(z.literal('')),
   })
   .superRefine((value, ctx) => {
     if (value.validUntil && value.validUntil < value.validFrom) {
@@ -60,6 +67,84 @@ const CreateSchema = z
 export interface ActionResult {
   ok: boolean;
   error?: string;
+  pendingDocumentId?: string;
+}
+
+/**
+ * Prueft alle mandatsbezogenen Voraussetzungen, die vor einem unveraenderbaren
+ * PDF-Commit sicher feststehen muessen. Beim eigentlichen Insert wird dieselbe
+ * Pruefung erneut ausgefuehrt, damit Parallel-Aenderungen nicht unbemerkt
+ * zwischen Preflight und Datenbank-Transaktion durchrutschen.
+ */
+async function assertPoaCreateContextTx(
+  tx: TxClient,
+  session: StaffSession,
+  clientId: string,
+  signerContactId?: string,
+  lockForCreate = false,
+): Promise<void> {
+  // Explizite Onboarding-IDs duerfen auch vor der finalen Aktivierung
+  // verwendet werden, aber niemals RBAC-fremde, beendete oder bereits
+  // anonymisierte Mandate. Sonst koennten nach einer DSGVO-Redaktion neue
+  // Unterzeichnerdaten am Altmandat entstehen.
+  await assertClientAccessTx(tx, session, clientId);
+  const eligibleClient = lockForCreate
+    ? (
+        await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT "id"
+            FROM "client"
+           WHERE "id" = ${clientId}::uuid
+             AND "anonymized_at" IS NULL
+             AND "mandate_ended_at" IS NULL
+           FOR UPDATE
+        `
+      )[0]
+    : await tx.client.findFirst({
+        where: { id: clientId, anonymizedAt: null, mandateEndedAt: null },
+        select: { id: true },
+      });
+  if (!eligibleClient) {
+    throw new ActionError(
+      'Fuer ein beendetes oder anonymisiertes Mandat kann keine neue Vollmacht angelegt werden.',
+    );
+  }
+
+  // Ein fremder Kontakt darf weder im Datensatz noch in einem schon vorher
+  // gesperrten, danach nicht mehr loeschbaren PDF-Upload landen.
+  if (signerContactId) {
+    const contact = lockForCreate
+      ? (
+          await tx.$queryRaw<Array<{ id: string }>>`
+            SELECT "id"
+              FROM "client_contact"
+             WHERE "id" = ${signerContactId}::uuid
+               AND "client_id" = ${clientId}::uuid
+             FOR KEY SHARE
+          `
+        )[0]
+      : await tx.clientContact.findFirst({
+          where: { id: signerContactId, clientId },
+          select: { id: true },
+        });
+    if (!contact) {
+      throw new ActionError('Ansprechpartner gehoert nicht zum gewaehlten Mandanten.');
+    }
+  }
+}
+
+async function readPoaPdfBytes(formData: FormData, required: boolean): Promise<Buffer | null> {
+  const file = formData.get('poaPdf');
+  if (!(file instanceof File) || file.size === 0) {
+    if (!required) return null;
+    throw new ActionError('Bitte eine PDF-Datei hochladen.');
+  }
+  if (file.type !== 'application/pdf') {
+    throw new ActionError('Nur PDF-Dateien erlaubt.');
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    throw new ActionError(`PDF zu groß (max. ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)} MB).`);
+  }
+  return Buffer.from(await file.arrayBuffer());
 }
 
 export async function createPoaAction(
@@ -94,6 +179,8 @@ export async function createPoaAction(
     scope: formData.get('scope') ?? '',
     validFrom: formData.get('validFrom'),
     validUntil: formData.get('validUntil') ?? '',
+    pendingDocumentId: formData.get('pendingDocumentId') ?? '',
+    uploadIntentId: formData.get('uploadIntentId') ?? '',
   });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues.map((i) => i.message).join(', ') };
@@ -102,7 +189,41 @@ export async function createPoaAction(
   const data = parsed.data;
 
   const modules = await readModules(ctx);
+  if (modules.poaMode === 'OFF') {
+    return {
+      ok: false,
+      error: 'Das Vollmachten-Modul ist deaktiviert.',
+      pendingDocumentId: data.pendingDocumentId || undefined,
+    };
+  }
   const externMode = modules.poaMode === 'PDF_TEMPLATE';
+
+  // Ein bereits journalisierter PDF-Intent darf bei einem parallelen
+  // Modulwechsel nicht still als neue In-App-Vollmacht weiterlaufen. Die
+  // stabile ID bleibt in der URL und kann nach Reaktivierung fortgesetzt
+  // werden; es entsteht kein zweites, verwaistes Dokument.
+  if (!externMode && (data.pendingDocumentId || data.uploadIntentId)) {
+    const intentId = data.pendingDocumentId || data.uploadIntentId;
+    let trackedIntent: { id: string } | null;
+    try {
+      trackedIntent = await withTenantContext(ctx, (tx) =>
+        tx.document.findFirst({
+          where: { id: intentId, tenantId, deletedAt: null },
+          select: { id: true },
+        }),
+      );
+    } catch (e) {
+      return toActionError(e);
+    }
+    if (trackedIntent) {
+      return {
+        ok: false,
+        error:
+          'Ein PDF-Upload für diese Vollmacht ist bereits vorgemerkt. Bitte den PDF-Modus wieder aktivieren und den Vorgang fortsetzen.',
+        pendingDocumentId: trackedIntent.id,
+      };
+    }
+  }
 
   // Scope: Im In-App-Modus (MARKDOWN_OTP) Pflicht (Inline-Text). Im Extern-
   // Modus wird kein Inline-Text gepflegt — das DB-Pflichtfeld bekommt einen
@@ -113,64 +234,323 @@ export async function createPoaAction(
   }
   const scope = externMode ? '— Extern als PDF hinterlegt —' : scopeRaw;
 
-  // Extern-Modus: Vollmachts-PDF direkt bei der Anlage hochladen. Nutzer-Upload
-  // → ClamAV-Scan bleibt aktiv (anders als bei app-generierten Bytes).
-  let pdfCommit: CommitDocumentResult | null = null;
+  // Extern-Modus: Das PDF wird zweiphasig geschrieben. Bucket, Key und Hash
+  // stehen zuerst als PENDING in der DB; dadurch kann ein COMPLIANCE-Objekt nie
+  // unsichtbar werden, selbst wenn die spätere PoA-Transaktion scheitert.
+  let pdfDocumentId: string | null = null;
+  let pdfVersionId: string | null = null;
   if (externMode) {
-    const file = formData.get('poaPdf');
-    if (!(file instanceof File) || file.size === 0) {
-      return { ok: false, error: 'Bitte eine PDF-Datei hochladen.' };
-    }
-    if (file.type !== 'application/pdf') {
-      return { ok: false, error: 'Nur PDF-Dateien erlaubt.' };
-    }
-    if (file.size > MAX_UPLOAD_BYTES) {
+    if (!data.pendingDocumentId && !data.uploadIntentId) {
       return {
         ok: false,
-        error: `PDF zu groß (max. ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)} MB).`,
+        error: 'Upload-Absicht fehlt. Bitte die Seite neu laden und erneut versuchen.',
       };
     }
+    // Erst Zugriffs- und Lifecycle-Gates, dann der vergleichsweise teure Scan.
     try {
-      const buf = Buffer.from(await file.arrayBuffer());
-      pdfCommit = await commitBytesWithTier({ fileData: buf, tier: 'GOBD', tenantId });
+      await withTenantContext(ctx, (tx) =>
+        assertPoaCreateContextTx(tx, session, data.clientId, data.signerContactId || undefined),
+      );
     } catch (e) {
-      return { ok: false, error: `Upload fehlgeschlagen: ${(e as Error).message}` };
+      return toActionError(e);
+    }
+
+    let existingIntentDocumentId: string | null = null;
+    let existingIntentPoaId: string | null = null;
+    if (!data.pendingDocumentId && data.uploadIntentId) {
+      try {
+        const existing = await withTenantContext(ctx, async (tx) => {
+          const document = await tx.document.findFirst({
+            where: { id: data.uploadIntentId, tenantId },
+            select: { id: true },
+          });
+          if (!document) return { documentId: null, poaId: null };
+          const poa = await tx.powerOfAttorney.findFirst({
+            where: { tenantId, clientId: data.clientId, documentId: document.id },
+            select: { id: true },
+          });
+          return { documentId: document.id, poaId: poa?.id ?? null };
+        });
+        existingIntentDocumentId = existing.documentId;
+        existingIntentPoaId = existing.poaId;
+      } catch (e) {
+        return toActionError(e);
+      }
+    }
+    if (existingIntentPoaId) {
+      revalidatePath('/staff/poa');
+      redirect(`/staff/poa/${existingIntentPoaId}`);
+    }
+
+    const resumeDocumentId = data.pendingDocumentId || existingIntentDocumentId;
+    let prepared: PreparedBytesCommit | null = null;
+    let fileData: Buffer | null = null;
+
+    if (resumeDocumentId) {
+      try {
+        const resumed = await withTenantContext(ctx, async (tx) => {
+          await assertPoaCreateContextTx(
+            tx,
+            session,
+            data.clientId,
+            data.signerContactId || undefined,
+            true,
+          );
+          const locked = await tx.$queryRaw<Array<{ id: string }>>`
+            SELECT "id"
+              FROM "document"
+             WHERE "id" = ${resumeDocumentId}::uuid
+               AND "tenant_id" = ${tenantId}::uuid
+             FOR UPDATE
+          `;
+          if (!locked[0]) throw new ActionError('Vorgemerkter PDF-Upload wurde nicht gefunden.');
+
+          const document = await tx.document.findFirst({
+            where: {
+              id: resumeDocumentId,
+              tenantId,
+              clientId: data.clientId,
+              classification: 'GOBD_CONTRACT',
+              mimeType: 'application/pdf',
+              deletedAt: null,
+            },
+            select: {
+              id: true,
+              retentionUntil: true,
+              versions: {
+                orderBy: { versionNo: 'desc' },
+                take: 2,
+                select: {
+                  id: true,
+                  versionNo: true,
+                  storageBucket: true,
+                  storageKey: true,
+                  storageVersionId: true,
+                  sha256: true,
+                  sizeBytes: true,
+                  immutable: true,
+                  scanStatus: true,
+                  scanCompletedAt: true,
+                },
+              },
+            },
+          });
+          if (!document || document.versions.length !== 1 || !document.retentionUntil) {
+            throw new ActionError('Vorgemerkter PDF-Upload ist nicht wiederaufnehmbar.');
+          }
+          const alreadyUsed = await tx.powerOfAttorney.findFirst({
+            where: { tenantId, documentId: document.id },
+            select: { id: true },
+          });
+          if (alreadyUsed) {
+            throw new ActionError('Das vorgemerkte PDF ist bereits einer Vollmacht zugeordnet.');
+          }
+          const version = document.versions[0]!;
+          if (version.versionNo !== 1 || !version.immutable) {
+            throw new ActionError('Vorgemerkter PDF-Upload ist nicht wiederaufnehmbar.');
+          }
+          const clean =
+            version.scanStatus === 'CLEAN' &&
+            version.scanCompletedAt !== null &&
+            Boolean(version.storageVersionId?.trim());
+          const pending =
+            version.scanStatus === 'PENDING' &&
+            version.scanCompletedAt === null &&
+            version.storageVersionId === null;
+          if (!clean && !pending) {
+            throw new ActionError('Vorgemerkter PDF-Upload hat einen ungültigen Status.');
+          }
+          return {
+            documentId: document.id,
+            versionId: version.id,
+            clean,
+            prepared: pending
+              ? ({
+                  tier: 'GOBD',
+                  tenantId,
+                  targetBucket: version.storageBucket,
+                  targetKey: version.storageKey,
+                  sha256: Buffer.from(version.sha256),
+                  sizeBytes: version.sizeBytes,
+                  immutable: true,
+                  retentionUntil: document.retentionUntil,
+                  detectedMime: 'application/pdf',
+                } satisfies PreparedBytesCommit)
+              : null,
+          };
+        });
+        pdfDocumentId = resumed.documentId;
+        pdfVersionId = resumed.versionId;
+        prepared = resumed.prepared;
+      } catch (e) {
+        return { ...toActionError(e), pendingDocumentId: resumeDocumentId };
+      }
+    } else {
+      try {
+        fileData = await readPoaPdfBytes(formData, true);
+        prepared = await prepareBytesCommitWithTier({
+          fileData: fileData!,
+          tier: 'GOBD',
+          tenantId,
+          classification: 'GOBD_CONTRACT',
+        });
+      } catch (e) {
+        if (e instanceof ActionError) return toActionError(e);
+        return { ok: false, error: `Upload-Prüfung fehlgeschlagen: ${(e as Error).message}` };
+      }
+      if (prepared.detectedMime !== 'application/pdf') {
+        return { ok: false, error: 'Der Dateiinhalt ist keine gültige PDF-Datei.' };
+      }
+
+      // Die zweite Prüfung und das PENDING-Journal laufen atomar. Danach ist der
+      // Zielschlüssel dauerhaft auffindbar, bevor S3 ihn erstmals sieht.
+      try {
+        const pending = await withTenantContext(ctx, async (tx) => {
+          await assertPoaCreateContextTx(
+            tx,
+            session,
+            data.clientId,
+            data.signerContactId || undefined,
+            true,
+          );
+          const created = await createPendingDocumentWithVersion(tx, {
+            documentData: {
+              id: data.uploadIntentId || undefined,
+              tenantId,
+              clientId: data.clientId,
+              title: `Vollmacht - ${data.subject}`,
+              classification: 'GOBD_CONTRACT',
+              mimeType: 'application/pdf',
+            },
+            prepared: prepared!,
+            createdById: staffId,
+          });
+          await evidenceService.record(tx, {
+            tenantId,
+            actorType: 'STAFF',
+            actorId: staffId,
+            action: 'document.upload.pending',
+            resourceType: 'document',
+            resourceId: created.document.id,
+            after: {
+              source: 'power_of_attorney',
+              classification: 'GOBD_CONTRACT',
+              scanStatus: 'PENDING',
+            },
+          });
+          return created;
+        });
+        pdfDocumentId = pending.document.id;
+        pdfVersionId = pending.version.id;
+      } catch (e) {
+        return toActionError(e);
+      }
+    }
+
+    if (prepared && pdfDocumentId && pdfVersionId) {
+      let committed;
+      try {
+        committed = resumeDocumentId ? await recoverPreparedBytesCommit(prepared) : null;
+        if (!committed) {
+          fileData ??= await readPoaPdfBytes(formData, true);
+          committed = await commitPreparedBytes({ fileData: fileData!, prepared });
+        }
+      } catch {
+        return {
+          ok: false,
+          error:
+            'Upload noch nicht abgeschlossen. Sie können den Vorgang mit derselben PDF sicher fortsetzen.',
+          pendingDocumentId: pdfDocumentId,
+        };
+      }
+      try {
+        await withTenantContext(ctx, async (tx) => {
+          await finalizePendingDocumentVersion(tx, {
+            documentId: pdfDocumentId!,
+            versionId: pdfVersionId!,
+            commit: committed!,
+          });
+          await evidenceService.record(tx, {
+            tenantId,
+            actorType: 'STAFF',
+            actorId: staffId,
+            action: 'document.upload.complete',
+            resourceType: 'document',
+            resourceId: pdfDocumentId!,
+            after: {
+              source: 'power_of_attorney',
+              classification: 'GOBD_CONTRACT',
+              scanStatus: 'CLEAN',
+            },
+          });
+        });
+      } catch {
+        return {
+          ok: false,
+          error:
+            'Das PDF wurde gespeichert, aber noch nicht abschließend zugeordnet. Bitte den Vorgang fortsetzen.',
+          pendingDocumentId: pdfDocumentId,
+        };
+      }
     }
   }
 
   let id: string;
   try {
     id = await withTenantContext(ctx, async (tx) => {
-      // clientId kommt aus dem Formular — Existenz im aktuellen Tenant prüfen
-      // (RLS-aware), bevor der FK-Insert eine fremde UUID akzeptieren würde.
-      await assertClientInTenant(tx, data.clientId);
-      // signerContactId muss zum gewählten Mandanten gehören — sonst ließe
-      // sich ein fremder Kontakt als Unterzeichner verknüpfen.
-      if (data.signerContactId) {
-        const contact = await tx.clientContact.findFirst({
-          where: { id: data.signerContactId, clientId: data.clientId },
-          select: { id: true },
-        });
-        if (!contact) {
-          throw new ActionError('Ansprechpartner gehört nicht zum gewählten Mandanten.');
-        }
-      }
-      // Extern-Modus: Document + erste Version aus dem Upload anlegen und am
-      // POA-Datensatz verknüpfen (documentId).
-      let documentId: string | null = null;
-      if (pdfCommit) {
-        const { document } = await createDocumentWithVersion(tx, {
-          documentData: {
+      await assertPoaCreateContextTx(
+        tx,
+        session,
+        data.clientId,
+        data.signerContactId || undefined,
+        true,
+      );
+      if (pdfDocumentId && pdfVersionId) {
+        await tx.$queryRaw`
+          SELECT "id" FROM "document"
+          WHERE "id" = ${pdfDocumentId}::uuid
+            AND "tenant_id" = ${tenantId}::uuid
+          FOR UPDATE
+        `;
+        const readyDocument = await tx.document.findFirst({
+          where: {
+            id: pdfDocumentId,
             tenantId,
             clientId: data.clientId,
-            title: `Vollmacht - ${data.subject}`,
             classification: 'GOBD_CONTRACT',
             mimeType: 'application/pdf',
+            deletedAt: null,
           },
-          commit: pdfCommit,
-          createdById: staffId,
+          select: {
+            versions: {
+              orderBy: { versionNo: 'desc' },
+              take: 1,
+              select: {
+                id: true,
+                immutable: true,
+                scanStatus: true,
+                storageVersionId: true,
+              },
+            },
+          },
         });
-        documentId = document.id;
+        const readyVersion = readyDocument?.versions[0];
+        if (
+          !readyVersion ||
+          readyVersion.id !== pdfVersionId ||
+          !readyVersion.immutable ||
+          readyVersion.scanStatus !== 'CLEAN' ||
+          !readyVersion.storageVersionId?.trim()
+        ) {
+          throw new ActionError('Das Vollmachts-PDF ist noch nicht vollständig gespeichert.');
+        }
+        const alreadyUsed = await tx.powerOfAttorney.findFirst({
+          where: { tenantId, documentId: pdfDocumentId },
+          select: { id: true },
+        });
+        if (alreadyUsed) {
+          throw new ActionError('Das Vollmachts-PDF ist bereits einer Vollmacht zugeordnet.');
+        }
       }
       const poa = await tx.powerOfAttorney.create({
         data: {
@@ -185,7 +565,7 @@ export async function createPoaAction(
           validUntil: data.validUntil ? new Date(data.validUntil) : null,
           status: 'DRAFT',
           createdByStaff: staffId,
-          documentId,
+          documentId: pdfDocumentId,
         },
       });
       await evidenceService.record(tx, {
@@ -199,14 +579,27 @@ export async function createPoaAction(
           subject: data.subject,
           signerEmail: data.signerEmail,
           externMode,
-          withPdf: !!documentId,
+          withPdf: !!pdfDocumentId,
         },
       });
       return poa.id;
     });
   } catch (e) {
-    if (e instanceof ActionError) return { ok: false, error: e.message };
-    return { ok: false, error: 'Anlegen fehlgeschlagen.' };
+    const suffix = pdfDocumentId
+      ? ' Das PDF bleibt nachvollziehbar in der Mandantenakte gespeichert.'
+      : '';
+    if (e instanceof ActionError) {
+      return {
+        ok: false,
+        error: `${e.message}${suffix}`,
+        pendingDocumentId: pdfDocumentId ?? undefined,
+      };
+    }
+    return {
+      ok: false,
+      error: `Anlegen fehlgeschlagen.${suffix}`,
+      pendingDocumentId: pdfDocumentId ?? undefined,
+    };
   }
 
   revalidatePath('/staff/poa');
@@ -343,6 +736,7 @@ export async function sendForSignatureAction(formData: FormData): Promise<Action
   const link = `${portalBaseUrl}/poa/sign?token=${encodeURIComponent(rawToken)}`;
   await sendTemplateMail({
     tenantId,
+    clientId: sent.poa.clientId,
     slug: 'poa-sign',
     to: sent.poa.signerEmail,
     vars: {
@@ -630,6 +1024,7 @@ export async function requestSigningOtpAction(input: {
 
     await sendTemplateMail({
       tenantId: poa.tenantId,
+      clientId: poa.clientId,
       slug: 'poa-otp',
       to: snapshot.signerEmail,
       vars: {

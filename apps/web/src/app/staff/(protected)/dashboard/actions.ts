@@ -3,8 +3,15 @@
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { Prisma as PrismaRuntime } from '@taxtronik/db/prisma-client';
-import { WIDGET_BY_TYPE, type DashboardLayout } from '@/server/dashboard/widgets';
+import type { ReactNode } from 'react';
+import {
+  WIDGET_BY_TYPE,
+  type DashboardLayout,
+  type LayoutWidget,
+} from '@/server/dashboard/widgets';
 import { withStaff, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
+import { inaccessibleClientIdsFor, isStaffAdmin } from '@/server/auth/rbac';
+import { renderWidget } from './widgets';
 
 export type ActionResult = BaseActionResult;
 
@@ -24,27 +31,61 @@ const LayoutSchema = z.object({
     .max(40),
 });
 
-export async function saveDashboardLayoutAction(layout: DashboardLayout): Promise<ActionResult> {
+function cleanLayout(layout: DashboardLayout): DashboardLayout | null {
   const parsed = LayoutSchema.safeParse(layout);
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-
-  // Unknown widget types raus
-  const cleaned: DashboardLayout = {
+  if (!parsed.success) return null;
+  return {
     version: 2,
     widgets: parsed.data.widgets.filter(
-      (w) => w.type in WIDGET_BY_TYPE,
+      (widget) => widget.type in WIDGET_BY_TYPE,
     ) as DashboardLayout['widgets'],
   };
+}
 
-  return withStaff(
-    async (tx, { staffId }) => {
-      await tx.staffUser.update({
-        where: { id: staffId },
-        data: { dashboardLayout: cleaned as unknown as Prisma.InputJsonValue },
-      });
-    },
-    { revalidate: '/staff/dashboard' },
-  );
+export async function saveDashboardLayoutAction(layout: DashboardLayout): Promise<ActionResult> {
+  const cleaned = cleanLayout(layout);
+  if (!cleaned) return { ok: false, error: 'Validierungsfehler.' };
+
+  return withStaff(async (tx, { staffId }) => {
+    await tx.staffUser.update({
+      where: { id: staffId },
+      data: { dashboardLayout: cleaned as unknown as Prisma.InputJsonValue },
+    });
+  });
+}
+
+export type AddDashboardWidgetResult = ActionResult & {
+  rendered?: { widget: LayoutWidget; node: ReactNode };
+};
+
+/**
+ * Speichert das Layout und rendert ausschließlich den neu hinzugefügten Slot.
+ * Ein kompletter RSC-Refresh würde alle vorhandenen Widget-Abfragen erneut
+ * ausführen und machte einen einzelnen Klick mit wachsendem Dashboard langsamer.
+ */
+export async function addDashboardWidgetAction(
+  layout: DashboardLayout,
+  widgetId: string,
+): Promise<AddDashboardWidgetResult> {
+  const cleaned = cleanLayout(layout);
+  if (!cleaned) return { ok: false, error: 'Validierungsfehler.' };
+  const widget = cleaned.widgets.find((entry) => entry.id === widgetId);
+  if (!widget) return { ok: false, error: 'Widget nicht gefunden.' };
+
+  return withStaff(async (tx, { staffId, session }) => {
+    const deniedClientIds = await inaccessibleClientIdsFor(tx, session);
+    await tx.staffUser.update({
+      where: { id: staffId },
+      data: { dashboardLayout: cleaned as unknown as Prisma.InputJsonValue },
+    });
+    const node = await renderWidget(widget.type, {
+      tx,
+      staffId,
+      isAdmin: isStaffAdmin(session),
+      deniedClientIds,
+    });
+    return { rendered: { widget, node } };
+  });
 }
 
 export async function resetDashboardLayoutAction(): Promise<ActionResult> {

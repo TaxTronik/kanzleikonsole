@@ -21,7 +21,7 @@ import {
 import { checkRateLimit, checkIpOrGlobalLimit, getClientIp } from '@/server/rate-limit';
 import { log } from '@/server/logger';
 import { notifyMany } from '@/server/notifications/service';
-import { ConsentSelectionsSchema, countGranted } from '@/server/privacy/consent';
+import { PortalConsentSelectionsSchema, countGranted } from '@/server/privacy/consent';
 import { resolveConsentSelectionsTx } from '@/server/privacy/consent-catalog';
 import { renderNoticeForTenantTx } from '@/server/privacy/service';
 import { isPrivacyConfigComplete, readPrivacyConfigTx } from '@/server/privacy/notice';
@@ -338,7 +338,7 @@ const SubmitSchema = z.object({
   consent: z.object({
     noticeAcknowledged: z.literal(true),
     signedByName: z.string().min(1).max(300),
-    selections: ConsentSelectionsSchema,
+    selections: PortalConsentSelectionsSchema,
   }),
 });
 

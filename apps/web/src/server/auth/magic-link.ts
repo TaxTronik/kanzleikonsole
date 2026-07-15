@@ -7,6 +7,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { notify } from '@/server/notifications/service';
 import { log } from '@/server/logger';
 import { checkRateLimit } from '@/server/rate-limit';
+import { findEligiblePortalProfilesByEmail, type PortalProfileOption } from './portal-profiles';
 
 const MAGIC_LINK_TTL_MINUTES = 30;
 
@@ -18,33 +19,27 @@ function generateRawToken(): string {
   return randomBytes(32).toString('base64url');
 }
 
-type MagicLinkContact = {
-  id: string;
-  tenantId: string;
-  clientId: string;
-  email: string;
-  fullName: string;
-  client: { name: string; allowActive: boolean; anonymizedAt: Date | null };
-};
-
 async function antiTimingDelay(): Promise<void> {
   await new Promise<void>((resolve) => setTimeout(resolve, 250 + randomInt(0, 250)));
 }
 
-async function sendOneMagicLink(input: {
+async function sendMagicLink(input: {
+  tenantId: string;
   tenantName: string;
-  contact: MagicLinkContact;
+  recipient: PortalProfileOption;
+  contactId: string | null;
+  profileCount: number;
 }): Promise<void> {
-  const { tenantName, contact } = input;
+  const { tenantId, tenantName, recipient, contactId, profileCount } = input;
   const rawToken = generateRawToken();
   const tokenHash = hashToken(rawToken);
   const expiresAt = new Date(Date.now() + MAGIC_LINK_TTL_MINUTES * 60 * 1000);
 
   await prismaOwner.magicLink.create({
     data: {
-      tenantId: contact.tenantId,
-      contactId: contact.id,
-      email: contact.email,
+      tenantId,
+      contactId,
+      email: recipient.email,
       tokenHash,
       expiresAt,
     },
@@ -55,9 +50,10 @@ async function sendOneMagicLink(input: {
   if (env.NODE_ENV !== 'production') {
     log.info(
       {
-        email: contact.email,
-        contactId: contact.id,
-        clientId: contact.clientId,
+        email: recipient.email,
+        contactId,
+        clientId: contactId ? recipient.clientId : null,
+        profileCount,
         devSignInUrl: link,
         expiresMinutes: MAGIC_LINK_TTL_MINUTES,
       },
@@ -67,19 +63,27 @@ async function sendOneMagicLink(input: {
 
   try {
     const mailResult = await sendTemplateMail({
-      tenantId: contact.tenantId,
+      tenantId,
       slug: 'magic-link',
-      to: contact.email,
+      to: recipient.email,
+      subjectSuffix: profileCount > 1 ? `${profileCount} Mandantenprofile` : recipient.clientName,
       vars: {
-        contact: { fullName: contact.fullName, email: contact.email },
+        contact: { fullName: recipient.contactName, email: recipient.email },
         tenant: { name: tenantName },
-        client: { name: contact.client.name },
+        client: {
+          name:
+            profileCount > 1 ? `${profileCount} verfügbare Mandantenprofile` : recipient.clientName,
+        },
+        profileCount,
         link,
         expiresMinutes: MAGIC_LINK_TTL_MINUTES,
       },
       fallback: {
-        subject: `Ihr Login-Link zum Mandantenportal (${contact.client.name})`,
-        bodyMd: `Hallo {{contact.fullName}},\n\nüber den folgenden Link können Sie sich in das Mandantenportal für {{client.name}} einloggen:\n\n{{link}}\n\nDer Link ist {{expiresMinutes}} Minuten gültig und kann nur einmal verwendet werden.`,
+        subject: 'Ihr Login-Link zum Mandantenportal',
+        bodyMd:
+          profileCount > 1
+            ? 'Hallo {{contact.fullName}},\n\nüber den folgenden Link wählen Sie aus, welches Ihrer {{profileCount}} Mandantenprofile Sie öffnen möchten:\n\n{{link}}\n\nDer Link ist {{expiresMinutes}} Minuten gültig und kann nur einmal verwendet werden.'
+            : 'Hallo {{contact.fullName}},\n\nüber den folgenden Link können Sie sich in das Mandantenportal für {{client.name}} einloggen:\n\n{{link}}\n\nDer Link ist {{expiresMinutes}} Minuten gültig und kann nur einmal verwendet werden.',
       },
     });
     if (!mailResult.ok) {
@@ -87,7 +91,7 @@ async function sendOneMagicLink(input: {
     }
   } catch (e) {
     log[env.NODE_ENV === 'production' ? 'error' : 'warn'](
-      { err: (e as Error).message, email: contact.email, contactId: contact.id },
+      { err: (e as Error).message, email: recipient.email, contactId },
       'magic-link: SMTP-Versand fehlgeschlagen - Token wird invalidiert',
     );
     if (env.NODE_ENV === 'production') {
@@ -97,28 +101,26 @@ async function sendOneMagicLink(input: {
         });
       } catch (deleteErr) {
         log.error(
-          { err: (deleteErr as Error).message, email: contact.email, contactId: contact.id },
+          { err: (deleteErr as Error).message, email: recipient.email, contactId },
           'magic-link: Token nach SMTP-Fehler konnte nicht invalidiert werden',
         );
       }
     }
     try {
-      await withTenantContext(
-        { tenantId: contact.tenantId, actorId: null, actorType: 'SYSTEM' },
-        (tx) =>
-          notify(tx, {
-            tenantId: contact.tenantId,
-            staffId: null,
-            kind: 'SYSTEM_MAIL_FAILED',
-            title: 'Login-Link konnte nicht versendet werden',
-            body: `Der Magic-Link an ${contact.email} wurde nicht zugestellt (SMTP-Fehler). Bitte Mailserver pruefen oder den Link erneut senden.`,
-            resourceType: 'client_contact',
-            resourceId: contact.id,
-          }),
+      await withTenantContext({ tenantId, actorId: null, actorType: 'SYSTEM' }, (tx) =>
+        notify(tx, {
+          tenantId,
+          staffId: null,
+          kind: 'SYSTEM_MAIL_FAILED',
+          title: 'Login-Link konnte nicht versendet werden',
+          body: `Der Magic-Link an ${recipient.email} wurde nicht zugestellt (SMTP-Fehler). Bitte Mailserver pruefen oder den Link erneut senden.`,
+          resourceType: 'client_contact',
+          resourceId: recipient.contactId,
+        }),
       );
     } catch (notifyErr) {
       log.error(
-        { err: (notifyErr as Error).message, email: contact.email, contactId: contact.id },
+        { err: (notifyErr as Error).message, email: recipient.email, contactId },
         'magic-link: Notification ueber SMTP-Fehler konnte nicht angelegt werden',
       );
     }
@@ -127,9 +129,9 @@ async function sendOneMagicLink(input: {
 
 /**
  * Erzeugt Magic-Links fuer eine E-Mail-Adresse. Bei Staff-Flows wird per
- * contactId exakt der gewuenschte Ansprechpartner adressiert. Ohne contactId
- * (Portal-Login per E-Mail) bekommen alle aktiven Kontakte dieser Adresse
- * einen eigenen, kontaktgebundenen Link.
+ * contactId exakt der gewuenschte Ansprechpartner adressiert. Beim Login im
+ * Portal entsteht dagegen genau ein E-Mail-gebundener Link; nach dem Klick
+ * waehlt der Nutzer explizit eines seiner aktiven Mandantenprofile aus.
  */
 export async function requestMagicLink(input: {
   tenantId: string;
@@ -153,79 +155,89 @@ export async function requestMagicLink(input: {
     return { ok: true };
   }
 
-  const contacts = (
-    input.contactId
-      ? await prismaOwner.clientContact.findMany({
-          where: { id: input.contactId, tenantId: input.tenantId, email: emailKey, active: true },
-          include: { client: { select: { name: true, allowActive: true, anonymizedAt: true } } },
-          orderBy: { createdAt: 'asc' },
-        })
-      : await prismaOwner.clientContact.findMany({
-          where: { tenantId: input.tenantId, email: emailKey, active: true },
-          include: { client: { select: { name: true, allowActive: true, anonymizedAt: true } } },
-          orderBy: { createdAt: 'asc' },
-        })
-  ) as MagicLinkContact[];
-
-  const eligibleContacts = contacts.filter(
-    (contact) => contact.client.allowActive && contact.client.anonymizedAt === null,
-  );
-  if (eligibleContacts.length === 0) {
+  const profiles = await findEligiblePortalProfilesByEmail({
+    tenantId: input.tenantId,
+    email: emailKey,
+  });
+  const eligibleProfiles = input.contactId
+    ? profiles.filter((profile) => profile.contactId === input.contactId)
+    : profiles;
+  if (eligibleProfiles.length === 0) {
     await antiTimingDelay();
     return { ok: true };
   }
 
-  for (const contact of eligibleContacts) {
-    await sendOneMagicLink({ tenantName: tenant.name, contact });
-  }
+  await sendMagicLink({
+    tenantId: input.tenantId,
+    tenantName: tenant.name,
+    recipient: eligibleProfiles[0]!,
+    contactId: input.contactId ? eligibleProfiles[0]!.contactId : null,
+    profileCount: eligibleProfiles.length,
+  });
 
   return { ok: true };
 }
 
+type UsableMagicLink = {
+  id: string;
+  tenantId: string;
+  email: string;
+  contactId: string | null;
+};
+
+async function findUsableMagicLink(rawToken: string): Promise<UsableMagicLink | null> {
+  if (!rawToken || rawToken.length < 16) return null;
+  const link = await prismaOwner.magicLink.findFirst({
+    where: { tokenHash: hashToken(rawToken) },
+  });
+  if (!link || link.consumedAt || link.expiresAt < new Date()) return null;
+  return link;
+}
+
+async function profilesForLink(link: UsableMagicLink): Promise<PortalProfileOption[]> {
+  const profiles = await findEligiblePortalProfilesByEmail({
+    tenantId: link.tenantId,
+    email: link.email,
+  });
+  return link.contactId
+    ? profiles.filter((profile) => profile.contactId === link.contactId)
+    : profiles;
+}
+
+export interface MagicLinkInspection {
+  profiles: PortalProfileOption[];
+}
+
+/** Liest die sichere Profilauswahl, ohne den Einmal-Link zu konsumieren. */
+export async function inspectMagicLink(rawToken: string): Promise<MagicLinkInspection | null> {
+  const link = await findUsableMagicLink(rawToken);
+  if (!link) return null;
+  const profiles = await profilesForLink(link);
+  return profiles.length > 0 ? { profiles } : null;
+}
+
 /**
  * Verifiziert einen Magic-Link-Token und gibt den gebundenen ClientContact
- * zurueck. Legacy-Links ohne contactId verwenden den alten tenant/email-Fallback.
+ * zurueck. Bei E-Mail-Links mit mehreren Profilen ist die explizite contactId
+ * zwingend. Kontaktgebundene Staff-Links koennen nie auf ein anderes Profil
+ * umgebogen werden.
  */
-export async function verifyMagicLink(rawToken: string): Promise<{
+export async function verifyMagicLink(
+  rawToken: string,
+  selectedContactId?: string,
+): Promise<{
   contact: { id: string; tenantId: string; clientId: string; email: string; fullName: string };
 } | null> {
-  if (!rawToken || rawToken.length < 16) return null;
-  const tokenHash = hashToken(rawToken);
-
-  const link = await prismaOwner.magicLink.findFirst({
-    where: { tokenHash },
-  });
+  const link = await findUsableMagicLink(rawToken);
   if (!link) return null;
-  if (link.consumedAt) return null;
-  if (link.expiresAt < new Date()) return null;
+  if (link.contactId && selectedContactId && selectedContactId !== link.contactId) return null;
 
-  const contact = (
-    link.contactId
-      ? await prismaOwner.clientContact.findUnique({
-          where: { id: link.contactId },
-          include: { client: { select: { allowActive: true, anonymizedAt: true } } },
-        })
-      : await prismaOwner.clientContact.findFirst({
-          where: { tenantId: link.tenantId, email: link.email, active: true },
-          include: { client: { select: { allowActive: true, anonymizedAt: true } } },
-        })
-  ) as
-    | (Omit<MagicLinkContact, 'client'> & {
-        active: boolean;
-        client: { allowActive: boolean; anonymizedAt: Date | null };
-      })
-    | null;
-
-  if (
-    !contact ||
-    !contact.active ||
-    contact.tenantId !== link.tenantId ||
-    contact.email.toLowerCase() !== link.email.toLowerCase() ||
-    !contact.client.allowActive ||
-    contact.client.anonymizedAt !== null
-  ) {
-    return null;
-  }
+  const profiles = await profilesForLink(link);
+  const contactId =
+    link.contactId ?? selectedContactId ?? (profiles.length === 1 ? profiles[0]!.contactId : null);
+  if (!contactId) return null;
+  const contact = profiles.find((profile) => profile.contactId === contactId);
+  if (!contact) return null;
 
   const claimed = await prismaOwner.$transaction(async (tx) => {
     const claim = await tx.magicLink.updateMany({
@@ -236,10 +248,10 @@ export async function verifyMagicLink(rawToken: string): Promise<{
     await evidenceService.record(tx, {
       tenantId: link.tenantId,
       actorType: 'CLIENT_CONTACT',
-      actorId: contact.id,
+      actorId: contact.contactId,
       action: 'auth.magic_link.consume',
       resourceType: 'client_contact',
-      resourceId: contact.id,
+      resourceId: contact.contactId,
       after: { email: contact.email },
     });
     return true;
@@ -247,16 +259,16 @@ export async function verifyMagicLink(rawToken: string): Promise<{
   if (!claimed) return null;
 
   prismaOwner.clientContact
-    .update({ where: { id: contact.id }, data: { lastLoginAt: new Date() } })
+    .update({ where: { id: contact.contactId }, data: { lastLoginAt: new Date() } })
     .catch(() => void 0);
 
   return {
     contact: {
-      id: contact.id,
-      tenantId: contact.tenantId,
+      id: contact.contactId,
+      tenantId: link.tenantId,
       clientId: contact.clientId,
       email: contact.email,
-      fullName: contact.fullName,
+      fullName: contact.contactName,
     },
   };
 }

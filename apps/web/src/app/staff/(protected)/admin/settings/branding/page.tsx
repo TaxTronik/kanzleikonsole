@@ -1,10 +1,9 @@
+import Link from 'next/link';
 import { staffAuth } from '@/server/auth/staff';
 import { readBranding } from '@/server/settings/branding';
 import { readLetterhead } from '@/server/settings/letterhead';
-import { readLegal } from '@/server/settings/legal';
 import { BrandingForm } from '../branding-form';
 import { LetterheadForm } from '../letterhead-form';
-import { LegalForm } from '../legal-form';
 import { SectionCard } from '../section-card';
 import { redirect } from 'next/navigation';
 
@@ -13,11 +12,7 @@ export default async function BrandingSettingsPage() {
   if (!session?.user) redirect('/staff/login');
   const { tenantId, staffId } = session.user;
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
-  const [branding, letterhead, legal] = await Promise.all([
-    readBranding(ctx),
-    readLetterhead(ctx),
-    readLegal(ctx),
-  ]);
+  const [branding, letterhead] = await Promise.all([readBranding(ctx), readLetterhead(ctx)]);
 
   return (
     <div className="space-y-6">
@@ -37,9 +32,14 @@ export default async function BrandingSettingsPage() {
 
       <SectionCard
         title="Rechtliche Hinweise"
-        description="Links zu Impressum und Datenschutzerklärung. Werden auf den Login-Seiten verlinkt — Pflicht nach Telemediengesetz und DSGVO."
+        description="Impressum und Datenschutzerklärung werden gemeinsam mit den übrigen DSGVO-Einstellungen zentral gepflegt."
       >
-        <LegalForm initial={legal} />
+        <Link
+          href="/staff/admin/privacy#oeffentliche-datenschutzerklaerung"
+          className="btn-secondary"
+        >
+          Datenschutz-Zentrale öffnen
+        </Link>
       </SectionCard>
     </div>
   );

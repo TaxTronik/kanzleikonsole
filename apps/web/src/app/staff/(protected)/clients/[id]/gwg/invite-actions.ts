@@ -92,6 +92,7 @@ export async function sendInviteAction(input: {
     'sendTemplateMail (gwg-onboarding invite)',
     sendTemplateMail({
       tenantId,
+      clientId,
       slug: 'gwg-onboarding',
       to: inviteEmail,
       vars: { inviteName, inviteEmail, link, clientId, gwgInviteId: inviteId },

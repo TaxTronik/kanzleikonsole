@@ -234,6 +234,7 @@ export async function retagDocumentAction(
     key: string;
     storageVersionId: string | null;
     immutable: boolean;
+    scanStatus: string;
     createdAt: Date;
     oldRetentionYears: number | null;
     newTier: ProtectionTier;
@@ -261,6 +262,7 @@ export async function retagDocumentAction(
               storageKey: true,
               storageVersionId: true,
               immutable: true,
+              scanStatus: true,
             },
           },
         },
@@ -310,6 +312,7 @@ export async function retagDocumentAction(
         key: d.versions[0].storageKey,
         storageVersionId: d.versions[0].storageVersionId,
         immutable: d.versions[0].immutable,
+        scanStatus: d.versions[0].scanStatus,
         createdAt: d.createdAt,
         oldRetentionYears:
           d.documentType?.retentionYears ??
@@ -328,6 +331,13 @@ export async function retagDocumentAction(
     return toActionError(e);
   }
   if (!ctx) return { ok: false, error: 'Dokument oder Version nicht gefunden.' };
+
+  if (ctx.scanStatus !== 'CLEAN') {
+    return {
+      ok: false,
+      error: 'Dokument-Upload ist noch nicht abgeschlossen. Bitte zuerst den Upload fortsetzen.',
+    };
+  }
 
   if (ctx.newTypeId && ctx.newTypeId === ctx.oldTypeId) return { ok: true }; // No-op.
 
@@ -446,6 +456,7 @@ export async function retagDocumentAction(
         storageKey: true,
         storageVersionId: true,
         immutable: true,
+        scanStatus: true,
       },
     });
     if (
@@ -456,7 +467,8 @@ export async function retagDocumentAction(
         latest.storageBucket !== ctx!.bucket ||
         latest.storageKey !== ctx!.key ||
         latest.storageVersionId !== ctx!.storageVersionId ||
-        latest.immutable !== ctx!.immutable)
+        latest.immutable !== ctx!.immutable ||
+        latest.scanStatus !== ctx!.scanStatus)
     ) {
       throw new ActionError(
         'Neue Dokumentversion während der Umklassifizierung erkannt. Bitte erneut versuchen.',

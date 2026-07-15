@@ -28,31 +28,52 @@ function toLocalIsoMinute(d: Date): string {
 }
 
 export function DateTimePicker({
+  id,
   name,
   defaultValue,
+  value,
+  onChange,
   required = false,
   className,
   minDate,
+  disabled = false,
+  output = 'local',
 }: {
+  id?: string;
   /** FormData-Key — versteckter Input mit ISO-Wert (YYYY-MM-DDTHH:MM) */
   name: string;
   /** Vorbelegung als Date oder ISO-String */
   defaultValue?: Date | string | null;
+  /** Kontrollierter lokaler Wert (YYYY-MM-DDTHH:MM), z. B. für Vorlagen. */
+  value?: string | null;
+  /** Meldet kontrollierten lokalen Wert zurück. */
+  onChange?: (value: string) => void;
   required?: boolean;
   className?: string;
   /** Frühestes wählbares Datum (z. B. "heute" für Termin-Anfragen) */
   minDate?: Date;
+  disabled?: boolean;
+  /** UTC liefert einen vollständigen ISO-Zeitstempel für z.string().datetime(). */
+  output?: 'local' | 'utc';
 }) {
-  const [date, setDate] = useState<Date | null>(() => {
+  const [internalDate, setInternalDate] = useState<Date | null>(() => {
     if (!defaultValue) return null;
     return typeof defaultValue === 'string' ? new Date(defaultValue) : defaultValue;
   });
+  const controlled = value !== undefined;
+  const controlledDate = value ? new Date(value) : null;
+  const date = controlled ? controlledDate : internalDate;
+  const serialized = date ? (output === 'utc' ? date.toISOString() : toLocalIsoMinute(date)) : '';
 
   return (
     <div className="relative">
       <DatePicker
+        id={id}
         selected={date}
-        onChange={(d: Date | null) => setDate(d ?? null)}
+        onChange={(next: Date | null) => {
+          if (!controlled) setInternalDate(next ?? null);
+          onChange?.(next ? toLocalIsoMinute(next) : '');
+        }}
         showTimeSelect
         timeIntervals={15}
         timeFormat="HH:mm"
@@ -63,15 +84,11 @@ export function DateTimePicker({
         placeholderText="Datum + Uhrzeit auswählen"
         className={'input text-sm w-full ' + (className ?? '')}
         autoComplete="off"
+        disabled={disabled}
         // wrapperClassName sorgt dafür, dass der DatePicker volle Breite einnimmt
         wrapperClassName="w-full"
       />
-      <input
-        type="hidden"
-        name={name}
-        value={date ? toLocalIsoMinute(date) : ''}
-        required={required}
-      />
+      <input type="hidden" name={name} value={serialized} required={required} />
     </div>
   );
 }

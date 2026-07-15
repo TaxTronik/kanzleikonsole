@@ -84,6 +84,7 @@ function initialDocument(immutable: boolean) {
         storageKey: 'old-key',
         storageVersionId: immutable ? 'old-version-id' : null,
         immutable,
+        scanStatus: 'CLEAN',
       },
     ],
   };
@@ -97,6 +98,7 @@ function matchingLatest(immutable: boolean) {
     storageKey: 'old-key',
     storageVersionId: immutable ? 'old-version-id' : null,
     immutable,
+    scanStatus: 'CLEAN',
   };
 }
 

@@ -207,6 +207,7 @@ export async function onboardingSendGwgAction(formData: FormData) {
     'sendTemplateMail (gwg-onboarding wizard)',
     sendTemplateMail({
       tenantId,
+      clientId: parsed.data.clientId,
       slug: 'gwg-onboarding',
       to: parsed.data.inviteEmail,
       vars: {

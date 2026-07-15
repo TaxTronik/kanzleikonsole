@@ -282,6 +282,7 @@ export default async function OnboardingStepPage({
             defaultEmail={firstContact?.email ?? ''}
             existingInvite={gwgInvite}
             hasSubmission={hasGwgSubmission}
+            verified={gwgCheck?.status === 'VERIFIED'}
           />
           {(gwgInvite || gwgCheck || gwgSummary.uploadedDocuments.length > 0) && (
             <GwgSubmissionSummary data={gwgSummary} title="Aktueller Stand der GwG-Einreichung" />
@@ -436,12 +437,14 @@ function GwgStep({
   defaultEmail,
   existingInvite,
   hasSubmission,
+  verified,
 }: {
   clientId: string;
   defaultName: string;
   defaultEmail: string;
   existingInvite: { id: string; inviteEmail: string; inviteName: string; status: string } | null;
   hasSubmission: boolean;
+  verified: boolean;
 }) {
   const sendFormId = `gwg-send-${clientId}`;
   return (
@@ -462,41 +465,45 @@ function GwgStep({
         </div>
       )}
 
-      <form id={sendFormId} action={onboardingSendGwgAction} className="space-y-4">
-        <input type="hidden" name="clientId" value={clientId} />
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="label" htmlFor="inviteName">
-              Name des Mandanten <span className="text-red-600">*</span>
-            </label>
-            <input
-              id="inviteName"
-              name="inviteName"
-              type="text"
-              required
-              maxLength={200}
-              defaultValue={defaultName}
-              className="input"
-            />
+      {!verified && (
+        <form id={sendFormId} action={onboardingSendGwgAction} className="space-y-4">
+          <input type="hidden" name="clientId" value={clientId} />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label" htmlFor="inviteName">
+                Name des Mandanten <span className="text-red-600">*</span>
+              </label>
+              <input
+                id="inviteName"
+                name="inviteName"
+                type="text"
+                required
+                maxLength={200}
+                defaultValue={defaultName}
+                className="input"
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor="inviteEmail">
+                E-Mail <span className="text-red-600">*</span>
+              </label>
+              <input
+                id="inviteEmail"
+                name="inviteEmail"
+                type="email"
+                required
+                maxLength={255}
+                defaultValue={defaultEmail}
+                className="input"
+              />
+            </div>
           </div>
-          <div>
-            <label className="label" htmlFor="inviteEmail">
-              E-Mail <span className="text-red-600">*</span>
-            </label>
-            <input
-              id="inviteEmail"
-              name="inviteEmail"
-              type="email"
-              required
-              maxLength={255}
-              defaultValue={defaultEmail}
-              className="input"
-            />
-          </div>
-        </div>
-      </form>
+        </form>
+      )}
       <div className="flex justify-end gap-2 pt-3 mt-4 border-t border-subtle">
-        {hasSubmission ? (
+        {verified ? (
+          <SkipButton clientId={clientId} next="poa" label="Weiter" />
+        ) : hasSubmission ? (
           <>
             <SkipButton clientId={clientId} next="poa" label="Später weiter" />
             <Link
@@ -509,13 +516,15 @@ function GwgStep({
         ) : existingInvite ? (
           <SkipButton clientId={clientId} next="poa" label="Weiter" />
         ) : null}
-        <button
-          type="submit"
-          form={sendFormId}
-          className={existingInvite ? 'btn-secondary text-sm' : 'btn-primary text-sm'}
-        >
-          {existingInvite ? 'Erneut senden' : 'Einladung senden'}
-        </button>
+        {!verified && (
+          <button
+            type="submit"
+            form={sendFormId}
+            className={existingInvite ? 'btn-secondary text-sm' : 'btn-primary text-sm'}
+          >
+            {existingInvite ? 'Erneut senden' : 'Einladung senden'}
+          </button>
+        )}
       </div>
     </div>
   );

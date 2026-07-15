@@ -3,6 +3,7 @@ import {
   GetObjectCommand,
   DeleteObjectCommand,
   ListObjectVersionsCommand,
+  type PutObjectCommandOutput,
 } from '@aws-sdk/client-s3';
 import { createHash } from 'node:crypto';
 import { createConnection } from 'node:net';
@@ -133,6 +134,17 @@ export interface CommitDocumentResult {
    */
   detectedMime: string | null;
 }
+
+/**
+ * Vollstaendig gescannte und gehashte Upload-Absicht mit festem Zielschluessel.
+ * Aufrufer koennen diese Metadaten vor dem Object-Store-Write dauerhaft als
+ * PENDING persistieren. Damit bleibt ein geschuetztes Objekt selbst dann
+ * auffindbar, wenn der Prozess nach dem S3-Commit abbricht.
+ */
+export type PreparedBytesCommit = Omit<CommitDocumentResult, 'storageVersionId'> & {
+  tier: ProtectionTier;
+  tenantId: string;
+};
 
 export type ScanResult = 'CLEAN' | 'INFECTED' | 'ERROR';
 
@@ -334,12 +346,13 @@ export function sanitizeFilenameForHeader(name: string): string {
 // Direkter Bytes-Download (für Server-side Aggregationen wie ZIP-Exporte)
 // ---------------------------------------------------------------------------
 
-export async function fetchObjectBytes(bucket: string, storageKey: string): Promise<Buffer> {
-  const result = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: storageKey }));
-  if (typeof result.ContentLength === 'number' && result.ContentLength > MAX_UPLOAD_BYTES) {
-    throw new Error(`TOO_LARGE: Objekt (${result.ContentLength} B) überschreitet das Limit.`);
+async function readObjectBodyWithLimit(
+  body: Readable,
+  contentLength: number | undefined,
+): Promise<Buffer> {
+  if (typeof contentLength === 'number' && contentLength > MAX_UPLOAD_BYTES) {
+    throw new Error(`TOO_LARGE: Objekt (${contentLength} B) überschreitet das Limit.`);
   }
-  const body = result.Body as Readable;
   const chunks: Buffer[] = [];
   let received = 0;
   for await (const chunk of body) {
@@ -352,6 +365,11 @@ export async function fetchObjectBytes(bucket: string, storageKey: string): Prom
     chunks.push(buf);
   }
   return Buffer.concat(chunks);
+}
+
+export async function fetchObjectBytes(bucket: string, storageKey: string): Promise<Buffer> {
+  const result = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: storageKey }));
+  return readObjectBodyWithLimit(result.Body as Readable, result.ContentLength);
 }
 
 /**
@@ -468,23 +486,37 @@ export async function putObjectBytes(
 }
 
 // ---------------------------------------------------------------------------
-// Geteilter Kern: Bytes scannen, hashen, in den Ziel-Bucket schreiben.
-// Genutzt von commitBytesWithTier/commitDocumentFromBytes. ClamAV läuft
-// synchron VOR dem Upload — eine infizierte Datei erreicht nie einen Bucket.
+// Geteilter Kern: Bytes scannen und einen festen Upload vorbereiten; danach
+// exakt diese Absicht in den Ziel-Bucket schreiben. ClamAV läuft synchron VOR
+// dem Upload — eine infizierte Datei erreicht nie einen Bucket.
 // (Den früheren Quarantäne-Zwischenschritt der Presigned-Upload-Architektur
 // gibt es nicht mehr; Uploads sind app-proxied, der Object-Store ist nur
 // intern erreichbar.)
 // ---------------------------------------------------------------------------
 
-async function scanHashAndUpload(
-  fileData: Buffer,
-  tier: ProtectionTier,
-  tenantId: string,
-  skipScan = false,
-  classification?: string,
-  retentionYears?: number,
-  retentionAnchor?: Date,
-): Promise<CommitDocumentResult> {
+export async function prepareBytesCommitWithTier(input: {
+  fileData: Buffer;
+  tier: ProtectionTier;
+  tenantId: string;
+  skipScan?: boolean;
+  classification?: string;
+  retentionYears?: number;
+  retentionAnchor?: Date;
+}): Promise<PreparedBytesCommit> {
+  const { fileData, tier, tenantId, skipScan, classification, retentionYears, retentionAnchor } =
+    input;
+  if (fileData.length > MAX_UPLOAD_BYTES) {
+    throw new Error(`TOO_LARGE: Datei überschreitet das Limit von ${MAX_UPLOAD_BYTES} Bytes.`);
+  }
+  if (retentionYears !== undefined) {
+    if (tier === 'GOBD' && ![6, 8, 10].includes(retentionYears)) {
+      throw new Error('INVALID_RETENTION_YEARS: GOBD erlaubt nur 6, 8 oder 10 Jahre.');
+    }
+    if (tier !== 'GOBD') {
+      throw new Error('INVALID_RETENTION_YEARS: Individuelle Jahre sind nur für GOBD zulässig.');
+    }
+  }
+
   if (!skipScan) {
     const scanResult = await scanWithClamAV(fileData);
     if (scanResult === 'INFECTED') {
@@ -518,40 +550,154 @@ async function scanHashAndUpload(
       : retentionForTier(tier);
   const locked = tier !== 'NONE';
 
-  const putResult = await s3.send(
-    new PutObjectCommand({
-      Bucket: targetBucket,
-      Key: targetKey,
-      Body: fileData,
-      ContentLength: fileData.length,
-      ...(locked && retentionUntil
-        ? {
-            ObjectLockMode: lockModeForTier(tier),
-            ObjectLockRetainUntilDate: retentionUntil,
-          }
-        : {}),
-    }),
-  );
-  const storageVersionId = await resolveStorageVersionId(
+  return {
+    tier,
+    tenantId,
     targetBucket,
     targetKey,
+    sha256: Buffer.from(sha256),
+    sizeBytes: BigInt(fileData.length),
+    immutable: locked,
+    retentionUntil,
+    detectedMime,
+  };
+}
+
+/**
+ * Schreibt exakt eine zuvor vorbereitete Upload-Absicht. Hash und Größe werden
+ * erneut geprüft, damit PENDING-Metadaten und unveränderbare Bytes identisch
+ * bleiben.
+ */
+export async function commitPreparedBytes(input: {
+  fileData: Buffer;
+  prepared: PreparedBytesCommit;
+}): Promise<CommitDocumentResult> {
+  const { fileData, prepared } = input;
+  if (BigInt(fileData.length) !== prepared.sizeBytes) {
+    throw new Error('PREPARED_UPLOAD_MISMATCH: Dateigröße hat sich nach dem Scan geändert.');
+  }
+  const actualSha256 = createHash('sha256').update(fileData).digest();
+  if (!actualSha256.equals(prepared.sha256)) {
+    throw new Error('PREPARED_UPLOAD_MISMATCH: Dateiinhalt hat sich nach dem Scan geändert.');
+  }
+  if (prepared.targetBucket !== getBucketForTier(prepared.tier)) {
+    throw new Error('PREPARED_UPLOAD_MISMATCH: Ziel-Bucket passt nicht zur Schutzstufe.');
+  }
+  const mustBeImmutable = prepared.tier !== 'NONE';
+  if (
+    prepared.immutable !== mustBeImmutable ||
+    (mustBeImmutable && !prepared.retentionUntil) ||
+    (!mustBeImmutable && prepared.retentionUntil !== null)
+  ) {
+    throw new Error('PREPARED_UPLOAD_MISMATCH: Object-Lock passt nicht zur Schutzstufe.');
+  }
+  const expectedPrefix = `tenants/${prepared.tenantId}/${prepared.tier.toLowerCase()}/`;
+  if (!prepared.targetKey.startsWith(expectedPrefix)) {
+    throw new Error('PREPARED_UPLOAD_MISMATCH: Zielschlüssel passt nicht zum Mandanten.');
+  }
+
+  let putResult: PutObjectCommandOutput;
+  try {
+    putResult = await s3.send(
+      new PutObjectCommand({
+        Bucket: prepared.targetBucket,
+        Key: prepared.targetKey,
+        Body: fileData,
+        ContentLength: fileData.length,
+        // Bedingter PUT macht auch SDK-Retries nach verloren gegangener
+        // Erfolgsantwort idempotent: Unter dem Intent-Key darf exakt eine
+        // Objektversion entstehen.
+        IfNoneMatch: '*',
+        ...(prepared.immutable && prepared.retentionUntil
+          ? {
+              ObjectLockMode: lockModeForTier(prepared.tier),
+              ObjectLockRetainUntilDate: prepared.retentionUntil,
+            }
+          : {}),
+      }),
+    );
+  } catch (putError) {
+    // Ein Timeout kann bedeuten, dass S3 den ersten PUT bereits committed hat.
+    // Den festen Key deshalb exakt inventarisieren statt blind erneut zu
+    // schreiben. Null bedeutet nachweislich: kein Objekt vorhanden.
+    const recovered = await recoverPreparedBytesCommit(prepared);
+    if (recovered) return recovered;
+    throw putError;
+  }
+  const storageVersionId = await resolveStorageVersionId(
+    prepared.targetBucket,
+    prepared.targetKey,
     putResult.VersionId,
   );
-  if (locked && !storageVersionId) {
+  if (prepared.immutable && !storageVersionId) {
     throw new Error(
       'STORAGE_VERSION_ID_MISSING: Object-Lock-Upload lieferte keine nachweisbare VersionId.',
     );
   }
 
   return {
-    targetBucket,
-    targetKey,
+    targetBucket: prepared.targetBucket,
+    targetKey: prepared.targetKey,
     storageVersionId,
-    sha256: Buffer.from(sha256),
-    sizeBytes: BigInt(fileData.length),
-    immutable: locked,
-    retentionUntil,
-    detectedMime,
+    sha256: Buffer.from(prepared.sha256),
+    sizeBytes: prepared.sizeBytes,
+    immutable: prepared.immutable,
+    retentionUntil: prepared.retentionUntil,
+    detectedMime: prepared.detectedMime,
+  };
+}
+
+/**
+ * Rekonstruiert einen mehrdeutigen/abgebrochenen Prepared-Commit anhand des
+ * dauerhaft journalisierten Keys. Genau eine Version mit identischen Bytes ist
+ * zulässig; mehrere Versionen oder Delete-Marker bleiben ein harter Ops-Fehler.
+ */
+export async function recoverPreparedBytesCommit(
+  prepared: PreparedBytesCommit,
+): Promise<CommitDocumentResult | null> {
+  const versions = new Map<string, string>();
+  for await (const page of listObjectVersionPages(prepared.targetBucket, prepared.targetKey)) {
+    if (page.DeleteMarkers?.some((marker) => marker.Key === prepared.targetKey)) {
+      throw new Error('PREPARED_UPLOAD_DELETE_MARKER: Intent-Key enthält einen Delete-Marker.');
+    }
+    for (const version of page.Versions ?? []) {
+      if (version.Key !== prepared.targetKey) continue;
+      if (!version.VersionId || version.VersionId === 'null') {
+        throw new Error('STORAGE_VERSION_ID_MISSING: Intent-Version ist nicht eindeutig belegt.');
+      }
+      versions.set(version.VersionId, version.VersionId);
+    }
+  }
+  if (versions.size === 0) return null;
+  if (versions.size !== 1) {
+    throw new Error('PREPARED_UPLOAD_MULTIPLE_VERSIONS: Intent-Key enthält mehrere Versionen.');
+  }
+
+  const storageVersionId = versions.keys().next().value as string;
+  const object = await s3.send(
+    new GetObjectCommand({
+      Bucket: prepared.targetBucket,
+      Key: prepared.targetKey,
+      VersionId: storageVersionId,
+    }),
+  );
+  const bytes = await readObjectBodyWithLimit(object.Body as Readable, object.ContentLength);
+  const recoveredSha256 = createHash('sha256').update(bytes).digest();
+  if (BigInt(bytes.length) !== prepared.sizeBytes || !recoveredSha256.equals(prepared.sha256)) {
+    throw new Error(
+      'PREPARED_UPLOAD_MISMATCH: Persistiertes Objekt stimmt nicht mit Intent überein.',
+    );
+  }
+
+  return {
+    targetBucket: prepared.targetBucket,
+    targetKey: prepared.targetKey,
+    storageVersionId,
+    sha256: Buffer.from(prepared.sha256),
+    sizeBytes: prepared.sizeBytes,
+    immutable: prepared.immutable,
+    retentionUntil: prepared.retentionUntil,
+    detectedMime: prepared.detectedMime,
   };
 }
 
@@ -629,28 +775,8 @@ export async function commitBytesWithTier(input: {
    *  Retagging. Verhindert, dass bloßes Umklassifizieren die Frist neu startet. */
   retentionAnchor?: Date;
 }): Promise<CommitDocumentResult> {
-  const { fileData, tier, tenantId, skipScan, classification, retentionYears, retentionAnchor } =
-    input;
-  if (fileData.length > MAX_UPLOAD_BYTES) {
-    throw new Error(`TOO_LARGE: Datei überschreitet das Limit von ${MAX_UPLOAD_BYTES} Bytes.`);
-  }
-  if (retentionYears !== undefined) {
-    if (tier === 'GOBD' && ![6, 8, 10].includes(retentionYears)) {
-      throw new Error('INVALID_RETENTION_YEARS: GOBD erlaubt nur 6, 8 oder 10 Jahre.');
-    }
-    if (tier !== 'GOBD') {
-      throw new Error('INVALID_RETENTION_YEARS: Individuelle Jahre sind nur für GOBD zulässig.');
-    }
-  }
-  return scanHashAndUpload(
-    fileData,
-    tier,
-    tenantId,
-    skipScan,
-    classification,
-    retentionYears,
-    retentionAnchor,
-  );
+  const prepared = await prepareBytesCommitWithTier(input);
+  return commitPreparedBytes({ fileData: input.fileData, prepared });
 }
 
 /**

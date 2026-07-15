@@ -53,10 +53,10 @@ export default async function GwgOnboardingPage({
   // Datenschutzhinweise (Teil A) tenant-spezifisch rendern (System-Kontext:
   // Public-Pfad, nur durch den Token geschützt).
   const privacy = await withSystemContext(invite.tenant.id, async (tx) => {
-    const [notice, consentOptions] = await Promise.all([
-      renderNoticeForTenantTx(tx, invite.tenant.id),
-      readResolvedConsentOptionsTx(tx, invite.tenant.id),
-    ]);
+    const notice = await renderNoticeForTenantTx(tx, invite.tenant.id);
+    const consentOptions = notice.complete
+      ? await readResolvedConsentOptionsTx(tx, invite.tenant.id)
+      : [];
     // Im öffentlichen RSC-Payload erscheinen ausschließlich aktuell
     // angebotene und vollständig auflösbare Optionen. Eine verwaiste
     // Dienstleister-Verknüpfung muss zuerst im ACP repariert werden und darf
@@ -66,6 +66,25 @@ export default async function GwgOnboardingPage({
       consentOptions: consentOptions.filter((option) => option.active && !option.providerMissing),
     };
   });
+
+  if (!privacy.notice.complete) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-surface-page p-4">
+        <div className="card p-8 max-w-lg w-full text-center">
+          <div className="text-3xl font-bold text-brand-700 mb-1">TaxTronik</div>
+          <p className="text-sm text-muted mb-6">{invite.tenant.name} — GwG-Identifizierung</p>
+          <div className="rounded-md border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
+            <p className="font-medium">Das Onboarding ist noch nicht freigegeben.</p>
+            <p className="mt-1">
+              Die Datenschutzhinweise der Kanzlei sind noch unvollständig. Bitte wenden Sie sich an
+              die Kanzlei; dort müssen die Pflichtangaben ergänzt werden.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-surface-page py-12 px-4">
       <div className="max-w-3xl mx-auto">

@@ -362,6 +362,7 @@ export async function acceptAppointmentRequestAction(input: {
       if (contact && contact.active && contact.notificationsEnabled) {
         confirmMail = {
           tenantId,
+          clientId: req.clientId,
           slug: 'appointment-confirmed',
           to: contact.email,
           vars: {
@@ -458,6 +459,7 @@ export async function rejectAppointmentRequestAction(input: {
       if (contact && contact.active && contact.notificationsEnabled) {
         rejectMail = {
           tenantId,
+          clientId: req.clientId,
           slug: 'appointment-rejected',
           to: contact.email,
           vars: {

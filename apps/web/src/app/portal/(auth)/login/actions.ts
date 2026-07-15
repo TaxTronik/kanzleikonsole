@@ -1,17 +1,11 @@
 'use server';
 
 import { z } from 'zod';
-import { cookies, headers } from 'next/headers';
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { encode } from 'next-auth/jwt';
-import { env } from '@taxtronik/config';
 import { safePortalReturnTo } from './verify/safe-return-to';
 import { requestMagicLink, verifyMagicLink } from '@/server/auth/magic-link';
-import {
-  PORTAL_SESSION_COOKIE,
-  PORTAL_SESSION_JWT_SALT,
-  USE_SECURE_COOKIES,
-} from '@/server/auth/session-cookie';
+import { writePortalSession } from '@/server/auth/portal-session';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { checkIpOrGlobalLimit, getClientIp } from '@/server/rate-limit';
 
@@ -69,37 +63,16 @@ export interface VerifyResult {
   error?: string;
 }
 
-export async function verifyMagicLinkAction(token: string): Promise<VerifyResult> {
+export async function verifyMagicLinkAction(
+  token: string,
+  contactId?: string,
+): Promise<VerifyResult> {
   if (!token) return { ok: false, error: 'Token fehlt.' };
 
-  const result = await verifyMagicLink(token);
+  const result = await verifyMagicLink(token, contactId);
   if (!result) return { ok: false, error: 'Link ungültig oder abgelaufen.' };
 
-  const c = result.contact;
-  const sessionToken = await encode({
-    secret: env.AUTH_SECRET,
-    salt: PORTAL_SESSION_JWT_SALT,
-    maxAge: 24 * 60 * 60,
-    token: {
-      sub: c.id,
-      email: c.email,
-      name: c.fullName,
-      contactId: c.id,
-      tenantId: c.tenantId,
-      clientId: c.clientId,
-      fullName: c.fullName,
-    },
-  });
-
-  const jar = await cookies();
-  jar.set(PORTAL_SESSION_COOKIE, sessionToken, {
-    httpOnly: true,
-    secure: USE_SECURE_COOKIES,
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 24 * 60 * 60,
-    ...(env.PORTAL_COOKIE_DOMAIN ? { domain: env.PORTAL_COOKIE_DOMAIN } : {}),
-  });
+  await writePortalSession(result.contact);
 
   return { ok: true };
 }
@@ -113,8 +86,9 @@ export async function verifyMagicLinkAction(token: string): Promise<VerifyResult
  */
 export async function confirmMagicLinkAction(formData: FormData): Promise<void> {
   const token = String(formData.get('token') ?? '');
+  const contactId = String(formData.get('contactId') ?? '') || undefined;
   const returnTo = safePortalReturnTo((formData.get('returnTo') as string | null) ?? undefined);
-  const r = await verifyMagicLinkAction(token);
+  const r = await verifyMagicLinkAction(token, contactId);
   // redirect() wirft NEXT_REDIRECT — muss AUSSERHALB des try/catch von
   // verifyMagicLinkAction laufen (tut es hier).
   redirect(r.ok ? returnTo : '/portal/login/verify?status=invalid');

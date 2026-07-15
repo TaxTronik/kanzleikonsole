@@ -79,8 +79,12 @@ const allAdminNavItems: AdminNavConfig[] = [
   { href: '/staff/admin/audit', label: 'Audit-Log', icon: 'Shield' },
   { href: '/staff/admin/quantenlos', label: 'Quantenlos', icon: 'Dices', moduleKey: 'risk' },
   { href: '/staff/admin/archive', label: 'Audit-Archiv', icon: 'Archive' },
-  { href: '/staff/admin/dsgvo', label: 'DSGVO', icon: 'Shield' },
-  { href: '/staff/service-providers', label: 'Dienstleister (AVV)', icon: 'Building2' },
+  {
+    href: '/staff/admin/privacy',
+    label: 'Datenschutz',
+    icon: 'Shield',
+    altPaths: ['/staff/admin/dsgvo', '/staff/admin/dsgvo-retention', '/staff/service-providers'],
+  },
   { href: '/staff/admin/settings', label: 'Einstellungen', icon: 'Settings' },
 ];
 

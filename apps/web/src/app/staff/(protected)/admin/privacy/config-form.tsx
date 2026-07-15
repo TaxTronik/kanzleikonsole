@@ -23,7 +23,9 @@ export function PrivacyConfigForm({ initial }: { initial: PrivacyConfig }) {
           placeholder="Name der Kanzlei / Steuerberatungsgesellschaft, Anschrift, Telefon, E-Mail"
           className="input w-full text-sm"
         />
-        <p className="text-xs text-muted mt-1">Leer → es wird der Kanzlei-Name verwendet.</p>
+        <p className="text-xs text-muted mt-1">
+          Name, ladungsfähige Anschrift sowie E-Mail oder Telefon vollständig angeben.
+        </p>
       </div>
       <div>
         <label className="label-sm">Datenschutzbeauftragte/r</label>

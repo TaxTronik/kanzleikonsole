@@ -5,13 +5,27 @@
 
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, ShieldCheck } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Building2,
+  FileText,
+  Scale,
+  ShieldCheck,
+  Trash2,
+} from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
-import { readPrivacyConfig, PRIVACY_NOTICE_VERSION } from '@/server/privacy/notice';
+import {
+  isPrivacyConfigComplete,
+  readPrivacyConfig,
+  PRIVACY_NOTICE_VERSION,
+} from '@/server/privacy/notice';
 import { readResolvedConsentOptionsTx } from '@/server/privacy/consent-catalog';
 import { defaultConsentOptionsCatalog, type ResolvedConsentOption } from '@/server/privacy/consent';
+import { readLegal } from '@/server/settings/legal';
+import { LegalForm } from '../settings/legal-form';
 import { PrivacyConfigForm } from './config-form';
 import { ConsentOptionsEditor } from './consent-options-editor';
 
@@ -22,8 +36,9 @@ export default async function AdminPrivacyPage() {
   const { tenantId, staffId } = session.user;
 
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
-  const [config, consentData] = await Promise.all([
+  const [config, legal, consentData] = await Promise.all([
     readPrivacyConfig(ctx),
+    readLegal(ctx),
     withTenantContext(ctx, async (tx) => {
       const [providers, catalogSetting] = await Promise.all([
         tx.serviceProvider.findMany({
@@ -74,32 +89,86 @@ export default async function AdminPrivacyPage() {
   ]);
 
   return (
-    <div className="p-8 max-w-4xl">
+    <div className="p-8 max-w-6xl">
       <Link href="/staff/admin" className="back-link">
         <ArrowLeft className="h-4 w-4" /> Zurück
       </Link>
       <div className="mb-6 flex items-start gap-3">
         <ShieldCheck className="h-6 w-6 text-brand-600 mt-1" />
         <div>
-          <h1 className="text-2xl font-bold text-primary mb-1">Kanzlei-Datenschutzangaben</h1>
+          <h1 className="text-2xl font-bold text-primary mb-1">Datenschutz-Zentrale</h1>
           <p className="text-muted text-sm">
-            Diese Angaben füllen die Datenschutzhinweise (Teil A, Standardtext Version{' '}
-            {PRIVACY_NOTICE_VERSION}), die Mandanten bei der Einwilligung angezeigt und als Nachweis
-            eingefroren werden. Die Empfängerliste (Abschnitt 5) stammt automatisch aus{' '}
-            <Link href="/staff/service-providers" className="underline">
-              Dienstleister (AVV)
-            </Link>
-            .
+            Kanzlei-Hinweise, freiwillige Einwilligungen, Dienstleister (AVV), öffentliche
+            Datenschutzerklärung und Betroffenenrechte an einem Ort.
           </p>
         </div>
       </div>
-      <PrivacyConfigForm initial={config} />
-      <ConsentOptionsEditor
-        initial={consentData.options}
-        providers={consentData.providers}
-        repairRequired={consentData.catalogRepairRequired}
-        revision={consentData.catalogRevision}
-      />
+
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mb-8">
+        <a href="#kanzlei-hinweise" className="card p-4 group">
+          <FileText className="h-5 w-5 text-brand-600 mb-3" />
+          <p className="text-sm font-semibold text-primary">Hinweise &amp; Einwilligungen</p>
+          <p className="text-xs text-muted mt-1">
+            {isPrivacyConfigComplete(config) ? 'Kanzlei-Angaben vollständig' : 'Angaben ergänzen'}
+          </p>
+          <ArrowRight className="h-4 w-4 text-disabled group-hover:text-brand-600 mt-3" />
+        </a>
+        <Link href="/staff/service-providers" className="card p-4 group">
+          <Building2 className="h-5 w-5 text-brand-600 mb-3" />
+          <p className="text-sm font-semibold text-primary">Dienstleister (AVV)</p>
+          <p className="text-xs text-muted mt-1">
+            {consentData.providers.length} Dienstleister erfasst
+          </p>
+          <ArrowRight className="h-4 w-4 text-disabled group-hover:text-brand-600 mt-3" />
+        </Link>
+        <Link href="/staff/admin/dsgvo" className="card p-4 group">
+          <Scale className="h-5 w-5 text-brand-600 mb-3" />
+          <p className="text-sm font-semibold text-primary">DSGVO-Anfragen</p>
+          <p className="text-xs text-muted mt-1">Betroffenenrechte bearbeiten</p>
+          <ArrowRight className="h-4 w-4 text-disabled group-hover:text-brand-600 mt-3" />
+        </Link>
+        <Link href="/staff/admin/dsgvo-retention" className="card p-4 group">
+          <Trash2 className="h-5 w-5 text-brand-600 mb-3" />
+          <p className="text-sm font-semibold text-primary">Löschung &amp; Aufbewahrung</p>
+          <p className="text-xs text-muted mt-1">Anonymisierung nach Art. 17</p>
+          <ArrowRight className="h-4 w-4 text-disabled group-hover:text-brand-600 mt-3" />
+        </Link>
+      </div>
+
+      <section id="kanzlei-hinweise" className="scroll-mt-20">
+        <div className="mb-3">
+          <h2 className="text-lg font-semibold text-primary">Kanzlei-Datenschutzhinweise</h2>
+          <p className="text-sm text-muted mt-1">
+            Diese Angaben füllen den Standardtext Version {PRIVACY_NOTICE_VERSION}, den Mandanten
+            sehen und der mit jeder Erklärung unveränderlich nachgewiesen wird. Empfänger stammen
+            automatisch aus dem Dienstleisterverzeichnis.
+          </p>
+        </div>
+        <PrivacyConfigForm initial={config} />
+      </section>
+
+      <section id="oeffentliche-datenschutzerklaerung" className="scroll-mt-20 mt-8">
+        <div className="mb-3">
+          <h2 className="text-lg font-semibold text-primary">
+            Öffentliche Datenschutzerklärung &amp; Impressum
+          </h2>
+          <p className="text-sm text-muted mt-1">
+            Die Links erscheinen auf den Login-Seiten für Mitarbeiter und Mandanten.
+          </p>
+        </div>
+        <div className="card p-6">
+          <LegalForm initial={legal} />
+        </div>
+      </section>
+
+      <section id="einwilligungsoptionen" className="scroll-mt-20">
+        <ConsentOptionsEditor
+          initial={consentData.options}
+          providers={consentData.providers}
+          repairRequired={consentData.catalogRepairRequired}
+          revision={consentData.catalogRevision}
+        />
+      </section>
     </div>
   );
 }

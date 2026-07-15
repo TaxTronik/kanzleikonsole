@@ -27,6 +27,8 @@ export interface TemplateFallback {
 
 export interface DispatchOptions {
   tenantId: string;
+  /** Mandant, dessen Kontext bei mehrfach belegter Empfängeradresse in den Betreff gehört. */
+  clientId?: string;
   /** System-Slug der EmailTemplate (z. B. 'magic-link', 'handover-ready') */
   slug: string;
   /** Variablen für die `{{path.to.var}}`-Substitution */
@@ -35,6 +37,8 @@ export interface DispatchOptions {
   to: string;
   /** Optional: Reply-To überschreiben */
   replyTo?: string;
+  /** Optionaler Mandanten-/Profilkontext, der dem Betreff angehängt wird. */
+  subjectSuffix?: string;
   /** n8n-Event-Name (falls Dispatch-Modus BOTH ist) */
   n8nEvent?: N8nEventName;
   /** n8n-Payload (zusätzlich zu vars; falls n8n eine andere Struktur erwartet) */
@@ -83,6 +87,33 @@ export function renderTemplate(
 // referenzieren wir nur das Re-Export.
 const markdownToHtml = renderSafeMarkdown;
 
+async function resolveProfileSubjectSuffix(opts: DispatchOptions): Promise<string | undefined> {
+  if (!opts.clientId) return undefined;
+
+  const [client, profiles] = await Promise.all([
+    prismaOwner.client.findFirst({
+      where: { id: opts.clientId, tenantId: opts.tenantId },
+      select: { name: true },
+    }),
+    prismaOwner.clientContact.findMany({
+      where: {
+        tenantId: opts.tenantId,
+        email: opts.to.toLowerCase(),
+        active: true,
+        client: { allowActive: true, anonymizedAt: null },
+      },
+      select: { clientId: true },
+    }),
+  ]);
+  if (!client) return undefined;
+
+  // Auch Einladungs-/Rechnungsadressen koennen vor dem ersten Kontakt-Datensatz
+  // versendet werden. Der aktuelle Mandant zaehlt deshalb explizit mit.
+  const clientIds = new Set(profiles.map((profile) => profile.clientId));
+  clientIds.add(opts.clientId);
+  return clientIds.size > 1 ? client.name : undefined;
+}
+
 export async function sendTemplateMail(
   opts: DispatchOptions,
 ): Promise<{ ok: boolean; sentViaTemplate: boolean }> {
@@ -123,6 +154,16 @@ export async function sendTemplateMail(
       });
     }
     return { ok: false, sentViaTemplate: false };
+  }
+
+  const subjectSuffix = (
+    opts.subjectSuffix !== undefined ? opts.subjectSuffix : await resolveProfileSubjectSuffix(opts)
+  )?.trim();
+  if (
+    subjectSuffix &&
+    !subject.toLocaleLowerCase('de-DE').includes(subjectSuffix.toLocaleLowerCase('de-DE'))
+  ) {
+    subject = `${subject} (${subjectSuffix})`;
   }
 
   try {
@@ -179,13 +220,45 @@ export async function notifyClientContacts(
   });
   if (contacts.length === 0) return { ok: true, recipients: 0 };
 
+  const emailKeys = Array.from(new Set(contacts.map((contact) => contact.email.toLowerCase())));
+  const [client, profilesWithSameEmail] = await Promise.all([
+    prismaOwner.client.findFirst({
+      where: { id: opts.clientId, tenantId: opts.tenantId },
+      select: { name: true },
+    }),
+    prismaOwner.clientContact.findMany({
+      where: {
+        tenantId: opts.tenantId,
+        email: { in: emailKeys },
+        active: true,
+        client: { allowActive: true, anonymizedAt: null },
+      },
+      select: { email: true, clientId: true },
+    }),
+  ]);
+  const profileCountByEmail = new Map<string, Set<string>>();
+  for (const profile of profilesWithSameEmail) {
+    const emailKey = profile.email.toLowerCase();
+    const clientIds = profileCountByEmail.get(emailKey) ?? new Set<string>();
+    clientIds.add(profile.clientId);
+    profileCountByEmail.set(emailKey, clientIds);
+  }
+
+  const existingClientVars =
+    opts.vars.client && typeof opts.vars.client === 'object' && !Array.isArray(opts.vars.client)
+      ? (opts.vars.client as Record<string, unknown>)
+      : {};
+
   let okCount = 0;
   for (const c of contacts) {
+    const hasMultipleProfiles = (profileCountByEmail.get(c.email.toLowerCase())?.size ?? 0) > 1;
     const res = await sendTemplateMail({
       ...opts,
       to: c.email,
+      subjectSuffix: opts.subjectSuffix ?? (hasMultipleProfiles ? client?.name : ''),
       vars: {
         ...opts.vars,
+        client: { ...existingClientVars, name: client?.name ?? '' },
         contact: { fullName: c.fullName, email: c.email },
       },
     });

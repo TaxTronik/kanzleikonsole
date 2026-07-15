@@ -48,7 +48,7 @@ vi.mock('@/server/notifications/service', () => ({ notify: m.notify }));
 vi.mock('@/server/logger', () => ({ log: m.log }));
 vi.mock('@/server/rate-limit', () => ({ checkRateLimit: m.checkRateLimit }));
 
-import { hashToken, requestMagicLink, verifyMagicLink } from '../magic-link';
+import { hashToken, inspectMagicLink, requestMagicLink, verifyMagicLink } from '../magic-link';
 
 const FIXED_NOW = new Date('2026-06-09T12:00:00.000Z');
 const TTL_MS = 30 * 60 * 1000;
@@ -87,7 +87,7 @@ beforeEach(() => {
   m.prismaOwner.magicLink.deleteMany.mockResolvedValue({ count: 1 });
   m.sendTemplateMail.mockResolvedValue({ ok: true, sentViaTemplate: false });
   m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
-    fn({}),
+    fn(m.prismaOwner),
   );
   m.notify.mockResolvedValue(undefined);
 });
@@ -159,12 +159,9 @@ describe('requestMagicLink — Anti-Enumeration (immer ok:true)', () => {
   it('Mandant GwG-deaktiviert (allowActive=false) → ok:true, KEIN Token, KEINE Mail', async () => {
     // GwG-Schranke (§ 11 GwG): identisches Verhalten wie „Contact unbekannt" —
     // kein unterscheidbarer Fehler, sonst wäre der Sperr-Status enumerierbar.
-    m.prismaOwner.clientContact.findMany.mockResolvedValue([
-      {
-        ...CONTACT,
-        client: { name: 'Muster GmbH', allowActive: false, anonymizedAt: null },
-      },
-    ]);
+    // Der Helper filtert allowActive bereits in der DB-Abfrage; Prisma liefert
+    // für einen gesperrten Parent daher keine auswählbaren Profile.
+    m.prismaOwner.clientContact.findMany.mockResolvedValue([]);
     const res = await withTimersFlushed(
       requestMagicLink({ tenantId: 'tenant-1', email: 'mandant@example.de' }),
     );
@@ -200,7 +197,11 @@ describe('requestMagicLink — Anti-Enumeration (immer ok:true)', () => {
 
   it('auch ein Notification-Fehler nach SMTP-Fehler bricht den Flow nicht', async () => {
     m.sendTemplateMail.mockRejectedValue(new Error('smtp down'));
-    m.withTenantContext.mockRejectedValue(new Error('db down'));
+    m.withTenantContext
+      .mockImplementationOnce(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+        fn(m.prismaOwner),
+      )
+      .mockRejectedValueOnce(new Error('db down'));
     const res = await withTimersFlushed(
       requestMagicLink({ tenantId: 'tenant-1', email: 'mandant@example.de' }),
     );
@@ -220,14 +221,15 @@ describe('requestMagicLink — Happy Path', () => {
     const createArgs = m.prismaOwner.magicLink.create.mock.calls[0]![0] as {
       data: {
         tenantId: string;
-        contactId: string;
+        contactId: string | null;
         email: string;
         tokenHash: string;
         expiresAt: Date;
       };
     };
     expect(createArgs.data.tenantId).toBe('tenant-1');
-    expect(createArgs.data.contactId).toBe(CONTACT.id);
+    // Portal-Login: E-Mail-gebundener Link, Profil wird erst nach dem Klick gewählt.
+    expect(createArgs.data.contactId).toBeNull();
     expect(createArgs.data.email).toBe(CONTACT.email);
     expect(createArgs.data.tokenHash).toMatch(/^[0-9a-f]{64}$/);
     expect(createArgs.data.expiresAt).toEqual(new Date(FIXED_NOW.getTime() + TTL_MS));
@@ -236,9 +238,11 @@ describe('requestMagicLink — Happy Path', () => {
     const mailArgs = m.sendTemplateMail.mock.calls[0]![0] as {
       to: string;
       vars: { link: string };
+      subjectSuffix: string;
       fallback: { bodyMd: string };
     };
     expect(mailArgs.to).toBe(CONTACT.email);
+    expect(mailArgs.subjectSuffix).toBe(CONTACT.client.name);
     expect(mailArgs.vars.link).toMatch(
       /^https:\/\/portal\.example\.de\/portal\/login\/verify\?token=/,
     );
@@ -263,10 +267,72 @@ describe('requestMagicLink — Happy Path', () => {
       expect.anything(),
     );
     expect(m.prismaOwner.clientContact.findMany).toHaveBeenCalledWith({
-      where: { tenantId: 'tenant-1', email: 'mandant@example.de', active: true },
-      include: { client: { select: { name: true, allowActive: true, anonymizedAt: true } } },
-      orderBy: { createdAt: 'asc' },
+      where: {
+        tenantId: 'tenant-1',
+        email: 'mandant@example.de',
+        active: true,
+        client: { allowActive: true, anonymizedAt: null },
+      },
+      select: {
+        id: true,
+        clientId: true,
+        fullName: true,
+        email: true,
+        client: { select: { name: true } },
+      },
+      orderBy: [{ client: { name: 'asc' } }, { createdAt: 'asc' }],
     });
+  });
+
+  it('sendet bei mehreren Mandantenprofilen genau einen Auswahl-Link', async () => {
+    m.prismaOwner.clientContact.findMany.mockResolvedValue([
+      CONTACT,
+      {
+        ...CONTACT,
+        id: 'contact-2',
+        clientId: 'client-2',
+        client: { ...CONTACT.client, name: 'Zweite GbR' },
+      },
+    ]);
+
+    await requestMagicLink({ tenantId: 'tenant-1', email: CONTACT.email });
+
+    expect(m.prismaOwner.magicLink.create).toHaveBeenCalledTimes(1);
+    expect(m.sendTemplateMail).toHaveBeenCalledTimes(1);
+    expect(m.prismaOwner.magicLink.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ contactId: null }),
+    });
+    expect(m.sendTemplateMail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subjectSuffix: '2 Mandantenprofile',
+        vars: expect.objectContaining({ profileCount: 2 }),
+      }),
+    );
+  });
+
+  it('Staff-Versand bleibt exakt an den gewählten Kontakt gebunden', async () => {
+    m.prismaOwner.clientContact.findMany.mockResolvedValue([
+      CONTACT,
+      {
+        ...CONTACT,
+        id: 'contact-2',
+        clientId: 'client-2',
+        client: { ...CONTACT.client, name: 'Zweite GbR' },
+      },
+    ]);
+
+    await requestMagicLink({
+      tenantId: 'tenant-1',
+      email: CONTACT.email,
+      contactId: CONTACT.id,
+    });
+
+    expect(m.prismaOwner.magicLink.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ contactId: CONTACT.id }),
+    });
+    expect(m.sendTemplateMail).toHaveBeenCalledWith(
+      expect.objectContaining({ subjectSuffix: CONTACT.client.name }),
+    );
   });
 });
 
@@ -327,7 +393,7 @@ describe('verifyMagicLink', () => {
 
   it('Contact existiert nicht mehr / inaktiv → null', async () => {
     m.prismaOwner.magicLink.findFirst.mockResolvedValue(linkRecord());
-    m.prismaOwner.clientContact.findUnique.mockResolvedValue(null);
+    m.prismaOwner.clientContact.findMany.mockResolvedValue([]);
     expect(await verifyMagicLink(RAW_TOKEN)).toBeNull();
   });
 
@@ -336,11 +402,7 @@ describe('verifyMagicLink', () => {
     // (GwG abgelaufen/abgelehnt) → Login verweigert, ununterscheidbar vom
     // unbekannten/inaktiven Kontakt.
     m.prismaOwner.magicLink.findFirst.mockResolvedValue(linkRecord());
-    m.prismaOwner.clientContact.findUnique.mockResolvedValue({
-      ...CONTACT,
-      active: true,
-      client: { name: 'Muster GmbH', allowActive: false, anonymizedAt: null },
-    });
+    m.prismaOwner.clientContact.findMany.mockResolvedValue([]);
     expect(await verifyMagicLink(RAW_TOKEN)).toBeNull();
     expect(m.prismaOwner.magicLink.updateMany).not.toHaveBeenCalled();
   });
@@ -373,5 +435,50 @@ describe('verifyMagicLink', () => {
       where: { id: CONTACT.id },
       data: { lastLoginAt: expect.any(Date) },
     });
+  });
+
+  it('zeigt bei einem E-Mail-Link alle Profile an, ohne den Token zu konsumieren', async () => {
+    m.prismaOwner.magicLink.findFirst.mockResolvedValue(linkRecord({ contactId: null }));
+    m.prismaOwner.clientContact.findMany.mockResolvedValue([
+      CONTACT,
+      {
+        ...CONTACT,
+        id: 'contact-2',
+        clientId: 'client-2',
+        client: { ...CONTACT.client, name: 'Zweite GbR' },
+      },
+    ]);
+
+    const result = await inspectMagicLink(RAW_TOKEN);
+
+    expect(result?.profiles.map((profile) => profile.clientName)).toEqual([
+      'Muster GmbH',
+      'Zweite GbR',
+    ]);
+    expect(m.prismaOwner.magicLink.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('verlangt bei einem E-Mail-Link mit mehreren Profilen eine explizite Auswahl', async () => {
+    m.prismaOwner.magicLink.findFirst.mockResolvedValue(linkRecord({ contactId: null }));
+    const second = {
+      ...CONTACT,
+      id: 'contact-2',
+      clientId: 'client-2',
+      client: { ...CONTACT.client, name: 'Zweite GbR' },
+    };
+    m.prismaOwner.clientContact.findMany.mockResolvedValue([CONTACT, second]);
+
+    expect(await verifyMagicLink(RAW_TOKEN)).toBeNull();
+    expect(m.prismaOwner.magicLink.updateMany).not.toHaveBeenCalled();
+
+    const selected = await verifyMagicLink(RAW_TOKEN, second.id);
+    expect(selected?.contact).toMatchObject({ id: second.id, clientId: second.clientId });
+  });
+
+  it('kann einen kontaktgebundenen Link nicht auf ein Schwesterprofil umbiegen', async () => {
+    m.prismaOwner.magicLink.findFirst.mockResolvedValue(linkRecord());
+
+    expect(await verifyMagicLink(RAW_TOKEN, 'contact-2')).toBeNull();
+    expect(m.prismaOwner.magicLink.updateMany).not.toHaveBeenCalled();
   });
 });

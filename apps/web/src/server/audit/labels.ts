@@ -22,6 +22,8 @@ export const ACTION_LABELS: Record<string, string> = {
 
   // Dokumente
   'document.upload': 'Dokument hochgeladen',
+  'document.upload.pending': 'Dokument-Upload vorgemerkt',
+  'document.upload.complete': 'Dokument-Upload abgeschlossen',
   'document.download': 'Dokument heruntergeladen',
   'document.preview': 'Dokument angesehen',
   'document.version.add': 'Neue Dokument-Version',
@@ -294,6 +296,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'auth.totp.enroll': 'TOTP eingerichtet',
   'auth.backup_code.consume': 'Backup-Code verwendet (Recovery)',
   'auth.magic_link.consume': 'Portal-Anmeldung (Magic-Link)',
+  'auth.portal.profile.switch': 'Mandantenprofil gewechselt',
   'backup.trigger': 'Backup manuell gestartet',
   'backup.run': 'Backup-Lauf',
   'backup.download': 'Backup heruntergeladen',

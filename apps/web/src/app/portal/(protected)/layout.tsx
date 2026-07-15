@@ -13,6 +13,8 @@ import { readPortalFeatures, type PortalFeatures } from '@/server/settings/porta
 import { brandPaletteStyle } from '@/lib/brand-palette';
 import { TenantLogo } from '@/components/tenant-logo';
 import { AutoRefresh } from '@/components/auto-refresh';
+import { findPortalProfilesForContact } from '@/server/auth/portal-profiles';
+import { PortalProfileSwitcher } from './profile-switcher';
 
 // Tenant-weite Module-Toggles steuern, ob das gesamte Feature aktiv ist
 // (Staff + Portal). Portal-Feature-Toggles erlauben darüber hinaus, einzelne
@@ -74,13 +76,14 @@ export default async function PortalLayout({ children }: { children: ReactNode }
 
   const { tenantId, contactId, clientId } = session.user;
 
-  const [client, branding, modules, portalFeatures] = await Promise.all([
+  const [client, branding, modules, portalFeatures, profiles] = await Promise.all([
     withTenantContext({ tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' }, (tx) =>
       tx.client.findUnique({ where: { id: clientId }, select: { name: true } }),
     ),
     readBranding({ tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' }),
     readModules({ tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' }),
     readPortalFeatures({ tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' }),
+    findPortalProfilesForContact({ tenantId, contactId }),
   ]);
 
   const navItems: NavItem[] = allPortalNavItems
@@ -117,6 +120,7 @@ export default async function PortalLayout({ children }: { children: ReactNode }
         <div className="px-6 py-4 border-b border-default">
           <p className="eyebrow">Mandant</p>
           <p className="item-title">{client?.name ?? '—'}</p>
+          <PortalProfileSwitcher currentContactId={contactId} profiles={profiles} />
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-1">

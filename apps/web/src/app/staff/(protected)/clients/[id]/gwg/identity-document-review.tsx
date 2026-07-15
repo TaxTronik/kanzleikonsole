@@ -1,8 +1,7 @@
 'use client';
 
-import { useActionState, useEffect, useMemo, useState } from 'react';
+import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useRouter } from 'next/navigation';
 import { ChevronDown, Download, FileCheck, FileSearch, Loader2, X } from 'lucide-react';
 import {
   extendIdentityDocumentSetAction,
@@ -19,6 +18,8 @@ import {
   useUnlinkedGwgDocumentSearch,
   type SelectableGwgDocument,
 } from './use-gwg-document-search';
+import { useGwgIdentitySubjects } from './identity-subjects-context';
+import { useGwgEditState } from './edit-state-context';
 
 export interface IdentityReviewDocument {
   id: string;
@@ -458,10 +459,12 @@ function IdentityReviewCard({
   grandfathered: boolean;
   disabled: boolean;
 }) {
-  const router = useRouter();
+  const { markDraft } = useGwgEditState();
+  const { invalidatedIdentitySets, acknowledgeIdentitySet } = useGwgIdentitySubjects();
   const first = group.documents[0]!;
   const [expanded, setExpanded] = useState(false);
   const [selectedSubjectKey, setSelectedSubjectKey] = useState(group.subjectKey ?? '');
+  const submittedInvalidationGeneration = useRef<number | null>(null);
   const [state, formAction, isPending] = useActionState<
     | (ActionResult & {
         reviewReset?: boolean;
@@ -487,8 +490,14 @@ function IdentityReviewCard({
     } => entry.document !== null,
   );
   const saved = state?.ok ? state.saved : undefined;
+  const invalidation = invalidatedIdentitySets[group.documentSetId];
+  const invalidatedRevision = invalidation?.revision;
+  const invalidated = invalidatedRevision !== undefined;
+  const currentSubject = subjectOptions.find((option) => option.key === selectedSubjectKey);
   const displayedType = saved?.type ?? first.type;
-  const displayedOwnerName = saved?.ownerName ?? first.ownerName;
+  const displayedOwnerName = invalidated
+    ? (currentSubject?.name ?? '')
+    : (saved?.ownerName ?? first.ownerName);
   const displayedNumber = saved?.number ?? first.number;
   const displayedExpiryDate = saved?.expiryDate ?? first.expiryDate;
   const expired = Boolean(
@@ -513,11 +522,26 @@ function IdentityReviewCard({
         entry.issueDate === first.issueDate &&
         entry.expiryDate === first.expiryDate,
     );
-  const confirmed = grandfathered || Boolean(saved) || persistedConfirmation;
+  const confirmed = grandfathered || (!invalidated && (Boolean(saved) || persistedConfirmation));
 
   useEffect(() => {
-    if (state?.ok && state.reviewReset) router.refresh();
-  }, [router, state]);
+    if (!state?.ok) return;
+    setExpanded(true);
+    if (submittedInvalidationGeneration.current !== null) {
+      acknowledgeIdentitySet(group.documentSetId, submittedInvalidationGeneration.current);
+      submittedInvalidationGeneration.current = null;
+    }
+    if (state.reviewReset) markDraft();
+  }, [acknowledgeIdentitySet, group.documentSetId, markDraft, state]);
+  useEffect(() => {
+    setSelectedSubjectKey((current) =>
+      subjectOptions.some((option) => option.key === current)
+        ? current
+        : subjectOptions.length === 1
+          ? subjectOptions[0]!.key
+          : '',
+    );
+  }, [subjectOptions]);
 
   return (
     <details
@@ -560,6 +584,12 @@ function IdentityReviewCard({
             nächsten Prüfung wird die konkrete Person verbindlich neu zugeordnet.
           </div>
         )}
+        {invalidated && (
+          <div className="alert-info-sm">
+            Die zugeordnete Person wurde geaendert. Die Ausweisdaten bleiben sichtbar, muessen aber
+            mit der aktuellen Person erneut bestaetigt werden.
+          </div>
+        )}
         {attachedDocuments.length < group.documents.length && (
           <div className="alert-error-sm">
             Mindestens eine Datei dieses Ausweissatzes ist nicht mehr verfügbar. Bitte einen neuen
@@ -598,14 +628,22 @@ function IdentityReviewCard({
           />
         )}
 
-        <form action={formAction} className="space-y-4">
+        <form
+          action={formAction}
+          className="space-y-4"
+          onSubmit={() => {
+            submittedInvalidationGeneration.current = invalidation?.generation ?? null;
+          }}
+        >
           <input type="hidden" name="checkId" value={checkId} />
           <input type="hidden" name="clientId" value={clientId} />
           <input type="hidden" name="documentSetId" value={group.documentSetId} />
           <input
             type="hidden"
             name="expectedRevision"
-            value={state?.ok && state.revision ? state.revision : group.revision}
+            value={
+              invalidatedRevision ?? (state?.ok && state.revision ? state.revision : group.revision)
+            }
           />
 
           <div className="grid gap-3 sm:grid-cols-2">
@@ -715,7 +753,9 @@ function IdentityReviewCard({
           </div>
 
           {state?.error && <div className="alert-error-sm">{state.error}</div>}
-          {state?.ok && <div className="alert-success-sm">Ausweisangaben wurden bestätigt.</div>}
+          {state?.ok && !invalidated && (
+            <div className="alert-success-sm">Ausweisangaben wurden bestätigt.</div>
+          )}
           {!disabled && (
             <button
               type="submit"
@@ -756,6 +796,7 @@ export function IdentityDocumentReview({
   grandfathered: boolean;
   disabled: boolean;
 }) {
+  const { subjectOptions: availableSubjectOptions } = useGwgIdentitySubjects(subjectOptions);
   if (groups.length === 0) {
     return <p className="mb-4 text-xs text-disabled">Noch kein Ausweis zugeordnet.</p>;
   }
@@ -790,7 +831,7 @@ export function IdentityDocumentReview({
           checkId={checkId}
           clientId={clientId}
           group={group}
-          subjectOptions={subjectOptions}
+          subjectOptions={availableSubjectOptions}
           clientDocuments={clientDocuments}
           mergeCandidates={mergeCandidates}
           grandfathered={grandfathered}

@@ -522,6 +522,7 @@ export async function markSentAction(
       'sendTemplateMail (invoice-sent)',
       sendTemplateMail({
         tenantId,
+        clientId: sent.clientId,
         slug: 'invoice-sent',
         to: recipient.email,
         vars: {
@@ -978,6 +979,7 @@ export async function uploadExternalInvoiceAction(
       'sendTemplateMail (external invoice)',
       sendTemplateMail({
         tenantId,
+        clientId: input.clientId,
         slug: mailTemplateSlug ?? 'invoice-sent',
         to: r.email,
         vars: {

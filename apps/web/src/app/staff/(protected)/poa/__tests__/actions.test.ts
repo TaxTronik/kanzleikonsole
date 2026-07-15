@@ -36,7 +36,10 @@ const m = vi.hoisted(() => {
     withStaff: vi.fn(),
     isStaffAdmin: vi.fn(),
     assertClientAccessTx: vi.fn(),
-    assertClientInTenant: vi.fn(),
+    readModules: vi.fn(),
+    prepareBytesCommitWithTier: vi.fn(),
+    commitPreparedBytes: vi.fn(),
+    recoverPreparedBytesCommit: vi.fn(),
     redirect: vi.fn(),
     revalidatePath: vi.fn(),
     headers: vi.fn(),
@@ -56,7 +59,9 @@ vi.mock('@taxtronik/db', () => ({ withTenantContext: m.withTenantContext }));
 // @taxtronik/config-Kopie (anderer Modulpfad), die der Config-Mock unten nicht
 // abdeckt — deren ENV-Validierung würfe ohne vollständige ENV beim Import.
 vi.mock('@taxtronik/storage', () => ({
-  commitBytesWithTier: vi.fn(),
+  prepareBytesCommitWithTier: m.prepareBytesCommitWithTier,
+  commitPreparedBytes: m.commitPreparedBytes,
+  recoverPreparedBytesCommit: m.recoverPreparedBytesCommit,
   MAX_UPLOAD_BYTES: 25 * 1024 * 1024,
 }));
 vi.mock('@taxtronik/config', () => ({
@@ -93,7 +98,7 @@ vi.mock('@/server/actions/staff-action', () => ({
   staffActionGuard: m.staffActionGuard,
   withStaff: m.withStaff,
 }));
-vi.mock('@/server/db/assert-tenant', () => ({ assertClientInTenant: m.assertClientInTenant }));
+vi.mock('@/server/settings/modules', () => ({ readModules: m.readModules }));
 vi.mock('@/server/notifications/service', () => ({ notify: m.notify }));
 
 import {
@@ -112,6 +117,34 @@ function sha256(s: string): string {
 const RAW_TOKEN = 'poa-signing-token-0123456789abcdef';
 const OTP = '123456';
 const FUTURE = new Date(Date.now() + 60 * 60 * 1000);
+const UPLOAD_INTENT_ID = '7c5ab09d-f61c-431a-8fe5-dbd9ca1ea7f5';
+const PREPARED_PDF = {
+  tier: 'GOBD' as const,
+  tenantId: 'tenant-1',
+  targetBucket: 'gobd',
+  targetKey: 'tenants/tenant-1/gobd/2026/07/poa.bin',
+  sha256: Buffer.alloc(32, 3),
+  sizeBytes: 9n,
+  immutable: true,
+  retentionUntil: new Date('2033-01-01T00:00:00.000Z'),
+  detectedMime: 'application/pdf',
+};
+const COMMITTED_PDF = { ...PREPARED_PDF, storageVersionId: 'storage-version-1' };
+
+function validPdfPoaFormData(): FormData {
+  const fd = new FormData();
+  fd.set('clientId', '7e6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e6f');
+  fd.set('uploadIntentId', UPLOAD_INTENT_ID);
+  fd.set('signerEmail', 'signer@example.de');
+  fd.set('signerName', 'Sina Signer');
+  fd.set('subject', 'Vollmacht');
+  fd.set('validFrom', '2026-08-10');
+  fd.set(
+    'poaPdf',
+    new File([Buffer.from('%PDF-1.7\n')], 'vollmacht.pdf', { type: 'application/pdf' }),
+  );
+  return fd;
+}
 
 function snapshotFields(validUntil: string | null = '2099-12-31') {
   const snapshot = JSON.stringify({
@@ -183,6 +216,10 @@ beforeEach(() => {
   m.evidenceRecord.mockResolvedValue({});
   m.notify.mockResolvedValue(undefined);
   m.isStaffAdmin.mockReturnValue(true);
+  m.readModules.mockResolvedValue({ poaMode: 'MARKDOWN_OTP' });
+  m.prepareBytesCommitWithTier.mockResolvedValue(PREPARED_PDF);
+  m.commitPreparedBytes.mockResolvedValue(COMMITTED_PDF);
+  m.recoverPreparedBytesCommit.mockResolvedValue(null);
 });
 
 // -----------------------------------------------------------------------------
@@ -669,6 +706,7 @@ describe('createPoaAction — Datumsintervall', () => {
     });
     const fd = new FormData();
     fd.set('clientId', '7e6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e6f');
+    fd.set('uploadIntentId', UPLOAD_INTENT_ID);
     fd.set('signerEmail', 'signer@example.de');
     fd.set('signerName', 'Sina Signer');
     fd.set('subject', 'Vollmacht');
@@ -679,5 +717,340 @@ describe('createPoaAction — Datumsintervall', () => {
     expect(res.ok).toBe(false);
     expect(res.error).toContain('darf nicht vor');
     expect(m.withTenantContext).not.toHaveBeenCalled();
+  });
+
+  it('legt an beendeten oder anonymisierten Mandaten keine neuen Signerdaten an', async () => {
+    m.staffActionGuard.mockResolvedValue({
+      ok: true,
+      tenantId: 'tenant-1',
+      staffId: 'staff-1',
+      ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
+      session: {},
+    });
+    const tx = {
+      client: { findFirst: vi.fn().mockResolvedValue(null) },
+      clientContact: { findFirst: vi.fn() },
+      powerOfAttorney: { create: vi.fn() },
+    };
+    m.withTenantContext.mockImplementation(
+      async (_ctx: unknown, run: (client: typeof tx) => unknown) => run(tx),
+    );
+    m.readModules.mockResolvedValue({ poaMode: 'PDF_TEMPLATE' });
+    const fd = new FormData();
+    fd.set('clientId', '7e6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e6f');
+    fd.set('uploadIntentId', UPLOAD_INTENT_ID);
+    fd.set('signerEmail', 'signer@example.de');
+    fd.set('signerName', 'Sina Signer');
+    fd.set('subject', 'Vollmacht');
+    fd.set('scope', 'Vertretung');
+    fd.set('validFrom', '2026-08-10');
+    fd.set(
+      'poaPdf',
+      new File([Buffer.from('%PDF-1.7\n')], 'vollmacht.pdf', { type: 'application/pdf' }),
+    );
+
+    const res = await createPoaAction(null, fd);
+
+    expect(res).toEqual({
+      ok: false,
+      error:
+        'Fuer ein beendetes oder anonymisiertes Mandat kann keine neue Vollmacht angelegt werden.',
+    });
+    expect(m.assertClientAccessTx).toHaveBeenCalledWith(tx, {}, fd.get('clientId'));
+    expect(tx.client.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: fd.get('clientId'),
+        anonymizedAt: null,
+        mandateEndedAt: null,
+      },
+      select: { id: true },
+    });
+    expect(m.prepareBytesCommitWithTier).not.toHaveBeenCalled();
+    expect(m.commitPreparedBytes).not.toHaveBeenCalled();
+    expect(tx.powerOfAttorney.create).not.toHaveBeenCalled();
+  });
+
+  it('schreibt bei fehlendem Mandatszugriff kein unveraenderbares PDF', async () => {
+    m.staffActionGuard.mockResolvedValue({
+      ok: true,
+      tenantId: 'tenant-1',
+      staffId: 'staff-1',
+      ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
+      session: {},
+    });
+    const tx = {
+      client: { findFirst: vi.fn() },
+      clientContact: { findFirst: vi.fn() },
+      powerOfAttorney: { create: vi.fn() },
+    };
+    m.withTenantContext.mockImplementation(
+      async (_ctx: unknown, run: (client: typeof tx) => unknown) => run(tx),
+    );
+    m.readModules.mockResolvedValue({ poaMode: 'PDF_TEMPLATE' });
+    m.assertClientAccessTx.mockRejectedValueOnce(new m.ActionError('Kein Zugriff.'));
+    const fd = new FormData();
+    fd.set('clientId', '7e6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e6f');
+    fd.set('uploadIntentId', UPLOAD_INTENT_ID);
+    fd.set('signerEmail', 'signer@example.de');
+    fd.set('signerName', 'Sina Signer');
+    fd.set('subject', 'Vollmacht');
+    fd.set('validFrom', '2026-08-10');
+    fd.set(
+      'poaPdf',
+      new File([Buffer.from('%PDF-1.7\n')], 'vollmacht.pdf', { type: 'application/pdf' }),
+    );
+
+    const res = await createPoaAction(null, fd);
+
+    expect(res).toEqual({ ok: false, error: 'Kein Zugriff.' });
+    expect(m.prepareBytesCommitWithTier).not.toHaveBeenCalled();
+    expect(m.commitPreparedBytes).not.toHaveBeenCalled();
+    expect(tx.client.findFirst).not.toHaveBeenCalled();
+    expect(tx.powerOfAttorney.create).not.toHaveBeenCalled();
+  });
+
+  it('behält das PDF nachvollziehbar, wenn erst die PoA-Transaktion scheitert', async () => {
+    const events: string[] = [];
+    m.staffActionGuard.mockResolvedValue({
+      ok: true,
+      tenantId: 'tenant-1',
+      staffId: 'staff-1',
+      ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
+      session: {},
+    });
+    m.readModules.mockResolvedValue({ poaMode: 'PDF_TEMPLATE' });
+    m.prepareBytesCommitWithTier.mockImplementation(async () => PREPARED_PDF);
+    m.commitPreparedBytes.mockImplementation(async () => {
+      events.push('put');
+      return COMMITTED_PDF;
+    });
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([{ id: 'client-1' }]),
+      client: { findFirst: vi.fn().mockResolvedValue({ id: 'client-1' }) },
+      clientContact: { findFirst: vi.fn() },
+      document: {
+        create: vi.fn().mockImplementation(async () => {
+          events.push('document-pending');
+          return { id: 'document-pending' };
+        }),
+        findFirst: vi
+          .fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValue({
+            versions: [
+              {
+                id: 'version-pending',
+                immutable: true,
+                scanStatus: 'CLEAN',
+                storageVersionId: 'storage-version-1',
+              },
+            ],
+          }),
+      },
+      documentVersion: {
+        create: vi.fn().mockImplementation(async () => {
+          events.push('version-pending');
+          return { id: 'version-pending' };
+        }),
+        updateMany: vi.fn().mockImplementation(async () => {
+          events.push('version-clean');
+          return { count: 1 };
+        }),
+        findFirst: vi.fn().mockResolvedValue({ id: 'version-pending' }),
+      },
+      powerOfAttorney: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockImplementation(async () => {
+          events.push('poa-failed');
+          throw new Error('database unavailable');
+        }),
+      },
+    };
+    m.withTenantContext.mockImplementation(
+      async (_ctx: unknown, run: (client: typeof tx) => unknown) => run(tx),
+    );
+
+    const res = await createPoaAction(null, validPdfPoaFormData());
+
+    expect(res).toEqual({
+      ok: false,
+      error:
+        'Anlegen fehlgeschlagen. Das PDF bleibt nachvollziehbar in der Mandantenakte gespeichert.',
+      pendingDocumentId: 'document-pending',
+    });
+    expect(events).toEqual([
+      'document-pending',
+      'version-pending',
+      'put',
+      'version-clean',
+      'poa-failed',
+    ]);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(3);
+    const lifecycleLocks = tx.$queryRaw.mock.calls.filter(([sql]) =>
+      (sql as TemplateStringsArray).join('').includes('"mandate_ended_at" IS NULL'),
+    );
+    expect(lifecycleLocks).toHaveLength(2);
+    for (const [sql] of lifecycleLocks) {
+      const source = (sql as TemplateStringsArray).join('');
+      expect(source).toContain('FOR UPDATE');
+      expect(source).toContain('"mandate_ended_at" IS NULL');
+      expect(source).toContain('"anonymized_at" IS NULL');
+    }
+    expect(tx.documentVersion.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        storageKey: PREPARED_PDF.targetKey,
+        storageVersionId: null,
+        immutable: true,
+        scanStatus: 'PENDING',
+      }),
+    });
+    expect(tx.documentVersion.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          storageVersionId: COMMITTED_PDF.storageVersionId,
+          immutable: true,
+          scanStatus: 'CLEAN',
+        }),
+      }),
+    );
+    expect(m.evidenceRecord.mock.calls.map((call) => call[1]?.action)).toEqual([
+      'document.upload.pending',
+      'document.upload.complete',
+    ]);
+    expect(m.redirect).not.toHaveBeenCalled();
+  });
+
+  it('lässt bei einem Object-Store-Fehler eine auffindbare PENDING-Spur zurück', async () => {
+    m.staffActionGuard.mockResolvedValue({
+      ok: true,
+      tenantId: 'tenant-1',
+      staffId: 'staff-1',
+      ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
+      session: {},
+    });
+    m.readModules.mockResolvedValue({ poaMode: 'PDF_TEMPLATE' });
+    m.commitPreparedBytes.mockRejectedValueOnce(new Error('storage unavailable'));
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([{ id: 'client-1' }]),
+      client: { findFirst: vi.fn().mockResolvedValue({ id: 'client-1' }) },
+      clientContact: { findFirst: vi.fn() },
+      document: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockResolvedValue({ id: 'document-pending' }),
+      },
+      documentVersion: {
+        create: vi.fn().mockResolvedValue({ id: 'version-pending' }),
+        updateMany: vi.fn(),
+        findFirst: vi.fn(),
+      },
+      powerOfAttorney: { create: vi.fn() },
+    };
+    m.withTenantContext.mockImplementation(
+      async (_ctx: unknown, run: (client: typeof tx) => unknown) => run(tx),
+    );
+
+    const res = await createPoaAction(null, validPdfPoaFormData());
+
+    expect(res).toEqual({
+      ok: false,
+      error:
+        'Upload noch nicht abgeschlossen. Sie können den Vorgang mit derselben PDF sicher fortsetzen.',
+      pendingDocumentId: 'document-pending',
+    });
+    expect(tx.document.create).toHaveBeenCalledTimes(1);
+    expect(tx.documentVersion.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        storageKey: PREPARED_PDF.targetKey,
+        scanStatus: 'PENDING',
+      }),
+    });
+    expect(tx.documentVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.powerOfAttorney.create).not.toHaveBeenCalled();
+    expect(m.evidenceRecord).toHaveBeenCalledTimes(1);
+    expect(m.evidenceRecord).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        action: 'document.upload.pending',
+        resourceId: 'document-pending',
+      }),
+    );
+  });
+
+  it('nimmt nach Antwortverlust denselben stabilen Upload-Intent ohne neuen PUT wieder auf', async () => {
+    m.staffActionGuard.mockResolvedValue({
+      ok: true,
+      tenantId: 'tenant-1',
+      staffId: 'staff-1',
+      ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
+      session: {},
+    });
+    m.readModules.mockResolvedValue({ poaMode: 'PDF_TEMPLATE' });
+    m.recoverPreparedBytesCommit.mockResolvedValue(COMMITTED_PDF);
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([{ id: 'locked' }]),
+      client: { findFirst: vi.fn().mockResolvedValue({ id: 'client-1' }) },
+      clientContact: { findFirst: vi.fn() },
+      document: {
+        create: vi.fn(),
+        findFirst: vi
+          .fn()
+          .mockResolvedValueOnce({ id: UPLOAD_INTENT_ID })
+          .mockResolvedValueOnce({
+            id: UPLOAD_INTENT_ID,
+            retentionUntil: PREPARED_PDF.retentionUntil,
+            versions: [
+              {
+                id: 'version-pending',
+                versionNo: 1,
+                storageBucket: PREPARED_PDF.targetBucket,
+                storageKey: PREPARED_PDF.targetKey,
+                storageVersionId: null,
+                sha256: PREPARED_PDF.sha256,
+                sizeBytes: PREPARED_PDF.sizeBytes,
+                immutable: true,
+                scanStatus: 'PENDING',
+                scanCompletedAt: null,
+              },
+            ],
+          })
+          .mockResolvedValueOnce({
+            versions: [
+              {
+                id: 'version-pending',
+                immutable: true,
+                scanStatus: 'CLEAN',
+                storageVersionId: COMMITTED_PDF.storageVersionId,
+              },
+            ],
+          }),
+      },
+      documentVersion: {
+        create: vi.fn(),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      powerOfAttorney: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockResolvedValue({ id: 'poa-resumed' }),
+      },
+    };
+    m.withTenantContext.mockImplementation(
+      async (_ctx: unknown, run: (client: typeof tx) => unknown) => run(tx),
+    );
+    const fd = validPdfPoaFormData();
+    fd.delete('poaPdf');
+
+    await createPoaAction(null, fd);
+
+    expect(m.recoverPreparedBytesCommit).toHaveBeenCalledWith(PREPARED_PDF);
+    expect(m.prepareBytesCommitWithTier).not.toHaveBeenCalled();
+    expect(m.commitPreparedBytes).not.toHaveBeenCalled();
+    expect(tx.document.create).not.toHaveBeenCalled();
+    expect(tx.documentVersion.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.powerOfAttorney.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ documentId: UPLOAD_INTENT_ID }),
+      }),
+    );
+    expect(m.redirect).toHaveBeenCalledWith('/staff/poa/poa-resumed');
   });
 });

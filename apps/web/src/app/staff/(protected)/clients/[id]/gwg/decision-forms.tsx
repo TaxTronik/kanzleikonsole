@@ -9,6 +9,7 @@ import {
   rejectCheckAction,
   type ActionResult,
 } from './actions';
+import { useGwgEditState } from './edit-state-context';
 
 /**
  * GwG-Decision-Buttons (Verifizieren / Ablehnen) mit useActionState. Zeigt
@@ -29,6 +30,7 @@ export function GwgDecisionForms({
   reviewSubmittedAt: string | null;
   canVerify: boolean;
 }) {
+  const { status: liveStatus } = useGwgEditState(status);
   const [submitState, submitAction, submitPending] = useActionState<ActionResult | null, FormData>(
     submitCheckForReviewAction,
     null,
@@ -47,7 +49,7 @@ export function GwgDecisionForms({
   // brauchen wir hier explizit.
   const error = submitState?.error ?? verifyState?.error ?? rejectState?.error ?? null;
 
-  if (status === 'DRAFT') {
+  if (liveStatus === 'DRAFT') {
     return (
       <>
         <p className="text-sm text-muted mb-3">

@@ -15,6 +15,9 @@ export {
   putObjectBytes,
   commitDocumentFromBytes,
   commitBytesWithTier,
+  prepareBytesCommitWithTier,
+  commitPreparedBytes,
+  recoverPreparedBytesCommit,
   sanitizeFilenameForHeader,
   detectMimeFromMagicBytes,
   gobdRetentionUntil,
@@ -25,6 +28,7 @@ export {
   scanBytes,
   MAX_UPLOAD_BYTES,
   type CommitDocumentResult,
+  type PreparedBytesCommit,
   type ObjectStream,
   type ScanResult,
 } from './service';

@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { useActionState, useState } from 'react';
+import Link from 'next/link';
 import { createPoaAction, type ActionResult } from '../actions';
 import { FileButton } from '@/components/file-button';
 
@@ -13,21 +14,32 @@ interface Client {
 export function NewPoaForm({
   clients,
   poaMode,
+  initialClientId,
+  initialPendingDocumentId,
+  uploadIntentId,
 }: {
   clients: Client[];
   poaMode: 'MARKDOWN_OTP' | 'PDF_TEMPLATE';
+  initialClientId?: string;
+  initialPendingDocumentId?: string;
+  uploadIntentId?: string;
 }) {
   const today = new Date().toISOString().slice(0, 10);
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
     createPoaAction,
     null,
   );
-  const [clientId, setClientId] = useState(clients[0]?.id ?? '');
+  const [clientId, setClientId] = useState(
+    clients.some((client) => client.id === initialClientId)
+      ? (initialClientId ?? '')
+      : (clients[0]?.id ?? ''),
+  );
   const [contactId, setContactId] = useState('');
   const [signerEmail, setSignerEmail] = useState('');
   const [signerName, setSignerName] = useState('');
 
   const client = clients.find((c) => c.id === clientId);
+  const pendingDocumentId = state?.pendingDocumentId ?? initialPendingDocumentId;
 
   function onContactChange(id: string) {
     setContactId(id);
@@ -42,6 +54,13 @@ export function NewPoaForm({
 
   return (
     <form action={formAction} className="card p-6 space-y-4">
+      {uploadIntentId ? <input type="hidden" name="uploadIntentId" value={uploadIntentId} /> : null}
+      {pendingDocumentId ? (
+        <>
+          <input type="hidden" name="pendingDocumentId" value={pendingDocumentId} />
+          <input type="hidden" name="clientId" value={clientId} />
+        </>
+      ) : null}
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="label" htmlFor="clientId">
@@ -59,6 +78,7 @@ export function NewPoaForm({
               setSignerName('');
             }}
             required
+            disabled={Boolean(pendingDocumentId)}
           >
             {clients.map((c) => (
               <option key={c.id} value={c.id}>
@@ -198,7 +218,28 @@ export function NewPoaForm({
         </p>
       </div>
       {state && !state.ok && (
-        <p className="text-sm text-red-700 dark:text-red-400">{state.error}</p>
+        <div className="alert-error-sm space-y-2">
+          <p>{state.error}</p>
+          {state.pendingDocumentId ? (
+            <p className="text-xs">
+              Der revisionssichere Upload bleibt erhalten.{' '}
+              <Link
+                className="underline font-medium"
+                href={`/staff/poa/new?clientId=${encodeURIComponent(clientId)}&pendingDocumentId=${encodeURIComponent(state.pendingDocumentId)}`}
+              >
+                Vorgang fortsetzen
+              </Link>{' '}
+              oder{' '}
+              <Link
+                className="underline font-medium"
+                href={`/staff/documents/${encodeURIComponent(state.pendingDocumentId)}`}
+              >
+                Dokument ansehen
+              </Link>
+              .
+            </p>
+          ) : null}
+        </div>
       )}
     </form>
   );

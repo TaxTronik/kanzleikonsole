@@ -21,6 +21,7 @@ import type { ReactNode } from 'react';
 
 import Link from 'next/link';
 import { confirmMagicLinkAction } from '../actions';
+import { inspectMagicLink } from '@/server/auth/magic-link';
 import { safePortalReturnTo } from './safe-return-to';
 
 // Hängt am Request (Token im Query) — nie statisch generierbar.
@@ -34,12 +35,13 @@ export default async function VerifyMagicLinkPage({ searchParams }: PageProps) {
   const params = await searchParams;
   const token = typeof params.token === 'string' ? params.token : '';
   const returnTo = safePortalReturnTo(params.returnTo);
+  const inspection = token ? await inspectMagicLink(token) : null;
 
-  if (!token) {
+  if (!token || !inspection) {
     return (
       <Shell>
         <div className="alert-error-sm">
-          {params.status === 'invalid'
+          {params.status === 'invalid' || token
             ? 'Der Link ist ungültig, abgelaufen oder wurde bereits verwendet.'
             : 'Kein Token in der URL.'}
         </div>
@@ -57,16 +59,27 @@ export default async function VerifyMagicLinkPage({ searchParams }: PageProps) {
   return (
     <Shell>
       <p className="text-sm text-secondary">
-        Klicken Sie auf <strong>Anmelden</strong>, um sich in das Mandantenportal einzuloggen. Der
-        Link ist einmalig gültig.
+        {inspection.profiles.length > 1
+          ? 'Wählen Sie aus, für welches Mandat Sie das Portal öffnen möchten.'
+          : 'Bestätigen Sie das Mandantenprofil, das Sie öffnen möchten.'}
       </p>
-      <form action={confirmMagicLinkAction}>
-        <input type="hidden" name="token" value={token} />
-        <input type="hidden" name="returnTo" value={returnTo} />
-        <button type="submit" className="btn-primary w-full">
-          Anmelden
-        </button>
-      </form>
+      <div className="space-y-2 text-left">
+        {inspection.profiles.map((profile) => (
+          <form key={profile.contactId} action={confirmMagicLinkAction}>
+            <input type="hidden" name="token" value={token} />
+            <input type="hidden" name="contactId" value={profile.contactId} />
+            <input type="hidden" name="returnTo" value={returnTo} />
+            <button
+              type="submit"
+              className="w-full rounded-lg border border-default bg-white px-4 py-3 text-left transition-colors hover:border-brand-400 hover:bg-brand-50 dark:bg-gray-900"
+            >
+              <span className="block text-sm font-semibold text-primary">{profile.clientName}</span>
+              <span className="block text-xs text-muted">Als {profile.contactName} öffnen</span>
+            </button>
+          </form>
+        ))}
+      </div>
+      <p className="text-xs text-disabled">Der Link ist einmalig gültig.</p>
       <Link
         href="/portal/login"
         referrerPolicy="no-referrer"

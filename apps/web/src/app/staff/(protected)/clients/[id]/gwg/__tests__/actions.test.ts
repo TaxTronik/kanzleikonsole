@@ -378,6 +378,14 @@ describe('atomare GwG-Bearbeitung', () => {
   });
 
   it('korrigiert alle Personenangaben atomar, auditierbar und nimmt die Übergabe zurück', async () => {
+    const ownerDocument = {
+      ...validDocument('PERSONALAUSWEIS'),
+      beneficialOwnerSubjectId: '33333333-3333-4333-8333-333333333333',
+      representativeSubjectId: null,
+      verifiedAt: null,
+      identityAssignmentConfirmedAt: null,
+      identityAssignmentConfirmedBy: null,
+    };
     const tx = {
       gwgCheck: {
         findFirst: vi.fn().mockResolvedValue({
@@ -401,6 +409,12 @@ describe('atomare GwG-Bearbeitung', () => {
         update: vi.fn().mockResolvedValue({}),
       },
       gwgIdDocument: {
+        findMany: vi
+          .fn()
+          .mockResolvedValueOnce([
+            { id: ownerDocument.id, documentSetId: ownerDocument.documentSetId },
+          ])
+          .mockResolvedValueOnce([ownerDocument]),
         updateMany: vi.fn().mockResolvedValue({ count: 2 }),
       },
     };
@@ -430,7 +444,24 @@ describe('atomare GwG-Bearbeitung', () => {
 
     const result = await updateBeneficialOwnerAction(null, data);
 
-    expect(result).toEqual({ ok: true, revision: expect.any(String) });
+    expect(result).toEqual({
+      ok: true,
+      reviewReset: true,
+      invalidatedIdentitySets: [
+        { documentSetId: ownerDocument.documentSetId, revision: expect.any(String) },
+      ],
+      revision: expect.any(String),
+      saved: {
+        id: '33333333-3333-4333-8333-333333333333',
+        fullName: 'Erika Muster',
+        birthDate: '1981-03-04',
+        birthPlace: 'Berlin',
+        residence: 'Hamburg',
+        nationality: 'deutsch',
+        ownershipPct: '51.25',
+        isPep: true,
+      },
+    });
     expect(tx.gwgCheck.updateMany).toHaveBeenCalledWith({
       where: { id: CHECK_ID, clientId: CLIENT_ID, status: 'IN_REVIEW' },
       data: { status: 'DRAFT', reviewSubmittedAt: null, reviewSubmittedBy: null },
@@ -450,7 +481,7 @@ describe('atomare GwG-Bearbeitung', () => {
     expect(tx.gwgIdDocument.updateMany).toHaveBeenCalledWith({
       where: {
         gwgCheckId: CHECK_ID,
-        beneficialOwnerSubjectId: '33333333-3333-4333-8333-333333333333',
+        id: { in: [ownerDocument.id] },
       },
       data: {
         identityAssignmentConfirmedAt: null,
@@ -1180,6 +1211,13 @@ describe('atomare GwG-Bearbeitung', () => {
       ok: true,
       reviewReset: false,
       representativesChanged: false,
+      representatives: [
+        {
+          id: '33333333-3333-4333-8333-333333333333',
+          fullName: 'Erika Muster',
+          position: 0,
+        },
+      ],
       revision: expect.any(String),
     });
     expect(tx.gwgCheck.updateMany).toHaveBeenCalledTimes(1);
@@ -1193,6 +1231,109 @@ describe('atomare GwG-Bearbeitung', () => {
       }),
     );
     expect(tx.gwgCheck.update).not.toHaveBeenCalled();
+  });
+
+  it('erhält stabile Vertreter-IDs und legt ausgewählte neue Personen strukturiert an', async () => {
+    const existingId = '33333333-3333-4333-8333-333333333333';
+    const newId = '55555555-5555-4555-8555-555555555555';
+    const representativeDocument = {
+      ...validDocument('PERSONALAUSWEIS', 'Erika Alt'),
+      verifiedAt: null,
+      representativeSubjectId: null,
+      identityAssignmentConfirmedAt: null,
+      identityAssignmentConfirmedBy: null,
+    };
+    const tx = {
+      gwgCheck: {
+        findFirst: vi.fn().mockResolvedValue({
+          status: 'DRAFT',
+          legalForm: 'GbR',
+          registerNumber: null,
+          registerAuthority: null,
+          noRegisterEntry: true,
+          representativeNames: ['Erika Alt'],
+          representatives: [{ id: existingId, fullName: 'Erika Alt', position: 0 }],
+          ownershipStructureNotes: 'Alt',
+          client: { kind: 'PERSGES' },
+        }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      gwgIdDocument: {
+        findMany: vi
+          .fn()
+          .mockResolvedValueOnce([
+            {
+              id: representativeDocument.id,
+              documentSetId: representativeDocument.documentSetId,
+            },
+          ])
+          .mockResolvedValueOnce([representativeDocument]),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      gwgRepresentative: {
+        deleteMany: vi.fn(),
+        updateMany: vi.fn(),
+        update: vi.fn(),
+        createMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+    runWithStaffOn(tx);
+    const data = formData();
+    data.set('legalForm', 'GbR');
+    data.set('noRegisterEntry', 'on');
+    data.set('ownershipStructureNotes', 'Erika und Peter vertreten die Gesellschaft.');
+    data.set(
+      'representativesJson',
+      JSON.stringify([
+        { id: existingId, fullName: 'Erika Muster', isNew: false },
+        { id: newId, fullName: 'Peter Beispiel', isNew: true },
+      ]),
+    );
+    data.set(
+      'expectedRevision',
+      gwgLegalEntityRevision({
+        legalForm: 'GbR',
+        registerNumber: null,
+        registerAuthority: null,
+        noRegisterEntry: true,
+        representativeNames: ['Erika Alt'],
+        ownershipStructureNotes: 'Alt',
+      }),
+    );
+
+    const result = await saveLegalEntityDetailsAction(null, data);
+
+    expect(result).toMatchObject({
+      ok: true,
+      representativesChanged: true,
+      representatives: [
+        { id: existingId, fullName: 'Erika Muster', position: 0 },
+        { id: newId, fullName: 'Peter Beispiel', position: 1 },
+      ],
+      invalidatedIdentitySets: [
+        { documentSetId: representativeDocument.documentSetId, revision: expect.any(String) },
+      ],
+    });
+    expect(tx.gwgIdDocument.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: { in: [representativeDocument.id] } }),
+      }),
+    );
+    expect(tx.gwgRepresentative.update).toHaveBeenCalledWith({
+      where: { id: existingId },
+      data: { fullName: 'Erika Muster', position: 0 },
+    });
+    expect(tx.gwgRepresentative.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          id: newId,
+          gwgCheckId: CHECK_ID,
+          fullName: 'Peter Beispiel',
+          position: 1,
+        },
+      ],
+    });
+    expect(tx.gwgRepresentative.deleteMany).not.toHaveBeenCalled();
   });
 });
 

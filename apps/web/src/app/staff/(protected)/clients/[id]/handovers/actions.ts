@@ -168,6 +168,7 @@ export async function updateHandoverStatusAction(input: {
         'sendTemplateMail (handover-ready)',
         sendTemplateMail({
           tenantId,
+          clientId: p.clientId,
           slug: 'handover-ready',
           to: p.contactEmail,
           vars: {
