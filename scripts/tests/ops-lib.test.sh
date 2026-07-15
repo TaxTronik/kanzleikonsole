@@ -888,6 +888,95 @@ EOF
   pass "migration retry refuses to replace a different pending contract"
 }
 
+test_migration_transition_retargets_only_verified_gwg_034_recovery() {
+  local state_file="$TMP_DIR/transition-gwg-034.state"
+  local marker="$TMP_DIR/transition-gwg-034.pending"
+  local out="$TMP_DIR/transition-gwg-034.out" source_commit old_target_commit new_target_commit
+  source_commit="$(printf 'b%.0s' {1..40})"
+  old_target_commit="$(printf 'c%.0s' {1..40})"
+  new_target_commit="$(printf 'd%.0s' {1..40})"
+  write_release_state "$state_file"
+  cat >"$marker" <<EOF
+source_version=2.0.0
+source_commit=$source_commit
+target_version=2.5.0
+target_commit=$old_target_commit
+requires_db_restore=true
+EOF
+
+  (
+    STATE="$state_file"
+    MIGRATION_PENDING="$marker"
+    DB_RESTORE_AUTHORIZATION="$TMP_DIR/transition-gwg-034.no-restore"
+    TAXTRONIK_VERSION=3.0.0
+    TAXTRONIK_RELEASE_COMMIT="$new_target_commit"
+    pending_database_migration_requirement() { printf 'false'; }
+    can_retarget_recoverable_gwg_034_transition() { return 0; }
+    begin_migration_transition
+  ) >"$out" 2>&1
+
+  assert_key_equals "$marker" source_version 2.0.0
+  assert_key_equals "$marker" source_commit "$source_commit"
+  assert_key_equals "$marker" target_version 3.0.0
+  assert_key_equals "$marker" target_commit "$new_target_commit"
+  assert_key_equals "$marker" requires_db_restore true
+  assert_contains "$out" "GwG-Migrationsfehler 03400"
+  pass "verified GwG 034 recovery can advance the pending target without weakening it"
+}
+
+test_gwg_034_retarget_requires_exact_forward_state() {
+  local source_commit old_target_commit new_target_commit other_source_commit
+  source_commit="$(printf 'b%.0s' {1..40})"
+  old_target_commit="$(printf 'c%.0s' {1..40})"
+  new_target_commit="$(printf 'd%.0s' {1..40})"
+  other_source_commit="$(printf 'e%.0s' {1..40})"
+
+  (
+    git() { return 0; }
+    gwg_034_migration_is_fixed() { return 0; }
+    database_has_recoverable_gwg_034_failure() { return 0; }
+    can_retarget_recoverable_gwg_034_transition \
+      2.0.0 "$source_commit" 2.5.0 "$old_target_commit" \
+      2.0.0 "$source_commit" 3.0.0 "$new_target_commit"
+  ) || test_fail "exact GwG 034 forward recovery was rejected"
+
+  if (
+    git() { return 0; }
+    gwg_034_migration_is_fixed() { return 0; }
+    database_has_recoverable_gwg_034_failure() { return 0; }
+    can_retarget_recoverable_gwg_034_transition \
+      2.0.0 "$source_commit" 2.5.0 "$old_target_commit" \
+      2.0.0 "$other_source_commit" 3.0.0 "$new_target_commit"
+  ); then
+    test_fail "GwG 034 recovery accepted a different source commit"
+  fi
+
+  if (
+    git() { return 0; }
+    gwg_034_migration_is_fixed() { return 0; }
+    database_has_recoverable_gwg_034_failure() { return 0; }
+    can_retarget_recoverable_gwg_034_transition \
+      2.0.0 "$source_commit" 2.5.0 "$old_target_commit" \
+      2.0.0 "$source_commit" 2.4.0 "$new_target_commit"
+  ); then
+    test_fail "GwG 034 recovery accepted a version downgrade"
+  fi
+
+  if (
+    git() { return 0; }
+    gwg_034_migration_is_fixed() { return 0; }
+    database_has_recoverable_gwg_034_failure() { return 1; }
+    can_retarget_recoverable_gwg_034_transition \
+      2.0.0 "$source_commit" 2.5.0 "$old_target_commit" \
+      2.0.0 "$source_commit" 3.0.0 "$new_target_commit"
+  ); then
+    test_fail "GwG 034 recovery accepted an unverified database state"
+  fi
+
+  gwg_034_migration_is_fixed || test_fail "migration 034 safety signature is incomplete"
+  pass "GwG 034 pending retarget requires the exact forward and database state"
+}
+
 test_compose_writer_passthrough_is_blocked_by_recovery_markers() {
   local restore_marker="$TMP_DIR/compose-guard.restore" pending_marker="$TMP_DIR/compose-guard.pending"
   local missing_restore="$TMP_DIR/compose-guard.no-restore" missing_pending="$TMP_DIR/compose-guard.no-pending"
@@ -1197,6 +1286,8 @@ test_restored_rollback_blocks_unmigrated_reverse_path
 test_database_restore_authorizes_only_declared_release
 test_migration_transition_preserves_strongest_requirement
 test_migration_transition_never_replaces_another_contract
+test_migration_transition_retargets_only_verified_gwg_034_recovery
+test_gwg_034_retarget_requires_exact_forward_state
 test_compose_writer_passthrough_is_blocked_by_recovery_markers
 test_internal_writer_activation_is_bound_to_exact_contract
 test_full_backup_cannot_start_n8n_behind_restore_barrier

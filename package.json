@@ -14,7 +14,7 @@
     "lint": "eslint .",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "test:ops": "bash scripts/tests/ops-lib.test.sh",
+    "test:ops": "bash scripts/tests/ops-lib.test.sh && bash scripts/tests/migrate-deploy-recovery.test.sh",
     "e2e": "pnpm --filter @taxtronik/e2e e2e",
     "e2e:ui": "pnpm --filter @taxtronik/e2e e2e:ui",
     "e2e:headed": "pnpm --filter @taxtronik/e2e e2e:headed",

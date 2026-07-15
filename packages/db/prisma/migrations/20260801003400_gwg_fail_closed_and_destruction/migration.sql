@@ -3,6 +3,11 @@
 -- vollständige Rechtsträger-Identifizierung und wiederaufnehmbare Vernichtung.
 -- =============================================================================
 
+-- Mehrere Schutz-Trigger werden vor den kontrollierten Vernichtungsfunktionen
+-- installiert. Ihre Owner-Prüfungen verwenden deshalb to_regprocedure(): Eine
+-- noch nicht vorhandene Funktion ergibt NULL und damit fail-closed FALSE,
+-- statt das Legacy-Backfill auf Bestandsdaten mit SQLSTATE 42883 abzubrechen.
+
 -- § 11 Abs. 4 Nr. 2 / § 12 Abs. 2-3 GwG: Identifizierungs-Snapshot für
 -- juristische Personen und Personengesellschaften direkt am Check.
 ALTER TABLE "gwg_check"
@@ -135,7 +140,7 @@ BEGIN
       AND CURRENT_USER = (
         SELECT pg_get_userbyid(p.proowner)
           FROM pg_catalog.pg_proc p
-         WHERE p.oid = 'app.destroy_gwg_document_versions(uuid)'::regprocedure
+         WHERE p.oid = pg_catalog.to_regprocedure('app.destroy_gwg_document_versions(uuid)')
       )
     ), FALSE);
   END IF;
@@ -237,7 +242,7 @@ BEGIN
         AND CURRENT_USER = (
           SELECT pg_get_userbyid(p.proowner)
             FROM pg_catalog.pg_proc p
-           WHERE p.oid = 'app.destroy_gwg_document_versions(uuid)'::regprocedure
+           WHERE p.oid = pg_catalog.to_regprocedure('app.destroy_gwg_document_versions(uuid)')
         )
       ), FALSE);
     END IF;
@@ -247,7 +252,7 @@ BEGIN
       AND CURRENT_USER = (
         SELECT pg_get_userbyid(p.proowner)
           FROM pg_catalog.pg_proc p
-         WHERE p.oid = 'app.destroy_gwg_check(uuid)'::regprocedure
+         WHERE p.oid = pg_catalog.to_regprocedure('app.destroy_gwg_check(uuid)')
       )
     ), FALSE);
   END IF;
@@ -583,7 +588,7 @@ BEGIN
     AND CURRENT_USER = (
       SELECT pg_get_userbyid(p.proowner)
         FROM pg_catalog.pg_proc p
-       WHERE p.oid = 'app.destroy_gwg_check(uuid)'::regprocedure
+       WHERE p.oid = pg_catalog.to_regprocedure('app.destroy_gwg_check(uuid)')
     )
   ), FALSE);
 
@@ -645,7 +650,7 @@ BEGIN
       AND CURRENT_USER = (
         SELECT pg_get_userbyid(p.proowner)
           FROM pg_catalog.pg_proc p
-         WHERE p.oid = 'app.destroy_gwg_check(uuid)'::regprocedure
+         WHERE p.oid = pg_catalog.to_regprocedure('app.destroy_gwg_check(uuid)')
       )
     ), FALSE);
   END IF;
@@ -1128,7 +1133,7 @@ BEGIN
        AND CURRENT_USER = (
          SELECT pg_get_userbyid(p.proowner)
            FROM pg_catalog.pg_proc p
-          WHERE p.oid = 'app.destroy_gwg_document_versions(uuid)'::regprocedure
+          WHERE p.oid = pg_catalog.to_regprocedure('app.destroy_gwg_document_versions(uuid)')
        )
        AND EXISTS (
          SELECT 1 FROM "document" d
@@ -1429,7 +1434,7 @@ BEGIN
       AND CURRENT_USER = (
           SELECT pg_get_userbyid(p.proowner)
             FROM pg_catalog.pg_proc p
-           WHERE p.oid = 'app.destroy_gwg_document_versions(uuid)'::regprocedure
+           WHERE p.oid = pg_catalog.to_regprocedure('app.destroy_gwg_document_versions(uuid)')
       )
     ), FALSE);
   END IF;

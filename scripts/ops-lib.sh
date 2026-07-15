@@ -1692,6 +1692,72 @@ merge_migration_restore_requirement() {
   fi
 }
 
+gwg_034_migration_is_fixed() {
+  local migration="$ROOT/packages/db/prisma/migrations/20260801003400_gwg_fail_closed_and_destruction/migration.sql"
+  local unsafe_count safe_count
+  [[ -f "$migration" ]] || return 1
+  unsafe_count="$(grep -Ec "'app\.destroy_gwg_(check|document_versions)\(uuid\)'::regprocedure" "$migration" || true)"
+  safe_count="$(grep -Ec "pg_catalog\.to_regprocedure\('app\.destroy_gwg_(check|document_versions)\(uuid\)'\)" "$migration" || true)"
+  [[ "$unsafe_count" == "0" && "$safe_count" == "7" ]]
+}
+
+database_has_recoverable_gwg_034_failure() {
+  local result
+  result="$(compose --infra exec -T postgres \
+    psql -U taxtronik -d taxtronik -v ON_ERROR_STOP=1 -Atc "
+      SELECT CASE WHEN
+        EXISTS (
+          SELECT 1
+            FROM public._prisma_migrations
+           WHERE migration_name = '20260801003400_gwg_fail_closed_and_destruction'
+             AND finished_at IS NULL
+             AND rolled_back_at IS NULL
+             AND applied_steps_count = 0
+             AND logs LIKE '%42883%'
+             AND logs LIKE '%destroy_gwg_check(uuid)%'
+        )
+        AND pg_catalog.to_regprocedure('app.destroy_gwg_check(uuid)') IS NULL
+        AND NOT EXISTS (
+          SELECT 1
+            FROM information_schema.columns
+           WHERE (table_schema, table_name, column_name) IN (
+             ('public', 'gwg_check', 'legal_form'),
+             ('public', 'gwg_check', 'register_number'),
+             ('public', 'gwg_check', 'register_authority'),
+             ('public', 'gwg_check', 'no_register_entry'),
+             ('public', 'gwg_check', 'representative_names'),
+             ('public', 'gwg_check', 'ownership_structure_notes'),
+             ('public', 'document', 'gwg_onboarding_invite_id'),
+             ('public', 'document', 'gwg_destruction_requested_at'),
+             ('public', 'document', 'gwg_destruction_requested_by'),
+             ('public', 'document', 'gwg_destruction_error'),
+             ('public', 'document', 'gwg_destroyed_at')
+           )
+        )
+        THEN 'yes' ELSE 'no'
+      END" 2>/dev/null)" || return 1
+  [[ "$result" == "yes" ]]
+}
+
+can_retarget_recoverable_gwg_034_transition() {
+  local existing_source="$1" existing_source_commit="$2"
+  local existing_target="$3" existing_target_commit="$4"
+  local source_version="$5" source_commit="$6" target_version="$7" target_commit="$8"
+
+  [[ "$existing_source" == "$source_version" && \
+     "$existing_source_commit" == "$source_commit" ]] || return 1
+  [[ "$existing_source_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ && \
+     "$existing_target_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ && \
+     "$target_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || return 1
+  [[ "$existing_target" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && \
+     "$target_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+  semver_ge "$target_version" "$existing_target" || return 1
+  git -C "$ROOT" merge-base --is-ancestor "$existing_target_commit" "$target_commit" \
+    >/dev/null 2>&1 || return 1
+  gwg_034_migration_is_fixed || return 1
+  database_has_recoverable_gwg_034_failure
+}
+
 begin_migration_transition() {
   local tmp source_version source_commit target_version target_commit requirement
   local existing_source existing_source_commit existing_target existing_target_commit existing_requirement
@@ -1710,11 +1776,19 @@ begin_migration_transition() {
     existing_target="$(pending_migration_value target_version)"
     existing_target_commit="$(pending_migration_value target_commit)"
     existing_requirement="$(pending_migration_value requires_db_restore)"
-    [[ "$existing_source" == "$source_version" && \
-       "$existing_source_commit" == "$source_commit" && \
-       "$existing_target" == "$target_version" && \
-       "$existing_target_commit" == "$target_commit" ]] || \
-      die "Migrations-Pending-Marker gehoert zu einem anderen Release-Uebergang (${existing_source:-Erstinstallation} -> ${existing_target:-unbekannt}) und wird nicht ueberschrieben. Erst bestehenden Fehlerzustand sicher aufloesen."
+    if [[ "$existing_source" != "$source_version" || \
+          "$existing_source_commit" != "$source_commit" || \
+          "$existing_target" != "$target_version" || \
+          "$existing_target_commit" != "$target_commit" ]]; then
+      if can_retarget_recoverable_gwg_034_transition \
+        "$existing_source" "$existing_source_commit" \
+        "$existing_target" "$existing_target_commit" \
+        "$source_version" "$source_commit" "$target_version" "$target_commit"; then
+        warn "Exakten, vollstaendig zurueckgerollten GwG-Migrationsfehler 03400 erkannt; Pending-Vertrag wird auf den korrigierten Vorwaerts-Commit fortgeschrieben."
+      else
+        die "Migrations-Pending-Marker gehoert zu einem anderen Release-Uebergang (${existing_source:-Erstinstallation} -> ${existing_target:-unbekannt}) und wird nicht ueberschrieben. Erst bestehenden Fehlerzustand sicher aufloesen."
+      fi
+    fi
     requirement="$(merge_migration_restore_requirement "$existing_requirement" "$requirement")"
   fi
 

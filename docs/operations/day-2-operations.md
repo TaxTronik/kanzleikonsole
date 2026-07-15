@@ -177,6 +177,45 @@ strikter Health-Smoke (`degraded` ist Fehler) und Deploy-Readiness ohne
 Skip-Pfad. Kein `git reset --hard`: Lokale Abweichungen müssen bewusst
 aufgelöst werden.
 
+### Recovery des GwG-Migrationsfehlers `03400` (P3018/42883)
+
+Eine vor dem ersten Release kurzzeitig auf `main` vorhandene Fassung von
+`20260801003400_gwg_fail_closed_and_destruction` konnte beim Upgrade eines
+verifizierten Rechtsträger-Altbestands vor Anlage der kontrollierten
+Vernichtungsfunktion abbrechen. Prisma/PostgreSQL rollen diese Migration als
+Ganzes zurück; das offene Prisma-Journal und der lokale Migrationsvertrag
+blockieren danach dennoch weitere Migrationen. Operator-Guard und produktiver
+Migrate-Container erkennen ausschließlich diese exakte Signatur (`42883`,
+fehlende Funktion, `applied_steps_count = 0` und keine der neuen Spalten),
+führen den Pending-Vertrag nur auf einen neueren Fix-Commit fort und markieren
+den DB-Eintrag vor dem korrigierten Neuversuch automatisch als `rolled-back`.
+Andere Migrationsfehler bleiben unverändert fail-closed.
+
+Die Operator-CLI lädt ihre Funktionen beim Prozessstart. Stammt der aktuell
+laufende Update-Prozess noch aus dem fehlerhaften Checkout, kann er den gerade
+erst geholten Recovery-Code nicht nachladen. In diesem einmaligen Übergang
+`./taxtronik update` daher zweimal als getrennte Prozesse ausführen: Der erste
+Lauf erstellt das Pflichtbackup, holt den für den jeweiligen Betriebsmodus
+verifizierten Checkout und kann danach noch am alten Pending-Guard stoppen. Der
+zweite Lauf lädt den neuen Recovery-Code und übernimmt Marker- und DB-Recovery
+automatisch. Den Pending-Marker nicht löschen oder von Hand editieren. Dieses
+Zwei-Lauf-Verfahren gilt auch für Registry-/Tag-Deployments; kein manuelles
+`git pull` anstelle der signierten Release-Auswahl verwenden.
+
+Wer Prisma außerhalb des Operator-Deployments ausführt, verwendet nach Backup
+und gestoppten Writern:
+
+```bash
+pnpm --filter @taxtronik/db exec prisma migrate resolve \
+  --rolled-back 20260801003400_gwg_fail_closed_and_destruction
+pnpm --filter @taxtronik/db exec prisma migrate deploy
+pnpm --filter @taxtronik/db exec prisma migrate status
+```
+
+Für diesen Fall weder `--applied` noch `migrate reset` verwenden. Prisma
+dokumentiert den Ablauf unter
+[Failed migrations](https://www.prisma.io/docs/orm/prisma-migrate/workflows/patching-and-hotfixing#failed-migration).
+
 Die Operator-CLI setzt für neu erzeugte Dateien `umask 077` und härtet `.env`
 auf Modus `0600`. Eine hostseitige `seaweedfs-s3.generated.json` gibt es nicht
 mehr: SeaweedFS rendert die Konfiguration beim Containerstart flüchtig unter
