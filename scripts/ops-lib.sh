@@ -1749,9 +1749,16 @@ can_retarget_recoverable_gwg_034_transition() {
   [[ "$existing_source_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ && \
      "$existing_target_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ && \
      "$target_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || return 1
-  [[ "$existing_target" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && \
-     "$target_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
-  semver_ge "$target_version" "$existing_target" || return 1
+  [[ -n "$existing_target" && -n "$target_version" ]] || return 1
+  # Lokal gebaute Deployments duerfen bewusst Nicht-SemVer-Tags verwenden
+  # (z. B. 2026-06-16). Ein Fix-Commit unter demselben Tag ist sicher, weil
+  # die Commit-Ancestry direkt darunter weiterhin eine Rueckwaertsbewegung
+  # ausschliesst. Nur ein Tag-Wechsel muss als SemVer vergleichbar sein.
+  if [[ "$existing_target" != "$target_version" ]]; then
+    [[ "$existing_target" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && \
+       "$target_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+    semver_ge "$target_version" "$existing_target" || return 1
+  fi
   git -C "$ROOT" merge-base --is-ancestor "$existing_target_commit" "$target_commit" \
     >/dev/null 2>&1 || return 1
   gwg_034_migration_is_fixed || return 1

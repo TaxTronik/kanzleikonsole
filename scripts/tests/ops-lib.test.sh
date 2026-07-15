@@ -940,6 +940,15 @@ test_gwg_034_retarget_requires_exact_forward_state() {
       2.0.0 "$source_commit" 3.0.0 "$new_target_commit"
   ) || test_fail "exact GwG 034 forward recovery was rejected"
 
+  (
+    git() { return 0; }
+    gwg_034_migration_is_fixed() { return 0; }
+    database_has_recoverable_gwg_034_failure() { return 0; }
+    can_retarget_recoverable_gwg_034_transition \
+      2026-06-16 "$source_commit" 2026-06-16 "$old_target_commit" \
+      2026-06-16 "$source_commit" 2026-06-16 "$new_target_commit"
+  ) || test_fail "same non-SemVer release tag rejected a forward fix commit"
+
   if (
     git() { return 0; }
     gwg_034_migration_is_fixed() { return 0; }
@@ -960,6 +969,17 @@ test_gwg_034_retarget_requires_exact_forward_state() {
       2.0.0 "$source_commit" 2.4.0 "$new_target_commit"
   ); then
     test_fail "GwG 034 recovery accepted a version downgrade"
+  fi
+
+  if (
+    git() { return 0; }
+    gwg_034_migration_is_fixed() { return 0; }
+    database_has_recoverable_gwg_034_failure() { return 0; }
+    can_retarget_recoverable_gwg_034_transition \
+      2026-06-16 "$source_commit" 2026-06-16 "$old_target_commit" \
+      2026-06-16 "$source_commit" 2026-06-17 "$new_target_commit"
+  ); then
+    test_fail "GwG 034 recovery accepted an incomparable release-tag change"
   fi
 
   if (
