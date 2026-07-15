@@ -19,12 +19,68 @@ import {
   countGranted,
   COMMUNICATION_LABELS,
   MARKETING_LABELS,
+  isBuiltinConsentOptionId,
+  type ConsentSelections,
+  type ConsentServiceProviderSnapshot,
 } from '@/server/privacy/consent';
 import { renderNoticeForTenantTx } from '@/server/privacy/service';
 import { readPrivacyConfigTx, isPrivacyConfigComplete } from '@/server/privacy/notice';
+import { readResolvedConsentOptionsTx } from '@/server/privacy/consent-catalog';
 import { NoticeView } from '@/components/notice-view';
 import { ConsentEditor } from './consent-editor';
 import { revokeAllConsentAction } from './actions';
+
+function providerSnapshotLabel(provider: ConsentServiceProviderSnapshot | null): string | null {
+  if (!provider) return null;
+  const access =
+    provider.hasDataAccess === null
+      ? 'Datenzugriff historisch nicht dokumentiert'
+      : provider.hasDataAccess
+        ? 'Datenzugriff: ja'
+        : 'Datenzugriff: nein';
+  const contract = provider.contractFromDate
+    ? `Vertrag ab ${provider.contractFromDate}${provider.contractToDate ? ` bis ${provider.contractToDate}` : ''}`
+    : provider.contractToDate
+      ? `Vertrag bis ${provider.contractToDate}`
+      : 'AVV-/Vertragszeitraum nicht dokumentiert';
+  return `${provider.name} · ${access} · ${contract}`;
+}
+
+function grantedConsentLabels(consent: ConsentSelections): string[] {
+  const snapshots = new Map(
+    consent.optionSelections.map((selection) => [selection.optionId, selection]),
+  );
+  const withProvider = (label: string, provider?: ConsentServiceProviderSnapshot | null) => {
+    const providerLabel = providerSnapshotLabel(provider ?? null);
+    return providerLabel ? `${label} · ${providerLabel}` : label;
+  };
+
+  return [
+    ...(Object.keys(COMMUNICATION_LABELS) as Array<keyof typeof COMMUNICATION_LABELS>)
+      .filter((key) => consent.communication[key])
+      .map((key) => {
+        const snapshot = snapshots.get(`communication.${key}`);
+        return withProvider(
+          snapshot?.labelSnapshot ?? COMMUNICATION_LABELS[key],
+          snapshot?.serviceProviderSnapshot,
+        );
+      }),
+    ...(Object.keys(MARKETING_LABELS) as Array<keyof typeof MARKETING_LABELS>)
+      .filter((key) => consent.marketing[key])
+      .map((key) => {
+        const snapshot = snapshots.get(`marketing.${key}`);
+        return withProvider(
+          snapshot?.labelSnapshot ?? MARKETING_LABELS[key],
+          snapshot?.serviceProviderSnapshot,
+        );
+      }),
+    ...consent.optionSelections
+      .filter((selection) => !isBuiltinConsentOptionId(selection.optionId))
+      .map((selection) => withProvider(selection.labelSnapshot, selection.serviceProviderSnapshot)),
+    ...consent.thirdParties.map((entry) => `Dritte: ${entry.recipient}`),
+    ...consent.specialists.map((entry) => `Spezialist: ${entry.entity}`),
+  ];
+}
 
 export default async function ClientPrivacyPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await staffAuth();
@@ -41,7 +97,7 @@ export default async function ClientPrivacyPage({ params }: { params: Promise<{ 
         select: { id: true, name: true },
       });
       if (!client) return null;
-      const [history, contacts, notice, cfg] = await Promise.all([
+      const [history, contacts, notice, cfg, consentOptions] = await Promise.all([
         tx.clientConsent.findMany({
           where: { clientId },
           orderBy: { createdAt: 'desc' },
@@ -54,14 +110,25 @@ export default async function ClientPrivacyPage({ params }: { params: Promise<{ 
         }),
         renderNoticeForTenantTx(tx, tenantId),
         readPrivacyConfigTx(tx, tenantId),
+        readResolvedConsentOptionsTx(tx, tenantId),
       ]);
-      return { client, history, contacts, notice, configComplete: isPrivacyConfigComplete(cfg) };
+      return {
+        client,
+        history,
+        contacts,
+        notice,
+        consentOptions,
+        configComplete: isPrivacyConfigComplete(cfg),
+      };
     },
   );
   if (!data) notFound();
-  const { client, history, contacts, notice, configComplete } = data;
+  const { client, history, contacts, notice, consentOptions, configComplete } = data;
   const current = history[0] ?? null;
   const currentConsent = current ? parseConsent(current.consents) : null;
+  const currentSnapshots = new Map(
+    currentConsent?.optionSelections.map((selection) => [selection.optionId, selection]) ?? [],
+  );
 
   return (
     <div className="p-8 max-w-4xl">
@@ -116,13 +183,39 @@ export default async function ClientPrivacyPage({ params }: { params: Promise<{ 
             <ul className="text-xs text-muted grid grid-cols-1 sm:grid-cols-2 gap-x-6">
               {(Object.keys(COMMUNICATION_LABELS) as Array<keyof typeof COMMUNICATION_LABELS>)
                 .filter((k) => currentConsent.communication[k])
-                .map((k) => (
-                  <li key={`c-${k}`}>✓ {COMMUNICATION_LABELS[k]}</li>
-                ))}
+                .map((k) => {
+                  const snapshot = currentSnapshots.get(`communication.${k}`);
+                  return (
+                    <li key={`c-${k}`}>
+                      ✓ {snapshot?.labelSnapshot ?? COMMUNICATION_LABELS[k]}
+                      {providerSnapshotLabel(snapshot?.serviceProviderSnapshot ?? null)
+                        ? ` · ${providerSnapshotLabel(snapshot?.serviceProviderSnapshot ?? null)}`
+                        : ''}
+                    </li>
+                  );
+                })}
               {(Object.keys(MARKETING_LABELS) as Array<keyof typeof MARKETING_LABELS>)
                 .filter((k) => currentConsent.marketing[k])
-                .map((k) => (
-                  <li key={`m-${k}`}>✓ {MARKETING_LABELS[k]}</li>
+                .map((k) => {
+                  const snapshot = currentSnapshots.get(`marketing.${k}`);
+                  return (
+                    <li key={`m-${k}`}>
+                      ✓ {snapshot?.labelSnapshot ?? MARKETING_LABELS[k]}
+                      {providerSnapshotLabel(snapshot?.serviceProviderSnapshot ?? null)
+                        ? ` · ${providerSnapshotLabel(snapshot?.serviceProviderSnapshot ?? null)}`
+                        : ''}
+                    </li>
+                  );
+                })}
+              {currentConsent.optionSelections
+                .filter((selection) => !isBuiltinConsentOptionId(selection.optionId))
+                .map((selection) => (
+                  <li key={`o-${selection.optionId}`}>
+                    ✓ {selection.labelSnapshot}
+                    {providerSnapshotLabel(selection.serviceProviderSnapshot)
+                      ? ` · ${providerSnapshotLabel(selection.serviceProviderSnapshot)}`
+                      : ''}
+                  </li>
                 ))}
               {currentConsent.thirdParties.map((t, i) => (
                 <li key={`t-${i}`}>✓ Dritte: {t.recipient}</li>
@@ -147,6 +240,7 @@ export default async function ClientPrivacyPage({ params }: { params: Promise<{ 
         clientId={clientId}
         initial={currentConsent ?? undefined}
         contacts={contacts}
+        options={consentOptions}
       />
 
       {/* Widerruf */}
@@ -210,25 +304,42 @@ export default async function ClientPrivacyPage({ params }: { params: Promise<{ 
                 </tr>
               </thead>
               <tbody className="divide-y divide-border-subtle">
-                {history.map((h) => (
-                  <tr key={h.id}>
-                    <td className="px-4 py-2 text-secondary">{fmtDateTimeShort(h.createdAt)}</td>
-                    <td className="px-4 py-2">
-                      {h.isRevocation ? (
-                        <span className="badge badge-red">Widerruf</span>
-                      ) : (
-                        <span className="badge badge-green">Erteilung</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-secondary">{h.signedByName}</td>
-                    <td className="px-4 py-2 text-secondary">
-                      {h.source === 'PORTAL' ? 'Portal' : 'Kanzlei'}
-                    </td>
-                    <td className="px-4 py-2 text-muted">
-                      {countGranted(parseConsent(h.consents))}
-                    </td>
-                  </tr>
-                ))}
+                {history.map((h) => {
+                  const consent = parseConsent(h.consents);
+                  const labels = grantedConsentLabels(consent);
+                  return (
+                    <tr key={h.id}>
+                      <td className="px-4 py-2 text-secondary">{fmtDateTimeShort(h.createdAt)}</td>
+                      <td className="px-4 py-2">
+                        {h.isRevocation ? (
+                          <span className="badge badge-red">Widerruf</span>
+                        ) : (
+                          <span className="badge badge-green">Erteilung</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-secondary">{h.signedByName}</td>
+                      <td className="px-4 py-2 text-secondary">
+                        {h.source === 'PORTAL' ? 'Portal' : 'Kanzlei'}
+                      </td>
+                      <td className="px-4 py-2 text-muted">
+                        {labels.length === 0 ? (
+                          countGranted(consent)
+                        ) : (
+                          <details>
+                            <summary className="cursor-pointer whitespace-nowrap">
+                              {countGranted(consent)} · Details
+                            </summary>
+                            <ul className="mt-1 min-w-56 space-y-0.5 text-xs">
+                              {labels.map((label, index) => (
+                                <li key={`${h.id}-${index}`}>✓ {label}</li>
+                              ))}
+                            </ul>
+                          </details>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

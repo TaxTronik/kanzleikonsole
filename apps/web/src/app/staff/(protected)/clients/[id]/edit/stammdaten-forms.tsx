@@ -165,7 +165,7 @@ export function GwgFieldsForm({ clientId, children }: { clientId: string; childr
   useRefreshOnSuccess(state);
 
   return (
-    <form action={formAction} className="card p-6 border-amber-200">
+    <form action={formAction} className="card p-6 mb-6 border-amber-200">
       <input type="hidden" name="clientId" value={clientId} />
       {children}
       {state?.error && <p className="alert-error-sm mt-4">{state.error}</p>}

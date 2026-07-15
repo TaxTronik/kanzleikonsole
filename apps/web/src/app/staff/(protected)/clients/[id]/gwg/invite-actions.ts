@@ -8,6 +8,8 @@ import { evidenceService } from '@/server/container';
 import { sendTemplateMail } from '@/server/mail/dispatch';
 import { fireAndForget } from '@/server/util/fire-and-forget';
 import { generateInviteToken, INVITE_TTL_DAYS } from '@/server/gwg-onboarding/service';
+import { prepareGwgInviteIssueTx } from '@/server/gwg-onboarding/invite-lifecycle';
+import { lockGwgCheckLifecycleTx } from '@/server/gwg/reverification';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { toActionError } from '@/server/auth/rbac';
 import { staffActionGuard, withStaff, ActionError } from '@/server/actions/staff-action';
@@ -45,6 +47,11 @@ export async function sendInviteAction(input: {
       // U-6: clientId Tenant-Sanity — letzte unverschlossene Stelle aus
       // R-2 / S-6-Sammelfund.
       await assertClientInTenant(tx, clientId);
+      const issue = await prepareGwgInviteIssueTx(tx, {
+        tenantId,
+        clientId,
+        cancelledByStaff: staffId,
+      });
       const inv = await tx.gwgOnboardingInvite.create({
         data: {
           tenantId,
@@ -54,6 +61,7 @@ export async function sendInviteAction(input: {
           tokenHash: hash,
           expiresAt,
           createdByStaff: staffId,
+          createdAt: issue.createdAt,
         },
       });
       await evidenceService.record(tx, {
@@ -63,7 +71,12 @@ export async function sendInviteAction(input: {
         action: 'gwg.onboarding.invite',
         resourceType: 'gwg_onboarding_invite',
         resourceId: inv.id,
-        after: { inviteName, inviteEmail, expiresAt: expiresAt.toISOString() },
+        after: {
+          inviteName,
+          inviteEmail,
+          expiresAt: expiresAt.toISOString(),
+          supersededInviteCount: issue.supersededInviteCount,
+        },
       });
       return inv.id;
     });
@@ -111,10 +124,17 @@ export async function cancelInviteAction(input: { id: string }): Promise<InviteR
   const r = await withStaff(async (tx, { tenantId, staffId }) => {
     const inv = await tx.gwgOnboardingInvite.findUnique({ where: { id: parsed.data.id } });
     if (!inv) return;
-    if (inv.status === 'SUBMITTED')
+    await lockGwgCheckLifecycleTx(tx, { tenantId, clientId: inv.clientId });
+    const current = await tx.gwgOnboardingInvite.findUnique({ where: { id: parsed.data.id } });
+    if (!current) return;
+    if (current.status === 'SUBMITTED')
       throw new ActionError('Bereits abgeschickt — kann nicht zurückgezogen werden.');
-    await tx.gwgOnboardingInvite.update({
-      where: { id: parsed.data.id },
+    if (current.status !== 'PENDING' && current.status !== 'STARTED') return;
+    const cancelled = await tx.gwgOnboardingInvite.updateMany({
+      where: {
+        id: parsed.data.id,
+        status: { in: ['PENDING', 'STARTED'] },
+      },
       data: {
         status: 'CANCELLED',
         cancelledAt: new Date(),
@@ -123,6 +143,9 @@ export async function cancelInviteAction(input: { id: string }): Promise<InviteR
         tokenHash: '',
       },
     });
+    if (cancelled.count === 0) {
+      throw new ActionError('Einladungsstatus wurde parallel geändert — bitte Seite neu laden.');
+    }
     await evidenceService.record(tx, {
       tenantId,
       actorType: 'STAFF',
@@ -130,7 +153,7 @@ export async function cancelInviteAction(input: { id: string }): Promise<InviteR
       action: 'gwg.onboarding.cancel',
       resourceType: 'gwg_onboarding_invite',
       resourceId: parsed.data.id,
-      before: { status: inv.status },
+      before: { status: current.status },
       after: { status: 'CANCELLED' },
     });
   });

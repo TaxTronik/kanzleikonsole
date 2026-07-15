@@ -4,7 +4,6 @@ import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, ShieldCheck, AlertTriangle, FileCheck } from 'lucide-react';
 import { DEFAULT_FACTORS } from '@/server/gwg/risk-score';
-import { openCheckAction } from './actions';
 import { RiskAssessmentForm } from './risk-assessment-form';
 import { AddBeneficialOwnerForm } from './add-owner-form';
 import { AddIdDocumentForm } from './add-id-doc-form';
@@ -17,6 +16,9 @@ import {
   type GwgSubmissionSummaryData,
 } from '@/components/gwg-submission-summary';
 import { LegalEntityDetailsForm } from './legal-entity-details-form';
+import { DocumentUploadButton } from '@/components/document-upload-button';
+import { BeneficialOwnerForm } from './beneficial-owner-form';
+import { StartCheckCycleForm } from './start-check-cycle-form';
 
 const statusLabels: Record<string, string> = {
   DRAFT: 'Entwurf',
@@ -36,11 +38,22 @@ const idTypeLabels: Record<string, string> = {
   SONSTIGES: 'Sonstiges',
 };
 
-export default async function GwgPage({ params }: { params: Promise<{ id: string }> }) {
+function isPersonalIdType(type: string): boolean {
+  return type === 'PERSONALAUSWEIS' || type === 'REISEPASS';
+}
+
+export default async function GwgPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ from?: string }>;
+}) {
   const session = await staffAuth();
   if (!session?.user) redirect('/staff/login');
 
   const { id: clientId } = await params;
+  const { from } = await searchParams;
   const { tenantId, staffId } = session.user;
 
   const data = await withTenantContext(
@@ -48,31 +61,50 @@ export default async function GwgPage({ params }: { params: Promise<{ id: string
     async (tx) => {
       const client = await tx.client.findUnique({ where: { id: clientId } });
       if (!client) return null;
-      const [check, clientDocuments, invites, contacts] = await Promise.all([
-        tx.gwgCheck.findFirst({
-          where: { clientId },
-          orderBy: { createdAt: 'desc' },
-          include: {
-            beneficialOwners: { orderBy: { createdAt: 'asc' } },
-            idDocuments: { orderBy: { createdAt: 'asc' }, include: { document: true } },
-          },
-        }),
-        tx.document.findMany({
-          where: { clientId, classification: 'GWG_EVIDENCE', deletedAt: null },
-          select: { id: true, title: true },
-          orderBy: { createdAt: 'desc' },
-        }),
-        tx.gwgOnboardingInvite.findMany({
-          where: { clientId },
-          orderBy: { createdAt: 'desc' },
-          take: 10,
-        }),
-        tx.clientContact.findMany({
-          where: { clientId, active: true },
-          select: { fullName: true, email: true },
-          orderBy: { fullName: 'asc' },
-        }),
-      ]);
+      const [check, clientDocuments, invites, contacts, professionalAssignment] = await Promise.all(
+        [
+          tx.gwgCheck.findFirst({
+            where: { clientId },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            include: {
+              beneficialOwners: { orderBy: { createdAt: 'asc' } },
+              idDocuments: {
+                orderBy: { createdAt: 'asc' },
+                include: {
+                  document: {
+                    select: { id: true, title: true, createdAt: true, classification: true },
+                  },
+                },
+              },
+            },
+          }),
+          tx.document.findMany({
+            where: { clientId, classification: 'GWG_EVIDENCE', deletedAt: null },
+            select: { id: true, title: true },
+            orderBy: { createdAt: 'desc' },
+            take: 200,
+          }),
+          tx.gwgOnboardingInvite.findMany({
+            where: { clientId },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            take: 10,
+          }),
+          tx.clientContact.findMany({
+            where: { clientId, active: true },
+            select: { fullName: true, email: true },
+            orderBy: { fullName: 'asc' },
+          }),
+          tx.clientResponsibility.findFirst({
+            where: {
+              clientId,
+              staffId,
+              role: 'BERUFSTRAEGER',
+              staff: { tenantId, active: true, roles: { some: {} } },
+            },
+            select: { id: true },
+          }),
+        ],
+      );
       const latestInvite = invites[0] ?? null;
       const uploadedIds = Array.isArray(latestInvite?.uploadedDocumentIds)
         ? (latestInvite.uploadedDocumentIds as unknown[]).filter(
@@ -87,13 +119,25 @@ export default async function GwgPage({ params }: { params: Promise<{ id: string
               orderBy: { createdAt: 'desc' },
             })
           : [];
-      return { client, check, clientDocuments, invites, contacts, uploadedDocuments };
+      return {
+        client,
+        check,
+        clientDocuments,
+        invites,
+        contacts,
+        uploadedDocuments,
+        canVerify: professionalAssignment !== null,
+      };
     },
   );
 
   if (!data) notFound();
-  const { client, check, clientDocuments, invites, contacts, uploadedDocuments } = data;
+  const { client, check, clientDocuments, invites, contacts, uploadedDocuments, canVerify } = data;
   const isLegalEntity = client.kind === 'JURPERS' || client.kind === 'PERSGES';
+  const identityDocuments = check?.idDocuments.filter((document) =>
+    isPersonalIdType(document.type),
+  );
+  const entityDocuments = check?.idDocuments.filter((document) => !isPersonalIdType(document.type));
   const latestInvite = invites[0] ?? null;
   const submittedSummary: GwgSubmissionSummaryData = {
     client: {
@@ -157,8 +201,14 @@ export default async function GwgPage({ params }: { params: Promise<{ id: string
     <div className="p-8 max-w-4xl">
       <div className="flex items-start gap-4 mb-6">
         <Link
-          href={`/staff/clients/${client.id}`}
+          href={
+            from === 'onboarding'
+              ? `/staff/clients/onboarding/${client.id}?step=gwg`
+              : `/staff/clients/${client.id}`
+          }
           className="text-disabled hover:text-secondary mt-1"
+          aria-label={from === 'onboarding' ? 'Zurück zum Onboarding' : 'Zurück zum Mandanten'}
+          title={from === 'onboarding' ? 'Zurück zum Onboarding' : 'Zurück zum Mandanten'}
         >
           <ArrowLeft className="h-5 w-5" />
         </Link>
@@ -212,12 +262,7 @@ export default async function GwgPage({ params }: { params: Promise<{ id: string
             Sie können die Prüfung selbst starten — oder den Mandanten oben per Einladung einladen,
             die Stammdaten und Ausweise selbst hochzuladen.
           </p>
-          <form action={openCheckAction}>
-            <input type="hidden" name="clientId" value={client.id} />
-            <button type="submit" className="btn-primary">
-              Prüfung manuell starten
-            </button>
-          </form>
+          <StartCheckCycleForm clientId={client.id} status={null} />
         </div>
       ) : (
         <div className="space-y-6">
@@ -232,6 +277,14 @@ export default async function GwgPage({ params }: { params: Promise<{ id: string
                     Risiko: <strong>{check.riskLevel}</strong> · Gültig bis{' '}
                     {fmtDateShort(check.validUntil)}
                   </p>
+                  {from === 'onboarding' && (
+                    <Link
+                      href={`/staff/clients/onboarding/${client.id}?step=poa`}
+                      className="btn-primary text-xs mt-3 inline-flex"
+                    >
+                      Im Onboarding weiter
+                    </Link>
+                  )}
                 </div>
               </div>
             </div>
@@ -248,6 +301,36 @@ export default async function GwgPage({ params }: { params: Promise<{ id: string
                 </div>
               </div>
             </div>
+          )}
+          {check.status === 'EXPIRED' && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-amber-900">Prüfung ist abgelaufen.</p>
+                  <p className="text-xs text-amber-700 mt-1">
+                    Für die erneute Freigabe ist ein aktueller Prüfsnapshot erforderlich.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {(check.status === 'VERIFIED' ||
+            check.status === 'REJECTED' ||
+            check.status === 'EXPIRED') && (
+            <section className="card p-5">
+              <h2 className="text-sm font-semibold text-primary mb-1">
+                {check.status === 'REJECTED' ? 'Korrekturprüfung' : 'Wiederholungsprüfung'}
+              </h2>
+              <p className="text-xs text-muted mb-4">
+                Noch aufbewahrte Identifizierungsangaben werden in einen neuen, bearbeitbaren
+                Entwurf übernommen. Gelöschte oder zur Vernichtung vorgemerkte Nachweise werden
+                nicht erneut verknüpft. Die alte Pflichtaufzeichnung bleibt unverändert; die
+                Risikobewertung ist erneut durchzuführen.
+              </p>
+              <StartCheckCycleForm clientId={client.id} checkId={check.id} status={check.status} />
+            </section>
           )}
 
           {/* Schritt 1: Risikobewertung */}
@@ -277,9 +360,10 @@ export default async function GwgPage({ params }: { params: Promise<{ id: string
                 2. Rechtsträger und Vertretung
               </h2>
               <p className="text-sm text-muted mb-4">
-                Pflichtangaben nach § 11 Abs. 4 Nr. 2 GwG. Zusätzlich sind unten
-                Register-/Gründungsnachweis, Transparenzregister-Auszug und der Ausweis mindestens
-                einer vertretungsberechtigten Person zuzuordnen.
+                Pflichtangaben nach § 11 Abs. 4 Nr. 2 GwG. Zusätzlich sind unten der
+                Register-/Gründungsnachweis und der Ausweis mindestens einer vertretungsberechtigten
+                Person zuzuordnen. Ein Transparenzregister-Auszug ist nur im Registerfall
+                erforderlich.
               </p>
               <LegalEntityDetailsForm
                 checkId={check.id}
@@ -298,6 +382,41 @@ export default async function GwgPage({ params }: { params: Promise<{ id: string
                   check.status === 'EXPIRED'
                 }
               />
+
+              <div className="mt-6 border-t border-default pt-5">
+                <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-primary">Rechtsträgernachweise</h3>
+                    <p className="text-xs text-muted mt-1">
+                      Register-/Gründungsnachweis, gegebenenfalls Transparenzregister und
+                      Vertretungsvollmachten gehören hierher — ohne Ausweisnummer oder
+                      Gültigkeitsdatum.
+                    </p>
+                  </div>
+                  {check.status !== 'VERIFIED' &&
+                    check.status !== 'REJECTED' &&
+                    check.status !== 'EXPIRED' && (
+                      <DocumentUploadButton
+                        clientId={client.id}
+                        defaultClassification="GWG_EVIDENCE"
+                        buttonLabel="Nachweis hochladen"
+                        buttonClassName="btn-secondary text-xs"
+                      />
+                    )}
+                </div>
+                <GwgDocumentList documents={entityDocuments ?? []} />
+                {check.status !== 'VERIFIED' &&
+                  check.status !== 'REJECTED' &&
+                  check.status !== 'EXPIRED' && (
+                    <AddIdDocumentForm
+                      checkId={check.id}
+                      clientId={client.id}
+                      clientName={client.name}
+                      clientDocuments={clientDocuments}
+                      variant="entity"
+                    />
+                  )}
+              </div>
             </section>
           )}
 
@@ -324,6 +443,22 @@ export default async function GwgPage({ params }: { params: Promise<{ id: string
                         {o.nationality ?? ''}
                         {o.residence ? ` · ${o.residence}` : ''}
                       </p>
+                      {(check.status === 'DRAFT' || check.status === 'IN_REVIEW') && (
+                        <BeneficialOwnerForm
+                          ownerId={o.id}
+                          checkId={check.id}
+                          clientId={client.id}
+                          value={{
+                            fullName: o.fullName,
+                            birthDate: o.birthDate?.toISOString().slice(0, 10) ?? '',
+                            birthPlace: o.birthPlace ?? '',
+                            residence: o.residence ?? '',
+                            nationality: o.nationality ?? '',
+                            ownershipPct: o.ownershipPct?.toString() ?? '',
+                            isPep: o.isPep,
+                          }}
+                        />
+                      )}
                     </div>
                   </li>
                 ))}
@@ -339,45 +474,29 @@ export default async function GwgPage({ params }: { params: Promise<{ id: string
 
           {/* Schritt 3: Identitätsdokumente */}
           <section className="card p-6">
-            <h2 className="text-lg font-semibold text-primary mb-1">
-              {isLegalEntity ? '4' : '3'}. Identitätsdokumente
-            </h2>
-            <p className="text-sm text-muted mb-4">
-              Personalausweise / Handelsregisterauszüge / Transparenzregister-Auszüge (laden Sie
-              Dokumente erst hoch und ordnen Sie sie hier zu).
-            </p>
+            <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+              <div>
+                <h2 className="text-lg font-semibold text-primary mb-1">
+                  {isLegalEntity ? '4' : '3'}. Identitätsdokumente
+                </h2>
+                <p className="text-sm text-muted">
+                  Amtliche Ausweise der natürlichen beziehungsweise vertretungsberechtigten
+                  Personen. Rechtsträgerunterlagen werden getrennt in Schritt 2 erfasst.
+                </p>
+              </div>
+              {check.status !== 'VERIFIED' &&
+                check.status !== 'REJECTED' &&
+                check.status !== 'EXPIRED' && (
+                  <DocumentUploadButton
+                    clientId={client.id}
+                    defaultClassification="GWG_EVIDENCE"
+                    buttonLabel="Ausweiskopie hochladen"
+                    buttonClassName="btn-secondary text-xs"
+                  />
+                )}
+            </div>
 
-            {check.idDocuments.length > 0 && (
-              <ul className="divide-y divide-border-subtle mb-4 border border-default rounded-md">
-                {check.idDocuments.map((d) => (
-                  <li key={d.id} className="px-4 py-3">
-                    <div className="flex items-center gap-2 mb-1">
-                      <FileCheck className="h-4 w-4 text-green-600" />
-                      <span className="font-medium text-primary">
-                        {idTypeLabels[d.type] ?? d.type}
-                      </span>
-                      {d.expiryDate && d.expiryDate < new Date() && (
-                        <span className="badge-red">abgelaufen</span>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted ml-6">
-                      {d.ownerName}
-                      {d.number ? ` · Nr. ${d.number}` : ''}
-                      {d.expiryDate ? ` · gültig bis ${fmtDateShort(d.expiryDate)}` : ''}
-                    </p>
-                    {d.document && (
-                      <div className="flex items-center gap-1 ml-6 mt-1">
-                        <span className="text-xs text-muted">{d.document.title}</span>
-                        <DocumentPreviewButton
-                          documentId={d.document.id}
-                          documentTitle={d.document.title}
-                        />
-                      </div>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
+            <GwgDocumentList documents={identityDocuments ?? []} />
 
             {check.status !== 'VERIFIED' &&
               check.status !== 'REJECTED' &&
@@ -385,22 +504,79 @@ export default async function GwgPage({ params }: { params: Promise<{ id: string
                 <AddIdDocumentForm
                   checkId={check.id}
                   clientId={client.id}
+                  clientName={client.name}
                   clientDocuments={clientDocuments}
+                  variant="identity"
                 />
               )}
           </section>
 
           {/* Schritt 4: Verifikation oder Ablehnung */}
-          {check.status === 'IN_REVIEW' && (
+          {(check.status === 'DRAFT' || check.status === 'IN_REVIEW') && (
             <section className="card p-6">
               <h2 className="text-lg font-semibold text-primary mb-3">
                 {isLegalEntity ? '5' : '4'}. Entscheidung
               </h2>
-              <GwgDecisionForms checkId={check.id} clientId={client.id} />
+              <GwgDecisionForms
+                checkId={check.id}
+                clientId={client.id}
+                status={check.status}
+                reviewSubmittedAt={check.reviewSubmittedAt?.toISOString() ?? null}
+                canVerify={canVerify}
+              />
             </section>
           )}
         </div>
       )}
     </div>
+  );
+}
+
+interface DisplayGwgDocument {
+  id: string;
+  type: string;
+  ownerName: string;
+  number: string | null;
+  expiryDate: Date | null;
+  document: { id: string; title: string } | null;
+}
+
+function GwgDocumentList({ documents }: { documents: DisplayGwgDocument[] }) {
+  if (documents.length === 0) {
+    return <p className="text-xs text-disabled mb-4">Noch kein Nachweis zugeordnet.</p>;
+  }
+
+  return (
+    <ul className="divide-y divide-border-subtle mb-4 border border-default rounded-md">
+      {documents.map((document) => (
+        <li key={document.id} className="px-4 py-3">
+          <div className="flex items-center gap-2 mb-1">
+            <FileCheck className="h-4 w-4 text-green-600" />
+            <span className="font-medium text-primary">
+              {idTypeLabels[document.type] ?? document.type}
+            </span>
+            {document.expiryDate && document.expiryDate < new Date() && (
+              <span className="badge-red">abgelaufen</span>
+            )}
+          </div>
+          {isPersonalIdType(document.type) && (
+            <p className="text-xs text-muted ml-6">
+              {document.ownerName}
+              {document.number ? ` · Nr. ${document.number}` : ''}
+              {document.expiryDate ? ` · gültig bis ${fmtDateShort(document.expiryDate)}` : ''}
+            </p>
+          )}
+          {document.document && (
+            <div className="flex items-center gap-1 ml-6 mt-1">
+              <span className="text-xs text-muted">{document.document.title}</span>
+              <DocumentPreviewButton
+                documentId={document.document.id}
+                documentTitle={document.document.title}
+              />
+            </div>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }

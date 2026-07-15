@@ -11,6 +11,10 @@ export const REQUIRED_RECURSIVE_DOCKERIGNORE_PATTERNS = [
   '**/build',
   '**/out',
   '**/coverage',
+  '/apps/web/backups',
+  '.taxtronik.state',
+  '.taxtronik.migration-pending',
+  '.taxtronik.database-restored',
 ];
 export const REQUIRED_COMPOSE_SECRETS = ['AUTH_SECRET', 'N8N_ENCRYPTION_KEY'];
 
@@ -46,7 +50,7 @@ export function checkDockerignore(source) {
   );
   if (missing.length > 0) {
     throw new Error(
-      `.dockerignore muss verschachtelte Build-Artefakte rekursiv ausschließen; fehlend: ${missing.join(', ')}`,
+      `.dockerignore muss Build-Artefakte und lokale Betriebsdaten ausschließen; fehlend: ${missing.join(', ')}`,
     );
   }
   return true;
@@ -123,6 +127,25 @@ export function checkRuntimePackageManagersRemoved(source, fileName = '<Dockerfi
   return true;
 }
 
+export function checkBuilderSourcePermissions(source, fileName = '<Dockerfile>') {
+  const copyMatch = /^COPY\s+\.\s+\.\s*$/m.exec(source);
+  if (!copyMatch) {
+    throw new Error(`${fileName}: Builder muss den Workspace per COPY . . uebernehmen.`);
+  }
+  const afterCopy = copyMatch.index + copyMatch[0].length;
+  const nextStageOffset = source.slice(afterCopy).search(/^FROM\s+/m);
+  const builderTail = source.slice(
+    afterCopy,
+    nextStageOffset < 0 ? source.length : afterCopy + nextStageOffset,
+  );
+  if (!/^RUN\s+chmod\s+-R\s+a\+rX\s+\/repo\s*$/m.test(builderTail)) {
+    throw new Error(
+      `${fileName}: Builder muss Host-Modi nach COPY . . per chmod -R a+rX /repo fuer non-root Runtime-COPYs normalisieren.`,
+    );
+  }
+  return true;
+}
+
 function main() {
   try {
     const directory = 'infra/docker';
@@ -135,12 +158,15 @@ function main() {
       source: readFileSync(`${directory}/${name}`, 'utf8'),
     }));
     checkDockerfiles(files);
-    for (const file of files) checkRuntimePackageManagersRemoved(file.source, file.name);
+    for (const file of files) {
+      checkRuntimePackageManagersRemoved(file.source, file.name);
+      checkBuilderSourcePermissions(file.source, file.name);
+    }
     checkWebRuntimeDockerfile(readFileSync(`${directory}/Dockerfile.web`, 'utf8'));
     checkDockerignore(readFileSync('.dockerignore', 'utf8'));
     checkRequiredComposeSecrets(readFileSync('infra/compose/docker-compose.app.yml', 'utf8'));
     process.stdout.write(
-      `OK: ${names.length} Dockerfiles verwenden nur digest-gepinnte Bases, keine Runtime-Paketmanager; Web-Liveness ist erreichbar, Build-Outputs sind rekursiv ignoriert und produktive Compose-Secrets sind fail-closed.\n`,
+      `OK: ${names.length} Dockerfiles verwenden nur digest-gepinnte Bases, normalisieren Builder-Quellmodi und entfernen Runtime-Paketmanager; Web-Liveness ist erreichbar, lokale Betriebsdaten sind ignoriert und produktive Compose-Secrets sind fail-closed.\n`,
     );
   } catch (error) {
     process.stderr.write(`FEHLER: ${error.message}\n`);

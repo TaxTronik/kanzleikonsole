@@ -11,6 +11,7 @@ import { withSystemContext } from '@taxtronik/db';
 import { checkIpOrGlobalLimit, getClientIp } from '@/server/rate-limit';
 import { GENERIC_TOKEN_ERROR, loadInviteByRawToken } from '@/server/gwg-onboarding/service';
 import { renderNoticeForTenantTx } from '@/server/privacy/service';
+import { readResolvedConsentOptionsTx } from '@/server/privacy/consent-catalog';
 import { OnboardingWizard } from './wizard';
 
 export default async function GwgOnboardingPage({
@@ -51,9 +52,20 @@ export default async function GwgOnboardingPage({
   const { invite } = result;
   // Datenschutzhinweise (Teil A) tenant-spezifisch rendern (System-Kontext:
   // Public-Pfad, nur durch den Token geschützt).
-  const notice = await withSystemContext(invite.tenant.id, (tx) =>
-    renderNoticeForTenantTx(tx, invite.tenant.id),
-  );
+  const privacy = await withSystemContext(invite.tenant.id, async (tx) => {
+    const [notice, consentOptions] = await Promise.all([
+      renderNoticeForTenantTx(tx, invite.tenant.id),
+      readResolvedConsentOptionsTx(tx, invite.tenant.id),
+    ]);
+    // Im öffentlichen RSC-Payload erscheinen ausschließlich aktuell
+    // angebotene und vollständig auflösbare Optionen. Eine verwaiste
+    // Dienstleister-Verknüpfung muss zuerst im ACP repariert werden und darf
+    // den Mandanten nicht erst beim finalen Absenden scheitern lassen.
+    return {
+      notice,
+      consentOptions: consentOptions.filter((option) => option.active && !option.providerMissing),
+    };
+  });
   return (
     <div className="min-h-screen bg-surface-page py-12 px-4">
       <div className="max-w-3xl mx-auto">
@@ -65,8 +77,9 @@ export default async function GwgOnboardingPage({
           token={token}
           inviteName={invite.inviteName}
           client={invite.client}
-          noticeBody={notice.body}
-          noticeVersion={notice.version}
+          noticeBody={privacy.notice.body}
+          noticeVersion={privacy.notice.version}
+          consentOptions={privacy.consentOptions}
         />
       </div>
     </div>

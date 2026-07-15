@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   Loader2,
 } from 'lucide-react';
+import Link from 'next/link';
 import { staffAuth } from '@/server/auth/staff';
 import { env, riskLayerConfig } from '@taxtronik/config';
 import { getSmtpStatus } from '@/server/settings/smtp';
@@ -26,13 +27,15 @@ import {
 } from '@/server/health/checks';
 import { readModules } from '@/server/settings/modules';
 import { SectionCard } from '../section-card';
+import { presentN8nHealth, type AttentionStatus, type IntegrationRowStatus } from './presentation';
 
 interface Row {
   icon: typeof Database;
   label: string;
   endpoint: string;
-  status: ServiceStatus | { skipped: true; reason: string };
+  status: IntegrationRowStatus;
   hint?: string;
+  action?: { href: string; label: string };
 }
 
 function mask(value: string | undefined | null, keep = 4): string {
@@ -77,6 +80,8 @@ export default async function IntegrationsSettingsPage() {
     }
   })();
 
+  const n8nPresentation = presentN8nHealth(n8n);
+
   const rows: Row[] = [
     {
       icon: Database,
@@ -109,19 +114,7 @@ export default async function IntegrationsSettingsPage() {
     {
       icon: Workflow,
       label: 'n8n',
-      endpoint: n8n.url ?? '— nicht gesetzt —',
-      status:
-        n8n.source === 'none'
-          ? { skipped: true, reason: 'Keine n8n-Verbindung — in den Einstellungen einrichten' }
-          : n8n.error === 'n8n-Integration bewusst deaktiviert'
-            ? { skipped: true, reason: n8n.error }
-            : (n8n as ServiceStatus),
-      hint:
-        n8n.source === 'tenant'
-          ? 'Konfiguriert unter Einstellungen → Automatisierungen mit n8n.'
-          : n8n.source === 'env'
-            ? 'Legacy-ENV-Vorgabe — kann unter Einstellungen → n8n-Automatisierung migriert werden.'
-            : 'Workflow-Engine für Reminder-Mails, Eskalationen, externe Webhooks.',
+      ...n8nPresentation,
     },
     {
       icon: Clock,
@@ -171,16 +164,19 @@ export default async function IntegrationsSettingsPage() {
           {rows.map((r) => {
             const Icon = r.icon;
             const skipped = 'skipped' in r.status;
-            const ok = !skipped && (r.status as ServiceStatus).ok;
+            const attention = 'attention' in r.status;
+            const ok = !skipped && !attention && (r.status as ServiceStatus).ok;
             return (
               <li key={r.label} className="py-3 flex items-start gap-3">
                 <Icon
                   className={
                     ok
                       ? 'h-5 w-5 mt-0.5 text-emerald-600'
-                      : skipped
-                        ? 'h-5 w-5 mt-0.5 text-disabled'
-                        : 'h-5 w-5 mt-0.5 text-red-600'
+                      : attention
+                        ? 'h-5 w-5 mt-0.5 text-amber-600'
+                        : skipped
+                          ? 'h-5 w-5 mt-0.5 text-disabled'
+                          : 'h-5 w-5 mt-0.5 text-red-600'
                   }
                 />
                 <div className="flex-1 min-w-0">
@@ -201,6 +197,11 @@ export default async function IntegrationsSettingsPage() {
                         <Loader2 className="h-3.5 w-3.5" />
                         Nicht konfiguriert
                       </span>
+                    ) : attention ? (
+                      <span className="inline-flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400">
+                        <AlertCircle className="h-3.5 w-3.5" />
+                        {(r.status as AttentionStatus).label}
+                      </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 text-xs text-red-700 dark:text-red-400">
                         <AlertCircle className="h-3.5 w-3.5" />
@@ -210,7 +211,12 @@ export default async function IntegrationsSettingsPage() {
                   </div>
                   <p className="text-xs text-muted font-mono mt-0.5 truncate">{r.endpoint}</p>
                   {r.hint && <p className="text-xs text-muted mt-0.5">{r.hint}</p>}
-                  {!ok && !skipped && (r.status as ServiceStatus).error && (
+                  {attention && (
+                    <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                      {(r.status as AttentionStatus).reason}
+                    </p>
+                  )}
+                  {!ok && !skipped && !attention && (r.status as ServiceStatus).error && (
                     <p className="text-xs text-red-700 dark:text-red-400 mt-0.5">
                       {(r.status as ServiceStatus).error}
                     </p>
@@ -219,6 +225,14 @@ export default async function IntegrationsSettingsPage() {
                     <p className="text-xs text-muted mt-0.5">
                       {(r.status as { skipped: true; reason: string }).reason}
                     </p>
+                  )}
+                  {r.action && (
+                    <Link
+                      href={r.action.href}
+                      className="mt-1 inline-flex text-xs font-medium text-brand-700 hover:underline"
+                    >
+                      {r.action.label}
+                    </Link>
                   )}
                 </div>
               </li>

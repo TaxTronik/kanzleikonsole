@@ -5,7 +5,7 @@ import type { Prisma } from '@prisma/client';
 import { evidenceService } from '@/server/container';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
-import { requireGwgReverificationTx } from '@/server/gwg/reverification';
+import { lockGwgCheckLifecycleTx, requireGwgReverificationTx } from '@/server/gwg/reverification';
 
 const InputSchema = z.object({
   requestId: z.string().uuid(),
@@ -70,6 +70,7 @@ export async function decideChangeRequestAction(
       }
 
       if (approve) {
+        await lockGwgCheckLifecycleTx(tx, { tenantId, clientId });
         const before = await tx.client.findUnique({
           where: { id: clientId },
           select: {

@@ -23,6 +23,7 @@ import type { Prisma } from '@prisma/client';
 import { SCHEDULE_LABELS } from '@taxtronik/tax';
 import { rematerializeAction, markDeadlineDoneAction } from './actions';
 import { fmtDateShort, fmtMonthYear, fmtWeekdayShort, berlinYmd } from '@/lib/fmt';
+import { CalendarModeSwitch } from '@/components/calendar-mode-switch';
 
 const STATUS_LABELS: Record<string, string> = {
   PLANNED: 'Geplant',
@@ -77,7 +78,7 @@ export default async function TaxDeadlinesPage({
   if (view === 'month') {
     return renderMonth(session, year, month0, scope, q, clientFilter, queued);
   }
-  return renderList(session, scope, q, clientFilter, queued);
+  return renderList(session, year, month0, scope, q, clientFilter, queued);
 }
 
 async function renderMonth(
@@ -150,21 +151,20 @@ async function renderMonth(
     cells.push({ date: d, inMonth: d.getUTCMonth() === month0 });
   }
 
-  const prevMonth = `${year}-${String(month0 + 1 - 1).padStart(2, '0')}`;
+  const currentMonthQs = `${year}-${String(month0 + 1).padStart(2, '0')}`;
   const prevYear = month0 === 0 ? year - 1 : year;
   const prevM = month0 === 0 ? 12 : month0;
   const prevMonthQs = `${prevYear}-${String(prevM).padStart(2, '0')}`;
   const nextYear = month0 === 11 ? year + 1 : year;
   const nextM = month0 === 11 ? 1 : month0 + 2;
   const nextMonthQs = `${nextYear}-${String(nextM).padStart(2, '0')}`;
-  void prevMonth;
 
   // Berlin-Tag (nicht Server-Local): Grid-Zellen sind Kalendertage.
   const todayKey = berlinYmd(new Date());
 
   return (
     <div className="p-8 max-w-7xl">
-      <PageHeader view="month" scope={scope} q={q} queued={queued} />
+      <PageHeader view="month" scope={scope} month={currentMonthQs} q={q} queued={queued} />
 
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
@@ -269,12 +269,15 @@ async function renderMonth(
 
 async function renderList(
   session: StaffSession,
+  year: number,
+  month0: number,
   scope: 'mine' | 'all',
   q: string,
   clientFilter: Prisma.TaxDeadlineWhereInput,
   queued: boolean,
 ) {
   const { tenantId, staffId } = session.user;
+  const currentMonthQs = `${year}-${String(month0 + 1).padStart(2, '0')}`;
   const [overdue, upcoming, done] = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
@@ -308,7 +311,7 @@ async function renderList(
 
   return (
     <div className="p-8 max-w-6xl">
-      <PageHeader view="list" scope={scope} q={q} queued={queued} />
+      <PageHeader view="list" scope={scope} month={currentMonthQs} q={q} queued={queued} />
 
       <div className="grid grid-cols-3 gap-4 mb-6">
         <Stat label="Überfällig" value={overdue.length} accent="red" />
@@ -343,25 +346,20 @@ async function renderList(
 function PageHeader({
   view,
   scope,
+  month,
   q,
   queued,
 }: {
   view: 'month' | 'list';
   scope: 'mine' | 'all';
+  month: string;
   q: string;
   queued: boolean;
 }) {
   return (
     <div className="mb-6">
-      <div className="flex items-end justify-between mb-3">
+      <div className="flex flex-wrap items-end justify-between gap-4 mb-3">
         <div>
-          <Link
-            href="/staff/calendar"
-            className="inline-flex items-center gap-1 text-xs text-muted hover:text-brand-700 mb-1"
-          >
-            <ChevronLeft className="h-3 w-3" />
-            Zurück zum Kanzleikalender
-          </Link>
           <h1 className="page-title">
             <CalendarDays className="h-6 w-6 text-brand-600" />
             Steuertermine
@@ -376,7 +374,8 @@ function PageHeader({
             )}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <CalendarModeSwitch active="tax-deadlines" month={month} />
           <div className="toggle-group">
             <ScopeLink
               active={scope === 'all'}

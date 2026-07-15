@@ -191,6 +191,16 @@ führen den Pending-Vertrag nur auf einen neueren Fix-Commit fort und markieren
 den DB-Eintrag vor dem korrigierten Neuversuch automatisch als `rolled-back`.
 Andere Migrationsfehler bleiben unverändert fail-closed.
 
+Legacy-Lokalinstallationen können im Last-Good-State noch keinen Quell-Commit
+enthalten. Ein solcher Pending-Vertrag darf nur mit bereits gesetzter
+DB-Restore-Pflicht, nachgewiesener Ziel-Commit-Ancestry und der exakten
+GwG-Fehlersignatur fortgesetzt werden. Wurde Prisma kontrolliert manuell
+aufgelöst, ist stattdessen ein vollständig geschlossenes Prisma-Journal nötig,
+in dem jede Migration des bisherigen Pending-Zielcommits erfolgreich
+abgeschlossen ist. Zusätzliche Migrationen eines nachweislichen
+Vorwärts-Commits dürfen danach unter derselben, niemals abgeschwächten
+DB-Restore-Pflicht angewendet werden.
+
 Die Operator-CLI lädt ihre Funktionen beim Prozessstart. Stammt der aktuell
 laufende Update-Prozess noch aus dem fehlerhaften Checkout, kann er den gerade
 erst geholten Recovery-Code nicht nachladen. In diesem einmaligen Übergang
@@ -217,11 +227,15 @@ dokumentiert den Ablauf unter
 [Failed migrations](https://www.prisma.io/docs/orm/prisma-migrate/workflows/patching-and-hotfixing#failed-migration).
 
 Die Operator-CLI setzt für neu erzeugte Dateien `umask 077` und härtet `.env`
-auf Modus `0600`. Eine hostseitige `seaweedfs-s3.generated.json` gibt es nicht
-mehr: SeaweedFS rendert die Konfiguration beim Containerstart flüchtig unter
-`/run` als UID 1000 mit Modus `0400`. Historische generierte Dateien werden
-entfernt. Die CLI muss unter dem Dateieigentümer des Deployment-Checkouts
-ausgeführt werden.
+auf Modus `0600`. Ausschließlich Git-Operationen, die den getrackten
+Release-Checkout aktualisieren (Fast-Forward oder Rollback), laufen mit
+`umask 022`; die Image-Builder normalisieren die Quellmodi zusätzlich vor jedem
+Runtime-Copy. So bleiben Secrets restriktiv, während der non-root-User `node`
+Migrationen und Anwendungscode sicher lesen kann. Eine hostseitige
+`seaweedfs-s3.generated.json` gibt es nicht mehr: SeaweedFS rendert die
+Konfiguration beim Containerstart flüchtig unter `/run` als UID 1000 mit Modus
+`0400`. Historische generierte Dateien werden entfernt. Die CLI muss unter dem
+Dateieigentümer des Deployment-Checkouts ausgeführt werden.
 
 ## SMTP
 

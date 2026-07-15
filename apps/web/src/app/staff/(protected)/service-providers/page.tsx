@@ -1,9 +1,9 @@
 ﻿import { redirect } from 'next/navigation';
-import { Building2, Trash2 } from 'lucide-react';
+import { Building2 } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { NewProviderForm } from './new-form';
-import { deleteServiceProviderAction } from './actions';
+import { DeleteProviderForm } from './delete-provider-form';
 import { fmtDateShort } from '@/lib/fmt';
 
 export default async function ServiceProvidersPage() {
@@ -54,16 +54,7 @@ export default async function ServiceProvidersPage() {
                       <p className="text-xs text-secondary mt-2 whitespace-pre-wrap">{p.notes}</p>
                     )}
                   </div>
-                  <form action={deleteServiceProviderAction}>
-                    <input type="hidden" name="id" value={p.id} />
-                    <button
-                      type="submit"
-                      className="text-disabled hover:text-red-600 p-2"
-                      title="Löschen"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </form>
+                  <DeleteProviderForm id={p.id} name={p.name} />
                 </li>
               ))}
             </ul>

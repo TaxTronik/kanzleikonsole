@@ -6,8 +6,8 @@
 //   - Termine (aus appointment)
 // Über dem Raster: Liste der offenen Terminanfragen (appointment_request).
 //
-// Die alte Route /staff/tax-deadlines bleibt unverändert erhalten — wird hier
-// als "Nur Steuertermine"-Filter verlinkt.
+// Die fokussierte Route /staff/tax-deadlines bleibt über denselben
+// Ansichts-Schalter in beiden Kalendern direkt erreichbar.
 // =============================================================================
 
 import { redirect } from 'next/navigation';
@@ -21,6 +21,7 @@ import { SCHEDULE_LABELS } from '@taxtronik/tax';
 import { NewAppointmentDialog } from './new-appointment-dialog';
 import { RequestDecision, type RequestRow } from './request-decision';
 import { fmtMonthYear, fmtTimeShort, fmtWeekdayShort, berlinYmd } from '@/lib/fmt';
+import { CalendarModeSwitch } from '@/components/calendar-mode-switch';
 
 interface Search {
   month?: string;
@@ -214,6 +215,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const nextYear = month0 === 11 ? year + 1 : year;
   const nextM = month0 === 11 ? 1 : month0 + 2;
   const nextMonthQs = `${nextYear}-${String(nextM).padStart(2, '0')}`;
+  const currentMonthQs = `${year}-${String(month0 + 1).padStart(2, '0')}`;
 
   // Berlin-Tag (nicht Server-Local): der Grid-Schlüssel ist der Kalendertag,
   // und „heute" muss in derselben Zeitzone bestimmt werden wie die Zellen.
@@ -232,7 +234,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="p-8 max-w-7xl">
-      <div className="flex items-end justify-between mb-6">
+      <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
         <div>
           <h1 className="page-title">
             <CalendarDays className="h-6 w-6 text-brand-600" />
@@ -242,10 +244,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
             Steuertermine, Termine und Abwesenheiten — alle Mandanten der Kanzlei.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Link href="/staff/tax-deadlines" className="btn-secondary text-xs">
-            Nur Steuertermine
-          </Link>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <CalendarModeSwitch active="calendar" month={currentMonthQs} />
           <NewAppointmentDialog
             staffOptions={data.staffList}
             clientOptions={data.clientsList}

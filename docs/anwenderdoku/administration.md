@@ -146,7 +146,38 @@ stehen im Kapitel
 [n8n-Automatisierungen](n8n-automatisierungen.md). Secret-Rotation und
 Netzwerkbetrieb bleiben Betreiberaufgaben.
 
-## 5. Weitere Admin-Bereiche (Verweise)
+## 5. Datenschutz-Einwilligungen und Dienstleister
+
+Unter **Administration → Datenschutz** pflegt die Kanzlei neben dem Text der
+Datenschutzhinweise auch die freiwilligen Einwilligungsoptionen, die in der
+internen Erfassung und im öffentlichen GwG-Onboarding angeboten werden.
+
+- Standardoptionen wie Fax oder Newsletter können deaktiviert und später
+  wieder aktiviert werden. Das verändert keine bereits abgegebenen
+  Erklärungen.
+- Eigene Optionen erhalten eine Bezeichnung, eine optionale Erläuterung und
+  einen Bereich. „Entfernen“ deaktiviert eine bereits gespeicherte Option;
+  historische Nachweise behalten dadurch ihren eingefrorenen Wortlaut.
+- Eine Option kann mit einem unter **Dienstleister** erfassten Anbieter
+  verknüpft werden. Der Nachweis friert dessen Namen, Kategorie,
+  Datenzugriffskennzeichen und erfassten AVV-/Vertragszeitraum zum Zeitpunkt
+  der Erklärung ein. Die Verknüpfung ersetzt keinen erforderlichen Vertrag
+  nach Art. 28 DSGVO.
+- Ein verknüpfter Dienstleister kann erst gelöscht werden, nachdem die
+  Verknüpfung im Einwilligungskatalog entfernt wurde. Bei historischen,
+  bereits fehlenden Anbietern zeigt die Administration einen Reparaturhinweis
+  und verlangt eine neue Auswahl oder „keiner“.
+- Gleichzeitige Änderungen in zwei Admin-Sitzungen werden nicht still
+  überschrieben. Die zweite Sitzung muss die Seite neu laden und ihren Stand
+  erneut prüfen. Ein beschädigter Katalog sperrt neue Erfassungen
+  vorsichtshalber, kann aber auf derselben Admin-Seite kontrolliert durch einen
+  vollständig validierten Katalog ersetzt werden.
+
+Einwilligungen sind freiwillig und zweckbezogen. Rechtsgrundlagen,
+Auftragsverarbeitungsverträge, Löschfristen und die tatsächliche technische
+Einbindung eines Dienstleisters bleiben unabhängig davon zu prüfen.
+
+## 6. Weitere Admin-Bereiche (Verweise)
 
 - **Datei-Typen & Schutzstufen**, **GwG-Pflichtlöschung** → Kapitel
   [Dokumente](dokumente.md)

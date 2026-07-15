@@ -78,22 +78,21 @@ export default async function ClientsPage({
 
   // Onboarding-Filter
   if (sp.onboarding === 'complete') {
-    where.allowActive = true;
-    where.contacts = { some: { active: true } };
+    where.onboardingCompletedAt = { not: null };
   } else if (sp.onboarding === 'open') {
+    where.onboardingCompletedAt = null;
     where.allowActive = false;
-    where.contacts = { none: {} };
+    where.contacts = { none: { active: true } };
     where.gwgChecks = { none: {} };
     where.gwgInvites = { none: {} };
     where.poas = { none: {} };
     where.requests = { none: {} };
   } else if (sp.onboarding === 'in_progress') {
     where.AND = [
-      {
-        OR: [{ allowActive: false }, { contacts: { none: { active: true } } }],
-      },
+      { onboardingCompletedAt: null },
       {
         OR: [
+          { allowActive: true },
           { contacts: { some: { active: true } } },
           { gwgChecks: { some: {} } },
           { gwgInvites: { some: {} } },
@@ -124,6 +123,7 @@ export default async function ClientsPage({
             datevNo: true,
             addisonNo: true,
             allowActive: true,
+            onboardingCompletedAt: true,
             priority: true,
             createdAt: true,
             _count: {
@@ -241,7 +241,7 @@ export default async function ClientsPage({
             Nur meine Mandanten
           </label>
           <div className="flex gap-2">
-            {(sp.q || sp.status || sort !== 'name' || dir !== 'asc' || mine) && (
+            {(sp.q || sp.status || sp.onboarding || sort !== 'name' || dir !== 'asc' || mine) && (
               <Link href="/staff/clients" className="btn-secondary">
                 Reset
               </Link>
@@ -329,6 +329,7 @@ export default async function ClientsPage({
                     {(() => {
                       const ob: OnboardingStatus = computeOnboardingStatus({
                         allowActive: client.allowActive,
+                        onboardingCompletedAt: client.onboardingCompletedAt,
                         contactsActive: client._count.contacts,
                         gwgChecks: client._count.gwgChecks,
                         gwgInvites: client._count.gwgInvites,

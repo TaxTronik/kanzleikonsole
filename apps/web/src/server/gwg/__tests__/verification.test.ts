@@ -38,7 +38,15 @@ function legalSnapshot(overrides: Partial<GwgVerificationSnapshot> = {}): GwgVer
     noRegisterEntry: false,
     representativeNames: ['Erika Muster'],
     ownershipStructureNotes: 'Erika Muster hält 100 % der Geschäftsanteile.',
-    beneficialOwnerCount: 1,
+    beneficialOwners: [
+      {
+        fullName: 'Erika Muster',
+        birthDate: new Date('1980-01-02T00:00:00Z'),
+        birthPlace: 'Berlin',
+        residence: 'Musterstraße 1, 10115 Berlin',
+        nationality: 'deutsch',
+      },
+    ],
     idDocuments: [
       evidence('PERSONALAUSWEIS'),
       evidence('HANDELSREGISTERAUSZUG'),
@@ -53,6 +61,22 @@ describe('gwgVerificationErrors', () => {
     expect(gwgVerificationErrors(legalSnapshot(), NOW)).toEqual([]);
   });
 
+  it('akzeptiert eine nicht registerpflichtige GbR mit Gesellschaftsvertrag statt Transparenzregister-Auszug', () => {
+    expect(
+      gwgVerificationErrors(
+        legalSnapshot({
+          clientKind: 'PERSGES',
+          legalForm: 'GbR',
+          registerNumber: null,
+          registerAuthority: null,
+          noRegisterEntry: true,
+          idDocuments: [evidence('PERSONALAUSWEIS'), evidence('GESELLSCHAFTSVERTRAG')],
+        }),
+        NOW,
+      ),
+    ).toEqual([]);
+  });
+
   it('verlangt Register-, Vertretungs-, Struktur- und Dokumentangaben', () => {
     const errors = gwgVerificationErrors(
       legalSnapshot({
@@ -61,7 +85,7 @@ describe('gwgVerificationErrors', () => {
         registerAuthority: null,
         representativeNames: [],
         ownershipStructureNotes: null,
-        beneficialOwnerCount: 0,
+        beneficialOwners: [],
         idDocuments: [],
       }),
       NOW,
@@ -104,5 +128,26 @@ describe('gwgVerificationErrors', () => {
       NOW,
     );
     expect(errors.some((error) => error.includes('vertretungsberechtigte Person'))).toBe(true);
+  });
+
+  it('blockiert unvollständige Identifizierungsdaten wirtschaftlich Berechtigter', () => {
+    const errors = gwgVerificationErrors(
+      legalSnapshot({
+        beneficialOwners: [
+          {
+            fullName: 'Erika Muster',
+            birthDate: null,
+            birthPlace: null,
+            residence: null,
+            nationality: null,
+          },
+        ],
+      }),
+      NOW,
+    );
+
+    expect(errors).toContain(
+      'Wirtschaftlich Berechtigter 1: Geburtsdatum, Geburtsort, Wohnsitz, Staatsangehörigkeit fehlen (§ 11 Abs. 5 GwG).',
+    );
   });
 });

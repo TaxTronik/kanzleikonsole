@@ -21,6 +21,36 @@ vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
 - n8n auf den verifizierten Stable-Release 2.25.7 aktualisiert; globale
   Legacy-Callbacks sind nun standardmäßig deaktiviert und Production-n8n
   sendet keine Telemetrie oder automatischen Katalog-/Versionsabrufe.
+- Update-/Migrationspfad gegen restriktive Checkout-Dateirechte gehärtet:
+  Git-Updates normalisieren neue Quelldateien, Runtime-Images garantieren
+  lesbare non-root-Migrationsskripte und CI simuliert den zuvor fehlschlagenden
+  `0600`/`0700`-Operator-Checkout. Der Legacy-Pending-Vertrag kann nach einer
+  nachweislich vollständig abgeschlossenen manuellen Prisma-Recovery sicher
+  auf den nächsten Vorwärts-Commit fortgesetzt werden.
+- Mandanten-Onboarding erhält einen expliziten, auditierbaren Abschlussmarker;
+  bereits abgeschlossene Altbestände werden ehrlich zum Migrationszeitpunkt
+  markiert und spätere Wiederholungsprüfungen öffnen das Erst-Onboarding nicht
+  erneut.
+- GwG-Prüfung als zusammenhängender Vier-Augen-Workflow ausgebaut: Mitarbeitende
+  bearbeiten einen Entwurf und reichen ihn gezielt beim zugeordneten
+  Berufsträger ein; Entscheidungen sind gegen parallele/stale Prüfsnapshots
+  geschützt. Wirtschaftlich Berechtigte einschließlich PEP-Angabe sind
+  vollständig korrigierbar, Rechtsträgernachweise werden direkt in Abschnitt 2
+  hochgeladen und nicht registerpflichtige GbR erhalten passende
+  Gründungsnachweise ohne sachfremde Ausweisfelder.
+- Anforderungen lassen sich direkt aus Mandantenakte und Anforderungsübersicht
+  in einem Dialog anlegen. Serverseitige Idempotenz, Payload-Bindung,
+  Zugriffs-/GwG-Gates und konsistente Template-/Formular-Caps verhindern
+  Doppelerfassung und versteckte Vorlagenabweichungen.
+- Datenschutz-Einwilligungen sind kanzleispezifisch konfigurierbar: Standard-
+  Optionen wie Fax/Newsletter lassen sich deaktivieren, eigene Checkboxen
+  ergänzen und mit Dienstleistern samt eingefrorenem Datenzugriffs- und
+  AVV-/Vertragszeitraum verknüpfen. Ein beschädigter Katalog bleibt in der
+  Erfassung fail-closed und besitzt einen expliziten ACP-Reparaturpfad.
+- Kalenderansichten verwenden beidseitig denselben Schalter für
+  Kanzleikalender/Steuertermine. Die Integrationsübersicht erkennt alte
+  `localhost`-/Loopback-n8n-Vorgaben als geführten Migrationszustand statt als
+  irreführenden SSRF-Fehler.
 
 ## [0.2.0] - 2026-07-14
 

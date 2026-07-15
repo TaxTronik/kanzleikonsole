@@ -17,6 +17,7 @@ vi.mock('@/server/actions/staff-action', () => ({ staffActionGuard: m.staffActio
 import { confirmGwgCheckDeletionAction, confirmGwgDeletionAction } from '../actions';
 
 const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
+const CHECK_ID = '22222222-2222-4222-8222-222222222222';
 
 function makeTx(
   claimedStorageKey = 'tenant/doc/version-1',
@@ -61,6 +62,7 @@ function makeTx(
       findUnique: vi.fn().mockResolvedValue({ gwgDestroyedAt: new Date('2032-01-01T00:00:00Z') }),
     },
     gwgIdDocument: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    $executeRaw: vi.fn().mockResolvedValue(0),
     $queryRaw: vi.fn().mockResolvedValue([{ destroy_gwg_document_versions: 1 }]),
   };
 }
@@ -103,6 +105,33 @@ describe('confirmGwgDeletionAction', () => {
     expect(m.deleteObjectVersion).not.toHaveBeenCalled();
   });
 
+  it('blockiert einen GwG-Beleg ohne eindeutigen Mandantenbezug vor dem Lifecycle-Lock', async () => {
+    const tx = makeTx();
+    tx.document.findFirst.mockReset().mockResolvedValue({
+      id: DOCUMENT_ID,
+      title: 'Verwaister Ausweis.pdf',
+      clientId: null,
+      createdAt: new Date('2010-01-01T00:00:00Z'),
+      retentionUntil: new Date('2015-01-01T00:00:00Z'),
+      gwgDestructionRequestedAt: null,
+      client: null,
+      gwgIdDocuments: [],
+      gwgOnboardingInvite: null,
+      versions: [],
+    });
+    m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+      fn(tx),
+    );
+
+    const result = await confirmGwgDeletionAction({ documentId: DOCUMENT_ID });
+
+    expect(result.ok).toBe(false);
+    expect(tx.$executeRaw).not.toHaveBeenCalled();
+    expect(tx.document.updateMany).not.toHaveBeenCalled();
+    expect(tx.$queryRaw).not.toHaveBeenCalled();
+    expect(m.deleteObjectVersion).not.toHaveBeenCalled();
+  });
+
   it('persistiert die Vernichtungsabsicht vor dem Byte-Delete und finalisiert danach', async () => {
     const tx = makeTx();
     m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
@@ -119,6 +148,17 @@ describe('confirmGwgDeletionAction', () => {
         }),
       }),
     );
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(2);
+    expect(tx.$executeRaw.mock.calls.map((call) => call[1])).toEqual([
+      'gwg-check-lifecycle:tenant-1:client-1',
+      'gwg-check-lifecycle:tenant-1:client-1',
+    ]);
+    expect(tx.document.findFirst.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.$executeRaw.mock.invocationCallOrder[0]!,
+    );
+    expect(tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.document.updateMany.mock.invocationCallOrder[0]!,
+    );
     expect(tx.document.updateMany.mock.invocationCallOrder[0]).toBeLessThan(
       tx.$queryRaw.mock.invocationCallOrder[0]!,
     );
@@ -126,6 +166,12 @@ describe('confirmGwgDeletionAction', () => {
       m.deleteObjectVersion.mock.invocationCallOrder[0]!,
     );
     expect(m.deleteObjectVersion.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.$executeRaw.mock.invocationCallOrder[1]!,
+    );
+    expect(tx.$executeRaw.mock.invocationCallOrder[1]).toBeLessThan(
+      tx.document.findFirst.mock.invocationCallOrder[2]!,
+    );
+    expect(tx.document.findFirst.mock.invocationCallOrder[2]).toBeLessThan(
       tx.$queryRaw.mock.invocationCallOrder[1]!,
     );
     expect(tx.document.findUnique).toHaveBeenCalledWith({
@@ -209,8 +255,12 @@ describe('confirmGwgDeletionAction', () => {
 });
 
 describe('confirmGwgCheckDeletionAction', () => {
-  it('delegiert Fristprüfung und Vernichtung atomar an die DB-Funktion', async () => {
+  it('nimmt den Lifecycle-Lock vor der atomaren DB-Vernichtung', async () => {
     const tx = {
+      gwgCheck: {
+        findFirst: vi.fn().mockResolvedValue({ clientId: 'client-1' }),
+      },
+      $executeRaw: vi.fn().mockResolvedValue(0),
       $queryRaw: vi.fn().mockResolvedValue([
         {
           clientId: 'client-1',
@@ -226,11 +276,21 @@ describe('confirmGwgCheckDeletionAction', () => {
       fn(tx),
     );
 
-    expect(
-      await confirmGwgCheckDeletionAction({ checkId: '22222222-2222-4222-8222-222222222222' }),
-    ).toEqual({ ok: true });
+    expect(await confirmGwgCheckDeletionAction({ checkId: CHECK_ID })).toEqual({ ok: true });
 
+    expect(tx.gwgCheck.findFirst).toHaveBeenCalledWith({
+      where: { id: CHECK_ID, tenantId: 'tenant-1' },
+      select: { clientId: true },
+    });
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(tx.$executeRaw.mock.calls[0]?.[1]).toBe('gwg-check-lifecycle:tenant-1:client-1');
     expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.gwgCheck.findFirst.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.$executeRaw.mock.invocationCallOrder[0]!,
+    );
+    expect(tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.$queryRaw.mock.invocationCallOrder[0]!,
+    );
     expect(m.evidenceRecord).toHaveBeenCalledWith(
       tx,
       expect.objectContaining({
@@ -242,16 +302,40 @@ describe('confirmGwgCheckDeletionAction', () => {
   });
 
   it('bleibt bei abgelehnter DB-Fristprüfung ohne Audit fail-closed', async () => {
-    const tx = { $queryRaw: vi.fn().mockRejectedValue(new Error('Frist läuft')) };
+    const tx = {
+      gwgCheck: {
+        findFirst: vi.fn().mockResolvedValue({ clientId: 'client-1' }),
+      },
+      $executeRaw: vi.fn().mockResolvedValue(0),
+      $queryRaw: vi.fn().mockRejectedValue(new Error('Frist läuft')),
+    };
     m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (db: unknown) => unknown) =>
       fn(tx),
     );
 
-    const result = await confirmGwgCheckDeletionAction({
-      checkId: '22222222-2222-4222-8222-222222222222',
-    });
+    const result = await confirmGwgCheckDeletionAction({ checkId: CHECK_ID });
 
     expect(result.ok).toBe(false);
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(m.evidenceRecord).not.toHaveBeenCalled();
+  });
+
+  it('ruft bei einem fremden oder fehlenden Check weder Lock noch DB-Funktion auf', async () => {
+    const tx = {
+      gwgCheck: { findFirst: vi.fn().mockResolvedValue(null) },
+      $executeRaw: vi.fn().mockResolvedValue(0),
+      $queryRaw: vi.fn(),
+    };
+    m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (db: unknown) => unknown) =>
+      fn(tx),
+    );
+
+    const result = await confirmGwgCheckDeletionAction({ checkId: CHECK_ID });
+
+    expect(result.ok).toBe(false);
+    expect(tx.$executeRaw).not.toHaveBeenCalled();
+    expect(tx.$queryRaw).not.toHaveBeenCalled();
     expect(m.evidenceRecord).not.toHaveBeenCalled();
   });
 });

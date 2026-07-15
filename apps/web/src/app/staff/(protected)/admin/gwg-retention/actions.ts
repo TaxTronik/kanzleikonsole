@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
 import { deleteObjectVersion } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
+import { lockGwgCheckLifecycleTx } from '@/server/gwg/reverification';
 import { gwgDocumentEffectiveStart, isGwgDeletionDue } from '@/server/gwg/retention';
 import {
   staffActionGuard,
@@ -76,6 +77,21 @@ export async function confirmGwgDeletionAction(input: {
       },
     });
     if (!document) return { ok: false as const, error: 'GwG-Beleg nicht gefunden.' };
+    if (!document.clientId) {
+      return {
+        ok: false as const,
+        error: 'GwG-Beleg ist keinem Mandanten eindeutig zugeordnet.',
+      };
+    }
+
+    // Vor Vernichtungsmarker, Audit und DB-Claim dieselbe Sperre wie alle
+    // Check-/Onboarding-Pfade nehmen. Damit kann kein paralleler Prüfzyklus
+    // Daten dieses Belegs rehydrieren, während die Vernichtung vorbereitet
+    // wird. Die Dokumentzeilen sperrt anschließend der DB-Claim.
+    await lockGwgCheckLifecycleTx(tx, {
+      tenantId,
+      clientId: document.clientId,
+    });
 
     const retentionStart = gwgDocumentEffectiveStart(
       {
@@ -137,7 +153,7 @@ export async function confirmGwgDeletionAction(input: {
       Prisma.sql`SELECT app.assert_gwg_document_destruction_due(${documentId}::uuid)`,
     );
 
-    return { ok: true as const, document, retentionStart };
+    return { ok: true as const, document, retentionStart, clientId: document.clientId };
   }).catch(() => ({
     ok: false as const,
     error:
@@ -210,6 +226,15 @@ export async function confirmGwgDeletionAction(input: {
 
   try {
     await withTenantContext(ctx, async (tx) => {
+      // Der erste Advisory-Lock endete mit dem Claim-Commit vor dem externen
+      // Object-Store-Schritt. Für den DB-Abschluss daher erneut zuerst den
+      // Lifecycle-Lock nehmen und erst danach Dokument/Check-Relationen lesen
+      // beziehungsweise in der SECURITY-DEFINER-Funktion verändern.
+      await lockGwgCheckLifecycleTx(tx, {
+        tenantId,
+        clientId: prepared.clientId,
+      });
+
       const pending = await tx.document.findFirst({
         where: {
           id: documentId,
@@ -267,9 +292,7 @@ export async function confirmGwgDeletionAction(input: {
   }
 
   revalidatePath('/staff/admin/gwg-retention');
-  if (prepared.document.clientId) {
-    revalidatePath(`/staff/clients/${prepared.document.clientId}/gwg`);
-  }
+  revalidatePath(`/staff/clients/${prepared.clientId}/gwg`);
   return { ok: true };
 }
 
@@ -287,6 +310,21 @@ export async function confirmGwgCheckDeletionAction(input: {
 
   let clientId: string | null = null;
   const result = await withTenantContext(ctx, async (tx): Promise<ActionResult> => {
+    const scopedCheck = await tx.gwgCheck.findFirst({
+      where: { id: checkId, tenantId },
+      select: { clientId: true },
+    });
+    if (!scopedCheck) throw new Error('GwG-Prüfung nicht gefunden.');
+
+    // Dieselbe Lock-Reihenfolge wie Create/Onboarding/Review: erst der
+    // mandantenbezogene Lifecycle-Lock, danach die Zeilensperren innerhalb
+    // der SECURITY-DEFINER-Funktion. Die Funktion nimmt den Lock zusätzlich
+    // selbst, damit direkte SQL-Aufrufe diesen Schutz nicht umgehen können.
+    await lockGwgCheckLifecycleTx(tx, {
+      tenantId,
+      clientId: scopedCheck.clientId,
+    });
+
     type DestroyedCheckRow = {
       clientId: string;
       status: string;
@@ -307,7 +345,10 @@ export async function confirmGwgCheckDeletionAction(input: {
     `);
     const destroyed = rows[0];
     if (!destroyed) throw new Error('GwG-Vernichtungsfunktion lieferte keinen Abschlussnachweis.');
-    clientId = destroyed.clientId;
+    if (destroyed.clientId !== scopedCheck.clientId) {
+      throw new Error('GwG-Vernichtungsfunktion lieferte einen abweichenden Mandantenbezug.');
+    }
+    clientId = scopedCheck.clientId;
 
     await evidenceService.record(tx, {
       tenantId,

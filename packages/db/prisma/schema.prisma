@@ -223,6 +223,11 @@ model GwgCheck {
   noRegisterEntry         Boolean               @default(false) @map("no_register_entry")
   representativeNames     String[]              @default([]) @map("representative_names")
   ownershipStructureNotes String?               @map("ownership_structure_notes")
+  /// Explizite Übergabe der durch Mitarbeitende vorbereiteten Prüfung an den
+  /// verantwortlichen Berufsträger. DRAFT bleibt während der Bearbeitung;
+  /// IN_REVIEW beginnt erst mit dieser nachvollziehbaren Übergabe.
+  reviewSubmittedAt       DateTime?             @map("review_submitted_at") @db.Timestamptz(6)
+  reviewSubmittedBy       String?               @map("review_submitted_by") @db.Uuid
   /// GwG § 8 Abs. 1 und 4 (iter81): Vernichtungsvermerk. Gesetzt, wenn die
   /// Aufzeichnungen des Checks vernichtet wurden (Berechtigte gelöscht,
   /// Ausweis-Details genullt, riskAnswers/notes entfernt). Der Skelett-
@@ -957,6 +962,11 @@ model Client {
   name                    String
   datevNo                 String?                     @map("datev_no")
   allowActive             Boolean                     @default(false) @map("allow_active")
+  /// Expliziter, historischer Abschluss des Erst-Onboardings. Der Zustand
+  /// bleibt auch dann abgeschlossen, wenn später eine Wiederholungsprüfung
+  /// oder ein Kontaktwechsel ansteht.
+  onboardingCompletedAt   DateTime?                   @map("onboarding_completed_at") @db.Timestamptz(6)
+  onboardingCompletedBy   String?                     @map("onboarding_completed_by") @db.Uuid
   createdAt               DateTime                    @default(now()) @map("created_at")
   updatedAt               DateTime                    @updatedAt @map("updated_at")
   street                  String?
@@ -1026,6 +1036,7 @@ model Client {
 
   @@unique([tenantId, datevNo])
   @@index([tenantId])
+  @@index([tenantId, onboardingCompletedAt], map: "client_tenant_onboarding_completed_idx")
   @@index([tenantId, priority], map: "client_tenant_priority_idx")
   // iter71: pg_trgm-GIN für die globale Suche (ILIKE '%q%' index-gestützt)
   @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "client_name_trgm_idx")

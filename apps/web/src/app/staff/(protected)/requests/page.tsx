@@ -1,4 +1,5 @@
 ﻿import { staffAuth } from '@/server/auth/staff';
+import { randomUUID } from 'node:crypto';
 import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { redirect } from 'next/navigation';
@@ -8,8 +9,11 @@ import { OffsetPagination } from '@/components/offset-pagination';
 import { BulkToolbar } from './bulk-toolbar';
 import type { Prisma, RequestStatus } from '@prisma/client';
 import { fmtDateShort } from '@/lib/fmt';
+import { QuickRequestDialog } from '@/components/quick-request-dialog';
+import { readRequestCreationOptionsTx } from '@/server/request-creation-options';
 
 const PAGE_SIZE = 50;
+const QUICK_CLIENTS_CAP = 250;
 const statusLabels: Record<string, string> = {
   OPEN: 'Offen',
   IN_PROGRESS: 'In Bearbeitung',
@@ -99,7 +103,7 @@ export default async function RequestsOverviewPage({
     where.client = clientFilters.length === 1 ? clientFilters[0] : { AND: clientFilters };
   }
 
-  const [requests, totalCount] = await withTenantContext(
+  const [requests, totalCount, requestClients, requestCreationOptions] = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
       // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Anforderungen
@@ -118,9 +122,21 @@ export default async function RequestsOverviewPage({
           },
         }),
         tx.request.count({ where }),
+        tx.client.findMany({
+          where: {
+            allowActive: true,
+            ...(denied.length > 0 ? { id: { notIn: denied } } : {}),
+          },
+          orderBy: { name: 'asc' },
+          take: QUICK_CLIENTS_CAP + 1,
+          select: { id: true, name: true, datevNo: true, addisonNo: true },
+        }),
+        readRequestCreationOptionsTx(tx),
       ]);
     },
   );
+  const { requestTemplates, requestFormTemplates, templatesLimited, formTemplatesLimited } =
+    requestCreationOptions;
 
   const baseQs = new URLSearchParams();
   if (filterStatus) baseQs.set('status', filterStatus);
@@ -153,13 +169,24 @@ export default async function RequestsOverviewPage({
           <h1 className="text-2xl font-bold text-primary mb-1">Anforderungen</h1>
           <p className="text-muted text-sm">Alle laufenden Anforderungen an Mandanten.</p>
         </div>
-        <a
-          href={`/api/staff/requests/export${baseQs.toString() ? '?' + baseQs.toString() : ''}`}
-          className="btn-secondary"
-        >
-          <FileDown className="h-4 w-4" />
-          CSV
-        </a>
+        <div className="flex items-center gap-2">
+          <a
+            href={`/api/staff/requests/export${baseQs.toString() ? '?' + baseQs.toString() : ''}`}
+            className="btn-secondary"
+          >
+            <FileDown className="h-4 w-4" />
+            CSV
+          </a>
+          <QuickRequestDialog
+            requestId={randomUUID()}
+            clients={requestClients.slice(0, QUICK_CLIENTS_CAP)}
+            clientsLimited={requestClients.length > QUICK_CLIENTS_CAP}
+            templates={requestTemplates}
+            formTemplates={requestFormTemplates}
+            templatesLimited={templatesLimited}
+            formTemplatesLimited={formTemplatesLimited}
+          />
+        </div>
       </div>
 
       {/* Status-Tabs */}

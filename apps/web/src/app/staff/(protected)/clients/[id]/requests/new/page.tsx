@@ -1,9 +1,11 @@
 ﻿import { redirect, notFound } from 'next/navigation';
+import { randomUUID } from 'node:crypto';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
 import { NewRequestForm } from './form';
+import { readRequestCreationOptionsTx } from '@/server/request-creation-options';
 
 export default async function NewRequestPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await staffAuth();
@@ -17,22 +19,13 @@ export default async function NewRequestPage({ params }: { params: Promise<{ id:
     async (tx) => {
       const client = await tx.client.findUnique({ where: { id } });
       if (!client) return null;
-      const [templates, formTemplates] = await Promise.all([
-        tx.requestTemplate.findMany({
-          where: { active: true },
-          orderBy: [{ category: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }],
-        }),
-        tx.formTemplate.findMany({
-          where: { active: true },
-          orderBy: { name: 'asc' },
-          select: { id: true, name: true },
-        }),
-      ]);
-      return { client, templates, formTemplates };
+      const creationOptions = await readRequestCreationOptionsTx(tx);
+      return { client, ...creationOptions };
     },
   );
   if (!data) notFound();
-  const { client, templates, formTemplates } = data;
+  const { client, requestTemplates, requestFormTemplates, templatesLimited, formTemplatesLimited } =
+    data;
 
   return (
     <div className="p-8 max-w-2xl">
@@ -57,19 +50,13 @@ export default async function NewRequestPage({ params }: { params: Promise<{ id:
 
       <div className="card p-6">
         <NewRequestForm
+          requestId={randomUUID()}
           clientId={client.id}
           disabled={!client.allowActive}
-          templates={templates.map((t) => ({
-            id: t.id,
-            name: t.name,
-            category: t.category,
-            title: t.title,
-            description: t.description,
-            priority: t.priority,
-            dueAfterDays: t.dueAfterDays,
-            formTemplateId: t.formTemplateId,
-          }))}
-          formTemplates={formTemplates}
+          templates={requestTemplates}
+          formTemplates={requestFormTemplates}
+          templatesLimited={templatesLimited}
+          formTemplatesLimited={formTemplatesLimited}
         />
       </div>
     </div>

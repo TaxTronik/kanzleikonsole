@@ -29,6 +29,24 @@ export function hashInviteToken(raw: string): string {
   return createHash('sha256').update(raw).digest('hex');
 }
 
+/**
+ * Markiert eine Einladung nur dann als abgelaufen, wenn sie beim Write noch
+ * offen und zum selben Lookup-Zeitpunkt faellig ist. Der statusgebundene CAS
+ * verhindert, dass ein wartender Ablauf-Write einen parallel bereits
+ * geclaimten SUBMITTED- oder CANCELLED-Status ueberschreibt.
+ */
+export async function expireOpenInviteIfDue(inviteId: string, now: Date): Promise<boolean> {
+  const expired = await prismaOwner.gwgOnboardingInvite.updateMany({
+    where: {
+      id: inviteId,
+      status: { in: ['PENDING', 'STARTED'] },
+      expiresAt: { lte: now },
+    },
+    data: { status: 'EXPIRED' },
+  });
+  return expired.count === 1;
+}
+
 export interface LoadedInvite {
   inviteId: string;
   inviteName: string;
@@ -78,25 +96,45 @@ export async function loadInviteByRawToken(
   if (!inv) {
     return { ok: false, error: GENERIC_TOKEN_ERROR };
   }
-  if (inv.status === 'CANCELLED' || inv.status === 'SUBMITTED') {
+  if (inv.status === 'CANCELLED' || inv.status === 'SUBMITTED' || inv.status === 'EXPIRED') {
     return { ok: false, error: GENERIC_TOKEN_ERROR };
   }
-  if (inv.expiresAt.getTime() < Date.now()) {
-    if (inv.status !== 'EXPIRED') {
-      await prismaOwner.gwgOnboardingInvite.update({
-        where: { id: inv.id },
-        data: { status: 'EXPIRED' },
-      });
-    }
+  const now = new Date();
+  if (inv.expiresAt.getTime() <= now.getTime()) {
+    await expireOpenInviteIfDue(inv.id, now);
     return { ok: false, error: GENERIC_TOKEN_ERROR };
   }
 
   // Beim ersten Öffnen Status auf STARTED
+  let effectiveStatus = inv.status;
   if (inv.status === 'PENDING') {
-    await prismaOwner.gwgOnboardingInvite.update({
-      where: { id: inv.id },
+    const started = await prismaOwner.gwgOnboardingInvite.updateMany({
+      where: {
+        id: inv.id,
+        tokenHash,
+        status: 'PENDING',
+        expiresAt: { gt: now },
+      },
       data: { status: 'STARTED' },
     });
+    if (started.count === 0) {
+      // Ein paralleles Öffnen darf weiterarbeiten; eine zwischenzeitliche
+      // Supersession/Cancellation hingegen darf niemals auf STARTED
+      // zurückgeschrieben und damit wiederbelebt werden.
+      const concurrentlyStarted = await prismaOwner.gwgOnboardingInvite.findFirst({
+        where: {
+          id: inv.id,
+          tokenHash,
+          status: 'STARTED',
+          expiresAt: { gt: now },
+        },
+        select: { id: true },
+      });
+      if (!concurrentlyStarted) {
+        return { ok: false, error: GENERIC_TOKEN_ERROR };
+      }
+    }
+    effectiveStatus = 'STARTED';
   }
 
   return {
@@ -105,7 +143,7 @@ export async function loadInviteByRawToken(
       inviteId: inv.id,
       inviteName: inv.inviteName,
       inviteEmail: inv.inviteEmail,
-      status: inv.status,
+      status: effectiveStatus,
       expiresAt: inv.expiresAt,
       client: inv.client,
       tenant: inv.tenant,

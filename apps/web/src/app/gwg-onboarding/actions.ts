@@ -12,18 +12,29 @@ import { evidenceService } from '@/server/container';
 import { withSystemContext } from '@taxtronik/db';
 import { createDocumentWithVersion } from '@/server/documents/upload-helpers';
 import { toActionError } from '@/server/auth/rbac';
-import { hashInviteToken, prismaOwner } from '@/server/gwg-onboarding/service';
+import {
+  expireOpenInviteIfDue,
+  GENERIC_TOKEN_ERROR,
+  hashInviteToken,
+  prismaOwner,
+} from '@/server/gwg-onboarding/service';
 import { checkRateLimit, checkIpOrGlobalLimit, getClientIp } from '@/server/rate-limit';
 import { log } from '@/server/logger';
 import { notifyMany } from '@/server/notifications/service';
 import { ConsentSelectionsSchema, countGranted } from '@/server/privacy/consent';
+import { resolveConsentSelectionsTx } from '@/server/privacy/consent-catalog';
 import { renderNoticeForTenantTx } from '@/server/privacy/service';
 import { isPrivacyConfigComplete, readPrivacyConfigTx } from '@/server/privacy/notice';
+import { lockGwgOnboardingUploadTx, startFreshGwgReviewTx } from '@/server/gwg/reverification';
+import { claimCurrentGwgInviteSubmitTx } from '@/server/gwg-onboarding/invite-lifecycle';
 import {
-  claimGwgOnboardingSubmitTx,
-  lockGwgOnboardingUploadTx,
-  startFreshGwgReviewTx,
-} from '@/server/gwg/reverification';
+  GwgOnboardingOwnerSchema,
+  toBeneficialOwnerSnapshot,
+} from '@/server/gwg-onboarding/owner-submission';
+import {
+  GwgOnboardingLegalEntityDeclarationSchema,
+  legalEntityEvidenceError,
+} from '@/server/gwg-onboarding/legal-entity-submission';
 
 // M4: GwG-Uploads sind enger gecappt als der globale MAX_UPLOAD_BYTES (25 MiB).
 // Ausweis-Scans sind typischerweise ≤5 MB; 10 MB ist großzügig für hochauflösende
@@ -41,6 +52,7 @@ export interface ActionResult {
 }
 
 class InviteUploadStateChangedError extends Error {}
+class InviteSupersededError extends Error {}
 
 // ----------------------------------------------------------------------------
 // Befund 6: Fehler-Mapping für diesen anonymen (Token-)Endpoint. Rohe Prisma-/
@@ -77,6 +89,12 @@ function toAnonymousActionError(e: unknown): ActionResult {
         'Die Einladung wurde zwischenzeitlich abgeschlossen oder ist abgelaufen. Die Datei wurde nicht zugeordnet.',
     };
   }
+  if (e instanceof InviteSupersededError) {
+    return {
+      ok: false,
+      error: 'Diese Einladung wurde durch einen neueren Link ersetzt und ist nicht mehr gültig.',
+    };
+  }
   return toActionError(e);
 }
 
@@ -90,19 +108,17 @@ async function loadInviteForWrite(rawToken: string) {
     where: { tokenHash },
     include: { client: true },
   });
-  if (!inv) throw new Error('Einladung nicht gefunden.');
+  if (!inv) throw new Error(GENERIC_TOKEN_ERROR);
   if (inv.status === 'CANCELLED' || inv.status === 'EXPIRED') {
-    throw new Error('Einladung nicht mehr gültig.');
+    throw new Error(GENERIC_TOKEN_ERROR);
   }
   if (inv.status === 'SUBMITTED') {
-    throw new Error('Bereits abgeschickt.');
+    throw new Error(GENERIC_TOKEN_ERROR);
   }
-  if (inv.expiresAt.getTime() < Date.now()) {
-    await prismaOwner.gwgOnboardingInvite.update({
-      where: { id: inv.id },
-      data: { status: 'EXPIRED' },
-    });
-    throw new Error('Einladung ist abgelaufen.');
+  const now = new Date();
+  if (inv.expiresAt.getTime() <= now.getTime()) {
+    await expireOpenInviteIfDue(inv.id, now);
+    throw new Error(GENERIC_TOKEN_ERROR);
   }
   return inv;
 }
@@ -162,8 +178,10 @@ export async function uploadIdImageAction(input: {
   let invite: Awaited<ReturnType<typeof loadInviteForWrite>>;
   try {
     invite = await loadInviteForWrite(token);
-  } catch (e) {
-    return { ok: false, error: (e as Error).message };
+  } catch {
+    // Der anonyme Token-Pfad darf weder Lifecycle-Zustände noch rohe
+    // Datenbankfehler unterscheiden lassen.
+    return { ok: false, error: GENERIC_TOKEN_ERROR };
   }
 
   const fileData = Buffer.from(base64, 'base64');
@@ -290,26 +308,6 @@ export async function uploadIdImageAction(input: {
 // Submit (alle Stammdaten + Owner + Dokumente in GwG-Tabellen schreiben)
 // ----------------------------------------------------------------------------
 
-const OwnerSchema = z.object({
-  fullName: z.string().min(1).max(200),
-  birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  // P2-2 / § 11 Abs. 4 Nr. 1 GwG: Geburtsort, Staatsangehörigkeit und
-  // Wohnanschrift sind bei natürlichen Personen Pflicht-Identifizierungsdaten.
-  birthPlace: z.string().min(1, 'Geburtsort ist Pflicht (§ 11 Abs. 4 GwG).').max(200),
-  nationality: z.string().min(1, 'Staatsangehörigkeit ist Pflicht (§ 11 Abs. 4 GwG).').max(50),
-  street: z.string().min(1, 'Wohnanschrift (Straße) ist Pflicht (§ 11 Abs. 4 GwG).').max(255),
-  postalCode: z.string().min(1, 'Wohnanschrift (PLZ) ist Pflicht.').max(20),
-  city: z.string().min(1, 'Wohnanschrift (Ort) ist Pflicht.').max(100),
-  countryIso: z.string().max(10).optional().or(z.literal('')),
-  sharePercent: z.string().max(50).optional().or(z.literal('')),
-  idNumber: z.string().max(100).optional().or(z.literal('')),
-  idIssuedBy: z.string().max(200).optional().or(z.literal('')),
-  idIssueDate: z.string().date().optional().or(z.literal('')),
-  idExpiryDate: z.string().date().optional().or(z.literal('')),
-  idFrontDocumentId: z.string().uuid(),
-  idBackDocumentId: z.string().uuid(),
-});
-
 const SubmitSchema = z.object({
   token: z.string().min(10),
   master: z.object({
@@ -320,8 +318,22 @@ const SubmitSchema = z.object({
     countryIso: z.string().min(2).max(10),
     vatId: z.string().max(20).optional().or(z.literal('')),
   }),
-  owners: z.array(OwnerSchema).min(1),
-  extraDocumentIds: z.array(z.string().uuid()),
+  legalEntity: GwgOnboardingLegalEntityDeclarationSchema,
+  owners: z.array(GwgOnboardingOwnerSchema).min(1),
+  extraDocuments: z
+    .array(
+      z.object({
+        documentId: z.string().uuid(),
+        type: z.enum([
+          'HANDELSREGISTERAUSZUG',
+          'GESELLSCHAFTSVERTRAG',
+          'TRANSPARENZREGISTER_AUSZUG',
+          'VOLLMACHT',
+          'SONSTIGES',
+        ]),
+      }),
+    )
+    .max(20),
   // Datenschutz-Einwilligungen (Teil B) + Bestätigung der Hinweise (Teil A).
   consent: z.object({
     noticeAcknowledged: z.literal(true),
@@ -368,7 +380,7 @@ export async function submitOnboardingAction(
   );
   const referencedDocIds: string[] = [
     ...parsed.data.owners.flatMap((o) => [o.idFrontDocumentId, o.idBackDocumentId]),
-    ...parsed.data.extraDocumentIds,
+    ...parsed.data.extraDocuments.map((document) => document.documentId),
   ];
   for (const docId of referencedDocIds) {
     if (!allowedDocIds.has(docId)) {
@@ -378,22 +390,36 @@ export async function submitOnboardingAction(
       };
     }
   }
+  if (new Set(referencedDocIds).size !== referencedDocIds.length) {
+    return { ok: false, error: 'Ein Dokument darf nur einmal zugeordnet werden.' };
+  }
+  const entityEvidenceError = legalEntityEvidenceError(
+    invite.client.kind,
+    parsed.data.legalEntity,
+    new Set(parsed.data.extraDocuments.map((document) => document.type)),
+  );
+  if (entityEvidenceError) {
+    return { ok: false, error: entityEvidenceError };
+  }
 
   try {
     await withSystemContext(invite.tenantId, async (tx) => {
-      // Atomarer Einmal-Claim als ERSTE Mutation derselben Transaktion. Zwei
-      // parallele Requests duerfen nicht zwei Reviews, Einwilligungen und
-      // Identitaetssnapshots fuer dieselbe Einladung erzeugen. Bei jedem
-      // spaeteren Fehler rollt PostgreSQL auch diesen Claim vollstaendig zurueck.
-      const submittedAt = new Date();
-      const claimed = await claimGwgOnboardingSubmitTx(tx, {
+      // Der Mandanten-Lifecycle-Lock liegt vor dem atomaren Einmal-Claim. Nur
+      // die aktuellste Einladung darf gewinnen; bei Erfolg werden alle anderen
+      // offenen Links in derselben Tx entwertet. Jeder spätere Fehler rollt
+      // Claim und Supersession gemeinsam zurück.
+      const claim = await claimCurrentGwgInviteSubmitTx(tx, {
+        tenantId: invite.tenantId,
+        clientId: invite.clientId,
         inviteId: invite.id,
         tokenHash: hashInviteToken(token),
-        submittedAt,
         submittedIp: ip,
         submittedUa: ua,
       });
-      if (!claimed) {
+      if (!claim.ok && claim.reason === 'SUPERSEDED') {
+        throw new InviteSupersededError();
+      }
+      if (!claim.ok) {
         throw new Error(
           'Einladung wurde bereits abgeschickt, ist abgelaufen oder nicht mehr gueltig.',
         );
@@ -434,12 +460,23 @@ export async function submitOnboardingAction(
         clientId: invite.clientId,
       });
       const checkId = review.reviewCheckId;
+      if (
+        parsed.data.legalEntity &&
+        (invite.client.kind === 'JURPERS' || invite.client.kind === 'PERSGES')
+      ) {
+        await tx.gwgCheck.update({
+          where: { id: checkId },
+          data: { noRegisterEntry: parsed.data.legalEntity.noRegisterEntry },
+        });
+      }
 
       // 2b. Datenschutz-Einwilligungen (Teil B) persistieren + Hinweis-Snapshot
       // einfrieren. Leere Array-Zeilen verwerfen. source=PORTAL, kein Staff.
-      const sel = parsed.data.consent.selections;
-      sel.thirdParties = sel.thirdParties.filter((t) => t.recipient.trim() !== '');
-      sel.specialists = sel.specialists.filter((s) => s.entity.trim() !== '');
+      const sel = await resolveConsentSelectionsTx(
+        tx,
+        invite.tenantId,
+        parsed.data.consent.selections,
+      );
       const notice = await renderNoticeForTenantTx(tx, invite.tenantId);
       const consentRow = await tx.clientConsent.create({
         data: {
@@ -476,31 +513,10 @@ export async function submitOnboardingAction(
       // Bestehende ID-Documents (für diesen Check) aufräumen.
 
       for (const o of owners) {
-        // Adresse als residence-Freitext zusammensetzen
-        const residenceParts = [
-          o.street?.trim(),
-          [o.postalCode?.trim(), o.city?.trim()].filter(Boolean).join(' '),
-          o.countryIso?.trim(),
-        ].filter(Boolean);
-        const residence = residenceParts.length > 0 ? residenceParts.join(', ') : null;
-
-        // sharePercent als Decimal parsen, sonst in notes lassen
-        const shareMatch = (o.sharePercent ?? '').match(/(\d+(?:[.,]\d+)?)/);
-        const ownershipPct = shareMatch ? Number(shareMatch[1]!.replace(',', '.')) : null;
-        const noteParts: string[] = [];
-        if (o.sharePercent && !ownershipPct) noteParts.push(`Anteil: ${o.sharePercent.trim()}`);
-        const notes = noteParts.length > 0 ? noteParts.join(' · ') : null;
-
         await tx.gwgBeneficialOwner.create({
           data: {
             gwgCheckId: checkId,
-            fullName: o.fullName.trim(),
-            birthDate: new Date(o.birthDate + 'T00:00:00.000Z'),
-            birthPlace: o.birthPlace?.trim() || null,
-            nationality: o.nationality?.trim() || null,
-            residence,
-            ownershipPct,
-            notes,
+            ...toBeneficialOwnerSnapshot(o),
           },
         });
         // Vorder + Rückseite als zwei GwgIdDocument-Einträge
@@ -532,6 +548,21 @@ export async function submitOnboardingAction(
         });
       }
 
+      // Rechtsträger-/Zusatznachweise werden typisiert mit dem Check
+      // verknüpft. Zuvor blieben diese Uploads lediglich in der Invite-Liste
+      // und konnten das fachliche Verify-Gate nie erfüllen.
+      for (const evidence of parsed.data.extraDocuments) {
+        await tx.gwgIdDocument.create({
+          data: {
+            gwgCheckId: checkId,
+            type: evidence.type,
+            ownerName: after.name,
+            documentId: evidence.documentId,
+            notes: 'Rechtsträger-/Zusatznachweis (durch Mandant hochgeladen)',
+          },
+        });
+      }
+
       // 4. Den bereits atomar beanspruchten Invite mit seinem frischen Check
       // verknuepfen. Status/Submit-Nachweise wurden beim Claim gesetzt.
       await tx.gwgOnboardingInvite.update({
@@ -554,7 +585,10 @@ export async function submitOnboardingAction(
           ...after,
           changedFields,
           ownerCount: owners.length,
+          pepCount: owners.filter((owner) => owner.isPep).length,
+          noRegisterEntry: parsed.data.legalEntity?.noRegisterEntry ?? null,
           gwgCheckId: checkId,
+          supersededInviteCount: claim.supersededInviteCount,
           invalidatedChecks: review.invalidatedChecks,
           clientDeactivated: review.clientDeactivated,
         },

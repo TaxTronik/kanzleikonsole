@@ -6,7 +6,7 @@ import { isStaffAdmin, toActionError, assertClientAccessTx } from '@/server/auth
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
-import { requireGwgReverificationTx } from '@/server/gwg/reverification';
+import { lockGwgCheckLifecycleTx, requireGwgReverificationTx } from '@/server/gwg/reverification';
 
 export interface ActionResult {
   ok: boolean;
@@ -157,6 +157,7 @@ export async function saveGwgFieldsAction(
   try {
     await withTenantContext(ctx, async (tx) => {
       await assertClientAccessTx(tx, session, clientId);
+      await lockGwgCheckLifecycleTx(tx, { tenantId, clientId });
       const before = await tx.client.findUnique({
         where: { id: clientId },
         select: {
@@ -255,7 +256,11 @@ export async function setResponsibilitiesAction(
     hauptbearbeiterIds: hauptIds,
   });
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler — bitte Eingaben prüfen.' };
-  const { clientId, berufstraegerIds: berufIds, hauptbearbeiterIds } = parsed.data;
+  const { clientId } = parsed.data;
+  // Mehrfachwerte aus manipulierten/dupliziert abgesendeten Formularfeldern
+  // dürfen nicht zu doppelten CREATEs und einem künstlichen Unique-Konflikt führen.
+  const berufIds = Array.from(new Set(parsed.data.berufstraegerIds));
+  const hauptbearbeiterIds = Array.from(new Set(parsed.data.hauptbearbeiterIds));
 
   // Praxis-Check: mind. ein Berufsträger erforderlich (sonst kein GwG-Verifier
   // mehr). Wenn alle Berufsträger entfernt werden sollen → explizit ablehnen,
@@ -267,6 +272,20 @@ export async function setResponsibilitiesAction(
   try {
     await withTenantContext(ctx, async (tx) => {
       await assertClientAccessTx(tx, session, clientId);
+      const assignedStaffIds = Array.from(new Set([...berufIds, ...hauptbearbeiterIds]));
+      const eligibleStaffCount = await tx.staffUser.count({
+        where: {
+          tenantId,
+          id: { in: assignedStaffIds },
+          active: true,
+          roles: { some: {} },
+        },
+      });
+      if (eligibleStaffCount !== assignedStaffIds.length) {
+        throw new ActionError(
+          'Eine gewählte Zuständigkeit ist nicht mehr aktiv oder hat keine gültige Staff-Rolle.',
+        );
+      }
       const before = await tx.clientResponsibility.findMany({ where: { clientId } });
 
       // 1. Berufsträger — Diff. Mehrere möglich (Gesellschafter-Konstellationen,

@@ -1739,15 +1739,202 @@ database_has_recoverable_gwg_034_failure() {
   [[ "$result" == "yes" ]]
 }
 
+database_has_gwg_034_invariants() {
+  local result
+  result="$(compose --infra exec -T postgres \
+    psql -U taxtronik -d taxtronik -v ON_ERROR_STOP=1 -Atc "
+      /* gwg_034_schema_invariants */
+      SELECT CASE WHEN
+        NOT EXISTS (
+          SELECT 1
+            FROM (
+              VALUES
+                ('gwg_check', 'legal_form', 'text', FALSE),
+                ('gwg_check', 'register_number', 'text', FALSE),
+                ('gwg_check', 'register_authority', 'text', FALSE),
+                ('gwg_check', 'no_register_entry', 'bool', TRUE),
+                ('gwg_check', 'representative_names', '_text', TRUE),
+                ('gwg_check', 'ownership_structure_notes', 'text', FALSE),
+                ('document', 'gwg_onboarding_invite_id', 'uuid', FALSE),
+                ('document', 'gwg_destruction_requested_at', 'timestamptz', FALSE),
+                ('document', 'gwg_destruction_requested_by', 'uuid', FALSE),
+                ('document', 'gwg_destruction_error', 'text', FALSE),
+                ('document', 'gwg_destroyed_at', 'timestamptz', FALSE)
+            ) expected(table_name, column_name, udt_name, must_be_not_null)
+            LEFT JOIN information_schema.columns c
+              ON c.table_schema = 'public'
+             AND c.table_name = expected.table_name
+             AND c.column_name = expected.column_name
+             AND c.udt_name = expected.udt_name
+           WHERE c.column_name IS NULL
+              OR (expected.must_be_not_null AND c.is_nullable <> 'NO')
+        )
+        AND pg_catalog.to_regclass('public.document_gwg_invite_idx') IS NOT NULL
+        AND EXISTS (
+          SELECT 1
+            FROM pg_catalog.pg_constraint con
+           WHERE con.conname = 'document_gwg_invite_fk'
+             AND con.contype = 'f'
+             AND con.conrelid = pg_catalog.to_regclass('public.document')
+        )
+        AND EXISTS (
+          SELECT 1
+            FROM pg_catalog.pg_constraint con
+           WHERE con.conname = 'gwg_invite_check_fkey'
+             AND con.contype = 'f'
+             AND con.conrelid = pg_catalog.to_regclass('public.gwg_onboarding_invite')
+        )
+        AND NOT EXISTS (
+          SELECT 1
+            FROM (
+              VALUES
+                ('app.guard_gwg_document_invite_and_claim()', FALSE),
+                ('app.guard_gwg_id_document_scope_and_claim()', FALSE),
+                ('app.guard_gwg_invite_check_scope_and_claim()', FALSE),
+                ('app.freeze_gwg_claim_references()', FALSE),
+                ('app.enforce_client_active_for_document()', FALSE),
+                ('app.enforce_client_allow_active_requires_gwg()', FALSE),
+                ('app.protect_verified_gwg_legal_snapshot()', FALSE),
+                ('app.protect_verified_gwg_beneficial_owner()', FALSE),
+                ('app.guard_gwg_check_hard_delete()', FALSE),
+                ('app.gwg_deactivate_client_without_valid_check()', FALSE),
+                ('app.destroy_gwg_check(uuid)', TRUE),
+                ('app.protect_immutable_document_version()', FALSE),
+                ('app.assert_gwg_document_destruction_due(uuid)', TRUE),
+                ('app.destroy_gwg_document_versions(uuid)', TRUE),
+                ('app.block_version_during_gwg_destruction()', FALSE)
+            ) expected(signature, must_be_security_definer)
+            LEFT JOIN pg_catalog.pg_proc p
+              ON p.oid = pg_catalog.to_regprocedure(expected.signature)
+           WHERE p.oid IS NULL
+              OR (expected.must_be_security_definer AND NOT p.prosecdef)
+        )
+        AND NOT EXISTS (
+          SELECT 1
+            FROM (
+              VALUES
+                ('document', 'document_gwg_invite_scope_and_claim', 'app.guard_gwg_document_invite_and_claim()'),
+                ('gwg_id_document', 'gwg_id_document_scope_and_claim', 'app.guard_gwg_id_document_scope_and_claim()'),
+                ('gwg_onboarding_invite', 'gwg_invite_check_scope_and_claim', 'app.guard_gwg_invite_check_scope_and_claim()'),
+                ('client', 'client_freeze_gwg_claim', 'app.freeze_gwg_claim_references()'),
+                ('gwg_check', 'gwg_check_freeze_gwg_claim', 'app.freeze_gwg_claim_references()'),
+                ('gwg_check', 'gwg_check_verified_legal_snapshot_immutable', 'app.protect_verified_gwg_legal_snapshot()'),
+                ('gwg_beneficial_owner', 'gwg_beneficial_owner_verified_snapshot_immutable', 'app.protect_verified_gwg_beneficial_owner()'),
+                ('gwg_check', 'gwg_check_no_hard_delete', 'app.guard_gwg_check_hard_delete()'),
+                ('gwg_check', 'gwg_check_fail_closed_client', 'app.gwg_deactivate_client_without_valid_check()'),
+                ('document_version', 'document_version_block_gwg_destruction', 'app.block_version_during_gwg_destruction()')
+            ) expected(table_name, trigger_name, function_signature)
+            LEFT JOIN pg_catalog.pg_trigger t
+              ON t.tgname = expected.trigger_name
+             AND t.tgrelid = pg_catalog.to_regclass('public.' || expected.table_name)
+             AND t.tgfoid = pg_catalog.to_regprocedure(expected.function_signature)
+             AND NOT t.tgisinternal
+             AND t.tgenabled <> 'D'
+           WHERE t.oid IS NULL
+        )
+        AND COALESCE((
+          SELECT bool_and(pg_catalog.has_function_privilege(r.oid, p.oid, 'EXECUTE'))
+            FROM pg_catalog.pg_roles r
+            CROSS JOIN unnest(ARRAY[
+              pg_catalog.to_regprocedure('app.destroy_gwg_check(uuid)'),
+              pg_catalog.to_regprocedure('app.assert_gwg_document_destruction_due(uuid)'),
+              pg_catalog.to_regprocedure('app.destroy_gwg_document_versions(uuid)')
+            ]) AS functions(function_oid)
+            JOIN pg_catalog.pg_proc p ON p.oid = function_oid
+           WHERE r.rolname = 'taxtronik_app'
+        ), FALSE)
+        AND COALESCE((
+          SELECT NOT pg_catalog.has_table_privilege(r.oid, c.oid, 'DELETE')
+            FROM pg_catalog.pg_roles r
+            CROSS JOIN pg_catalog.pg_class c
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+           WHERE r.rolname = 'taxtronik_app'
+             AND n.nspname = 'public'
+             AND c.relname = 'document_version'
+        ), FALSE)
+        AND NOT EXISTS (
+          SELECT 1
+            FROM unnest(ARRAY[
+              pg_catalog.to_regprocedure('app.destroy_gwg_check(uuid)'),
+              pg_catalog.to_regprocedure('app.assert_gwg_document_destruction_due(uuid)'),
+              pg_catalog.to_regprocedure('app.destroy_gwg_document_versions(uuid)')
+            ]) AS functions(function_oid)
+            JOIN pg_catalog.pg_proc p ON p.oid = function_oid
+            CROSS JOIN LATERAL pg_catalog.aclexplode(
+              COALESCE(p.proacl, pg_catalog.acldefault('f', p.proowner))
+            ) acl
+           WHERE acl.grantee = 0
+             AND acl.privilege_type = 'EXECUTE'
+        )
+        THEN 'yes' ELSE 'no'
+      END" 2>/dev/null)" || return 1
+  [[ "$result" == "yes" ]]
+}
+
+database_is_fully_migrated_for_commit() {
+  local commit="$1" open applied migrations migration name requires_gwg_034=0
+  [[ "$commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || return 1
+
+  # Bei einem Legacy-Retry kann der neue Checkout bereits weitere Migrationen
+  # enthalten. Entscheidend ist, dass die DB den im bestehenden Pending-Marker
+  # gebundenen Ziel-Commit vollstaendig erreicht hat; erst danach duerfen dessen
+  # Nachfolger im weiterhin restore-pflichtigen Vertrag angewendet werden.
+  migrations="$(git -C "$ROOT" ls-tree -d --name-only \
+    "$commit:packages/db/prisma/migrations" 2>/dev/null)" || return 1
+  [[ -n "$migrations" ]] || return 1
+
+  open="$(compose --infra exec -T postgres \
+    psql -U taxtronik -d taxtronik -v ON_ERROR_STOP=1 -Atc "
+      SELECT CASE WHEN EXISTS (
+        SELECT 1
+          FROM public._prisma_migrations
+         WHERE finished_at IS NULL
+           AND rolled_back_at IS NULL
+       ) THEN 'yes' ELSE 'no' END" 2>/dev/null)" || return 1
+  [[ "$open" == "no" ]] || return 1
+
+  applied="$(compose --infra exec -T postgres \
+    psql -U taxtronik -d taxtronik -v ON_ERROR_STOP=1 -Atc "
+      SELECT migration_name
+        FROM public._prisma_migrations
+       WHERE finished_at IS NOT NULL
+         AND rolled_back_at IS NULL" 2>/dev/null)" || return 1
+  applied=$'\n'"$applied"$'\n'
+  while IFS= read -r migration; do
+    [[ -n "$migration" ]] || continue
+    name="${migration##*/}"
+    [[ "$applied" == *$'\n'"$name"$'\n'* ]] || return 1
+    if [[ "$name" == "20260801003400_gwg_fail_closed_and_destruction" ]]; then
+      requires_gwg_034=1
+    fi
+  done <<< "$migrations"
+
+  # `prisma migrate resolve --applied` schliesst nur das Journal und beweist
+  # nicht, dass die DDL der fehlgeschlagenen Migration wirklich ausgefuehrt
+  # wurde. Fuer Zielstaende ab 034 muessen deshalb auch deren DB-Schutzschichten
+  # vollstaendig vorhanden sein. Vor-034-Releases haben diese Anforderung nicht.
+  (( requires_gwg_034 == 0 )) || database_has_gwg_034_invariants
+}
+
 can_retarget_recoverable_gwg_034_transition() {
   local existing_source="$1" existing_source_commit="$2"
   local existing_target="$3" existing_target_commit="$4"
   local source_version="$5" source_commit="$6" target_version="$7" target_commit="$8"
+  local existing_requirement="${9:-unknown}" legacy_source=0
 
-  [[ "$existing_source" == "$source_version" && \
-     "$existing_source_commit" == "$source_commit" ]] || return 1
-  [[ "$existing_source_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ && \
-     "$existing_target_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ && \
+  [[ "$existing_source" == "$source_version" ]] || return 1
+  if [[ -z "$existing_source_commit" && -z "$source_commit" ]]; then
+    # Legacy-Lokalinstallationen vor Einfuehrung des Commit-Vertrags kennen den
+    # Quell-Commit nicht. Sie duerfen nur vorwaerts fortgesetzt werden, wenn der
+    # bestehende Marker jeden Ruecksprung bereits zwingend an einen DB-Restore
+    # bindet; Ziel-Ancestry und DB-Zustand bleiben unten harte Beweise.
+    [[ "$existing_requirement" == "true" ]] || return 1
+    legacy_source=1
+  else
+    [[ "$existing_source_commit" == "$source_commit" && \
+       "$existing_source_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || return 1
+  fi
+  [[ "$existing_target_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ && \
      "$target_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || return 1
   [[ -n "$existing_target" && -n "$target_version" ]] || return 1
   # Lokal gebaute Deployments duerfen bewusst Nicht-SemVer-Tags verwenden
@@ -1762,7 +1949,14 @@ can_retarget_recoverable_gwg_034_transition() {
   git -C "$ROOT" merge-base --is-ancestor "$existing_target_commit" "$target_commit" \
     >/dev/null 2>&1 || return 1
   gwg_034_migration_is_fixed || return 1
-  database_has_recoverable_gwg_034_failure
+  database_has_recoverable_gwg_034_failure && return 0
+  # Nach einer kontrollierten manuellen Prisma-Recovery kann der exakte 42883-
+  # Zustand bereits beseitigt sein, waehrend der Legacy-Marker die Aktivierung
+  # weiterhin schuetzt. Dann muss das Journal geschlossen und der alte
+  # Marker-Zielcommit vollstaendig angewendet sein. Erst spaeter hinzugekommene
+  # Zielmigrationen duerfen anschliessend unter derselben Restore-Pflicht laufen.
+  (( legacy_source == 1 )) || return 1
+  database_is_fully_migrated_for_commit "$existing_target_commit"
 }
 
 begin_migration_transition() {
@@ -1771,6 +1965,13 @@ begin_migration_transition() {
   assert_no_database_restore_pending
   source_version="$(state_value current)"
   source_commit="$(state_value current_commit)"
+  if [[ -z "$source_commit" && \
+        "${_TAXTRONIK_INTERNAL_UPDATE_SOURCE_COMMIT:-}" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]]; then
+    # Legacy-State ohne current_commit: Nur der vor jedem Checkout-Wechsel
+    # erfasste Start-Commit darf den neuen Vertrag vervollstaendigen. Bei einem
+    # bereits vorhandenen Pending-Marker wird dieser Fallback nie gesetzt.
+    source_commit="$_TAXTRONIK_INTERNAL_UPDATE_SOURCE_COMMIT"
+  fi
   target_version="$(image_tag)"
   target_commit="${TAXTRONIK_RELEASE_COMMIT:-$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)}"
   requirement="$(pending_database_migration_requirement)"
@@ -1790,8 +1991,9 @@ begin_migration_transition() {
       if can_retarget_recoverable_gwg_034_transition \
         "$existing_source" "$existing_source_commit" \
         "$existing_target" "$existing_target_commit" \
-        "$source_version" "$source_commit" "$target_version" "$target_commit"; then
-        warn "Exakten, vollstaendig zurueckgerollten GwG-Migrationsfehler 03400 erkannt; Pending-Vertrag wird auf den korrigierten Vorwaerts-Commit fortgeschrieben."
+        "$source_version" "$source_commit" "$target_version" "$target_commit" \
+        "$existing_requirement"; then
+        warn "Verifizierten GwG-Migrationsuebergang 03400 erkannt; Pending-Vertrag wird auf den sicheren Vorwaerts-Commit fortgeschrieben."
       else
         die "Migrations-Pending-Marker gehoert zu einem anderen Release-Uebergang (${existing_source:-Erstinstallation} -> ${existing_target:-unbekannt}) und wird nicht ueberschrieben. Erst bestehenden Fehlerzustand sicher aufloesen."
       fi
@@ -2115,6 +2317,14 @@ cmd_deploy() {
 
 cmd_update() {
   require_cmd docker; require_cmd node; require_cmd curl; require_cmd git
+  local _TAXTRONIK_INTERNAL_UPDATE_SOURCE_COMMIT=""
+
+  # Vor dem ersten Forward-Versuch kann ein Legacy-State noch keinen Commit
+  # enthalten. Den aktuellen Checkout nur ohne bestehenden Pending-Vertrag als
+  # Quellbeweis erfassen; bei Retries bleibt der persistierte Marker massgeblich.
+  if [[ ! -e "$MIGRATION_PENDING" ]]; then
+    _TAXTRONIK_INTERNAL_UPDATE_SOURCE_COMMIT="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)"
+  fi
 
   # Das Pflichtbackup muss vollstaendig mit dem bisher installierten Checkout
   # und dessen Prisma-Client laufen. Neuer Anwendungscode darf das noch alte
@@ -2136,11 +2346,14 @@ cmd_update() {
   remote="$(deployment_git_remote)"
   if images_from_registry; then
     fetch_verified_release_tag "$TAXTRONIK_VERSION" "$UPDATE_COMMIT_SHA"
-    git merge --ff-only "$UPDATE_COMMIT_SHA"
+    # Der globale umask 077 schuetzt Operator-Secrets, darf aber von Git neu
+    # angelegte getrackte Quellen nicht auf 0600/0700 beschraenken: Docker COPY
+    # wuerde diese Modi sonst in die non-root-Runtime-Images uebernehmen.
+    (umask 022; git merge --ff-only "$UPDATE_COMMIT_SHA")
   else
     git fetch "$remote"
     target_ref="${TAXTRONIK_UPDATE_REF:-$remote/main}"
-    git merge --ff-only "$target_ref"
+    (umask 022; git merge --ff-only "$target_ref")
   fi
   # .env ggfs. aus dem aktualisierten Stand neu vervollstaendigen (Prod-Defaults,
   # fehlende Secrets, NEXTAUTH_URL) — wie bei deploy ohne Hand-Editiererei.
@@ -2359,9 +2572,9 @@ rollback_failure_recover() {
   if [[ -z "$restore_commit" ]]; then restore_commit="${_TAXTRONIK_ROLLBACK_SOURCE_COMMIT:-}"; fi
   if [[ -n "${_TAXTRONIK_ROLLBACK_SOURCE_BRANCH:-}" && \
         "$restore_commit" == "${_TAXTRONIK_ROLLBACK_SOURCE_COMMIT:-}" ]]; then
-    git -C "$ROOT" switch "$_TAXTRONIK_ROLLBACK_SOURCE_BRANCH" >/dev/null 2>&1
+    (umask 022; git -C "$ROOT" switch "$_TAXTRONIK_ROLLBACK_SOURCE_BRANCH") >/dev/null 2>&1
   else
-    git -C "$ROOT" switch --detach "$restore_commit" >/dev/null 2>&1
+    (umask 022; git -C "$ROOT" switch --detach "$restore_commit") >/dev/null 2>&1
   fi
 
   if [[ -n "${_TAXTRONIK_ROLLBACK_LAST_GOOD_VERSION:-}" ]]; then
@@ -2556,7 +2769,7 @@ cmd_rollback() {
   _TAXTRONIK_ROLLBACK_SOURCE_BRANCH="$(git -C "$ROOT" branch --show-current 2>/dev/null || true)"
   trap 'rollback_failure_recover $?' EXIT
   trap 'exit 130' INT TERM
-  git -C "$ROOT" switch --detach "$state_commit"
+  (umask 022; git -C "$ROOT" switch --detach "$state_commit")
   export _TAXTRONIK_ROLLBACK_CHECKOUT_CHANGED=1
 
   warn "Rollback auf $target — DB-Kompatibilitaet wurde fail-closed aus dem Release-State bestaetigt."

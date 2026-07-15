@@ -51,18 +51,25 @@ export async function createOnboardingClientAction(formData: FormData) {
   if (!parsed.success) {
     redirectWithError(parsed.error.issues.map((i) => i.message).join(', '));
   }
+  const berufstraegerIds = Array.from(new Set(parsed.data.berufstraegerIds));
+  const hauptbearbeiterIds = Array.from(new Set(parsed.data.hauptbearbeiterIds));
 
   let clientId: string;
   try {
     clientId = await withTenantContext(ctx, async (tx) => {
-      const assignedStaffIds = Array.from(
-        new Set([...parsed.data.berufstraegerIds, ...parsed.data.hauptbearbeiterIds]),
-      );
+      const assignedStaffIds = Array.from(new Set([...berufstraegerIds, ...hauptbearbeiterIds]));
       const activeStaffCount = await tx.staffUser.count({
-        where: { tenantId, id: { in: assignedStaffIds }, active: true },
+        where: {
+          tenantId,
+          id: { in: assignedStaffIds },
+          active: true,
+          roles: { some: {} },
+        },
       });
       if (activeStaffCount !== assignedStaffIds.length) {
-        throw new ActionError('Eine gewählte Zuständigkeit ist nicht mehr aktiv.');
+        throw new ActionError(
+          'Eine gewählte Zuständigkeit ist nicht mehr aktiv oder hat keine gültige Staff-Rolle.',
+        );
       }
 
       const client = await tx.client.create({
@@ -82,12 +89,12 @@ export async function createOnboardingClientAction(formData: FormData) {
         },
       });
 
-      for (const sid of parsed.data.berufstraegerIds) {
+      for (const sid of berufstraegerIds) {
         await tx.clientResponsibility.create({
           data: { tenantId, clientId: client.id, staffId: sid, role: 'BERUFSTRAEGER' },
         });
       }
-      for (const sid of parsed.data.hauptbearbeiterIds) {
+      for (const sid of hauptbearbeiterIds) {
         await tx.clientResponsibility.create({
           data: { tenantId, clientId: client.id, staffId: sid, role: 'HAUPTBEARBEITER' },
         });
@@ -104,8 +111,8 @@ export async function createOnboardingClientAction(formData: FormData) {
           name: parsed.data.name,
           kind: parsed.data.kind,
           onboarding: true,
-          berufstraegerIds: parsed.data.berufstraegerIds,
-          hauptbearbeiterIds: parsed.data.hauptbearbeiterIds,
+          berufstraegerIds,
+          hauptbearbeiterIds,
         },
       });
       return client.id;

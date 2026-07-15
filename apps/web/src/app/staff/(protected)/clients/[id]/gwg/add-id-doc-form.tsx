@@ -1,34 +1,49 @@
-﻿'use client';
+'use client';
 
-import { useActionState, useRef, useEffect } from 'react';
+import { useActionState, useEffect, useRef, useState } from 'react';
 import { addIdDocumentAction, type ActionResult } from './actions';
 
-const types = [
+const identityTypes = [
   { value: 'PERSONALAUSWEIS', label: 'Personalausweis' },
   { value: 'REISEPASS', label: 'Reisepass' },
+] as const;
+
+const entityTypes = [
   { value: 'HANDELSREGISTERAUSZUG', label: 'Handelsregisterauszug' },
-  { value: 'GESELLSCHAFTSVERTRAG', label: 'Gesellschaftsvertrag' },
-  { value: 'VOLLMACHT', label: 'Vollmacht' },
+  { value: 'GESELLSCHAFTSVERTRAG', label: 'Gesellschaftsvertrag / Gründungsnachweis' },
   { value: 'TRANSPARENZREGISTER_AUSZUG', label: 'Transparenzregister-Auszug' },
-  { value: 'SONSTIGES', label: 'Sonstiges' },
-];
+  { value: 'VOLLMACHT', label: 'Vertretungsvollmacht' },
+  { value: 'SONSTIGES', label: 'Sonstiger Rechtsträgernachweis' },
+] as const;
 
 interface Props {
   checkId: string;
   clientId: string;
+  clientName: string;
   clientDocuments: Array<{ id: string; title: string }>;
+  variant: 'identity' | 'entity';
 }
 
-export function AddIdDocumentForm({ checkId, clientId, clientDocuments }: Props) {
+export function AddIdDocumentForm({
+  checkId,
+  clientId,
+  clientName,
+  clientDocuments,
+  variant,
+}: Props) {
   const formRef = useRef<HTMLFormElement>(null);
+  const types = variant === 'identity' ? identityTypes : entityTypes;
+  const [type, setType] = useState<string>(types[0].value);
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
     addIdDocumentAction,
     null,
   );
 
   useEffect(() => {
-    if (state?.ok) formRef.current?.reset();
-  }, [state]);
+    if (!state?.ok) return;
+    formRef.current?.reset();
+    setType(types[0].value);
+  }, [state, types]);
 
   return (
     <form
@@ -36,92 +51,137 @@ export function AddIdDocumentForm({ checkId, clientId, clientDocuments }: Props)
       action={formAction}
       className="space-y-3 p-4 border border-dashed border-strong rounded-md"
     >
-      <p className="text-xs text-muted uppercase tracking-wide">Identitätsdokument hinzufügen</p>
+      <p className="text-xs text-muted uppercase tracking-wide">
+        {variant === 'identity' ? 'Identitätsdokument zuordnen' : 'Rechtsträgernachweis zuordnen'}
+      </p>
       <input type="hidden" name="checkId" value={checkId} />
       <input type="hidden" name="clientId" value={clientId} />
+      {variant === 'entity' && <input type="hidden" name="ownerName" value={clientName} />}
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className={variant === 'identity' ? 'grid grid-cols-2 gap-3' : ''}>
         <div>
-          <label className="label" htmlFor="id-type">
+          <label className="label" htmlFor={`${variant}-document-type`}>
             Typ
           </label>
           <select
-            id="id-type"
+            id={`${variant}-document-type`}
             name="type"
             className="input"
             required
-            defaultValue="PERSONALAUSWEIS"
+            value={type}
+            onChange={(event) => setType(event.target.value)}
           >
-            {types.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.label}
+            {types.map((entry) => (
+              <option key={entry.value} value={entry.value}>
+                {entry.label}
               </option>
             ))}
           </select>
         </div>
-        <div>
-          <label className="label" htmlFor="id-ownerName">
-            Inhaber
-          </label>
-          <input
-            id="id-ownerName"
-            name="ownerName"
-            type="text"
-            className="input"
-            required
-            maxLength={200}
-          />
-        </div>
+        {variant === 'identity' && (
+          <div>
+            <label className="label" htmlFor="id-ownerName">
+              Identifizierte Person
+            </label>
+            <input
+              id="id-ownerName"
+              name="ownerName"
+              type="text"
+              className="input"
+              required
+              maxLength={200}
+            />
+          </div>
+        )}
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
-        <div>
-          <label className="label" htmlFor="id-number">
-            Nummer
-          </label>
-          <input id="id-number" name="number" type="text" className="input" maxLength={100} />
-        </div>
-        <div>
-          <label className="label" htmlFor="id-issueDate">
-            Ausgestellt am
-          </label>
-          <input id="id-issueDate" name="issueDate" type="date" className="input" />
-        </div>
-        <div>
-          <label className="label" htmlFor="id-expiryDate">
-            Gültig bis
-          </label>
-          <input id="id-expiryDate" name="expiryDate" type="date" className="input" />
-        </div>
-      </div>
-
-      <div>
-        <label className="label" htmlFor="id-issuedBy">
-          Ausstellende Behörde
-        </label>
-        <input id="id-issuedBy" name="issuedBy" type="text" className="input" maxLength={200} />
-      </div>
-
-      {clientDocuments.length > 0 && (
-        <div>
-          <label className="label" htmlFor="id-documentId">
-            Verknüpftes hochgeladenes Dokument (optional)
-          </label>
-          <select id="id-documentId" name="documentId" className="input" defaultValue="">
-            <option value="">— keines —</option>
-            {clientDocuments.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.title}
-              </option>
-            ))}
-          </select>
-        </div>
+      {variant === 'identity' && (
+        <>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="label" htmlFor="id-number">
+                Ausweisnummer
+              </label>
+              <input
+                id="id-number"
+                name="number"
+                type="text"
+                className="input"
+                required
+                maxLength={100}
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor="id-issueDate">
+                Ausgestellt am
+              </label>
+              <input id="id-issueDate" name="issueDate" type="date" className="input" />
+            </div>
+            <div>
+              <label className="label" htmlFor="id-expiryDate">
+                Gültig bis
+              </label>
+              <input id="id-expiryDate" name="expiryDate" type="date" className="input" required />
+            </div>
+          </div>
+          <div>
+            <label className="label" htmlFor="id-issuedBy">
+              Ausstellende Behörde
+            </label>
+            <input
+              id="id-issuedBy"
+              name="issuedBy"
+              type="text"
+              className="input"
+              required
+              maxLength={200}
+            />
+          </div>
+        </>
       )}
 
-      {state?.error && <div className="alert-error-sm">{state.error}</div>}
+      <div>
+        <label className="label" htmlFor={`${variant}-documentId`}>
+          Hochgeladenes GwG-Dokument
+        </label>
+        {clientDocuments.length > 0 ? (
+          <select
+            id={`${variant}-documentId`}
+            name="documentId"
+            className="input"
+            defaultValue=""
+            required
+          >
+            <option value="" disabled>
+              — Dokument auswählen —
+            </option>
+            {clientDocuments.map((document) => (
+              <option key={document.id} value={document.id}>
+                {document.title}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <p className="rounded-md bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+            Noch kein GwG-Nachweis vorhanden. Laden Sie zuerst über den Button oben eine Datei hoch.
+          </p>
+        )}
+      </div>
 
-      <button type="submit" className="btn-primary text-sm" disabled={isPending}>
-        {isPending ? 'Speichert…' : 'Hinzufügen'}
+      {variant === 'entity' && (
+        <p className="text-xs text-muted">
+          Personenbezogene Ausweisfelder sind für diesen Nachweistyp bewusst nicht erforderlich.
+        </p>
+      )}
+      {state?.error && <div className="alert-error-sm">{state.error}</div>}
+      {state?.ok && <div className="alert-success-sm">Nachweis wurde der Prüfung zugeordnet.</div>}
+
+      <button
+        type="submit"
+        className="btn-primary text-sm"
+        disabled={isPending || clientDocuments.length === 0}
+      >
+        {isPending ? 'Speichert…' : 'Nachweis zuordnen'}
       </button>
     </form>
   );

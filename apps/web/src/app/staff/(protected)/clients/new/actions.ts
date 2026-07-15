@@ -95,16 +95,27 @@ export async function createClientAction(formData: FormData) {
     berufstraegerIds,
     hauptbearbeiterIds,
   } = parsed.data;
+  const uniqueBerufstraegerIds = Array.from(new Set(berufstraegerIds));
+  const uniqueHauptbearbeiterIds = Array.from(new Set(hauptbearbeiterIds));
 
   let clientId: string;
   try {
     clientId = await withTenantContext(ctx, async (tx) => {
-      const assignedStaffIds = Array.from(new Set([...berufstraegerIds, ...hauptbearbeiterIds]));
+      const assignedStaffIds = Array.from(
+        new Set([...uniqueBerufstraegerIds, ...uniqueHauptbearbeiterIds]),
+      );
       const activeStaffCount = await tx.staffUser.count({
-        where: { tenantId, id: { in: assignedStaffIds }, active: true },
+        where: {
+          tenantId,
+          id: { in: assignedStaffIds },
+          active: true,
+          roles: { some: {} },
+        },
       });
       if (activeStaffCount !== assignedStaffIds.length) {
-        throw new ActionError('Eine gewählte Zuständigkeit ist nicht mehr aktiv.');
+        throw new ActionError(
+          'Eine gewählte Zuständigkeit ist nicht mehr aktiv oder hat keine gültige Staff-Rolle.',
+        );
       }
 
       // P2-22: Soft-Duplikat-Warnung (überspringbar via confirmDuplicate). Trifft
@@ -149,12 +160,12 @@ export async function createClientAction(formData: FormData) {
         },
       });
 
-      for (const sid of berufstraegerIds) {
+      for (const sid of uniqueBerufstraegerIds) {
         await tx.clientResponsibility.create({
           data: { tenantId, clientId: client.id, staffId: sid, role: 'BERUFSTRAEGER' },
         });
       }
-      for (const sid of hauptbearbeiterIds) {
+      for (const sid of uniqueHauptbearbeiterIds) {
         await tx.clientResponsibility.create({
           data: { tenantId, clientId: client.id, staffId: sid, role: 'HAUPTBEARBEITER' },
         });
@@ -172,8 +183,8 @@ export async function createClientAction(formData: FormData) {
           kind,
           datevNo: datevNo ?? null,
           hasAddress: !!(street && city),
-          berufstraegerIds,
-          hauptbearbeiterIds,
+          berufstraegerIds: uniqueBerufstraegerIds,
+          hauptbearbeiterIds: uniqueHauptbearbeiterIds,
         },
       });
 

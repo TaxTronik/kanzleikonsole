@@ -3,17 +3,19 @@
 import { useActionState } from 'react';
 import type { ActionResult } from '@/server/actions/types';
 import { ConsentFields } from '@/components/consent-fields';
-import type { ConsentSelections } from '@/server/privacy/consent';
+import type { ConsentSelections, ResolvedConsentOption } from '@/server/privacy/consent';
 import { saveConsentAction } from './actions';
 
 export function ConsentEditor({
   clientId,
   initial,
   contacts,
+  options,
 }: {
   clientId: string;
   initial?: ConsentSelections;
   contacts: Array<{ id: string; fullName: string }>;
+  options: ResolvedConsentOption[];
 }) {
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
     saveConsentAction,
@@ -24,7 +26,7 @@ export function ConsentEditor({
     <form action={formAction} className="card p-6 space-y-6">
       <input type="hidden" name="clientId" value={clientId} />
 
-      <ConsentFields initial={initial} />
+      <ConsentFields initial={initial} options={options} />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-default pt-4">
         <div>

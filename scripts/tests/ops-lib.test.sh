@@ -28,7 +28,7 @@ test_fail() {
 assert_contains() {
   local file="$1" needle="$2"
   grep -Fq "$needle" "$file" || {
-    printf '--- %s ---\n' "$file" >&2
+    printf '%s\n' "--- $file ---" >&2
     sed -n '1,220p' "$file" >&2
     test_fail "expected output to contain: $needle"
   }
@@ -37,7 +37,7 @@ assert_contains() {
 assert_not_exists_or_empty() {
   local file="$1"
   [[ ! -e "$file" || ! -s "$file" ]] || {
-    printf '--- %s ---\n' "$file" >&2
+    printf '%s\n' "--- $file ---" >&2
     cat "$file" >&2
     test_fail "expected file to be absent or empty: $file"
   }
@@ -503,7 +503,10 @@ run_mock_update() (
   wait_postgres_healthy() { record_step wait-postgres; }
   sync_postgres_roles_from_env() { record_step sync-roles; }
   run_backup() { record_step backup-old-checkout; return "${OPS_BACKUP_STATUS:-0}"; }
-  git() { record_step "git $*"; }
+  git() {
+    record_step "git $*"
+    record_step "git-umask $(umask) $*"
+  }
   deployment_git_remote() { printf 'origin'; }
   prepare_release_contract() { record_step prepare-release-contract; }
   provide_images() { record_step provide-images; }
@@ -525,6 +528,8 @@ test_update_backs_up_old_checkout_before_fetch() {
   assert_before "$sequence" "backup-old-checkout" "git fetch origin"
   assert_before "$sequence" "backup-old-checkout" "git merge --ff-only origin/main"
   assert_before "$sequence" "git merge --ff-only origin/main" "provide-images"
+  assert_contains "$sequence" "git-umask 0022 merge --ff-only origin/main"
+  assert_contains "$sequence" "git-umask 0077 fetch origin"
   pass "update completes mandatory old-checkout backup before fetch and merge"
 }
 
@@ -920,8 +925,122 @@ EOF
   assert_key_equals "$marker" target_version 3.0.0
   assert_key_equals "$marker" target_commit "$new_target_commit"
   assert_key_equals "$marker" requires_db_restore true
-  assert_contains "$out" "GwG-Migrationsfehler 03400"
+  assert_contains "$out" "GwG-Migrationsuebergang 03400"
   pass "verified GwG 034 recovery can advance the pending target without weakening it"
+}
+
+test_migration_transition_retargets_manually_recovered_legacy_target_before_new_migration() {
+  local state_file="$TMP_DIR/transition-gwg-034-manual.state"
+  local marker="$TMP_DIR/transition-gwg-034-manual.pending"
+  local out="$TMP_DIR/transition-gwg-034-manual.out" old_target_commit new_target_commit
+  old_target_commit="$(printf 'c%.0s' {1..40})"
+  new_target_commit="$(printf 'd%.0s' {1..40})"
+  cat >"$state_file" <<'EOF'
+current=2026-06-16
+current_commit=
+current_rollback_requires_db_restore=true
+EOF
+  cat >"$marker" <<EOF
+source_version=2026-06-16
+source_commit=
+target_version=2026-06-16
+target_commit=$old_target_commit
+requires_db_restore=true
+EOF
+
+  (
+    STATE="$state_file"
+    MIGRATION_PENDING="$marker"
+    DB_RESTORE_AUTHORIZATION="$TMP_DIR/transition-gwg-034-manual.no-restore"
+    TAXTRONIK_VERSION=2026-06-16
+    TAXTRONIK_RELEASE_COMMIT="$new_target_commit"
+    # Der neue Vorwaerts-Commit bringt eine weitere Migration mit. Das muss den
+    # relativ zum alten Marker-Ziel vollstaendig migrierten Stand nicht sperren.
+    pending_database_migration_requirement() { printf 'true'; }
+    git() { return 0; }
+    gwg_034_migration_is_fixed() { return 0; }
+    database_has_recoverable_gwg_034_failure() { return 1; }
+    database_is_fully_migrated_for_commit() { [[ "$1" == "$old_target_commit" ]]; }
+    begin_migration_transition
+  ) >"$out" 2>&1
+
+  assert_key_equals "$marker" source_version 2026-06-16
+  assert_key_equals "$marker" source_commit ""
+  assert_key_equals "$marker" target_version 2026-06-16
+  assert_key_equals "$marker" target_commit "$new_target_commit"
+  assert_key_equals "$marker" requires_db_restore true
+  assert_contains "$out" "GwG-Migrationsuebergang 03400"
+  pass "manually recovered legacy target can advance to a successor migration without weakening restore"
+}
+
+test_migration_transition_captures_legacy_update_source_commit() {
+  local state_file="$TMP_DIR/transition-legacy-source.state"
+  local marker="$TMP_DIR/transition-legacy-source.pending"
+  local source_commit target_commit
+  source_commit="$(printf 'b%.0s' {1..40})"
+  target_commit="$(printf 'd%.0s' {1..40})"
+  cat >"$state_file" <<'EOF'
+current=2026-06-16
+current_commit=
+current_rollback_requires_db_restore=true
+EOF
+
+  (
+    STATE="$state_file"
+    MIGRATION_PENDING="$marker"
+    DB_RESTORE_AUTHORIZATION="$TMP_DIR/transition-legacy-source.no-restore"
+    TAXTRONIK_VERSION=2026-06-16
+    TAXTRONIK_RELEASE_COMMIT="$target_commit"
+    _TAXTRONIK_INTERNAL_UPDATE_SOURCE_COMMIT="$source_commit"
+    pending_database_migration_requirement() { printf 'false'; }
+    begin_migration_transition
+  ) >/dev/null
+
+  assert_key_equals "$marker" source_version 2026-06-16
+  assert_key_equals "$marker" source_commit "$source_commit"
+  assert_key_equals "$marker" target_commit "$target_commit"
+  pass "first legacy update captures its pre-merge checkout as source commit"
+}
+
+test_manual_gwg_034_resolution_requires_schema_invariants() {
+  local old_target_commit
+  old_target_commit="$(printf 'c%.0s' {1..40})"
+
+  if (
+    git() { printf '%s\n' 20260801003400_gwg_fail_closed_and_destruction; }
+    compose() {
+      if [[ "$*" == *"finished_at IS NULL"* ]]; then
+        printf 'no'
+      elif [[ "$*" == *"SELECT migration_name"* ]]; then
+        printf '%s\n' 20260801003400_gwg_fail_closed_and_destruction
+      elif [[ "$*" == *"gwg_034_schema_invariants"* ]]; then
+        # Simuliert `prisma migrate resolve --applied`, ohne die 034-DDL
+        # tatsaechlich ausgefuehrt zu haben.
+        printf 'no'
+      else
+        return 1
+      fi
+    }
+    database_is_fully_migrated_for_commit "$old_target_commit"
+  ); then
+    test_fail "finished GwG 034 journal without schema invariants was accepted"
+  fi
+
+  (
+    git() { printf '%s\n' 20260801003300_pre_gwg_hardening; }
+    compose() {
+      if [[ "$*" == *"finished_at IS NULL"* ]]; then
+        printf 'no'
+      elif [[ "$*" == *"SELECT migration_name"* ]]; then
+        printf '%s\n' 20260801003300_pre_gwg_hardening
+      else
+        return 1
+      fi
+    }
+    database_is_fully_migrated_for_commit "$old_target_commit"
+  ) || test_fail "pre-GwG-034 target was incorrectly required to expose 034 invariants"
+
+  pass "manual GwG 034 resolution requires the real schema while pre-034 targets remain valid"
 }
 
 test_gwg_034_retarget_requires_exact_forward_state() {
@@ -930,6 +1049,58 @@ test_gwg_034_retarget_requires_exact_forward_state() {
   old_target_commit="$(printf 'c%.0s' {1..40})"
   new_target_commit="$(printf 'd%.0s' {1..40})"
   other_source_commit="$(printf 'e%.0s' {1..40})"
+
+  (
+    git() {
+      [[ "$*" == *"ls-tree -d --name-only"* ]] || return 1
+      printf '%s\n' \
+        20260801003400_gwg_fail_closed_and_destruction \
+        20260801004000_poa_created_at_db_clock
+    }
+    compose() {
+      if [[ "$*" == *"finished_at IS NULL"* ]]; then
+        printf 'no'
+      elif [[ "$*" == *"SELECT migration_name"* ]]; then
+        printf '%s\n' \
+          20260801003400_gwg_fail_closed_and_destruction \
+          20260801004000_poa_created_at_db_clock
+      elif [[ "$*" == *"gwg_034_schema_invariants"* ]]; then
+        printf 'yes'
+      else
+        return 1
+      fi
+    }
+    # Eine neue Migration im aktuellen Vorwaerts-Checkout darf die bestaetigte
+    # Vollstaendigkeit des alten Marker-Ziels nicht entkraeften.
+    pending_database_migration_requirement() { printf 'true'; }
+    database_is_fully_migrated_for_commit "$old_target_commit"
+  ) || test_fail "fully migrated marker target was rejected because its successor has a new migration"
+
+  if (
+    git() { printf '%s\n' 20260801003400_gwg_fail_closed_and_destruction; }
+    compose() {
+      if [[ "$*" == *"finished_at IS NULL"* ]]; then printf 'yes';
+      else printf '%s\n' 20260801003400_gwg_fail_closed_and_destruction; fi
+    }
+    database_is_fully_migrated_for_commit "$old_target_commit"
+  ); then
+    test_fail "open Prisma journal was accepted as fully migrated"
+  fi
+
+  if (
+    git() {
+      printf '%s\n' \
+        20260801003400_gwg_fail_closed_and_destruction \
+        20260801004000_poa_created_at_db_clock
+    }
+    compose() {
+      if [[ "$*" == *"finished_at IS NULL"* ]]; then printf 'no';
+      else printf '%s\n' 20260801003400_gwg_fail_closed_and_destruction; fi
+    }
+    database_is_fully_migrated_for_commit "$old_target_commit"
+  ); then
+    test_fail "marker target with a missing historical migration was accepted as fully migrated"
+  fi
 
   (
     git() { return 0; }
@@ -948,6 +1119,48 @@ test_gwg_034_retarget_requires_exact_forward_state() {
       2026-06-16 "$source_commit" 2026-06-16 "$old_target_commit" \
       2026-06-16 "$source_commit" 2026-06-16 "$new_target_commit"
   ) || test_fail "same non-SemVer release tag rejected a forward fix commit"
+
+  (
+    git() { return 0; }
+    gwg_034_migration_is_fixed() { return 0; }
+    database_has_recoverable_gwg_034_failure() { return 0; }
+    can_retarget_recoverable_gwg_034_transition \
+      2026-06-16 "" 2026-06-16 "$old_target_commit" \
+      2026-06-16 "" 2026-06-16 "$new_target_commit" true
+  ) || test_fail "recoverable legacy transition without source commit was rejected"
+
+  if (
+    git() { return 0; }
+    gwg_034_migration_is_fixed() { return 0; }
+    database_has_recoverable_gwg_034_failure() { return 0; }
+    can_retarget_recoverable_gwg_034_transition \
+      2026-06-16 "" 2026-06-16 "$old_target_commit" \
+      2026-06-16 "" 2026-06-16 "$new_target_commit" false
+  ); then
+    test_fail "legacy transition without source commit bypassed its restore requirement"
+  fi
+
+  (
+    git() { return 0; }
+    gwg_034_migration_is_fixed() { return 0; }
+    database_has_recoverable_gwg_034_failure() { return 1; }
+    database_is_fully_migrated_for_commit() { [[ "$1" == "$old_target_commit" ]]; }
+    can_retarget_recoverable_gwg_034_transition \
+      2026-06-16 "" 2026-06-16 "$old_target_commit" \
+      2026-06-16 "" 2026-06-16 "$new_target_commit" true
+  ) || test_fail "fully migrated legacy recovery transition was rejected"
+
+  if (
+    git() { return 0; }
+    gwg_034_migration_is_fixed() { return 0; }
+    database_has_recoverable_gwg_034_failure() { return 1; }
+    database_is_fully_migrated_for_commit() { return 1; }
+    can_retarget_recoverable_gwg_034_transition \
+      2026-06-16 "" 2026-06-16 "$old_target_commit" \
+      2026-06-16 "" 2026-06-16 "$new_target_commit" true
+  ); then
+    test_fail "legacy transition advanced while database migrations were not current"
+  fi
 
   if (
     git() { return 0; }
@@ -1307,6 +1520,9 @@ test_database_restore_authorizes_only_declared_release
 test_migration_transition_preserves_strongest_requirement
 test_migration_transition_never_replaces_another_contract
 test_migration_transition_retargets_only_verified_gwg_034_recovery
+test_migration_transition_retargets_manually_recovered_legacy_target_before_new_migration
+test_migration_transition_captures_legacy_update_source_commit
+test_manual_gwg_034_resolution_requires_schema_invariants
 test_gwg_034_retarget_requires_exact_forward_state
 test_compose_writer_passthrough_is_blocked_by_recovery_markers
 test_internal_writer_activation_is_bound_to_exact_contract

@@ -38,6 +38,8 @@ infra/compose/.volumes/
 
 # Lokale Operator-Backups (Postgres-Dumps)
 /backups/
+# Historischer relativer Browser-Backup-Pfad.
+/apps/web/backups/
 
 # Atomarer Last-Good-Releasevertrag der lokalen Installation.
 /.taxtronik.state

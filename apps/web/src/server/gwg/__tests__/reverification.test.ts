@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { TxClient } from '@taxtronik/db';
 import {
   claimGwgOnboardingSubmitTx,
+  lockGwgCheckLifecycleTx,
   lockGwgOnboardingUploadTx,
   requireGwgReverificationTx,
   startFreshGwgReviewTx,
@@ -74,11 +75,30 @@ describe('GwG-Onboarding-Submit-Claim', () => {
 });
 
 describe('GwG-Wiederholungsprüfung', () => {
+  it('bildet den Lifecycle-Lock aus Tenant und Mandant', async () => {
+    const executeRaw = vi.fn().mockResolvedValue(0);
+    const tx = { $executeRaw: executeRaw } as unknown as TxClient;
+
+    await lockGwgCheckLifecycleTx(tx, {
+      tenantId: 'tenant-1',
+      clientId: 'client-1',
+    });
+
+    const [fragments, ...values] = executeRaw.mock.calls[0]!;
+    const sql = (fragments as readonly string[]).join('?');
+    expect(sql).toContain('pg_advisory_xact_lock(hashtextextended(?, 0))');
+    expect(values).toEqual(['gwg-check-lifecycle:tenant-1:client-1']);
+  });
+
   it('entwertet VERIFIED-Snapshots, deaktiviert und erhält deren Aggregate', async () => {
+    const executeRaw = vi.fn().mockResolvedValue(0);
+    const invalidateChecks = vi.fn().mockResolvedValue({ count: 1 });
     const tx = {
+      $executeRaw: executeRaw,
       gwgCheck: {
-        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        updateMany: invalidateChecks,
         findFirst: vi.fn().mockResolvedValue({ id: 'open-review' }),
+        update: vi.fn().mockResolvedValue({ id: 'open-review' }),
         create: vi.fn(),
         deleteMany: vi.fn(),
       },
@@ -105,15 +125,62 @@ describe('GwG-Wiederholungsprüfung', () => {
       reviewCheckId: 'open-review',
       clientDeactivated: true,
     });
+    expect(tx.gwgCheck.update).toHaveBeenCalledWith({
+      where: { id: 'open-review' },
+      data: { status: 'DRAFT', reviewSubmittedAt: null, reviewSubmittedBy: null },
+      select: { id: true },
+    });
     expect(tx.gwgCheck.deleteMany).not.toHaveBeenCalled();
     expect(tx.gwgBeneficialOwner.deleteMany).not.toHaveBeenCalled();
     expect(tx.gwgIdDocument.deleteMany).not.toHaveBeenCalled();
+    expect(executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      invalidateChecks.mock.invocationCallOrder[0]!,
+    );
   });
 
-  it('öffentliches Onboarding legt immer einen frischen Review-Check an', async () => {
+  it('nimmt einen laufenden Review nach Stammdatenänderung auch ohne VERIFIED-Snapshot zurück', async () => {
     const tx = {
+      $executeRaw: vi.fn().mockResolvedValue(0),
       gwgCheck: {
-        create: vi.fn().mockResolvedValue({ id: 'new-review' }),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        findFirst: vi.fn().mockResolvedValue({ id: 'open-review', status: 'IN_REVIEW' }),
+        update: vi.fn().mockResolvedValue({ id: 'open-review' }),
+        create: vi.fn(),
+      },
+      client: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+    } as unknown as TxClient;
+
+    const result = await requireGwgReverificationTx(tx, {
+      tenantId: 'tenant-1',
+      clientId: 'client-1',
+    });
+
+    expect(tx.gwgCheck.update).toHaveBeenCalledWith({
+      where: { id: 'open-review' },
+      data: { status: 'DRAFT', reviewSubmittedAt: null, reviewSubmittedBy: null },
+      select: { id: true },
+    });
+    expect(tx.gwgCheck.create).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      invalidatedChecks: 0,
+      reviewCheckId: 'open-review',
+      clientDeactivated: false,
+    });
+  });
+
+  it('legt B mit monotonem Zeitstempel frisch an und terminalisiert den älteren Review A', async () => {
+    const executeRaw = vi.fn().mockResolvedValue(0);
+    const createReview = vi.fn().mockResolvedValue({ id: 'new-review' });
+    const queryRaw = vi
+      .fn()
+      .mockResolvedValue([{ statementTimestamp: new Date('2026-07-15T12:00:00.000Z') }]);
+    const previousCreatedAt = new Date('2026-07-15T12:00:00.000Z');
+    const tx = {
+      $executeRaw: executeRaw,
+      $queryRaw: queryRaw,
+      gwgCheck: {
+        findFirst: vi.fn().mockResolvedValue({ createdAt: previousCreatedAt }),
+        create: createReview,
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       client: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
@@ -125,11 +192,28 @@ describe('GwG-Wiederholungsprüfung', () => {
     });
 
     expect(tx.gwgCheck.create).toHaveBeenCalledWith({
-      data: { tenantId: 'tenant-1', clientId: 'client-1', status: 'IN_REVIEW' },
+      data: {
+        tenantId: 'tenant-1',
+        clientId: 'client-1',
+        status: 'DRAFT',
+        createdAt: new Date('2026-07-15T12:00:00.001Z'),
+      },
       select: { id: true },
     });
+    expect(tx.gwgCheck.findFirst).toHaveBeenCalledWith({
+      where: { tenantId: 'tenant-1', clientId: 'client-1' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: { createdAt: true },
+    });
+    const [clockFragments] = queryRaw.mock.calls[0]!;
+    expect((clockFragments as readonly string[]).join('?')).toContain('statement_timestamp()');
     expect(tx.gwgCheck.updateMany).toHaveBeenCalledWith({
-      where: { clientId: 'client-1', status: 'VERIFIED', id: { not: 'new-review' } },
+      where: {
+        tenantId: 'tenant-1',
+        clientId: 'client-1',
+        status: { in: ['DRAFT', 'IN_REVIEW', 'VERIFIED'] },
+        id: { not: 'new-review' },
+      },
       data: { status: 'EXPIRED' },
     });
     expect(result).toEqual({
@@ -137,5 +221,8 @@ describe('GwG-Wiederholungsprüfung', () => {
       reviewCheckId: 'new-review',
       clientDeactivated: true,
     });
+    expect(executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      createReview.mock.invocationCallOrder[0]!,
+    );
   });
 });

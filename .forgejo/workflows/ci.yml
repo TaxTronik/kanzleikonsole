@@ -591,6 +591,107 @@ jobs:
           pnpm --filter @taxtronik/db exec prisma migrate status
           PGPASSWORD=taxtronik dropdb -h localhost -U taxtronik "$GWG_DB"
 
+      - name: Onboarding-Abschluss-Backfill mit historischen GwG-Zustaenden pruefen
+        if: steps.last.outputs.tag != ''
+        run: |
+          set -euo pipefail
+          CUTOFF='20260801004000_poa_created_at_db_clock'
+          TARGET='/tmp/pre-onboarding-041/packages/db/prisma/migrations'
+          ONBOARDING_DB='taxtronik_onboarding_041'
+          CONFIG='packages/db/onboarding-041.config.ts'
+
+          cleanup() {
+            rm -f "$CONFIG"
+            rm -rf /tmp/pre-onboarding-041
+            PGPASSWORD=taxtronik dropdb --if-exists -h localhost -U taxtronik "$ONBOARDING_DB" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          PGPASSWORD=taxtronik createdb -h localhost -U taxtronik "$ONBOARDING_DB"
+          PGPASSWORD=taxtronik psql -h localhost -U taxtronik -d "$ONBOARDING_DB" \
+            -v ON_ERROR_STOP=1 -f packages/db/prisma/init/01_bootstrap.sql
+
+          mkdir -p "$TARGET"
+          cp packages/db/prisma/migrations/migration_lock.toml "$TARGET/"
+          for dir in packages/db/prisma/migrations/20*; do
+            name="${dir##*/}"
+            if [[ "$name" > "$CUTOFF" ]]; then
+              continue
+            fi
+            cp -a "$dir" "$TARGET/"
+          done
+          cat > "$CONFIG" <<'EOF'
+          import { defineConfig, env } from 'prisma/config';
+
+          export default defineConfig({
+            schema: 'prisma/schema.prisma',
+            migrations: { path: '/tmp/pre-onboarding-041/packages/db/prisma/migrations' },
+            datasource: { url: env('DATABASE_URL') },
+          });
+          EOF
+
+          export DATABASE_URL="postgresql://taxtronik:taxtronik@localhost:5432/${ONBOARDING_DB}?schema=public"
+          pnpm --filter @taxtronik/db exec prisma migrate deploy --config onboarding-041.config.ts
+
+          PGPASSWORD=taxtronik psql -h localhost -U taxtronik -d "$ONBOARDING_DB" \
+            -v ON_ERROR_STOP=1 <<'SQL'
+          SET TIME ZONE 'UTC';
+
+          INSERT INTO tenant (id, slug, name, updated_at)
+          VALUES (
+            '10000000-0000-4000-8000-000000000041',
+            'onboarding-041',
+            'Onboarding Backfill 041',
+            CURRENT_TIMESTAMP
+          );
+
+          INSERT INTO client (id, tenant_id, kind, name, allow_active, updated_at)
+          VALUES
+            ('11000000-0000-4000-8000-000000000041', '10000000-0000-4000-8000-000000000041', 'NATPERS', 'Verified mit Kontakt', FALSE, CURRENT_TIMESTAMP),
+            ('12000000-0000-4000-8000-000000000041', '10000000-0000-4000-8000-000000000041', 'NATPERS', 'Verified ohne Kontakt', FALSE, CURRENT_TIMESTAMP),
+            ('13000000-0000-4000-8000-000000000041', '10000000-0000-4000-8000-000000000041', 'NATPERS', 'Expired mit Kontakt', FALSE, CURRENT_TIMESTAMP);
+
+          INSERT INTO client_contact (id, tenant_id, client_id, email, full_name, active, updated_at)
+          VALUES
+            ('21000000-0000-4000-8000-000000000041', '10000000-0000-4000-8000-000000000041', '11000000-0000-4000-8000-000000000041', 'verified@example.test', 'Verified Kontakt', TRUE, CURRENT_TIMESTAMP),
+            ('23000000-0000-4000-8000-000000000041', '10000000-0000-4000-8000-000000000041', '13000000-0000-4000-8000-000000000041', 'expired@example.test', 'Expired Kontakt', TRUE, CURRENT_TIMESTAMP);
+
+          INSERT INTO gwg_check (id, tenant_id, client_id, status, verified_at, updated_at)
+          VALUES
+            ('31000000-0000-4000-8000-000000000041', '10000000-0000-4000-8000-000000000041', '11000000-0000-4000-8000-000000000041', 'EXPIRED',  '2025-01-02 03:04:05', CURRENT_TIMESTAMP),
+            ('31000000-0000-4000-8000-000000000042', '10000000-0000-4000-8000-000000000041', '11000000-0000-4000-8000-000000000041', 'VERIFIED', '2026-01-02 03:04:05', CURRENT_TIMESTAMP),
+            ('32000000-0000-4000-8000-000000000041', '10000000-0000-4000-8000-000000000041', '12000000-0000-4000-8000-000000000041', 'VERIFIED', '2026-02-03 04:05:06', CURRENT_TIMESTAMP),
+            ('33000000-0000-4000-8000-000000000041', '10000000-0000-4000-8000-000000000041', '13000000-0000-4000-8000-000000000041', 'EXPIRED',  '2025-03-04 05:06:07', CURRENT_TIMESTAMP);
+          SQL
+
+          pnpm --filter @taxtronik/db exec prisma migrate deploy
+
+          PGPASSWORD=taxtronik psql -h localhost -U taxtronik -d "$ONBOARDING_DB" \
+            -v ON_ERROR_STOP=1 <<'SQL'
+          SET TIME ZONE 'UTC';
+          DO $$
+          BEGIN
+            IF (SELECT onboarding_completed_at FROM client
+                 WHERE id = '11000000-0000-4000-8000-000000000041') IS NULL THEN
+              RAISE EXCEPTION 'VERIFIED plus active contact was not backfilled';
+            END IF;
+            IF (SELECT onboarding_completed_at <= created_at FROM client
+                 WHERE id = '11000000-0000-4000-8000-000000000041') THEN
+              RAISE EXCEPTION 'legacy completion marker must use the honest backfill time';
+            END IF;
+            IF (SELECT onboarding_completed_at FROM client
+                 WHERE id = '12000000-0000-4000-8000-000000000041') IS NOT NULL THEN
+              RAISE EXCEPTION 'VERIFIED without active contact was marked complete';
+            END IF;
+            IF (SELECT onboarding_completed_at FROM client
+                 WHERE id = '13000000-0000-4000-8000-000000000041') IS NULL THEN
+              RAISE EXCEPTION 'EXPIRED historical verification with active contact was reopened';
+            END IF;
+          END $$;
+          SQL
+
+          pnpm --filter @taxtronik/db exec prisma migrate status
+
       - name: Aktuelle Migrationen darauf anwenden (= Kunden-Update)
         if: steps.last.outputs.tag != ''
         run: pnpm --filter @taxtronik/db exec prisma migrate deploy

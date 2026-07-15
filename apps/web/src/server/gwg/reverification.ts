@@ -7,6 +7,65 @@ export interface ReverificationResult {
 }
 
 /**
+ * Erzeugt unter dem Lifecycle-Lock einen fachlich monotonen Zeitstempel.
+ * PostgreSQLs CURRENT_TIMESTAMP ist an den Transaktionsstart gebunden: Eine
+ * früh gestartete, später am Advisory-Lock fortgesetzte Transaktion könnte
+ * sonst einen neueren Snapshot mit einem älteren created_at anlegen. Der
+ * statement_timestamp wird erst nach Lock-Erwerb gelesen und bei Millisekunden-
+ * Gleichstand gegenüber dem bisherigen Maximum explizit fortgeschrieben.
+ */
+async function nextGwgCheckCreatedAtTx(
+  tx: TxClient,
+  input: { tenantId: string; clientId: string },
+): Promise<Date> {
+  const [clock] = await tx.$queryRaw<Array<{ statementTimestamp: Date }>>`
+    SELECT statement_timestamp() AS "statementTimestamp"
+  `;
+  if (!clock?.statementTimestamp) {
+    throw new Error('Datenbankzeit für GwG-Prüfzyklus konnte nicht ermittelt werden.');
+  }
+  const latest = await tx.gwgCheck.findFirst({
+    where: { tenantId: input.tenantId, clientId: input.clientId },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    select: { createdAt: true },
+  });
+  const previousNext = latest ? latest.createdAt.getTime() + 1 : Number.NEGATIVE_INFINITY;
+  return new Date(Math.max(clock.statementTimestamp.getTime(), previousNext));
+}
+
+async function createFreshGwgDraftTx(
+  tx: TxClient,
+  input: { tenantId: string; clientId: string },
+): Promise<{ id: string }> {
+  const createdAt = await nextGwgCheckCreatedAtTx(tx, input);
+  return tx.gwgCheck.create({
+    data: {
+      tenantId: input.tenantId,
+      clientId: input.clientId,
+      status: 'DRAFT',
+      createdAt,
+    },
+    select: { id: true },
+  });
+}
+
+/**
+ * Serialisiert alle statusentscheidenden GwG-Operationen eines Mandanten.
+ *
+ * Der Lock ist transaktionsgebunden und umfasst bewusst Tenant und Mandant:
+ * Zwischen "ist dies der neueste Check?" und einem Statuswechsel darf kein
+ * paralleler Pfad einen neuen Snapshot anlegen oder Stammdaten invalidieren.
+ * Alle Aufrufer muessen den Lock vor der ersten Client-/GwG-Mutation nehmen.
+ */
+export async function lockGwgCheckLifecycleTx(
+  tx: TxClient,
+  input: { tenantId: string; clientId: string },
+): Promise<void> {
+  const lockKey = `gwg-check-lifecycle:${input.tenantId}:${input.clientId}`;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+}
+
+/**
  * Beansprucht einen oeffentlichen Onboarding-Submit atomar. Der Claim liegt in
  * derselben DB-Transaktion wie Stammdaten, Check, Einwilligung und Nachweise:
  * scheitert spaeter ein Schritt, wird auch der Statuswechsel zurueckgerollt.
@@ -81,6 +140,11 @@ export async function requireGwgReverificationTx(
   tx: TxClient,
   input: { tenantId: string; clientId: string },
 ): Promise<ReverificationResult> {
+  // Defense in Depth fuer neue Aufrufer. Bereits vom aeusseren Pfad gehaltene
+  // Advisory-xact-Locks koennen innerhalb derselben Transaktion erneut genommen
+  // werden und bleiben bis zum Commit/Rollback aktiv.
+  await lockGwgCheckLifecycleTx(tx, input);
+
   const invalidated = await tx.gwgCheck.updateMany({
     where: { clientId: input.clientId, status: 'VERIFIED' },
     data: { status: 'EXPIRED' },
@@ -91,29 +155,18 @@ export async function requireGwgReverificationTx(
     data: { allowActive: false },
   });
 
-  if (invalidated.count === 0) {
-    return {
-      invalidatedChecks: 0,
-      reviewCheckId: null,
-      clientDeactivated: deactivated.count > 0,
-    };
-  }
-
   const existing = await tx.gwgCheck.findFirst({
     where: { clientId: input.clientId, status: { in: ['DRAFT', 'IN_REVIEW'] } },
-    orderBy: { createdAt: 'desc' },
-    select: { id: true },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    select: { id: true, status: true },
   });
-  const review =
-    existing ??
-    (await tx.gwgCheck.create({
-      data: {
-        tenantId: input.tenantId,
-        clientId: input.clientId,
-        status: 'IN_REVIEW',
-      },
-      select: { id: true },
-    }));
+  const review = existing
+    ? await tx.gwgCheck.update({
+        where: { id: existing.id },
+        data: { status: 'DRAFT', reviewSubmittedAt: null, reviewSubmittedBy: null },
+        select: { id: true },
+      })
+    : await createFreshGwgDraftTx(tx, input);
 
   return {
     invalidatedChecks: invalidated.count,
@@ -128,24 +181,22 @@ export async function requireGwgReverificationTx(
  * Ein öffentlicher Onboarding-Submit erzeugt IMMER einen frischen Snapshot.
  * So kann ein alter/verifizierter Check weder in-place zurückgesetzt noch durch
  * deleteMany seiner Berechtigten/Ausweise zerstört werden. Bestehende
- * VERIFIED-Prüfungen werden terminal markiert und der Mandant fail-closed.
+ * Alle älteren offenen oder verifizierten Prüfungen werden terminal markiert
+ * und der Mandant fail-closed. Sonst könnte ein bereits geöffneter Staff-Tab
+ * den älteren IN_REVIEW-Snapshot nach dem neuen Submit noch verifizieren.
  */
 export async function startFreshGwgReviewTx(
   tx: TxClient,
   input: { tenantId: string; clientId: string },
 ): Promise<ReverificationResult & { reviewCheckId: string }> {
-  const review = await tx.gwgCheck.create({
-    data: {
-      tenantId: input.tenantId,
-      clientId: input.clientId,
-      status: 'IN_REVIEW',
-    },
-    select: { id: true },
-  });
+  await lockGwgCheckLifecycleTx(tx, input);
+
+  const review = await createFreshGwgDraftTx(tx, input);
   const invalidated = await tx.gwgCheck.updateMany({
     where: {
+      tenantId: input.tenantId,
       clientId: input.clientId,
-      status: 'VERIFIED',
+      status: { in: ['DRAFT', 'IN_REVIEW', 'VERIFIED'] },
       id: { not: review.id },
     },
     data: { status: 'EXPIRED' },

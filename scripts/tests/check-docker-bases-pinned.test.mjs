@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {
+  checkBuilderSourcePermissions,
   checkDockerfiles,
   checkDockerignore,
   checkRequiredComposeSecrets,
@@ -59,6 +60,18 @@ assert.throws(
   () => checkRuntimePackageManagersRemoved(minimizedRuntime.replace(' /opt/yarn-*', '')),
   /\/opt\/yarn-/,
 );
+const normalizedBuilder = [
+  'FROM node:24 AS builder',
+  'WORKDIR /repo',
+  'COPY . .',
+  'RUN chmod -R a+rX /repo',
+  'FROM node:24 AS runner',
+].join('\n');
+assert.equal(checkBuilderSourcePermissions(normalizedBuilder), true);
+assert.throws(
+  () => checkBuilderSourcePermissions(normalizedBuilder.replace('RUN chmod -R a+rX /repo\n', '')),
+  /chmod -R a\+rX/,
+);
 
 const guardedComposeSecrets = [
   ...REQUIRED_COMPOSE_SECRETS.map((secret) => `${secret}: \${${secret}:?${secret} nicht gesetzt}`),
@@ -106,4 +119,4 @@ assert.throws(
   /N8N_WEBHOOK_BASE_URL.*default-leeren/,
 );
 
-process.stdout.write('16 Docker base/context/runtime/compose tests passed.\n');
+process.stdout.write('18 Docker base/context/runtime/compose tests passed.\n');

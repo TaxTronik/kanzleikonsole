@@ -29,7 +29,6 @@ import {
   onboardingSkipAction,
   onboardingCompleteAction,
 } from './actions';
-import { ConfirmSubmitButton } from './confirm-submit-button';
 import {
   GwgSubmissionSummary,
   type GwgSubmissionSummaryData,
@@ -79,6 +78,7 @@ export default async function OnboardingStepPage({
           countryIso: true,
           vatId: true,
           allowActive: true,
+          onboardingCompletedAt: true,
         },
       });
       if (!client) return null;
@@ -86,7 +86,7 @@ export default async function OnboardingStepPage({
         tx.clientContact.count({ where: { clientId: id, active: true } }),
         tx.gwgOnboardingInvite.findFirst({
           where: { clientId: id },
-          orderBy: { createdAt: 'desc' },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
           select: {
             id: true,
             inviteEmail: true,
@@ -100,7 +100,7 @@ export default async function OnboardingStepPage({
         }),
         tx.gwgCheck.findFirst({
           where: { clientId: id },
-          orderBy: { createdAt: 'desc' },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
           include: {
             beneficialOwners: { orderBy: { createdAt: 'asc' } },
             idDocuments: { orderBy: { createdAt: 'asc' }, include: { document: true } },
@@ -216,12 +216,13 @@ export default async function OnboardingStepPage({
   const doneKeys = new Set<StepKey>();
   doneKeys.add('master_data'); // sind wir hier, ist der Mandant da
   if (contactCount > 0) doneKeys.add('contact');
-  if (gwgInvite || (gwgCheck && gwgCheck.status === 'VERIFIED')) doneKeys.add('gwg');
+  if (gwgCheck?.status === 'VERIFIED') doneKeys.add('gwg');
   if (poaCount > 0) doneKeys.add('poa');
   if (requestCount > 0) doneKeys.add('first_request');
+  if (client.onboardingCompletedAt) doneKeys.add('done');
 
   // Falls Modul deaktiviert: PoA-Schritt überspringen
-  let activeStep = step;
+  let activeStep: StepKey = client.onboardingCompletedAt && !sp.step ? 'done' : step;
   if (activeStep === 'poa' && modules.poaMode === 'OFF') {
     activeStep = 'first_request';
   }
@@ -284,6 +285,7 @@ export default async function OnboardingStepPage({
             poaCount,
             requestCount,
             allowActive: client.allowActive,
+            onboardingCompletedAt: client.onboardingCompletedAt,
           }}
         />
       )}
@@ -467,16 +469,15 @@ function GwgStep({
       </form>
       <div className="flex justify-end gap-2 pt-3 mt-4 border-t border-subtle">
         {hasSubmission ? (
-          <form action={onboardingSkipAction} className="inline">
-            <input type="hidden" name="clientId" value={clientId} />
-            <input type="hidden" name="next" value="poa" />
-            <ConfirmSubmitButton
+          <>
+            <SkipButton clientId={clientId} next="poa" label="Später weiter" />
+            <Link
+              href={`/staff/clients/${clientId}/gwg?from=onboarding`}
               className="btn-primary text-sm"
-              message="GwG-Unterlagen als geprüft markieren und im Onboarding weitergehen?"
             >
-              Geprüft (weiter)
-            </ConfirmSubmitButton>
-          </form>
+              Einreichung prüfen
+            </Link>
+          </>
         ) : existingInvite ? (
           <SkipButton clientId={clientId} next="poa" label="Weiter" />
         ) : null}
@@ -580,6 +581,7 @@ function DoneStep({
     poaCount: number;
     requestCount: number;
     allowActive: boolean;
+    onboardingCompletedAt: Date | null;
   };
 }) {
   return (
@@ -596,6 +598,12 @@ function DoneStep({
         <li className="flex items-center justify-between">
           <span>Ansprechpartner</span>
           <span className="text-secondary">{summary.contactCount}</span>
+        </li>
+        <li className="flex items-center justify-between">
+          <span>Onboarding-Abschluss</span>
+          <span className="text-secondary">
+            {summary.onboardingCompletedAt ? 'Bereits abgeschlossen' : 'Noch zu bestätigen'}
+          </span>
         </li>
         <li className="flex items-center justify-between">
           <span>GwG-Einladung versendet</span>
@@ -617,21 +625,56 @@ function DoneStep({
         </li>
       </ul>
 
-      {!summary.hasGwgInvite && (
+      {!summary.onboardingCompletedAt && !summary.allowActive && (
         <p className="text-xs text-amber-700 mb-4">
-          ⚠ Pflichtschritt „GwG-Onboarding" ist noch nicht abgeschlossen. Der Mandant kann erst nach
-          GwG-Verifikation aktiv geschaltet werden.
+          Die GwG-Prüfung ist noch nicht durch den verantwortlichen Berufsträger freigegeben. Eine
+          Einladung allein schließt diesen Pflichtschritt nicht ab.
         </p>
       )}
 
-      <form action={onboardingCompleteAction}>
-        <input type="hidden" name="clientId" value={clientId} />
-        <div className="flex justify-end pt-3 border-t border-subtle">
-          <button type="submit" className="btn-primary text-sm">
-            Onboarding abschließen &amp; zur Mandantenakte
-          </button>
+      {summary.onboardingCompletedAt ? (
+        <div className="flex items-center justify-between gap-3 pt-3 border-t border-subtle">
+          <p className="text-xs text-emerald-700">
+            Das Erst-Onboarding ist historisch und auditierbar abgeschlossen.
+          </p>
+          <Link href={`/staff/clients/${clientId}`} className="btn-primary text-sm">
+            Zur Mandantenakte
+          </Link>
         </div>
-      </form>
+      ) : summary.contactCount === 0 ? (
+        <div className="flex items-center justify-between gap-3 pt-3 border-t border-subtle">
+          <p className="text-xs text-amber-700">
+            Zum Abschluss wird mindestens ein aktiver Ansprechpartner benötigt.
+          </p>
+          <Link
+            href={`/staff/clients/onboarding/${clientId}?step=contact`}
+            className="btn-primary text-sm"
+          >
+            Ansprechpartner erfassen
+          </Link>
+        </div>
+      ) : summary.allowActive ? (
+        <form action={onboardingCompleteAction}>
+          <input type="hidden" name="clientId" value={clientId} />
+          <div className="flex justify-end pt-3 border-t border-subtle">
+            <button type="submit" className="btn-primary text-sm">
+              Onboarding abschließen &amp; zur Mandantenakte
+            </button>
+          </div>
+        </form>
+      ) : (
+        <div className="flex items-center justify-between gap-3 pt-3 border-t border-subtle">
+          <p className="text-xs text-amber-700">
+            Erst nach Freigabe der GwG-Prüfung kann das Onboarding abgeschlossen werden.
+          </p>
+          <Link
+            href={`/staff/clients/${clientId}/gwg?from=onboarding`}
+            className="btn-primary text-sm"
+          >
+            GwG-Prüfung öffnen
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

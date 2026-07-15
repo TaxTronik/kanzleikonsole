@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react';
+import { randomUUID } from 'node:crypto';
 import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Inbox, Plus, Archive, CalendarDays, Wand2 } from 'lucide-react';
+import { ArrowLeft, Inbox, Archive, CalendarDays, Wand2 } from 'lucide-react';
 import { computeOnboardingStatus, resumeStep } from '@/server/onboarding/status';
 import { readModules } from '@/server/settings/modules';
 import { readClientLayout, type ClientBlockKey } from '@/server/settings/client-layout';
@@ -25,6 +26,8 @@ import { HandoversBlock } from './handovers/handovers-block';
 import { PhoneNotesList } from './phone-notes-list';
 import { fmtDateShort, fmtDateTimeShort, fmtEUR, fmtTimeShort } from '@/lib/fmt';
 import { RecordClientVisit } from '@/components/recent-clients';
+import { QuickRequestDialog } from '@/components/quick-request-dialog';
+import { readRequestCreationOptionsTx } from '@/server/request-creation-options';
 
 const kindLabels: Record<string, string> = {
   NATPERS: 'Natürliche Person',
@@ -133,6 +136,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
         handovers,
         managerDocs,
         datevDoc,
+        requestCreationOptions,
       ] = await Promise.all([
         tx.phoneNote.findMany({
           where: { clientId: id },
@@ -247,6 +251,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
           },
           select: { id: true },
         }),
+        readRequestCreationOptionsTx(tx),
       ]);
       // Nur wenn der Cap erreicht wurde: Gesamtzahl für den Truncation-Hinweis.
       const managerDocsTotal =
@@ -270,6 +275,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
         managerDocs,
         managerDocsTotal,
         hasDatevDocs: datevDoc !== null,
+        ...requestCreationOptions,
       };
     },
   );
@@ -292,6 +298,10 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
     managerDocs,
     managerDocsTotal,
     hasDatevDocs,
+    requestTemplates,
+    requestFormTemplates,
+    templatesLimited,
+    formTemplatesLimited,
   } = data;
   const staffNameById = new Map(staffList.map((s) => [s.id, s.fullName]));
 
@@ -379,6 +389,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
       {(() => {
         const ob = computeOnboardingStatus({
           allowActive: client.allowActive,
+          onboardingCompletedAt: client.onboardingCompletedAt,
           contactsActive: client.contacts.length,
           gwgChecks: client._count.gwgChecks,
           gwgInvites: client._count.gwgInvites,
@@ -388,6 +399,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
         if (ob === 'COMPLETE') return null;
         const next = resumeStep({
           allowActive: client.allowActive,
+          onboardingCompletedAt: client.onboardingCompletedAt,
           contactsActive: client.contacts.length,
           gwgChecks: client._count.gwgChecks,
           gwgInvites: client._count.gwgInvites,
@@ -934,13 +946,20 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
                     Alle Anforderungen →
                   </Link>
                   {client.allowActive && (
-                    <Link
-                      href={`/staff/clients/${client.id}/requests/new`}
-                      className="btn-primary text-xs py-1.5"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      Neue Anforderung
-                    </Link>
+                    <QuickRequestDialog
+                      requestId={randomUUID()}
+                      client={{
+                        id: client.id,
+                        name: client.name,
+                        datevNo: client.datevNo,
+                        addisonNo: client.addisonNo,
+                      }}
+                      templates={requestTemplates}
+                      formTemplates={requestFormTemplates}
+                      templatesLimited={templatesLimited}
+                      formTemplatesLimited={formTemplatesLimited}
+                      buttonClassName="btn-primary text-xs py-1.5"
+                    />
                   )}
                 </div>
               </div>

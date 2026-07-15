@@ -21,7 +21,13 @@ export interface GwgVerificationSnapshot {
   noRegisterEntry: boolean;
   representativeNames: string[];
   ownershipStructureNotes: string | null;
-  beneficialOwnerCount: number;
+  beneficialOwners: Array<{
+    fullName: string;
+    birthDate: Date | null;
+    birthPlace: string | null;
+    residence: string | null;
+    nationality: string | null;
+  }>;
   idDocuments: VerificationDocument[];
 }
 
@@ -77,11 +83,24 @@ export function gwgVerificationErrors(
     return errors;
   }
 
-  if (snapshot.beneficialOwnerCount < 1) {
+  if (snapshot.beneficialOwners.length < 1) {
     errors.push(
       'Mindestens ein wirtschaftlich Berechtigter (gegebenenfalls fiktiv wirtschaftlich Berechtigter) ist zu erfassen.',
     );
   }
+  snapshot.beneficialOwners.forEach((owner, index) => {
+    const missing: string[] = [];
+    if (!owner.fullName.trim()) missing.push('Name');
+    if (!owner.birthDate) missing.push('Geburtsdatum');
+    if (!owner.birthPlace?.trim()) missing.push('Geburtsort');
+    if (!owner.residence?.trim()) missing.push('Wohnsitz');
+    if (!owner.nationality?.trim()) missing.push('Staatsangehörigkeit');
+    if (missing.length > 0) {
+      errors.push(
+        `Wirtschaftlich Berechtigter ${index + 1}: ${missing.join(', ')} ${missing.length === 1 ? 'fehlt' : 'fehlen'} (§ 11 Abs. 5 GwG).`,
+      );
+    }
+  });
   if (!snapshot.legalForm?.trim()) {
     errors.push('Rechtsform des Rechtsträgers fehlt (§ 11 Abs. 4 Nr. 2 GwG).');
   }
@@ -109,21 +128,27 @@ export function gwgVerificationErrors(
 
   const entityEvidence = snapshot.idDocuments.some(
     (d) =>
-      (d.type === 'HANDELSREGISTERAUSZUG' || d.type === 'GESELLSCHAFTSVERTRAG') &&
+      (snapshot.noRegisterEntry
+        ? d.type === 'GESELLSCHAFTSVERTRAG'
+        : d.type === 'HANDELSREGISTERAUSZUG' || d.type === 'GESELLSCHAFTSVERTRAG') &&
       hasAttachedEvidence(d, snapshot.clientId),
   );
   if (!entityEvidence) {
     errors.push(
-      'Registerauszug oder beweiskräftiges Gründungsdokument mit Datei ist erforderlich (§ 12 Abs. 2 GwG).',
+      snapshot.noRegisterEntry
+        ? 'Bei fehlender Registerpflicht ist ein Gesellschaftsvertrag oder gleichwertiges Gründungsdokument mit Datei erforderlich (§ 12 Abs. 2 GwG).'
+        : 'Registerauszug oder beweiskräftiges Gründungsdokument mit Datei ist erforderlich (§ 12 Abs. 2 GwG).',
     );
   }
 
-  const transparencyEvidence = snapshot.idDocuments.some(
-    (d) => d.type === 'TRANSPARENZREGISTER_AUSZUG' && hasAttachedEvidence(d, snapshot.clientId),
-  );
+  const transparencyEvidence =
+    snapshot.noRegisterEntry ||
+    snapshot.idDocuments.some(
+      (d) => d.type === 'TRANSPARENZREGISTER_AUSZUG' && hasAttachedEvidence(d, snapshot.clientId),
+    );
   if (!transparencyEvidence) {
     errors.push(
-      'Nachweis/ Auszug aus dem Transparenzregister ist für die neue Geschäftsbeziehung erforderlich (§ 12 Abs. 3 GwG).',
+      'Nachweis/Auszug aus dem Transparenzregister ist für den eingetragenen Rechtsträger erforderlich (§ 12 Abs. 3 GwG).',
     );
   }
 

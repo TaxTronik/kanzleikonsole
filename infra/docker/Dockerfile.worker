@@ -16,6 +16,9 @@ RUN corepack enable && corepack prepare pnpm@11.8.0 --activate
 
 # Quelle zuerst (node_modules via .dockerignore ausgeschlossen), dann install.
 COPY . .
+# Defense-in-depth gegen restriktive Host-Modi nach einem Operator-Update:
+# Runtime-COPYs muessen fuer den non-root-User `node` les- und traversierbar sein.
+RUN chmod -R a+rX /repo
 
 # --ignore-scripts (pnpm 11 blockt Build-Scripts) → postinstall-Hooks holt rebuild
 # nach. `--filter @taxtronik/db`, damit dessen devDep prisma (+ transitiv dotenv)

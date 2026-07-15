@@ -5,8 +5,9 @@
 //   1. Verwaltungsdaten (frei änderbar): DATEV/Addison-Nr, Notizen, Mails,
 //      Bearbeiter-Zuordnung
 //   2. GwG-relevante Daten: Name, Adresse, USt-ID, Rechtsform.
-//      Änderungen lösen GwG-Re-Verifikation aus → bestehender Check landet
-//      auf IN_REVIEW, Mandant bleibt aktiv aber visuell markiert.
+//      Änderungen lösen fail-closed eine GwG-Re-Verifikation aus: Ein
+//      bearbeitbarer Entwurf wird geöffnet und der Mandant bis zur erneuten
+//      Berufsträger-Freigabe deaktiviert.
 // =============================================================================
 
 import { redirect, notFound } from 'next/navigation';
@@ -76,7 +77,7 @@ export default async function ClientEditPage({ params }: { params: Promise<{ id:
   );
 
   return (
-    <div className="p-8 max-w-4xl">
+    <div className="p-8 pb-16 max-w-4xl">
       <Link href={`/staff/clients/${id}`} className="back-link">
         <ArrowLeft className="h-4 w-4" /> Zurück zum Mandanten
       </Link>

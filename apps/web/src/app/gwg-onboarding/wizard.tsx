@@ -5,7 +5,11 @@ import { Plus, Trash2, Upload, Check, ArrowLeft, ArrowRight, Loader } from 'luci
 import { uploadIdImageAction, submitOnboardingAction } from './actions';
 import { ConsentFields } from '@/components/consent-fields';
 import { NoticeView } from '@/components/notice-view';
-import { emptyConsent, type ConsentSelections } from '@/server/privacy/consent';
+import {
+  emptyConsent,
+  type ConsentSelections,
+  type ResolvedConsentOption,
+} from '@/server/privacy/consent';
 
 // Client-seitiges Upload-Limit: Die Datei wird Base64-kodiert an die Server-
 // Action geschickt (+33 % Overhead). Damit eine Datei knapp unter dem Limit
@@ -42,6 +46,7 @@ interface BeneficialOwner {
   city: string;
   countryIso: string;
   sharePercent: string; // String für freie Eingabe „>25%"
+  isPep: boolean | null;
   idNumber: string;
   idIssuedBy: string;
   idIssueDate: string; // YYYY-MM-DD
@@ -65,10 +70,25 @@ interface ClientShape {
 const STEPS = [
   { key: 'master', label: 'Stammdaten' },
   { key: 'owners', label: 'Wirtschaftlich Berechtigte' },
-  { key: 'documents', label: 'Sonstige Dokumente' },
+  { key: 'documents', label: 'Nachweise' },
   { key: 'privacy', label: 'Datenschutz' },
   { key: 'submit', label: 'Übermitteln' },
 ] as const;
+
+type EntityEvidenceType =
+  | 'HANDELSREGISTERAUSZUG'
+  | 'GESELLSCHAFTSVERTRAG'
+  | 'TRANSPARENZREGISTER_AUSZUG'
+  | 'VOLLMACHT'
+  | 'SONSTIGES';
+
+const ENTITY_EVIDENCE_TYPES: Array<{ value: EntityEvidenceType; label: string }> = [
+  { value: 'GESELLSCHAFTSVERTRAG', label: 'Gesellschaftsvertrag / Gründungsnachweis' },
+  { value: 'HANDELSREGISTERAUSZUG', label: 'Handelsregisterauszug' },
+  { value: 'TRANSPARENZREGISTER_AUSZUG', label: 'Transparenzregister-Auszug' },
+  { value: 'VOLLMACHT', label: 'Vertretungsvollmacht' },
+  { value: 'SONSTIGES', label: 'Sonstiger Nachweis' },
+];
 
 export function OnboardingWizard({
   token,
@@ -76,6 +96,7 @@ export function OnboardingWizard({
   client,
   noticeBody,
   noticeVersion,
+  consentOptions,
 }: {
   token: string;
   inviteName: string;
@@ -83,6 +104,7 @@ export function OnboardingWizard({
   /** Gerenderte Datenschutzhinweise (Teil A) — kanzleispezifisch. */
   noticeBody: string;
   noticeVersion: number;
+  consentOptions: ResolvedConsentOption[];
 }) {
   const [step, setStep] = useState(0);
 
@@ -103,7 +125,13 @@ export function OnboardingWizard({
   const [owners, setOwners] = useState<BeneficialOwner[]>([emptyOwner(inviteName)]);
 
   // Sonstige Dokumente
-  const [extraDocs, setExtraDocs] = useState<Array<{ documentId: string; fileName: string }>>([]);
+  const [extraDocs, setExtraDocs] = useState<
+    Array<{ documentId: string; fileName: string; type: EntityEvidenceType }>
+  >([]);
+  const [extraType, setExtraType] = useState<EntityEvidenceType>(
+    client.kind === 'NATPERS' ? 'SONSTIGES' : 'GESELLSCHAFTSVERTRAG',
+  );
+  const [noRegisterEntry, setNoRegisterEntry] = useState<boolean | null>(null);
   const [extraUploadError, setExtraUploadError] = useState<string | null>(null);
 
   // Ausweis-Upload-Fehler je Owner+Seite (Key: `${ownerId}:${side}`).
@@ -168,7 +196,7 @@ export function OnboardingWizard({
     }
   }
 
-  async function handleExtraUpload(file: File) {
+  async function handleExtraUpload(file: File, type: EntityEvidenceType) {
     setExtraUploadError(null);
     if (file.size > MAX_UPLOAD_BYTES) {
       setExtraUploadError(`Datei zu groß (max. ${MAX_UPLOAD_LABEL}).`);
@@ -187,7 +215,10 @@ export function OnboardingWizard({
         setExtraUploadError(r.error ?? 'Upload fehlgeschlagen.');
         return;
       }
-      setExtraDocs((d) => [...d, { documentId: r.documentId!, fileName: file.name }]);
+      setExtraDocs((documents) => [
+        ...documents,
+        { documentId: r.documentId!, fileName: file.name, type },
+      ]);
     } catch {
       setExtraUploadError('Upload fehlgeschlagen — bitte Verbindung prüfen und erneut versuchen.');
     }
@@ -214,6 +245,38 @@ export function OnboardingWizard({
         }
         if (!o.idFront) return `Person ${i + 1}: Ausweis Vorderseite fehlt.`;
         if (!o.idBack) return `Person ${i + 1}: Ausweis Rückseite fehlt.`;
+        if (!o.idNumber.trim()) return `Person ${i + 1}: Ausweisnummer fehlt.`;
+        if (!o.idIssuedBy.trim()) return `Person ${i + 1}: Ausstellende Behörde fehlt.`;
+        if (!o.idExpiryDate) return `Person ${i + 1}: Gültigkeitsdatum des Ausweises fehlt.`;
+        if (o.isPep === null) {
+          return `Person ${i + 1}: Bitte den PEP-Status ausdrücklich angeben.`;
+        }
+      }
+    }
+    if (STEPS[step]?.key === 'documents' && client.kind !== 'NATPERS') {
+      if (noRegisterEntry === null) {
+        return 'Bitte erklären Sie, ob ein Registereintrag vorhanden ist.';
+      }
+      if (
+        noRegisterEntry &&
+        !extraDocs.some((document) => document.type === 'GESELLSCHAFTSVERTRAG')
+      ) {
+        return 'Bitte laden Sie für die nicht registerpflichtige Gesellschaft einen Gesellschaftsvertrag oder Gründungsnachweis hoch.';
+      }
+      if (
+        !noRegisterEntry &&
+        !extraDocs.some(
+          (document) =>
+            document.type === 'GESELLSCHAFTSVERTRAG' || document.type === 'HANDELSREGISTERAUSZUG',
+        )
+      ) {
+        return 'Bitte laden Sie einen Registerauszug oder Gründungsnachweis hoch.';
+      }
+      if (
+        !noRegisterEntry &&
+        !extraDocs.some((document) => document.type === 'TRANSPARENZREGISTER_AUSZUG')
+      ) {
+        return 'Bitte laden Sie zusätzlich einen Transparenzregister-Auszug hoch.';
       }
     }
     if (STEPS[step]?.key === 'privacy') {
@@ -247,6 +310,7 @@ export function OnboardingWizard({
       const r = await submitOnboardingAction({
         token,
         master: { companyName, street, postalCode, city, countryIso, vatId },
+        legalEntity: client.kind === 'NATPERS' ? null : { noRegisterEntry: noRegisterEntry! },
         owners: owners.map((o) => ({
           fullName: o.fullName,
           birthDate: o.birthDate,
@@ -257,6 +321,7 @@ export function OnboardingWizard({
           city: o.city,
           countryIso: o.countryIso,
           sharePercent: o.sharePercent,
+          isPep: o.isPep!,
           idNumber: o.idNumber,
           idIssuedBy: o.idIssuedBy,
           idIssueDate: o.idIssueDate,
@@ -264,7 +329,10 @@ export function OnboardingWizard({
           idFrontDocumentId: o.idFront!.documentId,
           idBackDocumentId: o.idBack!.documentId,
         })),
-        extraDocumentIds: extraDocs.map((d) => d.documentId),
+        extraDocuments: extraDocs.map((document) => ({
+          documentId: document.documentId,
+          type: document.type,
+        })),
         consent: {
           noticeAcknowledged: true as const,
           signedByName,
@@ -381,13 +449,65 @@ export function OnboardingWizard({
       {/* Schritt 2: Sonstige Dokumente */}
       {step === 2 && (
         <div className="card p-6 space-y-4">
-          <h2 className="text-lg font-semibold text-primary">Sonstige Dokumente (optional)</h2>
+          <h2 className="text-lg font-semibold text-primary">
+            {client.kind === 'NATPERS' ? 'Weitere Nachweise (optional)' : 'Rechtsträgernachweise'}
+          </h2>
           <p className="text-sm text-muted">
-            Falls Sie schon einen Handelsregisterauszug oder andere relevante Unterlagen haben,
-            können Sie diese hier hochladen. Wenn nicht: kein Problem — die Kanzlei besorgt
-            HR-Auszug und Transparenzregister-Auszug selbst.
+            {client.kind === 'NATPERS'
+              ? 'Weitere für die Identifizierung relevante Unterlagen können Sie hier ergänzen.'
+              : noRegisterEntry === true
+                ? 'Laden Sie den Gesellschaftsvertrag oder einen gleichwertigen Gründungsnachweis hoch. Für die erklärte nicht registerpflichtige Gesellschaft wird kein Transparenzregister-Auszug verlangt.'
+                : 'Laden Sie den Registerauszug oder den Gründungsnachweis sowie den Transparenzregister-Auszug direkt hier hoch.'}
           </p>
+          {client.kind !== 'NATPERS' && (
+            <div className="rounded-md border border-default bg-surface-raised p-4">
+              <label className="label" htmlFor="legal-entity-register-status">
+                Registerstatus des Rechtsträgers
+              </label>
+              <select
+                id="legal-entity-register-status"
+                className="input"
+                value={
+                  noRegisterEntry === null ? '' : noRegisterEntry ? 'NO_REGISTER' : 'REGISTERED'
+                }
+                onChange={(event) => {
+                  const withoutRegister = event.target.value === 'NO_REGISTER';
+                  setNoRegisterEntry(withoutRegister);
+                  if (withoutRegister) setExtraType('GESELLSCHAFTSVERTRAG');
+                }}
+                required
+              >
+                <option value="" disabled>
+                  — bitte auswählen —
+                </option>
+                <option value="REGISTERED">Register-/Transparenzregistereintrag vorhanden</option>
+                <option value="NO_REGISTER">
+                  Nicht registerpflichtig / kein Registereintrag (z. B. einfache GbR)
+                </option>
+              </select>
+              <p className="text-xs text-muted mt-2">
+                Die Erklärung wird mit der Einreichung dokumentiert und anschließend von der Kanzlei
+                geprüft. Bei fehlender Registerpflicht dient der Gesellschaftsvertrag als
+                Alternativnachweis.
+              </p>
+            </div>
+          )}
           <div>
+            <label className="label" htmlFor="entity-evidence-type">
+              Dokumenttyp
+            </label>
+            <select
+              id="entity-evidence-type"
+              className="input max-w-md mb-3"
+              value={extraType}
+              onChange={(event) => setExtraType(event.target.value as EntityEvidenceType)}
+            >
+              {ENTITY_EVIDENCE_TYPES.map((entry) => (
+                <option key={entry.value} value={entry.value}>
+                  {entry.label}
+                </option>
+              ))}
+            </select>
             <label className="block">
               <span className="btn-secondary cursor-pointer inline-flex">
                 <Upload className="h-4 w-4" /> Datei hochladen
@@ -397,7 +517,7 @@ export function OnboardingWizard({
                 className="sr-only"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
-                  if (f) void handleExtraUpload(f);
+                  if (f) void handleExtraUpload(f, extraType);
                   e.target.value = '';
                 }}
               />
@@ -406,10 +526,28 @@ export function OnboardingWizard({
           </div>
           {extraDocs.length > 0 && (
             <ul className="divide-y divide-border-subtle border border-default rounded">
-              {extraDocs.map((d, i) => (
-                <li key={i} className="px-3 py-2 text-sm flex items-center justify-between">
-                  <span className="text-secondary">{d.fileName}</span>
-                  <span className="text-xs text-emerald-700">✓ hochgeladen</span>
+              {extraDocs.map((document) => (
+                <li
+                  key={document.documentId}
+                  className="px-3 py-2 text-sm flex items-center justify-between gap-3"
+                >
+                  <span className="text-secondary">
+                    {document.fileName}
+                    <span className="block text-xs text-muted">
+                      {ENTITY_EVIDENCE_TYPES.find((entry) => entry.value === document.type)?.label}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    className="text-xs text-red-700 inline-flex items-center gap-1"
+                    onClick={() =>
+                      setExtraDocs((documents) =>
+                        documents.filter((entry) => entry.documentId !== document.documentId),
+                      )
+                    }
+                  >
+                    <Trash2 className="h-3 w-3" /> entfernen
+                  </button>
                 </li>
               ))}
             </ul>
@@ -437,7 +575,7 @@ export function OnboardingWizard({
             <p className="text-xs text-muted mb-3">
               Nur ankreuzen, was Sie wünschen. Nichts anzukreuzen ist möglich.
             </p>
-            <ConsentFields onChange={setConsent} />
+            <ConsentFields options={consentOptions} onChange={setConsent} />
           </div>
 
           <div className="border-t border-default pt-4 space-y-3">
@@ -484,7 +622,17 @@ export function OnboardingWizard({
               label="Ausweisangaben"
               value={`${owners.filter((o) => o.idNumber || o.idExpiryDate).length} erfasst`}
             />
-            <SummaryRow label="Sonstige Dokumente" value={`${extraDocs.length} hochgeladen`} />
+            {client.kind !== 'NATPERS' && noRegisterEntry !== null && (
+              <SummaryRow
+                label="Registerstatus"
+                value={
+                  noRegisterEntry
+                    ? 'Nicht registerpflichtig / kein Eintrag erklärt'
+                    : 'Registereintrag vorhanden'
+                }
+              />
+            )}
+            <SummaryRow label="Weitere Nachweise" value={`${extraDocs.length} hochgeladen`} />
           </dl>
           {submitError && <div className="alert-error-sm">{submitError}</div>}
           <button
@@ -539,6 +687,7 @@ function emptyOwner(name: string): BeneficialOwner {
     city: '',
     countryIso: 'DE',
     sharePercent: '',
+    isPep: null,
     idNumber: '',
     idIssuedBy: '',
     idIssueDate: '',
@@ -653,6 +802,29 @@ function OwnerCard({
           value={owner.sharePercent}
           onChange={(v) => onPatch({ sharePercent: v })}
         />
+      </div>
+      <div>
+        <label className="label" htmlFor={`owner-${owner.id}-pep`}>
+          Politisch exponierte Person (PEP) oder enges Familienmitglied
+        </label>
+        <select
+          id={`owner-${owner.id}-pep`}
+          className="input"
+          value={owner.isPep === null ? '' : owner.isPep ? 'true' : 'false'}
+          onChange={(event) =>
+            onPatch({ isPep: event.target.value === '' ? null : event.target.value === 'true' })
+          }
+          required
+        >
+          <option value="" disabled>
+            — bitte auswählen —
+          </option>
+          <option value="false">Nein</option>
+          <option value="true">Ja</option>
+        </select>
+        <p className="text-xs text-muted mt-1">
+          Die Angabe ist für verstärkte Sorgfaltspflichten und die Risikoeinstufung erforderlich.
+        </p>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <Field

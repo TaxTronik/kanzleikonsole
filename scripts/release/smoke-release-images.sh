@@ -42,6 +42,17 @@ for ref in "$WEB_IMAGE" "$WORKER_IMAGE"; do
   }
 done
 
+docker run --rm --entrypoint sh "$WORKER_IMAGE" -eu -c '
+  test "$(id -u)" = "1000"
+  test -r /app/packages/db/scripts/migrate-deploy.sh
+  test -r /app/packages/db/prisma/migrations/20260801003400_gwg_fail_closed_and_destruction/migration.sql
+  test ! -w /app/packages/db/scripts/migrate-deploy.sh
+  test ! -w /app/packages/db/prisma/migrations/20260801003400_gwg_fail_closed_and_destruction/migration.sql
+' || {
+  echo "Worker-Image hat fuer USER node unsichere Migrationsdateirechte." >&2
+  exit 1
+}
+
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/taxtronik-release-smoke.XXXXXX")"
 ENV_FILE="$TMP_DIR/smoke.env"
 OVERRIDE="$TMP_DIR/smoke.override.yml"

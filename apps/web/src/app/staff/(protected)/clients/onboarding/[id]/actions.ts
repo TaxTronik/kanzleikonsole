@@ -2,6 +2,7 @@
 
 import { z } from 'zod';
 import { redirect } from 'next/navigation';
+import { revalidatePath } from 'next/cache';
 import { portalBaseUrl } from '@taxtronik/config';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
@@ -9,6 +10,7 @@ import { requestMagicLink } from '@/server/auth/magic-link';
 import { sendTemplateMail } from '@/server/mail/dispatch';
 import { fireAndForget } from '@/server/util/fire-and-forget';
 import { generateInviteToken, INVITE_TTL_DAYS } from '@/server/gwg-onboarding/service';
+import { prepareGwgInviteIssueTx } from '@/server/gwg-onboarding/invite-lifecycle';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
 
@@ -165,6 +167,11 @@ export async function onboardingSendGwgAction(formData: FormData) {
 
   const inviteId = await withTenantContext(ctx, async (tx) => {
     await assertClientAccessTx(tx, g.session, parsed.data.clientId);
+    const issue = await prepareGwgInviteIssueTx(tx, {
+      tenantId,
+      clientId: parsed.data.clientId,
+      cancelledByStaff: staffId,
+    });
     const inv = await tx.gwgOnboardingInvite.create({
       data: {
         tenantId,
@@ -174,6 +181,7 @@ export async function onboardingSendGwgAction(formData: FormData) {
         tokenHash: hash,
         expiresAt,
         createdByStaff: staffId,
+        createdAt: issue.createdAt,
       },
     });
     await evidenceService.record(tx, {
@@ -187,6 +195,7 @@ export async function onboardingSendGwgAction(formData: FormData) {
         inviteEmail: parsed.data.inviteEmail,
         expiresAt: expiresAt.toISOString(),
         onboarding: true,
+        supersededInviteCount: issue.supersededInviteCount,
       },
     });
     return inv.id;
@@ -261,6 +270,56 @@ export async function onboardingCompleteAction(formData: FormData) {
 
   await withTenantContext(ctx, async (tx) => {
     await assertClientAccessTx(tx, g.session, clientId);
+    const client = await tx.client.findUnique({
+      where: { id: clientId },
+      select: { allowActive: true, onboardingCompletedAt: true },
+    });
+    if (!client) throw new ActionError('Mandant nicht gefunden.');
+
+    // Idempotent: ein erneuter Klick darf den historischen Abschlusszeitpunkt
+    // nicht verändern und benötigt auch keine erneute GwG-Prüfung.
+    if (client.onboardingCompletedAt) return;
+
+    const [latestCheck, activeContacts] = await Promise.all([
+      tx.gwgCheck.findFirst({
+        where: { clientId },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: { id: true, status: true, validUntil: true },
+      }),
+      tx.clientContact.count({ where: { clientId, active: true } }),
+    ]);
+    if (activeContacts === 0) {
+      throw new ActionError(
+        'Das Onboarding kann erst mit mindestens einem aktiven Ansprechpartner abgeschlossen werden.',
+      );
+    }
+    if (
+      !client.allowActive ||
+      latestCheck?.status !== 'VERIFIED' ||
+      (latestCheck.validUntil !== null && latestCheck.validUntil < new Date())
+    ) {
+      throw new ActionError(
+        'Das Onboarding kann erst nach einer gültigen GwG-Freigabe abgeschlossen werden.',
+      );
+    }
+
+    const completedAt = new Date();
+    const claim = await tx.client.updateMany({
+      where: { id: clientId, allowActive: true, onboardingCompletedAt: null },
+      data: { onboardingCompletedAt: completedAt, onboardingCompletedBy: staffId },
+    });
+    if (claim.count === 0) {
+      const current = await tx.client.findUnique({
+        where: { id: clientId },
+        select: { onboardingCompletedAt: true },
+      });
+      // Gleichzeitiger Doppelklick: der Gewinner hat Marker und Audit bereits
+      // geschrieben. Der zweite Aufruf bleibt ohne doppelten Nachweis idempotent.
+      if (current?.onboardingCompletedAt) return;
+      throw new ActionError(
+        'Der Mandantenstatus hat sich parallel geändert. Bitte Onboarding neu laden.',
+      );
+    }
     await evidenceService.record(tx, {
       tenantId,
       actorType: 'STAFF',
@@ -268,8 +327,11 @@ export async function onboardingCompleteAction(formData: FormData) {
       action: 'client.onboarding.complete',
       resourceType: 'client',
       resourceId: clientId,
+      after: { onboardingCompletedAt: completedAt.toISOString(), gwgCheckId: latestCheck.id },
     });
   });
 
+  revalidatePath('/staff/clients');
+  revalidatePath(`/staff/clients/${clientId}`);
   redirect(`/staff/clients/${clientId}`);
 }

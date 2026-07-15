@@ -2,7 +2,13 @@
 
 import { z } from 'zod';
 import { evidenceService } from '@/server/container';
-import { withStaff, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
+import {
+  ActionError,
+  withStaff,
+  type ActionResult as BaseActionResult,
+} from '@/server/actions/staff-action';
+import { readConsentOptionsCatalogTx } from '@/server/privacy/consent-catalog';
+import { lockConsentCatalogTx } from '@/server/privacy/catalog-lock';
 
 export type ActionResult = BaseActionResult;
 
@@ -61,17 +67,40 @@ export async function createServiceProviderAction(
   );
 }
 
-export async function deleteServiceProviderAction(formData: FormData): Promise<void> {
+export async function deleteServiceProviderAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   // F6: UUID-Validation.
   const parsed = z.object({ id: z.string().uuid() }).safeParse({ id: formData.get('id') });
-  if (!parsed.success) return;
+  if (!parsed.success) return { ok: false, error: 'Ungültige Dienstleister-ID.' };
   const { id } = parsed.data;
 
   // Löschen ist ebenfalls DSGVO/AVV-relevant → nur ADMIN/PARTNER.
-  await withStaff(
+  return withStaff(
     async (tx, { tenantId, staffId }) => {
+      await lockConsentCatalogTx(tx, tenantId);
       const before = await tx.serviceProvider.findUnique({ where: { id } });
       if (!before) return;
+      let catalog;
+      try {
+        catalog = await readConsentOptionsCatalogTx(tx, tenantId);
+      } catch {
+        throw new ActionError(
+          'Der Einwilligungskatalog ist beschädigt. Bitte zuerst unter Administration → Datenschutz reparieren.',
+        );
+      }
+      const linkedOptions = catalog.options.filter((option) => option.serviceProviderId === id);
+      if (linkedOptions.length > 0) {
+        const labels = linkedOptions
+          .slice(0, 3)
+          .map((option) => `„${option.label}“`)
+          .join(', ');
+        const suffix = linkedOptions.length > 3 ? ' und weitere' : '';
+        throw new ActionError(
+          `Dienstleister ist mit ${labels}${suffix} verknüpft. Bitte die Verknüpfung zuerst unter Administration → Datenschutz entfernen.`,
+        );
+      }
       await tx.serviceProvider.delete({ where: { id } });
       await evidenceService.record(tx, {
         tenantId,
@@ -83,6 +112,9 @@ export async function deleteServiceProviderAction(formData: FormData): Promise<v
         before: { name: before.name, category: before.category },
       });
     },
-    { requireAdmin: true, revalidate: '/staff/service-providers' },
+    {
+      requireAdmin: true,
+      revalidate: ['/staff/service-providers', '/staff/admin/privacy'],
+    },
   );
 }

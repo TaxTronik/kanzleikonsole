@@ -13,7 +13,9 @@ import {
   countGranted,
   hasConsentRevocation,
   parseConsent,
+  type ConsentSelections,
 } from '@/server/privacy/consent';
+import { resolveConsentSelectionsTx } from '@/server/privacy/consent-catalog';
 import { renderNoticeForTenantTx } from '@/server/privacy/service';
 import { isPrivacyConfigComplete, readPrivacyConfigTx } from '@/server/privacy/notice';
 
@@ -43,20 +45,18 @@ export async function saveConsentAction(
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler — bitte Eingaben prüfen.' };
   const d = parsed.data;
 
-  let consents;
+  let submittedConsents: ConsentSelections;
   try {
-    consents = ConsentSelectionsSchema.parse(JSON.parse(d.consentsJson));
+    submittedConsents = ConsentSelectionsSchema.parse(JSON.parse(d.consentsJson));
   } catch {
     return { ok: false, error: 'Einwilligungsdaten konnten nicht gelesen werden.' };
   }
-  // Leere Array-Zeilen (ohne Empfänger/Person) verwerfen — sie sind kein Consent.
-  consents.thirdParties = consents.thirdParties.filter((t) => t.recipient.trim() !== '');
-  consents.specialists = consents.specialists.filter((s) => s.entity.trim() !== '');
 
   try {
     await withTenantContext(ctx, async (tx) => {
       await assertClientAccessTx(tx, session, d.clientId);
       await assertClientInTenant(tx, d.clientId);
+      const consents = await resolveConsentSelectionsTx(tx, tenantId, submittedConsents);
       // Optionaler Kontakt muss zum Mandanten gehören.
       let signedByContact: string | null = null;
       if (d.signedByContact && d.signedByContact !== '') {

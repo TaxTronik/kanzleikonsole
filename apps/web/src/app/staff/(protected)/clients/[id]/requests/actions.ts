@@ -1,6 +1,7 @@
 'use server';
 
 import { z } from 'zod';
+import { randomUUID } from 'node:crypto';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
@@ -13,6 +14,7 @@ import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
 
 const CreateSchema = z.object({
+  requestId: z.string().uuid(),
   clientId: z.string().uuid(),
   title: z.string().min(2).max(200),
   description: z.string().min(2).max(5000),
@@ -28,17 +30,18 @@ export interface ActionResult {
   ok: boolean;
   error?: string;
   fieldErrors?: Record<string, string>;
+  requestId?: string;
+  clientId?: string;
+  nextRequestId?: string;
 }
 
-export async function createRequestAction(
-  _prev: ActionResult | null,
-  formData: FormData,
-): Promise<ActionResult> {
+async function createRequestCore(formData: FormData): Promise<ActionResult> {
   const g = await staffActionGuard();
   if (!g.ok) return g;
   const { tenantId, staffId, ctx, session } = g;
 
   const parsed = CreateSchema.safeParse({
+    requestId: formData.get('requestId'),
     clientId: formData.get('clientId'),
     title: formData.get('title'),
     description: formData.get('description'),
@@ -59,34 +62,119 @@ export async function createRequestAction(
   const data = parsed.data;
 
   let createdId: string;
+  let createdFresh: boolean;
   try {
-    createdId = await withTenantContext(ctx, async (tx) => {
+    const result = await withTenantContext(ctx, async (tx) => {
       await assertClientAccessTx(tx, session, data.clientId);
+
+      // Eine Server-Action kann nach einem unklaren Netzwerkabbruch erneut
+      // zugestellt werden. Der transaktionsweite Advisory Lock serialisiert
+      // exakt dieselbe, vom Server erzeugte Request-ID; dadurch entstehen
+      // weder doppelte Anforderungen noch doppelte Formulare/Audit-Eintraege.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${data.requestId}::text, 0))`;
+      const replay = await tx.request.findFirst({
+        where: { id: data.requestId, tenantId },
+        select: {
+          id: true,
+          tenantId: true,
+          clientId: true,
+          createdByStaff: true,
+          title: true,
+          description: true,
+          priority: true,
+          dueAt: true,
+          formSubmission: { select: { templateId: true } },
+        },
+      });
+      if (replay) {
+        const creationAudit = await tx.auditLog.findFirst({
+          where: {
+            tenantId,
+            action: 'request.create',
+            resourceType: 'request',
+            resourceId: replay.id,
+          },
+          orderBy: { id: 'asc' },
+          select: { after: true },
+        });
+        const auditAfter =
+          creationAudit?.after &&
+          typeof creationAudit.after === 'object' &&
+          !Array.isArray(creationAudit.after)
+            ? (creationAudit.after as Record<string, unknown>)
+            : null;
+        const requestedDueAt = data.dueAt ? new Date(data.dueAt) : null;
+        const replayDueAtMatches =
+          replay.dueAt === null
+            ? requestedDueAt === null
+            : requestedDueAt !== null && replay.dueAt.getTime() === requestedDueAt.getTime();
+        const replayFormTemplateId = replay.formSubmission?.templateId ?? '';
+        const replayRequestTemplateId =
+          typeof auditAfter?.['templateId'] === 'string' ? auditAfter['templateId'] : '';
+        if (
+          replay.tenantId !== tenantId ||
+          replay.clientId !== data.clientId ||
+          replay.createdByStaff !== staffId ||
+          replay.title !== data.title ||
+          replay.description !== data.description ||
+          replay.priority !== data.priority ||
+          !replayDueAtMatches ||
+          replayFormTemplateId !== (data.formTemplateId || '') ||
+          replayRequestTemplateId !== (data.templateId || '')
+        ) {
+          throw new ActionError(
+            'Diese Erstellungs-ID wurde bereits mit anderen Angaben verwendet. Bitte Formular neu laden.',
+          );
+        }
+        return { id: replay.id, created: false };
+      }
+
+      if (data.templateId) {
+        const requestTemplate = await tx.requestTemplate.findFirst({
+          where: {
+            id: data.templateId,
+            tenantId,
+            active: true,
+            OR: [{ formTemplateId: null }, { formTemplate: { active: true } }],
+          },
+          select: { id: true },
+        });
+        if (!requestTemplate) {
+          throw new ActionError(
+            'Die ausgewählte Anforderungsvorlage ist nicht mehr aktiv. Bitte Auswahl aktualisieren.',
+          );
+        }
+      }
+
       // Optional: Formular-Submission vorab anlegen — die Submission ist
       // im DRAFT-Status und wird mit der Request verknüpft.
       let formSubmissionId: string | null = null;
       if (data.formTemplateId) {
-        const formTpl = await tx.formTemplate.findUnique({
-          where: { id: data.formTemplateId },
+        const formTpl = await tx.formTemplate.findFirst({
+          where: { id: data.formTemplateId, tenantId },
           select: { id: true, name: true, active: true },
         });
-        if (formTpl && formTpl.active) {
-          const sub = await tx.formSubmission.create({
-            data: {
-              tenantId,
-              templateId: formTpl.id,
-              clientId: data.clientId,
-              name: formTpl.name,
-              status: 'PENDING',
-              createdByStaff: staffId,
-            },
-          });
-          formSubmissionId = sub.id;
+        if (!formTpl?.active) {
+          throw new ActionError(
+            'Das ausgewählte Formular ist nicht mehr aktiv. Bitte Auswahl aktualisieren.',
+          );
         }
+        const sub = await tx.formSubmission.create({
+          data: {
+            tenantId,
+            templateId: formTpl.id,
+            clientId: data.clientId,
+            name: formTpl.name,
+            status: 'PENDING',
+            createdByStaff: staffId,
+          },
+        });
+        formSubmissionId = sub.id;
       }
 
       const req = await tx.request.create({
         data: {
+          id: data.requestId,
           tenantId,
           clientId: data.clientId,
           title: data.title,
@@ -121,52 +209,79 @@ export async function createRequestAction(
           formSubmissionId,
         },
       });
-      return req.id;
+      return { id: req.id, created: true };
     });
+    createdId = result.id;
+    createdFresh = result.created;
   } catch (e) {
     // GwG-Schranke (DB-Trigger) → eigene, klare Meldung; sonst generisch.
-    if ((e as Error).message.includes('GwG-Schranke')) {
+    if (e instanceof Error && e.message.includes('GwG-Schranke')) {
       return { ok: false, error: 'Mandant ist nicht aktiv (GwG-Prüfung ausstehend).' };
     }
     return toActionError(e);
   }
 
-  const portalUrl = `${portalBaseUrl}/portal/requests/${createdId}`;
-  // Befund 3: fire-and-forget mit catch+Log statt `void` (unhandled rejection).
-  fireAndForget(
-    'notifyClientContacts (request-opened)',
-    notifyClientContacts({
-      tenantId,
-      clientId: data.clientId,
-      slug: 'request-opened',
-      vars: {
-        request: {
-          id: createdId,
-          title: data.title,
-          description: data.description,
-          priority: data.priority,
-        },
-        portalUrl,
-      },
-      n8nEvent: 'request.opened',
-      n8nPayload: {
+  if (createdFresh) {
+    const portalUrl = `${portalBaseUrl}/portal/requests/${createdId}`;
+    // Befund 3: fire-and-forget mit catch+Log statt `void` (unhandled rejection).
+    fireAndForget(
+      'notifyClientContacts (request-opened)',
+      notifyClientContacts({
         tenantId,
-        requestId: createdId,
         clientId: data.clientId,
-        priority: data.priority,
-        dueAt: data.dueAt ?? null,
-      },
-      fallback: {
-        subject: 'Neue Anforderung von Ihrer Kanzlei: {{request.title}}',
-        bodyMd:
-          'Sehr geehrte/r {{contact.fullName}},\n\nin Ihrem Mandantenportal liegt eine neue Anforderung für Sie bereit:\n\n**{{request.title}}**\n\n{{request.description}}\n\nBitte öffnen Sie das Portal:\n{{portalUrl}}',
-      },
-    }),
-  );
+        slug: 'request-opened',
+        vars: {
+          request: {
+            id: createdId,
+            title: data.title,
+            description: data.description,
+            priority: data.priority,
+          },
+          portalUrl,
+        },
+        n8nEvent: 'request.opened',
+        n8nPayload: {
+          tenantId,
+          requestId: createdId,
+          clientId: data.clientId,
+          priority: data.priority,
+          dueAt: data.dueAt ?? null,
+        },
+        fallback: {
+          subject: 'Neue Anforderung von Ihrer Kanzlei: {{request.title}}',
+          bodyMd:
+            'Sehr geehrte/r {{contact.fullName}},\n\nin Ihrem Mandantenportal liegt eine neue Anforderung für Sie bereit:\n\n**{{request.title}}**\n\n{{request.description}}\n\nBitte öffnen Sie das Portal:\n{{portalUrl}}',
+        },
+      }),
+    );
+  }
 
   revalidatePath(`/staff/clients/${data.clientId}`);
   revalidatePath('/staff/requests');
-  redirect(`/staff/clients/${data.clientId}`); // wirft (never) — NACH dem try/catch
+  return { ok: true, requestId: createdId, clientId: data.clientId };
+}
+
+/**
+ * Redirectfreier Aufrufer für den Quick-Dialog. Der gesamte sichere Create-
+ * Pfad (Access-/GwG-Gate, Audit, Mail und n8n) liegt in createRequestCore und
+ * ist damit identisch zur vollständigen Formularseite.
+ */
+export async function createQuickRequestAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const result = await createRequestCore(formData);
+  return result.ok ? { ...result, nextRequestId: randomUUID() } : result;
+}
+
+/** Bestehender Vollseiten-Flow: nach erfolgreicher Erstellung zur Akte. */
+export async function createRequestAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const result = await createRequestCore(formData);
+  if (!result.ok) return result;
+  redirect(`/staff/clients/${result.clientId}`); // wirft (never) — NACH dem Create-Core
 }
 
 const CloseSchema = z.object({

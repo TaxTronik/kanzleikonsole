@@ -190,41 +190,46 @@ export function GwgSubmissionSummary({
         <div>
           <h3 className="text-sm font-semibold text-primary mb-3 flex items-center gap-2">
             <IdCard className="h-4 w-4 text-brand-600" />
-            Identitätsdokumente
+            Identitäts- und Rechtsträgernachweise
           </h3>
           <ul className="divide-y divide-border-subtle border border-default rounded-md">
-            {data.idDocuments.map((doc) => (
-              <li key={doc.id} className="p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <FileCheck className="h-4 w-4 text-green-600" />
-                  <span className="font-medium text-primary">
-                    {idTypeLabels[doc.type] ?? doc.type}
-                  </span>
-                  <span className="text-xs text-muted">für {doc.ownerName}</span>
-                  {doc.expiryDate && new Date(doc.expiryDate) < new Date() && (
-                    <span className="badge-red">abgelaufen</span>
+            {data.idDocuments.map((doc) => {
+              const personal = doc.type === 'PERSONALAUSWEIS' || doc.type === 'REISEPASS';
+              return (
+                <li key={doc.id} className="p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <FileCheck className="h-4 w-4 text-green-600" />
+                    <span className="font-medium text-primary">
+                      {idTypeLabels[doc.type] ?? doc.type}
+                    </span>
+                    {personal && <span className="text-xs text-muted">für {doc.ownerName}</span>}
+                    {doc.expiryDate && new Date(doc.expiryDate) < new Date() && (
+                      <span className="badge-red">abgelaufen</span>
+                    )}
+                  </div>
+                  {personal && (
+                    <dl className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
+                      <Field label="Nummer" value={doc.number} />
+                      <Field label="Ausgestellt am" value={fmtMaybeDate(doc.issueDate)} />
+                      <Field label="Gültig bis" value={fmtMaybeDate(doc.expiryDate)} />
+                      <Field label="Behörde" value={doc.issuedBy} />
+                    </dl>
                   )}
-                </div>
-                <dl className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
-                  <Field label="Nummer" value={doc.number} />
-                  <Field label="Ausgestellt am" value={fmtMaybeDate(doc.issueDate)} />
-                  <Field label="Gültig bis" value={fmtMaybeDate(doc.expiryDate)} />
-                  <Field label="Behörde" value={doc.issuedBy} />
-                </dl>
-                <div className="flex items-center justify-between gap-3 text-xs">
-                  <span className="text-muted">{doc.notes ?? ''}</span>
-                  {doc.document && (
-                    <div className="flex items-center gap-1">
-                      <span className="text-muted truncate">{doc.document.title}</span>
-                      <DocumentPreviewButton
-                        documentId={doc.document.id}
-                        documentTitle={doc.document.title}
-                      />
-                    </div>
-                  )}
-                </div>
-              </li>
-            ))}
+                  <div className="flex items-center justify-between gap-3 text-xs">
+                    <span className="text-muted">{doc.notes ?? ''}</span>
+                    {doc.document && (
+                      <div className="flex items-center gap-1">
+                        <span className="text-muted truncate">{doc.document.title}</span>
+                        <DocumentPreviewButton
+                          documentId={doc.document.id}
+                          documentTitle={doc.document.title}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}

@@ -83,7 +83,11 @@ export function LegalEntityDetailsForm({ checkId, clientId, current, disabled }:
           disabled={disabled}
           className="mt-1"
         />
-        <span>Kein Registereintrag vorhanden (beweiskräftiges Gründungsdokument erforderlich)</span>
+        <span>
+          Nicht registerpflichtig / kein Registereintrag (z. B. einfache GbR). In diesem Fall sind
+          Gesellschaftsvertrag bzw. Gründungsnachweis statt Register- und Transparenzregister-Auszug
+          erforderlich.
+        </span>
       </label>
 
       <div>

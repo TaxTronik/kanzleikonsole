@@ -1,8 +1,7 @@
 ﻿'use client';
 
 import { useState, useTransition, type SubmitEvent } from 'react';
-import { useRouter } from 'next/navigation';
-import type { RiskFactor } from '@/server/gwg/risk-score';
+import { computeRiskScore, type RiskFactor } from '@/server/gwg/risk-score';
 import { saveRiskAnswersAction } from './actions';
 
 interface Props {
@@ -24,9 +23,9 @@ export function RiskAssessmentForm({
   currentLevel,
   disabled,
 }: Props) {
-  const router = useRouter();
   const [answers, setAnswers] = useState<Record<string, number>>(currentAnswers);
   const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   function setAnswer(key: string, value: number) {
@@ -36,14 +35,21 @@ export function RiskAssessmentForm({
   function handleSubmit(e: SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
+    setSaved(false);
     startTransition(async () => {
       const r = await saveRiskAnswersAction({ checkId, clientId, answers });
       if (r.error) setError(r.error);
-      else router.refresh();
+      else setSaved(true);
     });
   }
 
   const allAnswered = factors.every((f) => answers[f.key] !== undefined && answers[f.key] !== null);
+  // Die Berechnung selbst ist rein und umfasst nur wenige Faktoren. Sie wird
+  // sofort im Browser angezeigt; der Server-Button speichert anschließend den
+  // Snapshot samt Audit-Nachweis, ohne eine zweite vollständige Seitennachladung.
+  const preview = allAnswered ? computeRiskScore(answers) : null;
+  const shownScore = preview?.score ?? currentScore;
+  const shownLevel = preview?.level ?? currentLevel;
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -71,37 +77,38 @@ export function RiskAssessmentForm({
         </div>
       ))}
 
-      {currentScore !== null && currentLevel !== null && (
+      {shownScore !== null && shownLevel !== null && (
         <div className="rounded-md bg-gray-50 p-4 flex items-center justify-between">
           <div>
             <p className="text-xs text-muted uppercase tracking-wide">Risikobewertung</p>
             <p className="text-sm text-secondary">
-              Score: <strong>{currentScore}</strong>
+              Score: <strong>{shownScore}</strong>
             </p>
           </div>
           <span
             className={
-              currentLevel === 'HIGH'
+              shownLevel === 'HIGH'
                 ? 'badge-red'
-                : currentLevel === 'MEDIUM'
+                : shownLevel === 'MEDIUM'
                   ? 'badge-yellow'
                   : 'badge-green'
             }
           >
-            {currentLevel}
+            {shownLevel}
           </span>
         </div>
       )}
 
       {error && <div className="alert-error-sm">{error}</div>}
+      {saved && <div className="alert-success-sm">Risikobewertung gespeichert.</div>}
 
       {!disabled && (
         <div>
           <button type="submit" className="btn-primary" disabled={isPending || !allAnswered}>
             {isPending
-              ? 'Berechnet…'
+              ? 'Speichert…'
               : currentScore === null
-                ? 'Bewertung berechnen'
+                ? 'Bewertung speichern'
                 : 'Bewertung aktualisieren'}
           </button>
           {!allAnswered && (

@@ -37,6 +37,9 @@ out
 .env
 .env.*
 .admin-credentials.txt
+.taxtronik.state
+.taxtronik.migration-pending
+.taxtronik.database-restored
 licensing-private-*.pem
 infra/scripts/seaweedfs-s3.generated.json
 
@@ -48,6 +51,9 @@ pnpm-debug.log*
 
 # Lokale Operator-Backups (Postgres-Dumps)
 /backups
+# Historischer relativer App-Pfad; darf weder Build-Kontext noch Image-Layer
+# mit potenziell produktiven Dumps verunreinigen.
+/apps/web/backups
 
 # Test-Output
 coverage

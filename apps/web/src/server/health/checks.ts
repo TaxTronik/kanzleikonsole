@@ -21,6 +21,13 @@ export interface ServiceStatus {
   error?: string;
 }
 
+export interface N8nTenantStatus extends ServiceStatus {
+  url: string | null;
+  source: 'tenant' | 'legacy-setting' | 'env' | 'none';
+  /** Eine alte Loopback-Vorgabe ist im App-Container kein erreichbares n8n-Ziel. */
+  legacyMigrationRequired?: true;
+}
+
 export async function checkPostgres(): Promise<ServiceStatus> {
   const start = Date.now();
   try {
@@ -94,9 +101,7 @@ export async function checkN8n(): Promise<ServiceStatus> {
 }
 
 /** Tenant-spezifisch: bevorzugt die normalisierte n8n-Verbindung. */
-export async function checkN8nForTenant(
-  tenantId: string,
-): Promise<ServiceStatus & { url?: string | null; source?: 'tenant' | 'env' | 'none' }> {
+export async function checkN8nForTenant(tenantId: string): Promise<N8nTenantStatus> {
   const stored = await withTenantContext(
     { tenantId, actorId: null, actorType: 'SYSTEM' },
     async (tx) => {
@@ -158,33 +163,56 @@ export async function checkN8nForTenant(
 
   const dbUrl = stored.legacyUrl;
   if (dbUrl) {
-    const r = await checkN8nUrl(dbUrl);
-    return { ...r, url: dbUrl, source: 'tenant' };
+    return checkLegacyN8nUrl(dbUrl, 'legacy-setting');
   }
   if (env.N8N_WEBHOOK_BASE_URL) {
-    const r = await checkN8nUrl(env.N8N_WEBHOOK_BASE_URL);
-    return { ...r, url: env.N8N_WEBHOOK_BASE_URL, source: 'env' };
+    return checkLegacyN8nUrl(env.N8N_WEBHOOK_BASE_URL, 'env');
   }
   return { ok: false, url: null, source: 'none', error: 'Keine n8n-Webhook-URL gesetzt' };
+}
+
+async function checkLegacyN8nUrl(
+  rawUrl: string,
+  source: 'legacy-setting' | 'env',
+): Promise<N8nTenantStatus> {
+  // Alte Installationen haben häufig `localhost` gespeichert. Aus dem
+  // App-Container zeigt das auf den App-Container selbst, nicht auf n8n. Das
+  // ist ein Konfigurations-/Migrationszustand und kein sinnvoller
+  // Erreichbarkeitstest. Insbesondere wird der SSRF-Guard hier nicht umgangen:
+  // Wir starten für diese URL gar keinen Request. Normalisierte Verbindungen
+  // laufen weiterhin ausnahmslos durch safeFetch.
+  if (isLoopbackUrl(rawUrl)) {
+    return {
+      ok: false,
+      url: rawUrl,
+      source,
+      legacyMigrationRequired: true,
+    };
+  }
+
+  const result = await checkN8nUrl(rawUrl);
+  return { ...result, url: rawUrl, source };
 }
 
 async function checkN8nUrl(rawUrl: string | null): Promise<ServiceStatus> {
   if (!rawUrl) return { ok: false, error: 'n8n-URL nicht gesetzt' };
   const start = Date.now();
+  let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     const url = new URL('/healthz', rawUrl);
     const ctrl = new AbortController();
-    const to = setTimeout(() => ctrl.abort(), 3000);
+    timeout = setTimeout(() => ctrl.abort(), 3000);
     // R1/H1: safeFetch macht assertPublicHost + DNS-Pinning in einem Schritt —
     // kein TOCTOU-Fenster zwischen Check und Verbindung.
     // M-6: redirect:'error' verhindert 302 zu internen Adressen.
     const res = await safeFetch(url.toString(), { signal: ctrl.signal, redirect: 'error' });
     await res.text(); // Body konsumieren, damit safeFetch seinen gepinnten Agent schließt.
-    clearTimeout(to);
     if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
     return { ok: true, latencyMs: Date.now() - start };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
+  } finally {
+    if (timeout) clearTimeout(timeout);
   }
 }
 

@@ -80,10 +80,13 @@ export const ACTION_LABELS: Record<string, string> = {
   // GwG-Prüfung
   'gwg.check.open': 'GwG-Prüfung gestartet',
   'gwg.check.assess': 'GwG-Risikobewertung',
+  'gwg.check.submit_for_review': 'GwG-Prüfung zur Freigabe eingereicht',
   'gwg.owner.add': 'Wirtschaftlich Berechtigter erfasst',
+  'gwg.owner.update': 'Wirtschaftlich Berechtigten aktualisiert',
   'gwg.id_document.add': 'Ausweisdokument erfasst',
   'gwg.check.verify': 'GwG-Prüfung verifiziert',
   'gwg.check.reject': 'GwG-Prüfung abgelehnt',
+  'gwg.evidence.add': 'GwG-Rechtsträgernachweis zugeordnet',
   'gwg.legal_entity_details.update': 'GwG-Register- und Vertretungsdaten aktualisiert',
   'gwg.evidence.destroy.request': 'Vernichtung von GwG-Belegen angefordert',
   'gwg.evidence.destroy': 'GwG-Beleg vernichtet (§ 8 Abs. 4)',
@@ -124,6 +127,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'privacy.consent.grant': 'Datenschutz-Einwilligung erfasst',
   'privacy.consent.revoke': 'Datenschutz-Einwilligung widerrufen',
   'privacy.config.update': 'Kanzlei-Datenschutzangaben geändert',
+  'privacy.consent_options.update': 'Datenschutz-Einwilligungsoptionen geändert',
   'tax_notice.status': 'Bescheid-Status geändert',
 
   // BWA

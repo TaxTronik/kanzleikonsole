@@ -48,7 +48,7 @@ export function AddBeneficialOwnerForm({
           <label className="label" htmlFor="bo-birthDate">
             Geburtsdatum
           </label>
-          <input id="bo-birthDate" name="birthDate" type="date" className="input" />
+          <input id="bo-birthDate" name="birthDate" type="date" className="input" required />
         </div>
       </div>
 
@@ -63,6 +63,7 @@ export function AddBeneficialOwnerForm({
             type="text"
             className="input"
             maxLength={200}
+            required
           />
         </div>
         <div>
@@ -75,6 +76,7 @@ export function AddBeneficialOwnerForm({
             type="text"
             className="input"
             maxLength={100}
+            required
           />
         </div>
       </div>
@@ -84,7 +86,14 @@ export function AddBeneficialOwnerForm({
           <label className="label" htmlFor="bo-residence">
             Wohnsitz
           </label>
-          <input id="bo-residence" name="residence" type="text" className="input" maxLength={500} />
+          <input
+            id="bo-residence"
+            name="residence"
+            type="text"
+            className="input"
+            maxLength={500}
+            required
+          />
         </div>
         <div>
           <label className="label" htmlFor="bo-ownershipPct">
@@ -102,10 +111,18 @@ export function AddBeneficialOwnerForm({
         </div>
       </div>
 
-      <label className="flex items-center gap-2 text-sm text-secondary">
-        <input type="checkbox" name="isPep" value="1" />
-        Politisch exponierte Person (PEP)
-      </label>
+      <div>
+        <label className="label" htmlFor="bo-isPep">
+          PEP-Status
+        </label>
+        <select id="bo-isPep" name="isPep" className="input" defaultValue="" required>
+          <option value="" disabled>
+            Bitte auswählen
+          </option>
+          <option value="false">Keine PEP</option>
+          <option value="true">PEP / enges Familienmitglied</option>
+        </select>
+      </div>
 
       {state?.error && <div className="alert-error-sm">{state.error}</div>}
 
