@@ -7,7 +7,7 @@ import type { ReactNode } from 'react';
 // =============================================================================
 
 import { ExternalLink, Newspaper } from 'lucide-react';
-import { fmtDateShort } from '@/lib/fmt';
+import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
 import { RssReaderManage } from '../rss-reader-manage';
 import { TaxNewsToggle } from '../tax-news-toggle';
 import { BookmarkButton } from '../bookmark-button';
@@ -33,7 +33,7 @@ function feedBadgeClass(color: string | null): string {
 }
 
 export async function TaxNews({ tx, staffId, isAdmin }: RenderCtx): Promise<ReactNode> {
-  const [feeds, staff, bookmarks] = await Promise.all([
+  const [feeds, staff, bookmarks, lastFetchSetting] = await Promise.all([
     tx.rssFeed.findMany({
       where: { staffId },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
@@ -47,7 +47,18 @@ export async function TaxNews({ tx, staffId, isAdmin }: RenderCtx): Promise<Reac
       where: { staffId, resourceType: 'tax_news_item' },
       select: { resourceId: true },
     }),
+    // Vom Fetch-Lauf (Worker + Admin-Trigger) geschriebener Marker; RLS
+    // begrenzt auf den eigenen Tenant.
+    tx.tenantSetting.findFirst({
+      where: { key: 'tax-news.last-fetch-at' },
+      select: { value: true },
+    }),
   ]);
+
+  const lastFetchAt =
+    typeof lastFetchSetting?.value === 'string' && !Number.isNaN(Date.parse(lastFetchSetting.value))
+      ? new Date(lastFetchSetting.value)
+      : null;
 
   const activeUrls = feeds
     .filter((f: { active: boolean }) => f.active)
@@ -71,9 +82,14 @@ export async function TaxNews({ tx, staffId, isAdmin }: RenderCtx): Promise<Reac
   return (
     <div className="card h-full flex flex-col">
       <div className="px-5 py-3 border-b border-default flex items-center justify-between gap-2 shrink-0 relative">
-        <h2 className="text-sm font-medium text-primary flex items-center gap-2">
-          <Newspaper className="h-4 w-4 text-disabled" />
-          RSS-Reader
+        <h2 className="text-sm font-medium text-primary flex items-baseline gap-2 min-w-0">
+          <Newspaper className="h-4 w-4 text-disabled self-center shrink-0" />
+          <span className="shrink-0">RSS-Reader</span>
+          {lastFetchAt && (
+            <span className="truncate text-[10px] font-normal text-muted">
+              aktualisiert {fmtDateTimeShort(lastFetchAt)}
+            </span>
+          )}
         </h2>
         <div className="flex items-center gap-1 relative">
           <RssReaderManage

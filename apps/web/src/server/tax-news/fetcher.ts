@@ -74,6 +74,22 @@ export async function fetchAndPersistTaxNews(): Promise<{
     }
   }
 
+  // Lauf-Marker pro Tenant mit aktiven Feeds — das RSS-Widget zeigt daraus
+  // "aktualisiert am" (gleiches Muster wie der Worker-Job tax-news-fetch).
+  const feedTenants = await prismaOwner.rssFeed.findMany({
+    where: { active: true },
+    select: { tenantId: true },
+    distinct: ['tenantId'],
+  });
+  const lastFetchAt = new Date().toISOString();
+  for (const { tenantId } of feedTenants) {
+    await prismaOwner.tenantSetting.upsert({
+      where: { tenantId_key: { tenantId, key: 'tax-news.last-fetch-at' } },
+      update: { value: lastFetchAt },
+      create: { tenantId, key: 'tax-news.last-fetch-at', value: lastFetchAt },
+    });
+  }
+
   return {
     feeds: activeFeeds.length,
     fetched: all.length,

@@ -188,6 +188,24 @@ export const taxNewsFetchWorker = new Worker<ChecksJob>(
       });
     }
 
+    // Lauf-Marker pro Tenant mit aktiven Feeds — das RSS-Widget zeigt daraus
+    // "aktualisiert am". Bewusst auch bei 0 neuen Items schreiben: der Lauf
+    // HAT stattgefunden, nur gab es nichts Neues (max(fetchedAt) wäre dann
+    // irreführend alt).
+    const feedTenants = await prismaOwner.rssFeed.findMany({
+      where: { active: true },
+      select: { tenantId: true },
+      distinct: ['tenantId'],
+    });
+    const lastFetchAt = new Date().toISOString();
+    for (const { tenantId } of feedTenants) {
+      await prismaOwner.tenantSetting.upsert({
+        where: { tenantId_key: { tenantId, key: 'tax-news.last-fetch-at' } },
+        update: { value: lastFetchAt },
+        create: { tenantId, key: 'tax-news.last-fetch-at', value: lastFetchAt },
+      });
+    }
+
     log.info(
       { feeds: activeFeeds.length, fetched: all.length, inserted, notifications },
       'tax-news-fetch: done',
