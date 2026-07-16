@@ -296,11 +296,11 @@ async function startCheckCycle(formData: FormData): Promise<ActionResult & { che
       return { checkId };
     },
     {
-      revalidate: [
-        `/staff/clients/${clientId}`,
-        `/staff/clients/${clientId}/gwg`,
-        `/staff/clients/onboarding/${clientId}`,
-      ],
+      // Nur Fremd-Routen invalidieren — die aktuelle GwG-Route refresht
+      // StartCheckCycleForm nach ok außerhalb der Form-Transition (der
+      // In-POST-Re-Render ließ die Transition sonst bis zum nächsten
+      // Klick hängen).
+      revalidate: [`/staff/clients/${clientId}`, `/staff/clients/onboarding/${clientId}`],
     },
   );
 }

@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -58,6 +59,19 @@ export function GwgIdentitySubjectsProvider({
   const [invalidatedIdentitySets, setInvalidatedIdentitySets] = useState<IdentityInvalidationState>(
     {},
   );
+
+  // Neue Server-Props übernehmen (Muster wie GwgEditStateProvider): nach
+  // einem RSC-Refresh — insbesondere nach dem Start eines neuen Prüfzyklus,
+  // der alle Personen mit FRISCHEN IDs kopiert — hielt der Provider sonst die
+  // alten Optionen fest. Eine unveränderte Bestätigung submittete dann
+  // `owner:<alte-id>` und scheiterte serverseitig mit „Die identifizierte
+  // Person gehört nicht mehr zu den erfassten …".
+  const lastServerOptions = useRef(initialOptions);
+  useEffect(() => {
+    if (lastServerOptions.current === initialOptions) return;
+    lastServerOptions.current = initialOptions;
+    setSubjectOptions(initialOptions);
+  }, [initialOptions]);
 
   const replaceRepresentatives = useCallback((representatives: EditableRepresentative[]) => {
     setSubjectOptions((current) => {

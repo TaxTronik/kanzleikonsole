@@ -1,6 +1,7 @@
 'use client';
 
-import { useActionState, useCallback, useState, type FormEvent } from 'react';
+import { useActionState, useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useRouter } from 'next/navigation';
 import { RefreshCw, ShieldCheck } from 'lucide-react';
 import { startNewCheckCycleAction, type ActionResult } from './actions';
 import { sendInviteAction } from './invite-actions';
@@ -40,6 +41,15 @@ export function StartCheckCycleForm({
         };
   }, []);
   const [state, formAction, isPending] = useActionState<CycleResult | null, FormData>(action, null);
+  const router = useRouter();
+
+  // Refresh außerhalb der Form-Transition: die Action revalidiert die aktuelle
+  // GwG-Route bewusst nicht mehr (In-POST-Re-Render ließ die Transition bis
+  // zum nächsten Klick hängen) — der neue Prüfzyklus kommt über diesen
+  // Refresh in die Seite.
+  useEffect(() => {
+    if (state?.ok) router.refresh();
+  }, [router, state]);
 
   function confirmReverification(event: FormEvent<HTMLFormElement>) {
     if (
