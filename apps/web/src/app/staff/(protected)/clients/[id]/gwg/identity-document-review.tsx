@@ -1,6 +1,7 @@
 'use client';
 
 import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Download, FileCheck, FileSearch, Loader2, X } from 'lucide-react';
 import {
@@ -216,6 +217,7 @@ function IdentitySetFileManager({
   const [query, setQuery] = useState('');
   const [uploadedDocuments, setUploadedDocuments] = useState<SelectableGwgDocument[]>([]);
   const [selectedCandidates, setSelectedCandidates] = useState<IdentitySetFileCandidate[]>([]);
+  const router = useRouter();
   const [state, formAction, isPending] = useActionState<
     (ActionResult & { reviewReset?: boolean }) | null,
     FormData
@@ -234,7 +236,10 @@ function IdentitySetFileManager({
     if (!state?.ok) return;
     setSelectedCandidates([]);
     setPickerOpen(false);
-  }, [state]);
+    // Refresh außerhalb der Form-Transition (Action revalidiert die aktuelle
+    // Route nicht mehr — sonst hing die Transition bis zum nächsten Klick).
+    router.refresh();
+  }, [router, state]);
 
   const allCandidates = useMemo(() => {
     const byKey = new Map<string, IdentitySetFileCandidate>();

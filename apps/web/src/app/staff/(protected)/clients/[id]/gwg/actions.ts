@@ -810,7 +810,11 @@ export async function addBeneficialOwnerAction(
         },
       });
     },
-    { revalidate: `/staff/clients/${data.clientId}/gwg` },
+    // Kein revalidate der aktuellen Route: das erzwang einen kompletten
+    // RSC-Re-Render der GwG-Seite IN der Action-Antwort und ließ die
+    // Form-Transition bis zur nächsten Interaktion hängen (UI "switcht"
+    // erst nach erneutem Klick). Der Client ruft stattdessen nach dem
+    // Erfolg router.refresh() außerhalb der Transition auf.
   );
 }
 
@@ -1488,7 +1492,8 @@ export async function addIdDocumentAction(
         },
       });
     },
-    { revalidate: `/staff/clients/${data.clientId}/gwg` },
+    // Kein revalidate der aktuellen Route (siehe addBeneficialOwnerAction) —
+    // der Client refresht nach dem Erfolg außerhalb der Form-Transition.
   );
 }
 
@@ -1750,7 +1755,7 @@ export async function extendIdentityDocumentSetAction(
       return { reviewReset: check.status === 'IN_REVIEW' };
     },
     {
-      revalidate: `/staff/clients/${data.clientId}/gwg`,
+      // Kein revalidate der aktuellen Route (siehe addBeneficialOwnerAction).
       uniqueError:
         'Mindestens eine Datei wurde zwischenzeitlich bereits zugeordnet. Bitte Seite neu laden.',
     },
@@ -2135,7 +2140,11 @@ export async function submitCheckForReviewAction(
     return toActionError(error);
   }
 
-  revalidatePath(`/staff/clients/${clientId}/gwg`);
+  // Bewusst KEIN revalidatePath der aktuellen GwG-Route: das löste den
+  // In-POST-Re-Render + die hängende Form-Transition aus (UI erst nach
+  // erneutem Klick aktuell). decision-forms ruft nach ok router.refresh()
+  // außerhalb der Transition auf — darüber kommt auch der frische
+  // reviewSnapshotHash an. Fremde Routen nur Cache-Invalidierung (ok).
   revalidatePath(`/staff/clients/onboarding/${clientId}`);
   return { ok: true };
 }
@@ -2333,8 +2342,9 @@ export async function verifyCheckAction(
       { tenantId },
     );
   }
+  // Nur die Fremd-Route (Cockpit) invalidieren — die aktuelle GwG-Route
+  // refresht der Client nach ok außerhalb der Form-Transition (siehe oben).
   revalidatePath(`/staff/clients/${clientId}`);
-  revalidatePath(`/staff/clients/${clientId}/gwg`);
   return { ok: true };
 }
 
@@ -2425,6 +2435,5 @@ export async function rejectCheckAction(
 
   await emitN8nEvent('gwg.expired', { tenantId, clientId, reason: 'rejected' }, { tenantId });
   revalidatePath(`/staff/clients/${clientId}`);
-  revalidatePath(`/staff/clients/${clientId}/gwg`);
   return { ok: true };
 }

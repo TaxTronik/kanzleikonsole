@@ -65,7 +65,10 @@ export function QuickRequestDialog({
 
   return (
     <>
-      <div className="inline-flex flex-col items-end gap-1">
+      {/* relative + absolute Statuszeile: die Erfolgsmeldung darf die Höhe
+          der Button-Zeile nicht verändern (verschob sonst den Button
+          gegenüber Nachbar-Buttons wie dem CSV-Export). */}
+      <div className="relative inline-flex flex-col items-end">
         <button
           type="button"
           className={buttonClassName}
@@ -85,12 +88,15 @@ export function QuickRequestDialog({
           {buttonLabel}
         </button>
         {creationBlocked && (
-          <span className="text-xs text-muted max-w-56 text-right">
+          <span className="absolute right-0 top-full mt-1 max-w-56 whitespace-nowrap text-right text-xs text-muted">
             Erst nach abgeschlossener GwG-Prüfung möglich.
           </span>
         )}
-        {created && (
-          <span role="status" className="text-xs text-emerald-700">
+        {created && !creationBlocked && (
+          <span
+            role="status"
+            className="absolute right-0 top-full mt-1 whitespace-nowrap text-xs text-emerald-700"
+          >
             Anforderung erstellt.
           </span>
         )}

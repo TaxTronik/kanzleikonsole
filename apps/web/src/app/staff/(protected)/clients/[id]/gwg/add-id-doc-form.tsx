@@ -1,6 +1,7 @@
 'use client';
 
 import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { FileSearch, Loader2, X } from 'lucide-react';
 import { addIdDocumentAction, type ActionResult } from './actions';
@@ -64,6 +65,7 @@ export function AddIdDocumentForm({
   const [selectedSubjectKey, setSelectedSubjectKey] = useState(
     availableSubjects.length === 1 ? availableSubjects[0]!.key : '',
   );
+  const router = useRouter();
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
     addIdDocumentAction,
     null,
@@ -84,7 +86,10 @@ export function AddIdDocumentForm({
     formRef.current?.reset();
     setType(types[0].value);
     setSelectedDocuments([]);
-  }, [state, types]);
+    // Refresh außerhalb der Form-Transition (Action revalidiert die aktuelle
+    // Route nicht mehr — sonst hing die Transition bis zum nächsten Klick).
+    router.refresh();
+  }, [router, state, types]);
   useEffect(() => {
     if (!isPending) submittingRef.current = false;
   }, [isPending]);

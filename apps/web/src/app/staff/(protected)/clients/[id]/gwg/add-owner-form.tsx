@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { useActionState, useRef, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { addBeneficialOwnerAction, type ActionResult } from './actions';
 import { useGwgEditState } from './edit-state-context';
 
@@ -12,6 +13,7 @@ export function AddBeneficialOwnerForm({
   clientId: string;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
+  const router = useRouter();
   const { markRiskInvalidated } = useGwgEditState();
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
     addBeneficialOwnerAction,
@@ -24,7 +26,11 @@ export function AddBeneficialOwnerForm({
     // Die Server-Action setzt die Risikobewertung zurück (invalidateRisk) —
     // das Risiko-Formular muss seine CAS-Revision sofort nachziehen.
     markRiskInvalidated();
-  }, [markRiskInvalidated, state]);
+    // Refresh AUSSERHALB der Form-Transition: die Action revalidiert die
+    // aktuelle Route bewusst nicht mehr (hängende Transition bis zum
+    // nächsten Klick) — die neue Person kommt über diesen Refresh herein.
+    router.refresh();
+  }, [markRiskInvalidated, router, state]);
 
   return (
     <form

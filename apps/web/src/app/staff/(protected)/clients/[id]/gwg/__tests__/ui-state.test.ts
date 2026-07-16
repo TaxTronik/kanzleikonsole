@@ -11,7 +11,11 @@ describe('lokaler GwG-Bearbeitungszustand', () => {
     const source = read('identity-document-review.tsx');
     const stateHook = read('use-identity-review-state.ts');
 
-    expect(source).not.toContain('router.refresh()');
+    // Das SPEICHERN der Ausweisangaben (updateIdDocumentsAction) gleicht den
+    // Zustand weiterhin lokal über den Reducer ab (kein Refresh im Save-Pfad).
+    // Der Refresh existiert nur im Erweitern-Effekt (extendIdentityDocument-
+    // SetAction), dessen Action die aktuelle Route bewusst nicht mehr
+    // revalidiert — sonst hing die Form-Transition bis zum nächsten Klick.
     expect(source).toContain('setExpanded(true);');
     expect(source).toContain('invalidatedRevision ??');
     expect(source).toContain('useIdentityReviewState({');
@@ -50,7 +54,11 @@ describe('lokaler GwG-Bearbeitungszustand', () => {
   it('wechselt nach erfolgreicher Einreichung sofort live auf IN_REVIEW', () => {
     const decisionForms = read('decision-forms.tsx');
 
-    expect(decisionForms).toContain('if (submitState?.ok) markInReview();');
+    expect(decisionForms).toContain('if (!submitState?.ok) return;');
+    expect(decisionForms).toContain('markInReview();');
+    // Frischer reviewSnapshotHash kommt über router.refresh() außerhalb der
+    // Form-Transition (Action revalidiert die aktuelle Route nicht mehr).
+    expect(decisionForms).toContain('router.refresh();');
     expect(decisionForms).toContain("status === 'IN_REVIEW' && reviewSnapshotHash");
     expect(decisionForms).toContain('Die gebundene Prüfansicht wird aktualisiert');
   });

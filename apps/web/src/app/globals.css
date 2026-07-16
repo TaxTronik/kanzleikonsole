@@ -1007,6 +1007,27 @@
   body.sidebar-open aside.app-sidebar {
     transform: translateX(0);
   }
+
+  /* ui-modern-Glas auf Mobile opak schalten: backdrop-filter wird auf
+     transformierten fixed-Elementen von vielen Mobile-Browsern nicht
+     angewendet — die 55–65%-Deckkraft bleibt dann OHNE Blur übrig und das
+     Menüband wirkt transparent/unlesbar über dem Seiteninhalt. */
+  .ui-modern aside.app-sidebar {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background-color: rgb(255 255 255 / 0.98) !important;
+  }
+  .ui-modern.dark aside.app-sidebar {
+    background-color: rgb(17 24 39 / 0.98) !important;
+  }
+  .ui-modern main .sticky {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background-color: rgb(255 255 255 / 0.98) !important;
+  }
+  .ui-modern.dark main .sticky {
+    background-color: rgb(17 24 39 / 0.98) !important;
+  }
 }
 
 /* Tiptap-Sachverhalt-Editor: schlichte Struktur-Styles für den Rich-Text. */

@@ -52,8 +52,13 @@ export function GwgDecisionForms({
   // Dadurch wechselt Badge und Entscheidungsbereich sofort auf IN_REVIEW. Die
   // servergebundene Freigabe bleibt gesperrt, bis Hash und Props nachgezogen sind.
   useEffect(() => {
-    if (submitState?.ok) markInReview();
-  }, [markInReview, submitState]);
+    if (!submitState?.ok) return;
+    markInReview();
+    // Die Action revalidiert die aktuelle Route nicht mehr (hängende
+    // Form-Transition); der frische reviewSnapshotHash kommt über diesen
+    // Refresh außerhalb der Transition herein.
+    router.refresh();
+  }, [markInReview, router, submitState]);
 
   // Verify/Reject: sofortiger optimistischer Flip + expliziter router.refresh()
   // AUSSERHALB der Form-Transition. Ohne beides hing die UI komplett am
