@@ -52,9 +52,9 @@ Z. 1154–1155: `active`/`deleted` werden pro Render neu ge-filtert und sind Dep
 
 **Fix:** `active`/`deleted` in `useMemo([documents])`; Ordner-Counts einmalig als `Map` aggregieren; Suchfeld mit `useDeferredValue` entkoppeln.
 
-### P5 — 110 von 114 Seiten ohne `loading.tsx`, kein `<Suspense>` _(mittel)_
+### P5 — ~~loading.tsx ergänzen~~ (ZURÜCKGEZOGEN — verursachte tote Buttons)
 
-Bei app-weitem `force-dynamic` (`app/layout.tsx:17`) friert jede Navigation zu schweren Seiten (`/staff/documents`, `/staff/workflows`, `/staff/requests`) ohne Feedback ein. **Fix:** Skeleton-`loading.tsx` für die Top-Routen.
+ZURÜCKGEZOGEN (2026-07-16 abends): loading.tsx erzeugt eine Suspense-Boundary, deren Inhalt React unter Next 16/React 19 dauerhaft NICHT hydriert — sämtliche Buttons/Formulare der Seite bleiben tot, bis ein Klick die selektive Hydration erzwingt (Symptom: "Button reagiert erst beim zweiten Klick / irgendwann"). Empirisch verifiziert auf der GwG-Seite; alle loading.tsx wurden wieder entfernt. KEINE loading.tsx einführen, bis das Upstream-Verhalten geklärt/gefixt ist.
 
 ### P6 — `revalidatePath('/staff/clients', 'layout')` als Standard-Nuke _(mittel)_
 
