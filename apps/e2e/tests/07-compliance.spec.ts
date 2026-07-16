@@ -756,7 +756,7 @@ test.describe.serial('DSGVO — Datenschutz-Grundverordnung', () => {
       throw new Error('Admin cannot access admin page — RBAC or session issue');
     }
 
-    const dsgvoLink = page.getByRole('link', { name: /DSGVO/i });
+    const dsgvoLink = page.getByRole('link', { name: /Datenschutz/i });
     const dsgvoVisible = await dsgvoLink
       .first()
       .isVisible({ timeout: 5000 })
@@ -1685,24 +1685,32 @@ test.describe('Magic Link Security', () => {
     expect(foundToken, 'Magic-Link-Mail muss einen Token-Parameter enthalten').toBe(true);
   });
 
-  test('8.3 Invalid/expired token is rejected after explicit confirmation', async ({ page }) => {
+  test('8.3 Invalid/expired token is rejected without consuming anything', async ({ page }) => {
+    // Seit 666c7ab inspiziert die Verify-Seite den Token beim GET read-only
+    // (konsumiert wird weiterhin ausschliesslich per explizitem POST der
+    // Profil-Auswahl). Ein ungueltiger Token liefert daher direkt den
+    // Fehlerzustand — ohne Bestaetigungs-Button, ohne Session.
     await page.goto('/portal/login/verify?token=invalid-token-12345');
-    const confirmButton = page.getByRole('button', { name: 'Anmelden', exact: true });
-    await expect(
-      confirmButton,
-      'Token-Prüfung darf erst nach expliziter Bestätigung erfolgen',
-    ).toBeVisible();
-    await confirmButton.click();
-
-    await expect(
-      page,
-      'Ungültiger Token muss ohne Token-Leak in den Fehlerzustand wechseln',
-    ).toHaveURL(/\/portal\/login\/verify\?status=invalid$/, { timeout: 10_000 });
     await expect(
       page.getByText('Der Link ist ungültig, abgelaufen oder wurde bereits verwendet.', {
         exact: true,
       }),
+      'Ungültiger Token muss den Fehlerzustand zeigen',
     ).toBeVisible();
+    await expect(
+      page.getByRole('link', { name: /Neuen Link anfordern/i }),
+      'Fehlerzustand muss den Weg zurück zum Login anbieten',
+    ).toBeVisible();
+    // Kein Profil-Bestätigungs-Button für ungültige Tokens.
+    await expect(page.getByRole('button', { name: /öffnen/i })).toHaveCount(0);
+
+    // Es darf keine Portal-Session entstanden sein: geschützte Seite leitet
+    // zurück zum Login.
+    await page.goto('/portal/dashboard');
+    await expect(page, 'Ungültiger Token darf keine Session erzeugen').toHaveURL(
+      /\/portal\/login/,
+      { timeout: 10_000 },
+    );
   });
 
   test('8.4 Rate limiting on magic link requests', async ({ page }) => {
@@ -2025,7 +2033,8 @@ test.describe('Authorization & RBAC', () => {
     await loginAsAdmin(page);
     await expect(page).toHaveURL(/\/staff\/dashboard/, { timeout: 15_000 });
 
-    const dsgvoLink = page.getByRole('link', { name: /DSGVO/i });
+    // Sidebar-Label seit 666c7ab: "Datenschutz" statt "DSGVO".
+    const dsgvoLink = page.getByRole('link', { name: /Datenschutz/i });
     const dsgvoVisible = await dsgvoLink.isVisible({ timeout: 5000 }).catch(() => false);
     expect(dsgvoVisible).toBeTruthy();
 

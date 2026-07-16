@@ -10,6 +10,7 @@ import { emitN8nEvent } from '@/server/n8n/emit';
 import { notifyClientContacts } from '@/server/mail/dispatch';
 import { fireAndForget } from '@/server/util/fire-and-forget';
 import { portalBaseUrl } from '@taxtronik/config';
+import { berlinWallClockToUtc } from '@/lib/fmt';
 import { toActionError, assertClientAccessTx, accessibleClientsWhereFor } from '@/server/auth/rbac';
 import { staffActionGuard, ActionError, parseFormData } from '@/server/actions/staff-action';
 
@@ -19,7 +20,13 @@ const CreateSchema = z.object({
   title: z.string().min(2).max(200),
   description: z.string().min(2).max(5000),
   priority: z.enum(['LOW', 'NORMAL', 'HIGH', 'URGENT']).default('NORMAL'),
-  dueAt: z.string().datetime().optional().or(z.literal('')),
+  // Zeitzonenloser Stempel aus <input type="datetime-local"> (Berlin-Wanduhr),
+  // Konvertierung nach UTC via berlinWallClockToUtc — wie im Terminkalender.
+  dueAt: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, 'YYYY-MM-DDTHH:MM')
+    .optional()
+    .or(z.literal('')),
   // Optional: Anforderungs-Vorlage (rein informativ, wird im Audit gespeichert)
   templateId: z.string().uuid().optional().or(z.literal('')),
   // Optional: Formular-Template, das mit der Anforderung verschickt wird
@@ -177,7 +184,7 @@ async function createRequestCore(formData: FormData): Promise<ActionResult> {
           !Array.isArray(creationAudit.after)
             ? (creationAudit.after as Record<string, unknown>)
             : null;
-        const requestedDueAt = data.dueAt ? new Date(data.dueAt) : null;
+        const requestedDueAt = data.dueAt ? berlinWallClockToUtc(data.dueAt) : null;
         const replayDueAtMatches =
           replay.dueAt === null
             ? requestedDueAt === null
@@ -254,7 +261,7 @@ async function createRequestCore(formData: FormData): Promise<ActionResult> {
           title: data.title,
           description: data.description,
           priority: data.priority,
-          dueAt: data.dueAt ? new Date(data.dueAt) : null,
+          dueAt: data.dueAt ? berlinWallClockToUtc(data.dueAt) : null,
           formSubmissionId,
           createdByStaff: staffId,
         },
@@ -319,7 +326,7 @@ async function createRequestCore(formData: FormData): Promise<ActionResult> {
           requestId: createdId,
           clientId: data.clientId,
           priority: data.priority,
-          dueAt: data.dueAt ?? null,
+          dueAt: data.dueAt ? (berlinWallClockToUtc(data.dueAt)?.toISOString() ?? null) : null,
         },
         fallback: {
           subject: 'Neue Anforderung von Ihrer Kanzlei: {{request.title}}',

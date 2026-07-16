@@ -3,7 +3,6 @@
 import { useActionState, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, X, CalendarPlus, Trash2 } from 'lucide-react';
-import { DateTimePicker } from '@/components/datetime-picker';
 import { createAppointmentRequestAction, type ActionResult } from './actions';
 
 interface StaffOption {
@@ -11,18 +10,25 @@ interface StaffOption {
   fullName: string;
 }
 
-function defaultStartFor(slotIndex: number): Date {
+/** Lokaler `YYYY-MM-DDTHH:MM`-Stempel für <input type="datetime-local">. */
+function toLocalIsoMinute(d: Date): string {
+  const off = d.getTimezoneOffset();
+  const local = new Date(d.getTime() - off * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
+function defaultStartFor(slotIndex: number): string {
   const d = new Date();
   d.setDate(d.getDate() + 1 + slotIndex);
   d.setHours(10, 0, 0, 0);
-  return d;
+  return toLocalIsoMinute(d);
 }
 
-function defaultEndFor(slotIndex: number): Date {
+function defaultEndFor(slotIndex: number): string {
   const d = new Date();
   d.setDate(d.getDate() + 1 + slotIndex);
   d.setHours(11, 0, 0, 0);
-  return d;
+  return toLocalIsoMinute(d);
 }
 
 export function AppointmentRequestForm({ staffOptions }: { staffOptions: StaffOption[] }) {
@@ -121,12 +127,14 @@ export function AppointmentRequestForm({ staffOptions }: { staffOptions: StaffOp
                     >
                       Beginn
                     </label>
-                    <DateTimePicker
+                    <input
                       id={`appointment-slot-${i}-starts`}
                       name={`slot${i}_starts`}
+                      type="datetime-local"
+                      className="input"
                       defaultValue={defaultStartFor(i)}
                       required
-                      minDate={new Date()}
+                      min={toLocalIsoMinute(new Date())}
                     />
                   </div>
                   <div>
@@ -136,12 +144,14 @@ export function AppointmentRequestForm({ staffOptions }: { staffOptions: StaffOp
                     >
                       Ende
                     </label>
-                    <DateTimePicker
+                    <input
                       id={`appointment-slot-${i}-ends`}
                       name={`slot${i}_ends`}
+                      type="datetime-local"
+                      className="input"
                       defaultValue={defaultEndFor(i)}
                       required
-                      minDate={new Date()}
+                      min={toLocalIsoMinute(new Date())}
                     />
                   </div>
                 </div>

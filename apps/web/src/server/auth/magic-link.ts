@@ -29,8 +29,9 @@ async function sendMagicLink(input: {
   recipient: PortalProfileOption;
   contactId: string | null;
   profileCount: number;
+  returnTo?: string;
 }): Promise<void> {
-  const { tenantId, tenantName, recipient, contactId, profileCount } = input;
+  const { tenantId, tenantName, recipient, contactId, profileCount, returnTo } = input;
   const rawToken = generateRawToken();
   const tokenHash = hashToken(rawToken);
   const expiresAt = new Date(Date.now() + MAGIC_LINK_TTL_MINUTES * 60 * 1000);
@@ -45,7 +46,12 @@ async function sendMagicLink(input: {
     },
   });
 
-  const link = `${portalBaseUrl}/portal/login/verify?token=${encodeURIComponent(rawToken)}`;
+  // returnTo (Deeplink vor dem Login, z. B. Anforderungs-Detail) wird an die
+  // Verify-URL angehängt; die Verify-Seite und confirmMagicLinkAction erden
+  // den Wert erneut über safePortalReturnTo (nur /portal/…-Pfade).
+  const returnToSuffix =
+    returnTo && returnTo.startsWith('/portal/') ? `&returnTo=${encodeURIComponent(returnTo)}` : '';
+  const link = `${portalBaseUrl}/portal/login/verify?token=${encodeURIComponent(rawToken)}${returnToSuffix}`;
 
   if (env.NODE_ENV !== 'production') {
     log.info(
@@ -137,6 +143,8 @@ export async function requestMagicLink(input: {
   tenantId: string;
   email: string;
   contactId?: string;
+  /** Optionaler /portal/…-Deeplink, auf dem der Nutzer nach dem Login landet. */
+  returnTo?: string;
 }): Promise<{ ok: boolean }> {
   const emailKey = input.email.toLowerCase();
 
@@ -173,6 +181,7 @@ export async function requestMagicLink(input: {
     recipient: eligibleProfiles[0]!,
     contactId: input.contactId ? eligibleProfiles[0]!.contactId : null,
     profileCount: eligibleProfiles.length,
+    returnTo: input.returnTo,
   });
 
   return { ok: true };

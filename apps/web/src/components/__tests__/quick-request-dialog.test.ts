@@ -30,9 +30,11 @@ describe('Quick-Anforderungsdialog', () => {
     expect(source).toContain('name="description"');
     expect(source).toContain('name="priority"');
     expect(source).toContain('name="dueAt"');
-    expect(source).toContain('<DateTimePicker');
-    expect(source).toContain('output="utc"');
-    expect(source).not.toContain('type="datetime-local"');
+    // Natives datetime-local wie im Terminkalender (new-appointment-dialog):
+    // ein Picker-Stil app-weit; die frühere react-datepicker-Komponente wurde
+    // entfernt (Popup brach in Overflow-Dialogen und wich optisch ab).
+    expect(source).toContain('type="datetime-local"');
+    expect(source).not.toContain('<DateTimePicker');
     expect(source).toContain('disabled={isPending || disabled || !selectedClientId}');
   });
 

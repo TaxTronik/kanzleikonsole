@@ -12,6 +12,7 @@ import { isAllowedN8nEvent } from '@taxtronik/n8n-shared';
 import type { Prisma } from '@prisma/client';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { log } from '@/server/logger';
+import { withTimeout } from '@/lib/with-timeout';
 import type { N8nEventName } from './emit';
 import { getN8nDeliverQueue } from './queue';
 
@@ -283,10 +284,18 @@ export async function enqueueN8nEvent(
   const enqueueResults = await Promise.all(
     planned.deliveryIds.map(async (deliveryId) => {
       try {
-        await getN8nDeliverQueue().add(
-          'deliver',
-          { deliveryId },
-          { ...DELIVERY_JOB_OPTIONS, jobId: `delivery-${deliveryId}` },
+        // Timeout-gedeckelt: bei Redis-Ausfall/Reconnect parkt ioredis den
+        // Befehl in der Offline-Queue und das add()-Promise resolved/rejected
+        // NIE — Server Actions (z. B. GwG-Verifikation) hingen dadurch
+        // minutenlang nach bereits committeter Transaktion. Der Reconcile-Job
+        // sammelt stuck PENDING-Deliveries ohnehin alle 5 Minuten ein.
+        await withTimeout(
+          getN8nDeliverQueue().add(
+            'deliver',
+            { deliveryId },
+            { ...DELIVERY_JOB_OPTIONS, jobId: `delivery-${deliveryId}` },
+          ),
+          2_000,
         );
         return true;
       } catch (err) {

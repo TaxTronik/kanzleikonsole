@@ -31,7 +31,12 @@ export async function loginAsMandant(page: Page, request: APIRequestContext): Pr
   normalizedLink.protocol = base.protocol;
   normalizedLink.host = base.host;
   await page.goto(normalizedLink.toString(), { waitUntil: 'domcontentloaded' });
-  await page.getByRole('button', { name: /Anmelden/i }).click();
+  // Seit 666c7ab zeigt die Verify-Seite pro Mandantenprofil einen Button
+  // ("{Mandant} / Als {Kontakt} öffnen") statt eines einzelnen "Anmelden".
+  await page
+    .getByRole('button', { name: /öffnen/i })
+    .first()
+    .click();
   // Wait for redirect to dashboard (may take a moment with Turbopack)
   await page.waitForURL(/\/portal\/dashboard/, { timeout: 15_000 }).catch(() => {});
   await expectPortalDashboardReady(page);

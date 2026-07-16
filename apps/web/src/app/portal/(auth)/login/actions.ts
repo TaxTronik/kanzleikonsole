@@ -13,6 +13,9 @@ import { parseFormData } from '@/server/actions/form-data';
 const RequestSchema = z.object({
   email: z.string().email(),
   tenantSlug: z.string().min(1).max(100).default('default'),
+  // Rücksprungziel aus dem Proxy-Redirect (?returnTo=…); wird bis in die
+  // Magic-Link-URL durchgereicht und überall via safePortalReturnTo geerdet.
+  returnTo: z.string().max(500).optional().or(z.literal('')),
 });
 
 export interface RequestLinkResult {
@@ -52,7 +55,12 @@ export async function requestMagicLinkAction(
     return { ok: true };
   }
 
-  await requestMagicLink({ tenantId: tenant.id, email: parsed.data.email });
+  const returnTo = safePortalReturnTo(parsed.data.returnTo || undefined);
+  await requestMagicLink({
+    tenantId: tenant.id,
+    email: parsed.data.email,
+    returnTo: returnTo === '/portal/dashboard' ? undefined : returnTo,
+  });
   return { ok: true };
 }
 

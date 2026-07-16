@@ -537,33 +537,11 @@ export default async function GwgPage({
               </div>
             )}
 
-            {/* Schritt 1: Risikobewertung */}
-            <section className="card p-6">
-              <h2 className="text-lg font-semibold text-primary mb-1">1. Risikobewertung</h2>
-              <p className="text-sm text-muted mb-4">
-                Antworten basierend auf Branche, Sitz, PEP-Status und Geschäftsmodell.
-              </p>
-              <RiskAssessmentForm
-                checkId={check.id}
-                clientId={client.id}
-                factors={DEFAULT_FACTORS}
-                currentAnswers={(check.riskAnswers as Record<string, number>) ?? {}}
-                currentScore={check.riskScore ?? null}
-                currentLevel={check.riskLevel ?? null}
-                currentRevision={gwgRiskRevision(check)}
-                disabled={
-                  check.status === 'VERIFIED' ||
-                  check.status === 'REJECTED' ||
-                  check.status === 'EXPIRED'
-                }
-              />
-            </section>
-
             <GwgIdentitySubjectsProvider initialOptions={subjectOptions}>
               {isLegalEntity && (
                 <section className="card p-6">
                   <h2 className="text-lg font-semibold text-primary mb-1">
-                    2. Rechtsträger und Vertretung
+                    1. Rechtsträger und Vertretung
                   </h2>
                   <p className="text-sm text-muted mb-4">
                     Pflichtangaben nach § 11 Abs. 4 Nr. 2 GwG. Zusätzlich sind unten der
@@ -648,7 +626,7 @@ export default async function GwgPage({
               {/* Schritt 2: Wirtschaftlich Berechtigte */}
               <section className="card p-6">
                 <h2 className="text-lg font-semibold text-primary mb-1">
-                  {isLegalEntity ? '3' : '2'}. Wirtschaftlich Berechtigte
+                  {isLegalEntity ? '2' : '1'}. Wirtschaftlich Berechtigte
                 </h2>
                 <p className="text-sm text-muted mb-4">
                   Personen mit mehr als 25 % Anteil oder vergleichbarer Kontrolle (§ 3 GwG).
@@ -704,7 +682,7 @@ export default async function GwgPage({
                 <div className="mb-4">
                   <div>
                     <h2 className="text-lg font-semibold text-primary mb-1">
-                      {isLegalEntity ? '4' : '3'}. Identitätsdokumente
+                      {isLegalEntity ? '3' : '2'}. Identitätsdokumente
                     </h2>
                     <p className="text-sm text-muted">
                       Vorder- und Rückseite gemeinsam ansehen, die erfasste Person eindeutig
@@ -745,7 +723,38 @@ export default async function GwgPage({
               </section>
             </GwgIdentitySubjectsProvider>
 
-            {/* Schritt 4: Verifikation oder Ablehnung */}
+            {/* Risikobewertung bewusst als LETZTER Schritt vor der Entscheidung:
+                die Faktoren (PEP, Struktur) hängen von den erfassten Personen ab —
+                jede Personen-/Rechtsträger-Änderung setzt eine gespeicherte
+                Bewertung serverseitig zurück (§ 10 Abs. 2 GwG). Stand die
+                Bewertung als Schritt 1 oben, lief man im normalen Workflow
+                zwangsläufig in diesen Reset. */}
+            <section className="card p-6">
+              <h2 className="text-lg font-semibold text-primary mb-1">
+                {isLegalEntity ? '4' : '3'}. Risikobewertung
+              </h2>
+              <p className="text-sm text-muted mb-4">
+                Antworten basierend auf Branche, Sitz, PEP-Status und Geschäftsmodell. Als letzter
+                Schritt, nachdem alle Personen erfasst sind — Änderungen an Personen oder
+                Rechtsträger setzen eine gespeicherte Bewertung zurück.
+              </p>
+              <RiskAssessmentForm
+                checkId={check.id}
+                clientId={client.id}
+                factors={DEFAULT_FACTORS}
+                currentAnswers={(check.riskAnswers as Record<string, number>) ?? {}}
+                currentScore={check.riskScore ?? null}
+                currentLevel={check.riskLevel ?? null}
+                currentRevision={gwgRiskRevision(check)}
+                disabled={
+                  check.status === 'VERIFIED' ||
+                  check.status === 'REJECTED' ||
+                  check.status === 'EXPIRED'
+                }
+              />
+            </section>
+
+            {/* Verifikation oder Ablehnung */}
             {(check.status === 'DRAFT' || check.status === 'IN_REVIEW') && (
               <section className="card p-6">
                 <h2 className="text-lg font-semibold text-primary mb-3">

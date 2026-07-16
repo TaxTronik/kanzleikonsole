@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { useActionState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { requestMagicLinkAction, type RequestLinkResult } from './actions';
 
 export default function PortalLoginPage() {
@@ -8,6 +9,11 @@ export default function PortalLoginPage() {
     requestMagicLinkAction,
     null,
   );
+  // Vom Proxy gesetztes Rücksprungziel (unauthentifizierter Klick auf einen
+  // Portal-Deeplink, z. B. Anforderungs-Mail) — wird durch den Magic-Link-Flow
+  // bis zur Verify-Seite durchgereicht. Serverseitig via safePortalReturnTo
+  // validiert.
+  const returnTo = useSearchParams().get('returnTo') ?? '';
 
   return (
     <>
@@ -29,6 +35,7 @@ export default function PortalLoginPage() {
           </div>
         ) : (
           <form action={formAction} className="space-y-4">
+            <input type="hidden" name="returnTo" value={returnTo} />
             <p className="text-sm text-secondary text-center mb-2">
               Wir senden Ihnen einen Login-Link per E-Mail.
             </p>

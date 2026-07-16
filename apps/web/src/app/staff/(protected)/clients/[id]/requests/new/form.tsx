@@ -2,7 +2,6 @@
 
 import { useActionState, useEffect, useId, useState } from 'react';
 import { FileText, LoaderCircle, Sparkles } from 'lucide-react';
-import { DateTimePicker } from '@/components/datetime-picker';
 import {
   createQuickRequestAction,
   createRequestAction,
@@ -438,12 +437,13 @@ export function NewRequestForm({
           <label className="label" htmlFor="dueAt">
             Fällig am
           </label>
-          <DateTimePicker
+          <input
             id="dueAt"
             name="dueAt"
+            type="datetime-local"
+            className="input"
             value={dueAt}
-            onChange={setDueAt}
-            output="utc"
+            onChange={(e) => setDueAt(e.target.value)}
             disabled={disabled || isPending}
           />
         </div>

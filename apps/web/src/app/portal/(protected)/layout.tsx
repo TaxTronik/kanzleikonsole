@@ -148,7 +148,13 @@ export default async function PortalLayout({ children }: { children: ReactNode }
             action={async () => {
               'use server';
               const { portalSignOut } = await import('@/server/auth/portal');
-              await portalSignOut({ redirectTo: '/portal/login' });
+              const { redirect } = await import('next/navigation');
+              // Cookie serverseitig löschen, aber den Redirect selbst bauen:
+              // Auth.js löst redirectTo gegen AUTH_URL/NEXTAUTH_URL (Staff-
+              // Origin) auf — der Mandant landete dadurch auf der falschen
+              // Domain statt auf dem Portal-Host, der die Seite ausliefert.
+              await portalSignOut({ redirect: false });
+              redirect('/portal/login');
             }}
           >
             <button

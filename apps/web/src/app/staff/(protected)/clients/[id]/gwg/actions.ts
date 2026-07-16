@@ -2324,6 +2324,9 @@ export async function verifyCheckAction(
     }),
   );
   if (verifiedValidUntil) {
+    // Awaited (Guardrail: Outbox-Write muss dauerhaft sein, bevor die Action
+    // zurückkehrt). Der früher unbegrenzt hängende Redis-Queue-Handoff ist in
+    // der Outbox selbst per Timeout gedeckelt — siehe server/n8n/outbox.ts.
     await emitN8nEvent(
       'gwg.verified',
       { tenantId, clientId, gwgCheckId: checkId, validUntil: verifiedValidUntil },

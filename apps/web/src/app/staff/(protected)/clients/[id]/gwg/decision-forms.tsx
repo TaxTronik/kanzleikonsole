@@ -1,6 +1,7 @@
 'use client';
 
 import { useActionState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { ShieldCheck } from 'lucide-react';
 import { fmtDateTimeShort } from '@/lib/fmt';
 import {
@@ -32,7 +33,8 @@ export function GwgDecisionForms({
   canVerify: boolean;
   reviewSnapshotHash: string | null;
 }) {
-  const { status: liveStatus, markInReview } = useGwgEditState(status);
+  const router = useRouter();
+  const { status: liveStatus, markInReview, markVerified, markRejected } = useGwgEditState(status);
   const [submitState, submitAction, submitPending] = useActionState<ActionResult | null, FormData>(
     submitCheckForReviewAction,
     null,
@@ -53,7 +55,40 @@ export function GwgDecisionForms({
     if (submitState?.ok) markInReview();
   }, [markInReview, submitState]);
 
+  // Verify/Reject: sofortiger optimistischer Flip + expliziter router.refresh()
+  // AUSSERHALB der Form-Transition. Ohne beides hing die UI komplett am
+  // RSC-Payload der Action — blieb dessen Anwendung stecken (bekanntes
+  // Next-Verhalten bei revalidatePath in Server Actions), sah der Nutzer trotz
+  // erfolgreicher Verifikation minutenlang keine Änderung.
+  useEffect(() => {
+    if (!verifyState?.ok) return;
+    markVerified();
+    router.refresh();
+  }, [markVerified, router, verifyState]);
+  useEffect(() => {
+    if (!rejectState?.ok) return;
+    markRejected();
+    router.refresh();
+  }, [markRejected, rejectState, router]);
+
   const error = submitState?.error ?? verifyState?.error ?? rejectState?.error ?? null;
+
+  if (liveStatus === 'VERIFIED' || liveStatus === 'REJECTED') {
+    return (
+      <div
+        className={
+          liveStatus === 'VERIFIED'
+            ? 'rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-100'
+            : 'rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-900 dark:border-red-800 dark:bg-red-950/30 dark:text-red-100'
+        }
+        role="status"
+      >
+        {liveStatus === 'VERIFIED'
+          ? 'GwG-Prüfung verifiziert — der Mandant wurde aktiviert. Die Ansicht wird aktualisiert…'
+          : 'GwG-Prüfung abgelehnt. Die Ansicht wird aktualisiert…'}
+      </div>
+    );
+  }
 
   if (liveStatus === 'DRAFT') {
     return (

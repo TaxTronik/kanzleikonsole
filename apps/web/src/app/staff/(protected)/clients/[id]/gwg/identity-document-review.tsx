@@ -140,7 +140,9 @@ function InlineEvidence({
   return (
     <div
       ref={containerRef}
-      className="overflow-hidden rounded-md border border-default bg-gray-100 dark:bg-gray-950"
+      // dark:bg-gray-900 statt gray-950: gray-950 ist exakt der Seitenhintergrund —
+      // ein (noch) leerer Vorschau-Frame las sich im Dark Mode als "leere Seite".
+      className="overflow-hidden rounded-md border border-default bg-gray-100 dark:bg-gray-900"
     >
       <div className="flex items-center justify-between border-b border-default bg-surface px-3 py-2">
         <div className="min-w-0">
@@ -568,6 +570,13 @@ function IdentityReviewCard({
   useEffect(() => {
     if (state?.ok) setExpanded(true);
   }, [state]);
+  // Nach der Entscheidung (VERIFIED/REJECTED/EXPIRED) die Karten einklappen:
+  // die im Review-Modus aufgeklappten 65vh-Vorschau-Frames blieben sonst nach
+  // dem Verifizieren offen und erzeugten 1–2 Viewport-Höhen scheinbar leeren,
+  // scrollbaren Raum am Seitenende.
+  useEffect(() => {
+    if (disabled) setExpanded(false);
+  }, [disabled]);
   const attachedDocuments = group.documents.filter(
     (
       entry,

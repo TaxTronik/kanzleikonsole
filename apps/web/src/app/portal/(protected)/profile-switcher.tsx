@@ -57,7 +57,10 @@ export function PortalProfileSwitcher({ currentContactId, profiles }: PortalProf
                   className={`flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors ${
                     current
                       ? 'cursor-default bg-surface-raised ring-1 ring-inset ring-brand-500/40'
-                      : 'cursor-pointer hover:bg-surface-raised'
+                      : // hover:bg-gray-100 ist via @theme auf surface-raised gemappt —
+                        // hover:bg-surface-raised wäre wirkungslos, weil die Klasse eine
+                        // handgeschriebene Utility ohne generierte hover:-Variante ist.
+                        'cursor-pointer hover:bg-gray-100'
                   }`}
                 >
                   <span className="min-w-0 flex-1">

@@ -14,9 +14,11 @@ test.describe('Auth-Flow', () => {
     await expect(page.getByText('Mustermann GmbH').first()).toBeVisible();
   });
 
-  test('Admin sieht Admin-Sidebar (DSGVO + Einstellungen)', async ({ page }) => {
+  test('Admin sieht Admin-Sidebar (Datenschutz + Einstellungen)', async ({ page }) => {
     await loginAsAdmin(page);
-    await expect(page.getByRole('link', { name: /DSGVO/i })).toBeVisible();
+    // Sidebar-Label seit 666c7ab: "Datenschutz" (bündelt /staff/admin/privacy,
+    // dsgvo, dsgvo-retention, service-providers) statt "DSGVO".
+    await expect(page.getByRole('link', { name: /Datenschutz/i })).toBeVisible();
     await expect(page.getByRole('link', { name: /Einstellungen/i })).toBeVisible();
   });
 });

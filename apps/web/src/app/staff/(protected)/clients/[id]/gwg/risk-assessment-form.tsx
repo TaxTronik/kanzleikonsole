@@ -44,6 +44,7 @@ export function RiskAssessmentForm({
   const [saved, setSaved] = useState(false);
   const [reviewReset, setReviewReset] = useState(false);
   const [revision, setRevision] = useState(currentRevision);
+  const [riskResetNotice, setRiskResetNotice] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   // Revisionen, die dieses Formular selbst erzeugt hat (eigene Saves): ein
@@ -61,6 +62,7 @@ export function RiskAssessmentForm({
     ownRevisions.current.add(RESET_RISK_REVISION);
     setRevision(RESET_RISK_REVISION);
     setSaved(false);
+    setRiskResetNotice(true);
   }, [riskInvalidationGeneration]);
 
   // (2) Prop-Reconciliation nach RSC-Refresh (Muster wie
@@ -99,6 +101,7 @@ export function RiskAssessmentForm({
           setRevision(r.revision);
         }
         setSaved(true);
+        setRiskResetNotice(false);
         if (r.reviewReset) {
           markDraft();
           setReviewReset(true);
@@ -163,6 +166,14 @@ export function RiskAssessmentForm({
         </div>
       )}
 
+      {riskResetNotice && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+          Durch die Änderung an Personen bzw. Rechtsträger-Angaben wurde die gespeicherte
+          Risikobewertung zurückgesetzt (§ 10 Abs. 2 GwG — die Faktoren hängen von den erfassten
+          Personen ab). Ihre Auswahl unten ist noch da: bitte prüfen und erneut speichern, bevor Sie
+          zur Freigabe einreichen.
+        </div>
+      )}
       {error && <div className="alert-error-sm">{error}</div>}
       {saved && (
         <div className="alert-success-sm">

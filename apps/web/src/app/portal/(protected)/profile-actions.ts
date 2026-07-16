@@ -7,6 +7,7 @@ import { portalAuth } from '@/server/auth/portal';
 import { resolvePortalProfileSwitchTx } from '@/server/auth/portal-profiles';
 import { writePortalSession } from '@/server/auth/portal-session';
 import { evidenceService } from '@/server/container';
+import { safePortalReturnTo } from '../(auth)/login/verify/safe-return-to';
 
 const SwitchProfileSchema = z.object({
   contactId: z.string().uuid(),
@@ -16,11 +17,15 @@ export async function switchPortalProfileAction(formData: FormData): Promise<voi
   const session = await portalAuth();
   if (!session?.user) redirect('/portal/login');
 
+  // Optionaler Rücksprung nach dem Wechsel (z. B. Anforderungs-Detail nach
+  // E-Mail-Link im falschen Profil). Open-Redirect-sicher via safePortalReturnTo.
+  const returnTo = safePortalReturnTo((formData.get('returnTo') as string | null) ?? undefined);
+
   const parsed = SwitchProfileSchema.safeParse({ contactId: formData.get('contactId') });
   if (!parsed.success) redirect('/portal/dashboard');
 
   const { tenantId, contactId: currentContactId } = session.user;
-  if (parsed.data.contactId === currentContactId) redirect('/portal/dashboard');
+  if (parsed.data.contactId === currentContactId) redirect(returnTo);
 
   const target = await withTenantContext(
     { tenantId, actorId: currentContactId, actorType: 'CLIENT_CONTACT' },
@@ -56,5 +61,5 @@ export async function switchPortalProfileAction(formData: FormData): Promise<voi
     email: target.email,
     fullName: target.contactName,
   });
-  redirect('/portal/dashboard');
+  redirect(returnTo);
 }

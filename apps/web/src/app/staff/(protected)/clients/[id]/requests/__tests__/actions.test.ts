@@ -50,7 +50,9 @@ function requestData(overrides: Record<string, string> = {}): FormData {
   data.set('title', 'Belege Juli');
   data.set('description', 'Bitte die Belege für Juli bereitstellen.');
   data.set('priority', 'HIGH');
-  data.set('dueAt', '2026-07-31T10:00:00.000Z');
+  // Zeitzonenloser datetime-local-Stempel (Berlin-Wanduhr) — wie das native
+  // <input type="datetime-local"> ihn seit dem Picker-Umbau liefert.
+  data.set('dueAt', '2026-07-31T10:00');
   for (const [key, value] of Object.entries(overrides)) data.set(key, value);
   return data;
 }
@@ -181,7 +183,8 @@ describe('Quick-Anforderung', () => {
         title: 'Belege Juli',
         description: 'Bitte die Belege für Juli bereitstellen.',
         priority: 'HIGH',
-        dueAt: new Date('2026-07-31T10:00:00.000Z'),
+        // 10:00 Berlin-Sommerzeit = 08:00 UTC (berlinWallClockToUtc)
+        dueAt: new Date('2026-07-31T08:00:00.000Z'),
       }),
     });
     expect(mocks.evidenceRecord).toHaveBeenCalledWith(
@@ -209,7 +212,7 @@ describe('Quick-Anforderung', () => {
       title: 'Belege Juli',
       description: 'Bitte die Belege für Juli bereitstellen.',
       priority: 'HIGH',
-      dueAt: new Date('2026-07-31T10:00:00.000Z'),
+      dueAt: new Date('2026-07-31T08:00:00.000Z'),
       formSubmission: null,
     });
     tx.auditLog.findFirst.mockResolvedValue({ after: { templateId: null } });
@@ -238,7 +241,7 @@ describe('Quick-Anforderung', () => {
       title: 'Belege Juli',
       description: 'Bitte die Belege für Juli bereitstellen.',
       priority: 'HIGH',
-      dueAt: new Date('2026-07-31T10:00:00.000Z'),
+      dueAt: new Date('2026-07-31T08:00:00.000Z'),
       formSubmission: null,
     });
     tx.auditLog.findFirst.mockResolvedValue({ after: { templateId: null } });

@@ -44,6 +44,11 @@ export function QuickRequestDialog({
   const [requestIdState, setRequestIdState] = useState({ source: requestId, current: requestId });
   const currentRequestId = requestIdState.source === requestId ? requestIdState.current : requestId;
 
+  // Mandant bekannt, aber noch nicht aktiv (GwG offen): der Dialog würde nur
+  // ein gesperrtes Formular zeigen — Button stattdessen deaktivieren und den
+  // Grund direkt am Auslöser erklären, statt ein totes Overlay zu öffnen.
+  const creationBlocked = Boolean(client && !client.allowActive);
+
   const close = useCallback(() => {
     if (!pending) setOpen(false);
   }, [pending]);
@@ -69,10 +74,21 @@ export function QuickRequestDialog({
             setOpen(true);
           }}
           aria-haspopup="dialog"
+          disabled={creationBlocked}
+          title={
+            creationBlocked
+              ? 'Eine Portal-Anforderung ist erst nach abgeschlossener GwG-Prüfung möglich.'
+              : undefined
+          }
         >
           <Plus className="h-4 w-4" />
           {buttonLabel}
         </button>
+        {creationBlocked && (
+          <span className="text-xs text-muted max-w-56 text-right">
+            Erst nach abgeschlossener GwG-Prüfung möglich.
+          </span>
+        )}
         {created && (
           <span role="status" className="text-xs text-emerald-700">
             Anforderung erstellt.

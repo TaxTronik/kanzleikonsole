@@ -18,6 +18,10 @@ interface GwgEditState {
   status: GwgStatus;
   markDraft: () => void;
   markInReview: () => void;
+  /** Optimistischer Flip nach erfolgreicher Entscheidung — die UI reagiert
+   *  sofort auf das Action-Ergebnis, statt allein am RSC-Payload zu hängen. */
+  markVerified: () => void;
+  markRejected: () => void;
   /**
    * Zählt hoch, wenn eine Server-Action die Risikobewertung serverseitig
    * zurückgesetzt hat (Personen-/Rechtsträger-Änderungen mit invalidateRisk).
@@ -53,13 +57,31 @@ export function GwgEditStateProvider({
 
   const markDraft = useCallback(() => setStatus('DRAFT'), []);
   const markInReview = useCallback(() => setStatus('IN_REVIEW'), []);
+  const markVerified = useCallback(() => setStatus('VERIFIED'), []);
+  const markRejected = useCallback(() => setStatus('REJECTED'), []);
   const markRiskInvalidated = useCallback(
     () => setRiskInvalidationGeneration((generation) => generation + 1),
     [],
   );
   const value = useMemo(
-    () => ({ status, markDraft, markInReview, riskInvalidationGeneration, markRiskInvalidated }),
-    [markDraft, markInReview, markRiskInvalidated, riskInvalidationGeneration, status],
+    () => ({
+      status,
+      markDraft,
+      markInReview,
+      markVerified,
+      markRejected,
+      riskInvalidationGeneration,
+      markRiskInvalidated,
+    }),
+    [
+      markDraft,
+      markInReview,
+      markVerified,
+      markRejected,
+      markRiskInvalidated,
+      riskInvalidationGeneration,
+      status,
+    ],
   );
   return <EditStateContext.Provider value={value}>{children}</EditStateContext.Provider>;
 }
@@ -71,6 +93,8 @@ export function useGwgEditState(fallbackStatus: GwgStatus = 'DRAFT'): GwgEditSta
       status: fallbackStatus,
       markDraft: () => undefined,
       markInReview: () => undefined,
+      markVerified: () => undefined,
+      markRejected: () => undefined,
       riskInvalidationGeneration: 0,
       markRiskInvalidated: () => undefined,
     }
