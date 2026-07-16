@@ -44,7 +44,7 @@ export function LegalEntityDetailsForm({
   disabled,
 }: Props) {
   const { replaceRepresentatives, registerIdentityInvalidations } = useGwgIdentitySubjects();
-  const { markDraft } = useGwgEditState();
+  const { markDraft, markRiskInvalidated } = useGwgEditState();
   const [representatives, setRepresentatives] = useState<RepresentativeRow[]>(() =>
     current.representatives.map((representative) => ({ ...representative, isNew: false })),
   );
@@ -94,8 +94,17 @@ export function LegalEntityDetailsForm({
     }
     registerIdentityInvalidations(state.invalidatedIdentitySets ?? []);
     if (state.revision) setSavedRevision(state.revision);
+    // Die Server-Action nullt die Risikofelder beim Speichern — das
+    // Risiko-Formular muss seine CAS-Revision sofort nachziehen.
+    markRiskInvalidated();
     if (state.reviewReset) markDraft();
-  }, [markDraft, registerIdentityInvalidations, replaceRepresentatives, state]);
+  }, [
+    markDraft,
+    markRiskInvalidated,
+    registerIdentityInvalidations,
+    replaceRepresentatives,
+    state,
+  ]);
 
   function addRepresentative(fullName = '', linkedBeneficialOwnerId: string | null = null) {
     setRepresentatives((currentRows) => [
@@ -180,8 +189,10 @@ export function LegalEntityDetailsForm({
             onChange={(event) =>
               setDetails((value) => ({ ...value, registerNumber: event.target.value }))
             }
-            disabled={disabled || pending}
-            placeholder="z. B. HRB 12345"
+            disabled={disabled || pending || details.noRegisterEntry}
+            placeholder={
+              details.noRegisterEntry ? 'entfällt (nicht registerpflichtig)' : 'z. B. HRB 12345'
+            }
           />
         </div>
       </div>
@@ -199,8 +210,12 @@ export function LegalEntityDetailsForm({
           onChange={(event) =>
             setDetails((value) => ({ ...value, registerAuthority: event.target.value }))
           }
-          disabled={disabled || pending}
-          placeholder="z. B. Handelsregister Amtsgericht München"
+          disabled={disabled || pending || details.noRegisterEntry}
+          placeholder={
+            details.noRegisterEntry
+              ? 'entfällt (nicht registerpflichtig)'
+              : 'z. B. Handelsregister Amtsgericht München'
+          }
         />
       </div>
 

@@ -376,7 +376,12 @@ export async function saveRiskAnswersAction(input: {
   return withStaff(async (tx, { tenantId, staffId, session }) => {
     await assertClientAccessTx(tx, session, clientId);
     await lockGwgCheckLifecycleTx(tx, { tenantId, clientId });
-    const before = await tx.gwgCheck.findFirst({ where: { id: checkId, clientId } });
+    // Schmaler Select: die Zeile trägt große JSON-Spalten (Snapshots,
+    // Breakdown), gebraucht werden nur Status + Risikofelder für CAS/Evidence.
+    const before = await tx.gwgCheck.findFirst({
+      where: { id: checkId, clientId },
+      select: { status: true, riskAnswers: true, riskScore: true, riskLevel: true },
+    });
     if (!before) throw new ActionError('GwG-Check nicht gefunden.');
     assertGwgEditable(before.status);
     if (gwgRiskRevision(before) !== parsed.data.expectedRevision) {

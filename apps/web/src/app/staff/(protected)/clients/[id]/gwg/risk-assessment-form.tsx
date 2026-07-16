@@ -1,9 +1,21 @@
 ﻿'use client';
 
-import { useState, useTransition, type SubmitEvent } from 'react';
+import { useEffect, useRef, useState, useTransition, type SubmitEvent } from 'react';
 import { computeRiskScore, type RiskFactor } from '@/server/gwg/risk-score';
+import { gwgRiskRevision } from '@/server/gwg/revisions';
 import { saveRiskAnswersAction } from './actions';
 import { useGwgEditState } from './edit-state-context';
+
+/**
+ * Deterministische CAS-Revision des serverseitig zurückgesetzten Risikoblocks
+ * (claimCheckMutation mit invalidateRisk nullt Answers/Score/Level). Muss
+ * exakt der Server-Berechnung entsprechen — deshalb dieselbe reine Funktion.
+ */
+const RESET_RISK_REVISION = gwgRiskRevision({
+  riskAnswers: null,
+  riskScore: null,
+  riskLevel: null,
+});
 
 interface Props {
   checkId: string;
@@ -26,13 +38,43 @@ export function RiskAssessmentForm({
   currentRevision,
   disabled,
 }: Props) {
-  const { markDraft } = useGwgEditState();
+  const { markDraft, riskInvalidationGeneration } = useGwgEditState();
   const [answers, setAnswers] = useState<Record<string, number>>(currentAnswers);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [reviewReset, setReviewReset] = useState(false);
   const [revision, setRevision] = useState(currentRevision);
   const [isPending, startTransition] = useTransition();
+
+  // Revisionen, die dieses Formular selbst erzeugt hat (eigene Saves): ein
+  // späterer RSC-Refresh mit derselben Revision darf den State nicht anfassen.
+  const ownRevisions = useRef<Set<string>>(new Set([currentRevision]));
+
+  // (1) Sofort-Signal: eine andere Karte (Personen/Rechtsträger) hat die
+  // Risikobewertung serverseitig zurückgesetzt. Die erwartete Revision auf den
+  // deterministischen Reset-Stand nachziehen, damit der nächste Save nicht am
+  // CAS scheitert — die lokal gewählten Antworten bleiben erhalten.
+  const handledInvalidation = useRef(riskInvalidationGeneration);
+  useEffect(() => {
+    if (riskInvalidationGeneration === handledInvalidation.current) return;
+    handledInvalidation.current = riskInvalidationGeneration;
+    ownRevisions.current.add(RESET_RISK_REVISION);
+    setRevision(RESET_RISK_REVISION);
+    setSaved(false);
+  }, [riskInvalidationGeneration]);
+
+  // (2) Prop-Reconciliation nach RSC-Refresh (Muster wie
+  // use-identity-review-state): Eine NEUE Server-Revision, die nicht aus einem
+  // eigenen Save stammt, wird übernommen, statt beim nächsten Save mit
+  // „Bitte Seite neu laden" abgelehnt zu werden.
+  const lastServerRevision = useRef(currentRevision);
+  useEffect(() => {
+    if (currentRevision === lastServerRevision.current) return;
+    lastServerRevision.current = currentRevision;
+    if (!ownRevisions.current.has(currentRevision)) {
+      setRevision(currentRevision);
+    }
+  }, [currentRevision]);
 
   function setAnswer(key: string, value: number) {
     setAnswers((a) => ({ ...a, [key]: value }));
@@ -52,7 +94,10 @@ export function RiskAssessmentForm({
       });
       if (r.error) setError(r.error);
       else {
-        if (r.revision) setRevision(r.revision);
+        if (r.revision) {
+          ownRevisions.current.add(r.revision);
+          setRevision(r.revision);
+        }
         setSaved(true);
         if (r.reviewReset) {
           markDraft();

@@ -57,7 +57,7 @@ export function PortalProfileSwitcher({ currentContactId, profiles }: PortalProf
                   className={`flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors ${
                     current
                       ? 'cursor-default bg-surface-raised ring-1 ring-inset ring-brand-500/40'
-                      : 'hover:bg-surface-raised'
+                      : 'cursor-pointer hover:bg-surface-raised'
                   }`}
                 >
                   <span className="min-w-0 flex-1">

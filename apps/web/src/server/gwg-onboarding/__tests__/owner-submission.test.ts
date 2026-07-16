@@ -44,6 +44,20 @@ describe('öffentliches GwG-Onboarding – PEP-Snapshot', () => {
     );
   });
 
+  it('verlangt Land, Anteil und Ausstellungsdatum als Pflichtangaben', () => {
+    expect(GwgOnboardingOwnerSchema.safeParse({ ...validOwner, countryIso: '' }).success).toBe(
+      false,
+    );
+    expect(GwgOnboardingOwnerSchema.safeParse({ ...validOwner, sharePercent: '' }).success).toBe(
+      false,
+    );
+    expect(GwgOnboardingOwnerSchema.safeParse({ ...validOwner, idIssueDate: '' }).success).toBe(
+      false,
+    );
+    const { idIssueDate: _idIssueDate, ...withoutIssueDate } = validOwner;
+    expect(GwgOnboardingOwnerSchema.safeParse(withoutIssueDate).success).toBe(false);
+  });
+
   it('schreibt einen unplausiblen Anteil nicht in das Prozentfeld', () => {
     const owner = GwgOnboardingOwnerSchema.parse({ ...validOwner, sharePercent: '1000 %' });
     expect(toBeneficialOwnerSnapshot(owner)).toMatchObject({

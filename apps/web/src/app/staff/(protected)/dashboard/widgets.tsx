@@ -21,7 +21,14 @@ import {
 } from './widgets/list-widgets';
 import { CalendarWidget } from './widgets/calendar';
 import { TaxNews } from './widgets/tax-news';
-import { Bookmarks, PersonalNotes, MyDay, MyWorkflows, MyReminders } from './widgets/personal';
+import {
+  Bookmarks,
+  LatestNotifications,
+  PersonalNotes,
+  MyDay,
+  MyWorkflows,
+  MyReminders,
+} from './widgets/personal';
 
 export async function renderWidget(type: WidgetType, ctx: RenderCtx): Promise<ReactNode> {
   switch (type) {
@@ -88,6 +95,8 @@ export async function renderWidget(type: WidgetType, ctx: RenderCtx): Promise<Re
       return MyWorkflows(ctx);
     case 'my_reminders':
       return MyReminders(ctx);
+    case 'latest_notifications':
+      return LatestNotifications(ctx);
     default:
       return <div className="card p-4 text-xs text-muted">Unbekanntes Widget: {type}</div>;
   }

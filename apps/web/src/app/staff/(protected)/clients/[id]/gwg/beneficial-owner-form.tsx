@@ -37,7 +37,7 @@ export function BeneficialOwnerForm({
 }) {
   const { updateBeneficialOwner, removeBeneficialOwner, registerIdentityInvalidations } =
     useGwgIdentitySubjects();
-  const { markDraft } = useGwgEditState();
+  const { markDraft, markRiskInvalidated } = useGwgEditState();
   const [displayValue, setDisplayValue] = useState(value);
   const [draftValue, setDraftValue] = useState(value);
   const [currentRevision, setCurrentRevision] = useState(revision);
@@ -69,15 +69,25 @@ export function BeneficialOwnerForm({
     setDraftValue(state.saved);
     if (state.revision) setCurrentRevision(state.revision);
     registerIdentityInvalidations(state.invalidatedIdentitySets ?? []);
+    // Die Server-Action setzt die Risikobewertung zurück (invalidateRisk) —
+    // das Risiko-Formular muss seine CAS-Revision sofort nachziehen.
+    markRiskInvalidated();
     if (state.reviewReset) markDraft();
-  }, [markDraft, registerIdentityInvalidations, state, updateBeneficialOwner]);
+  }, [markDraft, markRiskInvalidated, registerIdentityInvalidations, state, updateBeneficialOwner]);
 
   useEffect(() => {
     if (!removeState?.ok || !removeState.removedOwnerId) return;
     removeBeneficialOwner(removeState.removedOwnerId);
     registerIdentityInvalidations(removeState.invalidatedIdentitySets ?? []);
+    markRiskInvalidated();
     if (removeState.reviewReset) markDraft();
-  }, [markDraft, registerIdentityInvalidations, removeBeneficialOwner, removeState]);
+  }, [
+    markDraft,
+    markRiskInvalidated,
+    registerIdentityInvalidations,
+    removeBeneficialOwner,
+    removeState,
+  ]);
 
   if (removeState?.ok && removeState.removedOwnerId === ownerId) {
     return (

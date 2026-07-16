@@ -28,7 +28,8 @@ export type WidgetType =
   | 'personal_notes'
   | 'my_workflow_items'
   | 'my_workflows'
-  | 'my_reminders';
+  | 'my_reminders'
+  | 'latest_notifications';
 
 export type WidgetSize = 'kpi' | 'wide' | 'half';
 
@@ -144,6 +145,12 @@ export const WIDGETS: WidgetDef[] = [
     description: 'Mir zugewiesene offene Wiedervorlagen, fällig zuerst',
     size: 'half',
   },
+  {
+    type: 'latest_notifications',
+    label: 'Neueste Benachrichtigungen',
+    description: 'Die neuesten Benachrichtigungen (persönlich + kanzleiweit)',
+    size: 'half',
+  },
 ];
 
 export const WIDGET_BY_TYPE: Record<WidgetType, WidgetDef> = Object.fromEntries(
@@ -192,6 +199,7 @@ export const DEFAULT_SIZE: Record<
   my_workflow_items: { w: 4, h: 10, minW: 3, minH: 4 },
   my_workflows: { w: 4, h: 10, minW: 3, minH: 4 },
   my_reminders: { w: 4, h: 10, minW: 3, minH: 4 },
+  latest_notifications: { w: 4, h: 10, minW: 3, minH: 4 },
 };
 
 export const DEFAULT_LAYOUT: DashboardLayout = {

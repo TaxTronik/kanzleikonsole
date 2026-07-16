@@ -39,6 +39,26 @@ export const NOTICE_STATUS_LABELS: Readonly<Record<string, string>> = {
   RECHTSKRAEFTIG: 'Rechtskräftig',
 };
 
+export const NOTIFICATION_KIND_LABELS: Readonly<Record<string, string>> = {
+  REQUEST_RESPONDED: 'Anforderung beantwortet',
+  POA_SIGNED: 'Vollmacht unterschrieben',
+  POA_EXPIRY_SOON: 'Vollmacht läuft bald aus',
+  POA_EXPIRED: 'Vollmacht abgelaufen',
+  GWG_EXPIRY_SOON: 'GwG läuft bald aus',
+  GWG_ONBOARDING_SUBMITTED: 'GwG-Onboarding eingereicht',
+  SYSTEM_MAIL_FAILED: 'Mailversand fehlgeschlagen',
+  INVOICE_OVERDUE: 'Rechnung überfällig',
+  PHONE_NOTE_FORWARDED: 'Telefonzettel weitergeleitet',
+  VACATION_DECISION: 'Urlaubsentscheidung',
+  VACATION_REQUESTED: 'Urlaubsantrag',
+  ABSENCE_REPORTED: 'Abwesenheitsmeldung',
+  CLIENT_MASTER_CHANGE_REQUEST: 'Mandanten-Stammdaten-Änderung',
+  TAX_NEWS_NEW: 'Neue BMF/BFH-News',
+  SYSTEM_BACKUP_FAILED: 'Backup fehlgeschlagen',
+  SYSTEM_AUDIT_BREAK: 'Audit-Chain-Bruch',
+  SYSTEM_AUDIT_OK: 'Audit-Chain intakt',
+};
+
 export const INVOICE_STATUS_LABELS: Readonly<Record<string, string>> = {
   DRAFT: 'Entwurf',
   SENT: 'Versendet',

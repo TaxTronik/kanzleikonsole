@@ -16,7 +16,7 @@ import { usePathname, useRouter } from 'next/navigation';
 export const REFRESH_INTERVAL_MS = 120_000;
 
 const STAFF_CLIENT_DETAIL_PATH =
-  /^\/staff\/clients\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\/?$/i;
+  /^\/staff\/clients\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}(?:\/gwg)?\/?$/i;
 
 /**
  * Zentrale Route-Policy fuer automatische Voll-Refreshes. Teure Seiten koennen
@@ -25,8 +25,10 @@ const STAFF_CLIENT_DETAIL_PATH =
 export function isAutomaticRefreshEnabled(pathname: string): boolean {
   if (pathname.startsWith('/staff/admin/audit')) return false;
   // Das Mandanten-Cockpit laedt viele unabhaengige Bloecke und bis zu 1.000
-  // Dokumente. Dort bleiben manuelle Refreshes und Server-Action-Revalidierung
-  // verfuegbar, periodische/Bell-getriebene Voll-Refreshes sind aber pausiert.
+  // Dokumente; die GwG-Pruefseite laedt den kompletten Pruefsnapshot und ist
+  // voller Formulare, die ihren Zustand per Action-Payload abgleichen. Dort
+  // bleiben manuelle Refreshes und Server-Action-Revalidierung verfuegbar,
+  // periodische/Bell-getriebene Voll-Refreshes sind aber pausiert.
   return !STAFF_CLIENT_DETAIL_PATH.test(pathname);
 }
 

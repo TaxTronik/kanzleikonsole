@@ -70,7 +70,7 @@ export default async function VerifyMagicLinkPage({ searchParams }: PageProps) {
             <input type="hidden" name="returnTo" value={returnTo} />
             <button
               type="submit"
-              className="w-full rounded-lg border border-default bg-white px-4 py-3 text-left transition-colors hover:border-brand-400 hover:bg-brand-50 dark:bg-gray-900"
+              className="w-full cursor-pointer rounded-lg border border-default bg-white px-4 py-3 text-left transition-colors hover:border-brand-500 hover:bg-brand-50 hover:shadow-sm dark:bg-gray-900 dark:hover:bg-brand-900/20"
             >
               <span className="block text-sm font-semibold text-primary">{profile.clientName}</span>
               <span className="block text-xs text-muted">Als {profile.contactName} öffnen</span>

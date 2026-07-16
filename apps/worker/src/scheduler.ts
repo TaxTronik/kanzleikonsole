@@ -88,10 +88,13 @@ export async function setupSchedules(): Promise<void> {
     { pattern: '0 3 * * 0' },
     { name: 'audit-rotate', data: {}, opts: DAILY_RETRY },
   );
-  // BMF/BFH-RSS-Feeds täglich 06:30 Berlin — vor Bürobeginn, DST-stabil.
+  // BMF/BFH-RSS-Feeds: alle 2 Stunden zwischen 06:30 und 20:30 Berlin, damit
+  // der RSS-Reader tagsüber aktuell bleibt (Insert ist idempotent, neue Items
+  // werden nur einmal angelegt). Scheduler-ID bleibt stabil, damit der Upsert
+  // den alten Tagesplan ersetzt statt einen zweiten anzulegen.
   await taxNewsFetchQueue.upsertJobScheduler(
     'daily-tax-news-fetch',
-    { pattern: '30 6 * * *', tz: BERLIN },
+    { pattern: '30 6-20/2 * * *', tz: BERLIN },
     { name: 'tax-news-fetch', data: {}, opts: DAILY_RETRY },
   );
   // Reminder-Bündel täglich 07:45 Berlin: Einspruchsfristen + Wiedervorlagen +

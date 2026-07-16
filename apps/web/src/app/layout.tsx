@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { Metadata } from 'next';
-import { cookies } from 'next/headers';
 import { THEME_BOOTSTRAP_JS } from '@/lib/theme';
+import { ThemeSync } from '@/components/theme-sync';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -21,25 +21,31 @@ export const dynamic = 'force-dynamic';
 // Refresh kurz hell). Der Script-Inhalt lebt zentral in @/lib/theme
 // (THEME_BOOTSTRAP_JS), damit Theme-Logik nicht mehr dreifach divergiert.
 //
-// React 19 / Next 16 zeigen dafür im DEV-Mode eine Konsolen-Warnung
-// ("Encountered a script tag…"). Bewusst akzeptiert: reine Development-Meldung
-// (Production-Build gibt sie nicht aus); das Script läuft beim initialen Laden
-// korrekt, bei Client-Navigationen ist das Theme bereits gesetzt.
+// WICHTIG: <html> bekommt bewusst KEINE server-gerenderte className.
+// Theme (`dark`) und UI-Mode (`ui-modern`) werden ausschließlich imperativ
+// per classList gesetzt (Bootstrap-Script + Toggles + ThemeSync). Sobald React
+// hier eine dynamische className rendert (früher: ui_mode-Cookie), überschreibt
+// der nächste router.refresh() mit abweichendem Cookie-Stand das komplette
+// class-Attribut und löscht die imperativ gesetzte dark-Klasse — das war die
+// Ursache für „Dark Mode springt zufällig auf hell". Der ui_mode-Cookie bleibt
+// als Fallback für das Bootstrap-Script erhalten (localStorage hat Vorrang).
+//
+// React 19 / Next 16 zeigen fürs Inline-Script im DEV-Mode eine Konsolen-
+// Warnung ("Encountered a script tag…"). Bewusst akzeptiert: reine
+// Development-Meldung (Production-Build gibt sie nicht aus); das Script läuft
+// beim initialen Laden korrekt, bei Client-Navigationen ist das Theme bereits
+// gesetzt.
 
-export default async function RootLayout({ children }: { children: ReactNode }) {
-  const jar = await cookies();
-  const uiMode = jar.get('ui_mode')?.value;
-
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html
-      lang="de"
-      className={uiMode === 'modern' ? 'ui-modern' : undefined}
-      suppressHydrationWarning
-    >
+    <html lang="de" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_JS }} />
       </head>
-      <body>{children}</body>
+      <body>
+        <ThemeSync />
+        {children}
+      </body>
     </html>
   );
 }

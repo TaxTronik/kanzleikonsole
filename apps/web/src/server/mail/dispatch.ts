@@ -50,6 +50,18 @@ export interface DispatchOptions {
 }
 
 /**
+ * System-generierte URL-Variablen (Portal-Links, Magic-Links). Diese Werte
+ * stammen ausschließlich aus portalBaseUrl + App-Routen — sie dürfen NICHT
+ * durch escapeMarkdownVariable laufen: dessen Anti-Phishing-Sentinel (U+E005
+ * zwischen `https:` und `//`) würde (a) den Autolink im HTML-Teil bewusst
+ * deaktivieren (kein klickbarer Link) und (b) im text/plain-Teil ein
+ * unsichtbares Zeichen mitten im URL-Schema hinterlassen — Mail-Clients und
+ * Link-Rewriter (Outlook, SafeLinks) erzeugen daraus kaputte URLs → 404.
+ */
+const TRUSTED_URL_VARS: ReadonlySet<string> = new Set(['link', 'portalUrl']);
+const SAFE_ABSOLUTE_URL = /^https?:\/\/[^\s<>"'`]+$/;
+
+/**
  * Mustache-light: ersetzt `{{path.to.var}}` mit dem entsprechenden Wert aus
  * `vars`. Verschachtelte Objekte werden punktiert dereferenziert.
  * Fehlende Werte werden als leerer String ersetzt (keine harte Fehler-
@@ -60,6 +72,12 @@ export interface DispatchOptions {
  * Markdown-Renderer interpretiert werden. Subject-Pfad braucht das nicht
  * (plain-text), Body-Pfad schon. Existierende Caller dieser Funktion ohne
  * Flag verhalten sich unverändert.
+ *
+ * Ausnahme: Variablen aus TRUSTED_URL_VARS, deren Wert eine wohlgeformte
+ * absolute http(s)-URL ist, bleiben unescapt, damit der Autolinker im
+ * HTML-Teil einen echten Hyperlink erzeugt und der Text-Teil sauber bleibt.
+ * Werte, die NICHT wie eine URL aussehen, werden trotzdem escapt
+ * (fail-closed, falls je User-Input unter diesen Namen landet).
  */
 export function renderTemplate(
   source: string,
@@ -78,8 +96,20 @@ export function renderTemplate(
     }
     if (value === null || value === undefined) return '';
     const str = String(value);
-    return opts.forMarkdown ? escapeMarkdownVariable(str) : str;
+    if (!opts.forMarkdown) return str;
+    if (TRUSTED_URL_VARS.has(path) && SAFE_ABSOLUTE_URL.test(str)) return str;
+    return escapeMarkdownVariable(str);
   });
+}
+
+/**
+ * Bereinigt den text/plain-Teil vor dem Versand: interne Sentinel-/PUA-Zeichen
+ * entfernen und Markdown-Backslash-Escapes zurücknehmen. Der HTML-Pfad macht
+ * das im Renderer selbst; der Text-Teil ging bisher roh raus — mit U+E005 im
+ * URL-Schema und `\_` in base64url-Tokens (kaputte Links in Plaintext-Clients).
+ */
+export function plainTextBody(bodyMd: string): string {
+  return bodyMd.replace(/[-]/g, '').replace(/\\([\\*_[\]])/g, '$1');
 }
 
 // W-4: markdownToHtml + safeHref sind in @/server/markdown ausgelagert, weil
@@ -171,7 +201,7 @@ export async function sendTemplateMail(
       tenantId: opts.tenantId,
       to: opts.to,
       subject,
-      text: bodyMd,
+      text: plainTextBody(bodyMd),
       html: markdownToHtml(bodyMd),
       replyTo: opts.replyTo,
       attachments: opts.attachments,

@@ -89,54 +89,61 @@ export function GwgDecisionForms({
       )}
       {canVerify &&
         (status === 'IN_REVIEW' && reviewSnapshotHash ? (
-          <div className="flex gap-3">
-            <form action={verifyAction} className="max-w-xl space-y-3">
-              <input type="hidden" name="checkId" value={checkId} />
-              <input type="hidden" name="clientId" value={clientId} />
-              <input type="hidden" name="reviewSnapshotHash" value={reviewSnapshotHash ?? ''} />
-              <label className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
-                <input
-                  type="checkbox"
-                  name="professionalAttestation"
-                  value="confirmed"
-                  required
-                  className="mt-1"
-                />
-                <span>
-                  Ich habe den vollständigen GwG-Prüfsnapshot einschließlich Risikoanalyse,
-                  wirtschaftlich Berechtigten, gesetzlicher Vertretung, eindeutiger Ausweiszuordnung
-                  und sämtlicher Nachweise persönlich geprüft und verantworte die Freigabe.
-                  <span className="mt-1 block text-xs opacity-80">
-                    Die Bestätigung wird zusammen mit dem exakten Datenstand revisionssicher
-                    protokolliert.
-                  </span>
-                </span>
-              </label>
-              <button type="submit" className="btn-primary" disabled={verifyPending}>
-                <ShieldCheck className="h-4 w-4" />
-                {verifyPending ? 'Verifiziere…' : 'Verifizieren und Mandant aktivieren'}
-              </button>
-            </form>
-            <form action={rejectAction} className="flex-1 flex gap-2">
-              <input type="hidden" name="checkId" value={checkId} />
-              <input type="hidden" name="clientId" value={clientId} />
+          /* Bestätigungstext oben in voller Breite; darunter EINE Zeile mit
+             Verifizieren-Button, Ablehnungsgrund und Ablehnen-Button auf
+             gleicher Höhe. Die Checkbox gehört per form-Attribut weiterhin zum
+             Verify-Formular (inkl. required-Validierung). */
+          <div className="max-w-3xl space-y-3">
+            <label className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
               <input
-                name="reason"
-                type="text"
-                className="input flex-1"
-                placeholder="Ablehnungsgrund (Pflicht)"
+                type="checkbox"
+                name="professionalAttestation"
+                value="confirmed"
                 required
-                minLength={1}
-                maxLength={2000}
+                form="gwg-verify-form"
+                className="mt-1"
               />
-              <button
-                type="submit"
-                className="btn-secondary text-red-700 border-red-300 hover:bg-red-50"
-                disabled={rejectPending}
-              >
-                {rejectPending ? 'Lehne ab…' : 'Ablehnen'}
-              </button>
-            </form>
+              <span>
+                Ich habe den vollständigen GwG-Prüfsnapshot einschließlich Risikoanalyse,
+                wirtschaftlich Berechtigten, gesetzlicher Vertretung, eindeutiger Ausweiszuordnung
+                und sämtlicher Nachweise persönlich geprüft und verantworte die Freigabe.
+                <span className="mt-1 block text-xs opacity-80">
+                  Die Bestätigung wird zusammen mit dem exakten Datenstand revisionssicher
+                  protokolliert.
+                </span>
+              </span>
+            </label>
+            <div className="flex flex-wrap items-center gap-3">
+              <form id="gwg-verify-form" action={verifyAction} className="shrink-0">
+                <input type="hidden" name="checkId" value={checkId} />
+                <input type="hidden" name="clientId" value={clientId} />
+                <input type="hidden" name="reviewSnapshotHash" value={reviewSnapshotHash ?? ''} />
+                <button type="submit" className="btn-primary" disabled={verifyPending}>
+                  <ShieldCheck className="h-4 w-4" />
+                  {verifyPending ? 'Verifiziere…' : 'Verifizieren und Mandant aktivieren'}
+                </button>
+              </form>
+              <form action={rejectAction} className="flex min-w-64 flex-1 items-center gap-2">
+                <input type="hidden" name="checkId" value={checkId} />
+                <input type="hidden" name="clientId" value={clientId} />
+                <input
+                  name="reason"
+                  type="text"
+                  className="input flex-1"
+                  placeholder="Ablehnungsgrund (Pflicht)"
+                  required
+                  minLength={1}
+                  maxLength={2000}
+                />
+                <button
+                  type="submit"
+                  className="btn-secondary text-red-700 border-red-300 hover:bg-red-50"
+                  disabled={rejectPending}
+                >
+                  {rejectPending ? 'Lehne ab…' : 'Ablehnen'}
+                </button>
+              </form>
+            </div>
           </div>
         ) : (
           <p className="text-sm text-muted" aria-live="polite">

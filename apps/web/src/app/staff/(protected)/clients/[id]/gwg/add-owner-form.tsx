@@ -2,6 +2,7 @@
 
 import { useActionState, useRef, useEffect } from 'react';
 import { addBeneficialOwnerAction, type ActionResult } from './actions';
+import { useGwgEditState } from './edit-state-context';
 
 export function AddBeneficialOwnerForm({
   checkId,
@@ -11,14 +12,19 @@ export function AddBeneficialOwnerForm({
   clientId: string;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
+  const { markRiskInvalidated } = useGwgEditState();
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
     addBeneficialOwnerAction,
     null,
   );
 
   useEffect(() => {
-    if (state?.ok) formRef.current?.reset();
-  }, [state]);
+    if (!state?.ok) return;
+    formRef.current?.reset();
+    // Die Server-Action setzt die Risikobewertung zurück (invalidateRisk) —
+    // das Risiko-Formular muss seine CAS-Revision sofort nachziehen.
+    markRiskInvalidated();
+  }, [markRiskInvalidated, state]);
 
   return (
     <form

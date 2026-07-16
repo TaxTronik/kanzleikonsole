@@ -8,8 +8,9 @@ import type { ReactNode } from 'react';
 // =============================================================================
 
 import Link from 'next/link';
-import { BookmarkCheck, CalendarClock, ListChecks, StickyNote, Workflow } from 'lucide-react';
-import { fmtDateShort } from '@/lib/fmt';
+import { Bell, BookmarkCheck, CalendarClock, ListChecks, StickyNote, Workflow } from 'lucide-react';
+import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
+import { NOTIFICATION_KIND_LABELS } from '@/lib/domain-labels';
 import { resourceLabel } from '@/server/audit/labels';
 import { BookmarkRemoveButton } from '../bookmark-remove-button';
 import { MyDayToggle } from '../my-day-toggle';
@@ -66,6 +67,85 @@ export async function Bookmarks({ tx, staffId }: RenderCtx): Promise<ReactNode> 
           </li>
         ),
       )}
+    </ListShell>
+  );
+}
+
+// --- LatestNotifications ------------------------------------------------------
+
+export async function LatestNotifications({ tx, staffId }: RenderCtx): Promise<ReactNode> {
+  const items = await tx.notification.findMany({
+    where: { OR: [{ staffId }, { staffId: null }] },
+    orderBy: { createdAt: 'desc' },
+    take: 20,
+    select: {
+      id: true,
+      kind: true,
+      title: true,
+      href: true,
+      readAt: true,
+      createdAt: true,
+    },
+  });
+  return (
+    <ListShell
+      icon={Bell}
+      title="Neueste Benachrichtigungen"
+      isEmpty={items.length === 0}
+      emptyText="Keine Benachrichtigungen."
+      footer={
+        <Link href="/staff/notifications" className="text-brand-700 hover:underline">
+          Alle Benachrichtigungen →
+        </Link>
+      }
+    >
+      {items.map((n) => (
+        <li key={n.id} className="px-5 py-2.5 flex items-start gap-2">
+          <div
+            className={
+              n.readAt
+                ? 'h-2 w-2 rounded-full bg-gray-200 mt-1.5 shrink-0'
+                : 'h-2 w-2 rounded-full bg-brand-500 mt-1.5 shrink-0'
+            }
+          />
+          <div className="flex-1 min-w-0">
+            {n.href ? (
+              <Link
+                href={n.href}
+                className="block hover:bg-gray-50 -ml-5 pl-5 -mr-2 pr-2 py-0.5 rounded"
+              >
+                <p
+                  className={
+                    n.readAt
+                      ? 'text-sm text-secondary line-clamp-2'
+                      : 'text-sm font-medium text-primary line-clamp-2'
+                  }
+                >
+                  {n.title}
+                </p>
+                <p className="text-[10px] text-disabled mt-0.5">
+                  {NOTIFICATION_KIND_LABELS[n.kind] ?? n.kind} · {fmtDateTimeShort(n.createdAt)}
+                </p>
+              </Link>
+            ) : (
+              <div>
+                <p
+                  className={
+                    n.readAt
+                      ? 'text-sm text-secondary line-clamp-2'
+                      : 'text-sm font-medium text-primary line-clamp-2'
+                  }
+                >
+                  {n.title}
+                </p>
+                <p className="text-[10px] text-disabled mt-0.5">
+                  {NOTIFICATION_KIND_LABELS[n.kind] ?? n.kind} · {fmtDateTimeShort(n.createdAt)}
+                </p>
+              </div>
+            )}
+          </div>
+        </li>
+      ))}
     </ListShell>
   );
 }

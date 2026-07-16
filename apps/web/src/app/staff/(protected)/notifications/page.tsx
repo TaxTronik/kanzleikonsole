@@ -4,26 +4,7 @@ import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { markNotificationReadAction, markAllNotificationsReadAction } from './actions';
 import { fmtDateTimeShort } from '@/lib/fmt';
-
-const kindLabels: Record<string, string> = {
-  REQUEST_RESPONDED: 'Anforderung beantwortet',
-  POA_SIGNED: 'Vollmacht unterschrieben',
-  POA_EXPIRY_SOON: 'Vollmacht läuft bald aus',
-  POA_EXPIRED: 'Vollmacht abgelaufen',
-  GWG_EXPIRY_SOON: 'GwG läuft bald aus',
-  GWG_ONBOARDING_SUBMITTED: 'GwG-Onboarding eingereicht',
-  SYSTEM_MAIL_FAILED: 'Mailversand fehlgeschlagen',
-  INVOICE_OVERDUE: 'Rechnung überfällig',
-  PHONE_NOTE_FORWARDED: 'Telefonzettel weitergeleitet',
-  VACATION_DECISION: 'Urlaubsentscheidung',
-  VACATION_REQUESTED: 'Urlaubsantrag',
-  ABSENCE_REPORTED: 'Abwesenheitsmeldung',
-  CLIENT_MASTER_CHANGE_REQUEST: 'Mandanten-Stammdaten-Änderung',
-  TAX_NEWS_NEW: 'Neue BMF/BFH-News',
-  SYSTEM_BACKUP_FAILED: 'Backup fehlgeschlagen',
-  SYSTEM_AUDIT_BREAK: 'Audit-Chain-Bruch',
-  SYSTEM_AUDIT_OK: 'Audit-Chain intakt',
-};
+import { NOTIFICATION_KIND_LABELS } from '@/lib/domain-labels';
 
 export default async function NotificationsPage() {
   const session = await requireStaffPage();
@@ -82,7 +63,9 @@ export default async function NotificationsPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium text-primary">{n.title}</span>
-                      <span className="badge-gray text-[10px]">{kindLabels[n.kind] ?? n.kind}</span>
+                      <span className="badge-gray text-[10px]">
+                        {NOTIFICATION_KIND_LABELS[n.kind] ?? n.kind}
+                      </span>
                     </div>
                     {n.body && <p className="text-sm text-secondary mt-1">{n.body}</p>}
                     <p className="text-xs text-disabled mt-1">

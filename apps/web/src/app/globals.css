@@ -102,6 +102,17 @@
 
 @layer base {
   /*
+   * Tailwind v4 hat die v3-Preflight-Regel `button { cursor: pointer }`
+   * entfernt — klickbare Buttons zeigen sonst den Default-Cursor und wirken
+   * nicht interaktiv (z. B. Portal-Login-Profilauswahl). Stellt das
+   * v3-Verhalten app-weit wieder her; disabled bleibt beim Default.
+   */
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+
+  /*
    * Brand-Farb-Variablen — Default = Tailwind blue-600-Skala.
    * Werden vom Layout pro Tenant via inline-Style überschrieben (siehe
    * server/settings/branding.ts und apps/web/src/lib/brand-palette.ts).
@@ -277,7 +288,10 @@
    * scoped to our DateTimePicker.
    */
 .taxtronik-datetime-popper {
-  z-index: 70;
+  /* Über dem Modal-Overlay (z-[130] in components/ui/modal.tsx): das Popup
+     wird per portalId an document.body gerendert und darf im Dialog
+     (Quick-Anforderung) nicht darunter verschwinden. */
+  z-index: 140;
   max-width: calc(100vw - 2rem);
 }
 

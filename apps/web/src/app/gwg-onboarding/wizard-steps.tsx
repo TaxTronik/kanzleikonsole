@@ -669,6 +669,7 @@ function OwnerCard({
           label="Geburtsort"
           value={owner.birthPlace}
           onChange={(value) => onPatch({ birthPlace: value })}
+          required
         />
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -677,11 +678,13 @@ function OwnerCard({
           value={owner.nationality}
           onChange={(value) => onPatch({ nationality: value })}
           placeholder="DE"
+          required
         />
         <Field
           label={'Anteil (z. B. 50% oder „Alleingesellschafter")'}
           value={owner.sharePercent}
           onChange={(value) => onPatch({ sharePercent: value })}
+          required
         />
       </div>
       <div>
@@ -712,11 +715,13 @@ function OwnerCard({
           label="Straße + Hausnr."
           value={owner.street}
           onChange={(value) => onPatch({ street: value })}
+          required
         />
         <Field
           label="Land"
           value={owner.countryIso}
           onChange={(value) => onPatch({ countryIso: value })}
+          required
         />
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -724,15 +729,21 @@ function OwnerCard({
           label="PLZ"
           value={owner.postalCode}
           onChange={(value) => onPatch({ postalCode: value })}
+          required
         />
-        <Field label="Ort" value={owner.city} onChange={(value) => onPatch({ city: value })} />
+        <Field
+          label="Ort"
+          value={owner.city}
+          onChange={(value) => onPatch({ city: value })}
+          required
+        />
       </div>
 
       <div className="rounded-md border border-default bg-subtle p-4 space-y-3">
         <div>
           <h4 className="text-sm font-medium text-primary">Ausweisdaten</h4>
           <p className="text-xs text-muted mt-0.5">
-            Falls vorhanden, bitte direkt vom Ausweis übernehmen.
+            Bitte alle Angaben direkt vom Ausweis übernehmen.
           </p>
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -740,11 +751,13 @@ function OwnerCard({
             label="Ausweisnummer"
             value={owner.idNumber}
             onChange={(value) => onPatch({ idNumber: value })}
+            required
           />
           <Field
             label="Ausstellende Behörde"
             value={owner.idIssuedBy}
             onChange={(value) => onPatch({ idIssuedBy: value })}
+            required
           />
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -753,12 +766,14 @@ function OwnerCard({
             type="date"
             value={owner.idIssueDate}
             onChange={(value) => onPatch({ idIssueDate: value })}
+            required
           />
           <Field
             label="Gültig bis"
             type="date"
             value={owner.idExpiryDate}
             onChange={(value) => onPatch({ idExpiryDate: value })}
+            required
           />
         </div>
       </div>

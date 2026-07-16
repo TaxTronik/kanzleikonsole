@@ -92,6 +92,10 @@ export function DateTimePicker({
         // wrapperClassName sorgt dafür, dass der DatePicker volle Breite einnimmt
         popperClassName="taxtronik-datetime-popper"
         calendarClassName="taxtronik-datetime-calendar"
+        // Popup an document.body portalisieren: in Scroll-/Overflow-Containern
+        // (z. B. Quick-Anforderungs-Dialog mit overflow-y-auto) würde der
+        // Kalender sonst am Container-Rand abgeschnitten.
+        portalId="taxtronik-datetime-portal"
         popperPlacement="bottom-end"
         showPopperArrow={false}
         wrapperClassName="w-full"
