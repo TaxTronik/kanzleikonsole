@@ -15,7 +15,12 @@ export type GwgOnboardingLegalEntityDeclaration = z.infer<
  * Fachliches Gate fuer Rechtstraeger-Nachweise im Self-Service. Eine nicht
  * registerpflichtige Gesellschaft braucht einen Gesellschaftsvertrag und die
  * ausdrueckliche Erklaerung, aber keinen nicht existierenden Transparenzregister-
- * Auszug. Im normalen Registerfall bleibt der Auszug zwingend.
+ * Auszug.
+ *
+ * Der Transparenzregister-Auszug ist im Self-Service bewusst KEIN Pflichtfeld:
+ * der Abruf ist fuer den Mandanten kostenpflichtig — die Kanzlei ruft ihn im
+ * Rahmen der GwG-Pruefung selbst ab. Ein freiwilliger Upload bleibt moeglich
+ * (Dokumenttyp existiert weiter in der Auswahl).
  */
 export function legalEntityEvidenceError(
   clientKind: 'NATPERS' | 'JURPERS' | 'PERSGES',
@@ -40,9 +45,6 @@ export function legalEntityEvidenceError(
 
   if (!evidenceTypes.has('HANDELSREGISTERAUSZUG') && !evidenceTypes.has('GESELLSCHAFTSVERTRAG')) {
     return 'Registerauszug oder Gründungsnachweis ist für den Rechtsträger erforderlich.';
-  }
-  if (!evidenceTypes.has('TRANSPARENZREGISTER_AUSZUG')) {
-    return 'Ein Transparenzregister-Auszug ist für den eingetragenen Rechtsträger erforderlich.';
   }
   return null;
 }

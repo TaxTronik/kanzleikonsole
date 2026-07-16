@@ -1,5 +1,7 @@
 'use client';
 
+import { DateTimePicker } from '@/components/datetime-picker';
+
 import { useActionState, useEffect, useId, useState } from 'react';
 import { FileText, LoaderCircle, Sparkles } from 'lucide-react';
 import {
@@ -437,13 +439,15 @@ export function NewRequestForm({
           <label className="label" htmlFor="dueAt">
             Fällig am
           </label>
-          <input
+          {/* Eigener Picker statt nativem datetime-local: Firefox bietet dort
+              keine Uhrzeit-Auswahl an. Ausgabeformat bleibt der lokale
+              YYYY-MM-DDTHH:MM-Stempel (Berlin-Wanduhr), den die Action via
+              berlinWallClockToUtc konvertiert. */}
+          <DateTimePicker
             id="dueAt"
             name="dueAt"
-            type="datetime-local"
-            className="input"
             value={dueAt}
-            onChange={(e) => setDueAt(e.target.value)}
+            onChange={setDueAt}
             disabled={disabled || isPending}
           />
         </div>

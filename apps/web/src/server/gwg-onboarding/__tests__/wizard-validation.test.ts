@@ -60,12 +60,21 @@ describe('wizard validation', () => {
   });
 
   it('shares the legal-entity evidence gate', () => {
+    // Registerauszug reicht — der Transparenzregister-Auszug ist bewusst
+    // optional (kostenpflichtig, holt die Kanzlei selbst).
     expect(
       onboardingLegalEntityStepError({
         clientKind: 'JURPERS',
         noRegisterEntry: false,
         evidenceTypes: ['HANDELSREGISTERAUSZUG'],
       }),
-    ).toContain('Transparenzregister');
+    ).toBeNull();
+    expect(
+      onboardingLegalEntityStepError({
+        clientKind: 'JURPERS',
+        noRegisterEntry: false,
+        evidenceTypes: [],
+      }),
+    ).toContain('Registerauszug');
   });
 });

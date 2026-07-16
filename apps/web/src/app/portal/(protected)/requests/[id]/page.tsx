@@ -1,9 +1,9 @@
 ﻿import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
-import { ArrowLeft, ClipboardList, CheckCircle2, Building2 } from 'lucide-react';
+import { ArrowLeft, ClipboardList, CheckCircle2 } from 'lucide-react';
 import { portalAuth } from '@/server/auth/portal';
 import { findPortalProfilesForContact } from '@/server/auth/portal-profiles';
-import { switchPortalProfileAction } from '../../profile-actions';
+import { AutoProfileSwitch } from './auto-profile-switch';
 import { withTenantContext } from '@taxtronik/db';
 import { PortalResponseForm } from './response-form';
 import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
@@ -46,48 +46,41 @@ export default async function PortalRequestDetailPage({
 
   if (!reqRow) {
     // Häufigster 404-Grund bei Mehrfach-Mandaten: der E-Mail-Link gehört zu
-    // einem anderen Mandantenprofil derselben Person. Statt hart 404 den
-    // Profilwechsel mit Rücksprung auf diese Anforderung anbieten. Bewusst
-    // ohne Cross-Client-Query (RLS bleibt unangetastet) — existiert die
-    // Anforderung auch im anderen Profil nicht, greift dort der 404.
+    // einem anderen Mandantenprofil derselben Person. Das besitzende Profil
+    // wird über dessen EIGENEN Tenant-Kontext ermittelt (kein RLS-Bypass —
+    // die Person ist ohnehin berechtigt, in dieses Profil zu wechseln) und
+    // der Wechsel mit sichtbarem Warnhinweis automatisch angestoßen.
     const profiles = await findPortalProfilesForContact({ tenantId, contactId });
     const otherProfiles = profiles.filter((profile) => profile.clientId !== clientId);
-    if (otherProfiles.length === 0) notFound();
+
+    let owningProfile: (typeof otherProfiles)[number] | null = null;
+    for (const profile of otherProfiles) {
+      const owned = await withTenantContext(
+        { tenantId, actorId: profile.contactId, actorType: 'CLIENT_CONTACT' },
+        (tx) =>
+          tx.request.findFirst({
+            where: { id, clientId: profile.clientId },
+            select: { id: true },
+          }),
+      );
+      if (owned) {
+        owningProfile = profile;
+        break;
+      }
+    }
+    if (!owningProfile) notFound();
+
     return (
-      <div className="p-8 max-w-xl">
-        <div className="card p-6 space-y-4">
-          <h1 className="text-lg font-semibold text-primary">Anforderung nicht in diesem Profil</h1>
-          <p className="text-sm text-secondary">
-            Diese Anforderung gehört nicht zum aktuell geöffneten Mandantenprofil. Ihre
-            E-Mail-Adresse ist mehreren Mandaten zugeordnet — bitte wechseln Sie das Profil, um die
-            Anforderung zu öffnen.
-          </p>
-          <div className="space-y-2">
-            {otherProfiles.map((profile) => (
-              <form key={profile.contactId} action={switchPortalProfileAction}>
-                <input type="hidden" name="contactId" value={profile.contactId} />
-                <input type="hidden" name="returnTo" value={`/portal/requests/${id}`} />
-                <button
-                  type="submit"
-                  className="flex w-full cursor-pointer items-center gap-2 rounded-md border border-default px-3 py-2 text-left text-sm transition-colors hover:bg-gray-100"
-                >
-                  <Building2 className="h-4 w-4 shrink-0 text-muted" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium text-primary">
-                      {profile.clientName}
-                    </span>
-                    <span className="block truncate text-xs text-muted">
-                      Als {profile.contactName} öffnen
-                    </span>
-                  </span>
-                </button>
-              </form>
-            ))}
-          </div>
-          <Link href="/portal/dashboard" className="text-xs text-muted hover:underline">
-            Zurück zum Dashboard
-          </Link>
-        </div>
+      <div className="p-8 max-w-xl space-y-4">
+        <AutoProfileSwitch
+          contactId={owningProfile.contactId}
+          clientName={owningProfile.clientName}
+          contactName={owningProfile.contactName}
+          returnTo={`/portal/requests/${id}`}
+        />
+        <Link href="/portal/dashboard" className="text-xs text-muted hover:underline">
+          Zurück zum Dashboard
+        </Link>
       </div>
     );
   }

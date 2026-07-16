@@ -168,7 +168,11 @@ export default async function PortalLayout({ children }: { children: ReactNode }
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto">
+      {/* relative: absolut positionierte Nachfahren (z. B. sr-only-Labels,
+          position:absolute ohne top/left) ankern sonst am Dokument statt am
+          Scroll-Container und strecken die Seite um die Content-Höhe —
+          sichtbar als endloser leerer Scroll-Bereich unter dem Layout. */}
+      <main className="relative flex-1 overflow-auto">
         <div className="h-14 bg-white dark:bg-gray-900 border-b border-default px-4 flex items-center justify-between sticky top-0 z-20">
           <div className="flex items-center gap-3 md:invisible">
             <MobileSidebarToggle />

@@ -292,7 +292,7 @@ export function DocumentsStep({
           ? 'Weitere für die Identifizierung relevante Unterlagen können Sie hier ergänzen.'
           : noRegisterEntry === true
             ? 'Laden Sie den Gesellschaftsvertrag oder einen gleichwertigen Gründungsnachweis hoch. Für die erklärte nicht registerpflichtige Gesellschaft wird kein Transparenzregister-Auszug verlangt.'
-            : 'Laden Sie den Registerauszug oder den Gründungsnachweis sowie den Transparenzregister-Auszug direkt hier hoch.'}
+            : 'Laden Sie den Registerauszug oder den Gründungsnachweis direkt hier hoch. Den Transparenzregister-Auszug ruft Ihre Kanzlei selbst ab — ein Upload ist optional.'}
       </p>
       {clientKind !== 'NATPERS' && (
         <div className="rounded-md border border-default bg-surface-raised p-4">

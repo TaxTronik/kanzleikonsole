@@ -12,14 +12,14 @@ describe('öffentliche Rechtsträgernachweise', () => {
     ).toBeNull();
   });
 
-  it('verlangt im normalen Registerfall weiterhin den Transparenzregister-Auszug', () => {
+  it('verlangt KEINEN Transparenzregister-Auszug (kostenpflichtig — holt die Kanzlei)', () => {
     expect(
       legalEntityEvidenceError(
         'PERSGES',
         { noRegisterEntry: false },
         new Set(['HANDELSREGISTERAUSZUG']),
       ),
-    ).toContain('Transparenzregister');
+    ).toBeNull();
   });
 
   it('akzeptiert eine bloße Registerbefreiungs-Erklärung nicht ohne Gründungsnachweis', () => {

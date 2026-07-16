@@ -30,11 +30,11 @@ describe('Quick-Anforderungsdialog', () => {
     expect(source).toContain('name="description"');
     expect(source).toContain('name="priority"');
     expect(source).toContain('name="dueAt"');
-    // Natives datetime-local wie im Terminkalender (new-appointment-dialog):
-    // ein Picker-Stil app-weit; die frühere react-datepicker-Komponente wurde
-    // entfernt (Popup brach in Overflow-Dialogen und wich optisch ab).
-    expect(source).toContain('type="datetime-local"');
-    expect(source).not.toContain('<DateTimePicker');
+    // Eigener DateTimePicker statt nativem datetime-local: Firefox bietet im
+    // nativen Feld keine Uhrzeit-Auswahl an; der Picker rendert sein Popup
+    // per portalId an document.body (kein Clipping im Overflow-Dialog).
+    expect(source).toContain('<DateTimePicker');
+    expect(source).not.toContain('type="datetime-local"');
     expect(source).toContain('disabled={isPending || disabled || !selectedClientId}');
   });
 

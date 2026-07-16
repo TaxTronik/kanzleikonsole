@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, X, CalendarPlus, Trash2 } from 'lucide-react';
+import { DateTimePicker } from '@/components/datetime-picker';
 import { createAppointmentRequestAction, type ActionResult } from './actions';
 
 interface StaffOption {
@@ -127,14 +128,12 @@ export function AppointmentRequestForm({ staffOptions }: { staffOptions: StaffOp
                     >
                       Beginn
                     </label>
-                    <input
+                    <DateTimePicker
                       id={`appointment-slot-${i}-starts`}
                       name={`slot${i}_starts`}
-                      type="datetime-local"
-                      className="input"
                       defaultValue={defaultStartFor(i)}
                       required
-                      min={toLocalIsoMinute(new Date())}
+                      minDate={new Date()}
                     />
                   </div>
                   <div>
@@ -144,14 +143,12 @@ export function AppointmentRequestForm({ staffOptions }: { staffOptions: StaffOp
                     >
                       Ende
                     </label>
-                    <input
+                    <DateTimePicker
                       id={`appointment-slot-${i}-ends`}
                       name={`slot${i}_ends`}
-                      type="datetime-local"
-                      className="input"
                       defaultValue={defaultEndFor(i)}
                       required
-                      min={toLocalIsoMinute(new Date())}
+                      minDate={new Date()}
                     />
                   </div>
                 </div>
