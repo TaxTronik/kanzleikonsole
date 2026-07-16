@@ -523,6 +523,35 @@ test_backup_manifest_detects_tampering() {
   pass "signed backup manifest detects payload tampering"
 }
 
+test_host_tool_deps_refresh_stale_checkout() {
+  local root="$TMP_DIR/host-deps" steps="$TMP_DIR/host-deps.steps"
+  local synced="$TMP_DIR/host-deps.synced"
+  mkdir -p "$root"
+  : >"$steps"
+
+  (
+    ROOT="$root"
+    host_tool_deps_ready() { return 0; }
+    require_cmd() { :; }
+    pnpm() {
+      printf 'pnpm %s\n' "$*" >>"$steps"
+      if [[ "${1:-}" == "install" ]]; then
+        : >"$synced"
+        return 0
+      fi
+      [[ -f "$synced" ]]
+    }
+    ensure_host_tool_deps
+  ) >/dev/null 2>&1 || test_fail "stale host dependencies were not refreshed"
+
+  assert_contains "$steps" "pnpm install --frozen-lockfile --prod=false"
+  [[ "$(grep -Fc 'pnpm --filter @taxtronik/storage exec node -e process.exit(0)' "$steps")" == "2" ]] || {
+    cat "$steps" >&2
+    test_fail "expected freshness probes before and after pnpm install"
+  }
+  pass "host tools refresh stale injected workspace dependencies"
+}
+
 run_mock_update() (
   ROOT="$TMP_DIR/mock-update-root"
   mkdir -p "$ROOT"
@@ -543,6 +572,7 @@ run_mock_update() (
     record_step "git-umask $(umask) $*"
   }
   deployment_git_remote() { printf 'origin'; }
+  ensure_host_tool_deps() { record_step ensure-host-deps; }
   prepare_release_contract() { record_step prepare-release-contract; }
   provide_images() { record_step provide-images; }
   run_migrations() { record_step migrate; }
@@ -562,7 +592,8 @@ test_update_backs_up_old_checkout_before_fetch() {
   OPS_SEQUENCE="$sequence" run_mock_update >"$out" 2>&1 || test_fail "mock update failed"
   assert_before "$sequence" "backup-old-checkout" "git fetch origin"
   assert_before "$sequence" "backup-old-checkout" "git merge --ff-only origin/main"
-  assert_before "$sequence" "git merge --ff-only origin/main" "provide-images"
+  assert_before "$sequence" "git merge --ff-only origin/main" "ensure-host-deps"
+  assert_before "$sequence" "ensure-host-deps" "provide-images"
   assert_contains "$sequence" "git-umask 0022 merge --ff-only origin/main"
   assert_contains "$sequence" "git-umask 0077 fetch origin"
   pass "update completes mandatory old-checkout backup before fetch and merge"
@@ -1676,6 +1707,7 @@ test_deploy_readiness_rejects_missing_hostports
 test_deploy_readiness_rejects_gwg_schema_drift
 test_run_migrations_blocks_incomplete_gwg_schema_before_writer_start
 test_backup_manifest_detects_tampering
+test_host_tool_deps_refresh_stale_checkout
 test_update_backs_up_old_checkout_before_fetch
 test_update_backup_failure_leaves_checkout_untouched
 test_release_contract_is_not_persisted_before_health

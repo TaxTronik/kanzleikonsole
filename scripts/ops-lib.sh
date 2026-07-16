@@ -874,6 +874,11 @@ deploy_readiness() {
   clam_host="${clam_hp%%:*}"; clam_host="${clam_host/0.0.0.0/127.0.0.1}"
   clam_port="${clam_hp##*:}"
 
+  # Nach einem Update/Rollback koennen die Host-node_modules noch zum alten
+  # Checkout gehoeren. Vor dem Retry-Loop synchronisieren, damit ein pnpm-
+  # Workspace-Fehler nicht viermal faelschlich als ClamAV-Wartezeit erscheint.
+  ensure_host_tool_deps
+
   info "Deploy-Readiness: S3=$s3_endpoint ClamAV=$clam_host:$clam_port"
   local attempt
   for attempt in 1 2 3 4; do
@@ -925,16 +930,30 @@ host_tool_deps_ready() {
   [[ -n "$(resolve_prisma_cli)" && -n "$(resolve_tsx_cli)" ]]
 }
 
+host_tool_deps_current() {
+  host_tool_deps_ready || return 1
+  # `verifyDepsBeforeRun: error` schuetzt vor veralteten injected Workspace-
+  # Snapshots. Ein Checkout-Wechsel kann package.json-Dateien aendern, obwohl
+  # Prisma/tsx noch vorhanden sind; die reine Existenzpruefung reicht dann
+  # nicht. Der harmlose pnpm-Probe-Run nutzt exakt denselben Guard wie die
+  # anschliessenden Host-Kommandos, erzeugt aber keine Seiteneffekte.
+  ( cd "$ROOT" && pnpm --filter @taxtronik/storage exec node -e 'process.exit(0)' ) \
+    >/dev/null 2>&1
+}
+
 ensure_host_tool_deps() {
-  host_tool_deps_ready && return 0
+  host_tool_deps_current && return 0
   require_cmd pnpm
-  info "Host-Tool-Abhaengigkeiten installieren (Prisma/tsx fuer Backup/Provision)"
+  info "Host-Tool-Abhaengigkeiten mit aktuellem Checkout synchronisieren (Prisma/tsx/Readiness)"
   # NODE_ENV=production laesst pnpm devDependencies sonst aus. Die Host-Tools
   # laufen zwar auf einem Prod-Server, brauchen aber Prisma CLI + tsx aus den
-  # workspace-devDependencies. Runtime bleibt trotzdem containerisiert.
+  # workspace-devDependencies. Der Install-Lauf aktualisiert zugleich pnpm's
+  # injected Workspace-Snapshots nach einem git-Checkout-Wechsel. Runtime
+  # bleibt trotzdem containerisiert.
   (cd "$ROOT" && pnpm install --frozen-lockfile --prod=false \
     --filter @taxtronik/web... --filter @taxtronik/web --filter @taxtronik/db)
-  host_tool_deps_ready || die "Host-Tool-Abhaengigkeiten fehlen weiterhin (Prisma CLI/tsx). Bitte pnpm-Install-Log pruefen."
+  host_tool_deps_current || \
+    die "Host-Tool-Abhaengigkeiten sind nach pnpm install nicht mit dem Checkout synchron. Bitte pnpm-Install-Log pruefen."
 }
 
 generate_prisma_client_for_host_tools() {
@@ -2507,6 +2526,7 @@ cmd_reset_admin_password() {
 _deploy_core() {
   load_env; preflight_common; assert_production_env; require_release_version
   assert_no_database_restore_pending
+  ensure_host_tool_deps
   prepare_release_contract
   start_infra
   wait_postgres_healthy
@@ -2571,6 +2591,10 @@ cmd_update() {
     target_ref="${TAXTRONIK_UPDATE_REF:-$remote/main}"
     (umask 022; git merge --ff-only "$target_ref")
   fi
+  # package.json/Workspace-Exports des neuen Checkouts muessen vor jedem
+  # weiteren Host-pnpm-Kommando in node_modules gespiegelt sein. Andernfalls
+  # blockiert `verifyDepsBeforeRun: error` erst spaet im Readiness-Gate.
+  ensure_host_tool_deps
   # .env ggfs. aus dem aktualisierten Stand neu vervollstaendigen (Prod-Defaults,
   # fehlende Secrets, NEXTAUTH_URL) — wie bei deploy ohne Hand-Editiererei.
   prepare_env_interactive
@@ -2987,6 +3011,7 @@ cmd_rollback() {
   trap 'exit 130' INT TERM
   (umask 022; git -C "$ROOT" switch --detach "$state_commit")
   export _TAXTRONIK_ROLLBACK_CHECKOUT_CHANGED=1
+  ensure_host_tool_deps
 
   warn "Rollback auf $target — DB-Kompatibilitaet wurde fail-closed aus dem Release-State bestaetigt."
   start_apps_for_activation rollback "$target"
