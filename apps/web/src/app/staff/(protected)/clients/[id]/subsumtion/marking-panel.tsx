@@ -53,6 +53,7 @@ import {
 } from './_ui';
 import type { ResolvedNorm, NormHit, PromptTemplateDTO } from '@/server/risk';
 import { useDialogA11y } from '@/components/ui/modal';
+import { fmtIsoDate } from '@/lib/fmt';
 
 type Flash = (r: { ok: boolean; error?: string }, ok?: string) => void;
 
@@ -713,12 +714,6 @@ function formatNormId(id: string): string {
   return `§ ${para}${rest.length ? ' ' + rest.join(' ') : ''} ${law}`;
 }
 
-/** ISO-Datum "1976-08-31" → "31.08.1976" (ohne TZ-Verschiebung). */
-function formatIsoDate(iso: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
-  return m ? `${m[3]}.${m[2]}.${m[1]}` : iso;
-}
-
 /** Absatz-Marker "(1)" auf eigene Zeilen brechen — bessere Lesbarkeit. */
 function formatGesetzestext(text: string): string {
   return text.replace(/\((\d+[a-z]?)\)\s*/g, '\n($1) ').trim();
@@ -1121,7 +1116,7 @@ function NormRefRow({
                 {[
                   norm.titel,
                   norm.law,
-                  norm.gueltigAb ? `gültig ab ${formatIsoDate(norm.gueltigAb)}` : null,
+                  norm.gueltigAb ? `gültig ab ${fmtIsoDate(norm.gueltigAb)}` : null,
                 ]
                   .filter(Boolean)
                   .join(' · ')}

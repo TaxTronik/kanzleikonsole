@@ -10,16 +10,9 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { GWG_CHECK_STATUS_LABELS } from '@/lib/domain-labels';
 
 type GwgStatus = 'DRAFT' | 'IN_REVIEW' | 'VERIFIED' | 'REJECTED' | 'EXPIRED';
-
-const statusLabels: Record<GwgStatus, string> = {
-  DRAFT: 'Entwurf',
-  IN_REVIEW: 'In Prüfung',
-  VERIFIED: 'Verifiziert',
-  REJECTED: 'Abgelehnt',
-  EXPIRED: 'Abgelaufen',
-};
 
 interface GwgEditState {
   status: GwgStatus;
@@ -81,7 +74,7 @@ export function GwgLiveStatusBadge() {
             : 'badge-yellow'
       }
     >
-      {statusLabels[status]}
+      {GWG_CHECK_STATUS_LABELS[status]}
     </span>
   );
 }

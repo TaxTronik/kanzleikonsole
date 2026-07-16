@@ -1,11 +1,10 @@
-import type { ReactNode } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import { randomUUID } from 'node:crypto';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { isStaffAdmin } from '@/server/auth/rbac';
-import { withTenantContext } from '@taxtronik/db';
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Inbox, Archive, CalendarDays, Wand2 } from 'lucide-react';
+import { ArrowLeft, Inbox, CalendarDays, Wand2 } from 'lucide-react';
 import { computeOnboardingStatus, resumeStep } from '@/server/onboarding/status';
 import { readModules } from '@/server/settings/modules';
 import { readClientLayout, type ClientBlockKey } from '@/server/settings/client-layout';
@@ -16,8 +15,6 @@ import {
 } from '@/app/staff/(protected)/calendar/request-decision';
 import { SCHEDULE_LABELS } from '@taxtronik/tax';
 import { isElsterConfigured } from '@taxtronik/elster';
-import { DocumentExplorer } from '@/components/document-explorer';
-import { toManagedDoc } from '@/server/documents/managed-docs';
 import { ClientContactsPanel } from '@/components/client-contacts-panel';
 import { QuickPhoneNote } from './quick-phone-note';
 import { RemindersBlock } from './reminders/reminders-block';
@@ -27,18 +24,19 @@ import { PhoneNotesList } from './phone-notes-list';
 import { fmtDateShort, fmtDateTimeShort, fmtEUR, fmtTimeShort } from '@/lib/fmt';
 import { RecordClientVisit } from '@/components/recent-clients';
 import { QuickRequestDialog } from '@/components/quick-request-dialog';
-import { readRequestCreationOptionsTx } from '@/server/request-creation-options';
+import {
+  CLIENT_REQUESTS_CAP,
+  loadClientDashboard,
+  parseClientDocumentsDeleted,
+  parseClientDocumentsPage,
+} from './_data';
+import { ClientDocumentsBlock, ClientDocumentsSkeleton } from './client-documents-block';
 
 const kindLabels: Record<string, string> = {
   NATPERS: 'Natürliche Person',
   JURPERS: 'Juristische Person',
   PERSGES: 'Personengesellschaft',
 };
-
-// P-3: Lade-Caps — vorher wurden ALLE Anforderungen und ALLE Dokumente
-// (inkl. soft-gelöschter) geladen und als Client-Props serialisiert.
-const REQUESTS_CAP = 50;
-const MANAGER_DOCS_CAP = 1000;
 
 function formatCustomValue(type: string, value: unknown): ReactNode {
   if (value === null || value === undefined || value === '') {
@@ -66,221 +64,36 @@ function formatCustomValue(type: string, value: unknown): ReactNode {
   return String(value);
 }
 
-export default async function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+interface ClientDetailSearchParams {
+  docsPage?: string | string[];
+  docsDeleted?: string | string[];
+}
 
-  const { id } = await params;
+export default async function ClientDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<ClientDetailSearchParams>;
+}) {
+  const session = await requireStaffPage();
+
+  const [{ id }, search] = await Promise.all([params, searchParams]);
+  const documentsPage = parseClientDocumentsPage(search.docsPage);
+  const documentsDeleted = parseClientDocumentsDeleted(search.docsDeleted);
   const { tenantId, staffId } = session.user;
   const settingsCtx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
-
-  // Tenant-Isolation-Backstop vor allen weiteren Loads. Wenn Next erst nach
-  // gestreamten Shell-Teilen in notFound() läuft, kann der Browser ein 200 mit
-  // 404-UI sehen. Für §203-StGB-Negativtests und Caches muss die Entscheidung
-  // so früh wie möglich fallen.
-  const visibleClient = await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    (tx) => tx.client.findFirst({ where: { id, tenantId }, select: { id: true } }),
-  );
-  if (!visibleClient) notFound();
 
   const [modules, clientLayout] = await Promise.all([
     readModules(settingsCtx),
     readClientLayout(settingsCtx),
   ]);
 
-  const data = await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
-      const c = await tx.client.findUnique({
-        where: { id, tenantId },
-        include: {
-          documentFolders: {
-            select: { id: true, name: true, parentId: true },
-            orderBy: { name: 'asc' },
-          },
-          requests: {
-            // Offene zuerst (status asc), darin neueste zuerst — Cap gegen
-            // Mandanten mit hunderten Anforderungen (Link zur Übersicht im UI).
-            orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
-            include: { responses: { take: 1, orderBy: { createdAt: 'desc' } } },
-            take: REQUESTS_CAP,
-          },
-          contacts: { where: { active: true }, orderBy: { fullName: 'asc' } },
-          gwgChecks: { orderBy: { createdAt: 'desc' }, take: 1 },
-          responsibilities: {
-            include: { staff: { select: { id: true, fullName: true } } },
-          },
-          _count: {
-            select: {
-              poas: true,
-              gwgInvites: true,
-              gwgChecks: true,
-            },
-          },
-        },
-      });
-      if (!c) return null;
-      const [
-        phoneNotes,
-        taxDeadlines,
-        pendingChangeRequests,
-        customDefs,
-        customValues,
-        staffList,
-        workflowInstances,
-        reminders,
-        binders,
-        upcomingAppointments,
-        pendingAppointmentRequests,
-        handovers,
-        managerDocs,
-        datevDoc,
-        requestCreationOptions,
-      ] = await Promise.all([
-        tx.phoneNote.findMany({
-          where: { clientId: id },
-          orderBy: [{ doneAt: { sort: 'asc', nulls: 'first' } }, { createdAt: 'desc' }],
-          take: 20,
-        }),
-        tx.taxDeadline.findMany({
-          where: {
-            clientId: id,
-            status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS', 'OVERDUE'] },
-          },
-          orderBy: { dueDate: 'asc' },
-          take: 12,
-        }),
-        tx.clientMasterChangeRequest.count({
-          where: { clientId: id, status: 'PENDING' },
-        }),
-        tx.clientCustomFieldDef.findMany({
-          where: { active: true },
-          orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
-        }),
-        tx.clientCustomFieldValue.findMany({
-          where: { clientId: id },
-        }),
-        tx.staffUser.findMany({
-          where: { active: true },
-          orderBy: { fullName: 'asc' },
-          select: { id: true, fullName: true },
-        }),
-        tx.workflowInstance.findMany({
-          where: { clientId: id, status: 'ACTIVE' },
-          orderBy: { startedAt: 'desc' },
-          take: 6,
-          include: {
-            items: { select: { id: true, doneAt: true, dueDate: true } },
-          },
-        }),
-        tx.clientReminder.findMany({
-          where: { clientId: id },
-          orderBy: [{ doneAt: 'asc' }, { dueDate: 'asc' }],
-          take: 50,
-          include: { riskMarkings: { select: { id: true }, take: 1 } },
-        }),
-        tx.pendingBinder.findMany({
-          where: { clientId: id },
-          orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
-          take: 50,
-        }),
-        tx.appointment.findMany({
-          where: { clientId: id, status: { not: 'CANCELLED' }, endsAt: { gte: new Date() } },
-          orderBy: { startsAt: 'asc' },
-          take: 5,
-          select: {
-            id: true,
-            title: true,
-            startsAt: true,
-            endsAt: true,
-            location: true,
-            status: true,
-            owner: { select: { id: true, fullName: true } },
-          },
-        }),
-        tx.appointmentRequest.findMany({
-          where: { clientId: id, status: 'PENDING' },
-          orderBy: { createdAt: 'desc' },
-          take: 10,
-          select: {
-            id: true,
-            subject: true,
-            notes: true,
-            createdAt: true,
-            preferredStaffId: true,
-            proposedSlots: true,
-            createdByContactRel: { select: { fullName: true } },
-          },
-        }),
-        tx.clientHandover.findMany({
-          where: { clientId: id },
-          orderBy: [{ status: 'asc' }, { receivedAt: 'desc' }],
-          take: 50,
-        }),
-        // Für den DocumentExplorer: Dokumente des Mandanten INKL.
-        // soft-gelöschter (die Komponente hat eine eigene Gelöscht-Ansicht).
-        // Gecappt auf die neuesten MANAGER_DOCS_CAP — bei Erreichen zeigt
-        // der Explorer einen Truncation-Hinweis (truncated/totalCount).
-        tx.document.findMany({
-          where: { clientId: id },
-          orderBy: { createdAt: 'desc' },
-          take: MANAGER_DOCS_CAP,
-          select: {
-            id: true,
-            title: true,
-            classification: true,
-            documentTypeId: true,
-            documentType: { select: { name: true, tier: true } },
-            createdAt: true,
-            folderId: true,
-            deletedAt: true,
-            sharedWithClientAt: true,
-            versions: {
-              orderBy: { versionNo: 'desc' },
-              take: 1,
-              select: { sizeBytes: true },
-            },
-          },
-        }),
-        tx.document.findFirst({
-          where: {
-            clientId: id,
-            deletedAt: null,
-            classification: { in: ['GOBD_INVOICE', 'GOBD_CONTRACT', 'GOBD_TAX'] },
-          },
-          select: { id: true },
-        }),
-        readRequestCreationOptionsTx(tx),
-      ]);
-      // Nur wenn der Cap erreicht wurde: Gesamtzahl für den Truncation-Hinweis.
-      const managerDocsTotal =
-        managerDocs.length === MANAGER_DOCS_CAP
-          ? await tx.document.count({ where: { clientId: id } })
-          : managerDocs.length;
-      return {
-        client: c,
-        phoneNotes,
-        taxDeadlines,
-        pendingChangeRequests,
-        customDefs,
-        customValues,
-        staffList,
-        workflowInstances,
-        reminders,
-        binders,
-        upcomingAppointments,
-        pendingAppointmentRequests,
-        handovers,
-        managerDocs,
-        managerDocsTotal,
-        hasDatevDocs: datevDoc !== null,
-        ...requestCreationOptions,
-      };
-    },
-  );
+  const dashboard = await loadClientDashboard(settingsCtx, session, id);
 
-  if (!data) notFound();
+  if (dashboard.status === 'forbidden') redirect('/staff/clients?denied=1');
+  if (dashboard.status === 'not_found') notFound();
+  const data = dashboard.data;
   const {
     client,
     phoneNotes,
@@ -295,9 +108,6 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
     upcomingAppointments,
     pendingAppointmentRequests,
     handovers,
-    managerDocs,
-    managerDocsTotal,
-    hasDatevDocs,
     requestTemplates,
     requestFormTemplates,
     templatesLimited,
@@ -954,9 +764,9 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
               <div className="flex items-center justify-between px-6 py-4 border-b border-default">
                 <h2 className="text-sm font-medium text-primary">
                   Anforderungen
-                  {client.requests.length === REQUESTS_CAP && (
+                  {client.requests.length === CLIENT_REQUESTS_CAP && (
                     <span className="ml-2 text-xs font-normal text-muted">
-                      zeige die neuesten {REQUESTS_CAP}
+                      zeige die neuesten {CLIENT_REQUESTS_CAP}
                     </span>
                   )}
                 </h2>
@@ -1039,36 +849,18 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
             </div>
           ),
           documents: (
-            <div key="documents">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-medium text-primary">Dokumente</h2>
-                {hasDatevDocs && (
-                  <a
-                    href={`/api/staff/clients/${client.id}/datev-belege-export`}
-                    className="btn-secondary text-xs"
-                    title="Alle GoBD-Belege als ZIP mit Begleitliste"
-                  >
-                    <Archive className="h-4 w-4" />
-                    DATEV-Belege (ZIP)
-                  </a>
-                )}
-              </div>
-              {!client.allowActive && (
-                <p className="text-xs text-yellow-600 mb-2">
-                  Dokumente können erst nach GwG-Freischaltung hochgeladen werden.
-                </p>
-              )}
-              <DocumentExplorer
-                variant="embedded"
-                clientId={client.id}
-                canUpload={client.allowActive}
-                scopeLabel={client.name}
-                folders={client.documentFolders}
-                documents={managerDocs.map(toManagedDoc)}
-                truncated={managerDocsTotal > managerDocs.length}
-                totalCount={managerDocsTotal}
+            <Suspense
+              key={`client-documents-${documentsPage}-${documentsDeleted ? 'deleted' : 'active'}`}
+              fallback={<ClientDocumentsSkeleton />}
+            >
+              <ClientDocumentsBlock
+                ctx={settingsCtx}
+                session={session}
+                client={{ id: client.id, name: client.name, allowActive: client.allowActive }}
+                page={documentsPage}
+                deleted={documentsDeleted}
               />
-            </div>
+            </Suspense>
           ),
         };
         return (

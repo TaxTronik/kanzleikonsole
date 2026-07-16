@@ -12,11 +12,16 @@ import {
   staffActionGuard,
   withStaff,
   ActionError,
+  parseFormData,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
 import { fmtDateShort } from '@/lib/fmt';
 
 export type ActionResult = BaseActionResult;
+
+function revalidatePhoneNoteClient(clientId: string | null | undefined): void {
+  if (clientId) revalidatePath(`/staff/clients/${clientId}`);
+}
 
 const CreateSchema = z.object({
   callerName: z.string().min(1).max(200),
@@ -137,10 +142,8 @@ export async function markNoteReadAction(formData: FormData): Promise<void> {
   const g = await staffActionGuard();
   if (!g.ok) return;
   // S2: UUID-Validation (symmetrisch zu markNotificationReadAction).
-  const parsed = z
-    .object({ noteId: z.string().uuid() })
-    .safeParse({ noteId: formData.get('noteId') });
-  if (!parsed.success) return;
+  const parsed = parseFormData(z.object({ noteId: z.string().uuid() }), formData);
+  if (!parsed.ok) return;
   await markPhoneNoteRead(parsed.data.noteId, g.tenantId, g.staffId);
   revalidatePath('/staff/phone-notes');
 }
@@ -175,9 +178,10 @@ export async function markPhoneNoteDoneAction(input: { id: string }): Promise<Ac
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   const r = await withStaff(async (tx, { tenantId, staffId }) => {
-    await tx.phoneNote.update({
+    const note = await tx.phoneNote.update({
       where: { id: parsed.data.id },
       data: { doneAt: new Date(), doneByStaff: staffId, readAt: new Date() },
+      select: { clientId: true },
     });
     await evidenceService.record(tx, {
       tenantId,
@@ -187,10 +191,11 @@ export async function markPhoneNoteDoneAction(input: { id: string }): Promise<Ac
       resourceType: 'phone_note',
       resourceId: parsed.data.id,
     });
+    return { clientId: note.clientId };
   });
   if (r.ok) {
     revalidatePath('/staff/phone-notes');
-    revalidatePath('/staff/clients', 'layout');
+    revalidatePhoneNoteClient(r.clientId);
     revalidatePath('/staff/dashboard');
   }
   return r;
@@ -201,9 +206,10 @@ export async function undoPhoneNoteDoneAction(input: { id: string }): Promise<Ac
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   const r = await withStaff(async (tx, { tenantId, staffId }) => {
-    await tx.phoneNote.update({
+    const note = await tx.phoneNote.update({
       where: { id: parsed.data.id },
       data: { doneAt: null, doneByStaff: null },
+      select: { clientId: true },
     });
     await evidenceService.record(tx, {
       tenantId,
@@ -213,10 +219,11 @@ export async function undoPhoneNoteDoneAction(input: { id: string }): Promise<Ac
       resourceType: 'phone_note',
       resourceId: parsed.data.id,
     });
+    return { clientId: note.clientId };
   });
   if (r.ok) {
     revalidatePath('/staff/phone-notes');
-    revalidatePath('/staff/clients', 'layout');
+    revalidatePhoneNoteClient(r.clientId);
   }
   return r;
 }
@@ -242,6 +249,7 @@ export async function forwardPhoneNoteAction(input: {
         callerName: true,
         callerPhone: true,
         doneAt: true,
+        clientId: true,
       },
     });
     if (!note) throw new ActionError('Telefonzettel nicht gefunden.');
@@ -278,10 +286,11 @@ export async function forwardPhoneNoteAction(input: {
         resourceId: parsed.data.id,
       });
     }
+    return { clientId: note.clientId };
   });
   if (r.ok) {
     revalidatePath('/staff/phone-notes');
-    revalidatePath('/staff/clients', 'layout');
+    revalidatePhoneNoteClient(r.clientId);
   }
   return r;
 }
@@ -364,10 +373,11 @@ export async function phoneNoteToReminderAction(input: {
         fromPhoneNote: parsed.data.id,
       },
     });
+    return { clientId: note.clientId };
   });
   if (r.ok) {
     revalidatePath('/staff/phone-notes');
-    revalidatePath('/staff/clients', 'layout');
+    revalidatePhoneNoteClient(r.clientId);
     revalidatePath('/staff/dashboard');
   }
   return r;

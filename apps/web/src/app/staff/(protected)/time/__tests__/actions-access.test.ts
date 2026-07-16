@@ -10,10 +10,14 @@ const m = vi.hoisted(() => ({
   evidenceRecord: vi.fn(),
 }));
 
-vi.mock('@/server/actions/staff-action', () => ({
-  withStaff: m.withStaff,
-  ActionError: class ActionError extends Error {},
-}));
+vi.mock('@/server/actions/staff-action', async () => {
+  const { parseFormData } = await import('@/server/actions/form-data');
+  return {
+    withStaff: m.withStaff,
+    ActionError: class ActionError extends Error {},
+    parseFormData,
+  };
+});
 vi.mock('@/server/auth/rbac', () => ({ assertClientAccessTx: m.assertClientAccessTx }));
 vi.mock('@/server/db/assert-tenant', () => ({ assertClientInTenant: m.assertClientInTenant }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: m.evidenceRecord } }));

@@ -8,6 +8,7 @@ import { requestMagicLink, verifyMagicLink } from '@/server/auth/magic-link';
 import { writePortalSession } from '@/server/auth/portal-session';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { checkIpOrGlobalLimit, getClientIp } from '@/server/rate-limit';
+import { parseFormData } from '@/server/actions/form-data';
 
 const RequestSchema = z.object({
   email: z.string().email(),
@@ -38,11 +39,8 @@ export async function requestMagicLinkAction(
     };
   }
 
-  const parsed = RequestSchema.safeParse({
-    email: formData.get('email'),
-    tenantSlug: formData.get('tenantSlug') ?? 'default',
-  });
-  if (!parsed.success) {
+  const parsed = parseFormData(RequestSchema, formData);
+  if (!parsed.ok) {
     return { ok: false, error: 'Bitte gültige E-Mail-Adresse eingeben.' };
   }
 

@@ -6,11 +6,10 @@
 // Zeigt Hash-Chain-Status oben (verifiziert oder gebrochen).
 // =============================================================================
 
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ShieldCheck, ShieldAlert, ChevronLeft, ChevronRight, FileDown } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
-import { isStaffAdmin } from '@/server/auth/rbac';
+import { requireStaffPage } from '@/server/auth/staff-page';
+
 import { withTenantContext } from '@taxtronik/db';
 import {
   AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY,
@@ -52,11 +51,7 @@ export default async function AuditLogPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
-  if (!isStaffAdmin(session)) {
-    redirect('/staff/dashboard');
-  }
+  const session = await requireStaffPage({ admin: true });
 
   const sp = await searchParams;
   const { tenantId, staffId } = session.user;

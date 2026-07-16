@@ -8,12 +8,12 @@ import { ClipboardList } from 'lucide-react';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 import { fmtDateNumeric } from '@/lib/fmt';
+import { FORM_SUBMISSION_STATUS_LABELS } from '@/lib/domain-labels';
 
-const STATUS_LABELS: Record<string, string> = {
+const PORTAL_FORM_STATUS_LABELS: Readonly<Record<string, string>> = {
+  ...FORM_SUBMISSION_STATUS_LABELS,
   PENDING: 'Offen',
-  DRAFT: 'Entwurf',
   SUBMITTED: 'Übermittelt',
-  REVIEWED: 'Geprüft',
 };
 
 export default async function PortalFormsPage() {
@@ -91,7 +91,7 @@ export default async function PortalFormsPage() {
                   {s.name}
                 </Link>
                 <span className="text-xs text-muted">
-                  {STATUS_LABELS[s.status]}
+                  {PORTAL_FORM_STATUS_LABELS[s.status]}
                   {s.submittedAt && ` · ${fmtDateNumeric(s.submittedAt)}`}
                 </span>
               </li>

@@ -1,7 +1,7 @@
-﻿import { staffAuth } from '@/server/auth/staff';
+﻿import { requireStaffPage } from '@/server/auth/staff-page';
 import { isStaffAdmin, inaccessibleClientIdsFor } from '@/server/auth/rbac';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
-import { redirect } from 'next/navigation';
+
 import Link from 'next/link';
 import { ListChecks, ArrowRight } from 'lucide-react';
 
@@ -35,8 +35,7 @@ async function mapWithConcurrency<T, R>(
 }
 
 export default async function DashboardPage() {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
   const { tenantId, staffId } = session.user;
   const isAdmin = isStaffAdmin(session);
   const ctx: TenantContext = { tenantId, actorId: staffId, actorType: 'STAFF' };
@@ -102,7 +101,7 @@ export default async function DashboardPage() {
         </Link>
       )}
 
-      <DashboardGrid initialLayout={layout} initialRendered={rendered} />
+      <DashboardGrid initialLayout={layout} renderedWidgets={rendered} />
     </div>
   );
 }

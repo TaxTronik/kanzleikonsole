@@ -4,7 +4,12 @@ import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
-import { ActionError, staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
+import {
+  ActionError,
+  parseFormData,
+  staffActionGuard,
+  type ActionResult,
+} from '@/server/actions/staff-action';
 import { toActionError } from '@/server/auth/rbac';
 import { writePrivacyConfigTx, type PrivacyConfig } from '@/server/privacy/notice';
 import {
@@ -102,11 +107,8 @@ export async function saveConsentOptionsAction(
   if (!g.ok) return g;
   const { tenantId, staffId, ctx } = g;
 
-  const form = CatalogFormSchema.safeParse({
-    catalogJson: formData.get('catalogJson'),
-    expectedRevision: formData.get('expectedRevision'),
-  });
-  if (!form.success) return { ok: false, error: 'Einwilligungskatalog ist zu groß oder fehlt.' };
+  const form = parseFormData(CatalogFormSchema, formData);
+  if (!form.ok) return { ok: false, error: 'Einwilligungskatalog ist zu groß oder fehlt.' };
 
   let submitted: ConsentOptionsCatalog;
   try {

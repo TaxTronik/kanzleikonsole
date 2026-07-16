@@ -41,29 +41,42 @@ describe('Einwilligungsrichtlinien in der UI', () => {
   });
 
   it('erzwingt Pflichtoptionen im öffentlichen Onboarding auch serverseitig', () => {
-    const action = read('app/gwg-onboarding/actions.ts');
+    const transaction = read('server/gwg-onboarding/submission-transaction.ts');
     const page = read('app/gwg-onboarding/page.tsx');
     const wizard = read('app/gwg-onboarding/wizard.tsx');
 
-    expect(action).toContain('enforceRequired: true');
-    expect(action).toContain('expectedDisplay:');
-    expect(action).toContain('await lockConsentCatalogTx(tx, invite.tenantId)');
-    expect(action).toContain('noticeSnapshot: notice.body');
+    expect(transaction).toContain('enforceRequired: true');
+    expect(transaction).toContain('expectedDisplay:');
+    expect(transaction).toContain('await lockConsentCatalogTx(tx, input.invite.tenantId)');
+    expect(transaction).toContain('noticeSnapshot: notice.body');
     expect(page).toContain('consentDisplayRevision(notice, visibleOptions)');
     expect(wizard).toContain('displayRevision: consentDisplayRevision');
     expect(wizard).toContain('missingRequiredConsentOptions(consent, consentOptions)');
   });
 
   it('hält den exklusiven Tenant-Lock nur im finalen Display-CAS-Fenster', () => {
-    const action = read('app/gwg-onboarding/actions.ts');
-    const notifyAt = action.indexOf('await notifyMany(');
-    const lockAt = action.indexOf('await lockConsentCatalogTx(tx, invite.tenantId)');
-    const commitAt = action.indexOf('return { ok: true } as const;', lockAt);
+    const transaction = read('server/gwg-onboarding/submission-transaction.ts');
+    const scriptAt = transaction.indexOf(
+      'export async function runOnboardingSubmissionTransactionTx',
+    );
+    const notifyAt = transaction.indexOf('await notifySubmissionTx(', scriptAt);
+    const finalizationAt = transaction.indexOf(
+      'await persistSubmissionConsentFinalizationTx(',
+      notifyAt,
+    );
 
     expect(notifyAt).toBeGreaterThan(-1);
-    expect(lockAt).toBeGreaterThan(notifyAt);
-    expect(commitAt).toBeGreaterThan(lockAt);
-    const lockedWindow = action.slice(lockAt, commitAt);
+    expect(finalizationAt).toBeGreaterThan(notifyAt);
+
+    const finalizationStart = transaction.indexOf(
+      'async function persistSubmissionConsentFinalizationTx',
+    );
+    const finalizationEnd = transaction.indexOf(
+      '/**\n * The transaction body stays as a readable phase script.',
+      finalizationStart,
+    );
+    const lockedWindow = transaction.slice(finalizationStart, finalizationEnd);
+    expect(lockedWindow).toContain('await lockConsentCatalogTx(tx, input.invite.tenantId)');
     expect(lockedWindow).toContain('renderNoticeForTenantTx');
     expect(lockedWindow).toContain('resolveConsentSelectionsTx');
     expect(lockedWindow).toContain('tx.clientConsent.create');

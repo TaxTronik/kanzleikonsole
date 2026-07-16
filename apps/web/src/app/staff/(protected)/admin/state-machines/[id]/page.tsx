@@ -1,8 +1,8 @@
-﻿import { redirect, notFound } from 'next/navigation';
+﻿import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
-import { isStaffAdmin } from '@/server/auth/rbac';
+import { requireStaffPage } from '@/server/auth/staff-page';
+
 import { withTenantContext } from '@taxtronik/db';
 import { MachineEditor } from './editor';
 import { MachineMetaForm } from './meta-form';
@@ -12,11 +12,7 @@ export default async function StateMachineEditPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
-  if (!isStaffAdmin(session)) {
-    redirect('/staff/dashboard');
-  }
+  const session = await requireStaffPage({ admin: true });
   const { id } = await params;
   const { tenantId, staffId } = session.user;
 

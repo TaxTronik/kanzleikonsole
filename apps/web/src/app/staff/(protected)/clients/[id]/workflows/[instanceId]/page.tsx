@@ -6,7 +6,7 @@
 // die komplette Historie erhalten (Items werden nicht gelöscht).
 // =============================================================================
 
-import { redirect, notFound } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -22,7 +22,7 @@ import {
   ListChecks,
   ExternalLink,
 } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { SkillBadge } from '@/components/skill-badge';
 import { fmtDateTimeShort } from '@/lib/fmt';
@@ -50,8 +50,7 @@ export default async function WorkflowInstanceDetail({
 }: {
   params: Promise<{ id: string; instanceId: string }>;
 }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
   const { id: clientId, instanceId } = await params;
   const { tenantId, staffId } = session.user;
 

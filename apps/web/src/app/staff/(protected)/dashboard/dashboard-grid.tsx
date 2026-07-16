@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useRef, useEffect, type ReactNode } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { GridLayout, useContainerWidth, type Layout, type LayoutItem } from 'react-grid-layout';
 import { Plus, Settings2, RotateCcw, Check, X, Loader2 } from 'lucide-react';
 import {
@@ -17,6 +17,7 @@ import {
   resetDashboardLayoutAction,
 } from './actions';
 import { createDashboardMutationQueue, snapshotForQueuedDashboardAdd } from './mutation-queue';
+import { dashboardRenderMap, type RenderedWidget } from './dashboard-render-state';
 
 // IDs für neu hinzugefügte Widgets. Wird nur in Click-Handlern aufgerufen
 // (kein Render-Pfad → keine Hydration-Differenz möglich). crypto.randomUUID
@@ -62,21 +63,19 @@ function findFreeSlot(
   return { x: 0, y: maxY };
 }
 
-interface RenderedWidget {
-  widget: LayoutWidget;
-  node: ReactNode;
-}
-
 export function DashboardGrid({
   initialLayout,
-  initialRendered,
+  renderedWidgets,
 }: {
   initialLayout: DashboardLayout;
-  initialRendered: RenderedWidget[];
+  renderedWidgets: RenderedWidget[];
 }) {
   const [editMode, setEditMode] = useState(false);
   const [widgets, setWidgets] = useState<LayoutWidget[]>(initialLayout.widgets);
-  const [renderedWidgets, setRenderedWidgets] = useState(initialRendered);
+  // Server-Nodes bleiben direkte Props, damit router.refresh() die sichtbaren
+  // Widget-Inhalte wirklich erneuert. Lokaler State ist nur fuer ein soeben
+  // hinzugefuegtes, noch nicht im Server-Tree enthaltenes Widget noetig.
+  const [optimisticRenderedWidgets, setOptimisticRenderedWidgets] = useState<RenderedWidget[]>([]);
   const [pendingWidgetIds, setPendingWidgetIds] = useState<Set<string>>(() => new Set());
   // Synchroner Spiegel des Widget-States: Click-Handler lesen die aktuellste
   // Liste auch bei schnellen Mehrfach-Klicks (vor dem nächsten Render), ohne
@@ -105,9 +104,7 @@ export function DashboardGrid({
   const [mutationQueue] = useState(createDashboardMutationQueue);
   const { width, containerRef, mounted } = useContainerWidth();
 
-  const renderById = new Map(
-    renderedWidgets.map((rendered) => [rendered.widget.id, rendered.node]),
-  );
+  const renderById = dashboardRenderMap(renderedWidgets, optimisticRenderedWidgets);
 
   useEffect(() => {
     return () => {
@@ -193,7 +190,7 @@ export function DashboardGrid({
         setWidgets(rolledBack);
         return;
       }
-      setRenderedWidgets((currentRendered) => [
+      setOptimisticRenderedWidgets((currentRendered) => [
         ...currentRendered.filter((entry) => entry.widget.id !== widget.id),
         r.rendered!,
       ]);
@@ -219,7 +216,7 @@ export function DashboardGrid({
     const next = current.filter((w) => w.id !== id);
     widgetsRef.current = next;
     setWidgets(next);
-    setRenderedWidgets((rendered) => rendered.filter((entry) => entry.widget.id !== id));
+    setOptimisticRenderedWidgets((rendered) => rendered.filter((entry) => entry.widget.id !== id));
     persist();
   }
 

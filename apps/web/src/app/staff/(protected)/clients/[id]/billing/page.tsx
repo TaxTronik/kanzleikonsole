@@ -1,15 +1,14 @@
-﻿import { redirect, notFound } from 'next/navigation';
+﻿import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Clock } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { hasStaffPermission } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { BillingForm } from './billing-form';
 import { fmtDateShort } from '@/lib/fmt';
 
 export default async function ClientBillingPage({ params }: { params: Promise<{ id: string }> }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
 
   const { id: clientId } = await params;
   const { tenantId, staffId } = session.user;

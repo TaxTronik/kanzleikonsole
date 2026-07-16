@@ -93,12 +93,25 @@ describe('GwG-Lifecycle-Lock – Aufrufer-Reihenfolge', () => {
       'requireGwgReverificationTx(',
     );
 
-    const publicOnboardingActions = source('../../../app/gwg-onboarding/actions.ts');
+    const publicOnboardingTransaction = source('../../gwg-onboarding/submission-transaction.ts');
     expectOrdered(
-      section(publicOnboardingActions, 'export async function submitOnboardingAction'),
+      section(
+        publicOnboardingTransaction,
+        'export async function runOnboardingSubmissionTransactionTx',
+      ),
       'claimCurrentGwgInviteSubmitTx(',
+      'resolveSubmissionReviewTx(',
+      'loadSubmissionClientTx(',
+      'persistClientMasterPhaseTx(',
+    );
+    expectOrdered(
+      section(
+        publicOnboardingTransaction,
+        'async function resolveSubmissionReviewTx',
+        'async function loadSubmissionClientTx',
+      ),
+      'canStartUnboundGwgInviteTx(',
       'startFreshGwgReviewTx(',
-      'tx.client.update(',
     );
 
     const inviteLifecycle = source('../../gwg-onboarding/invite-lifecycle.ts');

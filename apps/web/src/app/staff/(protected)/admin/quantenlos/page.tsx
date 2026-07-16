@@ -8,11 +8,10 @@
 // Wiedervorlage. Admin/Partner-only (Compliance-Hoheit, wie Audit-Log).
 // =============================================================================
 
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { AlertTriangle } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
-import { isStaffAdmin } from '@/server/auth/rbac';
+import { requireStaffPage } from '@/server/auth/staff-page';
+
 import { isRiskLayerConfigured } from '@taxtronik/risk-layer';
 import { readModules } from '@/server/settings/modules';
 import { getIbmTokenStatus } from '@/server/settings/quantenlos';
@@ -24,9 +23,7 @@ function ymd(d: Date): string {
 }
 
 export default async function QuantenlosPage() {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
-  if (!isStaffAdmin(session)) redirect('/staff/dashboard');
+  const session = await requireStaffPage({ admin: true });
 
   const { tenantId, staffId } = session.user;
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };

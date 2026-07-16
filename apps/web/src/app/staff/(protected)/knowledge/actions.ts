@@ -12,6 +12,7 @@ import {
   staffActionGuard,
   withStaff,
   ActionError,
+  parseFormData,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
 
@@ -30,11 +31,8 @@ export async function createCategoryAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const parsed = CategorySchema.safeParse({
-    name: formData.get('name'),
-    parentId: formData.get('parentId') ?? '',
-  });
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  const parsed = parseFormData(CategorySchema, formData);
+  if (!parsed.ok) return parsed;
   const slug = slugify(parsed.data.name);
 
   // Kategorien sind Wissensstruktur — Pflege via ADMIN/PARTNER, Artikel können
@@ -87,13 +85,8 @@ export async function createArticleAction(formData: FormData): Promise<void> {
   if (!g.ok) return;
   const { tenantId, staffId, ctx } = g;
 
-  const parsed = ArticleSchema.safeParse({
-    title: formData.get('title'),
-    body: formData.get('body'),
-    categoryId: formData.get('categoryId') ?? '',
-    published: formData.get('published') ?? undefined,
-  });
-  if (!parsed.success) throw new ActionError('Validierungsfehler.');
+  const parsed = parseFormData(ArticleSchema, formData);
+  if (!parsed.ok) throw new ActionError(parsed.error);
 
   const baseSlug = slugify(parsed.data.title);
   let slug = baseSlug;
@@ -158,14 +151,8 @@ export async function updateArticleAction(formData: FormData): Promise<void> {
   if (!g.ok) return;
   const { tenantId, staffId, ctx } = g;
 
-  const parsed = UpdateArticleSchema.safeParse({
-    id: formData.get('id'),
-    title: formData.get('title'),
-    body: formData.get('body'),
-    categoryId: formData.get('categoryId') ?? '',
-    published: formData.get('published') ?? undefined,
-  });
-  if (!parsed.success) throw new ActionError('Validierungsfehler.');
+  const parsed = parseFormData(UpdateArticleSchema, formData);
+  if (!parsed.ok) throw new ActionError(parsed.error);
   const data = parsed.data;
 
   await withTenantContext(ctx, async (tx) => {
@@ -202,8 +189,8 @@ export async function deleteArticleAction(formData: FormData): Promise<void> {
   if (!g.ok) return;
   const { tenantId, staffId, ctx } = g;
   // S2: UUID-Validation.
-  const parsed = z.object({ id: z.string().uuid() }).safeParse({ id: formData.get('id') });
-  if (!parsed.success) return;
+  const parsed = parseFormData(z.object({ id: z.string().uuid() }), formData);
+  if (!parsed.ok) return;
   const { id } = parsed.data;
 
   await withTenantContext(ctx, async (tx) => {

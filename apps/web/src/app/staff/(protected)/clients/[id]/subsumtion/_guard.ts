@@ -5,7 +5,7 @@
 // Panels) und ob die Engine konfiguriert ist. Redirect bei fehlender Berechtigung.
 
 import { redirect } from 'next/navigation';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { canAccessClient } from '@/server/auth/rbac';
 import { readModules } from '@/server/settings/modules';
 import { isRiskLayerConfigured } from '@taxtronik/risk-layer';
@@ -20,8 +20,7 @@ export interface SubsumtionPageContext {
 }
 
 export async function guardSubsumtionPage(clientId: string): Promise<SubsumtionPageContext> {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
   const { tenantId, staffId, fullName } = session.user;
   const ctx: TenantContext = { tenantId, actorId: staffId, actorType: 'STAFF' };
 

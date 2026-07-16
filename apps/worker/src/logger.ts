@@ -8,6 +8,9 @@
 // =============================================================================
 
 import pino from 'pino';
+import { LOG_REDACT_PATHS } from '@taxtronik/config/logger';
+
+export { LOG_REDACT_PATHS } from '@taxtronik/config/logger';
 
 export const log = pino({
   level: process.env['LOG_LEVEL'] ?? 'info',
@@ -16,20 +19,7 @@ export const log = pino({
       ? undefined
       : { target: 'pino-pretty', options: { colorize: true } },
   redact: {
-    paths: [
-      '*.password',
-      '*.passwordHash',
-      '*.secret',
-      '*.token',
-      '*.totpSecret',
-      '*.totpSecretEnc',
-      '*.signingTokenHash',
-      '*.signingOtpHash',
-      '*.hmacSecret',
-      '*.apiKey',
-      'req.headers.cookie',
-      'req.headers.authorization',
-    ],
+    paths: [...LOG_REDACT_PATHS],
     censor: '[redacted]',
   },
 });

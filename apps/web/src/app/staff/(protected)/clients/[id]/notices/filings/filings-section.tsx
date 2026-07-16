@@ -6,6 +6,7 @@ import { Plus, FileText, Eye, EyeOff, Trash2, Save, X, Pencil, ArrowRight } from
 import { saveTaxFilingAction, shareTaxFilingAction, deleteTaxFilingAction } from './actions';
 
 import { fmtDateShort, fmtEUR } from '@/lib/fmt';
+import { NOTICE_KIND_LABELS } from '@/lib/domain-labels';
 const KIND_KEYS = [
   'USTA',
   'UST_JAHR',
@@ -19,19 +20,6 @@ const KIND_KEYS = [
   'SONSTIGE',
 ] as const;
 type Kind = (typeof KIND_KEYS)[number];
-
-const KIND_LABELS: Record<Kind, string> = {
-  USTA: 'USt-Voranmeldung',
-  UST_JAHR: 'USt-Jahresbescheid',
-  EST: 'Einkommensteuer',
-  KST: 'Körperschaftsteuer',
-  GEWST_MESSBESCHEID: 'GewSt-Messbescheid',
-  GEWST: 'GewSt-Bescheid',
-  LSTA: 'LSt-Anmeldung',
-  FESTSTELLUNG: 'Feststellungsbescheid',
-  ZERLEGUNG: 'Zerlegungsbescheid',
-  SONSTIGE: 'Sonstige',
-};
 
 interface Filing {
   id: string;
@@ -71,7 +59,7 @@ export function FilingsSection({ clientId, filings }: { clientId: string; filing
   function remove(filing: Filing) {
     if (
       !confirm(
-        `Erklärung ${KIND_LABELS[filing.kind as Kind] ?? filing.kind} ${filing.period} wirklich löschen?`,
+        `Erklärung ${NOTICE_KIND_LABELS[filing.kind as Kind] ?? filing.kind} ${filing.period} wirklich löschen?`,
       )
     )
       return;
@@ -148,7 +136,7 @@ export function FilingsSection({ clientId, filings }: { clientId: string; filing
                 <tr key={f.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3">
                     <div className="font-medium text-primary">
-                      {KIND_LABELS[f.kind as Kind] ?? f.kind}
+                      {NOTICE_KIND_LABELS[f.kind as Kind] ?? f.kind}
                     </div>
                     <div className="text-xs text-muted">{f.period}</div>
                     {f.document && (
@@ -319,7 +307,7 @@ function FilingForm({
           >
             {KIND_KEYS.map((k) => (
               <option key={k} value={k}>
-                {KIND_LABELS[k]}
+                {NOTICE_KIND_LABELS[k]}
               </option>
             ))}
           </select>

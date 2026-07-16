@@ -8,47 +8,62 @@
 // =============================================================================
 
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
+import type { Prisma } from '@prisma/client';
+
+const COMPLETED_INSTANCES_CAP = 20;
+
+const workflowInstanceInclude = {
+  members: { select: { staffId: true } },
+  items: {
+    orderBy: { position: 'asc' },
+    include: {
+      skill: { select: { label: true, color: true } },
+      triggeredRequests: { select: { id: true } },
+      comments: {
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, authorName: true, body: true, createdAt: true },
+      },
+      documents: {
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, title: true, createdAt: true },
+      },
+    },
+  },
+} satisfies Prisma.WorkflowInstanceInclude;
 
 export async function loadClientWorkflows(
   ctx: TenantContext,
   opts: { clientId: string; analysisId?: string; mineStaffId?: string },
 ) {
   return withTenantContext(ctx, async (tx) => {
+    const instanceWhere = {
+      clientId: opts.clientId,
+      ...(opts.analysisId ? { analysisId: opts.analysisId } : {}),
+      ...(opts.mineStaffId
+        ? {
+            OR: [
+              { startedByStaff: opts.mineStaffId },
+              { items: { some: { assigneeStaffId: opts.mineStaffId, doneAt: null } } },
+            ],
+          }
+        : {}),
+    } satisfies Prisma.WorkflowInstanceWhereInput;
+
     const [instances, templates, staffList, formTemplates, requestTemplates, emailTemplates] =
       await Promise.all([
-        tx.workflowInstance.findMany({
-          where: {
-            clientId: opts.clientId,
-            ...(opts.analysisId ? { analysisId: opts.analysisId } : {}),
-            ...(opts.mineStaffId
-              ? {
-                  OR: [
-                    { startedByStaff: opts.mineStaffId },
-                    { items: { some: { assigneeStaffId: opts.mineStaffId, doneAt: null } } },
-                  ],
-                }
-              : {}),
-          },
-          orderBy: [{ status: 'asc' }, { startedAt: 'desc' }],
-          include: {
-            members: { select: { staffId: true } },
-            items: {
-              orderBy: { position: 'asc' },
-              include: {
-                skill: { select: { label: true, color: true } },
-                triggeredRequests: { select: { id: true } },
-                comments: {
-                  orderBy: { createdAt: 'asc' },
-                  select: { id: true, authorName: true, body: true, createdAt: true },
-                },
-                documents: {
-                  orderBy: { createdAt: 'asc' },
-                  select: { id: true, title: true, createdAt: true },
-                },
-              },
-            },
-          },
-        }),
+        Promise.all([
+          tx.workflowInstance.findMany({
+            where: { ...instanceWhere, status: { in: ['ACTIVE', 'PAUSED'] } },
+            orderBy: [{ status: 'asc' }, { startedAt: 'desc' }],
+            include: workflowInstanceInclude,
+          }),
+          tx.workflowInstance.findMany({
+            where: { ...instanceWhere, status: { in: ['COMPLETED', 'CANCELLED'] } },
+            orderBy: [{ completedAt: { sort: 'desc', nulls: 'last' } }, { startedAt: 'desc' }],
+            take: COMPLETED_INSTANCES_CAP,
+            include: workflowInstanceInclude,
+          }),
+        ]).then(([ongoing, completed]) => [...ongoing, ...completed]),
         tx.workflowTemplate.findMany({
           where: { active: true },
           orderBy: { name: 'asc' },

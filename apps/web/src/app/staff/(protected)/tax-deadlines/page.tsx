@@ -11,12 +11,12 @@
 //   - ?month=YYYY-MM: konkreter Monat (Default: aktueller)
 // =============================================================================
 
-import { redirect } from 'next/navigation';
 import { parseMonth, shortKind } from '@/lib/tax-calendar';
 import Link from 'next/link';
 import { SavedViews } from '@/components/saved-views';
 import { CalendarDays, AlertTriangle, ListChecks, ChevronLeft, ChevronRight } from 'lucide-react';
-import { staffAuth, type StaffSession } from '@/server/auth/staff';
+import type { StaffSession } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import type { Prisma } from '@prisma/client';
@@ -24,16 +24,7 @@ import { SCHEDULE_LABELS } from '@taxtronik/tax';
 import { rematerializeAction, markDeadlineDoneAction } from './actions';
 import { fmtDateShort, fmtMonthYear, fmtWeekdayShort, berlinYmd } from '@/lib/fmt';
 import { CalendarModeSwitch } from '@/components/calendar-mode-switch';
-
-const STATUS_LABELS: Record<string, string> = {
-  PLANNED: 'Geplant',
-  REMINDED: 'Erinnerung versendet',
-  IN_PROGRESS: 'In Bearbeitung',
-  SUBMITTED: 'Übermittelt',
-  DONE: 'Erledigt',
-  OVERDUE: 'Überfällig',
-  SKIPPED: 'Übersprungen',
-};
+import { TAX_DEADLINE_STATUS_LABELS } from '@/lib/domain-labels';
 
 interface Search {
   view?: 'month' | 'list';
@@ -48,8 +39,7 @@ export default async function TaxDeadlinesPage({
 }: {
   searchParams: Promise<Search>;
 }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
   const sp = await searchParams;
   const view = sp.view === 'list' ? 'list' : 'month';
   const scope = sp.scope === 'mine' ? 'mine' : 'all';
@@ -568,19 +558,19 @@ function DeadlineTable({
               <td className="px-6 py-3 text-secondary">{fmtDateShort(d.dueDate)}</td>
               <td className="px-6 py-3">
                 {d.status === 'OVERDUE' && (
-                  <span className="badge-red">{STATUS_LABELS[d.status]}</span>
+                  <span className="badge-red">{TAX_DEADLINE_STATUS_LABELS[d.status]}</span>
                 )}
                 {d.status === 'REMINDED' && (
-                  <span className="badge-yellow">{STATUS_LABELS[d.status]}</span>
+                  <span className="badge-yellow">{TAX_DEADLINE_STATUS_LABELS[d.status]}</span>
                 )}
                 {d.status === 'PLANNED' && (
-                  <span className="badge-gray">{STATUS_LABELS[d.status]}</span>
+                  <span className="badge-gray">{TAX_DEADLINE_STATUS_LABELS[d.status]}</span>
                 )}
                 {d.status === 'IN_PROGRESS' && (
-                  <span className="badge-yellow">{STATUS_LABELS[d.status]}</span>
+                  <span className="badge-yellow">{TAX_DEADLINE_STATUS_LABELS[d.status]}</span>
                 )}
                 {d.status === 'SUBMITTED' && (
-                  <span className="badge-green">{STATUS_LABELS[d.status]}</span>
+                  <span className="badge-green">{TAX_DEADLINE_STATUS_LABELS[d.status]}</span>
                 )}
               </td>
               <td className="px-6 py-3 text-right">

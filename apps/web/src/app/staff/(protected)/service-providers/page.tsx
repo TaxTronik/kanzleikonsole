@@ -1,14 +1,12 @@
-﻿import { redirect } from 'next/navigation';
-import { Building2 } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+﻿import { Building2 } from 'lucide-react';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { NewProviderForm } from './new-form';
 import { DeleteProviderForm } from './delete-provider-form';
 import { fmtDateShort } from '@/lib/fmt';
 
 export default async function ServiceProvidersPage() {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
 
   const { tenantId, staffId } = session.user;
 

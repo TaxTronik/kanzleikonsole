@@ -40,11 +40,15 @@ vi.mock('@/server/gwg/evidence-documents', () => ({
   findCleanGwgEvidenceDocumentsTx: m.findCleanGwgDocuments,
   lockCleanGwgEvidenceDocumentsTx: m.lockCleanGwgDocuments,
 }));
-vi.mock('@/server/actions/staff-action', () => ({
-  ActionError: class ActionError extends Error {},
-  staffActionGuard: m.staffActionGuard,
-  withStaff: m.withStaff,
-}));
+vi.mock('@/server/actions/staff-action', async () => {
+  const { parseFormData } = await import('@/server/actions/form-data');
+  return {
+    ActionError: class ActionError extends Error {},
+    staffActionGuard: m.staffActionGuard,
+    withStaff: m.withStaff,
+    parseFormData,
+  };
+});
 
 import {
   addBeneficialOwnerAction,
@@ -1582,6 +1586,13 @@ describe('atomare GwG-Bearbeitung', () => {
       ],
     });
     expect(tx.gwgRepresentative.deleteMany).not.toHaveBeenCalled();
+    expect(tx.gwgCheck.updateMany.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.gwgIdDocument.findMany.mock.invocationCallOrder[0]!,
+    );
+    expect(
+      (tx as typeof tx & { $executeRaw: ReturnType<typeof vi.fn> }).$executeRaw.mock
+        .invocationCallOrder[0],
+    ).toBeLessThan(m.evidenceRecord.mock.invocationCallOrder[0]!);
   });
 });
 
@@ -1652,6 +1663,12 @@ describe('GwG-Lifecycle-Lock', () => {
         }),
       ]),
     });
+    expect(tx.gwgCheck.create.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.gwgCheck.update.mock.invocationCallOrder[0]!,
+    );
+    expect(tx.gwgIdDocument.createMany.mock.invocationCallOrder[0]).toBeLessThan(
+      m.evidenceRecord.mock.invocationCallOrder[0]!,
+    );
   });
 
   it('übernimmt nur verwendbare Nachweis-Links und lässt Löschmarker am Altbeleg unverändert', async () => {

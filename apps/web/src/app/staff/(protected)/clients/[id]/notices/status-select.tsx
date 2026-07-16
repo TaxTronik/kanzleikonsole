@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { updateNoticeStatusAction } from './actions';
+import { NOTICE_STATUS_LABELS } from '@/lib/domain-labels';
 
 type DecisionInstruction = 'VALID' | 'MISSING_OR_INVALID';
 
@@ -14,17 +15,6 @@ type NoticeEvidence = {
   decisionInstruction: DecisionInstruction;
   klageFiledAt: string | null;
   klageFiledComplete: boolean;
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  NEU: 'Neu',
-  GEPRUEFT: 'Geprüft',
-  EINSPRUCH: 'Einspruch eingelegt',
-  ABGEHOLFEN: 'Abgeholfen',
-  TEILABHILFE: 'Teilabhilfe',
-  ZURUECKGEWIESEN: 'Zurückgewiesen',
-  KLAGE: 'Klage erhoben',
-  RECHTSKRAEFTIG: 'Rechtskräftig',
 };
 
 /**
@@ -158,7 +148,7 @@ export function NoticeStatusSelect({
         <option value="">{pending ? 'Speichere…' : 'Status ändern…'}</option>
         {allowed.map((s) => (
           <option key={s} value={s}>
-            → {STATUS_LABELS[s] ?? s}
+            → {NOTICE_STATUS_LABELS[s] ?? s}
           </option>
         ))}
       </select>

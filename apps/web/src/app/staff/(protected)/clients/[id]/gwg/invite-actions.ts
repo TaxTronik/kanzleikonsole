@@ -146,10 +146,12 @@ export async function cancelInviteAction(input: { id: string }): Promise<InviteR
     await assertClientAccessTx(tx, session, inv.clientId);
     await lockGwgCheckLifecycleTx(tx, { tenantId, clientId: inv.clientId });
     const current = await tx.gwgOnboardingInvite.findUnique({ where: { id: parsed.data.id } });
-    if (!current) return;
+    if (!current) return { clientId: inv.clientId };
     if (current.status === 'SUBMITTED')
       throw new ActionError('Bereits abgeschickt — kann nicht zurückgezogen werden.');
-    if (current.status !== 'PENDING' && current.status !== 'STARTED') return;
+    if (current.status !== 'PENDING' && current.status !== 'STARTED') {
+      return { clientId: inv.clientId };
+    }
     const cancelled = await tx.gwgOnboardingInvite.updateMany({
       where: {
         id: parsed.data.id,
@@ -176,9 +178,9 @@ export async function cancelInviteAction(input: { id: string }): Promise<InviteR
       before: { status: current.status },
       after: { status: 'CANCELLED' },
     });
+    return { clientId: inv.clientId };
   });
 
-  // Wir kennen die clientId hier nur via DB — revalidatePath generisch
-  if (r.ok) revalidatePath('/staff/clients', 'layout');
+  if (r.ok && r.clientId) revalidatePath(`/staff/clients/${r.clientId}`);
   return r;
 }

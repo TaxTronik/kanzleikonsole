@@ -1,15 +1,12 @@
-﻿import { redirect } from 'next/navigation';
-import Link from 'next/link';
+﻿import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
-import { isStaffAdmin } from '@/server/auth/rbac';
+import { requireStaffPage } from '@/server/auth/staff-page';
+
 import { withTenantContext } from '@taxtronik/db';
 import { DocumentTypeEditor } from './editor';
 
 export default async function DocumentTypesPage() {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
-  if (!isStaffAdmin(session)) redirect('/staff/dashboard');
+  const session = await requireStaffPage({ admin: true });
   const { tenantId, staffId } = session.user;
 
   const types = await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>
@@ -52,5 +49,3 @@ export default async function DocumentTypesPage() {
     </div>
   );
 }
-
-export const dynamic = 'force-dynamic';

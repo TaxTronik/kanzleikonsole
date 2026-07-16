@@ -1,6 +1,6 @@
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
-import { redirect, notFound } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, ShieldCheck, AlertTriangle, FileCheck } from 'lucide-react';
 import { DEFAULT_FACTORS } from '@/server/gwg/risk-score';
@@ -38,6 +38,7 @@ import {
   gwgRiskRevision,
 } from '@/server/gwg/revisions';
 import { gwgProfessionalReviewSnapshotHash } from '@/server/gwg/review-snapshot';
+import { GWG_CHECK_STATUS_LABELS } from '@/lib/domain-labels';
 
 const idTypeLabels: Record<string, string> = {
   PERSONALAUSWEIS: 'Personalausweis',
@@ -59,11 +60,8 @@ const changeScopeLabels: Record<string, string> = {
   BOTH: 'Änderung Berechtigte und Vertretung',
 };
 
-const checkStatusLabels: Record<string, string> = {
-  DRAFT: 'Entwurf',
-  IN_REVIEW: 'In Prüfung',
-  VERIFIED: 'Verifiziert',
-  REJECTED: 'Abgelehnt',
+const checkStatusLabels: Readonly<Record<string, string>> = {
+  ...GWG_CHECK_STATUS_LABELS,
   EXPIRED: 'Abgelaufen/ersetzt',
 };
 
@@ -78,8 +76,7 @@ export default async function GwgPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ from?: string }>;
 }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
 
   const { id: clientId } = await params;
   const { from } = await searchParams;

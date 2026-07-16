@@ -93,11 +93,15 @@ vi.mock('@/server/auth/rbac', () => ({
     error: e instanceof Error ? e.message : 'Fehler.',
   }),
 }));
-vi.mock('@/server/actions/staff-action', () => ({
-  ActionError: m.ActionError,
-  staffActionGuard: m.staffActionGuard,
-  withStaff: m.withStaff,
-}));
+vi.mock('@/server/actions/staff-action', async () => {
+  const { parseFormData } = await import('@/server/actions/form-data');
+  return {
+    ActionError: m.ActionError,
+    staffActionGuard: m.staffActionGuard,
+    withStaff: m.withStaff,
+    parseFormData,
+  };
+});
 vi.mock('@/server/settings/modules', () => ({ readModules: m.readModules }));
 vi.mock('@/server/notifications/service', () => ({ notify: m.notify }));
 

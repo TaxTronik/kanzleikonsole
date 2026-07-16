@@ -1,16 +1,14 @@
-﻿import { redirect } from 'next/navigation';
-import { Clock, Trash2, Square } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+﻿import { Clock, Trash2, Square } from 'lucide-react';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { StartTimerForm } from './start-form';
 import { stopTimerAction, deleteTimeEntryAction } from './actions';
-import { fmtTimeShort } from '@/lib/fmt';
+import { fmtMinutes, fmtTimeShort } from '@/lib/fmt';
 import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
 import { buildTimePageAccessFilters } from './access';
 
 export default async function TimeTrackingPage() {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
 
   const { tenantId, staffId } = session.user;
 
@@ -32,6 +30,7 @@ export default async function TimeTrackingPage() {
         tx.client.findMany({
           where: clientWhere,
           orderBy: { name: 'asc' },
+          take: 500,
           select: { id: true, name: true },
         }),
       ]);
@@ -49,7 +48,7 @@ export default async function TimeTrackingPage() {
     <div className="p-8">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-primary mb-1">Zeiterfassung</h1>
-        <p className="text-muted text-sm">Heute: {formatMinutes(totalMinutesToday)}</p>
+        <p className="text-muted text-sm">Heute: {fmtMinutes(totalMinutesToday)}</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -88,7 +87,7 @@ export default async function TimeTrackingPage() {
                       </div>
                       <div className="flex items-center gap-3">
                         <span className="text-sm font-mono text-secondary tabular-nums">
-                          {formatMinutes(minutes)}
+                          {fmtMinutes(minutes)}
                         </span>
                         {!isRunning && (
                           <form action={deleteTimeEntryAction}>
@@ -138,10 +137,4 @@ export default async function TimeTrackingPage() {
 
 function fmtTime(d: Date): string {
   return fmtTimeShort(d);
-}
-
-function formatMinutes(m: number): string {
-  const h = Math.floor(m / 60);
-  const mm = m % 60;
-  return h > 0 ? `${h}h ${mm}m` : `${mm}m`;
 }

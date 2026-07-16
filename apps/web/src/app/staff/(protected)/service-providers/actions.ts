@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { evidenceService } from '@/server/container';
 import {
   ActionError,
+  parseFormData,
   withStaff,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
@@ -73,8 +74,8 @@ export async function deleteServiceProviderAction(
   formData: FormData,
 ): Promise<ActionResult> {
   // F6: UUID-Validation.
-  const parsed = z.object({ id: z.string().uuid() }).safeParse({ id: formData.get('id') });
-  if (!parsed.success) return { ok: false, error: 'Ungültige Dienstleister-ID.' };
+  const parsed = parseFormData(z.object({ id: z.string().uuid() }), formData);
+  if (!parsed.ok) return { ok: false, error: 'Ungültige Dienstleister-ID.' };
   const { id } = parsed.data;
 
   // Löschen ist ebenfalls DSGVO/AVV-relevant → nur ADMIN/PARTNER.

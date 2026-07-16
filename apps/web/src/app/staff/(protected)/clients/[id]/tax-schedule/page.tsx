@@ -5,10 +5,10 @@
 // Beim Speichern wird per Server-Action die Materialisierung neu angestoßen.
 // =============================================================================
 
-import { redirect, notFound } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { TaxScheduleForm, type ScheduleConfigDto } from './tax-schedule-form';
 
@@ -17,8 +17,7 @@ export default async function ClientTaxSchedulePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
   const { id: clientId } = await params;
   const { tenantId, staffId } = session.user;
 

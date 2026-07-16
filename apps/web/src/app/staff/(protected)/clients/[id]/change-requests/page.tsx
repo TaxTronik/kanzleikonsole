@@ -7,10 +7,10 @@
 // IN_REVIEW zurückgesetzt — analog zur Staff-Edit-Logik.
 // =============================================================================
 
-import { redirect, notFound } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, CheckCircle2, Clock, XCircle } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { ChangeRequestRow } from './row';
 import { fmtDateTimeShort } from '@/lib/fmt';
@@ -30,8 +30,7 @@ export default async function ClientChangeRequestsPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
   const { id: clientId } = await params;
   const { tenantId, staffId } = session.user;
 

@@ -16,11 +16,13 @@
 // denied-Set ausgeblendet (identisch zu Kalender/Exporten).
 // =============================================================================
 
+import type { Prisma } from '@prisma/client';
 import type { TxClient } from '@taxtronik/db';
 import { SCHEDULE_LABELS } from '@taxtronik/tax';
 import type { StaffSession } from '@/server/auth/staff';
 import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
 import { berlinTodayUtcMidnight } from '@/lib/fmt';
+import { NOTICE_KIND_LABELS } from '@/lib/domain-labels';
 import {
   type FristEintrag,
   taxDeadlineErledigt,
@@ -30,7 +32,8 @@ import {
   sortEintraege,
 } from './eintrag';
 
-const NOTICE_KIND_LABELS: Record<string, string> = {
+const KONTROLLBUCH_NOTICE_KIND_LABELS: Readonly<Record<string, string>> = {
+  ...NOTICE_KIND_LABELS,
   USTA: 'USt-VA',
   UST_JAHR: 'USt-Jahr',
   EST: 'ESt',
@@ -46,6 +49,8 @@ const NOTICE_KIND_LABELS: Record<string, string> = {
 export interface KontrollbuchOptions {
   /** Horizont in Tagen (Zukunft) und Rückschau für Erledigte. */
   tage: number;
+  /** Erledigte bereits in den Quellabfragen ausschließen. */
+  nurOffene?: boolean;
   /** Nur Einträge, für die diese Person verantwortlich ist. */
   nurStaffId?: string | null;
 }
@@ -61,24 +66,25 @@ export async function loadKontrollbuch(
 
   const denied = await inaccessibleClientIdsFor(tx, session);
   const notDenied = denied.length ? { clientId: { notIn: denied } } : {};
+  const responsibleClient: Prisma.ClientWhereInput | undefined = opts.nurStaffId
+    ? {
+        responsibilities: {
+          some: { role: 'HAUPTBEARBEITER', staffId: opts.nurStaffId },
+        },
+      }
+    : undefined;
 
-  // Offen ohne untere Grenze ODER erledigt im Fenster — je Quelle als OR
-  // ausgedrückt, da „erledigt" quellspezifisch ist.
-  const [deadlines, notices, klagen, requests, reminders] = await Promise.all([
-    tx.taxDeadline.findMany({
-      where: {
-        ...notDenied,
+  const deadlineWindow: Prisma.TaxDeadlineWhereInput = opts.nurOffene
+    ? { status: { notIn: ['DONE', 'SKIPPED'] }, dueDate: { lte: horizont } }
+    : {
         OR: [
           { status: { notIn: ['DONE', 'SKIPPED'] }, dueDate: { lte: horizont } },
           { status: { in: ['DONE', 'SKIPPED'] }, dueDate: { gte: rueckschau, lte: horizont } },
         ],
-      },
-      include: { client: { select: { id: true, name: true } } },
-    }),
-    tx.taxNotice.findMany({
-      where: {
-        ...notDenied,
-        appealDeadline: { not: null },
+      };
+  const noticeWindow: Prisma.TaxNoticeWhereInput = opts.nurOffene
+    ? { status: { in: ['NEU', 'GEPRUEFT'] }, appealDeadline: { lte: horizont } }
+    : {
         OR: [
           { status: { in: ['NEU', 'GEPRUEFT'] }, appealDeadline: { lte: horizont } },
           {
@@ -98,15 +104,13 @@ export async function loadKontrollbuch(
             appealDeadline: { gte: rueckschau, lte: horizont },
           },
         ],
-      },
-      include: { client: { select: { id: true, name: true } } },
-    }),
-    // Klagefristen (§ 47 FGO): offen bei ZURUECKGEWIESEN/TEILABHILFE, im
-    // Rückschau-Fenster auch KLAGE/RECHTSKRAEFTIG (erledigt).
-    tx.taxNotice.findMany({
-      where: {
-        ...notDenied,
-        klageDeadline: { not: null },
+      };
+  const klageWindow: Prisma.TaxNoticeWhereInput = opts.nurOffene
+    ? {
+        status: { in: ['ZURUECKGEWIESEN', 'TEILABHILFE'] },
+        klageDeadline: { lte: horizont },
+      }
+    : {
         OR: [
           { status: { in: ['ZURUECKGEWIESEN', 'TEILABHILFE'] }, klageDeadline: { lte: horizont } },
           {
@@ -114,29 +118,131 @@ export async function loadKontrollbuch(
             klageDeadline: { gte: rueckschau, lte: horizont },
           },
         ],
+      };
+  const requestWindow: Prisma.RequestWhereInput = opts.nurOffene
+    ? { status: { in: ['OPEN', 'IN_PROGRESS', 'RESPONDED'] }, dueAt: { lte: horizont } }
+    : {
+        OR: [
+          { status: { in: ['OPEN', 'IN_PROGRESS', 'RESPONDED'] }, dueAt: { lte: horizont } },
+          { status: { in: ['CLOSED', 'CANCELLED'] }, dueAt: { gte: rueckschau, lte: horizont } },
+        ],
+      };
+  const reminderWindow: Prisma.ClientReminderWhereInput = opts.nurOffene
+    ? { doneAt: null, dueDate: { lte: horizont } }
+    : {
+        OR: [
+          { doneAt: null, dueDate: { lte: horizont } },
+          { doneAt: { not: null }, dueDate: { gte: rueckschau, lte: horizont } },
+        ],
+      };
+  const reminderStaff: Prisma.ClientReminderWhereInput | undefined = opts.nurStaffId
+    ? {
+        OR: [
+          { assigneeStaffId: opts.nurStaffId },
+          { assigneeStaffId: null, client: responsibleClient },
+        ],
+      }
+    : undefined;
+
+  // Offen ohne untere Grenze ODER erledigt im Fenster — je Quelle als OR
+  // ausgedrückt, da „erledigt" quellspezifisch ist.
+  const [deadlines, notices, klagen, requests, reminders] = await Promise.all([
+    tx.taxDeadline.findMany({
+      where: {
+        ...notDenied,
+        ...deadlineWindow,
+        ...(responsibleClient ? { client: responsibleClient } : {}),
       },
-      include: { client: { select: { id: true, name: true } } },
+      select: {
+        id: true,
+        clientId: true,
+        kind: true,
+        period: true,
+        dueDate: true,
+        status: true,
+        completedAt: true,
+        completedByStaff: true,
+        client: { select: { name: true } },
+      },
+    }),
+    tx.taxNotice.findMany({
+      where: {
+        ...notDenied,
+        appealDeadline: { not: null },
+        ...noticeWindow,
+        ...(responsibleClient ? { client: responsibleClient } : {}),
+      },
+      select: {
+        id: true,
+        clientId: true,
+        kind: true,
+        period: true,
+        appealDeadline: true,
+        status: true,
+        reviewedAt: true,
+        reviewedBy: true,
+        appealFiledAt: true,
+        appealFiledBy: true,
+        legalFinalAt: true,
+        legalFinalBy: true,
+        client: { select: { name: true } },
+      },
+    }),
+    // Klagefristen (§ 47 FGO): offen bei ZURUECKGEWIESEN/TEILABHILFE, im
+    // Rückschau-Fenster auch KLAGE/RECHTSKRAEFTIG (erledigt).
+    tx.taxNotice.findMany({
+      where: {
+        ...notDenied,
+        klageDeadline: { not: null },
+        ...klageWindow,
+        ...(responsibleClient ? { client: responsibleClient } : {}),
+      },
+      select: {
+        id: true,
+        clientId: true,
+        kind: true,
+        period: true,
+        klageDeadline: true,
+        status: true,
+        appealResolvedAt: true,
+        klageFiledAt: true,
+        klageFiledBy: true,
+        legalFinalAt: true,
+        legalFinalBy: true,
+        client: { select: { name: true } },
+      },
     }),
     tx.request.findMany({
       where: {
         ...notDenied,
         dueAt: { not: null },
-        OR: [
-          { status: { in: ['OPEN', 'IN_PROGRESS', 'RESPONDED'] }, dueAt: { lte: horizont } },
-          { status: { in: ['CLOSED', 'CANCELLED'] }, dueAt: { gte: rueckschau, lte: horizont } },
-        ],
+        ...requestWindow,
+        ...(responsibleClient ? { client: responsibleClient } : {}),
       },
-      include: { client: { select: { id: true, name: true } } },
+      select: {
+        id: true,
+        clientId: true,
+        title: true,
+        dueAt: true,
+        status: true,
+        client: { select: { name: true } },
+      },
     }),
     tx.clientReminder.findMany({
       where: {
         ...notDenied,
-        OR: [
-          { doneAt: null, dueDate: { lte: horizont } },
-          { doneAt: { not: null }, dueDate: { gte: rueckschau, lte: horizont } },
-        ],
+        AND: [reminderWindow, ...(reminderStaff ? [reminderStaff] : [])],
       },
-      include: { client: { select: { id: true, name: true } } },
+      select: {
+        id: true,
+        clientId: true,
+        subject: true,
+        dueDate: true,
+        assigneeStaffId: true,
+        doneAt: true,
+        doneByStaff: true,
+        client: { select: { name: true } },
+      },
     }),
   ]);
 
@@ -147,7 +253,11 @@ export async function loadKontrollbuch(
     clientIds.add(r.clientId);
   const responsibilities = clientIds.size
     ? await tx.clientResponsibility.findMany({
-        where: { clientId: { in: [...clientIds] }, role: 'HAUPTBEARBEITER' },
+        where: {
+          clientId: { in: [...clientIds] },
+          role: 'HAUPTBEARBEITER',
+          ...(opts.nurStaffId ? { staffId: opts.nurStaffId } : {}),
+        },
         select: { clientId: true, staffId: true },
       })
     : [];
@@ -181,7 +291,7 @@ export async function loadKontrollbuch(
       quelle: 'STEUERTERMIN',
       id: d.id,
       titel: `${SCHEDULE_LABELS[d.kind] ?? d.kind} ${d.period}`,
-      clientId: d.client.id,
+      clientId: d.clientId,
       clientName: d.client.name,
       faelligAm: d.dueDate,
       erledigt: taxDeadlineErledigt(d.status),
@@ -198,8 +308,8 @@ export async function loadKontrollbuch(
     eintraege.push({
       quelle: 'EINSPRUCHSFRIST',
       id: n.id,
-      titel: `${NOTICE_KIND_LABELS[n.kind] ?? n.kind} ${n.period}`,
-      clientId: n.client.id,
+      titel: `${KONTROLLBUCH_NOTICE_KIND_LABELS[n.kind] ?? n.kind} ${n.period}`,
+      clientId: n.clientId,
       clientName: n.client.name,
       faelligAm: n.appealDeadline!,
       erledigt: taxNoticeFristErledigt(n.status),
@@ -223,8 +333,8 @@ export async function loadKontrollbuch(
     eintraege.push({
       quelle: 'KLAGEFRIST',
       id: k.id,
-      titel: `${NOTICE_KIND_LABELS[k.kind] ?? k.kind} ${k.period} (Klage FG)`,
-      clientId: k.client.id,
+      titel: `${KONTROLLBUCH_NOTICE_KIND_LABELS[k.kind] ?? k.kind} ${k.period} (Klage FG)`,
+      clientId: k.clientId,
       clientName: k.client.name,
       faelligAm: k.klageDeadline,
       erledigt: taxNoticeKlageFristErledigt(k.status),
@@ -250,7 +360,7 @@ export async function loadKontrollbuch(
       quelle: 'ANFORDERUNG',
       id: r.id,
       titel: r.title,
-      clientId: r.client.id,
+      clientId: r.clientId,
       clientName: r.client.name,
       faelligAm: r.dueAt!,
       erledigt: requestErledigt(r.status),
@@ -268,7 +378,7 @@ export async function loadKontrollbuch(
       quelle: 'WIEDERVORLAGE',
       id: w.id,
       titel: w.subject,
-      clientId: w.client.id,
+      clientId: w.clientId,
       clientName: w.client.name,
       faelligAm: w.dueDate,
       erledigt: w.doneAt !== null,
@@ -280,9 +390,5 @@ export async function loadKontrollbuch(
     });
   }
 
-  const gefiltert = opts.nurStaffId
-    ? eintraege.filter((e) => e.verantwortlichId === opts.nurStaffId)
-    : eintraege;
-
-  return sortEintraege(gefiltert);
+  return sortEintraege(eintraege);
 }

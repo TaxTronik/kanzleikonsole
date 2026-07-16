@@ -1,8 +1,8 @@
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { redirect } from 'next/navigation';
 import type { ClientKind, DocumentProtectionTier } from '@prisma/client';
-import { inaccessibleClientIdsFor, canAccessClient } from '@/server/auth/rbac';
+import { inaccessibleClientIdsFor, canAccessClientTx } from '@/server/auth/rbac';
 import { DocumentExplorer, type Entry, type Crumb } from '@/components/document-explorer';
 
 const KIND_LABEL: Record<string, string> = {
@@ -29,8 +29,7 @@ const isKind = (s: string | undefined): s is ClientKind =>
 const DOCS_CAP = 1000;
 
 export default async function DocumentsPage({ searchParams }: { searchParams: Promise<Search> }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
   const { tenantId, staffId } = session.user;
   const sp = await searchParams;
 
@@ -122,17 +121,15 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
   // ---- Scope-Ebene: ein Mandant oder Kanzlei-intern ----
   const scopeClientId = typeParam === 'INTERNAL' ? null : (clientId ?? null);
 
-  // Zugriffsschutz auf Scope-Ebene: Diese Ansicht liegt NICHT unter
-  // clients/[id]/layout, dessen canAccessClient-Guard greift hier also nicht.
-  // Ohne Prüfung ließe sich der komplette Dokumentbaum eines gesperrten oder
-  // vertraulichen Mandanten über ?client=<id> laden (RLS trennt nur Tenants).
-  if (scopeClientId && !(await canAccessClient(session, scopeClientId))) {
-    redirect('/staff/documents');
-  }
-
   const data = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
+      // Diese Ansicht liegt nicht unter clients/[id]/layout. Den Scope-Guard
+      // deshalb im selben Tenant-Kontext wie den Dokumentabruf auswerten.
+      if (scopeClientId && !(await canAccessClientTx(tx, session, scopeClientId))) {
+        return null;
+      }
+
       const docWhere = {
         tenantId,
         clientId: scopeClientId,
@@ -181,6 +178,7 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
     },
   );
 
+  if (!data) redirect('/staff/documents');
   const { clientRow, folders, docs, docsTotal } = data;
   const childFolders = folders.filter((f) => (f.parentId ?? null) === (folderId ?? null));
 
@@ -277,5 +275,3 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
     />
   );
 }
-
-export const dynamic = 'force-dynamic';

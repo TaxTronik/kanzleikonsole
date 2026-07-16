@@ -12,14 +12,15 @@ const mocks = vi.hoisted(() => ({
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: mocks.withTenantContext }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: mocks.evidenceRecord } }));
-vi.mock('@/server/actions/staff-action', () => {
+vi.mock('@/server/actions/staff-action', async () => {
+  const { parseFormData } = await import('@/server/actions/form-data');
   class ActionError extends Error {
     constructor(message: string) {
       super(message);
       this.name = 'ActionError';
     }
   }
-  return { ActionError, staffActionGuard: mocks.staffActionGuard };
+  return { ActionError, parseFormData, staffActionGuard: mocks.staffActionGuard };
 });
 vi.mock('@/server/auth/rbac', () => ({
   toActionError: (error: unknown) => ({

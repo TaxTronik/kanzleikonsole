@@ -33,36 +33,10 @@ import type { Readable } from 'node:stream';
 import { PrismaClient } from '@taxtronik/db/prisma-client';
 import { env } from '@taxtronik/config';
 import { createPostgresAdapter } from '@taxtronik/db/prisma-adapter';
+import { pgConnArgs } from '@taxtronik/db/pg-tools';
 import { prismaOwner } from '@/server/db/prisma-owner';
 
 const BACKUP_BUCKET = process.env['S3_BUCKET_BACKUPS'] ?? 'backups';
-
-/**
- * P-2: pg_restore-Verbindungsdaten aufteilen, damit das Passwort nicht via
- * /proc/<pid>/cmdline leakt. Symmetrisch zu runner.ts.
- */
-function buildPgConnArgs(dbUrl: string): {
-  args: string[];
-  env: Record<string, string>;
-} {
-  const u = new URL(dbUrl);
-  const args = [
-    '-h',
-    u.hostname,
-    '-p',
-    u.port || '5432',
-    '-U',
-    decodeURIComponent(u.username),
-    '-d',
-    u.pathname.slice(1) || decodeURIComponent(u.username),
-  ];
-  const sslmode = u.searchParams.get('sslmode');
-  const e: Record<string, string> = {
-    PGPASSWORD: decodeURIComponent(u.password),
-  };
-  if (sslmode) e.PGSSLMODE = sslmode;
-  return { args, env: e };
-}
 
 export const PRODUCTION_RESTORE_CONFIRMATION = 'RESTORE_TAXTRONIK_PRODUCTION_DATABASE';
 
@@ -374,7 +348,7 @@ async function assertRestoreRolesPresent(targetUrl: string): Promise<void> {
 
 async function runPgRestore(filePath: string, targetUrl: string): Promise<void> {
   // P-2: Passwort via PGPASSWORD, nicht via --dbname=postgresql://user:pw@…
-  const connArgs = buildPgConnArgs(targetUrl);
+  const connArgs = pgConnArgs(targetUrl);
   // P-9: --single-transaction → ganz oder gar nicht. Fehler in einer Tabelle
   // rollt den gesamten Restore zurück, statt einen halb-konsistenten Zustand
   // zu hinterlassen. Bei Compliance-Software die einzig richtige Strategie.

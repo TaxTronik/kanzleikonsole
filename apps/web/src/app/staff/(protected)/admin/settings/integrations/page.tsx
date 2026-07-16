@@ -1,5 +1,4 @@
-﻿import { redirect } from 'next/navigation';
-import {
+﻿import {
   Database,
   HardDrive,
   Zap,
@@ -12,7 +11,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import Link from 'next/link';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { env, riskLayerConfig } from '@taxtronik/config';
 import { getSmtpStatus } from '@/server/settings/smtp';
 import {
@@ -45,8 +44,7 @@ function mask(value: string | undefined | null, keep = 4): string {
 }
 
 export default async function IntegrationsSettingsPage() {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage({ admin: true });
   const { tenantId, staffId } = session.user;
 
   const [pg, redis, objectStore, clamav, n8n, tsa, smtp, modules, signalEngine] = await Promise.all(
@@ -282,4 +280,3 @@ function KvRow({ label, value, mono }: { label: string; value: string; mono?: bo
 
 // Erfordert ein Server-Side-Render bei jedem Request, damit die Statuswerte
 // nicht zwischengespeichert werden.
-export const dynamic = 'force-dynamic';

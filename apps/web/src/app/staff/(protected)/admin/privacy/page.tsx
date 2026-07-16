@@ -3,7 +3,6 @@
 // Datenschutzhinweise). Admin/Partner-only.
 // =============================================================================
 
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -14,8 +13,8 @@ import {
   ShieldCheck,
   Trash2,
 } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
-import { isStaffAdmin } from '@/server/auth/rbac';
+import { requireStaffPage } from '@/server/auth/staff-page';
+
 import { withTenantContext } from '@taxtronik/db';
 import {
   isPrivacyConfigComplete,
@@ -30,9 +29,7 @@ import { PrivacyConfigForm } from './config-form';
 import { ConsentOptionsEditor } from './consent-options-editor';
 
 export default async function AdminPrivacyPage() {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
-  if (!isStaffAdmin(session)) redirect('/staff/dashboard');
+  const session = await requireStaffPage({ admin: true });
   const { tenantId, staffId } = session.user;
 
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };

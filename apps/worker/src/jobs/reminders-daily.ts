@@ -6,74 +6,105 @@
 //   - Wiedervorlagen (ClientReminder.dueDate): heute fällig + überfällig
 //   - Pendelordner (PendingBinder.expectedReturnAt): überfällig
 //
-// Idempotent über die `notification`-Tabelle: pro (resourceType, resourceId,
-// kind, day-bucket) wird nur einmal eine Notification geschrieben — der
-// day-bucket ist ein YYYY-MM-DD-Stempel im title/body, damit der unique-
-// Check über (kind, resourceId, createdAt::date) faktisch funktioniert.
-//
-// Soft-Idempotenz: wir prüfen vor jedem Insert, ob es heute bereits einen
-// solchen Eintrag gibt — kein Schema-Lock nötig.
+// Idempotent über die `notification`-Tabelle: heutige Dedupe-Keys werden pro
+// Tenant einmal als Set geladen; die verbleibenden Einträge gehen sanitisiert
+// per createMany(skipDuplicates) in den Daily-Dedupe-Index.
 // =============================================================================
 
 import { Worker } from 'bullmq';
-import { Prisma } from '@taxtronik/db/prisma-client';
+import type { NotificationKind } from '@prisma/client';
+import { sanitizeNotificationText } from '@taxtronik/db/notification';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
 import { withWorkerTenantContext } from '../tenant-context';
+import { berlinTodayUtcMidnight, wholeDaysBetween } from '../date-util';
 
-function startOfDay(d: Date): Date {
-  const r = new Date(d);
-  r.setHours(0, 0, 0, 0);
-  return r;
-}
+const DAY_MS = 24 * 60 * 60 * 1000;
+const CREATE_MANY_BATCH_SIZE = 1000;
+const APPEAL_REMINDER_DAYS = [1, 7, 14] as const;
 
-function daysBetween(a: Date, b: Date): number {
-  return Math.round((startOfDay(a).getTime() - startOfDay(b).getTime()) / (24 * 60 * 60 * 1000));
-}
-
-async function notifyOnce(opts: {
-  tenantId: string;
+interface DailyNotification {
   staffId: string | null;
-  kind: 'TAX_NOTICE_APPEAL_REMINDER' | 'CLIENT_REMINDER_DUE' | 'PENDING_BINDER_OVERDUE';
+  kind: NotificationKind;
   resourceType: string;
   resourceId: string;
   title: string;
   body: string;
   href: string;
-}): Promise<boolean> {
-  // Q-2: Statt findFirst-then-create (race-anfällig) verlassen wir uns auf den
-  // partial unique index `notification_daily_dedupe` (Migration iter49). Bei
-  // parallelem Insert für dieselbe (tenant_id, kind, resource_id, Tag) wirft
-  // Postgres P2002 — wir interpretieren das als „heute schon vorhanden, ok".
-  //
-  // P-8/Q-2 RLS-Symmetrie: Insert läuft jetzt in withWorkerTenantContext, damit
-  // app.current_*-Variablen für Audit-Trigger / etwaige RLS-Policies konsistent
-  // gesetzt sind. prismaOwner ist BYPASSRLS, aber das Pattern soll überall
-  // gleich aussehen.
-  try {
-    await withWorkerTenantContext(opts.tenantId, async (tx) => {
-      await tx.notification.create({
-        data: {
-          tenantId: opts.tenantId,
-          staffId: opts.staffId,
-          kind: opts.kind,
-          title: opts.title,
-          body: opts.body,
-          href: opts.href,
-          resourceType: opts.resourceType,
-          resourceId: opts.resourceId,
-        },
-      });
+}
+
+function dailyNotificationKey(notification: {
+  staffId: string | null;
+  kind: NotificationKind;
+  resourceId: string | null;
+}): string {
+  return JSON.stringify([notification.staffId, notification.kind, notification.resourceId]);
+}
+
+async function createDailyNotifications(
+  tenantId: string,
+  now: Date,
+  groups: DailyNotification[][],
+): Promise<number[]> {
+  const candidates = groups.flat();
+  if (candidates.length === 0) return groups.map(() => 0);
+
+  // Der Daily-Dedupe-Index bucketisiert created_at in UTC-Tage. Mit exakt
+  // demselben Fenster eliminiert die Vorab-Abfrage bekannte Keys als Set;
+  // createMany(skipDuplicates) bleibt der Race-Backstop.
+  const createdAtGte = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+  );
+  const createdAtLt = new Date(createdAtGte.getTime() + DAY_MS);
+
+  return withWorkerTenantContext(tenantId, async (tx) => {
+    const existing = await tx.notification.findMany({
+      where: {
+        tenantId,
+        createdAt: { gte: createdAtGte, lt: createdAtLt },
+        kind: { in: Array.from(new Set(candidates.map((candidate) => candidate.kind))) },
+      },
+      select: { staffId: true, kind: true, resourceId: true },
     });
-    return true;
-  } catch (err) {
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-      // unique-Constraint vom Daily-Dedupe-Index — heute schon geschrieben
-      return false;
+    const seen = new Set(existing.map(dailyNotificationKey));
+    const insertedCounts: number[] = [];
+
+    for (const group of groups) {
+      const pending = group.filter((candidate) => {
+        const key = dailyNotificationKey(candidate);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      if (pending.length === 0) {
+        insertedCounts.push(0);
+        continue;
+      }
+
+      let inserted = 0;
+      for (let offset = 0; offset < pending.length; offset += CREATE_MANY_BATCH_SIZE) {
+        const batch = pending.slice(offset, offset + CREATE_MANY_BATCH_SIZE);
+        const result = await tx.notification.createMany({
+          data: batch.map((candidate) => ({
+            tenantId,
+            staffId: candidate.staffId,
+            kind: candidate.kind,
+            title: sanitizeNotificationText(candidate.title),
+            body: sanitizeNotificationText(candidate.body),
+            href: candidate.href,
+            resourceType: candidate.resourceType,
+            resourceId: candidate.resourceId,
+          })),
+          skipDuplicates: true,
+        });
+        inserted += result.count;
+      }
+      insertedCounts.push(inserted);
     }
-    throw err;
-  }
+
+    return insertedCounts;
+  });
 }
 
 export const remindersDailyWorker = new Worker<ChecksJob>(
@@ -84,40 +115,75 @@ export const remindersDailyWorker = new Worker<ChecksJob>(
       : (await prismaOwner.tenant.findMany({ select: { id: true } })).map((t) => t.id);
 
     const now = new Date();
-    const today = startOfDay(now);
+    const today = berlinTodayUtcMidnight(now);
+    const appealDates = APPEAL_REMINDER_DAYS.map(
+      (days) => new Date(today.getTime() + days * DAY_MS),
+    );
     const counts = { appeal: 0, reminders: 0, binders: 0 };
 
     for (const tenantId of tenantIds) {
-      // ---- Einspruchsfristen ----
-      const notices = await prismaOwner.taxNotice.findMany({
-        where: {
-          tenantId,
-          // Nach Mandatsende keine Fristen-/Wiedervorlage-Reminder mehr feuern.
-          client: { mandateEndedAt: null },
-          appealDeadline: { not: null, gte: today },
-          appealFiledAt: null,
-          // Nur erinnern, solange noch handelbar: kein Einspruch eingelegt und
-          // nicht abgeschlossen. (Kein `as never` — die echten Enum-Werte werden
-          // jetzt typgeprüft.)
-          status: { notIn: ['EINSPRUCH', 'ABGEHOLFEN', 'ZURUECKGEWIESEN', 'RECHTSKRAEFTIG'] },
-        },
-        select: {
-          id: true,
-          kind: true,
-          period: true,
-          appealDeadline: true,
-          client: { select: { id: true, name: true } },
-          reviewedBy: true,
-        },
-      });
+      const [notices, reminders, binders] = await Promise.all([
+        // Exakt die drei relevanten @db.Date-Tage statt aller künftigen
+        // Bescheide zu laden und anschließend im Worker zu filtern.
+        prismaOwner.taxNotice.findMany({
+          where: {
+            tenantId,
+            client: { mandateEndedAt: null },
+            appealDeadline: { in: appealDates },
+            appealFiledAt: null,
+            status: { notIn: ['EINSPRUCH', 'ABGEHOLFEN', 'ZURUECKGEWIESEN', 'RECHTSKRAEFTIG'] },
+          },
+          select: {
+            id: true,
+            kind: true,
+            period: true,
+            appealDeadline: true,
+            client: { select: { id: true, name: true } },
+            reviewedBy: true,
+          },
+        }),
+        prismaOwner.clientReminder.findMany({
+          where: {
+            tenantId,
+            client: { mandateEndedAt: null },
+            doneAt: null,
+            dueDate: { lte: today },
+          },
+          select: {
+            id: true,
+            dueDate: true,
+            subject: true,
+            assigneeStaffId: true,
+            createdByStaff: true,
+            client: { select: { id: true, name: true } },
+          },
+        }),
+        prismaOwner.pendingBinder.findMany({
+          where: {
+            tenantId,
+            client: { mandateEndedAt: null },
+            status: 'WITH_CLIENT',
+            expectedReturnAt: { not: null, lt: today },
+          },
+          select: {
+            id: true,
+            label: true,
+            expectedReturnAt: true,
+            createdByStaff: true,
+            client: { select: { id: true, name: true } },
+          },
+        }),
+      ]);
+
+      const appealNotifications: DailyNotification[] = [];
       for (const n of notices) {
         if (!n.appealDeadline) continue;
-        const days = daysBetween(n.appealDeadline, today);
-        if (days !== 14 && days !== 7 && days !== 1) continue;
+        const days = wholeDaysBetween(today, n.appealDeadline);
+        // Defense in depth für Mock-/Altwerte; die Query ist bereits exakt.
+        if (days !== 1 && days !== 7 && days !== 14) continue;
         const labelDays = days === 1 ? 'morgen' : `in ${days} Tagen`;
-        const sent = await notifyOnce({
-          tenantId,
-          staffId: n.reviewedBy ?? null, // an den Prüfer, sonst global (null)
+        appealNotifications.push({
+          staffId: n.reviewedBy,
           kind: 'TAX_NOTICE_APPEAL_REMINDER',
           resourceType: 'tax_notice',
           resourceId: n.id,
@@ -125,72 +191,41 @@ export const remindersDailyWorker = new Worker<ChecksJob>(
           body: `${n.kind} ${n.period} — Frist ${n.appealDeadline.toISOString().slice(0, 10)}`,
           href: `/staff/clients/${n.client.id}/notices`,
         });
-        if (sent) counts.appeal++;
       }
 
-      // ---- Wiedervorlagen ----
-      const reminders = await prismaOwner.clientReminder.findMany({
-        where: {
-          tenantId,
-          client: { mandateEndedAt: null },
-          doneAt: null,
-          dueDate: { lte: today },
-        },
-        select: {
-          id: true,
-          dueDate: true,
-          subject: true,
-          assigneeStaffId: true,
-          createdByStaff: true,
-          client: { select: { id: true, name: true } },
-        },
-      });
-      for (const r of reminders) {
-        const recipient = r.assigneeStaffId ?? r.createdByStaff;
-        const sent = await notifyOnce({
-          tenantId,
-          staffId: recipient,
-          kind: 'CLIENT_REMINDER_DUE',
-          resourceType: 'client_reminder',
-          resourceId: r.id,
-          title: `Wiedervorlage fällig: ${r.subject}`,
-          body: `Mandant ${r.client.name} · ${r.dueDate.toISOString().slice(0, 10)}`,
-          href: `/staff/clients/${r.client.id}`,
-        });
-        if (sent) counts.reminders++;
-      }
+      const reminderNotifications: DailyNotification[] = reminders.map((reminder) => ({
+        staffId: reminder.assigneeStaffId ?? reminder.createdByStaff,
+        kind: 'CLIENT_REMINDER_DUE',
+        resourceType: 'client_reminder',
+        resourceId: reminder.id,
+        title: `Wiedervorlage fällig: ${reminder.subject}`,
+        body: `Mandant ${reminder.client.name} · ${reminder.dueDate.toISOString().slice(0, 10)}`,
+        href: `/staff/clients/${reminder.client.id}`,
+      }));
 
-      // ---- Überfällige Pendelordner ----
-      const binders = await prismaOwner.pendingBinder.findMany({
-        where: {
-          tenantId,
-          client: { mandateEndedAt: null },
-          status: 'WITH_CLIENT',
-          expectedReturnAt: { not: null, lt: today },
-        },
-        select: {
-          id: true,
-          label: true,
-          expectedReturnAt: true,
-          createdByStaff: true,
-          client: { select: { id: true, name: true } },
-        },
-      });
-      for (const b of binders) {
-        if (!b.expectedReturnAt) continue;
-        const overdueDays = daysBetween(today, b.expectedReturnAt);
-        const sent = await notifyOnce({
-          tenantId,
-          staffId: b.createdByStaff,
+      const binderNotifications: DailyNotification[] = [];
+      for (const binder of binders) {
+        if (!binder.expectedReturnAt) continue;
+        const days = wholeDaysBetween(binder.expectedReturnAt, today);
+        binderNotifications.push({
+          staffId: binder.createdByStaff,
           kind: 'PENDING_BINDER_OVERDUE',
           resourceType: 'pending_binder',
-          resourceId: b.id,
-          title: `Pendelordner überfällig: ${b.label}`,
-          body: `Mandant ${b.client.name} — seit ${overdueDays} Tag${overdueDays === 1 ? '' : 'en'} ausstehend`,
-          href: `/staff/clients/${b.client.id}`,
+          resourceId: binder.id,
+          title: `Pendelordner überfällig: ${binder.label}`,
+          body: `Mandant ${binder.client.name} — seit ${days} Tag${days === 1 ? '' : 'en'} ausstehend`,
+          href: `/staff/clients/${binder.client.id}`,
         });
-        if (sent) counts.binders++;
       }
+
+      const [appeal, reminderCount, binderCount] = await createDailyNotifications(tenantId, now, [
+        appealNotifications,
+        reminderNotifications,
+        binderNotifications,
+      ]);
+      counts.appeal += appeal ?? 0;
+      counts.reminders += reminderCount ?? 0;
+      counts.binders += binderCount ?? 0;
     }
 
     log.info(counts, 'reminders-daily: done');

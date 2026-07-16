@@ -1,4 +1,5 @@
 import { fmtDateMedium } from '@/lib/fmt';
+export { fmtBytes } from '@/lib/fmt';
 import {
   Building2,
   File as FileIcon,
@@ -39,13 +40,6 @@ export interface FolderNode {
 }
 
 export const TIER_BADGE = { GWG: 'GwG·5J+Prüfung', GOBD: 'GoBD·6/8/10J' } as const;
-
-export function fmtBytes(b: number): string {
-  if (b < 1024) return `${b} B`;
-  if (b < 1048576) return `${(b / 1024).toFixed(1)} KB`;
-  if (b < 1073741824) return `${(b / 1048576).toFixed(1)} MB`;
-  return `${(b / 1073741824).toFixed(2)} GB`;
-}
 
 export const fmtDate = (iso: string): string => fmtDateMedium(new Date(iso));
 

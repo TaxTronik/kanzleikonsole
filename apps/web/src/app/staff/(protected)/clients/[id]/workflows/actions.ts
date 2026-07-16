@@ -15,6 +15,10 @@ import {
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
 
+function revalidateClientWorkflow(clientId: string | undefined): void {
+  if (clientId) revalidatePath(`/staff/clients/${clientId}`);
+}
+
 // Einheitliches Action-Ergebnis aus der zentralen Quelle.
 export type ActionResult = BaseActionResult;
 
@@ -210,8 +214,9 @@ export async function setWorkflowMembersAction(input: { instanceId: string; memb
         after: { added: toAdd, removed: toRemove, total: want.size },
       });
     }
+    return { clientId: inst.clientId };
   });
-  if (r.ok) revalidatePath('/staff/clients', 'layout');
+  if (r.ok) revalidateClientWorkflow(r.clientId);
   return r;
 }
 
@@ -247,10 +252,9 @@ export async function toggleItemDoneAction(input: { id: string; done: boolean })
         data: { status: 'ACTIVE', completedAt: null },
       });
     }
+    return { clientId: existing.instance.clientId };
   });
-  // Revalidate ohne clientId — wir kennen ihn hier nicht direkt, aber das ist ok
-  // weil das Layout die nötigen Pfade refresht.
-  if (r.ok) revalidatePath('/staff/clients', 'layout');
+  if (r.ok) revalidateClientWorkflow(r.clientId);
   return r;
 }
 
@@ -286,8 +290,9 @@ export async function setItemDueDateAction(input: {
       where: { id: parsed.data.id },
       data: { dueDate: parsed.data.dueDate ? new Date(parsed.data.dueDate) : null },
     });
+    return { clientId: existing.instance.clientId };
   });
-  if (r.ok) revalidatePath('/staff/clients', 'layout');
+  if (r.ok) revalidateClientWorkflow(r.clientId);
   return r;
 }
 
@@ -315,8 +320,9 @@ export async function setItemAssigneeAction(input: { id: string; staffId: string
       where: { id: parsed.data.id },
       data: { assigneeStaffId: parsed.data.staffId },
     });
+    return { clientId: existing.instance.clientId };
   });
-  if (r.ok) revalidatePath('/staff/clients', 'layout');
+  if (r.ok) revalidateClientWorkflow(r.clientId);
   return r;
 }
 
@@ -370,9 +376,10 @@ export async function cancelInstanceAction(input: { instanceId: string; reason: 
       before: { status: 'ACTIVE' },
       after: { status: 'CANCELLED', reason: parsed.data.reason },
     });
+    return { clientId: inst.clientId };
   });
   if (r.ok) {
-    revalidatePath('/staff/clients', 'layout');
+    revalidateClientWorkflow(r.clientId);
     revalidatePath('/staff/workflows');
   }
   return r;
@@ -415,9 +422,10 @@ export async function restoreInstanceAction(input: { instanceId: string }) {
       before: { status: 'CANCELLED' },
       after: { status: 'ACTIVE' },
     });
+    return { clientId: inst.clientId };
   });
   if (r.ok) {
-    revalidatePath('/staff/clients', 'layout');
+    revalidateClientWorkflow(r.clientId);
     revalidatePath('/staff/workflows');
   }
   return r;
@@ -477,9 +485,10 @@ export async function pauseInstanceAction(input: {
       resourceId: inst.id,
       after: { status: 'PAUSED', pausedUntil: until, reason: reasonText || null },
     });
+    return { clientId: inst.clientId };
   });
   if (r.ok) {
-    revalidatePath('/staff/clients', 'layout');
+    revalidateClientWorkflow(r.clientId);
     revalidatePath('/staff/workflows');
   }
   return r;
@@ -516,9 +525,10 @@ export async function resumeInstanceAction(input: { instanceId: string }) {
       before: { status: 'PAUSED' },
       after: { status: 'ACTIVE' },
     });
+    return { clientId: inst.clientId };
   });
   if (r.ok) {
-    revalidatePath('/staff/clients', 'layout');
+    revalidateClientWorkflow(r.clientId);
     revalidatePath('/staff/workflows');
   }
   return r;
@@ -610,8 +620,9 @@ export async function addItemToInstanceAction(input: {
       resourceId: item.id,
       after: { instanceId: parsed.data.instanceId, title: parsed.data.title, kind, adHoc: true },
     });
+    return { clientId: inst.clientId };
   });
-  if (r.ok) revalidatePath('/staff/clients', 'layout');
+  if (r.ok) revalidateClientWorkflow(r.clientId);
   return r;
 }
 
@@ -677,8 +688,9 @@ export async function handoverItemAction(input: {
       before: { assigneeStaffId: item.assigneeStaffId },
       after: { assigneeStaffId: parsed.data.toStaffId, note: note || null },
     });
+    return { clientId: item.instance.clientId };
   });
-  if (r.ok) revalidatePath('/staff/clients', 'layout');
+  if (r.ok) revalidateClientWorkflow(r.clientId);
   return r;
 }
 
@@ -726,8 +738,9 @@ export async function addItemCommentAction(input: { itemId: string; body: string
       resourceId: parsed.data.itemId,
       after: { commentId: comment.id, length: commentBody.length },
     });
+    return { clientId: item.instance.clientId };
   });
-  if (r.ok) revalidatePath('/staff/clients', 'layout');
+  if (r.ok) revalidateClientWorkflow(r.clientId);
   return r;
 }
 
@@ -775,9 +788,10 @@ export async function deleteCancelledInstanceAction(input: { instanceId: string 
       resourceId: inst.id,
       before: { name: inst.name, status: inst.status, notes: inst.notes },
     });
+    return { clientId: inst.clientId };
   });
   if (r.ok) {
-    revalidatePath('/staff/clients', 'layout');
+    revalidateClientWorkflow(r.clientId);
     revalidatePath('/staff/workflows');
   }
   return r;
@@ -804,14 +818,16 @@ export async function executeItemAction(input: {
   // Vertraulich-/RESTRICTED-Ventil: executeWorkflowStep prüft den Mandanten-
   // Zugriff selbst NICHT — daher hier vor der Delegation über die Instanz des
   // Items den Zugriff sicherstellen.
+  let clientId: string;
   try {
-    await withTenantContext(g.ctx, async (tx) => {
+    clientId = await withTenantContext(g.ctx, async (tx) => {
       const item = await tx.workflowItem.findUnique({
         where: { id: parsed.data.id },
         select: { instance: { select: { clientId: true } } },
       });
       if (!item) throw new ActionError('Schritt nicht gefunden.');
       await assertClientAccessTx(tx, g.session, item.instance.clientId);
+      return item.instance.clientId;
     });
   } catch (e) {
     return toActionError(e);
@@ -823,6 +839,6 @@ export async function executeItemAction(input: {
     itemId: parsed.data.id,
   });
 
-  revalidatePath('/staff/clients', 'layout');
+  revalidateClientWorkflow(clientId);
   return result;
 }

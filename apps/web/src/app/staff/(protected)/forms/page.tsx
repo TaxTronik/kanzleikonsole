@@ -2,17 +2,15 @@
 // /staff/forms — Formular-Vorlagen-Übersicht
 // =============================================================================
 
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ClipboardList, Plus, FileText } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { CreateFormForm } from './create-form';
 import { FormRowActions } from './row-forms';
 
 export default async function FormsListPage() {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
   const { tenantId, staffId } = session.user;
 
   const templates = await withTenantContext(

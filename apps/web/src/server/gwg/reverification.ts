@@ -24,6 +24,205 @@ export type GwgChangeScopeInput =
   | 'REPRESENTATIVES'
   | 'BOTH';
 
+export const GWG_SNAPSHOT_COPY_INCLUDE = {
+  beneficialOwners: true,
+  representatives: {
+    orderBy: [{ position: 'asc' }, { id: 'asc' }],
+  },
+  idDocuments: {
+    include: {
+      document: {
+        select: {
+          id: true,
+          tenantId: true,
+          clientId: true,
+          classification: true,
+          deletedAt: true,
+          gwgDestructionRequestedAt: true,
+          gwgDestroyedAt: true,
+        },
+      },
+    },
+  },
+} as const satisfies Prisma.GwgCheckInclude;
+
+type GwgSnapshotCopyPayload = Prisma.GwgCheckGetPayload<{
+  include: typeof GWG_SNAPSHOT_COPY_INCLUDE;
+}>;
+
+type GwgSnapshotOwner = GwgSnapshotCopyPayload['beneficialOwners'][number];
+type GwgSnapshotRepresentative = GwgSnapshotCopyPayload['representatives'][number];
+type GwgSnapshotDocument = GwgSnapshotCopyPayload['idDocuments'][number];
+type GwgSnapshotEvidence = NonNullable<GwgSnapshotDocument['document']>;
+
+export type GwgSnapshotCopySource = Pick<
+  GwgSnapshotCopyPayload,
+  | 'destroyedAt'
+  | 'notes'
+  | 'legalForm'
+  | 'registerNumber'
+  | 'registerAuthority'
+  | 'noRegisterEntry'
+  | 'representativeNames'
+  | 'ownershipStructureNotes'
+> & {
+  beneficialOwners: Array<
+    Pick<
+      GwgSnapshotOwner,
+      | 'id'
+      | 'fullName'
+      | 'birthDate'
+      | 'birthPlace'
+      | 'residence'
+      | 'nationality'
+      | 'ownershipPct'
+      | 'isPep'
+      | 'notes'
+    >
+  >;
+  representatives: Array<
+    Pick<GwgSnapshotRepresentative, 'id' | 'fullName' | 'position' | 'linkedBeneficialOwnerId'>
+  >;
+  idDocuments: Array<
+    Pick<
+      GwgSnapshotDocument,
+      | 'documentSetId'
+      | 'documentId'
+      | 'type'
+      | 'ownerName'
+      | 'number'
+      | 'issuedBy'
+      | 'issueDate'
+      | 'expiryDate'
+      | 'notes'
+    > & {
+      document: Pick<
+        GwgSnapshotEvidence,
+        | 'id'
+        | 'tenantId'
+        | 'clientId'
+        | 'classification'
+        | 'deletedAt'
+        | 'gwgDestructionRequestedAt'
+        | 'gwgDestroyedAt'
+      > | null;
+    }
+  >;
+};
+
+export interface CopyGwgSnapshotResult {
+  copiedOwnerCount: number;
+  copiedDocumentCount: number;
+  copiedLinkedDocumentCount: number;
+}
+
+/**
+ * Kopiert ausschliesslich die Identifizierungsgrundlage eines unveraenderten
+ * Terminal-Snapshots in einen frischen Check. Risiko, Pruefstatus,
+ * Bestaetigungen und Subject-Zuordnungen werden absichtlich nie uebernommen.
+ */
+export async function copyGwgSnapshotTx(
+  tx: TxClient,
+  input: {
+    tenantId: string;
+    clientId: string;
+    targetCheckId: string;
+    source: GwgSnapshotCopySource | null;
+  },
+): Promise<CopyGwgSnapshotResult> {
+  const source = input.source;
+  if (!source || source.destroyedAt !== null) {
+    return { copiedOwnerCount: 0, copiedDocumentCount: 0, copiedLinkedDocumentCount: 0 };
+  }
+
+  const copiedOwnerIds = new Map(source.beneficialOwners.map((owner) => [owner.id, randomUUID()]));
+  const copiedDocumentSetIds = new Map<string, string>();
+  const documentsToCopy = source.idDocuments.map((document) => {
+    const evidence = document.document;
+    const reusableDocumentId =
+      evidence &&
+      evidence.id === document.documentId &&
+      evidence.tenantId === input.tenantId &&
+      evidence.clientId === input.clientId &&
+      evidence.classification === 'GWG_EVIDENCE' &&
+      evidence.deletedAt === null &&
+      evidence.gwgDestructionRequestedAt === null &&
+      evidence.gwgDestroyedAt === null
+        ? evidence.id
+        : null;
+    let copiedDocumentSetId = copiedDocumentSetIds.get(document.documentSetId);
+    if (!copiedDocumentSetId) {
+      copiedDocumentSetId = randomUUID();
+      copiedDocumentSetIds.set(document.documentSetId, copiedDocumentSetId);
+    }
+    return {
+      gwgCheckId: input.targetCheckId,
+      type: document.type,
+      ownerName: document.ownerName,
+      documentId: reusableDocumentId,
+      number: document.number,
+      issuedBy: document.issuedBy,
+      issueDate: document.issueDate,
+      expiryDate: document.expiryDate,
+      // Sets sind check-lokal; Vorder-/Rueckseite behalten nur innerhalb des
+      // neuen Checks dieselbe, frisch erzeugte Gruppen-ID.
+      documentSetId: copiedDocumentSetId,
+      notes: document.notes,
+    };
+  });
+
+  await tx.gwgCheck.update({
+    where: { id: input.targetCheckId },
+    data: {
+      notes: source.notes,
+      legalForm: source.legalForm,
+      registerNumber: source.registerNumber,
+      registerAuthority: source.registerAuthority,
+      noRegisterEntry: source.noRegisterEntry,
+      representativeNames: source.representativeNames,
+      ownershipStructureNotes: source.ownershipStructureNotes,
+    },
+  });
+  if (source.beneficialOwners.length > 0) {
+    await tx.gwgBeneficialOwner.createMany({
+      data: source.beneficialOwners.map((owner) => ({
+        id: copiedOwnerIds.get(owner.id)!,
+        gwgCheckId: input.targetCheckId,
+        fullName: owner.fullName,
+        birthDate: owner.birthDate,
+        birthPlace: owner.birthPlace,
+        residence: owner.residence,
+        nationality: owner.nationality,
+        ownershipPct: owner.ownershipPct,
+        isPep: owner.isPep,
+        notes: owner.notes,
+      })),
+    });
+  }
+  if (source.representatives.length > 0) {
+    await tx.gwgRepresentative.createMany({
+      data: source.representatives.map((representative) => ({
+        gwgCheckId: input.targetCheckId,
+        fullName: representative.fullName,
+        position: representative.position,
+        linkedBeneficialOwnerId: representative.linkedBeneficialOwnerId
+          ? (copiedOwnerIds.get(representative.linkedBeneficialOwnerId) ?? null)
+          : null,
+      })),
+    });
+  }
+  if (documentsToCopy.length > 0) {
+    await tx.gwgIdDocument.createMany({ data: documentsToCopy });
+  }
+
+  return {
+    copiedOwnerCount: source.beneficialOwners.length,
+    copiedDocumentCount: documentsToCopy.length,
+    copiedLinkedDocumentCount: documentsToCopy.filter((document) => document.documentId !== null)
+      .length,
+  };
+}
+
 /**
  * Erzeugt unter dem Lifecycle-Lock einen fachlich monotonen Zeitstempel.
  * PostgreSQLs CURRENT_TIMESTAMP ist an den Transaktionsstart gebunden: Eine
@@ -204,25 +403,7 @@ export async function requireGwgReverificationTx(
       status: { in: ['VERIFIED', 'REJECTED', 'EXPIRED'] },
     },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-    include: {
-      beneficialOwners: true,
-      representatives: { orderBy: [{ position: 'asc' }, { id: 'asc' }] },
-      idDocuments: {
-        include: {
-          document: {
-            select: {
-              id: true,
-              tenantId: true,
-              clientId: true,
-              classification: true,
-              deletedAt: true,
-              gwgDestructionRequestedAt: true,
-              gwgDestroyedAt: true,
-            },
-          },
-        },
-      },
-    },
+    include: GWG_SNAPSHOT_COPY_INCLUDE,
   });
 
   const invalidated = await tx.gwgCheck.updateMany({
@@ -277,87 +458,11 @@ export async function requireGwgReverificationTx(
       predecessorCheckId: terminalPredecessor?.id ?? null,
       changeScope: terminalPredecessor ? 'CLIENT_MASTER_DATA' : 'INITIAL',
     });
-    if (terminalPredecessor?.destroyedAt === null) {
-      const ownerIds = new Map(
-        terminalPredecessor.beneficialOwners.map((owner) => [owner.id, randomUUID()]),
-      );
-      const documentSetIds = new Map<string, string>();
-      await tx.gwgCheck.update({
-        where: { id: review.id },
-        data: {
-          notes: terminalPredecessor.notes,
-          legalForm: terminalPredecessor.legalForm,
-          registerNumber: terminalPredecessor.registerNumber,
-          registerAuthority: terminalPredecessor.registerAuthority,
-          noRegisterEntry: terminalPredecessor.noRegisterEntry,
-          representativeNames: terminalPredecessor.representativeNames,
-          ownershipStructureNotes: terminalPredecessor.ownershipStructureNotes,
-        },
-      });
-      if (terminalPredecessor.beneficialOwners.length > 0) {
-        await tx.gwgBeneficialOwner.createMany({
-          data: terminalPredecessor.beneficialOwners.map((owner) => ({
-            id: ownerIds.get(owner.id)!,
-            gwgCheckId: review.id,
-            fullName: owner.fullName,
-            birthDate: owner.birthDate,
-            birthPlace: owner.birthPlace,
-            residence: owner.residence,
-            nationality: owner.nationality,
-            ownershipPct: owner.ownershipPct,
-            isPep: owner.isPep,
-            notes: owner.notes,
-          })),
-        });
-      }
-      if (terminalPredecessor.representatives.length > 0) {
-        await tx.gwgRepresentative.createMany({
-          data: terminalPredecessor.representatives.map((representative) => ({
-            gwgCheckId: review.id,
-            fullName: representative.fullName,
-            position: representative.position,
-            linkedBeneficialOwnerId: representative.linkedBeneficialOwnerId
-              ? (ownerIds.get(representative.linkedBeneficialOwnerId) ?? null)
-              : null,
-          })),
-        });
-      }
-      if (terminalPredecessor.idDocuments.length > 0) {
-        await tx.gwgIdDocument.createMany({
-          data: terminalPredecessor.idDocuments.map((document) => {
-            let documentSetId = documentSetIds.get(document.documentSetId);
-            if (!documentSetId) {
-              documentSetId = randomUUID();
-              documentSetIds.set(document.documentSetId, documentSetId);
-            }
-            const evidence = document.document;
-            const reusableDocumentId =
-              evidence &&
-              evidence.id === document.documentId &&
-              evidence.tenantId === input.tenantId &&
-              evidence.clientId === input.clientId &&
-              evidence.classification === 'GWG_EVIDENCE' &&
-              evidence.deletedAt === null &&
-              evidence.gwgDestructionRequestedAt === null &&
-              evidence.gwgDestroyedAt === null
-                ? evidence.id
-                : null;
-            return {
-              gwgCheckId: review.id,
-              type: document.type,
-              ownerName: document.ownerName,
-              documentId: reusableDocumentId,
-              number: document.number,
-              issuedBy: document.issuedBy,
-              issueDate: document.issueDate,
-              expiryDate: document.expiryDate,
-              documentSetId,
-              notes: document.notes,
-            };
-          }),
-        });
-      }
-    }
+    await copyGwgSnapshotTx(tx, {
+      ...input,
+      targetCheckId: review.id,
+      source: terminalPredecessor,
+    });
   }
 
   return {

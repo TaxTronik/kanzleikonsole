@@ -3,21 +3,15 @@ import type { ReactNode } from 'react';
 // /staff/forms/submissions/[id] — Antwort einer Form-Submission ansehen
 // =============================================================================
 
-import { redirect, notFound } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, FileText } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import type { FormFieldType } from '@prisma/client';
 import { ReviewForm } from './review-form';
 import { fmtDateShort, fmtDateTimeMedium, fmtEUR } from '@/lib/fmt';
-
-const STATUS_LABELS: Record<string, string> = {
-  PENDING: 'Ausstehend',
-  DRAFT: 'Entwurf',
-  SUBMITTED: 'Eingegangen',
-  REVIEWED: 'Geprüft',
-};
+import { FORM_SUBMISSION_STATUS_LABELS } from '@/lib/domain-labels';
 
 function renderValue(type: FormFieldType, value: unknown, fieldOptions: unknown): ReactNode {
   if (value === null || value === undefined || value === '') {
@@ -76,8 +70,7 @@ export default async function SubmissionDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
   const { id } = await params;
   const { tenantId, staffId } = session.user;
 
@@ -110,16 +103,16 @@ export default async function SubmissionDetailPage({
         </p>
         <div className="mt-2">
           {sub.status === 'PENDING' && (
-            <span className="badge-yellow">{STATUS_LABELS[sub.status]}</span>
+            <span className="badge-yellow">{FORM_SUBMISSION_STATUS_LABELS[sub.status]}</span>
           )}
           {sub.status === 'DRAFT' && (
-            <span className="badge-yellow">{STATUS_LABELS[sub.status]}</span>
+            <span className="badge-yellow">{FORM_SUBMISSION_STATUS_LABELS[sub.status]}</span>
           )}
           {sub.status === 'SUBMITTED' && (
-            <span className="badge-green">{STATUS_LABELS[sub.status]}</span>
+            <span className="badge-green">{FORM_SUBMISSION_STATUS_LABELS[sub.status]}</span>
           )}
           {sub.status === 'REVIEWED' && (
-            <span className="badge-gray">{STATUS_LABELS[sub.status]}</span>
+            <span className="badge-gray">{FORM_SUBMISSION_STATUS_LABELS[sub.status]}</span>
           )}
         </div>
       </div>

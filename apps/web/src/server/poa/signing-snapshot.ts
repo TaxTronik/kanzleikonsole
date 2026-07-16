@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { berlinTodayUtcMidnight } from '@taxtronik/tax';
 import { z } from 'zod';
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
@@ -102,23 +103,6 @@ export function readPoaSigningSnapshot(
   } catch {
     return null;
   }
-}
-
-/**
- * @db.Date values are represented as UTC midnight. The product treats a PoA as
- * valid through the complete validUntil day in Europe/Berlin, so it expires
- * only when validUntil is before today's Berlin calendar date.
- */
-export function berlinTodayUtcMidnight(now = new Date()): Date {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Berlin',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(now);
-  const value = (type: Intl.DateTimeFormatPartTypes) =>
-    Number(parts.find((part) => part.type === type)?.value ?? 0);
-  return new Date(Date.UTC(value('year'), value('month') - 1, value('day')));
 }
 
 export function isPoaExpired(validUntil: Date | string | null, now = new Date()): boolean {

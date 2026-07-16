@@ -87,6 +87,7 @@ vi.mock('node:child_process', () => ({
       cp.stdout.end();
       if (h.child.exitCode !== 0) cp.stderr.emit('data', Buffer.from(h.child.stderr));
       cp.emit('exit', h.child.exitCode);
+      cp.emit('close', h.child.exitCode);
     });
     return cp;
   },

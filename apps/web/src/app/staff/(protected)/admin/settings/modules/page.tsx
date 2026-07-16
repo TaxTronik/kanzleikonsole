@@ -1,4 +1,4 @@
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { readModules } from '@/server/settings/modules';
 import { readClientLayout } from '@/server/settings/client-layout';
 import { readAccessPolicy } from '@/server/settings/access-policy';
@@ -6,11 +6,9 @@ import { ModulesForm } from '../modules-form';
 import { ClientLayoutForm } from '../client-layout-form';
 import { AccessPolicyForm } from '../access-policy-form';
 import { SectionCard } from '../section-card';
-import { redirect } from 'next/navigation';
 
 export default async function ModulesSettingsPage() {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage({ admin: true });
   const { tenantId, staffId } = session.user;
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
   const [modules, layout, accessPolicy] = await Promise.all([

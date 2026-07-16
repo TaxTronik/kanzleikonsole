@@ -1,8 +1,8 @@
-﻿import { staffAuth } from '@/server/auth/staff';
+﻿import { requireStaffPage } from '@/server/auth/staff-page';
 import { randomUUID } from 'node:crypto';
 import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
-import { redirect } from 'next/navigation';
+
 import Link from 'next/link';
 import { Plus, User, FileDown, Search, Wand2 } from 'lucide-react';
 import { OffsetPagination } from '@/components/offset-pagination';
@@ -55,8 +55,7 @@ export default async function ClientsPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
 
   const sp = await searchParams;
   const { tenantId, staffId } = session.user;

@@ -1,12 +1,10 @@
-import { redirect } from 'next/navigation';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { readPortalFeatures } from '@/server/settings/portal-features';
 import { PortalFeaturesForm } from '../portal-features-form';
 import { SectionCard } from '../section-card';
 
 export default async function PortalSettingsPage() {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage({ admin: true });
   const { tenantId, staffId } = session.user;
   const features = await readPortalFeatures({ tenantId, actorId: staffId, actorType: 'STAFF' });
 
@@ -21,5 +19,3 @@ export default async function PortalSettingsPage() {
     </div>
   );
 }
-
-export const dynamic = 'force-dynamic';

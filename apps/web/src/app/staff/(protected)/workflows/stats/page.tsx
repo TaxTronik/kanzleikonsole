@@ -7,89 +7,140 @@
 //   - Engpass: Item-Position mit längster Liegezeit (open-time)
 // =============================================================================
 
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Workflow, Clock, AlertTriangle } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
-import { withTenantContext } from '@taxtronik/db';
+import { requireStaffPage } from '@/server/auth/staff-page';
+import { Prisma, withTenantContext } from '@taxtronik/db';
 import { fmtDecimal } from '@/lib/fmt';
 
+interface WorkflowDurationAggregate {
+  templateId: string;
+  avgDays: number;
+}
+
+interface WorkflowBottleneckAggregate {
+  templateId: string;
+  position: number;
+  title: string;
+  avgDays: number;
+}
+
 export default async function WorkflowStatsPage() {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
   const { tenantId, staffId } = session.user;
 
   const data = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
-      const templates = await tx.workflowTemplate.findMany({
-        orderBy: [{ active: 'desc' }, { name: 'asc' }],
-        include: {
-          instances: {
-            select: {
-              id: true,
-              status: true,
-              startedAt: true,
-              completedAt: true,
-              items: { select: { position: true, title: true, doneAt: true, createdAt: true } },
-            },
-          },
-        },
-      });
-      return templates;
+      const [templates, instanceCounts, durations, bottlenecks] = await Promise.all([
+        tx.workflowTemplate.findMany({
+          where: { tenantId },
+          orderBy: [{ active: 'desc' }, { name: 'asc' }],
+          select: { id: true, name: true, active: true },
+        }),
+        tx.workflowInstance.groupBy({
+          by: ['templateId', 'status'],
+          where: { tenantId, templateId: { not: null } },
+          _count: { _all: true },
+        }),
+        tx.$queryRaw<WorkflowDurationAggregate[]>(Prisma.sql`
+          SELECT
+            instance."template_id" AS "templateId",
+            AVG(
+              EXTRACT(EPOCH FROM (instance."completed_at" - instance."started_at")) / 86400.0
+            )::double precision AS "avgDays"
+          FROM "workflow_instance" instance
+          WHERE instance."tenant_id" = ${tenantId}::uuid
+            AND instance."template_id" IS NOT NULL
+            AND instance."status" = 'COMPLETED'
+            AND instance."completed_at" IS NOT NULL
+          GROUP BY instance."template_id"
+        `),
+        tx.$queryRaw<WorkflowBottleneckAggregate[]>(Prisma.sql`
+          WITH position_stats AS (
+            SELECT
+              instance."template_id" AS "templateId",
+              item."position" AS "position",
+              MIN(item."title") AS "title",
+              AVG(
+                EXTRACT(EPOCH FROM (item."done_at" - item."created_at")) / 86400.0
+              )::double precision AS "avgDays"
+            FROM "workflow_item" item
+            INNER JOIN "workflow_instance" instance ON instance."id" = item."instance_id"
+            WHERE instance."tenant_id" = ${tenantId}::uuid
+              AND instance."template_id" IS NOT NULL
+              AND item."done_at" IS NOT NULL
+            GROUP BY instance."template_id", item."position"
+          ), ranked AS (
+            SELECT
+              "templateId",
+              "position",
+              "title",
+              "avgDays",
+              ROW_NUMBER() OVER (
+                PARTITION BY "templateId"
+                ORDER BY "avgDays" DESC, "position" ASC
+              ) AS "rank"
+            FROM position_stats
+          )
+          SELECT "templateId", "position", "title", "avgDays"
+          FROM ranked
+          WHERE "rank" = 1
+        `),
+      ]);
+
+      return { templates, instanceCounts, durations, bottlenecks };
     },
   );
 
-  const rows = data.map((tpl) => {
-    const total = tpl.instances.length;
-    const active = tpl.instances.filter(
-      (i) => i.status === 'ACTIVE' || i.status === 'PAUSED',
-    ).length;
-    const completed = tpl.instances.filter((i) => i.status === 'COMPLETED');
-    const cancelled = tpl.instances.filter((i) => i.status === 'CANCELLED').length;
+  const countsByTemplate = new Map<
+    string,
+    { total: number; active: number; completed: number; cancelled: number }
+  >();
+  for (const aggregate of data.instanceCounts) {
+    if (!aggregate.templateId) continue;
+    const counts = countsByTemplate.get(aggregate.templateId) ?? {
+      total: 0,
+      active: 0,
+      completed: 0,
+      cancelled: 0,
+    };
+    const count = aggregate._count._all;
+    counts.total += count;
+    if (aggregate.status === 'ACTIVE' || aggregate.status === 'PAUSED') counts.active += count;
+    if (aggregate.status === 'COMPLETED') counts.completed += count;
+    if (aggregate.status === 'CANCELLED') counts.cancelled += count;
+    countsByTemplate.set(aggregate.templateId, counts);
+  }
 
-    // Durchschnittliche Durchlaufzeit (nur COMPLETED)
-    let avgDays: number | null = null;
-    if (completed.length > 0) {
-      const sum = completed.reduce((acc, i) => {
-        if (!i.completedAt) return acc;
-        return acc + (i.completedAt.getTime() - i.startedAt.getTime());
-      }, 0);
-      avgDays = sum / completed.length / (24 * 60 * 60 * 1000);
-    }
+  const durationsByTemplate = new Map(data.durations.map((row) => [row.templateId, row.avgDays]));
+  const bottlenecksByTemplate = new Map(data.bottlenecks.map((row) => [row.templateId, row]));
 
-    // Engpass: pro Position die durchschnittliche Liegezeit (createdAt → doneAt) der erledigten Items.
-    // Nehme nur abgeschlossene Items, sonst dominieren offene Bottlenecks zu sehr.
-    const byPosition = new Map<number, { title: string; totalMs: number; count: number }>();
-    for (const inst of tpl.instances) {
-      for (const it of inst.items) {
-        if (!it.doneAt) continue;
-        const ms = it.doneAt.getTime() - it.createdAt.getTime();
-        const cur = byPosition.get(it.position) ?? { title: it.title, totalMs: 0, count: 0 };
-        cur.totalMs += ms;
-        cur.count += 1;
-        byPosition.set(it.position, cur);
-      }
-    }
-    const positions = Array.from(byPosition.entries())
-      .map(([pos, x]) => ({
-        pos,
-        title: x.title,
-        avgDays: x.totalMs / x.count / (24 * 60 * 60 * 1000),
-      }))
-      .sort((a, b) => b.avgDays - a.avgDays);
-    const bottleneck = positions[0];
+  const rows = data.templates.map((tpl) => {
+    const counts = countsByTemplate.get(tpl.id) ?? {
+      total: 0,
+      active: 0,
+      completed: 0,
+      cancelled: 0,
+    };
+    const bottleneckAggregate = bottlenecksByTemplate.get(tpl.id);
 
     return {
       id: tpl.id,
       name: tpl.name,
       active: tpl.active,
-      total,
-      activeCount: active,
-      completed: completed.length,
-      cancelled,
-      avgDays,
-      bottleneck,
+      total: counts.total,
+      activeCount: counts.active,
+      completed: counts.completed,
+      cancelled: counts.cancelled,
+      avgDays: durationsByTemplate.get(tpl.id) ?? null,
+      bottleneck: bottleneckAggregate
+        ? {
+            pos: bottleneckAggregate.position,
+            title: bottleneckAggregate.title,
+            avgDays: bottleneckAggregate.avgDays,
+          }
+        : undefined,
     };
   });
 
@@ -184,5 +235,3 @@ export default async function WorkflowStatsPage() {
     </div>
   );
 }
-
-export const dynamic = 'force-dynamic';

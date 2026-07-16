@@ -1,17 +1,12 @@
-﻿import { redirect } from 'next/navigation';
-import Link from 'next/link';
+﻿import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
-import { isStaffAdmin } from '@/server/auth/rbac';
+import { requireStaffPage } from '@/server/auth/staff-page';
+
 import { withTenantContext } from '@taxtronik/db';
 import { InvoiceCategoryEditor } from './editor';
 
 export default async function InvoiceCategoriesPage() {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
-  if (!isStaffAdmin(session)) {
-    redirect('/staff/dashboard');
-  }
+  const session = await requireStaffPage({ admin: true });
   const { tenantId, staffId } = session.user;
 
   const [categories, templates] = await withTenantContext(
@@ -56,5 +51,3 @@ export default async function InvoiceCategoriesPage() {
     </div>
   );
 }
-
-export const dynamic = 'force-dynamic';

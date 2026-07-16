@@ -22,6 +22,7 @@ import type { Prisma as PrismaTypes } from '@prisma/client';
 import { withTenantContext } from '@taxtronik/db/tenant-context';
 // type-only: wird zur Compile-Zeit gelöscht, zieht den Owner-Client NICHT rein.
 import type { TxClient } from '@taxtronik/db';
+import { ActionError } from '@/server/actions/action-error';
 import { readAccessPolicyTx, decideClientAccess } from '@/server/settings/access-policy';
 import { staffAuth, type StaffSession } from './staff';
 import { log } from '@/server/logger';
@@ -46,12 +47,7 @@ export class ForbiddenError extends Error {
  * die generisch ersetzt werden (kein Leak von Internals). Ersetzt das frühere
  * `throw new Error(...)` + `return (e as Error).message`-Muster.
  */
-export class ActionError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ActionError';
-  }
-}
+export { ActionError } from '@/server/actions/action-error';
 
 export function isStaffAdmin(session: StaffSession | null | undefined): boolean {
   if (!session?.user?.roles) return false;

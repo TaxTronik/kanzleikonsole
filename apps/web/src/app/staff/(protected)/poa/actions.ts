@@ -13,20 +13,20 @@ import { prismaBytes } from '@/server/db/prisma-bytes';
 import { checkRateLimit, checkIpOrGlobalLimit, getClientIp } from '@/server/rate-limit';
 import { isStaffAdmin, toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { headers } from 'next/headers';
-import { staffActionGuard, withStaff, ActionError } from '@/server/actions/staff-action';
+import {
+  staffActionGuard,
+  withStaff,
+  ActionError,
+  parseFormData,
+} from '@/server/actions/staff-action';
 import { readModules } from '@/server/settings/modules';
 import type { StaffSession } from '@/server/auth/staff';
+import { MAX_UPLOAD_BYTES } from '@taxtronik/storage';
 import {
-  commitPreparedBytes,
-  MAX_UPLOAD_BYTES,
-  prepareBytesCommitWithTier,
-  recoverPreparedBytesCommit,
-  type PreparedBytesCommit,
-} from '@taxtronik/storage';
-import {
-  createPendingDocumentWithVersion,
-  finalizePendingDocumentVersion,
-} from '@/server/documents/upload-helpers';
+  persistResumableDocumentUpload,
+  ResumableDocumentUploadError,
+  ResumableDocumentUploadInvariantError,
+} from '@/server/documents/resumable-upload';
 import { notify } from '@/server/notifications/service';
 import {
   buildPoaSigningSnapshot,
@@ -134,10 +134,9 @@ async function assertPoaCreateContextTx(
   }
 }
 
-async function readPoaPdfBytes(formData: FormData, required: boolean): Promise<Buffer | null> {
+async function readPoaPdfBytes(formData: FormData): Promise<Buffer> {
   const file = formData.get('poaPdf');
   if (!(file instanceof File) || file.size === 0) {
-    if (!required) return null;
     throw new ActionError('Bitte eine PDF-Datei hochladen.');
   }
   if (file.type !== 'application/pdf') {
@@ -147,6 +146,49 @@ async function readPoaPdfBytes(formData: FormData, required: boolean): Promise<B
     throw new ActionError(`PDF zu groß (max. ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)} MB).`);
   }
   return Buffer.from(await file.arrayBuffer());
+}
+
+function poaUploadCause(cause: unknown): unknown {
+  if (!(cause instanceof ResumableDocumentUploadInvariantError)) return cause;
+  switch (cause.code) {
+    case 'RESUME_NOT_FOUND':
+      return new ActionError('Vorgemerkter PDF-Upload wurde nicht gefunden.');
+    case 'RESUME_NOT_RESUMABLE':
+      return new ActionError('Vorgemerkter PDF-Upload ist nicht wiederaufnehmbar.');
+    case 'RESUME_INVALID_STATUS':
+      return new ActionError('Vorgemerkter PDF-Upload hat einen ungültigen Status.');
+    case 'TENANT_CONTEXT_MISMATCH':
+    case 'PREPARED_TENANT_MISMATCH':
+      return new ActionError('Die Upload-Absicht gehört nicht zum aktuellen Mandanten.');
+  }
+}
+
+function poaUploadErrorResult(error: unknown): ActionResult {
+  if (!(error instanceof ResumableDocumentUploadError)) return toActionError(error);
+  const cause = poaUploadCause(error.cause);
+  switch (error.phase) {
+    case 'prepare':
+      if (cause instanceof ActionError) return toActionError(cause);
+      return { ok: false, error: `Upload-Prüfung fehlgeschlagen: ${(cause as Error).message}` };
+    case 'resume':
+      return { ...toActionError(cause), pendingDocumentId: error.pendingDocumentId };
+    case 'journal':
+      return toActionError(cause);
+    case 'commit':
+      return {
+        ok: false,
+        error:
+          'Upload noch nicht abgeschlossen. Sie können den Vorgang mit derselben PDF sicher fortsetzen.',
+        pendingDocumentId: error.pendingDocumentId,
+      };
+    case 'finalize':
+      return {
+        ok: false,
+        error:
+          'Das PDF wurde gespeichert, aber noch nicht abschließend zugeordnet. Bitte den Vorgang fortsetzen.',
+        pendingDocumentId: error.pendingDocumentId,
+      };
+  }
 }
 
 export async function createPoaAction(
@@ -295,215 +337,86 @@ export async function createPoaAction(
     }
 
     const resumeDocumentId = data.pendingDocumentId || existingIntentDocumentId;
-    let prepared: PreparedBytesCommit | null = null;
-    let fileData: Buffer | null = null;
-
-    if (resumeDocumentId) {
-      try {
-        const resumed = await withTenantContext(ctx, async (tx) => {
-          await assertPoaCreateContextTx(
+    try {
+      const upload = await persistResumableDocumentUpload({
+        context: ctx,
+        resumeDocumentId,
+        documentData: {
+          id: data.uploadIntentId || undefined,
+          tenantId,
+          clientId: data.clientId,
+          title: `Vollmacht - ${data.subject}`,
+          classification: 'GOBD_CONTRACT',
+          mimeType: 'application/pdf',
+        },
+        resumeWhere: {
+          clientId: data.clientId,
+          classification: 'GOBD_CONTRACT',
+          mimeType: 'application/pdf',
+          deletedAt: null,
+        },
+        createdById: staffId,
+        storage: {
+          tier: 'GOBD',
+          classification: 'GOBD_CONTRACT',
+          expectedMime: 'application/pdf',
+        },
+        readBytes: () => readPoaPdfBytes(formData),
+        validatePrepared(prepared) {
+          if (prepared.detectedMime !== 'application/pdf') {
+            throw new ActionError('Der Dateiinhalt ist keine gültige PDF-Datei.');
+          }
+        },
+        guardMutationTx: (tx) =>
+          assertPoaCreateContextTx(
             tx,
             session,
             data.clientId,
             data.signerContactId || undefined,
             true,
-          );
-          const locked = await tx.$queryRaw<Array<{ id: string }>>`
-            SELECT "id"
-              FROM "document"
-             WHERE "id" = ${resumeDocumentId}::uuid
-               AND "tenant_id" = ${tenantId}::uuid
-             FOR UPDATE
-          `;
-          if (!locked[0]) throw new ActionError('Vorgemerkter PDF-Upload wurde nicht gefunden.');
-
-          const document = await tx.document.findFirst({
-            where: {
-              id: resumeDocumentId,
-              tenantId,
-              clientId: data.clientId,
-              classification: 'GOBD_CONTRACT',
-              mimeType: 'application/pdf',
-              deletedAt: null,
-            },
-            select: {
-              id: true,
-              retentionUntil: true,
-              versions: {
-                orderBy: { versionNo: 'desc' },
-                take: 2,
-                select: {
-                  id: true,
-                  versionNo: true,
-                  storageBucket: true,
-                  storageKey: true,
-                  storageVersionId: true,
-                  sha256: true,
-                  sizeBytes: true,
-                  immutable: true,
-                  scanStatus: true,
-                  scanCompletedAt: true,
-                },
-              },
-            },
-          });
-          if (!document || document.versions.length !== 1 || !document.retentionUntil) {
-            throw new ActionError('Vorgemerkter PDF-Upload ist nicht wiederaufnehmbar.');
-          }
+          ),
+        async assertDocumentAvailableTx(tx, documentId) {
           const alreadyUsed = await tx.powerOfAttorney.findFirst({
-            where: { tenantId, documentId: document.id },
+            where: { tenantId, documentId },
             select: { id: true },
           });
           if (alreadyUsed) {
             throw new ActionError('Das vorgemerkte PDF ist bereits einer Vollmacht zugeordnet.');
           }
-          const version = document.versions[0]!;
-          if (version.versionNo !== 1 || !version.immutable) {
-            throw new ActionError('Vorgemerkter PDF-Upload ist nicht wiederaufnehmbar.');
-          }
-          const clean =
-            version.scanStatus === 'CLEAN' &&
-            version.scanCompletedAt !== null &&
-            Boolean(version.storageVersionId?.trim());
-          const pending =
-            version.scanStatus === 'PENDING' &&
-            version.scanCompletedAt === null &&
-            version.storageVersionId === null;
-          if (!clean && !pending) {
-            throw new ActionError('Vorgemerkter PDF-Upload hat einen ungültigen Status.');
-          }
-          return {
-            documentId: document.id,
-            versionId: version.id,
-            clean,
-            prepared: pending
-              ? ({
-                  tier: 'GOBD',
-                  tenantId,
-                  targetBucket: version.storageBucket,
-                  targetKey: version.storageKey,
-                  sha256: Buffer.from(version.sha256),
-                  sizeBytes: version.sizeBytes,
-                  immutable: true,
-                  retentionUntil: document.retentionUntil,
-                  detectedMime: 'application/pdf',
-                } satisfies PreparedBytesCommit)
-              : null,
-          };
-        });
-        pdfDocumentId = resumed.documentId;
-        pdfVersionId = resumed.versionId;
-        prepared = resumed.prepared;
-      } catch (e) {
-        return { ...toActionError(e), pendingDocumentId: resumeDocumentId };
-      }
-    } else {
-      try {
-        fileData = await readPoaPdfBytes(formData, true);
-        prepared = await prepareBytesCommitWithTier({
-          fileData: fileData!,
-          tier: 'GOBD',
-          tenantId,
-          classification: 'GOBD_CONTRACT',
-        });
-      } catch (e) {
-        if (e instanceof ActionError) return toActionError(e);
-        return { ok: false, error: `Upload-Prüfung fehlgeschlagen: ${(e as Error).message}` };
-      }
-      if (prepared.detectedMime !== 'application/pdf') {
-        return { ok: false, error: 'Der Dateiinhalt ist keine gültige PDF-Datei.' };
-      }
-
-      // Die zweite Prüfung und das PENDING-Journal laufen atomar. Danach ist der
-      // Zielschlüssel dauerhaft auffindbar, bevor S3 ihn erstmals sieht.
-      try {
-        const pending = await withTenantContext(ctx, async (tx) => {
-          await assertPoaCreateContextTx(
-            tx,
-            session,
-            data.clientId,
-            data.signerContactId || undefined,
-            true,
-          );
-          const created = await createPendingDocumentWithVersion(tx, {
-            documentData: {
-              id: data.uploadIntentId || undefined,
-              tenantId,
-              clientId: data.clientId,
-              title: `Vollmacht - ${data.subject}`,
-              classification: 'GOBD_CONTRACT',
-              mimeType: 'application/pdf',
-            },
-            prepared: prepared!,
-            createdById: staffId,
-          });
-          await evidenceService.record(tx, {
+        },
+        recordPendingTx: (tx, pending) =>
+          evidenceService.record(tx, {
             tenantId,
             actorType: 'STAFF',
             actorId: staffId,
             action: 'document.upload.pending',
             resourceType: 'document',
-            resourceId: created.document.id,
+            resourceId: pending.documentId,
             after: {
               source: 'power_of_attorney',
               classification: 'GOBD_CONTRACT',
               scanStatus: 'PENDING',
             },
-          });
-          return created;
-        });
-        pdfDocumentId = pending.document.id;
-        pdfVersionId = pending.version.id;
-      } catch (e) {
-        return toActionError(e);
-      }
-    }
-
-    if (prepared && pdfDocumentId && pdfVersionId) {
-      let committed;
-      try {
-        committed = resumeDocumentId ? await recoverPreparedBytesCommit(prepared) : null;
-        if (!committed) {
-          fileData ??= await readPoaPdfBytes(formData, true);
-          committed = await commitPreparedBytes({ fileData: fileData!, prepared });
-        }
-      } catch {
-        return {
-          ok: false,
-          error:
-            'Upload noch nicht abgeschlossen. Sie können den Vorgang mit derselben PDF sicher fortsetzen.',
-          pendingDocumentId: pdfDocumentId,
-        };
-      }
-      try {
-        await withTenantContext(ctx, async (tx) => {
-          await finalizePendingDocumentVersion(tx, {
-            documentId: pdfDocumentId!,
-            versionId: pdfVersionId!,
-            commit: committed!,
-          });
-          await evidenceService.record(tx, {
+          }),
+        recordCompleteTx: (tx, complete) =>
+          evidenceService.record(tx, {
             tenantId,
             actorType: 'STAFF',
             actorId: staffId,
             action: 'document.upload.complete',
             resourceType: 'document',
-            resourceId: pdfDocumentId!,
+            resourceId: complete.documentId,
             after: {
               source: 'power_of_attorney',
               classification: 'GOBD_CONTRACT',
               scanStatus: 'CLEAN',
             },
-          });
-        });
-      } catch {
-        return {
-          ok: false,
-          error:
-            'Das PDF wurde gespeichert, aber noch nicht abschließend zugeordnet. Bitte den Vorgang fortsetzen.',
-          pendingDocumentId: pdfDocumentId,
-        };
-      }
+          }),
+      });
+      pdfDocumentId = upload.documentId;
+      pdfVersionId = upload.versionId;
+    } catch (error) {
+      return poaUploadErrorResult(error);
     }
   }
 
@@ -641,8 +554,8 @@ export async function sendForSignatureAction(formData: FormData): Promise<Action
     };
   }
 
-  const parsed = SendSchema.safeParse({ poaId: formData.get('poaId') });
-  if (!parsed.success) return { ok: false, error: 'Ungültig.' };
+  const parsed = parseFormData(SendSchema, formData);
+  if (!parsed.ok) return { ok: false, error: 'Ungültig.' };
 
   const { poaId } = parsed.data;
 
@@ -785,11 +698,8 @@ const RevokeSchema = z.object({
 });
 
 export async function revokePoaAction(formData: FormData): Promise<void> {
-  const parsed = RevokeSchema.safeParse({
-    poaId: formData.get('poaId'),
-    reason: formData.get('reason'),
-  });
-  if (!parsed.success) return;
+  const parsed = parseFormData(RevokeSchema, formData);
+  if (!parsed.ok) return;
 
   await withStaff(
     async (tx, { tenantId, staffId, session }) => {

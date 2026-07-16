@@ -1,5 +1,5 @@
-﻿import { staffAuth } from '@/server/auth/staff';
-import { redirect } from 'next/navigation';
+﻿import { requireStaffPage } from '@/server/auth/staff-page';
+
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { createClientAction } from './actions';
@@ -11,8 +11,7 @@ export default async function NewClientPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
   const sp = await searchParams;
   const { tenantId, staffId } = session.user;
   const staff = await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>

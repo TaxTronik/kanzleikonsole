@@ -25,7 +25,6 @@ import { inspectMagicLink } from '@/server/auth/magic-link';
 import { safePortalReturnTo } from './safe-return-to';
 
 // Hängt am Request (Token im Query) — nie statisch generierbar.
-export const dynamic = 'force-dynamic';
 
 interface PageProps {
   searchParams: Promise<{ token?: string; returnTo?: string; status?: string }>;

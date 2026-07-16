@@ -15,17 +15,10 @@
 // Markdown-Tokens werden zu HTML-Tags. Keine HTML-Passthrough.
 // =============================================================================
 
-function esc(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+import { escapeHtml, safeHref } from './markdown-safety';
 
 function inline(s: string): string {
-  let out = esc(s);
+  let out = escapeHtml(s);
   // Code first (so its contents don't get further processed)
   out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
   // Bold
@@ -34,9 +27,7 @@ function inline(s: string): string {
   out = out.replace(/\*([^*]+)\*/g, '<em>$1</em>');
   // Links
   out = out.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, text: string, url: string) => {
-    // nur http(s) und mailto erlauben
-    const safe = /^(https?:|mailto:|\/)/i.test(url) ? url : '#';
-    return `<a href="${esc(safe)}">${text}</a>`;
+    return `<a href="${safeHref(url)}">${text}</a>`;
   });
   return out;
 }
@@ -58,7 +49,7 @@ export function renderMarkdown(md: string): string {
         i++;
       }
       i++; // closing ```
-      blocks.push(`<pre><code>${esc(code.join('\n'))}</code></pre>`);
+      blocks.push(`<pre><code>${escapeHtml(code.join('\n'))}</code></pre>`);
       continue;
     }
 

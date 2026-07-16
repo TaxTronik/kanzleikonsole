@@ -1,18 +1,12 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
-import { isStaffAdmin } from '@/server/auth/rbac';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { SettingsNav } from './nav';
 import { SettingsFormGuard } from '@/components/settings-form-guard';
 
 export default async function SettingsLayout({ children }: { children: ReactNode }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
-  if (!isStaffAdmin(session)) {
-    redirect('/staff/dashboard');
-  }
+  await requireStaffPage({ admin: true });
 
   return (
     <div className="p-8 max-w-6xl">

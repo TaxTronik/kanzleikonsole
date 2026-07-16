@@ -5,39 +5,17 @@
 // und Status. Quick-Actions: als geprüft markieren, Einspruch einlegen.
 // =============================================================================
 
-import { redirect, notFound } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, FileWarning, Plus, FileText } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { FilingsSection } from './filings/filings-section';
 import { NoticeStatusSelect } from './status-select';
 import { NOTICE_STATUS_TRANSITIONS } from './transitions';
 
 import { berlinTodayUtcMidnight, fmtDateShort, fmtEUR } from '@/lib/fmt';
-const KIND_LABELS: Record<string, string> = {
-  USTA: 'USt-Voranmeldung',
-  UST_JAHR: 'USt-Jahresbescheid',
-  EST: 'Einkommensteuer',
-  KST: 'Körperschaftsteuer',
-  GEWST_MESSBESCHEID: 'GewSt-Messbescheid',
-  GEWST: 'GewSt-Bescheid',
-  LSTA: 'LSt-Anmeldung',
-  FESTSTELLUNG: 'Feststellungsbescheid',
-  ZERLEGUNG: 'Zerlegungsbescheid',
-  SONSTIGE: 'Sonstige',
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  NEU: 'Neu',
-  GEPRUEFT: 'Geprüft',
-  EINSPRUCH: 'Einspruch eingelegt',
-  ABGEHOLFEN: 'Abgeholfen',
-  TEILABHILFE: 'Teilabhilfe',
-  ZURUECKGEWIESEN: 'Zurückgewiesen',
-  KLAGE: 'Klage erhoben',
-  RECHTSKRAEFTIG: 'Rechtskräftig',
-};
+import { NOTICE_KIND_LABELS, NOTICE_STATUS_LABELS } from '@/lib/domain-labels';
 const DELIVERY_LABELS: Record<string, string> = {
   POST: 'Post',
   POST_ABROAD: 'Post ins Ausland',
@@ -57,8 +35,7 @@ function diff(actual: { toString(): string } | null, expected: { toString(): str
 }
 
 export default async function ClientNoticesPage({ params }: { params: Promise<{ id: string }> }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
   const { id: clientId } = await params;
   const { tenantId, staffId } = session.user;
 
@@ -188,7 +165,7 @@ export default async function ClientNoticesPage({ params }: { params: Promise<{ 
                   <tr key={n.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3">
                       <div className="font-medium text-primary">
-                        {KIND_LABELS[n.kind] ?? n.kind}
+                        {NOTICE_KIND_LABELS[n.kind] ?? n.kind}
                       </div>
                       <div className="text-xs text-muted">
                         {n.period}
@@ -275,28 +252,28 @@ export default async function ClientNoticesPage({ params }: { params: Promise<{ 
                     </td>
                     <td className="px-4 py-3">
                       {n.status === 'NEU' && (
-                        <span className="badge-yellow">{STATUS_LABELS[n.status]}</span>
+                        <span className="badge-yellow">{NOTICE_STATUS_LABELS[n.status]}</span>
                       )}
                       {n.status === 'GEPRUEFT' && (
-                        <span className="badge-green">{STATUS_LABELS[n.status]}</span>
+                        <span className="badge-green">{NOTICE_STATUS_LABELS[n.status]}</span>
                       )}
                       {n.status === 'EINSPRUCH' && (
-                        <span className="badge-yellow">{STATUS_LABELS[n.status]}</span>
+                        <span className="badge-yellow">{NOTICE_STATUS_LABELS[n.status]}</span>
                       )}
                       {n.status === 'ABGEHOLFEN' && (
-                        <span className="badge-green">{STATUS_LABELS[n.status]}</span>
+                        <span className="badge-green">{NOTICE_STATUS_LABELS[n.status]}</span>
                       )}
                       {n.status === 'TEILABHILFE' && (
-                        <span className="badge-yellow">{STATUS_LABELS[n.status]}</span>
+                        <span className="badge-yellow">{NOTICE_STATUS_LABELS[n.status]}</span>
                       )}
                       {n.status === 'ZURUECKGEWIESEN' && (
-                        <span className="badge-red">{STATUS_LABELS[n.status]}</span>
+                        <span className="badge-red">{NOTICE_STATUS_LABELS[n.status]}</span>
                       )}
                       {n.status === 'KLAGE' && (
-                        <span className="badge-red">{STATUS_LABELS[n.status]}</span>
+                        <span className="badge-red">{NOTICE_STATUS_LABELS[n.status]}</span>
                       )}
                       {n.status === 'RECHTSKRAEFTIG' && (
-                        <span className="badge-gray">{STATUS_LABELS[n.status]}</span>
+                        <span className="badge-gray">{NOTICE_STATUS_LABELS[n.status]}</span>
                       )}
                       {n.appealDecisionReceivedAt && (
                         <div className="text-xs text-muted mt-1">

@@ -3,14 +3,14 @@ import { FileText } from 'lucide-react';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 import { DocumentPreviewButton } from '@/components/document-preview';
-import { fmtDateShort } from '@/lib/fmt';
+import { fmtBytes, fmtDateShort } from '@/lib/fmt';
+import { DOCUMENT_CLASSIFICATION_LABELS } from '@/lib/domain-labels';
 
-const classificationLabels: Record<string, string> = {
+const portalClassificationLabels: Readonly<Record<string, string>> = {
+  ...DOCUMENT_CLASSIFICATION_LABELS,
   GOBD_INVOICE: 'Rechnung',
   GOBD_CONTRACT: 'Vertrag',
   GOBD_TAX: 'Steuer',
-  GWG_EVIDENCE: 'GwG-Nachweis',
-  GENERAL: 'Allgemein',
 };
 
 export default async function PortalDocumentsPage() {
@@ -83,10 +83,10 @@ export default async function PortalDocumentsPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-secondary">
-                      {classificationLabels[d.classification] ?? d.classification}
+                      {portalClassificationLabels[d.classification] ?? d.classification}
                     </td>
                     <td className="px-6 py-4 text-secondary">
-                      {v ? formatBytes(Number(v.sizeBytes)) : '—'}
+                      {v ? fmtBytes(Number(v.sizeBytes)) : '—'}
                     </td>
                     <td className="px-6 py-4 text-secondary">{fmtDateShort(d.createdAt)}</td>
                   </tr>
@@ -98,10 +98,4 @@ export default async function PortalDocumentsPage() {
       </div>
     </div>
   );
-}
-
-function formatBytes(b: number): string {
-  if (b < 1024) return `${b} B`;
-  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
-  return `${(b / 1024 / 1024).toFixed(1)} MB`;
 }

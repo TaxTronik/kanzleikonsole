@@ -190,25 +190,25 @@ Die Beispiele im Assistenten sind synthetisch und zeigen nur `payload`; der
 Transport-Envelope kommt zusätzlich hinzu. Die Schutzklasse ist eine
 Vorsortierung, keine Freigabe zur Weitergabe.
 
-| Event                      | Anzeige/Kategorie                       | Bedeutung                                | Datenklasse     | Datenschutz-Hinweis                                          |
-| -------------------------- | --------------------------------------- | ---------------------------------------- | --------------- | ------------------------------------------------------------ |
-| `client.created`           | Mandant angelegt · Mandanten            | Neue Mandantenakte                       | Berufsgeheimnis | Mandantenbezug; nur notwendige Daten nachladen               |
-| `client.handover.ready`    | Mandantenübergabe bereit · Mandanten    | Übergabepaket ist bereit                 | Berufsgeheimnis | Kann umfangreiche Akteninhalte erschließen                   |
-| `document.uploaded`        | Dokument hochgeladen · Dokumente        | Dokument wurde gespeichert               | Berufsgeheimnis | Metadaten und Inhalt können Steuer-/Personaldaten enthalten  |
-| `request.opened`           | Anforderung eröffnet · Anforderungen    | Neue Unterlagen-/Informationsanforderung | Berufsgeheimnis | Fachdetails nur über freigegebene Callbacks abrufen          |
-| `request.responded`        | Anforderung beantwortet · Anforderungen | Anforderung wurde beantwortet            | Berufsgeheimnis | Antwort kann sensible Mandanteninformationen erschließen     |
-| `request.closed`           | Anforderung geschlossen · Anforderungen | Anforderung wurde abgeschlossen          | Berufsgeheimnis | Kennung bleibt mandantenbezogen                              |
-| `phone_note.created`       | Telefonnotiz angelegt · Kommunikation   | Neue Telefonnotiz                        | Berufsgeheimnis | Betreff und Inhalt nicht ungeprüft weiterleiten              |
-| `appointment.responded`    | Termin beantwortet · Termine            | Termin wurde angenommen/abgelehnt        | Personenbezogen | Kalenderziel und Aufbewahrung prüfen                         |
-| `gwg.invite.created`       | GwG-Einladung erstellt · Compliance     | GwG-Onboarding-Link wurde ausgestellt    | Berufsgeheimnis | Der geheime Link wird nie im Event-Payload übertragen        |
-| `gwg.verified`             | GwG-Prüfung verifiziert · Compliance    | Berufsträger hat den Snapshot freigegeben | Berufsgeheimnis | Besonders schutzbedürftiger Compliance-Kontext              |
-| `gwg.expired`              | GwG-Prüfung abgelaufen · Compliance     | GwG-Freigabe läuft ab oder entfällt      | Berufsgeheimnis | Besonders schutzbedürftiger Compliance-Kontext               |
-| `invoice.due`              | Rechnung fällig · Rechnungen            | Rechnung ist fällig                      | Berufsgeheimnis | Beträge nur bei fachlicher Notwendigkeit abrufen             |
-| `invoice.storno`           | Stornorechnung erstellt · Rechnungen    | Storno-/Korrekturbeleg wurde erstellt    | Berufsgeheimnis | Nicht wie eine fällige Zahlung behandeln                     |
-| `staff.locked`             | Mitarbeiterkonto gesperrt · Mitarbeiter | Konto wurde gesperrt                     | Personenbezogen | Beschäftigtendaten nur an Berechtigte senden                 |
-| `staff.vacation_requested` | Urlaub beantragt · Mitarbeiter          | Neuer Urlaubsantrag                      | Personenbezogen | Nur an entscheidungsberechtigte Stellen senden               |
-| `risk.research_requested`  | Rechtsrecherche angefordert · Recherche | Anonymisierte Recherche freigegeben      | Berufsgeheimnis | Trotz Anonymisierung vertraulich und ggf. re-identifizierbar |
-| `taxtronik.ping`           | Verbindungstest · System                | Synthetischer Transporttest              | Technisch       | Keine Echtdaten verwenden                                    |
+| Event                      | Anzeige/Kategorie                       | Bedeutung                                 | Datenklasse     | Datenschutz-Hinweis                                          |
+| -------------------------- | --------------------------------------- | ----------------------------------------- | --------------- | ------------------------------------------------------------ |
+| `client.created`           | Mandant angelegt · Mandanten            | Neue Mandantenakte                        | Berufsgeheimnis | Mandantenbezug; nur notwendige Daten nachladen               |
+| `client.handover.ready`    | Mandantenübergabe bereit · Mandanten    | Übergabepaket ist bereit                  | Berufsgeheimnis | Kann umfangreiche Akteninhalte erschließen                   |
+| `document.uploaded`        | Dokument hochgeladen · Dokumente        | Dokument wurde gespeichert                | Berufsgeheimnis | Metadaten und Inhalt können Steuer-/Personaldaten enthalten  |
+| `request.opened`           | Anforderung eröffnet · Anforderungen    | Neue Unterlagen-/Informationsanforderung  | Berufsgeheimnis | Fachdetails nur über freigegebene Callbacks abrufen          |
+| `request.responded`        | Anforderung beantwortet · Anforderungen | Anforderung wurde beantwortet             | Berufsgeheimnis | Antwort kann sensible Mandanteninformationen erschließen     |
+| `request.closed`           | Anforderung geschlossen · Anforderungen | Anforderung wurde abgeschlossen           | Berufsgeheimnis | Kennung bleibt mandantenbezogen                              |
+| `phone_note.created`       | Telefonnotiz angelegt · Kommunikation   | Neue Telefonnotiz                         | Berufsgeheimnis | Betreff und Inhalt nicht ungeprüft weiterleiten              |
+| `appointment.responded`    | Termin beantwortet · Termine            | Termin wurde angenommen/abgelehnt         | Personenbezogen | Kalenderziel und Aufbewahrung prüfen                         |
+| `gwg.invite.created`       | GwG-Einladung erstellt · Compliance     | GwG-Onboarding-Link wurde ausgestellt     | Berufsgeheimnis | Der geheime Link wird nie im Event-Payload übertragen        |
+| `gwg.verified`             | GwG-Prüfung verifiziert · Compliance    | Berufsträger hat den Snapshot freigegeben | Berufsgeheimnis | Besonders schutzbedürftiger Compliance-Kontext               |
+| `gwg.expired`              | GwG-Prüfung abgelaufen · Compliance     | GwG-Freigabe läuft ab oder entfällt       | Berufsgeheimnis | Besonders schutzbedürftiger Compliance-Kontext               |
+| `invoice.due`              | Rechnung fällig · Rechnungen            | Rechnung ist fällig                       | Berufsgeheimnis | Beträge nur bei fachlicher Notwendigkeit abrufen             |
+| `invoice.storno`           | Stornorechnung erstellt · Rechnungen    | Storno-/Korrekturbeleg wurde erstellt     | Berufsgeheimnis | Nicht wie eine fällige Zahlung behandeln                     |
+| `staff.locked`             | Mitarbeiterkonto gesperrt · Mitarbeiter | Konto wurde gesperrt                      | Personenbezogen | Beschäftigtendaten nur an Berechtigte senden                 |
+| `staff.vacation_requested` | Urlaub beantragt · Mitarbeiter          | Neuer Urlaubsantrag                       | Personenbezogen | Nur an entscheidungsberechtigte Stellen senden               |
+| `risk.research_requested`  | Rechtsrecherche angefordert · Recherche | Anonymisierte Recherche freigegeben       | Berufsgeheimnis | Trotz Anonymisierung vertraulich und ggf. re-identifizierbar |
+| `taxtronik.ping`           | Verbindungstest · System                | Synthetischer Transporttest               | Technisch       | Keine Echtdaten verwenden                                    |
 
 Der Assistent zeigt zu jedem statischen Event unter **Payload-Beispiel und
 Datenschutz** ein vollständig synthetisches JSON-Beispiel. Für eigene Workflows

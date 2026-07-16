@@ -10,11 +10,10 @@
 // Ansichts-Schalter in beiden Kalendern direkt erreichbar.
 // =============================================================================
 
-import { redirect } from 'next/navigation';
 import { parseMonth, shortKind } from '@/lib/tax-calendar';
 import Link from 'next/link';
 import { CalendarDays, ChevronLeft, ChevronRight, Inbox, AlertTriangle } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { SCHEDULE_LABELS } from '@taxtronik/tax';
@@ -28,8 +27,7 @@ interface Search {
 }
 
 export default async function CalendarPage({ searchParams }: { searchParams: Promise<Search> }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
 
   const sp = await searchParams;
   const { year, month0 } = parseMonth(sp.month);
@@ -54,10 +52,11 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
         vacations,
         absences,
       ] = await Promise.all([
-        tx.taxDeadline.findMany({
+        tx.taxDeadline.groupBy({
+          by: ['dueDate', 'kind', 'period', 'status'],
           where: { dueDate: { gte: start, lte: end }, ...notDenied },
           orderBy: { dueDate: 'asc' },
-          include: { client: { select: { id: true, name: true } } },
+          _count: { _all: true },
         }),
         tx.appointment.findMany({
           where: {
@@ -148,9 +147,9 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       g = { kind: d.kind, period: d.period, total: 0, open: 0, overdue: false };
       dayMap.set(groupKey, g);
     }
-    g.total += 1;
+    g.total += d._count._all;
     const isOpen = d.status !== 'DONE' && d.status !== 'SKIPPED';
-    if (isOpen) g.open += 1;
+    if (isOpen) g.open += d._count._all;
     if (d.status === 'OVERDUE') g.overdue = true;
   }
 

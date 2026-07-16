@@ -6,14 +6,14 @@ import type { ComponentType } from 'react';
 // Alle Werte werden bei jedem Aufruf frisch berechnet (Server Component).
 // =============================================================================
 
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { Inbox, Clock, Receipt, TrendingUp, AlertCircle } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import type { Prisma } from '@prisma/client';
 
 import { fmtEURRound } from '@/lib/fmt';
+import { INVOICE_STATUS_LABELS } from '@/lib/domain-labels';
 async function loadReports(tx: Prisma.TransactionClient) {
   const now = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -140,8 +140,7 @@ async function loadReports(tx: Prisma.TransactionClient) {
 }
 
 export default async function ReportsPage() {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
 
   const { tenantId, staffId } = session.user;
   const data = await withTenantContext(
@@ -320,16 +319,9 @@ export default async function ReportsPage() {
                 const i = invoiceMap.get(s);
                 const count = i?._count._all ?? 0;
                 const sum = Number(i?._sum.totalAmount ?? 0);
-                const labels: Record<string, string> = {
-                  DRAFT: 'Entwurf',
-                  SENT: 'Versendet',
-                  PAID: 'Bezahlt',
-                  OVERDUE: 'Überfällig',
-                  CANCELLED: 'Storniert',
-                };
                 return (
                   <tr key={s}>
-                    <td className="py-2 text-secondary">{labels[s]}</td>
+                    <td className="py-2 text-secondary">{INVOICE_STATUS_LABELS[s]}</td>
                     <td className="py-2 text-right text-muted w-20">{count}</td>
                     <td className="py-2 text-right font-mono w-32">{fmtEURRound(sum)}</td>
                   </tr>

@@ -1,10 +1,22 @@
 // Gemeinsame Typen + Label-/Farb-Maps für den Subsumtions-Workspace.
 
-export type Herkunft = 'WOERTLICH' | 'MUSTER' | 'TRIGGER' | 'EMBEDDING' | 'LLM' | 'BERATER';
-export type GovernanceTyp = 'FP' | 'FF' | 'IN';
-export type RiskStufe = 'NIEDRIG' | 'MITTEL' | 'HOCH';
-export type RiskWk = 'SELTEN' | 'MOEGLICH' | 'WAHRSCHEINLICH' | 'HAEUFIG';
-export type RiskStatus = 'OFFEN' | 'IN_PRUEFUNG' | 'KONTROLLIERT' | 'AKZEPTIERT';
+import {
+  RISK_ENGINE_STATUS_LABELS,
+  RISK_GOVERNANCE_LABELS,
+  RISK_HERKUNFT_LABELS,
+  RISK_STATUS_LABELS,
+  type RiskGovernanceTyp,
+  type RiskHerkunft,
+  type RiskStatus as SharedRiskStatus,
+  type RiskStufe as SharedRiskStufe,
+  type RiskWahrscheinlichkeit,
+} from '@/lib/domain-labels';
+
+export type Herkunft = RiskHerkunft;
+export type GovernanceTyp = RiskGovernanceTyp;
+export type RiskStufe = SharedRiskStufe;
+export type RiskWk = RiskWahrscheinlichkeit;
+export type RiskStatus = SharedRiskStatus;
 
 /** Norm-Referenz mit stabiler Engine-ID (für das Gesetzestext-Expandable). Die
  *  Engine-Norm ist NICHT verbindlich: der Berater kann eigene Normen ergänzen
@@ -83,35 +95,10 @@ export interface ResearchRequestDTO {
   resultCount: number;
 }
 
-export const HERKUNFT_LABEL: Record<Herkunft, string> = {
-  WOERTLICH: 'wörtlich',
-  MUSTER: 'Muster',
-  TRIGGER: 'Trigger',
-  EMBEDDING: 'Heuristik',
-  LLM: 'LLM',
-  BERATER: 'Berater',
-};
-
-export const STATUS_LABEL: Record<RiskStatus, string> = {
-  OFFEN: 'Offen',
-  IN_PRUEFUNG: 'In Prüfung',
-  KONTROLLIERT: 'Kontrolliert',
-  AKZEPTIERT: 'Akzeptiert',
-};
-
-export const GOV_LABEL: Record<GovernanceTyp, string> = {
-  FP: 'Festsetzung (FP)',
-  FF: 'Feststellung (FF)',
-  IN: 'Information (IN)',
-};
-
-export const ENGINE_STATUS_LABEL: Record<string, string> = {
-  treffer: 'Treffer',
-  luecke: 'Lücke',
-  kandidat: 'Kandidat',
-  unknown_risiko: 'Unknown-Risiko',
-  berater: 'Berater-Definition',
-};
+export const HERKUNFT_LABEL = RISK_HERKUNFT_LABELS;
+export const STATUS_LABEL = RISK_STATUS_LABELS;
+export const GOV_LABEL = RISK_GOVERNANCE_LABELS;
+export const ENGINE_STATUS_LABEL = RISK_ENGINE_STATUS_LABELS;
 
 // --- Katalog-Overlay (katalogweiter Kuratierungszustand eines Begriffs) -------
 // Read-Seite (GET /v1/katalog/kuratierung): überlagert die Norm-Liste, damit der

@@ -2,24 +2,17 @@
 // /staff/clients/[id]/forms — Formular-Anfragen pro Mandant
 // =============================================================================
 
-import { redirect, notFound } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, ClipboardList } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { SendFormButton } from './send-form';
 import { fmtDateTimeShort } from '@/lib/fmt';
-
-const STATUS_LABELS: Record<string, string> = {
-  PENDING: 'Ausstehend',
-  DRAFT: 'Entwurf',
-  SUBMITTED: 'Eingegangen',
-  REVIEWED: 'Geprüft',
-};
+import { FORM_SUBMISSION_STATUS_LABELS } from '@/lib/domain-labels';
 
 export default async function ClientFormsPage({ params }: { params: Promise<{ id: string }> }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
   const { id: clientId } = await params;
   const { tenantId, staffId } = session.user;
 
@@ -99,16 +92,20 @@ export default async function ClientFormsPage({ params }: { params: Promise<{ id
                   </td>
                   <td className="px-6 py-3">
                     {s.status === 'PENDING' && (
-                      <span className="badge-yellow">{STATUS_LABELS[s.status]}</span>
+                      <span className="badge-yellow">
+                        {FORM_SUBMISSION_STATUS_LABELS[s.status]}
+                      </span>
                     )}
                     {s.status === 'DRAFT' && (
-                      <span className="badge-yellow">{STATUS_LABELS[s.status]}</span>
+                      <span className="badge-yellow">
+                        {FORM_SUBMISSION_STATUS_LABELS[s.status]}
+                      </span>
                     )}
                     {s.status === 'SUBMITTED' && (
-                      <span className="badge-green">{STATUS_LABELS[s.status]}</span>
+                      <span className="badge-green">{FORM_SUBMISSION_STATUS_LABELS[s.status]}</span>
                     )}
                     {s.status === 'REVIEWED' && (
-                      <span className="badge-gray">{STATUS_LABELS[s.status]}</span>
+                      <span className="badge-gray">{FORM_SUBMISSION_STATUS_LABELS[s.status]}</span>
                     )}
                   </td>
                   <td className="px-6 py-3 text-right">

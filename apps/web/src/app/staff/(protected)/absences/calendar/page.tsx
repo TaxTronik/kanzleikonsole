@@ -7,10 +7,9 @@
 // Sichtbarkeit zur Absprache.
 // =============================================================================
 
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { Plane } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { fmtDateMedium, fmtDay, fmtMonthShort, fmtWeekdayShort } from '@/lib/fmt';
 
@@ -28,8 +27,7 @@ export default async function AbsencesCalendarPage({
 }: {
   searchParams: Promise<{ weeks?: string }>;
 }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
   const sp = await searchParams;
   const weeks = Math.min(Math.max(Number(sp.weeks ?? '8'), 2), 26);
   const totalDays = weeks * 7;

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  gwgDecisionGateErrors,
   gwgVerificationErrors,
+  type GwgDecisionGateSnapshot,
   type GwgVerificationSnapshot,
   type VerificationDocument,
 } from '../verification';
@@ -69,6 +71,7 @@ function legalSnapshot(overrides: Partial<GwgVerificationSnapshot> = {}): GwgVer
         birthPlace: 'Berlin',
         residence: 'Musterstrasse 1, 10115 Berlin',
         nationality: 'deutsch',
+        isPep: false,
       },
     ],
     idDocuments: [
@@ -267,5 +270,46 @@ describe('gwgVerificationErrors', () => {
       NOW,
     );
     expect(errors.some((error) => error.includes('vertretungsberechtigte Person'))).toBe(true);
+  });
+});
+
+describe('gwgDecisionGateErrors', () => {
+  function decisionSnapshot(
+    overrides: Partial<GwgDecisionGateSnapshot> = {},
+  ): GwgDecisionGateSnapshot {
+    return {
+      ...legalSnapshot(),
+      riskScore: 4,
+      riskLevel: 'MEDIUM',
+      riskAnswers: { country: 1, pep: 0 },
+      ...overrides,
+    };
+  }
+
+  it('uses one complete rule chain for submission and approval', () => {
+    expect(gwgDecisionGateErrors(decisionSnapshot(), ['country', 'pep'], NOW)).toEqual([]);
+  });
+
+  it('treats null and absent risk-factor answers as incomplete', () => {
+    const errors = gwgDecisionGateErrors(
+      decisionSnapshot({ riskAnswers: { country: null } }),
+      ['country', 'pep'],
+      NOW,
+    );
+    expect(errors.some((error) => error.includes('Risikoanalyse ist unvollständig'))).toBe(true);
+  });
+
+  it('requires both the explicit PEP factor and HIGH risk for a PEP owner', () => {
+    const snapshot = decisionSnapshot({
+      beneficialOwners: legalSnapshot().beneficialOwners.map((owner) => ({
+        ...owner,
+        isPep: true,
+      })),
+      riskAnswers: { country: 1, pep: 0 },
+      riskLevel: 'MEDIUM',
+    });
+    const errors = gwgDecisionGateErrors(snapshot, ['country', 'pep'], NOW);
+    expect(errors.some((error) => error.includes('PEP-Risikofaktor'))).toBe(true);
+    expect(errors.some((error) => error.includes('muss HIGH ergeben'))).toBe(true);
   });
 });

@@ -1,27 +1,17 @@
-﻿import { redirect, notFound } from 'next/navigation';
+﻿import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, FileText, Lock, Shield } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { canAccessClientTx } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { DocumentPreviewButton } from '@/components/document-preview';
 import { AcknowledgeButton } from '../acknowledge-button';
 import { NewVersionForm } from './new-version-form';
-import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
-
-const classificationLabels: Record<string, string> = {
-  GOBD_INVOICE: 'GoBD Rechnung',
-  GOBD_CONTRACT: 'GoBD Vertrag',
-  GOBD_TAX: 'GoBD Steuer',
-  GWG_EVIDENCE: 'GwG Nachweis',
-  PERSONNEL: 'Personal',
-  STAFF_PRIVATE: 'Intern',
-  GENERAL: 'Allgemein',
-};
+import { fmtBytes, fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
+import { DOCUMENT_CLASSIFICATION_LABELS } from '@/lib/domain-labels';
 
 export default async function DocumentDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
 
   const { id } = await params;
   const { tenantId, staffId } = session.user;
@@ -64,13 +54,6 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
 
   const isGobd = doc.classification.startsWith('GOBD_') || doc.classification === 'GWG_EVIDENCE';
 
-  const fmtBytes = (b: number) => {
-    if (b < 1024) return `${b} B`;
-    if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
-    if (b < 1024 * 1024 * 1024) return `${(b / 1024 / 1024).toFixed(1)} MB`;
-    return `${(b / 1024 / 1024 / 1024).toFixed(2)} GB`;
-  };
-
   return (
     <div className="p-8 max-w-4xl">
       <div className="flex items-start gap-4 mb-6">
@@ -94,7 +77,7 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
             />
           </div>
           <p className="text-muted text-sm">
-            {classificationLabels[doc.classification] ?? doc.classification}
+            {DOCUMENT_CLASSIFICATION_LABELS[doc.classification] ?? doc.classification}
             {doc.client && (
               <>
                 {' · '}

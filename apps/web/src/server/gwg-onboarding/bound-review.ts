@@ -34,8 +34,7 @@ export async function resolveCurrentGwgInviteRevisionTx(
       return null;
     }
     const client = await loadGwgInviteClientBaselineTx(tx, input);
-    return client &&
-      gwgInviteClientBaselineHash(client) === currentInvite.boundClientRevision
+    return client && gwgInviteClientBaselineHash(client) === currentInvite.boundClientRevision
       ? { gwgCheckId: null }
       : null;
   }
@@ -85,7 +84,5 @@ export async function resolveBoundGwgInviteDraftTx(
   },
 ): Promise<{ id: string } | null> {
   const resolved = await resolveCurrentGwgInviteRevisionTx(tx, input);
-  return resolved?.gwgCheckId === input.expectedCheckId
-    ? { id: input.expectedCheckId }
-    : null;
+  return resolved?.gwgCheckId === input.expectedCheckId ? { id: input.expectedCheckId } : null;
 }

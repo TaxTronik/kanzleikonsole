@@ -1,5 +1,4 @@
-import { redirect } from 'next/navigation';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { env } from '@taxtronik/config';
 import { TSA_PROVIDERS } from '@taxtronik/evidence';
 import { readTsaConfig } from '@/server/settings/tsa';
@@ -7,8 +6,7 @@ import { TsaForm } from '../tsa-form';
 import { SectionCard } from '../section-card';
 
 export default async function EvidenceSettingsPage() {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage({ admin: true });
   const { tenantId, staffId } = session.user;
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
   const tsa = await readTsaConfig(ctx);
@@ -29,4 +27,3 @@ export default async function EvidenceSettingsPage() {
 }
 
 // Health-Checks und TSA-Verbindungstests sollen frisch sein
-export const dynamic = 'force-dynamic';

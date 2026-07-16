@@ -4,6 +4,7 @@ import { useState, useTransition, useEffect, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { Upload, X } from 'lucide-react';
+import { useDocumentCommit } from '@/components/use-document-commit';
 
 interface Props {
   clientId?: string;
@@ -61,6 +62,7 @@ export function DocumentUploadButton({
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<'idle' | 'presign' | 'upload' | 'commit'>('idle');
   const [isPending, startTransition] = useTransition();
+  const commitDocument = useDocumentCommit();
 
   // Typen erst beim Öffnen laden (Kern + eigene, nur aktive).
   useEffect(() => {
@@ -139,19 +141,7 @@ export function DocumentUploadButton({
         if (analysisId) fd.set('analysisId', analysisId);
 
         setProgress('commit');
-        const commitRes = await fetch('/api/staff/documents/commit', {
-          method: 'POST',
-          body: fd,
-        });
-        if (!commitRes.ok) {
-          const body = await commitRes.json().catch(() => ({}));
-          throw new Error((body as { error?: string }).error ?? 'Upload fehlgeschlagen');
-        }
-
-        const response = (await commitRes.json()) as { documentId?: unknown };
-        if (typeof response.documentId !== 'string') {
-          throw new Error('Upload-Antwort enthält keine Dokument-ID. Bitte Seite neu laden.');
-        }
+        const response = await commitDocument(fd);
         const uploadedDocument = { id: response.documentId, title: title || file.name };
 
         // Fachdialoge erhalten die ID direkt und können die Zuordnung im

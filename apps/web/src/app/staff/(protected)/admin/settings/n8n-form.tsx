@@ -1,9 +1,7 @@
 'use client';
 
 import {
-  AlertCircle,
   Check,
-  CheckCircle2,
   ChevronRight,
   Clipboard,
   Download,
@@ -11,20 +9,17 @@ import {
   KeyRound,
   Link2,
   Loader2,
-  Plus,
   RefreshCw,
   Route,
   Save,
-  Send,
   Settings2,
   ShieldCheck,
   Trash2,
   Workflow,
-  XCircle,
 } from 'lucide-react';
-import { useActionState, useEffect, useMemo, useState, useTransition } from 'react';
+import { useActionState, useEffect, useReducer, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { requiresSeparateTestWebhook, type N8nEventCatalogEntry } from '@taxtronik/n8n-shared';
+import type { N8nEventCatalogEntry } from '@taxtronik/n8n-shared';
 import type { N8nEndpointView, N8nSetupStatus } from '@/server/n8n/status';
 import { fmtDateTimeShort } from '@/lib/fmt';
 import {
@@ -49,6 +44,11 @@ import {
   type N8nDiscoveredWebhookView,
   type N8nWorkflowRow,
 } from './n8n-actions';
+import { createN8nConnectionState, n8nConnectionReducer } from './n8n-connection-state';
+import { DeliveryOperationsSection } from './delivery-operations-section';
+import { N8nActionResult } from './n8n-form-result';
+import { EMPTY_ROUTE, RouteEditorSection, type RouteDraft } from './route-editor-section';
+import { useConfirmedAction } from './use-confirmed-action';
 
 export interface N8nBrowserConfig {
   connectionId: string | null;
@@ -88,32 +88,6 @@ interface Props {
   bundledWorkflows: BundledWorkflowSummary[];
 }
 
-interface RouteDraft {
-  id: string;
-  name: string;
-  productionUrl: string;
-  testUrl: string;
-  workflowId: string;
-  workflowName: string;
-  workflowNodeId: string;
-  source: 'MANAGED' | 'DISCOVERED' | 'CUSTOM';
-  enabled: boolean;
-  events: string[];
-}
-
-const EMPTY_ROUTE: RouteDraft = {
-  id: '',
-  name: '',
-  productionUrl: '',
-  testUrl: '',
-  workflowId: '',
-  workflowName: '',
-  workflowNodeId: '',
-  source: 'CUSTOM',
-  enabled: false,
-  events: [],
-};
-
 const CALLBACK_SCOPE_LABELS: Record<string, string> = {
   'requests:read': 'Anforderungen lesen',
   'gwg:read': 'GwG-Prüfungen lesen',
@@ -131,18 +105,25 @@ function urlOrigin(value: string): string {
 
 export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
   const router = useRouter();
-  const [name, setName] = useState(initial.name);
-  const [kind, setKind] = useState(initial.kind);
-  const [routingMode, setRoutingMode] = useState(initial.routingMode);
-  const [enabled, setEnabled] = useState(initial.enabled);
-  const [uiBaseUrl, setUiBaseUrl] = useState(initial.uiBaseUrl);
-  const [callbackBaseUrl, setCallbackBaseUrl] = useState(initial.callbackBaseUrl);
-  const [webhookBaseUrl, setWebhookBaseUrl] = useState(initial.webhookBaseUrl);
-  const [apiBaseUrl, setApiBaseUrl] = useState(initial.apiBaseUrl);
-  const [apiKey, setApiKey] = useState('');
-  const [keepApiKey, setKeepApiKey] = useState(initial.hasApiKey);
-  const [hmacSecret, setHmacSecret] = useState('');
-  const [keepHmac, setKeepHmac] = useState(initial.hasSigningSecret);
+  const [connection, dispatchConnection] = useReducer(
+    n8nConnectionReducer,
+    initial,
+    createN8nConnectionState,
+  );
+  const {
+    name,
+    kind,
+    routingMode,
+    enabled,
+    uiBaseUrl,
+    callbackBaseUrl,
+    webhookBaseUrl,
+    apiBaseUrl,
+    apiKey,
+    keepApiKey,
+    hmacSecret,
+    keepHmac,
+  } = connection;
   const [callbackScopes, setCallbackScopes] = useState<string[]>(
     initial.callbackScopes.length
       ? initial.callbackScopes
@@ -185,10 +166,7 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
 
   useEffect(() => {
     if (saveState?.ok) {
-      setHmacSecret('');
-      setApiKey('');
-      setKeepHmac(true);
-      setKeepApiKey(true);
+      dispatchConnection({ type: 'saved' });
       router.refresh();
     }
   }, [router, saveState]);
@@ -204,31 +182,6 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
     setFailedCursor(status.failedDeliveries.at(-1)?.id ?? null);
     setHasMoreFailedDeliveries(status.hasMoreFailedDeliveries);
   }, [status.failedDeliveries, status.hasMoreFailedDeliveries]);
-
-  const groupedEvents = useMemo(() => {
-    const groups = new Map<string, N8nEventCatalogEntry[]>();
-    for (const event of events) {
-      const list = groups.get(event.categoryLabel) ?? [];
-      list.push(event);
-      groups.set(event.categoryLabel, list);
-    }
-    return [...groups.entries()];
-  }, [events]);
-  const staticEventNames = useMemo(
-    () => new Set<string>(events.map((event) => event.name)),
-    [events],
-  );
-  const customRouteEvents = routeDraft.events.filter((event) => !staticEventNames.has(event));
-  const routeRequiresTestUrl =
-    requiresSeparateTestWebhook(routeDraft.events) || Boolean(customEvent.trim());
-  const visibleDeliveries = useMemo(() => {
-    const seen = new Set<string>();
-    return [...failedDeliveries, ...status.recentDeliveries].filter((delivery) => {
-      if (seen.has(delivery.id)) return false;
-      seen.add(delivery.id);
-      return true;
-    });
-  }, [failedDeliveries, status.recentDeliveries]);
 
   const deliberatelyDisabled = Boolean(
     initial.connectionId && initial.routingMode === 'DISABLED' && !initial.enabled,
@@ -285,29 +238,26 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
     startTransition(async () => {
       const result = await generateSigningSecretAction();
       if (result.ok && result.secret) {
-        setHmacSecret(result.secret);
-        setKeepHmac(false);
+        dispatchConnection({ type: 'generated-signing-secret', secret: result.secret });
       }
     });
   }
 
-  function rotateCallback() {
-    if (
-      callbackConfigured &&
-      !confirm('Das bisherige Callback-Token wird sofort ungültig. Wirklich rotieren?')
-    ) {
-      return;
-    }
-    setCallbackResult(null);
-    startTransition(async () => {
-      const result = await rotateN8nCallbackCredentialAction(callbackScopes);
+  const rotateCallback = useConfirmedAction({
+    startTransition,
+    confirmation: callbackConfigured
+      ? 'Das bisherige Callback-Token wird sofort ungültig. Wirklich rotieren?'
+      : null,
+    action: () => rotateN8nCallbackCredentialAction(callbackScopes),
+    onPending: () => setCallbackResult(null),
+    onResult: (result) => {
       setCallbackResult(result);
       if (result.ok) {
         setCallbackConfigured(true);
         router.refresh();
       }
-    });
-  }
+    },
+  });
 
   function loadWorkflows() {
     setWorkflowError(null);
@@ -402,14 +352,15 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
     });
   }
 
-  function deleteRoute(endpointId: string) {
-    if (!confirm('Diese Route und ihre Event-Abonnements entfernen?')) return;
-    startTransition(async () => {
-      const result = await deleteN8nEndpointAction(endpointId);
+  const deleteRoute = useConfirmedAction({
+    startTransition,
+    confirmation: 'Diese Route und ihre Event-Abonnements entfernen?',
+    action: (endpointId: string) => deleteN8nEndpointAction(endpointId),
+    onResult: (result) => {
       if (!result.ok) setRouteResult(result);
       router.refresh();
-    });
-  }
+    },
+  });
 
   function testRoute(endpointId: string, useTestUrl: boolean, eventName: string) {
     const key = `${endpointId}:${useTestUrl ? 'test' : 'prod'}:${eventName}`;
@@ -421,34 +372,33 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
     });
   }
 
-  function retryDelivery(deliveryId: string, targetUrl: string) {
-    if (!confirm(`Zustellung erneut an dieses unveränderte Ziel senden?\n\n${targetUrl}`)) return;
-    setRetryResult((current) => ({
-      ...current,
-      [deliveryId]: { ok: true, message: 'Wird eingeplant…' },
-    }));
-    startTransition(async () => {
-      const result = await retryN8nDeliveryAction(deliveryId);
+  const retryDelivery = useConfirmedAction({
+    startTransition,
+    confirmation: (_deliveryId: string, targetUrl: string) =>
+      `Zustellung erneut an dieses unveränderte Ziel senden?\n\n${targetUrl}`,
+    action: (deliveryId: string, _targetUrl: string) => retryN8nDeliveryAction(deliveryId),
+    onPending: (deliveryId) =>
+      setRetryResult((current) => ({
+        ...current,
+        [deliveryId]: { ok: true, message: 'Wird eingeplant…' },
+      })),
+    onResult: (result, deliveryId) => {
       setRetryResult((current) => ({ ...current, [deliveryId]: result }));
       router.refresh();
-    });
-  }
+    },
+  });
 
-  function acknowledgeDelivery(deliveryId: string) {
-    if (
-      !confirm(
-        'Diesen Fehler ohne erneuten Versand administrativ abschließen? Die Zustellung wird als übersprungen markiert und die Entscheidung revisionsprotokolliert.',
-      )
-    ) {
-      return;
-    }
-    setDeliveryOperationResult({ ok: true, message: 'Fehler wird quittiert…' });
-    startTransition(async () => {
-      const result = await acknowledgeN8nDeliveryAction(deliveryId);
+  const acknowledgeDelivery = useConfirmedAction({
+    startTransition,
+    confirmation:
+      'Diesen Fehler ohne erneuten Versand administrativ abschließen? Die Zustellung wird als übersprungen markiert und die Entscheidung revisionsprotokolliert.',
+    action: (deliveryId: string) => acknowledgeN8nDeliveryAction(deliveryId),
+    onPending: () => setDeliveryOperationResult({ ok: true, message: 'Fehler wird quittiert…' }),
+    onResult: (result) => {
       setDeliveryOperationResult(result);
       router.refresh();
-    });
-  }
+    },
+  });
 
   function loadMoreFailedDeliveries() {
     if (!failedCursor) return;
@@ -469,43 +419,38 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
     });
   }
 
-  function replayUnroutedEvent(eventId: string, eventName: string, occurredAt: string) {
-    if (
-      !confirm(
-        `Das gespeicherte Event „${eventName}“ vom ${fmtDateTimeShort(new Date(occurredAt))} enthält möglicherweise vertrauliche Daten. Jetzt an die aktuell konfigurierten Ziele senden?`,
-      )
-    ) {
-      return;
-    }
-    setReplayResult((current) => ({
-      ...current,
-      [eventId]: { ok: true, message: 'Wird den aktuellen Routen zugeordnet…' },
-    }));
-    startTransition(async () => {
-      const result = await replayUnroutedN8nEventAction(eventId);
+  const replayUnroutedEvent = useConfirmedAction({
+    startTransition,
+    confirmation: (_eventId: string, eventName: string, occurredAt: string) =>
+      `Das gespeicherte Event „${eventName}“ vom ${fmtDateTimeShort(new Date(occurredAt))} enthält möglicherweise vertrauliche Daten. Jetzt an die aktuell konfigurierten Ziele senden?`,
+    action: (eventId: string, _eventName: string, _occurredAt: string) =>
+      replayUnroutedN8nEventAction(eventId),
+    onPending: (eventId) =>
+      setReplayResult((current) => ({
+        ...current,
+        [eventId]: { ok: true, message: 'Wird den aktuellen Routen zugeordnet…' },
+      })),
+    onResult: (result, eventId) => {
       setReplayResult((current) => ({ ...current, [eventId]: result }));
       router.refresh();
-    });
-  }
+    },
+  });
 
-  function skipUnroutedEvent(eventId: string, eventName: string) {
-    if (
-      !confirm(
-        `Event „${eventName}“ dauerhaft ohne n8n-Versand abschließen? Diese Entscheidung wird protokolliert.`,
-      )
-    ) {
-      return;
-    }
-    setReplayResult((current) => ({
-      ...current,
-      [eventId]: { ok: true, message: 'Wird abgeschlossen…' },
-    }));
-    startTransition(async () => {
-      const result = await skipUnroutedN8nEventAction(eventId);
+  const skipUnroutedEvent = useConfirmedAction({
+    startTransition,
+    confirmation: (_eventId: string, eventName: string) =>
+      `Event „${eventName}“ dauerhaft ohne n8n-Versand abschließen? Diese Entscheidung wird protokolliert.`,
+    action: (eventId: string, _eventName: string) => skipUnroutedN8nEventAction(eventId),
+    onPending: (eventId) =>
+      setReplayResult((current) => ({
+        ...current,
+        [eventId]: { ok: true, message: 'Wird abgeschlossen…' },
+      })),
+    onResult: (result, eventId) => {
       setReplayResult((current) => ({ ...current, [eventId]: result }));
       router.refresh();
-    });
-  }
+    },
+  });
 
   async function copy(label: string, value: string) {
     await navigator.clipboard.writeText(value);
@@ -513,13 +458,12 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
     window.setTimeout(() => setCopied(null), 1_500);
   }
 
-  function resetConnection() {
-    if (!confirm('n8n deaktivieren und alle Credentials sowie Routen entfernen?')) return;
-    startTransition(async () => {
-      await resetN8nAction();
-      window.location.reload();
-    });
-  }
+  const resetConnection = useConfirmedAction({
+    startTransition,
+    confirmation: 'n8n deaktivieren und alle Credentials sowie Routen entfernen?',
+    action: () => resetN8nAction(),
+    onResult: () => window.location.reload(),
+  });
 
   return (
     <div className="space-y-8">
@@ -622,7 +566,9 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
               <input
                 className="input"
                 value={name}
-                onChange={(event) => setName(event.target.value)}
+                onChange={(event) =>
+                  dispatchConnection({ type: 'patch', value: { name: event.target.value } })
+                }
               />
             </label>
             <label className="block">
@@ -630,7 +576,12 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
               <select
                 className="input"
                 value={kind}
-                onChange={(event) => setKind(event.target.value as typeof kind)}
+                onChange={(event) =>
+                  dispatchConnection({
+                    type: 'patch',
+                    value: { kind: event.target.value as typeof kind },
+                  })
+                }
               >
                 <option value="BUNDLED">Mit TaxTronik Compose betrieben</option>
                 <option value="SELF_HOSTED">Eigene n8n-Instanz</option>
@@ -644,28 +595,34 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
             <div className="grid gap-2 md:grid-cols-3">
               <ModeOption
                 checked={routingMode === 'EXPLICIT'}
-                onChange={() => {
-                  setRoutingMode('EXPLICIT');
-                  setEnabled(true);
-                }}
+                onChange={() =>
+                  dispatchConnection({
+                    type: 'patch',
+                    value: { routingMode: 'EXPLICIT', enabled: true },
+                  })
+                }
                 title="Explizite Routen"
                 description="Empfohlen: jedes Event kennt seine exakte Workflow-URL."
               />
               <ModeOption
                 checked={routingMode === 'LEGACY'}
-                onChange={() => {
-                  setRoutingMode('LEGACY');
-                  setEnabled(true);
-                }}
+                onChange={() =>
+                  dispatchConnection({
+                    type: 'patch',
+                    value: { routingMode: 'LEGACY', enabled: true },
+                  })
+                }
                 title="Legacy-Präfix"
                 description="Nur für Migration: hängt den Eventnamen an ein Präfix."
               />
               <ModeOption
                 checked={routingMode === 'DISABLED'}
-                onChange={() => {
-                  setRoutingMode('DISABLED');
-                  setEnabled(false);
-                }}
+                onChange={() =>
+                  dispatchConnection({
+                    type: 'patch',
+                    value: { routingMode: 'DISABLED', enabled: false },
+                  })
+                }
                 title="Deaktiviert"
                 description="Events werden nachvollziehbar übersprungen."
               />
@@ -679,7 +636,9 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
                 className="input"
                 type="url"
                 value={uiBaseUrl}
-                onChange={(event) => setUiBaseUrl(event.target.value)}
+                onChange={(event) =>
+                  dispatchConnection({ type: 'patch', value: { uiBaseUrl: event.target.value } })
+                }
                 placeholder="https://n8n.example.de"
               />
               <span className="mt-1 block text-xs text-muted">
@@ -694,10 +653,14 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
                 value={apiBaseUrl}
                 onChange={(event) => {
                   const next = event.target.value;
-                  setApiBaseUrl(next);
-                  if (initial.hasApiKey && urlOrigin(next) !== urlOrigin(initial.apiBaseUrl)) {
-                    setKeepApiKey(false);
-                  }
+                  const changedInstance =
+                    initial.hasApiKey && urlOrigin(next) !== urlOrigin(initial.apiBaseUrl);
+                  dispatchConnection({
+                    type: 'patch',
+                    value: changedInstance
+                      ? { apiBaseUrl: next, keepApiKey: false }
+                      : { apiBaseUrl: next },
+                  });
                 }}
                 placeholder="https://n8n.example.de/api/v1"
               />
@@ -711,7 +674,12 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
                 className="input"
                 type="url"
                 value={webhookBaseUrl}
-                onChange={(event) => setWebhookBaseUrl(event.target.value)}
+                onChange={(event) =>
+                  dispatchConnection({
+                    type: 'patch',
+                    value: { webhookBaseUrl: event.target.value },
+                  })
+                }
                 placeholder="https://n8n.example.de/webhook"
               />
               <span className="mt-1 block text-xs text-muted">
@@ -725,7 +693,12 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
                 className="input"
                 type="url"
                 value={callbackBaseUrl}
-                onChange={(event) => setCallbackBaseUrl(event.target.value)}
+                onChange={(event) =>
+                  dispatchConnection({
+                    type: 'patch',
+                    value: { callbackBaseUrl: event.target.value },
+                  })
+                }
                 placeholder={kind === 'BUNDLED' ? 'http://app:3000' : 'https://kanzlei.example.de'}
               />
               <span className="mt-1 block text-xs text-muted">
@@ -740,8 +713,11 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
                 type="password"
                 value={apiKey}
                 onChange={(event) => {
-                  setApiKey(event.target.value);
-                  if (event.target.value) setKeepApiKey(false);
+                  const next = event.target.value;
+                  dispatchConnection({
+                    type: 'patch',
+                    value: next ? { apiKey: next, keepApiKey: false } : { apiKey: next },
+                  });
                 }}
                 placeholder={
                   initial.hasApiKey && keepApiKey
@@ -753,10 +729,12 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
               {initial.hasApiKey && !apiInstanceChanged && (
                 <SecretKeep
                   checked={keepApiKey}
-                  onChange={(value) => {
-                    setKeepApiKey(value);
-                    if (value) setApiKey('');
-                  }}
+                  onChange={(value) =>
+                    dispatchConnection({
+                      type: 'patch',
+                      value: value ? { keepApiKey: true, apiKey: '' } : { keepApiKey: false },
+                    })
+                  }
                   label="Gespeicherten API-Key beibehalten"
                 />
               )}
@@ -777,8 +755,11 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
                   type="password"
                   value={hmacSecret}
                   onChange={(event) => {
-                    setHmacSecret(event.target.value);
-                    if (event.target.value) setKeepHmac(false);
+                    const next = event.target.value;
+                    dispatchConnection({
+                      type: 'patch',
+                      value: next ? { hmacSecret: next, keepHmac: false } : { hmacSecret: next },
+                    });
                   }}
                   placeholder={
                     initial.hasSigningSecret && keepHmac
@@ -800,10 +781,12 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
             {initial.hasSigningSecret && (
               <SecretKeep
                 checked={keepHmac}
-                onChange={(value) => {
-                  setKeepHmac(value);
-                  if (value) setHmacSecret('');
-                }}
+                onChange={(value) =>
+                  dispatchConnection({
+                    type: 'patch',
+                    value: value ? { keepHmac: true, hmacSecret: '' } : { keepHmac: false },
+                  })
+                }
                 label="Gespeichertes Signatur-Secret beibehalten"
               />
             )}
@@ -835,8 +818,8 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
             >
               <Link2 className="h-4 w-4" /> API testen
             </button>
-            <Result result={saveState} />
-            <Result result={apiResult} />
+            <N8nActionResult result={saveState} />
+            <N8nActionResult result={apiResult} />
           </div>
         </form>
       </section>
@@ -901,7 +884,7 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
                 <ShieldCheck className="h-4 w-4" /> Token eingerichtet
               </span>
             )}
-            <Result result={callbackResult} />
+            <N8nActionResult result={callbackResult} />
           </div>
           {callbackResult?.credential && (
             <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100 space-y-2">
@@ -1057,7 +1040,7 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
             </button>
             {busy && <Loader2 className="h-4 w-4 animate-spin text-muted" />}
           </div>
-          <Result result={importResult} />
+          <N8nActionResult result={importResult} />
           {workflowError && (
             <p className="text-xs text-red-700 dark:text-red-400">{workflowError}</p>
           )}
@@ -1128,468 +1111,39 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
         </div>
       </section>
 
-      <section className="space-y-4" aria-labelledby="n8n-routes-heading">
-        <div>
-          <h3
-            id="n8n-routes-heading"
-            className="inline-flex items-center gap-2 text-base font-semibold text-primary"
-          >
-            <Route className="h-4 w-4" /> 4. Event-Routen
-          </h3>
-          <p className="mt-1 text-xs text-muted">
-            Ein Event darf mehrere Workflows beliefern; ein Workflow darf mehrere Events abonnieren.
-            Speichern Sie immer die exakte Produktions-URL aus dem jeweiligen n8n-Webhook-Knoten.
-          </p>
-        </div>
+      <RouteEditorSection
+        endpoints={status.endpoints}
+        events={events}
+        routeDraft={routeDraft}
+        setRouteDraft={setRouteDraft}
+        customEvent={customEvent}
+        setCustomEvent={setCustomEvent}
+        routeResult={routeResult}
+        testResult={testResult}
+        busy={busy}
+        saving={saving}
+        onSaveRoute={saveRoute}
+        onEditRoute={editRoute}
+        onDeleteRoute={deleteRoute}
+        onTestRoute={testRoute}
+      />
 
-        <div className="space-y-2">
-          {status.endpoints.length === 0 && (
-            <div className="rounded-md border border-dashed border-default p-4 text-xs text-muted">
-              Noch keine explizite Workflow-Route.
-            </div>
-          )}
-          {status.endpoints.map((endpoint) => (
-            <div key={endpoint.id} className="rounded-lg border border-default p-3">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-sm font-medium text-primary">{endpoint.name}</p>
-                    <RouteState endpoint={endpoint} />
-                    <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-muted dark:bg-gray-800">
-                      {endpoint.source.toLowerCase()}
-                    </span>
-                  </div>
-                  <p
-                    className="mt-1 truncate font-mono text-[10px] text-muted"
-                    title={endpoint.productionUrl}
-                  >
-                    {endpoint.productionUrl}
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {endpoint.events.map((event) => (
-                      <code
-                        key={event}
-                        className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-800 dark:bg-blue-950/40 dark:text-blue-300"
-                      >
-                        {event}
-                      </code>
-                    ))}
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {endpoint.events.includes('taxtronik.ping') && (
-                    <button
-                      type="button"
-                      className="btn-secondary inline-flex items-center gap-1 text-xs"
-                      onClick={() => testRoute(endpoint.id, false, 'taxtronik.ping')}
-                      disabled={busy || saving}
-                    >
-                      <Send className="h-3 w-3" /> Produktion testen
-                    </button>
-                  )}
-                  {endpoint.testUrl &&
-                    endpoint.events.map((eventName) => (
-                      <button
-                        key={eventName}
-                        type="button"
-                        className="btn-secondary text-xs"
-                        onClick={() => testRoute(endpoint.id, true, eventName)}
-                        disabled={busy || saving}
-                      >
-                        Test: {eventName}
-                      </button>
-                    ))}
-                  <button
-                    type="button"
-                    className="btn-secondary text-xs"
-                    onClick={() => editRoute(endpoint)}
-                    disabled={busy || saving}
-                  >
-                    Bearbeiten
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-secondary p-2 text-red-700"
-                    aria-label="Route löschen"
-                    onClick={() => deleteRoute(endpoint.id)}
-                    disabled={busy || saving}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-              {endpoint.events.map((eventName) => (
-                <div key={eventName}>
-                  <Result result={testResult[`${endpoint.id}:prod:${eventName}`]} />
-                  <Result result={testResult[`${endpoint.id}:test:${eventName}`]} />
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
-
-        <form
-          id="n8n-route-editor"
-          onSubmit={saveRoute}
-          className="rounded-lg border border-default bg-surface-raised p-4 space-y-4"
-        >
-          <div className="flex items-center justify-between gap-2">
-            <p className="inline-flex items-center gap-2 text-sm font-semibold text-primary">
-              <Plus className="h-4 w-4" />{' '}
-              {routeDraft.id ? 'Route bearbeiten' : 'Eigene Workflow-Route hinzufügen'}
-            </p>
-            {routeDraft.id && (
-              <button
-                type="button"
-                className="text-xs text-muted"
-                onClick={() => {
-                  setRouteDraft(EMPTY_ROUTE);
-                  setCustomEvent('');
-                }}
-              >
-                Abbrechen
-              </button>
-            )}
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="block">
-              <span className="label">Name</span>
-              <input
-                className="input"
-                required
-                value={routeDraft.name}
-                onChange={(event) =>
-                  setRouteDraft((current) => ({ ...current, name: event.target.value }))
-                }
-                placeholder="Mein n8n-Workflow"
-              />
-            </label>
-            <label className="inline-flex items-center gap-2 self-end pb-2 text-xs text-primary">
-              <input
-                type="checkbox"
-                checked={routeDraft.enabled}
-                onChange={(event) =>
-                  setRouteDraft((current) => ({ ...current, enabled: event.target.checked }))
-                }
-              />{' '}
-              Route aktiv
-            </label>
-            <label className="block md:col-span-2">
-              <span className="label">Exakte Produktions-URL</span>
-              <input
-                className="input"
-                required
-                type="url"
-                value={routeDraft.productionUrl}
-                onChange={(event) =>
-                  setRouteDraft((current) => ({ ...current, productionUrl: event.target.value }))
-                }
-                placeholder="https://n8n.example.de/webhook/der-pfad-dieses-workflows"
-              />
-            </label>
-            <label className="block md:col-span-2">
-              <span className="label">
-                Separate Test-URL{' '}
-                {routeRequiresTestUrl ? '(erforderlich)' : '(optional für reinen Verbindungstest)'}
-              </span>
-              <input
-                className="input"
-                type="url"
-                required={routeRequiresTestUrl}
-                value={routeDraft.testUrl}
-                onChange={(event) =>
-                  setRouteDraft((current) => ({ ...current, testUrl: event.target.value }))
-                }
-                placeholder="https://n8n.example.de/webhook-test/der-pfad-dieses-workflows"
-              />
-              <span className="mt-1 block text-xs text-muted">
-                Die URL muss <code>/webhook-test/</code> enthalten und funktioniert nur, während der
-                Workflow in n8n auf ein Testereignis wartet. Für Fach-Events ist sie Pflicht, weil
-                TaxTronik synthetische Fachdaten nie an Produktion sendet. Sie wird nie für echte
-                Zustellungen genutzt.
-              </span>
-            </label>
-          </div>
-
-          <fieldset>
-            <legend className="label">TaxTronik-Events</legend>
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {groupedEvents.map(([category, categoryEvents]) => (
-                <div key={category} className="rounded border border-default p-2">
-                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
-                    {category}
-                  </p>
-                  {categoryEvents.map((event) => (
-                    <div
-                      key={event.name}
-                      className="border-t border-default/60 py-1 first:border-0"
-                    >
-                      <label
-                        className="flex items-start gap-2 text-xs text-primary"
-                        title={event.piiNotice}
-                      >
-                        <input
-                          type="checkbox"
-                          className="mt-0.5"
-                          checked={routeDraft.events.includes(event.name)}
-                          onChange={(input) =>
-                            setRouteDraft((current) => ({
-                              ...current,
-                              events: input.target.checked
-                                ? [...current.events, event.name]
-                                : current.events.filter((name) => name !== event.name),
-                            }))
-                          }
-                        />
-                        <span>
-                          <span className="block">{event.label}</span>
-                          <code className="text-[10px] text-muted">{event.name}</code>
-                        </span>
-                      </label>
-                      <details className="ml-6 mt-1 text-[10px] text-muted">
-                        <summary className="cursor-pointer">
-                          Payload-Beispiel und Datenschutz
-                        </summary>
-                        <p className="mt-1">{event.description}</p>
-                        <pre className="mt-1 max-h-44 overflow-auto rounded bg-surface px-2 py-1 text-[10px] text-primary">
-                          {JSON.stringify(event.examplePayload, null, 2)}
-                        </pre>
-                        <p className="mt-1">{event.piiNotice}</p>
-                      </details>
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-            {customRouteEvents.length > 0 && (
-              <div className="mt-3">
-                <span className="label">Gespeicherte Workflow-Schritt-Events</span>
-                <div className="flex flex-wrap gap-2">
-                  {customRouteEvents.map((eventName) => (
-                    <span
-                      key={eventName}
-                      className="inline-flex items-center gap-1 rounded border border-default px-2 py-1 text-xs"
-                    >
-                      <code>{eventName}</code>
-                      <button
-                        type="button"
-                        className="text-muted hover:text-danger"
-                        aria-label={`${eventName} entfernen`}
-                        onClick={() =>
-                          setRouteDraft((current) => ({
-                            ...current,
-                            events: current.events.filter((name) => name !== eventName),
-                          }))
-                        }
-                      >
-                        <XCircle className="h-3.5 w-3.5" />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-            <label className="mt-3 block">
-              <span className="label">Weiteres Workflow-Schritt-Event (optional)</span>
-              <input
-                className="input"
-                value={customEvent}
-                onChange={(event) => setCustomEvent(event.target.value)}
-                placeholder="workflow.step.mein_schritt"
-                pattern="workflow\.step\.[a-z][a-z0-9_-]{0,40}"
-              />
-            </label>
-          </fieldset>
-
-          {(events.some(
-            (event) => routeDraft.events.includes(event.name) && event.containsPersonalData,
-          ) ||
-            customRouteEvents.length > 0 ||
-            Boolean(customEvent.trim())) && (
-            <p className="rounded bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
-              Diese Auswahl kann personenbezogene Daten bzw. Berufsgeheimnisse betreffen. Im eigenen
-              n8n-Workflow nur erforderliche Daten verarbeiten und Ausführungsdaten begrenzen.
-            </p>
-          )}
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="submit"
-              className="btn-primary inline-flex items-center gap-1.5"
-              disabled={busy || saving}
-            >
-              <Save className="h-4 w-4" /> Route speichern
-            </button>
-            <Result result={routeResult} />
-          </div>
-        </form>
-      </section>
-
-      <section className="space-y-4" aria-labelledby="n8n-operation-heading">
-        <div>
-          <h3
-            id="n8n-operation-heading"
-            className="inline-flex items-center gap-2 text-base font-semibold text-primary"
-          >
-            <ShieldCheck className="h-4 w-4" /> 5. Zustellung & Betrieb
-          </h3>
-          <p className="mt-1 text-xs text-muted">
-            Jedes Event und jede Zielzustellung hat eine eigene ID. Fehler eines Workflows
-            blockieren andere Abonnenten nicht.
-          </p>
-        </div>
-        {status.deliveryCounts.failed > 0 && (
-          <div className="rounded-md border border-red-300 bg-red-50 p-3 text-xs text-red-950 dark:border-red-900 dark:bg-red-950/30 dark:text-red-100">
-            <p className="font-semibold">
-              {status.deliveryCounts.failed} offene fehlgeschlagene Zustellung(en)
-            </p>
-            <p className="mt-1">
-              Offene Fehler stehen immer zuerst in der Tabelle und können seitenweise vollständig
-              geladen werden. Ist das gespeicherte Ziel noch aktuell, kann erneut zugestellt werden;
-              veraltete oder bewusst verworfene Fehler lassen sich ohne Versand
-              revisionsprotokolliert quittieren.
-            </p>
-          </div>
-        )}
-        <Result result={deliveryOperationResult} />
-        {status.unroutedEvents.length > 0 && (
-          <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
-            <p className="font-semibold">Events ohne aktive Route</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {status.unroutedEvents.map((item) => (
-                <code key={item.event} className="rounded bg-white/70 px-2 py-1 dark:bg-black/20">
-                  {item.event} ({item.count})
-                </code>
-              ))}
-            </div>
-            <div className="mt-3 space-y-2">
-              {status.recentUnroutedEvents.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded border border-amber-200 bg-white/60 px-2 py-1.5 dark:border-amber-900 dark:bg-black/20"
-                >
-                  <span>
-                    <code>{item.event}</code>{' '}
-                    <span className="text-amber-800 dark:text-amber-200">
-                      {fmtDateTimeShort(new Date(item.occurredAt))}
-                    </span>
-                  </span>
-                  <span className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      className="btn-secondary text-xs"
-                      disabled={busy || saving}
-                      onClick={() => replayUnroutedEvent(item.id, item.event, item.occurredAt)}
-                    >
-                      Jetzt zuordnen
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-secondary text-xs"
-                      disabled={busy || saving}
-                      onClick={() => skipUnroutedEvent(item.id, item.event)}
-                    >
-                      Nicht senden
-                    </button>
-                    <Result result={replayResult[item.id]} />
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        <div className="overflow-x-auto rounded-lg border border-default">
-          <table className="w-full min-w-[760px] text-left text-xs">
-            <thead className="bg-surface-raised text-muted">
-              <tr>
-                <th className="px-3 py-2">Zeit</th>
-                <th className="px-3 py-2">Event</th>
-                <th className="px-3 py-2">Workflow</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Versuche</th>
-                <th className="px-3 py-2">Diagnose</th>
-                <th className="px-3 py-2">Aktion</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border-subtle">
-              {visibleDeliveries.map((delivery) => (
-                <tr key={delivery.id}>
-                  <td className="px-3 py-2 text-muted">
-                    {fmtDateTimeShort(new Date(delivery.createdAt))}
-                  </td>
-                  <td className="px-3 py-2">
-                    <code title={`Event-ID ${delivery.eventId}\nDelivery-ID ${delivery.id}`}>
-                      {delivery.event}
-                    </code>
-                  </td>
-                  <td className="px-3 py-2 text-primary">
-                    <span className="block">{delivery.endpoint}</span>
-                    <code
-                      className="block max-w-[260px] truncate text-[10px] text-muted"
-                      title={delivery.targetUrl}
-                    >
-                      {delivery.targetUrl || 'kein HTTP-Ziel'}
-                    </code>
-                  </td>
-                  <td className="px-3 py-2">
-                    <DeliveryState status={delivery.status} />
-                  </td>
-                  <td className="px-3 py-2 text-muted">{delivery.attempts}</td>
-                  <td
-                    className="max-w-[280px] truncate px-3 py-2 text-muted"
-                    title={delivery.lastError ?? undefined}
-                  >
-                    {delivery.httpStatus
-                      ? `HTTP ${delivery.httpStatus}`
-                      : (delivery.lastError ??
-                        (delivery.latencyMs != null ? `${delivery.latencyMs} ms` : '—'))}
-                  </td>
-                  <td className="px-3 py-2">
-                    {delivery.status === 'FAILED' && (
-                      <span className="flex flex-wrap gap-1">
-                        <button
-                          type="button"
-                          className="btn-secondary text-xs"
-                          disabled={busy || saving || !delivery.targetUrl}
-                          onClick={() => retryDelivery(delivery.id, delivery.targetUrl)}
-                        >
-                          Erneut versuchen
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-secondary text-xs"
-                          disabled={busy || saving}
-                          onClick={() => acknowledgeDelivery(delivery.id)}
-                        >
-                          Quittieren
-                        </button>
-                      </span>
-                    )}
-                    <Result result={retryResult[delivery.id]} />
-                  </td>
-                </tr>
-              ))}
-              {visibleDeliveries.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-3 py-6 text-center text-muted">
-                    Noch keine Zustellungen.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        {hasMoreFailedDeliveries && (
-          <button
-            type="button"
-            className="btn-secondary text-xs"
-            disabled={busy || saving || !failedCursor}
-            onClick={loadMoreFailedDeliveries}
-          >
-            Weitere fehlgeschlagene Zustellungen laden
-          </button>
-        )}
-      </section>
-
+      <DeliveryOperationsSection
+        status={status}
+        failedDeliveries={failedDeliveries}
+        failedCursor={failedCursor}
+        hasMoreFailedDeliveries={hasMoreFailedDeliveries}
+        deliveryOperationResult={deliveryOperationResult}
+        retryResult={retryResult}
+        replayResult={replayResult}
+        busy={busy}
+        saving={saving}
+        onReplayUnroutedEvent={replayUnroutedEvent}
+        onSkipUnroutedEvent={skipUnroutedEvent}
+        onRetryDelivery={retryDelivery}
+        onAcknowledgeDelivery={acknowledgeDelivery}
+        onLoadMoreFailedDeliveries={loadMoreFailedDeliveries}
+      />
       <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-950 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">
         <p className="font-medium">Eigene Workflows</p>
         <p className="mt-1">
@@ -1699,19 +1253,6 @@ function SecretKeep({
   );
 }
 
-function Result({ result }: { result: ActionResult | null | undefined }) {
-  if (!result) return null;
-  return result.ok ? (
-    <span className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400">
-      <CheckCircle2 className="h-4 w-4" /> {result.message ?? 'Erledigt.'}
-    </span>
-  ) : (
-    <span className="inline-flex items-center gap-1 whitespace-pre-wrap text-xs text-red-700 dark:text-red-400">
-      <AlertCircle className="h-4 w-4 shrink-0" /> {result.error ?? 'Fehler.'}
-    </span>
-  );
-}
-
 function ReadOnlyValue({ label, value }: { label: string; value: string }) {
   return (
     <div>
@@ -1765,67 +1306,5 @@ function CredentialRow({
       </code>
       <CopyButton label={label} value={value} copied={copied} onCopy={onCopy} />
     </div>
-  );
-}
-
-function RouteState({ endpoint }: { endpoint: N8nEndpointView }) {
-  if (endpoint.verificationOk === false)
-    return (
-      <span
-        className="inline-flex items-center gap-1 text-[10px] text-red-700 dark:text-red-400"
-        title={endpoint.verificationError ?? undefined}
-      >
-        <AlertCircle className="h-3 w-3" /> Test fehlgeschlagen
-      </span>
-    );
-  if (!endpoint.enabled && endpoint.verificationOk === true)
-    return (
-      <span className="inline-flex items-center gap-1 text-[10px] text-amber-700 dark:text-amber-300">
-        <CheckCircle2 className="h-3 w-3" /> verifiziert, noch deaktiviert
-      </span>
-    );
-  if (!endpoint.enabled)
-    return (
-      <span className="inline-flex items-center gap-1 text-[10px] text-muted">
-        <XCircle className="h-3 w-3" /> deaktiviert
-      </span>
-    );
-  if (endpoint.verificationOk === true)
-    return (
-      <span className="inline-flex items-center gap-1 text-[10px] text-emerald-700 dark:text-emerald-400">
-        <CheckCircle2 className="h-3 w-3" /> verifiziert
-      </span>
-    );
-  return <span className="text-[10px] text-muted">nicht getestet</span>;
-}
-
-function DeliveryState({
-  status,
-}: {
-  status: 'PENDING' | 'PROCESSING' | 'DELIVERED' | 'FAILED' | 'SKIPPED';
-}) {
-  if (status === 'DELIVERED')
-    return (
-      <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
-        <CheckCircle2 className="h-3 w-3" /> zugestellt
-      </span>
-    );
-  if (status === 'FAILED')
-    return (
-      <span className="inline-flex items-center gap-1 text-red-700 dark:text-red-400">
-        <AlertCircle className="h-3 w-3" /> fehlgeschlagen
-      </span>
-    );
-  if (status === 'SKIPPED') return <span className="text-muted">übersprungen</span>;
-  if (status === 'PROCESSING')
-    return (
-      <span className="inline-flex items-center gap-1 text-blue-700 dark:text-blue-400">
-        <Loader2 className="h-3 w-3 animate-spin" /> wird zugestellt
-      </span>
-    );
-  return (
-    <span className="inline-flex items-center gap-1 text-muted">
-      <Loader2 className="h-3 w-3" /> wartend
-    </span>
   );
 }

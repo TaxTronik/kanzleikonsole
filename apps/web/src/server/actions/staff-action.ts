@@ -35,6 +35,7 @@ import type { ActionResult } from './types';
 // werfen, um eine konkrete Meldung an den Client zu geben (statt generisch).
 export { ActionError };
 export { decideStaffGuard };
+export { parseFormData } from './form-data';
 
 // Einheitliches Action-Ergebnis liegt neutral in ./types — hier re-exportiert,
 // damit der bestehende Import-Pfad '@/server/actions/staff-action' stabil bleibt.

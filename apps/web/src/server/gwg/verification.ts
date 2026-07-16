@@ -42,8 +42,15 @@ export interface GwgVerificationSnapshot {
     birthPlace: string | null;
     residence: string | null;
     nationality: string | null;
+    isPep: boolean;
   }>;
   idDocuments: VerificationDocument[];
+}
+
+export interface GwgDecisionGateSnapshot extends GwgVerificationSnapshot {
+  riskScore: number | null;
+  riskLevel: string | null;
+  riskAnswers: unknown;
 }
 
 function startOfUtcDay(value: Date): number {
@@ -237,4 +244,49 @@ export function gwgVerificationErrors(
   }
 
   return errors;
+}
+
+/**
+ * Canonical fachliche Schranke for both hand-off and final approval. Keeping
+ * both transitions on the same strict rule set prevents a draft accepted for
+ * review from becoming impossible to approve (or vice versa) after rule
+ * changes.
+ */
+export function gwgDecisionGateErrors(
+  snapshot: GwgDecisionGateSnapshot,
+  requiredRiskFactorKeys: readonly string[],
+  now: Date = new Date(),
+): string[] {
+  const errors: string[] = [];
+  if (snapshot.riskScore === null || snapshot.riskLevel === null) {
+    errors.push('Bitte zuerst die Risikobewertung vollständig speichern.');
+  }
+
+  const savedAnswers =
+    snapshot.riskAnswers &&
+    typeof snapshot.riskAnswers === 'object' &&
+    !Array.isArray(snapshot.riskAnswers)
+      ? (snapshot.riskAnswers as Record<string, unknown>)
+      : {};
+  if (requiredRiskFactorKeys.some((key) => savedAnswers[key] == null)) {
+    errors.push(
+      'Die Risikoanalyse ist unvollständig — bitte alle Risikofaktoren bewerten (§ 10 Abs. 2 GwG).',
+    );
+  }
+
+  errors.push(...gwgVerificationErrors(snapshot, now));
+
+  if (snapshot.idDocuments.length === 0) {
+    errors.push('Mindestens ein Identitätsdokument erforderlich.');
+  }
+  if (snapshot.beneficialOwners.some((owner) => owner.isPep) && savedAnswers['pep'] !== 3) {
+    errors.push('PEP-Fall: Der PEP-Risikofaktor muss ausdrücklich als PEP bewertet werden.');
+  }
+  if (snapshot.beneficialOwners.some((owner) => owner.isPep) && snapshot.riskLevel !== 'HIGH') {
+    errors.push(
+      'PEP-Fall: Die Risikobewertung muss HIGH ergeben (§ 15 GwG: zwingend hohes Risiko).',
+    );
+  }
+
+  return [...new Set(errors)];
 }

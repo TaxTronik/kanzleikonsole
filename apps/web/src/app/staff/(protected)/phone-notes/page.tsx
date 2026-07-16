@@ -1,14 +1,13 @@
-﻿import { staffAuth } from '@/server/auth/staff';
+﻿import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
-import { redirect } from 'next/navigation';
+
 import { Phone } from 'lucide-react';
 import { NewPhoneNoteForm } from './new-form';
 import { PhoneNotesList } from '@/app/staff/(protected)/clients/[id]/phone-notes-list';
 import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
 
 export default async function PhoneNotesPage() {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
 
   const { tenantId, staffId } = session.user;
 

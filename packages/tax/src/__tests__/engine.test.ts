@@ -13,6 +13,7 @@ import { describe, it, expect } from 'vitest';
 import {
   endOfDueDay,
   berlinCalendarDate,
+  berlinTodayUtcMidnight,
   generateDeadlines,
   germanHolidays,
   SCHEDULE_LABELS,
@@ -487,6 +488,29 @@ describe('endOfDueDay / berlinCalendarDate / startOfUtcDay — § 108 (1) AO Tag
     expect(berlinCalendarDate(new Date('2026-07-01T22:00:00.000Z')).toISOString()).toBe(
       '2026-07-02T00:00:00.000Z',
     );
+  });
+
+  it.each([
+    ['CET', '2026-01-15T22:59:59.999Z', '2026-01-15T00:00:00.000Z'],
+    ['CET', '2026-01-15T23:00:00.000Z', '2026-01-16T00:00:00.000Z'],
+    ['CEST', '2026-07-15T21:59:59.999Z', '2026-07-15T00:00:00.000Z'],
+    ['CEST', '2026-07-15T22:00:00.000Z', '2026-07-16T00:00:00.000Z'],
+  ])(
+    'berlinTodayUtcMidnight bildet die %s-Tagesgrenze als @db.Date ab',
+    (_zone, instant, expected) => {
+      const result = berlinTodayUtcMidnight(new Date(instant));
+      expect(result.toISOString()).toBe(expected);
+      expect(result.getUTCHours()).toBe(0);
+    },
+  );
+
+  it.each([
+    ['Beginn der Sommerzeit', '2026-03-29T21:59:59.999Z', '2026-03-29T00:00:00.000Z'],
+    ['Beginn der Sommerzeit', '2026-03-29T22:00:00.000Z', '2026-03-30T00:00:00.000Z'],
+    ['Ende der Sommerzeit', '2026-10-25T22:59:59.999Z', '2026-10-25T00:00:00.000Z'],
+    ['Ende der Sommerzeit', '2026-10-25T23:00:00.000Z', '2026-10-26T00:00:00.000Z'],
+  ])('bleibt am %s DST-sicher', (_transition, instant, expected) => {
+    expect(berlinTodayUtcMidnight(new Date(instant)).toISOString()).toBe(expected);
   });
 
   it('heute fälliger Termin ist bis Tagesende NICHT abgelaufen', () => {

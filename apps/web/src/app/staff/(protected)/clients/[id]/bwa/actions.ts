@@ -7,7 +7,7 @@ import { evidenceService } from '@/server/container';
 import { parseAddisonBwaCsv, parseAddisonBwaCompactCsv } from '@/server/bwa/addison-parser';
 import { parseDatevBwaXlsx } from '@/server/bwa/datev-parser';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
-import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
+import { staffActionGuard, ActionError, parseFormData } from '@/server/actions/staff-action';
 
 export interface ImportResult {
   ok: boolean;
@@ -220,11 +220,8 @@ export async function deleteBwaPeriodAction(formData: FormData): Promise<void> {
   if (!g.ok) return; // void-Action: bei fehlender Auth still abbrechen
   const { tenantId, staffId, ctx, session } = g;
 
-  const parsed = DeleteSchema.safeParse({
-    periodId: formData.get('periodId'),
-    clientId: formData.get('clientId'),
-  });
-  if (!parsed.success) return;
+  const parsed = parseFormData(DeleteSchema, formData);
+  if (!parsed.ok) return;
 
   await withTenantContext(ctx, async (tx) => {
     await assertClientAccessTx(tx, session, parsed.data.clientId);

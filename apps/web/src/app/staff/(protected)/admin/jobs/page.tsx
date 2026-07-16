@@ -1,16 +1,12 @@
-import { redirect } from 'next/navigation';
-import { staffAuth } from '@/server/auth/staff';
-import { isStaffAdmin } from '@/server/auth/rbac';
+import { requireStaffPage } from '@/server/auth/staff-page';
+
 import { fmtDateTimeShort } from '@/lib/fmt';
 import { getQueuesStatus } from '@/server/jobs/queue-status';
 
 // Nicht cachen: der Status soll bei jedem Aufruf frisch aus Redis kommen.
-export const dynamic = 'force-dynamic';
 
 export default async function AdminJobsPage() {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
-  if (!isStaffAdmin(session)) redirect('/staff/dashboard');
+  await requireStaffPage({ admin: true });
 
   const queues = await getQueuesStatus();
   const problems = queues.filter((q) => q.stale || q.failed > 0);

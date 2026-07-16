@@ -1,7 +1,7 @@
 ﻿import Link from 'next/link';
-import { notFound, redirect } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import { ArrowLeft, ScrollText, Plus } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { inaccessibleClientIdsFor, isStaffAdmin } from '@/server/auth/rbac';
 import { fmtDateShort } from '@/lib/fmt';
@@ -20,8 +20,7 @@ export default async function PoaListPage({
 }: {
   searchParams: Promise<{ clientId?: string }>;
 }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
 
   const query = await searchParams;
   if (query.clientId && !isUuid(query.clientId)) notFound();

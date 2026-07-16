@@ -12,6 +12,7 @@
 // =============================================================================
 
 import { useRef, useState } from 'react';
+import { fmtIsoDate } from '@/lib/fmt';
 import {
   consentForNewDeclaration,
   defaultConsentOptionsCatalog,
@@ -23,12 +24,6 @@ import {
   type ThirdParty,
   type Specialist,
 } from '@/server/privacy/consent';
-
-function formatIsoDate(value: string | null): string | null {
-  if (!value) return null;
-  const [year, month, day] = value.split('-');
-  return year && month && day ? `${day}.${month}.${year}` : value;
-}
 
 function Check({
   checked,
@@ -153,8 +148,8 @@ export function ConsentFields({
   function optionHint(option: ResolvedConsentOption): string | null {
     const parts = [option.description];
     if (option.serviceProvider) {
-      const from = formatIsoDate(option.serviceProvider.contractFromDate);
-      const to = formatIsoDate(option.serviceProvider.contractToDate);
+      const from = fmtIsoDate(option.serviceProvider.contractFromDate);
+      const to = fmtIsoDate(option.serviceProvider.contractToDate);
       const contract = from
         ? `Vertrag ab ${from}${to ? ` bis ${to}` : ''}`
         : to

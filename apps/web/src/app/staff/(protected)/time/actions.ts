@@ -7,6 +7,7 @@ import { assertClientAccessTx } from '@/server/auth/rbac';
 import {
   withStaff,
   ActionError,
+  parseFormData,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
 
@@ -102,8 +103,8 @@ export async function stopTimerAction(): Promise<void> {
 
 export async function deleteTimeEntryAction(formData: FormData): Promise<void> {
   // F6: UUID-Validation.
-  const parsed = z.object({ id: z.string().uuid() }).safeParse({ id: formData.get('id') });
-  if (!parsed.success) return;
+  const parsed = parseFormData(z.object({ id: z.string().uuid() }), formData);
+  if (!parsed.ok) return;
   const { id } = parsed.data;
 
   await withStaff(

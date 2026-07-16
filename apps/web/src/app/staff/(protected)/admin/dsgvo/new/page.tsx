@@ -1,16 +1,11 @@
-﻿import { redirect } from 'next/navigation';
-import Link from 'next/link';
+﻿import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
-import { isStaffAdmin } from '@/server/auth/rbac';
+import { requireStaffPage } from '@/server/auth/staff-page';
+
 import { createDsgvoRequestAction } from '../actions';
 
 export default async function NewDsgvoRequestPage() {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
-  if (!isStaffAdmin(session)) {
-    redirect('/staff/dashboard');
-  }
+  await requireStaffPage({ admin: true });
 
   return (
     <div className="p-8 max-w-2xl">

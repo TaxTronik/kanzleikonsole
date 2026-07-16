@@ -7,11 +7,10 @@
 // TOTP wird beim ersten Login vom Mitarbeiter selbst eingerichtet.
 // =============================================================================
 
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, UserPlus, ShieldCheck } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
-import { isStaffAdmin } from '@/server/auth/rbac';
+import { requireStaffPage } from '@/server/auth/staff-page';
+
 import { withTenantContext } from '@taxtronik/db';
 import { fmtDateNumeric } from '@/lib/fmt';
 import { CreateUserForm } from './create-form';
@@ -25,11 +24,7 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 export default async function UsersAdminPage() {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
-  if (!isStaffAdmin(session)) {
-    redirect('/staff/dashboard');
-  }
+  const session = await requireStaffPage({ admin: true });
   const { tenantId, staffId } = session.user;
 
   const [users, allSkills] = await withTenantContext(

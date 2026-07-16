@@ -17,7 +17,14 @@
 // SharedDialogs (Preview, Retag, Ordner anlegen/umbenennen, Confirm).
 // =============================================================================
 
-import { useMemo, useState, useTransition, useEffect, type SubmitEvent } from 'react';
+import {
+  useDeferredValue,
+  useMemo,
+  useState,
+  useTransition,
+  useEffect,
+  type SubmitEvent,
+} from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -71,6 +78,8 @@ import {
   type Entry,
   type FolderNode,
 } from '@/components/document-browser-utils';
+import { buildFolderDocumentCounts } from '@/components/document-explorer-performance';
+import { DOCUMENT_CLASSIFICATION_LABELS } from '@/lib/domain-labels';
 
 export type { Crumb, Entry, FolderNode };
 
@@ -88,16 +97,6 @@ export interface ManagedDoc {
   deletedAt: string | null;
   shared: boolean;
 }
-
-const CLASS_LABELS: Record<string, string> = {
-  GOBD_INVOICE: 'GoBD Rechnung',
-  GOBD_CONTRACT: 'GoBD Vertrag',
-  GOBD_TAX: 'GoBD Steuer',
-  GWG_EVIDENCE: 'GwG Nachweis',
-  PERSONNEL: 'Personal',
-  STAFF_PRIVATE: 'Intern',
-  GENERAL: 'Allgemein',
-};
 
 // ---------------------------------------------------------------------------
 // Geteilter Zustand + Handler beider Varianten
@@ -310,6 +309,12 @@ interface EmbeddedProps {
   /** P-3: Server hat die Dokumentliste gecappt — Hinweis anzeigen. */
   truncated?: boolean;
   totalCount?: number;
+  /** Serverseitig paginierte Aktiv-/Gelöscht-Ansicht. */
+  serverDeleted?: {
+    showDeleted: boolean;
+    activeHref: string;
+    deletedHref: string;
+  };
 }
 
 /** P-3: Hinweis, wenn der Server die Dokumentliste gecappt hat. */
@@ -1143,23 +1148,39 @@ function EmbeddedView({
   analysisId,
   truncated,
   totalCount,
+  serverDeleted,
   ops,
 }: Omit<EmbeddedProps, 'variant'> & { ops: DocumentOps }) {
   const { router, busy } = ops;
   const [sel, setSel] = useState<string | 'all' | 'none'>('all');
   const [q, setQ] = useState('');
+  const deferredQ = useDeferredValue(q);
   const [moveDoc, setMoveDoc] = useState<ManagedDoc | null>(null);
   const [confirmDelDoc, setConfirmDelDoc] = useState<ManagedDoc | null>(null);
 
-  const active = documents.filter((d) => !d.deletedAt);
-  const deleted = documents.filter((d) => d.deletedAt);
-  const [showDeleted, setShowDeleted] = useState(false);
+  const { active, deleted } = useMemo(() => {
+    const nextActive: ManagedDoc[] = [];
+    const nextDeleted: ManagedDoc[] = [];
+    for (const document of documents) {
+      (document.deletedAt ? nextDeleted : nextActive).push(document);
+    }
+    return { active: nextActive, deleted: nextDeleted };
+  }, [documents]);
+  const [localShowDeleted, setLocalShowDeleted] = useState(false);
+  const showDeleted = serverDeleted?.showDeleted ?? localShowDeleted;
+  const countDocuments = showDeleted ? deleted : active;
 
-  const countIn = (fid: string | 'all' | 'none') => {
-    if (fid === 'all') return active.length;
-    if (fid === 'none') return active.filter((d) => !d.folderId).length;
-    const ids = descendants(folders, fid);
-    return active.filter((d) => d.folderId && ids.has(d.folderId)).length;
+  // Ein Durchlauf statt eines Full-Scans je Ordnerzeile. Dokumente eines
+  // Unterordners zaehlen dabei wie bisher auch fuer alle Vorfahren.
+  const folderCounts = useMemo(
+    () => buildFolderDocumentCounts(folders, countDocuments),
+    [countDocuments, folders],
+  );
+
+  const countIn = (fid: string | 'all' | 'none'): number => {
+    if (fid === 'all') return countDocuments.length;
+    if (fid === 'none') return folderCounts.withoutFolder;
+    return folderCounts.byId.get(fid) ?? 0;
   };
 
   const shown = useMemo(() => {
@@ -1173,10 +1194,10 @@ function EmbeddedView({
               const ids = descendants(folders, sel);
               return base.filter((d) => d.folderId && ids.has(d.folderId));
             })();
-    const needle = q.trim().toLowerCase();
+    const needle = deferredQ.trim().toLowerCase();
     if (needle) list = list.filter((d) => d.title.toLowerCase().includes(needle));
     return [...list].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  }, [showDeleted, deleted, active, sel, folders, q]);
+  }, [showDeleted, deleted, active, sel, folders, deferredQ]);
 
   function deleteFolder(f: FolderNode) {
     ops.setConfirmState({
@@ -1274,7 +1295,7 @@ function EmbeddedView({
         >
           <FileText className="h-4 w-4" />
           <span className="flex-1 text-left">Alle</span>
-          <span className="text-xs text-disabled">{active.length || ''}</span>
+          <span className="text-xs text-disabled">{countDocuments.length || ''}</span>
         </button>
         <button
           type="button"
@@ -1318,17 +1339,29 @@ function EmbeddedView({
               className="input pl-9"
             />
           </div>
-          <button
-            type="button"
-            onClick={() => setShowDeleted((v) => !v)}
-            className={`text-xs px-3 py-1.5 rounded ${
-              showDeleted ? 'bg-brand-50 text-brand-700' : 'text-muted hover:text-secondary'
-            }`}
-          >
-            {showDeleted
-              ? `Gelöscht (${deleted.length})`
-              : `Gelöschte anzeigen (${deleted.length})`}
-          </button>
+          {serverDeleted ? (
+            <Link
+              href={showDeleted ? serverDeleted.activeHref : serverDeleted.deletedHref}
+              scroll={false}
+              className={`text-xs px-3 py-1.5 rounded ${
+                showDeleted ? 'bg-brand-50 text-brand-700' : 'text-muted hover:text-secondary'
+              }`}
+            >
+              {showDeleted ? 'Aktive anzeigen' : 'Gelöschte anzeigen'}
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setLocalShowDeleted((value) => !value)}
+              className={`text-xs px-3 py-1.5 rounded ${
+                showDeleted ? 'bg-brand-50 text-brand-700' : 'text-muted hover:text-secondary'
+              }`}
+            >
+              {showDeleted
+                ? `Gelöscht (${deleted.length})`
+                : `Gelöschte anzeigen (${deleted.length})`}
+            </button>
+          )}
           {canUpload && (
             <DocumentUploadButton
               clientId={clientId ?? undefined}
@@ -1376,7 +1409,11 @@ function EmbeddedView({
               </thead>
               <tbody className="divide-y divide-border-subtle">
                 {shown.map((d) => (
-                  <tr key={d.id} className="hover:bg-gray-50">
+                  <tr
+                    key={d.id}
+                    className="hover:bg-gray-50"
+                    style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 44px' }}
+                  >
                     <td className="px-5 py-3 font-medium text-primary">
                       <button
                         type="button"
@@ -1389,7 +1426,9 @@ function EmbeddedView({
                     </td>
                     <td className="px-5 py-3 text-secondary">
                       <span className="inline-flex items-center gap-1.5">
-                        {d.typeName || CLASS_LABELS[d.classification] || d.classification}
+                        {d.typeName ||
+                          DOCUMENT_CLASSIFICATION_LABELS[d.classification] ||
+                          d.classification}
                         {!d.deletedAt && <ShareBadge shared={d.shared} />}
                       </span>
                     </td>

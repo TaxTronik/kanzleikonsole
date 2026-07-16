@@ -1,7 +1,7 @@
 ﻿import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { hasStaffPermission } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { readModules } from '@/server/settings/modules';
@@ -9,8 +9,7 @@ import { NewInvoiceForm } from './form';
 import { ExternalInvoiceForm } from './external-form';
 
 export default async function NewInvoicePage() {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
 
   const { tenantId, staffId } = session.user;
   const modules = await readModules({ tenantId, actorId: staffId, actorType: 'STAFF' });

@@ -11,7 +11,7 @@ import { notifyClientContacts } from '@/server/mail/dispatch';
 import { fireAndForget } from '@/server/util/fire-and-forget';
 import { portalBaseUrl } from '@taxtronik/config';
 import { toActionError, assertClientAccessTx, accessibleClientsWhereFor } from '@/server/auth/rbac';
-import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
+import { staffActionGuard, ActionError, parseFormData } from '@/server/actions/staff-action';
 
 const CreateSchema = z.object({
   requestId: z.string().uuid(),
@@ -367,8 +367,8 @@ export async function closeRequestAction(formData: FormData): Promise<void> {
   if (!g.ok) return; // void-Action: still abbrechen
   const { tenantId, staffId, ctx, session } = g;
 
-  const parsed = CloseSchema.safeParse({ requestId: formData.get('requestId') });
-  if (!parsed.success) return;
+  const parsed = parseFormData(CloseSchema, formData);
+  if (!parsed.ok) return;
   const { requestId } = parsed.data;
 
   await withTenantContext(ctx, async (tx) => {
@@ -405,11 +405,8 @@ export async function addStaffResponseAction(formData: FormData): Promise<Action
   if (!g.ok) return g;
   const { tenantId, staffId, ctx, session } = g;
 
-  const parsed = StaffResponseSchema.safeParse({
-    requestId: formData.get('requestId'),
-    message: formData.get('message'),
-  });
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  const parsed = parseFormData(StaffResponseSchema, formData);
+  if (!parsed.ok) return { ok: false, error: 'Validierungsfehler.' };
   const { requestId, message } = parsed.data;
 
   let reqInfo: { clientId: string; title: string } | null;

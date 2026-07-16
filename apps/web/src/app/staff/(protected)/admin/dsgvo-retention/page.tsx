@@ -1,6 +1,5 @@
-import { redirect } from 'next/navigation';
-import { staffAuth } from '@/server/auth/staff';
-import { isStaffAdmin } from '@/server/auth/rbac';
+import { requireStaffPage } from '@/server/auth/staff-page';
+
 import { withTenantContext } from '@taxtronik/db';
 import { fmtDateShort } from '@/lib/fmt';
 import {
@@ -10,9 +9,7 @@ import {
 import { ClientAnonymizeButton, PoaSignerAnonymizeButton } from './anonymize-button';
 
 export default async function DsgvoRetentionPage() {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
-  if (!isStaffAdmin(session)) redirect('/staff/dashboard');
+  const session = await requireStaffPage({ admin: true });
   const { tenantId, staffId } = session.user;
 
   const [due, duePoaSigners] = await withTenantContext(

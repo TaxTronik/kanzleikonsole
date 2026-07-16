@@ -1,15 +1,15 @@
 'use server';
 
 import { z } from 'zod';
-import { withStaff } from '@/server/actions/staff-action';
+import { parseFormData, withStaff } from '@/server/actions/staff-action';
 
 const IdSchema = z.object({ id: z.string().uuid() });
 
 export async function markNotificationReadAction(formData: FormData): Promise<void> {
   // F6: UUID-Validation statt nur typeof — sonst werfen Prisma-Updates erst
   // zur Laufzeit mit "Invalid uuid".
-  const parsed = IdSchema.safeParse({ id: formData.get('id') });
-  if (!parsed.success) return;
+  const parsed = parseFormData(IdSchema, formData);
+  if (!parsed.ok) return;
   const { id } = parsed.data;
 
   await withStaff(

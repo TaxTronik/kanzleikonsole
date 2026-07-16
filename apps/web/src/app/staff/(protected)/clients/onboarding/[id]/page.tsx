@@ -18,7 +18,7 @@ import {
   Check,
   ExternalLink,
 } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { canAccessClient } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { readModules } from '@/server/settings/modules';
@@ -61,8 +61,7 @@ export default async function OnboardingStepPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<Search>;
 }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
   const { id } = await params;
   // Wizard liegt außerhalb von clients/[id]/ — der Layout-Guard greift hier
   // nicht, daher eigener Vertraulich-/RESTRICTED-Check.

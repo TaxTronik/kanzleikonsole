@@ -8,6 +8,7 @@ import { startInstanceAction } from '../clients/[id]/workflows/actions';
 import {
   withStaff,
   ActionError,
+  parseFormData,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
 
@@ -24,11 +25,8 @@ export async function createTemplateAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const parsed = CreateSchema.safeParse({
-    name: formData.get('name'),
-    description: formData.get('description') ?? '',
-  });
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  const parsed = parseFormData(CreateSchema, formData);
+  if (!parsed.ok) return parsed;
 
   // F4: Workflow-Templates sind Tenant-weite Konfiguration (n8n-Events,
   // CLIENT_EMAIL/REQUEST/FORM-Steps). Konsistent zu email-templates,

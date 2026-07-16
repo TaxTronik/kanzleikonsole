@@ -9,17 +9,19 @@ const read = (file: string) => readFileSync(resolve(gwgRoot, file), 'utf8');
 describe('lokaler GwG-Bearbeitungszustand', () => {
   it('behält die Ausweisprüfung nach dem Speichern aufgeklappt und setzt die Revision lokal fort', () => {
     const source = read('identity-document-review.tsx');
+    const stateHook = read('use-identity-review-state.ts');
 
     expect(source).not.toContain('router.refresh()');
     expect(source).toContain('setExpanded(true);');
     expect(source).toContain('invalidatedRevision ??');
-    expect(source).toContain(
-      'acknowledgeIdentitySet(group.documentSetId, submittedInvalidationGeneration.current)',
-    );
+    expect(source).toContain('useIdentityReviewState({');
+    expect(source).toContain('markSubmitted(');
     expect(source).toContain('localState.confirmedRevision === localState.revision');
-    expect(source).toContain('reconcileIdentityReviewServerState(');
     expect(source).toContain('key={group.documentSetId}');
-    expect(source).toContain('if (state.reviewReset) markDraft()');
+    expect(stateHook).toContain('identityReviewStateReducer');
+    expect(stateHook).toContain('reconcileIdentityReviewServerState(');
+    expect(stateHook).toContain('onAcknowledgeInvalidation(');
+    expect(stateHook).toContain('if (actionState.reviewReset) onReviewReset()');
   });
 
   it('führt Vertreter als strukturierte Personen statt als Mehrzeilen-Freitext', () => {

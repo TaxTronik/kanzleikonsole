@@ -97,8 +97,9 @@ export async function updateBinderStatusAction(input: {
       before: { status: before.status },
       after: { status: parsed.data.status },
     });
+    return { clientId: before.clientId };
   });
-  if (r.ok) revalidatePath('/staff/clients', 'layout');
+  if (r.ok && r.clientId) revalidatePath(`/staff/clients/${r.clientId}`);
   return r;
 }
 
@@ -123,7 +124,8 @@ export async function deleteBinderAction(input: { id: string }): Promise<ActionR
       resourceId: parsed.data.id,
       before: { label: b?.label ?? null },
     });
+    return { clientId: b.clientId };
   });
-  if (r.ok) revalidatePath('/staff/clients', 'layout');
+  if (r.ok && r.clientId) revalidatePath(`/staff/clients/${r.clientId}`);
   return r;
 }

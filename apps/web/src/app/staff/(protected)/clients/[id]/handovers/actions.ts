@@ -83,6 +83,7 @@ export async function updateHandoverStatusAction(input: {
     contactEmail: string | null;
     contactName: string | null;
   } | null = null;
+  let affectedClientId: string | null = null;
 
   try {
     await withTenantContext(ctx, async (tx) => {
@@ -107,6 +108,7 @@ export async function updateHandoverStatusAction(input: {
       });
       if (!before) throw new ActionError('Anlieferung nicht gefunden.');
       await assertClientAccessTx(tx, session, before.clientId);
+      affectedClientId = before.clientId;
       if (before.status === parsed.data.status) return;
 
       const now = new Date();
@@ -195,7 +197,7 @@ export async function updateHandoverStatusAction(input: {
     }
   }
 
-  revalidatePath('/staff/clients', 'layout');
+  if (affectedClientId) revalidatePath(`/staff/clients/${affectedClientId}`);
   revalidatePath('/portal/handovers');
   return { ok: true };
 }
@@ -221,9 +223,10 @@ export async function deleteHandoverAction(input: { id: string }): Promise<Actio
       resourceId: parsed.data.id,
       before: { label: h?.label ?? null },
     });
+    return { clientId: h.clientId };
   });
   if (r.ok) {
-    revalidatePath('/staff/clients', 'layout');
+    if (r.clientId) revalidatePath(`/staff/clients/${r.clientId}`);
     revalidatePath('/portal/handovers');
   }
   return r;

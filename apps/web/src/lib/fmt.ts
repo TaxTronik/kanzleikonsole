@@ -12,6 +12,8 @@
 // (Module-Load = einmal). Wiederholte `.format(date)`-Aufrufe sind günstig.
 // =============================================================================
 
+export { berlinTodayUtcMidnight } from '@taxtronik/tax';
+
 const LOCALE = 'de-DE';
 const TIME_ZONE = 'Europe/Berlin';
 
@@ -329,16 +331,6 @@ export function berlinYmd(d: Date): string {
   return ymdBerlinFormatter.format(d); // en-CA liefert bereits `YYYY-MM-DD`
 }
 
-/**
- * UTC-Mitternacht des HEUTIGEN Berlin-Kalendertags — passend zur `@db.Date`-
- * Kodierung (dort ist ein Kalendertag als UTC-Mitternacht gespeichert). Für
- * „überfällig ab Folgetag"-Vergleiche: `dueDate < berlinTodayUtcMidnight()`.
- */
-export function berlinTodayUtcMidnight(now: Date = new Date()): Date {
-  const p = Object.fromEntries(ymdBerlinFormatter.formatToParts(now).map((x) => [x.type, x.value]));
-  return new Date(Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day)));
-}
-
 // --- Dauer ---------------------------------------------------------------------
 
 /** Minuten → `2h 15m` oder `15m`. */
@@ -346,4 +338,22 @@ export function fmtMinutes(m: number): string {
   const h = Math.floor(m / 60);
   const mm = Math.round(m % 60);
   return h > 0 ? `${h}h ${mm}m` : `${mm}m`;
+}
+
+/** Bytes with a compact binary-unit suffix through GiB-sized files. */
+export function fmtBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+  return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
+}
+
+export function fmtIsoDate(value: null): null;
+export function fmtIsoDate(value: string): string;
+export function fmtIsoDate(value: string | null): string | null;
+/** Formats an ISO calendar date without constructing a Date (and shifting TZ). */
+export function fmtIsoDate(value: string | null): string | null {
+  if (!value) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  return match ? `${match[3]}.${match[2]}.${match[1]}` : value;
 }

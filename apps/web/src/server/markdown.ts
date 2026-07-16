@@ -16,9 +16,7 @@
 // die Werte vorher durch `escapeMarkdownVariable` laufen.
 // =============================================================================
 
-function safeHref(url: string): string {
-  return url.replace(/[<>"'`\\]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
-}
+import { escapeHtml, safeHref } from '@/lib/markdown-safety';
 
 // Sentinels nutzen private-use-codepoints, die in escapeMarkdownVariable aus
 // User-Input gestripped werden (siehe dort). Damit kann kein User-Input
@@ -59,7 +57,7 @@ export function renderSafeMarkdown(md: string): string {
   // Renderer direkt mit potenziell unsicherem Input füttert — escape sollte
   // davor laufen, aber wir verlassen uns nicht darauf).
   const scrubbed = md.replace(/[-]/g, '');
-  const escaped = scrubbed.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const escaped = escapeHtml(scrubbed);
   // M-2: Backslash-escapte Marker via Sentinels schützen, sodass die
   // Inline-Replacements sie nicht treffen.
   const protectedText = escaped

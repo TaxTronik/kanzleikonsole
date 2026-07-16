@@ -1,11 +1,13 @@
-﻿'use client';
+'use client';
 
-import { useActionState, useState, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
-import { FolderInput, Plus, Trash2, ArrowRight, Check } from 'lucide-react';
+import { useActionState } from 'react';
+import { FolderInput } from 'lucide-react';
+
 import { fmtDateShort } from '@/lib/fmt';
-import { createBinderAction, updateBinderStatusAction, deleteBinderAction } from './actions';
 import type { ActionResult } from '@/server/actions/staff-action';
+
+import { ClientStatusFlowCard, type ClientStatusFlowDefinition } from '../status-flow-card';
+import { createBinderAction, deleteBinderAction, updateBinderStatusAction } from './actions';
 
 type BinderStatus = 'PREPARED' | 'WITH_CLIENT' | 'RETURNED' | 'COMPLETED';
 
@@ -19,81 +21,59 @@ interface Binder {
   returnedAt: string | null;
 }
 
-const STATUS_LABELS: Record<BinderStatus, string> = {
-  PREPARED: 'Vorbereitet',
-  WITH_CLIENT: 'Beim Mandanten',
-  RETURNED: 'Zurück',
-  COMPLETED: 'Abgeschlossen',
-};
-
-const STATUS_BADGE: Record<BinderStatus, string> = {
-  PREPARED: 'badge-gray',
-  WITH_CLIENT: 'badge-yellow',
-  RETURNED: 'badge-green',
-  COMPLETED: 'badge-gray',
-};
-
-const NEXT_STATUS: Record<BinderStatus, BinderStatus | null> = {
-  PREPARED: 'WITH_CLIENT',
-  WITH_CLIENT: 'RETURNED',
-  RETURNED: 'COMPLETED',
-  COMPLETED: null,
-};
-
-const NEXT_LABEL: Record<BinderStatus, string> = {
-  PREPARED: 'Ausgegeben',
-  WITH_CLIENT: 'Zurückerhalten',
-  RETURNED: 'Abgeschlossen',
-  COMPLETED: '',
-};
+const BINDER_FLOW = {
+  terminalStatus: 'COMPLETED',
+  labels: {
+    PREPARED: 'Vorbereitet',
+    WITH_CLIENT: 'Beim Mandanten',
+    RETURNED: 'Zurück',
+    COMPLETED: 'Abgeschlossen',
+  },
+  badgeClasses: {
+    PREPARED: 'badge-gray',
+    WITH_CLIENT: 'badge-yellow',
+    RETURNED: 'badge-green',
+    COMPLETED: 'badge-gray',
+  },
+  next: {
+    PREPARED: 'WITH_CLIENT',
+    WITH_CLIENT: 'RETURNED',
+    RETURNED: 'COMPLETED',
+    COMPLETED: null,
+  },
+  transitionLabels: {
+    PREPARED: 'Ausgegeben',
+    WITH_CLIENT: 'Zurückerhalten',
+    RETURNED: 'Abgeschlossen',
+    COMPLETED: '',
+  },
+} satisfies ClientStatusFlowDefinition<BinderStatus>;
 
 export function BindersBlock({ clientId, initial }: { clientId: string; initial: Binder[] }) {
-  const router = useRouter();
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
     createBinderAction,
     null,
   );
-  const [isMutating, startMut] = useTransition();
-  const [open, setOpen] = useState(false);
-
-  function advance(id: string, next: BinderStatus) {
-    startMut(async () => {
-      await updateBinderStatusAction({ id, status: next });
-      router.refresh();
-    });
-  }
-
-  function remove(id: string) {
-    if (!confirm('Pendelordner löschen?')) return;
-    startMut(async () => {
-      await deleteBinderAction({ id });
-      router.refresh();
-    });
-  }
-
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const active = initial.filter((b) => b.status !== 'COMPLETED');
-  const completed = initial.filter((b) => b.status === 'COMPLETED');
+
+  const isOverdue = (binder: Binder) => {
+    const due = binder.expectedReturnAt ? new Date(binder.expectedReturnAt) : null;
+    return binder.status === 'WITH_CLIENT' && due !== null && due.getTime() < today.getTime();
+  };
 
   return (
-    <div className="card overflow-hidden">
-      <div className="card-header">
-        <h2 className="text-sm font-medium text-primary inline-flex items-center gap-2">
-          <FolderInput className="h-4 w-4 text-disabled" />
-          Pendelordner ({active.length})
-        </h2>
-        <button
-          type="button"
-          onClick={() => setOpen((o) => !o)}
-          className="btn-secondary text-xs inline-flex items-center gap-1"
-        >
-          <Plus className="h-3 w-3" />
-          Neu
-        </button>
-      </div>
-
-      {open && (
+    <ClientStatusFlowCard<BinderStatus, Binder>
+      title="Pendelordner"
+      icon={FolderInput}
+      items={initial}
+      flow={BINDER_FLOW}
+      emptyText="Keine aktiven Pendelordner."
+      updateStatus={(id, status) => updateBinderStatusAction({ id, status })}
+      deleteItem={(id) => deleteBinderAction({ id })}
+      confirmDelete={() => confirm('Pendelordner löschen?')}
+      transitionTitle={(_binder, _next, label) => `Status: ${label}`}
+      renderCreateForm={(close) => (
         <form
           action={formAction}
           className="p-4 border-b border-default bg-gray-50/50 dark:bg-gray-900/30 space-y-2"
@@ -126,7 +106,7 @@ export function BindersBlock({ clientId, initial }: { clientId: string; initial:
           <div className="flex justify-end gap-2">
             <button
               type="button"
-              onClick={() => setOpen(false)}
+              onClick={close}
               disabled={isPending}
               className="btn-secondary text-xs"
             >
@@ -139,93 +119,30 @@ export function BindersBlock({ clientId, initial }: { clientId: string; initial:
           {state && !state.ok && <p className="text-xs text-red-700">{state.error}</p>}
         </form>
       )}
-
-      {active.length === 0 ? (
-        <p className="px-6 py-6 text-sm text-disabled text-center">Keine aktiven Pendelordner.</p>
-      ) : (
-        <ul className="divide-y divide-border-subtle">
-          {active.map((b) => {
-            const due = b.expectedReturnAt ? new Date(b.expectedReturnAt) : null;
-            const overdue =
-              b.status === 'WITH_CLIENT' && due !== null && due.getTime() < today.getTime();
-            const next = NEXT_STATUS[b.status];
-            return (
-              <li key={b.id} className="px-6 py-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-primary inline-flex items-center gap-2">
-                      {b.label}
-                      <span className={`${STATUS_BADGE[b.status]} text-[10px]`}>
-                        {STATUS_LABELS[b.status]}
-                      </span>
-                      {overdue && <span className="badge-red text-[10px]">überfällig</span>}
-                    </p>
-                    {b.contents && (
-                      <p className="text-xs text-secondary mt-1 whitespace-pre-wrap">
-                        {b.contents}
-                      </p>
-                    )}
-                    <p className="text-[11px] text-muted mt-1 flex flex-wrap gap-x-3">
-                      {b.sentAt && <span>ausgegeben {fmtDateShort(new Date(b.sentAt))}</span>}
-                      {due && (
-                        <span className={overdue ? 'text-red-700 font-medium' : ''}>
-                          erwartet {fmtDateShort(due)}
-                        </span>
-                      )}
-                      {b.returnedAt && <span>zurück {fmtDateShort(new Date(b.returnedAt))}</span>}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    {next && (
-                      <button
-                        type="button"
-                        onClick={() => advance(b.id, next)}
-                        disabled={isMutating}
-                        className="btn-secondary text-[11px] py-1 inline-flex items-center gap-1"
-                        title={`Status: ${NEXT_LABEL[b.status]}`}
-                      >
-                        {next === 'COMPLETED' ? (
-                          <Check className="h-3 w-3" />
-                        ) : (
-                          <ArrowRight className="h-3 w-3" />
-                        )}
-                        {NEXT_LABEL[b.status]}
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => remove(b.id)}
-                      disabled={isMutating}
-                      className="text-disabled hover:text-red-700 p-1"
-                      title="Löschen"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-
-      {completed.length > 0 && (
-        <details className="border-t border-default">
-          <summary className="px-6 py-2 text-xs text-muted cursor-pointer">
-            {completed.length} abgeschlossen
-          </summary>
-          <ul className="divide-y divide-border-subtle">
-            {completed.map((b) => (
-              <li key={b.id} className="px-6 py-2 text-sm text-muted flex justify-between gap-2">
-                <span className="truncate">{b.label}</span>
-                {b.returnedAt && (
-                  <span className="text-xs">{fmtDateShort(new Date(b.returnedAt))}</span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
-    </div>
+      renderStatusAdornment={(binder) =>
+        isOverdue(binder) ? <span className="badge-red text-[10px]">überfällig</span> : null
+      }
+      renderMeta={(binder) => {
+        const due = binder.expectedReturnAt ? new Date(binder.expectedReturnAt) : null;
+        const overdue = isOverdue(binder);
+        return (
+          <p className="text-[11px] text-muted mt-1 flex flex-wrap gap-x-3">
+            {binder.sentAt && <span>ausgegeben {fmtDateShort(new Date(binder.sentAt))}</span>}
+            {due && (
+              <span className={overdue ? 'text-red-700 font-medium' : ''}>
+                erwartet {fmtDateShort(due)}
+              </span>
+            )}
+            {binder.returnedAt && <span>zurück {fmtDateShort(new Date(binder.returnedAt))}</span>}
+          </p>
+        );
+      }}
+      completedSummary={(count) => `${count} abgeschlossen`}
+      renderCompletedMeta={(binder) =>
+        binder.returnedAt ? (
+          <span className="text-xs">{fmtDateShort(new Date(binder.returnedAt))}</span>
+        ) : null
+      }
+    />
   );
 }

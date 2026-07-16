@@ -1,7 +1,6 @@
-﻿import { redirect } from 'next/navigation';
-import Link from 'next/link';
+﻿import Link from 'next/link';
 import { Plane, CalendarOff, Check, X, Inbox, UserCheck } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { hasStaffPermission } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { VacationForm } from './vacation-form';
@@ -28,8 +27,7 @@ const kindLabels: Record<string, string> = {
 };
 
 export default async function AbsencesPage() {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
 
   const { tenantId, staffId } = session.user;
   // iter87: Entscheiden + Meldungen einsehen via Einzelrecht (Admin/Partner implizit).

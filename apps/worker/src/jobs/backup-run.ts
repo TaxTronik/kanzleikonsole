@@ -18,17 +18,15 @@
 //     Audit-Hash-Chain.
 // =============================================================================
 
-import { spawn } from 'node:child_process';
-import { createHash, randomBytes } from 'node:crypto';
-import { PassThrough } from 'node:stream';
+import { randomBytes } from 'node:crypto';
 import { DeleteObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { Worker } from 'bullmq';
 import { env } from '@taxtronik/config';
 import { EvidenceService, LocalTimestampAdapter, Rfc3161HttpAdapter } from '@taxtronik/evidence';
+import { pgConnArgs, pgDumpArgs, prismaBytes, spawnPgDump } from '@taxtronik/db/pg-tools';
 import { connection, type ChecksJob } from '../queues';
 import { prismaOwner } from '../prisma-owner';
-import { pgConnArgs, prismaBytes } from '../pg-conn';
 import { log } from '../logger';
 
 const BACKUP_BUCKET = env.S3_BUCKET_BACKUPS ?? 'backups';
@@ -142,37 +140,9 @@ export async function runScheduledBackup(
   // REVOKEs auf Audit-Tabellen und SECURITY-DEFINER-Funktionen sowie die
   // gezielten Grants an taxtronik_app. Nur Ownership wird portabel gemacht;
   // Privilegien muessen im Dump erhalten bleiben.
-  const args = ['--format=custom', '--no-owner', '--compress=6', ...conn.args];
-  const pgDumpPath = process.env['PG_DUMP_PATH'] ?? 'pg_dump';
-  const child = spawn(pgDumpPath, args, { env: { ...process.env, ...conn.env } });
-
-  const hash = createHash('sha256');
-  let sizeBytes = 0;
-  let stderrBuf = '';
-  child.stderr.on('data', (c: Buffer) => {
-    stderrBuf += c.toString('utf8');
-  });
-  const body = new PassThrough();
-  child.stdout.on('data', (c: Buffer) => {
-    hash.update(c);
-    sizeBytes += c.length;
-  });
-  child.stdout.pipe(body);
-
-  // Ein Spawn-Fehler (ENOENT: pg_dump nicht im PATH, falscher PG_DUMP_PATH,
-  // Image ohne postgresql-client) emittiert 'error' statt 'exit'. Ohne Handler
-  // wirft das unbehandelte 'error'-Event in Node und reißt den GESAMTEN Worker-
-  // Prozess mit (nicht nur diesen Job); zusätzlich endet child.stdout nie →
-  // body bekommt kein 'end' → upload.done() hinge unbegrenzt. Wir zerstören
-  // body mit dem Fehler (upload.done() rejected dann sauber) und resolven exit
-  // mit -1, damit keine unbehandelte Promise-Rejection entsteht.
-  const exit = new Promise<number>((resolve) => {
-    child.on('exit', (code) => resolve(code ?? -1));
-    child.on('error', (e) => {
-      body.destroy(e as Error);
-      resolve(-1);
-    });
-  });
+  const dump = spawnPgDump(conn.env, pgDumpArgs(conn.args));
+  let sha: Buffer;
+  let sizeBytes: number;
 
   try {
     const upload = new Upload({
@@ -180,22 +150,20 @@ export async function runScheduledBackup(
       params: {
         Bucket: BACKUP_BUCKET,
         Key: key,
-        Body: body,
+        Body: dump.stream,
         ContentType: 'application/octet-stream',
       },
       queueSize: 4,
       partSize: 5 * 1024 * 1024,
     });
     await upload.done();
-    const code = await exit;
-    if (code !== 0) throw new Error(`pg_dump exit ${code}: ${stderrBuf.slice(0, 1000)}`);
+    ({ sha, sizeBytes } = await dump.result());
   } catch (e) {
     const err = `Backup fehlgeschlagen: ${(e as Error).message}`;
     // pg_dump-Prozess beenden, falls er noch läuft (z.B. Upload-Init-Fehler):
     // sonst bleibt er als Zombie hängen und hält eine DB-Connection. body
     // ebenfalls schließen, damit child.stdout nicht im Backpressure blockiert.
-    if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM');
-    if (!body.destroyed) body.destroy();
+    dump.abort();
     // Verwaistes (evtl. unvollständiges) Objekt best-effort entfernen.
     await s3
       .send(new DeleteObjectCommand({ Bucket: BACKUP_BUCKET, Key: key }))
@@ -208,7 +176,6 @@ export async function runScheduledBackup(
     return { ok: false, error: err };
   }
 
-  const sha = hash.digest();
   await markAll(
     records,
     {

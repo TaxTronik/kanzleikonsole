@@ -139,25 +139,35 @@ describe('gebundener GwG-Änderungsentwurf', () => {
   });
 
   it('führt Claim, CAS und Rechtsform-Recheck vor jeder Portal-Datenmutation aus', () => {
-    const source = readFileSync(
-      new URL('../../../app/gwg-onboarding/actions.ts', import.meta.url),
-      'utf8',
+    const source = readFileSync(new URL('../submission-transaction.ts', import.meta.url), 'utf8');
+    const script = source.slice(
+      source.indexOf('export async function runOnboardingSubmissionTransactionTx'),
     );
-    const claim = source.indexOf('await claimCurrentGwgInviteSubmitTx(tx,');
-    const boundCas = source.indexOf('await resolveBoundGwgInviteDraftTx(tx,');
-    const unboundCas = source.indexOf('await canStartUnboundGwgInviteTx(tx,');
-    const currentClient = source.indexOf('const currentClient = await tx.client.findFirst(');
-    const kindRecheck = source.indexOf('currentClient.kind !== invite.client.kind');
-    const firstClientMutation = source.indexOf('await tx.client.update(');
-    const firstPersonMutation = source.indexOf('await tx.gwgRepresentative.deleteMany(');
+    const claim = script.indexOf('await claimCurrentGwgInviteSubmitTx(tx,');
+    const review = script.indexOf('await resolveSubmissionReviewTx(tx,');
+    const currentClient = script.indexOf('await loadSubmissionClientTx(tx,');
+    const firstClientMutation = script.indexOf('await persistClientMasterPhaseTx(tx,');
+    const firstPersonMutation = script.indexOf('await replaceSubmittedPeopleTx(tx,');
 
     expect(claim).toBeGreaterThan(-1);
-    expect(claim).toBeLessThan(boundCas);
-    expect(claim).toBeLessThan(unboundCas);
-    expect(boundCas).toBeLessThan(currentClient);
-    expect(unboundCas).toBeLessThan(currentClient);
-    expect(currentClient).toBeLessThan(kindRecheck);
-    expect(kindRecheck).toBeLessThan(firstClientMutation);
-    expect(kindRecheck).toBeLessThan(firstPersonMutation);
+    expect(claim).toBeLessThan(review);
+    expect(review).toBeLessThan(currentClient);
+    expect(currentClient).toBeLessThan(firstClientMutation);
+    expect(currentClient).toBeLessThan(firstPersonMutation);
+
+    const reviewPhase = source.slice(
+      source.indexOf('async function resolveSubmissionReviewTx'),
+      source.indexOf('async function loadSubmissionClientTx'),
+    );
+    expect(reviewPhase).toContain('await resolveBoundGwgInviteDraftTx(tx,');
+    expect(reviewPhase).toContain('await canStartUnboundGwgInviteTx(tx,');
+
+    const clientPhase = source.slice(
+      source.indexOf('async function loadSubmissionClientTx'),
+      source.indexOf('async function resetSubmissionReviewRiskTx'),
+    );
+    expect(clientPhase.indexOf('await tx.client.findFirst(')).toBeLessThan(
+      clientPhase.indexOf('client.kind !== invite.clientKind'),
+    );
   });
 });

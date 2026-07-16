@@ -28,6 +28,7 @@ export default async function PortalDashboardPage() {
             where: { clientId },
             orderBy: { createdAt: 'desc' },
             take: 5,
+            select: { id: true, title: true, status: true, dueAt: true },
           }),
           // „Das brauchen wir von Ihnen": offene Anforderungen + offene Formulare.
           tx.request.findMany({

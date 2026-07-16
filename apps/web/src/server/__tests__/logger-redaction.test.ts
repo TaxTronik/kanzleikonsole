@@ -17,7 +17,10 @@ describe('logger secret redaction', () => {
         callback();
       },
     });
-    const testLog = pino({ redact: { paths: LOG_REDACT_PATHS, censor: '[redacted]' } }, stream);
+    const testLog = pino(
+      { redact: { paths: [...LOG_REDACT_PATHS], censor: '[redacted]' } },
+      stream,
+    );
     const rawUrl = 'https://portal.example.test/verify?token=raw-one-time-token';
 
     testLog.info({

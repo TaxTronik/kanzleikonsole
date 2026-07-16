@@ -9,6 +9,7 @@
 // =============================================================================
 
 import type { NotificationKind } from '@prisma/client';
+import { upsertNotificationTx } from '@taxtronik/db/notification';
 import { Prisma } from '@taxtronik/db/prisma-client';
 import { withWorkerTenantContext } from './tenant-context';
 
@@ -28,41 +29,7 @@ export async function upsertNotification(
 ): Promise<void> {
   try {
     await withWorkerTenantContext(tenantId, async (tx) => {
-      // Race-Serialisierung je Dedupe-Key (siehe notifications/service.ts):
-      // schließt die findFirst-then-create-Lücke auch für Kinds ohne
-      // Daily-Dedupe-Index (dort feuert P2002 nie). Transaktionsgebunden,
-      // blockiert nur identische Keys.
-      const lockKey = `notify:${tenantId}:${staffId}:${data.kind}:${data.resourceType}:${data.resourceId}`;
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
-      const existing = await tx.notification.findFirst({
-        where: {
-          tenantId,
-          staffId,
-          kind: data.kind,
-          resourceType: data.resourceType,
-          resourceId: data.resourceId,
-          readAt: null,
-        },
-      });
-      if (existing) {
-        await tx.notification.update({
-          where: { id: existing.id },
-          data: { title: data.title, body: data.body, href: data.href, createdAt: new Date() },
-        });
-        return;
-      }
-      await tx.notification.create({
-        data: {
-          tenantId,
-          staffId,
-          kind: data.kind,
-          title: data.title,
-          body: data.body,
-          href: data.href,
-          resourceType: data.resourceType,
-          resourceId: data.resourceId,
-        },
-      });
+      await upsertNotificationTx(tx, { tenantId, staffId, ...data });
     });
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {

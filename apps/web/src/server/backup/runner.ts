@@ -16,54 +16,21 @@
 // `backups` mit kurzer Retention konfigurierbar.
 // =============================================================================
 
-import { spawn } from 'node:child_process';
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { unlink } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
-import { PassThrough } from 'node:stream';
 import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import type { PrismaClient } from '@prisma/client';
 import { env } from '@taxtronik/config';
-import { prismaBytes } from '@/server/db/prisma-bytes';
+import { pgConnArgs, pgDumpArgs, prismaBytes, spawnPgDump } from '@taxtronik/db/pg-tools';
 import { prismaOwner as ownerSingleton } from '@/server/db/prisma-owner';
 import { evidenceService } from '@/server/container';
 import { ensureBackupLocalPathForKey } from './local-path';
 import { matchesSingleTenantBackupScope } from './scope';
 
 const BACKUP_BUCKET = process.env['S3_BUCKET_BACKUPS'] ?? 'backups';
-
-/**
- * P-2: Verbindungs-URL in Args + PGPASSWORD-ENV zerlegen. spawn-Argumente
- * sind via /proc/<pid>/cmdline / `ps auxe` für andere User auf dem Host
- * sichtbar — eine vollständige `postgresql://user:pw@host/db`-URL als Arg
- * leakt das DB-Superuser-Passwort. PGPASSWORD wird hingegen nur an den
- * Child-Prozess durchgereicht und nicht in cmdline aufgeführt.
- */
-function buildPgConnArgs(dbUrl: string): {
-  args: string[];
-  env: Record<string, string>;
-} {
-  const u = new URL(dbUrl);
-  const args = [
-    '-h',
-    u.hostname,
-    '-p',
-    u.port || '5432',
-    '-U',
-    decodeURIComponent(u.username),
-    '-d',
-    u.pathname.slice(1) || decodeURIComponent(u.username),
-  ];
-  // SSL-Mode aus Query-String übernehmen, falls gesetzt (postgresql://...?sslmode=require)
-  const sslmode = u.searchParams.get('sslmode');
-  const env: Record<string, string> = {
-    PGPASSWORD: decodeURIComponent(u.password),
-  };
-  if (sslmode) env.PGSSLMODE = sslmode;
-  return { args, env };
-}
 
 export interface BackupResult {
   ok: boolean;
@@ -74,86 +41,6 @@ export interface BackupResult {
   key?: string;
   sha256?: string;
   localPath?: string;
-}
-
-/**
- * DRY: gemeinsame pg_dump-Argumentliste für S3- UND Datei-Sink. MUSS identisch
- * bleiben, damit der Restore-Selbsttest (runner --out-file → restore --file)
- * exakt denselben Dump-Code-Pfad testet, der auch in Produktion läuft.
- */
-function buildPgDumpArgs(connArgs: string[]): string[] {
-  return ['--format=custom', '--no-owner', '--compress=6', ...connArgs];
-}
-
-/**
- * DRY: startet pg_dump und liefert einen Stream der Dump-Bytes, während SHA-256
- * und Größe nebenbei berechnet werden. Den Stream konsumiert der jeweilige Sink
- * (S3-Upload bzw. lokale Datei). `result()` blockt bis pg_dump beendet ist und
- * gibt Hash + Größe zurück oder wirft bei Exit-Code ≠ 0.
- */
-function spawnPgDump(
-  connEnv: Record<string, string>,
-  args: string[],
-): {
-  stream: PassThrough;
-  result: () => Promise<{ sha: Buffer; sizeBytes: number }>;
-} {
-  const pgDumpPath = process.env['PG_DUMP_PATH'] ?? 'pg_dump';
-  // F7: pg_dump.stdout direkt zum Sink streamen — kein Buffer.concat über
-  // den ganzen Dump. Hash + Größe werden via PassThrough nebenbei berechnet.
-  const child = spawn(pgDumpPath, args, {
-    env: { ...process.env, ...connEnv },
-  });
-
-  const hash = createHash('sha256');
-  let sizeBytes = 0;
-  let stderrBuf = '';
-
-  child.stderr.on('data', (c: Buffer) => {
-    stderrBuf += c.toString('utf8');
-  });
-
-  const through = new PassThrough();
-  child.stdout.on('data', (c: Buffer) => {
-    hash.update(c);
-    sizeBytes += c.length;
-  });
-  child.stdout.pipe(through);
-
-  // Startfehler (z. B. ENOENT, wenn pg_dump nicht im PATH liegt) feuern als
-  // 'error'-Event auf einem späteren Tick — ohne Listener wäre das eine
-  // uncaught exception, und 'exit' feuert danach nie (result() hinge ewig).
-  let dumpExitCode: number | null = null;
-  let spawnError: Error | null = null;
-  child.on('exit', (code) => {
-    dumpExitCode = code ?? -1;
-  });
-  child.on('error', (err) => {
-    spawnError = err;
-    // Sink-Seite abbrechen, sonst wartet pipeline() endlos auf Daten.
-    through.destroy(err);
-  });
-
-  const result = async (): Promise<{ sha: Buffer; sizeBytes: number }> => {
-    if (spawnError === null && dumpExitCode === null) {
-      await new Promise<void>((resolve) => {
-        child.on('exit', (code) => {
-          dumpExitCode = code ?? -1;
-          resolve();
-        });
-        child.on('error', () => resolve());
-      });
-    }
-    if (spawnError !== null) {
-      throw new Error(`pg_dump konnte nicht gestartet werden: ${spawnError.message}`);
-    }
-    if (dumpExitCode !== 0) {
-      throw new Error(`pg_dump exit ${String(dumpExitCode)}: ${stderrBuf.slice(0, 1000)}`);
-    }
-    return { sha: hash.digest(), sizeBytes };
-  };
-
-  return { stream: through, result };
 }
 
 /**
@@ -206,14 +93,14 @@ export async function runBackup(options: { singleTenantId?: string } = {}): Prom
   const key = `pgdump/${yyyy}/${mm}/${dd}/taxtronik-${yyyy}${mm}${dd}-${hh}${mi}${ss}-${rnd}.sql.gz`;
 
   // P-2: connection-URL parsen, Passwort in PGPASSWORD, Rest als Args
-  let connArgs: ReturnType<typeof buildPgConnArgs>;
+  let connArgs: ReturnType<typeof pgConnArgs>;
   try {
-    connArgs = buildPgConnArgs(dumpUrl);
+    connArgs = pgConnArgs(dumpUrl);
   } catch (e) {
     await failAll(prismaOwner, records, `DATABASE_URL nicht parsebar: ${(e as Error).message}`);
     return { ok: false, error: 'DATABASE_URL nicht parsebar' };
   }
-  const args = buildPgDumpArgs(connArgs.args);
+  const args = pgDumpArgs(connArgs.args);
 
   let localPath: string;
   try {
@@ -229,6 +116,8 @@ export async function runBackup(options: { singleTenantId?: string } = {}): Prom
   try {
     await pipeline(dump.stream, createWriteStream(localPath, { mode: 0o600 }));
   } catch (e) {
+    dump.abort();
+    await dump.result().catch(() => undefined);
     const errMsg = `Lokaler Backup-Write fehlgeschlagen: ${(e as Error).message}`;
     await unlink(localPath).catch(() => undefined);
     await failAll(prismaOwner, records, errMsg);
@@ -376,13 +265,13 @@ async function dumpToFile(outFile: string): Promise<BackupResult> {
   if (!dumpUrl) {
     return { ok: false, error: 'DATABASE_URL nicht gesetzt' };
   }
-  let connArgs: ReturnType<typeof buildPgConnArgs>;
+  let connArgs: ReturnType<typeof pgConnArgs>;
   try {
-    connArgs = buildPgConnArgs(dumpUrl);
+    connArgs = pgConnArgs(dumpUrl);
   } catch (e) {
     return { ok: false, error: `DATABASE_URL nicht parsebar: ${(e as Error).message}` };
   }
-  const args = buildPgDumpArgs(connArgs.args);
+  const args = pgDumpArgs(connArgs.args);
 
   const dump = spawnPgDump(connArgs.env, args);
 
@@ -391,6 +280,8 @@ async function dumpToFile(outFile: string): Promise<BackupResult> {
   try {
     await pipeline(dump.stream, createWriteStream(outFile, { mode: 0o600 }));
   } catch (e) {
+    dump.abort();
+    await dump.result().catch(() => undefined);
     return {
       ok: false,
       error: `Schreiben nach ${outFile} fehlgeschlagen: ${(e as Error).message}`,

@@ -1,8 +1,8 @@
 ﻿import Link from 'next/link';
-import { redirect } from 'next/navigation';
+
 import { Shield, Plus, AlertTriangle } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
-import { isStaffAdmin } from '@/server/auth/rbac';
+import { requireStaffPage } from '@/server/auth/staff-page';
+
 import { withTenantContext } from '@taxtronik/db';
 import { fmtDateShort } from '@/lib/fmt';
 
@@ -23,11 +23,7 @@ const statusLabels: Record<string, string> = {
 };
 
 export default async function DsgvoPage() {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
-  if (!isStaffAdmin(session)) {
-    redirect('/staff/dashboard');
-  }
+  const session = await requireStaffPage({ admin: true });
 
   const { tenantId, staffId } = session.user;
 

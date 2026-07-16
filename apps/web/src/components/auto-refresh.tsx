@@ -13,7 +13,22 @@
 import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 
-const REFRESH_INTERVAL_MS = 30_000;
+export const REFRESH_INTERVAL_MS = 120_000;
+
+const STAFF_CLIENT_DETAIL_PATH =
+  /^\/staff\/clients\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\/?$/i;
+
+/**
+ * Zentrale Route-Policy fuer automatische Voll-Refreshes. Teure Seiten koennen
+ * hier gezielt pausiert werden, ohne das Polling in den Layouts zu duplizieren.
+ */
+export function isAutomaticRefreshEnabled(pathname: string): boolean {
+  if (pathname.startsWith('/staff/admin/audit')) return false;
+  // Das Mandanten-Cockpit laedt viele unabhaengige Bloecke und bis zu 1.000
+  // Dokumente. Dort bleiben manuelle Refreshes und Server-Action-Revalidierung
+  // verfuegbar, periodische/Bell-getriebene Voll-Refreshes sind aber pausiert.
+  return !STAFF_CLIENT_DETAIL_PATH.test(pathname);
+}
 
 /**
  * True, wenn der Nutzer gerade in einem Eingabefeld tippt — dann darf kein
@@ -36,7 +51,7 @@ export function AutoRefresh() {
   const router = useRouter();
   const pathname = usePathname();
   useEffect(() => {
-    if (pathname.startsWith('/staff/admin/audit')) return;
+    if (!isAutomaticRefreshEnabled(pathname)) return;
 
     function tick(): void {
       // Nur refreshen, wenn der Tab sichtbar ist und der Nutzer nicht gerade

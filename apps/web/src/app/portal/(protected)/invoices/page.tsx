@@ -5,12 +5,11 @@ import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 
 import { fmtDateShort, fmtEUR, berlinTodayUtcMidnight } from '@/lib/fmt';
-const statusLabels: Record<string, string> = {
-  DRAFT: 'Entwurf',
+import { INVOICE_STATUS_LABELS } from '@/lib/domain-labels';
+
+const portalInvoiceStatusLabels: Readonly<Record<string, string>> = {
+  ...INVOICE_STATUS_LABELS,
   SENT: 'Offen',
-  PAID: 'Bezahlt',
-  OVERDUE: 'Überfällig',
-  CANCELLED: 'Storniert',
 };
 
 export default async function PortalInvoicesPage() {
@@ -75,16 +74,18 @@ export default async function PortalInvoicesPage() {
                         (overdue ? (
                           <span className="badge-red">Überfällig</span>
                         ) : (
-                          <span className="badge-yellow">{statusLabels[i.status]}</span>
+                          <span className="badge-yellow">
+                            {portalInvoiceStatusLabels[i.status]}
+                          </span>
                         ))}
                       {i.status === 'PAID' && (
-                        <span className="badge-green">{statusLabels[i.status]}</span>
+                        <span className="badge-green">{portalInvoiceStatusLabels[i.status]}</span>
                       )}
                       {i.status === 'OVERDUE' && (
-                        <span className="badge-red">{statusLabels[i.status]}</span>
+                        <span className="badge-red">{portalInvoiceStatusLabels[i.status]}</span>
                       )}
                       {i.status === 'CANCELLED' && (
-                        <span className="badge-gray">{statusLabels[i.status]}</span>
+                        <span className="badge-gray">{portalInvoiceStatusLabels[i.status]}</span>
                       )}
                     </td>
                     <td className="px-6 py-4">

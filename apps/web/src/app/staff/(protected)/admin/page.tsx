@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react';
-import { redirect } from 'next/navigation';
+
 import Link from 'next/link';
 import {
   ShieldCheck,
@@ -13,8 +13,8 @@ import {
   Circle,
   ArrowRight,
 } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
-import { isStaffAdmin } from '@/server/auth/rbac';
+import { requireStaffPage } from '@/server/auth/staff-page';
+
 import { withTenantContext } from '@taxtronik/db';
 import {
   BACKUP_DRILL_RESULT_SETTING_KEY,
@@ -29,16 +29,12 @@ import { findDueGwgDeletionDocs } from '@/server/gwg/retention';
 import { findDueClientAnonymizations } from '@/server/dsgvo/client-retention';
 import { LicenseCard } from './license-card';
 import { BackupRunButton } from './backup-run-button';
-import { fmtDateTimeShort } from '@/lib/fmt';
+import { fmtBytes, fmtDateTimeShort } from '@/lib/fmt';
 
 const APP_VERSION = process.env['APP_VERSION'] ?? 'dev';
 
 export default async function AdminPage() {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
-  if (!isStaffAdmin(session)) {
-    redirect('/staff/dashboard');
-  }
+  const session = await requireStaffPage({ admin: true });
 
   const { tenantId, staffId } = session.user;
 
@@ -490,11 +486,4 @@ function SmallKpi({
       {subtitle && <p className="text-xs text-muted">{subtitle}</p>}
     </div>
   );
-}
-
-function fmtBytes(b: number): string {
-  if (b < 1024) return `${b} B`;
-  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
-  if (b < 1024 * 1024 * 1024) return `${(b / 1024 / 1024).toFixed(1)} MB`;
-  return `${(b / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }

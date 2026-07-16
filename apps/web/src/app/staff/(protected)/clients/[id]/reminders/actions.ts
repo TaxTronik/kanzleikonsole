@@ -90,9 +90,10 @@ export async function markReminderDoneAction(input: { id: string }): Promise<Act
       resourceType: 'client_reminder',
       resourceId: parsed.data.id,
     });
+    return { clientId: rem.clientId };
   });
-  if (r.ok) {
-    revalidatePath('/staff/clients', 'layout');
+  if (r.ok && r.clientId) {
+    revalidatePath(`/staff/clients/${r.clientId}`);
     revalidatePath('/staff/dashboard');
   }
   return r;
@@ -209,9 +210,10 @@ export async function deleteReminderAction(input: { id: string }): Promise<Actio
       resourceId: parsed.data.id,
       before: { subject: rem?.subject ?? null },
     });
+    return { clientId: rem.clientId };
   });
-  if (r.ok) {
-    revalidatePath('/staff/clients', 'layout');
+  if (r.ok && r.clientId) {
+    revalidatePath(`/staff/clients/${r.clientId}`);
     revalidatePath('/staff/dashboard');
   }
   return r;

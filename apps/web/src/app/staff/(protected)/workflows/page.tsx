@@ -10,10 +10,9 @@
 // Links zu /staff/clients/<id>/workflows für Detail-Sicht.
 // =============================================================================
 
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { Workflow, Activity, User as UserIcon, AlertCircle, Plus } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
 import { fmtDateShort } from '@/lib/fmt';
@@ -28,8 +27,7 @@ export default async function ActiveWorkflowsPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
   const { tenantId, staffId } = session.user;
   const sp = await searchParams;
   const filter = (sp.filter ?? 'all') as 'all' | 'mine' | 'mineStart';
@@ -320,5 +318,3 @@ function KpiCard({
     </div>
   );
 }
-
-export const dynamic = 'force-dynamic';

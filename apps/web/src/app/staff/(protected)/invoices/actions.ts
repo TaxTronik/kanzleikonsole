@@ -24,6 +24,7 @@ import {
   staffActionGuard,
   withStaff,
   ActionError,
+  parseFormData,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
 import type { TenantContext } from '@taxtronik/db';
@@ -417,8 +418,8 @@ export async function markSentAction(
     return { ok: false, error: g.error };
   }
   const { tenantId, staffId, ctx } = g;
-  const parsed = StatusSchema.safeParse({ invoiceId: formData.get('invoiceId') });
-  if (!parsed.success) {
+  const parsed = parseFormData(StatusSchema, formData);
+  if (!parsed.ok) {
     log.warn({ component: 'invoices', action: 'markSent' }, 'markSentAction: ungültige invoiceId');
     return { ok: false, error: 'Ungültige Rechnungs-ID.' };
   }
@@ -563,8 +564,8 @@ export async function markSentAction(
 }
 
 export async function markPaidAction(formData: FormData): Promise<void> {
-  const parsed = StatusSchema.safeParse({ invoiceId: formData.get('invoiceId') });
-  if (!parsed.success) return;
+  const parsed = parseFormData(StatusSchema, formData);
+  if (!parsed.ok) return;
 
   const r = await withStaff(
     async (tx, { tenantId, staffId, session }) => {
@@ -607,8 +608,8 @@ export async function cancelInvoiceAction(formData: FormData): Promise<void> {
   const g = await staffActionGuard({ requirePermission: 'INVOICE_MANAGE' });
   if (!g.ok) throw new ActionError(g.error ?? 'Nicht berechtigt.');
   const { tenantId, staffId, ctx, session } = g;
-  const parsed = StatusSchema.safeParse({ invoiceId: formData.get('invoiceId') });
-  if (!parsed.success) return;
+  const parsed = parseFormData(StatusSchema, formData);
+  if (!parsed.ok) return;
   const invoiceId = parsed.data.invoiceId;
 
   // Tx A erzeugt bei einer bereits ausgestellten Rechnung NUR den

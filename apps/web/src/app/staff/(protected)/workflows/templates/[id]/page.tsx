@@ -5,16 +5,15 @@
 // `TemplateEditor`, die das Drag/Drop und Inline-Editing kapselt.
 // =============================================================================
 
-import { redirect, notFound } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { TemplateEditor } from './editor';
 
 export default async function TemplateEditorPage({ params }: { params: Promise<{ id: string }> }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
   const { id } = await params;
   const { tenantId, staffId } = session.user;
 

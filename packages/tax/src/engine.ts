@@ -370,6 +370,15 @@ export function berlinCalendarDate(instant: Date): Date {
   return new Date(Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day)));
 }
 
+/**
+ * UTC-Mitternacht des aktuellen Berlin-Kalendertags in der Kodierung unserer
+ * `@db.Date`-Spalten. Der optionale Instant macht die Tagesgrenze testbar und
+ * verhindert, dass Web und Worker eigene DST-sensitive Varianten pflegen.
+ */
+export function berlinTodayUtcMidnight(now: Date = new Date()): Date {
+  return berlinCalendarDate(now);
+}
+
 function berlinUtcOffsetMs(instant: Date): number {
   const parts = Object.fromEntries(
     berlinWallClockFormatter.formatToParts(instant).map((part) => [part.type, part.value]),

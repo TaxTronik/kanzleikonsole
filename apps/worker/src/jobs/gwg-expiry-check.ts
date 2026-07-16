@@ -250,6 +250,22 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
         },
       });
 
+      const existingIdDocRequests = expiringDocs.length
+        ? await prismaOwner.request.findMany({
+            where: {
+              tenantId,
+              status: { in: ['OPEN', 'IN_PROGRESS', 'RESPONDED'] },
+              linkedGwgIdDocumentId: { in: expiringDocs.map((doc) => doc.id) },
+            },
+            select: { linkedGwgIdDocumentId: true },
+          })
+        : [];
+      const requestedIdDocumentIds = new Set(
+        existingIdDocRequests.flatMap((request) =>
+          request.linkedGwgIdDocumentId ? [request.linkedGwgIdDocumentId] : [],
+        ),
+      );
+
       for (const doc of expiringDocs) {
         if (!doc.expiryDate) continue;
         const expiryMs = doc.expiryDate.getTime();
@@ -278,15 +294,7 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
         // statt Titel-Substring. Vorher: zwei BeneficialOwners „Müller" und
         // „Müller-Schmidt" teilten den `contains: ownerName`-Match — der
         // zweite Auto-Request wurde nie angelegt.
-        const existingRequest = await prismaOwner.request.findFirst({
-          where: {
-            tenantId,
-            clientId: doc.check.clientId,
-            status: { in: ['OPEN', 'IN_PROGRESS', 'RESPONDED'] },
-            linkedGwgIdDocumentId: doc.id,
-          },
-        });
-        if (!existingRequest && doc.check.client.allowActive) {
+        if (!requestedIdDocumentIds.has(doc.id) && doc.check.client.allowActive) {
           await prismaOwner.request.create({
             data: {
               tenantId,
@@ -301,6 +309,7 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
               linkedGwgIdDocumentId: doc.id,
             },
           });
+          requestedIdDocumentIds.add(doc.id);
           idDocRequests += 1;
         }
       }

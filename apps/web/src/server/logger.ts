@@ -12,26 +12,9 @@
 
 import pino from 'pino';
 import { env } from '@taxtronik/config';
+import { LOG_REDACT_PATHS } from '@taxtronik/config/logger';
 
-const SENSITIVE_LOG_FIELDS = [
-  'password',
-  'passwordHash',
-  'secret',
-  'token',
-  'totpSecret',
-  'totpSecretEnc',
-  'signingTokenHash',
-  'signingOtpHash',
-  'hmacSecret',
-  'apiKey',
-  'link',
-  'devSignInUrl',
-] as const;
-
-// fast-redact's `*.field` only matches nested properties, not root fields.
-// Exporting the effective paths lets the regression test exercise the exact
-// same configuration used by the application logger.
-export const LOG_REDACT_PATHS = SENSITIVE_LOG_FIELDS.flatMap((field) => [field, `*.${field}`]);
+export { LOG_REDACT_PATHS } from '@taxtronik/config/logger';
 
 export const log = pino({
   // Manche isolierten Unit-Tests mocken nur den jeweils relevanten ENV-
@@ -44,14 +27,7 @@ export const log = pino({
       ? { target: 'pino-pretty', options: { colorize: true } }
       : undefined,
   redact: {
-    paths: [
-      ...LOG_REDACT_PATHS,
-      // L-3: link-Property kann Magic-Link-URL mit eingebettetem Token enthalten.
-      // Auch in Production redacten — falls jemand versehentlich auch
-      // im Prod-Modus magic-link-Logs aktiv lässt.
-      'req.headers.cookie',
-      'req.headers.authorization',
-    ],
+    paths: [...LOG_REDACT_PATHS],
     censor: '[redacted]',
   },
 });

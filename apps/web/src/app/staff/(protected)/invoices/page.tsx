@@ -1,34 +1,27 @@
 ﻿import Link from 'next/link';
-import { redirect } from 'next/navigation';
+
 import { Receipt, Plus, FileDown } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { inaccessibleClientIdsFor, hasStaffPermission } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { Pagination } from '@/components/pagination';
 import type { Prisma, InvoiceStatus } from '@prisma/client';
 
 import { fmtDateShort, fmtEUR } from '@/lib/fmt';
+import { INVOICE_STATUS_LABELS } from '@/lib/domain-labels';
 const PAGE_SIZE = 50;
-const statusLabels: Record<string, string> = {
-  DRAFT: 'Entwurf',
-  SENT: 'Versendet',
-  PAID: 'Bezahlt',
-  OVERDUE: 'Überfällig',
-  CANCELLED: 'Storniert',
-};
 
 export default async function InvoicesPage({
   searchParams,
 }: {
   searchParams: Promise<{ status?: string; cursor?: string }>;
 }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
 
   const sp = await searchParams;
   const filterStatus =
-    sp.status && Object.keys(statusLabels).includes(sp.status)
-      ? (sp.status as keyof typeof statusLabels)
+    sp.status && Object.hasOwn(INVOICE_STATUS_LABELS, sp.status)
+      ? (sp.status as keyof typeof INVOICE_STATUS_LABELS)
       : null;
 
   const { tenantId, staffId } = session.user;
@@ -156,22 +149,22 @@ export default async function InvoicesPage({
                       </td>
                       <td className="px-6 py-4">
                         {i.status === 'DRAFT' && (
-                          <span className="badge-gray">{statusLabels[i.status]}</span>
+                          <span className="badge-gray">{INVOICE_STATUS_LABELS[i.status]}</span>
                         )}
                         {i.status === 'SENT' &&
                           (overdue ? (
                             <span className="badge-red">Überfällig</span>
                           ) : (
-                            <span className="badge-yellow">{statusLabels[i.status]}</span>
+                            <span className="badge-yellow">{INVOICE_STATUS_LABELS[i.status]}</span>
                           ))}
                         {i.status === 'PAID' && (
-                          <span className="badge-green">{statusLabels[i.status]}</span>
+                          <span className="badge-green">{INVOICE_STATUS_LABELS[i.status]}</span>
                         )}
                         {i.status === 'OVERDUE' && (
-                          <span className="badge-red">{statusLabels[i.status]}</span>
+                          <span className="badge-red">{INVOICE_STATUS_LABELS[i.status]}</span>
                         )}
                         {i.status === 'CANCELLED' && (
-                          <span className="badge-gray">{statusLabels[i.status]}</span>
+                          <span className="badge-gray">{INVOICE_STATUS_LABELS[i.status]}</span>
                         )}
                       </td>
                     </tr>

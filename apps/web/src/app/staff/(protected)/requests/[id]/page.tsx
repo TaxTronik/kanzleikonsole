@@ -1,7 +1,7 @@
-﻿import { staffAuth } from '@/server/auth/staff';
+﻿import { requireStaffPage } from '@/server/auth/staff-page';
 import { canAccessClientTx } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
-import { redirect, notFound } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { closeRequestAction } from '../../clients/[id]/requests/actions';
@@ -17,8 +17,7 @@ const statusLabels: Record<string, string> = {
 };
 
 export default async function RequestDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
 
   const { id } = await params;
   const { tenantId, staffId } = session.user;

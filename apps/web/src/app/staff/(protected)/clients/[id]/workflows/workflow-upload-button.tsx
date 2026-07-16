@@ -3,6 +3,8 @@
 import { useState, useTransition, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Upload, X, CheckCircle2, AlertCircle } from 'lucide-react';
+import { useDocumentCommit } from '@/components/use-document-commit';
+import { DOCUMENT_CLASSIFICATION_LABELS } from '@/lib/domain-labels';
 
 interface Props {
   itemId: string;
@@ -20,16 +22,6 @@ interface Props {
    */
   buttonLabel?: string;
 }
-
-const CLASSIFICATION_LABELS: Record<string, string> = {
-  GENERAL: 'Allgemein',
-  GOBD_INVOICE: 'GoBD Rechnung',
-  GOBD_CONTRACT: 'GoBD Vertrag',
-  GOBD_TAX: 'GoBD Steuer',
-  GWG_EVIDENCE: 'GwG-Nachweis',
-  PERSONNEL: 'Personal',
-  STAFF_PRIVATE: 'Intern',
-};
 
 interface UploadJob {
   id: number;
@@ -65,7 +57,9 @@ export function WorkflowUploadButton({
   }, []);
   const [jobs, setJobs] = useState<UploadJob[]>([]);
   const [isPending, start] = useTransition();
-  const classLabel = CLASSIFICATION_LABELS[expectedClassification] ?? expectedClassification;
+  const commitDocument = useDocumentCommit();
+  const classLabel =
+    DOCUMENT_CLASSIFICATION_LABELS[expectedClassification] ?? expectedClassification;
   const gobdRetentionYears = expectedClassification === 'GOBD_INVOICE' ? 8 : 10;
   const allDone = jobs.length > 0 && jobs.every((j) => j.status === 'done' || j.status === 'error');
 
@@ -102,14 +96,7 @@ export function WorkflowUploadButton({
       fd.set('workflowItemId', itemId);
 
       patchJob(job.id, { status: 'commit' });
-      const commitRes = await fetch('/api/staff/documents/commit', {
-        method: 'POST',
-        body: fd,
-      });
-      if (!commitRes.ok) {
-        const body = await commitRes.json().catch(() => ({}));
-        throw new Error((body as { error?: string }).error ?? `Upload (${commitRes.status})`);
-      }
+      await commitDocument(fd);
       patchJob(job.id, { status: 'done' });
       onUploaded?.();
     } catch (err) {

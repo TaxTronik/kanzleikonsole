@@ -14,6 +14,7 @@ import type { Prisma } from '@prisma/client';
 import type { TenantContext } from '@taxtronik/db';
 import { withTenantContext } from '@taxtronik/db';
 import { fmtEUR } from '@/lib/fmt';
+import { DOCUMENT_CLASSIFICATION_LABELS } from '@/lib/domain-labels';
 
 type TxClient = Prisma.TransactionClient;
 
@@ -268,7 +269,7 @@ export async function buildClientTimeline(
     }
 
     for (const inv of invoices) {
-      const amt = formatEur(inv.totalAmount);
+      const amt = fmtEUR(inv.totalAmount);
       events.push({
         id: `inv-create:${inv.id}`,
         occurredAt: inv.createdAt,
@@ -362,8 +363,8 @@ export async function buildClientTimeline(
     }
 
     for (const tn of taxNotices) {
-      const expected = tn.expectedAmount ? formatEur(tn.expectedAmount) : null;
-      const assessed = tn.assessedAmount ? formatEur(tn.assessedAmount) : null;
+      const expected = tn.expectedAmount ? fmtEUR(tn.expectedAmount) : null;
+      const assessed = tn.assessedAmount ? fmtEUR(tn.assessedAmount) : null;
       events.push({
         id: `tn:${tn.id}`,
         occurredAt: tn.createdAt,
@@ -497,16 +498,7 @@ async function loadResponses(
 }
 
 function classificationLabel(c: string): string {
-  const m: Record<string, string> = {
-    GOBD_INVOICE: 'GoBD Rechnung',
-    GOBD_CONTRACT: 'GoBD Vertrag',
-    GOBD_TAX: 'GoBD Steuer',
-    GWG_EVIDENCE: 'GwG-Nachweis',
-    PERSONNEL: 'Personal',
-    STAFF_PRIVATE: 'Intern',
-    GENERAL: 'Allgemein',
-  };
-  return m[c] ?? c;
+  return DOCUMENT_CLASSIFICATION_LABELS[c] ?? c;
 }
 
 function priorityLabel(p: string): string {
@@ -522,10 +514,4 @@ function priorityLabel(p: string): string {
 function truncate(s: string, n: number): string {
   if (s.length <= n) return s;
   return s.slice(0, n - 1) + '…';
-}
-
-function formatEur(d: { toString(): string }): string {
-  const n = Number(d.toString());
-  if (!Number.isFinite(n)) return '—';
-  return fmtEUR(n);
 }

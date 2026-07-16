@@ -6,25 +6,21 @@
 // Termine als erledigt markieren oder Auto-Anforderung öffnen.
 // =============================================================================
 
-import { redirect, notFound } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, CalendarDays, CheckCheck } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import type { Prisma, TaxScheduleKind } from '@prisma/client';
 import { SCHEDULE_LABELS } from '@taxtronik/tax';
 import { markDeadlineDoneAction, markDeadlinesDoneAction } from '../actions';
 import { fmtDateShort } from '@/lib/fmt';
+import { TAX_DEADLINE_STATUS_LABELS } from '@/lib/domain-labels';
 
-const STATUS_LABELS: Record<string, string> = {
-  PLANNED: 'Geplant',
+const GROUP_STATUS_LABELS: Readonly<Record<string, string>> = {
+  ...TAX_DEADLINE_STATUS_LABELS,
   REMINDED: 'Erinnerung',
-  IN_PROGRESS: 'In Bearbeitung',
-  SUBMITTED: 'Übermittelt',
-  DONE: 'Erledigt',
-  OVERDUE: 'Überfällig',
-  SKIPPED: 'Übersprungen',
 };
 
 const VALID_KINDS: TaxScheduleKind[] = [
@@ -47,8 +43,7 @@ export default async function TaxDeadlineGroupPage({
 }: {
   searchParams: Promise<{ kind?: string; period?: string; scope?: string; q?: string }>;
 }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
   const sp = await searchParams;
 
   if (!sp.kind || !sp.period) notFound();
@@ -242,25 +237,25 @@ function Section({
                 </td>
                 <td className="px-6 py-3">
                   {d.status === 'OVERDUE' && (
-                    <span className="badge-red">{STATUS_LABELS[d.status]}</span>
+                    <span className="badge-red">{GROUP_STATUS_LABELS[d.status]}</span>
                   )}
                   {d.status === 'REMINDED' && (
-                    <span className="badge-yellow">{STATUS_LABELS[d.status]}</span>
+                    <span className="badge-yellow">{GROUP_STATUS_LABELS[d.status]}</span>
                   )}
                   {d.status === 'PLANNED' && (
-                    <span className="badge-gray">{STATUS_LABELS[d.status]}</span>
+                    <span className="badge-gray">{GROUP_STATUS_LABELS[d.status]}</span>
                   )}
                   {d.status === 'IN_PROGRESS' && (
-                    <span className="badge-yellow">{STATUS_LABELS[d.status]}</span>
+                    <span className="badge-yellow">{GROUP_STATUS_LABELS[d.status]}</span>
                   )}
                   {d.status === 'SUBMITTED' && (
-                    <span className="badge-green">{STATUS_LABELS[d.status]}</span>
+                    <span className="badge-green">{GROUP_STATUS_LABELS[d.status]}</span>
                   )}
                   {d.status === 'DONE' && (
-                    <span className="badge-green">{STATUS_LABELS[d.status]}</span>
+                    <span className="badge-green">{GROUP_STATUS_LABELS[d.status]}</span>
                   )}
                   {d.status === 'SKIPPED' && (
-                    <span className="badge-gray">{STATUS_LABELS[d.status]}</span>
+                    <span className="badge-gray">{GROUP_STATUS_LABELS[d.status]}</span>
                   )}
                 </td>
                 <td className="px-6 py-3 text-xs text-muted">

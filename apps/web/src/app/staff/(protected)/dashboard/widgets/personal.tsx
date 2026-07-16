@@ -177,10 +177,20 @@ export async function MyWorkflows({ tx, staffId, deniedClientIds }: RenderCtx): 
     take: 15,
     include: {
       client: { select: { id: true, name: true } },
-      _count: { select: { items: true } },
-      items: { where: { doneAt: { not: null } }, select: { id: true } },
+      _count: {
+        select: { items: { where: { doneAt: { not: null } } } },
+      },
     },
   });
+
+  const itemTotals = instances.length
+    ? await tx.workflowItem.groupBy({
+        by: ['instanceId'],
+        where: { instanceId: { in: instances.map((instance) => instance.id) } },
+        _count: { _all: true },
+      })
+    : [];
+  const totalByInstanceId = new Map(itemTotals.map((row) => [row.instanceId, row._count._all]));
 
   return (
     <ListShell
@@ -204,10 +214,9 @@ export async function MyWorkflows({ tx, staffId, deniedClientIds }: RenderCtx): 
           startedByStaff: string;
           client: { id: string; name: string };
           _count: { items: number };
-          items: { id: string }[];
         }) => {
-          const done = inst.items.length;
-          const total = inst._count.items;
+          const done = inst._count.items;
+          const total = totalByInstanceId.get(inst.id) ?? 0;
           const pct = total > 0 ? Math.round((done / total) * 100) : 0;
           const startedByMe = inst.startedByStaff === staffId;
           return (

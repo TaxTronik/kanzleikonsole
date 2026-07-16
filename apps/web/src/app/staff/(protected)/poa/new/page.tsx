@@ -2,11 +2,11 @@
 import Link from 'next/link';
 import { randomUUID } from 'node:crypto';
 import { ArrowLeft } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { readModules } from '@/server/settings/modules';
 import { NewPoaForm } from './form';
-import { inaccessibleClientIdsFor, isStaffAdmin } from '@/server/auth/rbac';
+import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
 import { isUuid } from '@/lib/uuid';
 import { resolveInitialPoaClientId } from './client-selection';
 import { parsePoaCreateReturnContext } from './return-context';
@@ -23,9 +23,7 @@ export default async function NewPoaPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
-  if (!isStaffAdmin(session)) redirect('/staff/poa');
+  const session = await requireStaffPage({ admin: true, deniedRedirect: '/staff/poa' });
 
   const query = await searchParams;
   const returnContext = parsePoaCreateReturnContext(query.from);

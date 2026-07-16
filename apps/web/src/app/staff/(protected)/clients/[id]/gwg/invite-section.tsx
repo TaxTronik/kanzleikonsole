@@ -4,14 +4,7 @@ import { useState, useTransition } from 'react';
 import { Send, Copy, Check, X } from 'lucide-react';
 import { sendInviteAction, cancelInviteAction } from './invite-actions';
 import { fmtDateTimeShort } from '@/lib/fmt';
-
-const STATUS_LABELS: Record<string, string> = {
-  PENDING: 'Versendet',
-  STARTED: 'In Bearbeitung',
-  SUBMITTED: 'Übermittelt',
-  EXPIRED: 'Abgelaufen',
-  CANCELLED: 'Abgebrochen',
-};
+import { GWG_INVITE_STATUS_LABELS } from '@/lib/domain-labels';
 
 interface Contact {
   fullName: string;
@@ -208,7 +201,7 @@ export function InviteSection({
               </div>
               <div className="flex items-center gap-3">
                 <span className={i.status === 'STARTED' ? 'badge-yellow' : 'badge-gray'}>
-                  {STATUS_LABELS[i.status]}
+                  {GWG_INVITE_STATUS_LABELS[i.status]}
                 </span>
                 <button
                   type="button"
@@ -231,7 +224,7 @@ export function InviteSection({
                       {i.inviteName} · {i.inviteEmail}
                     </span>
                     <span>
-                      {STATUS_LABELS[i.status]}
+                      {GWG_INVITE_STATUS_LABELS[i.status]}
                       {i.submittedAt && ` · ${fmtDateTimeShort(new Date(i.submittedAt))}`}
                     </span>
                   </li>

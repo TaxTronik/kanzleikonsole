@@ -1,12 +1,10 @@
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { readTaxRegionSetting } from '@/server/settings/tax-region';
 import { TaxRegionForm } from '../tax-region-form';
 import { SectionCard } from '../section-card';
-import { redirect } from 'next/navigation';
 
 export default async function RegionSettingsPage() {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage({ admin: true });
   const { tenantId, staffId } = session.user;
   const taxRegion = await readTaxRegionSetting({ tenantId, actorId: staffId, actorType: 'STAFF' });
 

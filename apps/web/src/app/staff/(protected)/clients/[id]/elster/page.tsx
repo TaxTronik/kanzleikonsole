@@ -6,10 +6,10 @@
 // Abruf-Historie ist append-only (jeder Abruf = ELSTER-Vorgang).
 // =============================================================================
 
-import { redirect, notFound } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Landmark } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { isElsterConfigured } from '@taxtronik/elster';
 import { fmtDateTimeShort } from '@/lib/fmt';
@@ -22,8 +22,7 @@ const ART_LABELS: Record<string, string> = {
 };
 
 export default async function ElsterPage({ params }: { params: Promise<{ id: string }> }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
   const { id: clientId } = await params;
   const { tenantId, staffId } = session.user;
 

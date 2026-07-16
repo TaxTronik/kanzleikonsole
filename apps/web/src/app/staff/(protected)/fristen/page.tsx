@@ -9,10 +9,9 @@
 // Buch hält bewusst keinen eigenen Zustand.
 // =============================================================================
 
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { AlarmClock, FileDown, ExternalLink } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { loadKontrollbuch } from '@/server/fristen/kontrollbuch';
 import {
@@ -33,8 +32,7 @@ interface Search {
 }
 
 export default async function FristenPage({ searchParams }: { searchParams: Promise<Search> }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
   const { tenantId, staffId } = session.user;
 
   const sp = await searchParams;
@@ -44,10 +42,14 @@ export default async function FristenPage({ searchParams }: { searchParams: Prom
 
   const eintraege = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
-    (tx) => loadKontrollbuch(tx, session, { tage, nurStaffId: nurMeine ? staffId : null }),
+    (tx) =>
+      loadKontrollbuch(tx, session, {
+        tage,
+        nurOffene,
+        nurStaffId: nurMeine ? staffId : null,
+      }),
   );
 
-  const sichtbar = nurOffene ? eintraege.filter((e) => !e.erledigt) : eintraege;
   // bucketFor arbeitet in UTC-Tagesgrenzen (passend zu @db.Date = UTC-Mitternacht).
   // „Heute" muss daher der Berlin-Kalendertag als UTC-Mitternacht sein — sonst
   // landet eine Frist zwischen 00:00–02:00 Berlin im falschen Bucket.
@@ -56,7 +58,7 @@ export default async function FristenPage({ searchParams }: { searchParams: Prom
   // Offene nach Dringlichkeit gruppieren; Erledigte (falls eingeblendet) separat.
   const gruppen = new Map<FristBucket, FristEintrag[]>();
   const erledigte: FristEintrag[] = [];
-  for (const e of sichtbar) {
+  for (const e of eintraege) {
     if (e.erledigt) {
       erledigte.push(e);
       continue;
@@ -65,7 +67,7 @@ export default async function FristenPage({ searchParams }: { searchParams: Prom
     if (!gruppen.has(b)) gruppen.set(b, []);
     gruppen.get(b)!.push(e);
   }
-  const offeneCount = sichtbar.length - erledigte.length;
+  const offeneCount = eintraege.length - erledigte.length;
   const ueberfaellig = gruppen.get('UEBERFAELLIG')?.length ?? 0;
 
   const qs = (over: Partial<Record<string, string>>) => {
@@ -167,7 +169,7 @@ export default async function FristenPage({ searchParams }: { searchParams: Prom
         </div>
       </div>
 
-      {sichtbar.length === 0 ? (
+      {eintraege.length === 0 ? (
         <div className="card p-10 text-center text-sm text-muted">
           Keine Fristen im gewählten Zeitraum.
         </div>

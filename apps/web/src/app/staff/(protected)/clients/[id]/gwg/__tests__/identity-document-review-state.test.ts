@@ -1,86 +1,11 @@
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import * as ts from 'typescript';
 import { describe, expect, it } from 'vitest';
-
-interface IdentityReviewEditableFields {
-  type: 'PERSONALAUSWEIS' | 'REISEPASS';
-  number: string;
-  issuedBy: string;
-  issueDate: string;
-  expiryDate: string;
-}
-
-interface IdentityReviewLocalState {
-  revision: string;
-  fields: IdentityReviewEditableFields;
-  selectedSubjectKey: string;
-  ownerName: string;
-  confirmedRevision: string | null;
-}
-
-interface IdentityReviewSavedState extends IdentityReviewEditableFields {
-  subjectKey: string;
-  ownerName: string;
-}
-
-type ApplySave = (saved: IdentityReviewSavedState, revision: string) => IdentityReviewLocalState;
-type ReconcileServerState = (
-  current: IdentityReviewLocalState,
-  incoming: IdentityReviewLocalState,
-  supersededRevisions: ReadonlySet<string>,
-) => IdentityReviewLocalState;
-
-function loadStateFunctions(): {
-  applyIdentityReviewSave: ApplySave;
-  reconcileIdentityReviewServerState: ReconcileServerState;
-} {
-  const sourcePath = resolve(
-    dirname(fileURLToPath(import.meta.url)),
-    '..',
-    'identity-document-review.tsx',
-  );
-  const source = readFileSync(sourcePath, 'utf8');
-  const sourceFile = ts.createSourceFile(
-    sourcePath,
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TSX,
-  );
-  const names = new Set(['applyIdentityReviewSave', 'reconcileIdentityReviewServerState']);
-  const declarations = sourceFile.statements.filter(
-    (statement): statement is ts.FunctionDeclaration =>
-      ts.isFunctionDeclaration(statement) &&
-      statement.name !== undefined &&
-      names.has(statement.name.text),
-  );
-  expect(declarations.map((declaration) => declaration.name!.text).sort()).toEqual(
-    [...names].sort(),
-  );
-
-  const printer = ts.createPrinter();
-  const functions = declarations
-    .map((declaration) => printer.printNode(ts.EmitHint.Unspecified, declaration, sourceFile))
-    .join('\n')
-    .replace(/^export\s+/gm, '');
-  const javascript = ts.transpileModule(functions, {
-    compilerOptions: {
-      module: ts.ModuleKind.None,
-      target: ts.ScriptTarget.ES2022,
-    },
-  }).outputText;
-  const factory = new Function(
-    `${javascript}\nreturn { applyIdentityReviewSave, reconcileIdentityReviewServerState };`,
-  ) as () => {
-    applyIdentityReviewSave: ApplySave;
-    reconcileIdentityReviewServerState: ReconcileServerState;
-  };
-  return factory();
-}
-
-const { applyIdentityReviewSave, reconcileIdentityReviewServerState } = loadStateFunctions();
+import {
+  applyIdentityReviewSave,
+  identityReviewStateReducer,
+  reconcileIdentityReviewServerState,
+  type IdentityReviewLocalState,
+  type IdentityReviewSavedState,
+} from '../use-identity-review-state';
 
 function localState(
   revision: string,
@@ -192,5 +117,29 @@ describe('IdentityReviewCard revision state', () => {
     expect(
       reconcileIdentityReviewServerState(locallyEdited, externalUpdate, new Set(['revision-1'])),
     ).toBe(externalUpdate);
+  });
+
+  it('führt Edit, Save und verspätete Server-Revisionen deterministisch im Reducer', () => {
+    const initial = localState('revision-0');
+    const edited = identityReviewStateReducer(
+      { local: initial, lastServerRevision: initial.revision, supersededRevisions: [] },
+      { type: 'patch-fields', patch: { number: 'LOCAL' } },
+    );
+    expect(edited.local.fields.number).toBe('LOCAL');
+
+    const afterSave = identityReviewStateReducer(edited, {
+      type: 'save-succeeded',
+      saved: saved(1),
+      revision: 'revision-1',
+      submittedRevision: 'revision-0',
+    });
+    expect(afterSave.local.revision).toBe('revision-1');
+    expect(afterSave.supersededRevisions).toContain('revision-0');
+
+    const delayed = identityReviewStateReducer(afterSave, {
+      type: 'server-state',
+      incoming: localState('revision-0'),
+    });
+    expect(delayed.local).toBe(afterSave.local);
   });
 });

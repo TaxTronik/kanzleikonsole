@@ -7,7 +7,12 @@ import { evidenceService } from '@/server/container';
 import { requestMagicLink } from '@/server/auth/magic-link';
 import { revokeAllSessions } from '@/server/auth/revocation';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
-import { withStaff, staffActionGuard, ActionError } from '@/server/actions/staff-action';
+import {
+  withStaff,
+  staffActionGuard,
+  ActionError,
+  parseFormData,
+} from '@/server/actions/staff-action';
 
 const InviteSchema = z.object({
   clientId: z.string().uuid(),
@@ -246,10 +251,11 @@ export async function deactivateContactAction(formData: FormData): Promise<void>
   const { ctx, session } = g;
 
   // S2: UUID-Validation für beide IDs.
-  const parsed = z
-    .object({ contactId: z.string().uuid(), clientId: z.string().uuid() })
-    .safeParse({ contactId: formData.get('contactId'), clientId: formData.get('clientId') });
-  if (!parsed.success) return;
+  const parsed = parseFormData(
+    z.object({ contactId: z.string().uuid(), clientId: z.string().uuid() }),
+    formData,
+  );
+  if (!parsed.ok) return;
   const { contactId, clientId } = parsed.data;
 
   await withTenantContext(ctx, async (tx) => {

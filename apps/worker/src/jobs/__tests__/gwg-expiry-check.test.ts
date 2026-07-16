@@ -26,7 +26,7 @@ const h = vi.hoisted(() => {
     gwgCheck: { findMany: vi.fn(), count: vi.fn() },
     gwgIdDocument: { findMany: vi.fn() },
     document: { count: vi.fn() },
-    request: { findFirst: vi.fn(), create: vi.fn() },
+    request: { findMany: vi.fn(), create: vi.fn() },
     clientContact: { findMany: vi.fn() },
   };
   const tx = {
@@ -130,7 +130,7 @@ beforeEach(() => {
   h.prismaOwner.gwgCheck.count.mockResolvedValue(0);
   h.prismaOwner.gwgIdDocument.findMany.mockResolvedValue([]);
   h.prismaOwner.document.count.mockResolvedValue(0);
-  h.prismaOwner.request.findFirst.mockResolvedValue(null);
+  h.prismaOwner.request.findMany.mockResolvedValue([]);
   h.prismaOwner.request.create.mockResolvedValue({ id: 'req-1' });
   h.prismaOwner.clientContact.findMany.mockResolvedValue([{ id: 'contact-1' }]);
   h.tx.gwgCheck.updateMany.mockResolvedValue({ count: 1 });
@@ -346,13 +346,13 @@ describe('Personalausweis-Ablauf (U-5: Idempotenz per FK)', () => {
       expect.objectContaining({ kind: 'GWG_ID_EXPIRY_SOON', resourceId: 'doc-1' }),
     );
     // Idempotenz-Match exakt per FK, nicht per Titel-Substring
-    expect(h.prismaOwner.request.findFirst).toHaveBeenCalledWith({
+    expect(h.prismaOwner.request.findMany).toHaveBeenCalledWith({
       where: {
         tenantId: TENANT,
-        clientId: 'client-1',
         status: { in: ['OPEN', 'IN_PROGRESS', 'RESPONDED'] },
-        linkedGwgIdDocumentId: 'doc-1',
+        linkedGwgIdDocumentId: { in: ['doc-1'] },
       },
+      select: { linkedGwgIdDocumentId: true },
     });
     expect(h.prismaOwner.request.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -392,12 +392,38 @@ describe('Personalausweis-Ablauf (U-5: Idempotenz per FK)', () => {
     h.prismaOwner.gwgIdDocument.findMany.mockResolvedValue([
       idDoc(new Date(FIXED_NOW.getTime() + 30 * DAY)),
     ]);
-    h.prismaOwner.request.findFirst.mockResolvedValue({ id: 'req-existing' });
+    h.prismaOwner.request.findMany.mockResolvedValue([{ linkedGwgIdDocumentId: 'doc-1' }]);
 
     const result = await run();
 
     expect(h.prismaOwner.request.create).not.toHaveBeenCalled();
     expect(result.idDocRequests).toBe(0);
+  });
+
+  it('prüft vorhandene Anforderungen für alle Ausweise in einer Query', async () => {
+    const expiry = new Date(FIXED_NOW.getTime() + 30 * DAY);
+    h.prismaOwner.gwgIdDocument.findMany.mockResolvedValue([
+      idDoc(expiry),
+      idDoc(expiry, { id: 'doc-2', ownerName: 'Erika Muster' }),
+    ]);
+    h.prismaOwner.request.findMany.mockResolvedValue([{ linkedGwgIdDocumentId: 'doc-1' }]);
+
+    const result = await run();
+
+    expect(h.prismaOwner.request.findMany).toHaveBeenCalledTimes(1);
+    expect(h.prismaOwner.request.findMany).toHaveBeenCalledWith({
+      where: {
+        tenantId: TENANT,
+        status: { in: ['OPEN', 'IN_PROGRESS', 'RESPONDED'] },
+        linkedGwgIdDocumentId: { in: ['doc-1', 'doc-2'] },
+      },
+      select: { linkedGwgIdDocumentId: true },
+    });
+    expect(h.prismaOwner.request.create).toHaveBeenCalledTimes(1);
+    expect(h.prismaOwner.request.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ linkedGwgIdDocumentId: 'doc-2' }),
+    });
+    expect(result.idDocRequests).toBe(1);
   });
 
   it('deaktivierter Mandant → Reminder ja, Auto-Anforderung nein', async () => {

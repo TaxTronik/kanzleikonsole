@@ -14,7 +14,7 @@ import {
   markNotificationReadAction,
   markAllNotificationsReadAction,
 } from '@/app/staff/(protected)/notifications/actions';
-import { isUserTyping } from './auto-refresh';
+import { isAutomaticRefreshEnabled, isUserTyping } from './auto-refresh';
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -71,8 +71,10 @@ export function NotificationsBell({ initialUnread }: Props) {
   // und nicht während der Nutzer tippt.
   const onUnreadGrew = useCallback(() => {
     playNotificationSound();
-    if (!document.hidden && !isUserTyping()) router.refresh();
-  }, [router]);
+    if (isAutomaticRefreshEnabled(pathname) && !document.hidden && !isUserTyping()) {
+      router.refresh();
+    }
+  }, [pathname, router]);
 
   useEffect(() => {
     setSoundOn(isNotificationSoundEnabled());

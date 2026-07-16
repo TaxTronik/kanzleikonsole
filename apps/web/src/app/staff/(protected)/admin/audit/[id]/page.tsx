@@ -9,12 +9,12 @@
 //   - Vorheriger/Nächster-Eintrag (per id)
 // =============================================================================
 
-import { redirect, notFound } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, ChevronLeft, ChevronRight, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { createHash } from 'node:crypto';
-import { staffAuth } from '@/server/auth/staff';
-import { isStaffAdmin } from '@/server/auth/rbac';
+import { requireStaffPage } from '@/server/auth/staff-page';
+
 import { withTenantContext } from '@taxtronik/db';
 import { canonicalJson } from '@taxtronik/evidence';
 import { fmtDateTimeSeconds } from '@/lib/fmt';
@@ -26,11 +26,7 @@ const actorTypeLabels: Record<string, string> = {
 };
 
 export default async function AuditEntryPage({ params }: { params: Promise<{ id: string }> }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
-  if (!isStaffAdmin(session)) {
-    redirect('/staff/dashboard');
-  }
+  const session = await requireStaffPage({ admin: true });
 
   const { id } = await params;
   let entryId: bigint;

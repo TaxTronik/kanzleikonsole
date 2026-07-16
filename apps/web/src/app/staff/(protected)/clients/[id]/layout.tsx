@@ -17,7 +17,7 @@ import type { ReactNode } from 'react';
 // =============================================================================
 
 import { redirect } from 'next/navigation';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { canAccessClient } from '@/server/auth/rbac';
 
 export default async function ClientDetailLayout({
@@ -27,8 +27,7 @@ export default async function ClientDetailLayout({
   children: ReactNode;
   params: Promise<{ id: string }>;
 }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
 
   const { id } = await params;
   if (!(await canAccessClient(session, id))) redirect('/staff/clients?denied=1');

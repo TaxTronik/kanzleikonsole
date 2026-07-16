@@ -14,6 +14,7 @@ import {
   staffActionGuard,
   withStaff,
   ActionError,
+  parseFormData,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
 
@@ -49,11 +50,8 @@ export async function createFormTemplateAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const parsed = CreateSchema.safeParse({
-    name: formData.get('name'),
-    description: formData.get('description') ?? '',
-  });
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  const parsed = parseFormData(CreateSchema, formData);
+  if (!parsed.ok) return parsed;
 
   // S3: Form-Templates sind Tenant-weite Konfiguration mit FILE-Feldern
   // (Mandanten-Uploads) und werden in Workflow-Steps referenziert. Symmetrisch

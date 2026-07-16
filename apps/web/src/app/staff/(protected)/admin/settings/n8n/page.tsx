@@ -1,6 +1,5 @@
-import { redirect } from 'next/navigation';
 import { N8N_EVENT_CATALOG } from '@taxtronik/n8n-shared';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { bundledN8nWorkflowSummaries } from '@/server/n8n/bundled-workflows';
 import { readN8nSetupStatus } from '@/server/n8n/status';
 import { defaultN8nCallbackBase, resolveN8nConfig } from '@/server/settings/n8n';
@@ -10,8 +9,7 @@ import { N8nForm, type N8nBrowserConfig } from '../n8n-form';
 import { SectionCard } from '../section-card';
 
 export default async function N8nSettingsPage() {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage({ admin: true });
   const { tenantId, staffId } = session.user;
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
   const [cfg, status, dispatch] = await Promise.all([
@@ -66,5 +64,3 @@ export default async function N8nSettingsPage() {
     </div>
   );
 }
-
-export const dynamic = 'force-dynamic';

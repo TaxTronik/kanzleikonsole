@@ -12,19 +12,24 @@
 
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import type { ReportMarking, ReportToken, ReportModel } from './report-types';
+import {
+  RISK_ENGINE_STATUS_LABELS,
+  RISK_GOVERNANCE_LABELS,
+  RISK_HERKUNFT_LABELS,
+  RISK_STATUS_LABELS,
+  RISK_STUFE_LABELS,
+  RISK_WAHRSCHEINLICHKEIT_LABELS,
+  type RiskGovernanceTyp,
+  type RiskHerkunft,
+  type RiskStatus,
+  type RiskStufe,
+  type RiskWahrscheinlichkeit,
+} from '@/lib/domain-labels';
 
 // Typen leben DB-frei in report-types (die Renderer hängen nur daran); hier
 // re-exportiert, damit die bestehende Import-Fläche stabil bleibt.
 export type { ReportMarking, ReportToken, ReportModel } from './report-types';
 
-const HERKUNFT_LABEL: Record<string, string> = {
-  WOERTLICH: 'wörtlich',
-  MUSTER: 'Muster',
-  TRIGGER: 'Trigger',
-  EMBEDDING: 'Heuristik',
-  LLM: 'LLM',
-  BERATER: 'Berater',
-};
 const HERKUNFT_COLOR: Record<string, string> = {
   WOERTLICH: '#10b981',
   MUSTER: '#3b82f6',
@@ -32,31 +37,6 @@ const HERKUNFT_COLOR: Record<string, string> = {
   EMBEDDING: '#f59e0b',
   LLM: '#f97316',
   BERATER: '#14b8a6',
-};
-const STATUS_LABEL: Record<string, string> = {
-  OFFEN: 'Offen',
-  IN_PRUEFUNG: 'In Prüfung',
-  KONTROLLIERT: 'Kontrolliert',
-  AKZEPTIERT: 'Akzeptiert',
-};
-const GOV_LABEL: Record<string, string> = {
-  FP: 'Festsetzung (FP)',
-  FF: 'Feststellung (FF)',
-  IN: 'Information (IN)',
-};
-const STUFE_LABEL: Record<string, string> = { NIEDRIG: 'Niedrig', MITTEL: 'Mittel', HOCH: 'Hoch' };
-const WK_LABEL: Record<string, string> = {
-  SELTEN: 'Selten',
-  MOEGLICH: 'Möglich',
-  WAHRSCHEINLICH: 'Wahrscheinlich',
-  HAEUFIG: 'Häufig',
-};
-const ENGINE_STATUS_LABEL: Record<string, string> = {
-  treffer: 'Treffer',
-  luecke: 'Lücke',
-  kandidat: 'Kandidat',
-  unknown_risiko: 'Unknown-Risiko',
-  berater: 'Berater-Definition',
 };
 const STREIT_COLOR = '#ef4444';
 const FALLBACK_COLOR = '#6b7280';
@@ -148,21 +128,24 @@ export async function buildReportModel(
       nr: i + 1,
       fundstelle: m.matchedText,
       begriff: m.begriff,
-      herkunftLabel: HERKUNFT_LABEL[m.herkunft] ?? m.herkunft,
+      herkunftLabel: RISK_HERKUNFT_LABELS[m.herkunft as RiskHerkunft] ?? m.herkunft,
       herkunftColor: HERKUNFT_COLOR[m.herkunft] ?? FALLBACK_COLOR,
       engineStatusLabel: m.engineStatus
-        ? (ENGINE_STATUS_LABEL[m.engineStatus] ?? m.engineStatus)
+        ? (RISK_ENGINE_STATUS_LABELS[m.engineStatus] ?? m.engineStatus)
         : null,
       streitig: m.streitig,
       normAnker: m.normAnker,
-      governanceLabel: m.governanceTyp ? (GOV_LABEL[m.governanceTyp] ?? m.governanceTyp) : null,
+      governanceLabel: m.governanceTyp
+        ? (RISK_GOVERNANCE_LABELS[m.governanceTyp as RiskGovernanceTyp] ?? m.governanceTyp)
+        : null,
       schadenLabel: m.schadensintensitaet
-        ? (STUFE_LABEL[m.schadensintensitaet] ?? m.schadensintensitaet)
+        ? (RISK_STUFE_LABELS[m.schadensintensitaet as RiskStufe] ?? m.schadensintensitaet)
         : null,
       wahrscheinlichkeitLabel: m.wahrscheinlichkeit
-        ? (WK_LABEL[m.wahrscheinlichkeit] ?? m.wahrscheinlichkeit)
+        ? (RISK_WAHRSCHEINLICHKEIT_LABELS[m.wahrscheinlichkeit as RiskWahrscheinlichkeit] ??
+          m.wahrscheinlichkeit)
         : null,
-      statusLabel: STATUS_LABEL[m.status] ?? m.status,
+      statusLabel: RISK_STATUS_LABELS[m.status as RiskStatus] ?? m.status,
       kontrolle: m.kontrolle,
       notiz: m.notiz,
     }));

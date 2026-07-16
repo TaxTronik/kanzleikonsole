@@ -103,9 +103,10 @@ describe('Portal-Session bindet die aktuelle Kontakt-E-Mail', () => {
   it('wendet dieselbe E-Mail-Bindung im NextAuth-Session-Callback an', async () => {
     const config = m.config as {
       callbacks: {
-        session: (input: { session: Record<string, unknown>; token: Record<string, unknown> }) =>
-          | Promise<Record<string, unknown>>
-          | Record<string, unknown>;
+        session: (input: {
+          session: Record<string, unknown>;
+          token: Record<string, unknown>;
+        }) => Promise<Record<string, unknown>> | Record<string, unknown>;
       };
     };
     const session = {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
+import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Download, FileCheck, FileSearch, Loader2, X } from 'lucide-react';
 import {
@@ -21,6 +21,21 @@ import {
 } from './use-gwg-document-search';
 import { useGwgIdentitySubjects } from './identity-subjects-context';
 import { useGwgEditState } from './edit-state-context';
+import {
+  useIdentityReviewState,
+  type IdentityReviewLocalState,
+  type IdentityReviewSavedState,
+} from './use-identity-review-state';
+
+export {
+  applyIdentityReviewSave,
+  reconcileIdentityReviewServerState,
+} from './use-identity-review-state';
+export type {
+  IdentityReviewEditableFields,
+  IdentityReviewLocalState,
+  IdentityReviewSavedState,
+} from './use-identity-review-state';
 
 export interface IdentityReviewDocument {
   id: string;
@@ -49,71 +64,6 @@ export interface IdentityReviewGroup {
   documents: IdentityReviewDocument[];
   subjectKey: string | null;
   revision: string;
-}
-
-export interface IdentityReviewEditableFields {
-  type: 'PERSONALAUSWEIS' | 'REISEPASS';
-  number: string;
-  issuedBy: string;
-  issueDate: string;
-  expiryDate: string;
-}
-
-export interface IdentityReviewLocalState {
-  revision: string;
-  fields: IdentityReviewEditableFields;
-  selectedSubjectKey: string;
-  ownerName: string;
-  confirmedRevision: string | null;
-}
-
-export interface IdentityReviewSavedState extends IdentityReviewEditableFields {
-  subjectKey: string;
-  ownerName: string;
-}
-
-/**
- * A successful action response is the authoritative successor of the exact
- * revision submitted by this card. Keep all visible values and the next CAS
- * revision in one state object so a second save can never combine old fields
- * with a new revision (or vice versa).
- */
-export function applyIdentityReviewSave(
-  saved: IdentityReviewSavedState,
-  revision: string,
-): IdentityReviewLocalState {
-  return {
-    revision,
-    fields: {
-      type: saved.type,
-      number: saved.number,
-      issuedBy: saved.issuedBy,
-      issueDate: saved.issueDate,
-      expiryDate: saved.expiryDate,
-    },
-    selectedSubjectKey: saved.subjectKey,
-    ownerName: saved.ownerName,
-    confirmedRevision: revision,
-  };
-}
-
-/**
- * Next.js may deliver the RSC refresh triggered by save N after the local
- * response for save N+1. Revisions are content snapshots rather than ordered
- * counters, so known predecessors must be remembered explicitly. Equal props
- * are ignored as well: they must not erase edits typed after the last save.
- * An unknown revision still wins, because it represents an external update
- * that must be surfaced instead of overwritten with a stale CAS token.
- */
-export function reconcileIdentityReviewServerState(
-  current: IdentityReviewLocalState,
-  incoming: IdentityReviewLocalState,
-  supersededRevisions: ReadonlySet<string>,
-): IdentityReviewLocalState {
-  if (incoming.revision === current.revision || supersededRevisions.has(incoming.revision)) {
-    return current;
-  }
-  return incoming;
 }
 
 interface IdentitySetFileCandidate {
@@ -568,24 +518,6 @@ function IdentityReviewCard({
   const { invalidatedIdentitySets, acknowledgeIdentitySet } = useGwgIdentitySubjects();
   const first = group.documents[0]!;
   const [expanded, setExpanded] = useState(reviewMode);
-  const [localState, setLocalState] = useState<IdentityReviewLocalState>(() => ({
-    revision: group.revision,
-    fields: {
-      type: first.type,
-      number: first.number ?? '',
-      issuedBy: first.issuedBy ?? '',
-      issueDate: first.issueDate ?? '',
-      expiryDate: first.expiryDate ?? '',
-    },
-    selectedSubjectKey: group.subjectKey ?? '',
-    ownerName: first.ownerName,
-    confirmedRevision: null,
-  }));
-  const localStateRef = useRef(localState);
-  const lastServerRevision = useRef(group.revision);
-  const supersededRevisions = useRef(new Set<string>());
-  const submittedRevision = useRef<string | null>(null);
-  const submittedInvalidationGeneration = useRef<number | null>(null);
   const [state, formAction, isPending] = useActionState<
     | (ActionResult & {
         reviewReset?: boolean;
@@ -595,7 +527,47 @@ function IdentityReviewCard({
     | null,
     FormData
   >(updateIdDocumentsAction, null);
-  const handledActionState = useRef<typeof state>(null);
+  const serverState = useMemo<IdentityReviewLocalState>(
+    () => ({
+      revision: group.revision,
+      fields: {
+        type: first.type,
+        number: first.number ?? '',
+        issuedBy: first.issuedBy ?? '',
+        issueDate: first.issueDate ?? '',
+        expiryDate: first.expiryDate ?? '',
+      },
+      selectedSubjectKey: group.subjectKey ?? '',
+      ownerName: first.ownerName,
+      confirmedRevision: null,
+    }),
+    [
+      first.expiryDate,
+      first.issueDate,
+      first.issuedBy,
+      first.number,
+      first.ownerName,
+      first.type,
+      group.revision,
+      group.subjectKey,
+    ],
+  );
+  const subjectKeys = useMemo(() => subjectOptions.map((option) => option.key), [subjectOptions]);
+  const acknowledgeInvalidation = useCallback(
+    (generation: number) => acknowledgeIdentitySet(group.documentSetId, generation),
+    [acknowledgeIdentitySet, group.documentSetId],
+  );
+  const { localState, patchFields, selectSubject, markSubmitted } = useIdentityReviewState({
+    initial: serverState,
+    incoming: serverState,
+    subjectKeys,
+    actionState: state,
+    onAcknowledgeInvalidation: acknowledgeInvalidation,
+    onReviewReset: markDraft,
+  });
+  useEffect(() => {
+    if (state?.ok) setExpanded(true);
+  }, [state]);
   const attachedDocuments = group.documents.filter(
     (
       entry,
@@ -651,87 +623,6 @@ function IdentityReviewCard({
     grandfathered ||
     (!invalidated &&
       (localState.confirmedRevision === localState.revision || persistedConfirmation));
-
-  function replaceLocalState(next: IdentityReviewLocalState) {
-    localStateRef.current = next;
-    setLocalState(next);
-  }
-
-  function updateLocalState(
-    update: (current: IdentityReviewLocalState) => IdentityReviewLocalState,
-  ) {
-    replaceLocalState(update(localStateRef.current));
-  }
-
-  function rememberSupersededRevision(revision: string) {
-    const revisions = supersededRevisions.current;
-    revisions.add(revision);
-    // A card normally only sees a handful of saves. Bound the defensive
-    // history nonetheless so a long-running editing session cannot grow it
-    // without limit.
-    if (revisions.size > 20) {
-      const oldest = revisions.values().next().value;
-      if (oldest !== undefined) revisions.delete(oldest);
-    }
-  }
-
-  useEffect(() => {
-    if (handledActionState.current === state) return;
-    handledActionState.current = state;
-    if (!state?.ok) return;
-    setExpanded(true);
-    if (state.saved && state.revision) {
-      if (submittedRevision.current) rememberSupersededRevision(submittedRevision.current);
-      rememberSupersededRevision(localStateRef.current.revision);
-      replaceLocalState(applyIdentityReviewSave(state.saved, state.revision));
-      submittedRevision.current = null;
-    }
-    if (submittedInvalidationGeneration.current !== null) {
-      acknowledgeIdentitySet(group.documentSetId, submittedInvalidationGeneration.current);
-      submittedInvalidationGeneration.current = null;
-    }
-    if (state.reviewReset) markDraft();
-  }, [acknowledgeIdentitySet, group.documentSetId, markDraft, state]);
-  useEffect(() => {
-    if (lastServerRevision.current === group.revision) return;
-    lastServerRevision.current = group.revision;
-    const current = localStateRef.current;
-    const incoming: IdentityReviewLocalState = {
-      revision: group.revision,
-      fields: {
-        type: first.type,
-        number: first.number ?? '',
-        issuedBy: first.issuedBy ?? '',
-        issueDate: first.issueDate ?? '',
-        expiryDate: first.expiryDate ?? '',
-      },
-      selectedSubjectKey: group.subjectKey ?? '',
-      ownerName: first.ownerName,
-      confirmedRevision: null,
-    };
-    const reconciled = reconcileIdentityReviewServerState(
-      current,
-      incoming,
-      supersededRevisions.current,
-    );
-    if (reconciled === current) return;
-    rememberSupersededRevision(current.revision);
-    replaceLocalState(reconciled);
-  }, [first, group.revision, group.subjectKey]);
-  useEffect(() => {
-    const current = localStateRef.current;
-    const selectedSubjectKey = subjectOptions.some(
-      (option) => option.key === current.selectedSubjectKey,
-    )
-      ? current.selectedSubjectKey
-      : subjectOptions.length === 1
-        ? subjectOptions[0]!.key
-        : '';
-    if (selectedSubjectKey === current.selectedSubjectKey) return;
-    const next = { ...current, selectedSubjectKey };
-    localStateRef.current = next;
-    setLocalState(next);
-  }, [subjectOptions]);
 
   return (
     <details
@@ -822,8 +713,10 @@ function IdentityReviewCard({
           action={formAction}
           className="space-y-4"
           onSubmit={() => {
-            submittedRevision.current = invalidatedRevision ?? localStateRef.current.revision;
-            submittedInvalidationGeneration.current = invalidation?.generation ?? null;
+            markSubmitted(
+              invalidatedRevision ?? localState.revision,
+              invalidation?.generation ?? null,
+            );
           }}
         >
           <input type="hidden" name="checkId" value={checkId} />
@@ -846,13 +739,9 @@ function IdentityReviewCard({
                 className="input"
                 value={fields.type}
                 onChange={(event) =>
-                  updateLocalState((current) => ({
-                    ...current,
-                    fields: {
-                      ...current.fields,
-                      type: event.target.value as 'PERSONALAUSWEIS' | 'REISEPASS',
-                    },
-                  }))
+                  patchFields({
+                    type: event.target.value as 'PERSONALAUSWEIS' | 'REISEPASS',
+                  })
                 }
                 disabled={disabled || isPending}
               >
@@ -869,12 +758,7 @@ function IdentityReviewCard({
                 name="subjectKey"
                 className="input"
                 value={selectedSubjectKey}
-                onChange={(event) =>
-                  updateLocalState((current) => ({
-                    ...current,
-                    selectedSubjectKey: event.target.value,
-                  }))
-                }
+                onChange={(event) => selectSubject(event.target.value)}
                 required
                 disabled={disabled || isPending}
               >
@@ -914,12 +798,7 @@ function IdentityReviewCard({
                 name="number"
                 className="input"
                 value={fields.number}
-                onChange={(event) =>
-                  updateLocalState((current) => ({
-                    ...current,
-                    fields: { ...current.fields, number: event.target.value },
-                  }))
-                }
+                onChange={(event) => patchFields({ number: event.target.value })}
                 required
                 maxLength={100}
                 disabled={disabled || isPending}
@@ -935,12 +814,7 @@ function IdentityReviewCard({
                 type="date"
                 className="input"
                 value={fields.issueDate}
-                onChange={(event) =>
-                  updateLocalState((current) => ({
-                    ...current,
-                    fields: { ...current.fields, issueDate: event.target.value },
-                  }))
-                }
+                onChange={(event) => patchFields({ issueDate: event.target.value })}
                 required
                 disabled={disabled || isPending}
               />
@@ -955,12 +829,7 @@ function IdentityReviewCard({
                 type="date"
                 className="input"
                 value={fields.expiryDate}
-                onChange={(event) =>
-                  updateLocalState((current) => ({
-                    ...current,
-                    fields: { ...current.fields, expiryDate: event.target.value },
-                  }))
-                }
+                onChange={(event) => patchFields({ expiryDate: event.target.value })}
                 required
                 disabled={disabled || isPending}
               />
@@ -975,12 +844,7 @@ function IdentityReviewCard({
               name="issuedBy"
               className="input"
               value={fields.issuedBy}
-              onChange={(event) =>
-                updateLocalState((current) => ({
-                  ...current,
-                  fields: { ...current.fields, issuedBy: event.target.value },
-                }))
-              }
+              onChange={(event) => patchFields({ issuedBy: event.target.value })}
               required
               maxLength={200}
               disabled={disabled || isPending}

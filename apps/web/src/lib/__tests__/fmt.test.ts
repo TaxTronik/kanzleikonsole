@@ -9,10 +9,29 @@ import {
   fmtDateTimeShort,
   fmtMonthYear,
   fmtMinutes,
+  fmtBytes,
+  fmtIsoDate,
   berlinWallClockToUtc,
   berlinYmd,
   berlinTodayUtcMidnight,
 } from '../fmt';
+
+describe('fmtBytes', () => {
+  it('formats byte sizes through gigabytes', () => {
+    expect(fmtBytes(512)).toBe('512 B');
+    expect(fmtBytes(2048)).toBe('2.0 KB');
+    expect(fmtBytes(2 * 1024 ** 2)).toBe('2.0 MB');
+    expect(fmtBytes(2 * 1024 ** 3)).toBe('2.00 GB');
+  });
+});
+
+describe('fmtIsoDate', () => {
+  it('formats calendar dates without timezone conversion', () => {
+    expect(fmtIsoDate('1976-08-31')).toBe('31.08.1976');
+    expect(fmtIsoDate('1976-08-31T23:30:00-10:00')).toBe('31.08.1976');
+    expect(fmtIsoDate(null)).toBeNull();
+  });
+});
 
 const SAMPLE = new Date(Date.UTC(2026, 4, 12, 14, 35, 21)); // 12. Mai 2026, 14:35:21 UTC
 

@@ -1,23 +1,13 @@
-import { redirect } from 'next/navigation';
-import { staffAuth } from '@/server/auth/staff';
-import { isStaffAdmin } from '@/server/auth/rbac';
+import { requireStaffPage } from '@/server/auth/staff-page';
+
 import { withTenantContext } from '@taxtronik/db';
 import { fmtDateShort } from '@/lib/fmt';
 import { findDueGwgDeletionDocs, findDueGwgCheckDeletions } from '@/server/gwg/retention';
 import { GwgDeleteButton, GwgCheckDeleteButton } from './delete-button';
-
-const CHECK_STATUS_LABELS: Record<string, string> = {
-  DRAFT: 'Entwurf',
-  IN_REVIEW: 'In Prüfung',
-  VERIFIED: 'Verifiziert',
-  REJECTED: 'Abgelehnt',
-  EXPIRED: 'Abgelaufen',
-};
+import { GWG_CHECK_STATUS_LABELS } from '@/lib/domain-labels';
 
 export default async function GwgRetentionPage() {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
-  if (!isStaffAdmin(session)) redirect('/staff/dashboard');
+  const session = await requireStaffPage({ admin: true });
   const { tenantId, staffId } = session.user;
 
   const [due, dueChecks] = await withTenantContext(
@@ -115,7 +105,9 @@ export default async function GwgRetentionPage() {
               {dueChecks.map((item) => (
                 <tr key={item.checkId} className="border-b last:border-0">
                   <td className="px-4 py-3">{item.clientName}</td>
-                  <td className="px-4 py-3">{CHECK_STATUS_LABELS[item.status] ?? item.status}</td>
+                  <td className="px-4 py-3">
+                    {GWG_CHECK_STATUS_LABELS[item.status] ?? item.status}
+                  </td>
                   <td className="px-4 py-3">
                     {fmtDateShort(item.retentionStartedAt)}
                     <span className="block text-xs text-muted">
@@ -128,7 +120,7 @@ export default async function GwgRetentionPage() {
                   <td className="px-4 py-3 text-right">
                     <GwgCheckDeleteButton
                       checkId={item.checkId}
-                      label={`${item.clientName} — GwG-Prüfung (${CHECK_STATUS_LABELS[item.status] ?? item.status})`}
+                      label={`${item.clientName} — GwG-Prüfung (${GWG_CHECK_STATUS_LABELS[item.status] ?? item.status})`}
                       disabledReason={
                         item.openEvidenceDocs > 0
                           ? `Erst ${item.openEvidenceDocs} Datei-Beleg${item.openEvidenceDocs === 1 ? '' : 'e'} vernichten`

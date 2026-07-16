@@ -1,14 +1,12 @@
-﻿import { redirect } from 'next/navigation';
-import Link from 'next/link';
+﻿import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { ArticleEditor } from '../article-editor';
 import { createArticleAction } from '../actions';
 
 export default async function NewArticlePage() {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
 
   const { tenantId, staffId } = session.user;
   const categories = await withTenantContext(

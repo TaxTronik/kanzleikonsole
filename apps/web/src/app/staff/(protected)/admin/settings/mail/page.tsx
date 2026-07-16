@@ -1,14 +1,12 @@
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { readSmtpConfig } from '@/server/settings/smtp';
 import { env } from '@taxtronik/config';
 import { SmtpForm } from '../smtp-form';
 import { SectionCard } from '../section-card';
-import { redirect } from 'next/navigation';
 
 export default async function MailSettingsPage() {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage({ admin: true });
   const { tenantId, staffId } = session.user;
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
 

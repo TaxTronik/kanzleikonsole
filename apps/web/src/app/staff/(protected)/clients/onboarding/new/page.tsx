@@ -2,10 +2,9 @@
 // /staff/clients/onboarding/new — Schritt 1: Stammdaten
 // =============================================================================
 
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Wand2 } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { readModules } from '@/server/settings/modules';
 import { withTenantContext } from '@taxtronik/db';
 import { Stepper } from '../stepper';
@@ -18,8 +17,7 @@ export default async function OnboardingStartPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
   const sp = await searchParams;
   const { tenantId, staffId } = session.user;
 

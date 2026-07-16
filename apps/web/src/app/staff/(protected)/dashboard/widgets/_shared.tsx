@@ -38,18 +38,7 @@ export function notDeniedClient(deniedClientIds: string[] | undefined): {
   return deniedClientIds?.length ? { clientId: { notIn: deniedClientIds } } : {};
 }
 
-export const NOTICE_KIND_LABELS: Record<string, string> = {
-  USTA: 'USt-Voranmeldung',
-  UST_JAHR: 'USt-Jahresbescheid',
-  EST: 'Einkommensteuer',
-  KST: 'Körperschaftsteuer',
-  GEWST_MESSBESCHEID: 'GewSt-Messbescheid',
-  GEWST: 'GewSt-Bescheid',
-  LSTA: 'LSt-Anmeldung',
-  FESTSTELLUNG: 'Feststellungsbescheid',
-  ZERLEGUNG: 'Zerlegungsbescheid',
-  SONSTIGE: 'Sonstige',
-};
+export { NOTICE_KIND_LABELS } from '@/lib/domain-labels';
 
 /**
  * List-Widget-Skelett: Header (optional Icon + Title), Body als ul mit

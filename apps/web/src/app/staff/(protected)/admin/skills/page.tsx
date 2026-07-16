@@ -5,11 +5,10 @@
 // gelöscht werden. Eigene Skills können angelegt, umbenannt, gelöscht werden.
 // =============================================================================
 
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Tags } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
-import { isStaffAdmin } from '@/server/auth/rbac';
+import { requireStaffPage } from '@/server/auth/staff-page';
+
 import { withTenantContext } from '@taxtronik/db';
 import { CreateSkillForm } from './create-form';
 import { SkillRow } from './row';
@@ -26,11 +25,7 @@ const COLOR_HINT: Record<string, string> = {
 };
 
 export default async function SkillsAdminPage() {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
-  if (!isStaffAdmin(session)) {
-    redirect('/staff/dashboard');
-  }
+  const session = await requireStaffPage({ admin: true });
   const { tenantId, staffId } = session.user;
 
   const skills = await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>

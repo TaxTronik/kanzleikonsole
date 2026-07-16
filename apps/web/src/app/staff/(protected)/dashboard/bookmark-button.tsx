@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition, useEffect, type MouseEvent } from 'react';
+import { useOptimistic, useTransition, type MouseEvent } from 'react';
 import { Bookmark, BookmarkCheck } from 'lucide-react';
 import { toggleBookmarkAction } from './bookmark-actions';
 
@@ -17,26 +17,21 @@ export function BookmarkButton({
   href: string | null;
   initiallyBookmarked: boolean;
 }) {
-  const [bookmarked, setBookmarked] = useState(initiallyBookmarked);
+  const [bookmarked, setOptimisticBookmarked] = useOptimistic(
+    initiallyBookmarked,
+    (_current, next: boolean) => next,
+  );
   const [isPending, start] = useTransition();
-
-  // Wenn der Server nach revalidatePath einen neuen Wert liefert
-  // (z. B. weil das Lesezeichen im „Gemerkt"-Widget entfernt wurde),
-  // lokalen State synchronisieren — sonst zeigt das Icon einen veralteten
-  // Stand.
-  useEffect(() => {
-    setBookmarked(initiallyBookmarked);
-  }, [initiallyBookmarked]);
 
   function toggle(e: MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
     const next = !bookmarked;
-    setBookmarked(next);
     start(async () => {
-      const r = await toggleBookmarkAction({ resourceType, resourceId, label, href });
-      if (!r.ok) setBookmarked(!next);
-      else if (typeof r.bookmarked === 'boolean') setBookmarked(r.bookmarked);
+      // Bei einem Fehler faellt der optimistische Wert auf den Server-Prop
+      // zurueck. Bei Erfolg liefert revalidatePath den aktualisierten Prop.
+      setOptimisticBookmarked(next);
+      await toggleBookmarkAction({ resourceType, resourceId, label, href });
     });
   }
 

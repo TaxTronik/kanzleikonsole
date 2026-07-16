@@ -5,18 +5,16 @@
 // Deaktivieren einzelner. Detail-Editor unter /staff/workflows/templates/[id].
 // =============================================================================
 
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { Workflow, Plus, FileText, ArrowLeft } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { CreateTemplateForm } from './create-form';
 import { ToggleActiveForm, DeleteTemplateForm } from './row-forms';
 import { QuickStartButton } from '../quick-start-button';
 
 export default async function WorkflowsPage() {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
   const { tenantId, staffId } = session.user;
 
   const [templates, clients] = await withTenantContext(

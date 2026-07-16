@@ -7,10 +7,10 @@
 // Dienstleistern) und als Snapshot je Einwilligung eingefroren.
 // =============================================================================
 
-import { redirect, notFound } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, ShieldCheck, Settings } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { fmtDateTimeShort } from '@/lib/fmt';
@@ -84,8 +84,7 @@ function grantedConsentLabels(consent: ConsentSelections): string[] {
 }
 
 export default async function ClientPrivacyPage({ params }: { params: Promise<{ id: string }> }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
   const { id: clientId } = await params;
   const { tenantId, staffId } = session.user;
   const admin = isStaffAdmin(session);

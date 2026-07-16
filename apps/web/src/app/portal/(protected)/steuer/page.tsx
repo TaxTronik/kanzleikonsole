@@ -5,6 +5,7 @@ import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 
 import { fmtDateShort, fmtEUR } from '@/lib/fmt';
+import { NOTICE_KIND_LABELS, NOTICE_STATUS_LABELS } from '@/lib/domain-labels';
 // Statuse, ab denen wir den Bescheid dem Mandant zeigen — vorher
 // (NEU) ist er noch nicht von der Kanzlei geprüft, daher zurückhalten.
 const VISIBLE_NOTICE_STATUSES = new Set([
@@ -16,29 +17,6 @@ const VISIBLE_NOTICE_STATUSES = new Set([
   'KLAGE',
   'RECHTSKRAEFTIG',
 ]);
-
-const NOTICE_STATUS_LABELS: Record<string, string> = {
-  GEPRUEFT: 'Geprüft',
-  EINSPRUCH: 'Einspruch eingelegt',
-  ABGEHOLFEN: 'Einspruch abgeholfen',
-  TEILABHILFE: 'Teilweise abgeholfen',
-  ZURUECKGEWIESEN: 'Einspruch zurückgewiesen',
-  KLAGE: 'Klage beim Finanzgericht',
-  RECHTSKRAEFTIG: 'Rechtskräftig',
-};
-
-const KIND_LABELS: Record<string, string> = {
-  USTA: 'USt-Voranmeldung',
-  UST_JAHR: 'USt-Jahresbescheid',
-  EST: 'Einkommensteuer',
-  KST: 'Körperschaftsteuer',
-  GEWST_MESSBESCHEID: 'GewSt-Messbescheid',
-  GEWST: 'GewSt-Bescheid',
-  LSTA: 'LSt-Anmeldung',
-  FESTSTELLUNG: 'Feststellungsbescheid',
-  ZERLEGUNG: 'Zerlegungsbescheid',
-  SONSTIGE: 'Sonstige',
-};
 
 export default async function PortalSteuerPage() {
   const session = await portalAuth();
@@ -95,7 +73,7 @@ export default async function PortalSteuerPage() {
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div>
                     <h2 className="text-lg font-medium text-primary">
-                      {KIND_LABELS[f.kind] ?? f.kind} {f.period}
+                      {NOTICE_KIND_LABELS[f.kind] ?? f.kind} {f.period}
                     </h2>
                     {f.filingDate && (
                       <p className="text-xs text-muted mt-0.5">

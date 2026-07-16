@@ -51,12 +51,13 @@ export async function acknowledgeDocumentAction(input: {
       resourceId: doc.id,
       after: { title: doc.title },
     });
+    return { clientId: doc.clientId };
   });
 
   if (r.ok) {
     revalidatePath('/staff/documents');
     revalidatePath(`/staff/documents/${parsed.data.documentId}`);
-    revalidatePath('/staff/clients', 'layout');
+    if (r.clientId) revalidatePath(`/staff/clients/${r.clientId}`);
   }
   return r;
 }

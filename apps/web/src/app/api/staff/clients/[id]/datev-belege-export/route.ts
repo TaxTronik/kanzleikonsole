@@ -31,6 +31,7 @@ import {
 } from '@/server/export/zip';
 import { escapeCsvCell } from '@/server/export/csv';
 import { fmtDateShort, fmtDateTimeLong } from '@/lib/fmt';
+import { DOCUMENT_CLASSIFICATION_LABELS } from '@/lib/domain-labels';
 
 const QuerySchema = z.object({
   from: z
@@ -45,7 +46,8 @@ const QuerySchema = z.object({
 
 const GOBD_CLASSIFICATIONS = ['GOBD_INVOICE', 'GOBD_CONTRACT', 'GOBD_TAX'] as const;
 
-const classificationLabels: Record<string, string> = {
+const exportClassificationLabels: Readonly<Record<string, string>> = {
+  ...DOCUMENT_CLASSIFICATION_LABELS,
   GOBD_INVOICE: 'Rechnung',
   GOBD_CONTRACT: 'Vertrag',
   GOBD_TAX: 'Steuer',
@@ -235,7 +237,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           [
             seq,
             fmtDateShort(doc.createdAt),
-            classificationLabels[doc.classification] ?? doc.classification,
+            exportClassificationLabels[doc.classification] ?? doc.classification,
             doc.title,
             doc.invoiceAttachments[0]?.number ?? '',
             doc.invoiceAttachments[0]?.totalAmount?.toString().replace('.', ',') ?? '',
@@ -267,7 +269,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         [
           seq,
           fmtDateShort(doc.createdAt),
-          classificationLabels[doc.classification] ?? doc.classification,
+          exportClassificationLabels[doc.classification] ?? doc.classification,
           doc.title,
           doc.invoiceAttachments[0]?.number ?? '',
           doc.invoiceAttachments[0]?.totalAmount?.toString().replace('.', ',') ?? '',

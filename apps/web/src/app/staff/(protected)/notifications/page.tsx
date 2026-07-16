@@ -1,7 +1,6 @@
-﻿import { redirect } from 'next/navigation';
-import Link from 'next/link';
+﻿import Link from 'next/link';
 import { Bell, Check } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { markNotificationReadAction, markAllNotificationsReadAction } from './actions';
 import { fmtDateTimeShort } from '@/lib/fmt';
@@ -27,8 +26,7 @@ const kindLabels: Record<string, string> = {
 };
 
 export default async function NotificationsPage() {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
 
   const { tenantId, staffId } = session.user;
 

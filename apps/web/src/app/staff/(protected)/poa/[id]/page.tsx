@@ -1,7 +1,7 @@
-﻿import { redirect, notFound } from 'next/navigation';
+﻿import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, ShieldCheck } from 'lucide-react';
-import { staffAuth } from '@/server/auth/staff';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { renderMarkdown } from '@/lib/markdown';
 import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
@@ -19,8 +19,7 @@ const statusLabels: Record<string, string> = {
 };
 
 export default async function PoaDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const session = await staffAuth();
-  if (!session?.user) redirect('/staff/login');
+  const session = await requireStaffPage();
 
   const { id } = await params;
   const { tenantId, staffId } = session.user;

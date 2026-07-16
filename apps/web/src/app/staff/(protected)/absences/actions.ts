@@ -10,6 +10,7 @@ import { emitN8nEvent } from '@/server/n8n/emit';
 import { notify, notifyMany } from '@/server/notifications/service';
 import {
   staffActionGuard,
+  parseFormData,
   withStaff,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
@@ -66,12 +67,8 @@ export async function createVacationRequestAction(
   if (!g.ok) return g;
   const { tenantId, staffId, ctx } = g;
 
-  const parsed = VacationRequestSchema.safeParse({
-    startDate: formData.get('startDate'),
-    endDate: formData.get('endDate'),
-    reason: formData.get('reason') ?? '',
-  });
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  const parsed = parseFormData(VacationRequestSchema, formData);
+  if (!parsed.ok) return parsed;
 
   const startDate = new Date(parsed.data.startDate);
   const endDate = new Date(parsed.data.endDate);
@@ -199,10 +196,8 @@ export async function decideVacationAction(formData: FormData): Promise<void> {
 
 export async function cancelVacationAction(formData: FormData): Promise<void> {
   // F6: UUID-Validation.
-  const parsed = z
-    .object({ requestId: z.string().uuid() })
-    .safeParse({ requestId: formData.get('requestId') });
-  if (!parsed.success) return;
+  const parsed = parseFormData(z.object({ requestId: z.string().uuid() }), formData);
+  if (!parsed.ok) return;
   const { requestId: id } = parsed.data;
 
   await withStaff(
@@ -241,7 +236,7 @@ export async function cancelVacationAction(formData: FormData): Promise<void> {
 // Kalender-/Teamansicht; sichtbar nur für die meldende Person und
 // Entscheidungsträger.
 const AbsenceSchema = z.object({
-  kind: z.enum(['SICKNESS', 'OTHER']),
+  kind: z.enum(['SICKNESS', 'OTHER']).default('SICKNESS'),
   startDate: z.string().date(),
   endDate: z.string().date().optional().or(z.literal('')),
   notes: z.string().max(1000).optional().or(z.literal('')),
@@ -251,13 +246,8 @@ export async function reportAbsenceAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const parsed = AbsenceSchema.safeParse({
-    kind: formData.get('kind') ?? 'SICKNESS',
-    startDate: formData.get('startDate'),
-    endDate: formData.get('endDate') ?? '',
-    notes: formData.get('notes') ?? '',
-  });
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  const parsed = parseFormData(AbsenceSchema, formData);
+  if (!parsed.ok) return parsed;
   if (parsed.data.endDate && new Date(parsed.data.endDate) < new Date(parsed.data.startDate)) {
     return { ok: false, error: 'Enddatum muss nach Startdatum liegen.' };
   }
@@ -308,8 +298,8 @@ export async function reportAbsenceAction(
 // die eigene Meldung; ohne das blieben offene Meldungen für immer im Kalender
 // (läuft bis „heute") und in der Vertretungssicht stehen.
 export async function endAbsenceAction(formData: FormData): Promise<void> {
-  const parsed = z.object({ id: z.string().uuid() }).safeParse({ id: formData.get('id') });
-  if (!parsed.success) return;
+  const parsed = parseFormData(z.object({ id: z.string().uuid() }), formData);
+  if (!parsed.ok) return;
 
   await withStaff(
     async (tx, { tenantId, staffId }) => {
@@ -340,8 +330,8 @@ export async function endAbsenceAction(formData: FormData): Promise<void> {
 
 // Eine eigene Abwesenheitsmeldung löschen (Korrektur einer Fehleingabe).
 export async function deleteAbsenceAction(formData: FormData): Promise<void> {
-  const parsed = z.object({ id: z.string().uuid() }).safeParse({ id: formData.get('id') });
-  if (!parsed.success) return;
+  const parsed = parseFormData(z.object({ id: z.string().uuid() }), formData);
+  if (!parsed.ok) return;
 
   await withStaff(
     async (tx, { tenantId, staffId }) => {

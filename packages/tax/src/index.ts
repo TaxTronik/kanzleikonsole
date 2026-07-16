@@ -13,6 +13,7 @@ export {
   shiftToNextWorkday,
   germanHolidays,
   berlinCalendarDate,
+  berlinTodayUtcMidnight,
   endOfDueDay,
   startOfUtcDay,
   appealDeadline,
