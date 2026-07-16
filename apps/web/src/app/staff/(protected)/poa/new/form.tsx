@@ -4,6 +4,7 @@ import { useActionState, useState } from 'react';
 import Link from 'next/link';
 import { createPoaAction, type ActionResult } from '../actions';
 import { FileButton } from '@/components/file-button';
+import { poaCreateResumeHref, type PoaCreateReturnContext } from './return-context';
 
 interface Client {
   id: string;
@@ -17,12 +18,14 @@ export function NewPoaForm({
   initialClientId,
   initialPendingDocumentId,
   uploadIntentId,
+  returnContext,
 }: {
   clients: Client[];
   poaMode: 'MARKDOWN_OTP' | 'PDF_TEMPLATE';
   initialClientId?: string;
   initialPendingDocumentId?: string;
   uploadIntentId?: string;
+  returnContext?: PoaCreateReturnContext;
 }) {
   const today = new Date().toISOString().slice(0, 10);
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
@@ -55,6 +58,10 @@ export function NewPoaForm({
   return (
     <form action={formAction} className="card p-6 space-y-4">
       {uploadIntentId ? <input type="hidden" name="uploadIntentId" value={uploadIntentId} /> : null}
+      {returnContext ? <input type="hidden" name="returnContext" value={returnContext} /> : null}
+      {returnContext && !pendingDocumentId ? (
+        <input type="hidden" name="clientId" value={clientId} />
+      ) : null}
       {pendingDocumentId ? (
         <>
           <input type="hidden" name="pendingDocumentId" value={pendingDocumentId} />
@@ -78,7 +85,7 @@ export function NewPoaForm({
               setSignerName('');
             }}
             required
-            disabled={Boolean(pendingDocumentId)}
+            disabled={Boolean(pendingDocumentId || returnContext)}
           >
             {clients.map((c) => (
               <option key={c.id} value={c.id}>
@@ -225,7 +232,11 @@ export function NewPoaForm({
               Der revisionssichere Upload bleibt erhalten.{' '}
               <Link
                 className="underline font-medium"
-                href={`/staff/poa/new?clientId=${encodeURIComponent(clientId)}&pendingDocumentId=${encodeURIComponent(state.pendingDocumentId)}`}
+                href={poaCreateResumeHref({
+                  clientId,
+                  pendingDocumentId: state.pendingDocumentId,
+                  returnContext,
+                })}
               >
                 Vorgang fortsetzen
               </Link>{' '}

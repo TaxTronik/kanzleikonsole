@@ -115,8 +115,14 @@ export function AppointmentRequestForm({ staffOptions }: { staffOptions: StaffOp
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div>
-                    <label className="text-[11px] text-muted block mb-1">Beginn</label>
+                    <label
+                      className="text-[11px] text-muted block mb-1"
+                      htmlFor={`appointment-slot-${i}-starts`}
+                    >
+                      Beginn
+                    </label>
                     <DateTimePicker
+                      id={`appointment-slot-${i}-starts`}
                       name={`slot${i}_starts`}
                       defaultValue={defaultStartFor(i)}
                       required
@@ -124,8 +130,14 @@ export function AppointmentRequestForm({ staffOptions }: { staffOptions: StaffOp
                     />
                   </div>
                   <div>
-                    <label className="text-[11px] text-muted block mb-1">Ende</label>
+                    <label
+                      className="text-[11px] text-muted block mb-1"
+                      htmlFor={`appointment-slot-${i}-ends`}
+                    >
+                      Ende
+                    </label>
                     <DateTimePicker
+                      id={`appointment-slot-${i}-ends`}
                       name={`slot${i}_ends`}
                       defaultValue={defaultEndFor(i)}
                       required

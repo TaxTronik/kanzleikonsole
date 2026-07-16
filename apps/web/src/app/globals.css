@@ -2,7 +2,7 @@
 @import 'react-grid-layout/css/styles.css';
 @import 'react-resizable/css/styles.css';
 
-@import "tailwindcss";
+@import 'tailwindcss';
 @config "../../tailwind.config.ts";
 
 /*
@@ -109,12 +109,12 @@
    * damit Tailwind sie in `rgb(var(...) / <alpha-value>)` einfügen kann.
    */
   :root {
-    --brand-50: 239 246 255;   /* #eff6ff */
-    --brand-100: 219 234 254;  /* #dbeafe */
-    --brand-500: 59 130 246;   /* #3b82f6 */
-    --brand-600: 37 99 235;    /* #2563eb */
-    --brand-700: 29 78 216;    /* #1d4ed8 */
-    --brand-900: 30 58 138;    /* #1e3a8a */
+    --brand-50: 239 246 255; /* #eff6ff */
+    --brand-100: 219 234 254; /* #dbeafe */
+    --brand-500: 59 130 246; /* #3b82f6 */
+    --brand-600: 37 99 235; /* #2563eb */
+    --brand-700: 29 78 216; /* #1d4ed8 */
+    --brand-900: 30 58 138; /* #1e3a8a */
 
     /*
      * Semantic Color Tokens — Single Source of Truth für Hintergründe,
@@ -132,20 +132,20 @@
      *
      * Format wie bei brand: "R G B" für rgb(var(...) / <alpha>)-Pattern.
      */
-    --surface-page:     249 250 251;  /* gray-50  */
-    --surface-card:     255 255 255;  /* white    */
-    --surface-raised:   243 244 246;  /* gray-100 */
-    --surface-sunken:   229 231 235;  /* gray-200 */
+    --surface-page: 249 250 251; /* gray-50  */
+    --surface-card: 255 255 255; /* white    */
+    --surface-raised: 243 244 246; /* gray-100 */
+    --surface-sunken: 229 231 235; /* gray-200 */
 
-    --border-default:   229 231 235;  /* gray-200 */
-    --border-strong:    209 213 219;  /* gray-300 */
-    --border-subtle:    243 244 246;  /* gray-100 */
+    --border-default: 229 231 235; /* gray-200 */
+    --border-strong: 209 213 219; /* gray-300 */
+    --border-subtle: 243 244 246; /* gray-100 */
 
-    --text-primary:      17  24  39;  /* gray-900 */
-    --text-secondary:    75  85  99;  /* gray-600 */
-    --text-muted:       107 114 128;  /* gray-500 */
-    --text-disabled:    156 163 175;  /* gray-400 */
-    --text-on-brand:    255 255 255;  /* white    */
+    --text-primary: 17 24 39; /* gray-900 */
+    --text-secondary: 75 85 99; /* gray-600 */
+    --text-muted: 107 114 128; /* gray-500 */
+    --text-disabled: 156 163 175; /* gray-400 */
+    --text-on-brand: 255 255 255; /* white    */
   }
 
   .dark {
@@ -155,20 +155,20 @@
      * Stufung ist großzügig — gray-950 → gray-800 → gray-700 — damit kein
      * "verschmilzt-mit-Hintergrund"-Eindruck mehr entsteht.
      */
-    --surface-page:      3   7  18;   /* gray-950 */
-    --surface-card:     31  41  55;   /* gray-800 */
-    --surface-raised:   55  65  81;   /* gray-700 */
-    --surface-sunken:   17  24  39;   /* gray-900 */
+    --surface-page: 3 7 18; /* gray-950 */
+    --surface-card: 31 41 55; /* gray-800 */
+    --surface-raised: 55 65 81; /* gray-700 */
+    --surface-sunken: 17 24 39; /* gray-900 */
 
-    --border-default:   55  65  81;   /* gray-700 */
-    --border-strong:    75  85  99;   /* gray-600 */
-    --border-subtle:    55  65  81;   /* gray-700, mit Alpha im Pattern */
+    --border-default: 55 65 81; /* gray-700 */
+    --border-strong: 75 85 99; /* gray-600 */
+    --border-subtle: 55 65 81; /* gray-700, mit Alpha im Pattern */
 
-    --text-primary:    243 244 246;   /* gray-100 */
-    --text-secondary:  209 213 219;   /* gray-300 */
-    --text-muted:      156 163 175;   /* gray-400 */
-    --text-disabled:   107 114 128;   /* gray-500 */
-    --text-on-brand:   255 255 255;   /* white    */
+    --text-primary: 243 244 246; /* gray-100 */
+    --text-secondary: 209 213 219; /* gray-300 */
+    --text-muted: 156 163 175; /* gray-400 */
+    --text-disabled: 107 114 128; /* gray-500 */
+    --text-on-brand: 255 255 255; /* white    */
   }
 
   html {
@@ -205,10 +205,10 @@
    * Page-BGs ab. Heller als Card, im Dark gut sichtbar abgesetzt. Im Light
    * ist der Unterschied zur Tailwind-Default (gray-50: #f9fafb → gray-100:
    * #f3f4f6) so klein, dass er nicht ins Auge fällt. */
-  --color-gray-50:  rgb(var(--surface-raised));
+  --color-gray-50: rgb(var(--surface-raised));
   --color-gray-100: rgb(var(--surface-raised));
-  --color-gray-200: rgb(var(--border-default));   /* Borders + light dividers */
-  --color-gray-300: rgb(var(--border-strong));    /* stärkere Borders */
+  --color-gray-200: rgb(var(--border-default)); /* Borders + light dividers */
+  --color-gray-300: rgb(var(--border-strong)); /* stärkere Borders */
   --color-gray-400: rgb(var(--text-disabled));
   --color-gray-500: rgb(var(--text-muted));
   --color-gray-600: rgb(var(--text-secondary));
@@ -222,19 +222,41 @@
  * ist sprechender als `bg-gray-100`.)
  */
 @layer utilities {
-  .bg-surface         { background-color: rgb(var(--surface-card)); }
-  .bg-surface-page    { background-color: rgb(var(--surface-page)); }
-  .bg-surface-raised  { background-color: rgb(var(--surface-raised)); }
-  .bg-surface-sunken  { background-color: rgb(var(--surface-sunken)); }
+  .bg-surface {
+    background-color: rgb(var(--surface-card));
+  }
+  .bg-surface-page {
+    background-color: rgb(var(--surface-page));
+  }
+  .bg-surface-raised {
+    background-color: rgb(var(--surface-raised));
+  }
+  .bg-surface-sunken {
+    background-color: rgb(var(--surface-sunken));
+  }
 
-  .border-default     { border-color: rgb(var(--border-default)); }
-  .border-strong      { border-color: rgb(var(--border-strong)); }
-  .border-subtle      { border-color: rgb(var(--border-subtle) / 0.25); }
+  .border-default {
+    border-color: rgb(var(--border-default));
+  }
+  .border-strong {
+    border-color: rgb(var(--border-strong));
+  }
+  .border-subtle {
+    border-color: rgb(var(--border-subtle) / 0.25);
+  }
 
-  .text-primary       { color: rgb(var(--text-primary)); }
-  .text-secondary     { color: rgb(var(--text-secondary)); }
-  .text-muted         { color: rgb(var(--text-muted)); }
-  .text-disabled      { color: rgb(var(--text-disabled)); }
+  .text-primary {
+    color: rgb(var(--text-primary));
+  }
+  .text-secondary {
+    color: rgb(var(--text-secondary));
+  }
+  .text-muted {
+    color: rgb(var(--text-muted));
+  }
+  .text-disabled {
+    color: rgb(var(--text-disabled));
+  }
 
   /* divide-color für unsere custom border-tokens. Muss exakt Tailwind v4's
    * `.divide-y > :not(:last-child)`-Selektor matchen, sonst greift border-color
@@ -245,6 +267,165 @@
   }
   .divide-border-subtle > :not(:last-child) {
     border-color: rgb(var(--border-subtle) / 0.25);
+  }
+}
+
+/*
+   * react-datepicker ships fixed light colors and a float-based two-column
+   * layout. In narrow forms the time list can wrap below the calendar and
+   * stretch the popover almost to viewport height. Keep these overrides
+   * scoped to our DateTimePicker.
+   */
+.taxtronik-datetime-popper {
+  z-index: 70;
+  max-width: calc(100vw - 2rem);
+}
+
+.taxtronik-datetime-calendar.react-datepicker {
+  display: grid;
+  grid-template-columns: minmax(0, 15.5rem) 6rem;
+  align-items: start;
+  width: min(21.5rem, calc(100vw - 2rem));
+  overflow: hidden;
+  border-color: rgb(var(--border-strong));
+  background-color: rgb(var(--surface-card));
+  color: rgb(var(--text-primary));
+  font-family: inherit;
+  font-size: 0.875rem;
+  line-height: 1.25;
+  box-shadow: 0 18px 45px rgb(0 0 0 / 0.2);
+}
+
+.taxtronik-datetime-calendar .react-datepicker__month-container,
+.taxtronik-datetime-calendar .react-datepicker__time-container {
+  float: none;
+  min-width: 0;
+}
+
+.taxtronik-datetime-calendar .react-datepicker__month-container {
+  width: auto;
+}
+
+.taxtronik-datetime-calendar .react-datepicker__time-container {
+  width: auto;
+  border-left-color: rgb(var(--border-default));
+}
+
+.taxtronik-datetime-calendar .react-datepicker__header,
+.taxtronik-datetime-calendar .react-datepicker__time,
+.taxtronik-datetime-calendar .react-datepicker__time-box {
+  background-color: rgb(var(--surface-card));
+}
+
+.taxtronik-datetime-calendar .react-datepicker__header {
+  border-bottom-color: rgb(var(--border-default));
+}
+
+.taxtronik-datetime-calendar .react-datepicker__current-month,
+.taxtronik-datetime-calendar .react-datepicker-time__header,
+.taxtronik-datetime-calendar .react-datepicker__day-name,
+.taxtronik-datetime-calendar .react-datepicker__day,
+.taxtronik-datetime-calendar .react-datepicker__time-name {
+  color: rgb(var(--text-primary));
+}
+
+.taxtronik-datetime-calendar .react-datepicker__day--disabled,
+.taxtronik-datetime-calendar .react-datepicker__time-list-item--disabled {
+  color: rgb(var(--text-disabled));
+}
+
+.taxtronik-datetime-calendar .react-datepicker__navigation-icon::before {
+  border-color: rgb(var(--text-secondary));
+}
+
+.taxtronik-datetime-calendar .react-datepicker__day:not([aria-disabled='true']):hover,
+.taxtronik-datetime-calendar .react-datepicker__day--keyboard-selected,
+.taxtronik-datetime-calendar .react-datepicker__time-list-item:hover {
+  background-color: rgb(var(--surface-raised));
+  color: rgb(var(--text-primary));
+}
+
+.taxtronik-datetime-calendar .react-datepicker__day--selected,
+.taxtronik-datetime-calendar .react-datepicker__day--selected:not([aria-disabled='true']):hover,
+.taxtronik-datetime-calendar .react-datepicker__time-list-item--selected,
+.taxtronik-datetime-calendar .react-datepicker__time-list-item--selected:hover {
+  background-color: rgb(var(--brand-600));
+  color: rgb(var(--text-on-brand));
+}
+
+.taxtronik-datetime-calendar .react-datepicker__time-container .react-datepicker__time,
+.taxtronik-datetime-calendar .react-datepicker__time-container .react-datepicker__time-box {
+  width: 100%;
+}
+
+.taxtronik-datetime-calendar
+  .react-datepicker__time-container
+  .react-datepicker__time
+  .react-datepicker__time-box
+  ul.react-datepicker__time-list {
+  height: 16.25rem !important;
+  max-height: 16.25rem;
+  box-sizing: border-box;
+  scrollbar-gutter: stable;
+}
+
+/* react-datepicker's time-row rules are deliberately very specific. Match
+   * that structure so its fixed light hover color cannot win in dark mode. */
+.taxtronik-datetime-calendar
+  .react-datepicker__time-container
+  .react-datepicker__time
+  .react-datepicker__time-box
+  ul.react-datepicker__time-list
+  li.react-datepicker__time-list-item:hover {
+  background-color: rgb(var(--surface-raised));
+  color: rgb(var(--text-primary));
+}
+
+.taxtronik-datetime-calendar
+  .react-datepicker__time-container
+  .react-datepicker__time
+  .react-datepicker__time-box
+  ul.react-datepicker__time-list
+  li.react-datepicker__time-list-item--selected,
+.taxtronik-datetime-calendar
+  .react-datepicker__time-container
+  .react-datepicker__time
+  .react-datepicker__time-box
+  ul.react-datepicker__time-list
+  li.react-datepicker__time-list-item--selected:hover {
+  background-color: rgb(var(--brand-600));
+  color: rgb(var(--text-on-brand));
+}
+
+.taxtronik-datetime-calendar
+  .react-datepicker__time-container
+  .react-datepicker__time
+  .react-datepicker__time-box
+  ul.react-datepicker__time-list
+  li.react-datepicker__time-list-item--disabled:hover {
+  background-color: transparent;
+  color: rgb(var(--text-disabled));
+}
+
+@media (max-width: 380px) {
+  .taxtronik-datetime-calendar.react-datepicker {
+    grid-template-columns: minmax(0, 1fr);
+    width: min(15.5rem, calc(100vw - 2rem));
+    font-size: 0.75rem;
+  }
+
+  .taxtronik-datetime-calendar .react-datepicker__time-container {
+    border-top: 1px solid rgb(var(--border-default));
+    border-left: 0;
+  }
+
+  .taxtronik-datetime-calendar
+    .react-datepicker__time-container
+    .react-datepicker__time
+    .react-datepicker__time-box
+    ul.react-datepicker__time-list {
+    height: 10rem !important;
+    max-height: 10rem;
   }
 }
 
@@ -318,8 +499,8 @@
    */
   .badge-gray {
     @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
-    background-color: rgb(243 244 246);  /* gray-100 */
-    color: rgb(55 65 81);                /* gray-700 */
+    background-color: rgb(243 244 246); /* gray-100 */
+    color: rgb(55 65 81); /* gray-700 */
   }
 
   /*
@@ -331,7 +512,9 @@
     @apply text-left px-6 py-3 text-xs font-medium uppercase tracking-wide;
     color: rgb(var(--text-muted));
   }
-  .th-right { @apply text-right; }
+  .th-right {
+    @apply text-right;
+  }
 
   /*
    * Page-Titel und Back-Link — Standard-Header oben auf jeder Detail-Seite.
@@ -344,7 +527,9 @@
     @apply text-sm inline-flex items-center gap-1 mb-4 transition-colors;
     color: rgb(var(--text-muted));
   }
-  .back-link:hover { color: rgb(var(--text-primary)); }
+  .back-link:hover {
+    color: rgb(var(--text-primary));
+  }
 
   /*
    * Modal-Overlay — z-[100], voll abdeckend, klick-außen-schließt.
@@ -459,7 +644,9 @@
     @apply absolute top-3 right-3 transition-colors;
     color: rgb(var(--text-disabled));
   }
-  .modal-close:hover { color: rgb(var(--text-secondary)); }
+  .modal-close:hover {
+    color: rgb(var(--text-secondary));
+  }
 
   /*
    * Icon-Action-Button — kleines Icon mit Brand-Hover-Akzent (z. B.
@@ -469,7 +656,9 @@
     @apply p-1.5 transition-colors;
     color: rgb(var(--text-disabled));
   }
-  .icon-btn:hover { color: rgb(var(--brand-700)); }
+  .icon-btn:hover {
+    color: rgb(var(--brand-700));
+  }
 
   /*
    * Form-Action-Row — Buttons rechts am Form-Ende (z. B. "Abbrechen / Speichern").
@@ -517,43 +706,101 @@
  * sinnvoll als Token darstellen, weil sie semantisch (Status, Brand) belegt
  * sind — bewusst hier hartkodiert.
  */
-.dark .bg-brand-50      { background-color: rgb(var(--brand-900) / 0.18); }
-.dark .bg-brand-100     { background-color: rgb(var(--brand-700) / 0.30); }
+.dark .bg-brand-50 {
+  background-color: rgb(var(--brand-900) / 0.18);
+}
+.dark .bg-brand-100 {
+  background-color: rgb(var(--brand-700) / 0.3);
+}
 
 /* .badge-gray im Dark: gray-600 BG (deutlich heller als Card gray-800),
  * gray-100 Text (fast weiß) — maximaler Kontrast für Status-/Kategorie-Pills. */
 .dark .badge-gray {
-  background-color: rgb(75 85 99);   /* gray-600 */
-  color: rgb(243 244 246);            /* gray-100 */
+  background-color: rgb(75 85 99); /* gray-600 */
+  color: rgb(243 244 246); /* gray-100 */
 }
 
-.dark .bg-yellow-50     { background-color: rgb(120 53 15 / 0.30); }
-.dark .bg-yellow-100    { background-color: rgb(120 53 15 / 0.40); }
-.dark .text-yellow-700  { color: rgb(252 211 77); }
-.dark .text-yellow-800  { color: rgb(253 224 71); }
-.dark .bg-emerald-50    { background-color: rgb(6 78 59 / 0.30); }
-.dark .bg-emerald-100   { background-color: rgb(6 78 59 / 0.40); }
-.dark .text-emerald-700 { color: rgb(110 231 183); }
-.dark .text-emerald-800 { color: rgb(134 239 172); }
-.dark .text-emerald-900 { color: rgb(167 243 208); }
-.dark .bg-red-50        { background-color: rgb(127 29 29 / 0.30); }
-.dark .bg-red-100       { background-color: rgb(127 29 29 / 0.40); }
-.dark .bg-red-200       { background-color: rgb(127 29 29 / 0.55); }
-.dark .text-red-700     { color: rgb(252 165 165); }
-.dark .text-red-800     { color: rgb(254 202 202); }
-.dark .text-red-900     { color: rgb(254 226 226); }
-.dark .bg-amber-50      { background-color: rgb(120 53 15 / 0.30); }
-.dark .text-amber-700   { color: rgb(252 211 77); }
-.dark .text-amber-800   { color: rgb(253 224 71); }
-.dark .text-amber-900   { color: rgb(254 240 138); }
-.dark .text-amber-600   { color: rgb(251 191 36); }
-.dark .bg-blue-50       { background-color: rgb(30 58 138 / 0.30); }
-.dark .text-blue-600    { color: rgb(147 197 253); }
-.dark .text-blue-700    { color: rgb(191 219 254); }
-.dark .bg-purple-50     { background-color: rgb(76 29 149 / 0.30); }
-.dark .text-purple-700  { color: rgb(216 180 254); }
-.dark .border-yellow-200 { border-color: rgb(120 53 15 / 0.50); }
-.dark .border-amber-200  { border-color: rgb(120 53 15 / 0.50); }
+.dark .bg-yellow-50 {
+  background-color: rgb(120 53 15 / 0.3);
+}
+.dark .bg-yellow-100 {
+  background-color: rgb(120 53 15 / 0.4);
+}
+.dark .text-yellow-700 {
+  color: rgb(252 211 77);
+}
+.dark .text-yellow-800 {
+  color: rgb(253 224 71);
+}
+.dark .bg-emerald-50 {
+  background-color: rgb(6 78 59 / 0.3);
+}
+.dark .bg-emerald-100 {
+  background-color: rgb(6 78 59 / 0.4);
+}
+.dark .text-emerald-700 {
+  color: rgb(110 231 183);
+}
+.dark .text-emerald-800 {
+  color: rgb(134 239 172);
+}
+.dark .text-emerald-900 {
+  color: rgb(167 243 208);
+}
+.dark .bg-red-50 {
+  background-color: rgb(127 29 29 / 0.3);
+}
+.dark .bg-red-100 {
+  background-color: rgb(127 29 29 / 0.4);
+}
+.dark .bg-red-200 {
+  background-color: rgb(127 29 29 / 0.55);
+}
+.dark .text-red-700 {
+  color: rgb(252 165 165);
+}
+.dark .text-red-800 {
+  color: rgb(254 202 202);
+}
+.dark .text-red-900 {
+  color: rgb(254 226 226);
+}
+.dark .bg-amber-50 {
+  background-color: rgb(120 53 15 / 0.3);
+}
+.dark .text-amber-700 {
+  color: rgb(252 211 77);
+}
+.dark .text-amber-800 {
+  color: rgb(253 224 71);
+}
+.dark .text-amber-900 {
+  color: rgb(254 240 138);
+}
+.dark .text-amber-600 {
+  color: rgb(251 191 36);
+}
+.dark .bg-blue-50 {
+  background-color: rgb(30 58 138 / 0.3);
+}
+.dark .text-blue-600 {
+  color: rgb(147 197 253);
+}
+.dark .text-blue-700 {
+  color: rgb(191 219 254);
+}
+.dark .bg-purple-50 {
+  background-color: rgb(76 29 149 / 0.3);
+}
+.dark .text-purple-700 {
+  color: rgb(216 180 254);
+}
+.dark .border-yellow-200 {
+  border-color: rgb(120 53 15 / 0.5);
+}
+.dark .border-amber-200 {
+  border-color: rgb(120 53 15 / 0.5);
+}
 
 /* =============================================================================
  * UI-Mode "modern" — opt-in via .ui-modern am <html> (siehe ui-mode-toggle).
@@ -574,21 +821,13 @@
   --m-radius-input: 0.625rem;
   --m-radius-btn: 0.625rem;
   --m-radius-card: 1rem;
-  --m-shadow-card:
-    0 1px 2px rgb(15 23 42 / 0.04),
-    0 4px 12px rgb(15 23 42 / 0.06);
-  --m-shadow-card-hover:
-    0 2px 6px rgb(15 23 42 / 0.07),
-    0 12px 28px rgb(15 23 42 / 0.12);
+  --m-shadow-card: 0 1px 2px rgb(15 23 42 / 0.04), 0 4px 12px rgb(15 23 42 / 0.06);
+  --m-shadow-card-hover: 0 2px 6px rgb(15 23 42 / 0.07), 0 12px 28px rgb(15 23 42 / 0.12);
   --m-ring: 0 0 0 4px rgb(var(--brand-500) / 0.16);
 }
 .ui-modern.dark {
-  --m-shadow-card:
-    0 1px 2px rgb(0 0 0 / 0.40),
-    0 4px 12px rgb(0 0 0 / 0.30);
-  --m-shadow-card-hover:
-    0 2px 6px rgb(0 0 0 / 0.45),
-    0 12px 28px rgb(0 0 0 / 0.42);
+  --m-shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 4px 12px rgb(0 0 0 / 0.3);
+  --m-shadow-card-hover: 0 2px 6px rgb(0 0 0 / 0.45), 0 12px 28px rgb(0 0 0 / 0.42);
 }
 
 /* Hintergrund-Verlauf am Body — der erste deutliche Unterschied */
@@ -605,13 +844,16 @@
   background-image:
     radial-gradient(at 12% 8%, rgb(var(--brand-900) / 0.12) 0px, transparent 45%),
     radial-gradient(at 88% 0%, rgb(var(--brand-700) / 0.07) 0px, transparent 40%),
-    radial-gradient(at 0% 92%, rgb(var(--brand-900) / 0.10) 0px, transparent 45%);
+    radial-gradient(at 0% 92%, rgb(var(--brand-900) / 0.1) 0px, transparent 45%);
   background-attachment: fixed;
 }
 
 /* Cards: deutlich größere Rundung, weiche Multi-Layer-Schatten, Lift-on-Hover */
 .ui-modern .card {
-  transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+  transition:
+    box-shadow 0.2s ease,
+    transform 0.2s ease,
+    border-color 0.2s ease;
   border-radius: var(--m-radius-card) !important;
   border-color: rgb(203 213 225 / 0.85) !important;
   background-color: rgb(255 255 255 / 0.95) !important;
@@ -636,19 +878,23 @@
 
 /* Primary-Button: kräftiger Gradient + Scale-Effekt */
 .ui-modern .btn-primary {
-  background-image: linear-gradient(135deg,
+  background-image: linear-gradient(
+    135deg,
     rgb(var(--brand-500)) 0%,
     rgb(var(--brand-600)) 50%,
-    rgb(var(--brand-700)) 100%);
+    rgb(var(--brand-700)) 100%
+  );
   box-shadow:
-    0 1px 2px rgb(var(--brand-700) / 0.30),
+    0 1px 2px rgb(var(--brand-700) / 0.3),
     0 6px 16px rgb(var(--brand-600) / 0.35);
-  transition: transform 0.15s ease, box-shadow 0.2s ease;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.2s ease;
 }
 .ui-modern .btn-primary:hover {
   transform: translateY(-1px);
   box-shadow:
-    0 2px 4px rgb(var(--brand-700) / 0.30),
+    0 2px 4px rgb(var(--brand-700) / 0.3),
     0 10px 24px rgb(var(--brand-600) / 0.45);
 }
 .ui-modern .btn-primary:active {
@@ -660,7 +906,7 @@
   backdrop-filter: blur(16px) saturate(160%);
   -webkit-backdrop-filter: blur(16px) saturate(160%);
   background-color: rgb(255 255 255 / 0.65) !important;
-  border-right-color: rgb(255 255 255 / 0.40) !important;
+  border-right-color: rgb(255 255 255 / 0.4) !important;
 }
 .ui-modern.dark aside.app-sidebar {
   background-color: rgb(17 24 39 / 0.55) !important;
@@ -671,7 +917,7 @@
 .ui-modern main .sticky {
   backdrop-filter: blur(12px) saturate(150%);
   -webkit-backdrop-filter: blur(12px) saturate(150%);
-  background-color: rgb(255 255 255 / 0.70) !important;
+  background-color: rgb(255 255 255 / 0.7) !important;
 }
 .ui-modern.dark main .sticky {
   background-color: rgb(17 24 39 / 0.65) !important;
@@ -679,7 +925,9 @@
 
 /* Inputs: weicher Focus-Ring */
 .ui-modern .input {
-  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+  transition:
+    box-shadow 0.15s ease,
+    border-color 0.15s ease;
   border-radius: var(--m-radius-input);
 }
 .ui-modern .input:focus {
@@ -694,7 +942,10 @@
   border-radius: var(--m-radius-btn);
 }
 .ui-modern .btn-secondary {
-  transition: transform 0.15s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
 }
 .ui-modern .btn-secondary:hover {
   transform: translateY(-1px);
@@ -740,20 +991,44 @@
 }
 
 /* Tiptap-Sachverhalt-Editor: schlichte Struktur-Styles für den Rich-Text. */
-.tt-content p { margin: 0 0 0.5rem; }
-.tt-content p:last-child { margin-bottom: 0; }
-.tt-content h2 { font-size: 1.125rem; font-weight: 600; margin: 0.75rem 0 0.4rem; }
-.tt-content h3 { font-size: 1rem; font-weight: 600; margin: 0.6rem 0 0.3rem; }
-.tt-content ul { list-style: disc; padding-left: 1.4rem; margin: 0 0 0.5rem; }
-.tt-content ol { list-style: decimal; padding-left: 1.4rem; margin: 0 0 0.5rem; }
-.tt-content li { margin: 0.1rem 0; }
-.tt-content li > p { margin: 0; }
+.tt-content p {
+  margin: 0 0 0.5rem;
+}
+.tt-content p:last-child {
+  margin-bottom: 0;
+}
+.tt-content h2 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 0.75rem 0 0.4rem;
+}
+.tt-content h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0.6rem 0 0.3rem;
+}
+.tt-content ul {
+  list-style: disc;
+  padding-left: 1.4rem;
+  margin: 0 0 0.5rem;
+}
+.tt-content ol {
+  list-style: decimal;
+  padding-left: 1.4rem;
+  margin: 0 0 0.5rem;
+}
+.tt-content li {
+  margin: 0.1rem 0;
+}
+.tt-content li > p {
+  margin: 0;
+}
 
 /* Settings-Flyover: die per-form Speichern-Buttons werden im Settings-Subtree
  * ausgeblendet — Speichern läuft zentral über den Flyover (s. SettingsFormGuard).
  * Ausgenommen sind Formulare mit data-settings-no-track (z. B. SMTP-Testmail,
  * Autosave-Layout). Enter im Feld speichert weiterhin pro Form. */
-.settings-form-guard form:not([data-settings-no-track]) button[type="submit"],
-.settings-form-guard form:not([data-settings-no-track]) input[type="submit"] {
+.settings-form-guard form:not([data-settings-no-track]) button[type='submit'],
+.settings-form-guard form:not([data-settings-no-track]) input[type='submit'] {
   display: none;
 }

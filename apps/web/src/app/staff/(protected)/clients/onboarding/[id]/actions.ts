@@ -9,10 +9,13 @@ import { evidenceService } from '@/server/container';
 import { requestMagicLink } from '@/server/auth/magic-link';
 import { sendTemplateMail } from '@/server/mail/dispatch';
 import { fireAndForget } from '@/server/util/fire-and-forget';
+import { emitN8nEvent } from '@/server/n8n/emit';
 import { generateInviteToken, INVITE_TTL_DAYS } from '@/server/gwg-onboarding/service';
 import { prepareGwgInviteIssueTx } from '@/server/gwg-onboarding/invite-lifecycle';
+import { prepareGwgInviteBindingTx } from '@/server/gwg-onboarding/invite-binding';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
+import { isGwgProfessionallyReviewed } from '@/server/gwg/professional-review';
 
 export interface WizardResult {
   ok: boolean;
@@ -165,8 +168,14 @@ export async function onboardingSendGwgAction(formData: FormData) {
   const { raw, hash } = generateInviteToken();
   const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
 
-  const inviteId = await withTenantContext(ctx, async (tx) => {
+  const issuedInvite = await withTenantContext(ctx, async (tx) => {
     await assertClientAccessTx(tx, g.session, parsed.data.clientId);
+    const binding = await prepareGwgInviteBindingTx(tx, {
+      tenantId,
+      clientId: parsed.data.clientId,
+      bindLatestDraft: true,
+    });
+    if (!binding.ok) throw new ActionError(binding.error);
     const issue = await prepareGwgInviteIssueTx(tx, {
       tenantId,
       clientId: parsed.data.clientId,
@@ -182,6 +191,9 @@ export async function onboardingSendGwgAction(formData: FormData) {
         expiresAt,
         createdByStaff: staffId,
         createdAt: issue.createdAt,
+        gwgCheckId: binding.gwgCheckId,
+        boundCheckRevision: binding.boundCheckRevision,
+        boundClientRevision: binding.boundClientRevision,
       },
     });
     await evidenceService.record(tx, {
@@ -195,13 +207,27 @@ export async function onboardingSendGwgAction(formData: FormData) {
         inviteEmail: parsed.data.inviteEmail,
         expiresAt: expiresAt.toISOString(),
         onboarding: true,
+        gwgCheckId: binding.gwgCheckId,
+        boundCheckRevision: binding.boundCheckRevision,
+        boundClientRevision: binding.boundClientRevision,
         supersededInviteCount: issue.supersededInviteCount,
       },
     });
-    return inv.id;
+    return { id: inv.id, gwgCheckId: binding.gwgCheckId };
   });
+  const inviteId = issuedInvite.id;
 
   const link = `${portalBaseUrl}/gwg-onboarding?token=${encodeURIComponent(raw)}`;
+  await emitN8nEvent(
+    'gwg.invite.created',
+    {
+      tenantId,
+      clientId: parsed.data.clientId,
+      gwgInviteId: inviteId,
+      gwgCheckId: issuedInvite.gwgCheckId,
+    },
+    { tenantId },
+  );
   // Befund 3: fire-and-forget mit catch+Log statt `void ….catch(() => void 0)`.
   fireAndForget(
     'sendTemplateMail (gwg-onboarding wizard)',
@@ -216,16 +242,6 @@ export async function onboardingSendGwgAction(formData: FormData) {
         link,
         clientId: parsed.data.clientId,
         gwgInviteId: inviteId,
-      },
-      n8nEvent: 'client.created',
-      n8nPayload: {
-        tenantId,
-        clientId: parsed.data.clientId,
-        gwgInviteId: inviteId,
-        inviteEmail: parsed.data.inviteEmail,
-        inviteName: parsed.data.inviteName,
-        link,
-        kind: 'gwg-onboarding',
       },
       fallback: {
         subject: 'Identifizierung für Ihre Mandantschaft',
@@ -285,7 +301,15 @@ export async function onboardingCompleteAction(formData: FormData) {
       tx.gwgCheck.findFirst({
         where: { clientId },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        select: { id: true, status: true, validUntil: true },
+        select: {
+          id: true,
+          status: true,
+          validUntil: true,
+          verifiedAt: true,
+          verifiedBy: true,
+          reviewSubmittedAt: true,
+          reviewSubmittedBy: true,
+        },
       }),
       tx.clientContact.count({ where: { clientId, active: true } }),
     ]);
@@ -294,13 +318,9 @@ export async function onboardingCompleteAction(formData: FormData) {
         'Das Onboarding kann erst mit mindestens einem aktiven Ansprechpartner abgeschlossen werden.',
       );
     }
-    if (
-      !client.allowActive ||
-      latestCheck?.status !== 'VERIFIED' ||
-      (latestCheck.validUntil !== null && latestCheck.validUntil < new Date())
-    ) {
+    if (!client.allowActive || !latestCheck || !isGwgProfessionallyReviewed(latestCheck)) {
       throw new ActionError(
-        'Das Onboarding kann erst nach einer gültigen GwG-Freigabe abgeschlossen werden.',
+        'Das Onboarding kann erst nach einer ausdrücklich eingereichten und durch den verantwortlichen Berufsträger dokumentierten GwG-Freigabe abgeschlossen werden.',
       );
     }
 

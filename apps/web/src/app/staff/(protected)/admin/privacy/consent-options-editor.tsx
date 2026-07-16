@@ -13,7 +13,7 @@ import { saveConsentOptionsAction } from './actions';
 const SECTION_LABELS: Record<ConsentOptionSection, string> = {
   COMMUNICATION: 'Elektronische Kommunikation',
   MARKETING: 'Kanzleimarketing / Informationen',
-  OTHER: 'Weitere freiwillige Einwilligungen',
+  OTHER: 'Weitere Datenschutz-Optionen',
 };
 
 interface ProviderOption {
@@ -76,6 +76,8 @@ export function ConsentOptionsEditor({
         label: '',
         description: null,
         active: true,
+        required: false,
+        recommended: false,
         sortOrder: maxSort + 10,
         serviceProviderId: null,
       },
@@ -91,15 +93,18 @@ export function ConsentOptionsEditor({
 
   return (
     <form action={formAction} className="card p-6 space-y-5 mt-8">
-      <input type="hidden" name="catalogJson" value={JSON.stringify({ version: 1, options })} />
+      <input type="hidden" name="catalogJson" value={JSON.stringify({ version: 2, options })} />
       <input type="hidden" name="expectedRevision" value={revision} />
 
       <div>
-        <h2 className="text-base font-semibold text-primary">Freiwillige Einwilligungsoptionen</h2>
+        <h2 className="text-base font-semibold text-primary">
+          Datenschutz-Optionen und Bestätigungen
+        </h2>
         <p className="text-sm text-muted mt-1">
           Optionen gelten gemeinsam in der Kanzlei-Erfassung und im öffentlichen GwG-Onboarding.
           Deaktivieren blendet sie für neue Erklärungen aus; bestehende Nachweise bleiben
-          unverändert.
+          unverändert. Empfehlungen werden lediglich hervorgehoben und niemals vorausgewählt.
+          Pflichtoptionen werden im öffentlichen Onboarding serverseitig erzwungen.
         </p>
       </div>
 
@@ -120,9 +125,11 @@ export function ConsentOptionsEditor({
       )}
 
       <div className="rounded-md border border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950/30 p-3 text-xs text-yellow-900 dark:text-yellow-200">
-        <strong>Wichtig:</strong> Eine freiwillige Einwilligung ersetzt keinen erforderlichen
-        Auftragsverarbeitungsvertrag nach Art. 28 DSGVO. Die Verknüpfung dokumentiert nur, welcher
-        erfasste Dienstleister zu dieser Option gehört.
+        <strong>Wichtig:</strong> „Pflicht im Portal“ darf nur für rechtlich notwendige
+        Bestätigungen oder eine anderweitig zulässige Pflichtauswahl verwendet werden, nicht für
+        freiwillige Werbung, Newsletter oder vergleichbare Einwilligungen. Eine Einwilligung ersetzt
+        außerdem keinen erforderlichen Auftragsverarbeitungsvertrag nach Art. 28 DSGVO. Die
+        Verknüpfung dokumentiert nur, welcher erfasste Dienstleister zu dieser Option gehört.
       </div>
 
       <div className="space-y-3">
@@ -162,11 +169,13 @@ export function ConsentOptionsEditor({
                     ) : (
                       <select
                         value={option.section}
-                        onChange={(event) =>
+                        onChange={(event) => {
+                          const section = event.target.value as ConsentOptionSection;
                           patch(option.id, {
-                            section: event.target.value as ConsentOptionSection,
-                          })
-                        }
+                            section,
+                            required: section === 'OTHER' ? option.required : false,
+                          });
+                        }}
                         className="input"
                       >
                         {(Object.keys(SECTION_LABELS) as ConsentOptionSection[]).map((section) => (
@@ -218,6 +227,45 @@ export function ConsentOptionsEditor({
                     />
                   </div>
                 )}
+
+                {option.active && (
+                  <div className="flex flex-wrap gap-x-6 gap-y-2 rounded-md border border-default bg-surface-raised p-3">
+                    {option.section === 'OTHER' && (
+                      <label className="flex items-start gap-2 text-sm text-secondary">
+                        <input
+                          type="checkbox"
+                          checked={option.required}
+                          onChange={(event) => patch(option.id, { required: event.target.checked })}
+                          className="mt-0.5 rounded border-strong text-brand-600"
+                        />
+                        <span>
+                          Pflicht im Portal
+                          <span className="block text-xs text-muted">
+                            Nur für rechtlich notwendige Bestätigungen oder zulässige
+                            Pflichtauswahl; niemals für freiwillige Werbung oder Newsletter. Ohne
+                            aktive Bestätigung kann das Onboarding nicht abgesendet werden.
+                          </span>
+                        </span>
+                      </label>
+                    )}
+                    <label className="flex items-start gap-2 text-sm text-secondary">
+                      <input
+                        type="checkbox"
+                        checked={option.recommended}
+                        onChange={(event) =>
+                          patch(option.id, { recommended: event.target.checked })
+                        }
+                        className="mt-0.5 rounded border-strong text-brand-600"
+                      />
+                      <span>
+                        Als Empfehlung hervorheben
+                        <span className="block text-xs text-muted">
+                          Bleibt im Portal ungekreuzt; die Person muss die Option aktiv anklicken.
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+                )}
               </div>
 
               <div className="shrink-0">
@@ -226,7 +274,14 @@ export function ConsentOptionsEditor({
                     <input
                       type="checkbox"
                       checked={option.active}
-                      onChange={(event) => patch(option.id, { active: event.target.checked })}
+                      onChange={(event) =>
+                        patch(
+                          option.id,
+                          event.target.checked
+                            ? { active: true }
+                            : { active: false, required: false, recommended: false },
+                        )
+                      }
                       className="rounded border-strong text-brand-600"
                     />
                     Aktiv

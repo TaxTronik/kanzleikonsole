@@ -10,6 +10,8 @@ const m = vi.hoisted(() => ({
   notifyClientContacts: vi.fn(),
   notifyMany: vi.fn(),
   fireAndForget: vi.fn(),
+  emitN8nEvent: vi.fn(),
+  cancelOpenGwgInvites: vi.fn(),
   findCleanGwgDocuments: vi.fn(),
   lockCleanGwgDocuments: vi.fn(),
 }));
@@ -27,7 +29,10 @@ vi.mock('@/server/auth/rbac', () => ({
   }),
 }));
 vi.mock('@/server/auth/revocation', () => ({ revokeAllSessions: vi.fn() }));
-vi.mock('@/server/n8n/emit', () => ({ emitN8nEvent: vi.fn() }));
+vi.mock('@/server/n8n/emit', () => ({ emitN8nEvent: m.emitN8nEvent }));
+vi.mock('@/server/gwg-onboarding/invite-lifecycle', () => ({
+  cancelOpenGwgInvitesTx: m.cancelOpenGwgInvites,
+}));
 vi.mock('@/server/mail/dispatch', () => ({ notifyClientContacts: m.notifyClientContacts }));
 vi.mock('@/server/notifications/service', () => ({ notifyMany: m.notifyMany }));
 vi.mock('@/server/util/fire-and-forget', () => ({ fireAndForget: m.fireAndForget }));
@@ -50,6 +55,7 @@ import {
   saveRiskAnswersAction,
   searchUnlinkedGwgDocumentsAction,
   rejectCheckAction,
+  removeBeneficialOwnerAction,
   startNewCheckCycleAction,
   submitCheckForReviewAction,
   updateBeneficialOwnerAction,
@@ -62,6 +68,7 @@ import {
   gwgLegalEntityRevision,
   gwgRiskRevision,
 } from '@/server/gwg/revisions';
+import { gwgProfessionalReviewSnapshotHash } from '@/server/gwg/review-snapshot';
 
 const CHECK_ID = '11111111-1111-4111-8111-111111111111';
 const CLIENT_ID = '22222222-2222-4222-8222-222222222222';
@@ -106,6 +113,8 @@ function completeCheck(overrides: Record<string, unknown> = {}) {
     id: CHECK_ID,
     clientId: CLIENT_ID,
     status: 'IN_REVIEW',
+    reviewSubmittedAt: new Date('2026-07-15T09:00:00.000Z'),
+    reviewSubmittedBy: 'staff-1',
     createdAt: new Date('2026-07-14T12:00:00.000Z'),
     destroyedAt: null,
     notes: 'Identifizierung vollständig.',
@@ -160,6 +169,13 @@ function formData() {
   const data = new FormData();
   data.set('checkId', CHECK_ID);
   data.set('clientId', CLIENT_ID);
+  return data;
+}
+
+function verificationFormData(check = completeCheck()) {
+  const data = formData();
+  data.set('professionalAttestation', 'confirmed');
+  data.set('reviewSnapshotHash', gwgProfessionalReviewSnapshotHash(check));
   return data;
 }
 
@@ -285,19 +301,27 @@ describe('atomare GwG-Bearbeitung', () => {
   it('verwirft auch ein verspätetes Speichern unveränderter Rechtsträgerdaten', async () => {
     const tx = {
       gwgCheck: {
-        findFirst: vi.fn().mockResolvedValue({
-          status: 'IN_REVIEW',
-          legalForm: 'GbR',
-          registerNumber: null,
-          registerAuthority: null,
-          noRegisterEntry: true,
-          representativeNames: ['Erika Muster'],
-          representatives: [
-            { id: '33333333-3333-4333-8333-333333333333', fullName: 'Erika Muster', position: 0 },
-          ],
-          ownershipStructureNotes: 'Erika Muster kontrolliert die Gesellschaft.',
-          client: { kind: 'PERSGES' },
-        }),
+        findFirst: vi
+          .fn()
+          .mockResolvedValueOnce({
+            status: 'IN_REVIEW',
+            legalForm: 'GbR',
+            registerNumber: null,
+            registerAuthority: null,
+            noRegisterEntry: true,
+            representativeNames: ['Erika Muster'],
+            representatives: [
+              {
+                id: '33333333-3333-4333-8333-333333333333',
+                fullName: 'Erika Muster',
+                position: 0,
+              },
+            ],
+            beneficialOwners: [],
+            ownershipStructureNotes: 'Erika Muster kontrolliert die Gesellschaft.',
+            client: { kind: 'PERSGES' },
+          })
+          .mockResolvedValueOnce(null),
         updateMany: vi.fn().mockResolvedValue({ count: 0 }),
         update: vi.fn(),
       },
@@ -316,6 +340,13 @@ describe('atomare GwG-Bearbeitung', () => {
         registerAuthority: null,
         noRegisterEntry: true,
         representativeNames: ['Erika Muster'],
+        representatives: [
+          {
+            id: '33333333-3333-4333-8333-333333333333',
+            fullName: 'Erika Muster',
+            position: 0,
+          },
+        ],
         ownershipStructureNotes: 'Erika Muster kontrolliert die Gesellschaft.',
       }),
     );
@@ -464,7 +495,15 @@ describe('atomare GwG-Bearbeitung', () => {
     });
     expect(tx.gwgCheck.updateMany).toHaveBeenCalledWith({
       where: { id: CHECK_ID, clientId: CLIENT_ID, status: 'IN_REVIEW' },
-      data: { status: 'DRAFT', reviewSubmittedAt: null, reviewSubmittedBy: null },
+      data: {
+        status: 'DRAFT',
+        reviewSubmittedAt: null,
+        reviewSubmittedBy: null,
+        riskLevel: null,
+        riskScore: null,
+        riskAnswers: expect.any(Object),
+        riskBreakdown: expect.any(Object),
+      },
     });
     expect(tx.gwgBeneficialOwner.update).toHaveBeenCalledWith({
       where: { id: '33333333-3333-4333-8333-333333333333' },
@@ -557,6 +596,179 @@ describe('atomare GwG-Bearbeitung', () => {
     expect(result.error).toContain('parallel geändert');
     expect(tx.gwgBeneficialOwner.update).not.toHaveBeenCalled();
     expect(m.evidenceRecord).not.toHaveBeenCalled();
+  });
+
+  it('entfernt ausgeschiedene Berechtigte nur aus dem neuen Snapshot und entbestätigt deren Ausweis', async () => {
+    const ownerId = '33333333-3333-4333-8333-333333333333';
+    const owner = {
+      id: ownerId,
+      fullName: 'Erika Muster',
+      birthDate: new Date('1980-01-02T00:00:00.000Z'),
+      birthPlace: 'Berlin',
+      residence: 'Berlin',
+      nationality: 'deutsch',
+      ownershipPct: '50.00',
+      isPep: false,
+    };
+    const document = {
+      ...validDocument('PERSONALAUSWEIS'),
+      beneficialOwnerSubjectId: null,
+      representativeSubjectId: null,
+      verifiedAt: null,
+      identityAssignmentConfirmedAt: null,
+      identityAssignmentConfirmedBy: null,
+    };
+    const tx = {
+      gwgCheck: {
+        findFirst: vi.fn().mockResolvedValue({
+          status: 'IN_REVIEW',
+          representatives: [],
+          beneficialOwners: [owner],
+        }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      gwgBeneficialOwner: { deleteMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      gwgRepresentative: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      gwgIdDocument: {
+        findMany: vi
+          .fn()
+          .mockResolvedValueOnce([
+            {
+              id: document.id,
+              documentSetId: document.documentSetId,
+              beneficialOwnerSubjectId: ownerId,
+            },
+          ])
+          .mockResolvedValueOnce([document]),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+    runWithStaffOn(tx);
+    const data = formData();
+    data.set('ownerId', ownerId);
+    data.set('expectedRevision', gwgBeneficialOwnerRevision(owner));
+
+    const result = await removeBeneficialOwnerAction(null, data);
+
+    expect(result).toEqual({
+      ok: true,
+      removedOwnerId: ownerId,
+      reviewReset: true,
+      invalidatedIdentitySets: [
+        { documentSetId: document.documentSetId, revision: expect.any(String) },
+      ],
+    });
+    expect(tx.gwgIdDocument.updateMany).toHaveBeenCalledWith({
+      where: { gwgCheckId: CHECK_ID, id: { in: [document.id] } },
+      data: {
+        beneficialOwnerSubjectId: null,
+        identityAssignmentConfirmedAt: null,
+        identityAssignmentConfirmedBy: null,
+        verifiedAt: null,
+      },
+    });
+    expect(tx.gwgBeneficialOwner.deleteMany).toHaveBeenCalledWith({
+      where: { id: ownerId, gwgCheckId: CHECK_ID },
+    });
+    expect(m.evidenceRecord).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        action: 'gwg.owner.remove',
+        before: expect.objectContaining({ fullName: 'Erika Muster' }),
+        after: expect.objectContaining({ removedFromCurrentSnapshot: true }),
+      }),
+    );
+  });
+
+  it('invalidiert beim Entfernen eines Owners auch Ausweise seiner verknüpften Vertreterrolle', async () => {
+    const ownerId = '33333333-3333-4333-8333-333333333333';
+    const representativeId = '44444444-4444-4444-8444-444444444444';
+    const owner = {
+      id: ownerId,
+      fullName: 'Erika Muster',
+      birthDate: new Date('1980-01-02T00:00:00.000Z'),
+      birthPlace: 'Berlin',
+      residence: 'Berlin',
+      nationality: 'deutsch',
+      ownershipPct: '50.00',
+      isPep: false,
+    };
+    const representativeDocument = {
+      ...validDocument('PERSONALAUSWEIS'),
+      beneficialOwnerSubjectId: null,
+      representativeSubjectId: representativeId,
+      verifiedAt: null,
+      identityAssignmentConfirmedAt: null,
+      identityAssignmentConfirmedBy: null,
+    };
+    const tx = {
+      gwgCheck: {
+        findFirst: vi.fn().mockResolvedValue({
+          status: 'DRAFT',
+          representatives: [{ id: representativeId }],
+          beneficialOwners: [owner],
+        }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      gwgBeneficialOwner: { deleteMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      gwgRepresentative: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      gwgIdDocument: {
+        findMany: vi
+          .fn()
+          .mockResolvedValueOnce([
+            {
+              id: representativeDocument.id,
+              documentSetId: representativeDocument.documentSetId,
+              beneficialOwnerSubjectId: null,
+            },
+          ])
+          .mockResolvedValueOnce([representativeDocument]),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+    };
+    runWithStaffOn(tx);
+    const data = formData();
+    data.set('ownerId', ownerId);
+    data.set('expectedRevision', gwgBeneficialOwnerRevision(owner));
+
+    const result = await removeBeneficialOwnerAction(null, data);
+
+    expect(result).toEqual({
+      ok: true,
+      removedOwnerId: ownerId,
+      reviewReset: false,
+      invalidatedIdentitySets: [
+        { documentSetId: representativeDocument.documentSetId, revision: expect.any(String) },
+      ],
+    });
+    expect(tx.gwgIdDocument.findMany).toHaveBeenNthCalledWith(1, {
+      where: {
+        gwgCheckId: CHECK_ID,
+        OR: [
+          { beneficialOwnerSubjectId: ownerId },
+          { representativeSubjectId: { in: [representativeId] } },
+        ],
+      },
+      select: {
+        id: true,
+        documentSetId: true,
+        beneficialOwnerSubjectId: true,
+      },
+    });
+    expect(tx.gwgIdDocument.updateMany).not.toHaveBeenCalled();
+    expect(tx.gwgRepresentative.updateMany).toHaveBeenCalledWith({
+      where: { gwgCheckId: CHECK_ID, linkedBeneficialOwnerId: ownerId },
+      data: { linkedBeneficialOwnerId: null },
+    });
+    expect(m.evidenceRecord).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        after: expect.objectContaining({
+          invalidatedIdentityDocuments: 1,
+          unlinkedRepresentativeRoles: 1,
+        }),
+      }),
+    );
   });
 
   it('ordnet einen Ausweis nur einer aktuell erfassten Person zu', async () => {
@@ -1180,6 +1392,7 @@ describe('atomare GwG-Bearbeitung', () => {
           representatives: [
             { id: '33333333-3333-4333-8333-333333333333', fullName: 'Erika Muster', position: 0 },
           ],
+          beneficialOwners: [],
           ownershipStructureNotes: 'Alt',
           client: { kind: 'PERSGES' },
         }),
@@ -1201,6 +1414,13 @@ describe('atomare GwG-Bearbeitung', () => {
         registerAuthority: null,
         noRegisterEntry: true,
         representativeNames: ['Erika Muster'],
+        representatives: [
+          {
+            id: '33333333-3333-4333-8333-333333333333',
+            fullName: 'Erika Muster',
+            position: 0,
+          },
+        ],
         ownershipStructureNotes: 'Alt',
       }),
     );
@@ -1216,8 +1436,17 @@ describe('atomare GwG-Bearbeitung', () => {
           id: '33333333-3333-4333-8333-333333333333',
           fullName: 'Erika Muster',
           position: 0,
+          linkedBeneficialOwnerId: null,
         },
       ],
+      details: {
+        legalForm: 'GbR',
+        registerNumber: null,
+        registerAuthority: null,
+        noRegisterEntry: true,
+        representativeNames: ['Erika Muster'],
+        ownershipStructureNotes: 'Erika Muster kontrolliert die Gesellschaft.',
+      },
       revision: expect.any(String),
     });
     expect(tx.gwgCheck.updateMany).toHaveBeenCalledTimes(1);
@@ -1236,6 +1465,7 @@ describe('atomare GwG-Bearbeitung', () => {
   it('erhält stabile Vertreter-IDs und legt ausgewählte neue Personen strukturiert an', async () => {
     const existingId = '33333333-3333-4333-8333-333333333333';
     const newId = '55555555-5555-4555-8555-555555555555';
+    const linkedOwnerId = '66666666-6666-4666-8666-666666666666';
     const representativeDocument = {
       ...validDocument('PERSONALAUSWEIS', 'Erika Alt'),
       verifiedAt: null,
@@ -1253,6 +1483,7 @@ describe('atomare GwG-Bearbeitung', () => {
           noRegisterEntry: true,
           representativeNames: ['Erika Alt'],
           representatives: [{ id: existingId, fullName: 'Erika Alt', position: 0 }],
+          beneficialOwners: [{ id: linkedOwnerId, fullName: 'Peter Eigentümer' }],
           ownershipStructureNotes: 'Alt',
           client: { kind: 'PERSGES' },
         }),
@@ -1286,7 +1517,12 @@ describe('atomare GwG-Bearbeitung', () => {
       'representativesJson',
       JSON.stringify([
         { id: existingId, fullName: 'Erika Muster', isNew: false },
-        { id: newId, fullName: 'Peter Beispiel', isNew: true },
+        {
+          id: newId,
+          fullName: 'Manipulierter Browsername',
+          isNew: true,
+          linkedBeneficialOwnerId: linkedOwnerId,
+        },
       ]),
     );
     data.set(
@@ -1297,6 +1533,7 @@ describe('atomare GwG-Bearbeitung', () => {
         registerAuthority: null,
         noRegisterEntry: true,
         representativeNames: ['Erika Alt'],
+        representatives: [{ id: existingId, fullName: 'Erika Alt', position: 0 }],
         ownershipStructureNotes: 'Alt',
       }),
     );
@@ -1307,8 +1544,18 @@ describe('atomare GwG-Bearbeitung', () => {
       ok: true,
       representativesChanged: true,
       representatives: [
-        { id: existingId, fullName: 'Erika Muster', position: 0 },
-        { id: newId, fullName: 'Peter Beispiel', position: 1 },
+        {
+          id: existingId,
+          fullName: 'Erika Muster',
+          position: 0,
+          linkedBeneficialOwnerId: null,
+        },
+        {
+          id: newId,
+          fullName: 'Peter Eigentümer',
+          position: 1,
+          linkedBeneficialOwnerId: linkedOwnerId,
+        },
       ],
       invalidatedIdentitySets: [
         { documentSetId: representativeDocument.documentSetId, revision: expect.any(String) },
@@ -1319,17 +1566,18 @@ describe('atomare GwG-Bearbeitung', () => {
         where: expect.objectContaining({ id: { in: [representativeDocument.id] } }),
       }),
     );
-    expect(tx.gwgRepresentative.update).toHaveBeenCalledWith({
-      where: { id: existingId },
-      data: { fullName: 'Erika Muster', position: 0 },
-    });
+    expect(tx.gwgRepresentative.update).not.toHaveBeenCalled();
+    expect(
+      (tx as typeof tx & { $executeRaw: ReturnType<typeof vi.fn> }).$executeRaw,
+    ).toHaveBeenCalled();
     expect(tx.gwgRepresentative.createMany).toHaveBeenCalledWith({
       data: [
         {
           id: newId,
           gwgCheckId: CHECK_ID,
-          fullName: 'Peter Beispiel',
+          fullName: 'Peter Eigentümer',
           position: 1,
+          linkedBeneficialOwnerId: linkedOwnerId,
         },
       ],
     });
@@ -1362,13 +1610,15 @@ describe('GwG-Lifecycle-Lock', () => {
 
     const result = await startNewCheckCycleAction(null, data);
 
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({ ok: true, checkId: NEWER_CHECK_ID });
     expect(tx.gwgCheck.create).toHaveBeenCalledWith({
       data: {
         tenantId: 'tenant-1',
         clientId: CLIENT_ID,
         status: 'DRAFT',
         createdAt: DATABASE_NOW,
+        predecessorCheckId: CHECK_ID,
+        changeScope: 'ROUTINE',
       },
       select: { id: true },
     });
@@ -1434,7 +1684,7 @@ describe('GwG-Lifecycle-Lock', () => {
 
     const result = await startNewCheckCycleAction(null, data);
 
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({ ok: true, checkId: NEWER_CHECK_ID });
     const copied = tx.gwgIdDocument.createMany.mock.calls[0]![0].data;
     expect(copied).toEqual(
       expect.arrayContaining([
@@ -1470,7 +1720,10 @@ describe('GwG-Lifecycle-Lock', () => {
     const data = formData();
     data.set('expectedLatestCheckId', CHECK_ID);
 
-    expect(await startNewCheckCycleAction(null, data)).toEqual({ ok: true });
+    expect(await startNewCheckCycleAction(null, data)).toEqual({
+      ok: true,
+      checkId: NEWER_CHECK_ID,
+    });
 
     const copied = tx.gwgIdDocument.createMany.mock.calls[0]![0].data as Array<{
       type: string;
@@ -1498,7 +1751,7 @@ describe('GwG-Lifecycle-Lock', () => {
 
     const result = await startNewCheckCycleAction(null, data);
 
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({ ok: true, checkId: NEWER_CHECK_ID });
     expect(tx.gwgCheck.update).not.toHaveBeenCalled();
     expect(tx.gwgBeneficialOwner.createMany).not.toHaveBeenCalled();
     expect(tx.gwgIdDocument.createMany).not.toHaveBeenCalled();
@@ -1553,7 +1806,7 @@ describe('GwG-Lifecycle-Lock', () => {
 
     const result = await startNewCheckCycleAction(null, data);
 
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({ ok: true, checkId: NEWER_CHECK_ID });
     expect(tx.gwgCheck.updateMany).toHaveBeenCalledWith({
       where: {
         tenantId: 'tenant-1',
@@ -1639,21 +1892,35 @@ describe('submitCheckForReviewAction', () => {
 });
 
 describe('verifyCheckAction – Rechtsträger-Gate', () => {
-  it('verifiziert keinen unvollständigen Rechtsträger', async () => {
-    const tx = makeTx(
-      completeCheck({
-        legalForm: null,
-        registerNumber: null,
-        registerAuthority: null,
-        representativeNames: [],
-        ownershipStructureNotes: null,
-      }),
-    );
+  it('materialisiert bei einem Legacy-IN_REVIEW keine fehlende Übergabe nachträglich', async () => {
+    const check = completeCheck({ reviewSubmittedAt: null, reviewSubmittedBy: null });
+    const tx = makeTx(check);
     m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
       fn(tx),
     );
 
-    const result = await verifyCheckAction(null, formData());
+    const result = await verifyCheckAction(null, verificationFormData(check));
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('dokumentierte Übergabe');
+    expect(tx.gwgCheck.updateMany).not.toHaveBeenCalled();
+    expect(tx.client.update).not.toHaveBeenCalled();
+  });
+
+  it('verifiziert keinen unvollständigen Rechtsträger', async () => {
+    const check = completeCheck({
+      legalForm: null,
+      registerNumber: null,
+      registerAuthority: null,
+      representativeNames: [],
+      ownershipStructureNotes: null,
+    });
+    const tx = makeTx(check);
+    m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+      fn(tx),
+    );
+
+    const result = await verifyCheckAction(null, verificationFormData(check));
 
     expect(result.ok).toBe(false);
     expect(tx.gwgCheck.updateMany).not.toHaveBeenCalled();
@@ -1661,13 +1928,14 @@ describe('verifyCheckAction – Rechtsträger-Gate', () => {
   });
 
   it('verifiziert vollständigen Snapshot und aktiviert erst nach atomarem Claim', async () => {
-    const tx = makeTx(completeCheck());
+    const check = completeCheck();
+    const tx = makeTx(check);
     m.isStaffAdmin.mockReturnValue(false);
     m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
       fn(tx),
     );
 
-    const result = await verifyCheckAction(null, formData());
+    const result = await verifyCheckAction(null, verificationFormData(check));
 
     expect(result).toEqual({ ok: true });
     expect(tx.gwgCheck.updateMany).toHaveBeenCalledWith(
@@ -1694,19 +1962,33 @@ describe('verifyCheckAction – Rechtsträger-Gate', () => {
       select: { id: true },
     });
     expect(m.isStaffAdmin).not.toHaveBeenCalled();
+    expect(m.emitN8nEvent).toHaveBeenCalledOnce();
+    expect(m.emitN8nEvent).toHaveBeenCalledWith(
+      'gwg.verified',
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        clientId: CLIENT_ID,
+        gwgCheckId: CHECK_ID,
+      }),
+      { tenantId: 'tenant-1' },
+    );
+    expect(m.notifyClientContacts).toHaveBeenCalledWith(
+      expect.not.objectContaining({ n8nEvent: expect.anything() }),
+    );
     expect(tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
       tx.gwgCheck.findFirst.mock.invocationCallOrder[0]!,
     );
   });
 
   it('blockiert eine inaktive oder rollenlose Berufsträger-Zuordnung vor der Entscheidung', async () => {
-    const tx = makeTx(completeCheck());
+    const check = completeCheck();
+    const tx = makeTx(check);
     tx.clientResponsibility.findFirst.mockResolvedValue(null);
     m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
       fn(tx),
     );
 
-    const result = await verifyCheckAction(null, formData());
+    const result = await verifyCheckAction(null, verificationFormData(check));
 
     expect(result.ok).toBe(false);
     expect(result.error).toContain('zugeordnete Berufsträger');
@@ -1716,7 +1998,8 @@ describe('verifyCheckAction – Rechtsträger-Gate', () => {
   });
 
   it('verifiziert den stale Review A nach einem neuen Invite-Snapshot B nicht mehr', async () => {
-    const tx = makeTx(completeCheck());
+    const check = completeCheck();
+    const tx = makeTx(check);
     tx.gwgCheck.findFirst
       .mockResolvedValueOnce(completeCheck())
       .mockResolvedValueOnce({ id: NEWER_CHECK_ID });
@@ -1724,7 +2007,7 @@ describe('verifyCheckAction – Rechtsträger-Gate', () => {
       fn(tx),
     );
 
-    const result = await verifyCheckAction(null, formData());
+    const result = await verifyCheckAction(null, verificationFormData(check));
 
     expect(result.ok).toBe(false);
     expect(result.error).toContain('neuere GwG-Prüfung');

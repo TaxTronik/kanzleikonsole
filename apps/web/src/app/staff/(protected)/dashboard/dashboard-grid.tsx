@@ -16,7 +16,7 @@ import {
   saveDashboardLayoutAction,
   resetDashboardLayoutAction,
 } from './actions';
-import { createDashboardMutationQueue } from './mutation-queue';
+import { createDashboardMutationQueue, snapshotForQueuedDashboardAdd } from './mutation-queue';
 
 // IDs für neu hinzugefügte Widgets. Wird nur in Click-Handlern aufgerufen
 // (kein Render-Pfad → keine Hydration-Differenz möglich). crypto.randomUUID
@@ -174,16 +174,18 @@ export function DashboardGrid({
     const pos = findFreeSlot(current, def.w, def.h);
     const widget: LayoutWidget = { id: uid(), type, x: pos.x, y: pos.y, w: def.w, h: def.h };
     const next: LayoutWidget[] = [...current, widget];
+    const includedSnapshotIds = new Set(next.map((entry) => entry.id));
     widgetsRef.current = next;
     setWidgets(next);
     setPendingWidgetIds((pending) => new Set(pending).add(widget.id));
     void enqueueMutation(async () => {
       const currentWidget = widgetsRef.current.find((entry) => entry.id === widget.id);
       if (!currentWidget) return;
-      const r = await addDashboardWidgetAction(
-        { version: 2, widgets: [...widgetsRef.current] },
-        widget.id,
-      );
+      // Den Live-Stand nur bis zu dieser Add-Mutation lesen: Ein früher
+      // Request darf ein später optimistisch hinzugefügtes Widget noch nicht
+      // persistieren. Dessen eigene Queue-Mutation folgt anschließend.
+      const snapshot = snapshotForQueuedDashboardAdd(widgetsRef.current, includedSnapshotIds);
+      const r = await addDashboardWidgetAction({ version: 2, widgets: snapshot }, widget.id);
       if (!r.ok || !r.rendered) {
         setError(r.error ?? 'Fehler beim Speichern.');
         const rolledBack = widgetsRef.current.filter((entry) => entry.id !== widget.id);

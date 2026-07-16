@@ -50,6 +50,12 @@ export function gwgLegalEntityRevision(source: {
   registerAuthority: string | null;
   noRegisterEntry: boolean;
   representativeNames: string[];
+  representatives?: Array<{
+    id: string;
+    fullName: string;
+    position: number;
+    linkedBeneficialOwnerId?: string | null;
+  }>;
   ownershipStructureNotes: string | null;
 }): string {
   return revision({
@@ -58,6 +64,16 @@ export function gwgLegalEntityRevision(source: {
     registerAuthority: source.registerAuthority,
     noRegisterEntry: source.noRegisterEntry,
     representativeNames: source.representativeNames,
+    representatives: source.representatives
+      ? [...source.representatives]
+          .sort((left, right) => left.position - right.position || left.id.localeCompare(right.id))
+          .map((representative) => ({
+            id: representative.id,
+            fullName: representative.fullName,
+            position: representative.position,
+            linkedBeneficialOwnerId: representative.linkedBeneficialOwnerId ?? null,
+          }))
+      : null,
     ownershipStructureNotes: source.ownershipStructureNotes,
   });
 }

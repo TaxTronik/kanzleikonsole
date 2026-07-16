@@ -31,6 +31,8 @@ import {
   gwgLegalEntityRevision,
   gwgRiskRevision,
 } from '@/server/gwg/revisions';
+import { gwgProfessionalReviewSnapshotHash } from '@/server/gwg/review-snapshot';
+import { cancelOpenGwgInvitesTx } from '@/server/gwg-onboarding/invite-lifecycle';
 import {
   staffActionGuard,
   withStaff,
@@ -129,6 +131,7 @@ async function claimCheckMutation(
     checkId: string;
     clientId: string;
     expectedStatus: EditableGwgStatus;
+    invalidateRisk?: boolean;
   },
 ): Promise<void> {
   const claim = await tx.gwgCheck.updateMany({
@@ -141,6 +144,14 @@ async function claimCheckMutation(
       status: 'DRAFT',
       reviewSubmittedAt: null,
       reviewSubmittedBy: null,
+      ...(input.invalidateRisk
+        ? {
+            riskLevel: null,
+            riskScore: null,
+            riskAnswers: Prisma.DbNull,
+            riskBreakdown: Prisma.DbNull,
+          }
+        : {}),
     },
   });
   if (claim.count === 0) {
@@ -155,11 +166,11 @@ async function confirmUnchangedCheck(
   tx: TxClient,
   input: { checkId: string; clientId: string; expectedStatus: EditableGwgStatus },
 ): Promise<void> {
-  const claim = await tx.gwgCheck.updateMany({
+  const current = await tx.gwgCheck.findFirst({
     where: { id: input.checkId, clientId: input.clientId, status: input.expectedStatus },
-    data: { status: input.expectedStatus },
+    select: { id: true },
   });
-  if (claim.count === 0) {
+  if (!current) {
     throw new ActionError(
       'Der Prüfstatus wurde parallel geändert. Ihre Eingabe wurde nicht gespeichert; bitte Seite neu laden.',
     );
@@ -190,17 +201,21 @@ async function assertLatestCheckForDecision(
 const OpenSchema = z.object({
   clientId: z.string().uuid(),
   expectedLatestCheckId: z.union([z.literal(''), z.string().uuid()]).default(''),
+  changeScope: z
+    .enum(['ROUTINE', 'BENEFICIAL_OWNERS', 'REPRESENTATIVES', 'BOTH'])
+    .default('ROUTINE'),
 });
 
 const TERMINAL_GWG_STATUSES = ['VERIFIED', 'REJECTED', 'EXPIRED'] as const;
 
-async function startCheckCycle(formData: FormData): Promise<ActionResult> {
+async function startCheckCycle(formData: FormData): Promise<ActionResult & { checkId?: string }> {
   const parsed = OpenSchema.safeParse({
     clientId: formData.get('clientId'),
     expectedLatestCheckId: formData.get('expectedLatestCheckId') ?? '',
+    changeScope: formData.get('changeScope') ?? 'ROUTINE',
   });
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { clientId, expectedLatestCheckId } = parsed.data;
+  const { clientId, expectedLatestCheckId, changeScope } = parsed.data;
 
   return withStaff(
     async (tx, { tenantId, staffId, session }) => {
@@ -251,8 +266,18 @@ async function startCheckCycle(formData: FormData): Promise<ActionResult> {
       // Lifecycle-Lock verhindert Doppelklick-Duplikate; ein bisher VERIFIEDer
       // Check wird dabei fachlich korrekt EXPIRED und der Mandant bis zur neuen
       // Freigabe fail-closed deaktiviert.
-      const review = await startFreshGwgReviewTx(tx, { tenantId, clientId });
+      const review = await startFreshGwgReviewTx(tx, {
+        tenantId,
+        clientId,
+        predecessorCheckId: latest?.id ?? null,
+        changeScope: latest ? changeScope : 'INITIAL',
+      });
       const checkId = review.reviewCheckId;
+      await cancelOpenGwgInvitesTx(tx, {
+        tenantId,
+        clientId,
+        cancelledByStaff: staffId,
+      });
 
       // Ein vernichteter Alt-Snapshot darf niemals wieder materialisiert
       // werden. Der gemeinsame Lifecycle-Lock serialisiert Check-Vernichtung
@@ -260,6 +285,7 @@ async function startCheckCycle(formData: FormData): Promise<ActionResult> {
       // Bestandsdaten.
       const snapshotSource = latest && latest.destroyedAt === null ? latest : null;
       const ownersToCopy = snapshotSource?.beneficialOwners ?? [];
+      const copiedOwnerIds = new Map(ownersToCopy.map((owner) => [owner.id, randomUUID()]));
       const copiedDocumentSetIds = new Map<string, string>();
       const documentsToCopy =
         snapshotSource?.idDocuments.map((document) => {
@@ -314,18 +340,10 @@ async function startCheckCycle(formData: FormData): Promise<ActionResult> {
             ownershipStructureNotes: snapshotSource.ownershipStructureNotes,
           },
         });
-        if (snapshotSource.representatives.length > 0) {
-          await tx.gwgRepresentative.createMany({
-            data: snapshotSource.representatives.map((representative) => ({
-              gwgCheckId: checkId,
-              fullName: representative.fullName,
-              position: representative.position,
-            })),
-          });
-        }
         if (ownersToCopy.length > 0) {
           await tx.gwgBeneficialOwner.createMany({
             data: ownersToCopy.map((owner) => ({
+              id: copiedOwnerIds.get(owner.id),
               gwgCheckId: checkId,
               fullName: owner.fullName,
               birthDate: owner.birthDate,
@@ -335,6 +353,18 @@ async function startCheckCycle(formData: FormData): Promise<ActionResult> {
               ownershipPct: owner.ownershipPct,
               isPep: owner.isPep,
               notes: owner.notes,
+            })),
+          });
+        }
+        if (snapshotSource.representatives.length > 0) {
+          await tx.gwgRepresentative.createMany({
+            data: snapshotSource.representatives.map((representative) => ({
+              gwgCheckId: checkId,
+              fullName: representative.fullName,
+              position: representative.position,
+              linkedBeneficialOwnerId: representative.linkedBeneficialOwnerId
+                ? (copiedOwnerIds.get(representative.linkedBeneficialOwnerId) ?? null)
+                : null,
             })),
           });
         }
@@ -364,8 +394,10 @@ async function startCheckCycle(formData: FormData): Promise<ActionResult> {
           ).length,
           invalidatedChecks: review.invalidatedChecks,
           clientDeactivated: review.clientDeactivated,
+          changeScope: latest ? changeScope : 'INITIAL',
         },
       });
+      return { checkId };
     },
     {
       revalidate: [
@@ -388,16 +420,45 @@ export async function openCheckAction(formData: FormData): Promise<void> {
 export async function startNewCheckCycleAction(
   _prev: ActionResult | null,
   formData: FormData,
-): Promise<ActionResult> {
+): Promise<ActionResult & { checkId?: string }> {
   return startCheckCycle(formData);
 }
 
-const AnswersSchema = z.object({
-  checkId: z.string().uuid(),
-  clientId: z.string().uuid(),
-  answers: z.record(z.string(), z.coerce.number().int().min(0).max(3)),
-  expectedRevision: z.string().min(2).max(20_000),
-});
+const AnswersSchema = z
+  .object({
+    checkId: z.string().uuid(),
+    clientId: z.string().uuid(),
+    answers: z.record(z.string(), z.coerce.number().int().min(0).max(3)),
+    expectedRevision: z.string().min(2).max(20_000),
+  })
+  .superRefine((value, ctx) => {
+    const factorsByKey = new Map(DEFAULT_FACTORS.map((factor) => [factor.key, factor]));
+    for (const key of Object.keys(value.answers)) {
+      if (!factorsByKey.has(key)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['answers', key],
+          message: `Unbekannter Risikofaktor: ${key}.`,
+        });
+      }
+    }
+    for (const factor of DEFAULT_FACTORS) {
+      const answer = value.answers[factor.key];
+      if (answer === undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['answers', factor.key],
+          message: `Risikofaktor „${factor.label}“ wurde nicht bewertet.`,
+        });
+      } else if (!factor.options.some((option) => option.value === answer)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['answers', factor.key],
+          message: `Ungültige Antwort für Risikofaktor „${factor.label}“.`,
+        });
+      }
+    }
+  });
 
 export async function saveRiskAnswersAction(input: {
   checkId: string;
@@ -483,6 +544,7 @@ const LegalEntityDetailsSchema = z
           id: z.string().uuid().nullable().optional(),
           fullName: z.string().trim().min(1).max(200),
           isNew: z.boolean().optional(),
+          linkedBeneficialOwnerId: z.string().uuid().nullable().optional(),
         }),
       )
       .min(1, 'Mindestens ein Vertreter erforderlich.')
@@ -515,6 +577,17 @@ const LegalEntityDetailsSchema = z
         message: 'Vertreter doppelt erfasst.',
       });
     }
+    const linkedOwnerIds = value.representatives.flatMap((representative) =>
+      representative.linkedBeneficialOwnerId ? [representative.linkedBeneficialOwnerId] : [],
+    );
+    if (new Set(linkedOwnerIds).size !== linkedOwnerIds.length) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['representatives'],
+        message:
+          'Dieselbe wirtschaftlich berechtigte Person wurde mehrfach als Vertreterrolle verknüpft.',
+      });
+    }
   });
 
 export async function saveLegalEntityDetailsAction(
@@ -524,7 +597,20 @@ export async function saveLegalEntityDetailsAction(
   ActionResult & {
     reviewReset?: boolean;
     representativesChanged?: boolean;
-    representatives?: Array<{ id: string; fullName: string; position: number }>;
+    representatives?: Array<{
+      id: string;
+      fullName: string;
+      position: number;
+      linkedBeneficialOwnerId: string | null;
+    }>;
+    details?: {
+      legalForm: string;
+      registerNumber: string | null;
+      registerAuthority: string | null;
+      noRegisterEntry: boolean;
+      representativeNames: string[];
+      ownershipStructureNotes: string;
+    };
     invalidatedIdentitySets?: InvalidatedIdentitySet[];
     revision?: string;
   }
@@ -572,9 +658,10 @@ export async function saveLegalEntityDetailsAction(
         noRegisterEntry: true,
         representativeNames: true,
         representatives: {
-          select: { id: true, fullName: true, position: true },
+          select: { id: true, fullName: true, position: true, linkedBeneficialOwnerId: true },
           orderBy: [{ position: 'asc' }, { id: 'asc' }],
         },
+        beneficialOwners: { select: { id: true, fullName: true } },
         ownershipStructureNotes: true,
         client: { select: { kind: true } },
       },
@@ -594,6 +681,7 @@ export async function saveLegalEntityDetailsAction(
     const currentById = new Map(
       check.representatives.map((representative) => [representative.id, representative]),
     );
+    const ownersById = new Map((check.beneficialOwners ?? []).map((owner) => [owner.id, owner]));
     const submittedRepresentatives = data.representatives.map((representative, position) => {
       const legacyMatch = representative.id ? null : (check.representatives[position] ?? null);
       const id = representative.id ?? legacyMatch?.id ?? randomUUID();
@@ -606,11 +694,21 @@ export async function saveLegalEntityDetailsAction(
           'Mindestens eine ausgewählte Person gehört nicht mehr zu dieser Prüfung.',
         );
       }
+      const linkedBeneficialOwnerId = representative.linkedBeneficialOwnerId ?? null;
+      const linkedOwner = linkedBeneficialOwnerId ? ownersById.get(linkedBeneficialOwnerId) : null;
+      if (linkedBeneficialOwnerId && !linkedOwner) {
+        throw new ActionError(
+          'Die verknüpfte wirtschaftlich berechtigte Person gehört nicht mehr zu dieser Prüfung.',
+        );
+      }
       return {
         id,
-        fullName: representative.fullName.trim().replace(/\s+/g, ' '),
+        fullName: linkedOwner
+          ? linkedOwner.fullName
+          : representative.fullName.trim().replace(/\s+/g, ' '),
         position,
         isNew: !existing,
+        linkedBeneficialOwnerId,
       };
     });
     const representativeNames = submittedRepresentatives.map(
@@ -630,7 +728,9 @@ export async function saveLegalEntityDetailsAction(
         (representative, index) =>
           representative.id !== submittedRepresentatives[index]?.id ||
           representative.position !== index ||
-          representative.fullName !== submittedRepresentatives[index]?.fullName,
+          representative.fullName !== submittedRepresentatives[index]?.fullName ||
+          (representative.linkedBeneficialOwnerId ?? null) !==
+            submittedRepresentatives[index]?.linkedBeneficialOwnerId,
       );
     const legalDetailsChanged =
       check.legalForm !== after.legalForm ||
@@ -638,11 +738,14 @@ export async function saveLegalEntityDetailsAction(
       check.registerAuthority !== after.registerAuthority ||
       check.noRegisterEntry !== after.noRegisterEntry ||
       check.ownershipStructureNotes !== after.ownershipStructureNotes;
-    const savedRepresentatives = submittedRepresentatives.map(({ id, fullName, position }) => ({
-      id,
-      fullName,
-      position,
-    }));
+    const savedRepresentatives = submittedRepresentatives.map(
+      ({ id, fullName, position, linkedBeneficialOwnerId }) => ({
+        id,
+        fullName,
+        position,
+        linkedBeneficialOwnerId,
+      }),
+    );
     if (!legalDetailsChanged && !representativesChanged) {
       await confirmUnchangedCheck(tx, {
         checkId: data.checkId,
@@ -653,7 +756,8 @@ export async function saveLegalEntityDetailsAction(
         reviewReset: false,
         representativesChanged: false,
         representatives: savedRepresentatives,
-        revision: gwgLegalEntityRevision(after),
+        details: after,
+        revision: gwgLegalEntityRevision({ ...after, representatives: savedRepresentatives }),
       };
     }
     // Wie bei der Risikobewertung: Review-Reset + Fachwerte atomar in einem
@@ -664,6 +768,10 @@ export async function saveLegalEntityDetailsAction(
         status: 'DRAFT',
         reviewSubmittedAt: null,
         reviewSubmittedBy: null,
+        riskLevel: null,
+        riskScore: null,
+        riskAnswers: Prisma.DbNull,
+        riskBreakdown: Prisma.DbNull,
         ...after,
       },
     });
@@ -681,7 +789,11 @@ export async function saveLegalEntityDetailsAction(
       const changedIdentityIds = check.representatives
         .filter((representative) => {
           const submitted = submittedById.get(representative.id);
-          return !submitted || submitted.fullName !== representative.fullName;
+          return (
+            !submitted ||
+            submitted.fullName !== representative.fullName ||
+            submitted.linkedBeneficialOwnerId !== (representative.linkedBeneficialOwnerId ?? null)
+          );
         })
         .map((representative) => representative.id);
       if (changedIdentityIds.length > 0) {
@@ -733,17 +845,51 @@ export async function saveLegalEntityDetailsAction(
           data: { position: { increment: 10_000 } },
         });
       }
-      for (const representative of submittedRepresentatives.filter((entry) => {
+      const retainedToUpdate = submittedRepresentatives.filter((entry) => {
         const current = currentById.get(entry.id);
         return (
           !entry.isNew &&
-          (retainedWithChangedPosition.length > 0 || current?.fullName !== entry.fullName)
+          (retainedWithChangedPosition.length > 0 ||
+            current?.fullName !== entry.fullName ||
+            (current?.linkedBeneficialOwnerId ?? null) !== entry.linkedBeneficialOwnerId)
         );
-      })) {
-        await tx.gwgRepresentative.update({
-          where: { id: representative.id },
-          data: { fullName: representative.fullName, position: representative.position },
-        });
+      });
+      if (retainedToUpdate.length > 0) {
+        const changedOwnerLinkIds = retainedToUpdate
+          .filter(
+            (representative) =>
+              (currentById.get(representative.id)?.linkedBeneficialOwnerId ?? null) !==
+              representative.linkedBeneficialOwnerId,
+          )
+          .map((representative) => representative.id);
+        if (changedOwnerLinkIds.length > 0) {
+          // Der Unique-Index auf (check, linked owner) ist absichtlich nicht
+          // deferrable. Link-Swaps werden deshalb zweiphasig NULL → Ziel
+          // geschrieben, damit kein transienter Doppel-Link entsteht.
+          await tx.gwgRepresentative.updateMany({
+            where: { gwgCheckId: data.checkId, id: { in: changedOwnerLinkIds } },
+            data: { linkedBeneficialOwnerId: null },
+          });
+        }
+        await tx.$executeRaw(
+          Prisma.sql`
+            UPDATE "gwg_representative" AS representative
+               SET "full_name" = changed.full_name,
+                   "position" = changed.position,
+                   "linked_beneficial_owner_id" = changed.linked_beneficial_owner_id,
+                   "updated_at" = CURRENT_TIMESTAMP
+              FROM (
+                VALUES ${Prisma.join(
+                  retainedToUpdate.map(
+                    (representative) =>
+                      Prisma.sql`(${representative.id}::uuid, ${representative.fullName}::text, ${representative.position}::integer, ${representative.linkedBeneficialOwnerId}::uuid)`,
+                  ),
+                )}
+              ) AS changed(id, full_name, position, linked_beneficial_owner_id)
+             WHERE representative."id" = changed.id
+               AND representative."gwg_check_id" = ${data.checkId}::uuid
+          `,
+        );
       }
       const newRepresentatives = submittedRepresentatives.filter((entry) => entry.isNew);
       if (newRepresentatives.length > 0) {
@@ -753,6 +899,7 @@ export async function saveLegalEntityDetailsAction(
             gwgCheckId: data.checkId,
             fullName: representative.fullName,
             position: representative.position,
+            linkedBeneficialOwnerId: representative.linkedBeneficialOwnerId,
           })),
         });
       }
@@ -779,11 +926,14 @@ export async function saveLegalEntityDetailsAction(
       },
       after: {
         ...after,
-        representatives: submittedRepresentatives.map(({ id, fullName, position }) => ({
-          id,
-          fullName,
-          position,
-        })),
+        representatives: submittedRepresentatives.map(
+          ({ id, fullName, position, linkedBeneficialOwnerId }) => ({
+            id,
+            fullName,
+            position,
+            linkedBeneficialOwnerId,
+          }),
+        ),
         invalidatedIdentityDocuments,
       },
     });
@@ -791,8 +941,9 @@ export async function saveLegalEntityDetailsAction(
       reviewReset: check.status === 'IN_REVIEW',
       representativesChanged,
       representatives: savedRepresentatives,
+      details: after,
       ...(invalidatedIdentitySets.length > 0 ? { invalidatedIdentitySets } : {}),
-      revision: gwgLegalEntityRevision(after),
+      revision: gwgLegalEntityRevision({ ...after, representatives: savedRepresentatives }),
     };
   });
 }
@@ -843,6 +994,7 @@ export async function addBeneficialOwnerAction(
         checkId: data.checkId,
         clientId: data.clientId,
         expectedStatus: check.status,
+        invalidateRisk: true,
       });
       const owner = await tx.gwgBeneficialOwner.create({
         data: {
@@ -941,6 +1093,10 @@ export async function updateBeneficialOwnerAction(
             isPep: true,
           },
         },
+        representatives: {
+          select: { id: true, fullName: true, position: true, linkedBeneficialOwnerId: true },
+          orderBy: [{ position: 'asc' }, { id: 'asc' }],
+        },
       },
     });
     if (!check) throw new ActionError('GwG-Check nicht gefunden.');
@@ -989,14 +1145,45 @@ export async function updateBeneficialOwnerAction(
       checkId: data.checkId,
       clientId: data.clientId,
       expectedStatus: check.status,
+      invalidateRisk: true,
     });
+    const linkedRepresentatives = (check.representatives ?? []).filter(
+      (representative) => representative.linkedBeneficialOwnerId === data.ownerId,
+    );
+    if (owner.fullName !== data.fullName && linkedRepresentatives.length > 0) {
+      await tx.gwgRepresentative.updateMany({
+        where: {
+          gwgCheckId: data.checkId,
+          linkedBeneficialOwnerId: data.ownerId,
+        },
+        data: { fullName: data.fullName },
+      });
+      await tx.gwgCheck.update({
+        where: { id: data.checkId },
+        data: {
+          representativeNames: check.representatives.map((representative) =>
+            representative.linkedBeneficialOwnerId === data.ownerId
+              ? data.fullName
+              : representative.fullName,
+          ),
+        },
+      });
+    }
     let invalidatedIdentityDocuments = 0;
     let invalidatedIdentityDocumentSetIds: string[] = [];
     if (identityFieldsChanged) {
+      const linkedRepresentativeIds = linkedRepresentatives.map(
+        (representative) => representative.id,
+      );
       const assignedDocuments = await tx.gwgIdDocument.findMany({
         where: {
           gwgCheckId: data.checkId,
-          beneficialOwnerSubjectId: data.ownerId,
+          OR: [
+            { beneficialOwnerSubjectId: data.ownerId },
+            ...(linkedRepresentativeIds.length > 0
+              ? [{ representativeSubjectId: { in: linkedRepresentativeIds } }]
+              : []),
+          ],
         },
         select: { id: true, documentSetId: true },
       });
@@ -1083,6 +1270,164 @@ export async function updateBeneficialOwnerAction(
         ownershipPct: data.ownershipPct === undefined ? '' : String(data.ownershipPct),
         isPep: data.isPep,
       },
+    };
+  });
+}
+
+const RemoveOwnerSchema = z.object({
+  ownerId: z.string().uuid(),
+  checkId: z.string().uuid(),
+  clientId: z.string().uuid(),
+  expectedRevision: z.string().min(2).max(20_000),
+});
+
+/**
+ * Entfernt eine nicht mehr wirtschaftlich berechtigte Person nur aus dem
+ * aktuellen, bearbeitbaren Snapshot. Zugehörige Ausweisbelege bleiben in der
+ * Akte erhalten, werden aber bewusst entbestätigt und müssen einer aktuellen
+ * Person neu zugeordnet werden. Der alte VERIFIED-Snapshot bleibt unverändert.
+ */
+export async function removeBeneficialOwnerAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<
+  ActionResult & {
+    removedOwnerId?: string;
+    reviewReset?: boolean;
+    invalidatedIdentitySets?: InvalidatedIdentitySet[];
+  }
+> {
+  const parsed = RemoveOwnerSchema.safeParse({
+    ownerId: formData.get('ownerId'),
+    checkId: formData.get('checkId'),
+    clientId: formData.get('clientId'),
+    expectedRevision: formData.get('expectedRevision'),
+  });
+  if (!parsed.success) return { ok: false, error: 'Ungültige Angaben zur Person.' };
+  const data = parsed.data;
+
+  return withStaff(async (tx, { tenantId, staffId, session }) => {
+    await assertClientAccessTx(tx, session, data.clientId);
+    await lockGwgCheckLifecycleTx(tx, { tenantId, clientId: data.clientId });
+    const check = await tx.gwgCheck.findFirst({
+      where: { id: data.checkId, clientId: data.clientId },
+      select: {
+        status: true,
+        representatives: {
+          where: { linkedBeneficialOwnerId: data.ownerId },
+          select: { id: true },
+        },
+        beneficialOwners: {
+          where: { id: data.ownerId },
+          select: {
+            id: true,
+            fullName: true,
+            birthDate: true,
+            birthPlace: true,
+            residence: true,
+            nationality: true,
+            ownershipPct: true,
+            isPep: true,
+          },
+        },
+      },
+    });
+    if (!check) throw new ActionError('GwG-Check nicht gefunden.');
+    assertGwgEditable(check.status);
+    const owner = check.beneficialOwners[0];
+    if (!owner) throw new ActionError('Wirtschaftlich Berechtigter nicht gefunden.');
+    if (gwgBeneficialOwnerRevision(owner) !== data.expectedRevision) {
+      throw new ActionError(
+        'Die Personendaten wurden zwischenzeitlich geändert. Bitte Seite neu laden.',
+      );
+    }
+
+    await claimCheckMutation(tx, {
+      checkId: data.checkId,
+      clientId: data.clientId,
+      expectedStatus: check.status,
+      invalidateRisk: true,
+    });
+    const linkedRepresentativeIds = check.representatives.map(
+      (representative) => representative.id,
+    );
+    const affectedDocuments = await tx.gwgIdDocument.findMany({
+      where: {
+        gwgCheckId: data.checkId,
+        OR: [
+          { beneficialOwnerSubjectId: data.ownerId },
+          ...(linkedRepresentativeIds.length > 0
+            ? [{ representativeSubjectId: { in: linkedRepresentativeIds } }]
+            : []),
+        ],
+      },
+      select: {
+        id: true,
+        documentSetId: true,
+        beneficialOwnerSubjectId: true,
+      },
+    });
+    const directlyAssignedDocumentIds = affectedDocuments
+      .filter((document) => document.beneficialOwnerSubjectId === data.ownerId)
+      .map((document) => document.id);
+    if (directlyAssignedDocumentIds.length > 0) {
+      await tx.gwgIdDocument.updateMany({
+        where: {
+          gwgCheckId: data.checkId,
+          id: { in: directlyAssignedDocumentIds },
+        },
+        data: {
+          beneficialOwnerSubjectId: null,
+          identityAssignmentConfirmedAt: null,
+          identityAssignmentConfirmedBy: null,
+          verifiedAt: null,
+        },
+      });
+    }
+    const unlinkedRepresentativeRoles = await tx.gwgRepresentative.updateMany({
+      where: {
+        gwgCheckId: data.checkId,
+        linkedBeneficialOwnerId: data.ownerId,
+      },
+      data: { linkedBeneficialOwnerId: null },
+    });
+    const removed = await tx.gwgBeneficialOwner.deleteMany({
+      where: { id: data.ownerId, gwgCheckId: data.checkId },
+    });
+    if (removed.count !== 1) {
+      throw new ActionError('Die Person wurde parallel geändert. Bitte Seite neu laden.');
+    }
+    const invalidatedIdentitySets = await invalidatedIdentitySetRevisions(
+      tx,
+      data.checkId,
+      affectedDocuments.map((document) => document.documentSetId),
+    );
+    await evidenceService.record(tx, {
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
+      action: 'gwg.owner.remove',
+      resourceType: 'gwg_beneficial_owner',
+      resourceId: data.ownerId,
+      before: {
+        fullName: owner.fullName,
+        birthDate: owner.birthDate?.toISOString().slice(0, 10) ?? null,
+        birthPlace: owner.birthPlace,
+        residence: owner.residence,
+        nationality: owner.nationality,
+        ownershipPct: owner.ownershipPct?.toString() ?? null,
+        isPep: owner.isPep,
+      },
+      after: {
+        removedFromCurrentSnapshot: true,
+        invalidatedIdentityDocuments: affectedDocuments.length,
+        unlinkedRepresentativeRoles: unlinkedRepresentativeRoles.count,
+      },
+    });
+    return {
+      removedOwnerId: data.ownerId,
+      reviewReset: check.status === 'IN_REVIEW',
+      ...(invalidatedIdentitySets.length > 0 ? { invalidatedIdentitySets } : {}),
     };
   });
 }
@@ -1241,7 +1586,7 @@ export async function addIdDocumentAction(
           status: true,
           client: { select: { id: true, name: true, kind: true } },
           representatives: {
-            select: { id: true, fullName: true, position: true },
+            select: { id: true, fullName: true, position: true, linkedBeneficialOwnerId: true },
             orderBy: [{ position: 'asc' }, { id: 'asc' }],
           },
           beneficialOwners: {
@@ -1694,7 +2039,7 @@ export async function updateIdDocumentsAction(
         status: true,
         client: { select: { id: true, name: true, kind: true } },
         representatives: {
-          select: { id: true, fullName: true, position: true },
+          select: { id: true, fullName: true, position: true, linkedBeneficialOwnerId: true },
           orderBy: [{ position: 'asc' }, { id: 'asc' }],
         },
         beneficialOwners: {
@@ -1878,9 +2223,14 @@ export async function updateIdDocumentsAction(
   });
 }
 
-const VerifySchema = z.object({
+const CheckDecisionSchema = z.object({
   checkId: z.string().uuid(),
   clientId: z.string().uuid(),
+});
+
+const VerifyDecisionSchema = CheckDecisionSchema.extend({
+  reviewSnapshotHash: z.string().regex(/^[a-f0-9]{64}$/),
+  professionalAttestation: z.literal('confirmed'),
 });
 
 /**
@@ -1895,7 +2245,7 @@ export async function submitCheckForReviewAction(
   const g = await staffActionGuard();
   if (!g.ok) return g;
   const { tenantId, staffId, ctx, session } = g;
-  const parsed = VerifySchema.safeParse({
+  const parsed = CheckDecisionSchema.safeParse({
     checkId: formData.get('checkId'),
     clientId: formData.get('clientId'),
   });
@@ -1916,6 +2266,7 @@ export async function submitCheckForReviewAction(
             include: {
               document: {
                 select: {
+                  id: true,
                   clientId: true,
                   classification: true,
                   deletedAt: true,
@@ -1965,6 +2316,11 @@ export async function submitCheckForReviewAction(
       if (verificationErrors.length > 0) {
         throw new ActionError(verificationErrors.join(' '));
       }
+      if (check.beneficialOwners.some((owner) => owner.isPep) && savedAnswers['pep'] !== 3) {
+        throw new ActionError(
+          'PEP-Fall: Der PEP-Risikofaktor muss ausdrücklich als PEP bewertet werden.',
+        );
+      }
       if (check.beneficialOwners.some((owner) => owner.isPep) && check.riskLevel !== 'HIGH') {
         throw new ActionError('PEP-Fall: Die Risikobewertung muss vor der Freigabe HIGH ergeben.');
       }
@@ -1996,6 +2352,11 @@ export async function submitCheckForReviewAction(
       if (claim.count === 0) {
         throw new ActionError('Der Prüfstatus hat sich geändert — bitte Seite neu laden.');
       }
+      await cancelOpenGwgInvitesTx(tx, {
+        tenantId,
+        clientId,
+        cancelledByStaff: staffId,
+      });
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',
@@ -2035,12 +2396,21 @@ export async function verifyCheckAction(
   if (!g.ok) return g;
   const { tenantId, staffId, ctx } = g;
 
-  const parsed = VerifySchema.safeParse({
+  const parsed = VerifyDecisionSchema.safeParse({
     checkId: formData.get('checkId'),
     clientId: formData.get('clientId'),
+    reviewSnapshotHash: formData.get('reviewSnapshotHash'),
+    professionalAttestation: formData.get('professionalAttestation'),
   });
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler — ungültige IDs.' };
-  const { checkId, clientId } = parsed.data;
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error:
+        'Die ausdrückliche Berufsträger-Bestätigung des vollständig angezeigten Prüfsnapshots fehlt.',
+    };
+  }
+  const { checkId, clientId, reviewSnapshotHash } = parsed.data;
+  let verifiedValidUntil: string | null = null;
 
   try {
     await withTenantContext(ctx, async (tx) => {
@@ -2065,13 +2435,25 @@ export async function verifyCheckAction(
       const check = await tx.gwgCheck.findFirst({
         where: { id: checkId, clientId },
         include: {
-          client: { select: { id: true, kind: true } },
+          client: {
+            select: {
+              id: true,
+              kind: true,
+              name: true,
+              street: true,
+              postalCode: true,
+              city: true,
+              countryIso: true,
+              vatId: true,
+            },
+          },
           beneficialOwners: true,
           representatives: { orderBy: [{ position: 'asc' }, { id: 'asc' }] },
           idDocuments: {
             include: {
               document: {
                 select: {
+                  id: true,
                   clientId: true,
                   classification: true,
                   deletedAt: true,
@@ -2090,6 +2472,22 @@ export async function verifyCheckAction(
       });
       if (!check) throw new ActionError('GwG-Check nicht gefunden.');
       await assertLatestCheckForDecision(tx, { clientId, checkId });
+      if (check.status !== 'IN_REVIEW') {
+        throw new ActionError(
+          'GwG-Check ist nicht mehr im Prüfstatus. Bitte den aktuellen Snapshot neu öffnen.',
+        );
+      }
+      if (!check.reviewSubmittedAt || !check.reviewSubmittedBy) {
+        throw new ActionError(
+          'Die dokumentierte Übergabe zur Berufsträger-Prüfung fehlt. Bitte den Entwurf erneut ausdrücklich zur Freigabe einreichen.',
+        );
+      }
+      const currentReviewSnapshotHash = gwgProfessionalReviewSnapshotHash(check);
+      if (currentReviewSnapshotHash !== reviewSnapshotHash) {
+        throw new ActionError(
+          'Der angezeigte GwG-Snapshot ist nicht mehr aktuell. Bitte Seite neu laden und alle Angaben erneut prüfen.',
+        );
+      }
       if (check.riskScore === null || check.riskLevel === null) {
         throw new ActionError('Bitte zuerst Risikobewertung durchführen.');
       }
@@ -2131,6 +2529,11 @@ export async function verifyCheckAction(
         throw new ActionError(verificationErrors.join(' '));
       }
 
+      if (check.beneficialOwners.some((owner) => owner.isPep) && savedAnswers['pep'] !== 3) {
+        throw new ActionError(
+          'Wirtschaftlich Berechtigter ist als PEP markiert — der PEP-Risikofaktor muss ausdrücklich als PEP bewertet werden.',
+        );
+      }
       if (check.beneficialOwners.some((o) => o.isPep) && check.riskLevel !== 'HIGH') {
         throw new ActionError(
           'Wirtschaftlich Berechtigter ist als PEP markiert — bitte die Risikobewertung erneut durchführen (§ 15 GwG: zwingend hohes Risiko, jährliche Aktualisierung).',
@@ -2150,13 +2553,19 @@ export async function verifyCheckAction(
           verifiedAt: new Date(),
           verifiedBy: staffId,
           validUntil,
-          reviewSubmittedAt: check.reviewSubmittedAt ?? new Date(),
-          reviewSubmittedBy: check.reviewSubmittedBy ?? staffId,
+          reviewSubmittedAt: check.reviewSubmittedAt,
+          reviewSubmittedBy: check.reviewSubmittedBy,
         },
       });
       if (claim.count === 0) {
         throw new ActionError('GwG-Check ist nicht mehr im Prüfstatus — bitte Seite neu laden.');
       }
+      verifiedValidUntil = validUntil.toISOString();
+      await cancelOpenGwgInvitesTx(tx, {
+        tenantId,
+        clientId,
+        cancelledByStaff: staffId,
+      });
 
       // Mandant scharf schalten — der Trigger erlaubt das jetzt
       await tx.client.update({
@@ -2175,6 +2584,10 @@ export async function verifyCheckAction(
           riskLevel: check.riskLevel,
           riskScore: check.riskScore,
           validUntil: validUntil.toISOString(),
+          professionalAttestation: true,
+          reviewSnapshotHash: currentReviewSnapshotHash,
+          reviewSubmittedAt: check.reviewSubmittedAt?.toISOString() ?? null,
+          reviewSubmittedBy: check.reviewSubmittedBy,
         },
       });
     });
@@ -2193,8 +2606,6 @@ export async function verifyCheckAction(
       vars: {
         portalUrl: `${portalBaseUrl}/portal/dashboard`,
       },
-      n8nEvent: 'client.created',
-      n8nPayload: { tenantId, clientId, gwgVerified: true },
       fallback: {
         subject: 'Willkommen — Ihre Mandantschaft ist nun aktiv',
         bodyMd:
@@ -2202,6 +2613,13 @@ export async function verifyCheckAction(
       },
     }),
   );
+  if (verifiedValidUntil) {
+    await emitN8nEvent(
+      'gwg.verified',
+      { tenantId, clientId, gwgCheckId: checkId, validUntil: verifiedValidUntil },
+      { tenantId },
+    );
+  }
   revalidatePath(`/staff/clients/${clientId}`);
   revalidatePath(`/staff/clients/${clientId}/gwg`);
   return { ok: true };
@@ -2258,6 +2676,11 @@ export async function rejectCheckAction(
       if (claim.count === 0) {
         throw new ActionError('GwG-Check ist nicht mehr zur Entscheidung eingereicht.');
       }
+      await cancelOpenGwgInvitesTx(tx, {
+        tenantId,
+        clientId,
+        cancelledByStaff: staffId,
+      });
       await tx.client.updateMany({
         where: { id: clientId, allowActive: true },
         data: { allowActive: false },

@@ -2,7 +2,12 @@ export interface IdentitySubjectSource {
   clientId: string;
   clientName: string;
   clientKind: 'NATPERS' | 'JURPERS' | 'PERSGES';
-  representatives: Array<{ id: string; fullName: string; position: number }>;
+  representatives: Array<{
+    id: string;
+    fullName: string;
+    position: number;
+    linkedBeneficialOwnerId?: string | null;
+  }>;
   beneficialOwners: Array<{ id: string; fullName: string; birthDate: Date | string | null }>;
 }
 
@@ -16,6 +21,8 @@ export interface IdentitySubjectOption {
   roles: Array<'MANDANT' | 'VERTRETUNGSBERECHTIGT' | 'WIRTSCHAFTLICH_BERECHTIGT'>;
   position?: number;
   birthDateLabel?: string;
+  linkedBeneficialOwnerId?: string;
+  linkedRepresentativeId?: string;
 }
 
 export interface PersistedIdentityAssignment {
@@ -86,6 +93,11 @@ export function identitySubjectOptions(source: IdentitySubjectSource): IdentityS
     .sort((a, b) => a.position - b.position || a.id.localeCompare(b.id))
     .flatMap((representative): IdentitySubjectOption[] => {
       const name = cleanName(representative.fullName);
+      const linkedOwner = representative.linkedBeneficialOwnerId
+        ? source.beneficialOwners.find(
+            (owner) => owner.id === representative.linkedBeneficialOwnerId,
+          )
+        : null;
       return name
         ? [
             {
@@ -93,14 +105,21 @@ export function identitySubjectOptions(source: IdentitySubjectSource): IdentityS
               id: representative.id,
               kind: 'REPRESENTATIVE',
               name,
-              roles: ['VERTRETUNGSBERECHTIGT'],
+              roles: linkedOwner
+                ? ['VERTRETUNGSBERECHTIGT', 'WIRTSCHAFTLICH_BERECHTIGT']
+                : ['VERTRETUNGSBERECHTIGT'],
               position: representative.position,
+              birthDateLabel: linkedOwner ? formatBirthDate(linkedOwner.birthDate) : undefined,
+              linkedBeneficialOwnerId: linkedOwner?.id,
             },
           ]
         : [];
     });
   const owners = source.beneficialOwners.flatMap((owner, position): IdentitySubjectOption[] => {
     const name = cleanName(owner.fullName);
+    const linkedRepresentative = source.representatives.find(
+      (representative) => representative.linkedBeneficialOwnerId === owner.id,
+    );
     return name
       ? [
           {
@@ -111,6 +130,7 @@ export function identitySubjectOptions(source: IdentitySubjectSource): IdentityS
             roles: ['WIRTSCHAFTLICH_BERECHTIGT'],
             position,
             birthDateLabel: formatBirthDate(owner.birthDate),
+            linkedRepresentativeId: linkedRepresentative?.id,
           },
         ]
       : [];
@@ -118,12 +138,30 @@ export function identitySubjectOptions(source: IdentitySubjectSource): IdentityS
   return [...representatives, ...owners];
 }
 
+/**
+ * Für eine ausdrücklich verknüpfte Doppelrolle erscheint genau eine Auswahl:
+ * der Vertreter-Datensatz, weil das Verify-Gate diesen Rollenbezug benötigt.
+ * Die Owner-Option bleibt intern verfügbar, damit lokale Rollenänderungen ohne
+ * Seitenreload neu abgeleitet werden können.
+ */
+export function selectableIdentitySubjectOptions(
+  options: IdentitySubjectOption[],
+): IdentitySubjectOption[] {
+  return options.filter(
+    (option) => !(option.kind === 'BENEFICIAL_OWNER' && option.linkedRepresentativeId),
+  );
+}
+
 /** Loest einen Browserwert ausschliesslich gegen den aktuellen DB-Snapshot auf. */
 export function resolveIdentitySubject(
   source: IdentitySubjectSource,
   subjectKey: string,
 ): IdentitySubjectOption | null {
-  return identitySubjectOptions(source).find((option) => option.key === subjectKey) ?? null;
+  return (
+    selectableIdentitySubjectOptions(identitySubjectOptions(source)).find(
+      (option) => option.key === subjectKey,
+    ) ?? null
+  );
 }
 
 export function identityAssignmentForSubject(

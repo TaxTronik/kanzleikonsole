@@ -1,5 +1,6 @@
 # Shell-Scripts und die Operator-CLI MÜSSEN LF behalten — sonst scheitert
 # der Linux-Server mit „bad interpreter: /usr/bin/env bash^M".
+/.gitattributes  text eol=lf
 taxtronik         text eol=lf
 *.sh              text eol=lf
 infra/scripts/*   text eol=lf
@@ -12,6 +13,7 @@ infra/scripts/*   text eol=lf
 *.json            text
 *.yml             text eol=lf
 *.yaml            text eol=lf
+*.conf            text eol=lf
 *.md              text
 
 # Binär — nie anfassen.

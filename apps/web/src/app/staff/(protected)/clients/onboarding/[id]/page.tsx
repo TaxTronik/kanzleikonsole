@@ -22,6 +22,7 @@ import { staffAuth } from '@/server/auth/staff';
 import { canAccessClient } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { readModules } from '@/server/settings/modules';
+import { isGwgProfessionallyReviewed } from '@/server/gwg/professional-review';
 import { Stepper } from '../stepper';
 import { stepsForTenant, type StepKey } from '../steps';
 import {
@@ -234,10 +235,12 @@ export default async function OnboardingStepPage({
   const hasGwgSubmission = Boolean(
     gwgInvite?.submittedAt || gwgCheck || gwgSummary.uploadedDocuments.length > 0,
   );
+  const hasVerifiedGwgStatus = gwgCheck?.status === 'VERIFIED';
+  const gwgProfessionallyReviewed = isGwgProfessionallyReviewed(gwgCheck);
   const doneKeys = new Set<StepKey>();
   doneKeys.add('master_data'); // sind wir hier, ist der Mandant da
   if (contactCount > 0) doneKeys.add('contact');
-  if (gwgCheck?.status === 'VERIFIED') doneKeys.add('gwg');
+  if (gwgProfessionallyReviewed) doneKeys.add('gwg');
   if (poaCount > 0) doneKeys.add('poa');
   if (requestCount > 0) doneKeys.add('first_request');
   if (client.onboardingCompletedAt) doneKeys.add('done');
@@ -247,6 +250,8 @@ export default async function OnboardingStepPage({
   if (activeStep === 'poa' && modules.poaMode === 'OFF') {
     activeStep = 'first_request';
   }
+  const activeStepIndex = steps.findIndex((entry) => entry.key === activeStep);
+  const previousStep = activeStepIndex > 0 ? steps[activeStepIndex - 1] : undefined;
 
   return (
     <div className="p-8 max-w-3xl">
@@ -262,7 +267,16 @@ export default async function OnboardingStepPage({
         <p className="text-muted text-sm">Restliche Schritte zum vollständigen Erstkontakt.</p>
       </div>
 
-      <Stepper steps={steps} currentKey={activeStep} doneKeys={doneKeys} />
+      <Stepper steps={steps} currentKey={activeStep} doneKeys={doneKeys} clientId={client.id} />
+
+      {previousStep && previousStep.key !== 'master_data' && (
+        <Link
+          href={`/staff/clients/onboarding/${client.id}?step=${previousStep.key}`}
+          className="btn-secondary mb-4 inline-flex text-xs"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" /> Zurück: {previousStep.label}
+        </Link>
+      )}
 
       {activeStep === 'contact' && (
         <ContactStep
@@ -282,7 +296,8 @@ export default async function OnboardingStepPage({
             defaultEmail={firstContact?.email ?? ''}
             existingInvite={gwgInvite}
             hasSubmission={hasGwgSubmission}
-            verified={gwgCheck?.status === 'VERIFIED'}
+            professionallyReviewed={gwgProfessionallyReviewed}
+            hasVerifiedStatus={hasVerifiedGwgStatus}
           />
           {(gwgInvite || gwgCheck || gwgSummary.uploadedDocuments.length > 0) && (
             <GwgSubmissionSummary data={gwgSummary} title="Aktueller Stand der GwG-Einreichung" />
@@ -314,6 +329,7 @@ export default async function OnboardingStepPage({
             poaCount,
             requestCount,
             allowActive: client.allowActive,
+            gwgProfessionallyReviewed,
             onboardingCompletedAt: client.onboardingCompletedAt,
           }}
         />
@@ -337,6 +353,8 @@ function ContactStep({
   allowActive: boolean;
   error?: string;
 }) {
+  const contactFormId = `onboarding-contact-${clientId}`;
+
   return (
     <div className="card p-6">
       <h2 className="text-sm font-medium text-primary mb-1">Ansprechpartner + Portal-Zugang</h2>
@@ -344,7 +362,7 @@ function ContactStep({
         Mindestens ein Ansprechpartner ermöglicht später Portal-Login, Anforderungen und
         Magic-Link-Mails.
       </p>
-      <form action={onboardingAddContactAction} className="space-y-4">
+      <form id={contactFormId} action={onboardingAddContactAction} className="space-y-4">
         {error && <div className="alert-error-sm">{error}</div>}
         <input type="hidden" name="clientId" value={clientId} />
         <div className="grid grid-cols-2 gap-3">
@@ -420,13 +438,13 @@ function ContactStep({
             )}
           </span>
         </label>
-        <div className="flex justify-end gap-2 pt-3 border-t border-subtle">
-          <SkipButton clientId={clientId} next="gwg" label="Überspringen" />
-          <button type="submit" className="btn-primary text-sm">
-            Anlegen &amp; weiter
-          </button>
-        </div>
       </form>
+      <div className="flex justify-end gap-2 pt-3 mt-4 border-t border-subtle">
+        <SkipButton clientId={clientId} next="gwg" label="Überspringen" />
+        <button type="submit" form={contactFormId} className="btn-primary text-sm">
+          Anlegen &amp; weiter
+        </button>
+      </div>
     </div>
   );
 }
@@ -437,14 +455,16 @@ function GwgStep({
   defaultEmail,
   existingInvite,
   hasSubmission,
-  verified,
+  professionallyReviewed,
+  hasVerifiedStatus,
 }: {
   clientId: string;
   defaultName: string;
   defaultEmail: string;
   existingInvite: { id: string; inviteEmail: string; inviteName: string; status: string } | null;
   hasSubmission: boolean;
-  verified: boolean;
+  professionallyReviewed: boolean;
+  hasVerifiedStatus: boolean;
 }) {
   const sendFormId = `gwg-send-${clientId}`;
   return (
@@ -465,7 +485,15 @@ function GwgStep({
         </div>
       )}
 
-      {!verified && (
+      {hasVerifiedStatus && !professionallyReviewed && (
+        <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+          Der historische VERIFIED-Status enthält keinen vollständigen, dokumentierten
+          Berufsträger-Review. Bitte öffnen Sie das GwG-Modul und starten Sie einen neuen
+          Prüfzyklus; erst dessen Freigabe erfüllt den Pflichtschritt.
+        </div>
+      )}
+
+      {!professionallyReviewed && !hasVerifiedStatus && (
         <form id={sendFormId} action={onboardingSendGwgAction} className="space-y-4">
           <input type="hidden" name="clientId" value={clientId} />
           <div className="grid grid-cols-2 gap-3">
@@ -501,8 +529,15 @@ function GwgStep({
         </form>
       )}
       <div className="flex justify-end gap-2 pt-3 mt-4 border-t border-subtle">
-        {verified ? (
+        {professionallyReviewed ? (
           <SkipButton clientId={clientId} next="poa" label="Weiter" />
+        ) : hasVerifiedStatus ? (
+          <Link
+            href={`/staff/clients/${clientId}/gwg?from=onboarding`}
+            className="btn-primary text-sm"
+          >
+            Neuen Prüfzyklus starten
+          </Link>
         ) : hasSubmission ? (
           <>
             <SkipButton clientId={clientId} next="poa" label="Später weiter" />
@@ -516,7 +551,7 @@ function GwgStep({
         ) : existingInvite ? (
           <SkipButton clientId={clientId} next="poa" label="Weiter" />
         ) : null}
-        {!verified && (
+        {!professionallyReviewed && !hasVerifiedStatus && (
           <button
             type="submit"
             form={sendFormId}
@@ -645,6 +680,7 @@ function DoneStep({
     poaCount: number;
     requestCount: number;
     allowActive: boolean;
+    gwgProfessionallyReviewed: boolean;
     onboardingCompletedAt: Date | null;
   };
 }) {
@@ -687,6 +723,12 @@ function DoneStep({
             {summary.allowActive ? 'Ja' : 'Nein (wartet auf GwG-Verifikation)'}
           </span>
         </li>
+        <li className="flex items-center justify-between">
+          <span>GwG-Snapshot durch Berufsträger freigegeben</span>
+          <span className="text-secondary">
+            {summary.gwgProfessionallyReviewed ? 'Ja' : 'Nein'}
+          </span>
+        </li>
       </ul>
 
       {!summary.onboardingCompletedAt && !summary.allowActive && (
@@ -717,7 +759,7 @@ function DoneStep({
             Ansprechpartner erfassen
           </Link>
         </div>
-      ) : summary.allowActive ? (
+      ) : summary.allowActive && summary.gwgProfessionallyReviewed ? (
         <form action={onboardingCompleteAction}>
           <input type="hidden" name="clientId" value={clientId} />
           <div className="flex justify-end pt-3 border-t border-subtle">
@@ -729,7 +771,8 @@ function DoneStep({
       ) : (
         <div className="flex items-center justify-between gap-3 pt-3 border-t border-subtle">
           <p className="text-xs text-amber-700">
-            Erst nach Freigabe der GwG-Prüfung kann das Onboarding abgeschlossen werden.
+            Erst nach ausdrücklicher Prüfung und Freigabe des vollständigen GwG-Snapshots durch den
+            verantwortlichen Berufsträger kann das Onboarding abgeschlossen werden.
           </p>
           <Link
             href={`/staff/clients/${clientId}/gwg?from=onboarding`}

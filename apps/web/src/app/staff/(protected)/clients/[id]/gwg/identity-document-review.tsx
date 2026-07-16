@@ -10,6 +10,7 @@ import {
 } from './actions';
 import {
   identitySubjectRoleLabel,
+  selectableIdentitySubjectOptions,
   type IdentitySubjectOption,
 } from '@/server/gwg/identity-subject';
 import { DocumentPreviewButton } from '@/components/document-preview';
@@ -50,6 +51,71 @@ export interface IdentityReviewGroup {
   revision: string;
 }
 
+export interface IdentityReviewEditableFields {
+  type: 'PERSONALAUSWEIS' | 'REISEPASS';
+  number: string;
+  issuedBy: string;
+  issueDate: string;
+  expiryDate: string;
+}
+
+export interface IdentityReviewLocalState {
+  revision: string;
+  fields: IdentityReviewEditableFields;
+  selectedSubjectKey: string;
+  ownerName: string;
+  confirmedRevision: string | null;
+}
+
+export interface IdentityReviewSavedState extends IdentityReviewEditableFields {
+  subjectKey: string;
+  ownerName: string;
+}
+
+/**
+ * A successful action response is the authoritative successor of the exact
+ * revision submitted by this card. Keep all visible values and the next CAS
+ * revision in one state object so a second save can never combine old fields
+ * with a new revision (or vice versa).
+ */
+export function applyIdentityReviewSave(
+  saved: IdentityReviewSavedState,
+  revision: string,
+): IdentityReviewLocalState {
+  return {
+    revision,
+    fields: {
+      type: saved.type,
+      number: saved.number,
+      issuedBy: saved.issuedBy,
+      issueDate: saved.issueDate,
+      expiryDate: saved.expiryDate,
+    },
+    selectedSubjectKey: saved.subjectKey,
+    ownerName: saved.ownerName,
+    confirmedRevision: revision,
+  };
+}
+
+/**
+ * Next.js may deliver the RSC refresh triggered by save N after the local
+ * response for save N+1. Revisions are content snapshots rather than ordered
+ * counters, so known predecessors must be remembered explicitly. Equal props
+ * are ignored as well: they must not erase edits typed after the last save.
+ * An unknown revision still wins, because it represents an external update
+ * that must be surfaced instead of overwritten with a stale CAS token.
+ */
+export function reconcileIdentityReviewServerState(
+  current: IdentityReviewLocalState,
+  incoming: IdentityReviewLocalState,
+  supersededRevisions: ReadonlySet<string>,
+): IdentityReviewLocalState {
+  if (incoming.revision === current.revision || supersededRevisions.has(incoming.revision)) {
+    return current;
+  }
+  return incoming;
+}
+
 interface IdentitySetFileCandidate {
   key: string;
   sourceDocumentSetId: string | null;
@@ -74,9 +140,27 @@ function InlineEvidence({
   const [mimeType, setMimeType] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [inViewport, setInViewport] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!active || url || error) return;
+    const element = containerRef.current;
+    if (!active || !element) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setInViewport(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '160px' },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [active]);
+
+  useEffect(() => {
+    if (!active || !inViewport || url || error) return;
     let cancelled = false;
     setLoading(true);
     void fetch(`/api/staff/documents/${document.id}/preview-url`)
@@ -98,13 +182,16 @@ function InlineEvidence({
     return () => {
       cancelled = true;
     };
-  }, [active, document.id, error, url]);
+  }, [active, document.id, error, inViewport, url]);
 
   const isImage = mimeType?.startsWith('image/');
   const isPdf = mimeType === 'application/pdf' || mimeType?.endsWith('pdf');
 
   return (
-    <div className="overflow-hidden rounded-md border border-default bg-gray-100 dark:bg-gray-950">
+    <div
+      ref={containerRef}
+      className="overflow-hidden rounded-md border border-default bg-gray-100 dark:bg-gray-950"
+    >
       <div className="flex items-center justify-between border-b border-default bg-surface px-3 py-2">
         <div className="min-w-0">
           {label && <p className="text-[11px] font-semibold text-brand-700">{label}</p>}
@@ -120,10 +207,26 @@ function InlineEvidence({
       </div>
       <div className="flex min-h-72 items-center justify-center lg:min-h-96">
         {loading && <Loader2 className="h-6 w-6 animate-spin text-disabled" />}
-        {error && <p className="p-4 text-center text-xs text-red-700">{error}</p>}
+        {error && (
+          <div className="space-y-2 p-4 text-center text-xs text-red-700">
+            <p>{error}</p>
+            <button type="button" className="btn-secondary text-xs" onClick={() => setError(null)}>
+              Vorschau erneut laden
+            </button>
+          </div>
+        )}
         {url && isImage && (
           // eslint-disable-next-line @next/next/no-img-element -- authenticated, short-lived evidence preview URL
-          <img src={url} alt={document.title} className="max-h-[65vh] w-full object-contain" />
+          <img
+            src={url}
+            alt={document.title}
+            loading="lazy"
+            className="max-h-[65vh] w-full object-contain"
+            onError={() => {
+              setUrl(null);
+              setError('Die Vorschau-URL ist abgelaufen oder nicht mehr erreichbar.');
+            }}
+          />
         )}
         {url && isPdf && (
           <iframe src={url} title={document.title} className="h-[65vh] min-h-96 w-full border-0" />
@@ -449,6 +552,7 @@ function IdentityReviewCard({
   mergeCandidates,
   grandfathered,
   disabled,
+  reviewMode,
 }: {
   checkId: string;
   clientId: string;
@@ -458,30 +562,40 @@ function IdentityReviewCard({
   mergeCandidates: IdentitySetFileCandidate[];
   grandfathered: boolean;
   disabled: boolean;
+  reviewMode: boolean;
 }) {
   const { markDraft } = useGwgEditState();
   const { invalidatedIdentitySets, acknowledgeIdentitySet } = useGwgIdentitySubjects();
   const first = group.documents[0]!;
-  const [expanded, setExpanded] = useState(false);
-  const [selectedSubjectKey, setSelectedSubjectKey] = useState(group.subjectKey ?? '');
+  const [expanded, setExpanded] = useState(reviewMode);
+  const [localState, setLocalState] = useState<IdentityReviewLocalState>(() => ({
+    revision: group.revision,
+    fields: {
+      type: first.type,
+      number: first.number ?? '',
+      issuedBy: first.issuedBy ?? '',
+      issueDate: first.issueDate ?? '',
+      expiryDate: first.expiryDate ?? '',
+    },
+    selectedSubjectKey: group.subjectKey ?? '',
+    ownerName: first.ownerName,
+    confirmedRevision: null,
+  }));
+  const localStateRef = useRef(localState);
+  const lastServerRevision = useRef(group.revision);
+  const supersededRevisions = useRef(new Set<string>());
+  const submittedRevision = useRef<string | null>(null);
   const submittedInvalidationGeneration = useRef<number | null>(null);
   const [state, formAction, isPending] = useActionState<
     | (ActionResult & {
         reviewReset?: boolean;
         revision?: string;
-        saved?: {
-          type: 'PERSONALAUSWEIS' | 'REISEPASS';
-          subjectKey: string;
-          ownerName: string;
-          number: string;
-          issuedBy: string;
-          issueDate: string;
-          expiryDate: string;
-        };
+        saved?: IdentityReviewSavedState;
       })
     | null,
     FormData
   >(updateIdDocumentsAction, null);
+  const handledActionState = useRef<typeof state>(null);
   const attachedDocuments = group.documents.filter(
     (
       entry,
@@ -489,17 +603,28 @@ function IdentityReviewCard({
       document: NonNullable<IdentityReviewDocument['document']>;
     } => entry.document !== null,
   );
-  const saved = state?.ok ? state.saved : undefined;
   const invalidation = invalidatedIdentitySets[group.documentSetId];
   const invalidatedRevision = invalidation?.revision;
   const invalidated = invalidatedRevision !== undefined;
+  const { fields, selectedSubjectKey, revision: currentRevision } = localState;
   const currentSubject = subjectOptions.find((option) => option.key === selectedSubjectKey);
-  const displayedType = saved?.type ?? first.type;
-  const displayedOwnerName = invalidated
-    ? (currentSubject?.name ?? '')
-    : (saved?.ownerName ?? first.ownerName);
-  const displayedNumber = saved?.number ?? first.number;
-  const displayedExpiryDate = saved?.expiryDate ?? first.expiryDate;
+  const duplicateRoleNames = new Set(
+    subjectOptions
+      .filter((option, index, all) => {
+        const normalizedName = option.name.normalize('NFKC').trim().toLocaleLowerCase('de-DE');
+        return all.some(
+          (candidate, candidateIndex) =>
+            candidateIndex !== index &&
+            candidate.kind !== option.kind &&
+            candidate.name.normalize('NFKC').trim().toLocaleLowerCase('de-DE') === normalizedName,
+        );
+      })
+      .map((option) => option.name.normalize('NFKC').trim().toLocaleLowerCase('de-DE')),
+  );
+  const displayedType = fields.type;
+  const displayedOwnerName = invalidated ? (currentSubject?.name ?? '') : localState.ownerName;
+  const displayedNumber = fields.number;
+  const displayedExpiryDate = fields.expiryDate;
   const expired = Boolean(
     displayedExpiryDate && displayedExpiryDate < new Date().toISOString().slice(0, 10),
   );
@@ -522,11 +647,45 @@ function IdentityReviewCard({
         entry.issueDate === first.issueDate &&
         entry.expiryDate === first.expiryDate,
     );
-  const confirmed = grandfathered || (!invalidated && (Boolean(saved) || persistedConfirmation));
+  const confirmed =
+    grandfathered ||
+    (!invalidated &&
+      (localState.confirmedRevision === localState.revision || persistedConfirmation));
+
+  function replaceLocalState(next: IdentityReviewLocalState) {
+    localStateRef.current = next;
+    setLocalState(next);
+  }
+
+  function updateLocalState(
+    update: (current: IdentityReviewLocalState) => IdentityReviewLocalState,
+  ) {
+    replaceLocalState(update(localStateRef.current));
+  }
+
+  function rememberSupersededRevision(revision: string) {
+    const revisions = supersededRevisions.current;
+    revisions.add(revision);
+    // A card normally only sees a handful of saves. Bound the defensive
+    // history nonetheless so a long-running editing session cannot grow it
+    // without limit.
+    if (revisions.size > 20) {
+      const oldest = revisions.values().next().value;
+      if (oldest !== undefined) revisions.delete(oldest);
+    }
+  }
 
   useEffect(() => {
+    if (handledActionState.current === state) return;
+    handledActionState.current = state;
     if (!state?.ok) return;
     setExpanded(true);
+    if (state.saved && state.revision) {
+      if (submittedRevision.current) rememberSupersededRevision(submittedRevision.current);
+      rememberSupersededRevision(localStateRef.current.revision);
+      replaceLocalState(applyIdentityReviewSave(state.saved, state.revision));
+      submittedRevision.current = null;
+    }
     if (submittedInvalidationGeneration.current !== null) {
       acknowledgeIdentitySet(group.documentSetId, submittedInvalidationGeneration.current);
       submittedInvalidationGeneration.current = null;
@@ -534,13 +693,44 @@ function IdentityReviewCard({
     if (state.reviewReset) markDraft();
   }, [acknowledgeIdentitySet, group.documentSetId, markDraft, state]);
   useEffect(() => {
-    setSelectedSubjectKey((current) =>
-      subjectOptions.some((option) => option.key === current)
-        ? current
-        : subjectOptions.length === 1
-          ? subjectOptions[0]!.key
-          : '',
+    if (lastServerRevision.current === group.revision) return;
+    lastServerRevision.current = group.revision;
+    const current = localStateRef.current;
+    const incoming: IdentityReviewLocalState = {
+      revision: group.revision,
+      fields: {
+        type: first.type,
+        number: first.number ?? '',
+        issuedBy: first.issuedBy ?? '',
+        issueDate: first.issueDate ?? '',
+        expiryDate: first.expiryDate ?? '',
+      },
+      selectedSubjectKey: group.subjectKey ?? '',
+      ownerName: first.ownerName,
+      confirmedRevision: null,
+    };
+    const reconciled = reconcileIdentityReviewServerState(
+      current,
+      incoming,
+      supersededRevisions.current,
     );
+    if (reconciled === current) return;
+    rememberSupersededRevision(current.revision);
+    replaceLocalState(reconciled);
+  }, [first, group.revision, group.subjectKey]);
+  useEffect(() => {
+    const current = localStateRef.current;
+    const selectedSubjectKey = subjectOptions.some(
+      (option) => option.key === current.selectedSubjectKey,
+    )
+      ? current.selectedSubjectKey
+      : subjectOptions.length === 1
+        ? subjectOptions[0]!.key
+        : '';
+    if (selectedSubjectKey === current.selectedSubjectKey) return;
+    const next = { ...current, selectedSubjectKey };
+    localStateRef.current = next;
+    setLocalState(next);
   }, [subjectOptions]);
 
   return (
@@ -586,8 +776,8 @@ function IdentityReviewCard({
         )}
         {invalidated && (
           <div className="alert-info-sm">
-            Die zugeordnete Person wurde geaendert. Die Ausweisdaten bleiben sichtbar, muessen aber
-            mit der aktuellen Person erneut bestaetigt werden.
+            Die zugeordnete Person wurde geändert. Die Ausweisdaten bleiben sichtbar, müssen aber
+            mit der aktuellen Person erneut bestätigt werden.
           </div>
         )}
         {attachedDocuments.length < group.documents.length && (
@@ -632,6 +822,7 @@ function IdentityReviewCard({
           action={formAction}
           className="space-y-4"
           onSubmit={() => {
+            submittedRevision.current = invalidatedRevision ?? localStateRef.current.revision;
             submittedInvalidationGeneration.current = invalidation?.generation ?? null;
           }}
         >
@@ -641,9 +832,7 @@ function IdentityReviewCard({
           <input
             type="hidden"
             name="expectedRevision"
-            value={
-              invalidatedRevision ?? (state?.ok && state.revision ? state.revision : group.revision)
-            }
+            value={invalidatedRevision ?? currentRevision}
           />
 
           <div className="grid gap-3 sm:grid-cols-2">
@@ -655,8 +844,17 @@ function IdentityReviewCard({
                 id={`identity-type-${group.key}`}
                 name="type"
                 className="input"
-                defaultValue={first.type}
-                disabled={disabled}
+                value={fields.type}
+                onChange={(event) =>
+                  updateLocalState((current) => ({
+                    ...current,
+                    fields: {
+                      ...current.fields,
+                      type: event.target.value as 'PERSONALAUSWEIS' | 'REISEPASS',
+                    },
+                  }))
+                }
+                disabled={disabled || isPending}
               >
                 <option value="PERSONALAUSWEIS">Personalausweis</option>
                 <option value="REISEPASS">Reisepass</option>
@@ -671,9 +869,14 @@ function IdentityReviewCard({
                 name="subjectKey"
                 className="input"
                 value={selectedSubjectKey}
-                onChange={(event) => setSelectedSubjectKey(event.target.value)}
+                onChange={(event) =>
+                  updateLocalState((current) => ({
+                    ...current,
+                    selectedSubjectKey: event.target.value,
+                  }))
+                }
                 required
-                disabled={disabled}
+                disabled={disabled || isPending}
               >
                 <option value="" disabled>
                   — erfasste Person auswählen —
@@ -690,6 +893,14 @@ function IdentityReviewCard({
                   1:1-Zuordnung. Bitte die konkrete Person auswählen.
                 </p>
               )}
+              {duplicateRoleNames.size > 0 && (
+                <p className="mt-1 rounded border border-blue-200 bg-blue-50 p-2 text-xs text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">
+                  Gleichnamige Einträge in verschiedenen Rollen sind nicht automatisch zwei
+                  Personen. Wählen Sie bewusst die Rollen-Zuordnung: Für den Vertretungsnachweis
+                  muss der Eintrag „vertretungsberechtigt“ gewählt werden; Geburtsdatum und
+                  Eintragsnummer unterscheiden echte Namensdopplungen.
+                </p>
+              )}
             </div>
           </div>
 
@@ -702,10 +913,16 @@ function IdentityReviewCard({
                 id={`identity-number-${group.key}`}
                 name="number"
                 className="input"
-                defaultValue={first.number ?? ''}
+                value={fields.number}
+                onChange={(event) =>
+                  updateLocalState((current) => ({
+                    ...current,
+                    fields: { ...current.fields, number: event.target.value },
+                  }))
+                }
                 required
                 maxLength={100}
-                disabled={disabled}
+                disabled={disabled || isPending}
               />
             </div>
             <div>
@@ -717,9 +934,15 @@ function IdentityReviewCard({
                 name="issueDate"
                 type="date"
                 className="input"
-                defaultValue={first.issueDate ?? ''}
+                value={fields.issueDate}
+                onChange={(event) =>
+                  updateLocalState((current) => ({
+                    ...current,
+                    fields: { ...current.fields, issueDate: event.target.value },
+                  }))
+                }
                 required
-                disabled={disabled}
+                disabled={disabled || isPending}
               />
             </div>
             <div>
@@ -731,9 +954,15 @@ function IdentityReviewCard({
                 name="expiryDate"
                 type="date"
                 className="input"
-                defaultValue={first.expiryDate ?? ''}
+                value={fields.expiryDate}
+                onChange={(event) =>
+                  updateLocalState((current) => ({
+                    ...current,
+                    fields: { ...current.fields, expiryDate: event.target.value },
+                  }))
+                }
                 required
-                disabled={disabled}
+                disabled={disabled || isPending}
               />
             </div>
           </div>
@@ -745,10 +974,16 @@ function IdentityReviewCard({
               id={`identity-issued-by-${group.key}`}
               name="issuedBy"
               className="input"
-              defaultValue={first.issuedBy ?? ''}
+              value={fields.issuedBy}
+              onChange={(event) =>
+                updateLocalState((current) => ({
+                  ...current,
+                  fields: { ...current.fields, issuedBy: event.target.value },
+                }))
+              }
               required
               maxLength={200}
-              disabled={disabled}
+              disabled={disabled || isPending}
             />
           </div>
 
@@ -787,6 +1022,7 @@ export function IdentityDocumentReview({
   clientDocuments,
   grandfathered,
   disabled,
+  reviewMode = false,
 }: {
   checkId: string;
   clientId: string;
@@ -795,8 +1031,13 @@ export function IdentityDocumentReview({
   clientDocuments: SelectableGwgDocument[];
   grandfathered: boolean;
   disabled: boolean;
+  reviewMode?: boolean;
 }) {
-  const { subjectOptions: availableSubjectOptions } = useGwgIdentitySubjects(subjectOptions);
+  const { subjectOptions: allSubjectOptions } = useGwgIdentitySubjects(subjectOptions);
+  const availableSubjectOptions = useMemo(
+    () => selectableIdentitySubjectOptions(allSubjectOptions),
+    [allSubjectOptions],
+  );
   if (groups.length === 0) {
     return <p className="mb-4 text-xs text-disabled">Noch kein Ausweis zugeordnet.</p>;
   }
@@ -822,12 +1063,11 @@ export function IdentityDocumentReview({
     <div className="mb-4 space-y-3">
       {groups.map((group) => (
         <IdentityReviewCard
-          key={`${group.key}:${group.subjectKey ?? 'unassigned'}:${group.documents
-            .map(
-              (document) =>
-                `${document.id}:${document.verifiedAt ?? ''}:${document.identityAssignmentConfirmedAt ?? ''}`,
-            )
-            .join('|')}`}
+          // Keep the card mounted across RSC revalidation. Verification
+          // timestamps and subject assignment change after every save; using
+          // them as part of the key discarded the local successor revision
+          // before a second save could use it.
+          key={group.documentSetId}
           checkId={checkId}
           clientId={clientId}
           group={group}
@@ -836,6 +1076,7 @@ export function IdentityDocumentReview({
           mergeCandidates={mergeCandidates}
           grandfathered={grandfathered}
           disabled={disabled}
+          reviewMode={reviewMode}
         />
       ))}
     </div>

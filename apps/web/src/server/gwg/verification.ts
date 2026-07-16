@@ -130,8 +130,8 @@ function personalIdSets(
 }
 
 /**
- * Fachliche Mindestanforderungen vor Uebergabe und Entscheidung. Identitaeten
- * werden ausschliesslich ueber bestaetigte Fremdschluessel bewertet; ownerName
+ * Fachliche Mindestanforderungen vor Übergabe und Entscheidung. Identitäten
+ * werden ausschließlich über bestätigte Fremdschlüssel bewertet; ownerName
  * ist nur ein historischer Anzeigesnapshot und nie ein Berechtigungskriterium.
  */
 export function gwgVerificationErrors(
@@ -144,7 +144,7 @@ export function gwgVerificationErrors(
   if (snapshot.clientKind === 'NATPERS') {
     if (!personalIds.some((set) => set.naturalClientSubjectId === snapshot.clientId)) {
       errors.push(
-        'Fuer die natuerliche Person ist ein gueltiger, explizit diesem Mandanten zugeordneter und bestaetigter Personalausweis/Reisepass erforderlich (\u00a7\u00a7 8, 12 GwG).',
+        'Für die natürliche Person ist ein gültiger, explizit diesem Mandanten zugeordneter und bestätigter Personalausweis/Reisepass erforderlich (\u00a7\u00a7 8, 12 GwG).',
       );
     }
     return errors;
@@ -161,7 +161,7 @@ export function gwgVerificationErrors(
     if (!owner.birthDate) missing.push('Geburtsdatum');
     if (!owner.birthPlace?.trim()) missing.push('Geburtsort');
     if (!owner.residence?.trim()) missing.push('Wohnsitz');
-    if (!owner.nationality?.trim()) missing.push('Staatsangehoerigkeit');
+    if (!owner.nationality?.trim()) missing.push('Staatsangehörigkeit');
     if (missing.length > 0) {
       errors.push(
         `Wirtschaftlich Berechtigter ${index + 1}: ${missing.join(', ')} ${missing.length === 1 ? 'fehlt' : 'fehlen'} (\u00a7 11 Abs. 5 GwG).`,
@@ -169,7 +169,7 @@ export function gwgVerificationErrors(
     }
   });
   if (!snapshot.legalForm?.trim()) {
-    errors.push('Rechtsform des Rechtstraegers fehlt (\u00a7 11 Abs. 4 Nr. 2 GwG).');
+    errors.push('Rechtsform des Rechtsträgers fehlt (\u00a7 11 Abs. 4 Nr. 2 GwG).');
   }
   if (!snapshot.noRegisterEntry) {
     if (!snapshot.registerNumber?.trim()) {
@@ -202,8 +202,8 @@ export function gwgVerificationErrors(
   if (!entityEvidence) {
     errors.push(
       snapshot.noRegisterEntry
-        ? 'Bei fehlender Registerpflicht ist ein Gesellschaftsvertrag oder gleichwertiges Gruendungsdokument mit Datei erforderlich (\u00a7 12 Abs. 2 GwG).'
-        : 'Registerauszug oder beweiskraeftiges Gruendungsdokument mit Datei ist erforderlich (\u00a7 12 Abs. 2 GwG).',
+        ? 'Bei fehlender Registerpflicht ist ein Gesellschaftsvertrag oder gleichwertiges Gründungsdokument mit Datei erforderlich (\u00a7 12 Abs. 2 GwG).'
+        : 'Registerauszug oder beweiskräftiges Gründungsdokument mit Datei ist erforderlich (\u00a7 12 Abs. 2 GwG).',
     );
   }
 
@@ -216,7 +216,7 @@ export function gwgVerificationErrors(
     );
   if (!transparencyEvidence) {
     errors.push(
-      'Nachweis/Auszug aus dem Transparenzregister ist fuer den eingetragenen Rechtstraeger erforderlich (\u00a7 12 Abs. 3 GwG).',
+      'Nachweis/Auszug aus dem Transparenzregister ist für den eingetragenen Rechtsträger erforderlich (\u00a7 12 Abs. 3 GwG).',
     );
   }
 
@@ -232,7 +232,7 @@ export function gwgVerificationErrors(
     )
   ) {
     errors.push(
-      'Mindestens eine auftretende vertretungsberechtigte Person muss mit gueltigem Ausweis explizit zugeordnet und bestaetigt sein.',
+      'Mindestens eine auftretende vertretungsberechtigte Person muss mit gültigem Ausweis explizit zugeordnet und bestätigt sein.',
     );
   }
 

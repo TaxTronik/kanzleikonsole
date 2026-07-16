@@ -41,6 +41,7 @@ export async function createServiceProviderAction(
   // Dienstleister-Verzeichnis ist DSGVO/AVV-Compliance — nur ADMIN/PARTNER.
   return withStaff(
     async (tx, { tenantId, staffId }) => {
+      await lockConsentCatalogTx(tx, tenantId);
       const provider = await tx.serviceProvider.create({
         data: {
           tenantId,

@@ -32,6 +32,8 @@ export const STATIC_EVENT_NAMES = [
   // Termin-Bestätigung/-Ablehnung (calendar/actions.ts). Payload trägt
   // kind: 'appointment-accepted' | 'appointment-rejected'.
   'appointment.responded',
+  'gwg.invite.created',
+  'gwg.verified',
   'gwg.expired',
   'invoice.due',
   // Storno-/Korrekturbeleg (§ 14c i.V.m. § 17 UStG) versendet. Bewusst NICHT
@@ -107,7 +109,7 @@ const STATIC_EVENT_DETAILS = {
     containsPersonalData: true,
     piiNotice:
       'Mandantenbezug und interne Kennungen unterliegen dem Berufsgeheimnis; nur notwendige Daten nachladen.',
-    examplePayload: { tenantId: TENANT_ID, clientId: CLIENT_ID, gwgVerified: true },
+    examplePayload: { tenantId: TENANT_ID, clientId: CLIENT_ID },
   },
   'client.handover.ready': {
     label: 'Mandantenübergabe bereit',
@@ -211,6 +213,40 @@ const STATIC_EVENT_DETAILS = {
       kind: 'appointment-accepted',
       appointmentId: '00000000-0000-4000-8000-000000000009',
       requestId: REQUEST_ID,
+    },
+  },
+  'gwg.invite.created': {
+    label: 'GwG-Einladung erstellt',
+    category: 'COMPLIANCE',
+    categoryLabel: 'Compliance',
+    description:
+      'Wird ausgelöst, nachdem ein GwG-Onboarding-Link für einen Mandanten ausgestellt wurde.',
+    dataClass: 'PROFESSIONAL_SECRET',
+    containsPersonalData: true,
+    piiNotice:
+      'Die Kennungen offenbaren einen GwG-Vorgang. Der geheime Einladungslink selbst ist absichtlich nicht im Payload enthalten.',
+    examplePayload: {
+      tenantId: TENANT_ID,
+      clientId: CLIENT_ID,
+      gwgInviteId: '00000000-0000-4000-8000-000000000012',
+      gwgCheckId: '00000000-0000-4000-8000-000000000013',
+    },
+  },
+  'gwg.verified': {
+    label: 'GwG-Prüfung verifiziert',
+    category: 'COMPLIANCE',
+    categoryLabel: 'Compliance',
+    description:
+      'Wird nach der ausdrücklichen Berufsträger-Freigabe eines GwG-Prüfsnapshots ausgelöst.',
+    dataClass: 'PROFESSIONAL_SECRET',
+    containsPersonalData: true,
+    piiNotice:
+      'Der GwG-Prüfstatus ist besonders schutzbedürftig; Empfänger und Zweck strikt begrenzen.',
+    examplePayload: {
+      tenantId: TENANT_ID,
+      clientId: CLIENT_ID,
+      gwgCheckId: '00000000-0000-4000-8000-000000000013',
+      validUntil: '2027-07-16T00:00:00.000Z',
     },
   },
   'gwg.expired': {

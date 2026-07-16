@@ -199,10 +199,14 @@ export async function saveGwgFieldsAction(
       await tx.client.update({ where: { id: clientId }, data: after });
 
       let gwgReset = false;
+      let gwgReviewCheckId: string | null = null;
+      let gwgInvalidatedIdentityDocuments = 0;
       if (changed.length > 0) {
         // Bestehenden VERIFIED-Check auf IN_REVIEW zurücksetzen
         const reset = await requireGwgReverificationTx(tx, { tenantId, clientId });
-        gwgReset = reset.invalidatedChecks > 0;
+        gwgReset = reset.reviewCheckId !== null;
+        gwgReviewCheckId = reset.reviewCheckId;
+        gwgInvalidatedIdentityDocuments = reset.invalidatedIdentityDocuments;
       }
 
       await evidenceService.record(tx, {
@@ -213,7 +217,13 @@ export async function saveGwgFieldsAction(
         resourceType: 'client',
         resourceId: clientId,
         before,
-        after: { ...after, _changedFields: changed, _gwgReverificationTriggered: gwgReset },
+        after: {
+          ...after,
+          _changedFields: changed,
+          _gwgReverificationTriggered: gwgReset,
+          _gwgReviewCheckId: gwgReviewCheckId,
+          _gwgInvalidatedIdentityDocuments: gwgInvalidatedIdentityDocuments,
+        },
       });
     });
   } catch (e) {

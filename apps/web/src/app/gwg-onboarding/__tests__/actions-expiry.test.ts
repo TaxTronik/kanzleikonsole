@@ -6,17 +6,37 @@ const m = vi.hoisted(() => ({
   headers: vi.fn(),
   checkRateLimit: vi.fn(),
   checkIpOrGlobalLimit: vi.fn(),
+  withSystemContext: vi.fn(),
+  revalidateInvite: vi.fn(),
+  prepareBytesCommitWithTier: vi.fn(),
+  commitPreparedBytes: vi.fn(),
+  deleteObjectVersion: vi.fn(),
+  createPendingDocumentWithVersion: vi.fn(),
+  finalizePendingDocumentVersion: vi.fn(),
+  findVersion: vi.fn(),
+  deleteDocument: vi.fn(),
+  evidenceRecord: vi.fn(),
 }));
 
 vi.mock('next/headers', () => ({ headers: m.headers }));
 vi.mock('@taxtronik/storage', () => ({
-  commitDocumentFromBytes: vi.fn(),
-  deleteObject: vi.fn(),
+  prepareBytesCommitWithTier: m.prepareBytesCommitWithTier,
+  commitPreparedBytes: m.commitPreparedBytes,
+  deleteObjectVersion: m.deleteObjectVersion,
   MAX_UPLOAD_BYTES: 25 * 1024 * 1024,
 }));
-vi.mock('@taxtronik/db', () => ({ withSystemContext: vi.fn() }));
-vi.mock('@/server/container', () => ({ evidenceService: {} }));
-vi.mock('@/server/documents/upload-helpers', () => ({ createDocumentWithVersion: vi.fn() }));
+vi.mock('@taxtronik/db', () => ({ withSystemContext: m.withSystemContext }));
+vi.mock('@/server/container', () => ({
+  evidenceService: { record: m.evidenceRecord },
+}));
+vi.mock('@/server/documents/upload-helpers', () => ({
+  createPendingDocumentWithVersion: m.createPendingDocumentWithVersion,
+  finalizePendingDocumentVersion: m.finalizePendingDocumentVersion,
+}));
+vi.mock('@/server/gwg-onboarding/invite-lifecycle', () => ({
+  revalidateOpenGwgInviteRevisionTx: m.revalidateInvite,
+  claimCurrentGwgInviteSubmitTx: vi.fn(),
+}));
 vi.mock('@/server/auth/rbac', () => ({
   toActionError: vi.fn(() => ({ ok: false, error: 'Interner Fehler.' })),
 }));
@@ -45,6 +65,39 @@ describe('GwG-Onboarding Ablauf-CAS bei Schreibaktionen', () => {
     m.headers.mockResolvedValue(new Headers());
     m.checkRateLimit.mockResolvedValue({ ok: true });
     m.checkIpOrGlobalLimit.mockResolvedValue({ ok: true });
+    m.withSystemContext.mockImplementation(
+      async (_tenantId: string, fn: (tx: Record<string, unknown>) => unknown) =>
+        fn({
+          $executeRaw: vi.fn(),
+          document: { deleteMany: m.deleteDocument },
+          documentVersion: { findUnique: m.findVersion },
+        }),
+    );
+    m.deleteObjectVersion.mockResolvedValue(undefined);
+    m.prepareBytesCommitWithTier.mockResolvedValue({
+      tier: 'GWG',
+      tenantId: 'tenant-1',
+      targetBucket: 'taxtronik-gwg',
+      targetKey: 'tenant-1/evidence.bin',
+      sha256: Buffer.alloc(32),
+      sizeBytes: 1n,
+      immutable: true,
+      retentionUntil: new Date('2099-01-01T00:00:00.000Z'),
+      detectedMime: 'application/pdf',
+    });
+    m.createPendingDocumentWithVersion.mockResolvedValue({
+      document: { id: 'document-pending' },
+      version: { id: 'version-pending' },
+    });
+    m.findVersion.mockResolvedValue({
+      documentId: 'document-pending',
+      storageBucket: 'taxtronik-gwg',
+      storageKey: 'tenant-1/evidence.bin',
+      storageVersionId: null,
+      scanStatus: 'PENDING',
+    });
+    m.deleteDocument.mockResolvedValue({ count: 1 });
+    m.finalizePendingDocumentVersion.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -98,5 +151,184 @@ describe('GwG-Onboarding Ablauf-CAS bei Schreibaktionen', () => {
         kind: 'ID_DOCUMENT',
       }),
     ).resolves.toEqual({ ok: false, error: GENERIC_TOKEN_ERROR });
+  });
+
+  it('löscht bei einem stale Link exakt die geschützte Objektversion mit Governance-Bypass', async () => {
+    m.findFirst.mockResolvedValueOnce({
+      id: 'invite-1',
+      tokenHash: 'token-hash',
+      status: 'PENDING',
+      expiresAt: new Date('2099-01-01T00:00:00.000Z'),
+      tenantId: 'tenant-1',
+      clientId: 'client-1',
+      createdByStaff: 'staff-1',
+      client: { id: 'client-1', kind: 'JURPERS' },
+    });
+    m.revalidateInvite
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
+    m.commitPreparedBytes.mockResolvedValue({
+      targetBucket: 'taxtronik-gwg',
+      targetKey: 'tenant-1/evidence.bin',
+      storageVersionId: 'version-123',
+      sha256: Buffer.alloc(32),
+      sizeBytes: 1n,
+      immutable: true,
+      retentionUntil: new Date('2099-01-01T00:00:00.000Z'),
+      detectedMime: 'application/pdf',
+    });
+
+    const result = await uploadIdImageAction({
+      token: 'valid-looking-raw-token',
+      fileName: 'ausweis.pdf',
+      mimeType: 'application/pdf',
+      base64: 'YQ==',
+      kind: 'ID_DOCUMENT',
+    });
+
+    expect(result.ok).toBe(false);
+    expect(m.createPendingDocumentWithVersion).toHaveBeenCalledOnce();
+    expect(m.finalizePendingDocumentVersion).not.toHaveBeenCalled();
+    expect(m.createPendingDocumentWithVersion.mock.invocationCallOrder[0]).toBeLessThan(
+      m.commitPreparedBytes.mock.invocationCallOrder[0]!,
+    );
+    expect(m.deleteObjectVersion).toHaveBeenCalledWith(
+      'taxtronik-gwg',
+      'tenant-1/evidence.bin',
+      'version-123',
+      { bypassGovernanceRetention: true },
+    );
+  });
+
+  it('löscht bei einem DB-Fehler exakt die bereits geschriebene GwG-Objektversion', async () => {
+    m.findFirst.mockResolvedValueOnce({
+      id: 'invite-1',
+      tokenHash: 'token-hash',
+      status: 'PENDING',
+      expiresAt: new Date('2099-01-01T00:00:00.000Z'),
+      tenantId: 'tenant-1',
+      clientId: 'client-1',
+      createdByStaff: 'staff-1',
+      client: { id: 'client-1', kind: 'JURPERS' },
+    });
+    m.revalidateInvite.mockResolvedValue(true);
+    m.commitPreparedBytes.mockResolvedValue({
+      targetBucket: 'taxtronik-gwg',
+      targetKey: 'tenant-1/evidence.bin',
+      storageVersionId: 'version-456',
+      sha256: Buffer.alloc(32),
+      sizeBytes: 1n,
+      immutable: true,
+      retentionUntil: new Date('2099-01-01T00:00:00.000Z'),
+      detectedMime: 'application/pdf',
+    });
+    m.finalizePendingDocumentVersion.mockRejectedValueOnce(new Error('DB unavailable'));
+
+    const result = await uploadIdImageAction({
+      token: 'valid-looking-raw-token',
+      fileName: 'ausweis.pdf',
+      mimeType: 'application/pdf',
+      base64: 'YQ==',
+      kind: 'ID_DOCUMENT',
+    });
+
+    expect(result.ok).toBe(false);
+    expect(m.deleteObjectVersion).toHaveBeenCalledWith(
+      'taxtronik-gwg',
+      'tenant-1/evidence.bin',
+      'version-456',
+      { bypassGovernanceRetention: true },
+    );
+  });
+
+  it('rekonstruiert Erfolg nach verlorenem COMMIT-ACK ohne den referenzierten GwG-Beleg zu löschen', async () => {
+    m.findFirst.mockResolvedValueOnce({
+      id: 'invite-1',
+      tokenHash: 'token-hash',
+      status: 'PENDING',
+      expiresAt: new Date('2099-01-01T00:00:00.000Z'),
+      tenantId: 'tenant-1',
+      clientId: 'client-1',
+      createdByStaff: 'staff-1',
+      client: { id: 'client-1', kind: 'JURPERS' },
+    });
+    m.revalidateInvite.mockResolvedValue(true);
+    m.commitPreparedBytes.mockResolvedValue({
+      targetBucket: 'taxtronik-gwg',
+      targetKey: 'tenant-1/evidence.bin',
+      storageVersionId: 'version-committed',
+      sha256: Buffer.alloc(32),
+      sizeBytes: 1n,
+      immutable: true,
+      retentionUntil: new Date('2099-01-01T00:00:00.000Z'),
+      detectedMime: 'application/pdf',
+    });
+    m.findVersion.mockResolvedValue({
+      documentId: 'document-pending',
+      storageBucket: 'taxtronik-gwg',
+      storageKey: 'tenant-1/evidence.bin',
+      storageVersionId: 'version-committed',
+      scanStatus: 'CLEAN',
+    });
+    let systemContextCall = 0;
+    m.withSystemContext.mockImplementation(
+      async (_tenantId: string, fn: (tx: Record<string, unknown>) => unknown) => {
+        systemContextCall += 1;
+        const result = await fn({
+          $executeRaw: vi.fn(),
+          document: { deleteMany: m.deleteDocument },
+          documentVersion: { findUnique: m.findVersion },
+        });
+        if (systemContextCall === 3) {
+          throw new Error('COMMIT acknowledgement lost');
+        }
+        return result;
+      },
+    );
+
+    await expect(
+      uploadIdImageAction({
+        token: 'valid-looking-raw-token',
+        fileName: 'ausweis.pdf',
+        mimeType: 'application/pdf',
+        base64: 'YQ==',
+        kind: 'ID_DOCUMENT',
+      }),
+    ).resolves.toEqual({ ok: true, documentId: 'document-pending' });
+    expect(m.findVersion).toHaveBeenCalledOnce();
+    expect(m.deleteObjectVersion).not.toHaveBeenCalled();
+    expect(m.deleteDocument).not.toHaveBeenCalled();
+  });
+
+  it('behält das PENDING-Journal bei einem Fehler nach PUT aber vor dem Storage-Ergebnis', async () => {
+    m.findFirst.mockResolvedValueOnce({
+      id: 'invite-1',
+      tokenHash: 'token-hash',
+      status: 'PENDING',
+      expiresAt: new Date('2099-01-01T00:00:00.000Z'),
+      tenantId: 'tenant-1',
+      clientId: 'client-1',
+      createdByStaff: 'staff-1',
+      client: { id: 'client-1', kind: 'JURPERS' },
+    });
+    m.revalidateInvite.mockResolvedValue(true);
+    m.commitPreparedBytes.mockRejectedValue(
+      new Error('object persisted, but version inventory response failed'),
+    );
+
+    const result = await uploadIdImageAction({
+      token: 'valid-looking-raw-token',
+      fileName: 'ausweis.pdf',
+      mimeType: 'application/pdf',
+      base64: 'YQ==',
+      kind: 'ID_DOCUMENT',
+    });
+
+    expect(result.ok).toBe(false);
+    expect(m.createPendingDocumentWithVersion).toHaveBeenCalledOnce();
+    expect(m.findVersion).not.toHaveBeenCalled();
+    expect(m.deleteObjectVersion).not.toHaveBeenCalled();
+    expect(m.deleteDocument).not.toHaveBeenCalled();
   });
 });

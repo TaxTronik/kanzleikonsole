@@ -97,8 +97,8 @@ describe('GwG-Lifecycle-Lock – Aufrufer-Reihenfolge', () => {
     expectOrdered(
       section(publicOnboardingActions, 'export async function submitOnboardingAction'),
       'claimCurrentGwgInviteSubmitTx(',
-      'tx.client.update(',
       'startFreshGwgReviewTx(',
+      'tx.client.update(',
     );
 
     const inviteLifecycle = source('../../gwg-onboarding/invite-lifecycle.ts');
@@ -106,6 +106,7 @@ describe('GwG-Lifecycle-Lock – Aufrufer-Reihenfolge', () => {
       section(inviteLifecycle, 'export async function claimCurrentGwgInviteSubmitTx'),
       'lockGwgCheckLifecycleTx(',
       'tx.gwgOnboardingInvite.findFirst(',
+      'resolveCurrentGwgInviteRevisionTx(',
       'claimGwgOnboardingSubmitTx(',
       'tx.gwgOnboardingInvite.updateMany(',
     );

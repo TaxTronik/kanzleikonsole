@@ -79,6 +79,8 @@ describe('signOutboundN8n — Format & Verifikation', () => {
 describe('isAllowedN8nEvent — Whitelist', () => {
   it('akzeptiert bekannte System-Events', () => {
     expect(isAllowedN8nEvent('client.created')).toBe(true);
+    expect(isAllowedN8nEvent('gwg.invite.created')).toBe(true);
+    expect(isAllowedN8nEvent('gwg.verified')).toBe(true);
     expect(isAllowedN8nEvent('gwg.expired')).toBe(true);
     expect(isAllowedN8nEvent('taxtronik.ping')).toBe(true);
   });

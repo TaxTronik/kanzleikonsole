@@ -10,7 +10,7 @@ import { redirect } from 'next/navigation';
 import { Bell, BellOff } from 'lucide-react';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
-import { countGranted, parseConsent } from '@/server/privacy/consent';
+import { countGranted, countRevocableGranted, parseConsent } from '@/server/privacy/consent';
 import { revokeOwnConsentAction, saveNotificationSettingAction } from './actions';
 
 export default async function PortalSettingsPage() {
@@ -36,8 +36,10 @@ export default async function PortalSettingsPage() {
   );
   if (!data) redirect('/portal/login');
   const { contact, consent } = data;
-  const activeConsentCount = consent ? countGranted(parseConsent(consent.consents)) : 0;
-  const canSelfRevoke = activeConsentCount > 0 && consent?.signedByContact === contactId;
+  const currentConsent = consent ? parseConsent(consent.consents) : null;
+  const activeConsentCount = currentConsent ? countGranted(currentConsent) : 0;
+  const revocableConsentCount = currentConsent ? countRevocableGranted(currentConsent) : 0;
+  const canSelfRevoke = revocableConsentCount > 0 && consent?.signedByContact === contactId;
 
   return (
     <div className="p-8 max-w-2xl">
@@ -78,13 +80,14 @@ export default async function PortalSettingsPage() {
       </div>
 
       <div className="card p-6 border-red-200">
-        <h2 className="text-sm font-medium text-primary mb-1">Freiwillige Einwilligungen</h2>
+        <h2 className="text-sm font-medium text-primary mb-1">Datenschutz-Auswahl</h2>
         <p className="text-xs text-muted mb-4">
           {activeConsentCount > 0
-            ? `${activeConsentCount} freiwillige Einzeleinwilligung(en) sind derzeit aktiv.`
-            : 'Derzeit sind keine freiwilligen Einwilligungen aktiv.'}{' '}
-          Der Widerruf wirkt für die Zukunft und berührt die Mandatsbearbeitung auf anderen
-          Rechtsgrundlagen nicht.
+            ? `Für ${activeConsentCount} Datenschutz-Option(en) ist derzeit eine aktive Auswahl dokumentiert.`
+            : 'Derzeit ist keine aktive Datenschutz-Auswahl dokumentiert.'}{' '}
+          Freiwillige Einwilligungen können mit Wirkung für die Zukunft widerrufen werden. Rechtlich
+          notwendige Bestätigungen bleiben als Nachweis der damaligen Erklärung dokumentiert; die
+          Mandatsbearbeitung auf anderen Rechtsgrundlagen bleibt unberührt.
         </p>
         {canSelfRevoke && (
           <form action={revokeOwnConsentAction}>
@@ -92,14 +95,14 @@ export default async function PortalSettingsPage() {
               type="submit"
               className="btn-secondary text-red-700 border-red-300 hover:bg-red-50"
             >
-              Alle freiwilligen Einwilligungen widerrufen
+              Widerrufbare Auswahl zurückziehen
             </button>
           </form>
         )}
-        {activeConsentCount > 0 && !canSelfRevoke && (
+        {revocableConsentCount > 0 && !canSelfRevoke && (
           <p className="text-xs text-amber-700">
-            Dieser Einwilligungsstand ist einer anderen erklärenden Person zugeordnet. Ein Widerruf
-            ist jederzeit über die Kanzlei möglich.
+            Dieser Datenschutz-Auswahlstand ist einer anderen erklärenden Person zugeordnet.
+            Widerrufbare Einwilligungen können jederzeit über die Kanzlei zurückgezogen werden.
           </p>
         )}
       </div>

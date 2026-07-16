@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   withTenantContext: vi.fn(),
   evidenceRecord: vi.fn(),
   revalidatePath: vi.fn(),
+  writePrivacyConfigTx: vi.fn(),
 }));
 
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }));
@@ -29,9 +30,9 @@ vi.mock('@/server/auth/rbac', () => ({
         : 'Aktion fehlgeschlagen. Bitte erneut versuchen.',
   }),
 }));
-vi.mock('@/server/privacy/notice', () => ({ writePrivacyConfig: vi.fn() }));
+vi.mock('@/server/privacy/notice', () => ({ writePrivacyConfigTx: mocks.writePrivacyConfigTx }));
 
-import { saveConsentOptionsAction } from '../actions';
+import { saveConsentOptionsAction, savePrivacyConfigAction } from '../actions';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -40,6 +41,40 @@ beforeEach(() => {
     tenantId: '11111111-1111-4111-8111-111111111111',
     staffId: '22222222-2222-4222-8222-222222222222',
     ctx: { tenantId: '11111111-1111-4111-8111-111111111111' },
+  });
+});
+
+describe('savePrivacyConfigAction', () => {
+  it('schreibt Hinweis und Audit atomar unter demselben Display-CAS-Lock', async () => {
+    const tx = { $executeRaw: vi.fn().mockResolvedValue(1) };
+    mocks.withTenantContext.mockImplementation(
+      async (_ctx: unknown, fn: (transaction: typeof tx) => unknown) => fn(tx),
+    );
+    const formData = new FormData();
+    formData.set('responsibleBody', 'Musterkanzlei, Musterstraße 1');
+    formData.set('supervisoryAuthority', 'Aufsichtsbehörde');
+    formData.set('privacyContact', 'datenschutz@example.test');
+
+    const result = await savePrivacyConfigAction(null, formData);
+
+    expect(result).toEqual({ ok: true });
+    expect(tx.$executeRaw).toHaveBeenCalledOnce();
+    expect(mocks.writePrivacyConfigTx).toHaveBeenCalledWith(
+      tx,
+      '11111111-1111-4111-8111-111111111111',
+      '22222222-2222-4222-8222-222222222222',
+      expect.objectContaining({
+        responsibleBody: 'Musterkanzlei, Musterstraße 1',
+        supervisoryAuthority: 'Aufsichtsbehörde',
+        privacyContact: 'datenschutz@example.test',
+      }),
+    );
+    expect(tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.writePrivacyConfigTx.mock.invocationCallOrder[0]!,
+    );
+    expect(mocks.writePrivacyConfigTx.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.evidenceRecord.mock.invocationCallOrder[0]!,
+    );
   });
 });
 
@@ -60,8 +95,22 @@ describe('saveConsentOptionsAction', () => {
     mocks.withTenantContext.mockImplementation(
       async (_ctx: unknown, fn: (transaction: typeof tx) => unknown) => fn(tx),
     );
+    const catalog = defaultConsentOptionsCatalog();
+    const customOptionId = 'd37f61f0-6a73-4d5a-b2fd-e15c2389ec52';
+    catalog.options.push({
+      id: customOptionId,
+      builtin: false,
+      section: 'OTHER',
+      label: 'Notwendige Bestätigung',
+      description: 'Exakt auditierte Erläuterung',
+      active: true,
+      required: true,
+      recommended: true,
+      sortOrder: 1000,
+      serviceProviderId: null,
+    });
     const formData = new FormData();
-    formData.set('catalogJson', JSON.stringify(defaultConsentOptionsCatalog()));
+    formData.set('catalogJson', JSON.stringify(catalog));
     formData.set('expectedRevision', revision.toISOString());
 
     const result = await saveConsentOptionsAction(null, formData);
@@ -76,6 +125,16 @@ describe('saveConsentOptionsAction', () => {
       },
       data: expect.objectContaining({
         updatedBy: '22222222-2222-4222-8222-222222222222',
+        value: expect.objectContaining({
+          version: 2,
+          options: expect.arrayContaining([
+            expect.objectContaining({
+              id: customOptionId,
+              required: true,
+              recommended: true,
+            }),
+          ]),
+        }),
       }),
     });
     expect(mocks.evidenceRecord).toHaveBeenCalledWith(
@@ -86,6 +145,14 @@ describe('saveConsentOptionsAction', () => {
           invalidStoredCatalog: true,
           storedValue: { version: 99, broken: true },
         },
+        after: expect.objectContaining({
+          options: expect.arrayContaining([
+            expect.objectContaining({
+              id: customOptionId,
+              description: 'Exakt auditierte Erläuterung',
+            }),
+          ]),
+        }),
       }),
     );
   });

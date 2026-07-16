@@ -14,6 +14,7 @@
 
 import type { TxClient } from '@taxtronik/db';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
+import { lockConsentCatalogTx } from './catalog-lock';
 
 /** Inhaltliche Version des Standardtextes. Bei Textänderung erhöhen. */
 export const PRIVACY_NOTICE_VERSION = 2;
@@ -65,16 +66,27 @@ export async function readPrivacyConfigTx(tx: TxClient, tenantId: string): Promi
 
 export async function writePrivacyConfig(ctx: TenantContext, cfg: PrivacyConfig): Promise<void> {
   await withTenantContext(ctx, async (tx) => {
-    await tx.tenantSetting.upsert({
-      where: { tenantId_key: { tenantId: ctx.tenantId, key: PRIVACY_SETTING_KEY } },
-      create: {
-        tenantId: ctx.tenantId,
-        key: PRIVACY_SETTING_KEY,
-        value: cfg as object,
-        updatedBy: ctx.actorId ?? undefined,
-      },
-      update: { value: cfg as object, updatedBy: ctx.actorId ?? undefined },
-    });
+    await lockConsentCatalogTx(tx, ctx.tenantId);
+    await writePrivacyConfigTx(tx, ctx.tenantId, ctx.actorId ?? null, cfg);
+  });
+}
+
+/** Schreibt die Kanzlei-Angaben innerhalb einer bereits laufenden Tenant-Tx. */
+export async function writePrivacyConfigTx(
+  tx: TxClient,
+  tenantId: string,
+  updatedBy: string | null,
+  cfg: PrivacyConfig,
+): Promise<void> {
+  await tx.tenantSetting.upsert({
+    where: { tenantId_key: { tenantId, key: PRIVACY_SETTING_KEY } },
+    create: {
+      tenantId,
+      key: PRIVACY_SETTING_KEY,
+      value: cfg as object,
+      updatedBy: updatedBy ?? undefined,
+    },
+    update: { value: cfg as object, updatedBy: updatedBy ?? undefined },
   });
 }
 

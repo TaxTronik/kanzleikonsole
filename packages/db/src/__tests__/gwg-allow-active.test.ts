@@ -186,6 +186,9 @@ async function makeInvite(
       tokenHash: `token-${Date.now()}-${inviteSeq}`,
       expiresAt,
       status,
+      ...(status === 'PENDING' || status === 'STARTED'
+        ? { boundClientRevision: `test-client-revision-${inviteSeq}` }
+        : {}),
       createdByStaff: staffId,
     },
   });

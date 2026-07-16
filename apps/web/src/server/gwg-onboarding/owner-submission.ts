@@ -16,6 +16,7 @@ export const GwgOnboardingOwnerSchema = z.object({
   countryIso: z.string().trim().max(10).optional().or(z.literal('')),
   sharePercent: z.string().trim().max(50).optional().or(z.literal('')),
   isPep: z.boolean(),
+  idType: z.enum(['PERSONALAUSWEIS', 'REISEPASS']).default('PERSONALAUSWEIS'),
   idNumber: z.string().trim().min(1, 'Ausweisnummer ist Pflicht.').max(100),
   idIssuedBy: z.string().trim().min(1, 'Ausstellende Behoerde ist Pflicht.').max(200),
   idIssueDate: z.string().date().optional().or(z.literal('')),

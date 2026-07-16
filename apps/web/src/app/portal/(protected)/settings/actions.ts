@@ -3,7 +3,11 @@
 import { evidenceService } from '@/server/container';
 import { log } from '@/server/logger';
 import { withPortalContext, ActionError } from '@/server/actions/portal-action';
-import { countGranted, emptyConsent, parseConsent } from '@/server/privacy/consent';
+import {
+  countRevocableGranted,
+  parseConsent,
+  revokeVoluntaryConsent,
+} from '@/server/privacy/consent';
 
 export async function saveNotificationSettingAction(formData: FormData): Promise<void> {
   const enabled = formData.get('enabled') === 'on';
@@ -61,7 +65,10 @@ export async function revokeOwnConsentAction(): Promise<void> {
         }),
       ]);
       if (!contact) throw new ActionError('Kontakt nicht gefunden.');
-      if (!previous || countGranted(parseConsent(previous.consents)) === 0) return;
+      if (!previous) return;
+      const previousConsent = parseConsent(previous.consents);
+      const revokedCount = countRevocableGranted(previousConsent);
+      if (revokedCount === 0) return;
       if (previous.signedByContact !== contactId) {
         throw new ActionError(
           'Dieser Einwilligungsstand wurde nicht Ihrem Portal-Kontakt zugeordnet. Bitte wenden Sie sich für den Widerruf an die Kanzlei.',
@@ -76,12 +83,12 @@ export async function revokeOwnConsentAction(): Promise<void> {
           // Für einen Widerruf ist keine neue Annahme nötig. Der bisherige
           // Snapshot bleibt der richtige Kontext der zurückgezogenen Erklärung.
           noticeSnapshot: previous.noticeSnapshot,
-          consents: emptyConsent() as object,
+          consents: revokeVoluntaryConsent(previousConsent) as object,
           source: 'PORTAL',
           signedByName: contact.fullName,
           signedByContact: contactId,
           isRevocation: true,
-          note: 'Vollständiger Widerruf im Mandantenportal',
+          note: 'Widerruf freiwilliger Einwilligungen im Mandantenportal',
         },
       });
       await evidenceService.record(tx, {
@@ -94,7 +101,7 @@ export async function revokeOwnConsentAction(): Promise<void> {
         after: {
           clientId,
           source: 'PORTAL',
-          revokedCount: countGranted(parseConsent(previous.consents)),
+          revokedCount,
         },
       });
     },

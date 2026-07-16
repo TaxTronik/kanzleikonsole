@@ -146,6 +146,18 @@ function validPdfPoaFormData(): FormData {
   return fd;
 }
 
+function validMarkdownPoaFormData(returnContext?: string): FormData {
+  const fd = new FormData();
+  fd.set('clientId', '7e6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e6f');
+  fd.set('signerEmail', 'signer@example.de');
+  fd.set('signerName', 'Sina Signer');
+  fd.set('subject', 'Vollmacht');
+  fd.set('scope', 'Vertretung');
+  fd.set('validFrom', '2026-08-10');
+  if (returnContext) fd.set('returnContext', returnContext);
+  return fd;
+}
+
 function snapshotFields(validUntil: string | null = '2099-12-31') {
   const snapshot = JSON.stringify({
     schemaVersion: 1,
@@ -692,6 +704,73 @@ describe('revokePoaAction — Rollen-Gate', () => {
       'Vollmacht konnte nicht widerrufen werden. Bitte laden Sie neu.',
     );
     expect(m.evidenceRecord).not.toHaveBeenCalled();
+  });
+});
+
+describe('createPoaAction — Rückkehr aus dem Onboarding', () => {
+  function prepareSuccessfulCreate() {
+    m.staffActionGuard.mockResolvedValue({
+      ok: true,
+      tenantId: 'tenant-1',
+      staffId: 'staff-1',
+      ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
+      session: {},
+    });
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([{ id: '7e6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e6f' }]),
+      powerOfAttorney: {
+        create: vi.fn().mockResolvedValue({
+          id: '8d6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e7a',
+        }),
+      },
+    };
+    m.withTenantContext.mockImplementation(
+      async (_ctx: unknown, run: (client: typeof tx) => unknown) => run(tx),
+    );
+    return tx;
+  }
+
+  it('kehrt nach erfolgreicher Anlage in den PoA-Schritt desselben Mandanten zurück', async () => {
+    prepareSuccessfulCreate();
+
+    await createPoaAction(null, validMarkdownPoaFormData('onboarding'));
+
+    expect(m.redirect).toHaveBeenCalledWith(
+      '/staff/clients/onboarding/7e6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e6f?step=poa',
+    );
+    expect(m.revalidatePath).toHaveBeenCalledWith(
+      '/staff/clients/onboarding/7e6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e6f',
+    );
+  });
+
+  it('weist manipulierte Return-Ziele vor jedem Datenbankzugriff zurück', async () => {
+    m.staffActionGuard.mockResolvedValue({
+      ok: true,
+      tenantId: 'tenant-1',
+      staffId: 'staff-1',
+      ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
+      session: {},
+    });
+
+    const result = await createPoaAction(
+      null,
+      validMarkdownPoaFormData('https://evil.example/redirect'),
+    );
+
+    expect(result.ok).toBe(false);
+    expect(m.readModules).not.toHaveBeenCalled();
+    expect(m.withTenantContext).not.toHaveBeenCalled();
+    expect(m.redirect).not.toHaveBeenCalled();
+  });
+
+  it('führt die normale Anlage weiterhin zur Vollmachtsdetailseite', async () => {
+    prepareSuccessfulCreate();
+
+    await createPoaAction(null, validMarkdownPoaFormData());
+
+    expect(m.redirect).toHaveBeenCalledWith('/staff/poa/8d6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e7a');
+    expect(m.revalidatePath).toHaveBeenCalledTimes(1);
+    expect(m.revalidatePath).toHaveBeenCalledWith('/staff/poa');
   });
 });
 

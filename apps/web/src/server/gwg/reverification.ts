@@ -1,4 +1,6 @@
+import { randomUUID } from 'node:crypto';
 import type { TxClient } from '@taxtronik/db';
+import { Prisma } from '@prisma/client';
 
 // Derselbe transaktionsgebundene Lifecycle-Lock wird aus mehreren
 // Defense-in-Depth-Schichten angefordert. Ein WeakMap-Eintrag lebt exakt so
@@ -13,6 +15,14 @@ export interface ReverificationResult {
   reviewCheckId: string | null;
   clientDeactivated: boolean;
 }
+
+export type GwgChangeScopeInput =
+  | 'INITIAL'
+  | 'CLIENT_MASTER_DATA'
+  | 'ROUTINE'
+  | 'BENEFICIAL_OWNERS'
+  | 'REPRESENTATIVES'
+  | 'BOTH';
 
 /**
  * Erzeugt unter dem Lifecycle-Lock einen fachlich monotonen Zeitstempel.
@@ -47,7 +57,12 @@ async function nextGwgCheckCreatedAtTx(
 
 async function createFreshGwgDraftTx(
   tx: TxClient,
-  input: { tenantId: string; clientId: string },
+  input: {
+    tenantId: string;
+    clientId: string;
+    predecessorCheckId?: string | null;
+    changeScope?: GwgChangeScopeInput;
+  },
 ): Promise<{ id: string }> {
   const createdAt = await nextGwgCheckCreatedAtTx(tx, input);
   return tx.gwgCheck.create({
@@ -56,6 +71,8 @@ async function createFreshGwgDraftTx(
       clientId: input.clientId,
       status: 'DRAFT',
       createdAt,
+      predecessorCheckId: input.predecessorCheckId ?? null,
+      changeScope: input.changeScope ?? 'INITIAL',
     },
     select: { id: true },
   });
@@ -176,6 +193,38 @@ export async function requireGwgReverificationTx(
   // werden und bleiben bis zum Commit/Rollback aktiv.
   await lockGwgCheckLifecycleTx(tx, input);
 
+  // Der Vorgänger wird vor der Statusentwertung gelesen: Der aktuell gültige
+  // VERIFIED-Snapshot ist genau die Grundlage, die durch die
+  // Stammdatenänderung ersetzt wird. Bei Wiederverwendung eines offenen
+  // Checks bleiben dessen unveränderlicher Startanlass und seine Linie intakt.
+  const terminalPredecessor = await tx.gwgCheck.findFirst({
+    where: {
+      tenantId: input.tenantId,
+      clientId: input.clientId,
+      status: { in: ['VERIFIED', 'REJECTED', 'EXPIRED'] },
+    },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    include: {
+      beneficialOwners: true,
+      representatives: { orderBy: [{ position: 'asc' }, { id: 'asc' }] },
+      idDocuments: {
+        include: {
+          document: {
+            select: {
+              id: true,
+              tenantId: true,
+              clientId: true,
+              classification: true,
+              deletedAt: true,
+              gwgDestructionRequestedAt: true,
+              gwgDestroyedAt: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
   const invalidated = await tx.gwgCheck.updateMany({
     where: { clientId: input.clientId, status: 'VERIFIED' },
     data: { status: 'EXPIRED' },
@@ -207,13 +256,109 @@ export async function requireGwgReverificationTx(
         },
       })
     : { count: 0 };
-  const review = existing
-    ? await tx.gwgCheck.update({
-        where: { id: existing.id },
-        data: { status: 'DRAFT', reviewSubmittedAt: null, reviewSubmittedBy: null },
-        select: { id: true },
-      })
-    : await createFreshGwgDraftTx(tx, input);
+  let review: { id: string };
+  if (existing) {
+    review = await tx.gwgCheck.update({
+      where: { id: existing.id },
+      data: {
+        status: 'DRAFT',
+        reviewSubmittedAt: null,
+        reviewSubmittedBy: null,
+        riskLevel: null,
+        riskScore: null,
+        riskAnswers: Prisma.DbNull,
+        riskBreakdown: Prisma.DbNull,
+      },
+      select: { id: true },
+    });
+  } else {
+    review = await createFreshGwgDraftTx(tx, {
+      ...input,
+      predecessorCheckId: terminalPredecessor?.id ?? null,
+      changeScope: terminalPredecessor ? 'CLIENT_MASTER_DATA' : 'INITIAL',
+    });
+    if (terminalPredecessor?.destroyedAt === null) {
+      const ownerIds = new Map(
+        terminalPredecessor.beneficialOwners.map((owner) => [owner.id, randomUUID()]),
+      );
+      const documentSetIds = new Map<string, string>();
+      await tx.gwgCheck.update({
+        where: { id: review.id },
+        data: {
+          notes: terminalPredecessor.notes,
+          legalForm: terminalPredecessor.legalForm,
+          registerNumber: terminalPredecessor.registerNumber,
+          registerAuthority: terminalPredecessor.registerAuthority,
+          noRegisterEntry: terminalPredecessor.noRegisterEntry,
+          representativeNames: terminalPredecessor.representativeNames,
+          ownershipStructureNotes: terminalPredecessor.ownershipStructureNotes,
+        },
+      });
+      if (terminalPredecessor.beneficialOwners.length > 0) {
+        await tx.gwgBeneficialOwner.createMany({
+          data: terminalPredecessor.beneficialOwners.map((owner) => ({
+            id: ownerIds.get(owner.id)!,
+            gwgCheckId: review.id,
+            fullName: owner.fullName,
+            birthDate: owner.birthDate,
+            birthPlace: owner.birthPlace,
+            residence: owner.residence,
+            nationality: owner.nationality,
+            ownershipPct: owner.ownershipPct,
+            isPep: owner.isPep,
+            notes: owner.notes,
+          })),
+        });
+      }
+      if (terminalPredecessor.representatives.length > 0) {
+        await tx.gwgRepresentative.createMany({
+          data: terminalPredecessor.representatives.map((representative) => ({
+            gwgCheckId: review.id,
+            fullName: representative.fullName,
+            position: representative.position,
+            linkedBeneficialOwnerId: representative.linkedBeneficialOwnerId
+              ? (ownerIds.get(representative.linkedBeneficialOwnerId) ?? null)
+              : null,
+          })),
+        });
+      }
+      if (terminalPredecessor.idDocuments.length > 0) {
+        await tx.gwgIdDocument.createMany({
+          data: terminalPredecessor.idDocuments.map((document) => {
+            let documentSetId = documentSetIds.get(document.documentSetId);
+            if (!documentSetId) {
+              documentSetId = randomUUID();
+              documentSetIds.set(document.documentSetId, documentSetId);
+            }
+            const evidence = document.document;
+            const reusableDocumentId =
+              evidence &&
+              evidence.id === document.documentId &&
+              evidence.tenantId === input.tenantId &&
+              evidence.clientId === input.clientId &&
+              evidence.classification === 'GWG_EVIDENCE' &&
+              evidence.deletedAt === null &&
+              evidence.gwgDestructionRequestedAt === null &&
+              evidence.gwgDestroyedAt === null
+                ? evidence.id
+                : null;
+            return {
+              gwgCheckId: review.id,
+              type: document.type,
+              ownerName: document.ownerName,
+              documentId: reusableDocumentId,
+              number: document.number,
+              issuedBy: document.issuedBy,
+              issueDate: document.issueDate,
+              expiryDate: document.expiryDate,
+              documentSetId,
+              notes: document.notes,
+            };
+          }),
+        });
+      }
+    }
+  }
 
   return {
     invalidatedChecks: invalidated.count,
@@ -235,7 +380,12 @@ export async function requireGwgReverificationTx(
  */
 export async function startFreshGwgReviewTx(
   tx: TxClient,
-  input: { tenantId: string; clientId: string },
+  input: {
+    tenantId: string;
+    clientId: string;
+    predecessorCheckId?: string | null;
+    changeScope?: GwgChangeScopeInput;
+  },
 ): Promise<ReverificationResult & { reviewCheckId: string }> {
   await lockGwgCheckLifecycleTx(tx, input);
 

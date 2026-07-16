@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useEffect, useRef, useState } from 'react';
+import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { FileSearch, Loader2, X } from 'lucide-react';
 import { addIdDocumentAction, type ActionResult } from './actions';
@@ -8,6 +8,7 @@ import { DocumentPreviewButton } from '@/components/document-preview';
 import { DocumentUploadButton } from '@/components/document-upload-button';
 import {
   identitySubjectRoleLabel,
+  selectableIdentitySubjectOptions,
   type IdentitySubjectOption,
 } from '@/server/gwg/identity-subject';
 import {
@@ -46,7 +47,11 @@ export function AddIdDocumentForm({
   variant,
   subjectOptions = EMPTY_SUBJECT_OPTIONS,
 }: Props) {
-  const { subjectOptions: availableSubjects } = useGwgIdentitySubjects(subjectOptions);
+  const { subjectOptions: allSubjects } = useGwgIdentitySubjects(subjectOptions);
+  const availableSubjects = useMemo(
+    () => selectableIdentitySubjectOptions(allSubjects),
+    [allSubjects],
+  );
   const formRef = useRef<HTMLFormElement>(null);
   const primaryDocumentIdRef = useRef<HTMLInputElement>(null);
   const submittingRef = useRef(false);

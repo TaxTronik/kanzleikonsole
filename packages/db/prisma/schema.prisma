@@ -204,6 +204,8 @@ model GwgCheck {
   tenantId                   String                @map("tenant_id") @db.Uuid
   clientId                   String                @map("client_id") @db.Uuid
   status                     GwgStatus             @default(DRAFT)
+  changeScope                GwgChangeScope        @default(INITIAL) @map("change_scope")
+  predecessorCheckId         String?               @map("predecessor_check_id") @db.Uuid
   riskLevel                  GwgRiskLevel?         @map("risk_level")
   riskScore                  Int?                  @map("risk_score")
   riskBreakdown              Json?                 @map("risk_breakdown")
@@ -249,9 +251,12 @@ model GwgCheck {
   tenant                     Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   idDocuments                GwgIdDocument[]
   onboardingInvites          GwgOnboardingInvite[]
+  predecessor                GwgCheck?             @relation("gwg_check_lineage", fields: [predecessorCheckId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "gwg_check_predecessor_fkey")
+  successors                 GwgCheck[]            @relation("gwg_check_lineage")
 
   @@index([tenantId, clientId])
   @@index([tenantId, status])
+  @@index([predecessorCheckId])
   @@map("gwg_check")
 }
 
@@ -302,36 +307,43 @@ model GwgIdDocument {
 /// `representativeNames` bleibt vorerst als Legacy-/Anzeige-Snapshot bestehen;
 /// neue Identitaetszuordnungen referenzieren ausschliesslich diese UUID.
 model GwgRepresentative {
-  id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  gwgCheckId  String          @map("gwg_check_id") @db.Uuid
-  fullName    String          @map("full_name")
-  position    Int
-  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  check       GwgCheck        @relation(fields: [gwgCheckId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  idDocuments GwgIdDocument[]
+  id                      String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gwgCheckId              String              @map("gwg_check_id") @db.Uuid
+  fullName                String              @map("full_name")
+  position                Int
+  /// Explizite Rollenidentität: derselbe Mensch kann Vertreter und zugleich
+  /// wirtschaftlich Berechtigter sein. Keine heuristische Namensverknüpfung.
+  linkedBeneficialOwnerId String?             @map("linked_beneficial_owner_id") @db.Uuid
+  createdAt               DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  check                   GwgCheck            @relation(fields: [gwgCheckId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  linkedBeneficialOwner   GwgBeneficialOwner? @relation("gwg_owner_representative_identity", fields: [linkedBeneficialOwnerId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "gwg_representative_linked_owner_fk")
+  idDocuments             GwgIdDocument[]
 
   // Homonyme Vertreter sind fachlich verschiedene Personen und behalten
   // deshalb getrennte UUIDs. Die Position bildet nur die stabile Reihenfolge.
   @@unique([gwgCheckId, position])
+  @@unique([gwgCheckId, linkedBeneficialOwnerId], map: "gwg_representative_owner_identity_uq")
   @@index([gwgCheckId])
+  @@index([linkedBeneficialOwnerId])
   @@map("gwg_representative")
 }
 
 model GwgBeneficialOwner {
-  id           String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  gwgCheckId   String          @map("gwg_check_id") @db.Uuid
-  fullName     String          @map("full_name")
-  birthDate    DateTime?       @map("birth_date") @db.Date
-  birthPlace   String?         @map("birth_place")
-  residence    String?
-  nationality  String?
-  ownershipPct Decimal?        @map("ownership_pct") @db.Decimal(5, 2)
-  isPep        Boolean         @default(false) @map("is_pep")
-  notes        String?
-  createdAt    DateTime        @default(now()) @map("created_at")
-  check        GwgCheck        @relation(fields: [gwgCheckId], references: [id], onDelete: Cascade)
-  idDocuments  GwgIdDocument[]
+  id                  String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gwgCheckId          String              @map("gwg_check_id") @db.Uuid
+  fullName            String              @map("full_name")
+  birthDate           DateTime?           @map("birth_date") @db.Date
+  birthPlace          String?             @map("birth_place")
+  residence           String?
+  nationality         String?
+  ownershipPct        Decimal?            @map("ownership_pct") @db.Decimal(5, 2)
+  isPep               Boolean             @default(false) @map("is_pep")
+  notes               String?
+  createdAt           DateTime            @default(now()) @map("created_at")
+  check               GwgCheck            @relation(fields: [gwgCheckId], references: [id], onDelete: Cascade)
+  idDocuments         GwgIdDocument[]
+  representativeRoles GwgRepresentative[] @relation("gwg_owner_representative_identity")
 
   @@index([gwgCheckId])
   @@map("gwg_beneficial_owner")
@@ -2209,6 +2221,12 @@ model GwgOnboardingInvite {
   submittedIp         String?         @map("submitted_ip") @db.Inet
   submittedUa         String?         @map("submitted_ua")
   gwgCheckId          String?         @map("gwg_check_id") @db.Uuid
+  /// Hash des bei Ausstellung gebundenen DRAFT-Snapshots. Verhindert, dass
+  /// ein spaeterer Portal-Submit zwischenzeitliche Kanzlei-Edits ueberschreibt.
+  boundCheckRevision  String?         @map("bound_check_revision")
+  /// Baseline der Mandantenstammdaten bei einer echten Ersteinladung ohne
+  /// Check. Genau eines der beiden Revisionsfelder ist bei offenen Links gesetzt.
+  boundClientRevision String?         @map("bound_client_revision")
   // H-1: Liste der via diesem Invite hochgeladenen document.id-UUIDs.
   // Beim submit prüfen wir, dass alle referenzierten Doc-IDs hier vorkommen
   // (verhindert Cross-Tenant-Verlinkung über erratene UUIDs).
@@ -2505,6 +2523,18 @@ enum GwgStatus {
   EXPIRED
 
   @@map("gwg_status")
+}
+
+enum GwgChangeScope {
+  LEGACY_UNKNOWN
+  INITIAL
+  CLIENT_MASTER_DATA
+  ROUTINE
+  BENEFICIAL_OWNERS
+  REPRESENTATIVES
+  BOTH
+
+  @@map("gwg_change_scope")
 }
 
 enum GwgRiskLevel {

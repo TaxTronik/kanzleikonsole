@@ -21,8 +21,40 @@ import {
   type ConsentServiceProviderSnapshot,
   type ResolvedConsentOption,
 } from './consent';
+import {
+  CONSENT_DISPLAY_CHANGED_MESSAGE,
+  consentDisplayRevision,
+  visibleConsentOptions,
+  type ConsentDisplayNotice,
+} from './consent-display';
 
 export const CONSENT_OPTIONS_SETTING_KEY = 'privacy.consent_options';
+
+export class RequiredConsentOptionsError extends Error {
+  readonly labels: string[];
+
+  constructor(labels: string[]) {
+    super(`Bitte bestätigen Sie die folgenden Pflichtoptionen: ${labels.join(', ')}.`);
+    this.name = 'RequiredConsentOptionsError';
+    this.labels = labels;
+  }
+}
+
+export class ConsentDisplayChangedError extends Error {
+  constructor() {
+    super(CONSENT_DISPLAY_CHANGED_MESSAGE);
+    this.name = 'ConsentDisplayChangedError';
+  }
+}
+
+export interface ConsentResolutionPolicy {
+  enforceRequired?: boolean;
+  /** Nur im Portal: bindet die Auswahl an exakt die zuvor gerenderte Anzeige. */
+  expectedDisplay?: {
+    revision: string;
+    notice: ConsentDisplayNotice;
+  };
+}
 
 export async function readConsentOptionsCatalogTx(
   tx: TxClient,
@@ -138,13 +170,36 @@ export async function resolveConsentSelectionsTx(
   tx: TxClient,
   tenantId: string,
   value: unknown,
+  policy: ConsentResolutionPolicy = {},
 ): Promise<ConsentSelections> {
   const input = ConsentSelectionsSchema.parse(value);
   const options = await readResolvedConsentOptionsTx(tx, tenantId);
+  const visibleOptions = visibleConsentOptions(options);
+  if (
+    policy.expectedDisplay &&
+    consentDisplayRevision(policy.expectedDisplay.notice, visibleOptions) !==
+      policy.expectedDisplay.revision
+  ) {
+    throw new ConsentDisplayChangedError();
+  }
   const byId = new Map(options.map((option) => [option.id, option]));
   const canonicalSelections: ConsentOptionSelectionSnapshot[] = [];
+  const selectedIds = new Set(selectedOptionIds(input));
 
-  for (const optionId of selectedOptionIds(input)) {
+  if (policy.enforceRequired) {
+    const missing = visibleOptions.filter(
+      (option) =>
+        option.active &&
+        option.section === 'OTHER' &&
+        option.required &&
+        !selectedIds.has(option.id),
+    );
+    if (missing.length > 0) {
+      throw new RequiredConsentOptionsError(missing.map((option) => option.label));
+    }
+  }
+
+  for (const optionId of selectedIds) {
     const option = byId.get(optionId);
     if (!option) {
       throw new Error('Eine ausgewählte Einwilligungsoption gehört nicht zu dieser Kanzlei.');
@@ -160,7 +215,10 @@ export async function resolveConsentSelectionsTx(
     canonicalSelections.push({
       optionId: option.id,
       labelSnapshot: option.label,
+      descriptionSnapshot: option.description,
       section: option.section,
+      requiredSnapshot: option.required,
+      recommendedSnapshot: option.recommended,
       serviceProviderSnapshot: option.serviceProvider,
     });
   }

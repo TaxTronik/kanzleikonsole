@@ -95,9 +95,13 @@ export async function decideChangeRequestAction(
           (k) => GWG_FIELDS.has(k) && (before as Record<string, unknown>)[k] !== applicable[k],
         );
         let gwgReset = false;
+        let gwgReviewCheckId: string | null = null;
+        let gwgInvalidatedIdentityDocuments = 0;
         if (gwgChanged) {
           const reset = await requireGwgReverificationTx(tx, { tenantId, clientId });
-          gwgReset = reset.invalidatedChecks > 0;
+          gwgReset = reset.reviewCheckId !== null;
+          gwgReviewCheckId = reset.reviewCheckId;
+          gwgInvalidatedIdentityDocuments = reset.invalidatedIdentityDocuments;
         }
 
         await evidenceService.record(tx, {
@@ -108,7 +112,12 @@ export async function decideChangeRequestAction(
           resourceType: 'client_master_change_request',
           resourceId: requestId,
           before,
-          after: { ...applicable, _gwgReverificationTriggered: gwgReset },
+          after: {
+            ...applicable,
+            _gwgReverificationTriggered: gwgReset,
+            _gwgReviewCheckId: gwgReviewCheckId,
+            _gwgInvalidatedIdentityDocuments: gwgInvalidatedIdentityDocuments,
+          },
         });
       } else {
         await evidenceService.record(tx, {

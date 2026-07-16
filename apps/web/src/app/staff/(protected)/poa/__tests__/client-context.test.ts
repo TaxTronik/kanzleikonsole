@@ -18,7 +18,11 @@ describe('Vollmachten im Mandantenkontext', () => {
     expect(page).toContain('...(requestedClientId ? [{ id: requestedClientId }] : [])');
     expect(page).toContain('resolveInitialPoaClientId(');
     expect(page).toContain('initialClientId={initialClientId}');
+    expect(page).toContain('returnContext={onboardingClientId ? returnContext : undefined}');
     expect(form).toContain('clients.some((client) => client.id === initialClientId)');
+    expect(form).toContain('name="returnContext"');
+    expect(form).toContain('disabled={Boolean(pendingDocumentId || returnContext)}');
+    expect(form).toContain('poaCreateResumeHref({');
   });
 
   it('öffnet vom Mandanten aus eine vollständig gefilterte Vollmachtenliste', () => {

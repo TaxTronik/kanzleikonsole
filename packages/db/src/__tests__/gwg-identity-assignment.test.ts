@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 
+import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
@@ -15,6 +16,13 @@ const migration = readFileSync(
 const recoveryMigration = readFileSync(
   new URL(
     '../../prisma/migrations/20260801004400_legacy_gwg_guard_recovery/migration.sql',
+    import.meta.url,
+  ),
+  'utf8',
+);
+const crossRoleMigration = readFileSync(
+  new URL(
+    '../../prisma/migrations/20260801004900_gwg_cross_role_person_identity/migration.sql',
     import.meta.url,
   ),
   'utf8',
@@ -118,6 +126,94 @@ describe('GwG-Identitaetszuordnung – Migrationsvertrag', () => {
       expect(sql).toContain('SET "identity_assignment_confirmed_at" = NULL');
       expect(sql).toContain('"verified_at" = NULL');
     }
+  });
+
+  it('bindet Doppelrollen per UUID und invalidiert Vertreter-Ausweissets in der DB', () => {
+    // Die Migration muss in frischen Standard-Deployments ohne Sonderrolle laufen.
+    expect(crossRoleMigration).toContain('BEGIN;');
+    expect(crossRoleMigration).toContain('COMMIT;');
+    expect(crossRoleMigration).toContain('gwg_representative_cross_role_identity_guard');
+    expect(crossRoleMigration).toContain('owner."gwg_check_id" = NEW."gwg_check_id"');
+    expect(crossRoleMigration).toContain(
+      'CREATE TRIGGER gwg_representative_identity_assignment_invalidate',
+    );
+    expect(crossRoleMigration).toContain(
+      'CREATE TRIGGER gwg_beneficial_owner_check_scope_immutable',
+    );
+    expect(crossRoleMigration).toContain('CREATE TRIGGER gwg_representative_check_scope_immutable');
+    expect(crossRoleMigration).toContain(
+      'AFTER UPDATE OF "full_name", "linked_beneficial_owner_id"',
+    );
+    expect(crossRoleMigration).toContain('gid."representative_subject_id" = NEW."id"');
+    expect(crossRoleMigration).toContain('rep."linked_beneficial_owner_id" = NEW."id"');
+    expect(crossRoleMigration).toContain('SET "identity_assignment_confirmed_at" = NULL');
+    expect(crossRoleMigration).toContain('"verified_at" = NULL');
+    expect(crossRoleMigration).not.toContain('OWNER TO taxtronik_owner');
+    expect(crossRoleMigration).toContain('OWNER TO CURRENT_USER');
+    expect(schema).toContain('map: "gwg_representative_linked_owner_fk")');
+  });
+
+  it('persistiert eine mandantengebundene Pruefungslinie und den Invite-CAS transaktional', () => {
+    expect(crossRoleMigration).toContain('CREATE TYPE "gwg_change_scope" AS ENUM');
+    expect(crossRoleMigration).toContain("'LEGACY_UNKNOWN'");
+    expect(crossRoleMigration).toContain("'CLIENT_MASTER_DATA'");
+    expect(crossRoleMigration).toContain(
+      'ADD COLUMN "change_scope" "gwg_change_scope" NOT NULL DEFAULT \'LEGACY_UNKNOWN\'',
+    );
+    expect(crossRoleMigration).toContain('ALTER COLUMN "change_scope" SET DEFAULT \'INITIAL\'');
+    expect(crossRoleMigration.indexOf("DEFAULT 'LEGACY_UNKNOWN'")).toBeLessThan(
+      crossRoleMigration.indexOf('ALTER COLUMN "change_scope" SET DEFAULT \'INITIAL\''),
+    );
+    expect(crossRoleMigration).not.toMatch(
+      /UPDATE\s+(?:public\.)?"gwg_check"[\s\S]{0,300}"change_scope"/,
+    );
+    expect(crossRoleMigration).toContain('ADD COLUMN "predecessor_check_id" UUID');
+    expect(crossRoleMigration).toContain('CREATE TRIGGER gwg_check_lineage_guard');
+    expect(crossRoleMigration).toContain('CREATE TRIGGER gwg_check_lineage_snapshot_immutable');
+    expect(crossRoleMigration).toContain(
+      'NEW."tenant_id",\n       NEW."client_id",\n       NEW."change_scope",',
+    );
+    expect(crossRoleMigration).toContain(
+      'BEFORE UPDATE OF "tenant_id", "client_id", "change_scope", "predecessor_check_id", "created_at"',
+    );
+    expect(crossRoleMigration).toContain('predecessor_created_at TIMESTAMP(3)');
+    expect(crossRoleMigration).toContain('predecessor_client IS DISTINCT FROM NEW."client_id"');
+    expect(crossRoleMigration).toContain('ON DELETE NO ACTION');
+    expect(crossRoleMigration).not.toContain('REFERENCES "gwg_check" ("id")\n  ON DELETE SET NULL');
+    expect(crossRoleMigration).toContain('ADD COLUMN "bound_check_revision" TEXT');
+    expect(crossRoleMigration).toContain('ADD COLUMN "bound_client_revision" TEXT');
+    expect(crossRoleMigration).toContain('gwg_invite_open_revision_binding_ck');
+    expect(crossRoleMigration).toContain(
+      '"gwg_check_id" IS NULL\n        AND "bound_client_revision" IS NOT NULL',
+    );
+    expect(crossRoleMigration).toContain(
+      '"gwg_check_id" IS NOT NULL\n        AND "bound_check_revision" IS NOT NULL',
+    );
+    expect(crossRoleMigration).toContain('UPDATE public."gwg_onboarding_invite"');
+    expect(crossRoleMigration).toContain("AND \"status\" IN ('PENDING', 'STARTED')");
+    expect(schema).toContain('@map("bound_check_revision")');
+    expect(schema).toContain('@map("bound_client_revision")');
+  });
+
+  it('entwertet offene Legacy-Invites nur ueber einen gesperrten Einmal-Bypass', () => {
+    const cutoverStart = crossRoleMigration.indexOf('-- BEGIN OPEN INVITE REVISION CUTOVER');
+    const cutoverEnd = crossRoleMigration.indexOf('-- END OPEN INVITE REVISION CUTOVER');
+
+    expect(cutoverStart).toBeGreaterThan(-1);
+    expect(cutoverEnd).toBeGreaterThan(cutoverStart);
+    const cutover = crossRoleMigration.slice(cutoverStart, cutoverEnd);
+    expect(cutover).toContain('LOCK TABLE public."gwg_onboarding_invite" IN ACCESS EXCLUSIVE MODE');
+    expect(cutover).toContain('SECURITY DEFINER');
+    expect(cutover).toContain(
+      'current_setting(\'app.gwg_invite_revision_cutover_id\', TRUE) = OLD."id"::TEXT',
+    );
+    expect(cutover).toContain("AND OLD.\"status\" IN ('PENDING', 'STARTED')");
+    expect(cutover).toContain('AND NEW."status" = \'CANCELLED\'');
+    expect(cutover).toContain(
+      'REVOKE ALL ON FUNCTION app.cancel_legacy_gwg_invites_for_revision_cutover() FROM PUBLIC',
+    );
+    expect(cutover).toContain('DROP FUNCTION app.cancel_legacy_gwg_invites_for_revision_cutover()');
+    expect(cutover).not.toMatch(/DISABLE TRIGGER|session_replication_role/);
   });
 });
 
@@ -232,7 +328,231 @@ async function createConfirmedNaturalIdentityCheck(
   return { checkId: check.id, evidenceId };
 }
 
+async function expectInvalidatedDocumentSet(documentSetId: string): Promise<void> {
+  const members = await owner.gwgIdDocument.findMany({
+    where: { documentSetId },
+    orderBy: { id: 'asc' },
+  });
+  expect(members).toHaveLength(2);
+  for (const member of members) {
+    expect(member).toMatchObject({
+      identityAssignmentConfirmedAt: null,
+      identityAssignmentConfirmedBy: null,
+      verifiedAt: null,
+    });
+  }
+}
+
 describeWithDatabase('GwG-Identitaetszuordnung – DB-Invarianten', () => {
+  it('migriert einen abgelaufenen PENDING-Invite trotz verknuepftem Vernichtungsclaim', async () => {
+    const clientRecord = await owner.client.create({
+      data: {
+        tenantId,
+        kind: 'PERSGES',
+        name: `Invite-Cutover-${Date.now()}`,
+        allowActive: false,
+      },
+    });
+    const invite = await owner.gwgOnboardingInvite.create({
+      data: {
+        tenantId,
+        clientId: clientRecord.id,
+        inviteEmail: `invite-cutover-${Date.now()}@example.com`,
+        inviteName: 'Invite Cutover',
+        tokenHash: `invite-cutover-${Date.now()}`,
+        expiresAt: new Date('2099-01-01T00:00:00.000Z'),
+        status: 'PENDING',
+        boundClientRevision: 'fixture-client-revision',
+        createdByStaff: staffId,
+      },
+    });
+    const document = await owner.document.create({
+      data: {
+        tenantId,
+        clientId: clientRecord.id,
+        title: 'Abgelaufener Invite-Beleg',
+        classification: 'GWG_EVIDENCE',
+        mimeType: 'image/jpeg',
+        gwgOnboardingInviteId: invite.id,
+      },
+    });
+
+    const cutoverStart = crossRoleMigration.indexOf('-- BEGIN OPEN INVITE REVISION CUTOVER');
+    const cutoverEnd = crossRoleMigration.indexOf('-- END OPEN INVITE REVISION CUTOVER');
+    expect(cutoverStart).toBeGreaterThan(-1);
+    expect(cutoverEnd).toBeGreaterThan(cutoverStart);
+    const cutoverSql = crossRoleMigration.slice(cutoverStart, cutoverEnd);
+
+    const database = new Client({ connectionString: process.env['DATABASE_URL'] });
+    await database.connect();
+    await database.query('BEGIN');
+    try {
+      await database.query(
+        `UPDATE public."gwg_onboarding_invite"
+            SET "expires_at" = CURRENT_TIMESTAMP - INTERVAL '1 day'
+          WHERE "id" = $1::uuid`,
+        [invite.id],
+      );
+      await database.query(
+        `UPDATE public."document"
+            SET "gwg_destruction_requested_at" = CURRENT_TIMESTAMP,
+                "gwg_destruction_requested_by" = $2::uuid
+          WHERE "id" = $1::uuid`,
+        [document.id, staffId],
+      );
+
+      await database.query('SAVEPOINT direct_cancel');
+      let directCancelFailure: unknown;
+      try {
+        await database.query(
+          `UPDATE public."gwg_onboarding_invite"
+              SET "status" = 'CANCELLED',
+                  "cancelled_at" = CURRENT_TIMESTAMP,
+                  "cancelled_by_staff" = NULL,
+                  "token_hash" = ''
+            WHERE "id" = $1::uuid`,
+          [invite.id],
+        );
+      } catch (error) {
+        directCancelFailure = error;
+      } finally {
+        await database.query('ROLLBACK TO SAVEPOINT direct_cancel');
+      }
+      expect(String(directCancelFailure)).toMatch(/Vernichtungsclaim eingefroren/i);
+
+      await database.query(cutoverSql);
+
+      const migrated = await database.query<{
+        status: string;
+        token_hash: string;
+        cancelled_at: Date | null;
+      }>(
+        `SELECT "status"::text AS "status", "token_hash", "cancelled_at"
+           FROM public."gwg_onboarding_invite"
+          WHERE "id" = $1::uuid`,
+        [invite.id],
+      );
+      expect(migrated.rows[0]).toMatchObject({ status: 'CANCELLED', token_hash: '' });
+      expect(migrated.rows[0]?.cancelled_at).toBeInstanceOf(Date);
+
+      const helper = await database.query<{ helper: string | null }>(
+        `SELECT pg_catalog.to_regprocedure(
+           'app.cancel_legacy_gwg_invites_for_revision_cutover()'
+         )::text AS helper`,
+      );
+      expect(helper.rows[0]?.helper).toBeNull();
+
+      await database.query('SAVEPOINT bypass_is_closed');
+      let postCutoverFailure: unknown;
+      try {
+        await database.query(
+          `UPDATE public."gwg_onboarding_invite"
+              SET "status" = 'EXPIRED'
+            WHERE "id" = $1::uuid`,
+          [invite.id],
+        );
+      } catch (error) {
+        postCutoverFailure = error;
+      } finally {
+        await database.query('ROLLBACK TO SAVEPOINT bypass_is_closed');
+      }
+      expect(String(postCutoverFailure)).toMatch(/Vernichtungsclaim eingefroren/i);
+    } finally {
+      await database.query('ROLLBACK').catch(() => undefined);
+      await database.end();
+    }
+  });
+
+  it('backfillt Altchecks ohne UPDATE als unbekannt und setzt nur den Neuanlagen-Default auf INITIAL', async () => {
+    const addColumns = crossRoleMigration.match(
+      /ALTER TABLE "gwg_check"\s+ADD COLUMN "change_scope"[\s\S]*?ADD COLUMN "predecessor_check_id" UUID;/,
+    )?.[0];
+    const setNewDefault = crossRoleMigration.match(
+      /ALTER TABLE "gwg_check"\s+ALTER COLUMN "change_scope" SET DEFAULT 'INITIAL';/,
+    )?.[0];
+    expect(addColumns).toBeTruthy();
+    expect(setNewDefault).toBeTruthy();
+
+    await owner.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        'CREATE TEMP TABLE "gwg_scope_backfill" ("id" TEXT PRIMARY KEY) ON COMMIT DROP',
+      );
+      await tx.$executeRawUnsafe(
+        'INSERT INTO pg_temp."gwg_scope_backfill" ("id") VALUES (\'legacy\')',
+      );
+      await tx.$executeRawUnsafe(
+        addColumns!.replace('ALTER TABLE "gwg_check"', 'ALTER TABLE pg_temp."gwg_scope_backfill"'),
+      );
+      await tx.$executeRawUnsafe(
+        setNewDefault!.replace(
+          'ALTER TABLE "gwg_check"',
+          'ALTER TABLE pg_temp."gwg_scope_backfill"',
+        ),
+      );
+      await tx.$executeRawUnsafe(
+        'INSERT INTO pg_temp."gwg_scope_backfill" ("id") VALUES (\'new\')',
+      );
+      const rows = await tx.$queryRawUnsafe<Array<{ id: string; scope: string }>>(
+        'SELECT "id", "change_scope"::text AS "scope" FROM pg_temp."gwg_scope_backfill" ORDER BY "id"',
+      );
+      expect(rows).toEqual([
+        { id: 'legacy', scope: 'LEGACY_UNKNOWN' },
+        { id: 'new', scope: 'INITIAL' },
+      ]);
+    });
+  });
+
+  it('sperrt das Einzel-Loeschen eines Vorgaengers, erlaubt aber die Tenant-Kaskade', async () => {
+    const cascadeTenant = await owner.tenant.create({
+      data: { slug: `test-gwg-lineage-${Date.now()}`, name: 'GwG Lineage Cascade Test' },
+    });
+    const client = await owner.client.create({
+      data: { tenantId: cascadeTenant.id, kind: 'PERSGES', name: 'Lineage GbR' },
+    });
+    const predecessor = await owner.gwgCheck.create({
+      data: { tenantId: cascadeTenant.id, clientId: client.id, changeScope: 'INITIAL' },
+    });
+    const successor = await owner.gwgCheck.create({
+      data: {
+        tenantId: cascadeTenant.id,
+        clientId: client.id,
+        changeScope: 'ROUTINE',
+        predecessorCheckId: predecessor.id,
+        createdAt: new Date(predecessor.createdAt.getTime() + 1),
+      },
+    });
+    const otherClient = await owner.client.create({
+      data: { tenantId: cascadeTenant.id, kind: 'PERSGES', name: 'Andere Lineage GbR' },
+    });
+    const otherTenant = await owner.tenant.create({
+      data: { slug: `test-gwg-lineage-target-${Date.now()}`, name: 'Lineage Target' },
+    });
+
+    await expect(owner.gwgCheck.delete({ where: { id: predecessor.id } })).rejects.toThrow();
+    await expect(
+      owner.gwgCheck.update({
+        where: { id: predecessor.id },
+        data: { clientId: otherClient.id },
+      }),
+    ).rejects.toThrow(/unveränderlich/);
+    await expect(
+      owner.gwgCheck.update({
+        where: { id: predecessor.id },
+        data: { tenantId: otherTenant.id },
+      }),
+    ).rejects.toThrow(/unveränderlich/);
+    await expect(
+      owner.gwgCheck.update({
+        where: { id: successor.id },
+        data: { changeScope: 'BOTH' },
+      }),
+    ).rejects.toThrow(/unveränderlich/);
+    await expect(owner.tenant.delete({ where: { id: cascadeTenant.id } })).resolves.toMatchObject({
+      id: cascadeTenant.id,
+    });
+    await owner.tenant.delete({ where: { id: otherTenant.id } });
+  });
+
   it('ueberspringt beim Cutover ein unveraenderliches vernichtetes Legacy-Skelett', async () => {
     const cutoverStart = migration.indexOf(
       'ALTER TABLE "gwg_check"\n  ADD COLUMN "identity_assignment_required"',
@@ -806,6 +1126,111 @@ describeWithDatabase('GwG-Identitaetszuordnung – DB-Invarianten', () => {
         }),
       ]),
     );
+  });
+
+  it('invalidiert direkte Vertreter- und Doppelrollen-Aenderungen setweit', async () => {
+    const client = await owner.client.create({
+      data: { tenantId, kind: 'PERSGES', name: 'Doppelrollen Invalidation GbR' },
+    });
+    const check = await owner.gwgCheck.create({
+      data: {
+        tenantId,
+        clientId: client.id,
+        representativeNames: ['Rita Rolle'],
+      },
+    });
+    const beneficialOwner = await owner.gwgBeneficialOwner.create({
+      data: {
+        gwgCheckId: check.id,
+        fullName: 'Rita Rolle',
+        birthDate: new Date('1981-02-03'),
+        nationality: 'DE',
+      },
+    });
+    const representative = await owner.gwgRepresentative.create({
+      data: {
+        gwgCheckId: check.id,
+        fullName: 'Rita Rolle',
+        position: 0,
+        linkedBeneficialOwnerId: beneficialOwner.id,
+      },
+    });
+    const otherCheck = await owner.gwgCheck.create({
+      data: { tenantId, clientId: client.id },
+    });
+    const unlinkedRepresentative = await owner.gwgRepresentative.create({
+      data: { gwgCheckId: check.id, fullName: 'Ute Unverknüpft', position: 1 },
+    });
+    await expect(
+      owner.gwgBeneficialOwner.update({
+        where: { id: beneficialOwner.id },
+        data: { gwgCheckId: otherCheck.id },
+      }),
+    ).rejects.toThrow(/anderen Prüfsnapshot/);
+    await expect(
+      owner.gwgRepresentative.update({
+        where: { id: unlinkedRepresentative.id },
+        data: { gwgCheckId: otherCheck.id },
+      }),
+    ).rejects.toThrow(/anderen Prüfsnapshot/);
+    const [frontId, backId] = await Promise.all([
+      createEvidenceDocument(client.id, 'Doppelrolle Vorderseite'),
+      createEvidenceDocument(client.id, 'Doppelrolle Rueckseite'),
+    ]);
+    const documentSetId = crypto.randomUUID();
+    const confirmedAt = new Date();
+    const common = {
+      gwgCheckId: check.id,
+      documentSetId,
+      type: 'PERSONALAUSWEIS' as const,
+      ownerName: representative.fullName,
+      representativeSubjectId: representative.id,
+      identityAssignmentConfirmedAt: confirmedAt,
+      identityAssignmentConfirmedBy: staffId,
+      number: 'REP-ID-1',
+      issuedBy: 'Berlin',
+      issueDate: new Date('2020-01-01'),
+      expiryDate: new Date('2099-12-31'),
+      verifiedAt: confirmedAt,
+    };
+    await owner.gwgIdDocument.create({ data: { ...common, documentId: frontId } });
+    await owner.gwgIdDocument.create({ data: { ...common, documentId: backId } });
+
+    // Direkter SQL-/Import-artiger Personenupdate: keine App-Action hilft hier.
+    await owner.gwgRepresentative.update({
+      where: { id: representative.id },
+      data: { fullName: 'Rita Rolle-Neu' },
+    });
+    await expectInvalidatedDocumentSet(documentSetId);
+
+    await owner.gwgIdDocument.updateMany({
+      where: { documentSetId },
+      data: {
+        ownerName: 'Rita Rolle-Neu',
+        identityAssignmentConfirmedAt: confirmedAt,
+        identityAssignmentConfirmedBy: staffId,
+        verifiedAt: confirmedAt,
+      },
+    });
+    await owner.gwgBeneficialOwner.update({
+      where: { id: beneficialOwner.id },
+      data: { nationality: 'FR' },
+    });
+    await expectInvalidatedDocumentSet(documentSetId);
+
+    await owner.gwgIdDocument.updateMany({
+      where: { documentSetId },
+      data: {
+        identityAssignmentConfirmedAt: confirmedAt,
+        identityAssignmentConfirmedBy: staffId,
+        verifiedAt: confirmedAt,
+      },
+    });
+    await owner.gwgRepresentative.update({
+      where: { id: representative.id },
+      data: { linkedBeneficialOwnerId: null },
+    });
+    await expectInvalidatedDocumentSet(documentSetId);
   });
 
   it('haelt homonyme Vertreter getrennt und ein Vorder-/Rueckseiten-Set konsistent', async () => {

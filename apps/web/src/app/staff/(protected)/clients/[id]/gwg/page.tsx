@@ -9,7 +9,7 @@ import { AddBeneficialOwnerForm } from './add-owner-form';
 import { AddIdDocumentForm } from './add-id-doc-form';
 import { InviteSection } from './invite-section';
 import { GwgDecisionForms } from './decision-forms';
-import { fmtDateShort } from '@/lib/fmt';
+import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
 import { DocumentPreviewButton } from '@/components/document-preview';
 import {
   GwgSubmissionSummary,
@@ -37,6 +37,7 @@ import {
   gwgLegalEntityRevision,
   gwgRiskRevision,
 } from '@/server/gwg/revisions';
+import { gwgProfessionalReviewSnapshotHash } from '@/server/gwg/review-snapshot';
 
 const idTypeLabels: Record<string, string> = {
   PERSONALAUSWEIS: 'Personalausweis',
@@ -46,6 +47,24 @@ const idTypeLabels: Record<string, string> = {
   VOLLMACHT: 'Vollmacht',
   TRANSPARENZREGISTER_AUSZUG: 'Transparenzregister-Auszug',
   SONSTIGES: 'Sonstiges',
+};
+
+const changeScopeLabels: Record<string, string> = {
+  LEGACY_UNKNOWN: 'Historische Prüfung (Anlass unbekannt)',
+  INITIAL: 'Erstprüfung',
+  CLIENT_MASTER_DATA: 'Änderung der Mandantenstammdaten',
+  ROUTINE: 'Turnusprüfung',
+  BENEFICIAL_OWNERS: 'Änderung wirtschaftlich Berechtigte',
+  REPRESENTATIVES: 'Änderung gesetzliche Vertretung',
+  BOTH: 'Änderung Berechtigte und Vertretung',
+};
+
+const checkStatusLabels: Record<string, string> = {
+  DRAFT: 'Entwurf',
+  IN_REVIEW: 'In Prüfung',
+  VERIFIED: 'Verifiziert',
+  REJECTED: 'Abgelehnt',
+  EXPIRED: 'Abgelaufen/ersetzt',
 };
 
 function isPersonalIdType(type: string): type is 'PERSONALAUSWEIS' | 'REISEPASS' {
@@ -71,8 +90,8 @@ export default async function GwgPage({
     async (tx) => {
       const client = await tx.client.findUnique({ where: { id: clientId } });
       if (!client) return null;
-      const [check, clientDocuments, invites, contacts, professionalAssignment] = await Promise.all(
-        [
+      const [check, clientDocuments, invites, contacts, professionalAssignment, checkHistory] =
+        await Promise.all([
           tx.gwgCheck.findFirst({
             where: { clientId },
             orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
@@ -130,8 +149,22 @@ export default async function GwgPage({
             },
             select: { id: true },
           }),
-        ],
-      );
+          tx.gwgCheck.findMany({
+            where: { clientId },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            take: 20,
+            select: {
+              id: true,
+              status: true,
+              changeScope: true,
+              predecessorCheckId: true,
+              createdAt: true,
+              reviewSubmittedAt: true,
+              verifiedAt: true,
+              destroyedAt: true,
+            },
+          }),
+        ]);
       const latestInvite = invites[0] ?? null;
       const uploadedIds = Array.isArray(latestInvite?.uploadedDocumentIds)
         ? (latestInvite.uploadedDocumentIds as unknown[]).filter(
@@ -154,12 +187,25 @@ export default async function GwgPage({
         contacts,
         uploadedDocuments,
         canVerify: professionalAssignment !== null,
+        checkHistory,
       };
     },
   );
 
   if (!data) notFound();
-  const { client, check, clientDocuments, invites, contacts, uploadedDocuments, canVerify } = data;
+  const {
+    client,
+    check,
+    clientDocuments,
+    invites,
+    contacts,
+    uploadedDocuments,
+    canVerify,
+    checkHistory,
+  } = data;
+  const checkHistoryById = new Map(
+    checkHistory.map((historyCheck) => [historyCheck.id, historyCheck]),
+  );
   const isLegalEntity = client.kind === 'JURPERS' || client.kind === 'PERSGES';
   const sanitizedDocuments = check?.idDocuments.map((entry) => {
     const document = entry.document;
@@ -205,6 +251,7 @@ export default async function GwgPage({
           id: representative.id,
           fullName: representative.fullName,
           position: representative.position,
+          linkedBeneficialOwnerId: representative.linkedBeneficialOwnerId,
         })),
         beneficialOwners: check.beneficialOwners.map((owner) => ({
           id: owner.id,
@@ -214,6 +261,8 @@ export default async function GwgPage({
       })
     : [];
   const identityDocumentGroups = groupIdentityDocuments(identityDocuments ?? [], subjectOptions);
+  const professionalReviewSnapshotHash =
+    check?.status === 'IN_REVIEW' ? gwgProfessionalReviewSnapshotHash({ ...check, client }) : null;
   const linkedDocumentIds = new Set(
     check?.idDocuments
       .map((document) => document.documentId)
@@ -314,6 +363,14 @@ export default async function GwgPage({
           <InviteSection
             clientId={client.id}
             clientName={client.name}
+            gwgCheckId={check?.status === 'DRAFT' ? check.id : undefined}
+            disabledReason={
+              check && check.status !== 'DRAFT'
+                ? check.status === 'IN_REVIEW'
+                  ? 'Die Prüfung ist bereits eingereicht. Änderungen müssen sie zuerst wieder in den Entwurf zurücksetzen.'
+                  : 'Starten Sie zuerst unten einen neuen Änderungs- oder Wiederholungszyklus; die Einladung wird anschließend exakt an dessen Entwurf gebunden.'
+                : undefined
+            }
             contacts={contacts}
             invites={invites.map((i) => ({
               id: i.id,
@@ -330,6 +387,57 @@ export default async function GwgPage({
         <div className="mb-6">
           <GwgSubmissionSummary data={submittedSummary} />
         </div>
+
+        {checkHistory.length > 0 && (
+          <details className="card mb-6 p-5">
+            <summary className="cursor-pointer text-sm font-semibold text-primary">
+              Prüfverlauf ({checkHistory.length})
+            </summary>
+            <p className="mt-3 text-xs text-muted">
+              Angezeigt wird der unveränderliche Startanlass jedes Prüfzyklus. Weitere Änderungen
+              innerhalb eines laufenden Zyklus sind im Audit-Protokoll nachvollziehbar.
+            </p>
+            <ol className="mt-4 space-y-3">
+              {checkHistory.map((historyCheck, index) => (
+                <li
+                  key={historyCheck.id}
+                  className="rounded-md border border-default bg-subtle p-3 text-sm"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-medium text-primary">
+                      Startanlass:{' '}
+                      {changeScopeLabels[historyCheck.changeScope] ?? historyCheck.changeScope}
+                      {index === 0 ? ' · aktuell' : ''}
+                    </span>
+                    <span className="text-xs text-muted">
+                      {checkStatusLabels[historyCheck.status] ?? historyCheck.status}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted">
+                    Erstellt {fmtDateTimeShort(historyCheck.createdAt)}
+                    {historyCheck.reviewSubmittedAt
+                      ? ` · eingereicht ${fmtDateTimeShort(historyCheck.reviewSubmittedAt)}`
+                      : ''}
+                    {historyCheck.verifiedAt
+                      ? ` · verifiziert ${fmtDateTimeShort(historyCheck.verifiedAt)}`
+                      : ''}
+                    {historyCheck.destroyedAt
+                      ? ` · vernichtet ${fmtDateTimeShort(historyCheck.destroyedAt)}`
+                      : ''}
+                  </p>
+                  {historyCheck.predecessorCheckId && (
+                    <p className="mt-1 text-[11px] text-muted">
+                      Vorgänger:{' '}
+                      {checkHistoryById.has(historyCheck.predecessorCheckId)
+                        ? `${changeScopeLabels[checkHistoryById.get(historyCheck.predecessorCheckId)!.changeScope] ?? 'Prüfung'} vom ${fmtDateShort(checkHistoryById.get(historyCheck.predecessorCheckId)!.createdAt)}`
+                        : `Prüfung ${historyCheck.predecessorCheckId.slice(0, 8)}`}
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </details>
+        )}
 
         {!check ? (
           <div className="card p-8 text-center">
@@ -412,8 +520,24 @@ export default async function GwgPage({
                   clientId={client.id}
                   checkId={check.id}
                   status={check.status}
+                  contacts={contacts.map((contact) => ({
+                    fullName: contact.fullName,
+                    email: contact.email,
+                  }))}
                 />
               </section>
+            )}
+
+            {check.status === 'IN_REVIEW' && canVerify && (
+              <div className="rounded-md border border-blue-300 bg-blue-50 p-4 text-sm text-blue-900 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-100">
+                <p className="font-semibold">Berufsträger-Prüfmodus</p>
+                <p className="mt-1 text-xs">
+                  Prüfen Sie jetzt den vollständigen Snapshot von Risikobewertung, Rechtsträger,
+                  wirtschaftlich Berechtigten, Vertretung und Nachweisen. Ausweise sind für diese
+                  Schlussprüfung aufgeklappt; die Entscheidung am Seitenende wird exakt an diesen
+                  Datenstand gebunden und protokolliert.
+                </p>
+              </div>
             )}
 
             {/* Schritt 1: Risikobewertung */}
@@ -462,6 +586,7 @@ export default async function GwgPage({
                         id: representative.id,
                         fullName: representative.fullName,
                         position: representative.position,
+                        linkedBeneficialOwnerId: representative.linkedBeneficialOwnerId,
                       })),
                       ownershipStructureNotes: check.ownershipStructureNotes,
                     }}
@@ -469,12 +594,22 @@ export default async function GwgPage({
                       ...contacts.map((contact) => ({
                         key: `contact:${contact.id}`,
                         fullName: contact.fullName,
-                        sourceLabel: contact.role?.trim() || 'Mandantenkontakt',
+                        sourceLabel: `${contact.role?.trim() || 'Mandantenkontakt'} · ${contact.email}`,
                       })),
-                      ...check.beneficialOwners.map((owner) => ({
+                      ...check.beneficialOwners.map((owner, index) => ({
                         key: `owner:${owner.id}`,
                         fullName: owner.fullName,
-                        sourceLabel: 'Wirtschaftlich berechtigt',
+                        beneficialOwnerId: owner.id,
+                        sourceLabel: `Wirtschaftlich berechtigt${
+                          owner.birthDate
+                            ? ` · geb. ${new Intl.DateTimeFormat('de-DE', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: 'numeric',
+                                timeZone: 'UTC',
+                              }).format(owner.birthDate)}`
+                            : ''
+                        } · Eintrag ${index + 1}`,
                       })),
                     ]}
                     currentRevision={gwgLegalEntityRevision(check)}
@@ -596,6 +731,7 @@ export default async function GwgPage({
                     check.status === 'REJECTED' ||
                     check.status === 'EXPIRED'
                   }
+                  reviewMode={check.status === 'IN_REVIEW' && canVerify}
                 />
 
                 {check.status !== 'VERIFIED' &&
@@ -624,6 +760,7 @@ export default async function GwgPage({
                   status={check.status}
                   reviewSubmittedAt={check.reviewSubmittedAt?.toISOString() ?? null}
                   canVerify={canVerify}
+                  reviewSnapshotHash={professionalReviewSnapshotHash}
                 />
               </section>
             )}

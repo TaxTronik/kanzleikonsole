@@ -133,7 +133,7 @@ export async function updateContactAction(
   const phone = parsed.data.phone?.trim() || null;
   const role = parsed.data.role?.trim() || null;
 
-  return withStaff(
+  const result = await withStaff(
     async (tx, { tenantId, staffId, session }) => {
       const before = await tx.clientContact.findUnique({
         where: { id: contactId },
@@ -145,7 +145,8 @@ export async function updateContactAction(
       // E-Mail ist die Portal-Login-Identität: bei Änderung dieselbe
       // Uniqueness-Regel wie bei der Einladung — keine Dublette innerhalb
       // des Tenants, nicht auf einen anderen Mandanten zeigend.
-      if (email !== before.email) {
+      const emailChanged = email !== before.email.trim().toLowerCase();
+      if (emailChanged) {
         const clash = await tx.clientContact.findFirst({
           where: { tenantId, clientId, email, id: { not: contactId } },
           select: { clientId: true },
@@ -170,9 +171,19 @@ export async function updateContactAction(
         before,
         after: { fullName, email, phone, role },
       });
+      return { emailChanged };
     },
     { revalidate: `/staff/clients/${clientId}` },
   );
+
+  // Die DB-E-Mail ist Teil der Portal-Login-Identität. Der Write ist an dieser
+  // Stelle committed; alte Cookies werden sofort widerrufen und zusätzlich bei
+  // jeder Hydration gegen die aktuelle DB-E-Mail geprüft.
+  if (!result.ok) return result;
+  if (result.emailChanged) {
+    await revokeAllSessions('portal', contactId);
+  }
+  return { ok: true };
 }
 
 const RotateIcalSchema = z.object({

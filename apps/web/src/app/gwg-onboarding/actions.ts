@@ -1,16 +1,23 @@
 'use server';
 
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { headers } from 'next/headers';
+import { Prisma } from '@prisma/client';
 import {
-  commitDocumentFromBytes,
-  deleteObject,
+  commitPreparedBytes,
+  deleteObjectVersion,
   MAX_UPLOAD_BYTES,
+  prepareBytesCommitWithTier,
   type CommitDocumentResult,
+  type PreparedBytesCommit,
 } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
 import { withSystemContext } from '@taxtronik/db';
-import { createDocumentWithVersion } from '@/server/documents/upload-helpers';
+import {
+  createPendingDocumentWithVersion,
+  finalizePendingDocumentVersion,
+} from '@/server/documents/upload-helpers';
 import { toActionError } from '@/server/auth/rbac';
 import {
   expireOpenInviteIfDue,
@@ -22,11 +29,23 @@ import { checkRateLimit, checkIpOrGlobalLimit, getClientIp } from '@/server/rate
 import { log } from '@/server/logger';
 import { notifyMany } from '@/server/notifications/service';
 import { PortalConsentSelectionsSchema, countGranted } from '@/server/privacy/consent';
-import { resolveConsentSelectionsTx } from '@/server/privacy/consent-catalog';
+import {
+  ConsentDisplayChangedError,
+  RequiredConsentOptionsError,
+  resolveConsentSelectionsTx,
+} from '@/server/privacy/consent-catalog';
+import { lockConsentCatalogTx } from '@/server/privacy/catalog-lock';
+import { CONSENT_DISPLAY_CHANGED_MESSAGE } from '@/server/privacy/consent-display';
 import { renderNoticeForTenantTx } from '@/server/privacy/service';
-import { isPrivacyConfigComplete, readPrivacyConfigTx } from '@/server/privacy/notice';
-import { lockGwgOnboardingUploadTx, startFreshGwgReviewTx } from '@/server/gwg/reverification';
-import { claimCurrentGwgInviteSubmitTx } from '@/server/gwg-onboarding/invite-lifecycle';
+import { startFreshGwgReviewTx } from '@/server/gwg/reverification';
+import {
+  claimCurrentGwgInviteSubmitTx,
+  revalidateOpenGwgInviteRevisionTx,
+} from '@/server/gwg-onboarding/invite-lifecycle';
+import {
+  canStartUnboundGwgInviteTx,
+  resolveBoundGwgInviteDraftTx,
+} from '@/server/gwg-onboarding/bound-review';
 import {
   GwgOnboardingOwnerSchema,
   toBeneficialOwnerSnapshot,
@@ -35,6 +54,11 @@ import {
   GwgOnboardingLegalEntityDeclarationSchema,
   legalEntityEvidenceError,
 } from '@/server/gwg-onboarding/legal-entity-submission';
+import {
+  GwgOnboardingLocalPersonIdSchema,
+  GwgOnboardingRepresentativeSchema,
+  onboardingRepresentativeRoleError,
+} from '@/server/gwg-onboarding/representative-submission';
 
 // M4: GwG-Uploads sind enger gecappt als der globale MAX_UPLOAD_BYTES (25 MiB).
 // Ausweis-Scans sind typischerweise ≤5 MB; 10 MB ist großzügig für hochauflösende
@@ -53,6 +77,7 @@ export interface ActionResult {
 
 class InviteUploadStateChangedError extends Error {}
 class InviteSupersededError extends Error {}
+class BoundInviteDraftChangedError extends Error {}
 
 // ----------------------------------------------------------------------------
 // Befund 6: Fehler-Mapping für diesen anonymen (Token-)Endpoint. Rohe Prisma-/
@@ -82,6 +107,12 @@ function toAnonymousActionError(e: unknown): ActionResult {
         'Die Datenschutzhinweise der Kanzlei sind noch unvollständig. Bitte wenden Sie sich an die Kanzlei.',
     };
   }
+  if (e instanceof RequiredConsentOptionsError) {
+    return { ok: false, error: e.message };
+  }
+  if (e instanceof ConsentDisplayChangedError) {
+    return { ok: false, error: e.message };
+  }
   if (e instanceof InviteUploadStateChangedError) {
     return {
       ok: false,
@@ -95,6 +126,13 @@ function toAnonymousActionError(e: unknown): ActionResult {
       error: 'Diese Einladung wurde durch einen neueren Link ersetzt und ist nicht mehr gültig.',
     };
   }
+  if (e instanceof BoundInviteDraftChangedError) {
+    return {
+      ok: false,
+      error:
+        'Der GwG-Datenstand wurde zwischenzeitlich geändert. Bitte fordern Sie bei Ihrer Kanzlei eine neue Einladung an.',
+    };
+  }
   return toActionError(e);
 }
 
@@ -106,7 +144,14 @@ async function loadInviteForWrite(rawToken: string) {
   const tokenHash = hashInviteToken(rawToken);
   const inv = await prismaOwner.gwgOnboardingInvite.findFirst({
     where: { tokenHash },
-    include: { client: true },
+    include: {
+      client: true,
+      gwgCheck: {
+        select: {
+          idDocuments: { select: { documentId: true } },
+        },
+      },
+    },
   });
   if (!inv) throw new Error(GENERIC_TOKEN_ERROR);
   if (inv.status === 'CANCELLED' || inv.status === 'EXPIRED') {
@@ -183,6 +228,17 @@ export async function uploadIdImageAction(input: {
     // Datenbankfehler unterscheiden lassen.
     return { ok: false, error: GENERIC_TOKEN_ERROR };
   }
+  const tokenHash = hashInviteToken(token);
+  const revisionCurrent = await withSystemContext(invite.tenantId, (tx) =>
+    revalidateOpenGwgInviteRevisionTx(tx, {
+      inviteId: invite.id,
+      tenantId: invite.tenantId,
+      clientId: invite.clientId,
+      tokenHash,
+      now: new Date(),
+    }),
+  );
+  if (!revisionCurrent) return { ok: false, error: GENERIC_TOKEN_ERROR };
 
   const fileData = Buffer.from(base64, 'base64');
   if (fileData.length > GWG_UPLOAD_MAX_BYTES) {
@@ -201,44 +257,63 @@ export async function uploadIdImageAction(input: {
   const classification = 'GWG_EVIDENCE';
 
   let documentId: string;
+  let prepared: PreparedBytesCommit | null = null;
+  let pendingDocumentId: string | null = null;
+  let pendingVersionId: string | null = null;
   let stored: CommitDocumentResult | null = null;
   try {
-    const committed = await commitDocumentFromBytes({
+    prepared = await prepareBytesCommitWithTier({
       fileData,
+      tier: 'GWG',
       classification,
       tenantId: invite.tenantId,
     });
-    stored = committed;
 
-    // Dokument + erste Version anlegen — direkt im SYSTEM-Kontext, weil
-    // der Mandant keinen Auth-Kontext hat. Audit-Trail via evidence-Service.
-    documentId = await withSystemContext(invite.tenantId, async (tx) => {
-      const inviteStillOpen = await lockGwgOnboardingUploadTx(tx, {
+    // Der feste Bucket/Key und Hash werden vor dem ersten S3-PUT dauerhaft
+    // journalisiert. Auch ein Prozessabbruch nach dem PUT hinterlässt damit
+    // niemals unauffindbare geschützte GwG-Bytes im Object Store.
+    const pending = await withSystemContext(invite.tenantId, async (tx) => {
+      const inviteStillOpen = await revalidateOpenGwgInviteRevisionTx(tx, {
         inviteId: invite.id,
         tenantId: invite.tenantId,
         clientId: invite.clientId,
-        tokenHash: hashInviteToken(token),
+        tokenHash,
         now: new Date(),
       });
       if (!inviteStillOpen) throw new InviteUploadStateChangedError();
-
-      // Befund 12: Document+Version-Insert zentral (upload-helpers).
-      const { document: doc } = await createDocumentWithVersion(tx, {
+      return createPendingDocumentWithVersion(tx, {
         documentData: {
           tenantId: invite.tenantId,
           clientId: invite.clientId,
           title: fileName,
           classification,
           gwgOnboardingInviteId: invite.id,
-          // P-3: detectedMime (Magic-Bytes) hat Vorrang vor dem Client-
-          // gemeldeten mimeType. Mandant könnte sonst HTML als image/jpeg
-          // hochladen und Browser-Sniffing-Missbrauch im Staff-Preview
-          // auslösen.
-          mimeType: committed.detectedMime ?? mimeType,
+          mimeType: prepared!.detectedMime ?? mimeType,
         },
-        commit: committed,
-        // System-Action: erfasst-für, nicht erfasst-von
+        prepared: prepared!,
         createdById: invite.createdByStaff,
+      });
+    });
+    pendingDocumentId = pending.document.id;
+    pendingVersionId = pending.version.id;
+
+    stored = await commitPreparedBytes({ fileData, prepared });
+
+    // Finalisierung, Audit und Invite-Zuordnung werden gemeinsam committed.
+    documentId = await withSystemContext(invite.tenantId, async (tx) => {
+      const inviteStillOpen = await revalidateOpenGwgInviteRevisionTx(tx, {
+        inviteId: invite.id,
+        tenantId: invite.tenantId,
+        clientId: invite.clientId,
+        tokenHash,
+        now: new Date(),
+      });
+      if (!inviteStillOpen) throw new InviteUploadStateChangedError();
+
+      await finalizePendingDocumentVersion(tx, {
+        documentId: pendingDocumentId!,
+        versionId: pendingVersionId!,
+        commit: stored!,
       });
       await evidenceService.record(tx, {
         tenantId: invite.tenantId,
@@ -246,7 +321,7 @@ export async function uploadIdImageAction(input: {
         actorId: null,
         action: kind === 'ID_DOCUMENT' ? 'gwg.onboarding.upload.id' : 'gwg.onboarding.upload.extra',
         resourceType: 'document',
-        resourceId: doc.id,
+        resourceId: pendingDocumentId!,
         after: { fileName, mimeType, inviteId: invite.id, kind },
       });
       // Liste und Document werden zusammen committed, waehrend der Invite bis
@@ -254,30 +329,125 @@ export async function uploadIdImageAction(input: {
       // damit entweder den kompletten Upload oder wartet und laeuft danach.
       await tx.$executeRaw`
         UPDATE gwg_onboarding_invite
-        SET uploaded_document_ids = uploaded_document_ids || ${JSON.stringify([doc.id])}::jsonb,
+        SET uploaded_document_ids = uploaded_document_ids || ${JSON.stringify([pendingDocumentId])}::jsonb,
             status = CASE
               WHEN status = 'PENDING'::gwg_invite_status THEN 'STARTED'::gwg_invite_status
               ELSE status
             END
         WHERE id = ${invite.id}::uuid
       `;
-      return doc.id;
+      return pendingDocumentId!;
     });
   } catch (e) {
-    if (stored && e instanceof InviteUploadStateChangedError) {
+    // Ein Fehler beim COMMIT-ACK der finalen DB-Transaktion ist mehrdeutig: Die
+    // Version kann bereits mitsamt Audit und Invite-Zuordnung committed sein.
+    // Deshalb darf das geschützte Objekt erst nach einem erneuten, eindeutigen
+    // Lesen der dauerhaft journalisierten Version kompensierend gelöscht werden.
+    let objectPhysicallyAbsent = false;
+    if (stored?.storageVersionId && pendingDocumentId && pendingVersionId) {
+      let storedObjectCanBeDeleted = false;
       try {
-        await deleteObject(stored.targetBucket, stored.targetKey);
+        const persistedVersion = await withSystemContext(invite.tenantId, (tx) =>
+          tx.documentVersion.findUnique({
+            where: { id: pendingVersionId! },
+            select: {
+              documentId: true,
+              storageBucket: true,
+              storageKey: true,
+              storageVersionId: true,
+              scanStatus: true,
+            },
+          }),
+        );
+        const sameJournalIntent =
+          persistedVersion?.documentId === pendingDocumentId &&
+          persistedVersion.storageBucket === stored.targetBucket &&
+          persistedVersion.storageKey === stored.targetKey;
+
+        if (
+          sameJournalIntent &&
+          persistedVersion.scanStatus === 'CLEAN' &&
+          persistedVersion.storageVersionId === stored.storageVersionId
+        ) {
+          log.warn(
+            {
+              component: 'gwg-onboarding-upload',
+              inviteId: invite.id,
+              tenantId: invite.tenantId,
+              documentId: pendingDocumentId,
+            },
+            'GwG onboarding upload recovered after ambiguous database commit response',
+          );
+          return { ok: true, documentId: pendingDocumentId };
+        }
+
+        storedObjectCanBeDeleted =
+          sameJournalIntent &&
+          persistedVersion.scanStatus === 'PENDING' &&
+          persistedVersion.storageVersionId === null;
+      } catch (reconciliationError) {
+        // Bei einem Read-Fehler bleibt die journalisierte Absicht samt Objekt
+        // erhalten. Ohne belastbaren DB-Zustand ist eine Löschung nicht sicher.
+        log.error(
+          {
+            component: 'gwg-onboarding-upload',
+            inviteId: invite.id,
+            tenantId: invite.tenantId,
+            pendingDocumentId,
+            reconciliationErr: (reconciliationError as Error).message,
+          },
+          'GwG onboarding upload reconciliation failed',
+        );
+      }
+
+      if (storedObjectCanBeDeleted) {
+        try {
+          await deleteObjectVersion(stored.targetBucket, stored.targetKey, stored.storageVersionId, {
+            bypassGovernanceRetention: true,
+          });
+          objectPhysicallyAbsent = true;
+        } catch (cleanupError) {
+          log.error(
+            {
+              component: 'gwg-onboarding-upload',
+              inviteId: invite.id,
+              tenantId: invite.tenantId,
+              orphanedBucket: stored.targetBucket,
+              orphanedKey: stored.targetKey,
+              cleanupErr: (cleanupError as Error).message,
+            },
+            'GwG onboarding upload compensation failed',
+          );
+        }
+      }
+    }
+    // Das PENDING-Journal bleibt erhalten, wenn die physische Löschung nicht
+    // nachgewiesen ist. So kann Ops die konkrete Bucket/Key/Hash-Absicht
+    // wiederaufnehmen. Nur bei nachweislich fehlendem Objekt darf die leere
+    // DB-Absicht kompensierend verschwinden.
+    if (pendingDocumentId && objectPhysicallyAbsent) {
+      try {
+        await withSystemContext(invite.tenantId, (tx) =>
+          tx.document.deleteMany({
+            where: {
+              id: pendingDocumentId!,
+              tenantId: invite.tenantId,
+              versions: {
+                every: { scanStatus: 'PENDING', storageVersionId: null },
+              },
+            },
+          }),
+        );
       } catch (cleanupError) {
         log.error(
           {
             component: 'gwg-onboarding-upload',
             inviteId: invite.id,
             tenantId: invite.tenantId,
-            orphanedBucket: stored.targetBucket,
-            orphanedKey: stored.targetKey,
+            pendingDocumentId,
             cleanupErr: (cleanupError as Error).message,
           },
-          'GwG onboarding upload orphan compensation failed',
+          'GwG onboarding upload pending journal cleanup failed',
         );
       }
     }
@@ -319,7 +489,11 @@ const SubmitSchema = z.object({
     vatId: z.string().max(20).optional().or(z.literal('')),
   }),
   legalEntity: GwgOnboardingLegalEntityDeclarationSchema,
-  owners: z.array(GwgOnboardingOwnerSchema).min(1),
+  owners: z
+    .array(GwgOnboardingOwnerSchema.extend({ localId: GwgOnboardingLocalPersonIdSchema }))
+    .min(1)
+    .max(50),
+  representatives: z.array(GwgOnboardingRepresentativeSchema).max(50).default([]),
   extraDocuments: z
     .array(
       z.object({
@@ -339,6 +513,9 @@ const SubmitSchema = z.object({
     noticeAcknowledged: z.literal(true),
     signedByName: z.string().min(1).max(300),
     selections: PortalConsentSelectionsSchema,
+    displayRevision: z
+      .string({ error: CONSENT_DISPLAY_CHANGED_MESSAGE })
+      .regex(/^[a-f0-9]{64}$/, CONSENT_DISPLAY_CHANGED_MESSAGE),
   }),
 });
 
@@ -372,14 +549,38 @@ export async function submitOnboardingAction(
     return { ok: false, error: (e as Error).message };
   }
 
+  const ownerLocalIds = new Set(owners.map((owner) => owner.localId));
+  if (ownerLocalIds.size !== owners.length) {
+    return { ok: false, error: 'Wirtschaftlich Berechtigte enthalten doppelte Personen-IDs.' };
+  }
+  const representativeRoleError = onboardingRepresentativeRoleError(
+    invite.client.kind,
+    ownerLocalIds,
+    parsed.data.representatives,
+  );
+  if (representativeRoleError) return { ok: false, error: representativeRoleError };
+  const linkedOwnerLocalIds = parsed.data.representatives.flatMap((representative) =>
+    representative.linkedOwnerLocalId ? [representative.linkedOwnerLocalId] : [],
+  );
+
   // H-1: alle referenzierten Document-IDs müssen über DIESES Invite
   // hochgeladen worden sein. Sonst könnte ein Angreifer beim Submit fremde
   // document.id-UUIDs einreihen — FK greift nur auf Existenz, nicht Tenant.
-  const allowedDocIds = new Set(
-    Array.isArray(invite.uploadedDocumentIds) ? (invite.uploadedDocumentIds as string[]) : [],
-  );
+  const allowedDocIds = new Set([
+    ...(Array.isArray(invite.uploadedDocumentIds) ? (invite.uploadedDocumentIds as string[]) : []),
+    ...(invite.gwgCheck?.idDocuments.flatMap((entry) =>
+      entry.documentId ? [entry.documentId] : [],
+    ) ?? []),
+  ]);
   const referencedDocIds: string[] = [
     ...parsed.data.owners.flatMap((o) => [o.idFrontDocumentId, o.idBackDocumentId]),
+    ...parsed.data.representatives.flatMap((representative) =>
+      representative.linkedOwnerLocalId
+        ? []
+        : [representative.idFrontDocumentId, representative.idBackDocumentId].filter(
+            (documentId): documentId is string => Boolean(documentId),
+          ),
+    ),
     ...parsed.data.extraDocuments.map((document) => document.documentId),
   ];
   for (const docId of referencedDocIds) {
@@ -403,7 +604,7 @@ export async function submitOnboardingAction(
   }
 
   try {
-    await withSystemContext(invite.tenantId, async (tx) => {
+    const submitResult = await withSystemContext(invite.tenantId, async (tx) => {
       // Der Mandanten-Lifecycle-Lock liegt vor dem atomaren Einmal-Claim. Nur
       // die aktuellste Einladung darf gewinnen; bei Erfolg werden alle anderen
       // offenen Links in derselben Tx entwertet. Jeder spätere Fehler rollt
@@ -416,27 +617,87 @@ export async function submitOnboardingAction(
         submittedIp: ip,
         submittedUa: ua,
       });
-      if (!claim.ok && claim.reason === 'SUPERSEDED') {
-        throw new InviteSupersededError();
-      }
       if (!claim.ok) {
-        throw new Error(
-          'Einladung wurde bereits abgeschickt, ist abgelaufen oder nicht mehr gueltig.',
-        );
+        return { ok: false, reason: claim.reason } as const;
       }
 
-      const privacyConfig = await readPrivacyConfigTx(tx, invite.tenantId);
-      if (!isPrivacyConfigComplete(privacyConfig)) {
-        throw new Error('PRIVACY_CONFIG_INCOMPLETE');
+      // Die CAS-Pruefung muss vor jeder Client-/GwG-Mutation liegen. Andernfalls
+      // koennte das Portal zuerst alte Masterdaten zurueckschreiben und damit
+      // den bei Einladungsausgabe gespeicherten Hash scheinbar wiederherstellen.
+      let review;
+      if (invite.gwgCheckId) {
+        const boundDraft = await resolveBoundGwgInviteDraftTx(tx, {
+          tenantId: invite.tenantId,
+          clientId: invite.clientId,
+          inviteId: invite.id,
+          expectedCheckId: invite.gwgCheckId,
+        });
+        if (!boundDraft) throw new BoundInviteDraftChangedError();
+        review = {
+          invalidatedChecks: 0,
+          invalidatedIdentityDocuments: 0,
+          reviewCheckId: boundDraft.id,
+          clientDeactivated: false,
+        };
+      } else {
+        if (
+          !(await canStartUnboundGwgInviteTx(tx, {
+            tenantId: invite.tenantId,
+            clientId: invite.clientId,
+            inviteId: invite.id,
+          }))
+        ) {
+          throw new BoundInviteDraftChangedError();
+        }
+        review = await startFreshGwgReviewTx(tx, {
+          tenantId: invite.tenantId,
+          clientId: invite.clientId,
+        });
       }
+      const checkId = review.reviewCheckId;
+
+      const currentClient = await tx.client.findFirst({
+        where: { id: invite.clientId, tenantId: invite.tenantId },
+        select: {
+          kind: true,
+          name: true,
+          street: true,
+          postalCode: true,
+          city: true,
+          countryIso: true,
+          vatId: true,
+        },
+      });
+      if (!currentClient) throw new BoundInviteDraftChangedError();
+      // Bei ungebundenen Ersteinladungen kann sich die Rechtsform zwischen
+      // Vorvalidierung und Lifecycle-Lock ändern. Dann wären Vertreter- und
+      // Nachweispflichten gegen den alten Typ geprüft worden; deshalb
+      // fail-closed neu laden statt Daten nach veralteten Regeln zu schreiben.
+      if (currentClient.kind !== invite.client.kind) {
+        throw new BoundInviteDraftChangedError();
+      }
+
+      // Neue Mandanten-/Personenangaben machen jede zuvor gespeicherte
+      // Risikobewertung fachlich obsolet. Der Reset liegt in derselben
+      // Transaktion und zwingt vor der Berufsträger-Freigabe eine Neubewertung.
+      await tx.gwgCheck.update({
+        where: { id: checkId },
+        data: {
+          riskLevel: null,
+          riskScore: null,
+          riskAnswers: Prisma.DbNull,
+          riskBreakdown: Prisma.DbNull,
+        },
+      });
+
       // 1. Client-Stammdaten ggf. updaten — und welche Felder geändert wurden
       const before = {
-        name: invite.client.name,
-        street: invite.client.street,
-        postalCode: invite.client.postalCode,
-        city: invite.client.city,
-        countryIso: invite.client.countryIso,
-        vatId: invite.client.vatId,
+        name: currentClient.name,
+        street: currentClient.street,
+        postalCode: currentClient.postalCode,
+        city: currentClient.city,
+        countryIso: currentClient.countryIso,
+        vatId: currentClient.vatId,
       };
       const after = {
         name: master.companyName.trim(),
@@ -454,15 +715,9 @@ export async function submitOnboardingAction(
         await tx.client.update({ where: { id: invite.clientId }, data: after });
       }
 
-      // 2. GwG-Check anlegen oder bestehenden auf IN_REVIEW setzen
-      const review = await startFreshGwgReviewTx(tx, {
-        tenantId: invite.tenantId,
-        clientId: invite.clientId,
-      });
-      const checkId = review.reviewCheckId;
       if (
         parsed.data.legalEntity &&
-        (invite.client.kind === 'JURPERS' || invite.client.kind === 'PERSGES')
+        (currentClient.kind === 'JURPERS' || currentClient.kind === 'PERSGES')
       ) {
         await tx.gwgCheck.update({
           where: { id: checkId },
@@ -470,82 +725,210 @@ export async function submitOnboardingAction(
         });
       }
 
-      // 2b. Datenschutz-Einwilligungen (Teil B) persistieren + Hinweis-Snapshot
-      // einfrieren. Leere Array-Zeilen verwerfen. source=PORTAL, kein Staff.
-      const sel = await resolveConsentSelectionsTx(
-        tx,
-        invite.tenantId,
-        parsed.data.consent.selections,
+      // 3. Personenliste dieses bearbeitbaren Snapshots durch die ausdruecklich
+      // uebermittelte aktuelle Liste ersetzen. Bereits kopierte/kanzleiseitig
+      // hochgeladene Nachweise bleiben am selben Check erhalten; nur alte
+      // Personen-Subjects werden durch die FK-Guards sicher geloest.
+      const existingOwners = invite.gwgCheckId
+        ? await tx.gwgBeneficialOwner.findMany({
+            where: { gwgCheckId: checkId },
+            select: { id: true, notes: true },
+          })
+        : [];
+      const existingOwnerIds = new Set(existingOwners.map((entry) => entry.id));
+      const existingOwnerNotes = new Map(existingOwners.map((entry) => [entry.id, entry.notes]));
+      const existingRepresentativeIds = new Set(
+        invite.gwgCheckId
+          ? (
+              await tx.gwgRepresentative.findMany({
+                where: { gwgCheckId: checkId },
+                select: { id: true },
+              })
+            ).map((entry) => entry.id)
+          : [],
       );
-      const notice = await renderNoticeForTenantTx(tx, invite.tenantId);
-      const consentRow = await tx.clientConsent.create({
-        data: {
-          tenantId: invite.tenantId,
-          clientId: invite.clientId,
-          noticeVersion: notice.version,
-          noticeSnapshot: notice.body,
-          consents: sel as object,
-          source: 'PORTAL',
-          signedByName: parsed.data.consent.signedByName.trim(),
-          isRevocation: false,
-          note: 'Über GwG-Onboarding-Portal erteilt',
-          createdBy: null,
-        },
+      const existingCheckDocuments = invite.gwgCheckId
+        ? await tx.gwgIdDocument.findMany({
+            where: { gwgCheckId: checkId },
+            select: { id: true, documentId: true, documentSetId: true, type: true },
+          })
+        : [];
+      const existingDocumentById = new Map(
+        existingCheckDocuments.flatMap((entry) =>
+          entry.documentId ? [[entry.documentId, entry] as const] : [],
+        ),
+      );
+      const replacedRepresentativeCount = await tx.gwgRepresentative.deleteMany({
+        where: { gwgCheckId: checkId },
       });
-      await evidenceService.record(tx, {
-        tenantId: invite.tenantId,
-        actorType: 'CLIENT_CONTACT',
-        actorId: null,
-        action: 'privacy.consent.grant',
-        resourceType: 'client_consent',
-        resourceId: consentRow.id,
-        after: {
-          clientId: invite.clientId,
-          noticeVersion: notice.version,
-          grantedCount: countGranted(sel),
-          signedByName: parsed.data.consent.signedByName.trim(),
-          source: 'PORTAL',
+      const replacedOwnerCount = await tx.gwgBeneficialOwner.deleteMany({
+        where: { gwgCheckId: checkId },
+      });
+
+      const ownerDbIds = new Map(
+        owners.map((owner) => [
+          owner.localId,
+          existingOwnerIds.has(owner.localId) ? owner.localId : randomUUID(),
+        ]),
+      );
+      await tx.gwgBeneficialOwner.createMany({
+        data: owners.map((owner) => {
+          const snapshot = toBeneficialOwnerSnapshot(owner);
+          return {
+            id: ownerDbIds.get(owner.localId)!,
+            gwgCheckId: checkId,
+            ...snapshot,
+            notes: existingOwnerNotes.get(owner.localId) ?? snapshot.notes,
+          };
+        }),
+      });
+
+      const representativeDbIds = new Map(
+        parsed.data.representatives.map((representative) => [
+          representative.localId,
+          existingRepresentativeIds.has(representative.localId)
+            ? representative.localId
+            : randomUUID(),
+        ]),
+      );
+      if (parsed.data.representatives.length > 0) {
+        await tx.gwgRepresentative.createMany({
+          data: parsed.data.representatives.map((representative, position) => ({
+            id: representativeDbIds.get(representative.localId)!,
+            gwgCheckId: checkId,
+            fullName: representative.linkedOwnerLocalId
+              ? owners.find((owner) => owner.localId === representative.linkedOwnerLocalId)!
+                  .fullName
+              : representative.fullName,
+            position,
+            linkedBeneficialOwnerId: representative.linkedOwnerLocalId
+              ? ownerDbIds.get(representative.linkedOwnerLocalId)!
+              : null,
+          })),
+        });
+      }
+      await tx.gwgCheck.update({
+        where: { id: checkId },
+        data: {
+          representativeNames: parsed.data.representatives.map((representative) =>
+            representative.linkedOwnerLocalId
+              ? owners
+                  .find((owner) => owner.localId === representative.linkedOwnerLocalId)!
+                  .fullName.trim()
+              : representative.fullName.trim(),
+          ),
         },
       });
 
-      // 3. Wirtschaftlich Berechtigte erfassen
-      // Bestehende für diesen Check aufräumen — Mandant gibt aktuelle Liste vor.
-      // Bestehende ID-Documents (für diesen Check) aufräumen.
+      const representativeByOwnerLocalId = new Map(
+        parsed.data.representatives.flatMap((representative) =>
+          representative.linkedOwnerLocalId
+            ? [
+                [
+                  representative.linkedOwnerLocalId,
+                  representativeDbIds.get(representative.localId)!,
+                ] as const,
+              ]
+            : [],
+        ),
+      );
+
+      async function persistIdentitySet(input: {
+        documentIds: [string, string];
+        type: 'PERSONALAUSWEIS' | 'REISEPASS';
+        ownerName: string;
+        number: string | null;
+        issuedBy: string | null;
+        issueDate: Date | null;
+        expiryDate: Date | null;
+        beneficialOwnerSubjectId?: string | null;
+        representativeSubjectId?: string | null;
+        notePrefix?: string;
+      }) {
+        const existingRows = input.documentIds.flatMap((documentId) => {
+          const row = existingDocumentById.get(documentId);
+          return row && (row.type === 'PERSONALAUSWEIS' || row.type === 'REISEPASS') ? [row] : [];
+        });
+        if (new Set(existingRows.map((entry) => entry.documentSetId)).size > 1) {
+          throw new BoundInviteDraftChangedError();
+        }
+        if (existingRows.some((entry) => entry.type !== input.type)) {
+          throw new BoundInviteDraftChangedError();
+        }
+        const documentSetId = existingRows[0]?.documentSetId ?? randomUUID();
+        const missingRows = [];
+        for (const [side, documentId] of input.documentIds.entries()) {
+          const data = {
+            gwgCheckId: checkId,
+            documentSetId,
+            type: input.type,
+            ownerName: input.ownerName,
+            documentId,
+            number: input.number,
+            issuedBy: input.issuedBy,
+            issueDate: input.issueDate,
+            expiryDate: input.expiryDate,
+            naturalClientSubjectId: null,
+            beneficialOwnerSubjectId: input.beneficialOwnerSubjectId ?? null,
+            representativeSubjectId: input.representativeSubjectId ?? null,
+            identityAssignmentConfirmedAt: null,
+            identityAssignmentConfirmedBy: null,
+            verifiedAt: null,
+          };
+          const notes = input.notePrefix
+            ? `${input.notePrefix} – ${side === 0 ? 'Vorderseite' : 'Rückseite'} (durch Mandant hochgeladen)`
+            : side === 0
+              ? 'Vorderseite (durch Mandant hochgeladen)'
+              : 'Rückseite (durch Mandant hochgeladen)';
+          const existing = existingDocumentById.get(documentId);
+          if (existing && (existing.type === 'PERSONALAUSWEIS' || existing.type === 'REISEPASS')) {
+            await tx.gwgIdDocument.updateMany({
+              where: { id: existing.id, gwgCheckId: checkId, documentId },
+              data,
+            });
+          } else {
+            missingRows.push({ ...data, notes });
+          }
+        }
+        if (missingRows.length > 0) {
+          await tx.gwgIdDocument.createMany({ data: missingRows });
+        }
+      }
 
       for (const o of owners) {
-        await tx.gwgBeneficialOwner.create({
-          data: {
-            gwgCheckId: checkId,
-            ...toBeneficialOwnerSnapshot(o),
-          },
+        const representativeSubjectId = representativeByOwnerLocalId.get(o.localId) ?? null;
+        const beneficialOwnerSubjectId = representativeSubjectId
+          ? null
+          : ownerDbIds.get(o.localId)!;
+        await persistIdentitySet({
+          documentIds: [o.idFrontDocumentId, o.idBackDocumentId],
+          type: o.idType,
+          ownerName: o.fullName.trim(),
+          number: o.idNumber?.trim() || null,
+          issuedBy: o.idIssuedBy?.trim() || null,
+          issueDate: o.idIssueDate ? new Date(o.idIssueDate + 'T00:00:00.000Z') : null,
+          expiryDate: o.idExpiryDate ? new Date(o.idExpiryDate + 'T00:00:00.000Z') : null,
+          beneficialOwnerSubjectId,
+          representativeSubjectId,
         });
-        // Vorder + Rückseite als zwei GwgIdDocument-Einträge
-        const frontIdDocument = await tx.gwgIdDocument.create({
-          data: {
-            gwgCheckId: checkId,
-            type: 'PERSONALAUSWEIS',
-            ownerName: o.fullName.trim(),
-            documentId: o.idFrontDocumentId,
-            number: o.idNumber?.trim() || null,
-            issuedBy: o.idIssuedBy?.trim() || null,
-            issueDate: o.idIssueDate ? new Date(o.idIssueDate + 'T00:00:00.000Z') : null,
-            expiryDate: o.idExpiryDate ? new Date(o.idExpiryDate + 'T00:00:00.000Z') : null,
-            notes: 'Vorderseite (durch Mandant hochgeladen)',
-          },
-        });
-        await tx.gwgIdDocument.create({
-          data: {
-            gwgCheckId: checkId,
-            documentSetId: frontIdDocument.documentSetId,
-            type: 'PERSONALAUSWEIS',
-            ownerName: o.fullName.trim(),
-            documentId: o.idBackDocumentId,
-            number: o.idNumber?.trim() || null,
-            issuedBy: o.idIssuedBy?.trim() || null,
-            issueDate: o.idIssueDate ? new Date(o.idIssueDate + 'T00:00:00.000Z') : null,
-            expiryDate: o.idExpiryDate ? new Date(o.idExpiryDate + 'T00:00:00.000Z') : null,
-            notes: 'Rückseite (durch Mandant hochgeladen)',
-          },
+      }
+
+      for (const representative of parsed.data.representatives) {
+        if (representative.linkedOwnerLocalId) continue;
+        await persistIdentitySet({
+          documentIds: [representative.idFrontDocumentId!, representative.idBackDocumentId!],
+          type: representative.idType,
+          ownerName: representative.fullName.trim(),
+          number: representative.idNumber?.trim() || null,
+          issuedBy: representative.idIssuedBy?.trim() || null,
+          issueDate: representative.idIssueDate
+            ? new Date(representative.idIssueDate + 'T00:00:00.000Z')
+            : null,
+          expiryDate: representative.idExpiryDate
+            ? new Date(representative.idExpiryDate + 'T00:00:00.000Z')
+            : null,
+          representativeSubjectId: representativeDbIds.get(representative.localId)!,
+          notePrefix: 'Vertretung',
         });
       }
 
@@ -553,17 +936,31 @@ export async function submitOnboardingAction(
       // verknüpft. Zuvor blieben diese Uploads lediglich in der Invite-Liste
       // und konnten das fachliche Verify-Gate nie erfüllen.
       for (const evidence of parsed.data.extraDocuments) {
-        await tx.gwgIdDocument.create({
-          data: {
-            gwgCheckId: checkId,
-            type: evidence.type,
-            ownerName: after.name,
-            documentId: evidence.documentId,
-            notes: 'Rechtsträger-/Zusatznachweis (durch Mandant hochgeladen)',
-          },
-        });
+        const existingEvidence = existingDocumentById.get(evidence.documentId);
+        const data = {
+          gwgCheckId: checkId,
+          type: evidence.type,
+          ownerName: after.name,
+          documentId: evidence.documentId,
+        };
+        if (existingEvidence) {
+          await tx.gwgIdDocument.updateMany({
+            where: {
+              id: existingEvidence.id,
+              gwgCheckId: checkId,
+              documentId: evidence.documentId,
+            },
+            data,
+          });
+        } else {
+          await tx.gwgIdDocument.create({
+            data: {
+              ...data,
+              notes: 'Rechtsträger-/Zusatznachweis (durch Mandant hochgeladen)',
+            },
+          });
+        }
       }
-
       // 4. Den bereits atomar beanspruchten Invite mit seinem frischen Check
       // verknuepfen. Status/Submit-Nachweise wurden beim Claim gesetzt.
       await tx.gwgOnboardingInvite.update({
@@ -586,6 +983,11 @@ export async function submitOnboardingAction(
           ...after,
           changedFields,
           ownerCount: owners.length,
+          representativeCount: parsed.data.representatives.length,
+          linkedRoleCount: linkedOwnerLocalIds.length,
+          reusedBoundDraft: Boolean(invite.gwgCheckId),
+          replacedOwnerCount: replacedOwnerCount.count,
+          replacedRepresentativeCount: replacedRepresentativeCount.count,
           pepCount: owners.filter((owner) => owner.isPep).length,
           noRegisterEntry: parsed.data.legalEntity?.noRegisterEntry ?? null,
           gwgCheckId: checkId,
@@ -639,7 +1041,68 @@ export async function submitOnboardingAction(
           'GwG onboarding submit notification failed',
         );
       }
+
+      // Finaler, kurzer Display-CAS: Katalog-, Hinweis- und Provider-Änderungen
+      // werden erst nach der gesamten GwG-Facharbeit tenantweit serialisiert.
+      // Nach dem Lock folgen nur noch Rerender/Hash-Prüfung, unveränderlicher
+      // Consent-Snapshot und Audit; jeder Fehler rollt weiterhin die ganze
+      // Onboarding-Transaktion atomar zurück.
+      await lockConsentCatalogTx(tx, invite.tenantId);
+      const notice = await renderNoticeForTenantTx(tx, invite.tenantId);
+      if (!notice.complete) {
+        throw new Error('PRIVACY_CONFIG_INCOMPLETE');
+      }
+      const sel = await resolveConsentSelectionsTx(
+        tx,
+        invite.tenantId,
+        parsed.data.consent.selections,
+        {
+          enforceRequired: true,
+          expectedDisplay: {
+            revision: parsed.data.consent.displayRevision,
+            notice,
+          },
+        },
+      );
+      const consentRow = await tx.clientConsent.create({
+        data: {
+          tenantId: invite.tenantId,
+          clientId: invite.clientId,
+          noticeVersion: notice.version,
+          noticeSnapshot: notice.body,
+          consents: sel as object,
+          source: 'PORTAL',
+          signedByName: parsed.data.consent.signedByName.trim(),
+          isRevocation: false,
+          note: 'Über GwG-Onboarding-Portal erteilt',
+          createdBy: null,
+        },
+      });
+      await evidenceService.record(tx, {
+        tenantId: invite.tenantId,
+        actorType: 'CLIENT_CONTACT',
+        actorId: null,
+        action: 'privacy.consent.grant',
+        resourceType: 'client_consent',
+        resourceId: consentRow.id,
+        after: {
+          clientId: invite.clientId,
+          noticeVersion: notice.version,
+          grantedCount: countGranted(sel),
+          signedByName: parsed.data.consent.signedByName.trim(),
+          source: 'PORTAL',
+          displayRevision: parsed.data.consent.displayRevision,
+        },
+      });
+      return { ok: true } as const;
     });
+    if (!submitResult.ok) {
+      if (submitResult.reason === 'SUPERSEDED') throw new InviteSupersededError();
+      if (submitResult.reason === 'STALE') throw new BoundInviteDraftChangedError();
+      throw new Error(
+        'Einladung wurde bereits abgeschickt, ist abgelaufen oder nicht mehr gültig.',
+      );
+    }
   } catch (e) {
     // Befund 6: kein Durchreichen roher Prisma-/DB-Meldungen an Anonyme.
     return toAnonymousActionError(e);

@@ -12,6 +12,7 @@ import { checkIpOrGlobalLimit, getClientIp } from '@/server/rate-limit';
 import { GENERIC_TOKEN_ERROR, loadInviteByRawToken } from '@/server/gwg-onboarding/service';
 import { renderNoticeForTenantTx } from '@/server/privacy/service';
 import { readResolvedConsentOptionsTx } from '@/server/privacy/consent-catalog';
+import { consentDisplayRevision, visibleConsentOptions } from '@/server/privacy/consent-display';
 import { OnboardingWizard } from './wizard';
 
 export default async function GwgOnboardingPage({
@@ -61,9 +62,11 @@ export default async function GwgOnboardingPage({
     // angebotene und vollständig auflösbare Optionen. Eine verwaiste
     // Dienstleister-Verknüpfung muss zuerst im ACP repariert werden und darf
     // den Mandanten nicht erst beim finalen Absenden scheitern lassen.
+    const visibleOptions = visibleConsentOptions(consentOptions);
     return {
       notice,
-      consentOptions: consentOptions.filter((option) => option.active && !option.providerMissing),
+      consentOptions: visibleOptions,
+      displayRevision: consentDisplayRevision(notice, visibleOptions),
     };
   });
 
@@ -96,9 +99,11 @@ export default async function GwgOnboardingPage({
           token={token}
           inviteName={invite.inviteName}
           client={invite.client}
+          initialDraft={invite.draft}
           noticeBody={privacy.notice.body}
           noticeVersion={privacy.notice.version}
           consentOptions={privacy.consentOptions}
+          consentDisplayRevision={privacy.displayRevision}
         />
       </div>
     </div>

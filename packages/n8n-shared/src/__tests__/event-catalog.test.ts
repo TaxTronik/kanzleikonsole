@@ -51,4 +51,18 @@ describe('N8N_EVENT_CATALOG', () => {
     expect(requiresSeparateTestWebhook(['taxtronik.ping', 'request.opened'])).toBe(true);
     expect(requiresSeparateTestWebhook(['workflow.step.mein_schritt'])).toBe(true);
   });
+
+  it('führt GwG-Einladung und Berufsträger-Freigabe als eigene Compliance-Events', () => {
+    expect(N8N_EVENT_CATALOG_BY_NAME['gwg.invite.created']).toMatchObject({
+      category: 'COMPLIANCE',
+      dataClass: 'PROFESSIONAL_SECRET',
+    });
+    expect(N8N_EVENT_CATALOG_BY_NAME['gwg.invite.created'].examplePayload).not.toHaveProperty(
+      'link',
+    );
+    expect(N8N_EVENT_CATALOG_BY_NAME['gwg.verified']).toMatchObject({
+      category: 'COMPLIANCE',
+      dataClass: 'PROFESSIONAL_SECRET',
+    });
+  });
 });

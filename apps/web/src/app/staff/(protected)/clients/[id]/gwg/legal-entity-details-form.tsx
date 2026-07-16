@@ -25,7 +25,12 @@ interface Props {
     representatives: EditableRepresentative[];
     ownershipStructureNotes: string | null;
   };
-  knownPeople: Array<{ key: string; fullName: string; sourceLabel: string }>;
+  knownPeople: Array<{
+    key: string;
+    fullName: string;
+    sourceLabel: string;
+    beneficialOwnerId?: string;
+  }>;
   currentRevision: string;
   disabled: boolean;
 }
@@ -43,12 +48,28 @@ export function LegalEntityDetailsForm({
   const [representatives, setRepresentatives] = useState<RepresentativeRow[]>(() =>
     current.representatives.map((representative) => ({ ...representative, isNew: false })),
   );
+  const [details, setDetails] = useState({
+    legalForm: current.legalForm ?? '',
+    registerNumber: current.registerNumber ?? '',
+    registerAuthority: current.registerAuthority ?? '',
+    noRegisterEntry: current.noRegisterEntry,
+    ownershipStructureNotes: current.ownershipStructureNotes ?? '',
+  });
   const [knownPersonKey, setKnownPersonKey] = useState('');
+  const [savedRevision, setSavedRevision] = useState(currentRevision);
   const [state, action, pending] = useActionState<
     | (ActionResult & {
         reviewReset?: boolean;
         representativesChanged?: boolean;
         representatives?: EditableRepresentative[];
+        details?: {
+          legalForm: string;
+          registerNumber: string | null;
+          registerAuthority: string | null;
+          noRegisterEntry: boolean;
+          representativeNames: string[];
+          ownershipStructureNotes: string;
+        };
         invalidatedIdentitySets?: InvalidatedIdentitySet[];
         revision?: string;
       })
@@ -62,11 +83,21 @@ export function LegalEntityDetailsForm({
       state.representatives.map((representative) => ({ ...representative, isNew: false })),
     );
     replaceRepresentatives(state.representatives);
+    if (state.details) {
+      setDetails({
+        legalForm: state.details.legalForm,
+        registerNumber: state.details.registerNumber ?? '',
+        registerAuthority: state.details.registerAuthority ?? '',
+        noRegisterEntry: state.details.noRegisterEntry,
+        ownershipStructureNotes: state.details.ownershipStructureNotes,
+      });
+    }
     registerIdentityInvalidations(state.invalidatedIdentitySets ?? []);
+    if (state.revision) setSavedRevision(state.revision);
     if (state.reviewReset) markDraft();
   }, [markDraft, registerIdentityInvalidations, replaceRepresentatives, state]);
 
-  function addRepresentative(fullName = '') {
+  function addRepresentative(fullName = '', linkedBeneficialOwnerId: string | null = null) {
     setRepresentatives((currentRows) => [
       ...currentRows,
       {
@@ -74,6 +105,7 @@ export function LegalEntityDetailsForm({
         fullName,
         position: currentRows.length,
         isNew: true,
+        linkedBeneficialOwnerId,
       },
     ]);
   }
@@ -89,24 +121,30 @@ export function LegalEntityDetailsForm({
   function addKnownPerson() {
     const person = knownPeople.find((candidate) => candidate.key === knownPersonKey);
     if (!person) return;
-    addRepresentative(person.fullName);
+    addRepresentative(person.fullName, person.beneficialOwnerId ?? null);
     setKnownPersonKey('');
   }
+
+  const beneficialOwnerPeople = knownPeople.filter(
+    (person): person is (typeof knownPeople)[number] & { beneficialOwnerId: string } =>
+      Boolean(person.beneficialOwnerId),
+  );
 
   return (
     <form action={action} className="space-y-4">
       <input type="hidden" name="checkId" value={checkId} />
       <input type="hidden" name="clientId" value={clientId} />
-      <input
-        type="hidden"
-        name="expectedRevision"
-        value={state?.ok && state.revision ? state.revision : currentRevision}
-      />
+      <input type="hidden" name="expectedRevision" value={savedRevision} />
       <input
         type="hidden"
         name="representativesJson"
         value={JSON.stringify(
-          representatives.map(({ id, fullName, isNew }) => ({ id, fullName, isNew })),
+          representatives.map(({ id, fullName, isNew, linkedBeneficialOwnerId }) => ({
+            id,
+            fullName,
+            isNew,
+            linkedBeneficialOwnerId: linkedBeneficialOwnerId ?? null,
+          })),
         )}
       />
 
@@ -121,8 +159,11 @@ export function LegalEntityDetailsForm({
             className="input"
             required
             maxLength={100}
-            defaultValue={current.legalForm ?? ''}
-            disabled={disabled}
+            value={details.legalForm}
+            onChange={(event) =>
+              setDetails((value) => ({ ...value, legalForm: event.target.value }))
+            }
+            disabled={disabled || pending}
             placeholder="z. B. GmbH, eGbR, KG"
           />
         </div>
@@ -135,8 +176,11 @@ export function LegalEntityDetailsForm({
             name="registerNumber"
             className="input"
             maxLength={100}
-            defaultValue={current.registerNumber ?? ''}
-            disabled={disabled}
+            value={details.registerNumber}
+            onChange={(event) =>
+              setDetails((value) => ({ ...value, registerNumber: event.target.value }))
+            }
+            disabled={disabled || pending}
             placeholder="z. B. HRB 12345"
           />
         </div>
@@ -151,8 +195,11 @@ export function LegalEntityDetailsForm({
           name="registerAuthority"
           className="input"
           maxLength={200}
-          defaultValue={current.registerAuthority ?? ''}
-          disabled={disabled}
+          value={details.registerAuthority}
+          onChange={(event) =>
+            setDetails((value) => ({ ...value, registerAuthority: event.target.value }))
+          }
+          disabled={disabled || pending}
           placeholder="z. B. Handelsregister Amtsgericht München"
         />
       </div>
@@ -161,8 +208,11 @@ export function LegalEntityDetailsForm({
         <input
           type="checkbox"
           name="noRegisterEntry"
-          defaultChecked={current.noRegisterEntry}
-          disabled={disabled}
+          checked={details.noRegisterEntry}
+          onChange={(event) =>
+            setDetails((value) => ({ ...value, noRegisterEntry: event.target.checked }))
+          }
+          disabled={disabled || pending}
           className="mt-1"
         />
         <span>
@@ -176,7 +226,8 @@ export function LegalEntityDetailsForm({
         <legend className="label">Mitglieder des Vertretungsorgans / gesetzliche Vertreter</legend>
         <p className="text-xs text-muted">
           Jede Person wird als eigener Datensatz geführt und kann danach ihrem Ausweis eindeutig
-          zugeordnet werden.
+          zugeordnet werden. Ist ein bestehender Vertreter dieselbe natürliche Person wie ein
+          wirtschaftlich Berechtigter, verknüpfen Sie die Doppelrolle ausdrücklich per UUID.
         </p>
 
         {knownPeople.length > 0 && (
@@ -232,8 +283,75 @@ export function LegalEntityDetailsForm({
                 }
                 required
                 maxLength={200}
+                readOnly={Boolean(representative.linkedBeneficialOwnerId)}
                 placeholder="Vor- und Nachname"
               />
+              {!representative.linkedBeneficialOwnerId && beneficialOwnerPeople.length > 0 && (
+                <>
+                  <label
+                    className="sr-only"
+                    htmlFor={`gwg-representative-owner-link-${representative.id}`}
+                  >
+                    Vertreter als Doppelrolle mit wirtschaftlich Berechtigtem verknüpfen
+                  </label>
+                  <select
+                    id={`gwg-representative-owner-link-${representative.id}`}
+                    className="input max-w-64 text-xs"
+                    value=""
+                    onChange={(event) => {
+                      const owner = beneficialOwnerPeople.find(
+                        (person) => person.beneficialOwnerId === event.target.value,
+                      );
+                      if (!owner) return;
+                      setRepresentatives((currentRows) =>
+                        currentRows.map((entry) =>
+                          entry.id === representative.id
+                            ? {
+                                ...entry,
+                                fullName: owner.fullName,
+                                linkedBeneficialOwnerId: owner.beneficialOwnerId,
+                              }
+                            : entry,
+                        ),
+                      );
+                    }}
+                    aria-label="Doppelrolle verknüpfen"
+                  >
+                    <option value="">Doppelrolle verknüpfen…</option>
+                    {beneficialOwnerPeople.map((owner) => (
+                      <option
+                        key={owner.beneficialOwnerId}
+                        value={owner.beneficialOwnerId}
+                        disabled={representatives.some(
+                          (entry) =>
+                            entry.id !== representative.id &&
+                            entry.linkedBeneficialOwnerId === owner.beneficialOwnerId,
+                        )}
+                      >
+                        {owner.fullName} · {owner.sourceLabel}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              )}
+              {representative.linkedBeneficialOwnerId && (
+                <button
+                  type="button"
+                  className="btn-secondary whitespace-nowrap text-xs"
+                  onClick={() =>
+                    setRepresentatives((currentRows) =>
+                      currentRows.map((entry) =>
+                        entry.id === representative.id
+                          ? { ...entry, linkedBeneficialOwnerId: null }
+                          : entry,
+                      ),
+                    )
+                  }
+                  title="Die Person bleibt Vertreter, wird aber nicht mehr als identisch mit dem wirtschaftlich Berechtigten geführt."
+                >
+                  Doppelrolle lösen
+                </button>
+              )}
               <button
                 type="button"
                 className="btn-secondary px-2"
@@ -268,8 +386,11 @@ export function LegalEntityDetailsForm({
           rows={4}
           required
           maxLength={10000}
-          defaultValue={current.ownershipStructureNotes ?? ''}
-          disabled={disabled}
+          value={details.ownershipStructureNotes}
+          onChange={(event) =>
+            setDetails((value) => ({ ...value, ownershipStructureNotes: event.target.value }))
+          }
+          disabled={disabled || pending}
           placeholder="Register-/Transparenzregister-Abgleich, Beteiligungskette, fiktiv wirtschaftlich Berechtigter …"
         />
       </div>

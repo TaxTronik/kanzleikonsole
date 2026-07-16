@@ -1,3 +1,6 @@
+'use client';
+
+import { useRef, useState } from 'react';
 import { Building2, Check, ChevronDown } from 'lucide-react';
 import type { PortalProfileOption } from '@/server/auth/portal-profiles';
 import { switchPortalProfileAction } from './profile-actions';
@@ -8,6 +11,9 @@ interface PortalProfileSwitcherProps {
 }
 
 export function PortalProfileSwitcher({ currentContactId, profiles }: PortalProfileSwitcherProps) {
+  const switchingRef = useRef(false);
+  const [switching, setSwitching] = useState(false);
+
   if (profiles.length < 2) return null;
 
   return (
@@ -27,16 +33,32 @@ export function PortalProfileSwitcher({ currentContactId, profiles }: PortalProf
         <p className="border-b border-default px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
           Mandantenprofil öffnen
         </p>
-        <div className="max-h-72 overflow-y-auto p-1">
+        <div className="max-h-72 overflow-y-auto p-1" aria-busy={switching}>
           {profiles.map((profile) => {
             const current = profile.contactId === currentContactId;
             return (
-              <form key={profile.contactId} action={switchPortalProfileAction}>
+              <form
+                key={profile.contactId}
+                action={switchPortalProfileAction}
+                onSubmit={(event) => {
+                  if (switchingRef.current) {
+                    event.preventDefault();
+                    return;
+                  }
+                  switchingRef.current = true;
+                  setSwitching(true);
+                }}
+              >
                 <input type="hidden" name="contactId" value={profile.contactId} />
                 <button
                   type="submit"
-                  disabled={current}
-                  className="flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors hover:bg-gray-100 disabled:cursor-default disabled:bg-brand-50 dark:hover:bg-gray-800 dark:disabled:bg-brand-950/30"
+                  disabled={current || switching}
+                  aria-current={current ? 'page' : undefined}
+                  className={`flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors ${
+                    current
+                      ? 'cursor-default bg-surface-raised ring-1 ring-inset ring-brand-500/40'
+                      : 'hover:bg-surface-raised'
+                  }`}
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-medium text-primary">

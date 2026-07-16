@@ -1,7 +1,9 @@
 'use client';
 
 import { useActionState, useEffect, useState } from 'react';
+import { Trash2 } from 'lucide-react';
 import {
+  removeBeneficialOwnerAction,
   updateBeneficialOwnerAction,
   type ActionResult,
   type InvalidatedIdentitySet,
@@ -33,9 +35,12 @@ export function BeneficialOwnerForm({
   value: BeneficialOwnerFormValue;
   revision: string;
 }) {
-  const { updateBeneficialOwner, registerIdentityInvalidations } = useGwgIdentitySubjects();
+  const { updateBeneficialOwner, removeBeneficialOwner, registerIdentityInvalidations } =
+    useGwgIdentitySubjects();
   const { markDraft } = useGwgEditState();
   const [displayValue, setDisplayValue] = useState(value);
+  const [draftValue, setDraftValue] = useState(value);
+  const [currentRevision, setCurrentRevision] = useState(revision);
   const [state, action, pending] = useActionState<
     | (ActionResult & {
         reviewReset?: boolean;
@@ -46,15 +51,42 @@ export function BeneficialOwnerForm({
     | null,
     FormData
   >(updateBeneficialOwnerAction, null);
+  const [removeState, removeAction, removePending] = useActionState<
+    | (ActionResult & {
+        removedOwnerId?: string;
+        reviewReset?: boolean;
+        invalidatedIdentitySets?: InvalidatedIdentitySet[];
+      })
+    | null,
+    FormData
+  >(removeBeneficialOwnerAction, null);
   const id = (field: string) => `owner-${ownerId}-${field}`;
 
   useEffect(() => {
     if (!state?.ok || !state.saved) return;
     updateBeneficialOwner(state.saved);
     setDisplayValue(state.saved);
+    setDraftValue(state.saved);
+    if (state.revision) setCurrentRevision(state.revision);
     registerIdentityInvalidations(state.invalidatedIdentitySets ?? []);
     if (state.reviewReset) markDraft();
   }, [markDraft, registerIdentityInvalidations, state, updateBeneficialOwner]);
+
+  useEffect(() => {
+    if (!removeState?.ok || !removeState.removedOwnerId) return;
+    removeBeneficialOwner(removeState.removedOwnerId);
+    registerIdentityInvalidations(removeState.invalidatedIdentitySets ?? []);
+    if (removeState.reviewReset) markDraft();
+  }, [markDraft, registerIdentityInvalidations, removeBeneficialOwner, removeState]);
+
+  if (removeState?.ok && removeState.removedOwnerId === ownerId) {
+    return (
+      <div className="alert-success-sm w-full">
+        Die Person wurde aus dem aktuellen Prüfsnapshot entfernt. Frühere Prüfungen bleiben
+        unverändert erhalten.
+      </div>
+    );
+  }
 
   return (
     <div className="min-w-0 w-full">
@@ -75,11 +107,7 @@ export function BeneficialOwnerForm({
           <input type="hidden" name="ownerId" value={ownerId} />
           <input type="hidden" name="checkId" value={checkId} />
           <input type="hidden" name="clientId" value={clientId} />
-          <input
-            type="hidden"
-            name="expectedRevision"
-            value={state?.ok && state.revision ? state.revision : revision}
-          />
+          <input type="hidden" name="expectedRevision" value={currentRevision} />
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
@@ -91,10 +119,13 @@ export function BeneficialOwnerForm({
                 name="fullName"
                 type="text"
                 className="input"
-                defaultValue={value.fullName}
+                value={draftValue.fullName}
+                onChange={(event) =>
+                  setDraftValue((current) => ({ ...current, fullName: event.target.value }))
+                }
                 maxLength={200}
                 required
-                disabled={pending}
+                disabled={pending || removePending}
               />
             </div>
             <div>
@@ -106,9 +137,12 @@ export function BeneficialOwnerForm({
                 name="birthDate"
                 type="date"
                 className="input"
-                defaultValue={value.birthDate}
+                value={draftValue.birthDate}
+                onChange={(event) =>
+                  setDraftValue((current) => ({ ...current, birthDate: event.target.value }))
+                }
                 required
-                disabled={pending}
+                disabled={pending || removePending}
               />
             </div>
             <div>
@@ -120,10 +154,13 @@ export function BeneficialOwnerForm({
                 name="birthPlace"
                 type="text"
                 className="input"
-                defaultValue={value.birthPlace}
+                value={draftValue.birthPlace}
+                onChange={(event) =>
+                  setDraftValue((current) => ({ ...current, birthPlace: event.target.value }))
+                }
                 maxLength={200}
                 required
-                disabled={pending}
+                disabled={pending || removePending}
               />
             </div>
             <div>
@@ -135,10 +172,13 @@ export function BeneficialOwnerForm({
                 name="nationality"
                 type="text"
                 className="input"
-                defaultValue={value.nationality}
+                value={draftValue.nationality}
+                onChange={(event) =>
+                  setDraftValue((current) => ({ ...current, nationality: event.target.value }))
+                }
                 maxLength={100}
                 required
-                disabled={pending}
+                disabled={pending || removePending}
               />
             </div>
             <div>
@@ -150,10 +190,13 @@ export function BeneficialOwnerForm({
                 name="residence"
                 type="text"
                 className="input"
-                defaultValue={value.residence}
+                value={draftValue.residence}
+                onChange={(event) =>
+                  setDraftValue((current) => ({ ...current, residence: event.target.value }))
+                }
                 maxLength={500}
                 required
-                disabled={pending}
+                disabled={pending || removePending}
               />
             </div>
             <div>
@@ -165,11 +208,14 @@ export function BeneficialOwnerForm({
                 name="ownershipPct"
                 type="number"
                 className="input"
-                defaultValue={value.ownershipPct}
+                value={draftValue.ownershipPct}
+                onChange={(event) =>
+                  setDraftValue((current) => ({ ...current, ownershipPct: event.target.value }))
+                }
                 step="0.01"
                 min="0"
                 max="100"
-                disabled={pending}
+                disabled={pending || removePending}
               />
             </div>
             <div>
@@ -180,9 +226,15 @@ export function BeneficialOwnerForm({
                 id={id('isPep')}
                 name="isPep"
                 className="input"
-                defaultValue={value.isPep ? 'true' : 'false'}
+                value={draftValue.isPep ? 'true' : 'false'}
+                onChange={(event) =>
+                  setDraftValue((current) => ({
+                    ...current,
+                    isPep: event.target.value === 'true',
+                  }))
+                }
                 required
-                disabled={pending}
+                disabled={pending || removePending}
               >
                 <option value="false">Keine PEP</option>
                 <option value="true">PEP / enges Familienmitglied</option>
@@ -204,6 +256,33 @@ export function BeneficialOwnerForm({
           )}
           <button type="submit" className="btn-secondary text-xs" disabled={pending}>
             {pending ? 'Speichert…' : 'Angaben speichern'}
+          </button>
+        </form>
+        <form
+          action={removeAction}
+          className="mt-3 border-t border-default pt-3"
+          onSubmit={(event) => {
+            if (
+              !window.confirm(
+                `${displayValue.fullName} wirklich aus dem aktuellen Prüfsnapshot entfernen? Zugeordnete Ausweise müssen danach neu zugeordnet werden.`,
+              )
+            ) {
+              event.preventDefault();
+            }
+          }}
+        >
+          <input type="hidden" name="ownerId" value={ownerId} />
+          <input type="hidden" name="checkId" value={checkId} />
+          <input type="hidden" name="clientId" value={clientId} />
+          <input type="hidden" name="expectedRevision" value={currentRevision} />
+          {removeState?.error && <div className="alert-error-sm mb-2">{removeState.error}</div>}
+          <button
+            type="submit"
+            className="btn-secondary text-xs text-red-700"
+            disabled={removePending || pending}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            {removePending ? 'Entfernt…' : 'Nicht mehr wirtschaftlich berechtigt'}
           </button>
         </form>
       </details>

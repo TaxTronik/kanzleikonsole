@@ -36,6 +36,13 @@ interface PortalTokenPayload {
   tenantId: string;
   clientId: string;
   fullName: string;
+  email: string;
+}
+
+function normalizePortalEmail(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().toLowerCase();
+  return normalized || null;
 }
 
 function isPortalTokenPayload(t: unknown): t is PortalTokenPayload {
@@ -45,7 +52,8 @@ function isPortalTokenPayload(t: unknown): t is PortalTokenPayload {
     typeof o['contactId'] === 'string' &&
     typeof o['tenantId'] === 'string' &&
     typeof o['clientId'] === 'string' &&
-    typeof o['fullName'] === 'string'
+    typeof o['fullName'] === 'string' &&
+    normalizePortalEmail(o['email']) !== null
   );
 }
 
@@ -115,6 +123,7 @@ async function hydratePortalSessionFromToken(session: Session, token: unknown): 
       where: { id: token.contactId },
       select: {
         active: true,
+        email: true,
         tenantId: true,
         clientId: true,
         client: { select: { allowActive: true, anonymizedAt: true } },
@@ -123,6 +132,7 @@ async function hydratePortalSessionFromToken(session: Session, token: unknown): 
     if (
       !c ||
       !c.active ||
+      normalizePortalEmail(c.email) !== normalizePortalEmail(token.email) ||
       c.tenantId !== token.tenantId ||
       c.clientId !== token.clientId ||
       !c.client.allowActive ||
@@ -255,6 +265,7 @@ const portalConfig: NextAuthConfig = {
         token.tenantId = u.tenantId;
         token.clientId = u.clientId;
         token.fullName = u.fullName;
+        token.email = normalizePortalEmail(u.email) ?? '';
       }
       return token;
     },
@@ -286,6 +297,7 @@ const portalConfig: NextAuthConfig = {
           where: { id: token.contactId },
           select: {
             active: true,
+            email: true,
             tenantId: true,
             clientId: true,
             client: { select: { allowActive: true, anonymizedAt: true } },
@@ -294,6 +306,7 @@ const portalConfig: NextAuthConfig = {
         if (
           !c ||
           !c.active ||
+          normalizePortalEmail(c.email) !== normalizePortalEmail(token.email) ||
           c.tenantId !== token.tenantId ||
           c.clientId !== token.clientId ||
           !c.client.allowActive ||

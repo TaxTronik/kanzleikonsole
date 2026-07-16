@@ -200,6 +200,8 @@ Vorsortierung, keine Freigabe zur Weitergabe.
 | `request.closed`           | Anforderung geschlossen · Anforderungen | Anforderung wurde abgeschlossen          | Berufsgeheimnis | Kennung bleibt mandantenbezogen                              |
 | `phone_note.created`       | Telefonnotiz angelegt · Kommunikation   | Neue Telefonnotiz                        | Berufsgeheimnis | Betreff und Inhalt nicht ungeprüft weiterleiten              |
 | `appointment.responded`    | Termin beantwortet · Termine            | Termin wurde angenommen/abgelehnt        | Personenbezogen | Kalenderziel und Aufbewahrung prüfen                         |
+| `gwg.invite.created`       | GwG-Einladung erstellt · Compliance     | GwG-Onboarding-Link wurde ausgestellt    | Berufsgeheimnis | Der geheime Link wird nie im Event-Payload übertragen        |
+| `gwg.verified`             | GwG-Prüfung verifiziert · Compliance    | Berufsträger hat den Snapshot freigegeben | Berufsgeheimnis | Besonders schutzbedürftiger Compliance-Kontext              |
 | `gwg.expired`              | GwG-Prüfung abgelaufen · Compliance     | GwG-Freigabe läuft ab oder entfällt      | Berufsgeheimnis | Besonders schutzbedürftiger Compliance-Kontext               |
 | `invoice.due`              | Rechnung fällig · Rechnungen            | Rechnung ist fällig                      | Berufsgeheimnis | Beträge nur bei fachlicher Notwendigkeit abrufen             |
 | `invoice.storno`           | Stornorechnung erstellt · Rechnungen    | Storno-/Korrekturbeleg wurde erstellt    | Berufsgeheimnis | Nicht wie eine fällige Zahlung behandeln                     |
@@ -212,7 +214,7 @@ Der Assistent zeigt zu jedem statischen Event unter **Payload-Beispiel und
 Datenschutz** ein vollständig synthetisches JSON-Beispiel. Für eigene Workflows
 sind in Schema-Version 1 insbesondere diese `payload`-Schlüssel vorgesehen:
 
-- `client.created`: `tenantId`, `clientId`, `gwgVerified`
+- `client.created`: `tenantId`, `clientId`
 - `client.handover.ready`: `tenantId`, `clientId`, `handoverId`, `label`
 - `document.uploaded`: `tenantId`, `documentId`, `clientId`, `classification`, `isGobd`
 - `request.opened`: `tenantId`, `requestId`, `clientId`, `priority`
@@ -220,6 +222,9 @@ sind in Schema-Version 1 insbesondere diese `payload`-Schlüssel vorgesehen:
 - `request.closed`: `tenantId`, `requestId`
 - `phone_note.created`: `tenantId`, `noteId`, `forwardToStaff`, `subject`
 - `appointment.responded`: `tenantId`, `kind`, `appointmentId`, `requestId`
+- `gwg.invite.created`: `tenantId`, `clientId`, `gwgInviteId`, optional `gwgCheckId`;
+  der geheime Link und sein Token werden ausdrücklich nicht übertragen
+- `gwg.verified`: `tenantId`, `clientId`, `gwgCheckId`, `validUntil`
 - `gwg.expired`: `tenantId`, `clientId`, `reason`
 - `invoice.due` und `invoice.storno`: `tenantId`, `invoiceId`
 - `staff.locked`: `tenantId`, `staffId`

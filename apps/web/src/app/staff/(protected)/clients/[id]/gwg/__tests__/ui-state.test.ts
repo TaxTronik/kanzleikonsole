@@ -16,7 +16,9 @@ describe('lokaler GwG-Bearbeitungszustand', () => {
     expect(source).toContain(
       'acknowledgeIdentitySet(group.documentSetId, submittedInvalidationGeneration.current)',
     );
-    expect(source).toContain('!invalidated && (Boolean(saved) || persistedConfirmation)');
+    expect(source).toContain('localState.confirmedRevision === localState.revision');
+    expect(source).toContain('reconcileIdentityReviewServerState(');
+    expect(source).toContain('key={group.documentSetId}');
     expect(source).toContain('if (state.reviewReset) markDraft()');
   });
 
@@ -37,7 +39,17 @@ describe('lokaler GwG-Bearbeitungszustand', () => {
     expect(page).toContain("initialStatus={check?.status ?? 'DRAFT'}");
     expect(page).toContain('<GwgLiveStatusBadge />');
     expect(editState).toContain("const markDraft = useCallback(() => setStatus('DRAFT')");
+    expect(editState).toContain('if (lastServerStatus.current === initialStatus) return;');
+    expect(editState).toContain("const markInReview = useCallback(() => setStatus('IN_REVIEW')");
     expect(owner).toContain('setDisplayValue(state.saved)');
     expect(owner).toContain('{displayValue.fullName}');
+  });
+
+  it('wechselt nach erfolgreicher Einreichung sofort live auf IN_REVIEW', () => {
+    const decisionForms = read('decision-forms.tsx');
+
+    expect(decisionForms).toContain('if (submitState?.ok) markInReview();');
+    expect(decisionForms).toContain("status === 'IN_REVIEW' && reviewSnapshotHash");
+    expect(decisionForms).toContain('Die gebundene Prüfansicht wird aktualisiert');
   });
 });

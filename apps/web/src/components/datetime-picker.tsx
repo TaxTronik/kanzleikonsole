@@ -14,7 +14,7 @@
  * `datetime-local` Browser-Input es liefern würde).
  */
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { de } from 'date-fns/locale/de';
 import 'react-datepicker/dist/react-datepicker.css';
@@ -56,6 +56,8 @@ export function DateTimePicker({
   /** UTC liefert einen vollständigen ISO-Zeitstempel für z.string().datetime(). */
   output?: 'local' | 'utc';
 }) {
+  const generatedId = useId();
+  const inputId = id ?? generatedId;
   const [internalDate, setInternalDate] = useState<Date | null>(() => {
     if (!defaultValue) return null;
     return typeof defaultValue === 'string' ? new Date(defaultValue) : defaultValue;
@@ -68,7 +70,7 @@ export function DateTimePicker({
   return (
     <div className="relative">
       <DatePicker
-        id={id}
+        id={inputId}
         selected={date}
         onChange={(next: Date | null) => {
           if (!controlled) setInternalDate(next ?? null);
@@ -85,10 +87,16 @@ export function DateTimePicker({
         className={'input text-sm w-full ' + (className ?? '')}
         autoComplete="off"
         disabled={disabled}
+        required={required}
+        aria-required={required ? 'true' : undefined}
         // wrapperClassName sorgt dafür, dass der DatePicker volle Breite einnimmt
+        popperClassName="taxtronik-datetime-popper"
+        calendarClassName="taxtronik-datetime-calendar"
+        popperPlacement="bottom-end"
+        showPopperArrow={false}
         wrapperClassName="w-full"
       />
-      <input type="hidden" name={name} value={serialized} required={required} />
+      <input type="hidden" name={name} value={serialized} />
     </div>
   );
 }

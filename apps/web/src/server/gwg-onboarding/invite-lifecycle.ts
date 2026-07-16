@@ -1,7 +1,84 @@
 import type { TxClient } from '@taxtronik/db';
 import { claimGwgOnboardingSubmitTx, lockGwgCheckLifecycleTx } from '@/server/gwg/reverification';
+import { resolveCurrentGwgInviteRevisionTx } from './bound-review';
 
 const OPEN_INVITE_STATUSES = ['PENDING', 'STARTED'] as const;
+
+/**
+ * Revalidiert einen offenen Link unter dem Mandanten-Lifecycle-Lock und sperrt
+ * danach seine Zeile. Die Lock-Reihenfolge (Advisory vor FOR UPDATE) entspricht
+ * Submit/Review und verhindert Deadlocks. Stale Revisionen werden atomar
+ * entwertet, bevor Seite oder Upload weiterarbeiten dürfen.
+ */
+export async function revalidateOpenGwgInviteRevisionTx(
+  tx: TxClient,
+  input: {
+    tenantId: string;
+    clientId: string;
+    inviteId: string;
+    tokenHash: string;
+    now: Date;
+  },
+): Promise<boolean> {
+  await lockGwgCheckLifecycleTx(tx, input);
+  const openRows = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT id
+    FROM gwg_onboarding_invite
+    WHERE id = ${input.inviteId}::uuid
+      AND tenant_id = ${input.tenantId}::uuid
+      AND client_id = ${input.clientId}::uuid
+      AND token_hash = ${input.tokenHash}
+      AND status IN ('PENDING'::gwg_invite_status, 'STARTED'::gwg_invite_status)
+      AND expires_at > ${input.now}
+    FOR UPDATE
+  `;
+  if (openRows.length !== 1) return false;
+
+  const current = await resolveCurrentGwgInviteRevisionTx(tx, input);
+  if (current) return true;
+
+  await tx.gwgOnboardingInvite.updateMany({
+    where: {
+      id: input.inviteId,
+      tokenHash: input.tokenHash,
+      status: { in: [...OPEN_INVITE_STATUSES] },
+    },
+    data: {
+      status: 'CANCELLED',
+      cancelledAt: input.now,
+      cancelledByStaff: null,
+      tokenHash: '',
+    },
+  });
+  return false;
+}
+
+export async function cancelOpenGwgInvitesTx(
+  tx: TxClient,
+  input: {
+    tenantId: string;
+    clientId: string;
+    cancelledByStaff: string | null;
+    exceptInviteId?: string;
+  },
+): Promise<number> {
+  const cancelledAt = new Date();
+  const cancelled = await tx.gwgOnboardingInvite.updateMany({
+    where: {
+      tenantId: input.tenantId,
+      clientId: input.clientId,
+      ...(input.exceptInviteId ? { id: { not: input.exceptInviteId } } : {}),
+      status: { in: [...OPEN_INVITE_STATUSES] },
+    },
+    data: {
+      status: 'CANCELLED',
+      cancelledAt,
+      cancelledByStaff: input.cancelledByStaff,
+      tokenHash: '',
+    },
+  });
+  return cancelled.count;
+}
 
 export interface PrepareGwgInviteIssueResult {
   createdAt: Date;
@@ -60,7 +137,7 @@ export type ClaimCurrentGwgInviteResult =
     }
   | {
       ok: false;
-      reason: 'INVALID' | 'SUPERSEDED';
+      reason: 'INVALID' | 'STALE' | 'SUPERSEDED';
     };
 
 /**
@@ -90,6 +167,27 @@ export async function claimCurrentGwgInviteSubmitTx(
   }
 
   const submittedAt = new Date();
+  const currentRevision = await resolveCurrentGwgInviteRevisionTx(tx, input);
+  if (!currentRevision) {
+    // Kein Throw in dieser Transaktion: Die Entwertung des fachlich veralteten
+    // Links muss committen. Der Aufrufer übersetzt den Sentinel erst nach dem
+    // erfolgreichen Transaktionsende in eine anonyme Fehlermeldung.
+    await tx.gwgOnboardingInvite.updateMany({
+      where: {
+        id: input.inviteId,
+        tokenHash: input.tokenHash,
+        status: { in: [...OPEN_INVITE_STATUSES] },
+      },
+      data: {
+        status: 'CANCELLED',
+        cancelledAt: submittedAt,
+        cancelledByStaff: null,
+        tokenHash: '',
+      },
+    });
+    return { ok: false, reason: 'STALE' };
+  }
+
   const claimed = await claimGwgOnboardingSubmitTx(tx, {
     inviteId: input.inviteId,
     tokenHash: input.tokenHash,

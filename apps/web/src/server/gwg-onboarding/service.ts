@@ -14,8 +14,13 @@
 // =============================================================================
 
 import { createHash, randomBytes } from 'node:crypto';
-import { type Client, type Tenant } from '@prisma/client';
+import { type Client, type GwgIdDocumentType, type Tenant } from '@prisma/client';
 import { prismaOwner } from '@/server/db/prisma-owner';
+import { revalidateOpenGwgInviteRevisionTx } from './invite-lifecycle';
+import {
+  GWG_INVITE_DRAFT_INCLUDE,
+  type GwgInviteDraftRevisionSource,
+} from './invite-draft-revision';
 
 export const INVITE_TTL_DAYS = 14;
 
@@ -58,6 +63,202 @@ export interface LoadedInvite {
     'id' | 'name' | 'kind' | 'street' | 'postalCode' | 'city' | 'countryIso' | 'vatId'
   >;
   tenant: Pick<Tenant, 'id' | 'name' | 'slug'>;
+  draft: LoadedInviteDraft | null;
+}
+
+interface LoadedInviteFile {
+  documentId: string;
+  fileName: string;
+}
+
+export interface LoadedInviteDraftOwner {
+  id: string;
+  fullName: string;
+  birthDate: string;
+  birthPlace: string;
+  nationality: string;
+  street: string;
+  postalCode: string;
+  city: string;
+  countryIso: string;
+  sharePercent: string;
+  isPep: boolean;
+  idType: 'PERSONALAUSWEIS' | 'REISEPASS';
+  idNumber: string;
+  idIssuedBy: string;
+  idIssueDate: string;
+  idExpiryDate: string;
+  idFront: LoadedInviteFile | null;
+  idBack: LoadedInviteFile | null;
+}
+
+export interface LoadedInviteDraftRepresentative {
+  id: string;
+  fullName: string;
+  linkedOwnerId: string | null;
+  idType: 'PERSONALAUSWEIS' | 'REISEPASS';
+  idNumber: string;
+  idIssuedBy: string;
+  idIssueDate: string;
+  idExpiryDate: string;
+  idFront: LoadedInviteFile | null;
+  idBack: LoadedInviteFile | null;
+}
+
+export interface LoadedInviteDraft {
+  checkId: string;
+  noRegisterEntry: boolean | null;
+  owners: LoadedInviteDraftOwner[];
+  representatives: LoadedInviteDraftRepresentative[];
+  extraDocuments: Array<
+    LoadedInviteFile & {
+      type:
+        | 'HANDELSREGISTERAUSZUG'
+        | 'GESELLSCHAFTSVERTRAG'
+        | 'TRANSPARENZREGISTER_AUSZUG'
+        | 'VOLLMACHT'
+        | 'SONSTIGES';
+    }
+  >;
+}
+
+function dateOnly(value: Date | null): string {
+  return value?.toISOString().slice(0, 10) ?? '';
+}
+
+function splitResidence(value: string | null): {
+  street: string;
+  postalCode: string;
+  city: string;
+  countryIso: string;
+} {
+  const parts = (value ?? '').split(',').map((part) => part.trim());
+  const postalCity = parts[1] ?? '';
+  const match = postalCity.match(/^(\S+)\s+(.+)$/);
+  return {
+    street: parts[0] ?? '',
+    postalCode: match?.[1] ?? '',
+    city: match?.[2] ?? postalCity,
+    countryIso: parts[2] || 'DE',
+  };
+}
+
+function filesForSubject(
+  documents: Array<{
+    id: string;
+    type: GwgIdDocumentType;
+    documentId: string | null;
+    documentSetId: string;
+    notes: string | null;
+    number: string | null;
+    issuedBy: string | null;
+    issueDate: Date | null;
+    expiryDate: Date | null;
+    beneficialOwnerSubjectId: string | null;
+    representativeSubjectId: string | null;
+    document: { id: string; title: string } | null;
+  }>,
+  subject: { ownerId?: string; representativeId?: string },
+) {
+  const assigned = documents
+    .filter(
+      (entry) =>
+        (subject.ownerId && entry.beneficialOwnerSubjectId === subject.ownerId) ||
+        (subject.representativeId && entry.representativeSubjectId === subject.representativeId),
+    )
+    .filter((entry) => entry.type === 'PERSONALAUSWEIS' || entry.type === 'REISEPASS')
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const documentSetIds = new Set(assigned.map((entry) => entry.documentSetId));
+  if (documentSetIds.size > 1) {
+    throw new Error('GWG_BOUND_DRAFT_MULTIPLE_IDENTITY_SETS');
+  }
+  if (assigned.length > 2) {
+    throw new Error('GWG_BOUND_DRAFT_IDENTITY_SET_TOO_LARGE');
+  }
+  if (new Set(assigned.map((entry) => entry.type)).size > 1) {
+    throw new Error('GWG_BOUND_DRAFT_MIXED_IDENTITY_TYPES');
+  }
+  const explicitFront = assigned.find((entry) => entry.notes?.toLowerCase().includes('vorder'));
+  const explicitBack = assigned.find((entry) => entry.notes?.toLowerCase().includes('rück'));
+  const front = explicitFront ?? assigned.find((entry) => entry.id !== explicitBack?.id);
+  const back = explicitBack ?? assigned.find((entry) => entry.id !== front?.id);
+  const file = (entry: (typeof assigned)[number] | undefined): LoadedInviteFile | null =>
+    entry?.documentId && entry.document
+      ? { documentId: entry.documentId, fileName: entry.document.title }
+      : null;
+  const details = assigned[0];
+  const idType: 'PERSONALAUSWEIS' | 'REISEPASS' =
+    assigned[0]?.type === 'REISEPASS' ? 'REISEPASS' : 'PERSONALAUSWEIS';
+  return {
+    idType,
+    idNumber: details?.number ?? '',
+    idIssuedBy: details?.issuedBy ?? '',
+    idIssueDate: dateOnly(details?.issueDate ?? null),
+    idExpiryDate: dateOnly(details?.expiryDate ?? null),
+    idFront: file(front),
+    idBack: file(back),
+  };
+}
+
+function loadedDraft(draft: GwgInviteDraftRevisionSource): LoadedInviteDraft {
+  const representatives = draft.representatives as Array<
+    (typeof draft.representatives)[number] & { linkedBeneficialOwnerId: string | null }
+  >;
+  const documents = draft.idDocuments as Parameters<typeof filesForSubject>[0];
+  return {
+    checkId: draft.id,
+    noRegisterEntry: draft.noRegisterEntry,
+    owners: draft.beneficialOwners.map((owner) => {
+      const linkedRepresentative = representatives.find(
+        (representative) => representative.linkedBeneficialOwnerId === owner.id,
+      );
+      const residence = splitResidence(owner.residence);
+      return {
+        id: owner.id,
+        fullName: owner.fullName,
+        birthDate: dateOnly(owner.birthDate),
+        birthPlace: owner.birthPlace ?? '',
+        nationality: owner.nationality ?? '',
+        ...residence,
+        sharePercent:
+          owner.ownershipPct?.toString() ?? owner.notes?.replace(/^Anteil:\s*/, '') ?? '',
+        isPep: owner.isPep,
+        ...filesForSubject(
+          documents,
+          linkedRepresentative
+            ? { ownerId: owner.id, representativeId: linkedRepresentative.id }
+            : { ownerId: owner.id },
+        ),
+      };
+    }),
+    representatives: representatives.map((representative) => ({
+      id: representative.id,
+      fullName: representative.fullName,
+      linkedOwnerId: representative.linkedBeneficialOwnerId,
+      ...(representative.linkedBeneficialOwnerId
+        ? {
+            idType: 'PERSONALAUSWEIS' as const,
+            idNumber: '',
+            idIssuedBy: '',
+            idIssueDate: '',
+            idExpiryDate: '',
+            idFront: null,
+            idBack: null,
+          }
+        : filesForSubject(documents, { representativeId: representative.id })),
+    })),
+    extraDocuments: documents.flatMap((entry) => {
+      if (
+        entry.type === 'PERSONALAUSWEIS' ||
+        entry.type === 'REISEPASS' ||
+        !entry.documentId ||
+        !entry.document
+      ) {
+        return [];
+      }
+      return [{ documentId: entry.documentId, fileName: entry.document.title, type: entry.type }];
+    }),
+  };
 }
 
 // S-5: Einheitliche Fehlermeldung für alle „Token nicht nutzbar"-Zustände
@@ -75,80 +276,118 @@ export async function loadInviteByRawToken(
     return { ok: false, error: GENERIC_TOKEN_ERROR };
   }
   const tokenHash = hashInviteToken(rawToken);
-  const inv = await prismaOwner.gwgOnboardingInvite.findFirst({
-    where: { tokenHash },
-    include: {
-      client: {
-        select: {
-          id: true,
-          name: true,
-          kind: true,
-          street: true,
-          postalCode: true,
-          city: true,
-          countryIso: true,
-          vatId: true,
-        },
+  return prismaOwner.$transaction(async (tx) => {
+    const candidate = await tx.gwgOnboardingInvite.findFirst({
+      where: { tokenHash },
+      select: {
+        id: true,
+        tenantId: true,
+        clientId: true,
+        status: true,
+        expiresAt: true,
       },
-      tenant: { select: { id: true, name: true, slug: true } },
-    },
-  });
-  if (!inv) {
-    return { ok: false, error: GENERIC_TOKEN_ERROR };
-  }
-  if (inv.status === 'CANCELLED' || inv.status === 'SUBMITTED' || inv.status === 'EXPIRED') {
-    return { ok: false, error: GENERIC_TOKEN_ERROR };
-  }
-  const now = new Date();
-  if (inv.expiresAt.getTime() <= now.getTime()) {
-    await expireOpenInviteIfDue(inv.id, now);
-    return { ok: false, error: GENERIC_TOKEN_ERROR };
-  }
+    });
+    if (
+      !candidate ||
+      candidate.status === 'CANCELLED' ||
+      candidate.status === 'SUBMITTED' ||
+      candidate.status === 'EXPIRED'
+    ) {
+      return { ok: false as const, error: GENERIC_TOKEN_ERROR };
+    }
+    const now = new Date();
+    if (candidate.expiresAt.getTime() <= now.getTime()) {
+      await tx.gwgOnboardingInvite.updateMany({
+        where: {
+          id: candidate.id,
+          tokenHash,
+          status: { in: ['PENDING', 'STARTED'] },
+          expiresAt: { lte: now },
+        },
+        data: { status: 'EXPIRED' },
+      });
+      return { ok: false as const, error: GENERIC_TOKEN_ERROR };
+    }
 
-  // Beim ersten Öffnen Status auf STARTED
-  let effectiveStatus = inv.status;
-  if (inv.status === 'PENDING') {
-    const started = await prismaOwner.gwgOnboardingInvite.updateMany({
+    const revisionCurrent = await revalidateOpenGwgInviteRevisionTx(tx, {
+      inviteId: candidate.id,
+      tenantId: candidate.tenantId,
+      clientId: candidate.clientId,
+      tokenHash,
+      now,
+    });
+    if (!revisionCurrent) {
+      return { ok: false as const, error: GENERIC_TOKEN_ERROR };
+    }
+
+    const inv = await tx.gwgOnboardingInvite.findFirst({
       where: {
-        id: inv.id,
+        id: candidate.id,
         tokenHash,
-        status: 'PENDING',
+        status: { in: ['PENDING', 'STARTED'] },
         expiresAt: { gt: now },
       },
-      data: { status: 'STARTED' },
+      include: {
+        client: {
+          select: {
+            id: true,
+            name: true,
+            kind: true,
+            street: true,
+            postalCode: true,
+            city: true,
+            countryIso: true,
+            vatId: true,
+          },
+        },
+        tenant: { select: { id: true, name: true, slug: true } },
+        gwgCheck: { include: GWG_INVITE_DRAFT_INCLUDE },
+      },
     });
-    if (started.count === 0) {
-      // Ein paralleles Öffnen darf weiterarbeiten; eine zwischenzeitliche
-      // Supersession/Cancellation hingegen darf niemals auf STARTED
-      // zurückgeschrieben und damit wiederbelebt werden.
-      const concurrentlyStarted = await prismaOwner.gwgOnboardingInvite.findFirst({
+    if (!inv) {
+      return { ok: false as const, error: GENERIC_TOKEN_ERROR };
+    }
+
+    let draft: LoadedInviteDraft | null;
+    try {
+      draft = inv.gwgCheck ? loadedDraft(inv.gwgCheck) : null;
+    } catch {
+      // Der Zwei-Seiten-Wizard darf mehrere getrennte Ausweissätze niemals
+      // heuristisch mischen oder beim Submit implizit entfernen.
+      return { ok: false as const, error: GENERIC_TOKEN_ERROR };
+    }
+
+    let effectiveStatus = inv.status;
+    if (inv.status === 'PENDING') {
+      const started = await tx.gwgOnboardingInvite.updateMany({
         where: {
           id: inv.id,
           tokenHash,
-          status: 'STARTED',
+          status: 'PENDING',
           expiresAt: { gt: now },
         },
-        select: { id: true },
+        data: { status: 'STARTED' },
       });
-      if (!concurrentlyStarted) {
+      if (started.count !== 1) {
         return { ok: false, error: GENERIC_TOKEN_ERROR };
       }
+      effectiveStatus = 'STARTED';
     }
-    effectiveStatus = 'STARTED';
-  }
 
-  return {
-    ok: true,
-    invite: {
-      inviteId: inv.id,
-      inviteName: inv.inviteName,
-      inviteEmail: inv.inviteEmail,
-      status: effectiveStatus,
-      expiresAt: inv.expiresAt,
-      client: inv.client,
-      tenant: inv.tenant,
-    },
-  };
+    return {
+      ok: true as const,
+      invite: {
+        inviteId: inv.id,
+        inviteName: inv.inviteName,
+        inviteEmail: inv.inviteEmail,
+        status: effectiveStatus,
+        expiresAt: inv.expiresAt,
+        client: inv.client,
+        tenant: inv.tenant,
+        draft,
+      },
+    };
+  });
 }
 
 export { prismaOwner };

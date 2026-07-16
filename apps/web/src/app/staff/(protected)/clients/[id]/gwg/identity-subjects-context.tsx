@@ -20,6 +20,7 @@ export interface EditableRepresentative {
   id: string;
   fullName: string;
   position: number;
+  linkedBeneficialOwnerId?: string | null;
 }
 
 interface IdentitySubjectsContextValue {
@@ -27,6 +28,7 @@ interface IdentitySubjectsContextValue {
   invalidatedIdentitySets: Readonly<IdentityInvalidationState>;
   replaceRepresentatives: (representatives: EditableRepresentative[]) => void;
   updateBeneficialOwner: (owner: { id: string; fullName: string; birthDate: string }) => void;
+  removeBeneficialOwner: (ownerId: string) => void;
   registerIdentityInvalidations: (sets: InvalidatedIdentitySet[]) => void;
   acknowledgeIdentitySet: (documentSetId: string, consumedGeneration: number) => void;
 }
@@ -59,18 +61,37 @@ export function GwgIdentitySubjectsProvider({
 
   const replaceRepresentatives = useCallback((representatives: EditableRepresentative[]) => {
     setSubjectOptions((current) => {
-      const owners = current.filter((option) => option.kind === 'BENEFICIAL_OWNER');
+      const representativeByOwnerId = new Map(
+        representatives.flatMap((representative) =>
+          representative.linkedBeneficialOwnerId
+            ? [[representative.linkedBeneficialOwnerId, representative.id] as const]
+            : [],
+        ),
+      );
+      const owners = current
+        .filter((option) => option.kind === 'BENEFICIAL_OWNER')
+        .map((option) => ({
+          ...option,
+          linkedRepresentativeId: representativeByOwnerId.get(option.id),
+        }));
       const naturalClients = current.filter((option) => option.kind === 'NATURAL_CLIENT');
-      const nextRepresentatives: IdentitySubjectOption[] = representatives.map(
-        (representative) => ({
+      const nextRepresentatives: IdentitySubjectOption[] = representatives.map((representative) => {
+        const linkedOwner = representative.linkedBeneficialOwnerId
+          ? owners.find((owner) => owner.id === representative.linkedBeneficialOwnerId)
+          : null;
+        return {
           key: `representative:${representative.id}`,
           id: representative.id,
           kind: 'REPRESENTATIVE',
-          name: representative.fullName,
-          roles: ['VERTRETUNGSBERECHTIGT'],
+          name: linkedOwner?.name ?? representative.fullName,
+          roles: linkedOwner
+            ? ['VERTRETUNGSBERECHTIGT', 'WIRTSCHAFTLICH_BERECHTIGT']
+            : ['VERTRETUNGSBERECHTIGT'],
           position: representative.position,
-        }),
-      );
+          birthDateLabel: linkedOwner?.birthDateLabel,
+          linkedBeneficialOwnerId: linkedOwner?.id,
+        };
+      });
       return [...naturalClients, ...nextRepresentatives, ...owners];
     });
   }, []);
@@ -79,14 +100,36 @@ export function GwgIdentitySubjectsProvider({
     (owner: { id: string; fullName: string; birthDate: string }) => {
       setSubjectOptions((current) =>
         current.map((option) =>
-          option.kind === 'BENEFICIAL_OWNER' && option.id === owner.id
-            ? { ...option, name: owner.fullName, birthDateLabel: birthDateLabel(owner.birthDate) }
+          (option.kind === 'BENEFICIAL_OWNER' && option.id === owner.id) ||
+          (option.kind === 'REPRESENTATIVE' && option.linkedBeneficialOwnerId === owner.id)
+            ? {
+                ...option,
+                name: owner.fullName,
+                birthDateLabel: birthDateLabel(owner.birthDate),
+              }
             : option,
         ),
       );
     },
     [],
   );
+
+  const removeBeneficialOwner = useCallback((ownerId: string) => {
+    setSubjectOptions((current) =>
+      current
+        .filter((option) => !(option.kind === 'BENEFICIAL_OWNER' && option.id === ownerId))
+        .map((option) =>
+          option.kind === 'REPRESENTATIVE' && option.linkedBeneficialOwnerId === ownerId
+            ? {
+                ...option,
+                roles: ['VERTRETUNGSBERECHTIGT'],
+                linkedBeneficialOwnerId: undefined,
+                birthDateLabel: undefined,
+              }
+            : option,
+        ),
+    );
+  }, []);
 
   const registerIdentityInvalidations = useCallback((sets: InvalidatedIdentitySet[]) => {
     if (sets.length === 0) return;
@@ -121,6 +164,7 @@ export function GwgIdentitySubjectsProvider({
       invalidatedIdentitySets,
       replaceRepresentatives,
       updateBeneficialOwner,
+      removeBeneficialOwner,
       registerIdentityInvalidations,
       acknowledgeIdentitySet,
     }),
@@ -129,6 +173,7 @@ export function GwgIdentitySubjectsProvider({
       invalidatedIdentitySets,
       registerIdentityInvalidations,
       replaceRepresentatives,
+      removeBeneficialOwner,
       subjectOptions,
       updateBeneficialOwner,
     ],
@@ -149,6 +194,7 @@ export function useGwgIdentitySubjects(
       invalidatedIdentitySets: {},
       replaceRepresentatives: () => undefined,
       updateBeneficialOwner: () => undefined,
+      removeBeneficialOwner: () => undefined,
       registerIdentityInvalidations: () => undefined,
       acknowledgeIdentitySet: () => undefined,
     }

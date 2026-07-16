@@ -17,6 +17,7 @@ import { fmtDateTimeShort } from '@/lib/fmt';
 import {
   parseConsent,
   countGranted,
+  countRevocableGranted,
   COMMUNICATION_LABELS,
   MARKETING_LABELS,
   isBuiltinConsentOptionId,
@@ -126,6 +127,7 @@ export default async function ClientPrivacyPage({ params }: { params: Promise<{ 
   const { client, history, contacts, notice, consentOptions, configComplete } = data;
   const current = history[0] ?? null;
   const currentConsent = current ? parseConsent(current.consents) : null;
+  const revocableConsentCount = currentConsent ? countRevocableGranted(currentConsent) : 0;
   const currentSnapshots = new Map(
     currentConsent?.optionSelections.map((selection) => [selection.optionId, selection]) ?? [],
   );
@@ -244,7 +246,7 @@ export default async function ClientPrivacyPage({ params }: { params: Promise<{ 
       />
 
       {/* Widerruf */}
-      {current && !current.isRevocation && (
+      {current && !current.isRevocation && revocableConsentCount > 0 && (
         <form action={revokeAllConsentAction} className="card p-5 mt-6 border-l-4 border-l-red-400">
           <input type="hidden" name="clientId" value={clientId} />
           <h3 className="text-sm font-semibold text-red-800 dark:text-red-300 mb-1">

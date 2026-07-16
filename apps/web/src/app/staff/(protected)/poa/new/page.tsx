@@ -9,6 +9,7 @@ import { NewPoaForm } from './form';
 import { inaccessibleClientIdsFor, isStaffAdmin } from '@/server/auth/rbac';
 import { isUuid } from '@/lib/uuid';
 import { resolveInitialPoaClientId } from './client-selection';
+import { parsePoaCreateReturnContext } from './return-context';
 
 type SearchParams = {
   clientId?: string;
@@ -27,6 +28,7 @@ export default async function NewPoaPage({
   if (!isStaffAdmin(session)) redirect('/staff/poa');
 
   const query = await searchParams;
+  const returnContext = parsePoaCreateReturnContext(query.from);
   const requestedClientId =
     typeof query.clientId === 'string' && isUuid(query.clientId) ? query.clientId : undefined;
   const pendingDocumentId =
@@ -43,7 +45,7 @@ export default async function NewPoaPage({
   if (modules.poaMode === 'PDF_TEMPLATE' && !pendingDocumentId && !uploadIntentId) {
     const params = new URLSearchParams();
     if (requestedClientId) params.set('clientId', requestedClientId);
-    if (query.from === 'onboarding') params.set('from', 'onboarding');
+    if (returnContext) params.set('from', returnContext);
     params.set('uploadIntentId', randomUUID());
     redirect(`/staff/poa/new?${params.toString()}`);
   }
@@ -69,7 +71,7 @@ export default async function NewPoaPage({
     requestedClientId,
   );
   const onboardingClientId =
-    query.from === 'onboarding' && requestedClientId === initialClientId
+    returnContext === 'onboarding' && requestedClientId === initialClientId
       ? initialClientId
       : undefined;
 
@@ -95,7 +97,7 @@ export default async function NewPoaPage({
         </div>
       ) : query.clientId && !requestedClientAvailable ? (
         <div className="alert-error-sm">
-          Der aus dem Onboarding uebergebene Mandant ist nicht mehr vorhanden oder fuer Sie nicht
+          Der aus dem Onboarding übergebene Mandant ist nicht mehr vorhanden oder für Sie nicht
           zugaenglich. Es wurde kein anderer Mandant vorausgewaehlt.
         </div>
       ) : clients.length === 0 ? (
@@ -108,6 +110,7 @@ export default async function NewPoaPage({
           initialClientId={initialClientId}
           initialPendingDocumentId={pendingDocumentId}
           uploadIntentId={uploadIntentId}
+          returnContext={onboardingClientId ? returnContext : undefined}
           clients={clients.map((c) => ({
             id: c.id,
             name: c.name,

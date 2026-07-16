@@ -27,7 +27,7 @@ const m = vi.hoisted(() => {
     revokeAllSessions: vi.fn(),
     revalidatePath: vi.fn(),
     tx: {
-      clientContact: { findUnique: vi.fn(), update: vi.fn() },
+      clientContact: { findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
     },
   };
 });
@@ -51,7 +51,7 @@ vi.mock('@/server/actions/staff-action', () => ({
   withStaff: m.withStaff,
 }));
 
-import { rotateIcalTokenAction } from '../actions';
+import { rotateIcalTokenAction, updateContactAction } from '../actions';
 
 const CONTACT_ID = '0b1f6a2e-3c4d-4e5f-8a9b-0c1d2e3f4a5b';
 const CLIENT_ID = '7e6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e6f';
@@ -67,6 +67,20 @@ beforeEach(() => {
   });
   m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (t: unknown) => unknown) =>
     fn(m.tx),
+  );
+  m.withStaff.mockImplementation(
+    async (fn: (tx: unknown, ctx: Record<string, unknown>) => unknown) => {
+      try {
+        const data = await fn(m.tx, {
+          tenantId: 'tenant-1',
+          staffId: 'staff-1',
+          session: {},
+        });
+        return { ok: true, ...(data ?? {}) };
+      } catch (error) {
+        return { ok: false, error: (error as Error).message };
+      }
+    },
   );
   m.tx.clientContact.findUnique.mockResolvedValue({ clientId: CLIENT_ID });
   m.tx.clientContact.update.mockResolvedValue({ icalTokenVersion: 2 });
@@ -132,5 +146,67 @@ describe('rotateIcalTokenAction — Happy Path', () => {
     });
 
     expect(m.revalidatePath).toHaveBeenCalledWith(`/staff/clients/${CLIENT_ID}`);
+  });
+});
+
+describe('updateContactAction — Portal-Identität', () => {
+  it('widerruft bestehende Portal-Sessions erst nach erfolgreichem E-Mail-Wechsel', async () => {
+    m.tx.clientContact.findUnique.mockResolvedValue({
+      fullName: 'Rey Koxha',
+      email: 'alt@example.test',
+      phone: null,
+      role: null,
+      clientId: CLIENT_ID,
+    });
+    m.tx.clientContact.findFirst.mockResolvedValue(null);
+    m.tx.clientContact.update.mockResolvedValue({});
+
+    await expect(
+      updateContactAction({
+        contactId: CONTACT_ID,
+        clientId: CLIENT_ID,
+        fullName: 'Rey Koxha',
+        email: 'NEU@example.test',
+        phone: null,
+        role: null,
+      }),
+    ).resolves.toEqual({ ok: true });
+
+    expect(m.tx.clientContact.update).toHaveBeenCalledWith({
+      where: { id: CONTACT_ID },
+      data: {
+        fullName: 'Rey Koxha',
+        email: 'neu@example.test',
+        phone: null,
+        role: null,
+      },
+    });
+    expect(m.revokeAllSessions).toHaveBeenCalledWith('portal', CONTACT_ID);
+    expect(m.evidenceRecord.mock.invocationCallOrder[0]).toBeLessThan(
+      m.revokeAllSessions.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('widerruft bei unveränderter normalisierter E-Mail keine Portal-Sessions', async () => {
+    m.tx.clientContact.findUnique.mockResolvedValue({
+      fullName: 'Rey Koxha',
+      email: 'rey@example.test',
+      phone: null,
+      role: null,
+      clientId: CLIENT_ID,
+    });
+    m.tx.clientContact.update.mockResolvedValue({});
+
+    await expect(
+      updateContactAction({
+        contactId: CONTACT_ID,
+        clientId: CLIENT_ID,
+        fullName: 'Rey Koxha',
+        email: 'REY@example.test',
+        phone: null,
+        role: null,
+      }),
+    ).resolves.toEqual({ ok: true });
+    expect(m.revokeAllSessions).not.toHaveBeenCalled();
   });
 });

@@ -98,8 +98,8 @@ export default async function AdminPrivacyPage() {
         <div>
           <h1 className="text-2xl font-bold text-primary mb-1">Datenschutz-Zentrale</h1>
           <p className="text-muted text-sm">
-            Kanzlei-Hinweise, freiwillige Einwilligungen, Dienstleister (AVV), öffentliche
-            Datenschutzerklärung und Betroffenenrechte an einem Ort.
+            Kanzlei-Hinweise, Datenschutz-Auswahl und Bestätigungen, Dienstleister (AVV),
+            öffentliche Datenschutzerklärung und Betroffenenrechte an einem Ort.
           </p>
         </div>
       </div>
@@ -107,7 +107,7 @@ export default async function AdminPrivacyPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mb-8">
         <a href="#kanzlei-hinweise" className="card p-4 group">
           <FileText className="h-5 w-5 text-brand-600 mb-3" />
-          <p className="text-sm font-semibold text-primary">Hinweise &amp; Einwilligungen</p>
+          <p className="text-sm font-semibold text-primary">Hinweise &amp; Datenschutz-Auswahl</p>
           <p className="text-xs text-muted mt-1">
             {isPrivacyConfigComplete(config) ? 'Kanzlei-Angaben vollständig' : 'Angaben ergänzen'}
           </p>

@@ -7,11 +7,13 @@ import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { sendTemplateMail } from '@/server/mail/dispatch';
 import { fireAndForget } from '@/server/util/fire-and-forget';
+import { emitN8nEvent } from '@/server/n8n/emit';
 import { generateInviteToken, INVITE_TTL_DAYS } from '@/server/gwg-onboarding/service';
 import { prepareGwgInviteIssueTx } from '@/server/gwg-onboarding/invite-lifecycle';
+import { prepareGwgInviteBindingTx } from '@/server/gwg-onboarding/invite-binding';
 import { lockGwgCheckLifecycleTx } from '@/server/gwg/reverification';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
-import { toActionError } from '@/server/auth/rbac';
+import { assertClientAccessTx, toActionError } from '@/server/auth/rbac';
 import { staffActionGuard, withStaff, ActionError } from '@/server/actions/staff-action';
 
 export interface InviteResult {
@@ -24,29 +26,39 @@ const SendSchema = z.object({
   clientId: z.string().uuid(),
   inviteName: z.string().min(2).max(200),
   inviteEmail: z.string().email().max(255),
+  gwgCheckId: z.string().uuid().optional(),
 });
 
 export async function sendInviteAction(input: {
   clientId: string;
   inviteName: string;
   inviteEmail: string;
+  gwgCheckId?: string;
 }): Promise<InviteResult> {
   const g = await staffActionGuard();
   if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
+  const { tenantId, staffId, ctx, session } = g;
   const parsed = SendSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { clientId, inviteName, inviteEmail } = parsed.data;
+  const { clientId, inviteName, inviteEmail, gwgCheckId } = parsed.data;
 
   const { raw, hash } = generateInviteToken();
   const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
 
-  let inviteId: string;
+  let issuedInvite: { id: string; gwgCheckId: string | null };
   try {
-    inviteId = await withTenantContext(ctx, async (tx) => {
+    issuedInvite = await withTenantContext(ctx, async (tx) => {
       // U-6: clientId Tenant-Sanity — letzte unverschlossene Stelle aus
       // R-2 / S-6-Sammelfund.
+      await assertClientAccessTx(tx, session, clientId);
       await assertClientInTenant(tx, clientId);
+      const binding = await prepareGwgInviteBindingTx(tx, {
+        tenantId,
+        clientId,
+        requestedCheckId: gwgCheckId,
+        bindLatestDraft: false,
+      });
+      if (!binding.ok) throw new ActionError(binding.error);
       const issue = await prepareGwgInviteIssueTx(tx, {
         tenantId,
         clientId,
@@ -62,6 +74,9 @@ export async function sendInviteAction(input: {
           expiresAt,
           createdByStaff: staffId,
           createdAt: issue.createdAt,
+          gwgCheckId: binding.gwgCheckId,
+          boundCheckRevision: binding.boundCheckRevision,
+          boundClientRevision: binding.boundClientRevision,
         },
       });
       await evidenceService.record(tx, {
@@ -75,16 +90,29 @@ export async function sendInviteAction(input: {
           inviteName,
           inviteEmail,
           expiresAt: expiresAt.toISOString(),
+          gwgCheckId: binding.gwgCheckId,
+          boundCheckRevision: binding.boundCheckRevision,
+          boundClientRevision: binding.boundClientRevision,
           supersededInviteCount: issue.supersededInviteCount,
         },
       });
-      return inv.id;
+      return { id: inv.id, gwgCheckId: binding.gwgCheckId };
     });
   } catch (e) {
     return toActionError(e);
   }
 
   const link = `${portalBaseUrl}/gwg-onboarding?token=${encodeURIComponent(raw)}`;
+  await emitN8nEvent(
+    'gwg.invite.created',
+    {
+      tenantId,
+      clientId,
+      gwgInviteId: issuedInvite.id,
+      gwgCheckId: issuedInvite.gwgCheckId,
+    },
+    { tenantId },
+  );
 
   // Befund 3: fire-and-forget mit catch+Log statt `void ….catch(() => void 0)`
   // (Fehler wurden vorher stillschweigend verschluckt).
@@ -95,17 +123,7 @@ export async function sendInviteAction(input: {
       clientId,
       slug: 'gwg-onboarding',
       to: inviteEmail,
-      vars: { inviteName, inviteEmail, link, clientId, gwgInviteId: inviteId },
-      n8nEvent: 'client.created',
-      n8nPayload: {
-        tenantId,
-        clientId,
-        gwgInviteId: inviteId,
-        inviteEmail,
-        inviteName,
-        link,
-        kind: 'gwg-onboarding',
-      },
+      vars: { inviteName, inviteEmail, link, clientId, gwgInviteId: issuedInvite.id },
       fallback: {
         subject: 'Identifizierung für Ihre Mandantschaft',
         bodyMd:
@@ -122,9 +140,10 @@ export async function cancelInviteAction(input: { id: string }): Promise<InviteR
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId }) => {
+  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
     const inv = await tx.gwgOnboardingInvite.findUnique({ where: { id: parsed.data.id } });
     if (!inv) return;
+    await assertClientAccessTx(tx, session, inv.clientId);
     await lockGwgCheckLifecycleTx(tx, { tenantId, clientId: inv.clientId });
     const current = await tx.gwgOnboardingInvite.findUnique({ where: { id: parsed.data.id } });
     if (!current) return;

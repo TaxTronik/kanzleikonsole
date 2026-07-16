@@ -4,6 +4,7 @@ import {
   identitySubjectRoleLabel,
   identitySubjectOptions,
   resolveIdentitySubject,
+  selectableIdentitySubjectOptions,
   subjectKeyForAssignment,
 } from '../identity-subject';
 
@@ -48,6 +49,39 @@ describe('GwG-Identitaetspersonen', () => {
 
   it('akzeptiert keinen frei erfundenen oder veralteten Browserwert', () => {
     expect(resolveIdentitySubject(source, 'owner:55555555-5555-4555-8555-555555555555')).toBeNull();
+  });
+
+  it('bildet eine ausdrücklich verknüpfte Doppelrolle als genau eine auswählbare Identität ab', () => {
+    const linkedSource = {
+      ...source,
+      representatives: [
+        {
+          ...source.representatives[0]!,
+          linkedBeneficialOwnerId: source.beneficialOwners[0]!.id,
+        },
+        source.representatives[1]!,
+      ],
+    };
+    const allOptions = identitySubjectOptions(linkedSource);
+    const selectable = selectableIdentitySubjectOptions(allOptions);
+    const linkedRepresentative = selectable.find(
+      (option) => option.key === `representative:${source.representatives[0]!.id}`,
+    );
+
+    expect(allOptions).toHaveLength(4);
+    expect(selectable).toHaveLength(3);
+    expect(linkedRepresentative).toMatchObject({
+      name: 'Rey Koxha',
+      roles: ['VERTRETUNGSBERECHTIGT', 'WIRTSCHAFTLICH_BERECHTIGT'],
+      linkedBeneficialOwnerId: source.beneficialOwners[0]!.id,
+      birthDateLabel: '06.05.1988',
+    });
+    expect(
+      resolveIdentitySubject(linkedSource, `owner:${source.beneficialOwners[0]!.id}`),
+    ).toBeNull();
+    expect(
+      resolveIdentitySubject(linkedSource, `representative:${source.representatives[0]!.id}`),
+    ).toMatchObject({ linkedBeneficialOwnerId: source.beneficialOwners[0]!.id });
   });
 
   it('bietet bei natuerlichen Personen ausschliesslich den Mandanten selbst an', () => {

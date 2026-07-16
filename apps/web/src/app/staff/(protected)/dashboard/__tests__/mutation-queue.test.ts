@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { createDashboardMutationQueue } from '../mutation-queue';
+import { createDashboardMutationQueue, snapshotForQueuedDashboardAdd } from '../mutation-queue';
 
 describe('Dashboard-Mutationsqueue', () => {
   it('laesst einen spaeteren Layout-Snapshot den vorherigen erst nach dessen Abschluss speichern', async () => {
@@ -42,6 +42,26 @@ describe('Dashboard-Mutationsqueue', () => {
       afterFailure.push('saved');
     });
     expect(afterFailure).toEqual(['saved']);
+  });
+
+  it('laesst einen fruehen Add-Snapshot kein spaeteres Pending-Widget persistieren', async () => {
+    const queue = createDashboardMutationQueue();
+    const a = { id: 'a' };
+    const b = { id: 'b' };
+    const live = [a, b];
+    let persisted: Array<{ id: string }> = [];
+
+    const first = queue.enqueue(async () => {
+      persisted = snapshotForQueuedDashboardAdd(live, new Set(['a']));
+    });
+    const second = queue.enqueue(async () => {
+      // Entspricht einem fehlgeschlagenen Render/Server-Action-Commit fuer B.
+      throw new Error('widget b failed');
+    });
+
+    await first;
+    await expect(second).rejects.toThrow('widget b failed');
+    expect(persisted).toEqual([a]);
   });
 
   it('reiht auch Standard-Reset ein und verwirft einen ausstehenden Debounce-Timer', () => {

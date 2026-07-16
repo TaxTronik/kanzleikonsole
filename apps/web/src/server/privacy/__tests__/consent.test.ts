@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  consentForNewDeclaration,
   countGranted,
+  countRevocableGranted,
   defaultConsentOptionsCatalog,
   emptyConsent,
   hasConsentRevocation,
+  missingRequiredConsentOptions,
   normalizeConsentOptionsCatalog,
   parseConsent,
   PortalConsentSelectionsSchema,
+  revokeVoluntaryConsent,
 } from '../consent';
 
 const CUSTOM_ID = 'c8ecfcf4-aa72-47b5-a67e-d42fdc736dcc';
@@ -41,7 +45,10 @@ describe('hasConsentRevocation', () => {
       {
         optionId: CUSTOM_ID,
         labelSnapshot: 'Digitale Beleganalyse',
+        descriptionSnapshot: null,
         section: 'OTHER',
+        requiredSnapshot: false,
+        recommendedSnapshot: false,
         serviceProviderSnapshot: null,
       },
     ];
@@ -50,7 +57,10 @@ describe('hasConsentRevocation', () => {
       {
         optionId: CUSTOM_ID,
         labelSnapshot: 'Digitale Analyse (neuer Name)',
+        descriptionSnapshot: null,
         section: 'OTHER',
+        requiredSnapshot: false,
+        recommendedSnapshot: false,
         serviceProviderSnapshot: null,
       },
     ];
@@ -74,13 +84,19 @@ describe('ConsentSelections V1/V2', () => {
       {
         optionId: 'communication.portal',
         labelSnapshot: 'Mandantenportal',
+        descriptionSnapshot: null,
         section: 'COMMUNICATION',
+        requiredSnapshot: false,
+        recommendedSnapshot: false,
         serviceProviderSnapshot: null,
       },
       {
         optionId: CUSTOM_ID,
         labelSnapshot: 'Digitale Beleganalyse',
+        descriptionSnapshot: null,
         section: 'OTHER',
+        requiredSnapshot: false,
+        recommendedSnapshot: false,
         serviceProviderSnapshot: null,
       },
     ];
@@ -108,6 +124,76 @@ describe('ConsentSelections V1/V2', () => {
       contractFromDate: null,
       contractToDate: null,
     });
+    expect(parsed.optionSelections[0]).toMatchObject({
+      descriptionSnapshot: null,
+      requiredSnapshot: false,
+      recommendedSnapshot: false,
+    });
+  });
+});
+
+describe('revokeVoluntaryConsent', () => {
+  it('entfernt freiwillige Auswahlen und erhaelt Pflichtbestaetigungen exakt', () => {
+    const consent = emptyConsent();
+    consent.communication.emailTls = true;
+    consent.marketing.emailNewsletter = true;
+    consent.thirdParties = [
+      { recipient: 'Bank', purpose: 'Kredit', data: 'BWA', channel: 'Portal' },
+    ];
+    consent.specialists = [
+      {
+        entity: 'Gutachter GmbH',
+        service: 'Bewertung',
+        accessType: 'Datenraum',
+        requirements: 'Verschwiegenheit',
+      },
+    ];
+    const required = {
+      optionId: CUSTOM_ID,
+      labelSnapshot: 'Notwendige Bestaetigung',
+      descriptionSnapshot: 'Bei Mandatsannahme erforderlich',
+      section: 'OTHER' as const,
+      requiredSnapshot: true,
+      recommendedSnapshot: false,
+      serviceProviderSnapshot: null,
+    };
+    consent.optionSelections = [
+      required,
+      {
+        ...required,
+        optionId: '7e1c134e-1d2a-44a5-b135-43cf35c0d6ee',
+        labelSnapshot: 'Freiwillige Zusatzoption',
+        requiredSnapshot: false,
+      },
+    ];
+
+    const revoked = revokeVoluntaryConsent(consent);
+
+    expect(revoked).toEqual({
+      ...emptyConsent(),
+      optionSelections: [required],
+    });
+    expect(revoked.optionSelections[0]).toBe(required);
+    expect(countGranted(consent)).toBe(6);
+    expect(countRevocableGranted(consent)).toBe(5);
+  });
+
+  it('ist bei einem reinen Pflichtbestaetigungs-Snapshot ein fachlicher No-op', () => {
+    const consent = emptyConsent();
+    consent.optionSelections = [
+      {
+        optionId: CUSTOM_ID,
+        labelSnapshot: 'Notwendige Bestaetigung',
+        descriptionSnapshot: null,
+        section: 'OTHER',
+        requiredSnapshot: true,
+        recommendedSnapshot: false,
+        serviceProviderSnapshot: null,
+      },
+    ];
+
+    expect(revokeVoluntaryConsent(consent)).toEqual(consent);
+    expect(countRevocableGranted(consent)).toBe(0);
   });
 });
 
@@ -119,7 +205,10 @@ describe('PortalConsentSelectionsSchema', () => {
       {
         optionId: CUSTOM_ID,
         labelSnapshot: 'Kanzlei-Option',
+        descriptionSnapshot: null,
         section: 'OTHER',
+        requiredSnapshot: false,
+        recommendedSnapshot: false,
         serviceProviderSnapshot: null,
       },
     ];
@@ -181,6 +270,83 @@ describe('Einwilligungsoptions-Katalog', () => {
     });
   });
 
+  it('migriert einen V1-Katalog sicher auf V2 ohne neue Vorgaben', () => {
+    const legacy = {
+      version: 1 as const,
+      options: defaultConsentOptionsCatalog().options.map(
+        ({ required: _required, recommended: _recommended, ...option }) => option,
+      ),
+    };
+
+    const normalized = normalizeConsentOptionsCatalog(legacy);
+
+    expect(normalized.version).toBe(2);
+    expect(normalized.options.every((option) => !option.required && !option.recommended)).toBe(
+      true,
+    );
+  });
+
+  it('lässt Empfehlungen bei neuen Erklärungen ungekreuzt und erkennt Pflichtoptionen', () => {
+    const options = defaultConsentOptionsCatalog().options.map((option) => ({
+      ...option,
+      recommended: option.id === 'communication.emailTls',
+      serviceProvider: null,
+      providerMissing: false,
+    }));
+    options.push({
+      id: CUSTOM_ID,
+      builtin: false,
+      section: 'OTHER',
+      label: 'Notwendige Bestätigung',
+      description: null,
+      active: true,
+      required: true,
+      recommended: false,
+      sortOrder: 1000,
+      serviceProviderId: null,
+      serviceProvider: null,
+      providerMissing: false,
+    });
+
+    const initial = consentForNewDeclaration();
+
+    expect(initial.communication.emailTls).toBe(false);
+    expect(initial.communication.portal).toBe(false);
+    expect(initial.optionSelections).toEqual([]);
+    expect(missingRequiredConsentOptions(initial, options).map((option) => option.id)).toEqual([
+      CUSTOM_ID,
+    ]);
+  });
+
+  it('verbietet Pflicht-Einwilligungen für Kommunikation und Marketing', () => {
+    const catalog = defaultConsentOptionsCatalog();
+    const newsletter = catalog.options.find((option) => option.id === 'marketing.emailNewsletter');
+    if (!newsletter) throw new Error('Newsletter-Builtin fehlt');
+    newsletter.required = true;
+
+    expect(() => normalizeConsentOptionsCatalog(catalog)).toThrow(/Bereich OTHER/);
+  });
+
+  it('verhindert Pflicht-Built-ins auch bei gefälschter Bereichsangabe', () => {
+    const catalog = defaultConsentOptionsCatalog();
+    const fax = catalog.options.find((option) => option.id === 'communication.fax');
+    if (!fax) throw new Error('Fax-Builtin fehlt');
+    fax.section = 'OTHER';
+    fax.required = true;
+
+    expect(() => normalizeConsentOptionsCatalog(catalog)).toThrow(/eigene.*Bereich OTHER/);
+  });
+
+  it('weist Vorgaben auf inaktiven Optionen zurück', () => {
+    const catalog = defaultConsentOptionsCatalog();
+    const fax = catalog.options.find((option) => option.id === 'communication.fax');
+    if (!fax) throw new Error('Fax-Builtin fehlt');
+    fax.active = false;
+    fax.required = true;
+
+    expect(() => normalizeConsentOptionsCatalog(catalog)).toThrow(/Inaktive/);
+  });
+
   it('weist doppelte IDs und eigene Optionen ohne UUID zurück', () => {
     const defaults = defaultConsentOptionsCatalog();
     const first = defaults.options[0];
@@ -203,6 +369,8 @@ describe('Einwilligungsoptions-Katalog', () => {
             label: 'Eigene Option',
             description: null,
             active: true,
+            required: false,
+            recommended: false,
             sortOrder: 1000,
             serviceProviderId: null,
           },

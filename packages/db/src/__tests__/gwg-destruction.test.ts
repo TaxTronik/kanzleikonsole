@@ -337,6 +337,7 @@ describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
           inviteName: 'Fremd',
           tokenHash: `other-${Date.now()}`,
           expiresAt: new Date(Date.now() + 60_000),
+          boundClientRevision: 'other-client-revision',
           createdByStaff: otherStaff.id,
         },
       });
@@ -594,6 +595,7 @@ describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
         status: 'PENDING',
         createdByStaff: staffId,
         gwgCheckId: dueCheck.id,
+        boundCheckRevision: 'due-check-revision',
       },
     });
 
@@ -620,6 +622,7 @@ describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
           expiresAt: new Date('2099-01-01T00:00:00.000Z'),
           createdByStaff: staffId,
           gwgCheckId: dueCheck.id,
+          boundCheckRevision: 'destroyed-check-revision',
         },
       }),
     ).rejects.toThrow(/vernichteten GwG-Check/);

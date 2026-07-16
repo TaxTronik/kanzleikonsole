@@ -9,10 +9,11 @@ import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
 import {
   ConsentSelectionsSchema,
-  emptyConsent,
   countGranted,
+  countRevocableGranted,
   hasConsentRevocation,
   parseConsent,
+  revokeVoluntaryConsent,
   type ConsentSelections,
 } from '@/server/privacy/consent';
 import { resolveConsentSelectionsTx } from '@/server/privacy/consent-catalog';
@@ -150,6 +151,15 @@ export async function revokeAllConsentAction(formData: FormData): Promise<void> 
   await withTenantContext(ctx, async (tx) => {
     await assertClientAccessTx(tx, session, d.clientId);
     await assertClientInTenant(tx, d.clientId);
+    const previous = await tx.clientConsent.findFirst({
+      where: { clientId: d.clientId },
+      select: { consents: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!previous) return;
+    const previousConsent = parseConsent(previous.consents);
+    const revokedCount = countRevocableGranted(previousConsent);
+    if (revokedCount === 0) return;
     const notice = await renderNoticeForTenantTx(tx, tenantId);
     const row = await tx.clientConsent.create({
       data: {
@@ -157,11 +167,11 @@ export async function revokeAllConsentAction(formData: FormData): Promise<void> 
         clientId: d.clientId,
         noticeVersion: notice.version,
         noticeSnapshot: notice.body,
-        consents: emptyConsent() as object,
+        consents: revokeVoluntaryConsent(previousConsent) as object,
         source: 'STAFF',
         signedByName: d.signedByName.trim(),
         isRevocation: true,
-        note: d.note && d.note !== '' ? d.note : 'Vollständiger Widerruf',
+        note: d.note && d.note !== '' ? d.note : 'Widerruf freiwilliger Einwilligungen',
         createdBy: staffId,
       },
     });
@@ -172,7 +182,7 @@ export async function revokeAllConsentAction(formData: FormData): Promise<void> 
       action: 'privacy.consent.revoke',
       resourceType: 'client_consent',
       resourceId: row.id,
-      after: { clientId: d.clientId, signedByName: d.signedByName.trim() },
+      after: { clientId: d.clientId, signedByName: d.signedByName.trim(), revokedCount },
     });
   });
 

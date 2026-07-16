@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   withTenantContext: vi.fn(),
   assertClientAccessTx: vi.fn(),
   evidenceRecord: vi.fn(),
+  emitN8nEvent: vi.fn(),
   revalidatePath: vi.fn(),
   redirect: vi.fn(),
 }));
@@ -17,6 +18,7 @@ vi.mock('@/server/container', () => ({ evidenceService: { record: mocks.evidence
 vi.mock('@/server/auth/magic-link', () => ({ requestMagicLink: vi.fn() }));
 vi.mock('@/server/mail/dispatch', () => ({ sendTemplateMail: vi.fn() }));
 vi.mock('@/server/util/fire-and-forget', () => ({ fireAndForget: vi.fn() }));
+vi.mock('@/server/n8n/emit', () => ({ emitN8nEvent: mocks.emitN8nEvent }));
 vi.mock('@/server/gwg-onboarding/service', () => ({
   generateInviteToken: vi.fn(() => ({ raw: 'raw', hash: 'hash' })),
   INVITE_TTL_DAYS: 7,
@@ -53,6 +55,10 @@ function makeTx() {
         id: CHECK_ID,
         status: 'VERIFIED',
         validUntil: new Date('2030-01-01T00:00:00.000Z'),
+        verifiedAt: new Date('2026-07-15T10:00:00.000Z'),
+        verifiedBy: 'professional-1',
+        reviewSubmittedAt: new Date('2026-07-15T09:00:00.000Z'),
+        reviewSubmittedBy: 'staff-1',
       }),
     },
   };

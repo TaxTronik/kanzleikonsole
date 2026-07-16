@@ -23,15 +23,13 @@ cd "$ROOT"
 # Nur relevante Text-/Quellpfade; Build-Output & Deps raus. Der Guard selbst
 # (enthält Beispiel-Strings in Kommentaren) ist ausgenommen.
 MATCHES="$(grep -rEn "$PATTERN" \
+  --exclude-dir='node_modules' --exclude-dir='.next' --exclude-dir='dist' \
+  --exclude-dir='.turbo' --exclude-dir='coverage' \
   --include='*.ts' --include='*.tsx' --include='*.js' --include='*.mjs' \
   --include='*.cjs' --include='*.json' --include='*.md' --include='*.sql' \
   --include='*.txt' --include='*.yml' --include='*.yaml' --include='*.prisma' \
   --include='*.css' --include='*.html' \
   apps packages docs infra scripts README.md FEATURES.md 2>/dev/null \
-  | grep -v 'node_modules/' \
-  | grep -v '/.next/' \
-  | grep -v '/dist/' \
-  | grep -v '/.turbo/' \
   | grep -v 'scripts/check-no-real-datev.sh' \
   || true)"
 

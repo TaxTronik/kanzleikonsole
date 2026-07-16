@@ -1,5 +1,5 @@
 // =============================================================================
-// Freiwillige Einwilligungen (Teil B der Datenschutzhinweise).
+// Datenschutz-Auswahl und Einwilligungen (Teil B der Datenschutzhinweise).
 //
 // Granulare, EINZELN erteilbare Einwilligungen nach DSGVO Art. 6 Abs. 1 lit. a
 // (+ Art. 9 Abs. 2 lit. a bei besonderen Kategorien). Die Struktur bildet die
@@ -46,18 +46,28 @@ export const ConsentOptionDefinitionSchema = z.object({
   label: z.string().trim().min(1).max(300),
   description: z.string().trim().max(1000).nullable().default(null),
   active: z.boolean(),
+  required: z.boolean().default(false),
+  recommended: z.boolean().default(false),
   sortOrder: z.number().int().min(0).max(100_000),
   serviceProviderId: z.string().uuid().nullable().default(null),
 });
 export type ConsentOptionDefinition = z.infer<typeof ConsentOptionDefinitionSchema>;
 
+const StoredConsentOptionsCatalogSchema = z.object({
+  version: z.union([z.literal(1), z.literal(2)]),
+  options: z.array(ConsentOptionDefinitionSchema).max(150),
+});
+
 export const ConsentOptionsCatalogSchema = z.object({
-  version: z.literal(1),
+  version: z.literal(2),
   options: z.array(ConsentOptionDefinitionSchema).max(150),
 });
 export type ConsentOptionsCatalog = z.infer<typeof ConsentOptionsCatalogSchema>;
 
-export const DEFAULT_CONSENT_OPTIONS: readonly ConsentOptionDefinition[] = [
+const DEFAULT_CONSENT_OPTION_BASES: readonly Omit<
+  ConsentOptionDefinition,
+  'required' | 'recommended'
+>[] = [
   {
     id: 'communication.portal',
     builtin: true,
@@ -170,12 +180,19 @@ export const DEFAULT_CONSENT_OPTIONS: readonly ConsentOptionDefinition[] = [
   },
 ];
 
+export const DEFAULT_CONSENT_OPTIONS: readonly ConsentOptionDefinition[] =
+  DEFAULT_CONSENT_OPTION_BASES.map((option) => ({
+    ...option,
+    required: false,
+    recommended: false,
+  }));
+
 function cloneDefaultOption(option: ConsentOptionDefinition): ConsentOptionDefinition {
   return { ...option };
 }
 
 export function defaultConsentOptionsCatalog(): ConsentOptionsCatalog {
-  return { version: 1, options: DEFAULT_CONSENT_OPTIONS.map(cloneDefaultOption) };
+  return { version: 2, options: DEFAULT_CONSENT_OPTIONS.map(cloneDefaultOption) };
 }
 
 /**
@@ -184,7 +201,7 @@ export function defaultConsentOptionsCatalog(): ConsentOptionsCatalog {
  * ihr kanonisches Label; konfigurierbar sind Aktivitaet und Provider-Link.
  */
 export function normalizeConsentOptionsCatalog(value: unknown): ConsentOptionsCatalog {
-  const parsed = ConsentOptionsCatalogSchema.parse(value);
+  const parsed = StoredConsentOptionsCatalogSchema.parse(value);
   const seen = new Set<string>();
   for (const option of parsed.options) {
     if (seen.has(option.id)) throw new Error(`Doppelte Einwilligungsoption: ${option.id}`);
@@ -195,6 +212,14 @@ export function normalizeConsentOptionsCatalog(value: unknown): ConsentOptionsCa
     if (!option.builtin && !z.string().uuid().safeParse(option.id).success) {
       throw new Error(`Eigene Einwilligungsoption ohne UUID: ${option.id}`);
     }
+    if (!option.active && (option.required || option.recommended)) {
+      throw new Error(`Inaktive Einwilligungsoption mit aktiver Vorgabe: ${option.id}`);
+    }
+    if (option.required && (option.builtin || option.section !== 'OTHER')) {
+      throw new Error(
+        `Pflichtoptionen sind nur für eigene, rechtlich notwendige Bestätigungen im Bereich OTHER zulässig: ${option.id}`,
+      );
+    }
   }
 
   const byId = new Map(parsed.options.map((option) => [option.id, option]));
@@ -203,6 +228,8 @@ export function normalizeConsentOptionsCatalog(value: unknown): ConsentOptionsCa
     return {
       ...cloneDefaultOption(canonical),
       active: configured?.active ?? canonical.active,
+      required: configured?.required ?? false,
+      recommended: configured?.recommended ?? false,
       serviceProviderId: configured?.serviceProviderId ?? null,
     };
   });
@@ -215,7 +242,7 @@ export function normalizeConsentOptionsCatalog(value: unknown): ConsentOptionsCa
     }));
 
   return {
-    version: 1,
+    version: 2,
     options: [...builtins, ...custom].sort(
       (a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label, 'de'),
     ),
@@ -236,7 +263,12 @@ export type ConsentServiceProviderSnapshot = z.infer<typeof ConsentServiceProvid
 export const ConsentOptionSelectionSnapshotSchema = z.object({
   optionId: z.string().min(1).max(100),
   labelSnapshot: z.string().min(1).max(300),
+  // Defaults halten vor dieser Erweiterung gespeicherte ClientConsent-JSONs
+  // lesbar. Neue Snapshots werden ausschließlich serverseitig kanonisiert.
+  descriptionSnapshot: z.string().max(1000).nullable().default(null),
   section: ConsentOptionSectionSchema,
+  requiredSnapshot: z.boolean().default(false),
+  recommendedSnapshot: z.boolean().default(false),
   serviceProviderSnapshot: ConsentServiceProviderSnapshotSchema.nullable().default(null),
 });
 export type ConsentOptionSelectionSnapshot = z.infer<typeof ConsentOptionSelectionSnapshotSchema>;
@@ -370,9 +402,31 @@ export const PortalConsentSelectionsSchema = ConsentSelectionsSchema.superRefine
   },
 );
 
-/** Leerer Einwilligungsstand (nichts angekreuzt = nichts eingewilligt). */
+/** Leerer Einwilligungsstand (nichts angekreuzt = nichts eingewilligt/bestätigt). */
 export function emptyConsent(): ConsentSelections {
   return ConsentSelectionsSchema.parse({});
+}
+
+/**
+ * Erstellt den Ausgangsstand für eine neue Erklärung. Empfehlungen sind reine
+ * Anzeige-Metadaten und dürfen keine Einwilligung oder Bestätigung vorwegnehmen.
+ * Deshalb beginnt jede neue Erklärung unabhängig vom Katalog unausgewählt.
+ */
+export function consentForNewDeclaration(): ConsentSelections {
+  return emptyConsent();
+}
+
+/** Liefert aktive Pflichtoptionen, denen in einer Erklaerung nicht zugestimmt wurde. */
+export function missingRequiredConsentOptions(
+  consent: ConsentSelections,
+  options: readonly ResolvedConsentOption[],
+): ResolvedConsentOption[] {
+  const selectedIds = new Set<string>(selectedBuiltinConsentOptionIds(consent));
+  for (const selection of consent.optionSelections) selectedIds.add(selection.optionId);
+  return options.filter(
+    (option) =>
+      option.active && option.section === 'OTHER' && option.required && !selectedIds.has(option.id),
+  );
 }
 
 /**
@@ -417,6 +471,24 @@ export function countGranted(c: ConsentSelections): number {
       .map((selection) => selection.optionId),
   );
   return commBools + mktBools + customOptionIds.size + c.thirdParties.length + c.specialists.length;
+}
+
+/**
+ * Entfernt nur widerrufbare Einwilligungen aus einem vollstaendigen Snapshot.
+ * Rechtlich notwendige Bestaetigungen sind keine Einwilligungen und bleiben
+ * deshalb mit ihrem bei Abgabe eingefrorenen Snapshot unveraendert erhalten.
+ */
+export function revokeVoluntaryConsent(consent: ConsentSelections): ConsentSelections {
+  const revoked = emptyConsent();
+  revoked.optionSelections = consent.optionSelections.filter(
+    (selection) => selection.requiredSnapshot,
+  );
+  return revoked;
+}
+
+/** Anzahl der aktuell ausgewaehlten Optionen, die tatsaechlich widerrufbar sind. */
+export function countRevocableGranted(consent: ConsentSelections): number {
+  return countGranted(consent) - countGranted(revokeVoluntaryConsent(consent));
 }
 
 /** Aus den Legacy-Bools abgeleitete, stabil benannte Built-in-Auswahl. */

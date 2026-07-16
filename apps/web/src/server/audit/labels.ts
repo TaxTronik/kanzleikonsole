@@ -85,6 +85,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'gwg.check.submit_for_review': 'GwG-Prüfung zur Freigabe eingereicht',
   'gwg.owner.add': 'Wirtschaftlich Berechtigter erfasst',
   'gwg.owner.update': 'Wirtschaftlich Berechtigten aktualisiert',
+  'gwg.owner.remove': 'Wirtschaftlich Berechtigten aus aktuellem Prüfsnapshot entfernt',
   'gwg.id_document.add': 'Ausweisdokument erfasst',
   'gwg.id_document.update': 'Ausweisangaben geprüft und aktualisiert',
   'gwg.id_document.set_files_update': 'Dateien eines Ausweissatzes aktualisiert',

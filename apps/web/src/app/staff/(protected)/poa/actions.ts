@@ -34,6 +34,7 @@ import {
   readPoaSigningSnapshot,
   snapshotDocumentMatches,
 } from '@/server/poa/signing-snapshot';
+import { POA_CREATE_RETURN_CONTEXTS, poaCreateSuccessHref } from './new/return-context';
 
 const SIGNING_TOKEN_TTL_HOURS = 72;
 
@@ -53,6 +54,7 @@ const CreateSchema = z
     validUntil: z.string().date().optional().or(z.literal('')),
     pendingDocumentId: z.string().uuid().optional().or(z.literal('')),
     uploadIntentId: z.string().uuid().optional().or(z.literal('')),
+    returnContext: z.enum(POA_CREATE_RETURN_CONTEXTS).optional().or(z.literal('')),
   })
   .superRefine((value, ctx) => {
     if (value.validUntil && value.validUntil < value.validFrom) {
@@ -181,6 +183,7 @@ export async function createPoaAction(
     validUntil: formData.get('validUntil') ?? '',
     pendingDocumentId: formData.get('pendingDocumentId') ?? '',
     uploadIntentId: formData.get('uploadIntentId') ?? '',
+    returnContext: formData.get('returnContext') ?? '',
   });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues.map((i) => i.message).join(', ') };
@@ -279,7 +282,16 @@ export async function createPoaAction(
     }
     if (existingIntentPoaId) {
       revalidatePath('/staff/poa');
-      redirect(`/staff/poa/${existingIntentPoaId}`);
+      if (data.returnContext === 'onboarding') {
+        revalidatePath(`/staff/clients/onboarding/${data.clientId}`);
+      }
+      redirect(
+        poaCreateSuccessHref({
+          clientId: data.clientId,
+          poaId: existingIntentPoaId,
+          returnContext: data.returnContext || undefined,
+        }),
+      );
     }
 
     const resumeDocumentId = data.pendingDocumentId || existingIntentDocumentId;
@@ -603,7 +615,16 @@ export async function createPoaAction(
   }
 
   revalidatePath('/staff/poa');
-  redirect(`/staff/poa/${id}`);
+  if (data.returnContext === 'onboarding') {
+    revalidatePath(`/staff/clients/onboarding/${data.clientId}`);
+  }
+  redirect(
+    poaCreateSuccessHref({
+      clientId: data.clientId,
+      poaId: id,
+      returnContext: data.returnContext || undefined,
+    }),
+  );
 }
 
 const SendSchema = z.object({ poaId: z.string().uuid() });

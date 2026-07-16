@@ -31,11 +31,15 @@ interface Invite {
 export function InviteSection({
   clientId,
   clientName,
+  gwgCheckId,
+  disabledReason,
   contacts,
   invites,
 }: {
   clientId: string;
   clientName: string;
+  gwgCheckId?: string;
+  disabledReason?: string;
   contacts: Contact[];
   invites: Invite[];
 }) {
@@ -64,6 +68,7 @@ export function InviteSection({
         clientId,
         inviteName: name.trim(),
         inviteEmail: email.trim(),
+        gwgCheckId,
       });
       if (!r.ok) {
         setError(r.error ?? 'Fehler.');
@@ -106,13 +111,21 @@ export function InviteSection({
             Mandant füllt Stammdaten + Ausweis-Fotos selbst aus, ohne Login.
           </p>
         </div>
-        <button type="button" onClick={() => setOpen((o) => !o)} className="btn-secondary text-xs">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="btn-secondary text-xs"
+          disabled={Boolean(disabledReason)}
+          title={disabledReason}
+        >
           {open ? 'Schließen' : '+ Einladung senden'}
         </button>
       </div>
 
+      {disabledReason && <div className="px-6 py-3 text-xs text-muted">{disabledReason}</div>}
+
       {open && (
-        <div className="px-6 py-4 border-b border-default bg-gray-50 space-y-3">
+        <div className="px-6 py-4 border-b border-default bg-subtle space-y-3">
           {contacts.length > 0 && (
             <div>
               <p className="text-xs text-muted mb-2">Bekannte Ansprechpartner:</p>

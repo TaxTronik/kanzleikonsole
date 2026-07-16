@@ -1,7 +1,7 @@
 'use client';
 
 // =============================================================================
-// ConsentFields — geteilter Editor für die freiwilligen Einwilligungen (Teil B).
+// ConsentFields — geteilter Editor für Datenschutz-Auswahl und Einwilligungen (Teil B).
 //
 // Wird von der Staff-Erfassung UND dem Portal-Onboarding genutzt. Hält den
 // Einwilligungsstand im State und schreibt ihn als JSON in ein verstecktes
@@ -13,8 +13,8 @@
 
 import { useRef, useState } from 'react';
 import {
+  consentForNewDeclaration,
   defaultConsentOptionsCatalog,
-  emptyConsent,
   isBuiltinConsentOptionId,
   isBuiltinConsentSelected,
   setBuiltinConsentSelected,
@@ -35,22 +35,42 @@ function Check({
   onChange,
   label,
   hint,
+  required = false,
+  recommended = false,
 }: {
   checked: boolean;
   onChange: (v: boolean) => void;
   label: string;
   hint?: string | null;
+  required?: boolean;
+  recommended?: boolean;
 }) {
   return (
-    <label className="flex items-start gap-2 py-1 text-sm cursor-pointer select-none">
+    <label
+      className={`flex items-start gap-2 py-1 text-sm cursor-pointer select-none ${
+        recommended ? 'rounded-md border border-default bg-surface-raised px-2' : ''
+      }`}
+    >
       <input
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
+        required={required}
         className="mt-0.5 rounded border-strong text-brand-600"
       />
       <span className="text-secondary">
         {label}
+        {required && <span className="ml-1 text-xs font-medium text-red-700">(Pflichtfeld)</span>}
+        {recommended && (
+          <span className="ml-1 text-xs font-medium text-brand-700 dark:text-brand-300">
+            (Empfehlung der Kanzlei)
+          </span>
+        )}
+        {recommended && (
+          <span className="block text-xs text-muted mt-0.5">
+            Nicht vorausgewählt – Sie entscheiden durch aktives Anklicken.
+          </span>
+        )}
         {hint && <span className="block text-xs text-muted mt-0.5">{hint}</span>}
       </span>
     </label>
@@ -75,7 +95,14 @@ export function ConsentFields({
    */
   mode?: 'staff' | 'catalog-only';
 }) {
-  const [c, setInner] = useState<ConsentSelections>(initial ?? emptyConsent());
+  const configuredOptions: ResolvedConsentOption[] =
+    options ??
+    defaultConsentOptionsCatalog().options.map((option) => ({
+      ...option,
+      serviceProvider: null,
+      providerMissing: false,
+    }));
+  const [c, setInner] = useState<ConsentSelections>(initial ?? consentForNewDeclaration());
   // Ref-Spiegel des aktuellen Stands: `onChange` (Parent-setState) darf NICHT
   // aus einem setState-Updater laufen — das aktualisiert die Elternkomponente
   // während des Renders („Cannot update a component while rendering …") und
@@ -90,13 +117,6 @@ export function ConsentFields({
     onChange?.(next);
   };
 
-  const configuredOptions: ResolvedConsentOption[] =
-    options ??
-    defaultConsentOptionsCatalog().options.map((option) => ({
-      ...option,
-      serviceProvider: null,
-      providerMissing: false,
-    }));
   const configuredIds = new Set(configuredOptions.map((option) => option.id));
   // Historische eigene Optionen bleiben selbst dann abwählbar, wenn ein alter
   // oder manuell beschädigter Katalog sie nicht mehr enthält. Speichern mit
@@ -111,8 +131,12 @@ export function ConsentFields({
       builtin: false,
       section: selection.section,
       label: selection.labelSnapshot,
-      description: 'Historische Option – im aktuellen Kanzlei-Katalog nicht mehr vorhanden.',
+      description:
+        selection.descriptionSnapshot ??
+        'Historische Option – im aktuellen Kanzlei-Katalog nicht mehr vorhanden.',
       active: false,
+      required: selection.requiredSnapshot,
+      recommended: selection.recommendedSnapshot,
       sortOrder: 100_000 + index,
       serviceProviderId: selection.serviceProviderSnapshot?.id ?? null,
       serviceProvider: selection.serviceProviderSnapshot,
@@ -163,7 +187,10 @@ export function ConsentFields({
               {
                 optionId: option.id,
                 labelSnapshot: option.label,
+                descriptionSnapshot: option.description,
                 section: option.section,
+                requiredSnapshot: option.required,
+                recommendedSnapshot: option.recommended,
                 serviceProviderSnapshot: option.serviceProvider,
               },
             ]
@@ -233,6 +260,8 @@ export function ConsentFields({
               onChange={(selected) => setOption(option, selected)}
               label={option.label}
               hint={optionHint(option)}
+              required={mode === 'catalog-only' && option.required}
+              recommended={option.recommended}
             />
           ))}
           {mode === 'staff' && (
@@ -269,6 +298,8 @@ export function ConsentFields({
               onChange={(selected) => setOption(option, selected)}
               label={option.label}
               hint={optionHint(option)}
+              required={mode === 'catalog-only' && option.required}
+              recommended={option.recommended}
             />
           ))}
           {mode === 'staff' && (
@@ -289,10 +320,11 @@ export function ConsentFields({
       {otherOptions.length > 0 && (
         <fieldset>
           <legend className="text-sm font-semibold text-primary mb-1">
-            3. Weitere freiwillige Einwilligungen
+            3. Weitere Datenschutz-Optionen
           </legend>
           <p className="text-xs text-muted mb-2">
-            Kanzleispezifische Optionen. Jede Auswahl ist freiwillig und einzeln widerrufbar.
+            Kanzleispezifische Optionen. Pflichtfelder müssen rechtlich notwendige Bestätigungen
+            oder eine anderweitig zulässige Pflichtauswahl abbilden.
           </p>
           {otherOptions.map((option) => (
             <Check
@@ -301,6 +333,8 @@ export function ConsentFields({
               onChange={(selected) => setOption(option, selected)}
               label={option.label}
               hint={optionHint(option)}
+              required={mode === 'catalog-only' && option.required}
+              recommended={option.recommended}
             />
           ))}
         </fieldset>
@@ -409,13 +443,6 @@ export function ConsentFields({
             + Spezialdienstleister
           </button>
         </fieldset>
-      )}
-
-      {mode === 'catalog-only' && (
-        <p className="rounded-md border border-default bg-surface-raised p-3 text-xs text-muted">
-          Empfänger, Kommunikationsdetails und Spezialdienstleister werden zentral durch Ihre
-          Kanzlei gepflegt. Hier können Sie nur die angebotenen Einwilligungen auswählen.
-        </p>
       )}
     </div>
   );

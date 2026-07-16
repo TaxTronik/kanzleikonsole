@@ -52,7 +52,8 @@ Verantwortungsabgrenzung:
 App ↔ n8n via signiertem HMAC:
 
 - **App → n8n** (Webhook): bei Events `client.created`, `request.opened`,
-  `gwg.expired`, `invoice.due` → fire-and-forget POST an n8n
+  `gwg.invite.created`, `gwg.verified`, `gwg.expired`, `invoice.due` →
+  transaktionale Outbox-Zustellung an n8n
 - **n8n → App** (HTTP-API): n8n liest/schreibt nur über `/api/n8n/*`-Endpunkte
   mit `x-taxtronik-signature: sha256=hmac(METHOD pathname?search\nbody)`.
   Kein direkter DB-Zugriff (= RLS, Audit konsistent)

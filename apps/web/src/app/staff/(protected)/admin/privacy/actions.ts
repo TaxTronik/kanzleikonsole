@@ -6,7 +6,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { ActionError, staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
 import { toActionError } from '@/server/auth/rbac';
-import { writePrivacyConfig, type PrivacyConfig } from '@/server/privacy/notice';
+import { writePrivacyConfigTx, type PrivacyConfig } from '@/server/privacy/notice';
 import {
   defaultConsentOptionsCatalog,
   normalizeConsentOptionsCatalog,
@@ -52,8 +52,9 @@ export async function savePrivacyConfigAction(
     drittlandServices: parsed.data.drittlandServices.trim() || 'keine',
   };
 
-  await writePrivacyConfig(ctx, cfg);
   await withTenantContext(ctx, async (tx) => {
+    await lockConsentCatalogTx(tx, tenantId);
+    await writePrivacyConfigTx(tx, tenantId, staffId, cfg);
     await evidenceService.record(tx, {
       tenantId,
       actorType: 'STAFF',
@@ -83,7 +84,11 @@ function catalogAuditView(catalog: ConsentOptionsCatalog) {
     builtin: option.builtin,
     section: option.section,
     label: option.label,
+    description: option.description,
     active: option.active,
+    required: option.required,
+    recommended: option.recommended,
+    sortOrder: option.sortOrder,
     serviceProviderId: option.serviceProviderId,
   }));
 }
@@ -140,9 +145,14 @@ export async function saveConsentOptionsAction(
       const submittedIds = new Set(submitted.options.map((option) => option.id));
       const removedCustom = before.options
         .filter((option) => !option.builtin && !submittedIds.has(option.id))
-        .map((option) => ({ ...option, active: false }));
+        .map((option) => ({
+          ...option,
+          active: false,
+          required: false,
+          recommended: false,
+        }));
       const next = normalizeConsentOptionsCatalog({
-        version: 1,
+        version: 2,
         options: [...submitted.options, ...removedCustom],
       });
 

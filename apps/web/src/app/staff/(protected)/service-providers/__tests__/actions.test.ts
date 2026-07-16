@@ -25,7 +25,7 @@ vi.mock('@/server/logger', () => ({
   log: { error: mocks.logError },
 }));
 
-import { deleteServiceProviderAction } from '../actions';
+import { createServiceProviderAction, deleteServiceProviderAction } from '../actions';
 
 function formData(): FormData {
   const form = new FormData();
@@ -33,10 +33,19 @@ function formData(): FormData {
   return form;
 }
 
+function createFormData(): FormData {
+  const form = new FormData();
+  form.set('name', 'Neue Cloud GmbH');
+  form.set('category', 'Hosting');
+  form.set('hasDataAccess', 'on');
+  return form;
+}
+
 function makeTx(catalogValue: unknown) {
   return {
     $executeRaw: vi.fn().mockResolvedValue(1),
     serviceProvider: {
+      create: vi.fn().mockResolvedValue({ id: PROVIDER_ID }),
       findUnique: vi.fn().mockResolvedValue({
         id: PROVIDER_ID,
         name: 'Cloud-Dienstleister',
@@ -68,6 +77,24 @@ beforeEach(() => {
     },
   });
   mocks.evidenceRecord.mockResolvedValue({});
+});
+
+describe('createServiceProviderAction', () => {
+  it('serialisiert einen neuen Hinweis-Empfänger vor dem Create mit dem Display-CAS', async () => {
+    const tx = makeTx(defaultConsentOptionsCatalog());
+    mocks.withTenantContext.mockImplementation(
+      async (_ctx: unknown, callback: (transaction: typeof tx) => unknown) => callback(tx),
+    );
+
+    const result = await createServiceProviderAction(null, createFormData());
+
+    expect(result).toEqual({ ok: true });
+    expect(tx.$executeRaw).toHaveBeenCalledOnce();
+    expect(tx.serviceProvider.create).toHaveBeenCalledOnce();
+    expect(tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.serviceProvider.create.mock.invocationCallOrder[0]!,
+    );
+  });
 });
 
 describe('deleteServiceProviderAction', () => {

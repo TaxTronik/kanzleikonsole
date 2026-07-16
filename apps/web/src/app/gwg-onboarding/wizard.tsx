@@ -6,10 +6,12 @@ import { uploadIdImageAction, submitOnboardingAction } from './actions';
 import { ConsentFields } from '@/components/consent-fields';
 import { NoticeView } from '@/components/notice-view';
 import {
-  emptyConsent,
+  consentForNewDeclaration,
+  missingRequiredConsentOptions,
   type ConsentSelections,
   type ResolvedConsentOption,
 } from '@/server/privacy/consent';
+import type { LoadedInviteDraft } from '@/server/gwg-onboarding/service';
 
 // Client-seitiges Upload-Limit: Die Datei wird Base64-kodiert an die Server-
 // Action geschickt (+33 % Overhead). Damit eine Datei knapp unter dem Limit
@@ -21,6 +23,8 @@ const MAX_UPLOAD_LABEL = '7 MB';
 // Stabile React-Keys für Owner-Cards (Add/Remove) — kein key={index}.
 let ownerIdSeq = 0;
 const nextOwnerId = () => `owner-${++ownerIdSeq}`;
+let representativeIdSeq = 0;
+const nextRepresentativeId = () => `representative-${++representativeIdSeq}`;
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -47,11 +51,26 @@ interface BeneficialOwner {
   countryIso: string;
   sharePercent: string; // String für freie Eingabe „>25%"
   isPep: boolean | null;
+  idType: 'PERSONALAUSWEIS' | 'REISEPASS';
   idNumber: string;
   idIssuedBy: string;
   idIssueDate: string; // YYYY-MM-DD
   idExpiryDate: string; // YYYY-MM-DD
   // Hochgeladene Ausweis-Bilder (server-seitige documentId)
+  idFront: { documentId: string; fileName: string } | null;
+  idBack: { documentId: string; fileName: string } | null;
+}
+
+interface Representative {
+  id: string;
+  fullName: string;
+  // undefined = noch keine bewusste Entscheidung, null = separate Person.
+  linkedOwnerId: string | null | undefined;
+  idType: 'PERSONALAUSWEIS' | 'REISEPASS';
+  idNumber: string;
+  idIssuedBy: string;
+  idIssueDate: string;
+  idExpiryDate: string;
   idFront: { documentId: string; fileName: string } | null;
   idBack: { documentId: string; fileName: string } | null;
 }
@@ -94,22 +113,27 @@ export function OnboardingWizard({
   token,
   inviteName,
   client,
+  initialDraft,
   noticeBody,
   noticeVersion,
   consentOptions,
+  consentDisplayRevision,
 }: {
   token: string;
   inviteName: string;
   client: ClientShape;
+  initialDraft: LoadedInviteDraft | null;
   /** Gerenderte Datenschutzhinweise (Teil A) — kanzleispezifisch. */
   noticeBody: string;
   noticeVersion: number;
   consentOptions: ResolvedConsentOption[];
+  /** SHA-256-Bindung an exakt den gerenderten Hinweis und Optionskatalog. */
+  consentDisplayRevision: string;
 }) {
   const [step, setStep] = useState(0);
 
   // Datenschutz-Einwilligungen (Teil B) + Bestätigung + Unterschrift.
-  const [consent, setConsent] = useState<ConsentSelections>(emptyConsent());
+  const [consent, setConsent] = useState<ConsentSelections>(() => consentForNewDeclaration());
   const [noticeAck, setNoticeAck] = useState(false);
   const [signedByName, setSignedByName] = useState(inviteName);
 
@@ -122,16 +146,29 @@ export function OnboardingWizard({
   const [vatId, setVatId] = useState(client.vatId ?? '');
 
   // Wirtschaftlich Berechtigte
-  const [owners, setOwners] = useState<BeneficialOwner[]>([emptyOwner(inviteName)]);
+  const [owners, setOwners] = useState<BeneficialOwner[]>(() =>
+    initialDraft?.owners.length
+      ? initialDraft.owners.map((owner) => ({ ...owner }))
+      : [emptyOwner(inviteName)],
+  );
+  const [representatives, setRepresentatives] = useState<Representative[]>(() =>
+    initialDraft
+      ? initialDraft.representatives.map((representative) => ({ ...representative }))
+      : client.kind === 'NATPERS'
+        ? []
+        : [emptyRepresentative(inviteName)],
+  );
 
   // Sonstige Dokumente
   const [extraDocs, setExtraDocs] = useState<
     Array<{ documentId: string; fileName: string; type: EntityEvidenceType }>
-  >([]);
+  >(() => initialDraft?.extraDocuments.map((document) => ({ ...document })) ?? []);
   const [extraType, setExtraType] = useState<EntityEvidenceType>(
     client.kind === 'NATPERS' ? 'SONSTIGES' : 'GESELLSCHAFTSVERTRAG',
   );
-  const [noRegisterEntry, setNoRegisterEntry] = useState<boolean | null>(null);
+  const [noRegisterEntry, setNoRegisterEntry] = useState<boolean | null>(
+    initialDraft?.noRegisterEntry ?? null,
+  );
   const [extraUploadError, setExtraUploadError] = useState<string | null>(null);
 
   // Ausweis-Upload-Fehler je Owner+Seite (Key: `${ownerId}:${side}`).
@@ -152,7 +189,30 @@ export function OnboardingWizard({
     setOwners((s) => [...s, emptyOwner('')]);
   }
   function removeOwner(i: number) {
-    setOwners((s) => s.filter((_, idx) => idx !== i));
+    setOwners((current) => {
+      const removedId = current[i]?.id;
+      if (removedId) {
+        setRepresentatives((entries) =>
+          entries.map((entry) =>
+            entry.linkedOwnerId === removedId ? { ...entry, linkedOwnerId: undefined } : entry,
+          ),
+        );
+      }
+      return current.filter((_, idx) => idx !== i);
+    });
+  }
+  function patchRepresentative(i: number, patch: Partial<Representative>) {
+    setRepresentatives((current) =>
+      current.map((representative, index) =>
+        index === i ? { ...representative, ...patch } : representative,
+      ),
+    );
+  }
+  function addRepresentative() {
+    setRepresentatives((current) => [...current, emptyRepresentative('')]);
+  }
+  function removeRepresentative(i: number) {
+    setRepresentatives((current) => current.filter((_, index) => index !== i));
   }
 
   async function handleIdUpload(ownerId: string, side: 'front' | 'back', file: File) {
@@ -190,6 +250,51 @@ export function OnboardingWizard({
     } catch {
       setIdError(
         ownerId,
+        side,
+        'Upload fehlgeschlagen — bitte Verbindung prüfen und erneut versuchen.',
+      );
+    }
+  }
+
+  async function handleRepresentativeIdUpload(
+    representativeId: string,
+    side: 'front' | 'back',
+    file: File,
+  ) {
+    setIdError(representativeId, side, null);
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setIdError(representativeId, side, `Datei zu groß (max. ${MAX_UPLOAD_LABEL}).`);
+      return;
+    }
+    try {
+      const base64 = await fileToBase64(file);
+      const result = await uploadIdImageAction({
+        token,
+        fileName: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        base64,
+        kind: 'ID_DOCUMENT',
+      });
+      if (!result.ok) {
+        setIdError(representativeId, side, `Upload fehlgeschlagen: ${result.error ?? 'unbekannt'}`);
+        return;
+      }
+      setRepresentatives((current) =>
+        current.map((representative) =>
+          representative.id === representativeId
+            ? {
+                ...representative,
+                [side === 'front' ? 'idFront' : 'idBack']: {
+                  documentId: result.documentId!,
+                  fileName: file.name,
+                },
+              }
+            : representative,
+        ),
+      );
+    } catch {
+      setIdError(
+        representativeId,
         side,
         'Upload fehlgeschlagen — bitte Verbindung prüfen und erneut versuchen.',
       );
@@ -252,6 +357,38 @@ export function OnboardingWizard({
           return `Person ${i + 1}: Bitte den PEP-Status ausdrücklich angeben.`;
         }
       }
+      if (client.kind !== 'NATPERS') {
+        if (representatives.length === 0) {
+          return 'Mindestens eine vertretungsberechtigte Person ist erforderlich.';
+        }
+        const linkedOwnerIds = new Set<string>();
+        for (const [index, representative] of representatives.entries()) {
+          const label = `Vertretung ${index + 1}`;
+          if (representative.linkedOwnerId === undefined) {
+            return `${label}: Bitte entscheiden Sie ausdrücklich, ob dieselbe Person bereits wirtschaftlich berechtigt ist.`;
+          }
+          if (representative.linkedOwnerId) {
+            if (!owners.some((owner) => owner.id === representative.linkedOwnerId)) {
+              return `${label}: Die verknüpfte Person ist nicht mehr vorhanden.`;
+            }
+            if (linkedOwnerIds.has(representative.linkedOwnerId)) {
+              return `${label}: Dieselbe Doppelrolle wurde bereits erfasst.`;
+            }
+            linkedOwnerIds.add(representative.linkedOwnerId);
+            continue;
+          }
+          if (!representative.fullName.trim()) return `${label}: Vollständiger Name fehlt.`;
+          if (!representative.idFront) return `${label}: Ausweis Vorderseite fehlt.`;
+          if (!representative.idBack) return `${label}: Ausweis Rückseite fehlt.`;
+          if (!representative.idNumber.trim()) return `${label}: Ausweisnummer fehlt.`;
+          if (!representative.idIssuedBy.trim()) {
+            return `${label}: Ausstellende Behörde fehlt.`;
+          }
+          if (!representative.idExpiryDate) {
+            return `${label}: Gültigkeitsdatum des Ausweises fehlt.`;
+          }
+        }
+      }
     }
     if (STEPS[step]?.key === 'documents' && client.kind !== 'NATPERS') {
       if (noRegisterEntry === null) {
@@ -283,6 +420,12 @@ export function OnboardingWizard({
       if (!noticeAck)
         return 'Bitte bestätigen Sie, dass Sie die Datenschutzhinweise zur Kenntnis genommen haben.';
       if (!signedByName.trim()) return 'Bitte geben Sie den Namen der erklärenden Person an.';
+      const missingRequired = missingRequiredConsentOptions(consent, consentOptions);
+      if (missingRequired.length > 0) {
+        return `Bitte bestätigen Sie die folgenden Pflichtoptionen: ${missingRequired
+          .map((option) => option.label)
+          .join(', ')}.`;
+      }
     }
     return null;
   }
@@ -312,6 +455,7 @@ export function OnboardingWizard({
         master: { companyName, street, postalCode, city, countryIso, vatId },
         legalEntity: client.kind === 'NATPERS' ? null : { noRegisterEntry: noRegisterEntry! },
         owners: owners.map((o) => ({
+          localId: o.id,
           fullName: o.fullName,
           birthDate: o.birthDate,
           birthPlace: o.birthPlace,
@@ -322,12 +466,27 @@ export function OnboardingWizard({
           countryIso: o.countryIso,
           sharePercent: o.sharePercent,
           isPep: o.isPep!,
+          idType: o.idType,
           idNumber: o.idNumber,
           idIssuedBy: o.idIssuedBy,
           idIssueDate: o.idIssueDate,
           idExpiryDate: o.idExpiryDate,
           idFrontDocumentId: o.idFront!.documentId,
           idBackDocumentId: o.idBack!.documentId,
+        })),
+        representatives: representatives.map((representative) => ({
+          localId: representative.id,
+          fullName: representative.linkedOwnerId
+            ? (owners.find((owner) => owner.id === representative.linkedOwnerId)?.fullName ?? '')
+            : representative.fullName,
+          linkedOwnerLocalId: representative.linkedOwnerId ?? null,
+          idType: representative.idType,
+          idNumber: representative.idNumber,
+          idIssuedBy: representative.idIssuedBy,
+          idIssueDate: representative.idIssueDate,
+          idExpiryDate: representative.idExpiryDate,
+          idFrontDocumentId: representative.idFront?.documentId ?? null,
+          idBackDocumentId: representative.idBack?.documentId ?? null,
         })),
         extraDocuments: extraDocs.map((document) => ({
           documentId: document.documentId,
@@ -337,6 +496,7 @@ export function OnboardingWizard({
           noticeAcknowledged: true as const,
           signedByName,
           selections: consent,
+          displayRevision: consentDisplayRevision,
         },
       });
       if (!r.ok) {
@@ -443,6 +603,36 @@ export function OnboardingWizard({
           <button type="button" onClick={addOwner} className="btn-secondary">
             <Plus className="h-4 w-4" /> Weitere Person hinzufügen
           </button>
+          {client.kind !== 'NATPERS' && (
+            <div className="space-y-4 pt-4">
+              <div className="card p-6">
+                <h2 className="text-lg font-semibold text-primary">Gesetzliche Vertretung</h2>
+                <p className="text-sm text-muted mt-1">
+                  Erfassen Sie alle vertretungsberechtigten Personen. Ist eine Person bereits oben
+                  wirtschaftlich berechtigt, verknüpfen Sie beide Rollen ausdrücklich. Name und
+                  Ausweis werden dann nur einmal erfasst.
+                </p>
+              </div>
+              {representatives.map((representative, index) => (
+                <RepresentativeCard
+                  key={representative.id}
+                  index={index}
+                  representative={representative}
+                  owners={owners}
+                  onPatch={(patch) => patchRepresentative(index, patch)}
+                  onRemove={representatives.length > 1 ? () => removeRepresentative(index) : null}
+                  onUpload={(side, file) => {
+                    void handleRepresentativeIdUpload(representative.id, side, file);
+                  }}
+                  frontError={idUploadErrors[`${representative.id}:front`] ?? null}
+                  backError={idUploadErrors[`${representative.id}:back`] ?? null}
+                />
+              ))}
+              <button type="button" onClick={addRepresentative} className="btn-secondary">
+                <Plus className="h-4 w-4" /> Weitere Vertretung hinzufügen
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -562,8 +752,7 @@ export function OnboardingWizard({
             <h2 className="text-lg font-semibold text-primary">Datenschutzhinweise</h2>
             <p className="text-xs text-muted mt-1">
               Bitte lesen Sie die Hinweise Ihrer Kanzlei (Fassung {noticeVersion}). Die zur
-              Mandatsbearbeitung nötige Verarbeitung ist auch ohne Einwilligung zulässig; die
-              folgenden Einwilligungen sind freiwillig.
+              Mandatsbearbeitung nötige Verarbeitung ist auch ohne Einwilligung zulässig.
             </p>
           </div>
           <div className="max-h-72 overflow-y-auto rounded-md border border-default bg-surface-raised p-4">
@@ -571,11 +760,18 @@ export function OnboardingWizard({
           </div>
 
           <div>
-            <h3 className="text-sm font-semibold text-primary mb-1">Freiwillige Einwilligungen</h3>
+            <h3 className="text-sm font-semibold text-primary mb-1">Datenschutz-Auswahl</h3>
             <p className="text-xs text-muted mb-3">
-              Nur ankreuzen, was Sie wünschen. Nichts anzukreuzen ist möglich.
+              Treffen Sie jede Auswahl aktiv. Empfehlungen der Kanzlei bleiben bewusst ungekreuzt.
+              Als Pflichtfeld gekennzeichnete rechtlich notwendige Bestätigungen sind für den
+              Abschluss erforderlich; alle übrigen Optionen können Sie frei wählen.
             </p>
-            <ConsentFields options={consentOptions} onChange={setConsent} mode="catalog-only" />
+            <ConsentFields
+              initial={consent}
+              options={consentOptions}
+              onChange={setConsent}
+              mode="catalog-only"
+            />
           </div>
 
           <div className="border-t border-default pt-4 space-y-3">
@@ -587,9 +783,9 @@ export function OnboardingWizard({
                 className="mt-0.5 rounded border-strong text-brand-600"
               />
               <span className="text-secondary">
-                Ich habe die Datenschutzhinweise zur Kenntnis genommen. Die vorstehenden
-                Einwilligungen erteile ich freiwillig; nicht angekreuzte Optionen gelten als nicht
-                erteilt.
+                Ich habe die Datenschutzhinweise zur Kenntnis genommen. Die einzelnen Auswahlfelder
+                habe ich aktiv bestätigt; nicht angekreuzte Optionen gelten als nicht erteilt
+                beziehungsweise nicht bestätigt.
               </span>
             </label>
             <div>
@@ -618,6 +814,12 @@ export function OnboardingWizard({
               label="Wirtschaftlich Berechtigte"
               value={`${owners.length} Person${owners.length === 1 ? '' : 'en'}`}
             />
+            {client.kind !== 'NATPERS' && (
+              <SummaryRow
+                label="Gesetzliche Vertretung"
+                value={`${representatives.length} Person${representatives.length === 1 ? '' : 'en'}, davon ${representatives.filter((representative) => representative.linkedOwnerId).length} Doppelrolle${representatives.filter((representative) => representative.linkedOwnerId).length === 1 ? '' : 'n'}`}
+              />
+            )}
             <SummaryRow
               label="Ausweisangaben"
               value={`${owners.filter((o) => o.idNumber || o.idExpiryDate).length} erfasst`}
@@ -688,6 +890,22 @@ function emptyOwner(name: string): BeneficialOwner {
     countryIso: 'DE',
     sharePercent: '',
     isPep: null,
+    idType: 'PERSONALAUSWEIS',
+    idNumber: '',
+    idIssuedBy: '',
+    idIssueDate: '',
+    idExpiryDate: '',
+    idFront: null,
+    idBack: null,
+  };
+}
+
+function emptyRepresentative(name: string): Representative {
+  return {
+    id: nextRepresentativeId(),
+    fullName: name,
+    linkedOwnerId: undefined,
+    idType: 'PERSONALAUSWEIS',
     idNumber: '',
     idIssuedBy: '',
     idIssueDate: '',
@@ -839,7 +1057,7 @@ function OwnerCard({
         <Field label="Ort" value={owner.city} onChange={(v) => onPatch({ city: v })} />
       </div>
 
-      <div className="rounded-md border border-default bg-gray-50 p-4 space-y-3">
+      <div className="rounded-md border border-default bg-subtle p-4 space-y-3">
         <div>
           <h4 className="text-sm font-medium text-primary">Ausweisdaten</h4>
           <p className="text-xs text-muted mt-0.5">
@@ -888,6 +1106,149 @@ function OwnerCard({
           error={backError}
         />
       </div>
+    </div>
+  );
+}
+
+function RepresentativeCard({
+  index,
+  representative,
+  owners,
+  onPatch,
+  onRemove,
+  onUpload,
+  frontError,
+  backError,
+}: {
+  index: number;
+  representative: Representative;
+  owners: BeneficialOwner[];
+  onPatch: (patch: Partial<Representative>) => void;
+  onRemove: (() => void) | null;
+  onUpload: (side: 'front' | 'back', file: File) => void;
+  frontError: string | null;
+  backError: string | null;
+}) {
+  const linkedOwner = representative.linkedOwnerId
+    ? owners.find((owner) => owner.id === representative.linkedOwnerId)
+    : null;
+
+  return (
+    <div className="card p-6 space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold text-primary">Vertretung {index + 1}</h3>
+        {onRemove && (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="text-disabled hover:text-red-700 text-xs inline-flex items-center gap-1"
+          >
+            <Trash2 className="h-3 w-3" /> entfernen
+          </button>
+        )}
+      </div>
+
+      <div>
+        <label className="label" htmlFor={`representative-${representative.id}-identity`}>
+          Ist diese Person bereits wirtschaftlich berechtigt?
+        </label>
+        <select
+          id={`representative-${representative.id}-identity`}
+          className="input"
+          value={
+            representative.linkedOwnerId === undefined
+              ? ''
+              : representative.linkedOwnerId === null
+                ? 'SEPARATE'
+                : representative.linkedOwnerId
+          }
+          onChange={(event) => {
+            const linkedOwnerId =
+              event.target.value === 'SEPARATE' ? null : event.target.value || undefined;
+            const owner = owners.find((entry) => entry.id === linkedOwnerId);
+            onPatch({ linkedOwnerId, ...(owner ? { fullName: owner.fullName } : {}) });
+          }}
+        >
+          <option value="" disabled>
+            — bitte ausdrücklich auswählen —
+          </option>
+          <option value="SEPARATE">Nein – eigenständige Person erfassen</option>
+          {owners.map((owner, ownerIndex) => (
+            <option key={owner.id} value={owner.id}>
+              Ja – {owner.fullName || `Person ${ownerIndex + 1}`} (dieselbe Person)
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {linkedOwner ? (
+        <div className="rounded-md border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-100">
+          <strong>{linkedOwner.fullName}</strong> wird mit beiden Rollen gespeichert. Die bereits
+          hochgeladenen Ausweisseiten werden derselben stabilen Personen-ID zugeordnet und nicht
+          doppelt verlangt.
+        </div>
+      ) : (
+        <>
+          <Field
+            label="Vollständiger Name"
+            value={representative.fullName}
+            onChange={(value) => onPatch({ fullName: value })}
+            required
+          />
+          <div className="rounded-md border border-default bg-subtle p-4 space-y-3">
+            <div>
+              <h4 className="text-sm font-medium text-primary">Ausweisdaten der Vertretung</h4>
+              <p className="text-xs text-muted mt-0.5">
+                Diese Angaben entfallen, wenn Sie oben dieselbe wirtschaftlich berechtigte Person
+                auswählen.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field
+                label="Ausweisnummer"
+                value={representative.idNumber}
+                onChange={(value) => onPatch({ idNumber: value })}
+                required
+              />
+              <Field
+                label="Ausstellende Behörde"
+                value={representative.idIssuedBy}
+                onChange={(value) => onPatch({ idIssuedBy: value })}
+                required
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field
+                label="Ausgestellt am"
+                type="date"
+                value={representative.idIssueDate}
+                onChange={(value) => onPatch({ idIssueDate: value })}
+              />
+              <Field
+                label="Gültig bis"
+                type="date"
+                value={representative.idExpiryDate}
+                onChange={(value) => onPatch({ idExpiryDate: value })}
+                required
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4 pt-2">
+            <IdUploadField
+              label="Personalausweis Vorderseite"
+              file={representative.idFront}
+              onUpload={(file) => onUpload('front', file)}
+              error={frontError}
+            />
+            <IdUploadField
+              label="Personalausweis Rückseite"
+              file={representative.idBack}
+              onUpload={(file) => onUpload('back', file)}
+              error={backError}
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 }
