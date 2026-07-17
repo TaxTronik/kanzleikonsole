@@ -349,9 +349,12 @@ Assistent erzeugt dafür:
 
 Für n8ns einfaches **„Header Auth“-Credential** (kann nur einen Header senden)
 zeigt das ACP zusätzlich einen fertigen Ein-Header-Wert an: Name
-`Authorization`, Wert `Bearer <Key-ID>.<Token>`. Die Key-ID ist dabei im Token
-eingebettet; ein separater `x-taxtronik-key-id`-Header ist dann nicht nötig.
-Wird der Key-ID-Header dennoch gesetzt, hat er Vorrang.
+`Authorization`, Wert `Bearer <Key-ID>.<Token>` (das `Bearer `-Präfix darf
+auch entfallen). Die Key-ID ist dabei im Token eingebettet; ein separater
+`x-taxtronik-key-id`-Header ist dann nicht nötig. Senden Workflows den
+Key-ID-Header zusätzlich (wie die mitgelieferten Vorlagen), muss er zur
+eingebetteten Key-ID passen — eine abweichende Header-Key-ID gewinnt und
+führt zu `401`.
 
 Die Basis-URL selbst dient als Verbindungstest: Ein `GET` darauf antwortet
 mit gültigem Credential (Ein-Header-Wert oder Bearer-Token + Key-ID, ohne

@@ -166,6 +166,35 @@ describe('authenticateN8nCallback', () => {
     });
   });
 
+  it('akzeptiert die Single-Header-Form auch ohne "Bearer "-Praefix', async () => {
+    const req = new NextRequest('http://localhost/api/integrations/n8n/v1/overdue-requests', {
+      headers: {
+        authorization: `${KEY_ID}.${TOKEN}`,
+        'x-taxtronik-request-id': 'n8n-execution-42',
+      },
+    });
+
+    expect(await authenticateN8nCallback(req, 'requests:read')).toMatchObject({
+      ok: true,
+      connectionId: CONNECTION_ID,
+    });
+  });
+
+  it('akzeptiert den kombinierten Wert auch, wenn der passende Key-ID-Header zusaetzlich gesetzt ist', async () => {
+    // Die mitgelieferten Workflow-Vorlagen senden x-taxtronik-key-id immer mit —
+    // das Single-Header-Credential muss trotzdem funktionieren.
+    const req = request({ authorization: `Bearer ${KEY_ID}.${TOKEN}` });
+
+    expect(await authenticateN8nCallback(req, 'requests:read')).toMatchObject({
+      ok: true,
+      connectionId: CONNECTION_ID,
+      tenantId: TENANT_ID,
+    });
+    expect(findUniqueMock).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { callbackKeyId: KEY_ID } }),
+    );
+  });
+
   it('laesst einen explizit gesetzten Key-ID-Header Vorrang vor der eingebetteten Key-ID', async () => {
     // Ein gesetzter (aber anderer) Key-ID-Header darf nicht still durch die im
     // Token eingebettete UUID ersetzt werden.
