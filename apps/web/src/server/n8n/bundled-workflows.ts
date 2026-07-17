@@ -7,6 +7,21 @@ import gwgExpiryCheck from '../../../../../infra/n8n/workflows/02-gwg-expiry-che
 import requestOpened from '../../../../../infra/n8n/workflows/03-request-opened.json';
 import riskResearch from '../../../../../infra/n8n/workflows/04-risk-research.json';
 
+/**
+ * Strukturierte Credential-Anforderung einer Vorlage. Wird im ACP pro
+ * Template-Karte angezeigt, damit klar ist, WELCHES der ähnlich benannten
+ * Secrets (Outbound-HMAC ≠ Rückkanal-Token ≠ API-Key ≠ N8N_ENCRYPTION_KEY)
+ * wohin gehört und woher der Wert kommt.
+ */
+export interface BundledN8nCredential {
+  /** Sprechender Name inkl. Richtung, z. B. "Outbound-Signatur (TaxTronik → n8n)". */
+  name: string;
+  /** Credential-Typ, der in n8n anzulegen ist. */
+  n8nType: string;
+  /** Wo der Admin den Wert herbekommt. */
+  source: string;
+}
+
 export interface BundledN8nWorkflow {
   templateId: string;
   version: number;
@@ -14,9 +29,32 @@ export interface BundledN8nWorkflow {
   description: string;
   events: string[];
   callbackScopes: string[];
+  /** In n8n manuell anzulegende/zuzuordnende Credentials. */
+  credentials: BundledN8nCredential[];
+  /** Verbleibende manuelle Schritte nach dem Import. */
   prerequisites: string[];
   workflow: Record<string, unknown>;
 }
+
+const HMAC_CREDENTIAL: BundledN8nCredential = {
+  name: 'Outbound-Signatur (TaxTronik → n8n)',
+  n8nType: 'Crypto-Credential (HMAC-SHA256)',
+  source:
+    'ACP Abschnitt 1, Feld „Outbound-Signatur-Secret“ — beim Generieren/Eingeben direkt kopieren, wird danach nicht erneut angezeigt.',
+};
+
+const CALLBACK_CREDENTIAL: BundledN8nCredential = {
+  name: 'Rückkanal-Token (n8n → TaxTronik)',
+  n8nType: 'Header-Auth-Credential (Authorization: Bearer …)',
+  source:
+    'ACP Abschnitt 2 „Callback-Token erzeugen“ — einmalige Anzeige, Key-ID wird beim Import automatisch eingesetzt.',
+};
+
+const SMTP_CREDENTIAL: BundledN8nCredential = {
+  name: 'Mailversand',
+  n8nType: 'SMTP-Credential',
+  source: 'Eigener Mailserver (kann identisch zu den TaxTronik-SMTP-Daten sein).',
+};
 
 export interface BundledN8nWorkflowValues {
   taxtronikApiUrl: string;
@@ -44,10 +82,8 @@ export const BUNDLED_N8N_WORKFLOWS: readonly BundledN8nWorkflow[] = [
     description: 'Nebenwirkungsfreier Webhook für Einrichtung und Zustelltest.',
     events: ['taxtronik.ping'],
     callbackScopes: [],
-    prerequisites: [
-      'TaxTronik HMAC-Credential in n8n zuordnen',
-      'Workflow prüfen und veröffentlichen',
-    ],
+    credentials: [HMAC_CREDENTIAL],
+    prerequisites: ['Workflow prüfen und veröffentlichen'],
     workflow: workflow(connectionTest),
   },
   {
@@ -57,7 +93,8 @@ export const BUNDLED_N8N_WORKFLOWS: readonly BundledN8nWorkflow[] = [
     description: 'Ruft fällige Mandantenanfragen ab und stößt eine Erinnerung an.',
     events: [],
     callbackScopes: ['requests:read'],
-    prerequisites: ['TaxTronik Callback-Credential zuordnen', 'Mail-Credential prüfen'],
+    credentials: [CALLBACK_CREDENTIAL, SMTP_CREDENTIAL],
+    prerequisites: ['Workflow prüfen und veröffentlichen'],
     workflow: workflow(requestReminder),
   },
   {
@@ -67,7 +104,8 @@ export const BUNDLED_N8N_WORKFLOWS: readonly BundledN8nWorkflow[] = [
     description: 'Prüft tenantgebunden ablaufende GwG-Identifizierungen.',
     events: [],
     callbackScopes: ['gwg:read'],
-    prerequisites: ['TaxTronik Callback-Credential zuordnen', 'Mail-Credential prüfen'],
+    credentials: [CALLBACK_CREDENTIAL, SMTP_CREDENTIAL],
+    prerequisites: ['Workflow prüfen und veröffentlichen'],
     workflow: workflow(gwgExpiryCheck),
   },
   {
@@ -77,10 +115,8 @@ export const BUNDLED_N8N_WORKFLOWS: readonly BundledN8nWorkflow[] = [
     description: 'Beispiel für einen signierten TaxTronik-Event-Webhook.',
     events: ['request.opened'],
     callbackScopes: [],
-    prerequisites: [
-      'TaxTronik HMAC-Credential in n8n zuordnen',
-      'Workflow prüfen und veröffentlichen',
-    ],
+    credentials: [HMAC_CREDENTIAL],
+    prerequisites: ['Workflow prüfen und veröffentlichen'],
     workflow: workflow(requestOpened),
   },
   {
@@ -90,9 +126,9 @@ export const BUNDLED_N8N_WORKFLOWS: readonly BundledN8nWorkflow[] = [
     description: 'Bewusst inaktive Vorlage für eine individuell geprüfte Research-Anbindung.',
     events: ['risk.research_requested'],
     callbackScopes: ['research:write'],
+    credentials: [HMAC_CREDENTIAL, CALLBACK_CREDENTIAL],
     prerequisites: [
       'Research-Anbieter und Datenschutzprüfung ergänzen',
-      'TaxTronik HMAC- und Callback-Credentials zuordnen',
       'Erst nach fachlicher Prüfung veröffentlichen',
     ],
     workflow: workflow(riskResearch),

@@ -78,6 +78,7 @@ interface BundledWorkflowSummary {
   description: string;
   events: string[];
   callbackScopes: string[];
+  credentials: Array<{ name: string; n8nType: string; source: string }>;
   prerequisites: string[];
 }
 
@@ -189,8 +190,12 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
   const verifiedActiveRoutes = status.endpoints.filter(
     (endpoint) => endpoint.enabled && endpoint.verificationOk === true,
   ).length;
+  // Instanzwechsel nur, wenn tatsächlich eine API-URL gespeichert ist: mit
+  // leerer gespeicherter URL (urlOrigin('') === '') zählte früher JEDE Eingabe
+  // als Wechsel — Key-Eingabe und Test waren dann dauerhaft gesperrt.
+  const initialApiOrigin = urlOrigin(initial.apiBaseUrl);
   const apiInstanceChanged = Boolean(
-    initial.hasApiKey && urlOrigin(apiBaseUrl) !== urlOrigin(initial.apiBaseUrl),
+    initial.hasApiKey && initialApiOrigin !== '' && urlOrigin(apiBaseUrl) !== initialApiOrigin,
   );
   const setupSteps = [
     { label: 'Verbindung', done: Boolean(initial.connectionId) },
@@ -545,15 +550,15 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
         </div>
 
         <form action={saveAction} className="rounded-lg border border-default p-4 space-y-4">
-          <input type="hidden" name="name" value={name} />
-          <input type="hidden" name="kind" value={kind} />
+          {/* Text-/URL-/Secret-Felder tragen ihr name-Attribut DIREKT am
+              sichtbaren Input (kein Hidden-Mirror): ein Submit vor bzw. ohne
+              Hydration postete sonst die server-gerenderten Alt-Werte statt
+              der Eingaben — "gespeichert", aber die getippten URLs waren weg
+              und vorhandene Werte wurden genullt. Hidden bleiben nur die
+              Zustände, die ausschließlich über hydrierte Custom-Controls
+              änderbar sind (Routing-Modus, Keep-Flags) — deren SSR-Werte
+              entsprechen dem gespeicherten Stand und sind damit safe. */}
           <input type="hidden" name="routingMode" value={routingMode} />
-          <input type="hidden" name="uiBaseUrl" value={uiBaseUrl} />
-          <input type="hidden" name="callbackBaseUrl" value={callbackBaseUrl} />
-          <input type="hidden" name="webhookBaseUrl" value={webhookBaseUrl} />
-          <input type="hidden" name="apiBaseUrl" value={apiBaseUrl} />
-          <input type="hidden" name="apiKey" value={apiKey} />
-          <input type="hidden" name="hmacSecret" value={hmacSecret} />
           {enabled && routingMode !== 'DISABLED' && (
             <input type="hidden" name="enabled" value="on" />
           )}
@@ -565,6 +570,7 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
               <span className="label">Bezeichnung</span>
               <input
                 className="input"
+                name="name"
                 value={name}
                 onChange={(event) =>
                   dispatchConnection({ type: 'patch', value: { name: event.target.value } })
@@ -575,6 +581,7 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
               <span className="label">Betriebsart</span>
               <select
                 className="input"
+                name="kind"
                 value={kind}
                 onChange={(event) =>
                   dispatchConnection({
@@ -635,6 +642,7 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
               <input
                 className="input"
                 type="url"
+                name="uiBaseUrl"
                 value={uiBaseUrl}
                 onChange={(event) =>
                   dispatchConnection({ type: 'patch', value: { uiBaseUrl: event.target.value } })
@@ -650,16 +658,23 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
               <input
                 className="input"
                 type="url"
+                name="apiBaseUrl"
                 value={apiBaseUrl}
                 onChange={(event) => {
                   const next = event.target.value;
+                  // Nur ein ECHTER Origin-Wechsel gegenüber einer gespeicherten
+                  // API-URL erzwingt einen neuen Key. Ist keine URL gespeichert
+                  // (urlOrigin('') === ''), zählt die Eingabe nicht als
+                  // Instanzwechsel — sonst war der Key nach jedem Speicherfehler
+                  // dauerhaft gesperrt.
+                  const initialOrigin = urlOrigin(initial.apiBaseUrl);
                   const changedInstance =
-                    initial.hasApiKey && urlOrigin(next) !== urlOrigin(initial.apiBaseUrl);
+                    initial.hasApiKey && initialOrigin !== '' && urlOrigin(next) !== initialOrigin;
                   dispatchConnection({
                     type: 'patch',
                     value: changedInstance
                       ? { apiBaseUrl: next, keepApiKey: false }
-                      : { apiBaseUrl: next },
+                      : { apiBaseUrl: next, keepApiKey: initial.hasApiKey && !apiKey },
                   });
                 }}
                 placeholder="https://n8n.example.de/api/v1"
@@ -673,6 +688,7 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
               <input
                 className="input"
                 type="url"
+                name="webhookBaseUrl"
                 value={webhookBaseUrl}
                 onChange={(event) =>
                   dispatchConnection({
@@ -692,6 +708,7 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
               <input
                 className="input"
                 type="url"
+                name="callbackBaseUrl"
                 value={callbackBaseUrl}
                 onChange={(event) =>
                   dispatchConnection({
@@ -707,16 +724,22 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
               </span>
             </label>
             <label className="block">
-              <span className="label">n8n-API-Key</span>
+              <span className="label">n8n-API-Key (nur für Import/Erkennung)</span>
               <input
                 className="input"
                 type="password"
+                name="apiKey"
                 value={apiKey}
                 onChange={(event) => {
                   const next = event.target.value;
+                  // Feld geleert + Key gespeichert + Instanz unverändert →
+                  // automatisch zurück auf "gespeicherten Key behalten" statt
+                  // den Key beim nächsten Speichern stillschweigend zu leeren.
                   dispatchConnection({
                     type: 'patch',
-                    value: next ? { apiKey: next, keepApiKey: false } : { apiKey: next },
+                    value: next
+                      ? { apiKey: next, keepApiKey: false }
+                      : { apiKey: '', keepApiKey: initial.hasApiKey && !apiInstanceChanged },
                   });
                 }}
                 placeholder={
@@ -740,7 +763,9 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
               )}
               {apiInstanceChanged && !apiKey && (
                 <span className="mt-1 block text-xs text-amber-700 dark:text-amber-300">
-                  Für die geänderte API-Instanz muss ein neuer Key eingegeben werden.
+                  Die Public-API-Adresse zeigt auf eine andere n8n-Instanz — bitte den API-Key
+                  dieser Instanz eingeben. Der gespeicherte Key wird aus Sicherheitsgründen nicht an
+                  einen fremden Host gesendet.
                 </span>
               )}
             </label>
@@ -749,10 +774,11 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
           <div className="rounded-md border border-default bg-surface-raised p-3">
             <div className="flex items-end gap-2">
               <label className="block flex-1">
-                <span className="label">Outbound-Signatur-Secret (TaxTronik → n8n)</span>
+                <span className="label">Outbound-Signatur-Secret (TaxTronik → n8n, HMAC)</span>
                 <input
                   className="input"
                   type="password"
+                  name="hmacSecret"
                   value={hmacSecret}
                   onChange={(event) => {
                     const next = event.target.value;
@@ -972,6 +998,25 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
                     v{workflow.version}
                   </span>
                 </div>
+                {workflow.credentials.length > 0 && (
+                  <div className="mt-2 space-y-1.5">
+                    <p className="text-[11px] font-medium text-secondary">
+                      In n8n anzulegende Credentials:
+                    </p>
+                    {workflow.credentials.map((credential) => (
+                      <div
+                        key={credential.name}
+                        className="rounded border border-default bg-surface px-2 py-1.5 text-[11px]"
+                      >
+                        <p className="font-medium text-primary">
+                          {credential.name}{' '}
+                          <span className="font-normal text-muted">— {credential.n8nType}</span>
+                        </p>
+                        <p className="mt-0.5 text-muted">{credential.source}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <ul className="mt-2 list-disc pl-4 text-[11px] text-muted">
                   {workflow.prerequisites.map((item) => (
                     <li key={item}>{item}</li>
@@ -980,6 +1025,11 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
               </div>
             ))}
           </div>
+          <p className="text-[11px] text-muted">
+            Hinweis: Der <code>N8N_ENCRYPTION_KEY</code> aus der Server-Konfiguration ist n8n-intern
+            (verschlüsselt dort gespeicherte Credentials) und wird weder hier noch in Workflows
+            eingetragen.
+          </p>
           {(selectedTemplates.includes('taxtronik.request-reminder') ||
             selectedTemplates.includes('taxtronik.gwg-expiry-check')) && (
             <div className="grid gap-4 rounded-md border border-default p-3 md:grid-cols-2">

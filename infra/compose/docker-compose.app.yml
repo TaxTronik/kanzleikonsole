@@ -297,6 +297,10 @@ services:
       N8N_PORT: 5678
       N8N_PROTOCOL: http
       WEBHOOK_URL: ${N8N_WEBHOOK_URL:-http://localhost:5678/}
+      # Hinter Reverse-Proxy: Anzahl vertrauenswürdiger Proxy-Hops, damit n8n
+      # X-Forwarded-* korrekt auswertet (siehe .env.example, Abschnitt
+      # "n8n hinter Reverse-Proxy").
+      N8N_PROXY_HOPS: ${N8N_PROXY_HOPS:-0}
       GENERIC_TIMEZONE: Europe/Berlin
       # Eigene Verschlüsselung der gespeicherten Credentials
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?N8N_ENCRYPTION_KEY nicht gesetzt}

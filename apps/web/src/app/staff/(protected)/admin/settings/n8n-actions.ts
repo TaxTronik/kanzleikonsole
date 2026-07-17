@@ -216,10 +216,19 @@ export async function saveN8nAction(
   if (Boolean(data.apiBaseUrl) !== Boolean(apiKey)) {
     return { ok: false, error: 'n8n-API-URL und API-Key müssen gemeinsam gesetzt werden.' };
   }
-  if (data.keepApiKey && previous.apiKey && !sameUrlOrigin(data.apiBaseUrl, previous.apiBaseUrl)) {
+  // Instanzwechsel-Guard nur bei tatsächlich gespeicherter Vorgänger-URL:
+  // sameUrlOrigin('') ist false, eine leere/genullte Alt-URL blockierte sonst
+  // jede Neueingabe dauerhaft ("Bei Wechsel ... neu eingegeben werden").
+  if (
+    data.keepApiKey &&
+    previous.apiKey &&
+    previous.apiBaseUrl &&
+    !sameUrlOrigin(data.apiBaseUrl, previous.apiBaseUrl)
+  ) {
     return {
       ok: false,
-      error: 'Bei Wechsel der n8n-API-Instanz muss der API-Key neu eingegeben werden.',
+      error:
+        'Die Public-API-Adresse zeigt auf eine andere n8n-Instanz. Bitte den API-Key dieser Instanz eingeben — der gespeicherte Key wird nicht an einen fremden Host gesendet.',
     };
   }
   if (data.routingMode === 'LEGACY' && (!data.webhookBaseUrl || !hmacSecret)) {
@@ -394,11 +403,13 @@ export async function testN8nApiAction(
   if (
     parsed.data.keepApiKey &&
     previous.apiKey &&
+    previous.apiBaseUrl &&
     !sameUrlOrigin(parsed.data.apiBaseUrl, previous.apiBaseUrl)
   ) {
     return {
       ok: false,
-      error: 'Der gespeicherte API-Key darf nicht an eine andere n8n-Instanz gesendet werden.',
+      error:
+        'Der gespeicherte API-Key wird nicht an eine andere n8n-Instanz gesendet. Bitte den API-Key der neuen Instanz eingeben und erneut testen.',
     };
   }
   const apiKey = parsed.data.keepApiKey ? previous.apiKey : parsed.data.apiKey;
