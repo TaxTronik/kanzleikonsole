@@ -135,6 +135,72 @@ describe('authenticateN8nCallback', () => {
     });
   });
 
+  it('akzeptiert die Single-Header-Form "Bearer <keyId>.<token>" ohne Key-ID-Header', async () => {
+    const req = new NextRequest('http://localhost/api/integrations/n8n/v1/overdue-requests', {
+      headers: {
+        authorization: `Bearer ${KEY_ID}.${TOKEN}`,
+        'x-taxtronik-request-id': 'n8n-execution-42',
+      },
+    });
+
+    const result = await authenticateN8nCallback(req, 'requests:read');
+
+    expect(result).toMatchObject({ ok: true, connectionId: CONNECTION_ID, tenantId: TENANT_ID });
+    expect(findUniqueMock).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { callbackKeyId: KEY_ID } }),
+    );
+  });
+
+  it('weist die Single-Header-Form mit falschem Token zurueck', async () => {
+    const req = new NextRequest('http://localhost/api/integrations/n8n/v1/overdue-requests', {
+      headers: {
+        authorization: `Bearer ${KEY_ID}.${'x'.repeat(40)}`,
+        'x-taxtronik-request-id': 'n8n-execution-42',
+      },
+    });
+
+    expect(await authenticateN8nCallback(req, 'requests:read')).toMatchObject({
+      ok: false,
+      status: 401,
+      error: 'unauthorized',
+    });
+  });
+
+  it('laesst einen explizit gesetzten Key-ID-Header Vorrang vor der eingebetteten Key-ID', async () => {
+    // Ein gesetzter (aber anderer) Key-ID-Header darf nicht still durch die im
+    // Token eingebettete UUID ersetzt werden.
+    const otherKeyId = randomUUID();
+    findUniqueMock.mockResolvedValue(null);
+    const req = request({
+      authorization: `Bearer ${KEY_ID}.${TOKEN}`,
+      'x-taxtronik-key-id': otherKeyId,
+    });
+
+    expect(await authenticateN8nCallback(req, 'requests:read')).toMatchObject({
+      ok: false,
+      status: 401,
+    });
+    expect(findUniqueMock).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { callbackKeyId: otherKeyId } }),
+    );
+  });
+
+  it('weist ein Bearer-Token ohne Key-ID (weder Header noch eingebettet) zurueck', async () => {
+    const req = new NextRequest('http://localhost/api/integrations/n8n/v1/overdue-requests', {
+      headers: {
+        authorization: `Bearer ${TOKEN}`,
+        'x-taxtronik-request-id': 'n8n-execution-42',
+      },
+    });
+
+    expect(await authenticateN8nCallback(req, 'requests:read')).toMatchObject({
+      ok: false,
+      status: 401,
+      error: 'unauthorized',
+    });
+    expect(findUniqueMock).not.toHaveBeenCalled();
+  });
+
   it('meldet einen fehlgeschlagenen Connection-Lookup als retrybar', async () => {
     findUniqueMock.mockRejectedValue(new Error('database down'));
 

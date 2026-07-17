@@ -982,21 +982,38 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
                 copied={copied}
                 onCopy={copy}
               />
+              <p className="font-semibold">
+                Für n8n „Header Auth“ (ein Header genügt): Name <code>Authorization</code>, Wert:
+              </p>
               <CredentialRow
-                label="X-TaxTronik-Key-Id"
-                value={callbackResult.credential.keyId}
+                label="Authorization (komplett)"
+                value={`Bearer ${callbackResult.credential.keyId}.${callbackResult.credential.token}`}
                 copied={copied}
                 onCopy={copy}
               />
-              <CredentialRow
-                label="Authorization"
-                value={`Bearer ${callbackResult.credential.token}`}
-                copied={copied}
-                onCopy={copy}
-              />
+              <details>
+                <summary className="cursor-pointer font-medium">
+                  Alternative: getrennte Header (z.&nbsp;B. für eigene HTTP-Clients)
+                </summary>
+                <div className="mt-2 space-y-2">
+                  <CredentialRow
+                    label="X-TaxTronik-Key-Id"
+                    value={callbackResult.credential.keyId}
+                    copied={copied}
+                    onCopy={copy}
+                  />
+                  <CredentialRow
+                    label="Authorization"
+                    value={`Bearer ${callbackResult.credential.token}`}
+                    copied={copied}
+                    onCopy={copy}
+                  />
+                </div>
+              </details>
               <p>
-                Jeder Callback benötigt außerdem eine eindeutige <code>X-TaxTronik-Request-Id</code>
-                .
+                Jeder Fach-Callback benötigt außerdem eine eindeutige{' '}
+                <code>X-TaxTronik-Request-Id</code>; der Verbindungstest auf die Callback-URL kommt
+                ohne aus.
               </p>
             </div>
           )}

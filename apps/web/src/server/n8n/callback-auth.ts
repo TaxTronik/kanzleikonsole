@@ -189,16 +189,31 @@ export async function authenticateN8nCallback(
   /** null = reiner Credential-Check ohne Scope-Anforderung (Ping-Endpunkt). */
   requiredScope: N8nCallbackScope | null,
 ): Promise<N8nCallbackAuthResult> {
-  const callbackKeyId = request.headers.get('x-taxtronik-key-id')?.trim() ?? '';
+  let callbackKeyId = request.headers.get('x-taxtronik-key-id')?.trim() ?? '';
   const authorization = request.headers.get('authorization')?.trim() ?? '';
   const requestId = request.headers.get('x-taxtronik-request-id')?.trim() ?? '';
+
+  const bearer = /^Bearer ([^\s]+)$/i.exec(authorization);
+  let token = bearer?.[1] ?? '';
+
+  // Single-Header-Form "Bearer <keyId>.<token>": n8ns einfaches
+  // "Header Auth"-Credential kann nur EINEN Header senden — die Key-ID darf
+  // deshalb im Token eingebettet sein. Die getrennte Zwei-Header-Form bleibt
+  // unveraendert gueltig; ein explizit gesetzter x-taxtronik-key-id-Header
+  // hat Vorrang (kein stilles Umdeuten).
+  if (!callbackKeyId) {
+    const combined = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.(.+)$/i.exec(
+      token,
+    );
+    if (combined) {
+      callbackKeyId = combined[1]!;
+      token = combined[2]!;
+    }
+  }
 
   if (!UUID_RE.test(callbackKeyId)) {
     return reject(401, 'unauthorized', 'missing or invalid x-taxtronik-key-id');
   }
-
-  const bearer = /^Bearer ([^\s]+)$/i.exec(authorization);
-  const token = bearer?.[1] ?? '';
   if (token.length < 32 || token.length > 512) {
     return reject(401, 'unauthorized', 'missing or invalid bearer token');
   }

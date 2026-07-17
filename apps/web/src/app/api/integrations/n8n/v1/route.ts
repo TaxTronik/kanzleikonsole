@@ -25,7 +25,7 @@ const ENDPOINTS = [
 ] as const;
 
 const AUTH_HINT =
-  'Header: "Authorization: Bearer <Callback-Token>" + "x-taxtronik-key-id: <Key-ID>" (beides aus ACP Abschnitt 2 "Rückkanal n8n → TaxTronik"); Fach-Endpunkte zusätzlich "x-taxtronik-request-id: <eindeutige ID>".';
+  'Ein Header genügt: "Authorization: Bearer <Key-ID>.<Callback-Token>" (fertiger Wert im ACP Abschnitt 2 "Rückkanal n8n → TaxTronik" — passt in n8ns "Header Auth"-Credential). Alternativ getrennt: "Authorization: Bearer <Callback-Token>" + "x-taxtronik-key-id: <Key-ID>". Fach-Endpunkte zusätzlich "x-taxtronik-request-id: <eindeutige ID>".';
 
 export async function GET(request: NextRequest) {
   const auth = await authenticateN8nCallback(request, null);

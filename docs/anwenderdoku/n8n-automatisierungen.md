@@ -347,8 +347,15 @@ Assistent erzeugt dafür:
 - ein langes Bearer-Token, das **nur einmal** angezeigt wird,
 - und die ausgewählten Callback-Scopes.
 
+Für n8ns einfaches **„Header Auth“-Credential** (kann nur einen Header senden)
+zeigt das ACP zusätzlich einen fertigen Ein-Header-Wert an: Name
+`Authorization`, Wert `Bearer <Key-ID>.<Token>`. Die Key-ID ist dabei im Token
+eingebettet; ein separater `x-taxtronik-key-id`-Header ist dann nicht nötig.
+Wird der Key-ID-Header dennoch gesetzt, hat er Vorrang.
+
 Die Basis-URL selbst dient als Verbindungstest: Ein `GET` darauf antwortet
-mit gültigem Credential (Bearer-Token + Key-ID, ohne `x-taxtronik-request-id`)
+mit gültigem Credential (Ein-Header-Wert oder Bearer-Token + Key-ID, ohne
+`x-taxtronik-request-id`)
 mit `200` samt gewährten Scopes und Endpunktliste — ohne Credential mit `401`
 inklusive Anleitung. Die Fach-Endpunkte liegen auf Unterpfaden
 (`/overdue-requests`, `/expiring-gwg-checks`, `/request-detail/{id}`,
