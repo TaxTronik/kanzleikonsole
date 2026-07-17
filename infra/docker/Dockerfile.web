@@ -64,10 +64,17 @@ RUN cd packages/db && \
 # Safety-Net: leeres public/ anlegen, damit COPY in der runner-Stage nicht knallt.
 RUN mkdir -p apps/web/public
 
+# NODE_OPTIONS: V8-Heap fuer next build/tsc deckeln. Ohne Deckel kann der
+# Build auf dem Prod-Host (auf dem parallel noch der alte Stack laeuft —
+# Pull/Build-before-Stop) mehrere GB ziehen und die Maschine ins Swappen
+# treiben: SSH/Terminal frieren ein, CTRL+C kommt nicht mehr durch und der
+# Updater wirkt "verheddert". Mit Deckel schlaegt ein zu knapper Host mit
+# einem klaren OOM-Fehler fehl statt still zu haengen.
 RUN --mount=type=cache,target=/repo/apps/web/.next/cache \
     cd apps/web && \
     NEXT=$(find /repo -path "*/next/dist/bin/next" -not -path "*/cache/*" 2>/dev/null | head -1) && \
     test -n "$NEXT" && \
+    NODE_OPTIONS="--max-old-space-size=3072" \
     AUTH_SECRET=build-time-dummy-not-used-at-runtime-padding-padding \
     N8N_HMAC_SECRET=build-time-hmac-secret-padding-padding-padding-padding \
     S3_ACCESS_KEY=build-time-access-key \

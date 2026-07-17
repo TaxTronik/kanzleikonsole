@@ -177,6 +177,28 @@ strikter Health-Smoke (`degraded` ist Fehler) und Deploy-Readiness ohne
 Skip-Pfad. Kein `git reset --hard`: Lokale Abweichungen müssen bewusst
 aufgelöst werden.
 
+**Lokalbuild-Modus — wenn das Update beim Docker-Build zu „hängen“ scheint:**
+Der längste Schritt ist `next build` inkl. TypeScript im `builder`-Stage
+(mehrere Minuten ohne warmen Layer-Cache; die Ausgabe steht dabei still).
+Zwei Eigenheiten sind wichtig:
+
+1. BuildKit-Builds laufen im Docker-**Daemon**. Stirbt die SSH-Session oder
+   der Client (hartes CTRL+C), baut der Daemon weiter. Ein neu gestarteter
+   `./taxtronik update` wartet dann am Build-Lock
+   (`.taxtronik.build.lock`) mit sichtbarer Meldung bzw. hängt sich dank
+   BuildKit-Dedupe an den laufenden Build — beides ist gewollt, kein
+   Deadlock. Notbremse: `docker ps`/`systemctl restart docker` beendet auch
+   verwaiste Builds.
+2. Der Build läuft, während der alte Stack noch bedient (Downtime-Minimierung).
+   Auf knapp dimensionierten Hosts konnte `next build` die Maschine früher ins
+   Swappen treiben — dann friert auch das Terminal ein und CTRL+C kommt nicht
+   mehr durch. Der V8-Heap des Builds ist inzwischen auf 3 GB gedeckelt
+   (Dockerfile.web); reicht der Host-Speicher trotzdem nicht, bricht der Build
+   mit einem klaren OOM-Fehler ab, statt still zu hängen. Faustregel: 6 GB+
+   RAM für Update bei laufendem Stack, sonst Update in ein Wartungsfenster mit
+   gestoppten Diensten legen oder auf den Registry-Modus (Pull statt Build)
+   wechseln.
+
 Die Deploy-Readiness prüft dabei nicht nur Storage und Virenscanner, sondern
 auch den zum Checkout gehörenden GwG-Datenbankschutz. Ab Migration `04300` /
 `04400` müssen insbesondere die stabile Vertretertabelle, Subject- und

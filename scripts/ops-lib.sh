@@ -723,7 +723,22 @@ build_images() {
   tag="$(image_tag)"
   sha="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
   export DOCKER_BUILDKIT=1   # BuildKit aktivieren fuer --mount=type=cache (Dockerfile.web/.worker)
+
+  # Build-Lock: BuildKit-Builds laufen im Docker-DAEMON weiter, wenn der
+  # Client stirbt (SSH-Abbruch, hartes CTRL+C). Ein neu gestarteter Updater
+  # verkeilte sich dann still mit dem verwaisten Build. Der flock macht daraus
+  # eine klare Meldung; laeuft der verwaiste Build im Daemon noch, teilt der
+  # neue Build dank BuildKit-Dedupe dessen Fortschritt statt doppelt zu bauen.
+  if command -v flock >/dev/null 2>&1; then
+    exec 8>"$ROOT/.taxtronik.build.lock"
+    if ! flock -n 8; then
+      info "Ein anderer Image-Build laeuft bereits (z. B. abgebrochene Session) — warte auf dessen Ende ..."
+      flock 8
+    fi
+  fi
+
   info "Docker-Images bauen: $prefix/web:$tag und $prefix/worker:$tag"
+  info "Hinweis: next build/tsc sind die laengsten Schritte (mehrere Minuten ohne warmen Cache)."
   docker build -f "$ROOT/infra/docker/Dockerfile.web" \
     --build-arg APP_VERSION="$tag" --build-arg GIT_SHA="$sha" \
     -t "$prefix/web:$tag" "$ROOT"
@@ -731,6 +746,7 @@ build_images() {
     --build-arg APP_VERSION="$tag" --build-arg GIT_SHA="$sha" \
     -t "$prefix/worker:$tag" "$ROOT"
   prune_build_cache
+  if command -v flock >/dev/null 2>&1; then flock -u 8 || true; fi
 }
 
 pull_images() {
