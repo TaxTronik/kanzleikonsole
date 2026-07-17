@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Inbox, Sparkles, Check, FolderOpen, FolderCheck } from 'lucide-react';
+import { Archive, Check, FolderCheck, FolderOpen, Inbox, Sparkles, Trash2 } from 'lucide-react';
 import { assignResultAction, saveResultToShelfAction } from './actions';
 import { renderMarkdown } from '@/lib/markdown';
 import type { ResearchResultDTO, MarkingDTO } from './_ui';
@@ -26,6 +26,18 @@ const RESULT_PROSE_CLASS =
   '[&_th]:border [&_th]:border-default [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold [&_th]:text-primary ' +
   '[&_td]:border [&_td]:border-default [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:align-top';
 
+export function ResearchResultDetails({ body }: { body: string }) {
+  return (
+    <details className="text-xs">
+      <summary className="cursor-pointer text-muted">Ergebnis anzeigen</summary>
+      <div
+        className={RESULT_PROSE_CLASS}
+        dangerouslySetInnerHTML={{ __html: renderMarkdown(body) }}
+      />
+    </details>
+  );
+}
+
 export function ResearchResultsBlock(props: {
   clientId: string;
   analysisId: string;
@@ -34,14 +46,19 @@ export function ResearchResultsBlock(props: {
   pending: boolean;
   start: (cb: () => void) => void;
   onFlash: (r: { ok: boolean; error?: string }, ok?: string) => void;
+  onArchive: (result: ResearchResultDTO) => void;
+  onDelete: (result: ResearchResultDTO) => void;
 }) {
   const router = useRouter();
   const saveLocks = useRef(new Set<string>());
   const [savingResultIds, setSavingResultIds] = useState<Set<string>>(new Set());
-  const [savedResultIds, setSavedResultIds] = useState<Set<string>>(new Set());
+  const [optimisticSave, setOptimisticSave] = useState<{
+    resultId: string;
+    source: ResearchResultDTO[];
+  } | null>(null);
   if (props.results.length === 0) return null;
 
-  function assign(resultId: string, markingId: string | null) {
+  function assign(resultId: string, markingId: string) {
     props.start(async () => {
       const r = await assignResultAction({
         clientId: props.clientId,
@@ -49,13 +66,13 @@ export function ResearchResultsBlock(props: {
         resultId,
         markingId,
       });
-      props.onFlash(r, markingId ? 'Ergebnis zugeordnet.' : 'Ergebnis verworfen.');
+      props.onFlash(r, 'Ergebnis zugeordnet.');
       if (r.ok) router.refresh();
     });
   }
 
   function saveToShelf(resultId: string) {
-    if (saveLocks.current.has(resultId) || savedResultIds.has(resultId)) return;
+    if (saveLocks.current.has(resultId)) return;
     saveLocks.current.add(resultId);
     setSavingResultIds((current) => new Set(current).add(resultId));
     props.start(async () => {
@@ -68,7 +85,7 @@ export function ResearchResultsBlock(props: {
             : 'Als Markdown-Dokument im Aktenregal gespeichert.',
         );
         if (r.ok) {
-          setSavedResultIds((current) => new Set(current).add(resultId));
+          setOptimisticSave({ resultId, source: props.results });
           router.refresh();
         }
       } finally {
@@ -91,7 +108,9 @@ export function ResearchResultsBlock(props: {
       <ul className="divide-y divide-border-subtle">
         {props.results.map((res) => {
           const assignedTo = res.markingId ? props.markingsById[res.markingId] : null;
-          const savedToShelf = Boolean(res.savedToShelfAt) || savedResultIds.has(res.id);
+          const savedToShelf =
+            Boolean(res.shelfDocumentId) ||
+            (optimisticSave?.resultId === res.id && optimisticSave.source === props.results);
           const savingToShelf = savingResultIds.has(res.id);
           return (
             <li key={res.id} className="py-3 space-y-1.5">
@@ -129,13 +148,7 @@ export function ResearchResultsBlock(props: {
                   </button>
                 </span>
               </div>
-              <details className="text-xs">
-                <summary className="cursor-pointer text-muted">Ergebnis anzeigen</summary>
-                <div
-                  className={RESULT_PROSE_CLASS}
-                  dangerouslySetInnerHTML={{ __html: renderMarkdown(res.body) }}
-                />
-              </details>
+              <ResearchResultDetails body={res.body} />
 
               {res.status === 'NEU' && (
                 <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
@@ -158,16 +171,26 @@ export function ResearchResultsBlock(props: {
                   ) : (
                     <span className="text-[11px] text-disabled">kein Vorschlag</span>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => assign(res.id, null)}
-                    disabled={props.pending}
-                    className="text-[11px] text-disabled hover:text-secondary ml-1"
-                  >
-                    verwerfen
-                  </button>
                 </div>
               )}
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => props.onArchive(res)}
+                  disabled={props.pending}
+                  className="text-[11px] text-muted hover:text-primary inline-flex items-center gap-1"
+                >
+                  <Archive className="h-3 w-3" /> Archivieren
+                </button>
+                <button
+                  type="button"
+                  onClick={() => props.onDelete(res)}
+                  disabled={props.pending}
+                  className="text-[11px] text-red-600 hover:text-red-700 inline-flex items-center gap-1"
+                >
+                  <Trash2 className="h-3 w-3" /> Löschen
+                </button>
+              </div>
             </li>
           );
         })}

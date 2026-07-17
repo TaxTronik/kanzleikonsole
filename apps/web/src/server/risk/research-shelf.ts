@@ -11,7 +11,6 @@ interface LockedResearchResult {
   body: string;
   requestTitle: string | null;
   shelfDocumentId: string | null;
-  savedToShelfAt: Date | null;
 }
 
 export interface SaveResearchResultToShelfInput {
@@ -37,8 +36,7 @@ async function lockResearchResult(
       research_result.title,
       research_result.body,
       request.title AS "requestTitle",
-      research_result.shelf_document_id AS "shelfDocumentId",
-      research_result.saved_to_shelf_at AS "savedToShelfAt"
+      research_result.shelf_document_id AS "shelfDocumentId"
     FROM risk_research_result research_result
     LEFT JOIN risk_research_request request
       ON request.id = research_result.research_request_id
@@ -57,7 +55,7 @@ export async function saveResearchResultToShelf(
     const result = await lockResearchResult(tx, ctx.tenantId, input.resultId);
     if (!result) throw new ActionError('Ergebnis nicht gefunden.');
 
-    if (result.savedToShelfAt || result.shelfDocumentId) {
+    if (result.shelfDocumentId) {
       return { documentId: result.shelfDocumentId, alreadySaved: true };
     }
 
@@ -90,10 +88,9 @@ export async function saveResearchResultToShelf(
       commit,
       createdById: input.staffId,
     });
-    const savedToShelfAt = new Date();
     await tx.riskResearchResult.update({
       where: { id: input.resultId },
-      data: { shelfDocumentId: document.id, savedToShelfAt },
+      data: { shelfDocumentId: document.id },
     });
     await evidenceService.record(tx, {
       tenantId: ctx.tenantId,

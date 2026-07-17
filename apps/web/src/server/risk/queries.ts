@@ -53,7 +53,7 @@ export async function loadResearchResults(ctx: TenantContext, analysisId: string
   return withTenantContext(ctx, (tx) =>
     tx.riskResearchResult.findMany({
       where: {
-        status: { not: 'VERWORFEN' },
+        archivedAt: null,
         OR: [{ request: { analysisId } }, { marking: { analysisId } }],
       },
       orderBy: { receivedAt: 'desc' },
@@ -64,10 +64,38 @@ export async function loadResearchResults(ctx: TenantContext, analysisId: string
         body: true,
         status: true,
         markingId: true,
-        savedToShelfAt: true,
+        shelfDocumentId: true,
+        archivedAt: true,
         source: true,
         receivedAt: true,
-        request: { select: { title: true } },
+        request: { select: { id: true, title: true } },
+      },
+    }),
+  );
+}
+
+/** Archivierte Rechercheergebnisse, die im Hub unter den gesendeten Aufträgen
+ *  erscheinen und von dort reaktiviert oder endgültig gelöscht werden können. */
+export async function loadArchivedResearchResults(ctx: TenantContext, analysisId: string) {
+  return withTenantContext(ctx, (tx) =>
+    tx.riskResearchResult.findMany({
+      where: {
+        archivedAt: { not: null },
+        OR: [{ request: { analysisId } }, { marking: { analysisId } }],
+      },
+      orderBy: { archivedAt: 'desc' },
+      take: 100,
+      select: {
+        id: true,
+        title: true,
+        body: true,
+        status: true,
+        markingId: true,
+        shelfDocumentId: true,
+        archivedAt: true,
+        source: true,
+        receivedAt: true,
+        request: { select: { id: true, title: true } },
       },
     }),
   );

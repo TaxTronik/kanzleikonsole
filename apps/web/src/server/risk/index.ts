@@ -87,6 +87,7 @@ export type { UpdateMarkingInput, AddManualMarkingInput, RiskStatus } from './ma
 export {
   listAnalyses,
   loadAnalysis,
+  loadArchivedResearchResults,
   listExtractableDocuments,
   loadResearchResults,
   loadResearchRequests,
@@ -111,6 +112,8 @@ export type {
   SaveResearchResultToShelfInput,
   SaveResearchResultToShelfResult,
 } from './research-shelf';
+
+export { deleteResearchResult, setResearchResultArchived } from './research-lifecycle';
 
 export { scoreMarkingSuggestions, extractNormRefs } from './suggest';
 export type { MarkingSuggestion, ScoreableMarking } from './suggest';

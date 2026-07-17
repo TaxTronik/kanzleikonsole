@@ -460,21 +460,21 @@ export async function suggestMarkingsForResult(
 export async function assignResultToMarking(
   ctx: TenantContext,
   resultId: string,
-  markingId: string | null,
+  markingId: string,
 ): Promise<void> {
   await withTenantContext(ctx, async (tx) => {
     await tx.riskResearchResult.update({
       where: { id: resultId },
-      data: { markingId, status: markingId ? 'ZUGEORDNET' : 'VERWORFEN' },
+      data: { markingId, status: 'ZUGEORDNET' },
     });
     await evidenceService.record(tx, {
       tenantId: ctx.tenantId,
       actorType: 'STAFF',
       actorId: ctx.actorId,
-      action: markingId ? 'risk.research.assigned' : 'risk.research.discarded',
+      action: 'risk.research.assigned',
       resourceType: 'risk_research_result',
       resourceId: resultId,
-      after: { markingId: markingId ?? null },
+      after: { markingId },
     });
   });
 }

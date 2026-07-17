@@ -10,6 +10,7 @@ const h = vi.hoisted(() => {
         update: vi.fn(),
         updateMany: vi.fn(),
       },
+      riskResearchResult: { updateMany: vi.fn() },
     },
     evidenceRecord: vi.fn(),
     assertClientAccessTx: vi.fn(),
@@ -64,6 +65,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.tx.document.update.mockResolvedValue({});
   h.tx.document.updateMany.mockResolvedValue({ count: 1 });
+  h.tx.riskResearchResult.updateMany.mockResolvedValue({ count: 0 });
   h.evidenceRecord.mockResolvedValue({});
 });
 
@@ -156,6 +158,10 @@ describe('Dokument-Sichtbarkeit – GwG-Schutz', () => {
     expect(h.tx.$queryRaw.mock.invocationCallOrder[1]).toBeLessThan(
       h.tx.document.update.mock.invocationCallOrder[0]!,
     );
+    expect(h.tx.riskResearchResult.updateMany).toHaveBeenCalledWith({
+      where: { shelfDocumentId: DOCUMENT_ID },
+      data: { shelfDocumentId: null },
+    });
   });
 
   it('erlaubt den Restore eines verknüpften Legacy-Zustands zur Selbstheilung', async () => {

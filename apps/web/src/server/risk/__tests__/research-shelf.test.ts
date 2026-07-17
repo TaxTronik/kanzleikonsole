@@ -61,7 +61,6 @@ describe('saveResearchResultToShelf', () => {
         body: '# Antwort',
         requestTitle: 'Rechercheauftrag',
         shelfDocumentId: null,
-        savedToShelfAt: null,
       },
     ]);
     tx.client.findUnique.mockResolvedValue({ allowActive: true });
@@ -91,7 +90,6 @@ describe('saveResearchResultToShelf', () => {
       where: { id: input.resultId },
       data: {
         shelfDocumentId: 'f4499c61-327f-4e99-bfab-792ce466cfed',
-        savedToShelfAt: expect.any(Date),
       },
     });
     expect(mocks.evidenceRecord).toHaveBeenCalledTimes(1);
@@ -106,7 +104,6 @@ describe('saveResearchResultToShelf', () => {
         body: '# Antwort',
         requestTitle: null,
         shelfDocumentId: 'f4499c61-327f-4e99-bfab-792ce466cfed',
-        savedToShelfAt: new Date('2026-07-17T09:00:00.000Z'),
       },
     ]);
 
@@ -121,7 +118,7 @@ describe('saveResearchResultToShelf', () => {
     expect(mocks.evidenceRecord).not.toHaveBeenCalled();
   });
 
-  it('bleibt auch nach einer späteren Dokumentlöschung dauerhaft gesperrt', async () => {
+  it('kann nach dem Löschen des verknüpften Dokuments erneut abgelegt werden', async () => {
     const tx = mockTx();
     tx.$queryRaw.mockResolvedValue([
       {
@@ -130,15 +127,20 @@ describe('saveResearchResultToShelf', () => {
         body: '# Antwort',
         requestTitle: null,
         shelfDocumentId: null,
-        savedToShelfAt: new Date('2026-07-17T09:00:00.000Z'),
       },
     ]);
+    tx.client.findUnique.mockResolvedValue({ allowActive: true });
+    mocks.commitBytesWithTier.mockResolvedValue({ targetBucket: 'general' });
+    mocks.createDocumentWithVersion.mockResolvedValue({
+      document: { id: '1e96cdee-f4bc-4da0-8cc3-96f547b55398' },
+      version: { id: 'version-2' },
+    });
 
     await expect(saveResearchResultToShelf(ctx, input)).resolves.toEqual({
-      documentId: null,
-      alreadySaved: true,
+      documentId: '1e96cdee-f4bc-4da0-8cc3-96f547b55398',
+      alreadySaved: false,
     });
-    expect(mocks.commitBytesWithTier).not.toHaveBeenCalled();
+    expect(mocks.commitBytesWithTier).toHaveBeenCalledTimes(1);
   });
 
   it('behält die GwG-Schranke vor der Dokumentanlage bei', async () => {
@@ -150,7 +152,6 @@ describe('saveResearchResultToShelf', () => {
         body: '# Antwort',
         requestTitle: null,
         shelfDocumentId: null,
-        savedToShelfAt: null,
       },
     ]);
     tx.client.findUnique.mockResolvedValue({ allowActive: false });

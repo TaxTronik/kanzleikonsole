@@ -1678,7 +1678,7 @@ model RiskResearchResult {
   researchRequestId String?              @map("research_request_id") @db.Uuid
   markingId         String?              @map("marking_id") @db.Uuid
   shelfDocumentId   String?              @unique @map("shelf_document_id") @db.Uuid
-  savedToShelfAt    DateTime?            @map("saved_to_shelf_at") @db.Timestamptz(6)
+  archivedAt        DateTime?            @map("archived_at") @db.Timestamptz(6)
   title             String?
   body              String
   source            String?
@@ -1692,6 +1692,7 @@ model RiskResearchResult {
   @@index([tenantId, status])
   @@index([tenantId, markingId])
   @@index([tenantId, researchRequestId])
+  @@index([tenantId, archivedAt])
   @@map("risk_research_result")
 }
 

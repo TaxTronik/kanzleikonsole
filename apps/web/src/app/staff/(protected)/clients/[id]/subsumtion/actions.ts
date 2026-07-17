@@ -45,6 +45,8 @@ import {
   createPromptTemplate,
   deletePromptTemplate,
   saveResearchResultToShelf,
+  setResearchResultArchived,
+  deleteResearchResult,
   type RiskStatus,
   type ResearchPreview,
   type ResolvedNorm,
@@ -639,22 +641,20 @@ export async function assignResultAction(input: {
   clientId: string;
   analysisId: string;
   resultId: string;
-  markingId: string | null;
+  markingId: string;
 }): Promise<OkActionResult> {
   try {
     const { ctx, clientId, analysisId } = await guardResult(input.resultId);
-    // Ziel-Markierung (falls gesetzt) muss zur SELBEN Analyse gehören — sonst
-    // ließe sich ein Ergebnis quer auf eine fremde Markierung verlinken.
-    if (input.markingId) {
-      const target = await withTenantContext(ctx, (tx) =>
-        tx.riskMarking.findUnique({
-          where: { id: input.markingId! },
-          select: { analysisId: true },
-        }),
-      );
-      if (!target || target.analysisId !== analysisId) {
-        return { ok: false, error: 'Markierung gehört nicht zu dieser Analyse.' };
-      }
+    // Ziel-Markierung muss zur SELBEN Analyse gehören — sonst ließe sich ein
+    // Ergebnis quer auf eine fremde Markierung verlinken.
+    const target = await withTenantContext(ctx, (tx) =>
+      tx.riskMarking.findUnique({
+        where: { id: input.markingId },
+        select: { analysisId: true },
+      }),
+    );
+    if (!target || target.analysisId !== analysisId) {
+      return { ok: false, error: 'Markierung gehört nicht zu dieser Analyse.' };
     }
     await assignResultToMarking(ctx, input.resultId, input.markingId);
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId ?? ''}`);
@@ -664,9 +664,34 @@ export async function assignResultAction(input: {
   }
 }
 
+export async function archiveResultAction(input: {
+  resultId: string;
+  archived: boolean;
+}): Promise<OkActionResult> {
+  try {
+    const { ctx, clientId, analysisId } = await guardResult(input.resultId);
+    await setResearchResultArchived(ctx, input.resultId, input.archived);
+    revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId ?? ''}`);
+    return { ok: true };
+  } catch (e) {
+    return toActionError(e);
+  }
+}
+
+export async function deleteResultAction(input: { resultId: string }): Promise<OkActionResult> {
+  try {
+    const { ctx, clientId, analysisId } = await guardResult(input.resultId);
+    await deleteResearchResult(ctx, input.resultId);
+    revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId ?? ''}`);
+    return { ok: true };
+  } catch (e) {
+    return toActionError(e);
+  }
+}
+
 /**
  * Legt ein Rechercheergebnis als Markdown-Dokument im Aktenregal des
- * Sachverhalts ab (Ein-Klick-Archivierung). Die Bytes sind app-generiert
+ * Sachverhalts ab (Ein-Klick-Ablage). Die Bytes sind app-generiert
  * (kein Nutzer-Upload) → skipScan; Schutzstufe NONE, Klassifikation GENERAL.
  */
 export async function saveResultToShelfAction(input: {

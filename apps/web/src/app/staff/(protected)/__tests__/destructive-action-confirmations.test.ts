@@ -57,4 +57,18 @@ describe('destructive staff actions', () => {
     expect(control).toContain('type="button"');
     expect(control).toContain('Dieser Teilschritt lässt sich nicht rückgängig machen');
   });
+
+  it('trennt Recherche-Archivierung vom endgültigen Löschen', () => {
+    const view = source('clients/[id]/subsumtion/research-view.tsx');
+    const results = source('clients/[id]/subsumtion/research-results-block.tsx');
+
+    expect(view).toContain('<ConfirmModal');
+    expect(view).toMatch(/<ConfirmModal\s+danger/);
+    expect(view).toContain('await deleteResultAction');
+    expect(view).toContain('nicht rückgängig gemacht werden');
+    expect(view).toContain('Ein bereits erzeugtes Dokument im Aktenregal bleibt bestehen');
+    expect(results).toContain('Archivieren');
+    expect(results).toContain('Löschen');
+    expect(results).not.toContain('verwerfen');
+  });
 });

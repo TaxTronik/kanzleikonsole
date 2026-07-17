@@ -71,12 +71,14 @@ export interface AnalysisDTO {
 export interface ResearchResultDTO {
   id: string;
   title: string | null;
+  requestId: string | null;
   /** Titel des zugehörigen Rechercheauftrags (Fallback-Anzeige). */
   requestTitle: string | null;
   body: string;
-  status: 'NEU' | 'ZUGEORDNET' | 'VERWORFEN';
+  status: 'NEU' | 'ZUGEORDNET';
   markingId: string | null;
-  savedToShelfAt: string | null;
+  shelfDocumentId: string | null;
+  archivedAt: string | null;
   source: string | null;
   receivedAt: string;
   /** Heuristische Markierungs-Vorschläge (nur für NEU). */

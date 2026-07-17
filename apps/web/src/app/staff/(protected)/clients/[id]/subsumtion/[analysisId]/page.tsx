@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { guardSubsumtionPage } from '../_guard';
 import {
   loadAnalysis,
+  loadArchivedResearchResults,
   loadResearchResults,
   loadResearchRequests,
   scoreMarkingSuggestions,
@@ -39,15 +40,17 @@ export default async function AnalysisPage({
   // analysisId/clientId) → EIN paralleler Batch statt fünf sequenzieller
   // Round-Trips. Das In-Memory-Scoring der Recherche-Vorschläge nutzt danach die
   // schon mit `analysis` geladenen Markierungen (kein N+1).
-  const [rawResults, rawRequests, wf, aktenregalDocs, clientInfo] = await Promise.all([
-    loadResearchResults(ctx, analysisId),
-    loadResearchRequests(ctx, analysisId),
-    loadClientWorkflows(ctx, { clientId: id, analysisId }),
-    loadAnalysisDocuments(ctx, analysisId),
-    withTenantContext(ctx, (tx) =>
-      tx.client.findUnique({ where: { id }, select: { allowActive: true, name: true } }),
-    ),
-  ]);
+  const [rawResults, rawArchivedResults, rawRequests, wf, aktenregalDocs, clientInfo] =
+    await Promise.all([
+      loadResearchResults(ctx, analysisId),
+      loadArchivedResearchResults(ctx, analysisId),
+      loadResearchRequests(ctx, analysisId),
+      loadClientWorkflows(ctx, { clientId: id, analysisId }),
+      loadAnalysisDocuments(ctx, analysisId),
+      withTenantContext(ctx, (tx) =>
+        tx.client.findUnique({ where: { id }, select: { allowActive: true, name: true } }),
+      ),
+    ]);
 
   // Rechercheergebnisse + (für NEU) heuristische Zuordnungs-Vorschläge.
   const openMarkings = analysis.markings
@@ -56,14 +59,33 @@ export default async function AnalysisPage({
   const researchResults: ResearchResultDTO[] = rawResults.map((r) => ({
     id: r.id,
     title: r.title,
+    requestId: r.request?.id ?? null,
     requestTitle: r.request?.title ?? null,
     body: r.body,
-    status: r.status,
+    status: r.status === 'VERWORFEN' ? 'NEU' : r.status,
     markingId: r.markingId,
-    savedToShelfAt: r.savedToShelfAt?.toISOString() ?? null,
+    shelfDocumentId: r.shelfDocumentId,
+    archivedAt: null,
     source: r.source,
     receivedAt: r.receivedAt.toISOString(),
-    suggestions: r.status === 'NEU' ? scoreMarkingSuggestions(r, openMarkings) : [],
+    suggestions:
+      r.status === 'NEU' || r.status === 'VERWORFEN'
+        ? scoreMarkingSuggestions(r, openMarkings)
+        : [],
+  }));
+  const archivedResearchResults: ResearchResultDTO[] = rawArchivedResults.map((r) => ({
+    id: r.id,
+    title: r.title,
+    requestId: r.request?.id ?? null,
+    requestTitle: r.request?.title ?? null,
+    body: r.body,
+    status: r.status === 'VERWORFEN' ? 'NEU' : r.status,
+    markingId: r.markingId,
+    shelfDocumentId: r.shelfDocumentId,
+    archivedAt: r.archivedAt?.toISOString() ?? null,
+    source: r.source,
+    receivedAt: r.receivedAt.toISOString(),
+    suggestions: [],
   }));
 
   // Outbound: gesendete Rechercheaufträge (für den Recherche-Hub).
@@ -180,6 +202,7 @@ export default async function AnalysisPage({
         staffOptions={staffOptions}
         clientDocuments={[]}
         researchResults={researchResults}
+        archivedResearchResults={archivedResearchResults}
         researchRequests={researchRequests}
         aufgaben={aufgaben}
         aktenregal={aktenregal}

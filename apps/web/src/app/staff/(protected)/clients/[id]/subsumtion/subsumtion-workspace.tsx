@@ -88,6 +88,7 @@ interface Props {
   staffOptions: Array<{ id: string; fullName: string }>;
   clientDocuments: Array<{ id: string; title: string; mimeType: string; typeName: string }>;
   researchResults?: ResearchResultDTO[];
+  archivedResearchResults?: ResearchResultDTO[];
   researchRequests?: ResearchRequestDTO[];
   /** Server-gerenderter Inhalt des „Aufgaben"-Tabs (Workflows dieses Sachverhalts). */
   aufgaben?: ReactNode;
@@ -104,6 +105,7 @@ export function SubsumtionWorkspace({
   staffOptions,
   clientDocuments,
   researchResults = [],
+  archivedResearchResults = [],
   researchRequests = [],
   aufgaben,
   aktenregal,
@@ -645,6 +647,7 @@ export function SubsumtionWorkspace({
           analysisId={initial.id}
           requests={researchRequests}
           results={researchResults}
+          archivedResults={archivedResearchResults}
           markingsById={markingsById}
           staffOptions={staffOptions}
           engineConfigured={engineConfigured}

@@ -131,6 +131,10 @@ export async function softDeleteDocumentAction(
         where: { id: documentId },
         data: { deletedAt: new Date(), deletedByStaff: staffId, deleteReason: reason },
       });
+      const unlinkedResearchResults = await tx.riskResearchResult.updateMany({
+        where: { shelfDocumentId: documentId },
+        data: { shelfDocumentId: null },
+      });
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',
@@ -139,7 +143,7 @@ export async function softDeleteDocumentAction(
         resourceType: 'document',
         resourceId: documentId,
         before: { title: doc.title, classification: doc.classification, deleted: false },
-        after: { deleted: true, reason },
+        after: { deleted: true, reason, unlinkedResearchResults: unlinkedResearchResults.count },
       });
     },
     { revalidate: '/staff/documents' },
