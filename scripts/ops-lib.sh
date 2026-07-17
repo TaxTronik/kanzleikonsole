@@ -717,12 +717,62 @@ doctor() {
 # ---------------------------------------------------------------------------
 # Build / Pull / Migrate / Start / Smoke / Backup
 # ---------------------------------------------------------------------------
+build_memory_to_kib() {
+  local value="${1,,}"
+  if [[ "$value" =~ ^([1-9][0-9]*)m$ ]]; then
+    printf '%s\n' "$((10#${BASH_REMATCH[1]} * 1024))"
+  elif [[ "$value" =~ ^([1-9][0-9]*)g$ ]]; then
+    printf '%s\n' "$((10#${BASH_REMATCH[1]} * 1024 * 1024))"
+  else
+    return 1
+  fi
+}
+
+host_available_memory_kib() {
+  [[ -r /proc/meminfo ]] || return 1
+  awk '$1 == "MemAvailable:" { print $2; exit }' /proc/meminfo
+}
+
+require_safe_build_resources() {
+  local limit="$1" reserve="$2" limit_kib reserve_kib available_kib required_kib build_help
+
+  limit_kib="$(build_memory_to_kib "$limit")" || \
+    die "TAXTRONIK_BUILD_MEMORY_LIMIT muss z. B. 3072m oder 3g sein (aktuell: $limit)."
+  reserve_kib="$(build_memory_to_kib "$reserve")" || \
+    die "TAXTRONIK_BUILD_MEMORY_RESERVE muss z. B. 1024m oder 1g sein (aktuell: $reserve)."
+
+  # Ein V8-Heap-Limit schuetzt den Host nicht: Next/Turbopack startet weitere
+  # Prozesse und belegt nativen Speicher ausserhalb des JavaScript-Heaps. Nur
+  # ein cgroup-Limit fuer den gesamten Build-RUN-Schritt verhindert, dass der
+  # Docker-Daemon den Host bis zur Handlungsunfaehigkeit ins Swapping treibt.
+  build_help="$(docker build --help 2>&1)" || \
+    die "Docker-Build-Hilfe konnte nicht abgefragt werden."
+  grep -Fq -- '--resource' <<<"$build_help" || \
+    die "Docker/Buildx unterstuetzt noch kein --resource. Sicherer Lokalbuild verweigert: Docker/Buildx aktualisieren oder TAXTRONIK_IMAGE_PREFIX auf die Release-Registry setzen."
+
+  if available_kib="$(host_available_memory_kib 2>/dev/null)" && \
+      [[ "$available_kib" =~ ^[0-9]+$ ]]; then
+    required_kib=$((limit_kib + reserve_kib))
+    (( available_kib >= required_kib )) || \
+      die "Lokalbuild wegen RAM-Schutz abgebrochen: verfuegbar $((available_kib / 1024)) MiB, erforderlich $((required_kib / 1024)) MiB ($limit Build-Limit + $reserve Systemreserve). Dienste im Wartungsfenster stoppen oder Registry-Images verwenden."
+    info "RAM-Schutz: Build maximal $limit ohne Swap; $reserve Systemreserve (verfuegbar: $((available_kib / 1024)) MiB)."
+  else
+    warn "Freier Host-RAM konnte nicht aus /proc/meminfo ermittelt werden; das harte Docker-Limit $limit ohne Build-Swap bleibt aktiv."
+  fi
+}
+
 build_images() {
-  local prefix tag sha
+  local prefix tag sha memory_limit memory_reserve
   prefix="${TAXTRONIK_IMAGE_PREFIX:-taxtronik}"
   tag="$(image_tag)"
   sha="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  memory_limit="${TAXTRONIK_BUILD_MEMORY_LIMIT:-3g}"
+  memory_limit="${memory_limit,,}"
+  memory_reserve="${TAXTRONIK_BUILD_MEMORY_RESERVE:-1g}"
+  memory_reserve="${memory_reserve,,}"
   export DOCKER_BUILDKIT=1   # BuildKit aktivieren fuer --mount=type=cache (Dockerfile.web/.worker)
+
+  require_safe_build_resources "$memory_limit" "$memory_reserve"
 
   # Build-Lock: BuildKit-Builds laufen im Docker-DAEMON weiter, wenn der
   # Client stirbt (SSH-Abbruch, hartes CTRL+C). Ein neu gestarteter Updater
@@ -739,10 +789,12 @@ build_images() {
 
   info "Docker-Images bauen: $prefix/web:$tag und $prefix/worker:$tag"
   info "Hinweis: next build/tsc sind die laengsten Schritte (mehrere Minuten ohne warmen Cache)."
-  docker build -f "$ROOT/infra/docker/Dockerfile.web" \
+  docker build --resource "memory=$memory_limit" --resource "memory-swap=$memory_limit" \
+    -f "$ROOT/infra/docker/Dockerfile.web" \
     --build-arg APP_VERSION="$tag" --build-arg GIT_SHA="$sha" \
     -t "$prefix/web:$tag" "$ROOT"
-  docker build -f "$ROOT/infra/docker/Dockerfile.worker" \
+  docker build --resource "memory=$memory_limit" --resource "memory-swap=$memory_limit" \
+    -f "$ROOT/infra/docker/Dockerfile.worker" \
     --build-arg APP_VERSION="$tag" --build-arg GIT_SHA="$sha" \
     -t "$prefix/worker:$tag" "$ROOT"
   prune_build_cache

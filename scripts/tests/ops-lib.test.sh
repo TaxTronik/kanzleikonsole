@@ -255,6 +255,106 @@ test_prune_build_cache_failure_is_non_blocking() {
   pass "build cache prune failure is non-blocking"
 }
 
+fake_resource_docker_path() {
+  local bin_dir="$1" log_file="$2"
+  mkdir -p "$bin_dir"
+  cat >"$bin_dir/docker" <<'EOF'
+#!/usr/bin/env bash
+if [[ "${1:-} ${2:-}" == "build --help" ]]; then
+  if [[ "${DOCKER_RESOURCE_HELP:-yes}" == "yes" ]]; then
+    printf '      --resource stringArray   Resource limits for build containers\n'
+  else
+    printf 'Usage: docker build [OPTIONS] PATH\n'
+  fi
+  exit 0
+fi
+printf '%s\n' "$*" >>"$DOCKER_LOG"
+exit "${DOCKER_EXIT:-0}"
+EOF
+  chmod +x "$bin_dir/docker"
+  : >"$log_file"
+}
+
+test_build_images_enforces_hard_memory_and_swap_limit() {
+  local root="$TMP_DIR/build-resource-root" bin_dir="$TMP_DIR/bin-build-resource"
+  local log_file="$TMP_DIR/docker-build-resource.log" out="$TMP_DIR/build-resource.out"
+  mkdir -p "$root"
+  fake_resource_docker_path "$bin_dir" "$log_file"
+
+  (
+    ROOT="$root"
+    PATH="$bin_dir:$PATH"
+    DOCKER_LOG="$log_file"
+    TAXTRONIK_BUILD_MEMORY_LIMIT=2500m
+    TAXTRONIK_BUILD_MEMORY_RESERVE=512m
+    export PATH DOCKER_LOG TAXTRONIK_BUILD_MEMORY_LIMIT TAXTRONIK_BUILD_MEMORY_RESERVE
+    image_tag() { printf 'test-version'; }
+    host_available_memory_kib() { printf '8388608\n'; }
+    prune_build_cache() { :; }
+    build_images
+  ) >"$out" 2>&1 || {
+    cat "$out" >&2
+    test_fail "resource-limited image build failed"
+  }
+
+  [[ "$(grep -Fc -- '--resource memory=2500m --resource memory-swap=2500m' "$log_file")" == "2" ]] || {
+    cat "$log_file" >&2
+    test_fail "expected hard memory and no-swap limit on both image builds"
+  }
+  assert_contains "$log_file" "Dockerfile.web"
+  assert_contains "$log_file" "Dockerfile.worker"
+  assert_contains "$out" "RAM-Schutz: Build maximal 2500m ohne Swap"
+  pass "local image builds enforce cgroup memory and disable build swap"
+}
+
+test_build_images_refuses_insufficient_host_memory() {
+  local root="$TMP_DIR/build-low-memory-root" bin_dir="$TMP_DIR/bin-build-low-memory"
+  local log_file="$TMP_DIR/docker-build-low-memory.log" out="$TMP_DIR/build-low-memory.out"
+  mkdir -p "$root"
+  fake_resource_docker_path "$bin_dir" "$log_file"
+
+  if (
+    ROOT="$root"
+    PATH="$bin_dir:$PATH"
+    DOCKER_LOG="$log_file"
+    export PATH DOCKER_LOG
+    image_tag() { printf 'test-version'; }
+    host_available_memory_kib() { printf '3145728\n'; }
+    build_images
+  ) >"$out" 2>&1; then
+    test_fail "local build started without memory limit plus system reserve"
+  fi
+
+  assert_contains "$out" "Lokalbuild wegen RAM-Schutz abgebrochen"
+  assert_contains "$out" "erforderlich 4096 MiB"
+  assert_not_contains "$log_file" "Dockerfile.web"
+  pass "local image build fails before work when host memory is insufficient"
+}
+
+test_build_images_refuses_unsafe_legacy_buildx() {
+  local root="$TMP_DIR/build-old-buildx-root" bin_dir="$TMP_DIR/bin-build-old-buildx"
+  local log_file="$TMP_DIR/docker-build-old-buildx.log" out="$TMP_DIR/build-old-buildx.out"
+  mkdir -p "$root"
+  fake_resource_docker_path "$bin_dir" "$log_file"
+
+  if (
+    ROOT="$root"
+    PATH="$bin_dir:$PATH"
+    DOCKER_LOG="$log_file"
+    DOCKER_RESOURCE_HELP=no
+    export PATH DOCKER_LOG DOCKER_RESOURCE_HELP
+    image_tag() { printf 'test-version'; }
+    host_available_memory_kib() { printf '8388608\n'; }
+    build_images
+  ) >"$out" 2>&1; then
+    test_fail "local build used Buildx without hard resource limits"
+  fi
+
+  assert_contains "$out" "Sicherer Lokalbuild verweigert"
+  assert_not_contains "$log_file" "Dockerfile.web"
+  pass "local image build fails closed on Buildx without resource limits"
+}
+
 test_restore_source_detection_uses_s3_for_bucket_sources() {
   restore_needs_s3 --list || test_fail "restore --list should require S3"
   restore_needs_s3 --latest --target-url postgresql://example/db || test_fail "restore --latest should require S3"
@@ -698,6 +798,7 @@ run_mock_registry_rollback() (
   require_cmd() { :; }
   preflight_common() { :; }
   assert_production_env() { :; }
+  ensure_host_tool_deps() { :; }
   images_from_registry() { return 0; }
   resolve_release_contract() { test_fail "state-backed rollback unexpectedly resolved the remote manifest"; }
   fetch_verified_release_tag() { :; }
@@ -1693,6 +1794,9 @@ test_doctor_rejects_incomplete_risk_layer_pair
 test_prune_build_cache_calls_docker_builder_prune
 test_prune_build_cache_can_be_disabled
 test_prune_build_cache_failure_is_non_blocking
+test_build_images_enforces_hard_memory_and_swap_limit
+test_build_images_refuses_insufficient_host_memory
+test_build_images_refuses_unsafe_legacy_buildx
 test_restore_source_detection_uses_s3_for_bucket_sources
 test_restore_source_detection_skips_s3_for_local_file
 test_restore_validation_requires_explicit_target

@@ -190,12 +190,15 @@ Zwei Eigenheiten sind wichtig:
    Deadlock. Notbremse: `docker ps`/`systemctl restart docker` beendet auch
    verwaiste Builds.
 2. Der Build läuft, während der alte Stack noch bedient (Downtime-Minimierung).
-   Auf knapp dimensionierten Hosts konnte `next build` die Maschine früher ins
-   Swappen treiben — dann friert auch das Terminal ein und CTRL+C kommt nicht
-   mehr durch. Der V8-Heap des Builds ist inzwischen auf 3 GB gedeckelt
-   (Dockerfile.web); reicht der Host-Speicher trotzdem nicht, bricht der Build
-   mit einem klaren OOM-Fehler ab, statt still zu hängen. Faustregel: 6 GB+
-   RAM für Update bei laufendem Stack, sonst Update in ein Wartungsfenster mit
+   `NODE_OPTIONS` allein genügt hier nicht: Next/Turbopack nutzt weitere
+   Prozesse und nativen Speicher außerhalb des JavaScript-Heaps. Jeder
+   Docker-Build-Schritt läuft deshalb mit einem harten cgroup-Limit (Default
+   `3g`) und ohne Build-Swap. Vor dem Start verlangt das Skript zusätzlich
+   Limit + Systemreserve (Default `1g`) als `MemAvailable`. Bei zu wenig RAM
+   oder einem Docker/Buildx ohne `--resource` bricht es vor dem Build mit einer
+   klaren Meldung ab. Die Defaults lassen sich mit
+   `TAXTRONIK_BUILD_MEMORY_LIMIT` und `TAXTRONIK_BUILD_MEMORY_RESERVE`
+   anpassen. Reicht der Host nicht, Update in ein Wartungsfenster mit
    gestoppten Diensten legen oder auf den Registry-Modus (Pull statt Build)
    wechseln.
 

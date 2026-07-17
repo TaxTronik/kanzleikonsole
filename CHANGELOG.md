@@ -18,6 +18,11 @@ vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
 
 ## [Unreleased]
 
+- Lokale Deploy-/Update-Builds begrenzen jetzt den gesamten Docker-Buildschritt
+  per cgroup statt nur den V8-Heap des Next-Prozesses, deaktivieren Build-Swap
+  und brechen vorab ab, wenn RAM plus Systemreserve fehlen. Damit kann ein
+  ausufernder Next/Turbopack-Build den Produktivhost nicht mehr bis zur
+  Unerreichbarkeit ins Swapping treiben.
 - n8n auf den verifizierten Stable-Release 2.25.7 aktualisiert; globale
   Legacy-Callbacks sind nun standardmäßig deaktiviert und Production-n8n
   sendet keine Telemetrie oder automatischen Katalog-/Versionsabrufe.
