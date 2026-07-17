@@ -1294,6 +1294,7 @@ model Document {
   absences                  Absence[]
   taxFilings                TaxFiling[]
   taxNotices                TaxNotice[]
+  researchShelfResult       RiskResearchResult?    @relation("ResearchResultShelfDocument")
 
   @@index([tenantId, clientId])
   @@index([tenantId, classification])
@@ -1676,6 +1677,8 @@ model RiskResearchResult {
   tenantId          String               @map("tenant_id") @db.Uuid
   researchRequestId String?              @map("research_request_id") @db.Uuid
   markingId         String?              @map("marking_id") @db.Uuid
+  shelfDocumentId   String?              @unique @map("shelf_document_id") @db.Uuid
+  savedToShelfAt    DateTime?            @map("saved_to_shelf_at") @db.Timestamptz(6)
   title             String?
   body              String
   source            String?
@@ -1684,6 +1687,7 @@ model RiskResearchResult {
   tenant            Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   request           RiskResearchRequest? @relation(fields: [researchRequestId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "risk_research_result_request_fk")
   marking           RiskMarking?         @relation(fields: [markingId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "risk_research_result_marking_fk")
+  shelfDocument     Document?            @relation("ResearchResultShelfDocument", fields: [shelfDocumentId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "risk_research_result_shelf_document_fk")
 
   @@index([tenantId, status])
   @@index([tenantId, markingId])

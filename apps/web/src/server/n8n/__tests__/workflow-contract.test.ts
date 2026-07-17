@@ -205,8 +205,21 @@ describe('ausgelieferte n8n-Workflow-Vertraege', () => {
       expect.arrayContaining(['x-taxtronik-key-id', 'x-taxtronik-request-id']),
     );
     expect(headerValue(callback, 'x-taxtronik-key-id')).toBe('__TAXTRONIK_CALLBACK_KEY_ID__');
-    expect(headerValue(callback, 'x-taxtronik-request-id')).toContain('body.deliveryId');
+    expect(headerValue(callback, 'x-taxtronik-request-id')).toBe('={{ $json.deliveryId }}');
     expect(headerValue(callback, 'x-taxtronik-request-id')).not.toContain('$execution.id');
+    expect(callback.parameters).toMatchObject({
+      contentType: 'raw',
+      rawContentType: 'application/json',
+    });
+    expect(String(callback.parameters?.['body'])).toContain('JSON.stringify');
+    expect(String(callback.parameters?.['body'])).toContain('researchRequestId');
+    expect(callback.parameters?.['bodyParameters']).toBeUndefined();
+
+    const prepare = node(workflow, 'prepare-result');
+    const prepareCode = String(prepare.parameters?.['jsCode']);
+    expect(prepareCode).toContain("$('Event und Signatur validieren').first()");
+    expect(prepareCode).toContain('result?.output?.[0]?.content?.[0]?.text');
+    expect(prepareCode).toContain('researchRequestId, deliveryId');
 
     expect(workflow.connections?.['Event und Signatur validieren']?.main).toEqual([
       [{ node: 'STOPP: Recherche freigeben', type: 'main', index: 0 }],
@@ -216,6 +229,12 @@ describe('ausgelieferte n8n-Workflow-Vertraege', () => {
     ]);
     expect(workflow.connections?.['Event bestätigen']?.main).toEqual([
       [{ node: 'KI-Recherche (Beispiel)', type: 'main', index: 0 }],
+    ]);
+    expect(workflow.connections?.['KI-Recherche (Beispiel)']?.main).toEqual([
+      [{ node: 'Callback-Daten vorbereiten', type: 'main', index: 0 }],
+    ]);
+    expect(workflow.connections?.['Callback-Daten vorbereiten']?.main).toEqual([
+      [{ node: 'Ergebnis tenantgebunden an TaxTronik', type: 'main', index: 0 }],
     ]);
     expect(workflow.connections?.['Ergebnis tenantgebunden an TaxTronik']).toBeUndefined();
   });

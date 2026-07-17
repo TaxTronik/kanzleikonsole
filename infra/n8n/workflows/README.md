@@ -100,6 +100,10 @@ Der Webhook wird direkt nach Signaturprüfung über „Event bestätigen“ quit
 die eigentliche KI-Recherche und der Ergebnis-Callback laufen danach weiter.
 Diese Reihenfolge darf nicht umgedreht werden, da lange Recherchen sonst den
 TaxTronik-Zustelltimeout auslösen und unnötige Retries erzeugen.
+Vor dem Rückruf normalisiert „Callback-Daten vorbereiten“ die KI-Ausgabe und
+prüft `researchRequestId` sowie `deliveryId`. Der HTTP-Node sendet anschließend
+einen explizit serialisierten JSON-Body; dadurch hängt der Rückkanal weder von
+impliziten Body-Defaults noch vom n8n-Item-Linking des KI-Nodes ab.
 
 ## Rückkanal n8n → TaxTronik (v1)
 

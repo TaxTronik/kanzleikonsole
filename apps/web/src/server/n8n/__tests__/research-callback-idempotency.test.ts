@@ -123,4 +123,52 @@ describe('research callback transaction idempotency', () => {
       }),
     );
   });
+
+  it('legt verschiedene Rechercheaufträge als getrennte Ergebnisse an', async () => {
+    const firstRequestId = randomUUID();
+    const secondRequestId = randomUUID();
+    const firstResultId = randomUUID();
+    const secondResultId = randomUUID();
+    const requestBase = {
+      tenantId: TENANT_ID,
+      markingId: null,
+      mapping: {},
+      createdById: randomUUID(),
+      analysisId: randomUUID(),
+      analysis: { clientId: randomUUID() },
+    };
+    h.researchRequestFindUnique.mockImplementation(async ({ where }: { where: { id: string } }) =>
+      where.id === firstRequestId
+        ? { ...requestBase, title: 'Erste Recherche' }
+        : { ...requestBase, title: 'Zweite Recherche' },
+    );
+    h.resultCreate
+      .mockResolvedValueOnce({ id: firstResultId })
+      .mockResolvedValueOnce({ id: secondResultId });
+
+    await receiveResearchResult({ researchRequestId: firstRequestId, body: 'Erstes Ergebnis' });
+    await receiveResearchResult({ researchRequestId: secondRequestId, body: 'Zweites Ergebnis' });
+
+    expect(h.resultCreate).toHaveBeenCalledTimes(2);
+    expect(h.resultCreate).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          researchRequestId: firstRequestId,
+          title: 'Erste Recherche',
+          body: 'Erstes Ergebnis',
+        }),
+      }),
+    );
+    expect(h.resultCreate).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          researchRequestId: secondRequestId,
+          title: 'Zweite Recherche',
+          body: 'Zweites Ergebnis',
+        }),
+      }),
+    );
+  });
 });

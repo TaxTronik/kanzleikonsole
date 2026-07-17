@@ -76,6 +76,7 @@ export interface ResearchResultDTO {
   body: string;
   status: 'NEU' | 'ZUGEORDNET' | 'VERWORFEN';
   markingId: string | null;
+  savedToShelfAt: string | null;
   source: string | null;
   receivedAt: string;
   /** Heuristische Markierungs-Vorschläge (nur für NEU). */

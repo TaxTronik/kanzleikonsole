@@ -101,6 +101,16 @@
     },
     {
       "parameters": {
+        "jsCode": "const envelope = $('Event und Signatur validieren').first().json.body;\nconst result = $input.first().json;\nconst researchRequestId = String(envelope?.payload?.researchRequestId ?? '');\nconst deliveryId = String(envelope?.deliveryId ?? '');\nconst uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;\nif (!uuid.test(researchRequestId)) throw new Error('Recherche-ID fuer Callback fehlt oder ist ungueltig');\nif (!uuid.test(deliveryId)) throw new Error('Delivery-ID fuer Callback fehlt oder ist ungueltig');\nconst candidates = [result?.output?.[0]?.content?.[0]?.text, result?.output_text, result?.text, result?.message?.content, result?.content];\nconst body = candidates.find((value) => typeof value === 'string' && value.trim().length > 0);\nif (!body) throw new Error('KI-Recherche hat keinen Text fuer den TaxTronik-Callback geliefert');\nreturn [{ json: { researchRequestId, deliveryId, body: body.trim(), source: 'n8n' } }];"
+      },
+      "id": "prepare-result",
+      "name": "Callback-Daten vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 360]
+    },
+    {
+      "parameters": {
         "method": "POST",
         "url": "__TAXTRONIK_API_URL__/api/integrations/n8n/v1/research-result",
         "authentication": "genericCredentialType",
@@ -112,31 +122,21 @@
             { "name": "x-taxtronik-key-id", "value": "__TAXTRONIK_CALLBACK_KEY_ID__" },
             {
               "name": "x-taxtronik-request-id",
-              "value": "={{ $('Event und Signatur validieren').item.json.body.deliveryId }}"
+              "value": "={{ $json.deliveryId }}"
             }
           ]
         },
         "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "researchRequestId",
-              "value": "={{ $('Event und Signatur validieren').item.json.body.payload.researchRequestId }}"
-            },
-            {
-              "name": "body",
-              "value": "={{ $json.output[0].content[0].text }}"
-            },
-            { "name": "source", "value": "n8n" }
-          ]
-        },
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ researchRequestId: $json.researchRequestId, body: $json.body, source: $json.source }) }}",
         "options": {}
       },
       "id": "post-result",
       "name": "Ergebnis tenantgebunden an TaxTronik",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1560, 360]
+      "position": [1780, 360]
     },
     {
       "parameters": {
@@ -168,6 +168,9 @@
       "main": [[{ "node": "KI-Recherche (Beispiel)", "type": "main", "index": 0 }]]
     },
     "KI-Recherche (Beispiel)": {
+      "main": [[{ "node": "Callback-Daten vorbereiten", "type": "main", "index": 0 }]]
+    },
+    "Callback-Daten vorbereiten": {
       "main": [[{ "node": "Ergebnis tenantgebunden an TaxTronik", "type": "main", "index": 0 }]]
     }
   },

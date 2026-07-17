@@ -64,6 +64,7 @@ export async function loadResearchResults(ctx: TenantContext, analysisId: string
         body: true,
         status: true,
         markingId: true,
+        savedToShelfAt: true,
         source: true,
         receivedAt: true,
         request: { select: { title: true } },

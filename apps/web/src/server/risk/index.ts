@@ -106,6 +106,12 @@ export {
 } from './research';
 export type { ResearchInput, ResearchPreview, InboundResult } from './research';
 
+export { saveResearchResultToShelf } from './research-shelf';
+export type {
+  SaveResearchResultToShelfInput,
+  SaveResearchResultToShelfResult,
+} from './research-shelf';
+
 export { scoreMarkingSuggestions, extractNormRefs } from './suggest';
 export type { MarkingSuggestion, ScoreableMarking } from './suggest';
 

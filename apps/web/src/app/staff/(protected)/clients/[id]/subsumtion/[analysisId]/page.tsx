@@ -60,6 +60,7 @@ export default async function AnalysisPage({
     body: r.body,
     status: r.status,
     markingId: r.markingId,
+    savedToShelfAt: r.savedToShelfAt?.toISOString() ?? null,
     source: r.source,
     receivedAt: r.receivedAt.toISOString(),
     suggestions: r.status === 'NEU' ? scoreMarkingSuggestions(r, openMarkings) : [],

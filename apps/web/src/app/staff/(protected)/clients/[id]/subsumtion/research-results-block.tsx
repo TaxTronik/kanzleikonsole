@@ -1,7 +1,8 @@
 'use client';
 
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Inbox, Sparkles, Check, FolderOpen } from 'lucide-react';
+import { Inbox, Sparkles, Check, FolderOpen, FolderCheck } from 'lucide-react';
 import { assignResultAction, saveResultToShelfAction } from './actions';
 import { renderMarkdown } from '@/lib/markdown';
 import type { ResearchResultDTO, MarkingDTO } from './_ui';
@@ -35,6 +36,9 @@ export function ResearchResultsBlock(props: {
   onFlash: (r: { ok: boolean; error?: string }, ok?: string) => void;
 }) {
   const router = useRouter();
+  const saveLocks = useRef(new Set<string>());
+  const [savingResultIds, setSavingResultIds] = useState<Set<string>>(new Set());
+  const [savedResultIds, setSavedResultIds] = useState<Set<string>>(new Set());
   if (props.results.length === 0) return null;
 
   function assign(resultId: string, markingId: string | null) {
@@ -51,10 +55,30 @@ export function ResearchResultsBlock(props: {
   }
 
   function saveToShelf(resultId: string) {
+    if (saveLocks.current.has(resultId) || savedResultIds.has(resultId)) return;
+    saveLocks.current.add(resultId);
+    setSavingResultIds((current) => new Set(current).add(resultId));
     props.start(async () => {
-      const r = await saveResultToShelfAction({ resultId });
-      props.onFlash(r, 'Als Markdown-Dokument im Aktenregal gespeichert.');
-      if (r.ok) router.refresh();
+      try {
+        const r = await saveResultToShelfAction({ resultId });
+        props.onFlash(
+          r,
+          r.ok && r.alreadySaved
+            ? 'Dieses Rechercheergebnis liegt bereits im Aktenregal.'
+            : 'Als Markdown-Dokument im Aktenregal gespeichert.',
+        );
+        if (r.ok) {
+          setSavedResultIds((current) => new Set(current).add(resultId));
+          router.refresh();
+        }
+      } finally {
+        saveLocks.current.delete(resultId);
+        setSavingResultIds((current) => {
+          const next = new Set(current);
+          next.delete(resultId);
+          return next;
+        });
+      }
     });
   }
 
@@ -67,6 +91,8 @@ export function ResearchResultsBlock(props: {
       <ul className="divide-y divide-border-subtle">
         {props.results.map((res) => {
           const assignedTo = res.markingId ? props.markingsById[res.markingId] : null;
+          const savedToShelf = Boolean(res.savedToShelfAt) || savedResultIds.has(res.id);
+          const savingToShelf = savingResultIds.has(res.id);
           return (
             <li key={res.id} className="py-3 space-y-1.5">
               <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -82,11 +108,24 @@ export function ResearchResultsBlock(props: {
                   <button
                     type="button"
                     onClick={() => saveToShelf(res.id)}
-                    disabled={props.pending}
+                    disabled={props.pending || savingToShelf || savedToShelf}
                     className="btn-secondary text-[11px] py-0.5"
-                    title="Als Markdown-Dokument im Aktenregal dieses Sachverhalts ablegen"
+                    title={
+                      savedToShelf
+                        ? 'Dieses Rechercheergebnis wurde bereits im Aktenregal abgelegt'
+                        : 'Als Markdown-Dokument im Aktenregal dieses Sachverhalts ablegen'
+                    }
                   >
-                    <FolderOpen className="h-3 w-3" /> Ins Aktenregal
+                    {savedToShelf ? (
+                      <>
+                        <FolderCheck className="h-3 w-3" /> Im Aktenregal
+                      </>
+                    ) : (
+                      <>
+                        <FolderOpen className="h-3 w-3" />
+                        {savingToShelf ? 'Wird abgelegt …' : 'Ins Aktenregal'}
+                      </>
+                    )}
                   </button>
                 </span>
               </div>
