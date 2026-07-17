@@ -907,10 +907,17 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
         </div>
         <div className="rounded-lg border border-default p-4 space-y-4">
           <div className="grid gap-3 md:grid-cols-2">
-            <ReadOnlyValue
-              label="Callback-Basis-URL"
-              value={`${callbackBaseUrl.replace(/\/$/, '')}/api/integrations/n8n/v1`}
-            />
+            <div>
+              <ReadOnlyValue
+                label="Callback-Basis-URL"
+                value={`${callbackBaseUrl.replace(/\/$/, '')}/api/integrations/n8n/v1`}
+              />
+              <span className="mt-1 block text-xs text-muted">
+                Die Basis-URL antwortet auf GET als Verbindungstest (mit Credential: 200 + Scopes;
+                ohne: 401 mit Anleitung). Die Fach-Endpunkte liegen auf Unterpfaden, z. B.{' '}
+                <code>/research-result</code>.
+              </span>
+            </div>
             <ReadOnlyValue
               label="Key-ID"
               value={initial.callbackKeyId || 'Wird beim Speichern erzeugt'}

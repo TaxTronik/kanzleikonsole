@@ -347,6 +347,14 @@ Assistent erzeugt dafür:
 - ein langes Bearer-Token, das **nur einmal** angezeigt wird,
 - und die ausgewählten Callback-Scopes.
 
+Die Basis-URL selbst dient als Verbindungstest: Ein `GET` darauf antwortet
+mit gültigem Credential (Bearer-Token + Key-ID, ohne `x-taxtronik-request-id`)
+mit `200` samt gewährten Scopes und Endpunktliste — ohne Credential mit `401`
+inklusive Anleitung. Die Fach-Endpunkte liegen auf Unterpfaden
+(`/overdue-requests`, `/expiring-gwg-checks`, `/request-detail/{id}`,
+`/research-result`, `/request-inbound`) und verlangen zusätzlich eine
+eindeutige `x-taxtronik-request-id` pro Aufruf (Idempotenz).
+
 Im ausgelieferten Workflow wird das Token vom Generic-Header-Credential als
 `Authorization: Bearer ...` gesetzt; App-Basis und Key-ID wurden beim Import
 als nicht geheime Node-Konfiguration materialisiert. Eigene Workflows müssen

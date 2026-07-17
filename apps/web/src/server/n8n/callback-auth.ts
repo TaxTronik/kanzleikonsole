@@ -32,6 +32,8 @@ export interface N8nCallbackAuthSuccess {
   connectionId: string;
   tenantId: string;
   requestId: string;
+  /** Dem Credential gewaehrte Scopes (fuer den Ping-/Basis-Endpunkt). */
+  scopes: string[];
 }
 
 export interface N8nCallbackAuthFailure {
@@ -184,7 +186,8 @@ async function releaseRequestId(reservation: N8nCallbackReservation): Promise<bo
  */
 export async function authenticateN8nCallback(
   request: NextRequest,
-  requiredScope: N8nCallbackScope,
+  /** null = reiner Credential-Check ohne Scope-Anforderung (Ping-Endpunkt). */
+  requiredScope: N8nCallbackScope | null,
 ): Promise<N8nCallbackAuthResult> {
   const callbackKeyId = request.headers.get('x-taxtronik-key-id')?.trim() ?? '';
   const authorization = request.headers.get('authorization')?.trim() ?? '';
@@ -200,7 +203,10 @@ export async function authenticateN8nCallback(
     return reject(401, 'unauthorized', 'missing or invalid bearer token');
   }
 
-  if (!REQUEST_ID_RE.test(requestId)) {
+  // Der Ping-Endpunkt (requiredScope null) reserviert nichts — dort ist die
+  // Request-ID optional, damit ein einfacher Verbindungstest ohne Extra-Header
+  // moeglich ist.
+  if (requiredScope !== null && !REQUEST_ID_RE.test(requestId)) {
     return reject(400, 'invalid_request', 'missing or invalid x-taxtronik-request-id');
   }
 
@@ -242,7 +248,7 @@ export async function authenticateN8nCallback(
     return reject(401, 'unauthorized', 'callback token mismatch');
   }
 
-  if (!connection.callbackScopes.includes(requiredScope)) {
+  if (requiredScope !== null && !connection.callbackScopes.includes(requiredScope)) {
     return reject(403, 'forbidden', `missing callback scope: ${requiredScope}`);
   }
 
@@ -251,6 +257,7 @@ export async function authenticateN8nCallback(
     connectionId: connection.id,
     tenantId: connection.tenantId,
     requestId,
+    scopes: [...connection.callbackScopes],
   };
 }
 
