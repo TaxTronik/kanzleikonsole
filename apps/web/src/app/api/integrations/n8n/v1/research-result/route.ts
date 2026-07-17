@@ -40,7 +40,19 @@ export async function POST(request: NextRequest) {
   }
   const parsed = ResearchResultSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: 'validation_error' }, { status: 400 });
+    // Feldgenaue Details: Workflow-Autoren sehen in n8n sonst nur ein nacktes
+    // 400 und muessen raten, welches Feld fehlt. Das Schema ist oeffentlich
+    // dokumentiert — die Pfade verraten nichts Geheimes.
+    return NextResponse.json(
+      {
+        error: 'validation_error',
+        details: parsed.error.issues.map((issue) => ({
+          field: issue.path.join('.') || '(root)',
+          message: issue.message,
+        })),
+      },
+      { status: 400 },
+    );
   }
 
   const callbackReceipt = {

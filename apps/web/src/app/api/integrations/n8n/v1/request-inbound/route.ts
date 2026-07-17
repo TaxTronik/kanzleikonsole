@@ -39,7 +39,17 @@ export async function POST(request: NextRequest) {
   }
   const parsed = InboundSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: 'validation_error' }, { status: 400 });
+    // Feldgenaue Details wie bei research-result — siehe Kommentar dort.
+    return NextResponse.json(
+      {
+        error: 'validation_error',
+        details: parsed.error.issues.map((issue) => ({
+          field: issue.path.join('.') || '(root)',
+          message: issue.message,
+        })),
+      },
+      { status: 400 },
+    );
   }
 
   const callbackReceipt = {
