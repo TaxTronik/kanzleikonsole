@@ -230,7 +230,10 @@ sind in Schema-Version 1 insbesondere diese `payload`-Schlüssel vorgesehen:
 - `staff.locked`: `tenantId`, `staffId`
 - `staff.vacation_requested`: `tenantId`, `requestId`, `staffId`, `workdays`
 - `risk.research_requested`: `researchRequestId`, `rechtsfrage`, `normAnker`,
-  `governanceTyp`, `anonymizedText`, `katalogVersion`
+  `governanceTyp`, `auftrag` (die Recherche-Frage des Beraters, separat und
+  anonymisiert — kein String-Parsing aus `anonymizedText` nötig; `null`, wenn
+  keine erfasst), `anonymizedText` (kombinierter Kontext inkl. Sachverhalt),
+  `katalogVersion`
 - `taxtronik.ping`: `from`
 
 Diese Beispiele beschreiben die von TaxTronik erzeugte Form, sind aber keine

@@ -323,6 +323,7 @@ const STATIC_EVENT_DETAILS = {
       rechtsfrage: 'Welche Rechtsfolge gilt im synthetischen Fall [MANDANT_1]?',
       normAnker: ['§ 1 BeispielG'],
       governanceTyp: 'RECHTSFRAGE',
+      auftrag: 'Recherchiere die synthetische Rechtsfrage.',
       anonymizedText: 'Synthetischer Sachverhalt ohne Echtdaten.',
       katalogVersion: 'synthetic-v1',
     },

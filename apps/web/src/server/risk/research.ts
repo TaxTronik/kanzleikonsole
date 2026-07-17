@@ -114,7 +114,10 @@ async function buildRaw(tx: TxClient, tenantId: string, input: ResearchInput) {
     if (marking.governanceTyp) parts.push(`Governance-Typ: ${marking.governanceTyp}`);
   }
   if (input.sachverhalt === 'full') {
-    parts.push('Sachverhalt:\n' + reflowProse(analysis.sourceText));
+    // Kein doppeltes Label, wenn der erfasste Sachverhalt selbst schon mit
+    // "Sachverhalt:" beginnt ("Sachverhalt:\nSachverhalt: ..." im Payload).
+    const prose = reflowProse(analysis.sourceText);
+    parts.push(/^\s*sachverhalt\s*:/i.test(prose) ? prose : 'Sachverhalt:\n' + prose);
   } else if (input.sachverhalt === 'excerpt' && marking) {
     parts.push(
       'Sachverhalt-Auszug:\n' +
@@ -180,17 +183,30 @@ export async function sendResearchToN8n(
     // rechtsfrage geht als eigenes Feld raus → ebenfalls anonymisieren. Bei BERATER-
     // Markierungen ist begriff Freitext und kann Mandantenbezug enthalten (§203).
     const safeRechtsfrage = anonymize(rechtsfrage, { client, contacts });
+    // Der Auftrag (Recherche-Frage) geht zusätzlich als EIGENES Feld raus,
+    // damit n8n-Workflows die Frage nicht per String-Parsing aus dem
+    // kombinierten anonymizedText extrahieren müssen. Freitext des Beraters →
+    // ebenfalls anonymisieren.
+    const promptText = input.prompt?.trim() || null;
+    const safeAuftrag = promptText ? anonymize(promptText, { client, contacts }) : null;
     // Reihenfolge = Priorität (späteres gewinnt). `safe` (der gesendete
     // anonymizedText) MUSS gewinnen: die n8n-Antwort echo't dessen Platzhalter,
     // also muss deren De-Anonymisierung aus safe.mapping kommen. Heuristik-
     // Platzhalter ([BETRAG_1]…) sind pro Text nummeriert und könnten sonst auf
     // das Original der rechtsfrage statt des gesendeten Texts zurückfallen.
-    const mapping = { ...baseMapping, ...safeRechtsfrage.mapping, ...safe.mapping };
+    const mapping = {
+      ...baseMapping,
+      ...safeRechtsfrage.mapping,
+      ...(safeAuftrag?.mapping ?? {}),
+      ...safe.mapping,
+    };
 
     const payload = {
       rechtsfrage: safeRechtsfrage.text,
       normAnker,
       governanceTyp,
+      /** Recherche-Frage des Beraters, separat und anonymisiert (null, wenn keine erfasst). */
+      auftrag: safeAuftrag?.text ?? null,
       anonymizedText: safe.text,
       katalogVersion: analysis.katalogVersion,
     };
