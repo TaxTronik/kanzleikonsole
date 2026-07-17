@@ -650,7 +650,8 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
                 placeholder="https://n8n.example.de"
               />
               <span className="mt-1 block text-xs text-muted">
-                Zum späteren Öffnen aus TaxTronik.
+                Zum späteren Öffnen aus TaxTronik — nur die Basis-Adresse, ohne{' '}
+                <code>/webhook</code>.
               </span>
             </label>
             <label className="block">
@@ -696,11 +697,21 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
                     value: { webhookBaseUrl: event.target.value },
                   })
                 }
-                placeholder="https://n8n.example.de/webhook"
+                placeholder={
+                  kind === 'BUNDLED' ? 'http://n8n:5678/webhook' : 'https://n8n.example.de/webhook'
+                }
               />
               <span className="mt-1 block text-xs text-muted">
                 Nur zur Erkennung bzw. im Legacy-Modus. Zugestellt wird bei explizitem Routing an
                 die unten gespeicherten vollständigen URLs.
+                {kind === 'BUNDLED' && (
+                  <>
+                    {' '}
+                    Im Compose-Betrieb erreicht die App n8n direkt als{' '}
+                    <code>http://n8n:5678/webhook</code> — localhost funktioniert aus dem
+                    App-Container nicht.
+                  </>
+                )}
               </span>
             </label>
             <label className="block">

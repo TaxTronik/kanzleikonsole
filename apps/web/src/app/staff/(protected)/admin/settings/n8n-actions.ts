@@ -235,10 +235,25 @@ export async function saveN8nAction(
     return { ok: false, error: 'Der Legacy-Modus benötigt Webhook-Präfix und Signatur-Secret.' };
   }
 
+  // Feldgenaue Validierung mit eindeutigem "Nicht gespeichert"-Präfix: der
+  // frühere nackte SSRF-Fehler ("Hostname löst auf eine private Adresse auf")
+  // stand neben dem API-Test und wurde als Test-Ergebnis fehlgedeutet — der
+  // Admin hielt den verworfenen Save für erfolgreich.
   try {
-    await Promise.all([validateStoredUrl(data.webhookBaseUrl), validateStoredUrl(data.apiBaseUrl)]);
+    await validateStoredUrl(data.webhookBaseUrl);
   } catch (error) {
-    return { ok: false, error: (error as Error).message };
+    return {
+      ok: false,
+      error: `Nicht gespeichert — Produktions-Webhook-Präfix: ${(error as Error).message} Tipp: Im Compose-Betrieb http://n8n:5678/webhook verwenden, sonst die öffentliche Proxy-Adresse — nie localhost.`,
+    };
+  }
+  try {
+    await validateStoredUrl(data.apiBaseUrl);
+  } catch (error) {
+    return {
+      ok: false,
+      error: `Nicht gespeichert — Public API: ${(error as Error).message}`,
+    };
   }
 
   const cfg: N8nConfig = {
