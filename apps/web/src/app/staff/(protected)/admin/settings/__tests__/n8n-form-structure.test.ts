@@ -83,7 +83,8 @@ describe('n8n-Adminformular – inkrementelle Komponentenstruktur', () => {
     expect(form).toContain("message: 'Fehler wird quittiert…'");
     expect(form).toContain("message: 'Wird den aktuellen Routen zugeordnet…'");
     expect(form).toContain("message: 'Wird abgeschlossen…'");
-    expect(form.match(/router\.refresh\(\);/g) ?? []).toHaveLength(10);
+    // 11: inkl. toggleRoute (Ein-Klick-Aktivierung an der Routen-Karte).
+    expect(form.match(/router\.refresh\(\);/g) ?? []).toHaveLength(11);
     expect(form.match(/window\.location\.reload\(\)/g) ?? []).toHaveLength(1);
   });
 });

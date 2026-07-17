@@ -357,6 +357,30 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
     });
   }
 
+  // Ein-Klick-Aktivierung/Deaktivierung direkt an der Routen-Karte: der
+  // Server speichert neue Routen bewusst deaktiviert ("erst testen, dann
+  // aktivieren") — ohne diesen Button ging Aktivieren nur über den Umweg
+  // Bearbeiten → Häkchen → Speichern.
+  function toggleRoute(endpoint: N8nEndpointView, enabled: boolean) {
+    setRouteResult(null);
+    startTransition(async () => {
+      const data = new FormData();
+      data.set('id', endpoint.id);
+      data.set('name', endpoint.name);
+      data.set('productionUrl', endpoint.productionUrl);
+      data.set('testUrl', endpoint.testUrl);
+      data.set('workflowId', endpoint.workflowId);
+      data.set('workflowName', endpoint.workflowName);
+      data.set('workflowNodeId', endpoint.workflowNodeId);
+      data.set('source', endpoint.source === 'LEGACY' ? 'CUSTOM' : endpoint.source);
+      if (enabled) data.set('enabled', 'on');
+      for (const eventName of endpoint.events) data.append('events', eventName);
+      const result = await saveN8nEndpointAction(null, data);
+      setTestResult((current) => ({ ...current, [`${endpoint.id}:toggle`]: result }));
+      if (result.ok) router.refresh();
+    });
+  }
+
   const deleteRoute = useConfirmedAction({
     startTransition,
     confirmation: 'Diese Route und ihre Event-Abonnements entfernen?',
@@ -1187,6 +1211,7 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
         onEditRoute={editRoute}
         onDeleteRoute={deleteRoute}
         onTestRoute={testRoute}
+        onToggleRoute={toggleRoute}
       />
 
       <DeliveryOperationsSection

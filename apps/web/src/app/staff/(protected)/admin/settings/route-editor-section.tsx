@@ -48,6 +48,7 @@ interface RouteEditorSectionProps {
   onEditRoute: (endpoint: N8nEndpointView) => void;
   onDeleteRoute: (endpointId: string) => void;
   onTestRoute: (endpointId: string, useTestUrl: boolean, eventName: string) => void;
+  onToggleRoute: (endpoint: N8nEndpointView, enabled: boolean) => void;
 }
 
 export function RouteEditorSection({
@@ -65,6 +66,7 @@ export function RouteEditorSection({
   onEditRoute,
   onDeleteRoute,
   onTestRoute,
+  onToggleRoute,
 }: RouteEditorSectionProps) {
   const groupedEvents = new Map<string, N8nEventCatalogEntry[]>();
   for (const event of events) {
@@ -152,6 +154,29 @@ export function RouteEditorSection({
                 </div>
               </div>
               <div className="flex flex-wrap gap-1.5">
+                {/* Server speichert neue/geänderte Routen bewusst deaktiviert
+                    ("erst testen, dann aktivieren") — nach erfolgreichem Test
+                    ist DIES der Aktivierungs-Schalter. */}
+                {endpoint.verificationOk === true && !endpoint.enabled && (
+                  <button
+                    type="button"
+                    className="btn-primary inline-flex items-center gap-1 text-xs"
+                    onClick={() => onToggleRoute(endpoint, true)}
+                    disabled={busy || saving}
+                  >
+                    <CheckCircle2 className="h-3 w-3" /> Aktivieren
+                  </button>
+                )}
+                {endpoint.enabled && (
+                  <button
+                    type="button"
+                    className="btn-secondary text-xs"
+                    onClick={() => onToggleRoute(endpoint, false)}
+                    disabled={busy || saving}
+                  >
+                    Deaktivieren
+                  </button>
+                )}
                 {endpoint.events.includes('taxtronik.ping') && (
                   <button
                     type="button"
@@ -193,6 +218,7 @@ export function RouteEditorSection({
                 </button>
               </div>
             </div>
+            <N8nActionResult result={testResult[`${endpoint.id}:toggle`]} />
             {endpoint.events.map((eventName) => (
               <div key={eventName}>
                 <N8nActionResult result={testResult[`${endpoint.id}:prod:${eventName}`]} />
@@ -392,7 +418,10 @@ export function RouteEditorSection({
             n8n-Workflow nur erforderliche Daten verarbeiten und Ausführungsdaten begrenzen.
           </p>
         )}
-        <div className="flex flex-wrap items-center gap-3">
+        {/* Sticky: das Event-Raster ist lang — die Speichern-Leiste bleibt
+            beim Scrollen am unteren Rand sichtbar, damit der Button nie
+            "fehlt". */}
+        <div className="sticky bottom-0 -mx-4 -mb-4 flex flex-wrap items-center gap-3 rounded-b-lg border-t border-default bg-surface-raised px-4 py-3">
           <button
             type="submit"
             className="btn-primary inline-flex items-center gap-1.5"
