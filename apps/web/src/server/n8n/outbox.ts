@@ -171,7 +171,7 @@ export async function enqueueN8nEvent(
           },
           select: {
             endpoint: {
-              select: { id: true, name: true, productionUrl: true, testUrl: true },
+              select: { id: true, name: true, productionUrl: true, testUrl: true, testMode: true },
             },
           },
         });
@@ -199,10 +199,13 @@ export async function enqueueN8nEvent(
         const deliveryIds: string[] = [];
         let pending = 0;
         for (const { endpoint } of subscriptions) {
-          const targetUrl = n8nDeliveryMode === 'test' ? endpoint.testUrl : endpoint.productionUrl;
+          // Test-Ziel entweder global (N8N_DELIVERY_MODE=test) oder pro Route
+          // über den Debug-Schalter testMode — beides liefert an /webhook-test.
+          const useTestUrl = n8nDeliveryMode === 'test' || endpoint.testMode;
+          const targetUrl = useTestUrl ? endpoint.testUrl : endpoint.productionUrl;
           const skipReason = !secretConfigured
             ? 'n8n-Signatur-Secret fehlt'
-            : n8nDeliveryMode === 'test' && !targetUrl
+            : useTestUrl && !targetUrl
               ? 'Kein sicherer n8n-Test-Webhook für diesen Endpoint konfiguriert'
               : null;
           const delivery = await tx.n8nDelivery.create({

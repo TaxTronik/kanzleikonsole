@@ -321,6 +321,7 @@ async function deliver(deliveryId: string, leaseToken: string): Promise<void> {
           connectionId: true,
           productionUrl: true,
           testUrl: true,
+          testMode: true,
           subscriptions: {
             where: { enabled: true },
             select: { event: true },
@@ -357,8 +358,12 @@ async function deliver(deliveryId: string, leaseToken: string): Promise<void> {
   // Delivery (null) darf nach dem Anlegen einer Connection nicht plötzlich
   // mit deren neuem Secret zugestellt werden.
   const plannedConnectionMissing = delivery.connectionIdSnapshot !== state.connectionId;
+  // Spiegelt die Zielwahl aus der Outbox-Planung: global test ODER
+  // Route-Debug-Schalter testMode → Test-URL, sonst Produktions-URL.
   const expectedExplicitTarget =
-    n8nDeliveryMode === 'test' ? delivery.endpoint?.testUrl : delivery.endpoint?.productionUrl;
+    n8nDeliveryMode === 'test' || delivery.endpoint?.testMode
+      ? delivery.endpoint?.testUrl
+      : delivery.endpoint?.productionUrl;
   const explicitRouteChanged = delivery.endpoint
     ? !delivery.endpoint.enabled ||
       delivery.endpoint.connectionId !== state.connectionId ||

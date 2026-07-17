@@ -101,9 +101,17 @@ const EndpointSchema = z
     workflowNodeId: z.string().trim().max(200),
     source: z.enum(['MANAGED', 'DISCOVERED', 'CUSTOM']).default('CUSTOM'),
     enabled: z.boolean(),
+    testMode: z.boolean(),
     events: z.array(EventName).min(1, 'Mindestens ein Event auswählen.'),
   })
   .superRefine((data, ctx) => {
+    if (data.testMode && !data.testUrl) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['testMode'],
+        message: 'Der Test-Modus benötigt eine gespeicherte Test-URL (/webhook-test).',
+      });
+    }
     if (!data.testUrl && requiresSeparateTestWebhook(data.events)) {
       ctx.addIssue({
         code: 'custom',
@@ -142,6 +150,7 @@ function parseEndpointForm(formData: FormData) {
     workflowNodeId: formData.get('workflowNodeId') ?? '',
     source: formData.get('source') ?? 'CUSTOM',
     enabled: formData.get('enabled') === 'on',
+    testMode: formData.get('testMode') === 'on',
     events: formData.getAll('events'),
   });
 }
@@ -557,6 +566,7 @@ export async function saveN8nEndpointAction(
             productionUrl: true,
             testUrl: true,
             enabled: true,
+            testMode: true,
             updatedAt: true,
             verificationOk: true,
             subscriptions: { select: { event: true } },
@@ -574,13 +584,19 @@ export async function saveN8nEndpointAction(
           previousEvents !== nextEvents;
         const mayActivate = !routeChanged && exists.verificationOk === true;
         activationBlocked = data.enabled && !mayActivate;
-        if (routeChanged || (exists.enabled && !data.enabled)) {
+        // Test-Modus-Wechsel ändert das Zustellziel bereits geplanter
+        // Deliveries — sie werden storniert (Outbox plant neu), setzt aber
+        // NICHT die Verifikation zurück (URLs sind unverändert).
+        const testModeChanged = exists.testMode !== data.testMode;
+        if (routeChanged || testModeChanged || (exists.enabled && !data.enabled)) {
           const cancelled = await cancelPendingN8nDeliveries(tx, {
             tenantId: ctx.tenantId,
             endpointId,
             reason: routeChanged
               ? 'n8n-Route oder Event-Zuordnung wurde geändert'
-              : 'n8n-Route wurde deaktiviert',
+              : testModeChanged
+                ? 'Test-Modus der n8n-Route wurde umgeschaltet'
+                : 'n8n-Route wurde deaktiviert',
           });
           cancelledPendingDeliveries = cancelled.deliveryCount;
         }
@@ -594,6 +610,7 @@ export async function saveN8nEndpointAction(
             workflowName: data.workflowName || null,
             workflowNodeId: data.workflowNodeId || null,
             enabled: data.enabled && mayActivate,
+            testMode: data.testMode,
             ...(routeChanged
               ? {
                   verifiedAt: null,
@@ -622,6 +639,7 @@ export async function saveN8nEndpointAction(
             workflowNodeId: data.workflowNodeId || null,
             source: data.source,
             enabled: false,
+            testMode: data.testMode,
           },
           select: { id: true },
         });
@@ -662,6 +680,7 @@ export async function saveN8nEndpointAction(
           testUrl: data.testUrl || null,
           enabledRequested: data.enabled,
           enabled: data.enabled && !activationBlocked,
+          testMode: data.testMode,
           events: data.events,
           cancelledPendingDeliveries,
         },

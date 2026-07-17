@@ -71,16 +71,16 @@ export default async function PortalRequestDetailPage({
     if (!owningProfile) notFound();
 
     return (
-      <div className="p-8 max-w-xl space-y-4">
+      <div className="p-8">
+        {/* Hinweis + Auto-Wechsel als Vollbild-Overlay (mobil lesbarer als
+            eine Inline-Karte); darunter nur ein neutraler Platzhalter. */}
+        <p className="text-sm text-muted">Anforderung wird geöffnet …</p>
         <AutoProfileSwitch
           contactId={owningProfile.contactId}
           clientName={owningProfile.clientName}
           contactName={owningProfile.contactName}
           returnTo={`/portal/requests/${id}`}
         />
-        <Link href="/portal/dashboard" className="text-xs text-muted hover:underline">
-          Zurück zum Dashboard
-        </Link>
       </div>
     );
   }

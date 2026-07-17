@@ -308,6 +308,7 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
       workflowNodeId: endpoint.workflowNodeId,
       source: endpoint.source === 'LEGACY' ? 'CUSTOM' : endpoint.source,
       enabled: endpoint.enabled,
+      testMode: endpoint.testMode,
       events: endpoint.events,
     });
     setCustomEvent('');
@@ -328,6 +329,7 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
       workflowNodeId: item.nodeId,
       source: managed ? 'MANAGED' : 'DISCOVERED',
       enabled: item.workflowActive,
+      testMode: false,
       events: matchingEvent ? [matchingEvent] : [],
     });
     setCustomEvent('');
@@ -341,10 +343,11 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
     startTransition(async () => {
       const data = new FormData();
       for (const [key, value] of Object.entries(routeDraft)) {
-        if (key === 'events' || key === 'enabled') continue;
+        if (key === 'events' || key === 'enabled' || key === 'testMode') continue;
         data.set(key, String(value));
       }
       if (routeDraft.enabled) data.set('enabled', 'on');
+      if (routeDraft.testMode) data.set('testMode', 'on');
       for (const eventName of routeDraft.events) data.append('events', eventName);
       if (customEvent.trim()) data.append('events', customEvent.trim());
       const result = await saveN8nEndpointAction(null, data);
@@ -361,7 +364,10 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
   // Server speichert neue Routen bewusst deaktiviert ("erst testen, dann
   // aktivieren") — ohne diesen Button ging Aktivieren nur über den Umweg
   // Bearbeiten → Häkchen → Speichern.
-  function toggleRoute(endpoint: N8nEndpointView, enabled: boolean) {
+  function toggleRoute(
+    endpoint: N8nEndpointView,
+    patch: { enabled?: boolean; testMode?: boolean },
+  ) {
     setRouteResult(null);
     startTransition(async () => {
       const data = new FormData();
@@ -373,7 +379,8 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
       data.set('workflowName', endpoint.workflowName);
       data.set('workflowNodeId', endpoint.workflowNodeId);
       data.set('source', endpoint.source === 'LEGACY' ? 'CUSTOM' : endpoint.source);
-      if (enabled) data.set('enabled', 'on');
+      if (patch.enabled ?? endpoint.enabled) data.set('enabled', 'on');
+      if (patch.testMode ?? endpoint.testMode) data.set('testMode', 'on');
       for (const eventName of endpoint.events) data.append('events', eventName);
       const result = await saveN8nEndpointAction(null, data);
       setTestResult((current) => ({ ...current, [`${endpoint.id}:toggle`]: result }));

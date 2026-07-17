@@ -90,7 +90,7 @@ describe('enqueueN8nEvent routing', () => {
       },
       select: {
         endpoint: {
-          select: { id: true, name: true, productionUrl: true, testUrl: true },
+          select: { id: true, name: true, productionUrl: true, testUrl: true, testMode: true },
         },
       },
     });

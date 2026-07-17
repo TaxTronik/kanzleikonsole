@@ -511,6 +511,10 @@ model N8nWebhookEndpoint {
   workflowNodeId    String?                @map("workflow_node_id")
   source            N8nEndpointSource      @default(CUSTOM)
   enabled           Boolean                @default(true)
+  /// Debug-Schalter: echte Event-Zustellungen gehen an die Test-URL
+  /// (/webhook-test) statt an die Produktions-URL — zum Anpassen/Debuggen
+  /// des Workflows im laufenden Betrieb, ohne die Route zu löschen.
+  testMode          Boolean                @default(false) @map("test_mode")
   verifiedAt        DateTime?              @map("verified_at") @db.Timestamptz(6)
   verificationOk    Boolean?               @map("verification_ok")
   verificationError String?                @map("verification_error")

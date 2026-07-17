@@ -10,6 +10,8 @@ export interface N8nEndpointView {
   workflowNodeId: string;
   source: 'MANAGED' | 'DISCOVERED' | 'CUSTOM' | 'LEGACY';
   enabled: boolean;
+  /** Debug-Schalter: echte Zustellungen gehen an die Test-URL (/webhook-test). */
+  testMode: boolean;
   verifiedAt: string | null;
   verificationOk: boolean | null;
   verificationError: string | null;
@@ -153,6 +155,7 @@ export async function readN8nSetupStatus(ctx: TenantContext): Promise<N8nSetupSt
         workflowNodeId: endpoint.workflowNodeId ?? '',
         source: endpoint.source,
         enabled: endpoint.enabled,
+        testMode: endpoint.testMode,
         verifiedAt: endpoint.verifiedAt?.toISOString() ?? null,
         verificationOk: endpoint.verificationOk,
         verificationError: endpoint.verificationError,

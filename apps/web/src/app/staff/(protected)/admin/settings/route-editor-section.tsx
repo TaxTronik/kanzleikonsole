@@ -17,6 +17,7 @@ export interface RouteDraft {
   workflowNodeId: string;
   source: 'MANAGED' | 'DISCOVERED' | 'CUSTOM';
   enabled: boolean;
+  testMode: boolean;
   events: string[];
 }
 
@@ -30,6 +31,7 @@ export const EMPTY_ROUTE: RouteDraft = {
   workflowNodeId: '',
   source: 'CUSTOM',
   enabled: false,
+  testMode: false,
   events: [],
 };
 
@@ -48,7 +50,10 @@ interface RouteEditorSectionProps {
   onEditRoute: (endpoint: N8nEndpointView) => void;
   onDeleteRoute: (endpointId: string) => void;
   onTestRoute: (endpointId: string, useTestUrl: boolean, eventName: string) => void;
-  onToggleRoute: (endpoint: N8nEndpointView, enabled: boolean) => void;
+  onToggleRoute: (
+    endpoint: N8nEndpointView,
+    patch: { enabled?: boolean; testMode?: boolean },
+  ) => void;
 }
 
 export function RouteEditorSection({
@@ -135,6 +140,14 @@ export function RouteEditorSection({
                   <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-muted dark:bg-gray-800">
                     {endpoint.source.toLowerCase()}
                   </span>
+                  {endpoint.testMode && (
+                    <span
+                      className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+                      title="Echte Zustellungen gehen an die Test-URL (/webhook-test) — nur solange der Workflow in n8n auf ein Testereignis wartet."
+                    >
+                      Test-Modus
+                    </span>
+                  )}
                 </div>
                 <p
                   className="mt-1 truncate font-mono text-[10px] text-muted"
@@ -161,7 +174,7 @@ export function RouteEditorSection({
                   <button
                     type="button"
                     className="btn-primary inline-flex items-center gap-1 text-xs"
-                    onClick={() => onToggleRoute(endpoint, true)}
+                    onClick={() => onToggleRoute(endpoint, { enabled: true })}
                     disabled={busy || saving}
                   >
                     <CheckCircle2 className="h-3 w-3" /> Aktivieren
@@ -171,10 +184,25 @@ export function RouteEditorSection({
                   <button
                     type="button"
                     className="btn-secondary text-xs"
-                    onClick={() => onToggleRoute(endpoint, false)}
+                    onClick={() => onToggleRoute(endpoint, { enabled: false })}
                     disabled={busy || saving}
                   >
                     Deaktivieren
+                  </button>
+                )}
+                {endpoint.testUrl && (
+                  <button
+                    type="button"
+                    className="btn-secondary text-xs"
+                    onClick={() => onToggleRoute(endpoint, { testMode: !endpoint.testMode })}
+                    disabled={busy || saving}
+                    title={
+                      endpoint.testMode
+                        ? 'Zurück zur normalen Zustellung an die Produktions-URL.'
+                        : 'Zum Debuggen: echte Zustellungen gehen an die Test-URL (/webhook-test), solange der Workflow in n8n auf ein Testereignis wartet.'
+                    }
+                  >
+                    {endpoint.testMode ? 'Test-Modus aus' : 'Test-Modus an'}
                   </button>
                 )}
                 {endpoint.events.includes('taxtronik.ping') && (
@@ -276,16 +304,29 @@ export function RouteEditorSection({
               placeholder="Mein n8n-Workflow"
             />
           </label>
-          <label className="inline-flex items-center gap-2 self-end pb-2 text-xs text-primary">
-            <input
-              type="checkbox"
-              checked={routeDraft.enabled}
-              onChange={(event) =>
-                setRouteDraft((current) => ({ ...current, enabled: event.target.checked }))
-              }
-            />{' '}
-            Route aktiv
-          </label>
+          <div className="flex flex-col gap-1 self-end pb-2">
+            <label className="inline-flex items-center gap-2 text-xs text-primary">
+              <input
+                type="checkbox"
+                checked={routeDraft.enabled}
+                onChange={(event) =>
+                  setRouteDraft((current) => ({ ...current, enabled: event.target.checked }))
+                }
+              />{' '}
+              Route aktiv
+            </label>
+            <label className="inline-flex items-center gap-2 text-xs text-primary">
+              <input
+                type="checkbox"
+                checked={routeDraft.testMode}
+                disabled={!routeDraft.testUrl}
+                onChange={(event) =>
+                  setRouteDraft((current) => ({ ...current, testMode: event.target.checked }))
+                }
+              />{' '}
+              Test-Modus (Zustellung an /webhook-test)
+            </label>
+          </div>
           <label className="block md:col-span-2">
             <span className="label">Exakte Produktions-URL</span>
             <input
