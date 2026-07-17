@@ -5,6 +5,25 @@ import { createPortal } from 'react-dom';
 import { X, Download, Eye, Loader2 } from 'lucide-react';
 import { OfficeViewer } from './office-viewer';
 import { detectInlineOfficeKind } from './document-preview-kind';
+import { renderMarkdown } from '@/lib/markdown';
+
+// Prose-Styling für die Markdown-Inline-Vorschau (z. B. im Aktenregal
+// gespeicherte Rechercheergebnisse). renderMarkdown escapet jeden Textblock —
+// kein HTML-Passthrough, daher ist dangerouslySetInnerHTML sicher.
+const MD_PROSE_CLASS =
+  'text-sm text-secondary space-y-2 leading-relaxed ' +
+  '[&_h1]:text-lg [&_h1]:font-bold [&_h1]:text-primary [&_h1]:mt-4 ' +
+  '[&_h2]:text-base [&_h2]:font-semibold [&_h2]:text-primary [&_h2]:mt-4 ' +
+  '[&_h3]:text-sm [&_h3]:font-semibold [&_h3]:text-primary [&_h3]:mt-3 ' +
+  '[&_p]:my-2 [&_ul]:list-disc [&_ul]:ml-5 [&_ol]:list-decimal [&_ol]:ml-5 [&_li]:my-1 ' +
+  '[&_a]:text-brand-700 [&_a:hover]:underline ' +
+  '[&_code]:bg-gray-100 dark:[&_code]:bg-gray-800 [&_code]:px-1 [&_code]:rounded ' +
+  '[&_pre]:bg-gray-100 dark:[&_pre]:bg-gray-800 [&_pre]:p-2 [&_pre]:rounded [&_pre]:overflow-x-auto ' +
+  '[&_blockquote]:border-l-4 [&_blockquote]:border-strong [&_blockquote]:pl-3 [&_blockquote]:text-muted ' +
+  '[&_hr]:my-4 [&_hr]:border-border-subtle ' +
+  '[&_table]:w-full [&_table]:border-collapse [&_table]:my-3 ' +
+  '[&_th]:border [&_th]:border-default [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold [&_th]:text-primary ' +
+  '[&_td]:border [&_td]:border-default [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:align-top';
 
 type ApiPrefix = '/api/staff' | '/api/portal';
 
@@ -72,6 +91,26 @@ export function DocumentPreviewModal({
   const officeKind = detectInlineOfficeKind(mimeType, documentTitle);
   const isImage = mimeType?.startsWith('image/');
   const isPdf = mimeType === 'application/pdf' || mimeType?.endsWith('pdf');
+  const isMarkdown = mimeType === 'text/markdown' || /\.(md|markdown)$/i.test(documentTitle ?? '');
+
+  // Markdown: Datei-Text laden und geparst rendern (statt Download-Fallback).
+  const [mdText, setMdText] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isMarkdown || !url) return;
+    let cancelled = false;
+    setMdText(null);
+    fetch(url)
+      .then((res) => (res.ok ? res.text() : Promise.reject(new Error(`HTTP ${res.status}`))))
+      .then((text) => {
+        if (!cancelled) setMdText(text);
+      })
+      .catch((e) => {
+        if (!cancelled) setError((e as Error).message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isMarkdown, url]);
 
   const modal = (
     <div
@@ -116,7 +155,20 @@ export function DocumentPreviewModal({
           )}
           {url && !loading && !error && (
             <>
-              {isImage ? (
+              {isMarkdown ? (
+                <div className="h-full overflow-y-auto bg-surface px-8 py-6">
+                  {mdText === null ? (
+                    <div className="h-full flex items-center justify-center">
+                      <Loader2 className="h-6 w-6 text-disabled animate-spin" />
+                    </div>
+                  ) : (
+                    <div
+                      className={MD_PROSE_CLASS}
+                      dangerouslySetInnerHTML={{ __html: renderMarkdown(mdText) }}
+                    />
+                  )}
+                </div>
+              ) : isImage ? (
                 // eslint-disable-next-line @next/next/no-img-element -- Document previews use short-lived blob URLs from the authenticated API.
                 <img
                   src={url}

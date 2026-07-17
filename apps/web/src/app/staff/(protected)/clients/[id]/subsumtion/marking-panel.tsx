@@ -407,6 +407,7 @@ export function ResearchComposer(props: {
   const [sachverhalt, setSachverhalt] = useState<'none' | 'excerpt' | 'full'>(
     isCase ? 'full' : 'none',
   );
+  const [title, setTitle] = useState('');
   const [snippet, setSnippet] = useState('');
   const [prompt, setPrompt] = useState('');
   const [preview, setPreview] = useState<{ text: string; hits: number } | null>(null);
@@ -483,6 +484,7 @@ export function ResearchComposer(props: {
     clientId: props.clientId,
     analysisId: props.analysisId,
     markingId: props.markingId ?? null,
+    title: title.trim() || null,
     sachverhalt,
     snippets: snippet.trim() ? [snippet.trim()] : [],
     prompt: prompt.trim() || null,
@@ -538,7 +540,18 @@ export function ResearchComposer(props: {
         </div>
 
         <label className="block text-xs">
-          <span className="text-muted">Sachverhalt</span>
+          <span className="text-muted">Titel der Recherche</span>
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            maxLength={200}
+            placeholder="Leer lassen für „Recherche vom [Datum], [Uhrzeit]“"
+            className={'mt-0.5 ' + field}
+          />
+        </label>
+
+        <label className="block text-xs">
+          <span className="text-muted">Grundlage der Anfrage</span>
           <select
             value={sachverhalt}
             onChange={(e) => {
@@ -547,9 +560,11 @@ export function ResearchComposer(props: {
             }}
             className={'mt-0.5 ' + field}
           >
-            <option value="none">Kein Sachverhalt (nur Rechtsfrage/Prompt)</option>
+            <option value="none">
+              Nur Textbaustein/Prompt — ohne Sachverhalt (gezielte Frage)
+            </option>
             {!isCase && <option value="excerpt">Auszug um die Fundstelle</option>}
-            <option value="full">Ganzer Sachverhalt</option>
+            <option value="full">Ganzer Sachverhalt (Textbaustein wird angehängt)</option>
           </select>
         </label>
         {sachverhalt === 'full' && (
@@ -566,7 +581,11 @@ export function ResearchComposer(props: {
             resetPreview();
           }}
           rows={3}
-          placeholder="Textbaustein (optional)"
+          placeholder={
+            sachverhalt === 'none'
+              ? 'Textbaustein — bildet ohne Sachverhalt die alleinige Grundlage der Anfrage'
+              : 'Textbaustein (optional) — wird unter den Sachverhalt gehängt'
+          }
           className={field}
         />
 

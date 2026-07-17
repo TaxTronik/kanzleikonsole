@@ -66,6 +66,7 @@ export async function loadResearchResults(ctx: TenantContext, analysisId: string
         markingId: true,
         source: true,
         receivedAt: true,
+        request: { select: { title: true } },
       },
     }),
   );
@@ -83,6 +84,7 @@ export async function loadResearchRequests(ctx: TenantContext, analysisId: strin
       select: {
         id: true,
         markingId: true,
+        title: true,
         prompt: true,
         includeSachverhalt: true,
         status: true,

@@ -36,9 +36,28 @@ export interface ResearchInput {
   analysisId: string;
   /** Per-Markierung (Rechtsfrage + Auszug) ODER null = ganzer Fall. */
   markingId?: string | null;
+  /** Titel der Recherche — leer/null = auto "Recherche vom [Datum], [Uhrzeit]". */
+  title?: string | null;
   sachverhalt: SachverhaltMode;
   snippets?: string[];
   prompt?: string | null;
+}
+
+/** Auto-Titel, wenn der Berater keinen vergibt — macht mehrere Einzelrecherchen
+ *  zum selben Sachverhalt unterscheidbar. */
+export function defaultResearchTitle(now = new Date()): string {
+  const datum = now.toLocaleDateString('de-DE', {
+    timeZone: 'Europe/Berlin',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+  const uhrzeit = now.toLocaleTimeString('de-DE', {
+    timeZone: 'Europe/Berlin',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  return `Recherche vom ${datum}, ${uhrzeit} Uhr`;
 }
 
 export interface ResearchPreview {
@@ -216,6 +235,7 @@ export async function sendResearchToN8n(
         tenantId: ctx.tenantId,
         analysisId: analysis.id,
         markingId: marking?.id ?? null,
+        title: input.title?.trim() || defaultResearchTitle(),
         prompt: input.prompt?.trim() || null,
         includeSachverhalt: input.sachverhalt !== 'none',
         anonymizedPayload: payload as object,
@@ -293,6 +313,7 @@ export async function receiveResearchResult(
   let tenantId = input.tenantId ?? null;
   let markingId: string | null = null;
   let body = input.body;
+  let title = input.title ?? null;
   // Notify-on-arrival: Empfänger + Sprungziel (nur im Korrelationsfall bekannt).
   let recipientStaffId: string | null = null;
   let hrefClientId: string | null = null;
@@ -305,6 +326,7 @@ export async function receiveResearchResult(
       select: {
         tenantId: true,
         markingId: true,
+        title: true,
         mapping: true,
         createdById: true,
         analysisId: true,
@@ -318,6 +340,9 @@ export async function receiveResearchResult(
       recipientStaffId = req.createdById;
       hrefAnalysisId = req.analysisId;
       hrefClientId = req.analysis?.clientId ?? null;
+      // Liefert der Workflow keinen eigenen Titel, erbt das Ergebnis den
+      // Recherche-Titel — so bleiben mehrere Einzelrecherchen unterscheidbar.
+      if (!title && req.title) title = req.title;
     }
   }
 
@@ -349,7 +374,7 @@ export async function receiveResearchResult(
         tenantId,
         researchRequestId: input.researchRequestId ?? null,
         markingId,
-        title: input.title ?? null,
+        title,
         body,
         source: input.source ?? 'n8n',
         status: markingId ? 'ZUGEORDNET' : 'NEU',
@@ -381,7 +406,7 @@ export async function receiveResearchResult(
       tenantId,
       staffId: recipientStaffId,
       kind: 'REQUEST_RESPONDED',
-      title: `Rechercheergebnis eingegangen${input.title ? ': ' + input.title : ''}`,
+      title: `Rechercheergebnis eingegangen${title ? ': ' + title : ''}`,
       body: input.source ? `Quelle: ${input.source}` : null,
       href:
         hrefClientId && hrefAnalysisId

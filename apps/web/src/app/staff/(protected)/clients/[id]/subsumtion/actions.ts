@@ -12,7 +12,8 @@ import {
   type ActionErrorResult,
 } from '@/server/auth/rbac';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
-import { fetchObjectBytes } from '@taxtronik/storage';
+import { fetchObjectBytes, commitBytesWithTier } from '@taxtronik/storage';
+import { createDocumentWithVersion } from '@/server/documents/upload-helpers';
 import { evidenceService } from '@/server/container';
 import { getClientIp } from '@/server/rate-limit';
 import { readModules } from '@/server/settings/modules';
@@ -511,6 +512,8 @@ export async function delegateAction(
 const ResearchSchema = z.object({
   clientId: z.string().uuid(),
   analysisId: z.string().uuid(),
+  // Titel der Recherche — leer = auto "Recherche vom [Datum], [Uhrzeit]".
+  title: z.string().max(200).nullable().optional(),
   // markingId optional: gesetzt = Recherche zu einer Markierung; null = ganzer Fall.
   markingId: z.string().uuid().nullable().optional(),
   // Kein / Auszug (nur mit Markierung sinnvoll) / ganzer Sachverhalt.
@@ -640,6 +643,75 @@ export async function assignResultAction(input: {
     await assignResultToMarking(ctx, input.resultId, input.markingId);
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId ?? ''}`);
     return { ok: true };
+  } catch (e) {
+    return toActionError(e);
+  }
+}
+
+/**
+ * Legt ein Rechercheergebnis als Markdown-Dokument im Aktenregal des
+ * Sachverhalts ab (Ein-Klick-Archivierung). Die Bytes sind app-generiert
+ * (kein Nutzer-Upload) → skipScan; Schutzstufe NONE, Klassifikation GENERAL.
+ */
+export async function saveResultToShelfAction(input: {
+  resultId: string;
+}): Promise<OkActionResult<{ documentId: string }>> {
+  try {
+    const { ctx, staffId, clientId, analysisId } = await guardResult(input.resultId);
+    const [result, client] = await withTenantContext(ctx, (tx) =>
+      Promise.all([
+        tx.riskResearchResult.findUnique({
+          where: { id: input.resultId },
+          select: { title: true, body: true, request: { select: { title: true } } },
+        }),
+        tx.client.findUnique({ where: { id: clientId }, select: { allowActive: true } }),
+      ]),
+    );
+    if (!result) throw new ActionError('Ergebnis nicht gefunden.');
+    // Die DB-GwG-Schranke würde die Dokumentanlage ohnehin abweisen — hier mit
+    // verständlicher Meldung statt "Unerwarteter Fehler".
+    if (!client?.allowActive) {
+      throw new ActionError(
+        'Der Mandant ist nicht aktiv (GwG-Prüfung ausstehend) — Dokumente können erst danach abgelegt werden.',
+      );
+    }
+
+    const title = (result.title || result.request?.title || 'Rechercheergebnis').slice(0, 180);
+    const fileData = Buffer.from(result.body, 'utf8');
+    const commit = await commitBytesWithTier({
+      fileData,
+      tier: 'NONE',
+      tenantId: ctx.tenantId,
+      skipScan: true,
+    });
+
+    const documentId = await withTenantContext(ctx, async (tx) => {
+      const { document } = await createDocumentWithVersion(tx, {
+        documentData: {
+          tenantId: ctx.tenantId,
+          clientId,
+          analysisId,
+          title: title.endsWith('.md') ? title : `${title}.md`,
+          classification: 'GENERAL',
+          mimeType: 'text/markdown',
+        },
+        commit,
+        createdById: staffId,
+      });
+      await evidenceService.record(tx, {
+        tenantId: ctx.tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'risk.research.saved_to_shelf',
+        resourceType: 'document',
+        resourceId: document.id,
+        after: { resultId: input.resultId, analysisId, title },
+      });
+      return document.id;
+    });
+
+    revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId ?? ''}`);
+    return { ok: true, documentId };
   } catch (e) {
     return toActionError(e);
   }

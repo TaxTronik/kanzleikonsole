@@ -133,9 +133,25 @@ export function SubsumtionWorkspace({
   const [filters, setFilters] = useState<Set<FilterKey>>(() => new Set(FILTER_KEYS));
   const [manualSel, setManualSel] = useState<ManualSelection | null>(null);
   const [showCaseResearch, setShowCaseResearch] = useState(false);
-  const [view, setView] = useState<'subsumtion' | 'recherche' | 'aufgaben' | 'aktenregal'>(
-    'subsumtion',
-  );
+  // Der aktive Tab wird in der URL (?view=…) gespiegelt: übersteht so JEDEN
+  // Remount (AutoRefresh/RSC-Refresh konnte den Nutzer sonst „von alleine"
+  // zurück auf Subsumtion werfen) und ist gleichzeitig deeplinkfähig.
+  // history.replaceState statt router.replace: kein Server-Roundtrip pro Klick.
+  type WorkspaceView = 'subsumtion' | 'recherche' | 'aufgaben' | 'aktenregal';
+  const [view, setViewState] = useState<WorkspaceView>('subsumtion');
+  useEffect(() => {
+    const fromUrl = new URLSearchParams(window.location.search).get('view');
+    if (fromUrl === 'recherche' || fromUrl === 'aufgaben' || fromUrl === 'aktenregal') {
+      setViewState(fromUrl);
+    }
+  }, []);
+  const setView = useCallback((next: WorkspaceView) => {
+    setViewState(next);
+    const url = new URL(window.location.href);
+    if (next === 'subsumtion') url.searchParams.delete('view');
+    else url.searchParams.set('view', next);
+    window.history.replaceState(null, '', url);
+  }, []);
   // Vollbild der Subsumtions-Fläche (Dokument + Panel als Overlay). Esc verlässt es.
   const [expanded, setExpanded] = useState(false);
   useEffect(() => {

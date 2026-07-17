@@ -358,6 +358,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'risk.research.submitted': 'Rechercheergebnis eingereicht',
   'risk.research.assigned': 'Rechercheergebnis zugeordnet',
   'risk.research.discarded': 'Rechercheergebnis verworfen',
+  'risk.research.saved_to_shelf': 'Rechercheergebnis im Aktenregal abgelegt',
   'risk.los.beantragt': 'Quantenlos beantragt (QPU-Queue)',
   'risk.los.gezogen': 'Quantenlos-Stichprobe gezogen',
   'tenant.settings.quantenlos_ibm.update': 'IBM-Quantum-Zugang (Quantenlos) hinterlegt',

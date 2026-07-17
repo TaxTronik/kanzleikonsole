@@ -56,6 +56,7 @@ export default async function AnalysisPage({
   const researchResults: ResearchResultDTO[] = rawResults.map((r) => ({
     id: r.id,
     title: r.title,
+    requestTitle: r.request?.title ?? null,
     body: r.body,
     status: r.status,
     markingId: r.markingId,
@@ -68,6 +69,7 @@ export default async function AnalysisPage({
   const researchRequests: ResearchRequestDTO[] = rawRequests.map((r) => ({
     id: r.id,
     markingId: r.markingId,
+    title: r.title,
     begriff: r.marking?.begriff ?? null,
     prompt: r.prompt,
     includeSachverhalt: r.includeSachverhalt,
@@ -155,8 +157,10 @@ export default async function AnalysisPage({
     ),
   };
 
+  // Bewusst ohne max-w: Dokument + Panel + Recherche profitieren von der
+  // vollen Breite (weniger Scrollen).
   return (
-    <div className="p-8 max-w-6xl">
+    <div className="p-8">
       <div className="flex items-center gap-3 mb-6">
         <Link
           href={`/staff/clients/${id}/subsumtion`}

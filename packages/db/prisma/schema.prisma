@@ -1648,6 +1648,8 @@ model RiskResearchRequest {
   tenantId           String                @map("tenant_id") @db.Uuid
   analysisId         String                @map("analysis_id") @db.Uuid
   markingId          String?               @map("marking_id") @db.Uuid
+  /// Titel der Recherche (auto "Recherche vom …" oder vom Berater vergeben).
+  title              String?
   prompt             String?
   includeSachverhalt Boolean               @default(false) @map("include_sachverhalt")
   anonymizedPayload  Json                  @map("anonymized_payload")

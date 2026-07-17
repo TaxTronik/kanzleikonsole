@@ -3,8 +3,8 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## Vorlage — nicht ungeprüft aktivieren\n\nErsetzen Sie den roten Platzhalter durch einen datenschutzrechtlich und fachlich geprüften Recherche-Schritt. Machen Sie dessen Seiteneffekt dauerhaft nach `body.deliveryId` idempotent; Remove Duplicates allein genügt nicht. Ordnen Sie danach das Crypto- und das TaxTronik-Callback-Credential zu. TaxTronik sendet nur den anonymisierten Rechercheauftrag.",
-        "height": 220,
+        "content": "## Vorlage — nicht ungeprüft aktivieren\n\n1. Crypto- und TaxTronik-Callback-Credential zuordnen.\n2. Dem Node „KI-Recherche (Beispiel)“ ein geprüftes LLM-Credential geben und den Prompt fachlich/datenschutzrechtlich freigeben — TaxTronik sendet nur den anonymisierten Auftrag (`anonymizedText` + `auftrag`).\n3. Den STOPP-Node löschen und „Event und Signatur validieren“ direkt mit „KI-Recherche (Beispiel)“ verbinden.\n\nSeiteneffekte dauerhaft nach `body.deliveryId` idempotent machen; Remove Duplicates allein genügt nicht.",
+        "height": 300,
         "width": 520,
         "color": 5
       },
@@ -55,12 +55,48 @@
     },
     {
       "parameters": {
-        "jsCode": "throw new Error('VORLAGE INAKTIV: Diesen Node durch eine fachlich und datenschutzrechtlich gepruefte Recherche ersetzen.');"
+        "jsCode": "throw new Error('VORLAGE INAKTIV: Diesen Node loeschen und die Validierung direkt mit der gepruefte KI-Recherche verbinden (siehe Notiz).');"
       },
       "id": "research-template",
-      "name": "STOPP: Recherche-Anbieter einsetzen",
+      "name": "STOPP: Recherche freigeben",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
+      "position": [900, 360]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "GPT-5.2"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=Du bist ein hochqualifizierter KI-Assistent für juristische und fachliche Recherchen im Steuerrecht.\n\nDEINE ANWEISUNG:\nAnalysiere den untenstehenden Sachverhalt präzise, bewerte die rechtlichen sowie fachlichen Risiken und arbeite den gesonderten Auftrag strukturiert ab. Antworte objektiv, professionell und gliedere deine Ergebnisse übersichtlich.\nWICHTIG: Erstelle die vollständige Prüfung JETZT sofort. Fasse nicht nur den Auftrag zusammen, sondern liefere direkt das inhaltliche Ergebnis und die rechtliche Würdigung der relevanten Paragrafen (z.B. AO).\n\n### SACHVERHALT:\n{{ $json.body.payload.anonymizedText }}\n\n### GESONDERTER AUFTRAG:\n{{ $json.body.payload.auftrag }}"
+            }
+          ]
+        },
+        "builtInTools": {
+          "webSearch": {
+            "searchContextSize": "high",
+            "country": "DE"
+          }
+        },
+        "options": {
+          "reasoning": {
+            "reasoningOptions": {
+              "effort": "high",
+              "summary": "none"
+            }
+          }
+        }
+      },
+      "id": "research-llm",
+      "name": "KI-Recherche (Beispiel)",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
       "position": [1120, 360]
     },
     {
@@ -81,9 +117,19 @@
           ]
         },
         "sendBody": true,
-        "contentType": "raw",
-        "rawContentType": "application/json",
-        "body": "={{ JSON.stringify({ researchRequestId: $json.researchRequestId, title: $json.title, body: $json.body, source: $json.source || 'n8n' }) }}",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "researchRequestId",
+              "value": "={{ $('Event und Signatur validieren').item.json.body.payload.researchRequestId }}"
+            },
+            {
+              "name": "body",
+              "value": "={{ $json.output[0].content[0].text }}"
+            },
+            { "name": "source", "value": "n8n" }
+          ]
+        },
         "options": {}
       },
       "id": "post-result",
@@ -113,9 +159,12 @@
       "main": [[{ "node": "Event und Signatur validieren", "type": "main", "index": 0 }]]
     },
     "Event und Signatur validieren": {
-      "main": [[{ "node": "STOPP: Recherche-Anbieter einsetzen", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "STOPP: Recherche freigeben", "type": "main", "index": 0 }]]
     },
-    "STOPP: Recherche-Anbieter einsetzen": {
+    "STOPP: Recherche freigeben": {
+      "main": [[{ "node": "KI-Recherche (Beispiel)", "type": "main", "index": 0 }]]
+    },
+    "KI-Recherche (Beispiel)": {
       "main": [[{ "node": "Ergebnis tenantgebunden an TaxTronik", "type": "main", "index": 0 }]]
     },
     "Ergebnis tenantgebunden an TaxTronik": {

@@ -125,16 +125,19 @@ export function ResearchView(props: {
               return (
                 <li key={req.id} className="py-2.5 flex items-start justify-between gap-3">
                   <div className="min-w-0">
+                    <span className="text-sm font-medium text-primary block truncate">
+                      {req.title ?? (req.begriff || 'Recherche')}
+                    </span>
                     {req.begriff && req.markingId ? (
                       <button
                         type="button"
                         onClick={() => props.onSelectMarking(req.markingId!)}
-                        className="text-sm text-primary hover:underline text-left truncate block max-w-full"
+                        className="text-xs text-brand-700 dark:text-brand-300 hover:underline text-left truncate block max-w-full"
                       >
-                        {req.begriff}
+                        → {req.begriff}
                       </button>
                     ) : (
-                      <span className="text-sm text-secondary">Ganzer Fall</span>
+                      <span className="text-xs text-secondary">Ganzer Fall</span>
                     )}
                     {req.prompt && (
                       <p className="text-xs text-muted mt-0.5 line-clamp-2">{req.prompt}</p>

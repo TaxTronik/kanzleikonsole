@@ -16,7 +16,7 @@ export default async function NewSubsumtionPage({ params }: { params: Promise<{ 
   }));
 
   return (
-    <div className="p-8 max-w-5xl">
+    <div className="p-8 max-w-7xl">
       <div className="flex items-center gap-3 mb-6">
         <Link
           href={`/staff/clients/${id}/subsumtion`}

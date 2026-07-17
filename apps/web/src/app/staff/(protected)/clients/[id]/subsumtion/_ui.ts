@@ -71,6 +71,8 @@ export interface AnalysisDTO {
 export interface ResearchResultDTO {
   id: string;
   title: string | null;
+  /** Titel des zugehörigen Rechercheauftrags (Fallback-Anzeige). */
+  requestTitle: string | null;
   body: string;
   status: 'NEU' | 'ZUGEORDNET' | 'VERWORFEN';
   markingId: string | null;
@@ -84,6 +86,8 @@ export interface ResearchResultDTO {
 export interface ResearchRequestDTO {
   id: string;
   markingId: string | null;
+  /** Titel der Recherche (auto oder vom Berater vergeben). */
+  title: string | null;
   /** Begriff der Markierung (lesbares Label) oder null = ganzer Fall. */
   begriff: string | null;
   prompt: string | null;
