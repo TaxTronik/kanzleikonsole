@@ -85,16 +85,41 @@ export function ResearchView(props: {
         )}
       </div>
 
-      {/* Outbound — gesendete Aufträge + Status */}
-      <div className="card p-4">
-        <h2 className="text-sm font-medium text-primary mb-3 inline-flex items-center gap-2">
+      {/* Inbound — Ergebnisse (n8n + Mitarbeiter) + Zuordnung. Bewusst VOR den
+          gesendeten Aufträgen: die Antworten sind das, was man hier sucht. */}
+      {props.results.length === 0 ? (
+        <div className="card p-4">
+          <h2 className="text-sm font-medium text-primary mb-1">Rechercheergebnisse</h2>
+          <p className="text-xs text-muted">Noch keine Ergebnisse eingegangen.</p>
+        </div>
+      ) : (
+        <ResearchResultsBlock
+          clientId={props.clientId}
+          analysisId={props.analysisId}
+          results={props.results}
+          markingsById={props.markingsById}
+          pending={props.pending}
+          start={props.start}
+          onFlash={props.onFlash}
+        />
+      )}
+
+      {/* Outbound — gesendete Aufträge + Status, standardmäßig eingeklappt */}
+      <details className="card p-4 group">
+        <summary className="cursor-pointer list-none text-sm font-medium text-primary inline-flex items-center gap-2 select-none">
           <Send className="h-4 w-4 text-disabled" /> Gesendete Aufträge
           <span className="badge-gray text-[10px]">{props.requests.length}</span>
-        </h2>
+          <span className="text-[11px] font-normal text-disabled group-open:hidden">
+            — anzeigen
+          </span>
+          <span className="hidden text-[11px] font-normal text-disabled group-open:inline">
+            — verbergen
+          </span>
+        </summary>
         {props.requests.length === 0 ? (
-          <p className="text-xs text-muted">Noch keine Rechercheaufträge gesendet.</p>
+          <p className="text-xs text-muted mt-3">Noch keine Rechercheaufträge gesendet.</p>
         ) : (
-          <ul className="divide-y divide-border-subtle">
+          <ul className="divide-y divide-border-subtle mt-3">
             {props.requests.map((req) => {
               const st = REQ_STATUS[req.status];
               return (
@@ -127,25 +152,7 @@ export function ResearchView(props: {
             })}
           </ul>
         )}
-      </div>
-
-      {/* Inbound — Ergebnisse (n8n + Mitarbeiter) + Zuordnung */}
-      {props.results.length === 0 ? (
-        <div className="card p-4">
-          <h2 className="text-sm font-medium text-primary mb-1">Rechercheergebnisse</h2>
-          <p className="text-xs text-muted">Noch keine Ergebnisse eingegangen.</p>
-        </div>
-      ) : (
-        <ResearchResultsBlock
-          clientId={props.clientId}
-          analysisId={props.analysisId}
-          results={props.results}
-          markingsById={props.markingsById}
-          pending={props.pending}
-          start={props.start}
-          onFlash={props.onFlash}
-        />
-      )}
+      </details>
     </div>
   );
 }

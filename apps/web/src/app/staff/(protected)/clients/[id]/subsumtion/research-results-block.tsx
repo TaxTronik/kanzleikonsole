@@ -3,7 +3,27 @@
 import { useRouter } from 'next/navigation';
 import { Inbox, Sparkles, Check } from 'lucide-react';
 import { assignResultAction } from './actions';
+import { renderMarkdown } from '@/lib/markdown';
 import type { ResearchResultDTO, MarkingDTO } from './_ui';
+
+// Recherche-Ergebnisse kommen (v. a. aus n8n) als Markdown — inkl. Überschriften,
+// Tabellen und Zitaten. renderMarkdown escapet jeden Textblock (kein
+// HTML-Passthrough), daher ist dangerouslySetInnerHTML hier sicher.
+const RESULT_PROSE_CLASS =
+  'mt-2 text-xs text-secondary space-y-2 ' +
+  '[&_h1]:text-sm [&_h1]:font-bold [&_h1]:text-primary [&_h1]:mt-3 ' +
+  '[&_h2]:text-sm [&_h2]:font-semibold [&_h2]:text-primary [&_h2]:mt-3 ' +
+  '[&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-primary [&_h3]:mt-2 ' +
+  '[&_h4]:text-xs [&_h4]:font-semibold [&_h4]:text-primary ' +
+  '[&_p]:my-1.5 [&_ul]:list-disc [&_ul]:ml-5 [&_ol]:list-decimal [&_ol]:ml-5 [&_li]:my-0.5 ' +
+  '[&_a]:text-brand-700 [&_a:hover]:underline ' +
+  '[&_code]:bg-gray-100 dark:[&_code]:bg-gray-800 [&_code]:px-1 [&_code]:rounded ' +
+  '[&_pre]:bg-gray-100 dark:[&_pre]:bg-gray-800 [&_pre]:p-2 [&_pre]:rounded [&_pre]:overflow-x-auto ' +
+  '[&_blockquote]:border-l-4 [&_blockquote]:border-strong [&_blockquote]:pl-3 [&_blockquote]:text-muted ' +
+  '[&_hr]:my-3 [&_hr]:border-border-subtle ' +
+  '[&_table]:w-full [&_table]:border-collapse [&_table]:my-2 ' +
+  '[&_th]:border [&_th]:border-default [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:font-semibold [&_th]:text-primary ' +
+  '[&_td]:border [&_td]:border-default [&_td]:px-2 [&_td]:py-1 [&_td]:align-top';
 
 export function ResearchResultsBlock(props: {
   clientId: string;
@@ -53,7 +73,10 @@ export function ResearchResultsBlock(props: {
               </div>
               <details className="text-xs">
                 <summary className="cursor-pointer text-muted">Ergebnis anzeigen</summary>
-                <p className="mt-1 whitespace-pre-wrap text-secondary">{res.body}</p>
+                <div
+                  className={RESULT_PROSE_CLASS}
+                  dangerouslySetInnerHTML={{ __html: renderMarkdown(res.body) }}
+                />
               </details>
 
               {res.status === 'NEU' && (

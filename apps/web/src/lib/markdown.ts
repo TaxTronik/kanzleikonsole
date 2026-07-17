@@ -9,6 +9,8 @@
 // - > blockquote
 // - ```code blocks```
 // - [link](url)
+// - | Tabellen | (GitHub-Stil, mit Separator-Zeile)
+// - --- horizontale Trennlinie
 // - paragraphs
 //
 // HTML-Escape für jeden Text-Block — keine XSS-Lücke. Nur die definierten
@@ -62,6 +64,41 @@ export function renderMarkdown(md: string): string {
       continue;
     }
 
+    // Horizontale Trennlinie
+    if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
+      blocks.push('<hr>');
+      i++;
+      continue;
+    }
+
+    // Tabelle (GitHub-Stil): Kopfzeile + Separator-Zeile aus |---|---|
+    if (
+      line.trimStart().startsWith('|') &&
+      /^\s*\|?[\s:|-]+\|?\s*$/.test(lines[i + 1] ?? '') &&
+      (lines[i + 1] ?? '').includes('-')
+    ) {
+      const splitRow = (row: string): string[] =>
+        row
+          .trim()
+          .replace(/^\|/, '')
+          .replace(/\|$/, '')
+          .split('|')
+          .map((cell) => cell.trim());
+      const header = splitRow(line);
+      i += 2; // Kopf + Separator
+      const rows: string[][] = [];
+      while (i < lines.length && (lines[i] ?? '').trimStart().startsWith('|')) {
+        rows.push(splitRow(lines[i] ?? ''));
+        i++;
+      }
+      const thead = `<thead><tr>${header.map((cell) => `<th>${inline(cell)}</th>`).join('')}</tr></thead>`;
+      const tbody = `<tbody>${rows
+        .map((row) => `<tr>${row.map((cell) => `<td>${inline(cell)}</td>`).join('')}</tr>`)
+        .join('')}</tbody>`;
+      blocks.push(`<table>${thead}${tbody}</table>`);
+      continue;
+    }
+
     // Blockquote
     if (line.startsWith('> ')) {
       const quote: string[] = [];
@@ -111,7 +148,9 @@ export function renderMarkdown(md: string): string {
         /^#{1,6}\s/.test(cur) ||
         cur.startsWith('> ') ||
         /^[-*]\s/.test(cur) ||
-        /^\d+\.\s/.test(cur)
+        /^\d+\.\s/.test(cur) ||
+        /^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(cur) ||
+        cur.trimStart().startsWith('|')
       ) {
         break;
       }

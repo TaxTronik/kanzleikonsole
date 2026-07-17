@@ -8,8 +8,10 @@ import { SettingsFormGuard } from '@/components/settings-form-guard';
 export default async function SettingsLayout({ children }: { children: ReactNode }) {
   await requireStaffPage({ admin: true });
 
+  // Bewusst ohne max-w: die Einstellungsseiten (v. a. n8n) sind formular- und
+  // rasterlastig — mehr Breite = weniger Scrollen.
   return (
-    <div className="p-8 max-w-6xl">
+    <div className="p-8">
       <div className="flex items-start gap-4 mb-6">
         <Link href="/staff/admin" className="text-disabled hover:text-secondary mt-1">
           <ArrowLeft className="h-5 w-5" />

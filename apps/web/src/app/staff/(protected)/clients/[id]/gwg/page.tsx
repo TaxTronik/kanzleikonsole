@@ -333,7 +333,9 @@ export default async function GwgPage({
 
   return (
     <GwgEditStateProvider initialStatus={check?.status ?? 'DRAFT'}>
-      <div className="p-8 max-w-4xl">
+      {/* max-w-7xl statt 4xl: die GwG-Seite ist lang — mehr Breite lässt die
+          Formularraster mehr Spalten nutzen und kürzt das Scrollen. */}
+      <div className="p-8 max-w-7xl">
         <div className="flex items-start gap-4 mb-6">
           <Link
             href={

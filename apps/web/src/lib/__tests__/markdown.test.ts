@@ -27,3 +27,38 @@ describe('renderMarkdown XSS hardening', () => {
     expect(html).not.toContain('href="javascript:');
   });
 });
+
+describe('renderMarkdown Tabellen und Trennlinien', () => {
+  it('rendert eine GitHub-Tabelle mit Kopf und Zellen', () => {
+    const html = renderMarkdown(
+      ['| Bereich | Bewertung |', '|---|---|', '| **§ 162 AO** | Wahrscheinlich gegeben |'].join(
+        '\n',
+      ),
+    );
+
+    expect(html).toContain('<table><thead><tr><th>Bereich</th><th>Bewertung</th></tr></thead>');
+    expect(html).toContain('<td><strong>§ 162 AO</strong></td>');
+    expect(html).toContain('<td>Wahrscheinlich gegeben</td>');
+  });
+
+  it('escaped HTML in Tabellenzellen', () => {
+    const html = renderMarkdown('| a |\n|---|\n| <script>x</script> |');
+
+    expect(html).not.toContain('<script');
+    expect(html).toContain('&lt;script&gt;');
+  });
+
+  it('rendert --- als horizontale Trennlinie, aber - Liste weiterhin als Liste', () => {
+    const html = renderMarkdown('Absatz\n\n---\n\n- Punkt');
+
+    expect(html).toContain('<hr>');
+    expect(html).toContain('<li>Punkt</li>');
+  });
+
+  it('beendet einen Absatz vor einer direkt folgenden Tabelle', () => {
+    const html = renderMarkdown('Text davor\n| a | b |\n|---|---|\n| 1 | 2 |');
+
+    expect(html).toContain('<p>Text davor</p>');
+    expect(html).toContain('<td>1</td>');
+  });
+});
