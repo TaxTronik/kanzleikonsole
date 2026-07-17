@@ -76,6 +76,23 @@ export function RouteEditorSection({
   const customRouteEvents = routeDraft.events.filter((event) => !staticEventNames.has(event));
   const routeRequiresTestUrl =
     requiresSeparateTestWebhook(routeDraft.events) || Boolean(customEvent.trim());
+  // "Vorbefüllt" heißt: gespeicherte Route in Bearbeitung ODER aus der
+  // Webhook-Erkennung übernommen. In beiden Fällen muss ein sichtbarer Weg
+  // zurück zu einer leeren eigenen Route existieren — vorher gab es den
+  // Reset nur für gespeicherte Routen (id gesetzt), nach "Übernehmen" aus
+  // der Erkennung saß man im vorbefüllten Formular fest.
+  const draftPrefilled = Boolean(
+    routeDraft.id || routeDraft.workflowId || routeDraft.name || routeDraft.productionUrl,
+  );
+  const editorTitle = routeDraft.id
+    ? 'Route bearbeiten'
+    : routeDraft.workflowId
+      ? 'Erkannte Route übernehmen'
+      : 'Eigene Workflow-Route hinzufügen';
+  const resetDraft = () => {
+    setRouteDraft(EMPTY_ROUTE);
+    setCustomEvent('');
+  };
 
   return (
     <section className="space-y-4" aria-labelledby="n8n-routes-heading">
@@ -89,6 +106,14 @@ export function RouteEditorSection({
         <p className="mt-1 text-xs text-muted">
           Ein Event darf mehrere Workflows beliefern; ein Workflow darf mehrere Events abonnieren.
           Speichern Sie immer die exakte Produktions-URL aus dem jeweiligen n8n-Webhook-Knoten.
+        </p>
+        <p className="mt-2 rounded bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+          Bei explizitem Routing werden Events <strong>ausschließlich</strong> an die hier
+          gespeicherten, aktiven Routen zugestellt — das Webhook-Präfix aus Abschnitt 1 spielt dabei
+          keine Rolle. Ablauf: Workflows importieren und in n8n veröffentlichen →{' '}
+          <strong>„Webhook-Knoten erkennen“</strong> (Abschnitt 3) → erkannte Route übernehmen →
+          Events ankreuzen → speichern → testen. Ohne aktive Route landet jedes Event unter
+          „Fehlgeschlagen“.
         </p>
       </div>
 
@@ -183,24 +208,35 @@ export function RouteEditorSection({
         onSubmit={onSaveRoute}
         className="rounded-lg border border-default bg-surface-raised p-4 space-y-4"
       >
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="inline-flex items-center gap-2 text-sm font-semibold text-primary">
-            <Plus className="h-4 w-4" />{' '}
-            {routeDraft.id ? 'Route bearbeiten' : 'Eigene Workflow-Route hinzufügen'}
+            <Plus className="h-4 w-4" /> {editorTitle}
           </p>
-          {routeDraft.id && (
+          <div className="flex items-center gap-2">
+            {draftPrefilled && (
+              <button type="button" className="btn-secondary text-xs" onClick={resetDraft}>
+                Neue leere Route
+              </button>
+            )}
+            {/* Zweiter Speichern-Button oben: der untere liegt unter dem
+                langen Event-Raster außerhalb des Sichtfelds und wurde als
+                "es gibt keinen Speichern-Button" wahrgenommen. */}
             <button
-              type="button"
-              className="text-xs text-muted"
-              onClick={() => {
-                setRouteDraft(EMPTY_ROUTE);
-                setCustomEvent('');
-              }}
+              type="submit"
+              className="btn-primary inline-flex items-center gap-1.5 text-xs"
+              disabled={busy || saving}
             >
-              Abbrechen
+              <Save className="h-3.5 w-3.5" /> Route speichern
             </button>
-          )}
+          </div>
         </div>
+        {routeDraft.workflowId && !routeDraft.id && (
+          <p className="rounded bg-blue-50 px-3 py-2 text-xs text-blue-900 dark:bg-blue-950/30 dark:text-blue-200">
+            Aus der Webhook-Erkennung übernommen: <strong>{routeDraft.workflowName}</strong>. Unten
+            die TaxTronik-Events ankreuzen, die diesen Workflow beliefern sollen, dann{' '}
+            <strong>Route speichern</strong>.
+          </p>
+        )}
         <div className="grid gap-4 md:grid-cols-2">
           <label className="block">
             <span className="label">Name</span>
