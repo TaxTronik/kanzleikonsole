@@ -76,6 +76,7 @@ describe('sendResearchToN8n — Payload-Vertrag', () => {
       sachverhalt: 'full',
       prompt: 'Recherchiere die Schätzungsbefugnis bei der Muster GmbH.',
       finalText: 'Sachverhalt: [MANDANT_1] hat Einnahmen nicht erfasst.',
+      finalPrompt: 'Recherchiere die Schätzungsbefugnis bei [MANDANT_1].',
     });
 
     expect(m.enqueueN8nEvent).toHaveBeenCalledWith(
@@ -99,6 +100,7 @@ describe('sendResearchToN8n — Payload-Vertrag', () => {
       sachverhalt: 'full',
       prompt: '  ',
       finalText: 'Sachverhalt: [MANDANT_1].',
+      finalPrompt: null,
     });
 
     expect(m.enqueueN8nEvent).toHaveBeenCalledWith(
@@ -118,5 +120,23 @@ describe('sendResearchToN8n — Payload-Vertrag', () => {
       }),
     );
     expect(preview.anonymizedText).not.toMatch(/Sachverhalt:\s*\n?\s*Sachverhalt:/);
+  });
+
+  it('ersetzt den Hauptsachverhalt durch den eigenen Recherche-Sachverhalt', async () => {
+    const preview = await import('../research').then((mod) =>
+      mod.previewResearch(TENANT, {
+        analysisId: 'analysis-1',
+        markingId: null,
+        sachverhalt: 'custom',
+        snippets: ['Nur die Zahlung vom 15. Mai ist zu beurteilen.'],
+        prompt: 'Prüfe die Festsetzungsfrist.',
+      }),
+    );
+
+    expect(preview.anonymizedText).toContain('Sachverhalt für diese Recherche:');
+    expect(preview.anonymizedText).toContain('Nur die Zahlung vom 15. Mai');
+    expect(preview.anonymizedText).not.toContain('Einnahmen nicht erfasst');
+    expect(preview.anonymizedText).not.toContain('Festsetzungsfrist');
+    expect(preview.anonymizedPrompt).toBe('Prüfe die Festsetzungsfrist.');
   });
 });

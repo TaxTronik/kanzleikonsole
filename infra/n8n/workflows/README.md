@@ -96,6 +96,10 @@ n8n Cloud erreichbare HTTPS-URL verwendet werden.
 `04` verarbeitet nur den bereits anonymisierten Rechercheauftrag. Die
 `researchRequestId` muss unverändert im Callback zurückgegeben werden, damit
 TaxTronik Ergebnis, Mapping und ursprüngliche Markierung sicher zuordnen kann.
+Der Webhook wird direkt nach Signaturprüfung über „Event bestätigen“ quittiert;
+die eigentliche KI-Recherche und der Ergebnis-Callback laufen danach weiter.
+Diese Reihenfolge darf nicht umgedreht werden, da lange Recherchen sonst den
+TaxTronik-Zustelltimeout auslösen und unnötige Retries erzeugen.
 
 ## Rückkanal n8n → TaxTronik (v1)
 

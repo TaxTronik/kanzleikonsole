@@ -401,17 +401,20 @@ export function ResearchComposer(props: {
   onDone: (r: { ok: boolean; error?: string }) => void;
   onClose: () => void;
 }) {
-  // Markierungs-Composer: Kein / Auszug / Ganzer Sachverhalt (Default: kein).
-  // Fall-Composer (ohne Markierung): Kein / Ganzer Sachverhalt (Default: ganz).
+  // Standard ist immer ein eigener, auf die Recherche reduzierter Sachverhalt.
+  // Der vollständige Hauptsachverhalt wird nur nach bewusster Auswahl gesendet.
   const isCase = !props.markingId;
-  const [sachverhalt, setSachverhalt] = useState<'none' | 'excerpt' | 'full'>(
-    isCase ? 'full' : 'none',
-  );
+  const [sachverhalt, setSachverhalt] = useState<'custom' | 'excerpt' | 'full'>('custom');
   const [title, setTitle] = useState('');
   const [snippet, setSnippet] = useState('');
   const [prompt, setPrompt] = useState('');
-  const [preview, setPreview] = useState<{ text: string; hits: number } | null>(null);
+  const [preview, setPreview] = useState<{
+    text: string;
+    prompt: string | null;
+    hits: number;
+  } | null>(null);
   const [finalText, setFinalText] = useState('');
+  const [finalPrompt, setFinalPrompt] = useState<string | null>(null);
   // Portal-SSR-Guard: das Modal rendert in document.body (Client-only).
   const [mounted, setMounted] = useState(false);
 
@@ -440,6 +443,7 @@ export function ResearchComposer(props: {
   function resetPreview() {
     setPreview(null);
     setFinalText('');
+    setFinalPrompt(null);
   }
 
   function applyTemplate(id: string) {
@@ -486,7 +490,7 @@ export function ResearchComposer(props: {
     markingId: props.markingId ?? null,
     title: title.trim() || null,
     sachverhalt,
-    snippets: snippet.trim() ? [snippet.trim()] : [],
+    snippets: sachverhalt === 'custom' && snippet.trim() ? [snippet.trim()] : [],
     prompt: prompt.trim() || null,
   });
 
@@ -497,13 +501,18 @@ export function ResearchComposer(props: {
         props.onDone(r);
         return;
       }
-      setPreview({ text: r.anonymizedText, hits: r.heuristicHits.length });
+      setPreview({
+        text: r.anonymizedText,
+        prompt: r.anonymizedPrompt,
+        hits: r.heuristicHits.length,
+      });
       setFinalText(r.anonymizedText);
+      setFinalPrompt(r.anonymizedPrompt);
     });
   }
   function doSend() {
     props.start(async () => {
-      const r = await sendResearchAction({ ...baseInput(), finalText });
+      const r = await sendResearchAction({ ...baseInput(), finalText, finalPrompt });
       props.onDone(r.ok ? { ok: true } : r);
       if (r.ok) setPreview(null);
     });
@@ -519,15 +528,12 @@ export function ResearchComposer(props: {
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label={isCase ? 'Ganzen Fall an n8n senden' : 'Rechercheauftrag an n8n'}
+        aria-label="Rechercheauftrag an n8n"
         className="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto card p-5 space-y-3 shadow-xl"
       >
         <div className="flex items-center justify-between gap-2">
           <p className="text-sm font-medium text-primary inline-flex items-center gap-1">
-            <Webhook className="h-4 w-4" />{' '}
-            {isCase
-              ? 'Ganzen Fall an n8n/KI (anonymisiert)'
-              : 'Rechercheauftrag an n8n (anonymisiert)'}
+            <Webhook className="h-4 w-4" /> Rechercheauftrag an n8n (anonymisiert)
           </p>
           <button
             type="button"
@@ -555,16 +561,16 @@ export function ResearchComposer(props: {
           <select
             value={sachverhalt}
             onChange={(e) => {
-              setSachverhalt(e.target.value as 'none' | 'excerpt' | 'full');
+              setSachverhalt(e.target.value as 'custom' | 'excerpt' | 'full');
               resetPreview();
             }}
             className={'mt-0.5 ' + field}
           >
-            <option value="none">
-              Nur Textbaustein/Prompt — ohne Sachverhalt (gezielte Frage)
+            <option value="custom">
+              Eigener Recherche-Sachverhalt — vollständigen Sachverhalt nicht senden
             </option>
             {!isCase && <option value="excerpt">Auszug um die Fundstelle</option>}
-            <option value="full">Ganzer Sachverhalt (Textbaustein wird angehängt)</option>
+            <option value="full">Vollständiger Sachverhalt</option>
           </select>
         </label>
         {sachverhalt === 'full' && (
@@ -574,23 +580,28 @@ export function ResearchComposer(props: {
           </p>
         )}
 
-        <textarea
-          value={snippet}
-          onChange={(e) => {
-            setSnippet(e.target.value);
-            resetPreview();
-          }}
-          rows={3}
-          placeholder={
-            sachverhalt === 'none'
-              ? 'Textbaustein — bildet ohne Sachverhalt die alleinige Grundlage der Anfrage'
-              : 'Textbaustein (optional) — wird unter den Sachverhalt gehängt'
-          }
-          className={field}
-        />
+        {sachverhalt === 'custom' && (
+          <label className="block text-xs">
+            <span className="text-muted">Sachverhalt für diese Recherche</span>
+            <textarea
+              value={snippet}
+              onChange={(e) => {
+                setSnippet(e.target.value);
+                resetPreview();
+              }}
+              rows={5}
+              placeholder="Nur die für diese Recherche erforderlichen Fakten eingeben …"
+              className={'mt-0.5 ' + field}
+            />
+            <span className="mt-1 block text-disabled">
+              Dieser Text ersetzt den vollständigen Sachverhalt und wird anonymisiert übermittelt.
+            </span>
+          </label>
+        )}
 
-        {/* Prompt-Vorlagen + Prompt */}
+        {/* Prompt-Vorlagen + Auftrag/Notizen */}
         <div className="space-y-1.5">
+          <p className="text-xs text-muted">Rechercheauftrag, Notizen und Hinweise</p>
           <div className="flex items-center gap-2">
             <select
               value={selectedTpl}
@@ -652,7 +663,7 @@ export function ResearchComposer(props: {
               resetPreview();
             }}
             rows={5}
-            placeholder="Prompt / Recherche-Auftrag an n8n …"
+            placeholder="Konkrete Recherchefrage sowie optionale Notizen und Hinweise …"
             className={field}
           />
         </div>
@@ -661,7 +672,7 @@ export function ResearchComposer(props: {
           <button
             type="button"
             onClick={doPreview}
-            disabled={props.pending}
+            disabled={props.pending || (sachverhalt === 'custom' && !snippet.trim())}
             className="btn-secondary text-sm w-full justify-center"
           >
             {props.pending ? (
@@ -674,7 +685,7 @@ export function ResearchComposer(props: {
         ) : (
           <div className="space-y-1.5">
             <p className="text-xs text-amber-700 dark:text-amber-300">
-              Vorschau — exakt das geht an n8n.{' '}
+              Vorschau — diese anonymisierten Felder gehen getrennt an n8n.{' '}
               {preview.hits > 0
                 ? `${preview.hits} heuristische Schwärzung(en) — bitte prüfen.`
                 : 'Editierbar.'}
@@ -685,6 +696,17 @@ export function ResearchComposer(props: {
               rows={14}
               className={field + ' font-mono'}
             />
+            {finalPrompt !== null && (
+              <label className="block text-xs">
+                <span className="text-muted">Anonymisierter Auftrag, Notizen und Hinweise</span>
+                <textarea
+                  value={finalPrompt}
+                  onChange={(e) => setFinalPrompt(e.target.value)}
+                  rows={5}
+                  className={'mt-0.5 ' + field + ' font-mono'}
+                />
+              </label>
+            )}
             <div className="flex gap-2">
               <button
                 type="button"

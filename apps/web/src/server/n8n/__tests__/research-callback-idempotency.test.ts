@@ -46,6 +46,7 @@ const tx = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  h.researchRequestFindUnique.mockResolvedValue(null);
   h.withSystemContext.mockImplementation(
     async (_tenantId: string, callback: (transaction: typeof tx) => Promise<unknown>) =>
       callback(tx),
@@ -87,5 +88,39 @@ describe('research callback transaction idempotency', () => {
     expect(h.setReceiptResult).not.toHaveBeenCalled();
     expect(h.evidenceRecord).not.toHaveBeenCalled();
     expect(h.notify).not.toHaveBeenCalled();
+  });
+
+  it('benachrichtigt den Auftraggeber und verlinkt direkt in den Recherche-Tab', async () => {
+    const requestId = randomUUID();
+    const staffId = randomUUID();
+    const clientId = randomUUID();
+    const analysisId = randomUUID();
+    h.researchRequestFindUnique.mockResolvedValue({
+      tenantId: TENANT_ID,
+      markingId: null,
+      title: 'Umsatzsteuerliche Würdigung',
+      mapping: {},
+      createdById: staffId,
+      analysisId,
+      analysis: { clientId },
+    });
+
+    await receiveResearchResult({
+      researchRequestId: requestId,
+      body: 'Ergebnis',
+      source: 'n8n',
+    });
+
+    expect(h.notify).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        tenantId: TENANT_ID,
+        staffId,
+        title: 'Rechercheergebnis eingegangen: Umsatzsteuerliche Würdigung',
+        href: `/staff/clients/${clientId}/subsumtion/${analysisId}?view=recherche`,
+        resourceType: 'risk_research_result',
+        resourceId: RESULT_ID,
+      }),
+    );
   });
 });

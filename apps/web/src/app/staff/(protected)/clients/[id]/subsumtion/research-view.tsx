@@ -46,7 +46,7 @@ export function ResearchView(props: {
       <div className="card p-4">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-medium text-primary inline-flex items-center gap-2">
-            <Webhook className="h-4 w-4 text-disabled" /> Recherche zum Sachverhalt
+            <Webhook className="h-4 w-4 text-disabled" /> Rechercheauftrag
           </h2>
           {!composing && (
             <button
@@ -61,8 +61,8 @@ export function ResearchView(props: {
           )}
         </div>
         <p className="text-xs text-muted mt-1">
-          Eigene/allgemeine Frage zum Sachverhalt an n8n — anonymisiert, mit editierbarer Vorschau.
-          Die Antwort landet unten in der Ablage.
+          Eine gezielte Recherche mit eigenem, reduziertem Sachverhalt erstellen. Der vollständige
+          Sachverhalt wird nur nach bewusster Auswahl übermittelt.
         </p>
         {composing && (
           <div className="mt-3">
@@ -74,7 +74,7 @@ export function ResearchView(props: {
               start={props.start}
               onClose={() => setComposing(false)}
               onDone={(r) => {
-                props.onFlash(r, 'Anonymisierter Auftrag (ganzer Fall) an n8n gesendet.');
+                props.onFlash(r, 'Anonymisierter Rechercheauftrag an n8n gesendet.');
                 if (r.ok) {
                   setComposing(false);
                   router.refresh();
@@ -137,7 +137,7 @@ export function ResearchView(props: {
                         → {req.begriff}
                       </button>
                     ) : (
-                      <span className="text-xs text-secondary">Ganzer Fall</span>
+                      <span className="text-xs text-secondary">Allgemeine Recherchefrage</span>
                     )}
                     {req.prompt && (
                       <p className="text-xs text-muted mt-0.5 line-clamp-2">{req.prompt}</p>
@@ -145,7 +145,7 @@ export function ResearchView(props: {
                     <p className="text-[11px] text-disabled mt-0.5">
                       {staffById[req.createdById] ?? 'Mitarbeiter'} ·{' '}
                       {fmtDateShort(new Date(req.createdAt))}
-                      {req.includeSachverhalt ? ' · mit Sachverhalt' : ''}
+                      {req.includeSachverhalt ? ' · mit Hauptsachverhalt' : ''}
                       {req.resultCount > 0 ? ` · ${req.resultCount} Antwort(en)` : ''}
                     </p>
                   </div>

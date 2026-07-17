@@ -14,6 +14,10 @@ interface Workflow {
   name: string;
   active: boolean;
   nodes: WorkflowNode[];
+  connections?: Record<
+    string,
+    { main?: Array<Array<{ node: string; type: string; index: number }>> }
+  >;
   settings?: Record<string, unknown>;
 }
 
@@ -203,5 +207,16 @@ describe('ausgelieferte n8n-Workflow-Vertraege', () => {
     expect(headerValue(callback, 'x-taxtronik-key-id')).toBe('__TAXTRONIK_CALLBACK_KEY_ID__');
     expect(headerValue(callback, 'x-taxtronik-request-id')).toContain('body.deliveryId');
     expect(headerValue(callback, 'x-taxtronik-request-id')).not.toContain('$execution.id');
+
+    expect(workflow.connections?.['Event und Signatur validieren']?.main).toEqual([
+      [{ node: 'STOPP: Recherche freigeben', type: 'main', index: 0 }],
+    ]);
+    expect(workflow.connections?.['STOPP: Recherche freigeben']?.main).toEqual([
+      [{ node: 'Event bestätigen', type: 'main', index: 0 }],
+    ]);
+    expect(workflow.connections?.['Event bestätigen']?.main).toEqual([
+      [{ node: 'KI-Recherche (Beispiel)', type: 'main', index: 0 }],
+    ]);
+    expect(workflow.connections?.['Ergebnis tenantgebunden an TaxTronik']).toBeUndefined();
   });
 });

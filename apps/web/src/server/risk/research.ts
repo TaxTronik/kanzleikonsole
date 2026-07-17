@@ -30,11 +30,11 @@ import { anonymize, deanonymize } from './anonymize';
 import { reflowProse } from './reflow';
 import { scoreMarkingSuggestions, type MarkingSuggestion } from './suggest';
 
-export type SachverhaltMode = 'none' | 'excerpt' | 'full';
+export type SachverhaltMode = 'custom' | 'excerpt' | 'full';
 
 export interface ResearchInput {
   analysisId: string;
-  /** Per-Markierung (Rechtsfrage + Auszug) ODER null = ganzer Fall. */
+  /** Per-Markierung (Rechtsfrage + Auszug) ODER null = allgemeine Recherchefrage. */
   markingId?: string | null;
   /** Titel der Recherche — leer/null = auto "Recherche vom [Datum], [Uhrzeit]". */
   title?: string | null;
@@ -65,6 +65,7 @@ export interface ResearchPreview {
   normAnker: string[];
   governanceTyp: string | null;
   anonymizedText: string;
+  anonymizedPrompt: string | null;
   heuristicHits: string[];
 }
 
@@ -143,16 +144,17 @@ async function buildRaw(tx: TxClient, tenantId: string, input: ResearchInput) {
         reflowProse(excerpt(analysis.sourceText, marking.start, marking.end)),
     );
   }
-  for (const s of input.snippets ?? []) if (s.trim()) parts.push(s.trim());
-  if (input.prompt && input.prompt.trim()) parts.push('Auftrag: ' + input.prompt.trim());
-
+  const snippets = (input.snippets ?? []).map((snippet) => snippet.trim()).filter(Boolean);
+  if (input.sachverhalt === 'custom' && snippets.length > 0) {
+    parts.push('Sachverhalt für diese Recherche:\n' + snippets.join('\n\n'));
+  }
   return {
     analysis,
     marking,
     client,
     contacts,
     rawText: parts.join('\n\n'),
-    rechtsfrage: marking ? marking.begriff : 'Recherche zum Sachverhalt',
+    rechtsfrage: marking ? marking.begriff : 'Allgemeine Recherchefrage',
     normAnker: marking?.normAnker ?? [],
     governanceTyp: marking?.governanceTyp ?? null,
   };
@@ -170,12 +172,15 @@ export async function previewResearch(
       input,
     );
     const anon = anonymize(rawText, { client, contacts });
+    const prompt = input.prompt?.trim() || null;
+    const anonPrompt = prompt ? anonymize(prompt, { client, contacts }) : null;
     return {
       rechtsfrage,
       normAnker,
       governanceTyp,
       anonymizedText: anon.text,
-      heuristicHits: anon.heuristicHits,
+      anonymizedPrompt: anonPrompt?.text ?? null,
+      heuristicHits: [...new Set([...anon.heuristicHits, ...(anonPrompt?.heuristicHits ?? [])])],
     };
   });
 }
@@ -188,7 +193,7 @@ export async function previewResearch(
  */
 export async function sendResearchToN8n(
   ctx: TenantContext,
-  input: ResearchInput & { finalText: string },
+  input: ResearchInput & { finalText: string; finalPrompt: string | null },
 ): Promise<{ requestId: string; sentText: string; delivery: N8nEnqueueResult }> {
   const prepared = await withTenantContext(ctx, async (tx) => {
     const { analysis, marking, client, contacts, rawText, rechtsfrage, normAnker, governanceTyp } =
@@ -206,7 +211,7 @@ export async function sendResearchToN8n(
     // damit n8n-Workflows die Frage nicht per String-Parsing aus dem
     // kombinierten anonymizedText extrahieren müssen. Freitext des Beraters →
     // ebenfalls anonymisieren.
-    const promptText = input.prompt?.trim() || null;
+    const promptText = input.finalPrompt?.trim() || null;
     const safeAuftrag = promptText ? anonymize(promptText, { client, contacts }) : null;
     // Reihenfolge = Priorität (späteres gewinnt). `safe` (der gesendete
     // anonymizedText) MUSS gewinnen: die n8n-Antwort echo't dessen Platzhalter,
@@ -237,7 +242,7 @@ export async function sendResearchToN8n(
         markingId: marking?.id ?? null,
         title: input.title?.trim() || defaultResearchTitle(),
         prompt: input.prompt?.trim() || null,
-        includeSachverhalt: input.sachverhalt !== 'none',
+        includeSachverhalt: input.sachverhalt !== 'custom',
         anonymizedPayload: payload as object,
         mapping: mapping as object,
         createdById: ctx.actorId ?? analysis.id, // actorId ist für STAFF gesetzt
@@ -410,7 +415,7 @@ export async function receiveResearchResult(
       body: input.source ? `Quelle: ${input.source}` : null,
       href:
         hrefClientId && hrefAnalysisId
-          ? `/staff/clients/${hrefClientId}/subsumtion/${hrefAnalysisId}`
+          ? `/staff/clients/${hrefClientId}/subsumtion/${hrefAnalysisId}?view=recherche`
           : null,
       resourceType: 'risk_research_result',
       resourceId: created.id,

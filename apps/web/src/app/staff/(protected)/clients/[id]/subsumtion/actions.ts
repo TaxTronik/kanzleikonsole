@@ -509,18 +509,31 @@ export async function delegateAction(
 
 // --- Rechercheauftrag an n8n (anonymisiert) ---------------------------------
 
-const ResearchSchema = z.object({
-  clientId: z.string().uuid(),
-  analysisId: z.string().uuid(),
-  // Titel der Recherche — leer = auto "Recherche vom [Datum], [Uhrzeit]".
-  title: z.string().max(200).nullable().optional(),
-  // markingId optional: gesetzt = Recherche zu einer Markierung; null = ganzer Fall.
-  markingId: z.string().uuid().nullable().optional(),
-  // Kein / Auszug (nur mit Markierung sinnvoll) / ganzer Sachverhalt.
-  sachverhalt: z.enum(['none', 'excerpt', 'full']),
-  snippets: z.array(z.string().max(4000)).max(20).optional(),
-  prompt: z.string().max(8000).nullable().optional(),
-});
+const ResearchSchema = z
+  .object({
+    clientId: z.string().uuid(),
+    analysisId: z.string().uuid(),
+    // Titel der Recherche — leer = auto "Recherche vom [Datum], [Uhrzeit]".
+    title: z.string().max(200).nullable().optional(),
+    // markingId optional: gesetzt = Recherche zu einer Markierung; null = allgemeine Frage.
+    markingId: z.string().uuid().nullable().optional(),
+    // Eigener Recherche-Sachverhalt / Auszug / ganzer Sachverhalt.
+    sachverhalt: z.enum(['custom', 'excerpt', 'full']),
+    snippets: z.array(z.string().max(4000)).max(20).optional(),
+    prompt: z.string().max(8000).nullable().optional(),
+  })
+  .superRefine((input, ctx) => {
+    if (
+      input.sachverhalt === 'custom' &&
+      !(input.snippets ?? []).some((snippet) => snippet.trim().length > 0)
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['snippets'],
+        message: 'Bitte einen Sachverhalt für diese Recherche eingeben.',
+      });
+    }
+  });
 
 /** Baut + anonymisiert den Auftrag und gibt die Vorschau zurück (kein Senden). */
 export async function previewResearchAction(
@@ -588,7 +601,10 @@ export async function deletePromptTemplateAction(input: {
   }
 }
 
-const SendResearchSchema = ResearchSchema.extend({ finalText: z.string().min(1).max(40_000) });
+const SendResearchSchema = ResearchSchema.safeExtend({
+  finalText: z.string().min(1).max(40_000),
+  finalPrompt: z.string().max(8000).nullable(),
+});
 
 /** Sendet den (geprüften) anonymisierten Auftrag an n8n. */
 export async function sendResearchAction(

@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## Vorlage — nicht ungeprüft aktivieren\n\n1. Crypto- und TaxTronik-Callback-Credential zuordnen.\n2. Dem Node „KI-Recherche (Beispiel)“ ein geprüftes LLM-Credential geben und den Prompt fachlich/datenschutzrechtlich freigeben — TaxTronik sendet nur den anonymisierten Auftrag (`anonymizedText` + `auftrag`).\n3. Den STOPP-Node löschen und „Event und Signatur validieren“ direkt mit „KI-Recherche (Beispiel)“ verbinden.\n\nSeiteneffekte dauerhaft nach `body.deliveryId` idempotent machen; Remove Duplicates allein genügt nicht.",
+        "content": "## Vorlage — nicht ungeprüft aktivieren\n\n1. Crypto- und TaxTronik-Callback-Credential zuordnen.\n2. Dem Node „KI-Recherche (Beispiel)“ ein geprüftes LLM-Credential geben und den Prompt fachlich/datenschutzrechtlich freigeben — TaxTronik sendet nur den anonymisierten Auftrag (`anonymizedText` + `auftrag`).\n3. Den STOPP-Node löschen und „Event und Signatur validieren“ direkt mit „Event bestätigen“ verbinden. Die Bestätigung muss vor der langen Recherche bleiben, damit TaxTronik nicht in einen Timeout läuft.\n\nSeiteneffekte dauerhaft nach `body.deliveryId` idempotent machen; Remove Duplicates allein genügt nicht.",
         "height": 300,
         "width": 520,
         "color": 5
@@ -55,7 +55,7 @@
     },
     {
       "parameters": {
-        "jsCode": "throw new Error('VORLAGE INAKTIV: Diesen Node loeschen und die Validierung direkt mit der gepruefte KI-Recherche verbinden (siehe Notiz).');"
+        "jsCode": "throw new Error('VORLAGE INAKTIV: Diesen Node loeschen und die Validierung direkt mit Event bestaetigen verbinden (siehe Notiz).');"
       },
       "id": "research-template",
       "name": "STOPP: Recherche freigeben",
@@ -74,7 +74,7 @@
         "responses": {
           "values": [
             {
-              "content": "=Du bist ein hochqualifizierter KI-Assistent für juristische und fachliche Recherchen im Steuerrecht.\n\nDEINE ANWEISUNG:\nAnalysiere den untenstehenden Sachverhalt präzise, bewerte die rechtlichen sowie fachlichen Risiken und arbeite den gesonderten Auftrag strukturiert ab. Antworte objektiv, professionell und gliedere deine Ergebnisse übersichtlich.\nWICHTIG: Erstelle die vollständige Prüfung JETZT sofort. Fasse nicht nur den Auftrag zusammen, sondern liefere direkt das inhaltliche Ergebnis und die rechtliche Würdigung der relevanten Paragrafen (z.B. AO).\n\n### SACHVERHALT:\n{{ $json.body.payload.anonymizedText }}\n\n### GESONDERTER AUFTRAG:\n{{ $json.body.payload.auftrag }}"
+              "content": "=Du bist ein hochqualifizierter KI-Assistent für juristische und fachliche Recherchen im Steuerrecht.\n\nDEINE ANWEISUNG:\nBearbeite die untenstehende Recherchegrundlage präzise und arbeite den gesonderten Auftrag strukturiert ab. Die Grundlage kann bewusst nur einen reduzierten, eigens für diese Recherche formulierten Sachverhalt enthalten. Ergänze keine fehlenden Tatsachen, sondern kennzeichne offene Annahmen. Antworte objektiv, professionell und gliedere deine Ergebnisse übersichtlich.\nWICHTIG: Erstelle die vollständige Prüfung JETZT sofort. Fasse nicht nur den Auftrag zusammen, sondern liefere direkt das inhaltliche Ergebnis und die rechtliche Würdigung der relevanten Paragrafen (z.B. AO).\n\n### GRUNDLAGE DER RECHERCHE:\n{{ $json.body.payload.anonymizedText }}\n\n### AUFTRAG, NOTIZEN UND HINWEISE:\n{{ $json.body.payload.auftrag }}"
             }
           ]
         },
@@ -97,7 +97,7 @@
       "name": "KI-Recherche (Beispiel)",
       "type": "@n8n/n8n-nodes-langchain.openAi",
       "typeVersion": 2.3,
-      "position": [1120, 360]
+      "position": [1340, 360]
     },
     {
       "parameters": {
@@ -136,7 +136,7 @@
       "name": "Ergebnis tenantgebunden an TaxTronik",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1340, 360]
+      "position": [1560, 360]
     },
     {
       "parameters": {
@@ -148,7 +148,7 @@
       "name": "Event bestätigen",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.4,
-      "position": [1560, 360]
+      "position": [1120, 360]
     }
   ],
   "connections": {
@@ -162,13 +162,13 @@
       "main": [[{ "node": "STOPP: Recherche freigeben", "type": "main", "index": 0 }]]
     },
     "STOPP: Recherche freigeben": {
+      "main": [[{ "node": "Event bestätigen", "type": "main", "index": 0 }]]
+    },
+    "Event bestätigen": {
       "main": [[{ "node": "KI-Recherche (Beispiel)", "type": "main", "index": 0 }]]
     },
     "KI-Recherche (Beispiel)": {
       "main": [[{ "node": "Ergebnis tenantgebunden an TaxTronik", "type": "main", "index": 0 }]]
-    },
-    "Ergebnis tenantgebunden an TaxTronik": {
-      "main": [[{ "node": "Event bestätigen", "type": "main", "index": 0 }]]
     }
   },
   "active": false,
