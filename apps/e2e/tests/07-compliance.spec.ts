@@ -756,14 +756,11 @@ test.describe.serial('DSGVO — Datenschutz-Grundverordnung', () => {
       throw new Error('Admin cannot access admin page — RBAC or session issue');
     }
 
-    const dsgvoLink = page.getByRole('link', { name: /Datenschutz/i });
-    const dsgvoVisible = await dsgvoLink
-      .first()
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
-    if (dsgvoVisible) {
-      await expect(dsgvoLink.first()).toBeVisible();
-    }
+    const dsgvoLink = page
+      .locator('aside.app-sidebar')
+      .getByRole('link', { name: 'Datenschutz', exact: true });
+    await expect(dsgvoLink).toBeVisible();
+    await expect(dsgvoLink).toHaveAttribute('href', '/staff/admin/privacy');
 
     const dsgvoCard = page.getByText(/Offene DSGVO-Anfragen/);
     const cardVisible = await dsgvoCard.isVisible({ timeout: 5000 }).catch(() => false);
@@ -2033,14 +2030,20 @@ test.describe('Authorization & RBAC', () => {
     await loginAsAdmin(page);
     await expect(page).toHaveURL(/\/staff\/dashboard/, { timeout: 15_000 });
 
-    // Sidebar-Label seit 666c7ab: "Datenschutz" statt "DSGVO".
-    const dsgvoLink = page.getByRole('link', { name: /Datenschutz/i });
-    const dsgvoVisible = await dsgvoLink.isVisible({ timeout: 5000 }).catch(() => false);
-    expect(dsgvoVisible).toBeTruthy();
+    const adminSidebar = page.locator('aside.app-sidebar');
+    const dsgvoLink = adminSidebar.getByRole('link', {
+      name: 'Datenschutz',
+      exact: true,
+    });
+    const settingsLink = adminSidebar.getByRole('link', {
+      name: 'Einstellungen',
+      exact: true,
+    });
 
-    const settingsLink = page.getByRole('link', { name: /Einstellungen/i });
-    const settingsVisible = await settingsLink.isVisible({ timeout: 5000 }).catch(() => false);
-    expect(settingsVisible).toBeTruthy();
+    await expect(dsgvoLink).toBeVisible();
+    await expect(dsgvoLink).toHaveAttribute('href', '/staff/admin/privacy');
+    await expect(settingsLink).toBeVisible();
+    await expect(settingsLink).toHaveAttribute('href', '/staff/admin/settings');
   });
 });
 

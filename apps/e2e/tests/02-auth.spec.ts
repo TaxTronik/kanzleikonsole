@@ -16,9 +16,19 @@ test.describe('Auth-Flow', () => {
 
   test('Admin sieht Admin-Sidebar (Datenschutz + Einstellungen)', async ({ page }) => {
     await loginAsAdmin(page);
-    // Sidebar-Label seit 666c7ab: "Datenschutz" (bündelt /staff/admin/privacy,
-    // dsgvo, dsgvo-retention, service-providers) statt "DSGVO".
-    await expect(page.getByRole('link', { name: /Datenschutz/i })).toBeVisible();
-    await expect(page.getByRole('link', { name: /Einstellungen/i })).toBeVisible();
+    const adminSidebar = page.locator('aside.app-sidebar');
+    const privacyLink = adminSidebar.getByRole('link', {
+      name: 'Datenschutz',
+      exact: true,
+    });
+    const settingsLink = adminSidebar.getByRole('link', {
+      name: 'Einstellungen',
+      exact: true,
+    });
+
+    await expect(privacyLink).toBeVisible();
+    await expect(privacyLink).toHaveAttribute('href', '/staff/admin/privacy');
+    await expect(settingsLink).toBeVisible();
+    await expect(settingsLink).toHaveAttribute('href', '/staff/admin/settings');
   });
 });
