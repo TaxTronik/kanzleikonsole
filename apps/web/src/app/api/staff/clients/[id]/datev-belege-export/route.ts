@@ -32,6 +32,7 @@ import {
 import { escapeCsvCell } from '@/server/export/csv';
 import { fmtDateShort, fmtDateTimeLong } from '@/lib/fmt';
 import { DOCUMENT_CLASSIFICATION_LABELS } from '@/lib/domain-labels';
+import { isUuid } from '@/lib/uuid';
 
 const QuerySchema = z.object({
   from: z
@@ -90,6 +91,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 
   const { id: clientId } = await params;
+  // Prisma wirft bei Nicht-UUID P2023 → 500 statt 404. Wie in der
+  // Portal-Schwesterroute vorab abweisen.
+  if (!isUuid(clientId)) {
+    return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  }
   const sp = Object.fromEntries(new URL(req.url).searchParams);
   const parsedQs = QuerySchema.safeParse(sp);
   if (!parsedQs.success) {

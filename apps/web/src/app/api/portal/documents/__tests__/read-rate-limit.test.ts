@@ -172,6 +172,42 @@ describe('Preview-Route — Antwortformen unter Limit', () => {
     expect(res.headers.get('content-type')).toBe('application/pdf');
   });
 
+  // Der komplette Portal-Zugriffsschutz auf das Dokumentenarchiv ist diese
+  // where-Klausel. Faellt `sharedWithClientAt` oder `clientId` heraus, laedt
+  // jeder Portal-Kontakt nicht freigegebene Dokumente — bisher wurde die
+  // Klausel von keinem Test geprueft, der Mock lieferte einfach ein Dokument.
+  describe.each(ROUTES)('$name — Freigabe-Filter', ({ call }) => {
+    it('fragt nur nach freigegebenen, nicht geloeschten Dokumenten des eigenen Mandanten', async () => {
+      await call();
+      expect(m.tx.document.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            id: DOC_UUID,
+            clientId: 'client-1',
+            deletedAt: null,
+            sharedWithClientAt: { not: null },
+          }),
+        }),
+      );
+    });
+
+    it('liefert 404 und liest keine Bytes, wenn der Filter nichts findet', async () => {
+      m.tx.document.findFirst.mockResolvedValue(null);
+      const res = await call();
+      expect(res.status).toBe(404);
+      expect(m.streamObject).not.toHaveBeenCalled();
+      expect(m.fetchObjectBytes).not.toHaveBeenCalled();
+    });
+
+    it('liefert 404, wenn keine Version existiert', async () => {
+      m.tx.document.findFirst.mockResolvedValue({ ...DOCUMENT, versions: [] });
+      const res = await call();
+      expect(res.status).toBe(404);
+      expect(m.streamObject).not.toHaveBeenCalled();
+      expect(m.fetchObjectBytes).not.toHaveBeenCalled();
+    });
+  });
+
   it('?stream=1 bevorzugt Magic-Bytes vor falschen Metadaten', async () => {
     m.tx.document.findFirst.mockResolvedValue({
       ...DOCUMENT,

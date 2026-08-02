@@ -17,6 +17,7 @@ import { canAccessClientTx } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { documentPreviewMetadata, loadDocumentPreview } from '@/server/storage/document-preview';
+import { isUuid } from '@/lib/uuid';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await staffAuth();
@@ -25,6 +26,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 
   const { id } = await params;
+  // Prisma wirft bei Nicht-UUID P2023 → 500 statt 404. Wie in der
+  // Portal-Schwesterroute vorab abweisen.
+  if (!isUuid(id)) {
+    return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  }
   const { tenantId, staffId } = session.user;
 
   const doc = await withTenantContext(

@@ -4,6 +4,7 @@ import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { evidenceService } from '@/server/container';
 import { getClientIp, checkStaffBackupDownloadLimit } from '@/server/rate-limit';
+import { isUuid } from '@/lib/uuid';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,6 +19,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 
   const { id } = await params;
+  // Prisma wirft bei Nicht-UUID P2023 → 500 statt 404. Wie in der
+  // Portal-Schwesterroute vorab abweisen.
+  if (!isUuid(id)) {
+    return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  }
   const { tenantId, staffId } = session.user;
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
   const source = req.nextUrl.searchParams.get('source') ?? 'auto';
