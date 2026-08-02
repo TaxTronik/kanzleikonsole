@@ -6,7 +6,7 @@
 
 import { redirect } from 'next/navigation';
 import { requireStaffPage } from '@/server/auth/staff-page';
-import { canAccessClient } from '@/server/auth/rbac';
+import { canAccessClient, canOtherStaffAccessClientTx } from '@/server/auth/rbac';
 import { readModules } from '@/server/settings/modules';
 import { isRiskLayerConfigured } from '@taxtronik/risk-layer';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
@@ -24,7 +24,7 @@ export async function guardSubsumtionPage(clientId: string): Promise<SubsumtionP
   const { tenantId, staffId, fullName } = session.user;
   const ctx: TenantContext = { tenantId, actorId: staffId, actorType: 'STAFF' };
 
-  const [modules, allowed, staffOptions] = await Promise.all([
+  const [modules, allowed, staffCandidates] = await Promise.all([
     readModules(ctx),
     canAccessClient(session, clientId),
     withTenantContext(ctx, (tx) =>
@@ -37,6 +37,17 @@ export async function guardSubsumtionPage(clientId: string): Promise<SubsumtionP
   ]);
 
   if (!modules.risk || !allowed) redirect(`/staff/clients/${clientId}`);
+
+  // Nur Personen anbieten, die den Mandanten auch sehen dürfen. Vorher standen
+  // alle aktiven Mitarbeiter in der Liste — bei einem vertraulichen Mandanten
+  // liess sich damit an Unbefugte zuweisen. Die Server-Actions prüfen das
+  // ebenfalls; diese Filterung ist der Komfort davor, nicht der Schutz.
+  const staffOptions = await withTenantContext(ctx, async (tx) => {
+    const zulaessig = await Promise.all(
+      staffCandidates.map((s) => canOtherStaffAccessClientTx(tx, tenantId, s.id, clientId)),
+    );
+    return staffCandidates.filter((_, i) => zulaessig[i]);
+  });
 
   return { ctx, staffId, fullName, staffOptions, engineConfigured: isRiskLayerConfigured() };
 }

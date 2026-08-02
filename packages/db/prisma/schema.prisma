@@ -2716,6 +2716,7 @@ enum NotificationKind {
   PENDING_BINDER_OVERDUE
   APPOINTMENT_REQUESTED
   APPOINTMENT_DECIDED
+  RISK_MARKING_ASSIGNED
 
   @@map("notification_kind")
 }

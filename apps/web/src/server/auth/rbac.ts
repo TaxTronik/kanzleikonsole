@@ -149,6 +149,54 @@ export async function canAccessClientTx(
 }
 
 /**
+ * Wie `canAccessClientTx`, aber für einen ANDEREN Mitarbeiter — es liegt also
+ * keine Session vor, sondern nur dessen ID. Rollen werden dafür nachgeladen.
+ *
+ * Gebraucht beim Zuweisen: wer eine Markierung delegiert, darf sie nicht an
+ * jemanden geben, der den Mandanten gar nicht sehen darf. Die Delegation prüfte
+ * bisher nur, dass der Empfänger ein aktiver Mitarbeiter DIESES Tenants ist —
+ * bei einem vertraulichen Mandanten konnte man damit an Unbefugte zuweisen,
+ * und die Wiedervorlage trägt ein wörtliches Zitat aus dem Sachverhalt.
+ */
+export async function canOtherStaffAccessClientTx(
+  tx: TxClient,
+  tenantId: string,
+  staffId: string,
+  clientId: string,
+): Promise<boolean> {
+  const staff = await tx.staffUser.findFirst({
+    where: { id: staffId, tenantId, active: true },
+    select: { id: true, roles: { select: { role: true } } },
+  });
+  if (!staff) return false;
+
+  const isAdmin = staff.roles.some((r) => r.role === 'ADMIN' || r.role === 'PARTNER');
+  if (isAdmin) return true;
+
+  const policy = await readAccessPolicyTx(tx, tenantId);
+  const client = await tx.client.findUnique({
+    where: { id: clientId },
+    select: { vertraulich: true },
+  });
+  if (!client) return false;
+
+  const needResponsibility = policy.clientAccessMode === 'RESTRICTED' || client.vertraulich;
+  const isResponsible = needResponsibility
+    ? (await tx.clientResponsibility.findFirst({
+        where: { clientId, staffId, role: { in: ['BERUFSTRAEGER', 'HAUPTBEARBEITER'] } },
+        select: { id: true },
+      })) !== null
+    : false;
+
+  return decideClientAccess({
+    isAdmin: false,
+    mode: policy.clientAccessMode,
+    vertraulich: client.vertraulich,
+    isResponsible,
+  });
+}
+
+/**
  * Menge der Mandanten-IDs, die der Mitarbeiter NICHT sehen darf — für
  * Mengen-Endpunkte (Suche, CSV-Exporte, Bulk-ZIP), die nicht pro Treffer
  * `canAccessClient` rufen können. Eine leichte Query pro Request:

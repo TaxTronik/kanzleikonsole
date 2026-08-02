@@ -13,6 +13,9 @@
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import type { GovernanceTyp, RiskStufe, RiskWk } from '@taxtronik/risk-layer';
 import { evidenceService } from '@/server/container';
+import { canOtherStaffAccessClientTx } from '@/server/auth/rbac';
+import { notify } from '@/server/notifications/service';
+import { subsumtionMarkingHref } from './links';
 
 export type RiskStatus = 'OFFEN' | 'IN_PRUEFUNG' | 'KONTROLLIERT' | 'AKZEPTIERT';
 
@@ -53,19 +56,56 @@ export async function updateMarking(
   await withTenantContext(ctx, async (tx) => {
     const before = await tx.riskMarking.findUnique({
       where: { id: markingId },
-      select: DECISION_SELECT,
+      select: { ...DECISION_SELECT, begriff: true, normAnker: true, analysisId: true },
     });
     if (!before) throw new Error('Markierung nicht gefunden.');
     // Verantwortliche:r muss aktiver Mitarbeiter DIESES Tenants sein (keine
     // hängende Zuweisung an fremde/ungültige Staff-IDs).
+    const analysis = await tx.riskAnalysis.findUnique({
+      where: { id: before.analysisId },
+      select: { id: true, clientId: true },
+    });
     if (fields.verantwortlichId) {
       const ok = await tx.staffUser.findFirst({
         where: { id: fields.verantwortlichId, tenantId: ctx.tenantId, active: true },
         select: { id: true },
       });
       if (!ok) throw new Error('Verantwortliche:r nicht gefunden oder inaktiv.');
+      // Wie bei der Delegation: nicht an jemanden zuweisen, der den Mandanten
+      // nicht sehen darf.
+      if (
+        analysis?.clientId &&
+        !(await canOtherStaffAccessClientTx(
+          tx,
+          ctx.tenantId,
+          fields.verantwortlichId,
+          analysis.clientId,
+        ))
+      ) {
+        throw new Error('Verantwortliche:r hat keinen Zugriff auf diesen Mandanten.');
+      }
     }
     await tx.riskMarking.update({ where: { id: markingId }, data: fields });
+
+    // Zuweisung über das Feld „Verantwortlich" löste bisher NICHTS aus: keine
+    // Wiedervorlage, keine Benachrichtigung. Der Empfänger erfuhr davon nur,
+    // wenn er die Analyse zufällig selbst öffnete.
+    const wechsel =
+      fields.verantwortlichId &&
+      fields.verantwortlichId !== before.verantwortlichId &&
+      fields.verantwortlichId !== ctx.actorId;
+    if (wechsel && analysis?.clientId) {
+      await notify(tx, {
+        tenantId: ctx.tenantId,
+        staffId: fields.verantwortlichId!,
+        kind: 'RISK_MARKING_ASSIGNED',
+        title: `Recherche zugewiesen: ${before.begriff}`,
+        body: before.normAnker.length > 0 ? `Normanker: ${before.normAnker.join(', ')}` : undefined,
+        href: subsumtionMarkingHref(analysis.clientId, analysis.id, markingId),
+        resourceType: 'risk_marking',
+        resourceId: markingId,
+      });
+    }
     // undefined = unverändert → für den after-Snapshot herausfiltern.
     const changed = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined));
     await evidenceService.record(tx, {

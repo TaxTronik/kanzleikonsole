@@ -49,6 +49,7 @@ export const NOTIFICATION_KIND_LABELS: Readonly<Record<string, string>> = {
   SYSTEM_MAIL_FAILED: 'Mailversand fehlgeschlagen',
   INVOICE_OVERDUE: 'Rechnung überfällig',
   PHONE_NOTE_FORWARDED: 'Telefonzettel weitergeleitet',
+  RISK_MARKING_ASSIGNED: 'Begriff zur Recherche zugewiesen',
   VACATION_DECISION: 'Urlaubsentscheidung',
   VACATION_REQUESTED: 'Urlaubsantrag',
   ABSENCE_REPORTED: 'Abwesenheitsmeldung',
