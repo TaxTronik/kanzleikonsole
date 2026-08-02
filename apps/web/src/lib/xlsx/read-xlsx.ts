@@ -181,10 +181,20 @@ function parseDateStyles(xml: string | null): Set<number> {
   const customDateFormats = new Set<number>();
   const cellFormatIds: number[] = [];
   let insideCellXfs = false;
+  let insideNumFmts = false;
 
   parseXml(xml, {
     onOpen(name, attrs) {
+      if (name === 'numFmts') {
+        insideNumFmts = true;
+        return;
+      }
+      // `numFmt` steht auch unter `dxf` (bedingte Formatierung) und in
+      // x14-Erweiterungen. Dort adressiert die ID NICHT die globale
+      // Formattabelle — ein `numFmtId="0"` mit Datums-Code wuerde sonst
+      // "General" vergiften und jede blanke Zahl der Mappe zum Datum machen.
       if (name === 'numFmt') {
+        if (!insideNumFmts) return;
         const id = Number.parseInt(attrs.numFmtId ?? '', 10);
         if (Number.isFinite(id) && isDateFormatCode(attrs.formatCode ?? ''))
           customDateFormats.add(id);
@@ -201,6 +211,7 @@ function parseDateStyles(xml: string | null): Set<number> {
     },
     onClose(name) {
       if (name === 'cellXfs') insideCellXfs = false;
+      else if (name === 'numFmts') insideNumFmts = false;
     },
   });
 

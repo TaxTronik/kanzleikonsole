@@ -117,6 +117,19 @@ describe('parseDatevBwaXlsx', () => {
     expect(jahr2025.positions.map((p) => p.amount)).toEqual([180000, -48000, -30006]);
   });
 
+  it('erkennt den Maerz in beiden deutschen Schreibweisen', async () => {
+    for (const maerz of ['Mär', 'Mrz']) {
+      const result = await parseDatevBwaXlsx(
+        buildBwaXlsx([
+          { index: 1, cells: ['Zeile', 'Konto', 'Bezeichnung', `Jan/2025 - ${maerz}/2025`] },
+          { index: 2, cells: ['1020', null, 'Umsatzerlöse', 42000] },
+        ]),
+      );
+      expect(result.periods.map((p) => p.periodKey)).toEqual(['2025-01-2025-03']);
+      expect(result.periods[0]!.toDate.toISOString()).toBe('2025-03-31T00:00:00.000Z');
+    }
+  });
+
   it('meldet eine fehlende Header-Zeile statt leerer Perioden', async () => {
     const result = await parseDatevBwaXlsx(
       buildBwaXlsx([{ index: 1, cells: ['Irgendein anderer Export'] }]),

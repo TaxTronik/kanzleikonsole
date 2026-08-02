@@ -24,6 +24,8 @@ const MONTH_DE: Record<string, number> = {
   feb: 2,
   mär: 3,
   mar: 3,
+  // Deutsches Excel schreibt den Maerz je nach Version als „Mär" oder „Mrz".
+  mrz: 3,
   apr: 4,
   mai: 5,
   jun: 6,

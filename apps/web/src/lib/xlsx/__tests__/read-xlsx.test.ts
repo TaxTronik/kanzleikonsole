@@ -227,6 +227,24 @@ describe('readXlsx', () => {
     expect(d).toBe(45658);
   });
 
+  it('ignoriert numFmt ausserhalb von numFmts (bedingte Formatierung)', () => {
+    // `dxfs` traegt die Formate der bedingten Formatierung. Deren numFmtId
+    // adressiert NICHT die globale Formattabelle. Ohne Scope-Pruefung wuerde
+    // ein Datums-Code auf ID 0 ("General") jede blanke Zahl der Mappe zum
+    // Datum machen — im DATEV-Import faellt dann jede Position heraus.
+    const styles = `<styleSheet>
+      <numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0.00"/></numFmts>
+      <cellXfs count="1"><xf numFmtId="0"/></cellXfs>
+      <dxfs count="1"><dxf><numFmt numFmtId="0" formatCode="DD.MM.YYYY"/></dxf></dxfs>
+    </styleSheet>`;
+    const data = buildXlsx({
+      styles,
+      sheets: [sheetXml(`<row r="1"><c r="A1" s="0"><v>15000</v></c></row>`)],
+    });
+
+    expect(readXlsx(data)[0]!.rows).toEqual([[15000]]);
+  });
+
   it('liest mehrere Arbeitsblaetter in Reihenfolge der Mappe', () => {
     const data = buildXlsx({
       sharedStrings: `<sst><si><t>eins</t></si></sst>`,
