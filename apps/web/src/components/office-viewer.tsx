@@ -103,38 +103,59 @@ interface XlsxSheet {
   rows: string[][];
 }
 
+// Anzeigegrenzen. Der Reader laesst bis zu 4 Mio. Zellen durch — die alle als
+// <td> samt title-Attribut zu materialisieren, legt den Browser-Tab lahm. Eine
+// Vorschau muss nicht vollstaendig sein; wer die ganze Mappe braucht, laedt sie
+// herunter und oeffnet sie in Excel.
+const PREVIEW_MAX_ROWS = 500;
+const PREVIEW_MAX_COLUMNS = 100;
+
 function XlsxTable({ rows }: { rows: string[][] }) {
   if (rows.length === 0) return <p className="text-sm text-disabled">Leere Tabelle.</p>;
   const [head, ...body] = rows;
+  const columnCount = Math.min(head!.length, PREVIEW_MAX_COLUMNS);
+  const shownBody = body.slice(0, PREVIEW_MAX_ROWS);
+  const hiddenRows = body.length - shownBody.length;
+  const hiddenColumns = head!.length - columnCount;
+
   return (
-    <table className="text-xs border-collapse">
-      <thead className="bg-gray-100 sticky top-0">
-        <tr>
-          {head!.map((c, i) => (
-            <th
-              key={i}
-              className="border border-default px-2 py-1 text-left font-medium text-secondary whitespace-nowrap"
-            >
-              {c}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {body.map((row, ri) => (
-          <tr key={ri} className="hover:bg-gray-50">
-            {row.map((c, ci) => (
-              <td
-                key={ci}
-                className="border border-subtle px-2 py-1 text-primary whitespace-nowrap max-w-[24rem] overflow-hidden text-ellipsis"
-                title={c}
+    <>
+      {(hiddenRows > 0 || hiddenColumns > 0) && (
+        <p className="mb-2 text-xs text-muted">
+          Vorschau gekürzt: zeigt {shownBody.length} von {body.length} Zeilen
+          {hiddenColumns > 0 ? ` und ${columnCount} von ${head!.length} Spalten` : ''}. Die
+          vollständige Mappe steht über den Download bereit.
+        </p>
+      )}
+      <table className="text-xs border-collapse">
+        <thead className="bg-gray-100 sticky top-0">
+          <tr>
+            {head!.slice(0, columnCount).map((c, i) => (
+              <th
+                key={i}
+                className="border border-default px-2 py-1 text-left font-medium text-secondary whitespace-nowrap"
               >
                 {c}
-              </td>
+              </th>
             ))}
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {shownBody.map((row, ri) => (
+            <tr key={ri} className="hover:bg-gray-50">
+              {row.slice(0, columnCount).map((c, ci) => (
+                <td
+                  key={ci}
+                  className="border border-subtle px-2 py-1 text-primary whitespace-nowrap max-w-[24rem] overflow-hidden text-ellipsis"
+                  title={c}
+                >
+                  {c}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
   );
 }

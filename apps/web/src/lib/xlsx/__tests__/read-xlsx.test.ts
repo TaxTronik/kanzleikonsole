@@ -284,6 +284,31 @@ describe('readXlsx', () => {
     expect(readXlsx(data)[0]!.rows).toEqual([['Kanji']]);
   });
 
+  it('dekomprimiert nur die ausgewerteten Teile', () => {
+    // Eingebettete Medien und OLE-Objekte machen in echten Mappen den Loewen-
+    // anteil aus und werden von diesem Reader nie gelesen.
+    const files: Record<string, Uint8Array> = {
+      'xl/workbook.xml': strToU8(workbookXml('Tabelle1')),
+      'xl/_rels/workbook.xml.rels': strToU8(WORKBOOK_RELS),
+      'xl/worksheets/sheet1.xml': strToU8(sheetXml(`<row r="1"><c r="A1"><v>7</v></c></row>`)),
+      'xl/media/image1.bin': new Uint8Array(2 * 1024 * 1024),
+      'docProps/thumbnail.jpeg': new Uint8Array(512 * 1024),
+    };
+    expect(readXlsx(zipSync(files))[0]!.rows).toEqual([[7]]);
+  });
+
+  it('weist einen Eintrag ab, der das Entpack-Budget sprengt', () => {
+    // Zip-Bombe im Kleinen: gut komprimierbarer Riesen-Eintrag. Der Filter muss
+    // greifen, BEVOR fflate den Zielpuffer in deklarierter Groesse allokiert.
+    const huge = new Uint8Array(65 * 1024 * 1024); // Nullen, komprimiert winzig
+    const data = zipSync({
+      'xl/workbook.xml': strToU8(workbookXml('Tabelle1')),
+      'xl/_rels/workbook.xml.rels': strToU8(WORKBOOK_RELS),
+      'xl/worksheets/sheet1.xml': huge,
+    });
+    expect(() => readXlsx(data)).toThrow(/zu gross/);
+  });
+
   it('bricht bei nicht lesbarem Container ab', () => {
     expect(() => readXlsx(strToU8('kein zip'))).toThrow(XlsxReadError);
   });

@@ -39,6 +39,29 @@ const MAX_COLUMNS = 16_384;
  */
 const MAX_CELLS = 4_000_000;
 
+/**
+ * Entpack-Budget. `unzipSync` ohne Filter entpackt JEDEN Eintrag und allokiert
+ * vorab die im Central Directory deklarierte Originalgroesse — das Zellbudget
+ * oben greift erst auf dem bereits entpackten XML, also viel zu spaet. Eine
+ * wenige Kilobyte grosse Datei kann so Gigabyte anfordern (Zip-Bombe).
+ *
+ * Der Filter laeuft VOR der Allokation, deshalb ist die deklarierte Groesse
+ * hier das richtige Signal: wir lehnen ab, bevor der Speicher angefordert wird.
+ */
+const MAX_ENTRY_BYTES = 64 * 1024 * 1024;
+const MAX_TOTAL_BYTES = 128 * 1024 * 1024;
+
+/**
+ * Nur die Teile, die dieser Reader auswertet. Alles andere — eingebettete
+ * Bilder unter `xl/media/`, OLE-Objekte, Drucker-Einstellungen — wird gar nicht
+ * erst dekomprimiert. Sheet-Pfade stehen erst nach dem Lesen der Relationships
+ * fest, deshalb `xl/**\/*.xml` statt einer festen Liste.
+ */
+function isNeededEntry(name: string): boolean {
+  if (name === '[Content_Types].xml') return true;
+  return name.startsWith('xl/') && name.toLowerCase().endsWith('.xml');
+}
+
 export class XlsxReadError extends Error {
   constructor(message: string) {
     super(message);
@@ -50,11 +73,30 @@ export function readXlsx(data: Uint8Array | ArrayBuffer): XlsxSheet[] {
   const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
 
   let files: Record<string, Uint8Array>;
+  let budgetError: XlsxReadError | null = null;
+  let totalBytes = 0;
   try {
-    files = unzipSync(bytes);
+    files = unzipSync(bytes, {
+      filter: (entry) => {
+        if (!isNeededEntry(entry.name)) return false;
+        if (entry.originalSize > MAX_ENTRY_BYTES) {
+          budgetError ??= new XlsxReadError(
+            `Eintrag "${entry.name}" ist mit ${entry.originalSize} Byte zu gross.`,
+          );
+          return false;
+        }
+        totalBytes += entry.originalSize;
+        if (totalBytes > MAX_TOTAL_BYTES) {
+          budgetError ??= new XlsxReadError('Arbeitsmappe sprengt das Entpack-Budget.');
+          return false;
+        }
+        return true;
+      },
+    });
   } catch (cause) {
     throw new XlsxReadError(`XLSX-Container nicht lesbar: ${(cause as Error).message}`);
   }
+  if (budgetError) throw budgetError;
 
   const workbookXml = readEntry(files, 'xl/workbook.xml');
   if (workbookXml === null) {

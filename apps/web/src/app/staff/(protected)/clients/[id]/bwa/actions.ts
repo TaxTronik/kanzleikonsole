@@ -23,6 +23,32 @@ const ImportSchema = z.object({
   csv: z.string().min(1).max(2_000_000),
 });
 
+/**
+ * Zugriffsrecht VOR dem Parsen pruefen.
+ *
+ * Beide Importe zerlegten die hochgeladene Datei zuerst und pruefte die
+ * Mandanten-Berechtigung erst in der anschliessenden Transaktion. Ein
+ * angemeldeter Mitarbeiter ohne Zugriff auf diesen Mandanten konnte den Server
+ * damit trotzdem eine bis zu 20 MB grosse Datei auspacken und parsen lassen —
+ * Arbeit auf fremde Anfrage, bevor irgendjemand gefragt hat, ob er darf.
+ *
+ * Liefert bei fehlendem Zugriff das fertige Fehlerergebnis, sonst null.
+ */
+async function denyIfNoClientAccess(
+  ctx: Parameters<typeof withTenantContext>[0],
+  session: Parameters<typeof assertClientAccessTx>[1],
+  clientId: string,
+): Promise<ImportResult | null> {
+  try {
+    await withTenantContext(ctx, async (tx) => {
+      await assertClientAccessTx(tx, session, clientId);
+    });
+    return null;
+  } catch (e) {
+    return toActionError(e);
+  }
+}
+
 export async function importAddisonCsvAction(input: {
   clientId: string;
   fileName: string;
@@ -35,6 +61,9 @@ export async function importAddisonCsvAction(input: {
   const parsed = ImportSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
   const { clientId, fileName, csv } = parsed.data;
+
+  const denied = await denyIfNoClientAccess(ctx, session, clientId);
+  if (denied) return denied;
 
   // Auto-Detect: Langform (a*.csv) beginnt mit `Nummer;…`; Kompaktform (s*.csv)
   // beginnt mit einer Mandantennummer + Titel-Zeile.
@@ -141,7 +170,21 @@ export async function importDatevXlsxAction(input: {
     return { ok: false, error: 'Datei leer oder größer als 20 MB.' };
   }
 
-  const result = await parseDatevBwaXlsx(buffer);
+  const denied = await denyIfNoClientAccess(ctx, session, clientId);
+  if (denied) return denied;
+
+  // Der Reader wirft bei defektem Container, fehlender Arbeitsmappe (z. B. eine
+  // in .xlsx umbenannte .xls) oder gesprengtem Zellbudget. Ungeklammert kaeme
+  // das als generischer Server-Action-Fehler an statt als lesbarer Hinweis.
+  let result: Awaited<ReturnType<typeof parseDatevBwaXlsx>>;
+  try {
+    result = await parseDatevBwaXlsx(buffer);
+  } catch (e) {
+    return {
+      ok: false,
+      error: `XLSX konnte nicht gelesen werden: ${e instanceof Error ? e.message : 'unbekannter Fehler'}`,
+    };
+  }
   if (result.periods.length === 0) {
     return { ok: false, error: 'Keine BWA-Perioden im XLSX erkannt.', warnings: result.warnings };
   }
