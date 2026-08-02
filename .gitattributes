@@ -6,6 +6,12 @@ taxtronik         text eol=lf
 infra/scripts/*   text eol=lf
 
 # Normale Quelltexte: LF im Repo, lokale Working-Copy nach Plattform.
+#
+# Gegenstueck dazu ist `endOfLine: "auto"` in .prettierrc. Ohne das prueft
+# Prettier gegen LF und meldet unter Windows JEDE frisch ausgecheckte Datei als
+# Formatverstoss — `pnpm format:check` waere dort nach einem Clone flaechendeckend
+# rot. Die Garantie "LF im Repo" haengt an dieser Datei, nicht an Prettier: git
+# normalisiert beim Commit, unabhaengig davon, was in der Working-Copy steht.
 *.ts              text
 *.tsx             text
 *.js              text

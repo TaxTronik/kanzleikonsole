@@ -3,6 +3,8 @@ node_modules/
 
 .next/
 .turbo/
+# Von `next build`/`next dev` erzeugt und laut Datei-Header nicht zu editieren.
+apps/web/next-env.d.ts
 dist/
 build/
 out/
