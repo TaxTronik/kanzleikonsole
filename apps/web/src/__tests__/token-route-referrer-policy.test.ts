@@ -14,8 +14,15 @@ describe('token-bearing route referrer policies', () => {
       new URL('../app/audit-verify/[token]/page.tsx', import.meta.url),
       'utf8',
     );
-    expect(page).toContain('audit-verify-ip:');
+    // IP-Bucket über checkIpOrGlobalLimit: `getClientIp` liefert null, wenn
+    // kein vertrauenswürdiger Proxy-Header vorliegt. Roh interpoliert ergäbe
+    // das den gemeinsamen Schlüssel "…:null" und ein einzelner Spammer sperrte
+    // die Verifikation für alle externen Prüfer.
+    expect(page).toContain("checkIpOrGlobalLimit(\n    'audit-verify-ip',");
+    expect(page).not.toMatch(/checkRateLimit\(`[^`]*\$\{ip\}/);
+    // Token-Bucket bleibt ein direkter checkRateLimit — der Fingerprint ist
+    // immer gesetzt, hier gibt es kein null-Problem.
     expect(page).toContain('audit-verify-token:');
-    expect(page.match(/await checkRateLimit/g)).toHaveLength(2);
+    expect(page.match(/await checkRateLimit/g)).toHaveLength(1);
   });
 });

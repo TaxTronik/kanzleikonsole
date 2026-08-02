@@ -62,7 +62,7 @@ async function persistVerifyResult(tenantId: string, result: PersistedVerifyResu
 // entfernt nur die ältesten (niedrigsten) IDs, nie die neuesten. Ein kleinerer
 // oder verschwundener Anker beweist gelöschte Spitzen-Einträge. Gibt die
 // Alarm-Begründung zurück oder null, wenn alles monoton ist.
-function detectTailTruncation(
+export function detectTailTruncation(
   prev: PersistedVerifyResult | null,
   newLastAuditId: bigint | null,
 ): string | null {
@@ -117,6 +117,9 @@ export const auditVerifyWorker = new Worker<ChecksJob>(
 
     for await (const tenantIds of tenantBatches)
       for (const tenantId of tenantIds) {
+        // Ausserhalb des try: der Fehlerpfad unten muss den Monotonie-Anker
+        // weiterreichen können.
+        let prev: PersistedVerifyResult | null = null;
         try {
           const checkedAt = new Date();
           // Vorergebnis VOR dem neuen Lauf lesen — liefert den Monotonie-Anker
@@ -126,7 +129,7 @@ export const auditVerifyWorker = new Worker<ChecksJob>(
               where: { tenantId_key: { tenantId, key: AUDIT_VERIFY_RESULT_SETTING_KEY } },
             }),
           );
-          const prev = (prevRow?.value ?? null) as PersistedVerifyResult | null;
+          prev = (prevRow?.value ?? null) as PersistedVerifyResult | null;
 
           const r = await prismaOwner.$transaction(
             async (tx) => evidenceService.verifyChain(tx, tenantId, { requireExternalTsa }),
@@ -312,7 +315,12 @@ export const auditVerifyWorker = new Worker<ChecksJob>(
             requestId: job.data.requestId ?? null,
             ok: false,
             checked: 0,
-            lastAuditId: null,
+            // Anker ERHALTEN, nicht auf null zurücksetzen: `detectTailTruncation`
+            // steigt bei fehlendem Vor-Anker kommentarlos aus. Ein einziger
+            // fehlgeschlagener Lauf hätte die Tail-Truncation-Erkennung sonst
+            // dauerhaft blind gestellt — genau das Fenster, in dem gelöschte
+            // Spitzen-Einträge unbemerkt blieben.
+            lastAuditId: prev?.lastAuditId ?? null,
             sealsChecked: 0,
             sealBreaks: 0,
             policyBreaks: [],

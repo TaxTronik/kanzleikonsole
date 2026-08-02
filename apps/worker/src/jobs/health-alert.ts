@@ -229,19 +229,36 @@ function alertMail(service: ServiceName, kind: 'down' | 'up'): { subject: string
  * monatliche backup-drill nur die letzte — evtl. uralte — Sicherung validiert.
  */
 async function checkBackupFresh(now: Date = new Date()): Promise<boolean> {
-  const last = await prismaOwner.backupRecord.findFirst({
-    where: { status: 'SUCCESS', finishedAt: { not: null } },
-    orderBy: { finishedAt: 'desc' },
-    select: { finishedAt: true },
-  });
-  if (!last?.finishedAt) return false; // noch nie erfolgreich gesichert → Alarm
-  return now.getTime() - last.finishedAt.getTime() <= BACKUP_MAX_AGE_MS;
+  // Wie die uebrigen Checks abgeschirmt: alle sieben haengen an EINEM
+  // Promise.all. Ein hier durchgereichter Fehler (DB weg, Query haengt) liess
+  // frueher den gesamten Alarm-Lauf werfen — und weil health-alert als
+  // 5-Minuten-Job bewusst ohne Retry laeuft, waere dann NIE eine Alarm-Mail
+  // rausgegangen. Ausgerechnet der Ausfall, den der Job melden soll, haette
+  // ihn stumm geschaltet.
+  try {
+    const last = await withTimeout(
+      prismaOwner.backupRecord.findFirst({
+        where: { status: 'SUCCESS', finishedAt: { not: null } },
+        orderBy: { finishedAt: 'desc' },
+        select: { finishedAt: true },
+      }),
+      'backup',
+    );
+    if (!last?.finishedAt) return false; // noch nie erfolgreich gesichert → Alarm
+    return now.getTime() - last.finishedAt.getTime() <= BACKUP_MAX_AGE_MS;
+  } catch {
+    return false; // nicht feststellbar → als "nicht frisch" behandeln, Alarm
+  }
 }
 
 export async function runHealthAlert(): Promise<{ skipped?: boolean; down: ServiceName[] }> {
   if (!env.OPS_ALERT_EMAIL) return { skipped: true, down: [] };
 
-  const [postgres, redis, objectStore, clamav, backup, app, n8n] = await Promise.all([
+  // allSettled statt all: ein einzelner werfender Check darf den Alarm-Lauf
+  // nicht mitreissen. Jeder Check schirmt seine Fehler zwar selbst ab, aber
+  // genau dieser Verlass ging schon einmal schief (checkBackupFresh). Eine
+  // Rejection zaehlt als "down" — im Zweifel alarmieren, nicht schweigen.
+  const settled = await Promise.allSettled([
     checkPostgres(),
     checkRedis(),
     checkObjectStore(),
@@ -250,6 +267,9 @@ export async function runHealthAlert(): Promise<{ skipped?: boolean; down: Servi
     checkApp(),
     checkN8n(),
   ]);
+  const [postgres, redis, objectStore, clamav, backup, app, n8n] = settled.map((r) =>
+    r.status === 'fulfilled' ? r.value : false,
+  ) as [boolean, boolean, boolean, boolean, boolean, boolean, boolean];
   const current = { postgres, redis, objectStore, clamav, backup, app, n8n };
 
   const prev = await loadState();

@@ -16,13 +16,24 @@ import { withSystemContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { verifyAuditToken } from '@/server/audit-access/token';
-import { checkRateLimit, getClientIp } from '@/server/rate-limit';
+import { checkIpOrGlobalLimit, checkRateLimit, getClientIp } from '@/server/rate-limit';
 import { fmtDateTimeMedium, fmtDateMedium } from '@/lib/fmt';
 
 export default async function AuditVerifyPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const ip = getClientIp(await headers());
-  const ipLimit = await checkRateLimit(`audit-verify-ip:${ip}`, { max: 20, windowSec: 600 });
+  // `getClientIp` liefert null, wenn kein vertrauenswuerdiger Proxy-Header
+  // vorliegt. Roh interpoliert ergaebe das den Schluessel "…:null" — alle
+  // anonymen Aufrufer teilten sich einen Bucket mit 20 Abrufen, und ein
+  // einzelner Spammer sperrte die Verifikation fuer saemtliche externen
+  // Pruefer. checkIpOrGlobalLimit faellt stattdessen auf eine weitere globale
+  // Quota zurueck: Sturm-Schutz statt Lockout-Surface.
+  const ipLimit = await checkIpOrGlobalLimit(
+    'audit-verify-ip',
+    ip,
+    { max: 20, windowSec: 600 },
+    { max: 200, windowSec: 600 },
+  );
   if (!ipLimit.ok) return <RateLimitShell />;
 
   const decoded = verifyAuditToken(token);
