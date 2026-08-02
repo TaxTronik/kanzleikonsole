@@ -53,6 +53,10 @@ export function DocumentPreviewModal({
   }, []);
   const [url, setUrl] = useState<string | null>(null);
   const [mimeType, setMimeType] = useState<string | null>(null);
+  // Gespeicherter Dokumenttyp — nur fuer die Wahl des eigenen Viewers. Der
+  // Transport-Typ oben bleibt sanitisiert (Inline-Whitelist), damit XLSX nicht
+  // ueber diesen Weg doch vom Browser gerendert wird.
+  const [documentMimeType, setDocumentMimeType] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,10 +69,15 @@ export function DocumentPreviewModal({
       try {
         const res = await fetch(`${apiPrefix}/documents/${documentId}/preview-url`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = (await res.json()) as { url: string; mimeType: string };
+        const data = (await res.json()) as {
+          url: string;
+          mimeType: string;
+          documentMimeType?: string;
+        };
         if (cancelled) return;
         setUrl(data.url);
         setMimeType(data.mimeType);
+        setDocumentMimeType(data.documentMimeType ?? null);
       } catch (e) {
         if (!cancelled) setError((e as Error).message);
       } finally {
@@ -88,7 +97,7 @@ export function DocumentPreviewModal({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const officeKind = detectInlineOfficeKind(mimeType, documentTitle);
+  const officeKind = detectInlineOfficeKind(documentMimeType ?? mimeType, documentTitle);
   const isImage = mimeType?.startsWith('image/');
   const isPdf = mimeType === 'application/pdf' || mimeType?.endsWith('pdf');
   const isMarkdown = mimeType === 'text/markdown' || /\.(md|markdown)$/i.test(documentTitle ?? '');
@@ -182,7 +191,7 @@ export function DocumentPreviewModal({
               ) : (
                 <div className="h-full flex flex-col items-center justify-center gap-3 text-muted">
                   <p className="text-sm">
-                    Keine Inline-Vorschau für {mimeType ?? 'diesen Dateityp'}.
+                    Keine Inline-Vorschau für {documentMimeType ?? mimeType ?? 'diesen Dateityp'}.
                   </p>
                   <a href={`${apiPrefix}/documents/${documentId}/download`} className="btn-primary">
                     <Download className="h-4 w-4" />

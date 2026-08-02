@@ -20,4 +20,22 @@ describe('document preview security boundary', () => {
       ),
     ).toBe('xlsx');
   });
+
+  it('waehlt den Viewer auch ohne Endung im Titel', () => {
+    // Der Upload-Dialog strippt die Endung aus dem Titel; die Entscheidung
+    // haengt deshalb am gespeicherten Dokumenttyp (`documentMimeType`), nicht
+    // am sanitisierten Transport-Typ.
+    expect(
+      detectInlineOfficeKind(
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Jahresvergleich-2025',
+      ),
+    ).toBe('xlsx');
+  });
+
+  it('gibt dem Transport-Typ keinen Viewer', () => {
+    // Faellt `documentMimeType` weg (aeltere API-Antwort), bleibt es beim
+    // Download-Pfad statt bei einer geratenen Vorschau.
+    expect(detectInlineOfficeKind('application/octet-stream', 'Jahresvergleich-2025')).toBeNull();
+  });
 });

@@ -17,9 +17,20 @@ export interface PreviewDocumentSource {
 
 export function documentPreviewMetadata(doc: PreviewDocumentSource): {
   mimeType: string;
+  documentMimeType: string;
   title: string;
 } {
-  return { mimeType: effectiveDocumentMime(doc), title: doc.title };
+  return {
+    // `mimeType` ist der Transport-Typ: alles ausserhalb der Inline-Whitelist
+    // faellt auf octet-stream, damit der Browser nichts Fremdes rendert.
+    mimeType: effectiveDocumentMime(doc),
+    // `documentMimeType` ist der tatsaechlich gespeicherte Typ und steuert
+    // ausschliesslich, welchen eigenen Viewer der Client waehlt. Er darf keine
+    // Auslieferungsentscheidung beeinflussen — sonst waere die Whitelist
+    // umgangen.
+    documentMimeType: doc.mimeType,
+    title: doc.title,
+  };
 }
 
 export async function loadDocumentPreview(doc: PreviewDocumentSource): Promise<{

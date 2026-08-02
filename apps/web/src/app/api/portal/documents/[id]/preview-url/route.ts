@@ -87,5 +87,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const url = `${req.nextUrl.pathname}?stream=1`;
   const meta = documentPreviewMetadata(doc);
-  return NextResponse.json({ url, mimeType: meta.mimeType, title: meta.title });
+  return NextResponse.json({
+    url,
+    mimeType: meta.mimeType,
+    documentMimeType: meta.documentMimeType,
+    title: meta.title,
+  });
 }

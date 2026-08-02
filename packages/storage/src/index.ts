@@ -20,6 +20,7 @@ export {
   recoverPreparedBytesCommit,
   sanitizeFilenameForHeader,
   detectMimeFromMagicBytes,
+  detectOoxmlMime,
   gobdRetentionUntil,
   gobdRetentionUntilFor,
   gobdRetentionYears,

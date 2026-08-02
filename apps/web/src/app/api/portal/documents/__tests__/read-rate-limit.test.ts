@@ -154,6 +154,9 @@ describe('Preview-Route — Antwortformen unter Limit', () => {
     expect(await res.json()).toEqual({
       url: '/api/portal/documents/doc-1/preview-url?stream=1',
       mimeType: 'application/pdf',
+      // Gespeicherter Typ getrennt vom Transport-Typ — steuert nur die
+      // Viewer-Wahl im Client.
+      documentMimeType: 'application/pdf',
       title: 'BWA Mai',
     });
   });

@@ -200,6 +200,86 @@ export function detectMimeFromMagicBytes(data: Buffer): string | null {
   return null;
 }
 
+// OOXML-Dateien (xlsx/docx/pptx) sind ZIP-Container — Magic-Bytes liefern für
+// alle drei nur `application/zip`. Das ist keine Lüge, aber zu grob: die
+// Inline-Vorschau und die Endungs-Rückableitung beim Download hängen an der
+// konkreten MIME. Deshalb eine Stufe tiefer schauen.
+const OOXML_MARKERS: ReadonlyArray<{ entry: string; mime: string }> = [
+  {
+    entry: 'xl/workbook.xml',
+    mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  },
+  {
+    entry: 'word/document.xml',
+    mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  },
+  {
+    entry: 'ppt/presentation.xml',
+    mime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  },
+];
+
+const EOCD_SIGNATURE = 0x06054b50;
+const CENTRAL_FILE_SIGNATURE = 0x02014b50;
+const EOCD_MIN_SIZE = 22;
+/** ZIP-Kommentar ist auf 16 Bit begrenzt — weiter zurück muss nicht gesucht werden. */
+const MAX_ZIP_COMMENT = 0xffff;
+/** Reine Sicherheitsgrenze gegen präparierte Verzeichnisse. */
+const MAX_CENTRAL_ENTRIES = 4096;
+
+/**
+ * Liest die Eintragsnamen aus dem Central Directory eines ZIP — ohne einen
+ * einzigen Byte zu dekomprimieren. Uploads sind Mandanten-Daten; ein Inflate
+ * an dieser Stelle wäre eine Zip-Bomben-Fläche im Validierungspfad.
+ * Liefert null, wenn die Struktur nicht sauber lesbar ist (auch bei ZIP64).
+ */
+function readZipEntryNames(data: Buffer): string[] | null {
+  const searchStart = Math.max(0, data.length - (EOCD_MIN_SIZE + MAX_ZIP_COMMENT));
+  let eocd = -1;
+  for (let i = data.length - EOCD_MIN_SIZE; i >= searchStart; i--) {
+    if (data.readUInt32LE(i) === EOCD_SIGNATURE) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd === -1) return null;
+
+  const entryCount = data.readUInt16LE(eocd + 10);
+  const directoryOffset = data.readUInt32LE(eocd + 16);
+  // 0xFFFF/0xFFFFFFFF signalisieren ZIP64 — dann fehlen die echten Werte hier.
+  if (entryCount === 0xffff || directoryOffset === 0xffffffff) return null;
+  if (directoryOffset >= data.length) return null;
+
+  const names: string[] = [];
+  let cursor = directoryOffset;
+  for (let i = 0; i < entryCount && i < MAX_CENTRAL_ENTRIES; i++) {
+    if (cursor + 46 > data.length) return null;
+    if (data.readUInt32LE(cursor) !== CENTRAL_FILE_SIGNATURE) return null;
+    const nameLength = data.readUInt16LE(cursor + 28);
+    const extraLength = data.readUInt16LE(cursor + 30);
+    const commentLength = data.readUInt16LE(cursor + 32);
+    const nameStart = cursor + 46;
+    if (nameStart + nameLength > data.length) return null;
+    names.push(data.toString('utf8', nameStart, nameStart + nameLength));
+    cursor = nameStart + nameLength + extraLength + commentLength;
+  }
+  return names;
+}
+
+/**
+ * Verfeinert `application/zip` zur konkreten OOXML-MIME. Kein Treffer heißt:
+ * es bleibt ein gewöhnliches ZIP.
+ */
+export function detectOoxmlMime(data: Buffer): string | null {
+  const names = readZipEntryNames(data);
+  if (names === null) return null;
+  const entries = new Set(names);
+  for (const marker of OOXML_MARKERS) {
+    if (entries.has(marker.entry)) return marker.mime;
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // ClamAV-Scan via TCP (INSTREAM-Protokoll)
 // ---------------------------------------------------------------------------
@@ -531,7 +611,13 @@ export async function prepareBytesCommitWithTier(input: {
   // M-2: Magic-Bytes-Detection. Caller (Route) sollte detectedMime statt der
   // Client-gemeldeten mimeType in die Document-Reihe schreiben — verhindert
   // Browser-Sniffing-Missbrauch (text/html als image/jpeg ausgeben).
-  const detectedMime = detectMimeFromMagicBytes(fileData);
+  const magicMime = detectMimeFromMagicBytes(fileData);
+  // ZIP-Container eine Stufe tiefer aufloesen, sonst landet jede xlsx/docx als
+  // `application/zip` in der Reihe — ohne Inline-Vorschau und ohne Endung beim
+  // Download. Die Inline-Whitelist (preview-mime) enthaelt OOXML bewusst nicht,
+  // die Auslieferung bleibt also `attachment`/octet-stream.
+  const detectedMime =
+    magicMime === 'application/zip' ? (detectOoxmlMime(fileData) ?? magicMime) : magicMime;
   // iter55: Bucket/Lock/Frist hängen an der SCHUTZSTUFE, nicht mehr an der
   // rohen Klassifikation (eigene Typen können beliebige Stufen tragen).
   const targetBucket = getBucketForTier(tier);
