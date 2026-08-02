@@ -6,6 +6,7 @@ import { canAccessClientTx, hasStaffPermission } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { computeVatTotals } from '@/server/invoicing/vat';
 import { MarkSentForm } from './mark-sent-form';
+import { DocumentActions } from '@/components/document-actions';
 import { InvoiceFormatDownload } from './invoice-format-download';
 import { InvoiceStatusActions } from './invoice-status-actions';
 
@@ -251,12 +252,11 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                     <p className="text-xs text-disabled">{doc.mimeType}</p>
                   </div>
                 </div>
-                <a
-                  href={`/api/staff/documents/${doc.id}/download`}
-                  className="text-sm text-brand-700 hover:underline shrink-0"
-                >
-                  Öffnen
-                </a>
+                <DocumentActions
+                  documentId={doc.id}
+                  documentTitle={doc.title}
+                  mimeType={doc.mimeType}
+                />
               </div>
             ))}
           </div>

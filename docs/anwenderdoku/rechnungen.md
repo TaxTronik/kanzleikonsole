@@ -84,8 +84,9 @@ mit Benachrichtigungs-Opt-in erhalten eine E-Mail mit dem PDF im Anhang.
 
 Mandanten sehen unter **Rechnungen** alle Rechnungen außer Entwürfen
 (inklusive stornierter, als „Storniert" gekennzeichnet) mit Nummer, Betreff,
-Beträgen, Fälligkeit und Status. Über **Öffnen** laden sie das Rechnungs-PDF
-(die archivierte ZUGFeRD-Datei bzw. das hochgeladene externe PDF).
+Beträgen, Fälligkeit und Status. Je Rechnung stehen zwei Schaltflächen: das
+**Auge** zeigt das Rechnungs-PDF direkt im Browser, der **Pfeil** lädt es
+herunter (die archivierte ZUGFeRD-Datei bzw. das hochgeladene externe PDF).
 
 ## 5. Auswertungen und Export
 

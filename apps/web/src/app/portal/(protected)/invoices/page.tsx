@@ -1,6 +1,6 @@
 ﻿import { redirect } from 'next/navigation';
-import Link from 'next/link';
 import { Receipt } from 'lucide-react';
+import { DocumentActions } from '@/components/document-actions';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 
@@ -25,7 +25,8 @@ export default async function PortalInvoicesPage() {
         // Mandant sieht keine Entwürfe
         where: { clientId, status: { not: 'DRAFT' } },
         orderBy: [{ status: 'asc' }, { issueDate: 'desc' }],
-        include: { document: { select: { id: true, title: true } } },
+        // mimeType: entscheidet, ob das Auge angeboten wird (XML bekommt keins).
+        include: { document: { select: { id: true, title: true, mimeType: true } } },
       }),
   );
 
@@ -90,12 +91,12 @@ export default async function PortalInvoicesPage() {
                     </td>
                     <td className="px-6 py-4">
                       {i.document ? (
-                        <Link
-                          href={`/api/portal/documents/${i.document.id}/download`}
-                          className="text-brand-700 hover:underline text-xs"
-                        >
-                          Öffnen
-                        </Link>
+                        <DocumentActions
+                          documentId={i.document.id}
+                          documentTitle={i.document.title}
+                          mimeType={i.document.mimeType}
+                          apiPrefix="/api/portal"
+                        />
                       ) : (
                         <span className="text-disabled text-xs">—</span>
                       )}
