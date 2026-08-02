@@ -84,16 +84,16 @@ gebaute Registry-Images (siehe Abschnitt 5).
 
 CI-Pipeline (`.forgejo/workflows/ci.yml`), läuft bei jedem Push/PR:
 
-| Gate               | Inhalt                                                                                                                                                                                |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `quality`          | Lint, Typecheck, vollständige Unit-/Komponententests aller Pakete (außer DB-gebundenen), Operator-CLI-Tests (`pnpm test:ops`), Schutzprüfung gegen reale DATEV-Kennungen in Testdaten |
-| `db`               | Migrationen auf frischer DB, RLS-Cross-Tenant-Tests, Schema-Drift-Check (Schema ↔ Migrationshistorie), Audit-Chain-CLI                                                                |
-| `restore`          | echter Backup→Restore-Roundtrip mit Zeilenzahl-Assertions und Chain-Verifikation auf der wiederhergestellten DB                                                                       |
-| `upgrade-path`     | Migrationsstand des letzten Releases → aktuelle Migrationen → RLS-Tests (simuliert das Kunden-Update)                                                                                 |
-| `e2e-smoke`        | Browser-Smoke-Tests (Playwright) gegen die gebaute App                                                                                                                                |
-| `e2e-paranoid`     | umfangreiche Browser-Regression gegen Auth/RBAC, Tenant-Isolation, Compliance, Differential, Concurrency und Upload-Fuzz                                                              |
-| `security.yml`     | wöchentlich + je Push: Dependency-Audit, Secret-Scanning (gitleaks), Logs als Artefakte                                                                                               |
-| `build-images.yml` | Validierung der Produktions-Image-Builds                                                                                                                                              |
+| Gate               | Inhalt                                                                                                                                                                                  |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `quality`          | Lint, Typecheck, vollständige Unit-/Komponententests aller Pakete (außer DB-gebundenen), Operator-CLI-Tests (`pnpm test:ops`), Schutzprüfung gegen reale DATEV-Kennungen in Testdaten   |
+| `db`               | Migrationen auf frischer DB, RLS-Cross-Tenant-Tests, Schema-Drift-Check (Schema ↔ Migrationshistorie), Audit-Chain-CLI                                                                  |
+| `restore`          | echter Backup→Restore-Roundtrip mit Zeilenzahl-Assertions und Chain-Verifikation auf der wiederhergestellten DB                                                                         |
+| `upgrade-path`     | Migrationsstand des letzten Releases → aktuelle Migrationen → RLS-Tests (simuliert das Kunden-Update)                                                                                   |
+| `e2e-smoke`        | Browser-Smoke-Tests (Playwright) gegen die gebaute App                                                                                                                                  |
+| `e2e-paranoid`     | umfangreiche Browser-Regression gegen Auth/RBAC, Tenant-Isolation, Compliance, Differential, Concurrency und Upload-Fuzz                                                                |
+| `security.yml`     | täglich + je Push: Dependency-Audit (blockierend prod/high, zusätzlich nicht-blockierender Vollauf über den gesamten Graphen inkl. Dev), Secret-Scanning (gitleaks), Logs als Artefakte |
+| `build-images.yml` | Validierung der Produktions-Image-Builds                                                                                                                                                |
 
 Zusätzlich **Guard-Tests**, die Verfahrensregeln maschinell erzwingen
 (Beispiele: keine ungeprüfte `PrismaClient`-Instanz außerhalb der Allowlist;

@@ -210,8 +210,10 @@ Mandanten.
 - **Mehrfachauswahl** (Checkbox/Strg) für Dateien und Ordner +
   **Rechtsklick-Kontextmenü**: Verschieben, Typ ändern, Freigeben,
   Löschen/Wiederherstellen, Download.
-- Klick auf den Dateinamen öffnet die **Inline-Vorschau** (PDF/Bild/Office),
-  Download separat.
+- Klick auf den Dateinamen öffnet die **Inline-Vorschau** (PDF, Bild, Markdown,
+  XLSX), Download separat. DOCX und andere Office-Formate laufen bewusst nur
+  über den Download-Pfad: inline gerendert würden sie fremde aktive Inhalte in
+  den authentifizierten App-DOM übernehmen.
 
 ### Datei-Typen & Schutzstufen
 
@@ -1238,7 +1240,7 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   (Quality: Lint/Typecheck/Unit · DB: Migrationen/RLS/Drift/verify:chain mit
   Postgres-Service · Browser-E2E via Playwright mit Smoke-, Auth-, Action-,
   Compliance-, RBAC-, Concurrency- und Upload-Negativtests), `security.yml` (pnpm-audit +
-  gitleaks-Secret-Scan, wöchentlicher Cron), `build-images.yml` (Web-/Worker-
+  gitleaks-Secret-Scan, täglicher Cron), `build-images.yml` (Web-/Worker-
   Image-Build, build-only); GitHub-Mirror läuft ohne Actions, `dependabot.yml`
   liegt ebenfalls unter `.forgejo/`
 - React-Grid-Layout v2 als einzige UI-Library außerhalb shadcn/ui-Stack

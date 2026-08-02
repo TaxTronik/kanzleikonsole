@@ -18,6 +18,27 @@ vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
 
 ## [Unreleased]
 
+- Alle bekannten Verwundbarkeiten im Abhängigkeitsgraphen geschlossen (zuvor
+  34 Befunde, davon 4 kritisch): Next auf 16.2.11, Auth.js auf 5.0.0-beta.32
+  samt `@auth/core` 0.41.3, dazu gepatchte Stände für postcss, js-yaml,
+  fast-uri, sharp, hono, valibot und brace-expansion. `unpdf` 1.x lässt die
+  optionale `canvas`-Abhängigkeit fallen und entfernt damit
+  `@mapbox/node-pre-gyp`, `tar`, `rimraf` und `glob@7` aus dem Produktivgraphen.
+- **[Scope]** Dokumentenarchiv: XLSX wird ohne `exceljs` gelesen. Die Bibliothek
+  hat seit 2023 kein stabiles Release mehr und zog über
+  `archiver`/`unzipper`/`fstream` ein Advisory nach, das sich nicht per Override
+  beheben ließ. Beide Nutzungen (DATEV-BWA-Import, Inline-Vorschau) sind reines
+  Lesen und laufen jetzt über einen eigenen, testabgedeckten Reader.
+- **[Scope]** Dokumentenarchiv: Die Inline-Vorschau für Tabellen greift wieder.
+  Hochgeladene XLSX wurden als `application/zip` erkannt, weil OOXML-Dateien
+  ZIP-Container sind; ZIP-Container werden nun über das Central Directory
+  aufgelöst, ohne Inhalte zu dekomprimieren. Der gespeicherte Dokumenttyp
+  steuert als eigenes Feld die Auswahl des Viewers, während die Auslieferung
+  unverändert `attachment`/`octet-stream` bleibt — die Inline-Whitelist ist
+  nicht aufgeweicht. Downloads tragen dadurch wieder die Endung `.xlsx`.
+- Der Dependency-Audit läuft täglich statt wöchentlich und erfasst zusätzlich
+  in einem nicht blockierenden Lauf den gesamten Graphen inklusive
+  Dev-Abhängigkeiten; blockierend bleibt `--prod --audit-level high`.
 - Lokale Deploy-/Update-Builds begrenzen jetzt den gesamten Docker-Buildschritt
   per cgroup statt nur den V8-Heap des Next-Prozesses, deaktivieren Build-Swap
   und brechen vorab ab, wenn RAM plus Systemreserve fehlen. Damit kann ein

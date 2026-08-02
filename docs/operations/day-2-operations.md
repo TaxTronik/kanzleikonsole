@@ -31,8 +31,11 @@ Erwartung:
 
 ## Wöchentliche Routine
 
-1. Security-Workflow in Forgejo prüfen (`security.yml`): Dependency-Audit und
-   Secret-Scan müssen grün sein.
+1. Security-Workflow in Forgejo prüfen (`security.yml`, läuft täglich):
+   Dependency-Audit und Secret-Scan müssen grün sein. Der nicht blockierende
+   Vollauf über den gesamten Graphen liegt als zweites Artefakt bei und meldet
+   auch Dev-Abhängigkeiten sowie niedrigere Schweregrade — dort aufgelaufene
+   Befunde gehören in die Planung, brechen den Lauf aber nicht ab.
 2. Letzten erfolgreichen CI-Lauf zu `main` prüfen: `quality`, `db`, `restore`,
    `e2e-smoke`, `e2e-paranoid`.
 3. Backup-Status in der Admin-Oberfläche prüfen: letzter Lauf `SUCCESS`,
