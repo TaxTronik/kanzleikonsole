@@ -110,7 +110,8 @@ zu `isStaffAdmin(session)`. AST-Guard (`server-action-authz.test.ts`)
 | **Backup-Restore**   | pg_dump/pg_restore Roundtrip           | Backup ist wiederherstellbar                                                                                                                          | `restore`          |
 | **Deploy-Readiness** | `pnpm verify:deploy-readiness`         | Prod-Konfig gegen echte Compose-Infra: S3-Buckets + Object-Lock, ClamAV-StreamMaxLength + Signaturen (EICAR), Storage-Roundtrip                       | `deploy-readiness` |
 
-**Pre-Commit Guards:** `check-no-focused-tests`, `check-paranoid-e2e`,
+**Guard-Skripte (CI-Job `quality`, keine lokalen Hooks):**
+`check-no-focused-tests`, `check-paranoid-e2e`,
 `check-ci-images-pinned`, `check-ci-actions-pinned`, `check-no-real-datev`,
 `check-no-eric-spec`, `check-docker-bases-pinned`.
 

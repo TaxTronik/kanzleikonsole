@@ -24,9 +24,12 @@ empfangen worden ist.
 
 **Implementierung**: `gobdRetentionUntilFor(classification)` in
 [`packages/storage/src/service.ts`](../../packages/storage/src/service.ts)
-setzt das Object-Lock-`ObjectLockRetainUntilDate` belegart-abhängig
-(`GOBD_INVOICE` → 8 Jahre, sonst 10) als `Jahresende(JahrDerErstellung + N) + 1
-Tag`. Damit landen alle Belege eines Kalenderjahres auf demselben
+setzt das Object-Lock-`ObjectLockRetainUntilDate` belegart-abhängig als
+`Jahresende(JahrDerErstellung + N) + 1 Tag`, passend zu den Fristen oben:
+`GOBD_INVOICE` → 8 Jahre, `GOBD_CONTRACT` → 6 Jahre (Handels-/Geschäftsbriefe,
+§ 147 Abs. 3 AO), `GOBD_TAX` → 10 Jahre. Längere Spezialfälle werden als
+eigener Dateityp mit 8 oder 10 Jahren modelliert.
+Damit landen alle Belege eines Kalenderjahres auf demselben
 Aufbewahrungs-Stichtag; eine COMPLIANCE-Über-Aufbewahrung von Rechnungen
 (Art. 5 Abs. 1 lit. e DSGVO) wird vermieden. Der frühere pauschale
 `gobdRetentionUntil()` (10 Jahre) bleibt als konservativer Default erhalten.

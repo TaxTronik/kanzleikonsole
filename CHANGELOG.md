@@ -18,6 +18,35 @@ vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
 
 ## [Unreleased]
 
+- **[Scope]** Audit-Protokollierung: Ein fehlgeschlagener Lauf des
+  Verifikations-Jobs setzte den Monotonie-Anker (`lastAuditId`) auf `null`
+  zurück. Die Erkennung gelöschter Ketten-Spitzen (Tail-Truncation) blieb
+  danach dauerhaft stumm, bis wieder ein erfolgreicher Lauf einen Anker
+  schrieb. Der Fehlerpfad reicht den bisherigen Anker jetzt weiter;
+  `detectTailTruncation` ist mit Tests hinterlegt.
+- **[Scope]** Dokumentenarchiv: Der BWA-Import prüfte die Mandanten-Berechtigung
+  erst nach dem Parsen der hochgeladenen Datei. Das Zugriffs-Gate liegt jetzt
+  davor. Der XLSX-Reader entpackt außerdem nur noch die tatsächlich
+  ausgewerteten Container-Teile und bricht bei überzogener deklarierter Größe
+  ab, statt den Zielpuffer blind zu allokieren (Zip-Bomben-Schutz).
+- Der Betriebs-Alarm meldete ausgerechnet den Ausfall nicht, für den er gebaut
+  ist: Der Backup-Frische-Check war der einzige ohne Fehlerabschirmung und riss
+  bei DB-Ausfall den gesamten Lauf mit — ohne Wiederholung, da 5-Minuten-Job.
+  Check abgeschirmt, Aggregation auf `allSettled` umgestellt.
+- Öffentliche Prüfer-Verifikation: Der IP-Bucket entstand aus einer roh
+  interpolierten IP. Ohne vertrauenswürdigen Proxy-Header teilten sich alle
+  anonymen Aufrufer den Schlüssel `…:null`; ein einzelner Aufrufer konnte die
+  Verifikation für sämtliche externen Prüfer sperren.
+- Externe Aufrufe im Wartepfad sind jetzt durchgängig gedeckelt: BullMQ-Queue-
+  Operationen (Redis-Ausfall ließ Promises nie auflösen) und beide
+  SMTP-Transporter (vorher Nodemailer-Default von 10 Minuten).
+- Die Pinning-Guards übersahen jede Zeile mit Trailing-Kommentar und meldeten
+  trotzdem „OK"; der Release-Gate-Guard prüfte `continue-on-error` nur auf
+  Job-, nicht auf Schritt-Ebene. Beides geschlossen und per Gegenprobe belegt.
+- Dokumentation an den Code angeglichen, wo sie mehr zusagte als er hält:
+  Aufbewahrungsfrist für Handels-/Geschäftsbriefe (6 statt 10 Jahre),
+  Upload-Limit (25 MiB statt 100 MB), nicht existente Pre-Commit-Hooks und ein
+  behaupteter Rate-Limit-Vorabcheck im Proxy sowie vier tote UI-/Ablagepfade.
 - Alle bekannten Verwundbarkeiten im Abhängigkeitsgraphen geschlossen (zuvor
   34 Befunde, davon 4 kritisch): Next auf 16.2.11, Auth.js auf 5.0.0-beta.32
   samt `@auth/core` 0.41.3, dazu gepatchte Stände für postcss, js-yaml,

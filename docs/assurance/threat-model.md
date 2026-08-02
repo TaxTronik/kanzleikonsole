@@ -59,7 +59,7 @@ Die Assets, deren Vertraulichkeit, Integrität oder Verfügbarkeit existenzbedro
 
 | ID        | Was muss niemals passieren                                                         | Schicht                                         | Test                                                                                                                                                                  |
 | --------- | ---------------------------------------------------------------------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| T-INFRA-1 | Ein Secret wird committet                                                          | gitleaks, Pre-Commit                            | `security.yml` (gitleaks scan)                                                                                                                                        |
+| T-INFRA-1 | Ein Secret wird committet                                                          | gitleaks (CI)                                   | `security.yml` (gitleaks scan)                                                                                                                                        |
 | T-INFRA-2 | Eine bekannte Vulnerability (high+) in Prod-Dependencies                           | `pnpm audit`                                    | `security.yml` (täglich + PR); blockierend ist `--prod --audit-level high`, ein nicht-blockierender Vollauf erfasst zusätzlich Dev-Dependencies und alle Schweregrade |
 | T-INFRA-3 | CI-Images oder Actions sind nicht gepinnt                                          | SHA/Digest-Pinning                              | `check-ci-images-pinned.sh`, `check-ci-actions-pinned.sh`                                                                                                             |
 | T-INFRA-4 | Allgemeine Server-Fetches erreichen interne/private Ziele                          | `safeFetch`, DNS-Rebinding-Schutz, Allowlist    | `@taxtronik/http-utils` Tests                                                                                                                                         |
@@ -95,7 +95,7 @@ Die Assets, deren Vertraulichkeit, Integrität oder Verfügbarkeit existenzbedro
 ├─────────── Proxy (`proxy.ts`) ──────────────────────┤
 │  ├── Surface-Detection (/staff, /portal, /api/...)   │
 │  ├── Cookie-Reading (tolerant prefixes)              │
-│  └── Rate-Limit-Pre-Check                             │
+│  └── Tenant-/Host-Aufloesung                          │
 ├─────────── App-Layer (Next.js) ─────────────────────┤
 │  ├── Staff-Action-Guard (RBAC, Object-Gates)         │
 │  ├── Portal-Action-Guard                              │

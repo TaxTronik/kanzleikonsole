@@ -37,7 +37,7 @@ muss sie an die eigene Situation anpassen.
 
 1. VVT auf Stand bringen (`/staff/admin/audit` für Beleg, dass System aktiv ist)
 2. DSFA vorlegen, falls vorhanden
-3. AVV-Liste aus `/staff/service-providers` exportieren (CSV)
+3. AVV-Liste aus `/staff/service-providers` entnehmen (Bildschirmausdruck; ein CSV-Export besteht dort noch nicht)
 4. Audit-Log-CSV-Export für den angefragten Zeitraum
 5. Hash-Chain-Verifikation als Beweis der Manipulationsfreiheit:
    `pnpm verify:chain` (CLI) oder `/staff/admin/audit` (UI)

@@ -245,10 +245,11 @@ Mandanten.
   Object-Lock (GoBD typabhängig 6/8/10 J. COMPLIANCE / GwG zunächst 5 J.
   GOVERNANCE mit fachlicher Löschprüfung), Store nie
   öffentlich (App proxied Up-/Downloads).
-- Upload-Limit 100 MB pro Datei; das mitgelieferte
-  `infra/clamav/clamd.conf` hebt das clamd-Stream-Limit passend dazu auf
-  `StreamMaxLength 110M` an (Stock-Image: 25M → Scans > 25 MB schlügen
-  sonst fehl).
+- Upload-Limit 25 MiB pro Datei (`MAX_UPLOAD_BYTES`, nginx `client_max_body_size
+26M` mit Overhead-Reserve). Das mitgelieferte `infra/clamav/clamd.conf` setzt
+  `StreamMaxLength 110M` und liegt damit bewusst über dem Cap — das Stock-Image
+  begrenzt INSTREAM auf 25M, wodurch Uploads am oberen Rand am Protokoll-
+  Overhead scheiterten.
 - Auf der Mandanten-Detailseite lädt der Datei-Manager die neuesten
   1000 Dokumente (bei Erreichen des Caps Truncation-Hinweis mit
   Gesamtzahl); der Anforderungs-Block zeigt die neuesten 50 mit Link zur

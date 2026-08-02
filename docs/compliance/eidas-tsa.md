@@ -60,7 +60,7 @@ Quelle: [`packages/evidence/src/providers/tsa-providers.ts`](../../packages/evid
 
 ## Monitoring
 
-- `/staff/admin/health` zeigt den TSA-Status pro Tenant via
+- `/staff/admin/settings/integrations` zeigt den TSA-Status pro Tenant via
   `checkTsaForTenant` (siehe [`apps/web/src/server/health/checks.ts`](../../apps/web/src/server/health/checks.ts)).
 - Operations-Checkliste: täglich prüfen, dass `evidence-seal` für jeden
   Tenant einen TSA-Stempel geschrieben hat. SQL:
