@@ -80,6 +80,12 @@ function transporterFor(cfg: SmtpConfig): Transporter {
     secure: isImplicitTls,
     requireTLS,
     auth: cfg.user ? { user: cfg.user, pass: cfg.password } : undefined,
+    // Nodemailer wartet ohne diese Werte bis zu 10 Minuten auf einen stillen
+    // Socket. In einer Server Action heisst das: der Nutzer sieht einen
+    // hängenden Request statt einer Fehlermeldung.
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 20_000,
     tls: {
       // rejectUnauthorized ist Default true; explizit für die Code-Review.
       rejectUnauthorized: true,

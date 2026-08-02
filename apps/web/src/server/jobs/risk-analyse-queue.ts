@@ -10,6 +10,15 @@ import IORedis from 'ioredis';
 import { Queue } from 'bullmq';
 import { env } from '@taxtronik/config';
 import { log } from '@/server/logger';
+import { withTimeout } from '@/lib/with-timeout';
+
+/**
+ * BullMQ-Connections laufen bewusst mit `maxRetriesPerRequest: null` (so
+ * verlangt es BullMQ). Faellt Redis aus, parkt ioredis den Befehl dann aber in
+ * der Offline-Queue und das Promise resolved NIE — die Server Action haengt,
+ * bis der Browser aufgibt. Dieselbe Deckelung wie in n8n/outbox.ts.
+ */
+const QUEUE_TIMEOUT_MS = 2_000;
 
 export interface RiskAnalyseLlmJob {
   tenantId: string;
@@ -55,14 +64,17 @@ export async function enqueueRiskAnalyseLlm(job: RiskAnalyseLlmJob): Promise<voi
   // Alten Job (failed/completed) mit derselben ID räumen, damit ein erneuter
   // Anstoß durchläuft. Läuft gerade einer (locked), schlägt remove fehl (ok) und
   // der add unten ist ohnehin ein No-Op (ID existiert) → kein Doppellauf.
-  await queue.remove(jobId).catch(() => {});
-  await queue.add('enrich', job, {
-    jobId,
-    attempts: 2,
-    backoff: { type: 'exponential', delay: 5_000 },
-    removeOnComplete: 100,
-    removeOnFail: 200,
-  });
+  await withTimeout(queue.remove(jobId), QUEUE_TIMEOUT_MS).catch(() => {});
+  await withTimeout(
+    queue.add('enrich', job, {
+      jobId,
+      attempts: 2,
+      backoff: { type: 'exponential', delay: 5_000 },
+      removeOnComplete: 100,
+      removeOnFail: 200,
+    }),
+    QUEUE_TIMEOUT_MS,
+  );
 }
 
 /**
@@ -76,8 +88,8 @@ export async function getRiskAnalyseJobState(
   analysisId: string,
 ): Promise<{ state: string; failedReason: string | null } | null> {
   const { queue } = getHandle();
-  const job = await queue.getJob(`risk-llm-${analysisId}`);
+  const job = await withTimeout(queue.getJob(`risk-llm-${analysisId}`), QUEUE_TIMEOUT_MS);
   if (!job) return null;
-  const state = await job.getState();
+  const state = await withTimeout(job.getState(), QUEUE_TIMEOUT_MS);
   return { state, failedReason: job.failedReason ?? null };
 }

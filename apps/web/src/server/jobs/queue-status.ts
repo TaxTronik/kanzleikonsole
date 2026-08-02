@@ -16,6 +16,15 @@ import { Queue } from 'bullmq';
 import { env } from '@taxtronik/config';
 import { log } from '@/server/logger';
 
+import { withTimeout } from '@/lib/with-timeout';
+
+/**
+ * BullMQ-Connections laufen bewusst mit `maxRetriesPerRequest: null`. Faellt
+ * Redis aus, parkt ioredis den Befehl dann in der Offline-Queue und das Promise
+ * resolved NIE — der aufrufende Pfad haengt. Deckelung wie in n8n/outbox.ts.
+ */
+const QUEUE_TIMEOUT_MS = 2_000;
+
 // Alle vom Worker betriebenen Queues mit Soll-Intervall in Stunden (für die
 // „veraltet?"-Einordnung; null = ereignisgetrieben).
 //
@@ -88,9 +97,15 @@ export async function getQueuesStatus(now: number = Date.now()): Promise<QueueSt
     QUEUES.map(async ({ name, expectedEveryHours }): Promise<QueueStatus> => {
       const q = queues.get(name)!;
       try {
-        const counts = await q.getJobCounts('waiting', 'active', 'completed', 'failed', 'delayed');
-        const [lastCompleted] = await q.getCompleted(0, 0);
-        const [lastFailed] = await q.getFailed(0, 0);
+        // Das try/catch unten faengt Fehler, aber kein Haengen: bei Redis-
+        // Ausfall parkt ioredis den Befehl und das Promise resolved nie — die
+        // Admin-Seite bliebe endlos im Laden. Deshalb zusaetzlich gedeckelt.
+        const counts = await withTimeout(
+          q.getJobCounts('waiting', 'active', 'completed', 'failed', 'delayed'),
+          QUEUE_TIMEOUT_MS,
+        );
+        const [lastCompleted] = await withTimeout(q.getCompleted(0, 0), QUEUE_TIMEOUT_MS);
+        const [lastFailed] = await withTimeout(q.getFailed(0, 0), QUEUE_TIMEOUT_MS);
         const lastCompletedAt = lastCompleted?.finishedOn ?? null;
         const stale =
           expectedEveryHours != null &&

@@ -13,6 +13,15 @@ import { Queue } from 'bullmq';
 import { env } from '@taxtronik/config';
 import { log } from '@/server/logger';
 
+import { withTimeout } from '@/lib/with-timeout';
+
+/**
+ * BullMQ-Connections laufen bewusst mit `maxRetriesPerRequest: null`. Faellt
+ * Redis aus, parkt ioredis den Befehl dann in der Offline-Queue und das Promise
+ * resolved NIE — der aufrufende Pfad haengt. Deckelung wie in n8n/outbox.ts.
+ */
+const QUEUE_TIMEOUT_MS = 2_000;
+
 interface TaxDeadlineMaterializeJob {
   tenantId: string;
 }
@@ -53,14 +62,17 @@ export async function enqueueTaxDeadlineMaterialize(tenantId: string): Promise<v
   // BullMQ verbietet ':' in Custom-Job-IDs — daher '-'. Mehrfach-Klicks während
   // ein Lauf aussteht sind No-Ops (ID existiert); alte Jobs vorher räumen.
   const jobId = `tax-deadline-manual-${tenantId}`;
-  await queue.remove(jobId).catch(() => {});
-  await queue.add(
-    'tax-deadline-materialize',
-    { tenantId },
-    {
-      jobId,
-      removeOnComplete: 20,
-      removeOnFail: 20,
-    },
+  await withTimeout(queue.remove(jobId), QUEUE_TIMEOUT_MS).catch(() => {});
+  await withTimeout(
+    queue.add(
+      'tax-deadline-materialize',
+      { tenantId },
+      {
+        jobId,
+        removeOnComplete: 20,
+        removeOnFail: 20,
+      },
+    ),
+    QUEUE_TIMEOUT_MS,
   );
 }

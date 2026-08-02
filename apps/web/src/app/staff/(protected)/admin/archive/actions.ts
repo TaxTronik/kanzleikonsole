@@ -5,6 +5,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { getAuditRotateQueue } from '@/server/jobs/audit-rotate-queue';
 import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
+import { withTimeout } from '@/lib/with-timeout';
 
 export async function triggerAuditRotateAction(): Promise<void> {
   const g = await staffActionGuard({ requireAdmin: true });
@@ -40,7 +41,10 @@ export async function triggerAuditRotateAction(): Promise<void> {
   // BullMQ-Job direkt einreihen — der Worker rotiert nur diesen Tenant.
   // Connection ist modulweiter Singleton (siehe audit-rotate-queue.ts), kein
   // per-Click-Connect/Disconnect mehr.
-  await getAuditRotateQueue().add('audit-rotate', { tenantId });
+  // Gedeckelt: bei Redis-Ausfall parkt ioredis den Befehl in der Offline-Queue
+  // und das add()-Promise resolved nie — die Action haenge sonst bis zum
+  // Browser-Timeout.
+  await withTimeout(getAuditRotateQueue().add('audit-rotate', { tenantId }), 2_000);
 
   await withTenantContext(ctx, async (tx) => {
     await evidenceService.record(tx, {

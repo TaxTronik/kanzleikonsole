@@ -431,6 +431,10 @@ async function readObjectBodyWithLimit(
   contentLength: number | undefined,
 ): Promise<Buffer> {
   if (typeof contentLength === 'number' && contentLength > MAX_UPLOAD_BYTES) {
+    // Stream schliessen, bevor geworfen wird — sonst bleibt die S3-Verbindung
+    // offen, bis GC oder Socket-Timeout greifen. Der Streaming-Zweig unten
+    // macht es bereits richtig; diese Vorab-Pruefung tat es nicht.
+    body.destroy();
     throw new Error(`TOO_LARGE: Objekt (${contentLength} B) überschreitet das Limit.`);
   }
   const chunks: Buffer[] = [];
@@ -518,6 +522,10 @@ export async function streamObject(bucket: string, storageKey: string): Promise<
   const result = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: storageKey }));
   const contentLength = typeof result.ContentLength === 'number' ? result.ContentLength : null;
   if (contentLength !== null && contentLength > MAX_UPLOAD_BYTES) {
+    // Body schliessen, bevor geworfen wird: er wurde nie in einen Web-Stream
+    // ueberfuehrt und niemand konsumiert ihn — die Verbindung bliebe sonst bis
+    // zum Socket-Timeout stehen.
+    (result.Body as Readable | undefined)?.destroy?.();
     throw new Error(`TOO_LARGE: Objekt (${contentLength} B) überschreitet das Limit.`);
   }
   const body = Readable.toWeb(result.Body as Readable) as ReadableStream<Uint8Array>;

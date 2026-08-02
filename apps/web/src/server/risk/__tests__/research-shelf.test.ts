@@ -118,6 +118,46 @@ describe('saveResearchResultToShelf', () => {
     expect(mocks.evidenceRecord).not.toHaveBeenCalled();
   });
 
+  it('legt kein zweites Dokument an, wenn ein paralleler Lauf zwischendurch gewinnt', async () => {
+    // Der Object-Store-Commit laeuft bewusst zwischen zwei kurzen Transaktionen
+    // (kein Zeilen-Lock ueber einen Netz-Roundtrip). In dieser Luecke kann ein
+    // zweiter Klick ablegen — die erneute Sperre in Phase 2 muss das erkennen.
+    const tx = mockTx();
+    const fremdesDokument = 'a1b2c3d4-0000-4000-8000-000000000001';
+    tx.$queryRaw
+      .mockResolvedValueOnce([
+        {
+          id: input.resultId,
+          title: 'Ergebnis',
+          body: '# Antwort',
+          requestTitle: null,
+          shelfDocumentId: null, // Phase 1: noch frei
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: input.resultId,
+          title: 'Ergebnis',
+          body: '# Antwort',
+          requestTitle: null,
+          shelfDocumentId: fremdesDokument, // Phase 2: inzwischen belegt
+        },
+      ]);
+    tx.client.findUnique.mockResolvedValue({ allowActive: true });
+    mocks.commitBytesWithTier.mockResolvedValue({ targetBucket: 'general', targetKey: 'k' });
+
+    await expect(saveResearchResultToShelf(ctx, input)).resolves.toEqual({
+      documentId: fremdesDokument,
+      alreadySaved: true,
+    });
+    // Objekt wurde geschrieben (und bleibt ungenutzt), aber KEIN zweites
+    // Dokument und keine doppelte Verknuepfung.
+    expect(mocks.commitBytesWithTier).toHaveBeenCalledTimes(1);
+    expect(mocks.createDocumentWithVersion).not.toHaveBeenCalled();
+    expect(tx.riskResearchResult.update).not.toHaveBeenCalled();
+    expect(mocks.evidenceRecord).not.toHaveBeenCalled();
+  });
+
   it('kann nach dem Löschen des verknüpften Dokuments erneut abgelegt werden', async () => {
     const tx = mockTx();
     tx.$queryRaw.mockResolvedValue([

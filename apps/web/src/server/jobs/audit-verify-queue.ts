@@ -13,6 +13,15 @@ import { randomUUID } from 'node:crypto';
 import { env } from '@taxtronik/config';
 import { log } from '@/server/logger';
 
+import { withTimeout } from '@/lib/with-timeout';
+
+/**
+ * BullMQ-Connections laufen bewusst mit `maxRetriesPerRequest: null`. Faellt
+ * Redis aus, parkt ioredis den Befehl dann in der Offline-Queue und das Promise
+ * resolved NIE — der aufrufende Pfad haengt. Deckelung wie in n8n/outbox.ts.
+ */
+const QUEUE_TIMEOUT_MS = 2_000;
+
 interface AuditVerifyJob {
   tenantId: string;
   requestedByStaffId?: string;
@@ -55,14 +64,17 @@ export async function enqueueAuditVerify(
   // ein altes Persistenz-Ergebnis wie einen frischen Lauf aussehen lassen.
   const requestId = randomUUID();
   const jobId = `audit-verify-manual-${tenantId}-${requestId}`;
-  await queue.add(
-    'audit-verify-check',
-    { tenantId, requestedByStaffId, requestId },
-    {
-      jobId,
-      removeOnComplete: 20,
-      removeOnFail: 20,
-    },
+  await withTimeout(
+    queue.add(
+      'audit-verify-check',
+      { tenantId, requestedByStaffId, requestId },
+      {
+        jobId,
+        removeOnComplete: 20,
+        removeOnFail: 20,
+      },
+    ),
+    QUEUE_TIMEOUT_MS,
   );
   return requestId;
 }

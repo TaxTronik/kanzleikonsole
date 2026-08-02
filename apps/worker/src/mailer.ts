@@ -21,6 +21,13 @@ function getTransporter(): Transporter {
       // Wie der App-Mailer: 465 = implizites TLS, sonst STARTTLS-Upgrade.
       secure: env.SMTP_PORT === 465,
       auth: env.SMTP_USER ? { user: env.SMTP_USER, pass: env.SMTP_PASSWORD } : undefined,
+      // Ohne diese Werte gilt Nodemailers Socket-Default von 10 Minuten. Ein
+      // stiller SMTP-Server blockierte damit den Health-Alert-Lauf, bevor er
+      // seinen Zustand persistieren konnte — der Alarm haette sich selbst
+      // ausgebremst.
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 20_000,
     });
   }
   return transporter;

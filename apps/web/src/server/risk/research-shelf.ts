@@ -51,12 +51,18 @@ export async function saveResearchResultToShelf(
   ctx: TenantContext,
   input: SaveResearchResultToShelfInput,
 ): Promise<SaveResearchResultToShelfResult> {
-  return withTenantContext(ctx, async (tx) => {
+  // Phase 1 (kurze Tx): sperren, Idempotenz und GwG-Schranke pruefen, Nutzlast
+  // lesen. Der Object-Store-Schreibvorgang lag frueher INNERHALB dieser Tx —
+  // mit gehaltenem `FOR UPDATE` ueber einen S3-Roundtrip hinweg. Bei langsamem
+  // Store lief die Tx in ihr 15-s-Limit, und ein Rollback liess das bereits
+  // geschriebene Objekt verwaist zurueck. `invoicing/archive.ts` macht es
+  // deshalb schon laenger andersherum: erst committen, dann kurz schreiben.
+  const prepared = await withTenantContext(ctx, async (tx) => {
     const result = await lockResearchResult(tx, ctx.tenantId, input.resultId);
     if (!result) throw new ActionError('Ergebnis nicht gefunden.');
 
     if (result.shelfDocumentId) {
-      return { documentId: result.shelfDocumentId, alreadySaved: true };
+      return { alreadySaved: true as const, documentId: result.shelfDocumentId };
     }
 
     const client = await tx.client.findUnique({
@@ -69,13 +75,37 @@ export async function saveResearchResultToShelf(
       );
     }
 
-    const title = (result.title || result.requestTitle || 'Rechercheergebnis').slice(0, 180);
-    const commit = await commitBytesWithTier({
-      fileData: Buffer.from(result.body, 'utf8'),
-      tier: 'NONE',
-      tenantId: ctx.tenantId,
-      skipScan: true,
-    });
+    return {
+      alreadySaved: false as const,
+      title: (result.title || result.requestTitle || 'Rechercheergebnis').slice(0, 180),
+      body: result.body,
+    };
+  });
+
+  if (prepared.alreadySaved) {
+    return { documentId: prepared.documentId, alreadySaved: true };
+  }
+
+  const { title, body } = prepared;
+  const commit = await commitBytesWithTier({
+    fileData: Buffer.from(body, 'utf8'),
+    tier: 'NONE',
+    tenantId: ctx.tenantId,
+    skipScan: true,
+  });
+
+  // Phase 2 (kurze Tx): erneut sperren und Idempotenz ERNEUT pruefen. Zwischen
+  // den beiden Transaktionen ist der Zeilen-Lock frei — ein paralleler Klick
+  // koennte inzwischen abgelegt haben. Dann gewinnt der andere Lauf, und unser
+  // gerade geschriebenes Objekt bleibt ungenutzt (selten, und deutlich
+  // harmloser als ein Lock ueber einen Netz-Roundtrip).
+  return withTenantContext(ctx, async (tx) => {
+    const again = await lockResearchResult(tx, ctx.tenantId, input.resultId);
+    if (!again) throw new ActionError('Ergebnis nicht gefunden.');
+    if (again.shelfDocumentId) {
+      return { documentId: again.shelfDocumentId, alreadySaved: true };
+    }
+
     const { document } = await createDocumentWithVersion(tx, {
       documentData: {
         tenantId: ctx.tenantId,
