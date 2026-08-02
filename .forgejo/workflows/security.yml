@@ -6,7 +6,11 @@ on:
   pull_request:
   workflow_call:
   schedule:
-    - cron: '17 3 * * 1'
+    # Taeglich statt woechentlich: Advisories erscheinen jederzeit, und ein
+    # 7-Tage-Fenster war laenger als die Reaktionszeit, die wir uns geben
+    # wollen. Dependabot bleibt woechentlich — es liefert die Fixes, dieser
+    # Lauf liefert die Kenntnis.
+    - cron: '17 3 * * *'
 
 permissions:
   contents: read
@@ -45,12 +49,23 @@ jobs:
           set -o pipefail
           pnpm audit --prod --audit-level high 2>&1 | tee security-audit-prod.log
 
+      # Der blockierende Lauf oben deckt bewusst nur prod/high ab. Dev-
+      # Dependencies fuehren aber auf Entwicklerrechnern und im Runner Code aus
+      # — ein kompromittiertes Build-Tool ist der klassische Supply-Chain-Weg.
+      # Dieser Lauf bricht nichts ab, macht das Bild aber vollstaendig und legt
+      # es als Nachweis ab.
+      - name: Audit full dependency graph (nicht blockierend)
+        if: always()
+        run: pnpm audit --audit-level low 2>&1 | tee security-audit-full.log || true
+
       - name: Dependency-audit evidence upload
         if: always()
         uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5
         with:
           name: security-audit-prod
-          path: security-audit-prod.log
+          path: |
+            security-audit-prod.log
+            security-audit-full.log
           if-no-files-found: ignore
 
   secrets:
