@@ -2,16 +2,17 @@
 
 import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import { fmtDateTimeShort } from '@/lib/fmt';
+import { formatXlsxCell } from '@/lib/xlsx/format-cell';
 
 /**
  * Inline-Viewer für Excel-Dateien direkt im Browser, ohne
  * Drittanbieter (kein MS Office Online, kein Google Viewer). Daten bleiben
  * im Mandanten-Netz — wichtig für GoBD-/§-203-StGB-relevante Dokumente.
  *
- *  - XLSX:  parst mit `exceljs` und zeigt das erste Arbeitsblatt als HTML-Tabelle.
+ *  - XLSX:  parst mit dem eigenen Reader und zeigt das Arbeitsblatt als
+ *           HTML-Tabelle.
  *
- * Beide Libraries werden dynamisch geladen (kein Bundle-Bloat im Hauptpfad).
+ * Der Reader wird dynamisch geladen (kein Bundle-Bloat im Hauptpfad).
  */
 export function OfficeViewer({ url }: { url: string }) {
   const [loading, setLoading] = useState(true);
@@ -31,21 +32,11 @@ export function OfficeViewer({ url }: { url: string }) {
         const buf = await res.arrayBuffer();
         if (cancelled) return;
 
-        const ExcelJS = (await import('exceljs')).default;
-        const wb = new ExcelJS.Workbook();
-        await wb.xlsx.load(buf);
-        const result: XlsxSheet[] = [];
-        wb.eachSheet((ws) => {
-          const rows: string[][] = [];
-          ws.eachRow({ includeEmpty: true }, (row) => {
-            const cells: string[] = [];
-            row.eachCell({ includeEmpty: true }, (cell) => {
-              cells.push(formatCell(cell.value));
-            });
-            rows.push(cells);
-          });
-          result.push({ name: ws.name, rows });
-        });
+        const { readXlsx } = await import('@/lib/xlsx/read-xlsx');
+        const result: XlsxSheet[] = readXlsx(buf).map((ws) => ({
+          name: ws.name,
+          rows: ws.rows.map((row) => row.map(formatXlsxCell)),
+        }));
         if (cancelled) return;
         setSheets(result);
         setActiveSheet(0);
@@ -146,29 +137,4 @@ function XlsxTable({ rows }: { rows: string[][] }) {
       </tbody>
     </table>
   );
-}
-
-function formatCell(value: unknown): string {
-  if (value === null || value === undefined) return '';
-  if (typeof value === 'string') return value;
-  if (typeof value === 'number') return value.toLocaleString('de-DE');
-  if (typeof value === 'boolean') return value ? 'Ja' : 'Nein';
-  if (value instanceof Date) return fmtDateTimeShort(value);
-  if (typeof value === 'object') {
-    const o = value as {
-      text?: unknown;
-      richText?: { text?: unknown }[];
-      result?: unknown;
-      formula?: unknown;
-      hyperlink?: unknown;
-    };
-    if (typeof o.text === 'string') return o.text;
-    if (Array.isArray(o.richText)) {
-      return o.richText.map((p) => (typeof p.text === 'string' ? p.text : '')).join('');
-    }
-    if (o.result !== undefined) return formatCell(o.result);
-    if (typeof o.hyperlink === 'string') return o.hyperlink;
-    if (typeof o.formula === 'string') return `=${o.formula}`;
-  }
-  return String(value);
 }

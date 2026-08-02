@@ -1,5 +1,17 @@
 import { describe, it, expect } from 'vitest';
+import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { extractText, cleanup, htmlToText, UnsupportedDocumentTypeError } from '../extract-text';
+
+/** Erzeugt ein minimales, echtes PDF — kein Fixture-Binary im Repo noetig. */
+async function makePdf(lines: string[]): Promise<Buffer> {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const page = doc.addPage([595, 842]);
+  lines.forEach((line, i) => {
+    page.drawText(line, { x: 50, y: 780 - i * 20, size: 12, font });
+  });
+  return Buffer.from(await doc.save());
+}
 
 describe('extractText', () => {
   it('gibt text/* normalisiert zurück (CRLF + Rand-Whitespace)', async () => {
@@ -16,6 +28,13 @@ describe('extractText', () => {
   it('respektiert mime mit charset-Parameter', async () => {
     const out = await extractText(Buffer.from('x'), 'text/plain; charset=utf-8');
     expect(out).toBe('x');
+  });
+
+  it('liest Text aus einem PDF', async () => {
+    const pdf = await makePdf(['Mandat Mueller GmbH', 'Betreff: Jahresabschluss 2025']);
+    const out = await extractText(pdf, 'application/pdf');
+    expect(out).toContain('Mandat Mueller GmbH');
+    expect(out).toContain('Jahresabschluss 2025');
   });
 
   it('wirft UnsupportedDocumentTypeError bei Alt-.doc', async () => {

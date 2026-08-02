@@ -16,7 +16,7 @@
 // die offizielle DATEV-BWA-Gliederung (Zeilen 1020, 1051, 1080, 1100, 1380 …).
 // =============================================================================
 
-import ExcelJS from 'exceljs';
+import { readXlsx, type XlsxValue } from '@/lib/xlsx/read-xlsx';
 import type { ParsedBwa, ParsedBwaPeriod, ParsedBwaPosition } from './addison-parser';
 
 const MONTH_DE: Record<string, number> = {
@@ -92,52 +92,41 @@ function parseDatevColumnHeader(raw: string): Omit<DatevColumnSpec, 'index'> | n
   return null;
 }
 
-function cellNumber(cell: ExcelJS.Cell): number | null {
-  const v = cell.value;
-  if (v === null || v === undefined || v === '') return null;
-  if (typeof v === 'number') return v;
-  if (typeof v === 'string') {
-    const cleaned = v.trim().replace(/\./g, '').replace(',', '.');
+function cellNumber(value: XlsxValue): number | null {
+  if (value === null || value === '') return null;
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') {
+    const cleaned = value.trim().replace(/\./g, '').replace(',', '.');
     const n = Number(cleaned);
     return Number.isFinite(n) ? n : null;
-  }
-  if (
-    typeof v === 'object' &&
-    'result' in v &&
-    typeof (v as { result?: unknown }).result === 'number'
-  ) {
-    return (v as { result: number }).result;
   }
   return null;
 }
 
-function cellString(cell: ExcelJS.Cell): string {
-  const v = cell.value;
-  if (v === null || v === undefined) return '';
-  if (typeof v === 'string') return v.trim();
-  if (typeof v === 'number') return String(v);
-  if (typeof v === 'object' && 'text' in v)
-    return String((v as { text?: unknown }).text ?? '').trim();
-  return String(v).trim();
+function cellAt(rows: XlsxValue[][], row: number, column: number): XlsxValue {
+  return rows[row]?.[column] ?? null;
+}
+
+function cellString(value: XlsxValue): string {
+  if (value === null) return '';
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number') return String(value);
+  if (value instanceof Date) return value.toISOString();
+  return String(value).trim();
 }
 
 export async function parseDatevBwaXlsx(buffer: Buffer | Uint8Array): Promise<ParsedBwa> {
-  const wb = new ExcelJS.Workbook();
-  // ExcelJS erwartet ArrayBuffer; wir kopieren die Bytes in einen frischen
-  // ArrayBuffer (Buffer.subarray würde SharedArrayBuffer-Probleme machen).
-  const ab = new ArrayBuffer(buffer.byteLength);
-  new Uint8Array(ab).set(buffer);
-  await wb.xlsx.load(ab);
+  const sheets = readXlsx(buffer);
   const warnings: string[] = [];
 
   // Erstes Sheet (DATEV exportiert "BWA" als einziges Sheet)
-  const sheet = wb.worksheets[0];
-  if (!sheet) return { periods: [], warnings: ['Keine Arbeitsblätter im XLSX gefunden.'] };
+  const rows = sheets[0]?.rows;
+  if (!rows) return { periods: [], warnings: ['Keine Arbeitsblätter im XLSX gefunden.'] };
 
   // Header-Zeile finden — wir suchen die erste Zeile, die in Spalte A "Zeile" enthält
   let headerRowIdx = -1;
-  for (let r = 1; r <= Math.min(sheet.rowCount, 10); r++) {
-    if (cellString(sheet.getRow(r).getCell(1)).toLowerCase() === 'zeile') {
+  for (let r = 0; r < Math.min(rows.length, 10); r++) {
+    if (cellString(cellAt(rows, r, 0)).toLowerCase() === 'zeile') {
       headerRowIdx = r;
       break;
     }
@@ -147,10 +136,10 @@ export async function parseDatevBwaXlsx(buffer: Buffer | Uint8Array): Promise<Pa
   }
 
   // Periodenspalten in Header identifizieren
-  const headerRow = sheet.getRow(headerRowIdx);
+  const headerRow = rows[headerRowIdx]!;
   const colSpecs: DatevColumnSpec[] = [];
-  for (let c = 4; c <= sheet.columnCount; c++) {
-    const meta = parseDatevColumnHeader(cellString(headerRow.getCell(c)));
+  for (let c = 3; c < headerRow.length; c++) {
+    const meta = parseDatevColumnHeader(cellString(headerRow[c] ?? null));
     if (meta) colSpecs.push({ index: c, ...meta });
   }
   if (colSpecs.length === 0) {
@@ -168,16 +157,16 @@ export async function parseDatevBwaXlsx(buffer: Buffer | Uint8Array): Promise<Pa
   }));
 
   // Datenzeilen ab headerRowIdx + 1
-  for (let r = headerRowIdx + 1; r <= sheet.rowCount; r++) {
-    const row = sheet.getRow(r);
-    const zeileStr = cellString(row.getCell(1));
+  for (let r = headerRowIdx + 1; r < rows.length; r++) {
+    const row = rows[r]!;
+    const zeileStr = cellString(row[0] ?? null);
     if (!zeileStr || !/^\d+$/.test(zeileStr)) continue; // nur Hauptpositionen
     const number = Number(zeileStr);
-    const label = cellString(row.getCell(3));
+    const label = cellString(row[2] ?? null);
     if (!label) continue;
 
     colSpecs.forEach((spec, pi) => {
-      const amount = cellNumber(row.getCell(spec.index));
+      const amount = cellNumber(row[spec.index] ?? null);
       if (amount === null) return;
       const p: ParsedBwaPosition = { number, label, amount, sharePct: null };
       periods[pi]!.positions.push(p);

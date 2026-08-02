@@ -16,13 +16,19 @@ minimumReleaseAgeExclude:
   # Version-scoped security hotfix exceptions; keep this list short.
   - nodemailer@9.0.1
   - undici@8.5.0
+  # brace-expansion 1.1.17 ist der erste Backport im 1.x-Zweig fuer
+  # GHSA-mh99-v99m-4gvg (OOM-DoS) und noch keine 7 Tage alt. Nur ueber eslint
+  # erreichbar (dev), aber der Zweig hatte davor gar keinen Fix.
+  - brace-expansion@1.1.17
 minimumReleaseAgeStrict: true
 minimumReleaseAgeIgnoreMissingTime: false
 trustLockfile: false
 trustPolicy: no-downgrade
 trustPolicyExclude:
   # Reviewed existing lockfile entries flagged while enabling no-downgrade.
-  - next-auth@5.0.0-beta.31
+  # Mehrere Versionen desselben Pakets gehoeren in eine Union ("a||b"): pnpm
+  # wertet pro Paketname nur die erste passende Regel aus.
+  - next-auth@5.0.0-beta.32
   - semver@6.3.1
   - tinyexec@1.2.2
 blockExoticSubdeps: true
@@ -54,23 +60,41 @@ overrides:
   # Runtime und Typoberfläche müssen dieselbe LTS-Linie verwenden. Ohne Override
   # zieht Vite seinen optionalen Peer sonst auf die jeweils neueste Node-Major.
   '@types/node': '24.13.2'
-  '@hono/node-server': '^1.19.13'
-  hono: '4.12.25'
+  # <2.0.5 ist verwundbar (GHSA-frvp-7c67-39w9, Path Traversal in serve-static
+  # unter Windows). Kommt nur ueber @prisma/dev — ein reines Dev-Werkzeug, das
+  # aber als prod-Dependency von prisma im Graphen haengt. Major-Sprung 1.x->2.x
+  # ist deshalb bewusst und wird gegen `prisma generate`/CLI geprueft.
+  '@hono/node-server': '2.0.12'
+  # hono <4.12.27 ist verwundbar (GHSA fuer JSX-Context-Leak, cx()-XSS und
+  # API-Gateway-Adapter); kommt nur ueber @prisma/dev in den prod-Graph.
+  hono: '4.12.27'
+  # valibot <=1.4.1 ist verwundbar (flatten() wirft bei record()-Pfaden);
+  # ebenfalls nur ueber @prisma/dev.
+  valibot: '^1.4.2'
   ioredis: '^5.11.0'
-  postcss: '^8.5.15'
+  # postcss <=8.5.17 ist verwundbar (GHSA-r28c-9q8g-f849, Path Traversal beim
+  # Auto-Laden von sourceMappingURL).
+  postcss: '^8.5.20'
   # esbuild 0.28.0 is vulnerable (GHSA-gv7w-rqvm-qjhr); force the patched release.
   esbuild: '0.28.1'
   # vite <=8.0.15 is vulnerable (GHSA-fx2h-pf6j-xcff, GHSA-v6wh-96g9-6wx3).
   vite: '8.0.16'
   # tmp 0.2.6 is vulnerable (GHSA-7c78-jf6q-g5cm); force the patched release.
   tmp: '0.2.7'
-  # js-yaml 4.1.1 is vulnerable (GHSA-h67p-54hq-rp68); force the patched release.
-  js-yaml: '4.2.0'
+  # js-yaml <4.3.0 ist verwundbar (GHSA-h67p-54hq-rp68, GHSA-52cp-r559-cp3m);
+  # 4.3.0 ist der gepatchte v4-legacy-Stand.
+  js-yaml: '4.3.0'
   uuid: '^11.1.1'
-  # node-tar: nur transitiv via unpdf>canvas>@mapbox/node-pre-gyp (Install-Tool,
-  # Build ohnehin geblockt). 6.x ist EOL/unpatched — Fix nur im 7.5.x-Zweig
-  # (GHSA-9ppj-qmqm-q256 u. a.). Force auf den gepatchten Zweig.
-  tar: '7.5.16'
+  # fast-uri <3.1.4 ist verwundbar (GHSA-v2hh-gcrm-f6hx, GHSA-4c8g-83qw-93j6,
+  # Host-Confusion); transitiv via ajv. 3.x-Zweig halten, ajv erwartet ^3.
+  fast-uri: '3.1.4'
+  # sharp <0.35.0 erbt libvips-CVEs (GHSA-f88m-g3jw-g9cj); next fordert ^0.34.5.
+  sharp: '^0.35.3'
+  # brace-expansion 1.x haengt nur noch an minimatch@3 unter eslint (dev).
+  # Zweig-genau pinnen: ein pauschaler 5.x-Force bricht minimatch 3/5, die
+  # `require('brace-expansion')` als Callable erwarten — 5.x exportiert ein
+  # Objekt. GHSA-3jxr-9vmj-r5cp ist damit geschlossen.
+  brace-expansion@1: '1.1.17'
 
 # pnpm 11: Workspace-Pakete in dependents per echtes Link-Hardlink statt
 # Symlink injizieren. Der Wert steht im Lockfile; muss hier gespiegelt werden,

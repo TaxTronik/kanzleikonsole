@@ -69,6 +69,7 @@ awk '
 ' pnpm-workspace.yaml | sort > "$TMP_DIR/min-age-exclude-actual"
 
 cat > "$TMP_DIR/min-age-exclude-expected" <<'EOF'
+brace-expansion@1.1.17
 nodemailer@9.0.1
 undici@8.5.0
 EOF
@@ -91,7 +92,7 @@ awk '
 ' pnpm-workspace.yaml | sort > "$TMP_DIR/trust-exclude-actual"
 
 cat > "$TMP_DIR/trust-exclude-expected" <<'EOF'
-next-auth@5.0.0-beta.31
+next-auth@5.0.0-beta.32
 semver@6.3.1
 tinyexec@1.2.2
 EOF
