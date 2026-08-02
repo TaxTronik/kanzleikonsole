@@ -11,7 +11,11 @@ ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 cd "$ROOT"
 
 WORKFLOWS="$(find .forgejo/workflows -type f \( -name '*.yml' -o -name '*.yaml' \) | sort)"
-HITS="$(grep -nE '^[[:space:]]+image:[[:space:]]+[^[:space:]]+$' $WORKFLOWS \
+# Kein `…$`-Anker: sonst uebersieht der Guard jede Zeile mit Trailing-Kommentar
+# (`image: postgres:18 # spaeter pinnen`) und meldet trotzdem „OK". Kommentar
+# zuerst abschneiden, dann pruefen.
+HITS="$(grep -nE '^[[:space:]]+image:[[:space:]]+' $WORKFLOWS \
+  | sed -E 's/[[:space:]]+#.*$//' \
   | grep -v '@sha256:' \
   || true)"
 

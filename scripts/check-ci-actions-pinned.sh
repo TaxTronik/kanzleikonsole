@@ -11,7 +11,16 @@ ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 cd "$ROOT"
 
 WORKFLOWS="$(find .forgejo/workflows -type f \( -name '*.yml' -o -name '*.yaml' \) | sort)"
-HITS="$(grep -nE '^[[:space:]]+uses:[[:space:]]+[^[:space:]]+@[^[:space:]]+$' $WORKFLOWS \
+# Kein `…$`-Anker auf der uses-Zeile: mit Zeilenende-Anker war jede Zeile mit
+# Trailing-Kommentar unsichtbar (`uses: actions/checkout@v4 # TODO pin`) — der
+# Guard meldete dann „OK", obwohl eine Action ungepinnt war. Kommentar wird
+# deshalb ZUERST abgeschnitten, danach geprueft.
+#
+# Ausgenommen bleiben lokale Reusable-Workflows (`uses: ./…`); die tragen
+# systembedingt keinen Commit-SHA.
+HITS="$(grep -nE '^[[:space:]]+uses:[[:space:]]+' $WORKFLOWS \
+  | sed -E 's/[[:space:]]+#.*$//' \
+  | grep -vE 'uses:[[:space:]]+\./' \
   | grep -vE '@[0-9a-f]{40}$' \
   || true)"
 

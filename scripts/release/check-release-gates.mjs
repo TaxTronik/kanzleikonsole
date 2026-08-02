@@ -35,12 +35,35 @@ function requireWorkflowCall(workflow, name) {
   invariant(/^ {2}workflow_call:\s*$/m.test(onBlock), `${name}: on.workflow_call fehlt`);
 }
 
+/**
+ * Beide Muster waren auf exakt vier Leerzeichen verankert, trafen also nur die
+ * Job-Ebene. Ein `continue-on-error: true` am SCHRITT (acht Leerzeichen) —
+ * etwa am Trivy- oder Immutability-Schritt — passierte folgenlos, obwohl es
+ * das Gate genauso aushebelt. Deshalb jetzt auf jeder Einrueckung.
+ *
+ * `if:` wird bewusst differenziert: `always()`/`failure()` fuegen einem Gate
+ * etwas hinzu (Nachweis-Upload auch im Fehlerfall) und sind zulaessig. Jede
+ * andere Bedingung kann einen Pruefschritt ueberspringen und ist damit ein
+ * Bypass.
+ */
+const ALLOWED_STEP_CONDITIONS = /^(always|failure)\(\)$/;
+
 function forbidJobBypass(block, name) {
-  invariant(!/^ {4}if:/m.test(block), `${name}: job-weites if ist als Gate-Bypass verboten`);
   invariant(
-    !/^ {4}continue-on-error:/m.test(block),
-    `${name}: continue-on-error ist als Gate-Bypass verboten`,
+    !/^ {4}if:/m.test(block),
+    `${name}: job-weites if ist als Gate-Bypass verboten`,
   );
+  invariant(
+    !/^\s+continue-on-error:/m.test(block),
+    `${name}: continue-on-error ist als Gate-Bypass verboten (auch auf Schritt-Ebene)`,
+  );
+  for (const m of block.matchAll(/^\s+if:[ \t]*(.+?)\s*$/gm)) {
+    const condition = m[1].replace(/^\$\{\{\s*/, '').replace(/\s*\}\}$/, '');
+    invariant(
+      ALLOWED_STEP_CONDITIONS.test(condition),
+      `${name}: bedingter Schritt "if: ${m[1]}" kann ein Gate ueberspringen — nur always()/failure() sind zulaessig`,
+    );
+  }
 }
 
 function requireAskpass(block, name) {
