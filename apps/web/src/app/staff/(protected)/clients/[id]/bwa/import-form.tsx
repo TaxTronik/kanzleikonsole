@@ -103,13 +103,16 @@ export function BwaImportForm({ clientId }: { clientId: string }) {
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
             required
           />
-          <p className="text-xs text-muted mt-1">{hint}</p>
         </div>
         <button type="submit" className="btn-primary" disabled={isPending || !file}>
           <Upload className="h-3.5 w-3.5" />
           {isPending ? 'Verarbeitet…' : 'Importieren'}
         </button>
       </div>
+      {/* Hinweis unter das Raster statt in die linke Spalte: dort zaehlte er zur
+          Spaltenhoehe, und `items-end` schob den Button um genau seine Hoehe
+          unter das Eingabefeld. */}
+      <p className="text-xs text-muted">{hint}</p>
 
       {error && <div className="alert-error-sm">{error}</div>}
       {result?.ok && (

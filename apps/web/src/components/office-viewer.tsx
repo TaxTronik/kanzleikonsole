@@ -72,9 +72,9 @@ export function OfficeViewer({ url }: { url: string }) {
 
   const sheet = sheets[activeSheet];
   return (
-    <div className="h-full flex flex-col bg-white">
+    <div className={`h-full flex flex-col ${SHEET_CANVAS} ${SHEET_TEXT}`}>
       {sheets.length > 1 && (
-        <div className="flex gap-0 border-b border-default bg-gray-50 px-2 overflow-x-auto">
+        <div className={`flex gap-0 border-b ${SHEET_BORDER} ${SHEET_BAR} px-2 overflow-x-auto`}>
           {sheets.map((s, i) => (
             <button
               key={s.name + i}
@@ -83,7 +83,7 @@ export function OfficeViewer({ url }: { url: string }) {
               className={
                 i === activeSheet
                   ? 'px-3 py-1.5 text-xs font-medium border-b-2 border-brand-600 text-brand-700 -mb-px'
-                  : 'px-3 py-1.5 text-xs text-secondary hover:text-primary border-b-2 border-transparent -mb-px'
+                  : `px-3 py-1.5 text-xs ${SHEET_TEXT_MUTED} hover:text-[#111827] border-b-2 border-transparent -mb-px`
               }
             >
               {s.name}
@@ -98,6 +98,21 @@ export function OfficeViewer({ url }: { url: string }) {
   );
 }
 
+// Die Vorschau ist Dokumentinhalt, kein Bestandteil der Oberflaeche — wie eine
+// PDF-Seite bleibt sie in beiden Themes ein heller Bogen. Die Farben stehen
+// deshalb als feste Werte da und NICHT als `text-primary`/`bg-gray-100`: Das
+// Theme bildet `gray-50`…`gray-700` und die Text-Tokens auf Dark-Werte ab, der
+// Container war aber fest weiss. Im Darkmode ergab das hellgrauen Text auf
+// weissem Grund — praktisch unlesbar. Werte entsprechen der Light-Palette.
+const SHEET_CANVAS = 'bg-[#ffffff]';
+const SHEET_BAR = 'bg-[#f9fafb]';
+const SHEET_HEADER = 'bg-[#f3f4f6]';
+const SHEET_BORDER = 'border-[#e5e7eb]';
+const SHEET_BORDER_SUBTLE = 'border-[#f3f4f6]';
+const SHEET_TEXT = 'text-[#111827]';
+const SHEET_TEXT_MUTED = 'text-[#4b5563]';
+const SHEET_ROW_HOVER = 'hover:bg-[#f9fafb]';
+
 interface XlsxSheet {
   name: string;
   rows: string[][];
@@ -111,7 +126,7 @@ const PREVIEW_MAX_ROWS = 500;
 const PREVIEW_MAX_COLUMNS = 100;
 
 function XlsxTable({ rows }: { rows: string[][] }) {
-  if (rows.length === 0) return <p className="text-sm text-disabled">Leere Tabelle.</p>;
+  if (rows.length === 0) return <p className="text-sm text-[#6b7280]">Leere Tabelle.</p>;
   const [head, ...body] = rows;
   const columnCount = Math.min(head!.length, PREVIEW_MAX_COLUMNS);
   const shownBody = body.slice(0, PREVIEW_MAX_ROWS);
@@ -121,19 +136,19 @@ function XlsxTable({ rows }: { rows: string[][] }) {
   return (
     <>
       {(hiddenRows > 0 || hiddenColumns > 0) && (
-        <p className="mb-2 text-xs text-muted">
+        <p className={`mb-2 text-xs ${SHEET_TEXT_MUTED}`}>
           Vorschau gekürzt: zeigt {shownBody.length} von {body.length} Zeilen
           {hiddenColumns > 0 ? ` und ${columnCount} von ${head!.length} Spalten` : ''}. Die
           vollständige Mappe steht über den Download bereit.
         </p>
       )}
       <table className="text-xs border-collapse">
-        <thead className="bg-gray-100 sticky top-0">
+        <thead className={`${SHEET_HEADER} sticky top-0`}>
           <tr>
             {head!.slice(0, columnCount).map((c, i) => (
               <th
                 key={i}
-                className="border border-default px-2 py-1 text-left font-medium text-secondary whitespace-nowrap"
+                className={`border ${SHEET_BORDER} px-2 py-1 text-left font-medium ${SHEET_TEXT_MUTED} whitespace-nowrap`}
               >
                 {c}
               </th>
@@ -142,11 +157,11 @@ function XlsxTable({ rows }: { rows: string[][] }) {
         </thead>
         <tbody>
           {shownBody.map((row, ri) => (
-            <tr key={ri} className="hover:bg-gray-50">
+            <tr key={ri} className={SHEET_ROW_HOVER}>
               {row.slice(0, columnCount).map((c, ci) => (
                 <td
                   key={ci}
-                  className="border border-subtle px-2 py-1 text-primary whitespace-nowrap max-w-[24rem] overflow-hidden text-ellipsis"
+                  className={`border ${SHEET_BORDER_SUBTLE} px-2 py-1 ${SHEET_TEXT} whitespace-nowrap max-w-[24rem] overflow-hidden text-ellipsis`}
                   title={c}
                 >
                   {c}
