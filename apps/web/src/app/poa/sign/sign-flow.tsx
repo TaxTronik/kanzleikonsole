@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { ShieldCheck } from 'lucide-react';
-import { requestSigningOtpAction, signPoaAction } from '@/app/staff/(protected)/poa/actions';
+import { requestSigningOtpAction, signPoaAction } from '@/app/staff/(protected)/poa/sign-actions';
 
 type Stage = 'consent' | 'otp-sent' | 'signed' | 'error';
 

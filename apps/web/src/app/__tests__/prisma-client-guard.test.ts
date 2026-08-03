@@ -167,7 +167,13 @@ const ALLOWED_PRISMA_OWNER_IMPORTS = new Set<string>([
   'apps/web/src/app/portal/(auth)/login/actions.ts <- @/server/db/prisma-owner',
   'apps/web/src/app/staff/(auth)/login/actions.ts <- @/server/db/prisma-owner',
   'apps/web/src/app/staff/(auth)/login/password/route.ts <- @/server/db/prisma-owner',
+  // Staff-Seite: nur noch typeof-Bezug (Rueckgabetyp von sendForSignature) —
+  // kein Laufzeit-Bypass, der Import bleibt aber ein Wert-Import fuers typeof.
   'apps/web/src/app/staff/(protected)/poa/actions.ts <- @/server/db/prisma-owner',
+  // Oeffentlicher Token-Sign-Flow (aus poa/actions.ts herausgeloest): kein
+  // Session-/Tenant-Kontext, Lookup ausschliesslich ueber den Token-Hash —
+  // dieselbe Begruendung wie zuvor fuer poa/actions.ts.
+  'apps/web/src/app/staff/(protected)/poa/sign-actions.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/auth/login-audit.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/auth/magic-link.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/auth/portal.ts <- @/server/db/prisma-owner',

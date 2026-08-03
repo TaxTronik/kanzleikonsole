@@ -30,8 +30,8 @@ const ALLOWLIST_FILES = [
 const ALLOWLIST_FNS = new Set([
   // öffentlicher PoA-Signatur-Flow per rawToken (+ OTP) — keine vorgelagerte
   // Session; autorisiert über Token-Besitz (elektronischer PoA-Bestätigungsprozess).
-  'staff/(protected)/poa/actions.ts::signPoaAction',
-  'staff/(protected)/poa/actions.ts::requestSigningOtpAction',
+  'staff/(protected)/poa/sign-actions.ts::signPoaAction',
+  'staff/(protected)/poa/sign-actions.ts::requestSigningOtpAction',
 ]);
 
 // Bekannte Autorisierungs-Primitive (Session/Tenant/Ownership) inkl. der

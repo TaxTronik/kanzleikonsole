@@ -105,14 +105,8 @@ vi.mock('@/server/actions/staff-action', async () => {
 vi.mock('@/server/settings/modules', () => ({ readModules: m.readModules }));
 vi.mock('@/server/notifications/service', () => ({ notify: m.notify }));
 
-import {
-  createPoaAction,
-  loadPoaForSigning,
-  requestSigningOtpAction,
-  revokePoaAction,
-  sendForSignatureAction,
-  signPoaAction,
-} from '../actions';
+import { createPoaAction, revokePoaAction, sendForSignatureAction } from '../actions';
+import { loadPoaForSigning, requestSigningOtpAction, signPoaAction } from '../sign-actions';
 
 function sha256(s: string): string {
   return createHash('sha256').update(s).digest('hex');

@@ -1,4 +1,4 @@
-﻿import { loadPoaForSigning } from '@/app/staff/(protected)/poa/actions';
+﻿import { loadPoaForSigning } from '@/app/staff/(protected)/poa/sign-actions';
 import { renderMarkdown } from '@/lib/markdown';
 import { SignFlow } from './sign-flow';
 import { fmtDateShort } from '@/lib/fmt';
