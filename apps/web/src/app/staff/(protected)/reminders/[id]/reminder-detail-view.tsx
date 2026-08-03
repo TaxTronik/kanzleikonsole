@@ -25,6 +25,8 @@ import {
   setReminderAssigneesAction,
 } from '../../clients/[id]/reminders/actions';
 import type { ReminderDetail } from '@/server/reminders/detail';
+import { splitByMentions } from '@/lib/reminder-mentions';
+import { MentionTextarea } from './mention-textarea';
 
 /** Vorschlag für die Frist einer Folgestufe: zwei Wochen. */
 function inZweiWochen(): string {
@@ -277,15 +279,20 @@ export function ReminderDetailView({
           <MessageSquare className="h-4 w-4 text-disabled" /> Verlauf (
           {detail.discussion.length + detail.attachments.length})
         </h2>
-        <VerlaufFeed discussion={detail.discussion} attachments={detail.attachments} />
+        <VerlaufFeed
+          discussion={detail.discussion}
+          attachments={detail.attachments}
+          staffOptions={staffOptions}
+        />
         <div className="flex items-start gap-2">
-          <textarea
+          <MentionTextarea
             value={note}
-            onChange={(e) => setNote(e.target.value)}
+            onChange={setNote}
+            staffOptions={staffOptions}
             rows={2}
             maxLength={5000}
-            placeholder="Kurze Rückfrage oder Zwischenstand — ohne neue Frist."
-            className="input text-sm flex-1"
+            placeholder="Kurze Rückfrage oder Zwischenstand — mit @ Personen gezielt ansprechen."
+            className="input text-sm"
           />
           <button
             type="button"
@@ -471,9 +478,11 @@ export function StaffPicker({
 function VerlaufFeed({
   discussion,
   attachments,
+  staffOptions,
 }: {
   discussion: ReminderDetail['discussion'];
   attachments: ReminderDetail['attachments'];
+  staffOptions: Array<{ id: string; fullName: string }>;
 }) {
   const eintraege = [
     ...discussion.map((n) => ({
@@ -505,7 +514,17 @@ function VerlaufFeed({
             {e.wer} · {fmtDateTimeShort(new Date(e.createdAt))}
           </p>
           {e.art === 'note' ? (
-            <p className="text-sm text-secondary whitespace-pre-wrap mt-0.5">{e.text}</p>
+            <p className="text-sm text-secondary whitespace-pre-wrap mt-0.5">
+              {splitByMentions(e.text, staffOptions).map((seg, i) =>
+                seg.mention ? (
+                  <span key={i} className="text-brand-600 font-medium">
+                    {seg.text}
+                  </span>
+                ) : (
+                  <span key={i}>{seg.text}</span>
+                ),
+              )}
+            </p>
           ) : (
             <p className="text-sm text-secondary mt-0.5">
               Datei angehängt: <span className="text-primary">{e.text}</span>

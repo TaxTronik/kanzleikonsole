@@ -93,9 +93,9 @@ model Tenant {
   settings                   TenantSetting[]
   workflowInstances          WorkflowInstance[]
   workflowTemplates          WorkflowTemplate[]
+  clientReminderNotes        ClientReminderNote[]
 
   @@map("tenant")
-  clientReminderNotes ClientReminderNote[]
 }
 
 model TenantSetting {
@@ -129,6 +129,10 @@ model StaffUser {
   updatedAt                    DateTime                    @updatedAt @map("updated_at")
   dashboardLayout              Json?                       @map("dashboard_layout")
   taxNewsNotify                Boolean                     @default(false) @map("tax_news_notify")
+  /// Benachrichtigungs-Modus fuer Wiedervorlagen-Aktivitaet (Chat, Uploads,
+  /// Nachfassen). Zuweisungen, Faelligkeiten und @-Erwaehnungen kommen IMMER
+  /// durch — die sind Arbeitsauftrag bzw. gezielte Ansprache, kein Rauschen.
+  reminderNotifyMode           ReminderNotifyMode          @default(ALL) @map("reminder_notify_mode")
   failedLoginCount             Int                         @default(0) @map("failed_login_count")
   appointmentsCreated          Appointment[]               @relation("appointment_creator")
   appointmentsOwned            Appointment[]               @relation("appointment_owner")
@@ -149,11 +153,11 @@ model StaffUser {
   tenant                       Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   timeEntries                  TimeEntry[]
   vacationRequests             VacationRequest[]
+  reminderAssignments          ClientReminderAssignee[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
   @@map("staff_user")
-  reminderAssignments ClientReminderAssignee[]
 }
 
 model VacationRequest {
@@ -1121,33 +1125,33 @@ model Client {
 /// `assignees` (mehrere möglich — EINE Aufgabe, wer abhakt, erledigt sie für
 /// alle); `predecessor` verkettet Nachfragen zur vorigen Wiedervorlage.
 model ClientReminder {
-  id              String        @id(map: "client_reminder_pk") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId        String        @map("tenant_id") @db.Uuid
+  id             String                   @id(map: "client_reminder_pk") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String                   @map("tenant_id") @db.Uuid
   /// null = interne Aufgabe ohne Mandantenbezug.
-  clientId        String?       @map("client_id") @db.Uuid
-  dueDate         DateTime      @map("due_date") @db.Date
-  subject         String
-  notes           String?
+  clientId       String?                  @map("client_id") @db.Uuid
+  dueDate        DateTime                 @map("due_date") @db.Date
+  subject        String
+  notes          String?
   // Dringlichkeit — die delegierende Person kann sie nachtraeglich anheben
   // ("bumpen"), ohne die Wiedervorlage neu anzulegen. Gleiche Skala wie bei
   // Anforderungen, damit die Uebersichten dieselben Labels/Farben nutzen.
-  priority        RequestPriority @default(NORMAL)
+  priority       RequestPriority          @default(NORMAL)
   /// Vorgänger in der Kette (Nachfrage/Folgeauftrag). SET NULL, damit das
   /// Löschen einer alten Stufe die Folgestufe nicht mitreisst.
-  predecessorId   String?       @map("predecessor_id") @db.Uuid
-  createdByStaff  String        @map("created_by_staff") @db.Uuid
-  doneAt          DateTime?     @map("done_at") @db.Timestamptz(6)
-  doneByStaff     String?       @map("done_by_staff") @db.Uuid
-  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
-  client          Client?       @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_reminder_client_fk")
-  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_reminder_tenant_fk")
-  predecessor     ClientReminder?  @relation("ReminderChain", fields: [predecessorId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "client_reminder_predecessor_fk")
-  successors      ClientReminder[] @relation("ReminderChain")
-  assignees       ClientReminderAssignee[]
-  discussion      ClientReminderNote[]
-  attachments     Document[]    @relation("ReminderAttachments")
-  riskMarkings    RiskMarking[]
+  predecessorId  String?                  @map("predecessor_id") @db.Uuid
+  createdByStaff String                   @map("created_by_staff") @db.Uuid
+  doneAt         DateTime?                @map("done_at") @db.Timestamptz(6)
+  doneByStaff    String?                  @map("done_by_staff") @db.Uuid
+  createdAt      DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
+  client         Client?                  @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_reminder_client_fk")
+  tenant         Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_reminder_tenant_fk")
+  predecessor    ClientReminder?          @relation("ReminderChain", fields: [predecessorId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "client_reminder_predecessor_fk")
+  successors     ClientReminder[]         @relation("ReminderChain")
+  assignees      ClientReminderAssignee[]
+  discussion     ClientReminderNote[]
+  attachments    Document[]               @relation("ReminderAttachments")
+  riskMarkings   RiskMarking[]
 
   // Meine Wiedervorlagen (/staff/reminders): die "von mir delegiert"-Sicht
   // filtert auf createdByStaff — dafuer gab es bisher keinen Index.
@@ -2785,8 +2789,19 @@ enum NotificationKind {
   CLIENT_REMINDER_NOTE
   CLIENT_REMINDER_FOLLOWUP
   CLIENT_REMINDER_ATTACHMENT
+  CLIENT_REMINDER_MENTION
 
   @@map("notification_kind")
+}
+
+/// Wie viel Wiedervorlagen-Aktivitaet eine Person erreichen soll.
+enum ReminderNotifyMode {
+  /// Alles: Chat, Uploads, Nachfassen an eigenen Aufgaben.
+  ALL
+  /// Nur @-Erwaehnungen (plus Zuweisung/Faelligkeit, die immer kommen).
+  MENTIONS_ONLY
+
+  @@map("reminder_notify_mode")
 }
 
 enum ClientKind {

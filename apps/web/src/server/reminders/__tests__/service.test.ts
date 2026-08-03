@@ -10,7 +10,10 @@ vi.mock('@/server/actions/staff-action', () => {
 });
 
 const notifyMock = vi.hoisted(() => vi.fn());
+const canAccessMock = vi.hoisted(() => vi.fn().mockResolvedValue(true));
 vi.mock('@/server/notifications/service', () => ({ notify: notifyMock }));
+// rbac zieht transitiv next-auth — fuer den Unit-Test gemockt.
+vi.mock('@/server/auth/rbac', () => ({ canOtherStaffAccessClientTx: canAccessMock }));
 
 import { ActionError } from '@/server/actions/staff-action';
 import {
@@ -47,9 +50,17 @@ function letzteCreateData(fn: { mock: { calls: unknown[][] } }): CreateData {
 function makeTx(over: Record<string, unknown> = {}) {
   return {
     staffUser: {
-      // Standard: jede angefragte ID ist gültig.
-      findMany: vi.fn(async ({ where }: { where: { id: { in: string[] } } }) =>
-        where.id.in.map((id) => ({ id })),
+      // Beantwortet drei Abfrage-Formen: Kandidaten-Pruefung ({id:{in}}),
+      // Modus-Filter ({id:{in}, reminderNotifyMode}) und Mention-Kandidaten
+      // ({tenantId, active} → alle bekannten Personen mit Namen).
+      findMany: vi.fn(async ({ where }: { where: { id?: { in: string[] } } }) =>
+        where.id
+          ? where.id.in.map((id) => ({ id }))
+          : [
+              { id: ICH, fullName: 'Ich Selbst' },
+              { id: A, fullName: 'Person A' },
+              { id: B, fullName: 'Person B' },
+            ],
       ),
       findUnique: vi.fn(async () => ({ fullName: 'Admin Mustermann' })),
     },
@@ -398,5 +409,119 @@ describe('Rückkanal: Wortmeldung und Nachfassen', () => {
     expect(neu.id).toBe('neu-1');
     // Kein update auf der Quelle — sie bleibt erledigt.
     expect((tx.clientReminder as { update?: unknown }).update).toBeUndefined();
+  });
+});
+
+describe('@-Erwähnungen und Benachrichtigungs-Modus', () => {
+  it('erwähnte Person bekommt MENTION statt NOTE — kein Doppel', async () => {
+    const tx = makeTx();
+    await addReminderNoteTx(tx as never, {
+      tenantId: TENANT,
+      reminderId: 'r1',
+      staffId: ICH,
+      body: '@Person A kannst du das übernehmen?',
+    });
+
+    const anA = notifyMock.mock.calls
+      .map((c) => c[1] as { staffId: string; kind: string })
+      .filter((m) => m.staffId === A);
+    expect(anA.map((m) => m.kind)).toEqual(['CLIENT_REMINDER_MENTION']);
+    // B ist beteiligt, aber nicht erwähnt → normale NOTE.
+    const anB = notifyMock.mock.calls
+      .map((c) => c[1] as { staffId: string; kind: string })
+      .filter((m) => m.staffId === B);
+    expect(anB.map((m) => m.kind)).toEqual(['CLIENT_REMINDER_NOTE']);
+  });
+
+  it('MENTIONS_ONLY schaltet den laufenden Austausch stumm — die Erwähnung nicht', async () => {
+    const tx = makeTx();
+    // Modus-Filter: nur B steht noch auf ALL, A hat auf MENTIONS_ONLY gestellt.
+    const findMany = tx.staffUser.findMany;
+    tx.staffUser.findMany = vi.fn(async (args: { where: Record<string, unknown> }) => {
+      if ('reminderNotifyMode' in args.where) return [{ id: B }];
+      return findMany(args as never);
+    }) as never;
+
+    // Ohne Erwähnung: A bleibt stumm, B bekommt die NOTE.
+    await addReminderNoteTx(tx as never, {
+      tenantId: TENANT,
+      reminderId: 'r1',
+      staffId: ICH,
+      body: 'Zwischenstand ohne Ansprache.',
+    });
+    const ohne = notifyMock.mock.calls.map((c) => c[1] as { staffId: string });
+    expect(ohne.map((m) => m.staffId)).toEqual([B]);
+
+    notifyMock.mockClear();
+    // MIT Erwähnung: A wird trotzdem erreicht — wer @-genannt wird, ist gemeint.
+    await addReminderNoteTx(tx as never, {
+      tenantId: TENANT,
+      reminderId: 'r1',
+      staffId: ICH,
+      body: '@Person A bitte direkt anschauen.',
+    });
+    const mit = notifyMock.mock.calls.map((c) => c[1] as { staffId: string; kind: string });
+    expect(mit.find((m) => m.staffId === A)?.kind).toBe('CLIENT_REMINDER_MENTION');
+  });
+
+  it('erwähnte Unbeteiligte ohne Zugriff bekommen nichts (interne Aufgabe)', async () => {
+    const tx = makeTx();
+    // Interne Aufgabe (kein Mandant) — Zugriff nur fuer Beteiligte.
+    tx.clientReminder.findUnique = vi.fn(async () => ({
+      clientId: null,
+      subject: 'Interna',
+      createdByStaff: ICH,
+      assignees: [],
+    })) as never;
+
+    await addReminderNoteTx(tx as never, {
+      tenantId: TENANT,
+      reminderId: 'r1',
+      staffId: ICH,
+      body: '@Person A schau mal (darfst du aber nicht).',
+    });
+
+    const anA = notifyMock.mock.calls
+      .map((c) => c[1] as { staffId: string })
+      .filter((m) => m.staffId === A);
+    expect(anA).toEqual([]);
+  });
+
+  it('erwähnte Unbeteiligte MIT Mandantenzugriff werden erreicht', async () => {
+    const tx = makeTx();
+    tx.clientReminder.findUnique = vi.fn(async () => ({
+      clientId: 'client-1',
+      subject: 'Belege',
+      createdByStaff: ICH,
+      assignees: [],
+    })) as never;
+    canAccessMock.mockResolvedValue(true);
+
+    await addReminderNoteTx(tx as never, {
+      tenantId: TENANT,
+      reminderId: 'r1',
+      staffId: ICH,
+      body: '@Person A bitte übernehmen.',
+    });
+
+    expect(canAccessMock).toHaveBeenCalledWith(expect.anything(), TENANT, A, 'client-1');
+    const anA = notifyMock.mock.calls
+      .map((c) => c[1] as { staffId: string; kind: string })
+      .filter((m) => m.staffId === A);
+    expect(anA.map((m) => m.kind)).toEqual(['CLIENT_REMINDER_MENTION']);
+  });
+
+  it('wer sich selbst erwähnt, bekommt keine Meldung', async () => {
+    const tx = makeTx();
+    await addReminderNoteTx(tx as never, {
+      tenantId: TENANT,
+      reminderId: 'r1',
+      staffId: A,
+      body: 'Notiz von @Person A an sich selbst.',
+    });
+    const anA = notifyMock.mock.calls
+      .map((c) => c[1] as { staffId: string })
+      .filter((m) => m.staffId === A);
+    expect(anA).toEqual([]);
   });
 });

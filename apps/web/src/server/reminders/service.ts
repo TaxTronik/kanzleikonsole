@@ -11,6 +11,8 @@ import type { TxClient } from '@taxtronik/db';
 import { ActionError } from '@/server/actions/staff-action';
 import type { ReminderPriority } from '@/lib/reminder-priority';
 import { notify } from '@/server/notifications/service';
+import { extractMentions } from '@/lib/reminder-mentions';
+import { canOtherStaffAccessClientTx } from '@/server/auth/rbac';
 
 export interface CreateReminderInput {
   tenantId: string;
@@ -79,6 +81,22 @@ export async function createReminderTx(
     an: wirksam,
   });
   return reminder;
+}
+
+/**
+ * Filtert Empfänger von AKTIVITÄTS-Meldungen (Chat, Uploads, Nachfassen) nach
+ * ihrem persönlichen Modus: MENTIONS_ONLY heisst, vom laufenden Austausch nur
+ * noch gezielte @-Ansprachen zu bekommen. Zuweisungen, Fälligkeiten und
+ * Erwähnungen laufen NICHT über diesen Filter — die sind Arbeitsauftrag bzw.
+ * direkte Ansprache, kein Rauschen.
+ */
+async function filterByNotifyMode(tx: TxClient, staffIds: string[]): Promise<string[]> {
+  if (staffIds.length === 0) return [];
+  const rows = await tx.staffUser.findMany({
+    where: { id: { in: staffIds }, reminderNotifyMode: 'ALL' },
+    select: { id: true },
+  });
+  return rows.map((r) => r.id);
 }
 
 /** Anzeigename einer Person — Fallback, falls das Konto inzwischen weg ist. */
@@ -200,9 +218,12 @@ export async function cloneReminderTx(
   // ebensowenig die ausloesende Person selbst.
   if (opts.alsNachfrage) {
     const schonInformiert = new Set([...zustaendige, actor.staffId]);
-    const beteiligte = [
-      ...new Set([quelle.createdByStaff, ...quelle.assignees.map((a) => a.staffId)]),
-    ].filter((id) => !schonInformiert.has(id));
+    const beteiligte = await filterByNotifyMode(
+      tx,
+      [...new Set([quelle.createdByStaff, ...quelle.assignees.map((a) => a.staffId)])].filter(
+        (id) => !schonInformiert.has(id),
+      ),
+    );
     if (beteiligte.length > 0) {
       const vonName = await staffName(tx, actor.staffId);
       for (const staffId of beteiligte) {
@@ -260,36 +281,67 @@ export async function addReminderNoteTx(
   const rem = await tx.clientReminder.findUnique({
     where: { id: input.reminderId },
     select: {
+      clientId: true,
       subject: true,
       createdByStaff: true,
       assignees: { select: { staffId: true } },
     },
   });
   if (rem) {
-    const beteiligte = [
-      ...new Set([rem.createdByStaff, ...rem.assignees.map((a) => a.staffId)]),
-    ].filter((id) => id !== input.staffId);
-    if (beteiligte.length > 0) {
-      const vonName = await staffName(tx, input.staffId);
-      const auszug = body.length > 140 ? body.slice(0, 140) + '…' : body;
-      for (const staffId of beteiligte) {
-        await notify(tx, {
-          tenantId: input.tenantId,
-          staffId,
-          kind: 'CLIENT_REMINDER_NOTE',
-          title: `Rückfrage zu: ${rem.subject}`,
-          body: `${vonName}: ${auszug}`,
-          href: `/staff/reminders/${input.reminderId}`,
-          resourceType: 'client_reminder_note',
-          // Die NOTE-ID, nicht die Wiedervorlage: der Dedupe-Upsert kollabiert
-          // gleiche (kind, resource, staffId) in EINE ungelesene Meldung. Mit
-          // der Wiedervorlage als resource war nur die erste Nachricht
-          // hoerbar — jede weitere aktualisierte still die bestehende, der
-          // Zaehler stieg nicht, und die Glocke (und damit auch die
-          // Live-Aktualisierung) blieb stumm.
-          resourceId: note.id,
-        });
+    const vonName = await staffName(tx, input.staffId);
+    const auszug = body.length > 140 ? body.slice(0, 140) + '…' : body;
+    const basis = {
+      tenantId: input.tenantId,
+      href: `/staff/reminders/${input.reminderId}`,
+      resourceType: 'client_reminder_note',
+      // Die NOTE-ID, nicht die Wiedervorlage: der Dedupe-Upsert kollabiert
+      // gleiche (kind, resource, staffId) in EINE ungelesene Meldung. Mit der
+      // Wiedervorlage als resource war nur die erste Nachricht hoerbar.
+      resourceId: note.id,
+    };
+
+    // @-Erwaehnungen: gezielte Ansprache — geht auch an Nicht-Beteiligte,
+    // sofern die den Vorgang ueberhaupt sehen duerfen (Mandanten-Policy bzw.
+    // Beteiligung bei internen Aufgaben). Erwaehnungen umgehen den
+    // persoenlichen Modus-Filter: wer @-genannt wird, ist gemeint.
+    const beteiligtenKreis = new Set([rem.createdByStaff, ...rem.assignees.map((a) => a.staffId)]);
+    const alleAktiven = await tx.staffUser.findMany({
+      where: { tenantId: input.tenantId, active: true },
+      select: { id: true, fullName: true },
+    });
+    const erwaehnt = new Set(
+      extractMentions(body, alleAktiven).filter((id) => id !== input.staffId),
+    );
+    for (const staffId of erwaehnt) {
+      if (!beteiligtenKreis.has(staffId)) {
+        // Zugriff pruefen: interne Aufgabe → nur Beteiligte; Mandantenaufgabe
+        // → Mandanten-Policy. Ohne Zugriff keine Meldung (sie fuehrte auf eine
+        // Seite, die die Person nicht oeffnen darf).
+        const darf = rem.clientId
+          ? await canOtherStaffAccessClientTx(tx, input.tenantId, staffId, rem.clientId)
+          : false;
+        if (!darf) continue;
       }
+      await notify(tx, {
+        ...basis,
+        staffId,
+        kind: 'CLIENT_REMINDER_MENTION',
+        title: `Du wurdest erwähnt: ${rem.subject}`,
+        body: `${vonName}: ${auszug}`,
+      });
+    }
+
+    // Beteiligte (ohne Autor, ohne bereits Erwaehnte) — gefiltert nach ihrem
+    // persoenlichen Benachrichtigungs-Modus.
+    const uebrige = [...beteiligtenKreis].filter((id) => id !== input.staffId && !erwaehnt.has(id));
+    for (const staffId of await filterByNotifyMode(tx, uebrige)) {
+      await notify(tx, {
+        ...basis,
+        staffId,
+        kind: 'CLIENT_REMINDER_NOTE',
+        title: `Rückfrage zu: ${rem.subject}`,
+        body: `${vonName}: ${auszug}`,
+      });
     }
   }
   return note;
@@ -384,10 +436,11 @@ export async function notifyReminderAttachmentTx(
   const beteiligte = [
     ...new Set([rem.createdByStaff, ...rem.assignees.map((a) => a.staffId)]),
   ].filter((id) => id !== input.uploadedBy);
-  if (beteiligte.length === 0) return;
+  const empfaenger = await filterByNotifyMode(tx, beteiligte);
+  if (empfaenger.length === 0) return;
 
   const vonName = await staffName(tx, input.uploadedBy);
-  for (const staffId of beteiligte) {
+  for (const staffId of empfaenger) {
     await notify(tx, {
       tenantId: input.tenantId,
       staffId,

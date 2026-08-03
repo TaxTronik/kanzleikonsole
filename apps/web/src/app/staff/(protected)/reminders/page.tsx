@@ -19,6 +19,7 @@ import { accessibleClientsWhereFor } from '@/server/auth/rbac';
 import { loadReminderOverview, type ReminderScope } from '@/server/reminders/queries';
 import { RemindersOverview } from './reminders-overview';
 import { NewReminderForm } from './new-reminder-form';
+import { NotifyModeToggle } from './notify-mode-toggle';
 
 interface Search {
   scope?: string;
@@ -41,7 +42,7 @@ export default async function RemindersPage({ searchParams }: { searchParams: Pr
 
   // Auswahllisten fuers Anlegen: nur zugaengliche Mandate, nur aktive
   // Mitarbeitende. Die Action prueft beides erneut — das hier ist Komfort.
-  const { clients, staffOptions } = await withTenantContext(ctx, async (tx) => ({
+  const { clients, staffOptions, notifyMode } = await withTenantContext(ctx, async (tx) => ({
     clients: await tx.client.findMany({
       where: await accessibleClientsWhereFor(tx, session),
       orderBy: { name: 'asc' },
@@ -53,6 +54,13 @@ export default async function RemindersPage({ searchParams }: { searchParams: Pr
       orderBy: { fullName: 'asc' },
       select: { id: true, fullName: true },
     }),
+    notifyMode:
+      (
+        await tx.staffUser.findUnique({
+          where: { id: staffId },
+          select: { reminderNotifyMode: true },
+        })
+      )?.reminderNotifyMode ?? ('ALL' as const),
   }));
 
   return (
@@ -67,8 +75,9 @@ export default async function RemindersPage({ searchParams }: { searchParams: Pr
         </p>
       </div>
 
-      <div className="mb-4">
+      <div className="mb-4 flex items-start justify-between gap-3 flex-wrap">
         <NewReminderForm clients={clients} staffOptions={staffOptions} />
+        <NotifyModeToggle initial={notifyMode} />
       </div>
 
       <div className="flex items-center gap-2 mb-4">

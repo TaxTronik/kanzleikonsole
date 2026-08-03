@@ -252,6 +252,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'client_reminder.clone': 'Wiedervorlage geklont',
   'client_reminder.followup': 'Nachfrage zur Wiedervorlage angelegt',
   'client_reminder.assignees': 'Zuständige der Wiedervorlage geändert',
+  'staff.reminder_notify_mode': 'Benachrichtigungs-Modus für Wiedervorlagen geändert',
   'client_reminder.priority': 'Priorität der Wiedervorlage geändert',
   'client_reminder.delete': 'Wiedervorlage gelöscht',
   'pending_binder.create': 'Pendelordner angelegt',

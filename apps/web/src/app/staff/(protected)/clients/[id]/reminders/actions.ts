@@ -538,3 +538,36 @@ export async function deleteReminderAction(input: { id: string }): Promise<Actio
   }
   return r;
 }
+
+/**
+ * Persönlicher Benachrichtigungs-Modus für Wiedervorlagen-Aktivität.
+ *
+ * MENTIONS_ONLY: vom laufenden Austausch (Chat, Uploads, Nachfassen) erreichen
+ * einen nur noch gezielte @-Ansprachen. Zuweisungen und Fälligkeiten kommen
+ * IMMER — die sind Arbeitsauftrag, kein Rauschen.
+ */
+export async function setReminderNotifyModeAction(input: {
+  mode: 'ALL' | 'MENTIONS_ONLY';
+}): Promise<ActionResult> {
+  const parsed = z.object({ mode: z.enum(['ALL', 'MENTIONS_ONLY']) }).safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+
+  return withStaff(
+    async (tx, { tenantId, staffId }) => {
+      await tx.staffUser.update({
+        where: { id: staffId },
+        data: { reminderNotifyMode: parsed.data.mode },
+      });
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'staff.reminder_notify_mode',
+        resourceType: 'staff_user',
+        resourceId: staffId,
+        after: { reminderNotifyMode: parsed.data.mode },
+      });
+    },
+    { revalidate: '/staff/reminders' },
+  );
+}
