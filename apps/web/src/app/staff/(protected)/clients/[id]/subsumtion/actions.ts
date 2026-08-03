@@ -55,6 +55,12 @@ import {
   type PromptTemplateDTO,
 } from '@/server/risk';
 import { enqueueRiskAnalyseLlm, getRiskAnalyseJobState } from '@/server/jobs/risk-analyse-queue';
+import {
+  loadSubsumtionRights,
+  decideSubsumtionAction,
+  type SubsumtionRights,
+  type SubsumtionActionKind,
+} from '@/server/risk/rights';
 import { jsonDocToText } from './doc-text';
 
 type OkActionResult<T = unknown> = ({ ok: true } & T) | ActionErrorResult;
@@ -149,6 +155,106 @@ async function guardResult(resultId: string): Promise<GuardResult & { analysisId
   return { ctx, staffId, clientId: analysis.clientId, analysisId: analysis.id };
 }
 
+// ---------------------------------------------------------------------------
+// Schreib- und Recherche-Guards
+//
+// Die Guards oben klaeren nur „darf den Mandanten sehen". Wer hereinkam, durfte
+// bislang ALLES: Markierungen anlegen, bewerten, loeschen, Kataloge kuratieren,
+// den ganzen Fall an die KI schicken. Fuer eine Person, der lediglich ein
+// Begriff zugewiesen wurde, ist das viel zu weit.
+//
+// Durchsetzung ausschliesslich hier: Server Actions sind direkte POSTs und
+// laufen an jeder UI-Ausblendung vorbei.
+// ---------------------------------------------------------------------------
+
+async function rightsFor(
+  ctx: TenantContext,
+  clientId: string,
+  analysisId: string | null,
+): Promise<SubsumtionRights> {
+  const session = await requireStaffSession();
+  return withTenantContext(ctx, (tx) =>
+    loadSubsumtionRights(tx, session, { clientId, analysisId }),
+  );
+}
+
+async function assertMay(
+  ctx: TenantContext,
+  clientId: string,
+  analysisId: string | null,
+  kind: SubsumtionActionKind,
+  markingId?: string | null,
+): Promise<SubsumtionRights> {
+  const rights = await rightsFor(ctx, clientId, analysisId);
+  if (!decideSubsumtionAction(rights, kind, markingId)) {
+    throw new ForbiddenError(
+      kind === 'recherche'
+        ? 'Recherche nur für die dir zugewiesene Markierung möglich.'
+        : 'Nur Admin/Partner oder zuständige Berufsträger dürfen diese Subsumtion bearbeiten.',
+    );
+  }
+  return rights;
+}
+
+/** Wie `guard`, aber verlangt Schreibrecht am Mandanten. */
+async function guardWrite(clientId: string): Promise<{ ctx: TenantContext; staffId: string }> {
+  const base = await guard(clientId);
+  await assertMay(base.ctx, clientId, null, 'schreiben');
+  return base;
+}
+
+/** Wie `guardAnalysis`, aber verlangt Schreibrecht. */
+async function guardAnalysisWrite(analysisId: string): Promise<GuardResult> {
+  const base = await guardAnalysis(analysisId);
+  await assertMay(base.ctx, base.clientId, analysisId, 'schreiben');
+  return base;
+}
+
+/** Wie `guardMarking`, aber verlangt Schreibrecht. */
+async function guardMarkingWrite(markingId: string): Promise<GuardResult & { analysisId: string }> {
+  const base = await guardMarking(markingId);
+  await assertMay(base.ctx, base.clientId, base.analysisId, 'schreiben');
+  return base;
+}
+
+/** Wie `guardResult`, aber verlangt Schreibrecht. */
+async function guardResultWrite(
+  resultId: string,
+): Promise<GuardResult & { analysisId: string | null }> {
+  const base = await guardResult(resultId);
+  await assertMay(base.ctx, base.clientId, base.analysisId, 'schreiben');
+  return base;
+}
+
+/**
+ * Recherche-Auftrag (Vorschau wie Versand).
+ *
+ * Volle Stufe darf alles — auch den ganzen Sachverhalt an die KI geben. Wer
+ * lediglich eine Markierung zugewiesen bekam, darf ausschliesslich zu DIESER
+ * Markierung recherchieren und NICHT mit `sachverhalt: 'full'`: damit ginge der
+ * komplette Fall inklusive aller fremden Markierungen nach draussen — genau die
+ * Vollmacht, die hier eingeschraenkt wird.
+ */
+async function guardResearch(input: {
+  analysisId: string;
+  markingId?: string | null;
+  sachverhalt: 'custom' | 'excerpt' | 'full';
+}): Promise<GuardResult> {
+  const base = await guardAnalysis(input.analysisId);
+  const rights = await rightsFor(base.ctx, base.clientId, input.analysisId);
+  if (rights.canWrite) return base;
+
+  if (!decideSubsumtionAction(rights, 'recherche', input.markingId)) {
+    throw new ForbiddenError('Recherche nur für die dir zugewiesene Markierung möglich.');
+  }
+  if (input.sachverhalt === 'full') {
+    throw new ForbiddenError(
+      'Der gesamte Sachverhalt darf nur von zuständigen Berufsträgern an die KI gegeben werden.',
+    );
+  }
+  return base;
+}
+
 function requireEngine(): void {
   if (!isRiskLayerConfigured()) {
     throw new Error('Die Risk-Engine ist nicht konfiguriert — Analyse derzeit nicht möglich.');
@@ -169,7 +275,7 @@ export async function analyzeAction(
 ): Promise<OkActionResult<{ analysisId: string; markingCount: number }>> {
   try {
     const parsed = AnalyzeSchema.parse(input);
-    const { ctx, staffId } = await guard(parsed.clientId);
+    const { ctx, staffId } = await guardWrite(parsed.clientId);
     requireEngine();
     const res = await runDeterministicAnalysis(ctx, {
       text: parsed.text,
@@ -197,7 +303,7 @@ export async function updateAnalysisAction(
 ): Promise<OkActionResult<{ title: string | null }>> {
   try {
     const parsed = UpdateAnalysisSchema.parse(input);
-    const { ctx, clientId } = await guardAnalysis(parsed.analysisId);
+    const { ctx, clientId } = await guardAnalysisWrite(parsed.analysisId);
     const title = parsed.title?.trim() || null;
     await withTenantContext(ctx, (tx) =>
       tx.riskAnalysis.update({ where: { id: parsed.analysisId }, data: { title } }),
@@ -225,7 +331,7 @@ export async function reformatAnalysisAction(
 ): Promise<OkActionResult> {
   try {
     const parsed = ReformatSchema.parse(input);
-    const { ctx, staffId, clientId } = await guardAnalysis(parsed.analysisId);
+    const { ctx, staffId, clientId } = await guardAnalysisWrite(parsed.analysisId);
     // Plaintext über DIESELBE Serialisierung wie beim Anlegen/Review berechnen,
     // damit der Vergleich gegen den gespeicherten sourceText deckungsgleich ist.
     const newText = jsonDocToText(parsed.doc);
@@ -256,7 +362,7 @@ export async function archiveAnalysisAction(input: {
 }): Promise<OkActionResult<{ archiveKey: string }>> {
   try {
     // guardAnalysis wirft, wenn bereits archiviert → kein Re-Archivieren.
-    const { ctx, clientId } = await guardAnalysis(input.analysisId);
+    const { ctx, clientId } = await guardAnalysisWrite(input.analysisId);
     const res = await archiveAnalysis(ctx, input.analysisId);
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${input.analysisId}`);
     revalidatePath(`/staff/clients/${clientId}/subsumtion`);
@@ -340,7 +446,7 @@ export async function reanalyzeAction(input: {
   analysisId: string;
 }): Promise<OkActionResult<{ added: number; total: number }>> {
   try {
-    const { ctx, clientId } = await guardAnalysis(input.analysisId);
+    const { ctx, clientId } = await guardAnalysisWrite(input.analysisId);
     requireEngine();
     const res = await reanalyzeAnalysis(ctx, input.analysisId);
     // KI-Phase ebenfalls anstoßen (async). sourceText aus der gespeicherten
@@ -367,7 +473,7 @@ export async function requestLlmAction(input: {
   analysisId: string;
 }): Promise<OkActionResult> {
   try {
-    const { ctx } = await guardAnalysis(input.analysisId);
+    const { ctx } = await guardAnalysisWrite(input.analysisId);
     requireEngine();
     // sourceText NICHT vom Client übernehmen — aus der gespeicherten Analyse
     // laden (Offsets der LLM-Markierungen müssen zum gespeicherten Text passen;
@@ -414,7 +520,7 @@ export async function addManualMarkingAction(
   try {
     const parsed = ManualMarkingSchema.parse(input);
     if (parsed.end <= parsed.start) return { ok: false, error: 'Ungültige Markierung.' };
-    const { ctx, clientId } = await guardAnalysis(parsed.analysisId);
+    const { ctx, clientId } = await guardAnalysisWrite(parsed.analysisId);
     const res = await addManualMarking(ctx, parsed);
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${parsed.analysisId}`);
     return { ok: true, markingId: res.markingId };
@@ -456,7 +562,7 @@ export async function updateMarkingAction(
     // clientId/analysisId aus dem Payload nur Routing — Autorisierung + echte IDs
     // kommen aus guardMarking; sie dürfen NICHT als Markierungsfelder durchsickern.
     const { markingId, clientId: _c, analysisId: _a, ...fields } = UpdateMarkingSchema.parse(input);
-    const { ctx, clientId, analysisId } = await guardMarking(markingId);
+    const { ctx, clientId, analysisId } = await guardMarkingWrite(markingId);
     await updateMarking(ctx, markingId, fields as { status?: RiskStatus });
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId}`);
     return { ok: true };
@@ -471,7 +577,7 @@ export async function deleteMarkingAction(input: {
   markingId: string;
 }): Promise<OkActionResult> {
   try {
-    const { ctx, clientId, analysisId } = await guardMarking(input.markingId);
+    const { ctx, clientId, analysisId } = await guardMarkingWrite(input.markingId);
     await deleteMarking(ctx, input.markingId);
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId}`);
     return { ok: true };
@@ -494,7 +600,7 @@ export async function delegateAction(
 ): Promise<OkActionResult<{ reminderId: string }>> {
   try {
     const parsed = DelegateSchema.parse(input);
-    const { ctx, staffId, clientId, analysisId } = await guardMarking(parsed.markingId);
+    const { ctx, staffId, clientId, analysisId } = await guardMarkingWrite(parsed.markingId);
     const res = await delegateMarking(ctx, {
       markingId: parsed.markingId,
       createdByStaffId: staffId,
@@ -543,7 +649,7 @@ export async function previewResearchAction(
 ): Promise<OkActionResult<ResearchPreview>> {
   try {
     const parsed = ResearchSchema.parse(input);
-    const { ctx } = await guardAnalysis(parsed.analysisId);
+    const { ctx } = await guardResearch(parsed);
     const preview = await previewResearch(ctx, parsed);
     return { ok: true, ...preview };
   } catch (e) {
@@ -578,7 +684,7 @@ export async function createPromptTemplateAction(
 ): Promise<OkActionResult<{ template: PromptTemplateDTO }>> {
   try {
     const parsed = CreatePromptTemplateSchema.parse(input);
-    const { ctx } = await guard(parsed.clientId);
+    const { ctx } = await guardWrite(parsed.clientId);
     const template = await createPromptTemplate(ctx, {
       title: parsed.title.trim(),
       body: parsed.body.trim(),
@@ -595,7 +701,7 @@ export async function deletePromptTemplateAction(input: {
   id: string;
 }): Promise<OkActionResult> {
   try {
-    const { ctx } = await guard(input.clientId);
+    const { ctx } = await guardWrite(input.clientId);
     await deletePromptTemplate(ctx, input.id);
     return { ok: true };
   } catch (e) {
@@ -614,7 +720,7 @@ export async function sendResearchAction(
 ): Promise<OkActionResult<{ requestId: string; eventId: string; deliveryStatus: 'PENDING' }>> {
   try {
     const parsed = SendResearchSchema.parse(input);
-    const { ctx, clientId } = await guardAnalysis(parsed.analysisId);
+    const { ctx, clientId } = await guardResearch(parsed);
     const res = await sendResearchToN8n(ctx, parsed);
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${parsed.analysisId}`);
     if (res.delivery.status !== 'PENDING' || !res.delivery.eventId) {
@@ -645,6 +751,9 @@ export async function assignResultAction(input: {
 }): Promise<OkActionResult> {
   try {
     const { ctx, clientId, analysisId } = await guardResult(input.resultId);
+    // Ergebnis der eigenen zugewiesenen Markierung zuordnen darf auch die
+    // recherchierende Person; fremde Markierungen nur die volle Stufe.
+    await assertMay(ctx, clientId, analysisId, 'recherche', input.markingId);
     // Ziel-Markierung muss zur SELBEN Analyse gehören — sonst ließe sich ein
     // Ergebnis quer auf eine fremde Markierung verlinken.
     const target = await withTenantContext(ctx, (tx) =>
@@ -669,7 +778,7 @@ export async function archiveResultAction(input: {
   archived: boolean;
 }): Promise<OkActionResult> {
   try {
-    const { ctx, clientId, analysisId } = await guardResult(input.resultId);
+    const { ctx, clientId, analysisId } = await guardResultWrite(input.resultId);
     await setResearchResultArchived(ctx, input.resultId, input.archived);
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId ?? ''}`);
     return { ok: true };
@@ -680,7 +789,7 @@ export async function archiveResultAction(input: {
 
 export async function deleteResultAction(input: { resultId: string }): Promise<OkActionResult> {
   try {
-    const { ctx, clientId, analysisId } = await guardResult(input.resultId);
+    const { ctx, clientId, analysisId } = await guardResultWrite(input.resultId);
     await deleteResearchResult(ctx, input.resultId);
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId ?? ''}`);
     return { ok: true };
@@ -698,7 +807,7 @@ export async function saveResultToShelfAction(input: {
   resultId: string;
 }): Promise<OkActionResult<{ documentId: string | null; alreadySaved: boolean }>> {
   try {
-    const { ctx, staffId, clientId, analysisId } = await guardResult(input.resultId);
+    const { ctx, staffId, clientId, analysisId } = await guardResultWrite(input.resultId);
     const saved = await saveResearchResultToShelf(ctx, {
       resultId: input.resultId,
       clientId,
@@ -796,7 +905,7 @@ export async function addBeraterNormAction(
 ): Promise<OkActionResult> {
   try {
     const parsed = AddNormSchema.parse(input);
-    const { ctx, clientId, analysisId } = await guardMarking(parsed.markingId);
+    const { ctx, clientId, analysisId } = await guardMarkingWrite(parsed.markingId);
     await addBeraterNorm(ctx, parsed.markingId, {
       zitat: parsed.zitat,
       id: parsed.normId ?? null,
@@ -822,7 +931,7 @@ export async function setNormVerworfenAction(
 ): Promise<OkActionResult> {
   try {
     const parsed = VerwerfNormSchema.parse(input);
-    const { ctx, clientId, analysisId } = await guardMarking(parsed.markingId);
+    const { ctx, clientId, analysisId } = await guardMarkingWrite(parsed.markingId);
     await setNormVerworfen(
       ctx,
       parsed.markingId,
@@ -848,7 +957,7 @@ export async function removeBeraterNormAction(
 ): Promise<OkActionResult> {
   try {
     const parsed = RemoveNormSchema.parse(input);
-    const { ctx, clientId, analysisId } = await guardMarking(parsed.markingId);
+    const { ctx, clientId, analysisId } = await guardMarkingWrite(parsed.markingId);
     await removeBeraterNorm(ctx, parsed.markingId, { index: parsed.index, zitat: parsed.zitat });
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId}`);
     return { ok: true };
@@ -872,7 +981,7 @@ export async function kuratiereKatalogNormAction(
 ): Promise<OkActionResult> {
   try {
     const parsed = KuratiereKatalogNormSchema.parse(input);
-    const { ctx, staffId } = await guardMarking(parsed.markingId);
+    const { ctx, staffId } = await guardMarkingWrite(parsed.markingId);
     requireEngine();
     await kuratiereKatalogNorm(ctx, {
       markingId: parsed.markingId,
@@ -928,7 +1037,7 @@ export async function reviewKatalogBegriffAction(
 ): Promise<OkActionResult<{ alterStatus: string; neuerStatus: string }>> {
   try {
     const parsed = ReviewKatalogBegriffSchema.parse(input);
-    const { ctx } = await guard(parsed.clientId);
+    const { ctx } = await guardWrite(parsed.clientId);
     requireEngine();
     const res = await setKatalogReviewStatus(ctx, {
       begriffId: parsed.katalogId,
@@ -955,7 +1064,7 @@ export async function pushDefinitionAction(
 ): Promise<OkActionResult<{ begriffId: string }>> {
   try {
     const parsed = PushDefinitionSchema.parse(input);
-    const { ctx, clientId, analysisId } = await guardMarking(parsed.markingId);
+    const { ctx, clientId, analysisId } = await guardMarkingWrite(parsed.markingId);
     requireEngine();
     const res = await pushDefinitionToCatalog(ctx, parsed);
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId}`);
@@ -974,7 +1083,7 @@ export async function importClientDocAction(
 ): Promise<OkActionResult<{ text: string; suggestedTitle: string | null }>> {
   try {
     const parsed = ImportDocSchema.parse(input);
-    const { ctx, staffId } = await guard(parsed.clientId);
+    const { ctx, staffId } = await guardWrite(parsed.clientId);
     const h = await headers();
     const ip = getClientIp(h);
     const userAgent = h.get('user-agent');
@@ -1024,7 +1133,7 @@ export async function importDocTextAction(
 ): Promise<OkActionResult<{ text: string; suggestedTitle: string | null }>> {
   try {
     const clientId = String(formData.get('clientId') ?? '');
-    await guard(clientId);
+    await guardWrite(clientId);
     const file = formData.get('file');
     if (!(file instanceof File)) return { ok: false, error: 'Keine Datei übergeben.' };
     const bytes = Buffer.from(await file.arrayBuffer());

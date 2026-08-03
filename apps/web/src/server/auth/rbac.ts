@@ -293,6 +293,30 @@ export async function requireSubsumtionAccess(clientId: string): Promise<StaffSe
   return requireClientAccess(clientId);
 }
 
+/**
+ * Darf dieser Mitarbeiter am Mandanten SCHREIBEN — im Unterschied zum blossen
+ * Zugang?
+ *
+ * `canAccessClientTx` beantwortet nur „darf hinsehen" und spart die
+ * Responsibility-Query im OPEN-Normalfall bewusst ein. Fuer Schreibrechte ist
+ * genau diese Zuordnung aber die Bedingung, also wird sie hier immer gefragt.
+ * Dieselbe Regel wie die Nav-Pill auf der Mandantenseite (`canSubsumtion`).
+ */
+export async function canWriteClientTx(
+  tx: TxClient,
+  session: StaffSession,
+  clientId: string,
+): Promise<boolean> {
+  if (isStaffAdmin(session)) return true;
+  const { staffId } = session.user;
+  return (
+    (await tx.clientResponsibility.findFirst({
+      where: { clientId, staffId, role: { in: ['BERUFSTRAEGER', 'HAUPTBEARBEITER'] } },
+      select: { id: true },
+    })) !== null
+  );
+}
+
 export interface ActionErrorResult {
   ok: false;
   error: string;

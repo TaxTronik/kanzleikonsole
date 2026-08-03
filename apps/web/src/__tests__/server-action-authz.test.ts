@@ -125,7 +125,22 @@ describe('Server-Actions sind autorisiert (Struktur-Guardrail)', () => {
 
     // Auth-tragende Helfer derselben Datei (z. B. `guard`, `guardAnalysis`): ihr
     // Body enthält selbst ein Primitiv → ein Aufruf gilt als Autorisierung.
-    const authHelpers = fns.filter((f) => PRIMITIVE.test(f.body)).map((f) => f.name);
+    //
+    // Transitiv aufgelöst: Ein Helfer, der einen auth-tragenden Helfer aufruft,
+    // trägt die Autorisierung ebenfalls (z. B. `guardAnalysisWrite` → ruft
+    // `guardAnalysis` → enthält `requireSubsumtionAccess`). Ohne diese Auflösung
+    // erzwingt der Guard flache Helfer und bestraft genau die Schichtung, die
+    // Schreib- von Leserechten trennt.
+    const authHelpers: string[] = fns.filter((f) => PRIMITIVE.test(f.body)).map((f) => f.name);
+    for (let davor = -1; davor !== authHelpers.length; ) {
+      davor = authHelpers.length;
+      for (const f of fns) {
+        if (authHelpers.includes(f.name)) continue;
+        if (authHelpers.some((h) => new RegExp(`\\b${h}\\b`).test(f.body))) {
+          authHelpers.push(f.name);
+        }
+      }
+    }
     const authorized = (fn: Fn) =>
       PRIMITIVE.test(fn.body) ||
       delegatesToKnownAction(fn.body, fn.name) ||
