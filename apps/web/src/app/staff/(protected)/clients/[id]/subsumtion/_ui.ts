@@ -203,3 +203,6 @@ export function herkunftBadge(h: Herkunft): string {
   };
   return map[h] ?? 'badge-gray';
 }
+
+/** Einheitliche Ergebnis-Rueckmeldung der Panels (Fehler anzeigen / Erfolgstext). */
+export type Flash = (r: { ok: boolean; error?: string }, ok?: string) => void;

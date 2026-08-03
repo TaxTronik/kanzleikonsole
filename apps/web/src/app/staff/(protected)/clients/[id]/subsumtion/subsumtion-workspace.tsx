@@ -48,7 +48,8 @@ import {
   type SubsumtionDocumentHandle,
   type ManualSelection,
 } from './subsumtion-document';
-import { MarkingPanel, ResearchComposer } from './marking-panel';
+import { MarkingPanel } from './marking-panel';
+import { ResearchComposer } from './research-composer';
 import { NewMarkingPanel } from './new-marking-panel';
 import { ExportPanel } from './export-panel';
 import { MarkingList } from './marking-list';

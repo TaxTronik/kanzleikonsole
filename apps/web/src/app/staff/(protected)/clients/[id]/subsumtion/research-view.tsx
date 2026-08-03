@@ -11,7 +11,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArchiveRestore, MessageSquarePlus, Send, Trash2, Webhook } from 'lucide-react';
-import { ResearchComposer } from './marking-panel';
+import { ResearchComposer } from './research-composer';
 import { ResearchResultDetails, ResearchResultsBlock } from './research-results-block';
 import { archiveResultAction, deleteResultAction } from './actions';
 import { ConfirmModal } from '@/components/ui/modal';
