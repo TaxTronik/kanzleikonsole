@@ -270,7 +270,13 @@ export function RemindersOverview({
             {erledigt.map((r) => (
               <li key={r.id} className="px-6 py-2.5 flex items-center gap-3">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-muted line-through truncate">{r.subject}</p>
+                  <Link
+                    href={`/staff/reminders/${r.id}`}
+                    className="block text-sm text-muted line-through truncate hover:underline"
+                    title="Details — Nachfassen und Rückfragen, ohne die Aufgabe wieder zu öffnen"
+                  >
+                    {r.subject}
+                  </Link>
                   <p className="text-[11px] text-disabled">
                     {r.clientName} · erledigt {r.doneAt ? fmtDateShort(new Date(r.doneAt)) : ''}
                   </p>

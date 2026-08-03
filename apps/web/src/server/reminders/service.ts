@@ -81,6 +81,14 @@ export async function createReminderTx(
   return reminder;
 }
 
+/** Anzeigename einer Person — Fallback, falls das Konto inzwischen weg ist. */
+async function staffName(tx: TxClient, staffId: string): Promise<string> {
+  return (
+    (await tx.staffUser.findUnique({ where: { id: staffId }, select: { fullName: true } }))
+      ?.fullName ?? 'Ein Kollege'
+  );
+}
+
 /**
  * Benachrichtigt die Zuständigen über eine Zuweisung.
  *
@@ -107,9 +115,7 @@ export async function notifyAssigneesTx(
   const empfaenger = input.an.filter((id) => id !== input.von);
   if (empfaenger.length === 0) return;
 
-  const vonName =
-    (await tx.staffUser.findUnique({ where: { id: input.von }, select: { fullName: true } }))
-      ?.fullName ?? 'Ein Kollege';
+  const vonName = await staffName(tx, input.von);
   const wo = input.clientId
     ? ((await tx.client.findUnique({ where: { id: input.clientId }, select: { name: true } }))
         ?.name ?? 'Mandant')
@@ -165,6 +171,7 @@ export async function cloneReminderTx(
       subject: true,
       notes: true,
       priority: true,
+      createdByStaff: true,
       assignees: { select: { staffId: true }, orderBy: { createdAt: 'asc' } },
     },
   });
@@ -173,7 +180,8 @@ export async function cloneReminderTx(
   const subject =
     opts.subject?.trim() || (opts.alsNachfrage ? nachfrageTitel(quelle.subject) : quelle.subject);
 
-  return createReminderTx(tx, {
+  const zustaendige = opts.assigneeStaffIds ?? quelle.assignees.map((a) => a.staffId);
+  const neu = await createReminderTx(tx, {
     tenantId: actor.tenantId,
     createdByStaff: actor.staffId,
     clientId: quelle.clientId,
@@ -181,9 +189,37 @@ export async function cloneReminderTx(
     subject,
     notes: opts.notes !== undefined ? opts.notes : quelle.notes,
     priority: opts.priority ?? quelle.priority,
-    assigneeStaffIds: opts.assigneeStaffIds ?? quelle.assignees.map((a) => a.staffId),
+    assigneeStaffIds: zustaendige,
     predecessorId: opts.alsNachfrage ? quelleId : null,
   });
+
+  // Nachfassen ist ein Dialog, keine Einbahnstrasse: auch die Beteiligten der
+  // URSPRUNGSSTUFE (delegierende Person + bisherige Zustaendige) erfahren von
+  // der Folgestufe. Die Zustaendigen der NEUEN Stufe wurden soeben schon per
+  // CLIENT_REMINDER_ASSIGNED informiert — sie bekommen keine zweite Meldung,
+  // ebensowenig die ausloesende Person selbst.
+  if (opts.alsNachfrage) {
+    const schonInformiert = new Set([...zustaendige, actor.staffId]);
+    const beteiligte = [
+      ...new Set([quelle.createdByStaff, ...quelle.assignees.map((a) => a.staffId)]),
+    ].filter((id) => !schonInformiert.has(id));
+    if (beteiligte.length > 0) {
+      const vonName = await staffName(tx, actor.staffId);
+      for (const staffId of beteiligte) {
+        await notify(tx, {
+          tenantId: actor.tenantId,
+          staffId,
+          kind: 'CLIENT_REMINDER_FOLLOWUP',
+          title: `Nachgefasst: ${quelle.subject}`,
+          body: `${vonName} hat eine Folgestufe angelegt · fällig ${opts.dueDate.toISOString().slice(0, 10)}`,
+          href: `/staff/reminders/${neu.id}`,
+          resourceType: 'client_reminder',
+          resourceId: neu.id,
+        });
+      }
+    }
+  }
+  return neu;
 }
 
 /**
@@ -198,14 +234,20 @@ export function nachfrageTitel(original: string): string {
   return `Nachfrage zu: ${original}`;
 }
 
-/** Wortmeldung an einer Wiedervorlage (kurze Rückfrage ohne neue Frist). */
+/**
+ * Wortmeldung an einer Wiedervorlage (kurze Rückfrage ohne neue Frist).
+ *
+ * Benachrichtigt alle Beteiligten (delegierende Person + Zuständige) ausser
+ * der schreibenden — sonst verhallt eine Rückfrage, bis das Gegenüber
+ * zufällig auf der Seite vorbeikommt.
+ */
 export async function addReminderNoteTx(
   tx: TxClient,
   input: { tenantId: string; reminderId: string; staffId: string; body: string },
 ): Promise<{ id: string }> {
   const body = input.body.trim();
   if (!body) throw new ActionError('Bitte einen Text eingeben.');
-  return tx.clientReminderNote.create({
+  const note = await tx.clientReminderNote.create({
     data: {
       tenantId: input.tenantId,
       reminderId: input.reminderId,
@@ -214,6 +256,37 @@ export async function addReminderNoteTx(
     },
     select: { id: true },
   });
+
+  const rem = await tx.clientReminder.findUnique({
+    where: { id: input.reminderId },
+    select: {
+      subject: true,
+      createdByStaff: true,
+      assignees: { select: { staffId: true } },
+    },
+  });
+  if (rem) {
+    const beteiligte = [
+      ...new Set([rem.createdByStaff, ...rem.assignees.map((a) => a.staffId)]),
+    ].filter((id) => id !== input.staffId);
+    if (beteiligte.length > 0) {
+      const vonName = await staffName(tx, input.staffId);
+      const auszug = body.length > 140 ? body.slice(0, 140) + '…' : body;
+      for (const staffId of beteiligte) {
+        await notify(tx, {
+          tenantId: input.tenantId,
+          staffId,
+          kind: 'CLIENT_REMINDER_NOTE',
+          title: `Rückfrage zu: ${rem.subject}`,
+          body: `${vonName}: ${auszug}`,
+          href: `/staff/reminders/${input.reminderId}`,
+          resourceType: 'client_reminder',
+          resourceId: input.reminderId,
+        });
+      }
+    }
+  }
+  return note;
 }
 
 /** Setzt die Zuständigen neu (Zuweisung ändern). */

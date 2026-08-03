@@ -59,12 +59,13 @@ function makeTx(over: Record<string, unknown> = {}) {
         subject: 'Recherche Kassenführung',
         notes: 'Auftragstext',
         priority: 'HIGH',
+        createdByStaff: ICH,
         assignees: [{ staffId: A }, { staffId: B }],
       })),
     },
     clientReminderNote: { create: vi.fn(async () => ({ id: 'note-1' })) },
     clientReminderAssignee: {
-      findMany: vi.fn(async () => []),
+      findMany: vi.fn(async (): Promise<Array<{ staffId: string }>> => []),
       deleteMany: vi.fn(async () => ({ count: 0 })),
       createMany: vi.fn(async () => ({ count: 0 })),
     },
@@ -289,5 +290,83 @@ describe('setReminderAssigneesTx', () => {
     await expect(
       setReminderAssigneesTx(tx as never, { tenantId: TENANT, reminderId: 'r1', staffIds: [] }),
     ).rejects.toBeInstanceOf(ActionError);
+  });
+});
+
+describe('Rückkanal: Wortmeldung und Nachfassen', () => {
+  it('Wortmeldung informiert alle Beteiligten ausser der schreibenden Person', async () => {
+    // Der gemeldete Fall: die Mitarbeiterin fragt nach — und die delegierende
+    // Person erfuhr nichts davon, bis sie zufaellig vorbeischaute.
+    const tx = makeTx();
+    await addReminderNoteTx(tx as never, {
+      tenantId: TENANT,
+      reminderId: 'r1',
+      staffId: A,
+      body: 'Wie ist der Stand?',
+    });
+
+    const meldungen = notifyMock.mock.calls.map(
+      (c) => c[1] as { staffId: string; kind: string; href: string },
+    );
+    // Beteiligte der Aufgabe: ICH (angelegt), A + B (zugewiesen). A schreibt.
+    expect(meldungen.map((m) => m.staffId).sort()).toEqual([B, ICH].sort());
+    expect(meldungen[0]!.kind).toBe('CLIENT_REMINDER_NOTE');
+    expect(meldungen[0]!.href).toBe('/staff/reminders/r1');
+  });
+
+  it('Nachfassen informiert die Beteiligten der Ursprungsstufe — ohne Doppelmeldung', async () => {
+    // A fasst nach und bleibt selbst zustaendig: B (bisher zustaendig) und ICH
+    // (delegierend) muessen es erfahren; A selbst nicht, und die neuen
+    // Zustaendigen bekommen bereits CLIENT_REMINDER_ASSIGNED.
+    const tx = makeTx();
+    await cloneReminderTx(
+      tx as never,
+      'quelle-1',
+      { tenantId: TENANT, staffId: A },
+      { alsNachfrage: true, dueDate: new Date('2026-10-01'), assigneeStaffIds: [A] },
+    );
+
+    const followups = notifyMock.mock.calls
+      .map((c) => c[1] as { staffId: string; kind: string })
+      .filter((m) => m.kind === 'CLIENT_REMINDER_FOLLOWUP');
+    expect(followups.map((m) => m.staffId).sort()).toEqual([B, ICH].sort());
+  });
+
+  it('Klonen (ohne Nachfrage) erzeugt keine Followup-Meldung', async () => {
+    const tx = makeTx();
+    await cloneReminderTx(
+      tx as never,
+      'quelle-1',
+      { tenantId: TENANT, staffId: ICH },
+      { alsNachfrage: false, dueDate: new Date('2026-10-01') },
+    );
+
+    const kinds = notifyMock.mock.calls.map((c) => (c[1] as { kind: string }).kind);
+    expect(kinds).not.toContain('CLIENT_REMINDER_FOLLOWUP');
+  });
+
+  it('Nachfassen auf ERLEDIGTER Stufe braucht kein Wiederöffnen', async () => {
+    // Genau der gemeldete Zwang: die Quelle darf erledigt bleiben — die
+    // Folgestufe ist eine eigene, offene Aufgabe.
+    const tx = makeTx();
+    tx.clientReminder.findUnique = vi.fn(async () => ({
+      clientId: 'client-1',
+      subject: 'Recherche Kassenführung',
+      notes: null,
+      priority: 'NORMAL',
+      createdByStaff: ICH,
+      doneAt: new Date('2026-08-01'),
+      assignees: [{ staffId: A }],
+    })) as never;
+
+    const neu = await cloneReminderTx(
+      tx as never,
+      'quelle-1',
+      { tenantId: TENANT, staffId: ICH },
+      { alsNachfrage: true, dueDate: new Date('2026-10-01') },
+    );
+    expect(neu.id).toBe('neu-1');
+    // Kein update auf der Quelle — sie bleibt erledigt.
+    expect((tx.clientReminder as { update?: unknown }).update).toBeUndefined();
   });
 });

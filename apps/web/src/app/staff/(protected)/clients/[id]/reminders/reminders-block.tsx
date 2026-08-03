@@ -296,7 +296,12 @@ export function RemindersBlock({
                 </button>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-sm text-primary">{r.subject}</p>
+                    <Link
+                      href={`/staff/reminders/${r.id}`}
+                      className="text-sm text-primary hover:underline"
+                    >
+                      {r.subject}
+                    </Link>
                     {anMich && (
                       <span className="badge-brand text-[11px] inline-flex items-center gap-1">
                         <UserCheck className="h-3 w-3" /> an mich delegiert
@@ -456,9 +461,13 @@ export function RemindersBlock({
           <ul className="divide-y divide-border-subtle">
             {done_items.map((r) => (
               <li key={r.id} className="px-6 py-2 flex items-center gap-3">
-                <span className="flex-1 min-w-0 truncate text-sm text-muted line-through">
+                <Link
+                  href={`/staff/reminders/${r.id}`}
+                  className="flex-1 min-w-0 truncate text-sm text-muted line-through hover:underline"
+                  title="Details — Nachfassen und Rückfragen, ohne die Aufgabe wieder zu öffnen"
+                >
                   {r.subject} · {fmtDateShort(new Date(r.dueDate))}
-                </span>
+                </Link>
                 <button
                   type="button"
                   onClick={() => reopen(r.id)}
