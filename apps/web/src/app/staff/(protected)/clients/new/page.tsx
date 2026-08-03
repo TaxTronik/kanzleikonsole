@@ -1,4 +1,6 @@
-﻿import { requireStaffPage } from '@/server/auth/staff-page';
+﻿import { redirect } from 'next/navigation';
+import { requireStaffPage } from '@/server/auth/staff-page';
+import { hasStaffPermission } from '@/server/auth/rbac';
 
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
@@ -12,6 +14,8 @@ export default async function NewClientPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const session = await requireStaffPage();
+  // Server Actions sind der harte Schutz — hier nur kein totes Formular zeigen.
+  if (!hasStaffPermission(session, 'CLIENT_CREATE')) redirect('/staff/clients');
   const sp = await searchParams;
   const { tenantId, staffId } = session.user;
   const staff = await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>

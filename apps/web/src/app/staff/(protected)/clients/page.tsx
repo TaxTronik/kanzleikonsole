@@ -1,4 +1,5 @@
 ﻿import { requireStaffPage } from '@/server/auth/staff-page';
+import { hasStaffPermission } from '@/server/auth/rbac';
 import { randomUUID } from 'node:crypto';
 import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
@@ -56,6 +57,7 @@ export default async function ClientsPage({
   searchParams: Promise<SearchParams>;
 }) {
   const session = await requireStaffPage();
+  const darfAnlegen = hasStaffPermission(session, 'CLIENT_CREATE');
 
   const sp = await searchParams;
   const { tenantId, staffId } = session.user;
@@ -191,14 +193,18 @@ export default async function ClientsPage({
             <FileDown className="h-4 w-4" />
             CSV
           </a>
-          <Link href="/staff/clients/new" className="btn-secondary">
-            <Plus className="h-4 w-4" />
-            Schnell anlegen
-          </Link>
-          <Link href="/staff/clients/onboarding/new" className="btn-primary">
-            <Plus className="h-4 w-4" />
-            Onboarding starten
-          </Link>
+          {darfAnlegen && (
+            <>
+              <Link href="/staff/clients/new" className="btn-secondary">
+                <Plus className="h-4 w-4" />
+                Schnell anlegen
+              </Link>
+              <Link href="/staff/clients/onboarding/new" className="btn-primary">
+                <Plus className="h-4 w-4" />
+                Onboarding starten
+              </Link>
+            </>
+          )}
         </div>
       </div>
 
@@ -277,7 +283,7 @@ export default async function ClientsPage({
               ? 'Filter anpassen oder zurücksetzen.'
               : 'Lege den ersten Mandanten an, um zu beginnen.'}
           </p>
-          {!sp.q && !sp.status && !mine && (
+          {!sp.q && !sp.status && !mine && darfAnlegen && (
             <Link href="/staff/clients/onboarding/new" className="btn-primary">
               Onboarding starten
             </Link>

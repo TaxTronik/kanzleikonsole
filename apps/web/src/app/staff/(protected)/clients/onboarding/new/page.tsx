@@ -4,7 +4,9 @@
 
 import Link from 'next/link';
 import { ArrowLeft, Wand2 } from 'lucide-react';
+import { redirect } from 'next/navigation';
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { hasStaffPermission } from '@/server/auth/rbac';
 import { readModules } from '@/server/settings/modules';
 import { withTenantContext } from '@taxtronik/db';
 import { Stepper } from '../stepper';
@@ -18,6 +20,8 @@ export default async function OnboardingStartPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const session = await requireStaffPage();
+  // Server Actions sind der harte Schutz — hier nur kein totes Formular zeigen.
+  if (!hasStaffPermission(session, 'CLIENT_CREATE')) redirect('/staff/clients');
   const sp = await searchParams;
   const { tenantId, staffId } = session.user;
 

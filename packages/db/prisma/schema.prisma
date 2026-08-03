@@ -2570,6 +2570,7 @@ enum StaffRoleName {
 //                    inkl. EXTERNAL-Upload (stellt aus und zu)
 //   ABSENCE_DECIDE — Urlaubsanträge entscheiden, Abwesenheitsmeldungen erhalten
 enum StaffPermissionName {
+  CLIENT_CREATE
   INVOICE_MANAGE
   INVOICE_SEND
   ABSENCE_DECIDE

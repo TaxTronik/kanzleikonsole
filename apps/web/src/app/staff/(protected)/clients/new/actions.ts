@@ -53,7 +53,9 @@ const createClientSchema = z
   });
 
 export async function createClientAction(formData: FormData) {
-  const g = await staffActionGuard();
+  // Mandanten anlegen ist Admin/Partner vorbehalten; einzelne Mitarbeitende
+  // koennen das Recht CLIENT_CREATE explizit erhalten (Benutzerverwaltung).
+  const g = await staffActionGuard({ requirePermission: 'CLIENT_CREATE' });
   if (!g.ok) redirect('/staff/login'); // redirect wirft (never) — bleibt außerhalb try/catch
   const { tenantId, staffId, ctx, session } = g;
   // Mandanten-Anlage berührt Stammdaten + GwG-Schranke (allow_active) — nur ADMIN/PARTNER.

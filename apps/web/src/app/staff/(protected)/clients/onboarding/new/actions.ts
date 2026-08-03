@@ -27,7 +27,9 @@ const Schema = z.object({
 });
 
 export async function createOnboardingClientAction(formData: FormData) {
-  const g = await staffActionGuard();
+  // Mandanten anlegen ist Admin/Partner vorbehalten; einzelne Mitarbeitende
+  // koennen das Recht CLIENT_CREATE explizit erhalten (Benutzerverwaltung).
+  const g = await staffActionGuard({ requirePermission: 'CLIENT_CREATE' });
   if (!g.ok) redirect('/staff/login'); // redirect wirft (never) — bleibt außerhalb try/catch
   const { tenantId, staffId, ctx, session } = g;
   if (!isStaffAdmin(session)) {

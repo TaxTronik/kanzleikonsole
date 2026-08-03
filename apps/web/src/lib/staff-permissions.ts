@@ -19,6 +19,11 @@ export interface StaffPermissionMeta {
 
 export const STAFF_PERMISSIONS = [
   {
+    key: 'CLIENT_CREATE',
+    label: 'Mandanten anlegen (Schnellanlage und Onboarding)',
+    short: 'Mand. anlegen',
+  },
+  {
     key: 'INVOICE_MANAGE',
     label: 'Rechnungen anlegen/bearbeiten (inkl. Zahlung/Storno)',
     short: 'Re. anlegen',
