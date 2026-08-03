@@ -74,6 +74,14 @@ export function RemindersBlock({
   );
   const [isMutating, startMut] = useTransition();
   const [open, setOpen] = useState(false);
+  // Nach dem Anlegen schliessen + neu laden. `revalidatePath` allein liess die
+  // Liste stehen; der explizite Refresh macht das Ergebnis sofort sichtbar.
+  useEffect(() => {
+    if (state?.ok) {
+      setOpen(false);
+      router.refresh();
+    }
+  }, [state, router]);
   const [submitFor, setSubmitFor] = useState<string | null>(null);
   const [resultBody, setResultBody] = useState('');
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -208,11 +216,13 @@ export function RemindersBlock({
           />
           <div className="flex items-center gap-2">
             <select
-              name="assigneeStaffId"
-              defaultValue={currentStaffId}
+              multiple
+              name="assigneeStaffIds"
+              defaultValue={[currentStaffId]}
+              size={Math.min(4, Math.max(2, staffOptions.length))}
               className="input text-sm flex-1"
+              title="Mehrfachauswahl mit Strg/Cmd — alle teilen sich EINE Aufgabe"
             >
-              <option value="">— niemand zugewiesen —</option>
               {staffOptions.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.fullName}

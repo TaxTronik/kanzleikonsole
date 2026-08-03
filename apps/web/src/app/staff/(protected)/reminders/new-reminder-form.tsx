@@ -1,6 +1,7 @@
 'use client';
 
-import { useActionState, useState } from 'react';
+import { useActionState, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Plus, X } from 'lucide-react';
 import { REMINDER_PRIORITIES, PRIORITY_LABEL } from '@/lib/reminder-priority';
 import { createReminderAction } from '../clients/[id]/reminders/actions';
@@ -26,6 +27,17 @@ export function NewReminderForm({
   );
   const [open, setOpen] = useState(false);
   const [staffIds, setStaffIds] = useState<string[]>([]);
+  const router = useRouter();
+
+  // Nach dem Anlegen schliessen + neu laden — sonst bliebe die Liste bis zum
+  // manuellen Reload unveraendert stehen.
+  useEffect(() => {
+    if (state?.ok) {
+      setOpen(false);
+      setStaffIds([]);
+      router.refresh();
+    }
+  }, [state, router]);
 
   if (!open) {
     return (

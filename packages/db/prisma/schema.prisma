@@ -2781,6 +2781,7 @@ enum NotificationKind {
   APPOINTMENT_DECIDED
   RISK_MARKING_ASSIGNED
   CLIENT_REMINDER_DONE
+  CLIENT_REMINDER_ASSIGNED
 
   @@map("notification_kind")
 }

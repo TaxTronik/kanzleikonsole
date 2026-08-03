@@ -227,6 +227,7 @@ export async function setReminderAssigneesAction(input: {
       tenantId,
       reminderId: parsed.data.id,
       staffIds: parsed.data.staffIds,
+      von: staffId,
     });
     await evidenceService.record(tx, {
       tenantId,

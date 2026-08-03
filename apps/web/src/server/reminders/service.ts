@@ -10,6 +10,7 @@
 import type { TxClient } from '@taxtronik/db';
 import { ActionError } from '@/server/actions/staff-action';
 import type { ReminderPriority } from '@/lib/reminder-priority';
+import { notify } from '@/server/notifications/service';
 
 export interface CreateReminderInput {
   tenantId: string;
@@ -67,7 +68,66 @@ export async function createReminderTx(
     },
     select: { id: true },
   });
+
+  await notifyAssigneesTx(tx, {
+    tenantId: input.tenantId,
+    reminderId: reminder.id,
+    clientId: input.clientId,
+    subject: input.subject,
+    dueDate: input.dueDate,
+    von: input.createdByStaff,
+    an: wirksam,
+  });
   return reminder;
+}
+
+/**
+ * Benachrichtigt die Zuständigen über eine Zuweisung.
+ *
+ * Vorher gab es NUR die tägliche Fälligkeits-Erinnerung: eine frisch
+ * delegierte Aufgabe blieb bis zum nächsten Tageslauf unbemerkt — und weil die
+ * Live-Aktualisierung der Oberfläche an der Benachrichtigungs-Glocke hängt,
+ * tat sich beim Empfänger auch in der Anzeige nichts.
+ *
+ * Selbst-Zuweisung erzeugt bewusst nichts: wer sich eine Aufgabe notiert, muss
+ * darüber nicht informiert werden.
+ */
+export async function notifyAssigneesTx(
+  tx: TxClient,
+  input: {
+    tenantId: string;
+    reminderId: string;
+    clientId: string | null;
+    subject: string;
+    dueDate: Date;
+    von: string;
+    an: string[];
+  },
+): Promise<void> {
+  const empfaenger = input.an.filter((id) => id !== input.von);
+  if (empfaenger.length === 0) return;
+
+  const vonName =
+    (await tx.staffUser.findUnique({ where: { id: input.von }, select: { fullName: true } }))
+      ?.fullName ?? 'Ein Kollege';
+  const wo = input.clientId
+    ? ((await tx.client.findUnique({ where: { id: input.clientId }, select: { name: true } }))
+        ?.name ?? 'Mandant')
+    : 'Intern';
+
+  for (const staffId of empfaenger) {
+    await notify(tx, {
+      tenantId: input.tenantId,
+      staffId,
+      kind: 'CLIENT_REMINDER_ASSIGNED',
+      title: `Neue Wiedervorlage: ${input.subject}`,
+      body: `${vonName} hat dir eine Aufgabe zugewiesen · ${wo} · fällig ${input.dueDate.toISOString().slice(0, 10)}`,
+      // Zielt auf die Detailseite — dort stehen Kette, Rückfragen und Anhänge.
+      href: `/staff/reminders/${input.reminderId}`,
+      resourceType: 'client_reminder',
+      resourceId: input.reminderId,
+    });
+  }
 }
 
 export interface CloneOptions {
@@ -159,7 +219,7 @@ export async function addReminderNoteTx(
 /** Setzt die Zuständigen neu (Zuweisung ändern). */
 export async function setReminderAssigneesTx(
   tx: TxClient,
-  input: { tenantId: string; reminderId: string; staffIds: string[] },
+  input: { tenantId: string; reminderId: string; staffIds: string[]; von?: string },
 ): Promise<void> {
   const ziel = [...new Set(input.staffIds)].filter(Boolean);
   if (ziel.length === 0) throw new ActionError('Mindestens eine zuständige Person angeben.');
@@ -174,6 +234,17 @@ export async function setReminderAssigneesTx(
     throw new ActionError('Mindestens eine zuständige Person ist unbekannt oder inaktiv.');
   }
 
+  // Wer schon zustaendig war, bekommt keine zweite Meldung — nur die neu
+  // Hinzugekommenen erfahren davon.
+  const vorher = new Set(
+    (
+      await tx.clientReminderAssignee.findMany({
+        where: { reminderId: input.reminderId },
+        select: { staffId: true },
+      })
+    ).map((a) => a.staffId),
+  );
+
   await tx.clientReminderAssignee.deleteMany({
     where: { reminderId: input.reminderId, staffId: { notIn: ziel } },
   });
@@ -181,4 +252,23 @@ export async function setReminderAssigneesTx(
     data: ziel.map((staffId) => ({ reminderId: input.reminderId, staffId })),
     skipDuplicates: true,
   });
+
+  const neu = ziel.filter((id) => !vorher.has(id));
+  if (neu.length > 0 && input.von) {
+    const rem = await tx.clientReminder.findUnique({
+      where: { id: input.reminderId },
+      select: { clientId: true, subject: true, dueDate: true },
+    });
+    if (rem) {
+      await notifyAssigneesTx(tx, {
+        tenantId: input.tenantId,
+        reminderId: input.reminderId,
+        clientId: rem.clientId,
+        subject: rem.subject,
+        dueDate: rem.dueDate,
+        von: input.von,
+        an: neu,
+      });
+    }
+  }
 }

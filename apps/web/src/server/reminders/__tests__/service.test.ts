@@ -9,6 +9,9 @@ vi.mock('@/server/actions/staff-action', () => {
   return { ActionError };
 });
 
+const notifyMock = vi.hoisted(() => vi.fn());
+vi.mock('@/server/notifications/service', () => ({ notify: notifyMock }));
+
 import { ActionError } from '@/server/actions/staff-action';
 import {
   addReminderNoteTx,
@@ -47,6 +50,7 @@ function makeTx(over: Record<string, unknown> = {}) {
       findMany: vi.fn(async ({ where }: { where: { id: { in: string[] } } }) =>
         where.id.in.map((id) => ({ id })),
       ),
+      findUnique: vi.fn(async () => ({ fullName: 'Admin Mustermann' })),
     },
     clientReminder: {
       create: vi.fn(async () => ({ id: 'neu-1' })),
@@ -60,9 +64,11 @@ function makeTx(over: Record<string, unknown> = {}) {
     },
     clientReminderNote: { create: vi.fn(async () => ({ id: 'note-1' })) },
     clientReminderAssignee: {
+      findMany: vi.fn(async () => []),
       deleteMany: vi.fn(async () => ({ count: 0 })),
       createMany: vi.fn(async () => ({ count: 0 })),
     },
+    client: { findUnique: vi.fn(async () => ({ name: 'Muster GmbH' })) },
     ...over,
   };
 }
@@ -78,6 +84,56 @@ const BASIS = {
 };
 
 beforeEach(() => vi.clearAllMocks());
+
+describe('Benachrichtigung bei Zuweisung', () => {
+  it('informiert die Zuständigen — sonst erfahren sie erst am nächsten Tag davon', async () => {
+    // Ohne diese Meldung blieb eine frisch delegierte Aufgabe bis zum
+    // taeglichen Faelligkeits-Job unbemerkt; und weil die Live-Aktualisierung
+    // an der Glocke haengt, tat sich beim Empfaenger auch in der Anzeige nichts.
+    const tx = makeTx();
+    await createReminderTx(tx as never, { ...BASIS, assigneeStaffIds: [A, B] });
+
+    const empfaenger = notifyMock.mock.calls.map((c) => (c[1] as { staffId: string }).staffId);
+    expect(empfaenger.sort()).toEqual([A, B].sort());
+    const erste = notifyMock.mock.calls[0]![1] as { kind: string; href: string };
+    expect(erste.kind).toBe('CLIENT_REMINDER_ASSIGNED');
+    expect(erste.href).toBe('/staff/reminders/neu-1');
+  });
+
+  it('schickt bei Selbst-Zuweisung nichts', async () => {
+    const tx = makeTx();
+    await createReminderTx(tx as never, { ...BASIS, assigneeStaffIds: [ICH] });
+    expect(notifyMock).not.toHaveBeenCalled();
+  });
+
+  it('lässt die anlegende Person aus, wenn sie mit auf der Liste steht', async () => {
+    const tx = makeTx();
+    await createReminderTx(tx as never, { ...BASIS, assigneeStaffIds: [ICH, A] });
+
+    const empfaenger = notifyMock.mock.calls.map((c) => (c[1] as { staffId: string }).staffId);
+    expect(empfaenger).toEqual([A]);
+  });
+
+  it('informiert beim Umverteilen nur die NEU Hinzugekommenen', async () => {
+    const tx = makeTx();
+    tx.clientReminderAssignee.findMany = vi.fn(async () => [{ staffId: A }]);
+    tx.clientReminder.findUnique = vi.fn(async () => ({
+      clientId: 'client-1',
+      subject: 'Belege',
+      dueDate: new Date('2026-09-01'),
+    })) as never;
+
+    await setReminderAssigneesTx(tx as never, {
+      tenantId: TENANT,
+      reminderId: 'r1',
+      staffIds: [A, B],
+      von: ICH,
+    });
+
+    const empfaenger = notifyMock.mock.calls.map((c) => (c[1] as { staffId: string }).staffId);
+    expect(empfaenger).toEqual([B]);
+  });
+});
 
 describe('createReminderTx', () => {
   it('legt mehrere Zuständige an — EINE Aufgabe', async () => {
