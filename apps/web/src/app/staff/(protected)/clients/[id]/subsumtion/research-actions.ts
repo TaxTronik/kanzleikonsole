@@ -2,8 +2,7 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { ActionError, ForbiddenError, toActionError } from '@/server/auth/rbac';
-import { withTenantContext } from '@taxtronik/db';
+import { ActionError, toActionError } from '@/server/auth/rbac';
 import {
   previewResearch,
   sendResearchToN8n,
@@ -18,15 +17,13 @@ import {
   type ResearchPreview,
   type PromptTemplateDTO,
 } from '@/server/risk';
-import { decideResultReview } from '@/server/risk/rights';
 import {
   guard,
-  guardResult,
-  assertMay,
   guardWrite,
   guardResultWrite,
   guardResearch,
   type OkActionResult,
+  guardResultReview,
 } from './_guards';
 // Aufgeteilt aus actions.ts (1272 Zeilen) — Guards in ./_guards.ts.
 
@@ -173,23 +170,13 @@ export async function setResultVerworfenAction(input: {
   markingId: string;
 }): Promise<OkActionResult> {
   try {
-    const { ctx, clientId, analysisId, resultMarkingId } = await guardResult(input.resultId);
-    const rights = await assertMay(ctx, clientId, analysisId, 'recherche', input.markingId);
-    // Entscheidung ans ERGEBNIS binden, nicht nur an die mitgeschickte
-    // markingId: sonst liesse sich mit der eigenen Markierung als Feigenblatt
-    // das Ergebnis einer fremden Markierung derselben Analyse verwerfen.
-    if (!decideResultReview(rights, 'verwerfen', resultMarkingId, input.markingId)) {
-      throw new ForbiddenError('Das Ergebnis gehört nicht zu deiner Markierung.');
-    }
-    const target = await withTenantContext(ctx, (tx) =>
-      tx.riskMarking.findUnique({
-        where: { id: input.markingId },
-        select: { analysisId: true },
-      }),
+    // Komplette Pruefkette (Zugriff, Recherche-Recht, Ergebnis-Bindung,
+    // Ziel-Analyse) in EINER Guard-Tx — siehe guardResultReview.
+    const { ctx, clientId, analysisId } = await guardResultReview(
+      input.resultId,
+      input.markingId,
+      'verwerfen',
     );
-    if (!target || target.analysisId !== analysisId) {
-      return { ok: false, error: 'Markierung gehört nicht zu dieser Analyse.' };
-    }
     await setResearchResultVerworfen(ctx, input.resultId);
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId ?? ''}`);
     return { ok: true };
@@ -205,26 +192,14 @@ export async function assignResultAction(input: {
   markingId: string;
 }): Promise<OkActionResult> {
   try {
-    const { ctx, clientId, analysisId, resultMarkingId } = await guardResult(input.resultId);
     // Ergebnis der eigenen zugewiesenen Markierung zuordnen darf auch die
     // recherchierende Person; fremde Markierungen nur die volle Stufe.
-    const rights = await assertMay(ctx, clientId, analysisId, 'recherche', input.markingId);
-    // …und nur das EIGENE oder ein unzugeordnetes Ergebnis: ohne diese Bindung
-    // liesse sich das Ergebnis einer fremden Markierung auf die eigene umhaengen.
-    if (!decideResultReview(rights, 'uebernehmen', resultMarkingId, input.markingId)) {
-      throw new ForbiddenError('Das Ergebnis gehört nicht zu deiner Markierung.');
-    }
-    // Ziel-Markierung muss zur SELBEN Analyse gehören — sonst ließe sich ein
-    // Ergebnis quer auf eine fremde Markierung verlinken.
-    const target = await withTenantContext(ctx, (tx) =>
-      tx.riskMarking.findUnique({
-        where: { id: input.markingId },
-        select: { analysisId: true },
-      }),
+    // Pruefkette inkl. Ergebnis-Bindung + Ziel-Analyse in EINER Guard-Tx.
+    const { ctx, clientId, analysisId } = await guardResultReview(
+      input.resultId,
+      input.markingId,
+      'uebernehmen',
     );
-    if (!target || target.analysisId !== analysisId) {
-      return { ok: false, error: 'Markierung gehört nicht zu dieser Analyse.' };
-    }
     await assignResultToMarking(ctx, input.resultId, input.markingId);
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId ?? ''}`);
     return { ok: true };

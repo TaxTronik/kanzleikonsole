@@ -3,7 +3,7 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { headers } from 'next/headers';
-import { requireSubsumtionAccess, ForbiddenError, toActionError } from '@/server/auth/rbac';
+import { toActionError } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { fetchObjectBytes } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
@@ -27,13 +27,12 @@ import { enqueueRiskAnalyseLlm, getRiskAnalyseJobState } from '@/server/jobs/ris
 import { jsonDocToText } from './doc-text';
 import {
   guard,
-  sessionCtx,
-  assertMay,
   guardWrite,
   guardAnalysisWrite,
   guardMarkingWrite,
   requireEngine,
   type OkActionResult,
+  guardAnalysisVertraulich,
 } from './_guards';
 // Aufgeteilt aus actions.ts (1272 Zeilen) — Guards in ./_guards.ts.
 
@@ -158,25 +157,18 @@ export async function archiveAnalysisAction(input: {
  * Bewusst NICHT ueber `guardAnalysisWrite`: das lehnt archivierte Analysen ab.
  * Vertraulichkeit ist aber eine Zugriffs-, keine Inhaltsentscheidung — sie
  * muss auch nachtraeglich noch setzbar sein, ohne den Snapshot zu beruehren.
+ * Daher der eigene Guard `guardAnalysisVertraulich` (eine Tx, ohne Archiv-Sperre).
  */
 export async function setAnalysisVertraulichAction(input: {
   analysisId: string;
   vertraulich: boolean;
 }): Promise<OkActionResult> {
   try {
-    const { ctx, staffId } = await sessionCtx();
-    const analysis = await withTenantContext(ctx, (tx) =>
-      tx.riskAnalysis.findUnique({
-        where: { id: input.analysisId },
-        select: { clientId: true, vertraulich: true },
-      }),
+    const { ctx, staffId, clientId, vertraulich } = await guardAnalysisVertraulich(
+      input.analysisId,
     );
-    if (!analysis?.clientId)
-      throw new ForbiddenError('Analyse nicht gefunden oder ohne Mandantenbezug.');
-    await requireSubsumtionAccess(analysis.clientId);
-    await assertMay(ctx, analysis.clientId, input.analysisId, 'schreiben');
 
-    if (analysis.vertraulich !== input.vertraulich) {
+    if (vertraulich !== input.vertraulich) {
       await withTenantContext(ctx, async (tx) => {
         await tx.riskAnalysis.update({
           where: { id: input.analysisId },
@@ -191,13 +183,13 @@ export async function setAnalysisVertraulichAction(input: {
             : 'subsumtion.vertraulich.aufgehoben',
           resourceType: 'risk_analysis',
           resourceId: input.analysisId,
-          before: { vertraulich: analysis.vertraulich },
-          after: { vertraulich: input.vertraulich, clientId: analysis.clientId },
+          before: { vertraulich },
+          after: { vertraulich: input.vertraulich, clientId },
         });
       });
     }
 
-    revalidatePath(`/staff/clients/${analysis.clientId}/subsumtion/${input.analysisId}`);
+    revalidatePath(`/staff/clients/${clientId}/subsumtion/${input.analysisId}`);
     return { ok: true };
   } catch (e) {
     return toActionError(e);

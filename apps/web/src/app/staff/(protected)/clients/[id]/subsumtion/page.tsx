@@ -7,7 +7,9 @@ import { fmtDateTimeShort } from '@/lib/fmt';
 
 export default async function SubsumtionListPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { ctx, staffId, engineConfigured, canWrite } = await guardSubsumtionPage(id);
+  const { ctx, staffId, engineConfigured, canWrite } = await guardSubsumtionPage(id, undefined, {
+    staffOptions: false,
+  });
   const alle = await listAnalyses(ctx, id);
 
   // Vertrauliche Analysen erscheinen nur fuer Beteiligte: volle Stufe oder in
