@@ -15,7 +15,7 @@ import {
   markAllNotificationsReadAction,
 } from '@/app/staff/(protected)/notifications/actions';
 import { isAutomaticRefreshEnabled, isUserTyping } from './auto-refresh';
-import { emitNotificationsGrew } from '@/lib/live-events';
+import { buildNotificationSignal, emitNotificationsGrew } from '@/lib/live-events';
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -72,13 +72,28 @@ export function NotificationsBell({ initialUnread }: Props) {
   // und nicht während der Nutzer tippt.
   const onUnreadGrew = useCallback(() => {
     playNotificationSound();
-    // Immer melden — auch auf Seiten ohne Voll-Refresh (Mandanten-Cockpit).
-    // Einzelne guenstige Bloecke laden daraufhin gezielt ihre eigenen Daten
-    // nach, statt dass die ganze Seite neu rendert.
-    emitNotificationsGrew();
     if (isAutomaticRefreshEnabled(pathname) && !document.hidden && !isUserTyping()) {
       router.refresh();
     }
+    // Zusaetzlich melden — auch auf Seiten ohne Voll-Refresh (Mandanten-Cockpit).
+    // Dafuer wird EINMAL die Kurzliste geladen, um zu erfahren, WEN der Zuwachs
+    // betrifft: nur die betroffenen Bloecke laden dann nach. Ohne diese Angabe
+    // wuerde jede Benachrichtigung jeden offenen Block anstossen, auch wenn sie
+    // einen ganz anderen Mandanten betrifft.
+    //
+    // Die Kurzliste landet gleich im Dropdown-Zustand — ein spaeteres Oeffnen
+    // zeigt sie ohne weiteren Roundtrip.
+    void (async () => {
+      try {
+        const res = await fetch('/api/staff/notifications/recent', { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = (await res.json()) as RecentResponse;
+        setItems(data.items);
+        emitNotificationsGrew(buildNotificationSignal(data.items));
+      } catch {
+        // still — beim naechsten Zuwachs erneut
+      }
+    })();
   }, [pathname, router]);
 
   useEffect(() => {

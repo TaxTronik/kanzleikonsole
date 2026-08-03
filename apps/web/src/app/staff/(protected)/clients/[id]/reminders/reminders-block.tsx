@@ -79,14 +79,18 @@ export function RemindersBlock({
   const [submitError, setSubmitError] = useState<string | null>(null);
   // Serverdaten (initial) plus per Live-Nachladen aktualisierte Fassung.
   const [live, setLive] = useState<Reminder[] | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   // Gerade erledigt — Rücknahme-Balken für das Fenster, in dem die Rückmeldung
   // an die delegierende Person noch nicht raus ist.
   const [undoBar, setUndoBar] = useState<{ id: string; subject: string } | null>(null);
 
   // Die Mandantenseite ist vom Bell-getriebenen Voll-Refresh ausgenommen (zu
   // teuer). Damit eine frisch delegierte Wiedervorlage trotzdem ohne manuellen
-  // Reload erscheint, laedt NUR dieser Block seine Daten nach.
+  // Reload erscheint, laedt NUR dieser Block seine Daten nach — und auch das
+  // nur, wenn die Benachrichtigung DIESEN Mandanten betrifft (Filter im
+  // Abonnement). Eine Meldung zu einem anderen Mandanten kostet hier nichts.
   const reload = useCallback(async () => {
+    setRefreshing(true);
     try {
       const res = await fetch(`/api/staff/clients/${clientId}/reminders`, { cache: 'no-store' });
       if (!res.ok) return;
@@ -94,10 +98,12 @@ export function RemindersBlock({
       setLive(data.items);
     } catch {
       /* still — beim naechsten Ereignis erneut */
+    } finally {
+      setRefreshing(false);
     }
   }, [clientId]);
 
-  useEffect(() => onNotificationsGrew(() => void reload()), [reload]);
+  useEffect(() => onNotificationsGrew(() => void reload(), { clientId }), [reload, clientId]);
   // Neue Server-Props (revalidatePath/refresh) gewinnen wieder.
   useEffect(() => setLive(null), [initial]);
 
@@ -152,8 +158,13 @@ export function RemindersBlock({
     <div className="card overflow-hidden">
       <div className="card-header">
         <h2 className="text-sm font-medium text-primary inline-flex items-center gap-2">
-          <CalendarClock className="h-4 w-4 text-disabled" />
+          <CalendarClock className={`h-4 w-4 text-disabled${refreshing ? ' animate-pulse' : ''}`} />
           Wiedervorlagen ({open_items.length})
+          {refreshing && (
+            <span className="text-[11px] font-normal text-disabled animate-pulse">
+              wird aktualisiert …
+            </span>
+          )}
         </h2>
         <button
           type="button"
