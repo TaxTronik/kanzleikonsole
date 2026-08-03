@@ -17,6 +17,7 @@ import {
 import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
 import { PRIORITY_BADGE, PRIORITY_LABEL } from '@/lib/reminder-priority';
 import { DocumentUploadButton } from '@/components/document-upload-button';
+import { DocumentActions } from '@/components/document-actions';
 import {
   markReminderDoneAction,
   reopenReminderAction,
@@ -267,6 +268,7 @@ export function ReminderDetailView({
                 <span className="text-[11px] text-disabled shrink-0">
                   {d.uploadedByName} · {fmtDateShort(new Date(d.createdAt))}
                 </span>
+                <DocumentActions documentId={d.id} documentTitle={d.title} mimeType={d.mimeType} />
               </li>
             ))}
           </ul>
@@ -498,6 +500,8 @@ function VerlaufFeed({
       wer: d.uploadedByName,
       art: 'upload' as const,
       text: d.title,
+      documentId: d.id,
+      mimeType: d.mimeType,
     })),
   ].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
@@ -526,9 +530,18 @@ function VerlaufFeed({
               )}
             </p>
           ) : (
-            <p className="text-sm text-secondary mt-0.5">
-              Datei angehängt: <span className="text-primary">{e.text}</span>
-            </p>
+            <div className="flex items-center gap-2 mt-0.5">
+              <p className="flex-1 min-w-0 text-sm text-secondary truncate">
+                Datei angehängt: <span className="text-primary">{e.text}</span>
+              </p>
+              {'documentId' in e && (
+                <DocumentActions
+                  documentId={e.documentId}
+                  documentTitle={e.text}
+                  mimeType={e.mimeType}
+                />
+              )}
+            </div>
           )}
         </li>
       ))}
