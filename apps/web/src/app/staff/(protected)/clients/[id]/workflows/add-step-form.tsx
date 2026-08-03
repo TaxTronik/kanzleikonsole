@@ -9,7 +9,7 @@ import {
   KIND_LABELS,
   KIND_DESCRIPTIONS,
   defaultConfigFor,
-} from '@/server/workflows/step-config';
+} from '@/lib/workflow-step-kinds';
 
 type StepKind =
   | 'TASK'

@@ -4,24 +4,24 @@
 // Jeder Schritt-Typ hat seine eigene Konfig-Struktur, die als JSON in
 // `workflow_step.config` (Vorlage) bzw. `workflow_item.config` (Instanz)
 // liegt. Hier liegen die Zod-Schemata + ein typsicheres Discriminated-Union.
+//
+// Konstanten, Labels und Defaults liegen zod-frei in
+// `lib/workflow-step-kinds.ts` (Client-Bundle!) und werden hier fuer
+// bestehende Server-Importe re-exportiert.
 // =============================================================================
 
 import { z } from 'zod';
+import { DOCUMENT_CLASSIFICATIONS, type WorkflowStepKind } from '@/lib/workflow-step-kinds';
 
-// Erlaubte Dokumentenklassen — Wiederholung aus packages/storage, damit wir
-// nicht hart auf die Storage-Schicht koppeln (die UI braucht das in einem
-// Drop-down ohne Server-Roundtrip).
-export const DOCUMENT_CLASSIFICATIONS = [
-  'GOBD_INVOICE',
-  'GOBD_CONTRACT',
-  'GOBD_TAX',
-  'GWG_EVIDENCE',
-  'PERSONNEL',
-  'STAFF_PRIVATE',
-  'GENERAL',
-] as const;
-
-export type DocumentClassification = (typeof DOCUMENT_CLASSIFICATIONS)[number];
+export {
+  DOCUMENT_CLASSIFICATIONS,
+  WORKFLOW_STEP_KINDS,
+  defaultConfigFor,
+  KIND_LABELS,
+  KIND_DESCRIPTIONS,
+  type DocumentClassification,
+  type WorkflowStepKind,
+} from '@/lib/workflow-step-kinds';
 
 // -----------------------------------------------------------------------------
 // Per-Kind-Schemata
@@ -81,6 +81,8 @@ export type WorkflowStepConfig =
   | { kind: 'CLIENT_EMAIL'; config: z.infer<typeof ClientEmailConfig> }
   | { kind: 'N8N_TRIGGER'; config: z.infer<typeof N8nTriggerConfig> };
 
+// `satisfies Record<WorkflowStepKind, …>`: haelt die Schema-Tabelle in sync
+// mit der Kind-Liste im lib-Modul — ein neuer Kind ohne Schema ist ein Typfehler.
 const SCHEMA_BY_KIND = {
   TASK: TaskConfig,
   DOCUMENT_UPLOAD: DocumentUploadConfig,
@@ -88,7 +90,7 @@ const SCHEMA_BY_KIND = {
   CLIENT_FORM: ClientFormConfig,
   CLIENT_EMAIL: ClientEmailConfig,
   N8N_TRIGGER: N8nTriggerConfig,
-} as const;
+} as const satisfies Record<WorkflowStepKind, unknown>;
 
 export function parseStepConfig(
   kind: keyof typeof SCHEMA_BY_KIND,
@@ -106,50 +108,3 @@ export function parseStepConfig(
   }
   return { ok: true, value: parsed.data };
 }
-
-export function defaultConfigFor(kind: keyof typeof SCHEMA_BY_KIND): unknown {
-  switch (kind) {
-    case 'TASK':
-      return {};
-    case 'DOCUMENT_UPLOAD':
-      return { expectedClassification: 'GENERAL' };
-    case 'CLIENT_REQUEST':
-      return {
-        requestTemplateId: undefined,
-        requestTitle: '',
-        requestDescription: '',
-        priority: 'NORMAL',
-      };
-    case 'CLIENT_FORM':
-      return {
-        formTemplateId: '',
-        requestTitle: 'Bitte Formular ausfüllen',
-        requestDescription: '',
-      };
-    case 'CLIENT_EMAIL':
-      return { emailTemplateId: undefined, subject: '', bodyMd: '' };
-    case 'N8N_TRIGGER':
-      return {};
-  }
-}
-
-export const KIND_LABELS: Record<keyof typeof SCHEMA_BY_KIND, string> = {
-  TASK: 'Manuelle Aufgabe',
-  DOCUMENT_UPLOAD: 'Dokument hochladen',
-  CLIENT_REQUEST: 'Anforderung an Mandant',
-  CLIENT_FORM: 'Formular an Mandant',
-  CLIENT_EMAIL: 'E-Mail an Mandant',
-  N8N_TRIGGER: 'n8n-Webhook auslösen',
-};
-
-export const KIND_DESCRIPTIONS: Record<keyof typeof SCHEMA_BY_KIND, string> = {
-  TASK: 'Reine Checkliste — Mitarbeiter hakt ab, wenn erledigt.',
-  DOCUMENT_UPLOAD:
-    'Mitarbeiter lädt ein Dokument hoch. Die Klassifizierung ist vorgegeben — das Dokument landet automatisch im richtigen Bucket.',
-  CLIENT_REQUEST:
-    'Beim Anstoßen wird eine Anforderung an den Mandanten erzeugt. Der Schritt ist erledigt, sobald die Anforderung geschlossen wird.',
-  CLIENT_FORM:
-    'Beim Anstoßen wird ein Formular an den Mandanten geschickt. Erledigt, sobald der Mandant es abgeschickt hat.',
-  CLIENT_EMAIL: 'Sendet eine vordefinierte E-Mail an alle aktiven Portal-Kontakte des Mandanten.',
-  N8N_TRIGGER: 'Feuert ausschließlich den hinterlegten n8n-Webhook. Was dort passiert, regelt n8n.',
-};
