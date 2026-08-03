@@ -63,6 +63,11 @@ export interface AnalysisDTO {
   textHash: string;
   /** Formatierter Sachverhalt (Tiptap-JSON) oder null (Alt-Analyse → Plaintext). */
   sourceDoc: unknown;
+  /** Vom Berufsträger als vertraulich gekennzeichnet. */
+  vertraulich: boolean;
+  /** True, wenn `sourceText` für diese Person auf die freigegebenen Stellen
+   *  gekürzt wurde (Vertraulichkeit greift). */
+  verdeckt: boolean;
   llmEnrichedAt: string | null;
   archivedAt: string | null;
   markings: MarkingDTO[];
@@ -75,7 +80,7 @@ export interface ResearchResultDTO {
   /** Titel des zugehörigen Rechercheauftrags (Fallback-Anzeige). */
   requestTitle: string | null;
   body: string;
-  status: 'NEU' | 'ZUGEORDNET';
+  status: 'NEU' | 'ZUGEORDNET' | 'VERWORFEN';
   markingId: string | null;
   shelfDocumentId: string | null;
   archivedAt: string | null;

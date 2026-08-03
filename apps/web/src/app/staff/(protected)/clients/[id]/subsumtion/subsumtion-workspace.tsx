@@ -25,6 +25,8 @@ import {
   RefreshCw,
   X,
   AlertTriangle,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import {
   analyzeAction,
@@ -35,6 +37,7 @@ import {
   reformatAnalysisAction,
   llmStatusAction,
   reanalyzeAction,
+  setAnalysisVertraulichAction,
 } from './actions';
 import type { LlmStatusDTO } from '@/server/risk/llm';
 import { DisclaimerBanner } from './disclaimer-banner';
@@ -501,6 +504,22 @@ export function SubsumtionWorkspace({
     });
   }
 
+  function toggleVertraulich() {
+    if (!initial) return;
+    const an = !initial.vertraulich;
+    setError(null);
+    start(async () => {
+      const r = await setAnalysisVertraulichAction({ analysisId: initial.id, vertraulich: an });
+      flash(
+        r,
+        an
+          ? 'Als vertraulich gekennzeichnet — Zugewiesene sehen nur ihre Textstelle.'
+          : 'Vertraulichkeit aufgehoben.',
+      );
+      if (r.ok) refresh();
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // COMPOSE-MODUS (neue Subsumtion)
   // ---------------------------------------------------------------------------
@@ -751,9 +770,43 @@ export function SubsumtionWorkspace({
               >
                 <Webhook className="h-3.5 w-3.5" /> Ganzer Fall an KI
               </button>
+              <button
+                type="button"
+                onClick={toggleVertraulich}
+                disabled={pending}
+                className={initial.vertraulich ? 'btn-primary text-xs' : 'btn-secondary text-xs'}
+                title={
+                  initial.vertraulich
+                    ? 'Vertraulichkeit aufheben — zugewiesene Mitarbeitende sehen dann wieder den ganzen Sachverhalt'
+                    : 'Als vertraulich kennzeichnen — zugewiesene Mitarbeitende sehen dann nur ihre Textstelle'
+                }
+              >
+                {initial.vertraulich ? (
+                  <EyeOff className="h-3.5 w-3.5" />
+                ) : (
+                  <Eye className="h-3.5 w-3.5" />
+                )}{' '}
+                {initial.vertraulich ? 'Vertraulich' : 'Vertraulich?'}
+              </button>
             </>
           )}
         </div>
+
+        {initial.verdeckt && (
+          <div className="rounded-md border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/25 px-3 py-2 text-xs text-amber-900 dark:text-amber-100 inline-flex items-center gap-2">
+            <EyeOff className="h-3.5 w-3.5 shrink-0" />
+            Diese Subsumtion ist <strong>vertraulich</strong>. Du siehst ausschliesslich die dir
+            zugewiesenen Textstellen — nicht den vollstaendigen Sachverhalt.
+          </div>
+        )}
+
+        {initial.vertraulich && canWrite && (
+          <div className="rounded-md border border-default bg-gray-50 dark:bg-gray-900/40 px-3 py-2 text-xs text-secondary inline-flex items-center gap-2">
+            <EyeOff className="h-3.5 w-3.5 text-disabled shrink-0" />
+            Als <strong>vertraulich</strong> gekennzeichnet: Zugewiesene Mitarbeitende ohne
+            Schreibrecht sehen nur ihre eigene Textstelle, nicht den ganzen Sachverhalt.
+          </div>
+        )}
 
         {initial.archivedAt && (
           <div className="rounded-md border border-default bg-gray-50 dark:bg-gray-900/40 px-3 py-2 text-xs text-secondary inline-flex items-center gap-2">
@@ -901,6 +954,9 @@ export function SubsumtionWorkspace({
                 key={`${selected.id}:${selected.status}:${selected.verantwortlichId ?? ''}`}
                 canWrite={canWrite}
                 isAssignee={selected.verantwortlichId === currentStaffId}
+                // Ergebnisse dieser Markierung — die Prüfung findet dort statt,
+                // wo die Zuweisung hinführt, nicht in einem separaten Tab.
+                results={researchResults.filter((r) => r.markingId === selected.id)}
                 clientId={clientId}
                 analysisId={initial.id}
                 marking={selected}

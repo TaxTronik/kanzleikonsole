@@ -28,6 +28,7 @@ import {
   UnsupportedDocumentTypeError,
   previewResearch,
   sendResearchToN8n,
+  type ResearchScope,
   assignResultToMarking,
   resolveNorm,
   searchNorm,
@@ -46,6 +47,7 @@ import {
   deletePromptTemplate,
   saveResearchResultToShelf,
   setResearchResultArchived,
+  setResearchResultVerworfen,
   deleteResearchResult,
   type RiskStatus,
   type ResearchPreview,
@@ -239,10 +241,14 @@ async function guardResearch(input: {
   analysisId: string;
   markingId?: string | null;
   sachverhalt: 'custom' | 'excerpt' | 'full';
-}): Promise<GuardResult> {
+}): Promise<GuardResult & { scope: ResearchScope }> {
   const base = await guardAnalysis(input.analysisId);
   const rights = await rightsFor(base.ctx, base.clientId, input.analysisId);
-  if (rights.canWrite) return base;
+  // Die Rechtelage geht als `scope` mit in den Auftragsbau — sie entscheidet
+  // dort, wie viel Sachverhalt der Auszug tragen darf. Sie stammt aus dem
+  // Guard, nie aus dem Client-Payload.
+  const scope: ResearchScope = { volleAkteneinsicht: rights.canWrite };
+  if (rights.canWrite) return { ...base, scope };
 
   if (!decideSubsumtionAction(rights, 'recherche', input.markingId)) {
     throw new ForbiddenError('Recherche nur für die dir zugewiesene Markierung möglich.');
@@ -252,7 +258,7 @@ async function guardResearch(input: {
       'Der gesamte Sachverhalt darf nur von zuständigen Berufsträgern an die KI gegeben werden.',
     );
   }
-  return base;
+  return { ...base, scope };
 }
 
 function requireEngine(): void {
@@ -367,6 +373,62 @@ export async function archiveAnalysisAction(input: {
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${input.analysisId}`);
     revalidatePath(`/staff/clients/${clientId}/subsumtion`);
     return { ok: true, archiveKey: res.key };
+  } catch (e) {
+    return toActionError(e);
+  }
+}
+
+/**
+ * Kennzeichnet eine Subsumtion als vertraulich — oder hebt das auf.
+ *
+ * Folge: Wer keine Schreibrechte am Mandanten hat und nur eine einzelne
+ * Markierung zur Recherche zugewiesen bekam, sieht ab dann ausschliesslich
+ * diese Textstelle statt des ganzen Sachverhalts (siehe `redactSachverhalt`).
+ *
+ * Bewusst NICHT ueber `guardAnalysisWrite`: das lehnt archivierte Analysen ab.
+ * Vertraulichkeit ist aber eine Zugriffs-, keine Inhaltsentscheidung — sie
+ * muss auch nachtraeglich noch setzbar sein, ohne den Snapshot zu beruehren.
+ */
+export async function setAnalysisVertraulichAction(input: {
+  analysisId: string;
+  vertraulich: boolean;
+}): Promise<OkActionResult> {
+  try {
+    const { ctx, staffId } = await sessionCtx();
+    const analysis = await withTenantContext(ctx, (tx) =>
+      tx.riskAnalysis.findUnique({
+        where: { id: input.analysisId },
+        select: { clientId: true, vertraulich: true },
+      }),
+    );
+    if (!analysis?.clientId)
+      throw new ForbiddenError('Analyse nicht gefunden oder ohne Mandantenbezug.');
+    await requireSubsumtionAccess(analysis.clientId);
+    await assertMay(ctx, analysis.clientId, input.analysisId, 'schreiben');
+
+    if (analysis.vertraulich !== input.vertraulich) {
+      await withTenantContext(ctx, async (tx) => {
+        await tx.riskAnalysis.update({
+          where: { id: input.analysisId },
+          data: { vertraulich: input.vertraulich },
+        });
+        await evidenceService.record(tx, {
+          tenantId: ctx.tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: input.vertraulich
+            ? 'subsumtion.vertraulich.gesetzt'
+            : 'subsumtion.vertraulich.aufgehoben',
+          resourceType: 'risk_analysis',
+          resourceId: input.analysisId,
+          before: { vertraulich: analysis.vertraulich },
+          after: { vertraulich: input.vertraulich, clientId: analysis.clientId },
+        });
+      });
+    }
+
+    revalidatePath(`/staff/clients/${analysis.clientId}/subsumtion/${input.analysisId}`);
+    return { ok: true };
   } catch (e) {
     return toActionError(e);
   }
@@ -649,8 +711,8 @@ export async function previewResearchAction(
 ): Promise<OkActionResult<ResearchPreview>> {
   try {
     const parsed = ResearchSchema.parse(input);
-    const { ctx } = await guardResearch(parsed);
-    const preview = await previewResearch(ctx, parsed);
+    const { ctx, scope } = await guardResearch(parsed);
+    const preview = await previewResearch(ctx, parsed, scope);
     return { ok: true, ...preview };
   } catch (e) {
     return toActionError(e);
@@ -720,8 +782,8 @@ export async function sendResearchAction(
 ): Promise<OkActionResult<{ requestId: string; eventId: string; deliveryStatus: 'PENDING' }>> {
   try {
     const parsed = SendResearchSchema.parse(input);
-    const { ctx, clientId } = await guardResearch(parsed);
-    const res = await sendResearchToN8n(ctx, parsed);
+    const { ctx, clientId, scope } = await guardResearch(parsed);
+    const res = await sendResearchToN8n(ctx, parsed, scope);
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${parsed.analysisId}`);
     if (res.delivery.status !== 'PENDING' || !res.delivery.eventId) {
       const message =
@@ -738,6 +800,40 @@ export async function sendResearchAction(
       eventId: res.delivery.eventId,
       deliveryStatus: res.delivery.status,
     };
+  } catch (e) {
+    return toActionError(e);
+  }
+}
+
+/**
+ * Ergebnis als geprüft-und-unbrauchbar kennzeichnen.
+ *
+ * Gegenstück zu `assignResultAction`: Beides sind Prüfentscheidungen. Wer an
+ * einer Markierung recherchieren darf, darf das Ergebnis auch verwerfen —
+ * `markingId` ist deshalb Pflicht und bindet die Entscheidung an genau die
+ * Markierung, zu der das Ergebnis gehört.
+ */
+export async function setResultVerworfenAction(input: {
+  clientId: string;
+  analysisId: string;
+  resultId: string;
+  markingId: string;
+}): Promise<OkActionResult> {
+  try {
+    const { ctx, clientId, analysisId } = await guardResult(input.resultId);
+    await assertMay(ctx, clientId, analysisId, 'recherche', input.markingId);
+    const target = await withTenantContext(ctx, (tx) =>
+      tx.riskMarking.findUnique({
+        where: { id: input.markingId },
+        select: { analysisId: true },
+      }),
+    );
+    if (!target || target.analysisId !== analysisId) {
+      return { ok: false, error: 'Markierung gehört nicht zu dieser Analyse.' };
+    }
+    await setResearchResultVerworfen(ctx, input.resultId);
+    revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId ?? ''}`);
+    return { ok: true };
   } catch (e) {
     return toActionError(e);
   }

@@ -6,7 +6,8 @@
 
 import { redirect } from 'next/navigation';
 import { requireStaffPage } from '@/server/auth/staff-page';
-import { canAccessClient, canOtherStaffAccessClientTx, canWriteClientTx } from '@/server/auth/rbac';
+import { canAccessClient, canOtherStaffAccessClientTx } from '@/server/auth/rbac';
+import { loadSubsumtionRights, type SubsumtionRights } from '@/server/risk/rights';
 import { readModules } from '@/server/settings/modules';
 import { isRiskLayerConfigured } from '@taxtronik/risk-layer';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
@@ -25,9 +26,18 @@ export interface SubsumtionPageContext {
    * abgelehnt wuerde.
    */
   canWrite: boolean;
+  /**
+   * Dieselbe Rechtelage wie in den Server Actions — inklusive der Markierungen,
+   * die dieser Person zugewiesen sind. Wird gebraucht, um bei einer als
+   * vertraulich gekennzeichneten Analyse genau diese Stellen freizugeben.
+   */
+  rights: SubsumtionRights;
 }
 
-export async function guardSubsumtionPage(clientId: string): Promise<SubsumtionPageContext> {
+export async function guardSubsumtionPage(
+  clientId: string,
+  analysisId?: string,
+): Promise<SubsumtionPageContext> {
   const session = await requireStaffPage();
   const { tenantId, staffId, fullName } = session.user;
   const ctx: TenantContext = { tenantId, actorId: staffId, actorType: 'STAFF' };
@@ -57,7 +67,9 @@ export async function guardSubsumtionPage(clientId: string): Promise<SubsumtionP
     return staffCandidates.filter((_, i) => zulaessig[i]);
   });
 
-  const canWrite = await withTenantContext(ctx, (tx) => canWriteClientTx(tx, session, clientId));
+  const rights = await withTenantContext(ctx, (tx) =>
+    loadSubsumtionRights(tx, session, { clientId, analysisId }),
+  );
 
   return {
     ctx,
@@ -65,6 +77,7 @@ export async function guardSubsumtionPage(clientId: string): Promise<SubsumtionP
     fullName,
     staffOptions,
     engineConfigured: isRiskLayerConfigured(),
-    canWrite,
+    canWrite: rights.canWrite,
+    rights,
   };
 }

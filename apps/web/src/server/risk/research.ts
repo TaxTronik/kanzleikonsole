@@ -69,18 +69,40 @@ export interface ResearchPreview {
   heuristicHits: string[];
 }
 
-function excerpt(text: string, start: number, end: number, pad = 500): string {
+function excerpt(text: string, start: number, end: number, pad: number | undefined = 500): string {
   const a = Math.max(0, start - pad);
   const b = Math.min(text.length, end + pad);
   return (a > 0 ? '… ' : '') + text.slice(a, b).trim() + (b < text.length ? ' …' : '');
 }
 
+/**
+ * Rechtelage der auftraggebenden Person — vom Guard gesetzt, NIE aus dem
+ * Client-Payload. Steuert, wie viel Sachverhalt in den Auftrag darf.
+ */
+export interface ResearchScope {
+  /** Volle Bearbeitungsrechte am Mandanten (Admin/Partner/Berufsträger). */
+  volleAkteneinsicht: boolean;
+}
+
+const OFFEN: ResearchScope = { volleAkteneinsicht: true };
+
 /** Lädt Analyse (+ optional Markierung) + Mandant/Kontakte und baut den ROHEN
  *  (sensiblen) Auftragstext. Unterstützt per-Markierung und ganzen Fall. */
-async function buildRaw(tx: TxClient, tenantId: string, input: ResearchInput) {
+async function buildRaw(
+  tx: TxClient,
+  tenantId: string,
+  input: ResearchInput,
+  scope: ResearchScope,
+) {
   const analysis = await tx.riskAnalysis.findFirst({
     where: { id: input.analysisId, tenantId },
-    select: { id: true, clientId: true, sourceText: true, katalogVersion: true },
+    select: {
+      id: true,
+      clientId: true,
+      sourceText: true,
+      katalogVersion: true,
+      vertraulich: true,
+    },
   });
   if (!analysis) throw new Error('Analyse nicht gefunden.');
   const clientId = analysis.clientId;
@@ -139,9 +161,15 @@ async function buildRaw(tx: TxClient, tenantId: string, input: ResearchInput) {
     const prose = reflowProse(analysis.sourceText);
     parts.push(/^\s*sachverhalt\s*:/i.test(prose) ? prose : 'Sachverhalt:\n' + prose);
   } else if (input.sachverhalt === 'excerpt' && marking) {
+    // Bei einer vertraulichen Analyse darf eine nur zugewiesene Person den
+    // Sachverhalt nicht sehen — dann darf der Auszug auch keinen Kontext
+    // mitschicken, sondern ausschliesslich die markierte Stelle selbst. Ohne
+    // das ginge über den Umweg „Auszug an die KI" genau der Text nach draussen,
+    // den die Ansicht gerade zurückhält.
+    const pad = analysis.vertraulich && !scope.volleAkteneinsicht ? 0 : undefined;
     parts.push(
       'Sachverhalt-Auszug:\n' +
-        reflowProse(excerpt(analysis.sourceText, marking.start, marking.end)),
+        reflowProse(excerpt(analysis.sourceText, marking.start, marking.end, pad)),
     );
   }
   const snippets = (input.snippets ?? []).map((snippet) => snippet.trim()).filter(Boolean);
@@ -164,12 +192,14 @@ async function buildRaw(tx: TxClient, tenantId: string, input: ResearchInput) {
 export async function previewResearch(
   ctx: TenantContext,
   input: ResearchInput,
+  scope: ResearchScope = OFFEN,
 ): Promise<ResearchPreview> {
   return withTenantContext(ctx, async (tx) => {
     const { client, contacts, rawText, rechtsfrage, normAnker, governanceTyp } = await buildRaw(
       tx,
       ctx.tenantId,
       input,
+      scope,
     );
     const anon = anonymize(rawText, { client, contacts });
     const prompt = input.prompt?.trim() || null;
@@ -194,10 +224,11 @@ export async function previewResearch(
 export async function sendResearchToN8n(
   ctx: TenantContext,
   input: ResearchInput & { finalText: string; finalPrompt: string | null },
+  scope: ResearchScope = OFFEN,
 ): Promise<{ requestId: string; sentText: string; delivery: N8nEnqueueResult }> {
   const prepared = await withTenantContext(ctx, async (tx) => {
     const { analysis, marking, client, contacts, rawText, rechtsfrage, normAnker, governanceTyp } =
-      await buildRaw(tx, ctx.tenantId, input);
+      await buildRaw(tx, ctx.tenantId, input, scope);
 
     // Mapping aus dem ROH-Text (deckt die ursprünglichen Platzhalter für die
     // De-Anonymisierung der Antwort) + Sicherheits-Pass über den finalen Text

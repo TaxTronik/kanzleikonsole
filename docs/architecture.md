@@ -73,6 +73,24 @@ Feature-Stand und Release-Prozess stehen in `README.md`, `FEATURES.md` und
    interne IP sein; nutzerkonfigurierbare externe Fetches bleiben weiterhin beim
    zentralen SSRF-Guard.
 
+8. **Drei Stufen im Subsumtions-Space** — der Zugriff auf eine Analyse ist
+   abgestuft, durchgesetzt serverseitig in jeder Server Action (nicht durch
+   Ausblenden in der UI):
+   - _Lesen_ — jede Person mit Mandantenzugriff (`canAccessClient`).
+   - _Schreiben_ — Admin/Partner oder zugeordnete Berufsträger:innen bzw.
+     Hauptbearbeiter:innen (`canWriteClientTx`).
+   - _Recherche_ — wer eine einzelne Markierung zugewiesen bekam, darf genau
+     dort recherchieren und Ergebnisse prüfen, sonst nichts.
+
+   Zusätzlich kann eine Analyse als **vertraulich** gekennzeichnet werden
+   (`RiskAnalysis.vertraulich`). Dann sieht, wer nur zugewiesen ist, statt des
+   Sachverhalts ausschliesslich die eigenen Textstellen — mit auf den gekürzten
+   Text umbasierten Offsets (`lib/subsumtion-redaction.ts`). Die Grenze gilt an
+   allen Austrittsstellen: Analyse-Seite, abgeleitete Recherche-Daten, der
+   Sachverhalt-Auszug im KI-Auftrag (Kontext-Padding fällt auf 0) und der
+   DOCX/PDF-Report (403 statt gekürzter Fassung, da ein Report mit anderem
+   Textbestand als Report irreführend wäre).
+
 ## Repositorystruktur
 
 Siehe README.md für die vollständige Folder-Übersicht.

@@ -35,6 +35,44 @@ export async function setResearchResultArchived(
   });
 }
 
+/**
+ * Rechercheergebnis als geprüft-und-verworfen kennzeichnen.
+ *
+ * `VERWORFEN` gibt es im Schema seit jeher, wurde aber von keiner Aktion
+ * gesetzt — und die Analyse-Seite bildete es beim Laden auf `NEU` zurück. Ein
+ * unbrauchbares Ergebnis tauchte damit dauerhaft als „neu" auf und liess sich
+ * nur noch löschen. Verwerfen ist die fachliche Alternative zum Löschen: die
+ * Prüfentscheidung bleibt nachvollziehbar erhalten.
+ */
+export async function setResearchResultVerworfen(
+  ctx: TenantContext,
+  resultId: string,
+): Promise<void> {
+  await withTenantContext(ctx, async (tx) => {
+    const result = await tx.riskResearchResult.findUnique({
+      where: { id: resultId },
+      select: { id: true, title: true, status: true, markingId: true },
+    });
+    if (!result) throw new ActionError('Rechercheergebnis nicht gefunden.');
+    if (result.status === 'VERWORFEN') return;
+
+    await tx.riskResearchResult.update({
+      where: { id: resultId },
+      data: { status: 'VERWORFEN' },
+    });
+    await evidenceService.record(tx, {
+      tenantId: ctx.tenantId,
+      actorType: 'STAFF',
+      actorId: ctx.actorId,
+      action: 'risk.research.verworfen',
+      resourceType: 'risk_research_result',
+      resourceId: resultId,
+      before: { status: result.status, title: result.title },
+      after: { status: 'VERWORFEN', markingId: result.markingId },
+    });
+  });
+}
+
 export async function deleteResearchResult(ctx: TenantContext, resultId: string): Promise<void> {
   await withTenantContext(ctx, async (tx) => {
     const result = await tx.riskResearchResult.findUnique({

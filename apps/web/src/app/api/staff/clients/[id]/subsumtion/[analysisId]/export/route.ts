@@ -8,7 +8,12 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { getClientIp, checkStaffExportLimit } from '@/server/rate-limit';
 import { staffAuth } from '@/server/auth/staff';
-import { requireSubsumtionAccess, ForbiddenError, UnauthorizedError } from '@/server/auth/rbac';
+import {
+  requireSubsumtionAccess,
+  canWriteClientTx,
+  ForbiddenError,
+  UnauthorizedError,
+} from '@/server/auth/rbac';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { readModules } from '@/server/settings/modules';
@@ -55,18 +60,33 @@ export async function GET(
   // Mandant aus der Analyse ableiten + gegen die URL prüfen (IDOR-Schutz), dann
   // per-Mandant autorisieren (nicht über die clientId aus der URL).
   const a = await withTenantContext(ctx, (tx) =>
-    tx.riskAnalysis.findUnique({ where: { id: analysisId }, select: { clientId: true } }),
+    tx.riskAnalysis.findUnique({
+      where: { id: analysisId },
+      select: { clientId: true, vertraulich: true },
+    }),
   );
   if (!a?.clientId || a.clientId !== id)
     return NextResponse.json({ error: 'not found' }, { status: 404 });
+  let accessSession;
   try {
-    await requireSubsumtionAccess(a.clientId);
+    accessSession = await requireSubsumtionAccess(a.clientId);
   } catch (e) {
     if (e instanceof ForbiddenError)
       return NextResponse.json({ error: 'forbidden' }, { status: 403 });
     if (e instanceof UnauthorizedError)
       return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
     throw e;
+  }
+
+  // Vertrauliche Analyse: der Report rendert den GANZEN Sachverhalt samt aller
+  // Markierungen. Eine gekürzte Fassung wäre als „Subsumtions-Report" irreführend
+  // (Hash, Zählungen und Fundstellen bezögen sich auf ein anderes Dokument), also
+  // bleibt der Export denen vorbehalten, die den Sachverhalt ohnehin sehen.
+  if (a.vertraulich) {
+    const darfSchreiben = await withTenantContext(ctx, (tx) =>
+      canWriteClientTx(tx, accessSession, a.clientId!),
+    );
+    if (!darfSchreiben) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
   // Optionale Auswahl: nur diese Markierungen exportieren (`?marks=id1,id2`).

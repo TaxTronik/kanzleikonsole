@@ -580,6 +580,10 @@ export default async function ClientDetailPage({
                   ? (staffNameById.get(r.assigneeStaffId) ?? null)
                   : null,
                 researchMarkingId: r.riskMarkings[0]?.id ?? null,
+                researchAnalysisId: r.riskMarkings[0]?.analysisId ?? null,
+                createdByStaff: r.createdByStaff,
+                createdByName: staffNameById.get(r.createdByStaff) ?? null,
+                assigneeStaffId: r.assigneeStaffId,
               }))}
             />
           ),

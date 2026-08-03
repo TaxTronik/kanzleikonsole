@@ -2,8 +2,10 @@
 
 import { useActionState, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { CalendarClock, Check, Plus, Trash2, Send } from 'lucide-react';
+import Link from 'next/link';
+import { CalendarClock, Check, Plus, Trash2, Send, UserCheck, Quote } from 'lucide-react';
 import { fmtDateShort } from '@/lib/fmt';
+import { parseDelegationNotes } from '@/server/risk/delegate-notes';
 import {
   createReminderAction,
   markReminderDoneAction,
@@ -22,6 +24,11 @@ interface Reminder {
   /** Markierungs-ID, falls diese Wiedervorlage eine Risiko-Recherche-Delegation
    *  ist (→ „Ergebnis einreichen"-Affordance). Sonst null. */
   researchMarkingId: string | null;
+  /** Analyse der Markierung — für den Sprung in den Subsumtions-Space. */
+  researchAnalysisId: string | null;
+  createdByStaff: string;
+  createdByName: string | null;
+  assigneeStaffId: string | null;
 }
 
 interface StaffOption {
@@ -164,8 +171,22 @@ export function RemindersBlock({
           {open_items.map((r) => {
             const due = new Date(r.dueDate);
             const overdue = due.getTime() < today.getTime();
+            // Delegation = Recherche-Auftrag an jemand anderen. „an mich" wird
+            // hervorgehoben, „von mir an X" nur benannt — sonst sieht jede
+            // Wiedervorlage gleich aus und der Auftrag geht in der Liste unter.
+            const delegiert = r.researchMarkingId != null;
+            const anMich = delegiert && r.assigneeStaffId === currentStaffId;
+            const vonMir = delegiert && r.createdByStaff === currentStaffId && !anMich;
+            const ctx = delegiert ? parseDelegationNotes(r.notes) : null;
             return (
-              <li key={r.id} className="px-6 py-3 flex items-start gap-3">
+              <li
+                key={r.id}
+                className={
+                  anMich
+                    ? 'px-6 py-3 flex items-start gap-3 border-l-2 border-brand-500 bg-brand-50/40 dark:bg-brand-900/10'
+                    : 'px-6 py-3 flex items-start gap-3'
+                }
+              >
                 <button
                   type="button"
                   onClick={() => markDone(r.id)}
@@ -176,18 +197,71 @@ export function RemindersBlock({
                   <Check className="h-3 w-3" />
                 </button>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-primary">{r.subject}</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-sm text-primary">{r.subject}</p>
+                    {anMich && (
+                      <span className="badge-brand text-[11px] inline-flex items-center gap-1">
+                        <UserCheck className="h-3 w-3" /> an mich delegiert
+                      </span>
+                    )}
+                    {vonMir && r.assigneeName && (
+                      <span className="badge-gray text-[11px]">delegiert an {r.assigneeName}</span>
+                    )}
+                  </div>
                   <p
                     className={overdue ? 'text-xs text-red-700 font-medium' : 'text-xs text-muted'}
                   >
                     fällig {fmtDateShort(due)}
                     {overdue && ' · überfällig'}
-                    {r.assigneeName && (
+                    {r.assigneeName && !vonMir && (
                       <span className="ml-2 text-disabled">· {r.assigneeName}</span>
                     )}
+                    {anMich && r.createdByName && (
+                      <span className="ml-2 text-disabled">· von {r.createdByName}</span>
+                    )}
                   </p>
-                  {r.notes && (
-                    <p className="text-xs text-secondary mt-1 whitespace-pre-wrap">{r.notes}</p>
+
+                  {ctx ? (
+                    <div className="mt-1.5 space-y-1.5">
+                      {(ctx.begriff || ctx.normAnker.length > 0) && (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {ctx.begriff && (
+                            <span className="badge-yellow text-[11px]">{ctx.begriff}</span>
+                          )}
+                          {ctx.normAnker.map((n) => (
+                            <span key={n} className="badge-gray text-[11px] font-mono">
+                              {n}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {ctx.fundstelle && (
+                        <blockquote className="flex gap-1.5 rounded border-l-2 border-strong bg-surface-raised px-2 py-1 text-xs text-secondary italic">
+                          <Quote className="h-3 w-3 shrink-0 mt-0.5 text-disabled" />
+                          <span className="min-w-0 break-words">{ctx.fundstelle}</span>
+                        </blockquote>
+                      )}
+                      {ctx.auftrag && (
+                        <p className="text-xs text-secondary whitespace-pre-wrap">{ctx.auftrag}</p>
+                      )}
+                      {ctx.rest.length > 0 && (
+                        <p className="text-xs text-secondary whitespace-pre-wrap">
+                          {ctx.rest.join('\n')}
+                        </p>
+                      )}
+                      {r.researchAnalysisId && (
+                        <Link
+                          href={`/staff/clients/${clientId}/subsumtion/${r.researchAnalysisId}?marking=${r.researchMarkingId}`}
+                          className="text-xs text-brand-600 hover:underline inline-flex items-center gap-1"
+                        >
+                          Markierung im Subsumtions-Space öffnen
+                        </Link>
+                      )}
+                    </div>
+                  ) : (
+                    r.notes && (
+                      <p className="text-xs text-secondary mt-1 whitespace-pre-wrap">{r.notes}</p>
+                    )
                   )}
                   {r.researchMarkingId &&
                     (submitFor === r.id ? (

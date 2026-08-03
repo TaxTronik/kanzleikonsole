@@ -16,6 +16,7 @@ import { WorkflowSection } from '../../workflows/workflow-section';
 import { StartWorkflowForm } from '../../workflows/start-form';
 import { withTenantContext } from '@taxtronik/db';
 import { loadAnalysisDocuments } from '@/server/documents/managed-docs';
+import { greiftVertraulichkeit, redactSachverhalt } from '@/lib/subsumtion-redaction';
 import { DocumentExplorer } from '@/components/document-explorer';
 import type {
   AnalysisDTO,
@@ -31,15 +32,32 @@ export default async function AnalysisPage({
   params: Promise<{ id: string; analysisId: string }>;
 }) {
   const { id, analysisId } = await params;
-  const { ctx, staffId, staffOptions, engineConfigured, canWrite } = await guardSubsumtionPage(id);
+  const { ctx, staffId, staffOptions, engineConfigured, canWrite, rights } =
+    await guardSubsumtionPage(id, analysisId);
 
   const analysis = await loadAnalysis(ctx, analysisId);
   if (!analysis || analysis.clientId !== id) notFound();
+
+  // Vertrauliche Analyse: Wer nur eine Markierung zur Recherche zugewiesen
+  // bekam, erhaelt ausschliesslich diese Textstelle — nicht den Sachverhalt.
+  // Die Kuerzung passiert hier, VOR dem Aufbau des DTOs: alles Weitere (Editor,
+  // Panels, Recherche) arbeitet auf dem gekuerzten Text und dessen Offsets.
+  const verdeckt = greiftVertraulichkeit({ vertraulich: analysis.vertraulich, canWrite });
+  const sichtbar = verdeckt
+    ? redactSachverhalt(analysis.sourceText, analysis.markings, rights.assignedMarkingIds)
+    : { text: analysis.sourceText, markings: analysis.markings, gekuerzt: false };
 
   // Alle weiteren Lesezugriffe sind voneinander unabhängig (brauchen nur
   // analysisId/clientId) → EIN paralleler Batch statt fünf sequenzieller
   // Round-Trips. Das In-Memory-Scoring der Recherche-Vorschläge nutzt danach die
   // schon mit `analysis` geladenen Markierungen (kein N+1).
+  // Bei Vertraulichkeit haengt auch alles Abgeleitete an den freigegebenen
+  // Stellen: ein Rechercheergebnis oder -auftrag zu einer fremden Markierung
+  // zitiert deren Fundstelle und wuerde die Kuerzung sonst umgehen.
+  const sichtbareMarkingIds = new Set(sichtbar.markings.map((m) => m.id));
+  const imBlick = (markingId: string | null) =>
+    !verdeckt || (markingId != null && sichtbareMarkingIds.has(markingId));
+
   const [rawResults, rawArchivedResults, rawRequests, wf, aktenregalDocs, clientInfo] =
     await Promise.all([
       loadResearchResults(ctx, analysisId),
@@ -53,54 +71,59 @@ export default async function AnalysisPage({
     ]);
 
   // Rechercheergebnisse + (für NEU) heuristische Zuordnungs-Vorschläge.
-  const openMarkings = analysis.markings
+  const openMarkings = sichtbar.markings
     .filter((m) => m.status === 'OFFEN' || m.status === 'IN_PRUEFUNG')
     .map((m) => ({ id: m.id, begriff: m.begriff, normAnker: m.normAnker, status: m.status }));
-  const researchResults: ResearchResultDTO[] = rawResults.map((r) => ({
-    id: r.id,
-    title: r.title,
-    requestId: r.request?.id ?? null,
-    requestTitle: r.request?.title ?? null,
-    body: r.body,
-    status: r.status === 'VERWORFEN' ? 'NEU' : r.status,
-    markingId: r.markingId,
-    shelfDocumentId: r.shelfDocumentId,
-    archivedAt: null,
-    source: r.source,
-    receivedAt: r.receivedAt.toISOString(),
-    suggestions:
-      r.status === 'NEU' || r.status === 'VERWORFEN'
-        ? scoreMarkingSuggestions(r, openMarkings)
-        : [],
-  }));
-  const archivedResearchResults: ResearchResultDTO[] = rawArchivedResults.map((r) => ({
-    id: r.id,
-    title: r.title,
-    requestId: r.request?.id ?? null,
-    requestTitle: r.request?.title ?? null,
-    body: r.body,
-    status: r.status === 'VERWORFEN' ? 'NEU' : r.status,
-    markingId: r.markingId,
-    shelfDocumentId: r.shelfDocumentId,
-    archivedAt: r.archivedAt?.toISOString() ?? null,
-    source: r.source,
-    receivedAt: r.receivedAt.toISOString(),
-    suggestions: [],
-  }));
+  const researchResults: ResearchResultDTO[] = rawResults
+    .filter((r) => imBlick(r.markingId))
+    .map((r) => ({
+      id: r.id,
+      title: r.title,
+      requestId: r.request?.id ?? null,
+      requestTitle: r.request?.title ?? null,
+      body: r.body,
+      status: r.status,
+      markingId: r.markingId,
+      shelfDocumentId: r.shelfDocumentId,
+      archivedAt: null,
+      source: r.source,
+      receivedAt: r.receivedAt.toISOString(),
+      // Vorschläge nur für ungeprüfte Ergebnisse — ein verworfenes soll nicht
+      // erneut zur Zuordnung einladen.
+      suggestions: r.status === 'NEU' ? scoreMarkingSuggestions(r, openMarkings) : [],
+    }));
+  const archivedResearchResults: ResearchResultDTO[] = rawArchivedResults
+    .filter((r) => imBlick(r.markingId))
+    .map((r) => ({
+      id: r.id,
+      title: r.title,
+      requestId: r.request?.id ?? null,
+      requestTitle: r.request?.title ?? null,
+      body: r.body,
+      status: r.status,
+      markingId: r.markingId,
+      shelfDocumentId: r.shelfDocumentId,
+      archivedAt: r.archivedAt?.toISOString() ?? null,
+      source: r.source,
+      receivedAt: r.receivedAt.toISOString(),
+      suggestions: [],
+    }));
 
   // Outbound: gesendete Rechercheaufträge (für den Recherche-Hub).
-  const researchRequests: ResearchRequestDTO[] = rawRequests.map((r) => ({
-    id: r.id,
-    markingId: r.markingId,
-    title: r.title,
-    begriff: r.marking?.begriff ?? null,
-    prompt: r.prompt,
-    includeSachverhalt: r.includeSachverhalt,
-    status: r.status,
-    createdAt: r.createdAt.toISOString(),
-    createdById: r.createdById,
-    resultCount: r._count.results,
-  }));
+  const researchRequests: ResearchRequestDTO[] = rawRequests
+    .filter((r) => imBlick(r.markingId))
+    .map((r) => ({
+      id: r.id,
+      markingId: r.markingId,
+      title: r.title,
+      begriff: r.marking?.begriff ?? null,
+      prompt: r.prompt,
+      includeSachverhalt: r.includeSachverhalt,
+      status: r.status,
+      createdAt: r.createdAt.toISOString(),
+      createdById: r.createdById,
+      resultCount: r._count.results,
+    }));
 
   // Aufgaben-Tab: Workflows dieses Sachverhalts — exakt die WorkflowSection des
   // Builders (kein Doppel-Code), gescopt per analysisId. Als fertiger Server-Slot.
@@ -146,13 +169,17 @@ export default async function AnalysisPage({
 
   const dto: AnalysisDTO = {
     id: analysis.id,
-    sourceText: analysis.sourceText,
+    sourceText: sichtbar.text,
     title: analysis.title,
     textHash: analysis.textHash,
-    sourceDoc: analysis.sourceDoc ?? null,
+    // sourceDoc traegt den KOMPLETTEN formatierten Sachverhalt — bei
+    // Vertraulichkeit faellt die Ansicht auf den gekuerzten Plaintext zurueck.
+    sourceDoc: verdeckt ? null : (analysis.sourceDoc ?? null),
+    vertraulich: analysis.vertraulich,
+    verdeckt,
     llmEnrichedAt: analysis.llmEnrichedAt ? analysis.llmEnrichedAt.toISOString() : null,
     archivedAt: analysis.archivedAt ? analysis.archivedAt.toISOString() : null,
-    markings: analysis.markings.map(
+    markings: sichtbar.markings.map(
       (m): MarkingDTO => ({
         id: m.id,
         start: m.start,

@@ -114,7 +114,7 @@ export async function loadClientDashboard(
         where: { clientId },
         orderBy: [{ doneAt: 'asc' }, { dueDate: 'asc' }],
         take: 50,
-        include: { riskMarkings: { select: { id: true }, take: 1 } },
+        include: { riskMarkings: { select: { id: true, analysisId: true }, take: 1 } },
       }),
       tx.pendingBinder.findMany({
         where: { clientId },

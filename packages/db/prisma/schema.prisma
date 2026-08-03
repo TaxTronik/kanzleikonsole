@@ -1566,6 +1566,11 @@ model RiskAnalysis {
   archivedAt        DateTime?             @map("archived_at") @db.Timestamptz(6)
   archiveBucket     String?               @map("archive_bucket")
   archiveKey        String?               @map("archive_key")
+  // Vertrauliche Analyse: Wer keine Schreibrechte am Mandanten hat (also nur
+  // eine einzelne Markierung zur Recherche zugewiesen bekam), sieht NICHT den
+  // ganzen Sachverhalt, sondern ausschliesslich die ihm zugewiesenen
+  // Textstellen. Setzen/Loesen darf nur, wer ohnehin schreiben darf.
+  vertraulich       Boolean               @default(false)
   // Gesetzt, sobald die asynchrone LLM-Phase die Analyse angereichert hat.
   llmEnrichedAt     DateTime?             @map("llm_enriched_at") @db.Timestamptz(6)
   createdAt         DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)

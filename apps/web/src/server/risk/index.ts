@@ -105,7 +105,7 @@ export {
   suggestMarkingsForResult,
   assignResultToMarking,
 } from './research';
-export type { ResearchInput, ResearchPreview, InboundResult } from './research';
+export type { ResearchInput, ResearchPreview, ResearchScope, InboundResult } from './research';
 
 export { saveResearchResultToShelf } from './research-shelf';
 export type {
@@ -113,7 +113,11 @@ export type {
   SaveResearchResultToShelfResult,
 } from './research-shelf';
 
-export { deleteResearchResult, setResearchResultArchived } from './research-lifecycle';
+export {
+  deleteResearchResult,
+  setResearchResultArchived,
+  setResearchResultVerworfen,
+} from './research-lifecycle';
 
 export { scoreMarkingSuggestions, extractNormRefs } from './suggest';
 export type { MarkingSuggestion, ScoreableMarking } from './suggest';
