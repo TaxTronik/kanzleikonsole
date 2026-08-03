@@ -88,7 +88,7 @@ export function QuickRequestDialog({
           {buttonLabel}
         </button>
         {creationBlocked && (
-          <span className="absolute right-0 top-full mt-1 max-w-56 whitespace-nowrap text-right text-xs text-muted">
+          <span className="absolute right-0 top-full mt-1 w-56 text-right text-xs text-muted">
             Erst nach abgeschlossener GwG-Prüfung möglich.
           </span>
         )}

@@ -641,29 +641,48 @@ function FirstRequestStep({
           angelegt.
         </div>
       ) : null}
-      <div className="flex justify-end gap-2 pt-3 border-t border-subtle">
-        <SkipButton
-          clientId={client.id}
-          next="done"
-          label={requestCount > 0 ? 'Weiter' : 'Überspringen'}
-        />
-        <QuickRequestDialog
-          requestId={randomUUID()}
-          client={{
-            id: client.id,
-            name: client.name,
-            datevNo: null,
-            addisonNo: null,
-            allowActive: client.allowActive,
-          }}
-          templates={templates}
-          formTemplates={formTemplates}
-          templatesLimited={templatesLimited}
-          formTemplatesLimited={formTemplatesLimited}
-          buttonLabel="Anforderung anlegen"
-          buttonClassName="btn-primary text-sm"
-        />
-      </div>
+      {client.allowActive ? (
+        <div className="flex justify-end gap-2 pt-3 border-t border-subtle">
+          <SkipButton
+            clientId={client.id}
+            next="done"
+            label={requestCount > 0 ? 'Weiter' : 'Überspringen'}
+          />
+          <QuickRequestDialog
+            requestId={randomUUID()}
+            client={{
+              id: client.id,
+              name: client.name,
+              datevNo: null,
+              addisonNo: null,
+              allowActive: client.allowActive,
+            }}
+            templates={templates}
+            formTemplates={formTemplates}
+            templatesLimited={templatesLimited}
+            formTemplatesLimited={formTemplatesLimited}
+            buttonLabel="Anforderung anlegen"
+            buttonClassName="btn-primary text-sm"
+          />
+        </div>
+      ) : (
+        // Kein toter, ausgegrauter Knopf: der Schritt kennt den Grund und
+        // führt direkt zur fehlenden GwG-Prüfung.
+        <div className="flex items-center justify-between gap-3 pt-3 border-t border-subtle">
+          <p className="text-xs text-amber-700">
+            Eine Portal-Anforderung ist erst nach abgeschlossener GwG-Prüfung möglich.
+          </p>
+          <div className="flex shrink-0 gap-2">
+            <SkipButton clientId={client.id} next="done" label="Überspringen" />
+            <Link
+              href={`/staff/clients/${client.id}/gwg?from=onboarding`}
+              className="btn-primary text-sm"
+            >
+              GwG-Prüfung öffnen
+            </Link>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
